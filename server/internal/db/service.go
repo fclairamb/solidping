@@ -24,6 +24,10 @@ var ErrEnrollmentTokenInvalid = errors.New("enrollment token is invalid, expired
 // signature, rejected cluster-wide rather than per API replica.
 var ErrAgentNonceReplayed = errors.New("agent reconnect nonce already used")
 
+// ErrUnknownAttachmentEntity is returned by ListOrphanAttachments for an
+// entity segment it has no owning table for.
+var ErrUnknownAttachmentEntity = errors.New("no orphan sweep for this attachment entity")
+
 // UsedEnrollmentTokenListWindow is how long a consumed enrollment token stays
 // visible in ListAgentEnrollmentTokens after use. The register-an-agent wizard
 // polls that list to learn its token's fate: without this window a token used
@@ -931,6 +935,16 @@ type Service interface {
 	GetOrCreateStateEntry(
 		ctx context.Context, orgUID *string, key string, defaultValue *models.JSONMap, ttl *time.Duration,
 	) (*models.StateEntry, bool, error)
+	// AdmitFixedWindows ATOMICALLY counts one event against every window (all
+	// org-scoped state entries of orgUID), or against none: it returns
+	// refused = -1 when admitted, otherwise the index of the first window that
+	// refused and how long until that window reopens. The windows are
+	// evaluated and written under row locks in one transaction (Postgres:
+	// SELECT … FOR UPDATE; SQLite: its single connection serializes the
+	// transaction), so concurrent admissions can never exceed a limit.
+	AdmitFixedWindows(
+		ctx context.Context, orgUID string, windows []models.FixedWindow, now time.Time,
+	) (refused int, retryAfter time.Duration, err error)
 	// SetStateEntryIfNotExists creates entry only if key doesn't exist.
 	// Returns (created, error) where created is true if entry was created.
 	SetStateEntryIfNotExists(
@@ -1348,6 +1362,17 @@ type Service interface {
 	// the files_org_check_uid_idx partial expression index — never a scan of
 	// the org's files.
 	ListCheckScreenshotFiles(ctx context.Context, orgUID, checkUID string, limit int) ([]*models.File, error)
+	// ListOrphanAttachments returns live attachment rows under
+	// `<entity>/<uuid>/…` (entity: "incidents" or "checks") created before
+	// `before` whose entity row is missing, soft-deleted, or in another org —
+	// oldest first, capped at limit. The live-entity filter is an anti-join IN
+	// SQL, so attachments of live entities never fill the page and a real
+	// orphan behind them is always reached (spec 2026-09-25-34). A topic whose
+	// uid segment is not 36 characters is never returned (malformed topics are
+	// left alone). Any other entity is an error.
+	ListOrphanAttachments(
+		ctx context.Context, entity string, before time.Time, limit int,
+	) ([]*models.File, error)
 	// SumFileSizeByGroup returns the total bytes of live (non-deleted) files
 	// for orgUID whose storage URI belongs to the given filestorage.GroupType
 	// (passed as a plain string — this package does not import filestorage).

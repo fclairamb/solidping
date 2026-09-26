@@ -2,9 +2,7 @@ package jobtypes
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
-	"errors"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/handlers/attachments"
@@ -124,14 +122,27 @@ const attachmentSweepBatch = 500
 // and a failure here must not stop expired state entries from being reaped or
 // the next run from being scheduled.
 func sweepOrphanIncidentAttachments(ctx context.Context, jctx *jobdef.JobContext) {
+	sweepOrphanAttachments(ctx, jctx, attachments.EntityIncidents)
+}
+
+// sweepOrphanAttachments soft-deletes one batch of attachments whose entity
+// (`<entity>/<uid>/…`) no longer exists.
+//
+// The orphan test is an anti-join IN SQL (db.Service.ListOrphanAttachments),
+// never a page of candidates checked one by one afterwards. The per-row check
+// used to run over "the oldest 500 attachments past the grace", and the
+// attachments of live, quiet entities never age out of that page: once there
+// were 500 of them every real orphan behind them was unreachable, forever
+// (spec 2026-09-25-34). With the filter in the query each batch is orphans
+// only, so the sweep always makes progress.
+func sweepOrphanAttachments(ctx context.Context, jctx *jobdef.JobContext, entity string) {
 	log := jctx.Logger
 
-	rows, err := jctx.DBService.ListAttachmentsByTopicPrefix(
-		ctx, attachments.EntityIncidents+"/",
-		time.Now().Add(-attachmentOrphanGrace), attachmentSweepBatch,
+	rows, err := jctx.DBService.ListOrphanAttachments(
+		ctx, entity, time.Now().Add(-attachmentOrphanGrace), attachmentSweepBatch,
 	)
 	if err != nil {
-		log.WarnContext(ctx, "Failed to list incident attachments for GC", "error", err)
+		log.WarnContext(ctx, "Failed to list orphan attachments for GC", "entity", entity, "error", err)
 
 		return
 	}
@@ -139,28 +150,6 @@ func sweepOrphanIncidentAttachments(ctx context.Context, jctx *jobdef.JobContext
 	swept := 0
 
 	for _, row := range rows {
-		if row.Topic == nil {
-			continue
-		}
-
-		topic, parseErr := attachments.ParseTopic(*row.Topic)
-		if parseErr != nil {
-			// A malformed topic can only have come from an older or buggier
-			// writer. Leave it alone rather than guess what it pointed at.
-			continue
-		}
-
-		incident, incErr := jctx.DBService.GetIncidentAny(ctx, topic.EntityUID)
-		if incErr == nil && incident != nil {
-			continue
-		}
-
-		if !errors.Is(incErr, sql.ErrNoRows) {
-			// A transient lookup failure must never be read as "the incident
-			// is gone" — that would delete live evidence on a database blip.
-			continue
-		}
-
 		if delErr := jctx.DBService.DeleteFile(ctx, row.OrganizationUID, row.UID); delErr != nil {
 			log.WarnContext(ctx, "Failed to reap orphan attachment",
 				"fileUid", row.UID, "error", delErr)
@@ -172,7 +161,7 @@ func sweepOrphanIncidentAttachments(ctx context.Context, jctx *jobdef.JobContext
 	}
 
 	if swept > 0 {
-		log.InfoContext(ctx, "Reaped orphan incident attachments", "count", swept)
+		log.InfoContext(ctx, "Reaped orphan attachments", "entity", entity, "count", swept)
 	}
 }
 
@@ -182,56 +171,7 @@ func sweepOrphanIncidentAttachments(ctx context.Context, jctx *jobdef.JobContext
 //
 // checks.Service.DeleteCheck already reaps them on the normal delete paths;
 // this catches the ones that bypass it (organization deletion, direct database
-// deletes). Same grace, same batch, same "a lookup error is never read as
-// gone" rule.
+// deletes). Same grace, same batch, same anti-join as the incident sweep.
 func sweepOrphanCheckAttachments(ctx context.Context, jctx *jobdef.JobContext) {
-	log := jctx.Logger
-
-	rows, err := jctx.DBService.ListAttachmentsByTopicPrefix(
-		ctx, attachments.EntityChecks+"/",
-		time.Now().Add(-attachmentOrphanGrace), attachmentSweepBatch,
-	)
-	if err != nil {
-		log.WarnContext(ctx, "Failed to list check attachments for GC", "error", err)
-
-		return
-	}
-
-	swept := 0
-
-	for _, row := range rows {
-		if row.Topic == nil {
-			continue
-		}
-
-		topic, parseErr := attachments.ParseTopic(*row.Topic)
-		if parseErr != nil {
-			continue
-		}
-
-		// Org-scoped by the file's own org: GetCheck excludes soft-deleted
-		// checks, so a deleted check answers ErrNoRows exactly like a missing
-		// one.
-		check, checkErr := jctx.DBService.GetCheck(ctx, row.OrganizationUID, topic.EntityUID)
-		if checkErr == nil && check != nil {
-			continue
-		}
-
-		if !errors.Is(checkErr, sql.ErrNoRows) {
-			continue
-		}
-
-		if delErr := jctx.DBService.DeleteFile(ctx, row.OrganizationUID, row.UID); delErr != nil {
-			log.WarnContext(ctx, "Failed to reap orphan check attachment",
-				"fileUid", row.UID, "error", delErr)
-
-			continue
-		}
-
-		swept++
-	}
-
-	if swept > 0 {
-		log.InfoContext(ctx, "Reaped orphan check attachments", "count", swept)
-	}
+	sweepOrphanAttachments(ctx, jctx, attachments.EntityChecks)
 }

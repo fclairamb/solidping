@@ -170,3 +170,57 @@ func TestSweepOrphanCheckAttachments(t *testing.T) {
 		r.NoError(err, "%s must survive the check sweep", name)
 	}
 }
+
+// TestOrphanSweepsReachOrphansBehindAFullPageOfLiveAttachments pins the stall
+// fix (spec 2026-09-25-34): more than one batch of attachments of LIVE, quiet
+// entities, all older than the grace, used to fill every page of the sweep —
+// the oldest-first candidate list never moved past them, so a real orphan
+// newer than them was never reached. The orphan filter is now in SQL, so it is.
+func TestOrphanSweepsReachOrphansBehindAFullPageOfLiveAttachments(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, dbSvc, org := attachmentGCSetup(t)
+
+	liveCheck := models.NewCheck(org.UID, "quiet", "browser")
+	r.NoError(dbSvc.CreateCheck(ctx, liveCheck))
+
+	liveIncident := models.NewIncident(org.UID, liveCheck.UID, time.Now(), "quiet is down")
+	r.NoError(dbSvc.CreateIncident(ctx, liveIncident))
+
+	veryOld := attachmentOrphanGrace + 48*time.Hour
+	liveAttachments := attachmentSweepBatch + 10
+
+	for i := range liveAttachments {
+		age := veryOld + time.Duration(i)*time.Minute
+		writeAttachment(ctx, t, dbSvc, org.UID, attachments.CheckScreenshotTopic(liveCheck.UID), age)
+		writeAttachment(ctx, t, dbSvc, org.UID, attachments.IncidentScreenshotTopic(liveIncident.UID), age)
+	}
+
+	// Newer than every live attachment, still past the grace.
+	orphanAge := attachmentOrphanGrace + time.Hour
+	checkOrphan := writeAttachment(ctx, t, dbSvc, org.UID,
+		attachments.CheckScreenshotTopic(uuid.New().String()), orphanAge)
+	incidentOrphan := writeAttachment(ctx, t, dbSvc, org.UID,
+		attachments.IncidentScreenshotTopic(uuid.New().String()), orphanAge)
+
+	jctx := &jobdef.JobContext{DBService: dbSvc, Logger: slog.Default()}
+	sweepOrphanCheckAttachments(ctx, jctx)
+	sweepOrphanIncidentAttachments(ctx, jctx)
+
+	_, err := dbSvc.GetFile(ctx, org.UID, checkOrphan.UID)
+	r.Error(err, "the check orphan behind a full page of live captures is reaped")
+
+	_, err = dbSvc.GetFile(ctx, org.UID, incidentOrphan.UID)
+	r.Error(err, "the incident orphan behind a full page of live captures is reaped")
+
+	live, _, err := dbSvc.ListFiles(ctx, org.UID,
+		models.ListFilesFilter{TopicPrefix: attachments.CheckTopicPrefix(liveCheck.UID)})
+	r.NoError(err)
+	r.Len(live, liveAttachments, "no live check capture was touched")
+
+	live, _, err = dbSvc.ListFiles(ctx, org.UID,
+		models.ListFilesFilter{TopicPrefix: attachments.IncidentTopicPrefix(liveIncident.UID)})
+	r.NoError(err)
+	r.Len(live, liveAttachments, "no live incident capture was touched")
+}

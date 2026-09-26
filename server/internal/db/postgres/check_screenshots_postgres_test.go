@@ -15,6 +15,8 @@ import (
 const (
 	portCheckScreenshotsPlan      = 15611
 	portCheckScreenshotsSemantics = 15612
+	portOrphanAttachments         = 15614
+	portAdmitFixedWindows         = 15615
 )
 
 // TestCheckScreenshotListingUsesIndex_Postgres is the Postgres plan regression
@@ -123,4 +125,116 @@ func TestListCheckScreenshotFiles_Postgres(t *testing.T) {
 	none, err := s.ListCheckScreenshotFiles(ctx, org.UID, uuid.New().String(), 5)
 	r.NoError(err)
 	r.Empty(none)
+}
+
+// TestListOrphanAttachments_Postgres pins the orphan sweep's anti-join on
+// Postgres (the SQLite twin runs through internal/jobs/jobtypes): only
+// attachments whose entity is missing, soft-deleted or in another org come
+// back — never a live entity's, never a malformed topic, never a fresh row.
+//
+//nolint:paralleltest // embedded-postgres tests run sequentially in this package
+func TestListOrphanAttachments_Postgres(t *testing.T) {
+	ctx := t.Context()
+	r := require.New(t)
+
+	s := newTier1ServicePG(t, portOrphanAttachments)
+
+	org := models.NewOrganization("orphan-org", "Orphan Org")
+	r.NoError(s.CreateOrganization(ctx, org))
+
+	other := models.NewOrganization("orphan-other", "Other Org")
+	r.NoError(s.CreateOrganization(ctx, other))
+
+	liveCheck := models.NewCheck(org.UID, "live", "browser")
+	r.NoError(s.CreateCheck(ctx, liveCheck))
+
+	deletedCheck := models.NewCheck(org.UID, "gone", "browser")
+	r.NoError(s.CreateCheck(ctx, deletedCheck))
+	r.NoError(s.DeleteCheck(ctx, deletedCheck.UID))
+
+	liveIncident := models.NewIncident(org.UID, liveCheck.UID, time.Now(), "live is down")
+	r.NoError(s.CreateIncident(ctx, liveIncident))
+
+	old := time.Now().Add(-48 * time.Hour)
+	write := func(orgUID, topic string, createdAt time.Time) *models.File {
+		file := models.NewFile(orgUID, "shot.png", "image/png", "file://x", 1, nil)
+		file.Topic = &topic
+		file.CreatedAt = createdAt
+		r.NoError(s.CreateFile(ctx, file))
+
+		return file
+	}
+
+	write(org.UID, "checks/"+liveCheck.UID+"/screenshot", old)
+	write(org.UID, "incidents/"+liveIncident.UID+"/screenshot", old)
+	write(org.UID, "checks/not-a-uuid/screenshot", old)
+	write(org.UID, "checks/"+uuid.New().String()+"/screenshot", time.Now())
+
+	deletedOrphan := write(org.UID, "checks/"+deletedCheck.UID+"/screenshot", old)
+	missingOrphan := write(org.UID, "checks/"+uuid.New().String()+"/screenshot", old)
+	foreignOrphan := write(other.UID, "checks/"+liveCheck.UID+"/screenshot", old)
+	incidentOrphan := write(org.UID, "incidents/"+uuid.New().String()+"/screenshot", old)
+
+	before := time.Now().Add(-time.Hour)
+
+	checkOrphans, err := s.ListOrphanAttachments(ctx, "checks", before, 100)
+	r.NoError(err)
+
+	got := make([]string, 0, len(checkOrphans))
+	for _, file := range checkOrphans {
+		got = append(got, file.UID)
+	}
+
+	r.ElementsMatch([]string{deletedOrphan.UID, missingOrphan.UID, foreignOrphan.UID}, got)
+
+	incidentOrphans, err := s.ListOrphanAttachments(ctx, "incidents", before, 100)
+	r.NoError(err)
+	r.Len(incidentOrphans, 1)
+	r.Equal(incidentOrphan.UID, incidentOrphans[0].UID)
+
+	_, err = s.ListOrphanAttachments(ctx, "organizations", before, 100)
+	r.Error(err, "an entity with no sweep is refused, never spliced into SQL")
+}
+
+// TestAdmitFixedWindows_Postgres pins the admission semantics on Postgres (the
+// concurrency guarantee lives in internal/handlers/checkscreenshots): all
+// windows count or none does, the first refusing window is reported with the
+// time until it reopens, and an elapsed window starts over.
+//
+//nolint:paralleltest // embedded-postgres tests run sequentially in this package
+func TestAdmitFixedWindows_Postgres(t *testing.T) {
+	ctx := t.Context()
+	r := require.New(t)
+
+	s := newTier1ServicePG(t, portAdmitFixedWindows)
+
+	org := models.NewOrganization("admit-org", "Admit Org")
+	r.NoError(s.CreateOrganization(ctx, org))
+
+	now := time.Now()
+	windows := []models.FixedWindow{
+		{Key: "admit.small", Limit: 1, Window: time.Minute},
+		{Key: "admit.big", Limit: 5, Window: time.Hour},
+	}
+
+	refused, _, err := s.AdmitFixedWindows(ctx, org.UID, windows, now)
+	r.NoError(err)
+	r.Equal(-1, refused)
+
+	refused, retryAfter, err := s.AdmitFixedWindows(ctx, org.UID, windows, now.Add(10*time.Second))
+	r.NoError(err)
+	r.Equal(0, refused, "the small window refuses")
+	r.Equal(50*time.Second, retryAfter.Round(time.Second))
+
+	big, err := s.GetStateEntry(ctx, &org.UID, "admit.big")
+	r.NoError(err)
+	r.InDelta(1, (*big.Value)["count"], 0, "a refused admission counts against no window")
+
+	refused, _, err = s.AdmitFixedWindows(ctx, org.UID, windows, now.Add(61*time.Second))
+	r.NoError(err)
+	r.Equal(-1, refused, "the small window reopened")
+
+	big, err = s.GetStateEntry(ctx, &org.UID, "admit.big")
+	r.NoError(err)
+	r.InDelta(2, (*big.Value)["count"], 0)
 }

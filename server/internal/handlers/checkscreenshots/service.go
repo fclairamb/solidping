@@ -51,12 +51,6 @@ const (
 	captureOrgKey         = "capture-now.org"
 )
 
-// Keys of the fixed-window counter stored in a state entry's value.
-const (
-	windowKeyCount = "count"
-	windowKeyStart = "windowStart"
-)
-
 // expressHintEvent is the notifier channel the check workers' express path
 // listens on (in-process: DirectBackend.Hints; deported agents: the WS relay's
 // jobs-available frames). It is named after check creation for historical
@@ -203,25 +197,12 @@ func (s *Service) CaptureNow(ctx context.Context, orgSlug, identifier string) (*
 	}
 
 	now := s.clock.Now()
-	orgUID := check.OrganizationUID
 
-	// Both windows are checked before either is spent, so a request the org
-	// cap refuses does not also burn the check's minute.
-	checkWindow, err := s.window(ctx, orgUID, captureCheckKeyPrefix+check.UID,
-		CaptureCheckLimit, CaptureCheckWindow, "check", now)
-	if err != nil {
+	// Both windows are admitted atomically, or neither: a request the org cap
+	// refuses does not burn the check's minute, and concurrent requests can
+	// never exceed either cap (see db.Service.AdmitFixedWindows).
+	if err := s.admit(ctx, check.OrganizationUID, check.UID, now); err != nil {
 		return nil, err
-	}
-
-	orgWindow, err := s.window(ctx, orgUID, captureOrgKey, CaptureOrgLimit, CaptureOrgWindow, "organization", now)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, spend := range []func() error{checkWindow, orgWindow} {
-		if err := spend(); err != nil {
-			return nil, err
-		}
 	}
 
 	if err := s.db.RequestCheckCapture(ctx, job.UID, now); err != nil {
@@ -302,78 +283,26 @@ func (s *Service) hint(ctx context.Context, checkUID string) {
 	}
 }
 
-// window reads one fixed window stored in a state entry and either refuses the
-// request (RateLimitedError, with the time until the window reopens) or returns
-// the function that counts it.
-//
-// DB-backed rather than an in-memory limiter so the cap holds across API
-// replicas — an in-process bucket would multiply by the replica count. The
-// read-modify-write is not atomic; two requests racing on the same window can
-// both pass, which over-admits by at most the number of replicas and is
-// harmless for a cap whose purpose is keeping a button from being hammered.
-func (s *Service) window(
-	ctx context.Context, orgUID, key string, limit int, window time.Duration, scope string, now time.Time,
-) (func() error, error) {
-	entry, err := s.db.GetStateEntry(ctx, &orgUID, key)
+// admit counts one "Capture now" against the check window and the org window,
+// atomically and in the database — so the caps hold across API replicas AND
+// across concurrent requests on one replica: the admission reads and writes
+// both counters under row locks in one transaction, and a refused request
+// counts against neither window.
+func (s *Service) admit(ctx context.Context, orgUID, checkUID string, now time.Time) error {
+	windows := []models.FixedWindow{
+		{Key: captureCheckKeyPrefix + checkUID, Limit: CaptureCheckLimit, Window: CaptureCheckWindow},
+		{Key: captureOrgKey, Limit: CaptureOrgLimit, Window: CaptureOrgWindow},
+	}
+	scopes := []string{"check", "organization"}
+
+	refused, retryAfter, err := s.db.AdmitFixedWindows(ctx, orgUID, windows, now)
 	if err != nil {
-		return nil, fmt.Errorf("read capture window: %w", err)
+		return fmt.Errorf("admit capture: %w", err)
 	}
 
-	count, start := readWindow(entry)
-	if start.IsZero() || !now.Before(start.Add(window)) {
-		count, start = 0, now
+	if refused >= 0 {
+		return &RateLimitedError{RetryAfter: retryAfter, Scope: scopes[refused]}
 	}
 
-	if count >= limit {
-		return nil, &RateLimitedError{RetryAfter: start.Add(window).Sub(now), Scope: scope}
-	}
-
-	return func() error {
-		value := models.JSONMap{
-			windowKeyCount: count + 1,
-			windowKeyStart: start.UTC().Format(time.RFC3339Nano),
-		}
-
-		ttl := start.Add(window).Sub(now)
-		if ttl < time.Second {
-			ttl = time.Second
-		}
-
-		if err := s.db.SetStateEntry(ctx, &orgUID, key, &value, &ttl); err != nil {
-			return fmt.Errorf("write capture window: %w", err)
-		}
-
-		return nil
-	}, nil
-}
-
-// readWindow decodes a fixed-window counter; a missing or unreadable entry is
-// an empty window.
-func readWindow(entry *models.StateEntry) (int, time.Time) {
-	if entry == nil || entry.Value == nil {
-		return 0, time.Time{}
-	}
-
-	value := *entry.Value
-
-	startRaw, ok := value[windowKeyStart].(string)
-	if !ok {
-		return 0, time.Time{}
-	}
-
-	start, err := time.Parse(time.RFC3339Nano, startRaw)
-	if err != nil {
-		return 0, time.Time{}
-	}
-
-	switch count := value[windowKeyCount].(type) {
-	case float64:
-		return int(count), start
-	case int:
-		return count, start
-	case int64:
-		return int(count), start
-	default:
-		return 0, start
-	}
+	return nil
 }

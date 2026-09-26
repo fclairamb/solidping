@@ -4542,6 +4542,94 @@ func (s *Service) SetStateEntryIfNotExists(
 	return rowsAffected > 0, nil
 }
 
+// AdmitFixedWindows atomically counts one event against every window, or
+// against none (spec 2026-09-25-34, "Capture now").
+//
+// Postgres: every counter row is created if missing (ON CONFLICT DO NOTHING),
+// then locked with SELECT … FOR UPDATE in key order, so concurrent admissions
+// on the same counter queue behind each other and each sees the previous one's
+// write.
+func (s *Service) AdmitFixedWindows(
+	ctx context.Context, orgUID string, windows []models.FixedWindow, now time.Time,
+) (int, time.Duration, error) {
+	order := make([]int, len(windows))
+	for i := range order {
+		order[i] = i
+	}
+
+	// A stable lock order across callers, so two admissions sharing counters
+	// can never deadlock.
+	slices.SortFunc(order, func(a, b int) int { return strings.Compare(windows[a].Key, windows[b].Key) })
+
+	refused := -1
+
+	var retryAfter time.Duration
+
+	err := s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		entries := make([]*models.StateEntry, len(windows))
+
+		for _, idx := range order {
+			placeholder := models.NewStateEntry(&orgUID, windows[idx].Key)
+			placeholder.ExpiresAt = &now
+
+			if _, err := tx.NewInsert().Model(placeholder).
+				On("CONFLICT (organization_uid, key) DO NOTHING").Exec(ctx); err != nil {
+				return fmt.Errorf("seed window %q: %w", windows[idx].Key, err)
+			}
+
+			entry := new(models.StateEntry)
+			query := tx.NewSelect().Model(entry).
+				Where("organization_uid = ?", orgUID).
+				Where("key = ?", windows[idx].Key)
+			query = query.For("UPDATE")
+
+			if err := query.Scan(ctx); err != nil {
+				return fmt.Errorf("lock window %q: %w", windows[idx].Key, err)
+			}
+
+			entries[idx] = entry
+		}
+
+		counts := make([]int, len(windows))
+		starts := make([]time.Time, len(windows))
+
+		for idx := range windows {
+			window := &windows[idx]
+			counts[idx], starts[idx] = window.FixedWindowState(entries[idx], now)
+
+			if counts[idx] >= window.Limit {
+				refused = idx
+				retryAfter = starts[idx].Add(window.Window).Sub(now)
+
+				return nil
+			}
+		}
+
+		for idx := range windows {
+			window := &windows[idx]
+			value := models.FixedWindowValue(counts[idx]+1, starts[idx])
+			expiresAt := starts[idx].Add(window.Window)
+
+			if _, err := tx.NewUpdate().Model((*models.StateEntry)(nil)).
+				Set("value = ?", &value).
+				Set("expires_at = ?", expiresAt).
+				Set("updated_at = ?", now).
+				Set("deleted_at = NULL").
+				Where("uid = ?", entries[idx].UID).
+				Exec(ctx); err != nil {
+				return fmt.Errorf("count window %q: %w", window.Key, err)
+			}
+		}
+
+		return nil
+	})
+	if err != nil {
+		return 0, 0, err
+	}
+
+	return refused, retryAfter, nil
+}
+
 // DeleteExpiredStateEntries removes entries past their expires_at.
 func (s *Service) DeleteExpiredStateEntries(ctx context.Context) (int64, error) {
 	res, err := s.db.NewUpdate().
@@ -7621,6 +7709,56 @@ func (s *Service) checkScreenshotFilesQuery(
 	}
 
 	return query
+}
+
+// orphanAttachmentTables maps an attachment topic's entity segment to the
+// table that owns it. A whitelist: the table name is spliced into SQL.
+//
+//nolint:gochecknoglobals // immutable lookup table
+var orphanAttachmentTables = map[string]string{
+	"incidents": "incidents",
+	"checks":    "checks",
+}
+
+// uuidSegmentPattern is 36 single-character LIKE wildcards: the uid segment of
+// a well-formed topic.
+const uuidSegmentPattern = "____________________________________"
+
+// ListOrphanAttachments returns live attachments whose entity row is gone,
+// filtered by an anti-join so live entities never fill the page.
+func (s *Service) ListOrphanAttachments(
+	ctx context.Context, entity string, before time.Time, limit int,
+) ([]*models.File, error) {
+	table, ok := orphanAttachmentTables[entity]
+	if !ok {
+		return nil, fmt.Errorf("%w: %q", db.ErrUnknownAttachmentEntity, entity)
+	}
+
+	var files []*models.File
+
+	// The uid segment starts right after "<entity>/" (1-based substr).
+	uidStart := len(entity) + 2
+
+	query := s.db.NewSelect().
+		Model(&files).
+		Where("?TableAlias.topic LIKE ?", entity+"/"+uuidSegmentPattern+"/%").
+		Where("?TableAlias.deleted_at IS NULL").
+		Where("?TableAlias.created_at < ?", before).
+		Where("NOT EXISTS (SELECT 1 FROM "+table+" AS e"+
+			" WHERE e.uid::text = substr(?TableAlias.topic, ?, 36)"+
+			" AND e.organization_uid = ?TableAlias.organization_uid"+
+			" AND e.deleted_at IS NULL)", uidStart).
+		Order("created_at ASC")
+
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+
+	if err := query.Scan(ctx); err != nil {
+		return nil, err
+	}
+
+	return files, nil
 }
 
 // GetIncidentAny retrieves an incident by UID without org scoping. Used by the

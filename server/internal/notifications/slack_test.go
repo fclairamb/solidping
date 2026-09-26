@@ -1666,6 +1666,18 @@ func (m *mockDBService) RequestCheckCapture(_ context.Context, _ string, _ time.
 	panic("not implemented")
 }
 
+func (m *mockDBService) ListOrphanAttachments(
+	_ context.Context, _ string, _ time.Time, _ int,
+) ([]*models.File, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) AdmitFixedWindows(
+	_ context.Context, _ string, _ []models.FixedWindow, _ time.Time,
+) (int, time.Duration, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) DeleteFile(_ context.Context, _, _ string) error {
 	panic("not implemented")
 }
