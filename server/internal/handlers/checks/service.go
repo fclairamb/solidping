@@ -2737,13 +2737,7 @@ func (s *Service) DeleteCheck(ctx context.Context, orgSlug, identifier string) e
 		return fmt.Errorf("failed to delete check: %w", err)
 	}
 
-	// Reap the check-scoped attachments (spec 2026-09-25-34: the captures of
-	// runs that opened no incident, and "Capture now" captures). Best-effort
-	// and after the delete, like every reaper: the check is gone either way,
-	// and the state-cleanup orphan sweep catches whatever this misses.
-	if _, reapErr := s.db.DeleteFilesByTopicPrefix(ctx, org.UID, attachments.CheckTopicPrefix(check.UID)); reapErr != nil {
-		slog.WarnContext(ctx, "Failed to reap check attachments", "checkUid", check.UID, "error", reapErr)
-	}
+	s.reapCheckAttachments(ctx, org.UID, check.UID)
 
 	// The check just left the in-scope set — bust the stats cache so the
 	// next fetch recomputes instead of riding out the TTL (spec
@@ -3605,6 +3599,17 @@ func (s *Service) convertResultToLastResultResponseSlim(result *models.Result) *
 		Status:     resultStatusString(result),
 		Timestamp:  result.PeriodStart,
 		DurationMs: result.Duration,
+	}
+}
+
+// reapCheckAttachments soft-deletes a deleted check's check-scoped attachments
+// (spec 2026-09-25-34: the captures of runs that opened no incident, and
+// "Capture now" captures). Best-effort and run after the delete, like every
+// reaper: the check is gone either way, and the state-cleanup orphan sweep
+// catches whatever this misses.
+func (s *Service) reapCheckAttachments(ctx context.Context, orgUID, checkUID string) {
+	if _, err := s.db.DeleteFilesByTopicPrefix(ctx, orgUID, attachments.CheckTopicPrefix(checkUID)); err != nil {
+		slog.WarnContext(ctx, "Failed to reap check attachments", "checkUid", checkUID, "error", err)
 	}
 }
 
