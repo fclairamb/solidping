@@ -107,3 +107,64 @@ test.describe("Organization settings — session length override", () => {
     await expect(page.getByTestId("session-duration-hours")).toHaveValue("");
   });
 });
+
+// Covers the org-settings "Status page embedding" card (spec 2026-09-25-28):
+// the per-org frame-ancestors allowlist, validated server-side. The header it
+// produces is covered by the Go tests (internal/app/security_headers_test.go);
+// this is the UI round trip plus the validation message.
+test.describe("Organization settings — status page embedding", () => {
+  test.afterEach(async ({ authenticatedPage }) => {
+    const page = authenticatedPage;
+    await page.goto("orgs/test/organization/settings");
+    await page.waitForLoadState("networkidle");
+    await page.getByTestId("embed-origins").fill("");
+    await page.getByTestId("embed-origins-save").click();
+    await expect(page.getByText(/settings saved/i)).toBeVisible({
+      timeout: 10000,
+    });
+  });
+
+  test("saves a normalized allowlist, survives a reload, and refuses a path", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await page.goto("orgs/test/organization/settings");
+    await page.waitForLoadState("networkidle");
+
+    const field = page.getByTestId("embed-origins");
+    await field.fill("https://Intranet.Acme.com/\nhttps://*.acme.com");
+
+    const patchPromise = page.waitForResponse(
+      (resp) =>
+        resp.url().includes("/api/v1/orgs/test/settings") &&
+        resp.request().method() === "PATCH",
+    );
+    await page.getByTestId("embed-origins-save").click();
+    const patch = await patchPromise;
+    expect(patch.status()).toBe(200);
+    expect((await patch.json()).statusPageAllowedEmbedOrigins).toEqual([
+      "https://intranet.acme.com",
+      "https://*.acme.com",
+    ]);
+    await expect(page.getByText(/settings saved/i)).toBeVisible();
+
+    await page.reload();
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("embed-origins")).toHaveValue(
+      "https://intranet.acme.com\nhttps://*.acme.com",
+    );
+
+    // A path is not an origin: refused with the reason, nothing stored.
+    await page.getByTestId("embed-origins").fill("https://acme.com/status");
+    await page.getByTestId("embed-origins-save").click();
+    await expect(page.getByTestId("embed-origins-error")).toContainText(
+      "https://acme.com/status",
+    );
+
+    await page.reload();
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("embed-origins")).toHaveValue(
+      "https://intranet.acme.com\nhttps://*.acme.com",
+    );
+  });
+});
