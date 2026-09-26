@@ -38,7 +38,11 @@
     "error": "Fehler",
     "created": "Erstellt",
     "running": "Läuft",
-    "recentUpdates": "Aktuelle Updates"
+    "recentUpdates": "Aktuelle Updates",
+    "readMore": "Mehr erfahren →",
+    "incidentThread": "Updates zur Störung",
+    "incidentThreadLabel": "Updates zur Störung {{uid}}",
+    "updateKindLabel": "Art des Updates: {{kind}}"
   },
   "subscribe": {
     "title": "Updates abonnieren",

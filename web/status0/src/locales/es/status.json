@@ -38,7 +38,11 @@
     "error": "Error",
     "created": "Creado",
     "running": "En ejecución",
-    "recentUpdates": "Actualizaciones recientes"
+    "recentUpdates": "Actualizaciones recientes",
+    "readMore": "Leer más →",
+    "incidentThread": "Hilo de la incidencia",
+    "incidentThreadLabel": "Hilo de la incidencia {{uid}}",
+    "updateKindLabel": "Tipo de actualización: {{kind}}"
   },
   "subscribe": {
     "title": "Suscribirse a las actualizaciones",

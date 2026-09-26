@@ -588,7 +588,7 @@ export function StatusPageView({
 
         {/* Recent updates timeline */}
         {page.recentUpdates && page.recentUpdates.length > 0 && (
-          <section aria-label="Recent updates" className="mt-8">
+          <section aria-label={t("status.recentUpdates")} className="mt-8">
             <h2 className="text-lg font-semibold mb-4">
               {t("status.recentUpdates")}
             </h2>
@@ -601,7 +601,7 @@ export function StatusPageView({
         <IncidentHistory org={org} slug={page.slug} />
 
         {/* Subscribe to updates (email double opt-in) + RSS/Atom feed */}
-        <section aria-label="Subscribe to updates" className="mt-8">
+        <section aria-label={t("subscribe.title")} className="mt-8">
           <SubscribeWidget
             org={org}
             statusPageUid={page.uid}
