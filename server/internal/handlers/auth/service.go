@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
@@ -67,8 +68,11 @@ const (
 
 	// keyTokenHash is the pending-registration state value key holding
 	// sha256hex(token) — see hashPendingToken. Registration entries never
-	// store the plaintext confirmation token (spec 2026-09-25-30); contrast
-	// with keyToken above, still used plaintext by the invite flow.
+	// store the plaintext confirmation token (spec 2026-09-25-30). Password
+	// reset and invitations never store it either: they carry the hash as
+	// their state-entry KEY suffix instead (spec 2026-09-26-02). keyToken
+	// above is now only a request field name, plus the value field of legacy
+	// invite rows written before that spec.
 	keyTokenHash = "tokenHash"
 
 	tokenTypeBearer = "Bearer"
@@ -2367,10 +2371,10 @@ const (
 )
 
 // hashPendingToken derives the at-rest form of a plaintext single-use
-// token: the password-reset flow uses it as the storage KEY suffix
-// (password_reset:<hash>), and pending email-registration entries use it as
-// a stored VALUE (keyTokenHash) since those entries are keyed by email, not
-// by token (spec 2026-09-25-30). Inputs are 32 random bytes hex-encoded
+// token: the password-reset and invitation flows use it as the storage KEY
+// suffix (password_reset:<hash>, invite:<hash> — spec 2026-09-26-02), and
+// pending email-registration entries use it as a stored VALUE (keyTokenHash)
+// since those entries are keyed by email, not by token (spec 2026-09-25-30). Inputs are 32 random bytes hex-encoded
 // (256 bits), so plain SHA-256 is sufficient — no salt or stretching needed.
 func hashPendingToken(token string) string {
 	sum := sha256.Sum256([]byte(token))
@@ -3596,15 +3600,17 @@ func (s *Service) CreateInvitation(
 
 	token := hex.EncodeToString(tokenBytes)
 
-	// Store in state entries (org-scoped)
+	// Store in state entries (org-scoped). The entry is keyed by the token's
+	// hash and never holds the plaintext token: a reader of state_entries
+	// must not be able to rebuild a usable invite link (spec 2026-09-26-02).
+	// The plaintext only leaves through the response and the email below.
 	stateValue := &models.JSONMap{
-		keyToken:     token,
 		keyEmail:     req.Email,
 		"role":       req.Role,
 		"inviterUID": inviterUID,
 	}
 
-	stateKey := inviteKeyPrefix + token
+	stateKey := inviteKeyPrefix + hashPendingToken(token)
 
 	if storeErr := s.db.SetStateEntry(ctx, &org.UID, stateKey, stateValue, &ttl); storeErr != nil {
 		return nil, fmt.Errorf("failed to store invitation: %w", storeErr)
@@ -3703,69 +3709,90 @@ func (s *Service) RevokeInvitation(ctx context.Context, orgSlug, invitationUID s
 	return ErrInvitationNotFound
 }
 
-// GetInviteInfo returns public information about an invitation.
-func (s *Service) GetInviteInfo(ctx context.Context, token string) (*InviteInfoResponse, error) {
-	stateKey := inviteKeyPrefix + token
+// findInvite locates the live invitation a plaintext token refers to,
+// across every organization. It returns the matching entry (whose Key is
+// the one to delete on acceptance) and its org, or ErrInvitationNotFound.
+func (s *Service) findInvite(
+	ctx context.Context, token string,
+) (*models.StateEntry, *models.Organization, error) {
+	if token == "" {
+		return nil, nil, ErrInvitationNotFound
+	}
 
-	// Search across all orgs for the invite
-	// We need to find which org this invite belongs to
 	orgs, err := s.db.ListOrganizations(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list organizations: %w", err)
+		return nil, nil, fmt.Errorf("failed to list organizations: %w", err)
 	}
+
+	hashedKey := inviteKeyPrefix + hashPendingToken(token)
+	legacyKey := inviteKeyPrefix + token
 
 	for _, org := range orgs {
-		entry, getErr := s.db.GetStateEntry(ctx, &org.UID, stateKey)
-		if getErr != nil || entry == nil {
-			continue
+		entry, getErr := s.db.GetStateEntry(ctx, &org.UID, hashedKey)
+		if getErr == nil && entry != nil && entry.Value != nil {
+			return entry, org, nil
 		}
 
-		if entry.Value == nil {
-			continue
+		// Legacy fallback: invites created before spec 2026-09-26-02 are
+		// keyed by the plaintext token and carry it in their value. They are
+		// never rewritten, they just expire (max TTL 1 week).
+		//
+		// The value check is what keeps a hashed row from answering here:
+		// presenting a stored hash as the token would otherwise hit
+		// invite:<hash> — the new-style key — through this branch. Hashed
+		// rows hold no token field, so they never match.
+		//
+		// TODO(remove after 2026-10-10): drop this branch once every
+		// pre-hash invite has expired.
+		entry, getErr = s.db.GetStateEntry(ctx, &org.UID, legacyKey)
+		if getErr == nil && entry != nil && entry.Value != nil && legacyInviteTokenMatches(entry, token) {
+			return entry, org, nil
 		}
-
-		val := *entry.Value
-
-		return &InviteInfoResponse{
-			OrgName: org.Name,
-			OrgSlug: org.Slug,
-			Role:    stringFromMap(val, "role"),
-			Email:   maskEmail(stringFromMap(val, "email")),
-		}, nil
 	}
 
-	return nil, ErrInvitationNotFound
+	return nil, nil, ErrInvitationNotFound
+}
+
+// legacyInviteTokenMatches reports whether a legacy (plaintext-keyed) invite
+// row stores exactly the presented token in its value.
+//
+// TODO(remove after 2026-10-10): goes with the legacy branch of findInvite.
+func legacyInviteTokenMatches(entry *models.StateEntry, token string) bool {
+	stored, ok := (*entry.Value)[keyToken].(string)
+	if !ok || stored == "" {
+		return false
+	}
+
+	return subtle.ConstantTimeCompare([]byte(stored), []byte(token)) == 1
+}
+
+// GetInviteInfo returns public information about an invitation.
+func (s *Service) GetInviteInfo(ctx context.Context, token string) (*InviteInfoResponse, error) {
+	entry, org, err := s.findInvite(ctx, token)
+	if err != nil {
+		return nil, err
+	}
+
+	val := *entry.Value
+
+	return &InviteInfoResponse{
+		OrgName: org.Name,
+		OrgSlug: org.Slug,
+		Role:    stringFromMap(val, "role"),
+		Email:   maskEmail(stringFromMap(val, "email")),
+	}, nil
 }
 
 // AcceptInvite accepts an invitation and creates/authenticates the user.
 //
 //nolint:cyclop,funlen // Invitation acceptance requires multiple steps
 func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*LoginResponse, error) {
-	stateKey := inviteKeyPrefix + req.Token
-
-	// Find the invitation across orgs
-	orgs, err := s.db.ListOrganizations(ctx)
+	// Find the invitation across orgs. matchedEntry.Key is the key that
+	// actually matched (hashed, or legacy plaintext), so the deletes below
+	// must use it rather than recompute one.
+	matchedEntry, matchedOrg, err := s.findInvite(ctx, req.Token)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list organizations: %w", err)
-	}
-
-	var matchedEntry *models.StateEntry
-	var matchedOrg *models.Organization
-
-	for _, org := range orgs {
-		entry, getErr := s.db.GetStateEntry(ctx, &org.UID, stateKey)
-		if getErr != nil || entry == nil {
-			continue
-		}
-
-		matchedEntry = entry
-		matchedOrg = org
-
-		break
-	}
-
-	if matchedEntry == nil || matchedOrg == nil {
-		return nil, ErrInvitationNotFound
+		return nil, err
 	}
 
 	val := *matchedEntry.Value
@@ -3806,7 +3833,7 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*L
 	_, err = s.db.GetMemberByUserAndOrg(ctx, user.UID, matchedOrg.UID)
 	if err == nil {
 		// Already a member, just clean up and login
-		_, _ = s.db.DeleteStateEntry(ctx, &matchedOrg.UID, stateKey)
+		_, _ = s.db.DeleteStateEntry(ctx, &matchedOrg.UID, matchedEntry.Key)
 	} else {
 		// Enforce the MaxUsers cap before adding this member. Invitation
 		// acceptance is a membership-creation path, so it must honor the
@@ -3838,7 +3865,7 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*L
 			})
 
 		// Delete the invitation
-		_, _ = s.db.DeleteStateEntry(ctx, &matchedOrg.UID, stateKey)
+		_, _ = s.db.DeleteStateEntry(ctx, &matchedOrg.UID, matchedEntry.Key)
 	}
 
 	// Auto-join matching orgs for new users
