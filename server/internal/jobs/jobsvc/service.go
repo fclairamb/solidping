@@ -30,6 +30,16 @@ const (
 	// on-the-wire Postgres channel name becomes "job_created".
 	// dialect-agnostic — use s.notifier.Notify, never raw SQL.
 	eventTypeJobCreated = "job.created"
+
+	// jobWakeWindow bounds how far in the future a job's scheduled_at may be
+	// for CreateJob to wake a sleeping GetJobWait runner immediately, on both
+	// the brand-new-row insert path (createNewJob) and the dedup pull-forward
+	// path (findAndUpdateExistingJob, via CreateJob's found branch). One named
+	// constant shared by both keeps them from drifting apart (spec
+	// 2026-09-25-17) — a job due further out than this is picked up by
+	// nextPendingWait's own timer either way, so notifying would just be an
+	// extra wake-up for no earlier a claim.
+	jobWakeWindow = 15 * time.Minute
 )
 
 // JobOptions contains options for creating a job.
@@ -210,12 +220,25 @@ func (s *serviceImpl) CreateJob(
 	}
 
 	// Try to find and update existing job
-	existing, found, err := s.findAndUpdateExistingJob(ctx, orgUID, jobType, configMap, scheduledAt)
+	existing, found, previousScheduledAt, err := s.findAndUpdateExistingJob(ctx, orgUID, jobType, configMap, scheduledAt)
 	if err != nil {
 		return nil, err
 	}
 
 	if found {
+		// Wake a sleeping runner when this pulls the job earlier than it was
+		// AND earlier than it is already due AND close enough to run soon —
+		// the same three-part guard createNewJob uses for a brand-new row.
+		// Without the "earlier" check, a bounce that pushes the job out (or
+		// leaves it where it was) would notify too, spuriously waking every
+		// runner on every bounce — a job-storm for no gain, since nothing
+		// became more claimable. Without the "already due" check, a job that
+		// was already claimable would notify for no reason: a sleeping runner
+		// would not have been sleeping on it (spec 2026-09-25-17).
+		if s.movedJobEarlierWithinWakeWindow(previousScheduledAt, scheduledAt) {
+			_ = s.notifier.Notify(ctx, eventTypeJobCreated, "{}")
+		}
+
 		s.publishJobsHint(ctx, existing.OrganizationUID)
 
 		return existing, nil
@@ -251,12 +274,18 @@ func (s *serviceImpl) parseJobConfig(config json.RawMessage) (models.JSONMap, er
 	return configMap, nil
 }
 
+// findAndUpdateExistingJob looks for a pending job with the same org + type +
+// config and, when found, overwrites its scheduled_at in place (the "dedup"
+// path — CreateJob's alternative to inserting a new row). The returned
+// previousScheduledAt is the row's scheduled_at BEFORE this overwrite, zero
+// when no row was found; CreateJob needs it to decide whether this pull
+// counts as "earlier" for the wake-up notify (spec 2026-09-25-17).
 func (s *serviceImpl) findAndUpdateExistingJob(
 	ctx context.Context,
 	orgUID, jobType string,
 	configMap models.JSONMap,
 	scheduledAt time.Time,
-) (*models.Job, bool, error) {
+) (*models.Job, bool, time.Time, error) {
 	var existing models.Job
 
 	query := s.db.NewSelect().
@@ -272,27 +301,48 @@ func (s *serviceImpl) findAndUpdateExistingJob(
 		query = query.Where("organization_uid = ?", orgUID)
 	}
 
-	err := query.Scan(ctx)
-	if err == nil {
+	scanErr := query.Scan(ctx)
+	if scanErr == nil {
+		previousScheduledAt := existing.ScheduledAt
+
 		// Found existing pending job, update its scheduled_at
 		existing.ScheduledAt = scheduledAt
 		existing.UpdatedAt = time.Now()
 
-		_, err = s.db.NewUpdate().
+		_, updErr := s.db.NewUpdate().
 			Model(&existing).
 			Column("scheduled_at", "updated_at").
 			Where("uid = ?", existing.UID).
 			Exec(ctx)
-		if err != nil {
-			return nil, false, fmt.Errorf("failed to update existing job: %w", err)
+		if updErr != nil {
+			return nil, false, time.Time{}, fmt.Errorf("failed to update existing job: %w", updErr)
 		}
 
-		return &existing, true, nil
-	} else if !errors.Is(err, sql.ErrNoRows) {
-		return nil, false, fmt.Errorf("failed to check existing job: %w", err)
+		return &existing, true, previousScheduledAt, nil
+	} else if !errors.Is(scanErr, sql.ErrNoRows) {
+		return nil, false, time.Time{}, fmt.Errorf("failed to check existing job: %w", scanErr)
 	}
 
-	return nil, false, nil
+	return nil, false, time.Time{}, nil
+}
+
+// movedJobEarlierWithinWakeWindow reports whether pulling a dedup'd job's
+// scheduled_at from previousScheduledAt to newScheduledAt should wake a
+// sleeping GetJobWait runner. All three must hold:
+//   - newScheduledAt is strictly earlier than previousScheduledAt: a bounce
+//     that pushes the job out, or leaves it exactly where it was, fires
+//     nothing. This is the job-storm guard — see CreateJob's found branch.
+//   - previousScheduledAt was still in the future: if the job was already
+//     due, it was already claimable and no runner would be sleeping on it
+//     specifically, so notifying adds nothing.
+//   - newScheduledAt is within jobWakeWindow of now: the same gate
+//     createNewJob applies to a brand-new row, so the two paths cannot drift.
+func (s *serviceImpl) movedJobEarlierWithinWakeWindow(previousScheduledAt, newScheduledAt time.Time) bool {
+	now := time.Now()
+
+	return newScheduledAt.Before(previousScheduledAt) &&
+		previousScheduledAt.After(now) &&
+		newScheduledAt.Sub(now) <= jobWakeWindow
 }
 
 func (s *serviceImpl) createNewJob(
@@ -317,8 +367,8 @@ func (s *serviceImpl) createNewJob(
 		return nil, fmt.Errorf("failed to create job: %w", err)
 	}
 
-	// Wake up waiting job runners when the job is due within 15 minutes.
-	if time.Until(job.ScheduledAt) <= 15*time.Minute {
+	// Wake up waiting job runners when the job is due soon.
+	if time.Until(job.ScheduledAt) <= jobWakeWindow {
 		_ = s.notifier.Notify(ctx, eventTypeJobCreated, "{}")
 	}
 

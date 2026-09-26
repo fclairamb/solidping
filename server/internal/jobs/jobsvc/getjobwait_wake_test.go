@@ -3,6 +3,7 @@ package jobsvc_test
 import (
 	"context"
 	"encoding/json"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -187,4 +188,229 @@ func TestGetJobWaitSelfReschedulingSweepRunsAtItsOwnInterval(t *testing.T) {
 		"self-rescheduling sweep at a %s interval ran only %d times in %s (wanted at least %d) — "+
 			"this is the exact regression: a fixed 5-minute fallback would produce ~0-1 runs here",
 		interval, len(runTimes), runWindow, wantRuns/3)
+}
+
+// countingNotifier wraps an EventNotifier and counts how many times
+// eventTypeJobCreated ("job.created") is emitted, so a test can assert on
+// CreateJob's notify decision without racing a live GetJobWait goroutine.
+type countingNotifier struct {
+	notifier.EventNotifier
+
+	jobCreatedCount atomic.Int64
+}
+
+func (c *countingNotifier) Notify(ctx context.Context, eventType, payload string) error {
+	if eventType == "job.created" {
+		c.jobCreatedCount.Add(1)
+	}
+
+	return c.EventNotifier.Notify(ctx, eventType, payload)
+}
+
+// newTestJobServiceWithCountingNotifier is newTestJobService, but exposes the
+// countingNotifier wrapping the bus so a test can read how many job.created
+// notifications a CreateJob call emitted.
+func newTestJobServiceWithCountingNotifier(t *testing.T) (jobsvc.Service, *countingNotifier) {
+	t.Helper()
+
+	r := require.New(t)
+	ctx := t.Context()
+
+	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(dbSvc.Initialize(ctx))
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	bus := notifier.NewLocalEventNotifier()
+	t.Cleanup(func() { _ = bus.Close() })
+
+	counting := &countingNotifier{EventNotifier: bus}
+
+	svc := jobsvc.NewService(dbSvc.DB(), dbSvc, counting, nil)
+
+	return svc, counting
+}
+
+// TestCreateJobDedupPullForwardWakesRunner is spec 2026-09-25-17 Tests item 1:
+// pulling an already-queued job earlier through CreateJob's dedup path
+// (findAndUpdateExistingJob) must wake a GetJobWait runner that is sleeping on
+// a DIFFERENT, later-due job — exactly like the brand-new-insert path
+// (createNewJob) already does. Before the fix, the dedup path never called
+// notifier.Notify at all, so the pulled-forward job only ran once the
+// runner's existing timer eventually fired.
+func TestCreateJobDedupPullForwardWakesRunner(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+
+	svc, dbSvc := newTestJobService(t)
+
+	// Job A: what GetJobWait ends up sleeping on. Its due time is the ceiling
+	// this test proves the dedup-pulled job beats — generous enough (4s) not
+	// to be a wall-clock landmine, short enough to keep the test fast.
+	jobA := models.NewJob(nil, "wake_dedup_a")
+	jobA.Status = models.JobStatusPending
+	jobA.ScheduledAt = time.Now().Add(4 * time.Second)
+	_, err := dbSvc.DB().NewInsert().Model(jobA).Exec(ctx)
+	r.NoError(err)
+
+	// Job B: queued far out, empty config. A later CreateJob call with the
+	// same type + config hits findAndUpdateExistingJob (the dedup path)
+	// instead of inserting a new row.
+	farAt := time.Now().Add(20 * time.Second)
+	jobB, err := svc.CreateJob(ctx, "", "wake_dedup_b", []byte(`{}`), &jobsvc.JobOptions{ScheduledAt: &farAt})
+	r.NoError(err)
+
+	waitCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	type result struct {
+		job *models.Job
+		err error
+	}
+	resultCh := make(chan result, 1)
+
+	go func() {
+		job, waitErr := svc.GetJobWait(waitCtx)
+		resultCh <- result{job: job, err: waitErr}
+	}()
+
+	// Let GetJobWait claim-miss on both A and B, subscribe to job.created and
+	// settle into its wait (timed off A, the earliest pending job) before the
+	// dedup pull-forward below — otherwise the wake-up notification would fire
+	// before anyone is listening for it.
+	time.Sleep(200 * time.Millisecond)
+
+	// Same type + config as jobB, nil options ("schedule now"): hits the dedup
+	// path and pulls B's scheduled_at from 20s out to now.
+	pullTime := time.Now()
+
+	pulled, err := svc.CreateJob(ctx, "", "wake_dedup_b", []byte(`{}`), nil)
+	r.NoError(err)
+	r.Equal(jobB.UID, pulled.UID,
+		"must be the dedup path updating the SAME row — a different UID means this went through "+
+			"the insert path instead and proves nothing about the dedup fix")
+
+	// Confirm there is exactly one row of type wake_dedup_b: further proof the
+	// dedup path updated the existing row rather than a second one being
+	// inserted alongside it. Deliberately not filtered by status: the wake-up
+	// racing this very check may already have let GetJobWait claim it
+	// (pending -> running) by the time we look.
+	count, err := dbSvc.DB().NewSelect().
+		Model((*models.Job)(nil)).
+		Where("type = ?", "wake_dedup_b").
+		Where("deleted_at IS NULL").
+		Count(ctx)
+	r.NoError(err)
+	r.Equal(1, count, "dedup must update the existing row in place, never insert a second one")
+
+	select {
+	case res := <-resultCh:
+		r.NoError(res.err)
+		r.NotNil(res.job)
+		r.Equal(jobB.UID, res.job.UID, "must claim the dedup-pulled job B, not job A")
+		r.Lessf(time.Since(pullTime), 2*time.Second,
+			"the dedup-pulled job should be claimed almost immediately via the wake-up notify, "+
+				"well before A's 4s timer would otherwise fire")
+	case <-time.After(6 * time.Second):
+		t.Fatal("GetJobWait did not return within 6s of the dedup pull-forward")
+	}
+}
+
+// TestCreateJobDedupPushLaterDoesNotNotify is spec 2026-09-25-17 Tests item 2:
+// bouncing an already-queued job LATER through the dedup path must not emit
+// job.created — that would wake every sleeping runner for a change that made
+// nothing more claimable (the job-storm guard in CreateJob's found branch).
+func TestCreateJobDedupPushLaterDoesNotNotify(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+
+	svc, counting := newTestJobServiceWithCountingNotifier(t)
+
+	originalAt := time.Now().Add(30 * time.Second)
+	job, err := svc.CreateJob(ctx, "", "wake_dedup_push_later", []byte(`{}`),
+		&jobsvc.JobOptions{ScheduledAt: &originalAt})
+	r.NoError(err)
+
+	// Reset: the initial insert is due within the 15-minute window and
+	// legitimately notifies once via createNewJob. Only the dedup call below
+	// is under test.
+	counting.jobCreatedCount.Store(0)
+
+	laterAt := time.Now().Add(5 * time.Minute)
+	updated, err := svc.CreateJob(ctx, "", "wake_dedup_push_later", []byte(`{}`),
+		&jobsvc.JobOptions{ScheduledAt: &laterAt})
+	r.NoError(err)
+	r.Equal(job.UID, updated.UID, "must be the dedup path, not a fresh insert")
+
+	r.Zero(counting.jobCreatedCount.Load(),
+		"pushing an already-queued job LATER must not notify — nothing became more claimable")
+}
+
+// TestCreateJobDedupPullEarlierWithinWindowNotifies is spec 2026-09-25-17
+// Tests item 3, the positive control for item 2: the same setup, but pulling
+// the job EARLIER (and still inside the 15-minute wake window) must emit
+// exactly one job.created. Without this, item 2's assertion of zero notifies
+// would prove nothing — the counter could simply be unable to see a notify at
+// all.
+func TestCreateJobDedupPullEarlierWithinWindowNotifies(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+
+	svc, counting := newTestJobServiceWithCountingNotifier(t)
+
+	originalAt := time.Now().Add(30 * time.Second)
+	job, err := svc.CreateJob(ctx, "", "wake_dedup_pull_earlier", []byte(`{}`),
+		&jobsvc.JobOptions{ScheduledAt: &originalAt})
+	r.NoError(err)
+
+	counting.jobCreatedCount.Store(0)
+
+	earlierAt := time.Now().Add(5 * time.Second)
+	updated, err := svc.CreateJob(ctx, "", "wake_dedup_pull_earlier", []byte(`{}`),
+		&jobsvc.JobOptions{ScheduledAt: &earlierAt})
+	r.NoError(err)
+	r.Equal(job.UID, updated.UID, "must be the dedup path, not a fresh insert")
+
+	r.EqualValues(1, counting.jobCreatedCount.Load(),
+		"pulling an already-queued job EARLIER, inside the wake window, must notify exactly once")
+}
+
+// TestCreateJobDedupPullEarlierBeyondWindowDoesNotNotify is spec
+// 2026-09-25-17 Tests item 4: pulling a job earlier through the dedup path
+// still must not notify when the new time lands beyond the 15-minute wake
+// window — the same gate createNewJob applies to a brand-new row. A sleeping
+// runner will pick it up via nextPendingWait once it is closer to due; there
+// is nothing to wake it up for yet.
+func TestCreateJobDedupPullEarlierBeyondWindowDoesNotNotify(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+
+	svc, counting := newTestJobServiceWithCountingNotifier(t)
+
+	// 2h out: beyond the wake window, so the initial insert itself must not
+	// notify either — no reset needed before the assertion below.
+	originalAt := time.Now().Add(2 * time.Hour)
+	job, err := svc.CreateJob(ctx, "", "wake_dedup_beyond_window", []byte(`{}`),
+		&jobsvc.JobOptions{ScheduledAt: &originalAt})
+	r.NoError(err)
+	r.Zero(counting.jobCreatedCount.Load(), "a job 2h out must not notify on insert either")
+
+	// Pulled to 30 minutes out: earlier than before, but still outside the
+	// 15-minute window.
+	stillFarAt := time.Now().Add(30 * time.Minute)
+	updated, err := svc.CreateJob(ctx, "", "wake_dedup_beyond_window", []byte(`{}`),
+		&jobsvc.JobOptions{ScheduledAt: &stillFarAt})
+	r.NoError(err)
+	r.Equal(job.UID, updated.UID, "must be the dedup path, not a fresh insert")
+
+	r.Zero(counting.jobCreatedCount.Load(),
+		"pulling a job earlier but still beyond the 15-minute wake window must not notify")
 }
