@@ -25,6 +25,7 @@ import {
   formatAttainment,
   formatBudgetSeconds,
   formatTarget,
+  lowCoveragePct,
   sloBudgetBarClass,
   sloStateBadgeClass,
 } from "@/lib/slo-format";
@@ -74,6 +75,7 @@ function SloDetailPage() {
 
   const current = status?.current;
   const attainment = formatAttainment(current?.attainmentPct ?? null);
+  const lowCoverage = lowCoveragePct(current?.dataCoverage);
 
   return (
     <div className="space-y-6">
@@ -115,12 +117,24 @@ function SloDetailPage() {
           </CardHeader>
           <CardContent className="space-y-5">
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <StatTile
-                label={t("detail.attainment")}
-                // Never render null as 100%: no data means nobody was watching.
-                value={attainment ?? t("detail.noData")}
-                tone={current.state === "breached" ? "destructive" : "default"}
-              />
+              <div className="space-y-1">
+                <StatTile
+                  label={t("detail.attainment")}
+                  // Never render null as 100%: no data means nobody was watching.
+                  value={attainment ?? t("detail.noData")}
+                  tone={current.state === "breached" ? "destructive" : "default"}
+                />
+                {lowCoverage !== null && (
+                  // A percentage computed over part of the window must say so
+                  // right beside it (spec 2026-09-25-02).
+                  <p
+                    className="text-center text-xs text-amber-600 dark:text-amber-400"
+                    data-testid="slo-low-coverage"
+                  >
+                    {t("detail.lowCoverage", { pct: lowCoverage })}
+                  </p>
+                )}
+              </div>
               <StatTile label={t("detail.target")} value={formatTarget(current.targetPct)} />
               <StatTile
                 label={t("detail.budgetRemaining")}

@@ -54,8 +54,10 @@ type PageStatusCounts struct {
 //  3. Else any resource with CheckStatusDegraded or CheckStatusWarning ->
 //     PageStatusDegraded.
 //  4. Else if any resource is in maintenance -> PageStatusMaintenance.
-//  5. Else if no resource has a usable status (all CheckStatusCreated / no
-//     resources at all) -> PageStatusUnknown.
+//  5. Else if no resource has a usable status (all CheckStatusCreated or
+//     CheckStatusStale / no resources at all) -> PageStatusUnknown. A stale
+//     resource is never "operational" (spec 2026-09-25-02): nobody is
+//     measuring it, so an all-stale page reads "Status unknown".
 //  6. Else -> PageStatusOperational.
 func RollupPageStatus(resources []PageResourceStatus) (PageStatus, PageStatusCounts) {
 	var counts PageStatusCounts
@@ -86,8 +88,9 @@ func RollupPageStatus(resources []PageResourceStatus) (PageStatus, PageStatusCou
 
 			hasUsable = true
 		default:
-			// CheckStatusCreated, or any status not otherwise classified —
-			// no usable data yet.
+			// CheckStatusCreated (no usable data yet), CheckStatusStale (no
+			// recent real result — explicitly unknown, never operational), or
+			// any status not otherwise classified.
 			counts.Unknown++
 		}
 	}

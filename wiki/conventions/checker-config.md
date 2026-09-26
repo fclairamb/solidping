@@ -73,6 +73,7 @@ keeps its own IPv4-preference loop.
 | `bodyAssertions` | object | O | | AST-based assertions on the raw response body as TEXT (see below). Read fallback: `body_assertions` |
 | `verifySsl` | bool | O | true | Verify the TLS certificate. `false` skips verification (`InsecureSkipVerify`) and marks the result with `tls_verify_skipped: true`. Read fallback: `verify_ssl` |
 | `followRedirects` | bool | O | true | Follow HTTP redirects (up to 10). `false` stops at the first response, so status/body/header assertions run against the redirect itself (e.g. `expectedStatus: 301` + `headersPattern.Location`). Read fallback: `follow_redirects` |
+| `redirectHostPolicy` | string | O | `any` | Gates which redirect hops `followRedirects` is allowed to follow. `same-host` refuses any hop whose URL host differs from the previous hop's, failing the check with `redirect to different host refused` instead of following it — useful for a check that must not silently bounce to a different host. An unknown value is a `VALIDATION_ERROR`, not a silent fallback to `any`. Every hop's URL is recorded under the `redirect_chain` result output key (spec 2026-09-25-21). Read fallback: `redirect_host_policy` |
 | `capture_failure_response` | bool | O | false | Keep what the probe received when the check FAILS, as incident diagnostics (spec 2026-08-20-01). See below. Read fallback: `captureFailureResponse` |
 
 **Body assertions** (`bodyAssertions`):

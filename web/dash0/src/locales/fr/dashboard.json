@@ -124,13 +124,20 @@
     "availability": "Disponibilité 24 h",
     "availabilitySub": "Santé de la disponibilité de la flotte",
     "activeCount": "{{count}} actif(s)",
-    "totalEndpoints": "{{count}} points de contrôle au total"
+    "totalEndpoints": "{{count}} points de contrôle au total",
+    "badgeNeedsAction": "Action requise",
+    "badgeAllUp": "Tout en ligne",
+    "badgeActive": "En cours",
+    "badgeClean": "Aucun"
   },
   "glance": {
     "title": "Sondes en un coup d'œil",
     "footer_one": "Voir {{count}} sonde →",
     "footer_other": "Voir les {{count}} sondes →",
-    "since": "depuis {{time}}"
+    "since": "depuis {{time}}",
+    "description": "Aperçu de la santé de la flotte et télémétrie des temps de réponse en direct",
+    "viewAll": "Tout voir ({{count}})",
+    "telemetryPending": "Télémétrie 24 h active"
   },
   "activeIncidents": {
     "title": "Incidents actifs",

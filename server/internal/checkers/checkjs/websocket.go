@@ -146,6 +146,11 @@ func (h *wsHandle) dialOptions(opts map[string]any) (*websocket.DialOptions, boo
 		transport.DialContext = dialer.DialContext
 		needClient = true
 		tunneled = true
+	} else if dialer := checkerdef.OutboundDialer(h.runtime.execCtx); dialer != nil {
+		// Not tunneled, but the egress policy (spec 2026-09-25-19) is
+		// enforcing: the handshake dials through the guard.
+		transport.DialContext = dialer.DialContext
+		needClient = true
 	}
 
 	if needClient {

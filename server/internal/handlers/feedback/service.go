@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -29,7 +30,22 @@ var (
 	// ErrGitHubBadStatus indicates a non-2xx response from the GitHub Issues API.
 	// The error string includes the status code and body preview for diagnostics.
 	ErrGitHubBadStatus = errors.New("github returned non-2xx status")
+	// ErrStorageQuotaExceeded is returned when storing the incoming screenshot
+	// would push the organization's live feedback-file bytes
+	// (filestorage.GroupTypeReports) over config.AppConfig.FeedbackMaxStorageBytes
+	// (spec 2026-09-25-26). The anonymous POST /api/mgmt/report endpoint has no
+	// auth and no other cost signal, so this is what bounds how much
+	// local/S3 storage a single org's inbox can be made to fill.
+	ErrStorageQuotaExceeded = errors.New("feedback storage quota exceeded")
 )
+
+// maxIssueDispatchesPerHour caps GitHub issue creation across ALL orgs on this
+// process (spec 2026-09-25-26). The route-level rate limit and the per-org
+// storage quota bound how many reports can be filed; this additionally bounds
+// how many of those turn into a call against the wired repo token, so a burst
+// of legitimate-looking reports (each under both limits, from many IPs/orgs)
+// still can't spam the repo's issue tracker.
+const maxIssueDispatchesPerHour = 20
 
 // SubmitReportRequest carries all the inputs from the multipart form.
 // Screenshot is optional — text-only reports are valid.
@@ -66,6 +82,15 @@ type Service struct {
 	github GitHubIssuePoster
 	logger *slog.Logger
 	clock  func() time.Time
+
+	// dispatchMu guards the in-process, per-hour GitHub-issue-dispatch
+	// counter below. Process-local by design: it needs no persistence (an
+	// operator restart resetting the window is fine — it exists to smooth a
+	// burst, not to be a hard external quota) and no cross-instance
+	// coordination (each instance's own dispatch load is independent).
+	dispatchMu          sync.Mutex
+	dispatchWindowStart time.Time
+	dispatchCount       int
 }
 
 // NewService constructs a feedback service. github may be nil — when so, a
@@ -126,6 +151,10 @@ func (s *Service) SubmitReport(
 	var fileUID, fileURI, fileMIME string
 
 	if req.Screenshot != nil && req.ScreenshotSize > 0 {
+		if err := s.checkStorageQuota(ctx, org.UID, req.ScreenshotSize); err != nil {
+			return nil, err
+		}
+
 		var createdBy *string
 		if req.UserUID != "" {
 			uid := req.UserUID
@@ -161,6 +190,61 @@ func (s *Service) SubmitReport(
 	return &SubmitReportResponse{UID: fileUID}, nil
 }
 
+// checkStorageQuota returns ErrStorageQuotaExceeded when persisting `incoming`
+// more bytes of feedback-report screenshot for orgUID would exceed
+// cfg.App.FeedbackMaxStorageBytes. A quota of 0 or negative disables the
+// check (config.AppConfig.FeedbackMaxStorageBytes doc comment). Any other
+// error is a genuine failure to read the current usage and is propagated
+// as-is, so the caller (SubmitReport) reports it as an internal error rather
+// than a false 413.
+func (s *Service) checkStorageQuota(ctx context.Context, orgUID string, incoming int64) error {
+	quota := s.cfg.App.FeedbackMaxStorageBytes
+	if quota <= 0 {
+		return nil
+	}
+
+	used, err := s.db.SumFileSizeByGroup(ctx, orgUID, string(filestorage.GroupTypeReports))
+	if err != nil {
+		return fmt.Errorf("sum feedback storage: %w", err)
+	}
+
+	if used+incoming > quota {
+		s.logger.WarnContext(ctx, "bug_report: storage quota exceeded",
+			"org_uid", orgUID,
+			"used_bytes", used,
+			"incoming_bytes", incoming,
+			"quota_bytes", quota,
+		)
+
+		return ErrStorageQuotaExceeded
+	}
+
+	return nil
+}
+
+// allowIssueDispatch enforces maxIssueDispatchesPerHour across all orgs on
+// this process, using a fixed hourly window measured from the first dispatch
+// in it (not a rolling one) — simple and sufficient for smoothing a burst,
+// which is all this exists to do.
+func (s *Service) allowIssueDispatch() bool {
+	s.dispatchMu.Lock()
+	defer s.dispatchMu.Unlock()
+
+	now := s.clock()
+	if s.dispatchWindowStart.IsZero() || now.Sub(s.dispatchWindowStart) >= time.Hour {
+		s.dispatchWindowStart = now
+		s.dispatchCount = 0
+	}
+
+	if s.dispatchCount >= maxIssueDispatchesPerHour {
+		return false
+	}
+
+	s.dispatchCount++
+
+	return true
+}
+
 // dispatchGitHubIssue is the async side. Logs failures but never propagates
 // to the caller — the report is already saved.
 func (s *Service) dispatchGitHubIssue(
@@ -172,6 +256,15 @@ func (s *Service) dispatchGitHubIssue(
 	github := s.cfg.App.GitHub
 	if github.IssuesToken == "" || github.Repo == "" {
 		s.logger.WarnContext(ctx, "bug_report: github not configured")
+
+		return
+	}
+
+	if !s.allowIssueDispatch() {
+		s.logger.WarnContext(ctx, "bug_report: github issue dispatch capped",
+			"file_uid", fileUID,
+			"limit_per_hour", maxIssueDispatchesPerHour,
+		)
 
 		return
 	}

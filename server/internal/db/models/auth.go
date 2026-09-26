@@ -1,6 +1,8 @@
 package models
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"time"
 
 	"github.com/google/uuid"
@@ -348,26 +350,47 @@ const (
 
 // UserToken represents an authentication token (PAT, session refresh token,
 // or OAuth refresh grant).
+//
+// The token value itself is never stored: TokenHash is HashUserToken of it
+// (spec 2026-09-25-23), so a database dump yields no usable credential.
+// Lookups hash the presented value and compare hashes (GetUserTokenByToken).
 type UserToken struct {
-	UID             string     `bun:"uid,pk,type:varchar(36)"`
-	UserUID         string     `bun:"user_uid,notnull"`
-	OrganizationUID *string    `bun:"organization_uid"`
-	Token           string     `bun:"token,notnull"`
-	Type            TokenType  `bun:"type,notnull"`
-	Properties      JSONMap    `bun:"properties,type:jsonb,nullzero"`
-	ExpiresAt       *time.Time `bun:"expires_at"`
-	LastActiveAt    *time.Time `bun:"last_active_at"`
-	CreatedAt       time.Time  `bun:"created_at,notnull,default:current_timestamp"`
-	UpdatedAt       time.Time  `bun:"updated_at,notnull,default:current_timestamp"`
-	DeletedAt       *time.Time `bun:"deleted_at"`
+	UID             string  `bun:"uid,pk,type:varchar(36)"`
+	UserUID         string  `bun:"user_uid,notnull"`
+	OrganizationUID *string `bun:"organization_uid"`
+	// TokenHash is the lowercase hex SHA-256 of the token value.
+	TokenHash    string     `bun:"token_hash,notnull"`
+	Type         TokenType  `bun:"type,notnull"`
+	Properties   JSONMap    `bun:"properties,type:jsonb,nullzero"`
+	ExpiresAt    *time.Time `bun:"expires_at"`
+	LastActiveAt *time.Time `bun:"last_active_at"`
+	CreatedAt    time.Time  `bun:"created_at,notnull,default:current_timestamp"`
+	UpdatedAt    time.Time  `bun:"updated_at,notnull,default:current_timestamp"`
+	DeletedAt    *time.Time `bun:"deleted_at"`
 
 	// Relations (for eager loading)
 	User         *User         `bun:"rel:belongs-to,join:user_uid=uid"`
 	Organization *Organization `bun:"rel:belongs-to,join:organization_uid=uid"`
 }
 
-// NewUserToken creates a new user token with generated UID.
-// orgUID can be nil for global refresh tokens.
+// HashUserToken returns the at-rest form of a user token value: the lowercase
+// hex SHA-256 of it.
+//
+// Plain SHA-256, not argon2id, on purpose (the same call statuspagekiosk and
+// password-reset tokens make): every value hashed here is CSPRNG output of at
+// least 192 bits (refresh tokens and OAuth grants 32 bytes, PATs "pat_" + 24
+// bytes), so there is no dictionary to attack, and a PAT or refresh token is
+// verified on hot paths where a memory-hard hash would cost a great deal and
+// buy nothing.
+func HashUserToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+
+	return hex.EncodeToString(sum[:])
+}
+
+// NewUserToken creates a new user token with generated UID. token is the raw
+// value handed to the client; only its hash (HashUserToken) is kept on the
+// row. orgUID can be nil for global refresh tokens.
 func NewUserToken(userUID string, orgUID *string, token string, tokenType TokenType) *UserToken {
 	now := time.Now()
 
@@ -375,7 +398,7 @@ func NewUserToken(userUID string, orgUID *string, token string, tokenType TokenT
 		UID:             uuid.New().String(),
 		UserUID:         userUID,
 		OrganizationUID: orgUID,
-		Token:           token,
+		TokenHash:       HashUserToken(token),
 		Type:            tokenType,
 		Properties:      make(JSONMap),
 		CreatedAt:       now,

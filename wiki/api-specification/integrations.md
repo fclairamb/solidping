@@ -282,6 +282,16 @@ deletion). Everything else is info-logged and acknowledged.
 Start pairing with a Freebox — the user must then physically authorize the app
 on the box. Auth: required
 
+Body: `{"name": "...", "baseUrl": "..."}`, both optional. `baseUrl` defaults to
+`http://mafreebox.freebox.fr` and is validated (spec 2026-09-25-31) before any
+request is made: no userinfo; a private-range IP or a `*.freebox.fr` host may
+use `http://` (or `https://`), anything else needs `https://` and a port of
+80, 443 or 8443; a non-IP, non-`*.freebox.fr` host is always rejected. A value
+outside this contract → `400 VALIDATION_ERROR`. On a SaaS deployment the
+override is disabled entirely — only the default is accepted — since pairing
+is meant to run from the member's own network or a private-location agent,
+never a shared worker.
+
 ### GET /api/v1/orgs/:org/integrations/freebox/pair/:uid/status
 Poll the pairing state until it is granted (or refused). Auth: required
 

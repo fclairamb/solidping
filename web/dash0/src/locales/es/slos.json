@@ -33,6 +33,7 @@
   "detail": {
     "currentWindow": "Ventana actual",
     "attainment": "Cumplimiento",
+    "lowCoverage": "Medido en el {{pct}} % de la ventana",
     "target": "Meta",
     "budgetTotal": "Presupuesto",
     "budgetConsumed": "Consumido",

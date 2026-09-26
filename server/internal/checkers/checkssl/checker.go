@@ -218,7 +218,9 @@ func (c *SSLChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 	tunnelDialer := checkerdef.TunnelDialerFrom(ctx)
 	tunneled := tunnelDialer != nil
 
-	var dialer checkerdef.ContextDialer = &net.Dialer{}
+	// Untunneled, the resolved IP is dialed through the egress guard (spec
+	// 2026-09-25-19): a plain *net.Dialer unless the policy is enforcing.
+	dialer := checkerdef.GuardDialerOr(ctx, &net.Dialer{})
 
 	hostLabel := params.host
 

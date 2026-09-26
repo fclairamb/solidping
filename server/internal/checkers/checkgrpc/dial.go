@@ -144,6 +144,7 @@ func (p *phaseTimer) applyMetrics(metrics map[string]any) {
 func instrumentedDialer(
 	timer *phaseTimer,
 	tunnelDialer checkerdef.ContextDialer,
+	direct *net.Dialer,
 ) func(context.Context, string) (net.Conn, error) {
 	return func(ctx context.Context, addr string) (net.Conn, error) {
 		if tunnelDialer != nil {
@@ -166,7 +167,7 @@ func instrumentedDialer(
 			return nil, err
 		}
 
-		return dialFirstReachable(ctx, timer, candidates)
+		return dialFirstReachable(ctx, timer, candidates, direct)
 	}
 }
 
@@ -178,8 +179,11 @@ func dialFirstReachable(
 	ctx context.Context,
 	timer *phaseTimer,
 	candidates []string,
+	dialer *net.Dialer,
 ) (net.Conn, error) {
-	dialer := &net.Dialer{}
+	if dialer == nil {
+		dialer = &net.Dialer{}
+	}
 
 	var lastErr error
 

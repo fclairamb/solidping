@@ -35,6 +35,14 @@ var (
 	ErrBetterStackAPI = errors.New("the Better Stack API returned an error")
 	// ErrBetterStackUnreachable is returned when the API could not be reached.
 	ErrBetterStackUnreachable = errors.New("the Better Stack API could not be reached")
+	// ErrBetterStackBaseURLNotSupported is returned when the request body
+	// carries a non-empty baseUrl. Better Stack documents exactly one API
+	// host with no alternate instance, so this used to be a GET-anywhere
+	// primitive with the caller's token attached (spec 2026-09-25-31) — it is
+	// rejected outright, before any outbound request, rather than silently
+	// ignored.
+	ErrBetterStackBaseURLNotSupported = errors.New(
+		"baseUrl is no longer supported; the importer always talks to the Better Stack API")
 )
 
 // BetterStackOptions configures the converter. BaseURL is overridable so tests
@@ -77,9 +85,24 @@ func (c *BetterStackConverter) Source() string { return SourceBetterStack }
 
 // betterStackRequest is the JSON body the convert endpoint accepts for this
 // source. The token is read into memory for the duration of the call only.
+//
+// There used to be a caller-supplied baseUrl override here. Better Stack
+// documents exactly one API host (uptime.betterstack.com) with no alternate
+// instance, so the override was a GET-anywhere primitive with a credential
+// attached and no legitimate use — spec 2026-09-25-31 removed it rather than
+// gate it behind an allowlist of one entry. The handler-level
+// WithBetterStackBaseURL option (tests, self-hosted proxies) still exists as
+// a Go-level construction seam; it is never reachable from an HTTP request
+// body.
+//
+// BaseURL is kept as a field — a *string, not a string — purely so
+// ConvertContext can tell "absent" from "present and empty" and reject a
+// caller that still sends it, with a clear error, instead of silently
+// ignoring what used to be a working parameter. It is decoded and then
+// immediately rejected; it never reaches fetchAll.
 type betterStackRequest struct {
-	Token   string `json:"token"`
-	BaseURL string `json:"baseUrl,omitempty"`
+	Token   string  `json:"token"`
+	BaseURL *string `json:"baseUrl,omitempty"`
 }
 
 // betterStackPage is one page of a Better Stack collection response.
@@ -146,22 +169,21 @@ func (c *BetterStackConverter) ConvertContext(ctx context.Context, input []byte)
 		return nil, fmt.Errorf("parse better stack request: %w", err)
 	}
 
+	if req.BaseURL != nil && strings.TrimSpace(*req.BaseURL) != "" {
+		return nil, ErrBetterStackBaseURLNotSupported
+	}
+
 	token := strings.TrimSpace(req.Token)
 	if token == "" {
 		return nil, ErrBetterStackTokenRequired
 	}
 
-	converter := c
-	if base := strings.TrimRight(strings.TrimSpace(req.BaseURL), "/"); base != "" && base != c.baseURL {
-		converter = NewBetterStackConverter(BetterStackOptions{BaseURL: base, Client: c.client})
-	}
-
-	monitors, err := converter.fetchAll(ctx, token, "/api/v2/monitors")
+	monitors, err := c.fetchAll(ctx, token, "/api/v2/monitors")
 	if err != nil {
 		return nil, err
 	}
 
-	heartbeats, err := converter.fetchAll(ctx, token, "/api/v2/heartbeats")
+	heartbeats, err := c.fetchAll(ctx, token, "/api/v2/heartbeats")
 	if err != nil {
 		return nil, err
 	}

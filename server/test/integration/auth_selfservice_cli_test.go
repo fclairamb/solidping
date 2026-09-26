@@ -1,8 +1,10 @@
 package integration
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,8 +13,57 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/pkg/client"
 )
+
+// registrationConfirmTokenFromQueue finds the "registration.html" email job
+// addressed to email and returns the confirmation token embedded in its
+// ConfirmURL (the last path segment). This is the only way to recover the
+// plaintext token Register minted now that the pending state entry stores
+// only sha256hex(token) (spec 2026-09-25-30) — exactly what a real caller's
+// mailbox would give them.
+func registrationConfirmTokenFromQueue(ctx context.Context, t *testing.T, ts *TestServer, email string) string {
+	t.Helper()
+
+	jobs, err := ts.Server.DBService().ListJobs(ctx, nil, 0)
+	require.NoError(t, err)
+
+	for _, job := range jobs {
+		if job.Type != string(jobdef.JobTypeEmail) {
+			continue
+		}
+
+		if template, _ := job.Config["template"].(string); template != "registration.html" {
+			continue
+		}
+
+		to, ok := job.Config["to"].([]any)
+		if !ok || len(to) == 0 {
+			continue
+		}
+
+		if recipient, _ := to[0].(string); recipient != email {
+			continue
+		}
+
+		templateData, ok := job.Config["templateData"].(map[string]any)
+		if !ok {
+			continue
+		}
+
+		confirmURL, _ := templateData["ConfirmURL"].(string)
+		if confirmURL == "" {
+			continue
+		}
+
+		parts := strings.Split(confirmURL, "/")
+
+		return parts[len(parts)-1]
+	}
+
+	return ""
+}
 
 // cliCovUserUID matches the primary test user created by testhelper.
 const cliCovUserUID = "10000000-0000-0000-0000-000000000002"
@@ -23,8 +74,11 @@ func withRegistration(cfg *config.Config) {
 }
 
 // TestCLICoverage_RegisterConfirm exercises register + confirmRegistration end to
-// end. The confirmation token is read back from the state-entry store the way
-// the confirm handler expects it to have been persisted.
+// end. The confirmation token is recovered from the queued confirmation email
+// (registrationConfirmTokenFromQueue) rather than the pending state entry: the
+// entry now stores only sha256hex(token), never the plaintext value (spec
+// 2026-09-25-30), so the email is the only place left to read it from — same
+// as a real caller's mailbox.
 func TestCLICoverage_RegisterConfirm(t *testing.T) {
 	t.Parallel()
 
@@ -51,15 +105,8 @@ func TestCLICoverage_RegisterConfirm(t *testing.T) {
 	r.NotNil(regResp.JSON200)
 	r.NotNil(regResp.JSON200.Message)
 
-	// The pending registration is stored at email_registration:<email>; pull the
-	// confirmation token from it exactly as the confirm handler will look it up.
-	entry, err := ts.Server.DBService().GetStateEntry(ctx, nil, "email_registration:"+newEmail)
-	r.NoError(err)
-	r.NotNil(entry)
-	r.NotNil(entry.Value)
-	token, ok := (*entry.Value)["token"].(string)
-	r.True(ok)
-	r.NotEmpty(token)
+	token := registrationConfirmTokenFromQueue(ctx, t, ts, newEmail)
+	r.NotEmpty(token, "precondition: the registration confirmation email must have been queued")
 
 	confirmResp, err := apiClient.ConfirmRegistrationWithResponse(ctx, client.ConfirmRegistrationJSONRequestBody{
 		Token: token,

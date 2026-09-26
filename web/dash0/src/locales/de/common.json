@@ -185,5 +185,7 @@
     "allAdmins": "Alle Administratoren",
     "escalationConnection": "Eskalationskanal",
     "cycle": "Zyklus {{cycle}}"
-  }
+  },
+  "customized": "angepasst",
+  "removeItem": "{{item}} entfernen"
 }

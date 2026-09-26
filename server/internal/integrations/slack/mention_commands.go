@@ -159,7 +159,8 @@ func (h *Handler) handleChecksList(ctx context.Context, event *Event) error {
 		status := ""
 		if check.LastStatusChange != nil {
 			dur := time.Since(check.LastStatusChange.Time)
-			status = fmt.Sprintf("%s for %s", check.LastStatusChange.Status, timeutils.FormatHumanReadable(dur))
+			status = fmt.Sprintf("%s for %s",
+				checks.StatusChangeLabel(check.LastStatusChange.Status), timeutils.FormatHumanReadable(dur))
 		}
 
 		line := fmt.Sprintf("- `%s`, every %s", slug, timeutils.FormatPeriod(period))

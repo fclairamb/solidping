@@ -135,7 +135,7 @@ function CheckGroupEditPage() {
             <AlertDialogCancel>{t("groupForm.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              variant="destructive"
               data-testid="confirm-delete-group"
             >
               {t("menu.deleteGroup")}

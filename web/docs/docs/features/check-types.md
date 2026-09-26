@@ -727,13 +727,16 @@ Email-reception checks are receive-only — SolidPing waits for mail instead of 
 
 Exactly like the [Heartbeat check](#heartbeat-result-rows), an email-reception
 check writes two kinds of row: the **signal** row recorded when a message
-actually arrives, and the **scheduler evaluation** row a checks worker writes
-every period. Evaluation rows carry `evaluation: true`, the region of the
-worker that wrote them, and `lastSignalAt` / `lastSignalResultUid` pointing at
-the last email received; signal rows carry none of that. The messages read
-`Email on time`, `Email overdue`, `Last email reported failure` and
-`No email received`, following the same table. Branch on `evaluation`, not on
-the message text.
+actually arrives, and the **scheduler evaluation** row SolidPing writes every
+period. Evaluation rows carry `evaluation: true`, no region, and
+`lastSignalAt` / `lastSignalResultUid` pointing at the last email received;
+signal rows carry none of that. The messages read `Email on time`,
+`Email overdue`, `Last email reported failure` and `No email received`,
+following the same table. Branch on `evaluation`, not on the message text.
+
+Like a heartbeat check, an email-reception check has no regions and follows
+the same timing rules: 1× the period, and 2 periods of grace for a new check
+that has not received its first email yet.
 
 ## Remote Access
 
@@ -1007,6 +1010,16 @@ Monitor devices via SNMP protocol.
 
 Monitor remote Docker daemon connectivity.
 
+:::note Private locations only on SolidPing Cloud
+On SolidPing Cloud (SaaS), a docker check must run from one of your
+organization's [private locations](./private-locations.md) — an agent inside
+your own network. A shared SolidPing region never runs a docker check: its
+worker would otherwise be handing out its own host's Docker socket to
+whichever org placed the check. Point the check at your private location and
+it works exactly like any other check type there. Self-hosted SolidPing is
+unaffected — monitoring the local daemon is the feature there.
+:::
+
 **URL Format:**
 ```
 docker://hostname:2375
@@ -1273,7 +1286,20 @@ RSSI as metrics. See [Embedded devices (TCP/UDP)](./embedded-push.md).
 | Option | Description | Default |
 |--------|-------------|---------|
 | Period | Expected ping interval | `60s` |
-| Grace | Grace period before incident | `30s` |
+
+There is no separate grace setting. The rule is:
+
+- the check is **up** while the last beat is at most **1× the period** old;
+- a `running` beat (a job that said "I started") is allowed **2× the period**
+  before it reads as a run that never completed;
+- a **new** check that has never received a beat stays **pending** for its
+  first **2 periods**, so deploying the sender a few minutes after creating the
+  check does not page anyone. After that it is down until the first beat.
+
+**Heartbeat checks have no regions.** They make no outbound request, so
+SolidPing evaluates them itself, once per period, independently of any region
+or agent. A region list sent through the API, MCP or a config-as-code file is
+accepted and ignored.
 
 **Use cases:**
 - Cron job monitoring
@@ -1292,9 +1318,9 @@ mean different things:
 
 | | **Beat** (signal row) | **Scheduler evaluation** |
 |---|---|---|
-| Written when | your caller pings the check | every period, by a checks worker |
-| Written by | the heartbeat endpoint | the scheduler |
-| Region | none | the worker's region |
+| Written when | your caller pings the check | every period |
+| Written by | the heartbeat endpoint | SolidPing's evaluator |
+| Region | none | none |
 | Output keys | `message`, plus `userAgent` / `remoteAddr` / `httpMethod` / `data` when the caller supplied them | `evaluation: true`, `lastSignalAt`, `lastSignalResultUid`, plus `overdueBy` or `runStarted` where they apply |
 
 **`evaluation: true` is the reliable way to tell them apart.** An ingested beat
@@ -1303,9 +1329,10 @@ dashboard, evaluation rows carry a muted "Evaluation" badge in the Recent
 Results table and a "Scheduler evaluation" card — with a link to the beat they
 looked at — on the result detail page.
 
-So a ping usually produces *two* rows within seconds of each other: your beat,
-and the scheduler's evaluation confirming it arrived on time. That second row
-having no caller metadata is expected — nothing called in at that moment.
+So a ping is usually followed, at the check's next tick, by a second row: the
+evaluation confirming it arrived on time. That row having no caller metadata
+is expected, since nothing called in at that moment. In the dashboard it says
+"Evaluated by SolidPing every period".
 
 Evaluation messages:
 
@@ -1373,7 +1400,7 @@ workflow never *ran* at all — and GitHub **auto-disables scheduled workflows
 after 60 days of repository inactivity**, silently. A broken cron expression,
 a renamed default branch, or a deleted secret can just as easily stop a
 schedule from firing, with zero notifications either way. This is exactly the
-gap a heartbeat check closes: `period` + `grace` is an assertion about
+gap a heartbeat check closes: its `period` is an assertion about
 *absence* — "if no ping arrives in time, open an incident" — which no
 notify-on-failure system can make.
 
@@ -1408,6 +1435,41 @@ every N minutes; a push-triggered job has no period, so a quiet repo with no
 pushes for a few days would trip the grace window and page someone for
 nothing. Reporting push-triggered CI failures is a different, useful feature,
 but it isn't this one.
+
+### Private Location Liveness {#private-location-liveness}
+
+Watches the agents of one of your [private locations](./private-locations.md).
+SolidPing creates one for every private location, named
+`Private location: <name>` with the slug `private-location-<slug>`. You do not
+create it yourself.
+
+| Situation | Status | Output |
+|---|---|---|
+| every active agent seen in the last 5 minutes | Up | `2 agents connected` |
+| some agents seen, some not | Warning | `1 of 2 agents offline: office-2 last seen 13:41 UTC` |
+| no agent seen in the last 5 minutes | Down | `No agent connected since 13:41 UTC` |
+| no agent enrolled yet | Pending | nothing is written, no incident |
+
+"Seen" is the agent's last contact with SolidPing (connect, the 25 s keepalive,
+a claim or a result). The 5-minute window absorbs reconnect blips. When the
+location's last agent disconnected, the Down result also names why: ping
+timeout, revoked, server shutdown or error.
+
+It is a normal check in every other way: confirmation and recovery periods,
+escalation policy, integrations (the org defaults are attached on creation),
+maintenance windows for planned agent upgrades, status pages, SLOs and history.
+
+- **No regions.** SolidPing evaluates it itself, every period (default 1
+  minute), never inside the location it watches.
+- **Free.** It does not count toward your check quota or your checks-per-minute
+  limit.
+- **Editable:** period, escalation policy, integrations, confirmation and
+  recovery periods. The location it watches cannot be changed, and it can only
+  point at one of your own private locations.
+- **Opting out:** disable it, or delete it. Deleting it is remembered: SolidPing
+  will not recreate it, and the Private Locations page shows "Liveness monitor
+  off" with a button to turn it back on. Deleting the location deletes its
+  monitor.
 
 ### JavaScript {#javascript}
 
@@ -1505,6 +1567,37 @@ tabs would starve the sidecar. A fifth execution waits for a slot inside its own
 timeout budget and reports a timeout if none frees up. A `js` script holding a
 page counts as one of the four, for as long as it holds it. Space browser checks out,
 or add workers, rather than lowering their period.
+
+#### Screenshots {#browser-screenshots}
+
+Turn on **Screenshot on failure** (`screenshot: true`) and a run that ends
+`down` or `timeout` captures a WebP image of the page. The capture is taken a
+moment after the check decided the page was unhealthy, from the region that ran
+it, so treat it as evidence rather than as the exact failing frame.
+
+The check page has a **Screenshots** card (browser and `js` checks only). It
+shows the latest capture, when and from which region it was taken, and a link
+to its incident when it has one. Older captures sit in a strip underneath. Click
+any image to open it full size. The card lists:
+
+- the screenshot of each incident the check opened or reopened;
+- the captures of failing runs that opened no incident: a run inside the
+  confirmation period, a blip that recovered before it elapsed, a failure in a
+  single region, or a run of an outage whose incident already has its onset
+  capture. A check keeps its last **5** of these; the sixth replaces the oldest.
+  Deleting the check deletes them.
+
+**Capture now.** The button on the card runs the check once, right away, from
+one of its regions (on a private location, the location's agent runs it), with
+the screenshot forced whatever the result, even when the page is healthy and
+even when **Screenshot on failure** is off. The run is recorded like any other
+run. The capture appears on the card a few seconds later and counts toward the
+same 5. It is limited to one capture per check per minute and 20 per
+organization per hour. A private location running an agent older than this
+feature runs the check but does not force the capture.
+
+Screenshots are visible to every member of the organization who can see the
+check, and never on a status page, a badge or a subscriber notification.
 
 #### Region capability
 

@@ -14,5 +14,6 @@
   "tool_rect": "Rectángulo",
   "tool_arrow": "Flecha",
   "tool_text": "Texto",
-  "undo": "Deshacer"
+  "undo": "Deshacer",
+  "screenshot_alt": "Captura de pantalla"
 }

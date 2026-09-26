@@ -36,7 +36,8 @@ func seedRefreshToken(t *testing.T, ctx context.Context, dbSvc db.Service, userU
 		UID:     uuidV7(t),
 		UserUID: userUID,
 		Type:    models.TokenTypeRefresh,
-		Token:   label + "-" + userUID,
+		// The raw value is label-userUID; tests look it up by that.
+		TokenHash: models.HashUserToken(label + "-" + userUID),
 	}
 	require.NoError(t, dbSvc.CreateUserToken(ctx, token))
 
@@ -109,10 +110,10 @@ func TestChangePasswordHappyPath(t *testing.T) {
 	user := passwordResetUser(t, ctx, dbSvc, "happy-change@example.com")
 
 	pat := &models.UserToken{
-		UID:     uuidV7(t),
-		UserUID: user.UID,
-		Type:    models.TokenTypePAT,
-		Token:   "pat-" + user.UID,
+		UID:       uuidV7(t),
+		UserUID:   user.UID,
+		Type:      models.TokenTypePAT,
+		TokenHash: models.HashUserToken("pat-" + user.UID),
 	}
 	r.NoError(dbSvc.CreateUserToken(ctx, pat))
 
@@ -186,7 +187,7 @@ func TestChangePasswordSparesCallerSession(t *testing.T) {
 	user := passwordResetUser(t, ctx, dbSvc, "sessions@example.com")
 
 	caller := seedRefreshToken(t, ctx, dbSvc, user.UID, "caller")
-	other := seedRefreshToken(t, ctx, dbSvc, user.UID, "other")
+	seedRefreshToken(t, ctx, dbSvc, user.UID, "other")
 
 	_, err := svc.ChangePassword(ctx, user.UID, caller.UID, ChangePasswordRequest{
 		CurrentPassword: "oldpassword",
@@ -200,13 +201,13 @@ func TestChangePasswordSparesCallerSession(t *testing.T) {
 	r.Equal(caller.UID, remaining[0].UID)
 
 	// The caller's grant still resolves by its token value...
-	live, err := dbSvc.GetUserTokenByToken(ctx, caller.Token)
+	live, err := dbSvc.GetUserTokenByToken(ctx, "caller-"+user.UID)
 	r.NoError(err)
 	r.NotNil(live)
 	r.Equal(caller.UID, live.UID)
 
 	// ...and the second session's does not.
-	dead, err := dbSvc.GetUserTokenByToken(ctx, other.Token)
+	dead, err := dbSvc.GetUserTokenByToken(ctx, "other-"+user.UID)
 	if err == nil {
 		r.Nil(dead)
 	}

@@ -23,6 +23,7 @@ function baseState(overrides: Partial<HttpState> = {}): HttpState {
     secretHeaders: [],
     verifySsl: true,
     followRedirects: true,
+    redirectHostPolicy: "any",
     captureFailureResponse: false,
     authDirty: false,
     headersDirty: false,
@@ -193,6 +194,59 @@ describe("httpModule — verifySsl / followRedirects round-trip", () => {
     );
     expect(config.verifySsl).toBe(false);
     expect(config.followRedirects).toBe(false);
+  });
+});
+
+describe("httpModule — redirectHostPolicy round-trip", () => {
+  it("fromConfig defaults to any when absent", () => {
+    const state = httpModule.fromConfig({ url: "https://acme.com" });
+    expect(state.redirectHostPolicy).toBe("any");
+  });
+
+  it("fromConfig reads the canonical camelCase key", () => {
+    const state = httpModule.fromConfig({
+      url: "https://acme.com",
+      redirectHostPolicy: "same-host",
+    });
+    expect(state.redirectHostPolicy).toBe("same-host");
+  });
+
+  it("fromConfig accepts the snake_case alias the server also resolves", () => {
+    const state = httpModule.fromConfig({
+      url: "https://acme.com",
+      redirect_host_policy: "same-host",
+    });
+    expect(state.redirectHostPolicy).toBe("same-host");
+  });
+
+  it("fromConfig treats an unrecognized value as the default", () => {
+    const state = httpModule.fromConfig({
+      url: "https://acme.com",
+      redirectHostPolicy: "bogus",
+    });
+    expect(state.redirectHostPolicy).toBe("any");
+  });
+
+  it("toConfig omits the key at the default (any)", () => {
+    const { config } = httpModule.toConfig(baseState());
+    expect(config).not.toHaveProperty("redirectHostPolicy");
+    expect(config).not.toHaveProperty("redirect_host_policy");
+  });
+
+  it("toConfig writes same-host explicitly, never any", () => {
+    const { config } = httpModule.toConfig(
+      baseState({ redirectHostPolicy: "same-host" }),
+    );
+    expect(config.redirectHostPolicy).toBe("same-host");
+  });
+
+  it("round-trips through toConfig -> fromConfig", () => {
+    const { config } = httpModule.toConfig(
+      baseState({ redirectHostPolicy: "same-host" }),
+    );
+    expect(httpModule.fromConfig(config).redirectHostPolicy).toBe(
+      "same-host",
+    );
   });
 });
 

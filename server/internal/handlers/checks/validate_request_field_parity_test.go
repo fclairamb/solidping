@@ -222,6 +222,46 @@ func TestValidateCreateRequestFieldParity(t *testing.T) {
 			extra:        map[string]any{"confirmationPeriodSeconds": 60, "recoveryPeriodSeconds": 60},
 			wantAccepted: true,
 		},
+
+		// --- placement (spec 2026-09-25-06) ---
+		{
+			name:                   "an unknown placement is refused",
+			extra:                  map[string]any{"placement": "sometimes"},
+			wantCreateStatus:       http.StatusBadRequest,
+			wantCreateDetailPrefix: "placement",
+			wantFieldName:          "placement",
+		},
+		{
+			name:                   "placement auto with an explicit regions list is refused",
+			extra:                  map[string]any{"placement": "auto", "regions": []string{"default"}},
+			wantCreateStatus:       http.StatusBadRequest,
+			wantCreateDetailPrefix: "regions",
+			wantFieldName:          "regions",
+		},
+		{
+			name:                   "a regionCount below 1 is refused",
+			extra:                  map[string]any{"regionCount": 0},
+			wantCreateStatus:       http.StatusBadRequest,
+			wantCreateDetailPrefix: "regionCount",
+			wantFieldName:          "regionCount",
+		},
+		{
+			name:                   "a private region in the pool is refused",
+			extra:                  map[string]any{"regionPool": []string{"@office"}},
+			wantCreateStatus:       http.StatusBadRequest,
+			wantCreateDetailPrefix: "regionPool",
+			wantFieldName:          "regionPool",
+		},
+		{
+			name:         "placement auto with a region count is accepted",
+			extra:        map[string]any{"placement": "auto", "regionCount": 2},
+			wantAccepted: true,
+		},
+		{
+			name:         "an explicit regions list is accepted (pinned)",
+			extra:        map[string]any{"regions": []string{"default"}},
+			wantAccepted: true,
+		},
 	}
 
 	for _, tc := range cases {

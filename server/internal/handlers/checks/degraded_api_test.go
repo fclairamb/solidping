@@ -3,7 +3,7 @@ package checks_test
 // The degraded-detection configuration over the API (spec 2026-09-22-03): the
 // defaults a new check gets, the fact that 0 is WRITABLE for every rule knob
 // (the whole reason those bun tags carry no `default:` clause), the M-of-N
-// validation, and the `?wouldHaveFired=true` filter that carries the rollout.
+// validation.
 //
 // Plus the nullable-column contract: an unconfigured check stores NULL and the
 // default is resolved at read time, so a caller that never mentions the five
@@ -11,9 +11,6 @@ package checks_test
 // documented rules rather than five silently-disabled ones.
 
 import (
-	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -25,7 +22,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	entcore "github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
-	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/notifier"
 	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
@@ -64,7 +60,6 @@ func TestCreateCheckDegradedDefaults(t *testing.T) {
 	r.Equal(6, created.DegradedSlowWindow)
 	r.Equal(0, created.SlowThresholdMs, "the slow rule stays inert until an operator picks a threshold")
 	r.True(created.DegradedEnabled, "on for a new check")
-	r.Nil(created.DegradedWouldFireAt)
 
 	// And the API's resolved numbers came from NULL columns, not from five
 	// values written at insert time. This is the whole point of the nullable
@@ -129,7 +124,7 @@ func TestRawInsertGetsDegradedDefaults(t *testing.T) {
 	r.Equal(6, stored.EffectiveDegradedSlowWindow())
 	r.Equal(0, stored.EffectiveSlowThresholdMs())
 	r.False(stored.DegradedEnabled,
-		"degraded_enabled is NOT nullable, so a bypassing insert fails safe into the dry run")
+		"degraded_enabled is NOT nullable, so a bypassing insert fails safe: not evaluated")
 
 	entSvc := entcore.NewService(dbSvc, entcore.DefaultsFor(config.DeploymentModeSelfHosted), 0)
 	svc := checks.NewService(dbSvc, notifier.NewLocalEventNotifier(), disabledCreds(t), entSvc)
@@ -225,10 +220,7 @@ func TestUpdateCheckDegradedValidation(t *testing.T) {
 	})
 	r.ErrorContains(err, "slowThresholdMs: must be >= 0")
 
-	// A legal edit goes through, and enabling retires the dry-run stamp.
-	stamp := time.Now().Add(-time.Hour)
-	r.NoError(dbSvc.UpdateCheck(ctx, check.UID, &models.CheckUpdate{DegradedWouldFireAt: &stamp}))
-
+	// A legal edit goes through.
 	on := true
 	updated, err := svc.UpdateCheck(ctx, org.Slug, check.UID, &checks.UpdateCheckRequest{
 		SlowThresholdMs: intPtr(1200),
@@ -236,7 +228,7 @@ func TestUpdateCheckDegradedValidation(t *testing.T) {
 	})
 	r.NoError(err)
 	r.Equal(1200, updated.SlowThresholdMs)
-	r.Nil(updated.DegradedWouldFireAt, "enabling the feature retires the would-have-fired banner")
+	r.True(updated.DegradedEnabled)
 }
 
 // TestUpdateCheckDegradedPartialValidation is the half the original M <= N check
@@ -328,68 +320,4 @@ func TestUpdateCheckDegradedPartialValidation(t *testing.T) {
 		DegradedSlowWindow: intPtr(2),
 	})
 	r.NoError(err)
-}
-
-// TestListChecksWouldHaveFiredFilter exercises the rollout filter through the
-// handler, with a never-flagged check as the negative control.
-func TestListChecksWouldHaveFiredFilter(t *testing.T) {
-	t.Parallel()
-	r := require.New(t)
-	ctx := t.Context()
-
-	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
-	r.NoError(err)
-	r.NoError(dbSvc.Initialize(ctx))
-	t.Cleanup(func() { _ = dbSvc.Close() })
-
-	org := models.NewOrganization("would-have-fired", "Would Have Fired")
-	r.NoError(dbSvc.CreateOrganization(ctx, org))
-
-	flagged := models.NewCheck(org.UID, "wh-flagged", "http")
-	flagged.DegradedEnabled = false
-	r.NoError(dbSvc.CreateCheck(ctx, flagged))
-
-	quiet := models.NewCheck(org.UID, "wh-quiet", "http")
-	quiet.DegradedEnabled = false
-	r.NoError(dbSvc.CreateCheck(ctx, quiet))
-
-	stamp := time.Now().Add(-45 * time.Minute)
-	r.NoError(dbSvc.UpdateCheck(ctx, flagged.UID, &models.CheckUpdate{DegradedWouldFireAt: &stamp}))
-
-	entSvc := entcore.NewService(dbSvc, entcore.DefaultsFor(config.DeploymentModeSelfHosted), 0)
-	svc := checks.NewService(dbSvc, notifier.NewLocalEventNotifier(), disabledCreds(t), entSvc)
-	handler := checks.NewHandler(svc, &config.Config{})
-
-	router := httpx.New()
-	group := router.NewGroup("/api/v1/orgs/:org/checks")
-	group.GET("", handler.ListChecks)
-
-	list := func(queryString string) []string {
-		req := httptest.NewRequestWithContext(
-			ctx, http.MethodGet, "/api/v1/orgs/"+org.Slug+"/checks"+queryString, http.NoBody)
-		rec := httptest.NewRecorder()
-		router.ServeHTTP(rec, req)
-		r.Equal(http.StatusOK, rec.Code)
-
-		var body struct {
-			Data []struct {
-				Slug                string     `json:"slug"`
-				DegradedWouldFireAt *time.Time `json:"degradedWouldFireAt"`
-			} `json:"data"`
-		}
-		r.NoError(json.Unmarshal(rec.Body.Bytes(), &body))
-
-		slugs := make([]string, len(body.Data))
-		for i, row := range body.Data {
-			slugs[i] = row.Slug
-		}
-
-		return slugs
-	}
-
-	r.ElementsMatch([]string{"wh-flagged", "wh-quiet"}, list(""))
-	r.Equal([]string{"wh-flagged"}, list("?wouldHaveFired=true"))
-	// Anything other than "true" applies no filter, so a typo can never silently
-	// hide the whole list.
-	r.ElementsMatch([]string{"wh-flagged", "wh-quiet"}, list("?wouldHaveFired=yes"))
 }

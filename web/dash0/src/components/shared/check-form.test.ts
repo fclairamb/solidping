@@ -249,7 +249,8 @@ describe("degradedFieldsCustomized", () => {
   });
 
   it("is true when the enabled flag differs from what the check stores", () => {
-    // The dry-run check: stored off, the operator has just switched it on.
+    // A check that predates the feature: stored off, the operator has just
+    // switched it on.
     expect(
       degradedFieldsCustomized(
         { ...blankDegraded, degradedEnabled: true },

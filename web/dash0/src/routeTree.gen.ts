@@ -22,6 +22,7 @@ import { Route as ResetPasswordTokenRouteImport } from './routes/reset-password.
 import { Route as OrgsOrgRouteImport } from './routes/orgs/$org'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as ConfirmRegistrationTokenRouteImport } from './routes/confirm-registration.$token'
+import { Route as AuthCompleteRouteImport } from './routes/auth.complete'
 import { Route as OrgsOrgIndexRouteImport } from './routes/orgs/$org/index'
 import { Route as OrgsOrgTestRouteImport } from './routes/orgs/$org/test'
 import { Route as OrgsOrgStatusUpdatesRouteImport } from './routes/orgs/$org/status-updates'
@@ -224,6 +225,11 @@ const ConfirmRegistrationTokenRoute =
     path: '/confirm-registration/$token',
     getParentRoute: () => rootRouteImport,
   } as any)
+const AuthCompleteRoute = AuthCompleteRouteImport.update({
+  id: '/auth/complete',
+  path: '/auth/complete',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const OrgsOrgIndexRoute = OrgsOrgIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -969,6 +975,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/mcp': typeof McpRoute
   '/no-org': typeof NoOrgRoute
+  '/auth/complete': typeof AuthCompleteRoute
   '/confirm-registration/$token': typeof ConfirmRegistrationTokenRoute
   '/invite/$token': typeof InviteTokenRoute
   '/orgs/$org': typeof OrgsOrgRouteWithChildren
@@ -1119,6 +1126,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/mcp': typeof McpRoute
   '/no-org': typeof NoOrgRoute
+  '/auth/complete': typeof AuthCompleteRoute
   '/confirm-registration/$token': typeof ConfirmRegistrationTokenRoute
   '/invite/$token': typeof InviteTokenRoute
   '/reset-password/$token': typeof ResetPasswordTokenRoute
@@ -1243,6 +1251,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/mcp': typeof McpRoute
   '/no-org': typeof NoOrgRoute
+  '/auth/complete': typeof AuthCompleteRoute
   '/confirm-registration/$token': typeof ConfirmRegistrationTokenRoute
   '/invite/$token': typeof InviteTokenRoute
   '/orgs/$org': typeof OrgsOrgRouteWithChildren
@@ -1395,6 +1404,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/mcp'
     | '/no-org'
+    | '/auth/complete'
     | '/confirm-registration/$token'
     | '/invite/$token'
     | '/orgs/$org'
@@ -1545,6 +1555,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/mcp'
     | '/no-org'
+    | '/auth/complete'
     | '/confirm-registration/$token'
     | '/invite/$token'
     | '/reset-password/$token'
@@ -1668,6 +1679,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/mcp'
     | '/no-org'
+    | '/auth/complete'
     | '/confirm-registration/$token'
     | '/invite/$token'
     | '/orgs/$org'
@@ -1819,6 +1831,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   McpRoute: typeof McpRoute
   NoOrgRoute: typeof NoOrgRoute
+  AuthCompleteRoute: typeof AuthCompleteRoute
   ConfirmRegistrationTokenRoute: typeof ConfirmRegistrationTokenRoute
   InviteTokenRoute: typeof InviteTokenRoute
   OrgsOrgRoute: typeof OrgsOrgRouteWithChildren
@@ -1919,6 +1932,13 @@ declare module '@tanstack/react-router' {
       path: '/confirm-registration/$token'
       fullPath: '/confirm-registration/$token'
       preLoaderRoute: typeof ConfirmRegistrationTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth/complete': {
+      id: '/auth/complete'
+      path: '/auth/complete'
+      fullPath: '/auth/complete'
+      preLoaderRoute: typeof AuthCompleteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/orgs/$org/': {
@@ -3480,6 +3500,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   McpRoute: McpRoute,
   NoOrgRoute: NoOrgRoute,
+  AuthCompleteRoute: AuthCompleteRoute,
   ConfirmRegistrationTokenRoute: ConfirmRegistrationTokenRoute,
   InviteTokenRoute: InviteTokenRoute,
   OrgsOrgRoute: OrgsOrgRouteWithChildren,

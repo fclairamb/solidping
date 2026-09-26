@@ -123,7 +123,7 @@ function BackgroundJobDetailPage() {
             <MetaRow label={t("columns.scheduled")}>
               <TimeAgoOrDash date={job.scheduledAt} data-testid="job-scheduled-at" />
             </MetaRow>
-            <MetaRow label="Created">
+            <MetaRow label={t("columns.created")}>
               <TimeAgoOrDash date={job.createdAt} data-testid="job-created-at" />
             </MetaRow>
             <MetaRow label={t("columns.updated")}>

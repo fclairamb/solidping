@@ -3,8 +3,12 @@ package checkbrowser
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net"
+	neturl "net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/chromedp/cdproto/network"
@@ -15,6 +19,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkersession"
+	"github.com/fclairamb/solidping/server/internal/egress"
 )
 
 // MaxPayloadBytes caps what a single page read hands back to a caller — the
@@ -87,6 +92,11 @@ type Session struct {
 
 	mu     sync.Mutex
 	closed bool
+
+	// egressDenied is the first non-public remote address a response came
+	// from under an enforcing egress policy (see watchEgress). Once set, the
+	// session only ever answers with it.
+	egressDenied atomic.Pointer[egress.DeniedError]
 }
 
 // NavResult is what a navigation reports back. Deliberately no HTTP status
@@ -139,6 +149,14 @@ func Open(ctx context.Context) (*Session, error) {
 // Open collapses the two for every other caller, which is the honest default:
 // a JS script has one budget.
 func openSession(sessionCtx, probeCtx context.Context) (*Session, error) {
+	return openSessionPinned(sessionCtx, probeCtx, nil)
+}
+
+// openSessionPinned is openSession with the main host pinned, for Chrome's own
+// resolver, to the address the egress pre-flight approved. The pin only takes
+// effect on the exec path, where this session starts its own Chrome: a remote
+// (CDP) Chrome is shared and its flags are fixed when it was launched.
+func openSessionPinned(sessionCtx, probeCtx context.Context, pin *hostPin) (*Session, error) {
 	release, acquired := acquireSlot(probeCtx)
 	if !acquired {
 		// Nothing is recorded on the availability cache: a full worker says
@@ -163,7 +181,7 @@ func openSession(sessionCtx, probeCtx context.Context) (*Session, error) {
 		}
 	}
 
-	allocCtx, allocCancel := allocator(sessionCtx, current)
+	allocCtx, allocCancel := allocator(sessionCtx, current, pin)
 	browserCtx, browserCancel := browserContext(allocCtx, current)
 
 	// The eager allocate. An empty Run does nothing but bring the browser up,
@@ -182,11 +200,17 @@ func openSession(sessionCtx, probeCtx context.Context) (*Session, error) {
 
 	recordOpenOutcome(nil)
 
-	return &Session{
+	session := &Session{
 		browserCtx: browserCtx,
 		cancels:    []context.CancelFunc{browserCancel, allocCancel},
 		release:    release,
-	}, nil
+	}
+
+	if guard := egress.FromContext(probeCtx); guard.Enforcing() {
+		session.watchEgress(probeCtx, guard)
+	}
+
+	return session, nil
 }
 
 // recordOpenOutcome feeds an attempted open back into the capability cache,
@@ -274,6 +298,10 @@ func (s *Session) run(ctx context.Context, actions ...chromedp.Action) error {
 		return errSessionClosed
 	}
 
+	if err := s.deniedByEgress(); err != nil {
+		return err
+	}
+
 	// The cheap defense the eager allocate already makes redundant: never call
 	// Run on a context with no browser attached (it would allocate a second
 	// one and can close an already-closed channel inside chromedp).
@@ -287,7 +315,14 @@ func (s *Session) run(ctx context.Context, actions ...chromedp.Action) error {
 	stop := context.AfterFunc(ctx, cancel)
 	defer stop()
 
-	if err := chromedp.Run(runCtx, actions...); err != nil {
+	runErr := chromedp.Run(runCtx, actions...)
+
+	// A response from a refused address poisons whatever this action read.
+	if err := s.deniedByEgress(); err != nil {
+		return err
+	}
+
+	if err := runErr; err != nil {
 		// A cancel that came from the CALLER must surface as the caller's own
 		// error, not as chromedp's "context canceled" — that is what lets the
 		// runtime tell "the check timed out" from "the page misbehaved".
@@ -312,6 +347,10 @@ func (s *Session) Navigate(ctx context.Context, url string) (NavResult, error) {
 
 	start := time.Now()
 
+	if _, err := preflightEgress(ctx, url); err != nil {
+		return NavResult{}, err
+	}
+
 	err := s.run(ctx,
 		chromedp.Navigate(url),
 		chromedp.WaitReady("body"),
@@ -323,6 +362,144 @@ func (s *Session) Navigate(ctx context.Context, url string) (NavResult, error) {
 	}
 
 	return NavResult{URL: location, Title: title, Duration: time.Since(start)}, nil
+}
+
+// errNavigationRefused is a navigation the egress policy cannot vouch for:
+// no host, a scheme Chrome would not fetch over the network, or a host that
+// does not parse. Under an enforcing policy those fail closed.
+var errNavigationRefused = errors.New("navigation refused by the egress policy")
+
+// hostPin is the address the pre-flight approved for a navigation's host.
+type hostPin struct {
+	host string
+	ip   net.IP
+}
+
+// resolverRule is the Chrome --host-resolver-rules entry pinning the host to
+// the approved address, so Chrome's own resolver cannot be rebound between
+// the pre-flight and the connection.
+func (p *hostPin) resolverRule() string {
+	ip := p.ip.String()
+	if p.ip.To4() == nil {
+		ip = "[" + ip + "]"
+	}
+
+	return "MAP " + p.host + " " + ip
+}
+
+// preflightEgress judges a navigation under an enforcing egress policy (spec
+// 2026-09-25-19) and returns the address it approved for the host, or nil
+// when the host is already an IP literal or the policy is not enforcing.
+//
+// Chrome has its own network stack and resolver, so it cannot be handed the
+// guard's dialer. This pre-flight therefore reads the URL THE WAY CHROME
+// DOES and fails closed on anything it cannot vouch for:
+//
+//   - only http/https URLs with a non-empty host (a hostless
+//     "http:127.0.0.1/" is Chrome's "http://127.0.0.1/");
+//   - the host is parsed with the WHATWG IPv4 rules, so 2130706433,
+//     0x7f000001, 0177.0.0.1 and 127.1 are all judged as 127.0.0.1;
+//   - a name that does not resolve here is refused rather than handed to
+//     Chrome's resolver.
+//
+// Two more layers cover what a pre-flight cannot: the approved address is
+// pinned for Chrome's own resolver where the browser is started per check
+// (hostPin.resolverRule), and every response's actual remote address is
+// checked while the page loads (watchEgress).
+func preflightEgress(ctx context.Context, rawURL string) (*hostPin, error) {
+	if !checkerdef.EgressEnforcing(ctx) {
+		return nil, nil //nolint:nilnil // not enforcing: nothing to pin, nothing to refuse
+	}
+
+	parsed, err := neturl.Parse(rawURL)
+	if err != nil {
+		return nil, fmt.Errorf("%w: unparseable URL", errNavigationRefused)
+	}
+
+	if scheme := strings.ToLower(parsed.Scheme); scheme != "http" && scheme != "https" {
+		return nil, fmt.Errorf("%w: only http and https URLs can be checked", errNavigationRefused)
+	}
+
+	host := parsed.Hostname()
+	if host == "" {
+		return nil, fmt.Errorf("%w: the URL has no host", errNavigationRefused)
+	}
+
+	literal, err := egress.ParseURLHost(host)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", errNavigationRefused, err)
+	}
+
+	if literal != nil {
+		if denyErr := checkerdef.CheckEgressIP(ctx, host, literal); denyErr != nil {
+			return nil, denyErr
+		}
+
+		return nil, nil //nolint:nilnil // an approved IP literal needs no pin
+	}
+
+	pinned, err := checkerdef.PinTargetHost(ctx, host)
+	if err != nil {
+		if errors.Is(err, egress.ErrDenied) {
+			return nil, err
+		}
+
+		return nil, fmt.Errorf("%w: cannot resolve %s: %w", errNavigationRefused, host, err)
+	}
+
+	return &hostPin{host: host, ip: net.ParseIP(pinned)}, nil
+}
+
+// watchEgress checks the address Chrome ACTUALLY connected to for every
+// response and every redirect of the session — the main document,
+// subresources, fetch/XHR — against the guard. It cannot stop a request that
+// is already on the wire, but the first non-public answer poisons the
+// session: every later action (title, text, evaluate, screenshot) returns the
+// refusal instead of the page, so nothing read from an internal address ever
+// reaches a result.
+//
+//nolint:contextcheck // the listener belongs to the session's browser context, not the caller's
+func (s *Session) watchEgress(recordCtx context.Context, guard *egress.Guard) {
+	chromedp.ListenTarget(s.browserCtx, func(ev any) {
+		switch event := ev.(type) {
+		case *network.EventResponseReceived:
+			if event.Response != nil {
+				s.checkRemote(recordCtx, guard, event.Response.URL, event.Response.RemoteIPAddress)
+			}
+		case *network.EventRequestWillBeSent:
+			if event.RedirectResponse != nil {
+				s.checkRemote(recordCtx, guard, event.RedirectResponse.URL, event.RedirectResponse.RemoteIPAddress)
+			}
+		}
+	})
+}
+
+// checkRemote judges one remote address Chrome reported for a response and
+// poisons the session on the first refusal.
+func (s *Session) checkRemote(recordCtx context.Context, guard *egress.Guard, rawURL, remote string) {
+	ip := net.ParseIP(strings.TrimSuffix(strings.TrimPrefix(remote, "["), "]"))
+	if ip == nil {
+		return // served from cache or a service worker: no connection was made
+	}
+
+	host := rawURL
+	if parsed, err := neturl.Parse(rawURL); err == nil && parsed.Hostname() != "" {
+		host = parsed.Hostname()
+	}
+
+	var denied *egress.DeniedError
+	if errors.As(guard.CheckAddr(recordCtx, host, ip), &denied) {
+		s.egressDenied.CompareAndSwap(nil, denied)
+	}
+}
+
+// deniedByEgress returns the refusal watchEgress recorded, if any.
+func (s *Session) deniedByEgress() error {
+	if denied := s.egressDenied.Load(); denied != nil {
+		return denied
+	}
+
+	return nil
 }
 
 // WaitVisible waits for a selector to become visible.

@@ -38,6 +38,7 @@ import {
   Gamepad2,
   Globe,
   HeartPulse,
+  HousePlug,
   Inbox,
   Leaf,
   Lock,
@@ -172,6 +173,9 @@ export const CHECK_TYPE_IDENTITY: Partial<Record<string, CheckTypeIdentity>> = {
   // a backend checker and a docs section — the drift guard requires an
   // identity for it regardless.
   kubernetes: { label: "Kubernetes", tone: TONE_SKY, icon: Boxes },
+  // System-created with each private location (spec 2026-09-25-05): watches
+  // the location's own agents.
+  "private-location": { label: "Private location", tone: TONE_SKY, icon: HousePlug },
 
   // Scripted / synthetic.
   js: { label: "JavaScript", tone: TONE_SLATE, icon: FileCode },
@@ -229,8 +233,13 @@ const CHECK_TYPE_BADGE_BASE = "text-[10px] font-mono font-medium uppercase px-1.
 // getCheckTypeIdentity keeps returning the literal English label, since other
 // call sites may compare against it.
 const TRANSLATABLE_LABEL_KEYS: Record<string, string> = {
+  "A2S Game Server": "types.a2s",
+  Browser: "types.browser",
   Domain: "types.domain",
   Email: "types.email",
+  "Freebox Line": "types.freebox_line",
+  Heartbeat: "types.heartbeat",
+  "Private location": "types.private-location",
   Sleep: "types.sleep",
   Unknown: "status.unknown",
 };

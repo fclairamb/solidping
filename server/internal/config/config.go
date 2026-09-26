@@ -260,6 +260,59 @@ type EncryptionConfig struct {
 type PrometheusConfig struct {
 	Enabled bool   `koanf:"enabled"` // Enable the /metrics endpoint
 	Path    string `koanf:"path"`    // Path for the metrics endpoint (default: /metrics)
+	// ScrapeToken gates /metrics behind `Authorization: Bearer <token>` (spec
+	// 2026-09-25-25). Empty means the endpoint answers 404 — same "feature
+	// disabled" convention as Enabled=false — never that it is open. It is
+	// snake_case and therefore unreachable by koanf's env loader;
+	// EnvMetricsScrapeToken is bound by hand in applyMetricsEnv and is also the
+	// env override of the metrics.scrape_token system parameter (see
+	// systemconfig.KeyMetricsScrapeToken).
+	ScrapeToken string `koanf:"scrape_token"`
+}
+
+// EnvMetricsScrapeToken is the operator switch for the Prometheus scrape
+// bearer token. Named metrics.* rather than prometheus.* because it is the
+// operator-facing knob for the /metrics endpoint's access control, not an
+// internal Prometheus client wiring detail.
+const EnvMetricsScrapeToken = "SP_METRICS_SCRAPE_TOKEN"
+
+// applyMetricsEnv binds SP_METRICS_SCRAPE_TOKEN. scrape_token is snake_case,
+// so koanf's env loader can never reach it (SP_METRICS_SCRAPE_TOKEN would
+// land on metrics.scrape.token, not prometheus.scrape_token). An absent
+// variable leaves whatever config.yml / config.local.yml already set alone.
+func applyMetricsEnv(cfg *PrometheusConfig) {
+	if token := os.Getenv(EnvMetricsScrapeToken); token != "" {
+		cfg.ScrapeToken = strings.TrimSpace(token)
+	}
+}
+
+// HeadersConfig controls the browser security headers sent on the documents
+// SolidPing serves (spec 2026-09-25-28, see internal/securityheaders).
+type HeadersConfig struct {
+	// CSPExtraSources widens the shipped Content-Security-Policy without
+	// editing headers in a reverse proxy: `;`-separated groups, each a
+	// directive followed by sources, e.g.
+	// "img-src https://cdn.acme.com; frame-ancestors https://intranet.acme.com".
+	// A source is added to that directive on every surface whose policy sets
+	// it. Snake_case, so koanf's env loader cannot reach it — see
+	// EnvHeadersCSPExtraSources / applyHeadersEnv — and also overlaid by the
+	// headers.csp_extra_sources system parameter
+	// (systemconfig.KeyHeadersCSPExtraSources). Applied at startup.
+	CSPExtraSources string `koanf:"csp_extra_sources"`
+}
+
+// EnvHeadersCSPExtraSources is the env override for
+// HeadersConfig.CSPExtraSources and the headers.csp_extra_sources system
+// parameter.
+const EnvHeadersCSPExtraSources = "SP_HEADERS_CSP_EXTRA_SOURCES"
+
+// applyHeadersEnv binds SP_HEADERS_CSP_EXTRA_SOURCES. csp_extra_sources is
+// snake_case, so koanf's env loader would land it on headers.csp.extra.sources
+// and bind nothing. An absent variable leaves config.yml's value alone.
+func applyHeadersEnv(cfg *HeadersConfig) {
+	if v := os.Getenv(EnvHeadersCSPExtraSources); v != "" {
+		cfg.CSPExtraSources = strings.TrimSpace(v)
+	}
 }
 
 // RealtimeConfig controls the org-scoped live hint WebSocket
@@ -485,50 +538,55 @@ type WebPushConfig struct {
 
 // Config represents the application configuration structure.
 type Config struct {
-	Server       ServerConfig         `koanf:"server"`
-	Database     DatabaseConfig       `koanf:"db"`
-	Auth         AuthConfig           `koanf:"auth"`
-	Encryption   EncryptionConfig     `koanf:"encryption"`
-	Email        EmailConfig          `koanf:"email"`
-	Slack        SlackConfig          `koanf:"slack"`
-	MSTeams      MSTeamsConfig        `koanf:"msteams"`
-	WhatsApp     WhatsAppConfig       `koanf:"whatsapp"`
-	Telegram     TelegramConfig       `koanf:"telegram"`
-	SMS          SMSConfig            `koanf:"sms"`
-	Voice        VoiceConfig          `koanf:"voice"`
-	Google       GoogleOAuthConfig    `koanf:"google"`
-	GitHub       GitHubOAuthConfig    `koanf:"github"`
-	Microsoft    MicrosoftOAuthConfig `koanf:"microsoft"`
-	GitLab       GitLabOAuthConfig    `koanf:"gitlab"`
-	Discord      DiscordOAuthConfig   `koanf:"discord"`
-	OIDC         OIDCOAuthConfig      `koanf:"oidc"`
-	SAML         SAMLConfig           `koanf:"saml"`
-	LDAP         LDAPConfig           `koanf:"ldap"`
-	Node         NodeConfig           `koanf:"node"`
-	Agent        AgentConfig          `koanf:"agent"`
-	Profiler     ProfilerConfig       `koanf:"profiler"`
-	Runtime      RuntimeConfig        `koanf:"runtime"`
-	OTel         OTelConfig           `koanf:"otel"`
-	Sentry       SentryConfig         `koanf:"sentry"`
-	Prometheus   PrometheusConfig     `koanf:"prometheus"`
-	Realtime     RealtimeConfig       `koanf:"realtime"`
-	Checkers     CheckersConfig       `koanf:"checkers"`
-	Aggregation  AggregationConfig    `koanf:"aggregation"`
-	Jobs         JobsConfig           `koanf:"jobs"`
-	FileStorage  FileStorageConfig    `koanf:"filestorage"`
-	App          AppConfig            `koanf:"app"`
-	Deployment   DeploymentConfig     `koanf:"deployment"`
-	WebPush      WebPushConfig        `koanf:"webpush"`
-	PostHog      PostHogConfig        `koanf:"posthog"`
-	Entitlements EntitlementsConfig   `koanf:"entitlements"`
-	Audit        AuditConfig          `koanf:"audit"`
-	ACME         ACMEConfig           `koanf:"acme"`
-	Heartbeat    HeartbeatConfig      `koanf:"heartbeat"`
-	Demo         DemoConfig           `koanf:"demo"`
-	RunMode      string               `koanf:"runmode"`   // "test" for test mode, empty for normal mode
-	UserAgent    string               `koanf:"useragent"` // Identity string for protocol checks (SP_USERAGENT)
-	LogLevel     slog.Level           `koanf:"-"`         // Logging level (parsed from LOG_LEVEL env var)
-	LogFormat    LogFormat            `koanf:"-"`         // Logging output format (parsed from SP_LOG_FORMAT env var)
+	Server     ServerConfig         `koanf:"server"`
+	Database   DatabaseConfig       `koanf:"db"`
+	Auth       AuthConfig           `koanf:"auth"`
+	Encryption EncryptionConfig     `koanf:"encryption"`
+	Email      EmailConfig          `koanf:"email"`
+	Slack      SlackConfig          `koanf:"slack"`
+	MSTeams    MSTeamsConfig        `koanf:"msteams"`
+	WhatsApp   WhatsAppConfig       `koanf:"whatsapp"`
+	Telegram   TelegramConfig       `koanf:"telegram"`
+	SMS        SMSConfig            `koanf:"sms"`
+	Voice      VoiceConfig          `koanf:"voice"`
+	Google     GoogleOAuthConfig    `koanf:"google"`
+	GitHub     GitHubOAuthConfig    `koanf:"github"`
+	Microsoft  MicrosoftOAuthConfig `koanf:"microsoft"`
+	GitLab     GitLabOAuthConfig    `koanf:"gitlab"`
+	Discord    DiscordOAuthConfig   `koanf:"discord"`
+	OIDC       OIDCOAuthConfig      `koanf:"oidc"`
+	// OAuth configures the embedded MCP-facing authorization server, distinct
+	// from the login-provider configs above.
+	OAuth        OAuthConfig        `koanf:"oauth"`
+	SAML         SAMLConfig         `koanf:"saml"`
+	LDAP         LDAPConfig         `koanf:"ldap"`
+	Node         NodeConfig         `koanf:"node"`
+	Agent        AgentConfig        `koanf:"agent"`
+	Profiler     ProfilerConfig     `koanf:"profiler"`
+	Runtime      RuntimeConfig      `koanf:"runtime"`
+	OTel         OTelConfig         `koanf:"otel"`
+	Sentry       SentryConfig       `koanf:"sentry"`
+	Prometheus   PrometheusConfig   `koanf:"prometheus"`
+	Realtime     RealtimeConfig     `koanf:"realtime"`
+	Checkers     CheckersConfig     `koanf:"checkers"`
+	Aggregation  AggregationConfig  `koanf:"aggregation"`
+	Jobs         JobsConfig         `koanf:"jobs"`
+	FileStorage  FileStorageConfig  `koanf:"filestorage"`
+	App          AppConfig          `koanf:"app"`
+	Deployment   DeploymentConfig   `koanf:"deployment"`
+	Egress       EgressConfig       `koanf:"egress"`
+	WebPush      WebPushConfig      `koanf:"webpush"`
+	PostHog      PostHogConfig      `koanf:"posthog"`
+	Entitlements EntitlementsConfig `koanf:"entitlements"`
+	Audit        AuditConfig        `koanf:"audit"`
+	ACME         ACMEConfig         `koanf:"acme"`
+	Heartbeat    HeartbeatConfig    `koanf:"heartbeat"`
+	Demo         DemoConfig         `koanf:"demo"`
+	Headers      HeadersConfig      `koanf:"headers"`
+	RunMode      string             `koanf:"runmode"`   // "test" for test mode, empty for normal mode
+	UserAgent    string             `koanf:"useragent"` // Identity string for protocol checks (SP_USERAGENT)
+	LogLevel     slog.Level         `koanf:"-"`         // Logging level (parsed from LOG_LEVEL env var)
+	LogFormat    LogFormat          `koanf:"-"`         // Logging output format (parsed from SP_LOG_FORMAT env var)
 }
 
 // ACMEConfig turns on in-server TLS: certmagic obtains and renews Let's Encrypt
@@ -615,6 +673,82 @@ type DeploymentConfig struct {
 	Mode string `koanf:"mode"`
 }
 
+// EnvEgressAllowPrivate is the operator switch letting this process's check
+// workers reach non-public addresses (loopback, RFC 1918, link-local, cloud
+// metadata, ULA…). Mirrors egress.EnvAllowPrivate; declared here too because
+// config must not import the egress package's dial machinery.
+const EnvEgressAllowPrivate = "SP_EGRESS_ALLOW_PRIVATE"
+
+// EgressConfig is the outbound-connection policy of the check workers running
+// in this process (spec 2026-09-25-19).
+//
+// AllowPrivateTargets is snake_case and therefore unreachable by koanf's env
+// loader; SP_EGRESS_ALLOW_PRIVATE is bound by hand in applyEgressEnv and is
+// also the env override of the egress.allow_private_targets system parameter.
+type EgressConfig struct {
+	// AllowPrivateTargets is TRI-STATE:
+	//
+	//	nil   → derived: allowed on self-hosted and on deported agents
+	//	        (private locations exist to reach private targets), denied on
+	//	        SaaS shared workers
+	//	true  → allowed, whatever the deployment mode
+	//	false → denied, whatever the node role
+	//
+	// Resolve through Config.EgressAllowsPrivateTargets, never this field.
+	AllowPrivateTargets *bool `koanf:"allow_private_targets"`
+}
+
+// EgressAllowsPrivateTargets is the effective egress policy of the check
+// workers in this process: whether a check may connect to a non-public
+// address. It is evaluated where the dial happens — a deported agent answers
+// for itself, a SaaS shared worker for itself — so a check's region placement
+// is what decides which policy applies to it.
+func (c *Config) EgressAllowsPrivateTargets() bool {
+	if c.Egress.AllowPrivateTargets != nil {
+		return *c.Egress.AllowPrivateTargets
+	}
+
+	if roles, err := ParseNodeRoles(c.Node.Role); err == nil && roles.Has(NodeRoleAgent) {
+		return true
+	}
+
+	return c.Deployment.Mode != DeploymentModeSaaS
+}
+
+// EgressPolicySource names where EgressAllowsPrivateTargets got its answer,
+// for the startup log line an operator reads when a check is refused.
+func (c *Config) EgressPolicySource() string {
+	if c.Egress.AllowPrivateTargets != nil {
+		return "explicit (" + EnvEgressAllowPrivate + " / egress.allow_private_targets)"
+	}
+
+	if roles, err := ParseNodeRoles(c.Node.Role); err == nil && roles.Has(NodeRoleAgent) {
+		return "default for a deported agent"
+	}
+
+	return "default for deployment mode " + c.Deployment.Mode
+}
+
+// applyEgressEnv binds SP_EGRESS_ALLOW_PRIVATE. An absent or empty variable
+// leaves the configured / derived value alone ("I did not choose" must never
+// read as "deny" or "allow"); an unparseable one is ignored with a warning
+// rather than silently flipping the policy.
+func applyEgressEnv(cfg *EgressConfig) {
+	raw := strings.TrimSpace(os.Getenv(EnvEgressAllowPrivate))
+	if raw == "" {
+		return
+	}
+
+	allow, err := strconv.ParseBool(raw)
+	if err != nil {
+		slog.Warn("Ignoring unparseable "+EnvEgressAllowPrivate, "value", raw, "error", err)
+
+		return
+	}
+
+	cfg.AllowPrivateTargets = &allow
+}
+
 // EntitlementsConfig tunes the per-org SMS/voice runaway guard — an in-memory
 // hourly token bucket that bounds a broken escalation loop independent of the
 // billing-driven monthly quota. Because these keys contain underscores that the
@@ -634,6 +768,23 @@ type EntitlementsConfig struct {
 	// monthly entitlement for the channel — this guard exists purely to bound a
 	// flapping check or a dispatch loop, hence the higher default.
 	TelegramRunawayPerHour int `koanf:"telegram_runaway_per_hour"`
+}
+
+// OAuthConfig configures the embedded MCP-facing OAuth 2.1 authorization
+// server (internal/oauth) — NOT the login-provider integrations (Google,
+// GitHub, GitLab, Microsoft, Discord, OIDC below), which each have their own
+// dedicated *OAuthConfig type.
+type OAuthConfig struct {
+	// EnforceClientSecret gates RFC 6749 §3.2.1 client authentication at the
+	// token endpoint for confidential clients (spec
+	// 2026-09-25-27-oauth-client-secret-verification.md). Default true: a
+	// confidential client with a missing or wrong secret gets a hard 401. An
+	// operator can set this false as a temporary escape hatch for a
+	// confidential client that was registered before verification existed and
+	// never sends a secret — the failure is then only logged (WARN, once per
+	// client ID per process) and the token is still issued. Public clients are
+	// never affected either way; PKCE is their authentication.
+	EnforceClientSecret bool `koanf:"enforce_client_secret"`
 }
 
 // NodeConfig contains node role configuration.
@@ -808,6 +959,18 @@ type AppConfig struct {
 	// Never read directly from config — call ComputeBugReportEnabled.
 	EnableBugReport bool            `koanf:"-"`
 	GitHub          AppGitHubConfig `koanf:"github"`
+	// FeedbackMaxStorageBytes caps the total bytes of live feedback-report
+	// screenshots (files.Service, filestorage.GroupTypeReports) an org may
+	// have stored at once (spec 2026-09-25-26). The anonymous POST
+	// /api/mgmt/report endpoint has no auth and no other cost signal, so this
+	// is what bounds how much local/S3 storage a single org's inbox can be
+	// made to fill. 0 or negative disables the quota. Snake_case, so it's
+	// unreachable by koanf's env loader — see EnvAppFeedbackMaxStorageBytes /
+	// applyFeedbackEnv — and also overlaid by the
+	// app.feedback_max_storage_bytes system parameter
+	// (systemconfig.KeyFeedbackMaxStorageBytes), read at request time by
+	// feedback.Service so a DB-set value takes effect without a restart.
+	FeedbackMaxStorageBytes int64 `koanf:"feedback_max_storage_bytes"`
 }
 
 // AppGitHubConfig holds the GitHub credentials used for in-app feature integrations
@@ -815,6 +978,31 @@ type AppConfig struct {
 type AppGitHubConfig struct {
 	IssuesToken string `koanf:"issues_token"` // fine-grained PAT, issues:write only
 	Repo        string `koanf:"repo"`         // "owner/name"
+}
+
+// DefaultFeedbackMaxStorageBytes is the built-in per-org feedback-file quota
+// (spec 2026-09-25-26): 100 MB.
+const DefaultFeedbackMaxStorageBytes int64 = 100 * 1024 * 1024
+
+// EnvAppFeedbackMaxStorageBytes is the operator/system-parameter override for
+// AppConfig.FeedbackMaxStorageBytes.
+const EnvAppFeedbackMaxStorageBytes = "SP_APP_FEEDBACK_MAX_STORAGE_BYTES"
+
+// applyFeedbackEnv binds SP_APP_FEEDBACK_MAX_STORAGE_BYTES.
+// feedback_max_storage_bytes is snake_case, so koanf's env loader can never
+// reach it (SP_APP_FEEDBACK_MAX_STORAGE_BYTES would land on
+// app.feedback.max.storage.bytes, not app.feedback_max_storage_bytes). An
+// absent or unparseable variable leaves whatever config.yml /
+// config.local.yml (or the built-in default) already set alone.
+func applyFeedbackEnv(cfg *AppConfig) {
+	v := os.Getenv(EnvAppFeedbackMaxStorageBytes)
+	if v == "" {
+		return
+	}
+
+	if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+		cfg.FeedbackMaxStorageBytes = n
+	}
 }
 
 // AggregationConfig controls how aggressively raw/hour/day result data is compacted.
@@ -1692,6 +1880,7 @@ func Load() (*Config, error) {
 			GitHub: AppGitHubConfig{
 				Repo: "fclairamb/solidping",
 			},
+			FeedbackMaxStorageBytes: DefaultFeedbackMaxStorageBytes,
 		},
 		Google:    GoogleOAuthConfig{Enabled: false},
 		GitHub:    GitHubOAuthConfig{Enabled: false},
@@ -1730,8 +1919,11 @@ func Load() (*Config, error) {
 		Sentry:  SentryConfig{TracesSampleRate: 0.0},
 		Discord: DiscordOAuthConfig{Enabled: false},
 		OIDC:    OIDCOAuthConfig{Enabled: false},
-		SAML:    SAMLConfig{Enabled: false},
-		LDAP:    LDAPConfig{Enabled: false},
+		// Enforcing confidential-client secrets is the safe default; see
+		// OAuthConfig.EnforceClientSecret for the escape hatch.
+		OAuth: OAuthConfig{EnforceClientSecret: true},
+		SAML:  SAMLConfig{Enabled: false},
+		LDAP:  LDAPConfig{Enabled: false},
 		Node: NodeConfig{
 			Role:   NodeRoleAll,
 			Region: "",
@@ -1849,6 +2041,10 @@ func Load() (*Config, error) {
 	// never reach the koanf `*_per_hour` tags automatically.
 	applyEntitlementsEnv(&cfg.Entitlements)
 
+	// Manually read SP_METRICS_SCRAPE_TOKEN — scrape_token is snake_case, so
+	// koanf's env loader can never reach it.
+	applyMetricsEnv(&cfg.Prometheus)
+
 	// If node region is set, also set the check worker region if not already set
 	if cfg.Node.Region != "" && cfg.Server.CheckWorker.Region == "" {
 		cfg.Server.CheckWorker.Region = cfg.Node.Region
@@ -1899,6 +2095,8 @@ func Load() (*Config, error) {
 	applyProfilerEnv(&cfg.Profiler)
 	applyRuntimeEnv(&cfg.Runtime)
 	applyRealtimeEnv(&cfg.Realtime)
+	applyEgressEnv(&cfg.Egress)
+	applyHeadersEnv(&cfg.Headers)
 
 	// When in test mode and no database type is specified, default to sqlite-memory
 	if cfg.RunMode == "test" && cfg.Database.Type == "" {
@@ -1937,6 +2135,8 @@ func Load() (*Config, error) {
 	if v := os.Getenv("SP_APP_GITHUB_REPO"); v != "" {
 		cfg.App.GitHub.Repo = v
 	}
+
+	applyFeedbackEnv(&cfg.App)
 
 	cfg.App.EnableBugReport = ComputeBugReportEnabled(&cfg.App.GitHub)
 

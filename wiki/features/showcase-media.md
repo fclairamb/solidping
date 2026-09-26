@@ -162,13 +162,13 @@ strings.
 - **Cuts** remove stretches with nothing on screen: the app hard-reloading
   itself after the rotation, the org being provisioned over the API, a slow
   request round trip. Ordinary film grammar, no tag needed.
-- **One speed-up, always tagged.** The dwell on the detail page exists so the
-  chart plots two results a genuine interval apart. The check form's floor is a
+- **One speed-up, always tagged.** The detail page is held for **four full check
+  periods** (`DETAIL_DWELL_PERIODS`) so the chart plots a line of results a
+  genuine interval apart, not just two points. The check form's floor is a
   **10-second** interval (`globalMinPeriodSeconds` in `check-form.tsx` — 5 s is
-  never offered, whatever the entitlement says), so that dwell is ~12 s and is
+  never offered, whatever the entitlement says), so that dwell is ~43 s and is
   published at 4× with "4× speed" burned into the top-right corner **for exactly
-  that stretch**. If the floor ever drops to 5 s the dwell falls under
-  `SHOWCASE_TIMELAPSE_MIN_S` and the plan declines the edit on its own.
+  that stretch**.
 - Every edit is conditional on the gap it names being long enough; the run log
   prints one line per edit, applied or skipped, with the reason.
 
@@ -284,9 +284,12 @@ from the binaries. Update this block whenever `make showcase` is re-run and the
 output is committed. Sizes are KiB/MiB — the units `postprocess.ts` prints, so
 they match the run log line for line.
 
-- **Date:** 2026-09-16 (spec `2026-09-16-05-showcase-setup-video` — the first
-  cut that films the setup itself, and the first with a regions beat)
-- **App version on camera:** `v0.28.2-133-g909218c24` (sidebar footer of the
+- **Date:** 2026-09-25 — re-cut for the electric-blue identity and the
+  always-dark navy sidebar (specs `2026-09-24-01` / `2026-09-24-02`), with the
+  detail-page dwell extended from one check period to four. The previous cut
+  (2026-09-16, spec `2026-09-16-05-showcase-setup-video`) was the first to film
+  the setup itself and the first with a regions beat
+- **App version on camera:** `v0.32.0-7-ged2c0f7b4` (sidebar footer of the
   stills)
 - **Side-car used:** the **two-node Postgres** recipe above — node A
   (`api,jobs,checks`, `eu-west`, :4321) and node B (`checks`, `us-east`) sharing
@@ -294,7 +297,9 @@ they match the run log line for line.
   `SP_REGIONS` declaring 🇪🇺 EU West and 🇺🇸 US East. That is what makes the
   region picker render and puts two series on the detail page's chart
 - **Terminal segment:** `docker run -p 4000:4000 -v solidping-data:/data
-  ghcr.io/fclairamb/solidping`, held past `Starting HTTP server`. Filmed against
+  ghcr.io/fclairamb/solidping`, held past `Starting HTTP server`. Reused as-is
+  from the 2026-09-16 take (`make showcase-cut` path: the terminal has no
+  dashboard design on it). Filmed against
   an image **built from the working tree** and tagged with the published name
   (`SHOWCASE_DOCKER_PULL=0`): `:latest` is still amd64-only, and under emulation
   on Apple silicon it boots too slowly for the hold and prints an emulation-only
@@ -304,26 +309,28 @@ they match the run log line for line.
   "Production API", at a **10-second** interval from **both** regions
 - **Interval decision:** 5 seconds was asked for first and is **not on offer** —
   `globalMinPeriodSeconds` in `check-form.tsx` is 10, independent of the org's
-  rate entitlement. So the dwell is ~12 s and the time-lapse below applies. If
-  that floor ever drops, the plan will decline the time-lapse on its own
-- **Time-lapse decision:** the 13.4 s between the `detail-page` and `chart` cues
-  is published at **4×** with "4× speed" burned into the top-right corner for
-  exactly that stretch. Two **cuts** (untagged, because nothing is on screen
-  during them) remove the post-rotation reload and the API bootstrap; two more
-  were offered and declined by the plan as too short (0.42 s and 0.10 s round
-  trips), which is the machinery working as intended
-- **Video:** 37.92 s, 1280×800, 25 fps, 948 frames — inside the 30–38 s the spec
-  asked for, with the terminal segment at 8.52 s of it
-- **Encodes:** `setup-to-first-result.mp4` — AV1 (`libsvtav1`), 3 194 274 B
-  (3.05 MB); `setup-to-first-result.h264.mp4` — H.264 (`libx264`), 2 052 260 B
-  (1.96 MB)
-- **README video:** the same `setup-to-first-result.h264.mp4`, 2 052 260 B,
-  uploaded as a GitHub attachment rather than committed. It replaced a
+  rate entitlement. So the four-period dwell is ~43 s and the time-lapse below
+  applies
+- **Time-lapse decision:** the 43.6 s between the `detail-page` and `chart` cues
+  is published at **4×** (~10.9 s) with "4× speed" burned into the top-right
+  corner for exactly that stretch. One **cut** (untagged, because nothing is on
+  screen during it) removes the post-rotation reload; the other three were
+  offered and declined by the plan as too short (0.86 s, 1.11 s and 0.24 s),
+  which is the machinery working as intended
+- **Video:** 46.68 s, 1280×800, 25 fps, 1167 frames, with the terminal
+  segment at 8.52 s of it. Longer than the 37.9 s cut it replaces because of the
+  four-period dwell
+- **Encodes:** `setup-to-first-result.mp4` — AV1 (`libsvtav1`), 3 512 892 B
+  (3.35 MB); `setup-to-first-result.h264.mp4` — H.264 (`libx264`), 2 245 909 B
+  (2.14 MB)
+- **README video:** the H.264 cut, uploaded as a GitHub attachment rather than
+  committed. **Not yet re-uploaded for this cut** — the README still plays the
+  2026-09-16 one until someone follows "The README video is uploaded by hand". It replaced a
   2 459 187 B (2.35 MB) GIF that showed neither the terminal nor the camera move
-- **Stills, published (1×, 1280×800, committed):** `01-checks-list.png` 177 KB,
-  `02-check-form-filled.png` 166 KB, `03-check-detail.png` 209 KB
-- **Stills, originals (2×, 2560×1600, git-ignored scratch):** 259 KB / 246 KB /
-  309 KB — still above the ~250 KB bar that keeps the 1× versions published
+- **Stills, published (1×, 1280×800, committed):** `01-checks-list.png` 248 KB,
+  `02-check-form-filled.png` 180 KB, `03-check-detail.png` 244 KB
+- **Stills, originals (2×, 2560×1600, git-ignored scratch):** 420 KB / 278 KB /
+  412 KB — still above the ~250 KB bar that keeps the 1× versions published
 - **16 cue points, max zoom 1.50×.** Two beats are deliberately absent: there is
   **no check-type step** (the form opens on HTTP, so picking it filmed "HTTP" →
   "HTTP") and **no push-in on the New check button** (that click changes route,
@@ -332,8 +339,9 @@ they match the run log line for line.
   automatic 5 s spread, and the detail page's chart plots EU West and US East as
   separate series with a per-region selector above them. This is the first
   committed cut where that is true
-- **The detail page is held for one full interval plus 2.5 s, and until two
-  results have landed.** The dwell is what makes the chart meaningful: waiting
+- **The detail page is held for four full intervals plus 2.5 s, and until four
+  results per region have landed** (6 EU West and 5 US East points on the
+  committed still).** The dwell is what makes the chart meaningful: waiting
   only for a second result is not enough, because the scheduler aligns runs to
   wall-clock boundaries, so the tick after the creation run can land a second or
   two later and the chart then plots two points across a two-second window
@@ -387,7 +395,7 @@ the media (that repo was deliberately out of scope):
    `web/docs/docs/tour.mdx` — otherwise Safari without an AV1 hardware decoder
    shows fallback text where the demo should be;
 2. the caption hard-codes *"A 18-second setup"* (`src/pages/index.tsx`). The
-   duration moves with every re-cut — this one is 37.9 s — so it must not name
+   duration moves with every re-cut — this one is 46.7 s — so it must not name
    one.
 
 **Both are still owed** as of spec 2026-09-16-05, which re-cut the media again

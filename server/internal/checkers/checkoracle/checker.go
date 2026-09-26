@@ -20,7 +20,10 @@ const microsecondsPerMilli = 1000.0
 // dialer, so the bastion resolves the hostname); untunneled, it is the
 // byte-for-byte `sql.Open`.
 func openOracle(ctx context.Context, connURL string) (*sql.DB, error) {
-	dialer := checkerdef.TunnelDialerFrom(ctx)
+	// The tunnel dialer, or the egress guard under an enforcing policy (spec
+	// 2026-09-25-19); nil keeps the driver's own dial byte-for-byte. The
+	// driver negotiates TLS above this dialer either way.
+	dialer := checkerdef.OutboundDialer(ctx)
 	if dialer == nil {
 		return sql.Open("oracle", connURL)
 	}

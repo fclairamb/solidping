@@ -230,7 +230,9 @@ func (s *Service) CapabilityIndex(ctx context.Context, orgUID string) (map[strin
 		return nil, capErr
 	}
 
-	index := make(map[string]RegionDefinition, len(globalDefs)+len(privateDefs))
+	// No capacity hint: a length sum in a make is what a size-overflow scan
+	// flags, and both lists are a handful of regions.
+	index := make(map[string]RegionDefinition)
 
 	for i := range globalDefs {
 		index[globalDefs[i].Slug] = globalDefs[i]

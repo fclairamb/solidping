@@ -31,6 +31,31 @@ func newTestStatus0FS() fstest.MapFS {
 	}
 }
 
+// TestCustomDomainCacheExpiry covers the TTL itself, using the cache's
+// injectable clock instead of a real sleep (spec 2026-09-25-33): a hit before
+// the fake clock crosses the TTL, a miss once it does.
+func TestCustomDomainCacheExpiry(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	current := time.Now()
+	cache := newCustomDomainCache(customDomainCacheTTL)
+	cache.now = func() time.Time { return current }
+
+	cache.set("status.acme.com", customDomainResolution{
+		page: &resolvedCustomDomain{OrgSlug: "acme", Slug: "main"},
+	})
+
+	resolved, ok := cache.get("status.acme.com")
+	r.True(ok, "entry must be a hit before the TTL elapses")
+	r.Equal("acme", resolved.page.OrgSlug)
+
+	current = current.Add(customDomainCacheTTL + time.Second)
+
+	_, ok = cache.get("status.acme.com")
+	r.False(ok, "entry must be a miss once the TTL elapses")
+}
+
 func TestHostOnly(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
@@ -258,6 +283,13 @@ func newCustomHostTestServer(t *testing.T) *Server {
 		customDomainCache: newCustomDomainCache(customDomainCacheTTL),
 		status0FS:         newTestStatus0FS(),
 	}
+
+	// Pin the cache's clock so seeded entries never expire, no matter how long
+	// a parallel subtest waits for a `-parallel` slot after the parent body
+	// returns (spec 2026-09-25-33: under a loaded `go test ./...` that gap can
+	// exceed the 60s TTL, which used to make every host look unknown).
+	frozenNow := time.Now()
+	server.customDomainCache.now = func() time.Time { return frozenNow }
 
 	// status.acme.com resolves to a servable page; unknown.example.com is
 	// negative-cached (not a custom domain).

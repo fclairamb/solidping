@@ -50,7 +50,7 @@ Aggregate check counters for the org, computed server-side with one SQL
   "disabled": 12,
   "byStatus": {
     "created": 2, "up": 240, "down": 6,
-    "validating": 0, "degraded": 2, "warning": 0, "unknown": 0
+    "validating": 0, "degraded": 2, "warning": 0, "stale": 0, "unknown": 0
   },
   "down": 6,
   "hardDown": 3,
@@ -68,7 +68,7 @@ Semantics:
 - `total`, `byStatus`, `down` and `hardDown` span **enabled and disabled**
   checks alike; `enabled` / `disabled` partition the same set.
 - `byStatus` always carries every known status key (`created`, `up`, `down`,
-  `validating`, `degraded`, `warning`, `unknown`) — zero when empty — so
+  `validating`, `degraded`, `warning`, `stale`, `unknown`) — zero when empty — so
   clients can index it unguarded. Keys are the same tokens the list response's
   `status` field carries.
 - `down` = status in (`down`, `error`, `timeout`); `hardDown` = status in
@@ -142,6 +142,75 @@ List events for a specific check. Auth: required
 Query parameters:
 - `cursor` - pagination cursor
 - `limit` - page size (default 20, max 100). Also accepts `?size=` as a deprecated alias.
+
+### GET /api/v1/orgs/:org/checks/:checkUid/screenshots
+A check's latest page captures, newest first (spec 2026-09-25-34). Auth:
+required, same as reading the check (viewers included). Operator-only: never on
+a status page, badge or subscriber payload.
+
+Query: `limit` (default 5, clamped to 20; a non-positive or non-numeric value is
+a 422).
+
+Response: `{ "data": [ { uid, mimeType, size, downloadUrl, capturedAt, region?,
+trigger?, incidentUid? } ] }`. `downloadUrl` is the same 1 h signed relative
+`/pub/files/…` URL an incident attachment carries. `capturedAt` falls back to
+the stored time for a private agent's upload (it carries no capture time).
+`incidentUid` is absent for a check-scoped capture.
+
+Sources, both matched on the `files.details->>'checkUid'` key through the
+partial expression index `files_org_check_uid_idx`:
+
+- the check's incidents' screenshots (`incidents/<uid>/screenshot`);
+- the check-scoped captures (`checks/<uid>/screenshot`): failing runs that
+  opened or reopened no incident (trigger `check-failure`: validating runs,
+  blips, regional failures, runs of an outage whose incident already has its
+  onset capture) and "Capture now" runs (trigger `capture-now`). A check keeps
+  the **last 5**; the sixth write retires the oldest, row and blob. Deleting
+  the check reaps them, and the state-cleanup orphan sweep covers the other
+  delete paths. The sweep (incident and check attachments alike) selects
+  orphans with an anti-join in SQL, so the attachments of live entities never
+  fill its batch.
+
+Any check type answers; a type that never captures returns `{ "data": [] }`.
+
+### POST /api/v1/orgs/:org/checks/:checkUid/screenshots/capture
+"Capture now": run a `browser` or `js` check once on demand, screenshot forced
+whatever the verdict and whatever the check's `screenshot` option (spec
+2026-09-25-34). Auth: required, write access (viewers 403).
+
+It goes through the check's own scheduling: one of its `check_jobs` rows (an
+unleased one first, in region order) gets `capture_requested_at` and is made
+due now, and the express hint (`check.created` notifier channel,
+`{"check_uid"}` payload) makes a worker of that region — a shared worker, or the
+org's private agent — claim it at once. The claim consumes the request; a
+request that lands while the job is leased stays due after the release. The run
+is a real run (its result is recorded and goes through the incident pipeline);
+its capture lands under `checks/<uid>/screenshot`.
+
+Response `202 { region, requestedAt }`. A js check only yields a capture if its
+script calls `page.screenshot()`. An agent predating the feature runs the job
+normally (no forced capture).
+
+| Status | When |
+|---|---|
+| 400 | check type is not `browser` or `js` |
+| 404 | org or check not found |
+| 409 | the check has no scheduled job (disabled) |
+| 429 `RATE_LIMITED` | 1 per check per minute, or 20 per org per hour; `Retry-After` in seconds |
+
+The limits are DB-backed fixed windows (`state_entries`, org-scoped keys
+`capture-now.check.<uid>` and `capture-now.org`), admitted atomically by
+`db.Service.AdmitFixedWindows`: both counters are read and written under row
+locks in one transaction (Postgres `SELECT … FOR UPDATE`; SQLite's single
+connection), so they hold across API replicas and under concurrent requests.
+Validation runs first, so a refused request spends no budget, and a request the
+org window refuses counts against neither window.
+
+The claim moves the request to `check_jobs.capture_claimed_at` (the request the
+current lease carries; the release clears it, a rate-limit deferral puts it back
+to pending). Both result-submission paths honor a capture's `onDemand` marker
+only when that column is set, so an agent cannot get a healthy run stored as
+`capture-now` by claiming it.
 
 ### GET /api/v1/orgs/:org/checks/:check/results/:uid
 Get one result of a check by uid, with the full payload
@@ -540,7 +609,7 @@ Request body, per source:
 |---|---|---|
 | `gatus` | the raw `config.yaml` | Gatus has no config-export API. |
 | `uptime-kuma` | the raw backup JSON | Settings → Backup → Export (Kuma 1.x). |
-| `betterstack` | `{"token": "...", "baseUrl": "..."}` | The server fetches every page of `/api/v2/monitors` **and** `/api/v2/heartbeats`. `baseUrl` is optional (tests / proxies). The token is used transiently for that fetch and is **never persisted, logged, or echoed in an error**. |
+| `betterstack` | `{"token": "..."}` | The server fetches every page of `/api/v2/monitors` **and** `/api/v2/heartbeats` from the fixed `uptime.betterstack.com` API — there is no caller-supplied `baseUrl` any more (spec 2026-09-25-31 removed it: Better Stack documents no alternate host, so it was a GET-anywhere primitive with the caller's token attached). The token is used transiently for that fetch and is **never persisted, logged, or echoed in an error**. |
 
 Each converted document is applied under a per-source managed manifest
 (`solidping-managed=gatus` / `betterstack` / `uptime-kuma`), so re-importing

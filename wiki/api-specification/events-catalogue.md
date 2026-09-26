@@ -190,6 +190,28 @@ let the user in: `admin_add`, `invitation`, `org_bootstrap`,
 - `config.applied` carries `manifest`, `created`, `updated`, `deleted`,
   `unmanaged`, `pruned`, `forced`, `errors`.
 
+### `region.*` — platform outage notices
+
+Written by the per-minute region sweep (spec 2026-09-25-03), `actorType=system`,
+no `checkUid` (one event covers several checks). Never pages; the sweep emails
+the org's owners and admins alongside the event.
+
+| Type | Payload highlights |
+|---|---|
+| `region.offline` | `region`, `regionName`, `since` (last worker beat, RFC3339), `blindChecks`, `reducedChecks`, `checkUids` (blind, capped at 100). Once per org per outage, only for orgs with at least one check that runs nowhere else. |
+| `region.recovered` | `region`, `regionName`, `since`, `recoveredAt`, `durationSeconds`. Exactly the orgs that got `region.offline`, once. |
+
+### `check.placement_changed` — automatic re-placement
+
+Written by the per-minute region sweep (spec 2026-09-25-06) when an
+automatically placed check is moved off a region that went dark,
+`actorType=system`, `checkUid` set, one event per move. Never pages: the
+platform routed around its own outage.
+
+| Type | Payload highlights |
+|---|---|
+| `check.placement_changed` | `from`, `to` (region slugs), `reason` (`region_offline`), `check_uid`, `check_slug`, `check_name`. |
+
 ### Pre-existing families
 
 `check.*`, `incident.*`, `statuspage.incident.*`,

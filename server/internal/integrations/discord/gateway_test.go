@@ -339,10 +339,10 @@ func TestGateway_IngestsThreadReplyAsComment(t *testing.T) {
 		Type:    messageTypeDefault,
 	})
 
-	r.Eventually(func() bool { return h.inc.commentIncident == incident.UID },
+	r.Eventually(func() bool { return h.inc.CommentIncident() == incident.UID },
 		2*time.Second, 10*time.Millisecond)
-	r.Equal("restarting the pod", h.inc.commentText)
-	r.Equal(h.guild, h.inc.commentGuild)
+	r.Equal("restarting the pod", h.inc.CommentText())
+	r.Equal(h.guild, h.inc.CommentGuild())
 }
 
 // TestGateway_ExplicitModeDoesNotIngest is the fail-closed half: triage chatter
@@ -366,7 +366,7 @@ func TestGateway_ExplicitModeDoesNotIngest(t *testing.T) {
 
 	// Give the supervisor a chance to (not) act, then assert nothing happened.
 	time.Sleep(200 * time.Millisecond)
-	r.Empty(h.inc.commentIncident)
+	r.Empty(h.inc.CommentIncident())
 }
 
 // TestGateway_IgnoresUntrackedAndNonHumanMessages: everything that is not a
@@ -413,7 +413,7 @@ func TestGateway_IgnoresUntrackedAndNonHumanMessages(t *testing.T) {
 	}
 
 	time.Sleep(300 * time.Millisecond)
-	r.Empty(h.inc.commentIncident, "only a human reply in a tracked thread may become a comment")
+	r.Empty(h.inc.CommentIncident(), "only a human reply in a tracked thread may become a comment")
 }
 
 // TestGateway_DedupesRedeliveredMessage: a RESUME can replay events, and an
@@ -433,17 +433,17 @@ func TestGateway_DedupesRedeliveredMessage(t *testing.T) {
 	}
 
 	h.conn.push(t, "MESSAGE_CREATE", 2, msg)
-	r.Eventually(func() bool { return h.inc.commentIncident == incident.UID },
+	r.Eventually(func() bool { return h.inc.CommentIncident() == incident.UID },
 		2*time.Second, 10*time.Millisecond)
 
 	// Second delivery of the same message, with a different body so a duplicate
 	// ingest would be visible.
-	h.inc.commentText = ""
+	h.inc.SetCommentText("")
 	msg.Content = "SHOULD NOT BE INGESTED"
 	h.conn.push(t, "MESSAGE_CREATE", 3, msg)
 
 	time.Sleep(300 * time.Millisecond)
-	r.Empty(h.inc.commentText, "a redelivered message must not be ingested twice")
+	r.Empty(h.inc.CommentText(), "a redelivered message must not be ingested twice")
 }
 
 // TestGateway_MentionCommandIsAnswered proves the Gateway and the HTTP
@@ -477,7 +477,7 @@ func TestGateway_MentionCommandIsAnswered(t *testing.T) {
 	}, 2*time.Second, 20*time.Millisecond, "a mention command must be answered in the channel")
 
 	// A mention is a command, never a comment.
-	r.Empty(h.inc.commentIncident)
+	r.Empty(h.inc.CommentIncident())
 }
 
 // TestGateway_MentionCommandInsideThreadCarriesContext proves the Gateway hands
@@ -499,9 +499,9 @@ func TestGateway_MentionCommandInsideThreadCarriesContext(t *testing.T) {
 		Type:    messageTypeDefault,
 	})
 
-	r.Eventually(func() bool { return h.inc.commentIncident == incident.UID },
+	r.Eventually(func() bool { return h.inc.CommentIncident() == incident.UID },
 		2*time.Second, 20*time.Millisecond)
-	r.Equal("rolled back the deploy", h.inc.commentText)
+	r.Equal("rolled back the deploy", h.inc.CommentText())
 }
 
 // TestGateway_GuildDeleteUnavailableKeepsIntegration: an outage is not a

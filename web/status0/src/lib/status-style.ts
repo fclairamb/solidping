@@ -145,6 +145,25 @@ export function statusStyle(status: string | undefined | null): StatusStyle {
         bannerPill: "border-border bg-muted text-muted-foreground",
         isDown: false,
       };
+    case "stale":
+      // A component nobody is measuring right now (spec 2026-09-25-02): no
+      // real result for max(3 × period, 5 min). Neutral, labelled "No data" —
+      // never "operational", which is the whole point of the status.
+      return {
+        color: "bg-status-neutral",
+        barFill: "var(--status-neutral)",
+        chartColor: NEUTRAL_CHART,
+        badgeVariant: "secondary",
+        labelKey: "noData",
+        tvSurface: "bg-[oklch(0.19_0.01_250)] text-[oklch(0.93_0.01_250)]",
+        tvAccent: "text-[oklch(0.80_0.02_250)]",
+        tvCard: "border-[oklch(0.38_0.01_250)] bg-[oklch(0.24_0.01_250)]",
+        bannerSurface:
+          "border-border bg-gradient-to-r from-muted/60 via-muted/25 to-transparent",
+        bannerTitle: "text-foreground",
+        bannerPill: "border-border bg-muted text-muted-foreground",
+        isDown: false,
+      };
     case "error":
     case "down":
       return {

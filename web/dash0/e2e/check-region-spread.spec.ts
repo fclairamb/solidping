@@ -1,4 +1,5 @@
 import { test, expect, API_BASE, type Page } from "./fixtures";
+import { choosePinnedRegions } from "./placement-helpers";
 
 // Coverage for spec 2026-07-21-01: the optional "Region Spread" override on
 // multi-region checks (backend field shipped by spec 2026-07-20-05, exposed
@@ -68,6 +69,8 @@ async function openNewCheckForm(page: Page): Promise<void> {
   // and the out-of-range boundary are both deterministic across environments.
   await page.getByTestId("check-period-select").click();
   await page.getByRole("option", { name: "1 minute" }).click();
+
+  await choosePinnedRegions(page);
 }
 
 test.describe("Check form — Region Spread", () => {

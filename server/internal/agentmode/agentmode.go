@@ -108,6 +108,7 @@ func Run(ctx context.Context, cfg *config.Config) error {
 		"region", identity.Region)
 
 	worker := checkworker.NewAgentCheckWorker(cfg, wsBackend)
+	wsBackend.SetEgressGuard(worker.EgressGuard())
 
 	return worker.Run(ctx)
 }

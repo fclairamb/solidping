@@ -99,7 +99,7 @@ function ResetTab() {
                 <AlertDialogCancel>{t("common:cancel")}</AlertDialogCancel>
                 <AlertDialogAction
                   onClick={handleDeleteAll}
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  variant="destructive"
                 >
                   {t("nav:test.reset.confirmAction")}
                 </AlertDialogAction>

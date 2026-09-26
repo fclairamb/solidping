@@ -317,7 +317,9 @@ func (h *socketHandle) dialDirect(
 		return socketFailure(err)
 	}
 
-	conn, err := (&net.Dialer{}).DialContext(
+	// The pinned IP goes through the egress guard (spec 2026-09-25-19): under
+	// an enforcing policy a non-public address is refused before connect.
+	conn, err := checkerdef.GuardDialerOr(ctx, &net.Dialer{}).DialContext(
 		ctx, string(h.kind), net.JoinHostPort(targetIP.String(), port))
 	if err != nil {
 		return h.dialFailure(ctx, err)

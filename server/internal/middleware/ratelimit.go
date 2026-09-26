@@ -378,60 +378,88 @@ func (rl *RateLimiter) queueWaitContext(req *http.Request) (context.Context, con
 // rate limit with a bounded slow-lane queue: a request that loses the
 // fast-path token race may wait for the next refill, up to RateQueue
 // requests deep and MaxQueueWait long, before being rejected with 429.
+//
+// Scoped to limitedPrefix / excludedPrefixes — see isExcluded. A dedicated
+// single-route limiter mounted outside /api/v1/ (e.g. the anonymous
+// bug-report endpoint) must use RateLimitRoute instead, or isExcluded would
+// treat every request as excluded and the limiter would never fire.
 func (rl *RateLimiter) RateLimit(next httpx.HandlerFunc) httpx.HandlerFunc {
 	return func(writer http.ResponseWriter, req *http.Request) error {
 		if rl.cfg.RequestsPerMinute == 0 || isExcluded(req.URL.Path) {
 			return next(writer, req)
 		}
 
-		key, _, _ := rl.bucketFor(req)
-		entry := rl.getEntry(key)
+		return rl.rateLimitCore(next, writer, req)
+	}
+}
 
-		if entry.limiter.Allow() {
+// RateLimitRoute is like RateLimit but does not gate on limitedPrefix or
+// excludedPrefixes: the route this middleware is mounted on IS the scope, not
+// the path prefix. For a dedicated limiter on a route outside /api/v1/ (see
+// e.g. reportRateLimitConfig in app/server.go). Still honors the global
+// on/off switch (RequestsPerMinute == 0), so a deployment or test that turns
+// rate limiting off entirely (SP_SERVER_RATE_LIMITING_REQUESTS_PER_MINUTE=0)
+// doesn't leave a route-specific limiter enforcing anyway.
+func (rl *RateLimiter) RateLimitRoute(next httpx.HandlerFunc) httpx.HandlerFunc {
+	return func(writer http.ResponseWriter, req *http.Request) error {
+		if rl.cfg.RequestsPerMinute == 0 {
 			return next(writer, req)
 		}
 
-		if entry.rateQueue == nil {
-			rejectRate(writer)
-			return nil
-		}
+		return rl.rateLimitCore(next, writer, req)
+	}
+}
 
-		select {
-		case entry.rateQueue <- struct{}{}:
-		default:
-			rejectRate(writer)
-			return nil
-		}
-		defer func() { <-entry.rateQueue }()
+// rateLimitCore is the shared admission logic behind RateLimit and
+// RateLimitRoute, once the caller has decided the request is in scope.
+func (rl *RateLimiter) rateLimitCore(next httpx.HandlerFunc, writer http.ResponseWriter, req *http.Request) error {
+	key, _, _ := rl.bucketFor(req)
+	entry := rl.getEntry(key)
 
-		reservation := entry.limiter.Reserve()
-		if !reservation.OK() {
-			rejectRate(writer)
-			return nil
-		}
-		wait := reservation.Delay()
-		if rl.cfg.MaxQueueWait > 0 && wait > rl.cfg.MaxQueueWait {
-			reservation.Cancel()
-			rejectRate(writer)
-			return nil
-		}
+	if entry.limiter.Allow() {
+		return next(writer, req)
+	}
 
-		ctx, cancel := rl.queueWaitContext(req)
-		defer cancel()
+	if entry.rateQueue == nil {
+		rejectRate(writer)
+		return nil
+	}
 
-		timer := time.NewTimer(wait)
-		defer timer.Stop()
+	select {
+	case entry.rateQueue <- struct{}{}:
+	default:
+		rejectRate(writer)
+		return nil
+	}
+	defer func() { <-entry.rateQueue }()
 
-		select {
-		case <-timer.C:
-			prommetrics.HTTPRateLimited.WithLabelValues("rate_delayed").Inc()
-			writer.Header().Set(HeaderRateLimitDelayedMs, strconv.FormatInt(wait.Milliseconds(), 10))
-			return next(writer, req)
-		case <-ctx.Done():
-			reservation.Cancel()
-			rejectRate(writer)
-			return nil
-		}
+	reservation := entry.limiter.Reserve()
+	if !reservation.OK() {
+		rejectRate(writer)
+		return nil
+	}
+	wait := reservation.Delay()
+	if rl.cfg.MaxQueueWait > 0 && wait > rl.cfg.MaxQueueWait {
+		reservation.Cancel()
+		rejectRate(writer)
+		return nil
+	}
+
+	ctx, cancel := rl.queueWaitContext(req)
+	defer cancel()
+
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+
+	select {
+	case <-timer.C:
+		prommetrics.HTTPRateLimited.WithLabelValues("rate_delayed").Inc()
+		writer.Header().Set(HeaderRateLimitDelayedMs, strconv.FormatInt(wait.Milliseconds(), 10))
+		return next(writer, req)
+	case <-ctx.Done():
+		reservation.Cancel()
+		rejectRate(writer)
+		return nil
 	}
 }
 

@@ -59,19 +59,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { UptimeStrip, type UptimeBucket } from "@/components/ui/uptime-strip";
-import {
-  getEventChannelName,
-  getEventChannelUid,
-  getEventCheckName,
-  getEventDescription,
-  getEventIcon,
-  getEventLabel,
-} from "@/components/dashboard/event-display";
+import { EventLogTable } from "@/components/dashboard/event-log-table";
 import { MyOnCallWidget } from "@/components/dashboard/my-on-call";
 import { EmptyStateOnboarding } from "@/components/dashboard/empty-state-onboarding";
 import { OnboardingChecklist } from "@/components/dashboard/onboarding-checklist";
 import { KpiTile } from "@/components/shared/kpi-tile";
 import { PageHeader } from "@/components/shared/page-header";
+import { statusStyle } from "@/lib/status-style";
 import { StatusBadge } from "@/components/shared/status-badge";
 
 const CHECK_POLL_MS = 30_000;
@@ -487,11 +481,11 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
                 badge={
                   downCount > 0 ? (
                     <span className="text-[11px] font-medium text-destructive bg-destructive/10 px-2 py-0.5 rounded-full animate-pulse">
-                      Needs Action
+                      {t("kpi.badgeNeedsAction")}
                     </span>
                   ) : (
                     <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
-                      All Up
+                      {t("kpi.badgeAllUp")}
                     </span>
                   )
                 }
@@ -521,11 +515,11 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
                 badge={
                   incidentsCount > 0 ? (
                     <span className="text-[11px] font-medium text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full">
-                      Active
+                      {t("kpi.badgeActive")}
                     </span>
                   ) : (
                     <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
-                      Clean
+                      {t("kpi.badgeClean")}
                     </span>
                   )
                 }
@@ -567,7 +561,6 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
             events={events}
             isError={!!eventsQuery.error}
             onRetry={() => eventsQuery.refetch()}
-            tickNow={tickNow}
           />
 
           <MyOnCallWidget org={org} />
@@ -803,7 +796,7 @@ function ChecksGlanceList({
             {t("glance.title")}
           </CardTitle>
           <CardDescription className="text-xs text-muted-foreground mt-0.5">
-            Fleet health preview and live response telemetry
+            {t("glance.description")}
           </CardDescription>
         </div>
         <Button
@@ -813,7 +806,7 @@ function ChecksGlanceList({
           className="text-xs font-medium gap-1 text-primary"
         >
           <Link to="/orgs/$org/checks" params={{ org }}>
-            View all ({totalCount}) <ArrowRight className="h-3 w-3" />
+            {t("glance.viewAll", { count: totalCount })} <ArrowRight className="h-3 w-3" />
           </Link>
         </Button>
       </CardHeader>
@@ -860,7 +853,9 @@ function ChecksGlanceList({
                                 ? "bg-emerald-500"
                                 : status === "warning"
                                   ? "bg-amber-500"
-                                  : "bg-destructive"
+                                  : status === "stale"
+                                    ? statusStyle(status).color
+                                    : "bg-destructive"
                           }`}
                         />
                       </span>
@@ -890,7 +885,7 @@ function ChecksGlanceList({
                       ) : (
                         <div className="h-4 w-full rounded bg-muted/40 flex items-center justify-center">
                           <span className="text-[10px] text-muted-foreground/60 font-mono">
-                            24h telemetry active
+                            {t("glance.telemetryPending")}
                           </span>
                         </div>
                       )}
@@ -1081,15 +1076,21 @@ interface RecentActivityListProps {
   events: Event[];
   isError: boolean;
   onRetry: () => void;
-  tickNow: number;
 }
 
+// Renders with EventLogTable ("embedded" variant), the exact same table as
+// the Events page (spec 2026-09-25-32) — same EventTypeLabel icon, same
+// DurationAgo + hover timestamp, same actor cell (hidden below `md` here so
+// the card stays no wider than its siblings — never dropped, see the
+// component's own doc comment), same related check/incident links, and the
+// same activation-milestone description line. Only the Card chrome (title,
+// empty state, SectionError, the 8-event size, the footer link) stays
+// dashboard-specific.
 function RecentActivityList({
   org,
   events,
   isError,
   onRetry,
-  tickNow,
 }: RecentActivityListProps) {
   const { t } = useTranslation("dashboard");
   const { t: tEvents } = useTranslation("events");
@@ -1107,92 +1108,12 @@ function RecentActivityList({
             {t("recentActivity.empty")}
           </div>
         ) : (
-          <ul className="divide-y">
-            {events.map((event) => {
-              const description = getEventDescription(event.eventType, tEvents);
-              const checkName = getEventCheckName(event);
-              const channelName =
-                event.eventType ===
-                "org.activation.first_notification_configured"
-                  ? getEventChannelName(event)
-                  : undefined;
-              const channelUid = channelName
-                ? getEventChannelUid(event)
-                : undefined;
-              return (
-                <li
-                  key={event.uid}
-                  className="flex items-center gap-3 py-3 text-sm"
-                >
-                  <span className="shrink-0">
-                    {getEventIcon(event.eventType)}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <div className="truncate">
-                      {getEventLabel(event.eventType, tEvents)}
-                    </div>
-                    {event.incidentUid || event.checkUid ? (
-                      <div className="text-xs truncate flex items-center gap-1.5">
-                        {event.incidentUid ? (
-                          <Link
-                            to="/orgs/$org/incidents/$incidentUid"
-                            params={{ org, incidentUid: event.incidentUid }}
-                            className="text-primary hover:underline"
-                          >
-                            {tEvents("links.incident")}
-                          </Link>
-                        ) : null}
-                        {event.checkUid ? (
-                          <Link
-                            to="/orgs/$org/checks/$checkUid"
-                            params={{ org, checkUid: event.checkUid }}
-                            search={{
-                              graphPeriod: undefined,
-                              graphFull: undefined,
-                              region: undefined,
-                            }}
-                            className="text-primary hover:underline"
-                          >
-                            {checkName ?? tEvents("links.check")}
-                          </Link>
-                        ) : checkName ? (
-                          <span className="text-muted-foreground">
-                            {checkName}
-                          </span>
-                        ) : null}
-                      </div>
-                    ) : channelName ? (
-                      <div className="text-xs text-muted-foreground truncate">
-                        {tEvents(
-                          "descriptions.first_notification_configured_prefix",
-                        )}{" "}
-                        {channelUid ? (
-                          <Link
-                            to="/orgs/$org/integrations/$integrationUid"
-                            params={{ org, integrationUid: channelUid }}
-                            className="text-primary hover:underline"
-                          >
-                            {channelName}
-                          </Link>
-                        ) : (
-                          <span>{channelName}</span>
-                        )}
-                      </div>
-                    ) : description ? (
-                      <div className="text-xs text-muted-foreground truncate">
-                        {description}
-                      </div>
-                    ) : null}
-                  </div>
-                  {event.createdAt ? (
-                    <span className="text-xs text-muted-foreground shrink-0">
-                      {formatRelative(new Date(event.createdAt), tickNow)}
-                    </span>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
+          <EventLogTable
+            org={org}
+            events={events}
+            t={tEvents}
+            variant="embedded"
+          />
         )}
       </CardContent>
       <CardFooter>

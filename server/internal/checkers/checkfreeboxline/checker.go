@@ -211,6 +211,13 @@ func (c *FreeboxLineChecker) Execute(
 
 	client := freebox.NewClientWithAppID(conn.BaseURL, conn.AppID, conn.AppToken)
 
+	// The box's base URL is a user-chosen target: under an enforcing egress
+	// policy (spec 2026-09-25-19) the calls dial through the guard. A box on
+	// a private address is only reachable from a private-location agent.
+	if checkerdef.EgressEnforcing(ctx) {
+		client = client.WithTransport(checkerdef.HTTPTransportFor(ctx, false))
+	}
+
 	var wan connectionResponse
 	if err := client.Get(ctx, "/api/v4/connection/", &wan); err != nil {
 		return downResult(start, "fetch /connection/: "+err.Error()), nil

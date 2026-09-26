@@ -269,7 +269,7 @@ test.describe("Live dashboard updates", () => {
 
       // Count check-detail GETs, split by URL shape. `useCheck` now keys every
       // consumer on ["check", org, uid] and always requests
-      // ?with=last_result,last_status_change, so the canonical fetch carries a
+      // ?with=last_result,last_status_change,region_freshness, so the canonical fetch carries a
       // query string. The bare (no-query) form is what the breadcrumb used to
       // fetch as a *second* cache entry (["check", org, uid, {with:undefined}]),
       // double-fetching the check on every live hint — after the single-key

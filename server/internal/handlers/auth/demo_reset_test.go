@@ -31,7 +31,7 @@ func TestResetPasswordRefusesTheDemoAccount(t *testing.T) {
 	stateValue := &models.JSONMap{"userUid": user.UID}
 	ttl := passwordResetTTL
 	r.NoError(dbSvc.SetStateEntry(ctx, nil,
-		passwordResetKeyPrefix+hashResetToken(token), stateValue, &ttl))
+		passwordResetKeyPrefix+hashPendingToken(token), stateValue, &ttl))
 
 	_, err := svc.ResetPassword(ctx, ResetPasswordRequest{Token: token, Password: "newpassword"})
 	r.ErrorIs(err, ErrDemoAccountNotResettable)
@@ -61,7 +61,7 @@ func TestResetPasswordStillWorksForOrdinaryAccounts(t *testing.T) {
 	stateValue := &models.JSONMap{"userUid": user.UID}
 	ttl := passwordResetTTL
 	r.NoError(dbSvc.SetStateEntry(ctx, nil,
-		passwordResetKeyPrefix+hashResetToken(token), stateValue, &ttl))
+		passwordResetKeyPrefix+hashPendingToken(token), stateValue, &ttl))
 
 	_, err := svc.ResetPassword(ctx, ResetPasswordRequest{Token: token, Password: "newpassword"})
 	r.NoError(err)

@@ -5,6 +5,7 @@ import {
   availabilityFill,
   classifyAvailabilityCounts,
   formatAvailabilityPct,
+  isPartiallyMeasured,
 } from "./availability-status";
 
 // The Go authority is uptimebar.Classify (server/internal/uptimebar/classify.go).
@@ -71,5 +72,18 @@ describe("formatAvailabilityPct", () => {
   test("returns null for absent data rather than a fabricated number", () => {
     expect(formatAvailabilityPct(undefined)).toBeNull();
     expect(formatAvailabilityPct(Number.NaN)).toBeNull();
+  });
+});
+
+describe("isPartiallyMeasured", () => {
+  test("flags a bucket whose probes fell well short of the expectation", () => {
+    expect(isPartiallyMeasured({ coveragePct: 67 })).toBe(true);
+    expect(isPartiallyMeasured({ coveragePct: 0 })).toBe(true);
+  });
+
+  test("stays quiet for a fully measured bucket or an older server", () => {
+    expect(isPartiallyMeasured({ coveragePct: 100 })).toBe(false);
+    expect(isPartiallyMeasured({ coveragePct: 95 })).toBe(false);
+    expect(isPartiallyMeasured({})).toBe(false);
   });
 });

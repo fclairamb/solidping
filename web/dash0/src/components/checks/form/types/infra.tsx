@@ -20,7 +20,7 @@ import { getFieldError } from "@/hooks/use-check-validation";
 import { canSource } from "@/api/hooks";
 import type { CheckTypeModule } from "./index";
 import type { CheckConfig, CheckTypeFieldsProps, FieldErrors } from "./common";
-import { durationStringToSeconds, getConfigField } from "./common";
+import { durationStringToSeconds, getConfigField, validationMessage } from "./common";
 import { useCheckFormFields } from "./context";
 
 // ── SNMP ──
@@ -55,7 +55,7 @@ export const snmpModule: CheckTypeModule<SnmpState> = {
       cfg.operator = state.operator;
     const errors: FieldErrors = state.host
       ? []
-      : [{ name: "host", message: "Host is required" }];
+      : [{ name: "host", message: validationMessage("hostRequired") }];
     return { config: cfg, errors };
   },
   Fields: SnmpFields,
@@ -209,7 +209,7 @@ export const dockerModule: CheckTypeModule<DockerState> = {
         : [
             {
               name: "containerName",
-              message: "Container name or ID is required",
+              message: validationMessage("containerRequired"),
             },
           ];
     return { config: cfg, errors };
@@ -374,12 +374,12 @@ export const freeboxLineModule: CheckTypeModule<FreeboxLineState> = {
     if (!state.connectionUid)
       errors.push({
         name: "connectionUid",
-        message: "Freebox connection is required",
+        message: validationMessage("freeboxConnectionRequired"),
       });
     else if (state.linkType !== "xdsl" && state.linkType !== "ftth")
       errors.push({
         name: "linkType",
-        message: "Link type must be xdsl or ftth",
+        message: validationMessage("linkTypeInvalid"),
       });
     return { config: cfg, errors };
   },
@@ -693,15 +693,15 @@ export const prometheusModule: CheckTypeModule<PrometheusState> = {
     if (Object.keys(headers).length > 0) cfg.headers = headers;
 
     const errors: FieldErrors = [];
-    if (!state.url) errors.push({ name: "url", message: "URL is required" });
+    if (!state.url) errors.push({ name: "url", message: validationMessage("urlRequired") });
     if (promql && !state.query)
-      errors.push({ name: "query", message: "PromQL query is required" });
+      errors.push({ name: "query", message: validationMessage("promqlRequired") });
     if (!promql && !state.metric)
-      errors.push({ name: "metric", message: "Metric name is required" });
+      errors.push({ name: "metric", message: validationMessage("metricRequired") });
     if (state.warningValue === "" && state.criticalValue === "")
       errors.push({
         name: "criticalValue",
-        message: "Set a warning and/or a critical threshold",
+        message: validationMessage("thresholdRequired"),
       });
 
     return { config: cfg, errors };

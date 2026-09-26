@@ -25,8 +25,10 @@ import {
   CalendarClock,
 } from "lucide-react";
 import { toast } from "sonner";
+import { AutoPlacementBulkButton } from "@/components/checks/auto-placement-bulk";
 import {
   useInfiniteChecks,
+  useRegions,
   useDeleteCheck,
   useCheckGroups,
   useCreateCheckGroup,
@@ -52,6 +54,7 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { StatusDot } from "@/components/shared/status-dot";
 import { PageHeader } from "@/components/shared/page-header";
 import { CheckRateLimitBanner } from "@/components/shared/check-rate-limit-banner";
+import { ChecksRegionOutageBanner } from "@/components/shared/region-outage-banner";
 import { StalePublicationsBanner } from "@/components/shared/stale-publications-banner";
 import {
   Table,
@@ -118,6 +121,7 @@ import { slugify } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { canDemoEditCheck } from "@/lib/demo";
 import { statusStyle } from "@/lib/status-style";
+import { rollupSectionStatus } from "@/lib/status-rollup";
 import { CHECKS_LIST_POLL_MS, useLiveSubscription } from "@/contexts/LiveEventsContext";
 
 // The checks index can bucket its rows by check group (server-side entity,
@@ -132,19 +136,6 @@ interface ChecksIndexSearch {
   type?: string;
   groupBy?: GroupByMode;
   q?: string;
-  /**
-   * Restricts the list to the checks the degraded dry run has flagged (spec
-   * 2026-09-22-03) — what enabling degraded detection would have caught. In the
-   * URL, not local state, because it is a view somebody shares.
-   *
-   * A BOOLEAN, like graphFull on the check-detail route, not the string "true":
-   * TanStack Router's default stringifier JSON-encodes a string whose text is
-   * itself valid JSON, so a string "true" went into the URL as `%22true%22` and
-   * a hand-typed or shared `?wouldHaveFired=true` came back as the boolean
-   * `true`, which the string comparison then missed — the filter silently did
-   * nothing for exactly the people a shareable URL is for.
-   */
-  wouldHaveFired?: true;
 }
 
 // Status tokens the faceted filter offers, in display order. `degraded` is
@@ -153,7 +144,10 @@ interface ChecksIndexSearch {
 // (server/internal/db/models/check.go), so it would sit in the list as a dead
 // option nothing could ever match. `?status=degraded` still parses and 200s
 // if a caller hand-types it — this only decides what the popover renders.
-const STATUS_FILTER_VALUES = ["up", "down", "validating", "warning", "created"] as const;
+// `stale` ("No data", spec 2026-09-25-02) sits right after the failure
+// states: a check nobody is measuring is the next thing an operator hunts for
+// when a region goes dark.
+const STATUS_FILTER_VALUES = ["up", "down", "validating", "warning", "stale", "created"] as const;
 
 // Group slugs are 3-100 chars: a lowercase letter followed by 2-99 lowercase
 // letters/digits/hyphens. This mirrors slugRegex in
@@ -200,13 +194,6 @@ export const Route = createFileRoute("/orgs/$org/checks/")({
       ? (search.groupBy as GroupByMode)
       : undefined,
     q: typeof search.q === "string" && search.q ? search.q : undefined,
-    // Accept both spellings: the default parser hands us a native boolean for
-    // `?wouldHaveFired=true`, and the quoted form is what already-shared links
-    // from the string-typed version carry.
-    wouldHaveFired:
-      search.wouldHaveFired === true || search.wouldHaveFired === "true"
-        ? true
-        : undefined,
   }),
 });
 
@@ -242,12 +229,15 @@ function writeCollapsedGroup(org: string, groupUid: string, collapsed: boolean):
 }
 
 // Severity order for the group header's compact member summary — failures
-// first (the thing you came to see), the healthy count last.
+// first (the thing you came to see), the healthy count last. Same rank as the
+// group rollup (models.RollupGroupStatus): down > validating > warning >
+// stale > up.
 const MEMBER_SUMMARY_ORDER = [
   "down",
   "degraded",
-  "warning",
   "validating",
+  "warning",
+  "stale",
   "created",
   "up",
 ] as const;
@@ -323,33 +313,25 @@ function formatMemberSummary(
 // which carry a precomputed status/memberStatusCounts from the API) — the
 // aggregate status here is a pure client-side function of the currently
 // loaded rows, following the exact same worst-of precedence as
-// models.RollupGroupStatus (server/internal/db/models/check_group_status.go):
-// down if every considered (enabled) member is down, degraded if some (not
-// all) are down, warning if none are down but at least one is warning,
-// validating if none are down/warning but at least one is validating, up if
-// at least one is up, otherwise created.
+// models.RollupGroupStatus (server/internal/db/models/check_group_status.go),
+// rank down > validating > warning > stale > up: down if every considered
+// (enabled) member is down, degraded if some (not all) are down, validating
+// if none are down but at least one is validating, warning if none are
+// down/validating but at least one is warning, stale ("No data") if otherwise
+// any member stopped reporting — an all-stale section reads stale, never
+// created — up if at least one is up, otherwise created.
 function computeHostSectionStatus(checks: Check[]): {
   status: string;
   counts: Record<string, number>;
 } {
   const counts: Record<string, number> = {};
-  let total = 0;
   for (const check of checks) {
     if (check.enabled === false) continue;
     const status = check.status ?? "created";
     counts[status] = (counts[status] ?? 0) + 1;
-    total++;
   }
 
-  if (total === 0) return { status: "created", counts };
-
-  const down = counts.down ?? 0;
-  if (down === total) return { status: "down", counts };
-  if (down > 0) return { status: "degraded", counts };
-  if ((counts.warning ?? 0) > 0) return { status: "warning", counts };
-  if ((counts.validating ?? 0) > 0) return { status: "validating", counts };
-  if ((counts.up ?? 0) > 0) return { status: "up", counts };
-  return { status: "created", counts };
+  return { status: rollupSectionStatus(counts), counts };
 }
 
 // A group/host section is an elevated card whose header is a tinted band with
@@ -546,7 +528,7 @@ function CheckRow({
                 </span>
               </TooltipTrigger>
               <TooltipContent>
-                via {bastion ? checkLabel(bastion) : "SSH tunnel"}
+                {t("tunnel.viaTooltip", { name: bastion ? checkLabel(bastion) : t("tunnel.viaTitle") })}
               </TooltipContent>
             </Tooltip>
           )}
@@ -1053,7 +1035,6 @@ function ChecksIndexPage() {
     type: typeParam,
     groupBy: groupByParam,
     q: qParam,
-    wouldHaveFired: wouldHaveFiredParam,
   } = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
   const labelFilters = parseLabelsParam(labelsParam);
@@ -1182,7 +1163,6 @@ function ChecksIndexPage() {
     statusValues.length > 0 ||
     typeValues.length > 0 ||
     Boolean(labelsParam) ||
-    Boolean(wouldHaveFiredParam) ||
     internalFilter !== "false";
 
   // Live updates: a `checks` hint (status transition, membership/config
@@ -1236,7 +1216,6 @@ function ChecksIndexPage() {
     // by the list error state) rather than silently vanish from the request.
     status: statusParam,
     type: typeParam,
-    wouldHaveFired: wouldHaveFiredParam ? "true" : undefined,
     limit: 100,
     // Load the stream in the exact order the page renders it, so the top of
     // the page fills first instead of arriving in unrelated created_at order:
@@ -1288,6 +1267,12 @@ function ChecksIndexPage() {
     }
     return { checksByGroup: byGroup, ungroupedChecks: ungrouped, checksByUid: byUid };
   }, [checksData]);
+
+  // Region outage banner (spec 2026-09-25-03): which loaded checks run from a
+  // region the server holds as offline. react-query dedupes useRegions with
+  // every other page that reads it.
+  const { data: regionsData } = useRegions(org);
+  const loadedChecks = useMemo(() => Array.from(checksByUid.values()), [checksByUid]);
 
   // Host-mode bucketing (spec 2026-08-01-04): every loaded check bucketed by
   // its derived targetHost, section order following first-appearance in the
@@ -1561,6 +1546,8 @@ function ChecksIndexPage() {
               <Upload className="mr-2 h-4 w-4" />
               {t("import")}
             </Button>
+            {/* Bulk "Switch to automatic placement" (spec 2026-09-25-06). */}
+            <AutoPlacementBulkButton org={org} />
             <Button variant="outline" onClick={() => setShowNewGroup(true)} data-testid="new-group-button">
               <FolderPlus className="sm:mr-2 h-4 w-4" />
               <span className="hidden sm:inline">{t("newGroup")}</span>
@@ -1613,6 +1600,12 @@ function ChecksIndexPage() {
         (spec 2026-09-02-05).
       */}
       <StalePublicationsBanner org={org} stale={stalePublications} />
+
+      {/*
+        A dark region explains every "No data" row it strands, so it sits with
+        the other page-level causes, above the filters (spec 2026-09-25-03).
+      */}
+      <ChecksRegionOutageBanner org={org} checks={loadedChecks} regions={regionsData?.regions} />
 
       <div className="flex flex-wrap items-center gap-4">
         <div className="relative flex-1 min-w-[200px] max-w-sm">
@@ -1674,25 +1667,6 @@ function ChecksIndexPage() {
           triggerLabel={typeTriggerLabel}
           testId="type-filter"
         />
-        {/* The degraded dry run's own view (spec 2026-09-22-03): the checks the
-            evaluator WOULD have flagged. A plain toggle rather than a faceted
-            filter — there is exactly one thing to ask. */}
-        <Button
-          variant={wouldHaveFiredParam ? "secondary" : "outline"}
-          aria-pressed={Boolean(wouldHaveFiredParam)}
-          onClick={() =>
-            void navigate({
-              search: (prev) => ({
-                ...prev,
-                wouldHaveFired: prev.wouldHaveFired ? undefined : true,
-              }),
-              replace: true,
-            })
-          }
-          data-testid="would-have-fired-filter"
-        >
-          {t("wouldHaveFiredFilter")}
-        </Button>
         <Button
           variant="outline"
           onClick={handleRefresh}
@@ -1705,7 +1679,7 @@ function ChecksIndexPage() {
           <span className="hidden sm:inline">{t("common:refresh")}</span>
         </Button>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-medium text-muted-foreground">Labels:</span>
+          <span className="text-sm font-medium text-muted-foreground">{t("labelFilterLabel")}</span>
           <LabelFilter
             org={org}
             value={labelFilters}
@@ -1729,7 +1703,7 @@ function ChecksIndexPage() {
               }
               data-testid="clear-label-filters"
             >
-              Clear filters
+              {t("clearFilters")}
             </Button>
           )}
         </div>
@@ -1886,7 +1860,7 @@ function ChecksIndexPage() {
             <AlertDialogCancel>{tc("cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeleteCheck}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              variant="destructive"
             >
               {tc("delete")}
             </AlertDialogAction>

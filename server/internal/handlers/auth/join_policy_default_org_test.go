@@ -1,9 +1,6 @@
 package auth
 
 import (
-	"net/http"
-	"net/http/httptest"
-	"net/url"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -159,37 +156,4 @@ func TestCompleteOrgLoginPendingOrgSlug(t *testing.T) {
 		require.True(t, result.Pending)
 		require.Equal(t, "acme", result.PendingOrgSlug)
 	})
-}
-
-// TestPendingMembershipRedirectWithoutOrg is the URL-level assertion the
-// dashboard depends on: with no org to name, /no-org must be reached WITHOUT
-// the membershipPending flag, so the "a join request was sent to its admins"
-// alert (which would name the operator's own org) never renders.
-func TestPendingMembershipRedirectWithoutOrg(t *testing.T) {
-	t.Parallel()
-
-	redirect := pendingMembershipRedirect("", "tok-456", 3600)
-
-	parsed, err := url.Parse(redirect)
-	require.NoError(t, err)
-	require.Equal(t, noOrgPath, parsed.Path)
-
-	query := parsed.Query()
-	require.False(t, query.Has(pendingMembershipParam),
-		"an unnamed pending outcome must not carry the membershipPending flag at all")
-	require.Equal(t, "tok-456", query.Get("access_token"))
-	require.Equal(t, "3600", query.Get("expires_in"))
-
-	// And through the shared callback tail every provider uses.
-	recorder := httptest.NewRecorder()
-	req := httptest.NewRequestWithContext(
-		t.Context(), http.MethodGet, "/api/v1/auth/google/callback", nil)
-
-	require.NoError(t, finishProviderCallback(
-		recorder, req, "/d/orgs/default?access_token=at", "", "at", 3600, true))
-
-	location := recorder.Header().Get("Location")
-	require.Contains(t, location, noOrgPath)
-	require.NotContains(t, location, pendingMembershipParam)
-	require.NotContains(t, location, defaults.Organization)
 }

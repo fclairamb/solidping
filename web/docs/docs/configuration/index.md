@@ -61,6 +61,7 @@ the right place.
 | `SP_SHUTDOWN_TIMEOUT` | `30s` | Graceful shutdown timeout |
 | `SP_EXIT_WITH_PARENT` | `false` | Shut down when the process that started SolidPing disappears, instead of being reparented to PID 1. For servers spawned by a test harness or a wrapper script; leave off under a normal supervisor |
 | `PORT` | - | Alternative to `SP_SERVER_LISTEN` (for PaaS compatibility) |
+| `SP_HEADERS_CSP_EXTRA_SOURCES` | - | Extra `Content-Security-Policy` sources, as `;`-separated "directive source…" groups (see [Security Headers](/configuration/security-headers#widening-the-policy)) |
 
 ### Custom Domains & TLS
 
@@ -176,6 +177,7 @@ used, so edits made through the API are preserved across restarts.
 |----------|---------|-------------|
 | `SP_CHECKERS_BROWSER_CDP_URL` | - | Remote headless Chrome (CDP) endpoint for [browser checks](/features/check-types#browser), e.g. `ws://browser:9222`. Required in containers — the image ships no browser |
 | `SP_CHECKERS_BROWSER_CHROME_PATH` | - | Local Chrome/Chromium binary used when no CDP URL is set. Empty means "probe the usual names"; nothing is ever downloaded |
+| `SP_EGRESS_ALLOW_PRIVATE` | derived | Let this process's checks reach non-public addresses (loopback, RFC 1918, link-local, cloud metadata…). Unset: allowed on self-hosted and on agents, denied on SaaS shared workers. See [Egress policy](/configuration/egress-policy) |
 
 ### Logging
 
@@ -295,8 +297,9 @@ See [Product Analytics](/configuration/analytics) for exactly what is and is not
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SP_PROMETHEUS_ENABLED` | `true` | Enable the Prometheus `/metrics` endpoint |
+| `SP_PROMETHEUS_ENABLED` | `true` | Master switch for the Prometheus `/metrics` endpoint |
 | `SP_PROMETHEUS_PATH` | `/metrics` | Metrics endpoint path |
+| `SP_METRICS_SCRAPE_TOKEN` | - | Bearer token required to scrape `/metrics`; unset means 404 (see [Observability](/features/observability#prometheus-metrics)) |
 | `SP_SENTRY_DSN` | - | Sentry DSN for error tracking |
 | `SP_OTEL_ENABLED` | `false` | Enable OpenTelemetry export |
 | `SP_OTEL_ENDPOINT` | - | OTLP collector endpoint |
@@ -387,6 +390,7 @@ The SolidPing CLI client (`sp`) uses its own configuration:
 - [Notifications](/configuration/notifications) - Email, Slack, Discord, webhooks, and more
 - [Authentication](/configuration/authentication) - OAuth providers, 2FA, and access control
 - [Security & Encryption](/configuration/security) - Credentials encryption at rest
+- [Security Headers](/configuration/security-headers) - Content-Security-Policy, framing and embedding status pages
 - [File Storage](/configuration/file-storage) - Where uploaded blobs (org logos, status-page assets, screenshots) are stored, and the container volume trap
 - [Product Analytics](/configuration/analytics) - Optional PostHog integration, off unless configured
 - [Data Retention](/configuration/data-retention) - How long raw results and summaries are kept, and how to tune it

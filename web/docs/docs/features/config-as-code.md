@@ -84,6 +84,18 @@ change.
 error rather than a silent preference, because the loser would be dead config
 that still looks meaningful.
 
+## Region placement
+
+An automatically placed check exports as `placement: auto` with its
+`regionCount` and `regionPool`, and no `regions` (they are the scheduler's
+current choice, not part of the document). `placement: auto` with no `regions`
+switches an existing pinned check to automatic placement; an explicit `regions`
+list pins a check. See [Region placement](./region-placement.md).
+
+`failQuorum` (`all`, `majority` or a number) is exported only when it is not
+the default. A document that leaves it out puts the check back on the default,
+and the plan shows that change.
+
 ## What `secrets: stripped` means
 
 Every export carries `secrets: stripped`, and it is a promise about two sets of
@@ -111,7 +123,7 @@ config:
 ```
 
 The reference is what is stored and what comes back out; the value is resolved
-when the check runs. Manage those values under **Organization → Parameters** or
+when the check runs. Manage those values under **Organization → Variables** or
 with `sp params set`.
 
 ## Validating in CI

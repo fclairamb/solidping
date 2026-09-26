@@ -186,6 +186,7 @@ func requireStatsEqual(t *testing.T, expected, actual checks.CheckStatsResponse)
 		models.WireStatusValidating,
 		models.WireStatusDegraded,
 		models.WireStatusWarning,
+		models.WireStatusStale,
 		models.WireStatusUnknown,
 	}
 

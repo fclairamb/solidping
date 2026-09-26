@@ -56,5 +56,7 @@
     "flatSquare": "Flat Square"
   },
   "availability": "Availability",
-  "status": "Status"
+  "status": "Status",
+  "previewAlt": "{{name}} badge",
+  "statusPagePreviewAlt": "{{name}} status"
 }

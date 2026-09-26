@@ -321,19 +321,19 @@ function BadgePreview({
               <img
                 ref={imgRef}
                 src={previewUrl}
-                alt={`${check.name || identifier} badge`}
+                alt={t("previewAlt", { name: check.name || identifier })}
                 data-testid="badge-preview"
               />
             ) : (
               <object
                 data={previewUrl}
                 type="image/svg+xml"
-                aria-label={`${check.name || identifier} badge`}
+                aria-label={t("previewAlt", { name: check.name || identifier })}
                 data-testid="badge-preview"
               >
                 <img
                   src={previewUrl}
-                  alt={`${check.name || identifier} badge`}
+                  alt={t("previewAlt", { name: check.name || identifier })}
                 />
               </object>
             )}

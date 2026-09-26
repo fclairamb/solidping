@@ -124,13 +124,20 @@
     "availability": "Verfügbarkeit 24 Std.",
     "availabilitySub": "Verfügbarkeitszustand der Flotte",
     "activeCount": "{{count}} aktiv",
-    "totalEndpoints": "{{count}} Endpunkte insgesamt"
+    "totalEndpoints": "{{count}} Endpunkte insgesamt",
+    "badgeNeedsAction": "Handlungsbedarf",
+    "badgeAllUp": "Alle aktiv",
+    "badgeActive": "Aktiv",
+    "badgeClean": "Keine"
   },
   "glance": {
     "title": "Prüfungen auf einen Blick",
     "footer_one": "{{count}} Prüfung anzeigen →",
     "footer_other": "Alle {{count}} Prüfungen anzeigen →",
-    "since": "seit {{time}}"
+    "since": "seit {{time}}",
+    "description": "Zustand der Flotte auf einen Blick und Live-Antwortzeiten",
+    "viewAll": "Alle anzeigen ({{count}})",
+    "telemetryPending": "24-Std.-Telemetrie aktiv"
   },
   "activeIncidents": {
     "title": "Aktive Vorfälle",

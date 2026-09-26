@@ -6,7 +6,6 @@ import "github.com/prometheus/client_golang/prometheus"
 // Prometheus metric label names used across multiple metrics.
 const (
 	labelCheckType    = "check_type"
-	labelCheckSlug    = "check_slug"
 	labelStatus       = "status"
 	labelRegion       = "region"
 	labelOrganization = "organization"
@@ -70,38 +69,50 @@ var (
 		[]string{labelRegion},
 	)
 
-	// CheckUp indicates whether a check is currently UP (1) or DOWN (0).
-	CheckUp = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "solidping_check_up",
-			Help: "1 if check is currently UP, 0 otherwise",
-		},
-		[]string{labelCheckSlug, labelCheckType, labelRegion, labelOrganization},
-	)
-
-	// CheckStatusStreak tracks consecutive results with current status.
-	CheckStatusStreak = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "solidping_check_status_streak",
-			Help: "Consecutive results with current status",
-		},
-		[]string{labelCheckSlug, labelCheckType, labelOrganization},
-	)
-
-	// ChecksConfigured tracks the number of configured checks.
-	ChecksConfigured = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "solidping_checks_configured",
-			Help: "Number of configured checks",
-		},
-		[]string{labelCheckType, labelOrganization, "enabled"},
-	)
-
-	// WorkersActive tracks the number of active workers.
+	// WorkersActive is the live-worker count per CLOUD region, exactly as
+	// checks.Service.RegionHealth computes it (spec 2026-09-25-01). It is
+	// written by the per-minute region sweep (spec 2026-09-25-03: Reset, then
+	// one series per cloud region), whatever the watchdog config says. That
+	// sweep is its only writer — spec 03's proposed
+	// `solidping_region_live_workers` would have meant exactly this, so it was
+	// not added as a second name for the same number. Private (`@`) regions
+	// are never exported: their slug is org-relative and one label would
+	// merge every org's region of that name.
 	WorkersActive = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "solidping_workers_active",
-			Help: "Number of active workers",
+			Help: "Live workers serving each cloud region, as computed by the region health report. " +
+				"Written every minute by the region sweep. Private regions are never exported.",
+		},
+		[]string{labelRegion},
+	)
+
+	// RegionDark is 1 while the region sweep holds a cloud region as dark
+	// (assigned jobs and no live worker), 0 otherwise (spec 2026-09-25-03).
+	// Every cloud region the report knows gets a series, so an alert on
+	// `== 1` always has data to evaluate against.
+	RegionDark = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "solidping_region_dark",
+			Help: "1 while the region sweep holds this cloud region as dark (jobs assigned, no live worker), " +
+				"0 otherwise. Private regions are never exported.",
+		},
+		[]string{labelRegion},
+	)
+
+	// ChecksStale is the number of checks currently in the `stale` ("No data")
+	// status, by the region of their placement (spec 2026-09-25-02): one count
+	// per check_jobs region, so a multi-region check counts once in each of its
+	// regions. `any` stands for an any-region job (and for a stale check with
+	// no job at all); every private (`@`) region folds into `private`, because
+	// their slugs are org-relative and one label would merge orgs. Written by
+	// the minute freshness sweep; a region that recovers is set back to 0
+	// rather than dropped, so an alert on `> 0` keeps a series to evaluate.
+	ChecksStale = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "solidping_checks_stale",
+			Help: "Checks with no recent real result (status stale, UI \"No data\"), by placement region. " +
+				"Private regions are folded into region=\"private\", any-region jobs into region=\"any\".",
 		},
 		[]string{labelRegion},
 	)
@@ -686,8 +697,7 @@ var (
 		WatchdogAnomalies, WatchdogStrandedJobs, WatchdogStaleIncidents,
 		WatchdogDetectorFailures, WatchdogLastRun,
 		CheckExecutions, CheckDuration, SchedulingDelay,
-		CheckUp, CheckStatusStreak, ChecksConfigured,
-		WorkersActive, WorkerFreeRunners, CheckRunnerParked, WorkerJobsClaimed,
+		WorkersActive, RegionDark, ChecksStale, WorkerFreeRunners, CheckRunnerParked, WorkerJobsClaimed,
 		IncidentsActive, IncidentsTotal,
 		ChecksRateLimited,
 		HTTPRateLimited,

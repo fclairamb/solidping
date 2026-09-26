@@ -12,28 +12,33 @@ SolidPing can be run on Windows systems as a standalone executable or as a Windo
 Download the latest Windows release from GitHub:
 
 1. Go to the [SolidPing Releases](https://github.com/fclairamb/solidping/releases) page
-2. Download `solidping-windows-amd64.exe`
-3. Rename to `solidping.exe` for convenience
+2. Download `solidping-windows-amd64.zip`
+3. Extract it — the archive contains a single, already-named `solidping.exe`
 
 Or use PowerShell:
 
 ```powershell
 # Download the latest release
-Invoke-WebRequest -Uri "https://github.com/fclairamb/solidping/releases/latest/download/solidping-windows-amd64.exe" -OutFile "solidping.exe"
+Invoke-WebRequest -Uri "https://github.com/fclairamb/solidping/releases/latest/download/solidping-windows-amd64.zip" -OutFile "solidping-windows-amd64.zip"
+
+# Extract it (produces solidping.exe in the current directory)
+Expand-Archive -Path "solidping-windows-amd64.zip" -DestinationPath "."
 ```
 
 ### Verify the checksum (recommended)
 
 Every release also publishes `solidping-checksums.txt`, covering all five
-published binaries:
+published `.gz`/`.zip` archives. Verify it against the downloaded `.zip`
+itself — before extracting it, so the check covers exactly what GitHub
+served:
 
 ```powershell
 Invoke-WebRequest -Uri "https://github.com/fclairamb/solidping/releases/latest/download/solidping-checksums.txt" -OutFile "solidping-checksums.txt"
 
-# The checksums file lists the sha256 for each platform's binary — find the
-# solidping-windows-amd64.exe line and compare it to the hash below.
-Get-FileHash solidping.exe -Algorithm SHA256
-Get-Content solidping-checksums.txt | Select-String "solidping-windows-amd64.exe"
+# The checksums file lists the sha256 for each platform's archive — find the
+# solidping-windows-amd64.zip line and compare it to the hash below.
+Get-FileHash solidping-windows-amd64.zip -Algorithm SHA256
+Get-Content solidping-checksums.txt | Select-String "solidping-windows-amd64.zip"
 ```
 
 :::note
@@ -237,7 +242,8 @@ Get-Content "C:\Program Files\SolidPing\logs\stderr.log" -Tail 100 -Wait
 nssm stop SolidPing
 
 # Download new version
-Invoke-WebRequest -Uri "https://github.com/fclairamb/solidping/releases/latest/download/solidping-windows-amd64.exe" -OutFile "C:\Program Files\SolidPing\solidping.exe"
+Invoke-WebRequest -Uri "https://github.com/fclairamb/solidping/releases/latest/download/solidping-windows-amd64.zip" -OutFile "solidping-windows-amd64.zip"
+Expand-Archive -Path "solidping-windows-amd64.zip" -DestinationPath "C:\Program Files\SolidPing" -Force
 
 # Start the service
 nssm start SolidPing

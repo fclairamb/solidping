@@ -10,7 +10,7 @@
 // their own (simpler) fallback — clear the session and let the caller
 // decide what to do next (redirect to login).
 
-import { clearToken, getRefreshToken, redirectToExpiredLogin, setSession } from "@/api/client";
+import { clearToken, getRefreshToken, getToken, redirectToExpiredLogin, setSession } from "@/api/client";
 
 interface RefreshResponse {
   accessToken: string;
@@ -67,6 +67,22 @@ function escalate(reason: "no-refresh-token" | "rejected"): void {
 async function doRefresh(): Promise<RefreshOutcome> {
   const refreshToken = getRefreshToken();
   if (!refreshToken) {
+    // No refresh token to spend. If there's no access token either, the
+    // browser is simply signed out already — logout() just cleared both (or
+    // a background refetch that was already in flight when it did), and a
+    // mounted query reacting to the resulting 401 landed here. There is
+    // nothing to escalate: no session believes itself authenticated, so
+    // logging an error and redirecting (to a login page we may already be
+    // heading to) would just be noise on top of an action the user already
+    // completed (spec 2026-09-25-14).
+    //
+    // Only the case this branch was originally written for — an access
+    // token that still thinks it's live with no refresh token behind it
+    // (a legacy/partial session, or a login path that skipped setSession) —
+    // is a genuinely inconsistent state worth surfacing.
+    if (!getToken()) {
+      return { accessToken: null, failureReason: "no-refresh-token" };
+    }
     escalate("no-refresh-token");
     return { accessToken: null, failureReason: "no-refresh-token" };
   }

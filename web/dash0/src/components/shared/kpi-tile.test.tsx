@@ -189,10 +189,16 @@ describe("hero tier badge (dashboard availability tile)", () => {
     },
   );
 
-  it("positive control: the light --destructive itself is under 4.5:1 on white", () => {
-    // Why "down" uses red-700 rather than text-destructive.
+  it("documents that --destructive and this badge's red-700 are separate, uncoupled colors", () => {
+    // "down" uses a plain Tailwind color, matching the other three tiers'
+    // own fixed palette, rather than text-destructive. Before spec
+    // 2026-09-24-07 darkened --destructive for the destructive button/text,
+    // that token was actually too light for this badge (4.41:1 on white);
+    // it now also clears 4.5:1, but the two stayed uncoupled regardless —
+    // this only pins that they are, in fact, different colors.
+    expect(token("destructive")).not.toBe(tailwindColor("red-700"));
     expect(
       contrastRatio(oklchToSrgb(parseOklch(token("destructive"))), [1, 1, 1]),
-    ).toBeLessThan(4.5);
+    ).toBeGreaterThanOrEqual(4.5);
   });
 });

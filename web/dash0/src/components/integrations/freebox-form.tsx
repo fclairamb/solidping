@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import {
   useFreeboxPairingStatus,
   useStartFreeboxPairing,
+  useVersion,
 } from "@/api/hooks";
 
 const DEFAULT_BASE_URL = "http://mafreebox.freebox.fr";
@@ -51,6 +52,14 @@ export function FreeboxForm({ org, onPaired, onCancel }: FreeboxFormProps) {
   const [phase, setPhase] = useState<Phase>("input");
   const [connectionUid, setConnectionUid] = useState<string | undefined>();
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
+
+  // On a SaaS deployment the server rejects any baseUrl override outright
+  // (spec 2026-09-25-31: pairing is meant to run from the member's own
+  // network or a private-location agent, never a shared worker) — the field
+  // is disabled here so the dashboard explains that up front instead of
+  // letting the user fill it in and hit a validation error on submit.
+  const { data: versionData } = useVersion();
+  const isSaaS = versionData?.deploymentMode === "saas";
 
   const start = useStartFreeboxPairing(org);
 
@@ -94,7 +103,7 @@ export function FreeboxForm({ org, onPaired, onCancel }: FreeboxFormProps) {
     try {
       const resp = await start.mutateAsync({
         name: name || "Freebox",
-        baseUrl: baseUrl || DEFAULT_BASE_URL,
+        baseUrl: isSaaS ? DEFAULT_BASE_URL : baseUrl || DEFAULT_BASE_URL,
       });
       setConnectionUid(resp.connectionUid);
       setPhase("polling");
@@ -125,7 +134,7 @@ export function FreeboxForm({ org, onPaired, onCancel }: FreeboxFormProps) {
             id="freebox-name"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Living-room Freebox"
+            placeholder={t("freebox.namePlaceholder")}
             data-testid="freebox-name"
           />
           <p className="text-xs text-muted-foreground">
@@ -143,16 +152,22 @@ export function FreeboxForm({ org, onPaired, onCancel }: FreeboxFormProps) {
           <Input
             id="freebox-url"
             type="url"
-            value={baseUrl}
+            value={isSaaS ? DEFAULT_BASE_URL : baseUrl}
             onChange={(e) => setBaseUrl(e.target.value)}
             placeholder={DEFAULT_BASE_URL}
+            disabled={isSaaS}
             data-testid="freebox-url"
           />
           <p className="text-xs text-muted-foreground">
-            {t(
-              "freebox.baseUrlHint",
-              "Leave as-is if SolidPing runs on the same LAN as the Freebox. For remote access, use the public hostname you configured in the Freebox admin under Settings → Freebox OS API.",
-            )}
+            {isSaaS
+              ? t(
+                  "freebox.baseUrlDisabledInSaaS",
+                  "Custom base URLs aren't available on this deployment — pairing always uses the Freebox's default address.",
+                )
+              : t(
+                  "freebox.baseUrlHint",
+                  "Leave as-is if SolidPing runs on the same LAN as the Freebox. For remote access, use the public hostname you configured in the Freebox admin under Settings → Freebox OS API.",
+                )}
           </p>
         </div>
 

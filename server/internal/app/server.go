@@ -25,7 +25,6 @@ import (
 	"github.com/getsentry/sentry-go"
 	"github.com/klauspost/compress/gzhttp"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	k8sclient "k8s.io/client-go/kubernetes"
 
 	"github.com/fclairamb/solidping/server/internal/analytics"
@@ -47,6 +46,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/postgres"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
+	"github.com/fclairamb/solidping/server/internal/egress"
 	"github.com/fclairamb/solidping/server/internal/email"
 	entitlementsapi "github.com/fclairamb/solidping/server/internal/entitlements"
 	agentsadmin "github.com/fclairamb/solidping/server/internal/handlers/agents"
@@ -62,6 +62,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/checkjobs"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks/importers"
+	"github.com/fclairamb/solidping/server/internal/handlers/checkscreenshots"
 	"github.com/fclairamb/solidping/server/internal/handlers/checktypes"
 	"github.com/fclairamb/solidping/server/internal/handlers/degradedeval"
 	"github.com/fclairamb/solidping/server/internal/handlers/discovery"
@@ -76,6 +77,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/files"
 	"github.com/fclairamb/solidping/server/internal/handlers/filestorage/localfs"
 	"github.com/fclairamb/solidping/server/internal/handlers/filestorage/s3fs"
+	"github.com/fclairamb/solidping/server/internal/handlers/freshness"
 	"github.com/fclairamb/solidping/server/internal/handlers/heartbeat"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidentnotifications"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidentpublications"
@@ -135,6 +137,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
 	"github.com/fclairamb/solidping/server/internal/realtime"
 	"github.com/fclairamb/solidping/server/internal/regions"
+	"github.com/fclairamb/solidping/server/internal/securityheaders"
 	"github.com/fclairamb/solidping/server/internal/statuspagecache"
 	"github.com/fclairamb/solidping/server/internal/statuspagekiosk"
 	"github.com/fclairamb/solidping/server/internal/statuspagelock"
@@ -213,9 +216,21 @@ type Server struct {
 	// 2026-09-01-06). Non-nil once SetupRoutes has run, but binds nothing
 	// unless heartbeat.tcp_listen / heartbeat.udp_listen are set.
 	heartbeatPush *heartbeatpush.Server
-	status0FS     fs.FS // overridden in tests; nil means use the real embedded status0Files
-	cancelCtx     context.CancelFunc
-	workersWg     sync.WaitGroup // Tracks workers
+	// securityHeaders renders the per-surface CSP / X-Frame-Options /
+	// Referrer-Policy (spec 2026-09-25-28). Built in SetupRoutes; a nil
+	// builder still renders the shipped defaults, so a test Server that never
+	// ran SetupRoutes serves the same headers minus operator extras.
+	securityHeaders *securityheaders.Builder
+	// embedOrigins caches org slug -> statuspage.allowed_embed_origins for the
+	// status-page shell. Nil-safe (no caching).
+	embedOrigins *embedOriginsCache
+	// status0HashesOnce / status0Hashes memoize the inline-script hashes of
+	// the untouched embedded status0 shell (see status0ShellScriptHashes).
+	status0HashesOnce sync.Once
+	status0Hashes     []string
+	status0FS         fs.FS // overridden in tests; nil means use the real embedded status0Files
+	cancelCtx         context.CancelFunc
+	workersWg         sync.WaitGroup // Tracks workers
 
 	// dbFault latches the first structural database fault (the schema this
 	// process needs is gone). Armed in Start to trigger a graceful shutdown:
@@ -307,6 +322,16 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	// Initialize services
 	svcList := services.NewRegistry()
 	svcList.Clock = clock.Real{}
+
+	// svcList.EgressGuard (notification sender URLs, spec 2026-09-25-20) is
+	// deliberately NOT built here: cfg.EgressAllowsPrivateTargets reads
+	// cfg.Egress.AllowPrivateTargets, and the DB-stored egress.allow_private_targets
+	// system parameter only overlays that field in InitializeSystemConfig,
+	// which runs AFTER NewServer (see main.go). Building the guard this early
+	// would permanently freeze it at the pre-overlay value — the same mistake
+	// the check worker's own guard avoids by building itself inside Start(),
+	// later still. installEgressGuard (called from InitializeSystemConfig) is
+	// where this is actually built, exactly once, after the overlay has run.
 
 	// Create check notifier based on database type — must be created before the
 	// job service so its LISTEN channel can wake up GetJobWait immediately on
@@ -433,8 +458,11 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	// SetupRoutes because a worker-only process runs the job scheduler and
 	// never builds a router — the demo cleanup sweep must work there too
 	// (spec 2026-09-06-02).
-	svcList.Checks = checks.NewService(
+	checksSvc := checks.NewService(
 		dbService, svcList.EventNotifier, credSvc, entitlementsService)
+	checksSvc.SetDeploymentMode(cfg.Deployment.Mode)
+	svcList.Checks = checksSvc
+	svcList.PrivateLocationMonitors = checksSvc
 
 	// Instance-level SMS/voice providers, built ONCE here and shared by every
 	// org that has not brought its own account. A misconfiguration (unknown
@@ -502,6 +530,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		authService:       authService,
 		profilerSrv:       profiler.New(&cfg.Profiler),
 		customDomainCache: newCustomDomainCache(customDomainCacheTTL),
+		embedOrigins:      newEmbedOriginsCache(embedOriginsCacheTTL),
 		dbFault:           dbfault.NewLatch(slog.Default()),
 	}
 
@@ -548,6 +577,30 @@ func deviceConsentRateLimitConfig(base config.RateLimitConfig) config.RateLimitC
 		Burst:             deviceConsentRequestsPerMinute / 2,
 		TrustedProxies:    base.TrustedProxies,
 		TokenBucketsPerIP: base.TokenBucketsPerIP,
+	}
+}
+
+// reportRequestsPerMinute is the per-IP allowance for POST /api/mgmt/report
+// (spec 2026-09-25-26). The endpoint is deliberately anonymous (no auth, no
+// org required) and sits outside limitedPrefix (it's under /api/mgmt, not
+// /api/v1/), so without a dedicated limiter it has no rate limit at all —
+// repeated multipart posts could fill storage and spam the wired GitHub repo
+// token indefinitely. Submitting an in-app bug report is a human action, not
+// a polling client, so this is deliberately much stricter than the general
+// per-IP budget.
+const reportRequestsPerMinute = 5
+
+// reportRateLimitConfig derives the /api/mgmt/report limiter from the
+// server's own, keeping deployment-specific knobs (trusted proxy hops) while
+// collapsing the allowance. Burst is a little above one minute's allowance so
+// a user who double-submits (e.g. retries after a slow upload) isn't
+// immediately punished. RateQueue is left at zero so an over-eager caller is
+// rejected outright (429) rather than parked in a waiting room.
+func reportRateLimitConfig(base config.RateLimitConfig) config.RateLimitConfig {
+	return config.RateLimitConfig{
+		RequestsPerMinute: reportRequestsPerMinute,
+		Burst:             10,
+		TrustedProxies:    base.TrustedProxies,
 	}
 }
 
@@ -658,6 +711,12 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// in the fleet knows. No-op unless Telegram is configured.
 	resolveTelegramSettings(ctx, s.dbService, s.config)
 
+	// Security headers for the HTML surfaces (spec 2026-09-25-28). After
+	// InitializeSystemConfig for the same reason as the analytics client
+	// above: headers.csp_extra_sources and posthog.host may come from the
+	// database.
+	s.setupSecurityHeaders(ctx)
+
 	router := httpx.New()
 	mainGroup := s.buildMainGroup(ctx, router)
 
@@ -688,6 +747,11 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	rootAuth.POST("/2fa/recovery", authHandler.Recovery2FA)
 	rootAuth.POST("/passkeys/login/begin", passkeyHandler.LoginBegin)
 	rootAuth.POST("/passkeys/login/finish", passkeyHandler.LoginFinish)
+	// Federated-login handoff (spec 2026-09-25-12): every provider callback
+	// redirects to /d/auth/complete with a single-use code instead of the
+	// session tokens, and the dashboard redeems it here. Public: the code
+	// (32 random bytes, 60 s, single use) is the credential.
+	rootAuth.POST("/handoff/exchange", authHandler.ExchangeHandoff)
 
 	// OAuth 2.0 Device Authorization Grant, RFC 8628 (spec 2026-08-08-02).
 	// Both endpoints below are public: opening a request grants nothing until
@@ -879,6 +943,10 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		slackAuth := api.NewGroup("/auth/slack")
 		slackAuth.GET("/login", slackOAuthHandler.Login)
 		slackAuth.GET("/callback", slackOAuthHandler.Callback)
+		// TODO(remove after next release): spec 2026-09-25-12
+		// oauth-callback-one-time-code-exchange. Slack installs now hand off
+		// through /auth/handoff/exchange; this only redeems codes an older
+		// pod minted during the rolling deploy.
 		slackAuth.POST("/exchange", slackOAuthHandler.Exchange)
 	}
 
@@ -967,7 +1035,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// cfg.Checkers and installs it as checkjs.TypeEnabled, because this route
 	// setup is never reached by a standalone agent process. Same constructor,
 	// same pure input, so the two cannot diverge — keep them in step.
-	activationResolver := checkerdef.NewActivationResolver(&s.config.Checkers)
+	activationResolver := checkerdef.NewActivationResolver(&s.config.Checkers, s.config.Deployment.Mode)
 	checkTypesService := checktypes.NewService(activationResolver, s.config.Server.BaseURL)
 
 	// MCP endpoint (auth via PAT token, org derived from token)
@@ -1067,6 +1135,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Check routes (authentication required)
 	checksService := checks.NewService(
 		s.dbService, s.services.EventNotifier, s.services.Credentials, s.services.Entitlements)
+	checksService.SetDeploymentMode(s.config.Deployment.Mode)
 	checksHandler := checks.NewHandler(checksService, s.config)
 	orgChecks := orgGroup("/orgs/:org/checks")
 	orgChecks.GET("", checksHandler.ListChecks)
@@ -1075,6 +1144,9 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// segment is never captured as a check UID.
 	orgChecks.GET("/stats", checksHandler.GetCheckStats)
 	orgChecks.POST("", checksHandler.CreateCheck)
+	// Bulk "Switch to automatic placement" (spec 2026-09-25-06). A literal
+	// segment, registered ahead of the "/:checkUid" routes.
+	orgChecks.POST("/auto-placement", checksHandler.SwitchToAutoPlacement)
 
 	// Config-as-code surface (export/import/apply) is admin-only: import and
 	// apply mutate the whole check set, and apply can delete-by-absence.
@@ -1237,6 +1309,8 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// checks inside the customer's network, and revoking an agent is
 	// security-relevant.
 	agentsAdminSvc := agentsadmin.NewService(s.dbService, s.services.Credentials, s.services.Entitlements)
+	// Each private location owns a liveness monitor (spec 2026-09-25-05).
+	agentsAdminSvc.SetLivenessMonitors(checksService)
 	agentsAdminHandler := agentsadmin.NewHandler(agentsAdminSvc, s.config)
 	orgAgentsAdmin := api.NewGroup("/orgs/:org").
 		Use(orgSlugRedirect.Middleware,
@@ -1244,6 +1318,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgAgentsAdmin.GET("/private-regions", agentsAdminHandler.ListPrivateRegions)
 	orgAgentsAdmin.POST("/private-regions", agentsAdminHandler.CreatePrivateRegion)
 	orgAgentsAdmin.DELETE("/private-regions/:slug", agentsAdminHandler.DeletePrivateRegion)
+	orgAgentsAdmin.POST("/private-regions/:slug/liveness-monitor", agentsAdminHandler.EnableLivenessMonitor)
 	orgAgentsAdmin.GET("/agent-enrollment-tokens", agentsAdminHandler.ListEnrollmentTokens)
 	orgAgentsAdmin.POST("/agent-enrollment-tokens", agentsAdminHandler.MintEnrollmentToken)
 	orgAgentsAdmin.DELETE("/agent-enrollment-tokens/:uid", agentsAdminHandler.DeleteEnrollmentToken)
@@ -1286,6 +1361,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		s.services.Credentials,
 		agentsAdminSvc.ResealRegion,
 	)
+	agentWSHandler.SetLivenessMonitors(checksService)
 	api.GET("/agent/ws", agentWSHandler.Serve)
 
 	// Agent attachment upload (spec 2026-08-21-01) — the WS route's sibling,
@@ -1297,6 +1373,18 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	api.POST("/agent/attachments", agentAttachmentsHandler.Upload)
 
 	agentWorkerIncidents.SetAttachmentStore(attachmentsService)
+
+	// A check's screenshots on the check page (spec 2026-09-25-34): the listing
+	// is read-level (viewers see captures like they see incidents), "Capture
+	// now" is a write (orgGroup's RequireOrgWrite refuses viewers) and is rate
+	// limited in the service, per check and per org, across replicas.
+	checkScreenshotsHandler := checkscreenshots.NewHandler(
+		checkscreenshots.NewService(s.dbService, attachmentsService, s.services.EventNotifier, s.services.Clock),
+		s.config,
+	)
+	orgCheckScreenshots := orgGroup("/orgs/:org/checks/:checkUid/screenshots")
+	orgCheckScreenshots.GET("", checkScreenshotsHandler.List)
+	orgCheckScreenshots.POST("/capture", checkScreenshotsHandler.Capture)
 
 	// …and its counterpart for DEPORTED agents (spec 2026-08-21-05): an agent
 	// cannot put image bytes on the JSON socket, so a result that opens or reopens an
@@ -1799,6 +1887,10 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// page-view backstop as the safety net.
 	checksService.SetStatusPageReconciler(statusPagesService)
 	checkGroupsService.SetStatusPageReconciler(statusPagesService)
+	// Turning a check's degraded detection off closes its open degraded
+	// incident in the same request (spec 2026-09-24-08): the evaluator only
+	// sweeps checks with it on, so nothing else ever would.
+	checksService.SetDegradedIncidentResolver(incidentsService)
 	// The MCP surface builds its OWN statuspages.Service (mcp.NewHandler runs
 	// far earlier in this function), and every NewService starts with its own
 	// view memo. Point it at this one's, or an MCP-driven page edit evicts a map
@@ -1926,6 +2018,13 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// lives on the check, and the incidents it opens are ordinary incidents.
 	s.services.Degraded = degradedeval.NewService(
 		s.dbService, incidentsService, s.services.Clock, slog.Default(),
+	)
+
+	// Check freshness (spec 2026-09-25-02): the minute sweep that moves a
+	// check whose results stopped to `stale`. Same interface-registration
+	// pattern, for the same import-cycle reason.
+	s.services.Freshness = freshness.NewService(
+		s.dbService, incidentsService, s.services.Realtime, slog.Default(),
 	)
 	sloAlertsHandler := sloalerts.NewHandler(sloAlertsService, s.config)
 	orgSLOs.GET("/:uid/alert-policies", sloAlertsHandler.List)
@@ -2214,7 +2313,15 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	mgmt.GET("/health", s.healthCheck)
 	mgmt.GET("/version", s.getVersion)
 	mgmt.GET("/limits", s.getLimits)
-	mgmt.POST("/report", feedbackHandler.SubmitReport)
+	// POST /report is anonymous (no auth, no org required) and outside
+	// limitedPrefix, so it gets its own dedicated, much stricter limiter
+	// rather than riding on the unlimited /api/mgmt traffic assumption (spec
+	// 2026-09-25-26) — see reportRateLimitConfig. RateLimitRoute (not
+	// RateLimit) because the route itself is the scope here, not a path
+	// prefix.
+	reportLimiter := middleware.NewRateLimiter(reportRateLimitConfig(s.config.Server.RateLimiting), ctx)
+	mgmtReport := mainGroup.NewGroup("/api/mgmt").Use(reportLimiter.RateLimitRoute)
+	mgmtReport.POST("/report", feedbackHandler.SubmitReport)
 
 	// Memory snapshot (super-admin only): runtime memstats, process RSS,
 	// suspect-subsystem sizes and build cgo/SQLite-driver facts. Gated because
@@ -2231,7 +2338,16 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// the fast/slow-lane go/no-go decision (spec 2026-07-01-01).
 	mgmtAdmin.GET("/scheduling/cost-distribution", s.getCostDistribution)
 
-	// Prometheus metrics endpoint
+	// Prometheus metrics endpoint (spec 2026-09-25-25): gated behind a bearer
+	// scrape token read at REQUEST time, never captured here. Registration
+	// only depends on Prometheus.Enabled (a plain koanf/env value, fully
+	// resolved before SetupRoutes runs) — the token itself is a system
+	// parameter that InitializeSystemConfig may have overlaid onto s.config
+	// from the database, by the real boot order (main.go: NewServer ->
+	// Initialize -> InitializeSystemConfig -> SetupRoutes) before this code
+	// even runs, but reading it lazily here is what also lets a DB-only value
+	// applied through a different call order (e.g. in tests) take effect
+	// without a second code path.
 	if s.config.Prometheus.Enabled {
 		prommetrics.Register(prometheus.DefaultRegisterer)
 		s.registerSubsystemMetrics(prometheus.DefaultRegisterer)
@@ -2241,9 +2357,10 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 			metricsPath = "/metrics"
 		}
 
-		mainGroup.GET(metricsPath, httpx.HTTPHandler(promhttp.Handler()))
+		mainGroup.GET(metricsPath, s.metricsHandler())
 
-		slog.InfoContext(ctx, "Prometheus metrics endpoint enabled", "path", metricsPath)
+		slog.InfoContext(ctx, "Prometheus metrics endpoint enabled", "path", metricsPath,
+			"tokenConfigured", s.config.Prometheus.ScrapeToken != "")
 	}
 
 	// Test/dev fixture routes. Everything registered inside the RunMode=="test"
@@ -2271,6 +2388,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 
 	if s.config.RunMode == runModeTest {
 		api.POST("/test/jobs", testHandler.CreateEmailJob)
+		api.GET("/test/jobs", testHandler.ListJobs)
 		api.GET("/test/state-entries", testHandler.ListStateEntries)
 		api.POST("/test/users", testHandler.CreateUser)
 		api.POST("/test/checks/bulk", testHandler.BulkCreateChecks)
@@ -2379,18 +2497,9 @@ func initSentry(cfg config.SentryConfig) error {
 		Release:          "solidping-server@" + version.Version,
 		TracesSampleRate: cfg.TracesSampleRate,
 		Debug:            cfg.Debug,
-		BeforeSend: func(event *sentry.Event, _ *sentry.EventHint) *sentry.Event {
-			if event.Request == nil {
-				return event
-			}
-			// Scrub sensitive headers
-			for key := range event.Request.Headers {
-				if key == "Authorization" || key == "Cookie" {
-					event.Request.Headers[key] = "[FILTERED]"
-				}
-			}
-			return event
-		},
+		// Filters credential headers and redacts credential query params
+		// (the federated-login handoff code among them) — see sentry_scrub.go.
+		BeforeSend: scrubSentryEvent,
 	})
 	if err != nil {
 		return fmt.Errorf("sentry init: %w", err)
@@ -2653,6 +2762,10 @@ func (s *Server) serveFile(fs embed.FS, fileName string) func(writer http.Respon
 			writer.Header().Set("Content-Type", contentType)
 		}
 
+		// Framing protection only: the /openapi explorer loads its renderer
+		// from a CDN by design, so a fetch policy would just break it.
+		s.applyBaselineHeaders(writer)
+
 		writer.WriteHeader(http.StatusOK)
 
 		if _, err := writer.Write(fileData); err != nil {
@@ -2777,6 +2890,11 @@ func (s *Server) serveRootLLMsFullTxt(writer http.ResponseWriter, _ *http.Reques
 // (assets, llms.txt), <path>.html (pages and category indexes),
 // <path>/index.html, then the static 404.html.
 func (s *Server) serveDocsFile(writer http.ResponseWriter, urlPath string) {
+	// Framing protection only (spec 2026-09-25-28): the docs are static,
+	// build-generated pages with Docusaurus's own inline scripts and no user
+	// content, so a fetch policy would buy nothing but a way to break search.
+	s.applyBaselineHeaders(writer)
+
 	clean := strings.Trim(path.Clean("/"+urlPath), "/")
 
 	var candidates []string
@@ -2931,6 +3049,7 @@ func (s *Server) serveAppRoot(writer http.ResponseWriter, req *http.Request) err
 	// on (the legacy web/dash app was retired), so an unmatched path is a
 	// plain 404 rather than the old dashboard rendered under a typo'd URL.
 	writer.Header().Set("Content-Type", contentTypeHTML)
+	s.applyBaselineHeaders(writer)
 	writer.WriteHeader(http.StatusNotFound)
 
 	_, err := io.WriteString(writer, notFoundHTML)
@@ -3209,6 +3328,14 @@ func (s *Server) serveDash0Static(writer http.ResponseWriter, req *http.Request)
 
 	writer.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", maxAgeSeconds))
 
+	// Every embedded dash0 response carries the dashboard policy (spec
+	// 2026-09-25-28); the shell is what it protects, and the service worker
+	// script inherits it too. The policy reflects the request's own origin,
+	// hence the Vary: a shared cache must not hand an http:// shell's policy
+	// to an https:// visitor.
+	s.applyDashboardHeaders(writer, req)
+	writer.Header().Add("Vary", "X-Forwarded-Proto")
+
 	if err := writeEmbeddedFile(writer, dash0Files, filePath, staticContentType(filePath), http.StatusOK); err != nil {
 		slog.ErrorContext(req.Context(), "Error reading dash0 file", "error", err)
 		http.Error(writer, "File not found", http.StatusNotFound)
@@ -3279,6 +3406,10 @@ func (s *Server) serveStatus0Static(writer http.ResponseWriter, req *http.Reques
 	}
 
 	if !servingIndexFallback {
+		// Assets are not documents, but the policy costs nothing and keeps
+		// "every status0 response has one" a simple invariant to test.
+		s.applyStatusPageHeaders(writer, false, nil)
+
 		// Hashed assets are streamed rather than copied onto the heap: the
 		// status0 bundle is the large one here, and a per-request copy is
 		// anonymous memory the GC has to chase. See writeEmbeddedFile.
@@ -3317,6 +3448,12 @@ func (s *Server) serveStatus0Static(writer http.ResponseWriter, req *http.Reques
 	if meta, ok := s.status0MetaForPath(req, reqPath); ok {
 		data = []byte(injectStatus0Meta(string(data), &meta))
 	}
+
+	// The status-page policy (spec 2026-09-25-28): first-party fetches only,
+	// so an operator's custom stylesheet cannot url() a third party, and
+	// frame-ancestors widened by the owning org's embed allowlist. Keyed on
+	// the URL's org segment, which the shared cache also keys on.
+	s.applyStatusPageHeaders(writer, true, s.statusPageEmbedOrigins(req.Context(), statusPathOrgSlug(req.URL.Path)))
 
 	// The injected og:url derives its scheme from X-Forwarded-Proto, so the
 	// shell varies on it exactly like the custom-domain one. Hashed assets do
@@ -3731,6 +3868,11 @@ func (s *Server) startJobWorker(ctx context.Context) {
 		}
 	}()
 
+	// Passive checks (heartbeat, email) are evaluated here, on the jobs node,
+	// and nowhere else (spec 2026-09-25-04): a dead region or an agent can no
+	// longer silence or break them.
+	s.startPassiveEvaluator(ctx)
+
 	// Start the queue-depth sampler that publishes solidping_jobs_queue_depth.
 	sampler := jobworker.NewQueueDepthSampler(s.jobSvc)
 
@@ -3739,6 +3881,20 @@ func (s *Server) startJobWorker(ctx context.Context) {
 		defer s.workersWg.Done()
 		if err := sampler.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			slog.ErrorContext(ctx, "Job queue-depth sampler error", "error", err)
+		}
+	}()
+}
+
+// startPassiveEvaluator starts the jobs node's passive-check evaluator, the
+// only claimer of heartbeat/email jobs (spec 2026-09-25-04).
+func (s *Server) startPassiveEvaluator(ctx context.Context) {
+	evaluator := checkworker.NewPassiveEvaluator(s.dbService, s.config, s.services, s.services.CheckJobs)
+
+	s.workersWg.Add(1)
+	go func() {
+		defer s.workersWg.Done()
+		if err := evaluator.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			slog.ErrorContext(ctx, "Passive evaluator error", "error", err)
 		}
 	}()
 }
@@ -3921,7 +4077,45 @@ func (s *Server) InitializeSystemConfig(ctx context.Context, cfg *config.Config)
 		slog.InfoContext(ctx, "JWT secret updated from system config, auth service will use new secret on restart")
 	}
 
+	// Build the notification-sender egress guard now that cfg carries the
+	// overlaid egress.allow_private_targets system parameter (see the comment
+	// on svcList.Clock in NewServer for why this can't happen any earlier).
+	s.installEgressGuard(ctx, cfg)
+
+	// Log the resolved /metrics scrape-token state now that cfg carries the
+	// overlaid metrics.scrape_token system parameter (spec 2026-09-25-25).
+	logMetricsScrapeTokenState(ctx, cfg)
+
 	return nil
+}
+
+// installEgressGuard builds this process's egress guard for notification
+// sender URLs (spec 2026-09-25-20) and installs it on s.services, exactly
+// once, from cfg AFTER InitializeSystemConfig has overlaid the DB-stored
+// egress.allow_private_targets system parameter onto it — the same
+// "restart to take effect" contract the check worker's own guard has
+// (checkworker.newEgressGuard, built inside Start(), later still).
+//
+// Every consumer (integration CRUD validation, the manual test-notification
+// endpoint, the job runner sending real deliveries) reads
+// s.services.EgressGuard through the same *services.Registry pointer at call
+// time, and every one of them is wired up (SetupRoutes, startJobWorker) AFTER
+// this runs — see main.go's call order: NewServer -> Initialize ->
+// InitializeSystemConfig -> seedStartupData -> SetupRoutes -> Start. A nil
+// s.services here (a test harness that never calls InitializeSystemConfig) is
+// a no-op: it means "no registry to install onto", not "install a nil guard".
+func (s *Server) installEgressGuard(ctx context.Context, cfg *config.Config) {
+	if s.services == nil {
+		return
+	}
+
+	s.services.EgressGuard = egress.New(cfg.EgressAllowsPrivateTargets())
+
+	slog.InfoContext(ctx, "Egress policy for notification sender URLs",
+		"allow_private_targets", s.services.EgressGuard.AllowsPrivate(),
+		"source", cfg.EgressPolicySource(),
+		"env", egress.EnvAllowPrivate,
+		"parameter", egress.ParamAllowPrivate)
 }
 
 // reResolvePasswordPolicy re-resolves the process-wide password-hashing policy

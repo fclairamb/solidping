@@ -8,6 +8,13 @@
 //   - "degraded" — the aggregated rollup status (a window had warning(s) but
 //                  no dominating failure).
 // Both render amber; they differ only in label ("Warning" vs "Degraded").
+//
+// "stale" (spec 2026-09-25-02) is a check nobody is measuring right now: no
+// real result for max(3 × period, 5 min). It is neither up nor down, so it
+// renders neutral gray with a clock icon and the label "No data" — never
+// green, which is the whole point of the status.
+
+import { Clock, type LucideIcon } from "lucide-react";
 
 export type BadgeVariant =
   | "success"
@@ -30,6 +37,10 @@ export interface StatusStyle {
   defaultLabel: string;
   // True when this status should read as a hard failure (down/error/timeout).
   isDown: boolean;
+  // Optional glyph rendered inside the badge before the label. Only statuses
+  // whose colour alone would be ambiguous carry one: "stale" is the same gray
+  // as created/unknown, and the clock is what says "we stopped hearing".
+  icon?: LucideIcon;
 }
 
 const NEUTRAL_CHART = "transparent";
@@ -93,6 +104,17 @@ export function statusStyle(status: string | undefined | null): StatusStyle {
         labelKey: "status.abandoned",
         defaultLabel: "Abandoned",
         isDown: false,
+      };
+    case "stale":
+      return {
+        color: "bg-gray-400",
+        dotColor: "bg-gray-400/75",
+        chartColor: NEUTRAL_CHART,
+        badgeVariant: "secondary",
+        labelKey: "status.stale",
+        defaultLabel: "No data",
+        isDown: false,
+        icon: Clock,
       };
     case "down":
     case "error":

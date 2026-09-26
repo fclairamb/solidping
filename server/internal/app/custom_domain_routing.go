@@ -72,6 +72,10 @@ type resolvedCustomDomain struct {
 	// inherits the same who-may-cache-this rule as the API behind it
 	// (spec 2026-08-22-06).
 	Visibility string
+	// EmbedOrigins is the owning org's statuspage.allowed_embed_origins,
+	// resolved with the page and cached with it (spec 2026-09-25-28), so the
+	// shell's frame-ancestors costs no extra query per request.
+	EmbedOrigins []string
 }
 
 // customDomainResolution is what a host resolves to. The three cases are
@@ -109,17 +113,24 @@ type customDomainCacheEntry struct {
 	expiresAt  time.Time
 }
 
-// customDomainCache is a small TTL cache for host -> page resolutions.
+// customDomainCache is a small TTL cache for host -> page resolutions. now is
+// an injectable clock (defaulting to time.Now) so tests can pin or advance
+// time instead of racing the real wall clock: a parent test seeds the cache
+// and its parallel subtests only run once a `-parallel` slot frees up, which
+// under a loaded `go test ./...` can be well past a short TTL (spec
+// 2026-09-25-33).
 type customDomainCache struct {
 	mu      sync.RWMutex
 	entries map[string]customDomainCacheEntry
 	ttl     time.Duration
+	now     func() time.Time
 }
 
 func newCustomDomainCache(ttl time.Duration) *customDomainCache {
 	return &customDomainCache{
 		entries: make(map[string]customDomainCacheEntry),
 		ttl:     ttl,
+		now:     time.Now,
 	}
 }
 
@@ -129,7 +140,7 @@ func (c *customDomainCache) get(host string) (customDomainResolution, bool) {
 	entry, ok := c.entries[host]
 	c.mu.RUnlock()
 
-	if !ok || time.Now().After(entry.expiresAt) {
+	if !ok || c.now().After(entry.expiresAt) {
 		return customDomainResolution{}, false
 	}
 
@@ -138,7 +149,7 @@ func (c *customDomainCache) get(host string) (customDomainResolution, bool) {
 
 func (c *customDomainCache) set(host string, resolution customDomainResolution) {
 	c.mu.Lock()
-	c.entries[host] = customDomainCacheEntry{resolution: resolution, expiresAt: time.Now().Add(c.ttl)}
+	c.entries[host] = customDomainCacheEntry{resolution: resolution, expiresAt: c.now().Add(c.ttl)}
 	c.mu.Unlock()
 }
 
@@ -165,6 +176,7 @@ func (s *Server) handlerWithCustomDomains(next http.Handler) http.Handler {
 		case resolved.page != nil:
 			s.serveCustomHost(writer, req, resolved.page)
 		case resolved.known:
+			s.applyBaselineHeaders(writer)
 			serveCustomDomainUnavailable(writer, req, host, resolved.reason)
 		default:
 			next.ServeHTTP(writer, req)
@@ -271,11 +283,12 @@ func (s *Server) lookupCustomDomain(ctx context.Context, host string) customDoma
 	}
 
 	return customDomainResolution{page: &resolvedCustomDomain{
-		OrgSlug:     org.Slug,
-		Slug:        statusPage.Slug,
-		Name:        statusPage.Name,
-		Description: statusPage.Description,
-		Visibility:  statusPage.Visibility,
+		OrgSlug:      org.Slug,
+		Slug:         statusPage.Slug,
+		Name:         statusPage.Name,
+		Description:  statusPage.Description,
+		Visibility:   statusPage.Visibility,
+		EmbedOrigins: s.orgEmbedOrigins(ctx, org.UID),
 	}}
 }
 
@@ -515,6 +528,9 @@ func (s *Server) serveStatus0IndexForCustomHost(
 	data = []byte(injectStatus0Meta(string(data), &meta))
 
 	statuspagecache.Apply(writer.Header(), page.Visibility, statuspagecache.PageMaxAge)
+	// On a custom domain the document origin IS the application origin, so
+	// the status-page policy matters here at least as much as on /s/.
+	s.applyStatusPageHeaders(writer, true, page.EmbedOrigins)
 	writer.Header().Set("Content-Type", contentTypeHTML)
 	_, _ = writer.Write(data)
 }

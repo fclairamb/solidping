@@ -84,6 +84,16 @@ A remote-MCP-aware client resolves everything it needs from the server URL alone
 
 The client then runs a standard OAuth 2.1 authorization-code flow with PKCE, ending on the dashboard's consent screen, where you approve the requested scope (`mcp` or `mcp:read` — see below).
 
+### Confidential clients (client_secret)
+
+Every native and browser-based MCP client above registers as a **public** client (`token_endpoint_auth_method: none`) — PKCE is its only authentication, and that is unaffected by anything below.
+
+A client that registers with `token_endpoint_auth_method` set to `client_secret_post` or `client_secret_basic` is **confidential**: registration returns a `client_secret` once, and every subsequent call to the token endpoint must present it, either as a `client_secret` body field or as an HTTP Basic header (`client_id` as username, secret as password). A confidential client with a missing or wrong secret gets a `401 invalid_client` — the same response an unregistered `client_id` gets, so the token endpoint can't be used to enumerate registered clients.
+
+:::warning Breaking change
+Earlier versions minted and stored a secret for confidential clients but never checked it at the token endpoint. If you registered a confidential client before this changed, it now needs to actually send its secret. An operator who needs a short migration window can set the `oauth.enforce_client_secret` system parameter to `false`: a bad secret is then only logged (once per client, at WARN) and the token is still issued. Turn it back to `true` (the default) once every confidential client has been updated.
+:::
+
 ## Authentication & Scopes
 
 Every call needs a token, with one deliberate exception: the MCP **handshake**

@@ -30,6 +30,16 @@ var (
 	ErrAPIError = errors.New("API error")
 )
 
+// statusLabel renders a check status for the terminal: the wire value as-is,
+// except stale, which reads "no data" (spec 2026-09-25-02).
+func statusLabel(status string) string {
+	if strings.EqualFold(status, "stale") {
+		return "no data"
+	}
+
+	return status
+}
+
 // formatDuration formats a duration in a human-readable short form like "3d", "2h", "5m".
 func formatDuration(duration time.Duration) string {
 	if duration < 0 {
@@ -168,7 +178,7 @@ func checksListAction(ctx context.Context, cmd *cli.Command) error {
 		// Format status with duration if available
 		status := ""
 		if check.LastStatusChange != nil && check.LastStatusChange.Status != nil && check.LastStatusChange.Time != nil {
-			statusStr := string(*check.LastStatusChange.Status)
+			statusStr := statusLabel(string(*check.LastStatusChange.Status))
 			duration := time.Since(*check.LastStatusChange.Time)
 			status = fmt.Sprintf("%s (%s)", statusStr, formatDuration(duration))
 		} else if check.LastResult != nil && check.LastResult.Status != nil {

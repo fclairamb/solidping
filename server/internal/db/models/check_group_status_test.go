@@ -10,8 +10,9 @@ import (
 
 // TestRollupGroupStatus covers every branch of the spec 2026-08-01-01 rollup
 // rules, in priority order: empty/created-only -> created, all-down -> down,
-// some-down -> degraded, warning -> warning, validating -> validating,
-// up -> up.
+// some-down -> degraded, validating -> validating, warning -> warning,
+// stale -> stale, up -> up (spec 2026-09-25-02 rank:
+// down > validating > warning > stale > up).
 func TestRollupGroupStatus(t *testing.T) {
 	t.Parallel()
 
@@ -71,6 +72,43 @@ func TestRollupGroupStatus(t *testing.T) {
 				models.CheckStatusUp:         2,
 			},
 			want: models.CheckStatusValidating,
+		},
+		{
+			name: "validating outranks warning",
+			counts: map[models.CheckStatus]int{
+				models.CheckStatusValidating: 1,
+				models.CheckStatusWarning:    1,
+			},
+			want: models.CheckStatusValidating,
+		},
+		{
+			name: "warning outranks stale",
+			counts: map[models.CheckStatus]int{
+				models.CheckStatusWarning: 1,
+				models.CheckStatusStale:   1,
+			},
+			want: models.CheckStatusWarning,
+		},
+		{
+			name: "stale outranks up",
+			counts: map[models.CheckStatus]int{
+				models.CheckStatusStale: 1,
+				models.CheckStatusUp:    3,
+			},
+			want: models.CheckStatusStale,
+		},
+		{
+			name:   "all-stale group reads stale, not created",
+			counts: map[models.CheckStatus]int{models.CheckStatusStale: 2},
+			want:   models.CheckStatusStale,
+		},
+		{
+			name: "down still wins over stale",
+			counts: map[models.CheckStatus]int{
+				models.CheckStatusDown:  2,
+				models.CheckStatusStale: 1,
+			},
+			want: models.CheckStatusDegraded,
 		},
 		{
 			name: "no down/warning/validating, at least one up",

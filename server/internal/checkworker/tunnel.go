@@ -8,6 +8,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/egress"
 	"github.com/fclairamb/solidping/server/internal/integrations/sshtunnel"
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
 )
@@ -99,6 +100,7 @@ func (t *activeTunnel) annotate(result *checkerdef.Result) {
 // bastion is broken" from "the service behind it is down".
 func (r *CheckWorker) saveTunnelFailureResult(
 	ctx context.Context, checkJob *models.CheckJob, tunnelErr error, tunnel *activeTunnel,
+	egressDenials *egress.Recorder,
 ) error {
 	saveCtx := ctx //nolint:contextcheck // Conditional context assignment mirrors saveErrorResult
 	if ctx.Err() != nil {
@@ -120,6 +122,10 @@ func (r *CheckWorker) saveTunnelFailureResult(
 		Metrics: metrics,
 		Output:  tunnelFailureOutput(tunnelCheckUID, tunnelErr, nil),
 	}
+
+	// A bastion the egress policy refused reads like every other refusal
+	// (message, egress_denied marker), keeping its tunnel_failed marker.
+	r.applyEgressDenial(ctx, checkJob, &result, egressDenials)
 
 	region := ""
 	if checkJob.Region != nil {

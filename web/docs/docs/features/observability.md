@@ -9,12 +9,25 @@ SolidPing integrates with popular observability tools to help you monitor the mo
 
 ## Prometheus Metrics
 
-SolidPing exposes a Prometheus-compatible metrics endpoint (enabled by default).
+SolidPing exposes a Prometheus-compatible metrics endpoint, gated behind a
+bearer scrape token. Per-org check and incident activity is sensitive on any
+internet-facing instance, so `/metrics` answers **404** — indistinguishable
+from a disabled endpoint — until you set a token; it never serves
+unauthenticated.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SP_PROMETHEUS_ENABLED` | `true` | Enable the metrics endpoint |
+| `SP_PROMETHEUS_ENABLED` | `true` | Master switch for the metrics endpoint. `false` always 404s, regardless of the token below |
 | `SP_PROMETHEUS_PATH` | `/metrics` | Path of the metrics endpoint |
+| `SP_METRICS_SCRAPE_TOKEN` | - | Bearer token required to scrape `/metrics`. Unset means 404; set means every request must carry `Authorization: Bearer <token>` or get 401. Can also be set as the `metrics.scrape_token` system parameter from the database, which takes effect on the next restart |
+
+:::note Upgrading from a version that scraped without a token
+Set `SP_METRICS_SCRAPE_TOKEN` (or the `metrics.scrape_token` system
+parameter) once, then add it to your scrape config as shown below. A
+security fix that stays off by default is not a fix, so this is a deliberate
+breaking change — there is no grace period during which the endpoint accepts
+both authenticated and unauthenticated requests.
+:::
 
 ### Scrape Configuration
 
@@ -24,11 +37,17 @@ scrape_configs:
     static_configs:
       - targets: ['solidping:4000']
     metrics_path: /metrics
+    authorization:
+      credentials: <token>
 ```
 
 ### Available Metrics
 
 Metrics cover check execution, worker health, job scheduling, and application performance.
+
+#### Region liveness metrics
+
+`solidping_workers_active{region}` is the number of live workers serving each cloud region, and `solidping_region_dark{region}` is `1` while a region has checks assigned and no live worker, `0` otherwise. Both are refreshed every minute and exist even when the platform watchdog is disabled. An alert on `solidping_region_dark == 1` catches a dark region within about 6 minutes of its last worker heartbeat.
 
 #### Database query metrics
 
@@ -42,7 +61,18 @@ Queries slower than `db.slow_query_threshold` (default `500ms`, `SP_DB_SLOW_QUER
 
 ### Kubernetes ServiceMonitor
 
+Store the token in a `Secret` and reference it with `authorization.credentials`
+— never inline it in the `ServiceMonitor` itself, which is usually much less
+tightly access-controlled than the `Secret` store.
+
 ```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: solidping-metrics-token
+stringData:
+  token: <token>
+---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -55,6 +85,10 @@ spec:
     - port: http
       path: /metrics
       interval: 30s
+      authorization:
+        credentials:
+          name: solidping-metrics-token
+          key: token
 ```
 
 ## Sentry

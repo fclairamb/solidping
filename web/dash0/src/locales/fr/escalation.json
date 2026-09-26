@@ -54,7 +54,8 @@
     "createSchedule": "en créer une",
     "createConnection": "en créer un",
     "targetMissing": "La cible {{kind}} sélectionnée précédemment n'existe plus. Choisissez-en une autre ou supprimez cette cible.",
-    "targetMissingShort": "manquante"
+    "targetMissingShort": "manquante",
+    "namePlaceholder": "Appels de production"
   },
   "targets": {
     "user": "Utilisateur",
@@ -66,6 +67,8 @@
     "title": "Chronologie de l'escalade",
     "fired": "Déclenchée",
     "pending": "En attente",
-    "failed": "Escalade échouée"
+    "failed": "Escalade échouée",
+    "stepSuffix": "· étape {{step}}",
+    "cycleSuffix": "· cycle {{cycle}}"
   }
 }

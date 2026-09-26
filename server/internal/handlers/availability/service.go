@@ -109,7 +109,18 @@ type Period struct {
 	SuccessfulChecks int       `json:"successfulChecks"`
 	// AvailabilityPct is null (and HasData false) when TotalChecks == 0 — no data
 	// is not 100%. The UI renders "-".
-	AvailabilityPct *float64        `json:"availabilityPct"`
+	AvailabilityPct *float64 `json:"availabilityPct"`
+	// Coverage is measured probes ÷ expected probes over the monitored time,
+	// clamped to [0, 1], where expected = monitored / period × max(1, regions)
+	// (spec 2026-09-25-02). An 8-hour gap in a 24-hour window reads 0.67.
+	// Null only when nothing was expected (a zero-length window).
+	Coverage *float64 `json:"coverage"`
+	// UnmeasuredSeconds is the part of MonitoredSeconds nobody measured:
+	// (1 − coverage) × monitoredSeconds.
+	UnmeasuredSeconds int64 `json:"unmeasuredSeconds"`
+	// DowntimeSeconds is attributed to MEASURED time only:
+	// (1 − availability) × monitoredSeconds × coverage. A gap is unmeasured,
+	// never downtime and never uptime.
 	DowntimeSeconds int64           `json:"downtimeSeconds"`
 	Incidents       PeriodIncidents `json:"incidents"`
 }
@@ -211,7 +222,7 @@ func (s *Service) computePeriod(
 
 	bucket := stats[check.UID]
 
-	row := buildPeriodRow(window, bucket, monitored, check.CreatedAt.UTC())
+	row := buildPeriodRow(window, bucket, monitored, check.CreatedAt.UTC(), check.ExpectedProbes(monitored))
 
 	incidents, err := s.fetchIncidents(ctx, orgUID, check.UID, window)
 	if err != nil {
@@ -243,9 +254,12 @@ func monitoredDuration(window periodWindow, createdAt, now time.Time) time.Durat
 
 // buildPeriodRow assembles the probe-ratio part of the DTO from the window's
 // folded BucketStats. availabilityPct is nil (hasData false) when the window has
-// no countable checks — no data ≠ 100%.
+// no countable checks — no data ≠ 100%. expectedProbes is how many results the
+// window should have held; it turns the wall-clock monitored time into the
+// time actually measured.
 func buildPeriodRow(
 	window periodWindow, bucket uptimebar.BucketStats, monitored time.Duration, createdAt time.Time,
+	expectedProbes float64,
 ) Period {
 	row := Period{
 		Period:           window.token,
@@ -257,16 +271,31 @@ func buildPeriodRow(
 		SuccessfulChecks: bucket.Up,
 	}
 
+	// Measured time is the monitored wall-clock time scaled by coverage. A
+	// window we have no expectation for (zero length) is taken as fully
+	// measured, which changes nothing since it has no seconds either.
+	measured := monitored.Seconds()
+
+	if coverage, ok := models.Coverage(bucket.Total, expectedProbes); ok {
+		row.Coverage = &coverage
+		measured = coverage * monitored.Seconds()
+		row.UnmeasuredSeconds = int64(math.Round(monitored.Seconds() - measured))
+	}
+
 	if pct, ok := bucket.AvailabilityPct(); ok {
 		row.HasData = true
 		row.AvailabilityPct = &pct
-		// Probe-time downtime: (1 − avail) × monitoredSeconds. The window is a
-		// single bucket here, so the per-bucket Σ(failedFraction×duration) the spec
-		// recommends collapses to exactly this — attributed only to measured time.
-		// Round to the nearest second so float error doesn't systematically
-		// under-report (e.g. 0.1×604800 = 60479.99… → 60480).
+		// Probe-time downtime over MEASURED time only: (1 − avail) ×
+		// monitoredSeconds × coverage. Before spec 2026-09-25-02 this divided
+		// by wall-clock monitored time and the comment here claimed it was
+		// "attributed only to measured time" — it was not: an 8-hour silent gap
+		// in a 24-hour window stretched the failure ratio over the whole day.
+		// The window is a single bucket here, so the per-bucket
+		// Σ(failedFraction×duration) collapses to exactly this. Round to the
+		// nearest second so float error doesn't systematically under-report
+		// (e.g. 0.1×604800 = 60479.99… → 60480).
 		failedFraction := 1 - pct/100
-		row.DowntimeSeconds = int64(math.Round(failedFraction * monitored.Seconds()))
+		row.DowntimeSeconds = int64(math.Round(failedFraction * measured))
 	}
 
 	return row

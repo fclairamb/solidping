@@ -209,7 +209,7 @@ func (ts *TestServer) createTestMemberships(
 		UID:             "10000000-0000-0000-0000-000000000003",
 		UserUID:         userUID,
 		OrganizationUID: &org.UID,
-		Token:           "pat_test",
+		TokenHash:       models.HashUserToken("pat_test"),
 		Type:            models.TokenTypePAT,
 		Properties:      models.JSONMap{"name": "Test PAT"},
 		ExpiresAt:       nil,

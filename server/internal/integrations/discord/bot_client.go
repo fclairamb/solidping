@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"strconv"
 	"time"
+
+	"github.com/fclairamb/solidping/server/internal/httpclientpool"
 )
 
 // ErrBotTokenMissing is returned when a bot call is attempted with no token.
@@ -111,7 +113,7 @@ type BotClient struct {
 // NewBotClient creates a bot-authenticated Discord REST client.
 func NewBotClient(token string) *BotClient {
 	return &BotClient{
-		httpClient: &http.Client{Timeout: DefaultTimeout},
+		httpClient: httpclientpool.NewClient(DefaultTimeout),
 		token:      token,
 		baseURL:    APIBaseURL,
 	}

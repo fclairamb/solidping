@@ -2,7 +2,11 @@ package mcp
 
 import (
 	"context"
+	"fmt"
+	"strings"
+	"time"
 
+	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
 	"github.com/fclairamb/solidping/server/internal/handlers/results"
@@ -32,7 +36,17 @@ func diagnoseCheckDef() ToolDefinition {
 
 // DiagnoseCheckResult is the JSON shape returned by the diagnose_check tool.
 type DiagnoseCheckResult struct {
-	Check                checks.CheckResponse        `json:"check"`
+	Check checks.CheckResponse `json:"check"`
+	// Freshness names every region that has gone silent, in words ("no result
+	// from lauterbourg since 13:41, 2 other regions reporting"). RecentResults
+	// is trimmed per region, so a dead region would otherwise simply be absent
+	// from it — and absence is the one thing a reader never notices (spec
+	// 2026-09-25-02). Empty when every region is reporting.
+	Freshness []string `json:"freshness,omitempty"`
+	// RegionalIssue spells out the check's regional issue (spec
+	// 2026-09-25-10): some, but fewer than the quorum, of its regions failing —
+	// the check reads `warning` and no incident opens. Empty otherwise.
+	RegionalIssue        string                      `json:"regionalIssue,omitempty"`
 	RecentResults        []results.ResultResponse    `json:"recentResults"`
 	ActiveIncident       *incidents.IncidentResponse `json:"activeIncident"`
 	LastResolvedIncident *incidents.IncidentResponse `json:"lastResolvedIncident"`
@@ -50,6 +64,7 @@ func (h *Handler) toolDiagnoseCheck(
 
 	check, err := h.checksSvc.GetCheck(ctx, orgSlug, identifier, checks.GetCheckOptions{
 		IncludeLastStatusChange: true,
+		IncludeRegionFreshness:  true,
 	})
 	if err != nil {
 		return errorResult(err.Error())
@@ -126,6 +141,8 @@ func buildDiagnoseResponse(
 ) DiagnoseCheckResult {
 	return DiagnoseCheckResult{
 		Check:                *check,
+		Freshness:            describeFreshness(check),
+		RegionalIssue:        describeRegionalIssue(check),
 		RecentResults:        trimResultsPerRegion(recent, perRegion),
 		ActiveIncident:       active,
 		LastResolvedIncident: resolved,
@@ -149,5 +166,64 @@ func trimResultsPerRegion(recent []results.ResultResponse, perRegion int) []resu
 		out = append(out, recent[i])
 		counts[region]++
 	}
+	return out
+}
+
+// describeRegionalIssue renders the regional-issue block as one sentence.
+func describeRegionalIssue(check *checks.CheckResponse) string {
+	issue := check.RegionalIssue
+	if issue == nil {
+		return ""
+	}
+
+	return fmt.Sprintf(
+		"regional issue: failing from %s (%d of %d regions); an incident opens only when %d region(s) "+
+			"fail for the confirmation period",
+		strings.Join(issue.FailingRegions, ", "), len(issue.FailingRegions), issue.RegionCount, issue.FailQuorum,
+	)
+}
+
+// describeFreshness turns the check's per-region freshness into sentences, one
+// per silent region, each saying how many other regions are still reporting.
+// A stale check with no region breakdown still gets one line.
+func describeFreshness(check *checks.CheckResponse) []string {
+	silent := make([]checks.RegionFreshnessResponse, 0, len(check.RegionFreshness))
+	reporting := 0
+
+	for i := range check.RegionFreshness {
+		if check.RegionFreshness[i].Stale {
+			silent = append(silent, check.RegionFreshness[i])
+		} else {
+			reporting++
+		}
+	}
+
+	out := make([]string, 0, len(silent)+1)
+
+	for i := range silent {
+		region := &silent[i]
+		name := region.Region
+		if name == "" {
+			name = "the default region"
+		}
+
+		since := "within the raw retention window"
+		if region.LastResultAt != nil {
+			since = "since " + region.LastResultAt.UTC().Format(time.RFC3339)
+		}
+
+		out = append(out, fmt.Sprintf("no result from %s %s, %d other region(s) reporting",
+			name, since, reporting))
+	}
+
+	if len(out) == 0 && check.Status == models.WireStatusStale {
+		since := "ever"
+		if check.LastResultAt != nil {
+			since = "since " + check.LastResultAt.UTC().Format(time.RFC3339)
+		}
+
+		out = append(out, "no result from any region "+since)
+	}
+
 	return out
 }

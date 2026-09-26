@@ -63,6 +63,15 @@ func main() {
 	)
 	outputDir := flag.String("output-dir", defaultOutputDir, "Directory to write the markdown report to")
 	keep := flag.Bool("keep-checks", false, "Skip deleting checks at the end (for debugging)")
+	// /metrics is gated behind a bearer scrape token by default (spec
+	// 2026-09-25-25); the Makefile bench targets set SP_METRICS_SCRAPE_TOKEN on
+	// the server they launch and pass the same value here via -scrape-token.
+	// Falls back to the env var directly so a manual run only needs to export
+	// SP_METRICS_SCRAPE_TOKEN once.
+	scrapeToken := flag.String(
+		"scrape-token", os.Getenv("SP_METRICS_SCRAPE_TOKEN"),
+		"Bearer token for the /metrics scrape (SP_METRICS_SCRAPE_TOKEN on the target server)",
+	)
 	flag.Parse()
 
 	if err := run(runOpts{
@@ -74,6 +83,7 @@ func main() {
 		targetLatency: *targetLatency,
 		outputDir:     *outputDir,
 		keep:          *keep,
+		scrapeToken:   *scrapeToken,
 	}); err != nil {
 		log.Fatalf("loadgen failed: %v", err)
 	}
@@ -88,6 +98,7 @@ type runOpts struct {
 	targetLatency time.Duration
 	outputDir     string
 	keep          bool
+	scrapeToken   string
 }
 
 func run(opts runOpts) error {
@@ -130,7 +141,7 @@ func run(opts runOpts) error {
 	}
 	log.Printf("loadgen: created %d checks", opts.nChecks)
 
-	baseline, err := scrapeMetrics(ctx, opts.apiURL)
+	baseline, err := scrapeMetrics(ctx, opts.apiURL, opts.scrapeToken)
 	if err != nil {
 		return fmt.Errorf("baseline scrape: %w", err)
 	}
@@ -144,7 +155,7 @@ func run(opts runOpts) error {
 	}
 	elapsed := time.Since(startTime)
 
-	final, err := scrapeMetrics(context.Background(), opts.apiURL)
+	final, err := scrapeMetrics(context.Background(), opts.apiURL, opts.scrapeToken)
 	if err != nil {
 		return fmt.Errorf("final scrape: %w", err)
 	}
@@ -273,10 +284,13 @@ type metricsSnapshot struct {
 	families map[string]*dto.MetricFamily
 }
 
-func scrapeMetrics(ctx context.Context, apiURL string) (*metricsSnapshot, error) {
+func scrapeMetrics(ctx context.Context, apiURL, scrapeToken string) (*metricsSnapshot, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL+"/metrics", nil)
 	if err != nil {
 		return nil, err
+	}
+	if scrapeToken != "" {
+		req.Header.Set("Authorization", "Bearer "+scrapeToken)
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -284,7 +298,10 @@ func scrapeMetrics(ctx context.Context, apiURL string) (*metricsSnapshot, error)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("/metrics returned %d", resp.StatusCode)
+		return nil, fmt.Errorf(
+			"/metrics returned %d (set -scrape-token / SP_METRICS_SCRAPE_TOKEN if the server requires one)",
+			resp.StatusCode,
+		)
 	}
 	parser := expfmt.NewTextParser(nameValidationScheme)
 	families, err := parser.TextToMetricFamilies(resp.Body)

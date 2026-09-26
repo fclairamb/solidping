@@ -33,6 +33,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkssh"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/egress"
 	"github.com/fclairamb/solidping/server/internal/secretref"
 	"github.com/fclairamb/solidping/server/internal/sshauth"
 )
@@ -328,7 +329,10 @@ func Dial(ctx context.Context, cfg *checkssh.SSHConfig) (*Dialer, io.Closer, err
 	dialCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	conn, err := (&net.Dialer{}).DialContext(dialCtx, "tcp", addr)
+	// The bastion is a user-chosen host dialed from THIS worker's network, so
+	// it answers to the worker's egress policy (spec 2026-09-25-19). What the
+	// bastion then reaches is the bastion's network, not ours.
+	conn, err := egress.FromContext(ctx).DialContextWith(dialCtx, &net.Dialer{}, "tcp", addr)
 	if err != nil {
 		return nil, nil, wrapErr("dial", err)
 	}

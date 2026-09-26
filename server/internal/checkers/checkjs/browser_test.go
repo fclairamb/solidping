@@ -611,6 +611,52 @@ func TestScreenshotKeptOnDownDroppedOnUp(t *testing.T) {
 	}
 }
 
+// TestForcedCaptureKeepsAnUpScreenshot pins "Capture now" for js checks (spec
+// 2026-09-25-34): on an on-demand run the script's capture is kept whatever the
+// verdict. The unforced sub-run on the same script is the positive control —
+// without it, an `up` capture surviving would prove nothing about the flag.
+//
+//nolint:paralleltest // mutates the package-level OpenBrowser seam
+func TestForcedCaptureKeepsAnUpScreenshot(t *testing.T) {
+	r := require.New(t)
+	shot := []byte("RIFF\x00\x00\x00\x00WEBPshot")
+	cfg := &JSConfig{
+		Script:  `var page = browser.open(); page.screenshot(); return { status: "up" };`,
+		Timeout: 5 * time.Second,
+	}
+
+	installFakeBrowser(t, &fakeSession{shot: shot})
+
+	forced, err := (&JSChecker{}).Execute(checkerdef.WithForcedCapture(t.Context()), cfg)
+	r.NoError(err)
+	r.Equal(checkerdef.StatusUp, forced.Status, "forcing a capture must not change the verdict")
+	r.NotNil(forced.Diagnostics)
+	r.NotNil(forced.Diagnostics.Screenshot)
+	r.Equal(shot, forced.Diagnostics.Screenshot.Image)
+
+	installFakeBrowser(t, &fakeSession{shot: shot})
+
+	plain, err := (&JSChecker{}).Execute(t.Context(), cfg)
+	r.NoError(err)
+
+	if plain.Diagnostics != nil {
+		r.Nil(plain.Diagnostics.Screenshot, "an unforced up run still drops its capture")
+	}
+
+	// A script that never shoots yields nothing, forced or not.
+	installFakeBrowser(t, &fakeSession{shot: shot})
+
+	silent, err := (&JSChecker{}).Execute(checkerdef.WithForcedCapture(t.Context()), &JSConfig{
+		Script:  `browser.open(); return { status: "up" };`,
+		Timeout: 5 * time.Second,
+	})
+	r.NoError(err)
+
+	if silent.Diagnostics != nil {
+		r.Nil(silent.Diagnostics.Screenshot)
+	}
+}
+
 // TestLastScreenshotWins: a script can overwrite an early "before" shot with
 // the one taken at the moment it decided the target was down.
 //

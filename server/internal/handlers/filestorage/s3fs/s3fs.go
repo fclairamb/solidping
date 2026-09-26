@@ -163,6 +163,23 @@ func (b *Backend) ReadFile(
 	return out.Body, meta, nil
 }
 
+// DeleteFile removes the object. S3 answers a delete of a missing key with
+// success, which is exactly the "already gone is fine" contract.
+func (b *Backend) DeleteFile(
+	ctx context.Context, orgUID uuid.UUID, group filestorage.GroupType, fileID string,
+) error {
+	key := b.objectKey(filestorage.BuildPath(orgUID, group, fileID))
+
+	if _, err := b.Client.DeleteObject(ctx, &s3.DeleteObjectInput{
+		Bucket: aws.String(b.Bucket),
+		Key:    aws.String(key),
+	}); err != nil {
+		return fmt.Errorf("delete object: %w", err)
+	}
+
+	return nil
+}
+
 // ParseURI splits "s3://orgUID/group/fileID" back into its parts.
 func (b *Backend) ParseURI(uri string) (uuid.UUID, filestorage.GroupType, string, error) {
 	prefix, rest, err := filestorage.SchemeFromURI(uri)

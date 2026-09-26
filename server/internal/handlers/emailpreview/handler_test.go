@@ -279,5 +279,5 @@ func TestPreview_RendersTheBrandedHeader(t *testing.T) {
 	r.Contains(body, `src="https://preview.example/d/logo.png"`)
 	r.Contains(body, `alt="SolidPing"`)
 	// Premailer really ran: the class-based rules are inlined as style="…".
-	r.Contains(body, "background-color:#0f1a24")
+	r.Contains(body, "background-color:#07112a")
 }

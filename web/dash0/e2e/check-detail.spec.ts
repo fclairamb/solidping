@@ -132,8 +132,9 @@ test.describe("Check Detail Page", () => {
 
     // CreateCheck synchronously inserts a "created" placeholder result row
     // (status: created) in the same transaction as the check itself, before
-    // any worker ever claims the job. StatusBadge renders that raw status
-    // string ("created") as its label, so it's a stable way to exclude the
+    // any worker ever claims the job. StatusBadge carries the raw status as
+    // data-status (its label is localized — "Pending" — since spec
+    // 2026-09-25-02), so that attribute is a stable way to exclude the
     // placeholder. That row structurally has no region (it predates
     // execution), so grabbing `.first()` of all result rows can flakily land
     // on it instead of a real, executed result — wait for a row whose status
@@ -144,7 +145,7 @@ test.describe("Check Detail Page", () => {
     // expect() timeout.
     const executedRow = page
       .locator('[data-testid^="result-row-"]')
-      .filter({ hasNot: page.getByText("created", { exact: true }) })
+      .filter({ hasNot: page.locator('[data-status="created"]') })
       .first();
     await expect(executedRow).toBeVisible({ timeout: 30000 });
 

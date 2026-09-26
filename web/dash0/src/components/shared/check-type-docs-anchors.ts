@@ -62,6 +62,7 @@ export const checkTypeDocsAnchors: Partial<Record<string, string>> = {
   freebox_line: "freebox-line-xdsl--ftth",
   kubernetes: "kubernetes-workload-replica-health",
   heartbeat: "heartbeat",
+  "private-location": "private-location-liveness",
   js: "javascript",
   browser: "browser",
 };

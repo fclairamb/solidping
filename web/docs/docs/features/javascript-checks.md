@@ -235,6 +235,7 @@ next. For a flow that needs cookies across calls, see
 | `headers` | object | — | Request headers, `{name: value}` |
 | `followRedirects` | boolean | `true` | `false` returns the 3xx itself, with `Location` intact, instead of following it |
 | `maxRedirects` | number | `10` | Redirect hops to follow; capped at 10 |
+| `redirectHostPolicy` | string | `"any"` | `"same-host"` refuses any redirect hop whose URL host differs from the previous hop's — `resp.error` reports `redirect to different host refused` and the refused hop is never dialed. An unknown value is an error, not a silent fallback to `"any"` |
 | `timeout` | duration string or number of ms | the check's own timeout | Never longer than the check's own timeout, regardless of what is asked for |
 
 **Response**
@@ -356,6 +357,12 @@ an `up` run costs a CDP round-trip and nothing else. As with a browser check,
 the image is what the page looked like when *the script asked*, not a frame
 from the instant of failure — and, as with a browser check, it is a **WebP**
 full-page capture. The format is not selectable from the script.
+
+The capture shows up on the check page's **Screenshots** card, with the same
+rules as a [browser check's](./check-types.md#browser-screenshots). **Capture
+now** runs the script once and keeps its last `page.screenshot()` whatever the
+verdict, so an `up` run can be photographed too. A script that never calls
+`page.screenshot()` produces nothing, on demand or not.
 
 **Period floor.** A script that calls `browser.open(` is held to the `browser`
 check's **1m** minimum period instead of the `js` type's 30s, decided when the

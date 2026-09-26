@@ -1156,7 +1156,7 @@ function SectionCard({
                   <AlertDialogCancel>{t("common:cancel")}</AlertDialogCancel>
                   <AlertDialogAction
                     onClick={handleDeleteSection}
-                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    variant="destructive"
                   >
                     {t("common:delete")}
                   </AlertDialogAction>
@@ -1461,7 +1461,7 @@ function StatusPageDetailPage() {
                 <AlertDialogCancel>{t("common:cancel")}</AlertDialogCancel>
                 <AlertDialogAction
                   onClick={handleDeletePage}
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  variant="destructive"
                 >
                   {t("statusPages:delete")}
                 </AlertDialogAction>

@@ -168,7 +168,7 @@
   "slos": "SLOs",
   "reportSchedules": "Uptime reports",
   "audit": "Audit",
-  "parameters": "Parameters",
+  "parameters": "Variables",
   "groups": {
     "monitoring": "Monitoring",
     "alerting": "Alerting",

@@ -9,6 +9,11 @@ interface CompleteSearch {
   code?: string;
 }
 
+// TODO(remove after next release): spec 2026-09-25-12
+// oauth-callback-one-time-code-exchange. The Slack app install now hands off
+// through /auth/complete like every other federated login. This route only
+// finishes an install whose callback was answered by a pod on the previous
+// release (a code minted into the legacy `slack-exchange` state).
 export const Route = createFileRoute("/auth/slack/complete")({
   validateSearch: (search: Record<string, unknown>): CompleteSearch => ({
     code: typeof search.code === "string" ? search.code : undefined,

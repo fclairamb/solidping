@@ -9,11 +9,11 @@ import { Switch } from "@/components/ui/switch";
 import { getFieldError } from "@/hooks/use-check-validation";
 import type { CheckTypeModule } from "./index";
 import type { CheckConfig, CheckTypeFieldsProps, FieldErrors } from "./common";
-import { getConfigField } from "./common";
+import { getConfigField, validationMessage } from "./common";
 import { useCheckFormFields } from "./context";
 
 const hostRequired = (host: string): FieldErrors =>
-  host ? [] : [{ name: "host", message: "Host is required" }];
+  host ? [] : [{ name: "host", message: validationMessage("hostRequired") }];
 
 // ── gRPC ──
 
@@ -120,7 +120,10 @@ function grpcToConfig(state: GrpcState): {
   if (invalidKeys.length > 0) {
     errors.push({
       name: "metadata",
-      message: `Invalid metadata key${invalidKeys.length > 1 ? "s" : ""}: ${invalidKeys.join(", ")} (lowercase letters, digits, '-', '.' or '_'; 'grpc-' and '-bin' are reserved)`,
+      message: validationMessage("invalidMetadataKeys", {
+        count: invalidKeys.length,
+        keys: invalidKeys.join(", "),
+      }),
     });
   }
   return { config: cfg, errors };
@@ -457,7 +460,7 @@ export const kafkaModule: CheckTypeModule<KafkaState> = {
     if (state.produceTest) cfg.produceTest = true;
     const errors: FieldErrors = state.brokers
       ? []
-      : [{ name: "brokers", message: "Brokers are required" }];
+      : [{ name: "brokers", message: validationMessage("brokersRequired") }];
     return { config: cfg, errors };
   },
   Fields: KafkaFields,

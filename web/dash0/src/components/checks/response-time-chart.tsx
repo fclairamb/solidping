@@ -34,6 +34,7 @@ import {
   availabilityDotClass,
   formatAvailabilityPct,
 } from "@/lib/availability-status";
+import { probesPerSecond } from "@/lib/check-freshness";
 import { AvailabilityStrip } from "@/components/ui/availability-strip";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -53,6 +54,14 @@ export type { ChartTierFetch, TimeRange, ZoomWindow };
 interface ResponseTimeChartProps {
   org: string;
   checkUid: string;
+  /**
+   * How many regions the check runs in, and when it was created: with
+   * periodMs they give the expected probe count per strip cell, so a cell
+   * over a silent gap can say "measured 67% of the interval" (spec
+   * 2026-09-25-02).
+   */
+  regionCount?: number;
+  createdAt?: string;
   refetchInterval?: number;
   // Check period in ms — drives raw-vs-hour tier choice on the "day" range so
   // dense (1-min) checks roll up to ~24 hourly points instead of ~1440 raw.
@@ -391,6 +400,8 @@ function buildGradientStops(
 export function ResponseTimeChart({
   org,
   checkUid,
+  regionCount,
+  createdAt,
   refetchInterval,
   periodMs,
   initialPeriod,
@@ -1552,6 +1563,13 @@ export function ResponseTimeChart({
                 cells={availability.data}
                 testIdPrefix="response-time-chart-availability-strip"
                 height="sm"
+                // A region filter narrows the cells to one region's probes,
+                // so the expectation narrows to one region too.
+                probesPerSecond={probesPerSecond(
+                  periodMs,
+                  effectiveRegion ? 1 : regionCount,
+                )}
+                measuredFrom={createdAt}
               />
             ) : null}
           </div>

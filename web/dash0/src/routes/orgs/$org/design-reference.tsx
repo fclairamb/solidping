@@ -56,6 +56,7 @@ import {
   EventTypeLabel,
   getEventTone,
 } from "@/components/dashboard/event-display";
+import { EventLogTable } from "@/components/dashboard/event-log-table";
 import {
   CheckTypeBadge,
   CheckTypeIcon,
@@ -107,6 +108,10 @@ import {
 } from "@/components/ui/sidebar";
 import { CheckRateLimitBanner } from "@/components/shared/check-rate-limit-banner";
 import { StalePublicationsBanner } from "@/components/shared/stale-publications-banner";
+import {
+  CheckRegionOutageBanner,
+  ChecksRegionOutageBanner,
+} from "@/components/shared/region-outage-banner";
 import { DependencyWarningHint } from "@/components/checks/dependency-warnings";
 import {
   DependencyEmptyRow,
@@ -119,7 +124,12 @@ import { CheckRateMeter } from "@/components/shared/check-rate-meter";
 import { StatTile } from "@/components/shared/stat-tile";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { EvaluationCard } from "@/components/checks/evaluation-card";
+import { ScreenshotImageLink } from "@/components/shared/screenshot-image";
 import { StatusDot } from "@/components/shared/status-dot";
+import { RegionFreshnessList, StaleSince } from "@/components/checks/check-freshness";
+import { CheckPlacementDetail } from "@/components/checks/check-placement";
+import { CheckRegionalIssueBanner } from "@/components/checks/regional-issue-banner";
+import { AutoPlacementSummary } from "@/components/shared/check-form";
 import { SupportMessageBubble } from "@/components/support/message-bubble";
 import { Ipv6CapabilityBadge } from "@/components/shared/ipv6-capability";
 import { BrowserCapabilityIcon } from "@/components/shared/browser-capability";
@@ -130,7 +140,12 @@ import {
   sloStateBadgeClass,
 } from "@/lib/slo-format";
 import { BudgetBurndownChart } from "@/components/slos/budget-burndown-chart";
-import type { SloBurndown } from "@/api/hooks";
+import type {
+  Check as CheckModel,
+  Event,
+  RegionDefinition,
+  SloBurndown,
+} from "@/api/hooks";
 import { AgentVersionCell } from "@/components/shared/agent-version";
 import { LiveStatusDot } from "@/components/layout/live-status-dot";
 import { ServerVersionIndicator } from "@/components/layout/server-version-indicator";
@@ -154,7 +169,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SegmentedControl } from "@/components/ui/segmented-control";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Logo } from "@/components/ui/logo";
 import { AuroraPanel } from "@/components/ui/aurora-panel";
 import {
@@ -263,6 +278,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "buttons-badges", label: "Buttons & badges" },
   { id: "check-type-badge", label: "Check type identity" },
   { id: "event-tone", label: "Event tone badge" },
+  { id: "event-log-table", label: "Event log table" },
   { id: "live-dot", label: "Live & pulse dots" },
   { id: "forms", label: "Forms" },
   { id: "oauth-provider-buttons", label: "OAuth provider buttons" },
@@ -322,6 +338,7 @@ function DesignReferencePage() {
       <ButtonsBadgesSection />
       <CheckTypeIdentitySection />
       <EventToneSection />
+      <EventLogTableSection />
       <LiveDotSection />
       <FormsSection />
       <OAuthProviderButtonsSection />
@@ -1537,6 +1554,11 @@ const COLOR_TOKENS: { name: string; varName: string; description?: string }[] =
       description: "Delete / irreversible action confirms",
     },
     {
+      name: "destructive-foreground",
+      varName: "--destructive-foreground",
+      description: "Label on a destructive fill",
+    },
+    {
       name: "accent",
       varName: "--accent",
       description: "Hover/highlight surface",
@@ -1669,6 +1691,7 @@ function Swatch({
 }
 
 function ButtonsBadgesSection() {
+  const { org } = Route.useParams();
   return (
     <Section
       id="buttons-badges"
@@ -2131,6 +2154,9 @@ function ButtonsBadgesSection() {
                 <StatusDot status="down" /> Down
               </span>
               <span className="inline-flex items-center gap-1.5 text-sm">
+                <StatusDot status="stale" /> No data
+              </span>
+              <span className="inline-flex items-center gap-1.5 text-sm">
                 <StatusDot status="unknown" /> Unknown
               </span>
               <span className="inline-flex items-center gap-1.5 text-sm">
@@ -2140,6 +2166,144 @@ function ButtonsBadgesSection() {
             </>
           }
           importLine={`import { StatusDot } from "@/components/shared/status-dot";\n\n<StatusDot\n  status={check.status ?? check.lastResult?.status}\n  enabled={check.enabled}\n  title={check.enabled === false ? t("checks:detail.disabled") : undefined}\n/>`}
+        />
+
+        <h3 className="text-sm font-medium">Check status badges</h3>
+        <p className="text-sm text-muted-foreground">
+          Every check status goes through{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            StatusBadge
+          </code>
+          , which always reads its label from{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            checks:status.*
+          </code>{" "}
+          — never the raw wire token. <strong>No data</strong> (
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            stale
+          </code>
+          , spec 2026-09-25-02) is a check nobody is measuring: no real result
+          for max(3 × period, 5 min). It is neither up nor down, so it is gray
+          and carries a clock — never green. The raw status stays on{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            data-status
+          </code>{" "}
+          for tests.
+        </p>
+        <ExampleRow
+          preview={
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusBadge status="up" />
+              <StatusBadge status="warning" />
+              <StatusBadge status="validating" />
+              <StatusBadge status="down" />
+              <StatusBadge status="stale" />
+              <StatusBadge status="created" />
+            </div>
+          }
+          importLine={`import { StatusBadge } from "@/components/shared/status-badge";\n\n<StatusBadge status={check.status} />`}
+        />
+
+        <h3 className="text-sm font-medium">No data &amp; region freshness</h3>
+        <p className="text-sm text-muted-foreground">
+          The check detail header of a stale check says how long nobody has
+          been looking ("No data since 13:41"), and lists every region's own
+          age whenever one of them is silent — a check still reporting from
+          another region keeps its status, and this list is how the dead region
+          shows up anyway. Both read the server's{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            lastResultAt
+          </code>{" "}
+          and{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            regionFreshness
+          </code>{" "}
+          (<code className="text-xs">with=region_freshness</code>), never a
+          client-side re-derivation.
+        </p>
+        <ExampleRow
+          preview={
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <StatusBadge status="stale" />
+                <StaleSince check={DESIGN_REF_STALE_CHECK} />
+              </div>
+              <RegionFreshnessList check={DESIGN_REF_STALE_CHECK} />
+            </div>
+          }
+          importLine={`import { RegionFreshnessList, StaleSince } from "@/components/checks/check-freshness";\n\n<StatusBadge status={check.status} />\n<StaleSince check={check} />\n<RegionFreshnessList check={check} regions={regionsData?.regions} />`}
+        />
+
+        <h3 className="text-sm font-medium">Region placement</h3>
+        <p className="text-sm text-muted-foreground">
+          A check is either <strong>pinned</strong> (it runs from exactly the
+          regions the user chose, and never moves) or placed{" "}
+          <strong>automatically</strong> (spec 2026-09-25-06): the scheduler
+          picks N healthy regions and moves the check off a region that goes
+          dark. The form shows the automatic mode as one line with a "Choose
+          regions" way out to the pinned picker; the check detail shows the
+          placement, each region's last result (from{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            regionFreshness
+          </code>
+          ) and the automatic moves (the{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            check.placement_changed
+          </code>{" "}
+          events).
+        </p>
+        <ExampleRow
+          preview={
+            <div className="w-full max-w-md space-y-3">
+              <AutoPlacementSummary
+                count={2}
+                maxCount={4}
+                onCountChange={() => {}}
+                onChoose={() => {}}
+                currentRegions={["Paris (paris)", "Gravelines (gravelines)"]}
+              />
+              <CheckPlacementDetail org={org} check={DESIGN_REF_AUTO_CHECK} />
+            </div>
+          }
+          importLine={`import { AutoPlacementSummary } from "@/components/shared/check-form";\nimport { CheckPlacementDetail } from "@/components/checks/check-placement";\n\n<CheckPlacementDetail org={org} check={check} regions={regionsData?.regions} />`}
+        />
+
+        <h3 className="text-sm font-medium">Regional issue (multi-region quorum)</h3>
+        <p className="text-sm text-muted-foreground">
+          Spec 2026-09-25-10. A check running from several regions is down
+          only when{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            effectiveFailQuorum
+          </code>{" "}
+          of them fail for the confirmation period. Fewer failing regions is a
+          regional issue: the status is a plain amber{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">warning</code>{" "}
+          (status0 shows exactly that, nothing more), and the check page says
+          which regions and why with the amber banner, never the destructive
+          one (no incident is open). The placement block states the rule and
+          marks each failing region in destructive red with the time it
+          started failing. Both read the server&apos;s{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">regionalIssue</code>{" "}
+          and{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            regionFreshness[].status
+          </code>
+          ; the banner renders nothing without a regional issue. The check
+          form&apos;s &ldquo;Regions that must fail&rdquo; select (in Incident
+          tracking, shown from 2 regions) defaults to Default and says what it
+          resolves to for the picked regions.
+        </p>
+        <ExampleRow
+          preview={
+            <div className="w-full max-w-md space-y-3">
+              <CheckRegionalIssueBanner
+                check={DESIGN_REF_REGIONAL_CHECK}
+                regions={DESIGN_REFERENCE_REGIONS}
+              />
+              <CheckPlacementDetail org={org} check={DESIGN_REF_REGIONAL_CHECK} />
+            </div>
+          }
+          importLine={`import { CheckRegionalIssueBanner } from "@/components/checks/regional-issue-banner";\nimport { CheckPlacementDetail } from "@/components/checks/check-placement";\n\n<CheckRegionalIssueBanner check={check} regions={regionsData?.regions} />`}
         />
 
         <h3 className="text-sm font-medium">IPv6 capability badge</h3>
@@ -3390,6 +3554,57 @@ type MockRow = {
   latency: string;
 };
 
+// A stale check for the "No data & region freshness" example: one region
+// went silent eight hours ago, the check produced nothing anywhere since.
+const DESIGN_REF_AUTO_CHECK: CheckModel = {
+  uid: "design-ref-auto",
+  name: "api.example.com",
+  status: "up",
+  placement: "auto",
+  regionCount: 2,
+  regions: ["paris", "gravelines"],
+  regionFreshness: [
+    { region: "paris", lastResultAt: new Date(Date.now() - 40_000).toISOString(), stale: false },
+    { region: "gravelines", lastResultAt: new Date(Date.now() - 65_000).toISOString(), stale: false },
+  ],
+};
+
+// A 3-region check with one region failing: below the default quorum (2 of
+// 3), so a regional issue and no incident (spec 2026-09-25-10).
+const DESIGN_REF_REGIONAL_CHECK: CheckModel = {
+  uid: "design-ref-regional",
+  name: "api.example.com",
+  status: "warning",
+  placement: "auto",
+  regionCount: 3,
+  regions: ["paris", "gravelines", "lauterbourg"],
+  failQuorum: "default",
+  effectiveFailQuorum: 2,
+  regionalIssue: { failingRegions: ["lauterbourg"], failQuorum: 2, regionCount: 3 },
+  regionFreshness: [
+    { region: "paris", lastResultAt: new Date(Date.now() - 20_000).toISOString(), stale: false, status: "up" },
+    { region: "gravelines", lastResultAt: new Date(Date.now() - 35_000).toISOString(), stale: false, status: "up" },
+    {
+      region: "lauterbourg",
+      lastResultAt: new Date(Date.now() - 10_000).toISOString(),
+      stale: false,
+      status: "timeout",
+      statusSince: new Date(Date.now() - 14 * 60_000).toISOString(),
+    },
+  ],
+};
+
+const DESIGN_REF_STALE_CHECK: CheckModel = {
+  uid: "design-ref-stale",
+  name: "api.example.com",
+  status: "stale",
+  lastResultAt: new Date(Date.now() - 8 * 3600_000).toISOString(),
+  regionFreshness: [
+    { region: "eu-west", lastResultAt: new Date(Date.now() - 8 * 3600_000).toISOString(), stale: true },
+    { region: "lauterbourg", lastResultAt: new Date(Date.now() - 8 * 3600_000).toISOString(), stale: true },
+  ],
+};
+
 const MOCK_ROWS: MockRow[] = [
   { id: "1", name: "api.example.com", status: "up", latency: "120 ms" },
   { id: "2", name: "checkout-prod", status: "up", latency: "85 ms" },
@@ -3584,7 +3799,7 @@ function TruncatedCellTable() {
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Check</TableHead>
+            <TableHead className="w-full">Check</TableHead>
             <TableHead className="whitespace-nowrap">State</TableHead>
             <TableHead className="whitespace-nowrap px-2" />
           </TableRow>
@@ -3592,7 +3807,7 @@ function TruncatedCellTable() {
         <TableBody>
           {rows.map((row) => (
             <TableRow key={row.id}>
-              <TableCell className="max-w-0">
+              <TableCell className="w-full max-w-0">
                 <a
                   href="#"
                   title={row.name}
@@ -3714,9 +3929,14 @@ function DataDisplaySection() {
           table wider than its container. Give the <code>TableCell</code> itself{" "}
           <code>max-w-0</code> — not just the text node inside it — so the
           browser's table layout algorithm shrinks that column to its fair share
-          instead of growing to fit the content; other columns that must stay
-          one line (a badge, an icon-link) get <code>whitespace-nowrap</code> so
-          the flexible column absorbs whatever width is left. Pair the truncated
+          instead of growing to fit the content. <code>max-w-0</code> alone is
+          not enough: it leaves the column with zero preferred width, so the
+          table hands all its spare width to the <em>other</em> columns and the
+          name ends up a few characters wide even on a desktop. Add{" "}
+          <code>w-full</code> to that column (head and cell) so it claims the
+          spare width, and give the columns that must stay one line (a badge,
+          an icon-link) <code>whitespace-nowrap</code> so they shrink to their
+          content. Pair the truncated
           element with a <code>title</code> attribute (or Tooltip, above) so the
           full value is still reachable on hover/focus. Two link targets in one
           row (here: the name → detail page, the trailing icon → a related page)
@@ -3726,7 +3946,46 @@ function DataDisplaySection() {
         <TruncatedCellTable />
       </div>
       <CodeSnippet
-        code={`<TableHead>Check</TableHead>\n<TableHead className="whitespace-nowrap">State</TableHead>\n<TableHead className="whitespace-nowrap px-2" />\n\n<TableCell className="max-w-0">\n  <Link to="..." title={name} className="block truncate text-primary hover:underline">\n    {name}\n  </Link>\n</TableCell>\n<TableCell className="whitespace-nowrap">\n  <Badge>{state}</Badge>\n</TableCell>\n<TableCell className="whitespace-nowrap px-2 text-right">\n  <Link to="..." aria-label="Open check" className="inline-flex text-muted-foreground hover:text-foreground">\n    <ArrowUpRight className="h-3.5 w-3.5" />\n  </Link>\n</TableCell>`}
+        code={`<TableHead className="w-full">Check</TableHead>\n<TableHead className="whitespace-nowrap">State</TableHead>\n<TableHead className="whitespace-nowrap px-2" />\n\n<TableCell className="w-full max-w-0">\n  <Link to="..." title={name} className="block truncate text-primary hover:underline">\n    {name}\n  </Link>\n</TableCell>\n<TableCell className="whitespace-nowrap">\n  <Badge>{state}</Badge>\n</TableCell>\n<TableCell className="whitespace-nowrap px-2 text-right">\n  <Link to="..." aria-label="Open check" className="inline-flex text-muted-foreground hover:text-foreground">\n    <ArrowUpRight className="h-3.5 w-3.5" />\n  </Link>\n</TableCell>`}
+      />
+
+      <div className="space-y-2 pt-2" data-testid="design-ref-screenshot">
+        <h3 className="text-sm font-medium">Screenshot image</h3>
+        <p className="text-sm text-muted-foreground">
+          A stored capture is rendered with{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            ScreenshotImageLink
+          </code>
+          : the image is a link to its full-size self, opened in a new tab, so
+          the browser&apos;s own viewer is the lightbox (no dependency). The
+          incident screenshot card and the check page&apos;s Screenshots card
+          both use it, which is what keeps a capture looking the same wherever
+          it appears. Full width for the latest capture; for a thumbnail strip,
+          give the frame an aspect ratio and the image{" "}
+          <code>object-cover object-top</code>, and put the capture time in{" "}
+          <code>title</code>. The <code>src</code> is the signed{" "}
+          <code>downloadUrl</code>, which expires after an hour: re-fetch the
+          listing rather than caching it.
+        </p>
+        <div className="grid max-w-xl gap-3">
+          <ScreenshotImageLink src={DESIGN_REF_SCREENSHOT} alt="Example capture" />
+          <ul className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {[0, 1, 2, 3].map((i) => (
+              <li key={i}>
+                <ScreenshotImageLink
+                  src={DESIGN_REF_SCREENSHOT}
+                  alt="Example thumbnail"
+                  title="Captured 10:42 from eu-west"
+                  className="aspect-video"
+                  imgClassName="h-full w-full object-cover object-top"
+                />
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+      <CodeSnippet
+        code={`import { ScreenshotImageLink } from "@/components/shared/screenshot-image";\n\n<ScreenshotImageLink src={shot.downloadUrl} alt={t("…alt")} />\n\n// Thumbnail in a strip\n<ScreenshotImageLink\n  src={shot.downloadUrl}\n  alt={t("…alt")}\n  title={capturedAtAndRegion}\n  className="aspect-video"\n  imgClassName="h-full w-full object-cover object-top"\n/>`}
       />
 
       <div className="space-y-2 pt-2">
@@ -3752,14 +4011,29 @@ function DataDisplaySection() {
         <EvaluationCardExample />
       </div>
       <CodeSnippet
-        code={`import {\n  EvaluationCard,\n  EVALUATION_OUTPUT_KEYS,\n  isEvaluationOutput,\n} from "@/components/checks/evaluation-card";\n\n<EvaluationCard\n  org={org}\n  checkUid={checkUid}\n  checkType={check?.type}\n  output={result.output}\n  periodStart={result.periodStart}\n  regionLabel={regionDisplayLabel(regions, result.region)}\n/>`}
+        code={`import {\n  EvaluationCard,\n  EVALUATION_OUTPUT_KEYS,\n  isEvaluationOutput,\n} from "@/components/checks/evaluation-card";\n\n<EvaluationCard\n  org={org}\n  checkUid={checkUid}\n  checkType={check?.type}\n  output={result.output}\n  periodStart={result.periodStart}\n/>`}
       />
     </Section>
   );
 }
 
+/* A stand-in capture for the Screenshot image example: an inline SVG data URL
+ * (img-src allows data:), so the catalog needs no stored file. */
+const DESIGN_REF_SCREENSHOT =
+  "data:image/svg+xml;utf8," +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360">' +
+      '<rect width="640" height="360" fill="#f1f5f9"/>' +
+      '<rect width="640" height="48" fill="#1e3a8a"/>' +
+      '<rect x="32" y="88" width="360" height="24" rx="4" fill="#cbd5e1"/>' +
+      '<rect x="32" y="128" width="520" height="14" rx="4" fill="#e2e8f0"/>' +
+      '<rect x="32" y="152" width="480" height="14" rx="4" fill="#e2e8f0"/>' +
+      '<rect x="32" y="200" width="160" height="40" rx="6" fill="#2563eb"/>' +
+      "</svg>",
+  );
+
 /* A live EvaluationCard on a synthetic evaluation row: an on-time heartbeat
- * evaluated by the eu-west worker 12 s after the beat it read. */
+ * evaluated by SolidPing 12 s after the beat it read. */
 function EvaluationCardExample() {
   return (
     <div className="max-w-xl">
@@ -3768,7 +4042,6 @@ function EvaluationCardExample() {
         checkUid="00000000-0000-7000-8000-00000000cafe"
         checkType="heartbeat"
         periodStart="2026-09-02T12:36:50.000Z"
-        regionLabel="🇪🇺 EU West"
         output={{
           message: "Heartbeat on time",
           evaluation: true,
@@ -4289,6 +4562,19 @@ import {
   );
 }
 
+// Sample regions for the region outage banner: one offline since 13:41 UTC
+// today, one online.
+const DESIGN_REFERENCE_REGIONS: RegionDefinition[] = [
+  { slug: "paris", emoji: "🇫🇷", name: "Paris", status: "online" },
+  {
+    slug: "lauterbourg",
+    emoji: "🇫🇷",
+    name: "Lauterbourg",
+    status: "offline",
+    offlineSince: `${new Date().toISOString().slice(0, 10)}T13:41:00Z`,
+  },
+];
+
 function FeedbackSection() {
   const { org } = Route.useParams();
 
@@ -4404,6 +4690,43 @@ function FeedbackSection() {
             </div>
           }
           importLine={`import { StalePublicationsBanner } from "@/components/shared/stale-publications-banner";`}
+        />
+
+        <h3 className="text-sm font-medium">Region outage banner</h3>
+        <p className="text-sm text-muted-foreground">
+          A SolidPing region the server holds as offline (spec 2026-09-25-03):
+          jobs assigned and no live worker. On a check page it is{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">destructive</code>{" "}
+          when every region of the check is offline (the check is not running
+          at all, so its &ldquo;No data&rdquo; is our outage, not the target&apos;s) and an
+          amber{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">warning</code>{" "}
+          when some regions still run it. The checks list mounts the summary
+          form, which names the checks that stopped. Both render nothing when
+          no region is offline.
+        </p>
+        <ExampleRow
+          preview={
+            <div className="flex w-full max-w-md flex-col gap-2">
+              <CheckRegionOutageBanner
+                check={{ regions: ["lauterbourg"] }}
+                regions={DESIGN_REFERENCE_REGIONS}
+              />
+              <CheckRegionOutageBanner
+                check={{ regions: ["lauterbourg", "paris"] }}
+                regions={DESIGN_REFERENCE_REGIONS}
+              />
+              <ChecksRegionOutageBanner
+                org={org}
+                checks={[
+                  { uid: "11111111-1111-1111-1111-111111111111", name: "API", regions: ["lauterbourg"] },
+                  { uid: "22222222-2222-2222-2222-222222222222", name: "Website", regions: ["lauterbourg", "paris"] },
+                ]}
+                regions={DESIGN_REFERENCE_REGIONS}
+              />
+            </div>
+          }
+          importLine={`import { CheckRegionOutageBanner, ChecksRegionOutageBanner } from "@/components/shared/region-outage-banner";`}
         />
 
         <h3 className="text-sm font-medium">Dependency warnings</h3>
@@ -4601,7 +4924,9 @@ function FeedbackSection() {
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                   <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction>Delete</AlertDialogAction>
+                  <AlertDialogAction variant="destructive">
+                    Delete
+                  </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
@@ -4881,7 +5206,7 @@ const CHECK_TYPE_FAMILY_TABLE: {
   { family: "Game", types: "a2s, minecraft", tone: "lime" },
   {
     family: "Infra",
-    types: "docker, prometheus, freebox_line, kubernetes",
+    types: "docker, prometheus, freebox_line, kubernetes, private-location",
     tone: "sky",
   },
   {
@@ -5160,6 +5485,116 @@ function EventToneSection() {
             </div>
           }
           importLine={`import { EventTypeLabel, getEventRowStripe } from "@/components/dashboard/event-display";\n\n<TableCell className={cn(getEventRowStripe(row.eventType))}>…</TableCell>\n<TableCell>\n  <EventTypeLabel eventType={row.eventType} t={t} />\n</TableCell>`}
+        />
+      </div>
+    </Section>
+  );
+}
+
+// EVENT_LOG_TABLE_STRINGS backs designReferenceEventLogT below with the
+// events.json keys EventLogTable reads beyond `types.<type>` (which
+// designReferenceEventT already covers): table headers, related-link text,
+// actor-type words, and the activation-milestone description shown when an
+// org.activation.* row carries no channel name.
+const EVENT_LOG_TABLE_STRINGS: Record<string, string> = {
+  "table.time": "Time",
+  "table.event": "Event",
+  "table.actor": "Actor",
+  "table.related": "Related",
+  "links.check": "Check",
+  "links.incident": "Incident",
+  "actorTypes.user": "user",
+  "actorTypes.system": "system",
+  "descriptions.org.activation.first_notification_configured":
+    "You have set up your first notification channel.",
+};
+
+function designReferenceEventLogT(
+  key: string,
+  options?: Record<string, unknown>,
+): string {
+  return EVENT_LOG_TABLE_STRINGS[key] ?? designReferenceEventT(key, options);
+}
+
+// EVENT_LOG_TABLE_SAMPLES exercises every column: a loud incident row linked
+// to a check, a quiet configuration row with a named actor, and an
+// activation milestone with neither a check/incident link nor an actor name
+// — which is exactly when its description line takes over (see
+// getActivationDetail in event-log-table.tsx).
+const EVENT_LOG_TABLE_SAMPLES: Event[] = [
+  {
+    uid: "sample-incident-created",
+    eventType: "incident.created",
+    actorType: "system",
+    checkUid: "sample-check-uid",
+    payload: { check_name: "Payments API" },
+    createdAt: new Date(Date.now() - 5 * 60_000).toISOString(),
+  },
+  {
+    uid: "sample-check-updated",
+    eventType: "check.updated",
+    actorType: "user",
+    actorName: "Alice",
+    checkUid: "sample-check-uid",
+    payload: { check_name: "Payments API" },
+    createdAt: new Date(Date.now() - 3 * 3600_000).toISOString(),
+  },
+  {
+    uid: "sample-activation",
+    eventType: "org.activation.first_notification_configured",
+    actorType: "system",
+    createdAt: new Date(Date.now() - 26 * 3600_000).toISOString(),
+  },
+];
+
+function EventLogTableSection() {
+  const { org } = Route.useParams();
+
+  return (
+    <Section
+      id="event-log-table"
+      title="Event log table"
+      description={`The ONE rendering of an events table (spec 2026-09-25-32), shared by the Events page and the dashboard's Recent activity card so the two can't drift apart again. variant="standalone" (default) is its own bordered/shadowed surface — used as-is on the Events page. variant="embedded" drops that border (the parent Card already draws one) and hides the Actor column below the md breakpoint, so the card never gets wider than its siblings on a laptop screen — the column is hidden responsively, never dropped.`}
+    >
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">Standalone (Events page)</h3>
+        <ExampleRow
+          preview={
+            <EventLogTable
+              org={org}
+              events={EVENT_LOG_TABLE_SAMPLES}
+              t={designReferenceEventLogT}
+            />
+          }
+          importLine={`import { EventLogTable } from "@/components/dashboard/event-log-table";\n\n<EventLogTable org={org} events={events} t={t} />`}
+        />
+      </div>
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">
+          Embedded (dashboard "Recent activity" card)
+        </h3>
+        <p className="text-xs text-muted-foreground">
+          No outer border, and the Actor column collapses below <code>md</code>{" "}
+          — shrink this pane to see it go, and widen it back to see the
+          column return.
+        </p>
+        <ExampleRow
+          preview={
+            <Card className="max-w-md">
+              <CardHeader>
+                <CardTitle>Recent activity</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <EventLogTable
+                  org={org}
+                  events={EVENT_LOG_TABLE_SAMPLES}
+                  t={designReferenceEventLogT}
+                  variant="embedded"
+                />
+              </CardContent>
+            </Card>
+          }
+          importLine={`<EventLogTable org={org} events={events} t={t} variant="embedded" />`}
         />
       </div>
     </Section>
@@ -5609,7 +6044,7 @@ function ElevationSection() {
     <Section
       id="elevation"
       title="Elevation, aurora & glass"
-      description="Depth tokens that add polish without adding a new color, already baked into Button's default variant (shadow-primary under a 1px inset top highlight, inset-shadow-highlight, on the primary gradient) and Card — reach for the utilities only when styling a bespoke surface. Two families: the action shadows (--shadow-primary / --shadow-destructive) tint with their own hue via color-mix and so track the theme automatically, while --shadow-card is a fixed neutral slate for ambient lift. The aurora panel + glass utility are for marketing surfaces ONLY (login split-screen, hero strips, empty-state splashes) — never operator data views."
+      description="Depth tokens that add polish without adding a new color, already baked into Button's default variant (shadow-primary under a 1px inset top highlight, inset-shadow-highlight, on the primary gradient) and Card — reach for the utilities only when styling a bespoke surface. Two families: the action shadows (--shadow-primary / --shadow-destructive) tint with their own hue via color-mix and so track the theme automatically, while --shadow-card is a fixed neutral slate for ambient lift. The aurora panel + glass utility are for marketing surfaces ONLY (login split-screen, 404, the no-org welcome) — never operator data views. The aurora sits on the sidebar navy (--sidebar-gradient) and glows cyan (--aurora-cyan), primary blue and indigo-violet (chart-5), with no crimson: the logo is its only warm spot. Its highlighted text and icons use --aurora-accent."
     >
       <div className="space-y-2">
         <h3 className="text-sm font-medium">
@@ -5637,21 +6072,63 @@ function ElevationSection() {
         <h3 className="text-sm font-medium">Aurora panel + glass card</h3>
         <ExampleRow
           preview={
-            <AuroraPanel className="h-52 w-full rounded-xl">
-              <div className="flex h-full items-center justify-center p-6">
-                <div className="glass space-y-1 rounded-2xl p-5">
-                  <p className="text-sm font-semibold text-white">
-                    Glass on aurora
+            <AuroraPanel className="h-64 w-full rounded-xl p-6">
+              <Logo size={24} variant="wordmark" className="text-white" />
+              <div className="flex flex-1 items-center justify-center">
+                <div className="glass max-w-xs space-y-3 rounded-2xl p-5">
+                  <p className="text-lg font-bold leading-tight text-white">
+                    Glass on{" "}
+                    <span className="text-aurora-accent">aurora</span>
                   </p>
                   <p className="text-xs text-white/70">
                     white/8 fill · blur 12 · white/18 border
+                  </p>
+                  <p className="flex items-center gap-2 text-xs text-white/90">
+                    <CheckCircle2 className="h-4 w-4 shrink-0 text-aurora-accent" />
+                    Feature line, check in --aurora-accent
                   </p>
                 </div>
               </div>
             </AuroraPanel>
           }
-          importLine={`import { AuroraPanel } from "@/components/ui/aurora-panel";\n\n// Marketing surfaces only. Always dark; renders white text. The \`glass\`\n// utility (index.css) is the frosted card that sits on top.\n<AuroraPanel className="min-h-screen p-12">\n  <div className="glass rounded-3xl p-8">…</div>\n</AuroraPanel>\n\n// Auth pages: don't hand-roll the panel — wrap your card in AuthSplitLayout,\n// which renders this aurora + the marketing copy + the theme toggle.\nimport { AuthSplitLayout } from "@/components/layout/auth-split-layout";`}
+          importLine={`import { AuroraPanel } from "@/components/ui/aurora-panel";
+
+// Marketing surfaces only. Always dark (the sidebar navy) in both themes;
+// renders white text. The \`glass\` utility (index.css) is the frosted card
+// that sits on top. Highlight a word or an icon with text-aurora-accent —
+// never a hardcoded oklch, never crimson (the logo is the only warm spot).
+<AuroraPanel className="min-h-screen p-12">
+  <div className="glass rounded-3xl p-8">
+    <h2>Monitor <span className="text-aurora-accent">everything</span></h2>
+  </div>
+</AuroraPanel>
+
+// Auth pages: don't hand-roll the panel — wrap your card in AuthSplitLayout,
+// which renders this aurora (lg+), the page glow behind the card and the
+// wordmark above it (below lg), the marketing copy and the theme toggle.
+// Pass mobileWordmark={false} only when your card already shows the wordmark.
+import { AuthSplitLayout } from "@/components/layout/auth-split-layout";`}
         />
+      </div>
+
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">Aurora tokens (identical in both themes)</h3>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="dark rounded-md text-foreground">
+            <Swatch
+              varName="--aurora-accent"
+              label="aurora-accent"
+              description="Luminous cyan: the headline's highlighted word and the feature checks, on the navy"
+            />
+          </div>
+          <div className="dark rounded-md text-foreground">
+            <Swatch
+              varName="--aurora-cyan"
+              label="aurora-cyan"
+              description="The cyan glow blob (40%) and the start of the cyan-to-indigo wash (25%)"
+            />
+          </div>
+        </div>
       </div>
     </Section>
   );

@@ -184,6 +184,11 @@ BENCH_PERIOD   ?= 10s
 BENCH_PORT     ?= 4001
 BENCH_DATA     := bench-data
 BENCH_OUT      := bench-results
+# /metrics requires a bearer scrape token by default (spec 2026-09-25-25); the
+# loadgen binary scrapes it for its before/after report, so the bench server
+# and loadgen must share this value. A fixed local-only placeholder is fine —
+# it never leaves this machine.
+BENCH_METRICS_TOKEN ?= loadgen-local-bench-token
 
 bench-checks: bench-checks-sqlite bench-checks-postgres ## Run loadgen against SQLite and PostgreSQL backends (both)
 	@echo "Bench complete; reports under $(BENCH_OUT)/"
@@ -197,6 +202,7 @@ bench-checks-sqlite: build build-loadgen ## Run loadgen against a SQLite-backed 
 		SP_DB_DIR=$(BENCH_DATA)/sqlite \
 		SP_DB_RESET=true \
 		SP_SERVER_LISTEN=127.0.0.1:$(BENCH_PORT) \
+		SP_METRICS_SCRAPE_TOKEN=$(BENCH_METRICS_TOKEN) \
 		LOG_LEVEL=warn \
 		./$(APP_NAME) serve > $(BENCH_OUT)/server-sqlite.log 2>&1 & echo $$! > $(BENCH_OUT)/server.pid; \
 	trap "kill `cat $(BENCH_OUT)/server.pid` 2>/dev/null || true; rm -f $(BENCH_OUT)/server.pid" EXIT; \
@@ -206,6 +212,7 @@ bench-checks-sqlite: build build-loadgen ## Run loadgen against a SQLite-backed 
 		-checks $(BENCH_CHECKS) \
 		-duration $(BENCH_DURATION) \
 		-period $(BENCH_PERIOD) \
+		-scrape-token $(BENCH_METRICS_TOKEN) \
 		-output-dir $(BENCH_OUT)
 
 # No BENCH_DATA directory here: embedded PostgreSQL owns its data directory (a
@@ -219,6 +226,7 @@ bench-checks-postgres: build build-loadgen ## Run loadgen against a PostgreSQL-b
 		SP_DB_TYPE=postgres-embedded \
 		SP_DB_RESET=true \
 		SP_SERVER_LISTEN=127.0.0.1:$(BENCH_PORT) \
+		SP_METRICS_SCRAPE_TOKEN=$(BENCH_METRICS_TOKEN) \
 		LOG_LEVEL=warn \
 		./$(APP_NAME) serve > $(BENCH_OUT)/server-postgres.log 2>&1 & echo $$! > $(BENCH_OUT)/server.pid; \
 	trap "kill `cat $(BENCH_OUT)/server.pid` 2>/dev/null || true; rm -f $(BENCH_OUT)/server.pid" EXIT; \
@@ -228,6 +236,7 @@ bench-checks-postgres: build build-loadgen ## Run loadgen against a PostgreSQL-b
 		-checks $(BENCH_CHECKS) \
 		-duration $(BENCH_DURATION) \
 		-period $(BENCH_PERIOD) \
+		-scrape-token $(BENCH_METRICS_TOKEN) \
 		-output-dir $(BENCH_OUT)
 
 # Memory bench knobs (override per invocation, e.g.

@@ -1,6 +1,15 @@
-// Persists an external OAuth provider's redirect (GitHub/Google/Slack — see
-// server/internal/handlers/auth/{github,google,slack}.go buildSuccessRedirect)
-// into the same full-session storage every other login-shaped path uses.
+// LEGACY: the query-string OAuth handoff.
+//
+// TODO(remove after next release): spec 2026-09-25-12
+// oauth-callback-one-time-code-exchange. Provider callbacks now redirect with
+// a single-use handoff code instead of the tokens (lib/auth-handoff.ts,
+// routes/auth.complete.tsx). This module only still runs for a callback
+// answered by a pod on the previous release during a rolling deploy; delete it
+// with main.tsx's IIFE one release later.
+//
+// Persists an external OAuth provider's redirect (the old
+// `?access_token=…&refresh_token=…&expires_in=…&org=…` shape) into the same
+// full-session storage every other login-shaped path uses.
 //
 // Extracted out of main.tsx's pre-React IIFE so the parsing/persistence
 // logic is unit-testable in isolation: main.tsx has no test harness of its
@@ -11,11 +20,7 @@
 // and `expires_in` even though the backend redirect carries both — the
 // funnel-audit bug behind the 2026-07-08 zombie-socket incident (see the
 // spec: a session with an access token but no refresh token silently
-// disables every refresh layer). `$org.tsx`'s OrgLayout has a second,
-// equivalent handoff effect that reads the same query params — it never
-// actually fires for a real browser redirect because this IIFE runs first
-// and strips them via history.replaceState before React mounts, but it's
-// left in place as harmless defense-in-depth.
+// disables every refresh layer).
 
 import { setSession } from "@/api/client";
 import { resolveDestination } from "./login-destination";

@@ -290,6 +290,10 @@ func createTestMembership(
 	return nil
 }
 
+// testPATValue is the well-known test-mode PAT. Only its hash is stored, like
+// every other user token.
+const testPATValue = "test"
+
 func createTestToken(
 	ctx context.Context, dbService db.Service, orgUID, userUID string, now time.Time,
 ) error {
@@ -297,7 +301,7 @@ func createTestToken(
 		UID:             "00000000-0000-0000-0000-000000000003",
 		UserUID:         userUID,
 		OrganizationUID: &orgUID,
-		Token:           "test",
+		TokenHash:       models.HashUserToken(testPATValue),
 		Type:            models.TokenTypePAT,
 		Properties:      make(models.JSONMap),
 		CreatedAt:       now,
@@ -308,7 +312,7 @@ func createTestToken(
 		return fmt.Errorf("failed to create test PAT token: %w", err)
 	}
 
-	slog.InfoContext(ctx, "Created test PAT token", "uid", testToken.UID, "token", testToken.Token)
+	slog.InfoContext(ctx, "Created test PAT token", "uid", testToken.UID, "token", testPATValue)
 
 	return nil
 }
@@ -883,6 +887,19 @@ func createTestIncidentScreenshot(
 	}
 
 	svc := attachments.NewService(files.NewService(dbService, cfg), dbService, cfg)
+
+	// An older check-scoped capture (spec 2026-09-25-34): a failing run that
+	// opened no incident. Written FIRST so the incident's capture is the newest
+	// and the check page's Screenshots card shows it as the latest, with this
+	// one in the strip underneath.
+	if _, err := svc.PutCheckScreenshot(ctx, orgUID, shotCheckUID, png, models.JSONMap{
+		attachments.DetailKeyCapturedAt: now.Add(-time.Hour).UTC().Format(time.RFC3339),
+		attachments.DetailKeyRegion:     "us-east",
+		attachments.DetailKeyCheckUID:   shotCheckUID,
+		attachments.DetailKeyTrigger:    attachments.TriggerCheckFailure,
+	}); err != nil {
+		return fmt.Errorf("failed to write check-scoped screenshot fixture: %w", err)
+	}
 
 	fileUID, err := svc.PutIncidentScreenshot(ctx, orgUID, shotIncidentUID, png, models.JSONMap{
 		attachments.DetailKeyCapturedAt: now.UTC().Format(time.RFC3339),

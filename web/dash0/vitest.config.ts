@@ -22,6 +22,8 @@ export default defineConfig({
       // unit-tested too — they are the part of that pipeline that can be
       // checked without a browser or ffmpeg.
       "showcase/**/*.test.ts",
+      // Local ESLint rules carry RuleTester controls (spec 2026-09-26-01).
+      "eslint-rules/**/*.test.js",
     ],
   },
 });

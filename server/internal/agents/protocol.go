@@ -148,6 +148,11 @@ type AgentJob struct {
 	// untunneled job. Like the job's own config, the SSH check's credentials
 	// cross ONLY as its region-sealed envelope, never as config_private.
 	Tunnel *AgentJobTunnel `json:"tunnel,omitempty"`
+	// CaptureRequestedAt is set when an operator asked for an on-demand
+	// screenshot of this check ("Capture now", spec 2026-09-25-34): the agent
+	// forces the capture and stamps its marker OnDemand. An agent predating the
+	// field ignores it and runs the job normally — no capture unless it fails.
+	CaptureRequestedAt *time.Time `json:"captureRequestedAt,omitempty"`
 }
 
 // AgentJobTunnel is the SSH-tunnel endpoint attached to a dispatched job. It
@@ -262,6 +267,9 @@ func ToAgentJob(job *models.CheckJob) AgentJob {
 		ScheduledAt:  job.ScheduledAt,
 		CostEWMAMs:   job.CostEWMAMs,
 		Lane:         job.Lane,
+		// A pending "Capture now" request travels with the job so a deported
+		// agent forces the capture exactly like the in-process worker.
+		CaptureRequestedAt: job.CaptureRequestedAt,
 	}
 
 	if job.Check != nil {
@@ -289,6 +297,8 @@ func (j *AgentJob) ToCheckJob() *models.CheckJob {
 		ScheduledAt:  j.ScheduledAt,
 		CostEWMAMs:   j.CostEWMAMs,
 		Lane:         j.Lane,
+
+		CaptureRequestedAt: j.CaptureRequestedAt,
 	}
 
 	if j.CheckPeriod != "" {

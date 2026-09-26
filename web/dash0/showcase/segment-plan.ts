@@ -12,8 +12,8 @@
  *
  * ## The two kinds of edit, and why they are not the same
  *
- * The detail page has to be held for at least one full check interval before
- * the chart plots two points a genuine interval apart (see the dwell in the
+ * The detail page has to be held for several full check intervals before the
+ * chart plots a line of points genuine intervals apart (see the dwell in the
  * recording spec). Publishing that hold in real time would spend a third of the
  * cut watching a chart not move. So that stretch is played **faster**, with a
  * tag burned in over exactly it — a demo that silently speeds up the boring

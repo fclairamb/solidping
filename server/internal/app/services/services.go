@@ -7,6 +7,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
+	"github.com/fclairamb/solidping/server/internal/egress"
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/integrations/sms"
@@ -42,6 +43,13 @@ type DegradedEvaluator interface {
 	EvaluateDegraded(ctx context.Context, now time.Time) (int, error)
 }
 
+// FreshnessSweeper runs one sweep of the check-freshness rule (spec
+// 2026-09-25-02) and returns how many checks it moved to stale. An interface
+// for the same import-cycle reason as DegradedEvaluator.
+type FreshnessSweeper interface {
+	SweepStale(ctx context.Context, now time.Time) (int, error)
+}
+
 // Registry holds all application services for dependency injection.
 type Registry struct {
 	Jobs           jobsvc.Service
@@ -75,6 +83,10 @@ type Registry struct {
 	// (spec 2026-09-22-03). Nil in tests and in processes that run no job
 	// worker — the job checks before calling.
 	Degraded DegradedEvaluator
+	// Freshness moves silent checks to the `stale` status once a minute (spec
+	// 2026-09-25-02). Nil in tests and in processes that run no job worker —
+	// the job checks before calling.
+	Freshness FreshnessSweeper
 	// SMS resolves, per org and per capability, whether a phone send goes
 	// through the org's own Twilio integration (bring-your-own) or the
 	// instance-level provider (server-provided, the default). Nil only in
@@ -95,6 +107,28 @@ type Registry struct {
 	// dependency on the handler layer. Nil in processes that build no check
 	// service; every consumer nil-guards.
 	Checks CheckDeleter
+
+	// PrivateLocationMonitors backfills the liveness monitor of every private
+	// location at startup (spec 2026-09-25-05). Same *checks.Service as Checks,
+	// behind its own narrow interface. Nil-guarded by the startup job.
+	PrivateLocationMonitors PrivateLocationMonitorBackfiller
+
+	// EgressGuard is this process's outbound-connection policy for
+	// destinations a user chose: today, notification sender URLs (spec
+	// 2026-09-25-20), reusing the guard package check workers already dial
+	// through (spec 2026-09-25-19). Built once at startup from
+	// config.Config.EgressAllowsPrivateTargets, so every notification send
+	// shares one pooled, guarded HTTP transport. Nil in tests that build a
+	// bare Registry — every consumer treats nil as "no policy" (allow
+	// everything), matching a nil *egress.Guard's own contract.
+	EgressGuard *egress.Guard
+}
+
+// PrivateLocationMonitorBackfiller is the startup half of the private-location
+// liveness monitor lifecycle: every private location gets exactly one monitor
+// unless its org opted out.
+type PrivateLocationMonitorBackfiller interface {
+	BackfillPrivateLocationMonitors(ctx context.Context) (int, error)
 }
 
 // CheckDeleter is the narrow slice of the checks service a background sweep

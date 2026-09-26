@@ -346,7 +346,8 @@ possible follow-up, not shipped here).
 ### Surfaces
 
 - **Admin API** (under `/api/v1/orgs/:org`): `GET|POST /private-regions`,
-  `DELETE /private-regions/:slug`, `GET|POST /agent-enrollment-tokens`,
+  `DELETE /private-regions/:slug`, `POST /private-regions/:slug/liveness-monitor`
+  (re-enable), `GET|POST /agent-enrollment-tokens`,
   `DELETE /agent-enrollment-tokens/:uid`, `GET /agents`, `DELETE /agents/:uid`.
 - **Dashboard**: `/orgs/$org/organization/private-locations`, with a guided
   `/register` wizard.
@@ -354,6 +355,32 @@ possible follow-up, not shipped here).
 - **Platform (system) agents have none of the above.** Their tokens come from
   the API deployment's `SP_SYSTEM_AGENT_ENROLLMENT_TOKENS`, and their rows never
   surface on the org-admin API. See *System agents* below.
+
+### Liveness monitor (spec 2026-09-25-05)
+
+A private location's agent dying used to leave no trace: `last_seen_at` just
+stopped moving. Three things now make it visible to the org, which is the only
+party that can restart it:
+
+- **`private-location` check type.** Passive, so the jobs node's
+  `PassiveEvaluator` is its only claimer (NULL-region job, excluded from cloud
+  and agent claims). `passiveVerdict` dispatches it by type to
+  `privateLocationVerdict` (`checkworker/private_location_evaluation.go`), which
+  reads the location's agents through `backend.PrivateLocationReader` (only
+  `DirectBackend` implements it). Liveness is `regions.IsAgentLive` — the rule
+  region health uses — so the monitor, the region-health report and the page's
+  online badges cannot disagree. No agent enrolled and never evaluated: nothing
+  is written, the check stays `created`, and `Check.AwaitingFirstAgent` keeps it
+  out of the freshness sweep.
+- **Lifecycle** (`handlers/checks/private_location_monitor.go`): created by
+  `CreatePrivateRegion` through the normal `CreateCheck` path, removed by
+  `DeletePrivateRegion`, backfilled by the startup job, re-ensured after every
+  enrollment. Deleting the monitor sets `RegionDefinition.LivenessMonitorOff` in
+  `custom_regions`. It is exempt from `MaxChecks`
+  (`CheckType.IsQuotaExempt`) and from `maxChecksPerMinute` (passive).
+- **Events.** `runAgentConnection` writes `agent.connected` / `agent.disconnected`
+  (`ping_timeout`, `revoked`, `server_shutdown`, `error`), org agents only, on a
+  detached goroutine.
 
 ---
 
@@ -558,6 +585,9 @@ Open bug: [`2026-07-20-02-private-locations-token-dialog-dirty-rendering`](../..
 | Post-exec math | `server/internal/checkworker/scheduling/scheduling.go` (`PostExec`) |
 | System-token seeding | `server/internal/app/systemagents.go` |
 | Fleet GC | `server/internal/jobs/jobtypes/job_agent_gc.go` |
+| Liveness monitor (evaluation) | `server/internal/checkworker/private_location_evaluation.go` |
+| Liveness monitor (lifecycle) | `server/internal/handlers/checks/private_location_monitor.go` |
+| Shared agent liveness rule | `server/internal/regions/liveness.go` |
 | Region rules | `server/internal/regions/regions.go` |
 | Egress self-probe | `server/internal/checkers/checkerdef/egress.go` (built on `ipversion.go`'s `DialEgressProbe`) |
 | Region capability aggregation | `server/internal/regions/capabilities.go` |

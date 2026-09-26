@@ -35,6 +35,10 @@ const (
 	// DetectorStaleIncidents reports active incidents whose check has stopped
 	// producing results (the "frozen incident" symptom).
 	DetectorStaleIncidents = "stale-incidents"
+	// DetectorStaleChecks reports checks in the `stale` ("No data") status
+	// whose regions are NOT dark (spec 2026-09-25-02): a platform bug —
+	// scheduler, leases, rate limiting — rather than a region outage.
+	DetectorStaleChecks = "stale-checks"
 )
 
 // Severity orders the three levels an anomaly can carry. Ordered so
@@ -138,6 +142,8 @@ type Report struct {
 	StrandedJobs int
 	// StaleIncidents is the count of frozen active incidents.
 	StaleIncidents int
+	// StaleChecks is the count of stale checks whose region is not dark.
+	StaleChecks int
 }
 
 // HasFailures reports whether any detector errored this run.
@@ -229,10 +235,26 @@ func (s *Service) Evaluate(ctx context.Context, cfg *Config) *Report {
 		run  func(context.Context, *Config) ([]Anomaly, error)
 	}
 
+	var regionReport *checks.RegionHealthReport
+
+	darkRegions := func(ctx context.Context, cfg *Config) ([]Anomaly, error) {
+		anomalies, evaluated, err := s.detectDarkRegions(ctx, cfg)
+		regionReport = evaluated
+
+		return anomalies, err
+	}
+
+	// Runs after the dark-region detector and reads the report it evaluated,
+	// so a check stale in a dark region is never reported a second time.
+	staleChecks := func(ctx context.Context, cfg *Config) ([]Anomaly, error) {
+		return s.detectStaleChecks(ctx, cfg, regionReport)
+	}
+
 	for _, detector := range []detectorFn{
-		{DetectorDarkRegion, s.detectDarkRegions},
+		{DetectorDarkRegion, darkRegions},
 		{DetectorFleetCollapse, s.detectFleetCollapse},
 		{DetectorStaleIncidents, s.detectStaleIncidents},
+		{DetectorStaleChecks, staleChecks},
 	} {
 		anomalies, err := s.runDetector(ctx, cfg, detector.run)
 		if err != nil {
@@ -246,6 +268,7 @@ func (s *Service) Evaluate(ctx context.Context, cfg *Config) *Report {
 
 	report.StrandedJobs = countFor(report.Anomalies, DetectorDarkRegion)
 	report.StaleIncidents = countFor(report.Anomalies, DetectorStaleIncidents)
+	report.StaleChecks = countFor(report.Anomalies, DetectorStaleChecks)
 
 	return report
 }

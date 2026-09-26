@@ -83,6 +83,10 @@ const INTENTIONALLY_UNMAPPED: Record<string, string> = {
     "retroactive dependency rollup (spec 2026-08-24-15) — amber incident family fallback is enough; it is a suppression notice on the child's timeline, not a page",
   "incident.rollup_detached":
     "rollup detach, the un-suppression counterpart to rolled_up (spec 2026-08-31-07) — amber incident family fallback is enough; it is a timeline record, not a page",
+  "incident.monitoring_interrupted":
+    "timeline record that the check went stale ('No data') while its incident stays open (spec 2026-09-25-02) — never pages; the incident family fallback is enough",
+  "incident.monitoring_resumed":
+    "timeline record that results came back for a stale check with an open incident (spec 2026-09-25-02) — never pages; the incident family fallback is enough",
   "status_update.created": "status-page activity — family fallback (blue) is enough",
   "status_update.updated": "status-page activity — family fallback (blue) is enough",
   "status_update.deleted": "status-page activity — family fallback (blue) is enough",
@@ -207,6 +211,19 @@ describe("EVENT_TYPE_REGISTRY pins the binding emoji per event type", () => {
     // the demotion alert is delivered as an audit event plus operator email,
     // not through a chat integration, so dash0 owns the pairing outright.
     ["statuspage.custom_domain.demoted", "🌐"],
+    // Region outage notices (spec 2026-09-25-03). Delivered as an audit event
+    // plus an email to owners/admins, never through a chat integration, so
+    // dash0 owns the pairing outright.
+    ["region.offline", "📴"],
+    ["region.recovered", "📶"],
+    // Automatic re-placement (spec 2026-09-25-06): an audit/timeline event
+    // only, never sent through a chat integration, so dash0 owns the pairing.
+    ["check.placement_changed", "🔀"],
+    // Private-location agent connections (spec 2026-09-25-05). Recorded as
+    // audit events only, never sent through a chat integration, so dash0 owns
+    // the pairing outright.
+    ["agent.connected", "🔌"],
+    ["agent.disconnected", "🪫"],
     // Security audit trail (spec 2026-08-21-09). Same ownership story again:
     // no backend chat integration hand-authors a message for an auth event, so
     // dash0 owns the pairing outright. The five are pinned because they must

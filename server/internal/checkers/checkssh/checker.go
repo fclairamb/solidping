@@ -128,7 +128,9 @@ func (c *SSHChecker) executeBannerOnly(
 	defer cancel()
 
 	connectStart := time.Now()
-	dialer := &net.Dialer{}
+	// Egress guard (spec 2026-09-25-19): refuses a non-public address under an
+	// enforcing policy; a plain *net.Dialer otherwise.
+	dialer := checkerdef.GuardDialerOr(ctx, &net.Dialer{})
 
 	conn, err := dialer.DialContext(ctxTimeout, "tcp", target)
 	if err != nil {
@@ -216,7 +218,7 @@ func (c *SSHChecker) verifyFingerprint(
 
 	// We expect auth to fail, but the handshake runs the host key callback
 	// before authentication, so a mismatch surfaces as a dial error.
-	conn, err := ssh.Dial("tcp", target, clientConfig)
+	conn, err := sshDial(ctx, target, clientConfig)
 	if conn != nil {
 		_ = conn.Close()
 	}
@@ -306,7 +308,7 @@ func (c *SSHChecker) executeWithAuth(
 	// Connect
 	authStart := time.Now()
 
-	conn, err := ssh.Dial("tcp", target, clientConfig)
+	conn, err := sshDial(ctx, target, clientConfig)
 	if err != nil {
 		if ctx.Err() != nil {
 			return checkerdef.Result{
@@ -443,4 +445,24 @@ func mergeOutput(base, extra map[string]any) map[string]any {
 
 func isExitError(err error, target **ssh.ExitError) bool {
 	return errors.As(err, target)
+}
+
+// sshDial is ssh.Dial with the TCP connect going through the egress guard
+// (spec 2026-09-25-19): ssh.Dial resolves and connects by itself, so it would
+// bypass the policy. Same shape otherwise — the connect honors
+// config.Timeout, the handshake runs on the connected socket.
+func sshDial(ctx context.Context, target string, config *ssh.ClientConfig) (*ssh.Client, error) {
+	conn, err := checkerdef.GuardDialerOr(ctx, &net.Dialer{Timeout: config.Timeout}).DialContext(ctx, "tcp", target)
+	if err != nil {
+		return nil, err
+	}
+
+	clientConn, chans, reqs, err := ssh.NewClientConn(conn, target, config)
+	if err != nil {
+		_ = conn.Close()
+
+		return nil, err
+	}
+
+	return ssh.NewClient(clientConn, chans, reqs), nil
 }

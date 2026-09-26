@@ -2717,9 +2717,9 @@ function TwilioPanel({
             accepted, not just these three. The backend validates by format,
             not an allowlist. */}
         <datalist id="ch-twilio-region-options">
-          <option value="us1">US1 (default)</option>
-          <option value="ie1">Ireland (ie1)</option>
-          <option value="au1">Australia (au1)</option>
+          <option value="us1">{t("form.twilioRegionUs1")}</option>
+          <option value="ie1">{t("form.twilioRegionIe1")}</option>
+          <option value="au1">{t("form.twilioRegionAu1")}</option>
         </datalist>
         <p className="text-xs text-muted-foreground">
           {t(

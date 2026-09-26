@@ -166,6 +166,9 @@
     "escalated": "Eskaliert",
     "reopenedRelapse": "Wieder geöffnet (Rückfall Nr. {{count}})",
     "resolved": "Aufgelöst",
+    "monitoringInterrupted": "Überwachung unterbrochen",
+    "monitoringInterruptedSince": "Überwachung unterbrochen seit {{time}}",
+    "monitoringResumed": "Überwachung fortgesetzt",
     "acknowledgedBy": "von {{name}}",
     "acknowledgedByVia": "von {{name}} über {{channel}}",
     "ackChannels": {

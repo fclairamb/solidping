@@ -56,9 +56,19 @@ function useStaleness(lastSuccessAt: number | undefined): boolean {
   return isStale(lastSuccessAt || undefined, now);
 }
 
+/**
+ * The loading / locked / not-found frame around the board. It carries the
+ * `dark` class, so `bg-background` / `text-foreground` resolve to the dark
+ * electric-identity tokens in index.css whatever the visitor's own theme —
+ * a TV is always dark. The board's status-tinted surfaces (tvSurface in
+ * lib/status-style.ts) encode status and deliberately stay literal.
+ */
 function TvShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="dark flex h-[100dvh] w-full items-center justify-center bg-[oklch(0.19_0.01_250)] px-8 text-center text-[oklch(0.93_0.01_250)]">
+    <div
+      className="dark flex h-[100dvh] w-full items-center justify-center bg-background px-8 text-center text-foreground"
+      data-testid="tv-shell"
+    >
       {children}
     </div>
   );

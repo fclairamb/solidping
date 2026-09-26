@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/fclairamb/solidping/server/internal/authhandoff"
 )
 
 // TestOIDCCallback_SetsAccessTokenCookie is the regression test for the SSO
@@ -15,7 +17,7 @@ import (
 // SSO users bounced through the login page before reaching the consent
 // screen. The OIDC provider is the one whose real HandleCallback runs
 // end-to-end against the in-repo fake IdP, so it stands in for all eight
-// SSO callbacks (they share the same success-redirect pattern).
+// SSO callbacks (they share the same success-redirect tail, finishProviderCallback).
 func TestOIDCCallback_SetsAccessTokenCookie(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
@@ -39,12 +41,17 @@ func TestOIDCCallback_SetsAccessTokenCookie(t *testing.T) {
 	res := rec.Result()
 	defer func() { _ = res.Body.Close() }()
 
-	// Existing behavior: 302 with tokens in the redirect URL query.
+	// 302 to the dashboard's handoff route. The tokens are no longer in the
+	// URL (spec 2026-09-25-12): the code redeems for the session.
 	r.Equal(http.StatusFound, res.StatusCode)
 	location, err := url.Parse(res.Header.Get("Location"))
 	r.NoError(err)
+	r.False(location.Query().Has("access_token"))
 
-	accessToken := location.Query().Get("access_token")
+	session, err := authhandoff.Redeem(ctx, svc.db, location.Query().Get(handoffCodeParam))
+	r.NoError(err)
+
+	accessToken := session.AccessToken
 	r.NotEmpty(accessToken)
 
 	// New behavior: the redirect response also carries the SPA session

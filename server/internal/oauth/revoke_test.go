@@ -125,18 +125,19 @@ func TestRevokeGrantRejectsNonOAuthTokens(t *testing.T) {
 	f := setupOAuthService(t)
 
 	for _, tokType := range []models.TokenType{models.TokenTypePAT, models.TokenTypeRefresh} {
-		row := models.NewUserToken(f.user.UID, &f.org.UID, "value-"+string(tokType), tokType)
+		value := "value-" + string(tokType)
+		row := models.NewUserToken(f.user.UID, &f.org.UID, value, tokType)
 		// A matching client_id would delete an oauth_refresh row — prove the
 		// type gate blocks these regardless.
 		row.Properties = models.JSONMap{"client_id": f.client.ClientID}
 		require.NoError(t, f.db.CreateUserToken(f.ctx, row))
 
-		deleted, err := f.svc.RevokeGrant(f.ctx, row.Token, f.client.ClientID)
+		deleted, err := f.svc.RevokeGrant(f.ctx, value, f.client.ClientID)
 		require.NoError(t, err)
 		require.False(t, deleted, "a %s token must not be revocable through /oauth/revoke", tokType)
 
 		// The row is still live.
-		got, err := f.db.GetUserTokenByToken(f.ctx, row.Token)
+		got, err := f.db.GetUserTokenByToken(f.ctx, value)
 		require.NoError(t, err)
 		require.Equal(t, row.UID, got.UID)
 	}

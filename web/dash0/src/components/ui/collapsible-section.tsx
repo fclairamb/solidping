@@ -1,5 +1,6 @@
 import * as React from "react";
 import { ChevronDown } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import {
   Collapsible,
@@ -44,6 +45,7 @@ export function CollapsibleSection({
   children,
   "data-testid": testId,
 }: CollapsibleSectionProps) {
+  const { t } = useTranslation("common");
   const [open, setOpen] = React.useState(defaultOpen);
   const rootRef = React.useRef<HTMLDivElement>(null);
   const lastSignal = React.useRef(expandSignal);
@@ -88,7 +90,7 @@ export function CollapsibleSection({
                 className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary"
               >
                 <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-                customized
+                {t("customized")}
               </span>
             ) : null}
           </div>

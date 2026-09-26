@@ -47,10 +47,11 @@ type DegradedEvalJobRun struct {
 // package without an import cycle (see services.DegradedEvaluator).
 func (r *DegradedEvalJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) error {
 	return periodicSweep{
-		jobType:    jobdef.JobTypeDegradedEval,
-		interval:   r.config.interval(degradedEvalInterval),
-		what:       "degraded checks",
-		logMessage: "Evaluated degraded detection rules",
+		jobType:         jobdef.JobTypeDegradedEval,
+		defaultInterval: degradedEvalInterval,
+		config:          r.config,
+		what:            "degraded checks",
+		logMessage:      "Evaluated degraded detection rules",
 		run: func(ctx context.Context, jctx *jobdef.JobContext) (int, bool, error) {
 			if jctx.Services == nil || jctx.Services.Degraded == nil {
 				return 0, false, nil

@@ -296,7 +296,8 @@ func (c *RDPChecker) attachScreenshot(cfg *RDPConfig, shot []byte, output map[st
 // resolution is skipped — the direct-tcpip request carries the hostname and
 // the bastion resolves it (the same rule every tunnel-capable checker follows).
 func dialTarget(ctx context.Context, host string, port int, metrics map[string]any) (net.Conn, error) {
-	dialer := &net.Dialer{}
+	// Egress guard (spec 2026-09-25-19) on the untunneled path.
+	dialer := checkerdef.GuardDialerOr(ctx, &net.Dialer{})
 
 	connectStart := time.Now()
 

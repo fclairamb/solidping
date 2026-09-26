@@ -142,17 +142,21 @@ type AuthorizationServerMetadata struct {
 // S256-only and the implicit grant is deliberately absent (OAuth 2.1).
 func (m Metadata) BuildAuthorizationServerMetadata() AuthorizationServerMetadata {
 	return AuthorizationServerMetadata{
-		Issuer:                            m.Issuer,
-		AuthorizationEndpoint:             m.AuthorizationEndpoint(),
-		TokenEndpoint:                     m.TokenEndpoint(),
-		RegistrationEndpoint:              m.RegistrationEndpoint(),
-		RevocationEndpoint:                m.RevocationEndpoint(),
-		JWKSURI:                           m.JWKSURI(),
-		ScopesSupported:                   []string{ScopeMCP, ScopeMCPRead},
-		ResponseTypesSupported:            []string{ResponseTypeCode},
-		GrantTypesSupported:               []string{GrantAuthorizationCode, GrantRefreshToken},
-		CodeChallengeMethodsSupported:     []string{CodeChallengeMethodS256},
-		TokenEndpointAuthMethodsSupported: []string{AuthMethodNone, AuthMethodSecretPost},
+		Issuer:                        m.Issuer,
+		AuthorizationEndpoint:         m.AuthorizationEndpoint(),
+		TokenEndpoint:                 m.TokenEndpoint(),
+		RegistrationEndpoint:          m.RegistrationEndpoint(),
+		RevocationEndpoint:            m.RevocationEndpoint(),
+		JWKSURI:                       m.JWKSURI(),
+		ScopesSupported:               []string{ScopeMCP, ScopeMCPRead},
+		ResponseTypesSupported:        []string{ResponseTypeCode},
+		GrantTypesSupported:           []string{GrantAuthorizationCode, GrantRefreshToken},
+		CodeChallengeMethodsSupported: []string{CodeChallengeMethodS256},
+		// Both confidential auth methods are advertised now that the token
+		// endpoint actually verifies the secret either can carry (spec
+		// 2026-09-25-27) — advertising client_secret_post without checking it
+		// was the bug this closes, so the fix is also in what gets advertised.
+		TokenEndpointAuthMethodsSupported: []string{AuthMethodNone, AuthMethodSecretPost, AuthMethodSecretBasic},
 	}
 }
 
@@ -170,6 +174,10 @@ const (
 	// AuthMethodSecretPost marks a confidential client authenticating with a
 	// secret in the token-request body.
 	AuthMethodSecretPost = "client_secret_post"
+	// AuthMethodSecretBasic marks a confidential client authenticating with
+	// HTTP Basic (client_id as username, secret as password) — what most
+	// OAuth libraries send by default.
+	AuthMethodSecretBasic = "client_secret_basic"
 
 	// paramClientID is the OAuth `client_id` wire parameter name — used both as
 	// a form field and as the property key that binds a grant row to its client.

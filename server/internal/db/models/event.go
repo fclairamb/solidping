@@ -17,6 +17,10 @@ const (
 	EventTypeCheckUpdated EventType = "check.updated"
 	// EventTypeCheckDeleted indicates a check was deleted.
 	EventTypeCheckDeleted EventType = "check.deleted"
+	// EventTypeCheckPlacementChanged records an automatically placed check
+	// being moved off a region that went dark (spec 2026-09-25-06). Payload:
+	// `from` and `to` region slugs and the `reason` (PlacementReason*).
+	EventTypeCheckPlacementChanged EventType = "check.placement_changed"
 
 	// EventTypeIncidentCreated indicates an incident was created.
 	EventTypeIncidentCreated EventType = "incident.created"
@@ -46,6 +50,17 @@ const (
 	// Never pages: the child never paged on the way in, so it does not page
 	// on the way out either.
 	EventTypeIncidentRollupDetached EventType = "incident.rollup_detached"
+	// EventTypeIncidentMonitoringInterrupted records, on an OPEN incident's
+	// timeline, that its check stopped producing results and went stale
+	// (spec 2026-09-25-02). The payload carries `since`, the newest real
+	// result before the silence. The incident deliberately stays open — no
+	// data is not a recovery — and this event never pages.
+	EventTypeIncidentMonitoringInterrupted EventType = "incident.monitoring_interrupted"
+	// EventTypeIncidentMonitoringResumed records that results came back for a
+	// stale check with an open incident. Resolution still needs a full, fresh
+	// recovery window: the sweep cleared the recovery clock on the way in.
+	// Never pages.
+	EventTypeIncidentMonitoringResumed EventType = "incident.monitoring_resumed"
 	// EventTypeIncidentAcknowledged indicates an incident was acknowledged.
 	EventTypeIncidentAcknowledged EventType = "incident.acknowledged"
 	// EventTypeIncidentUnacknowledged indicates an acknowledgment was cleared.
@@ -92,6 +107,17 @@ const (
 	// this: the page is still serving there and paging for it would teach
 	// operators to ignore the one that matters.
 	EventTypeStatusPageCustomDomainDemoted EventType = "statuspage.custom_domain.demoted"
+
+	// EventTypeRegionOffline tells an organization that a cloud region its
+	// checks depend on went dark (spec 2026-09-25-03): assigned jobs and no
+	// live worker, so the org's checks pinned only there are not running. Its
+	// payload names the region, `since` (the last worker beat) and the org's
+	// blind checks. Written by the per-minute region sweep, once per org per
+	// outage, alongside an email to the org's owners and admins. Never pages.
+	EventTypeRegionOffline EventType = "region.offline"
+	// EventTypeRegionRecovered closes a region.offline: written for exactly
+	// the orgs that received it, once, with the outage duration.
+	EventTypeRegionRecovered EventType = "region.recovered"
 
 	// EventTypeStatusUpdateCreated indicates a status update was created.
 	EventTypeStatusUpdateCreated EventType = "status_update.created"
@@ -219,6 +245,51 @@ const (
 	// EventTypeOrgSettingsUpdated records an organization-level setting change,
 	// as a list of changed field names plus safe scalar values.
 	EventTypeOrgSettingsUpdated EventType = "org.settings_updated"
+
+	// EventTypeAgentConnected records one of the org's private-location agents
+	// opening its connection (spec 2026-09-25-05). Target is the agent; the
+	// payload carries its `region`.
+	EventTypeAgentConnected EventType = "agent.connected"
+	// EventTypeAgentDisconnected records one of the org's private-location
+	// agents losing its connection, with the `reason` (see
+	// AgentDisconnectReason*) and its `region`. Written best effort when the
+	// socket closes: before it, a disconnect left no trace at all and
+	// last_seen_at simply stopped moving.
+	EventTypeAgentDisconnected EventType = "agent.disconnected"
+)
+
+// check.placement_changed payload keys and reasons (spec 2026-09-25-06).
+const (
+	// PlacementEventPayloadFrom is the region the check was moved off.
+	PlacementEventPayloadFrom = "from"
+	// PlacementEventPayloadTo is the region the check was moved to.
+	PlacementEventPayloadTo = "to"
+	// PlacementEventPayloadReason is why it moved.
+	PlacementEventPayloadReason = "reason"
+
+	// PlacementReasonRegionOffline: the region went dark (no live worker).
+	PlacementReasonRegionOffline = "region_offline"
+)
+
+// Agent connection event payload keys and disconnect reasons (spec
+// 2026-09-25-05).
+const (
+	// AgentEventPayloadRegion is the private region (`@<slug>`) of the agent.
+	AgentEventPayloadRegion = "region"
+	// AgentEventPayloadReason is why the connection closed.
+	AgentEventPayloadReason = "reason"
+
+	// AgentDisconnectReasonPingTimeout: the agent stopped answering keepalive
+	// pings (host down, network cut).
+	AgentDisconnectReasonPingTimeout = "ping_timeout"
+	// AgentDisconnectReasonRevoked: the agent was revoked while connected.
+	AgentDisconnectReasonRevoked = "revoked"
+	// AgentDisconnectReasonServerShutdown: this server stopped; the agent
+	// reconnects to another replica or after the restart.
+	AgentDisconnectReasonServerShutdown = "server_shutdown"
+	// AgentDisconnectReasonError: the socket failed or the agent closed it
+	// (process stopped, protocol error).
+	AgentDisconnectReasonError = "error"
 )
 
 // ActorType represents who triggered an event.

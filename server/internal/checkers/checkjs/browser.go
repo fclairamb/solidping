@@ -257,6 +257,14 @@ func (r *jsRuntime) newPageObject() *goja.Object {
 		})
 	})
 
+	// No checkerdef.ExtraBudgeter for JSConfig (spec 2026-09-25-35, which
+	// gave the `browser` check type's OWN automatic post-verdict capture a
+	// worker-granted extra window): this call is explicit, SCRIPT-driven, and
+	// shares r.execCtx with the rest of the script rather than a session kept
+	// alive past a separate probe deadline. A script that wants a shot near
+	// its own timeout must budget for it itself — e.g. a shorter per-call
+	// `timeout` on the blocking action before it (see callContext) — because
+	// there is no automatic after-the-verdict capture window here to starve.
 	_ = page.Set("screenshot", func(_ goja.FunctionCall) goja.Value {
 		return r.pageAction(func(session BrowserSession) (map[string]any, error) {
 			shot, err := session.Screenshot(r.execCtx)
@@ -446,13 +454,18 @@ func (r *jsRuntime) recordScreenshot(shot checkbrowser.Capture) {
 }
 
 // attachScreenshot hangs the recorded capture on a finished result, but only
-// for the verdicts the browser check itself would have kept one for.
+// for the verdicts the browser check itself would have kept one for — or for
+// any verdict on an on-demand run ("Capture now", spec 2026-09-25-34), which
+// exists precisely to see a page that is healthy. The script still decides
+// WHETHER to shoot: a script that never calls page.screenshot() yields nothing,
+// forced or not.
 func (r *jsRuntime) attachScreenshot(result *checkerdef.Result) {
 	if result == nil || r.screenshot.Empty() {
 		return
 	}
 
-	if !checkbrowser.CapturableStatus(result.Status) {
+	forced := r.execCtx != nil && checkerdef.ForcedCapture(r.execCtx)
+	if !forced && !checkbrowser.CapturableStatus(result.Status) {
 		return
 	}
 

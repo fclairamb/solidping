@@ -40,6 +40,10 @@ const (
 	// `platform_watchdog` recipient list — but it travels this transport, so
 	// it needs a label of its own to stay distinguishable in the metrics.
 	EventWatchdogDigest = "watchdog.digest"
+	// EventWatchdogRegion is a region sweep transition (spec 2026-09-25-03):
+	// a cloud region went dark or stalled, or recovered. Same recipient list
+	// and the same exclusion as the digest — deliverable, never subscribable.
+	EventWatchdogRegion = "watchdog.region"
 	// EventTest is the "Send me a test" button. Same exclusion as the digest:
 	// deliverable, never subscribable.
 	EventTest = "test"

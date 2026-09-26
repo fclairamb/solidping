@@ -65,3 +65,19 @@ export function formatAvailabilityPct(pct: number | undefined): string | null {
   if (pct >= 99) return `${pct.toFixed(2)}%`;
   return `${pct.toFixed(1)}%`;
 }
+
+/**
+ * Below this share of expected probes a bar segment says how much of it was
+ * measured. Probes are never perfectly regular: a few percent short is jitter,
+ * not a gap.
+ */
+export const LOW_COVERAGE_PCT = 90;
+
+/**
+ * True when the server says a meaningful part of the bucket went unmeasured
+ * (`coveragePct`, spec 2026-09-25-02): a green day over an 8-hour silent gap is
+ * green for sixteen hours, and its tooltip must say so.
+ */
+export function isPartiallyMeasured(point: { coveragePct?: number }): boolean {
+  return point.coveragePct !== undefined && point.coveragePct < LOW_COVERAGE_PCT;
+}

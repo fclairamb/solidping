@@ -19,9 +19,19 @@ export interface AvailabilityRowView {
   longestText: string | null;
   averageText: string | null;
   monitoredDays: number | null;
+  /**
+   * "8h 0m" of the window nobody measured, when coverage is low enough to be
+   * worth saying (spec 2026-09-25-02) — null otherwise. A 100% over a day with
+   * an 8-hour hole is 100% of sixteen hours, and the table has to say so.
+   */
+  unmeasuredText: string | null;
 }
 
 const SECONDS_PER_DAY = 86_400;
+
+/** Below this coverage the unmeasured time is shown beside the percentage:
+ * probes are never perfectly regular, so a few percent short is jitter. */
+const LOW_AVAILABILITY_COVERAGE = 0.9;
 
 /** Re-exported from the shared availability module so the table and the chart
  * strip sitting above it format the same number identically — they are the two
@@ -109,5 +119,11 @@ export function mapAvailabilityRow(
     monitoredDays: period?.partial
       ? Math.max(1, Math.round(period.monitoredSeconds / SECONDS_PER_DAY))
       : null,
+    unmeasuredText:
+      period?.coverage != null &&
+      period.coverage < LOW_AVAILABILITY_COVERAGE &&
+      (period.unmeasuredSeconds ?? 0) > 0
+        ? formatDurationSeconds(period.unmeasuredSeconds ?? 0)
+        : null,
   };
 }

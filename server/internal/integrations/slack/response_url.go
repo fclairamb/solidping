@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+
+	"github.com/fclairamb/solidping/server/internal/httpclientpool"
 )
 
 // asyncCheckTimeout bounds how long the detached goroutine that finishes
@@ -20,7 +22,7 @@ const asyncCheckTimeout = 25 * time.Second
 // best-effort delivery, not something worth retrying indefinitely.
 //
 //nolint:gochecknoglobals // shared HTTP client, same pattern as Client.httpClient
-var responseURLHTTPClient = &http.Client{Timeout: 10 * time.Second}
+var responseURLHTTPClient = httpclientpool.NewClient(10 * time.Second)
 
 // postResponseURL delivers a follow-up message to a slash command's
 // response_url — Slack's documented mechanism for answering after the

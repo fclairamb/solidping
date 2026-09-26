@@ -1,4 +1,5 @@
 import { test, expect, API_BASE, type Page } from "./fixtures";
+import { choosePinnedRegions } from "./placement-helpers";
 import { expandSection } from "./section-helpers";
 
 // The shared `ipVersion` option (spec 2026-08-09-02): a check can be pinned to
@@ -25,6 +26,12 @@ async function getAuthToken(page: Page): Promise<string> {
 // returns its uid. Port 9 (discard) is closed on the runner, which is fine: the
 // assertions are about which address family was selected, not about reaching a
 // service.
+//
+// The check is pinned to the fixture's one cloud region rather than placed
+// automatically: that region reports whatever egress THIS host has, and on a
+// host without IPv6 automatic placement refuses an ipv6 pin outright. A pinned
+// region is never capability-filtered, so placement stays out of what this spec
+// measures.
 async function createTcpCheck(
   page: Page,
   token: string,
@@ -36,10 +43,12 @@ async function createTcpCheck(
       name: opts.name,
       type: "tcp",
       period: "10s",
+      placement: "pinned",
+      regions: ["default"],
       config: { host: opts.host, port: 9, ipVersion: opts.ipVersion },
     },
   });
-  expect(resp.status()).toBe(201);
+  expect(resp.status(), await resp.text()).toBe(201);
   return (await resp.json()).uid;
 }
 
@@ -108,6 +117,25 @@ test.describe("IP version selector", () => {
     const page = authenticatedPage;
     const token = await getAuthToken(page);
 
+    // The fixture's single cloud region reports the egress of whatever host
+    // this runs on, so automatic placement refuses an IPv6 pin wherever that
+    // host has no IPv6 (correctly — but not what this test is about), and the
+    // region picker only renders with two or more regions to offer. Mock a
+    // second one, then pin: a pinned region is never capability-filtered.
+    await page.route("**/api/v1/orgs/*/regions", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: [
+            { slug: "default", emoji: "🇪🇺", name: "Default", status: "online" },
+            { slug: "e2e-second", emoji: "🇫🇷", name: "E2E Second", status: "online" },
+          ],
+          defaultRegions: ["default"],
+        }),
+      }),
+    );
+
     await page.goto("orgs/test/checks/new?checkType=tcp");
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
@@ -120,6 +148,7 @@ test.describe("IP version selector", () => {
     await page.getByTestId("check-ip-version-select").click();
     await page.getByRole("option", { name: "IPv6 only", exact: true }).click();
 
+    await choosePinnedRegions(page);
     await page.getByTestId("check-submit-button").click();
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 15000 });
     await page.waitForLoadState("networkidle");

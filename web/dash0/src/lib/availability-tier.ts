@@ -29,7 +29,11 @@ export function availabilityTier(pct: number | null): AvailabilityTier {
  * tier's light-theme text color. A pale translucent status badge would lose
  * its meaning on the gradient. Each text color reads >= 4.5:1 on white at the
  * badge's 11px (kpi-tile.test.tsx checks it): emerald-700, amber-700, and
- * red-700 for "down" because the light --destructive is only 4.41:1 on white.
+ * red-700 for "down" — a plain Tailwind color matching the other three
+ * tiers' own fixed palette, kept separate from --destructive (a different
+ * token, tuned for the destructive button/text elsewhere in the app; spec
+ * 2026-09-24-07 darkened it enough to also clear 4.5:1 on white, but the two
+ * were never coupled).
  */
 export const AVAILABILITY_TIER_HERO_BADGE: Record<AvailabilityTier, string> = {
   noData: "bg-white text-slate-600",

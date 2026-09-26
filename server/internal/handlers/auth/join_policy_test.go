@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"testing"
 	"time"
 
@@ -551,27 +550,6 @@ func TestJoinOrgViaLoginRespectsMaxUsers(t *testing.T) {
 	require.Error(t, memberErr, "no membership may be created once the org is at its cap")
 }
 
-// TestPendingMembershipRedirect pins the redirect a refused login gets: the
-// no-org request-access surface, carrying an org-less session and the
-// explicit flag — never the org dashboard, and never an `org` handoff param
-// (which would make the SPA treat this as an org-scoped sign-in).
-func TestPendingMembershipRedirect(t *testing.T) {
-	t.Parallel()
-
-	redirect := pendingMembershipRedirect("acme", "tok-123", 3600)
-
-	parsed, err := url.Parse(redirect)
-	require.NoError(t, err)
-	require.Equal(t, noOrgPath, parsed.Path)
-
-	query := parsed.Query()
-	require.Equal(t, "acme", query.Get(pendingMembershipParam))
-	require.Equal(t, "tok-123", query.Get("access_token"))
-	require.Equal(t, "3600", query.Get("expires_in"))
-	require.Empty(t, query.Get("org"))
-	require.Empty(t, query.Get("refresh_token"))
-}
-
 // TestMicrosoftCallbackRefusesNonMatchingEmail is the end-to-end reproduction
 // of the 2026-08-07 incident: a Microsoft account whose (UPN-derived) address
 // does not match the org's registration.email_pattern completes the OAuth
@@ -641,10 +619,9 @@ func TestMicrosoftCallbackRefusesNonMatchingEmail(t *testing.T) {
 		require.NoError(t, reqErr)
 		require.Equal(t, models.MembershipRequestStatusPending, request.Status)
 
-		// And the handler sends them to the request-access surface.
-		redirect := pendingMembershipRedirect(result.OrgSlug, result.AccessToken, result.ExpiresIn)
-		require.Contains(t, redirect, noOrgPath)
-		require.Contains(t, redirect, pendingMembershipParam+"=")
+		// And the handler's shared tail hands over an org-less session naming
+		// the org, through a handoff code (TestPendingCallbackRedirectsWithHandoffCode).
+		require.Equal(t, org.Slug, result.PendingOrgSlug)
 	})
 
 	t.Run("matching email joins", func(t *testing.T) {
@@ -713,41 +690,4 @@ func TestGoogleCallbackRefusesNonMatchingEmail(t *testing.T) {
 	request, reqErr := svc.db.GetMembershipRequestByOrgAndUser(ctx, org.UID, user.UID)
 	require.NoError(t, reqErr)
 	require.Equal(t, models.MembershipRequestStatusPending, request.Status)
-}
-
-// TestFinishProviderCallbackPendingRedirect exercises the handler tail every
-// provider callback now shares: a pending result must send the browser to the
-// no-org request-access surface, NOT to the success redirect the login flow
-// originally asked for (which is the org dashboard).
-func TestFinishProviderCallbackPendingRedirect(t *testing.T) {
-	t.Parallel()
-
-	t.Run("pending goes to the no-org surface", func(t *testing.T) {
-		t.Parallel()
-
-		recorder := httptest.NewRecorder()
-		req := httptest.NewRequestWithContext(
-			t.Context(), http.MethodGet, "/api/v1/auth/microsoft/callback", nil)
-
-		require.NoError(t, finishProviderCallback(
-			recorder, req, "/d/orgs/acme?access_token=at", "acme", "at", 3600, true))
-
-		location := recorder.Header().Get("Location")
-		require.Contains(t, location, noOrgPath)
-		require.NotContains(t, location, "/d/orgs/acme")
-		require.Contains(t, location, pendingMembershipParam+"=acme")
-	})
-
-	t.Run("admitted keeps the success redirect", func(t *testing.T) {
-		t.Parallel()
-
-		recorder := httptest.NewRecorder()
-		req := httptest.NewRequestWithContext(
-			t.Context(), http.MethodGet, "/api/v1/auth/microsoft/callback", nil)
-
-		require.NoError(t, finishProviderCallback(
-			recorder, req, "/d/orgs/acme?access_token=at", "acme", "at", 3600, false))
-
-		require.Equal(t, "/d/orgs/acme?access_token=at", recorder.Header().Get("Location"))
-	})
 }

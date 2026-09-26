@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -91,4 +92,113 @@ func TestListChecksDef_LabelsIsObject(t *testing.T) {
 	r.True(ok)
 	r.Contains(desc, "JSON object")
 	r.Contains(desc, "env")
+}
+
+func TestUpdateCheckDef_RegionsDoesNotClaimToPause(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	def := updateCheckDef()
+	schema, ok := def.InputSchema.(map[string]any)
+	r.True(ok)
+	props, ok := schema["properties"].(map[string]any)
+	r.True(ok)
+	regionsProp, ok := props["regions"].(map[string]any)
+	r.True(ok)
+	desc, ok := regionsProp[schemaKeyDescription].(string)
+	r.True(ok)
+	r.NotContains(strings.ToLower(desc), "pause")
+	r.Contains(strings.ToLower(desc), "default")
+}
+
+func TestUpdateCheckDef_EnabledMentionsPause(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	def := updateCheckDef()
+	schema, ok := def.InputSchema.(map[string]any)
+	r.True(ok)
+	props, ok := schema["properties"].(map[string]any)
+	r.True(ok)
+	enabledProp, ok := props[schemaKeyEnabled].(map[string]any)
+	r.True(ok)
+	desc, ok := enabledProp[schemaKeyDescription].(string)
+	r.True(ok)
+	r.Contains(strings.ToLower(desc), "pause")
+}
+
+func TestCreateCheckDef_RegionsDoesNotClaimAllOrgRegions(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	def := createCheckDef()
+	schema, ok := def.InputSchema.(map[string]any)
+	r.True(ok)
+	props, ok := schema["properties"].(map[string]any)
+	r.True(ok)
+	regionsProp, ok := props["regions"].(map[string]any)
+	r.True(ok)
+	desc, ok := regionsProp[schemaKeyDescription].(string)
+	r.True(ok)
+	r.NotContains(desc, "all org regions")
+}
+
+// TestCheckDefsExposePlacement: create_check and update_check expose the
+// placement fields (spec 2026-09-25-06), and the regions wording explains that
+// an explicit list pins while an omitted one is placed automatically.
+func TestCheckDefsExposePlacement(t *testing.T) {
+	t.Parallel()
+
+	for name, def := range map[string]ToolDefinition{"create": createCheckDef(), "update": updateCheckDef()} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+			schema, ok := def.InputSchema.(map[string]any)
+			r.True(ok)
+			props, ok := schema["properties"].(map[string]any)
+			r.True(ok)
+
+			for _, key := range []string{"placement", "regionCount", "regionPool"} {
+				prop, found := props[key].(map[string]any)
+				r.Truef(found, "%s exposes %s", name, key)
+				desc, _ := prop[schemaKeyDescription].(string)
+				r.NotEmpty(desc)
+			}
+
+			regionsProp, ok := props["regions"].(map[string]any)
+			r.True(ok)
+			desc, _ := regionsProp[schemaKeyDescription].(string)
+			r.Contains(strings.ToLower(desc), "pinned")
+			r.Contains(strings.ToLower(desc), "automatic")
+			r.Contains(strings.ToLower(desc), "default")
+		})
+	}
+}
+
+// TestCheckDefsExposeFailQuorum: create_check and update_check expose the
+// multi-region quorum (spec 2026-09-25-10), and the argument is read as a
+// string or a number.
+func TestCheckDefsExposeFailQuorum(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	for name, def := range map[string]ToolDefinition{"create": createCheckDef(), "update": updateCheckDef()} {
+		schema, ok := def.InputSchema.(map[string]any)
+		r.True(ok)
+		props, ok := schema["properties"].(map[string]any)
+		r.True(ok)
+		prop, found := props["failQuorum"].(map[string]any)
+		r.Truef(found, "%s exposes failQuorum", name)
+		desc, _ := prop[schemaKeyDescription].(string)
+		r.Contains(desc, "majority")
+		r.Contains(desc, "regional issue")
+	}
+
+	r.Nil(failQuorumArg(map[string]any{}))
+	r.Nil(failQuorumArg(map[string]any{"failQuorum": nil}))
+	r.Equal("majority", string(*failQuorumArg(map[string]any{"failQuorum": "majority"})))
+	r.Equal("2", string(*failQuorumArg(map[string]any{"failQuorum": float64(2)})))
+	r.Equal("2.5", string(*failQuorumArg(map[string]any{"failQuorum": 2.5})))
 }

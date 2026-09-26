@@ -20,6 +20,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/fclairamb/solidping/server/internal/httpclientpool"
 )
 
 const (
@@ -125,7 +127,7 @@ func NewClient(accountSID, authToken string) *Client {
 // Intended for tests that point the client at an httptest fake server.
 func NewClientWithBaseURL(accountSID, authToken, baseURL string) *Client {
 	return &Client{
-		httpClient: newHTTPClient(DefaultTimeout),
+		httpClient: httpclientpool.NewClient(DefaultTimeout),
 		accountSID: accountSID,
 		authToken:  authToken,
 		baseURL:    strings.TrimRight(baseURL, "/"),
@@ -227,7 +229,7 @@ func VerifyCredentials(ctx context.Context, accountSID, authToken, baseURL strin
 
 	req.SetBasicAuth(accountSID, authToken)
 
-	client := newHTTPClient(DefaultTimeout)
+	client := httpclientpool.NewClient(DefaultTimeout)
 
 	resp, err := client.Do(req)
 	if err != nil {

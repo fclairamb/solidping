@@ -147,6 +147,44 @@ test.describe("Login with 2FA", () => {
     expect(page.url()).toContain("/login");
   });
 
+  // Spec 2026-09-25-29-totp-attempt-throttle: TOTP/recovery verification had
+  // no per-user attempt cap, so a stolen password could be followed by
+  // unbounded guessing. The server now spends a 5-attempt budget on every
+  // verify call (server internal/handlers/auth/service.go
+  // twoFAAttemptMaxPerUser) and answers the one past the cap with 429
+  // RATE_LIMITED — this proves the dashboard surfaces that as a clear,
+  // translated "wait and try again" message instead of falling through to
+  // reportError's raw (English) API string.
+  test("hitting the per-user 2FA throttle shows a clear wait message", async ({
+    page,
+  }) => {
+    const { email, orgSlug, secret } = await seedEnrolledUser(page);
+
+    await loginToChallenge(page, orgSlug, email);
+
+    const codeInput = page.getByTestId("2fa-login-code");
+    await expect(codeInput).toBeVisible();
+
+    const wrongCode = generateTotp(secret) === "000000" ? "000001" : "000000";
+
+    // The first 5 wrong attempts each spend one unit of the budget and still
+    // get the ordinary "wrong code" answer.
+    for (let i = 0; i < 5; i++) {
+      await codeInput.fill(wrongCode);
+      await page.getByTestId("2fa-login-verify").click();
+      await expect(page.getByTestId("login-error")).toBeVisible();
+    }
+
+    // The 6th attempt is throttled outright.
+    await codeInput.fill(wrongCode);
+    await page.getByTestId("2fa-login-verify").click();
+
+    const error = page.getByTestId("login-error");
+    await expect(error).toBeVisible();
+    await expect(error).toContainText(/too many attempts/i);
+    expect(page.url()).toContain("/login");
+  });
+
   /**
    * Records every path this context visits, INCLUDING the same-document
    * pushState/replaceState navigations TanStack Router performs.

@@ -194,6 +194,7 @@ var demoUnauthenticatedRoutes = map[string]string{
 	"POST /api/v1/auth/request-password-reset": "anonymous by definition",
 	"POST /api/v1/auth/reset-password": "consumes an emailed reset token; refuses demo " +
 		"users in the handler (TestResetPasswordRefusesTheDemoAccount)",
+	"POST /api/v1/auth/handoff/exchange":      "redeems a federated login's single-use handoff code",
 	"POST /api/v1/auth/2fa/verify":            "completes a login with a pending-2FA token",
 	"POST /api/v1/auth/2fa/recovery":          "completes a login with a recovery code",
 	"POST /api/v1/auth/passkeys/login/begin":  "passkey login challenge",

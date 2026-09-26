@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/fclairamb/solidping/server/internal/httpclientpool"
 )
 
 const (
@@ -102,7 +104,7 @@ func NewClientForTenant(appID, appSecret, serviceURL, tenantID string) *Client {
 // Intended for tests pointing at an httptest fake connector.
 func NewClientWithTokenURL(appID, appSecret, serviceURL, tokenURL string) *Client {
 	return &Client{
-		httpClient: &http.Client{Timeout: DefaultTimeout},
+		httpClient: httpclientpool.NewClient(DefaultTimeout),
 		appID:      appID,
 		appSecret:  appSecret,
 		serviceURL: normalizeServiceURL(serviceURL),

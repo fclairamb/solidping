@@ -35,7 +35,10 @@ func (d mssqlTunnelDialer) HostName() string { return d.host }
 // openMSSQL opens the SQL Server handle. Tunneled, it builds a connector wired to
 // dial through the bastion; untunneled, it is the byte-for-byte `sql.Open`.
 func openMSSQL(ctx context.Context, connURL, host string) (*sql.DB, error) {
-	dialer := checkerdef.TunnelDialerFrom(ctx)
+	// The tunnel dialer, or the egress guard under an enforcing policy (spec
+	// 2026-09-25-19); nil keeps the driver's own dial byte-for-byte. The
+	// driver negotiates TLS above this dialer either way.
+	dialer := checkerdef.OutboundDialer(ctx)
 	if dialer == nil {
 		return sql.Open("sqlserver", connURL)
 	}

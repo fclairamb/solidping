@@ -7,6 +7,7 @@ import {
 } from "@/components/ui/tooltip";
 import type { AvailabilityPoint } from "@/api/hooks";
 import { statusStyle } from "@/lib/status-style";
+import { isPartiallyMeasured } from "@/lib/availability-status";
 import { segmentGeometry } from "@/lib/segment-layout";
 
 // Preferred gap between two segments, in CSS pixels.
@@ -183,6 +184,16 @@ export function AvailabilityBar({
                     ) : (
                       <p className="mt-0.5 pl-3.5 text-muted-foreground">
                         {t("noData")}
+                      </p>
+                    )}
+                    {/* A green day over an 8-hour gap is green for sixteen
+                        hours: say how much was measured (spec 2026-09-25-02). */}
+                    {point.status !== "noData" && isPartiallyMeasured(point) && (
+                      <p
+                        className="mt-0.5 pl-3.5 text-muted-foreground tabular-nums"
+                        data-testid="availability-bar-coverage"
+                      >
+                        {t("measuredCoverage", { pct: Math.round(point.coveragePct ?? 0) })}
                       </p>
                     )}
                   </TooltipContent>

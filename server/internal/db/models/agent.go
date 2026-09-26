@@ -18,7 +18,7 @@ const (
 // Agent kinds (spec 2026-07-27-01).
 const (
 	// AgentKindOrg is a tenant-private deported agent: bound to exactly one
-	// organization and one `@<org>/<region>` private region.
+	// organization and one org-relative `@<region>` private region.
 	AgentKindOrg = "org"
 	// AgentKindSystem is a platform-operated agent (e.g. a fly.io machine)
 	// serving a SHARED cloud region across every organization. It has no owning
@@ -43,8 +43,10 @@ type Agent struct {
 	// Kind is AgentKindOrg or AgentKindSystem.
 	Kind string `bun:"kind,notnull"`
 	// Region is the region slug the agent is bound to; all its claims are
-	// hard-scoped to it. Fully-qualified `@<org>/<region>` for an org agent, a
-	// plain cloud region slug for a system agent.
+	// hard-scoped to it. For an org agent it is the org-relative `@<region>`
+	// (regions.PrivateRegionSlug, the same string jobs and checks store — the
+	// org is implicit in OrganizationUID); for a system agent, a plain cloud
+	// region slug.
 	Region string `bun:"region,notnull"`
 	Name   string `bun:"name,notnull"`
 	// Ed25519PublicKey is the base64 identity public key used to verify reconnect
@@ -128,8 +130,9 @@ type AgentEnrollmentToken struct {
 	OrganizationUID *string `bun:"organization_uid"`
 	// Kind is AgentKindOrg or AgentKindSystem.
 	Kind string `bun:"kind,notnull"`
-	// Region is the region the enrolled agent will be bound to:
-	// `@<org>/<region>` for an org token, a cloud region slug for a system one.
+	// Region is the region the enrolled agent will be bound to: the
+	// org-relative `@<region>` for an org token, a cloud region slug for a
+	// system one.
 	Region string `bun:"region,notnull"`
 	// TokenHash is the SHA-256 hex of the spe_ token — never the token itself.
 	TokenHash string    `bun:"token_hash,notnull"`

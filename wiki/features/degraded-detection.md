@@ -111,8 +111,7 @@ Per check, code defaults, no org-level layer:
 | `degraded_slow` | `integer` NULL | 3 | M for slow |
 | `degraded_slow_window` | `integer` NULL | 6 | N for slow |
 | `slow_threshold_ms` | `integer` NULL | 0 | 0 = slow rule off; the form suggests ~2× the observed p95 |
-| `degraded_enabled` | `boolean NOT NULL` | false on existing rows, true on new | opens incidents |
-| `degraded_would_fire_at` | `timestamptz` NULL | null | stamped by the dry run |
+| `degraded_enabled` | `boolean NOT NULL` | false on existing rows, true on new | evaluated at all |
 | `degraded_evaluated_at` | `timestamptz` NULL | null | evaluator rotation state, not configuration |
 
 ### NULL is the unset marker; the default is resolved at READ time
@@ -149,8 +148,8 @@ alongside the nullable column, or "unset" gets two spellings.
 false`: NULL cannot carry the rollout rule. The `ADD COLUMN` backfill is what
 turns the feature off on every pre-existing row, nil-means-true would start
 paging on upgrade, and nil-means-false would silently disable checks created by
-a path that does not set the flag. A plain bool makes every such path fail SAFE,
-into the dry run.
+a path that does not set the flag. A plain bool makes every such path fail SAFE:
+the check is not evaluated and nobody is paged.
 
 **M ≤ N is validated against the EFFECTIVE window**, not only when both arrive
 in the same request: a PATCH raising M alone (or shrinking N alone) would
@@ -191,24 +190,41 @@ have their own endpoints), so a new form field reaches the server by default and
 dropping one has to be deliberate. `lib/check-request.test.ts` asserts the
 request BODY, not the form's internal state — that distinction is the whole bug.
 
-## Rollout: the dry run
+## Rollout: off for existing checks, on for new ones
 
-Off for existing checks, on for new ones — upgrading must never start notifying
-on its own. Adoption comes from a dry run: the evaluator runs for **every** check
-and, when `degraded_enabled` is false, opens nothing and only stamps
-`degraded_would_fire_at` (earliest wins — the banner is past tense). One
-evaluator, one code path, no review page.
+Upgrading must never start notifying on its own, so `degraded_enabled` defaults
+to false on every row that exists when the migration runs, and `models.NewCheck`
+sets it to true for every check created from then on. Turning it on for an
+existing check is a per-check decision (the "Degraded detection" section of the
+check form, `degradedEnabled` over the API, `/apply`, import or MCP).
 
-- The check page shows a banner ("this check would have been flagged degraded at
-  …; enable?") with a deep link into the window —
-  `components/checks/degraded-dry-run-banner.tsx`.
-- The checks list gets `?wouldHaveFired=true`, a real URL boolean (the shape
-  `graphFull` already uses). A string-typed `"true"` is a trap here: TanStack
-  Router JSON-encodes a string whose text is itself valid JSON, so it reached the
-  address bar quoted and a pasted `?wouldHaveFired=true` parsed back as a boolean
-  the string comparison missed.
-- Enabling the feature retires the stamp, so "would have fired" and "is allowed
-  to fire" can never both look true.
+A check with `degraded_enabled` false is **not evaluated at all**:
+`ListChecksForDegradedEval` filters on it (and `idx_checks_degraded_eval`
+carries it in its predicate), and `EvaluateCheck` returns before writing
+anything on the row.
+
+**Turning it off closes the open degraded incident in the same request.** The
+sweep never looks at a disabled check again, so an incident it opened would
+otherwise stay open forever. The hook is `checks.Service.UpdateCheck` →
+`DegradedIncidentResolver` (implemented by
+`incidents.Service.ResolveDegradedOnDisable`), which every write path goes
+through: PATCH, `UpsertCheck`, `/apply`, import and MCP `update_check`. It fires
+on any write that sets the flag to false, not only on a true → false
+transition, so a retry after a failed close still closes it. The incident
+resolves with `resolution_type = "disabled"` and a `degraded_turned_off`
+detail, and the Slack and email resolved notifications say detection was
+turned off instead of "steady again". The resolver is an injected interface
+because `checks` cannot import `incidents` (incidents → jobs/jobtypes →
+checks); a new service that serves a check write path must call
+`SetDegradedIncidentResolver`.
+
+History: v0.32.0 shipped a dry run instead (the evaluator swept every check,
+stamped a timestamp column on disabled ones and fed a check-page banner and a
+checks-list filter). Spec 2026-09-24-08 removed it; migration
+`024_v0_33_0` drops the column and closes any degraded incident already open on
+a disabled check. The same migration widens Postgres' `incidents_kind_check`,
+which since v0.32.0 had refused the `degraded` kind, so degraded incidents
+could not open on Postgres at all.
 
 ## Reporting
 
@@ -237,7 +253,7 @@ evaluator, one code path, no review page.
 49 of the 159 checks had at least one failure and zero incidents that day — that
 is the size of the problem. `5 of 60` is the noisiest failure rule and the only
 one that catches the motivating episode, so it ships; it is the number most likely
-to be retuned once the dry run shows operators what it produces. The slow rule is
+to be retuned once operators turn it on and see what it produces. The slow rule is
 the priority, not the add-on: 9 of the 11 checks it fired on had no real incident
 that day.
 

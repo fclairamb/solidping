@@ -24,6 +24,10 @@ export const VALIDATION_CODES = {
    * `maxChecksPerMinute` cap. Advisory: it renders the link to the check
    * scheduling page, and never blocks the save. */
   orgRateOverLimit: "ORG_RATE_OVER_LIMIT",
+  /** Automatic placement will run from fewer regions than asked: fewer
+   * eligible regions, or the org's checks-per-minute limit (spec 2026-09-25-06).
+   * Advisory. */
+  placementRegionCountReduced: "PLACEMENT_REGION_COUNT_REDUCED",
 } as const;
 
 interface ValidateResponse {
@@ -51,6 +55,10 @@ export interface CheckValidationInput {
   type: string | undefined;
   config: Record<string, unknown>;
   regions?: string[];
+  /** Proposed placement (spec 2026-09-25-06): `auto` projects the automatic
+   * placement (and its reduced-count warning), `pinned` the explicit regions. */
+  placement?: "pinned" | "auto";
+  regionCount?: number;
   /** Proposed slug, checked for format and for uniqueness within the org. */
   slug?: string;
   /** "HH:MM:SS". Omit for a passive check, or while no period is chosen. */
@@ -72,6 +80,8 @@ export function useCheckValidationResult(
     type,
     config,
     regions = [],
+    placement,
+    regionCount,
     slug,
     period,
     enabled,
@@ -114,6 +124,8 @@ export function useCheckValidationResult(
               type,
               config,
               regions,
+              ...(placement ? { placement } : {}),
+              ...(regionCount ? { regionCount } : {}),
               ...(period ? { period } : {}),
               ...(enabled === undefined ? {} : { enabled }),
               ...(excludeCheckUid ? { excludeCheckUid } : {}),
@@ -142,6 +154,8 @@ export function useCheckValidationResult(
     type,
     JSON.stringify(config),
     JSON.stringify(regions),
+    placement,
+    regionCount,
     period,
     enabled,
     excludeCheckUid,

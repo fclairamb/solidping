@@ -63,6 +63,15 @@ const ParameterValueKey = "value"
 // two subtly different strings.
 const ParamKeyTracerouteEnabled = "diagnostics.traceroute.enabled"
 
+// ParamKeyStatusPageAllowedEmbedOrigins is the ORG-scoped allowlist of origins
+// that may frame the org's public status pages (spec 2026-09-25-28). Stored as
+// a comma-separated string of scheme+host origins. Absent means only the
+// SolidPing origin itself may frame them (`frame-ancestors 'self'`).
+//
+// Like ParamKeyTracerouteEnabled it lives here because the org-settings
+// handler writes it and the HTTP layer (internal/app) reads it.
+const ParamKeyStatusPageAllowedEmbedOrigins = "statuspage.allowed_embed_origins"
+
 // ParameterValue wraps a scalar into the JSON envelope parameters are stored
 // in.
 func ParameterValue(value any) JSONMap {

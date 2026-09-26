@@ -533,7 +533,7 @@ function RouteRow({
           onCheckedChange={handleToggle}
           disabled={patchRoute.isPending}
           data-testid={`toggle-route-${route.uid}`}
-          aria-label={`Toggle ${contactTypeLabel(route.contact.type)} notifications`}
+          aria-label={t("notifications.route.toggleAria", { channel: contactTypeLabel(route.contact.type) })}
         />
         <Button
           variant="ghost"
@@ -971,7 +971,7 @@ function AddContactForm({
             size="sm"
             onClick={() => setType("email")}
           >
-            <Mail className="h-3 w-3 mr-1" /> Email
+            <Mail className="h-3 w-3 mr-1" /> {t("notifications.addContact.typeEmail")}
           </Button>
           <Button
             type="button"
@@ -980,7 +980,7 @@ function AddContactForm({
             onClick={() => setType("phone")}
             data-testid="add-contact-type-phone"
           >
-            <Phone className="h-3 w-3 mr-1" /> Phone
+            <Phone className="h-3 w-3 mr-1" /> {t("notifications.addContact.typePhone")}
           </Button>
           {whatsAppAvailable && (
             <Button
@@ -990,7 +990,7 @@ function AddContactForm({
               onClick={() => setType("whatsapp")}
               data-testid="add-contact-type-whatsapp"
             >
-              <MessageCircle className="h-3 w-3 mr-1" /> WhatsApp
+              <MessageCircle className="h-3 w-3 mr-1" /> {t("common:channels.whatsapp")}
             </Button>
           )}
         </div>

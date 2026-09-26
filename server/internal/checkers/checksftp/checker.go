@@ -102,7 +102,9 @@ func (c *SFTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 	// Establish SSH connection
 	connectStart := time.Now()
 
-	dialer := &net.Dialer{Timeout: timeout}
+	// Egress guard (spec 2026-09-25-19): refuses a non-public address under an
+	// enforcing policy; a plain *net.Dialer otherwise.
+	dialer := checkerdef.GuardDialerOr(ctx, &net.Dialer{Timeout: timeout})
 
 	netConn, err := dialer.DialContext(ctx, "tcp", target)
 	if err != nil {

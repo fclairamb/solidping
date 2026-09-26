@@ -151,7 +151,7 @@ export function TOTPSetupDialog({ open, onClose, onComplete }: TOTPSetupDialogPr
                     TOTP seed off the page. */}
                 <img
                   data-testid="2fa-qr-code"
-                  alt="otpauth QR"
+                  alt={t("security.totp.qrAlt")}
                   src={qrDataUrl}
                   className="rounded border"
                 />

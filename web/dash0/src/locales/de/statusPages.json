@@ -257,7 +257,7 @@
     "description": "Ihr CSS wird in die öffentliche Seite eingefügt. Überschreiben Sie die untenstehenden CSS-Variablen, um das Design zu ändern, oder schreiben Sie beliebige Regeln.",
     "cssLabel": "CSS",
     "placeholder": ":root {\n  --brand: #ff5500;\n}",
-    "limitsHint": "Bis zu 64 KB. @import ist nicht erlaubt; externe url() (Schriften, Bilder) schon.",
+    "limitsHint": "Bis zu 64 KB. @import ist nicht erlaubt, und url() lädt Bilder und Schriften nur von dieser Website oder aus data:-URIs: externe Hosts blockiert die Sicherheitsrichtlinie der Seite. Laden Sie Ihr Logo stattdessen unter Branding hoch.",
     "importRejected": "@import ist nicht erlaubt — binden Sie die Regeln direkt ein.",
     "tooLarge": "Zu groß: das Stylesheet darf höchstens 64 KB umfassen.",
     "save": "Speichern",

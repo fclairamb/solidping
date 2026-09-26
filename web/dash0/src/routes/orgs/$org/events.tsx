@@ -1,17 +1,10 @@
 import { useTranslation } from "react-i18next";
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { AlertTriangle, Calendar, RefreshCw, User, Cpu } from "lucide-react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { Calendar, RefreshCw } from "lucide-react";
 import { useEvents } from "@/api/hooks";
-import {
-  EventTypeLabel,
-  getEventActorName,
-  getEventCheckName,
-  getEventRowStripe,
-} from "@/components/dashboard/event-display";
-import { DurationAgo } from "@/components/shared/relative-time";
+import { EventLogTable } from "@/components/dashboard/event-log-table";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
 import {
   Select,
   SelectContent,
@@ -19,14 +12,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { PageHeader } from "@/components/shared/page-header";
 
@@ -142,100 +127,7 @@ function EventsPage() {
           ))}
         </div>
       ) : events?.data && events.data.length > 0 ? (
-        <div className="overflow-hidden rounded-xl border bg-card shadow-card">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader className="bg-muted/30">
-                <TableRow>
-                  {/* w-px shrinks the column to its content ("2h ago"). */}
-                  <TableHead className="w-px whitespace-nowrap">
-                    {t("table.time")}
-                  </TableHead>
-                  <TableHead className="w-[220px]">{t("table.event")}</TableHead>
-                  <TableHead className="w-[120px]">{t("table.actor")}</TableHead>
-                  <TableHead>{t("table.related")}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {events.data.map((event) => (
-                  <TableRow
-                    key={event.uid}
-                    className="transition-colors hover:bg-muted/40"
-                  >
-                    <TableCell
-                      className={cn(
-                        "whitespace-nowrap text-xs tabular-nums text-muted-foreground",
-                        getEventRowStripe(event.eventType),
-                      )}
-                    >
-                      {event.createdAt ? (
-                        // Relative reads faster when scanning a log; the exact
-                        // timestamp stays one hover away.
-                        <span title={new Date(event.createdAt).toLocaleString()}>
-                          <DurationAgo since={event.createdAt} />
-                        </span>
-                      ) : (
-                        "—"
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <EventTypeLabel eventType={event.eventType} t={t} />
-                    </TableCell>
-                    <TableCell>
-                      <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-                        {event.actorType === "user" ? (
-                          <User className="h-3 w-3 shrink-0 text-muted-foreground/70" />
-                        ) : (
-                          <Cpu className="h-3 w-3 shrink-0 text-muted-foreground/70" />
-                        )}
-                        {/* The NAME when the event carries one — including a
-                            Slack/Discord/phone acker, who has no users row
-                            and would otherwise show as the bare word "user".
-                            Falls back to the localized actor type, which is
-                            the only thing capitalized: capitalizing a name
-                            or an email mangles it. */}
-                        {getEventActorName(event) ?? (
-                          <span className="capitalize">
-                            {t(`actorTypes.${event.actorType || "system"}`)}
-                          </span>
-                        )}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap items-center gap-2">
-                        {event.checkUid && (
-                          <Link
-                            to="/orgs/$org/checks/$checkUid"
-                            params={{ org, checkUid: event.checkUid }}
-                            search={{
-                              graphPeriod: undefined,
-                              graphFull: undefined,
-                              region: undefined,
-                            }}
-                            className="inline-flex items-center gap-1.5 text-xs font-medium text-foreground transition-colors hover:text-primary hover:underline"
-                          >
-                            <Cpu className="h-3 w-3 shrink-0 text-muted-foreground/70" />
-                            {getEventCheckName(event) ?? t("links.check")}
-                          </Link>
-                        )}
-                        {event.incidentUid && (
-                          <Link
-                            to="/orgs/$org/incidents/$incidentUid"
-                            params={{ org, incidentUid: event.incidentUid }}
-                            className="inline-flex items-center gap-1 rounded border bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground transition-colors hover:text-foreground"
-                          >
-                            <AlertTriangle className="h-3 w-3 shrink-0" />
-                            {t("links.incident")}
-                          </Link>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </div>
+        <EventLogTable org={org} events={events.data} t={t} />
       ) : (
         <div className="space-y-3 rounded-xl border bg-card p-12 text-center shadow-card">
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">

@@ -117,7 +117,9 @@ func (c *TCPChecker) executeDirect(
 
 	// Execute TCP connection
 	target := net.JoinHostPort(targetIP.String(), strconv.Itoa(cfg.Port))
-	result := c.connect(ctx, &net.Dialer{}, target, cfg, timeout, tlsVerify)
+	// The resolved IP is dialed through the egress guard (spec 2026-09-25-19),
+	// which refuses it under an enforcing policy when it is non-public.
+	result := c.connect(ctx, checkerdef.GuardDialerOr(ctx, &net.Dialer{}), target, cfg, timeout, tlsVerify)
 	result.Duration = time.Since(start)
 
 	// Add host info to output

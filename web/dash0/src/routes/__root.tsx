@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { AnalyticsProvider } from "@/components/shared/analytics-provider";
 import { AuroraPanel } from "@/components/ui/aurora-panel";
 import { Button } from "@/components/ui/button";
+import { Logo } from "@/components/ui/logo";
 
 interface AuthContext {
   user: { email: string; name?: string; avatarUrl?: string; roles: string[]; isAdmin: boolean } | null;
@@ -43,6 +44,7 @@ function NotFound() {
     <AuroraPanel className="min-h-screen">
       <div className="flex flex-1 items-center justify-center p-6">
         <div className="glass max-w-md space-y-4 rounded-3xl p-10 text-center">
+          <Logo size={28} variant="wordmark" className="text-white" />
           <p className="text-5xl font-bold tracking-tight">404</p>
           <h1 className="text-xl font-semibold">{t("notFoundPage.title")}</h1>
           <p className="text-sm text-white/70">

@@ -84,3 +84,44 @@ describe("locale parity — every namespace carries the same key set in every lo
     );
   }
 });
+
+// The organization layout (routes/orgs/$org/organization.tsx) renders these
+// nav.json keys as sibling tabs. Two tabs sharing a label in some locale is a
+// real bug (spec 2026-09-25-09): the user cannot tell them apart without
+// clicking, e.g. `nav:parameters` and `nav:settings` both read "Paramètres"
+// in French before that spec renamed the former to "Variables". This is not
+// generic key-set parity (covered above) — it catches a label COLLISION,
+// which can appear in one locale and not others because translations aren't
+// literal, so it has to be checked per locale rather than once against en.
+const ORG_TAB_KEYS = [
+  "members",
+  "invitations",
+  "requests",
+  "usage",
+  "privateLocations",
+  "discovery",
+  "reportSchedules",
+  "parameters",
+  "audit",
+  "settings",
+] as const;
+
+describe("organization layout tabs — labels are pairwise distinct in every locale", () => {
+  it.each(LANGS)("nav.json: %s has no duplicate tab label", (lang) => {
+    const nav = readJson(path.join(LOCALES_DIR, lang, "nav.json")) as Record<string, unknown>;
+    const labels = ORG_TAB_KEYS.map((key) => nav[key]);
+
+    const seen = new Map<unknown, string[]>();
+    for (const [key, label] of ORG_TAB_KEYS.map((k, i) => [k, labels[i]] as const)) {
+      seen.set(label, [...(seen.get(label) ?? []), key]);
+    }
+    const collisions = [...seen.entries()].filter(([, keys]) => keys.length > 1);
+
+    expect(
+      collisions,
+      `nav.json (${lang}) has tabs sharing a label: ${collisions
+        .map(([label, keys]) => `"${String(label)}" used by ${keys.join(", ")}`)
+        .join("; ")}`,
+    ).toEqual([]);
+  });
+});

@@ -56,5 +56,7 @@
     "flatSquare": "Plano cuadrado"
   },
   "availability": "Disponibilidad",
-  "status": "Estado"
+  "status": "Estado",
+  "previewAlt": "Insignia de {{name}}",
+  "statusPagePreviewAlt": "Estado de {{name}}"
 }

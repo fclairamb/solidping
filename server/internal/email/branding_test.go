@@ -388,7 +388,7 @@ func TestBranding_HelperClassesWinOverTheGenericContentRules(t *testing.T) {
 	// .content h2 ones, and its accent rule survives the inlining.
 	r.Contains(report, "font-size:16px")
 	r.Contains(report, "margin:26px 0 10px")
-	r.Contains(report, "border-left:3px solid #0072d5")
+	r.Contains(report, "border-left:3px solid #1e64ef")
 	r.NotContains(report, "margin:0 0 16px;font-size:16px")
 
 	_, update, _, err := formatter.Format("status-subscriber-update.html", map[string]any{

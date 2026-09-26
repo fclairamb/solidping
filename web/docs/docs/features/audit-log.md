@@ -28,6 +28,7 @@ Find it in the dashboard under **Organization → Audit**. It is visible to org
 | Maintenance windows | created, updated, deleted |
 | Config as code | apply, with created/updated/deleted counts |
 | Organization | settings updated |
+| Private-location agents | connected, disconnected (with the reason: ping timeout, revoked, server shutdown, error) |
 | Checks & incidents | the pre-existing check and incident lifecycle events |
 
 Each entry carries the acting user (or "system" / an API token), the time, the

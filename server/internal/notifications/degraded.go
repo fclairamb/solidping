@@ -28,6 +28,7 @@ const (
 	degradedKeyWindowFrom       = "degraded_window_from"
 	degradedKeyWindowTo         = "degraded_window_to"
 	degradedKeyCurrentlyUp      = "degraded_currently_up"
+	degradedKeyTurnedOff        = "degraded_turned_off"
 )
 
 // DegradedInfo is the degraded-specific half of a notification.
@@ -60,6 +61,12 @@ type DegradedInfo struct {
 
 	// CurrentlyUp is the check's live status at decision time.
 	CurrentlyUp bool
+
+	// TurnedOff is set on an incident closed because degraded detection was
+	// turned off on its check (spec 2026-09-24-08). Its resolved notification
+	// must not say the check is steady again: nobody knows, the evaluator
+	// simply stopped looking.
+	TurnedOff bool
 }
 
 // DegradedInfoFor extracts the degraded payload from an incident, or nil when
@@ -86,6 +93,7 @@ func DegradedInfoFor(incident *models.Incident) *DegradedInfo {
 		WindowFrom:       jsonTime(details[degradedKeyWindowFrom]),
 		WindowTo:         jsonTime(details[degradedKeyWindowTo]),
 		CurrentlyUp:      jsonBool(details[degradedKeyCurrentlyUp]),
+		TurnedOff:        jsonBool(details[degradedKeyTurnedOff]),
 	}
 
 	if raw, present := details[degradedKeyAvailabilityPct]; present {

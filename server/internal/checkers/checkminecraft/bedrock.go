@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
 // BedrockStatus contains the parsed response from a Bedrock unconnected ping.
@@ -55,7 +57,9 @@ func bedrockUnconnectedPing(
 ) (*BedrockStatus, error) {
 	addr := net.JoinHostPort(host, strconv.Itoa(port))
 
-	dialer := &net.Dialer{Timeout: timeout}
+	// Egress guard (spec 2026-09-25-19): refuses a non-public address under
+	// an enforcing policy; a plain *net.Dialer otherwise.
+	dialer := checkerdef.GuardDialerOr(ctx, &net.Dialer{Timeout: timeout})
 
 	dialCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()

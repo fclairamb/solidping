@@ -16,6 +16,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
 	"github.com/fclairamb/solidping/server/internal/uptimebar"
+	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
 
 // TestParseDurationToken covers the trailing-duration parser that time.ParseDuration
@@ -233,7 +234,7 @@ func TestMonitoredDuration(t *testing.T) {
 
 // TestBuildPeriodRow covers the probe-ratio row assembly: null availability /
 // hasData=false for an empty window, the partial flag, and the
-// downtimeSeconds == (1 − avail) × monitoredSeconds formula.
+// downtimeSeconds == (1 − avail) × monitoredSeconds × coverage formula.
 func TestBuildPeriodRow(t *testing.T) {
 	t.Parallel()
 
@@ -245,7 +246,7 @@ func TestBuildPeriodRow(t *testing.T) {
 
 		r := require.New(t)
 
-		row := buildPeriodRow(w, uptimebar.BucketStats{}, 7*24*time.Hour, now.Add(-100*24*time.Hour))
+		row := buildPeriodRow(w, uptimebar.BucketStats{}, 7*24*time.Hour, now.Add(-100*24*time.Hour), 10080)
 		r.False(row.HasData)
 		r.Nil(row.AvailabilityPct)
 		r.Zero(row.DowntimeSeconds)
@@ -259,12 +260,40 @@ func TestBuildPeriodRow(t *testing.T) {
 
 		// 90/100 up over a 7-day window: 10% failing → 10% of 604800s = 60480s.
 		monitored := 7 * 24 * time.Hour
-		row := buildPeriodRow(w, uptimebar.BucketStats{Up: 90, Total: 100}, monitored, now.Add(-100*24*time.Hour))
+		row := buildPeriodRow(w, uptimebar.BucketStats{Up: 90, Total: 100}, monitored, now.Add(-100*24*time.Hour), 100)
 		r.True(row.HasData)
 		r.NotNil(row.AvailabilityPct)
 		r.InDelta(90.0, *row.AvailabilityPct, 0.0001)
 		r.Equal(int64(60480), row.DowntimeSeconds)
 		r.Equal(int64(monitored.Seconds()), row.MonitoredSeconds)
+	})
+
+	t.Run("no data at all: coverage 0 and the whole window unmeasured", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+
+		row := buildPeriodRow(w, uptimebar.BucketStats{}, 7*24*time.Hour, now.Add(-100*24*time.Hour), 10080)
+		r.NotNil(row.Coverage)
+		r.Zero(*row.Coverage)
+		r.Equal(int64(7*24*3600), row.UnmeasuredSeconds)
+	})
+
+	t.Run("downtime is attributed to measured time only", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+
+		// 24h window of 1-minute probes with an 8h silent gap: 960 of 1440
+		// expected probes, 96 of them failed (10%).
+		monitored := 24 * time.Hour
+		row := buildPeriodRow(w, uptimebar.BucketStats{Up: 864, Total: 960}, monitored,
+			now.Add(-100*24*time.Hour), 1440)
+		r.NotNil(row.Coverage)
+		r.InDelta(2.0/3.0, *row.Coverage, 0.0001)
+		r.Equal(int64(8*3600), row.UnmeasuredSeconds)
+		// 10% of the 16 measured hours, not 10% of 24.
+		r.Equal(int64(5760), row.DowntimeSeconds)
 	})
 
 	t.Run("partial flag set when check younger than window", func(t *testing.T) {
@@ -273,7 +302,7 @@ func TestBuildPeriodRow(t *testing.T) {
 		r := require.New(t)
 
 		createdAt := now.Add(-3 * 24 * time.Hour) // younger than the 7d window
-		row := buildPeriodRow(w, uptimebar.BucketStats{Up: 100, Total: 100}, 3*24*time.Hour, createdAt)
+		row := buildPeriodRow(w, uptimebar.BucketStats{Up: 100, Total: 100}, 3*24*time.Hour, createdAt, 100)
 		r.True(row.Partial)
 	})
 }
@@ -825,4 +854,77 @@ func TestGetAvailability_PeriodsRunConcurrently(t *testing.T) {
 	r.Equal(maxConcurrentPeriods, maxInFlight,
 		"the barrier only releases once maxConcurrentPeriods callers are simultaneously in flight, "+
 			"so a correctly-bounded fan-out must reach exactly that many")
+}
+
+// TestGetAvailability_GapIsUnmeasuredNotUptime is the spec 2026-09-25-02 case:
+// an 8-hour gap in an otherwise all-up 24-hour window reports ~67% coverage and
+// zero downtime over the 16 measured hours — no longer "100% over 24h" with no
+// hint that a third of the day was never looked at. A failing variant proves the
+// downtime is stretched over measured time, not the wall clock.
+func TestGetAvailability_GapIsUnmeasuredNotUptime(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+
+	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(dbSvc.Initialize(ctx))
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	org := models.NewOrganization("avail-gap-org", "")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	now := time.Now().UTC()
+
+	newGapCheck := func(slug string, failing int) *models.Check {
+		check := models.NewCheck(org.UID, slug, "http")
+		check.Period = timeutils.Duration(10 * time.Minute)
+		check.CreatedAt = now.Add(-48 * time.Hour)
+		r.NoError(dbSvc.CreateCheck(ctx, check))
+
+		// 16 hours of 10-minute probes (96 of the 144 a day expects), then 8
+		// hours of silence up to now.
+		for i := range 96 {
+			status := models.ResultStatusUp
+			if i < failing {
+				status = models.ResultStatusDown
+			}
+
+			res := models.NewResult(org.UID, check.UID, status, 10)
+			res.PeriodStart = now.Add(-24*time.Hour + 5*time.Minute + time.Duration(i)*10*time.Minute)
+			r.NoError(dbSvc.CreateResult(ctx, res))
+		}
+
+		return check
+	}
+
+	svc := NewService(dbSvc, &config.Config{
+		Aggregation: config.AggregationConfig{RetentionRaw: 30 * 24, RetentionHour: 7},
+	})
+
+	allUp := newGapCheck("avail-gap-up", 0)
+
+	resp, err := svc.GetAvailability(ctx, org.Slug, allUp.UID, &GetAvailabilityOptions{Periods: []string{"1d"}})
+	r.NoError(err)
+	r.Len(resp.Data, 1)
+
+	row := resp.Data[0]
+	r.Equal(96, row.TotalChecks)
+	r.NotNil(row.AvailabilityPct)
+	r.InDelta(100.0, *row.AvailabilityPct, 0.0001)
+	r.NotNil(row.Coverage)
+	r.InDelta(2.0/3.0, *row.Coverage, 0.01, "8h of 24h were never measured")
+	r.InDelta(8*3600, row.UnmeasuredSeconds, 120)
+	r.Zero(row.DowntimeSeconds)
+
+	// 12 of the 96 measured probes failed: 12.5% of the 16 measured hours is
+	// 7200 s. The old wall-clock formula would have said 12.5% of 24h = 10800 s.
+	failing := newGapCheck("avail-gap-down", 12)
+
+	resp, err = svc.GetAvailability(ctx, org.Slug, failing.UID, &GetAvailabilityOptions{Periods: []string{"1d"}})
+	r.NoError(err)
+
+	row = resp.Data[0]
+	r.InDelta(7200, row.DowntimeSeconds, 60)
 }

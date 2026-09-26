@@ -5,7 +5,7 @@
   "refresh": "Actualizar",
   "welcome": {
     "title": "Bienvenido a SolidPing",
-    "subtitle": "Cree su primera comprobación para comenzar a monitorear.",
+    "subtitle": "Crea tu primera comprobación para empezar a monitorizar.",
     "firstCheckSubtitle": "Elige un tipo de comprobación e indica el objetivo.",
     "cta": "Crear primera comprobación",
     "create": "Crear comprobación",
@@ -124,13 +124,20 @@
     "availability": "Disponibilidad 24 h",
     "availabilitySub": "Estado de disponibilidad de la flota",
     "activeCount": "{{count}} activos",
-    "totalEndpoints": "{{count}} endpoints en total"
+    "totalEndpoints": "{{count}} endpoints en total",
+    "badgeNeedsAction": "Requiere acción",
+    "badgeAllUp": "Todo activo",
+    "badgeActive": "Activos",
+    "badgeClean": "Ninguno"
   },
   "glance": {
     "title": "Comprobaciones de un vistazo",
     "footer_one": "Ver {{count}} comprobación →",
     "footer_other": "Ver las {{count}} comprobaciones →",
-    "since": "desde hace {{time}}"
+    "since": "desde hace {{time}}",
+    "description": "Vista previa del estado de la flota y telemetría de respuesta en directo",
+    "viewAll": "Ver todo ({{count}})",
+    "telemetryPending": "Telemetría de 24 h activa"
   },
   "activeIncidents": {
     "title": "Incidentes activos",

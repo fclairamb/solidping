@@ -327,10 +327,10 @@ unit-tested) built from the recording's own cue labels:
   itself after the rotation, the seconds the pipeline spends provisioning its
   org over the API, a slow request round trip — are removed outright. Ordinary
   film grammar; no claim is made that needs qualifying.
-- **One speed-up, always tagged.** The dwell on the detail page exists so the
-  chart plots two results a genuine interval apart; the check form's floor is a
-  10-second interval (`globalMinPeriodSeconds` in `check-form.tsx`), so that
-  dwell is around twelve seconds. It is played at `SHOWCASE_TIMELAPSE_SPEED`
+- **One speed-up, always tagged.** The detail page is held for four full check
+  periods so the chart plots a short line of results, a genuine interval apart;
+  the check form's floor is a 10-second interval (`globalMinPeriodSeconds` in
+  `check-form.tsx`), so that dwell is around 43 seconds. It is played at `SHOWCASE_TIMELAPSE_SPEED`
   with the speed burned into the top-right corner **for exactly that stretch**.
   A demo that quietly speeds up its slow part lies about how fast the product
   is; one that says "4× speed" does not.
@@ -366,7 +366,7 @@ GIF was rendered from a second, stripped master with neither.
 GitHub does play a real `<video>`, but only when the source is an attachment on
 its own CDN. So the README now embeds the H.264 cut, uploaded once and linked by
 its `user-attachments` URL. H.264 does not care about scrolling logs or camera
-moves, so the README and the Tour page finally show the same 38 seconds.
+moves, so the README and the Tour page finally show the same cut.
 
 To refresh it after `make showcase`:
 
@@ -510,7 +510,7 @@ Served (from the embedded docs build) at `/docs/showcase/<file>`, e.g.
    decoder shows the fallback text instead of the demo.
 3. Stop hard-coding *"A 18-second setup"* in the caption
    (`src/pages/index.tsx`). The duration changes with every re-cut — this one is
-   37.9 s — so the caption must not name one.
+   46.7 s — so the caption must not name one.
 
 All three are still owed as of spec 2026-09-16-05: that repo ships a single AV1
 `src=` (`src/pages/index.tsx`) and still names a duration. This repo does not

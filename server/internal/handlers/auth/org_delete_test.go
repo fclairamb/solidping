@@ -20,6 +20,8 @@ type seededOrg struct {
 	check *models.Check
 	job   *models.CheckJob
 	token *models.UserToken
+	// tokenValue is the raw refresh-token value; only its hash is on token.
+	tokenValue string
 }
 
 // seedDeletableOrg builds an org with one owner, one check with a scheduled
@@ -53,10 +55,11 @@ func seedDeletableOrg(
 
 	job := jobs[0]
 
-	token := models.NewUserToken(user.UID, &org.UID, "refresh-"+slug, models.TokenTypeRefresh)
+	tokenValue := "refresh-" + slug
+	token := models.NewUserToken(user.UID, &org.UID, tokenValue, models.TokenTypeRefresh)
 	require.NoError(t, dbService.CreateUserToken(ctx, token))
 
-	return seededOrg{org: org, owner: user, check: check, job: job, token: token}
+	return seededOrg{org: org, owner: user, check: check, job: job, token: token, tokenValue: tokenValue}
 }
 
 // deleteOrgAsOwner drives Service.DeleteOrg the way the handler does — with the
@@ -77,7 +80,7 @@ func TestDeleteOrgTearsEverythingDown(t *testing.T) {
 
 	svc, dbService, ctx := setupAuthTestService(t)
 	seeded := seedDeletableOrg(ctx, t, dbService, "doomed")
-	org, check, job, token := seeded.org, seeded.check, seeded.job, seeded.token
+	org, check, job := seeded.org, seeded.check, seeded.job
 
 	// Controls: everything is alive before the delete.
 	_, err := dbService.GetOrganizationBySlug(ctx, org.Slug)
@@ -113,7 +116,7 @@ func TestDeleteOrgTearsEverythingDown(t *testing.T) {
 	require.Empty(t, members)
 
 	// The org-scoped session is dead.
-	_, err = dbService.GetUserTokenByToken(ctx, token.Token)
+	_, err = dbService.GetUserTokenByToken(ctx, seeded.tokenValue)
 	require.Error(t, err)
 }
 
@@ -324,7 +327,7 @@ func TestDeleteOrgLeavesOtherOrgsAlone(t *testing.T) {
 	svc, dbService, ctx := setupAuthTestService(t)
 	victim := seedDeletableOrg(ctx, t, dbService, "victim")
 	bystanderSeed := seedDeletableOrg(ctx, t, dbService, "bystander")
-	bystander, bystanderCheck, bystanderToken := bystanderSeed.org, bystanderSeed.check, bystanderSeed.token
+	bystander, bystanderCheck := bystanderSeed.org, bystanderSeed.check
 
 	_, delErr := deleteOrgAsOwner(ctx, t, svc, victim, victim.org.Slug)
 	require.NoError(t, delErr)
@@ -341,7 +344,7 @@ func TestDeleteOrgLeavesOtherOrgsAlone(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, members, 1)
 
-	_, err = dbService.GetUserTokenByToken(ctx, bystanderToken.Token)
+	_, err = dbService.GetUserTokenByToken(ctx, bystanderSeed.tokenValue)
 	require.NoError(t, err)
 }
 

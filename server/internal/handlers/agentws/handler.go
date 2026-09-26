@@ -33,6 +33,7 @@ import (
 	"github.com/coder/websocket/wsjson"
 
 	agentcrypto "github.com/fclairamb/solidping/server/internal/agents"
+	"github.com/fclairamb/solidping/server/internal/audit"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
 	"github.com/fclairamb/solidping/server/internal/config"
@@ -120,7 +121,26 @@ type Handler struct {
 	traceRounds  int
 	traceMaxHops int
 	traceBudget  time.Duration
+	// monitors re-ensures a private location's liveness monitor after an
+	// enrollment (spec 2026-09-25-05). Optional; nil skips it.
+	monitors LivenessMonitorEnsurer
 }
+
+// LivenessMonitorEnsurer is the one call this package makes into the checks
+// service: after an org agent enrolls, its location's liveness monitor must
+// exist (unless the org opted out). Idempotent.
+type LivenessMonitorEnsurer interface {
+	EnsurePrivateLocationMonitor(ctx context.Context, orgUID, slug string) (*models.Check, error)
+}
+
+// SetLivenessMonitors installs the post-enrollment liveness-monitor re-ensure.
+func (h *Handler) SetLivenessMonitors(monitors LivenessMonitorEnsurer) {
+	h.monitors = monitors
+}
+
+// connectionEventTimeout bounds the best-effort agent.connected /
+// agent.disconnected write, which runs detached from the connection.
+const connectionEventTimeout = 5 * time.Second
 
 // NewHandler creates the agent WebSocket handler.
 func NewHandler(
@@ -221,6 +241,8 @@ func (h *Handler) serveEnrollment(
 	if h.reseal != nil && !agent.IsSystem() {
 		h.reseal(ctx, agent.OrgUID(), agent.Region)
 	}
+
+	h.ensureLivenessMonitor(ctx, agent)
 
 	// versionChecked: true only when the enroll frame actually carried a
 	// version to compare — an agent that omitted it (or predates the field)
@@ -476,6 +498,9 @@ type connState struct {
 	// connection, independent of the egress throttle above — a chatty agent
 	// must not spam the log once per claim.
 	versionChecked bool
+	// closeReason is why the server ended the connection, when it did
+	// (models.AgentDisconnectReason*). Empty means the socket itself failed.
+	closeReason string
 }
 
 // agentEgressReportInterval bounds how often a claim frame refreshes the
@@ -640,6 +665,8 @@ func (h *Handler) runAgentConnection(
 
 	_ = h.dbService.UpdateAgentLastSeen(ctx, agent.UID, time.Now())
 
+	h.recordConnectionEvent(ctx, agent, models.EventTypeAgentConnected, "")
+
 	loopCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -663,12 +690,63 @@ func (h *Handler) runAgentConnection(
 		}
 	}()
 
-	h.serveConnEvents(loopCtx, conn, state, &connChannels{
+	reason := h.serveConnEvents(loopCtx, conn, state, &connChannels{
 		frames:   frames,
 		readErr:  readErr,
 		outbound: outbound,
 		hints:    hints,
 	})
+
+	h.recordConnectionEvent(ctx, agent, models.EventTypeAgentDisconnected, reason)
+}
+
+// recordConnectionEvent writes an org agent's agent.connected /
+// agent.disconnected event (spec 2026-09-25-05). Best effort and detached: it
+// runs on its own goroutine with its own deadline, from a context that
+// survives the connection's (a disconnect at shutdown is exactly when the
+// request context is already canceled), so it can never block or fail the
+// connection path. System agents serve shared cloud regions and have no org
+// to record into.
+func (h *Handler) recordConnectionEvent(
+	ctx context.Context, agent *models.Agent, eventType models.EventType, reason string,
+) {
+	if agent.IsSystem() || agent.OrgUID() == "" {
+		return
+	}
+
+	payload := models.JSONMap{models.AgentEventPayloadRegion: agent.Region}
+	if reason != "" {
+		payload[models.AgentEventPayloadReason] = reason
+	}
+
+	detached := context.WithoutCancel(ctx)
+
+	go func() {
+		writeCtx, cancel := context.WithTimeout(detached, connectionEventTimeout)
+		defer cancel()
+
+		audit.Record(writeCtx, h.dbService, agent.OrgUID(), eventType,
+			audit.Target{Type: "agent", UID: agent.UID, Name: agent.Name}, payload)
+	}()
+}
+
+// ensureLivenessMonitor re-ensures, after an org agent enrolled, that its
+// private location has its liveness monitor (spec 2026-09-25-05). Best effort:
+// the startup backfill covers a failure.
+func (h *Handler) ensureLivenessMonitor(ctx context.Context, agent *models.Agent) {
+	if h.monitors == nil || agent.IsSystem() {
+		return
+	}
+
+	slug, ok := regions.ParsePrivateRegion(agent.Region)
+	if !ok {
+		return
+	}
+
+	if _, err := h.monitors.EnsurePrivateLocationMonitor(ctx, agent.OrgUID(), slug); err != nil {
+		h.logger.WarnContext(ctx, "failed to ensure the private location's liveness monitor",
+			"agent", agent.UID, "region", agent.Region, "error", err)
+	}
 }
 
 // connChannels bundles the event sources one agent connection's loop selects
@@ -687,28 +765,29 @@ type connChannels struct {
 	hints <-chan string
 }
 
-// serveConnEvents runs one connection's event loop until it ends.
+// serveConnEvents runs one connection's event loop until it ends, and returns
+// why it ended (models.AgentDisconnectReason*).
 func (h *Handler) serveConnEvents(
 	ctx context.Context, conn *websocket.Conn, state *connState, chans *connChannels,
-) {
+) string {
 	ping := time.NewTicker(pingInterval)
 	defer ping.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
-			return
+			return models.AgentDisconnectReasonServerShutdown
 		case err := <-chans.readErr:
 			h.logger.DebugContext(ctx, "agent connection closed", "agent", state.agent.UID, "error", err)
 
-			return
+			return disconnectReason(state)
 		case <-ping.C:
 			if !h.handlePingTick(ctx, conn, state) {
-				return
+				return disconnectReason(state)
 			}
 		case frame := <-chans.outbound:
 			if err := wsjson.Write(ctx, conn, frame); err != nil {
-				return
+				return disconnectReason(state)
 			}
 		case <-chans.hints:
 			// Express hint: a check was created somewhere. The agent's claim is
@@ -717,10 +796,20 @@ func (h *Handler) serveConnEvents(
 			_ = wsjson.Write(ctx, conn, agentcrypto.ServerFrame{Type: agentcrypto.MsgTypeJobsAvailable})
 		case frame := <-chans.frames:
 			if !h.handleFrame(ctx, conn, state, &frame) {
-				return
+				return disconnectReason(state)
 			}
 		}
 	}
+}
+
+// disconnectReason is the reason the server recorded when it closed the
+// connection itself, else `error` (the socket failed, or the agent went away).
+func disconnectReason(state *connState) string {
+	if state.closeReason != "" {
+		return state.closeReason
+	}
+
+	return models.AgentDisconnectReasonError
 }
 
 // handlePingTick sends a keepalive ping, refreshes last_seen_at, and enforces
@@ -732,6 +821,7 @@ func (h *Handler) handlePingTick(ctx context.Context, conn *websocket.Conn, stat
 	cancel()
 
 	if err != nil {
+		state.closeReason = models.AgentDisconnectReasonPingTimeout
 		_ = conn.Close(websocket.StatusGoingAway, "ping timeout")
 
 		return false
@@ -752,6 +842,7 @@ func (h *Handler) handlePingTick(ctx context.Context, conn *websocket.Conn, stat
 func (h *Handler) agentStillActive(ctx context.Context, conn *websocket.Conn, state *connState) bool {
 	agent, err := h.dbService.GetAgent(ctx, state.agent.UID)
 	if err != nil || agent.Status != models.AgentStatusActive {
+		state.closeReason = models.AgentDisconnectReasonRevoked
 		_ = conn.Close(CloseForbidden, "agent revoked")
 
 		return false

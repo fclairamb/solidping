@@ -55,7 +55,8 @@
     "nextRun": "Next run",
     "leaseWorker": "Lease worker",
     "leaseExpiry": "Lease expiry",
-    "attempts": "Attempts"
+    "attempts": "Attempts",
+    "created": "Created"
   },
   "detail": {
     "backgroundJobTitle": "Background job",

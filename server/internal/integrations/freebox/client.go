@@ -14,7 +14,24 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/fclairamb/solidping/server/internal/egress"
+	"github.com/fclairamb/solidping/server/internal/httpclientpool"
 )
+
+// pairingGuard is an always-allow-private egress guard: reaching the member's
+// own box, on their own LAN, is the whole point of Freebox pairing (spec
+// 2026-09-25-31) — unlike a check target or a notification webhook, so it
+// never refuses a private destination. It still resolves the host once and
+// dials the pinned IP it just resolved (egress.Guard.DialContext), which is
+// defense against DNS rebinding for free. One shared instance so
+// HTTPTransport's pooled transport (memoized per Guard, not per call) is
+// actually reused across pairing/status/session calls — see
+// httpclientpool.NewGuardedClient's own warning against building a fresh
+// Guard per client.
+//
+//nolint:gochecknoglobals // one process-wide guard/pool, intentionally shared.
+var pairingGuard = egress.New(true)
 
 // Sentinel errors callers can branch on. Each one maps to a known
 // Freebox API failure mode so the channel handler can return clean
@@ -93,13 +110,20 @@ func NewClientWithAppID(baseURL, appID, appToken string) *Client {
 	}
 
 	return &Client{
-		baseURL:  strings.TrimRight(baseURL, "/"),
-		appID:    appID,
-		appToken: appToken,
-		httpClient: &http.Client{
-			Timeout: DefaultTimeout,
-		},
+		baseURL:    strings.TrimRight(baseURL, "/"),
+		appID:      appID,
+		appToken:   appToken,
+		httpClient: httpclientpool.NewGuardedClient(DefaultTimeout, pairingGuard),
 	}
+}
+
+// WithTransport swaps the HTTP transport, keeping the timeout. The
+// freebox_line checker uses it to route its calls through the egress guard
+// (spec 2026-09-25-19). Call it before the client is shared.
+func (c *Client) WithTransport(rt http.RoundTripper) *Client {
+	c.httpClient = &http.Client{Transport: rt, Timeout: c.httpClient.Timeout}
+
+	return c
 }
 
 // Authorize starts a pairing flow. The Freebox LCD will display a

@@ -6,7 +6,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { getFieldError } from "@/hooks/use-check-validation";
 import type { CheckTypeModule } from "./index";
 import type { CheckConfig, CheckTypeFieldsProps, FieldErrors } from "./common";
-import { getConfigField } from "./common";
+import { getConfigField, validationMessage } from "./common";
 
 // ── WebSocket ──
 export interface WebsocketState {
@@ -30,7 +30,7 @@ export const websocketModule: CheckTypeModule<WebsocketState> = {
     if (state.expect) cfg.expect = state.expect;
     const errors: FieldErrors = state.url
       ? []
-      : [{ name: "url", message: "URL is required" }];
+      : [{ name: "url", message: validationMessage("urlRequired") }];
     return { config: cfg, errors };
   },
   Fields: WebsocketFields,
@@ -114,7 +114,7 @@ export const browserModule: CheckTypeModule<BrowserState> = {
     if (state.screenshot) cfg.screenshot = true;
     const errors: FieldErrors = state.url
       ? []
-      : [{ name: "url", message: "URL is required" }];
+      : [{ name: "url", message: validationMessage("urlRequired") }];
     return { config: cfg, errors };
   },
   Fields: BrowserFields,
@@ -169,7 +169,9 @@ function BrowserFields({
         />
         <p className="text-xs text-muted-foreground">{t("web.keywordHelp")}</p>
       </div>
-      <div className="space-y-2">
+      {/* `id` is the `?section=browser-screenshot` deep-link target the check
+          page's Screenshots card links to (spec 2026-09-25-34). */}
+      <div id="browser-screenshot" className="scroll-mt-20 space-y-2">
         <label className="flex items-center gap-2">
           <Checkbox
             checked={state.screenshot}

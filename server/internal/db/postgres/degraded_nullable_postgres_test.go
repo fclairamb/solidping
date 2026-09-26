@@ -94,7 +94,7 @@ func TestDegradedColumnsAreNullableWithoutDefault_Postgres(t *testing.T) {
 
 	// degraded_enabled is the deliberate exception: NULL cannot carry the
 	// rollout rule (off for every pre-existing row, on for a new check), and a
-	// plain bool makes a bypassing insert fail safe into the dry run.
+	// plain bool makes a bypassing insert fail safe: not evaluated.
 	enabled := byName["degraded_enabled"]
 	r.Equal("NO", enabled.Nullable, "degraded_enabled must stay NOT NULL")
 	r.NotNil(enabled.Default)
@@ -176,5 +176,44 @@ func TestDegradedNullRoundTrip_Postgres(t *testing.T) {
 	r.Nil(bareStored.DegradedFailures)
 	r.Equal(5, bareStored.EffectiveDegradedFailures())
 	r.False(bareStored.DegradedEnabled,
-		"degraded_enabled is not nullable, so a bypassing insert fails safe into the dry run")
+		"degraded_enabled is not nullable, so a bypassing insert fails safe: not evaluated")
+}
+
+// TestDegradedSweepSkipsDisabledChecks_Postgres pins the sweep's work queue
+// (spec 2026-09-24-08): a check with degraded detection off is not listed at
+// all, an enabled one still is, and the dry-run stamp column is gone.
+//
+//nolint:paralleltest // shares dev-machine resources (embedded-postgres-go's pwfile extraction) with its siblings
+func TestDegradedSweepSkipsDisabledChecks_Postgres(t *testing.T) {
+	s := newDegradedNullablePG(t)
+	r := require.New(t)
+	ctx := t.Context()
+
+	var stampColumns int
+	r.NoError(s.db.NewRaw(
+		`select count(*) from information_schema.columns
+		  where table_name = 'checks' and column_name = 'degraded_would_fire_at'`,
+	).Scan(ctx, &stampColumns))
+	r.Zero(stampColumns, "the dry-run stamp column is dropped by 024")
+
+	org := models.NewOrganization("degraded-sweep-pg", "Degraded Sweep PG")
+	r.NoError(s.CreateOrganization(ctx, org))
+
+	on := models.NewCheck(org.UID, "ds-on", "http")
+	r.NoError(s.CreateCheck(ctx, on))
+
+	off := models.NewCheck(org.UID, "ds-off", "http")
+	off.DegradedEnabled = false
+	r.NoError(s.CreateCheck(ctx, off))
+
+	queue, err := s.ListChecksForDegradedEval(ctx, 0)
+	r.NoError(err)
+
+	uids := make([]string, 0, len(queue))
+	for _, check := range queue {
+		uids = append(uids, check.UID)
+	}
+
+	r.Contains(uids, on.UID, "an enabled check is swept")
+	r.NotContains(uids, off.UID, "a disabled check is not evaluated at all")
 }

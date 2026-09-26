@@ -232,7 +232,11 @@ func TestGenericAttachmentsRollback(t *testing.T) {
 		"33333333-3333-3333-3333-333333333333", "22222222-2222-2222-2222-222222222222", topic)
 	r.NoError(err)
 
-	// Rolled back.
+	// Rolled back. A LATER section that indexes files.details
+	// (check-screenshots, spec 2026-09-25-34: files_org_check_uid_idx) unwinds
+	// first, exactly as a real rollback would run it: SQLite refuses to drop a
+	// column an expression index still reads.
+	execMigrationStatements(ctx, t, svc, downMigrationSection(t, "check-screenshots"))
 	execMigrationStatements(ctx, t, svc, downMigrationSection(t, "generic-attachments"))
 
 	after := filesColumns(ctx, t, svc)

@@ -368,12 +368,13 @@ func TestMaintenanceProbesAreNotSlots(t *testing.T) {
 	r.Len(s.incidentsOfKind(t, models.IncidentKindDegraded), 1)
 }
 
-// --- The dry run -----------------------------------------------------------
+// --- Degraded detection off ------------------------------------------------
 
-// TestDryRunStampsWithoutOpening pins the rollout mechanism: with
-// degraded_enabled false the evaluator still runs, opens NOTHING, and records
-// when it would have fired.
-func TestDryRunStampsWithoutOpening(t *testing.T) {
+// TestDisabledCheckIsNotEvaluated pins that a check with degraded_enabled false
+// is not evaluated at all: the sweep does not list it, and even a direct
+// EvaluateCheck opens nothing and writes nothing on the row, not even the
+// rotation cursor.
+func TestDisabledCheckIsNotEvaluated(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
@@ -388,37 +389,21 @@ func TestDryRunStampsWithoutOpening(t *testing.T) {
 		s.up(t, 4, 100)
 	}
 
+	queue, err := s.dbSvc.ListChecksForDegradedEval(t.Context(), 0)
+	r.NoError(err)
+	r.Empty(queue, "a disabled check is not in the sweep's work queue")
+
 	s.evaluate(t)
+	r.NoError(s.eval.EvaluateCheck(t.Context(), s.reload(t), s.clk.Now()))
 
 	r.Empty(s.incidentsOfKind(t, models.IncidentKindDegraded),
-		"a dry run creates no incident row")
-
-	check := s.reload(t)
-	r.NotNil(check.DegradedWouldFireAt, "the dry run must record what it would have done")
-	r.NotNil(check.DegradedEvaluatedAt, "and must move to the back of the rotation")
-
-	stampedAt := *check.DegradedWouldFireAt
-
-	// A later sweep must not move the stamp: the banner is past tense.
-	s.up(t, 60, 100)
-	s.evaluate(t)
-
-	check = s.reload(t)
-	r.NotNil(check.DegradedWouldFireAt)
-	r.True(check.DegradedWouldFireAt.Equal(stampedAt))
-
-	// The `wouldHaveFired` filter is what makes the stamp findable.
-	found, _, err := s.dbSvc.ListChecks(t.Context(), s.org.UID, &models.ListChecksFilter{
-		WouldHaveFired: true,
-	})
-	r.NoError(err)
-	r.Len(found, 1)
-	r.Equal(s.check.UID, found[0].UID)
+		"the rules match, but a disabled check opens nothing")
+	r.Nil(s.reload(t).DegradedEvaluatedAt, "and nothing is written on the check row")
 }
 
-// TestEnablingRetiresTheDryRunStamp pins that "would have fired" and "is allowed
-// to fire" can never both look true.
-func TestEnablingRetiresTheDryRunStamp(t *testing.T) {
+// TestEnablingStartsEvaluation is the positive control: the same timeline on
+// the same check opens a degraded incident once the flag is turned on.
+func TestEnablingStartsEvaluation(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
@@ -434,16 +419,55 @@ func TestEnablingRetiresTheDryRunStamp(t *testing.T) {
 	}
 
 	s.evaluate(t)
-	r.NotNil(s.reload(t).DegradedWouldFireAt)
+	r.Empty(s.incidentsOfKind(t, models.IncidentKindDegraded))
 
 	enabled := true
 	r.NoError(s.dbSvc.UpdateCheck(t.Context(), s.check.UID, &models.CheckUpdate{DegradedEnabled: &enabled}))
 
+	queue, err := s.dbSvc.ListChecksForDegradedEval(t.Context(), 0)
+	r.NoError(err)
+	r.Len(queue, 1)
+	r.Equal(s.check.UID, queue[0].UID)
+
 	s.evaluate(t)
 
-	check := s.reload(t)
-	r.Nil(check.DegradedWouldFireAt, "enabling the feature retires the banner")
-	r.Len(s.incidentsOfKind(t, models.IncidentKindDegraded), 1, "and now it opens for real")
+	r.Len(s.incidentsOfKind(t, models.IncidentKindDegraded), 1, "enabled, it opens for real")
+	r.NotNil(s.reload(t).DegradedEvaluatedAt)
+}
+
+// TestResolveDegradedOnDisable pins the incidents-side half of the toggle-off
+// hook (spec 2026-09-24-08): the open degraded incident closes as `disabled`,
+// with the details marker the resolved notification reads.
+func TestResolveDegradedOnDisable(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	s := newEvalSetup(t, nil)
+
+	s.up(t, 10, 100)
+
+	for range 7 {
+		s.down(t)
+		s.up(t, 4, 100)
+	}
+
+	s.evaluate(t)
+
+	open := s.activeDegraded(t)
+	r.NotNil(open)
+
+	r.NoError(s.incidents.ResolveDegradedOnDisable(t.Context(), s.check.UID))
+	r.Nil(s.activeDegraded(t))
+
+	closed, err := s.dbSvc.GetIncident(t.Context(), s.org.UID, open.UID)
+	r.NoError(err)
+	r.Equal(models.IncidentStateResolved, closed.State)
+	r.NotNil(closed.ResolutionType)
+	r.Equal(models.ResolutionTypeDisabled, *closed.ResolutionType)
+	r.Equal(true, closed.Details["degraded_turned_off"])
+
+	// Nothing open: a no-op.
+	r.NoError(s.incidents.ResolveDegradedOnDisable(t.Context(), s.check.UID))
 }
 
 // --- Escalation into a real outage ----------------------------------------

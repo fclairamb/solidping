@@ -138,7 +138,7 @@ export function StatusPageBadgeCard({
           >
             <img
               src={badgePath}
-              alt={`${pageName} status`}
+              alt={t("statusPagePreviewAlt", { name: pageName })}
               data-testid="status-page-badge-preview"
             />
           </a>

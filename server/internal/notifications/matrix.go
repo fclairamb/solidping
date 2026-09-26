@@ -16,6 +16,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/fclairamb/solidping/server/internal/httpclientpool"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
 
@@ -50,13 +51,18 @@ var (
 type MatrixSender struct{}
 
 // Send sends a notification to a Matrix room.
-func (s *MatrixSender) Send(ctx context.Context, _ *jobdef.JobContext, payload *Payload) error {
+func (s *MatrixSender) Send(ctx context.Context, jctx *jobdef.JobContext, payload *Payload) error {
 	settings, err := s.parseSettings(payload)
 	if err != nil {
 		return err
 	}
 
-	client := newHTTPClient(matrixTimeout)
+	guard := egressGuardFrom(jctx)
+	if urlErr := ValidateSenderURL(ctx, guard, settings.HomeserverURL); urlErr != nil {
+		return urlErr
+	}
+
+	client := httpclientpool.NewGuardedClient(matrixTimeout, guard)
 
 	roomID, err := s.resolveRoomID(ctx, client, settings)
 	if err != nil {

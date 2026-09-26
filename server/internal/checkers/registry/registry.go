@@ -30,6 +30,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkoracle"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkpop3"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkpostgres"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkprivatelocation"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkprometheus"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkrabbitmq"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkrdp"
@@ -82,6 +83,8 @@ func GetChecker(checkType checkerdef.CheckType) (checkerdef.Checker, bool) {
 		return &checkheartbeat.HeartbeatChecker{}, true
 	case checkerdef.CheckTypeEmail:
 		return &checkemail.EmailChecker{}, true
+	case checkerdef.CheckTypePrivateLocation:
+		return &checkprivatelocation.PrivateLocationChecker{}, true
 	case checkerdef.CheckTypeDomain:
 		return &checkdomain.DomainChecker{}, true
 	case checkerdef.CheckTypeSSL:

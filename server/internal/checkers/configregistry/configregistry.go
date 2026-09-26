@@ -42,6 +42,7 @@ import (
 	oracleconfig "github.com/fclairamb/solidping/server/internal/checkers/checkoracle/config"
 	pop3config "github.com/fclairamb/solidping/server/internal/checkers/checkpop3/config"
 	postgresconfig "github.com/fclairamb/solidping/server/internal/checkers/checkpostgres/config"
+	privatelocationconfig "github.com/fclairamb/solidping/server/internal/checkers/checkprivatelocation/config"
 	prometheusconfig "github.com/fclairamb/solidping/server/internal/checkers/checkprometheus/config"
 	rabbitmqconfig "github.com/fclairamb/solidping/server/internal/checkers/checkrabbitmq/config"
 	rdpconfig "github.com/fclairamb/solidping/server/internal/checkers/checkrdp/config"
@@ -77,6 +78,8 @@ func ParseConfig(checkType checkerdef.CheckType) (checkerdef.Config, bool) {
 		return &heartbeatconfig.HeartbeatConfig{}, true
 	case checkerdef.CheckTypeEmail:
 		return &emailconfig.EmailConfig{}, true
+	case checkerdef.CheckTypePrivateLocation:
+		return &privatelocationconfig.PrivateLocationConfig{}, true
 	case checkerdef.CheckTypeDomain:
 		return &domainconfig.DomainConfig{}, true
 	case checkerdef.CheckTypeSSL:
@@ -185,6 +188,8 @@ func ValidateSpec(checkType checkerdef.CheckType, spec *checkerdef.CheckSpec) er
 		return heartbeatconfig.ValidateSpec(spec)
 	case checkerdef.CheckTypeEmail:
 		return emailconfig.ValidateSpec(spec)
+	case checkerdef.CheckTypePrivateLocation:
+		return privatelocationconfig.ValidateSpec(spec)
 	case checkerdef.CheckTypeDomain:
 		return domainconfig.ValidateSpec(spec)
 	case checkerdef.CheckTypeSSL:

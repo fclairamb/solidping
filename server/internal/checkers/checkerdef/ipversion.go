@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/fclairamb/solidping/server/internal/egress"
 )
 
 // IPVersion is the address family a check is pinned to.
@@ -263,6 +265,10 @@ func IPVersionFailureStatus(err error) Status {
 // dead resolver) reporting exactly what that checker reported before.
 func ResolveFailureStatus(err error, fallback Status) Status {
 	switch {
+	case errors.Is(err, egress.ErrDenied):
+		// A refused target is a configuration the worker will never run,
+		// not an outage of the target: Error, on every check type.
+		return StatusError
 	case errors.Is(err, ErrWorkerNoEgress):
 		return StatusError
 	case errors.Is(err, ErrNoAddressForFamily):

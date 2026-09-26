@@ -130,8 +130,13 @@ func NewHandler(
 		incidentsSvc.SetDefaultCheckTimeout(cfg.Server.Scheduling.CheckTimeout())
 	}
 
+	checksSvc := checks.NewService(dbService, eventNotifier, creds, entSvc)
+	if cfg != nil {
+		checksSvc.SetDeploymentMode(cfg.Deployment.Mode)
+	}
+
 	handler := &Handler{
-		checksSvc:     checks.NewService(dbService, eventNotifier, creds, entSvc),
+		checksSvc:     checksSvc,
 		checkTypesSvc: checkTypesSvc,
 		resultsSvc:    results.NewService(dbService, cfg),
 		incidentsSvc:  incidentsSvc,
@@ -156,6 +161,9 @@ func NewHandler(
 	// A check created over MCP has to land on a dynamic status page section
 	// exactly like one created from the dashboard (spec 2026-08-29-11).
 	handler.checksSvc.SetStatusPageReconciler(handler.statusPagesSvc)
+	// update_check can turn degraded detection off; its open degraded incident
+	// closes in the same call, exactly as over the HTTP API (spec 2026-09-24-08).
+	handler.checksSvc.SetDegradedIncidentResolver(incidentsSvc)
 
 	handler.registerTools()
 

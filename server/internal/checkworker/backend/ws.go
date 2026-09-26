@@ -22,6 +22,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkworker/egressreport"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/egress"
 	"github.com/fclairamb/solidping/server/internal/version"
 )
 
@@ -84,6 +85,10 @@ type WSBackend struct {
 	serverURL       string
 	enrollmentToken string
 	name            string
+
+	// egressGuard is the agent's own egress policy (spec 2026-09-25-19),
+	// consulted before a server-requested path trace. Nil allows everything.
+	egressGuard *egress.Guard
 
 	// dialMu serializes dialing so only one connect runs at a time regardless
 	// of which path triggers it (lazy request() vs. the reconnect supervisor).

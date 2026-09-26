@@ -84,13 +84,44 @@ func TestRegionHealthPostgresChecksRegionsProjection(t *testing.T) {
 	_, err = dbSvc.RegisterOrUpdateWorker(ctx, healthyWorker)
 	r.NoError(err)
 
+	// Private regions (spec 2026-09-25-01): the same `@x` in two orgs, only
+	// the first org has a live agent. Exercises the organization_uid
+	// projections off checks/check_jobs, the agents scan and the org-slug
+	// lookup against real Postgres column types (uuid, timestamptz).
+	orgB := models.NewOrganization("region-health-pg-b", "Region Health PG Org B")
+	r.NoError(dbSvc.CreateOrganization(ctx, orgB))
+
+	createRegionCheck(t, svc, org.Slug, []string{"@x"})
+	createRegionCheck(t, svc, orgB.Slug, []string{"@x"})
+
+	agentSeen := time.Now()
+	insertAgent(t, dbSvc.DB(), org.UID, "@x", models.AgentStatusActive, &agentSeen)
+
 	report, err := svc.RegionHealth(ctx)
 	r.NoError(err)
 
 	byslug := make(map[string]checks.RegionHealthRow, len(report.Regions))
 	for _, row := range report.Regions {
-		byslug[row.Slug] = row
+		if row.Organization == "" {
+			byslug[row.Slug] = row
+		}
 	}
+
+	rows := rowsByKey(t, report)
+
+	privateA := rows[rowKey(org.Slug, "@x")]
+	r.Equal(1, privateA.LiveWorkers)
+	r.Equal(1, privateA.ChecksReferencing)
+	r.Equal(1, privateA.Jobs)
+	r.NotNil(privateA.LastWorkerSeenAt)
+	r.WithinDuration(agentSeen, *privateA.LastWorkerSeenAt, time.Second)
+	r.False(privateA.Ghost)
+
+	privateB := rows[rowKey(orgB.Slug, "@x")]
+	r.Equal(0, privateB.LiveWorkers)
+	r.Equal(1, privateB.ChecksReferencing)
+	r.Equal(1, privateB.Jobs)
+	r.True(privateB.Ghost)
 
 	healthy := byslug["healthy"]
 	r.True(healthy.Declared)

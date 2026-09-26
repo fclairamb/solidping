@@ -200,6 +200,110 @@ test.describe("Status page appearance editor", () => {
     await expect(save).toBeEnabled();
   });
 
+  // Spec 2026-09-25-28: the custom stylesheet keeps applying, but the page is
+  // served with a Content-Security-Policy that keeps its url() first-party,
+  // so a stylesheet can no longer beacon visitors to a third party. The
+  // header is asserted on the document response; the browser enforcing it is
+  // asserted through the securitypolicyviolation event (Chromium never sends
+  // a CSP-blocked request, so there is no request to wait for).
+  test("serves the public page under a CSP that blocks external url() while the custom CSS still applies", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    // Record every CSP violation in every frame of the dashboard tab too: the
+    // dashboard itself must run clean under its own policy.
+    const recordViolations = () => {
+      const store: string[] = [];
+      (window as unknown as { __cspViolations: string[] }).__cspViolations = store;
+      document.addEventListener("securitypolicyviolation", (event) => {
+        store.push(`${event.effectiveDirective} ${event.blockedURI}`);
+      });
+    };
+    await page.addInitScript(recordViolations);
+
+    const suffix = Date.now().toString().slice(-9);
+    const slug = await createStatusPage(page, suffix);
+
+    // The dashboard document carries its own policy, same-origin framing only.
+    const dashResponse = await page.goto(`orgs/test/status-pages`);
+    const dashCSP = (await dashResponse?.headerValue("content-security-policy")) ?? "";
+    expect(dashCSP).toContain("frame-ancestors 'self'");
+    expect(dashCSP).toContain("script-src 'self'");
+    expect(await dashResponse?.headerValue("x-frame-options")).toBe("SAMEORIGIN");
+    await page.goBack();
+    await openAppearance(page);
+
+    const brand = "rgb(1, 2, 3)";
+    await page
+      .getByTestId("custom-css-input")
+      .fill(
+        `:root { --brand: ${brand}; }\n` +
+          `body { background-image: url("https://evil.example/leak.png?csp"); }`,
+      );
+    await page.getByTestId("custom-css-save").click();
+
+    const publicPage = await page.context().newPage();
+    await disableHttpCache(publicPage);
+    await publicPage.addInitScript(recordViolations);
+
+    const violations = () =>
+      publicPage.evaluate(
+        () => (window as unknown as { __cspViolations?: string[] }).__cspViolations ?? [],
+      );
+
+    // Positive control: the saved stylesheet is live on the page...
+    let csp = "";
+    let frameOptions: string | null = null;
+    let referrerPolicy: string | null = null;
+    await expect
+      .poll(
+        async () => {
+          const response = await publicPage.goto(`${API_BASE}${STATUS_BASE}/test/${slug}`);
+          csp = (await response?.headerValue("content-security-policy")) ?? "";
+          frameOptions = (await response?.headerValue("x-frame-options")) ?? null;
+          referrerPolicy = (await response?.headerValue("referrer-policy")) ?? null;
+
+          return publicPage
+            .locator("html")
+            .evaluate((el) => getComputedStyle(el).getPropertyValue("--brand").trim());
+        },
+        { timeout: 30000 },
+      )
+      .toBe(brand);
+
+    // ...delivered with first-party-only fetch directives.
+    expect(csp).toContain("img-src 'self' data:;");
+    expect(csp).toContain("font-src 'self' data:;");
+    expect(csp).toContain("connect-src 'self';");
+    expect(csp).toContain("style-src 'self' 'unsafe-inline';");
+    expect(csp).toContain("frame-ancestors 'self'");
+    expect(frameOptions).toBe("SAMEORIGIN");
+    expect(referrerPolicy).toBe("no-referrer");
+
+    // ...and its external url() was refused by img-src.
+    await expect
+      .poll(async () => (await violations()).join("\n"), { timeout: 15000 })
+      .toContain("img-src https://evil.example/leak.png");
+
+    // The dashboard tab ran without a single violation of its own policy:
+    // the editor itself and the sandboxed srcdoc widget preview, which
+    // inherits the dashboard's policy. The status0 preview iframe is skipped:
+    // it renders the evil stylesheet just saved, under the status policy.
+    for (const frame of page.frames()) {
+      if (frame.url().includes(`${STATUS_BASE}/`)) continue;
+
+      const frameViolations = await frame
+        .evaluate(
+          () => (window as unknown as { __cspViolations?: string[] }).__cspViolations ?? [],
+        )
+        .catch(() => [] as string[]);
+      expect(frameViolations, frame.url()).toEqual([]);
+    }
+
+    await publicPage.close();
+  });
+
   test("offers a starter template listing the theming variables", async ({
     authenticatedPage,
   }) => {
@@ -221,6 +325,12 @@ test.describe("Status page appearance editor", () => {
       "--status-ok",
       "--status-warning",
       "--status-error",
+      // The button knobs (spec 2026-09-24-04): the gradient would otherwise
+      // be the one piece of the page an operator could not re-theme.
+      "--primary:",
+      "--primary-foreground",
+      "--primary-gradient",
+      "--gradient-foreground",
       ".dark",
       // The `sp-*` element hooks are part of the same documented API.
       ".sp-logo",

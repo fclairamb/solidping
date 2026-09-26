@@ -1,37 +1,66 @@
 /**
- * SolidPing custom styles with vibrant pink theme
+ * SolidPing docs styles: the "electric" identity shared with dash0, status0
+ * and the emails (specs 2026-09-24-01 and -06).
+ *
+ * Primary is #1e64ef (light) / #57a8ff (dark), the hex twins of dash0's
+ * --primary. The six shades of each are generated with Docusaurus' palette
+ * rule (HSL lightness -10/-15/-30% and +10/+15/+30%), not hand-picked.
+ * Hero, footer and the navbar border reuse dash0's hero gradient, sidebar
+ * navy and accent gradient.
  */
 
-/* Light mode - Vibrant Pink theme */
+/* Light mode */
 :root {
-  --ifm-color-primary: #E91E63;
-  --ifm-color-primary-dark: #D81B60;
-  --ifm-color-primary-darker: #C2185B;
-  --ifm-color-primary-darkest: #AD1457;
-  --ifm-color-primary-light: #EC407A;
-  --ifm-color-primary-lighter: #F06292;
-  --ifm-color-primary-lightest: #F48FB1;
+  --ifm-color-primary: #1e64ef;
+  --ifm-color-primary-dark: #1056e2;
+  --ifm-color-primary-darker: #0f52d5;
+  --ifm-color-primary-darkest: #0d43b0;
+  --ifm-color-primary-light: #3775f1;
+  --ifm-color-primary-lighter: #447ef2;
+  --ifm-color-primary-lightest: #6998f4;
   --ifm-code-font-size: 95%;
-  --docusaurus-highlighted-code-line-bg: rgba(233, 30, 99, 0.1);
-  --ifm-link-color: #E91E63;
-  --ifm-navbar-link-hover-color: #C2185B;
+  --docusaurus-highlighted-code-line-bg: rgba(30, 100, 239, 0.1);
+  /* 5.09:1 on white */
+  --ifm-link-color: var(--ifm-color-primary);
+  --ifm-navbar-link-hover-color: var(--ifm-color-primary-darker);
+
+  /* Tints of the primary, same alphas as the previous theme. */
+  --sp-primary-tint: rgba(30, 100, 239, 0.1);
+  --sp-primary-shadow: rgba(30, 100, 239, 0.15);
+  /* Text on a solid primary fill (secondary button hover). */
+  --sp-on-primary: #ffffff;
+
+  /* Electric identity gradients (dash0 spec 01 §2, spec 02 §1). */
+  --sp-hero-gradient: linear-gradient(135deg, #0094d9 0%, #204ee3 60%, #3823a2 100%);
+  --sp-accent-gradient: linear-gradient(90deg, #00b0e4 0%, #175ee8 50%, #453cdb 100%);
+  /* White on #00b0e4 is 2.5:1, so text sits on the --primary-gradient stops. */
+  --sp-announcement-gradient: linear-gradient(90deg, #007bce 0%, #175ee8 50%, #453cdb 100%);
+  --sp-sidebar-navy: linear-gradient(180deg, #0a1731 0%, #04091b 100%);
 }
 
-/* Dark mode - Lighter pink for readability */
+/* Dark mode */
 [data-theme='dark'] {
-  --ifm-color-primary: #F48FB1;
-  --ifm-color-primary-dark: #F06292;
-  --ifm-color-primary-darker: #EC407A;
-  --ifm-color-primary-darkest: #E91E63;
-  --ifm-color-primary-light: #F8BBD9;
-  --ifm-color-primary-lighter: #FCE4EC;
-  --ifm-color-primary-lightest: #FFF0F5;
-  --docusaurus-highlighted-code-line-bg: rgba(244, 143, 177, 0.2);
+  --ifm-color-primary: #57a8ff;
+  --ifm-color-primary-dark: #3596ff;
+  --ifm-color-primary-darker: #248dff;
+  --ifm-color-primary-darkest: #0073ef;
+  --ifm-color-primary-light: #79baff;
+  --ifm-color-primary-lighter: #8ac3ff;
+  --ifm-color-primary-lightest: #beddff;
+  --docusaurus-highlighted-code-line-bg: rgba(87, 168, 255, 0.2);
+  /* 6.92:1 on #1b1b1d */
+  --ifm-link-color: var(--ifm-color-primary);
+  --ifm-navbar-link-hover-color: var(--ifm-color-primary-light);
+
+  --sp-primary-tint: rgba(87, 168, 255, 0.1);
+  --sp-primary-shadow: rgba(87, 168, 255, 0.15);
+  /* White on #57a8ff is 2.5:1; the page background reads 6.9:1. */
+  --sp-on-primary: #1b1b1d;
 }
 
 /* Hero section styling */
 .hero {
-  background: linear-gradient(135deg, #E91E63 0%, #AD1457 100%);
+  background: var(--sp-hero-gradient);
 }
 
 .hero--primary {
@@ -51,14 +80,14 @@
 
 /* Button styling */
 .button--secondary {
-  color: #E91E63;
-  border-color: #E91E63;
+  color: var(--ifm-color-primary);
+  border-color: var(--ifm-color-primary);
 }
 
 .button--secondary:hover {
-  color: #fff;
-  background-color: #E91E63;
-  border-color: #E91E63;
+  color: var(--sp-on-primary);
+  background-color: var(--ifm-color-primary);
+  border-color: var(--ifm-color-primary);
 }
 
 /* Feature cards */
@@ -70,7 +99,7 @@
 
 .feature-card:hover {
   transform: translateY(-4px);
-  box-shadow: 0 12px 24px rgba(233, 30, 99, 0.15);
+  box-shadow: 0 12px 24px var(--sp-primary-shadow);
 }
 
 /* Code blocks */
@@ -78,27 +107,41 @@
   border-radius: 8px;
 }
 
-/* Footer styling */
+/* Footer: the dashboard sidebar navy */
 .footer--dark {
-  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  background: var(--sp-sidebar-navy);
 }
 
-/* Navbar styling */
+/* Navbar: theme-following, signed with a 2px accent-gradient border
+   in place of the plain shadow. The navbar is sticky, so it anchors ::after. */
 .navbar {
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  box-shadow: none;
+}
+
+.navbar::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--sp-accent-gradient);
+  pointer-events: none;
 }
 
 /* Sidebar active link */
 .menu__link--active:not(.menu__link--sublist) {
-  background-color: rgba(233, 30, 99, 0.1);
+  background-color: var(--sp-primary-tint);
 }
 
 /* Table of contents */
 .table-of-contents__link--active {
-  color: #E91E63;
+  color: var(--ifm-color-primary);
 }
 
-/* Announcement bar */
+/* Announcement bar (theme-announcement-bar is the stable class; the other is
+   the CSS-module name it used to target). */
+.theme-announcement-bar,
 .announcementBar {
-  background: linear-gradient(90deg, #E91E63 0%, #AD1457 100%);
+  background: var(--sp-announcement-gradient);
 }

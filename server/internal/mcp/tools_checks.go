@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
+	"github.com/fclairamb/solidping/server/internal/regionquorum"
 )
 
 func listChecksDef() ToolDefinition {
@@ -161,7 +163,7 @@ func createCheckDef() ToolDefinition {
 					"Auto-generated if omitted.",
 			),
 			schemaKeyType: stringProp(
-				"Check type. Allowed: http, tcp, icmp, dns, ssl, heartbeat, domain. " +
+				"Check type. Allowed: " + allowedCheckTypes() + ". " +
 					"Inferred from config if omitted.",
 			),
 			schemaKeyConfig: objectProp(
@@ -170,8 +172,26 @@ func createCheckDef() ToolDefinition {
 					"Use get_check_type_samples to discover the shape for other types.",
 			),
 			"regions": arrayOfStringsProp(
-				"Region slugs to run the check from, e.g. [\"eu-west-1\",\"us-east-1\"]. " +
-					"Defaults to all org regions when omitted.",
+				"Region slugs to pin the check to, e.g. [\"eu-west-1\",\"us-east-1\"]. An explicit list " +
+					"means placement \"pinned\": the check runs from exactly these regions and is never " +
+					"moved. When omitted, the check is placed automatically (placement \"auto\"): the " +
+					"scheduler picks regionCount healthy regions from the org's default_regions, then the " +
+					"system default, then every other declared region, and moves the check off a region " +
+					"that goes dark. (An org whose own default_regions names a private location keeps " +
+					"pinned checks on those defaults.)",
+			),
+			"placement": stringProp(
+				"\"pinned\" or \"auto\". Omit to infer it: regions given means pinned, otherwise auto. " +
+					"\"auto\" cannot be combined with regions. Private (@) regions are pinned-only.",
+			),
+			"regionCount": intProp(
+				"Automatic placement only: how many regions run the check (default 2, capped by the " +
+					"eligible regions and the org's checks-per-minute limit; the response carries a " +
+					"PLACEMENT_REGION_COUNT_REDUCED warning when reduced). Implies placement auto.",
+			),
+			"regionPool": arrayOfStringsProp(
+				"Automatic placement only: the cloud region slugs the scheduler may choose from, e.g. " +
+					"[\"paris\",\"gravelines\"]. Omit for any cloud region. Implies placement auto.",
 			),
 			schemaKeyEnabled: boolProp("Whether the check should run. Default true."),
 			"period": stringProp(
@@ -195,6 +215,8 @@ func createCheckDef() ToolDefinition {
 					"Any failure inside the window resets the recovery clock. " +
 					"0 = resolve immediately. Range 0–86400. Default 120.",
 			),
+			"failQuorum": stringProp(failQuorumDescription +
+				" Omit for the default."),
 		}, []string{schemaKeyConfig}),
 	}
 }
@@ -224,6 +246,9 @@ func (h *Handler) toolCreateCheck(ctx context.Context, orgSlug string, args map[
 		req.CheckGroupUID = &g
 	}
 
+	req.Placement, req.RegionCount = placementArgs(args)
+	req.RegionPool = getStringSliceArg(args, "regionPool")
+
 	if _, ok := args["confirmationPeriodSeconds"]; ok {
 		v := getIntArg(args, "confirmationPeriodSeconds", 0)
 		req.ConfirmationPeriodSeconds = &v
@@ -232,6 +257,8 @@ func (h *Handler) toolCreateCheck(ctx context.Context, orgSlug string, args map[
 		v := getIntArg(args, "recoveryPeriodSeconds", 0)
 		req.RecoveryPeriodSeconds = &v
 	}
+
+	req.FailQuorum = failQuorumArg(args)
 
 	result, err := h.checksSvc.CreateCheck(ctx, orgSlug, req)
 	if err != nil {
@@ -252,10 +279,27 @@ func updateCheckDef() ToolDefinition {
 			schemaKeySlug:   stringProp("New URL-friendly slug, e.g. \"api-prod\"."),
 			schemaKeyConfig: objectProp("Replace check-specific config (full object — not merged)."),
 			"regions": arrayOfStringsProp(
-				"Replace region list, e.g. [\"eu-west-1\",\"us-east-1\"]. " +
-					"Pass an empty array to run from no regions (effectively pauses execution).",
+				"Pin the check to exactly these regions, e.g. [\"eu-west-1\",\"us-east-1\"] " +
+					"(placement becomes \"pinned\"). An empty array puts the check back on the default " +
+					"placement: automatic across regionCount healthy regions (unless the org's own " +
+					"default_regions names a private location, which pins it to those defaults). The " +
+					"check keeps running either way; use enabled: false to stop it.",
 			),
-			schemaKeyEnabled: boolProp("Toggle whether the check runs."),
+			"placement": stringProp(
+				"Switch the placement: \"auto\" lets the scheduler place the check (keeping its current " +
+					"region count and every current region still healthy) and move it off a region that " +
+					"goes dark; \"pinned\" freezes the current regions unless regions is also given.",
+			),
+			"regionCount": intProp(
+				"Automatic placement only: how many regions run the check. Implies placement auto.",
+			),
+			"regionPool": arrayOfStringsProp(
+				"Automatic placement only: candidate cloud region slugs; an empty array means any. " +
+					"Implies placement auto.",
+			),
+			schemaKeyEnabled: boolProp(
+				"Toggle whether the check runs. Set to false to pause the check, true to resume it.",
+			),
 			"period": stringProp(
 				"New check interval as HH:MM:SS, e.g. \"00:00:30\" for 30 seconds.",
 			),
@@ -275,6 +319,8 @@ func updateCheckDef() ToolDefinition {
 				"Wall-clock seconds the check must stay UP before auto-resolving. Any failure " +
 					"inside the window resets the recovery clock. 0 = resolve immediately. Range 0–86400.",
 			),
+			"failQuorum": stringProp(failQuorumDescription +
+				" Pass \"default\" to put the check back on the default."),
 		}, []string{propIdentifier}),
 	}
 }
@@ -302,6 +348,10 @@ func (h *Handler) toolUpdateCheck(ctx context.Context, orgSlug string, args map[
 	if v := getStringSliceArg(args, "regions"); v != nil {
 		req.Regions = &v
 	}
+	req.Placement, req.RegionCount = placementArgs(args)
+	if v := getStringSliceArg(args, "regionPool"); v != nil {
+		req.RegionPool = &v
+	}
 	req.Enabled = getBoolArg(args, "enabled")
 	if v := getStringArg(args, "period"); v != "" {
 		req.Period = &v
@@ -321,6 +371,8 @@ func (h *Handler) toolUpdateCheck(ctx context.Context, orgSlug string, args map[
 		v := getIntArg(args, "recoveryPeriodSeconds", 0)
 		req.RecoveryPeriodSeconds = &v
 	}
+
+	req.FailQuorum = failQuorumArg(args)
 
 	result, err := h.checksSvc.UpdateCheck(ctx, orgSlug, identifier, &req)
 	if err != nil {
@@ -368,4 +420,52 @@ func marshalResult(value any) ToolCallResult {
 		Content:           []ContentBlock{{Type: contentTypeText, Text: string(data)}},
 		StructuredContent: value,
 	}
+}
+
+// failQuorumDescription documents the multi-region quorum argument of
+// create_check / update_check (spec 2026-09-25-10).
+const failQuorumDescription = "Multi-region quorum: how many of the check's regions must be failing, " +
+	"for the confirmation period, before it is down and an incident opens. \"all\", \"majority\" or a " +
+	"whole number such as \"2\" (clamped to the region count). The default is all regions for 1-2 " +
+	"regions and a majority for 3+. Fewer failing regions than the quorum is a \"regional issue\": " +
+	"the check shows warning and no incident opens. \"all\" keeps the per-result rule: any passing " +
+	"region resets the confirmation."
+
+// failQuorumArg reads the failQuorum argument, as a string or a number
+// (clients differ); nil when absent. Validation happens in the service.
+func failQuorumArg(args map[string]any) *regionquorum.Value {
+	raw, ok := args["failQuorum"]
+	if !ok || raw == nil {
+		return nil
+	}
+
+	var value regionquorum.Value
+
+	switch typed := raw.(type) {
+	case string:
+		value = regionquorum.Value(typed)
+	case float64:
+		value = regionquorum.Value(strconv.FormatFloat(typed, 'f', -1, 64))
+	default:
+		value = regionquorum.Value(fmt.Sprint(typed))
+	}
+
+	return &value
+}
+
+// placementArgs reads the placement and regionCount arguments of
+// create_check / update_check (spec 2026-09-25-06); nil when absent.
+func placementArgs(args map[string]any) (*string, *int) {
+	var placement *string
+	if v := getStringArg(args, "placement"); v != "" {
+		placement = &v
+	}
+
+	var count *int
+	if _, ok := args["regionCount"]; ok {
+		v := getIntArg(args, "regionCount", 0)
+		count = &v
+	}
+
+	return placement, count
 }

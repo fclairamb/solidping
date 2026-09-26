@@ -55,7 +55,8 @@
     "nextRun": "Prochaine exéc.",
     "leaseWorker": "Worker du bail",
     "leaseExpiry": "Expiration du bail",
-    "attempts": "Tentatives"
+    "attempts": "Tentatives",
+    "created": "Créé"
   },
   "detail": {
     "backgroundJobTitle": "Tâche d'arrière-plan",

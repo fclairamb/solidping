@@ -56,7 +56,17 @@
       "description": "When a check goes down because its target could not be REACHED, capture an MTR-style traceroute and attach it to the incident.",
       "label": "Traceroute on network failure",
       "help": "Applies to every check set to \"inherit\". Only reachability failures trigger a capture — connect timeouts, refusals, ICMP loss, stalled TLS handshakes. An HTTP 5xx, a keyword mismatch or an expiring certificate never does, because the server answered. Traces run after the failing result is already reported and are rate-limited per organization, so they never delay an incident or flood a mass outage."
-    }
+    },
+    "embed": {
+      "title": "Status page embedding",
+      "description": "By default a status page can only be framed by SolidPing itself (the appearance preview). List the sites allowed to embed this organization's status pages in an iframe, such as an intranet or a wall display.",
+      "label": "Allowed embedding origins",
+      "placeholder": "https://intranet.acme.com\nhttps://*.acme.com",
+      "help": "One origin per line: a scheme and a host, optionally with a port or a leading *. label. No paths. Sent as the page's Content-Security-Policy frame-ancestors; takes effect within a minute. Leave empty to block every other site."
+    },
+    "defaultEscalationBlastRadius_one": "{{count}} check currently inherits and will start using this policy.",
+    "defaultEscalationBlastRadius_other": "{{count}} checks currently inherit and will start using this policy.",
+    "defaultEscalationSilent": "silent"
   },
   "usage": {
     "title": "Usage",
@@ -342,7 +352,15 @@
       "create": "Add location",
       "deleteTitle": "Delete private location?",
       "deleteDescription": "Checks targeting this location will stop being scheduled there. Locations with enrolled agents cannot be deleted — revoke the agents first.",
-      "deleteConfirm": "Delete"
+      "deleteConfirm": "Delete",
+      "stateOnline": "Online",
+      "stateDegraded": "Degraded",
+      "stateOffline": "Offline",
+      "stateEmpty": "No agent",
+      "onlineCount": "{{online}}/{{total}} online",
+      "monitor": "Liveness monitor",
+      "monitorOff": "Liveness monitor off",
+      "monitorEnable": "Turn on"
     },
     "cancel": "Cancel",
     "token": {
@@ -369,7 +387,9 @@
       "removeDescription": "This agent is already revoked. Removing it clears it from the list immediately, instead of waiting for the automatic two-day cleanup.",
       "revokeDescription": "The agent loses access immediately and stops receiving checks. It already saw the credentials sealed to it — rotate them. This cannot be undone; enroll a new agent to replace it.",
       "removeConfirm": "Remove",
-      "revokeConfirm": "Revoke"
+      "revokeConfirm": "Revoke",
+      "online": "Online",
+      "offline": "Offline"
     },
     "tokens": {
       "title": "Pending enrollment tokens",
@@ -384,17 +404,17 @@
     "toast": "You don't have access to {{requested}} — showing {{shown}} instead."
   },
   "parameters": {
-    "title": "Parameters",
+    "title": "Variables",
     "subtitle": "Values your checks reference as ${param:KEY} instead of committing them to a file.",
-    "add": "Add parameter",
-    "addTitle": "Add a parameter",
+    "add": "Add variable",
+    "addTitle": "Add a variable",
     "addDescription": "Pick a key, then reference it from any check config string as ${param:KEY}.",
     "rotate": "Rotate",
-    "rotateTitle": "Rotate parameter",
+    "rotateTitle": "Rotate variable",
     "rotateDescription": "The key does not change, so every check that references it keeps working.",
     "created": "Created {{key}}",
     "rotated": "Rotated {{key}}",
-    "saveFailed": "Could not save the parameter",
+    "saveFailed": "Could not save the variable",
     "writeOnly": "Write-only",
     "keyInvalid": "Keys are lowercase and start with a letter: a-z, 0-9, dot, dash, underscore.",
     "secretLabel": "Secret",
@@ -406,14 +426,14 @@
       "updated": "Updated"
     },
     "empty": {
-      "title": "No parameters yet",
+      "title": "No variables yet",
       "description": "Add one, then reference it from a check config as ${param:KEY}."
     },
     "delete": {
-      "title": "Delete this parameter?",
+      "title": "Delete this variable?",
       "description": "Any check referencing ${param:{{key}}} will fail with an unresolved secret reference at its next run.",
-      "deleted": "Parameter deleted",
-      "failed": "Could not delete the parameter"
+      "deleted": "Variable deleted",
+      "failed": "Could not delete the variable"
     }
   }
 }

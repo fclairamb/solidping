@@ -24,6 +24,8 @@
   "today": "Heute",
   "uptime": "Verfügbarkeit",
   "noData": "Keine Daten",
+  "noDataLastChecked": "Keine Daten, zuletzt geprüft {{time}}",
+  "measuredCoverage": "{{pct}} % des Zeitraums gemessen",
   "responseTime": "Antwortzeit",
   "unknownRegion": "Unbekannte Region",
   "switchToDarkMode": "Zum dunklen Modus wechseln",
@@ -36,7 +38,11 @@
     "error": "Fehler",
     "created": "Erstellt",
     "running": "Läuft",
-    "recentUpdates": "Aktuelle Updates"
+    "recentUpdates": "Aktuelle Updates",
+    "readMore": "Mehr erfahren →",
+    "incidentThread": "Updates zur Störung",
+    "incidentThreadLabel": "Updates zur Störung {{uid}}",
+    "updateKindLabel": "Art des Updates: {{kind}}"
   },
   "subscribe": {
     "title": "Updates abonnieren",
@@ -64,7 +70,7 @@
     "monitoring": "Wird beobachtet",
     "resolved": "Behoben",
     "maintenance": "Wartung",
-    "info": "Update"
+    "info": "Aktualisierung"
   },
   "incidentSeverity": {
     "minor": "Gering",

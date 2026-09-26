@@ -108,6 +108,9 @@
     "followRedirects": {
       "type": "boolean"
     },
+    "redirectHostPolicy": {
+      "type": "string"
+    },
     "capture_failure_response": {
       "type": "boolean"
     }

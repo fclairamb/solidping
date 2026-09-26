@@ -98,6 +98,9 @@ func (h *Handler) SubmitReport(writer http.ResponseWriter, req *http.Request) er
 				base.ErrorCodeOrganizationNotFound, "Organization not found", err)
 		case errors.Is(err, ErrURLRequired):
 			return h.WriteErrorErr(writer, req, http.StatusBadRequest, errCodeBadRequest, "Missing 'url' field", err)
+		case errors.Is(err, ErrStorageQuotaExceeded):
+			return h.WriteErrorErr(writer, req, http.StatusRequestEntityTooLarge,
+				base.ErrorCodeQuotaExceeded, "Feedback storage quota exceeded for this organization", err)
 		default:
 			return h.WriteInternalError(writer, req, err)
 		}

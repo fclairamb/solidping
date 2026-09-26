@@ -56,8 +56,11 @@ func decodeSweepConfig(config json.RawMessage, what string) (sweepIntervalConfig
 type periodicSweep struct {
 	// jobType is what gets rescheduled.
 	jobType jobdef.JobType
-	// interval is the resolved gap until the next run.
-	interval time.Duration
+	// defaultInterval is the sweep's own cadence, used unless config
+	// overrides it.
+	defaultInterval time.Duration
+	// config carries the optional per-job interval override.
+	config sweepIntervalConfig
 	// what names the sweep in error messages ("degraded checks").
 	what string
 	// logMessage is the debug line emitted when the sweep did something.
@@ -102,7 +105,7 @@ func (p periodicSweep) reschedule(ctx context.Context, jctx *jobdef.JobContext) 
 		return
 	}
 
-	scheduledAt := time.Now().Add(p.interval)
+	scheduledAt := time.Now().Add(p.config.interval(p.defaultInterval))
 
 	_, err := jctx.Services.Jobs.CreateJob(
 		ctx, "", string(p.jobType), nil, &jobsvc.JobOptions{ScheduledAt: &scheduledAt},

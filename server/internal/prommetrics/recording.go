@@ -12,29 +12,26 @@ func RecordSchedulingDelay(region string, delaySeconds float64) {
 	SchedulingDelay.WithLabelValues(region).Observe(delaySeconds)
 }
 
-// SetCheckStatus sets the up/down gauge for a specific check.
-func SetCheckStatus(checkSlug, checkType, region, org string, up bool) {
-	val := 0.0
-	if up {
-		val = 1.0
-	}
-
-	CheckUp.WithLabelValues(checkSlug, checkType, region, org).Set(val)
-}
-
-// SetCheckStatusStreak sets the consecutive status streak for a check.
-func SetCheckStatusStreak(checkSlug, checkType, org string, streak float64) {
-	CheckStatusStreak.WithLabelValues(checkSlug, checkType, org).Set(streak)
-}
-
-// SetChecksConfigured sets the number of configured checks for a given type/org/enabled combo.
-func SetChecksConfigured(checkType, org, enabled string, count float64) {
-	ChecksConfigured.WithLabelValues(checkType, org, enabled).Set(count)
-}
-
-// SetWorkersActive sets the number of active workers in a region.
+// SetWorkersActive sets the number of live workers serving a cloud region.
+// Only the region sweep calls it, right after WorkersActive.Reset().
 func SetWorkersActive(region string, count float64) {
 	WorkersActive.WithLabelValues(region).Set(count)
+}
+
+// SetRegionDark sets the dark flag (0/1) of one cloud region. Only the region
+// sweep calls it, right after RegionDark.Reset().
+func SetRegionDark(region string, dark bool) {
+	value := 0.0
+	if dark {
+		value = 1
+	}
+
+	RegionDark.WithLabelValues(region).Set(value)
+}
+
+// SetChecksStale sets the stale-check count for one placement region label.
+func SetChecksStale(region string, count float64) {
+	ChecksStale.WithLabelValues(region).Set(count)
 }
 
 // SetWorkerFreeRunners sets the available runner slots for a worker.

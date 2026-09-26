@@ -9,6 +9,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 
 import { Logo } from "@/components/ui/logo";
+import { cn } from "@/lib/utils";
 import { AuthSplitLayout } from "@/components/layout/auth-split-layout";
 import { useResetPassword } from "@/api/hooks";
 
@@ -50,7 +51,9 @@ function ResetPasswordPage() {
     <AuthSplitLayout>
       <Card className="w-full max-w-md border-t-4 border-t-brand">
         <CardHeader className="text-center">
-          <div className="flex justify-center mb-4">
+          {/* Below lg the layout shows the wordmark above the card: the card's
+              own mark only appears on lg+, so a phone sees one mark. */}
+          <div className={cn("mb-4 justify-center", success || error ? "flex" : "hidden lg:flex")}>
             {success ? (
               <CheckCircle2 className="h-12 w-12 text-green-500" />
             ) : error ? (

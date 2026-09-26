@@ -110,8 +110,10 @@ func (c *RabbitMQChecker) dialAndCheck(
 	// the URI to this Dial func (no local resolution), so the bastion resolves
 	// the hostname. We replicate amqp.DefaultDial's handshake deadline so a dead
 	// server cannot stall the AMQP handshake. Untunneled, Dial stays nil and the
-	// library uses its default dialer byte-for-byte.
-	if dialer := checkerdef.TunnelDialerFrom(ctx); dialer != nil {
+	// library uses its default dialer byte-for-byte — unless the egress policy
+	// (spec 2026-09-25-19) is enforcing, in which case the same Dial func goes
+	// through the guard (amqp091-go applies TLS above it either way).
+	if dialer := checkerdef.OutboundDialer(ctx); dialer != nil {
 		timeout := cfg.Timeout
 		if timeout == 0 {
 			timeout = defaultTimeout
@@ -128,7 +130,9 @@ func (c *RabbitMQChecker) dialAndCheck(
 			return conn, nil
 		}
 
-		output["tunneled"] = true
+		if checkerdef.TunnelDialerFrom(ctx) != nil {
+			output["tunneled"] = true
+		}
 	}
 
 	conn, err := amqp.DialConfig(uri, amqpConfig)
@@ -367,7 +371,9 @@ func fetchNodes(ctx context.Context, cfg *RabbitMQConfig, mgmtPort int) ([]nodeI
 
 	req.SetBasicAuth(cfg.Username, cfg.Password)
 
-	resp, err := http.DefaultClient.Do(req)
+	// Management API: same host, answers to the egress guard (spec
+	// 2026-09-25-19) under an enforcing policy.
+	resp, err := checkerdef.GuardedHTTPClient(ctx).Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
@@ -632,7 +638,9 @@ func (c *RabbitMQChecker) doManagementRequest(
 
 	metrics := map[string]any{}
 
-	resp, err := http.DefaultClient.Do(req)
+	// Management API: same host, answers to the egress guard (spec
+	// 2026-09-25-19) under an enforcing policy.
+	resp, err := checkerdef.GuardedHTTPClient(ctx).Do(req)
 	if err != nil {
 		return handleManagementError(ctx, err, start, output), nil
 	}

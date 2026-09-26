@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
@@ -30,6 +31,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/orgslug"
+	"github.com/fclairamb/solidping/server/internal/securityheaders"
 	"github.com/fclairamb/solidping/server/internal/support"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
 	"github.com/fclairamb/solidping/server/internal/utils/passwords"
@@ -63,6 +65,15 @@ const (
 	keyMethod      = "method"
 	keyCreatedWith = "created_with"
 	keyScopes      = "scopes"
+
+	// keyTokenHash is the pending-registration state value key holding
+	// sha256hex(token) — see hashPendingToken. Registration entries never
+	// store the plaintext confirmation token (spec 2026-09-25-30). Password
+	// reset and invitations never store it either: they carry the hash as
+	// their state-entry KEY suffix instead (spec 2026-09-26-02). keyToken
+	// above is now only a request field name, plus the value field of legacy
+	// invite rows written before that spec.
+	keyTokenHash = "tokenHash"
 
 	tokenTypeBearer = "Bearer"
 	jwtIssuer       = "solidping"
@@ -153,8 +164,11 @@ type Service struct {
 	support      *support.Service
 	jobsSvc      jobsvc.Service
 	entitlements EntitlementsChecker
-	patCache     map[string]*cachedPATClaims
-	cacheMux     sync.RWMutex
+	// patCache is keyed by models.HashUserToken of the PAT, the same value
+	// stored in user_tokens.token_hash: no plaintext PAT sits in a map key,
+	// and RevokeToken can evict an entry from the row it just read.
+	patCache map[string]*cachedPATClaims
+	cacheMux sync.RWMutex
 }
 
 // EntitlementsChecker is the slice of the entitlements service the auth
@@ -1110,6 +1124,41 @@ func (s *Service) Logout(ctx context.Context, refreshToken string) error {
 	return nil
 }
 
+// LogoutSession invalidates the refresh-token session row named by
+// refreshUID, scoped to userUID: a forged or stale RefreshUID can never
+// delete another user's row. This backs the default POST /auth/logout path
+// (spec 2026-09-25-24) — without it, the cookie is cleared but the
+// refresh-token row survives, so anyone holding the refresh token (also
+// returned in the login/logout JSON body) keeps a live sliding session after
+// "logout".
+func (s *Service) LogoutSession(ctx context.Context, userUID, refreshUID string) error {
+	token, err := s.db.GetUserToken(ctx, refreshUID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil // Already gone — nothing to do.
+		}
+
+		return err
+	}
+
+	if token.UserUID != userUID || token.Type != models.TokenTypeRefresh {
+		// Not this user's refresh-token row — nothing to delete.
+		return nil
+	}
+
+	if _, err = s.db.DeleteUserToken(ctx, token.UID); err != nil {
+		return err
+	}
+
+	if token.OrganizationUID != nil {
+		audit.Record(auditActorCtx(ctx, token.UserUID, Context{}), s.db, *token.OrganizationUID,
+			models.EventTypeAuthLogout,
+			audit.Target{Type: auditTargetUser, UID: token.UserUID}, nil)
+	}
+
+	return nil
+}
+
 // LogoutUser invalidates all refresh tokens for a user across all orgs.
 func (s *Service) LogoutUser(ctx context.Context, userUID string) (*LogoutResponse, error) {
 	// Verify user exists
@@ -1417,10 +1466,13 @@ func (s *Service) ValidateToken(ctx context.Context, tokenString string) (*Claim
 //
 //nolint:cyclop,funlen
 func (s *Service) ValidatePATToken(ctx context.Context, patToken string) (*Claims, error) {
+	// The cache is keyed by the token's hash, never the token itself.
+	cacheKey := models.HashUserToken(patToken)
+
 	// Check cache first
 	s.cacheMux.RLock()
 
-	if cached, exists := s.patCache[patToken]; exists && time.Now().Before(cached.expiresAt) {
+	if cached, exists := s.patCache[cacheKey]; exists && time.Now().Before(cached.expiresAt) {
 		s.cacheMux.RUnlock()
 
 		return cached.claims, nil
@@ -1513,7 +1565,7 @@ func (s *Service) ValidatePATToken(ctx context.Context, patToken string) (*Claim
 
 	// Cache the result for 15 minutes
 	s.cacheMux.Lock()
-	s.patCache[patToken] = &cachedPATClaims{
+	s.patCache[cacheKey] = &cachedPATClaims{
 		claims:    claims,
 		expiresAt: time.Now().Add(patCacheDuration),
 	}
@@ -1945,7 +1997,7 @@ func (s *Service) RevokeToken(ctx context.Context, userUID, tokenUID string) err
 	// Invalidate cache if it's a PAT
 	if token.Type == models.TokenTypePAT {
 		s.cacheMux.Lock()
-		delete(s.patCache, token.Token)
+		delete(s.patCache, token.TokenHash)
 		s.cacheMux.Unlock()
 
 		// A PAT revoke should also tear down OAuth-issued MCP refresh grants for
@@ -2318,16 +2370,41 @@ const (
 	changePasswordWindow         = 15 * time.Minute
 )
 
-// hashResetToken derives the storage key suffix for a plaintext reset
-// token. Inputs are 32 random bytes hex-encoded (256 bits), so plain
-// SHA-256 is sufficient — no salt or stretching needed.
-func hashResetToken(token string) string {
+// hashPendingToken derives the at-rest form of a plaintext single-use
+// token: the password-reset and invitation flows use it as the storage KEY
+// suffix (password_reset:<hash>, invite:<hash> — spec 2026-09-26-02), and
+// pending email-registration entries use it as a stored VALUE (keyTokenHash)
+// since those entries are keyed by email, not by token (spec 2026-09-25-30). Inputs are 32 random bytes hex-encoded
+// (256 bits), so plain SHA-256 is sufficient — no salt or stretching needed.
+func hashPendingToken(token string) string {
 	sum := sha256.Sum256([]byte(token))
 
 	return hex.EncodeToString(sum[:])
 }
 
-// Register creates a pending registration entry and sends a confirmation email.
+// registerSuccessResponse is the response Register returns on every path
+// that isn't a hard rejection (disabled / pattern mismatch / weak password):
+// both a genuinely new signup AND a taken email get this exact value, so the
+// two are byte-identical over the wire (spec 2026-09-25-30, anti-enumeration).
+//
+//nolint:gochecknoglobals // immutable response literal, not mutable state
+var registerSuccessResponse = &RegisterResponse{Message: "Check your email to confirm your account"}
+
+// registerAntiEnumFiller is hashed instead of the real request password when
+// Register's anti-enumeration branch (below) substitutes for an already-taken
+// email. It exists purely to spend roughly the same CPU time as the real
+// passwords.Hash(req.Password) call on the success path, so the two branches'
+// response latency doesn't itself leak which one ran (spec 2026-09-25-30).
+const registerAntiEnumFiller = "solidping-registration-timing-filler-0000"
+
+// Register creates a pending registration entry and sends a confirmation
+// email — unless the email is already registered, in which case it silently
+// no-ops (no pending entry, no email) but still returns registerSuccessResponse,
+// so an anonymous caller cannot use this endpoint to enumerate accounts
+// (spec 2026-09-25-30). ConfirmRegistration keeps its own ErrEmailAlreadyTaken
+// path for the race where an account was created by some OTHER path between
+// Register and confirmation — that caller already proved mailbox ownership by
+// holding the token, so it isn't an enumeration surface.
 func (s *Service) Register(ctx context.Context, req RegisterRequest) (*RegisterResponse, error) {
 	// Check if registration is enabled. Read the LIVE value: the
 	// registration_email_pattern is applied by the systemconfig overlay AFTER
@@ -2361,7 +2438,16 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*RegisterR
 	}
 
 	if existing != nil {
-		return nil, ErrEmailAlreadyTaken
+		// Anti-enumeration: behave exactly like a successful registration
+		// (same response, same 200), minus the side effects a real signup
+		// would have — no pending entry is created and no email is sent.
+		// The dummy hash keeps this branch's timing aligned with the
+		// success path's passwords.Hash(req.Password) call below.
+		if _, hashErr := passwords.Hash(registerAntiEnumFiller); hashErr != nil {
+			return nil, fmt.Errorf("failed to hash password: %w", hashErr)
+		}
+
+		return registerSuccessResponse, nil
 	}
 
 	// Hash password
@@ -2378,9 +2464,13 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*RegisterR
 
 	token := hex.EncodeToString(tokenBytes)
 
-	// Store in state entries
+	// Store in state entries. Only sha256hex(token) is kept — a DB leak
+	// during the 3-day TTL window must not also hand out a usable
+	// confirmation token alongside the pending password hash (spec
+	// 2026-09-25-30). ConfirmRegistration hashes the presented token and
+	// compares it against keyTokenHash for each candidate entry.
 	stateValue := &models.JSONMap{
-		keyToken:       token,
+		keyTokenHash:   hashPendingToken(token),
 		keyEmail:       req.Email,
 		keyName:        req.Name,
 		"passwordHash": hash,
@@ -2406,7 +2496,7 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*RegisterR
 		map[string]any{"ConfirmURL": confirmURL},
 	)
 
-	return &RegisterResponse{Message: "Check your email to confirm your account"}, nil
+	return registerSuccessResponse, nil
 }
 
 // ConfirmRegistrationRequest contains the confirmation request data.
@@ -2418,7 +2508,13 @@ type ConfirmRegistrationRequest struct {
 //
 //nolint:cyclop,funlen // Registration confirmation requires multiple steps
 func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*LoginResponse, error) {
-	// Search state entries for matching token
+	// Registration entries are keyed by email, not by token, so there is no
+	// direct lookup key to hash into (unlike password reset's
+	// password_reset:<hash> key) — scan and hash-compare per candidate
+	// instead. The plaintext token itself is never stored (spec
+	// 2026-09-25-30), so this is comparing hashes, not the raw values.
+	tokenHash := hashPendingToken(token)
+
 	entries, err := s.db.ListStateEntries(ctx, nil, registrationKeyPrefix)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list registration entries: %w", err)
@@ -2431,8 +2527,8 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 			continue
 		}
 
-		entryToken, ok := (*entry.Value)["token"].(string)
-		if ok && entryToken == token {
+		entryHash, ok := (*entry.Value)[keyTokenHash].(string)
+		if ok && entryHash == tokenHash {
 			matchedEntry = entry
 
 			break
@@ -2713,7 +2809,7 @@ func (s *Service) RequestPasswordReset(
 	}
 
 	token := hex.EncodeToString(tokenBytes)
-	tokenHash := hashResetToken(token)
+	tokenHash := hashPendingToken(token)
 
 	// Store at password_reset:<sha256(token)> with userUid only. The
 	// plaintext token never lands on disk; a leaked DB snapshot has no
@@ -2902,7 +2998,7 @@ func (s *Service) ResetPassword(ctx context.Context, req ResetPasswordRequest) (
 			ErrInvalidCredentials, minPasswordLength)
 	}
 
-	tokenHash := hashResetToken(req.Token)
+	tokenHash := hashPendingToken(req.Token)
 
 	entry, err := s.db.GetStateEntry(ctx, nil, passwordResetKeyPrefix+tokenHash)
 	if err != nil {
@@ -3504,15 +3600,17 @@ func (s *Service) CreateInvitation(
 
 	token := hex.EncodeToString(tokenBytes)
 
-	// Store in state entries (org-scoped)
+	// Store in state entries (org-scoped). The entry is keyed by the token's
+	// hash and never holds the plaintext token: a reader of state_entries
+	// must not be able to rebuild a usable invite link (spec 2026-09-26-02).
+	// The plaintext only leaves through the response and the email below.
 	stateValue := &models.JSONMap{
-		keyToken:     token,
 		keyEmail:     req.Email,
 		"role":       req.Role,
 		"inviterUID": inviterUID,
 	}
 
-	stateKey := inviteKeyPrefix + token
+	stateKey := inviteKeyPrefix + hashPendingToken(token)
 
 	if storeErr := s.db.SetStateEntry(ctx, &org.UID, stateKey, stateValue, &ttl); storeErr != nil {
 		return nil, fmt.Errorf("failed to store invitation: %w", storeErr)
@@ -3611,69 +3709,90 @@ func (s *Service) RevokeInvitation(ctx context.Context, orgSlug, invitationUID s
 	return ErrInvitationNotFound
 }
 
-// GetInviteInfo returns public information about an invitation.
-func (s *Service) GetInviteInfo(ctx context.Context, token string) (*InviteInfoResponse, error) {
-	stateKey := inviteKeyPrefix + token
+// findInvite locates the live invitation a plaintext token refers to,
+// across every organization. It returns the matching entry (whose Key is
+// the one to delete on acceptance) and its org, or ErrInvitationNotFound.
+func (s *Service) findInvite(
+	ctx context.Context, token string,
+) (*models.StateEntry, *models.Organization, error) {
+	if token == "" {
+		return nil, nil, ErrInvitationNotFound
+	}
 
-	// Search across all orgs for the invite
-	// We need to find which org this invite belongs to
 	orgs, err := s.db.ListOrganizations(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list organizations: %w", err)
+		return nil, nil, fmt.Errorf("failed to list organizations: %w", err)
 	}
+
+	hashedKey := inviteKeyPrefix + hashPendingToken(token)
+	legacyKey := inviteKeyPrefix + token
 
 	for _, org := range orgs {
-		entry, getErr := s.db.GetStateEntry(ctx, &org.UID, stateKey)
-		if getErr != nil || entry == nil {
-			continue
+		entry, getErr := s.db.GetStateEntry(ctx, &org.UID, hashedKey)
+		if getErr == nil && entry != nil && entry.Value != nil {
+			return entry, org, nil
 		}
 
-		if entry.Value == nil {
-			continue
+		// Legacy fallback: invites created before spec 2026-09-26-02 are
+		// keyed by the plaintext token and carry it in their value. They are
+		// never rewritten, they just expire (max TTL 1 week).
+		//
+		// The value check is what keeps a hashed row from answering here:
+		// presenting a stored hash as the token would otherwise hit
+		// invite:<hash> — the new-style key — through this branch. Hashed
+		// rows hold no token field, so they never match.
+		//
+		// TODO(remove after 2026-10-10): drop this branch once every
+		// pre-hash invite has expired.
+		entry, getErr = s.db.GetStateEntry(ctx, &org.UID, legacyKey)
+		if getErr == nil && entry != nil && entry.Value != nil && legacyInviteTokenMatches(entry, token) {
+			return entry, org, nil
 		}
-
-		val := *entry.Value
-
-		return &InviteInfoResponse{
-			OrgName: org.Name,
-			OrgSlug: org.Slug,
-			Role:    stringFromMap(val, "role"),
-			Email:   maskEmail(stringFromMap(val, "email")),
-		}, nil
 	}
 
-	return nil, ErrInvitationNotFound
+	return nil, nil, ErrInvitationNotFound
+}
+
+// legacyInviteTokenMatches reports whether a legacy (plaintext-keyed) invite
+// row stores exactly the presented token in its value.
+//
+// TODO(remove after 2026-10-10): goes with the legacy branch of findInvite.
+func legacyInviteTokenMatches(entry *models.StateEntry, token string) bool {
+	stored, ok := (*entry.Value)[keyToken].(string)
+	if !ok || stored == "" {
+		return false
+	}
+
+	return subtle.ConstantTimeCompare([]byte(stored), []byte(token)) == 1
+}
+
+// GetInviteInfo returns public information about an invitation.
+func (s *Service) GetInviteInfo(ctx context.Context, token string) (*InviteInfoResponse, error) {
+	entry, org, err := s.findInvite(ctx, token)
+	if err != nil {
+		return nil, err
+	}
+
+	val := *entry.Value
+
+	return &InviteInfoResponse{
+		OrgName: org.Name,
+		OrgSlug: org.Slug,
+		Role:    stringFromMap(val, "role"),
+		Email:   maskEmail(stringFromMap(val, "email")),
+	}, nil
 }
 
 // AcceptInvite accepts an invitation and creates/authenticates the user.
 //
 //nolint:cyclop,funlen // Invitation acceptance requires multiple steps
 func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*LoginResponse, error) {
-	stateKey := inviteKeyPrefix + req.Token
-
-	// Find the invitation across orgs
-	orgs, err := s.db.ListOrganizations(ctx)
+	// Find the invitation across orgs. matchedEntry.Key is the key that
+	// actually matched (hashed, or legacy plaintext), so the deletes below
+	// must use it rather than recompute one.
+	matchedEntry, matchedOrg, err := s.findInvite(ctx, req.Token)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list organizations: %w", err)
-	}
-
-	var matchedEntry *models.StateEntry
-	var matchedOrg *models.Organization
-
-	for _, org := range orgs {
-		entry, getErr := s.db.GetStateEntry(ctx, &org.UID, stateKey)
-		if getErr != nil || entry == nil {
-			continue
-		}
-
-		matchedEntry = entry
-		matchedOrg = org
-
-		break
-	}
-
-	if matchedEntry == nil || matchedOrg == nil {
-		return nil, ErrInvitationNotFound
+		return nil, err
 	}
 
 	val := *matchedEntry.Value
@@ -3714,7 +3833,7 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*L
 	_, err = s.db.GetMemberByUserAndOrg(ctx, user.UID, matchedOrg.UID)
 	if err == nil {
 		// Already a member, just clean up and login
-		_, _ = s.db.DeleteStateEntry(ctx, &matchedOrg.UID, stateKey)
+		_, _ = s.db.DeleteStateEntry(ctx, &matchedOrg.UID, matchedEntry.Key)
 	} else {
 		// Enforce the MaxUsers cap before adding this member. Invitation
 		// acceptance is a membership-creation path, so it must honor the
@@ -3746,7 +3865,7 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*L
 			})
 
 		// Delete the invitation
-		_, _ = s.db.DeleteStateEntry(ctx, &matchedOrg.UID, stateKey)
+		_, _ = s.db.DeleteStateEntry(ctx, &matchedOrg.UID, matchedEntry.Key)
 	}
 
 	// Auto-join matching orgs for new users
@@ -3831,6 +3950,11 @@ type OrgSettingsResponse struct {
 	// "org-level default (on)". A nullable field here would make the settings
 	// page render an unchecked box for an org that is in fact tracing.
 	TracerouteOnFailure bool `json:"tracerouteOnFailure"`
+	// StatusPageAllowedEmbedOrigins lists the scheme+host origins allowed to
+	// frame this org's public status pages (spec 2026-09-25-28). They are
+	// rendered into the status page's `frame-ancestors`, after 'self'. ALWAYS
+	// PRESENT; empty means only the SolidPing origin itself may frame them.
+	StatusPageAllowedEmbedOrigins []string `json:"statusPageAllowedEmbedOrigins"`
 }
 
 // GetOrgSettings returns settings for an organization.
@@ -3872,13 +3996,37 @@ func (s *Service) GetOrgSettings(ctx context.Context, orgSlug string) (*OrgSetti
 		return nil, err
 	}
 
+	embedParam, err := s.db.GetOrgParameter(ctx, org.UID, models.ParamKeyStatusPageAllowedEmbedOrigins)
+	if err != nil {
+		return nil, err
+	}
+
 	return &OrgSettingsResponse{
-		RegistrationEmailPattern:   pattern,
-		SessionMaxDurationSeconds:  sessionMaxDurationSeconds,
-		DefaultEscalationPolicyUID: org.DefaultEscalationPolicyUID,
-		InheritingCheckCount:       inheritingCount,
-		TracerouteOnFailure:        paramBoolDefaultTrue(traceParam),
+		RegistrationEmailPattern:      pattern,
+		SessionMaxDurationSeconds:     sessionMaxDurationSeconds,
+		DefaultEscalationPolicyUID:    org.DefaultEscalationPolicyUID,
+		InheritingCheckCount:          inheritingCount,
+		TracerouteOnFailure:           paramBoolDefaultTrue(traceParam),
+		StatusPageAllowedEmbedOrigins: EmbedOriginsFromParam(embedParam),
 	}, nil
+}
+
+// EmbedOriginsFromParam reads the statuspage.allowed_embed_origins parameter
+// into its validated list. The read path is lenient (an entry that does not
+// validate is dropped, see securityheaders.ParseEmbedOrigins), so a row
+// written behind the API's back can never inject a CSP directive. Never nil,
+// so the JSON field is always an array.
+func EmbedOriginsFromParam(param *models.Parameter) []string {
+	if param == nil {
+		return []string{}
+	}
+
+	raw, ok := param.Value[models.ParameterValueKey].(string)
+	if !ok {
+		return []string{}
+	}
+
+	return securityheaders.ParseEmbedOrigins(raw)
 }
 
 // paramBoolDefaultTrue reads a boolean org parameter whose ABSENCE means true.
@@ -3915,6 +4063,11 @@ type UpdateOrgSettingsRequest struct {
 	// TracerouteOnFailure sets the org-level path-trace default (spec
 	// 2026-08-21-10). Omit to leave it unchanged.
 	TracerouteOnFailure *bool `json:"tracerouteOnFailure"`
+	// StatusPageAllowedEmbedOrigins replaces the status-page embed allowlist
+	// (spec 2026-09-25-28). Each entry must be a scheme+host origin such as
+	// https://intranet.acme.com; an empty array clears it. Omit to leave it
+	// unchanged.
+	StatusPageAllowedEmbedOrigins *[]string `json:"statusPageAllowedEmbedOrigins"`
 }
 
 // UpdateOrgSettings updates settings for an organization.
@@ -3924,6 +4077,16 @@ func (s *Service) UpdateOrgSettings(
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
 	if err != nil {
 		return nil, ErrOrganizationNotFound
+	}
+
+	// Validated BEFORE the first write: a refused embed origin must refuse the
+	// whole PATCH, not land a 400 after the fields above it were saved.
+	var embedOrigins []string
+	if req.StatusPageAllowedEmbedOrigins != nil {
+		embedOrigins, err = securityheaders.NormalizeEmbedOrigins(*req.StatusPageAllowedEmbedOrigins)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if req.RegistrationEmailPattern != nil {
@@ -3949,6 +4112,12 @@ func (s *Service) UpdateOrgSettings(
 			ctx, org.UID, models.ParamKeyTracerouteEnabled, *req.TracerouteOnFailure, false,
 		); updateErr != nil {
 			return nil, fmt.Errorf("set traceroute default: %w", updateErr)
+		}
+	}
+
+	if req.StatusPageAllowedEmbedOrigins != nil {
+		if updateErr := s.updateEmbedOrigins(ctx, org.UID, embedOrigins); updateErr != nil {
+			return nil, updateErr
 		}
 	}
 
@@ -3985,7 +4154,27 @@ func orgSettingsChangedFields(req UpdateOrgSettingsRequest) []string {
 		changed = append(changed, "traceroute_on_failure")
 	}
 
+	if req.StatusPageAllowedEmbedOrigins != nil {
+		changed = append(changed, "status_page_allowed_embed_origins")
+	}
+
 	return changed
+}
+
+// updateEmbedOrigins stores the status-page embed allowlist. origins must
+// already have gone through securityheaders.NormalizeEmbedOrigins (done up
+// front in UpdateOrgSettings): the value ends up inside a response header, so
+// a `;` or a stray keyword would be a directive injection. An empty list
+// deletes the row.
+func (s *Service) updateEmbedOrigins(ctx context.Context, orgUID string, origins []string) error {
+	if len(origins) == 0 {
+		return s.db.DeleteOrgParameter(ctx, orgUID, models.ParamKeyStatusPageAllowedEmbedOrigins)
+	}
+
+	return s.db.SetOrgParameter(
+		ctx, orgUID, models.ParamKeyStatusPageAllowedEmbedOrigins,
+		securityheaders.FormatEmbedOrigins(origins), false,
+	)
 }
 
 // updateDefaultEscalationPolicy sets or clears the org's default escalation
@@ -4133,6 +4322,17 @@ const (
 	twoFATempTokenExpiry = 5 * time.Minute
 	recoveryCodeCount    = 10
 	recoveryCodeBytes    = 5 // 10 hex chars
+
+	// Authenticated 2FA-verification rate limit. TOTP and recovery-code
+	// verification share one per-user budget under this key prefix, on the
+	// same pattern as changePasswordCountKeyPrefix: the temp token bounds a
+	// single verification attempt to a 5-minute window, but a user can mint
+	// as many temp tokens as they want by re-submitting their password, so
+	// the failed-attempt budget must span temp tokens rather than reset with
+	// each one — otherwise it caps nothing.
+	twoFAAttemptCountKeyPrefix = "twofa_attempt_count:"
+	twoFAAttemptMaxPerUser     = 5
+	twoFAAttemptWindow         = 15 * time.Minute
 )
 
 // generate2FATempToken creates a short-lived JWT for the 2FA verification step.
@@ -4272,6 +4472,24 @@ func (s *Service) Confirm2FA(ctx context.Context, userUID, code string) (*Confir
 	}, nil
 }
 
+// bumpTwoFAAttemptCounter increments the per-user 2FA-verification attempt
+// counter (TOTP and recovery-code verification share the same budget) and
+// reports whether the cap for the current window is already reached.
+func (s *Service) bumpTwoFAAttemptCounter(ctx context.Context, userUID string) (bool, error) {
+	return s.bumpCounter(ctx,
+		twoFAAttemptCountKeyPrefix+userUID, twoFAAttemptMaxPerUser, twoFAAttemptWindow)
+}
+
+// resetTwoFAAttemptCounter clears the per-user 2FA attempt counter after a
+// successful verification. Best-effort, like the change-password twin:
+// login already succeeded, so a stale counter only costs a legitimate user
+// their fresh budget, never a security property.
+func (s *Service) resetTwoFAAttemptCounter(ctx context.Context, userUID string) {
+	if _, err := s.db.DeleteStateEntry(ctx, nil, twoFAAttemptCountKeyPrefix+userUID); err != nil {
+		slog.DebugContext(ctx, "Failed to delete 2FA attempt counter", "error", err)
+	}
+}
+
 // Verify2FA validates a TOTP code during login and returns full login tokens.
 func (s *Service) Verify2FA(
 	ctx context.Context, tempToken, code string, authContext Context,
@@ -4279,6 +4497,19 @@ func (s *Service) Verify2FA(
 	claims, err := s.validate2FATempToken(tempToken)
 	if err != nil {
 		return nil, err
+	}
+
+	// Rate-limit first, before the code is even looked at: the entire value
+	// of 2FA is being hard to guess, so the per-user budget is spent whether
+	// this attempt turns out right or wrong (mirrors
+	// bumpChangePasswordCounter guarding the current-password oracle).
+	limited, err := s.bumpTwoFAAttemptCounter(ctx, claims.UserUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to bump 2FA attempt counter: %w", err)
+	}
+
+	if limited {
+		return nil, ErrRateLimited
 	}
 
 	user, err := s.db.GetUser(ctx, claims.UserUID)
@@ -4298,6 +4529,8 @@ func (s *Service) Verify2FA(
 		return nil, ErrInvalid2FACode
 	}
 
+	s.resetTwoFAAttemptCounter(ctx, claims.UserUID)
+
 	return s.completeLoginAfter2FA(ctx, user, claims.OrgSlug, claims.Role,
 		withSecondFactor(claims.Method, SecondFactorTOTP), authContext)
 }
@@ -4309,6 +4542,17 @@ func (s *Service) Recovery2FA(
 	claims, err := s.validate2FATempToken(tempToken)
 	if err != nil {
 		return nil, err
+	}
+
+	// Same per-user budget as Verify2FA — recovery codes are fewer valid
+	// values than TOTP, so they must not get a separate allowance.
+	limited, err := s.bumpTwoFAAttemptCounter(ctx, claims.UserUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to bump 2FA attempt counter: %w", err)
+	}
+
+	if limited {
+		return nil, ErrRateLimited
 	}
 
 	user, err := s.db.GetUser(ctx, claims.UserUID)
@@ -4348,6 +4592,8 @@ func (s *Service) Recovery2FA(
 	}); updateErr != nil {
 		return nil, updateErr
 	}
+
+	s.resetTwoFAAttemptCounter(ctx, claims.UserUID)
 
 	return s.completeLoginAfter2FA(ctx, user, claims.OrgSlug, claims.Role,
 		withSecondFactor(claims.Method, SecondFactorRecoveryCode), authContext)

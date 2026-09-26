@@ -33,6 +33,7 @@
   "detail": {
     "currentWindow": "Current window",
     "attainment": "Attainment",
+    "lowCoverage": "Measured {{pct}}% of the window",
     "target": "Target",
     "budgetTotal": "Budget",
     "budgetConsumed": "Consumed",

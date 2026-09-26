@@ -487,6 +487,21 @@ describe("failingResources", () => {
     ]);
   });
 
+  test("a stale component is named as 'No data', never passed off as fine, below a failure (spec 2026-09-25-02)", () => {
+    const page = pageWith([
+      "Core",
+      [
+        resource("quiet", "stale", { publicName: "Quiet" }),
+        resource("ok", "up"),
+        resource("dead", "down", { publicName: "Dead" }),
+      ],
+    ]);
+
+    const named = failingResources(page);
+    expect(named.map((r) => r.name)).toEqual(["Dead", "Quiet"]);
+    expect(named[1].status).toBe("stale");
+  });
+
   test("healthy resources are never named", () => {
     const page = pageWith([
       "Core",

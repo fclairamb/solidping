@@ -2,6 +2,7 @@ package middleware_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -90,6 +91,72 @@ func TestRateLimit_ExcludedPaths(t *testing.T) {
 		w := httptest.NewRecorder()
 		_ = handler(w, newBunRequest("1.2.3.4", path))
 		r.Equal(http.StatusOK, w.Code, "excluded path %s must not be limited", path)
+	}
+}
+
+// TestRateLimitRoute_AppliesOutsideLimitedPrefix proves the reason
+// RateLimitRoute exists (spec 2026-09-25-26): a dedicated limiter mounted on
+// a route outside /api/v1/ — such as the anonymous POST /api/mgmt/report —
+// must still enforce, even though the SAME config run through plain
+// RateLimit would be silently exempt (see TestRateLimit_ExcludedPaths, which
+// asserts /api/mgmt/* is NOT limited by the general middleware). The request
+// carries no Authorization header and no org path segment, matching the
+// anonymous case the fix targets.
+func TestRateLimitRoute_AppliesOutsideLimitedPrefix(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	cfg := config.RateLimitConfig{
+		RequestsPerMinute: 60, // 1 token/sec, so the reset below is fast
+		Burst:             1,
+	}
+	rl := middleware.NewRateLimiter(cfg, context.Background())
+	handler := rl.RateLimitRoute(okHandler())
+
+	req := newBunRequest("9.9.9.9", "/api/mgmt/report")
+
+	w := httptest.NewRecorder()
+	_ = handler(w, req)
+	r.Equal(http.StatusOK, w.Code, "first anonymous request must be admitted")
+
+	w = httptest.NewRecorder()
+	_ = handler(w, req)
+	r.Equal(http.StatusTooManyRequests, w.Code,
+		"a route mounted via RateLimitRoute must still enforce outside /api/v1/")
+
+	var body struct {
+		Title string `json:"title"`
+		Code  string `json:"code"`
+	}
+	r.NoError(json.Unmarshal(w.Body.Bytes(), &body))
+	r.Equal("RATE_LIMITED", body.Code, "the standard error shape must be used")
+	r.NotEmpty(body.Title)
+
+	// The limiter resets after its window: once the bucket refills, the same
+	// IP is admitted again rather than staying capped forever.
+	time.Sleep(1100 * time.Millisecond)
+
+	w = httptest.NewRecorder()
+	_ = handler(w, req)
+	r.Equal(http.StatusOK, w.Code, "the limiter must reset once the bucket refills")
+}
+
+// TestRateLimitRoute_DisabledStillHonorsGlobalSwitch proves RateLimitRoute
+// keeps the same on/off switch as RateLimit (RequestsPerMinute == 0), so a
+// deployment or test that turns rate limiting off entirely doesn't leave a
+// route-specific limiter enforcing anyway.
+func TestRateLimitRoute_DisabledStillHonorsGlobalSwitch(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	cfg := config.RateLimitConfig{RequestsPerMinute: 0}
+	rl := middleware.NewRateLimiter(cfg, context.Background())
+	handler := rl.RateLimitRoute(okHandler())
+
+	for range 20 {
+		w := httptest.NewRecorder()
+		_ = handler(w, newBunRequest("9.9.9.9", "/api/mgmt/report"))
+		r.Equal(http.StatusOK, w.Code)
 	}
 }
 

@@ -355,3 +355,52 @@ func TestBudgetTracksDSTMonthLength(t *testing.T) {
 	// Two hours of wall clock difference at a 1% allowance = 72 s of budget.
 	r.Equal(int64(72), autumnStatus.BudgetTotalSeconds-springStatus.BudgetTotalSeconds)
 }
+
+// Budget is consumed over MEASURED time only (spec 2026-09-25-02): a month in
+// which the scope was silent for a third of the time spends a third less budget
+// for the same failure ratio, and says so through DataCoverage.
+func TestComputeDataCoverage(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	window := juneWindow()
+	afterWindow := window.End.Add(time.Hour)
+	monthSeconds := 30.0 * 24 * 3600
+	expected := 30.0 * 24 * 60 // one-minute probes, one region
+
+	// 1% failures over the fully measured month: positive control.
+	full := slo.Compute(&slo.Input{
+		TargetPct:      99.0,
+		Stats:          uptimebar.BucketStats{Up: 42768, Total: 43200},
+		Window:         window,
+		Now:            afterWindow,
+		ExpectedProbes: expected,
+	})
+	r.NotNil(full.DataCoverage)
+	r.InDelta(1.0, *full.DataCoverage, 0.0001)
+	r.InDelta(0.01*monthSeconds, float64(full.BudgetConsumedSeconds), 1)
+
+	// The same 1% failure ratio, but only two thirds of the month measured.
+	gap := slo.Compute(&slo.Input{
+		TargetPct:      99.0,
+		Stats:          uptimebar.BucketStats{Up: 28512, Total: 28800},
+		Window:         window,
+		Now:            afterWindow,
+		ExpectedProbes: expected,
+	})
+	r.NotNil(gap.DataCoverage)
+	r.InDelta(2.0/3.0, *gap.DataCoverage, 0.0001)
+	r.InDelta(0.01*monthSeconds*2/3, float64(gap.BudgetConsumedSeconds), 1)
+	r.NotNil(gap.BurnRate)
+	r.InDelta(*full.BurnRate, *gap.BurnRate, 0.0001, "the burn RATE is a ratio and does not move")
+
+	// No expectation supplied: behavior unchanged, no coverage reported.
+	legacy := slo.Compute(&slo.Input{
+		TargetPct: 99.0,
+		Stats:     uptimebar.BucketStats{Up: 28512, Total: 28800},
+		Window:    window,
+		Now:       afterWindow,
+	})
+	r.Nil(legacy.DataCoverage)
+	r.InDelta(0.01*monthSeconds, float64(legacy.BudgetConsumedSeconds), 1)
+}

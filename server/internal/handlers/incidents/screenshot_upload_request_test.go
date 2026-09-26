@@ -45,6 +45,26 @@ func (f *fakeUploadRequester) snapshot() []uploadAsk {
 	return append([]uploadAsk(nil), f.asks...)
 }
 
+// incidentAsks keeps only the asks for an INCIDENT topic. Since spec
+// 2026-09-25-34 a failing run that opens no incident also asks, for the
+// check-scoped topic — the transition bound below is about incident evidence.
+func (f *fakeUploadRequester) incidentAsks() []uploadAsk {
+	return f.asksWithPrefix(attachments.EntityIncidents + "/")
+}
+
+// asksWithPrefix keeps the asks whose topic starts with prefix.
+func (f *fakeUploadRequester) asksWithPrefix(prefix string) []uploadAsk {
+	var out []uploadAsk
+
+	for _, ask := range f.snapshot() {
+		if strings.HasPrefix(ask.topic, prefix) {
+			out = append(out, ask)
+		}
+	}
+
+	return out
+}
+
 // testWorkerUID is the worker row every deported-agent result in this file is
 // attributed to — the identity the upload request is addressed by.
 const testWorkerUID = "worker-1"
@@ -138,9 +158,20 @@ func TestUploadRequestBoundedToOnePerTransition(t *testing.T) {
 	r.NoError(err)
 	r.Len(opened, 1, "the flapping sequence must have opened exactly one incident")
 
-	asks := requester.snapshot()
-	r.Len(asks, 1, "one incident transition => exactly one upload request, never one per result")
+	asks := requester.incidentAsks()
+	r.Len(asks, 1, "one incident transition => exactly one incident upload request, never one per result")
 	r.Equal("cap-a", asks[0].captureID, "the ask names the capture of the result that OPENED it")
+
+	// The four failures that opened nothing are kept under the CHECK instead
+	// (spec 2026-09-25-34) — bounded by the check-scoped retention, not by the
+	// transition rule, and never under the incident's topic.
+	checkAsks := requester.asksWithPrefix(attachments.CheckTopicPrefix(s.check.UID))
+	r.Len(checkAsks, 4)
+
+	for _, ask := range checkAsks {
+		r.Equal(attachments.CheckScreenshotTopic(s.check.UID), ask.topic)
+		r.NotEqual("cap-a", ask.captureID, "the opening capture is the incident's, not the check's")
+	}
 }
 
 // TestNoUploadRequestWithoutATransition is the other half of the bound: failing
@@ -167,15 +198,19 @@ func TestNoUploadRequestWithoutATransition(t *testing.T) {
 			markerDownResult(s.org.UID, s.check.UID, "cap-x")))
 	}
 
-	r.Empty(requester.snapshot(), "a failing run that opens no incident must ask for nothing")
+	r.Empty(requester.incidentAsks(), "a failing run that opens no incident must ask for no incident upload")
+	r.Len(requester.asksWithPrefix(attachments.CheckTopicPrefix(s.check.UID)), 5,
+		"each of them is kept under the check instead (spec 2026-09-25-34)")
 
 	s.check.ConfirmationPeriodSeconds = 0
 	r.NoError(s.svc.ProcessCheckResult(ctx, s.check,
 		markerDownResult(s.org.UID, s.check.UID, "cap-open")))
 
-	asks := requester.snapshot()
+	asks := requester.incidentAsks()
 	r.Len(asks, 1)
 	r.Equal("cap-open", asks[0].captureID)
+	r.Len(requester.asksWithPrefix(attachments.CheckTopicPrefix(s.check.UID)), 5,
+		"the run that opened the incident is not ALSO kept under the check")
 }
 
 // TestReopenRequestsTheRelapseCapture pins the second (and only other)

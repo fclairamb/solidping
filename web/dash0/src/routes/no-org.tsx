@@ -82,7 +82,7 @@ function NoOrgPage() {
   );
 
   return (
-    <div className="min-h-screen bg-background p-4 sm:p-8 flex flex-col items-center">
+    <div className="min-h-screen bg-background bg-page-glow p-4 sm:p-8 flex flex-col items-center">
       <div className="w-full max-w-4xl space-y-6">
         <AuroraPanel className="rounded-3xl p-8 sm:p-10">
           <div className="flex flex-col items-center gap-3 text-center">

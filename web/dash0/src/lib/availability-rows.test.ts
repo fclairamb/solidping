@@ -71,6 +71,16 @@ describe("mapAvailabilityRow", () => {
     expect(v.downtimeText).toBe("16h 48m"); // 60480s
   });
 
+  it("says how much of a window was never measured when coverage is low (spec 2026-09-25-02)", () => {
+    const gap = mapAvailabilityRow(
+      period({ availabilityPct: 100, coverage: 2 / 3, unmeasuredSeconds: 8 * 3600, downtimeSeconds: 0 }),
+    );
+    expect(gap.unmeasuredText).toBe("8h 0m");
+
+    expect(mapAvailabilityRow(period({ coverage: 0.99, unmeasuredSeconds: 60 })).unmeasuredText).toBeNull();
+    expect(mapAvailabilityRow(period()).unmeasuredText).toBeNull();
+  });
+
   it("maps the incident block when there are incidents", () => {
     const v = mapAvailabilityRow(
       period({

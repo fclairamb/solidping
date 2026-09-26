@@ -185,5 +185,7 @@
     "allAdmins": "Tous les administrateurs",
     "escalationConnection": "Canal d'escalade",
     "cycle": "cycle {{cycle}}"
-  }
+  },
+  "customized": "personnalisé",
+  "removeItem": "Retirer {{item}}"
 }

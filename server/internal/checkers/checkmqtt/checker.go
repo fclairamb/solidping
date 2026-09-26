@@ -123,8 +123,10 @@ func (c *MQTTChecker) connect(
 	// broker URI's raw host:port to this func (no local resolution), so the
 	// bastion resolves the hostname. A `ssl` broker is TLS-wrapped here (paho
 	// wraps internally only on its default path). Untunneled, no custom func is
-	// set and paho dials directly, byte-for-byte as before.
-	if dialer := checkerdef.TunnelDialerFrom(ctx); dialer != nil {
+	// set and paho dials directly, byte-for-byte as before — unless the egress
+	// policy (spec 2026-09-25-19) is enforcing: then the same func dials
+	// through the guard (the broker URI is only ever tcp:// or ssl://).
+	if dialer := checkerdef.OutboundDialer(ctx); dialer != nil {
 		host := cfg.Host
 		opts.SetCustomOpenConnectionFn(func(uri *url.URL, _ mqtt.ClientOptions) (net.Conn, error) {
 			return dialTunnelledBroker(ctx, dialer, uri, host)

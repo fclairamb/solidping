@@ -362,7 +362,7 @@ func seedScenario(t *testing.T, server *app.Server, orgSlug string) (string, str
 		UID:             randUID(),
 		UserUID:         user.UID,
 		OrganizationUID: &orgUID,
-		Token:           patToken,
+		TokenHash:       models.HashUserToken(patToken),
 		Type:            models.TokenTypePAT,
 		Properties:      models.JSONMap{"name": "scenario-pat"},
 		ExpiresAt:       nil,

@@ -7,9 +7,10 @@
 //   - SIGNAL rows (beats) — written at ingest by the heartbeat endpoint or the
 //     email receiver. They carry caller metadata (userAgent / remoteAddr /
 //     httpMethod / data) and have no worker, hence no region.
-//   - EVALUATION rows — written once per period by a checks worker looking at
-//     the schedule. They carry a region and, since spec 2026-09-02-04,
-//     `evaluation: true` plus the beat they were computed from.
+//   - EVALUATION rows — written once per period by SolidPing looking at the
+//     schedule. Since spec 2026-09-02-04 they carry `evaluation: true` plus
+//     the beat they were computed from. Since spec 2026-09-25-04 they are
+//     written by the jobs node and carry no region: they ran nowhere.
 //
 // Both used to read "Heartbeat received" with status Up, so a user who opened
 // the evaluation row that landed seconds after their ping saw no Caller card
@@ -102,7 +103,6 @@ export function EvaluationCard({
   checkType,
   output,
   periodStart,
-  regionLabel,
 }: {
   org: string;
   checkUid: string;
@@ -111,8 +111,6 @@ export function EvaluationCard({
   output: Output | undefined;
   /** The evaluation row's own timestamp, used for the "N before" lead. */
   periodStart?: string;
-  /** Already-resolved friendly region label; omitted when the row has none. */
-  regionLabel?: string;
 }) {
   const { t } = useTranslation(["checks", "common"]);
 
@@ -124,14 +122,13 @@ export function EvaluationCard({
   const overdueBy = asString(output?.overdueBy);
   const runStarted = asString(output?.runStarted);
 
-  const isEmail = checkType === "email";
-  const explainerKey = regionLabel
-    ? isEmail
+  // Region-less on purpose (spec 2026-09-25-04): the evaluation is done by
+  // SolidPing on the jobs node, not by a regional checks worker, so even an
+  // older row that still carries a region is described the same way.
+  const explainerKey =
+    checkType === "email"
       ? "checks:resultDetail.evaluation.explainerEmail"
-      : "checks:resultDetail.evaluation.explainerHeartbeat"
-    : isEmail
-      ? "checks:resultDetail.evaluation.explainerEmailNoRegion"
-      : "checks:resultDetail.evaluation.explainerNoRegion";
+      : "checks:resultDetail.evaluation.explainerHeartbeat";
 
   const lead = lastSignalAt ? signalLead(periodStart, lastSignalAt) : null;
 
@@ -146,7 +143,7 @@ export function EvaluationCard({
       <CardContent className="space-y-3 text-sm">
         {message && <div className="font-medium">{message}</div>}
         <p className="text-muted-foreground">
-          {t(explainerKey, { region: regionLabel })}
+          {t(explainerKey)}
         </p>
 
         <div className="space-y-1">

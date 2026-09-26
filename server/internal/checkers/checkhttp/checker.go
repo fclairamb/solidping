@@ -46,6 +46,12 @@ const (
 	// outputKeyBodyAssertions is the Output key the evaluated body-assertion
 	// tree is attached to on failure. The dashboard renders it by this name.
 	outputKeyBodyAssertions = "body_assertions"
+
+	// outputKeyRedirectChain is the Output key the URLs of every followed (or
+	// refused) redirect hop are attached under, so an operator can see where
+	// a chain went without turning on capture_failure_response. Absent when
+	// the request never redirected.
+	outputKeyRedirectChain = "redirect_chain"
 )
 
 // HTTPChecker implements the Checker interface for HTTP checks.
@@ -237,9 +243,16 @@ func (c *HTTPChecker) executeRequest(ctx context.Context, config checkerdef.Conf
 	// Execute the request
 	skipRedirects := cfg.SkipRedirects()
 	skipTLSVerify := cfg.SkipTLSVerify()
+	sameHostOnly := cfg.SameHostRedirectsOnly()
+
+	// redirectChain records every hop CheckRedirect saw, followed or refused —
+	// see withRedirectChain. CheckRedirect runs synchronously on the goroutine
+	// blocked in client.Do below, so a plain slice needs no locking (same
+	// reasoning as checkjs's redirects slice).
+	redirectChain := make([]string, 0)
 
 	client := &http.Client{
-		CheckRedirect: func(_ *http.Request, via []*http.Request) error {
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			// followRedirects: false stops at the first response, regardless
 			// of maxRedirects.
 			if skipRedirects {
@@ -249,6 +262,22 @@ func (c *HTTPChecker) executeRequest(ctx context.Context, config checkerdef.Conf
 			// Allow up to maxRedirects redirects
 			if len(via) >= maxRedirects {
 				return http.ErrUseLastResponse
+			}
+
+			redirectChain = append(redirectChain, req.URL.String())
+
+			// redirect_host_policy: same-host — refuse any hop whose host
+			// differs from the PREVIOUS hop's. Checked here, before the
+			// request is ever built, which is what keeps the refused hop from
+			// dialing at all: the egress guard on the transport (below) only
+			// ever sees hops this policy already let through.
+			if sameHostOnly {
+				prevHost := via[len(via)-1].URL.Hostname()
+				nextHost := req.URL.Hostname()
+
+				if prevHost != nextHost {
+					return &redirectHostMismatchError{from: prevHost, to: nextHost}
+				}
 			}
 
 			return nil
@@ -267,22 +296,42 @@ func (c *HTTPChecker) executeRequest(ctx context.Context, config checkerdef.Conf
 	// whichever of DialContext/TLSClientConfig applies gets set on one shared
 	// http.Transport, so client.Transport stays nil only when neither is in
 	// play (preserving DefaultTransport's connection pooling in the common case).
-	dialer := checkerdef.TunnelDialerFrom(ctx)
-	client.Transport = buildTransport(dialer, skipTLSVerify, checkerdef.IPVersionFrom(ctx))
+	//
+	// The egress guard (spec 2026-09-25-19) rides the same transport: under an
+	// enforcing policy every dial — redirect hops included — resolves once,
+	// refuses a non-public address and connects to the pinned IP.
+	client.Transport = checkerdef.HTTPTransportFor(ctx, skipTLSVerify)
 
 	resp, err := client.Do(req)
 	duration := time.Since(start)
 
 	if err != nil {
+		// redirect_host_policy: same-host refused a hop. This is a policy
+		// decision, not a reachability problem — no NetworkFailure marker, and
+		// deliberately checked before the timeout/dial branches below so a
+		// slow-to-refuse chain still reports the policy reason rather than a
+		// generic timeout.
+		var hostMismatch *redirectHostMismatchError
+		if errors.As(err, &hostMismatch) {
+			return &checkerdef.Result{
+				Status:   checkerdef.StatusDown,
+				Duration: duration,
+				Output: withRedirectChain(withTLSVerifySkipped(map[string]any{
+					checkerdef.OutputKeyError: hostMismatch.Error(),
+					checkerdef.OutputKeyURL:   cfg.URL,
+				}, skipTLSVerify), redirectChain),
+			}, nil
+		}
+
 		// Check if context was canceled or timed out
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			out := &checkerdef.Result{
 				Status:   checkerdef.StatusTimeout,
 				Duration: duration,
-				Output: withTLSVerifySkipped(map[string]any{
+				Output: withRedirectChain(withTLSVerifySkipped(map[string]any{
 					checkerdef.OutputKeyError: "request timed out",
 					checkerdef.OutputKeyURL:   cfg.URL,
-				}, skipTLSVerify),
+				}, skipTLSVerify), redirectChain),
 			}
 			out.SetNetworkFailure(checkerdef.NewNetworkFailure(
 				checkerdef.ClassifyDialError(err, true), hostFromURL(cfg.URL), "", 0))
@@ -296,10 +345,10 @@ func (c *HTTPChecker) executeRequest(ctx context.Context, config checkerdef.Conf
 		out := &checkerdef.Result{
 			Status:   checkerdef.IPVersionFailureStatus(err),
 			Duration: duration,
-			Output: withTLSVerifySkipped(map[string]any{
+			Output: withRedirectChain(withTLSVerifySkipped(map[string]any{
 				checkerdef.OutputKeyError: err.Error(),
 				checkerdef.OutputKeyURL:   cfg.URL,
-			}, skipTLSVerify),
+			}, skipTLSVerify), redirectChain),
 		}
 		out.SetNetworkFailure(checkerdef.NewNetworkFailure(
 			checkerdef.ClassifyDialError(err, false), hostFromURL(cfg.URL), "", 0))
@@ -385,7 +434,7 @@ func (c *HTTPChecker) executeRequest(ctx context.Context, config checkerdef.Conf
 		return &checkerdef.Result{
 			Status:      checkerdef.StatusDown,
 			Duration:    duration,
-			Output:      output,
+			Output:      withRedirectChain(output, redirectChain),
 			Diagnostics: buildFailureCapture(cfg, resp, bodyBytes),
 		}
 	}
@@ -565,11 +614,11 @@ func (c *HTTPChecker) executeRequest(ctx context.Context, config checkerdef.Conf
 	finalResult := &checkerdef.Result{
 		Status:   status,
 		Duration: duration,
-		Output: withTLSVerifySkipped(map[string]any{
+		Output: withRedirectChain(withTLSVerifySkipped(map[string]any{
 			checkerdef.OutputKeyURL:        cfg.URL,
 			checkerdef.OutputKeyStatusCode: resp.StatusCode,
 			checkerdef.OutputKeyMethod:     method,
-		}, skipTLSVerify),
+		}, skipTLSVerify), redirectChain),
 	}
 
 	// The unexpected-status case is the single most common HTTP failure, and
@@ -591,6 +640,31 @@ func withTLSVerifySkipped(output map[string]any, skipped bool) map[string]any {
 	}
 
 	return output
+}
+
+// withRedirectChain attaches the URLs of every hop CheckRedirect saw — followed
+// or refused — so a result explains where a redirect chain went without
+// requiring capture_failure_response. Absent (not merely empty) when the
+// request never redirected, so a check that never bounces gains no new key.
+func withRedirectChain(output map[string]any, chain []string) map[string]any {
+	if len(chain) > 0 {
+		output[outputKeyRedirectChain] = chain
+	}
+
+	return output
+}
+
+// redirectHostMismatchError is CheckRedirect's refusal when
+// redirect_host_policy: same-host meets a hop whose host differs from the
+// previous one (spec 2026-09-25-21). Its Error() carries the exact phrase the
+// spec pins ("redirect to different host refused") so a caller or a test can
+// match on it without depending on the surrounding wording.
+type redirectHostMismatchError struct {
+	from, to string
+}
+
+func (e *redirectHostMismatchError) Error() string {
+	return fmt.Sprintf("redirect to different host refused: %s -> %s", e.from, e.to)
 }
 
 // buildTransport delegates to the shared checkerdef helper. It stays here as a

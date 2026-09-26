@@ -130,7 +130,9 @@ func (c *UDPChecker) connect(
 
 	target := net.JoinHostPort(targetIP.String(), strconv.Itoa(cfg.Port))
 
-	dialer := &net.Dialer{}
+	// Egress guard (spec 2026-09-25-19): refuses a non-public IP under an
+	// enforcing policy; a plain *net.Dialer otherwise.
+	dialer := checkerdef.GuardDialerOr(ctxWithTimeout, &net.Dialer{})
 
 	conn, err := dialer.DialContext(ctxWithTimeout, "udp", target)
 	if err != nil {

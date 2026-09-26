@@ -1,16 +1,16 @@
 {
   "permissionDenied": "Acceso denegado",
-  "permissionDeniedDescription": "No tiene permiso para acceder a este recurso.",
+  "permissionDeniedDescription": "No tienes permiso para acceder a este recurso.",
   "returnToDashboard": "Volver al panel",
   "notFound": "{{resource}} no encontrado",
   "notFoundDescription": "El/la {{resource}} que busca no existe o ha sido eliminado.",
   "backTo": "Volver a {{resource}}s",
   "somethingWentWrong": "Algo ha salido mal",
-  "unexpectedError": "Se ha producido un error inesperado. Inténtelo de nuevo.",
+  "unexpectedError": "Se ha producido un error inesperado. Inténtalo de nuevo.",
   "retry": "Reintentar",
   "showDetails": "Mostrar detalles",
   "hideDetails": "Ocultar detalles",
-  "connectionError": "No se pudo conectar al servidor. Compruebe su conexión e inténtelo de nuevo.",
+  "connectionError": "No se pudo conectar al servidor. Comprueba tu conexión e inténtalo de nuevo.",
   "switchToDarkMode": "Cambiar a modo oscuro",
   "switchToLightMode": "Cambiar a modo claro",
   "administrator": "Administrador",
@@ -185,5 +185,7 @@
     "allAdmins": "Todos los administradores",
     "escalationConnection": "Canal de escalado",
     "cycle": "ciclo {{cycle}}"
-  }
+  },
+  "customized": "personalizado",
+  "removeItem": "Quitar {{item}}"
 }

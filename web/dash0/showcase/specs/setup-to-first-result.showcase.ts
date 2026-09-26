@@ -72,17 +72,27 @@ const PREFERRED_INTERVALS = [
 ];
 
 /**
- * Extra time held on the detail page beyond one full check period, in ms.
+ * How many full check periods the detail page is held for.
  *
- * The dwell has to exceed the interval, not merely wait for a second result:
+ * Two points on a chart read as "it ran twice", not as a check reporting on a
+ * cadence. Four periods put a short line on the chart and a handful of rows in
+ * the results table, which is what a monitor looks like once it is working.
+ * The dwell is long enough that `postprocess.ts` plays it as a tagged
+ * time-lapse.
+ */
+const DETAIL_DWELL_PERIODS = 4;
+
+/**
+ * Extra time held on the detail page beyond the last full check period, in ms.
+ *
+ * The dwell has to exceed the periods, not merely wait for the results:
  * the scheduler aligns runs to wall-clock boundaries, so the tick after the
  * creation run can land a second or two later and the chart would plot two
  * points across a two-second window — technically two results, but it reads as
  * a glitch rather than as a check reporting on a cadence.
  *
- * Filming at 5 seconds rather than 10 is what keeps that honest dwell short
- * enough to publish in real time; `postprocess.ts` falls back to a tagged
- * time-lapse when the only interval on offer is slower.
+ * Filming at 5 seconds rather than 10 halves that dwell; `postprocess.ts`
+ * plays it as a tagged time-lapse either way.
  */
 const DETAIL_DWELL_MARGIN_MS = 2_500;
 
@@ -162,9 +172,8 @@ test("setup to first result", async ({ page }, testInfo) => {
     });
     await beat(page, 550);
 
-    // 7. Interval — the fastest one on offer, so a second result lands while
-    //    the camera is still on the detail page without holding eleven seconds
-    //    of nothing.
+    // 7. Interval — the fastest one on offer, so the dwell on the detail page
+    //    stays as short as DETAIL_DWELL_PERIODS allows.
     //
     //    Asserted rather than best-effort: the option ladder is filtered by the
     //    check type's minPeriodSeconds and by the org's rate entitlement
@@ -259,23 +268,27 @@ test("setup to first result", async ({ page }, testInfo) => {
     await focus(page, null, { label: "detail-page" });
     await beat(page, 2200);
 
-    // 12. Hold past one FULL period before the still is taken, so the two
-    //     plotted points are a genuine interval apart (see
+    // 12. Hold past DETAIL_DWELL_PERIODS full periods before the still is
+    //     taken, so the plotted points are genuine intervals apart (see
     //     DETAIL_DWELL_MARGIN_MS).
     const dwellMs =
-      (chosenInterval?.seconds ?? 10) * 1000 + DETAIL_DWELL_MARGIN_MS;
+      DETAIL_DWELL_PERIODS * (chosenInterval?.seconds ?? 10) * 1000 +
+      DETAIL_DWELL_MARGIN_MS;
     const dwellRemaining = dwellMs - (Date.now() - detailArrivedAt);
     if (dwellRemaining > 0) {
       await beat(page, dwellRemaining);
     }
 
-    // 13. ...and only then confirm the check has actually reported twice, so
-    //     the published frame shows a populated results table and a
-    //     response-time chart with a line in it rather than an empty state.
+    // 13. ...and only then confirm the check has actually reported
+    //     DETAIL_DWELL_PERIODS times from every region, so the published frame
+    //     shows a populated results table and a response-time chart with a
+    //     line in it rather than an empty state. The table lists one row per
+    //     run per region, and a single-node server shows no region picker.
+    const expectedRows = DETAIL_DWELL_PERIODS * Math.max(1, regionCount);
     const resultRows = page.locator('[data-testid^="result-row-"]');
     await expect
       .poll(() => resultRows.count(), { timeout: 60_000, intervals: [500] })
-      .toBeGreaterThanOrEqual(2);
+      .toBeGreaterThanOrEqual(expectedRows);
     await beat(page, 800);
     await still(page, "03-check-detail");
 

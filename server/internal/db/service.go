@@ -24,6 +24,10 @@ var ErrEnrollmentTokenInvalid = errors.New("enrollment token is invalid, expired
 // signature, rejected cluster-wide rather than per API replica.
 var ErrAgentNonceReplayed = errors.New("agent reconnect nonce already used")
 
+// ErrUnknownAttachmentEntity is returned by ListOrphanAttachments for an
+// entity segment it has no owning table for.
+var ErrUnknownAttachmentEntity = errors.New("no orphan sweep for this attachment entity")
+
 // UsedEnrollmentTokenListWindow is how long a consumed enrollment token stays
 // visible in ListAgentEnrollmentTokens after use. The register-an-agent wizard
 // polls that list to learn its token's fate: without this window a token used
@@ -190,6 +194,9 @@ type Service interface {
 	// UserToken operations
 	CreateUserToken(ctx context.Context, token *models.UserToken) error
 	GetUserToken(ctx context.Context, uid string) (*models.UserToken, error)
+	// GetUserTokenByToken finds a live token by its RAW value: the
+	// implementation hashes it (models.HashUserToken) and matches token_hash,
+	// since the value itself is never stored (spec 2026-09-25-23).
 	GetUserTokenByToken(ctx context.Context, token string) (*models.UserToken, error)
 	ListUserTokens(ctx context.Context, userUID string) ([]*models.UserToken, error)
 	ListUserTokensByType(ctx context.Context, userUID string, tokenType models.TokenType) ([]*models.UserToken, error)
@@ -239,6 +246,18 @@ type Service interface {
 	ConsumeDeviceAuthRequest(ctx context.Context, uid string) (bool, error)
 	// PurgeExpiredDeviceAuthRequests removes rows whose human never showed up.
 	PurgeExpiredDeviceAuthRequests(ctx context.Context, before time.Time) (int64, error)
+
+	// Auth handoff codes (spec 2026-09-25-12): the single-use codes that hand a
+	// federated login's session to the dashboard. Keyed by the code's SHA-256,
+	// never by the code itself.
+	CreateAuthHandoffCode(ctx context.Context, code *models.AuthHandoffCode) error
+	// ConsumeAuthHandoffCode deletes the row and returns it in ONE statement,
+	// so two concurrent exchanges of the same code cannot both win. It returns
+	// sql.ErrNoRows when no row matches. It does NOT check expiry: the caller
+	// does, on the row it now owns.
+	ConsumeAuthHandoffCode(ctx context.Context, codeHash string) (*models.AuthHandoffCode, error)
+	// DeleteExpiredAuthHandoffCodes removes codes that expired before `before`.
+	DeleteExpiredAuthHandoffCodes(ctx context.Context, before time.Time) (int64, error)
 
 	// UserPasskey operations
 	CreateUserPasskey(ctx context.Context, passkey *models.UserPasskey) error
@@ -386,7 +405,10 @@ type Service interface {
 	// was renamed, so no worker's prefix match can ever claim it again), or a
 	// declared region has no job at all. The symmetric sibling of
 	// ListChecksWithStaleJobPeriods, feeding the same startup reconcile
-	// (spec 2026-08-24-08).
+	// (spec 2026-08-24-08). A passive check (heartbeat, email) is judged
+	// against its own layout instead — exactly one NULL-region job — and is
+	// returned when it owns a regional job or has no NULL-region job
+	// (spec 2026-09-25-04).
 	ListChecksWithStaleJobRegions(ctx context.Context) ([]*models.Check, error)
 	// ListChecksReferencingRegion returns every non-deleted check that names
 	// the region slug in `checks.regions` OR owns a check_jobs row carrying it,
@@ -414,6 +436,13 @@ type Service interface {
 	CreateCheckJob(ctx context.Context, job *models.CheckJob) error
 	// GetCheckJobByUID returns one check job by UID.
 	GetCheckJobByUID(ctx context.Context, uid string) (*models.CheckJob, error)
+	// RequestCheckCapture records a pending "Capture now" request on one job
+	// row (spec 2026-09-25-34) and makes it due at requestedAt:
+	// capture_requested_at, scheduled_at and effective_scheduled_at are all set
+	// to it. The claim
+	// that picks the row up consumes the request. sql.ErrNoRows when the job
+	// is gone.
+	RequestCheckCapture(ctx context.Context, jobUID string, requestedAt time.Time) error
 
 	// Label operations
 	GetOrCreateLabel(ctx context.Context, orgUID, key, value string) (*models.Label, error)
@@ -563,7 +592,7 @@ type Service interface {
 	// The two must both exist and must not be collapsed (spec 2026-09-02-03).
 	// `lastResult` in the API means "the newest row of any origin", which is
 	// right for "when was this check last evaluated". The passive evaluator
-	// (checkworker.executePassiveJob) needs the opposite: it writes a raw row
+	// (checkworker.PassiveEvaluator, spec 2026-09-25-04) needs the opposite: it writes a raw row
 	// of its own every period, so reading the newest row of any origin makes
 	// it re-anchor on its own predecessor — overdue detection then becomes a
 	// per-tick coin flip on scheduling jitter, `lastSignalAt` drifts onto the
@@ -648,6 +677,10 @@ type Service interface {
 	// no org to scope by BY DESIGN: the incident row is what names the
 	// organization, so that a caller cannot pick one by forging a topic.
 	GetIncidentAny(ctx context.Context, uid string) (*models.Incident, error)
+	// GetCheckAny looks a live check up by UID with NO org scoping. Same single
+	// purpose as GetIncidentAny: the `checks/<uid>/…` attachment authorizer
+	// (spec 2026-09-25-34) derives the organization FROM the check row.
+	GetCheckAny(ctx context.Context, uid string) (*models.Check, error)
 	// GetIncidentByNumber resolves the short per-org `#42` reference — the form
 	// humans type into Telegram and read in Slack. Returns sql.ErrNoRows if none.
 	GetIncidentByNumber(ctx context.Context, orgUID string, number int64) (*models.Incident, error)
@@ -767,6 +800,51 @@ type Service interface {
 		lastOutageAt time.Time,
 	) error
 
+	// Check freshness (spec 2026-09-25-02)
+	//
+	// TouchCheckLastResult advances checks.last_result_at to `at` (never
+	// backwards) and returns the row's CURRENT status, streak and clocks, read
+	// AFTER the touch. The order is what makes it race-safe against the
+	// freshness sweep: once the touch commits, the sweep's guarded update can
+	// no longer match the row, so the state returned is the one this result
+	// must be decided against. Returns (nil, nil) when the check is gone.
+	TouchCheckLastResult(ctx context.Context, checkUID string, at time.Time) (*models.CheckLiveState, error)
+	// ListStaleCandidates returns enabled, non-internal, live checks that are
+	// not already stale and whose coalesce(last_result_at, created_at) is older
+	// than `now - 5 min` — the floor of models.StaleThreshold, which is the
+	// indexed half of the predicate. Callers apply the exact per-check
+	// threshold themselves (Postgres also applies it in SQL). Oldest first,
+	// capped at limit.
+	ListStaleCandidates(ctx context.Context, now time.Time, limit int) ([]*models.Check, error)
+	// MarkCheckStale is the sweep's ONE write: a compare-and-set that moves
+	// the check to CheckStatusStale only if it still carries oldStatus and its
+	// freshness reference is still older than cutoff. It stamps
+	// status_changed_at and clears BOTH incident clocks, and deliberately
+	// leaves status_streak alone. Reports whether the row was changed — false
+	// means a result won the race.
+	MarkCheckStale(
+		ctx context.Context, checkUID string, oldStatus models.CheckStatus, cutoff, now time.Time,
+	) (bool, error)
+	// ListStaleCheckPlacements returns every stale, enabled, live check joined
+	// to each of its check_jobs placement regions.
+	ListStaleCheckPlacements(ctx context.Context) ([]models.StaleCheckPlacement, error)
+	// ListLastRealResultPerRegion returns, per region, the newest real raw
+	// result of one check (raw retention bounds how far back it can see).
+	ListLastRealResultPerRegion(ctx context.Context, orgUID, checkUID string) ([]models.RegionLastResult, error)
+
+	// Multi-region quorum (spec 2026-09-25-10)
+	//
+	// UpsertCheckRegionState records a region's newest real reading. Guarded:
+	// a reading older than the stored one never overwrites it (results from
+	// different regions can be processed out of order). StatusSince is kept
+	// while the region stays on the same side (failing or passing) and moves
+	// to the new reading's time when it crosses over.
+	UpsertCheckRegionState(ctx context.Context, state *models.CheckRegionState) error
+	// ListCheckRegionStates returns every stored per-region reading of one
+	// check, including regions the check no longer runs in (callers filter to
+	// the current regions; see regionquorum.Evaluate).
+	ListCheckRegionStates(ctx context.Context, checkUID string) ([]models.CheckRegionState, error)
+
 	// Event operations
 	CreateEvent(ctx context.Context, event *models.Event) error
 	ListEvents(ctx context.Context, filter *models.ListEventsFilter) ([]*models.Event, error)
@@ -857,6 +935,16 @@ type Service interface {
 	GetOrCreateStateEntry(
 		ctx context.Context, orgUID *string, key string, defaultValue *models.JSONMap, ttl *time.Duration,
 	) (*models.StateEntry, bool, error)
+	// AdmitFixedWindows ATOMICALLY counts one event against every window (all
+	// org-scoped state entries of orgUID), or against none: it returns
+	// refused = -1 when admitted, otherwise the index of the first window that
+	// refused and how long until that window reopens. The windows are
+	// evaluated and written under row locks in one transaction (Postgres:
+	// SELECT … FOR UPDATE; SQLite: its single connection serializes the
+	// transaction), so concurrent admissions can never exceed a limit.
+	AdmitFixedWindows(
+		ctx context.Context, orgUID string, windows []models.FixedWindow, now time.Time,
+	) (refused int, retryAfter time.Duration, err error)
 	// SetStateEntryIfNotExists creates entry only if key doesn't exist.
 	// Returns (created, error) where created is true if entry was created.
 	SetStateEntryIfNotExists(
@@ -1210,11 +1298,10 @@ type Service interface {
 	// bounded per-sweep limit.
 	ListEnabledSLOAlertPolicies(ctx context.Context, limit int) ([]*models.SLOAlertPolicy, error)
 	// ListChecksForDegradedEval is the degraded evaluator's work queue (spec
-	// 2026-09-22-03): every enabled, non-internal, live check, oldest-evaluated
-	// first so a bounded per-sweep limit still gives every check a turn.
-	// `degraded_enabled` is deliberately NOT a filter — it gates opening an
-	// incident, not evaluating, and the dry run has to sweep disabled checks in
-	// order to stamp them.
+	// 2026-09-22-03): every enabled, non-internal, live check that has
+	// `degraded_enabled` set, oldest-evaluated first so a bounded per-sweep
+	// limit still gives every check a turn. A check with degraded detection
+	// off is not evaluated at all.
 	ListChecksForDegradedEval(ctx context.Context, limit int) ([]*models.Check, error)
 	// FindActiveDegradedIncident returns the open degraded incident for a check,
 	// if any. sql.ErrNoRows when there is none.
@@ -1268,6 +1355,31 @@ type Service interface {
 	ListAttachmentsByTopicPrefix(
 		ctx context.Context, prefix string, before time.Time, limit int,
 	) ([]*models.File, error)
+	// ListCheckScreenshotFiles returns a check's live screenshots, newest
+	// first, capped at limit (spec 2026-09-25-34): its incidents' captures
+	// (`incidents/<uid>/screenshot`) and its check-scoped ones
+	// (`checks/<uid>/screenshot`), both matched on details->>'checkUid' through
+	// the files_org_check_uid_idx partial expression index — never a scan of
+	// the org's files.
+	ListCheckScreenshotFiles(ctx context.Context, orgUID, checkUID string, limit int) ([]*models.File, error)
+	// ListOrphanAttachments returns live attachment rows under
+	// `<entity>/<uuid>/…` (entity: "incidents" or "checks") created before
+	// `before` whose entity row is missing, soft-deleted, or in another org —
+	// oldest first, capped at limit. The live-entity filter is an anti-join IN
+	// SQL, so attachments of live entities never fill the page and a real
+	// orphan behind them is always reached (spec 2026-09-25-34). A topic whose
+	// uid segment is not 36 characters is never returned (malformed topics are
+	// left alone). Any other entity is an error.
+	ListOrphanAttachments(
+		ctx context.Context, entity string, before time.Time, limit int,
+	) ([]*models.File, error)
+	// SumFileSizeByGroup returns the total bytes of live (non-deleted) files
+	// for orgUID whose storage URI belongs to the given filestorage.GroupType
+	// (passed as a plain string — this package does not import filestorage).
+	// Matches on the "/<group>/" path segment rather than a URI prefix, since
+	// the scheme/bucket portion varies by storage backend (local vs S3). Used
+	// by the feedback-report per-org storage quota (spec 2026-09-25-26).
+	SumFileSizeByGroup(ctx context.Context, orgUID, group string) (int64, error)
 
 	// CheckDependency operations
 	CreateCheckDependency(ctx context.Context, dep *models.CheckDependency) error

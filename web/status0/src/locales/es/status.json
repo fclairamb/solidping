@@ -24,6 +24,8 @@
   "today": "Hoy",
   "uptime": "de disponibilidad",
   "noData": "Sin datos",
+  "noDataLastChecked": "Sin datos, última comprobación {{time}}",
+  "measuredCoverage": "Medido en el {{pct}} % del periodo",
   "responseTime": "Tiempo de respuesta",
   "unknownRegion": "Región desconocida",
   "switchToDarkMode": "Cambiar a modo oscuro",
@@ -36,7 +38,11 @@
     "error": "Error",
     "created": "Creado",
     "running": "En ejecución",
-    "recentUpdates": "Actualizaciones recientes"
+    "recentUpdates": "Actualizaciones recientes",
+    "readMore": "Leer más →",
+    "incidentThread": "Hilo de la incidencia",
+    "incidentThreadLabel": "Hilo de la incidencia {{uid}}",
+    "updateKindLabel": "Tipo de actualización: {{kind}}"
   },
   "subscribe": {
     "title": "Suscribirse a las actualizaciones",

@@ -67,6 +67,7 @@ import { isOrgPublicRoute } from "@/lib/org-public-routes";
 import { demoFlagFromLocation } from "@/lib/demo";
 import { readCachedDemoOrgSlug } from "@/api/public-config";
 import { pickAccessibleOrg } from "@/lib/accessible-org";
+import { needsOrgSwitch as needsOrgSwitchFor } from "@/lib/org-switch";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 
@@ -96,11 +97,6 @@ function parseNotificationFrom(
  */
 function orgFromPathname(pathname: string): string | null {
   return /\/orgs\/([^/?#]+)/.exec(pathname)?.[1] ?? null;
-}
-
-function hasOAuthTokenInURL(): boolean {
-  const params = new URLSearchParams(window.location.search);
-  return params.has("access_token");
 }
 
 export const Route = createFileRoute("/orgs/$org")({
@@ -138,10 +134,6 @@ export const Route = createFileRoute("/orgs/$org")({
         search: { session_expired: false, returnTo: undefined, demo: true },
         replace: true,
       });
-    }
-    // Allow through if OAuth callback tokens are present in the URL
-    if (hasOAuthTokenInURL()) {
-      return { org: params.org, isLoginPage: false };
     }
     // Skip redirect while auth is still loading (e.g. validating token on page refresh).
     // OrgLayout handles the redirect once auth resolves.
@@ -1030,7 +1022,6 @@ function OrgLayout() {
   // its way to.
   const pendingOrg = orgFromPathname(location.pathname);
   const routerSnapshotIsTorn = pendingOrg !== null && pendingOrg !== org;
-  const [oauthProcessing, setOauthProcessing] = useState(false);
   const [commandMenuOpen, setCommandMenuOpen] = useState(false);
   const { data: features } = useFeatures({ enabled: !isLoginPage });
   const feedback = useFeedback({ enabled: features?.bugReport === true, org });
@@ -1048,14 +1039,21 @@ function OrgLayout() {
   // the in-flight switch so the effect fires switchOrg at most once per target.
   const [orgSwitchFailed, setOrgSwitchFailed] = useState<string | null>(null);
   const switchingForOrgRef = useRef<string | null>(null);
-  const needsOrgSwitch =
-    auth.isAuthenticated &&
-    !auth.isLoading &&
-    !isLoginPage &&
-    auth.org !== null &&
-    auth.org !== org &&
-    auth.user?.isSuperAdmin !== true &&
-    auth.organizations.some((o) => o.slug === org);
+  //
+  // An org-less session (auth.org === null) counts as "another org" here: a
+  // federated login refused elsewhere must still reach the orgs it belongs to
+  // (spec 2026-09-25-15). See lib/org-switch.ts.
+  const needsOrgSwitch = needsOrgSwitchFor(
+    org,
+    {
+      isAuthenticated: auth.isAuthenticated,
+      isLoading: auth.isLoading,
+      org: auth.org,
+      organizations: auth.organizations,
+      isSuperAdmin: auth.user?.isSuperAdmin === true,
+    },
+    isLoginPage,
+  );
 
   useEffect(() => {
     if (!needsOrgSwitch) {
@@ -1117,9 +1115,6 @@ function OrgLayout() {
     // the same flag.
     !auth.isLoading &&
     !isLoginPage &&
-    // The OAuth callback does its own hard redirect below; the session it is
-    // about to adopt is not the one `auth` currently describes.
-    !hasOAuthTokenInURL() &&
     accessibleOrg !== org;
 
   useEffect(() => {
@@ -1160,40 +1155,9 @@ function OrgLayout() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [needsAccessibleOrgRedirect, org, accessibleOrg, routerSnapshotIsTorn]);
 
-  // Handle OAuth callback tokens in URL
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const accessToken = params.get("access_token");
-    const oauthOrg = params.get("org") || org;
-    const refreshToken = params.get("refresh_token") || undefined;
-    const expiresInParam = params.get("expires_in");
-    const expiresIn = expiresInParam ? parseInt(expiresInParam, 10) : undefined;
-
-    if (!accessToken) return;
-
-    setOauthProcessing(true);
-    auth
-      .loginWithOAuth(accessToken, oauthOrg, refreshToken, expiresIn)
-      .then(() => {
-        // Hard navigation: forces a clean reload so URL/org context is in sync
-        // before any child routes fire org-scoped API calls.
-        const basepath = import.meta.env.VITE_BASE_URL || "";
-        window.location.replace(`${basepath}/orgs/${oauthOrg}`);
-      })
-      .catch(() => {
-        const basepath = import.meta.env.VITE_BASE_URL || "";
-        window.location.replace(`${basepath}/orgs/${oauthOrg}/login?session_expired=false`);
-      });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
   // Login page should render without sidebar
   if (isLoginPage) {
     return <Outlet />;
-  }
-
-  // Show nothing while processing OAuth callback
-  if (oauthProcessing || hasOAuthTokenInURL()) {
-    return <div className="flex items-center justify-center h-screen"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>;
   }
 
   // Redirect to login once auth finishes loading and user is not authenticated.

@@ -5,6 +5,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
 
@@ -72,6 +73,18 @@ type CheckJob struct {
 	// SELECTs so slow jobs can never occupy more than pool_size −
 	// fast_lane_reserved slots on a worker. Added by migration 009.
 	Lane uint8 `bun:"lane,notnull"`
+
+	// CaptureRequestedAt is a pending on-demand screenshot request ("Capture
+	// now", spec 2026-09-25-34). The API sets it on ONE of the check's job rows
+	// and pulls scheduled_at to now; the claim that picks the row up clears the
+	// column in the same transaction while the claimed struct keeps the value,
+	// which is what tells the worker to force the capture. Nil is the norm.
+	CaptureRequestedAt *time.Time `bun:"capture_requested_at"`
+	// CaptureClaimedAt is the request the CURRENT lease carries: the claim
+	// moves capture_requested_at here and the release clears it. The result
+	// submission honors a capture's OnDemand marker only when this is set, so
+	// an agent cannot get a healthy run stored as "capture-now" by claiming it.
+	CaptureClaimedAt *time.Time `bun:"capture_claimed_at"`
 
 	// ParamOverlay carries the ${param:…} values resolved at the claim /
 	// dispatch boundary (checkjobsvc.ParamOverlay). Transient: never persisted
@@ -141,4 +154,16 @@ type CheckJobUpdate struct {
 	LeaseWorkerUID    *string
 	LeaseExpiresAt    *time.Time
 	LeaseStarts       *int
+}
+
+// HonorOnDemand drops an OnDemand marker this job's lease did not ask for
+// (spec 2026-09-25-34). The marker rides the agent's result frame, so it is the
+// agent's word; the job row's capture_claimed_at is the server's. Called by
+// both result-submission paths before the incident pipeline sees the result.
+func (j *CheckJob) HonorOnDemand(diagnostics *checkerdef.Diagnostics) {
+	if diagnostics == nil || diagnostics.Screenshot == nil || j.CaptureClaimedAt != nil {
+		return
+	}
+
+	diagnostics.Screenshot.OnDemand = false
 }

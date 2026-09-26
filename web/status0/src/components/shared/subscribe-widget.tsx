@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Rss } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useSubscribe } from "@/api/hooks";
+import { PRIMARY_BUTTON_CLASSES } from "@/lib/primary-button";
 
 interface SubscribeWidgetProps {
   org: string;
@@ -73,7 +74,8 @@ export function SubscribeWidget({
                 </p>
               )}
             </div>
-            {/* translate="no" — the label swaps between two strings while the
+            {/* The electric-identity gradient button (see PRIMARY_BUTTON_CLASSES).
+                translate="no" — the label swaps between two strings while the
                 button element itself is reused, so React rewrites this text
                 node. A translator that has re-parented it into a <font> turns
                 that into "removeChild on Node". See NO_TRANSLATE in
@@ -81,7 +83,7 @@ export function SubscribeWidget({
             <button
               type="submit"
               disabled={subscribe.isPending}
-              className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+              className={`${PRIMARY_BUTTON_CLASSES} px-4`}
               data-testid="subscribe-submit"
               translate="no"
             >

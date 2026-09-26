@@ -86,6 +86,9 @@ type createPlan struct {
 	regions          []string
 	effective        map[string]any
 	userProvidedSlug bool
+	// placement is the resolved placement (spec 2026-09-25-06); regions above
+	// is its region list.
+	placement *placementOutcome
 }
 
 // planCreateCheck runs every request-level rule the create path enforces and
@@ -105,7 +108,7 @@ func (s *Service) planCreateCheck(
 	// `internal` is never writable from a request (spec 2026-08-27-01): it is
 	// what exempts a check from the quota below, so accepting it here would
 	// hand every caller a quota bypass.
-	if findings := requestFieldFindings(requestFieldValues{Internal: req.Internal}); len(findings) > 0 {
+	if findings := requestFieldFindings(&requestFieldValues{Internal: req.Internal}); len(findings) > 0 {
 		return nil, findings[0].Err
 	}
 
@@ -113,7 +116,9 @@ func (s *Service) planCreateCheck(
 	// path can be internal (rejected above), so the quota always applies —
 	// server-created internal checks are written through db.CreateCheck and
 	// never pass here.
-	if s.entitlements != nil {
+	// A private location's liveness monitor does not count toward MaxChecks
+	// (spec 2026-09-25-05), so it is not gated by it either.
+	if s.entitlements != nil && !checkerdef.CheckType(req.Type).IsQuotaExempt() {
 		// pendingCreates is non-zero only for a dry run, which has decided on
 		// creations it has not written: without it a 100-check document would
 		// dry-run clean against a cap of 1 and then fail on item 2 for real.
@@ -162,10 +167,27 @@ func (s *Service) planCreateCheck(
 	// 2026-07-16-02) keys off the check's private regions, and the tunnel
 	// region rules (spec 2026-07-18-07) are validated against the resolved
 	// set, not the raw request.
-	resolvedRegions, err := s.regions.ResolveRegionsForCheck(ctx, req.Regions, org.UID)
+	//
+	// Placement (spec 2026-09-25-06) decides the region set: pinned resolves it
+	// exactly as before; auto places the check. Resolved against the RAW
+	// request config: the capabilities it reads (browser, ipVersion) are
+	// public keys the normalization below never rewrites.
+	placement, err := s.resolveCreatePlacement(ctx, &placementSubject{
+		orgUID:    org.UID,
+		checkType: req.Type,
+		config:    req.Config,
+		period:    effectivePeriod,
+		enabled:   req.Enabled == nil || *req.Enabled,
+	}, createPlacementRequest(&req))
 	if err != nil {
+		if isPlacementError(err) {
+			return nil, err
+		}
+
 		return nil, fmt.Errorf("failed to resolve regions: %w", err)
 	}
+
+	resolvedRegions := placement.regions
 
 	// Demo-session payload rules (spec 2026-09-06-02). Deliberately AFTER
 	// ResolveRegionsForCheck so the region rule is applied to the resolved,
@@ -251,7 +273,7 @@ func (s *Service) planCreateCheck(
 	// tracerouteOnFailure enum, the flapping knobs' floors and the incident
 	// periods' bound — through the same shared list ValidateCheck uses (spec
 	// 2026-08-28-14), against the EFFECTIVE period.
-	if findings := requestFieldFindings(requestFieldValues{
+	if findings := requestFieldFindings(&requestFieldValues{
 		RegionSpreadPeriod:        effectivePeriod,
 		RegionSpread:              req.RegionSpread,
 		ConfirmationPeriodSeconds: req.ConfirmationPeriodSeconds,
@@ -260,6 +282,7 @@ func (s *Service) planCreateCheck(
 		FlappingWindowSeconds:     req.FlappingWindowSeconds,
 		FlapBackoffFactor:         req.FlapBackoffFactor,
 		MaxRecoveryMultiplier:     req.MaxRecoveryMultiplier,
+		FailQuorum:                req.FailQuorum,
 	}); len(findings) > 0 {
 		return nil, findings[0].Err
 	}
@@ -270,6 +293,7 @@ func (s *Service) planCreateCheck(
 		regions:          resolvedRegions,
 		effective:        effective,
 		userProvidedSlug: userProvidedSlug,
+		placement:        placement,
 	}, nil
 }
 
@@ -391,15 +415,33 @@ func (s *Service) planUpdateCheck(
 		return periodErr
 	}
 
-	regionsForCheck := existing.Regions
+	regionsForCheck := existing.JobRegions()
 
+	// The same placement resolution the real update runs (spec 2026-09-25-06),
+	// from the same PATCH the upsert would build — so an unknown regionPool
+	// slug, a contradiction between regions and placement, or a pool no
+	// region can serve fails the dry run exactly as it fails the apply.
+	updateReq := UpdateCheckRequest{Config: &req.Config, Enabled: req.Enabled, Period: req.Period}
 	if len(req.Regions) > 0 {
-		resolved, regErr := s.regions.ResolveRegionsForCheck(ctx, req.Regions, org.UID)
-		if regErr != nil {
-			return fmt.Errorf("failed to resolve regions: %w", regErr)
+		updateReq.Regions = &req.Regions
+	}
+
+	applyUpsertPlacement(&updateReq, req)
+
+	placement, placementErr := s.resolveUpdatePlacement(
+		ctx, existing, s.updatePlacementSubject(existing, &updateReq), updatePlacementRequest(&updateReq),
+		updateReq.Config != nil, // UpsertCheck always forwards the config, so the real update re-evaluates too
+	)
+	if placementErr != nil {
+		if isPlacementError(placementErr) {
+			return placementErr
 		}
 
-		regionsForCheck = resolved
+		return fmt.Errorf("failed to resolve regions: %w", placementErr)
+	}
+
+	if placement != nil {
+		regionsForCheck = placement.regions
 	}
 
 	if req.Config != nil && checkHoldsSecretConfig(existing) {
@@ -410,7 +452,7 @@ func (s *Service) planUpdateCheck(
 		return cfgErr
 	}
 
-	if findings := requestFieldFindings(requestFieldValues{
+	if findings := requestFieldFindings(&requestFieldValues{
 		RegionSpreadPeriod:        period,
 		ConfirmationPeriodSeconds: req.ConfirmationPeriodSeconds,
 		RecoveryPeriodSeconds:     req.RecoveryPeriodSeconds,
@@ -418,6 +460,7 @@ func (s *Service) planUpdateCheck(
 		FlappingWindowSeconds:     req.FlappingWindowSeconds,
 		FlapBackoffFactor:         req.FlapBackoffFactor,
 		MaxRecoveryMultiplier:     req.MaxRecoveryMultiplier,
+		FailQuorum:                req.FailQuorum,
 	}); len(findings) > 0 {
 		return findings[0].Err
 	}
@@ -551,6 +594,9 @@ func upsertToCreateRequest(slug string, req *UpsertCheckRequest) CreateCheckRequ
 		Type:          req.Type,
 		Config:        req.Config,
 		Regions:       req.Regions,
+		Placement:     req.Placement,
+		RegionCount:   req.RegionCount,
+		RegionPool:    poolOf(req.RegionPool),
 		Enabled:       req.Enabled,
 		// Internal is deliberately NOT forwarded (spec 2026-08-27-01).
 		Period:                    req.Period,
@@ -558,6 +604,7 @@ func upsertToCreateRequest(slug string, req *UpsertCheckRequest) CreateCheckRequ
 		ConfirmationPeriodSeconds: req.ConfirmationPeriodSeconds,
 		RecoveryPeriodSeconds:     req.RecoveryPeriodSeconds,
 		TracerouteOnFailure:       req.TracerouteOnFailure,
+		FailQuorum:                req.FailQuorum,
 		ReopenCooldownMultiplier:  req.ReopenCooldownMultiplier,
 		FlappingWindowSeconds:     req.FlappingWindowSeconds,
 		FlapBackoffFactor:         req.FlapBackoffFactor,

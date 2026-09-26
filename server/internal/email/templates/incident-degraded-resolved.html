@@ -1,10 +1,15 @@
-{{define "subject"}}{{if .SubjectPrefix}}{{.SubjectPrefix}} {{end}}[DEGRADED CLEARED] {{.CheckName}} is steady again{{if gt .IncidentNumber 0}} (#{{.IncidentNumber}}){{end}}{{end}}
-{{define "preheader"}}{{.CheckName}} has been clean for long enough to close the degraded episode.{{end}}
+{{define "subject"}}{{if .SubjectPrefix}}{{.SubjectPrefix}} {{end}}{{if .DegradedTurnedOff}}[DEGRADED CLOSED] {{.CheckName}}: degraded detection turned off{{else}}[DEGRADED CLEARED] {{.CheckName}} is steady again{{end}}{{if gt .IncidentNumber 0}} (#{{.IncidentNumber}}){{end}}{{end}}
+{{define "preheader"}}{{if .DegradedTurnedOff}}Degraded detection was turned off on {{.CheckName}}, so its degraded episode was closed.{{else}}{{.CheckName}} has been clean for long enough to close the degraded episode.{{end}}{{end}}
 {{template "base.html" .}}
-{{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "recovered" "Label" "Degraded cleared"}}{{end}}
+{{define "statusbanner"}}{{if .DegradedTurnedOff}}{{template "statusbanner-render" dict "Variant" "recovered" "Label" "Degraded closed"}}{{else}}{{template "statusbanner-render" dict "Variant" "recovered" "Label" "Degraded cleared"}}{{end}}{{end}}
 {{define "content"}}
+    {{if .DegradedTurnedOff}}
+    <h1>Degraded detection turned off for {{.CheckName}}</h1>
+    <p>Degraded detection was turned off on this check, so the open degraded episode was closed. The check did not necessarily recover.</p>
+    {{else}}
     <h1>{{.CheckName}} is steady again</h1>
     <p>The degraded condition has been false for long enough to close the episode.</p>
+    {{end}}
 
     <table class="details-table" role="presentation" cellpadding="0" cellspacing="0">
         <tr><td class="label">Monitor</td><td class="value">{{if .CheckURL}}<a href="{{.CheckURL}}">{{.CheckName}}</a>{{else}}{{.CheckName}}{{end}}</td></tr>
@@ -13,16 +18,19 @@
         {{if .Duration}}<tr><td class="label">Duration</td><td class="value">{{.Duration}}</td></tr>{{end}}
         {{if gt .IncidentNumber 0}}<tr><td class="label">Incident</td><td class="value">{{if .IncidentURL}}<a href="{{.IncidentURL}}">#{{.IncidentNumber}}</a>{{else}}#{{.IncidentNumber}}{{end}}</td></tr>{{end}}
     </table>
-    <p class="meta">The failures and slow responses that were recorded stay in the check's history — only the pattern stopped.</p>
+    {{if not .DegradedTurnedOff}}<p class="meta">The failures and slow responses that were recorded stay in the check's history — only the pattern stopped.</p>{{end}}
     {{if .IncidentURL}}
     <div class="cta-wrap">{{template "button" dict "URL" .IncidentURL "Label" "View incident" "Variant" "primary"}}</div>
     {{end}}
     <p class="footnote">Incident reference <span class="mono">{{.IncidentUID}}</span> — quote it if you contact support.</p>
 {{end}}
-{{define "text"}}{{.CheckName}} is steady again
+{{define "text"}}{{if .DegradedTurnedOff}}Degraded detection turned off for {{.CheckName}}
+
+Degraded detection was turned off on this check, so the open degraded episode was closed. The check did not necessarily recover.
+{{else}}{{.CheckName}} is steady again
 
 The degraded condition has been false for long enough to close the episode.
-
+{{end}}
 Monitor: {{.CheckName}}
 {{if .CheckURL}}Check URL: {{.CheckURL}}
 {{end}}Started at: {{.StartedAt}}
@@ -32,9 +40,9 @@ Resolved at: {{.ResolvedAt}}
 {{end}}Incident ID: {{.IncidentUID}}
 {{if .IncidentURL}}
 View incident: {{.IncidentURL}}
-{{end}}
+{{end}}{{if not .DegradedTurnedOff}}
 The failures and slow responses that were recorded stay in the check's history - only the pattern stopped.
-
+{{end}}
 This is an automated notification from SolidPing.
 {{if .DashboardURL}}Dashboard: {{.DashboardURL}}{{end}}{{if .DocsURL}}
 Docs: {{.DocsURL}}{{end}}{{if .UnsubscribeURL}}

@@ -98,15 +98,17 @@ owns that convention. The *format* rules do not.
 
 ### Getting `sp` into CI
 
-Every tag publishes bare binaries with version-free names (`sp-darwin-amd64`,
-`sp-linux-arm64`, `sp-windows-amd64.exe`, … — five platforms) plus a
-`sp-checksums.txt`, and a `ghcr.io/fclairamb/solidping/sp` image:
+Every tag publishes compressed-only archives with version-free names
+(`sp-darwin-amd64.gz`, `sp-linux-arm64.gz`, `sp-windows-amd64.zip`, … — five
+platforms) plus a `sp-checksums.txt`, and a `ghcr.io/fclairamb/solidping/sp`
+image:
 
 ```yaml
 - name: Validate the SolidPing manifest
   run: |
-    curl -sSL -o sp \
-      https://github.com/fclairamb/solidping/releases/latest/download/sp_linux_amd64
+    curl -sSL -o sp.gz \
+      https://github.com/fclairamb/solidping/releases/latest/download/sp-linux-amd64.gz
+    gunzip -c sp.gz > sp
     chmod +x sp
     ./sp checks validate solidping/config.yaml
 ```

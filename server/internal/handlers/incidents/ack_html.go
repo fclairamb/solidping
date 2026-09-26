@@ -11,6 +11,7 @@ import (
 	"net/url"
 
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/securityheaders"
 )
 
 // ackPageStyle is the inline stylesheet shared by every magic-link ack
@@ -234,6 +235,7 @@ func writeAckHTML(writer http.ResponseWriter, status int, kind ackPageKind, orgS
 
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 	writer.Header().Set("Cache-Control", "no-store")
+	securityheaders.ApplyBaseline(writer.Header())
 	writer.WriteHeader(status)
 	_, _ = writer.Write([]byte(page))
 }

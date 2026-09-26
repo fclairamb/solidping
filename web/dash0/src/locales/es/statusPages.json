@@ -257,7 +257,7 @@
     "description": "Tu CSS se inyecta en la página pública. Sobrescribe las propiedades CSS de abajo para cambiar el tema, o escribe las reglas que quieras.",
     "cssLabel": "CSS",
     "placeholder": ":root {\n  --brand: #ff5500;\n}",
-    "limitsHint": "Hasta 64 KB. @import no está permitido; url() externo (fuentes, imágenes) sí.",
+    "limitsHint": "Hasta 64 KB. @import no está permitido, y url() solo carga imágenes y fuentes de este sitio o de URI data: : la política de seguridad de la página bloquea los hosts externos. Suba su logotipo en Personalización en su lugar.",
     "importRejected": "@import no está permitido: incorpora las reglas directamente.",
     "tooLarge": "Demasiado grande: la hoja de estilos puede ocupar como máximo 64 KB.",
     "save": "Guardar",

@@ -85,31 +85,27 @@ type OAuthResult struct {
 	// Pending is true when the install succeeded but the organization did not
 	// admit the installing user (e.g. the org opted out of Slack workspace
 	// auto-join, or it is at its member cap): no membership was created, a
-	// membership request is awaiting approval, and the tokens above are an
-	// org-less session with no refresh token.
+	// membership request is awaiting approval, and the tokens above are
+	// scoped to FallbackOrgSlug, or an org-less session with no refresh token
+	// when that is empty.
 	Pending bool
+	// FallbackOrgSlug is, for a pending install, the org the installing user
+	// already belongs to that the session was minted on instead (spec
+	// 2026-09-25-15). Empty when they belong to none.
+	FallbackOrgSlug string
 }
 
 // installStateKind / installStateTTL govern the bot-install OAuth flow's
-// CSRF-state lifetime. exchangeStateKind backs the post-callback session
-// handoff (60s window between the redirect and the dashboard's exchange
-// call).
+// CSRF-state lifetime. The post-callback session handoff goes through
+// internal/authhandoff (spec 2026-09-25-12), like every other federated login.
 const (
-	installStateKind  = "slack-install"
-	installStateTTL   = 10 * time.Minute
-	exchangeStateKind = "slack-exchange"
-	exchangeStateTTL  = 60 * time.Second
+	installStateKind = "slack-install"
+	installStateTTL  = 10 * time.Minute
 )
 
-// payloadKey* are the keys used inside the exchange-state Payload map. They
-// are also the JSON field names returned by the exchange endpoint.
+// payloadKey* are the keys used inside the install-state Payload map.
 const (
-	payloadKeyAccessToken  = "accessToken"
-	payloadKeyRefreshToken = "refreshToken"
-	payloadKeyExpiresIn    = "expiresIn"
-	payloadKeyOrgSlug      = "orgSlug"
-	payloadKeyUserUID      = "userUID"
-	payloadKeySource       = "source"
+	payloadKeySource = "source"
 	// payloadKeyChannelUID and payloadKeyInstallOrg carry the channel context
 	// from the install entry point through the CSRF state so the callback can
 	// update the specific channel that triggered the install flow.
@@ -413,28 +409,17 @@ func (s *Service) BuildOrgInstallURL(ctx context.Context, orgUID, orgSlug, chann
 	return s.BuildInstallURL(ctx, "dashboard", channelUID, orgSlug)
 }
 
-// IssueExchangeCode persists a single-use code that the dashboard will
-// trade in (server-to-server) for the freshly minted access/refresh tokens.
-// The 60-second TTL is intentionally tight — the dashboard hits the
-// exchange endpoint immediately after the post-install redirect.
-func (s *Service) IssueExchangeCode(ctx context.Context, result *OAuthResult) (string, error) {
-	payload := map[string]any{
-		payloadKeyAccessToken:  result.AccessToken,
-		payloadKeyRefreshToken: result.RefreshToken,
-		payloadKeyExpiresIn:    result.ExpiresIn,
-		payloadKeyOrgSlug:      result.OrgSlug,
-		payloadKeyUserUID:      result.UserUID,
-	}
-	if result.ChannelUID != "" {
-		payload[payloadKeyChannelUID] = result.ChannelUID
+// landingPath is where the dashboard should land once it has redeemed the
+// install's handoff code: the channel the install was for when there is one
+// (see resolveResultChannelUID), the org's home page otherwise. It is only a
+// hint — the dashboard follows it through its own same-org guards.
+func landingPath(result *OAuthResult) string {
+	orgPath := config.DashboardBasePath + "/orgs/" + url.PathEscape(result.OrgSlug)
+	if result.ChannelUID == "" {
+		return orgPath
 	}
 
-	code, err := oauthstate.Generate(ctx, s.db, exchangeStateKind, payload, exchangeStateTTL)
-	if err != nil {
-		return "", fmt.Errorf("issue exchange code: %w", err)
-	}
-
-	return code, nil
+	return orgPath + "/integrations/" + url.PathEscape(result.ChannelUID)
 }
 
 // resolveResultChannelUID decides what OAuthResult.ChannelUID should be —
@@ -545,14 +530,15 @@ func (s *Service) HandleOAuthCallback(ctx context.Context, code, state string) (
 	)
 
 	return &OAuthResult{
-		ConnectionUID: connUID,
-		ChannelUID:    resultChannelUID,
-		AccessToken:   login.AccessToken,
-		RefreshToken:  login.RefreshToken,
-		ExpiresIn:     login.ExpiresIn,
-		OrgSlug:       org.Slug,
-		UserUID:       user.UID,
-		Pending:       login.Pending,
+		ConnectionUID:   connUID,
+		ChannelUID:      resultChannelUID,
+		AccessToken:     login.AccessToken,
+		RefreshToken:    login.RefreshToken,
+		ExpiresIn:       login.ExpiresIn,
+		OrgSlug:         org.Slug,
+		UserUID:         user.UID,
+		Pending:         login.Pending,
+		FallbackOrgSlug: login.FallbackOrgSlug,
 	}, nil
 }
 

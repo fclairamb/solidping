@@ -187,8 +187,11 @@ func TestPanickingDetectorIsContainedNotFatal(t *testing.T) {
 
 	report := panicking.Evaluate(t.Context(), enabledConfig())
 
-	r.Len(report.Failed, 1)
+	// stale-checks reads the dark-region detector's report (spec
+	// 2026-09-25-02), so it is the one dependent that goes down with it.
+	r.Len(report.Failed, 2)
 	r.Contains(report.Failed[watchdog.DetectorDarkRegion].Error(), "panicked")
+	r.ErrorIs(report.Failed[watchdog.DetectorStaleChecks], watchdog.ErrRegionHealthUnavailable)
 	r.NotNil(findAnomaly(report.Anomalies, watchdog.DetectorFleetCollapse),
 		"the surviving detectors must still report")
 }
@@ -428,8 +431,11 @@ func TestDetectorFailureDoesNotSuppressTheOthers(t *testing.T) {
 
 	report := broken.Evaluate(t.Context(), enabledConfig())
 
-	r.Len(report.Failed, 1)
+	// The dark-region detector and its one dependent (stale-checks reads its
+	// report) fail; every independent detector still reports.
+	r.Len(report.Failed, 2)
 	r.ErrorIs(report.Failed[watchdog.DetectorDarkRegion], boom)
+	r.ErrorIs(report.Failed[watchdog.DetectorStaleChecks], watchdog.ErrRegionHealthUnavailable)
 	r.False(report.DetectorSucceeded(watchdog.DetectorDarkRegion))
 	r.True(report.DetectorSucceeded(watchdog.DetectorFleetCollapse))
 

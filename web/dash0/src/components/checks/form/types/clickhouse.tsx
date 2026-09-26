@@ -6,7 +6,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { getFieldError } from "@/hooks/use-check-validation";
 import type { CheckTypeModule } from "./index";
 import type { CheckConfig, CheckTypeFieldsProps, FieldErrors } from "./common";
-import { getConfigField } from "./common";
+import { getConfigField, validationMessage } from "./common";
 
 // ── ClickHouse (native protocol) ──
 //
@@ -54,7 +54,7 @@ export const clickhouseModule: CheckTypeModule<ClickhouseState> = {
       config: cfg,
       errors: state.host
         ? []
-        : ([{ name: "host", message: "Host is required" }] as FieldErrors),
+        : ([{ name: "host", message: validationMessage("hostRequired") }] as FieldErrors),
     };
   },
   Fields: ClickhouseFields,

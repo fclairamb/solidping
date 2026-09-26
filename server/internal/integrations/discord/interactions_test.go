@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -29,6 +30,13 @@ type fakeIncidents struct {
 	// operator-controlled text into the reply the ack update renders.
 	ackTitle string
 
+	// mu guards the recorded-comment fields below. Unlike the ack fields above
+	// (only ever touched synchronously, from the same goroutine that dispatched
+	// the interaction), a comment can be recorded by the Gateway supervisor's
+	// background goroutine (gateway_test.go) while the test goroutine reads or
+	// resets it — so those three need real synchronization, not just field
+	// access.
+	mu              sync.Mutex
 	commentIncident string
 	commentText     string
 	commentGuild    string
@@ -68,6 +76,9 @@ func (f *fakeIncidents) GetCheckByUID(_ context.Context, _, checkUID string) (*m
 func (f *fakeIncidents) AddCommentFromDiscord(
 	_ context.Context, _, incidentUID, text, _, _, guildID, _ string,
 ) (*models.Event, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
 	f.commentIncident = incidentUID
 	f.commentText = text
 	f.commentGuild = guildID
@@ -78,11 +89,52 @@ func (f *fakeIncidents) AddCommentFromDiscord(
 func (f *fakeIncidents) AddCommentFromDiscordCommand(
 	_ context.Context, _, incidentUID, text, _, _, guildID string,
 ) (*models.Event, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
 	f.commentIncident = incidentUID
 	f.commentText = text
 	f.commentGuild = guildID
 
 	return &models.Event{}, nil
+}
+
+// CommentIncident returns the incident UID the most recently recorded comment
+// was filed against. Locked because a Gateway test's background supervisor
+// goroutine may still be writing it concurrently.
+func (f *fakeIncidents) CommentIncident() string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return f.commentIncident
+}
+
+// CommentText returns the most recently recorded comment's text. See
+// CommentIncident for why this goes through the lock.
+func (f *fakeIncidents) CommentText() string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return f.commentText
+}
+
+// CommentGuild returns the guild ID the most recently recorded comment came
+// from. See CommentIncident for why this goes through the lock.
+func (f *fakeIncidents) CommentGuild() string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return f.commentGuild
+}
+
+// SetCommentText resets the recorded comment text, e.g. so a test can prove a
+// second, redelivered message did not overwrite it. Locked for the same reason
+// as the getters above.
+func (f *fakeIncidents) SetCommentText(text string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.commentText = text
 }
 
 // installedService returns a service with the bot installed into a guild, plus
@@ -452,9 +504,9 @@ func TestDispatchCommand_CommentInThreadResolvesIncident(t *testing.T) {
 	r.NoError(err)
 	r.True(resp.Ephemeral)
 
-	r.Equal(incident.UID, incidents.commentIncident)
-	r.Equal("restarting the pod", incidents.commentText)
-	r.Equal("G-ACME", incidents.commentGuild)
+	r.Equal(incident.UID, incidents.CommentIncident())
+	r.Equal("restarting the pod", incidents.CommentText())
+	r.Equal("G-ACME", incidents.CommentGuild())
 }
 
 // TestDispatchCommand_CommentOutsideThreadNeedsAReference: commenting on the
@@ -475,7 +527,7 @@ func TestDispatchCommand_CommentOutsideThreadNeedsAReference(t *testing.T) {
 	r.NoError(err)
 	r.True(resp.Ephemeral)
 	r.Contains(resp.Text, "not a SolidPing incident thread")
-	r.Empty(incidents.commentIncident)
+	r.Empty(incidents.CommentIncident())
 }
 
 // TestDispatchCommand_CommentByExplicitNumber pins rule 1: an explicit `#N`
@@ -507,8 +559,8 @@ func TestDispatchCommand_CommentByExplicitNumber(t *testing.T) {
 		Args:     []string{"#11", "actually", "about", "this", "one"},
 	})
 	r.NoError(err)
-	r.Equal(named.UID, incidents.commentIncident, "an explicit #N must never be silently substituted")
-	r.Equal("actually about this one", incidents.commentText)
+	r.Equal(named.UID, incidents.CommentIncident(), "an explicit #N must never be silently substituted")
+	r.Equal("actually about this one", incidents.CommentText())
 }
 
 func TestDispatchCommand_ConfigDefaultChannel(t *testing.T) {

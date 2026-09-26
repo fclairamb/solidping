@@ -15,6 +15,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/egress"
 	"github.com/fclairamb/solidping/server/internal/handlers/attachments"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
 	"github.com/fclairamb/solidping/server/internal/nettrace"
@@ -67,6 +68,10 @@ type Dispatcher struct {
 	local   LocalWorkerResolver
 	limiter *orgLimiter
 	logger  *slog.Logger
+	// guard is the local worker's egress policy (spec 2026-09-25-19). A local
+	// trace towards an address the policy refuses is never run: that would
+	// map the internal network the check itself was refused.
+	guard *egress.Guard
 
 	// run is the trace itself, swapped in tests. Production is nettrace.Run.
 	run func(ctx context.Context, opts *nettrace.Options) (*nettrace.Capture, error)
@@ -97,6 +102,10 @@ func (d *Dispatcher) SetAgentSender(sender AgentTraceSender) { d.agents = sender
 // SetLocalWorkerResolver wires the "did this process run the check?" test.
 // Optional: with no resolver, nothing is ever traced locally.
 func (d *Dispatcher) SetLocalWorkerResolver(resolver LocalWorkerResolver) { d.local = resolver }
+
+// SetEgressGuard wires the local worker's egress policy. Optional: nil allows
+// every address (self-hosted behavior).
+func (d *Dispatcher) SetEgressGuard(guard *egress.Guard) { d.guard = guard }
 
 // RequestTrace implements incidents.TraceRequester.
 //
@@ -139,6 +148,13 @@ func (d *Dispatcher) RequestTrace(ctx context.Context, req *incidents.TraceReque
 	}
 
 	if d.store == nil {
+		return
+	}
+
+	if err := d.guard.CheckIP(address); err != nil {
+		d.logger.DebugContext(ctx, "path trace refused by the egress policy",
+			"incident_uid", req.IncidentUID, "error", err)
+
 		return
 	}
 

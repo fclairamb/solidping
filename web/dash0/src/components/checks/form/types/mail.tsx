@@ -18,11 +18,11 @@ import { useEmailAddressDomain, emailCheckAddress } from "@/api/email-inbox";
 import { checkLabel } from "@/components/checks/tunnel";
 import type { CheckTypeModule } from "./index";
 import type { CheckConfig, CheckTypeFieldsProps, FieldErrors } from "./common";
-import { getConfigField } from "./common";
+import { getConfigField, validationMessage } from "./common";
 import { useCheckFormFields } from "./context";
 
 const hostRequired = (host: string): FieldErrors =>
-  host ? [] : [{ name: "host", message: "Host is required" }];
+  host ? [] : [{ name: "host", message: validationMessage("hostRequired") }];
 
 // smtpSendModeErrors validates the send-mode fields on top of the plain
 // host requirement — mail_from and delivery_to are only required when send
@@ -33,12 +33,12 @@ function smtpSendModeErrors(state: SmtpState): FieldErrors {
   const errors = hostRequired(state.host);
   if (!state.sendEmail) return errors;
   if (!state.mailFrom) {
-    errors.push({ name: "mail_from", message: "Mail From is required when send mode is enabled" });
+    errors.push({ name: "mail_from", message: validationMessage("mailFromRequired") });
   }
   if (!state.deliveryTo) {
     errors.push({
       name: "delivery_to",
-      message: "Select a delivery (email) check when send mode is enabled",
+      message: validationMessage("deliveryCheckRequired"),
     });
   }
   return errors;

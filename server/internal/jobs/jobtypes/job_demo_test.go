@@ -611,6 +611,14 @@ func TestDemoCatalogPinsPublicRegions(t *testing.T) {
 	r.NotEmpty(checks)
 
 	for _, check := range checks {
+		// A passive check (heartbeat, email) has no regions at all: it is
+		// evaluated on the jobs node (spec 2026-09-25-04).
+		if check.IsPassive() {
+			r.Emptyf(check.Regions, "passive check %s must not carry a region", *check.Slug)
+
+			continue
+		}
+
 		r.Lenf(check.Regions, 3, "check %s does not run from three public regions", *check.Slug)
 
 		for _, region := range check.Regions {
@@ -639,6 +647,11 @@ func TestDemoCatalogTakesWhatRegionsExist(t *testing.T) {
 	r.NotEmpty(checks, "seeding must succeed with fewer than three regions defined")
 
 	for _, check := range checks {
+		if check.IsPassive() {
+			// Region-less by design (spec 2026-09-25-04).
+			continue
+		}
+
 		r.NotEmptyf(check.Regions, "check %s was left with no region at all", *check.Slug)
 	}
 }

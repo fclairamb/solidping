@@ -548,10 +548,12 @@ func TestExpressHandleEvent(t *testing.T) {
 
 	logger := runner.logger.With("test", "express")
 
-	// Create a heartbeat check; it routes through executePassiveJob so the
-	// express path can complete without making any outbound network calls.
-	check := models.NewCheck(org.UID, "express-test-"+uuid.New().String()[:8], string(checkerdef.CheckTypeHeartbeat))
-	check.Config = models.JSONMap{"token": "express-test-token"}
+	// A near-instant sleep check: the express path completes without any
+	// outbound network call. (This used to be a heartbeat; passive checks are
+	// no longer claimable by a check worker at all — spec 2026-09-25-04 — which
+	// the PassiveJobNeverClaimed sub-test below pins.)
+	check := models.NewCheck(org.UID, "express-test-"+uuid.New().String()[:8], string(checkerdef.CheckTypeSleep))
+	check.Config = models.JSONMap{"sleep_ms": 1}
 	require.NoError(t, dbSvc.CreateCheck(ctx, check))
 
 	// CheckCreate already inserts a check_job; pull it out to confirm the express
@@ -597,11 +599,26 @@ func TestExpressHandleEvent(t *testing.T) {
 
 		assert.Greater(t, countResults(), before, "express path should produce at least one result row")
 
-		// Lease should be released after executePassiveJob completes.
+		// Lease should be released after the execution completes.
 		var refreshed models.CheckJob
 		require.NoError(t, dbSvc.DB().NewSelect().Model(&refreshed).Where("uid = ?", job.UID).Scan(ctx))
 		assert.Nil(t, refreshed.LeaseWorkerUID, "lease should be released after execution")
 		assert.Equal(t, 0, refreshed.LeaseStarts, "lease_starts reset after release")
+	})
+
+	t.Run("PassiveJobNeverClaimed", func(t *testing.T) {
+		// Spec 2026-09-25-04: a heartbeat's job belongs to the jobs node. The
+		// express path must leave it alone even when it is due and named.
+		heartbeat := models.NewCheck(org.UID, "express-hb-"+uuid.New().String()[:8], string(checkerdef.CheckTypeHeartbeat))
+		heartbeat.Config = models.JSONMap{"token": "express-hb-token"}
+		require.NoError(t, dbSvc.CreateCheck(ctx, heartbeat))
+
+		runner.handleExpressEvent(ctx, logger, `{"check_uid":"`+heartbeat.UID+`"}`)
+
+		var hbJob models.CheckJob
+		require.NoError(t, dbSvc.DB().NewSelect().Model(&hbJob).Where("check_uid = ?", heartbeat.UID).Scan(ctx))
+		assert.Nil(t, hbJob.LeaseWorkerUID, "a check worker must never claim a passive job")
+		assert.Nil(t, hbJob.Region, "a passive check owns one NULL-region job")
 	})
 }
 

@@ -40,9 +40,13 @@ Disabled and deleted checks never affect the rollup.
 | None, or all `created` | `created` |
 | All `down` | `down` |
 | Some (not all) `down` | `degraded` |
-| No `down`, at least one `warning` | `warning` |
-| No `down`/`warning`, at least one `validating` | `validating` |
+| No `down`, at least one `validating` | `validating` |
+| No `down`/`validating`, at least one `warning` | `warning` |
+| Otherwise, at least one `stale` (no data) | `stale` |
 | Otherwise, at least one `up` | `up` |
+
+The worst member wins: `down` > `validating` > `warning` > `stale` > `up`. A
+group whose members have all stopped reporting reads `stale`, never `created`.
 
 This mirrors a check's own status vocabulary, so the same status colors and
 labels apply — a group reads as one thing, not four.

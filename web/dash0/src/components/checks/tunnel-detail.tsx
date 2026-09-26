@@ -6,12 +6,14 @@
 // the user can see the dependents right where the Delete button is.
 import { Link } from "@tanstack/react-router";
 import { Waypoints } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { useChecks, type Check } from "@/api/hooks";
 import { checkLabel, tunnelCheckUidOf } from "./tunnel";
 
 /** The bastion this check's probe is dialed through, if any. */
 export function TunnelVia({ org, check }: { org: string; check: Check }) {
+  const { t } = useTranslation("checks");
   const tunnelUid = tunnelCheckUidOf(check);
   // The reference is a uid; resolve it to a name via the org's ssh checks
   // (already cached by the check form's identical query).
@@ -24,7 +26,7 @@ export function TunnelVia({ org, check }: { org: string; check: Check }) {
   return (
     <div data-testid="check-tunnel-via">
       <div className="text-sm font-medium text-muted-foreground mb-1">
-        SSH tunnel
+        {t("tunnel.viaTitle")}
       </div>
       <Link
         to="/orgs/$org/checks/$checkUid"
@@ -37,7 +39,7 @@ export function TunnelVia({ org, check }: { org: string; check: Check }) {
         </Badge>
       </Link>
       <p className="mt-1 text-xs text-muted-foreground">
-        Probes are dialed through this SSH check&apos;s connection.
+        {t("tunnel.viaHelp")}
       </p>
     </div>
   );
@@ -45,6 +47,7 @@ export function TunnelVia({ org, check }: { org: string; check: Check }) {
 
 /** The checks that tunnel through this one. Renders nothing unless there are any. */
 export function TunnelDependents({ org, check }: { org: string; check: Check }) {
+  const { t } = useTranslation("checks");
   // Only SSH checks can be a tunnel, so nothing else can have dependents.
   const isSSH = check.type === "ssh";
   const { data: allChecks } = useChecks(org, { limit: 100 });
@@ -60,8 +63,7 @@ export function TunnelDependents({ org, check }: { org: string; check: Check }) 
   return (
     <div data-testid="check-tunnel-dependents">
       <div className="text-sm font-medium text-muted-foreground mb-1">
-        Used as tunnel by {dependents.length}{" "}
-        {dependents.length === 1 ? "check" : "checks"}
+        {t("tunnel.dependentsTitle", { count: dependents.length })}
       </div>
       <div className="flex gap-1 flex-wrap">
         {dependents.map((dependent) => (
@@ -79,8 +81,7 @@ export function TunnelDependents({ org, check }: { org: string; check: Check }) 
         ))}
       </div>
       <p className="mt-1 text-xs text-muted-foreground">
-        These checks dial through this bastion. Detach them before deleting this
-        check.
+        {t("tunnel.dependentsHelp")}
       </p>
     </div>
   );

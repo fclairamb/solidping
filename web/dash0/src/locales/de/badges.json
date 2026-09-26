@@ -56,5 +56,7 @@
     "flatSquare": "Flach quadratisch"
   },
   "availability": "Verfügbarkeit",
-  "status": "Status"
+  "status": "Status",
+  "previewAlt": "Abzeichen für {{name}}",
+  "statusPagePreviewAlt": "Status von {{name}}"
 }
