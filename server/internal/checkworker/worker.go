@@ -1058,6 +1058,23 @@ func (r *CheckWorker) executeJob(
 	// default makes a count-1 burst identical to the pre-burst budget.
 	checkTimeout = resolveBurstBudget(checkConfig, checkTimeout)
 
+	// "Capture now" (spec 2026-09-25-34): the claim consumed a pending
+	// on-demand request, so this run keeps its screenshot whatever the
+	// verdict. Read here, ahead of the execution-budget sizing below, because
+	// a forced capture also needs the worker's extra execution budget (spec
+	// 2026-09-25-35) — not only the context marker applied further down.
+	forcedCapture := checkJob.CaptureRequestedAt != nil
+
+	// Some checkers need wall-clock time AFTER their own verdict is decided —
+	// a browser check's screenshot capture is taken against a session the
+	// checker deliberately keeps alive past its probe timeout (spec
+	// 2026-09-25-35). Declared through the optional checkerdef.ExtraBudgeter
+	// interface so the worker can extend the HARD execution deadline below
+	// without ever growing the budget threaded into the checker's own config
+	// (checkTimeout, unchanged): only the ceiling moves, so extra time here
+	// can never let a slow target answer that would otherwise have timed out.
+	extraBudget := resolveExtraBudget(checkConfig, forcedCapture)
+
 	// 3. Get checker from registry
 	checker, ok := r.getChecker(checkerdef.CheckType(checkType))
 	if !ok {
@@ -1093,13 +1110,20 @@ func (r *CheckWorker) executeJob(
 	// ~16s global context; legacy over-cap values are clamped defensively at
 	// 30s inside perCheckTimeout so they can't buy a 61s context.
 	//
-	// The execution *context* deadline is checkTimeout + 1s (spec 2026-07-10-11):
-	// the +1s margin lets a checker that honors its own timeout report a clean
-	// StatusTimeout result before the hard context cancellation, instead of the
-	// generic context-deadline-exceeded. The budget handed down to the checker
-	// stays checkTimeout (no +1s), so the checker-level timeout always fires
-	// first.
-	execCtx, cancel := context.WithTimeout(context.Background(), checkTimeout+time.Second)
+	// The execution *context* deadline is checkTimeout + 1s + extraBudget
+	// (spec 2026-07-10-11, extraBudget added by spec 2026-09-25-35): the +1s
+	// margin lets a checker that honors its own timeout report a clean
+	// StatusTimeout result before the hard context cancellation, instead of
+	// the generic context-deadline-exceeded; extraBudget is the wall-clock a
+	// checker declared (via checkerdef.ExtraBudgeter) it needs AFTER that
+	// verdict — e.g. to photograph a session it is keeping alive past the
+	// probe. The budget handed down to the checker stays checkTimeout (no
+	// +1s, no extraBudget), so the checker-level timeout always fires first,
+	// and the watchdog below is sized off the SAME extended budget so it
+	// cannot abandon a checker that is legitimately using the extra time.
+	hardBudget := checkTimeout + extraBudget
+
+	execCtx, cancel := context.WithTimeout(context.Background(), hardBudget+time.Second)
 	defer cancel()
 
 	// Detaching from ctx above drops its values; carry the tunnel-resolver
@@ -1152,14 +1176,14 @@ func (r *CheckWorker) executeJob(
 
 	execCtx = applySMTPDeliveryContext(execCtx, checkJob)
 
-	// "Capture now" (spec 2026-09-25-34): the claim consumed a pending
-	// on-demand request, so this run keeps its screenshot whatever the verdict.
-	if checkJob.CaptureRequestedAt != nil {
+	// "Capture now" (spec 2026-09-25-34): forcedCapture was resolved above,
+	// ahead of the execution-budget sizing that also depends on it.
+	if forcedCapture {
 		execCtx = checkerdef.WithForcedCapture(execCtx)
 	}
 
 	execStart := time.Now()
-	result, err := r.runCheckerGuarded(execCtx, logger, checker, checkConfig, checkJob, checkTimeout, startTime)
+	result, err := r.runCheckerGuarded(execCtx, logger, checker, checkConfig, checkJob, hardBudget, startTime)
 	prommetrics.RecordCheckStage("execute", time.Since(execStart).Seconds())
 	if err != nil {
 		duration := time.Since(startTime)
@@ -1297,6 +1321,28 @@ func resolveBurstBudget(checkConfig checkerdef.Config, checkTimeout time.Duratio
 	}
 
 	return checkTimeout
+}
+
+// resolveExtraBudget returns the extra wall-clock a checker's config declares
+// it needs beyond its own probe timeout for work that happens AFTER the
+// verdict — a browser check's screenshot capture is the motivating case (spec
+// 2026-09-25-35) — when the config implements checkerdef.ExtraBudgeter.
+// Configs that don't implement it need none, and this only ever GROWS the
+// hard execution deadline: the budget threaded into the checker's own config
+// is untouched, so a slow target can never buy itself extra time to answer
+// through this path.
+//
+// forcedCapture is threaded through rather than read off the config, because
+// whether a capture is FORCED is a property of the claimed job (an on-demand
+// "Capture now" request, spec 2026-09-25-34) — the config alone cannot know
+// it.
+func resolveExtraBudget(checkConfig checkerdef.Config, forcedCapture bool) time.Duration {
+	extra, ok := checkConfig.(checkerdef.ExtraBudgeter)
+	if !ok {
+		return 0
+	}
+
+	return extra.ExtraBudget(forcedCapture)
 }
 
 // applySMTPDeliveryContext marks execCtx as a real, dispatched SMTP check job
