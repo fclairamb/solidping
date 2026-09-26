@@ -358,6 +358,12 @@ the image is what the page looked like when *the script asked*, not a frame
 from the instant of failure — and, as with a browser check, it is a **WebP**
 full-page capture. The format is not selectable from the script.
 
+The capture shows up on the check page's **Screenshots** card, with the same
+rules as a [browser check's](./check-types.md#browser-screenshots). **Capture
+now** runs the script once and keeps its last `page.screenshot()` whatever the
+verdict, so an `up` run can be photographed too. A script that never calls
+`page.screenshot()` produces nothing, on demand or not.
+
 **Period floor.** A script that calls `browser.open(` is held to the `browser`
 check's **1m** minimum period instead of the `js` type's 30s, decided when the
 check is saved. A headless run costs seconds and holds one of four slots;

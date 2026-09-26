@@ -1568,6 +1568,37 @@ timeout budget and reports a timeout if none frees up. A `js` script holding a
 page counts as one of the four, for as long as it holds it. Space browser checks out,
 or add workers, rather than lowering their period.
 
+#### Screenshots {#browser-screenshots}
+
+Turn on **Screenshot on failure** (`screenshot: true`) and a run that ends
+`down` or `timeout` captures a WebP image of the page. The capture is taken a
+moment after the check decided the page was unhealthy, from the region that ran
+it, so treat it as evidence rather than as the exact failing frame.
+
+The check page has a **Screenshots** card (browser and `js` checks only). It
+shows the latest capture, when and from which region it was taken, and a link
+to its incident when it has one. Older captures sit in a strip underneath. Click
+any image to open it full size. The card lists:
+
+- the screenshot of each incident the check opened or reopened;
+- the captures of failing runs that opened no incident: a run inside the
+  confirmation period, a blip that recovered before it elapsed, a failure in a
+  single region, or a run of an outage whose incident already has its onset
+  capture. A check keeps its last **5** of these; the sixth replaces the oldest.
+  Deleting the check deletes them.
+
+**Capture now.** The button on the card runs the check once, right away, from
+one of its regions (on a private location, the location's agent runs it), with
+the screenshot forced whatever the result, even when the page is healthy and
+even when **Screenshot on failure** is off. The run is recorded like any other
+run. The capture appears on the card a few seconds later and counts toward the
+same 5. It is limited to one capture per check per minute and 20 per
+organization per hour. A private location running an agent older than this
+feature runs the check but does not force the capture.
+
+Screenshots are visible to every member of the organization who can see the
+check, and never on a status page, a badge or a subscriber notification.
+
 #### Region capability
 
 Workers self-report a `browser` capability (a reachable CDP endpoint, or a local
