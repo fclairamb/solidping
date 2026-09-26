@@ -4245,6 +4245,17 @@ const (
 	twoFATempTokenExpiry = 5 * time.Minute
 	recoveryCodeCount    = 10
 	recoveryCodeBytes    = 5 // 10 hex chars
+
+	// Authenticated 2FA-verification rate limit. TOTP and recovery-code
+	// verification share one per-user budget under this key prefix, on the
+	// same pattern as changePasswordCountKeyPrefix: the temp token bounds a
+	// single verification attempt to a 5-minute window, but a user can mint
+	// as many temp tokens as they want by re-submitting their password, so
+	// the failed-attempt budget must span temp tokens rather than reset with
+	// each one — otherwise it caps nothing.
+	twoFAAttemptCountKeyPrefix = "twofa_attempt_count:"
+	twoFAAttemptMaxPerUser     = 5
+	twoFAAttemptWindow         = 15 * time.Minute
 )
 
 // generate2FATempToken creates a short-lived JWT for the 2FA verification step.
@@ -4384,6 +4395,24 @@ func (s *Service) Confirm2FA(ctx context.Context, userUID, code string) (*Confir
 	}, nil
 }
 
+// bumpTwoFAAttemptCounter increments the per-user 2FA-verification attempt
+// counter (TOTP and recovery-code verification share the same budget) and
+// reports whether the cap for the current window is already reached.
+func (s *Service) bumpTwoFAAttemptCounter(ctx context.Context, userUID string) (bool, error) {
+	return s.bumpCounter(ctx,
+		twoFAAttemptCountKeyPrefix+userUID, twoFAAttemptMaxPerUser, twoFAAttemptWindow)
+}
+
+// resetTwoFAAttemptCounter clears the per-user 2FA attempt counter after a
+// successful verification. Best-effort, like the change-password twin:
+// login already succeeded, so a stale counter only costs a legitimate user
+// their fresh budget, never a security property.
+func (s *Service) resetTwoFAAttemptCounter(ctx context.Context, userUID string) {
+	if _, err := s.db.DeleteStateEntry(ctx, nil, twoFAAttemptCountKeyPrefix+userUID); err != nil {
+		slog.DebugContext(ctx, "Failed to delete 2FA attempt counter", "error", err)
+	}
+}
+
 // Verify2FA validates a TOTP code during login and returns full login tokens.
 func (s *Service) Verify2FA(
 	ctx context.Context, tempToken, code string, authContext Context,
@@ -4391,6 +4420,19 @@ func (s *Service) Verify2FA(
 	claims, err := s.validate2FATempToken(tempToken)
 	if err != nil {
 		return nil, err
+	}
+
+	// Rate-limit first, before the code is even looked at: the entire value
+	// of 2FA is being hard to guess, so the per-user budget is spent whether
+	// this attempt turns out right or wrong (mirrors
+	// bumpChangePasswordCounter guarding the current-password oracle).
+	limited, err := s.bumpTwoFAAttemptCounter(ctx, claims.UserUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to bump 2FA attempt counter: %w", err)
+	}
+
+	if limited {
+		return nil, ErrRateLimited
 	}
 
 	user, err := s.db.GetUser(ctx, claims.UserUID)
@@ -4410,6 +4452,8 @@ func (s *Service) Verify2FA(
 		return nil, ErrInvalid2FACode
 	}
 
+	s.resetTwoFAAttemptCounter(ctx, claims.UserUID)
+
 	return s.completeLoginAfter2FA(ctx, user, claims.OrgSlug, claims.Role,
 		withSecondFactor(claims.Method, SecondFactorTOTP), authContext)
 }
@@ -4421,6 +4465,17 @@ func (s *Service) Recovery2FA(
 	claims, err := s.validate2FATempToken(tempToken)
 	if err != nil {
 		return nil, err
+	}
+
+	// Same per-user budget as Verify2FA — recovery codes are fewer valid
+	// values than TOTP, so they must not get a separate allowance.
+	limited, err := s.bumpTwoFAAttemptCounter(ctx, claims.UserUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to bump 2FA attempt counter: %w", err)
+	}
+
+	if limited {
+		return nil, ErrRateLimited
 	}
 
 	user, err := s.db.GetUser(ctx, claims.UserUID)
@@ -4460,6 +4515,8 @@ func (s *Service) Recovery2FA(
 	}); updateErr != nil {
 		return nil, updateErr
 	}
+
+	s.resetTwoFAAttemptCounter(ctx, claims.UserUID)
 
 	return s.completeLoginAfter2FA(ctx, user, claims.OrgSlug, claims.Role,
 		withSecondFactor(claims.Method, SecondFactorRecoveryCode), authContext)

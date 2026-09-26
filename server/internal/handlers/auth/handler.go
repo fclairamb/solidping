@@ -1353,6 +1353,9 @@ func (h *Handler) Disable2FA(writer http.ResponseWriter, req *http.Request) erro
 // handle2FAError handles errors from 2FA endpoints.
 func (h *Handler) handle2FAError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
+	case errors.Is(err, ErrRateLimited):
+		return h.WriteErrorErr(writer, request, http.StatusTooManyRequests, base.ErrorCodeRateLimited,
+			"Too many verification attempts, please try again later", err)
 	case errors.Is(err, ErrInvalid2FACode):
 		return h.WriteErrorErr(
 			writer, request, http.StatusUnauthorized, base.ErrorCodeInvalid2FACode, "Invalid 2FA code", err)
