@@ -127,7 +127,7 @@ func (s *Service) GetClient(ctx context.Context, clientID string) (*models.OAuth
 }
 
 // AuthenticateClient verifies a client presenting itself at the token
-// endpoint (RFC 6749 §3.2.1, §3.2.1 / §2.3.1). Public clients are exempt —
+// endpoint (RFC 6749 §3.2.1 / §2.3.1). Public clients are exempt —
 // PKCE is their authentication, unchanged by this check. A confidential
 // client (IsPublic == false) must present the secret matching its stored
 // argon2id hash, supplied via client_secret_post (body) or
