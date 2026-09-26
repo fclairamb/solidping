@@ -540,7 +540,7 @@ Request body, per source:
 |---|---|---|
 | `gatus` | the raw `config.yaml` | Gatus has no config-export API. |
 | `uptime-kuma` | the raw backup JSON | Settings → Backup → Export (Kuma 1.x). |
-| `betterstack` | `{"token": "...", "baseUrl": "..."}` | The server fetches every page of `/api/v2/monitors` **and** `/api/v2/heartbeats`. `baseUrl` is optional (tests / proxies). The token is used transiently for that fetch and is **never persisted, logged, or echoed in an error**. |
+| `betterstack` | `{"token": "..."}` | The server fetches every page of `/api/v2/monitors` **and** `/api/v2/heartbeats` from the fixed `uptime.betterstack.com` API — there is no caller-supplied `baseUrl` any more (spec 2026-09-25-31 removed it: Better Stack documents no alternate host, so it was a GET-anywhere primitive with the caller's token attached). The token is used transiently for that fetch and is **never persisted, logged, or echoed in an error**. |
 
 Each converted document is applied under a per-source managed manifest
 (`solidping-managed=gatus` / `betterstack` / `uptime-kuma`), so re-importing

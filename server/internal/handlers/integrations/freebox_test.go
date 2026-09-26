@@ -66,6 +66,15 @@ type freeboxFixture struct {
 func newFreeboxFixture(t *testing.T) *freeboxFixture {
 	t.Helper()
 
+	return newFreeboxFixtureWithConfig(t, nil)
+}
+
+// newFreeboxFixtureWithConfig is newFreeboxFixture with the Service built
+// against appConfig instead of nil — used to exercise the SaaS-mode baseUrl
+// restriction (spec 2026-09-25-31), which reads appConfig.Deployment.Mode.
+func newFreeboxFixtureWithConfig(t *testing.T, appConfig *config.Config) *freeboxFixture {
+	t.Helper()
+
 	ctx := t.Context()
 	r := require.New(t)
 
@@ -80,7 +89,7 @@ func newFreeboxFixture(t *testing.T) *freeboxFixture {
 	org := models.NewOrganization("freebox-test", "Freebox Test Org")
 	r.NoError(dbSvc.CreateOrganization(ctx, org))
 
-	svc := integrations.NewService(dbSvc, creds, nil, nil)
+	svc := integrations.NewService(dbSvc, creds, nil, appConfig)
 	handler := integrations.NewHandler(svc, &config.Config{})
 
 	router := httpx.New()
@@ -284,6 +293,75 @@ func TestStartFreeboxPairingValidatesOrg(t *testing.T) {
 		integrations.StartFreeboxPairingRequest{},
 	)
 	r.Equal(http.StatusNotFound, rec.Code, rec.Body.String())
+}
+
+// TestStartFreeboxPairingRejectsInvalidBaseURL covers the URL-contract half
+// of spec 2026-09-25-31: an arbitrary internal host is rejected as a clean
+// 400 VALIDATION_ERROR before any request is made — never a raw fetch
+// error/timeout from actually dialing it.
+func TestStartFreeboxPairingRejectsInvalidBaseURL(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newFreeboxFixture(t)
+
+	cases := []string{
+		"https://evil.example",             // not an IP, not *.freebox.fr
+		"http://user:pass@192.168.1.254",   // userinfo
+		"http://mafreebox.freebox.fr:2222", // port outside 80/443/8443
+		"http://203.0.113.10",              // public IP over http
+		"ftp://192.168.1.254",              // bad scheme
+	}
+
+	for _, baseURL := range cases {
+		rec := f.do(t, http.MethodPost,
+			"/api/v1/orgs/"+f.org.Slug+"/integrations/freebox/pair",
+			integrations.StartFreeboxPairingRequest{BaseURL: baseURL},
+		)
+		r.Equal(http.StatusBadRequest, rec.Code, "baseUrl=%s: %s", baseURL, rec.Body.String())
+		r.Contains(rec.Body.String(), "VALIDATION_ERROR", baseURL)
+		r.Contains(rec.Body.String(), "baseUrl must be a valid Freebox API endpoint", baseURL)
+	}
+}
+
+// TestStartFreeboxPairingAcceptsValidBaseURL covers the self-hosted-accepted
+// side of the same contract: a private-range IP and the documented default
+// both pass validation and reach the (fake) Freebox.
+func TestStartFreeboxPairingAcceptsValidBaseURL(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newFreeboxFixture(t)
+
+	srv := startFakeFreebox(t, "app-token", 42, freebox.StatusPending)
+
+	rec := f.do(t, http.MethodPost,
+		"/api/v1/orgs/"+f.org.Slug+"/integrations/freebox/pair",
+		integrations.StartFreeboxPairingRequest{BaseURL: srv.URL},
+	)
+	r.Equal(http.StatusCreated, rec.Code, rec.Body.String())
+}
+
+// TestStartFreeboxPairingRejectsOverrideInSaaSMode covers the SaaS-mode half
+// of spec 2026-09-25-31: a shared worker never runs pairing against anything
+// but the documented default, since it is never the member's own network
+// (the same reasoning as spec 2026-09-25-22's docker gate).
+func TestStartFreeboxPairingRejectsOverrideInSaaSMode(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newFreeboxFixtureWithConfig(t, &config.Config{
+		Deployment: config.DeploymentConfig{Mode: config.DeploymentModeSaaS},
+	})
+
+	srv := startFakeFreebox(t, "app-token", 42, freebox.StatusPending)
+
+	rec := f.do(t, http.MethodPost,
+		"/api/v1/orgs/"+f.org.Slug+"/integrations/freebox/pair",
+		integrations.StartFreeboxPairingRequest{BaseURL: srv.URL},
+	)
+	r.Equal(http.StatusBadRequest, rec.Code, rec.Body.String())
+	r.Contains(rec.Body.String(), "not available on this deployment")
 }
 
 // CreateIntegration through the regular CRUD must accept the new freebox

@@ -200,6 +200,19 @@ same kinds of targets still are not:
 
 These are tracked separately.
 
+#### Freebox pairing's own contract
+
+Freebox pairing intentionally reaches into the member's own network — a home
+LAN address or `mafreebox.freebox.fr` is the normal case, not something to
+guard against — so it is exempt from the policy above by design, not by
+oversight. It still enforces its own URL contract on the `baseUrl` override:
+`https://`, or `http://` only for a private-range IP or a `*.freebox.fr`
+host; no userinfo; a port of 80, 443 or 8443. A URL outside that contract is
+rejected as a `VALIDATION_ERROR` before any request is made. On a SaaS
+deployment the override is disabled entirely — pairing only ever targets the
+documented default, `http://mafreebox.freebox.fr` — since a shared worker is
+never the member's own network. Self-hosted deployments are unaffected.
+
 ### Scope
 
 The policy is per process. A SaaS operator who needs a shared worker to reach

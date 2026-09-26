@@ -523,6 +523,14 @@ func (s *Service) checkCreateTypeConstraints(
 		return err
 	}
 
+	// A Freebox connection created directly through this generic CRUD (rather
+	// than via the dedicated pairing flow, e.g. an operator seeding a channel
+	// by hand) is subject to the same baseUrl contract as pairing itself —
+	// see validateFreeboxSettings.
+	if err := s.validateFreeboxSettings(connType, settings); err != nil {
+		return err
+	}
+
 	switch connType { //nolint:exhaustive // only Slack/Teams-bot/Twilio have creation-time constraints.
 	case models.ConnectionTypeSlack:
 		// Slack channels can only be created by the OAuth install flow (which
@@ -600,6 +608,47 @@ func (s *Service) egressGuard() *egress.Guard {
 	}
 
 	return s.registry.EgressGuard
+}
+
+// validateFreeboxSettings enforces the Freebox baseUrl contract (spec
+// 2026-09-25-31) on the effective (post-merge, for updates) settings of a
+// Freebox connection. A no-op for every other type, and a no-op when the
+// settings carry no baseUrl override — a Freebox connection's zero value
+// defaults to freebox.DefaultBaseURL, which is always valid.
+func (s *Service) validateFreeboxSettings(connType models.ConnectionType, settings models.JSONMap) error {
+	if connType != models.ConnectionTypeFreebox {
+		return nil
+	}
+
+	raw, _ := settings["baseUrl"].(string)
+
+	return s.validateFreeboxBaseURL(raw)
+}
+
+// validateFreeboxBaseURL is the single gate a Freebox baseUrl override passes
+// through on every path that can set it — pairing start
+// (StartFreeboxPairing) and the generic create/update settings merge
+// (validateFreeboxSettings): the URL-contract rules (freebox.ValidateBaseURL)
+// always, plus a SaaS-mode restriction that disables the override entirely.
+// Reaching the member's own box — and every authenticated call that follows
+// pairing — is meant to happen from their own network or a private-location
+// agent, never a shared SaaS worker (same reasoning as spec 2026-09-25-22's
+// docker gate). appConfig may be nil (unit tests that build the Service
+// without one, NewService(db, creds, nil, nil)), in which case the
+// deployment-mode restriction is skipped — only the URL contract applies.
+func (s *Service) validateFreeboxBaseURL(raw string) error {
+	trimmed := strings.TrimSpace(raw)
+
+	if err := freebox.ValidateBaseURL(trimmed); err != nil {
+		return fmt.Errorf("%w: %w", ErrInvalidSettings, err)
+	}
+
+	overridden := trimmed != "" && trimmed != freebox.DefaultBaseURL
+	if overridden && s.appConfig != nil && s.appConfig.Deployment.Mode == config.DeploymentModeSaaS {
+		return fmt.Errorf("%w: the baseUrl override is not available on this deployment", ErrInvalidSettings)
+	}
+
+	return nil
 }
 
 // validateTwilioSettings enforces the Twilio connection's settings invariants:
@@ -893,6 +942,14 @@ func (s *Service) applyUpdateSettings(
 		return vErr
 	}
 
+	// Same rule as creation: a PATCH that leaves (or newly sets) a Freebox
+	// baseUrl outside the allowed contract is rejected before it is
+	// persisted — otherwise an already-granted connection's stored app_token
+	// could be redirected at an arbitrary host by simply PATCHing settings.
+	if vErr := s.validateFreeboxSettings(conn.Type, models.JSONMap(merged)); vErr != nil {
+		return vErr
+	}
+
 	if encErr := s.applySettingsEncryption(ctx, conn, merged); encErr != nil {
 		return encErr
 	}
@@ -1035,6 +1092,10 @@ func (s *Service) StartFreeboxPairing(
 		}
 
 		return nil, err
+	}
+
+	if vErr := s.validateFreeboxBaseURL(req.BaseURL); vErr != nil {
+		return nil, vErr
 	}
 
 	settings := &models.FreeboxSettings{
