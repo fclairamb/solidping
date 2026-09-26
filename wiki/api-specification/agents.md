@@ -36,13 +36,24 @@ Request: raw body (`image/png` today, **sniffed** from the magic bytes rather
 than believed from a header), with the attachment key in `?topic=`. The topic is
 `<entity>/<uid>/<kind>`, e.g.
 `incidents/9a1eb273-0a95-4d6b-b967-9af076c1f8e8/screenshot`. Per-file size cap
-and a per-agent rate limit apply.
+and a rate limit apply; the limit (20/min) is per agent **and per topic entity**,
+so check-scoped uploads can never spend the budget an incident's onset upload
+needs (spec 2026-09-25-34).
 
 **Authorization never trusts the topic.** A prefix→authorizer registry resolves
 the topic's entity; the `incidents/` authorizer requires the incident to exist,
 derives the ORGANIZATION FROM THE INCIDENT ROW (never from the request), refuses
 an org agent whose org is not the incident's, and refuses an agent whose region
-does not serve the incident's check. An unregistered entity fails closed.
+does not serve the incident's check. The `checks/` authorizer (spec
+2026-09-25-34) applies the same chain to the check the topic names (live check,
+org from the check row, same-org agent, serving region). An unregistered entity
+fails closed.
+
+The stored details bag gets the region from the agent's enrolled row and the
+`checkUid` from the server's own data (the topic for `checks/`, the incident row
+for `incidents/`), which is what makes agent uploads show up on the check's
+screenshot listing. A `checks/<uid>/screenshot` upload appends and keeps the
+check's last 5; every other topic is replace-on-write.
 
 Responses: `201 {"fileUid": "…"}`; `401` for any authentication failure
 (deliberately indistinguishable — no agent-existence oracle); `403` for a topic
@@ -58,10 +69,17 @@ asked, over the WebSocket, by the `upload-request` server frame (spec
 ```
 
 Unsolicited and uncorrelated (no `id`, no response frame), so an agent that
-predates it ignores it. It is emitted **only** when a result carrying a capture
-marker opens or reopens an incident — never per failing result — and its `topic`
-is always generated from the incident row the server just wrote, never echoed
-from anything the agent sent. `captureId` IS echoed from the agent's marker,
+predates it ignores it. For an incident topic it is emitted **only** when a
+result carrying a capture marker opens or reopens an incident — never per
+failing result — and its `topic` is always generated from the incident row the
+server just wrote, never echoed from anything the agent sent. Since spec
+2026-09-25-34 a marker that no incident took (a failing run that opened
+nothing, or an `onDemand` "Capture now" marker on any run) asks for the upload
+under `checks/<uid>/screenshot`, built from the check the server is processing.
+The job frame carries `captureRequestedAt` for a "Capture now" run; the agent
+forces the capture and marks it `onDemand`. The server honors `onDemand` only
+when the job's row says its lease carried a request (`capture_claimed_at`);
+otherwise the marker is dropped before the incident pipeline sees the result. `captureId` IS echoed from the agent's marker,
 which is safe because it names a slot in that agent's own memory.
 
 Best-effort in both directions: no live connection, an evicted capture, or a

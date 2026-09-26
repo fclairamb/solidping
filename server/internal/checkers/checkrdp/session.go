@@ -275,9 +275,8 @@ func openRDPSessionLogged(
 			return tunneled.DialContext(ctx, "tcp", hostPort)
 		}
 
-		var d net.Dialer
-
-		return d.DialContext(ctx, "tcp", hostPort)
+		// Egress guard (spec 2026-09-25-19) on the untunneled path.
+		return checkerdef.GuardDialerOr(ctx, &net.Dialer{}).DialContext(ctx, "tcp", hostPort)
 	}
 
 	session.client = grdp.NewRdpClient(hostPort, width, height, dialer)

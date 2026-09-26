@@ -27,6 +27,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/egress"
 	"github.com/fclairamb/solidping/server/internal/integrations/freebox"
 	integrationk8s "github.com/fclairamb/solidping/server/internal/integrations/kubernetes"
 	"github.com/fclairamb/solidping/server/internal/integrations/twilio"
@@ -147,6 +148,14 @@ type Service struct {
 	// identity auto-match. Per-instance seam (see SetSlackIdentityClient) so
 	// parallel tests never race on a shared package-level override.
 	slackIdentityClient SlackIdentityClientFactory
+	// freeboxAllowedTestBaseURLs is a Go-level construction seam — see
+	// AllowFreeboxTestBaseURL — never reachable from an HTTP request body. A
+	// baseUrl exactly matching an entry here skips freebox.ValidateBaseURL
+	// (which would otherwise correctly reject it: an httptest.Server binds a
+	// loopback address, and no real Freebox lives there); every other value
+	// is still held to the real contract. Production traffic never populates
+	// this map.
+	freeboxAllowedTestBaseURLs map[string]bool
 }
 
 // NewService creates a new connections service. registry and cfg may be nil
@@ -512,6 +521,24 @@ func validateConnectionType(connType models.ConnectionType, settings models.JSON
 func (s *Service) checkCreateTypeConstraints(
 	ctx context.Context, connType models.ConnectionType, settings models.JSONMap,
 ) error {
+	// A bad or non-public sender URL (webhook/gotify/ntfy/matrix/googlechat/
+	// mattermost) must never reach storage — see validateSenderURLSettings.
+	// Runs for every type; it is a no-op for types outside
+	// senderURLSettingsKey (Slack/Teams-bot bot delivery, Twilio, PagerDuty,
+	// Pushover, …, which POST to a fixed vendor host, never a URL the caller
+	// supplies).
+	if err := s.validateSenderURLSettings(ctx, connType, settings); err != nil {
+		return err
+	}
+
+	// A Freebox connection created directly through this generic CRUD (rather
+	// than via the dedicated pairing flow, e.g. an operator seeding a channel
+	// by hand) is subject to the same baseUrl contract as pairing itself —
+	// see validateFreeboxSettings.
+	if err := s.validateFreeboxSettings(connType, settings); err != nil {
+		return err
+	}
+
 	switch connType { //nolint:exhaustive // only Slack/Teams-bot/Twilio have creation-time constraints.
 	case models.ConnectionTypeSlack:
 		// Slack channels can only be created by the OAuth install flow (which
@@ -529,6 +556,130 @@ func (s *Service) checkCreateTypeConstraints(
 	default:
 		return nil
 	}
+}
+
+// senderURLSettingsKey names, for each connection type whose sender POSTs to
+// a URL the org member configures, which Settings key holds it (spec
+// 2026-09-25-20). Slack/Discord bot delivery, Telegram, PagerDuty, Pushover
+// and Twilio all POST to a fixed vendor host and are deliberately absent —
+// there is no caller-supplied URL to validate.
+//
+//nolint:gochecknoglobals // constant lookup table
+var senderURLSettingsKey = map[models.ConnectionType]string{
+	models.ConnectionTypeWebhook:    "url",
+	models.ConnectionTypeGotify:     "server_url",
+	models.ConnectionTypeNtfy:       "serverUrl",
+	models.ConnectionTypeMatrix:     "homeserverUrl",
+	models.ConnectionTypeGoogleChat: "webhook_url",
+	models.ConnectionTypeMattermost: "webhook_url",
+}
+
+// validateSenderURLSettings validates the target URL of a notification sender
+// connection at create/update time (spec 2026-09-25-20), so a bad or
+// non-public URL never reaches storage — the same check
+// notifications.ValidateSenderURL runs again, defensively, inside the sender
+// itself right before delivery.
+//
+// A no-op for any type outside senderURLSettingsKey. ntfy defaults its server
+// URL to https://ntfy.sh when the key is absent — that absence is valid, not
+// a validation failure — and every listed sender already errors on an empty
+// URL at send time, so an empty/missing value here is left for the sender to
+// reject, not duplicated as a second error path here.
+func (s *Service) validateSenderURLSettings(
+	ctx context.Context, connType models.ConnectionType, settings models.JSONMap,
+) error {
+	key, ok := senderURLSettingsKey[connType]
+	if !ok {
+		return nil
+	}
+
+	raw, _ := settings[key].(string)
+	if raw == "" {
+		return nil
+	}
+
+	if err := notifications.ValidateSenderURL(ctx, s.egressGuard(), raw); err != nil {
+		return fmt.Errorf("%w: %w", ErrInvalidSettings, err)
+	}
+
+	return nil
+}
+
+// egressGuard returns the process's outbound-connection policy for
+// notification sender URLs (services.Registry.EgressGuard), or nil — "no
+// policy", every syntactically valid http(s) URL passes — when this Service
+// was built without a registry, the construction unit tests use
+// (NewService(db, creds, nil, nil)).
+func (s *Service) egressGuard() *egress.Guard {
+	if s.registry == nil {
+		return nil
+	}
+
+	return s.registry.EgressGuard
+}
+
+// validateFreeboxSettings enforces the Freebox baseUrl contract (spec
+// 2026-09-25-31) on the effective (post-merge, for updates) settings of a
+// Freebox connection. A no-op for every other type, and a no-op when the
+// settings carry no baseUrl override — a Freebox connection's zero value
+// defaults to freebox.DefaultBaseURL, which is always valid.
+func (s *Service) validateFreeboxSettings(connType models.ConnectionType, settings models.JSONMap) error {
+	if connType != models.ConnectionTypeFreebox {
+		return nil
+	}
+
+	raw, _ := settings["baseUrl"].(string)
+
+	return s.validateFreeboxBaseURL(raw)
+}
+
+// validateFreeboxBaseURL is the single gate a Freebox baseUrl override passes
+// through on every path that can set it — pairing start
+// (StartFreeboxPairing) and the generic create/update settings merge
+// (validateFreeboxSettings): the URL-contract rules (freebox.ValidateBaseURL)
+// always, plus a SaaS-mode restriction that disables the override entirely.
+// Reaching the member's own box — and every authenticated call that follows
+// pairing — is meant to happen from their own network or a private-location
+// agent, never a shared SaaS worker (same reasoning as spec 2026-09-25-22's
+// docker gate). appConfig may be nil (unit tests that build the Service
+// without one, NewService(db, creds, nil, nil)), in which case the
+// deployment-mode restriction is skipped — only the URL contract applies.
+func (s *Service) validateFreeboxBaseURL(raw string) error {
+	trimmed := strings.TrimSpace(raw)
+
+	if !s.freeboxAllowedTestBaseURLs[trimmed] {
+		if err := freebox.ValidateBaseURL(trimmed); err != nil {
+			return fmt.Errorf("%w: %w", ErrInvalidSettings, err)
+		}
+	}
+
+	overridden := trimmed != "" && trimmed != freebox.DefaultBaseURL
+	if overridden && s.appConfig != nil && s.appConfig.Deployment.Mode == config.DeploymentModeSaaS {
+		return fmt.Errorf("%w: the baseUrl override is not available on this deployment", ErrInvalidSettings)
+	}
+
+	return nil
+}
+
+// AllowFreeboxTestBaseURL registers rawURL as an EXACT baseUrl value this
+// Service accepts without going through freebox.ValidateBaseURL's
+// private-IP/port contract. It is a Go-level construction seam, never
+// reachable from an HTTP request body — the same shape as
+// importers.Handler.WithBetterStackBaseURL — that exists only so a test can
+// stand up a fresh httptest.Server (a loopback host on a random port, which
+// is never where a real Freebox lives and the real contract correctly
+// rejects) and let pairing reach it. Every OTHER value — including any other
+// loopback or special-range address — is still held to the full contract, so
+// this seam cannot be used to smuggle a general bypass. It mutates s in
+// place (unlike the Service's other With* constructors) because tests must
+// register the URL only after starting the fake server, by which point the
+// fixture has already wired this *Service into a Handler/router by pointer.
+func (s *Service) AllowFreeboxTestBaseURL(rawURL string) {
+	if s.freeboxAllowedTestBaseURLs == nil {
+		s.freeboxAllowedTestBaseURLs = map[string]bool{}
+	}
+
+	s.freeboxAllowedTestBaseURLs[strings.TrimSpace(rawURL)] = true
 }
 
 // validateTwilioSettings enforces the Twilio connection's settings invariants:
@@ -816,6 +967,20 @@ func (s *Service) applyUpdateSettings(
 		}
 	}
 
+	// Same rule as creation: a PATCH that leaves (or newly sets) a non-public
+	// sender URL on the merged settings is rejected before it is persisted.
+	if vErr := s.validateSenderURLSettings(ctx, conn.Type, models.JSONMap(merged)); vErr != nil {
+		return vErr
+	}
+
+	// Same rule as creation: a PATCH that leaves (or newly sets) a Freebox
+	// baseUrl outside the allowed contract is rejected before it is
+	// persisted — otherwise an already-granted connection's stored app_token
+	// could be redirected at an arbitrary host by simply PATCHing settings.
+	if vErr := s.validateFreeboxSettings(conn.Type, models.JSONMap(merged)); vErr != nil {
+		return vErr
+	}
+
 	if encErr := s.applySettingsEncryption(ctx, conn, merged); encErr != nil {
 		return encErr
 	}
@@ -960,6 +1125,10 @@ func (s *Service) StartFreeboxPairing(
 		return nil, err
 	}
 
+	if vErr := s.validateFreeboxBaseURL(req.BaseURL); vErr != nil {
+		return nil, vErr
+	}
+
 	settings := &models.FreeboxSettings{
 		BaseURL:    req.BaseURL,
 		AppID:      freebox.DefaultAppID,
@@ -1029,6 +1198,16 @@ func (s *Service) CheckFreeboxPairingStatus(
 ) (*FreeboxPairingStatusResponse, error) {
 	conn, settings, err := s.loadPairingChannel(ctx, orgSlug, connectionUID)
 	if err != nil {
+		return nil, err
+	}
+
+	// A row can predate this validator (spec 2026-09-25-31), or be paired
+	// while the policy was different (e.g. a since-tightened SaaS gate) —
+	// re-check the stored baseUrl before ever dialing it, so a URL that would
+	// be rejected today surfaces as the same clean VALIDATION_ERROR a fresh
+	// pairing attempt gets, never a raw fetch error/timeout from actually
+	// connecting to it.
+	if err := s.validateFreeboxBaseURL(settings.BaseURL); err != nil {
 		return nil, err
 	}
 

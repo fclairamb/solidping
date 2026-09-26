@@ -13,6 +13,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/httpx"
+	"github.com/fclairamb/solidping/server/internal/securityheaders"
 )
 
 // CookieAuthToken is the name of the cookie used for storing the access token.
@@ -208,6 +209,20 @@ func (h *Handler) Logout(writer http.ResponseWriter, req *http.Request) error {
 
 		// The caller's own session (and cookie) survive — this is not a logout.
 		return h.WriteJSON(writer, http.StatusOK, resp)
+	}
+
+	// Default logout: revoke the caller's own session row before clearing the
+	// cookie, so a captured refresh token (also returned in the login/logout
+	// JSON body) cannot keep a live session after "logout" (spec
+	// 2026-09-25-24). A PAT hitting this endpoint has no RefreshUID and no
+	// session row to delete — behave as before for it.
+	if claims.RefreshUID != "" {
+		if logoutErr := h.svc.LogoutSession(req.Context(), claims.UserUID, claims.RefreshUID); logoutErr != nil {
+			// A failed DB delete must not trap the user in a logged-in UI —
+			// still clear the cookie and return 200; just log it loudly.
+			slog.ErrorContext(req.Context(), "Failed to delete session on logout",
+				"error", logoutErr, "userUID", claims.UserUID, "refreshUID", claims.RefreshUID)
+		}
 	}
 
 	// Clear cookie
@@ -1123,6 +1138,20 @@ func (h *Handler) UpdateOrgSettings(writer http.ResponseWriter, req *http.Reques
 			)
 		}
 
+		if errors.Is(err, securityheaders.ErrInvalidEmbedOrigin) ||
+			errors.Is(err, securityheaders.ErrTooManyEmbedOrigins) {
+			// 400, like this endpoint's other refusals and its OpenAPI
+			// contract, with the field-level shape of a validation error so
+			// the dashboard can show the reason next to the field.
+			return h.WriteJSON(writer, http.StatusBadRequest, base.ValidationError{
+				Title: "Invalid status page embed origins",
+				Code:  string(base.ErrorCodeValidationError),
+				Fields: []base.ValidationErrorField{
+					{Name: "statusPageAllowedEmbedOrigins", Message: err.Error()},
+				},
+			})
+		}
+
 		return h.WriteInternalError(writer, req, err)
 	}
 
@@ -1324,6 +1353,9 @@ func (h *Handler) Disable2FA(writer http.ResponseWriter, req *http.Request) erro
 // handle2FAError handles errors from 2FA endpoints.
 func (h *Handler) handle2FAError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
+	case errors.Is(err, ErrRateLimited):
+		return h.WriteErrorErr(writer, request, http.StatusTooManyRequests, base.ErrorCodeRateLimited,
+			"Too many verification attempts, please try again later", err)
 	case errors.Is(err, ErrInvalid2FACode):
 		return h.WriteErrorErr(
 			writer, request, http.StatusUnauthorized, base.ErrorCodeInvalid2FACode, "Invalid 2FA code", err)

@@ -54,20 +54,33 @@ resolved open questions); a package whose autoupdate PRs nobody merges earns the
 
 ## The rule that breaks the package silently
 
-The bot matches release assets by regex:
+The bot matches release assets by regex. As of spec 2026-09-25-08, releases publish the
+Linux server binaries compressed only (`solidping-linux-amd64.gz` /
+`solidping-linux-arm64.gz` — the bare, uncompressed names 404 from the first release that
+shipped this), so the patterns and source resource have to match the `.gz` names, not the
+bare ones the draft manifest in `2026-09-16-04-yunohost-native-package.md` was written
+against:
 
 ```toml
-autoupdate.asset.amd64 = "solidping-linux-amd64$"
-autoupdate.asset.arm64 = "solidping-linux-arm64$"
+autoupdate.asset.amd64 = "solidping-linux-amd64\.gz$"
+autoupdate.asset.arm64 = "solidping-linux-arm64\.gz$"
 ```
 
-**A SolidPing release that renames the Linux release assets breaks that matching.** The
-bot does not fail loudly — it just stops producing a usable PR, and the package quietly
-falls behind. Any change to the asset names produced by the `server-release` job in
-`.github/workflows/ci.yml` (the `OUT` map that names each published binary) must be
-followed by a manual bump of `solidping_ynh`:
-fix the two `autoupdate.asset.*` patterns and the `[resources.sources.main]` URLs in the
-same change.
+`[resources.sources.main]` needs the matching URL (`…/solidping-linux-amd64.gz`) plus a
+`format`/`extract` pair that decompresses a single gzipped file rather than the
+`format = "whatever"` / `extract = false` (bare-binary, rename-only) pair the draft
+manifest used — confirm the exact YunoHost packaging-v2 source-resource support for a
+lone `.gz` (versus a `.tar.gz`) when `scripts/install` actually gets written; if the
+resource system has no built-in single-file-gzip format, `install` has to `gunzip` the
+downloaded asset itself instead.
+
+**A SolidPing release that renames the Linux release assets, or changes how they're
+compressed, breaks that matching.** The bot does not fail loudly — it just stops
+producing a usable PR, and the package quietly falls behind. Any change to the asset
+names or compression produced by the `server-release` job in `.github/workflows/ci.yml`
+(the `OUT` map that names each published binary, and the compression step right after it)
+must be followed by a manual bump of `solidping_ynh`: fix the two `autoupdate.asset.*`
+patterns and the `[resources.sources.main]` URLs/format in the same change.
 
 The same applies if a release ever stops publishing `solidping-linux-arm64`: the manifest
 declares both architectures, and an arm64-less release makes the package uninstallable on

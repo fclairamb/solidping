@@ -104,12 +104,21 @@ func (pm *ProcessingStats) report() {
 	}
 
 	stats := ReportedStats{
-		TotalChecks:     pm.TotalChecks,
-		FailedChecks:    pm.FailedChecks,
+		TotalChecks:  pm.TotalChecks,
+		FailedChecks: pm.FailedChecks,
+		// AverageDuration is documented (and logged) in milliseconds, so it's
+		// reported as-is: AverageDurationMs already holds milliseconds.
 		AverageDuration: pm.AverageDurationMs.Rate(),
-		AverageDelay:    pm.AverageDelayMs.Rate(),
-		FreeRunners:     freeRunners,
-		Parked:          parked,
+		// AverageDelay is documented (and logged) in seconds, but
+		// AverageDelayMs — like AverageDurationMs — tracks milliseconds
+		// (AddMetric feeds it delay.Milliseconds()). Converting here is the
+		// fix for the "averageDelaySeconds≈250000" bogus log figure (spec
+		// 2026-09-25-07 item 4): that was the millisecond EWMA value (a real
+		// ~250s average delay, matching the GetJobWait lateness this spec
+		// fixes) logged under a "Seconds" label with no conversion applied.
+		AverageDelay: pm.AverageDelayMs.Rate() / 1000,
+		FreeRunners:  freeRunners,
+		Parked:       parked,
 	}
 
 	pm.logger.Info(

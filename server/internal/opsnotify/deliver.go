@@ -47,6 +47,7 @@ var ErrMediumUnavailable = errors.New("this instance cannot deliver over that me
 // Human labels for the notice kinds that travel this transport.
 const (
 	labelWatchdogDigest = "Platform watchdog digest"
+	labelWatchdogRegion = "Platform watchdog region alert"
 	labelOperatorNotice = "Operator notice"
 )
 
@@ -57,8 +58,11 @@ const (
 // logs (or an alert rule matching them) should not have the watchdog silently
 // start reporting itself under a name that never mentions the watchdog.
 func noticeLabel(event string) string {
-	if event == EventWatchdogDigest {
+	switch event {
+	case EventWatchdogDigest:
 		return labelWatchdogDigest
+	case EventWatchdogRegion:
+		return labelWatchdogRegion
 	}
 
 	return labelOperatorNotice

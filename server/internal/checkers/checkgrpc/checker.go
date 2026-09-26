@@ -101,7 +101,12 @@ func (c *GRPCChecker) Execute(
 
 	conn, err := grpc.NewClient(target,
 		grpc.WithTransportCredentials(transportCredentials(cfg, exec.timer)),
-		grpc.WithContextDialer(instrumentedDialer(exec.timer, tunnelDialer)),
+		// gRPC dials with a context of its own, so the egress guard (spec
+		// 2026-09-25-19) is bound here, from the execution's context, as a
+		// Control hook on the direct dialer.
+		grpc.WithContextDialer(instrumentedDialer(
+			exec.timer, tunnelDialer, checkerdef.GuardedNetDialer(ctx, &net.Dialer{}),
+		)),
 	)
 	if err != nil {
 		return &checkerdef.Result{

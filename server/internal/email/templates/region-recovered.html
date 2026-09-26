@@ -1,0 +1,43 @@
+{{define "subject"}}Region {{.RegionName}} is back: your checks resumed{{end}}
+{{define "preheader"}}The region was offline for {{.Duration}}. Your checks are running again.{{end}}
+{{template "base.html" .}}
+{{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "recovered" "Label" "Region back online"}}{{end}}
+{{define "content"}}
+    <h1>Region {{.RegionName}} is back</h1>
+    <p>Hi,</p>
+    <p>
+      {{if .Moved}}The checks of {{.OrgName}} that ran only from <strong>{{.RegionName}}</strong>
+      no longer depend on it and are being checked again.{{else}}The SolidPing region
+      <strong>{{.RegionName}}</strong> is back online, and the checks of {{.OrgName}} that
+      ran only from it resumed.{{end}}
+    </p>
+    <table class="metric" role="presentation" width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+            <td align="center">
+                <span class="metric-value">{{.Duration}}</span>
+                <span class="metric-label">Offline</span>
+            </td>
+        </tr>
+    </table>
+    <table class="details-table" role="presentation" cellpadding="0" cellspacing="0">
+        <tr><td class="label">Offline since</td><td class="value">{{.Since}}</td></tr>
+        <tr><td class="label">Back at</td><td class="value">{{.RecoveredAt}}</td></tr>
+    </table>
+    {{if .ChecksURL}}
+    <div class="cta-wrap">{{template "button" dict "URL" .ChecksURL "Label" "Open your checks" "Variant" "primary"}}</div>
+    {{end}}
+{{end}}
+{{define "text"}}Region {{.RegionName}} is back
+
+Hi,
+
+{{if .Moved}}The checks of {{.OrgName}} that ran only from {{.RegionName}} no longer
+depend on it and are being checked again.{{else}}The SolidPing region {{.RegionName}} is back online, and the checks of
+{{.OrgName}} that ran only from it resumed.{{end}}
+
+Offline for: {{.Duration}}
+Offline since: {{.Since}}
+Back at: {{.RecoveredAt}}
+{{if .ChecksURL}}
+{{.ChecksURL}}
+{{end}}{{end}}

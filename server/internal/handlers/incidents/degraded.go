@@ -33,6 +33,10 @@ const (
 	keyDegradedWindowFrom     = "degraded_window_from"
 	keyDegradedWindowTo       = "degraded_window_to"
 	keyEscalatedToIncidentUID = "escalated_to_incident_uid"
+	// keyDegradedTurnedOff marks a degraded incident closed because degraded
+	// detection was turned off, so the resolved notification can say so instead
+	// of "steady again". Read by notifications.DegradedInfoFor.
+	keyDegradedTurnedOff = "degraded_turned_off"
 )
 
 // DegradedSnapshot is what the evaluator knew at the instant it decided. Every
@@ -280,6 +284,36 @@ func (s *Service) EscalateDegradedIncident(
 	outage.CausedByIncidentUID = &degradedIncident.UID
 
 	return nil
+}
+
+// ResolveDegradedOnDisable closes the open degraded incident of a check whose
+// degraded detection was just turned off (spec 2026-09-24-08). Called in the
+// same request as the write that turned it off (checks.Service.UpdateCheck),
+// because the evaluator only sweeps checks with degraded detection on and would
+// never close it.
+//
+// The incident resolves with `resolution_type = "disabled"` and its details
+// carry `degraded_turned_off`, so the history and the resolved notification say
+// the detection was turned off rather than that the check recovered. No open
+// incident is a no-op.
+func (s *Service) ResolveDegradedOnDisable(ctx context.Context, checkUID string) error {
+	open, err := s.FindActiveDegradedIncident(ctx, checkUID)
+	if err != nil {
+		return err
+	}
+
+	if open == nil {
+		return nil
+	}
+
+	details := models.JSONMap{}
+	for key, value := range open.Details {
+		details[key] = value
+	}
+
+	details[keyDegradedTurnedOff] = true
+
+	return s.closeDegradedIncident(ctx, open, s.clock.Now(), models.ResolutionTypeDisabled, details)
 }
 
 // closeDegradedIncident is the shared resolve path for both auto and escalated

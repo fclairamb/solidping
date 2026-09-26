@@ -8,6 +8,7 @@ import (
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/pgdialect"
 
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
@@ -64,6 +65,7 @@ func (s *Service) ListChecksWithStaleJobRegions(ctx context.Context) ([]*models.
 		Where("c.deleted_at IS NULL").
 		Where("c.enabled = ?", true).
 		Where("coalesce(array_length(c.regions, 1), 0) > 0").
+		Where("c.type NOT IN (?)", bun.List(checkerdef.PassiveCheckTypes())).
 		Where("(cj.region IS NULL OR NOT (cj.region = ANY(c.regions)))").
 		Scan(ctx, &uids); err != nil {
 		return nil, fmt.Errorf("list checks with stale job regions: %w", err)
@@ -78,13 +80,33 @@ func (s *Service) ListChecksWithStaleJobRegions(ctx context.Context) ([]*models.
 		TableExpr("checks AS c").
 		Where("c.deleted_at IS NULL").
 		Where("c.enabled = ?", true).
+		Where("c.type NOT IN (?)", bun.List(checkerdef.PassiveCheckTypes())).
 		Where("EXISTS (SELECT 1 FROM unnest(c.regions) AS r WHERE NOT EXISTS ("+
 			"SELECT 1 FROM check_jobs cj WHERE cj.check_uid = c.uid AND cj.region = r))").
 		Scan(ctx, &missing); err != nil {
 		return nil, fmt.Errorf("list checks missing region jobs: %w", err)
 	}
 
-	return s.loadChecksByUIDs(ctx, mergeUIDs(uids, missing))
+	// (c) a passive check (spec 2026-09-25-04) whose jobs are not exactly one
+	// NULL-region row: it owns a regional job, or it has no NULL-region job at
+	// all. Passive checks are left out of (a) and (b) on purpose — their
+	// `regions` array is not their job layout, and reading it is what used to
+	// recreate regional jobs at every start.
+	var passive []string
+
+	if err := s.db.NewSelect().
+		ColumnExpr("c.uid").
+		TableExpr("checks AS c").
+		Where("c.deleted_at IS NULL").
+		Where("c.enabled = ?", true).
+		Where("c.type IN (?)", bun.List(checkerdef.PassiveCheckTypes())).
+		Where("(EXISTS (SELECT 1 FROM check_jobs cj WHERE cj.check_uid = c.uid AND cj.region IS NOT NULL)"+
+			" OR NOT EXISTS (SELECT 1 FROM check_jobs cj WHERE cj.check_uid = c.uid AND cj.region IS NULL))").
+		Scan(ctx, &passive); err != nil {
+		return nil, fmt.Errorf("list passive checks with regional jobs: %w", err)
+	}
+
+	return s.loadChecksByUIDs(ctx, mergeUIDs(mergeUIDs(uids, missing), passive))
 }
 
 // MigrateCheckRegionSlug rewrites `checks.regions` in ONE transaction,

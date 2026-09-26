@@ -16,6 +16,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/httpx"
+	"github.com/fclairamb/solidping/server/internal/securityheaders"
 	"github.com/fclairamb/solidping/server/internal/statuspagecache"
 	"github.com/fclairamb/solidping/server/internal/statuspagelock"
 )
@@ -310,6 +311,7 @@ func (h *Handler) writeLandingStatus(
 	writer http.ResponseWriter, status int, title, body, pageURL string,
 ) error {
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+	securityheaders.ApplyBaseline(writer.Header())
 	writer.WriteHeader(status)
 
 	link := ""

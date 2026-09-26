@@ -4,6 +4,7 @@ import (
 	"math"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/uptimebar"
 )
 
@@ -43,6 +44,11 @@ type Input struct {
 	// ExcludeMaintenance subtracts probes recorded under an active maintenance
 	// window from both the numerator and the denominator.
 	ExcludeMaintenance bool
+	// ExpectedProbes is how many results the scope should have produced over
+	// the elapsed part of the window: Σ elapsed / period × max(1, regions) per
+	// check (models.Check.ExpectedProbesBetween). Zero means "unknown", and
+	// then no coverage is applied — the pre-2026-09-25-02 behavior.
+	ExpectedProbes float64
 }
 
 // Status is the computed objective state for one window.
@@ -68,6 +74,12 @@ type Status struct {
 	BudgetTotalSeconds     int64
 	BudgetConsumedSeconds  int64
 	BudgetRemainingSeconds int64
+	// DataCoverage is measured probes ÷ expected probes over the elapsed
+	// window, clamped to [0, 1] (spec 2026-09-25-02). Nil when no expectation
+	// was supplied. Consumption is computed over elapsed × coverage — the time
+	// actually measured — so a region that went dark for a week neither
+	// spends budget nor pretends that week was perfect.
+	DataCoverage *float64
 	// ExcludedMaintenanceSeconds is how much elapsed time was recorded under an
 	// active maintenance window. Reported even when ExcludeMaintenance is off,
 	// because a partially-covered month (tagging only accrues from deploy day)
@@ -146,6 +158,10 @@ func Compute(input *Input) Status {
 	budgetTotal := allowedFraction * monitored
 	out.BudgetTotalSeconds = int64(math.Round(budgetTotal))
 
+	if coverage, covered := models.Coverage(raw.Total, input.ExpectedProbes); covered {
+		out.DataCoverage = &coverage
+	}
+
 	pct, ok := stats.AvailabilityPct()
 	if !ok {
 		// No countable probe. Attainment stays nil, the budget stays untouched,
@@ -163,7 +179,15 @@ func Compute(input *Input) Status {
 		failedFraction = 0
 	}
 
-	consumed := failedFraction * elapsed
+	// Budget is spent over MEASURED time only (spec 2026-09-25-02). Without
+	// this, a silent week stretched the failure ratio across wall-clock time
+	// the scope was never measured in.
+	measured := elapsed
+	if out.DataCoverage != nil {
+		measured = elapsed * *out.DataCoverage
+	}
+
+	consumed := failedFraction * measured
 	out.BudgetConsumedSeconds = int64(math.Round(consumed))
 	out.BudgetRemainingSeconds = out.BudgetTotalSeconds - out.BudgetConsumedSeconds
 

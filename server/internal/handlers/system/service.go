@@ -10,6 +10,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/uptrace/bun"
+
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
@@ -191,13 +194,14 @@ func applyActivationEvent(row *ActivationFunnelRow, event *models.Event) {
 	case models.EventTypeOrgActivationFirstIncidentPaged:
 		row.FirstIncidentAt = &occurredAt
 	case models.EventTypeCheckCreated, models.EventTypeCheckUpdated,
-		models.EventTypeCheckDeleted,
+		models.EventTypeCheckDeleted, models.EventTypeCheckPlacementChanged,
 		models.EventTypeIncidentCreated, models.EventTypeIncidentResolved,
 		models.EventTypeIncidentEscalated, models.EventTypeIncidentReopened,
 		models.EventTypeIncidentAcknowledged, models.EventTypeIncidentUnacknowledged,
 		models.EventTypeIncidentSnoozed, models.EventTypeIncidentUnsnoozed,
 		models.EventTypeIncidentEscalationFailed, models.EventTypeIncidentComment,
 		models.EventTypeIncidentRolledUp, models.EventTypeIncidentRollupDetached,
+		models.EventTypeIncidentMonitoringInterrupted, models.EventTypeIncidentMonitoringResumed,
 		models.EventTypeStatusUpdateCreated, models.EventTypeStatusUpdateUpdated,
 		models.EventTypeStatusUpdateDeleted,
 		models.EventTypeStatusPageIncidentPublished,
@@ -205,6 +209,8 @@ func applyActivationEvent(row *ActivationFunnelRow, event *models.Event) {
 		models.EventTypeStatusPageIncidentResolved,
 		models.EventTypeStatusSubscriberDisabled,
 		models.EventTypeStatusPageCustomDomainDemoted,
+		models.EventTypeRegionOffline, models.EventTypeRegionRecovered,
+		models.EventTypeAgentConnected, models.EventTypeAgentDisconnected,
 		models.EventTypeAuthLoginSucceeded, models.EventTypeAuthLoginFailed,
 		models.EventTypeAuthLogout,
 		models.EventTypeAuthTokenCreated, models.EventTypeAuthTokenRevoked,
@@ -695,6 +701,9 @@ func (s *Service) LaneLoad(ctx context.Context) ([]WorkerLaneLoad, error) {
 		Join("JOIN checks AS c ON c.uid = cj.check_uid").
 		Where("c.enabled = ?", true).
 		Where("c.deleted_at IS NULL").
+		// Passive jobs are never offered to a check worker: the jobs node
+		// evaluates them (spec 2026-09-25-04).
+		Where("c.type NOT IN (?)", bun.List(checkerdef.PassiveCheckTypes())).
 		Scan(ctx, &jobs); err != nil {
 		return nil, fmt.Errorf("list check jobs: %w", err)
 	}

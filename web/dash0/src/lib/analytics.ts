@@ -11,17 +11,40 @@
  * no request to any PostHog host. There is deliberately no `<script>` tag in
  * `index.html`.
  *
- * # No field obfuscation
+ * # No field obfuscation, but no credentials either
  *
  * Autocapture, session replay and event properties are all captured in the
- * clear — no text masking, no input masking, no URL/path scrubbing. A masked
+ * clear — no text masking, no input masking, no URL templating. A masked
  * or scrubbed event stream is not readable: reconstructing what a session
  * actually did from a redacted `elements_chain` or a templated pathname costs
- * more than the analytics are worth. The distinct id is still pseudonymous
+ * more than the analytics are worth.
+ *
+ * That decision is about UI content. It never covered credentials: session
+ * tokens, one-time codes and single-use links in URLs are replaced with
+ * `REDACTED` by the hooks in `./analytics-redaction` (spec 2026-09-25-11),
+ * and network header/body capture is pinned off, both wired in
+ * `initAnalytics` below. Credentials rendered as page text are NOT masked.
+ * The distinct id is still pseudonymous
  * and built from UUIDs only (see `distinctId` below) — it must match
  * `analytics.DistinctID` in `server/internal/analytics/analytics.go` exactly
  * so browser sessions and server-side events stitch together.
  */
+
+import { redactCapturedNetworkRequest, redactCredentialsBeforeSend } from "./analytics-redaction";
+
+/**
+ * `$exception` events matched here are dropped outright in `before_send` —
+ * never redacted, never sent, never counted. One entry per known source,
+ * with a comment on where it comes from, so a hit can be traced back to its
+ * cause without re-deriving it.
+ */
+export const KNOWN_EXCEPTION_NOISE: readonly RegExp[] = [
+  // CefSharp-based Microsoft Safe Links-style email link scanners opening
+  // forgot-password/login links overnight, ~00:45-03:00 UTC (investigated
+  // 2026-09-25, spec 2026-09-25-13): a scanner-side bug, not a SolidPing one.
+  // Left uncaught it drowns real errors once exception autocapture is on.
+  /^Object Not Found Matching Id:\d+, MethodName:\w+, ParamCount:\d+$/,
+];
 
 /** Browser-safe PostHog settings, as returned by GET /api/v1/config. */
 export interface PostHogPublicConfig {
@@ -141,6 +164,7 @@ interface PostHogLike {
   identify: (id: string, properties?: Record<string, unknown>) => void;
   reset: () => void;
   capture: (event: string, properties?: Record<string, unknown>) => void;
+  captureException: (error: unknown, properties?: Record<string, unknown>) => void;
 }
 
 let client: PostHogLike | null = null;
@@ -148,6 +172,86 @@ let loading: Promise<PostHogLike | null> | null = null;
 // Remembered so identify() calls that land before the async import resolves
 // are replayed once the client is up, rather than dropped.
 let pendingIdentity: string | null = null;
+
+/**
+ * Error-boundary de-duplication (spec 2026-09-25-13). `ErrorBoundary` and
+ * `RouteErrorFallback` each keep their `console.error(...)` call (feeds the
+ * bug-report ring buffer, see error-boundary.tsx) AND call
+ * {@link captureException} explicitly, so the PostHog event carries
+ * `componentStack` / `routeId`. With `capture_console_errors: true` below,
+ * that same `console.error` call is ALSO autocaptured by posthog-js as a
+ * second, poorer `$exception` event for the identical error (mechanism
+ * `handled: false`, no boundary context) — so `captureException` records a
+ * short-lived signature of every error it reports explicitly, and
+ * {@link dedupeAutocapturedBoundaryExceptions} drops the matching
+ * autocaptured duplicate that follows right behind it. An autocaptured
+ * exception that does not match anything just reported explicitly — the
+ * overwhelming majority: real unhandled errors, real `console.error` calls
+ * anywhere else in the app — passes through untouched.
+ */
+const RECENT_EXPLICIT_EXCEPTIONS_LIMIT = 5;
+const recentExplicitExceptionSignatures: string[] = [];
+
+function exceptionSignature(type: unknown, value: unknown): string {
+  return `${typeof type === "string" ? type : ""}\u0000${typeof value === "string" ? value : ""}`;
+}
+
+function rememberExplicitException(error: unknown): void {
+  const type = error instanceof Error ? error.name : "Error";
+  const value = error instanceof Error ? error.message : String(error);
+  recentExplicitExceptionSignatures.push(exceptionSignature(type, value));
+  if (recentExplicitExceptionSignatures.length > RECENT_EXPLICIT_EXCEPTIONS_LIMIT) {
+    recentExplicitExceptionSignatures.shift();
+  }
+}
+
+interface ExceptionEventLike {
+  event?: string;
+  properties?: Record<string, unknown>;
+}
+
+/**
+ * `before_send` hook: drops the autocaptured duplicate of an exception this
+ * module already reported explicitly via {@link captureException}. See the
+ * comment above {@link recentExplicitExceptionSignatures} for why. Runs
+ * after redaction (it only reads `type`/`value`/`mechanism`, already
+ * redacted or not — matching is unaffected either way).
+ */
+export function dedupeAutocapturedBoundaryExceptions<T extends ExceptionEventLike>(
+  event: T | null,
+): T | null {
+  if (!event || event.event !== "$exception") return event;
+  const list = event.properties?.$exception_list as
+    | Array<{ type?: unknown; value?: unknown; mechanism?: { handled?: boolean } }>
+    | undefined;
+  const first = list?.[0];
+  if (!first || first.mechanism?.handled !== false) return event;
+
+  const sig = exceptionSignature(first.type, first.value);
+  const idx = recentExplicitExceptionSignatures.indexOf(sig);
+  if (idx < 0) return event;
+
+  recentExplicitExceptionSignatures.splice(idx, 1);
+  return null;
+}
+
+function isKnownExceptionNoise(message: unknown): boolean {
+  return typeof message === "string" && KNOWN_EXCEPTION_NOISE.some((pattern) => pattern.test(message));
+}
+
+/**
+ * `before_send` hook: drops `$exception` events whose message matches a
+ * known-noise pattern (see {@link KNOWN_EXCEPTION_NOISE}). Every other event
+ * passes through untouched.
+ */
+export function dropKnownExceptionNoise<T extends ExceptionEventLike>(event: T | null): T | null {
+  if (!event || event.event !== "$exception") return event;
+  const list = event.properties?.$exception_list as Array<{ value?: unknown }> | undefined;
+  if (Array.isArray(list) && list.some((exception) => isKnownExceptionNoise(exception?.value))) {
+    return null;
+  }
+  return event;
+}
 
 /**
  * Loads and initializes posthog-js — and ONLY then. Returns false without
@@ -179,6 +283,20 @@ export async function initAnalytics(config: PublicConfig | null | undefined): Pr
           // events; the backend sends an explicit host when one is configured.
           api_host: settings.host || "/ingest",
           autocapture: true,
+          // Exception autocapture (spec 2026-09-25-13): the Solidping PostHog
+          // project had never received a single $exception event — replays
+          // showed sessions with real errors, but plain `window.onerror` /
+          // `unhandledrejection` autocapture never sees the app's actual
+          // failure mode, a `console.error` call (React error boundaries,
+          // failed background requests). Code config is the source of truth
+          // here — NOT the project's `autocapture_exceptions_opt_in` toggle —
+          // so a self-hosted install with its own PostHog project behaves
+          // the same.
+          capture_exceptions: {
+            capture_unhandled_errors: true,
+            capture_unhandled_rejections: true,
+            capture_console_errors: true,
+          },
           // Session replay, fully unmasked. It exists for ONE question the
           // event stream cannot answer — where a first-run user stalls before
           // their first check — and the 2026-09-09 signup is why:
@@ -188,6 +306,31 @@ export async function initAnalytics(config: PublicConfig | null | undefined): Pr
           // records layout, cursor, scroll, typed values and clicked text
           // as-is.
           disable_session_recording: false,
+          // ...except credentials. The replay network plugin records the
+          // document's navigation entry with its ORIGINAL URL, so the OAuth
+          // handoff's `?access_token=…&refresh_token=…` reached PostHog even
+          // though main.tsx strips it before we load. posthog-js also runs the
+          // replay Meta `href` through this hook. See ./analytics-redaction.
+          session_recording: {
+            maskCapturedNetworkRequestFn: redactCapturedNetworkRequest,
+            // Pinned off whatever the PostHog project says (a client-side
+            // `false` wins over remote config). Supplying the mask fn above
+            // disables posthog-js's own body scrubber, so bodies and headers
+            // must never be recorded unless a real scrubber is added first.
+            recordHeaders: false,
+            recordBody: false,
+          },
+          // Same filter on URL-shaped event properties, so a clean
+          // `$current_url` does not depend on main.tsx running first, AND on
+          // `$exception_list` (message + stack frame filenames) now that
+          // exception autocapture is on. redactCredentialsBeforeSend stays
+          // FIRST so the noise filter and de-dupe hooks after it only ever
+          // see redacted data.
+          before_send: [
+            redactCredentialsBeforeSend,
+            dropKnownExceptionNoise,
+            dedupeAutocapturedBoundaryExceptions,
+          ],
           // Only create person profiles for users we explicitly identify.
           person_profiles: "identified_only",
         };
@@ -253,11 +396,26 @@ export function captureEvent(event: string, properties?: Record<string, unknown>
   client?.capture(event, properties ?? {});
 }
 
+/**
+ * Reports an exception to PostHog error tracking. A pure no-op when
+ * analytics was never initialized — same rule as {@link captureEvent}.
+ * Records the error's signature so the matching `capture_console_errors`
+ * autocapture of a `console.error(..., error)` call right next to this one
+ * (ErrorBoundary, RouteErrorFallback) gets dropped instead of double-reported
+ * — see the comment above {@link recentExplicitExceptionSignatures}.
+ */
+export function captureException(error: unknown, properties?: Record<string, unknown>): void {
+  if (!client) return;
+  rememberExplicitException(error);
+  client.captureException(error, properties ?? {});
+}
+
 /** Test seam: forgets any loaded client. Used by unit tests only. */
 export function __resetAnalyticsForTests(): void {
   client = null;
   loading = null;
   pendingIdentity = null;
+  recentExplicitExceptionSignatures.length = 0;
 }
 
 /**

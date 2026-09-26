@@ -843,6 +843,18 @@ func (m *mockDBService) PurgeExpiredDeviceAuthRequests(_ context.Context, _ time
 	panic("not implemented")
 }
 
+func (m *mockDBService) CreateAuthHandoffCode(_ context.Context, _ *models.AuthHandoffCode) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ConsumeAuthHandoffCode(_ context.Context, _ string) (*models.AuthHandoffCode, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) DeleteExpiredAuthHandoffCodes(_ context.Context, _ time.Time) (int64, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) CreateUserPasskey(_ context.Context, _ *models.UserPasskey) error {
 	panic("not implemented")
 }
@@ -1100,6 +1112,40 @@ func (m *mockDBService) UpdateCheckStatusAndClocks(
 func (m *mockDBService) UpdateCheckFlapState(
 	_ context.Context, _ string, _ int, _ time.Time,
 ) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) TouchCheckLastResult(
+	_ context.Context, _ string, _ time.Time,
+) (*models.CheckLiveState, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListStaleCandidates(_ context.Context, _ time.Time, _ int) ([]*models.Check, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) MarkCheckStale(
+	_ context.Context, _ string, _ models.CheckStatus, _, _ time.Time,
+) (bool, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListStaleCheckPlacements(_ context.Context) ([]models.StaleCheckPlacement, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListLastRealResultPerRegion(
+	_ context.Context, _, _ string,
+) ([]models.RegionLastResult, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) UpsertCheckRegionState(_ context.Context, _ *models.CheckRegionState) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListCheckRegionStates(_ context.Context, _ string) ([]models.CheckRegionState, error) {
 	panic("not implemented")
 }
 
@@ -1598,8 +1644,38 @@ func (m *mockDBService) ListAttachmentsByTopicPrefix(
 	return nil, nil
 }
 
+func (m *mockDBService) SumFileSizeByGroup(_ context.Context, _, _ string) (int64, error) {
+	return 0, nil
+}
+
 func (m *mockDBService) GetIncidentAny(_ context.Context, _ string) (*models.Incident, error) {
 	return &models.Incident{}, nil
+}
+
+func (m *mockDBService) GetCheckAny(_ context.Context, _ string) (*models.Check, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListCheckScreenshotFiles(
+	_ context.Context, _, _ string, _ int,
+) ([]*models.File, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) RequestCheckCapture(_ context.Context, _ string, _ time.Time) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListOrphanAttachments(
+	_ context.Context, _ string, _ time.Time, _ int,
+) ([]*models.File, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) AdmitFixedWindows(
+	_ context.Context, _ string, _ []models.FixedWindow, _ time.Time,
+) (int, time.Duration, error) {
+	panic("not implemented")
 }
 
 func (m *mockDBService) DeleteFile(_ context.Context, _, _ string) error {

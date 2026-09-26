@@ -113,7 +113,9 @@ func TestChecksPerMinuteDemand(t *testing.T) {
 			spec: []checkSpec{
 				{slug: "check-hb", checkType: "heartbeat", period: time.Minute, regions: []string{"eu", "us"}},
 			},
-			want: 0, wantUsage: 2,
+			// The region list is dropped on create: a passive check has no
+			// regions and is evaluated once per period (spec 2026-09-25-04).
+			want: 0, wantUsage: 1,
 		},
 		{
 			name: "disabled checks schedule nothing",

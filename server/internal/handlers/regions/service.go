@@ -4,9 +4,21 @@ package regions
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/fclairamb/solidping/server/internal/db"
+	"github.com/fclairamb/solidping/server/internal/regionoutage"
 	"github.com/fclairamb/solidping/server/internal/regions"
+)
+
+// Region status values on the org regions endpoint (spec 2026-09-25-03).
+const (
+	// RegionStatusOnline is a cloud region the region sweep does not hold as
+	// dark.
+	RegionStatusOnline = "online"
+	// RegionStatusOffline is a cloud region the region sweep holds as dark:
+	// jobs assigned, no live worker.
+	RegionStatusOffline = "offline"
 )
 
 // Service provides business logic for region management.
@@ -39,6 +51,12 @@ type RegionResponse struct {
 	// it did before the field existed, and "unknown" must never be rendered as
 	// "no" (spec 2026-08-15-11).
 	Capabilities map[string]string `json:"capabilities,omitempty"`
+	// Status is `online` or `offline` for a cloud region on the org endpoint,
+	// from the per-minute region sweep's markers (spec 2026-09-25-03). Empty
+	// (omitted) for private regions and on the public endpoint.
+	Status string `json:"status,omitempty"`
+	// OfflineSince is the last worker beat of an offline region.
+	OfflineSince *time.Time `json:"offlineSince,omitempty"`
 }
 
 // ListGlobalRegionsResponse is the response for listing global regions.
@@ -94,14 +112,31 @@ func (s *Service) ListOrgRegions(ctx context.Context, orgSlug string) (*ListOrgR
 		return nil, fmt.Errorf("failed to compute region capabilities: %w", capErr)
 	}
 
+	outages, err := regionoutage.List(ctx, s.db)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read region outages: %w", err)
+	}
+
 	data := make([]RegionResponse, 0, len(defs))
 	for i := range defs {
-		data = append(data, RegionResponse{
+		response := RegionResponse{
 			Slug:         defs[i].Slug,
 			Emoji:        defs[i].Emoji,
 			Name:         defs[i].Name,
 			Capabilities: defs[i].Capabilities,
-		})
+			Status:       RegionStatusOnline,
+		}
+
+		// Only DARK is offline. A stalled region's workers are alive, so its
+		// checks may still be running late rather than not at all — that one
+		// is the operator's to chase, not something to alarm users with.
+		if marker := outages[defs[i].Slug]; marker.IsDark() {
+			since := marker.Since
+			response.Status = RegionStatusOffline
+			response.OfflineSince = &since
+		}
+
+		data = append(data, response)
 	}
 
 	// Append the org's private locations (spec 2026-07-16-02) so the check-form

@@ -117,6 +117,10 @@ func (s *Service) SubmitResult(
 		return nil, fmt.Errorf("%w: %w", ErrJobNotFound, err)
 	}
 
+	// An agent's OnDemand marker is honored only when this job's lease really
+	// carried a "Capture now" request (spec 2026-09-25-34).
+	job.HonorOnDemand(req.Diagnostics)
+
 	// 2. Build the result.
 	resultUID, err := uuid.NewV7()
 	if err != nil {

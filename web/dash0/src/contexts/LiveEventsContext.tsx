@@ -137,7 +137,17 @@ const DEFAULT_QUERY_ROOTS: Record<LiveEntity, Partial<Record<string, QueryRoot[]
     // lazy poll (spec 2026-09-01-01). Deliberately added to the "checks"
     // kind, NOT "results" below — see that block's comment for why a
     // results hint must never trigger an org-wide refetch.
-    checks: [orgRoot("checks"), infiniteOrgRoot("checks"), orgRoot("check-stats")],
+    //
+    // checkGroups too (spec 2026-09-25-02): a group's status is rolled up
+    // from its members, so a member transition — up→stale when a region goes
+    // dark, stale→up when it comes back — must refresh the group rows, or a
+    // group keeps reading green over members that stopped reporting.
+    checks: [
+      orgRoot("checks"),
+      infiniteOrgRoot("checks"),
+      orgRoot("check-stats"),
+      orgRoot("checkGroups"),
+    ],
     // The checks-list roots are deliberately ABSENT here (spec
     // 2026-08-09-07). Check workers write results continuously, so a busy org
     // emits a "results" hint essentially without pause; refetching the whole
@@ -522,6 +532,31 @@ export class LiveRegistry {
 
 const LiveRegistryContext = createContext<LiveRegistry | null>(null);
 
+/**
+ * Every LiveRegistry currently mounted (in practice at most one — one org
+ * layout at a time — but tracked as a set rather than a single ref so an
+ * unmount/remount race can never leave a stale reference behind). Lets
+ * AuthContext's logout() reach in and close the socket immediately, from
+ * outside this provider's tree: AuthProvider sits above the org layout that
+ * mounts LiveEventsProvider, so there is no context path from logout() down
+ * to the registry otherwise (spec 2026-09-25-14).
+ */
+const activeRegistries = new Set<LiveRegistry>();
+
+/**
+ * Stops every currently-mounted live socket right away, before its run()
+ * loop gets a chance to redial or react to a close frame with a token that's
+ * about to be (or already is) revoked. A no-op when no org layout is
+ * mounted. `LiveRegistry.stop()` is idempotent, so this is safe to call even
+ * though the owning effect's own cleanup will call `stop()` again when the
+ * component unmounts moments later.
+ */
+export function disconnectAllLiveSockets(): void {
+  for (const registry of activeRegistries) {
+    registry.stop();
+  }
+}
+
 export function LiveEventsProvider({
   org,
   children,
@@ -540,7 +575,11 @@ export function LiveEventsProvider({
     if (!org) return undefined;
 
     registry.start();
-    return () => registry.stop();
+    activeRegistries.add(registry);
+    return () => {
+      activeRegistries.delete(registry);
+      registry.stop();
+    };
   }, [org, registry]);
 
   return (

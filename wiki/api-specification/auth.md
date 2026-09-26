@@ -21,6 +21,14 @@ all optional. It is normalized (unknown keys dropped, values capped at 200
 characters, `clickIdKind` limited to `gclid`/`gbraid`/`wbraid`/`msclkid`) and
 stored on the user at confirmation, never updated afterwards.
 
+**Anti-enumeration (spec 2026-09-25-30):** always answers `200` with the same
+`{ message }` body whether or not the email is already registered. An
+already-registered email creates no pending registration and sends no email —
+this is a deliberate no-op, not a bug — so this endpoint can no longer be used
+to test whether an email has an account. Callers must not key on a distinct
+"email already taken" error; there isn't one here anymore (contrast with
+`request-password-reset` below, which was already uniform-success).
+
 ### POST /api/v1/auth/confirm-registration
 Confirm a registration via email token. Returns access token.
 
@@ -147,12 +155,42 @@ Remove a passkey. Auth: required
 
 Each provider is only registered if its `ClientID` is configured. All are public.
 
+Every provider callback (and the Slack app install) ends the same way
+(spec 2026-09-25-12): the minted session is stored under a single-use handoff
+code and the browser is redirected to
+`/d/auth/complete?code=<code>[&membershipPending=<slug>]`. No token is ever in
+that URL. The login's `redirect_uri` travels inside the stored session as
+`returnTo`. `membershipPending` is set when the org did not admit the user
+(the session is then org-less) and a join request was opened.
+
+### POST /api/v1/auth/handoff/exchange
+Redeem a handoff code. Body: `{"code": "..."}`. Auth: public (the code is the
+credential).
+
+- The code is 32 random bytes (base64url), expires after 60 s and is deleted
+  on first use (one `DELETE ... RETURNING`, so concurrent exchanges have one
+  winner).
+- Storage: `auth_handoff_codes`, keyed by the SHA-256 of the code. The session
+  payload is AES-256-GCM sealed under a key derived from the code, so a
+  database dump yields neither a code nor a token. Expired rows are swept by
+  the state-cleanup job.
+- `200`: the login response shape (`accessToken`, `refreshToken`,
+  `expiresIn`, `tokenType`, `user`, `organization`, `organizations`,
+  `loginAction`), plus `returnTo` and `membershipPending`. An org-less session
+  has no `refreshToken` and no `organization`, and `loginAction` is `noOrg`.
+  Also sets the `access_token` cookie, like login.
+- `401 UNAUTHORIZED`: unknown, used, expired or forged code. Always the same
+  body.
+- `422`: the body is not JSON.
+
 ### GET /api/v1/auth/slack/login
 ### GET /api/v1/auth/slack/callback
 
 ### POST /api/v1/auth/slack/exchange
-Exchange a Slack-issued code/identity for a SolidPing session — used by the
-Slack app sign-in path rather than the browser redirect flow. Auth: public
+**Legacy, remove after the next release** (spec 2026-09-25-12). Redeems a Slack
+app-install code minted into `state_entries` (`slack-exchange`) by a pod still
+on the previous release. Current installs use `/auth/handoff/exchange`.
+Auth: public
 
 ### GET /api/v1/auth/google/login
 ### GET /api/v1/auth/google/callback

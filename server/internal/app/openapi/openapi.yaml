@@ -303,11 +303,18 @@ paths:
       tags: [System]
       summary: Ghost-region detection report
       description: >
-        One row per region slug seen anywhere — in the declared `regions`
+        One row per region seen anywhere — in the declared `regions`
         system parameter, in a check's `regions` array, in a
-        `check_jobs.region`, or in a live or previously-live worker's
-        announced region — so the caller gets the ghosts and the healthy
-        baseline in one call.
+        `check_jobs.region`, in a live or previously-live worker's
+        announced region, or in an org agent's bound region — so the caller
+        gets the ghosts and the healthy baseline in one call.
+
+
+        Cloud regions are global: one row per slug, `organization` absent.
+        Private regions (`@<slug>`) are org-relative, so they get one row per
+        (organization, slug) with `organization` set to the org slug:
+        `@paris` in two orgs is two unrelated rows whose checks, jobs and
+        agents are never summed together.
 
 
         A **ghost** is a slug something depends on (a job or a check
@@ -317,13 +324,18 @@ paths:
         condition is work assigned to nobody, not an idle region.
 
 
-        `liveWorkers` reuses the exact prefix rule the scheduler claims jobs
-        with (`workerRegion` has the slug as a prefix, so a `us` job is
-        served by a `us-1` worker) and the same liveness window as the region
-        capability report. `lastWorkerSeenAt` spans every matching worker,
-        soft-deleted included, so it dates when the region actually went
-        dark. NULL-region (any-region) jobs never count toward any row — they
-        are claimable by every cloud worker by construction.
+        For a cloud region, `liveWorkers` reuses the exact prefix rule the
+        scheduler claims jobs with (`workerRegion` has the slug as a prefix,
+        so a `us` job is served by a `us-1` worker) and the same liveness
+        window as the region capability report; system agents count here,
+        through their worker row. `lastWorkerSeenAt` spans every matching
+        worker, soft-deleted included, so it dates when the region actually
+        went dark. For a private region, `liveWorkers` counts that org's
+        active agents bound to exactly that slug and seen within the same
+        window (the predicate an agent claims with), and `lastWorkerSeenAt`
+        is their latest `lastSeenAt`, revoked agents included. NULL-region
+        (any-region) jobs never count toward any row — they are claimable by
+        every cloud worker by construction.
 
 
         Read-side companion of `POST /system/regions/migrate`: its output
@@ -900,6 +912,36 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /api/v1/auth/handoff/exchange:
+    post:
+      tags: [Authentication]
+      summary: Redeem a federated-login handoff code
+      description: |
+        A federated login (Google, GitHub, GitLab, Microsoft, Discord, Slack,
+        OIDC, SAML) ends with a redirect to `/d/auth/complete?code=...`. The
+        code is single use and expires after 60 seconds; this endpoint trades
+        it for the session the provider callback minted, in the login
+        response shape. An unknown, reused, expired or forged code always
+        gets the same 401 body.
+      operationId: exchangeHandoffCode
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HandoffExchangeRequest"
+      responses:
+        "200":
+          description: Session handed over
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HandoffExchangeResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
   /api/v1/auth/me:
     get:
       tags: [Authentication]
@@ -1385,6 +1427,17 @@ paths:
             have never transitioned).
           schema:
             type: string
+        - name: status
+          in: query
+          description: >-
+            Filter by derived check status. Comma-separated tokens from
+            created, up, down, validating, degraded, warning and stale
+            (e.g. "down,stale"). `stale` ("No data") is a check whose newest
+            real result is older than max(3 × period, 5 min). An unknown token
+            is a 400 validation error.
+          schema:
+            type: string
+          example: "down,stale"
         - name: internal
           in: query
           description: Filter by internal status. "false" (default) shows only non-internal checks, "true" shows only internal checks, "all" shows all checks.
@@ -1392,15 +1445,6 @@ paths:
             type: string
             enum: ["true", "false", "all"]
             default: "false"
-        - name: wouldHaveFired
-          in: query
-          description: >-
-            When "true", returns only the checks the degraded dry run has
-            flagged (`degradedWouldFireAt` is set) — what enabling degraded
-            detection would have caught. Any other value applies no filter.
-          schema:
-            type: string
-            enum: ["true"]
         - name: sort
           in: query
           description: >-
@@ -1545,10 +1589,12 @@ paths:
           in: query
           description: >-
             Comma-separated list of additional data to include: "last_result"
-            (the check's newest raw result) and "last_status_change" (when the
+            (the check's newest raw result), "last_status_change" (when the
             derived check status last changed — served from the check row
             itself, so it costs no extra query and is omitted for checks that
-            have never transitioned).
+            have never transitioned) and "region_freshness" (the newest real
+            result per region, so a silent region shows up even while others
+            keep the check fresh).
           schema:
             type: string
       responses:
@@ -1689,6 +1735,81 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/orgs/{org}/checks/auto-placement:
+    post:
+      tags: [Checks]
+      summary: Switch pinned checks to automatic placement
+      description: >-
+        The checks list's bulk action (spec 2026-09-25-06). Each eligible
+        check becomes `placement: auto` with `regionCount` = its current
+        region count and an empty pool; its regions and jobs are untouched, so
+        neither its cost nor where it runs today changes — it only gains
+        failover when one of its regions goes dark. Passive checks and checks
+        naming a private (`@`) region are skipped. With no `checkUids`, every
+        eligible pinned, non-internal check of the organization is switched.
+      operationId: switchChecksToAutoPlacement
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                checkUids:
+                  type: array
+                  description: Limit the switch to these checks. Omit for every eligible check.
+                  items:
+                    type: string
+                dryRun:
+                  type: boolean
+                  description: Report what would be switched without writing anything.
+      responses:
+        "200":
+          description: The checks switched (or that would be, with dryRun)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dryRun:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        uid:
+                          type: string
+                        slug:
+                          type: string
+                        name:
+                          type: string
+                        regions:
+                          type: array
+                          items:
+                            type: string
+                        regionCount:
+                          type: integer
+                  skipped:
+                    type: array
+                    description: Named checks left pinned, with the reason.
+                    items:
+                      type: object
+                      properties:
+                        uid:
+                          type: string
+                        slug:
+                          type: string
+                        reason:
+                          type: string
+                          enum: [not_found, already_auto, passive, no_region, private_region, read_only]
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/v1/orgs/{org}/checks/{checkUid}/clone:
     post:
       tags: [Checks]
@@ -1757,6 +1878,113 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/checks/{checkUid}/screenshots:
+    get:
+      tags: [Checks]
+      summary: List a check's latest screenshots
+      description: >-
+        The check's latest page captures, newest first: the screenshots its
+        incidents carry, the captures of failing runs that opened no incident
+        (a validating run, a blip, a regional failure, a run of an outage whose
+        incident already holds its onset capture), and "Capture now" captures.
+        A check keeps at most 5 captures of its own (the oldest is retired on
+        the sixth); incident captures live as long as their incident. Any
+        check type answers — a type that never captures returns an empty list.
+        Operator-only: never exposed on a status page, badge or subscriber
+        payload. Same authorization as reading the check.
+      operationId: listCheckScreenshots
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/CheckUidPath"
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 20
+            default: 5
+          description: How many captures to return (values above 20 are clamped).
+      responses:
+        "200":
+          description: The check's latest screenshots
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckScreenshotListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/orgs/{org}/checks/{checkUid}/screenshots/capture:
+    post:
+      tags: [Checks]
+      summary: Capture a screenshot now
+      description: >-
+        "Capture now": runs a browser or js check once, on demand, with the
+        screenshot forced whatever the verdict (and whether or not the check's
+        own `screenshot` option is on). The run goes through the check's own
+        scheduling, so it executes where the check executes — one of its
+        regions, on a shared worker or on the organization's private agent —
+        and its result is recorded like any other run. The call returns as
+        soon as the run is scheduled; the capture appears in
+        `GET …/screenshots` (trigger `capture-now`, or `agent-upload` from a
+        private agent) once the run completes. A js check only yields a capture
+        if its script calls `page.screenshot()`. Rate limited to one request
+        per check per minute and 20 per organization per hour; a refusal
+        carries `Retry-After`. Requires write access (viewers get 403).
+      operationId: captureCheckScreenshot
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/CheckUidPath"
+      responses:
+        "202":
+          description: The on-demand run is scheduled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckScreenshotCaptureResponse"
+        "400":
+          description: The check type cannot capture a screenshot (only browser and js can)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: The check has no scheduled run (it is disabled)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: >-
+            Rate limited (code `RATE_LIMITED`): one capture per check per
+            minute, 20 per organization per hour. `Retry-After` gives the
+            seconds until the refusing window reopens.
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /api/v1/orgs/{org}/dependencies:
     get:
@@ -9548,6 +9776,26 @@ components:
           enum: ["", orgRedirect, orgChoice, noOrg]
           description: Indicates how the frontend should handle the login result
 
+    HandoffExchangeRequest:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+          description: The single-use code from the /d/auth/complete redirect
+
+    HandoffExchangeResponse:
+      allOf:
+        - $ref: "#/components/schemas/LoginResponse"
+        - type: object
+          properties:
+            returnTo:
+              type: string
+              description: Where the login was started from. A hint; the dashboard only follows a same-origin path in the session's org.
+            membershipPending:
+              type: string
+              description: Slug of the org that has not admitted the user yet (org-less session only)
+
     LogoutRequest:
       type: object
       properties:
@@ -9899,7 +10147,9 @@ components:
           description: Optional documentation describing what this check monitors
         type:
           type: string
-          enum: [http, tcp, icmp, dns, ssl, domain]
+          # Every registered check type (checkerdef.ListCheckTypes), pinned by
+          # TestCheckTypeEnumsMatchTheRegistry.
+          enum: [http, tcp, icmp, dns, heartbeat, email, domain, ssl, smtp, udp, ssh, pop3, imap, websocket, postgresql, ftp, sftp, js, mysql, redis, mongodb, mssql, oracle, clickhouse, grpc, kafka, mqtt, a2s, minecraft, rabbitmq, snmp, docker, browser, freebox_line, dnsbl, sip, kubernetes, ntp, rdp, prometheus, private-location, sleep]
         config:
           type: object
           description: >-
@@ -9907,7 +10157,11 @@ components:
             `type`. HTTP checks additionally accept `verifySsl` (boolean,
             default true — set false to skip TLS certificate verification),
             `followRedirects` (boolean, default true — set false to stop
-            at the first response instead of following redirects) and
+            at the first response instead of following redirects),
+            `redirectHostPolicy` (string, default "any" — "same-host" refuses
+            any followed redirect hop whose host differs from the previous
+            hop's, failing the check instead of following it; an unknown
+            value is a VALIDATION_ERROR) and
             `capture_failure_response` (boolean, default false — when true a
             FAILING execution keeps what the probe received: status line,
             redacted response headers and a 16 KiB-capped body, stored on the
@@ -9951,6 +10205,40 @@ components:
         period:
           type: string
           description: Interval duration (e.g., "00:01:00" for 1 minute)
+        regions:
+          type: array
+          description: >-
+            Region slugs the check runs from. For a pinned check, the user's
+            explicit list (never moved). For an automatically placed check, the
+            CURRENT placement, chosen by the scheduler and rewritten when one
+            of its regions goes dark (spec 2026-09-25-06). A private location
+            is `@<slug>`.
+          items:
+            type: string
+        placement:
+          type: string
+          enum: [pinned, auto]
+          description: >-
+            Placement intent. `pinned`: `regions` is an explicit list and never
+            moves — if its region goes dark the check goes `stale`. `auto`: the
+            scheduler places the check on `regionCount` healthy regions
+            (candidates: the org default regions, then the system default
+            regions, then every other declared region, filtered by
+            `regionPool` and the regions' capabilities) and moves it off a
+            region that goes dark. Private locations are pinned-only.
+        regionCount:
+          type: integer
+          minimum: 1
+          nullable: true
+          description: Automatic placement only — how many regions run the check. Null for a pinned check.
+        regionPool:
+          type: array
+          nullable: true
+          description: >-
+            Automatic placement only — the cloud region slugs the scheduler may
+            choose from. Absent or empty: any cloud region.
+          items:
+            type: string
         regionSpread:
           type: string
           nullable: true
@@ -9981,6 +10269,46 @@ components:
           example:
             env: prod
             app: api
+        status:
+          type: string
+          readOnly: true
+          enum: [created, up, down, validating, degraded, warning, stale, unknown]
+          description: >-
+            The derived check status, which respects the confirmation and
+            recovery periods: "validating" is a failure seen but not yet
+            confirmed, "warning" is up with something to report, and "stale"
+            ("No data") means the newest real result, across every region, is
+            older than max(3 × period, 5 min) — the check has stopped being
+            measured, whatever the cause. Stale is neither up nor down: it never
+            opens, resolves or notifies an incident.
+        statusChangedAt:
+          type: string
+          format: date-time
+          readOnly: true
+          description: When the check entered its current status. Omitted until the first transition.
+        lastResultAt:
+          type: string
+          format: date-time
+          readOnly: true
+          description: >-
+            Execution time of the newest REAL result (up, down, timeout, error,
+            warning) across every region — never a created, running or
+            abandoned placeholder. Omitted for a check that never produced one.
+        staleThresholdSeconds:
+          type: integer
+          readOnly: true
+          description: >-
+            max(3 × period, 5 min) in seconds: how long the check may go
+            without a real result before it becomes `stale`.
+        regionFreshness:
+          type: array
+          readOnly: true
+          description: >-
+            Newest real result per region (only with with=region_freshness).
+            Lists every region that produced one inside the raw retention plus
+            every configured region that did not.
+          items:
+            $ref: "#/components/schemas/RegionFreshness"
         lastResult:
           $ref: "#/components/schemas/LastResult"
         lastStatusChange:
@@ -10004,8 +10332,10 @@ components:
               description: ISO 8601 timestamp of when the status change occurred
             status:
               type: string
-              enum: [UP, DOWN, VALIDATING, WARNING, DEGRADED, CREATED, UNKNOWN]
-              description: The status that the check transitioned to
+              enum: [UP, DOWN, VALIDATING, WARNING, DEGRADED, CREATED, STALE, UNKNOWN]
+              description: >-
+                The status that the check transitioned to. STALE means "no
+                data": no real result for max(3 × period, 5 min).
         tracerouteOnFailure:
           type: string
           enum: [inherit, "on", "off"]
@@ -10018,6 +10348,17 @@ components:
             this check. Application-level failures (HTTP 5xx, keyword mismatch,
             certificate expiry) never trigger a trace, whatever this is set to.
           default: inherit
+        failQuorum:
+          $ref: "#/components/schemas/FailQuorum"
+        effectiveFailQuorum:
+          type: integer
+          minimum: 1
+          description: >-
+            What failQuorum resolves to for the check's current regions: how
+            many of them must be failing, for the confirmation period, before
+            the check is down. Omitted for passive checks (no regions).
+        regionalIssue:
+          $ref: "#/components/schemas/RegionalIssue"
         flappingWindowSeconds:
           type: integer
           description: >-
@@ -10069,17 +10410,10 @@ components:
         degradedEnabled:
           type: boolean
           description: >-
-            Whether degraded detection may OPEN incidents on this check. New
-            checks are on; every check that predates the feature is off, and
-            runs as a dry run that only stamps `degradedWouldFireAt`.
-        degradedWouldFireAt:
-          type: string
-          format: date-time
-          nullable: true
-          description: >-
-            When the dry run first saw a degraded condition on a check that has
-            `degradedEnabled` false. Absent when the rules never fired. Cleared
-            when degraded detection is enabled.
+            Whether degraded detection runs on this check. When false,
+            degraded detection is not evaluated for this check. New checks are
+            on; every check that predates the feature is off. Turning it off
+            resolves the check's open degraded incident, if any.
         flapBackoffFactor:
           type: integer
           minimum: 1
@@ -10231,6 +10565,76 @@ components:
           type: number
           description: Response time in milliseconds
 
+    RegionFreshness:
+      type: object
+      description: One region's freshness for a check.
+      properties:
+        region:
+          type: string
+          description: Region slug, "" for results that carry no region.
+        lastResultAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: >-
+            Newest real raw result from this region; null for a configured
+            region with none inside the raw retention (about a day).
+        stale:
+          type: boolean
+          description: True when lastResultAt is older than staleThresholdSeconds, or missing.
+        status:
+          type: string
+          enum: [up, warning, down, timeout, error]
+          description: >-
+            The region's newest real reading (spec 2026-09-25-10). Kept for
+            checks with two or more regions only; omitted otherwise.
+        statusSince:
+          type: string
+          format: date-time
+          description: >-
+            When the region last crossed between failing (down, timeout,
+            error) and passing (up, warning).
+
+    FailQuorum:
+      description: >-
+        Multi-region quorum: how many of the check's regions must be failing,
+        for the confirmation period, before the check is down and an incident
+        opens. `default` is all regions for one or two regions and a majority
+        for three or more; `all` keeps the per-result rule (any passing region
+        resets the confirmation); `majority` is floor(N/2)+1; a whole number
+        (1-100, clamped to the region count) is that many regions. Fewer
+        failing regions than the quorum is a regional issue: the check reads
+        `warning` and no incident opens. Accepted as a JSON string or number;
+        a count is returned as a number. Ignored for passive checks, which have
+        no regions.
+      oneOf:
+        - type: string
+          enum: [default, all, majority]
+        - type: integer
+          minimum: 1
+          maximum: 100
+      example: majority
+
+    RegionalIssue:
+      type: object
+      description: >-
+        Present (check detail, `with=region_freshness`) while some, but fewer
+        than the quorum, of the check's current regions are failing. The check
+        is `warning` and no incident opens. Regions the check no longer runs in
+        never count.
+      required: [failingRegions, failQuorum, regionCount]
+      properties:
+        failingRegions:
+          type: array
+          items:
+            type: string
+        failQuorum:
+          type: integer
+          description: The effective quorum.
+        regionCount:
+          type: integer
+          description: The check's current region count.
+
     CheckListItem:
       description: >-
         A check as it appears on the list endpoint (GET /checks) — identical
@@ -10273,7 +10677,7 @@ components:
             type: integer
           description: >-
             Count per check status. Every known status key (created, up, down,
-            validating, degraded, warning, unknown) is always present, with 0
+            validating, degraded, warning, stale, unknown) is always present, with 0
             when empty, so clients can index it without guards. Keys are the
             same tokens the list endpoint's `status` field carries.
           example:
@@ -10283,6 +10687,7 @@ components:
             validating: 0
             degraded: 2
             warning: 0
+            stale: 0
             unknown: 0
         down:
           type: integer
@@ -10320,6 +10725,8 @@ components:
             Per-check path-trace policy (see the Check schema). `inherit` puts
             the check back under the organization default. Omit to leave
             unchanged.
+        failQuorum:
+          $ref: "#/components/schemas/FailQuorum"
         name:
           type: string
           description: Check name (auto-generated from URL if not provided)
@@ -10332,7 +10739,9 @@ components:
           description: Optional documentation about the check
         type:
           type: string
-          enum: [http, tcp, icmp, dns, ssl, domain]
+          # Every registered check type (checkerdef.ListCheckTypes), pinned by
+          # TestCheckTypeEnumsMatchTheRegistry.
+          enum: [http, tcp, icmp, dns, heartbeat, email, domain, ssl, smtp, udp, ssh, pop3, imap, websocket, postgresql, ftp, sftp, js, mysql, redis, mongodb, mssql, oracle, clickhouse, grpc, kafka, mqtt, a2s, minecraft, rabbitmq, snmp, docker, browser, freebox_line, dnsbl, sip, kubernetes, ntp, rdp, prometheus, private-location, sleep]
           description: Check type (auto-inferred from URL if not provided)
         config:
           type: object
@@ -10348,6 +10757,41 @@ components:
         period:
           type: string
           default: "00:01:00"
+        regions:
+          type: array
+          description: >-
+            Explicit region slugs. A non-empty list pins the check to exactly
+            these regions (placement `pinned`), as before. Omit to let the check
+            be placed automatically.
+          items:
+            type: string
+        placement:
+          type: string
+          enum: [pinned, auto]
+          description: >-
+            `pinned` or `auto`. Omitted: an explicit `regions` list means
+            pinned; otherwise the check is placed automatically (unless the
+            organization's own `default_regions` names a private location, which
+            keeps the pinned default). `auto` with a non-empty `regions` is
+            rejected.
+        regionCount:
+          type: integer
+          minimum: 1
+          maximum: 50
+          description: >-
+            Automatic placement: how many regions run the check. Default 2,
+            capped by the number of eligible regions and by the organization's
+            checks-per-minute limit — the response carries a
+            `PLACEMENT_REGION_COUNT_REDUCED` warning when it was reduced.
+            Implies `auto`.
+        regionPool:
+          type: array
+          description: >-
+            Automatic placement: restrict the candidates to these cloud region
+            slugs (empty = any). Private (`@`) regions are refused. Implies
+            `auto`.
+          items:
+            type: string
         regionSpread:
           type: string
           nullable: true
@@ -10435,9 +10879,10 @@ components:
           type: boolean
           default: true
           description: >-
-            Whether degraded detection may OPEN incidents on this check. New
-            checks are on; every check that predates the feature is off, and
-            runs as a dry run that only stamps `degradedWouldFireAt`.
+            Whether degraded detection runs on this check. When false,
+            degraded detection is not evaluated for this check. New checks are
+            on; every check that predates the feature is off. Turning it off
+            resolves the check's open degraded incident, if any.
         flapBackoffFactor:
           type: integer
           minimum: 1
@@ -10463,6 +10908,8 @@ components:
             Per-check path-trace policy (see the Check schema). `inherit` puts
             the check back under the organization default. Omit to leave
             unchanged.
+        failQuorum:
+          $ref: "#/components/schemas/FailQuorum"
         name:
           type: string
         slug:
@@ -10477,6 +10924,37 @@ components:
           type: boolean
         period:
           type: string
+        regions:
+          type: array
+          description: >-
+            A non-empty list pins the check to exactly these regions. An empty
+            list puts the check back on the default placement (automatic, unless
+            the organization's `default_regions` names a private location). Omit
+            to leave the placement alone.
+          items:
+            type: string
+        placement:
+          type: string
+          enum: [pinned, auto]
+          description: >-
+            Switch the placement intent. `pinned` without `regions` freezes the
+            current placement; `auto` without `regionCount` keeps the current
+            region count (same cost) and keeps every current region that is
+            still eligible and healthy.
+        regionCount:
+          type: integer
+          minimum: 1
+          maximum: 50
+          description: >-
+            Automatic placement: how many regions run the check (capped as on
+            create). Implies `auto`.
+        regionPool:
+          type: array
+          description: >-
+            Automatic placement: candidate cloud region slugs; an empty array
+            means any. Implies `auto`.
+          items:
+            type: string
         regionSpread:
           type: string
           nullable: true
@@ -10555,9 +11033,10 @@ components:
         degradedEnabled:
           type: boolean
           description: >-
-            Whether degraded detection may OPEN incidents on this check. New
-            checks are on; every check that predates the feature is off, and
-            runs as a dry run that only stamps `degradedWouldFireAt`. Omit to leave unchanged.
+            Whether degraded detection runs on this check. When false,
+            degraded detection is not evaluated for this check. New checks are
+            on; every check that predates the feature is off. Turning it off
+            resolves the check's open degraded incident, if any. Omit to leave unchanged.
         flapBackoffFactor:
           type: integer
           minimum: 1
@@ -10582,6 +11061,8 @@ components:
             Per-check path-trace policy (see the Check schema). Sent
             explicitly by import/apply so a manifest that says `inherit` moves
             a check back off an explicit override rather than leaving it.
+        failQuorum:
+          $ref: "#/components/schemas/FailQuorum"
         name:
           type: string
           description: Check name (auto-generated from URL if not provided)
@@ -10590,7 +11071,9 @@ components:
           description: Optional documentation about the check
         type:
           type: string
-          enum: [http, tcp, icmp, dns, ssl, domain]
+          # Every registered check type (checkerdef.ListCheckTypes), pinned by
+          # TestCheckTypeEnumsMatchTheRegistry.
+          enum: [http, tcp, icmp, dns, heartbeat, email, domain, ssl, smtp, udp, ssh, pop3, imap, websocket, postgresql, ftp, sftp, js, mysql, redis, mongodb, mssql, oracle, clickhouse, grpc, kafka, mqtt, a2s, minecraft, rabbitmq, snmp, docker, browser, freebox_line, dnsbl, sip, kubernetes, ntp, rdp, prometheus, private-location, sleep]
           description: Check type (auto-inferred from URL if not provided)
         config:
           type: object
@@ -10605,6 +11088,36 @@ components:
         period:
           type: string
           default: "00:01:00"
+        regions:
+          type: array
+          description: >-
+            A non-empty list pins the check to exactly these regions. Omit (or
+            leave empty) to leave an existing check's placement alone, unless
+            `placement` says otherwise.
+          items:
+            type: string
+        placement:
+          type: string
+          enum: [pinned, auto]
+          description: >-
+            Declarative placement. `auto` with no `regions` switches an existing
+            pinned check to automatic placement (an empty `regions` is
+            meaningful here); `pinned` without `regions` freezes the current
+            placement.
+        regionCount:
+          type: integer
+          minimum: 1
+          maximum: 50
+          description: >-
+            Automatic placement: how many regions run the check. Omitted with
+            `placement: auto`: the check's current count.
+        regionPool:
+          type: array
+          description: >-
+            Automatic placement: candidate cloud region slugs. Declarative —
+            omitted with `placement: auto` means any cloud region.
+          items:
+            type: string
         escalationPolicyUid:
           type: string
           description: >-
@@ -10685,7 +11198,8 @@ components:
             `INVALID_SLUG`, `DUPLICATE_SLUG`, `INTERNAL_NOT_WRITABLE`,
             `UNKNOWN_TYPE`, `INVALID_CONFIG`, `INLINED_CREDENTIAL`,
             `STATUS_FIELD_CONFLICT`, `INVALID_PERIOD`, `INVALID_LABEL`,
-            `REGION_FORMAT`, `INVALID_DEPENDS_ON`, `DEPENDENCY_CYCLE`,
+            `REGION_FORMAT`, `INVALID_PLACEMENT`, `INVALID_FAIL_QUORUM`, `INVALID_DEPENDS_ON`,
+            `DEPENDENCY_CYCLE`,
             `UNRESOLVED_SECRET_REF`. Everything but the last is decidable
             offline, which is what `sp checks validate <file>` runs with no
             token and no network; `UNRESOLVED_SECRET_REF` needs the
@@ -10788,6 +11302,23 @@ components:
             check executes once per region per period.
           items:
             type: string
+        placement:
+          type: string
+          enum: [pinned, auto]
+          description: >-
+            Proposed placement intent, validated by the same rules as create.
+            The response's warnings carry `PLACEMENT_REGION_COUNT_REDUCED` when
+            the automatic placement would run from fewer regions than asked.
+        regionCount:
+          type: integer
+          minimum: 1
+          maximum: 50
+        regionPool:
+          type: array
+          items:
+            type: string
+        failQuorum:
+          $ref: "#/components/schemas/FailQuorum"
         period:
           type: string
           description: >
@@ -11189,11 +11720,26 @@ components:
           description: >
             Probe-ratio availability (successfulChecks / totalChecks × 100).
             Null when totalChecks == 0 — no data is not 100%.
+        coverage:
+          type: number
+          nullable: true
+          description: >
+            Share of the monitored time that was actually measured: received
+            probes ÷ expected probes, where expected = monitoredSeconds / period
+            × max(1, regions), clamped to [0, 1]. An 8-hour gap in a 24-hour
+            window reads 0.67. Null only when nothing was expected.
+        unmeasuredSeconds:
+          type: integer
+          format: int64
+          description: >
+            The part of monitoredSeconds nobody measured: (1 − coverage) ×
+            monitoredSeconds. Neither uptime nor downtime.
         downtimeSeconds:
           type: integer
           format: int64
           description: >
-            Probe-time downtime: (1 − availabilityPct/100) × monitoredSeconds.
+            Probe-time downtime over MEASURED time only:
+            (1 − availabilityPct/100) × monitoredSeconds × coverage.
         incidents:
           $ref: "#/components/schemas/PeriodIncidents"
 
@@ -11592,6 +12138,75 @@ components:
           type: string
           description: What caused the capture to be kept.
           enum: [incident-open, incident-reopen, agent-upload]
+
+    CheckScreenshot:
+      type: object
+      description: >-
+        One of a check's screenshots: an incident's capture or a check-scoped
+        one. The bytes are fetched through `downloadUrl`, never inlined.
+      required: [uid, mimeType, size, downloadUrl, capturedAt]
+      properties:
+        uid:
+          type: string
+          format: uuid
+          description: The `files` row uid.
+        mimeType:
+          type: string
+          description: Content type as sniffed at write time (`image/webp` today).
+        size:
+          type: integer
+          format: int64
+        downloadUrl:
+          type: string
+          description: >-
+            RELATIVE, short-lived (1 h) signed URL (`/pub/files/<uid>?exp=…&sig=…`),
+            the same one an incident's attachment carries. Re-signed on every
+            fetch; do not cache it.
+        capturedAt:
+          type: string
+          format: date-time
+          description: >-
+            When the probe took the capture — for a failing run, a moment AFTER
+            failure detection. A private agent's upload carries no capture
+            time, so this is then when the server stored it.
+        region:
+          type: string
+          description: Probing region, stamped server-side.
+        trigger:
+          type: string
+          description: >-
+            Why the capture was kept: it opened (`incident-open`) or reopened
+            (`incident-reopen`) an incident, it is a failing run that opened
+            none (`check-failure`), it was requested (`capture-now`), or it was
+            uploaded by a private agent (`agent-upload`).
+          enum: [incident-open, incident-reopen, check-failure, capture-now, agent-upload]
+        incidentUid:
+          type: string
+          format: uuid
+          description: The incident the capture is attached to. Absent for a check-scoped capture.
+
+    CheckScreenshotListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/CheckScreenshot"
+
+    CheckScreenshotCaptureResponse:
+      type: object
+      required: [requestedAt]
+      properties:
+        region:
+          type: string
+          description: The region the on-demand run executes in.
+        requestedAt:
+          type: string
+          format: date-time
+          description: >-
+            When the request was recorded. The capture that answers it lands
+            in the listing after this instant.
 
     IncidentCheck:
       type: object
@@ -14047,27 +14662,41 @@ components:
       properties:
         slug:
           type: string
+        organization:
+          type: string
+          description: >
+            Slug of the organization owning a private (`@`) region. Absent for
+            a cloud region. Private slugs are org-relative, so a private row
+            is identified by (organization, slug).
         declared:
           type: boolean
-          description: Whether the slug is present in the `regions` system parameter.
+          description: Whether the slug is present in the `regions` system parameter (always false for a private region).
         liveWorkers:
           type: integer
           description: >
-            Non-deleted workers within the liveness window whose announced
-            region has this slug as a prefix.
+            Cloud region: non-deleted workers within the liveness window whose
+            announced region has this slug as a prefix. Private region: the
+            org's active agents bound to exactly this slug and seen within the
+            liveness window.
         lastWorkerSeenAt:
           type: string
           format: date-time
           nullable: true
           description: >
-            Max `lastActiveAt` across every matching worker, including
-            soft-deleted ones — dates when the region went dark.
+            Cloud region: max `lastActiveAt` across every matching worker,
+            including soft-deleted ones. Private region: max `lastSeenAt`
+            across the org's agents bound to the slug, including revoked
+            ones. Dates when the region went dark.
         checksReferencing:
           type: integer
-          description: Distinct, non-deleted checks whose `regions` array names this slug.
+          description: >
+            Distinct, non-deleted checks whose `regions` array names this slug
+            (for a private region, only the owning org's checks).
         jobs:
           type: integer
-          description: check_jobs rows carrying this slug. NULL-region jobs are never counted.
+          description: >
+            check_jobs rows carrying this slug (for a private region, only the
+            owning org's jobs). NULL-region jobs are never counted.
         jobsOverdue:
           type: integer
           description: Subset of `jobs` whose `scheduledAt` has already passed.
@@ -14080,7 +14709,7 @@ components:
           type: boolean
           description: >
             `(jobs > 0 || checksReferencing > 0) && liveWorkers == 0` — work
-            assigned to a slug nothing live can serve.
+            assigned to a region nothing live can serve.
 
     RegionHealthReport:
       type: object
@@ -14662,6 +15291,9 @@ components:
         budgetConsumedSeconds:
           type: integer
           format: int64
+          description: >-
+            Spent over MEASURED time only: failure ratio × elapsedSeconds ×
+            dataCoverage (when known).
         budgetRemainingSeconds:
           type: integer
           format: int64
@@ -14669,6 +15301,14 @@ components:
         excludedMaintenanceSeconds:
           type: integer
           format: int64
+        dataCoverage:
+          type: number
+          format: double
+          nullable: true
+          description: >-
+            Received ÷ expected probes over the elapsed window (expected =
+            elapsed / period × max(1, regions) per check), clamped to [0, 1].
+            A low value means the attainment describes only part of the window.
         burnRate:
           type: number
           format: double
@@ -14949,15 +15589,17 @@ components:
           type: integer
         status:
           type: string
-          enum: [created, up, down, validating, degraded, warning]
+          enum: [created, up, down, validating, degraded, warning, stale]
           description: >-
-            Derived, read-time rollup of the group's enabled member checks:
-            "down" if all considered members are down, "degraded" if some
-            (not all) are down, "warning" if none are down but at least one
-            is warning, "validating" if none are down/warning but at least
-            one is validating, "up" if at least one is up, otherwise
-            "created" (no considered members, or only just-created ones).
-            Never stored — recomputed on every read.
+            Derived, read-time rollup of the group's enabled member checks,
+            worst-of down > validating > warning > stale > up: "down" if all
+            considered members are down, "degraded" if some (not all) are down,
+            "validating" if none are down but at least one is validating,
+            "warning" if none are down/validating but at least one is warning,
+            "stale" if otherwise at least one member has no recent data (an
+            all-stale group reads stale), "up" if at least one is up,
+            otherwise "created" (no considered members, or only just-created
+            ones). Never stored — recomputed on every read.
         memberStatusCounts:
           type: object
           additionalProperties:
@@ -15164,6 +15806,21 @@ components:
           description: True for an org-private location served by deported agents.
         capabilities:
           $ref: "#/components/schemas/RegionCapabilities"
+        status:
+          type: string
+          enum: [online, offline]
+          description: >
+            Cloud regions on `GET /api/v1/orgs/{org}/regions` only. `offline`
+            while the per-minute region sweep holds the region dark: checks are
+            assigned to it and no worker is live, so a check pinned only there
+            is not running. Absent on private regions (the org's own agent
+            reports on those) and on the public `GET /api/v1/regions`.
+        offlineSince:
+          type: string
+          format: date-time
+          description: >
+            Present when `status` is `offline`: the last time a worker of the
+            region was seen, which is when it actually stopped.
 
     OrgRegionListResponse:
       type: object
@@ -15194,6 +15851,13 @@ components:
           type: boolean
         disabledReason:
           type: string
+        advisory:
+          type: string
+          description: >-
+            Message for an otherwise-enabled type whose availability still
+            depends on something the org must satisfy — e.g. on a SaaS
+            deployment, docker only runs when pinned to one of the org's
+            private locations. Absent when there is nothing to say.
         minPeriodSeconds:
           type: integer
         maxPeriodSeconds:
@@ -15774,7 +16438,7 @@ components:
 
     OrgSettingsResponse:
       type: object
-      required: [registrationEmailPattern, inheritingCheckCount, tracerouteOnFailure]
+      required: [registrationEmailPattern, inheritingCheckCount, tracerouteOnFailure, statusPageAllowedEmbedOrigins]
       properties:
         registrationEmailPattern:
           type: string
@@ -15801,6 +16465,16 @@ components:
             Organization default for path-trace-on-failure. Applies to every
             check whose own `tracerouteOnFailure` is `inherit`. True when the
             organization has never set it.
+        statusPageAllowedEmbedOrigins:
+          type: array
+          items:
+            type: string
+            example: https://intranet.acme.com
+          description: >-
+            Origins allowed to frame this organization's public status pages,
+            rendered into the page's `Content-Security-Policy: frame-ancestors`
+            after `'self'`. Empty when only the SolidPing origin itself may
+            frame them. See the security headers documentation.
 
     UpdateOrgSettingsRequest:
       type: object
@@ -15821,6 +16495,20 @@ components:
           description: >-
             Sets the organization default for path-trace-on-failure. Omit to
             leave unchanged.
+        statusPageAllowedEmbedOrigins:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+            example: https://intranet.acme.com
+          description: >-
+            Replaces the list of origins allowed to frame this organization's
+            public status pages. Each entry must be a scheme and host
+            (`https://intranet.acme.com`, optionally with a port, or a leading
+            `*.` wildcard label such as `https://*.acme.com`); paths, queries,
+            a bare `*`, CSP keywords, whitespace and `;` are refused with a
+            `VALIDATION_ERROR`. An empty array clears the list; omit to leave
+            it unchanged. Takes effect within a minute.
 
     # Invitation schemas
     CreateInvitationRequest:

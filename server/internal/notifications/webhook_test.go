@@ -506,8 +506,12 @@ func TestWebhookSender_Send_DeliveryDetailsNeverLeakSecrets(t *testing.T) {
 	const authToken = "Bearer super-secret-token-123"
 	const customSecret = "x-custom-api-key-value-456"
 
-	// A URL carrying userinfo credentials and a secret query string.
-	leakyURL := "http://user:p4ssw0rd@" +
+	// A URL carrying a secret query string. Userinfo credentials are no longer
+	// exercised here: ValidateSenderURL (spec 2026-09-25-20) rejects a webhook
+	// URL that carries userinfo outright, before any request is ever built —
+	// see TestValidateSenderURL for that case. This test is about the query
+	// string, which the validator does NOT reject (only redactURL strips it).
+	leakyURL := "http://" +
 		srv.Listener.Addr().String() + "/hook?token=qsSecretXYZ&signature=abc"
 
 	payload := testPayload(models.JSONMap{
@@ -532,7 +536,6 @@ func TestWebhookSender_Send_DeliveryDetailsNeverLeakSecrets(t *testing.T) {
 	serialized := string(blob)
 
 	r.NotContains(serialized, secret, "signing secret must never be stored")
-	r.NotContains(serialized, "p4ssw0rd", "URL credentials must never be stored")
 	r.NotContains(serialized, "qsSecretXYZ", "URL query string must never be stored")
 	r.NotContains(serialized, "signature=abc", "URL query string must never be stored")
 	r.NotContains(serialized, authToken, "Authorization header must never be stored")

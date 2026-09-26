@@ -210,12 +210,11 @@ export function returnToOrg(returnTo: string, basepath: string): string | null {
  * Three cases, in order:
  *
  * 1. `returnTo` is the embedded MCP OAuth authorize endpoint. The provider
- *    callback appends the session tokens to `redirect_uri` as query params,
- *    and only the SPA's pre-React handoff (main.tsx) knows how to persist
- *    them — sending the callback straight to /api/v1/oauth/authorize would
- *    drop them on a non-SPA URL. So we land back on the login page with
- *    `returnTo` preserved and let the already-authenticated effect resume the
- *    consent flow.
+ *    callback hands the session to the SPA's /auth/complete route (a
+ *    single-use code, spec 2026-09-25-12), which then lands on this
+ *    `redirect_uri`. We make that the login page with `returnTo` preserved,
+ *    so its already-authenticated effect refreshes the `access_token` cookie
+ *    before resuming the consent flow on /api/v1/oauth/authorize.
  * 2. Any other `returnTo`: passed through {@link stripOAuthErrorParams}. A
  *    previous failed attempt leaves `error`/`error_description` on the URL and
  *    the 401 bounce captures them into `returnTo`; without the strip, each

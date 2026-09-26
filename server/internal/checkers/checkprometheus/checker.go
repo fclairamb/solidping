@@ -119,9 +119,8 @@ func fetchValue(ctx context.Context, cfg *PrometheusConfig) (*resolution, error)
 func newClient(ctx context.Context, cfg *PrometheusConfig) *http.Client {
 	return &http.Client{
 		Timeout: cfg.EffectiveTimeout(),
-		Transport: checkerdef.BuildHTTPTransport(
-			checkerdef.TunnelDialerFrom(ctx), false, checkerdef.IPVersionFrom(ctx),
-		),
+		// Tunnel dialer, pinned family and egress guard, all off ctx.
+		Transport: checkerdef.HTTPTransportFor(ctx, false),
 	}
 }
 

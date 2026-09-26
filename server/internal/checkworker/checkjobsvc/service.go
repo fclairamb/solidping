@@ -12,6 +12,7 @@ import (
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/pgdialect"
 
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
@@ -84,6 +85,25 @@ type Service interface {
 		checkUID string,
 		limit int,
 		maxAhead time.Duration,
+	) ([]*models.CheckJob, time.Duration, error)
+
+	// ClaimPassiveJobs claims due passive (heartbeat, email) jobs for the jobs
+	// node's passive evaluator — their ONLY claimer (spec 2026-09-25-04). Every
+	// other claim (cloud workers, their express path, org and system agents)
+	// excludes passive types, so a dead region can no longer silence a
+	// dead-man's switch and an agent can no longer turn its evaluation into an
+	// error.
+	//
+	// Scope: region IS NULL and a passive type, due now (no claim-ahead — the
+	// evaluator does not sleep in-slot), unleased or lease expired. Rows are
+	// locked FOR UPDATE SKIP LOCKED on Postgres and leased with the normal
+	// lease (scheduled_at + period + 30s) inside one transaction, so two jobs
+	// nodes can never evaluate the same tick twice. The second return is the
+	// usual next-eligible hint over the same scope.
+	ClaimPassiveJobs(
+		ctx context.Context,
+		workerUID string,
+		limit int,
 	) ([]*models.CheckJob, time.Duration, error)
 
 	// ReleaseLease releases the lease and reschedules the job for next execution.
@@ -363,7 +383,35 @@ func (s AgentScope) apply(query *bun.SelectQuery) *bun.SelectQuery {
 		query = query.Where("organization_uid = ?", s.OrgUID)
 	}
 
-	return query.Where("region = ?", s.Region)
+	return excludePassiveTypes(query.Where("region = ?", s.Region))
+}
+
+// excludePassiveTypes keeps passive (heartbeat, email) jobs out of every check
+// worker and agent claim (spec 2026-09-25-04). They are evaluated on the jobs
+// node only (ClaimPassiveJobs). Two failures motivated it:
+//
+//   - an agent cannot evaluate them (it has no database), so an agent that won
+//     a passive job submitted an Error result every period and opened an
+//     incident;
+//   - a job pinned to a region died with that region, silencing the very
+//     dead-man's switch whose job is to report that something stopped.
+//
+// Applied on the claim itself, not only at job creation, so a regional
+// passive row that escaped the migration still never reaches a worker. A NULL
+// type (never written today) stays claimable: `NULL NOT IN (...)` is NULL.
+func excludePassiveTypes(query *bun.SelectQuery) *bun.SelectQuery {
+	return query.WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
+		return q.
+			WhereOr("type IS NULL").
+			WhereOr("type NOT IN (?)", bun.List(checkerdef.PassiveCheckTypes()))
+	})
+}
+
+// applyPassiveScope is the jobs-node claim scope: region-less passive jobs.
+func applyPassiveScope(query *bun.SelectQuery) *bun.SelectQuery {
+	return query.
+		Where("region IS NULL").
+		Where("type IN (?)", bun.List(checkerdef.PassiveCheckTypes()))
 }
 
 // privateRegionPrefix mirrors regions.PrivateRegionPrefix. It is duplicated as a
@@ -386,6 +434,9 @@ const privateRegionPrefix = "@"
 //   - within what remains, a NULL region means "any region" and a non-NULL one
 //     prefix-matches the worker (SP_REGION=eu-fr-paris claims region=eu-fr).
 func applyCloudRegionScope(query *bun.SelectQuery, region *string) *bun.SelectQuery {
+	// Passive jobs belong to the jobs node, never to a region's workers.
+	query = excludePassiveTypes(query)
+
 	query = query.WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
 		return q.
 			WhereOr("region IS NULL").
@@ -462,6 +513,77 @@ func (s *serviceImpl) ClaimJobsForAgent(
 		// ordering rationale as ClaimJobs).
 		var hintErr error
 		nextIn, hintErr = s.nextEligibleIn(ctx, tx, now, maxAhead, agentScope)
+
+		return hintErr
+	})
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nextIn, nil
+		}
+
+		return nil, 0, err
+	}
+
+	return jobs, nextIn, nil
+}
+
+// passiveClaimMaxAhead is the passive evaluator's claim-ahead window: none. It
+// claims what is due and evaluates it at once; there is no probe to line up
+// with a phase-locked tick, so nothing gains from parking a claimed row.
+const passiveClaimMaxAhead = time.Duration(0)
+
+// ClaimPassiveJobs claims due passive jobs for the jobs node. See the
+// interface doc.
+func (s *serviceImpl) ClaimPassiveJobs(
+	ctx context.Context,
+	workerUID string,
+	limit int,
+) ([]*models.CheckJob, time.Duration, error) {
+	if limit <= 0 {
+		return nil, 0, nil
+	}
+
+	var jobs []*models.CheckJob
+	var nextIn time.Duration
+
+	now := time.Now()
+
+	_, isPostgres := s.db.Dialect().(*pgdialect.Dialect)
+
+	err := s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		jobs = nil
+		nextIn = 0
+
+		query := applyPassiveScope(tx.NewSelect().Model(&jobs)).
+			Where("scheduled_at <= ?", now).
+			WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
+				return q.
+					WhereOr("lease_expires_at IS NULL").
+					WhereOr("lease_expires_at < ?", now)
+			}).
+			Order("scheduled_at ASC").
+			Limit(limit)
+
+		if isPostgres {
+			query = query.For("UPDATE SKIP LOCKED")
+		}
+
+		if err := query.Scan(ctx); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+
+		if len(jobs) > 0 {
+			if err := s.updateJobsWithLease(ctx, tx, jobs, workerUID, now, isPostgres); err != nil {
+				return err
+			}
+
+			if err := attachChecks(ctx, tx, jobs); err != nil {
+				return err
+			}
+		}
+
+		var hintErr error
+		nextIn, hintErr = s.nextEligibleIn(ctx, tx, now, passiveClaimMaxAhead, applyPassiveScope)
 
 		return hintErr
 	})
@@ -858,14 +980,36 @@ func (s *serviceImpl) updateSingleJobLease(
 	leaseExpiresAt := latest.Add(period + 30*time.Second)
 
 	// Update the job
-	result, err := tx.NewUpdate().
+	update := tx.NewUpdate().
 		Model((*models.CheckJob)(nil)).
 		Set("lease_worker_uid = ?", workerUID).
 		Set("lease_expires_at = ?", leaseExpiresAt).
 		Set("lease_starts = lease_starts + 1").
 		Set("updated_at = ?", now).
-		Where("uid = ?", job.UID).
-		Exec(ctx)
+		Where("uid = ?", job.UID)
+
+	// A pending "Capture now" request (spec 2026-09-25-34) is CONSUMED by this
+	// claim: it moves to capture_claimed_at (the request THIS lease carries,
+	// which the result submission checks before honoring an OnDemand marker)
+	// in the same transaction as the lease, while `job` keeps the value it was
+	// selected with — that in-memory copy is what tells the worker to force the
+	// capture. Only touched when the selected row carried one, so a request
+	// that lands between the select and this update on an unflagged row
+	// survives for the next claim. SET reads the pre-update value on both
+	// engines, so the move is one statement.
+	//
+	// A claim WITHOUT a pending request clears capture_claimed_at: a value left
+	// behind by a lease that ended without a release (worker crash, lease
+	// expiry) must never let this new run's onDemand marker be honored.
+	if job.CaptureRequestedAt != nil {
+		update = update.
+			Set("capture_claimed_at = capture_requested_at").
+			Set("capture_requested_at = NULL")
+	} else {
+		update = update.Set("capture_claimed_at = NULL")
+	}
+
+	result, err := update.Exec(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to update check job %s: %w", job.UID, err)
 	}
@@ -889,6 +1033,10 @@ func (s *serviceImpl) updateSingleJobLease(
 	job.LeaseStarts++
 	job.UpdatedAt = now
 
+	// The in-memory copy matches the row: this lease carries a request only
+	// if the claim consumed one.
+	job.CaptureClaimedAt = job.CaptureRequestedAt
+
 	return nil
 }
 
@@ -908,17 +1056,20 @@ func (s *serviceImpl) ReleaseLease(
 	workerUID string,
 	nextScheduledAt time.Time,
 ) error {
+	now := time.Now()
 	update := s.db.NewUpdate().
 		Model((*models.CheckJob)(nil)).
 		Set("lease_worker_uid = NULL").
 		Set("lease_expires_at = NULL").
 		Set("lease_starts = 0"). // Reset since the attempt is over
-		Set("scheduled_at = ?", nextScheduledAt).
+		Set(pendingCaptureOr("scheduled_at"), nextScheduledAt).
 		// Re-anchor the ordering key to the new schedule so a released job does
 		// not keep an effective deadline from a stale (earlier) schedule. The
 		// cost offset is reapplied on the next post-exec write.
-		Set("effective_scheduled_at = ?", nextScheduledAt).
-		Set("updated_at = ?", time.Now()).
+		Set(pendingCaptureOr("effective_scheduled_at"), nextScheduledAt).
+		// The run this lease carried is over: its request is spent.
+		Set("capture_claimed_at = NULL").
+		Set("updated_at = ?", now).
 		Where("uid = ?", jobUID).
 		Where("lease_worker_uid = ?", workerUID) // Safety: only release if we own the lease
 
@@ -956,6 +1107,10 @@ func (s *serviceImpl) DeferLeaseRateLimited(
 		Set("lease_expires_at = NULL").
 		Set("lease_starts = 0"). // The probe never started; don't count it as a crash
 		Set("scheduled_at = ?", nextScheduledAt).
+		// The probe never ran, so a "Capture now" request this lease carried
+		// goes back to pending instead of being lost (spec 2026-09-25-34).
+		Set("capture_requested_at = COALESCE(capture_requested_at, capture_claimed_at)").
+		Set("capture_claimed_at = NULL").
 		// effective_scheduled_at is deliberately NOT set here. See the doc above.
 		Set("updated_at = ?", time.Now()).
 		Where("uid = ?", jobUID).
@@ -977,21 +1132,38 @@ func (s *serviceImpl) ReleaseLeaseWithSchedulingState(
 	effectiveScheduledAt time.Time,
 	lane uint8,
 ) error {
+	now := time.Now()
 	update := s.db.NewUpdate().
 		Model((*models.CheckJob)(nil)).
 		Set("lease_worker_uid = NULL").
 		Set("lease_expires_at = NULL").
 		Set("lease_starts = 0"). // Reset since job completed
-		Set("scheduled_at = ?", nextScheduledAt).
+		Set(pendingCaptureOr("scheduled_at"), nextScheduledAt).
 		Set("cost_ewma_ms = ?", costEWMAMs).
 		Set("delay_ewma_ms = ?", delayEWMAMs).
-		Set("effective_scheduled_at = ?", effectiveScheduledAt).
+		Set(pendingCaptureOr("effective_scheduled_at"), effectiveScheduledAt).
+		Set("capture_claimed_at = NULL").
 		Set("lane = ?", lane).
-		Set("updated_at = ?", time.Now()).
+		Set("updated_at = ?", now).
 		Where("uid = ?", jobUID).
 		Where("lease_worker_uid = ?", workerUID) // Safety: only release if we own the lease
 
 	return s.execRelease(ctx, update)
+}
+
+// pendingCaptureOr builds a release `SET` for a schedule column that keeps a
+// pending "Capture now" request due (spec 2026-09-25-34). The request may have
+// landed while this job was leased — claim-ahead parks a lease up to 30 s
+// before the tick — and without this the release would push it a whole period
+// out. A pending request schedules the job AT THE REQUEST TIME, which is in the
+// past and therefore due at once. Binds one argument, the normal value.
+//
+// The ELSE branch reuses the column rather than binding "now" on purpose: two
+// bound literals would make Postgres resolve the CASE as text and refuse to
+// assign it to a timestamptz column, while the column gives the CASE its type
+// on both engines.
+func pendingCaptureOr(column string) string {
+	return column + " = CASE WHEN capture_requested_at IS NULL THEN ? ELSE capture_requested_at END"
 }
 
 // execRelease runs a release UPDATE and maps the no-rows case to

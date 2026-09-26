@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import type { StatusUpdatePublicResponse } from "@/api/hooks";
 import {
   StatusUpdateCard,
@@ -99,6 +100,7 @@ interface StatusUpdatesTimelineProps {
 }
 
 export function StatusUpdatesTimeline({ updates }: StatusUpdatesTimelineProps) {
+  const { t } = useTranslation();
   const entries = buildTimeline(updates);
 
   return (
@@ -115,12 +117,12 @@ export function StatusUpdatesTimeline({ updates }: StatusUpdatesTimelineProps) {
           return (
             <section
               key={incidentUid}
-              aria-label={`Incident thread ${incidentUid}`}
+              aria-label={t("status.incidentThreadLabel", { uid: incidentUid })}
               className="rounded-lg border border-border bg-card overflow-hidden"
             >
               <div className="px-4 py-2 border-b border-border bg-muted/30">
                 <span className="text-xs font-medium text-muted-foreground">
-                  Incident thread
+                  {t("status.incidentThread")}
                 </span>
               </div>
               <StatusUpdateThreadList updates={threadUpdates} variant="plain" />

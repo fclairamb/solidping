@@ -59,6 +59,7 @@ import { SMSModePanel } from "@/components/integrations/sms-mode-panel";
 import { useDebounce } from "@/lib/use-debounce";
 import { useAuth } from "@/contexts/AuthContext";
 import { DemoReadOnlyNote } from "@/components/shared/demo-read-only-note";
+import { cn } from "@/lib/utils";
 import { useIsDemoSession } from "@/hooks/use-is-demo-session";
 import { hasNotifiableIntegration } from "@/lib/onboarding-checklist";
 import { buildEmailAlertsWandPayload } from "@/lib/onboarding-wand";
@@ -273,18 +274,20 @@ function IntegrationsListPage() {
               <Table>
                 <TableHeader className="bg-muted/30">
                   <TableRow>
-                    <TableHead>{t("col.name", "Name")}</TableHead>
-                    <TableHead className="hidden sm:table-cell">
+                    <TableHead className="w-full">{t("col.name", "Name")}</TableHead>
+                    <TableHead className="hidden whitespace-nowrap sm:table-cell">
                       {t("col.type", "Type")}
                     </TableHead>
-                    <TableHead>{t("col.status", "Status")}</TableHead>
-                    <TableHead className="hidden md:table-cell">
+                    <TableHead className="hidden whitespace-nowrap sm:table-cell">
+                      {t("col.status", "Status")}
+                    </TableHead>
+                    <TableHead className="hidden whitespace-nowrap md:table-cell">
                       {t("col.usedBy", "Used by")}
                     </TableHead>
-                    <TableHead className="hidden lg:table-cell">
+                    <TableHead className="hidden whitespace-nowrap lg:table-cell">
                       {t("col.updated", "Updated")}
                     </TableHead>
-                    <TableHead className="w-[100px] text-right" />
+                    <TableHead className="px-2" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -357,7 +360,7 @@ function Row({ org, integration, onDelete }: RowProps) {
 
   return (
     <TableRow className="hover:bg-muted/40 transition-colors">
-      <TableCell className="max-w-0">
+      <TableCell className="w-full max-w-0">
         <Link
           to="/orgs/$org/integrations/$integrationUid"
           params={{ org, integrationUid: integration.uid }}
@@ -368,38 +371,26 @@ function Row({ org, integration, onDelete }: RowProps) {
           </div>
           <span className="min-w-0 truncate">{integration.name}</span>
         </Link>
+        {/* Below sm the Status column is hidden, so the status sits under
+            the name (aligned with it, past the icon) and the name keeps the
+            row's full width. */}
+        <IntegrationStatus integration={integration} className="mt-1 pl-[2.375rem] sm:hidden" />
       </TableCell>
-      <TableCell className="hidden sm:table-cell">
+      <TableCell className="hidden whitespace-nowrap sm:table-cell">
         <Badge variant="outline" className="font-mono text-xs font-normal">
           {integrationLabel(integration.type)}
         </Badge>
       </TableCell>
-      <TableCell className="text-sm">
-        <div className="flex items-center gap-2">
-          <Badge
-            variant={integration.enabled ? "default" : "secondary"}
-            className={
-              integration.enabled
-                ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 font-medium"
-                : "font-normal"
-            }
-          >
-            {integration.enabled ? t("status.enabled", "Enabled") : t("status.disabled", "Disabled")}
-          </Badge>
-          {integration.isDefault && (
-            <span title={t("default", "Default")} className="flex items-center">
-              <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-500" />
-            </span>
-          )}
-        </div>
+      <TableCell className="hidden whitespace-nowrap text-sm sm:table-cell">
+        <IntegrationStatus integration={integration} />
       </TableCell>
-      <TableCell className="hidden text-xs text-muted-foreground font-mono md:table-cell">
+      <TableCell className="hidden whitespace-nowrap text-xs text-muted-foreground font-mono md:table-cell">
         —
       </TableCell>
-      <TableCell className="hidden text-xs text-muted-foreground font-mono lg:table-cell">
+      <TableCell className="hidden whitespace-nowrap text-xs text-muted-foreground font-mono lg:table-cell">
         {new Date(integration.updatedAt).toLocaleDateString()}
       </TableCell>
-      <TableCell className="text-right">
+      <TableCell className="whitespace-nowrap px-2 text-right">
         <div className="flex items-center justify-end gap-1">
           <Button asChild variant="ghost" size="icon" aria-label={t("actions.edit", "Edit")}>
             <Link
@@ -421,5 +412,35 @@ function Row({ org, integration, onDelete }: RowProps) {
         </div>
       </TableCell>
     </TableRow>
+  );
+}
+
+function IntegrationStatus({
+  integration,
+  className,
+}: {
+  integration: Integration;
+  className?: string;
+}) {
+  const { t } = useTranslation("integrations");
+
+  return (
+    <div className={cn("flex items-center gap-2", className)}>
+      <Badge
+        variant={integration.enabled ? "default" : "secondary"}
+        className={
+          integration.enabled
+            ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 font-medium"
+            : "font-normal"
+        }
+      >
+        {integration.enabled ? t("status.enabled", "Enabled") : t("status.disabled", "Disabled")}
+      </Badge>
+      {integration.isDefault && (
+        <span title={t("default", "Default")} className="flex items-center">
+          <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-500" />
+        </span>
+      )}
+    </div>
   );
 }

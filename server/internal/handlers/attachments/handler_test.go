@@ -296,8 +296,9 @@ func TestAgentUploadRejectsForeignAndMalformedTopics(t *testing.T) {
 
 	r.Equal(http.StatusForbidden,
 		f.serve(t, goodAgent.signedRequest(f.ctx(), t,
-			"checks/"+f.check.UID+"/screenshot", pngBytes("x"))).Code,
-		"an entity with no registered authorizer must fail closed")
+			"status-pages/"+f.check.UID+"/screenshot", pngBytes("x"))).Code,
+		"an entity with no registered authorizer must fail closed "+
+			"(`checks` has one since spec 2026-09-25-34)")
 
 	r.Equal(http.StatusBadRequest,
 		f.serve(t, goodAgent.signedRequest(f.ctx(), t, "incidents..screenshot", pngBytes("x"))).Code,

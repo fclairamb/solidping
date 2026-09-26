@@ -29,7 +29,9 @@ var errNoTunnelDialer = errors.New("mysql tunnel dial: no tunnel dialer on conne
 //nolint:gochecknoinits // one-time global tunnel-network registration (mysql's dial registry never shrinks)
 func init() {
 	mysql.RegisterDialContext(tunnelNetwork, func(ctx context.Context, addr string) (net.Conn, error) {
-		dialer := checkerdef.TunnelDialerFrom(ctx)
+		// The tunnel dialer, or the egress guard when the policy is
+		// enforcing (spec 2026-09-25-19): both ride the connection context.
+		dialer := checkerdef.OutboundDialer(ctx)
 		if dialer == nil {
 			return nil, errNoTunnelDialer
 		}
@@ -117,9 +119,16 @@ func (c *MySQLChecker) Execute(
 	// Tunneled: select the registered tunnel network in the DSN so go-sql-driver
 	// dials through the bastion (the raw host:port is handed to the dial func, so
 	// the bastion resolves the hostname). Untunneled, the DSN is unchanged.
+	//
+	// The same registered network carries the egress guard (spec
+	// 2026-09-25-19) when the policy is enforcing: go-sql-driver has no other
+	// per-connection dialer seam, and it negotiates TLS above the dial.
 	dsn := params.dsn
-	if checkerdef.TunnelDialerFrom(ctx) != nil {
+	if checkerdef.OutboundDialer(ctx) != nil {
 		dsn = tunneledDSN(params.dsn)
+	}
+
+	if checkerdef.TunnelDialerFrom(ctx) != nil {
 		output["tunneled"] = true
 	}
 

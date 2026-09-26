@@ -71,9 +71,14 @@ func (c *FTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 
 	var conn *ftp.ServerConn
 
+	// The egress guard (spec 2026-09-25-19) rides the library's net.Dialer
+	// as a Control hook, so it covers the control connection AND every
+	// passive-mode data connection (a PASV reply naming a private address is
+	// refused too) without taking the DialFunc route that would bypass
+	// implicit TLS. A plain dialer when the policy is not enforcing.
 	dialOpts := []ftp.DialOption{
 		ftp.DialWithContext(ctx),
-		ftp.DialWithTimeout(timeout),
+		ftp.DialWithDialer(*checkerdef.GuardedNetDialer(ctx, &net.Dialer{Timeout: timeout})),
 	}
 
 	// Tunneled: route the control connection AND passive-mode data connections

@@ -80,6 +80,7 @@ func TestLanHostsHandlerReturnsFilteredList(t *testing.T) {
 			},
 		},
 	})
+	f.svc.AllowFreeboxTestBaseURL(srv.URL)
 
 	// Register the LAN-hosts route on the fixture router.
 	f.router.GET("/api/v1/orgs/:org/integrations/freebox/:uid/lan-hosts", f.handler.LanHostsHandler)
@@ -125,6 +126,7 @@ func TestLanHostsHandlerRejectsChannelStillPairing(t *testing.T) {
 	r := require.New(t)
 	f := newFreeboxFixture(t)
 	srv := startFakeFreeboxWithLAN(t, nil)
+	f.svc.AllowFreeboxTestBaseURL(srv.URL)
 
 	f.router.GET("/api/v1/orgs/:org/integrations/freebox/:uid/lan-hosts", f.handler.LanHostsHandler)
 

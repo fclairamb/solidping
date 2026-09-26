@@ -55,6 +55,7 @@ import { useLiveSubscription } from "@/contexts/LiveEventsContext";
 import { SnoozeDialog } from "@/components/incidents/snooze-dialog";
 import { IncidentPublicationsPanel } from "@/components/incidents/incident-publications-panel";
 import { IncidentTracerouteCard } from "@/components/incidents/traceroute-card";
+import { ScreenshotImageLink } from "@/components/shared/screenshot-image";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -597,7 +598,7 @@ function StatusUpdatesPanel({
             <AlertDialogCancel>{t("statusUpdatesCard.dialog.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              variant="destructive"
             >
               {t("statusUpdatesCard.dialog.deleteConfirmAction")}
             </AlertDialogAction>
@@ -753,7 +754,7 @@ function CommentsCard({
 }
 
 function IncidentDetailPage() {
-  const { t } = useTranslation("incidents");
+  const { t, i18n } = useTranslation("incidents");
   const { t: tEvents } = useTranslation("events");
   const { org, incidentUid } = Route.useParams();
   const navigate = useNavigate();
@@ -1136,6 +1137,41 @@ function IncidentDetailPage() {
                   icon={getEventIcon("incident.reopened")}
                 />
               )}
+              {/* The check stopped producing results while this incident was
+                  open, and came back (spec 2026-09-25-02). The incident stays
+                  open through the gap: no data is not a recovery. */}
+              {(events?.data ?? [])
+                .filter(
+                  (e) =>
+                    e.eventType === "incident.monitoring_interrupted" ||
+                    e.eventType === "incident.monitoring_resumed",
+                )
+                .slice()
+                .sort(
+                  (a, b) =>
+                    new Date(a.createdAt ?? 0).getTime() -
+                    new Date(b.createdAt ?? 0).getTime(),
+                )
+                .map((e) => (
+                  <TimelineItem
+                    key={e.uid}
+                    label={
+                      e.eventType === "incident.monitoring_interrupted" &&
+                      typeof e.payload?.since === "string"
+                        ? t("timeline.monitoringInterruptedSince", {
+                            time: new Date(e.payload.since).toLocaleTimeString(i18n.language, {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            }),
+                          })
+                        : e.eventType === "incident.monitoring_interrupted"
+                          ? t("timeline.monitoringInterrupted")
+                          : t("timeline.monitoringResumed")
+                    }
+                    timestamp={e.createdAt}
+                    icon={getEventIcon(e.eventType)}
+                  />
+                ))}
               {incident.resolvedAt && (
                 <TimelineItem
                   label={t("timeline.resolved")}
@@ -1453,22 +1489,11 @@ function IncidentScreenshotCard({ incident }: { incident: IncidentDetail }) {
       <CardContent className="space-y-4">
         {shots.map((shot) => (
           <figure key={shot.uid} className="space-y-2">
-            {/* The image is a link to itself so a full-resolution view is one
-                click away without a lightbox dependency. */}
-            <a
-              href={shot.downloadUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="block overflow-hidden rounded-md border bg-muted"
-            >
-              <img
-                src={shot.downloadUrl}
-                alt={t("detail.screenshot.alt")}
-                loading="lazy"
-                className="h-auto w-full max-w-full"
-                data-testid="incident-screenshot-image"
-              />
-            </a>
+            <ScreenshotImageLink
+              src={shot.downloadUrl}
+              alt={t("detail.screenshot.alt")}
+              imageTestId="incident-screenshot-image"
+            />
             <figcaption
               className="text-xs text-muted-foreground"
               data-testid="incident-screenshot-caption"
@@ -1948,9 +1973,9 @@ function EscalationTimelineCard({ events }: EscalationTimelineCardProps) {
                   ? new Date(event.createdAt).toLocaleString()
                   : "-"}
               </span>
-              {stepPos !== undefined && <span>· step {stepPos + 1}</span>}
+              {stepPos !== undefined && <span>{t("escalation:timeline.stepSuffix", { step: stepPos + 1 })}</span>}
               {repeatIdx !== undefined && repeatIdx > 0 && (
-                <span>· cycle {repeatIdx + 1}</span>
+                <span>{t("escalation:timeline.cycleSuffix", { cycle: repeatIdx + 1 })}</span>
               )}
               {failed && typeof event.payload?.reason === "string" && (
                 <span className="text-red-500">· {event.payload.reason}</span>

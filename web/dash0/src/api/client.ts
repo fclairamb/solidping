@@ -107,6 +107,31 @@ export function clearToken(): void {
   localStorage.removeItem("solidping_expires_in");
 }
 
+/**
+ * True for the duration of AuthContext's logout() — set the instant it
+ * starts revoking the session, cleared once it settles. Suppresses
+ * apiFetch's reactive 401 -> refresh-and-retry path below for requests that
+ * were already in flight when logout began: queryClient.cancelQueries()
+ * cannot abort a fetch that's already left the browser (nothing here wires
+ * an AbortSignal through to it), so those requests still land and still
+ * 401 once the session is revoked server-side. Without this flag each one
+ * would call refreshAccessToken(), find the session already cleared (or
+ * about to be), and log a spurious "no-refresh-token" failure — see
+ * token-refresh.ts's doRefresh and spec 2026-09-25-14. The 401 still falls
+ * through to the ordinary clearToken()+redirect handling below, just
+ * without the wasted (and noisy) refresh attempt.
+ *
+ * Exactly one call is exempt from this suppression: logout()'s own
+ * POST /auth/logout, via the `allowRefreshDuringLogout` FetchOption below —
+ * see that option's doc comment for why.
+ */
+let loggingOut = false;
+
+/** See `loggingOut`. Exported for AuthContext's logout() to toggle. */
+export function setLoggingOut(value: boolean): void {
+  loggingOut = value;
+}
+
 interface FetchOptions extends RequestInit {
   skipAuth?: boolean;
   suppress401Redirect?: boolean;
@@ -122,6 +147,23 @@ interface FetchOptions extends RequestInit {
    * a second 401 clears/redirects instead of looping back into another
    * refresh. Callers should never set this themselves. */
   _isRetry?: boolean;
+  /**
+   * Lets this one call refresh-and-retry on a 401 even while `loggingOut` is
+   * set. Only AuthContext's logout() passes this, on its own
+   * POST /auth/logout: that call is what revokes the session server-side, so
+   * if the user's access token happened to already be expired when they
+   * clicked "Sign out" (idle past the access-token lifetime — common), the
+   * POST itself would 401 and, under the blanket `loggingOut` suppression,
+   * never get retried with a refreshed token. The local logout would still
+   * look successful (tokens cleared, redirected to login) while the
+   * server-side session/refresh token stayed alive — silently defeating
+   * queued spec 2026-09-25-24, which depends on this POST actually reaching
+   * the server authenticated. Every other request made during logout
+   * (background refetches, anything already in flight) must NOT retry,
+   * which is exactly what `loggingOut` is for — this option carves out only
+   * the one call that must.
+   */
+  allowRefreshDuringLogout?: boolean;
 }
 
 export class NetworkError extends Error {
@@ -334,7 +376,13 @@ export async function apiFetch<T>(
   // retried request itself 401ing (e.g. the refresh succeeded but the new
   // token is somehow still rejected, or the refresh raced a logout) —
   // without it a second 401 would try to refresh again and loop.
-  if (response.status === 401 && !skipAuth && !suppress401Handling && !options._isRetry) {
+  if (
+    response.status === 401 &&
+    !skipAuth &&
+    !suppress401Handling &&
+    !options._isRetry &&
+    (!loggingOut || options.allowRefreshDuringLogout)
+  ) {
     const newToken = await refreshAccessToken();
 
     if (newToken) {

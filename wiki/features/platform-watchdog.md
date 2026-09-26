@@ -42,9 +42,9 @@ report. The retryable error is still returned, so the retry fires and the
 failure stays visible; `CreateJob` dedupes on type+config+org+pending, so the
 retry's own reschedule cannot stack a duplicate.
 
-## The three detectors
+## The four detectors
 
-Each runs **independently**. One that errors (or panics) is recorded in
+Each runs **independently** (`stale-checks` excepted, see below). One that errors (or panics) is recorded in
 `Report.Failed`, logged, counted on
 `solidping_watchdog_detector_failures_total`, and never stops the others. A
 watchdog that goes quiet because one query broke would reproduce the exact
@@ -63,6 +63,67 @@ its oldest overdue job is at least `darkRegionMinOverdueMinutes` (10) old.
 `critical` at 50 overdue jobs or 30 minutes. Remediation carried in the digest:
 `POST /api/v1/system/regions/migrate` (spec `2026-08-24-08`).
 
+Private regions (`@<slug>`) are org-relative. `RegionHealth` reports one row per
+(organization, slug), served by that org's agents (`agents.last_seen_at`, exact
+region match, revoked agents never live), so a connected private location is
+never dark. The anomaly subject is `<org>/@<slug>` (e.g. `dark-region:acme/@paris`),
+so two orgs' `@paris` never share a fingerprint, and a dark private region's
+remediation points at `GET /api/v1/orgs/<org>/agents` instead of a migration
+(spec `2026-09-25-01`).
+
+Cloud regions are ALSO watched every minute by the region sweep (below), which
+shares this detector's anti-flood marker, so an outage reaches the operator
+once, whichever of the two saw it first.
+
+## The per-minute region sweep (`region_health_sweep`)
+
+Spec `2026-09-25-03`. The hourly detector above was the only thing that could
+notice the 2026-09-24 `lauterbourg` outage (1 worker lost, 12 checks stopped for
+8 hours) and it could not: it was off, it is operator-only, and its 5-job bar
+ignores a region with one pinned check, which is exactly the check whose owner
+is blind. Code: `internal/regionsweep`, state in `internal/regionoutage`, job in
+`jobtypes/job_region_health_sweep.go`, seeded at startup.
+
+- **Runs every minute on the jobs node, whatever `platform_watchdog.enabled`
+  says.** It calls `checks.Service.RegionHealthWithJobs` (same scans as
+  `RegionHealth`, plus the per-job `check_uid`/`period`) and nothing else.
+- **Cloud regions only.** Private `@` rows are filtered out explicitly.
+- **States**, per cloud region, in a global `state_entries` marker
+  `region-outage:<slug>` (30-day TTL): *dark* = `jobs > 0 && liveWorkers == 0`
+  (no job-count floor; the 5-minute liveness window absorbs short blips, so a
+  region reads dark 5 to 6 minutes after its last beat); *stalled* = live
+  workers but a job overdue past `max(2 × period, 5 min)` (operator only);
+  *recovered* after **two consecutive** healthy sweeps. A region whose jobs were
+  all migrated away counts as healthy (nothing is stranded) and recovers as
+  "moved".
+- **Operator**: dark, stalled and recovered go to `platform_watchdog.recipients`
+  through `opsnotify.DeliverToUser` (event label `watchdog.region`), filtered by
+  `minSeverity` (dark is critical, stalled warning). With the watchdog disabled
+  there is nobody to page; the sweep still transitions, logs and meters.
+- **No double page**: both sides share `watchdog:anomaly:dark-region:<slug>`.
+  The sweep writes it (`watchdog.ClaimNotification`) only when it actually
+  delivers, and stays quiet if the digest already holds it; the digest then
+  reads the outage as ongoing. The only thing the sweep re-announces over an
+  existing marker is its own stalled → dark escalation. The watchdog never
+  resolves a `dark-region:<slug>` fingerprint while a `region-outage:<slug>`
+  marker exists (its higher bar makes "not seen" meaningless there); the sweep
+  clears the shared marker on recovery and announces it if it existed.
+- **Orgs**: when a region turns dark, every non-internal enabled check with a
+  job there is classified *blind* (every job region out of service: a dark
+  cloud region, or a private region with no live agent) or *reduced*. Each org
+  with at least one blind check gets one `region.offline` event and one email
+  per owner/admin (`region-offline.html`, its own blind checks listed with
+  links, capped at 20, plus the reduced count). The org UIDs go in the marker;
+  an org that becomes blind later in the same outage is told then, an org
+  already told never is again. Recovery sends `region.recovered` +
+  `region-recovered.html` to exactly those orgs. Chat integrations are out of
+  v1 (their senders are incident-shaped).
+- **dash0**: `GET /orgs/:org/regions` carries `status` (`online|offline`) and
+  `offlineSince` on cloud regions (offline = marker phase dark; stalled stays
+  online). The check detail page shows a destructive banner for a blind check
+  and a warning for a reduced one, the checks list names the checks that
+  stopped, and the check form marks offline regions.
+
 ### 2. `fleet-collapse`
 
 Results produced in the **last completed hour** vs. the **same hour a day
@@ -80,6 +141,24 @@ Active incidents whose check has produced no result for longer than
 default `max(3 × period, 15m)`. Disabled and deleted checks are excluded: a
 check nobody executes on purpose is not a mystery. Folded into **one** anomaly
 carrying the count and the three oldest, never one page per frozen incident.
+
+### 4. `stale-checks`
+
+Checks in the `stale` ("No data") status — no real result for
+`max(3 × period, 5 min)`, set by the minute freshness sweep (spec
+`2026-09-25-02`) — whose placement regions are **not all dark**. A stale check
+in a dark region is the dark-region detector's to report (and the org's region
+notice's), so it is left out: one outage, one report. What remains is the
+platform bug class — a stuck scheduler, a lease leak, rate limiting — which only
+the operator can fix. An any-region job counts as dark only when every cloud
+region is. Folded into **one** anomaly (subject `unexplained`) carrying the count
+and the three longest-silent checks; critical at `staleChecksCriticalCount`.
+
+This detector reads the dark-region detector's `RegionHealth` report, so it is
+the one detector that is **not** independent: when the dark-region pass fails,
+`stale-checks` fails too (with `ErrRegionHealthUnavailable`) rather than guess —
+reporting every stale check would double-report the outage, reporting none
+would read as healthy.
 
 ## Anti-flood: transitions, not state
 
@@ -130,6 +209,7 @@ Every threshold is overridable; unset (or zero) means the default:
 | `fleetDropPercent` / `fleetMinBaseline` / `fleetCriticalDropPercent` | 50 / 100 / 80 |
 | `staleIncidentMinMinutes` / `staleIncidentPeriodMultiplier` | 15 / 3 |
 | `staleIncidentCriticalCount` / `staleIncidentScanLimit` | 10 / 2000 |
+| `staleChecksCriticalCount` | 10 |
 
 ## Delivery
 
@@ -169,6 +249,9 @@ Prometheus alert independently:
 | `solidping_watchdog_stale_incidents` | frozen active incidents |
 | `solidping_watchdog_detector_failures_total{detector}` | detector runs that errored |
 | `solidping_watchdog_last_run_timestamp_seconds` | staleness of the watchdog itself |
+| `solidping_workers_active{region}` | live workers per cloud region, from `RegionHealth`. Written every minute by the region sweep (its only writer), even while the watchdog is disabled. Spec 2026-09-25-03 proposed a `solidping_region_live_workers` gauge: it would have meant exactly this, so it was not added under a second name |
+| `solidping_region_dark{region}` | `1` while the region sweep holds a cloud region as dark, `0` otherwise; every cloud region gets a series |
+| `solidping_checks_stale{region}` | checks currently `stale`, by placement region (`any` for an any-region job, `private` for every `@` region). Published every minute by the freshness sweep, not by the watchdog, so it exists even while the watchdog is disabled |
 
 A detector that errored leaves its anomaly gauge at the previous value rather
 than writing a `0`: publishing "healthy" as a fact when the watchdog could not

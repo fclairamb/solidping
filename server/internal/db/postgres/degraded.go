@@ -14,9 +14,10 @@ import (
 // reason about, and the internal self-stats checks are plumbing nobody wants an
 // intermittence notification for.
 //
-// Every check is returned regardless of `degraded_enabled` — that flag gates
-// OPENING an incident, not evaluating. The dry run is the whole adoption path,
-// so a disabled check still has to be swept in order to be stamped.
+// Only checks with `degraded_enabled` set are returned: a disabled check is not
+// evaluated at all. Turning the flag off resolves any open degraded incident in
+// the same request (checks.Service.UpdateCheck), because the sweep will never
+// look at that check again.
 //
 // Ordered oldest-evaluated first (NULLs, i.e. never evaluated, first) so a
 // bounded per-sweep limit still gives every check a turn on a large install
@@ -28,6 +29,7 @@ func (s *Service) ListChecksForDegradedEval(ctx context.Context, limit int) ([]*
 	query := s.db.NewSelect().
 		Model(&checks).
 		Where("enabled = ?", true).
+		Where("degraded_enabled = ?", true).
 		Where("internal = ?", false).
 		Where("deleted_at IS NULL").
 		Order("degraded_evaluated_at ASC NULLS FIRST")

@@ -1,5 +1,6 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import type { BadgeProps } from "@/components/ui/badge";
 import type { StatusUpdatePublicResponse } from "@/api/hooks";
@@ -54,22 +55,23 @@ function kindLabel(kind: string): string {
   return kind.charAt(0).toUpperCase() + kind.slice(1);
 }
 
-function formatRelativeTime(dateStr: string): string {
+// Relative time in the page's language ("5 minutes ago", "il y a 5 minutes").
+function formatRelativeTime(dateStr: string, lang: string): string {
   const date = new Date(dateStr);
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffMins = Math.floor(diffMs / 60_000);
 
-  if (diffMins < 1) return "just now";
-  if (diffMins < 60)
-    return `${diffMins} minute${diffMins === 1 ? "" : "s"} ago`;
+  if (diffMins < 1) {
+    return new Intl.RelativeTimeFormat(lang, { numeric: "auto" }).format(0, "second");
+  }
+  const rtf = new Intl.RelativeTimeFormat(lang, { numeric: "always" });
+  if (diffMins < 60) return rtf.format(-diffMins, "minute");
 
   const diffHours = Math.floor(diffMins / 60);
-  if (diffHours < 24)
-    return `${diffHours} hour${diffHours === 1 ? "" : "s"} ago`;
+  if (diffHours < 24) return rtf.format(-diffHours, "hour");
 
-  const diffDays = Math.floor(diffHours / 24);
-  return `${diffDays} day${diffDays === 1 ? "" : "s"} ago`;
+  return rtf.format(-Math.floor(diffHours / 24), "day");
 }
 
 /**
@@ -91,6 +93,12 @@ export function StatusUpdateCard({
   update,
   variant = "card",
 }: StatusUpdateCardProps) {
+  const { t, i18n } = useTranslation();
+  // Known kinds share the incident-state labels; an unknown one falls back to
+  // its capitalized raw value.
+  const kind = t(`incidentState.${update.kind || "info"}`, {
+    defaultValue: kindLabel(update.kind),
+  });
   return (
     <div
       id={`update-${update.uid}`}
@@ -113,11 +121,11 @@ export function StatusUpdateCard({
         <div className="flex items-center gap-2 shrink-0">
           <Badge
             variant={kindBadgeVariant(update.kind)}
-            aria-label={`Update kind: ${kindLabel(update.kind)}`}
+            aria-label={t("status.updateKindLabel", { kind })}
             data-testid="status-update-kind"
             translate="no"
           >
-            {kindLabel(update.kind)}
+            {kind}
           </Badge>
           <time
             dateTime={update.publishedAt}
@@ -125,7 +133,7 @@ export function StatusUpdateCard({
             data-testid="status-update-time"
             translate="no"
           >
-            {formatRelativeTime(update.publishedAt)}
+            {formatRelativeTime(update.publishedAt, i18n.language)}
           </time>
         </div>
       </div>
@@ -145,7 +153,7 @@ export function StatusUpdateCard({
           target="_blank"
           className="text-xs text-primary hover:underline"
         >
-          Read more →
+          {t("status.readMore")}
         </a>
       )}
     </div>

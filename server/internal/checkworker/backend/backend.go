@@ -52,6 +52,21 @@ type SubmitResultRequest struct {
 	Sched *SchedulingState `json:"sched,omitempty"`
 }
 
+// PrivateLocationReader is the extra read the private-location liveness
+// monitor needs (spec 2026-09-25-05). It is deliberately NOT part of
+// WorkerBackend: only a backend with database access implements it
+// (DirectBackend, i.e. the jobs node), so a deported agent — which could never
+// see its own absence anyway — cannot evaluate the monitor even if a job
+// reached it.
+type PrivateLocationReader interface {
+	// PrivateLocationAgents returns every non-deleted agent of the org bound to
+	// exactly this private region (`@<slug>`), active and revoked.
+	PrivateLocationAgents(ctx context.Context, orgUID, region string) ([]*models.Agent, error)
+	// LastAgentDisconnect returns the newest `agent.disconnected` event of an
+	// agent of this private region, or nil when there is none.
+	LastAgentDisconnect(ctx context.Context, orgUID, region string) (*models.Event, error)
+}
+
 // WorkerBackend abstracts how a check worker communicates with the master.
 // CheckWorker consumes exactly this interface, so the same loop runs in-process
 // (DirectBackend) and inside a deported agent (WSBackend).

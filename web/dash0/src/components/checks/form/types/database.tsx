@@ -11,11 +11,11 @@ import {
 } from "@/components/ui/select";
 import type { CheckTypeModule } from "./index";
 import type { CheckConfig, CheckTypeFieldsProps, FieldErrors } from "./common";
-import { getConfigField } from "./common";
+import { getConfigField, validationMessage } from "./common";
 import { useCheckFormFields } from "./context";
 
 const hostRequired = (host: string): FieldErrors =>
-  host ? [] : [{ name: "host", message: "Host is required" }];
+  host ? [] : [{ name: "host", message: validationMessage("hostRequired") }];
 
 // ── SQL databases: postgresql / mysql / mssql / oracle ──
 export interface SqlDbState {
@@ -496,7 +496,7 @@ function RabbitmqFields({ state, onChange }: CheckTypeFieldsProps<RabbitmqState>
               <Input
                 id="rabbitmqMemoryWarning"
                 type="text"
-                placeholder="80% or 1.5GiB"
+                placeholder={t("rabbitmq.memoryWarningPlaceholder")}
                 value={state.memoryUsedWarning}
                 onChange={(e) => onChange({ ...state, memoryUsedWarning: e.target.value })}
                 data-testid="check-rabbitmq-memory-warning-input"
@@ -507,7 +507,7 @@ function RabbitmqFields({ state, onChange }: CheckTypeFieldsProps<RabbitmqState>
               <Input
                 id="rabbitmqMemoryCritical"
                 type="text"
-                placeholder="90% or 1.8GiB"
+                placeholder={t("rabbitmq.memoryCriticalPlaceholder")}
                 value={state.memoryUsedCritical}
                 onChange={(e) => onChange({ ...state, memoryUsedCritical: e.target.value })}
                 data-testid="check-rabbitmq-memory-critical-input"

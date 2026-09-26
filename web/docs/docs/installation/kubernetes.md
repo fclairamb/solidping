@@ -387,10 +387,22 @@ capability per region; if the sidecar dies, checks report an **error** (not a
 
 ## Monitoring
 
-SolidPing exposes metrics that can be scraped by Prometheus:
+SolidPing exposes metrics that can be scraped by Prometheus, gated behind a
+bearer token (`SP_METRICS_SCRAPE_TOKEN` — see
+[Observability](/features/observability#prometheus-metrics)). Store the token
+in a `Secret` and reference it from the `ServiceMonitor` rather than inlining
+it:
 
 ```yaml
 # servicemonitor.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: solidping-metrics-token
+  namespace: solidping
+stringData:
+  token: <token>
+---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -403,6 +415,10 @@ spec:
   endpoints:
     - port: http
       path: /metrics
+      authorization:
+        credentials:
+          name: solidping-metrics-token
+          key: token
 ```
 
 ## Next Steps

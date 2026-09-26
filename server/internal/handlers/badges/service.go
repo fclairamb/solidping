@@ -33,6 +33,10 @@ const (
 	statusUp                   = "up"
 	statusDown                 = "down"
 	statusUnknown              = "unknown"
+	// statusNoData is what a status badge says for a check whose newest real
+	// result is older than its freshness threshold (spec 2026-09-25-02): the
+	// newest raw row is history, not a reading, so "up" would be a lie.
+	statusNoData = "no data"
 )
 
 // defaultBadgeWidth is the combined image width used when a bar or graph row is
@@ -173,9 +177,14 @@ func (s *Service) GenerateBadge(
 		}
 	}
 
-	// 8. Render row 1.
-	value := s.composeValue(textTokens, results)
-	color := resolveColor(textTokens, results)
+	// 8. Render row 1. A check nobody is measuring — newest real result older
+	// than max(3 × period, 5 min), or already swept to stale — renders the
+	// gray "no data" status whatever its newest raw row says (spec
+	// 2026-09-25-02). Availability and response time describe a past window
+	// and are left alone.
+	noData := check.Status == models.CheckStatusStale || check.IsDataStale(time.Now())
+	value := s.composeValue(textTokens, results, noData)
+	color := resolveColor(textTokens, results, noData)
 	rows := []string{renderBadgeRow(opts.Label, value, color, opts.Style, width, 0)}
 
 	totalHeight := rowHeightText
@@ -649,16 +658,26 @@ func (s *Service) fetchResults(
 }
 
 // composeValue builds the badge value string from the selected tokens.
-func (s *Service) composeValue(tokens []string, results []*models.Result) string {
+// noData replaces the status with "no data" and drops the "↑ 3d" duration,
+// which would otherwise count from a reading that is no longer current.
+func (s *Service) composeValue(tokens []string, results []*models.Result, noData bool) string {
 	parts := make([]string, 0, len(tokens))
 
 	for _, token := range tokens {
 		switch token {
 		case componentStatus:
-			parts = append(parts, formatStatus(results))
+			if noData {
+				parts = append(parts, statusNoData)
+			} else {
+				parts = append(parts, formatStatus(results))
+			}
 		case componentAvailability:
 			parts = append(parts, formatAvailability(calculateAvailability(results)))
 		case componentDuration:
+			if noData {
+				continue
+			}
+
 			dur, isUp, ok := calculateStatusDuration(results)
 			if ok {
 				if isUp {
@@ -713,7 +732,7 @@ func formatStatus(results []*models.Result) string {
 }
 
 // resolveColor returns the badge color based on component precedence.
-func resolveColor(tokens []string, results []*models.Result) string {
+func resolveColor(tokens []string, results []*models.Result, noData bool) string {
 	hasStatus := false
 	hasAvailability := false
 
@@ -725,6 +744,10 @@ func resolveColor(tokens []string, results []*models.Result) string {
 		if token == componentAvailability {
 			hasAvailability = true
 		}
+	}
+
+	if hasStatus && noData {
+		return ColorGray
 	}
 
 	if hasStatus {

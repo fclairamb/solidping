@@ -78,6 +78,18 @@ func (c *KafkaChecker) Execute(
 		saramaCfg.Net.Proxy.Enable = true
 		saramaCfg.Net.Proxy.Dialer = tunnelProxyDialer{ctx: ctx, dialer: dialer}
 		output["tunneled"] = true
+	} else if checkerdef.EgressEnforcing(ctx) {
+		// Egress guard (spec 2026-09-25-19): every broker connection — the
+		// bootstrap list AND the brokers the cluster advertises in its
+		// metadata — goes through the guard. sarama applies TLS above the
+		// dialer, so only the TCP connect changes.
+		saramaCfg.Net.Proxy.Enable = true
+		saramaCfg.Net.Proxy.Dialer = tunnelProxyDialer{
+			ctx: ctx,
+			dialer: checkerdef.GuardDialerOr(ctx, &net.Dialer{
+				Timeout: saramaCfg.Net.DialTimeout, KeepAlive: saramaCfg.Net.KeepAlive,
+			}),
+		}
 	}
 
 	client, err := sarama.NewClient(cfg.Brokers, saramaCfg)

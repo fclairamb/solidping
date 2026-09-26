@@ -33,6 +33,7 @@
   "detail": {
     "currentWindow": "Fenêtre en cours",
     "attainment": "Atteinte",
+    "lowCoverage": "Mesuré sur {{pct}} % de la fenêtre",
     "target": "Cible",
     "budgetTotal": "Budget",
     "budgetConsumed": "Consommé",

@@ -95,21 +95,9 @@ type SAMLRelayState struct {
 }
 
 // SAMLResult contains the result of a successful SAML SP-initiated login.
-type SAMLResult struct {
-	AccessToken  string
-	RefreshToken string
-	ExpiresIn    int
-	OrgSlug      string
-	UserUID      string
-	// Pending is true when the login succeeded but the org did not admit
-	// the user: no membership was created, a membership request is awaiting
-	// admin approval, and the tokens above are an org-less session.
-	Pending bool
-	// PendingOrgSlug is the org to NAME on the no-org screen, or empty
-	// when the pending outcome opened no membership request at all
-	// (see auth.ProviderLoginResult.PendingOrgSlug).
-	PendingOrgSlug string
-}
+// It is the ProviderOutcome every federated callback hands to
+// finishProviderCallback.
+type SAMLResult = ProviderOutcome
 
 // samlUserInfo is the set of identity fields extracted from a validated
 // assertion.
@@ -563,7 +551,8 @@ func (s *SAMLService) HandleACS(
 
 	// Admission policy + session minting, shared by every connector
 	// (see Service.JoinOrgViaLogin). A user the org does not admit gets
-	// login.Pending and an org-less session instead of a membership.
+	// login.Pending instead of a membership, with a session on an org they
+	// already belong to (login.FallbackOrgSlug) or an org-less one.
 	login, err := s.authService.CompleteOrgLogin(ctx, org, user,
 		WithLoginMethod(signupMethodSAML), newlyCreatedUserOption(userCreated))
 	if err != nil {
@@ -571,13 +560,14 @@ func (s *SAMLService) HandleACS(
 	}
 
 	return &SAMLResult{
-		AccessToken:    login.AccessToken,
-		RefreshToken:   login.RefreshToken,
-		ExpiresIn:      login.ExpiresIn,
-		OrgSlug:        org.Slug,
-		UserUID:        user.UID,
-		Pending:        login.Pending,
-		PendingOrgSlug: login.PendingOrgSlug,
+		AccessToken:     login.AccessToken,
+		RefreshToken:    login.RefreshToken,
+		ExpiresIn:       login.ExpiresIn,
+		OrgSlug:         org.Slug,
+		UserUID:         user.UID,
+		Pending:         login.Pending,
+		FallbackOrgSlug: login.FallbackOrgSlug,
+		PendingOrgSlug:  login.PendingOrgSlug,
 	}, nil
 }
 

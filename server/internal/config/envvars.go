@@ -90,8 +90,36 @@ func envNameForKoanfPath(path string) (string, bool) {
 // config.Load — TestManualReaderEnvVarsBind spot-checks that these names bind.
 func manualReaderEnvVars() []string {
 	out := append(manualReaderServerEnvVars(), manualReaderPlatformEnvVars()...)
+	out = append(out, manualReaderHeartbeatEnvVars()...)
 
-	return append(out, manualReaderHeartbeatEnvVars()...)
+	return append(out,
+		// applyEgressEnv: egress.allow_private_targets is snake_case, so
+		// koanf's env loader can never reach it.
+		EnvEgressAllowPrivate,
+		// applyHeadersEnv: csp_extra_sources is snake_case, so koanf's env
+		// loader can never reach it.
+		EnvHeadersCSPExtraSources,
+		// applyMetricsEnv: scrape_token is snake_case, so koanf's env loader
+		// can never reach it (SP_METRICS_SCRAPE_TOKEN would land on
+		// metrics.scrape.token, not prometheus.scrape_token).
+		EnvMetricsScrapeToken,
+	)
+}
+
+// manualReaderACMEEnvVars covers applyACMEEnv (acme.enabled / acme.email are
+// koanf-reachable; every other ACME key has a snake_case segment). Its own
+// group so manualReaderServerEnvVars stays a readable length.
+func manualReaderACMEEnvVars() []string {
+	return []string{
+		"SP_ACME_CA_URL",
+		"SP_ACME_LISTEN_HTTP",
+		"SP_ACME_LISTEN_HTTPS",
+		"SP_ACME_PROXY_PROTOCOL",
+		"SP_ACME_PROXY_PROTOCOL_TRUSTED_CIDRS",
+		"SP_ACME_FALLBACK_UPSTREAM_HTTPS",
+		"SP_ACME_FALLBACK_UPSTREAM_HTTP",
+		"SP_ACME_FALLBACK_UPSTREAM_PROXY_PROTOCOL",
+	}
 }
 
 // manualReaderHeartbeatEnvVars covers applyHeartbeatEnv. EVERY key in
@@ -118,9 +146,9 @@ func manualReaderHeartbeatEnvVars() []string {
 // manualReaderServerEnvVars covers Load's own bare reads and the helpers that
 // configure request serving: rate limiting, password hashing, jobs, realtime,
 // agents, auth, the server hosts (docs / custom-domain CNAME), in-server ACME
-// and check scheduling.
+// (manualReaderACMEEnvVars) and check scheduling.
 func manualReaderServerEnvVars() []string {
-	return []string{
+	return append([]string{
 		// Bare reads in Load itself.
 		"SP_REDIRECTS",
 		"SP_RUN_MODE",
@@ -136,6 +164,9 @@ func manualReaderServerEnvVars() []string {
 		"SP_LOG_FORMAT",
 		"SP_APP_GITHUB_ISSUES_TOKEN",
 		"SP_APP_GITHUB_REPO",
+		// applyFeedbackEnv — feedback_max_storage_bytes is snake_case, so
+		// koanf's env loader cannot reach it.
+		EnvAppFeedbackMaxStorageBytes,
 		// applyCheckersEnv — both keys have a snake_case segment, so koanf's
 		// env loader cannot reach them (see BrowserCheckerConfig).
 		"SP_CHECKERS_BROWSER_CDP_URL",
@@ -193,15 +224,6 @@ func manualReaderServerEnvVars() []string {
 		"SP_EXIT_WITH_PARENT",
 		"SP_SERVER_CORS_ALLOWED_ORIGINS",
 		"SP_CORS_ALLOWED_ORIGINS",
-		// applyACMEEnv (acme.enabled / acme.email are koanf-reachable)
-		"SP_ACME_CA_URL",
-		"SP_ACME_LISTEN_HTTP",
-		"SP_ACME_LISTEN_HTTPS",
-		"SP_ACME_PROXY_PROTOCOL",
-		"SP_ACME_PROXY_PROTOCOL_TRUSTED_CIDRS",
-		"SP_ACME_FALLBACK_UPSTREAM_HTTPS",
-		"SP_ACME_FALLBACK_UPSTREAM_HTTP",
-		"SP_ACME_FALLBACK_UPSTREAM_PROXY_PROTOCOL",
 		// applyEncryptionEnv — encryption.master_key and master_key_file are
 		// snake_case, so koanf's env loader lands on encryption.master.key and
 		// binds nothing. Absent from this list the credentials service stayed in
@@ -220,7 +242,7 @@ func manualReaderServerEnvVars() []string {
 		"SP_SCHEDULING_LANE_SLOW_THRESHOLD_MS",
 		"SP_SCHEDULING_LANE_FAST_THRESHOLD_MS",
 		"SP_SCHEDULING_FAST_LANE_RESERVED",
-	}
+	}, manualReaderACMEEnvVars()...)
 }
 
 // manualReaderPlatformEnvVars covers the helpers that configure the process

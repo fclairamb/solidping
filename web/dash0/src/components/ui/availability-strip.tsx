@@ -10,6 +10,7 @@ import {
   formatAvailabilityPct,
   type AvailabilityStatus,
 } from "@/lib/availability-status";
+import { bucketCoveragePct, LOW_BUCKET_COVERAGE } from "@/lib/check-freshness";
 import { cn } from "@/lib/utils";
 
 /** One cell of the strip. Shaped like the API's AvailabilityBucket so a response
@@ -35,6 +36,15 @@ interface AvailabilityStripProps {
   /** Cell height. The chart strip is deliberately shorter than the dashboard's
    * 24h strip so it reads as an axis annotation, not a second chart. */
   height?: "sm" | "md";
+  /**
+   * max(1, regions) / period — results the check should produce per second.
+   * When set, a cell whose probes fall short of it says "measured 67% of the
+   * interval" in its tooltip (spec 2026-09-25-02): a green cell over a gap is
+   * green only for the part that was measured.
+   */
+  probesPerSecond?: number;
+  /** The check's creation time: nothing is expected before it. */
+  measuredFrom?: string;
 }
 
 /** Compact "Mon 14:00 → 20:00" style span label, adapted to the bucket width. */
@@ -66,10 +76,12 @@ function StripCell({
   cell,
   testId,
   height,
+  coveragePct,
 }: {
   cell: AvailabilityStripCell;
   testId?: string;
   height: "sm" | "md";
+  coveragePct: number | null;
 }) {
   const { t } = useTranslation("checks");
   const pctLabel = formatAvailabilityPct(cell.availabilityPct);
@@ -140,6 +152,17 @@ function StripCell({
               })}
             </p>
           )}
+          {/* Only for a cell WITH data: a no-data cell's headline already
+              says nothing was measured, and a "0%" there would be exactly the
+              fabricated figure a no-data cell must never carry. */}
+          {cell.hasData && coveragePct !== null && coveragePct < LOW_BUCKET_COVERAGE * 100 && (
+            <p
+              className="text-amber-600 dark:text-amber-400 tabular-nums"
+              data-testid="availability-strip-coverage"
+            >
+              {t("detail.availabilityStrip.coverage", { pct: coveragePct })}
+            </p>
+          )}
         </div>
       </TooltipContent>
     </Tooltip>
@@ -161,6 +184,8 @@ export function AvailabilityStrip({
   className,
   testIdPrefix,
   height = "sm",
+  probesPerSecond,
+  measuredFrom,
 }: AvailabilityStripProps) {
   return (
     <div
@@ -173,6 +198,7 @@ export function AvailabilityStrip({
           cell={cell}
           height={height}
           testId={testIdPrefix ? `${testIdPrefix}-cell` : undefined}
+          coveragePct={bucketCoveragePct(cell, probesPerSecond, { measuredFrom })}
         />
       ))}
     </div>

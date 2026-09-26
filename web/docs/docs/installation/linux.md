@@ -13,9 +13,10 @@ Download the latest release from GitHub:
 
 ```bash
 # Download the latest release
-curl -L -o solidping https://github.com/fclairamb/solidping/releases/latest/download/solidping-linux-amd64
+curl -L -o solidping-linux-amd64.gz https://github.com/fclairamb/solidping/releases/latest/download/solidping-linux-amd64.gz
 
-# Make it executable
+# Decompress and make it executable
+gunzip -c solidping-linux-amd64.gz > solidping
 chmod +x solidping
 
 # Move to a system location (optional)
@@ -25,33 +26,38 @@ sudo mv solidping /usr/local/bin/
 For ARM64 systems:
 
 ```bash
-curl -L -o solidping https://github.com/fclairamb/solidping/releases/latest/download/solidping-linux-arm64
+curl -L -o solidping-linux-arm64.gz https://github.com/fclairamb/solidping/releases/latest/download/solidping-linux-arm64.gz
+gunzip -c solidping-linux-arm64.gz > solidping
 chmod +x solidping
 ```
 
 ### Verify the checksum (recommended)
 
 Every release also publishes `solidping-checksums.txt`, covering all five
-published binaries:
+published `.gz`/`.zip` archives. Verify it against the downloaded `.gz` file
+itself — `gunzip -c` above leaves that file in place, so this works whether
+you run it before or after decompressing:
 
 ```bash
 curl -L -o solidping-checksums.txt https://github.com/fclairamb/solidping/releases/latest/download/solidping-checksums.txt
 sha256sum -c --ignore-missing solidping-checksums.txt
 ```
 
-`--ignore-missing` skips the checksum lines for binaries you didn't download,
+`--ignore-missing` skips the checksum lines for archives you didn't download,
 so this works no matter which platform's file you fetched.
 
 ## macOS
 
-The same release publishes binaries for macOS — Apple Silicon and Intel:
+The same release publishes archives for macOS — Apple Silicon and Intel:
 
 ```bash
 # Apple Silicon
-curl -L -o solidping https://github.com/fclairamb/solidping/releases/latest/download/solidping-darwin-arm64
+curl -L -o solidping-darwin-arm64.gz https://github.com/fclairamb/solidping/releases/latest/download/solidping-darwin-arm64.gz
+gunzip -c solidping-darwin-arm64.gz > solidping
 
 # Intel
-curl -L -o solidping https://github.com/fclairamb/solidping/releases/latest/download/solidping-darwin-amd64
+curl -L -o solidping-darwin-amd64.gz https://github.com/fclairamb/solidping/releases/latest/download/solidping-darwin-amd64.gz
+gunzip -c solidping-darwin-amd64.gz > solidping
 
 chmod +x solidping
 ```
@@ -258,7 +264,8 @@ sudo journalctl -u solidping --since today
 sudo systemctl stop solidping
 
 # Download new version
-curl -L -o /tmp/solidping https://github.com/fclairamb/solidping/releases/latest/download/solidping-linux-amd64
+curl -L -o /tmp/solidping.gz https://github.com/fclairamb/solidping/releases/latest/download/solidping-linux-amd64.gz
+gunzip -c /tmp/solidping.gz > /tmp/solidping
 chmod +x /tmp/solidping
 
 # Replace binary

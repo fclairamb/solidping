@@ -17,6 +17,8 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
+	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
+	"github.com/fclairamb/solidping/server/internal/notifier"
 )
 
 // ---------------------------------------------------------------------------
@@ -429,8 +431,14 @@ func newLoginAuditFixture(t *testing.T) (*loginAuditFixture, context.Context) {
 	org := models.NewOrganization("acmeaudit", "Acme")
 	require.NoError(t, dbSvc.CreateOrganization(ctx, org))
 
+	// A real jobs service (rather than nil) so enqueueEmail actually queues a
+	// row — registration tests in this package recover the confirmation
+	// token from the queued "registration.html" email, since the pending
+	// state entry now stores only its SHA-256 hash (spec 2026-09-25-30).
+	jobs := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier(), nil)
+
 	return &loginAuditFixture{
-		svc: NewService(dbSvc, cfg.Auth, cfg, nil, nil),
+		svc: NewService(dbSvc, cfg.Auth, cfg, jobs, nil),
 		db:  dbSvc,
 		org: org,
 	}, ctx

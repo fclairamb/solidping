@@ -5,11 +5,13 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/fclairamb/solidping/server/internal/authhandoff"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
@@ -186,9 +188,9 @@ func TestInstallOptOutLeavesInstallerPending(t *testing.T) {
 }
 
 // TestInstallCallbackRedirectsPendingToNoOrg covers the handler tail: a
-// pending install must land on the shared request-access surface instead of
-// the post-install exchange page (which needs a refresh token an org-less
-// session does not have).
+// pending install hands over an org-less session through a handoff code, and
+// the redirect names the org so the dashboard lands on its request-access
+// surface. No token is in the URL (spec 2026-09-25-12).
 func TestInstallCallbackRedirectsPendingToNoOrg(t *testing.T) {
 	t.Parallel()
 
@@ -208,10 +210,58 @@ func TestInstallCallbackRedirectsPendingToNoOrg(t *testing.T) {
 	r.NoError(handler.OAuthCallback(rec, req))
 	r.Equal(http.StatusFound, rec.Code)
 
-	location := rec.Header().Get("Location")
-	r.Contains(location, "/d/no-org")
-	r.Contains(location, "membershipPending="+org.Slug)
-	r.NotContains(location, "/d/auth/slack/complete")
+	location, err := url.Parse(rec.Header().Get("Location"))
+	r.NoError(err)
+	r.Equal("/d/auth/complete", location.Path)
+	r.Equal(org.Slug, location.Query().Get("membershipPending"))
+	r.False(location.Query().Has("access_token"))
+	r.False(location.Query().Has("refresh_token"))
+
+	session, err := authhandoff.Redeem(ctx, svc.db, location.Query().Get("code"))
+	r.NoError(err)
+	r.NotEmpty(session.AccessToken)
+	r.Empty(session.OrgSlug, "a pending install hands over an org-less session")
+	r.Empty(session.RefreshToken)
+	r.Equal(org.Slug, session.MembershipPending)
+}
+
+// TestInstallCallbackHandsOffWithCode covers the admitted install: the
+// browser gets the dashboard's handoff route with a single-use code, and the
+// code redeems for an org-scoped session that lands on the org.
+func TestInstallCallbackHandsOffWithCode(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc := setupInstallService(t, linkedTeamID, nil)
+
+	authorizeURL, err := svc.BuildInstallURL(ctx, "marketplace", "", "")
+	r.NoError(err)
+
+	handler := NewHandler(svc, svc.cfg)
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet,
+		"/api/v1/integrations/slack/oauth?code=mock-code&state="+
+			extractStateParam(t, authorizeURL), nil)
+	rec := httptest.NewRecorder()
+
+	r.NoError(handler.OAuthCallback(rec, req))
+	r.Equal(http.StatusFound, rec.Code)
+
+	rawLocation := rec.Header().Get("Location")
+	location, err := url.Parse(rawLocation)
+	r.NoError(err)
+	r.Equal("http://localhost:4000/d/auth/complete", location.Scheme+"://"+location.Host+location.Path)
+	r.False(location.Query().Has("membershipPending"))
+
+	session, err := authhandoff.Redeem(ctx, svc.db, location.Query().Get("code"))
+	r.NoError(err)
+	r.NotEmpty(session.OrgSlug)
+	r.NotEmpty(session.RefreshToken, "an admitted install hands over a full session")
+	r.Equal("/d/orgs/"+session.OrgSlug, session.ReturnTo)
+	r.NotContains(rawLocation, session.AccessToken)
+	r.NotContains(rawLocation, session.RefreshToken)
+
+	_, err = authhandoff.Redeem(ctx, svc.db, location.Query().Get("code"))
+	r.ErrorIs(err, authhandoff.ErrInvalidCode)
 }
 
 // TestInstallDoesNotJoinForeignTargetOrg is the cross-tenant negative for the

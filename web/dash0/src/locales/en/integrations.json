@@ -204,13 +204,17 @@
     "discordDmEmpty": "No member of this organization has linked a Discord account yet. Each member connects their own under Account → Notifications.",
     "discordMappingNobodyLinked": "Nobody here has linked a Discord account yet, so channel alerts name people without pinging them. Each member connects their own account under Account → Notifications; re-sync afterwards to pick them up.",
     "discordDmSearchPlaceholder": "Search members…",
-    "discordDmNoneFound": "No members found"
+    "discordDmNoneFound": "No members found",
+    "twilioRegionUs1": "US1 (default)",
+    "twilioRegionIe1": "Ireland (ie1)",
+    "twilioRegionAu1": "Australia (au1)"
   },
   "freebox": {
     "name": "Freebox",
     "description": "Monitor your Freebox line quality and network status",
     "baseUrl": "Freebox base URL",
     "baseUrlHint": "Leave as-is if SolidPing runs on the same LAN as the Freebox. For remote access, use the public hostname you configured in the Freebox admin under Settings → Freebox OS API.",
+    "baseUrlDisabledInSaaS": "Custom base URLs aren't available on this deployment — pairing always uses the Freebox's default address.",
     "deviceName": "Device label",
     "deviceNameHint": "Shown on the Freebox admin under Authorized apps. Pick something you'll recognise later.",
     "pairButton": "Pair with Freebox",
@@ -221,7 +225,8 @@
     "pairingDenied": "The pairing was rejected on the Freebox.",
     "pairingFailed": "Could not reach the Freebox. Double-check the base URL.",
     "paired": "Paired — connection ready",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "namePlaceholder": "Living-room Freebox"
   },
   "kubernetes": {
     "name": "Kubernetes",

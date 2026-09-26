@@ -102,7 +102,7 @@ Personal Access Tokens (PAT), session refresh tokens, and OAuth 2.1 refresh gran
 | uid | uuid PK | Primary key |
 | user_uid | uuid | FK to users |
 | organization_uid | uuid | FK to organizations (for PAT scope; NULL for global refresh tokens) |
-| token | text | Hashed token value |
+| token_hash | text | Lowercase hex SHA-256 of the token value. The value itself is never stored |
 | type | text | Token type: pat, refresh, oauth_refresh |
 | properties | jsonb | Token metadata (name, scopes; client_id/scope/resource for oauth_refresh) |
 | expires_at | timestamptz | Token expiration (NULL = never) |
@@ -112,7 +112,17 @@ Personal Access Tokens (PAT), session refresh tokens, and OAuth 2.1 refresh gran
 - `user_uid` → users(uid)
 - `organization_uid` → organizations(uid)
 
-**Indexes**: unique on (token) where not deleted; index on user_uid; index on expires_at
+**Indexes**: unique on (token_hash) where not deleted; index on user_uid; index on expires_at
+
+**Hashed at rest** (spec 2026-09-25-23, v0.33.0): until v0.32 the plaintext
+refresh token, PAT or OAuth grant sat in a `token` column. `GetUserTokenByToken`
+now hashes the presented value (`models.HashUserToken`) and matches
+`token_hash`; the PAT cache is keyed by the same hash. Plain SHA-256 is enough
+because every value is CSPRNG output of at least 192 bits. The upgrade is
+`024_v0_33_0` (column + index) plus `db.HashPlaintextUserTokens`, a Go step run
+after the migrator on every boot that hashes rows whose `token_hash` is NULL and
+drops `token`. A downgrade deletes every row (hashes cannot be reversed), so it
+signs everyone out and revokes every PAT and grant.
 
 ---
 

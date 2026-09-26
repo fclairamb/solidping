@@ -61,9 +61,8 @@ func testOAuthRepos(ctx context.Context, t *testing.T, svc db.Service) {
 	r.Error(err, "missing client must error")
 
 	// --- Refresh grant: the widened type check + rotation compare-and-set ---
-	refresh := models.NewUserToken(
-		user.UID, &org.UID, "refresh-"+uuid.New().String(), models.TokenTypeOAuthRefresh,
-	)
+	refreshValue := "refresh-" + uuid.New().String()
+	refresh := models.NewUserToken(user.UID, &org.UID, refreshValue, models.TokenTypeOAuthRefresh)
 	expiry := now.Add(time.Hour)
 	refresh.ExpiresAt = &expiry
 	refresh.Properties = models.JSONMap{
@@ -74,7 +73,7 @@ func testOAuthRepos(ctx context.Context, t *testing.T, svc db.Service) {
 	r.NoError(svc.CreateUserToken(ctx, refresh),
 		"the widened user_tokens type check must admit oauth_refresh")
 
-	got, err := svc.GetUserTokenByToken(ctx, refresh.Token)
+	got, err := svc.GetUserTokenByToken(ctx, refreshValue)
 	r.NoError(err)
 	r.Equal(models.TokenTypeOAuthRefresh, got.Type)
 	r.Equal(client.ClientID, got.Properties["client_id"], "grant bindings round-trip through properties")
@@ -88,6 +87,6 @@ func testOAuthRepos(ctx context.Context, t *testing.T, svc db.Service) {
 	r.NoError(err)
 	r.False(revokedAgain, "rotating an already-revoked grant loses the race")
 
-	_, err = svc.GetUserTokenByToken(ctx, refresh.Token)
+	_, err = svc.GetUserTokenByToken(ctx, refreshValue)
 	r.Error(err, "a revoked (soft-deleted) grant is no longer resolvable by token value")
 }

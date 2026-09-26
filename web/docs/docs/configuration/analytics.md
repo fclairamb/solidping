@@ -127,20 +127,46 @@ plus an `orgUid` property carrying the same organization UUID. The dashboard
 uses the identical id scheme, so browser and server events for one session
 stitch together without ever exchanging an identity.
 
-From the browser, PostHog's autocapture is additionally configured
-conservatively:
+From the browser, the dashboard also enables PostHog autocapture, session
+replay and error tracking:
 
-- input values and element attributes are masked;
-- session recording is disabled;
+- autocapture, replay and URLs are sent unmasked: typed values, clicked text
+  and page URLs (organization slugs and resource UIDs included) are recorded
+  as-is, because a masked replay cannot answer where a user got stuck;
 - person profiles are only created for identified users;
-- every captured URL and pathname is rewritten to a route template before it
-  leaves the page — `/d/orgs/acme/checks/8f0e…` is sent as
-  `/d/orgs/:org/checks/:uid`, and query strings and fragments are dropped —
-  because SolidPing URLs embed organization slugs and resource UIDs.
+- the values of `access_token`, `refresh_token`, `token`, `code`, `state`,
+  `tempToken` and `id_token` are replaced with `REDACTED` in the URLs the
+  dashboard sends: page URLs and referrers on events, and the URLs replay
+  records (the page itself and every network request), in the query string
+  and in a param-shaped fragment. The single-use token in
+  `/reset-password/…`, `/invite/…` and `/confirm-registration/…` URLs is
+  redacted the same way;
+- network request and response headers and bodies are never recorded by
+  replay, whatever the PostHog project settings say;
+- **error events are sent** as PostHog `$exception` events: uncaught
+  exceptions, unhandled promise rejections, `console.error` calls (which is
+  how a React error boundary or a failed background request typically
+  surfaces a bug here), and errors reported explicitly by the app (a crashed
+  page or route carries the component stack / route id). Exception messages
+  and stack traces are unmasked like the rest of autocapture — except for the
+  same URL redaction described above, applied to the exception message and to
+  stack frame filenames, so a message that happens to embed a credential URL
+  (a failed fetch to a token-bearing endpoint, for instance) is filtered the
+  same way. A small, explicitly-listed set of known third-party noise (an
+  email-scanner crash signature seen overnight) is dropped outright rather
+  than sent.
+
+What this does **not** cover: replay records the page as it is displayed, so a
+credential shown as text on screen (a freshly created API token, a heartbeat
+URL with its `?token=`, an invitation link, a two-factor setup secret) is in
+the recording. Other URL-bearing data that PostHog collects outside events and
+replay URLs (for example heatmap data, the `href` of clicked links in
+autocapture, or the URL nested in web vitals) is not
+filtered either. Treat access to the PostHog project accordingly.
 
 ## What is never sent
 
-Regardless of configuration, SolidPing never sends:
+The product events listed above (captured by the server) never carry:
 
 - email addresses, user names or avatars;
 - organization names or slugs;
@@ -150,6 +176,11 @@ Regardless of configuration, SolidPing never sends:
   personal API key itself is never exposed by any API;
 - check results, response times, incident contents or notification payloads;
 - any free text you or your users typed.
+
+The browser autocapture and session replay described above are different:
+they record what is on the page, unmasked, so names, slugs and typed text do
+appear there, and so does any credential displayed on screen. Only the URL
+filtering described above applies to them.
 
 The `GET /api/v1/config` endpoint that the dashboard reads at boot is
 unauthenticated and returns only non-secret, browser-safe values.

@@ -1,0 +1,46 @@
+{{define "subject"}}Region {{.RegionName}} is offline: {{.BlindCount}} of your checks are not running{{end}}
+{{define "preheader"}}Since {{.Since}}, checks that run only from {{.RegionName}} are not being checked.{{end}}
+{{template "base.html" .}}
+{{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "down" "Label" "Region offline"}}{{end}}
+{{define "content"}}
+    <h1>Region {{.RegionName}} is offline</h1>
+    <p>Hi,</p>
+    <p>
+      The SolidPing region <strong>{{.RegionName}}</strong> has been offline since
+      <strong>{{.Since}}</strong>. {{.BlindCount}} of your checks in {{.OrgName}} run
+      only from this region, so they are not being checked right now:
+    </p>
+    <ul>
+      {{range .Checks}}<li>{{if .URL}}<a href="{{.URL}}">{{.Name}}</a>{{else}}{{.Name}}{{end}}</li>
+      {{end}}
+    </ul>
+    {{if .MoreCount}}<p>…and {{.MoreCount}} more.</p>{{end}}
+    {{if .ReducedCount}}<p>{{.ReducedCount}} other checks keep running from their other regions.</p>{{end}}
+    <p>
+      There is nothing to do on your side. The SolidPing team has been alerted, and you
+      will get a second email when the region is back. Until then these checks will show
+      no data rather than a status.
+    </p>
+    {{if .ChecksURL}}
+    <div class="cta-wrap">{{template "button" dict "URL" .ChecksURL "Label" "Open your checks" "Variant" "primary"}}</div>
+    {{end}}
+{{end}}
+{{define "text"}}Region {{.RegionName}} is offline
+
+Hi,
+
+The SolidPing region {{.RegionName}} has been offline since {{.Since}}.
+{{.BlindCount}} of your checks in {{.OrgName}} run only from this region, so they
+are not being checked right now:
+{{range .Checks}}
+- {{.Name}}{{if .URL}}: {{.URL}}{{end}}{{end}}
+{{if .MoreCount}}...and {{.MoreCount}} more.
+{{end}}{{if .ReducedCount}}
+{{.ReducedCount}} other checks keep running from their other regions.
+{{end}}
+There is nothing to do on your side. The SolidPing team has been alerted, and you
+will get a second email when the region is back. Until then these checks will show
+no data rather than a status.
+{{if .ChecksURL}}
+{{.ChecksURL}}
+{{end}}{{end}}

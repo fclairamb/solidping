@@ -150,24 +150,36 @@ func performanceEnvVars() []string {
 	}
 }
 
-// otherManualReaderEnvVars are SP_* names read directly via os.Getenv outside
-// config.Load: the SaaS entitlements wiring (internal/app/saas.go), the region
-// seeder (internal/app/regions_seed.go), the duplicate base-URL read in the
-// startup job (internal/jobs/jobtypes/job_startup.go — same meaning as the
-// systemconfig SP_BASE_URL, both live), and the API client's HTTP-call logging
-// toggle (pkg/client/client.go). Listed here to avoid heavy or cyclic imports.
+// otherManualReaderEnvVars are SP_* names read directly via os.Getenv/
+// os.LookupEnv outside config.Load: the SaaS entitlements wiring
+// (internal/app/saas.go), the system-agent enrollment token seeder
+// (internal/app/systemagents.go), the region seeder
+// (internal/app/regions_seed.go), the duplicate base-URL read in the startup
+// job (internal/jobs/jobtypes/job_startup.go — same meaning as the
+// systemconfig SP_BASE_URL, both live), the support-thread retention override
+// (internal/jobs/jobtypes/job_support_cleanup.go — env var takes precedence
+// over the DB parameter, same precedence shape as SP_RUN_MODE), the API
+// client's HTTP-call logging toggle (pkg/client/client.go), and the embedded-
+// Postgres shared binaries path override (internal/db/postgres/embeddedpg —
+// despite the SP_TEST_ name, this serves the genuine postgres-embedded
+// deployment mode, not just tests). Listed here to avoid heavy or cyclic
+// imports.
 func otherManualReaderEnvVars() []string {
 	return []string{
 		"SP_ENTITLEMENTS_SERVICE_TOKEN",
 		"SP_ENTITLEMENTS_UPGRADE_URL_TEMPLATE",
 		"SP_ENTITLEMENTS_ADMIN_WRITES_ENABLED",
 		"SP_ENTITLEMENTS_BILLING_INBOUND_SECRET",
+		"SP_ENTITLEMENTS_BILLING_UPGRADE_TOKEN_SECRET",
 		"SP_ENTITLEMENTS_SERVICE_SIGNING_KEYS",
 		"SP_ENTITLEMENTS_OUTBOUND_SIGNING_KEYS",
 		"SP_ENTITLEMENTS_ALLOW_LEGACY_SERVICE_TOKEN",
+		"SP_SYSTEM_AGENT_ENROLLMENT_TOKENS",
 		"SP_REGIONS",
 		"SP_SERVER_BASE_URL",
+		"SP_SUPPORT_RETENTION_DAYS",
 		"SP_LOG_HTTP_CALLS",
+		"SP_TEST_PG_BINARIES_PATH",
 	}
 }
 

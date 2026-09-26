@@ -58,6 +58,7 @@ type gatedRoute struct {
 //nolint:gochecknoglobals // read-only test-data table, not mutable state.
 var testModeGatedRoutes = []gatedRoute{
 	{"create email job", http.MethodPost, "/api/v1/test/jobs"},
+	{"list jobs", http.MethodGet, "/api/v1/test/jobs"},
 	{"list state entries", http.MethodGet, "/api/v1/test/state-entries"},
 	{"create user", http.MethodPost, "/api/v1/test/users"},
 	{"bulk create checks", http.MethodPost, "/api/v1/test/checks/bulk"},

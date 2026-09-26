@@ -4,6 +4,7 @@ package checksnmp
 import (
 	"context"
 	"fmt"
+	"net"
 	"strconv"
 	"strings"
 	"time"
@@ -50,6 +51,10 @@ func (c *SNMPChecker) Execute(
 
 	client := c.buildClient(cfg, params)
 	client.Context = ctx
+	// Egress guard (spec 2026-09-25-19): gosnmp resolves and dials by itself,
+	// so the policy rides its Control hook, which judges the literal address
+	// of the connect. Nil (no hook) when the policy is not enforcing.
+	client.Control = checkerdef.GuardedNetDialer(ctx, &net.Dialer{}).Control
 
 	if err := client.Connect(); err != nil {
 		return handleConnectError(ctx, err, cfg, start), nil

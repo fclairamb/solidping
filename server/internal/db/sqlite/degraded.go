@@ -17,6 +17,7 @@ func (s *Service) ListChecksForDegradedEval(ctx context.Context, limit int) ([]*
 	query := s.db.NewSelect().
 		Model(&checks).
 		Where("enabled = ?", true).
+		Where("degraded_enabled = ?", true).
 		Where("internal = ?", false).
 		Where("deleted_at IS NULL").
 		Order("degraded_evaluated_at ASC")

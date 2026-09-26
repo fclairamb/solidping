@@ -1,4 +1,5 @@
 import { test, expect, API_BASE, type Page } from "./fixtures";
+import { choosePinnedRegions } from "./placement-helpers";
 
 // E2E for the Private locations page (spec 2026-07-16-02): create a private
 // region, mint an enrollment token (shown once), see it in the check-form
@@ -185,6 +186,7 @@ test.describe("Private locations", () => {
       status: "active",
       enrolledAt: new Date().toISOString(),
       lastSeenAt,
+      online: true,
     };
     const neverAgent = {
       uid: "e2e-neverseen-agent",
@@ -216,6 +218,11 @@ test.describe("Private locations", () => {
     // No lastSeenAt at all still falls back to "never".
     const neverCell = page.getByTestId(`agent-last-seen-${neverAgent.uid}`);
     await expect(neverCell).toHaveText("never");
+
+    // The online/offline badge sits next to last seen, from the server's
+    // `online` flag (spec 2026-09-25-05).
+    await expect(page.getByTestId(`agent-online-${seenAgent.uid}`)).toHaveAttribute("data-online", "true");
+    await expect(page.getByTestId(`agent-online-${neverAgent.uid}`)).toHaveAttribute("data-online", "false");
   });
 
   // Regression guard for spec 2026-08-16-03: a revoked agent used to have no
@@ -290,6 +297,7 @@ test.describe("Private locations", () => {
 
     // Pick a check type so the form (and its region picker) renders.
     await page.getByText("HTTP", { exact: false }).first().click();
+    await choosePinnedRegions(page);
 
     // The private region is offered under its org-relative slug with the
     // Private badge.

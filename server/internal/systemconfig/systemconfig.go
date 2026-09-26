@@ -62,6 +62,12 @@ const (
 	// sliding RefreshTokenExpiry idle window applies).
 	KeySessionMaxDuration ParameterKey = "auth.session_max_duration"
 
+	// KeyOAuthEnforceClientSecret gates RFC 6749 client authentication at the
+	// embedded MCP OAuth authorization server's token endpoint (spec
+	// 2026-09-25-27-oauth-client-secret-verification.md). Default true — see
+	// config.OAuthConfig.EnforceClientSecret for the full behavior.
+	KeyOAuthEnforceClientSecret ParameterKey = "oauth.enforce_client_secret"
+
 	KeyGoogleClientID         ParameterKey = "auth.google.client_id"
 	KeyGoogleClientSecret     ParameterKey = "auth.google.client_secret"
 	KeyGitHubClientID         ParameterKey = "auth.github.client_id"
@@ -194,6 +200,42 @@ const (
 	KeyPostHogProjectAPIKey  ParameterKey = "posthog.project_api_key"
 	KeyPostHogHost           ParameterKey = "posthog.host"
 	KeyPostHogPersonalAPIKey ParameterKey = "posthog.personal_api_key"
+
+	// KeyEgressAllowPrivateTargets lets this deployment's check workers reach
+	// non-public addresses (spec 2026-09-25-19). Unset means "derived": allowed
+	// on self-hosted and on deported agents, denied on SaaS shared workers —
+	// see config.Config.EgressAllowsPrivateTargets. Applied at startup, so a
+	// change takes effect on the next worker restart. Deported agents have no
+	// database and only ever read SP_EGRESS_ALLOW_PRIVATE.
+	KeyEgressAllowPrivateTargets ParameterKey = "egress.allow_private_targets"
+
+	// KeyMetricsScrapeToken is the bearer token gating GET /metrics (spec
+	// 2026-09-25-25). Unset means the endpoint answers 404 to every request —
+	// the same "feature disabled" convention as Prometheus.Enabled=false —
+	// never that it is open. Applied at startup (app.InitializeSystemConfig,
+	// before SetupRoutes in the real boot order); the handler reads
+	// cfg.Prometheus.ScrapeToken at request time rather than capturing it, so
+	// a value set purely through the database still takes effect without a
+	// second code path. See config.EnvMetricsScrapeToken for the env override.
+	KeyMetricsScrapeToken ParameterKey = "metrics.scrape_token"
+
+	// KeyFeedbackMaxStorageBytes is the per-org quota on live feedback-report
+	// screenshot bytes (spec 2026-09-25-26). Mirrors
+	// config.AppConfig.FeedbackMaxStorageBytes; see its doc comment. Applied
+	// at startup like the other numeric knobs (InitializeSystemConfig, before
+	// SetupRoutes in the real boot order), but feedback.Service reads
+	// cfg.App.FeedbackMaxStorageBytes at request time rather than capturing
+	// it, so a value set purely through the database still takes effect
+	// without a restart.
+	KeyFeedbackMaxStorageBytes ParameterKey = "app.feedback_max_storage_bytes"
+
+	// KeyHeadersCSPExtraSources widens the shipped Content-Security-Policy
+	// (spec 2026-09-25-28): `;`-separated "directive source…" groups, e.g.
+	// "img-src https://cdn.acme.com". Mirrors config.HeadersConfig.CSPExtraSources;
+	// see its doc comment. Applied at startup (InitializeSystemConfig runs
+	// before SetupRoutes, which builds the policies), so a change takes effect
+	// on the next restart. Invalid groups are logged and skipped.
+	KeyHeadersCSPExtraSources ParameterKey = "headers.csp_extra_sources"
 )
 
 // SP_* environment variable names for the product-analytics parameters,
@@ -487,6 +529,19 @@ func getKnownParameters() []ParameterDefinition {
 			},
 		},
 		{
+			// Operator escape hatch for spec 2026-09-25-27: default true means
+			// a confidential OAuth client (internal/oauth) that fails
+			// token-endpoint secret verification gets a hard 401. Set false to
+			// log-only (WARN, once per client ID per process) while migrating
+			// a legacy confidential client that never sent a secret.
+			Key:    KeyOAuthEnforceClientSecret,
+			EnvVar: "SP_OAUTH_ENFORCE_CLIENT_SECRET",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				cfg.OAuth.EnforceClientSecret = parseBool(value, cfg.OAuth.EnforceClientSecret)
+			},
+		},
+		{
 			Key:    KeyEmailProtocol,
 			EnvVar: "SP_EMAIL_PROTOCOL",
 			Secret: false,
@@ -750,6 +805,47 @@ func getKnownParameters() []ParameterDefinition {
 			ApplyFunc: func(cfg *config.Config, value any) {
 				if v, ok := value.(string); ok {
 					cfg.PostHog.PersonalAPIKey = strings.TrimSpace(v)
+				}
+			},
+		},
+		{
+			Key:    KeyEgressAllowPrivateTargets,
+			EnvVar: config.EnvEgressAllowPrivate,
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				applyEgressAllowPrivate(cfg, value)
+			},
+		},
+		{
+			Key:    KeyMetricsScrapeToken,
+			EnvVar: config.EnvMetricsScrapeToken,
+			Secret: true,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.Prometheus.ScrapeToken = strings.TrimSpace(v)
+				}
+			},
+		},
+		{
+			Key:    KeyFeedbackMaxStorageBytes,
+			EnvVar: config.EnvAppFeedbackMaxStorageBytes,
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				// Numeric parameters arrive as float64 from encoding/json.
+				if v, ok := value.(float64); ok {
+					cfg.App.FeedbackMaxStorageBytes = int64(v)
+				} else if v, ok := value.(int64); ok {
+					cfg.App.FeedbackMaxStorageBytes = v
+				}
+			},
+		},
+		{
+			Key:    KeyHeadersCSPExtraSources,
+			EnvVar: config.EnvHeadersCSPExtraSources,
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.Headers.CSPExtraSources = strings.TrimSpace(v)
 				}
 			},
 		},
@@ -1368,6 +1464,31 @@ func parseBool(value any, defaultValue bool) bool {
 	default:
 		return defaultValue
 	}
+}
+
+// applyEgressAllowPrivate sets the tri-state egress switch from a parameter
+// or env value. Anything that is not a recognizable boolean leaves the
+// derived default in place: an unparseable value must never flip a SaaS
+// worker open, nor a private agent shut.
+func applyEgressAllowPrivate(cfg *config.Config, value any) {
+	var allow bool
+
+	switch v := value.(type) {
+	case bool:
+		allow = v
+	case string:
+		// parseBool's two defaults agree only on a recognizable boolean.
+		asTrue, asFalse := parseBool(v, true), parseBool(v, false)
+		if asTrue != asFalse {
+			return
+		}
+
+		allow = asTrue
+	default:
+		return
+	}
+
+	cfg.Egress.AllowPrivateTargets = &allow
 }
 
 // Service manages system configuration.

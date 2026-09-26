@@ -126,6 +126,16 @@ func ValidateSpec(spec *checkerdef.CheckSpec) error {
 		}
 	}
 
+	// Validate RedirectHostPolicy: an unknown value is a config error rather
+	// than a silent fallback to "any" — a typo here is exactly the case where
+	// silently disabling the policy would be dangerous.
+	switch cfg.RedirectHostPolicy {
+	case "", RedirectHostPolicyAny, RedirectHostPolicySameHost:
+	default:
+		return checkerdef.NewConfigErrorf("redirectHostPolicy",
+			"must be %q or %q, got %q", RedirectHostPolicyAny, RedirectHostPolicySameHost, cfg.RedirectHostPolicy)
+	}
+
 	// Validate SecretHeaders names
 	for k := range cfg.SecretHeaders {
 		if k == "" {

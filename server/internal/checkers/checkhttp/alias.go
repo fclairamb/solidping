@@ -21,6 +21,13 @@ const (
 	NodeTypeOr        = checkconfig.NodeTypeOr
 )
 
+// Redirect host policy values, aliased from the config so the checker and
+// this package's tests keep the short name.
+const (
+	RedirectHostPolicyAny      = checkconfig.RedirectHostPolicyAny
+	RedirectHostPolicySameHost = checkconfig.RedirectHostPolicySameHost
+)
+
 // MatchStatusCode reports whether a status code satisfies any of the
 // `expectedStatusCodes` patterns. It forwards to the config sub-package that
 // owns the grammar.

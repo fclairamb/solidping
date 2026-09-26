@@ -2,12 +2,19 @@ import * as React from "react";
 import * as SheetPrimitive from "@radix-ui/react-dialog";
 import { cva, type VariantProps } from "class-variance-authority";
 import { X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 
 const Sheet = SheetPrimitive.Root;
 const SheetTrigger = SheetPrimitive.Trigger;
 const SheetClose = SheetPrimitive.Close;
 const SheetPortal = SheetPrimitive.Portal;
+
+/** Screen-reader label of the corner close button, translated. */
+function CloseLabel() {
+  const { t } = useTranslation("common");
+  return <>{t("close")}</>;
+}
 
 /**
  * These modals deliberately animate IN but not OUT.
@@ -84,7 +91,9 @@ const SheetContent = React.forwardRef<
     >
       <SheetPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-secondary">
         <X className="h-4 w-4" />
-        <span className="sr-only">Close</span>
+        <span className="sr-only">
+          <CloseLabel />
+        </span>
       </SheetPrimitive.Close>
       {children}
     </SheetPrimitive.Content>

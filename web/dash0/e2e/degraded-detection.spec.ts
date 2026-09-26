@@ -1,9 +1,8 @@
 import { test, expect, mockSloCoverage, type Page } from "./fixtures";
 
-// Coverage for spec 2026-09-22-03: degraded detection's three dashboard
-// surfaces — the dry-run banner on the check page (which IS the rollout: the
-// feature ships off for every pre-existing check), the `wouldHaveFired` filter
-// on the checks list, and the amber band the chart draws over a degraded episode.
+// Coverage for spec 2026-09-22-03: the amber band the chart draws over a
+// degraded episode. Spec 2026-09-24-08 removed the dry run, and with it the
+// check-page banner and the checks list filter this file used to cover.
 //
 // Mocked at the API boundary like checks-index-status-type-filters.spec.ts: a
 // real degraded episode needs 60 probes and a minute-resolution evaluator sweep,
@@ -14,7 +13,6 @@ interface MockCheck {
   uid: string;
   name: string;
   degradedEnabled: boolean;
-  degradedWouldFireAt?: string;
 }
 
 const ORG = "test";
@@ -107,19 +105,11 @@ async function mockChecksList(page: Page, checks: MockCheck[]): Promise<void> {
       return route.continue();
     }
 
-    // Mirrors the server: `?wouldHaveFired=true` keeps only the stamped rows,
-    // anything else applies no filter.
-    const onlyFlagged =
-      new URL(url).searchParams.get("wouldHaveFired") === "true";
-    const filtered = onlyFlagged
-      ? checks.filter((check) => Boolean(check.degradedWouldFireAt))
-      : checks;
-
     return route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
-        data: filtered.map((check) => ({
+        data: checks.map((check) => ({
           uid: check.uid,
           name: check.name,
           slug: check.uid,
@@ -134,9 +124,8 @@ async function mockChecksList(page: Page, checks: MockCheck[]): Promise<void> {
           degradedSlowWindow: 6,
           slowThresholdMs: 0,
           degradedEnabled: check.degradedEnabled,
-          degradedWouldFireAt: check.degradedWouldFireAt ?? null,
         })),
-        pagination: { total: filtered.length },
+        pagination: { total: checks.length },
       }),
     });
   });
@@ -168,7 +157,6 @@ async function mockCheckDetail(
         degradedSlowWindow: 6,
         slowThresholdMs: 0,
         degradedEnabled: check.degradedEnabled,
-        degradedWouldFireAt: check.degradedWouldFireAt ?? null,
       }),
     }),
   );
@@ -201,52 +189,6 @@ async function mockCheckDetail(
 }
 
 test.describe("Degraded detection — dashboard surfaces", () => {
-  test("the dry-run banner names when the rules would have fired and offers to enable them", async ({
-    authenticatedPage,
-  }) => {
-    const page = authenticatedPage;
-    const check: MockCheck = {
-      uid: "e2e-degraded-dry-run",
-      name: "Degraded Dry Run Check",
-      degradedEnabled: false,
-      degradedWouldFireAt: EPISODE_END,
-    };
-
-    await mockChecksList(page, [check]);
-    await mockCheckDetail(page, check, { degradedIncident: false });
-
-    await page.goto(`orgs/${ORG}/checks/${check.uid}`);
-    await page.waitForLoadState("networkidle");
-
-    const banner = page.getByTestId("degraded-dry-run-banner");
-    await expect(banner).toBeVisible();
-    await expect(banner).toContainText("degraded");
-    await expect(page.getByTestId("degraded-enable-button")).toBeVisible();
-    await expect(
-      page.getByTestId("degraded-dry-run-window-link"),
-    ).toBeVisible();
-  });
-
-  test("an enabled check shows no banner", async ({ authenticatedPage }) => {
-    const page = authenticatedPage;
-    // Negative control: the same stamp, but the feature is already on — the
-    // banner must not keep asking for something already done.
-    const check: MockCheck = {
-      uid: "e2e-degraded-enabled",
-      name: "Degraded Enabled Check",
-      degradedEnabled: true,
-      degradedWouldFireAt: EPISODE_END,
-    };
-
-    await mockChecksList(page, [check]);
-    await mockCheckDetail(page, check, { degradedIncident: false });
-
-    await page.goto(`orgs/${ORG}/checks/${check.uid}`);
-    await page.waitForLoadState("networkidle");
-
-    await expect(page.getByTestId("degraded-dry-run-banner")).toHaveCount(0);
-  });
-
   test("the chart shades a degraded episode", async ({ authenticatedPage }) => {
     const page = authenticatedPage;
     const check: MockCheck = {
@@ -324,89 +266,5 @@ test.describe("Degraded detection — dashboard surfaces", () => {
     await expect(
       page.locator('[data-testid="chart-degraded-span"]').first(),
     ).toBeAttached();
-  });
-
-  test("the wouldHaveFired filter narrows the checks list and round-trips through the URL", async ({
-    authenticatedPage,
-  }) => {
-    const page = authenticatedPage;
-    const checks: MockCheck[] = [
-      {
-        uid: "e2e-wh-flagged",
-        name: "WH Flagged Check",
-        degradedEnabled: false,
-        degradedWouldFireAt: EPISODE_END,
-      },
-      {
-        uid: "e2e-wh-quiet",
-        name: "WH Quiet Check",
-        degradedEnabled: false,
-      },
-    ];
-
-    await mockChecksList(page, checks);
-
-    await page.goto(`orgs/${ORG}/checks`);
-    await page.waitForLoadState("networkidle");
-
-    await expect(page.getByText("WH Flagged Check")).toBeVisible();
-    await expect(page.getByText("WH Quiet Check")).toBeVisible();
-
-    await page.getByTestId("would-have-fired-filter").click();
-    await page.waitForLoadState("networkidle");
-
-    // A bare `true`, not a JSON-quoted string: the param has to survive being
-    // copied out of the address bar and pasted back in.
-    await expect
-      .poll(() => new URL(page.url()).searchParams.get("wouldHaveFired"))
-      .toBe("true");
-
-    await expect(page.getByText("WH Flagged Check")).toBeVisible();
-    // Negative control: the never-flagged check is gone, not merely lower down.
-    await expect(page.getByText("WH Quiet Check")).not.toBeVisible();
-
-    // Toggling off restores the full list and clears the param.
-    await page.getByTestId("would-have-fired-filter").click();
-    await page.waitForLoadState("networkidle");
-
-    await expect
-      .poll(() => new URL(page.url()).searchParams.has("wouldHaveFired"))
-      .toBe(false);
-    await expect(page.getByText("WH Quiet Check")).toBeVisible();
-  });
-
-  test("a cold deep link with ?wouldHaveFired=true filters on first paint", async ({
-    authenticatedPage,
-  }) => {
-    const page = authenticatedPage;
-    // The half of this that a bookmarked or pasted URL depends on. While the
-    // param was a string typed "true", the router handed validateSearch a native
-    // boolean for this URL, the string comparison missed it, and the link
-    // silently showed the unfiltered list.
-    const checks: MockCheck[] = [
-      {
-        uid: "e2e-wh-cold-flagged",
-        name: "WH Cold Flagged Check",
-        degradedEnabled: false,
-        degradedWouldFireAt: EPISODE_END,
-      },
-      {
-        uid: "e2e-wh-cold-quiet",
-        name: "WH Cold Quiet Check",
-        degradedEnabled: false,
-      },
-    ];
-
-    await mockChecksList(page, checks);
-
-    await page.goto(`orgs/${ORG}/checks?wouldHaveFired=true`);
-    await page.waitForLoadState("networkidle");
-
-    await expect(page.getByText("WH Cold Flagged Check")).toBeVisible();
-    await expect(page.getByText("WH Cold Quiet Check")).not.toBeVisible();
-    await expect(page.getByTestId("would-have-fired-filter")).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
   });
 });

@@ -55,7 +55,8 @@
     "nextRun": "Próxima ejec.",
     "leaseWorker": "Worker del lease",
     "leaseExpiry": "Caducidad del lease",
-    "attempts": "Intentos"
+    "attempts": "Intentos",
+    "created": "Creada"
   },
   "detail": {
     "backgroundJobTitle": "Tarea en segundo plano",

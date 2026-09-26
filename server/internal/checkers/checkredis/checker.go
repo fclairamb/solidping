@@ -3,6 +3,7 @@ package checkredis
 
 import (
 	"context"
+	"net"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -74,6 +75,10 @@ func (c *RedisChecker) Execute(
 	if dialer := checkerdef.TunnelDialerFrom(ctx); dialer != nil {
 		opts.Dialer = dialer.DialContext
 		output["tunneled"] = true
+	} else if checkerdef.EgressEnforcing(ctx) {
+		// Egress guard (spec 2026-09-25-19). The check sets no TLSConfig, so a
+		// guarded net.Dialer with go-redis's DialTimeout is its default dial.
+		opts.Dialer = checkerdef.GuardedNetDialer(ctx, &net.Dialer{Timeout: timeout}).DialContext
 	}
 
 	client := redis.NewClient(opts)

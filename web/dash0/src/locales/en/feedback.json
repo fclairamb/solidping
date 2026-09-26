@@ -14,5 +14,6 @@
   "tool_rect": "Box",
   "tool_arrow": "Arrow",
   "tool_text": "Text",
-  "undo": "Undo"
+  "undo": "Undo",
+  "screenshot_alt": "Screenshot"
 }

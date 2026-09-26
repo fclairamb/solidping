@@ -54,7 +54,8 @@
     "createSchedule": "create one",
     "createConnection": "create one",
     "targetMissing": "The previously-selected {{kind}} no longer exists. Pick another or remove this target.",
-    "targetMissingShort": "missing"
+    "targetMissingShort": "missing",
+    "namePlaceholder": "Production paging"
   },
   "targets": {
     "user": "User",
@@ -66,6 +67,8 @@
     "title": "Escalation timeline",
     "fired": "Fired",
     "pending": "Pending",
-    "failed": "Escalation failed"
+    "failed": "Escalation failed",
+    "stepSuffix": "· step {{step}}",
+    "cycleSuffix": "· cycle {{cycle}}"
   }
 }

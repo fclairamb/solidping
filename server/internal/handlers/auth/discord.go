@@ -4,7 +4,6 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
-	"strconv"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
@@ -31,10 +30,10 @@ func NewDiscordOAuthHandler(
 // Login initiates the Discord OAuth flow.
 // GET /api/v1/auth/discord/login?redirect_uri=...
 func (h *DiscordOAuthHandler) Login(writer http.ResponseWriter, req *http.Request) error {
-	redirectURI := req.URL.Query().Get("redirect_uri")
-	if redirectURI == "" {
-		redirectURI = "/" // Default to root
-	}
+	// Only a same-origin relative path may ride the state: the attacker mints
+	// the login link, so the state nonce says nothing about this value. There
+	// is no org at this point, so the default is "/".
+	redirectURI := sanitizePostLoginRedirect(req.Context(), req.URL.Query().Get("redirect_uri"), "")
 
 	// Generate and store state
 	state, err := h.svc.GenerateOAuthState(req.Context(), redirectURI)
@@ -83,18 +82,19 @@ func (h *DiscordOAuthHandler) Callback(writer http.ResponseWriter, req *http.Req
 		)
 	}
 
+	// Re-check the redirect the state carries: a state minted before this
+	// guard existed (rolling upgrade) must not become a redirect vector.
+	returnTo := sanitizePostLoginRedirect(req.Context(), oauthState.RedirectURI, oauthState.OrgSlug)
+
 	// Process OAuth callback
 	result, err := h.svc.HandleCallback(req.Context(), code)
 	if err != nil {
-		return h.handleOAuthError(writer, req, oauthState.RedirectURI, err)
+		return h.handleOAuthError(writer, req, returnTo, err)
 	}
 
-	// Redirect with tokens. Also set the SPA session cookie so
-	// cookie-authenticated surfaces (the embedded MCP OAuth
-	// authorize/consent flow) work without a login-page refresh bounce.
-	return finishProviderCallback(writer, req,
-		h.buildSuccessRedirect(oauthState.RedirectURI, result),
-		result.PendingOrgSlug, result.AccessToken, result.ExpiresIn, result.Pending)
+	// Hand the session to the dashboard through a single-use code: the
+	// tokens never appear in the redirect URL (spec 2026-09-25-12).
+	return finishProviderCallback(writer, req, h.svc.db, "discord", returnTo, result)
 }
 
 // buildDiscordAuthURL constructs the Discord authorization URL.
@@ -109,41 +109,13 @@ func (h *DiscordOAuthHandler) buildDiscordAuthURL(state string) string {
 	return "https://discord.com/oauth2/authorize?" + params.Encode()
 }
 
-// buildSuccessRedirect constructs the redirect URL with tokens.
-func (h *DiscordOAuthHandler) buildSuccessRedirect(
-	baseURI string, result *DiscordOAuthResult,
-) string {
-	parsedURL, err := url.Parse(baseURI)
-	if err != nil {
-		parsedURL, _ = url.Parse("/")
-	}
-
-	query := parsedURL.Query()
-	query.Set("access_token", result.AccessToken)
-	query.Set("refresh_token", result.RefreshToken)
-	query.Set("expires_in", strconv.Itoa(result.ExpiresIn))
-	query.Set("org", result.OrgSlug)
-	parsedURL.RawQuery = query.Encode()
-
-	return parsedURL.String()
-}
-
-// redirectWithError redirects with error parameters.
+// redirectWithError redirects with error parameters. The destination goes
+// through redirectOAuthError's same-origin guard.
 func (h *DiscordOAuthHandler) redirectWithError(
 	writer http.ResponseWriter, req *http.Request,
 	baseURI, code, description string,
 ) error {
-	parsedURL, err := url.Parse(baseURI)
-	if err != nil {
-		parsedURL, _ = url.Parse("/")
-	}
-
-	query := parsedURL.Query()
-	query.Set("error", code)
-	query.Set("error_description", description)
-	parsedURL.RawQuery = query.Encode()
-
-	http.Redirect(writer, req, parsedURL.String(), http.StatusFound)
+	redirectOAuthError(writer, req, baseURI, code, description)
 
 	return nil
 }

@@ -94,6 +94,7 @@ import {
   sleepModule,
   heartbeatModule,
   emailModule,
+  privateLocationModule,
 } from "./misc";
 
 // Widen a concrete `CheckTypeModule<S>` to the registry's `unknown` state type.
@@ -139,6 +140,7 @@ const modules: CheckTypeModule[] = [
   entry(sleepModule),
   entry(heartbeatModule),
   entry(emailModule),
+  entry(privateLocationModule),
 ];
 
 export const checkTypeRegistry: Record<CheckType, CheckTypeModule> = (() => {

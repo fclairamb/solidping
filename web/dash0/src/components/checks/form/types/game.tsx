@@ -10,10 +10,10 @@ import {
 } from "@/components/ui/select";
 import type { CheckTypeModule } from "./index";
 import type { CheckConfig, CheckTypeFieldsProps, FieldErrors } from "./common";
-import { getConfigField } from "./common";
+import { getConfigField, validationMessage } from "./common";
 
 const hostRequired = (host: string): FieldErrors =>
-  host ? [] : [{ name: "host", message: "Host is required" }];
+  host ? [] : [{ name: "host", message: validationMessage("hostRequired") }];
 
 // ── A2S game server ──
 export interface A2sState {

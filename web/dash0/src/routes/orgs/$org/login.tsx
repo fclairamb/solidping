@@ -144,8 +144,7 @@ function LoginPage() {
   // /authorize endpoint, force a token refresh first. That endpoint (and the
   // consent screen's native form POST after it) authenticates via the
   // `access_token` COOKIE, not the SPA's localStorage bearer — and the two
-  // routinely diverge: SSO logins hand tokens over in the redirect URL and
-  // never set the cookie, and an idle tab's cookie lapses while the bearer
+  // routinely diverge: an idle tab's cookie lapses while the bearer
   // session keeps refreshing. POST /auth/refresh re-sets the cookie
   // (server-side, alongside the rotated bearer), so refreshing right before
   // the full-page navigation guarantees /authorize sees a session instead of
@@ -475,7 +474,16 @@ function LoginPage() {
       setTwoFAState(null);
       routeResult(result);
     } catch (err) {
-      reportError(err);
+      // The per-user attempt throttle (spec
+      // 2026-09-25-29-totp-attempt-throttle) answers with a 429 whose body is
+      // accurate but always in English. The user already proved their
+      // password at this point, so give them a translated, actionable reason
+      // to wait instead of falling through to reportError's raw API string.
+      if (err instanceof ApiError && err.status === 429) {
+        setError(t("twoFactor.tooManyAttempts"));
+      } else {
+        reportError(err);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -608,7 +616,9 @@ function LoginPage() {
     : providers;
 
   return (
-    <AuthSplitLayout>
+    // The card already shows the wordmark, so the layout must not repeat it
+    // above the card on a phone.
+    <AuthSplitLayout mobileWordmark={false}>
       <Card className="w-full max-w-md border-t-4 border-t-brand">
         {/* Compact header: the wordmark says SolidPing, the title says where
             you are signing in, so the form starts above the fold on a phone. */}
@@ -668,7 +678,6 @@ function LoginPage() {
               </div>
               <Button
                 type="submit"
-                variant="brand"
                 className="w-full"
                 disabled={isLoading || (!showRecovery && twoFACode.length !== 6)}
                 data-testid="2fa-login-verify"
@@ -854,7 +863,6 @@ function LoginPage() {
 
                 <Button
                   type="submit"
-                  variant="brand"
                   className="w-full"
                   disabled={isLoading}
                   data-testid="login-submit"

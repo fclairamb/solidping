@@ -31,9 +31,11 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sloghook"
 	entcore "github.com/fclairamb/solidping/server/internal/entitlements"
+	"github.com/fclairamb/solidping/server/internal/handlers/attachments"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/jmap"
 	"github.com/fclairamb/solidping/server/internal/notifier"
+	"github.com/fclairamb/solidping/server/internal/regionquorum"
 	"github.com/fclairamb/solidping/server/internal/regions"
 	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
@@ -52,8 +54,13 @@ type ValidateCheckRequest struct {
 	// Regions is the check's selected region set. Supplied so the tunnel region
 	// rules (spec 2026-07-18-07) can be validated live — a `tunnelCheckUid`
 	// reference is legal or not depending on which regions the check runs in.
-	Regions   []string             `json:"regions,omitempty"`
-	DependsOn []ExportedDependency `json:"dependsOn,omitempty"`
+	Regions []string `json:"regions,omitempty"`
+	// Placement / RegionCount / RegionPool mirror CreateCheckRequest (spec
+	// 2026-09-25-06), checked by the same rules.
+	Placement   *string              `json:"placement,omitempty"`
+	RegionCount *int                 `json:"regionCount,omitempty"`
+	RegionPool  []string             `json:"regionPool,omitempty"`
+	DependsOn   []ExportedDependency `json:"dependsOn,omitempty"`
 	// Period is the proposed execution interval ("HH:MM:SS" or a Go duration).
 	// Optional: supplied so the period bounds and the org-rate projection
 	// (spec 2026-08-26-05) can be evaluated live. Absent means "not proposed"
@@ -90,6 +97,11 @@ type ValidateCheckRequest struct {
 	// TracerouteOnFailure is the per-check path-trace policy (spec
 	// 2026-08-21-10): `inherit`, `on` or `off`.
 	TracerouteOnFailure *string `json:"tracerouteOnFailure,omitempty"`
+	// FailQuorum is how many of the check's regions must be failing, for the
+	// confirmation period, before it is down (spec 2026-09-25-10): "default",
+	// "all", "majority" or a whole number (a JSON number or string). Absent
+	// leaves it unchanged (create: default).
+	FailQuorum *regionquorum.Value `json:"failQuorum,omitempty"`
 	// Adaptive resolution / flapping settings (spec 2026-06-30-07).
 	FlappingWindowSeconds *int `json:"flappingWindowSeconds,omitempty"`
 	FlapBackoffFactor     *int `json:"flapBackoffFactor,omitempty"`
@@ -121,6 +133,13 @@ type ValidateCheckResponse struct {
 // for the check UID. Centralized so producers and consumers (notably the
 // express runner) cannot drift out of sync.
 const eventPayloadCheckUIDKey = "check_uid"
+
+// eventPayloadCheckSlugKey / eventPayloadCheckNameKey name the check's slug
+// and name in check.* event payloads.
+const (
+	eventPayloadCheckSlugKey = "check_slug"
+	eventPayloadCheckNameKey = "check_name"
+)
 
 // dependsOnFieldName is the JSON/validation field name for the dependency
 // payload — extracted to a constant because it appears in multiple per-row
@@ -580,6 +599,16 @@ type Service struct {
 	// the page-view backstop is the only mechanism — which is exactly the
 	// fallback it exists to be.
 	statusPageReconciler StatusPageReconciler
+	// degradedResolver closes a check's open degraded incident when its
+	// degraded detection is turned off (spec 2026-09-24-08). nil = not wired,
+	// in which case nothing is resolved; see SetDegradedIncidentResolver.
+	degradedResolver DegradedIncidentResolver
+	// deploymentMode gates checker types that hand a shared SaaS worker a
+	// local-machine primitive (spec 2026-09-25-22, docker's local socket).
+	// Zero value "" behaves like self-hosted (no gate) — only tests and paths
+	// that never construct a real config leave it unset; see
+	// SetDeploymentMode.
+	deploymentMode string
 }
 
 // StatusPageReconciler re-materializes the org's selector-driven status page
@@ -597,6 +626,13 @@ type StatusPageReconciler interface {
 // without it, dynamic sections still self-heal on the next page view.
 func (s *Service) SetStatusPageReconciler(reconciler StatusPageReconciler) {
 	s.statusPageReconciler = reconciler
+}
+
+// SetDeploymentMode wires the process's deployment mode (config.Deployment.Mode)
+// so create/update/import can reject checker types that are SaaS-restricted.
+// Optional: an unwired Service (most unit tests) behaves like self-hosted.
+func (s *Service) SetDeploymentMode(mode string) {
+	s.deploymentMode = mode
 }
 
 // reconcileStatusPageSelectors notifies the status page layer that the org's
@@ -847,10 +883,17 @@ type CheckResponse struct {
 	// a region whose live workers report no IPv6 egress" (spec 2026-08-15-11).
 	// Never populated on read paths, and never a reason to reject a write.
 	Warnings []base.ValidationErrorField `json:"warnings,omitempty"`
-	Regions  []string                    `json:"regions,omitempty"`
-	Enabled  *bool                       `json:"enabled,omitempty"`
-	Internal *bool                       `json:"internal,omitempty"`
-	Period   *string                     `json:"period,omitempty"`
+	// Regions is where the check runs: the user's list for a pinned check,
+	// the current placement for an automatic one.
+	Regions []string `json:"regions,omitempty"`
+	// Placement is `pinned` or `auto` (spec 2026-09-25-06). RegionCount and
+	// RegionPool are set for an automatic check only.
+	Placement   string   `json:"placement,omitempty"`
+	RegionCount *int     `json:"regionCount,omitempty"`
+	RegionPool  []string `json:"regionPool,omitempty"`
+	Enabled     *bool    `json:"enabled,omitempty"`
+	Internal    *bool    `json:"internal,omitempty"`
+	Period      *string  `json:"period,omitempty"`
 	// RegionSpread is the resolved inter-region scheduling offset override
 	// (spec 2026-07-20-05), a duration string (HH:MM:SS). Omitted when the
 	// check uses the default period/region_count spread.
@@ -860,7 +903,33 @@ type CheckResponse struct {
 	// "validating" (failure observed but threshold not crossed), "created",
 	// or "degraded". Distinct from LastResult.Status, which echoes the raw
 	// result row.
-	Status           string                    `json:"status,omitempty"`
+	Status string `json:"status,omitempty"`
+	// StatusChangedAt is when the check entered its CURRENT status (the row's
+	// status_changed_at). Always emitted when set, so a "down for 12 min" /
+	// "no data since 13:41" timer never depends on with=last_status_change.
+	StatusChangedAt *time.Time `json:"statusChangedAt,omitempty"`
+	// LastResultAt is the newest REAL result across every region (never an
+	// abandoned or lifecycle row) — the fact the freshness rule measures
+	// (spec 2026-09-25-02). Omitted for a check that never produced one.
+	LastResultAt *time.Time `json:"lastResultAt,omitempty"`
+	// StaleThresholdSeconds is max(3 × period, 5 min): how long the check may
+	// go without a real result before it is `stale`. Exposed so a client can
+	// apply the same rule per region instead of re-deriving it.
+	StaleThresholdSeconds int `json:"staleThresholdSeconds,omitempty"`
+	// RegionFreshness is the per-region newest real result (detail only,
+	// with=region_freshness). A check still reporting from some region is still
+	// being checked; this list is how a silent region shows up anyway.
+	RegionFreshness []RegionFreshnessResponse `json:"regionFreshness,omitempty"`
+	// FailQuorum is the multi-region quorum setting (spec 2026-09-25-10):
+	// "default", "all", "majority" or a number. EffectiveFailQuorum is what it
+	// resolves to for the check's current regions. Both omitted for a passive
+	// check, which has no regions.
+	FailQuorum          *regionquorum.Value `json:"failQuorum,omitempty"`
+	EffectiveFailQuorum *int                `json:"effectiveFailQuorum,omitempty"`
+	// RegionalIssue is set (detail, with=region_freshness) while some, but
+	// fewer than the quorum, of the check's regions are failing: the check is
+	// `warning` and no incident opens.
+	RegionalIssue    *RegionalIssueResponse    `json:"regionalIssue,omitempty"`
 	LastResult       *LastResultResponse       `json:"lastResult,omitempty"`
 	LastStatusChange *LastStatusChangeResponse `json:"lastStatusChange,omitempty"`
 	CreatedAt        *time.Time                `json:"createdAt,omitempty"`
@@ -907,10 +976,6 @@ type CheckResponse struct {
 	DegradedSlowWindow     int  `json:"degradedSlowWindow"`
 	SlowThresholdMs        int  `json:"slowThresholdMs"`
 	DegradedEnabled        bool `json:"degradedEnabled"`
-	// DegradedWouldFireAt is the dry run's stamp: the check page turns it into
-	// the "this check would have been flagged degraded at …; enable?" banner.
-	// Omitted when the rules never fired on this check.
-	DegradedWouldFireAt *time.Time `json:"degradedWouldFireAt,omitempty"`
 
 	// FlapState is the check's LIVE adaptive-recovery state (spec
 	// 2026-08-24-05) — the effective (lazy-reset-aware) counterpart of the
@@ -935,6 +1000,24 @@ type CheckResponse struct {
 	// responses never carry it — and omitted until the check's first run
 	// produces a cost signal.
 	Scheduling *CheckSchedulingResponse `json:"scheduling,omitempty"`
+}
+
+// RegionFreshnessResponse is one region's freshness for a check (spec
+// 2026-09-25-02): "no result from lauterbourg since 13:41, 2 other regions
+// reporting". Region is "" for results that carry no region.
+type RegionFreshnessResponse struct {
+	Region string `json:"region"`
+	// LastResultAt is the region's newest real raw result. Nil when a
+	// configured region has none inside the raw retention (about a day).
+	LastResultAt *time.Time `json:"lastResultAt"`
+	// Stale is true when that result is older than the check's threshold (or
+	// missing altogether).
+	Stale bool `json:"stale"`
+	// Status is the region's newest reading ("up", "down", "timeout",
+	// "error", "warning") and StatusSince when it last crossed between failing
+	// and passing (spec 2026-09-25-10). Kept for checks with 2+ regions only.
+	Status      *string    `json:"status,omitempty"`
+	StatusSince *time.Time `json:"statusSince,omitempty"`
 }
 
 // FlapStateResponse surfaces a check's live adaptive-recovery (flapping)
@@ -1023,6 +1106,21 @@ func lastStatusChangeOf(check *models.Check) *LastStatusChangeResponse {
 	}
 }
 
+// StatusNoDataLabel is how a human-facing surface (chat commands, CLI) says
+// "stale": the wire keeps the machine token, people read "no data".
+const StatusNoDataLabel = "no data"
+
+// StatusChangeLabel renders a lastStatusChange status for humans: the wire
+// value ("UP", "DOWN", …) as-is, except STALE, which reads "no data" (spec
+// 2026-09-25-02) — "STALE for 3h" means nothing to someone on call.
+func StatusChangeLabel(status string) string {
+	if strings.EqualFold(status, models.WireStatusStale) {
+		return StatusNoDataLabel
+	}
+
+	return status
+}
+
 // ListChecksOptions contains options for listing checks.
 type ListChecksOptions struct {
 	IncludeLastResult       bool
@@ -1037,11 +1135,8 @@ type ListChecksOptions struct {
 	Types    []string
 	Internal *string
 	Statuses []models.CheckStatus
-	// WouldHaveFired restricts to the checks the degraded dry run has flagged
-	// (spec 2026-09-22-03) — `?wouldHaveFired=true`.
-	WouldHaveFired bool
-	Cursor         string
-	Limit          int
+	Cursor   string
+	Limit    int
 	// Sort opts into an alternate ordering. "group" = group sort_order asc,
 	// ungrouped last, then created_at DESC / uid DESC within a bucket.
 	// "targetHost" = targetHost ascending, none-of-host/url/target last, then
@@ -1067,6 +1162,9 @@ type ListChecksResponse struct {
 type GetCheckOptions struct {
 	IncludeLastResult       bool
 	IncludeLastStatusChange bool
+	// IncludeRegionFreshness attaches the per-region newest real result
+	// (with=region_freshness, spec 2026-09-25-02). One grouped query.
+	IncludeRegionFreshness bool
 }
 
 // ListChecks retrieves checks for an organization with pagination and filtering.
@@ -1090,7 +1188,6 @@ func (s *Service) ListChecks(ctx context.Context, orgSlug string, opts ListCheck
 		Types:            opts.Types,
 		Internal:         opts.Internal,
 		Statuses:         opts.Statuses,
-		WouldHaveFired:   opts.WouldHaveFired,
 		Limit:            opts.Limit,
 		SortByGroup:      sortByGroup,
 		SortByTargetHost: sortByTargetHost,
@@ -1363,7 +1460,17 @@ type CreateCheckRequest struct {
 	Type          string         `json:"type"`
 	Config        map[string]any `json:"config"`
 	Regions       []string       `json:"regions"`
-	Enabled       *bool          `json:"enabled"`
+	// Placement is `pinned` or `auto` (spec 2026-09-25-06). Absent: an
+	// explicit regions list means pinned; otherwise the check is placed
+	// automatically (unless the org's default_regions names a private
+	// location).
+	Placement *string `json:"placement,omitempty"`
+	// RegionCount is N for an automatic placement (default 2); RegionPool
+	// restricts its candidates to these cloud slugs (empty = any). Either one
+	// implies placement auto.
+	RegionCount *int     `json:"regionCount,omitempty"`
+	RegionPool  []string `json:"regionPool,omitempty"`
+	Enabled     *bool    `json:"enabled"`
 	// Internal is DECODED ONLY SO IT CAN BE REFUSED (spec 2026-08-27-01).
 	// Any non-nil value — including an explicit `false` — fails the request
 	// with ErrInternalFieldNotWritable. See that error for why.
@@ -1387,6 +1494,11 @@ type CreateCheckRequest struct {
 	// (create: inherit); `inherit` is what puts a check that had an explicit
 	// answer back under the org default.
 	TracerouteOnFailure *string `json:"tracerouteOnFailure,omitempty"`
+	// FailQuorum is how many of the check's regions must be failing, for the
+	// confirmation period, before it is down (spec 2026-09-25-10): "default",
+	// "all", "majority" or a whole number (a JSON number or string). Absent
+	// leaves it unchanged (create: default).
+	FailQuorum *regionquorum.Value `json:"failQuorum,omitempty"`
 
 	// Adaptive resolution / flapping settings.
 	ReopenCooldownMultiplier *int `json:"reopenCooldownMultiplier,omitempty"`
@@ -1478,6 +1590,7 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 	// The resolved region set must be on the model before applyEncryption
 	// runs: credential sealing keys off the check's private regions.
 	check.Regions = resolvedRegions
+	plan.placement.applyTo(check)
 
 	// Split the (already normalized and validated) config's secrets out and
 	// encrypt them under the org DEK — and/or seal them to the private
@@ -1541,6 +1654,17 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 		check.TracerouteOnFailure = value
 	}
 
+	if req.FailQuorum != nil {
+		// Already checked above. A passive check drops it on insert
+		// (models.Check.NormalizePassiveRegions).
+		stored, fqErr := storedFailQuorum(req.FailQuorum)
+		if fqErr != nil {
+			return CheckResponse{}, fqErr
+		}
+
+		check.FailQuorum = stored
+	}
+
 	if req.FlappingWindowSeconds != nil {
 		check.FlappingWindowSeconds = *req.FlappingWindowSeconds
 	}
@@ -1602,9 +1726,13 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 	}
 
 	// Activation funnel: idempotent — only fires for the org's first check.
-	activation.Emit(ctx, s.db, org.UID,
-		models.EventTypeOrgActivationFirstCheckCreated,
-		activation.SourceAPI, "")
+	// A check the server created on its own (a private location's liveness
+	// monitor) is not the org activating anything.
+	if !isSystemCreate(ctx) {
+		activation.Emit(ctx, s.db, org.UID,
+			models.EventTypeOrgActivationFirstCheckCreated,
+			activation.SourceAPI, "")
+	}
 
 	// Fetch the check with labels for response
 	response := s.convertCheckToResponse(check)
@@ -1614,7 +1742,10 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 
 	// The check is already written at this point — a region-capability mismatch
 	// (IPv6, headless Chrome) is reported, never enforced.
-	response.Warnings = s.regionCapabilityWarnings(ctx, org.UID, check.Type, check.Config, check.Regions)
+	response.Warnings = append(
+		s.regionCapabilityWarnings(ctx, org.UID, check.Type, check.Config, check.Regions),
+		plan.placement.warnings...,
+	)
 
 	// A brand-new check that matches a status page selector has to appear on
 	// that page with no manual action — that is the entire point of dynamic
@@ -1684,7 +1815,64 @@ func (s *Service) GetCheck(
 		response.LastStatusChange = lastStatusChangeOf(check)
 	}
 
+	if opts.IncludeRegionFreshness {
+		freshness, freshErr := s.regionFreshness(ctx, check)
+		if freshErr != nil {
+			return CheckResponse{}, freshErr
+		}
+
+		response.RegionFreshness = freshness
+
+		if statesErr := s.attachRegionStates(ctx, check, &response); statesErr != nil {
+			return CheckResponse{}, statesErr
+		}
+	}
+
 	return response, nil
+}
+
+// regionFreshness builds the per-region freshness list: every region that
+// produced a real raw result, plus every configured region that did not (with
+// a nil time — silent for longer than the raw retention, or never ran).
+func (s *Service) regionFreshness(ctx context.Context, check *models.Check) ([]RegionFreshnessResponse, error) {
+	rows, err := s.db.ListLastRealResultPerRegion(ctx, check.OrganizationUID, check.UID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get region freshness: %w", err)
+	}
+
+	return BuildRegionFreshness(check, rows, s.now()), nil
+}
+
+// BuildRegionFreshness is the pure half of regionFreshness, shared with the MCP
+// diagnose tool. Rows keep the query's region order; configured regions with
+// no row are appended in their configured order.
+func BuildRegionFreshness(
+	check *models.Check, rows []models.RegionLastResult, now time.Time,
+) []RegionFreshnessResponse {
+	threshold := check.StaleThreshold()
+	out := make([]RegionFreshnessResponse, 0, len(rows)+len(check.Regions))
+	seen := make(map[string]bool, len(rows))
+
+	for i := range rows {
+		at := rows[i].LastResultAt
+		seen[rows[i].Region] = true
+		out = append(out, RegionFreshnessResponse{
+			Region:       rows[i].Region,
+			LastResultAt: &at,
+			Stale:        now.Sub(at) > threshold,
+		})
+	}
+
+	for _, region := range check.Regions {
+		if seen[region] {
+			continue
+		}
+
+		seen[region] = true
+		out = append(out, RegionFreshnessResponse{Region: region, Stale: true})
+	}
+
+	return out
 }
 
 // UpdateCheckRequest represents a request to update a check.
@@ -1694,8 +1882,16 @@ type UpdateCheckRequest struct {
 	Description   *string         `json:"description,omitempty"`
 	CheckGroupUID *string         `json:"checkGroupUid"`
 	Config        *map[string]any `json:"config,omitempty"`
-	Regions       *[]string       `json:"regions,omitempty"`
-	Enabled       *bool           `json:"enabled,omitempty"`
+	// Regions set to a non-empty list pins the check to it; an empty list
+	// puts the check back on the default placement (spec 2026-09-25-06).
+	Regions *[]string `json:"regions,omitempty"`
+	// Placement switches the placement intent. `pinned` without regions
+	// freezes the current placement; `auto` without regionCount keeps the
+	// current region count.
+	Placement   *string   `json:"placement,omitempty"`
+	RegionCount *int      `json:"regionCount,omitempty"`
+	RegionPool  *[]string `json:"regionPool,omitempty"`
+	Enabled     *bool     `json:"enabled,omitempty"`
 	// Internal is decoded only so it can be refused — see
 	// ErrInternalFieldNotWritable (spec 2026-08-27-01).
 	Internal *bool              `json:"internal,omitempty"`
@@ -1723,6 +1919,11 @@ type UpdateCheckRequest struct {
 	// (create: inherit); `inherit` is what puts a check that had an explicit
 	// answer back under the org default.
 	TracerouteOnFailure *string `json:"tracerouteOnFailure,omitempty"`
+	// FailQuorum is how many of the check's regions must be failing, for the
+	// confirmation period, before it is down (spec 2026-09-25-10): "default",
+	// "all", "majority" or a whole number (a JSON number or string). Absent
+	// leaves it unchanged (create: default).
+	FailQuorum *regionquorum.Value `json:"failQuorum,omitempty"`
 
 	// Adaptive resolution / flapping settings.
 	ReopenCooldownMultiplier *int `json:"reopenCooldownMultiplier,omitempty"`
@@ -1756,7 +1957,13 @@ type UpsertCheckRequest struct {
 	Type          string         `json:"type"`
 	Config        map[string]any `json:"config"`
 	Regions       []string       `json:"regions,omitempty"`
-	Enabled       *bool          `json:"enabled"`
+	// Placement / RegionCount / RegionPool (spec 2026-09-25-06). A document
+	// is declarative: `placement: auto` with no regionPool means "any region",
+	// and switches an existing pinned check even though `regions` is empty.
+	Placement   *string   `json:"placement,omitempty"`
+	RegionCount *int      `json:"regionCount,omitempty"`
+	RegionPool  *[]string `json:"regionPool,omitempty"`
+	Enabled     *bool     `json:"enabled"`
 	// Internal is decoded only so it can be refused — see
 	// ErrInternalFieldNotWritable (spec 2026-08-27-01).
 	Internal *bool             `json:"internal,omitempty"`
@@ -1771,6 +1978,11 @@ type UpsertCheckRequest struct {
 	// TracerouteOnFailure is the per-check path-trace policy: `inherit`, `on`
 	// or `off`. nil leaves it unchanged.
 	TracerouteOnFailure *string `json:"tracerouteOnFailure,omitempty"`
+	// FailQuorum is how many of the check's regions must be failing, for the
+	// confirmation period, before it is down (spec 2026-09-25-10): "default",
+	// "all", "majority" or a whole number (a JSON number or string). Absent
+	// leaves it unchanged (create: default).
+	FailQuorum *regionquorum.Value `json:"failQuorum,omitempty"`
 
 	// Adaptive resolution / flapping settings. nil leaves the value untouched
 	// (create → system default; update → unchanged).
@@ -1873,15 +2085,39 @@ func (s *Service) UpdateCheck(
 			update.EscalationPolicyUID = req.EscalationPolicyUID
 		}
 	}
-	// Resolve a region patch BEFORE the config handling so credential sealing
-	// sees the regions the check will have after this PATCH.
-	if req.Regions != nil {
-		resolvedRegions, regErr := s.regions.ResolveRegionsForCheck(ctx, *req.Regions, org.UID)
-		if regErr != nil {
-			return CheckResponse{}, fmt.Errorf("failed to resolve regions: %w", regErr)
+	// Resolve the placement (and so the regions) BEFORE the config handling so
+	// credential sealing sees the regions the check will have after this
+	// PATCH (spec 2026-09-25-06). A nil outcome leaves them untouched.
+	placement, placementErr := s.resolveUpdatePlacement(
+		ctx, check, s.updatePlacementSubject(check, req), updatePlacementRequest(req),
+		req.Config != nil || (req.Enabled != nil && *req.Enabled && !check.Enabled),
+	)
+	if placementErr != nil {
+		if isPlacementError(placementErr) {
+			return CheckResponse{}, placementErr
 		}
-		check.Regions = resolvedRegions
-		update.Regions = &resolvedRegions
+
+		return CheckResponse{}, fmt.Errorf("failed to resolve regions: %w", placementErr)
+	}
+
+	regionsChanged := placement != nil
+	if regionsChanged {
+		check.Regions = placement.regions
+		placement.applyToUpdate(&update)
+
+		// A region-only PATCH (no config in the same request) never reaches
+		// applyConfigUpdate below, so it would otherwise bypass every config
+		// validator including the docker SaaS gate — silently re-pinning an
+		// existing docker check from a private location onto a shared region
+		// with no rejection at write time (spec 2026-09-25-22). The runtime
+		// guard in checkworker.executeJob would still catch it on the next
+		// scheduled run, but a hard reject belongs here, at the PATCH that
+		// causes it.
+		if req.Config == nil {
+			if cfgErr := s.validateDockerDeploymentConfig(check.Type, check.Regions); cfgErr != nil {
+				return CheckResponse{}, cfgErr
+			}
+		}
 	}
 	if req.Config != nil {
 		if cfgErr := s.applyConfigUpdate(ctx, check, *req.Config, &update); cfgErr != nil {
@@ -1891,7 +2127,7 @@ func (s *Service) UpdateCheck(
 		if floorErr := validateConfigOnlyPatchFloor(check, req.Period); floorErr != nil {
 			return CheckResponse{}, floorErr
 		}
-	} else if req.Regions != nil {
+	} else if regionsChanged {
 		// A regions-only PATCH still has to re-validate a tunnel reference: the
 		// dependent's private regions must stay covered by the SSH check (spec
 		// 2026-07-18-07, decisions 1–2). When req.Config is set, applyConfigUpdate
@@ -1907,7 +2143,7 @@ func (s *Service) UpdateCheck(
 	// sealed-only) while other checks tunnel through it must not silently strand
 	// them. Runs against the post-update state (regions resolved above; sealing
 	// applied by applyConfigUpdate when config changed).
-	if req.Regions != nil || req.Config != nil {
+	if regionsChanged || req.Config != nil {
 		if coverErr := s.assertTunnelRegionsStillCover(ctx, check); coverErr != nil {
 			return CheckResponse{}, coverErr
 		}
@@ -1958,6 +2194,10 @@ func (s *Service) UpdateCheck(
 		// explicit on/off and never moved back.
 		update.TracerouteOnFailure = value
 		update.ClearTracerouteOnFailure = value == nil
+	}
+
+	if fqErr := applyFailQuorumUpdate(&update, check, req.FailQuorum); fqErr != nil {
+		return CheckResponse{}, fqErr
 	}
 
 	if req.ReopenCooldownMultiplier != nil {
@@ -2021,9 +2261,17 @@ func (s *Service) UpdateCheck(
 		return CheckResponse{}, errUpdate
 	}
 
+	// Turning degraded detection off closes the open degraded incident in the
+	// same request: the evaluator no longer sweeps this check, so nothing else
+	// ever would. Every write path (PATCH, /apply, import, MCP update_check)
+	// lands here.
+	if resolveErr := s.resolveDegradedOnDisable(ctx, check, &update); resolveErr != nil {
+		return CheckResponse{}, resolveErr
+	}
+
 	// Reconcile check jobs if regions, period, spread, enabled, or config
 	// changed (a regionSpread-only edit re-levels the per-region phases).
-	if req.Regions != nil || req.Period != nil || req.RegionSpread != nil ||
+	if regionsChanged || req.Period != nil || req.RegionSpread != nil ||
 		req.Enabled != nil || req.Config != nil {
 		updatedCheck, fetchErr := s.db.GetCheck(ctx, org.UID, check.UID)
 		if fetchErr != nil {
@@ -2061,6 +2309,9 @@ func (s *Service) UpdateCheck(
 	response.Warnings = s.regionCapabilityWarnings(
 		ctx, org.UID, updatedCheck.Type, updatedCheck.Config, updatedCheck.Regions,
 	)
+	if placement != nil {
+		response.Warnings = append(response.Warnings, placement.warnings...)
+	}
 
 	// Fetch and attach labels
 	labels, err := s.db.GetLabelsForCheck(ctx, check.UID)
@@ -2168,6 +2419,7 @@ func (s *Service) UpsertCheck(
 			ConfirmationPeriodSeconds: req.ConfirmationPeriodSeconds,
 			RecoveryPeriodSeconds:     req.RecoveryPeriodSeconds,
 			TracerouteOnFailure:       req.TracerouteOnFailure,
+			FailQuorum:                req.FailQuorum,
 			ReopenCooldownMultiplier:  req.ReopenCooldownMultiplier,
 			FlappingWindowSeconds:     req.FlappingWindowSeconds,
 			FlapBackoffFactor:         req.FlapBackoffFactor,
@@ -2182,6 +2434,8 @@ func (s *Service) UpsertCheck(
 		if len(req.Regions) > 0 {
 			updateReq.Regions = &req.Regions
 		}
+
+		applyUpsertPlacement(&updateReq, req)
 
 		updatedCheck, updateErr := s.UpdateCheck(ctx, orgSlug, slug, &updateReq)
 		if updateErr != nil {
@@ -2483,6 +2737,8 @@ func (s *Service) DeleteCheck(ctx context.Context, orgSlug, identifier string) e
 		return fmt.Errorf("failed to delete check: %w", err)
 	}
 
+	s.reapCheckAttachments(ctx, org.UID, check.UID)
+
 	// The check just left the in-scope set — bust the stats cache so the
 	// next fetch recomputes instead of riding out the TTL (spec
 	// 2026-09-01-01). ApplyChecks' prune path calls this same method, so
@@ -2494,8 +2750,8 @@ func (s *Service) DeleteCheck(ctx context.Context, orgSlug, identifier string) e
 		audit.Target{Type: "check", UID: check.UID, Name: checkDisplayName(check)},
 		models.JSONMap{
 			eventPayloadCheckUIDKey:  check.UID,
-			"check_slug":             check.Slug,
-			"check_name":             check.Name,
+			eventPayloadCheckSlugKey: check.Slug,
+			eventPayloadCheckNameKey: check.Name,
 			"check_type":             check.Type,
 			"active_incidents_count": activeIncidentCount,
 		})
@@ -2504,6 +2760,10 @@ func (s *Service) DeleteCheck(ctx context.Context, orgSlug, identifier string) e
 	if err := s.db.CreateEvent(ctx, event); err != nil {
 		slog.WarnContext(ctx, "failed to emit check.deleted event", "error", err)
 	}
+
+	// Deleting a private location's liveness monitor is an opt-out the
+	// backfill must respect (spec 2026-09-25-05).
+	s.recordPrivateLocationOptOut(ctx, check)
 
 	// A deleted check's managed row must disappear from every dynamic section.
 	s.reconcileStatusPageSelectors(ctx, org.UID)
@@ -2915,8 +3175,14 @@ func (s *Service) reconcileCheckJobs(ctx context.Context, check *models.Check, r
 	// agree on the same region ordering for the phase formula to level
 	// correctly. RegionIndex re-sorting this already-sorted slice internally
 	// is a cheap no-op, not a mismatch.
-	targetRegions := make([]string, len(check.Regions))
-	copy(targetRegions, check.Regions)
+	//
+	// JobRegions, not Regions: a passive check (heartbeat, email) always owns
+	// exactly one NULL-region job, evaluated on the jobs node, whatever its
+	// row says (spec 2026-09-25-04). Reading Regions here is what let the boot
+	// repair recreate regional passive jobs at every start.
+	jobRegions := check.JobRegions()
+	targetRegions := make([]string, len(jobRegions))
+	copy(targetRegions, jobRegions)
 	sort.Strings(targetRegions)
 
 	basePeriod := time.Duration(check.Period)
@@ -3166,7 +3432,7 @@ func (s *Service) convertCheckToResponse(check *models.Check) CheckResponse {
 	// stripSecretKeysForExport.
 	publicConfig, privateKeys := redactSecretConfig(check, privateKeys)
 
-	return CheckResponse{
+	response := CheckResponse{
 		UID:                       check.UID,
 		Name:                      check.Name,
 		Slug:                      check.Slug,
@@ -3177,11 +3443,17 @@ func (s *Service) convertCheckToResponse(check *models.Check) CheckResponse {
 		TargetHost:                checkerdef.ExtractTargetHost(publicConfig),
 		ConfigPrivateKeys:         privateKeys,
 		Regions:                   check.Regions,
+		Placement:                 check.EffectivePlacement(),
+		RegionCount:               autoOnlyCount(check),
+		RegionPool:                autoOnlyPool(check),
 		Enabled:                   &check.Enabled,
 		Internal:                  &check.Internal,
 		Period:                    &periodStr,
 		RegionSpread:              regionSpreadStr,
 		Status:                    check.Status.String(),
+		StatusChangedAt:           check.StatusChangedAt,
+		LastResultAt:              check.LastResultAt,
+		StaleThresholdSeconds:     int(check.StaleThreshold().Seconds()),
 		CreatedAt:                 &check.CreatedAt,
 		CreatedBy:                 check.CreatedBy,
 		ReopenCooldownMultiplier:  check.ReopenCooldownMultiplier,
@@ -3199,8 +3471,11 @@ func (s *Service) convertCheckToResponse(check *models.Check) CheckResponse {
 		DegradedSlowWindow:        check.EffectiveDegradedSlowWindow(),
 		SlowThresholdMs:           check.EffectiveSlowThresholdMs(),
 		DegradedEnabled:           check.DegradedEnabled,
-		DegradedWouldFireAt:       check.DegradedWouldFireAt,
 	}
+
+	failQuorumResponse(check, &response)
+
+	return response
 }
 
 // buildFlapStateResponse computes the check's live flapState block (spec
@@ -3327,6 +3602,17 @@ func (s *Service) convertResultToLastResultResponseSlim(result *models.Result) *
 	}
 }
 
+// reapCheckAttachments soft-deletes a deleted check's check-scoped attachments
+// (spec 2026-09-25-34: the captures of runs that opened no incident, and
+// "Capture now" captures). Best-effort and run after the delete, like every
+// reaper: the check is gone either way, and the state-cleanup orphan sweep
+// catches whatever this misses.
+func (s *Service) reapCheckAttachments(ctx context.Context, orgUID, checkUID string) {
+	if _, err := s.db.DeleteFilesByTopicPrefix(ctx, orgUID, attachments.CheckTopicPrefix(checkUID)); err != nil {
+		slog.WarnContext(ctx, "Failed to reap check attachments", "checkUid", checkUID, "error", err)
+	}
+}
+
 // emitEvent creates an event for the check lifecycle.
 func (s *Service) emitEvent(
 	ctx context.Context,
@@ -3341,10 +3627,10 @@ func (s *Service) emitEvent(
 	event := audit.NewEvent(ctx, orgUID, eventType,
 		audit.Target{Type: "check", UID: check.UID, Name: checkDisplayName(check)},
 		models.JSONMap{
-			eventPayloadCheckUIDKey: check.UID,
-			"check_slug":            check.Slug,
-			"check_name":            check.Name,
-			"check_type":            check.Type,
+			eventPayloadCheckUIDKey:  check.UID,
+			eventPayloadCheckSlugKey: check.Slug,
+			eventPayloadCheckNameKey: check.Name,
+			"check_type":             check.Type,
 		})
 	event.CheckUID = &check.UID
 
@@ -3407,11 +3693,18 @@ type ExportCheck struct {
 	// PreviousSlug, when set on an apply manifest, makes a slug rename
 	// reconcile in place (rather than delete+create). Ignored by export and
 	// import; only the apply reconcile path consults it.
-	PreviousSlug              string            `json:"previousSlug,omitempty"`
-	Description               string            `json:"description,omitempty"`
-	Type                      string            `json:"type"`
-	Config                    map[string]any    `json:"config"`
-	Regions                   []string          `json:"regions,omitempty"`
+	PreviousSlug string         `json:"previousSlug,omitempty"`
+	Description  string         `json:"description,omitempty"`
+	Type         string         `json:"type"`
+	Config       map[string]any `json:"config"`
+	Regions      []string       `json:"regions,omitempty"`
+	// Placement / RegionCount / RegionPool (spec 2026-09-25-06). Placement is
+	// "auto" for an automatically placed check; absent reads as pinned when
+	// regions are listed, and as "no opinion" otherwise. An auto check's
+	// regions belong to the scheduler, so the v2 exporter omits them.
+	Placement                 string            `json:"placement,omitempty"`
+	RegionCount               *int              `json:"regionCount,omitempty"`
+	RegionPool                []string          `json:"regionPool,omitempty"`
 	Labels                    map[string]string `json:"labels,omitempty"`
 	Enabled                   bool              `json:"enabled"`
 	Internal                  bool              `json:"internal,omitempty"`
@@ -3428,11 +3721,15 @@ type ExportCheck struct {
 	// dropped it would resolve back to the org default — which is ON. An
 	// explicit opt-out quietly becoming an opt-in on restore, with no diff to
 	// notice, is the worst direction this field could fail in.
-	TracerouteOnFailure      string `json:"tracerouteOnFailure,omitempty"`
-	ReopenCooldownMultiplier *int   `json:"reopenCooldownMultiplier,omitempty"`
-	FlappingWindowSeconds    *int   `json:"flappingWindowSeconds,omitempty"`
-	FlapBackoffFactor        *int   `json:"flapBackoffFactor,omitempty"`
-	MaxRecoveryMultiplier    *int   `json:"maxRecoveryMultiplier,omitempty"`
+	TracerouteOnFailure string `json:"tracerouteOnFailure,omitempty"`
+	// FailQuorum is the multi-region quorum (spec 2026-09-25-10); absent is
+	// the default. Like TracerouteOnFailure, absent is imported as an explicit
+	// "default", so a re-import resets a check that was taken off it.
+	FailQuorum               *regionquorum.Value `json:"failQuorum,omitempty"`
+	ReopenCooldownMultiplier *int                `json:"reopenCooldownMultiplier,omitempty"`
+	FlappingWindowSeconds    *int                `json:"flappingWindowSeconds,omitempty"`
+	FlapBackoffFactor        *int                `json:"flapBackoffFactor,omitempty"`
+	MaxRecoveryMultiplier    *int                `json:"maxRecoveryMultiplier,omitempty"`
 	// Degraded detection (spec 2026-09-22-03): the raw per-check columns, NOT
 	// the resolved Effective*() values.
 	//
@@ -3692,6 +3989,7 @@ func projectChecksToExport(
 			EscalationThreshold:       intPtr(check.EscalationThreshold),
 			RecoveryPeriodSeconds:     intPtr(check.RecoveryPeriodSeconds),
 			TracerouteOnFailure:       renderTraceroutePolicy(check.TracerouteOnFailure),
+			FailQuorum:                exportedFailQuorum(check),
 			ReopenCooldownMultiplier:  check.ReopenCooldownMultiplier,
 			FlappingWindowSeconds:     intPtr(check.FlappingWindowSeconds),
 			FlapBackoffFactor:         intPtr(check.FlapBackoffFactor),
@@ -3715,6 +4013,8 @@ func projectChecksToExport(
 		if check.Description != nil {
 			exported.Description = *check.Description
 		}
+
+		projectPlacementToExport(check, &exported)
 
 		if check.CheckGroupUID != nil {
 			if name, ok := groupMap[*check.CheckGroupUID]; ok {
@@ -4444,6 +4744,19 @@ func buildImportUpsertRequest(exportedCheck *ExportCheck, checkGroupUID *string)
 	}
 
 	upsertReq.TracerouteOnFailure = importedTraceroutePolicy(exportedCheck.TracerouteOnFailure)
+	upsertReq.FailQuorum = importedFailQuorum(exportedCheck.FailQuorum)
+
+	if exportedCheck.Placement != "" {
+		placement := exportedCheck.Placement
+		upsertReq.Placement = &placement
+	}
+
+	upsertReq.RegionCount = exportedCheck.RegionCount
+
+	if exportedCheck.RegionPool != nil {
+		pool := append([]string(nil), exportedCheck.RegionPool...)
+		upsertReq.RegionPool = &pool
+	}
 
 	return upsertReq
 }
@@ -4622,6 +4935,15 @@ func (s *Service) cloneBuildCheck(
 
 	clone.Config = source.Config
 	clone.Regions = append([]string(nil), source.Regions...)
+	// The placement intent travels with the regions (spec 2026-09-25-06): a
+	// clone of an automatic check is automatic, starting from the same
+	// placement.
+	clone.Placement = source.EffectivePlacement()
+	if source.RegionCount != nil {
+		count := *source.RegionCount
+		clone.RegionCount = &count
+	}
+	clone.RegionPool = append([]string(nil), source.RegionPool...)
 	clone.Period = source.Period
 	// A clone is NEVER internal, whatever the source is (spec 2026-08-27-01).
 	// Copying the flag would be the same quota bypass as accepting `internal`
@@ -4636,8 +4958,7 @@ func (s *Service) cloneBuildCheck(
 	clone.ReopenCooldownMultiplier = source.ReopenCooldownMultiplier
 	clone.FlappingWindowSeconds = source.FlappingWindowSeconds
 	// Degraded detection is configuration, so a clone inherits it — including
-	// degraded_enabled. The dry-run stamp deliberately does NOT travel: it is an
-	// observation about the source check's own probe history.
+	// degraded_enabled.
 	//
 	// The five numerics copy the RAW pointers, not the resolved values: a source
 	// that never configured them must clone to an unconfigured check too, or the
@@ -4649,6 +4970,7 @@ func (s *Service) cloneBuildCheck(
 	clone.DegradedSlowWindow = source.DegradedSlowWindow
 	clone.SlowThresholdMs = source.SlowThresholdMs
 	clone.DegradedEnabled = source.DegradedEnabled
+	clone.FailQuorum = source.FailQuorum
 	clone.FlapBackoffFactor = source.FlapBackoffFactor
 	clone.MaxRecoveryMultiplier = source.MaxRecoveryMultiplier
 	clone.EscalationPolicyUID = source.EscalationPolicyUID
@@ -4874,6 +5196,10 @@ func (s *Service) applyConfigUpdate(
 	}
 
 	preserveAbsentRedactedFields(check, merged)
+
+	if immutableErr := assertPrivateLocationRegionUnchanged(check, merged); immutableErr != nil {
+		return immutableErr
+	}
 
 	// An export-redacted field the document omitted and that preservation
 	// could not supply (a check that never had one, e.g. an SMTP send-mode

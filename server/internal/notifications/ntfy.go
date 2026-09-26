@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/httpclientpool"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
 
@@ -29,10 +30,15 @@ var (
 type NtfySender struct{}
 
 // Send sends a notification to ntfy.
-func (s *NtfySender) Send(ctx context.Context, _ *jobdef.JobContext, payload *Payload) error {
+func (s *NtfySender) Send(ctx context.Context, jctx *jobdef.JobContext, payload *Payload) error {
 	settings, err := s.parseSettings(payload)
 	if err != nil {
 		return err
+	}
+
+	guard := egressGuardFrom(jctx)
+	if urlErr := ValidateSenderURL(ctx, guard, settings.ServerURL); urlErr != nil {
+		return urlErr
 	}
 
 	url := strings.TrimRight(settings.ServerURL, "/") + "/" + settings.Topic
@@ -52,7 +58,7 @@ func (s *NtfySender) Send(ctx context.Context, _ *jobdef.JobContext, payload *Pa
 		req.Header.Set("Authorization", "Bearer "+settings.AccessToken)
 	}
 
-	client := newHTTPClient(ntfyTimeout)
+	client := httpclientpool.NewGuardedClient(ntfyTimeout, guard)
 
 	resp, err := client.Do(req)
 	if err != nil {

@@ -133,21 +133,26 @@ type StatusRow struct {
 	// AttainmentPct is null when the window carries no countable probe. It is
 	// NEVER 100% by default — the same no-data rule the availability API
 	// follows.
-	AttainmentPct              *float64   `json:"attainmentPct"`
-	HasData                    bool       `json:"hasData"`
-	TargetPct                  float64    `json:"targetPct"`
-	TotalChecks                int        `json:"totalChecks"`
-	SuccessfulChecks           int        `json:"successfulChecks"`
-	MonitoredSeconds           int64      `json:"monitoredSeconds"`
-	ElapsedSeconds             int64      `json:"elapsedSeconds"`
-	BudgetTotalSeconds         int64      `json:"budgetTotalSeconds"`
-	BudgetConsumedSeconds      int64      `json:"budgetConsumedSeconds"`
-	BudgetRemainingSeconds     int64      `json:"budgetRemainingSeconds"`
-	ExcludedMaintenanceSeconds int64      `json:"excludedMaintenanceSeconds"`
-	BurnRate                   *float64   `json:"burnRate"`
-	ProjectedExhaustionAt      *time.Time `json:"projectedExhaustionAt"`
-	State                      string     `json:"state"`
-	Partial                    bool       `json:"partial"`
+	AttainmentPct              *float64 `json:"attainmentPct"`
+	HasData                    bool     `json:"hasData"`
+	TargetPct                  float64  `json:"targetPct"`
+	TotalChecks                int      `json:"totalChecks"`
+	SuccessfulChecks           int      `json:"successfulChecks"`
+	MonitoredSeconds           int64    `json:"monitoredSeconds"`
+	ElapsedSeconds             int64    `json:"elapsedSeconds"`
+	BudgetTotalSeconds         int64    `json:"budgetTotalSeconds"`
+	BudgetConsumedSeconds      int64    `json:"budgetConsumedSeconds"`
+	BudgetRemainingSeconds     int64    `json:"budgetRemainingSeconds"`
+	ExcludedMaintenanceSeconds int64    `json:"excludedMaintenanceSeconds"`
+	// DataCoverage is measured ÷ expected probes over the elapsed window
+	// (spec 2026-09-25-02) — how much of the time the budget describes was
+	// actually measured. The dashboard flags a low value next to the
+	// percentage. Null when nothing was expected yet.
+	DataCoverage          *float64   `json:"dataCoverage"`
+	BurnRate              *float64   `json:"burnRate"`
+	ProjectedExhaustionAt *time.Time `json:"projectedExhaustionAt"`
+	State                 string     `json:"state"`
+	Partial               bool       `json:"partial"`
 }
 
 // StatusResponse is the /status payload: the current window plus the incident
@@ -609,6 +614,21 @@ func Slugify(name string) string {
 type scope struct {
 	checkUIDs     []string
 	coverageStart time.Time
+	// checks carries each in-scope check's period, regions and creation time —
+	// what the expected-probe count (data coverage, spec 2026-09-25-02) needs.
+	checks []*models.Check
+}
+
+// expectedProbes is Σ over the scope's checks of the results each should have
+// produced over the elapsed part of the window.
+func (sc scope) expectedProbes(window slo.Window, now time.Time) float64 {
+	var total float64
+
+	for _, check := range sc.checks {
+		total += check.ExpectedProbesBetween(window.Start, window.End, now)
+	}
+
+	return total
 }
 
 // resolveScope expands an SLO to the check UIDs it evaluates over, plus the
@@ -628,7 +648,9 @@ func (s *Service) resolveScope(ctx context.Context, orgUID string, row *models.S
 			return scope{}, nil //nolint:nilerr // a missing check is "no data", not a failure
 		}
 
-		return scope{checkUIDs: []string{check.UID}, coverageStart: check.CreatedAt}, nil
+		return scope{
+			checkUIDs: []string{check.UID}, coverageStart: check.CreatedAt, checks: []*models.Check{check},
+		}, nil
 	}
 
 	if row.CheckGroupUID == nil {
@@ -642,7 +664,7 @@ func (s *Service) resolveScope(ctx context.Context, orgUID string, row *models.S
 		return scope{}, fmt.Errorf("list group checks: %w", err)
 	}
 
-	out := scope{checkUIDs: make([]string, 0, len(checks))}
+	out := scope{checkUIDs: make([]string, 0, len(checks)), checks: checks}
 
 	for _, check := range checks {
 		out.checkUIDs = append(out.checkUIDs, check.UID)
@@ -788,6 +810,7 @@ func (s *Service) evaluate(
 		Now:                now,
 		CoverageStart:      scoped.coverageStart,
 		ExcludeMaintenance: row.ExcludeMaintenance,
+		ExpectedProbes:     scoped.expectedProbes(window, now),
 	})
 
 	return StatusRow{
@@ -807,6 +830,7 @@ func (s *Service) evaluate(
 		BudgetConsumedSeconds:      computed.BudgetConsumedSeconds,
 		BudgetRemainingSeconds:     computed.BudgetRemainingSeconds,
 		ExcludedMaintenanceSeconds: computed.ExcludedMaintenanceSeconds,
+		DataCoverage:               computed.DataCoverage,
 		BurnRate:                   computed.BurnRate,
 		ProjectedExhaustionAt:      computed.ProjectedExhaustionAt,
 		State:                      computed.State,

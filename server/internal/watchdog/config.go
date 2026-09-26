@@ -56,6 +56,9 @@ const (
 	// DefaultStaleIncidentCriticalCount escalates the stale-incident anomaly
 	// to critical — 61 frozen incidents was the 2026-08-24 number.
 	DefaultStaleIncidentCriticalCount = 10
+	// DefaultStaleChecksCriticalCount escalates the stale-checks anomaly
+	// (stale checks in regions that are NOT dark) to critical.
+	DefaultStaleChecksCriticalCount = 10
 	// DefaultStaleIncidentScanLimit bounds the active-incident scan so the
 	// run stays cheap on an instance with a genuinely huge outage.
 	DefaultStaleIncidentScanLimit = 2000
@@ -93,6 +96,8 @@ type Config struct {
 	StaleIncidentPeriodMultiplier int `json:"staleIncidentPeriodMultiplier,omitempty"`
 	StaleIncidentCriticalCount    int `json:"staleIncidentCriticalCount,omitempty"`
 	StaleIncidentScanLimit        int `json:"staleIncidentScanLimit,omitempty"`
+
+	StaleChecksCriticalCount int `json:"staleChecksCriticalCount,omitempty"`
 }
 
 // DefaultConfig is the watchdog with everything at its documented default and
@@ -150,6 +155,12 @@ func (c *Config) applyDefaults() {
 		c.FleetCriticalDropPercent = DefaultFleetCriticalDropPercent
 	}
 
+	c.applyStaleDefaults()
+}
+
+// applyStaleDefaults fills the stale-incidents and stale-checks thresholds.
+// Split out of applyDefaults to keep each under the complexity cap.
+func (c *Config) applyStaleDefaults() {
 	if c.StaleIncidentMinMinutes <= 0 {
 		c.StaleIncidentMinMinutes = int(DefaultStaleIncidentMinAge / time.Minute)
 	}
@@ -164,6 +175,10 @@ func (c *Config) applyDefaults() {
 
 	if c.StaleIncidentScanLimit <= 0 {
 		c.StaleIncidentScanLimit = DefaultStaleIncidentScanLimit
+	}
+
+	if c.StaleChecksCriticalCount <= 0 {
+		c.StaleChecksCriticalCount = DefaultStaleChecksCriticalCount
 	}
 }
 

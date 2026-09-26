@@ -26,6 +26,7 @@
     "up": "Up",
     "down": "Down",
     "warning": "Warning",
+    "stale": "No data",
     "created": "Pending",
     "degraded": "Degraded",
     "abandoned": "Abandoned",
@@ -47,6 +48,7 @@
     "up": "up",
     "down": "down",
     "warning": "warning",
+    "stale": "no data",
     "degraded": "degraded",
     "validating": "validating",
     "created": "pending"
@@ -336,8 +338,8 @@
     "degraded": {
       "title": "Degraded detection",
       "help": "A second detector beside the confirmation period: it reports a check that fails intermittently, or answers far slower than usual, even when no single failure lasts long enough to confirm an outage. Both rules count PROBES, not seconds.",
-      "enabled": "Open degraded incidents",
-      "enabledHelp": "Off means dry run: the rules are still evaluated and the check page tells you when they would have fired, but nothing is opened and nobody is notified.",
+      "enabled": "Enable degraded detection",
+      "enabledHelp": "Off: degraded detection is not evaluated for this check. Turning it off closes the check's open degraded incident, if any.",
       "failures": "Failed probes (M)",
       "failuresHelp": "Fires when this many of the last N probes failed. 0 turns the failure rule off.",
       "failuresWindow": "Failure window (N probes)",
@@ -351,11 +353,42 @@
       "slowThresholdOff": "The slow rule is off until you set a threshold — latency is reported nowhere else.",
       "slowThresholdSuggestion": "Suggested: {{value}} ms, about twice this check's observed p95.",
       "slowThresholdSuggestionApply": "Use suggestion",
-      "summaryOff": "Dry run — nothing is opened",
+      "summaryOff": "Off, not evaluated",
       "summaryOn": "{{failures}} of {{failuresWindow}} failed probes, {{slow}}",
       "summarySlowArmed": "{{slow}} of {{slowWindow}} probes over {{threshold}} ms",
       "summarySlowOff": "slow rule off"
-    }
+    },
+    "privateLocationIntervalHint": "How often SolidPing checks that the location's agents are connected. An agent counts as offline after 5 minutes without contact.",
+    "placement": {
+      "autoSummary_one": "Automatic ({{count}} region)",
+      "autoSummary_other": "Automatic ({{count}} regions)",
+      "chooseRegions": "Choose regions",
+      "useAuto": "Use automatic placement",
+      "autoHint": "SolidPing runs this check from healthy regions and moves it to another one when a region goes offline.",
+      "pinnedHint": "Pinned: the check runs from exactly these regions and is never moved.",
+      "regionCount": "Number of regions",
+      "current": "Currently running from {{regions}}"
+    },
+    "failQuorum": "Regions that must fail",
+    "failQuorumHelp": "With several regions, how many must be failing for the whole confirmation period before the check is down and an incident opens. Fewer failing regions show as a regional issue, with no incident.",
+    "failQuorumDefault": "Default (a majority from 3 regions, otherwise all)",
+    "failQuorumAll": "All regions",
+    "failQuorumMajority": "A majority",
+    "failQuorumCount": "A number of regions",
+    "failQuorumCountLabel": "Number of regions",
+    "failQuorumResolved": "Down when {{quorum}} of {{count}} regions fail. Fewer is a regional issue.",
+    "failQuorumResolvedAll_one": "Down when the region fails.",
+    "failQuorumResolvedAll_other": "Down when all {{count}} regions fail. Any passing region restarts the confirmation.",
+    "failQuorumCountError": "Enter a whole number between 1 and 100.",
+    "recordType": "Record type",
+    "dnsServerOptional": "DNS server (optional)",
+    "dnsServerPlaceholder": "8.8.8.8:53 — defaults to system resolver",
+    "dnsServerHelp": "Resolver to query, in host:port form. Leave blank to use the system resolver.",
+    "lookupMethod": "Lookup method",
+    "lookupMethodAuto": "Auto (RDAP, WHOIS fallback)",
+    "lookupMethodRdap": "RDAP only",
+    "lookupMethodWhois": "WHOIS only",
+    "lookupMethodHelp": "Auto tries RDAP first and falls back to WHOIS on any failure. RDAP only and WHOIS only never fall back."
   },
   "types": {
     "http": "HTTP",
@@ -363,17 +396,17 @@
     "tcp": "TCP",
     "tcpDescription": "Check TCP port connectivity",
     "icmp": "ICMP",
-    "icmpDescription": "Ping hosts via ICMP",
+    "icmpDescription": "Ping hosts using ICMP",
     "dns": "DNS",
-    "dnsDescription": "Monitor DNS resolution",
+    "dnsDescription": "Verify DNS resolution",
     "ssl": "TLS",
     "sslDescription": "Check TLS certificate validity",
     "domain": "Domain",
-    "domainDescription": "Monitor domain expiration",
+    "domainDescription": "Monitor domain name expiration",
     "heartbeat": "Heartbeat",
-    "heartbeatDescription": "Receive heartbeat pings",
+    "heartbeatDescription": "Monitor via incoming pings",
     "smtp": "SMTP",
-    "smtpDescription": "Check SMTP server connectivity",
+    "smtpDescription": "Check SMTP server availability",
     "mysql": "MySQL",
     "mysqlDescription": "Check MySQL/MariaDB database health",
     "redis": "Redis",
@@ -404,7 +437,7 @@
     "dockerDescription": "Monitor Docker container health",
     "browser": "Browser",
     "browserDescription": "Monitor pages with headless Chrome",
-    "freebox_line": "Freebox Line Quality",
+    "freebox_line": "Freebox Line",
     "freebox_lineDescription": "Monitor xDSL/FTTH line quality via Freebox OS",
     "dnsbl": "DNSBL",
     "dnsblDescription": "Check if an IP/domain is on DNS blocklists",
@@ -416,7 +449,30 @@
     "rdpDescription": "Monitor RDP (Remote Desktop) servers",
     "sleep": "Sleep",
     "sleepDescription": "Sleep for a fixed duration (synthetic/testing, no network I/O)",
-    "email": "Email"
+    "email": "Email",
+    "private-location": "Private location",
+    "private-locationDescription": "Alert when a private location's agents go offline",
+    "emailDescription": "Receive status updates via incoming email",
+    "udp": "UDP",
+    "udpDescription": "Check UDP port reachability",
+    "ssh": "SSH",
+    "sshDescription": "Check SSH server availability",
+    "pop3": "POP3",
+    "pop3Description": "Check POP3 server availability",
+    "imap": "IMAP",
+    "imapDescription": "Check IMAP server availability",
+    "websocket": "WebSocket",
+    "websocketDescription": "Check WebSocket connectivity",
+    "postgresql": "PostgreSQL",
+    "postgresqlDescription": "Check PostgreSQL database health",
+    "ftp": "FTP",
+    "ftpDescription": "Check FTP server availability",
+    "sftp": "SFTP",
+    "sftpDescription": "Check SFTP server availability",
+    "js": "JavaScript",
+    "jsDescription": "Run custom JavaScript monitoring scripts",
+    "prometheus": "Prometheus",
+    "prometheusDescription": "Alert on Prometheus metric thresholds"
   },
   "freebox": {
     "discover": "Discover from Freebox",
@@ -539,10 +595,8 @@
     "evaluation": {
       "badge": "Evaluation",
       "title": "Scheduler evaluation",
-      "explainerHeartbeat": "This row was written by the {{region}} checks worker when it evaluated the check's schedule. It is not a heartbeat — nothing called in at this time.",
-      "explainerEmail": "This row was written by the {{region}} checks worker when it evaluated the check's schedule. It is not an email — no email arrived at this time.",
-      "explainerNoRegion": "This row was written by a checks worker when it evaluated the check's schedule. It is not a heartbeat — nothing called in at this time.",
-      "explainerEmailNoRegion": "This row was written by a checks worker when it evaluated the check's schedule. It is not an email — no email arrived at this time.",
+      "explainerHeartbeat": "Evaluated by SolidPing every period, from the check's schedule. It is not a heartbeat: nothing called in at this time.",
+      "explainerEmail": "Evaluated by SolidPing every period, from the check's schedule. It is not an email: no email arrived at this time.",
       "lastSignal": "Last signal",
       "before": "{{duration}} before this evaluation",
       "overdueBy": "Overdue by",
@@ -555,12 +609,24 @@
     "summary": {
       "currentlyUp": "Currently up for",
       "currentlyDown": "Currently down for",
+      "noDataFor": "No data for",
       "statusFallback": "Status",
       "unknown": "Unknown",
       "lastChecked": "Last checked",
       "ago": "{{duration}} ago",
       "never": "Never",
       "incidents": "Incidents"
+    },
+    "freshness": {
+      "title": "Region freshness",
+      "noDataSince": "No data since {{time}}",
+      "noDataEver": "No data yet",
+      "silentRegion_one": "No result from {{region}} since {{time}}, {{count}} other region reporting",
+      "silentRegion_other": "No result from {{region}} since {{time}}, {{count}} other regions reporting",
+      "silentRegionNever_one": "No recent result from {{region}}, {{count}} other region reporting",
+      "silentRegionNever_other": "No recent result from {{region}}, {{count}} other regions reporting",
+      "defaultRegion": "Default region",
+      "noResultRecently": "no result in 24h"
     },
     "chart": {
       "title": "Response Times",
@@ -611,7 +677,8 @@
       "longestIncident": "Longest incident",
       "avgIncident": "Avg. incident",
       "none": "none",
-      "monitored": "{{days}}d monitored"
+      "monitored": "{{days}}d monitored",
+      "unmeasured": "{{duration}} unmeasured"
     },
     "checkDetails": "Check Details",
     "pendingFirstRun": "Pending first run…",
@@ -716,6 +783,7 @@
       "windowAvailability": "{{pct}} availability",
       "noData": "No data",
       "probes": "{{up}} / {{total}} probes up",
+      "coverage": "Measured {{pct}}% of the interval",
       "status": {
         "up": "Up",
         "degraded": "Degraded",
@@ -723,14 +791,62 @@
         "noData": "No data"
       }
     },
-    "degraded": {
-      "bannerTitle": "This check would have been flagged degraded",
-      "bannerDescription": "Degraded detection is off for this check, so nothing was reported — but the rules would have fired at {{when}}.",
-      "bannerWindowLink": "See the window",
-      "enableAction": "Enable degraded detection",
-      "enabled": "Degraded detection enabled for this check",
-      "enableFailed": "Could not enable degraded detection"
-    }
+    "placement": {
+      "title": "Placement",
+      "auto_one": "Automatic, {{count}} region: {{regions}}",
+      "auto_other": "Automatic, {{count}} regions: {{regions}}",
+      "pinned": "Pinned: {{regions}}",
+      "pool": "Candidates: {{regions}}",
+      "history": "Placement history",
+      "historyEntry": "{{from}} → {{to}} at {{time}}, {{reason}}",
+      "reasons": {
+        "region_offline": "region offline",
+        "other": "moved"
+      },
+      "lastResult": "last result",
+      "noResult": "no result yet",
+      "quorum": "An incident opens when {{quorum}} of {{count}} regions fail",
+      "quorumAll": "An incident opens when all {{count}} regions fail",
+      "failing": "failing",
+      "failingSince": "failing since {{time}}"
+    },
+    "regionalIssue": {
+      "title": "Regional issue: failing from {{regions}}",
+      "detail": "{{failing}} of {{count}} regions failing. An incident opens only when {{quorum}} regions fail for the confirmation period."
+    },
+    "screenshots": {
+      "title": "Screenshots",
+      "description": "What the probe saw. A capture of a failing run is taken a moment after the check decided the page was unhealthy, from one region.",
+      "alt": "Screenshot of the page captured by this check",
+      "captureNow": "Capture now",
+      "capturing": "Capturing…",
+      "pending": "Running the check once to capture the page. The screenshot appears here when the run completes.",
+      "requested": "Capture requested.",
+      "requestedFrom": "Capture requested from {{region}}.",
+      "captured": "New screenshot captured.",
+      "stillWaiting": "The screenshot has not arrived yet. It will appear here when the run completes.",
+      "empty": "No screenshot yet. Captures are taken when a run fails.",
+      "enableOnFailure": "Turn on screenshots on failure",
+      "jsHint": "A js check captures a screenshot when its script calls page.screenshot().",
+      "older": "Older screenshots",
+      "viewIncident": "View incident",
+      "unknownRegion": "Unknown region",
+      "thumbnailTitle": "{{capturedAt}} from {{region}}",
+      "triggers": {
+        "incidentOpen": "Opened an incident",
+        "incidentReopen": "Reopened an incident",
+        "checkFailure": "Failed run",
+        "captureNow": "Captured on demand",
+        "agentUpload": "From a private location",
+        "unknown": "Capture"
+      },
+      "rateLimited": "Capture now is rate limited. Try again in {{seconds}} s.",
+      "rateLimitedNoDelay": "Capture now is rate limited. Try again in a minute.",
+      "forbidden": "You do not have permission to run this check.",
+      "noScheduledRun": "This check has no scheduled run. Enable it to capture a screenshot.",
+      "captureFailed": "The capture could not be requested."
+    },
+    "uidShort": "uid: {{uid}}..."
   },
   "endpoints": {
     "heartbeat": {
@@ -925,6 +1041,10 @@
     "encryptedEnterNewValues": "(encrypted — enter new values to replace)",
     "followRedirects": "Follow redirects",
     "followRedirectsOffHelp": "The check will evaluate the first response (e.g. a 3XX) instead of following it to its destination.",
+    "redirectHostPolicy": "Redirect host policy",
+    "redirectHostPolicyAny": "Any host",
+    "redirectHostPolicySameHost": "Same host only",
+    "redirectHostPolicySameHostHelp": "A redirect to a different host fails the check instead of being followed.",
     "captureFailingResponse": "Capture the failing response",
     "captureFailingResponseHelp": "When this check fails, the response it received (status line, headers with sensitive values redacted, and up to 16 KB of the body) is kept on the incident it opens. Response bodies can contain personal data — the capture is visible to your team only and never appears on a status page.",
     "requestBody": "Request body",
@@ -965,7 +1085,11 @@
     "sendModeDeliveryDescription": "This email was attributed to a send-mode SMTP check's probe.",
     "deliveryLatency": "Delivery latency:",
     "sentAt": "Sent at:",
-    "viewSendingSmtpCheck": "View sending SMTP check"
+    "viewSendingSmtpCheck": "View sending SMTP check",
+    "deliveryViaTitle": "Delivery check",
+    "deliveryViaHelp": "Probe emails are addressed to this email check's tokenized inbox.",
+    "deliverySources_one": "Delivered to by {{count}} SMTP check",
+    "deliverySources_other": "Delivered to by {{count}} SMTP checks"
   },
   "messaging": {
     "brokers": "Brokers",
@@ -1019,7 +1143,11 @@
     "rdpEndSessionLogoff": "Log off (default)",
     "rdpEndSessionDisconnect": "Disconnect (session stays on the server)",
     "rdpEndSessionHelp": "Log off removes the session from the server. Disconnect leaves it running until the server's idle policy ends it, so the next run reattaches to it (faster checks).",
-    "rdpCaveatsHelp": "Every authenticated run is a real interactive Windows logon: it loads a user profile, runs logon scripts and GPOs, may consume an RDS client access license, can disconnect a real logged-in user on a single-session server, and shows up in the Security event log (4624/4634) every run. Use a dedicated monitoring account, never a person's account — the 15-minute minimum interval enforces the rest."
+    "rdpCaveatsHelp": "Every authenticated run is a real interactive Windows logon: it loads a user profile, runs logon scripts and GPOs, may consume an RDS client access license, can disconnect a real logged-in user on a single-session server, and shows up in the Security event log (4624/4634) every run. Use a dedicated monitoring account, never a person's account — the 15-minute minimum interval enforces the rest.",
+    "privateLocationRegion": "Private location",
+    "privateLocationHelp": "SolidPing created this check with the location. It watches the location's agents and goes down when none is connected. The location it watches cannot be changed.",
+    "defaultsToHost": "defaults to host",
+    "offPlaceholder": "off"
   },
   "network": {
     "hostKeyFingerprintOptional": "Host key fingerprint (optional)",
@@ -1098,7 +1226,9 @@
     "memoryThresholdHelp": "A percentage of RabbitMQ's high watermark (e.g. 80%) or an absolute size (e.g. 1.5GiB).",
     "diskWarning": "Disk free warning",
     "diskCritical": "Disk free critical",
-    "diskThresholdHelp": "An absolute size only (e.g. 10GiB) — the management API exposes no total disk size, so a percentage cannot be computed."
+    "diskThresholdHelp": "An absolute size only (e.g. 10GiB) — the management API exposes no total disk size, so a percentage cannot be computed.",
+    "memoryWarningPlaceholder": "80% or 1.5GiB",
+    "memoryCriticalPlaceholder": "90% or 1.8GiB"
   },
   "snmp": {
     "oid": "OID",
@@ -1119,7 +1249,13 @@
     "noneDirectConnection": "None (direct connection)",
     "needsHostKeyFingerprint": "needs a host key fingerprint",
     "notInRegion": "not in region {{region}}",
-    "help": "Dial this check's target through an SSH check's connection, to reach services behind a bastion. The hostname is resolved by the bastion, so private names work. Tunnel setup time is reported separately as tunnel_setup_ms and excluded from the check's response time."
+    "help": "Dial this check's target through an SSH check's connection, to reach services behind a bastion. The hostname is resolved by the bastion, so private names work. Tunnel setup time is reported separately as tunnel_setup_ms and excluded from the check's response time.",
+    "viaTitle": "SSH tunnel",
+    "viaHelp": "Probes are dialed through this SSH check's connection.",
+    "dependentsTitle_one": "Used as tunnel by {{count}} check",
+    "dependentsTitle_other": "Used as tunnel by {{count}} checks",
+    "dependentsHelp": "These checks dial through this bastion. Detach them before deleting this check.",
+    "viaTooltip": "via {{name}}"
   },
   "web": {
     "sendOptional": "Send (optional)",
@@ -1167,5 +1303,75 @@
     "title": "No check groups yet",
     "description": "A group gathers related checks into one exclusive bucket — it drives escalation, incident correlation and status-page rollups. Create one with the New group button above."
   },
-  "wouldHaveFiredFilter": "Would have fired"
+  "regionOutage": {
+    "blindTitle": "Region {{regions}} offline since {{time}}: this check is not running",
+    "reducedTitle": "Region {{regions}} offline since {{time}}: running from {{live}} of {{total}} regions",
+    "detail": "SolidPing lost every worker in this region. The team has been alerted, and results resume on their own once it is back.",
+    "listTitle": "Region {{regions}} offline since {{time}}",
+    "listBlind_one": "{{count}} check runs only from it and is not running: {{names}}",
+    "listBlind_other": "{{count}} checks run only from it and are not running: {{names}}",
+    "listReduced_one": "{{count}} check keeps running from its other regions.",
+    "listReduced_other": "{{count}} checks keep running from their other regions.",
+    "andMore": "{{names}} and {{count}} more",
+    "formWarning": "{{regions}} is offline right now. A check that runs only from it will not run until it is back.",
+    "offlineBadge": "Offline"
+  },
+  "autoPlacement": {
+    "button": "Automatic placement",
+    "title": "Switch to automatic placement",
+    "description_one": "{{count}} pinned check will switch to automatic placement. It keeps its current regions and region count, so its cost does not change: it only moves when one of its regions goes offline.",
+    "description_other": "{{count}} pinned checks will switch to automatic placement. Each keeps its current regions and region count, so the cost does not change: a check only moves when one of its regions goes offline.",
+    "none": "Every check that can be placed automatically already is. Checks pinned to a private location stay pinned.",
+    "confirm": "Switch",
+    "switched_one": "{{count}} check switched to automatic placement",
+    "switched_other": "{{count}} checks switched to automatic placement",
+    "failed": "Could not switch checks to automatic placement"
+  },
+  "labelFilterLabel": "Labels:",
+  "clearFilters": "Clear filters",
+  "intervalUnits": {
+    "second_one": "{{count}} second",
+    "second_other": "{{count}} seconds",
+    "minute_one": "{{count}} minute",
+    "minute_other": "{{count}} minutes",
+    "hour_one": "{{count}} hour",
+    "hour_other": "{{count}} hours",
+    "day_one": "{{count}} day",
+    "day_other": "{{count}} days",
+    "week_one": "{{count}} week",
+    "week_other": "{{count}} weeks"
+  },
+  "validation": {
+    "hostRequired": "Host is required",
+    "urlRequired": "URL is required",
+    "domainRequired": "Domain is required",
+    "targetRequired": "Target IP or hostname is required",
+    "containerRequired": "Container name or ID is required",
+    "freeboxConnectionRequired": "Freebox connection is required",
+    "linkTypeInvalid": "Link type must be xdsl or ftth",
+    "promqlRequired": "PromQL query is required",
+    "metricRequired": "Metric name is required",
+    "thresholdRequired": "Set a warning and/or a critical threshold",
+    "brokersRequired": "Brokers are required",
+    "mailFromRequired": "Mail From is required when send mode is enabled",
+    "deliveryCheckRequired": "Select a delivery (email) check when send mode is enabled",
+    "passwordRequiredWithUsername": "Password is required when a username is set.",
+    "usernameRequiredWithPassword": "Username is required when a password is set.",
+    "screenshotRequiresCredentials": "Screenshot requires username and password (an authenticated logon).",
+    "usernameRequiredRegister": "Username is required for register mode",
+    "passwordRequiredRegister": "Password is required for register mode",
+    "scriptRequired": "Script is required",
+    "sleepDurationRequired": "Sleep duration is required",
+    "regionRequired": "Region is required",
+    "countWholeNumber": "Count must be a whole number of packets",
+    "intervalDuration": "Interval must be a duration like 100 or 100ms",
+    "packetSizeWholeNumber": "Packet size must be a whole number of bytes",
+    "ttlWholeNumber": "TTL must be a whole number",
+    "invalidStatusCodes_one": "Invalid status code pattern: {{codes}} (use an exact code like 200 or a wildcard like 4XX)",
+    "invalidStatusCodes_other": "Invalid status code patterns: {{codes}} (use an exact code like 200 or a wildcard like 4XX)",
+    "invalidIp_one": "Not {{family}} address: {{values}}",
+    "invalidIp_other": "Not {{family}} addresses: {{values}}",
+    "invalidMetadataKeys_one": "Invalid metadata key: {{keys}} (lowercase letters, digits, '-', '.' or '_'; 'grpc-' and '-bin' are reserved)",
+    "invalidMetadataKeys_other": "Invalid metadata keys: {{keys}} (lowercase letters, digits, '-', '.' or '_'; 'grpc-' and '-bin' are reserved)"
+  }
 }

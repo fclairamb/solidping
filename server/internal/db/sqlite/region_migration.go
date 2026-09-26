@@ -8,6 +8,7 @@ import (
 
 	"github.com/uptrace/bun"
 
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
@@ -73,6 +74,7 @@ func (s *Service) ListChecksWithStaleJobRegions(ctx context.Context) ([]*models.
 		Where("c.enabled = ?", true).
 		Where(jsonRegionsGuard).
 		Where("json_array_length(c.regions) > 0").
+		Where("c.type NOT IN (?)", bun.List(checkerdef.PassiveCheckTypes())).
 		Where("(cj.region IS NULL OR NOT EXISTS ("+
 			"SELECT 1 FROM json_each(c.regions) je WHERE je.value = cj.region))").
 		Scan(ctx, &uids); err != nil {
@@ -90,13 +92,30 @@ func (s *Service) ListChecksWithStaleJobRegions(ctx context.Context) ([]*models.
 		Where("c.deleted_at IS NULL").
 		Where("c.enabled = ?", true).
 		Where(jsonRegionsGuard).
+		Where("c.type NOT IN (?)", bun.List(checkerdef.PassiveCheckTypes())).
 		Where("NOT EXISTS (SELECT 1 FROM check_jobs cj "+
 			"WHERE cj.check_uid = c.uid AND cj.region = je.value)").
 		Scan(ctx, &missing); err != nil {
 		return nil, fmt.Errorf("list checks missing region jobs: %w", err)
 	}
 
-	return s.loadChecksByUIDs(ctx, mergeUIDs(uids, missing))
+	// (c) a passive check (spec 2026-09-25-04) whose jobs are not exactly one
+	// NULL-region row. See the Postgres twin.
+	var passive []string
+
+	if err := s.db.NewSelect().
+		ColumnExpr("c.uid").
+		TableExpr("checks AS c").
+		Where("c.deleted_at IS NULL").
+		Where("c.enabled = ?", true).
+		Where("c.type IN (?)", bun.List(checkerdef.PassiveCheckTypes())).
+		Where("(EXISTS (SELECT 1 FROM check_jobs cj WHERE cj.check_uid = c.uid AND cj.region IS NOT NULL)"+
+			" OR NOT EXISTS (SELECT 1 FROM check_jobs cj WHERE cj.check_uid = c.uid AND cj.region IS NULL))").
+		Scan(ctx, &passive); err != nil {
+		return nil, fmt.Errorf("list passive checks with regional jobs: %w", err)
+	}
+
+	return s.loadChecksByUIDs(ctx, mergeUIDs(mergeUIDs(uids, missing), passive))
 }
 
 // MigrateCheckRegionSlug rewrites `checks.regions` in ONE transaction,

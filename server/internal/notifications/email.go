@@ -178,6 +178,7 @@ func degradedTemplateForEvent(incident *models.Incident, eventType string) (stri
 
 // applyDegradedViewModel adds the degraded-specific keys those templates render.
 func applyDegradedViewModel(viewModel map[string]any, payload *Payload, info *DegradedInfo) {
+	viewModel["DegradedTurnedOff"] = info.TurnedOff
 	viewModel["DegradedReason"] = info.Reason()
 	viewModel["DegradedStatus"] = info.StatusText()
 	viewModel["DegradedWindow"] = info.WindowText()

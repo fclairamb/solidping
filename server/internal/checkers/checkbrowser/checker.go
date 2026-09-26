@@ -28,10 +28,12 @@ const microsecondsPerMilli = 1000.0
 // later.
 const MaxScreenshotBytes = 4 * 1024 * 1024
 
-// screenshotTimeout time-boxes the capture. The capture runs AFTER the verdict
-// is decided, so this budget can never delay or change a check's outcome; it
-// exists so a wedged renderer cannot hold a browser slot open indefinitely.
-const screenshotTimeout = 5 * time.Second
+// screenshotTimeout time-boxes the capture. It is an alias for
+// checkconfig.ScreenshotTimeout — see there for why 5s — kept as a
+// package-local name because it is used throughout this file; the config
+// package is where BrowserConfig.ExtraBudget shares the same number with the
+// worker's execution-budget sizing (spec 2026-09-25-35).
+const screenshotTimeout = checkconfig.ScreenshotTimeout
 
 // ScreenshotFormat is the encoding EVERY capture in this process is taken in,
 // and the value stamped on checkerdef.Screenshot.Format so the rest of the
@@ -147,7 +149,7 @@ func (c *BrowserChecker) Execute(
 	// Both descend from the caller's ctx, so a worker shutdown still tears the
 	// whole thing down — nothing here is ever detached from cancellation.
 	sessionBudget := timeout
-	if cfg.Screenshot {
+	if wantsCapture(ctx, cfg) {
 		sessionBudget += screenshotTimeout
 	}
 
@@ -229,7 +231,13 @@ func (c *BrowserChecker) runBrowser(
 		return result
 	}
 
-	session, err := openSession(sessionCtx, probeCtx)
+	// Under an enforcing egress policy the main host is pre-flighted here and
+	// its approved address pinned for Chrome's resolver. A refusal is left to
+	// Navigate, which runs the same pre-flight and reports it on the normal
+	// failure path.
+	pin, _ := preflightEgress(probeCtx, cfg.URL)
+
+	session, err := openSessionPinned(sessionCtx, probeCtx, pin)
 	if err != nil {
 		if result, isSlotTimeout := checkersession.SlotTimeoutResult(err, start, metrics, output); isSlotTimeout {
 			return result
@@ -263,7 +271,7 @@ func (c *BrowserChecker) runBrowser(
 func (c *BrowserChecker) captureScreenshot(
 	ctx context.Context, cfg *BrowserConfig, result *checkerdef.Result, session *Session,
 ) {
-	if !cfg.Screenshot || result == nil || !capturableStatus(result.Status) {
+	if result == nil || !shouldCapture(ctx, cfg, result.Status) {
 		return
 	}
 
@@ -292,10 +300,23 @@ func (c *BrowserChecker) captureScreenshot(
 	shotCtx, cancel := context.WithTimeout(ctx, screenshotTimeout)
 	defer cancel()
 
+	// Captured BEFORE the attempt, not after: once capture returns an error
+	// the context is very likely already expired, which would make every
+	// starvation log read "0ms remaining" regardless of how much budget the
+	// attempt actually started with. Logged as milliseconds-remaining AT THE
+	// START, so a starved capture (this budget under a few hundred ms) reads
+	// differently at a glance from a real CDP/infra failure (this budget
+	// still close to screenshotTimeout) — spec 2026-09-25-35, the failure
+	// mode this exists to make visible without a code read.
+	budgetRemaining := time.Duration(-1)
+	if deadline, ok := shotCtx.Deadline(); ok {
+		budgetRemaining = time.Until(deadline)
+	}
+
 	shot, err := capture(shotCtx)
 	if err != nil {
 		slog.WarnContext(ctx, "browser check: screenshot capture failed",
-			"url", cfg.URL, "error", err)
+			"url", cfg.URL, "error", err, "budget_remaining_ms", budgetRemaining.Milliseconds())
 
 		return
 	}
@@ -320,6 +341,29 @@ func (c *BrowserChecker) captureScreenshot(
 		Format:     shot.Format,
 		CapturedAt: time.Now(),
 	}
+}
+
+// wantsCapture reports whether this execution may take a screenshot at all:
+// the check opted into failure captures, or the run is an on-demand capture
+// (spec 2026-09-25-34). It sizes the session budget before the verdict
+// exists, and is built on cfg.ExtraBudget so this and the worker's execution
+// -budget sizing (checkworker.resolveExtraBudget, spec 2026-09-25-35) can
+// never drift apart — both ask the same question through the same method.
+func wantsCapture(ctx context.Context, cfg *BrowserConfig) bool {
+	return cfg.ExtraBudget(checkerdef.ForcedCapture(ctx)) > 0
+}
+
+// shouldCapture is the capture decision once the verdict is known.
+//
+// An on-demand capture ("Capture now") is kept whatever the verdict except
+// StatusError, which from this checker means there was no browser and so no
+// page to photograph. Otherwise the opt-in failure rule applies unchanged.
+func shouldCapture(ctx context.Context, cfg *BrowserConfig, status checkerdef.Status) bool {
+	if checkerdef.ForcedCapture(ctx) {
+		return status != checkerdef.StatusError
+	}
+
+	return cfg.Screenshot && capturableStatus(status)
 }
 
 // capturableStatus reports whether a verdict is worth a screenshot.
@@ -376,16 +420,23 @@ func browserWasAllocated(ctx context.Context) bool {
 // allocator builds the chromedp allocator for the configured backend: a remote
 // one against the long-lived Chrome when a CDP URL is set, the historical exec
 // allocator otherwise.
-func allocator(ctx context.Context, current Settings) (context.Context, context.CancelFunc) {
+func allocator(ctx context.Context, current Settings, pin *hostPin) (context.Context, context.CancelFunc) {
 	if current.Remote() {
 		return chromedp.NewRemoteAllocator(ctx, current.CDPURL)
 	}
 
-	opts := chromedp.DefaultExecAllocatorOptions[:]
+	// Copy before appending: DefaultExecAllocatorOptions is a package-level
+	// array and appending to a full slice of it would write into it.
+	opts := append([]chromedp.ExecAllocatorOption{}, chromedp.DefaultExecAllocatorOptions[:]...)
 	if current.ChromePath != "" {
-		// Copy before appending: DefaultExecAllocatorOptions is a package-level
-		// array and appending to a full slice of it would write into it.
-		opts = append(append([]chromedp.ExecAllocatorOption{}, opts...), chromedp.ExecPath(current.ChromePath))
+		opts = append(opts, chromedp.ExecPath(current.ChromePath))
+	}
+
+	// Egress pin (spec 2026-09-25-19): this Chrome is started for this check
+	// only, so its resolver can be told the ONE address the pre-flight
+	// approved for the main host — a rebinding answer never reaches it.
+	if pin != nil {
+		opts = append(opts, chromedp.Flag("host-resolver-rules", pin.resolverRule()))
 	}
 
 	return chromedp.NewExecAllocator(ctx, opts...)

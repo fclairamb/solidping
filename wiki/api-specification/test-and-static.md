@@ -93,8 +93,12 @@ Interactive OpenAPI (Swagger) explorer. Auth: public
 Raw OpenAPI schema definition. Auth: public
 
 ### GET /metrics
-Prometheus metrics. Gated by `SP_PROMETHEUS_ENABLED` (default true); returns
-404 when disabled. Auth: public
+Prometheus metrics. Gated by `SP_PROMETHEUS_ENABLED` (default true; `false`
+always 404s) AND a bearer scrape token (`SP_METRICS_SCRAPE_TOKEN` /
+`metrics.scrape_token` system parameter, spec 2026-09-25-25): unset means
+404, same as disabled; set means `Authorization: Bearer <token>` is required
+or the request gets 401. Auth: bearer token (scrape-only, not a user
+session)
 
 ### GET /*path
 Catch-all. `/` redirects (`302`) to `/d/`; the configured `SP_REDIRECTS` dev

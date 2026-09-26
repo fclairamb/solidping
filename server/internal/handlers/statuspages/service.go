@@ -830,6 +830,12 @@ type ResourceCheckInfo struct {
 	// extra per-group query on a public, polled endpoint. Absent rather than
 	// guessed: the board simply omits the duration it does not know.
 	StatusChangedAt *time.Time `json:"statusChangedAt,omitempty"`
+	// LastResultAt is when the component was last actually measured — set only
+	// when Status is "stale", so the page can say "No data, last checked 13:41"
+	// instead of a bare gray dot (spec 2026-09-25-02). Absent otherwise, and
+	// absent for a group resource (same no-extra-query rule as
+	// StatusChangedAt). Nil on a stale check that never produced a result.
+	LastResultAt *time.Time `json:"lastResultAt,omitempty"`
 }
 
 // ResourceAvailabilityData contains availability and performance data for public display.
@@ -862,6 +868,13 @@ type AvailabilityPoint struct {
 	Time            string  `json:"time,omitempty"`
 	AvailabilityPct float64 `json:"availabilityPct"`
 	Status          string  `json:"status"`
+	// CoveragePct is how much of the bucket was actually measured: probes
+	// received ÷ probes expected (Σ bucket / period × max(1, regions) over the
+	// resource's checks, clamped to their lifetime and to now) × 100, capped at
+	// 100 (spec 2026-09-25-02). The day-bar tooltip says "measured 67% of the
+	// day" from it. Omitted when nothing was expected (before the check
+	// existed, or a future bucket).
+	CoveragePct *float64 `json:"coveragePct,omitempty"`
 }
 
 // ResponseTimePoint represents response time data for a single time period (hourly granularity).
@@ -3048,15 +3061,19 @@ func (s *Service) enrichWithAvailability(
 	period := string(pagePeriod(page))
 	upThreshold, degradedThreshold := page.Settings.EffectiveThresholds()
 
+	memberChecks := s.memberChecks(ctx, orgUID, checkUIDs)
+
 	for i := range sections {
 		for j := range sections[i].Resources {
 			resource := &sections[i].Resources[j]
 			memberUIDs := members[resource.UID]
+			merged := mergeBuckets(bucketsByCheck, memberUIDs)
 			availData := buildAvailabilityData(
-				mergeBuckets(bucketsByCheck, memberUIDs), resourceRecentResults(recentByCheck, resource, memberUIDs),
+				merged, resourceRecentResults(recentByCheck, resource, memberUIDs),
 				todayStart, page.HistoryDays, page.ShowAvailability, page.ShowResponseTime,
 				upThreshold, degradedThreshold,
 			)
+			applyCoverage(availData, merged, 24*time.Hour, pickChecks(memberChecks, memberUIDs), now)
 			availData.Period = period
 			availData.BucketUnit = models.PeriodTypeDay
 			resource.Availability = availData
@@ -3841,19 +3858,83 @@ func (s *Service) enrichHourly(
 	recentByCheck := s.fetchRecentResults(ctx, orgUID, checkUIDs, page.ShowResponseTime, bucketStart, hints)
 	upThreshold, degradedThreshold := page.Settings.EffectiveThresholds()
 
+	memberChecks := s.memberChecks(ctx, orgUID, checkUIDs)
+
 	for i := range sections {
 		for j := range sections[i].Resources {
 			resource := &sections[i].Resources[j]
 			memberUIDs := members[resource.UID]
+			merged := mergeBuckets(bucketsByCheck, memberUIDs)
 			availData := buildHourlyAvailabilityData(
-				mergeBuckets(bucketsByCheck, memberUIDs),
+				merged,
 				resourceRecentResults(recentByCheck, resource, memberUIDs), bucketStart,
 				page.ShowAvailability, page.ShowResponseTime,
 				upThreshold, degradedThreshold,
 			)
+			applyCoverage(availData, merged, time.Hour, pickChecks(memberChecks, memberUIDs), now)
 			availData.Period = string(models.StatusPagePeriod24h)
 			availData.BucketUnit = models.PeriodTypeHour
 			resource.Availability = availData
+		}
+	}
+}
+
+// memberChecks loads every check behind the page's resources in one query, for
+// the per-bucket expected-probe count. A failure only costs the coverage
+// figure: the page still renders.
+func (s *Service) memberChecks(ctx context.Context, orgUID string, checkUIDs []string) map[string]*models.Check {
+	checks, err := s.db.GetChecksByUIDs(ctx, orgUID, checkUIDs)
+	if err != nil {
+		slog.WarnContext(ctx, "Failed to load checks for status page coverage", "error", err)
+
+		return nil
+	}
+
+	return checks
+}
+
+// pickChecks selects one resource's member checks.
+func pickChecks(byUID map[string]*models.Check, uids []string) []*models.Check {
+	out := make([]*models.Check, 0, len(uids))
+
+	for _, uid := range uids {
+		if check, ok := byUID[uid]; ok {
+			out = append(out, check)
+		}
+	}
+
+	return out
+}
+
+// applyCoverage stamps every availability point with how much of its bucket
+// was actually measured (spec 2026-09-25-02): the bucket's countable probes
+// against Σ expected probes over the resource's checks. Kept out of
+// uptimebar.BucketStats on purpose — that struct is passed by value on every
+// read path and is size-capped.
+func applyCoverage(
+	data *ResourceAvailabilityData, byBucket map[time.Time]uptimebar.BucketStats,
+	bucketLen time.Duration, checks []*models.Check, now time.Time,
+) {
+	if data == nil || len(checks) == 0 {
+		return
+	}
+
+	for i := range data.DailyAvailability {
+		point := &data.DailyAvailability[i]
+
+		start, err := time.Parse(time.RFC3339, point.Time)
+		if err != nil {
+			continue
+		}
+
+		var expected float64
+		for _, check := range checks {
+			expected += check.ExpectedProbesBetween(start, start.Add(bucketLen), now)
+		}
+
+		if coverage, ok := models.Coverage(byBucket[start.UTC()].Total, expected); ok {
+			pct := coverage * 100
+			point.CoveragePct = &pct
 		}
 	}
 }
@@ -4111,6 +4192,10 @@ const (
 	statusWarning   = "warning"
 	statusDegraded  = uptimebar.StatusDegraded
 	statusDownValue = uptimebar.StatusDown
+	// statusStale is a component nobody is measuring right now (spec
+	// 2026-09-25-02): rendered as the neutral "No data, last checked …",
+	// never as "operational".
+	statusStale = models.WireStatusStale
 )
 
 // availabilityToStatus classifies a bucket's availability percentage into the
@@ -4376,6 +4461,8 @@ func publicCheckStatus(status models.CheckStatus) string {
 		return statusWarning
 	case models.CheckStatusDegraded:
 		return statusDegraded
+	case models.CheckStatusStale:
+		return statusStale
 	default:
 		return statusCreated
 	}
@@ -4402,13 +4489,19 @@ func (s *Service) getCheckInfo(
 		inMaintenance = anyWindowActive(windows)
 	}
 
-	return &ResourceCheckInfo{
+	info := &ResourceCheckInfo{
 		Name:            check.Name,
 		Type:            check.Type,
 		Status:          publicCheckStatus(check.Status),
 		InMaintenance:   inMaintenance,
 		StatusChangedAt: check.StatusChangedAt,
-	}, check.Status, nil
+	}
+
+	if check.Status == models.CheckStatusStale {
+		info.LastResultAt = check.LastResultAt
+	}
+
+	return info, check.Status, nil
 }
 
 // getGroupInfo builds the live block for a GROUP resource: the group's name,

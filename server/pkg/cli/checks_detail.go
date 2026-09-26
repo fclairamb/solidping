@@ -75,7 +75,7 @@ func checksGetAction(ctx context.Context, cmd *cli.Command) error {
 		}
 	}
 	if check.LastStatusChange != nil && check.LastStatusChange.Status != nil {
-		status := string(*check.LastStatusChange.Status)
+		status := statusLabel(string(*check.LastStatusChange.Status))
 		if check.LastStatusChange.Time != nil {
 			status += " (since " + check.LastStatusChange.Time.Format(time.RFC3339) + ")"
 		}

@@ -352,6 +352,12 @@ func (s *Service) Initialize(ctx context.Context) error {
 		return fmt.Errorf("failed to run migrations: %w", migrateErr)
 	}
 
+	// Data half of 024's hash-user-tokens section; idempotent, and must run
+	// before anything reads or writes user_tokens (spec 2026-09-25-23).
+	if _, hashErr := db.HashPlaintextUserTokens(ctx, s.db); hashErr != nil {
+		return hashErr
+	}
+
 	// Record what this boot just applied.
 	mismatches, err = guard.Reconcile(ctx, s.guardMode)
 	if err != nil {
@@ -1164,12 +1170,16 @@ func (s *Service) GetUserToken(ctx context.Context, uid string) (*models.UserTok
 	return token, nil
 }
 
+// GetUserTokenByToken looks a live token up by its raw value. Only the hash
+// is stored (spec 2026-09-25-23), so the presented value is hashed here, the
+// one place every caller goes through: no caller can match a raw value
+// against the column by mistake.
 func (s *Service) GetUserTokenByToken(ctx context.Context, tokenValue string) (*models.UserToken, error) {
 	token := new(models.UserToken)
 
 	err := s.db.NewSelect().
 		Model(token).
-		Where("token = ?", tokenValue).
+		Where("token_hash = ?", models.HashUserToken(tokenValue)).
 		Where("deleted_at IS NULL").
 		Scan(ctx)
 	if err != nil {
@@ -1613,6 +1623,12 @@ func (s *Service) UpdateWorkerHeartbeat(
 // Check operations
 
 func (s *Service) CreateCheck(ctx context.Context, check *models.Check) error {
+	// A passive check never stores a region (spec 2026-09-25-04). Done here
+	// as well as in the checks service so the raw-DB creators (samples, demo,
+	// test API) cannot write one either.
+	check.NormalizePassiveRegions()
+	check.NormalizePlacement()
+
 	// Insert check and create corresponding check_job(s) in a transaction
 	return s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		// Insert the check
@@ -1654,8 +1670,11 @@ func (s *Service) CreateCheck(ctx context.Context, check *models.Check) error {
 func createCheckJobs(ctx context.Context, tx bun.Tx, check *models.Check) error {
 	now := time.Now()
 	basePeriod := time.Duration(check.Period)
+	// JobRegions, not Regions: a passive check owns exactly one NULL-region
+	// job, which only the jobs node claims (spec 2026-09-25-04).
+	jobRegions := check.JobRegions()
 
-	if len(check.Regions) == 0 {
+	if len(jobRegions) == 0 {
 		// No regions: create a single job without region
 		checkJob := models.NewCheckJob(check.OrganizationUID, check.UID, check.Period)
 		checkJob.Type = check.Type
@@ -1678,10 +1697,10 @@ func createCheckJobs(ctx context.Context, tx bun.Tx, check *models.Check) error 
 	// "scheduled_at <= now" — fires a fast first result; the worker re-levels
 	// every region onto its deterministic phase from the first release, see
 	// reconcile_test.go's scope note).
-	n := len(check.Regions)
+	n := len(jobRegions)
 	spread := scheduling.RegionSpread(basePeriod, n, check.RegionSpreadDuration())
 
-	for i, region := range check.Regions {
+	for i, region := range jobRegions {
 		scheduledAt := now.Add(spread * time.Duration(i))
 		regionCopy := region
 
@@ -2025,14 +2044,6 @@ func (s *Service) ListChecks(
 			countQuery = countQuery.Where("status IN (?)", bun.List(filter.Statuses))
 		}
 
-		// Apply the degraded dry-run filter (spec 2026-09-22-03): the checks the
-		// evaluator would have flagged. Applied to BOTH queries, or the
-		// pagination total would disagree with the rows.
-		if filter.WouldHaveFired {
-			query = query.Where("degraded_would_fire_at IS NOT NULL")
-			countQuery = countQuery.Where("degraded_would_fire_at IS NOT NULL")
-		}
-
 		// Apply cursor (keyset) — composite for sort=group, two-part otherwise.
 		query = applyChecksCursor(query, filter)
 
@@ -2120,10 +2131,7 @@ func (s *Service) UpdateCheck(ctx context.Context, uid string, update *models.Ch
 		query = query.Set("period = ?", *update.Period)
 	}
 
-	if update.Regions != nil {
-		query = query.Set("regions = ?", pgdialect.Array(*update.Regions))
-	}
-
+	query = applyPlacementPg(query, update)
 	query = applyAdaptiveAndIncidentTrackingPg(query, update)
 
 	switch {
@@ -2136,6 +2144,42 @@ func (s *Service) UpdateCheck(ctx context.Context, uid string, update *models.Ch
 	_, err := query.Exec(ctx)
 
 	return err
+}
+
+// applyPlacementPg sets the region list and the placement-intent columns
+// (spec 2026-09-25-06).
+func applyPlacementPg(query *bun.UpdateQuery, update *models.CheckUpdate) *bun.UpdateQuery {
+	if update.Regions != nil {
+		query = query.Set("regions = ?", pgdialect.Array(*update.Regions))
+	}
+
+	if update.Placement != nil {
+		query = query.Set("placement = ?", *update.Placement)
+	}
+
+	switch {
+	case update.ClearRegionCount:
+		query = query.Set("region_count = NULL")
+	case update.RegionCount != nil:
+		query = query.Set("region_count = ?", *update.RegionCount)
+	}
+
+	switch {
+	case update.ClearRegionPool:
+		query = query.Set("region_pool = NULL")
+	case update.RegionPool != nil:
+		query = query.Set("region_pool = ?", pgdialect.Array(*update.RegionPool))
+	}
+
+	// Multi-region quorum (spec 2026-09-25-10).
+	switch {
+	case update.ClearFailQuorum:
+		query = query.Set("fail_quorum = NULL")
+	case update.FailQuorum != nil:
+		query = query.Set("fail_quorum = ?", *update.FailQuorum)
+	}
+
+	return query
 }
 
 // applyAdaptiveAndIncidentTrackingPg sets the adaptive-resolution and
@@ -2202,12 +2246,6 @@ func applyDegradedFieldsPg(query *bun.UpdateQuery, update *models.CheckUpdate) *
 		query = query.Set("degraded_enabled = ?", *update.DegradedEnabled)
 	}
 
-	if update.ClearDegradedWouldFireAt {
-		query = query.Set("degraded_would_fire_at = NULL")
-	} else if update.DegradedWouldFireAt != nil {
-		query = query.Set("degraded_would_fire_at = ?", *update.DegradedWouldFireAt)
-	}
-
 	if update.DegradedEvaluatedAt != nil {
 		query = query.Set("degraded_evaluated_at = ?", *update.DegradedEvaluatedAt)
 	}
@@ -2238,6 +2276,33 @@ func (s *Service) PurgeCheck(ctx context.Context, uid string) error {
 }
 
 // CheckJob operations
+
+// RequestCheckCapture records a pending "Capture now" request on one job row
+// and makes it due at requestedAt (spec 2026-09-25-34).
+func (s *Service) RequestCheckCapture(ctx context.Context, jobUID string, requestedAt time.Time) error {
+	res, err := s.db.NewUpdate().
+		Model((*models.CheckJob)(nil)).
+		Set("capture_requested_at = ?", requestedAt).
+		Set("scheduled_at = ?", requestedAt).
+		Set("effective_scheduled_at = ?", requestedAt).
+		Set("updated_at = ?", requestedAt).
+		Where("uid = ?", jobUID).
+		Exec(ctx)
+	if err != nil {
+		return err
+	}
+
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rows == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
+}
 
 func (s *Service) ListCheckJobsByCheckUID(ctx context.Context, checkUID string) ([]*models.CheckJob, error) {
 	var jobs []*models.CheckJob
@@ -2994,7 +3059,7 @@ func (s *Service) GetLastResultForChecks(
 //   - SIGNAL rows, written at ingest by handlers/heartbeat's recordBeat and
 //     handlers/emailcheck — neither constructor sets worker_uid or region;
 //   - EVALUATION rows, written every period by
-//     checkworker.executePassiveJob through DirectBackend.SubmitResult, which
+//     the jobs node's checkworker.PassiveEvaluator through DirectBackend.SubmitResult, which
 //     always stamps worker_uid.
 //
 // The evaluator asks "when did the last beat land?". Answering it with the
@@ -3005,6 +3070,15 @@ func (s *Service) GetLastResultForChecks(
 // reports the previous evaluation's timestamp, and the stale-run branch
 // (elapsed > 2×period on a Running row) can never be reached because each
 // evaluation re-anchors the Running timestamp on itself.
+//
+// A second predicate, on `output.evaluation`, backs the first up (spec
+// 2026-09-25-04). Evaluations are written by the jobs node's
+// checkworker.PassiveEvaluator, whose own workers row stamps worker_uid, but
+// results.worker_uid is ON DELETE SET NULL: an evaluation whose worker row
+// was deleted used to read back as a signal. Every evaluation row declares
+// itself with `evaluation: true` and no ingest path ever writes it, so the
+// pair holds even for those orphans. It is applied as the index is walked,
+// like the worker_uid one.
 //
 // `created` is excluded for the same reason as in lastResult: CreateCheck's
 // one-time "Check created" marker has no worker_uid either, and "the check
@@ -3045,6 +3119,7 @@ const lastSignalForChecksQuery = `
 			AND res.period_type = 'raw'
 			AND res.worker_uid IS NULL
 			AND (res.status IS NULL OR res.status != ?)
+			AND NOT coalesce(res.output @> '{"evaluation": true}'::jsonb, false)
 		ORDER BY res.period_start DESC
 		LIMIT 1
 	) AS r
@@ -4465,6 +4540,94 @@ func (s *Service) SetStateEntryIfNotExists(
 	rowsAffected, _ := res.RowsAffected()
 
 	return rowsAffected > 0, nil
+}
+
+// AdmitFixedWindows atomically counts one event against every window, or
+// against none (spec 2026-09-25-34, "Capture now").
+//
+// Postgres: every counter row is created if missing (ON CONFLICT DO NOTHING),
+// then locked with SELECT … FOR UPDATE in key order, so concurrent admissions
+// on the same counter queue behind each other and each sees the previous one's
+// write.
+func (s *Service) AdmitFixedWindows(
+	ctx context.Context, orgUID string, windows []models.FixedWindow, now time.Time,
+) (int, time.Duration, error) {
+	order := make([]int, len(windows))
+	for i := range order {
+		order[i] = i
+	}
+
+	// A stable lock order across callers, so two admissions sharing counters
+	// can never deadlock.
+	slices.SortFunc(order, func(a, b int) int { return strings.Compare(windows[a].Key, windows[b].Key) })
+
+	refused := -1
+
+	var retryAfter time.Duration
+
+	err := s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		entries := make([]*models.StateEntry, len(windows))
+
+		for _, idx := range order {
+			placeholder := models.NewStateEntry(&orgUID, windows[idx].Key)
+			placeholder.ExpiresAt = &now
+
+			if _, err := tx.NewInsert().Model(placeholder).
+				On("CONFLICT (organization_uid, key) DO NOTHING").Exec(ctx); err != nil {
+				return fmt.Errorf("seed window %q: %w", windows[idx].Key, err)
+			}
+
+			entry := new(models.StateEntry)
+			query := tx.NewSelect().Model(entry).
+				Where("organization_uid = ?", orgUID).
+				Where("key = ?", windows[idx].Key)
+			query = query.For("UPDATE")
+
+			if err := query.Scan(ctx); err != nil {
+				return fmt.Errorf("lock window %q: %w", windows[idx].Key, err)
+			}
+
+			entries[idx] = entry
+		}
+
+		counts := make([]int, len(windows))
+		starts := make([]time.Time, len(windows))
+
+		for idx := range windows {
+			window := &windows[idx]
+			counts[idx], starts[idx] = window.FixedWindowState(entries[idx], now)
+
+			if counts[idx] >= window.Limit {
+				refused = idx
+				retryAfter = starts[idx].Add(window.Window).Sub(now)
+
+				return nil
+			}
+		}
+
+		for idx := range windows {
+			window := &windows[idx]
+			value := models.FixedWindowValue(counts[idx]+1, starts[idx])
+			expiresAt := starts[idx].Add(window.Window)
+
+			if _, err := tx.NewUpdate().Model((*models.StateEntry)(nil)).
+				Set("value = ?", &value).
+				Set("expires_at = ?", expiresAt).
+				Set("updated_at = ?", now).
+				Set("deleted_at = NULL").
+				Where("uid = ?", entries[idx].UID).
+				Exec(ctx); err != nil {
+				return fmt.Errorf("count window %q: %w", window.Key, err)
+			}
+		}
+
+		return nil
+	})
+	if err != nil {
+		return 0, 0, err
+	}
+
+	return refused, retryAfter, nil
 }
 
 // DeleteExpiredStateEntries removes entries past their expires_at.
@@ -7434,6 +7597,33 @@ func (s *Service) DeleteFilesByTopicPrefix(ctx context.Context, orgUID, prefix s
 	return int(rows), nil
 }
 
+// SumFileSizeByGroup returns the total bytes of live files for orgUID whose
+// file_uri contains a "/<group>/" path segment — see filestorage.BuildPath
+// ("<orgUID>/<group>/<fileID>"), which every storage backend's URI embeds
+// verbatim after its own scheme/bucket prefix. organization_uid already
+// scopes the match to this org, so the LIKE only needs to find the group
+// segment, not reconstruct the full path.
+func (s *Service) SumFileSizeByGroup(ctx context.Context, orgUID, group string) (int64, error) {
+	if group == "" {
+		return 0, nil
+	}
+
+	var total sql.NullInt64
+
+	err := s.db.NewSelect().
+		Model((*models.File)(nil)).
+		ColumnExpr("COALESCE(SUM(size), 0)").
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Where("file_uri LIKE ? ESCAPE '\\'", "%/"+escapeLikePrefix(group)+"/%").
+		Scan(ctx, &total)
+	if err != nil {
+		return 0, err
+	}
+
+	return total.Int64, nil
+}
+
 // ListAttachmentsByTopicPrefix returns live attachment rows across all orgs
 // under a topic prefix, older than `before`, capped at limit. Cross-org because
 // its only caller is the GC sweep.
@@ -7451,6 +7641,113 @@ func (s *Service) ListAttachmentsByTopicPrefix(
 		Where("topic LIKE ? ESCAPE '\\'", escapeLikePrefix(prefix)+"%").
 		Where("deleted_at IS NULL").
 		Where("created_at < ?", before).
+		Order("created_at ASC")
+
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+
+	if err := query.Scan(ctx); err != nil {
+		return nil, err
+	}
+
+	return files, nil
+}
+
+// GetCheckAny retrieves a live check by UID without org scoping. Used by the
+// `checks/<uid>/…` attachment authorizer, which derives the organization FROM
+// the check rather than trusting the caller for it.
+func (s *Service) GetCheckAny(ctx context.Context, uid string) (*models.Check, error) {
+	check := new(models.Check)
+
+	err := s.db.NewSelect().
+		Model(check).
+		Where("uid = ?", uid).
+		Where("deleted_at IS NULL").
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return check, nil
+}
+
+// ListCheckScreenshotFiles returns a check's live screenshots (incident and
+// check-scoped), newest first, capped at limit.
+func (s *Service) ListCheckScreenshotFiles(
+	ctx context.Context, orgUID, checkUID string, limit int,
+) ([]*models.File, error) {
+	var files []*models.File
+
+	if err := s.checkScreenshotFilesQuery(&files, orgUID, checkUID, limit).Scan(ctx); err != nil {
+		return nil, err
+	}
+
+	return files, nil
+}
+
+// checkScreenshotFilesQuery is ListCheckScreenshotFiles' SELECT, split out so
+// the plan test EXPLAINs the exact statement production runs.
+func (s *Service) checkScreenshotFilesQuery(
+	dest *[]*models.File, orgUID, checkUID string, limit int,
+) *bun.SelectQuery {
+	query := s.db.NewSelect().
+		Model(dest).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Where("topic IS NOT NULL").
+		Where("details->>'checkUid' = ?", checkUID).
+		WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
+			return q.
+				WhereOr("topic LIKE ?", "incidents/%/screenshot").
+				WhereOr("topic = ?", "checks/"+checkUID+"/screenshot")
+		}).
+		Order("created_at DESC")
+
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+
+	return query
+}
+
+// orphanAttachmentTables maps an attachment topic's entity segment to the
+// table that owns it. A whitelist: the table name is spliced into SQL.
+//
+//nolint:gochecknoglobals // immutable lookup table
+var orphanAttachmentTables = map[string]string{
+	"incidents": "incidents",
+	"checks":    "checks",
+}
+
+// uuidSegmentPattern is 36 single-character LIKE wildcards: the uid segment of
+// a well-formed topic.
+const uuidSegmentPattern = "____________________________________"
+
+// ListOrphanAttachments returns live attachments whose entity row is gone,
+// filtered by an anti-join so live entities never fill the page.
+func (s *Service) ListOrphanAttachments(
+	ctx context.Context, entity string, before time.Time, limit int,
+) ([]*models.File, error) {
+	table, ok := orphanAttachmentTables[entity]
+	if !ok {
+		return nil, fmt.Errorf("%w: %q", db.ErrUnknownAttachmentEntity, entity)
+	}
+
+	var files []*models.File
+
+	// The uid segment starts right after "<entity>/" (1-based substr).
+	uidStart := len(entity) + 2
+
+	query := s.db.NewSelect().
+		Model(&files).
+		Where("?TableAlias.topic LIKE ?", entity+"/"+uuidSegmentPattern+"/%").
+		Where("?TableAlias.deleted_at IS NULL").
+		Where("?TableAlias.created_at < ?", before).
+		Where("NOT EXISTS (SELECT 1 FROM "+table+" AS e"+
+			" WHERE e.uid::text = substr(?TableAlias.topic, ?, 36)"+
+			" AND e.organization_uid = ?TableAlias.organization_uid"+
+			" AND e.deleted_at IS NULL)", uidStart).
 		Order("created_at ASC")
 
 	if limit > 0 {

@@ -13,6 +13,7 @@
 // supplied, exactly like they did for a check with no pairing at all.
 import { Link } from "@tanstack/react-router";
 import { Send } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { useChecks, type Check } from "@/api/hooks";
 import { checkLabel } from "@/components/checks/tunnel";
@@ -24,6 +25,7 @@ function deliveryCheckUidOf(check: Check): string | undefined {
 
 /** The paired email check this SMTP check delivers its probe email to, if any. */
 export function DeliveryVia({ org, check }: { org: string; check: Check }) {
+  const { t } = useTranslation("checks");
   const deliveryUid = check.type === "smtp" ? deliveryCheckUidOf(check) : undefined;
   const { data: emailChecks } = useChecks(org, { type: "email", limit: 100 });
 
@@ -33,7 +35,7 @@ export function DeliveryVia({ org, check }: { org: string; check: Check }) {
 
   return (
     <div data-testid="check-smtp-delivery-via">
-      <div className="text-sm font-medium text-muted-foreground mb-1">Delivery check</div>
+      <div className="text-sm font-medium text-muted-foreground mb-1">{t("mail.deliveryViaTitle")}</div>
       <Link
         to="/orgs/$org/checks/$checkUid"
         params={{ org, checkUid: target?.slug || deliveryUid }}
@@ -45,7 +47,7 @@ export function DeliveryVia({ org, check }: { org: string; check: Check }) {
         </Badge>
       </Link>
       <p className="mt-1 text-xs text-muted-foreground">
-        Probe emails are addressed to this email check&apos;s tokenized inbox.
+        {t("mail.deliveryViaHelp")}
       </p>
     </div>
   );
@@ -53,6 +55,7 @@ export function DeliveryVia({ org, check }: { org: string; check: Check }) {
 
 /** The SMTP checks that deliver to this email check. Renders nothing unless there are any. */
 export function DeliverySources({ org, check }: { org: string; check: Check }) {
+  const { t } = useTranslation("checks");
   // Only email checks can be a delivery target, so nothing else has sources.
   const isEmail = check.type === "email";
   const { data: allChecks } = useChecks(org, { type: "smtp", limit: 100 });
@@ -66,7 +69,7 @@ export function DeliverySources({ org, check }: { org: string; check: Check }) {
   return (
     <div data-testid="check-smtp-delivery-sources">
       <div className="text-sm font-medium text-muted-foreground mb-1">
-        Delivered to by {sources.length} SMTP check{sources.length === 1 ? "" : "s"}
+        {t("mail.deliverySources", { count: sources.length })}
       </div>
       <div className="flex flex-wrap gap-1">
         {sources.map((source) => (

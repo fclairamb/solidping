@@ -6,6 +6,7 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   ApiError,
   apiFetch,
@@ -16,9 +17,12 @@ import {
   getExpiresAt,
   getExpiresInSeconds,
   redirectToPasswordChange,
+  setLoggingOut,
 } from "@/api/client";
 import { refreshAccessToken, refreshWithOutcome, shouldRefreshNow } from "@/lib/token-refresh";
 import { identifyAnalytics, resetAnalytics } from "@/lib/analytics";
+import { disconnectAllLiveSockets } from "@/contexts/LiveEventsContext";
+import { persistSessionOrg, SESSION_ORG_KEY } from "@/lib/session-org";
 
 interface User {
   // Pseudonymous user UUID. Used for the analytics distinct id; never shown.
@@ -226,7 +230,7 @@ interface MeResponse {
   organizations: OrganizationSummary[];
 }
 
-const ORG_KEY = "solidping_org";
+const ORG_KEY = SESSION_ORG_KEY;
 
 function getStoredOrg(): string | null {
   return localStorage.getItem(ORG_KEY);
@@ -241,6 +245,7 @@ function clearStoredOrg(): void {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const [user, setUser] = useState<User | null>(null);
   const [org, setOrg] = useState<string | null>(getStoredOrg());
   // Organization UUID, tracked alongside the slug purely so product analytics
@@ -319,11 +324,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isSuperAdmin: data.user.role === "superadmin",
         isDemo: Boolean(data.user.demo),
       });
-      // Update org from server response
-      if (data.organization?.slug) {
-        setStoredOrg(data.organization.slug);
-        setOrg(data.organization.slug);
-      }
+      // Update org from server response. An org-less token clears it: a slug
+      // left over from an earlier session would read as "already scoped to
+      // this org" and skip OrgLayout's switch-org (spec 2026-09-25-15).
+      setOrg(persistSessionOrg(data.organization));
       setOrgUid(data.organization?.uid ?? null);
       setOrganizations(data.organizations || []);
     } catch (e) {
@@ -387,10 +391,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { loginAction: "", organizations: [], resolvedOrg };
     }
 
-    if (resolvedOrg) {
-      setStoredOrg(resolvedOrg);
-      setOrg(resolvedOrg);
-    }
+    // An org-less session (no membership yet, or a federated login the org
+    // refused) clears the stored org rather than keeping the previous
+    // session's slug — see persistSessionOrg (spec 2026-09-25-15).
+    setOrg(persistSessionOrg(data.organization));
     setOrgUid(data.organization?.uid ?? null);
 
     setUser({
@@ -665,9 +669,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = async () => {
+    // setLoggingOut(true) below must always be paired with setLoggingOut(false)
+    // in the finally, or a throw from any pre-POST step (cancelQueries,
+    // disconnectAllLiveSockets — none expected to throw today, but nothing
+    // guarantees that forever) would leave the flag stuck true for the rest
+    // of the page's life, silently disabling refresh-and-retry on every later
+    // 401. Everything from here through the POST is inside the try for
+    // exactly that reason.
+    setLoggingOut(true);
     try {
+      // Stop everything server-bound BEFORE revoking the session below, not
+      // after: the mounted dashboard's React Query queries keep refetching on
+      // their intervals for the whole duration of the awaited POST, and the
+      // live socket would otherwise try to redial with a token that's about
+      // to be dead. Each of those 401s used to call refreshAccessToken(),
+      // find no refresh token, and log "token refresh failed:
+      // no-refresh-token" — 3 to 4 spurious errors per logout, now also
+      // filed to PostHog by spec 2026-09-25-13's console-error autocapture
+      // (spec 2026-09-25-14).
+      //
+      // cancelQueries() cannot abort a fetch that's already left the browser
+      // (nothing here wires its AbortSignal through to apiFetch), so a
+      // request already in flight can still land a 401 after this — that's
+      // what the loggingOut flag suppresses in apiFetch. This stops the
+      // *next* refetch tick and drops the cache so nothing here reads stale
+      // data after logout.
+      await queryClient.cancelQueries();
+      queryClient.clear();
+      // Close the live socket immediately rather than let it notice on its
+      // own: a close-code-triggered reconnect (or the run() loop's own
+      // pre-dial check) would otherwise call refreshWithOutcome() directly —
+      // a path apiFetch's loggingOut flag doesn't cover — using a refresh
+      // token that's about to be revoked server-side.
+      disconnectAllLiveSockets();
+
       await apiFetch(`/api/v1/auth/logout`, {
         method: "POST",
+        // This is the one call that must still refresh-and-retry on a 401
+        // despite loggingOut being set: it's what revokes the session
+        // server-side, and if the access token already expired before the
+        // user clicked "Sign out" (idle past its lifetime — a common case,
+        // not an edge case), skipping the retry here would mean the POST
+        // 401s, is never retried, and the server-side session/refresh token
+        // is never revoked — even though the local logout looks successful.
+        // Every OTHER request made during logout still gets the suppression.
+        allowRefreshDuringLogout: true,
       });
     } catch {
       // Ignore logout errors
@@ -682,6 +728,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // same browser is not stitched onto the previous user. No-op when
       // analytics is off.
       resetAnalytics();
+      setLoggingOut(false);
     }
   };
 

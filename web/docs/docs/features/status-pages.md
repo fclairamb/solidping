@@ -77,7 +77,12 @@ The component's status is rolled up from the group's **enabled** member checks:
 | All down | **Down** |
 | Some — but not all — down | **Degraded** |
 | None down, at least one warning | **Warning** |
+| None down or warning, at least one member stopped reporting | **No data** |
 | No members, or none reporting yet | **No data** |
+
+A single check that stopped reporting (no real result for `max(3 × period, 5 min)`)
+reads **No data, last checked 13:41**, never "operational". A page whose components
+all read no data shows **Status unknown**.
 
 A member in the transient "validating" state still reads up publicly, exactly as a standalone check does — the component only turns red once a failure is confirmed. Disabled members are ignored entirely.
 
@@ -603,12 +608,27 @@ handful of them re-themes the whole page without touching a single selector:
 | `--card-foreground` | Text inside section cards |
 | `--border` | Hairlines, separators and card outlines |
 | `--muted` / `--muted-foreground` | Secondary surfaces and secondary text |
+| `--primary` | Buttons, links, maintenance state (also tints the button shadow and the response-time chart) |
+| `--primary-foreground` | Text drawn on a solid `--primary` fill (badges) |
+| `--primary-gradient` | Button fill; set it to your color (a flat `linear-gradient(<c>, <c>)` works) to drop the gradient |
+| `--gradient-foreground` | Button label, drawn on `--primary-gradient` |
 | `--status-ok` | "Operational" green: dots, badges, uptime bars |
 | `--status-warning` | "Degraded" amber |
 | `--status-error` | "Down" red |
 | `--radius` | Corner radius used across the page |
 
 Colors accept any CSS color syntax (`#rrggbb`, `rgb()`, `oklch()`, …).
+
+The subscribe and unlock buttons paint `--primary-gradient` on top of
+`--primary`. If your stylesheet already sets `--primary`, set
+`--primary-gradient` too, or the buttons keep SolidPing's blue gradient:
+
+```css
+:root {
+  --primary: #ff5500;
+  --primary-gradient: linear-gradient(#ff5500, #ff5500);
+}
+```
 
 Rules placed inside a `.dark { … }` block apply when the page is in dark mode;
 rules in `:root { … }` apply to light mode. A visitor lands in dark mode
@@ -639,7 +659,7 @@ generated markup, these will not change under you.
 
 The page also carries a `dark` class on its `<html>` ancestor whenever the
 visitor is in dark mode (see [CSS variables](#css-variables) above) — you can
-target it directly, e.g. `.dark .sp-logo img { content: url(...); }` for a
+target it directly, e.g. `.dark .sp-logo img { content: url(data:…); }` for a
 logo variant with better contrast on dark backgrounds. Most custom CSS never
 needs this: an override written against the `--*` variables (`--brand`,
 `--card`, `--status-ok`, …) already applies correctly in both modes, since the
@@ -649,24 +669,28 @@ color — such as swapping an image asset.
 
 #### Replacing the logo
 
-The logo is a plain `<img>` inside `.sp-logo`, and its size comes from CSS (not
-from an inline style), so both of these work without any upload:
+The simplest way is to upload the logo under [Branding](#logo-and-favicon).
+To swap it from CSS instead, the image has to be one the page's
+[security policy](/configuration/security-headers#status-pages) allows: served
+from the status page's own origin, or inlined as a `data:` URI. External hosts
+are blocked. The logo is a plain `<img>` inside `.sp-logo`, and its size comes
+from CSS (not from an inline style), so both of these work:
 
 ```css
-/* Simplest — swap the image the <img> paints (Chrome, Edge, Safari). */
+/* Simplest: swap the image the <img> paints (Chrome, Edge, Safari). */
 .sp-logo img {
-  content: url("https://cdn.example.com/logo.svg");
+  content: url("data:image/svg+xml;base64,PHN2Zy8+");
 }
 ```
 
 ```css
-/* Widest browser support — hide the <img>, paint the wrapper instead. */
+/* Widest browser support: hide the <img>, paint the wrapper instead. */
 .sp-logo img {
   display: none;
 }
 
 .sp-logo {
-  background: url("https://cdn.example.com/logo.svg") center / contain no-repeat;
+  background: url("data:image/svg+xml;base64,PHN2Zy8+") center / contain no-repeat;
   width: 120px;
   height: 32px;
 }
@@ -676,14 +700,11 @@ A non-square logo also just needs its own box:
 
 ```css
 .sp-logo img {
-  content: url("https://cdn.example.com/wordmark.svg");
+  content: url("data:image/svg+xml;base64,PHN2Zy8+");
   width: 140px;
   height: 32px;
 }
 ```
-
-The image must be reachable over HTTPS from your own host or CDN — `url()` is
-allowed, `@import` is not.
 
 #### Hiding the version and the credit
 
@@ -726,8 +747,12 @@ allowed, `@import` is not.
 - **`@import` is not allowed**, anywhere in the stylesheet and in any casing.
   It would let the page pull in further third-party stylesheets that were never
   reviewed; inline the rules you need instead.
-- **External `url()` is allowed** — web fonts, background images and other
-  assets fetched from your own CDN work normally.
+- **External `url()` is blocked.** The status page is served with a
+  `Content-Security-Policy` that only lets images and fonts load from the
+  page's own origin or from `data:` URIs, so a stylesheet cannot send
+  visitors' data to another server. Upload the logo under Branding, or inline
+  small assets as `data:` URIs. A self-hosted operator can allow specific hosts
+  with [`SP_HEADERS_CSP_EXTRA_SOURCES`](/configuration/security-headers#widening-the-policy).
 
 The stylesheet is stored verbatim and rendered as a text node inside a
 `<style>` element, so it cannot inject markup or scripts into the page.
@@ -865,6 +890,8 @@ The dashboard generates the snippet for you under **Status Pages → (your page)
 ## Accessing Status Pages
 
 Status pages are served directly by SolidPing at a dedicated URL path, making them easy to embed or link to from your own website. The default page is reachable at the organization root path, and named pages at their slug.
+
+To show a status page in an `<iframe>` on another site, add that site's origin under **Organization → Settings → Status page embedding**. Without it, browsers refuse to frame the page anywhere but SolidPing itself. See [Security Headers](/configuration/security-headers#embedding-a-status-page).
 
 ## Use Cases
 

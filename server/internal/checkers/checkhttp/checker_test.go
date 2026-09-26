@@ -627,6 +627,30 @@ func TestHTTPChecker_Validate(t *testing.T) {
 			},
 			wantErr: true,
 		},
+		{
+			name: "valid redirect host policy same-host",
+			config: &HTTPConfig{
+				URL:                "http://example.com",
+				RedirectHostPolicy: RedirectHostPolicySameHost,
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid redirect host policy any",
+			config: &HTTPConfig{
+				URL:                "http://example.com",
+				RedirectHostPolicy: RedirectHostPolicyAny,
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid redirect host policy is rejected, not silently ignored",
+			config: &HTTPConfig{
+				URL:                "http://example.com",
+				RedirectHostPolicy: "bogus",
+			},
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -1774,6 +1798,7 @@ func TestHTTPChecker_Execute_FollowRedirects(t *testing.T) {
 		r.Equal(checkerdef.StatusUp, result.Status)
 		r.Equal(http.StatusOK, result.Output[checkerdef.OutputKeyStatusCode])
 		r.True(*finalHit, "the final destination must have been reached")
+		r.Len(result.Output[outputKeyRedirectChain], 1, "the followed hop is recorded")
 	})
 
 	t.Run("followRedirects false surfaces the first response", func(t *testing.T) {
@@ -1793,6 +1818,55 @@ func TestHTTPChecker_Execute_FollowRedirects(t *testing.T) {
 		r.Equal(checkerdef.StatusUp, result.Status)
 		r.Equal(http.StatusMovedPermanently, result.Output[checkerdef.OutputKeyStatusCode])
 		r.False(*finalHit, "the redirect target must not have been reached")
+	})
+}
+
+// TestHTTPChecker_Execute_RedirectHostPolicy covers redirect_host_policy:
+// same-host in both directions — a same-host hop (a bare port/path change)
+// is followed exactly as "any" would follow it, and a cross-host hop is
+// refused with the spec-pinned diagnostics message instead of ever being
+// dialed. The refusal case's dial-level proof (the refused hop's server
+// records zero requests, even under allow_private) lives in
+// egress_test.go's TestExecuteRedirectHostPolicySameHostRefusesEvenWithPrivateAllowed.
+func TestHTTPChecker_Execute_RedirectHostPolicy(t *testing.T) {
+	t.Parallel()
+
+	t.Run("same host redirect is followed", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+		_, redirector, finalHit := newRedirectingServers(t)
+
+		result, err := (&HTTPChecker{}).Execute(context.Background(), &HTTPConfig{
+			URL:                redirector.URL,
+			RedirectHostPolicy: RedirectHostPolicySameHost,
+		})
+		r.NoError(err)
+		r.Equal(checkerdef.StatusUp, result.Status, result.Output)
+		r.True(*finalHit, "a same-host redirect must still be followed")
+	})
+
+	t.Run("cross host redirect is refused with the policy message", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+
+		redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			// "localhost" resolves to the same machine but is a DIFFERENT
+			// host string than the redirector's own 127.0.0.1 — exactly what
+			// the policy compares. CheckRedirect refuses before the request
+			// is ever built, so the target need not exist or even resolve.
+			http.Redirect(w, req, "http://localhost:1/never-dialed", http.StatusMovedPermanently)
+		}))
+		t.Cleanup(redirector.Close)
+
+		result, err := (&HTTPChecker{}).Execute(context.Background(), &HTTPConfig{
+			URL:                redirector.URL,
+			RedirectHostPolicy: RedirectHostPolicySameHost,
+		})
+		r.NoError(err)
+		r.Equal(checkerdef.StatusDown, result.Status, result.Output)
+		r.Contains(result.Output[checkerdef.OutputKeyError], "redirect to different host refused")
 	})
 }
 

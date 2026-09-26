@@ -156,6 +156,25 @@ const (
 	// Deliberately absent from publiclyCreatableJobTypes — it opens incidents
 	// and therefore notifies people.
 	JobTypeDegradedEval JobType = "degraded_eval"
+	// JobTypeCheckFreshnessSweep moves checks whose newest real result is
+	// older than max(3 × period, 5 min) to the `stale` ("No data") status
+	// (spec 2026-09-25-02). Global and self-rescheduling every minute: the
+	// whole point is that a dead region stops reading green within minutes,
+	// not hours.
+	//
+	// Deliberately absent from publiclyCreatableJobTypes — it rewrites check
+	// status across every organization.
+	JobTypeCheckFreshnessSweep JobType = "check_freshness_sweep"
+	// JobTypeRegionHealthSweep evaluates every cloud region's liveness each
+	// minute (spec 2026-09-25-03): a region that goes dark or stalled, or
+	// recovers, is reported to the platform_watchdog recipients at the
+	// transition, and every org whose checks stopped running anywhere gets
+	// one notice per outage and one per recovery. It also owns the
+	// solidping_workers_active and solidping_region_dark gauges.
+	//
+	// Deliberately absent from publiclyCreatableJobTypes — it emails the
+	// owners and admins of every organization.
+	JobTypeRegionHealthSweep JobType = "region_health_sweep"
 	// JobTypePlatformWatchdog is the hourly internal watchdog (spec
 	// 2026-08-24-10): it evaluates the platform's own vitals — dark regions
 	// with assigned work, a collapse in fleet execution rate, active incidents

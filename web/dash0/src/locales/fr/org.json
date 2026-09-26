@@ -56,7 +56,17 @@
     },
     "defaultEscalation": "Politique d'escalade par défaut",
     "defaultEscalationDescription": "Appliquée aux checks qui ne résolvent à aucune politique propre (check → groupe → défaut de l'organisation → aucune). Laissez non défini pour aucun repli à l'échelle de l'organisation.",
-    "defaultEscalationNone": "Aucune (pas de repli)"
+    "defaultEscalationNone": "Aucune (pas de repli)",
+    "embed": {
+      "title": "Intégration des pages de statut",
+      "description": "Par défaut, une page de statut ne peut être affichée dans un cadre que par SolidPing lui-même (l'aperçu de l'apparence). Listez les sites autorisés à intégrer les pages de statut de cette organisation dans une iframe, comme un intranet ou un écran mural.",
+      "label": "Origines autorisées",
+      "placeholder": "https://intranet.acme.com\nhttps://*.acme.com",
+      "help": "Une origine par ligne : un schéma et un hôte, éventuellement avec un port ou un premier libellé *. Pas de chemin. Envoyé dans la directive frame-ancestors de la Content-Security-Policy de la page ; pris en compte en moins d'une minute. Laissez vide pour bloquer tout autre site."
+    },
+    "defaultEscalationBlastRadius_one": "{{count}} contrôle hérite actuellement de la politique par défaut et utilisera celle-ci.",
+    "defaultEscalationBlastRadius_other": "{{count}} contrôles héritent actuellement de la politique par défaut et utiliseront celle-ci.",
+    "defaultEscalationSilent": "silencieuse"
   },
   "usage": {
     "title": "Utilisation",
@@ -342,7 +352,15 @@
       "create": "Ajouter un emplacement",
       "deleteTitle": "Supprimer l'emplacement privé ?",
       "deleteDescription": "Les checks ciblant cet emplacement cesseront d'y être planifiés. Les emplacements comportant des agents inscrits ne peuvent pas être supprimés — révoquez d'abord les agents.",
-      "deleteConfirm": "Supprimer"
+      "deleteConfirm": "Supprimer",
+      "stateOnline": "En ligne",
+      "stateDegraded": "Dégradé",
+      "stateOffline": "Hors ligne",
+      "stateEmpty": "Aucun agent",
+      "onlineCount": "{{online}}/{{total}} en ligne",
+      "monitor": "Surveillance des agents",
+      "monitorOff": "Surveillance des agents désactivée",
+      "monitorEnable": "Activer"
     },
     "cancel": "Annuler",
     "token": {
@@ -369,7 +387,9 @@
       "removeDescription": "Cet agent est déjà révoqué. Le retirer l'efface immédiatement de la liste, au lieu d'attendre le nettoyage automatique après deux jours.",
       "revokeDescription": "L'agent perd immédiatement l'accès et cesse de recevoir des checks. Il a déjà vu les identifiants scellés à son intention — faites-les tourner. Cette action est irréversible ; inscrivez un nouvel agent pour le remplacer.",
       "removeConfirm": "Retirer",
-      "revokeConfirm": "Révoquer"
+      "revokeConfirm": "Révoquer",
+      "online": "En ligne",
+      "offline": "Hors ligne"
     },
     "tokens": {
       "title": "Jetons d'inscription en attente",
@@ -384,17 +404,17 @@
     "toast": "Vous n'avez pas accès à {{requested}} — voici {{shown}} à la place."
   },
   "parameters": {
-    "title": "Paramètres",
+    "title": "Variables",
     "subtitle": "Des valeurs que vos checks référencent via ${param:CLE} au lieu de les committer dans un fichier.",
-    "add": "Ajouter un paramètre",
-    "addTitle": "Ajouter un paramètre",
+    "add": "Ajouter une variable",
+    "addTitle": "Ajouter une variable",
     "addDescription": "Choisissez une clé, puis référencez-la dans n'importe quelle chaîne de configuration via ${param:CLE}.",
     "rotate": "Renouveler",
-    "rotateTitle": "Renouveler le paramètre",
+    "rotateTitle": "Renouveler la variable",
     "rotateDescription": "La clé ne change pas : tous les checks qui la référencent continuent de fonctionner.",
     "created": "{{key}} créé",
     "rotated": "{{key}} renouvelé",
-    "saveFailed": "Impossible d'enregistrer le paramètre",
+    "saveFailed": "Impossible d'enregistrer la variable",
     "writeOnly": "Écriture seule",
     "keyInvalid": "Les clés sont en minuscules et commencent par une lettre : a-z, 0-9, point, tiret, souligné.",
     "secretLabel": "Secret",
@@ -406,14 +426,14 @@
       "updated": "Mis à jour"
     },
     "empty": {
-      "title": "Aucun paramètre",
-      "description": "Ajoutez-en un, puis référencez-le dans une configuration de check via ${param:CLE}."
+      "title": "Aucune variable",
+      "description": "Ajoutez-en une, puis référencez-la dans une configuration de check via ${param:CLE}."
     },
     "delete": {
-      "title": "Supprimer ce paramètre ?",
+      "title": "Supprimer cette variable ?",
       "description": "Tout check référençant ${param:{{key}}} échouera avec une référence de secret non résolue à sa prochaine exécution.",
-      "deleted": "Paramètre supprimé",
-      "failed": "Impossible de supprimer le paramètre"
+      "deleted": "Variable supprimée",
+      "failed": "Impossible de supprimer la variable"
     }
   }
 }

@@ -18,6 +18,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/fclairamb/solidping/server/internal/httpclientpool"
 )
 
 // OVH API endpoint identifiers accepted by SP_SMS_OVH_ENDPOINT.
@@ -156,7 +158,7 @@ func NewClient(ctx context.Context, cfg *Config) (*Client, error) {
 
 	httpClient := cfg.HTTPClient
 	if httpClient == nil {
-		httpClient = &http.Client{Timeout: DefaultTimeout}
+		httpClient = httpclientpool.NewClient(DefaultTimeout)
 	}
 
 	nowFn := cfg.Now

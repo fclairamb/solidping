@@ -290,7 +290,7 @@ function OrgParametersPage() {
           <AlertDialogFooter>
             <AlertDialogCancel>{t("common:cancel")}</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              variant="destructive"
               data-testid="parameter-delete-confirm"
               onClick={async () => {
                 if (!pendingDelete) return;

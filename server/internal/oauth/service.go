@@ -6,7 +6,9 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -60,6 +62,13 @@ var (
 	// errPKCEFailed means the supplied code_verifier does not match the stored
 	// code_challenge.
 	errPKCEFailed = errors.New("oauth: pkce verification failed")
+	// errClientAuthFailed means a confidential client presented no secret, or
+	// one that does not match its stored hash. The token endpoint reports this
+	// byte-identically to errClientNotFound: RFC 6749 gives a bad client_secret
+	// and an unknown client_id the same invalid_client response, so neither can
+	// be used to enumerate registered client IDs (spec
+	// 2026-09-25-27-oauth-client-secret-verification.md).
+	errClientAuthFailed = errors.New("oauth: client authentication failed")
 )
 
 // Service holds the business logic for the embedded OAuth 2.1 authorization
@@ -70,6 +79,13 @@ type Service struct {
 	authSvc *auth.Service
 	cfg     *config.Config
 	clock   clock.Clock
+
+	// clientAuthWarned tracks, per process, which confidential client IDs have
+	// already had a token-endpoint authentication failure logged. It exists so
+	// a client that is broken (or mid-migration under the enforce_client_secret
+	// escape hatch) produces one WARN, not one per retry — see
+	// warnClientAuthFailureOnce.
+	clientAuthWarned sync.Map
 }
 
 // NewService builds the OAuth service. authSvc is reused for JWT signing and
@@ -108,6 +124,85 @@ func (s *Service) GetClient(ctx context.Context, clientID string) (*models.OAuth
 	}
 
 	return client, nil
+}
+
+// AuthenticateClient verifies a client presenting itself at the token
+// endpoint (RFC 6749 §3.2.1 / §2.3.1). Public clients are exempt —
+// PKCE is their authentication, unchanged by this check. A confidential
+// client (IsPublic == false) must present the secret matching its stored
+// argon2id hash, supplied via client_secret_post (body) or
+// client_secret_basic (HTTP Basic) — the caller resolves which and passes the
+// plain secret here either way.
+//
+// A missing or wrong secret is a hard failure (errClientAuthFailed) by
+// default. The oauth.enforce_client_secret system parameter (default true) is
+// an operator escape hatch: set false, the failure is logged instead of
+// rejected and the caller may proceed as if authentication succeeded — for a
+// confidential client that was registered before this check existed and never
+// sent a secret. Either way, the very first failure for a given client ID in
+// this process is logged at WARN (see warnClientAuthFailureOnce) so an
+// operator has something to act on regardless of which mode they are in.
+func (s *Service) AuthenticateClient(ctx context.Context, clientID, clientSecret string) error {
+	client, err := s.GetClient(ctx, clientID)
+	if err != nil {
+		return err
+	}
+
+	if client.IsPublic {
+		return nil
+	}
+
+	if client.SecretHash != nil && clientSecret != "" && passwords.Verify(clientSecret, *client.SecretHash) {
+		return nil
+	}
+
+	enforced := s.enforceClientSecret()
+	s.warnClientAuthFailureOnce(ctx, clientID, enforced)
+
+	if enforced {
+		return errClientAuthFailed
+	}
+
+	return nil
+}
+
+// enforceClientSecret reads the oauth.enforce_client_secret system parameter
+// (baked into cfg at boot by systemconfig.Service.Initialize). A nil cfg
+// (should not happen outside of a misbuilt test fixture) fails safe to
+// enforcing, never to silently accepting bad secrets.
+func (s *Service) enforceClientSecret() bool {
+	if s.cfg == nil {
+		return true
+	}
+
+	return s.cfg.OAuth.EnforceClientSecret
+}
+
+// warnClientAuthFailureOnce logs a confidential client's token-endpoint
+// authentication failure exactly once per client ID for the life of this
+// process (spec 2026-09-25-27: "log a WARN the first time per client ID per
+// process", explicitly not a persisted grace-period state machine). A client
+// retried by a broken deployment or a script in a loop must not turn into a
+// logging storm, but the first occurrence is exactly the signal an operator
+// needs — to fix a confidential client's config, or to flip
+// oauth.enforce_client_secret off while they do.
+func (s *Service) warnClientAuthFailureOnce(ctx context.Context, clientID string, enforced bool) {
+	if _, alreadyWarned := s.clientAuthWarned.LoadOrStore(clientID, struct{}{}); alreadyWarned {
+		return
+	}
+
+	if enforced {
+		slog.WarnContext(ctx,
+			"OAuth: confidential client failed token-endpoint secret verification; rejecting the request",
+			"clientID", clientID, "oauth.enforce_client_secret", true)
+
+		return
+	}
+
+	slog.WarnContext(ctx,
+		"OAuth: confidential client failed token-endpoint secret verification; "+
+			"issuing the token anyway because oauth.enforce_client_secret is false",
+		"clientID", clientID, "oauth.enforce_client_secret", false)
 }
 
 // AuthCodeGrant captures everything an authorization code binds together. The

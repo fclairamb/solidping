@@ -58,7 +58,7 @@ export function PageHeader({
         ) : null}
       </div>
       {actions || docsHref ? (
-        <div className="ml-auto flex shrink-0 items-center gap-2">
+        <div className="ml-auto flex max-w-full shrink-0 items-center gap-2">
           {actions}
           {docsHref ? <DocsLink href={docsHref} /> : null}
         </div>

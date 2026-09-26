@@ -370,7 +370,7 @@ test.describe("SLOs list (mobile)", () => {
 });
 
 test.describe("Integrations list (mobile)", () => {
-  test("no horizontal overflow at 375px; name/status/actions stay visible", async ({
+  test("no horizontal overflow at 375px; name gets the row, status/actions stay visible", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
@@ -408,10 +408,18 @@ test.describe("Integrations list (mobile)", () => {
     // it entirely (which is exactly what happened on the first CI run).
     await assertNoHorizontalOverflow(page);
 
-    // Always-visible columns: name (long text truncated rather than
-    // overflowing), status, and the row actions.
+    // Always-visible: name (long text truncated rather than overflowing),
+    // status (moved under the name below sm, so the desktop Status cell is
+    // hidden and only one badge is visible), and the row actions.
     await expect(row.getByText(LONG_INTEGRATION_NAME)).toBeVisible();
-    await expect(row.getByText("Enabled")).toBeVisible();
+    await expect(row.getByText("Enabled").filter({ visible: true })).toHaveCount(1);
+
+    // The name column claims the spare width instead of being squeezed to a
+    // few characters while the status and action columns hold it
+    // (`w-full max-w-0`, see the design reference's "Truncated cell").
+    const nameBox = await row.getByRole("cell").first().boundingBox();
+    const rowBox = await row.boundingBox();
+    expect(nameBox && rowBox && nameBox.width / rowBox.width).toBeGreaterThan(0.6);
     // `<Button asChild>` wrapping a `<Link>` renders an <a>, so the edit
     // affordance has role "link" despite looking like a button.
     await expect(row.getByRole("link", { name: "Edit" })).toBeVisible();

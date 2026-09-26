@@ -43,7 +43,10 @@ func (d pqTunnelDialer) DialContext(ctx context.Context, network, address string
 // openDB opens the PostgreSQL handle. Tunneled, it builds a pq connector wired to
 // dial through the bastion; untunneled, it is the byte-for-byte `sql.Open`.
 func openDB(ctx context.Context, connStr string) (*sql.DB, error) {
-	dialer := checkerdef.TunnelDialerFrom(ctx)
+	// The tunnel dialer, or the egress guard under an enforcing policy (spec
+	// 2026-09-25-19); nil keeps the driver's own dial byte-for-byte. The
+	// driver negotiates TLS above this dialer either way.
+	dialer := checkerdef.OutboundDialer(ctx)
 	if dialer == nil {
 		return sql.Open("postgres", connStr)
 	}

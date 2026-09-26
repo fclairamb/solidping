@@ -115,7 +115,19 @@ export function AvailabilityTable({
                       </span>
                     )}
                   </TableCell>
-                  <TableCell>{view.availabilityText}</TableCell>
+                  <TableCell>
+                    {view.availabilityText}
+                    {view.unmeasuredText && (
+                      <span
+                        className="block text-xs text-amber-600 dark:text-amber-400"
+                        data-testid="availability-unmeasured"
+                      >
+                        {t("detail.availability.unmeasured", {
+                          duration: view.unmeasuredText,
+                        })}
+                      </span>
+                    )}
+                  </TableCell>
                   <TableCell>{view.downtimeText}</TableCell>
                   <TableCell>{view.incidentCount}</TableCell>
                   <TableCell>

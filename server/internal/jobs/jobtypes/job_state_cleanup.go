@@ -2,9 +2,7 @@ package jobtypes
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
-	"errors"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/handlers/attachments"
@@ -60,7 +58,9 @@ func (r *StateCleanupJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) e
 		log.InfoContext(ctx, "No expired state entries to delete")
 	}
 
+	sweepExpiredAuthHandoffCodes(ctx, jctx)
 	sweepOrphanIncidentAttachments(ctx, jctx)
+	sweepOrphanCheckAttachments(ctx, jctx)
 
 	// Schedule next run in 2 hours
 	// Skip if services are not available (e.g., in tests without full service setup)
@@ -76,6 +76,23 @@ func (r *StateCleanupJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) e
 	}
 
 	return nil
+}
+
+// sweepExpiredAuthHandoffCodes deletes federated-login handoff codes past
+// their 60-second lifetime (spec 2026-09-25-12). A redeemed code is already
+// gone; this reaps the ones nobody came back for. Best-effort like the
+// attachment sweep: a failure here must not stop the rest of the job.
+func sweepExpiredAuthHandoffCodes(ctx context.Context, jctx *jobdef.JobContext) {
+	count, err := jctx.DBService.DeleteExpiredAuthHandoffCodes(ctx, time.Now())
+	if err != nil {
+		jctx.Logger.WarnContext(ctx, "Failed to delete expired auth handoff codes", "error", err)
+
+		return
+	}
+
+	if count > 0 {
+		jctx.Logger.InfoContext(ctx, "Deleted expired auth handoff codes", "count", count)
+	}
 }
 
 // attachmentOrphanGrace is how long an attachment must have existed before the
@@ -105,14 +122,27 @@ const attachmentSweepBatch = 500
 // and a failure here must not stop expired state entries from being reaped or
 // the next run from being scheduled.
 func sweepOrphanIncidentAttachments(ctx context.Context, jctx *jobdef.JobContext) {
+	sweepOrphanAttachments(ctx, jctx, attachments.EntityIncidents)
+}
+
+// sweepOrphanAttachments soft-deletes one batch of attachments whose entity
+// (`<entity>/<uid>/…`) no longer exists.
+//
+// The orphan test is an anti-join IN SQL (db.Service.ListOrphanAttachments),
+// never a page of candidates checked one by one afterwards. The per-row check
+// used to run over "the oldest 500 attachments past the grace", and the
+// attachments of live, quiet entities never age out of that page: once there
+// were 500 of them every real orphan behind them was unreachable, forever
+// (spec 2026-09-25-34). With the filter in the query each batch is orphans
+// only, so the sweep always makes progress.
+func sweepOrphanAttachments(ctx context.Context, jctx *jobdef.JobContext, entity string) {
 	log := jctx.Logger
 
-	rows, err := jctx.DBService.ListAttachmentsByTopicPrefix(
-		ctx, attachments.EntityIncidents+"/",
-		time.Now().Add(-attachmentOrphanGrace), attachmentSweepBatch,
+	rows, err := jctx.DBService.ListOrphanAttachments(
+		ctx, entity, time.Now().Add(-attachmentOrphanGrace), attachmentSweepBatch,
 	)
 	if err != nil {
-		log.WarnContext(ctx, "Failed to list incident attachments for GC", "error", err)
+		log.WarnContext(ctx, "Failed to list orphan attachments for GC", "entity", entity, "error", err)
 
 		return
 	}
@@ -120,28 +150,6 @@ func sweepOrphanIncidentAttachments(ctx context.Context, jctx *jobdef.JobContext
 	swept := 0
 
 	for _, row := range rows {
-		if row.Topic == nil {
-			continue
-		}
-
-		topic, parseErr := attachments.ParseTopic(*row.Topic)
-		if parseErr != nil {
-			// A malformed topic can only have come from an older or buggier
-			// writer. Leave it alone rather than guess what it pointed at.
-			continue
-		}
-
-		incident, incErr := jctx.DBService.GetIncidentAny(ctx, topic.EntityUID)
-		if incErr == nil && incident != nil {
-			continue
-		}
-
-		if !errors.Is(incErr, sql.ErrNoRows) {
-			// A transient lookup failure must never be read as "the incident
-			// is gone" — that would delete live evidence on a database blip.
-			continue
-		}
-
 		if delErr := jctx.DBService.DeleteFile(ctx, row.OrganizationUID, row.UID); delErr != nil {
 			log.WarnContext(ctx, "Failed to reap orphan attachment",
 				"fileUid", row.UID, "error", delErr)
@@ -153,6 +161,17 @@ func sweepOrphanIncidentAttachments(ctx context.Context, jctx *jobdef.JobContext
 	}
 
 	if swept > 0 {
-		log.InfoContext(ctx, "Reaped orphan incident attachments", "count", swept)
+		log.InfoContext(ctx, "Reaped orphan attachments", "entity", entity, "count", swept)
 	}
+}
+
+// sweepOrphanCheckAttachments is sweepOrphanIncidentAttachments for the
+// check-scoped topic `checks/<uid>/…` (spec 2026-09-25-34): it reaps the
+// captures of a check that no longer exists (soft-deleted or gone).
+//
+// checks.Service.DeleteCheck already reaps them on the normal delete paths;
+// this catches the ones that bypass it (organization deletion, direct database
+// deletes). Same grace, same batch, same anti-join as the incident sweep.
+func sweepOrphanCheckAttachments(ctx context.Context, jctx *jobdef.JobContext) {
+	sweepOrphanAttachments(ctx, jctx, attachments.EntityChecks)
 }

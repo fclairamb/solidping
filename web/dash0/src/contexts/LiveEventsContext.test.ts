@@ -61,6 +61,7 @@ function seedQueries(client: QueryClient): void {
     ["checks", ORG, { limit: 1000 }],
     ["checks", "infinite", ORG, {}],
     ["check-stats", ORG],
+    ["checkGroups", ORG],
     ["check", ORG, "uid-1"],
     ["check", ORG, "uid-2"],
     ["results", ORG, { checkUid: "uid-1" }],
@@ -241,6 +242,22 @@ describe("LiveRegistry scope-accurate invalidation", () => {
     vi.advanceTimersByTime(LIVE_INVALIDATE_MIN_INTERVAL_MS);
     conn.update({ entity: "checks" }, ["checks"]);
     expect(staleKeys(client)).toContain(JSON.stringify(["check-stats", ORG]));
+  });
+
+  it("a 'checks' kind hint also invalidates the check groups", () => {
+    // Spec 2026-09-25-02: a group's status is rolled up from its members, so
+    // a member going stale (a region went dark) must repaint the group row
+    // too — otherwise the group keeps reading up over members nobody measures.
+    const { client, conn, registry } = setup();
+    registry.addScope({ entity: "checks" });
+    registry.start();
+    conn.open();
+    conn.subscribed({ entity: "checks" });
+    client.getQueryCache().getAll().forEach((q) => client.resetQueries({ queryKey: q.queryKey }));
+
+    vi.advanceTimersByTime(LIVE_INVALIDATE_MIN_INTERVAL_MS);
+    conn.update({ entity: "checks" }, ["checks"]);
+    expect(staleKeys(client)).toContain(JSON.stringify(["checkGroups", ORG]));
   });
 
   it("a 'results' kind hint does NOT invalidate check-stats", () => {

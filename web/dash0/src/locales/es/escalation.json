@@ -3,7 +3,7 @@
     "title": "Políticas de escalada",
     "subtitle": "Orquestación reutilizable de pasos de notificación con retrasos y cancelación al confirmar, posponer o resolver.",
     "create": "Nueva política",
-    "empty": "Cree una para empezar a avisar sobre incidencias.",
+    "empty": "Crea una para empezar a avisar sobre incidencias.",
     "repeats": "Repite {{count}}× cada {{duration}}",
     "editToSeeSteps": "Abrir para ver los pasos.",
     "searchPlaceholder": "Buscar por nombre…",
@@ -54,7 +54,8 @@
     "createSchedule": "crear uno",
     "createConnection": "crear uno",
     "targetMissing": "El destino {{kind}} seleccionado ya no existe. Elige otro o elimina este destino.",
-    "targetMissingShort": "no existe"
+    "targetMissingShort": "no existe",
+    "namePlaceholder": "Avisos de producción"
   },
   "targets": {
     "user": "Usuario",
@@ -66,6 +67,8 @@
     "title": "Cronología de la escalada",
     "fired": "Disparada",
     "pending": "Pendiente",
-    "failed": "Escalada fallida"
+    "failed": "Escalada fallida",
+    "stepSuffix": "· paso {{step}}",
+    "cycleSuffix": "· ciclo {{cycle}}"
   }
 }

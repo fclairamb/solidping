@@ -123,6 +123,7 @@ Additional frontend rules:
 - **401** → redirect to login with `?returnTo={currentPath}`; **403** → show "Permission Denied", never redirect (causes loops). See `wiki/conventions/frontend-errors.md`.
 - Editing always navigates to a dedicated route (`/<resource>/new`, `/<resource>/$id`) — never in a modal dialog.
 - Row actions: prefer two ghost icon buttons (`Pencil` / `Trash2`) over a `MoreVertical` menu.
+- **Every page runs under a Content-Security-Policy** (spec 2026-09-25-28, `server/internal/securityheaders`, docs `web/docs/docs/configuration/security-headers.md`). No `eval`/`new Function` anywhere (dash0 sets zod `jitless` for this reason), no new inline `<script>` outside the SPA shell (the shell's inline scripts are hashed from the embedded build, never from the per-request bytes), and status0 may only fetch first-party (`img-src`/`font-src`/`connect-src 'self'`). A new external origin dash0 genuinely needs goes into `dashboardPolicy()` with a comment saying why, or it is silently blocked in production while `make dev` (proxied to Vite, no CSP) keeps working. The E2E `status-page-appearance.spec.ts` asserts the dashboard raises zero violations.
 - **Delete is always red, always a trash bin** — every delete/irreversible action uses the `Trash2` icon in the destructive red (`variant="destructive"`, or `text-destructive` for icon buttons and dropdown items). Never delete with a different icon or color, and never use destructive red for non-destructive actions.
 
 ## REST API conventions
@@ -153,11 +154,12 @@ Three independent env vars control which observability surfaces are active:
 
 | Env var | Default | Effect |
 |---|---|---|
-| `SP_PROMETHEUS_ENABLED` | `true` | Gates the `/metrics` HTTP handler. When `false`, the endpoint returns 404. Metric collection itself stays on — only the scrape endpoint is gated. |
+| `SP_PROMETHEUS_ENABLED` | `true` | Master switch for the `/metrics` HTTP handler. When `false`, the endpoint returns 404 regardless of the token below. Metric collection itself stays on — only the scrape endpoint is gated. |
+| `SP_METRICS_SCRAPE_TOKEN` | - | Bearer token required to scrape `/metrics` (spec 2026-09-25-25). Unset → 404, indistinguishable from the endpoint not existing; set → every request needs `Authorization: Bearer <token>` or gets 401. Also settable as the `metrics.scrape_token` system parameter (secret, DB-stored), overlaid onto config at boot — env wins over DB. |
 | `SP_PROFILER_ENABLED` | `false` | Starts the pprof HTTP server. Listen address controlled by `SP_PROFILER_LISTEN` (default `localhost:6060`). |
 | `SP_OTEL_ENABLED` | `false` | Enables OpenTelemetry span export. HTTP and DB instrumentation record spans only when this is `true`. |
 
-All three are independent — enabling one does not enable any other.
+The three original toggles are independent — enabling one does not enable any other. `SP_METRICS_SCRAPE_TOKEN` only matters when `SP_PROMETHEUS_ENABLED` is true.
 
 ## Testing
 - **Backend**: table-driven tests + testcontainers for integration (see `server/CLAUDE.md`)

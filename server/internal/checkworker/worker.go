@@ -33,6 +33,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/dbfault"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/egress"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/errorreport"
 	"github.com/fclairamb/solidping/server/internal/handlers/attachments"
@@ -57,6 +58,14 @@ var (
 	ErrFailedToParseConf  = errors.New("failed to parse config")
 	ErrFailedToFetchCheck = errors.New("failed to fetch check from database")
 	ErrNoCheckType        = errors.New("check job has no type set")
+	// ErrDockerNotAvailableInSaaS is returned when a docker job reaches a SaaS
+	// shared worker (spec 2026-09-25-22). The create/update gate
+	// (checks.Service.validateDockerDeploymentConfig) is meant to keep such a
+	// job from ever being scheduled, but a check created before that gate
+	// shipped, or one whose placement moved off a private region since, must
+	// still be refused here — without ever dialing the socket. Same message
+	// as the create-time gate, so the two read as one rule from either side.
+	ErrDockerNotAvailableInSaaS = errors.New("docker checks are not available on this deployment")
 
 	// ErrCheckerPanic wraps a recovered panic from inside a checker's
 	// Execute call (spec 2026-07-05-05 D2). The runner survives; the panic
@@ -199,6 +208,11 @@ type CheckWorker struct {
 	internalCheckUID string // UID of the internal check for this worker
 	defaultOrgUID    string // UID of the default organization
 
+	// egressGuard is the outbound-connection policy of this process's checks
+	// (spec 2026-09-25-19), put on every execution context. Nil allows
+	// everything (tests building a CheckWorker by hand).
+	egressGuard *egress.Guard
+
 	// faults classifies fetch errors and, on a structural one, takes the
 	// process down. Nil is safe (dbfault.Latch has nil-receiver methods), which
 	// is what agent mode and tests rely on: an agent has no database of its
@@ -220,6 +234,43 @@ func NewCheckWorker(
 	svc *services.Registry,
 	checkJobSvc checkjobsvc.Service,
 ) *CheckWorker {
+	incidentSvc, attachmentSvc := newInProcessIncidentService(dbService, cfg, svc)
+
+	// Path diagnostics (spec 2026-08-21-10), same argument as the screenshots
+	// (see newInProcessIncidentService): this is the process that ran the
+	// probe, so this is the only process whose route to the target is the one
+	// that just failed.
+	//
+	// The local-worker test is unconditionally true here BY CONSTRUCTION, not
+	// by luck: this incident service is reachable only through the
+	// DirectBackend below, whose single caller is this worker. Every result it
+	// ever sees was produced a few milliseconds ago, in this process.
+	traceDispatcher := tracediag.New(cfg.Checkers.TraceroutePolicy(), attachmentSvc, slog.Default())
+	traceDispatcher.SetLocalWorkerResolver(tracediag.LocalWorkerFunc(func(string) bool { return true }))
+	incidentSvc.SetTraceRequester(traceDispatcher)
+
+	directBackend := backend.NewDirectBackend(
+		dbService, checkJobSvc, incidentSvc, svc.EventNotifier, svc.Credentials,
+	)
+
+	worker := newCheckWorker(cfg, directBackend)
+	worker.dbService = dbService
+	worker.services = svc
+
+	// A local trace runs from this process, so it answers to this process's
+	// egress policy: never trace towards an address a check was refused.
+	traceDispatcher.SetEgressGuard(worker.egressGuard)
+
+	return worker
+}
+
+// newInProcessIncidentService builds the incident service a result written in
+// THIS process goes through: the check worker's, and the jobs node's passive
+// evaluator's (spec 2026-09-25-04). Returns the attachment store too, which
+// the check worker's trace dispatcher also writes to.
+func newInProcessIncidentService(
+	dbService db.Service, cfg *config.Config, svc *services.Registry,
+) (*incidents.Service, *attachments.Service) {
 	incidentSvc := incidents.NewService(dbService, svc.Jobs, clock.Real{}, svc.Realtime)
 	incidentSvc.SetDefaultCheckTimeout(cfg.Server.Scheduling.CheckTimeout())
 
@@ -246,27 +297,7 @@ func NewCheckWorker(
 	attachmentSvc := attachments.NewService(files.NewService(dbService, cfg), dbService, cfg)
 	incidentSvc.SetAttachmentStore(attachmentSvc)
 
-	// Path diagnostics (spec 2026-08-21-10), same argument as the screenshots
-	// above: this is the process that ran the probe, so this is the only
-	// process whose route to the target is the one that just failed.
-	//
-	// The local-worker test is unconditionally true here BY CONSTRUCTION, not
-	// by luck: this incident service is reachable only through the
-	// DirectBackend below, whose single caller is this worker. Every result it
-	// ever sees was produced a few milliseconds ago, in this process.
-	traceDispatcher := tracediag.New(cfg.Checkers.TraceroutePolicy(), attachmentSvc, slog.Default())
-	traceDispatcher.SetLocalWorkerResolver(tracediag.LocalWorkerFunc(func(string) bool { return true }))
-	incidentSvc.SetTraceRequester(traceDispatcher)
-
-	directBackend := backend.NewDirectBackend(
-		dbService, checkJobSvc, incidentSvc, svc.EventNotifier, svc.Credentials,
-	)
-
-	worker := newCheckWorker(cfg, directBackend)
-	worker.dbService = dbService
-	worker.services = svc
-
-	return worker
+	return incidentSvc, attachmentSvc
 }
 
 // NewAgentCheckWorker creates a check runner for agent mode: no database, no
@@ -329,8 +360,9 @@ func newCheckWorker(cfg *config.Config, workerBackend backend.WorkerBackend) *Ch
 	// which never runs that code — i.e. exactly where checks execute.
 	//
 	// Sibling construction site: app/server.go's `activationResolver`. Both are
-	// checkerdef.NewActivationResolver(&cfg.Checkers) — the same constructor
-	// over the same pure input — so they cannot diverge; keep them in step.
+	// checkerdef.NewActivationResolver(&cfg.Checkers, cfg.Deployment.Mode) —
+	// the same constructor over the same pure input — so they cannot diverge;
+	// keep them in step.
 	//
 	// nil orgDisabled: server-level only. The JS runtime has no org identity,
 	// so per-org overrides are not enforced through this gate (see checkjs).
@@ -338,7 +370,7 @@ func newCheckWorker(cfg *config.Config, workerBackend backend.WorkerBackend) *Ch
 	// Agent semantics: an agent reads its OWN checkers.* config, not the
 	// control plane's, so it enforces the configuration of the host it runs on.
 	// An agent left at defaults enables every type.
-	activation := checkerdef.NewActivationResolver(&cfg.Checkers)
+	activation := checkerdef.NewActivationResolver(&cfg.Checkers, cfg.Deployment.Mode)
 	checkjs.TypeEnabled = func(checkType checkerdef.CheckType) bool {
 		return activation.IsTypeEnabled(checkType, nil)
 	}
@@ -347,6 +379,7 @@ func newCheckWorker(cfg *config.Config, workerBackend backend.WorkerBackend) *Ch
 		backend:     workerBackend,
 		config:      cfg,
 		logger:      logger,
+		egressGuard: newEgressGuard(cfg, logger),
 		stats:       stats.NewProcessingStats(time.Minute, time.Minute, logger),
 		getChecker:  registry.GetChecker,
 		parseConfig: registry.ParseConfig,
@@ -1025,10 +1058,37 @@ func (r *CheckWorker) executeJob(
 	// default makes a count-1 burst identical to the pre-burst budget.
 	checkTimeout = resolveBurstBudget(checkConfig, checkTimeout)
 
+	// "Capture now" (spec 2026-09-25-34): the claim consumed a pending
+	// on-demand request, so this run keeps its screenshot whatever the
+	// verdict. Read here, ahead of the execution-budget sizing below, because
+	// a forced capture also needs the worker's extra execution budget (spec
+	// 2026-09-25-35) — not only the context marker applied further down.
+	forcedCapture := checkJob.CaptureRequestedAt != nil
+
+	// Some checkers need wall-clock time AFTER their own verdict is decided —
+	// a browser check's screenshot capture is taken against a session the
+	// checker deliberately keeps alive past its probe timeout (spec
+	// 2026-09-25-35). Declared through the optional checkerdef.ExtraBudgeter
+	// interface so the worker can extend the HARD execution deadline below
+	// without ever growing the budget threaded into the checker's own config
+	// (checkTimeout, unchanged): only the ceiling moves, so extra time here
+	// can never let a slow target answer that would otherwise have timed out.
+	extraBudget := resolveExtraBudget(checkConfig, forcedCapture)
+
 	// 3. Get checker from registry
 	checker, ok := r.getChecker(checkerdef.CheckType(checkType))
 	if !ok {
 		return r.saveErrorResult(ctx, checkJob, fmt.Errorf("%w: %s", ErrCheckerNotFound, checkType))
+	}
+
+	// docker checks hand whoever executes them the local Docker socket (spec
+	// 2026-09-25-22). Gated on THIS process's role, not the check row: an
+	// agent-mode worker (a customer's own private location) is exactly the
+	// supported way to run docker checks under SaaS and must keep executing
+	// them, while a SaaS shared worker refuses the job outright — no dial, no
+	// socket contacted — before it ever reaches the checker.
+	if checkerdef.CheckType(checkType) == checkerdef.CheckTypeDocker && r.dockerBlockedOnThisWorker() {
+		return r.saveErrorResult(ctx, checkJob, ErrDockerNotAvailableInSaaS)
 	}
 
 	if deferred, rateErr := r.applyRateLimitGate(ctx, logger, checkJob); deferred {
@@ -1050,18 +1110,30 @@ func (r *CheckWorker) executeJob(
 	// ~16s global context; legacy over-cap values are clamped defensively at
 	// 30s inside perCheckTimeout so they can't buy a 61s context.
 	//
-	// The execution *context* deadline is checkTimeout + 1s (spec 2026-07-10-11):
-	// the +1s margin lets a checker that honors its own timeout report a clean
-	// StatusTimeout result before the hard context cancellation, instead of the
-	// generic context-deadline-exceeded. The budget handed down to the checker
-	// stays checkTimeout (no +1s), so the checker-level timeout always fires
-	// first.
-	execCtx, cancel := context.WithTimeout(context.Background(), checkTimeout+time.Second)
+	// The execution *context* deadline is checkTimeout + 1s + extraBudget
+	// (spec 2026-07-10-11, extraBudget added by spec 2026-09-25-35): the +1s
+	// margin lets a checker that honors its own timeout report a clean
+	// StatusTimeout result before the hard context cancellation, instead of
+	// the generic context-deadline-exceeded; extraBudget is the wall-clock a
+	// checker declared (via checkerdef.ExtraBudgeter) it needs AFTER that
+	// verdict — e.g. to photograph a session it is keeping alive past the
+	// probe. The budget handed down to the checker stays checkTimeout (no
+	// +1s, no extraBudget), so the checker-level timeout always fires first,
+	// and the watchdog below is sized off the SAME extended budget so it
+	// cannot abandon a checker that is legitimately using the extra time.
+	hardBudget := checkTimeout + extraBudget
+
+	execCtx, cancel := context.WithTimeout(context.Background(), hardBudget+time.Second)
 	defer cancel()
 
 	// Detaching from ctx above drops its values; carry the tunnel-resolver
 	// override across so a per-execution resolver is still honored.
 	execCtx = sshtunnel.CarryResolver(ctx, execCtx)
+
+	// Egress policy (spec 2026-09-25-19): every outbound connection of this
+	// execution — the SSH bastion included — goes through the worker's guard,
+	// and any refusal is recorded so the result reports it uniformly.
+	execCtx, egressDenials := r.withEgress(execCtx)
 
 	// Tunnel-capable checks (`tunnelCheckUid` in config) dial their probe
 	// through an SSH check's connection. A fresh session is established per
@@ -1076,7 +1148,7 @@ func (r *CheckWorker) executeJob(
 		logger.WarnContext(ctx, "Tunnel setup failed; skipping probe",
 			"check_uid", checkJob.CheckUID, "error", tunnelErr)
 
-		return r.saveTunnelFailureResult(ctx, checkJob, tunnelErr, tunnel)
+		return r.saveTunnelFailureResult(ctx, checkJob, tunnelErr, tunnel, egressDenials)
 	}
 
 	if tunnel != nil {
@@ -1104,8 +1176,14 @@ func (r *CheckWorker) executeJob(
 
 	execCtx = applySMTPDeliveryContext(execCtx, checkJob)
 
+	// "Capture now" (spec 2026-09-25-34): forcedCapture was resolved above,
+	// ahead of the execution-budget sizing that also depends on it.
+	if forcedCapture {
+		execCtx = checkerdef.WithForcedCapture(execCtx)
+	}
+
 	execStart := time.Now()
-	result, err := r.runCheckerGuarded(execCtx, logger, checker, checkConfig, checkJob, checkTimeout, startTime)
+	result, err := r.runCheckerGuarded(execCtx, logger, checker, checkConfig, checkJob, hardBudget, startTime)
 	prommetrics.RecordCheckStage("execute", time.Since(execStart).Seconds())
 	if err != nil {
 		duration := time.Since(startTime)
@@ -1137,6 +1215,9 @@ func (r *CheckWorker) executeJob(
 	// graphs stay about the target rather than about SSH handshakes), and
 	// re-classify a failure the bastion itself caused.
 	tunnel.annotate(result)
+
+	// A refused destination wins over whatever the checker made of it.
+	r.applyEgressDenial(ctx, checkJob, result, egressDenials)
 
 	// 5. Save result
 	// Use a fallback context for cleanup operations if the main context is canceled
@@ -1240,6 +1321,28 @@ func resolveBurstBudget(checkConfig checkerdef.Config, checkTimeout time.Duratio
 	}
 
 	return checkTimeout
+}
+
+// resolveExtraBudget returns the extra wall-clock a checker's config declares
+// it needs beyond its own probe timeout for work that happens AFTER the
+// verdict — a browser check's screenshot capture is the motivating case (spec
+// 2026-09-25-35) — when the config implements checkerdef.ExtraBudgeter.
+// Configs that don't implement it need none, and this only ever GROWS the
+// hard execution deadline: the budget threaded into the checker's own config
+// is untouched, so a slow target can never buy itself extra time to answer
+// through this path.
+//
+// forcedCapture is threaded through rather than read off the config, because
+// whether a capture is FORCED is a property of the claimed job (an on-demand
+// "Capture now" request, spec 2026-09-25-34) — the config alone cannot know
+// it.
+func resolveExtraBudget(checkConfig checkerdef.Config, forcedCapture bool) time.Duration {
+	extra, ok := checkConfig.(checkerdef.ExtraBudgeter)
+	if !ok {
+		return 0
+	}
+
+	return extra.ExtraBudget(forcedCapture)
 }
 
 // applySMTPDeliveryContext marks execCtx as a real, dispatched SMTP check job
@@ -1402,6 +1505,18 @@ func (r *CheckWorker) abandonCheckerExecution(
 	}, nil
 }
 
+// markOnDemandCapture stamps the capture of a "Capture now" run (spec
+// 2026-09-25-34) so the server stores it under the check even when the run was
+// healthy. The stamp rides the agent marker too (Screenshot.OnDemand is
+// serialized), so a deported agent's upload is routed the same way.
+func markOnDemandCapture(checkJob *models.CheckJob, diagnostics *checkerdef.Diagnostics) {
+	if checkJob.CaptureRequestedAt == nil || diagnostics == nil || diagnostics.Screenshot == nil {
+		return
+	}
+
+	diagnostics.Screenshot.OnDemand = true
+}
+
 // buildSubmitRequest assembles the terminal backend write for an
 // actively-probed check: the result row fields plus the scheduling-state
 // release folding the new cost and delay EWMAs, the recomputed
@@ -1430,6 +1545,8 @@ func (r *CheckWorker) buildSubmitRequest(
 		NextScheduledAt:      nextScheduledAt,
 	})
 
+	markOnDemandCapture(checkJob, result.Diagnostics)
+
 	return &backend.SubmitResultRequest{
 		Status:          int(result.Status),
 		Duration:        float32(result.Duration.Seconds() * 1000),
@@ -1456,6 +1573,15 @@ func (r *CheckWorker) resolveResultRegion(checkJob *models.CheckJob) *string {
 	}
 
 	return r.getWorker().Region
+}
+
+// dockerBlockedOnThisWorker reports whether THIS process must refuse a docker
+// job rather than execute it: a SaaS shared worker, never a deported agent
+// (spec 2026-09-25-22). Named function rather than an inline expression
+// because executeJob shadows the `config` package identifier with a local
+// variable of the same name a few lines above the call site.
+func (r *CheckWorker) dockerBlockedOnThisWorker() bool {
+	return !r.config.IsAgentMode() && r.config.Deployment.Mode == config.DeploymentModeSaaS
 }
 
 // saveErrorResult submits an error result (with a plain lease release) when
@@ -1688,31 +1814,103 @@ func passiveEvaluation(
 	return status, output
 }
 
-// executePassiveJob handles passive check jobs (heartbeat, email).
-// Instead of making a network request, it inspects whether a recent inbound
-// signal landed within the check's period.
-func (r *CheckWorker) executePassiveJob(ctx context.Context, logger *slog.Logger, checkJob *models.CheckJob) error {
+// passiveFirstSignalGracePeriods is how long, in periods after created_at, a
+// passive check that has NEVER received a signal stays `created` instead of
+// going Down (spec 2026-09-25-04 §3). Reporting "No heartbeat received" at the
+// first evaluation paged for a sender that was being deployed minutes later;
+// two periods leave room for that, and a sender that is never set up still
+// alerts right after. Deliberately under the freshness threshold (3 × period),
+// so the grace can never read as stale.
+const passiveFirstSignalGracePeriods = 2
+
+// inFirstSignalGrace reports whether a passive evaluation is still inside the
+// first-signal grace: no signal on record at all, and the check younger than
+// passiveFirstSignalGracePeriods periods. Once any signal has arrived the
+// normal rules apply, whatever the check's age. A nil check (not attached to
+// the job) gets no grace.
+//
+// "No signal on record" is NOT just "no raw signal row": raw rows are rolled
+// up and deleted after their retention window (aggregation.retention_raw,
+// default 24h), so a heartbeat with a period at or beyond that window can
+// have its one and only signal's raw row disappear while the check is still
+// younger than the grace window. Reading lastSignal alone would then
+// re-open the grace it already used, delaying the Down transition by up to
+// one more period. check.LastResultAt is denormalized specifically to
+// survive rollup (it is written by incidents.ProcessCheckResult for every
+// real result, including the ingest's own beat, and is never rolled up), so
+// it is the durable half of "has a signal ever arrived".
+func inFirstSignalGrace(check *models.Check, lastSignal *models.Result, period time.Duration, now time.Time) bool {
+	if check == nil || period <= 0 {
+		return false
+	}
+
+	if lastSignal != nil || check.LastResultAt != nil {
+		return false
+	}
+
+	return now.Before(check.CreatedAt.Add(passiveFirstSignalGracePeriods * period))
+}
+
+// passiveVerdict is the evaluation of one passive job, shared by the jobs
+// node's PassiveEvaluator (the only production path, spec 2026-09-25-04) and
+// CheckWorker's defensive passive branch. It reads the newest INBOUND SIGNAL
+// and returns the row to write. grace=true means "inside the first-signal
+// grace: write nothing, just move the schedule on".
+//
+// Reading "the newest raw row" here (the pre-2026-09-02-03 behavior) was
+// self-referential: every evaluation writes a raw row of its own, so from the
+// second tick after a beat onwards the evaluator read its own predecessor.
+// `elapsed` then measured the gap between two consecutive evaluations (≈
+// period ± claim jitter) rather than the gap since the beat, which made the
+// overdue branch a per-tick coin flip, reported the previous evaluation's
+// timestamp as lastSignalAt, and made the stale-run branch unreachable.
+func passiveVerdict(
+	ctx context.Context, workerBackend backend.WorkerBackend, checkJob *models.CheckJob, now time.Time,
+) (checkerdef.Status, map[string]any, bool, error) {
+	// Dispatched by check type, inside the one passive loop (spec
+	// 2026-09-25-05): the private-location monitor has no inbound signal, it
+	// counts the location's connected agents.
+	if checkerdef.CheckType(checkJob.Type) == checkerdef.CheckTypePrivateLocation {
+		return privateLocationVerdict(ctx, workerBackend, checkJob, now)
+	}
+
 	period := time.Duration(checkJob.Period)
 	noun := passiveSignalNoun(checkerdef.CheckType(checkJob.Type))
 
-	// Get the latest INBOUND SIGNAL for this check — the last heartbeat POST
-	// or incoming email, never one of this evaluation's own previous rows.
-	//
-	// Reading "the newest raw row" here (the pre-2026-09-02-03 behavior) was
-	// self-referential: every evaluation writes a raw row of its own through
-	// SubmitResult, so from the second tick after a beat onwards the evaluator
-	// read its own predecessor. `elapsed` then measured the gap between two
-	// consecutive evaluations (≈ period ± claim jitter) rather than the gap
-	// since the beat, which made the overdue branch below a per-tick coin
-	// flip, reported the previous evaluation's timestamp as lastSignalAt, and
-	// made the stale-run branch unreachable — each Running evaluation
-	// re-anchored runStarted on itself.
-	lastSignals, err := r.backend.LastSignals(ctx, checkJob.OrganizationUID, []string{checkJob.CheckUID})
+	lastSignals, err := workerBackend.LastSignals(ctx, checkJob.OrganizationUID, []string{checkJob.CheckUID})
 	if err != nil {
-		return r.saveErrorResult(ctx, checkJob, fmt.Errorf("failed to get last signal: %w", err))
+		return 0, nil, false, fmt.Errorf("failed to get last signal: %w", err)
 	}
 
-	status, output := passiveEvaluation(noun, period, lastSignals[checkJob.CheckUID])
+	lastSignal := lastSignals[checkJob.CheckUID]
+
+	if inFirstSignalGrace(checkJob.Check, lastSignal, period, now) {
+		return 0, nil, true, nil
+	}
+
+	status, output := passiveEvaluation(noun, period, lastSignal)
+
+	return status, output, false, nil
+}
+
+// executePassiveJob handles a passive job that reached a CHECK WORKER.
+//
+// Defensive only. Since spec 2026-09-25-04 no production claim routes a
+// passive job here: every cloud and agent claim excludes passive types, and
+// the jobs node's PassiveEvaluator is their only claimer. The branch stays so
+// a passive row that somehow reached a worker is still evaluated correctly
+// rather than handed to a checker that makes an outbound request.
+func (r *CheckWorker) executePassiveJob(ctx context.Context, logger *slog.Logger, checkJob *models.CheckJob) error {
+	status, output, grace, err := passiveVerdict(ctx, r.backend, checkJob, time.Now())
+	if err != nil {
+		return r.saveErrorResult(ctx, checkJob, err)
+	}
+
+	if grace {
+		// Nothing to write: the check stays `created`. The rate-limit release
+		// is the backend's only "release without a result" call.
+		return r.backend.DeferRateLimited(ctx, checkJob, r.getWorker().UID, r.calculateNextScheduledAt(checkJob))
+	}
 
 	result := checkerdef.Result{
 		Status:   status,

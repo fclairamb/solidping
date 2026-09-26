@@ -95,29 +95,38 @@ const DEFAULT_LABELS: Record<PageStatus, string> = {
 
 const POLL_INTERVAL_MS = 60_000;
 
-/** Static stylesheet — no interpolation of any untrusted value, ever. */
+/**
+ * Static stylesheet — no interpolation of any untrusted value, ever.
+ *
+ * The neutrals are hex copies of the electric-identity tokens in
+ * src/index.css (spec 2026-09-24-04): light --card / --foreground / --border
+ * (#ffffff / #09121f / #dee3eb), dark --card / --foreground / --border
+ * (#0c131e / #edf2f9 / #1f293a). The shadow DOM cannot read the page's
+ * tokens, so keep these in sync by hand. The status dot colors are status,
+ * not identity: only the maintenance dot follows --primary (#1e64ef).
+ */
 const STYLES = `
 :host { all: initial; display: inline-block; }
 .sp-root {
   --sp-bg: #ffffff;
-  --sp-fg: #1f2937;
-  --sp-border: #e5e7eb;
+  --sp-fg: #09121f;
+  --sp-border: #dee3eb;
   --sp-shadow: 0 1px 2px rgba(0,0,0,.08);
   display: inline-block;
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
     Helvetica, Arial, sans-serif;
 }
 .sp-root.sp-dark {
-  --sp-bg: #111827;
-  --sp-fg: #e5e7eb;
-  --sp-border: #374151;
+  --sp-bg: #0c131e;
+  --sp-fg: #edf2f9;
+  --sp-border: #1f293a;
   --sp-shadow: 0 1px 2px rgba(0,0,0,.4);
 }
 @media (prefers-color-scheme: dark) {
   .sp-root.sp-auto {
-    --sp-bg: #111827;
-    --sp-fg: #e5e7eb;
-    --sp-border: #374151;
+    --sp-bg: #0c131e;
+    --sp-fg: #edf2f9;
+    --sp-border: #1f293a;
     --sp-shadow: 0 1px 2px rgba(0,0,0,.4);
   }
 }
@@ -164,7 +173,7 @@ a.sp-pill:hover { border-color: var(--sp-dot-color); }
 .sp-operational { --sp-dot-color: #16a34a; --sp-dot-halo: rgba(22,163,74,.18); }
 .sp-degraded    { --sp-dot-color: #d97706; --sp-dot-halo: rgba(217,119,6,.18); }
 .sp-down        { --sp-dot-color: #dc2626; --sp-dot-halo: rgba(220,38,38,.18); }
-.sp-maintenance { --sp-dot-color: #2563eb; --sp-dot-halo: rgba(37,99,235,.18); }
+.sp-maintenance { --sp-dot-color: #1e64ef; --sp-dot-halo: rgba(30,100,239,.18); }
 .sp-unknown     { --sp-dot-color: #9ca3af; --sp-dot-halo: rgba(156,163,175,.18); }
 `;
 

@@ -19,6 +19,8 @@
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-muted-foreground: var(--sidebar-muted-foreground);
   --color-sidebar: var(--sidebar);
+  --color-aurora-cyan: var(--aurora-cyan);
+  --color-aurora-accent: var(--aurora-accent);
   --color-status-ok: var(--status-ok);
   --color-status-ok-foreground: var(--status-ok-foreground);
   --color-status-warning: var(--status-warning);
@@ -35,6 +37,7 @@
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -158,8 +161,19 @@
   --sidebar-border: oklch(0.27 0.05 262);
   --sidebar-ring: oklch(0.72 0.15 252);
 
-  /* Destructive: Red */
-  --destructive: oklch(0.6 0.22 25);
+  /* Aurora panel (spec 2026-09-24-03): the always-dark marketing surface of
+     the auth screens, sitting on the sidebar navy. Declared on :root only, so
+     both themes inherit the same values (the panel is dark in both).
+     --aurora-cyan is the top-left glow blob and the start of the wash;
+     --aurora-accent is the luminous cyan of the headline's highlighted word
+     and the feature check icons, readable on the navy. */
+  --aurora-cyan: oklch(0.7 0.15 225);
+  --aurora-accent: oklch(0.85 0.12 220);
+
+  /* Destructive: Red. Darkened from 0.6 so a white label on the fill
+     clears 4.5:1 (see src/theme-tokens.test.ts). */
+  --destructive: oklch(0.57 0.22 25);
+  --destructive-foreground: oklch(1 0 0);
 
   /* Status colors */
   --status-ok: oklch(0.65 0.2 145);
@@ -245,7 +259,13 @@
 
   /* No --sidebar-* here, on purpose: see :root.dark below. */
 
+  /* Unchanged from light's pre-spec value: this token is also the color of
+     ~197 text-destructive usages on dark surfaces, which stay >= 4.5:1 at
+     0.65. The white destructive-button label gets its contrast from a
+     darker FILL (button.tsx's dark:bg-destructive/80 / /70), not from
+     darkening this token. */
   --destructive: oklch(0.65 0.2 25);
+  --destructive-foreground: oklch(1 0 0);
 
   --status-ok: oklch(0.7 0.18 145);
   --status-ok-foreground: oklch(0.8 0.15 145);

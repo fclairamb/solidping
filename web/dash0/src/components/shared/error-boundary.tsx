@@ -10,6 +10,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { AlertTriangle, RotateCw } from "lucide-react";
+import { captureException } from "@/lib/analytics";
 
 /**
  * Presentational error card shared by every error surface: the root
@@ -79,10 +80,18 @@ export function RouteErrorFallback({ error, reset }: ErrorComponentProps) {
   const router = useRouter();
 
   useEffect(() => {
+    // Report to PostHog error tracking FIRST, with the route id — before the
+    // console.error below, so its capture_console_errors autocapture of the
+    // same error (no route context, poorer) is recognized as a duplicate and
+    // dropped by dedupeAutocapturedBoundaryExceptions in analytics.ts.
+    const matches = router.state.matches;
+    captureException(error, {
+      routeId: matches[matches.length - 1]?.routeId,
+    });
     // Feed the bug-report ring buffer (see feedback/errorCollector.ts),
     // mirroring what the root boundary's componentDidCatch does.
     console.error("Route error boundary caught an error:", error);
-  }, [error]);
+  }, [error, router]);
 
   const onRetry = () => {
     void router.invalidate();
@@ -121,6 +130,12 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
+    // Report to PostHog error tracking FIRST, with the component stack —
+    // before the console.error below, so its capture_console_errors
+    // autocapture of the same error (no component-stack context, poorer) is
+    // recognized as a duplicate and dropped by
+    // dedupeAutocapturedBoundaryExceptions in analytics.ts.
+    captureException(error, { componentStack: info.componentStack ?? undefined });
     console.error("ErrorBoundary caught an error:", error, info);
   }
 

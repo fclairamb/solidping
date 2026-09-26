@@ -54,7 +54,8 @@
     "createSchedule": "einen erstellen",
     "createConnection": "einen erstellen",
     "targetMissing": "Das zuvor ausgewählte {{kind}} existiert nicht mehr. Wähle ein anderes oder entferne dieses Ziel.",
-    "targetMissingShort": "fehlt"
+    "targetMissingShort": "fehlt",
+    "namePlaceholder": "Produktions-Alarmierung"
   },
   "targets": {
     "user": "Benutzer",
@@ -66,6 +67,8 @@
     "title": "Eskalations-Zeitleiste",
     "fired": "Ausgelöst",
     "pending": "Ausstehend",
-    "failed": "Eskalation fehlgeschlagen"
+    "failed": "Eskalation fehlgeschlagen",
+    "stepSuffix": "· Stufe {{step}}",
+    "cycleSuffix": "· Durchlauf {{cycle}}"
   }
 }

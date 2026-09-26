@@ -119,7 +119,31 @@ func (r *StartupJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) error 
 		return err
 	}
 
+	// Every private location owns a liveness monitor (spec 2026-09-25-05).
+	// Best effort: a failure here must not stop the node from starting.
+	r.backfillPrivateLocationMonitors(ctx, jctx)
+
 	return r.ensureGlobalSweeps(ctx, jctx)
+}
+
+// backfillPrivateLocationMonitors creates the liveness monitor of every
+// existing private location that has none (and whose org did not opt out),
+// and removes a monitor whose location is gone. Idempotent.
+func (r *StartupJobRun) backfillPrivateLocationMonitors(ctx context.Context, jctx *jobdef.JobContext) {
+	if jctx.Services == nil || jctx.Services.PrivateLocationMonitors == nil {
+		return
+	}
+
+	created, err := jctx.Services.PrivateLocationMonitors.BackfillPrivateLocationMonitors(ctx)
+	if err != nil {
+		jctx.Logger.WarnContext(ctx, "Private-location monitor backfill failed", "error", err)
+
+		return
+	}
+
+	if created > 0 {
+		jctx.Logger.InfoContext(ctx, "Created private-location liveness monitors", "count", created)
+	}
 }
 
 // ensurePlatformWatchdogJob provisions the global platform watchdog. The job
@@ -172,10 +196,43 @@ func (r *StartupJobRun) ensureGlobalSweeps(ctx context.Context, jctx *jobdef.Job
 		return err
 	}
 
+	// Check freshness, every minute (spec 2026-09-25-02).
+	if err := r.ensureGlobalSweep(ctx, jctx, jobdef.JobTypeCheckFreshnessSweep, "check freshness sweep"); err != nil {
+		return err
+	}
+
+	// Region liveness, every minute (spec 2026-09-25-03): a dark region is
+	// reported within minutes, whatever the watchdog config says.
+	if err := r.ensureGlobalSweep(ctx, jctx, jobdef.JobTypeRegionHealthSweep, "region health sweep"); err != nil {
+		return err
+	}
+
 	// The platform watchdog, hourly: an instance that went blind between two
 	// deploys is reported on the first cycle after the restart rather than an
 	// hour later (spec 2026-08-24-10).
 	return r.ensurePlatformWatchdogJob(ctx, jctx)
+}
+
+// ensureGlobalSweep provisions one global self-rescheduling sweep. CreateJob
+// dedupes on type+config+org+pending, so a restart won't stack a duplicate.
+func (r *StartupJobRun) ensureGlobalSweep(
+	ctx context.Context, jctx *jobdef.JobContext, jobType jobdef.JobType, what string,
+) error {
+	log := jctx.Logger
+
+	if jctx.Services == nil || jctx.Services.Jobs == nil {
+		log.InfoContext(ctx, "Skipping sweep provisioning (services not available)", "sweep", what)
+
+		return nil
+	}
+
+	if _, err := jctx.Services.Jobs.CreateJob(ctx, "", string(jobType), nil, nil); err != nil {
+		log.InfoContext(ctx, "Failed to create sweep job (non-fatal)", "sweep", what, "error", err)
+	} else {
+		log.InfoContext(ctx, "Ensured sweep job exists", "sweep", what)
+	}
+
+	return nil
 }
 
 // ensureSLOBurnEvalJob provisions the global SLO burn-rate evaluation sweep.

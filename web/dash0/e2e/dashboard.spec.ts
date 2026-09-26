@@ -748,6 +748,95 @@ test.describe("Dashboard", () => {
     );
   });
 
+  // Spec 2026-09-25-32: the dashboard card and the Events page now share one
+  // renderer (EventLogTable), so the SAME event type must render the SAME
+  // icon on both pages. lucide-react stamps every icon's SVG with a
+  // `lucide-<name>` class (createLucideIcon.mjs), so "lucide-cpu" is a stable
+  // handle for "this is the Cpu icon" regardless of which page rendered it. A
+  // regression back to the old emoji-based getEventIcon path on either page
+  // would swap this class for something else (or an emoji glyph) and fail.
+  test("Recent activity row shows the same icon as the matching Events page row", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const checkUid = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+
+    await mockDashboard(page, {
+      checks: [{ uid: checkUid, name: "Icon Parity Check", status: "up" }],
+      incidents: [],
+      events: [
+        {
+          uid: "event-check-created-icon-parity",
+          eventType: "check.created",
+          actorType: "user",
+          checkUid,
+          payload: { check_name: "Icon Parity Check" },
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    });
+
+    await page.goto("orgs/test");
+    await page.waitForLoadState("networkidle");
+
+    const feed = page.getByTestId("recent-activity-footer");
+    await expect(feed).toBeVisible({ timeout: 10000 });
+
+    // The row also has a "Related" link with its own (differently-sized)
+    // Cpu icon, so scope to EventTypeLabel's own icon via its `size-4` class
+    // rather than matching either Cpu icon in the row.
+    const dashboardRow = page.getByRole("row", { name: /Check Created/ });
+    await expect(dashboardRow.locator("svg.lucide-cpu.size-4")).toBeVisible();
+
+    // Same mocked /events response backs the Events page's own query.
+    await page.goto("orgs/test/events");
+    await page.waitForLoadState("networkidle");
+
+    const eventsRow = page.getByRole("row", { name: /Check Created/ });
+    await expect(eventsRow.locator("svg.lucide-cpu.size-4")).toBeVisible();
+  });
+
+  // Spec 2026-09-25-32 proposal step 5: the shared table's Actor column hides
+  // below `md` specifically so the card never forces the PAGE to scroll
+  // sideways on a phone — the table itself may still scroll horizontally
+  // inside its own overflow-x-auto wrapper.
+  test("Recent activity card has no horizontal page overflow at 375px", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const checkUid = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+    const incidentUid = "cccccccc-cccc-cccc-cccc-cccccccccccc";
+
+    await mockDashboard(page, {
+      checks: [{ uid: checkUid, name: "Mobile Layout Check", status: "down" }],
+      incidents: [],
+      events: [
+        {
+          uid: "event-mobile-incident-created",
+          eventType: "incident.created",
+          actorType: "user",
+          actorName: "Bob Operator",
+          checkUid,
+          incidentUid,
+          payload: { check_name: "Mobile Layout Check" },
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    });
+
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto("orgs/test");
+    await page.waitForLoadState("networkidle");
+
+    const feed = page.getByTestId("recent-activity-footer");
+    await expect(feed).toBeVisible({ timeout: 10000 });
+
+    const hasPageOverflow = await page.evaluate(
+      () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+    );
+    expect(hasPageOverflow).toBe(false);
+  });
+
   test("Recent activity row for a historical incident event (no check_name) falls back to check_slug", async ({
     authenticatedPage,
   }) => {

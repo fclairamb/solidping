@@ -75,6 +75,48 @@ export interface UpdateCheckGroupRequest {
   escalationPolicyUid?: string;
 }
 
+/** One region's freshness for a check (spec 2026-09-25-02). */
+export interface RegionFreshness {
+  /** Region slug; "" for results that carry no region. */
+  region: string;
+  /** Newest real result from this region; null when none within raw retention. */
+  lastResultAt: string | null;
+  /** True when lastResultAt is older than the check's stale threshold, or missing. */
+  stale: boolean;
+  /**
+   * The region's newest reading (spec 2026-09-25-10). Kept for checks with
+   * two or more regions only.
+   */
+  status?: "up" | "warning" | "down" | "timeout" | "error";
+  /** When the region last crossed between failing and passing. */
+  statusSince?: string;
+}
+
+/**
+ * Multi-region quorum (spec 2026-09-25-10): how many of a check's regions
+ * must be failing, for the confirmation period, before it is down. The
+ * default is all regions for 1-2 regions and a majority for 3+.
+ */
+export type FailQuorum = "default" | "all" | "majority" | number;
+
+/**
+ * Present (detail, with=region_freshness) while some, but fewer than the
+ * quorum, of the check's current regions are failing: the check is `warning`
+ * and no incident opens.
+ */
+export interface RegionalIssue {
+  failingRegions: string[];
+  failQuorum: number;
+  regionCount: number;
+}
+
+/**
+ * Placement intent (spec 2026-09-25-06): `pinned` runs exactly from `regions`
+ * and never moves; `auto` lets the scheduler place the check on `regionCount`
+ * healthy regions and move it off a region that goes dark.
+ */
+export type CheckPlacement = "pinned" | "auto";
+
 export interface Check {
   uid: string;
   name?: string;
@@ -97,6 +139,7 @@ export interface Check {
     | "ssl"
     | "heartbeat"
     | "email"
+    | "private-location"
     | "domain"
     | "smtp"
     | "udp"
@@ -148,7 +191,18 @@ export interface Check {
    * Undefined when the check targets no private location.
    */
   needsReseal?: boolean;
+  /**
+   * Where the check runs. For a pinned check, the user's explicit list; for an
+   * automatically placed one, the CURRENT placement, chosen by the scheduler
+   * and rewritten when one of its regions goes dark (spec 2026-09-25-06).
+   */
   regions?: string[];
+  /** Placement intent (spec 2026-09-25-06). Absent on older servers = pinned. */
+  placement?: CheckPlacement;
+  /** Automatic placement only: how many regions run the check. */
+  regionCount?: number;
+  /** Automatic placement only: candidate cloud regions; absent = any. */
+  regionPool?: string[];
   /**
    * Optional inter-region scheduling offset override ("spread"), as
    * "HH:MM:SS". Present only when a non-default value is set — absent means
@@ -171,14 +225,11 @@ export interface Check {
   degradedSlowWindow?: number;
   slowThresholdMs?: number;
   /**
-   * Whether degraded detection may OPEN incidents on this check. Every check
-   * that predates the feature is off and runs as a DRY RUN instead, which only
-   * stamps `degradedWouldFireAt` — the banner on the check page and the
-   * `wouldHaveFired` filter on the list are what turn that into adoption.
+   * Whether degraded detection runs on this check. When false it is not
+   * evaluated at all. Checks that predate the feature are off, new checks
+   * are on. Turning it off resolves the check's open degraded incident.
    */
   degradedEnabled?: boolean;
-  /** When the dry run first saw a degraded condition. Absent = never. */
-  degradedWouldFireAt?: string | null;
   createdAt?: string;
   /**
    * The uid of whoever created this check, absent when nobody did — the
@@ -188,7 +239,35 @@ export interface Check {
    */
   createdBy?: string | null;
   updatedAt?: string;
-  status?: "up" | "down" | "validating" | "created" | "degraded" | "unknown";
+  status?:
+    | "up"
+    | "down"
+    | "validating"
+    | "warning"
+    | "stale"
+    | "created"
+    | "degraded"
+    | "unknown";
+  /** When the check entered its current status (spec 2026-09-25-02). */
+  statusChangedAt?: string;
+  /**
+   * Newest REAL result across every region — never an abandoned or lifecycle
+   * row. What "last checked" and "No data since" read.
+   */
+  lastResultAt?: string;
+  /** max(3 × period, 5 min), in seconds: silence longer than this is "No data". */
+  staleThresholdSeconds?: number;
+  /**
+   * Per-region newest real result (only with `with=region_freshness`): how a
+   * silent region shows up while another keeps the check fresh.
+   */
+  regionFreshness?: RegionFreshness[];
+  /** Multi-region quorum setting; absent on passive checks. */
+  failQuorum?: FailQuorum;
+  /** What failQuorum resolves to for the check's current regions. */
+  effectiveFailQuorum?: number;
+  /** The regional issue, when there is one (detail, with=region_freshness). */
+  regionalIssue?: RegionalIssue;
   lastResult?: {
     uid?: string;
     status?: "up" | "down" | "error" | "timeout" | "created" | "abandoned";
@@ -246,6 +325,12 @@ export interface RegionDefinition {
    * three-state ("yes" / "no" / "unknown"). Omitted entirely by older servers;
    * an absent map means "unknown", never "no" (spec 2026-08-15-11). */
   capabilities?: Record<string, string>;
+  /** Cloud regions only (spec 2026-09-25-03): `offline` while the server's
+   * region sweep holds the region dark — jobs assigned, no live worker. Absent
+   * on private regions and on older servers; absent means running. */
+  status?: "online" | "offline";
+  /** When an offline region's last worker was seen. */
+  offlineSince?: string;
 }
 
 export interface CreateCheckRequest {
@@ -253,6 +338,8 @@ export interface CreateCheckRequest {
    * 2026-08-21-10). `inherit` is what puts a check back under the org default;
    * omitting the field leaves it unchanged. */
   tracerouteOnFailure?: string;
+  /** Multi-region quorum (spec 2026-09-25-10); "default" resets it, omit leaves it unchanged. */
+  failQuorum?: FailQuorum;
   name?: string;
   slug?: string;
   description?: string;
@@ -267,6 +354,7 @@ export interface CreateCheckRequest {
     | "ssl"
     | "heartbeat"
     | "email"
+    | "private-location"
     | "domain"
     | "smtp"
     | "udp"
@@ -301,7 +389,12 @@ export interface CreateCheckRequest {
     | "prometheus"
     | "sleep";
   config: Record<string, unknown>;
+  /** An explicit list pins the check. Omit to let it be placed automatically. */
   regions?: string[];
+  /** Placement intent; omitted = inferred (regions given → pinned, else auto). */
+  placement?: CheckPlacement;
+  regionCount?: number;
+  regionPool?: string[];
   /** Omit to use the automatic default (period / region count). */
   regionSpread?: string;
   labels?: Record<string, string>;
@@ -336,6 +429,8 @@ export interface UpdateCheckRequest {
    * 2026-08-21-10). `inherit` is what puts a check back under the org default;
    * omitting the field leaves it unchanged. */
   tracerouteOnFailure?: string;
+  /** Multi-region quorum (spec 2026-09-25-10); "default" resets it, omit leaves it unchanged. */
+  failQuorum?: FailQuorum;
   name?: string;
   slug?: string;
   description?: string;
@@ -343,7 +438,12 @@ export interface UpdateCheckRequest {
   /** A UID assigns it, "" clears it (inherit), omit leaves unchanged. */
   escalationPolicyUid?: string;
   config?: Record<string, unknown>;
+  /** A non-empty list pins the check; [] puts it back on the default placement. */
   regions?: string[];
+  /** `auto` keeps the current count and still-healthy regions; `pinned` freezes them. */
+  placement?: CheckPlacement;
+  regionCount?: number;
+  regionPool?: string[];
   /** A duration string sets it, "" clears it back to automatic, omit leaves unchanged. */
   regionSpread?: string;
   labels?: Record<string, string>;
@@ -605,7 +705,7 @@ export interface IncidentDetail {
   escalatedAt?: string;
   resolvedAt?: string;
   resolvedBy?: string;
-  resolutionType?: "auto" | "manual" | "expired";
+  resolutionType?: "auto" | "manual" | "expired" | "escalated" | "disabled";
   failureCount?: number;
   relapseCount?: number;
   /**
@@ -667,8 +767,6 @@ function buildChecksUrl(
     checkGroupUid?: string;
     internal?: string;
     status?: string;
-    /** "true" restricts to the checks the degraded dry run has flagged. */
-    wouldHaveFired?: string;
     limit?: number;
     cursor?: string;
     /** Opt-in ordering. "group" = group sortOrder asc, ungrouped last, then
@@ -685,8 +783,6 @@ function buildChecksUrl(
     params.set("checkGroupUid", options.checkGroupUid);
   if (options?.internal) params.set("internal", options.internal);
   if (options?.status) params.set("status", options.status);
-  if (options?.wouldHaveFired)
-    params.set("wouldHaveFired", options.wouldHaveFired);
   if (options?.limit) params.set("limit", options.limit.toString());
   if (options?.cursor) params.set("cursor", options.cursor);
   if (options?.sort) params.set("sort", options.sort);
@@ -778,8 +874,6 @@ export function useInfiniteChecks(
     checkGroupUid?: string;
     internal?: string;
     status?: string;
-    /** "true" restricts to the checks the degraded dry run has flagged. */
-    wouldHaveFired?: string;
     limit?: number;
     /** Opt-in ordering; "group" loads in the page's display order. */
     sort?: string;
@@ -825,12 +919,14 @@ export function useCheck(
     // consumer (breadcrumb, detail page, edit form, badge picker) shares it,
     // so a live invalidation produces exactly one HTTP request. The `with`
     // embed is always requested so the superset payload (name + lastResult +
-    // lastStatusChange) satisfies every consumer; extra embeds are ignored by
-    // those that only need `name`.
+    // lastStatusChange + regionFreshness) satisfies every consumer; extra
+    // embeds are ignored by those that only need `name`. region_freshness is
+    // one grouped query over the check's raw rows (spec 2026-09-25-02): it is
+    // what names a silent region on the detail page.
     queryKey: ["check", org, uid],
     queryFn: async () =>
       apiFetch<Check>(
-        `/api/v1/orgs/${org}/checks/${uid}?with=last_result,last_status_change`,
+        `/api/v1/orgs/${org}/checks/${uid}?with=last_result,last_status_change,region_freshness`,
       ),
     enabled: !!org && !!uid,
     refetchInterval: options?.refetchInterval,
@@ -1002,6 +1098,125 @@ export function useCloneCheck(org: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["checks", org] });
       queryClient.invalidateQueries({ queryKey: ["checks", "infinite", org] });
+    },
+  });
+}
+
+/** One check switched to automatic placement (spec 2026-09-25-06). */
+export interface AutoPlacementItem {
+  uid: string;
+  slug?: string;
+  name?: string;
+  regions: string[];
+  regionCount: number;
+}
+
+/** Response of POST /checks/auto-placement. */
+export interface AutoPlacementResponse {
+  dryRun: boolean;
+  data: AutoPlacementItem[];
+  skipped: { uid: string; slug?: string; reason: string }[];
+}
+
+/** Dry-runs the checks list's bulk "Switch to automatic placement": which
+ * pinned checks would switch. Only fetched while the dialog is open. */
+export function useAutoPlacementPreview(org: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["autoPlacementPreview", org],
+    queryFn: () =>
+      apiFetch<AutoPlacementResponse>(`/api/v1/orgs/${org}/checks/auto-placement`, {
+        method: "POST",
+        body: JSON.stringify({ dryRun: true }),
+      }),
+    enabled: !!org && enabled,
+    staleTime: 0,
+  });
+}
+
+/** Switches every eligible pinned check (or the named ones) to automatic
+ * placement: same regions, same count, empty pool — only failover is gained. */
+export function useSwitchToAutoPlacement(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (checkUids?: string[]) =>
+      apiFetch<AutoPlacementResponse>(`/api/v1/orgs/${org}/checks/auto-placement`, {
+        method: "POST",
+        body: JSON.stringify(checkUids && checkUids.length > 0 ? { checkUids } : {}),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["checks", org] });
+      queryClient.invalidateQueries({ queryKey: ["checks", "infinite", org] });
+      queryClient.invalidateQueries({ queryKey: ["check", org] });
+      queryClient.invalidateQueries({ queryKey: ["autoPlacementPreview", org] });
+    },
+  });
+}
+
+/** One capture in a check's screenshot listing (spec 2026-09-25-34): an
+ * incident's screenshot or a check-scoped one. Operator-only evidence. */
+export interface CheckScreenshot {
+  uid: string;
+  mimeType: string;
+  size: number;
+  /** Relative signed URL: `/pub/files/<uid>?exp=…&sig=…`, valid 1 h. */
+  downloadUrl: string;
+  /** When the probe took the capture (for a private agent's upload: when the
+   * server stored it). */
+  capturedAt: string;
+  region?: string;
+  trigger?:
+    | "incident-open"
+    | "incident-reopen"
+    | "check-failure"
+    | "capture-now"
+    | "agent-upload";
+  /** The incident the capture belongs to; absent for a check-scoped capture. */
+  incidentUid?: string;
+}
+
+/** Response of POST …/screenshots/capture ("Capture now"). */
+export interface CheckScreenshotCaptureResponse {
+  region?: string;
+  requestedAt: string;
+}
+
+/** How many captures the check card shows (the latest plus the strip). */
+export const CHECK_SCREENSHOTS_LIMIT = 5;
+
+/** The signed download URLs expire after an hour; refetching well inside
+ * that keeps a long-open check page from rendering dead images. */
+const CHECK_SCREENSHOTS_REFRESH_MS = 20 * 60 * 1000;
+
+export function useCheckScreenshots(
+  org: string,
+  checkUid: string,
+  options: { enabled?: boolean; pollMs?: number } = {},
+) {
+  return useQuery({
+    queryKey: ["check-screenshots", org, checkUid],
+    queryFn: async () => {
+      const r = await apiFetch<{ data: CheckScreenshot[] }>(
+        `/api/v1/orgs/${org}/checks/${checkUid}/screenshots?limit=${CHECK_SCREENSHOTS_LIMIT}`,
+      );
+      return r.data;
+    },
+    enabled: (options.enabled ?? true) && !!org && !!checkUid,
+    refetchInterval: options.pollMs ?? CHECK_SCREENSHOTS_REFRESH_MS,
+  });
+}
+
+export function useCaptureCheckScreenshot(org: string, checkUid: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<CheckScreenshotCaptureResponse>(
+        `/api/v1/orgs/${org}/checks/${checkUid}/screenshots/capture`,
+        { method: "POST" },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["check-screenshots", org, checkUid] });
     },
   });
 }
@@ -1499,6 +1714,14 @@ export interface CheckAvailabilityPeriod {
   totalChecks: number;
   successfulChecks: number;
   availabilityPct: number | null;
+  /**
+   * Received ÷ expected probes over the monitored time, in [0, 1] (spec
+   * 2026-09-25-02). null when nothing was expected; absent on older servers.
+   */
+  coverage?: number | null;
+  /** The part of monitoredSeconds nobody measured — neither up nor down. */
+  unmeasuredSeconds?: number;
+  /** Probe-time downtime over MEASURED time only. */
   downtimeSeconds: number;
   incidents: CheckAvailabilityIncidents;
 }
@@ -4026,6 +4249,10 @@ export interface OrgSettings {
   // to every check whose own `tracerouteOnFailure` is `inherit`. Always
   // present, and true for an org that never set it.
   tracerouteOnFailure?: boolean;
+  // Origins allowed to frame this org's public status pages (spec
+  // 2026-09-25-28), rendered into the page's CSP frame-ancestors. Always
+  // present; empty means only the SolidPing origin itself may frame them.
+  statusPageAllowedEmbedOrigins?: string[];
 }
 
 export function useOrgSettings(org: string) {
@@ -4045,6 +4272,9 @@ export interface UpdateOrgSettingsRequest {
   defaultEscalationPolicyUid?: string;
   // Org-level default for path-trace-on-failure; omit to leave it untouched.
   tracerouteOnFailure?: boolean;
+  // Replaces the status-page embed allowlist; [] clears it; omit to leave it
+  // untouched. Each entry must be a scheme+host origin.
+  statusPageAllowedEmbedOrigins?: string[];
 }
 
 export function useUpdateOrgSettings(org: string) {
@@ -7291,9 +7521,29 @@ export interface PrivateRegion {
   /** Stored region string, org-relative, e.g. `@dc1`. */
   region: string;
   agentCount: number;
+  /** Active agents seen within the liveness window (spec 2026-09-25-05). */
+  onlineAgentCount?: number;
+  /** Overall state, from the same liveness rule as the location's liveness
+   * monitor: every active agent online, some, none, or no agent enrolled. */
+  state?: PrivateLocationState;
+  /** The check watching this location's agents, when it has one. */
+  livenessMonitor?: PrivateLocationMonitor;
+  /** The org turned the monitor off (deleted, which is remembered, or
+   * disabled). The page offers a one-click re-enable. */
+  livenessMonitorOff?: boolean;
   /** Egress families this location's LIVE agents report — today only `ipv6`,
    * three-state ("yes" / "no" / "unknown"). See spec 2026-08-15-11. */
   capabilities?: Record<string, string>;
+}
+
+export type PrivateLocationState = "online" | "degraded" | "offline" | "empty";
+
+export interface PrivateLocationMonitor {
+  uid: string;
+  slug: string;
+  enabled: boolean;
+  /** The check's status wire name (up, down, warning, created, …). */
+  status: string;
 }
 
 export interface AgentInfo {
@@ -7315,6 +7565,10 @@ export interface AgentInfo {
    * predating this feature, or one that has not sent a claim frame yet —
    * and must be rendered as unknown, never as drifted. */
   version?: string | null;
+  /** Active and seen within the liveness window — the same rule the
+   * location's liveness monitor uses, computed server-side (spec
+   * 2026-09-25-05). */
+  online?: boolean;
 }
 
 export interface EnrollmentToken {
@@ -7348,6 +7602,9 @@ export function usePrivateRegions(org: string) {
       return response.data || [];
     },
     enabled: !!org,
+    // Same cadence as the agent list: each location's online/offline state
+    // is live (spec 2026-09-25-05).
+    refetchInterval: 30_000,
   });
 }
 
@@ -7363,6 +7620,26 @@ export function useCreatePrivateRegion(org: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["private-regions", org] });
       queryClient.invalidateQueries({ queryKey: ["regions", org] });
+      // The location's liveness monitor was created with it.
+      queryClient.invalidateQueries({ queryKey: ["checks", org] });
+    },
+  });
+}
+
+/** One-click re-enable of a private location's liveness monitor (spec
+ * 2026-09-25-05): clears the opt-out and re-enables or recreates the check. */
+export function useEnableLivenessMonitor(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (slug: string) =>
+      apiFetch<PrivateLocationMonitor>(
+        `/api/v1/orgs/${org}/private-regions/${slug}/liveness-monitor`,
+        { method: "POST" },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["private-regions", org] });
+      queryClient.invalidateQueries({ queryKey: ["checks", org] });
     },
   });
 }
@@ -7381,6 +7658,8 @@ export function useDeletePrivateRegion(org: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["private-regions", org] });
       queryClient.invalidateQueries({ queryKey: ["regions", org] });
+      // Its liveness monitor was deleted with it.
+      queryClient.invalidateQueries({ queryKey: ["checks", org] });
     },
   });
 }
@@ -7838,6 +8117,12 @@ export interface SloStatusRow {
   budgetConsumedSeconds: number;
   budgetRemainingSeconds: number;
   excludedMaintenanceSeconds: number;
+  /**
+   * Received ÷ expected probes over the elapsed window, in [0, 1] (spec
+   * 2026-09-25-02). A low value means the attainment describes only part of
+   * the window — the rest was never measured. null/absent when unknown.
+   */
+  dataCoverage?: number | null;
   burnRate: number | null;
   projectedExhaustionAt: string | null;
   state: SloState;

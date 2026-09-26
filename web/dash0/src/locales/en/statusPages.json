@@ -257,7 +257,7 @@
     "description": "Your CSS is injected into the public page. Override the CSS custom properties below to re-theme it, or write any rules you like.",
     "cssLabel": "CSS",
     "placeholder": ":root {\n  --brand: #ff5500;\n}",
-    "limitsHint": "Up to 64 KB. @import is not allowed; external url() (fonts, images) is.",
+    "limitsHint": "Up to 64 KB. @import is not allowed, and url() only loads images and fonts from this site or data: URIs: external hosts are blocked by the page's security policy. Upload your logo under Branding instead.",
     "importRejected": "@import is not allowed — inline the rules instead.",
     "tooLarge": "Too large: the stylesheet must be at most 64 KB.",
     "save": "Save",

@@ -19,6 +19,12 @@ export interface ResourceCheckInfo {
   // rolls its status up from a count map with no timestamps, so the server
   // omits this rather than guessing, and the board omits the duration in turn.
   statusChangedAt?: string;
+  /**
+   * When the component was last actually measured — sent only when `status`
+   * is "stale", so the row can say "No data, last checked 13:41" (spec
+   * 2026-09-25-02). CHECK resources only.
+   */
+  lastResultAt?: string;
 }
 
 // AvailabilityPoint is a single bucket: a day in daily mode, an hour in 24h
@@ -29,6 +35,11 @@ export interface AvailabilityPoint {
   time?: string;
   availabilityPct: number;
   status: string;
+  /**
+   * How much of the bucket was actually measured, 0-100 (probes received ÷
+   * probes expected). Absent when nothing was expected (spec 2026-09-25-02).
+   */
+  coveragePct?: number;
 }
 
 /** The shared availability vocabulary — mirrors uptimebar's Status* constants. */

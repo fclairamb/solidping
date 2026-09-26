@@ -56,7 +56,17 @@
     },
     "defaultEscalation": "Standard-Eskalationsrichtlinie",
     "defaultEscalationDescription": "Wird auf Checks angewendet, die zu keiner eigenen Richtlinie aufgelöst werden (Check → Gruppe → Organisationsstandard → keine). Nicht festlegen für keinen organisationsweiten Rückfall.",
-    "defaultEscalationNone": "Keine (kein Rückfall)"
+    "defaultEscalationNone": "Keine (kein Rückfall)",
+    "embed": {
+      "title": "Einbettung von Statusseiten",
+      "description": "Standardmäßig kann eine Statusseite nur von SolidPing selbst in einem Frame angezeigt werden (die Vorschau der Darstellung). Legen Sie die Websites fest, die die Statusseiten dieser Organisation in einem iframe einbetten dürfen, etwa ein Intranet oder ein Wanddisplay.",
+      "label": "Erlaubte Einbettungs-Origins",
+      "placeholder": "https://intranet.acme.com\nhttps://*.acme.com",
+      "help": "Ein Origin pro Zeile: Schema und Host, optional mit Port oder einem führenden *.-Label. Keine Pfade. Wird als frame-ancestors in der Content-Security-Policy der Seite gesendet und gilt innerhalb einer Minute. Leer lassen, um alle anderen Websites zu blockieren."
+    },
+    "defaultEscalationBlastRadius_one": "{{count}} Prüfung erbt derzeit die Standardrichtlinie und wird diese Richtlinie verwenden.",
+    "defaultEscalationBlastRadius_other": "{{count}} Prüfungen erben derzeit die Standardrichtlinie und werden diese Richtlinie verwenden.",
+    "defaultEscalationSilent": "stumm"
   },
   "usage": {
     "title": "Nutzung",
@@ -342,7 +352,15 @@
       "create": "Standort hinzufügen",
       "deleteTitle": "Privaten Standort löschen?",
       "deleteDescription": "Checks, die auf diesen Standort abzielen, werden dort nicht mehr geplant. Standorte mit registrierten Agenten können nicht gelöscht werden — widerrufen Sie zuerst die Agenten.",
-      "deleteConfirm": "Löschen"
+      "deleteConfirm": "Löschen",
+      "stateOnline": "Verbunden",
+      "stateDegraded": "Eingeschränkt",
+      "stateOffline": "Getrennt",
+      "stateEmpty": "Kein Agent",
+      "onlineCount": "{{online}}/{{total}} verbunden",
+      "monitor": "Agentenüberwachung",
+      "monitorOff": "Agentenüberwachung aus",
+      "monitorEnable": "Einschalten"
     },
     "cancel": "Abbrechen",
     "token": {
@@ -369,7 +387,9 @@
       "removeDescription": "Dieser Agent ist bereits widerrufen. Ihn zu entfernen löscht ihn sofort aus der Liste, statt auf die automatische Bereinigung nach zwei Tagen zu warten.",
       "revokeDescription": "Der Agent verliert sofort den Zugriff und erhält keine Checks mehr. Er hat die für ihn versiegelten Zugangsdaten bereits gesehen — rotieren Sie sie. Dies kann nicht rückgängig gemacht werden; registrieren Sie einen neuen Agenten als Ersatz.",
       "removeConfirm": "Entfernen",
-      "revokeConfirm": "Widerrufen"
+      "revokeConfirm": "Widerrufen",
+      "online": "Verbunden",
+      "offline": "Getrennt"
     },
     "tokens": {
       "title": "Ausstehende Registrierungstoken",
@@ -384,17 +404,17 @@
     "toast": "Sie haben keinen Zugriff auf {{requested}} — stattdessen wird {{shown}} angezeigt."
   },
   "parameters": {
-    "title": "Parameter",
+    "title": "Variablen",
     "subtitle": "Werte, die Ihre Checks als ${param:KEY} referenzieren, statt sie in eine Datei zu committen.",
-    "add": "Parameter hinzufügen",
-    "addTitle": "Parameter hinzufügen",
+    "add": "Variable hinzufügen",
+    "addTitle": "Variable hinzufügen",
     "addDescription": "Wählen Sie einen Schlüssel und referenzieren Sie ihn in jedem Konfigurationstext als ${param:KEY}.",
     "rotate": "Erneuern",
-    "rotateTitle": "Parameter erneuern",
+    "rotateTitle": "Variable erneuern",
     "rotateDescription": "Der Schlüssel bleibt gleich, alle Checks, die ihn referenzieren, laufen weiter.",
     "created": "{{key}} erstellt",
     "rotated": "{{key}} erneuert",
-    "saveFailed": "Parameter konnte nicht gespeichert werden",
+    "saveFailed": "Variable konnte nicht gespeichert werden",
     "writeOnly": "Nur schreibbar",
     "keyInvalid": "Schlüssel sind klein geschrieben und beginnen mit einem Buchstaben: a-z, 0-9, Punkt, Bindestrich, Unterstrich.",
     "secretLabel": "Geheim",
@@ -406,14 +426,14 @@
       "updated": "Aktualisiert"
     },
     "empty": {
-      "title": "Noch keine Parameter",
+      "title": "Noch keine Variablen",
       "description": "Legen Sie einen an und referenzieren Sie ihn in einer Check-Konfiguration als ${param:KEY}."
     },
     "delete": {
-      "title": "Diesen Parameter löschen?",
+      "title": "Diese Variable löschen?",
       "description": "Jeder Check, der ${param:{{key}}} referenziert, schlägt beim nächsten Lauf mit einer nicht aufgelösten Secret-Referenz fehl.",
-      "deleted": "Parameter gelöscht",
-      "failed": "Parameter konnte nicht gelöscht werden"
+      "deleted": "Variable gelöscht",
+      "failed": "Variable konnte nicht gelöscht werden"
     }
   }
 }

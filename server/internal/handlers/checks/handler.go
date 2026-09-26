@@ -29,7 +29,7 @@ import (
 var errInvalidStatus = errors.New("invalid status filter token")
 
 // parseStatusFilter accepts a comma-separated list of status tokens
-// (up/down/created/validating/degraded/warning) and returns the matching
+// (up/down/created/validating/degraded/warning/stale) and returns the matching
 // CheckStatus values.
 func parseStatusFilter(s string) ([]models.CheckStatus, error) {
 	parts := strings.Split(s, ",")
@@ -52,6 +52,8 @@ func parseStatusFilter(s string) ([]models.CheckStatus, error) {
 			out = append(out, models.CheckStatusDegraded)
 		case "warning":
 			out = append(out, models.CheckStatusWarning)
+		case models.WireStatusStale:
+			out = append(out, models.CheckStatusStale)
 		default:
 			return nil, fmt.Errorf("%w: %s", errInvalidStatus, token)
 		}
@@ -341,12 +343,6 @@ func (h *Handler) ListChecks(writer http.ResponseWriter, req *http.Request) erro
 		opts.Internal = &internalParam
 	}
 
-	// Parse the degraded dry-run filter (spec 2026-09-22-03): the checks the
-	// evaluator WOULD have flagged. Only "true" turns it on — an absent or
-	// anything-else value means "no filter", so a typo never silently hides
-	// every check the way a strict boolean parse returning false would.
-	opts.WouldHaveFired = query.Get("wouldHaveFired") == "true"
-
 	// Parse status filter (comma-separated: up,down,created,validating,degraded,warning)
 	if statusParam := query.Get("status"); statusParam != "" {
 		statuses, err := parseStatusFilter(statusParam)
@@ -474,6 +470,8 @@ func (h *Handler) GetCheck(writer http.ResponseWriter, req *http.Request) error 
 				opts.IncludeLastResult = true
 			case "last_status_change":
 				opts.IncludeLastStatusChange = true
+			case "region_freshness":
+				opts.IncludeRegionFreshness = true
 			}
 		}
 	}
@@ -628,6 +626,31 @@ func (h *Handler) CloneCheck(writer http.ResponseWriter, req *http.Request) erro
 	}
 
 	return h.WriteJSON(writer, http.StatusCreated, check)
+}
+
+// SwitchToAutoPlacement handles POST /api/v1/orgs/:org/checks/auto-placement,
+// the checks list's bulk "Switch to automatic placement" (spec 2026-09-25-06).
+func (h *Handler) SwitchToAutoPlacement(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+
+	var body AutoPlacementRequest
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
+			{Name: fieldBody, Message: msgInvalidJSON},
+		})
+	}
+
+	resp, err := h.svc.SwitchToAutoPlacement(req.Context(), orgSlug, &body)
+	if err != nil {
+		if errors.Is(err, ErrOrganizationNotFound) {
+			return h.WriteErrorErr(
+				writer, req, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+		}
+
+		return h.WriteInternalError(writer, req, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, resp)
 }
 
 // ExportChecks handles exporting all checks for an organization as JSON.
@@ -963,6 +986,10 @@ func isCheckFieldValidationError(err error) bool {
 		errors.Is(err, errFlapBackoffTooSmall) ||
 		errors.Is(err, errMaxRecoveryMultTooSmall) ||
 		errors.Is(err, errInvalidTraceroutePolicy) ||
+		errors.Is(err, errInvalidFailQuorum) ||
+		// Placement (spec 2026-09-25-06): a contradictory or unplaceable
+		// placement request is the caller's to fix.
+		isPlacementError(err) ||
 		errors.As(err, &periodErr)
 }
 

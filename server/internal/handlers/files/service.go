@@ -402,6 +402,42 @@ func (s *Service) DeleteFileByUID(ctx context.Context, orgUID, fileUID string) e
 	return nil
 }
 
+// PurgeFile soft-deletes one file row AND removes its blob from storage.
+//
+// Every other delete in this package leaves the blob behind for a GC pass that
+// does not exist yet, which is harmless while deletes are rare. A retention
+// prune is not rare: the check-scoped screenshot cap (spec 2026-09-25-34)
+// retires a capture on every write past the fifth, and a flapping check writes
+// one per failing run — without the blob removal the cap would bound the rows
+// but not the storage bill it exists to bound.
+//
+// The row goes first: once it is soft-deleted nothing can sign a URL for the
+// blob, so a blob removal that fails afterwards only leaks bytes, never
+// exposes a dangling link. A row that is already gone (a concurrent prune won)
+// is not an error.
+func (s *Service) PurgeFile(ctx context.Context, file *models.File) error {
+	if err := s.db.DeleteFile(ctx, file.OrganizationUID, file.UID); err != nil &&
+		!errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("delete file row: %w", err)
+	}
+
+	storage, err := filestorage.GetStorageForURI(file.FileURI, s.storageConfig())
+	if err != nil {
+		return fmt.Errorf("resolve storage: %w", err)
+	}
+
+	orgUID, group, fileID, err := storage.ParseURI(file.FileURI)
+	if err != nil {
+		return fmt.Errorf("parse uri: %w", err)
+	}
+
+	if err := storage.DeleteFile(ctx, orgUID, group, fileID); err != nil {
+		return fmt.Errorf("delete blob: %w", err)
+	}
+
+	return nil
+}
+
 // DeleteAttachments soft-deletes every live attachment of an org under a topic
 // PREFIX and returns how many rows changed. Used for entity-deletion reaping
 // (`incidents/<uid>/`) — see DeleteAttachmentsByTopic for the replace path.

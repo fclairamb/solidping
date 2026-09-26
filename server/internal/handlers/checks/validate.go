@@ -10,10 +10,18 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/configregistry"
+	"github.com/fclairamb/solidping/server/internal/config"
 	entcore "github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/regionquorum"
+	"github.com/fclairamb/solidping/server/internal/regions"
 	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
+
+// ErrDockerNotAvailableInSaaS is returned when a docker check is created,
+// updated or imported in SaaS mode without being pinned exclusively to
+// private (agent-hosted) regions.
+var ErrDockerNotAvailableInSaaS = errors.New("docker checks are not available on this deployment")
 
 // Machine codes carried by validate findings (spec 2026-08-26-05). They are
 // the stable half of a finding: messages are prose and get reworded, codes are
@@ -170,6 +178,14 @@ type requestFieldValues struct {
 	FlappingWindowSeconds     *int
 	FlapBackoffFactor         *int
 	MaxRecoveryMultiplier     *int
+	// FailQuorum is the multi-region quorum setting (spec 2026-09-25-10).
+	FailQuorum *regionquorum.Value
+
+	// Placement is the placement half of the request (spec 2026-09-25-06).
+	// Nil skips the placement rules (the write paths run them earlier, in
+	// resolveCreatePlacement / resolveUpdatePlacement, with the same
+	// placementRequestFindings).
+	Placement *placementRequest
 }
 
 // requestFieldFinding is one request-level guard's outcome: enough to build
@@ -188,7 +204,7 @@ type requestFieldFinding struct {
 // enforce. ValidateCheck turns every finding into a blocking field; CreateCheck
 // takes only the first and returns its Err — same error values as before this
 // spec, so the write paths' error shape is unchanged.
-func requestFieldFindings(values requestFieldValues) []requestFieldFinding {
+func requestFieldFindings(values *requestFieldValues) []requestFieldFinding {
 	var findings []requestFieldFinding
 
 	// `internal` is what exempts a check from the MaxChecks quota (spec
@@ -204,6 +220,11 @@ func requestFieldFindings(values requestFieldValues) []requestFieldFinding {
 	findings = appendTracerouteFinding(findings, values)
 	findings = appendFlappingFindings(findings, values)
 	findings = appendIncidentPeriodFindings(findings, values)
+	findings = appendFailQuorumFinding(findings, values)
+
+	if values.Placement != nil {
+		findings = append(findings, placementRequestFindings(values.Placement)...)
+	}
 
 	return findings
 }
@@ -211,7 +232,7 @@ func requestFieldFindings(values requestFieldValues) []requestFieldFinding {
 // appendRegionSpreadFinding checks regionSpread's 0 <= spread < period bound
 // (spec 2026-07-20-05) — split out of requestFieldFindings to keep its
 // cyclomatic complexity down.
-func appendRegionSpreadFinding(findings []requestFieldFinding, values requestFieldValues) []requestFieldFinding {
+func appendRegionSpreadFinding(findings []requestFieldFinding, values *requestFieldValues) []requestFieldFinding {
 	if values.RegionSpread == nil || *values.RegionSpread == "" {
 		return findings
 	}
@@ -234,7 +255,7 @@ func appendRegionSpreadFinding(findings []requestFieldFinding, values requestFie
 
 // appendTracerouteFinding checks the tracerouteOnFailure enum (spec
 // 2026-08-21-10).
-func appendTracerouteFinding(findings []requestFieldFinding, values requestFieldValues) []requestFieldFinding {
+func appendTracerouteFinding(findings []requestFieldFinding, values *requestFieldValues) []requestFieldFinding {
 	if values.TracerouteOnFailure == nil {
 		return findings
 	}
@@ -251,7 +272,7 @@ func appendTracerouteFinding(findings []requestFieldFinding, values requestField
 
 // appendFlappingFindings checks the three adaptive-recovery knobs' floors
 // (spec 2026-06-30-07).
-func appendFlappingFindings(findings []requestFieldFinding, values requestFieldValues) []requestFieldFinding {
+func appendFlappingFindings(findings []requestFieldFinding, values *requestFieldValues) []requestFieldFinding {
 	if values.FlappingWindowSeconds != nil && *values.FlappingWindowSeconds < 0 {
 		findings = append(findings, requestFieldFinding{
 			Name: fieldFlappingWindowSeconds, Code: CodeInvalidFlappingField,
@@ -277,7 +298,7 @@ func appendFlappingFindings(findings []requestFieldFinding, values requestFieldV
 // appendIncidentPeriodFindings checks confirmationPeriodSeconds and
 // recoveryPeriodSeconds against [0, MaxIncidentPeriodSeconds] (spec
 // 2026-05-08-02).
-func appendIncidentPeriodFindings(findings []requestFieldFinding, values requestFieldValues) []requestFieldFinding {
+func appendIncidentPeriodFindings(findings []requestFieldFinding, values *requestFieldValues) []requestFieldFinding {
 	if values.ConfirmationPeriodSeconds != nil {
 		if err := validateIncidentPeriod(*values.ConfirmationPeriodSeconds); err != nil {
 			findings = append(findings, requestFieldFinding{
@@ -384,7 +405,52 @@ func (s *Service) configValidationErrors(
 		errs = append(errs, err)
 	}
 
+	// A private-location monitor may only watch one of the org's own private
+	// locations (spec 2026-09-25-05).
+	if err := s.validatePrivateLocationConfig(ctx, orgUID, checkType, effective); err != nil {
+		errs = append(errs, err)
+	}
+
+	// docker checks hand whoever executes them the local Docker socket. On a
+	// SaaS shared worker that is any org member reading the host's own
+	// containers; the type is only safe when every job runs on the
+	// customer's own agent (spec 2026-09-25-22).
+	if err := s.validateDockerDeploymentConfig(checkType, checkRegions); err != nil {
+		errs = append(errs, err)
+	}
+
 	return errs
+}
+
+// validateDockerDeploymentConfig rejects a docker check in SaaS mode unless
+// checkRegions resolves to private (agent-hosted) regions only. checkRegions
+// is the CALLER's already-resolved placement (auto placement included), never
+// the raw request, so an auto-placed check — which never resolves onto a
+// private region — is correctly rejected without special-casing placement
+// here. A hard reject, not a warning: the alternative is a local-socket read
+// primitive reachable by any org member. Self-hosted is unaffected — running
+// docker checks against the local daemon is the feature working as intended
+// there.
+func (s *Service) validateDockerDeploymentConfig(checkType string, checkRegions []string) error {
+	if checkerdef.CheckType(checkType) != checkerdef.CheckTypeDocker {
+		return nil
+	}
+
+	if s.deploymentMode != config.DeploymentModeSaaS {
+		return nil
+	}
+
+	if len(checkRegions) == 0 {
+		return checkerdef.NewConfigError("host", ErrDockerNotAvailableInSaaS.Error())
+	}
+
+	for _, region := range checkRegions {
+		if !regions.IsPrivateRegion(region) {
+			return checkerdef.NewConfigError("host", ErrDockerNotAvailableInSaaS.Error())
+		}
+	}
+
+	return nil
 }
 
 // firstConfigValidationError is the write paths' view of
@@ -443,12 +509,14 @@ func (s *Service) ValidateCheck(
 
 	// Advisory only, and evaluated LAST so it can never mask a real error.
 	if orgUID != "" {
+		proposedRegions := s.validatePlacementFindings(ctx, orgUID, req, effective, period, findings)
+
 		findings.warnings = append(
 			findings.warnings,
-			s.regionCapabilityWarnings(ctx, orgUID, req.Type, effective, req.Regions)...,
+			s.regionCapabilityWarnings(ctx, orgUID, req.Type, effective, proposedRegions)...,
 		)
 
-		s.orgRateWarning(ctx, orgUID, req, period, findings)
+		s.orgRateWarning(ctx, orgUID, req, period, proposedRegions, findings)
 	}
 
 	return findings.response(), nil
@@ -567,7 +635,7 @@ func validateRequestFieldFindings(req *ValidateCheckRequest, period time.Duratio
 		regionSpreadPeriod = defaultPeriodForType(req.Type)
 	}
 
-	fieldFindings := requestFieldFindings(requestFieldValues{
+	fieldFindings := requestFieldFindings(&requestFieldValues{
 		Internal:                  req.Internal,
 		RegionSpreadPeriod:        regionSpreadPeriod,
 		RegionSpread:              req.RegionSpread,
@@ -577,6 +645,8 @@ func validateRequestFieldFindings(req *ValidateCheckRequest, period time.Duratio
 		FlappingWindowSeconds:     req.FlappingWindowSeconds,
 		FlapBackoffFactor:         req.FlapBackoffFactor,
 		MaxRecoveryMultiplier:     req.MaxRecoveryMultiplier,
+		FailQuorum:                req.FailQuorum,
+		Placement:                 validatePlacementRequest(req),
 	})
 	for i := range fieldFindings {
 		findings.addError(fieldFindings[i].Name, fieldFindings[i].Code, fieldFindings[i].Message)
@@ -596,7 +666,7 @@ func validateRequestFieldFindings(req *ValidateCheckRequest, period time.Duratio
 // gate and so draw no execution budget at all.
 func (s *Service) orgRateWarning(
 	ctx context.Context, orgUID string, req *ValidateCheckRequest,
-	period time.Duration, findings *validateFindings,
+	period time.Duration, proposedRegions []string, findings *validateFindings,
 ) {
 	if s.entitlements == nil || period <= 0 || checkerdef.CheckType(req.Type).IsPassive() {
 		return
@@ -607,15 +677,11 @@ func (s *Service) orgRateWarning(
 		return
 	}
 
-	// Resolve the region set the same way the write path does: an empty
-	// selection means "the org's defaults", which is frequently more than one
-	// region — projecting the raw request would under-count exactly the case
-	// (a fresh check, no regions touched) the warning exists for.
-	proposedRegions := req.Regions
-	if resolved, resolveErr := s.regions.ResolveRegionsForCheck(ctx, req.Regions, orgUID); resolveErr == nil {
-		proposedRegions = resolved
-	}
-
+	// proposedRegions is the region set the write path would store — the
+	// placement resolved by validatePlacementFindings, which for an empty
+	// selection is the automatic placement (frequently more than one region).
+	// Projecting the raw request would under-count exactly the case (a fresh
+	// check, no regions touched) the warning exists for.
 	projected, err := s.entitlements.ProjectChecksPerMinute(ctx, orgUID, entcore.CheckRateProposal{
 		ExcludeCheckUID: req.ExcludeCheckUID,
 		Type:            req.Type,

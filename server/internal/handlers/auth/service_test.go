@@ -710,6 +710,57 @@ func latestEmailJobTemplateData(t *testing.T, ctx context.Context, dbSvc db.Serv
 	return template, templateData
 }
 
+// extractRegistrationConfirmToken finds the "registration.html" email job
+// addressed to email and returns the confirmation token embedded in its
+// ConfirmURL (the last path segment). This is now the ONLY way a test can
+// recover the plaintext token Register minted: the pending state entry
+// stores only sha256hex(token) (spec 2026-09-25-30), exactly like a real
+// caller only ever learns the token from the email they receive.
+//
+//nolint:revive // ctx-second is fine in test helpers; matches existing helpers in this file
+func extractRegistrationConfirmToken(t *testing.T, ctx context.Context, dbSvc db.Service, email string) string {
+	t.Helper()
+	r := require.New(t)
+
+	jobs, err := dbSvc.ListJobs(ctx, nil, 0)
+	r.NoError(err)
+
+	for _, job := range jobs {
+		if job.Type != string(jobdef.JobTypeEmail) {
+			continue
+		}
+
+		if template, _ := job.Config["template"].(string); template != "registration.html" {
+			continue
+		}
+
+		to, ok := job.Config["to"].([]any)
+		if !ok || len(to) == 0 {
+			continue
+		}
+
+		if recipient, _ := to[0].(string); recipient != email {
+			continue
+		}
+
+		templateData, ok := job.Config["templateData"].(map[string]any)
+		if !ok {
+			continue
+		}
+
+		confirmURL, _ := templateData["ConfirmURL"].(string)
+		if confirmURL == "" {
+			continue
+		}
+
+		parts := strings.Split(confirmURL, "/")
+
+		return parts[len(parts)-1]
+	}
+
+	return ""
+}
+
 //nolint:revive // ctx-second is fine in test helpers; matches existing helpers in this file
 func extractResetTokenFromState(t *testing.T, ctx context.Context, dbSvc db.Service) string {
 	t.Helper()
@@ -1126,17 +1177,17 @@ func TestResetPassword(t *testing.T) {
 
 		// Seed a refresh token + a PAT for this user.
 		refresh := &models.UserToken{
-			UID:     uuidV7(t),
-			UserUID: user.UID,
-			Type:    models.TokenTypeRefresh,
-			Token:   "r-" + user.UID,
+			UID:       uuidV7(t),
+			UserUID:   user.UID,
+			Type:      models.TokenTypeRefresh,
+			TokenHash: models.HashUserToken("r-" + user.UID),
 		}
 		r.NoError(dbSvc.CreateUserToken(ctx, refresh))
 		pat := &models.UserToken{
-			UID:     uuidV7(t),
-			UserUID: user.UID,
-			Type:    models.TokenTypePAT,
-			Token:   "p-" + user.UID,
+			UID:       uuidV7(t),
+			UserUID:   user.UID,
+			Type:      models.TokenTypePAT,
+			TokenHash: models.HashUserToken("p-" + user.UID),
 		}
 		r.NoError(dbSvc.CreateUserToken(ctx, pat))
 
@@ -1154,7 +1205,7 @@ func TestResetPassword(t *testing.T) {
 		stateValue := &models.JSONMap{"userUid": user.UID}
 		ttl := passwordResetTTL
 		r.NoError(dbSvc.SetStateEntry(ctx, nil,
-			passwordResetKeyPrefix+hashResetToken(knownToken), stateValue, &ttl))
+			passwordResetKeyPrefix+hashPendingToken(knownToken), stateValue, &ttl))
 
 		resp, err := svc.ResetPassword(ctx, ResetPasswordRequest{
 			Token:    knownToken,
@@ -1174,7 +1225,7 @@ func TestResetPassword(t *testing.T) {
 
 		// State entry for the used token is gone.
 		entry, err := dbSvc.GetStateEntry(ctx, nil,
-			passwordResetKeyPrefix+hashResetToken(knownToken))
+			passwordResetKeyPrefix+hashPendingToken(knownToken))
 		r.NoError(err)
 		r.Nil(entry)
 
@@ -1215,7 +1266,7 @@ func TestResetPassword(t *testing.T) {
 		stateValue := &models.JSONMap{"userUid": user.UID}
 		ttl := passwordResetTTL
 		r.NoError(dbSvc.SetStateEntry(ctx, nil,
-			passwordResetKeyPrefix+hashResetToken(knownToken), stateValue, &ttl))
+			passwordResetKeyPrefix+hashPendingToken(knownToken), stateValue, &ttl))
 
 		resp, err := svc.ResetPassword(ctx, ResetPasswordRequest{
 			Token:    knownToken,
@@ -1258,7 +1309,7 @@ func TestResetPassword(t *testing.T) {
 		stateValue := &models.JSONMap{"userUid": user.UID}
 		ttl := passwordResetTTL
 		r.NoError(dbSvc.SetStateEntry(ctx, nil,
-			passwordResetKeyPrefix+hashResetToken(token), stateValue, &ttl))
+			passwordResetKeyPrefix+hashPendingToken(token), stateValue, &ttl))
 
 		_, err := svc.ResetPassword(ctx, ResetPasswordRequest{Token: token, Password: "newpassword"})
 		r.NoError(err)
@@ -1280,7 +1331,7 @@ func TestResetPassword(t *testing.T) {
 		stateValue := &models.JSONMap{"userUid": user.UID}
 		ttl := passwordResetTTL
 		r.NoError(dbSvc.SetStateEntry(ctx, nil,
-			passwordResetKeyPrefix+hashResetToken(token), stateValue, &ttl))
+			passwordResetKeyPrefix+hashPendingToken(token), stateValue, &ttl))
 
 		_, err := svc.ResetPassword(ctx, ResetPasswordRequest{Token: token, Password: "short"})
 		r.ErrorIs(err, ErrInvalidCredentials)
@@ -1292,7 +1343,7 @@ func TestResetPassword(t *testing.T) {
 
 		// State entry still present (the user hasn't burned their reset).
 		entry, err := dbSvc.GetStateEntry(ctx, nil,
-			passwordResetKeyPrefix+hashResetToken(token))
+			passwordResetKeyPrefix+hashPendingToken(token))
 		r.NoError(err)
 		r.NotNil(entry)
 	})

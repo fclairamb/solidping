@@ -22,11 +22,11 @@ import { getFieldError } from "@/hooks/use-check-validation";
 import { useEmailAddressDomain } from "@/api/email-inbox";
 import type { CheckTypeModule } from "./index";
 import type { CheckConfig, CheckTypeFieldsProps, FieldErrors } from "./common";
-import { getConfigField } from "./common";
+import { getConfigField, validationMessage } from "./common";
 import { useCheckFormFields } from "./context";
 
 const hostRequired = (host: string): FieldErrors =>
-  host ? [] : [{ name: "host", message: "Host is required" }];
+  host ? [] : [{ name: "host", message: validationMessage("hostRequired") }];
 
 // ── SSL ──
 export interface SslState {
@@ -114,7 +114,7 @@ function SslFields({ state, onChange, errors }: CheckTypeFieldsProps<SslState>) 
         <Input
           id="serverName"
           type="text"
-          placeholder="defaults to host"
+          placeholder={t("misc.defaultsToHost")}
           value={state.serverName}
           onChange={(e) => onChange({ ...state, serverName: e.target.value })}
           data-testid="check-server-name-input"
@@ -255,7 +255,7 @@ function NtpFields({ state, onChange, errors }: CheckTypeFieldsProps<NtpState>) 
             id="ntpOffsetCritMs"
             type="number"
             min={0}
-            placeholder="off"
+            placeholder={t("misc.offPlaceholder")}
             value={state.offsetCritMs}
             onChange={(e) => onChange({ ...state, offsetCritMs: e.target.value })}
             data-testid="check-ntp-offset-crit-input"
@@ -270,7 +270,7 @@ function NtpFields({ state, onChange, errors }: CheckTypeFieldsProps<NtpState>) 
             id="ntpOffsetWarnMs"
             type="number"
             min={0}
-            placeholder="off"
+            placeholder={t("misc.offPlaceholder")}
             value={state.offsetWarnMs}
             onChange={(e) => onChange({ ...state, offsetWarnMs: e.target.value })}
             data-testid="check-ntp-offset-warn-input"
@@ -287,7 +287,7 @@ function NtpFields({ state, onChange, errors }: CheckTypeFieldsProps<NtpState>) 
           type="number"
           min={1}
           max={15}
-          placeholder="off"
+          placeholder={t("misc.offPlaceholder")}
           value={state.maxStratum}
           onChange={(e) => onChange({ ...state, maxStratum: e.target.value })}
           data-testid="check-ntp-max-stratum-input"
@@ -365,13 +365,13 @@ function rdpErrors(state: RdpState): FieldErrors {
   const hasUser = Boolean(state.username);
   const hasPass = Boolean(state.password);
   if (hasUser && !hasPass) {
-    errors.push({ name: "password", message: "Password is required when a username is set." });
+    errors.push({ name: "password", message: validationMessage("passwordRequiredWithUsername") });
   }
   if (hasPass && !hasUser) {
-    errors.push({ name: "username", message: "Username is required when a password is set." });
+    errors.push({ name: "username", message: validationMessage("usernameRequiredWithPassword") });
   }
   if (state.screenshot && !(hasUser && hasPass)) {
-    errors.push({ name: "screenshot", message: "Screenshot requires username and password (an authenticated logon)." });
+    errors.push({ name: "screenshot", message: validationMessage("screenshotRequiresCredentials") });
   }
 
   return errors;
@@ -442,7 +442,7 @@ function RdpFields({ state, onChange, errors }: CheckTypeFieldsProps<RdpState>) 
             id="rdpCriticalDays"
             type="number"
             min={0}
-            placeholder="off"
+            placeholder={t("misc.offPlaceholder")}
             value={state.criticalDays}
             onChange={(e) => onChange({ ...state, criticalDays: e.target.value })}
             data-testid="check-rdp-critical-days-input"
@@ -457,7 +457,7 @@ function RdpFields({ state, onChange, errors }: CheckTypeFieldsProps<RdpState>) 
             id="rdpWarningDays"
             type="number"
             min={0}
-            placeholder="off"
+            placeholder={t("misc.offPlaceholder")}
             value={state.warningDays}
             onChange={(e) => onChange({ ...state, warningDays: e.target.value })}
             data-testid="check-rdp-warning-days-input"
@@ -603,17 +603,17 @@ export const sipModule: CheckTypeModule<SipState> = {
     if (state.mode === "options" && state.expectStatus)
       cfg.expect_status = state.expectStatus;
     const errors: FieldErrors = [];
-    if (!state.host) errors.push({ name: "host", message: "Host is required" });
+    if (!state.host) errors.push({ name: "host", message: validationMessage("hostRequired") });
     else if (state.mode === "register") {
       if (!state.username)
         errors.push({
           name: "username",
-          message: "Username is required for register mode",
+          message: validationMessage("usernameRequiredRegister"),
         });
       if (!state.password)
         errors.push({
           name: "password",
-          message: "Password is required for register mode",
+          message: validationMessage("passwordRequiredRegister"),
         });
     }
     return { config: cfg, errors };
@@ -687,7 +687,7 @@ function SipFields({ state, onChange }: CheckTypeFieldsProps<SipState>) {
         <Input
           id="domain"
           type="text"
-          placeholder="defaults to host"
+          placeholder={t("misc.defaultsToHost")}
           value={state.domain}
           onChange={(e) => onChange({ ...state, domain: e.target.value })}
           data-testid="check-sip-domain-input"
@@ -804,7 +804,7 @@ export const jsModule: CheckTypeModule<JsState> = {
     if (state.secretsDirty) cfg.secrets = rowsToMap(state.secrets);
     const errors: FieldErrors = state.script
       ? []
-      : [{ name: "script", message: "Script is required" }];
+      : [{ name: "script", message: validationMessage("scriptRequired") }];
     return { config: cfg, errors };
   },
   Fields: JsFields,
@@ -899,7 +899,7 @@ export const sleepModule: CheckTypeModule<SleepState> = {
     if (state.status && state.status !== "up") cfg.status = state.status;
     const errors: FieldErrors = state.sleepMs
       ? []
-      : [{ name: "sleep_ms", message: "Sleep duration is required" }];
+      : [{ name: "sleep_ms", message: validationMessage("sleepDurationRequired") }];
     return { config: cfg, errors };
   },
   Fields: SleepFields,
@@ -1027,5 +1027,42 @@ function EmailFields() {
     <p className="text-sm text-muted-foreground">
       {t("misc.emailGeneratedHelp")}
     </p>
+  );
+}
+
+// ── Private location liveness (passive, system-created) ──
+// Spec 2026-09-25-05. SolidPing creates one per private location; the form
+// only ever edits it, and the location it watches is read-only (the server
+// refuses a change too). The shared form omits `config` from a passive
+// check's edit payload, so the region is never resubmitted.
+export interface PrivateLocationState {
+  region: string;
+}
+
+export const privateLocationModule: CheckTypeModule<PrivateLocationState> = {
+  types: ["private-location"],
+  ownedKeys: ["region"],
+  fromConfig: (config) => ({ region: getConfigField(config, "region") }),
+  toConfig: (state) => ({
+    config: { region: state.region },
+    errors: state.region ? [] : [{ name: "region", message: validationMessage("regionRequired") }],
+  }),
+  Fields: PrivateLocationFields,
+};
+
+function PrivateLocationFields({ state }: CheckTypeFieldsProps<PrivateLocationState>) {
+  const { t } = useTranslation("checks");
+  return (
+    <div className="space-y-2">
+      <Label htmlFor="privateLocationRegion">{t("misc.privateLocationRegion")}</Label>
+      <Input
+        id="privateLocationRegion"
+        value={state.region}
+        disabled
+        readOnly
+        data-testid="check-private-location-region"
+      />
+      <p className="text-sm text-muted-foreground">{t("misc.privateLocationHelp")}</p>
+    </div>
   );
 }

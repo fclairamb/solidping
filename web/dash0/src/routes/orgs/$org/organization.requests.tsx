@@ -246,9 +246,9 @@ function ApproveDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="user">user</SelectItem>
-                <SelectItem value="viewer">viewer</SelectItem>
-                <SelectItem value="admin">admin</SelectItem>
+                <SelectItem value="user">{t("members.role.user")}</SelectItem>
+                <SelectItem value="viewer">{t("members.role.viewer")}</SelectItem>
+                <SelectItem value="admin">{t("members.role.admin")}</SelectItem>
               </SelectContent>
             </Select>
           </div>

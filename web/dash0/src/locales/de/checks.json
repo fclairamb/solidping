@@ -26,6 +26,7 @@
     "up": "Aktiv",
     "down": "Ausfall",
     "warning": "Warnung",
+    "stale": "Keine Daten",
     "created": "Ausstehend",
     "degraded": "Beeinträchtigt",
     "abandoned": "Abgebrochen",
@@ -47,6 +48,7 @@
     "up": "aktiv",
     "down": "ausgefallen",
     "warning": "Warnung",
+    "stale": "ohne Daten",
     "degraded": "beeinträchtigt",
     "validating": "wird geprüft",
     "created": "ausstehend"
@@ -336,8 +338,8 @@
     "degraded": {
       "title": "Beeinträchtigungserkennung",
       "help": "Ein zweiter Detektor neben der Bestätigungsperiode: er meldet einen Check, der sporadisch fehlschlägt oder viel langsamer antwortet als gewöhnlich, auch wenn kein einzelner Fehler lange genug dauert, um einen Ausfall zu bestätigen. Beide Regeln zählen PROBES, keine Sekunden.",
-      "enabled": "Beeinträchtigungs-Incidents öffnen",
-      "enabledHelp": "Aus bedeutet Probelauf: die Regeln werden weiter ausgewertet und die Check-Seite zeigt, wann sie ausgelöst hätten, aber es wird nichts geöffnet und niemand benachrichtigt.",
+      "enabled": "Beeinträchtigungserkennung aktivieren",
+      "enabledHelp": "Aus: die Beeinträchtigungserkennung wird für diesen Check nicht ausgewertet. Beim Ausschalten wird ein offener Beeinträchtigungsvorfall dieses Checks geschlossen.",
       "failures": "Fehlgeschlagene Probes (M)",
       "failuresHelp": "Löst aus, wenn so viele der letzten N Probes fehlgeschlagen sind. 0 schaltet die Fehlerregel aus.",
       "failuresWindow": "Fehlerfenster (N Probes)",
@@ -351,11 +353,42 @@
       "slowThresholdOff": "Die Langsam-Regel bleibt aus, solange kein Schwellwert gesetzt ist — Latenz wird nirgends sonst gemeldet.",
       "slowThresholdSuggestion": "Vorschlag: {{value}} ms, etwa das Doppelte des beobachteten p95 dieses Checks.",
       "slowThresholdSuggestionApply": "Vorschlag übernehmen",
-      "summaryOff": "Probelauf — es wird nichts geöffnet",
+      "summaryOff": "Aus, wird nicht ausgewertet",
       "summaryOn": "{{failures}} von {{failuresWindow}} fehlgeschlagenen Probes, {{slow}}",
       "summarySlowArmed": "{{slow}} von {{slowWindow}} Probes über {{threshold}} ms",
       "summarySlowOff": "Langsam-Regel aus"
-    }
+    },
+    "privateLocationIntervalHint": "Wie oft SolidPing prüft, ob die Agenten des Standorts verbunden sind. Ein Agent gilt nach 5 Minuten ohne Kontakt als getrennt.",
+    "placement": {
+      "autoSummary_one": "Automatisch ({{count}} Region)",
+      "autoSummary_other": "Automatisch ({{count}} Regionen)",
+      "chooseRegions": "Regionen wählen",
+      "useAuto": "Automatische Platzierung verwenden",
+      "autoHint": "SolidPing führt diese Prüfung aus gesunden Regionen aus und verschiebt sie, wenn eine Region ausfällt.",
+      "pinnedHint": "Fixiert: Die Prüfung läuft genau aus diesen Regionen und wird nie verschoben.",
+      "regionCount": "Anzahl der Regionen",
+      "current": "Läuft derzeit aus {{regions}}"
+    },
+    "failQuorum": "Regionen, die ausfallen müssen",
+    "failQuorumHelp": "Bei mehreren Regionen: wie viele während der gesamten Bestätigungszeit fehlschlagen müssen, bevor der Check ausgefallen ist und ein Vorfall eröffnet wird. Weniger fehlschlagende Regionen werden als regionales Problem angezeigt, ohne Vorfall.",
+    "failQuorumDefault": "Standard (Mehrheit ab 3 Regionen, sonst alle)",
+    "failQuorumAll": "Alle Regionen",
+    "failQuorumMajority": "Eine Mehrheit",
+    "failQuorumCount": "Eine Anzahl Regionen",
+    "failQuorumCountLabel": "Anzahl Regionen",
+    "failQuorumResolved": "Ausgefallen, wenn {{quorum}} von {{count}} Regionen fehlschlagen. Weniger ist ein regionales Problem.",
+    "failQuorumResolvedAll_one": "Ausgefallen, wenn die Region fehlschlägt.",
+    "failQuorumResolvedAll_other": "Ausgefallen, wenn alle {{count}} Regionen fehlschlagen. Jede erfolgreiche Region startet die Bestätigung neu.",
+    "failQuorumCountError": "Geben Sie eine ganze Zahl zwischen 1 und 100 ein.",
+    "recordType": "Eintragstyp",
+    "dnsServerOptional": "DNS-Server (optional)",
+    "dnsServerPlaceholder": "8.8.8.8:53 — Standard: System-Resolver",
+    "dnsServerHelp": "Abzufragender Resolver im Format Host:Port. Leer lassen, um den System-Resolver zu verwenden.",
+    "lookupMethod": "Abfragemethode",
+    "lookupMethodAuto": "Automatisch (RDAP, WHOIS als Fallback)",
+    "lookupMethodRdap": "Nur RDAP",
+    "lookupMethodWhois": "Nur WHOIS",
+    "lookupMethodHelp": "Automatisch versucht zuerst RDAP und weicht bei jedem Fehler auf WHOIS aus. Nur RDAP und Nur WHOIS weichen nie aus."
   },
   "types": {
     "http": "HTTP",
@@ -365,15 +398,15 @@
     "icmp": "ICMP",
     "icmpDescription": "Hosts per ICMP anpingen",
     "dns": "DNS",
-    "dnsDescription": "DNS-Auflösung überwachen",
+    "dnsDescription": "DNS-Auflösung prüfen",
     "ssl": "TLS",
     "sslDescription": "Gültigkeit von TLS-Zertifikaten prüfen",
     "domain": "Domain",
-    "domainDescription": "Ablauf von Domains überwachen",
+    "domainDescription": "Ablauf von Domainnamen überwachen",
     "heartbeat": "Heartbeat",
-    "heartbeatDescription": "Heartbeat-Pings empfangen",
+    "heartbeatDescription": "Über eingehende Pings überwachen",
     "smtp": "SMTP",
-    "smtpDescription": "SMTP-Server-Konnektivität prüfen",
+    "smtpDescription": "Verfügbarkeit von SMTP-Servern prüfen",
     "mysql": "MySQL",
     "mysqlDescription": "MySQL/MariaDB-Datenbankzustand prüfen",
     "redis": "Redis",
@@ -412,11 +445,34 @@
     "ntpDescription": "NTP-Zeitserver überwachen",
     "rdp": "RDP",
     "rdpDescription": "RDP-Server (Remotedesktop) überwachen",
-    "sleep": "Sleep",
+    "sleep": "Warten",
     "sleepDescription": "Für eine feste Dauer warten (synthetisch/Test, ohne Netzwerk-I/O)",
     "freebox_line": "Freebox-Leitungsqualität",
     "freebox_lineDescription": "xDSL/FTTH-Leitungsqualität über Freebox OS überwachen",
-    "email": "E-Mail"
+    "email": "E-Mail",
+    "private-location": "Privater Standort",
+    "private-locationDescription": "Alarm, wenn die Agenten eines privaten Standorts getrennt sind",
+    "emailDescription": "Statusmeldungen per eingehender E-Mail empfangen",
+    "udp": "UDP",
+    "udpDescription": "Erreichbarkeit von UDP-Ports prüfen",
+    "ssh": "SSH",
+    "sshDescription": "Verfügbarkeit von SSH-Servern prüfen",
+    "pop3": "POP3",
+    "pop3Description": "Verfügbarkeit von POP3-Servern prüfen",
+    "imap": "IMAP",
+    "imapDescription": "Verfügbarkeit von IMAP-Servern prüfen",
+    "websocket": "WebSocket",
+    "websocketDescription": "WebSocket-Konnektivität prüfen",
+    "postgresql": "PostgreSQL",
+    "postgresqlDescription": "Zustand von PostgreSQL-Datenbanken prüfen",
+    "ftp": "FTP",
+    "ftpDescription": "Verfügbarkeit von FTP-Servern prüfen",
+    "sftp": "SFTP",
+    "sftpDescription": "Verfügbarkeit von SFTP-Servern prüfen",
+    "js": "JavaScript",
+    "jsDescription": "Eigene JavaScript-Überwachungsskripte ausführen",
+    "prometheus": "Prometheus",
+    "prometheusDescription": "Bei Prometheus-Metrikschwellen alarmieren"
   },
   "dnsbl": {
     "target": "Ziel-IP oder Hostname",
@@ -495,10 +551,8 @@
     "evaluation": {
       "badge": "Auswertung",
       "title": "Auswertung durch den Planer",
-      "explainerHeartbeat": "Diese Zeile wurde vom Prüf-Worker {{region}} geschrieben, als er den Zeitplan der Prüfung ausgewertet hat. Sie ist kein Heartbeat — zu diesem Zeitpunkt hat sich nichts gemeldet.",
-      "explainerEmail": "Diese Zeile wurde vom Prüf-Worker {{region}} geschrieben, als er den Zeitplan der Prüfung ausgewertet hat. Sie ist keine E-Mail — zu diesem Zeitpunkt ist keine E-Mail eingegangen.",
-      "explainerNoRegion": "Diese Zeile wurde von einem Prüf-Worker geschrieben, als er den Zeitplan der Prüfung ausgewertet hat. Sie ist kein Heartbeat — zu diesem Zeitpunkt hat sich nichts gemeldet.",
-      "explainerEmailNoRegion": "Diese Zeile wurde von einem Prüf-Worker geschrieben, als er den Zeitplan der Prüfung ausgewertet hat. Sie ist keine E-Mail — zu diesem Zeitpunkt ist keine E-Mail eingegangen.",
+      "explainerHeartbeat": "Von SolidPing in jeder Periode anhand des Zeitplans der Prüfung ausgewertet. Diese Zeile ist kein Heartbeat: Zu diesem Zeitpunkt hat sich nichts gemeldet.",
+      "explainerEmail": "Von SolidPing in jeder Periode anhand des Zeitplans der Prüfung ausgewertet. Diese Zeile ist keine E-Mail: Zu diesem Zeitpunkt ist keine E-Mail eingegangen.",
       "lastSignal": "Letztes Signal",
       "before": "{{duration}} vor dieser Auswertung",
       "overdueBy": "Überfällig seit",
@@ -511,12 +565,24 @@
     "summary": {
       "currentlyUp": "Aktuell online seit",
       "currentlyDown": "Aktuell offline seit",
+      "noDataFor": "Keine Daten seit",
       "statusFallback": "Status",
       "unknown": "Unbekannt",
       "lastChecked": "Zuletzt geprüft",
       "ago": "vor {{duration}}",
       "never": "Nie",
       "incidents": "Vorfälle"
+    },
+    "freshness": {
+      "title": "Aktualität je Region",
+      "noDataSince": "Keine Daten seit {{time}}",
+      "noDataEver": "Noch keine Daten",
+      "silentRegion_one": "Kein Ergebnis von {{region}} seit {{time}}, {{count}} andere Region meldet",
+      "silentRegion_other": "Kein Ergebnis von {{region}} seit {{time}}, {{count}} andere Regionen melden",
+      "silentRegionNever_one": "Kein aktuelles Ergebnis von {{region}}, {{count}} andere Region meldet",
+      "silentRegionNever_other": "Kein aktuelles Ergebnis von {{region}}, {{count}} andere Regionen melden",
+      "defaultRegion": "Standardregion",
+      "noResultRecently": "kein Ergebnis in 24 Std."
     },
     "chart": {
       "title": "Antwortzeiten",
@@ -567,7 +633,8 @@
       "longestIncident": "Längster Vorfall",
       "avgIncident": "Durchschn. Vorfall",
       "none": "keiner",
-      "monitored": "{{days}} T überwacht"
+      "monitored": "{{days}} T überwacht",
+      "unmeasured": "{{duration}} nicht gemessen"
     },
     "checkDetails": "Prüfungsdetails",
     "pendingFirstRun": "Erste Ausführung läuft …",
@@ -672,6 +739,7 @@
       "windowAvailability": "{{pct}} Verfügbarkeit",
       "noData": "Keine Daten",
       "probes": "{{up}} / {{total}} Prüfungen erfolgreich",
+      "coverage": "{{pct}} % des Intervalls gemessen",
       "status": {
         "up": "Aktiv",
         "degraded": "Beeinträchtigt",
@@ -679,14 +747,62 @@
         "noData": "Keine Daten"
       }
     },
-    "degraded": {
-      "bannerTitle": "Dieser Check wäre als beeinträchtigt markiert worden",
-      "bannerDescription": "Die Beeinträchtigungserkennung ist für diesen Check deaktiviert, daher wurde nichts gemeldet — die Regeln hätten aber am {{when}} ausgelöst.",
-      "bannerWindowLink": "Zeitraum ansehen",
-      "enableAction": "Beeinträchtigungserkennung aktivieren",
-      "enabled": "Beeinträchtigungserkennung für diesen Check aktiviert",
-      "enableFailed": "Beeinträchtigungserkennung konnte nicht aktiviert werden"
-    }
+    "placement": {
+      "title": "Platzierung",
+      "auto_one": "Automatisch, {{count}} Region: {{regions}}",
+      "auto_other": "Automatisch, {{count}} Regionen: {{regions}}",
+      "pinned": "Fixiert: {{regions}}",
+      "pool": "Kandidaten: {{regions}}",
+      "history": "Platzierungsverlauf",
+      "historyEntry": "{{from}} → {{to}} um {{time}}, {{reason}}",
+      "reasons": {
+        "region_offline": "Region offline",
+        "other": "verschoben"
+      },
+      "lastResult": "letztes Ergebnis",
+      "noResult": "noch kein Ergebnis",
+      "quorum": "Ein Vorfall wird eröffnet, wenn {{quorum}} von {{count}} Regionen fehlschlagen",
+      "quorumAll": "Ein Vorfall wird eröffnet, wenn alle {{count}} Regionen fehlschlagen",
+      "failing": "fehlerhaft",
+      "failingSince": "fehlerhaft seit {{time}}"
+    },
+    "regionalIssue": {
+      "title": "Regionales Problem: Fehler aus {{regions}}",
+      "detail": "{{failing}} von {{count}} Regionen fehlerhaft. Ein Vorfall wird erst eröffnet, wenn {{quorum}} Regionen während der Bestätigungszeit fehlschlagen."
+    },
+    "screenshots": {
+      "title": "Screenshots",
+      "description": "Was die Probe gesehen hat. Ein Screenshot eines fehlgeschlagenen Laufs entsteht kurz nachdem der Check die Seite als fehlerhaft erkannt hat, aus einer einzigen Region.",
+      "alt": "Screenshot der Seite, aufgenommen von diesem Check",
+      "captureNow": "Jetzt aufnehmen",
+      "capturing": "Wird aufgenommen…",
+      "pending": "Der Check wird einmal ausgeführt, um die Seite aufzunehmen. Der Screenshot erscheint hier, sobald der Lauf abgeschlossen ist.",
+      "requested": "Aufnahme angefordert.",
+      "requestedFrom": "Aufnahme aus {{region}} angefordert.",
+      "captured": "Neuer Screenshot aufgenommen.",
+      "stillWaiting": "Der Screenshot ist noch nicht da. Er erscheint hier, sobald der Lauf abgeschlossen ist.",
+      "empty": "Noch kein Screenshot. Screenshots werden aufgenommen, wenn ein Lauf fehlschlägt.",
+      "enableOnFailure": "Screenshots bei Fehlern aktivieren",
+      "jsHint": "Ein js-Check nimmt einen Screenshot auf, wenn sein Skript page.screenshot() aufruft.",
+      "older": "Ältere Screenshots",
+      "viewIncident": "Vorfall anzeigen",
+      "unknownRegion": "Unbekannte Region",
+      "thumbnailTitle": "{{capturedAt}} aus {{region}}",
+      "triggers": {
+        "incidentOpen": "Hat einen Vorfall eröffnet",
+        "incidentReopen": "Hat einen Vorfall wieder eröffnet",
+        "checkFailure": "Fehlgeschlagener Lauf",
+        "captureNow": "Auf Anfrage aufgenommen",
+        "agentUpload": "Von einem privaten Standort",
+        "unknown": "Aufnahme"
+      },
+      "rateLimited": "„Jetzt aufnehmen“ ist begrenzt. Versuchen Sie es in {{seconds}} s erneut.",
+      "rateLimitedNoDelay": "„Jetzt aufnehmen“ ist begrenzt. Versuchen Sie es in einer Minute erneut.",
+      "forbidden": "Sie haben keine Berechtigung, diesen Check auszuführen.",
+      "noScheduledRun": "Dieser Check hat keinen geplanten Lauf. Aktivieren Sie ihn, um einen Screenshot aufzunehmen.",
+      "captureFailed": "Die Aufnahme konnte nicht angefordert werden."
+    },
+    "uidShort": "UID: {{uid}}..."
   },
   "endpoints": {
     "heartbeat": {
@@ -850,7 +966,7 @@
       "router": "Router",
       "smartphone": "Telefon",
       "tablet": "Tablet",
-      "workstation": "Desktop"
+      "workstation": "Desktop-PC"
     },
     "loading": "Hosts werden geladen…",
     "noHosts": "Keine Hosts auf dieser Freebox sichtbar.",
@@ -925,6 +1041,10 @@
     "encryptedEnterNewValues": "(verschlüsselt — neue Werte eingeben, um zu ersetzen)",
     "followRedirects": "Weiterleitungen folgen",
     "followRedirectsOffHelp": "Die Prüfung wertet die erste Antwort (z. B. ein 3XX) aus, statt ihr bis zum Ziel zu folgen.",
+    "redirectHostPolicy": "Host-Richtlinie für Weiterleitungen",
+    "redirectHostPolicyAny": "Jeder Host",
+    "redirectHostPolicySameHost": "Nur derselbe Host",
+    "redirectHostPolicySameHostHelp": "Eine Weiterleitung zu einem anderen Host lässt die Prüfung fehlschlagen, statt ihr zu folgen.",
     "captureFailingResponse": "Fehlerhafte Antwort erfassen",
     "captureFailingResponseHelp": "Wenn diese Prüfung fehlschlägt, wird die empfangene Antwort (Statuszeile, Header mit geschwärzten sensiblen Werten und bis zu 16 KB des Bodys) am geöffneten Vorfall gespeichert. Antwortkörper können personenbezogene Daten enthalten — die Erfassung ist nur für Ihr Team sichtbar und erscheint nie auf einer Statusseite.",
     "requestBody": "Anfrage-Body",
@@ -965,7 +1085,11 @@
     "sendModeDeliveryDescription": "Diese E-Mail wurde dem Test einer SMTP-Prüfung im Sendemodus zugeordnet.",
     "deliveryLatency": "Zustellungslatenz:",
     "sentAt": "Gesendet am:",
-    "viewSendingSmtpCheck": "Sendende SMTP-Prüfung anzeigen"
+    "viewSendingSmtpCheck": "Sendende SMTP-Prüfung anzeigen",
+    "deliveryViaTitle": "Zustellungsprüfung",
+    "deliveryViaHelp": "Test-E-Mails werden an den Token-Posteingang dieser E-Mail-Prüfung adressiert.",
+    "deliverySources_one": "Empfängt Zustellungen von {{count}} SMTP-Prüfung",
+    "deliverySources_other": "Empfängt Zustellungen von {{count}} SMTP-Prüfungen"
   },
   "messaging": {
     "brokers": "Broker",
@@ -1019,7 +1143,11 @@
     "rdpEndSessionLogoff": "Abmelden (Standard)",
     "rdpEndSessionDisconnect": "Nur trennen (Sitzung bleibt auf dem Server)",
     "rdpEndSessionHelp": "Abmelden entfernt die Sitzung vom Server. Trennen lässt sie laufen, bis die Idle-Richtlinie des Servers sie beendet — der nächste Lauf hängt sich wieder an (schnellere Prüfungen).",
-    "rdpCaveatsHelp": "Jede authentifizierte Ausführung ist eine echte interaktive Windows-Anmeldung: Benutzerprofil, Anmeldeskripte und GPOs, möglicher Verbrauch einer RDS-Lizenz, auf Einzelsitzungsservern ein möglicherweise abgemeldeter echter Benutzer, und pro Ausführung ein Eintrag 4624/4634 im Sicherheitsprotokoll. Verwenden Sie ein dediziertes Überwachungskonto, nie das Konto einer Person."
+    "rdpCaveatsHelp": "Jede authentifizierte Ausführung ist eine echte interaktive Windows-Anmeldung: Benutzerprofil, Anmeldeskripte und GPOs, möglicher Verbrauch einer RDS-Lizenz, auf Einzelsitzungsservern ein möglicherweise abgemeldeter echter Benutzer, und pro Ausführung ein Eintrag 4624/4634 im Sicherheitsprotokoll. Verwenden Sie ein dediziertes Überwachungskonto, nie das Konto einer Person.",
+    "privateLocationRegion": "Privater Standort",
+    "privateLocationHelp": "SolidPing hat diesen Check zusammen mit dem Standort angelegt. Er überwacht die Agenten des Standorts und ist ausgefallen, wenn keiner verbunden ist. Der überwachte Standort kann nicht geändert werden.",
+    "defaultsToHost": "Standard: Host",
+    "offPlaceholder": "aus"
   },
   "network": {
     "hostKeyFingerprintOptional": "Host-Schlüssel-Fingerabdruck (optional)",
@@ -1039,7 +1167,7 @@
     "expectModeContains": "Enthält",
     "expectModeRegex": "Entspricht Regex",
     "encoding_text": "Text",
-    "encoding_escaped": "Escaped",
+    "encoding_escaped": "Maskiert",
     "encoding_hex": "Hex",
     "payloadHelp": "Legen Sie eine Erwartung fest, um zu belegen, dass der Dienst antwortet – nicht nur, dass der Port offen ist.",
     "payloadHelpUdp": "Ohne Erwartung erkennt diese Prüfung nur einen nicht erreichbaren Port.",
@@ -1098,7 +1226,9 @@
     "memoryThresholdHelp": "Ein Prozentsatz von RabbitMQs High Watermark (z. B. 80%) oder eine absolute Größe (z. B. 1.5GiB).",
     "diskWarning": "Freier Speicherplatz Warnung",
     "diskCritical": "Freier Speicherplatz kritisch",
-    "diskThresholdHelp": "Nur eine absolute Größe (z. B. 10GiB) — die Management-API liefert keine Gesamtgröße des Datenträgers, ein Prozentsatz kann daher nicht berechnet werden."
+    "diskThresholdHelp": "Nur eine absolute Größe (z. B. 10GiB) — die Management-API liefert keine Gesamtgröße des Datenträgers, ein Prozentsatz kann daher nicht berechnet werden.",
+    "memoryWarningPlaceholder": "80% oder 1.5GiB",
+    "memoryCriticalPlaceholder": "90% oder 1.8GiB"
   },
   "snmp": {
     "oid": "OID",
@@ -1119,7 +1249,13 @@
     "noneDirectConnection": "Keiner (direkte Verbindung)",
     "needsHostKeyFingerprint": "benötigt einen Host-Schlüssel-Fingerabdruck",
     "notInRegion": "nicht in Region {{region}}",
-    "help": "Leiten Sie das Ziel dieser Prüfung über die Verbindung einer SSH-Prüfung, um Dienste hinter einem Bastion zu erreichen. Der Hostname wird vom Bastion aufgelöst, sodass private Namen funktionieren. Die Tunnel-Einrichtungszeit wird separat als tunnel_setup_ms gemeldet und von der Antwortzeit der Prüfung ausgeschlossen."
+    "help": "Leiten Sie das Ziel dieser Prüfung über die Verbindung einer SSH-Prüfung, um Dienste hinter einem Bastion zu erreichen. Der Hostname wird vom Bastion aufgelöst, sodass private Namen funktionieren. Die Tunnel-Einrichtungszeit wird separat als tunnel_setup_ms gemeldet und von der Antwortzeit der Prüfung ausgeschlossen.",
+    "viaTitle": "SSH-Tunnel",
+    "viaHelp": "Die Prüfungen laufen über die Verbindung dieser SSH-Prüfung.",
+    "dependentsTitle_one": "Als Tunnel von {{count}} Prüfung verwendet",
+    "dependentsTitle_other": "Als Tunnel von {{count}} Prüfungen verwendet",
+    "dependentsHelp": "Diese Prüfungen laufen über diesen Bastion-Host. Trennen Sie sie, bevor Sie diese Prüfung löschen.",
+    "viaTooltip": "über {{name}}"
   },
   "web": {
     "sendOptional": "Senden (optional)",
@@ -1167,5 +1303,75 @@
     "title": "Noch keine Check-Gruppen",
     "description": "Eine Gruppe fasst zusammengehörige Checks in einem exklusiven Behälter zusammen — sie steuert Eskalation, Incident-Korrelation und Statusseiten-Zusammenfassungen. Legen Sie eine über die Schaltfläche Neue Gruppe oben an."
   },
-  "wouldHaveFiredFilter": "Hätte ausgelöst"
+  "regionOutage": {
+    "blindTitle": "Region {{regions}} offline seit {{time}}: dieser Check läuft nicht",
+    "reducedTitle": "Region {{regions}} offline seit {{time}}: läuft in {{live}} von {{total}} Regionen",
+    "detail": "SolidPing hat alle Worker in dieser Region verloren. Das Team ist informiert, und die Ergebnisse kommen von selbst zurück, sobald sie wieder da ist.",
+    "listTitle": "Region {{regions}} offline seit {{time}}",
+    "listBlind_one": "{{count}} Check läuft nur in dieser Region und läuft gerade nicht: {{names}}",
+    "listBlind_other": "{{count}} Checks laufen nur in dieser Region und laufen gerade nicht: {{names}}",
+    "listReduced_one": "{{count}} Check läuft in seinen anderen Regionen weiter.",
+    "listReduced_other": "{{count}} Checks laufen in ihren anderen Regionen weiter.",
+    "andMore": "{{names}} und {{count}} weitere",
+    "formWarning": "{{regions}} ist gerade offline. Ein Check, der nur dort läuft, läuft erst wieder, wenn sie zurück ist.",
+    "offlineBadge": "Offline"
+  },
+  "autoPlacement": {
+    "button": "Automatische Platzierung",
+    "title": "Auf automatische Platzierung umstellen",
+    "description_one": "{{count}} fixierte Prüfung wird auf automatische Platzierung umgestellt. Sie behält ihre aktuellen Regionen und deren Anzahl, die Kosten ändern sich also nicht: Sie wird nur verschoben, wenn eine ihrer Regionen ausfällt.",
+    "description_other": "{{count}} fixierte Prüfungen werden auf automatische Platzierung umgestellt. Jede behält ihre aktuellen Regionen und deren Anzahl, die Kosten ändern sich also nicht: Eine Prüfung wird nur verschoben, wenn eine ihrer Regionen ausfällt.",
+    "none": "Alle Prüfungen, die automatisch platziert werden können, sind es bereits. Prüfungen, die an einen privaten Standort gebunden sind, bleiben fixiert.",
+    "confirm": "Umstellen",
+    "switched_one": "{{count}} Prüfung auf automatische Platzierung umgestellt",
+    "switched_other": "{{count}} Prüfungen auf automatische Platzierung umgestellt",
+    "failed": "Prüfungen konnten nicht auf automatische Platzierung umgestellt werden"
+  },
+  "labelFilterLabel": "Labels:",
+  "clearFilters": "Filter zurücksetzen",
+  "intervalUnits": {
+    "second_one": "{{count}} Sekunde",
+    "second_other": "{{count}} Sekunden",
+    "minute_one": "{{count}} Minute",
+    "minute_other": "{{count}} Minuten",
+    "hour_one": "{{count}} Stunde",
+    "hour_other": "{{count}} Stunden",
+    "day_one": "{{count}} Tag",
+    "day_other": "{{count}} Tage",
+    "week_one": "{{count}} Woche",
+    "week_other": "{{count}} Wochen"
+  },
+  "validation": {
+    "hostRequired": "Host ist erforderlich",
+    "urlRequired": "URL ist erforderlich",
+    "domainRequired": "Domain ist erforderlich",
+    "targetRequired": "Ziel-IP oder Hostname ist erforderlich",
+    "containerRequired": "Containername oder -ID ist erforderlich",
+    "freeboxConnectionRequired": "Freebox-Verbindung ist erforderlich",
+    "linkTypeInvalid": "Der Leitungstyp muss xdsl oder ftth sein",
+    "promqlRequired": "PromQL-Abfrage ist erforderlich",
+    "metricRequired": "Metrikname ist erforderlich",
+    "thresholdRequired": "Legen Sie einen Warn- und/oder einen kritischen Schwellenwert fest",
+    "brokersRequired": "Broker sind erforderlich",
+    "mailFromRequired": "Mail From ist erforderlich, wenn der Sendemodus aktiviert ist",
+    "deliveryCheckRequired": "Wählen Sie eine Zustellungsprüfung (E-Mail), wenn der Sendemodus aktiviert ist",
+    "passwordRequiredWithUsername": "Das Passwort ist erforderlich, wenn ein Benutzername gesetzt ist.",
+    "usernameRequiredWithPassword": "Der Benutzername ist erforderlich, wenn ein Passwort gesetzt ist.",
+    "screenshotRequiresCredentials": "Ein Bildschirmfoto erfordert Benutzername und Passwort (eine authentifizierte Anmeldung).",
+    "usernameRequiredRegister": "Der Benutzername ist im Registrierungsmodus erforderlich",
+    "passwordRequiredRegister": "Das Passwort ist im Registrierungsmodus erforderlich",
+    "scriptRequired": "Skript ist erforderlich",
+    "sleepDurationRequired": "Wartedauer ist erforderlich",
+    "regionRequired": "Region ist erforderlich",
+    "countWholeNumber": "Die Anzahl muss eine ganze Zahl von Paketen sein",
+    "intervalDuration": "Das Intervall muss eine Dauer wie 100 oder 100ms sein",
+    "packetSizeWholeNumber": "Die Paketgröße muss eine ganze Zahl von Bytes sein",
+    "ttlWholeNumber": "TTL muss eine ganze Zahl sein",
+    "invalidStatusCodes_one": "Ungültiges Statuscode-Muster: {{codes}} (verwenden Sie einen exakten Code wie 200 oder einen Platzhalter wie 4XX)",
+    "invalidStatusCodes_other": "Ungültige Statuscode-Muster: {{codes}} (verwenden Sie einen exakten Code wie 200 oder einen Platzhalter wie 4XX)",
+    "invalidIp_one": "Keine {{family}}-Adresse: {{values}}",
+    "invalidIp_other": "Keine {{family}}-Adressen: {{values}}",
+    "invalidMetadataKeys_one": "Ungültiger Metadatenschlüssel: {{keys}} (Kleinbuchstaben, Ziffern, '-', '.' oder '_'; 'grpc-' und '-bin' sind reserviert)",
+    "invalidMetadataKeys_other": "Ungültige Metadatenschlüssel: {{keys}} (Kleinbuchstaben, Ziffern, '-', '.' oder '_'; 'grpc-' und '-bin' sind reserviert)"
+  }
 }

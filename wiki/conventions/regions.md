@@ -194,3 +194,59 @@ are SHA-256 of the *recipient public keys*.
 does not need to reseal anything.** The recipient set is unchanged because
 `agents.region` and `checks.regions` are rewritten with the same expression, so
 `ListActiveAgentsByRegion` keeps returning the same agents.
+
+## Placement: pinned vs auto (spec 2026-09-25-06)
+
+`checks.placement` records the INTENT behind `checks.regions`:
+
+- `pinned` — `regions` is the user's explicit list. Nothing ever rewrites it.
+- `auto` — `regions` is the CURRENT placement, chosen by
+  `regions.Place` (org defaults → system defaults → declared order, filtered by
+  `region_pool`, the check's required capabilities and region health) and
+  rewritten by the region sweep (`checks.Service.ReplaceAutoChecks`, hooked into
+  `regionsweep` on the dark transition and every dark sweep after it).
+
+The placement deliberately lives in `checks.regions` rather than in a side
+table: `ReconcileStaleJobSchedules` (boot repair), `reconcileCheckJobs`, the
+phase computation and the rate accounting all read `checks.regions`, so any
+placement kept elsewhere would be "healed" away at the next boot.
+
+Rules that must hold on every write path (create, PATCH, PUT-by-slug, import,
+apply, clone, the bulk switch):
+
+- a private (`@`) region is pinned-only: auto never places into one, a pool may
+  not name one, and a check naming one cannot be auto;
+- passive checks (heartbeat, email, private-location) have no regions and are
+  always `pinned` with no count/pool (`models.Check.NormalizePassiveRegions`);
+- `placement: auto` with a non-empty `regions` is a contradiction
+  (`INVALID_PLACEMENT`), an explicit `regions` list means pinned;
+- nothing ever moves an auto check back to a recovered region.
+
+Every path resolves placement through `internal/handlers/checks/placement.go`
+(`resolveCreatePlacement` / `resolveUpdatePlacement`); the config-as-code diff
+calls the same resolution so a capped `regionCount` converges.
+
+## Multi-region quorum (spec 2026-09-25-10)
+
+`checks.fail_quorum` (NULL = default) says how many of a check's regions must
+be failing, for the confirmation period, before it is down. Resolution lives in
+`internal/regionquorum` (the only place): default = all for N ≤ 2, majority
+for N ≥ 3; `all`; `majority` = ⌊N/2⌋+1; an integer clamped to N.
+
+- **Legacy mode** (N ≤ 1, passive, or Q ≥ N): `ProcessCheckResult` reads each
+  result on its own exactly as before. This is every existing 1- and 2-region
+  check, and any explicit `all`. `TestQuorumLegacyEquivalence` replays one
+  timeline on a regionless check and on these, step by step.
+- **Quorum mode** (Q < N): the signal comes from `check_region_states` (newest
+  real reading per check × region, written for non-passive checks with 2+
+  regions, maintenance included). ≥ Q failing = failure; 0 < failing < Q =
+  success for the clocks/incident but visible `warning` (the regional issue);
+  none = the result's own up/warning. Only a result that itself failed opens
+  an incident or grows `failure_count`; a passing region's result while the
+  quorum fails keeps the check `validating`.
+- **Only CURRENT regions count.** The freshness prelude re-reads `regions` and
+  `fail_quorum` from the live row, and `regionquorum.Evaluate` ignores rows for
+  a region not in `checks.regions` and rows older than the check's stale
+  threshold. Rows are never pruned on `check.placement_changed`: correctness
+  must not depend on an event being seen.
+- status0 has no "regional issue" state: it is a plain `warning` there.

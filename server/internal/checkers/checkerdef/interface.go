@@ -103,3 +103,24 @@ type BurstBudgeter interface {
 	// needs with this config, margins excluded.
 	BurstBudget() time.Duration
 }
+
+// ExtraBudgeter is an optional interface a checker config implements when its
+// execution needs wall-clock time beyond the checker's own probe timeout for
+// work that happens AFTER the verdict is decided — the browser checker's
+// screenshot capture, taken against a session it deliberately keeps alive
+// past its probe timeout, is the motivating case (spec 2026-09-25-35). The
+// check worker probes it after parsing the config and adds the returned
+// duration to the HARD execution context deadline only; the budget threaded
+// into the checker's own config (`timeout`) is unchanged, so extra time here
+// can never let a slow target answer that would otherwise have timed out —
+// it only extends how long a checker gets to do something once its own
+// verdict already exists.
+type ExtraBudgeter interface {
+	// ExtraBudget returns the extra wall-clock time this execution needs
+	// beyond its own timeout. forcedCapture reports whether this run is an
+	// on-demand capture (spec 2026-09-25-34, "Capture now") that keeps its
+	// capture regardless of the config's own opt-in: the caller passes it
+	// through because that is a property of the CLAIMED JOB, not of the
+	// check's stored configuration, so the config alone cannot know it.
+	ExtraBudget(forcedCapture bool) time.Duration
+}

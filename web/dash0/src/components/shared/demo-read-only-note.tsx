@@ -31,7 +31,7 @@ export function DemoReadOnlyNote({ testId = "demo-read-only-note" }: DemoReadOnl
       className="flex items-center gap-1.5 text-sm text-muted-foreground"
       data-testid={testId}
     >
-      <Lock className="h-3.5 w-3.5" />
+      <Lock className="h-3.5 w-3.5 shrink-0" />
       <span>
         {t("org:demo.readOnly")} — {t("org:demo.readOnlyHint")}
       </span>

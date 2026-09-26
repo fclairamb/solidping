@@ -56,6 +56,7 @@ import { regionDisplayLabel, sortRegionSlugs } from "@/lib/region-label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { CollapsibleCode } from "@/components/shared/copyable-code";
+import { CheckRegionOutageBanner } from "@/components/shared/region-outage-banner";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { Label } from "@/components/ui/label";
 import {
@@ -100,13 +101,16 @@ import { docsHrefForType } from "@/components/shared/check-type-docs-anchors";
 import { SloCoverageChip } from "@/components/slos/slo-coverage-chip";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { NeedsResealAlert } from "@/components/checks/needs-reseal-alert";
-import { DegradedDryRunBanner } from "@/components/checks/degraded-dry-run-banner";
 import { PublishOnStatusPageDialog } from "@/components/checks/publish-on-status-page-dialog";
 import { CheckSummaryCards } from "@/components/checks/check-summary-cards";
+import { RegionFreshnessList, StaleSince } from "@/components/checks/check-freshness";
+import { CheckPlacementDetail } from "@/components/checks/check-placement";
+import { CheckRegionalIssueBanner } from "@/components/checks/regional-issue-banner";
 import { SslChainCard } from "@/components/checks/ssl-chain-card";
 import { DockerRestartLoopCard } from "@/components/checks/docker-restart-loop-card";
 import { DnsblCard, DNSBL_OUTPUT_KEYS } from "@/components/checks/dnsbl-card";
 import { isEvaluationOutput } from "@/components/checks/evaluation-card";
+import { isPassiveCheckType } from "@/lib/check-scheduling";
 import {
   JsonAssertionResultCard,
   JSON_ASSERTION_RESULT_OUTPUT_KEY,
@@ -119,6 +123,8 @@ import {
 } from "@/components/checks/response-time-chart";
 import { AvailabilityTable } from "@/components/checks/availability-table";
 import { DependenciesCard } from "@/components/checks/dependencies-card";
+import { CheckScreenshotsCard } from "@/components/checks/check-screenshots-card";
+import { checkTypeCanCapture } from "@/lib/check-screenshots";
 
 // The result-output key reporting which address family the probe used, and the
 // config key pinning it. Kept next to each other so the pair can't drift.
@@ -916,14 +922,13 @@ function CheckDetailPage() {
   // we also pull `output` and badge the evaluations. Deliberately NOT widened
   // for other types: nothing else in this table needs the payload, and the
   // chart-window query (which fetches far more rows) is untouched.
-  const isPassiveCheckType =
-    check?.type === "heartbeat" || check?.type === "email";
+  const isPassiveCheck = isPassiveCheckType(check?.type);
 
   const { data: results } = useResults(org, {
     checkUid,
     size: 10,
     region: effectiveRegion,
-    with: isPassiveCheckType ? "durationMs,region,output" : "durationMs,region",
+    with: isPassiveCheck ? "durationMs,region,output" : "durationMs,region",
     refetchInterval,
   });
 
@@ -957,16 +962,6 @@ function CheckDetailPage() {
           (span.to == null || span.to > span.from),
       );
   }, [incidents]);
-
-  // The banner links into the window the dry run judged, not to a default 24 h
-  // view where seven failures are seven pixels.
-  const degradedWindowUrl = useMemo(() => {
-    const stamp = check?.degradedWouldFireAt;
-    if (!stamp) return undefined;
-    const to = new Date(stamp).getTime();
-    if (!Number.isFinite(to)) return undefined;
-    return { graphFrom: to - 60 * 60 * 1000, graphTo: to };
-  }, [check?.degradedWouldFireAt]);
 
   const deleteCheck = useDeleteCheck(org);
   const cloneCheck = useCloneCheck(org);
@@ -1236,7 +1231,7 @@ function CheckDetailPage() {
                   }}
                   className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs font-mono text-muted-foreground hover:text-foreground transition-colors"
                 >
-                  uid: {check.uid.slice(0, 8)}...
+                  {t("detail.uidShort", { uid: check.uid.slice(0, 8) })}
                 </Link>
               </div>
             )}
@@ -1392,7 +1387,7 @@ function CheckDetailPage() {
                 <AlertDialogCancel>{t("common:cancel")}</AlertDialogCancel>
                 <AlertDialogAction
                   onClick={handleDelete}
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  variant="destructive"
                 >
                   {deleteCheck.isPending ? (
                     <>
@@ -1424,16 +1419,15 @@ function CheckDetailPage() {
           the only fix — the server cannot re-seal what it cannot read. */}
       <NeedsResealAlert needsReseal={check.needsReseal} />
 
-      {/* Degraded dry-run banner (spec 2026-09-22-03). Degraded detection ships
-          OFF for every check that predates it — upgrading must never start
-          notifying on its own — so the evaluator runs as a dry run and stamps
-          when it WOULD have fired. This banner is the entire adoption path:
-          without it the feature is a column nobody ever turns on. */}
-      <DegradedDryRunBanner
-        org={org}
-        check={check}
-        windowUrl={degradedWindowUrl}
-      />
+      {/* Region outage (spec 2026-09-25-03): a region this check runs from is
+          offline. Blind (every region down) means the check is not running at
+          all — the "No data" status is our outage, not the target's. */}
+      <CheckRegionOutageBanner check={check} regions={regionsData?.regions} />
+
+      {/* Regional issue (spec 2026-09-25-10): some, but fewer than the
+          quorum, of the check's regions are failing. The status reads
+          `warning` and no incident opens; this says which regions and why. */}
+      <CheckRegionalIssueBanner check={check} regions={regionsData?.regions} />
 
       {/* Duty-cycle warning (spec 2026-07-01-04 D3): the check's execution
           cost eats >= 50% of a runner slot — nudge toward a longer period. */}
@@ -1469,6 +1463,8 @@ function CheckDetailPage() {
         org={org}
         checkUid={checkUid}
         periodMs={periodMs}
+        regionCount={check.regions?.length}
+        createdAt={check.createdAt}
         initialPeriod={graphPeriod}
         initialFullRange={graphFull}
         region={region}
@@ -1569,20 +1565,9 @@ function CheckDetailPage() {
                 <div>{check.period}</div>
               </div>
             )}
-            {check.regions && check.regions.length > 0 && (
-              <div>
-                <div className="text-sm font-medium text-muted-foreground mb-1">
-                  {t("checks:detail.regionsLabel")}
-                </div>
-                <div className="flex gap-1 flex-wrap">
-                  {check.regions.map((slug) => (
-                    <Badge key={slug} variant="outline">
-                      {regionDisplayLabel(regionsData?.regions, slug)}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-            )}
+            {/* Placement + regions + per-region last result + the automatic
+                moves (spec 2026-09-25-06). */}
+            <CheckPlacementDetail org={org} check={check} regions={regionsData?.regions} />
             <TunnelVia org={org} check={check} />
             <TunnelDependents org={org} check={check} />
             <DeliveryVia org={org} check={check} />
@@ -1600,8 +1585,10 @@ function CheckDetailPage() {
                 {check.enabled === false && (
                   <Badge variant="outline">{t("checks:detail.disabled")}</Badge>
                 )}
+                <StaleSince check={check} />
               </div>
             </div>
+            <RegionFreshnessList check={check} regions={regionsData?.regions} />
             {flapSummary && (
               <div>
                 <div className="text-sm font-medium text-muted-foreground">
@@ -1790,6 +1777,17 @@ function CheckDetailPage() {
         </Card>
       </div>
 
+      {checkTypeCanCapture(check.type) && (
+        <CheckScreenshotsCard
+          org={org}
+          checkUid={checkUid}
+          checkType={check.type ?? ""}
+          screenshotEnabled={
+            check.config?.screenshot === true || check.config?.screenshot === "true"
+          }
+        />
+      )}
+
       {check.type === "ssl" && (
         <SslChainCard
           output={
@@ -1939,7 +1937,7 @@ function CheckDetailPage() {
                   // always false elsewhere — no other type can be badged by
                   // accident (spec 2026-09-02-04).
                   const isEvaluationRow =
-                    isPassiveCheckType && isEvaluationOutput(result.output);
+                    isPassiveCheck && isEvaluationOutput(result.output);
 
                   return (
                     <TableRow

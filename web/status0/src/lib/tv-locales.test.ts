@@ -3,6 +3,7 @@ import en from "../locales/en/status.json";
 import fr from "../locales/fr/status.json";
 import de from "../locales/de/status.json";
 import es from "../locales/es/status.json";
+import { statusStyle } from "./status-style";
 
 /**
  * Locale parity for TV mode (spec 2026-08-29-08).
@@ -115,6 +116,74 @@ describe("TV mode locale parity", () => {
       const prose = identical.filter(([key]) => !key.startsWith("tv.duration"));
 
       expect(prose).toEqual([]);
+    });
+  }
+});
+
+/**
+ * Locale parity for the WHOLE public bundle, not just `tv.*` (spec
+ * 2026-09-25-02). The per-resource status words ("No data", "Outage", …) and
+ * the "No data, last checked 13:41" line live at the top level of status.json,
+ * and a key missing from fr/de/es renders as the raw key on a customer-facing
+ * page. Every status the server can put on a component is resolved through
+ * statusStyle(), so its label key is checked in every locale explicitly.
+ */
+const PUBLIC_STATUSES = [
+  "up",
+  "operational",
+  "warning",
+  "degraded",
+  "down",
+  "error",
+  "abandoned",
+  "maintenance",
+  "stale",
+  "created",
+  "unknown",
+];
+
+const enAll = flatten(en);
+
+describe("status page locale parity", () => {
+  test("English defines the label of every public status, stale included", () => {
+    for (const status of PUBLIC_STATUSES) {
+      expect(enAll.has(statusStyle(status).labelKey)).toBe(true);
+    }
+
+    expect(statusStyle("stale").labelKey).toBe("noData");
+    expect(enAll.has("noDataLastChecked")).toBe(true);
+    expect(enAll.has("measuredCoverage")).toBe(true);
+    expect(enAll.has("statusUnknown")).toBe(true);
+  });
+
+  for (const [name, locale] of Object.entries(LOCALES)) {
+    test(`${name} defines every key English does, across the whole bundle`, () => {
+      const theirs = flatten(locale);
+
+      expect([...enAll.keys()].filter((key) => !theirs.has(key))).toEqual([]);
+      expect([...theirs.keys()].filter((key) => !enAll.has(key))).toEqual([]);
+    });
+
+    test(`${name} keeps every interpolation placeholder, across the whole bundle`, () => {
+      const theirs = flatten(locale);
+
+      for (const [key, english] of enAll) {
+        const wanted = [...english.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]);
+        const got = theirs.get(key) ?? "";
+
+        for (const placeholder of wanted) {
+          expect(got).toContain(`{{${placeholder}}}`);
+        }
+      }
+    });
+
+    test(`${name} translates the stale-status copy`, () => {
+      const theirs = flatten(locale);
+
+      for (const key of ["noData", "noDataLastChecked", "measuredCoverage"]) {
+        expect(theirs.get(key)).toBeTruthy();
+        expect(theirs.get(key)).not.toBe(enAll.get(key));
+      }
     });
   }
 });

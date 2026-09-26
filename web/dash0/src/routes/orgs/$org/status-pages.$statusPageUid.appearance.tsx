@@ -45,15 +45,23 @@ const STARTER_TEMPLATE = `/* Status page theme — every rule below is optional.
   --brand-foreground: #ffffff;
 
   /* Page surface */
-  --background: #f8fafc;
-  --foreground: #0f172a;
+  --background: #f5f9fc;
+  --foreground: #09121f;
 
   /* Cards (each section is a card) */
   --card: #ffffff;
-  --card-foreground: #0f172a;
+  --card-foreground: #09121f;
 
   /* Hairlines and separators */
-  --border: #e2e8f0;
+  --border: #dee3eb;
+
+  /* Buttons, links and the maintenance state. The buttons paint
+     --primary-gradient over --primary: if you set --primary, set the
+     gradient too (a flat one drops the gradient). */
+  /* --primary: #1e64ef; */
+  /* --primary-foreground: #ffffff; */
+  /* --primary-gradient: linear-gradient(#1e64ef, #1e64ef); */
+  /* --gradient-foreground: #ffffff; */
 
   /* Status colors — the dots, badges and uptime bars */
   --status-ok: #16a34a;
@@ -66,11 +74,11 @@ const STARTER_TEMPLATE = `/* Status page theme — every rule below is optional.
 
 /* Visitors whose browser/OS asks for dark mode get these instead. */
 .dark {
-  --background: #0b1220;
-  --foreground: #e2e8f0;
-  --card: #131c2e;
-  --card-foreground: #e2e8f0;
-  --border: #24314a;
+  --background: #060a13;
+  --foreground: #edf2f9;
+  --card: #0c131e;
+  --card-foreground: #edf2f9;
+  --border: #1f293a;
 }
 
 /* ---------------------------------------------------------------
@@ -83,10 +91,13 @@ const STARTER_TEMPLATE = `/* Status page theme — every rule below is optional.
      .sp-version     version line
    --------------------------------------------------------------- */
 
-/* Replace the logo with your own image (Chromium / Safari): */
+/* Replace the logo: the simplest way is to upload it under Branding.
+   url() only loads images and fonts from this site or from data: URIs —
+   the page's security policy blocks external hosts. With a data: URI
+   (Chromium / Safari): */
 /*
 .sp-logo img {
-  content: url("https://cdn.example.com/logo.svg");
+  content: url("data:image/svg+xml;base64,PHN2Zy8+");
 }
 */
 
@@ -94,7 +105,7 @@ const STARTER_TEMPLATE = `/* Status page theme — every rule below is optional.
 /*
 .sp-logo img { display: none; }
 .sp-logo {
-  background: url("https://cdn.example.com/logo.svg") center / contain no-repeat;
+  background: url("data:image/svg+xml;base64,PHN2Zy8+") center / contain no-repeat;
   width: 120px;
   height: 32px;
 }
@@ -107,7 +118,7 @@ const STARTER_TEMPLATE = `/* Status page theme — every rule below is optional.
 */
 
 /* Anything else is fair game too — plain CSS against the live page.
-   @import is not allowed; external url() (fonts, images) is. */
+   @import is not allowed; url() may only point at this site or data:. */
 `;
 
 /**

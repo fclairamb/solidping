@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/db"
+	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
@@ -99,6 +100,37 @@ func (h *Handler) ListStateEntries(writer http.ResponseWriter, req *http.Request
 
 	return h.writeJSON(writer, http.StatusOK, map[string]any{
 		"data": entries,
+	})
+}
+
+// ListJobs lists queued jobs, optionally filtered by type — the test-mode
+// twin of ListStateEntries. It exists so an e2e suite can recover content
+// that only ever reaches the caller through a queued email (e.g. the
+// registration confirmation URL) now that pending registration entries
+// store a hash rather than the plaintext token (spec 2026-09-25-30).
+// GET /api/v1/test/jobs?type=email.
+func (h *Handler) ListJobs(writer http.ResponseWriter, req *http.Request) error {
+	jobType := req.URL.Query().Get("type")
+
+	jobs, err := h.dbService.ListJobs(req.Context(), nil, 0)
+	if err != nil {
+		return h.writeInternalError(writer, err)
+	}
+
+	if jobType != "" {
+		filtered := make([]*models.Job, 0, len(jobs))
+
+		for _, job := range jobs {
+			if job.Type == jobType {
+				filtered = append(filtered, job)
+			}
+		}
+
+		jobs = filtered
+	}
+
+	return h.writeJSON(writer, http.StatusOK, map[string]any{
+		"data": jobs,
 	})
 }
 

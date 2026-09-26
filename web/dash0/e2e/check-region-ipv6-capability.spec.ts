@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "./fixtures";
+import { choosePinnedRegions } from "./placement-helpers";
 import { expandSection } from "./section-helpers";
 
 // Coverage for spec 2026-08-15-11: regions advertise a three-state IPv6 egress
@@ -45,6 +46,7 @@ test.describe("region picker IPv6 capability", () => {
     await page.goto("orgs/test/checks/new?checkType=tcp");
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
+    await choosePinnedRegions(page);
 
     // Every region is offered, in the server's order, before anything is pinned.
     expect(await regionOrder(page)).toEqual(["no-v6", "silent", "has-v6"]);
@@ -84,7 +86,10 @@ test.describe("region picker IPv6 capability", () => {
 
     const noV6Checkbox = page.getByTestId("region-option-no-v6").getByRole("checkbox");
     await expect(noV6Checkbox).toBeEnabled();
+    // It may start checked: "Choose regions" seeds the picker with the org's
+    // default regions (spec 2026-09-25-06). Selectable means it toggles.
+    const before = await noV6Checkbox.getAttribute("data-state");
     await noV6Checkbox.click();
-    await expect(noV6Checkbox).toHaveAttribute("data-state", "checked");
+    await expect(noV6Checkbox).toHaveAttribute("data-state", before === "checked" ? "unchecked" : "checked");
   });
 });

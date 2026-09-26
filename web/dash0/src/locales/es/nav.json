@@ -168,7 +168,7 @@
   "audit": "Auditoría",
   "promote": "Promover",
   "sessions": "Sesiones",
-  "parameters": "Parámetros",
+  "parameters": "Variables",
   "groups": {
     "monitoring": "Supervisión",
     "alerting": "Alertas",

@@ -28,6 +28,12 @@ type RegionDefinition struct {
 	// This is DERIVED, not configured: it is computed from worker rows at read
 	// time and is never persisted by SetOrgCustomRegions.
 	Capabilities map[string]string `json:"capabilities,omitempty"`
+	// LivenessMonitorOff records that the org deleted this private location's
+	// liveness monitor (spec 2026-09-25-05), so the startup backfill and the
+	// post-enrollment re-ensure do not recreate it. Private locations only;
+	// persisted in `custom_regions`, omit-empty so an older binary round-trips
+	// the parameter unchanged.
+	LivenessMonitorOff bool `json:"livenessMonitorOff,omitempty"`
 }
 
 const (
@@ -239,6 +245,12 @@ func (s *Service) getSystemDefaultRegions(ctx context.Context) ([]string, error)
 	return slugs, nil
 }
 
+// SystemDefaultRegions returns the system-level default region slugs (the
+// `default_regions` system parameter), nil when unset.
+func (s *Service) SystemDefaultRegions(ctx context.Context) ([]string, error) {
+	return s.getSystemDefaultRegions(ctx)
+}
+
 // ResolveRegionsForCheck determines the effective regions for a check.
 // Priority: check regions > org default > system default > all defined regions.
 //
@@ -390,4 +402,30 @@ func (s *Service) SetOrgCustomRegions(ctx context.Context, orgUID string, defs [
 	}
 
 	return nil
+}
+
+// SetPrivateLivenessMonitorOff records (off=true) or clears (off=false) the
+// liveness-monitor opt-out on one of an org's private locations. Returns false
+// when the org has no private location with that slug (nothing written).
+func (s *Service) SetPrivateLivenessMonitorOff(ctx context.Context, orgUID, slug string, off bool) (bool, error) {
+	defs, err := s.GetOrgCustomRegions(ctx, orgUID)
+	if err != nil {
+		return false, err
+	}
+
+	for i := range defs {
+		if defs[i].Slug != slug {
+			continue
+		}
+
+		if defs[i].LivenessMonitorOff == off {
+			return true, nil
+		}
+
+		defs[i].LivenessMonitorOff = off
+
+		return true, s.SetOrgCustomRegions(ctx, orgUID, defs)
+	}
+
+	return false, nil
 }

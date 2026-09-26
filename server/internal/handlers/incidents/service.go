@@ -113,7 +113,7 @@ const (
 	keyParentCheckUID             = "parent_check_uid"
 	keyRollupDepth                = "rollup_depth"
 	// keyResolutionType names HOW an incident closed (auto | manual | expired |
-	// escalated) in the resolved event's payload. A shared constant because
+	// escalated | disabled) in the resolved event's payload. A shared constant because
 	// three separate resolve paths write it — the check state machine, the burn
 	// evaluator and the degraded evaluator — and a typo in one of them would
 	// silently drop the field from that path's notifications only.
@@ -133,6 +133,12 @@ type AttachmentStore interface {
 	// capture that is this incident's current onset evidence.
 	PutIncidentScreenshot(
 		ctx context.Context, orgUID, incidentUID string, image []byte, details models.JSONMap,
+	) (string, error)
+	// PutCheckScreenshot stores a check-scoped capture (spec 2026-09-25-34): a
+	// failing run that opened no incident, or a "Capture now" run. The store
+	// keeps the check's last five and retires the oldest.
+	PutCheckScreenshot(
+		ctx context.Context, orgUID, checkUID string, image []byte, details models.JSONMap,
 	) (string, error)
 	// DeleteIncidentAttachments soft-deletes everything attached to the
 	// incident and reports how many rows changed.
@@ -462,6 +468,12 @@ func (s *Service) persistScreenshot(
 	}
 
 	shot := result.Diagnostics.Screenshot
+
+	// The capture is this incident's evidence from here on, whatever happens
+	// below: the check-scoped fallback (persistCheckScreenshot) must not store
+	// it a second time under the check.
+	shot.Attached = true
+
 	if len(shot.Image) == 0 {
 		// The agent path advertises a capture it holds rather than sending the
 		// bytes (see checkerdef.Screenshot). Ask for it: the upload arrives
@@ -474,6 +486,18 @@ func (s *Service) persistScreenshot(
 	if s.attachmentStore == nil {
 		return
 	}
+
+	if _, err := s.attachmentStore.PutIncidentScreenshot(
+		ctx, check.OrganizationUID, incident.UID, shot.Image, screenshotDetails(check, result, trigger),
+	); err != nil {
+		slog.WarnContext(ctx, "Failed to persist incident screenshot",
+			"incidentUid", incident.UID, "error", err)
+	}
+}
+
+// screenshotDetails is the details bag every stored capture carries.
+func screenshotDetails(check *models.Check, result *models.Result, trigger string) models.JSONMap {
+	shot := result.Diagnostics.Screenshot
 
 	details := models.JSONMap{
 		attachments.DetailKeyTrigger:  trigger,
@@ -490,23 +514,124 @@ func (s *Service) persistScreenshot(
 		details[attachments.DetailKeyRegion] = *result.Region
 	}
 
-	if _, err := s.attachmentStore.PutIncidentScreenshot(
-		ctx, check.OrganizationUID, incident.UID, shot.Image, details,
+	return details
+}
+
+// persistCheckScreenshot keeps a capture that no incident took (spec
+// 2026-09-25-34), under the check-scoped topic `checks/<uid>/screenshot`.
+//
+// It runs after the whole result pipeline, on every path out of it, so it
+// catches every failing run that neither opened nor reopened an incident — a
+// validating run, a blip that recovered inside the confirmation period, a
+// regional (non-quorum) failure, a run of an outage whose incident already
+// holds its onset capture, a run inside a maintenance window — and the capture
+// of an on-demand run ("Capture now"), which is the only way a HEALTHY run
+// ever produces one.
+//
+// THE BOUND IS RETENTION, NOT A TRANSITION. Unlike persistScreenshot this can
+// fire on every failing run of a flapping check, which is why the store keeps
+// only the check's last five and purges the oldest
+// (attachments.MaxCheckScreenshots). On the agent path the NUMBER of asks is
+// not bounded — every such run asks — but each upload lands in the same capped
+// topic, and the agent's upload budget for check topics is separate from the
+// incident one, so this can never starve an onset capture. OnDemand is only
+// trusted after the submission path checked it against the job's lease
+// (models.CheckJob.HonorOnDemand).
+//
+// Best-effort like every attachment write: a failure is logged, the result is
+// already processed.
+func (s *Service) persistCheckScreenshot(ctx context.Context, check *models.Check, result *models.Result) {
+	if check == nil || result == nil || result.Diagnostics == nil || result.Diagnostics.Screenshot == nil {
+		return
+	}
+
+	shot := result.Diagnostics.Screenshot
+	if shot.Attached {
+		return
+	}
+
+	trigger := attachments.TriggerCheckFailure
+	if shot.OnDemand {
+		trigger = attachments.TriggerCaptureNow
+	} else if !resultIsFailure(result) {
+		// A capture on a healthy run that nobody asked for cannot be produced
+		// by any checker; refuse it rather than store what we cannot explain.
+		return
+	}
+
+	if len(shot.Image) == 0 {
+		s.requestAgentCheckScreenshot(ctx, check, result, shot)
+
+		return
+	}
+
+	if s.attachmentStore == nil {
+		return
+	}
+
+	if _, err := s.attachmentStore.PutCheckScreenshot(
+		ctx, check.OrganizationUID, check.UID, shot.Image, screenshotDetails(check, result, trigger),
 	); err != nil {
-		slog.WarnContext(ctx, "Failed to persist incident screenshot",
-			"incidentUid", incident.UID, "error", err)
+		slog.WarnContext(ctx, "Failed to persist check screenshot",
+			"checkUid", check.UID, "error", err)
+	}
+}
+
+// requestAgentCheckScreenshot is requestAgentScreenshot for the check-scoped
+// topic. The topic is built HERE from the check the server is processing,
+// never from anything the agent sent.
+func (s *Service) requestAgentCheckScreenshot(
+	ctx context.Context, check *models.Check, result *models.Result, shot *checkerdef.Screenshot,
+) {
+	if s.agentUploads == nil || !shot.Available || shot.CaptureID == "" {
+		return
+	}
+
+	if result.WorkerUID == nil || *result.WorkerUID == "" {
+		return
+	}
+
+	s.agentUploads.RequestScreenshotUpload(
+		ctx, *result.WorkerUID, shot.CaptureID, attachments.CheckScreenshotTopic(check.UID),
+	)
+}
+
+// resultIsFailure reports whether a result's own status is a failing verdict.
+func resultIsFailure(result *models.Result) bool {
+	if result.Status == nil {
+		return false
+	}
+
+	switch models.ResultStatus(*result.Status) {
+	case models.ResultStatusDown, models.ResultStatusTimeout, models.ResultStatusError:
+		return true
+	case models.ResultStatusCreated, models.ResultStatusRunning, models.ResultStatusUp,
+		models.ResultStatusDegraded, models.ResultStatusWarning, models.ResultStatusAbandoned:
+		return false
+	default:
+		return false
 	}
 }
 
 // requestAgentScreenshot asks the agent that produced this result to upload the
 // capture it advertised (spec 2026-08-21-05).
 //
-// BOUNDING THE ASK IS STRUCTURAL, NOT A COUNTER. This is reached only from
-// persistScreenshot, which is called only from createIncident and
-// reopenIncident. An agent that sets the marker on every single failing result
-// therefore still causes at most ONE request per open and one per reopen — the
-// incident state machine is the bound, so there is no way to talk the server
-// into an unbounded number of uploads by being chatty.
+// FOR THE INCIDENT TOPIC, the ask is bounded by the state machine: this is
+// reached only from persistScreenshot, which is called only from
+// createIncident and reopenIncident, so an agent that marks every failing
+// result still causes at most ONE incident upload request per open and one per
+// reopen.
+//
+// That is NOT the whole story any more (spec 2026-09-25-34): a marker no
+// incident took is asked for under the check-scoped topic by
+// requestAgentCheckScreenshot, on EVERY failing run and every honored OnDemand
+// run. That path has no structural bound on the number of asks. What bounds its
+// cost is the check-scoped retention (the last 5 captures per check, the
+// oldest purged row and blob) and the per-agent upload budget, which is kept
+// per topic entity so check-scoped uploads can never spend an incident's. An
+// OnDemand marker is honored only when the job's lease carried a real "Capture
+// now" request (models.CheckJob.HonorOnDemand), so an agent cannot turn
+// healthy runs into stored captures either.
 //
 // The topic is built HERE, from the incident row the server just wrote. Nothing
 // about it comes from the agent. captureID is echoed verbatim, which is fine:
@@ -602,7 +727,19 @@ func (s *Service) MaintenanceResolver() *maintenance.Resolver {
 
 // ProcessCheckResult processes a check result and manages incidents.
 // This is the main entry point called after each check execution.
+//
+// After the pipeline, whatever path it took, a capture that no incident took
+// is kept under the check (spec 2026-09-25-34, see persistCheckScreenshot).
 func (s *Service) ProcessCheckResult(ctx context.Context, check *models.Check, result *models.Result) error {
+	err := s.processCheckResult(ctx, check, result)
+
+	s.persistCheckScreenshot(ctx, check, result)
+
+	return err
+}
+
+// processCheckResult is ProcessCheckResult's incident pipeline.
+func (s *Service) processCheckResult(ctx context.Context, check *models.Check, result *models.Result) error {
 	// Live hint: a result has been persisted for this org (this runs after
 	// every save path — executor, remote worker, heartbeat, email check).
 	// Coalesced: the publisher bounds bus traffic to ~1 hint/org/sec.
@@ -612,36 +749,41 @@ func (s *Service) ProcessCheckResult(ctx context.Context, check *models.Check, r
 		return nil // Skip results without status
 	}
 
-	// Skip incident processing if the check is in an active maintenance window
-	inMaintenance, mwErr := s.IsCheckInActiveMaintenance(ctx, check.UID)
-	if mwErr != nil {
-		slog.WarnContext(ctx, "Failed to check maintenance window status",
-			"checkUID", check.UID, "error", mwErr)
-	}
-
-	if inMaintenance {
-		slog.InfoContext(ctx, "Skipping incident processing: check is in maintenance window",
-			"checkUID", check.UID)
-
-		return nil
-	}
-
 	resultStatus := models.ResultStatus(*result.Status)
 
-	// Determine if this is a success, failure, or warning.
-	isSuccess := resultStatus == models.ResultStatusUp
-	isFailure := resultStatus == models.ResultStatusDown ||
-		resultStatus == models.ResultStatusTimeout ||
-		resultStatus == models.ResultStatusError
+	wasStale, done, err := s.freshnessAndMaintenance(ctx, check, result, resultStatus)
+
+	// The region's own reading (spec 2026-09-25-10) is recorded after the
+	// prelude, whose live-row read supplies the check's CURRENT regions, and
+	// before the maintenance return: it is an observation, not an incident
+	// decision.
+	s.recordRegionState(ctx, check, result, resultStatus)
+
+	if done {
+		return err
+	}
+
+	// Determine if this is a success, failure, or warning — from the result
+	// itself (legacy mode, which every check with one region or a quorum of
+	// all its regions stays in), or from the quorum over the check's current
+	// regions (spec 2026-09-25-10). See resultSignal.
+	//
 	// Warning is "up, but something to report": display-only and incident-
 	// neutral (modeled on CheckStatusValidating). It updates the visible
 	// status and the up<->warning streak edges, but never arms the incident
-	// clocks and never opens/resolves an incident.
-	isWarning := resultStatus == models.ResultStatusWarning
+	// clocks and never opens/resolves an incident. The REGIONAL warning is
+	// not that: it is a success for the clocks and the incident, only shown
+	// as warning (sig.regional).
+	sig, sigErr := s.deriveSignal(ctx, check, result, resultStatus)
+	if sigErr != nil {
+		return sigErr
+	}
 
-	if !isSuccess && !isFailure && !isWarning {
+	if !sig.known() {
 		return nil // Skip initial or unknown statuses
 	}
+
+	isSuccess, isFailure, isWarning := sig.isSuccess, sig.isFailure, sig.isWarning
 
 	// Look up any active incident first — we need it to decide between
 	// `down` (incident open or threshold crossed) and `validating` (failures
@@ -658,11 +800,9 @@ func (s *Service) ProcessCheckResult(ctx context.Context, check *models.Check, r
 	// downstream is a pure function and must not grow a DB dependency. The
 	// same decision drives the visible status and the incident open, so the
 	// check can never render `down` with no incident behind it.
-	holdConfirmation := s.holdForValidatingAncestor(ctx, check, isFailure, activeIncident, now)
+	holdConfirmation := s.holdForValidatingAncestor(ctx, check, isFailure && sig.openable, activeIncident, now)
 
-	newStatus, newStreak, statusChangedAt := deriveCheckStatus(
-		check, isSuccess, isFailure, isWarning, activeIncident, holdConfirmation, now,
-	)
+	newStatus, newStreak, statusChangedAt := deriveCheckStatus(check, sig, activeIncident, holdConfirmation, now)
 	statusChanged := check.Status != newStatus
 
 	// Warning is clock-neutral: it never arms or clears the confirmation /
@@ -684,6 +824,10 @@ func (s *Service) ProcessCheckResult(ctx context.Context, check *models.Check, r
 
 	s.publishStatusHint(ctx, check.OrganizationUID, check.UID, statusChanged)
 
+	if wasStale {
+		s.recordMonitoringResumed(ctx, check, activeIncident, now)
+	}
+
 	// Update local check object for incident logic
 	check.Status = newStatus
 	check.StatusStreak = newStreak
@@ -698,7 +842,187 @@ func (s *Service) ProcessCheckResult(ctx context.Context, check *models.Check, r
 		return nil
 	}
 
-	return s.routeCheckResultWithIncident(ctx, check, result, isFailure, activeIncident, holdConfirmation)
+	return s.routeCheckResultWithIncident(ctx, check, result, sig, activeIncident, holdConfirmation)
+}
+
+// freshnessAndMaintenance is ProcessCheckResult's prelude: freshness first,
+// then the maintenance gate. `done` means the result has been fully handled
+// (in maintenance) and ProcessCheckResult must return `err`.
+//
+// Freshness runs for every REAL result and before anything else — including
+// the maintenance early return (spec 2026-09-25-02). The touch advances
+// checks.last_result_at, and the row it reads back replaces the in-memory
+// status/streak/clocks: `check` may be a claim-time snapshot
+// (checkworker/backend.DirectBackend.processIncidents), and the freshness sweep
+// may have moved the row to stale and cleared both clocks since.
+func (s *Service) freshnessAndMaintenance(
+	ctx context.Context, check *models.Check, result *models.Result, resultStatus models.ResultStatus,
+) (bool, bool, error) {
+	wasStale := false
+	if resultStatus.IsRealForFreshness() {
+		s.refreshLiveState(ctx, check, result)
+		wasStale = check.Status == models.CheckStatusStale
+	}
+
+	// Skip incident processing if the check is in an active maintenance window
+	inMaintenance, mwErr := s.IsCheckInActiveMaintenance(ctx, check.UID)
+	if mwErr != nil {
+		slog.WarnContext(ctx, "Failed to check maintenance window status",
+			"checkUID", check.UID, "error", mwErr)
+	}
+
+	if !inMaintenance {
+		return wasStale, false, nil
+	}
+
+	// Leaving stale is the one status write maintenance does not suppress:
+	// otherwise a check that went quiet and came back inside a window would
+	// keep reading "No data" until the window ends.
+	if wasStale {
+		return wasStale, true, s.leaveStaleInMaintenance(ctx, check, resultStatus)
+	}
+
+	slog.InfoContext(ctx, "Skipping incident processing: check is in maintenance window",
+		"checkUID", check.UID)
+
+	return wasStale, true, nil
+}
+
+// refreshLiveState advances the check's last_result_at to this result and
+// replaces the in-memory status, streak and clocks with the live row's. A
+// failure here is logged and the snapshot is used as before: freshness is
+// important, but never worth dropping a result's incident processing over.
+func (s *Service) refreshLiveState(ctx context.Context, check *models.Check, result *models.Result) {
+	now := s.clock.Now()
+
+	resultAt := result.PeriodStart
+	if resultAt.IsZero() || resultAt.After(now) {
+		resultAt = now
+	}
+
+	state, err := s.db.TouchCheckLastResult(ctx, check.UID, resultAt)
+	if err != nil {
+		slog.WarnContext(ctx, "Failed to record the check's last result time",
+			"checkUID", check.UID, "error", err)
+
+		return
+	}
+
+	if check.LastResultAt == nil || check.LastResultAt.Before(resultAt) {
+		check.LastResultAt = &resultAt
+	}
+
+	if state != nil {
+		state.Apply(check)
+	}
+}
+
+// leaveStaleInMaintenance writes a stale check's first real result inside a
+// maintenance window. Maintenance still suppresses everything incident-shaped:
+// no clocks are armed or cleared (the sweep already cleared them), nothing
+// opens or resolves. Only the visible status moves, to what the result says —
+// with a failure reading `down` only behind an already-open incident and
+// `validating` otherwise, so the check never renders down with nothing behind
+// it.
+func (s *Service) leaveStaleInMaintenance(
+	ctx context.Context, check *models.Check, resultStatus models.ResultStatus,
+) error {
+	activeIncident, lookupErr := s.db.FindActiveIncidentByCheckUID(ctx, check.UID)
+	if lookupErr != nil && !errors.Is(lookupErr, sql.ErrNoRows) {
+		return fmt.Errorf("failed to find active incident: %w", lookupErr)
+	}
+
+	var newStatus models.CheckStatus
+
+	switch {
+	case resultStatus == models.ResultStatusUp:
+		newStatus = models.CheckStatusUp
+	case resultStatus == models.ResultStatusWarning:
+		newStatus = models.CheckStatusWarning
+	case activeIncident != nil:
+		newStatus = models.CheckStatusDown
+	default:
+		newStatus = models.CheckStatusValidating
+	}
+
+	now := s.clock.Now()
+
+	if err := s.db.UpdateCheckStatusAndClocks(
+		ctx, check.UID, newStatus, 1, &now, models.IncidentClockUpdate{},
+	); err != nil {
+		return fmt.Errorf("failed to leave stale during maintenance: %w", err)
+	}
+
+	s.publishStatusHint(ctx, check.OrganizationUID, check.UID, true)
+	s.recordMonitoringResumed(ctx, check, activeIncident, now)
+
+	check.Status = newStatus
+	check.StatusStreak = 1
+	check.StatusChangedAt = &now
+
+	return nil
+}
+
+// recordMonitoringResumed puts "data resumed" on an open incident's timeline
+// when a stale check produces its first real result again. The payload's
+// `interruptedSince` is when the check went stale (its status_changed_at,
+// read before this result overwrote it). Best-effort: a missing timeline line
+// must not fail the result.
+func (s *Service) recordMonitoringResumed(
+	ctx context.Context, check *models.Check, incident *models.Incident, now time.Time,
+) {
+	if incident == nil {
+		return
+	}
+
+	payload := models.JSONMap{
+		keyCheckUID:  check.UID,
+		keyCheckSlug: derefSlug(check.Slug),
+		"resumedAt":  now.UTC().Format(time.RFC3339),
+	}
+
+	if check.StatusChangedAt != nil {
+		payload["interruptedSince"] = check.StatusChangedAt.UTC().Format(time.RFC3339)
+	}
+
+	if err := s.emitEvent(
+		ctx, check.OrganizationUID, models.EventTypeIncidentMonitoringResumed, incident, payload,
+	); err != nil {
+		slog.WarnContext(ctx, "Failed to record monitoring resumed on the incident timeline",
+			"checkUID", check.UID, "incidentUid", incident.UID, "error", err)
+	}
+}
+
+// RecordMonitoringInterrupted puts "monitoring interrupted since <since>" on
+// the timeline of the check's open incident, if it has one. Called by the
+// freshness sweep right after it moved the check to stale; the incident
+// itself is deliberately left open and untouched (spec 2026-09-25-02 §3).
+// Returns whether an event was written.
+func (s *Service) RecordMonitoringInterrupted(
+	ctx context.Context, check *models.Check, since time.Time,
+) (bool, error) {
+	incident, err := s.db.FindActiveIncidentByCheckUID(ctx, check.UID)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && incident == nil) {
+		return false, nil
+	}
+
+	if err != nil {
+		return false, fmt.Errorf("find active incident: %w", err)
+	}
+
+	payload := models.JSONMap{
+		keyCheckUID:  check.UID,
+		keyCheckSlug: derefSlug(check.Slug),
+		"since":      since.UTC().Format(time.RFC3339),
+	}
+
+	if err := s.emitEvent(
+		ctx, check.OrganizationUID, models.EventTypeIncidentMonitoringInterrupted, incident, payload,
+	); err != nil {
+		return false, fmt.Errorf("emit monitoring interrupted: %w", err)
+	}
+
+	return true, nil
 }
 
 // holdForValidatingAncestor decides whether this failing result must keep the
@@ -851,15 +1175,15 @@ func applyClocks(check *models.Check, clocks models.IncidentClockUpdate, _ time.
 // failure lifecycle: streak keeps growing across the boundary and
 // statusChangedAt is not bumped. Only the up<->failing edge bumps it.
 func deriveCheckStatus(
-	check *models.Check, isSuccess, isFailure, isWarning bool, activeIncident *models.Incident,
+	check *models.Check, sig resultSignal, activeIncident *models.Incident,
 	holdConfirmation bool, now time.Time,
 ) (models.CheckStatus, int, *time.Time) {
 	prevWasFailure := check.Status == models.CheckStatusDown ||
 		check.Status == models.CheckStatusValidating
 
-	newStreak, statusChangedAt := deriveStreakAndChange(check, isSuccess, isFailure, isWarning, prevWasFailure, now)
+	newStreak, statusChangedAt := deriveStreakAndChange(check, sig, prevWasFailure, now)
 
-	newStatus := pickStatus(check, isSuccess, isFailure, isWarning, activeIncident, holdConfirmation, now)
+	newStatus := pickStatus(check, sig, activeIncident, holdConfirmation, now)
 
 	// validating <-> down do not bump statusChangedAt: both are sub-states
 	// of "the check is failing right now". Warning is not a failure sub-state,
@@ -879,12 +1203,16 @@ func deriveCheckStatus(
 // A continuing same-state run (up->up, warning->warning, or failing->failing)
 // grows the streak; any other transition resets it to 1 and bumps the change
 // timestamp.
+//
+// A regional issue (spec 2026-09-25-10) is shown as warning, so its streak
+// runs on the warning side; in legacy mode sig.regional is always false and
+// the rule is exactly the per-result one.
 func deriveStreakAndChange(
-	check *models.Check, isSuccess, isFailure, isWarning, prevWasFailure bool, now time.Time,
+	check *models.Check, sig resultSignal, prevWasFailure bool, now time.Time,
 ) (int, *time.Time) {
-	if (isSuccess && check.Status == models.CheckStatusUp) ||
-		(isWarning && check.Status == models.CheckStatusWarning) ||
-		(isFailure && prevWasFailure) {
+	if (sig.isSuccess && !sig.regional && check.Status == models.CheckStatusUp) ||
+		((sig.isWarning || sig.regional) && check.Status == models.CheckStatusWarning) ||
+		(sig.isFailure && prevWasFailure) {
 		return check.StatusStreak + 1, nil
 	}
 	t := now
@@ -904,23 +1232,33 @@ func deriveStreakAndChange(
 // while handleFailure declines to open an incident would render a check as
 // down with nothing behind it. validating <-> down never bumps
 // statusChangedAt, so the hold costs no status churn either.
+//
+// Two quorum-mode inputs (spec 2026-09-25-10), both inert in legacy mode:
+// sig.regional shows a regional issue as warning (fewer than the quorum of
+// regions failing), and a quorum failure only flips to `down` on a result
+// that itself failed (sig.openable) — the same result that opens the
+// incident, so `down` never shows without one. In legacy mode openable ==
+// isFailure, so the condition is the per-result one.
 func pickStatus(
-	check *models.Check, isSuccess, isFailure, isWarning bool, activeIncident *models.Incident,
+	check *models.Check, sig resultSignal, activeIncident *models.Incident,
 	holdConfirmation bool, now time.Time,
 ) models.CheckStatus {
-	if isSuccess {
+	if sig.regional {
+		return models.CheckStatusWarning
+	}
+	if sig.isSuccess {
 		return models.CheckStatusUp
 	}
 	// Warning reflects the latest live signal regardless of incident state: it
 	// counts as up and never resolves an incident, but the visible status
 	// shows what the checker just reported ("up, but something to report").
-	if isWarning {
+	if sig.isWarning {
 		return models.CheckStatusWarning
 	}
 	if activeIncident != nil {
 		return models.CheckStatusDown
 	}
-	if isFailure && !holdConfirmation && confirmationElapsedDerive(check, now) {
+	if sig.isFailure && sig.openable && !holdConfirmation && confirmationElapsedDerive(check, now) {
 		return models.CheckStatusDown
 	}
 
@@ -953,11 +1291,20 @@ func confirmationElapsedDerive(check *models.Check, now time.Time) bool {
 // organizational and display concept, never an incident-identity one. The
 // consolidated "N/M checks down" view is rebuilt at read time (dash0) and at
 // the publication layer (status pages) instead of being baked into the row.
+//
+// In quorum mode a failure signal carried by a result that itself passed
+// (sig.openable false: a healthy region reporting while the quorum is
+// failing) opens nothing and adds nothing to failure_count — the failing
+// regions' own results do that. In legacy mode openable == isFailure.
 func (s *Service) routeCheckResultWithIncident(
-	ctx context.Context, check *models.Check, result *models.Result, isFailure bool,
+	ctx context.Context, check *models.Check, result *models.Result, sig resultSignal,
 	incident *models.Incident, holdConfirmation bool,
 ) error {
-	if isFailure {
+	if sig.isFailure {
+		if !sig.openable {
+			return nil
+		}
+
 		return s.handleFailure(ctx, check, result, incident, holdConfirmation)
 	}
 
@@ -1501,6 +1848,10 @@ func (s *Service) queueLifecycleNotifications(
 		}
 	case models.EventTypeCheckCreated, models.EventTypeCheckUpdated,
 		models.EventTypeCheckDeleted,
+		// An automatic re-placement (spec 2026-09-25-06) is the platform
+		// routing around its own outage: recorded on the check's timeline,
+		// never paged.
+		models.EventTypeCheckPlacementChanged,
 		// Ack and unack DO notify — they simply do not travel through here,
 		// exactly like incident.comment. Their transitions call
 		// queueAckNotifications / queueUnackNotifications directly, because the
@@ -1519,6 +1870,10 @@ func (s *Service) queueLifecycleNotifications(
 		// on the way in, so it does not page on the way out. See
 		// markRollupDetached in rollup.go.
 		models.EventTypeIncidentRollupDetached,
+		// Monitoring interrupted / resumed (spec 2026-09-25-02) are timeline
+		// facts about OUR ability to measure, not about the target: stale is
+		// neither down nor up, so it never pages in either direction.
+		models.EventTypeIncidentMonitoringInterrupted, models.EventTypeIncidentMonitoringResumed,
 		models.EventTypeStatusUpdateCreated, models.EventTypeStatusUpdateUpdated,
 		models.EventTypeStatusUpdateDeleted,
 		// Publication lifecycle is the STATUS PAGE's fan-out, not the on-call
@@ -1538,6 +1893,13 @@ func (s *Service) queueLifecycleNotifications(
 		// hang an incident on — incidents.check_uid is NOT NULL — so routing
 		// it through the on-call fan-out would mean inventing a fake one.
 		models.EventTypeStatusPageCustomDomainDemoted,
+		// A region outage (spec 2026-09-25-03) is the PLATFORM failing to
+		// watch, not a check's target failing. The region sweep emails the
+		// org's owners and admins itself; there is no single anchor check to
+		// hang an incident on, and paging on-call for our outage would teach
+		// them to ignore theirs.
+		models.EventTypeRegionOffline, models.EventTypeRegionRecovered,
+		models.EventTypeAgentConnected, models.EventTypeAgentDisconnected,
 		models.EventTypeOrgActivationSignupCompleted,
 		models.EventTypeOrgActivationFirstCheckCreated,
 		models.EventTypeOrgActivationFirstResultReceived,

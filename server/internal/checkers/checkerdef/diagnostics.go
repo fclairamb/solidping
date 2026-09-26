@@ -28,7 +28,8 @@ type Diagnostics struct {
 
 	// Screenshot is the capture of what a FAILING browser check's page looked
 	// like. Nil unless the check opted in (browser: `screenshot`) and the
-	// capture succeeded.
+	// capture succeeded — or the run was an on-demand capture (OnDemand),
+	// which is kept whatever the verdict.
 	//
 	// See Screenshot's own doc comment for why its bytes never cross the agent
 	// WS control channel.
@@ -139,6 +140,17 @@ type Screenshot struct {
 	// result row, never by the checker — a deported agent must not be the
 	// authority on where it ran.
 	Region string `json:"region,omitempty"`
+	// OnDemand marks a capture taken because an operator asked for one
+	// ("Capture now", spec 2026-09-25-34) rather than because the run failed.
+	// Set by the worker from the claimed job, and serialized so a deported
+	// agent's marker carries it too. It is what lets the server keep the
+	// capture of a HEALTHY run, which is otherwise never produced.
+	OnDemand bool `json:"onDemand,omitempty"`
+	// Attached is SERVER-SIDE bookkeeping, never serialized: the incident
+	// pipeline sets it once it has stored this capture as an incident's onset
+	// evidence (or asked the agent to upload it there), so the check-scoped
+	// fallback (spec 2026-09-25-34) does not store the same capture twice.
+	Attached bool `json:"-"`
 }
 
 // FailureResponse is the textual capture of the response a failing probe

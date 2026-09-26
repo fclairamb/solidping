@@ -93,35 +93,51 @@ test.describe("product analytics is inert when not configured", () => {
  * indistinguishable from an analytics boot that is simply broken and could
  * never fire under any configuration.
  *
- * The public config endpoint is stubbed to report PostHog as enabled and every
- * PostHog host is intercepted, so the control never leaves the machine.
+ * The public config endpoint is stubbed to report PostHog as enabled. The
+ * dashboard's Content-Security-Policy is computed SERVER-side from the
+ * server's own PostHog config (spec 2026-09-25-28), and the E2E server has
+ * none, so the stub must point at the first-party `/ingest` proxy, the host
+ * a default setup uses and the one the policy already allows as 'self'.
+ * Those calls are intercepted, so the control never leaves the machine.
  */
+
+/** The first-party PostHog proxy path (config.PostHogProxyPath). */
+const INGEST_PATH = "/ingest";
+
+async function stubPostHogConfig(page: Page, host: string): Promise<void> {
+  await page.route("**/api/v1/config", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        posthog: {
+          enabled: true,
+          projectApiKey: "phc_e2e_positive_control",
+          host,
+        },
+      }),
+    });
+  });
+}
+
 test.describe("product analytics loads once configured", () => {
   test("stubbing the config endpoint makes the dashboard load posthog-js", async ({ page }) => {
-    await page.route("**/api/v1/config", async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          posthog: {
-            enabled: true,
-            projectApiKey: "phc_e2e_positive_control",
-            host: "https://eu.i.posthog.com",
-          },
-        }),
-      });
-    });
+    await stubPostHogConfig(page, INGEST_PATH);
 
-    // Intercept every PostHog call so the positive control stays offline.
+    // Intercept every call to the first-party proxy so the control stays
+    // offline (the real proxy would forward to PostHog Cloud).
     const ingestUrls: string[] = [];
-    await page.route(/posthog\.com/, async (route) => {
-      ingestUrls.push(route.request().url());
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ status: 1 }),
-      });
-    });
+    await page.route(
+      (url) => url.pathname.startsWith(`${INGEST_PATH}/`),
+      async (route) => {
+        ingestUrls.push(route.request().url());
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ status: 1 }),
+        });
+      },
+    );
 
     const requests = collectRequests(page);
 
@@ -143,5 +159,63 @@ test.describe("product analytics loads once configured", () => {
         timeout: 20000,
       })
       .toBeGreaterThan(0);
+  });
+
+  // The other half of the same contract, made explicit: the dashboard can only
+  // reach a third-party analytics host the SERVER was configured with. A host
+  // that exists only in what the browser was told (here a stubbed config
+  // naming PostHog Cloud, which this server does not use) is refused by the
+  // policy before any request leaves the page.
+  test("a PostHog host absent from the server config is refused by the CSP", async ({ page }) => {
+    await page.addInitScript(() => {
+      const store: string[] = [];
+      (window as unknown as { __cspViolations: string[] }).__cspViolations = store;
+      document.addEventListener("securitypolicyviolation", (event) => {
+        store.push(`${event.effectiveDirective} ${event.blockedURI}`);
+      });
+    });
+
+    await stubPostHogConfig(page, "https://eu.i.posthog.com");
+
+    // Anything that DID get out would land here.
+    const escaped: string[] = [];
+    await page.route(/posthog\.com/, async (route) => {
+      escaped.push(route.request().url());
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ status: 1 }),
+      });
+    });
+
+    const requests = collectRequests(page);
+
+    await page.goto("orgs/test/login");
+    await page.waitForLoadState("networkidle");
+
+    // Not vacuous: the client did boot and try.
+    await expect
+      .poll(() => requests.map((r) => r.url()).filter((u) => POSTHOG_CHUNK_RE.test(u)).length, {
+        message: "the posthog-js chunk must be downloaded once the config reports it enabled",
+        timeout: 15000,
+      })
+      .toBeGreaterThan(0);
+
+    await expect
+      .poll(
+        async () =>
+          (
+            await page.evaluate(
+              () => (window as unknown as { __cspViolations?: string[] }).__cspViolations ?? [],
+            )
+          ).filter((v) => v.includes("eu.i.posthog.com")).length,
+        {
+          message: "the policy must refuse the unconfigured PostHog host",
+          timeout: 20000,
+        },
+      )
+      .toBeGreaterThan(0);
+
+    expect(escaped, "no request may reach a host the server CSP does not allow").toEqual([]);
   });
 });

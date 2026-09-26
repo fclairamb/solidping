@@ -9,12 +9,13 @@ SolidPing ships a command-line client, `sp`, for managing your monitoring from t
 
 ## Installing
 
-Every release publishes a prebuilt `sp` for macOS, Linux and Windows, on both Intel and ARM, under version-free names (the same stable URLs the server uses), plus a checksum file:
+Every release publishes a prebuilt `sp` for macOS, Linux and Windows, on both Intel and ARM, compressed only — `.gz` for macOS/Linux, `.zip` for Windows — under version-free names (the same stable URLs the server uses), plus a checksum file:
 
 ```bash
-# Pick your platform: darwin_amd64, darwin_arm64, linux_amd64, linux_arm64, windows_amd64
-curl -sSL -o sp \
-  "https://github.com/fclairamb/solidping/releases/latest/download/sp_linux_amd64"
+# Pick your platform: darwin-amd64, darwin-arm64, linux-amd64, linux-arm64
+curl -sSL -o sp.gz \
+  "https://github.com/fclairamb/solidping/releases/latest/download/sp-linux-amd64.gz"
+gunzip -c sp.gz > sp
 chmod +x sp
 sudo mv sp /usr/local/bin/
 sp --version
@@ -24,17 +25,20 @@ Or pin a specific version by pointing the same file name at that release's tag:
 
 ```bash
 VERSION=0.31.0
-curl -sSL -o sp \
-  "https://github.com/fclairamb/solidping/releases/download/v${VERSION}/sp_linux_amd64"
+curl -sSL -o sp.gz \
+  "https://github.com/fclairamb/solidping/releases/download/v${VERSION}/sp-linux-amd64.gz"
+gunzip -c sp.gz > sp
+chmod +x sp
 ```
 
-On Windows, download `sp_windows_amd64.exe` and rename it to `sp.exe`:
+On Windows, download `sp-windows-amd64.zip` and extract it — the archive contains a single, already-named `sp.exe`:
 
 ```powershell
-Invoke-WebRequest -Uri "https://github.com/fclairamb/solidping/releases/latest/download/sp_windows_amd64.exe" -OutFile "sp.exe"
+Invoke-WebRequest -Uri "https://github.com/fclairamb/solidping/releases/latest/download/sp-windows-amd64.zip" -OutFile "sp-windows-amd64.zip"
+Expand-Archive -Path "sp-windows-amd64.zip" -DestinationPath "."
 ```
 
-Every binary also has a gzip twin — same name with `.gz` appended (for example `sp_linux_amd64.gz`), so the same `latest/download/` URLs work. The bare files are ~32 MB and the `.gz` twins ~12 MB. Decompress with `gunzip sp_linux_amd64.gz && chmod +x sp_linux_amd64`.
+There is no bare binary to download — every asset ships compressed. `sp` links only the config-only check registry (no `client-go`, `go-ora`, `grpc`, `chromedp`, ...), so the binary itself is ~32 MB and the `.gz`/`.zip` archive around ~12 MB.
 
 In CI, or anywhere you would rather not manage a binary, use the image:
 

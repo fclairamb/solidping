@@ -3,6 +3,7 @@ package checkminecraft
 
 import (
 	"context"
+	"net"
 	"time"
 
 	"github.com/dreamscached/minequery/v2"
@@ -52,7 +53,7 @@ func (c *MinecraftChecker) Execute(
 	if cfg.ResolveEdition() == EditionBedrock {
 		queryErr = pingBedrock(ctx, cfg, metrics, output)
 	} else {
-		queryErr = pingJava(cfg, metrics, output)
+		queryErr = pingJava(ctx, cfg, metrics, output)
 	}
 
 	if queryErr != nil {
@@ -76,8 +77,13 @@ func (c *MinecraftChecker) Execute(
 	return applyThresholds(cfg, start, metrics, output), nil
 }
 
-func pingJava(cfg *MinecraftConfig, metrics, output map[string]any) error {
-	pinger := minequery.NewPinger(minequery.WithTimeout(cfg.ResolveTimeout()))
+func pingJava(ctx context.Context, cfg *MinecraftConfig, metrics, output map[string]any) error {
+	// minequery resolves (and follows SRV records) by itself, so the egress
+	// guard (spec 2026-09-25-19) rides its *net.Dialer as a Control hook that
+	// judges the literal address of the connect.
+	pinger := minequery.NewPinger(minequery.WithDialer(
+		checkerdef.GuardedNetDialer(ctx, &net.Dialer{Timeout: cfg.ResolveTimeout()}),
+	))
 
 	status, err := pinger.Ping17(cfg.Host, cfg.ResolvePort())
 	if err != nil {

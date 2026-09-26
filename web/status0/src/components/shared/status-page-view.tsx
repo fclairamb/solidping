@@ -42,6 +42,16 @@ function getStatusLabelKey(status: string) {
   return statusStyle(status).labelKey;
 }
 
+/** "13:41" for today, "24 Sep 13:41" otherwise — the wall-clock time a
+ * visitor compares against their own. */
+function formatLastChecked(iso: string, locale: string): string {
+  const date = new Date(iso);
+  const now = new Date();
+  const time = date.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
+  if (date.toDateString() === now.toDateString()) return time;
+  return `${date.toLocaleDateString(locale, { day: "numeric", month: "short" })} ${time}`;
+}
+
 /**
  * Marks a subtree as "never machine-translate this".
  *
@@ -131,7 +141,7 @@ function ResourceCard({
   historyDays,
   affectedSeverities,
 }: ResourceCardProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const name = resource.publicName || resource.check?.name || t("unknown");
   const incidentSeverity = affectedSeverities.get(name);
   const isAffected = incidentSeverity !== undefined;
@@ -210,9 +220,17 @@ function ResourceCard({
             <Badge
               variant={getStatusBadgeVariant(status)}
               data-testid="resource-status-badge"
+              data-status={status}
               {...NO_TRANSLATE}
             >
-              {t(getStatusLabelKey(status))}
+              {/* A stale component says when it was last measured: "No
+                  data, last checked 13:41" — never "operational" (spec
+                  2026-09-25-02). */}
+              {status === "stale" && resource.check?.lastResultAt
+                ? t("noDataLastChecked", {
+                    time: formatLastChecked(resource.check.lastResultAt, i18n.language),
+                  })
+                : t(getStatusLabelKey(status))}
             </Badge>
           )}
         </div>
@@ -570,7 +588,7 @@ export function StatusPageView({
 
         {/* Recent updates timeline */}
         {page.recentUpdates && page.recentUpdates.length > 0 && (
-          <section aria-label="Recent updates" className="mt-8">
+          <section aria-label={t("status.recentUpdates")} className="mt-8">
             <h2 className="text-lg font-semibold mb-4">
               {t("status.recentUpdates")}
             </h2>
@@ -583,7 +601,7 @@ export function StatusPageView({
         <IncidentHistory org={org} slug={page.slug} />
 
         {/* Subscribe to updates (email double opt-in) + RSS/Atom feed */}
-        <section aria-label="Subscribe to updates" className="mt-8">
+        <section aria-label={t("subscribe.title")} className="mt-8">
           <SubscribeWidget
             org={org}
             statusPageUid={page.uid}

@@ -101,6 +101,7 @@ func checkStatusNames() []string {
 		models.WireStatusValidating,
 		models.WireStatusDegraded,
 		models.WireStatusWarning,
+		models.WireStatusStale,
 		models.WireStatusUnknown,
 	}
 }

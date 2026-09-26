@@ -128,6 +128,18 @@ func (r *PlatformWatchdogJobRun) Run(ctx context.Context, jctx *jobdef.JobContex
 // notifier/credentials/entitlements dependencies are passed through when
 // available and left nil otherwise.
 func regionHealthReporterFor(jctx *jobdef.JobContext) watchdog.RegionHealthReporter {
+	svc := regionChecksServiceFor(jctx)
+	if svc == nil {
+		return nil
+	}
+
+	return svc
+}
+
+// regionChecksServiceFor builds the concrete checks.Service the region
+// detectors call: the watchdog through RegionHealth, the per-minute region
+// sweep through RegionHealthWithJobs. Nil without a database.
+func regionChecksServiceFor(jctx *jobdef.JobContext) *checks.Service {
 	if jctx.DBService == nil {
 		return nil
 	}

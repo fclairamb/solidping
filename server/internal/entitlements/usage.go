@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
@@ -54,6 +55,8 @@ func (s *Service) Usage(ctx context.Context, orgUID string) (Usage, error) {
 	if err != nil {
 		return Usage{}, fmt.Errorf("list check rates: %w", err)
 	}
+
+	rates = quotaCountedRates(rates)
 
 	// Every check counts here, passive ones included: this figure describes what
 	// the org has configured. The narrower "demand actually metered by the
@@ -270,7 +273,7 @@ func (s *Service) CheckCreateAllowedWithPending(ctx context.Context, orgUID stri
 		return fmt.Errorf("count checks: %w", err)
 	}
 
-	usage := len(rates) + pending
+	usage := len(quotaCountedRates(rates)) + pending
 
 	if usage >= limit {
 		return &QuotaError{
@@ -281,4 +284,23 @@ func (s *Service) CheckCreateAllowedWithPending(ctx context.Context, orgUID stri
 	}
 
 	return nil
+}
+
+// quotaCountedRates drops the checks that do not count toward MaxChecks: the
+// private-location liveness monitors (spec 2026-09-25-05,
+// checkerdef.CheckType.IsQuotaExempt). They are system-created with each
+// private location, and charging for being told your agent is down would push
+// orgs to switch them off. Internal checks are already left out by the query.
+func quotaCountedRates(rates []models.CheckRate) []models.CheckRate {
+	out := make([]models.CheckRate, 0, len(rates))
+
+	for i := range rates {
+		if checkerdef.CheckType(rates[i].Type).IsQuotaExempt() {
+			continue
+		}
+
+		out = append(out, rates[i])
+	}
+
+	return out
 }

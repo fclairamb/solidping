@@ -172,6 +172,69 @@ return { status: "up", output: { err: resp.error || "", code: resp.statusCode ||
 	r.LessOrEqual(hops, 3, "maxRedirects: 2 must not walk more than 3 requests, walked %d", hops)
 }
 
+// TestRedirectHostPolicy covers redirectHostPolicy in both directions: a
+// same-host hop (path-only change) is followed exactly as the default
+// "any" would follow it, and a cross-host hop is refused with the
+// spec-pinned message — mirroring checkhttp's RedirectHostPolicy tests.
+func TestRedirectHostPolicy(t *testing.T) {
+	t.Parallel()
+
+	t.Run("same host redirect is followed", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		server := cookieServer(t)
+
+		result := runScript(t, `
+var resp = http.get(`+jsString(server.URL+"/a")+`, { redirectHostPolicy: "same-host" });
+return { status: "up", output: { err: resp.error || "", code: resp.statusCode || 0 } };
+`)
+
+		r.Equal(checkerdef.StatusUp, result.Status, "output: %v", result.Output)
+		r.Empty(result.Output["err"])
+		r.EqualValues(200, result.Output["code"], "a same-host redirect must still be followed")
+	})
+
+	t.Run("cross host redirect is refused with the policy message", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			// "localhost" resolves to the same machine but is a DIFFERENT
+			// host string than the redirector's own 127.0.0.1 — exactly what
+			// the policy compares. CheckRedirect refuses before the request
+			// is ever built, so the target need not exist or even resolve.
+			http.Redirect(w, req, "http://localhost:1/never-dialed", http.StatusMovedPermanently)
+		}))
+		t.Cleanup(redirector.Close)
+
+		result := runScript(t, `
+var resp = http.get(`+jsString(redirector.URL)+`, { redirectHostPolicy: "same-host" });
+return { status: "up", output: { err: resp.error || "" } };
+`)
+
+		r.Equal(checkerdef.StatusUp, result.Status, "output: %v", result.Output)
+		r.Contains(result.Output["err"], "redirect to different host refused")
+	})
+
+	t.Run("unknown value is rejected, not silently treated as any", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		runtime := newJSRuntime(context.Background(), &JSConfig{})
+
+		_, err := runtime.parseHTTPOptions(map[string]any{"redirectHostPolicy": "bogus"})
+		r.Error(err)
+
+		_, err = runtime.parseHTTPOptions(map[string]any{"redirectHostPolicy": true})
+		r.Error(err, "a non-string value must be reported, not silently ignored")
+
+		valid, err := runtime.parseHTTPOptions(map[string]any{"redirectHostPolicy": "same-host"})
+		r.NoError(err)
+		r.Equal("same-host", valid.redirectHostPolicy)
+	})
+}
+
 // TestRequestTimeoutIsClampedToTheCheckTimeout proves the option cannot widen
 // the budget the scheduler allocated: a 10-minute request timeout on a check
 // with a 1-second timeout still gives up at ~1s.

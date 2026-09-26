@@ -20,11 +20,11 @@ import type { FreeboxLanHost } from "@/api/hooks";
 import { FreeboxLanDiscovery } from "@/components/shared/freebox-lan-discovery";
 import type { CheckTypeModule } from "./index";
 import type { CheckConfig, CheckTypeFieldsProps, FieldErrors } from "./common";
-import { getConfigField } from "./common";
+import { getConfigField, validationMessage } from "./common";
 import { useCheckFormFields } from "./context";
 
 const hostRequired = (host: string): FieldErrors =>
-  host ? [] : [{ name: "host", message: "Host is required" }];
+  host ? [] : [{ name: "host", message: validationMessage("hostRequired") }];
 
 // ── TCP / UDP ──
 
@@ -840,7 +840,7 @@ export const icmpModule: CheckTypeModule<IcmpState> = {
       return {
         config: cfg,
         errors: [
-          { name: "count", message: "Count must be a whole number of packets" },
+          { name: "count", message: validationMessage("countWholeNumber") },
           ...hostRequired(state.host),
         ],
       };
@@ -866,7 +866,7 @@ export const icmpModule: CheckTypeModule<IcmpState> = {
           errors: [
             {
               name: "interval",
-              message: "Interval must be a duration like 100 or 100ms",
+              message: validationMessage("intervalDuration"),
             },
             ...hostRequired(state.host),
           ],
@@ -882,7 +882,7 @@ export const icmpModule: CheckTypeModule<IcmpState> = {
         errors: [
           {
             name: "packet_size",
-            message: "Packet size must be a whole number of bytes",
+            message: validationMessage("packetSizeWholeNumber"),
           },
           ...hostRequired(state.host),
         ],
@@ -895,7 +895,7 @@ export const icmpModule: CheckTypeModule<IcmpState> = {
       return {
         config: cfg,
         errors: [
-          { name: "ttl", message: "TTL must be a whole number" },
+          { name: "ttl", message: validationMessage("ttlWholeNumber") },
           ...hostRequired(state.host),
         ],
       };

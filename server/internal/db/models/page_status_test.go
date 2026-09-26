@@ -48,6 +48,24 @@ func TestRollupPageStatus(t *testing.T) {
 			wantCounts: models.PageStatusCounts{Unknown: 2, Operational: 1},
 		},
 		{
+			name: "all stale - status unknown, never operational (spec 2026-09-25-02)",
+			resources: []models.PageResourceStatus{
+				{Status: models.CheckStatusStale},
+				{Status: models.CheckStatusStale},
+			},
+			wantStatus: models.PageStatusUnknown,
+			wantCounts: models.PageStatusCounts{Unknown: 2},
+		},
+		{
+			name: "stale resources are counted unknown, not operational",
+			resources: []models.PageResourceStatus{
+				{Status: models.CheckStatusStale},
+				{Status: models.CheckStatusUp},
+			},
+			wantStatus: models.PageStatusOperational,
+			wantCounts: models.PageStatusCounts{Unknown: 1, Operational: 1},
+		},
+		{
 			name: "single up resource - operational",
 			resources: []models.PageResourceStatus{
 				{Status: models.CheckStatusUp},

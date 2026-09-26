@@ -5,16 +5,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // and Node's built-in localStorage stub throws without a backing file, so
 // (matching live-socket.test.ts's established pattern in this repo) the
 // storage layer is mocked here instead of touched for real.
+// Default to a normal, fully authenticated session (both tokens present) —
+// individual tests null out one or both to exercise the branches below.
+let storedAccessToken: string | null = "stored-access-token";
 let storedRefreshToken: string | null = null;
 const setSessionMock = vi.fn((_accessToken: string, refreshToken?: string) => {
   if (refreshToken) storedRefreshToken = refreshToken;
 });
 const clearTokenMock = vi.fn(() => {
+  storedAccessToken = null;
   storedRefreshToken = null;
 });
 const redirectToExpiredLoginMock = vi.fn();
 
 vi.mock("@/api/client", () => ({
+  getToken: () => storedAccessToken,
   getRefreshToken: () => storedRefreshToken,
   setSession: (accessToken: string, refreshToken?: string, expiresIn?: number) =>
     setSessionMock(accessToken, refreshToken, expiresIn),
@@ -33,20 +38,24 @@ function mockFetchOnce(response: { ok: boolean; status?: number; body?: unknown 
 }
 
 describe("refreshAccessToken", () => {
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+  let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
+
   beforeEach(() => {
+    storedAccessToken = "stored-access-token";
     storedRefreshToken = "stored-refresh-token";
     setSessionMock.mockClear();
     clearTokenMock.mockClear();
     redirectToExpiredLoginMock.mockClear();
-    vi.spyOn(console, "error").mockImplementation(() => {});
-    vi.spyOn(console, "warn").mockImplementation(() => {});
+    consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it("resolves null, clears the session, and redirects to login when there is no stored refresh token", async () => {
+  it("resolves null, clears the session, and redirects to login when an access token is present with no refresh token (positive control)", async () => {
     storedRefreshToken = null;
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
@@ -55,12 +64,38 @@ describe("refreshAccessToken", () => {
 
     expect(result).toBeNull();
     expect(fetchSpy).not.toHaveBeenCalled();
-    // "No refresh token" while the app believes it's authenticated means
-    // the session is definitively over — escalate immediately instead of
-    // waiting for a 401 that may never come in a backgrounded tab (spec
-    // A.2/A.4).
+    // An access token that thinks it's live with no refresh token behind it
+    // means the session is definitively over — escalate immediately instead
+    // of waiting for a 401 that may never come in a backgrounded tab (spec
+    // A.2/A.4). This is the genuinely inconsistent state doRefresh's
+    // no-refresh-token branch exists to catch.
     expect(clearTokenMock).toHaveBeenCalledTimes(1);
     expect(redirectToExpiredLoginMock).toHaveBeenCalledTimes(1);
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      "[auth] token refresh failed: no-refresh-token"
+    );
+  });
+
+  it("resolves null WITHOUT logging or redirecting when neither an access nor a refresh token is stored", async () => {
+    // The browser is simply signed out already — e.g. logout() just cleared
+    // both tokens (or was about to), and a query that was already in flight
+    // reacted to the resulting 401 by calling this. There is no session to
+    // escalate: nothing believes itself authenticated, so logging an error
+    // and redirecting here would just be noise on top of an action the user
+    // already completed (spec 2026-09-25-14).
+    storedAccessToken = null;
+    storedRefreshToken = null;
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const result = await refreshAccessToken();
+
+    expect(result).toBeNull();
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(clearTokenMock).not.toHaveBeenCalled();
+    expect(redirectToExpiredLoginMock).not.toHaveBeenCalled();
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+    expect(consoleWarnSpy).not.toHaveBeenCalled();
   });
 
   it("posts to /api/v1/auth/refresh and persists the new access token + expiry", async () => {
@@ -157,6 +192,7 @@ describe("refreshAccessToken", () => {
 
 describe("refreshWithOutcome", () => {
   beforeEach(() => {
+    storedAccessToken = "stored-access-token";
     storedRefreshToken = "stored-refresh-token";
     setSessionMock.mockClear();
     clearTokenMock.mockClear();

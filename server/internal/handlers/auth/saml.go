@@ -3,8 +3,6 @@ package auth
 import (
 	"errors"
 	"net/http"
-	"net/url"
-	"strconv"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
@@ -48,10 +46,9 @@ func (h *SAMLHandler) Login(writer http.ResponseWriter, req *http.Request) error
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
 	}
 
-	redirectURI := req.URL.Query().Get("redirect_uri")
-	if redirectURI == "" {
-		redirectURI = config.DashboardBasePath + "/orgs/" + orgSlug
-	}
+	// Only a same-origin relative path may ride the state: the attacker mints
+	// the login link, so the state nonce says nothing about this value.
+	redirectURI := sanitizePostLoginRedirect(req.Context(), req.URL.Query().Get("redirect_uri"), orgSlug)
 
 	redirectURL, err := h.svc.GenerateAuthnRequest(req.Context(), redirectURI, orgSlug)
 	if err != nil {
@@ -91,17 +88,18 @@ func (h *SAMLHandler) ACS(writer http.ResponseWriter, req *http.Request) error {
 		return h.redirectWithError(writer, req, "/", OAuthCodeInvalidState, OAuthDescInvalidState)
 	}
 
+	// Re-check the redirect the state carries: a state minted before this
+	// guard existed (rolling upgrade) must not become a redirect vector.
+	returnTo := sanitizePostLoginRedirect(req.Context(), state.RedirectURI, state.OrgSlug)
+
 	result, err := h.svc.HandleACS(req.Context(), req, state)
 	if err != nil {
-		return h.handleSAMLError(writer, req, state.RedirectURI, err)
+		return h.handleSAMLError(writer, req, returnTo, err)
 	}
 
-	// Redirect with tokens. Also set the SPA session cookie so
-	// cookie-authenticated surfaces (the embedded MCP OAuth
-	// authorize/consent flow) work without a login-page refresh bounce.
-	return finishProviderCallback(writer, req,
-		h.buildSuccessRedirect(state.RedirectURI, result),
-		result.PendingOrgSlug, result.AccessToken, result.ExpiresIn, result.Pending)
+	// Hand the session to the dashboard through a single-use code: the
+	// tokens never appear in the redirect URL (spec 2026-09-25-12).
+	return finishProviderCallback(writer, req, h.svc.db, "saml", returnTo, result)
 }
 
 // Metadata serves this SP's own metadata document (entity ID, ACS URL,
@@ -124,39 +122,13 @@ func (h *SAMLHandler) Metadata(writer http.ResponseWriter, req *http.Request) er
 	return nil
 }
 
-// buildSuccessRedirect constructs the redirect URL with tokens.
-func (h *SAMLHandler) buildSuccessRedirect(baseURI string, result *SAMLResult) string {
-	parsedURL, err := url.Parse(baseURI)
-	if err != nil {
-		parsedURL, _ = url.Parse("/")
-	}
-
-	query := parsedURL.Query()
-	query.Set("access_token", result.AccessToken)
-	query.Set("refresh_token", result.RefreshToken)
-	query.Set("expires_in", strconv.Itoa(result.ExpiresIn))
-	query.Set("org", result.OrgSlug)
-	parsedURL.RawQuery = query.Encode()
-
-	return parsedURL.String()
-}
-
-// redirectWithError redirects with error parameters.
+// redirectWithError redirects with error parameters. The destination goes
+// through redirectOAuthError's same-origin guard.
 func (h *SAMLHandler) redirectWithError(
 	writer http.ResponseWriter, req *http.Request,
 	baseURI, code, description string,
 ) error {
-	parsedURL, err := url.Parse(baseURI)
-	if err != nil {
-		parsedURL, _ = url.Parse("/")
-	}
-
-	query := parsedURL.Query()
-	query.Set("error", code)
-	query.Set("error_description", description)
-	parsedURL.RawQuery = query.Encode()
-
-	http.Redirect(writer, req, parsedURL.String(), http.StatusFound)
+	redirectOAuthError(writer, req, baseURI, code, description)
 
 	return nil
 }

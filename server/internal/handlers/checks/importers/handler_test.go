@@ -221,7 +221,7 @@ func TestConvertEndpointBetterStackRoundTrip(t *testing.T) {
 	srv := newBetterStackServer(t)
 	harness := newConvertHarness(t, srv.URL)
 
-	body := betterStackBody(t, "")
+	body := betterStackBody(t)
 	result := runSourceRoundTrip(t, harness, "betterstack", body)
 
 	r.Equal("betterstack", result.Manifest)
@@ -234,6 +234,28 @@ func TestConvertEndpointBetterStackRoundTrip(t *testing.T) {
 	list, _, err := harness.dbSvc.ListChecks(t.Context(), harness.org.UID, &models.ListChecksFilter{})
 	r.NoError(err)
 	r.NotContains(fmt.Sprintf("%+v", list), testToken)
+}
+
+// TestConvertEndpointBetterStackRejectsBaseURL covers the removed baseUrl
+// override end-to-end through the HTTP handler (spec 2026-09-25-31): a
+// non-empty baseUrl in the request body is a 400 VALIDATION_ERROR, and the
+// fake Better Stack server — which would record any outbound request — sees
+// none.
+func TestConvertEndpointBetterStackRejectsBaseURL(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	srv := newBetterStackServer(t)
+	harness := newConvertHarness(t, srv.URL)
+
+	body, err := json.Marshal(map[string]string{"token": testToken, "baseUrl": "https://evil.example"})
+	r.NoError(err)
+
+	rec := harness.post(t, "betterstack", false, body)
+	r.Equal(http.StatusBadRequest, rec.Code, rec.Body.String())
+	r.Contains(rec.Body.String(), "VALIDATION_ERROR")
+	r.Contains(rec.Body.String(), "baseUrl is no longer supported")
+	r.Empty(srv.paths(), "no outbound request must be made when baseUrl is rejected")
 }
 
 func TestConvertEndpointRejectsUnknownSource(t *testing.T) {
@@ -266,7 +288,7 @@ func TestConvertEndpointBetterStackBadTokenIsAValidationError(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	harness := newConvertHarness(t, srv.URL)
-	rec := harness.post(t, "betterstack", true, betterStackBody(t, ""))
+	rec := harness.post(t, "betterstack", true, betterStackBody(t))
 
 	r.Equal(http.StatusBadRequest, rec.Code)
 
@@ -286,7 +308,7 @@ func TestConvertEndpointBetterStackUnreachableIsAValidationError(t *testing.T) {
 	srv.Close()
 
 	harness := newConvertHarness(t, baseURL)
-	rec := harness.post(t, "betterstack", true, betterStackBody(t, ""))
+	rec := harness.post(t, "betterstack", true, betterStackBody(t))
 
 	r.Equal(http.StatusBadRequest, rec.Code)
 
@@ -345,7 +367,7 @@ func TestConvertEndpointNeverLogsTheBetterStackToken(t *testing.T) {
 
 	srv := newBetterStackServer(t)
 	harness := newConvertHarness(t, srv.URL)
-	r.Equal(http.StatusOK, harness.post(t, "betterstack", false, betterStackBody(t, "")).Code)
+	r.Equal(http.StatusOK, harness.post(t, "betterstack", false, betterStackBody(t)).Code)
 
 	// …and the failure path, which is the one that formats an error message.
 	failing := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
@@ -355,7 +377,7 @@ func TestConvertEndpointNeverLogsTheBetterStackToken(t *testing.T) {
 	t.Cleanup(failing.Close)
 
 	failHarness := newConvertHarness(t, failing.URL)
-	r.Equal(http.StatusBadRequest, failHarness.post(t, "betterstack", true, betterStackBody(t, "")).Code)
+	r.Equal(http.StatusBadRequest, failHarness.post(t, "betterstack", true, betterStackBody(t)).Code)
 
 	r.NotContains(buf.String(), testToken)
 	r.NotContains(buf.String(), "Bearer ")

@@ -248,6 +248,7 @@ const (
 	CheckLastStatusChangeStatusCREATED    CheckLastStatusChangeStatus = "CREATED"
 	CheckLastStatusChangeStatusDEGRADED   CheckLastStatusChangeStatus = "DEGRADED"
 	CheckLastStatusChangeStatusDOWN       CheckLastStatusChangeStatus = "DOWN"
+	CheckLastStatusChangeStatusSTALE      CheckLastStatusChangeStatus = "STALE"
 	CheckLastStatusChangeStatusUNKNOWN    CheckLastStatusChangeStatus = "UNKNOWN"
 	CheckLastStatusChangeStatusUP         CheckLastStatusChangeStatus = "UP"
 	CheckLastStatusChangeStatusVALIDATING CheckLastStatusChangeStatus = "VALIDATING"
@@ -263,6 +264,8 @@ func (e CheckLastStatusChangeStatus) Valid() bool {
 		return true
 	case CheckLastStatusChangeStatusDOWN:
 		return true
+	case CheckLastStatusChangeStatusSTALE:
+		return true
 	case CheckLastStatusChangeStatusUNKNOWN:
 		return true
 	case CheckLastStatusChangeStatusUP:
@@ -270,6 +273,60 @@ func (e CheckLastStatusChangeStatus) Valid() bool {
 	case CheckLastStatusChangeStatusVALIDATING:
 		return true
 	case CheckLastStatusChangeStatusWARNING:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CheckPlacement.
+const (
+	CheckPlacementAuto   CheckPlacement = "auto"
+	CheckPlacementPinned CheckPlacement = "pinned"
+)
+
+// Valid indicates whether the value is a known member of the CheckPlacement enum.
+func (e CheckPlacement) Valid() bool {
+	switch e {
+	case CheckPlacementAuto:
+		return true
+	case CheckPlacementPinned:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CheckStatus.
+const (
+	CheckStatusCreated    CheckStatus = "created"
+	CheckStatusDegraded   CheckStatus = "degraded"
+	CheckStatusDown       CheckStatus = "down"
+	CheckStatusStale      CheckStatus = "stale"
+	CheckStatusUnknown    CheckStatus = "unknown"
+	CheckStatusUp         CheckStatus = "up"
+	CheckStatusValidating CheckStatus = "validating"
+	CheckStatusWarning    CheckStatus = "warning"
+)
+
+// Valid indicates whether the value is a known member of the CheckStatus enum.
+func (e CheckStatus) Valid() bool {
+	switch e {
+	case CheckStatusCreated:
+		return true
+	case CheckStatusDegraded:
+		return true
+	case CheckStatusDown:
+		return true
+	case CheckStatusStale:
+		return true
+	case CheckStatusUnknown:
+		return true
+	case CheckStatusUp:
+		return true
+	case CheckStatusValidating:
+		return true
+	case CheckStatusWarning:
 		return true
 	default:
 		return false
@@ -299,28 +356,136 @@ func (e CheckTracerouteOnFailure) Valid() bool {
 
 // Defines values for CheckType.
 const (
-	CheckTypeDns    CheckType = "dns"
-	CheckTypeDomain CheckType = "domain"
-	CheckTypeHttp   CheckType = "http"
-	CheckTypeIcmp   CheckType = "icmp"
-	CheckTypeSsl    CheckType = "ssl"
-	CheckTypeTcp    CheckType = "tcp"
+	CheckTypeA2s             CheckType = "a2s"
+	CheckTypeBrowser         CheckType = "browser"
+	CheckTypeClickhouse      CheckType = "clickhouse"
+	CheckTypeDns             CheckType = "dns"
+	CheckTypeDnsbl           CheckType = "dnsbl"
+	CheckTypeDocker          CheckType = "docker"
+	CheckTypeDomain          CheckType = "domain"
+	CheckTypeEmail           CheckType = "email"
+	CheckTypeFreeboxLine     CheckType = "freebox_line"
+	CheckTypeFtp             CheckType = "ftp"
+	CheckTypeGrpc            CheckType = "grpc"
+	CheckTypeHeartbeat       CheckType = "heartbeat"
+	CheckTypeHttp            CheckType = "http"
+	CheckTypeIcmp            CheckType = "icmp"
+	CheckTypeImap            CheckType = "imap"
+	CheckTypeJs              CheckType = "js"
+	CheckTypeKafka           CheckType = "kafka"
+	CheckTypeKubernetes      CheckType = "kubernetes"
+	CheckTypeMinecraft       CheckType = "minecraft"
+	CheckTypeMongodb         CheckType = "mongodb"
+	CheckTypeMqtt            CheckType = "mqtt"
+	CheckTypeMssql           CheckType = "mssql"
+	CheckTypeMysql           CheckType = "mysql"
+	CheckTypeNtp             CheckType = "ntp"
+	CheckTypeOracle          CheckType = "oracle"
+	CheckTypePop3            CheckType = "pop3"
+	CheckTypePostgresql      CheckType = "postgresql"
+	CheckTypePrivateLocation CheckType = "private-location"
+	CheckTypePrometheus      CheckType = "prometheus"
+	CheckTypeRabbitmq        CheckType = "rabbitmq"
+	CheckTypeRdp             CheckType = "rdp"
+	CheckTypeRedis           CheckType = "redis"
+	CheckTypeSftp            CheckType = "sftp"
+	CheckTypeSip             CheckType = "sip"
+	CheckTypeSleep           CheckType = "sleep"
+	CheckTypeSmtp            CheckType = "smtp"
+	CheckTypeSnmp            CheckType = "snmp"
+	CheckTypeSsh             CheckType = "ssh"
+	CheckTypeSsl             CheckType = "ssl"
+	CheckTypeTcp             CheckType = "tcp"
+	CheckTypeUdp             CheckType = "udp"
+	CheckTypeWebsocket       CheckType = "websocket"
 )
 
 // Valid indicates whether the value is a known member of the CheckType enum.
 func (e CheckType) Valid() bool {
 	switch e {
+	case CheckTypeA2s:
+		return true
+	case CheckTypeBrowser:
+		return true
+	case CheckTypeClickhouse:
+		return true
 	case CheckTypeDns:
 		return true
+	case CheckTypeDnsbl:
+		return true
+	case CheckTypeDocker:
+		return true
 	case CheckTypeDomain:
+		return true
+	case CheckTypeEmail:
+		return true
+	case CheckTypeFreeboxLine:
+		return true
+	case CheckTypeFtp:
+		return true
+	case CheckTypeGrpc:
+		return true
+	case CheckTypeHeartbeat:
 		return true
 	case CheckTypeHttp:
 		return true
 	case CheckTypeIcmp:
 		return true
+	case CheckTypeImap:
+		return true
+	case CheckTypeJs:
+		return true
+	case CheckTypeKafka:
+		return true
+	case CheckTypeKubernetes:
+		return true
+	case CheckTypeMinecraft:
+		return true
+	case CheckTypeMongodb:
+		return true
+	case CheckTypeMqtt:
+		return true
+	case CheckTypeMssql:
+		return true
+	case CheckTypeMysql:
+		return true
+	case CheckTypeNtp:
+		return true
+	case CheckTypeOracle:
+		return true
+	case CheckTypePop3:
+		return true
+	case CheckTypePostgresql:
+		return true
+	case CheckTypePrivateLocation:
+		return true
+	case CheckTypePrometheus:
+		return true
+	case CheckTypeRabbitmq:
+		return true
+	case CheckTypeRdp:
+		return true
+	case CheckTypeRedis:
+		return true
+	case CheckTypeSftp:
+		return true
+	case CheckTypeSip:
+		return true
+	case CheckTypeSleep:
+		return true
+	case CheckTypeSmtp:
+		return true
+	case CheckTypeSnmp:
+		return true
+	case CheckTypeSsh:
+		return true
 	case CheckTypeSsl:
 		return true
 	case CheckTypeTcp:
+		return true
+	case CheckTypeUdp:
+		return true
+	case CheckTypeWebsocket:
 		return true
 	default:
 		return false
@@ -332,6 +497,7 @@ const (
 	CheckGroupStatusCreated    CheckGroupStatus = "created"
 	CheckGroupStatusDegraded   CheckGroupStatus = "degraded"
 	CheckGroupStatusDown       CheckGroupStatus = "down"
+	CheckGroupStatusStale      CheckGroupStatus = "stale"
 	CheckGroupStatusUp         CheckGroupStatus = "up"
 	CheckGroupStatusValidating CheckGroupStatus = "validating"
 	CheckGroupStatusWarning    CheckGroupStatus = "warning"
@@ -345,6 +511,8 @@ func (e CheckGroupStatus) Valid() bool {
 	case CheckGroupStatusDegraded:
 		return true
 	case CheckGroupStatusDown:
+		return true
+	case CheckGroupStatusStale:
 		return true
 	case CheckGroupStatusUp:
 		return true
@@ -386,6 +554,7 @@ const (
 	CheckListItemLastStatusChangeStatusCREATED    CheckListItemLastStatusChangeStatus = "CREATED"
 	CheckListItemLastStatusChangeStatusDEGRADED   CheckListItemLastStatusChangeStatus = "DEGRADED"
 	CheckListItemLastStatusChangeStatusDOWN       CheckListItemLastStatusChangeStatus = "DOWN"
+	CheckListItemLastStatusChangeStatusSTALE      CheckListItemLastStatusChangeStatus = "STALE"
 	CheckListItemLastStatusChangeStatusUNKNOWN    CheckListItemLastStatusChangeStatus = "UNKNOWN"
 	CheckListItemLastStatusChangeStatusUP         CheckListItemLastStatusChangeStatus = "UP"
 	CheckListItemLastStatusChangeStatusVALIDATING CheckListItemLastStatusChangeStatus = "VALIDATING"
@@ -401,6 +570,8 @@ func (e CheckListItemLastStatusChangeStatus) Valid() bool {
 		return true
 	case CheckListItemLastStatusChangeStatusDOWN:
 		return true
+	case CheckListItemLastStatusChangeStatusSTALE:
+		return true
 	case CheckListItemLastStatusChangeStatusUNKNOWN:
 		return true
 	case CheckListItemLastStatusChangeStatusUP:
@@ -408,6 +579,60 @@ func (e CheckListItemLastStatusChangeStatus) Valid() bool {
 	case CheckListItemLastStatusChangeStatusVALIDATING:
 		return true
 	case CheckListItemLastStatusChangeStatusWARNING:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CheckListItemPlacement.
+const (
+	CheckListItemPlacementAuto   CheckListItemPlacement = "auto"
+	CheckListItemPlacementPinned CheckListItemPlacement = "pinned"
+)
+
+// Valid indicates whether the value is a known member of the CheckListItemPlacement enum.
+func (e CheckListItemPlacement) Valid() bool {
+	switch e {
+	case CheckListItemPlacementAuto:
+		return true
+	case CheckListItemPlacementPinned:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CheckListItemStatus.
+const (
+	CheckListItemStatusCreated    CheckListItemStatus = "created"
+	CheckListItemStatusDegraded   CheckListItemStatus = "degraded"
+	CheckListItemStatusDown       CheckListItemStatus = "down"
+	CheckListItemStatusStale      CheckListItemStatus = "stale"
+	CheckListItemStatusUnknown    CheckListItemStatus = "unknown"
+	CheckListItemStatusUp         CheckListItemStatus = "up"
+	CheckListItemStatusValidating CheckListItemStatus = "validating"
+	CheckListItemStatusWarning    CheckListItemStatus = "warning"
+)
+
+// Valid indicates whether the value is a known member of the CheckListItemStatus enum.
+func (e CheckListItemStatus) Valid() bool {
+	switch e {
+	case CheckListItemStatusCreated:
+		return true
+	case CheckListItemStatusDegraded:
+		return true
+	case CheckListItemStatusDown:
+		return true
+	case CheckListItemStatusStale:
+		return true
+	case CheckListItemStatusUnknown:
+		return true
+	case CheckListItemStatusUp:
+		return true
+	case CheckListItemStatusValidating:
+		return true
+	case CheckListItemStatusWarning:
 		return true
 	default:
 		return false
@@ -437,28 +662,154 @@ func (e CheckListItemTracerouteOnFailure) Valid() bool {
 
 // Defines values for CheckListItemType.
 const (
-	CheckListItemTypeDns    CheckListItemType = "dns"
-	CheckListItemTypeDomain CheckListItemType = "domain"
-	CheckListItemTypeHttp   CheckListItemType = "http"
-	CheckListItemTypeIcmp   CheckListItemType = "icmp"
-	CheckListItemTypeSsl    CheckListItemType = "ssl"
-	CheckListItemTypeTcp    CheckListItemType = "tcp"
+	CheckListItemTypeA2s             CheckListItemType = "a2s"
+	CheckListItemTypeBrowser         CheckListItemType = "browser"
+	CheckListItemTypeClickhouse      CheckListItemType = "clickhouse"
+	CheckListItemTypeDns             CheckListItemType = "dns"
+	CheckListItemTypeDnsbl           CheckListItemType = "dnsbl"
+	CheckListItemTypeDocker          CheckListItemType = "docker"
+	CheckListItemTypeDomain          CheckListItemType = "domain"
+	CheckListItemTypeEmail           CheckListItemType = "email"
+	CheckListItemTypeFreeboxLine     CheckListItemType = "freebox_line"
+	CheckListItemTypeFtp             CheckListItemType = "ftp"
+	CheckListItemTypeGrpc            CheckListItemType = "grpc"
+	CheckListItemTypeHeartbeat       CheckListItemType = "heartbeat"
+	CheckListItemTypeHttp            CheckListItemType = "http"
+	CheckListItemTypeIcmp            CheckListItemType = "icmp"
+	CheckListItemTypeImap            CheckListItemType = "imap"
+	CheckListItemTypeJs              CheckListItemType = "js"
+	CheckListItemTypeKafka           CheckListItemType = "kafka"
+	CheckListItemTypeKubernetes      CheckListItemType = "kubernetes"
+	CheckListItemTypeMinecraft       CheckListItemType = "minecraft"
+	CheckListItemTypeMongodb         CheckListItemType = "mongodb"
+	CheckListItemTypeMqtt            CheckListItemType = "mqtt"
+	CheckListItemTypeMssql           CheckListItemType = "mssql"
+	CheckListItemTypeMysql           CheckListItemType = "mysql"
+	CheckListItemTypeNtp             CheckListItemType = "ntp"
+	CheckListItemTypeOracle          CheckListItemType = "oracle"
+	CheckListItemTypePop3            CheckListItemType = "pop3"
+	CheckListItemTypePostgresql      CheckListItemType = "postgresql"
+	CheckListItemTypePrivateLocation CheckListItemType = "private-location"
+	CheckListItemTypePrometheus      CheckListItemType = "prometheus"
+	CheckListItemTypeRabbitmq        CheckListItemType = "rabbitmq"
+	CheckListItemTypeRdp             CheckListItemType = "rdp"
+	CheckListItemTypeRedis           CheckListItemType = "redis"
+	CheckListItemTypeSftp            CheckListItemType = "sftp"
+	CheckListItemTypeSip             CheckListItemType = "sip"
+	CheckListItemTypeSleep           CheckListItemType = "sleep"
+	CheckListItemTypeSmtp            CheckListItemType = "smtp"
+	CheckListItemTypeSnmp            CheckListItemType = "snmp"
+	CheckListItemTypeSsh             CheckListItemType = "ssh"
+	CheckListItemTypeSsl             CheckListItemType = "ssl"
+	CheckListItemTypeTcp             CheckListItemType = "tcp"
+	CheckListItemTypeUdp             CheckListItemType = "udp"
+	CheckListItemTypeWebsocket       CheckListItemType = "websocket"
 )
 
 // Valid indicates whether the value is a known member of the CheckListItemType enum.
 func (e CheckListItemType) Valid() bool {
 	switch e {
+	case CheckListItemTypeA2s:
+		return true
+	case CheckListItemTypeBrowser:
+		return true
+	case CheckListItemTypeClickhouse:
+		return true
 	case CheckListItemTypeDns:
 		return true
+	case CheckListItemTypeDnsbl:
+		return true
+	case CheckListItemTypeDocker:
+		return true
 	case CheckListItemTypeDomain:
+		return true
+	case CheckListItemTypeEmail:
+		return true
+	case CheckListItemTypeFreeboxLine:
+		return true
+	case CheckListItemTypeFtp:
+		return true
+	case CheckListItemTypeGrpc:
+		return true
+	case CheckListItemTypeHeartbeat:
 		return true
 	case CheckListItemTypeHttp:
 		return true
 	case CheckListItemTypeIcmp:
 		return true
+	case CheckListItemTypeImap:
+		return true
+	case CheckListItemTypeJs:
+		return true
+	case CheckListItemTypeKafka:
+		return true
+	case CheckListItemTypeKubernetes:
+		return true
+	case CheckListItemTypeMinecraft:
+		return true
+	case CheckListItemTypeMongodb:
+		return true
+	case CheckListItemTypeMqtt:
+		return true
+	case CheckListItemTypeMssql:
+		return true
+	case CheckListItemTypeMysql:
+		return true
+	case CheckListItemTypeNtp:
+		return true
+	case CheckListItemTypeOracle:
+		return true
+	case CheckListItemTypePop3:
+		return true
+	case CheckListItemTypePostgresql:
+		return true
+	case CheckListItemTypePrivateLocation:
+		return true
+	case CheckListItemTypePrometheus:
+		return true
+	case CheckListItemTypeRabbitmq:
+		return true
+	case CheckListItemTypeRdp:
+		return true
+	case CheckListItemTypeRedis:
+		return true
+	case CheckListItemTypeSftp:
+		return true
+	case CheckListItemTypeSip:
+		return true
+	case CheckListItemTypeSleep:
+		return true
+	case CheckListItemTypeSmtp:
+		return true
+	case CheckListItemTypeSnmp:
+		return true
+	case CheckListItemTypeSsh:
+		return true
 	case CheckListItemTypeSsl:
 		return true
 	case CheckListItemTypeTcp:
+		return true
+	case CheckListItemTypeUdp:
+		return true
+	case CheckListItemTypeWebsocket:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CreateCheckRequestPlacement.
+const (
+	CreateCheckRequestPlacementAuto   CreateCheckRequestPlacement = "auto"
+	CreateCheckRequestPlacementPinned CreateCheckRequestPlacement = "pinned"
+)
+
+// Valid indicates whether the value is a known member of the CreateCheckRequestPlacement enum.
+func (e CreateCheckRequestPlacement) Valid() bool {
+	switch e {
+	case CreateCheckRequestPlacementAuto:
+		return true
+	case CreateCheckRequestPlacementPinned:
 		return true
 	default:
 		return false
@@ -488,28 +839,136 @@ func (e CreateCheckRequestTracerouteOnFailure) Valid() bool {
 
 // Defines values for CreateCheckRequestType.
 const (
-	CreateCheckRequestTypeDns    CreateCheckRequestType = "dns"
-	CreateCheckRequestTypeDomain CreateCheckRequestType = "domain"
-	CreateCheckRequestTypeHttp   CreateCheckRequestType = "http"
-	CreateCheckRequestTypeIcmp   CreateCheckRequestType = "icmp"
-	CreateCheckRequestTypeSsl    CreateCheckRequestType = "ssl"
-	CreateCheckRequestTypeTcp    CreateCheckRequestType = "tcp"
+	CreateCheckRequestTypeA2s             CreateCheckRequestType = "a2s"
+	CreateCheckRequestTypeBrowser         CreateCheckRequestType = "browser"
+	CreateCheckRequestTypeClickhouse      CreateCheckRequestType = "clickhouse"
+	CreateCheckRequestTypeDns             CreateCheckRequestType = "dns"
+	CreateCheckRequestTypeDnsbl           CreateCheckRequestType = "dnsbl"
+	CreateCheckRequestTypeDocker          CreateCheckRequestType = "docker"
+	CreateCheckRequestTypeDomain          CreateCheckRequestType = "domain"
+	CreateCheckRequestTypeEmail           CreateCheckRequestType = "email"
+	CreateCheckRequestTypeFreeboxLine     CreateCheckRequestType = "freebox_line"
+	CreateCheckRequestTypeFtp             CreateCheckRequestType = "ftp"
+	CreateCheckRequestTypeGrpc            CreateCheckRequestType = "grpc"
+	CreateCheckRequestTypeHeartbeat       CreateCheckRequestType = "heartbeat"
+	CreateCheckRequestTypeHttp            CreateCheckRequestType = "http"
+	CreateCheckRequestTypeIcmp            CreateCheckRequestType = "icmp"
+	CreateCheckRequestTypeImap            CreateCheckRequestType = "imap"
+	CreateCheckRequestTypeJs              CreateCheckRequestType = "js"
+	CreateCheckRequestTypeKafka           CreateCheckRequestType = "kafka"
+	CreateCheckRequestTypeKubernetes      CreateCheckRequestType = "kubernetes"
+	CreateCheckRequestTypeMinecraft       CreateCheckRequestType = "minecraft"
+	CreateCheckRequestTypeMongodb         CreateCheckRequestType = "mongodb"
+	CreateCheckRequestTypeMqtt            CreateCheckRequestType = "mqtt"
+	CreateCheckRequestTypeMssql           CreateCheckRequestType = "mssql"
+	CreateCheckRequestTypeMysql           CreateCheckRequestType = "mysql"
+	CreateCheckRequestTypeNtp             CreateCheckRequestType = "ntp"
+	CreateCheckRequestTypeOracle          CreateCheckRequestType = "oracle"
+	CreateCheckRequestTypePop3            CreateCheckRequestType = "pop3"
+	CreateCheckRequestTypePostgresql      CreateCheckRequestType = "postgresql"
+	CreateCheckRequestTypePrivateLocation CreateCheckRequestType = "private-location"
+	CreateCheckRequestTypePrometheus      CreateCheckRequestType = "prometheus"
+	CreateCheckRequestTypeRabbitmq        CreateCheckRequestType = "rabbitmq"
+	CreateCheckRequestTypeRdp             CreateCheckRequestType = "rdp"
+	CreateCheckRequestTypeRedis           CreateCheckRequestType = "redis"
+	CreateCheckRequestTypeSftp            CreateCheckRequestType = "sftp"
+	CreateCheckRequestTypeSip             CreateCheckRequestType = "sip"
+	CreateCheckRequestTypeSleep           CreateCheckRequestType = "sleep"
+	CreateCheckRequestTypeSmtp            CreateCheckRequestType = "smtp"
+	CreateCheckRequestTypeSnmp            CreateCheckRequestType = "snmp"
+	CreateCheckRequestTypeSsh             CreateCheckRequestType = "ssh"
+	CreateCheckRequestTypeSsl             CreateCheckRequestType = "ssl"
+	CreateCheckRequestTypeTcp             CreateCheckRequestType = "tcp"
+	CreateCheckRequestTypeUdp             CreateCheckRequestType = "udp"
+	CreateCheckRequestTypeWebsocket       CreateCheckRequestType = "websocket"
 )
 
 // Valid indicates whether the value is a known member of the CreateCheckRequestType enum.
 func (e CreateCheckRequestType) Valid() bool {
 	switch e {
+	case CreateCheckRequestTypeA2s:
+		return true
+	case CreateCheckRequestTypeBrowser:
+		return true
+	case CreateCheckRequestTypeClickhouse:
+		return true
 	case CreateCheckRequestTypeDns:
 		return true
+	case CreateCheckRequestTypeDnsbl:
+		return true
+	case CreateCheckRequestTypeDocker:
+		return true
 	case CreateCheckRequestTypeDomain:
+		return true
+	case CreateCheckRequestTypeEmail:
+		return true
+	case CreateCheckRequestTypeFreeboxLine:
+		return true
+	case CreateCheckRequestTypeFtp:
+		return true
+	case CreateCheckRequestTypeGrpc:
+		return true
+	case CreateCheckRequestTypeHeartbeat:
 		return true
 	case CreateCheckRequestTypeHttp:
 		return true
 	case CreateCheckRequestTypeIcmp:
 		return true
+	case CreateCheckRequestTypeImap:
+		return true
+	case CreateCheckRequestTypeJs:
+		return true
+	case CreateCheckRequestTypeKafka:
+		return true
+	case CreateCheckRequestTypeKubernetes:
+		return true
+	case CreateCheckRequestTypeMinecraft:
+		return true
+	case CreateCheckRequestTypeMongodb:
+		return true
+	case CreateCheckRequestTypeMqtt:
+		return true
+	case CreateCheckRequestTypeMssql:
+		return true
+	case CreateCheckRequestTypeMysql:
+		return true
+	case CreateCheckRequestTypeNtp:
+		return true
+	case CreateCheckRequestTypeOracle:
+		return true
+	case CreateCheckRequestTypePop3:
+		return true
+	case CreateCheckRequestTypePostgresql:
+		return true
+	case CreateCheckRequestTypePrivateLocation:
+		return true
+	case CreateCheckRequestTypePrometheus:
+		return true
+	case CreateCheckRequestTypeRabbitmq:
+		return true
+	case CreateCheckRequestTypeRdp:
+		return true
+	case CreateCheckRequestTypeRedis:
+		return true
+	case CreateCheckRequestTypeSftp:
+		return true
+	case CreateCheckRequestTypeSip:
+		return true
+	case CreateCheckRequestTypeSleep:
+		return true
+	case CreateCheckRequestTypeSmtp:
+		return true
+	case CreateCheckRequestTypeSnmp:
+		return true
+	case CreateCheckRequestTypeSsh:
+		return true
 	case CreateCheckRequestTypeSsl:
 		return true
 	case CreateCheckRequestTypeTcp:
+		return true
+	case CreateCheckRequestTypeUdp:
+		return true
+	case CreateCheckRequestTypeWebsocket:
 		return true
 	default:
 		return false
@@ -1704,6 +2163,24 @@ func (e PublishIncidentRequestSeverity) Valid() bool {
 	}
 }
 
+// Defines values for RegionStatus.
+const (
+	RegionStatusOffline RegionStatus = "offline"
+	RegionStatusOnline  RegionStatus = "online"
+)
+
+// Valid indicates whether the value is a known member of the RegionStatus enum.
+func (e RegionStatus) Valid() bool {
+	switch e {
+	case RegionStatusOffline:
+		return true
+	case RegionStatusOnline:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for RegionCapabilitiesBrowser.
 const (
 	RegionCapabilitiesBrowserNo      RegionCapabilitiesBrowser = "no"
@@ -2208,6 +2685,24 @@ func (e SupportThreadStatus) Valid() bool {
 	}
 }
 
+// Defines values for UpdateCheckRequestPlacement.
+const (
+	UpdateCheckRequestPlacementAuto   UpdateCheckRequestPlacement = "auto"
+	UpdateCheckRequestPlacementPinned UpdateCheckRequestPlacement = "pinned"
+)
+
+// Valid indicates whether the value is a known member of the UpdateCheckRequestPlacement enum.
+func (e UpdateCheckRequestPlacement) Valid() bool {
+	switch e {
+	case UpdateCheckRequestPlacementAuto:
+		return true
+	case UpdateCheckRequestPlacementPinned:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for UpdateCheckRequestTracerouteOnFailure.
 const (
 	UpdateCheckRequestTracerouteOnFailureInherit UpdateCheckRequestTracerouteOnFailure = "inherit"
@@ -2376,6 +2871,24 @@ func (e UpdateSupportThreadRequestStatus) Valid() bool {
 	}
 }
 
+// Defines values for UpsertCheckRequestPlacement.
+const (
+	UpsertCheckRequestPlacementAuto   UpsertCheckRequestPlacement = "auto"
+	UpsertCheckRequestPlacementPinned UpsertCheckRequestPlacement = "pinned"
+)
+
+// Valid indicates whether the value is a known member of the UpsertCheckRequestPlacement enum.
+func (e UpsertCheckRequestPlacement) Valid() bool {
+	switch e {
+	case UpsertCheckRequestPlacementAuto:
+		return true
+	case UpsertCheckRequestPlacementPinned:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for UpsertCheckRequestTracerouteOnFailure.
 const (
 	UpsertCheckRequestTracerouteOnFailureInherit UpsertCheckRequestTracerouteOnFailure = "inherit"
@@ -2399,28 +2912,136 @@ func (e UpsertCheckRequestTracerouteOnFailure) Valid() bool {
 
 // Defines values for UpsertCheckRequestType.
 const (
-	UpsertCheckRequestTypeDns    UpsertCheckRequestType = "dns"
-	UpsertCheckRequestTypeDomain UpsertCheckRequestType = "domain"
-	UpsertCheckRequestTypeHttp   UpsertCheckRequestType = "http"
-	UpsertCheckRequestTypeIcmp   UpsertCheckRequestType = "icmp"
-	UpsertCheckRequestTypeSsl    UpsertCheckRequestType = "ssl"
-	UpsertCheckRequestTypeTcp    UpsertCheckRequestType = "tcp"
+	UpsertCheckRequestTypeA2s             UpsertCheckRequestType = "a2s"
+	UpsertCheckRequestTypeBrowser         UpsertCheckRequestType = "browser"
+	UpsertCheckRequestTypeClickhouse      UpsertCheckRequestType = "clickhouse"
+	UpsertCheckRequestTypeDns             UpsertCheckRequestType = "dns"
+	UpsertCheckRequestTypeDnsbl           UpsertCheckRequestType = "dnsbl"
+	UpsertCheckRequestTypeDocker          UpsertCheckRequestType = "docker"
+	UpsertCheckRequestTypeDomain          UpsertCheckRequestType = "domain"
+	UpsertCheckRequestTypeEmail           UpsertCheckRequestType = "email"
+	UpsertCheckRequestTypeFreeboxLine     UpsertCheckRequestType = "freebox_line"
+	UpsertCheckRequestTypeFtp             UpsertCheckRequestType = "ftp"
+	UpsertCheckRequestTypeGrpc            UpsertCheckRequestType = "grpc"
+	UpsertCheckRequestTypeHeartbeat       UpsertCheckRequestType = "heartbeat"
+	UpsertCheckRequestTypeHttp            UpsertCheckRequestType = "http"
+	UpsertCheckRequestTypeIcmp            UpsertCheckRequestType = "icmp"
+	UpsertCheckRequestTypeImap            UpsertCheckRequestType = "imap"
+	UpsertCheckRequestTypeJs              UpsertCheckRequestType = "js"
+	UpsertCheckRequestTypeKafka           UpsertCheckRequestType = "kafka"
+	UpsertCheckRequestTypeKubernetes      UpsertCheckRequestType = "kubernetes"
+	UpsertCheckRequestTypeMinecraft       UpsertCheckRequestType = "minecraft"
+	UpsertCheckRequestTypeMongodb         UpsertCheckRequestType = "mongodb"
+	UpsertCheckRequestTypeMqtt            UpsertCheckRequestType = "mqtt"
+	UpsertCheckRequestTypeMssql           UpsertCheckRequestType = "mssql"
+	UpsertCheckRequestTypeMysql           UpsertCheckRequestType = "mysql"
+	UpsertCheckRequestTypeNtp             UpsertCheckRequestType = "ntp"
+	UpsertCheckRequestTypeOracle          UpsertCheckRequestType = "oracle"
+	UpsertCheckRequestTypePop3            UpsertCheckRequestType = "pop3"
+	UpsertCheckRequestTypePostgresql      UpsertCheckRequestType = "postgresql"
+	UpsertCheckRequestTypePrivateLocation UpsertCheckRequestType = "private-location"
+	UpsertCheckRequestTypePrometheus      UpsertCheckRequestType = "prometheus"
+	UpsertCheckRequestTypeRabbitmq        UpsertCheckRequestType = "rabbitmq"
+	UpsertCheckRequestTypeRdp             UpsertCheckRequestType = "rdp"
+	UpsertCheckRequestTypeRedis           UpsertCheckRequestType = "redis"
+	UpsertCheckRequestTypeSftp            UpsertCheckRequestType = "sftp"
+	UpsertCheckRequestTypeSip             UpsertCheckRequestType = "sip"
+	UpsertCheckRequestTypeSleep           UpsertCheckRequestType = "sleep"
+	UpsertCheckRequestTypeSmtp            UpsertCheckRequestType = "smtp"
+	UpsertCheckRequestTypeSnmp            UpsertCheckRequestType = "snmp"
+	UpsertCheckRequestTypeSsh             UpsertCheckRequestType = "ssh"
+	UpsertCheckRequestTypeSsl             UpsertCheckRequestType = "ssl"
+	UpsertCheckRequestTypeTcp             UpsertCheckRequestType = "tcp"
+	UpsertCheckRequestTypeUdp             UpsertCheckRequestType = "udp"
+	UpsertCheckRequestTypeWebsocket       UpsertCheckRequestType = "websocket"
 )
 
 // Valid indicates whether the value is a known member of the UpsertCheckRequestType enum.
 func (e UpsertCheckRequestType) Valid() bool {
 	switch e {
+	case UpsertCheckRequestTypeA2s:
+		return true
+	case UpsertCheckRequestTypeBrowser:
+		return true
+	case UpsertCheckRequestTypeClickhouse:
+		return true
 	case UpsertCheckRequestTypeDns:
 		return true
+	case UpsertCheckRequestTypeDnsbl:
+		return true
+	case UpsertCheckRequestTypeDocker:
+		return true
 	case UpsertCheckRequestTypeDomain:
+		return true
+	case UpsertCheckRequestTypeEmail:
+		return true
+	case UpsertCheckRequestTypeFreeboxLine:
+		return true
+	case UpsertCheckRequestTypeFtp:
+		return true
+	case UpsertCheckRequestTypeGrpc:
+		return true
+	case UpsertCheckRequestTypeHeartbeat:
 		return true
 	case UpsertCheckRequestTypeHttp:
 		return true
 	case UpsertCheckRequestTypeIcmp:
 		return true
+	case UpsertCheckRequestTypeImap:
+		return true
+	case UpsertCheckRequestTypeJs:
+		return true
+	case UpsertCheckRequestTypeKafka:
+		return true
+	case UpsertCheckRequestTypeKubernetes:
+		return true
+	case UpsertCheckRequestTypeMinecraft:
+		return true
+	case UpsertCheckRequestTypeMongodb:
+		return true
+	case UpsertCheckRequestTypeMqtt:
+		return true
+	case UpsertCheckRequestTypeMssql:
+		return true
+	case UpsertCheckRequestTypeMysql:
+		return true
+	case UpsertCheckRequestTypeNtp:
+		return true
+	case UpsertCheckRequestTypeOracle:
+		return true
+	case UpsertCheckRequestTypePop3:
+		return true
+	case UpsertCheckRequestTypePostgresql:
+		return true
+	case UpsertCheckRequestTypePrivateLocation:
+		return true
+	case UpsertCheckRequestTypePrometheus:
+		return true
+	case UpsertCheckRequestTypeRabbitmq:
+		return true
+	case UpsertCheckRequestTypeRdp:
+		return true
+	case UpsertCheckRequestTypeRedis:
+		return true
+	case UpsertCheckRequestTypeSftp:
+		return true
+	case UpsertCheckRequestTypeSip:
+		return true
+	case UpsertCheckRequestTypeSleep:
+		return true
+	case UpsertCheckRequestTypeSmtp:
+		return true
+	case UpsertCheckRequestTypeSnmp:
+		return true
+	case UpsertCheckRequestTypeSsh:
+		return true
 	case UpsertCheckRequestTypeSsl:
 		return true
 	case UpsertCheckRequestTypeTcp:
+		return true
+	case UpsertCheckRequestTypeUdp:
+		return true
+	case UpsertCheckRequestTypeWebsocket:
 		return true
 	default:
 		return false
@@ -2445,6 +3066,24 @@ func (e UserSummaryRole) Valid() bool {
 	case UserSummaryRoleUser:
 		return true
 	case UserSummaryRoleViewer:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ValidateCheckRequestPlacement.
+const (
+	ValidateCheckRequestPlacementAuto   ValidateCheckRequestPlacement = "auto"
+	ValidateCheckRequestPlacementPinned ValidateCheckRequestPlacement = "pinned"
+)
+
+// Valid indicates whether the value is a known member of the ValidateCheckRequestPlacement enum.
+func (e ValidateCheckRequestPlacement) Valid() bool {
+	switch e {
+	case ValidateCheckRequestPlacementAuto:
+		return true
+	case ValidateCheckRequestPlacementPinned:
 		return true
 	default:
 		return false
@@ -2589,6 +3228,36 @@ func (e ListChecksParamsSort) Valid() bool {
 	case ListChecksParamsSortGroup:
 		return true
 	case ListChecksParamsSortTargetHost:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SwitchChecksToAutoPlacement200JSONResponseBodySkippedReason.
+const (
+	SwitchChecksToAutoPlacement200JSONResponseBodySkippedReasonAlreadyAuto   SwitchChecksToAutoPlacement200JSONResponseBodySkippedReason = "already_auto"
+	SwitchChecksToAutoPlacement200JSONResponseBodySkippedReasonNoRegion      SwitchChecksToAutoPlacement200JSONResponseBodySkippedReason = "no_region"
+	SwitchChecksToAutoPlacement200JSONResponseBodySkippedReasonNotFound      SwitchChecksToAutoPlacement200JSONResponseBodySkippedReason = "not_found"
+	SwitchChecksToAutoPlacement200JSONResponseBodySkippedReasonPassive       SwitchChecksToAutoPlacement200JSONResponseBodySkippedReason = "passive"
+	SwitchChecksToAutoPlacement200JSONResponseBodySkippedReasonPrivateRegion SwitchChecksToAutoPlacement200JSONResponseBodySkippedReason = "private_region"
+	SwitchChecksToAutoPlacement200JSONResponseBodySkippedReasonReadOnly      SwitchChecksToAutoPlacement200JSONResponseBodySkippedReason = "read_only"
+)
+
+// Valid indicates whether the value is a known member of the SwitchChecksToAutoPlacement200JSONResponseBodySkippedReason enum.
+func (e SwitchChecksToAutoPlacement200JSONResponseBodySkippedReason) Valid() bool {
+	switch e {
+	case SwitchChecksToAutoPlacement200JSONResponseBodySkippedReasonAlreadyAuto:
+		return true
+	case SwitchChecksToAutoPlacement200JSONResponseBodySkippedReasonNoRegion:
+		return true
+	case SwitchChecksToAutoPlacement200JSONResponseBodySkippedReasonNotFound:
+		return true
+	case SwitchChecksToAutoPlacement200JSONResponseBodySkippedReasonPassive:
+		return true
+	case SwitchChecksToAutoPlacement200JSONResponseBodySkippedReasonPrivateRegion:
+		return true
+	case SwitchChecksToAutoPlacement200JSONResponseBodySkippedReasonReadOnly:
 		return true
 	default:
 		return false
@@ -3138,7 +3807,10 @@ type AvailabilityPeriod struct {
 	// AvailabilityPct Probe-ratio availability (successfulChecks / totalChecks × 100). Null when totalChecks == 0 — no data is not 100%.
 	AvailabilityPct *float32 `json:"availabilityPct,omitempty"`
 
-	// DowntimeSeconds Probe-time downtime: (1 − availabilityPct/100) × monitoredSeconds.
+	// Coverage Share of the monitored time that was actually measured: received probes ÷ expected probes, where expected = monitoredSeconds / period × max(1, regions), clamped to [0, 1]. An 8-hour gap in a 24-hour window reads 0.67. Null only when nothing was expected.
+	Coverage *float32 `json:"coverage,omitempty"`
+
+	// DowntimeSeconds Probe-time downtime over MEASURED time only: (1 − availabilityPct/100) × monitoredSeconds × coverage.
 	DowntimeSeconds *int64 `json:"downtimeSeconds,omitempty"`
 
 	// HasData False when the window has no countable probes (then availabilityPct is null).
@@ -3163,6 +3835,9 @@ type AvailabilityPeriod struct {
 
 	// TotalChecks Total countable probes in the window.
 	TotalChecks *int `json:"totalChecks,omitempty"`
+
+	// UnmeasuredSeconds The part of monitoredSeconds nobody measured: (1 − coverage) × monitoredSeconds. Neither uptime nor downtime.
+	UnmeasuredSeconds *int64 `json:"unmeasuredSeconds,omitempty"`
 
 	// WindowEnd End of the resolved window (exclusive) — always "now".
 	WindowEnd *time.Time `json:"windowEnd,omitempty"`
@@ -3294,11 +3969,14 @@ type Check struct {
 	// LastResult Full last-execution result. Present only on the check DETAIL response (GET/POST/PUT/PATCH by uid/slug) — the detail page renders output, metrics, and the SSL-chain card from these fields. List responses (GET /checks) use the slimmer LastResultListItem instead, which omits output/metrics: no list consumer (checks table, org dashboard, status dashboard) reads them, and they can be large (SSL cert chains, DNSBL details).
 	LastResult *LastResult `json:"lastResult,omitempty"`
 
+	// LastResultAt Execution time of the newest REAL result (up, down, timeout, error, warning) across every region — never a created, running or abandoned placeholder. Omitted for a check that never produced one.
+	LastResultAt *time.Time `json:"lastResultAt,omitempty"`
+
 	// LastStatusChange When the check's status last changed, and what it changed to (only included when with=last_status_change). This is the *derived* check status — the same value as the `status` field, which respects the confirmation and recovery periods and the flapping backoff — so a single unconfirmed failed probe does not reset the timer.
 	//
 	// Absent for checks that have never recorded a status transition: there is no fallback to the creation time and no fallback to the raw probe history.
 	LastStatusChange *struct {
-		// Status The status that the check transitioned to
+		// Status The status that the check transitioned to. STALE means "no data": no real result for max(3 × period, 5 min).
 		Status *CheckLastStatusChangeStatus `json:"status,omitempty"`
 
 		// Time ISO 8601 timestamp of when the status change occurred
@@ -3312,8 +3990,23 @@ type Check struct {
 	// Period Interval duration (e.g., "00:01:00" for 1 minute)
 	Period *string `json:"period,omitempty"`
 
+	// Placement Placement intent. `pinned`: `regions` is an explicit list and never moves — if its region goes dark the check goes `stale`. `auto`: the scheduler places the check on `regionCount` healthy regions (candidates: the org default regions, then the system default regions, then every other declared region, filtered by `regionPool` and the regions' capabilities) and moves it off a region that goes dark. Private locations are pinned-only.
+	Placement *CheckPlacement `json:"placement,omitempty"`
+
+	// RegionCount Automatic placement only — how many regions run the check. Null for a pinned check.
+	RegionCount *int `json:"regionCount,omitempty"`
+
+	// RegionFreshness Newest real result per region (only with with=region_freshness). Lists every region that produced one inside the raw retention plus every configured region that did not.
+	RegionFreshness *[]RegionFreshness `json:"regionFreshness,omitempty"`
+
+	// RegionPool Automatic placement only — the cloud region slugs the scheduler may choose from. Absent or empty: any cloud region.
+	RegionPool *[]string `json:"regionPool,omitempty"`
+
 	// RegionSpread Optional inter-region scheduling offset (e.g., "00:00:20"). Every selected region runs the check at the full period; this staggers their phases. Null uses the default of period ÷ region count. Must satisfy 0 <= regionSpread < period.
 	RegionSpread *string `json:"regionSpread,omitempty"`
+
+	// Regions Region slugs the check runs from. For a pinned check, the user's explicit list (never moved). For an automatically placed check, the CURRENT placement, chosen by the scheduler and rewritten when one of its regions goes dark (spec 2026-09-25-06). A private location is `@<slug>`.
+	Regions *[]string `json:"regions,omitempty"`
 
 	// Scheduling Read-only scheduling telemetry, derived from the check's per-region scheduler jobs (max across regions). Present only on the check DETAIL response (GET by uid/slug) — never on list responses — and omitted until the check's first run produces a cost signal.
 	Scheduling *CheckScheduling `json:"scheduling,omitempty"`
@@ -3321,6 +4014,15 @@ type Check struct {
 	// SlowThresholdMs Response time above which a successful probe counts as slow, in milliseconds. 0 = the slow rule is off. There is no auto-baselining; around 2x the observed p95 is the usual starting point.
 	SlowThresholdMs *int    `json:"slowThresholdMs,omitempty"`
 	Slug            *string `json:"slug,omitempty"`
+
+	// StaleThresholdSeconds max(3 × period, 5 min) in seconds: how long the check may go without a real result before it becomes `stale`.
+	StaleThresholdSeconds *int `json:"staleThresholdSeconds,omitempty"`
+
+	// Status The derived check status, which respects the confirmation and recovery periods: "validating" is a failure seen but not yet confirmed, "warning" is up with something to report, and "stale" ("No data") means the newest real result, across every region, is older than max(3 × period, 5 min) — the check has stopped being measured, whatever the cause. Stale is neither up nor down: it never opens, resolves or notifies an incident.
+	Status *CheckStatus `json:"status,omitempty"`
+
+	// StatusChangedAt When the check entered its current status. Omitted until the first transition.
+	StatusChangedAt *time.Time `json:"statusChangedAt,omitempty"`
 
 	// TargetHost Derived, read-time-only host this check probes: the config's `host` field when present, else the hostname parsed from `url`, else `target`; null when none apply (e.g. heartbeat/email passive checks). Not stored — renaming a host in a check's config moves it to a different value on the next read. Use `?sort=targetHost` on the list endpoint to order checks by it.
 	TargetHost *string `json:"targetHost,omitempty"`
@@ -3335,8 +4037,14 @@ type Check struct {
 	Warnings *[]ValidationErrorField `json:"warnings,omitempty"`
 }
 
-// CheckLastStatusChangeStatus The status that the check transitioned to
+// CheckLastStatusChangeStatus The status that the check transitioned to. STALE means "no data": no real result for max(3 × period, 5 min).
 type CheckLastStatusChangeStatus string
+
+// CheckPlacement Placement intent. `pinned`: `regions` is an explicit list and never moves — if its region goes dark the check goes `stale`. `auto`: the scheduler places the check on `regionCount` healthy regions (candidates: the org default regions, then the system default regions, then every other declared region, filtered by `regionPool` and the regions' capabilities) and moves it off a region that goes dark. Private locations are pinned-only.
+type CheckPlacement string
+
+// CheckStatus The derived check status, which respects the confirmation and recovery periods: "validating" is a failure seen but not yet confirmed, "warning" is up with something to report, and "stale" ("No data") means the newest real result, across every region, is older than max(3 × period, 5 min) — the check has stopped being measured, whatever the cause. Stale is neither up nor down: it never opens, resolves or notifies an incident.
+type CheckStatus string
 
 // CheckTracerouteOnFailure Per-check path-trace policy. When a network-reachability failure (connect timeout, refusal, ICMP loss, TLS handshake stall) opens or reopens an incident for this check, an MTR-style traceroute is captured and attached. `inherit` defers to the organization default (itself on unless an admin turned it off); `on` and `off` decide for this check. Application-level failures (HTTP 5xx, keyword mismatch, certificate expiry) never trigger a trace, whatever this is set to.
 type CheckTracerouteOnFailure string
@@ -3429,13 +4137,13 @@ type CheckGroup struct {
 	Slug               string          `json:"slug"`
 	SortOrder          int             `json:"sortOrder"`
 
-	// Status Derived, read-time rollup of the group's enabled member checks: "down" if all considered members are down, "degraded" if some (not all) are down, "warning" if none are down but at least one is warning, "validating" if none are down/warning but at least one is validating, "up" if at least one is up, otherwise "created" (no considered members, or only just-created ones). Never stored — recomputed on every read.
+	// Status Derived, read-time rollup of the group's enabled member checks, worst-of down > validating > warning > stale > up: "down" if all considered members are down, "degraded" if some (not all) are down, "validating" if none are down but at least one is validating, "warning" if none are down/validating but at least one is warning, "stale" if otherwise at least one member has no recent data (an all-stale group reads stale), "up" if at least one is up, otherwise "created" (no considered members, or only just-created ones). Never stored — recomputed on every read.
 	Status    CheckGroupStatus   `json:"status"`
 	Uid       openapi_types.UUID `json:"uid"`
 	UpdatedAt time.Time          `json:"updatedAt"`
 }
 
-// CheckGroupStatus Derived, read-time rollup of the group's enabled member checks: "down" if all considered members are down, "degraded" if some (not all) are down, "warning" if none are down but at least one is warning, "validating" if none are down/warning but at least one is validating, "up" if at least one is up, otherwise "created" (no considered members, or only just-created ones). Never stored — recomputed on every read.
+// CheckGroupStatus Derived, read-time rollup of the group's enabled member checks, worst-of down > validating > warning > stale > up: "down" if all considered members are down, "degraded" if some (not all) are down, "validating" if none are down but at least one is validating, "warning" if none are down/validating but at least one is warning, "stale" if otherwise at least one member has no recent data (an all-stale group reads stale), "up" if at least one is up, otherwise "created" (no considered members, or only just-created ones). Never stored — recomputed on every read.
 type CheckGroupStatus string
 
 // CheckGroupListResponse defines model for CheckGroupListResponse.
@@ -3540,11 +4248,14 @@ type CheckListItem struct {
 	// LastResult Slim last-execution result used on list responses (GET /checks) — {uid, status, timestamp, durationMs} only. See LastResult for the full detail-response shape.
 	LastResult *LastResultListItem `json:"lastResult,omitempty"`
 
+	// LastResultAt Execution time of the newest REAL result (up, down, timeout, error, warning) across every region — never a created, running or abandoned placeholder. Omitted for a check that never produced one.
+	LastResultAt *time.Time `json:"lastResultAt,omitempty"`
+
 	// LastStatusChange When the check's status last changed, and what it changed to (only included when with=last_status_change). This is the *derived* check status — the same value as the `status` field, which respects the confirmation and recovery periods and the flapping backoff — so a single unconfirmed failed probe does not reset the timer.
 	//
 	// Absent for checks that have never recorded a status transition: there is no fallback to the creation time and no fallback to the raw probe history.
 	LastStatusChange *struct {
-		// Status The status that the check transitioned to
+		// Status The status that the check transitioned to. STALE means "no data": no real result for max(3 × period, 5 min).
 		Status *CheckListItemLastStatusChangeStatus `json:"status,omitempty"`
 
 		// Time ISO 8601 timestamp of when the status change occurred
@@ -3558,8 +4269,23 @@ type CheckListItem struct {
 	// Period Interval duration (e.g., "00:01:00" for 1 minute)
 	Period *string `json:"period,omitempty"`
 
+	// Placement Placement intent. `pinned`: `regions` is an explicit list and never moves — if its region goes dark the check goes `stale`. `auto`: the scheduler places the check on `regionCount` healthy regions (candidates: the org default regions, then the system default regions, then every other declared region, filtered by `regionPool` and the regions' capabilities) and moves it off a region that goes dark. Private locations are pinned-only.
+	Placement *CheckListItemPlacement `json:"placement,omitempty"`
+
+	// RegionCount Automatic placement only — how many regions run the check. Null for a pinned check.
+	RegionCount *int `json:"regionCount,omitempty"`
+
+	// RegionFreshness Newest real result per region (only with with=region_freshness). Lists every region that produced one inside the raw retention plus every configured region that did not.
+	RegionFreshness *[]RegionFreshness `json:"regionFreshness,omitempty"`
+
+	// RegionPool Automatic placement only — the cloud region slugs the scheduler may choose from. Absent or empty: any cloud region.
+	RegionPool *[]string `json:"regionPool,omitempty"`
+
 	// RegionSpread Optional inter-region scheduling offset (e.g., "00:00:20"). Every selected region runs the check at the full period; this staggers their phases. Null uses the default of period ÷ region count. Must satisfy 0 <= regionSpread < period.
 	RegionSpread *string `json:"regionSpread,omitempty"`
+
+	// Regions Region slugs the check runs from. For a pinned check, the user's explicit list (never moved). For an automatically placed check, the CURRENT placement, chosen by the scheduler and rewritten when one of its regions goes dark (spec 2026-09-25-06). A private location is `@<slug>`.
+	Regions *[]string `json:"regions,omitempty"`
 
 	// Scheduling Read-only scheduling telemetry, derived from the check's per-region scheduler jobs (max across regions). Present only on the check DETAIL response (GET by uid/slug) — never on list responses — and omitted until the check's first run produces a cost signal.
 	Scheduling *CheckScheduling `json:"scheduling,omitempty"`
@@ -3567,6 +4293,15 @@ type CheckListItem struct {
 	// SlowThresholdMs Response time above which a successful probe counts as slow, in milliseconds. 0 = the slow rule is off. There is no auto-baselining; around 2x the observed p95 is the usual starting point.
 	SlowThresholdMs *int    `json:"slowThresholdMs,omitempty"`
 	Slug            *string `json:"slug,omitempty"`
+
+	// StaleThresholdSeconds max(3 × period, 5 min) in seconds: how long the check may go without a real result before it becomes `stale`.
+	StaleThresholdSeconds *int `json:"staleThresholdSeconds,omitempty"`
+
+	// Status The derived check status, which respects the confirmation and recovery periods: "validating" is a failure seen but not yet confirmed, "warning" is up with something to report, and "stale" ("No data") means the newest real result, across every region, is older than max(3 × period, 5 min) — the check has stopped being measured, whatever the cause. Stale is neither up nor down: it never opens, resolves or notifies an incident.
+	Status *CheckListItemStatus `json:"status,omitempty"`
+
+	// StatusChangedAt When the check entered its current status. Omitted until the first transition.
+	StatusChangedAt *time.Time `json:"statusChangedAt,omitempty"`
 
 	// TargetHost Derived, read-time-only host this check probes: the config's `host` field when present, else the hostname parsed from `url`, else `target`; null when none apply (e.g. heartbeat/email passive checks). Not stored — renaming a host in a check's config moves it to a different value on the next read. Use `?sort=targetHost` on the list endpoint to order checks by it.
 	TargetHost *string `json:"targetHost,omitempty"`
@@ -3581,8 +4316,14 @@ type CheckListItem struct {
 	Warnings *[]ValidationErrorField `json:"warnings,omitempty"`
 }
 
-// CheckListItemLastStatusChangeStatus The status that the check transitioned to
+// CheckListItemLastStatusChangeStatus The status that the check transitioned to. STALE means "no data": no real result for max(3 × period, 5 min).
 type CheckListItemLastStatusChangeStatus string
+
+// CheckListItemPlacement Placement intent. `pinned`: `regions` is an explicit list and never moves — if its region goes dark the check goes `stale`. `auto`: the scheduler places the check on `regionCount` healthy regions (candidates: the org default regions, then the system default regions, then every other declared region, filtered by `regionPool` and the regions' capabilities) and moves it off a region that goes dark. Private locations are pinned-only.
+type CheckListItemPlacement string
+
+// CheckListItemStatus The derived check status, which respects the confirmation and recovery periods: "validating" is a failure seen but not yet confirmed, "warning" is up with something to report, and "stale" ("No data") means the newest real result, across every region, is older than max(3 × period, 5 min) — the check has stopped being measured, whatever the cause. Stale is neither up nor down: it never opens, resolves or notifies an incident.
+type CheckListItemStatus string
 
 // CheckListItemTracerouteOnFailure Per-check path-trace policy. When a network-reachability failure (connect timeout, refusal, ICMP loss, TLS handshake stall) opens or reopens an incident for this check, an MTR-style traceroute is captured and attached. `inherit` defers to the organization default (itself on unless an admin turned it off); `on` and `off` decide for this check. Application-level failures (HTTP 5xx, keyword mismatch, certificate expiry) never trigger a trace, whatever this is set to.
 type CheckListItemTracerouteOnFailure string
@@ -3630,9 +4371,9 @@ type CheckStats struct {
 	// Example: 99.97
 	Availability24h *float32 `json:"availability24h"`
 
-	// ByStatus Count per check status. Every known status key (created, up, down, validating, degraded, warning, unknown) is always present, with 0 when empty, so clients can index it without guards. Keys are the same tokens the list endpoint's `status` field carries.
+	// ByStatus Count per check status. Every known status key (created, up, down, validating, degraded, warning, stale, unknown) is always present, with 0 when empty, so clients can index it without guards. Keys are the same tokens the list endpoint's `status` field carries.
 	//
-	// Example: {"created":2,"degraded":2,"down":6,"unknown":0,"up":240,"validating":0,"warning":0}
+	// Example: {"created":2,"degraded":2,"down":6,"stale":0,"unknown":0,"up":240,"validating":0,"warning":0}
 	ByStatus map[string]int `json:"byStatus"`
 
 	// Disabled Checks with enabled = false.
@@ -3825,8 +4566,20 @@ type CreateCheckRequest struct {
 	Name   *string `json:"name,omitempty"`
 	Period *string `json:"period,omitempty"`
 
+	// Placement `pinned` or `auto`. Omitted: an explicit `regions` list means pinned; otherwise the check is placed automatically (unless the organization's own `default_regions` names a private location, which keeps the pinned default). `auto` with a non-empty `regions` is rejected.
+	Placement *CreateCheckRequestPlacement `json:"placement,omitempty"`
+
+	// RegionCount Automatic placement: how many regions run the check. Default 2, capped by the number of eligible regions and by the organization's checks-per-minute limit — the response carries a `PLACEMENT_REGION_COUNT_REDUCED` warning when it was reduced. Implies `auto`.
+	RegionCount *int `json:"regionCount,omitempty"`
+
+	// RegionPool Automatic placement: restrict the candidates to these cloud region slugs (empty = any). Private (`@`) regions are refused. Implies `auto`.
+	RegionPool *[]string `json:"regionPool,omitempty"`
+
 	// RegionSpread Optional inter-region scheduling offset (e.g., "00:00:20"). Null (or omitted) uses the default of period ÷ region count. Must satisfy 0 <= regionSpread < period.
 	RegionSpread *string `json:"regionSpread,omitempty"`
+
+	// Regions Explicit region slugs. A non-empty list pins the check to exactly these regions (placement `pinned`), as before. Omit to let the check be placed automatically.
+	Regions *[]string `json:"regions,omitempty"`
 
 	// SlowThresholdMs Response time above which a successful probe counts as slow, in milliseconds. 0 = the slow rule is off. There is no auto-baselining; around 2x the observed p95 is the usual starting point.
 	SlowThresholdMs *int `json:"slowThresholdMs,omitempty"`
@@ -3840,6 +4593,9 @@ type CreateCheckRequest struct {
 	// Type Check type (auto-inferred from URL if not provided)
 	Type *CreateCheckRequestType `json:"type,omitempty"`
 }
+
+// CreateCheckRequestPlacement `pinned` or `auto`. Omitted: an explicit `regions` list means pinned; otherwise the check is placed automatically (unless the organization's own `default_regions` names a private location, which keeps the pinned default). `auto` with a non-empty `regions` is rejected.
+type CreateCheckRequestPlacement string
 
 // CreateCheckRequestTracerouteOnFailure Per-check path-trace policy (see the Check schema). `inherit` puts the check back under the organization default. Omit to leave unchanged.
 type CreateCheckRequestTracerouteOnFailure string
@@ -4373,7 +5129,7 @@ type DnsRecord struct {
 //
 // Example: {"code":"REGION_FORMAT","field":"regions","message":"region \"Paris!\" must be a slug or \"@private-location\"","slug":"api"}
 type DocumentIssue struct {
-	// Code Stable machine code. The closed set is `UNSUPPORTED_VERSION`, `MISSING_ORGANIZATION`, `INVALID_SECRETS_MARKER`, `EMPTY_CHECKS`, `MISSING_FIELD`, `INVALID_SLUG`, `DUPLICATE_SLUG`, `INTERNAL_NOT_WRITABLE`, `UNKNOWN_TYPE`, `INVALID_CONFIG`, `INLINED_CREDENTIAL`, `STATUS_FIELD_CONFLICT`, `INVALID_PERIOD`, `INVALID_LABEL`, `REGION_FORMAT`, `INVALID_DEPENDS_ON`, `DEPENDENCY_CYCLE`, `UNRESOLVED_SECRET_REF`. Everything but the last is decidable offline, which is what `sp checks validate <file>` runs with no token and no network; `UNRESOLVED_SECRET_REF` needs the organization's own parameters and so is reported only here.
+	// Code Stable machine code. The closed set is `UNSUPPORTED_VERSION`, `MISSING_ORGANIZATION`, `INVALID_SECRETS_MARKER`, `EMPTY_CHECKS`, `MISSING_FIELD`, `INVALID_SLUG`, `DUPLICATE_SLUG`, `INTERNAL_NOT_WRITABLE`, `UNKNOWN_TYPE`, `INVALID_CONFIG`, `INLINED_CREDENTIAL`, `STATUS_FIELD_CONFLICT`, `INVALID_PERIOD`, `INVALID_LABEL`, `REGION_FORMAT`, `INVALID_PLACEMENT`, `INVALID_DEPENDS_ON`, `DEPENDENCY_CYCLE`, `UNRESOLVED_SECRET_REF`. Everything but the last is decidable offline, which is what `sp checks validate <file>` runs with no token and no network; `UNRESOLVED_SECRET_REF` needs the organization's own parameters and so is reported only here.
 	Code string `json:"code"`
 
 	// Field The offending property, in the document's own spelling — `regions`, `period`, `config.url`, `labels.tier`, `dependsOn`.
@@ -6040,10 +6796,19 @@ type Region struct {
 	Emoji        string              `json:"emoji"`
 	Name         string              `json:"name"`
 
+	// OfflineSince Present when `status` is `offline`: the last time a worker of the region was seen, which is when it actually stopped.
+	OfflineSince *time.Time `json:"offlineSince,omitempty"`
+
 	// Private True for an org-private location served by deported agents.
 	Private *bool  `json:"private,omitempty"`
 	Slug    string `json:"slug"`
+
+	// Status Cloud regions on `GET /api/v1/orgs/{org}/regions` only. `offline` while the per-minute region sweep holds the region dark: checks are assigned to it and no worker is live, so a check pinned only there is not running. Absent on private regions (the org's own agent reports on those) and on the public `GET /api/v1/regions`.
+	Status *RegionStatus `json:"status,omitempty"`
 }
+
+// RegionStatus Cloud regions on `GET /api/v1/orgs/{org}/regions` only. `offline` while the per-minute region sweep holds the region dark: checks are assigned to it and no worker is live, so a check pinned only there is not running. Absent on private regions (the org's own agent reports on those) and on the public `GET /api/v1/regions`.
+type RegionStatus string
 
 // RegionCapabilities What a region's LIVE workers report they can do. Derived from worker heartbeats at read time, never configured. Additive: a client that ignores this object behaves exactly as before it existed.
 type RegionCapabilities struct {
@@ -6066,6 +6831,18 @@ type RegionCapabilitiesIpv4 string
 // RegionCapabilitiesIpv6 Whether checks pinned to `ipVersion: ipv6` can leave this region. `yes` when at least one live worker there reports IPv6 egress (any-not-all: a job runs on one worker). `no` when live workers reported and none has it. `unknown` when nothing live has reported — no live worker, or only workers predating the capability report. `unknown` is a real state and MUST NOT be rendered as `no`. The value is a hint with a heartbeat of lag: it never gates execution, and the run-time egress pre-flight is the authority.
 type RegionCapabilitiesIpv6 string
 
+// RegionFreshness One region's freshness for a check.
+type RegionFreshness struct {
+	// LastResultAt Newest real raw result from this region; null for a configured region with none inside the raw retention (about a day).
+	LastResultAt *time.Time `json:"lastResultAt,omitempty"`
+
+	// Region Region slug, "" for results that carry no region.
+	Region *string `json:"region,omitempty"`
+
+	// Stale True when lastResultAt is older than staleThresholdSeconds, or missing.
+	Stale *bool `json:"stale,omitempty"`
+}
+
 // RegionHealthReport defines model for RegionHealthReport.
 type RegionHealthReport struct {
 	GeneratedAt time.Time `json:"generatedAt"`
@@ -6077,30 +6854,33 @@ type RegionHealthReport struct {
 
 // RegionHealthRow defines model for RegionHealthRow.
 type RegionHealthRow struct {
-	// ChecksReferencing Distinct, non-deleted checks whose `regions` array names this slug.
+	// ChecksReferencing Distinct, non-deleted checks whose `regions` array names this slug (for a private region, only the owning org's checks).
 	ChecksReferencing int `json:"checksReferencing"`
 
-	// Declared Whether the slug is present in the `regions` system parameter.
+	// Declared Whether the slug is present in the `regions` system parameter (always false for a private region).
 	Declared bool `json:"declared"`
 
-	// Ghost `(jobs > 0 || checksReferencing > 0) && liveWorkers == 0` — work assigned to a slug nothing live can serve.
+	// Ghost `(jobs > 0 || checksReferencing > 0) && liveWorkers == 0` — work assigned to a region nothing live can serve.
 	Ghost bool `json:"ghost"`
 
-	// Jobs check_jobs rows carrying this slug. NULL-region jobs are never counted.
+	// Jobs check_jobs rows carrying this slug (for a private region, only the owning org's jobs). NULL-region jobs are never counted.
 	Jobs int `json:"jobs"`
 
 	// JobsOverdue Subset of `jobs` whose `scheduledAt` has already passed.
 	JobsOverdue int `json:"jobsOverdue"`
 
-	// LastWorkerSeenAt Max `lastActiveAt` across every matching worker, including soft-deleted ones — dates when the region went dark.
+	// LastWorkerSeenAt Cloud region: max `lastActiveAt` across every matching worker, including soft-deleted ones. Private region: max `lastSeenAt` across the org's agents bound to the slug, including revoked ones. Dates when the region went dark.
 	LastWorkerSeenAt *time.Time `json:"lastWorkerSeenAt"`
 
-	// LiveWorkers Non-deleted workers within the liveness window whose announced region has this slug as a prefix.
+	// LiveWorkers Cloud region: non-deleted workers within the liveness window whose announced region has this slug as a prefix. Private region: the org's active agents bound to exactly this slug and seen within the liveness window.
 	LiveWorkers int `json:"liveWorkers"`
 
 	// OldestOverdueAt Earliest `scheduledAt` among the overdue jobs, null when there are none.
 	OldestOverdueAt *time.Time `json:"oldestOverdueAt"`
-	Slug            string     `json:"slug"`
+
+	// Organization Slug of the organization owning a private (`@`) region. Absent for a cloud region. Private slugs are org-relative, so a private row is identified by (organization, slug).
+	Organization *string `json:"organization,omitempty"`
+	Slug         string  `json:"slug"`
 }
 
 // RegionMigrationReport defines model for RegionMigrationReport.
@@ -6361,8 +7141,10 @@ type SLOStatusResponse struct {
 // SLOStatusRow defines model for SLOStatusRow.
 type SLOStatusRow struct {
 	// AttainmentPct null when the window carries no countable probe. No data is NOT 100% — the same rule the availability API follows.
-	AttainmentPct         *float64 `json:"attainmentPct,omitempty"`
-	BudgetConsumedSeconds *int64   `json:"budgetConsumedSeconds,omitempty"`
+	AttainmentPct *float64 `json:"attainmentPct,omitempty"`
+
+	// BudgetConsumedSeconds Spent over MEASURED time only: failure ratio × elapsedSeconds × dataCoverage (when known).
+	BudgetConsumedSeconds *int64 `json:"budgetConsumedSeconds,omitempty"`
 
 	// BudgetRemainingSeconds Negative when the budget is overspent.
 	BudgetRemainingSeconds *int64 `json:"budgetRemainingSeconds,omitempty"`
@@ -6370,6 +7152,9 @@ type SLOStatusRow struct {
 
 	// BurnRate Observed error rate divided by allowed error rate.
 	BurnRate *float64 `json:"burnRate,omitempty"`
+
+	// DataCoverage Received ÷ expected probes over the elapsed window (expected = elapsed / period × max(1, regions) per check), clamped to [0, 1]. A low value means the attainment describes only part of the window.
+	DataCoverage *float64 `json:"dataCoverage,omitempty"`
 
 	// ElapsedSeconds The part of monitoredSeconds already elapsed; the consumption basis.
 	ElapsedSeconds             *int64 `json:"elapsedSeconds,omitempty"`
@@ -7046,8 +7831,20 @@ type UpdateCheckRequest struct {
 	Name                  *string `json:"name,omitempty"`
 	Period                *string `json:"period,omitempty"`
 
+	// Placement Switch the placement intent. `pinned` without `regions` freezes the current placement; `auto` without `regionCount` keeps the current region count (same cost) and keeps every current region that is still eligible and healthy.
+	Placement *UpdateCheckRequestPlacement `json:"placement,omitempty"`
+
+	// RegionCount Automatic placement: how many regions run the check (capped as on create). Implies `auto`.
+	RegionCount *int `json:"regionCount,omitempty"`
+
+	// RegionPool Automatic placement: candidate cloud region slugs; an empty array means any. Implies `auto`.
+	RegionPool *[]string `json:"regionPool,omitempty"`
+
 	// RegionSpread Optional inter-region scheduling offset (e.g., "00:00:20"). An empty string clears it back to the default of period ÷ region count. Must satisfy 0 <= regionSpread < period.
 	RegionSpread *string `json:"regionSpread,omitempty"`
+
+	// Regions A non-empty list pins the check to exactly these regions. An empty list puts the check back on the default placement (automatic, unless the organization's `default_regions` names a private location). Omit to leave the placement alone.
+	Regions *[]string `json:"regions,omitempty"`
 
 	// SlowThresholdMs Response time above which a successful probe counts as slow, in milliseconds. 0 = the slow rule is off. There is no auto-baselining; around 2x the observed p95 is the usual starting point. Omit to leave unchanged.
 	SlowThresholdMs *int    `json:"slowThresholdMs,omitempty"`
@@ -7056,6 +7853,9 @@ type UpdateCheckRequest struct {
 	// TracerouteOnFailure Per-check path-trace policy (see the Check schema). `inherit` puts the check back under the organization default. Omit to leave unchanged.
 	TracerouteOnFailure *UpdateCheckRequestTracerouteOnFailure `json:"tracerouteOnFailure,omitempty"`
 }
+
+// UpdateCheckRequestPlacement Switch the placement intent. `pinned` without `regions` freezes the current placement; `auto` without `regionCount` keeps the current region count (same cost) and keeps every current region that is still eligible and healthy.
+type UpdateCheckRequestPlacement string
 
 // UpdateCheckRequestTracerouteOnFailure Per-check path-trace policy (see the Check schema). `inherit` puts the check back under the organization default. Omit to leave unchanged.
 type UpdateCheckRequestTracerouteOnFailure string
@@ -7313,12 +8113,27 @@ type UpsertCheckRequest struct {
 	Name   *string `json:"name,omitempty"`
 	Period *string `json:"period,omitempty"`
 
+	// Placement Declarative placement. `auto` with no `regions` switches an existing pinned check to automatic placement (an empty `regions` is meaningful here); `pinned` without `regions` freezes the current placement.
+	Placement *UpsertCheckRequestPlacement `json:"placement,omitempty"`
+
+	// RegionCount Automatic placement: how many regions run the check. Omitted with `placement: auto`: the check's current count.
+	RegionCount *int `json:"regionCount,omitempty"`
+
+	// RegionPool Automatic placement: candidate cloud region slugs. Declarative — omitted with `placement: auto` means any cloud region.
+	RegionPool *[]string `json:"regionPool,omitempty"`
+
+	// Regions A non-empty list pins the check to exactly these regions. Omit (or leave empty) to leave an existing check's placement alone, unless `placement` says otherwise.
+	Regions *[]string `json:"regions,omitempty"`
+
 	// TracerouteOnFailure Per-check path-trace policy (see the Check schema). Sent explicitly by import/apply so a manifest that says `inherit` moves a check back off an explicit override rather than leaving it.
 	TracerouteOnFailure *UpsertCheckRequestTracerouteOnFailure `json:"tracerouteOnFailure,omitempty"`
 
 	// Type Check type (auto-inferred from URL if not provided)
 	Type *UpsertCheckRequestType `json:"type,omitempty"`
 }
+
+// UpsertCheckRequestPlacement Declarative placement. `auto` with no `regions` switches an existing pinned check to automatic placement (an empty `regions` is meaningful here); `pinned` without `regions` freezes the current placement.
+type UpsertCheckRequestPlacement string
 
 // UpsertCheckRequestTracerouteOnFailure Per-check path-trace policy (see the Check schema). Sent explicitly by import/apply so a manifest that says `inherit` moves a check back off an explicit override rather than leaving it.
 type UpsertCheckRequestTracerouteOnFailure string
@@ -7355,6 +8170,11 @@ type ValidateCheckRequest struct {
 	// Period Proposed execution interval (`HH:MM:SS` or a Go duration). Optional; when absent, neither the per-type period bounds nor the checks-per-minute projection are evaluated.
 	Period *string `json:"period,omitempty"`
 
+	// Placement Proposed placement intent, validated by the same rules as create. The response's warnings carry `PLACEMENT_REGION_COUNT_REDUCED` when the automatic placement would run from fewer regions than asked.
+	Placement   *ValidateCheckRequestPlacement `json:"placement,omitempty"`
+	RegionCount *int                           `json:"regionCount,omitempty"`
+	RegionPool  *[]string                      `json:"regionPool,omitempty"`
+
 	// Regions Proposed region set. Needed by the tunnel region rules, the region-capability hints and the checks-per-minute projection — a check executes once per region per period.
 	Regions *[]string `json:"regions,omitempty"`
 
@@ -7364,6 +8184,9 @@ type ValidateCheckRequest struct {
 	// Type Check type (http, tcp, ping, dns, ssl, ...)
 	Type string `json:"type"`
 }
+
+// ValidateCheckRequestPlacement Proposed placement intent, validated by the same rules as create. The response's warnings carry `PLACEMENT_REGION_COUNT_REDUCED` when the automatic placement would run from fewer regions than asked.
+type ValidateCheckRequestPlacement string
 
 // ValidateCheckResponse The result of a dry run. Every finding it can compute is reported, not just the first, and each entry carries a `severity` and a machine `code`. The two arrays are the severity split: `fields` blocks, `warnings` advises.
 type ValidateCheckResponse struct {
@@ -7692,6 +8515,9 @@ type ListChecksParams struct {
 	// With Comma-separated list of additional data to include: "last_result" (the check's newest raw result) and "last_status_change" (when the derived check status last changed — served from the check row itself, so it costs no extra query and is omitted for checks that have never transitioned).
 	With *string `form:"with,omitempty" json:"with,omitempty"`
 
+	// Status Filter by derived check status. Comma-separated tokens from created, up, down, validating, degraded, warning and stale (e.g. "down,stale"). `stale` ("No data") is a check whose newest real result is older than max(3 × period, 5 min). An unknown token is a 400 validation error.
+	Status *string `form:"status,omitempty" json:"status,omitempty"`
+
 	// Internal Filter by internal status. "false" (default) shows only non-internal checks, "true" shows only internal checks, "all" shows all checks.
 	Internal *ListChecksParamsInternal `form:"internal,omitempty" json:"internal,omitempty"`
 
@@ -7711,6 +8537,18 @@ type ListChecksParamsWouldHaveFired string
 // ListChecksParamsSort defines parameters for ListChecks.
 type ListChecksParamsSort string
 
+// SwitchChecksToAutoPlacementJSONBody defines parameters for SwitchChecksToAutoPlacement.
+type SwitchChecksToAutoPlacementJSONBody struct {
+	// CheckUids Limit the switch to these checks. Omit for every eligible check.
+	CheckUids *[]string `json:"checkUids,omitempty"`
+
+	// DryRun Report what would be switched without writing anything.
+	DryRun *bool `json:"dryRun,omitempty"`
+}
+
+// SwitchChecksToAutoPlacement200JSONResponseBodySkippedReason defines parameters for SwitchChecksToAutoPlacement.
+type SwitchChecksToAutoPlacement200JSONResponseBodySkippedReason string
+
 // ValidateCheckJSONBody defines parameters for ValidateCheck.
 type ValidateCheckJSONBody struct {
 	union json.RawMessage
@@ -7729,7 +8567,7 @@ type ValidateCheck200JSONResponseBody struct {
 
 // GetCheckParams defines parameters for GetCheck.
 type GetCheckParams struct {
-	// With Comma-separated list of additional data to include: "last_result" (the check's newest raw result) and "last_status_change" (when the derived check status last changed — served from the check row itself, so it costs no extra query and is omitted for checks that have never transitioned).
+	// With Comma-separated list of additional data to include: "last_result" (the check's newest raw result), "last_status_change" (when the derived check status last changed — served from the check row itself, so it costs no extra query and is omitted for checks that have never transitioned) and "region_freshness" (the newest real result per region, so a silent region shows up even while others keep the check fresh).
 	With *string `form:"with,omitempty" json:"with,omitempty"`
 }
 
@@ -8348,6 +9186,9 @@ type UpdateCheckGroupJSONRequestBody = UpdateCheckGroupRequest
 
 // CreateCheckJSONRequestBody defines body for CreateCheck for application/json ContentType.
 type CreateCheckJSONRequestBody = CreateCheckRequest
+
+// SwitchChecksToAutoPlacementJSONRequestBody defines body for SwitchChecksToAutoPlacement for application/json ContentType.
+type SwitchChecksToAutoPlacementJSONRequestBody SwitchChecksToAutoPlacementJSONBody
 
 // ValidateCheckJSONRequestBody defines body for ValidateCheck for application/json ContentType.
 type ValidateCheckJSONRequestBody ValidateCheckJSONBody
@@ -9319,6 +10160,24 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /api/v1/orgs/{org}/checks (the `CreateCheck` operationId).
 	CreateCheck(ctx context.Context, org OrgPath, body CreateCheckJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SwitchChecksToAutoPlacementWithBody Switch pinned checks to automatic placement
+	//
+	// The checks list's bulk action (spec 2026-09-25-06). Each eligible check becomes `placement: auto` with `regionCount` = its current region count and an empty pool; its regions and jobs are untouched, so neither its cost nor where it runs today changes — it only gains failover when one of its regions goes dark. Passive checks and checks naming a private (`@`) region are skipped. With no `checkUids`, every eligible pinned, non-internal check of the organization is switched.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/checks/auto-placement (the `SwitchChecksToAutoPlacement` operationId).
+	SwitchChecksToAutoPlacementWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SwitchChecksToAutoPlacement Switch pinned checks to automatic placement
+	//
+	// The checks list's bulk action (spec 2026-09-25-06). Each eligible check becomes `placement: auto` with `regionCount` = its current region count and an empty pool; its regions and jobs are untouched, so neither its cost nor where it runs today changes — it only gains failover when one of its regions goes dark. Passive checks and checks naming a private (`@`) region are skipped. With no `checkUids`, every eligible pinned, non-internal check of the organization is switched.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/checks/auto-placement (the `SwitchChecksToAutoPlacement` operationId).
+	SwitchChecksToAutoPlacement(ctx context.Context, org OrgPath, body SwitchChecksToAutoPlacementJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetCheckStats Aggregate check counters for an organization
 	//
@@ -11069,21 +11928,21 @@ type ClientInterface interface {
 
 	// ViewStatusPage View a public status page
 	//
-	// Full public rendering of a status page: sections, per-resource live status, and (when enabled) availability/response-time history. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required. Caching follows the page's visibility: a `public` page carries Cache-Control: public, max-age=60, while a `password` or `private` page — and every 401/404 answer — carries Cache-Control: private, no-store, so a shared cache can never retain a gated page's body. Holding a valid unlock cookie does not change that: it authorizes the visitor, not the CDN in front of them. Public responses carry Vary: X-Forwarded-Proto (the header the absolute URLs in these payloads derive their scheme from); gated ones add Cookie.
+	// Full public rendering of a status page: sections, per-resource live status, and (when enabled) availability/response-time history. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required. Caching follows the page's visibility: a `public` page carries Cache-Control: public, max-age=60, stale-while-revalidate=30 — a cache may serve an expired copy for up to 30 s while it refreshes in the background — while a `password` or `private` page, and every 401/404 answer, carries Cache-Control: private, no-store, so a shared cache can never retain a gated page's body. Holding a valid unlock cookie does not change that: it authorizes the visitor, not the CDN in front of them. Public responses carry Vary: X-Forwarded-Proto (the header the absolute URLs in these payloads derive their scheme from); gated ones add Cookie.
 	//
 	// Corresponds with GET /api/v1/status-pages/{org}/{slug} (the `ViewStatusPage` operationId).
 	ViewStatusPage(ctx context.Context, org OrgPath, slug string, params *ViewStatusPageParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetStatusPageBadge SVG badge for a status page's overall status
 	//
-	// Public SVG badge (shields.io style) reflecting the page-level rollup status — the static, script-free sibling of the JS embed widget, for contexts like GitHub READMEs where scripts can't run. Same visibility gate as the full view and the summary endpoint: a disabled or non-public page returns 404, identical to a page that doesn't exist. Same caching rule too: Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one — the badge renders the rollup status of a page the requester may not be entitled to see. No authentication required.
+	// Public SVG badge (shields.io style) reflecting the page-level rollup status — the static, script-free sibling of the JS embed widget, for contexts like GitHub READMEs where scripts can't run. Same visibility gate as the full view and the summary endpoint: a disabled or non-public page returns 404, identical to a page that doesn't exist. Same caching rule too: Cache-Control: public, max-age=60, stale-while-revalidate=30 for a `public` page, private, no-store for a `password` or `private` one — the badge renders the rollup status of a page the requester may not be entitled to see. No authentication required.
 	//
 	// Corresponds with GET /api/v1/status-pages/{org}/{slug}/badge (the `GetStatusPageBadge` operationId).
 	GetStatusPageBadge(ctx context.Context, org OrgPath, slug string, params *GetStatusPageBadgeParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// StatusPageFeed Atom feed of a status page's status-update timeline
 	//
-	// Public Atom/RSS feed of the page's recent status updates (incident posts and manual updates). Same visibility gate as the full page view, and the same visibility-driven caching: Cache-Control: public, max-age=300 for a `public` page, private, no-store for a `password` or `private` one — the feed quotes update titles and bodies verbatim. No authentication required.
+	// Public Atom/RSS feed of the page's recent status updates (incident posts and manual updates). Same visibility gate as the full page view, and the same visibility-driven caching: Cache-Control: public, max-age=300, stale-while-revalidate=30 for a `public` page, private, no-store for a `password` or `private` one — the feed quotes update titles and bodies verbatim. No authentication required.
 	//
 	// Corresponds with GET /api/v1/status-pages/{org}/{slug}/feed.xml (the `StatusPageFeed` operationId).
 	StatusPageFeed(ctx context.Context, org OrgPath, slug string, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -11091,7 +11950,7 @@ type ClientInterface interface {
 	// ViewPublicStatusPageIncidents Public incident history for a status page
 	//
 	// The customer-facing incidents published on this page (spec 2026-08-19-08). Without `active`, returns the page's history window; with `active=true`, only the incidents that are still open — the same set the full page view embeds as `activeIncidents[]`.
-	// Same visibility gate as the full page view: a disabled or non-public page returns 404, identical to a page that doesn't exist. Same caching rule too — Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one (unlocked or not), since this payload quotes incident titles and update bodies verbatim. No authentication required.
+	// Same visibility gate as the full page view: a disabled or non-public page returns 404, identical to a page that doesn't exist. Same caching rule too — Cache-Control: public, max-age=60, stale-while-revalidate=30 for a `public` page, private, no-store for a `password` or `private` one (unlocked or not), since this payload quotes incident titles and update bodies verbatim. No authentication required.
 	// Every field is operator-authored or templated from the page's own public resource names. Probe output, error strings and internal hostnames are structurally unable to reach this payload.
 	//
 	// Corresponds with GET /api/v1/status-pages/{org}/{slug}/incidents (the `ViewPublicStatusPageIncidents` operationId).
@@ -11099,7 +11958,7 @@ type ClientInterface interface {
 
 	// ViewStatusPageSummary Lightweight status summary for a status page
 	//
-	// Cheap "is it up?" companion to the full page view: overall status, per-category counts, page identity, and the canonical public URL — no sections, no per-resource history. Same visibility gate AND the same caching rule as the full page view: Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one (unlocked or not) and for every 401/404 answer. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
+	// Cheap "is it up?" companion to the full page view: overall status, per-category counts, page identity, and the canonical public URL — no sections, no per-resource history. Same visibility gate AND the same caching rule as the full page view: Cache-Control: public, max-age=60, stale-while-revalidate=30 for a `public` page, private, no-store (no grace window) for a `password` or `private` one (unlocked or not) and for every 401/404 answer. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
 	//
 	// Corresponds with GET /api/v1/status-pages/{org}/{slug}/summary (the `ViewStatusPageSummary` operationId).
 	ViewStatusPageSummary(ctx context.Context, org OrgPath, slug string, params *ViewStatusPageSummaryParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -11382,11 +12241,13 @@ type ClientInterface interface {
 
 	// GetRegionHealth Ghost-region detection report
 	//
-	// One row per region slug seen anywhere — in the declared `regions` system parameter, in a check's `regions` array, in a `check_jobs.region`, or in a live or previously-live worker's announced region — so the caller gets the ghosts and the healthy baseline in one call.
+	// One row per region seen anywhere — in the declared `regions` system parameter, in a check's `regions` array, in a `check_jobs.region`, in a live or previously-live worker's announced region, or in an org agent's bound region — so the caller gets the ghosts and the healthy baseline in one call.
+	//
+	// Cloud regions are global: one row per slug, `organization` absent. Private regions (`@<slug>`) are org-relative, so they get one row per (organization, slug) with `organization` set to the org slug: `@paris` in two orgs is two unrelated rows whose checks, jobs and agents are never summed together.
 	//
 	// A **ghost** is a slug something depends on (a job or a check reference) that nothing live can serve: `(jobs > 0 || checksReferencing > 0) && liveWorkers == 0`. A declared region with zero live workers and zero references is dark but unused, not a ghost — the alarm condition is work assigned to nobody, not an idle region.
 	//
-	// `liveWorkers` reuses the exact prefix rule the scheduler claims jobs with (`workerRegion` has the slug as a prefix, so a `us` job is served by a `us-1` worker) and the same liveness window as the region capability report. `lastWorkerSeenAt` spans every matching worker, soft-deleted included, so it dates when the region actually went dark. NULL-region (any-region) jobs never count toward any row — they are claimable by every cloud worker by construction.
+	// For a cloud region, `liveWorkers` reuses the exact prefix rule the scheduler claims jobs with (`workerRegion` has the slug as a prefix, so a `us` job is served by a `us-1` worker) and the same liveness window as the region capability report; system agents count here, through their worker row. `lastWorkerSeenAt` spans every matching worker, soft-deleted included, so it dates when the region actually went dark. For a private region, `liveWorkers` counts that org's active agents bound to exactly that slug and seen within the same window (the predicate an agent claims with), and `lastWorkerSeenAt` is their latest `lastSeenAt`, revoked agents included. NULL-region (any-region) jobs never count toward any row — they are claimable by every cloud worker by construction.
 	//
 	// Read-side companion of `POST /system/regions/migrate`: its output names exactly the `from` slugs a migration should target. Cheap and unpaginated — a handful of bounded scans, not a query per region. Super-admin only.
 	//
@@ -12798,6 +13659,44 @@ func (c *Client) CreateCheckWithBody(ctx context.Context, org OrgPath, contentTy
 // Corresponds with POST /api/v1/orgs/{org}/checks (the `CreateCheck` operationId).
 func (c *Client) CreateCheck(ctx context.Context, org OrgPath, body CreateCheckJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCreateCheckRequest(c.Server, org, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SwitchChecksToAutoPlacementWithBody Switch pinned checks to automatic placement
+//
+// The checks list's bulk action (spec 2026-09-25-06). Each eligible check becomes `placement: auto` with `regionCount` = its current region count and an empty pool; its regions and jobs are untouched, so neither its cost nor where it runs today changes — it only gains failover when one of its regions goes dark. Passive checks and checks naming a private (`@`) region are skipped. With no `checkUids`, every eligible pinned, non-internal check of the organization is switched.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/v1/orgs/{org}/checks/auto-placement (the `SwitchChecksToAutoPlacement` operationId).
+func (c *Client) SwitchChecksToAutoPlacementWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSwitchChecksToAutoPlacementRequestWithBody(c.Server, org, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SwitchChecksToAutoPlacement Switch pinned checks to automatic placement
+//
+// The checks list's bulk action (spec 2026-09-25-06). Each eligible check becomes `placement: auto` with `regionCount` = its current region count and an empty pool; its regions and jobs are untouched, so neither its cost nor where it runs today changes — it only gains failover when one of its regions goes dark. Passive checks and checks naming a private (`@`) region are skipped. With no `checkUids`, every eligible pinned, non-internal check of the organization is switched.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/v1/orgs/{org}/checks/auto-placement (the `SwitchChecksToAutoPlacement` operationId).
+func (c *Client) SwitchChecksToAutoPlacement(ctx context.Context, org OrgPath, body SwitchChecksToAutoPlacementJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSwitchChecksToAutoPlacementRequest(c.Server, org, body)
 	if err != nil {
 		return nil, err
 	}
@@ -17037,7 +17936,7 @@ func (c *Client) UnlockDefaultStatusPage(ctx context.Context, org OrgPath, body 
 
 // ViewStatusPage View a public status page
 //
-// Full public rendering of a status page: sections, per-resource live status, and (when enabled) availability/response-time history. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required. Caching follows the page's visibility: a `public` page carries Cache-Control: public, max-age=60, while a `password` or `private` page — and every 401/404 answer — carries Cache-Control: private, no-store, so a shared cache can never retain a gated page's body. Holding a valid unlock cookie does not change that: it authorizes the visitor, not the CDN in front of them. Public responses carry Vary: X-Forwarded-Proto (the header the absolute URLs in these payloads derive their scheme from); gated ones add Cookie.
+// Full public rendering of a status page: sections, per-resource live status, and (when enabled) availability/response-time history. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required. Caching follows the page's visibility: a `public` page carries Cache-Control: public, max-age=60, stale-while-revalidate=30 — a cache may serve an expired copy for up to 30 s while it refreshes in the background — while a `password` or `private` page, and every 401/404 answer, carries Cache-Control: private, no-store, so a shared cache can never retain a gated page's body. Holding a valid unlock cookie does not change that: it authorizes the visitor, not the CDN in front of them. Public responses carry Vary: X-Forwarded-Proto (the header the absolute URLs in these payloads derive their scheme from); gated ones add Cookie.
 //
 // Corresponds with GET /api/v1/status-pages/{org}/{slug} (the `ViewStatusPage` operationId).
 func (c *Client) ViewStatusPage(ctx context.Context, org OrgPath, slug string, params *ViewStatusPageParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -17054,7 +17953,7 @@ func (c *Client) ViewStatusPage(ctx context.Context, org OrgPath, slug string, p
 
 // GetStatusPageBadge SVG badge for a status page's overall status
 //
-// Public SVG badge (shields.io style) reflecting the page-level rollup status — the static, script-free sibling of the JS embed widget, for contexts like GitHub READMEs where scripts can't run. Same visibility gate as the full view and the summary endpoint: a disabled or non-public page returns 404, identical to a page that doesn't exist. Same caching rule too: Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one — the badge renders the rollup status of a page the requester may not be entitled to see. No authentication required.
+// Public SVG badge (shields.io style) reflecting the page-level rollup status — the static, script-free sibling of the JS embed widget, for contexts like GitHub READMEs where scripts can't run. Same visibility gate as the full view and the summary endpoint: a disabled or non-public page returns 404, identical to a page that doesn't exist. Same caching rule too: Cache-Control: public, max-age=60, stale-while-revalidate=30 for a `public` page, private, no-store for a `password` or `private` one — the badge renders the rollup status of a page the requester may not be entitled to see. No authentication required.
 //
 // Corresponds with GET /api/v1/status-pages/{org}/{slug}/badge (the `GetStatusPageBadge` operationId).
 func (c *Client) GetStatusPageBadge(ctx context.Context, org OrgPath, slug string, params *GetStatusPageBadgeParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -17071,7 +17970,7 @@ func (c *Client) GetStatusPageBadge(ctx context.Context, org OrgPath, slug strin
 
 // StatusPageFeed Atom feed of a status page's status-update timeline
 //
-// Public Atom/RSS feed of the page's recent status updates (incident posts and manual updates). Same visibility gate as the full page view, and the same visibility-driven caching: Cache-Control: public, max-age=300 for a `public` page, private, no-store for a `password` or `private` one — the feed quotes update titles and bodies verbatim. No authentication required.
+// Public Atom/RSS feed of the page's recent status updates (incident posts and manual updates). Same visibility gate as the full page view, and the same visibility-driven caching: Cache-Control: public, max-age=300, stale-while-revalidate=30 for a `public` page, private, no-store for a `password` or `private` one — the feed quotes update titles and bodies verbatim. No authentication required.
 //
 // Corresponds with GET /api/v1/status-pages/{org}/{slug}/feed.xml (the `StatusPageFeed` operationId).
 func (c *Client) StatusPageFeed(ctx context.Context, org OrgPath, slug string, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -17089,7 +17988,7 @@ func (c *Client) StatusPageFeed(ctx context.Context, org OrgPath, slug string, r
 // ViewPublicStatusPageIncidents Public incident history for a status page
 //
 // The customer-facing incidents published on this page (spec 2026-08-19-08). Without `active`, returns the page's history window; with `active=true`, only the incidents that are still open — the same set the full page view embeds as `activeIncidents[]`.
-// Same visibility gate as the full page view: a disabled or non-public page returns 404, identical to a page that doesn't exist. Same caching rule too — Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one (unlocked or not), since this payload quotes incident titles and update bodies verbatim. No authentication required.
+// Same visibility gate as the full page view: a disabled or non-public page returns 404, identical to a page that doesn't exist. Same caching rule too — Cache-Control: public, max-age=60, stale-while-revalidate=30 for a `public` page, private, no-store for a `password` or `private` one (unlocked or not), since this payload quotes incident titles and update bodies verbatim. No authentication required.
 // Every field is operator-authored or templated from the page's own public resource names. Probe output, error strings and internal hostnames are structurally unable to reach this payload.
 //
 // Corresponds with GET /api/v1/status-pages/{org}/{slug}/incidents (the `ViewPublicStatusPageIncidents` operationId).
@@ -17107,7 +18006,7 @@ func (c *Client) ViewPublicStatusPageIncidents(ctx context.Context, org OrgPath,
 
 // ViewStatusPageSummary Lightweight status summary for a status page
 //
-// Cheap "is it up?" companion to the full page view: overall status, per-category counts, page identity, and the canonical public URL — no sections, no per-resource history. Same visibility gate AND the same caching rule as the full page view: Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one (unlocked or not) and for every 401/404 answer. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
+// Cheap "is it up?" companion to the full page view: overall status, per-category counts, page identity, and the canonical public URL — no sections, no per-resource history. Same visibility gate AND the same caching rule as the full page view: Cache-Control: public, max-age=60, stale-while-revalidate=30 for a `public` page, private, no-store (no grace window) for a `password` or `private` one (unlocked or not) and for every 401/404 answer. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
 //
 // Corresponds with GET /api/v1/status-pages/{org}/{slug}/summary (the `ViewStatusPageSummary` operationId).
 func (c *Client) ViewStatusPageSummary(ctx context.Context, org OrgPath, slug string, params *ViewStatusPageSummaryParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -17710,11 +18609,13 @@ func (c *Client) SetSystemParameter(ctx context.Context, key string, body SetSys
 
 // GetRegionHealth Ghost-region detection report
 //
-// One row per region slug seen anywhere — in the declared `regions` system parameter, in a check's `regions` array, in a `check_jobs.region`, or in a live or previously-live worker's announced region — so the caller gets the ghosts and the healthy baseline in one call.
+// One row per region seen anywhere — in the declared `regions` system parameter, in a check's `regions` array, in a `check_jobs.region`, in a live or previously-live worker's announced region, or in an org agent's bound region — so the caller gets the ghosts and the healthy baseline in one call.
+//
+// Cloud regions are global: one row per slug, `organization` absent. Private regions (`@<slug>`) are org-relative, so they get one row per (organization, slug) with `organization` set to the org slug: `@paris` in two orgs is two unrelated rows whose checks, jobs and agents are never summed together.
 //
 // A **ghost** is a slug something depends on (a job or a check reference) that nothing live can serve: `(jobs > 0 || checksReferencing > 0) && liveWorkers == 0`. A declared region with zero live workers and zero references is dark but unused, not a ghost — the alarm condition is work assigned to nobody, not an idle region.
 //
-// `liveWorkers` reuses the exact prefix rule the scheduler claims jobs with (`workerRegion` has the slug as a prefix, so a `us` job is served by a `us-1` worker) and the same liveness window as the region capability report. `lastWorkerSeenAt` spans every matching worker, soft-deleted included, so it dates when the region actually went dark. NULL-region (any-region) jobs never count toward any row — they are claimable by every cloud worker by construction.
+// For a cloud region, `liveWorkers` reuses the exact prefix rule the scheduler claims jobs with (`workerRegion` has the slug as a prefix, so a `us` job is served by a `us-1` worker) and the same liveness window as the region capability report; system agents count here, through their worker row. `lastWorkerSeenAt` spans every matching worker, soft-deleted included, so it dates when the region actually went dark. For a private region, `liveWorkers` counts that org's active agents bound to exactly that slug and seen within the same window (the predicate an agent claims with), and `lastWorkerSeenAt` is their latest `lastSeenAt`, revoked agents included. NULL-region (any-region) jobs never count toward any row — they are claimable by every cloud worker by construction.
 //
 // Read-side companion of `POST /system/regions/migrate`: its output names exactly the `from` slugs a migration should target. Cheap and unpaginated — a handful of bounded scans, not a query per region. Super-admin only.
 //
@@ -20146,6 +21047,18 @@ func NewListChecksRequest(server string, org OrgPath, params *ListChecksParams) 
 
 		}
 
+		if params.Status != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "status", *params.Status, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
 		if params.Internal != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "internal", *params.Internal, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
@@ -20224,6 +21137,53 @@ func NewCreateCheckRequestWithBody(server string, org OrgPath, contentType strin
 	}
 
 	operationPath := fmt.Sprintf("/api/v1/orgs/%s/checks", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewSwitchChecksToAutoPlacementRequest calls the generic SwitchChecksToAutoPlacement builder with application/json body
+func NewSwitchChecksToAutoPlacementRequest(server string, org OrgPath, body SwitchChecksToAutoPlacementJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSwitchChecksToAutoPlacementRequestWithBody(server, org, "application/json", bodyReader)
+}
+
+// NewSwitchChecksToAutoPlacementRequestWithBody constructs an http.Request for the SwitchChecksToAutoPlacement method, with any body, and a specified content type
+func NewSwitchChecksToAutoPlacementRequestWithBody(server string, org OrgPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/checks/auto-placement", pathParam0)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -32615,6 +33575,24 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /api/v1/orgs/{org}/checks (the `CreateCheck` operationId).
 	CreateCheckWithResponse(ctx context.Context, org OrgPath, body CreateCheckJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateCheckResult, error)
 
+	// SwitchChecksToAutoPlacementWithBodyWithResponse Switch pinned checks to automatic placement
+	//
+	// The checks list's bulk action (spec 2026-09-25-06). Each eligible check becomes `placement: auto` with `regionCount` = its current region count and an empty pool; its regions and jobs are untouched, so neither its cost nor where it runs today changes — it only gains failover when one of its regions goes dark. Passive checks and checks naming a private (`@`) region are skipped. With no `checkUids`, every eligible pinned, non-internal check of the organization is switched.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/checks/auto-placement (the `SwitchChecksToAutoPlacement` operationId).
+	SwitchChecksToAutoPlacementWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SwitchChecksToAutoPlacementResult, error)
+
+	// SwitchChecksToAutoPlacementWithResponse Switch pinned checks to automatic placement
+	//
+	// The checks list's bulk action (spec 2026-09-25-06). Each eligible check becomes `placement: auto` with `regionCount` = its current region count and an empty pool; its regions and jobs are untouched, so neither its cost nor where it runs today changes — it only gains failover when one of its regions goes dark. Passive checks and checks naming a private (`@`) region are skipped. With no `checkUids`, every eligible pinned, non-internal check of the organization is switched.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/checks/auto-placement (the `SwitchChecksToAutoPlacement` operationId).
+	SwitchChecksToAutoPlacementWithResponse(ctx context.Context, org OrgPath, body SwitchChecksToAutoPlacementJSONRequestBody, reqEditors ...RequestEditorFn) (*SwitchChecksToAutoPlacementResult, error)
+
 	// GetCheckStatsWithResponse Aggregate check counters for an organization
 	//
 	// Org-wide check counters computed server-side with a single SQL aggregation, so they are unaffected by the list endpoint's 100-row page clamp. Scope is the same set the list endpoint shows by default: non-deleted, non-internal checks. `total`, `byStatus`, `down` and `hardDown` span enabled and disabled checks alike; `enabled` and `disabled` partition the same set.
@@ -34610,7 +35588,7 @@ type ClientWithResponsesInterface interface {
 
 	// ViewStatusPageWithResponse View a public status page
 	//
-	// Full public rendering of a status page: sections, per-resource live status, and (when enabled) availability/response-time history. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required. Caching follows the page's visibility: a `public` page carries Cache-Control: public, max-age=60, while a `password` or `private` page — and every 401/404 answer — carries Cache-Control: private, no-store, so a shared cache can never retain a gated page's body. Holding a valid unlock cookie does not change that: it authorizes the visitor, not the CDN in front of them. Public responses carry Vary: X-Forwarded-Proto (the header the absolute URLs in these payloads derive their scheme from); gated ones add Cookie.
+	// Full public rendering of a status page: sections, per-resource live status, and (when enabled) availability/response-time history. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required. Caching follows the page's visibility: a `public` page carries Cache-Control: public, max-age=60, stale-while-revalidate=30 — a cache may serve an expired copy for up to 30 s while it refreshes in the background — while a `password` or `private` page, and every 401/404 answer, carries Cache-Control: private, no-store, so a shared cache can never retain a gated page's body. Holding a valid unlock cookie does not change that: it authorizes the visitor, not the CDN in front of them. Public responses carry Vary: X-Forwarded-Proto (the header the absolute URLs in these payloads derive their scheme from); gated ones add Cookie.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -34619,7 +35597,7 @@ type ClientWithResponsesInterface interface {
 
 	// GetStatusPageBadgeWithResponse SVG badge for a status page's overall status
 	//
-	// Public SVG badge (shields.io style) reflecting the page-level rollup status — the static, script-free sibling of the JS embed widget, for contexts like GitHub READMEs where scripts can't run. Same visibility gate as the full view and the summary endpoint: a disabled or non-public page returns 404, identical to a page that doesn't exist. Same caching rule too: Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one — the badge renders the rollup status of a page the requester may not be entitled to see. No authentication required.
+	// Public SVG badge (shields.io style) reflecting the page-level rollup status — the static, script-free sibling of the JS embed widget, for contexts like GitHub READMEs where scripts can't run. Same visibility gate as the full view and the summary endpoint: a disabled or non-public page returns 404, identical to a page that doesn't exist. Same caching rule too: Cache-Control: public, max-age=60, stale-while-revalidate=30 for a `public` page, private, no-store for a `password` or `private` one — the badge renders the rollup status of a page the requester may not be entitled to see. No authentication required.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -34628,7 +35606,7 @@ type ClientWithResponsesInterface interface {
 
 	// StatusPageFeedWithResponse Atom feed of a status page's status-update timeline
 	//
-	// Public Atom/RSS feed of the page's recent status updates (incident posts and manual updates). Same visibility gate as the full page view, and the same visibility-driven caching: Cache-Control: public, max-age=300 for a `public` page, private, no-store for a `password` or `private` one — the feed quotes update titles and bodies verbatim. No authentication required.
+	// Public Atom/RSS feed of the page's recent status updates (incident posts and manual updates). Same visibility gate as the full page view, and the same visibility-driven caching: Cache-Control: public, max-age=300, stale-while-revalidate=30 for a `public` page, private, no-store for a `password` or `private` one — the feed quotes update titles and bodies verbatim. No authentication required.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -34638,7 +35616,7 @@ type ClientWithResponsesInterface interface {
 	// ViewPublicStatusPageIncidentsWithResponse Public incident history for a status page
 	//
 	// The customer-facing incidents published on this page (spec 2026-08-19-08). Without `active`, returns the page's history window; with `active=true`, only the incidents that are still open — the same set the full page view embeds as `activeIncidents[]`.
-	// Same visibility gate as the full page view: a disabled or non-public page returns 404, identical to a page that doesn't exist. Same caching rule too — Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one (unlocked or not), since this payload quotes incident titles and update bodies verbatim. No authentication required.
+	// Same visibility gate as the full page view: a disabled or non-public page returns 404, identical to a page that doesn't exist. Same caching rule too — Cache-Control: public, max-age=60, stale-while-revalidate=30 for a `public` page, private, no-store for a `password` or `private` one (unlocked or not), since this payload quotes incident titles and update bodies verbatim. No authentication required.
 	// Every field is operator-authored or templated from the page's own public resource names. Probe output, error strings and internal hostnames are structurally unable to reach this payload.
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -34648,7 +35626,7 @@ type ClientWithResponsesInterface interface {
 
 	// ViewStatusPageSummaryWithResponse Lightweight status summary for a status page
 	//
-	// Cheap "is it up?" companion to the full page view: overall status, per-category counts, page identity, and the canonical public URL — no sections, no per-resource history. Same visibility gate AND the same caching rule as the full page view: Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one (unlocked or not) and for every 401/404 answer. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
+	// Cheap "is it up?" companion to the full page view: overall status, per-category counts, page identity, and the canonical public URL — no sections, no per-resource history. Same visibility gate AND the same caching rule as the full page view: Cache-Control: public, max-age=60, stale-while-revalidate=30 for a `public` page, private, no-store (no grace window) for a `password` or `private` one (unlocked or not) and for every 401/404 answer. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -34975,11 +35953,13 @@ type ClientWithResponsesInterface interface {
 
 	// GetRegionHealthWithResponse Ghost-region detection report
 	//
-	// One row per region slug seen anywhere — in the declared `regions` system parameter, in a check's `regions` array, in a `check_jobs.region`, or in a live or previously-live worker's announced region — so the caller gets the ghosts and the healthy baseline in one call.
+	// One row per region seen anywhere — in the declared `regions` system parameter, in a check's `regions` array, in a `check_jobs.region`, in a live or previously-live worker's announced region, or in an org agent's bound region — so the caller gets the ghosts and the healthy baseline in one call.
+	//
+	// Cloud regions are global: one row per slug, `organization` absent. Private regions (`@<slug>`) are org-relative, so they get one row per (organization, slug) with `organization` set to the org slug: `@paris` in two orgs is two unrelated rows whose checks, jobs and agents are never summed together.
 	//
 	// A **ghost** is a slug something depends on (a job or a check reference) that nothing live can serve: `(jobs > 0 || checksReferencing > 0) && liveWorkers == 0`. A declared region with zero live workers and zero references is dark but unused, not a ghost — the alarm condition is work assigned to nobody, not an idle region.
 	//
-	// `liveWorkers` reuses the exact prefix rule the scheduler claims jobs with (`workerRegion` has the slug as a prefix, so a `us` job is served by a `us-1` worker) and the same liveness window as the region capability report. `lastWorkerSeenAt` spans every matching worker, soft-deleted included, so it dates when the region actually went dark. NULL-region (any-region) jobs never count toward any row — they are claimable by every cloud worker by construction.
+	// For a cloud region, `liveWorkers` reuses the exact prefix rule the scheduler claims jobs with (`workerRegion` has the slug as a prefix, so a `us` job is served by a `us-1` worker) and the same liveness window as the region capability report; system agents count here, through their worker row. `lastWorkerSeenAt` spans every matching worker, soft-deleted included, so it dates when the region actually went dark. For a private region, `liveWorkers` counts that org's active agents bound to exactly that slug and seen within the same window (the predicate an agent claims with), and `lastWorkerSeenAt` is their latest `lastSeenAt`, revoked agents included. NULL-region (any-region) jobs never count toward any row — they are claimable by every cloud worker by construction.
 	//
 	// Read-side companion of `POST /system/regions/migrate`: its output names exactly the `from` slugs a migration should target. Cheap and unpaginated — a handful of bounded scans, not a query per region. Super-admin only.
 	//
@@ -37917,6 +38897,86 @@ func (r CreateCheckResult) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r CreateCheckResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type SwitchChecksToAutoPlacementResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *struct {
+		Data *[]struct {
+			Name        *string   `json:"name,omitempty"`
+			RegionCount *int      `json:"regionCount,omitempty"`
+			Regions     *[]string `json:"regions,omitempty"`
+			Slug        *string   `json:"slug,omitempty"`
+			Uid         *string   `json:"uid,omitempty"`
+		} `json:"data,omitempty"`
+		DryRun *bool `json:"dryRun,omitempty"`
+
+		// Skipped Named checks left pinned, with the reason.
+		Skipped *[]struct {
+			Reason *SwitchChecksToAutoPlacement200JSONResponseBodySkippedReason `json:"reason,omitempty"`
+			Slug   *string                                                      `json:"slug,omitempty"`
+			Uid    *string                                                      `json:"uid,omitempty"`
+		} `json:"skipped,omitempty"`
+	}
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SwitchChecksToAutoPlacementResult) GetJSON200() *struct {
+	Data *[]struct {
+		Name        *string   `json:"name,omitempty"`
+		RegionCount *int      `json:"regionCount,omitempty"`
+		Regions     *[]string `json:"regions,omitempty"`
+		Slug        *string   `json:"slug,omitempty"`
+		Uid         *string   `json:"uid,omitempty"`
+	} `json:"data,omitempty"`
+	DryRun *bool `json:"dryRun,omitempty"`
+
+	// Skipped Named checks left pinned, with the reason.
+	Skipped *[]struct {
+		Reason *SwitchChecksToAutoPlacement200JSONResponseBodySkippedReason `json:"reason,omitempty"`
+		Slug   *string                                                      `json:"slug,omitempty"`
+		Uid    *string                                                      `json:"uid,omitempty"`
+	} `json:"skipped,omitempty"`
+} {
+	return r.JSON200
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r SwitchChecksToAutoPlacementResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r SwitchChecksToAutoPlacementResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SwitchChecksToAutoPlacementResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SwitchChecksToAutoPlacementResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SwitchChecksToAutoPlacementResult) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -51746,6 +52806,36 @@ func (c *ClientWithResponses) CreateCheckWithResponse(ctx context.Context, org O
 	return ParseCreateCheckResult(rsp)
 }
 
+// SwitchChecksToAutoPlacementWithBodyWithResponse Switch pinned checks to automatic placement
+//
+// The checks list's bulk action (spec 2026-09-25-06). Each eligible check becomes `placement: auto` with `regionCount` = its current region count and an empty pool; its regions and jobs are untouched, so neither its cost nor where it runs today changes — it only gains failover when one of its regions goes dark. Passive checks and checks naming a private (`@`) region are skipped. With no `checkUids`, every eligible pinned, non-internal check of the organization is switched.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/orgs/{org}/checks/auto-placement (the `SwitchChecksToAutoPlacement` operationId).
+func (c *ClientWithResponses) SwitchChecksToAutoPlacementWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SwitchChecksToAutoPlacementResult, error) {
+	rsp, err := c.SwitchChecksToAutoPlacementWithBody(ctx, org, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSwitchChecksToAutoPlacementResult(rsp)
+}
+
+// SwitchChecksToAutoPlacementWithResponse Switch pinned checks to automatic placement
+//
+// The checks list's bulk action (spec 2026-09-25-06). Each eligible check becomes `placement: auto` with `regionCount` = its current region count and an empty pool; its regions and jobs are untouched, so neither its cost nor where it runs today changes — it only gains failover when one of its regions goes dark. Passive checks and checks naming a private (`@`) region are skipped. With no `checkUids`, every eligible pinned, non-internal check of the organization is switched.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/orgs/{org}/checks/auto-placement (the `SwitchChecksToAutoPlacement` operationId).
+func (c *ClientWithResponses) SwitchChecksToAutoPlacementWithResponse(ctx context.Context, org OrgPath, body SwitchChecksToAutoPlacementJSONRequestBody, reqEditors ...RequestEditorFn) (*SwitchChecksToAutoPlacementResult, error) {
+	rsp, err := c.SwitchChecksToAutoPlacement(ctx, org, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSwitchChecksToAutoPlacementResult(rsp)
+}
+
 // GetCheckStatsWithResponse Aggregate check counters for an organization
 //
 // Org-wide check counters computed server-side with a single SQL aggregation, so they are unaffected by the list endpoint's 100-row page clamp. Scope is the same set the list endpoint shows by default: non-deleted, non-internal checks. `total`, `byStatus`, `down` and `hardDown` span enabled and disabled checks alike; `enabled` and `disabled` partition the same set.
@@ -55229,7 +56319,7 @@ func (c *ClientWithResponses) UnlockDefaultStatusPageWithResponse(ctx context.Co
 
 // ViewStatusPageWithResponse View a public status page
 //
-// Full public rendering of a status page: sections, per-resource live status, and (when enabled) availability/response-time history. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required. Caching follows the page's visibility: a `public` page carries Cache-Control: public, max-age=60, while a `password` or `private` page — and every 401/404 answer — carries Cache-Control: private, no-store, so a shared cache can never retain a gated page's body. Holding a valid unlock cookie does not change that: it authorizes the visitor, not the CDN in front of them. Public responses carry Vary: X-Forwarded-Proto (the header the absolute URLs in these payloads derive their scheme from); gated ones add Cookie.
+// Full public rendering of a status page: sections, per-resource live status, and (when enabled) availability/response-time history. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required. Caching follows the page's visibility: a `public` page carries Cache-Control: public, max-age=60, stale-while-revalidate=30 — a cache may serve an expired copy for up to 30 s while it refreshes in the background — while a `password` or `private` page, and every 401/404 answer, carries Cache-Control: private, no-store, so a shared cache can never retain a gated page's body. Holding a valid unlock cookie does not change that: it authorizes the visitor, not the CDN in front of them. Public responses carry Vary: X-Forwarded-Proto (the header the absolute URLs in these payloads derive their scheme from); gated ones add Cookie.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -55244,7 +56334,7 @@ func (c *ClientWithResponses) ViewStatusPageWithResponse(ctx context.Context, or
 
 // GetStatusPageBadgeWithResponse SVG badge for a status page's overall status
 //
-// Public SVG badge (shields.io style) reflecting the page-level rollup status — the static, script-free sibling of the JS embed widget, for contexts like GitHub READMEs where scripts can't run. Same visibility gate as the full view and the summary endpoint: a disabled or non-public page returns 404, identical to a page that doesn't exist. Same caching rule too: Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one — the badge renders the rollup status of a page the requester may not be entitled to see. No authentication required.
+// Public SVG badge (shields.io style) reflecting the page-level rollup status — the static, script-free sibling of the JS embed widget, for contexts like GitHub READMEs where scripts can't run. Same visibility gate as the full view and the summary endpoint: a disabled or non-public page returns 404, identical to a page that doesn't exist. Same caching rule too: Cache-Control: public, max-age=60, stale-while-revalidate=30 for a `public` page, private, no-store for a `password` or `private` one — the badge renders the rollup status of a page the requester may not be entitled to see. No authentication required.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -55259,7 +56349,7 @@ func (c *ClientWithResponses) GetStatusPageBadgeWithResponse(ctx context.Context
 
 // StatusPageFeedWithResponse Atom feed of a status page's status-update timeline
 //
-// Public Atom/RSS feed of the page's recent status updates (incident posts and manual updates). Same visibility gate as the full page view, and the same visibility-driven caching: Cache-Control: public, max-age=300 for a `public` page, private, no-store for a `password` or `private` one — the feed quotes update titles and bodies verbatim. No authentication required.
+// Public Atom/RSS feed of the page's recent status updates (incident posts and manual updates). Same visibility gate as the full page view, and the same visibility-driven caching: Cache-Control: public, max-age=300, stale-while-revalidate=30 for a `public` page, private, no-store for a `password` or `private` one — the feed quotes update titles and bodies verbatim. No authentication required.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -55275,7 +56365,7 @@ func (c *ClientWithResponses) StatusPageFeedWithResponse(ctx context.Context, or
 // ViewPublicStatusPageIncidentsWithResponse Public incident history for a status page
 //
 // The customer-facing incidents published on this page (spec 2026-08-19-08). Without `active`, returns the page's history window; with `active=true`, only the incidents that are still open — the same set the full page view embeds as `activeIncidents[]`.
-// Same visibility gate as the full page view: a disabled or non-public page returns 404, identical to a page that doesn't exist. Same caching rule too — Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one (unlocked or not), since this payload quotes incident titles and update bodies verbatim. No authentication required.
+// Same visibility gate as the full page view: a disabled or non-public page returns 404, identical to a page that doesn't exist. Same caching rule too — Cache-Control: public, max-age=60, stale-while-revalidate=30 for a `public` page, private, no-store for a `password` or `private` one (unlocked or not), since this payload quotes incident titles and update bodies verbatim. No authentication required.
 // Every field is operator-authored or templated from the page's own public resource names. Probe output, error strings and internal hostnames are structurally unable to reach this payload.
 //
 // Returns a wrapper object for the known response body format(s).
@@ -55291,7 +56381,7 @@ func (c *ClientWithResponses) ViewPublicStatusPageIncidentsWithResponse(ctx cont
 
 // ViewStatusPageSummaryWithResponse Lightweight status summary for a status page
 //
-// Cheap "is it up?" companion to the full page view: overall status, per-category counts, page identity, and the canonical public URL — no sections, no per-resource history. Same visibility gate AND the same caching rule as the full page view: Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one (unlocked or not) and for every 401/404 answer. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
+// Cheap "is it up?" companion to the full page view: overall status, per-category counts, page identity, and the canonical public URL — no sections, no per-resource history. Same visibility gate AND the same caching rule as the full page view: Cache-Control: public, max-age=60, stale-while-revalidate=30 for a `public` page, private, no-store (no grace window) for a `password` or `private` one (unlocked or not) and for every 401/404 answer. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -55810,11 +56900,13 @@ func (c *ClientWithResponses) SetSystemParameterWithResponse(ctx context.Context
 
 // GetRegionHealthWithResponse Ghost-region detection report
 //
-// One row per region slug seen anywhere — in the declared `regions` system parameter, in a check's `regions` array, in a `check_jobs.region`, or in a live or previously-live worker's announced region — so the caller gets the ghosts and the healthy baseline in one call.
+// One row per region seen anywhere — in the declared `regions` system parameter, in a check's `regions` array, in a `check_jobs.region`, in a live or previously-live worker's announced region, or in an org agent's bound region — so the caller gets the ghosts and the healthy baseline in one call.
+//
+// Cloud regions are global: one row per slug, `organization` absent. Private regions (`@<slug>`) are org-relative, so they get one row per (organization, slug) with `organization` set to the org slug: `@paris` in two orgs is two unrelated rows whose checks, jobs and agents are never summed together.
 //
 // A **ghost** is a slug something depends on (a job or a check reference) that nothing live can serve: `(jobs > 0 || checksReferencing > 0) && liveWorkers == 0`. A declared region with zero live workers and zero references is dark but unused, not a ghost — the alarm condition is work assigned to nobody, not an idle region.
 //
-// `liveWorkers` reuses the exact prefix rule the scheduler claims jobs with (`workerRegion` has the slug as a prefix, so a `us` job is served by a `us-1` worker) and the same liveness window as the region capability report. `lastWorkerSeenAt` spans every matching worker, soft-deleted included, so it dates when the region actually went dark. NULL-region (any-region) jobs never count toward any row — they are claimable by every cloud worker by construction.
+// For a cloud region, `liveWorkers` reuses the exact prefix rule the scheduler claims jobs with (`workerRegion` has the slug as a prefix, so a `us` job is served by a `us-1` worker) and the same liveness window as the region capability report; system agents count here, through their worker row. `lastWorkerSeenAt` spans every matching worker, soft-deleted included, so it dates when the region actually went dark. For a private region, `liveWorkers` counts that org's active agents bound to exactly that slug and seen within the same window (the predicate an agent claims with), and `lastWorkerSeenAt` is their latest `lastSeenAt`, revoked agents included. NULL-region (any-region) jobs never count toward any row — they are claimable by every cloud worker by construction.
 //
 // Read-side companion of `POST /system/regions/migrate`: its output names exactly the `from` slugs a migration should target. Cheap and unpaginated — a handful of bounded scans, not a query per region. Super-admin only.
 //
@@ -57989,6 +59081,55 @@ func ParseCreateCheckResult(rsp *http.Response) (*CreateCheckResult, error) {
 			return nil, err
 		}
 		response.JSON422 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSwitchChecksToAutoPlacementResult parses an HTTP response from a SwitchChecksToAutoPlacementWithResponse call
+func ParseSwitchChecksToAutoPlacementResult(rsp *http.Response) (*SwitchChecksToAutoPlacementResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SwitchChecksToAutoPlacementResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			Data *[]struct {
+				Name        *string   `json:"name,omitempty"`
+				RegionCount *int      `json:"regionCount,omitempty"`
+				Regions     *[]string `json:"regions,omitempty"`
+				Slug        *string   `json:"slug,omitempty"`
+				Uid         *string   `json:"uid,omitempty"`
+			} `json:"data,omitempty"`
+			DryRun *bool `json:"dryRun,omitempty"`
+
+			// Skipped Named checks left pinned, with the reason.
+			Skipped *[]struct {
+				Reason *SwitchChecksToAutoPlacement200JSONResponseBodySkippedReason `json:"reason,omitempty"`
+				Slug   *string                                                      `json:"slug,omitempty"`
+				Uid    *string                                                      `json:"uid,omitempty"`
+			} `json:"skipped,omitempty"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	}
 

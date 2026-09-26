@@ -5,6 +5,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
 
@@ -20,8 +21,11 @@ const (
 	CheckStatusDown CheckStatus = 4
 	// CheckStatusValidating is the transient state between "first failure
 	// observed" and "incident opens" — the failure has been seen but the
-	// configured ConfirmationPeriod hasn't elapsed yet. Display-only:
-	// never triggers notifications, never gates the incident state machine.
+	// configured ConfirmationPeriod hasn't elapsed yet. It never triggers
+	// notifications on its own, but it DOES gate the incident state machine
+	// of its dependents: a hard child whose confirmation elapses while an
+	// ancestor is still validating is held (spec 2026-08-31-06,
+	// incidents.ancestorHoldRemaining).
 	CheckStatusValidating CheckStatus = 5
 	// CheckStatusDegraded is the aggregated/summary status: a rolled-up window
 	// contained warning(s) but no dominating failure. Not produced by the live
@@ -32,7 +36,150 @@ const (
 	// there is something to report. Display-only like CheckStatusValidating —
 	// never triggers notifications, never gates the incident state machine.
 	CheckStatusWarning CheckStatus = 8
+	// CheckStatusStale means "no data": the check's newest real result, across
+	// every region, is older than StaleThreshold(period) (spec 2026-09-25-02).
+	// It is neither up nor down. Only the freshness sweeper enters it (a
+	// guarded compare-and-set that bypasses the incident pipeline entirely);
+	// the next real result leaves it through ProcessCheckResult.
+	//
+	// 10, not the free 2/6/9: check and result statuses share one integer
+	// space by convention (1 created, 3 up, 4 down, 7 degraded, 8 warning mean
+	// the same on both columns) and 1-9 are all live result codes — 9 is
+	// ResultStatusAbandoned. 10 can never be misread as a result.
+	CheckStatusStale CheckStatus = 10
 )
+
+// staleMinThreshold is the floor of the staleness threshold: a 10-second
+// check is not declared dead after 30 seconds of silence.
+const staleMinThreshold = 5 * time.Minute
+
+// stalePeriodMultiplier is how many periods of silence make a check stale.
+const stalePeriodMultiplier = 3
+
+// StaleThreshold is how long a check may go without a real result before it
+// is stale: max(3 × period, 5 min). One definition, read by the sweeper, the
+// badge and the API, so they can never disagree on what "no data" means.
+func StaleThreshold(period time.Duration) time.Duration {
+	threshold := stalePeriodMultiplier * period
+	if threshold < staleMinThreshold {
+		return staleMinThreshold
+	}
+
+	return threshold
+}
+
+// IsPassive reports whether the check is passive (heartbeat, email): driven by
+// an inbound signal, evaluated on the jobs node, never inside a region (spec
+// 2026-09-25-04).
+func (c *Check) IsPassive() bool {
+	return checkerdef.CheckType(c.Type).IsPassive()
+}
+
+// Placement intents (spec 2026-09-25-06).
+const (
+	// PlacementPinned: Regions is the user's explicit list. It is never moved;
+	// when its region goes dark the check goes stale and the org is told.
+	PlacementPinned = "pinned"
+	// PlacementAuto: Regions is the current placement, chosen from the
+	// candidate order and re-placed by the region sweep when a placed region
+	// goes dark.
+	PlacementAuto = "auto"
+)
+
+// IsAutoPlaced reports whether the scheduler owns the check's regions.
+func (c *Check) IsAutoPlaced() bool {
+	return c.Placement == PlacementAuto
+}
+
+// EffectivePlacement is the placement intent, reading an unset value (a row
+// built in memory by a path that never set it) as pinned — the column default.
+func (c *Check) EffectivePlacement() string {
+	if c.Placement == PlacementAuto {
+		return PlacementAuto
+	}
+
+	return PlacementPinned
+}
+
+// NormalizePlacement reads an unset placement as pinned (the column default)
+// and drops the auto-only fields from a pinned check, so a stored row can
+// never carry a count or a pool it does not use.
+func (c *Check) NormalizePlacement() {
+	if c.Placement != PlacementAuto {
+		c.Placement = PlacementPinned
+		c.RegionCount = nil
+		c.RegionPool = nil
+	}
+}
+
+// JobRegions is the region set the check's jobs are materialized for. A
+// passive check has none, whatever its row says: it makes no outbound request,
+// so a region adds nothing but a place for its evaluator to die (spec
+// 2026-09-25-04). Every materialization point (createCheckJobs on both
+// engines, reconcileCheckJobs) reads this rather than Regions.
+func (c *Check) JobRegions() []string {
+	if c.IsPassive() {
+		return nil
+	}
+
+	return c.Regions
+}
+
+// NormalizePassiveRegions empties Regions on a passive check. An explicit list
+// is accepted and dropped rather than rejected, so an existing config-as-code
+// file that names a region on a heartbeat keeps applying (spec 2026-09-25-04).
+//
+// A passive check is also never auto-placed (spec 2026-09-25-06): it has no
+// region to place, so its placement is always pinned with no count or pool,
+// and it has no multi-region quorum either (spec 2026-09-25-10).
+func (c *Check) NormalizePassiveRegions() {
+	if c.IsPassive() {
+		c.Regions = []string{}
+		c.Placement = PlacementPinned
+		c.RegionCount = nil
+		c.RegionPool = nil
+		// No region, no quorum (spec 2026-09-25-10).
+		c.FailQuorum = nil
+	}
+}
+
+// StaleThreshold is the check's own staleness threshold.
+func (c *Check) StaleThreshold() time.Duration {
+	return StaleThreshold(time.Duration(c.Period))
+}
+
+// FreshnessReference is the instant the staleness rule measures from: the
+// newest real result, or the creation time for a check that never produced
+// one (it should have run by then).
+func (c *Check) FreshnessReference() time.Time {
+	if c.LastResultAt != nil {
+		return *c.LastResultAt
+	}
+
+	return c.CreatedAt
+}
+
+// IsDataStale reports whether the check's newest real result is older than
+// its threshold as of now — the raw freshness fact, independent of whether
+// the sweeper has already written CheckStatusStale.
+func (c *Check) IsDataStale(now time.Time) bool {
+	if c.AwaitingFirstAgent() {
+		return false
+	}
+
+	return now.Sub(c.FreshnessReference()) > c.StaleThreshold()
+}
+
+// AwaitingFirstAgent reports the one state in which a check legitimately
+// produces no result indefinitely: a private-location liveness monitor still
+// `created` because its location has no agent enrolled yet (spec
+// 2026-09-25-05). Its evaluator deliberately writes nothing then (no agent, no
+// incident), so without this exemption the freshness sweep would call the
+// monitor of every empty location stale five minutes after it was created.
+// The ListStaleCandidates queries exclude the same state on both engines.
+func (c *Check) AwaitingFirstAgent() bool {
+	return c.Type == string(checkerdef.CheckTypePrivateLocation) && c.Status == CheckStatusCreated
+}
 
 // String returns the lowercase wire name for a CheckStatus, used by the
 // dashboard to key status colors and labels. Unknown values fall back to
@@ -51,6 +198,8 @@ func (s CheckStatus) String() string {
 		return WireStatusDegraded
 	case CheckStatusWarning:
 		return WireStatusWarning
+	case CheckStatusStale:
+		return WireStatusStale
 	default:
 		return WireStatusUnknown
 	}
@@ -91,11 +240,32 @@ type Check struct {
 	// (ConfigPrivate stays NULL — the server cannot decrypt them after write);
 	// a mixed private+cloud check dual-stores (v1 envelope for cloud dispatch +
 	// this sealed blob for agents).
-	ConfigSealed *string            `bun:"config_sealed,type:text,nullzero"`
-	Regions      []string           `bun:"regions,type:text[],array"`
-	Enabled      bool               `bun:"enabled,notnull"`
-	Internal     bool               `bun:"internal,notnull"`
-	Period       timeutils.Duration `bun:"period,notnull"`
+	ConfigSealed *string `bun:"config_sealed,type:text,nullzero"`
+	// Regions is where the check runs. For a PINNED check it is the user's
+	// explicit list and is never moved; for an AUTO check it is the CURRENT
+	// placement, written by the scheduler (spec 2026-09-25-06). Keeping the
+	// placement here is what keeps the boot repair, reconcileCheckJobs, the
+	// phase computation and the rate accounting unchanged.
+	Regions []string `bun:"regions,type:text[],array"`
+	// Placement is the placement intent: PlacementPinned or PlacementAuto.
+	// NewCheck sets pinned, and both engines' CreateCheck run
+	// NormalizePlacement, so a path that never heard of it still writes the
+	// column default rather than an empty string the CHECK constraint refuses.
+	Placement string `bun:"placement,notnull"`
+	// RegionCount is N, how many regions an AUTO check runs from. Nil for a
+	// pinned check.
+	RegionCount *int `bun:"region_count"`
+	// RegionPool restricts an AUTO check's candidates to these cloud slugs;
+	// nil or empty means any cloud region. Nil for a pinned check.
+	RegionPool []string `bun:"region_pool,type:text[],array,nullzero"`
+	// FailQuorum is how many of the check's regions must be failing, for the
+	// confirmation period, before it is down (spec 2026-09-25-10): "all",
+	// "majority" or a positive integer. Nil is the default (all for 1-2
+	// regions, majority for 3+). See the regionquorum package.
+	FailQuorum *string            `bun:"fail_quorum"`
+	Enabled    bool               `bun:"enabled,notnull"`
+	Internal   bool               `bun:"internal,notnull"`
+	Period     timeutils.Duration `bun:"period,notnull"`
 
 	// CreatedBy is the users.uid of whoever created this check, or NULL when
 	// nobody did — the startup job's seeded samples, and every check that
@@ -201,25 +371,19 @@ type Check struct {
 	DegradedSlow           *int `bun:"degraded_slow"`
 	DegradedSlowWindow     *int `bun:"degraded_slow_window"`
 	SlowThresholdMs        *int `bun:"slow_threshold_ms"`
-	// DegradedEnabled gates OPENING incidents, not evaluating. FALSE on every
-	// pre-existing row (the migration's column default) and TRUE on every check
-	// created from now on (NewCheck): upgrading must never start paging on its
-	// own, per the rule already written at SLOAlertPolicy's rollout.
+	// DegradedEnabled turns degraded detection on for this check. FALSE on
+	// every row that predates the feature (the migration's column default) and
+	// TRUE on every check created from then on (NewCheck): upgrading must never
+	// start paging on its own, per the rule already written at SLOAlertPolicy's
+	// rollout. Enabling it on an existing check is a per-check decision. A
+	// disabled check is not evaluated at all.
 	//
 	// It is deliberately NOT a pointer, unlike the five above: NULL cannot
 	// carry that rollout rule. nil-means-true would start paging on upgrade,
 	// nil-means-false would silently disable checks created by a path that does
 	// not set the flag. A plain bool defaulting to false makes every such path
-	// fail SAFE — into the dry run, which stamps DegradedWouldFireAt and pages
-	// nobody.
+	// fail SAFE: the check is simply not evaluated, and nobody is paged.
 	DegradedEnabled bool `bun:"degraded_enabled,notnull"`
-	// DegradedWouldFireAt is the dry run's output: when the evaluator last saw
-	// a degraded condition on a check that has DegradedEnabled false. It is
-	// what the check page's "this check would have been flagged degraded at
-	// 14:37 — enable?" banner and the checks list's `wouldHaveFired` filter
-	// read. Cleared once the check is enabled, so the two states can never both
-	// look true.
-	DegradedWouldFireAt *time.Time `bun:"degraded_would_fire_at"`
 	// DegradedEvaluatedAt is evaluator rotation STATE, not configuration: the
 	// sweep reads checks oldest-evaluated first so a bounded per-sweep batch
 	// still gives every check a turn on a large install, exactly as
@@ -256,6 +420,13 @@ type Check struct {
 	Status          CheckStatus `bun:"status,notnull"`
 	StatusStreak    int         `bun:"status_streak,notnull"`
 	StatusChangedAt *time.Time  `bun:"status_changed_at"`
+	// LastResultAt is the execution time of the newest REAL result (up, down,
+	// timeout, error, warning — never the created/running/abandoned
+	// placeholders), across every region. Denormalized so the freshness sweep
+	// is one indexed query instead of a scan of `results` (spec 2026-09-25-02).
+	// Written only by incidents.ProcessCheckResult, including for checks in
+	// maintenance. NULL for a check that never produced a result.
+	LastResultAt *time.Time `bun:"last_result_at"`
 
 	CreatedAt time.Time  `bun:"created_at,notnull,default:current_timestamp"`
 	UpdatedAt time.Time  `bun:"updated_at,notnull,default:current_timestamp"`
@@ -537,6 +708,7 @@ func NewCheck(orgUID, slug, checkType string) *Check {
 		// check, OFF for every pre-existing row (the migration's column
 		// default). See the DegradedEnabled field comment.
 		DegradedEnabled: true,
+		Placement:       PlacementPinned,
 		Status:          CheckStatusCreated,
 		StatusStreak:    0,
 		CreatedAt:       now,
@@ -579,9 +751,21 @@ type CheckUpdate struct {
 	ConfigSealed       *string
 	ClearConfigSealed  bool
 	Regions            *[]string
-	Enabled            *bool
-	Internal           *bool
-	Period             *timeutils.Duration
+	// Placement / RegionCount / RegionPool write the placement intent (spec
+	// 2026-09-25-06). Clear* sets the column to NULL (a pinned check carries
+	// neither a count nor a pool).
+	Placement        *string
+	RegionCount      *int
+	ClearRegionCount bool
+	RegionPool       *[]string
+	ClearRegionPool  bool
+	// FailQuorum sets checks.fail_quorum; ClearFailQuorum resets it to NULL
+	// (the default quorum). Spec 2026-09-25-10.
+	FailQuorum      *string
+	ClearFailQuorum bool
+	Enabled         *bool
+	Internal        *bool
+	Period          *timeutils.Duration
 	// RegionSpread sets the inter-region offset override; ClearRegionSpread
 	// resets it to NULL (revert to the period/region_count default).
 	RegionSpread      *timeutils.Duration
@@ -615,11 +799,9 @@ type CheckUpdate struct {
 	DegradedSlowWindow     *int
 	SlowThresholdMs        *int
 	DegradedEnabled        *bool
-	// DegradedWouldFireAt / DegradedEvaluatedAt are written by the evaluator
-	// sweep, never by an API caller. Clear* sets the column to NULL.
-	DegradedWouldFireAt      *time.Time
-	ClearDegradedWouldFireAt bool
-	DegradedEvaluatedAt      *time.Time
+	// DegradedEvaluatedAt is written by the evaluator sweep, never by an API
+	// caller.
+	DegradedEvaluatedAt *time.Time
 
 	// Optional escalation policy override (nil = inherit from group / none)
 	EscalationPolicyUID *string
@@ -689,20 +871,15 @@ func NewCheckLabel(checkUID, labelUID string) *CheckLabel {
 
 // ListChecksFilter provides filtering options for listing checks.
 type ListChecksFilter struct {
-	Labels        map[string]string // key:value pairs for AND filtering
-	CheckGroupUID *string           // filter by check group UID; "none" = ungrouped checks only
-	Query         string            // search term for name/slug (case-insensitive substring)
-	Types         []string          // optional filter by check type (e.g. ["ssh"]); empty = every type
-	Internal      *string           // "true", "false", or "all" — filter by internal status
-	Statuses      []CheckStatus     // optional filter by current status (up/down/etc.)
-	// WouldHaveFired restricts to checks the degraded dry run has flagged:
-	// `degraded_would_fire_at IS NOT NULL` (spec 2026-09-22-03). It is how an
-	// operator finds what enabling degraded detection would have caught, and it
-	// is the whole adoption path for a feature that ships off.
-	WouldHaveFired  bool
-	Limit           int        // max results to return (0 = no limit)
-	CursorCreatedAt *time.Time // cursor: created_at of last item from previous page
-	CursorUID       *string    // cursor: uid of last item from previous page
+	Labels          map[string]string // key:value pairs for AND filtering
+	CheckGroupUID   *string           // filter by check group UID; "none" = ungrouped checks only
+	Query           string            // search term for name/slug (case-insensitive substring)
+	Types           []string          // optional filter by check type (e.g. ["ssh"]); empty = every type
+	Internal        *string           // "true", "false", or "all" — filter by internal status
+	Statuses        []CheckStatus     // optional filter by current status (up/down/etc.)
+	Limit           int               // max results to return (0 = no limit)
+	CursorCreatedAt *time.Time        // cursor: created_at of last item from previous page
+	CursorUID       *string           // cursor: uid of last item from previous page
 
 	// SortByGroup opts into display-order pagination (sort=group): group
 	// sort_order asc, ungrouped last, then created_at DESC / uid DESC within a

@@ -67,8 +67,9 @@ func frontendAnchorMap(t *testing.T, root string) map[string]string {
 	content, err := os.ReadFile(path)
 	require.NoError(t, err, "reading %s", path)
 
-	// Matches lines like:  http: "httphttps",
-	re := regexp.MustCompile(`(?m)^\s*([a-z0-9_]+):\s*"([a-z0-9-]+)",\s*$`)
+	// Matches lines like:  http: "httphttps",  and, for a type whose name is
+	// not a bare identifier,  "private-location": "private-location-liveness",
+	re := regexp.MustCompile(`(?m)^\s*"?([a-z0-9_-]+)"?:\s*"([a-z0-9-]+)",\s*$`)
 	matches := re.FindAllStringSubmatch(string(content), -1)
 
 	require.NotEmpty(t, matches, "no type: \"anchor\" entries found in %s — regex drifted from the file format", path)
