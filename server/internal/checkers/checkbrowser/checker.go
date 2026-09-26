@@ -28,10 +28,12 @@ const microsecondsPerMilli = 1000.0
 // later.
 const MaxScreenshotBytes = 4 * 1024 * 1024
 
-// screenshotTimeout time-boxes the capture. The capture runs AFTER the verdict
-// is decided, so this budget can never delay or change a check's outcome; it
-// exists so a wedged renderer cannot hold a browser slot open indefinitely.
-const screenshotTimeout = 5 * time.Second
+// screenshotTimeout time-boxes the capture. It is an alias for
+// checkconfig.ScreenshotTimeout — see there for why 5s — kept as a
+// package-local name because it is used throughout this file; the config
+// package is where BrowserConfig.ExtraBudget shares the same number with the
+// worker's execution-budget sizing (spec 2026-09-25-35).
+const screenshotTimeout = checkconfig.ScreenshotTimeout
 
 // ScreenshotFormat is the encoding EVERY capture in this process is taken in,
 // and the value stamped on checkerdef.Screenshot.Format so the rest of the
@@ -298,10 +300,23 @@ func (c *BrowserChecker) captureScreenshot(
 	shotCtx, cancel := context.WithTimeout(ctx, screenshotTimeout)
 	defer cancel()
 
+	// Captured BEFORE the attempt, not after: once capture returns an error
+	// the context is very likely already expired, which would make every
+	// starvation log read "0ms remaining" regardless of how much budget the
+	// attempt actually started with. Logged as milliseconds-remaining AT THE
+	// START, so a starved capture (this budget under a few hundred ms) reads
+	// differently at a glance from a real CDP/infra failure (this budget
+	// still close to screenshotTimeout) — spec 2026-09-25-35, the failure
+	// mode this exists to make visible without a code read.
+	budgetRemaining := time.Duration(-1)
+	if deadline, ok := shotCtx.Deadline(); ok {
+		budgetRemaining = time.Until(deadline)
+	}
+
 	shot, err := capture(shotCtx)
 	if err != nil {
 		slog.WarnContext(ctx, "browser check: screenshot capture failed",
-			"url", cfg.URL, "error", err)
+			"url", cfg.URL, "error", err, "budget_remaining_ms", budgetRemaining.Milliseconds())
 
 		return
 	}
@@ -330,9 +345,12 @@ func (c *BrowserChecker) captureScreenshot(
 
 // wantsCapture reports whether this execution may take a screenshot at all:
 // the check opted into failure captures, or the run is an on-demand capture
-// (spec 2026-09-25-34). It sizes the session budget before the verdict exists.
+// (spec 2026-09-25-34). It sizes the session budget before the verdict
+// exists, and is built on cfg.ExtraBudget so this and the worker's execution
+// -budget sizing (checkworker.resolveExtraBudget, spec 2026-09-25-35) can
+// never drift apart — both ask the same question through the same method.
 func wantsCapture(ctx context.Context, cfg *BrowserConfig) bool {
-	return cfg.Screenshot || checkerdef.ForcedCapture(ctx)
+	return cfg.ExtraBudget(checkerdef.ForcedCapture(ctx)) > 0
 }
 
 // shouldCapture is the capture decision once the verdict is known.

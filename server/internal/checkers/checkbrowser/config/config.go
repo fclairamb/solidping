@@ -21,6 +21,19 @@ const (
 	maxTimeout     = 30 * time.Second
 )
 
+// ScreenshotTimeout time-boxes ONE capture attempt taken after a check's own
+// probe timeout, and is the extra wall-clock ExtraBudget asks the worker for
+// whenever a capture might be taken. Exported so checkbrowser's post-verdict
+// capture and this config's ExtraBudget share one number instead of two
+// constants that could drift (spec 2026-09-25-35).
+//
+// Five seconds, deliberately: the capture runs AFTER the verdict is decided,
+// so this budget can never delay or change a check's outcome; it exists so a
+// wedged renderer cannot hold a browser slot open indefinitely, while still
+// giving a real capture (measured around 0.34s for a typical page) generous
+// headroom.
+const ScreenshotTimeout = 5 * time.Second
+
 // BrowserConfig holds the configuration for browser-based health checks.
 type BrowserConfig struct {
 	URL           string        `json:"url"`
@@ -175,6 +188,24 @@ func (c *BrowserConfig) ResolveTimeout() time.Duration {
 	}
 
 	return defaultTimeout
+}
+
+// ExtraBudget implements checkerdef.ExtraBudgeter (spec 2026-09-25-35): a
+// capture — opted into via Screenshot, or forced by an on-demand "Capture
+// now" request (spec 2026-09-25-34) regardless of it — runs against a session
+// the checker deliberately keeps alive ScreenshotTimeout past its own probe
+// timeout (see checkbrowser.wantsCapture, which mirrors this exact
+// condition). The worker must grant that same extra window on the hard
+// execution context, or the checker's own extra session budget is capped away
+// by the parent and the capture starves — a probe timing out or hanging, the
+// single most common capture-worthy failure, being exactly when it needs it
+// most.
+func (c *BrowserConfig) ExtraBudget(forcedCapture bool) time.Duration {
+	if c.Screenshot || forcedCapture {
+		return ScreenshotTimeout
+	}
+
+	return 0
 }
 
 func hostnameFromURL(rawURL string) string {
