@@ -150,7 +150,7 @@ func TestListScreenshots(t *testing.T) {
 	}
 	r.NoError(json.Unmarshal(rec.Body.Bytes(), &body))
 	r.Len(body.Data, 3)
-	r.True(!body.Data[0].CapturedAt.Before(body.Data[1].CapturedAt), "newest first")
+	r.False(body.Data[0].CapturedAt.Before(body.Data[1].CapturedAt), "newest first")
 	r.Equal("eu-west", body.Data[0].Region)
 	r.Contains(body.Data[0].DownloadURL, "/pub/files/")
 

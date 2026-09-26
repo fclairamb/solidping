@@ -602,6 +602,9 @@ func resultIsFailure(result *models.Result) bool {
 	switch models.ResultStatus(*result.Status) {
 	case models.ResultStatusDown, models.ResultStatusTimeout, models.ResultStatusError:
 		return true
+	case models.ResultStatusCreated, models.ResultStatusRunning, models.ResultStatusUp,
+		models.ResultStatusDegraded, models.ResultStatusWarning, models.ResultStatusAbandoned:
+		return false
 	default:
 		return false
 	}

@@ -265,14 +265,14 @@ func pickJob(jobs []*models.CheckJob, now time.Time) *models.CheckJob {
 	return sorted[0]
 }
 
-func compareRegion(a, b *string) int {
+func compareRegion(leftRegion, rightRegion *string) int {
 	left, right := "", ""
-	if a != nil {
-		left = *a
+	if leftRegion != nil {
+		left = *leftRegion
 	}
 
-	if b != nil {
-		right = *b
+	if rightRegion != nil {
+		right = *rightRegion
 	}
 
 	switch {

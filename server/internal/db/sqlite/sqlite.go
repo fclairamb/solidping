@@ -2181,14 +2181,14 @@ func (s *Service) PurgeCheck(ctx context.Context, uid string) error {
 // CheckJob operations
 
 // RequestCheckCapture records a pending "Capture now" request on one job row
-// and makes it due at `at` (spec 2026-09-25-34).
-func (s *Service) RequestCheckCapture(ctx context.Context, jobUID string, at time.Time) error {
+// and makes it due at requestedAt (spec 2026-09-25-34).
+func (s *Service) RequestCheckCapture(ctx context.Context, jobUID string, requestedAt time.Time) error {
 	res, err := s.db.NewUpdate().
 		Model((*models.CheckJob)(nil)).
-		Set("capture_requested_at = ?", at).
-		Set("scheduled_at = ?", at).
-		Set("effective_scheduled_at = ?", at).
-		Set("updated_at = ?", at).
+		Set("capture_requested_at = ?", requestedAt).
+		Set("scheduled_at = ?", requestedAt).
+		Set("effective_scheduled_at = ?", requestedAt).
+		Set("updated_at = ?", requestedAt).
 		Where("uid = ?", jobUID).
 		Exec(ctx)
 	if err != nil {

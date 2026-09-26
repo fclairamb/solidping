@@ -41,8 +41,8 @@ func TestDeleteCheckReapsCheckScopedScreenshots(t *testing.T) {
 	r.NoError(svc.DeleteCheck(ctx, org.Slug, doomed.UID))
 
 	for _, file := range []*models.File{first, second} {
-		_, err := dbSvc.GetFile(ctx, org.UID, file.UID)
-		r.Error(err, "the deleted check's captures are reaped")
+		_, getErr := dbSvc.GetFile(ctx, org.UID, file.UID)
+		r.Error(getErr, "the deleted check's captures are reaped")
 	}
 
 	_, err = dbSvc.GetFile(ctx, org.UID, kept.UID)

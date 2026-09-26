@@ -433,11 +433,12 @@ type Service interface {
 	// GetCheckJobByUID returns one check job by UID.
 	GetCheckJobByUID(ctx context.Context, uid string) (*models.CheckJob, error)
 	// RequestCheckCapture records a pending "Capture now" request on one job
-	// row (spec 2026-09-25-34) and makes it due at `at`: capture_requested_at,
-	// scheduled_at and effective_scheduled_at are all set to `at`. The claim
+	// row (spec 2026-09-25-34) and makes it due at requestedAt:
+	// capture_requested_at, scheduled_at and effective_scheduled_at are all set
+	// to it. The claim
 	// that picks the row up consumes the request. sql.ErrNoRows when the job
 	// is gone.
-	RequestCheckCapture(ctx context.Context, jobUID string, at time.Time) error
+	RequestCheckCapture(ctx context.Context, jobUID string, requestedAt time.Time) error
 
 	// Label operations
 	GetOrCreateLabel(ctx context.Context, orgUID, key, value string) (*models.Label, error)
