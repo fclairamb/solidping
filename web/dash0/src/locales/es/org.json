@@ -1,7 +1,7 @@
 {
   "layout": {
     "title": "Organización",
-    "subtitle": "Gestione los ajustes y miembros de la organización"
+    "subtitle": "Gestiona los ajustes y miembros de la organización"
   },
   "settings": {
     "title": "Ajustes de la organización",
@@ -12,8 +12,8 @@
       "slug": "Slug de URL",
       "renameWarning": "Todas las URL de esta organización cambian: enlaces del panel, páginas de estado, insignias SVG y widgets integrados. Los enlaces existentes siguen funcionando: la dirección antigua redirige a la nueva, pero solo hasta que otra organización la reclame.",
       "logo": "Logotipo",
-      "logoHelp": "Pegue la URL de una imagen o suba un PNG, JPEG, WebP, GIF o SVG de hasta 1 MB.",
-      "logoHelpUploaded": "Este logotipo se subió como archivo. Suba un archivo nuevo para reemplazarlo, o cambie a una URL externa.",
+      "logoHelp": "Pega la URL de una imagen o sube un PNG, JPEG, WebP, GIF o SVG de hasta 1 MB.",
+      "logoHelpUploaded": "Este logotipo se subió como archivo. Sube un archivo nuevo para reemplazarlo, o cambia a una URL externa.",
       "logoUploaded": "Logotipo actualizado.",
       "uploadedBadge": "Archivo subido",
       "useExternalUrl": "Usar una URL externa en su lugar",
@@ -26,14 +26,14 @@
     "autoJoinFullDescription": "Los usuarios cuyo correo coincida con este patrón se unirán automáticamente a esta organización al registrarse o iniciar sesión vía OAuth.",
     "emailPattern": "Patrón de correo (regex)",
     "emailPlaceholder": "@example\\.com$",
-    "autoJoinHelp": "Deje vacío para desactivar la adhesión automática. Ejemplo: <code>@example\\.com$</code> coincide con todos los correos @example.com. Los proveedores de correo gratuito (Gmail, Outlook, etc.) y los patrones demasiado amplios se rechazan.",
+    "autoJoinHelp": "Déjalo vacío para desactivar la adhesión automática. Ejemplo: <code>@example\\.com$</code> coincide con todos los correos @example.com. Los proveedores de correo gratuito (Gmail, Outlook, etc.) y los patrones demasiado amplios se rechazan.",
     "testAgainstEmail": "Probar con un correo",
     "testMatch": "✓ coincide con el patrón",
     "testNoMatch": "✗ no coincide con el patrón",
     "saved": "Ajustes guardados.",
     "unexpectedError": "Se ha producido un error inesperado",
     "sessionDuration": "Duración de la sesión",
-    "sessionDurationFullDescription": "Establezca un límite estricto para la duración de una sesión de inicio de sesión, independientemente de la actividad. Déjelo vacío para usar el valor predeterminado de la plataforma (sin límite salvo que se establezca uno global).",
+    "sessionDurationFullDescription": "Establece un límite estricto para la duración de una sesión de inicio de sesión, independientemente de la actividad. Déjalo vacío para usar el valor predeterminado de la plataforma (sin límite salvo que se establezca uno global).",
     "sessionDurationHoursLabel": "Duración máxima de la sesión (horas)",
     "sessionDurationPlaceholder": "Ilimitada",
     "sessionDurationHelp": "Una vez establecida, la sesión expira forzosamente tras este número de horas desde el inicio de sesión, incluso si el usuario permanece activo, independientemente del tiempo de inactividad de 7 días.",
@@ -44,7 +44,7 @@
       "deleteButton": "Eliminar organización",
       "confirmTitle": "¿Eliminar esta organización?",
       "confirmBody": "Esto elimina {{org}} de forma permanente: todas las comprobaciones se detienen, sus páginas de estado y distintivos dejan de responder, y todos pierden el acceso. Esto no se puede deshacer.",
-      "confirmInputLabel": "Escriba {{org}} para confirmar",
+      "confirmInputLabel": "Escribe {{org}} para confirmar",
       "confirmAction": "Eliminar organización",
       "deleted": "Organización {{org}} eliminada"
     },
@@ -55,14 +55,14 @@
       "help": "Se aplica a todos los checks configurados como «heredar». Solo los fallos de alcanzabilidad activan una captura: tiempos de conexión agotados, rechazos, pérdida ICMP, handshakes TLS colgados. Un HTTP 5xx, una palabra clave ausente o un certificado por caducar nunca lo hacen, porque el servidor respondió. Los trazados se ejecutan después de que el resultado fallido ya se haya reportado y están limitados por organización: nunca retrasan una incidencia ni inundan un apagón masivo."
     },
     "defaultEscalation": "Política de escalada predeterminada",
-    "defaultEscalationDescription": "Se aplica a los checks que no resuelven a ninguna política propia (check → grupo → predeterminado de la organización → ninguna). Déjelo sin definir para no tener respaldo a nivel de organización.",
+    "defaultEscalationDescription": "Se aplica a los checks que no resuelven a ninguna política propia (check → grupo → predeterminado de la organización → ninguna). Déjalo sin definir para no tener respaldo a nivel de organización.",
     "defaultEscalationNone": "Ninguna (sin respaldo)",
     "embed": {
       "title": "Inserción de páginas de estado",
-      "description": "De forma predeterminada, una página de estado solo puede mostrarse en un marco dentro del propio SolidPing (la vista previa de la apariencia). Indique los sitios autorizados a insertar las páginas de estado de esta organización en un iframe, como una intranet o una pantalla mural.",
+      "description": "De forma predeterminada, una página de estado solo puede mostrarse en un marco dentro del propio SolidPing (la vista previa de la apariencia). Indica los sitios autorizados a insertar las páginas de estado de esta organización en un iframe, como una intranet o una pantalla mural.",
       "label": "Orígenes autorizados",
       "placeholder": "https://intranet.acme.com\nhttps://*.acme.com",
-      "help": "Un origen por línea: un esquema y un host, opcionalmente con un puerto o una primera etiqueta *. Sin rutas. Se envía como frame-ancestors en la Content-Security-Policy de la página; se aplica en menos de un minuto. Déjelo vacío para bloquear cualquier otro sitio."
+      "help": "Un origen por línea: un esquema y un host, opcionalmente con un puerto o una primera etiqueta *. Sin rutas. Se envía como frame-ancestors en la Content-Security-Policy de la página; se aplica en menos de un minuto. Déjalo vacío para bloquear cualquier otro sitio."
     },
     "defaultEscalationBlastRadius_one": "{{count}} comprobación hereda actualmente la política predeterminada y empezará a usar esta.",
     "defaultEscalationBlastRadius_other": "{{count}} comprobaciones heredan actualmente la política predeterminada y empezarán a usar esta."
@@ -167,7 +167,7 @@
   },
   "invitations": {
     "title": "Invitaciones",
-    "subtitle": "Gestione las invitaciones de la organización.",
+    "subtitle": "Gestiona las invitaciones de la organización.",
     "inviteUser": "Invitar usuario",
     "email": "Dirección de correo",
     "role": "Rol",
@@ -178,7 +178,7 @@
     "sent": "Invitación enviada",
     "invite": "Invitar",
     "inviteMember": "Invitar a un miembro",
-    "sendDescription": "Envíe una invitación para unirse a esta organización",
+    "sendDescription": "Envía una invitación para unirse a esta organización",
     "invitationCreated": "Invitación creada. Comparta este enlace:",
     "emailSentTo": "Se ha enviado un correo de invitación a {{email}}.",
     "shareLinkFallback": "O comparta este enlace directamente:",
@@ -194,7 +194,7 @@
   },
   "members": {
     "title": "Miembros",
-    "subtitle": "Gestione quién tiene acceso a esta organización.",
+    "subtitle": "Gestiona quién tiene acceso a esta organización.",
     "column": {
       "member": "Miembro",
       "email": "Correo",
@@ -209,8 +209,8 @@
       "user": "Usuario",
       "viewer": "Lector"
     },
-    "empty": "Aún no hay miembros — invite a su primer compañero.",
-    "cannotEditSelf": "Use los ajustes de su perfil para cambiar su propia membresía.",
+    "empty": "Aún no hay miembros — invita a tu primer compañero.",
+    "cannotEditSelf": "Usa los ajustes de tu perfil para cambiar tu propia membresía.",
     "remove": "Eliminar",
     "removeConfirm": {
       "title": "Eliminar miembro",
@@ -293,17 +293,17 @@
         "description": "Un token de un solo uso con prefijo spe_ que permite a exactamente un agente inscribirse en esta ubicación.",
         "explain": "El token se muestra exactamente una vez — el servidor solo almacena su hash — y caduca por defecto a las 24 horas.",
         "mint": "Emitir token de inscripción",
-        "onceTitle": "Cópielo ahora — no volverá a verlo",
+        "onceTitle": "Cópialo ahora — no volverás a verlo",
         "onceDescription": "Este token caduca {{expiry}} y permite inscribir exactamente un agente. Si lo pierde, emita uno nuevo.",
         "continue": "Continuar"
       },
       "title": "Inscribir un agente",
-      "subtitle": "Una guía paso a paso para inscribir un agente privado en una de sus ubicaciones privadas.",
+      "subtitle": "Una guía paso a paso para inscribir un agente privado en una de tus ubicaciones privadas.",
       "back": "Atrás",
       "changeLocation": "Cambiar",
       "step1": {
         "title": "1. Elegir o crear una ubicación",
-        "description": "El agente se inscribe en una ubicación privada de la organización. Elija una existente o cree una nueva a continuación.",
+        "description": "El agente se inscribe en una ubicación privada de la organización. Elige una existente o crea una nueva a continuación.",
         "agentCount": "{{count}} agentes",
         "empty": "Aún no hay ubicaciones privadas — cree una a continuación para empezar.",
         "createTitle": "O crear una nueva ubicación",
@@ -312,10 +312,10 @@
       "step3": {
         "title": "3. Ejecutar el agente",
         "description": "El agente es el contenedor estándar de SolidPing en modo agente — sin binario aparte, sin base de datos.",
-        "gotchasTitle": "Dos cosas que debe saber",
+        "gotchasTitle": "Dos cosas que debes saber",
         "gotcha1": "El token es de un solo uso: permite inscribir exactamente un agente y luego se consume.",
         "gotcha2": "El agente persiste su identidad en /data/agent-keys.json (SP_AGENT_KEYS_FILE) — ese volumen debe sobrevivir a los reinicios, o el agente se inscribirá de nuevo con una nueva identidad.",
-        "k8sNote": "Esta primera ejecución persiste la identidad en un PVC, igual que el volumen de docker run. Para una configuración sin volumen persistente, lea el valor del archivo que escribió el agente (kubectl exec deploy/solidping-agent -- base64 -w0 /data/agent-keys.json) y guárdelo como SP_AGENT_KEYS en un Secret. El agente nunca imprime sus claves privadas en los logs — vea el enlace a la documentación en la parte superior de esta tarjeta.",
+        "k8sNote": "Esta primera ejecución persiste la identidad en un PVC, igual que el volumen de docker run. Para una configuración sin volumen persistente, lee el valor del archivo que escribió el agente (kubectl exec deploy/solidping-agent -- base64 -w0 /data/agent-keys.json) y guárdalo como SP_AGENT_KEYS en un Secret. El agente nunca imprime sus claves privadas en los logs — consulta el enlace a la documentación en la parte superior de esta tarjeta.",
         "continue": "Continuar — he iniciado el agente"
       },
       "step4": {
@@ -334,9 +334,9 @@
     },
     "regions": {
       "title": "Ubicaciones privadas",
-      "description": "Regiones privadas de la organización, atendidas por agentes privados que usted ejecuta dentro de su propia red. Los agentes solo se conectan de forma saliente: no hay puertos entrantes.",
+      "description": "Regiones privadas de la organización, atendidas por agentes privados que ejecutas dentro de tu propia red. Los agentes solo se conectan de forma saliente: no hay puertos entrantes.",
       "registerAgent": "Inscribir un agente",
-      "emptyPrefix": "Aún no hay ubicaciones privadas. Siga la ",
+      "emptyPrefix": "Aún no hay ubicaciones privadas. Sigue la ",
       "emptyLinkText": "configuración guiada",
       "emptySuffix": ", o cree una manualmente a continuación.",
       "name": "Nombre",
@@ -364,12 +364,12 @@
     "cancel": "Cancelar",
     "token": {
       "title": "Token de inscripción",
-      "description": "Cópielo ahora — este token se muestra solo una vez y caduca en 24 horas. Permite inscribir exactamente un agente.",
-      "run": "Ejecute el agente con:"
+      "description": "Cópialo ahora — este token se muestra solo una vez y caduca en 24 horas. Permite inscribir exactamente un agente.",
+      "run": "Ejecuta el agente con:"
     },
     "agents": {
       "title": "Agentes",
-      "description": "Agentes inscritos y su estado. Revocar un agente corta su acceso de inmediato; rote cualquier credencial que pudiera descifrar.",
+      "description": "Agentes inscritos y su estado. Revocar un agente corta su acceso de inmediato; rota cualquier credencial que pudiera descifrar.",
       "empty": "Aún no hay agentes inscritos. Emita un token de inscripción arriba y arranque un agente con él.",
       "name": "Nombre",
       "region": "Región",
@@ -384,7 +384,7 @@
       "removeTitle": "¿Eliminar este agente?",
       "revokeTitle": "¿Revocar este agente?",
       "removeDescription": "Este agente ya está revocado. Eliminarlo lo borra de la lista de inmediato, en lugar de esperar a la limpieza automática tras dos días.",
-      "revokeDescription": "El agente pierde el acceso de inmediato y deja de recibir checks. Ya ha visto las credenciales selladas para él — rótelas. Esto no se puede deshacer; inscriba un nuevo agente para reemplazarlo.",
+      "revokeDescription": "El agente pierde el acceso de inmediato y deja de recibir checks. Ya ha visto las credenciales selladas para él — rótalas. Esto no se puede deshacer; inscribe un nuevo agente para reemplazarlo.",
       "removeConfirm": "Eliminar",
       "revokeConfirm": "Revocar",
       "online": "En línea",

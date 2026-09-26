@@ -3,7 +3,7 @@
     "title": "Políticas de escalada",
     "subtitle": "Orquestación reutilizable de pasos de notificación con retrasos y cancelación al confirmar, posponer o resolver.",
     "create": "Nueva política",
-    "empty": "Cree una para empezar a avisar sobre incidencias.",
+    "empty": "Crea una para empezar a avisar sobre incidencias.",
     "repeats": "Repite {{count}}× cada {{duration}}",
     "editToSeeSteps": "Abrir para ver los pasos.",
     "searchPlaceholder": "Buscar por nombre…",
