@@ -34,14 +34,14 @@ func TestValidateEmbedOriginRejects(t *testing.T) {
 		"",
 		"*",
 		"https://*",
-		"https://*.com",            // wildcard over a TLD
-		"https://a.*.acme.com",     // wildcard not in first label
-		"acme.com",                 // no scheme
-		"ftp://acme.com",           // not http(s)
-		"https://acme.com/embed",   // path
-		"https://acme.com?x=1",     // query
-		"https://acme.com#x",       // fragment
-		"https://user@acme.com",    // userinfo
+		"https://*.com",          // wildcard over a TLD
+		"https://a.*.acme.com",   // wildcard not in first label
+		"acme.com",               // no scheme
+		"ftp://acme.com",         // not http(s)
+		"https://acme.com/embed", // path
+		"https://acme.com?x=1",   // query
+		"https://acme.com#x",     // fragment
+		"https://user@acme.com",  // userinfo
 		"https://acme.com; script-src *",
 		"https://acme.com https://evil.example",
 		"https://acme.com,https://evil.example",
