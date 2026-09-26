@@ -27,6 +27,10 @@
 --                              user_tokens.token_hash replaces the plaintext
 --                              user_tokens.token (the rows are hashed, and the
 --                              old column dropped, in Go: see the section)
+--   SECTION: check-screenshots
+--                              the per-check screenshot listing's index, a
+--                              checkUid backfill on incident screenshots, and
+--                              check_jobs.capture_requested_at ("Capture now")
 --
 -- ⚠️ A DEV DATABASE THAT ALREADY RAN AN EARLIER DRAFT OF THIS FILE MUST BE
 -- RESET, NEVER REPAIRED. bun keys an applied migration on its numeric prefix
@@ -463,3 +467,47 @@ create unique index if not exists user_tokens_token_hash_idx on user_tokens (tok
 
 comment on column user_tokens.token_hash is
   'Lowercase hex SHA-256 of the token value. The value itself is never stored (spec 2026-09-25-23).';
+
+--bun:split
+
+-- ==========================================================================
+-- SECTION: check-screenshots  (spec 2026-09-25-34)
+--
+-- The check page lists a check's latest screenshots: the ones its incidents
+-- carry (`incidents/<uid>/screenshot`) and the check-scoped ones kept from runs
+-- that opened no incident or were taken on demand (`checks/<uid>/screenshot`,
+-- last 5 per check). Both kinds carry the check in details->>'checkUid', so
+-- one partial expression index answers "newest N of this check" without
+-- touching any other file of the org. Same predicate as files_org_topic_idx:
+-- live attachments only.
+-- ==========================================================================
+
+create index if not exists files_org_check_uid_idx
+  on files (organization_uid, (details->>'checkUid'), created_at desc)
+  where deleted_at is null and topic is not null;
+
+--bun:split
+
+-- Incident screenshots uploaded by a deported agent were stored with no
+-- checkUid in their details bag (the upload endpoint only knew the topic), so
+-- the listing above would never find them. The upload now stamps it from the
+-- incident row; this backfills the rows written before that.
+update files f
+   set details = coalesce(f.details, '{}'::jsonb) || jsonb_build_object('checkUid', i.check_uid::text)
+  from incidents i
+ where f.topic = 'incidents/' || i.uid::text || '/screenshot'
+   and f.deleted_at is null
+   and (f.details is null or f.details->>'checkUid' is null);
+
+--bun:split
+
+-- "Capture now": a pending on-demand capture request on ONE of the check's
+-- job rows. Set by the API (which also pulls scheduled_at to now), cleared by
+-- the claim that picks the job up — the claimed row keeps the value in memory,
+-- which is what makes the worker force the capture. NULL is the norm.
+alter table check_jobs add column if not exists capture_requested_at timestamptz;
+
+--bun:split
+
+comment on column check_jobs.capture_requested_at is
+  'Pending on-demand screenshot request ("Capture now", spec 2026-09-25-34); cleared by the claim that runs it.';

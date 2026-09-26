@@ -57,6 +57,10 @@ type FileStorage interface {
 	ReadFile(ctx context.Context, orgUID uuid.UUID, group GroupType, fileID string) (
 		io.ReadCloser, *FileMetadata, error)
 	ParseURI(uri string) (orgUID uuid.UUID, group GroupType, fileID string, err error)
+	// DeleteFile removes the blob. A blob that is already gone is NOT an
+	// error: the only caller is a retention prune (spec 2026-09-25-34), which
+	// may race another prune of the same row.
+	DeleteFile(ctx context.Context, orgUID uuid.UUID, group GroupType, fileID string) error
 }
 
 // Errors returned by storage backends and the factory.

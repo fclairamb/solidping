@@ -59,10 +59,11 @@ type Handler struct {
 }
 
 // NewHandler builds the agent attachment upload handler with the default
-// authorizer set (today: incidents).
+// authorizer set: incidents, and checks (spec 2026-09-25-34).
 func NewHandler(svc *Service, dbService db.Service, cfg *config.Config) *Handler {
 	registry := NewAuthorizerRegistry()
 	registry.Register(EntityIncidents, NewIncidentAuthorizer(dbService))
+	registry.Register(EntityChecks, NewCheckAuthorizer(dbService))
 
 	return &Handler{
 		HandlerBase: base.NewHandlerBase(cfg),
@@ -107,14 +108,19 @@ func (h *Handler) Upload(writer http.ResponseWriter, req *http.Request) error {
 			"Invalid agent signature")
 	}
 
-	if !h.limiter.allow(agent.UID, time.Now()) {
-		return h.WriteError(writer, http.StatusTooManyRequests, base.ErrorCodeValidationError,
-			"Too many attachment uploads from this agent")
-	}
-
 	topic, err := ParseTopic(req.URL.Query().Get("topic"))
 	if err != nil {
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error())
+	}
+
+	// The budget is per (agent, topic ENTITY), not per agent (spec
+	// 2026-09-25-34): check-scoped captures are uploaded for failing runs that
+	// open no incident, which can be every run of an outage, and they must
+	// never be able to spend the budget an incident's onset upload needs.
+	// Parsing the topic first is free (no I/O) and fails closed.
+	if !h.limiter.allow(agent.UID+"|"+topic.Entity, time.Now()) {
+		return h.WriteError(writer, http.StatusTooManyRequests, base.ErrorCodeValidationError,
+			"Too many attachment uploads from this agent")
 	}
 
 	orgUID, err := h.authorizer.Authorize(req.Context(), topic, UploaderIdentity{
@@ -162,12 +168,39 @@ func (h *Handler) Upload(writer http.ResponseWriter, req *http.Request) error {
 		details[DetailKeyRegion] = agent.Region
 	}
 
+	// The check the artifact belongs to, from the SERVER's data — the topic
+	// for a check-scoped upload, the incident row otherwise. The per-check
+	// screenshot listing (spec 2026-09-25-34) is keyed on it, and agent
+	// uploads used to carry none, so they never showed up on the check page.
+	if checkUID := h.checkUIDForTopic(req, orgUID, topic); checkUID != "" {
+		details[DetailKeyCheckUID] = checkUID
+	}
+
 	fileUID, err := h.svc.Put(req.Context(), orgUID, rawTopic(topic), attachmentName(topic), body, details)
 	if err != nil {
 		return h.writePutError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusCreated, UploadResponse{FileUID: fileUID})
+}
+
+// checkUIDForTopic names the check an authorized topic belongs to, or "" when
+// it cannot be resolved (the upload still proceeds: the listing merely misses
+// it, which is what happened to every agent upload before).
+func (h *Handler) checkUIDForTopic(req *http.Request, orgUID string, topic ParsedTopic) string {
+	switch topic.Entity {
+	case EntityChecks:
+		return topic.EntityUID
+	case EntityIncidents:
+		incident, err := h.dbService.GetIncident(req.Context(), orgUID, topic.EntityUID)
+		if err != nil || incident == nil {
+			return ""
+		}
+
+		return incident.CheckUID
+	default:
+		return ""
+	}
 }
 
 // writePutError maps the service's refusals to statuses. Everything unmapped is

@@ -1652,6 +1652,20 @@ func (m *mockDBService) GetIncidentAny(_ context.Context, _ string) (*models.Inc
 	return &models.Incident{}, nil
 }
 
+func (m *mockDBService) GetCheckAny(_ context.Context, _ string) (*models.Check, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListCheckScreenshotFiles(
+	_ context.Context, _, _ string, _ int,
+) ([]*models.File, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) RequestCheckCapture(_ context.Context, _ string, _ time.Time) error {
+	panic("not implemented")
+}
+
 func (m *mockDBService) DeleteFile(_ context.Context, _, _ string) error {
 	panic("not implemented")
 }

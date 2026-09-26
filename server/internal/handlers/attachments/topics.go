@@ -20,6 +20,10 @@ import (
 const (
 	// EntityIncidents is the entity segment for incident attachments.
 	EntityIncidents = "incidents"
+	// EntityChecks is the entity segment for check-scoped attachments: the
+	// screenshots of runs that opened no incident, and "Capture now" captures
+	// (spec 2026-09-25-34).
+	EntityChecks = "checks"
 	// KindScreenshot is the kind segment for a page capture.
 	KindScreenshot = "screenshot"
 	// KindTraceroute is the kind segment for an MTR-style path capture taken
@@ -62,6 +66,32 @@ func IncidentScreenshotTopic(incidentUID string) string {
 // stored under.
 func IncidentTracerouteTopic(incidentUID string) string {
 	return IncidentTopicPrefix(incidentUID) + KindTraceroute
+}
+
+// MaxCheckScreenshots is how many check-scoped screenshots a check keeps
+// (spec 2026-09-25-34). Unlike every incident topic, `checks/<uid>/screenshot`
+// is not replace-on-write: it keeps the last five and a sixth write retires
+// the oldest, so the storage bound is 5 × MaxAttachmentBytes per check.
+const MaxCheckScreenshots = 5
+
+// CheckTopicPrefix returns the reap prefix for one check: `checks/<uid>/`.
+// Trailing slash load-bearing, exactly like IncidentTopicPrefix.
+func CheckTopicPrefix(checkUID string) string {
+	return EntityChecks + "/" + checkUID + "/"
+}
+
+// CheckScreenshotTopic returns the exact topic a check-scoped screenshot is
+// stored under.
+func CheckScreenshotTopic(checkUID string) string {
+	return CheckTopicPrefix(checkUID) + KindScreenshot
+}
+
+// isCheckScreenshotTopic reports whether topic is a check-scoped screenshot,
+// the one topic whose writes append and prune instead of replacing.
+func isCheckScreenshotTopic(topic string) bool {
+	parsed, err := ParseTopic(topic)
+
+	return err == nil && parsed.Entity == EntityChecks && parsed.Kind == KindScreenshot
 }
 
 // ParsedTopic is a topic split into its three segments.

@@ -1152,6 +1152,12 @@ func (r *CheckWorker) executeJob(
 
 	execCtx = applySMTPDeliveryContext(execCtx, checkJob)
 
+	// "Capture now" (spec 2026-09-25-34): the claim consumed a pending
+	// on-demand request, so this run keeps its screenshot whatever the verdict.
+	if checkJob.CaptureRequestedAt != nil {
+		execCtx = checkerdef.WithForcedCapture(execCtx)
+	}
+
 	execStart := time.Now()
 	result, err := r.runCheckerGuarded(execCtx, logger, checker, checkConfig, checkJob, checkTimeout, startTime)
 	prommetrics.RecordCheckStage("execute", time.Since(execStart).Seconds())
@@ -1453,6 +1459,18 @@ func (r *CheckWorker) abandonCheckerExecution(
 	}, nil
 }
 
+// markOnDemandCapture stamps the capture of a "Capture now" run (spec
+// 2026-09-25-34) so the server stores it under the check even when the run was
+// healthy. The stamp rides the agent marker too (Screenshot.OnDemand is
+// serialized), so a deported agent's upload is routed the same way.
+func markOnDemandCapture(checkJob *models.CheckJob, diagnostics *checkerdef.Diagnostics) {
+	if checkJob.CaptureRequestedAt == nil || diagnostics == nil || diagnostics.Screenshot == nil {
+		return
+	}
+
+	diagnostics.Screenshot.OnDemand = true
+}
+
 // buildSubmitRequest assembles the terminal backend write for an
 // actively-probed check: the result row fields plus the scheduling-state
 // release folding the new cost and delay EWMAs, the recomputed
@@ -1480,6 +1498,8 @@ func (r *CheckWorker) buildSubmitRequest(
 		ExecStart:            &execStart,
 		NextScheduledAt:      nextScheduledAt,
 	})
+
+	markOnDemandCapture(checkJob, result.Diagnostics)
 
 	return &backend.SubmitResultRequest{
 		Status:          int(result.Status),

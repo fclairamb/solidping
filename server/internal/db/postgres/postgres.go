@@ -2277,6 +2277,33 @@ func (s *Service) PurgeCheck(ctx context.Context, uid string) error {
 
 // CheckJob operations
 
+// RequestCheckCapture records a pending "Capture now" request on one job row
+// and makes it due at `at` (spec 2026-09-25-34).
+func (s *Service) RequestCheckCapture(ctx context.Context, jobUID string, at time.Time) error {
+	res, err := s.db.NewUpdate().
+		Model((*models.CheckJob)(nil)).
+		Set("capture_requested_at = ?", at).
+		Set("scheduled_at = ?", at).
+		Set("effective_scheduled_at = ?", at).
+		Set("updated_at = ?", at).
+		Where("uid = ?", jobUID).
+		Exec(ctx)
+	if err != nil {
+		return err
+	}
+
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rows == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
+}
+
 func (s *Service) ListCheckJobsByCheckUID(ctx context.Context, checkUID string) ([]*models.CheckJob, error) {
 	var jobs []*models.CheckJob
 
@@ -7537,6 +7564,63 @@ func (s *Service) ListAttachmentsByTopicPrefix(
 	}
 
 	return files, nil
+}
+
+// GetCheckAny retrieves a live check by UID without org scoping. Used by the
+// `checks/<uid>/…` attachment authorizer, which derives the organization FROM
+// the check rather than trusting the caller for it.
+func (s *Service) GetCheckAny(ctx context.Context, uid string) (*models.Check, error) {
+	check := new(models.Check)
+
+	err := s.db.NewSelect().
+		Model(check).
+		Where("uid = ?", uid).
+		Where("deleted_at IS NULL").
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return check, nil
+}
+
+// ListCheckScreenshotFiles returns a check's live screenshots (incident and
+// check-scoped), newest first, capped at limit.
+func (s *Service) ListCheckScreenshotFiles(
+	ctx context.Context, orgUID, checkUID string, limit int,
+) ([]*models.File, error) {
+	var files []*models.File
+
+	if err := s.checkScreenshotFilesQuery(&files, orgUID, checkUID, limit).Scan(ctx); err != nil {
+		return nil, err
+	}
+
+	return files, nil
+}
+
+// checkScreenshotFilesQuery is ListCheckScreenshotFiles' SELECT, split out so
+// the plan test EXPLAINs the exact statement production runs.
+func (s *Service) checkScreenshotFilesQuery(
+	dest *[]*models.File, orgUID, checkUID string, limit int,
+) *bun.SelectQuery {
+	query := s.db.NewSelect().
+		Model(dest).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Where("topic IS NOT NULL").
+		Where("details->>'checkUid' = ?", checkUID).
+		WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
+			return q.
+				WhereOr("topic LIKE ?", "incidents/%/screenshot").
+				WhereOr("topic = ?", "checks/"+checkUID+"/screenshot")
+		}).
+		Order("created_at DESC")
+
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+
+	return query
 }
 
 // GetIncidentAny retrieves an incident by UID without org scoping. Used by the

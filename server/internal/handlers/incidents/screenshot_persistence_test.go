@@ -20,8 +20,11 @@ import (
 type fakeAttachmentStore struct {
 	mu sync.Mutex
 
-	puts    []fakePut
-	deletes []string
+	puts []fakePut
+	// checkPuts records every check-scoped write (spec 2026-09-25-34), apart
+	// from `puts` so the incident assertions keep meaning "incident evidence".
+	checkPuts []fakeCheckPut
+	deletes   []string
 	// kindDeletes records every per-kind reap as "<incidentUid>/<kind>".
 	kindDeletes []string
 	// failPut makes the store report an error, to prove the pipeline survives
@@ -48,6 +51,34 @@ func (f *fakeAttachmentStore) PutIncidentScreenshot(
 	f.puts = append(f.puts, fakePut{incidentUID: incidentUID, image: image, details: details})
 
 	return "file-" + incidentUID, nil
+}
+
+type fakeCheckPut struct {
+	checkUID string
+	image    []byte
+	details  models.JSONMap
+}
+
+func (f *fakeAttachmentStore) PutCheckScreenshot(
+	_ context.Context, _, checkUID string, image []byte, details models.JSONMap,
+) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	if f.failPut != nil {
+		return "", f.failPut
+	}
+
+	f.checkPuts = append(f.checkPuts, fakeCheckPut{checkUID: checkUID, image: image, details: details})
+
+	return "check-file-" + checkUID, nil
+}
+
+func (f *fakeAttachmentStore) checkSnapshot() []fakeCheckPut {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return append([]fakeCheckPut(nil), f.checkPuts...)
 }
 
 func (f *fakeAttachmentStore) DeleteIncidentAttachments(
@@ -140,8 +171,10 @@ func TestCreateIncidentPersistsScreenshot(t *testing.T) {
 	r.NotEmpty(puts[0].details[attachments.DetailKeyCapturedAt])
 }
 
-// TestScreenshotOnlyPersistedOnTransitions is the negative the storage math
-// depends on: a failing run that opens nothing must persist nothing.
+// TestScreenshotOnlyPersistedOnTransitions is the negative the incident storage
+// math depends on: a failing run that opens nothing must persist nothing ON AN
+// INCIDENT. Since spec 2026-09-25-34 it is kept under the check instead, which
+// this test pins too.
 //
 // Driven through the real ProcessCheckResult with a confirmation period long
 // enough that the first failures cannot open an incident, then relaxed so the
@@ -165,7 +198,8 @@ func TestScreenshotOnlyPersistedOnTransitions(t *testing.T) {
 	}
 
 	puts, _ := store.snapshot()
-	r.Empty(puts, "a failing run that opens no incident must drop its capture on the floor")
+	r.Empty(puts, "a failing run that opens no incident must not write incident evidence")
+	r.Len(store.checkSnapshot(), 5, "each of those captures is kept under the check")
 
 	// Positive control: with the threshold satisfied the very same result shape
 	// DOES get persisted, so the assertion above is about the transition rule
@@ -177,6 +211,7 @@ func TestScreenshotOnlyPersistedOnTransitions(t *testing.T) {
 	puts, _ = store.snapshot()
 	r.Len(puts, 1)
 	r.Equal(screenshotImage("transition"), puts[0].image)
+	r.Len(store.checkSnapshot(), 5, "the capture that opened the incident is not ALSO kept under the check")
 }
 
 // TestReopenReplacesScreenshot pins the reopen rule: the relapse's capture

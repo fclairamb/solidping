@@ -3,6 +3,21 @@
 -- 024_v0_33_0.up.sql.
 
 -- ==========================================================================
+-- SECTION: check-screenshots
+--
+-- The index and the capture-request column go; the checkUid backfill stays
+-- (an ignored extra key in a free-form bag).
+-- ==========================================================================
+
+alter table check_jobs drop column capture_requested_at;
+
+--bun:split
+
+drop index if exists files_org_check_uid_idx;
+
+--bun:split
+
+-- ==========================================================================
 -- SECTION: hash-user-tokens
 --
 -- ⚠️ A DOWNGRADE SIGNS EVERYONE OUT. The stored hashes cannot be turned back

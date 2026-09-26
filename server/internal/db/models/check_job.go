@@ -73,6 +73,13 @@ type CheckJob struct {
 	// fast_lane_reserved slots on a worker. Added by migration 009.
 	Lane uint8 `bun:"lane,notnull"`
 
+	// CaptureRequestedAt is a pending on-demand screenshot request ("Capture
+	// now", spec 2026-09-25-34). The API sets it on ONE of the check's job rows
+	// and pulls scheduled_at to now; the claim that picks the row up clears the
+	// column in the same transaction while the claimed struct keeps the value,
+	// which is what tells the worker to force the capture. Nil is the norm.
+	CaptureRequestedAt *time.Time `bun:"capture_requested_at"`
+
 	// ParamOverlay carries the ${param:…} values resolved at the claim /
 	// dispatch boundary (checkjobsvc.ParamOverlay). Transient: never persisted
 	// (bun:"-"), and deliberately kept OUT of Config until the worker is about

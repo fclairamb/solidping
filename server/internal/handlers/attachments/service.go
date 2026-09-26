@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"slices"
 	"time"
 
@@ -119,6 +120,13 @@ const (
 	// TriggerAgentUpload marks an artifact that arrived through the agent
 	// upload endpoint rather than being written in-process.
 	TriggerAgentUpload = "agent-upload"
+	// TriggerCheckFailure marks a check-scoped capture of a failing run that
+	// neither opened nor reopened an incident (spec 2026-09-25-34): a
+	// validating run, a blip, a regional failure, a run of an outage whose
+	// incident already holds its onset capture.
+	TriggerCheckFailure = "check-failure"
+	// TriggerCaptureNow marks the capture of an on-demand run ("Capture now").
+	TriggerCaptureNow = "capture-now"
 )
 
 // Errors returned by the service.
@@ -131,6 +139,10 @@ var (
 	// ErrEmptyAttachment means the body carried no bytes.
 	ErrEmptyAttachment = errors.New("attachment is empty")
 )
+
+// errNoFiles is returned by the check-scoped prune when the service was built
+// without a files service (never in production).
+var errNoFiles = errors.New("attachment service has no files service")
 
 // Service owns the attachment half of the files layer: writing an attachment
 // under a topic, reaping by prefix, and rendering one for the API with a signed
@@ -173,6 +185,77 @@ type Response struct {
 	Region     string     `json:"region,omitempty"`
 	CheckUID   string     `json:"checkUid,omitempty"`
 	Trigger    string     `json:"trigger,omitempty"`
+}
+
+// CheckScreenshot is one entry of a check's screenshot listing (spec
+// 2026-09-25-34): an incident's capture or a check-scoped one.
+//
+// NEVER PUBLIC, for exactly the reasons Response is not: operator-only
+// evidence, served with a short-lived signed URL.
+type CheckScreenshot struct {
+	UID      string `json:"uid"`
+	MimeType string `json:"mimeType"`
+	Size     int64  `json:"size"`
+	// DownloadURL is the same relative signed `/pub/files/<uid>?exp=…&sig=…`
+	// URL an incident's attachment carries.
+	DownloadURL string `json:"downloadUrl"`
+	// CapturedAt is when the probe took the capture, or — for an agent
+	// upload, which carries no capture time — when the server stored it.
+	CapturedAt time.Time `json:"capturedAt"`
+	Region     string    `json:"region,omitempty"`
+	Trigger    string    `json:"trigger,omitempty"`
+	// IncidentUID names the incident the capture is attached to, taken from
+	// the topic. Absent for a check-scoped capture.
+	IncidentUID string `json:"incidentUid,omitempty"`
+}
+
+// ListCheckScreenshots returns a check's latest screenshots, newest first,
+// with signed download URLs. Empty (never an error) when there are none.
+func (s *Service) ListCheckScreenshots(
+	ctx context.Context, orgUID, checkUID string, limit int,
+) ([]CheckScreenshot, error) {
+	rows, err := s.dbSvc.ListCheckScreenshotFiles(ctx, orgUID, checkUID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list check screenshots: %w", err)
+	}
+
+	out := make([]CheckScreenshot, 0, len(rows))
+
+	for _, row := range rows {
+		resp := s.toResponse(row)
+		shot := CheckScreenshot{
+			UID:         resp.UID,
+			MimeType:    resp.MimeType,
+			Size:        resp.Size,
+			DownloadURL: resp.DownloadURL,
+			CapturedAt:  resp.CreatedAt,
+			Region:      resp.Region,
+			Trigger:     resp.Trigger,
+		}
+
+		if resp.CapturedAt != nil {
+			shot.CapturedAt = *resp.CapturedAt
+		}
+
+		if row.Topic != nil {
+			if parsed, parseErr := ParseTopic(*row.Topic); parseErr == nil && parsed.Entity == EntityIncidents {
+				shot.IncidentUID = parsed.EntityUID
+			}
+		}
+
+		out = append(out, shot)
+	}
+
+	return out, nil
+}
+
+// PutCheckScreenshot writes a check-scoped screenshot (spec 2026-09-25-34): the
+// capture of a failing run that opened no incident, or of a "Capture now" run.
+// It APPENDS and keeps the last MaxCheckScreenshots — see Put.
+func (s *Service) PutCheckScreenshot(
+	ctx context.Context, orgUID, checkUID string, image []byte, details models.JSONMap,
+) (string, error) {
+	return s.Put(ctx, orgUID, CheckScreenshotTopic(checkUID), "check-"+checkUID+"-screenshot", image, details)
 }
 
 // PutIncidentTraceroute writes a serialized nettrace.Capture as the incident's
@@ -269,14 +352,82 @@ func (s *Service) ListIncidentAttachments(
 // baseName carries NO extension: the stored filename gets the one matching the
 // SNIFFED media type, so the name a user downloads can never disagree with the
 // bytes inside it.
+//
+// ONE EXCEPTION: `checks/<uid>/screenshot` (spec 2026-09-25-34) names the
+// check's recent captures, not one current artifact. It appends, then prunes
+// to MaxCheckScreenshots — see appendCapped. Deciding it HERE rather than in
+// each caller is what makes the in-process path and the agent upload share
+// the cap.
 func (s *Service) Put(
 	ctx context.Context, orgUID, topic, baseName string, body []byte, details models.JSONMap,
 ) (string, error) {
+	if isCheckScreenshotTopic(topic) {
+		return s.appendCapped(ctx, orgUID, topic, baseName, body, details, MaxCheckScreenshots)
+	}
+
 	if _, err := s.files.DeleteAttachmentsByTopic(ctx, orgUID, topic); err != nil {
 		return "", err
 	}
 
 	return s.put(ctx, orgUID, topic, baseName, body, details)
+}
+
+// appendCapped writes one more attachment under topic, then retires every row
+// past the newest `keep` — the just-written one is always kept, whatever the
+// timestamps say.
+//
+// Retired rows are PURGED (row soft-deleted and blob removed), not merely
+// soft-deleted: this runs on every write past the cap, so leaving blobs for a
+// GC pass that does not exist would bound the rows and not the bill. The prune
+// is best-effort — the capture is already stored, and a failed prune is
+// corrected by the next write — so it logs rather than failing the write.
+func (s *Service) appendCapped(
+	ctx context.Context, orgUID, topic, baseName string, body []byte, details models.JSONMap, keep int,
+) (string, error) {
+	fileUID, err := s.put(ctx, orgUID, topic, baseName, body, details)
+	if err != nil {
+		return "", err
+	}
+
+	if err := s.pruneTopic(ctx, orgUID, topic, fileUID, keep); err != nil {
+		slog.WarnContext(ctx, "Failed to prune check-scoped attachments",
+			"topic", topic, "error", err)
+	}
+
+	return fileUID, nil
+}
+
+// pruneTopic purges every live attachment under topic past the newest `keep`,
+// never the one named by justWritten.
+func (s *Service) pruneTopic(ctx context.Context, orgUID, topic, justWritten string, keep int) error {
+	if s.files == nil {
+		return errNoFiles
+	}
+
+	rows, err := s.files.ListAttachments(ctx, orgUID, topic)
+	if err != nil {
+		return err
+	}
+
+	kept := 1 // justWritten
+
+	for _, row := range rows {
+		if row.UID == justWritten {
+			continue
+		}
+
+		if kept < keep {
+			kept++
+
+			continue
+		}
+
+		if purgeErr := s.files.PurgeFile(ctx, row); purgeErr != nil {
+			return purgeErr
+		}
+	}
+
+	return nil
 }
 
 func (s *Service) put(
@@ -499,6 +650,34 @@ func NewIncidentAuthorizer(dbSvc db.Service) TopicAuthorizer {
 		}
 
 		return incident.OrganizationUID, nil
+	})
+}
+
+// NewCheckAuthorizer builds the `checks/<uid>/…` topic authorizer (spec
+// 2026-09-25-34). The same chain of refusals as NewIncidentAuthorizer, one
+// step shorter because the topic names the check directly:
+//
+//  1. The check must exist (live). Its row names the organization.
+//  2. An ORG agent may only write to its own org's checks.
+//  3. The check must be served by the region this agent is bound to.
+func NewCheckAuthorizer(dbSvc db.Service) TopicAuthorizer {
+	return AuthorizerFunc(func(
+		ctx context.Context, topic ParsedTopic, who UploaderIdentity,
+	) (string, error) {
+		check, err := dbSvc.GetCheckAny(ctx, topic.EntityUID)
+		if err != nil || check == nil {
+			return "", fmt.Errorf("%w: unknown check", ErrTopicForbidden)
+		}
+
+		if who.AgentOrgUID != "" && who.AgentOrgUID != check.OrganizationUID {
+			return "", fmt.Errorf("%w: check belongs to another organization", ErrTopicForbidden)
+		}
+
+		if !regionServesCheck(who.AgentRegion, check.Regions) {
+			return "", fmt.Errorf("%w: this agent's region does not serve the check", ErrTopicForbidden)
+		}
+
+		return check.OrganizationUID, nil
 	})
 }
 

@@ -980,14 +980,25 @@ func (s *serviceImpl) updateSingleJobLease(
 	leaseExpiresAt := latest.Add(period + 30*time.Second)
 
 	// Update the job
-	result, err := tx.NewUpdate().
+	update := tx.NewUpdate().
 		Model((*models.CheckJob)(nil)).
 		Set("lease_worker_uid = ?", workerUID).
 		Set("lease_expires_at = ?", leaseExpiresAt).
 		Set("lease_starts = lease_starts + 1").
 		Set("updated_at = ?", now).
-		Where("uid = ?", job.UID).
-		Exec(ctx)
+		Where("uid = ?", job.UID)
+
+	// A pending "Capture now" request (spec 2026-09-25-34) is CONSUMED by this
+	// claim: the column is cleared in the same transaction as the lease, while
+	// `job` keeps the value it was selected with — that in-memory copy is what
+	// tells the worker to force the capture. Only touched when the selected row
+	// carried one, so a request that lands between the select and this update
+	// on an unflagged row survives for the next claim.
+	if job.CaptureRequestedAt != nil {
+		update = update.Set("capture_requested_at = NULL")
+	}
+
+	result, err := update.Exec(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to update check job %s: %w", job.UID, err)
 	}
@@ -1030,17 +1041,18 @@ func (s *serviceImpl) ReleaseLease(
 	workerUID string,
 	nextScheduledAt time.Time,
 ) error {
+	now := time.Now()
 	update := s.db.NewUpdate().
 		Model((*models.CheckJob)(nil)).
 		Set("lease_worker_uid = NULL").
 		Set("lease_expires_at = NULL").
 		Set("lease_starts = 0"). // Reset since the attempt is over
-		Set("scheduled_at = ?", nextScheduledAt).
+		Set(pendingCaptureOr("scheduled_at"), nextScheduledAt).
 		// Re-anchor the ordering key to the new schedule so a released job does
 		// not keep an effective deadline from a stale (earlier) schedule. The
 		// cost offset is reapplied on the next post-exec write.
-		Set("effective_scheduled_at = ?", nextScheduledAt).
-		Set("updated_at = ?", time.Now()).
+		Set(pendingCaptureOr("effective_scheduled_at"), nextScheduledAt).
+		Set("updated_at = ?", now).
 		Where("uid = ?", jobUID).
 		Where("lease_worker_uid = ?", workerUID) // Safety: only release if we own the lease
 
@@ -1099,21 +1111,37 @@ func (s *serviceImpl) ReleaseLeaseWithSchedulingState(
 	effectiveScheduledAt time.Time,
 	lane uint8,
 ) error {
+	now := time.Now()
 	update := s.db.NewUpdate().
 		Model((*models.CheckJob)(nil)).
 		Set("lease_worker_uid = NULL").
 		Set("lease_expires_at = NULL").
 		Set("lease_starts = 0"). // Reset since job completed
-		Set("scheduled_at = ?", nextScheduledAt).
+		Set(pendingCaptureOr("scheduled_at"), nextScheduledAt).
 		Set("cost_ewma_ms = ?", costEWMAMs).
 		Set("delay_ewma_ms = ?", delayEWMAMs).
-		Set("effective_scheduled_at = ?", effectiveScheduledAt).
+		Set(pendingCaptureOr("effective_scheduled_at"), effectiveScheduledAt).
 		Set("lane = ?", lane).
-		Set("updated_at = ?", time.Now()).
+		Set("updated_at = ?", now).
 		Where("uid = ?", jobUID).
 		Where("lease_worker_uid = ?", workerUID) // Safety: only release if we own the lease
 
 	return s.execRelease(ctx, update)
+}
+
+// pendingCaptureOr builds a release `SET` for a schedule column that keeps a
+// pending "Capture now" request due (spec 2026-09-25-34). The request may have
+// landed while this job was leased — claim-ahead parks a lease up to 30 s
+// before the tick — and without this the release would push it a whole period
+// out. A pending request schedules the job AT THE REQUEST TIME, which is in the
+// past and therefore due at once. Binds one argument, the normal value.
+//
+// The ELSE branch reuses the column rather than binding "now" on purpose: two
+// bound literals would make Postgres resolve the CASE as text and refuse to
+// assign it to a timestamptz column, while the column gives the CASE its type
+// on both engines.
+func pendingCaptureOr(column string) string {
+	return column + " = CASE WHEN capture_requested_at IS NULL THEN ? ELSE capture_requested_at END"
 }
 
 // execRelease runs a release UPDATE and maps the no-rows case to

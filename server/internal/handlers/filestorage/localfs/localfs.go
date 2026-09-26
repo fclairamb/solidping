@@ -102,6 +102,19 @@ func (b *Backend) ReadFile(
 	return file, meta, nil
 }
 
+// DeleteFile removes Root/orgUID/group/fileID. A missing file is not an error.
+func (b *Backend) DeleteFile(
+	_ context.Context, orgUID uuid.UUID, group filestorage.GroupType, fileID string,
+) error {
+	full := filepath.Join(b.Root, filestorage.BuildPath(orgUID, group, fileID))
+
+	if err := os.Remove(full); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("remove file: %w", err)
+	}
+
+	return nil
+}
+
 // ParseURI splits "file://orgUID/group/fileID" back into its parts.
 func (b *Backend) ParseURI(uri string) (uuid.UUID, filestorage.GroupType, string, error) {
 	prefix, rest, err := filestorage.SchemeFromURI(uri)

@@ -432,6 +432,12 @@ type Service interface {
 	CreateCheckJob(ctx context.Context, job *models.CheckJob) error
 	// GetCheckJobByUID returns one check job by UID.
 	GetCheckJobByUID(ctx context.Context, uid string) (*models.CheckJob, error)
+	// RequestCheckCapture records a pending "Capture now" request on one job
+	// row (spec 2026-09-25-34) and makes it due at `at`: capture_requested_at,
+	// scheduled_at and effective_scheduled_at are all set to `at`. The claim
+	// that picks the row up consumes the request. sql.ErrNoRows when the job
+	// is gone.
+	RequestCheckCapture(ctx context.Context, jobUID string, at time.Time) error
 
 	// Label operations
 	GetOrCreateLabel(ctx context.Context, orgUID, key, value string) (*models.Label, error)
@@ -666,6 +672,10 @@ type Service interface {
 	// no org to scope by BY DESIGN: the incident row is what names the
 	// organization, so that a caller cannot pick one by forging a topic.
 	GetIncidentAny(ctx context.Context, uid string) (*models.Incident, error)
+	// GetCheckAny looks a live check up by UID with NO org scoping. Same single
+	// purpose as GetIncidentAny: the `checks/<uid>/…` attachment authorizer
+	// (spec 2026-09-25-34) derives the organization FROM the check row.
+	GetCheckAny(ctx context.Context, uid string) (*models.Check, error)
 	// GetIncidentByNumber resolves the short per-org `#42` reference — the form
 	// humans type into Telegram and read in Slack. Returns sql.ErrNoRows if none.
 	GetIncidentByNumber(ctx context.Context, orgUID string, number int64) (*models.Incident, error)
@@ -1330,6 +1340,13 @@ type Service interface {
 	ListAttachmentsByTopicPrefix(
 		ctx context.Context, prefix string, before time.Time, limit int,
 	) ([]*models.File, error)
+	// ListCheckScreenshotFiles returns a check's live screenshots, newest
+	// first, capped at limit (spec 2026-09-25-34): its incidents' captures
+	// (`incidents/<uid>/screenshot`) and its check-scoped ones
+	// (`checks/<uid>/screenshot`), both matched on details->>'checkUid' through
+	// the files_org_check_uid_idx partial expression index — never a scan of
+	// the org's files.
+	ListCheckScreenshotFiles(ctx context.Context, orgUID, checkUID string, limit int) ([]*models.File, error)
 	// SumFileSizeByGroup returns the total bytes of live (non-deleted) files
 	// for orgUID whose storage URI belongs to the given filestorage.GroupType
 	// (passed as a plain string — this package does not import filestorage).

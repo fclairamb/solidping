@@ -134,6 +134,12 @@ type AttachmentStore interface {
 	PutIncidentScreenshot(
 		ctx context.Context, orgUID, incidentUID string, image []byte, details models.JSONMap,
 	) (string, error)
+	// PutCheckScreenshot stores a check-scoped capture (spec 2026-09-25-34): a
+	// failing run that opened no incident, or a "Capture now" run. The store
+	// keeps the check's last five and retires the oldest.
+	PutCheckScreenshot(
+		ctx context.Context, orgUID, checkUID string, image []byte, details models.JSONMap,
+	) (string, error)
 	// DeleteIncidentAttachments soft-deletes everything attached to the
 	// incident and reports how many rows changed.
 	DeleteIncidentAttachments(ctx context.Context, orgUID, incidentUID string) (int, error)
@@ -462,6 +468,12 @@ func (s *Service) persistScreenshot(
 	}
 
 	shot := result.Diagnostics.Screenshot
+
+	// The capture is this incident's evidence from here on, whatever happens
+	// below: the check-scoped fallback (persistCheckScreenshot) must not store
+	// it a second time under the check.
+	shot.Attached = true
+
 	if len(shot.Image) == 0 {
 		// The agent path advertises a capture it holds rather than sending the
 		// bytes (see checkerdef.Screenshot). Ask for it: the upload arrives
@@ -474,6 +486,18 @@ func (s *Service) persistScreenshot(
 	if s.attachmentStore == nil {
 		return
 	}
+
+	if _, err := s.attachmentStore.PutIncidentScreenshot(
+		ctx, check.OrganizationUID, incident.UID, shot.Image, screenshotDetails(check, result, trigger),
+	); err != nil {
+		slog.WarnContext(ctx, "Failed to persist incident screenshot",
+			"incidentUid", incident.UID, "error", err)
+	}
+}
+
+// screenshotDetails is the details bag every stored capture carries.
+func screenshotDetails(check *models.Check, result *models.Result, trigger string) models.JSONMap {
+	shot := result.Diagnostics.Screenshot
 
 	details := models.JSONMap{
 		attachments.DetailKeyTrigger:  trigger,
@@ -490,11 +514,96 @@ func (s *Service) persistScreenshot(
 		details[attachments.DetailKeyRegion] = *result.Region
 	}
 
-	if _, err := s.attachmentStore.PutIncidentScreenshot(
-		ctx, check.OrganizationUID, incident.UID, shot.Image, details,
+	return details
+}
+
+// persistCheckScreenshot keeps a capture that no incident took (spec
+// 2026-09-25-34), under the check-scoped topic `checks/<uid>/screenshot`.
+//
+// It runs after the whole result pipeline, on every path out of it, so it
+// catches every failing run that neither opened nor reopened an incident — a
+// validating run, a blip that recovered inside the confirmation period, a
+// regional (non-quorum) failure, a run of an outage whose incident already
+// holds its onset capture, a run inside a maintenance window — and the capture
+// of an on-demand run ("Capture now"), which is the only way a HEALTHY run
+// ever produces one.
+//
+// THE BOUND IS RETENTION, NOT A TRANSITION. Unlike persistScreenshot this can
+// fire on every run of a flapping check, which is why the store keeps only the
+// check's last five and purges the oldest (attachments.MaxCheckScreenshots).
+// On the agent path the ask is bounded the same way on the server side, and
+// the agent's upload budget for check topics is separate from the incident
+// one, so this can never starve an onset capture.
+//
+// Best-effort like every attachment write: a failure is logged, the result is
+// already processed.
+func (s *Service) persistCheckScreenshot(ctx context.Context, check *models.Check, result *models.Result) {
+	if check == nil || result == nil || result.Diagnostics == nil || result.Diagnostics.Screenshot == nil {
+		return
+	}
+
+	shot := result.Diagnostics.Screenshot
+	if shot.Attached {
+		return
+	}
+
+	trigger := attachments.TriggerCheckFailure
+	if shot.OnDemand {
+		trigger = attachments.TriggerCaptureNow
+	} else if !resultIsFailure(result) {
+		// A capture on a healthy run that nobody asked for cannot be produced
+		// by any checker; refuse it rather than store what we cannot explain.
+		return
+	}
+
+	if len(shot.Image) == 0 {
+		s.requestAgentCheckScreenshot(ctx, check, result, shot)
+
+		return
+	}
+
+	if s.attachmentStore == nil {
+		return
+	}
+
+	if _, err := s.attachmentStore.PutCheckScreenshot(
+		ctx, check.OrganizationUID, check.UID, shot.Image, screenshotDetails(check, result, trigger),
 	); err != nil {
-		slog.WarnContext(ctx, "Failed to persist incident screenshot",
-			"incidentUid", incident.UID, "error", err)
+		slog.WarnContext(ctx, "Failed to persist check screenshot",
+			"checkUid", check.UID, "error", err)
+	}
+}
+
+// requestAgentCheckScreenshot is requestAgentScreenshot for the check-scoped
+// topic. The topic is built HERE from the check the server is processing,
+// never from anything the agent sent.
+func (s *Service) requestAgentCheckScreenshot(
+	ctx context.Context, check *models.Check, result *models.Result, shot *checkerdef.Screenshot,
+) {
+	if s.agentUploads == nil || !shot.Available || shot.CaptureID == "" {
+		return
+	}
+
+	if result.WorkerUID == nil || *result.WorkerUID == "" {
+		return
+	}
+
+	s.agentUploads.RequestScreenshotUpload(
+		ctx, *result.WorkerUID, shot.CaptureID, attachments.CheckScreenshotTopic(check.UID),
+	)
+}
+
+// resultIsFailure reports whether a result's own status is a failing verdict.
+func resultIsFailure(result *models.Result) bool {
+	if result.Status == nil {
+		return false
+	}
+
+	switch models.ResultStatus(*result.Status) {
+	case models.ResultStatusDown, models.ResultStatusTimeout, models.ResultStatusError:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -602,7 +711,19 @@ func (s *Service) MaintenanceResolver() *maintenance.Resolver {
 
 // ProcessCheckResult processes a check result and manages incidents.
 // This is the main entry point called after each check execution.
+//
+// After the pipeline, whatever path it took, a capture that no incident took
+// is kept under the check (spec 2026-09-25-34, see persistCheckScreenshot).
 func (s *Service) ProcessCheckResult(ctx context.Context, check *models.Check, result *models.Result) error {
+	err := s.processCheckResult(ctx, check, result)
+
+	s.persistCheckScreenshot(ctx, check, result)
+
+	return err
+}
+
+// processCheckResult is ProcessCheckResult's incident pipeline.
+func (s *Service) processCheckResult(ctx context.Context, check *models.Check, result *models.Result) error {
 	// Live hint: a result has been persisted for this org (this runs after
 	// every save path — executor, remote worker, heartbeat, email check).
 	// Coalesced: the publisher bounds bus traffic to ~1 hint/org/sec.
