@@ -333,3 +333,62 @@ func TestBrowserCheckCapturesARealScreenshot(t *testing.T) {
 		r.Nil(passing.Diagnostics.Screenshot, "an up verdict keeps no capture")
 	}
 }
+
+// TestBrowserCheckKeepsScreenshotOnRealTimeout is the live proof for spec
+// 2026-09-25-35 ("A browser check that fails by timing out never keeps its
+// screenshot"): a waitSelector that never appears — the single most common
+// capture-worthy failure — must still yield a real screenshot when Execute is
+// driven through a context shaped exactly like the WORKER's fixed hard
+// deadline (checkTimeout + the existing 1s margin + the checker's own
+// ExtraBudget, see checkworker.resolveExtraBudget).
+//
+// Every other live/fake test in this file drives Execute on t.Context(),
+// which never expires. That can never reproduce the bug: the parent context
+// IS the constraint that used to starve the capture, so this test is the one
+// that actually exercises the fix end to end, against a real browser.
+//
+//nolint:paralleltest // mutates the process-wide settings
+func TestBrowserCheckKeepsScreenshotOnRealTimeout(t *testing.T) {
+	settings, ok := liveBrowserSettings()
+	if !ok {
+		t.Skip(liveBrowserSkipReason)
+	}
+
+	r := require.New(t)
+
+	withSettings(t, settings)
+
+	fixture := liveFixtureServer(t)
+	base := browserReachableURL(t, fixture.URL)
+
+	checker := &BrowserChecker{}
+
+	const probeTimeout = 3 * time.Second
+
+	cfg := &BrowserConfig{
+		URL:          base + "/login",
+		WaitSelector: "#this-selector-never-appears-on-the-page",
+		Timeout:      probeTimeout,
+		Screenshot:   true,
+	}
+
+	// Exactly the worker's fixed hard-deadline formula (spec 2026-09-25-35):
+	// checkTimeout + the pre-existing 1s margin (spec 2026-07-10-11) +
+	// cfg.ExtraBudget, the same method checkworker.resolveExtraBudget calls.
+	hardDeadline := probeTimeout + time.Second + cfg.ExtraBudget(false)
+
+	ctx, cancel := context.WithTimeout(t.Context(), hardDeadline)
+	defer cancel()
+
+	result, err := checker.Execute(ctx, cfg)
+	r.NoError(err)
+	r.Equal(checkerdef.StatusTimeout, result.Status, "output: %#v", result.Output)
+	r.NotNil(result.Diagnostics, "a check that times out must still carry a capture")
+	r.NotNil(result.Diagnostics.Screenshot)
+	r.Greater(len(result.Diagnostics.Screenshot.Image), 1024,
+		"the real capture path must produce a real image")
+	r.LessOrEqual(len(result.Diagnostics.Screenshot.Image), MaxScreenshotBytes)
+	r.Equal(checkerdef.ImageFormatWebP, result.Diagnostics.Screenshot.Format)
+	r.Equal("RIFF", string(result.Diagnostics.Screenshot.Image[:4]))
+	r.Equal("WEBP", string(result.Diagnostics.Screenshot.Image[8:12]))
+}
