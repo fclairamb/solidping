@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
 
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -19,6 +20,9 @@ import (
 // portCaptureRequest is this file's embedded-Postgres port, distinct from every
 // other *_postgres test in the repo.
 const portCaptureRequest = 15610
+
+// portStaleClaim is the stale-claim test's embedded-Postgres port.
+const portStaleClaim = 15616
 
 // loadJob reads a job row back as stored.
 func loadJob(ctx context.Context, t *testing.T, bunDB *bun.DB, uid string) *models.CheckJob {
@@ -138,6 +142,93 @@ func exerciseCaptureRequest(ctx context.Context, t *testing.T, dbSvc db.Service,
 	r.Nil(stored.CaptureRequestedAt)
 	r.WithinDuration(next, *stored.ScheduledAt, time.Second)
 	r.WithinDuration(next, *stored.EffectiveScheduledAt, time.Second)
+}
+
+// exerciseStaleClaimCleared pins the stale-lease rule: a capture_claimed_at
+// left behind by a lease that ended without a release (crash, expiry) is
+// cleared by the next claim that carries no request, so that run's onDemand
+// marker is not honored.
+func exerciseStaleClaimCleared(ctx context.Context, t *testing.T, dbSvc db.Service, bunDB *bun.DB) {
+	t.Helper()
+
+	r := require.New(t)
+	svc := checkjobsvc.NewService(bunDB)
+
+	org := models.NewOrganization("st"+uuid.New().String()[:8], "Stale Org")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	worker := models.NewWorker("sw-"+uuid.New().String()[:8], "Stale Worker")
+	_, err := bunDB.NewInsert().Model(worker).Exec(ctx)
+	r.NoError(err)
+
+	check := models.NewCheck(org.UID, "sc-"+uuid.New().String()[:8], "browser")
+	r.NoError(dbSvc.CreateCheck(ctx, check))
+
+	jobs, err := dbSvc.ListCheckJobsByCheckUID(ctx, check.UID)
+	r.NoError(err)
+	r.NotEmpty(jobs)
+
+	job := jobs[0]
+	due := time.Now().Add(-time.Second).UTC()
+
+	// A leftover from a lease that was never released, and no pending request.
+	_, err = bunDB.NewUpdate().Model((*models.CheckJob)(nil)).
+		Set("capture_claimed_at = ?", time.Now().Add(-time.Hour).UTC()).
+		Set("capture_requested_at = NULL").
+		Set("scheduled_at = ?", due).
+		Set("effective_scheduled_at = ?", due).
+		Where("uid = ?", job.UID).Exec(ctx)
+	r.NoError(err)
+	r.NotNil(loadJob(ctx, t, bunDB, job.UID).CaptureClaimedAt, "control: the leftover is there")
+
+	claimed, err := svc.ClaimJobsForCheck(ctx, worker.UID, job.Region, check.UID)
+	r.NoError(err)
+	r.Len(claimed, 1)
+	r.Nil(claimed[0].CaptureRequestedAt)
+	r.Nil(claimed[0].CaptureClaimedAt, "the claimed copy carries no request")
+	r.Nil(loadJob(ctx, t, bunDB, job.UID).CaptureClaimedAt, "the claim cleared the leftover in the row")
+
+	// So an agent's onDemand marker on this run is dropped, whichever copy of
+	// the job the submission path reads.
+	for _, copyOfJob := range []*models.CheckJob{claimed[0], loadJob(ctx, t, bunDB, job.UID)} {
+		diagnostics := &checkerdef.Diagnostics{Screenshot: &checkerdef.Screenshot{OnDemand: true}}
+		copyOfJob.HonorOnDemand(diagnostics)
+		r.False(diagnostics.Screenshot.OnDemand)
+	}
+}
+
+// TestStaleClaimClearedByNextClaim runs it on SQLite.
+func TestStaleClaimClearedByNextClaim(t *testing.T) {
+	t.Parallel()
+
+	dbSvc, ctx := setupTestDB(t)
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	exerciseStaleClaimCleared(ctx, t, dbSvc, dbSvc.DB())
+}
+
+// TestStaleClaimClearedByNextClaim_Postgres runs it on Postgres.
+func TestStaleClaimClearedByNextClaim_Postgres(t *testing.T) {
+	t.Parallel()
+
+	if testing.Short() {
+		t.Skip("skipping embedded-postgres test in -short mode")
+	}
+
+	ctx := t.Context()
+
+	dbSvc, err := postgres.New(ctx, &postgres.Config{Embedded: true, Port: portStaleClaim, RunMode: "test"})
+	if err != nil {
+		testsupport.PostgresUnavailable(t, err)
+	}
+
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	if initErr := dbSvc.Initialize(ctx); initErr != nil {
+		testsupport.PostgresInitFailed(t, initErr)
+	}
+
+	exerciseStaleClaimCleared(ctx, t, dbSvc, dbSvc.DB())
 }
 
 // TestCaptureRequestScheduling runs the contract on SQLite.

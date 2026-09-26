@@ -997,10 +997,16 @@ func (s *serviceImpl) updateSingleJobLease(
 	// that lands between the select and this update on an unflagged row
 	// survives for the next claim. SET reads the pre-update value on both
 	// engines, so the move is one statement.
+	//
+	// A claim WITHOUT a pending request clears capture_claimed_at: a value left
+	// behind by a lease that ended without a release (worker crash, lease
+	// expiry) must never let this new run's onDemand marker be honored.
 	if job.CaptureRequestedAt != nil {
 		update = update.
 			Set("capture_claimed_at = capture_requested_at").
 			Set("capture_requested_at = NULL")
+	} else {
+		update = update.Set("capture_claimed_at = NULL")
 	}
 
 	result, err := update.Exec(ctx)
@@ -1027,9 +1033,9 @@ func (s *serviceImpl) updateSingleJobLease(
 	job.LeaseStarts++
 	job.UpdatedAt = now
 
-	if job.CaptureRequestedAt != nil {
-		job.CaptureClaimedAt = job.CaptureRequestedAt
-	}
+	// The in-memory copy matches the row: this lease carries a request only
+	// if the claim consumed one.
+	job.CaptureClaimedAt = job.CaptureRequestedAt
 
 	return nil
 }
