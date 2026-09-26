@@ -96,6 +96,10 @@ func manualReaderEnvVars() []string {
 	// env loader can never reach it.
 	out = append(out, EnvEgressAllowPrivate)
 
+	// applyHeadersEnv: csp_extra_sources is snake_case, so koanf's env loader
+	// can never reach it.
+	out = append(out, EnvHeadersCSPExtraSources)
+
 	// applyMetricsEnv: scrape_token is snake_case, so koanf's env loader can
 	// never reach it (SP_METRICS_SCRAPE_TOKEN would land on
 	// metrics.scrape.token, not prometheus.scrape_token).

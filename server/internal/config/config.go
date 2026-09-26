@@ -286,6 +286,35 @@ func applyMetricsEnv(cfg *PrometheusConfig) {
 	}
 }
 
+// HeadersConfig controls the browser security headers sent on the documents
+// SolidPing serves (spec 2026-09-25-28, see internal/securityheaders).
+type HeadersConfig struct {
+	// CSPExtraSources widens the shipped Content-Security-Policy without
+	// editing headers in a reverse proxy: `;`-separated groups, each a
+	// directive followed by sources, e.g.
+	// "img-src https://cdn.acme.com; frame-ancestors https://intranet.acme.com".
+	// A source is added to that directive on every surface whose policy sets
+	// it. Snake_case, so koanf's env loader cannot reach it — see
+	// EnvHeadersCSPExtraSources / applyHeadersEnv — and also overlaid by the
+	// headers.csp_extra_sources system parameter
+	// (systemconfig.KeyHeadersCSPExtraSources). Applied at startup.
+	CSPExtraSources string `koanf:"csp_extra_sources"`
+}
+
+// EnvHeadersCSPExtraSources is the env override for
+// HeadersConfig.CSPExtraSources and the headers.csp_extra_sources system
+// parameter.
+const EnvHeadersCSPExtraSources = "SP_HEADERS_CSP_EXTRA_SOURCES"
+
+// applyHeadersEnv binds SP_HEADERS_CSP_EXTRA_SOURCES. csp_extra_sources is
+// snake_case, so koanf's env loader would land it on headers.csp.extra.sources
+// and bind nothing. An absent variable leaves config.yml's value alone.
+func applyHeadersEnv(cfg *HeadersConfig) {
+	if v := os.Getenv(EnvHeadersCSPExtraSources); v != "" {
+		cfg.CSPExtraSources = strings.TrimSpace(v)
+	}
+}
+
 // RealtimeConfig controls the org-scoped live hint WebSocket
 // (GET /api/v1/orgs/:org/events/ws). When disabled the endpoint still
 // upgrades but immediately closes with 4404 (same "feature disabled"
@@ -553,6 +582,7 @@ type Config struct {
 	ACME         ACMEConfig         `koanf:"acme"`
 	Heartbeat    HeartbeatConfig    `koanf:"heartbeat"`
 	Demo         DemoConfig         `koanf:"demo"`
+	Headers      HeadersConfig      `koanf:"headers"`
 	RunMode      string             `koanf:"runmode"`   // "test" for test mode, empty for normal mode
 	UserAgent    string             `koanf:"useragent"` // Identity string for protocol checks (SP_USERAGENT)
 	LogLevel     slog.Level         `koanf:"-"`         // Logging level (parsed from LOG_LEVEL env var)
@@ -2066,6 +2096,7 @@ func Load() (*Config, error) {
 	applyRuntimeEnv(&cfg.Runtime)
 	applyRealtimeEnv(&cfg.Realtime)
 	applyEgressEnv(&cfg.Egress)
+	applyHeadersEnv(&cfg.Headers)
 
 	// When in test mode and no database type is specified, default to sqlite-memory
 	if cfg.RunMode == "test" && cfg.Database.Type == "" {

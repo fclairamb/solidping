@@ -228,6 +228,14 @@ const (
 	// it, so a value set purely through the database still takes effect
 	// without a restart.
 	KeyFeedbackMaxStorageBytes ParameterKey = "app.feedback_max_storage_bytes"
+
+	// KeyHeadersCSPExtraSources widens the shipped Content-Security-Policy
+	// (spec 2026-09-25-28): `;`-separated "directive source…" groups, e.g.
+	// "img-src https://cdn.acme.com". Mirrors config.HeadersConfig.CSPExtraSources;
+	// see its doc comment. Applied at startup (InitializeSystemConfig runs
+	// before SetupRoutes, which builds the policies), so a change takes effect
+	// on the next restart. Invalid groups are logged and skipped.
+	KeyHeadersCSPExtraSources ParameterKey = "headers.csp_extra_sources"
 )
 
 // SP_* environment variable names for the product-analytics parameters,
@@ -828,6 +836,16 @@ func getKnownParameters() []ParameterDefinition {
 					cfg.App.FeedbackMaxStorageBytes = int64(v)
 				} else if v, ok := value.(int64); ok {
 					cfg.App.FeedbackMaxStorageBytes = v
+				}
+			},
+		},
+		{
+			Key:    KeyHeadersCSPExtraSources,
+			EnvVar: config.EnvHeadersCSPExtraSources,
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.Headers.CSPExtraSources = strings.TrimSpace(v)
 				}
 			},
 		},
