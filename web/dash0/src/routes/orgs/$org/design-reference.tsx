@@ -56,6 +56,7 @@ import {
   EventTypeLabel,
   getEventTone,
 } from "@/components/dashboard/event-display";
+import { EventLogTable } from "@/components/dashboard/event-log-table";
 import {
   CheckTypeBadge,
   CheckTypeIcon,
@@ -138,7 +139,12 @@ import {
   sloStateBadgeClass,
 } from "@/lib/slo-format";
 import { BudgetBurndownChart } from "@/components/slos/budget-burndown-chart";
-import type { Check as CheckModel, RegionDefinition, SloBurndown } from "@/api/hooks";
+import type {
+  Check as CheckModel,
+  Event,
+  RegionDefinition,
+  SloBurndown,
+} from "@/api/hooks";
 import { AgentVersionCell } from "@/components/shared/agent-version";
 import { LiveStatusDot } from "@/components/layout/live-status-dot";
 import { ServerVersionIndicator } from "@/components/layout/server-version-indicator";
@@ -162,7 +168,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SegmentedControl } from "@/components/ui/segmented-control";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Logo } from "@/components/ui/logo";
 import { AuroraPanel } from "@/components/ui/aurora-panel";
 import {
@@ -271,6 +277,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "buttons-badges", label: "Buttons & badges" },
   { id: "check-type-badge", label: "Check type identity" },
   { id: "event-tone", label: "Event tone badge" },
+  { id: "event-log-table", label: "Event log table" },
   { id: "live-dot", label: "Live & pulse dots" },
   { id: "forms", label: "Forms" },
   { id: "oauth-provider-buttons", label: "OAuth provider buttons" },
@@ -330,6 +337,7 @@ function DesignReferencePage() {
       <ButtonsBadgesSection />
       <CheckTypeIdentitySection />
       <EventToneSection />
+      <EventLogTableSection />
       <LiveDotSection />
       <FormsSection />
       <OAuthProviderButtonsSection />
@@ -5422,6 +5430,116 @@ function EventToneSection() {
             </div>
           }
           importLine={`import { EventTypeLabel, getEventRowStripe } from "@/components/dashboard/event-display";\n\n<TableCell className={cn(getEventRowStripe(row.eventType))}>…</TableCell>\n<TableCell>\n  <EventTypeLabel eventType={row.eventType} t={t} />\n</TableCell>`}
+        />
+      </div>
+    </Section>
+  );
+}
+
+// EVENT_LOG_TABLE_STRINGS backs designReferenceEventLogT below with the
+// events.json keys EventLogTable reads beyond `types.<type>` (which
+// designReferenceEventT already covers): table headers, related-link text,
+// actor-type words, and the activation-milestone description shown when an
+// org.activation.* row carries no channel name.
+const EVENT_LOG_TABLE_STRINGS: Record<string, string> = {
+  "table.time": "Time",
+  "table.event": "Event",
+  "table.actor": "Actor",
+  "table.related": "Related",
+  "links.check": "Check",
+  "links.incident": "Incident",
+  "actorTypes.user": "user",
+  "actorTypes.system": "system",
+  "descriptions.org.activation.first_notification_configured":
+    "You have set up your first notification channel.",
+};
+
+function designReferenceEventLogT(
+  key: string,
+  options?: Record<string, unknown>,
+): string {
+  return EVENT_LOG_TABLE_STRINGS[key] ?? designReferenceEventT(key, options);
+}
+
+// EVENT_LOG_TABLE_SAMPLES exercises every column: a loud incident row linked
+// to a check, a quiet configuration row with a named actor, and an
+// activation milestone with neither a check/incident link nor an actor name
+// — which is exactly when its description line takes over (see
+// getActivationDetail in event-log-table.tsx).
+const EVENT_LOG_TABLE_SAMPLES: Event[] = [
+  {
+    uid: "sample-incident-created",
+    eventType: "incident.created",
+    actorType: "system",
+    checkUid: "sample-check-uid",
+    payload: { check_name: "Payments API" },
+    createdAt: new Date(Date.now() - 5 * 60_000).toISOString(),
+  },
+  {
+    uid: "sample-check-updated",
+    eventType: "check.updated",
+    actorType: "user",
+    actorName: "Alice",
+    checkUid: "sample-check-uid",
+    payload: { check_name: "Payments API" },
+    createdAt: new Date(Date.now() - 3 * 3600_000).toISOString(),
+  },
+  {
+    uid: "sample-activation",
+    eventType: "org.activation.first_notification_configured",
+    actorType: "system",
+    createdAt: new Date(Date.now() - 26 * 3600_000).toISOString(),
+  },
+];
+
+function EventLogTableSection() {
+  const { org } = Route.useParams();
+
+  return (
+    <Section
+      id="event-log-table"
+      title="Event log table"
+      description={`The ONE rendering of an events table (spec 2026-09-25-32), shared by the Events page and the dashboard's Recent activity card so the two can't drift apart again. variant="standalone" (default) is its own bordered/shadowed surface — used as-is on the Events page. variant="embedded" drops that border (the parent Card already draws one) and hides the Actor column below the md breakpoint, so the card never gets wider than its siblings on a laptop screen — the column is hidden responsively, never dropped.`}
+    >
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">Standalone (Events page)</h3>
+        <ExampleRow
+          preview={
+            <EventLogTable
+              org={org}
+              events={EVENT_LOG_TABLE_SAMPLES}
+              t={designReferenceEventLogT}
+            />
+          }
+          importLine={`import { EventLogTable } from "@/components/dashboard/event-log-table";\n\n<EventLogTable org={org} events={events} t={t} />`}
+        />
+      </div>
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">
+          Embedded (dashboard "Recent activity" card)
+        </h3>
+        <p className="text-xs text-muted-foreground">
+          No outer border, and the Actor column collapses below <code>md</code>{" "}
+          — shrink this pane to see it go, and widen it back to see the
+          column return.
+        </p>
+        <ExampleRow
+          preview={
+            <Card className="max-w-md">
+              <CardHeader>
+                <CardTitle>Recent activity</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <EventLogTable
+                  org={org}
+                  events={EVENT_LOG_TABLE_SAMPLES}
+                  t={designReferenceEventLogT}
+                  variant="embedded"
+                />
+              </CardContent>
+            </Card>
+          }
+          importLine={`<EventLogTable org={org} events={events} t={t} variant="embedded" />`}
         />
       </div>
     </Section>
