@@ -236,7 +236,7 @@ func (m *AuthMiddleware) RequireMCPAuth(next httpx.HandlerFunc) httpx.HandlerFun
 		// MCP is JSON-RPC over one POST route, so the HTTP method and route
 		// pattern cannot tell a read from a write — that lives in the
 		// JSON-RPC method and tool name. The demo decision is therefore taken
-		// per tool call in mcp.Handler.handleToolsCall (demoToolDenial), with
+		// per tool call in mcp.Handler.handleToolsCall (demoToolRefused), with
 		// check ownership enforced by checks.Service off these same claims.
 		// DELETE /mcp (session close) passes for the reason POST /auth/logout
 		// is on the REST allowlist.
