@@ -53,7 +53,7 @@ func main() {
 // stderr under "client" and "mcp" (see logToStderr).
 func run(ctx context.Context, cmd *cli.Command, args []string) int {
 	if err := cmd.Run(ctx, args); err != nil {
-		slog.Error("Application failed", "error", err)
+		slog.ErrorContext(ctx, "Application failed", "error", err)
 
 		return 1
 	}
