@@ -5,7 +5,46 @@
 
 ### Features
 
-* every event type in the filter, open-incident row tint, token-at-rest docs, zero-warning status0 lint ([#445](https://github.com/fclairamb/solidping/issues/445)) ([2d2d6dc](https://github.com/fclairamb/solidping/commit/2d2d6dc1802c31b21203bc46f8ab59da277c1cca))
+* **dash0:** **The events page's type filter now offers every event type SolidPing can
+  record, grouped into families.** It used to offer seven hand-picked types; it now lists the
+  whole catalogue under family headings — Incidents, Authentication, Integrations, On-call,
+  and the rest — with a translated label for each in English, French, German and Spanish. A
+  test pins that catalogue to the server's own `EventType*` constants, so a new event type
+  cannot ship without turning up in the filter, and a hand-edited `?type=` naming a type the
+  server cannot write is ignored instead of filtering the list to nothing
+  ([#445](https://github.com/fclairamb/solidping/issues/445))
+  ([2d2d6dc](https://github.com/fclairamb/solidping/commit/2d2d6dc1802c31b21203bc46f8ab59da277c1cca))
+
+* **incidents:** **An incident that has not ended yet tints its row in its kind's colour** —
+  light red for an outage, light amber for a degraded check, light violet for an SLO burn —
+  so a list showing open and resolved incidents together separates what is happening from
+  what ended at a glance. The tint sits one step lighter than the kind chip's own fill, so
+  the chip still reads as the stronger element on top of it, and a resolved row keeps the
+  card's background and the neutral hover
+  ([#445](https://github.com/fclairamb/solidping/issues/445))
+  ([2d2d6dc](https://github.com/fclairamb/solidping/commit/2d2d6dc1802c31b21203bc46f8ab59da277c1cca))
+
+### Bug Fixes
+
+* **dash0:** **The check detail Placement card no longer redraws once a second.** The
+  per-region `· 7s ago` chips and the fail-quorum sentence above them are gone: the regions
+  are still named in the placement summary line, and a regional issue is still called out by
+  the amber banner. Nothing about placement changed — only the card's ticking clock did
+  ([#445](https://github.com/fclairamb/solidping/issues/445))
+  ([2d2d6dc](https://github.com/fclairamb/solidping/commit/2d2d6dc1802c31b21203bc46f8ab59da277c1cca))
+
+### Documentation
+
+* The *Security & Encryption* configuration page gains a **Tokens Are Stored Hashed**
+  section: which credentials are stored as a one-way digest rather than encrypted — session
+  refresh tokens, API tokens, invitation, registration and password-reset links, SSO handoff
+  codes, status page kiosk tokens and agent enrollment tokens — and why SHA-256 rather than
+  argon2id (they are CSPRNG output of at least 192 bits, verified on hot paths, while
+  passwords and OAuth client secrets stay on argon2id). It also spells out the transparent
+  upgrade, which hashes existing rows in place, and the warning that downgrading deletes
+  every stored token. The configuration index now links to it
+  ([#445](https://github.com/fclairamb/solidping/issues/445))
+  ([2d2d6dc](https://github.com/fclairamb/solidping/commit/2d2d6dc1802c31b21203bc46f8ab59da277c1cca))
 
 ## [0.34.0](https://github.com/fclairamb/solidping/compare/v0.33.0...v0.34.0) (2026-09-27)
 
