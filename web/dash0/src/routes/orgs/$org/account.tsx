@@ -1,5 +1,7 @@
 import { createFileRoute, Outlet } from "@tanstack/react-router";
+import { User2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { PageHeader } from "@/components/shared/page-header";
 import { TabNav } from "@/components/shared/tab-nav";
 
 export const Route = createFileRoute("/orgs/$org/account")({
@@ -22,10 +24,11 @@ function AccountLayout() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">{t("account:layout.title")}</h1>
-        <p className="text-muted-foreground">{t("account:layout.subtitle")}</p>
-      </div>
+      <PageHeader
+        icon={User2}
+        title={t("account:layout.title")}
+        description={t("account:layout.subtitle")}
+      />
       <TabNav tabs={tabs} org={org} />
       <Outlet />
     </div>
