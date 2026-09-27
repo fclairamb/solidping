@@ -1,11 +1,18 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"errors"
+	"os"
+	"os/exec"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/urfave/cli/v3"
+
+	"github.com/fclairamb/solidping/server/internal/config"
 )
 
 // findSubcommand returns the direct child of cmd with the given name, or
@@ -150,4 +157,72 @@ func TestClientMCPCommand(t *testing.T) {
 		[]string{"solidping", "--url", "https://solidping.acme.com", "client", "mcp"})
 	r.NoError(err)
 	r.Equal("https://solidping.acme.com", gotURL)
+}
+
+// clientMCPHelperEnv switches the test binary into acting as the solidping
+// binary for TestClientMCPFailureKeepsStdoutClean.
+const clientMCPHelperEnv = "SP_TEST_CLIENT_MCP_HELPER"
+
+// errClientMCPStub is what the stubbed `client mcp` action fails with.
+var errClientMCPStub = errors.New("stubbed client mcp failure")
+
+// TestClientMCPFailureKeepsStdoutClean runs `solidping client mcp` in a child
+// process with main's own stdout logger installed and makes it fail, then
+// checks stdout stayed empty: an MCP client parses every byte there as
+// JSON-RPC. Two ways to fail:
+//   - the real action, with HOME unset so no token path can be resolved: it
+//     must log to stderr and exit without returning the error to main;
+//   - a stubbed action returning a plain error, which does reach main's
+//     "Application failed" log: the client subtree must have pointed slog at
+//     stderr.
+func TestClientMCPFailureKeepsStdoutClean(t *testing.T) {
+	t.Parallel()
+
+	if mode := os.Getenv(clientMCPHelperEnv); mode != "" {
+		runClientMCPHelper(mode)
+
+		return
+	}
+
+	for _, mode := range []string{"real", "stub"} {
+		t.Run(mode, func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+
+			ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+			defer cancel()
+
+			cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestClientMCPFailureKeepsStdoutClean$")
+			cmd.Env = append(os.Environ(), clientMCPHelperEnv+"="+mode, "HOME=", "LOG_LEVEL=info")
+
+			var stdout, stderr bytes.Buffer
+
+			cmd.Stdin = bytes.NewReader(nil)
+			cmd.Stdout = &stdout
+			cmd.Stderr = &stderr
+
+			err := cmd.Run()
+
+			var exitErr *exec.ExitError
+			r.ErrorAs(err, &exitErr, "the failure must exit non-zero; stderr: %s", stderr.String())
+			r.Equal(1, exitErr.ExitCode())
+			r.Empty(stdout.String(), "nothing but JSON-RPC may reach stdout")
+			r.NotEmpty(stderr.String(), "the failure must still be reported, on stderr")
+		})
+	}
+}
+
+// runClientMCPHelper is the child side: it mirrors main() (stdout logger,
+// then run) and exits with run's code.
+func runClientMCPHelper(mode string) {
+	setupLogger(config.ParseLogLevel(os.Getenv("LOG_LEVEL")), config.LogFormatText)
+
+	root := buildRootCommand()
+
+	if mode == "stub" {
+		mcpCmd := findSubcommand(findSubcommand(root, "client"), "mcp")
+		mcpCmd.Action = func(context.Context, *cli.Command) error { return errClientMCPStub }
+	}
+
+	os.Exit(run(context.Background(), root, []string{"solidping", "client", "--url", "http://127.0.0.1:1", "mcp"}))
 }

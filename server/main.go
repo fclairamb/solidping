@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -44,12 +45,32 @@ func main() {
 	logLevel := config.ParseLogLevel(os.Getenv("LOG_LEVEL"))
 	setupLogger(logLevel, config.ParseLogFormat(os.Getenv("SP_LOG_FORMAT")))
 
-	cmd := buildRootCommand()
+	os.Exit(run(context.Background(), buildRootCommand(), os.Args))
+}
 
-	if err := cmd.Run(context.Background(), os.Args); err != nil {
+// run executes the command tree and returns the process exit code. A failure
+// is logged through slog's default logger: stdout for the server commands,
+// stderr under "client" (see clientLogToStderr).
+func run(ctx context.Context, cmd *cli.Command, args []string) int {
+	if err := cmd.Run(ctx, args); err != nil {
 		slog.Error("Application failed", "error", err)
-		os.Exit(1)
+
+		return 1
 	}
+
+	return 0
+}
+
+// clientLogToStderr points slog's default logger at stderr for the "client"
+// subtree. Client commands print their results on stdout, and `client mcp`
+// speaks JSON-RPC there, so a log line (main's own "Application failed"
+// included) must never land in it. Server commands keep logging to stdout.
+func clientLogToStderr(ctx context.Context, _ *cli.Command) (context.Context, error) {
+	handler := newLogHandlerTo(os.Stderr,
+		config.ParseLogLevel(os.Getenv("LOG_LEVEL")), config.ParseLogFormat(os.Getenv("SP_LOG_FORMAT")))
+	slog.SetDefault(slog.New(handler))
+
+	return ctx, nil
 }
 
 // buildRootCommand builds the "solidping" binary's command tree. Pulled out
@@ -102,6 +123,7 @@ func buildRootCommand() *cli.Command {
 			{
 				Name:     "client",
 				Usage:    "Client commands for managing SolidPing remotely",
+				Before:   clientLogToStderr,
 				Commands: spCli.GetCommands(),
 			},
 			{
@@ -124,17 +146,22 @@ func buildRootCommand() *cli.Command {
 // single place that maps a config.LogFormat onto a slog.Handler, so the plain
 // path and the OTel fanout path below can never drift apart.
 func newLogHandler(level slog.Level, format config.LogFormat) slog.Handler {
+	return newLogHandlerTo(os.Stdout, level, format)
+}
+
+// newLogHandlerTo is newLogHandler writing to out instead of stdout.
+func newLogHandlerTo(out io.Writer, level slog.Level, format config.LogFormat) slog.Handler {
 	opts := &slog.HandlerOptions{Level: level}
 
 	switch format {
 	case config.LogFormatJSON:
-		return slog.NewJSONHandler(os.Stdout, opts)
+		return slog.NewJSONHandler(out, opts)
 	case config.LogFormatPretty:
-		return pretty.NewPretty(os.Stdout, opts)
+		return pretty.NewPretty(out, opts)
 	case config.LogFormatText:
-		return slog.NewTextHandler(os.Stdout, opts)
+		return slog.NewTextHandler(out, opts)
 	default:
-		return slog.NewTextHandler(os.Stdout, opts)
+		return slog.NewTextHandler(out, opts)
 	}
 }
 
