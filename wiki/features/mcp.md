@@ -207,7 +207,18 @@ scope and demo rule above applies unchanged.
   shape, a proxy's HTML page, an unreachable server) becomes a JSON-RPC error
   for the request's id: `-32001` for a 401 (the message names `sp auth login`
   and `SP_TOKEN`), `-32603` otherwise, with `data.httpStatus` and the REST
-  `code`. A notification gets no reply, only a stderr line.
+  `code`. A notification never gets a reply, not even the server's own
+  error for it (the id-less 403 for a token without the `mcp` scope); it
+  only gets a stderr line. A server error that answers a request without an
+  id gets the request's id stamped on, so the client can match it.
+- **Batches.** The endpoint takes one message per POST, so a JSON array is
+  relayed member by member and answered with one array of the requests'
+  replies (nothing for an all-notification batch; a single null-id
+  `Invalid Request` for an empty one, as JSON-RPC mandates).
+- **Exit.** `sp mcp` never hands an error back to the binary's `main`: it
+  logs to stderr and exits 1. The `solidping client` subtree also points
+  slog at stderr, because the server binary's default logger writes to
+  stdout.
 - **Order.** Messages are relayed one at a time, so replies come back in
   request order and `initialize` always lands its session id first. A long
   `tools/call` therefore delays the next request.
