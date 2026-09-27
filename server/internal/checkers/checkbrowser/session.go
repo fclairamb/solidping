@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/chromedp/cdproto/emulation"
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/cdproto/page"
 	cdpruntime "github.com/chromedp/cdproto/runtime"
@@ -198,13 +199,26 @@ func openSessionPinned(sessionCtx, probeCtx context.Context, pin *hostPin) (*Ses
 		return nil, failure
 	}
 
-	recordOpenOutcome(nil)
-
 	session := &Session{
 		browserCtx: browserCtx,
 		cancels:    []context.CancelFunc{browserCancel, allocCancel},
 		release:    release,
 	}
+
+	// The viewport is set HERE, before the Session is handed to anyone, so
+	// the first Navigate lays the page out at ViewportWidth from the start
+	// instead of resizing it after load (spec 2026-09-27-01). Both the browser
+	// check and the JS runtime open through this function, so both get it.
+	if err := session.run(probeCtx, viewportParams()); err != nil {
+		session.Close()
+
+		failure := &infraError{msg: "failed to set the browser viewport: " + err.Error()}
+		recordOpenOutcome(failure)
+
+		return nil, failure
+	}
+
+	recordOpenOutcome(nil)
 
 	if guard := egress.FromContext(probeCtx); guard.Enforcing() {
 		session.watchEgress(probeCtx, guard)
@@ -665,20 +679,43 @@ func cdpScreenshotFormat(format checkerdef.ImageFormat) page.CaptureScreenshotFo
 	}
 }
 
-// Screenshot captures the full page of the current tab in ScreenshotFormat,
+// viewportParams is the device-metrics override every session opens with:
+// ViewportWidth x ViewportHeight CSS pixels, scale factor 1, not mobile. A
+// function rather than an inline literal so a test can assert on exactly what
+// openSession sends.
+func viewportParams() *emulation.SetDeviceMetricsOverrideParams {
+	return emulation.SetDeviceMetricsOverride(ViewportWidth, ViewportHeight, 1, false)
+}
+
+// screenshotParams is the ONE capture request this process sends: the current
+// viewport only, in ScreenshotFormat at screenshotQuality, from the surface so
+// an offscreen tab still renders.
+//
+// Viewport-only on purpose (spec 2026-09-27-01). A full-page capture
+// (captureBeyondViewport) makes the renderer rasterize the whole document
+// height; on a ~10k px page that sometimes never finished inside
+// screenshotTimeout, and the hung captures pushed the browser sidecar past its
+// memory limit. The viewport is also what Playwright and Puppeteer capture by
+// default for page.screenshot().
+func screenshotParams() *page.CaptureScreenshotParams {
+	return page.CaptureScreenshot().
+		WithFromSurface(true).
+		WithFormat(cdpScreenshotFormat(ScreenshotFormat)).
+		WithQuality(screenshotQuality)
+}
+
+// Screenshot captures the current viewport of the tab (ViewportWidth x
+// ViewportHeight, set when the session opened) in ScreenshotFormat,
 // time-boxed by the same screenshotTimeout the browser check's capture uses.
 //
 // It drives page.CaptureScreenshot directly rather than going through
-// chromedp.FullScreenshot, which is NOT a style preference:
-// chromedp.FullScreenshot picks PNG when its quality argument is exactly 100
-// and JPEG for every other value, so WebP is unreachable through it. The
-// options below are the ones FullScreenshot sets internally
-// (CaptureBeyondViewport for the full page, FromSurface so an offscreen tab
-// still renders), plus the format this process actually wants.
+// chromedp.Screenshot/FullScreenshot, which is NOT a style preference: those
+// pick PNG or JPEG from their quality argument, so WebP is unreachable through
+// them. See screenshotParams for the request itself.
 //
 // This is the ONE capture call in the process: the browser check and the JS
-// runtime's page.screenshot() both land here, so the format cannot drift
-// between them.
+// runtime's page.screenshot() both land here, so the format and the framing
+// cannot drift between them.
 func (s *Session) Screenshot(ctx context.Context) (Capture, error) {
 	shotCtx, cancel := context.WithTimeout(ctx, screenshotTimeout)
 	defer cancel()
@@ -686,12 +723,7 @@ func (s *Session) Screenshot(ctx context.Context) (Capture, error) {
 	var buf []byte
 
 	action := chromedp.ActionFunc(func(actionCtx context.Context) error {
-		data, err := page.CaptureScreenshot().
-			WithCaptureBeyondViewport(true).
-			WithFromSurface(true).
-			WithFormat(cdpScreenshotFormat(ScreenshotFormat)).
-			WithQuality(screenshotQuality).
-			Do(actionCtx)
+		data, err := screenshotParams().Do(actionCtx)
 		if err != nil {
 			return err
 		}

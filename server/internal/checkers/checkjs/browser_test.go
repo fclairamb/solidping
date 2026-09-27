@@ -900,3 +900,76 @@ func TestBrowserTextIsCappedAtTheSharedPayloadLimit(t *testing.T) {
 	r.Equal(1024*1024, checkbrowser.MaxPayloadBytes)
 	r.True(strings.HasPrefix(errPageAlreadyOpen.Error(), "a page is already open"))
 }
+
+// errStalled stands in for a capture that failed inside the browser.
+var errStalled = errors.New("renderer stalled")
+
+// TestFailedScreenshotReportsWhy pins Diagnostics.ScreenshotError for js
+// checks (spec 2026-09-27-01): a page.screenshot() that errors or comes back
+// over the cap, on a run that would have kept the capture, says why there is
+// none. A later successful shot clears it, and a script that never shoots
+// reports nothing.
+//
+//nolint:paralleltest // mutates the package-level OpenBrowser seam
+func TestFailedScreenshotReportsWhy(t *testing.T) {
+	shootUp := &JSConfig{
+		Script:  `var page = browser.open(); page.screenshot(); return { status: "up" };`,
+		Timeout: 5 * time.Second,
+	}
+
+	cases := []struct {
+		name    string
+		session *fakeSession
+		cfg     *JSConfig
+		want    string
+		shot    bool
+	}{
+		{"capture errors", &fakeSession{shotErr: errStalled}, shootUp, errStalled.Error(), false},
+		{"capture times out", &fakeSession{shotErr: context.DeadlineExceeded}, shootUp, "the capture timed out", false},
+		{
+			"capture over the cap",
+			&fakeSession{shot: make([]byte, checkbrowser.MaxScreenshotBytes+1)}, shootUp,
+			checkbrowser.OverCapMessage(checkbrowser.MaxScreenshotBytes + 1), false,
+		},
+		{"capture succeeds (control)", &fakeSession{shot: []byte("RIFF\x00\x00\x00\x00WEBPok")}, shootUp, "", true},
+		{
+			"script never shoots", &fakeSession{shotErr: errStalled},
+			&JSConfig{Script: `browser.open(); return { status: "up" };`, Timeout: 5 * time.Second}, "", false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := require.New(t)
+
+			installFakeBrowser(t, tc.session)
+
+			result, err := (&JSChecker{}).Execute(checkerdef.WithForcedCapture(t.Context()), tc.cfg)
+			r.NoError(err)
+			r.Equal(checkerdef.StatusUp, result.Status, "a failed capture never changes the verdict")
+
+			if tc.want == "" && !tc.shot {
+				if result.Diagnostics != nil {
+					r.Empty(result.Diagnostics.ScreenshotError)
+				}
+
+				return
+			}
+
+			r.NotNil(result.Diagnostics)
+			r.Equal(tc.want, result.Diagnostics.ScreenshotError)
+			r.Equal(tc.shot, result.Diagnostics.Screenshot != nil)
+		})
+	}
+
+	// Unforced and up: the capture would not have been kept anyway, so its
+	// failure is not reported either.
+	installFakeBrowser(t, &fakeSession{shotErr: errStalled})
+
+	plain, err := (&JSChecker{}).Execute(t.Context(), shootUp)
+	require.NoError(t, err)
+
+	if plain.Diagnostics != nil {
+		require.Empty(t, plain.Diagnostics.ScreenshotError)
+	}
+}

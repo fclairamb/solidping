@@ -262,6 +262,10 @@ type jsRuntime struct {
 	// (see attachScreenshot).
 	screenshot   checkbrowser.Capture
 	screenshotAt time.Time
+	// screenshotErr is why the LAST capture attempt produced nothing (errored,
+	// empty, over the cap), cleared by a later successful one. Reported as
+	// Diagnostics.ScreenshotError when no capture is kept (spec 2026-09-27-01).
+	screenshotErr string
 
 	// rdp is the RDP session this execution opened, nil until rdp.connect().
 	// rdpOpened stays true after a close, which is what enforces the

@@ -68,6 +68,9 @@ func (b *WSBackend) stashCapture(diagnostics *checkerdef.Diagnostics) *checkerde
 
 	if captureID == "" {
 		out.Screenshot = nil
+		// Say so on the frame (spec 2026-09-27-01): an operator waiting on
+		// "Capture now" is told why nothing will arrive.
+		out.ScreenshotError = "the agent could not keep the image for upload (over its capture cache budget)"
 
 		return &out
 	}
