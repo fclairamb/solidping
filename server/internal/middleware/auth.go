@@ -231,15 +231,16 @@ func (m *AuthMiddleware) RequireMCPAuth(next httpx.HandlerFunc) httpx.HandlerFun
 				base.ErrorCodePasswordChangeRequired, auth.PasswordRotationMessage)
 		}
 
-		// The demo write guard covers MCP too. No /mcp route is on the
-		// allowlist, so for a demo principal this is an unconditional deny of
-		// every non-safe MCP call — written through the same predicate as
-		// RequireAuth so the two can never disagree about what "demo" means.
-		if applyDemoClaim(claims, user) &&
-			!auth.IsDemoWriteAllowed(req.Method, httpx.RoutePattern(req)) {
-			return m.WriteError(writer, http.StatusForbidden,
-				base.ErrorCodeDemoReadOnly, auth.DemoWriteMessage)
-		}
+		// The demo flag is re-derived from the user row exactly as in
+		// RequireAuth, but the ROUTE guard is deliberately not applied here.
+		// MCP is JSON-RPC over one POST route, so the HTTP method and route
+		// pattern cannot tell a read from a write — that lives in the
+		// JSON-RPC method and tool name. The demo decision is therefore taken
+		// per tool call in mcp.Handler.handleToolsCall (demoToolDenial), with
+		// check ownership enforced by checks.Service off these same claims.
+		// DELETE /mcp (session close) passes for the reason POST /auth/logout
+		// is on the REST allowlist.
+		applyDemoClaim(claims, user)
 
 		ctx := req.Context()
 		ctx = context.WithValue(ctx, base.ContextKeyClaims, claims)

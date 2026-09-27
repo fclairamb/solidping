@@ -22,6 +22,18 @@ immutability needs no "protected" flag.
 route and asserts the guard's own message — an unrelated 403 cannot mask a
 regression, and the allowlist cannot grow silently.
 
+**MCP takes the same decision per tool call, not per route.** `/api/v1/mcp` is
+JSON-RPC over one POST route, so the method and route pattern cannot tell a read
+from a write. `RequireMCPAuth` therefore re-derives `claims.Demo` from the user
+row but does not apply the route guard; `mcp.Handler.handleToolsCall` refuses a
+demo session every mutation tool except `create_check` / `update_check` /
+`delete_check` (`server/internal/mcp/demo.go`, an allowlist like the REST one),
+answering `-32002` with `auth.DemoWriteMessage` and `data.code =
+DEMO_READ_ONLY`. Ownership is then enforced by `checks.Service` off the same
+claims, exactly as on REST. The route-table test names both `/mcp` routes in
+`demoHandlerGuardedRoutes` rather than expecting a route-level refusal
+(spec `2026-09-26-03-mcp-demo-access-and-version.md`).
+
 **`PUT /orgs/:org/checks/:uid/channels` is excluded on purpose**: binding a
 visitor's check to the organization's real notification sinks is the spam vector
 the allowlist exists to close. Do not "fix" a refusal by adding it.

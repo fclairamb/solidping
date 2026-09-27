@@ -70,6 +70,11 @@ type demoAllowedRoute struct {
 // check by slug), /checks/import, /checks/apply, /checks/export,
 // /checks/{checkUid}/rotate-token, and every non-check route in the API.
 //
+// /mcp is not here either, and never reaches this list: RequireMCPAuth does
+// not apply the route guard, because JSON-RPC over one POST route carries the
+// read/write distinction in the tool name. The MCP equivalent of this table is
+// demoAllowedMutationTools in internal/mcp/demo.go.
+//
 // The check *diagnostics* routes are mentioned in the spec as candidates
 // because they are read-only probes — but every one of them is registered as a
 // GET, so they already pass on the method rule and need no entry.

@@ -376,7 +376,7 @@ func (h *Handler) toolUpdateCheck(ctx context.Context, orgSlug string, args map[
 
 	result, err := h.checksSvc.UpdateCheck(ctx, orgSlug, identifier, &req)
 	if err != nil {
-		return errorResult(err.Error())
+		return checkWriteErrorResult(err)
 	}
 
 	return marshalResult(result)
@@ -400,7 +400,7 @@ func (h *Handler) toolDeleteCheck(ctx context.Context, orgSlug string, args map[
 	}
 
 	if err := h.checksSvc.DeleteCheck(ctx, orgSlug, identifier); err != nil {
-		return errorResult(err.Error())
+		return checkWriteErrorResult(err)
 	}
 
 	return textResult("Check deleted successfully.")

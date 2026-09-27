@@ -227,6 +227,23 @@ var demoUnauthenticatedRoutes = map[string]string{
 	"POST /api/v1/status-pages/{org}/{slug}/unlock":                    "public status-page password unlock",
 }
 
+// demoHandlerGuardedRoutes is the NAMED list of non-GET routes that are
+// authenticated but deliberately skip the ROUTE guard, because the demo
+// decision for them is taken inside the handler.
+//
+// MCP is JSON-RPC over one POST route: the HTTP method and route pattern
+// cannot tell a read from a write, so RequireMCPAuth leaves the decision to
+// mcp.Handler.handleToolsCall (internal/mcp/demo.go), which refuses every
+// mutation tool but the three check tools, and to checks.Service for check
+// ownership. TestMCPDemoSessionThroughTheRealRouteTable proves the in-handler
+// refusal on this real route table.
+//
+//nolint:gochecknoglobals // Effectively a constant table; Go has no const maps.
+var demoHandlerGuardedRoutes = map[string]string{
+	"POST /api/v1/mcp":   "JSON-RPC; demo decision per tool call in mcp.handleToolsCall",
+	"DELETE /api/v1/mcp": "MCP session close, grants nothing (like POST /auth/logout)",
+}
+
 // nonGETAPIRoutes walks the REAL route table and returns every registered
 // non-GET route under /api/v1. The rest of the tree (static assets, /pub, the
 // SPA fallbacks) has its own, unauthenticated story.
@@ -284,7 +301,7 @@ func TestEveryNonGETRouteIsClosedToADemoSession(t *testing.T) {
 	// every assertion below vacuously true.
 	r.Greater(len(routes), 50, "the non-GET API route table looks implausibly small")
 
-	guarded, publicSeen, allowedSeen := 0, 0, 0
+	guarded, publicSeen, allowedSeen, handlerSeen := 0, 0, 0, 0
 
 	for _, rt := range routes {
 		path, ok := concreteURLForPattern(rt.pattern, env.org.Slug)
@@ -295,6 +312,8 @@ func TestEveryNonGETRouteIsClosedToADemoSession(t *testing.T) {
 			allowedSeen++
 		case isPublicDemoRoute(t, env, rt, path):
 			publicSeen++
+		case isHandlerGuardedDemoRoute(r, env, rt, path):
+			handlerSeen++
 		default:
 			assertRefusedForDemo(r, env, rt, path)
 
@@ -311,6 +330,30 @@ func TestEveryNonGETRouteIsClosedToADemoSession(t *testing.T) {
 	r.Equalf(len(demoUnauthenticatedRoutes), publicSeen,
 		"demoUnauthenticatedRoutes has %d entries but only %d matched a registered route — the list has rotted",
 		len(demoUnauthenticatedRoutes), publicSeen)
+	r.Equalf(len(demoHandlerGuardedRoutes), handlerSeen,
+		"demoHandlerGuardedRoutes has %d entries but only %d matched a registered route — the list has rotted",
+		len(demoHandlerGuardedRoutes), handlerSeen)
+}
+
+// isHandlerGuardedDemoRoute reports whether the route is on the named
+// handler-guarded list, and proves the entry is still accurate: the route is
+// authenticated (an anonymous caller is refused) and the route guard does not
+// refuse a demo session (the handler decides).
+func isHandlerGuardedDemoRoute(r *require.Assertions, env *demoEnv, rt demoRoute, path string) bool {
+	reason, listed := demoHandlerGuardedRoutes[rt.key()]
+	if !listed {
+		return false
+	}
+
+	anonStatus, _ := env.do(rt.method, path, "")
+	r.Equalf(http.StatusUnauthorized, anonStatus,
+		"%s is listed as handler-guarded (%s) but no longer requires authentication", rt.key(), reason)
+
+	status, code := env.do(rt.method, path, env.demoToken)
+	r.Falsef(status == http.StatusForbidden && code == string(base.ErrorCodeDemoReadOnly),
+		"%s is listed as handler-guarded (%s) but the route guard refused a demo session", rt.key(), reason)
+
+	return true
 }
 
 func isAllowedDemoRoute(allowed map[string]struct{}, rt demoRoute) bool {
@@ -455,4 +498,73 @@ func TestPATDerivedDemoClaimsAreGuardedToo(t *testing.T) {
 	// create a check, which is the whole point of publishing one.
 	_, code = env.do(http.MethodPost, "/api/v1/orgs/"+env.org.Slug+"/checks/validate", pat)
 	r.NotEqual(string(base.ErrorCodeDemoReadOnly), code)
+}
+
+// mcpCall posts one JSON-RPC request to the real /api/v1/mcp route.
+func (e *demoEnv) mcpCall(token, method string, params any) (int, map[string]any) {
+	e.t.Helper()
+
+	payload := map[string]any{"jsonrpc": "2.0", "id": 1, "method": method}
+	if params != nil {
+		payload["params"] = params
+	}
+
+	body, err := json.Marshal(payload)
+	require.NoError(e.t, err)
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost,
+		e.ts.URL+"/api/v1/mcp", strings.NewReader(string(body)))
+	require.NoError(e.t, err)
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := e.ts.Client().Do(req)
+	require.NoError(e.t, err)
+
+	defer func() { _ = resp.Body.Close() }()
+
+	var out map[string]any
+	_ = json.NewDecoder(resp.Body).Decode(&out)
+
+	return resp.StatusCode, out
+}
+
+// TestMCPDemoSessionThroughTheRealRouteTable drives the whole chain —
+// RequireMCPAuth, the MCP handler, the demo gate — on the real route table: a
+// demo session completes the handshake and reads, and is refused a non-check
+// mutation tool with the REST wording.
+func TestMCPDemoSessionThroughTheRealRouteTable(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	env := newDemoEnv(t)
+
+	status, body := env.mcpCall(env.demoToken, "initialize", map[string]any{"protocolVersion": "2025-03-26"})
+	r.Equalf(http.StatusOK, status, "a demo session must complete the MCP handshake (got %v)", body)
+	r.Nil(body["error"])
+
+	status, body = env.mcpCall(env.demoToken, "tools/list", nil)
+	r.Equal(http.StatusOK, status)
+	r.Nil(body["error"])
+
+	status, body = env.mcpCall(env.demoToken, "tools/call",
+		map[string]any{"name": "list_checks", "arguments": map[string]any{}})
+	r.Equal(http.StatusOK, status)
+	r.Nil(body["error"], "list_checks must work for a demo session")
+
+	status, body = env.mcpCall(env.demoToken, "tools/call",
+		map[string]any{"name": "create_status_page", "arguments": map[string]any{"name": "x", "slug": "x"}})
+	r.Equal(http.StatusOK, status)
+
+	rpcErr, ok := body["error"].(map[string]any)
+	r.Truef(ok, "create_status_page must be refused for a demo session (got %v)", body)
+	r.Equal(auth.DemoWriteMessage, rpcErr["message"])
+	r.Equal(map[string]any{"code": string(base.ErrorCodeDemoReadOnly)}, rpcErr["data"])
+
+	// Positive control: the owner's session is not refused by the demo gate.
+	_, body = env.mcpCall(env.plainToken, "tools/call",
+		map[string]any{"name": "create_status_page", "arguments": map[string]any{"name": "x", "slug": "x"}})
+	if rpcErr, isErr := body["error"].(map[string]any); isErr {
+		r.NotEqual(auth.DemoWriteMessage, rpcErr["message"])
+	}
 }

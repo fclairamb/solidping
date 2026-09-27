@@ -452,6 +452,13 @@ func (h *Handler) handleToolsCall(
 			return &resp, http.StatusOK
 		}
 
+		// Demo gate: the shared public demo may create, edit and delete
+		// checks (ownership enforced in checks.Service) and nothing else.
+		if demoToolRefused(claims, params.Name) {
+			resp := demoRefusalResponse(req.ID)
+			return &resp, http.StatusOK
+		}
+
 		// Role gate: may the human behind it write at all? A full-scope PAT
 		// belonging to a `viewer` would otherwise reach the services directly,
 		// bypassing the REST write floor entirely.
