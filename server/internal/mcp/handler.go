@@ -33,6 +33,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/notifier"
 	"github.com/fclairamb/solidping/server/internal/realtime"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
+	"github.com/fclairamb/solidping/server/internal/version"
 )
 
 const (
@@ -416,7 +417,8 @@ func (h *Handler) handleInitialize(
 			Resources: &ResourcesCap{},
 			Prompts:   &PromptsCap{},
 		},
-		ServerInfo: ServerInfo{Name: "solidping", Version: "0.1.0"},
+		// The link-time build version (Dockerfile ldflags); "dev" locally.
+		ServerInfo: ServerInfo{Name: "solidping", Version: version.Version},
 	})
 
 	return &resp, http.StatusOK
