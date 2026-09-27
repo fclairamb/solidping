@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -44,12 +45,33 @@ func main() {
 	logLevel := config.ParseLogLevel(os.Getenv("LOG_LEVEL"))
 	setupLogger(logLevel, config.ParseLogFormat(os.Getenv("SP_LOG_FORMAT")))
 
-	cmd := buildRootCommand()
+	os.Exit(run(context.Background(), buildRootCommand(), os.Args))
+}
 
-	if err := cmd.Run(context.Background(), os.Args); err != nil {
-		slog.Error("Application failed", "error", err)
-		os.Exit(1)
+// run executes the command tree and returns the process exit code. A failure
+// is logged through slog's default logger: stdout for the server commands,
+// stderr under "client" and "mcp" (see logToStderr).
+func run(ctx context.Context, cmd *cli.Command, args []string) int {
+	if err := cmd.Run(ctx, args); err != nil {
+		slog.ErrorContext(ctx, "Application failed", "error", err)
+
+		return 1
 	}
+
+	return 0
+}
+
+// logToStderr points slog's default logger at stderr for the "client" subtree
+// and the "mcp" command. Client commands print their results on stdout, and
+// `client mcp` and `mcp --stdio` speak JSON-RPC there, so a log line (main's
+// own "Application failed" included) must never land in it. The other server
+// commands keep logging to stdout.
+func logToStderr(ctx context.Context, _ *cli.Command) (context.Context, error) {
+	handler := newLogHandlerTo(os.Stderr,
+		config.ParseLogLevel(os.Getenv("LOG_LEVEL")), config.ParseLogFormat(os.Getenv("SP_LOG_FORMAT")))
+	slog.SetDefault(slog.New(handler))
+
+	return ctx, nil
 }
 
 // buildRootCommand builds the "solidping" binary's command tree. Pulled out
@@ -102,8 +124,10 @@ func buildRootCommand() *cli.Command {
 			{
 				Name:     "client",
 				Usage:    "Client commands for managing SolidPing remotely",
+				Before:   logToStderr,
 				Commands: spCli.GetCommands(),
 			},
+			mcpCommand(),
 			{
 				Name:  "encrypt-credentials",
 				Usage: "Encrypt plaintext secret fields in checks and connections (idempotent)",
@@ -124,17 +148,22 @@ func buildRootCommand() *cli.Command {
 // single place that maps a config.LogFormat onto a slog.Handler, so the plain
 // path and the OTel fanout path below can never drift apart.
 func newLogHandler(level slog.Level, format config.LogFormat) slog.Handler {
+	return newLogHandlerTo(os.Stdout, level, format)
+}
+
+// newLogHandlerTo is newLogHandler writing to out instead of stdout.
+func newLogHandlerTo(out io.Writer, level slog.Level, format config.LogFormat) slog.Handler {
 	opts := &slog.HandlerOptions{Level: level}
 
 	switch format {
 	case config.LogFormatJSON:
-		return slog.NewJSONHandler(os.Stdout, opts)
+		return slog.NewJSONHandler(out, opts)
 	case config.LogFormatPretty:
-		return pretty.NewPretty(os.Stdout, opts)
+		return pretty.NewPretty(out, opts)
 	case config.LogFormatText:
-		return slog.NewTextHandler(os.Stdout, opts)
+		return slog.NewTextHandler(out, opts)
 	default:
-		return slog.NewTextHandler(os.Stdout, opts)
+		return slog.NewTextHandler(out, opts)
 	}
 }
 
@@ -144,16 +173,65 @@ func setupLogger(level slog.Level, format config.LogFormat) {
 	slog.SetDefault(logger)
 }
 
-//nolint:funlen // OTel initialization adds statements
 func serve(ctx context.Context, _ *cli.Command) error {
-	cfg, err := config.Load()
+	cfg, shutdownOTel, err := loadServeConfig(ctx, os.Stdout)
 	if err != nil {
-		slog.ErrorContext(ctx, "Failed to load configuration", "error", err)
 		return err
 	}
 
+	defer shutdownOTel()
+
+	// Deported-agent mode (SP_NODE_ROLE=agent, spec 2026-07-16-02): the agent
+	// has no database and runs no migrations — branch BEFORE any DB init. It
+	// enrolls (or reconnects) over WebSocket and runs the check worker loop.
+	if cfg.IsAgentMode() {
+		return runAgentMode(ctx, cfg)
+	}
+
+	server, err := prepareServer(ctx, cfg, false)
+	if err != nil {
+		return err
+	}
+
+	// Create context that cancels on shutdown signals
+	ctx, stop := signal.NotifyContext(
+		ctx, syscall.SIGTERM, syscall.SIGINT,
+	)
+	defer stop()
+
+	// Opt-in: die with whoever started us instead of being adopted by PID 1.
+	ctx, stopParentWatch := watchParent(ctx, cfg)
+	defer stopParentWatch()
+
+	// Start server (blocks until context is canceled)
+	err = server.Start(ctx)
+
+	// Cleanup resources
+	if closeErr := server.Close(ctx); closeErr != nil {
+		slog.ErrorContext(ctx, "Error closing server", "error", closeErr)
+	}
+
+	// If the error is context.Canceled, it means graceful shutdown
+	if errors.Is(err, context.Canceled) {
+		return nil
+	}
+
+	return err
+}
+
+// loadServeConfig is the front half of `serve`, shared with `mcp --stdio`: it
+// loads and validates the configuration, points slog at logOut, applies the
+// runtime guardrails and the User-Agent, and starts OpenTelemetry. The
+// returned func shuts OpenTelemetry down.
+func loadServeConfig(ctx context.Context, logOut io.Writer) (*config.Config, func(), error) {
+	cfg, err := config.Load()
+	if err != nil {
+		slog.ErrorContext(ctx, "Failed to load configuration", "error", err)
+		return nil, nil, err
+	}
+
 	// Re-configure logger with the log level from config
-	setupLogger(cfg.LogLevel, cfg.LogFormat)
+	slog.SetDefault(slog.New(newLogHandlerTo(logOut, cfg.LogLevel, cfg.LogFormat)))
 
 	// Warn about unrecognized SP_* environment variables before validating: a
 	// typo'd var is often *why* validation fails, so the hint must print before
@@ -163,7 +241,7 @@ func serve(ctx context.Context, _ *cli.Command) error {
 
 	if validationErr := cfg.Validate(); validationErr != nil {
 		slog.ErrorContext(ctx, "Invalid configuration", "error", validationErr)
-		return cli.Exit(validationErr.Error(), 1)
+		return nil, nil, cli.Exit(validationErr.Error(), 1)
 	}
 
 	// Apply Go runtime memory guardrails (GOMEMLIMIT soft cap, GOGC) as early as
@@ -197,20 +275,20 @@ func serve(ctx context.Context, _ *cli.Command) error {
 	logProvider, otelErr := otelProvider.Start(ctx)
 	if otelErr != nil {
 		slog.ErrorContext(ctx, "Failed to start OTel", "error", otelErr)
-		return otelErr
+		return nil, nil, otelErr
 	}
 
-	defer otelProvider.Shutdown(ctx)
+	shutdownOTel := func() { otelProvider.Shutdown(ctx) }
 
 	// If OTel logs are enabled, add otelslog bridge via fanout
 	if logProvider != nil {
-		stdoutHandler := newLogHandler(cfg.LogLevel, cfg.LogFormat)
+		outHandler := newLogHandlerTo(logOut, cfg.LogLevel, cfg.LogFormat)
 		otelHandler := otelslog.NewHandler(
 			"solidping",
 			otelslog.WithLoggerProvider(logProvider),
 		)
 		fanout := slogutil.NewFanoutHandler(
-			stdoutHandler, otelHandler,
+			outHandler, otelHandler,
 		)
 		slog.SetDefault(slog.New(fanout))
 	}
@@ -220,17 +298,23 @@ func serve(ctx context.Context, _ *cli.Command) error {
 		"dbType", cfg.Database.Type,
 		"logSQL", cfg.Database.LogSQL)
 
-	// Deported-agent mode (SP_NODE_ROLE=agent, spec 2026-07-16-02): the agent
-	// has no database and runs no migrations — branch BEFORE any DB init. It
-	// enrolls (or reconnects) over WebSocket and runs the check worker loop.
-	if cfg.IsAgentMode() {
-		return runAgentMode(ctx, cfg)
-	}
+	return cfg, shutdownOTel, nil
+}
 
+// prepareServer is the middle of `serve`, shared with `mcp --stdio`: it builds
+// the server, runs the migrations, overlays the system configuration, seeds the
+// startup data, sets up the routes and runs the one-shot data fixups. The
+// returned server is ready to Start. headless drops the api role's inbound
+// surfaces (see app.Server.SetHeadless).
+func prepareServer(ctx context.Context, cfg *config.Config, headless bool) (*app.Server, error) {
 	server, err := app.NewServer(ctx, cfg)
 	if err != nil {
 		slog.ErrorContext(ctx, "Failed to create server", "error", err)
-		return err
+		return nil, err
+	}
+
+	if headless {
+		server.SetHeadless()
 	}
 
 	// Run database migrations on startup
@@ -239,7 +323,7 @@ func serve(ctx context.Context, _ *cli.Command) error {
 
 	if initErr := server.Initialize(ctx); initErr != nil {
 		slog.ErrorContext(ctx, "Failed to run migrations", "error", initErr)
-		return initErr
+		return nil, initErr
 	}
 
 	slog.InfoContext(ctx, "Migrations completed successfully",
@@ -252,14 +336,14 @@ func serve(ctx context.Context, _ *cli.Command) error {
 		slog.ErrorContext(ctx,
 			"Failed to initialize system config",
 			"error", sysConfigErr)
-		return sysConfigErr
+		return nil, sysConfigErr
 	}
 
 	// Seed startup data driven by env/deployment (SaaS entitlements, named
 	// regions, the first-party CLI OAuth client). All idempotent no-ops when the
 	// relevant env/state is absent.
 	if seedErr := seedStartupData(ctx, server); seedErr != nil {
-		return seedErr
+		return nil, seedErr
 	}
 
 	// Routes are constructed after InitializeSystemConfig so handlers see
@@ -272,40 +356,17 @@ func serve(ctx context.Context, _ *cli.Command) error {
 	// multi-region check-job re-leveling). No-ops once the DB is already in the
 	// current shape.
 	if fixupErr := runStartupDataFixups(ctx, server); fixupErr != nil {
-		return fixupErr
+		return nil, fixupErr
 	}
 
 	// Initialize test data if in test mode
 	if testDataErr := server.InitializeTestData(ctx); testDataErr != nil {
 		slog.ErrorContext(ctx,
 			"Failed to initialize test data", "error", testDataErr)
-		return testDataErr
+		return nil, testDataErr
 	}
 
-	// Create context that cancels on shutdown signals
-	ctx, stop := signal.NotifyContext(
-		ctx, syscall.SIGTERM, syscall.SIGINT,
-	)
-	defer stop()
-
-	// Opt-in: die with whoever started us instead of being adopted by PID 1.
-	ctx, stopParentWatch := watchParent(ctx, cfg)
-	defer stopParentWatch()
-
-	// Start server (blocks until context is canceled)
-	err = server.Start(ctx)
-
-	// Cleanup resources
-	if closeErr := server.Close(ctx); closeErr != nil {
-		slog.ErrorContext(ctx, "Error closing server", "error", closeErr)
-	}
-
-	// If the error is context.Canceled, it means graceful shutdown
-	if errors.Is(err, context.Canceled) {
-		return nil
-	}
-
-	return err
+	return server, nil
 }
 
 // healthcheckAction implements the `solidping healthcheck` subcommand: it

@@ -1891,6 +1891,9 @@ paths:
         A check keeps at most 5 captures of its own (the oldest is retired on
         the sixth); incident captures live as long as their incident. Any
         check type answers — a type that never captures returns an empty list.
+        Next to `data`, `captureOutcome` reports the latest "Capture now"
+        request that produced no screenshot, and why (browser and js checks
+        only). Captures are viewport-only, 1280x800.
         Operator-only: never exposed on a status page, badge or subscriber
         payload. Same authorization as reading the check.
       operationId: listCheckScreenshots
@@ -1937,8 +1940,10 @@ paths:
         and its result is recorded like any other run. The call returns as
         soon as the run is scheduled; the capture appears in
         `GET …/screenshots` (trigger `capture-now`, or `agent-upload` from a
-        private agent) once the run completes. A js check only yields a capture
-        if its script calls `page.screenshot()`. Rate limited to one request
+        private agent) once the run completes. A run that completes without a
+        capture is reported as `captureOutcome` on that listing, matched by
+        `requestedAt`. A js check only yields a capture if its script calls
+        `page.screenshot()`. Rate limited to one request
         per check per minute and 20 per organization per hour; a refusal
         carries `Retry-After`. Requires write access (viewers get 403).
       operationId: captureCheckScreenshot
@@ -2936,6 +2941,16 @@ paths:
           description: Filter by state (comma-separated, e.g., "active,resolved")
           schema:
             type: string
+        - name: kind
+          in: query
+          description: >-
+            Filter by incident kind, comma-separated: "check" (an outage),
+            "degraded" (intermittence or latency) and/or "slo_burn" (an SLO
+            error-budget burn alert), e.g. "check,degraded". Absent or empty
+            means every kind. Any other value answers 400 VALIDATION_ERROR.
+          schema:
+            type: string
+          example: "degraded"
         - name: cursor
           in: query
           description: Cursor for pagination
@@ -12193,6 +12208,32 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/CheckScreenshot"
+        captureOutcome:
+          $ref: "#/components/schemas/CheckCaptureOutcome"
+
+    CheckCaptureOutcome:
+      type: object
+      description: >-
+        The check's latest FAILED "Capture now" request: a run carried the
+        request and came back without a screenshot (the capture errored or
+        timed out, was over the size limit, the browser was unreachable, or a
+        js script never called `page.screenshot()`). Absent when no request
+        failed. A successful capture has no outcome here: its image in `data`
+        is the answer. Match `requestedAt` against the `requestedAt` returned
+        by `POST …/screenshots/capture` to tell whether the request being
+        waited on failed.
+      required: [requestedAt, failed]
+      properties:
+        requestedAt:
+          type: string
+          format: date-time
+          description: The request this outcome answers, as the capture endpoint returned it.
+        failed:
+          type: boolean
+          description: Always true today.
+        error:
+          type: string
+          description: Why the run produced no screenshot.
 
     CheckScreenshotCaptureResponse:
       type: object

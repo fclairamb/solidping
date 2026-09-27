@@ -798,6 +798,33 @@ func (e CheckListItemType) Valid() bool {
 	}
 }
 
+// Defines values for CheckScreenshotTrigger.
+const (
+	CheckScreenshotTriggerAgentUpload    CheckScreenshotTrigger = "agent-upload"
+	CheckScreenshotTriggerCaptureNow     CheckScreenshotTrigger = "capture-now"
+	CheckScreenshotTriggerCheckFailure   CheckScreenshotTrigger = "check-failure"
+	CheckScreenshotTriggerIncidentOpen   CheckScreenshotTrigger = "incident-open"
+	CheckScreenshotTriggerIncidentReopen CheckScreenshotTrigger = "incident-reopen"
+)
+
+// Valid indicates whether the value is a known member of the CheckScreenshotTrigger enum.
+func (e CheckScreenshotTrigger) Valid() bool {
+	switch e {
+	case CheckScreenshotTriggerAgentUpload:
+		return true
+	case CheckScreenshotTriggerCaptureNow:
+		return true
+	case CheckScreenshotTriggerCheckFailure:
+		return true
+	case CheckScreenshotTriggerIncidentOpen:
+		return true
+	case CheckScreenshotTriggerIncidentReopen:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CreateCheckRequestPlacement.
 const (
 	CreateCheckRequestPlacementAuto   CreateCheckRequestPlacement = "auto"
@@ -1485,6 +1512,27 @@ func (e ExportedDependencyKind) Valid() bool {
 	}
 }
 
+// Defines values for FailQuorum0.
+const (
+	FailQuorum0All      FailQuorum0 = "all"
+	FailQuorum0Default  FailQuorum0 = "default"
+	FailQuorum0Majority FailQuorum0 = "majority"
+)
+
+// Valid indicates whether the value is a known member of the FailQuorum0 enum.
+func (e FailQuorum0) Valid() bool {
+	switch e {
+	case FailQuorum0All:
+		return true
+	case FailQuorum0Default:
+		return true
+	case FailQuorum0Majority:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetOrgResultResponseStatus.
 const (
 	GetOrgResultResponseStatusAbandoned GetOrgResultResponseStatus = "abandoned"
@@ -1515,6 +1563,30 @@ func (e GetOrgResultResponseStatus) Valid() bool {
 	case GetOrgResultResponseStatusUp:
 		return true
 	case GetOrgResultResponseStatusWarning:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for HandoffExchangeResponseLoginAction.
+const (
+	HandoffExchangeResponseLoginActionEmpty       HandoffExchangeResponseLoginAction = ""
+	HandoffExchangeResponseLoginActionNoOrg       HandoffExchangeResponseLoginAction = "noOrg"
+	HandoffExchangeResponseLoginActionOrgChoice   HandoffExchangeResponseLoginAction = "orgChoice"
+	HandoffExchangeResponseLoginActionOrgRedirect HandoffExchangeResponseLoginAction = "orgRedirect"
+)
+
+// Valid indicates whether the value is a known member of the HandoffExchangeResponseLoginAction enum.
+func (e HandoffExchangeResponseLoginAction) Valid() bool {
+	switch e {
+	case HandoffExchangeResponseLoginActionEmpty:
+		return true
+	case HandoffExchangeResponseLoginActionNoOrg:
+		return true
+	case HandoffExchangeResponseLoginActionOrgChoice:
+		return true
+	case HandoffExchangeResponseLoginActionOrgRedirect:
 		return true
 	default:
 		return false
@@ -2238,6 +2310,33 @@ func (e RegionCapabilitiesIpv6) Valid() bool {
 	case RegionCapabilitiesIpv6Unknown:
 		return true
 	case RegionCapabilitiesIpv6Yes:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RegionFreshnessStatus.
+const (
+	RegionFreshnessStatusDown    RegionFreshnessStatus = "down"
+	RegionFreshnessStatusError   RegionFreshnessStatus = "error"
+	RegionFreshnessStatusTimeout RegionFreshnessStatus = "timeout"
+	RegionFreshnessStatusUp      RegionFreshnessStatus = "up"
+	RegionFreshnessStatusWarning RegionFreshnessStatus = "warning"
+)
+
+// Valid indicates whether the value is a known member of the RegionFreshnessStatus enum.
+func (e RegionFreshnessStatus) Valid() bool {
+	switch e {
+	case RegionFreshnessStatusDown:
+		return true
+	case RegionFreshnessStatusError:
+		return true
+	case RegionFreshnessStatusTimeout:
+		return true
+	case RegionFreshnessStatusUp:
+		return true
+	case RegionFreshnessStatusWarning:
 		return true
 	default:
 		return false
@@ -3201,21 +3300,6 @@ func (e ListChecksParamsInternal) Valid() bool {
 	}
 }
 
-// Defines values for ListChecksParamsWouldHaveFired.
-const (
-	ListChecksParamsWouldHaveFiredTrue ListChecksParamsWouldHaveFired = "true"
-)
-
-// Valid indicates whether the value is a known member of the ListChecksParamsWouldHaveFired enum.
-func (e ListChecksParamsWouldHaveFired) Valid() bool {
-	switch e {
-	case ListChecksParamsWouldHaveFiredTrue:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for ListChecksParamsSort.
 const (
 	ListChecksParamsSortGroup      ListChecksParamsSort = "group"
@@ -3911,11 +3995,11 @@ type Check struct {
 	// CheckGroupUid Group this check belongs to, or null.
 	CheckGroupUid *openapi_types.UUID `json:"checkGroupUid,omitempty"`
 
-	// Config Check-specific configuration; the fields accepted depend on `type`. HTTP checks additionally accept `verifySsl` (boolean, default true — set false to skip TLS certificate verification), `followRedirects` (boolean, default true — set false to stop at the first response instead of following redirects) and `capture_failure_response` (boolean, default false — when true a FAILING execution keeps what the probe received: status line, redacted response headers and a 16 KiB-capped body, stored on the incident it opens as `details.failureResponse`. Opt-in because a response body can contain PII; never exposed on a status page). See wiki/conventions/checker-config.md for the full per-type field reference.
+	// Config Check-specific configuration; the fields accepted depend on `type`. HTTP checks additionally accept `verifySsl` (boolean, default true — set false to skip TLS certificate verification), `followRedirects` (boolean, default true — set false to stop at the first response instead of following redirects), `redirectHostPolicy` (string, default "any" — "same-host" refuses any followed redirect hop whose host differs from the previous hop's, failing the check instead of following it; an unknown value is a VALIDATION_ERROR) and `capture_failure_response` (boolean, default false — when true a FAILING execution keeps what the probe received: status line, redacted response headers and a 16 KiB-capped body, stored on the incident it opens as `details.failureResponse`. Opt-in because a response body can contain PII; never exposed on a status page). See wiki/conventions/checker-config.md for the full per-type field reference.
 	Config    *map[string]interface{} `json:"config,omitempty"`
 	CreatedAt *time.Time              `json:"createdAt,omitempty"`
 
-	// DegradedEnabled Whether degraded detection may OPEN incidents on this check. New checks are on; every check that predates the feature is off, and runs as a dry run that only stamps `degradedWouldFireAt`.
+	// DegradedEnabled Whether degraded detection runs on this check. When false, degraded detection is not evaluated for this check. New checks are on; every check that predates the feature is off. Turning it off resolves the check's open degraded incident, if any.
 	DegradedEnabled *bool `json:"degradedEnabled,omitempty"`
 
 	// DegradedFailures Degraded detection, failure rule: fires when this many of the last `degradedFailuresWindow` countable probes failed. 0 = off. Always the RESOLVED value and never null: a check that never configured degraded detection stores no value, and this reports the default the check is actually running under.
@@ -3930,15 +4014,20 @@ type Check struct {
 	// DegradedSlowWindow Window of the slow rule, counted in countable probes. Always the resolved value, never null.
 	DegradedSlowWindow *int `json:"degradedSlowWindow,omitempty"`
 
-	// DegradedWouldFireAt When the dry run first saw a degraded condition on a check that has `degradedEnabled` false. Absent when the rules never fired. Cleared when degraded detection is enabled.
-	DegradedWouldFireAt *time.Time `json:"degradedWouldFireAt,omitempty"`
-
 	// Description Optional documentation describing what this check monitors
 	Description *string `json:"description,omitempty"`
-	Enabled     *bool   `json:"enabled,omitempty"`
+
+	// EffectiveFailQuorum What failQuorum resolves to for the check's current regions: how many of them must be failing, for the confirmation period, before the check is down. Omitted for passive checks (no regions).
+	EffectiveFailQuorum *int  `json:"effectiveFailQuorum,omitempty"`
+	Enabled             *bool `json:"enabled,omitempty"`
 
 	// EscalationPolicyUid Escalation policy assigned directly to this check. When null, the check inherits its group's policy, then the org default, then none (resolved once at incident-open). Assigning a zero-step policy is the "explicitly silent" convention.
 	EscalationPolicyUid *openapi_types.UUID `json:"escalationPolicyUid,omitempty"`
+
+	// FailQuorum Multi-region quorum: how many of the check's regions must be failing, for the confirmation period, before the check is down and an incident opens. `default` is all regions for one or two regions and a majority for three or more; `all` keeps the per-result rule (any passing region resets the confirmation); `majority` is floor(N/2)+1; a whole number (1-100, clamped to the region count) is that many regions. Fewer failing regions than the quorum is a regional issue: the check reads `warning` and no incident opens. Accepted as a JSON string or number; a count is returned as a number. Ignored for passive checks, which have no regions.
+	//
+	// Example: majority
+	FailQuorum *FailQuorum `json:"failQuorum,omitempty"`
 
 	// FlapBackoffFactor Each flap multiplies the required recovery time by this factor. 1 = off (constant recovery period).
 	FlapBackoffFactor *int `json:"flapBackoffFactor,omitempty"`
@@ -4004,6 +4093,9 @@ type Check struct {
 
 	// RegionSpread Optional inter-region scheduling offset (e.g., "00:00:20"). Every selected region runs the check at the full period; this staggers their phases. Null uses the default of period ÷ region count. Must satisfy 0 <= regionSpread < period.
 	RegionSpread *string `json:"regionSpread,omitempty"`
+
+	// RegionalIssue Present (check detail, `with=region_freshness`) while some, but fewer than the quorum, of the check's current regions are failing. The check is `warning` and no incident opens. Regions the check no longer runs in never count.
+	RegionalIssue *RegionalIssue `json:"regionalIssue,omitempty"`
 
 	// Regions Region slugs the check runs from. For a pinned check, the user's explicit list (never moved). For an automatically placed check, the CURRENT placement, chosen by the scheduler and rewritten when one of its regions goes dark (spec 2026-09-25-06). A private location is `@<slug>`.
 	Regions *[]string `json:"regions,omitempty"`
@@ -4078,6 +4170,18 @@ type CheckAvailabilityBucketsResponse struct {
 // CheckAvailabilityResponse defines model for CheckAvailabilityResponse.
 type CheckAvailabilityResponse struct {
 	Data *[]AvailabilityPeriod `json:"data,omitempty"`
+}
+
+// CheckCaptureOutcome The check's latest FAILED "Capture now" request: a run carried the request and came back without a screenshot (the capture errored or timed out, was over the size limit, the browser was unreachable, or a js script never called `page.screenshot()`). Absent when no request failed. A successful capture has no outcome here: its image in `data` is the answer. Match `requestedAt` against the `requestedAt` returned by `POST …/screenshots/capture` to tell whether the request being waited on failed.
+type CheckCaptureOutcome struct {
+	// Error Why the run produced no screenshot.
+	Error *string `json:"error,omitempty"`
+
+	// Failed Always true today.
+	Failed bool `json:"failed"`
+
+	// RequestedAt The request this outcome answers, as the capture endpoint returned it.
+	RequestedAt time.Time `json:"requestedAt"`
 }
 
 // CheckChannel defines model for CheckChannel.
@@ -4190,11 +4294,11 @@ type CheckListItem struct {
 	// CheckGroupUid Group this check belongs to, or null.
 	CheckGroupUid *openapi_types.UUID `json:"checkGroupUid,omitempty"`
 
-	// Config Check-specific configuration; the fields accepted depend on `type`. HTTP checks additionally accept `verifySsl` (boolean, default true — set false to skip TLS certificate verification), `followRedirects` (boolean, default true — set false to stop at the first response instead of following redirects) and `capture_failure_response` (boolean, default false — when true a FAILING execution keeps what the probe received: status line, redacted response headers and a 16 KiB-capped body, stored on the incident it opens as `details.failureResponse`. Opt-in because a response body can contain PII; never exposed on a status page). See wiki/conventions/checker-config.md for the full per-type field reference.
+	// Config Check-specific configuration; the fields accepted depend on `type`. HTTP checks additionally accept `verifySsl` (boolean, default true — set false to skip TLS certificate verification), `followRedirects` (boolean, default true — set false to stop at the first response instead of following redirects), `redirectHostPolicy` (string, default "any" — "same-host" refuses any followed redirect hop whose host differs from the previous hop's, failing the check instead of following it; an unknown value is a VALIDATION_ERROR) and `capture_failure_response` (boolean, default false — when true a FAILING execution keeps what the probe received: status line, redacted response headers and a 16 KiB-capped body, stored on the incident it opens as `details.failureResponse`. Opt-in because a response body can contain PII; never exposed on a status page). See wiki/conventions/checker-config.md for the full per-type field reference.
 	Config    *map[string]interface{} `json:"config,omitempty"`
 	CreatedAt *time.Time              `json:"createdAt,omitempty"`
 
-	// DegradedEnabled Whether degraded detection may OPEN incidents on this check. New checks are on; every check that predates the feature is off, and runs as a dry run that only stamps `degradedWouldFireAt`.
+	// DegradedEnabled Whether degraded detection runs on this check. When false, degraded detection is not evaluated for this check. New checks are on; every check that predates the feature is off. Turning it off resolves the check's open degraded incident, if any.
 	DegradedEnabled *bool `json:"degradedEnabled,omitempty"`
 
 	// DegradedFailures Degraded detection, failure rule: fires when this many of the last `degradedFailuresWindow` countable probes failed. 0 = off. Always the RESOLVED value and never null: a check that never configured degraded detection stores no value, and this reports the default the check is actually running under.
@@ -4209,15 +4313,20 @@ type CheckListItem struct {
 	// DegradedSlowWindow Window of the slow rule, counted in countable probes. Always the resolved value, never null.
 	DegradedSlowWindow *int `json:"degradedSlowWindow,omitempty"`
 
-	// DegradedWouldFireAt When the dry run first saw a degraded condition on a check that has `degradedEnabled` false. Absent when the rules never fired. Cleared when degraded detection is enabled.
-	DegradedWouldFireAt *time.Time `json:"degradedWouldFireAt,omitempty"`
-
 	// Description Optional documentation describing what this check monitors
 	Description *string `json:"description,omitempty"`
-	Enabled     *bool   `json:"enabled,omitempty"`
+
+	// EffectiveFailQuorum What failQuorum resolves to for the check's current regions: how many of them must be failing, for the confirmation period, before the check is down. Omitted for passive checks (no regions).
+	EffectiveFailQuorum *int  `json:"effectiveFailQuorum,omitempty"`
+	Enabled             *bool `json:"enabled,omitempty"`
 
 	// EscalationPolicyUid Escalation policy assigned directly to this check. When null, the check inherits its group's policy, then the org default, then none (resolved once at incident-open). Assigning a zero-step policy is the "explicitly silent" convention.
 	EscalationPolicyUid *openapi_types.UUID `json:"escalationPolicyUid,omitempty"`
+
+	// FailQuorum Multi-region quorum: how many of the check's regions must be failing, for the confirmation period, before the check is down and an incident opens. `default` is all regions for one or two regions and a majority for three or more; `all` keeps the per-result rule (any passing region resets the confirmation); `majority` is floor(N/2)+1; a whole number (1-100, clamped to the region count) is that many regions. Fewer failing regions than the quorum is a regional issue: the check reads `warning` and no incident opens. Accepted as a JSON string or number; a count is returned as a number. Ignored for passive checks, which have no regions.
+	//
+	// Example: majority
+	FailQuorum *FailQuorum `json:"failQuorum,omitempty"`
 
 	// FlapBackoffFactor Each flap multiplies the required recovery time by this factor. 1 = off (constant recovery period).
 	FlapBackoffFactor *int `json:"flapBackoffFactor,omitempty"`
@@ -4283,6 +4392,9 @@ type CheckListItem struct {
 
 	// RegionSpread Optional inter-region scheduling offset (e.g., "00:00:20"). Every selected region runs the check at the full period; this staggers their phases. Null uses the default of period ÷ region count. Must satisfy 0 <= regionSpread < period.
 	RegionSpread *string `json:"regionSpread,omitempty"`
+
+	// RegionalIssue Present (check detail, `with=region_freshness`) while some, but fewer than the quorum, of the check's current regions are failing. The check is `warning` and no incident opens. Regions the check no longer runs in never count.
+	RegionalIssue *RegionalIssue `json:"regionalIssue,omitempty"`
 
 	// Regions Region slugs the check runs from. For a pinned check, the user's explicit list (never moved). For an automatically placed check, the CURRENT placement, chosen by the scheduler and rewritten when one of its regions goes dark (spec 2026-09-25-06). A private location is `@<slug>`.
 	Regions *[]string `json:"regions,omitempty"`
@@ -4364,6 +4476,50 @@ type CheckScheduling struct {
 	DutyCyclePct int `json:"dutyCyclePct"`
 }
 
+// CheckScreenshot One of a check's screenshots: an incident's capture or a check-scoped one. The bytes are fetched through `downloadUrl`, never inlined.
+type CheckScreenshot struct {
+	// CapturedAt When the probe took the capture — for a failing run, a moment AFTER failure detection. A private agent's upload carries no capture time, so this is then when the server stored it.
+	CapturedAt time.Time `json:"capturedAt"`
+
+	// DownloadUrl RELATIVE, short-lived (1 h) signed URL (`/pub/files/<uid>?exp=…&sig=…`), the same one an incident's attachment carries. Re-signed on every fetch; do not cache it.
+	DownloadUrl string `json:"downloadUrl"`
+
+	// IncidentUid The incident the capture is attached to. Absent for a check-scoped capture.
+	IncidentUid *openapi_types.UUID `json:"incidentUid,omitempty"`
+
+	// MimeType Content type as sniffed at write time (`image/webp` today).
+	MimeType string `json:"mimeType"`
+
+	// Region Probing region, stamped server-side.
+	Region *string `json:"region,omitempty"`
+	Size   int64   `json:"size"`
+
+	// Trigger Why the capture was kept: it opened (`incident-open`) or reopened (`incident-reopen`) an incident, it is a failing run that opened none (`check-failure`), it was requested (`capture-now`), or it was uploaded by a private agent (`agent-upload`).
+	Trigger *CheckScreenshotTrigger `json:"trigger,omitempty"`
+
+	// Uid The `files` row uid.
+	Uid openapi_types.UUID `json:"uid"`
+}
+
+// CheckScreenshotTrigger Why the capture was kept: it opened (`incident-open`) or reopened (`incident-reopen`) an incident, it is a failing run that opened none (`check-failure`), it was requested (`capture-now`), or it was uploaded by a private agent (`agent-upload`).
+type CheckScreenshotTrigger string
+
+// CheckScreenshotCaptureResponse defines model for CheckScreenshotCaptureResponse.
+type CheckScreenshotCaptureResponse struct {
+	// Region The region the on-demand run executes in.
+	Region *string `json:"region,omitempty"`
+
+	// RequestedAt When the request was recorded. The capture that answers it lands in the listing after this instant.
+	RequestedAt time.Time `json:"requestedAt"`
+}
+
+// CheckScreenshotListResponse defines model for CheckScreenshotListResponse.
+type CheckScreenshotListResponse struct {
+	// CaptureOutcome The check's latest FAILED "Capture now" request: a run carried the request and came back without a screenshot (the capture errored or timed out, was over the size limit, the browser was unreachable, or a js script never called `page.screenshot()`). Absent when no request failed. A successful capture has no outcome here: its image in `data` is the answer. Match `requestedAt` against the `requestedAt` returned by `POST …/screenshots/capture` to tell whether the request being waited on failed.
+	CaptureOutcome *CheckCaptureOutcome `json:"captureOutcome,omitempty"`
+	Data           []CheckScreenshot    `json:"data"`
+}
+
 // CheckStats defines model for CheckStats.
 type CheckStats struct {
 	// Availability24h 100 * successful / total over the trailing 24h window, combining `hour` rollup rows and `raw` result rows (successful = up + warning; lifecycle markers and reaped/abandoned raw rows are excluded from both sides). `null` when the window has no countable data (an empty or brand-new org) — never a fabricated 100.
@@ -4404,6 +4560,8 @@ type CheckStats struct {
 
 // CheckTypeInfo defines model for CheckTypeInfo.
 type CheckTypeInfo struct {
+	// Advisory Message for an otherwise-enabled type whose availability still depends on something the org must satisfy — e.g. on a SaaS deployment, docker only runs when pinned to one of the org's private locations. Absent when there is nothing to say.
+	Advisory             *string  `json:"advisory,omitempty"`
 	DefaultPeriodSeconds *int     `json:"defaultPeriodSeconds,omitempty"`
 	Description          string   `json:"description"`
 	DisabledReason       *string  `json:"disabledReason,omitempty"`
@@ -4526,7 +4684,7 @@ type CreateCheckRequest struct {
 	// Config Check-specific configuration (e.g., url, port, timeout). HTTP checks additionally accept `verifySsl` and `followRedirects` (both booleans, default true) and `capture_failure_response` (boolean, default false) — see the Check schema above for details.
 	Config map[string]interface{} `json:"config"`
 
-	// DegradedEnabled Whether degraded detection may OPEN incidents on this check. New checks are on; every check that predates the feature is off, and runs as a dry run that only stamps `degradedWouldFireAt`.
+	// DegradedEnabled Whether degraded detection runs on this check. When false, degraded detection is not evaluated for this check. New checks are on; every check that predates the feature is off. Turning it off resolves the check's open degraded incident, if any.
 	DegradedEnabled *bool `json:"degradedEnabled,omitempty"`
 
 	// DegradedFailures Degraded detection, failure rule: fires when this many of the last `degradedFailuresWindow` countable probes failed. 0 = off. Omit to store no value at all, which means "use the default" and keeps the check tracking that default if it ever changes. Rejected with `VALIDATION_ERROR` when it exceeds the EFFECTIVE window — the window in this same request if you sent one, the default of 60 otherwise — because "70 of 60" can never fire.
@@ -4547,6 +4705,11 @@ type CreateCheckRequest struct {
 
 	// EscalationPolicyUid Escalation policy to assign to this check. Omit or empty to inherit (group → org default → none). A zero-step policy makes the check explicitly silent.
 	EscalationPolicyUid *openapi_types.UUID `json:"escalationPolicyUid,omitempty"`
+
+	// FailQuorum Multi-region quorum: how many of the check's regions must be failing, for the confirmation period, before the check is down and an incident opens. `default` is all regions for one or two regions and a majority for three or more; `all` keeps the per-result rule (any passing region resets the confirmation); `majority` is floor(N/2)+1; a whole number (1-100, clamped to the region count) is that many regions. Fewer failing regions than the quorum is a regional issue: the check reads `warning` and no incident opens. Accepted as a JSON string or number; a count is returned as a number. Ignored for passive checks, which have no regions.
+	//
+	// Example: majority
+	FailQuorum *FailQuorum `json:"failQuorum,omitempty"`
 
 	// FlapBackoffFactor Each flap multiplies the required recovery time by this factor. 1 = off (constant recovery).
 	FlapBackoffFactor *int `json:"flapBackoffFactor,omitempty"`
@@ -5129,7 +5292,7 @@ type DnsRecord struct {
 //
 // Example: {"code":"REGION_FORMAT","field":"regions","message":"region \"Paris!\" must be a slug or \"@private-location\"","slug":"api"}
 type DocumentIssue struct {
-	// Code Stable machine code. The closed set is `UNSUPPORTED_VERSION`, `MISSING_ORGANIZATION`, `INVALID_SECRETS_MARKER`, `EMPTY_CHECKS`, `MISSING_FIELD`, `INVALID_SLUG`, `DUPLICATE_SLUG`, `INTERNAL_NOT_WRITABLE`, `UNKNOWN_TYPE`, `INVALID_CONFIG`, `INLINED_CREDENTIAL`, `STATUS_FIELD_CONFLICT`, `INVALID_PERIOD`, `INVALID_LABEL`, `REGION_FORMAT`, `INVALID_PLACEMENT`, `INVALID_DEPENDS_ON`, `DEPENDENCY_CYCLE`, `UNRESOLVED_SECRET_REF`. Everything but the last is decidable offline, which is what `sp checks validate <file>` runs with no token and no network; `UNRESOLVED_SECRET_REF` needs the organization's own parameters and so is reported only here.
+	// Code Stable machine code. The closed set is `UNSUPPORTED_VERSION`, `MISSING_ORGANIZATION`, `INVALID_SECRETS_MARKER`, `EMPTY_CHECKS`, `MISSING_FIELD`, `INVALID_SLUG`, `DUPLICATE_SLUG`, `INTERNAL_NOT_WRITABLE`, `UNKNOWN_TYPE`, `INVALID_CONFIG`, `INLINED_CREDENTIAL`, `STATUS_FIELD_CONFLICT`, `INVALID_PERIOD`, `INVALID_LABEL`, `REGION_FORMAT`, `INVALID_PLACEMENT`, `INVALID_FAIL_QUORUM`, `INVALID_DEPENDS_ON`, `DEPENDENCY_CYCLE`, `UNRESOLVED_SECRET_REF`. Everything but the last is decidable offline, which is what `sp checks validate <file>` runs with no token and no network; `UNRESOLVED_SECRET_REF` needs the organization's own parameters and so is reported only here.
 	Code string `json:"code"`
 
 	// Field The offending property, in the document's own spelling — `regions`, `period`, `config.url`, `labels.tier`, `dependsOn`.
@@ -5413,6 +5576,19 @@ type ExportedDependency struct {
 // ExportedDependencyKind defines model for ExportedDependency.Kind.
 type ExportedDependencyKind string
 
+// FailQuorum Multi-region quorum: how many of the check's regions must be failing, for the confirmation period, before the check is down and an incident opens. `default` is all regions for one or two regions and a majority for three or more; `all` keeps the per-result rule (any passing region resets the confirmation); `majority` is floor(N/2)+1; a whole number (1-100, clamped to the region count) is that many regions. Fewer failing regions than the quorum is a regional issue: the check reads `warning` and no incident opens. Accepted as a JSON string or number; a count is returned as a number. Ignored for passive checks, which have no regions.
+//
+// Example: majority
+type FailQuorum struct {
+	union json.RawMessage
+}
+
+// FailQuorum0 defines model for FailQuorum.0.
+type FailQuorum0 string
+
+// FailQuorum1 defines model for FailQuorum.1.
+type FailQuorum1 = int
+
 // FileListResponse defines model for FileListResponse.
 type FileListResponse struct {
 	Data  []FileResponse `json:"data"`
@@ -5485,6 +5661,36 @@ type GetOrgResultResponse struct {
 
 // GetOrgResultResponseStatus Result status, mirroring every value `statusIntToString` can return: `up` and `warning` both count as available, `degraded` only appears on aggregated rollup rows, `down` covers every genuine failure (the raw `timeout` and `error` statuses are both reported as `down` here), `created` and `running` are attempts that have not been finalized, and `unknown` covers a missing or unrecognised raw status. `abandoned` marks an attempt nothing was ever reported for (see LastResult.status): terminal, excluded from availability, and never rendered as a failure. It is filterable on its own via `?status=abandoned`, and is deliberately NOT part of `?status=down`.
 type GetOrgResultResponseStatus string
+
+// HandoffExchangeRequest defines model for HandoffExchangeRequest.
+type HandoffExchangeRequest struct {
+	// Code The single-use code from the /d/auth/complete redirect
+	Code string `json:"code"`
+}
+
+// HandoffExchangeResponse defines model for HandoffExchangeResponse.
+type HandoffExchangeResponse struct {
+	AccessToken *string `json:"accessToken,omitempty"`
+	ExpiresIn   *int    `json:"expiresIn,omitempty"`
+
+	// LoginAction Indicates how the frontend should handle the login result
+	LoginAction *HandoffExchangeResponseLoginAction `json:"loginAction,omitempty"`
+
+	// MembershipPending Slug of the org that has not admitted the user yet (org-less session only)
+	MembershipPending *string              `json:"membershipPending,omitempty"`
+	Organization      *OrganizationSummary `json:"organization,omitempty"`
+
+	// Organizations Available organizations for the user
+	Organizations *[]OrganizationMemberSummary `json:"organizations,omitempty"`
+	RefreshToken  *string                      `json:"refreshToken,omitempty"`
+
+	// ReturnTo Where the login was started from. A hint; the dashboard only follows a same-origin path in the session's org.
+	ReturnTo *string      `json:"returnTo,omitempty"`
+	User     *UserSummary `json:"user,omitempty"`
+}
+
+// HandoffExchangeResponseLoginAction Indicates how the frontend should handle the login result
+type HandoffExchangeResponseLoginAction string
 
 // HealthResponse defines model for HealthResponse.
 type HealthResponse struct {
@@ -6575,6 +6781,9 @@ type OrgSettingsResponse struct {
 	// SessionMaxDurationSeconds Org-level session max duration override in seconds; omitted when inherited
 	SessionMaxDurationSeconds *int `json:"sessionMaxDurationSeconds,omitempty"`
 
+	// StatusPageAllowedEmbedOrigins Origins allowed to frame this organization's public status pages, rendered into the page's `Content-Security-Policy: frame-ancestors` after `'self'`. Empty when only the SolidPing origin itself may frame them. See the security headers documentation.
+	StatusPageAllowedEmbedOrigins []string `json:"statusPageAllowedEmbedOrigins"`
+
 	// TracerouteOnFailure Organization default for path-trace-on-failure. Applies to every check whose own `tracerouteOnFailure` is `inherit`. True when the organization has never set it.
 	TracerouteOnFailure bool `json:"tracerouteOnFailure"`
 }
@@ -6841,7 +7050,16 @@ type RegionFreshness struct {
 
 	// Stale True when lastResultAt is older than staleThresholdSeconds, or missing.
 	Stale *bool `json:"stale,omitempty"`
+
+	// Status The region's newest real reading (spec 2026-09-25-10). Kept for checks with two or more regions only; omitted otherwise.
+	Status *RegionFreshnessStatus `json:"status,omitempty"`
+
+	// StatusSince When the region last crossed between failing (down, timeout, error) and passing (up, warning).
+	StatusSince *time.Time `json:"statusSince,omitempty"`
 }
+
+// RegionFreshnessStatus The region's newest real reading (spec 2026-09-25-10). Kept for checks with two or more regions only; omitted otherwise.
+type RegionFreshnessStatus string
 
 // RegionHealthReport defines model for RegionHealthReport.
 type RegionHealthReport struct {
@@ -6920,6 +7138,16 @@ type RegionMigrationRequest struct {
 	//
 	// Example: gravelines
 	To string `json:"to"`
+}
+
+// RegionalIssue Present (check detail, `with=region_freshness`) while some, but fewer than the quorum, of the check's current regions are failing. The check is `warning` and no incident opens. Regions the check no longer runs in never count.
+type RegionalIssue struct {
+	// FailQuorum The effective quorum.
+	FailQuorum     int      `json:"failQuorum"`
+	FailingRegions []string `json:"failingRegions"`
+
+	// RegionCount The check's current region count.
+	RegionCount int `json:"regionCount"`
 }
 
 // RegisterRequest defines model for RegisterRequest.
@@ -7795,7 +8023,7 @@ type UpdateCheckRequest struct {
 	CheckGroupUid *string                 `json:"checkGroupUid,omitempty"`
 	Config        *map[string]interface{} `json:"config,omitempty"`
 
-	// DegradedEnabled Whether degraded detection may OPEN incidents on this check. New checks are on; every check that predates the feature is off, and runs as a dry run that only stamps `degradedWouldFireAt`. Omit to leave unchanged.
+	// DegradedEnabled Whether degraded detection runs on this check. When false, degraded detection is not evaluated for this check. New checks are on; every check that predates the feature is off. Turning it off resolves the check's open degraded incident, if any. Omit to leave unchanged.
 	DegradedEnabled *bool `json:"degradedEnabled,omitempty"`
 
 	// DegradedFailures Degraded detection, failure rule: fires when this many of the last `degradedFailuresWindow` countable probes failed. 0 = off. Omit to leave unchanged; there is no spelling that resets it to "unset". Rejected with `VALIDATION_ERROR` when it exceeds the EFFECTIVE window — this request's `degradedFailuresWindow` if you sent one, otherwise the check's stored window, or the default of 60 when the check has never configured one. So raising this alone can fail even though the request looks self-consistent: "70 of 60" can never fire.
@@ -7816,6 +8044,11 @@ type UpdateCheckRequest struct {
 
 	// EscalationPolicyUid Escalation policy for this check. A UID assigns it; an empty string clears it (inherit group → org default → none); omit to leave unchanged. A zero-step policy makes the check explicitly silent.
 	EscalationPolicyUid *string `json:"escalationPolicyUid,omitempty"`
+
+	// FailQuorum Multi-region quorum: how many of the check's regions must be failing, for the confirmation period, before the check is down and an incident opens. `default` is all regions for one or two regions and a majority for three or more; `all` keeps the per-result rule (any passing region resets the confirmation); `majority` is floor(N/2)+1; a whole number (1-100, clamped to the region count) is that many regions. Fewer failing regions than the quorum is a regional issue: the check reads `warning` and no incident opens. Accepted as a JSON string or number; a count is returned as a number. Ignored for passive checks, which have no regions.
+	//
+	// Example: majority
+	FailQuorum *FailQuorum `json:"failQuorum,omitempty"`
 
 	// FlapBackoffFactor Each flap multiplies the required recovery time by this factor. 1 = off. Omit to leave unchanged.
 	FlapBackoffFactor *int `json:"flapBackoffFactor,omitempty"`
@@ -7950,6 +8183,9 @@ type UpdateOrgSettingsRequest struct {
 
 	// SessionMaxDurationSeconds Session max duration override in seconds; <=0 clears the override
 	SessionMaxDurationSeconds *int `json:"sessionMaxDurationSeconds,omitempty"`
+
+	// StatusPageAllowedEmbedOrigins Replaces the list of origins allowed to frame this organization's public status pages. Each entry must be a scheme and host (`https://intranet.acme.com`, optionally with a port, or a leading `*.` wildcard label such as `https://*.acme.com`); paths, queries, a bare `*`, CSP keywords, whitespace and `;` are refused with a `VALIDATION_ERROR`. An empty array clears the list; omit to leave it unchanged. Takes effect within a minute.
+	StatusPageAllowedEmbedOrigins *[]string `json:"statusPageAllowedEmbedOrigins,omitempty"`
 
 	// TracerouteOnFailure Sets the organization default for path-trace-on-failure. Omit to leave unchanged.
 	TracerouteOnFailure *bool `json:"tracerouteOnFailure,omitempty"`
@@ -8104,6 +8340,11 @@ type UpsertCheckRequest struct {
 	// EscalationPolicyUid Escalation policy for this check. Omit or empty to inherit (group → org default → none); a zero-step policy makes it silent.
 	EscalationPolicyUid *string `json:"escalationPolicyUid,omitempty"`
 
+	// FailQuorum Multi-region quorum: how many of the check's regions must be failing, for the confirmation period, before the check is down and an incident opens. `default` is all regions for one or two regions and a majority for three or more; `all` keeps the per-result rule (any passing region resets the confirmation); `majority` is floor(N/2)+1; a whole number (1-100, clamped to the region count) is that many regions. Fewer failing regions than the quorum is a regional issue: the check reads `warning` and no incident opens. Accepted as a JSON string or number; a count is returned as a number. Ignored for passive checks, which have no regions.
+	//
+	// Example: majority
+	FailQuorum *FailQuorum `json:"failQuorum,omitempty"`
+
 	// Labels Key-value pairs for organizing checks
 	//
 	// Example: {"app":"api","env":"prod"}
@@ -8166,6 +8407,11 @@ type ValidateCheckRequest struct {
 
 	// ExcludeCheckUid UID of the check being edited. Its slug is then not reported as a collision with itself, and the checks-per-minute projection replaces its stored row instead of adding a second one. Omit when creating.
 	ExcludeCheckUid *string `json:"excludeCheckUid,omitempty"`
+
+	// FailQuorum Multi-region quorum: how many of the check's regions must be failing, for the confirmation period, before the check is down and an incident opens. `default` is all regions for one or two regions and a majority for three or more; `all` keeps the per-result rule (any passing region resets the confirmation); `majority` is floor(N/2)+1; a whole number (1-100, clamped to the region count) is that many regions. Fewer failing regions than the quorum is a regional issue: the check reads `warning` and no incident opens. Accepted as a JSON string or number; a count is returned as a number. Ignored for passive checks, which have no regions.
+	//
+	// Example: majority
+	FailQuorum *FailQuorum `json:"failQuorum,omitempty"`
 
 	// Period Proposed execution interval (`HH:MM:SS` or a Go duration). Optional; when absent, neither the per-type period bounds nor the checks-per-minute projection are evaluated.
 	Period *string `json:"period,omitempty"`
@@ -8521,18 +8767,12 @@ type ListChecksParams struct {
 	// Internal Filter by internal status. "false" (default) shows only non-internal checks, "true" shows only internal checks, "all" shows all checks.
 	Internal *ListChecksParamsInternal `form:"internal,omitempty" json:"internal,omitempty"`
 
-	// WouldHaveFired When "true", returns only the checks the degraded dry run has flagged (`degradedWouldFireAt` is set) — what enabling degraded detection would have caught. Any other value applies no filter.
-	WouldHaveFired *ListChecksParamsWouldHaveFired `form:"wouldHaveFired,omitempty" json:"wouldHaveFired,omitempty"`
-
 	// Sort Opt-in ordering. "group" orders by group sortOrder ascending with ungrouped checks last, then created_at descending within a bucket — matching the dashboard's display order. "targetHost" orders by the derived targetHost ascending (case-sensitive, byte/codepoint order — e.g. "Zebra.example.com" sorts before "api.example.com"), checks with no targetHost last, then name ascending as a tiebreaker — lets a by-host view paginate consistently server-side. Omitted keeps the default created_at descending ordering. Any other value is a validation error.
 	Sort *ListChecksParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
 }
 
 // ListChecksParamsInternal defines parameters for ListChecks.
 type ListChecksParamsInternal string
-
-// ListChecksParamsWouldHaveFired defines parameters for ListChecks.
-type ListChecksParamsWouldHaveFired string
 
 // ListChecksParamsSort defines parameters for ListChecks.
 type ListChecksParamsSort string
@@ -8578,6 +8818,12 @@ type ListCheckEventsParams struct {
 
 	// Size Results per page (default 20, max 100)
 	Size *int `form:"size,omitempty" json:"size,omitempty"`
+}
+
+// ListCheckScreenshotsParams defines parameters for ListCheckScreenshots.
+type ListCheckScreenshotsParams struct {
+	// Limit How many captures to return (values above 20 are clamped).
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // GetCheckAvailabilityParams defines parameters for GetCheckAvailability.
@@ -8725,6 +8971,9 @@ type ListIncidentsParams struct {
 
 	// State Filter by state (comma-separated, e.g., "active,resolved")
 	State *string `form:"state,omitempty" json:"state,omitempty"`
+
+	// Kind Filter by incident kind, comma-separated: "check" (an outage), "degraded" (intermittence or latency) and/or "slo_burn" (an SLO error-budget burn alert), e.g. "check,degraded". Absent or empty means every kind. Any other value answers 400 VALIDATION_ERROR.
+	Kind *string `form:"kind,omitempty" json:"kind,omitempty"`
 
 	// Cursor Cursor for pagination
 	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
@@ -9136,6 +9385,9 @@ type RespondToDeviceConsentJSONRequestBody = DeviceConsentRequest
 // PollDeviceTokenJSONRequestBody defines body for PollDeviceToken for application/json ContentType.
 type PollDeviceTokenJSONRequestBody = DeviceTokenRequest
 
+// ExchangeHandoffCodeJSONRequestBody defines body for ExchangeHandoffCode for application/json ContentType.
+type ExchangeHandoffCodeJSONRequestBody = HandoffExchangeRequest
+
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
 type LoginJSONRequestBody = LoginRequest
 
@@ -9399,6 +9651,68 @@ type MigrateRegionJSONRequestBody = RegionMigrationRequest
 
 // SendTestEmailJSONRequestBody defines body for SendTestEmail for application/json ContentType.
 type SendTestEmailJSONRequestBody = TestEmailRequest
+
+// AsFailQuorum0 returns the union data inside the FailQuorum as a FailQuorum0
+func (t FailQuorum) AsFailQuorum0() (FailQuorum0, error) {
+	var body FailQuorum0
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromFailQuorum0 overwrites any union data inside the FailQuorum as the provided FailQuorum0
+func (t *FailQuorum) FromFailQuorum0(v FailQuorum0) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeFailQuorum0 performs a merge with any union data inside the FailQuorum, using the provided FailQuorum0
+func (t *FailQuorum) MergeFailQuorum0(v FailQuorum0) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsFailQuorum1 returns the union data inside the FailQuorum as a FailQuorum1
+func (t FailQuorum) AsFailQuorum1() (FailQuorum1, error) {
+	var body FailQuorum1
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromFailQuorum1 overwrites any union data inside the FailQuorum as the provided FailQuorum1
+func (t *FailQuorum) FromFailQuorum1(v FailQuorum1) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeFailQuorum1 performs a merge with any union data inside the FailQuorum, using the provided FailQuorum1
+func (t *FailQuorum) MergeFailQuorum1(v FailQuorum1) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t FailQuorum) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *FailQuorum) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
 
 // AsValidateCheckRequest returns the union data inside the ValidateCheckJSONBody as a ValidateCheckRequest
 func (t ValidateCheckJSONBody) AsValidateCheckRequest() (ValidateCheckRequest, error) {
@@ -9721,6 +10035,34 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /api/v1/auth/device/token (the `PollDeviceToken` operationId).
 	PollDeviceToken(ctx context.Context, body PollDeviceTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ExchangeHandoffCodeWithBody Redeem a federated-login handoff code
+	//
+	// A federated login (Google, GitHub, GitLab, Microsoft, Discord, Slack,
+	// OIDC, SAML) ends with a redirect to `/d/auth/complete?code=...`. The
+	// code is single use and expires after 60 seconds; this endpoint trades
+	// it for the session the provider callback minted, in the login
+	// response shape. An unknown, reused, expired or forged code always
+	// gets the same 401 body.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/v1/auth/handoff/exchange (the `ExchangeHandoffCode` operationId).
+	ExchangeHandoffCodeWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ExchangeHandoffCode Redeem a federated-login handoff code
+	//
+	// A federated login (Google, GitHub, GitLab, Microsoft, Discord, Slack,
+	// OIDC, SAML) ends with a redirect to `/d/auth/complete?code=...`. The
+	// code is single use and expires after 60 seconds; this endpoint trades
+	// it for the session the provider callback minted, in the login
+	// response shape. An unknown, reused, expired or forged code always
+	// gets the same 401 body.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/v1/auth/handoff/exchange (the `ExchangeHandoffCode` operationId).
+	ExchangeHandoffCode(ctx context.Context, body ExchangeHandoffCodeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetInvite Inspect an invitation by token
 	//
@@ -10267,6 +10609,20 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /api/v1/orgs/{org}/checks/{checkUid}/rotate-token (the `RotateHeartbeatToken` operationId).
 	RotateHeartbeatToken(ctx context.Context, org OrgPath, checkUid CheckUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListCheckScreenshots List a check's latest screenshots
+	//
+	// The check's latest page captures, newest first: the screenshots its incidents carry, the captures of failing runs that opened no incident (a validating run, a blip, a regional failure, a run of an outage whose incident already holds its onset capture), and "Capture now" captures. A check keeps at most 5 captures of its own (the oldest is retired on the sixth); incident captures live as long as their incident. Any check type answers — a type that never captures returns an empty list. Next to `data`, `captureOutcome` reports the latest "Capture now" request that produced no screenshot, and why (browser and js checks only). Captures are viewport-only, 1280x800. Operator-only: never exposed on a status page, badge or subscriber payload. Same authorization as reading the check.
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/checks/{checkUid}/screenshots (the `ListCheckScreenshots` operationId).
+	ListCheckScreenshots(ctx context.Context, org OrgPath, checkUid CheckUidPath, params *ListCheckScreenshotsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CaptureCheckScreenshot Capture a screenshot now
+	//
+	// "Capture now": runs a browser or js check once, on demand, with the screenshot forced whatever the verdict (and whether or not the check's own `screenshot` option is on). The run goes through the check's own scheduling, so it executes where the check executes — one of its regions, on a shared worker or on the organization's private agent — and its result is recorded like any other run. The call returns as soon as the run is scheduled; the capture appears in `GET …/screenshots` (trigger `capture-now`, or `agent-upload` from a private agent) once the run completes. A run that completes without a capture is reported as `captureOutcome` on that listing, matched by `requestedAt`. A js check only yields a capture if its script calls `page.screenshot()`. Rate limited to one request per check per minute and 20 per organization per hour; a refusal carries `Retry-After`. Requires write access (viewers get 403).
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/checks/{checkUid}/screenshots/capture (the `CaptureCheckScreenshot` operationId).
+	CaptureCheckScreenshot(ctx context.Context, org OrgPath, checkUid CheckUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetCheckAvailability Per-period availability statistics for a single check
 	//
@@ -12630,6 +12986,54 @@ func (c *Client) PollDeviceToken(ctx context.Context, body PollDeviceTokenJSONRe
 	return c.Client.Do(req)
 }
 
+// ExchangeHandoffCodeWithBody Redeem a federated-login handoff code
+//
+// A federated login (Google, GitHub, GitLab, Microsoft, Discord, Slack,
+// OIDC, SAML) ends with a redirect to `/d/auth/complete?code=...`. The
+// code is single use and expires after 60 seconds; this endpoint trades
+// it for the session the provider callback minted, in the login
+// response shape. An unknown, reused, expired or forged code always
+// gets the same 401 body.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/v1/auth/handoff/exchange (the `ExchangeHandoffCode` operationId).
+func (c *Client) ExchangeHandoffCodeWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewExchangeHandoffCodeRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ExchangeHandoffCode Redeem a federated-login handoff code
+//
+// A federated login (Google, GitHub, GitLab, Microsoft, Discord, Slack,
+// OIDC, SAML) ends with a redirect to `/d/auth/complete?code=...`. The
+// code is single use and expires after 60 seconds; this endpoint trades
+// it for the session the provider callback minted, in the login
+// response shape. An unknown, reused, expired or forged code always
+// gets the same 401 body.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/v1/auth/handoff/exchange (the `ExchangeHandoffCode` operationId).
+func (c *Client) ExchangeHandoffCode(ctx context.Context, body ExchangeHandoffCodeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewExchangeHandoffCodeRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // GetInvite Inspect an invitation by token
 //
 // Corresponds with GET /api/v1/auth/invite/{token} (the `GetInvite` operationId).
@@ -13896,6 +14300,40 @@ func (c *Client) ListCheckEvents(ctx context.Context, org OrgPath, checkUid Chec
 // Corresponds with POST /api/v1/orgs/{org}/checks/{checkUid}/rotate-token (the `RotateHeartbeatToken` operationId).
 func (c *Client) RotateHeartbeatToken(ctx context.Context, org OrgPath, checkUid CheckUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewRotateHeartbeatTokenRequest(c.Server, org, checkUid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListCheckScreenshots List a check's latest screenshots
+//
+// The check's latest page captures, newest first: the screenshots its incidents carry, the captures of failing runs that opened no incident (a validating run, a blip, a regional failure, a run of an outage whose incident already holds its onset capture), and "Capture now" captures. A check keeps at most 5 captures of its own (the oldest is retired on the sixth); incident captures live as long as their incident. Any check type answers — a type that never captures returns an empty list. Next to `data`, `captureOutcome` reports the latest "Capture now" request that produced no screenshot, and why (browser and js checks only). Captures are viewport-only, 1280x800. Operator-only: never exposed on a status page, badge or subscriber payload. Same authorization as reading the check.
+//
+// Corresponds with GET /api/v1/orgs/{org}/checks/{checkUid}/screenshots (the `ListCheckScreenshots` operationId).
+func (c *Client) ListCheckScreenshots(ctx context.Context, org OrgPath, checkUid CheckUidPath, params *ListCheckScreenshotsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListCheckScreenshotsRequest(c.Server, org, checkUid, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CaptureCheckScreenshot Capture a screenshot now
+//
+// "Capture now": runs a browser or js check once, on demand, with the screenshot forced whatever the verdict (and whether or not the check's own `screenshot` option is on). The run goes through the check's own scheduling, so it executes where the check executes — one of its regions, on a shared worker or on the organization's private agent — and its result is recorded like any other run. The call returns as soon as the run is scheduled; the capture appears in `GET …/screenshots` (trigger `capture-now`, or `agent-upload` from a private agent) once the run completes. A run that completes without a capture is reported as `captureOutcome` on that listing, matched by `requestedAt`. A js check only yields a capture if its script calls `page.screenshot()`. Rate limited to one request per check per minute and 20 per organization per hour; a refusal carries `Retry-After`. Requires write access (viewers get 403).
+//
+// Corresponds with POST /api/v1/orgs/{org}/checks/{checkUid}/screenshots/capture (the `CaptureCheckScreenshot` operationId).
+func (c *Client) CaptureCheckScreenshot(ctx context.Context, org OrgPath, checkUid CheckUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCaptureCheckScreenshotRequest(c.Server, org, checkUid)
 	if err != nil {
 		return nil, err
 	}
@@ -19252,6 +19690,46 @@ func NewPollDeviceTokenRequestWithBody(server string, contentType string, body i
 	return req, nil
 }
 
+// NewExchangeHandoffCodeRequest calls the generic ExchangeHandoffCode builder with application/json body
+func NewExchangeHandoffCodeRequest(server string, body ExchangeHandoffCodeJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewExchangeHandoffCodeRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewExchangeHandoffCodeRequestWithBody constructs an http.Request for the ExchangeHandoffCode method, with any body, and a specified content type
+func NewExchangeHandoffCodeRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/auth/handoff/exchange")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewGetInviteRequest constructs an http.Request for the GetInvite method
 func NewGetInviteRequest(server string, token string) (*http.Request, error) {
 	var err error
@@ -21071,18 +21549,6 @@ func NewListChecksRequest(server string, org OrgPath, params *ListChecksParams) 
 
 		}
 
-		if params.WouldHaveFired != nil {
-
-			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "wouldHaveFired", *params.WouldHaveFired, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
-				return nil, err
-			} else {
-				for _, qp := range strings.Split(queryFrag, "&") {
-					rawQueryFragments = append(rawQueryFragments, qp)
-				}
-			}
-
-		}
-
 		if params.Sort != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "sort", *params.Sort, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
@@ -21632,6 +22098,115 @@ func NewRotateHeartbeatTokenRequest(server string, org OrgPath, checkUid CheckUi
 	}
 
 	operationPath := fmt.Sprintf("/api/v1/orgs/%s/checks/%s/rotate-token", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListCheckScreenshotsRequest constructs an http.Request for the ListCheckScreenshots method
+func NewListCheckScreenshotsRequest(server string, org OrgPath, checkUid CheckUidPath, params *ListCheckScreenshotsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "checkUid", checkUid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/checks/%s/screenshots", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCaptureCheckScreenshotRequest constructs an http.Request for the CaptureCheckScreenshot method
+func NewCaptureCheckScreenshotRequest(server string, org OrgPath, checkUid CheckUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "checkUid", checkUid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/checks/%s/screenshots/capture", pathParam0, pathParam1)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -23900,6 +24475,18 @@ func NewListIncidentsRequest(server string, org OrgPath, params *ListIncidentsPa
 		if params.State != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "state", *params.State, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Kind != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "kind", *params.Kind, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {
@@ -33084,6 +33671,34 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /api/v1/auth/device/token (the `PollDeviceToken` operationId).
 	PollDeviceTokenWithResponse(ctx context.Context, body PollDeviceTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*PollDeviceTokenResult, error)
 
+	// ExchangeHandoffCodeWithBodyWithResponse Redeem a federated-login handoff code
+	//
+	// A federated login (Google, GitHub, GitLab, Microsoft, Discord, Slack,
+	// OIDC, SAML) ends with a redirect to `/d/auth/complete?code=...`. The
+	// code is single use and expires after 60 seconds; this endpoint trades
+	// it for the session the provider callback minted, in the login
+	// response shape. An unknown, reused, expired or forged code always
+	// gets the same 401 body.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/auth/handoff/exchange (the `ExchangeHandoffCode` operationId).
+	ExchangeHandoffCodeWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ExchangeHandoffCodeResult, error)
+
+	// ExchangeHandoffCodeWithResponse Redeem a federated-login handoff code
+	//
+	// A federated login (Google, GitHub, GitLab, Microsoft, Discord, Slack,
+	// OIDC, SAML) ends with a redirect to `/d/auth/complete?code=...`. The
+	// code is single use and expires after 60 seconds; this endpoint trades
+	// it for the session the provider callback minted, in the login
+	// response shape. An unknown, reused, expired or forged code always
+	// gets the same 401 body.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/auth/handoff/exchange (the `ExchangeHandoffCode` operationId).
+	ExchangeHandoffCodeWithResponse(ctx context.Context, body ExchangeHandoffCodeJSONRequestBody, reqEditors ...RequestEditorFn) (*ExchangeHandoffCodeResult, error)
+
 	// GetInviteWithResponse Inspect an invitation by token
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -33691,6 +34306,24 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /api/v1/orgs/{org}/checks/{checkUid}/rotate-token (the `RotateHeartbeatToken` operationId).
 	RotateHeartbeatTokenWithResponse(ctx context.Context, org OrgPath, checkUid CheckUidPath, reqEditors ...RequestEditorFn) (*RotateHeartbeatTokenResult, error)
+
+	// ListCheckScreenshotsWithResponse List a check's latest screenshots
+	//
+	// The check's latest page captures, newest first: the screenshots its incidents carry, the captures of failing runs that opened no incident (a validating run, a blip, a regional failure, a run of an outage whose incident already holds its onset capture), and "Capture now" captures. A check keeps at most 5 captures of its own (the oldest is retired on the sixth); incident captures live as long as their incident. Any check type answers — a type that never captures returns an empty list. Next to `data`, `captureOutcome` reports the latest "Capture now" request that produced no screenshot, and why (browser and js checks only). Captures are viewport-only, 1280x800. Operator-only: never exposed on a status page, badge or subscriber payload. Same authorization as reading the check.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/checks/{checkUid}/screenshots (the `ListCheckScreenshots` operationId).
+	ListCheckScreenshotsWithResponse(ctx context.Context, org OrgPath, checkUid CheckUidPath, params *ListCheckScreenshotsParams, reqEditors ...RequestEditorFn) (*ListCheckScreenshotsResult, error)
+
+	// CaptureCheckScreenshotWithResponse Capture a screenshot now
+	//
+	// "Capture now": runs a browser or js check once, on demand, with the screenshot forced whatever the verdict (and whether or not the check's own `screenshot` option is on). The run goes through the check's own scheduling, so it executes where the check executes — one of its regions, on a shared worker or on the organization's private agent — and its result is recorded like any other run. The call returns as soon as the run is scheduled; the capture appears in `GET …/screenshots` (trigger `capture-now`, or `agent-upload` from a private agent) once the run completes. A run that completes without a capture is reported as `captureOutcome` on that listing, matched by `requestedAt`. A js check only yields a capture if its script calls `page.screenshot()`. Rate limited to one request per check per minute and 20 per organization per hour; a refusal carries `Retry-After`. Requires write access (viewers get 403).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/checks/{checkUid}/screenshots/capture (the `CaptureCheckScreenshot` operationId).
+	CaptureCheckScreenshotWithResponse(ctx context.Context, org OrgPath, checkUid CheckUidPath, reqEditors ...RequestEditorFn) (*CaptureCheckScreenshotResult, error)
 
 	// GetCheckAvailabilityWithResponse Per-period availability statistics for a single check
 	//
@@ -36650,6 +37283,61 @@ func (r PollDeviceTokenResult) ContentType() string {
 	return ""
 }
 
+type ExchangeHandoffCodeResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *HandoffExchangeResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *ValidationError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ExchangeHandoffCodeResult) GetJSON200() *HandoffExchangeResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ExchangeHandoffCodeResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r ExchangeHandoffCodeResult) GetJSON422() *ValidationError {
+	return r.JSON422
+}
+
+// GetBody returns the raw response body bytes
+func (r ExchangeHandoffCodeResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ExchangeHandoffCodeResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ExchangeHandoffCodeResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ExchangeHandoffCodeResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetInviteResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -39417,6 +40105,165 @@ func (r RotateHeartbeatTokenResult) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r RotateHeartbeatTokenResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListCheckScreenshotsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *CheckScreenshotListResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *ValidationError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListCheckScreenshotsResult) GetJSON200() *CheckScreenshotListResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListCheckScreenshotsResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ListCheckScreenshotsResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ListCheckScreenshotsResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r ListCheckScreenshotsResult) GetJSON422() *ValidationError {
+	return r.JSON422
+}
+
+// GetBody returns the raw response body bytes
+func (r ListCheckScreenshotsResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListCheckScreenshotsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListCheckScreenshotsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListCheckScreenshotsResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// CaptureCheckScreenshotResult429Headers the declared response headers of an HTTP 429 response for CaptureCheckScreenshot
+type CaptureCheckScreenshotResult429Headers struct {
+	RetryAfter *int
+}
+
+type CaptureCheckScreenshotResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON202 the response for an HTTP 202 `application/json` response
+	JSON202 *CheckScreenshotCaptureResponse
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *Error
+	// Headers429 the parsed response headers for an HTTP 429 response
+	Headers429 *CaptureCheckScreenshotResult429Headers
+}
+
+// GetJSON202 returns the response for an HTTP 202 `application/json` response
+func (r CaptureCheckScreenshotResult) GetJSON202() *CheckScreenshotCaptureResponse {
+	return r.JSON202
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r CaptureCheckScreenshotResult) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r CaptureCheckScreenshotResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r CaptureCheckScreenshotResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r CaptureCheckScreenshotResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r CaptureCheckScreenshotResult) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r CaptureCheckScreenshotResult) GetJSON429() *Error {
+	return r.JSON429
+}
+
+// GetBody returns the raw response body bytes
+func (r CaptureCheckScreenshotResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CaptureCheckScreenshotResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CaptureCheckScreenshotResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CaptureCheckScreenshotResult) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -51955,6 +52802,46 @@ func (c *ClientWithResponses) PollDeviceTokenWithResponse(ctx context.Context, b
 	return ParsePollDeviceTokenResult(rsp)
 }
 
+// ExchangeHandoffCodeWithBodyWithResponse Redeem a federated-login handoff code
+//
+// A federated login (Google, GitHub, GitLab, Microsoft, Discord, Slack,
+// OIDC, SAML) ends with a redirect to `/d/auth/complete?code=...`. The
+// code is single use and expires after 60 seconds; this endpoint trades
+// it for the session the provider callback minted, in the login
+// response shape. An unknown, reused, expired or forged code always
+// gets the same 401 body.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/auth/handoff/exchange (the `ExchangeHandoffCode` operationId).
+func (c *ClientWithResponses) ExchangeHandoffCodeWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ExchangeHandoffCodeResult, error) {
+	rsp, err := c.ExchangeHandoffCodeWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseExchangeHandoffCodeResult(rsp)
+}
+
+// ExchangeHandoffCodeWithResponse Redeem a federated-login handoff code
+//
+// A federated login (Google, GitHub, GitLab, Microsoft, Discord, Slack,
+// OIDC, SAML) ends with a redirect to `/d/auth/complete?code=...`. The
+// code is single use and expires after 60 seconds; this endpoint trades
+// it for the session the provider callback minted, in the login
+// response shape. An unknown, reused, expired or forged code always
+// gets the same 401 body.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/auth/handoff/exchange (the `ExchangeHandoffCode` operationId).
+func (c *ClientWithResponses) ExchangeHandoffCodeWithResponse(ctx context.Context, body ExchangeHandoffCodeJSONRequestBody, reqEditors ...RequestEditorFn) (*ExchangeHandoffCodeResult, error) {
+	rsp, err := c.ExchangeHandoffCode(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseExchangeHandoffCodeResult(rsp)
+}
+
 // GetInviteWithResponse Inspect an invitation by token
 //
 // Returns a wrapper object for the known response body format(s).
@@ -52999,6 +53886,36 @@ func (c *ClientWithResponses) RotateHeartbeatTokenWithResponse(ctx context.Conte
 		return nil, err
 	}
 	return ParseRotateHeartbeatTokenResult(rsp)
+}
+
+// ListCheckScreenshotsWithResponse List a check's latest screenshots
+//
+// The check's latest page captures, newest first: the screenshots its incidents carry, the captures of failing runs that opened no incident (a validating run, a blip, a regional failure, a run of an outage whose incident already holds its onset capture), and "Capture now" captures. A check keeps at most 5 captures of its own (the oldest is retired on the sixth); incident captures live as long as their incident. Any check type answers — a type that never captures returns an empty list. Next to `data`, `captureOutcome` reports the latest "Capture now" request that produced no screenshot, and why (browser and js checks only). Captures are viewport-only, 1280x800. Operator-only: never exposed on a status page, badge or subscriber payload. Same authorization as reading the check.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/orgs/{org}/checks/{checkUid}/screenshots (the `ListCheckScreenshots` operationId).
+func (c *ClientWithResponses) ListCheckScreenshotsWithResponse(ctx context.Context, org OrgPath, checkUid CheckUidPath, params *ListCheckScreenshotsParams, reqEditors ...RequestEditorFn) (*ListCheckScreenshotsResult, error) {
+	rsp, err := c.ListCheckScreenshots(ctx, org, checkUid, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListCheckScreenshotsResult(rsp)
+}
+
+// CaptureCheckScreenshotWithResponse Capture a screenshot now
+//
+// "Capture now": runs a browser or js check once, on demand, with the screenshot forced whatever the verdict (and whether or not the check's own `screenshot` option is on). The run goes through the check's own scheduling, so it executes where the check executes — one of its regions, on a shared worker or on the organization's private agent — and its result is recorded like any other run. The call returns as soon as the run is scheduled; the capture appears in `GET …/screenshots` (trigger `capture-now`, or `agent-upload` from a private agent) once the run completes. A run that completes without a capture is reported as `captureOutcome` on that listing, matched by `requestedAt`. A js check only yields a capture if its script calls `page.screenshot()`. Rate limited to one request per check per minute and 20 per organization per hour; a refusal carries `Retry-After`. Requires write access (viewers get 403).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/orgs/{org}/checks/{checkUid}/screenshots/capture (the `CaptureCheckScreenshot` operationId).
+func (c *ClientWithResponses) CaptureCheckScreenshotWithResponse(ctx context.Context, org OrgPath, checkUid CheckUidPath, reqEditors ...RequestEditorFn) (*CaptureCheckScreenshotResult, error) {
+	rsp, err := c.CaptureCheckScreenshot(ctx, org, checkUid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCaptureCheckScreenshotResult(rsp)
 }
 
 // GetCheckAvailabilityWithResponse Per-period availability statistics for a single check
@@ -57467,6 +58384,46 @@ func ParsePollDeviceTokenResult(rsp *http.Response) (*PollDeviceTokenResult, err
 	return response, nil
 }
 
+// ParseExchangeHandoffCodeResult parses an HTTP response from a ExchangeHandoffCodeWithResponse call
+func ParseExchangeHandoffCodeResult(rsp *http.Response) (*ExchangeHandoffCodeResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ExchangeHandoffCodeResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest HandoffExchangeResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseGetInviteResult parses an HTTP response from a GetInviteWithResponse call
 func ParseGetInviteResult(rsp *http.Response) (*GetInviteResult, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -59454,6 +60411,141 @@ func ParseRotateHeartbeatTokenResult(rsp *http.Response) (*RotateHeartbeatTokenR
 		}
 		response.JSON404 = &dest
 
+	}
+
+	return response, nil
+}
+
+// ParseListCheckScreenshotsResult parses an HTTP response from a ListCheckScreenshotsWithResponse call
+func ParseListCheckScreenshotsResult(rsp *http.Response) (*ListCheckScreenshotsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListCheckScreenshotsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CheckScreenshotListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCaptureCheckScreenshotResult parses an HTTP response from a CaptureCheckScreenshotWithResponse call
+func ParseCaptureCheckScreenshotResult(rsp *http.Response) (*CaptureCheckScreenshotResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CaptureCheckScreenshotResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest CheckScreenshotCaptureResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 429:
+		var headers CaptureCheckScreenshotResult429Headers
+		if values := rsp.Header.Values("Retry-After"); len(values) > 0 {
+			var value int
+			if err := runtime.BindStyledParameterWithOptions("simple", "Retry-After", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.RetryAfter = &value
+		}
+		response.Headers429 = &headers
 	}
 
 	return response, nil

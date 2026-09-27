@@ -831,8 +831,8 @@ func createTestIncidentTraceroute(
 	return nil
 }
 
-// createTestIncidentScreenshot seeds a down browser check with an active
-// incident and a real screenshot attachment written through the normal
+// createTestIncidentScreenshot seeds a down, DISABLED browser check with an
+// active incident and a real screenshot attachment written through the normal
 // attachment path — topic, details bag, storage blob and all.
 //
 // Written through the REAL path (unlike the failure-response fixture, which is
@@ -854,6 +854,15 @@ func createTestIncidentScreenshot(
 	check.Config = models.JSONMap{"url": "https://acme.com/app", "screenshot": true}
 	check.Status = models.CheckStatusDown
 	check.StatusChangedAt = &now
+	// Disabled on purpose, like createTestSLOData's fixture: an enabled check
+	// runs for real in test mode on NewCheck's default 1-minute period. Where
+	// the worker finds a Chrome that can start (a developer machine, a CDP
+	// sidecar) every run fails against acme.com and, with `screenshot: true`,
+	// stores a check-scoped capture from region `default` that is newer than
+	// the seeded eu-west incident capture — so the check page's "latest"
+	// screenshot stops being the fixture a minute after boot. Every test that
+	// needs "Capture now" creates its own enabled check.
+	check.Enabled = false
 	check.CreatedAt = now
 	check.UpdatedAt = now
 

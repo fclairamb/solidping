@@ -1575,6 +1575,11 @@ Turn on **Screenshot on failure** (`screenshot: true`) and a run that ends
 moment after the check decided the page was unhealthy, from the region that ran
 it, so treat it as evidence rather than as the exact failing frame.
 
+Every browser check loads the page in a **1280x800** desktop window, and the
+screenshot shows that first screen only, not the full page. A failure further
+down (a missing keyword in the footer, a `waitSelector` target below the fold)
+is not visible in the image; the check's error output still names it.
+
 The check page has a **Screenshots** card (browser and `js` checks only). It
 shows the latest capture, when and from which region it was taken, and a link
 to its incident when it has one. Older captures sit in a strip underneath. Click
@@ -1594,7 +1599,10 @@ even when **Screenshot on failure** is off. The run is recorded like any other
 run. The capture appears on the card a few seconds later and counts toward the
 same 5. It is limited to one capture per check per minute and 20 per
 organization per hour. A private location running an agent older than this
-feature runs the check but does not force the capture.
+feature runs the check but does not force the capture. If the run finishes
+without a screenshot (the capture failed or timed out, the browser was
+unreachable, or a `js` script never called `page.screenshot()`), the card stops
+waiting and shows why.
 
 Screenshots are visible to every member of the organization who can see the
 check, and never on a status page, a badge or a subscriber notification.

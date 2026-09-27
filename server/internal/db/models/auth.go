@@ -87,8 +87,12 @@ type User struct {
 	// the write guard in RequireAuth keys off it, and the demo cleanup job
 	// reconciles whatever it names. Nothing anywhere matches on the address.
 	//
-	// A demo session may write exactly four things (see
-	// handlers/auth/demo_guard.go); everything else answers 403 DEMO_READ_ONLY.
+	// On the REST API a demo session may write only what the route allowlist
+	// in handlers/auth/demo_guard.go names; everything else answers 403
+	// DEMO_READ_ONLY. On MCP the same decision is taken per tool call
+	// (mcp/demo.go: create_check, update_check, delete_check only), because a
+	// JSON-RPC route cannot tell a read from a write. Check ownership is
+	// enforced in checks.Service for both.
 	Demo bool `bun:"demo,notnull"`
 	// SignupAttribution records where the signup came from — the campaign tags
 	// and ad click identifier the marketing site forwarded on the link that

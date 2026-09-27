@@ -1175,6 +1175,21 @@ export interface CheckScreenshot {
   incidentUid?: string;
 }
 
+/** The check's latest FAILED "Capture now" request (spec 2026-09-27-01): a run
+ * carried the request and came back without a screenshot. Matched to a pending
+ * request by `requestedAt`. */
+export interface CheckCaptureOutcome {
+  requestedAt: string;
+  failed: boolean;
+  error?: string;
+}
+
+/** GET …/screenshots: the captures, plus the latest failed "Capture now". */
+export interface CheckScreenshotListing {
+  screenshots: CheckScreenshot[];
+  captureOutcome?: CheckCaptureOutcome;
+}
+
 /** Response of POST …/screenshots/capture ("Capture now"). */
 export interface CheckScreenshotCaptureResponse {
   region?: string;
@@ -1195,11 +1210,11 @@ export function useCheckScreenshots(
 ) {
   return useQuery({
     queryKey: ["check-screenshots", org, checkUid],
-    queryFn: async () => {
-      const r = await apiFetch<{ data: CheckScreenshot[] }>(
+    queryFn: async (): Promise<CheckScreenshotListing> => {
+      const r = await apiFetch<{ data: CheckScreenshot[]; captureOutcome?: CheckCaptureOutcome }>(
         `/api/v1/orgs/${org}/checks/${checkUid}/screenshots?limit=${CHECK_SCREENSHOTS_LIMIT}`,
       );
-      return r.data;
+      return { screenshots: r.data, captureOutcome: r.captureOutcome };
     },
     enabled: (options.enabled ?? true) && !!org && !!checkUid,
     refetchInterval: options.pollMs ?? CHECK_SCREENSHOTS_REFRESH_MS,
@@ -2129,6 +2144,9 @@ export function useIncidents(
     // "acked" / "snoozed" are derived states the backend translates to
     // active + filter; the frontend just passes the literal through.
     state?: "active" | "resolved" | "acked" | "snoozed";
+    // Comma-separated incident kinds ("check", "degraded", "slo_burn").
+    // Part of the query key, so switching it refetches.
+    kind?: string;
     checkUid?: string;
     since?: string;
     until?: string;
@@ -2153,6 +2171,7 @@ export function useIncidents(
     queryFn: async () => {
       const params = new URLSearchParams();
       if (options?.state) params.set("state", options.state);
+      if (options?.kind) params.set("kind", options.kind);
       if (options?.checkUid) params.set("checkUid", options.checkUid);
       if (options?.since) params.set("since", options.since);
       if (options?.until) params.set("until", options.until);

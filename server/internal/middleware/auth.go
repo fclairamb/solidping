@@ -231,23 +231,36 @@ func (m *AuthMiddleware) RequireMCPAuth(next httpx.HandlerFunc) httpx.HandlerFun
 				base.ErrorCodePasswordChangeRequired, auth.PasswordRotationMessage)
 		}
 
-		// The demo write guard covers MCP too. No /mcp route is on the
-		// allowlist, so for a demo principal this is an unconditional deny of
-		// every non-safe MCP call — written through the same predicate as
-		// RequireAuth so the two can never disagree about what "demo" means.
-		if applyDemoClaim(claims, user) &&
-			!auth.IsDemoWriteAllowed(req.Method, httpx.RoutePattern(req)) {
-			return m.WriteError(writer, http.StatusForbidden,
-				base.ErrorCodeDemoReadOnly, auth.DemoWriteMessage)
-		}
-
-		ctx := req.Context()
-		ctx = context.WithValue(ctx, base.ContextKeyClaims, claims)
-		ctx = context.WithValue(ctx, base.ContextKeyUser, user)
-		setSentryIdentity(ctx, claims)
-
-		return next(writer, req.WithContext(ctx))
+		// The demo flag is re-derived from the user row exactly as in
+		// RequireAuth, but the ROUTE guard is deliberately not applied here.
+		// MCP is JSON-RPC over one POST route, so the HTTP method and route
+		// pattern cannot tell a read from a write — that lives in the
+		// JSON-RPC method and tool name. The demo decision is therefore taken
+		// per tool call in mcp.Handler.handleToolsCall (demoToolRefused), with
+		// check ownership enforced by checks.Service off these same claims.
+		// DELETE /mcp (session close) passes for the reason POST /auth/logout
+		// is on the REST allowlist.
+		return next(writer, req.WithContext(WithMCPPrincipal(req.Context(), claims, user)))
 	}
+}
+
+// WithMCPPrincipal puts an authenticated MCP principal on ctx: the demo flag
+// re-derived from the user row, then the claims and the user under the keys
+// every service reads (checks.Service stamps created_by and enforces demo
+// ownership off them), then the Sentry identity.
+//
+// RequireMCPAuth ends with it, and `solidping mcp --stdio` (spec 2026-09-26-05)
+// calls it for the principal it resolved from the local database, so the two
+// transports cannot drift apart on what "authenticated" puts on a context.
+// It mutates claims (the demo flag) and returns the derived context.
+func WithMCPPrincipal(ctx context.Context, claims *auth.Claims, user *models.User) context.Context {
+	applyDemoClaim(claims, user)
+
+	ctx = context.WithValue(ctx, base.ContextKeyClaims, claims)
+	ctx = context.WithValue(ctx, base.ContextKeyUser, user)
+	setSentryIdentity(ctx, claims)
+
+	return ctx
 }
 
 // writeMCPChallenge writes a 401 carrying the RFC 9728 resource_metadata pointer

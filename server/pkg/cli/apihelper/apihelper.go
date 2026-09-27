@@ -173,6 +173,70 @@ func (h *Helper) TryAuthRecovery(ctx context.Context) (string, error) {
 	return promptTokenData.AccessToken, nil
 }
 
+// Token resolves the bearer credential a request should carry, exactly as
+// GetClient does: the token file (saved PAT, valid JWT, or a refreshed one),
+// then a PAT from settings.json, then auto-login with configured credentials.
+// It is for callers that speak raw HTTP instead of going through the
+// generated client, such as `sp mcp`.
+func (h *Helper) Token(ctx context.Context) (string, error) {
+	return h.resolveToken(ctx)
+}
+
+// RenewToken returns a new bearer credential after the server rejected
+// `rejected`. Unlike TryAuthRecovery it never prompts: its caller may own
+// stdin (the `sp mcp` bridge reads JSON-RPC from it), so reading credentials
+// from the terminal would eat protocol traffic.
+//
+// Order: a credential another process wrote to the token file in the
+// meantime (`sp auth login` in a second terminal), then the stored refresh
+// grant, then auto-login with the credentials in settings.json.
+func (h *Helper) RenewToken(ctx context.Context, rejected string) (string, error) {
+	h.ResetClient()
+
+	if token, ok := h.renewFromTokenFile(ctx, rejected); ok {
+		return token, nil
+	}
+
+	if h.config.Auth.Email != "" && h.config.Auth.Password != "" {
+		loginTokenData, loginErr := h.autoLogin(ctx)
+		if loginErr != nil {
+			return "", fmt.Errorf("auto-login failed: %w", loginErr)
+		}
+
+		return loginTokenData.AccessToken, nil
+	}
+
+	return "", ErrNoAuthentication
+}
+
+// renewFromTokenFile is RenewToken's token-file step: a credential other than
+// the rejected one, else a refreshed access token.
+func (h *Helper) renewFromTokenFile(ctx context.Context, rejected string) (string, bool) {
+	tokenData, err := h.readTokenFile()
+	if err != nil || tokenData == nil {
+		return "", false
+	}
+
+	if tokenData.PAT != "" && tokenData.PAT != rejected {
+		return tokenData.PAT, true
+	}
+
+	if tokenData.AccessToken != "" && tokenData.AccessToken != rejected && tokenData.IsAccessTokenValid() {
+		return tokenData.AccessToken, true
+	}
+
+	if !tokenData.IsRefreshTokenValid() {
+		return "", false
+	}
+
+	newTokenData, err := h.refreshAccessToken(ctx, tokenData)
+	if err != nil {
+		return "", false
+	}
+
+	return newTokenData.AccessToken, true
+}
+
 // createTokenData creates TokenData from login response tokens.
 func createTokenData(accessToken, refreshToken string) (*TokenData, error) {
 	accessExpires, err := parseJWTExpiration(accessToken)

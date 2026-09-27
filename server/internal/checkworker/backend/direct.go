@@ -233,6 +233,16 @@ func (b *DirectBackend) SubmitResult(
 	// the claimed job carried a "Capture now" request (spec 2026-09-25-34).
 	job.HonorOnDemand(req.Diagnostics)
 
+	// A "Capture now" run that came back without a screenshot is recorded,
+	// so the dashboard can say so instead of waiting (spec 2026-09-27-01).
+	// Best-effort: it must never cost the result.
+	if requestedAt, reason, failed := job.OnDemandFailure(req.Diagnostics, req.Output); failed {
+		if err := b.dbService.RecordCheckCaptureFailure(ctx, job.UID, requestedAt, reason); err != nil {
+			slog.WarnContext(ctx, "Failed to record the capture-now failure",
+				"error", err, "check_uid", job.CheckUID, "job_uid", job.UID)
+		}
+	}
+
 	status := req.Status
 	duration := req.Duration
 	result := &models.Result{

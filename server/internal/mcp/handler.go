@@ -33,6 +33,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/notifier"
 	"github.com/fclairamb/solidping/server/internal/realtime"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
+	"github.com/fclairamb/solidping/server/internal/version"
 )
 
 const (
@@ -416,7 +417,8 @@ func (h *Handler) handleInitialize(
 			Resources: &ResourcesCap{},
 			Prompts:   &PromptsCap{},
 		},
-		ServerInfo: ServerInfo{Name: "solidping", Version: "0.1.0"},
+		// The link-time build version (Dockerfile ldflags); "dev" locally.
+		ServerInfo: ServerInfo{Name: "solidping", Version: version.Version},
 	})
 
 	return &resp, http.StatusOK
@@ -447,6 +449,13 @@ func (h *Handler) handleToolsCall(
 		if isMCPReadOnly(claims) {
 			resp := errorResponse(req.ID, CodeForbidden,
 				"Tool "+params.Name+" requires the mcp scope; current token has mcp:read only")
+			return &resp, http.StatusOK
+		}
+
+		// Demo gate: the shared public demo may create, edit and delete
+		// checks (ownership enforced in checks.Service) and nothing else.
+		if demoToolRefused(claims, params.Name) {
+			resp := demoRefusalResponse(req.ID)
 			return &resp, http.StatusOK
 		}
 

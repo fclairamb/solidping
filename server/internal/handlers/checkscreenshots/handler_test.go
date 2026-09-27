@@ -307,3 +307,63 @@ func TestCaptureNowIsRateLimitedPerOrg(t *testing.T) {
 	r.Equal(http.StatusAccepted, f.do(t, http.MethodPost, f.capturePath(f.org.Slug, last.UID)).Code,
 		"the org refusal did not spend this check's own window")
 }
+
+// TestListReportsTheLatestCaptureFailure pins the listing's captureOutcome
+// (spec 2026-09-27-01): absent until a "Capture now" fails, then the NEWEST
+// failure across the check's job rows (one per region), next to `data` and
+// never inside it; and absent for a check type that cannot capture.
+func TestListReportsTheLatestCaptureFailure(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := setup(t)
+	ctx := t.Context()
+
+	type listBody struct {
+		Data           []attachments.CheckScreenshot    `json:"data"`
+		CaptureOutcome *checkscreenshots.CaptureOutcome `json:"captureOutcome"`
+	}
+
+	list := func(checkUID string) (listBody, string) {
+		rec := f.do(t, http.MethodGet, f.listPath(f.org.Slug, checkUID))
+		r.Equal(http.StatusOK, rec.Code, rec.Body.String())
+
+		var body listBody
+		r.NoError(json.Unmarshal(rec.Body.Bytes(), &body))
+
+		return body, rec.Body.String()
+	}
+
+	body, raw := list(f.browser.UID)
+	r.Nil(body.CaptureOutcome, "control: no failed request, no outcome")
+	r.NotContains(raw, "captureOutcome", "omitted, not null")
+
+	jobs, err := f.db.ListCheckJobsByCheckUID(ctx, f.browser.UID)
+	r.NoError(err)
+	r.Len(jobs, 2, "one job per region")
+
+	older := time.Now().Add(-10 * time.Minute).UTC().Truncate(time.Millisecond)
+	newer := time.Now().Add(-time.Minute).UTC().Truncate(time.Millisecond)
+
+	r.NoError(f.db.RecordCheckCaptureFailure(ctx, jobs[0].UID, newer, "the capture timed out after 5s"))
+	r.NoError(f.db.RecordCheckCaptureFailure(ctx, jobs[1].UID, older, "an older failure"))
+
+	body, raw = list(f.browser.UID)
+	r.NotNil(body.CaptureOutcome)
+	r.True(body.CaptureOutcome.RequestedAt.Equal(newer), "the newest failure across the regions")
+	r.True(body.CaptureOutcome.Failed)
+	r.Equal("the capture timed out after 5s", body.CaptureOutcome.Error)
+	r.Contains(raw, `"data":[]`, "the screenshots stay in data")
+
+	// A check type that cannot capture never reports one, whatever its rows say.
+	httpCheck := models.NewCheck(f.org.UID, "api", "http")
+	r.NoError(f.db.CreateCheck(ctx, httpCheck))
+
+	httpJobs, err := f.db.ListCheckJobsByCheckUID(ctx, httpCheck.UID)
+	r.NoError(err)
+	r.NotEmpty(httpJobs)
+	r.NoError(f.db.RecordCheckCaptureFailure(ctx, httpJobs[0].UID, newer, "irrelevant"))
+
+	body, _ = list(httpCheck.UID)
+	r.Nil(body.CaptureOutcome)
+}

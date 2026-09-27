@@ -172,9 +172,168 @@ Each successful **authenticated** `initialize` call mints a session ID
 header. Sessions carry the negotiated protocol version, the client
 info, the org slug, and timestamps.
 
+The in-process stdio server mints no session: the process is the session
+(see below).
+
 Sessions expire after **1 hour of inactivity** (`sessionTTL`,
 [`handler.go:33`](../../server/internal/mcp/handler.go)) and a cleanup
 loop sweeps every 5 minutes. After expiry the client must re-initialize.
+
+## stdio bridge (`sp mcp`)
+
+Some consumers want a command that speaks MCP on stdin/stdout rather than a
+URL: desktop agents (Claude Desktop, Cursor) that are simplest to configure
+with a command, and MCP directories that run `mcp-proxy -- <command>`.
+`sp mcp` (also reachable as `solidping client mcp`) is that command, in front
+of a remote instance (spec 2026-09-26-04,
+[`pkg/cli/mcp.go`](../../server/pkg/cli/mcp.go)).
+
+It adds no server surface: each stdin line is POSTed to
+`<url>/api/v1/mcp` with the CLI's bearer credential, so every auth, role,
+scope and demo rule above applies unchanged.
+
+- **Framing.** Newline-delimited JSON-RPC both ways. Nothing but JSON-RPC
+  ever reaches stdout; logs go to stderr (`-v` for per-request debug lines).
+  Multi-line JSON from the server is compacted to one line, and both
+  `application/json` and `text/event-stream` replies are relayed.
+- **Session.** The `Mcp-Session-Id` returned by `initialize` is sent on every
+  later request. EOF on stdin, SIGINT or SIGTERM closes it with
+  `DELETE /api/v1/mcp`.
+- **Credential.** `--token` / `SP_TOKEN` uses a PAT verbatim and never writes
+  it to disk. Otherwise the credential is resolved like every other `sp`
+  command (token file from `sp auth login`, PAT in `settings.json`,
+  auto-login). On a 401 the bridge renews it without prompting (a newer
+  token file, then the refresh grant, then auto-login; stdin is the protocol
+  stream, so it can never ask for a password) and replays the request once.
+  A failed renewal is not retried for 30 s.
+- **Errors.** A reply that is not JSON-RPC (the auth middleware's REST error
+  shape, a proxy's HTML page, an unreachable server) becomes a JSON-RPC error
+  for the request's id: `-32001` for a 401 (the message names `sp auth login`
+  and `SP_TOKEN`), `-32603` otherwise, with `data.httpStatus` and the REST
+  `code`. A notification never gets a reply, not even the server's own
+  error for it (the id-less 403 for a token without the `mcp` scope); it
+  only gets a stderr line. A server error that answers a request without an
+  id gets the request's id stamped on, so the client can match it.
+- **Batches.** The endpoint takes one message per POST, so a JSON array is
+  relayed member by member and answered with one array of the requests'
+  replies (nothing for an all-notification batch; a single null-id
+  `Invalid Request` for an empty one, as JSON-RPC mandates).
+- **Exit.** `sp mcp` never hands an error back to the binary's `main`: it
+  logs to stderr and exits 1. The `solidping client` subtree also points
+  slog at stderr, because the server binary's default logger writes to
+  stdout.
+- **Order.** Messages are relayed one at a time, so replies come back in
+  request order and `initialize` always lands its session id first. A long
+  `tools/call` therefore delays the next request.
+- **No credential at all** still starts: the anonymous handshake works, and
+  every other call gets the error above.
+
+Claude Desktop (`claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "solidping": {
+      "command": "sp",
+      "args": ["mcp"],
+      "env": {
+        "SOLIDPING_URL": "https://solidping.acme.com",
+        "SP_TOKEN": "pat_..."
+      }
+    }
+  }
+}
+```
+
+Drop `SP_TOKEN` to use the login saved by `sp auth login` instead.
+
+This does not by itself solve directories that build a container with no
+server in it: there is still no instance and no token to give the
+bridge. That is the in-process variant below, which lives on the server
+binary's top-level `mcp` command. The two cannot clash: the bridge sits under
+`solidping client`, the in-process server at the root.
+
+## In-process stdio server (`solidping mcp --stdio`)
+
+MCP directories such as Glama build a container and run
+`mcp-proxy -- <stdio command>`, and refuse `mcp-remote`. `solidping mcp --stdio`
+(spec 2026-09-26-05, [`cmd_mcp.go`](../../server/cmd_mcp.go),
+[`mcp/stdio.go`](../../server/internal/mcp/stdio.go)) runs from the image
+alone: no running server, no token, no bridge. It replaces the old Glama
+script (serve in the background, log in as the seeded admin, rotate its
+password, bridge with supergateway).
+
+```json
+["solidping", "mcp", "--stdio"]
+```
+
+- **What runs.** Everything `serve` runs except the HTTP listener: database,
+  migrations, system-config overlay, startup seeds, the startup job, the job
+  worker and the check workers. Checks created over MCP therefore produce
+  results. `app.Server.SetHeadless` also drops the other inbound surfaces of
+  the api role: the TLS edge, the heartbeat beat listeners, the Telegram
+  webhook self-heal, Slack Socket Mode and the Discord Gateway. `SP_NODE_ROLE`
+  still picks jobs and checks (`jobs` alone runs no check). `agent` is refused:
+  it has no database.
+- **Principal.** No token: the process already holds the database
+  credentials, so acting as a member grants nothing SQL access would not.
+  The session acts as the **owner of `--org`** (the global flag, default
+  `default`, env `SOLIDPING_ORG`): the oldest live owner membership when there
+  are several, ties on `created_at` broken by membership uid, soft-deleted
+  memberships and users skipped. `--user <email|uid>` picks another member
+  instead. A value with no `@` must be a canonical uuid, or it is "user not
+  found" without a query (Postgres would answer a uuid syntax error). An unknown
+  org, an unknown user, a user who is not a member, or an org with no owner
+  (and no `--user`) stops the command with a message on stderr and exit
+  code 1. The principal is resolved once, after the startup job, so on a
+  fresh database it is the seeded `admin@solidping.io`.
+- **must_change_password is ignored.** That rotation protects a password, and
+  none is involved. The seeded admin works as is.
+- **Claims.** The principal's claims are those of a full-scope (`mcp`) PAT of
+  the same user in the same org: role from the membership row (`superadmin`
+  for a super admin). They go on the context through
+  `middleware.WithMCPPrincipal`, the same function `RequireMCPAuth` ends with,
+  so `checks.Service` stamps `created_by`, the demo flag is re-derived from
+  the user row, and the scope, demo and role gates of `tools/call` run as
+  over HTTP. A `viewer` principal can read and cannot write.
+- **Framing.** Newline-delimited JSON-RPC, answered one message at a time, in
+  order. Ids are echoed byte for byte. A notification (no id, or a null id)
+  is never answered, not even with an error. Batches are answered with one
+  array (nothing for an all-notification batch). An unparseable line gets a
+  null-id parse error. A panicking tool costs one `-32603`, not the process.
+- **Stdout is JSON-RPC only.** The command's `Before` hook points slog at
+  stderr, the config's logger goes to stderr, and `os.Stdout` is swapped for
+  `os.Stderr` for the whole run, so anything printing to stdout on its own
+  (embedded Postgres, a stray `fmt.Print`) lands on stderr. A bad flag is
+  reported on stderr too (`OnUsageError`), since urfave would print the help
+  on stdout. `TestMCPStdioCommandFreshDatabase` runs the real command in a
+  child process and fails on any non-JSON-RPC stdout line.
+- **Session.** The process is the session: `initialize` mints no
+  `Mcp-Session-Id` and adds nothing to the HTTP session map.
+- **Exit.** EOF on stdin, SIGINT or SIGTERM stops the session and shuts the
+  server down through the normal path (exit 0). A database fault that stops
+  the server ends the session too. SIGPIPE is notified, so a client that
+  closes its end of stdout makes the next reply fail with EPIPE and the
+  command shuts down gracefully with exit 1, instead of the Go runtime
+  killing it mid-flight.
+
+A directory that builds its own image around the binary (Glama) uses the
+command above as is. With the published image, override its entrypoint (it
+is `solidping serve`) and its HTTP healthcheck, which has nothing to probe
+here. The image already defaults to SQLite under `/data`:
+
+```json
+{
+  "mcpServers": {
+    "solidping": {
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "--no-healthcheck",
+               "--entrypoint", "/app/solidping", "-v", "solidping-data:/data",
+               "ghcr.io/fclairamb/solidping", "mcp", "--stdio"]
+    }
+  }
+}
+```
 
 ## Adding a tool
 
@@ -225,6 +384,8 @@ loop sweeps every 5 minutes. After expiry the client must re-initialize.
 | Tool registry | [`server/internal/mcp/tools.go`](../../server/internal/mcp/tools.go) |
 | Tool implementations | [`server/internal/mcp/tools_*.go`](../../server/internal/mcp/) |
 | Prompts | [`server/internal/mcp/prompts.go`](../../server/internal/mcp/prompts.go) |
+| stdio bridge (`sp mcp`) | [`server/pkg/cli/mcp.go`](../../server/pkg/cli/mcp.go) |
+| In-process stdio server (`solidping mcp --stdio`) | [`server/cmd_mcp.go`](../../server/cmd_mcp.go), [`server/internal/mcp/stdio.go`](../../server/internal/mcp/stdio.go) |
 
 ## Origin
 

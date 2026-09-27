@@ -101,6 +101,21 @@ type SubmitResultResponse struct {
 	NextScheduledAt time.Time `json:"nextScheduledAt"`
 }
 
+// recordCaptureFailure records a "Capture now" run that came back without a
+// screenshot, so the dashboard can say so instead of waiting (spec
+// 2026-09-27-01). Best-effort: it must never cost the result.
+func (s *Service) recordCaptureFailure(ctx context.Context, job *models.CheckJob, req *SubmitResultRequest) {
+	requestedAt, reason, failed := job.OnDemandFailure(req.Diagnostics, req.Output)
+	if !failed {
+		return
+	}
+
+	if err := s.db.RecordCheckCaptureFailure(ctx, job.UID, requestedAt, reason); err != nil {
+		slog.WarnContext(ctx, "Failed to record the capture-now failure",
+			"error", err, "check_uid", job.CheckUID, "job_uid", job.UID)
+	}
+}
+
 // SubmitResult saves a check result, processes incidents, and releases
 // the job lease.
 func (s *Service) SubmitResult(
@@ -120,6 +135,8 @@ func (s *Service) SubmitResult(
 	// An agent's OnDemand marker is honored only when this job's lease really
 	// carried a "Capture now" request (spec 2026-09-25-34).
 	job.HonorOnDemand(req.Diagnostics)
+
+	s.recordCaptureFailure(ctx, &job, req)
 
 	// 2. Build the result.
 	resultUID, err := uuid.NewV7()

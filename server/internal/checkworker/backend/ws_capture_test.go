@@ -431,7 +431,9 @@ func TestOversizedCaptureAdvertisesNothing(t *testing.T) {
 
 	raw := string(fake.lastResult(t))
 	r.NotContains(raw, `"available":true`)
-	r.NotContains(raw, "screenshot")
+	r.NotContains(raw, `"screenshot":`, "no marker is advertised")
+	r.Contains(raw, `"screenshotError":"the agent could not keep the image`,
+		"but the frame says why there is none, for a waiting Capture now (spec 2026-09-27-01)")
 	r.Contains(raw, bodyMarker, "the rest of the diagnostics block is unaffected")
 
 	time.Sleep(200 * time.Millisecond)

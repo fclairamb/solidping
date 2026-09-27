@@ -130,6 +130,14 @@ func liveFixtureServer(t *testing.T) *httptest.Server {
 			`<button type="submit" id="go">Sign in</button></form></body></html>`))
 	})
 
+	// A page far taller than the viewport whose inline script records the
+	// window size it saw WHILE PARSING (spec 2026-09-27-01).
+	mux.HandleFunc("/tall", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`<html><head><script>document.title = innerWidth + "x" + innerHeight;</script>` +
+			`<style>html,body{margin:0}</style></head>` +
+			`<body><div style="height:3000px;background:linear-gradient(#fff,#36c)">tall</div></body></html>`))
+	})
+
 	mux.HandleFunc("/dashboard", func(w http.ResponseWriter, req *http.Request) {
 		cookie, err := req.Cookie("session")
 		if err != nil || cookie.Value != "sess-1" {
@@ -241,7 +249,7 @@ func TestSessionDrivesARealPage(t *testing.T) {
 	shot, err := session.Screenshot(ctx)
 	r.NoError(err)
 	r.False(shot.Empty())
-	r.Greater(len(shot.Image), 1024, "a full-page capture of a real page is not a handful of bytes")
+	r.Greater(len(shot.Image), 1024, "a capture of a real page is not a handful of bytes")
 	r.Equal(ScreenshotFormat, shot.Format, "the capture must report the format it was taken in")
 	r.Equal(checkerdef.ImageFormatWebP, shot.Format)
 	r.True(len(shot.Image) >= 12 &&

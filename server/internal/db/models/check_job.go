@@ -85,6 +85,13 @@ type CheckJob struct {
 	// submission honors a capture's OnDemand marker only when this is set, so
 	// an agent cannot get a healthy run stored as "capture-now" by claiming it.
 	CaptureClaimedAt *time.Time `bun:"capture_claimed_at"`
+	// CaptureFailedRequestAt is the requested-at of the newest "Capture now"
+	// request this job ran that came back WITHOUT a screenshot, and
+	// CaptureFailureReason says why (spec 2026-09-27-01). Written by the result
+	// submission (OnDemandFailure), read by the screenshot listing so the
+	// dashboard stops waiting. A success writes nothing. Nil is the norm.
+	CaptureFailedRequestAt *time.Time `bun:"capture_failed_request_at"`
+	CaptureFailureReason   *string    `bun:"capture_failure_reason"`
 
 	// ParamOverlay carries the ${param:…} values resolved at the claim /
 	// dispatch boundary (checkjobsvc.ParamOverlay). Transient: never persisted
@@ -166,4 +173,55 @@ func (j *CheckJob) HonorOnDemand(diagnostics *checkerdef.Diagnostics) {
 	}
 
 	diagnostics.Screenshot.OnDemand = false
+}
+
+// MaxCaptureFailureReasonLen caps the stored reason of a failed "Capture now".
+// The reason can come from a deported agent, so it is bounded before it is
+// written; a readable reason is a sentence, not a stack dump.
+const MaxCaptureFailureReasonLen = 500
+
+// captureNoImageReason is the reason recorded when a run carrying a "Capture
+// now" request produced neither a screenshot nor an explanation of its own
+// (a js check whose script never called page.screenshot(), an agent that
+// predates ScreenshotError).
+const captureNoImageReason = "the run finished without taking a screenshot"
+
+// OnDemandFailure reports whether this job's lease carried a "Capture now"
+// request that the submitted result failed to answer (spec 2026-09-27-01):
+// the lease carried one (capture_claimed_at, the same guard as HonorOnDemand)
+// and the result has no screenshot. It returns the request's requested-at and
+// why it failed: the checker's own ScreenshotError when it attempted a
+// capture, else the result's error output (a run with no browser at all),
+// else a generic reason. Called by both result-submission paths.
+func (j *CheckJob) OnDemandFailure(
+	diagnostics *checkerdef.Diagnostics, output map[string]any,
+) (time.Time, string, bool) {
+	if j.CaptureClaimedAt == nil {
+		return time.Time{}, "", false
+	}
+
+	if diagnostics != nil && diagnostics.Screenshot != nil {
+		return time.Time{}, "", false
+	}
+
+	reason := ""
+	if diagnostics != nil {
+		reason = diagnostics.ScreenshotError
+	}
+
+	if reason == "" {
+		if msg, ok := output[checkerdef.OutputKeyError].(string); ok {
+			reason = msg
+		}
+	}
+
+	if reason == "" {
+		reason = captureNoImageReason
+	}
+
+	if runes := []rune(reason); len(runes) > MaxCaptureFailureReasonLen {
+		reason = string(runes[:MaxCaptureFailureReasonLen])
+	}
+
+	return *j.CaptureClaimedAt, reason, true
 }

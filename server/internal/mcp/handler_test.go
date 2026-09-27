@@ -13,6 +13,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/version"
 )
 
 // makeRequest builds a *http.Request with optional claims in context.
@@ -773,4 +774,23 @@ func TestHandleDelete_RejectsUnauthenticated(t *testing.T) {
 
 	r.NoError(handler.HandleDelete(rec, req))
 	r.Equal(http.StatusUnauthorized, rec.Code)
+}
+
+// TestMCPInitializeReportsBuildVersion guards against the hardcoded 0.1.0.
+func TestMCPInitializeReportsBuildVersion(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	handler := newTestHandler()
+	rec, req := makeRequest(t, http.MethodPost,
+		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`, defaultClaims())
+	r.NoError(handler.Handle(rec, req))
+
+	var resp struct {
+		Result InitializeResult `json:"result"`
+	}
+	r.NoError(json.Unmarshal(rec.Body.Bytes(), &resp))
+	r.Equal("solidping", resp.Result.ServerInfo.Name)
+	r.Equal(version.Version, resp.Result.ServerInfo.Version)
+	r.NotEqual("0.1.0", resp.Result.ServerInfo.Version)
 }

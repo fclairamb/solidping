@@ -93,6 +93,7 @@ to that organization, valid for 90 days, which you can review and revoke from
 | `sp jobs list` / `get` / `create` / `cancel` | Manage background jobs |
 | `sp system get` / `set` / `delete` | Read and write system parameters |
 | `sp server health` / `version` | Check server status |
+| `sp mcp` | Serve the MCP endpoint over stdin/stdout for command-based MCP clients ([MCP Server](/features/mcp)) |
 
 ## Config as Code
 

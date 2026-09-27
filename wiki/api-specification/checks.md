@@ -173,6 +173,26 @@ partial expression index `files_org_check_uid_idx`:
 
 Any check type answers; a type that never captures returns `{ "data": [] }`.
 
+Captures are viewport-only at 1280x800 (spec 2026-09-27-01): every browser
+session opens with that viewport, and `Page.captureScreenshot` no longer sets
+`captureBeyondViewport`.
+
+`captureOutcome` (spec 2026-09-27-01), next to `data` and omitted when absent,
+is the check's latest **failed** "Capture now" request:
+`{ requestedAt, failed: true, error }`. Both result-submission paths (in-process
+`DirectBackend.SubmitResult`, agent `workers.Service.SubmitResult`) record it
+when the lease carried a request (`capture_claimed_at`, the same guard as
+`HonorOnDemand`) and the result has no screenshot, on the job row's
+`capture_failed_request_at` / `capture_failure_reason` (migration
+`025_v0_34_0`). The reason is the checker's `Diagnostics.ScreenshotError`
+(capture error or timeout, empty image, over the 4 MiB cap, an agent capture
+cache that refused the image), else the result's `output.error` (no browser at
+all), else "the run finished without taking a screenshot" (a js script that
+never called `page.screenshot()`), capped at 500 characters. A success records
+nothing. Only `browser` and `js` checks report one; the newest across the
+check's job rows wins. The dashboard matches `requestedAt` to the value the
+capture endpoint returned (both at microsecond precision).
+
 ### POST /api/v1/orgs/:org/checks/:checkUid/screenshots/capture
 "Capture now": run a `browser` or `js` check once on demand, screenshot forced
 whatever the verdict and whatever the check's `screenshot` option (spec
@@ -187,8 +207,10 @@ request that lands while the job is leased stays due after the release. The run
 is a real run (its result is recorded and goes through the incident pipeline);
 its capture lands under `checks/<uid>/screenshot`.
 
-Response `202 { region, requestedAt }`. A js check only yields a capture if its
-script calls `page.screenshot()`. An agent predating the feature runs the job
+Response `202 { region, requestedAt }` (`requestedAt` at microsecond
+precision, so it equals a later `captureOutcome.requestedAt` for the same
+request). A js check only yields a capture if its script calls
+`page.screenshot()`. An agent predating the feature runs the job
 normally (no forced capture).
 
 | Status | When |

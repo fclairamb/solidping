@@ -237,6 +237,13 @@ A demo session may create a check and edit or delete **its own**; every other
 write is refused with `403 DEMO_READ_ONLY`, and the seeded catalogue is
 untouchable.
 
+The same rules apply over [MCP](/features/mcp). A demo session can
+connect an agent, complete the handshake, list tools and call every read tool.
+Of the mutating tools it may call `create_check`, `update_check` and
+`delete_check`, on its own checks only. Every other mutating tool answers a
+JSON-RPC error with code `-32002`, the same message as the REST refusal, and
+`data.code` set to `DEMO_READ_ONLY`.
+
 #### Deep-linking into the demo
 
 | Link | |

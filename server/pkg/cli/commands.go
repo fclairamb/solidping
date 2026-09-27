@@ -1599,6 +1599,7 @@ func GetCommands() []*cli.Command {
 		filesCommand(),
 		emailSuppressionsCommand(),
 		paramsCommand(),
+		mcpCommand(),
 	}
 }
 
