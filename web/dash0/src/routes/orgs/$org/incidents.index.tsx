@@ -1,7 +1,13 @@
 import { Fragment, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { AlertTriangle, CheckCircle, Layers, RefreshCw } from "lucide-react";
+import {
+  AlertTriangle,
+  Check,
+  CheckCircle,
+  Layers,
+  RefreshCw,
+} from "lucide-react";
 import {
   useCheckGroups,
   useChecks,
@@ -13,8 +19,15 @@ import {
   groupIncidentsByCheckGroup,
   type IncidentGroupRow,
 } from "@/lib/incident-grouping";
-import { Badge } from "@/components/ui/badge";
+import { Badge, badgeVariants } from "@/components/ui/badge";
 import { FlappingBadge } from "@/components/shared/flapping-badge";
+import { IncidentKindChip } from "@/components/shared/incident-kind-chip";
+import {
+  INCIDENT_KINDS,
+  incidentKindOf,
+  incidentKindTextClass,
+  type IncidentKind,
+} from "@/lib/incident-kind";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TimeAgo } from "@/components/ui/time-ago";
@@ -38,6 +51,8 @@ import { QueryErrorView } from "@/components/shared/error-views";
 import { PageHeader } from "@/components/shared/page-header";
 import { CheckPicker } from "@/components/shared/check-picker";
 import { useLiveSubscription } from "@/contexts/LiveEventsContext";
+import { useMediaQuery } from "@/hooks/use-media-query";
+import { cn } from "@/lib/utils";
 
 type StateFilter = "all" | "active" | "resolved" | "acked" | "snoozed";
 
@@ -49,8 +64,17 @@ const STATE_FILTER_VALUES: StateFilter[] = [
   "resolved",
 ];
 
+interface IncidentsSearch {
+  state: StateFilter;
+  showSuppressed: true | undefined;
+  checkUid: string | undefined;
+  // Optional (not `| undefined`) so the many links into this page don't all
+  // have to spell out `kind: undefined`.
+  kind?: IncidentKind;
+}
+
 export const Route = createFileRoute("/orgs/$org/incidents/")({
-  validateSearch: (search: Record<string, unknown>) => ({
+  validateSearch: (search: Record<string, unknown>): IncidentsSearch => ({
     state: (STATE_FILTER_VALUES.includes(search.state as StateFilter)
       ? search.state
       : "all") as StateFilter,
@@ -69,6 +93,10 @@ export const Route = createFileRoute("/orgs/$org/incidents/")({
       typeof search.checkUid === "string" && search.checkUid
         ? search.checkUid
         : undefined,
+    // Undefined when absent (every kind) so a clean URL stays clean.
+    kind: INCIDENT_KINDS.includes(search.kind as IncidentKind)
+      ? (search.kind as IncidentKind)
+      : undefined,
   }),
   component: IncidentsIndexPage,
 });
@@ -85,7 +113,7 @@ function formatDuration(ms: number): string {
   return `${seconds}s`;
 }
 
-function IncidentDuration({ incident }: { incident: IncidentDetail }) {
+function useIncidentDuration(incident: IncidentDetail): string {
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -108,6 +136,83 @@ function IncidentDuration({ incident }: { incident: IncidentDetail }) {
 }
 
 /**
+ * "ongoing · 8m" in the kind's colour while the incident is open, "✓ lasted
+ * 48m" in muted green once it resolved.
+ */
+function IncidentWhen({ incident }: { incident: IncidentDetail }) {
+  const { t } = useTranslation("incidents");
+  const duration = useIncidentDuration(incident);
+
+  if (incident.state === "active" && !incident.resolvedAt) {
+    return (
+      <span
+        className={cn("font-medium", incidentKindTextClass(incident.kind))}
+        data-testid="incident-when"
+      >
+        {t("when.ongoing", { duration })}
+      </span>
+    );
+  }
+
+  return (
+    <span
+      className="inline-flex items-center gap-1 text-emerald-700/80 dark:text-emerald-400/80"
+      data-testid="incident-when"
+    >
+      <Check className="h-3 w-3 shrink-0" aria-hidden="true" />
+      {t("when.lasted", { duration })}
+    </span>
+  );
+}
+
+/**
+ * The "escalated" badge on a degraded incident that ended because a real
+ * outage opened on the same check. When that outage is on the loaded page
+ * (its causedByIncidentUid points back here) the badge names it and links to
+ * it; otherwise it is a plain badge.
+ */
+function EscalatedBadge({
+  org,
+  target,
+}: {
+  org: string;
+  target: IncidentDetail | undefined;
+}) {
+  const { t } = useTranslation("incidents");
+  const className = "text-xs font-normal whitespace-nowrap";
+
+  if (target?.uid && target.number) {
+    return (
+      <Link
+        to="/orgs/$org/incidents/$incidentUid"
+        params={{ org, incidentUid: target.uid }}
+        title={t("escalatedHint")}
+        className={cn(
+          badgeVariants({ variant: "outline" }),
+          className,
+          incidentKindTextClass(target.kind),
+          "hover:underline",
+        )}
+        data-testid="incident-escalated-badge"
+      >
+        {t("escalatedTo", { number: target.number })}
+      </Link>
+    );
+  }
+
+  return (
+    <Badge
+      variant="outline"
+      className={className}
+      title={t("escalatedHint")}
+      data-testid="incident-escalated-badge"
+    >
+      {t("escalated")}
+    </Badge>
+  );
+}
+
+/**
  * A plain, non-interactive grouping header: "RabbitMQ — 2/6 down", with the
  * group's member incidents listed beneath it.
  *
@@ -127,7 +232,7 @@ function GroupHeaderRow({ row }: { row: IncidentGroupRow }) {
       data-testid="incident-group-header"
       data-check-group-uid={row.group!.uid}
     >
-      <TableCell colSpan={5} className="py-2">
+      <TableCell colSpan={3} className="py-2">
         <div className="flex items-center gap-2 text-sm">
           <Layers className="h-4 w-4 text-muted-foreground shrink-0" />
           <span className="font-semibold">
@@ -151,8 +256,17 @@ function IncidentsIndexPage() {
   // Read directly off the route's search state — no local-state mirror —
   // so a cold deep-link (?checkUid=... pasted into a fresh tab) applies on
   // first render instead of only after a client-side navigation seeds it.
-  const { state: stateFilter, showSuppressed, checkUid } = Route.useSearch();
+  const {
+    state: stateFilter,
+    showSuppressed,
+    checkUid,
+    kind: kindFilter,
+  } = Route.useSearch();
   const navigate = useNavigate();
+  // Below `sm` the start time moves from the When cell to the end of the
+  // row's first line. Rendering it once, in the right place, keeps a single
+  // `incident-started-at` per row.
+  const isSmUp = useMediaQuery("(min-width: 640px)");
 
   // Live updates: an `incidents` hint invalidates the `incidents` org root
   // (DEFAULT_QUERY_ROOTS), whose predicate ignores the options segment — so
@@ -167,6 +281,7 @@ function IncidentsIndexPage() {
     isRefetching,
   } = useIncidents(org, {
     state: stateFilter === "all" ? undefined : stateFilter,
+    kind: kindFilter,
     checkUid: checkUid || undefined,
     size: 50,
     with: "check",
@@ -187,6 +302,14 @@ function IncidentsIndexPage() {
   const { data: checkGroups } = useCheckGroups(org);
 
   const rows = groupIncidentsByCheckGroup(incidents?.data, checks, checkGroups);
+
+  // An escalated degraded incident links to the outage that superseded it:
+  // that outage's causedByIncidentUid points back at the degraded one. Only
+  // what is on the loaded page can be named.
+  const causedBy = new Map<string, IncidentDetail>();
+  for (const inc of incidents?.data ?? []) {
+    if (inc.causedByIncidentUid) causedBy.set(inc.causedByIncidentUid, inc);
+  }
 
   return (
     <div className="space-y-6">
@@ -229,6 +352,34 @@ function IncidentsIndexPage() {
                 {t("stateFilter.snoozedOnly")}
               </SelectItem>
               <SelectItem value="resolved">{t("resolvedOnly")}</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select
+            value={kindFilter ?? "all"}
+            onValueChange={(v) =>
+              navigate({
+                to: ".",
+                search: (prev) => ({
+                  ...prev,
+                  kind: v === "all" ? undefined : (v as IncidentKind),
+                }),
+                replace: true,
+              })
+            }
+          >
+            <SelectTrigger
+              className="w-[160px]"
+              data-testid="incidents-kind-filter"
+            >
+              <SelectValue placeholder={t("kindFilter.placeholder")} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t("kindFilter.all")}</SelectItem>
+              {INCIDENT_KINDS.map((kind) => (
+                <SelectItem key={kind} value={kind}>
+                  {t(`kind.${kind}`)}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
           <div className="w-[220px] max-w-full">
@@ -291,14 +442,10 @@ function IncidentsIndexPage() {
             <TableHeader className="bg-muted/30">
               <TableRow>
                 <TableHead>{t("table.incident")}</TableHead>
-                <TableHead className="hidden md:table-cell">
-                  {t("table.check")}
+                <TableHead className="w-px whitespace-nowrap">
+                  {t("table.when")}
                 </TableHead>
-                <TableHead>{t("table.started")}</TableHead>
-                <TableHead className="hidden sm:table-cell">
-                  {t("table.duration")}
-                </TableHead>
-                <TableHead className="hidden md:table-cell">
+                <TableHead className="hidden md:table-cell w-px whitespace-nowrap text-right">
                   {t("table.failures")}
                 </TableHead>
               </TableRow>
@@ -307,126 +454,141 @@ function IncidentsIndexPage() {
               {rows.map((row) => (
                 <Fragment key={row.key}>
                   {row.group ? <GroupHeaderRow row={row} /> : null}
-                  {row.incidents.map((incident) => (
-                    <TableRow
-                      key={incident.uid}
-                      data-testid="incident-row"
-                      data-incident-uid={incident.uid}
-                      className="hover:bg-muted/40 transition-colors"
-                    >
-                      <TableCell className="max-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          {incident.state === "active" ? (
-                            <span
-                              title={t("active")}
-                              className="relative flex h-3 w-3 shrink-0"
-                            >
-                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" />
-                              <span className="relative inline-flex rounded-full h-3 w-3 bg-destructive" />
-                            </span>
-                          ) : (
-                            <span
-                              title={t("resolved")}
-                              className="flex h-2.5 w-2.5 rounded-full bg-emerald-500 shrink-0"
+                  {row.incidents.map((incident) => {
+                    const startedAt = incident.startedAt ? (
+                      <TimeAgo
+                        date={incident.startedAt}
+                        data-testid="incident-started-at"
+                      />
+                    ) : (
+                      "-"
+                    );
+
+                    return (
+                      <TableRow
+                        key={incident.uid}
+                        data-testid="incident-row"
+                        data-incident-uid={incident.uid}
+                        data-incident-kind={incidentKindOf(incident.kind)}
+                        className="hover:bg-muted/40 transition-colors"
+                      >
+                        <TableCell className="align-top">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <IncidentKindChip
+                              kind={incident.kind}
+                              state={incident.state}
                             />
-                          )}
-                          {incident.number ? (
-                            <span
-                              className="font-mono text-xs text-muted-foreground font-semibold px-1.5 py-0.5 rounded bg-muted shrink-0"
-                              data-testid="incident-number"
-                            >
-                              #{incident.number}
-                            </span>
-                          ) : null}
+                            {incident.number ? (
+                              <Link
+                                to="/orgs/$org/incidents/$incidentUid"
+                                params={{ org, incidentUid: incident.uid! }}
+                                className="font-mono text-xs text-muted-foreground font-semibold px-1.5 py-0.5 rounded bg-muted shrink-0 hover:text-foreground transition-colors"
+                                data-testid="incident-number"
+                              >
+                                #{incident.number}
+                              </Link>
+                            ) : null}
+                            {incident.state === "active" &&
+                              incident.snoozedUntil &&
+                              new Date(incident.snoozedUntil).getTime() >
+                                Date.now() && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-xs font-normal"
+                                >
+                                  {t("stateBadges.snoozed")}
+                                </Badge>
+                              )}
+                            {incident.state === "active" &&
+                              incident.acknowledgedAt &&
+                              (!incident.snoozedUntil ||
+                                new Date(incident.snoozedUntil).getTime() <=
+                                  Date.now()) && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-xs font-normal bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20"
+                                >
+                                  {t("stateBadges.acked")}
+                                </Badge>
+                              )}
+                            {(incident.relapseCount ?? 0) > 0 && (
+                              <Badge
+                                variant="outline"
+                                className="text-xs font-normal"
+                              >
+                                {t("relapse", { count: incident.relapseCount })}
+                              </Badge>
+                            )}
+                            {(incident.flapLevel ?? 0) > 0 && (
+                              <FlappingBadge
+                                flapLevel={incident.flapLevel!}
+                                t={t}
+                                className="text-xs font-normal"
+                              />
+                            )}
+                            {incident.pagingSuppressed && (
+                              <Badge
+                                variant="outline"
+                                className="text-xs font-normal"
+                              >
+                                {t("rollup.rolledUpBadge")}
+                              </Badge>
+                            )}
+                            {incident.state !== "active" &&
+                              incident.resolutionType === "escalated" && (
+                                <EscalatedBadge
+                                  org={org}
+                                  target={causedBy.get(incident.uid!)}
+                                />
+                              )}
+                            {!isSmUp && (
+                              <span className="ml-auto text-xs text-muted-foreground font-mono whitespace-nowrap">
+                                {startedAt}
+                              </span>
+                            )}
+                          </div>
                           <Link
                             to="/orgs/$org/incidents/$incidentUid"
                             params={{ org, incidentUid: incident.uid! }}
-                            className="font-medium text-foreground hover:text-primary hover:underline transition-colors truncate max-w-[55vw] sm:max-w-none"
+                            className="mt-1 block font-medium text-foreground hover:text-primary hover:underline transition-colors [overflow-wrap:anywhere]"
+                            data-testid="incident-title"
                           >
                             {incident.title ||
                               incident.checkName ||
                               incident.checkSlug}
                           </Link>
-                          {incident.state === "active" &&
-                            incident.snoozedUntil &&
-                            new Date(incident.snoozedUntil).getTime() >
-                              Date.now() && (
-                              <Badge
-                                variant="outline"
-                                className="text-xs font-normal"
-                              >
-                                {t("stateBadges.snoozed")}
-                              </Badge>
-                            )}
-                          {incident.state === "active" &&
-                            incident.acknowledgedAt &&
-                            (!incident.snoozedUntil ||
-                              new Date(incident.snoozedUntil).getTime() <=
-                                Date.now()) && (
-                              <Badge
-                                variant="outline"
-                                className="text-xs font-normal bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20"
-                              >
-                                {t("stateBadges.acked")}
-                              </Badge>
-                            )}
-                          {(incident.relapseCount ?? 0) > 0 && (
-                            <Badge
-                              variant="outline"
-                              className="text-xs font-normal"
+                          {incident.checkUid ? (
+                            <Link
+                              to="/orgs/$org/checks/$checkUid"
+                              params={{ org, checkUid: incident.checkUid }}
+                              search={{
+                                graphPeriod: undefined,
+                                graphFull: undefined,
+                                region: undefined,
+                              }}
+                              className="mt-0.5 hidden sm:block w-fit max-w-full text-xs text-muted-foreground hover:text-foreground hover:underline transition-colors [overflow-wrap:anywhere]"
+                              data-testid="incident-check-link"
                             >
-                              {t("relapse", { count: incident.relapseCount })}
-                            </Badge>
+                              {incident.checkName || incident.checkSlug}
+                            </Link>
+                          ) : null}
+                        </TableCell>
+                        <TableCell className="w-px whitespace-nowrap align-top text-xs font-mono">
+                          {isSmUp && (
+                            <div className="text-muted-foreground">
+                              {startedAt}
+                            </div>
                           )}
-                          {(incident.flapLevel ?? 0) > 0 && (
-                            <FlappingBadge
-                              flapLevel={incident.flapLevel!}
-                              t={t}
-                              className="text-xs font-normal"
-                            />
-                          )}
-                          {incident.pagingSuppressed && (
-                            <Badge
-                              variant="outline"
-                              className="text-xs font-normal"
-                            >
-                              {t("rollup.rolledUpBadge")}
-                            </Badge>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell">
-                        <Link
-                          to="/orgs/$org/checks/$checkUid"
-                          params={{ org, checkUid: incident.checkUid! }}
-                          search={{
-                            graphPeriod: undefined,
-                            graphFull: undefined,
-                            region: undefined,
-                          }}
-                          className="hover:underline text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-                        >
-                          {incident.checkName || incident.checkSlug}
-                        </Link>
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground font-mono">
-                        {incident.startedAt ? (
-                          <TimeAgo
-                            date={incident.startedAt}
-                            data-testid="incident-started-at"
-                          />
-                        ) : (
-                          "-"
-                        )}
-                      </TableCell>
-                      <TableCell className="hidden sm:table-cell text-xs font-mono font-medium">
-                        <IncidentDuration incident={incident} />
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell text-xs text-muted-foreground font-mono tabular-nums">
-                        {incident.failureCount ?? "-"}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                          <div className={isSmUp ? "mt-1" : undefined}>
+                            <IncidentWhen incident={incident} />
+                          </div>
+                        </TableCell>
+                        <TableCell className="hidden md:table-cell w-px whitespace-nowrap align-top text-right text-xs text-muted-foreground font-mono tabular-nums">
+                          {incident.failureCount ?? "-"}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </Fragment>
               ))}
             </TableBody>
@@ -442,13 +604,15 @@ function IncidentsIndexPage() {
               {t("noIncidentsFound")}
             </h3>
             <p className="text-xs text-muted-foreground max-w-sm mx-auto">
-              {checkUid
-                ? t("noIncidentsForCheck")
-                : stateFilter === "active"
-                  ? t("allOperational")
-                  : stateFilter === "resolved"
-                    ? t("noResolved")
-                    : t("noIncidents")}
+              {kindFilter
+                ? t(`noIncidentsOfKind.${kindFilter}`)
+                : checkUid
+                  ? t("noIncidentsForCheck")
+                  : stateFilter === "active"
+                    ? t("allOperational")
+                    : stateFilter === "resolved"
+                      ? t("noResolved")
+                      : t("noIncidents")}
             </p>
           </div>
         </div>

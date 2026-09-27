@@ -9,7 +9,12 @@
     "check": "Contrôle",
     "started": "Début",
     "duration": "Durée",
-    "failures": "Échecs"
+    "failures": "Échecs",
+    "when": "Quand"
+  },
+  "when": {
+    "ongoing": "en cours · {{duration}}",
+    "lasted": "a duré {{duration}}"
   },
   "allOperational": "Tous les systèmes sont opérationnels",
   "noResolved": "Aucun incident résolu pour le moment",
@@ -20,6 +25,20 @@
   "backToIncidents": "Retour aux incidents",
   "filterByState": "Filtrer par état",
   "filterByCheck": "Filtrer par check",
+  "kindFilter": {
+    "placeholder": "Filtrer par type",
+    "all": "Tous les types"
+  },
+  "kind": {
+    "check": "En panne",
+    "degraded": "Dégradé",
+    "slo_burn": "Consommation SLO"
+  },
+  "noIncidentsOfKind": {
+    "check": "Aucun incident de panne",
+    "degraded": "Aucun incident de dégradation",
+    "slo_burn": "Aucun incident de consommation SLO"
+  },
   "relapse": "{{count}}x rechute",
   "flapping": "instabilité ×{{count}}",
   "flappingHint": "Ouvert au niveau d'instabilité {{count}} — la récupération adaptative a augmenté la stabilité requise avant la résolution automatique de cet incident.",
@@ -32,6 +51,8 @@
     "times": "fois"
   },
   "escalated": "Escaladé",
+  "escalatedTo": "Escaladé → #{{number}}",
+  "escalatedHint": "Une vraie panne s'est ouverte sur ce contrôle pendant cet incident",
   "fallbackTitle": "Incident",
   "actions": {
     "back": "Retour aux incidents",

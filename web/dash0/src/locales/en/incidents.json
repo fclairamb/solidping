@@ -9,7 +9,12 @@
     "check": "Check",
     "started": "Started",
     "duration": "Duration",
-    "failures": "Failures"
+    "failures": "Failures",
+    "when": "When"
+  },
+  "when": {
+    "ongoing": "ongoing · {{duration}}",
+    "lasted": "lasted {{duration}}"
   },
   "allOperational": "All systems are operational",
   "noResolved": "No resolved incidents yet",
@@ -20,6 +25,20 @@
   "backToIncidents": "Back to Incidents",
   "filterByState": "Filter by state",
   "filterByCheck": "Filter by check",
+  "kindFilter": {
+    "placeholder": "Filter by kind",
+    "all": "All kinds"
+  },
+  "kind": {
+    "check": "Down",
+    "degraded": "Degraded",
+    "slo_burn": "SLO burn"
+  },
+  "noIncidentsOfKind": {
+    "check": "No down incidents",
+    "degraded": "No degraded incidents",
+    "slo_burn": "No SLO burn incidents"
+  },
   "relapse": "{{count}}x relapse",
   "flapping": "flapping ×{{count}}",
   "flappingHint": "Opened at flap level {{count}} — adaptive recovery escalated the required stability before this incident's auto-resolve.",
@@ -32,6 +51,8 @@
     "times": "times"
   },
   "escalated": "Escalated",
+  "escalatedTo": "Escalated → #{{number}}",
+  "escalatedHint": "A real outage opened on this check while this incident was open",
   "fallbackTitle": "Incident",
   "actions": {
     "back": "Back to incidents",

@@ -9,7 +9,12 @@
     "check": "Prüfung",
     "started": "Begonnen",
     "duration": "Dauer",
-    "failures": "Fehler"
+    "failures": "Fehler",
+    "when": "Zeitpunkt"
+  },
+  "when": {
+    "ongoing": "läuft · {{duration}}",
+    "lasted": "dauerte {{duration}}"
   },
   "allOperational": "Alle Systeme funktionieren ordnungsgemäß",
   "noResolved": "Noch keine gelösten Vorfälle",
@@ -20,6 +25,20 @@
   "backToIncidents": "Zurück zu Vorfälle",
   "filterByState": "Nach Status filtern",
   "filterByCheck": "Nach Check filtern",
+  "kindFilter": {
+    "placeholder": "Nach Art filtern",
+    "all": "Alle Arten"
+  },
+  "kind": {
+    "check": "Ausfall",
+    "degraded": "Beeinträchtigt",
+    "slo_burn": "SLO-Verbrauch"
+  },
+  "noIncidentsOfKind": {
+    "check": "Keine Ausfall-Vorfälle",
+    "degraded": "Keine Beeinträchtigungs-Vorfälle",
+    "slo_burn": "Keine SLO-Verbrauchs-Vorfälle"
+  },
   "relapse": "{{count}}× Rückfall",
   "flapping": "Flattern ×{{count}}",
   "flappingHint": "Geöffnet bei Flap-Level {{count}} — die adaptive Erholung hat die erforderliche Stabilität vor der automatischen Auflösung dieses Vorfalls erhöht.",
@@ -32,6 +51,8 @@
     "times": "mal"
   },
   "escalated": "Eskaliert",
+  "escalatedTo": "Eskaliert → #{{number}}",
+  "escalatedHint": "Während dieses Vorfalls wurde auf dieser Prüfung ein echter Ausfall eröffnet",
   "fallbackTitle": "Vorfall",
   "actions": {
     "back": "Zurück zu den Vorfällen",
