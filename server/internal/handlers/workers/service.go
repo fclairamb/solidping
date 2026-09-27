@@ -121,6 +121,16 @@ func (s *Service) SubmitResult(
 	// carried a "Capture now" request (spec 2026-09-25-34).
 	job.HonorOnDemand(req.Diagnostics)
 
+	// A "Capture now" run that came back without a screenshot is recorded,
+	// so the dashboard can say so instead of waiting (spec 2026-09-27-01).
+	// Best-effort: it must never cost the result.
+	if requestedAt, reason, failed := job.OnDemandFailure(req.Diagnostics, req.Output); failed {
+		if recErr := s.db.RecordCheckCaptureFailure(ctx, job.UID, requestedAt, reason); recErr != nil {
+			slog.WarnContext(ctx, "Failed to record the capture-now failure",
+				"error", recErr, "check_uid", job.CheckUID, "job_uid", job.UID)
+		}
+	}
+
 	// 2. Build the result.
 	resultUID, err := uuid.NewV7()
 	if err != nil {

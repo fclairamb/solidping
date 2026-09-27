@@ -193,15 +193,14 @@ shipping a permanent migration. `014_v0_17_0` is the consolidated v0.17.0
 migration, unrelated to that draft; see the consolidation rule above for why
 reusing the number is safe here and what it costs dev databases.)
 
-**The unreleased migration right now is `023_v0_32_0`** (opened 2026-09-22 by
-spec 2026-09-22-03, the degraded-detection columns). `022_v0_30_0` is the last
-RELEASED migration (it shipped in v0.30.0) and v0.31.1 the last released
-version, so any further schema change this cycle is appended to `023` as a new
-SECTION — do not open `024`. The `v0_32_0` suffix assumes this cycle lands as a
-minor; rename the file (both dialects, both directions) if the batch PR title
-settles it as a patch. Whoever ships or renames it **updates this paragraph**,
-because a stale pointer here is what causes the mistake it is meant to
-prevent.
+**The unreleased migration right now is `025_v0_34_0`** (opened 2026-09-27 by
+spec 2026-09-27-01, the "Capture now" failure columns on `check_jobs`).
+`024_v0_33_0` is the last RELEASED migration (it shipped in v0.33.0), so any
+further schema change this cycle is appended to `025` as a new SECTION — do not
+open `026`. The `v0_34_0` suffix assumes this cycle lands as a minor; rename the
+file (both dialects, both directions) if the batch PR title settles it as a
+patch. Whoever ships or renames it **updates this paragraph**, because a stale
+pointer here is what causes the mistake it is meant to prevent.
 
 `023` has already been hand-edited in place under exactly the rule above: the
 degraded-detection config columns were changed from `not null default X` to

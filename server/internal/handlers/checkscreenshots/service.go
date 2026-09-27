@@ -139,12 +139,36 @@ func (s *Service) resolveCheck(ctx context.Context, orgSlug, identifier string) 
 	return check, nil
 }
 
-// ListScreenshots returns a check's latest screenshots, newest first. A limit
-// outside [1, MaxLimit] is clamped. Any check type answers — a type that never
-// captures simply has none.
+// CaptureOutcome is how the latest FAILED "Capture now" request ended (spec
+// 2026-09-27-01): a run carried the request and came back without a
+// screenshot. The dashboard matches RequestedAt against the requestedAt its
+// POST .../capture returned, and stops waiting on a match. A successful
+// capture has no outcome here: its image in the listing is the answer.
+type CaptureOutcome struct {
+	// RequestedAt is the request this outcome answers, exactly as the capture
+	// endpoint returned it (stored at the database's precision).
+	RequestedAt time.Time `json:"requestedAt"`
+	// Failed is always true today; it is spelled out so a later "succeeded"
+	// outcome can be added without changing the shape.
+	Failed bool `json:"failed"`
+	// Error says why the run produced no screenshot.
+	Error string `json:"error,omitempty"`
+}
+
+// Listing is a check's latest screenshots plus the outcome of its latest
+// failed "Capture now" request, if any.
+type Listing struct {
+	Screenshots    []attachments.CheckScreenshot
+	CaptureOutcome *CaptureOutcome
+}
+
+// ListScreenshots returns a check's latest screenshots, newest first, and its
+// latest failed "Capture now" request. A limit outside [1, MaxLimit] is
+// clamped. Any check type answers — a type that never captures simply has
+// none.
 func (s *Service) ListScreenshots(
 	ctx context.Context, orgSlug, identifier string, limit int,
-) ([]attachments.CheckScreenshot, error) {
+) (*Listing, error) {
 	check, err := s.resolveCheck(ctx, orgSlug, identifier)
 	if err != nil {
 		return nil, err
@@ -157,11 +181,53 @@ func (s *Service) ListScreenshots(
 		limit = MaxLimit
 	}
 
-	if s.lister == nil {
-		return []attachments.CheckScreenshot{}, nil
+	listing := &Listing{Screenshots: []attachments.CheckScreenshot{}}
+
+	if s.lister != nil {
+		shots, listErr := s.lister.ListCheckScreenshots(ctx, check.OrganizationUID, check.UID, limit)
+		if listErr != nil {
+			return nil, listErr
+		}
+
+		if shots != nil {
+			listing.Screenshots = shots
+		}
 	}
 
-	return s.lister.ListCheckScreenshots(ctx, check.OrganizationUID, check.UID, limit)
+	if IsCapturableType(check.Type) {
+		jobs, jobsErr := s.db.ListCheckJobsByCheckUID(ctx, check.UID)
+		if jobsErr != nil {
+			return nil, fmt.Errorf("list check jobs: %w", jobsErr)
+		}
+
+		listing.CaptureOutcome = latestCaptureFailure(jobs)
+	}
+
+	return listing, nil
+}
+
+// latestCaptureFailure picks the newest failed "Capture now" request across a
+// check's job rows (a multi-region check has one per region, and the request
+// lands on one of them).
+func latestCaptureFailure(jobs []*models.CheckJob) *CaptureOutcome {
+	var latest *CaptureOutcome
+
+	for _, job := range jobs {
+		if job.CaptureFailedRequestAt == nil {
+			continue
+		}
+
+		if latest != nil && !job.CaptureFailedRequestAt.After(latest.RequestedAt) {
+			continue
+		}
+
+		latest = &CaptureOutcome{RequestedAt: *job.CaptureFailedRequestAt, Failed: true}
+		if job.CaptureFailureReason != nil {
+			latest.Error = *job.CaptureFailureReason
+		}
+	}
+
+	return latest
 }
 
 // CaptureNow runs the check once on demand with the capture forced (spec
@@ -196,7 +262,10 @@ func (s *Service) CaptureNow(ctx context.Context, orgSlug, identifier string) (*
 		return nil, ErrNoScheduledJob
 	}
 
-	now := s.clock.Now()
+	// Microsecond precision, the finest both engines store: the requestedAt
+	// returned below is then exactly the value a failed outcome is recorded
+	// under (CaptureOutcome.RequestedAt), so the dashboard can match the two.
+	now := s.clock.Now().Truncate(time.Microsecond)
 
 	// Both windows are admitted atomically, or neither: a request the org cap
 	// refuses does not burn the check's minute, and concurrent requests can
