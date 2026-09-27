@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -12,21 +13,27 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
+	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
 	"github.com/fclairamb/solidping/server/internal/notifier"
 )
 
-// stdioEnv is a REAL MCP handler over in-memory SQLite, with one org holding
+// stdioEnv is a REAL MCP handler over a real database, with one org holding
 // two owners (the older one is the default principal), a viewer and a demo
 // user, plus an org with no owner and a stranger who belongs to nothing.
 //
 // The first owner carries must_change_password, the shape of the admin a
 // fresh database seeds: the stdio session must act as it all the same.
+//
+// Two more orgs exercise the owner choice: acme-tie has two owners joined at
+// the same instant, and acme-gone has an older owner whose user is
+// soft-deleted and an older owner membership that is soft-deleted, ahead of
+// the one live owner.
 type stdioEnv struct {
 	handler   *Handler
-	db        *sqlite.Service
+	db        db.Service
 	org       *models.Organization
 	ownerless *models.Organization
 	owner     *models.User
@@ -35,17 +42,32 @@ type stdioEnv struct {
 	demo      *models.User
 	stranger  *models.User
 	super     *models.User
+	// tieWinner is the acme-tie owner whose membership uid sorts first.
+	tieWinner *models.User
+	// goneLive is the only acme-gone owner still standing.
+	goneLive *models.User
 }
 
+// newStdioEnv builds the env over in-memory SQLite.
 func newStdioEnv(t *testing.T) *stdioEnv {
 	t.Helper()
 	r := require.New(t)
-	ctx := t.Context()
 
-	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	dbSvc, err := sqlite.New(t.Context(), sqlite.Config{InMemory: true})
 	r.NoError(err)
-	r.NoError(dbSvc.Initialize(ctx))
+	r.NoError(dbSvc.Initialize(t.Context()))
 	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	return newStdioEnvOn(t, dbSvc)
+}
+
+// newStdioEnvOn seeds the env on an initialized database of either engine.
+//
+//nolint:funlen // one fixture, several orgs, each line is a row
+func newStdioEnvOn(t *testing.T, dbSvc db.Service) *stdioEnv {
+	t.Helper()
+	r := require.New(t)
+	ctx := t.Context()
 
 	creds, err := credentials.NewService(nil, nil)
 	r.NoError(err)
@@ -69,10 +91,18 @@ func newStdioEnv(t *testing.T) *stdioEnv {
 		return user
 	}
 
-	join := func(org *models.Organization, user *models.User, role models.MemberRole, age time.Duration) {
+	// Whole seconds, so a created_at survives either engine's precision and
+	// two memberships given the same instant really compare equal.
+	now := time.Now().Truncate(time.Second)
+
+	join := func(
+		org *models.Organization, user *models.User, role models.MemberRole, age time.Duration,
+	) *models.OrganizationMember {
 		member := models.NewOrganizationMember(org.UID, user.UID, role)
-		member.CreatedAt = time.Now().Add(-age)
+		member.CreatedAt = now.Add(-age)
 		r.NoError(dbSvc.CreateOrganizationMember(ctx, member))
+
+		return member
 	}
 
 	env.owner = mkUser("alice@acme.com", func(u *models.User) { u.MustChangePassword = true })
@@ -91,6 +121,33 @@ func newStdioEnv(t *testing.T) *stdioEnv {
 	join(env.org, env.super, models.MemberRoleAdmin, time.Minute)
 	join(env.ownerless, env.viewer, models.MemberRoleAdmin, time.Minute)
 
+	tieOrg := models.NewOrganization("acme-tie", "Acme Tie")
+	r.NoError(dbSvc.CreateOrganization(ctx, tieOrg))
+
+	tieA := mkUser("erin@acme.com", nil)
+	tieB := mkUser("frank@acme.com", nil)
+	memberA := join(tieOrg, tieA, models.MemberRoleOwner, time.Hour)
+	memberB := join(tieOrg, tieB, models.MemberRoleOwner, time.Hour)
+
+	env.tieWinner = tieA
+	if memberB.UID < memberA.UID {
+		env.tieWinner = tieB
+	}
+
+	goneOrg := models.NewOrganization("acme-gone", "Acme Gone")
+	r.NoError(dbSvc.CreateOrganization(ctx, goneOrg))
+
+	goneUser := mkUser("grace@acme.com", nil)
+	goneMember := mkUser("heidi@acme.com", nil)
+	env.goneLive = mkUser("ivan@acme.com", nil)
+
+	join(goneOrg, goneUser, models.MemberRoleOwner, 3*time.Hour)
+	leftMembership := join(goneOrg, goneMember, models.MemberRoleOwner, 2*time.Hour)
+	join(goneOrg, env.goneLive, models.MemberRoleOwner, time.Hour)
+
+	r.NoError(dbSvc.DeleteUser(ctx, goneUser.UID))
+	r.NoError(dbSvc.DeleteOrganizationMember(ctx, leftMembership.UID))
+
 	env.handler = NewHandler(dbSvc, notifier.NewLocalEventNotifier(), nil, nil, creds, nil, nil, nil)
 
 	return env
@@ -99,7 +156,15 @@ func newStdioEnv(t *testing.T) *stdioEnv {
 func TestResolveStdioPrincipal(t *testing.T) {
 	t.Parallel()
 
-	env := newStdioEnv(t)
+	runResolveStdioPrincipalCases(t, newStdioEnv(t))
+}
+
+// runResolveStdioPrincipalCases is the principal table, shared by the SQLite
+// test above and its Postgres twin (stdio_postgres_test.go).
+//
+//nolint:funlen // a table
+func runResolveStdioPrincipalCases(t *testing.T, env *stdioEnv) {
+	t.Helper()
 
 	tests := []struct {
 		name string
@@ -142,7 +207,24 @@ func TestResolveStdioPrincipal(t *testing.T) {
 		{name: "unknown org", org: "nosuch", wantErr: ErrStdioOrgNotFound},
 		{name: "unknown org with a user", org: "nosuch", user: "alice@acme.com", wantErr: ErrStdioOrgNotFound},
 		{name: "unknown user email", org: "acme", user: "nobody@acme.com", wantErr: ErrStdioUserNotFound},
-		{name: "unknown user uid", org: "acme", user: "not-a-uid", wantErr: ErrStdioUserNotFound},
+		{name: "neither email nor uid", org: "acme", user: "alice", wantErr: ErrStdioUserNotFound},
+		{name: "malformed uid", org: "acme", user: "not-a-uid", wantErr: ErrStdioUserNotFound},
+		{name: "braced uid", org: "acme", user: "{7c9e6679-7425-40de-944b-e07fc1f90ae7}", wantErr: ErrStdioUserNotFound},
+		{name: "unknown uid", org: "acme", user: "7c9e6679-7425-40de-944b-e07fc1f90ae7", wantErr: ErrStdioUserNotFound},
+		{name: "soft-deleted user", org: "acme-gone", user: "grace@acme.com", wantErr: ErrStdioUserNotFound},
+		{name: "soft-deleted membership", org: "acme-gone", user: "heidi@acme.com", wantErr: ErrStdioNotMember},
+		{
+			name:     "owners tied on created_at: lowest membership uid",
+			org:      "acme-tie",
+			wantUser: func(e *stdioEnv) *models.User { return e.tieWinner },
+			wantRole: models.MemberRoleOwner,
+		},
+		{
+			name:     "default owner skips a soft-deleted user and membership",
+			org:      "acme-gone",
+			wantUser: func(e *stdioEnv) *models.User { return e.goneLive },
+			wantRole: models.MemberRoleOwner,
+		},
 		{name: "not a member", org: "acme", user: "dave@acme.com", wantErr: ErrStdioNotMember},
 		{name: "member of another org only", org: "acme-empty", user: "alice@acme.com", wantErr: ErrStdioNotMember},
 		{name: "org without an owner", org: "acme-empty", wantErr: ErrStdioNoOwner},
@@ -179,6 +261,48 @@ func TestResolveStdioPrincipal(t *testing.T) {
 			r.Equal(tc.wantRole, principal.Role)
 		})
 	}
+}
+
+// TestPickStdioOwnerIgnoresListOrder: the owner choice depends on created_at
+// and then on the membership uid, never on the order the database listed the
+// memberships in.
+func TestPickStdioOwnerIgnoresListOrder(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	at := time.Date(2026, 9, 27, 12, 0, 0, 0, time.UTC)
+	live := func(uid string, role models.MemberRole, createdAt time.Time) *models.OrganizationMember {
+		return &models.OrganizationMember{
+			UID: uid, Role: role, CreatedAt: createdAt, User: &models.User{UID: "user-" + uid},
+		}
+	}
+
+	deletedAt := at.Add(-time.Minute)
+	goneUser := live("0-gone-user", models.MemberRoleOwner, at.Add(-time.Hour))
+	goneUser.User.DeletedAt = &deletedAt
+	goneMembership := live("0-gone-membership", models.MemberRoleOwner, at.Add(-time.Hour))
+	goneMembership.DeletedAt = &deletedAt
+
+	members := []*models.OrganizationMember{
+		live("b", models.MemberRoleOwner, at),
+		live("a", models.MemberRoleOwner, at),
+		live("0-admin", models.MemberRoleAdmin, at.Add(-time.Hour)),
+		live("c", models.MemberRoleOwner, at.Add(time.Second)),
+		goneUser,
+		goneMembership,
+		{UID: "0-no-user", Role: models.MemberRoleOwner, CreatedAt: at.Add(-time.Hour)},
+	}
+
+	for range 2 {
+		owner := pickStdioOwner(members)
+		r.NotNil(owner)
+		r.Equal("a", owner.UID)
+
+		slices.Reverse(members)
+	}
+
+	r.Nil(pickStdioOwner(nil))
+	r.Nil(pickStdioOwner([]*models.OrganizationMember{goneUser, goneMembership}))
 }
 
 // TestStdioPrincipalClaims pins the claims a stdio session carries: those of

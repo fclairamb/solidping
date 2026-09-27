@@ -13,6 +13,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/google/uuid"
+
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
@@ -101,27 +103,46 @@ func ResolveStdioPrincipal(ctx context.Context, dbSvc db.Service, orgSlug, userR
 
 // lookupStdioUser finds the --user: by email when it has an @, by uid
 // otherwise.
+//
+// Anything else is not found without asking the database: users.uid is a
+// uuid column on Postgres, which answers a malformed value with a syntax
+// error rather than no row, and the operator must read "user not found" on
+// both engines.
 func lookupStdioUser(ctx context.Context, dbSvc db.Service, userRef string) (*models.User, error) {
+	notFound := fmt.Errorf("%w: %q (pass an email or a user uid to --user)", ErrStdioUserNotFound, userRef)
+
 	var (
 		user *models.User
 		err  error
 	)
 
-	if strings.Contains(userRef, "@") {
+	switch {
+	case strings.Contains(userRef, "@"):
 		user, err = dbSvc.GetUserByEmail(ctx, userRef)
-	} else {
+	case isCanonicalUUID(userRef):
 		user, err = dbSvc.GetUser(ctx, userRef)
+	default:
+		return nil, notFound
 	}
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("%w: %q (pass an email or a user uid to --user)", ErrStdioUserNotFound, userRef)
+			return nil, notFound
 		}
 
 		return nil, fmt.Errorf("looking up user %q: %w", userRef, err)
 	}
 
 	return user, nil
+}
+
+// isCanonicalUUID reports whether ref is a uuid in its 36-character hyphenated
+// form. uuid.Validate alone would also admit the urn: and braced spellings,
+// which Postgres does not parse.
+func isCanonicalUUID(ref string) bool {
+	const canonicalUUIDLen = 36
+
+	return len(ref) == canonicalUUIDLen && uuid.Validate(ref) == nil
 }
 
 // resolveStdioOwner returns the org's oldest live owner membership.
@@ -131,23 +152,35 @@ func resolveStdioOwner(ctx context.Context, dbSvc db.Service, org *models.Organi
 		return nil, fmt.Errorf("listing the members of %q: %w", org.Slug, err)
 	}
 
-	var owner *models.OrganizationMember
-
-	for _, member := range members {
-		if member.Role != models.MemberRoleOwner || member.User == nil || member.User.DeletedAt != nil {
-			continue
-		}
-
-		if owner == nil || member.CreatedAt.Before(owner.CreatedAt) {
-			owner = member
-		}
-	}
-
+	owner := pickStdioOwner(members)
 	if owner == nil {
 		return nil, fmt.Errorf("%w: %q (name a member with --user)", ErrStdioNoOwner, org.Slug)
 	}
 
 	return &StdioPrincipal{User: owner.User, Org: org, Role: owner.Role}, nil
+}
+
+// pickStdioOwner returns the oldest owner membership whose user is live, or
+// nil. Memberships sharing a created_at are ordered by membership uid, so the
+// choice never depends on the order the database listed them in (it orders by
+// created_at alone). ListMembersByOrg already leaves soft-deleted memberships
+// out; a soft-deleted user is skipped here.
+func pickStdioOwner(members []*models.OrganizationMember) *models.OrganizationMember {
+	var owner *models.OrganizationMember
+
+	for _, member := range members {
+		if member.Role != models.MemberRoleOwner || member.DeletedAt != nil ||
+			member.User == nil || member.User.DeletedAt != nil {
+			continue
+		}
+
+		if owner == nil || member.CreatedAt.Before(owner.CreatedAt) ||
+			(member.CreatedAt.Equal(owner.CreatedAt) && member.UID < owner.UID) {
+			owner = member
+		}
+	}
+
+	return owner
 }
 
 // Claims builds the claims a stdio session carries: the claims a full-scope
