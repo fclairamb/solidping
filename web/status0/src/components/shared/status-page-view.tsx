@@ -85,7 +85,7 @@ function formatLastChecked(iso: string, locale: string): string {
  * with the rest of the machine-generated chrome, not because it churns.
  *
  * e2e/translate-resilience.spec.ts asserts these markers are on the rendered
- * DOM; see also the block comment in main.tsx.
+ * DOM; see also the block comment in app.tsx.
  */
 const NO_TRANSLATE = { translate: "no" } as const;
 

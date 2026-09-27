@@ -46,4 +46,7 @@ function Badge({ className, variant, ...props }: BadgeProps) {
   );
 }
 
-export { Badge, badgeVariants };
+// badgeVariants stays module-private on purpose: it is not shared with any
+// other component, and exporting it alongside Badge would break Fast Refresh
+// (react-refresh/only-export-components, lint --max-warnings 0).
+export { Badge };

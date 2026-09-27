@@ -5,10 +5,7 @@ interface RouterContext {
   queryClient: QueryClient;
 }
 
+// The root route is the bare Outlet: every route below supplies its own chrome.
 export const Route = createRootRouteWithContext<RouterContext>()({
-  component: RootLayout,
+  component: Outlet,
 });
-
-function RootLayout() {
-  return <Outlet />;
-}

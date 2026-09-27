@@ -1,6 +1,6 @@
 .PHONY: docker-build build build-backend build-dash0 build-status0 build-docs copy-dash0 copy-status0 copy-docs \
 	build-cli install-cli clean clean-all run run-test dev dev-test dev-saas dev-dash0 dev-status0 dev-docs dev-backend \
-	test test-postgres test-slow test-scenario test-dash0 test-docs lint lint-back lint-dash0 fmt deps migrate help sync-brand-assets build-favicons \
+	test test-postgres test-slow test-scenario test-dash0 test-docs lint lint-back lint-dash0 lint-status0 fmt deps migrate help sync-brand-assets build-favicons \
 	showcase showcase-terminal showcase-cut \
 	build-loadgen bench-checks bench-checks-sqlite bench-checks-postgres \
 	build-scenario scenario-test
@@ -423,7 +423,12 @@ lint-dash0: ## Run dash0 linter
 	@cd $(DASH0_DIR) && bun run lint
 	@echo "Dash0 linting complete"
 
-lint: lint-back lint-dash0 ## Run all linters
+lint-status0: ## Run status0 linter
+	@echo "Running status0 linter..."
+	@cd $(STATUS0_DIR) && bun run lint
+	@echo "Status0 linting complete"
+
+lint: lint-back lint-dash0 lint-status0 ## Run all linters
 
 fmt: ## Format code
 	@echo "Formatting backend code..."

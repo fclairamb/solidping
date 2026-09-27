@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { TvPage } from "@/components/tv/tv-route";
+import { DefaultTvRoute } from "@/components/tv/tv-route";
 
 /**
  * TV mode for an organization's DEFAULT status page (spec 2026-08-29-08).
@@ -13,9 +13,3 @@ import { TvPage } from "@/components/tv/tv-route";
 export const Route = createFileRoute("/$org/tv")({
   component: DefaultTvRoute,
 });
-
-function DefaultTvRoute() {
-  const { org } = Route.useParams();
-
-  return <TvPage org={org} />;
-}
