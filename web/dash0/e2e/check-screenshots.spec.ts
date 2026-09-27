@@ -6,7 +6,10 @@ import { API_BASE, DASH_BASE, expect, getAuthToken, test, uniqueStamp, type Page
 // createTestIncidentScreenshot): the browser check "shot-check" carries an
 // incident screenshot from eu-west (the newest) and an older check-scoped
 // capture from us-east, so the card has a latest capture with an incident link
-// and one thumbnail in the strip.
+// and one thumbnail in the strip. shot-check is seeded DISABLED: enabled, it
+// would run every minute and, wherever the worker can start a Chrome, store
+// newer `default`-region failure captures that push the fixture out of
+// "latest". Tests that need a runnable check create their own.
 //
 // "Capture now" is driven for real up to the API: the side-car has no browser
 // engine, so the capture itself is never produced here (the forced capture is
