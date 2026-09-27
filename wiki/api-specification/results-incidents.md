@@ -69,6 +69,9 @@ List incidents. Auth: required
 Query parameters:
 - `checkUid` - comma-separated check UIDs
 - `state` - comma-separated states (e.g., `open`, `resolved`)
+- `kind` - comma-separated incident kinds: `check` (outage), `degraded`,
+  `slo_burn` (e.g. `?kind=check,degraded`). Absent or empty means every kind;
+  any other value answers `400 VALIDATION_ERROR`
 - `since` - RFC3339 timestamp
 - `until` - RFC3339 timestamp
 - `with` - comma-separated: `check`, `members` (`members` also adds `checkGroupSlug`;
@@ -78,7 +81,7 @@ Query parameters:
 - `limit` - page size (default 20, max 100). Also accepts `?size=` as a deprecated alias.
 
 `pagination.total` is the count of incidents matching the request's filters
-(state, `checkUid`, `since`/`until`, `hideSuppressed`, `causedByIncidentUid`),
+(state, `kind`, `checkUid`, `since`/`until`, `hideSuppressed`, `causedByIncidentUid`),
 ignoring `limit`/`cursor` — not the org-wide incident count.
 
 ### GET /api/v1/orgs/:org/incidents/:uid

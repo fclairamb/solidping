@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/middleware"
@@ -56,7 +57,32 @@ func (h *Handler) ListIncidents(writer http.ResponseWriter, req *http.Request) e
 var (
 	errInvalidSince = errors.New("invalid since: must be RFC3339")
 	errInvalidUntil = errors.New("invalid until: must be RFC3339")
+	errInvalidKind  = errors.New("invalid kind: must be one of check, degraded, slo_burn")
 )
+
+// parseIncidentKinds reads the comma-separated `kind` filter. Empty or absent
+// means every kind (nil slice), which is the historical behavior; any value
+// outside the models.IncidentKind* set is refused rather than silently
+// matching nothing.
+func parseIncidentKinds(raw string) ([]string, error) {
+	if raw == "" {
+		return nil, nil
+	}
+
+	parts := strings.Split(raw, ",")
+	kinds := make([]string, 0, len(parts))
+
+	for _, kind := range parts {
+		switch kind {
+		case models.IncidentKindCheck, models.IncidentKindDegraded, models.IncidentKindSLOBurn:
+			kinds = append(kinds, kind)
+		default:
+			return nil, errInvalidKind
+		}
+	}
+
+	return kinds, nil
+}
 
 // parseListIncidentsOptions extracts ListIncidents query parameters. Kept
 // out of the handler so the handler stays under the cyclop limit.
@@ -78,6 +104,12 @@ func parseListIncidentsOptions(query url.Values) (*ListIncidentsOptions, error) 
 	if v := query.Get("state"); v != "" {
 		opts.States = strings.Split(v, ",")
 	}
+
+	kinds, err := parseIncidentKinds(query.Get("kind"))
+	if err != nil {
+		return nil, err
+	}
+	opts.Kinds = kinds
 
 	since, err := parseRFC3339(query.Get("since"))
 	if err != nil {
