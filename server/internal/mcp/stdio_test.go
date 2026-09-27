@@ -62,8 +62,6 @@ func newStdioEnv(t *testing.T) *stdioEnv {
 }
 
 // newStdioEnvOn seeds the env on an initialized database of either engine.
-//
-//nolint:funlen // one fixture, several orgs, each line is a row
 func newStdioEnvOn(t *testing.T, dbSvc db.Service) *stdioEnv {
 	t.Helper()
 	r := require.New(t)
@@ -161,8 +159,6 @@ func TestResolveStdioPrincipal(t *testing.T) {
 
 // runResolveStdioPrincipalCases is the principal table, shared by the SQLite
 // test above and its Postgres twin (stdio_postgres_test.go).
-//
-//nolint:funlen // a table
 func runResolveStdioPrincipalCases(t *testing.T, env *stdioEnv) {
 	t.Helper()
 

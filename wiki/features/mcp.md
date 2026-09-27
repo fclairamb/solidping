@@ -278,8 +278,11 @@ password, bridge with supergateway).
 - **Principal.** No token: the process already holds the database
   credentials, so acting as a member grants nothing SQL access would not.
   The session acts as the **owner of `--org`** (the global flag, default
-  `default`, env `SOLIDPING_ORG`), the oldest owner membership when there are
-  several. `--user <email|uid>` picks another member instead. An unknown
+  `default`, env `SOLIDPING_ORG`): the oldest live owner membership when there
+  are several, ties on `created_at` broken by membership uid, soft-deleted
+  memberships and users skipped. `--user <email|uid>` picks another member
+  instead. A value with no `@` must be a canonical uuid, or it is "user not
+  found" without a query (Postgres would answer a uuid syntax error). An unknown
   org, an unknown user, a user who is not a member, or an org with no owner
   (and no `--user`) stops the command with a message on stderr and exit
   code 1. The principal is resolved once, after the startup job, so on a
@@ -309,7 +312,10 @@ password, bridge with supergateway).
   `Mcp-Session-Id` and adds nothing to the HTTP session map.
 - **Exit.** EOF on stdin, SIGINT or SIGTERM stops the session and shuts the
   server down through the normal path (exit 0). A database fault that stops
-  the server ends the session too.
+  the server ends the session too. SIGPIPE is notified, so a client that
+  closes its end of stdout makes the next reply fail with EPIPE and the
+  command shuts down gracefully with exit 1, instead of the Go runtime
+  killing it mid-flight.
 
 A directory that builds its own image around the binary (Glama) uses the
 command above as is. With the published image, override its entrypoint (it
