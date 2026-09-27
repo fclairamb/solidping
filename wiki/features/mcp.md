@@ -176,6 +176,70 @@ Sessions expire after **1 hour of inactivity** (`sessionTTL`,
 [`handler.go:33`](../../server/internal/mcp/handler.go)) and a cleanup
 loop sweeps every 5 minutes. After expiry the client must re-initialize.
 
+## stdio bridge (`sp mcp`)
+
+Some consumers want a command that speaks MCP on stdin/stdout rather than a
+URL: desktop agents (Claude Desktop, Cursor) that are simplest to configure
+with a command, and MCP directories that run `mcp-proxy -- <command>`.
+`sp mcp` (also reachable as `solidping client mcp`) is that command, in front
+of a remote instance (spec 2026-09-26-04,
+[`pkg/cli/mcp.go`](../../server/pkg/cli/mcp.go)).
+
+It adds no server surface: each stdin line is POSTed to
+`<url>/api/v1/mcp` with the CLI's bearer credential, so every auth, role,
+scope and demo rule above applies unchanged.
+
+- **Framing.** Newline-delimited JSON-RPC both ways. Nothing but JSON-RPC
+  ever reaches stdout; logs go to stderr (`-v` for per-request debug lines).
+  Multi-line JSON from the server is compacted to one line, and both
+  `application/json` and `text/event-stream` replies are relayed.
+- **Session.** The `Mcp-Session-Id` returned by `initialize` is sent on every
+  later request. EOF on stdin, SIGINT or SIGTERM closes it with
+  `DELETE /api/v1/mcp`.
+- **Credential.** `--token` / `SP_TOKEN` uses a PAT verbatim and never writes
+  it to disk. Otherwise the credential is resolved like every other `sp`
+  command (token file from `sp auth login`, PAT in `settings.json`,
+  auto-login). On a 401 the bridge renews it without prompting (a newer
+  token file, then the refresh grant, then auto-login; stdin is the protocol
+  stream, so it can never ask for a password) and replays the request once.
+  A failed renewal is not retried for 30 s.
+- **Errors.** A reply that is not JSON-RPC (the auth middleware's REST error
+  shape, a proxy's HTML page, an unreachable server) becomes a JSON-RPC error
+  for the request's id: `-32001` for a 401 (the message names `sp auth login`
+  and `SP_TOKEN`), `-32603` otherwise, with `data.httpStatus` and the REST
+  `code`. A notification gets no reply, only a stderr line.
+- **Order.** Messages are relayed one at a time, so replies come back in
+  request order and `initialize` always lands its session id first. A long
+  `tools/call` therefore delays the next request.
+- **No credential at all** still starts: the anonymous handshake works, and
+  every other call gets the error above.
+
+Claude Desktop (`claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "solidping": {
+      "command": "sp",
+      "args": ["mcp"],
+      "env": {
+        "SOLIDPING_URL": "https://solidping.acme.com",
+        "SP_TOKEN": "pat_..."
+      }
+    }
+  }
+}
+```
+
+Drop `SP_TOKEN` to use the login saved by `sp auth login` instead.
+
+This does not by itself solve directories that build a container with no
+server in it: there is still no instance and no token to give the
+bridge. That is the in-process variant, `solidping mcp --stdio` (spec
+2026-09-26-05), which lives on the server binary's top-level `mcp` command.
+The two cannot clash: the bridge sits under `solidping client`, the in-process
+server at the root.
+
 ## Adding a tool
 
 1. **Define the tool**: add a `…Def()` function in the matching
@@ -225,6 +289,7 @@ loop sweeps every 5 minutes. After expiry the client must re-initialize.
 | Tool registry | [`server/internal/mcp/tools.go`](../../server/internal/mcp/tools.go) |
 | Tool implementations | [`server/internal/mcp/tools_*.go`](../../server/internal/mcp/) |
 | Prompts | [`server/internal/mcp/prompts.go`](../../server/internal/mcp/prompts.go) |
+| stdio bridge (`sp mcp`) | [`server/pkg/cli/mcp.go`](../../server/pkg/cli/mcp.go) |
 
 ## Origin
 
