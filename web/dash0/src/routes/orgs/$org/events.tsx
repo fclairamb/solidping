@@ -3,37 +3,26 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Calendar, RefreshCw } from "lucide-react";
 import { useEvents } from "@/api/hooks";
 import { EventLogTable } from "@/components/dashboard/event-log-table";
+import { getEventLabel } from "@/components/dashboard/event-display";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { PageHeader } from "@/components/shared/page-header";
-
-type EventType =
-  | "check.created"
-  | "check.updated"
-  | "check.deleted"
-  | "incident.created"
-  | "incident.acknowledged"
-  | "incident.escalated"
-  | "incident.resolved";
-
-const eventTypeValues: (EventType | "all")[] = [
-  "all",
-  "check.created",
-  "check.updated",
-  "check.deleted",
-  "incident.created",
-  "incident.acknowledged",
-  "incident.escalated",
-  "incident.resolved",
-];
+import {
+  EVENT_TYPE_FAMILIES,
+  eventTypesOfFamily,
+  isEventType,
+  type EventType,
+} from "@/lib/event-types";
 
 interface EventsSearch {
   type?: EventType;
@@ -44,15 +33,12 @@ export const Route = createFileRoute("/orgs/$org/events")({
   // The type filter is this page's core navigation — it decides what the page
   // is showing — so it lives in the URL rather than in useState: bookmarkable,
   // deep-linkable, and it survives a refresh. Anything unrecognized normalizes
-  // back to "all" (undefined) instead of filtering to nothing.
-  validateSearch: (search: Record<string, unknown>): EventsSearch => {
-    const type = search.type;
-    return typeof type === "string" &&
-      (eventTypeValues as string[]).includes(type) &&
-      type !== "all"
-      ? { type: type as EventType }
-      : {};
-  },
+  // back to "all" (undefined) instead of filtering to nothing. The catalogue
+  // is lib/event-types.ts, which event-types.test.ts pins to the server's own
+  // EventType* constants — so the filter offers every event type, not a
+  // hand-picked subset.
+  validateSearch: (search: Record<string, unknown>): EventsSearch =>
+    isEventType(search.type) ? { type: search.type } : {},
 });
 
 function EventsPage() {
@@ -60,7 +46,12 @@ function EventsPage() {
   const { org } = Route.useParams();
   const { type } = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
-  const typeFilter: EventType | "all" = type ?? "all";
+  // The catalogue is re-checked here rather than trusting validateSearch
+  // alone: the router keeps search params the validator did not return, so a
+  // hand-edited `?type=anything` still reaches this component, and an unknown
+  // value leaves the Select with no matching item — an empty trigger over an
+  // empty table, filtered to a type that cannot exist.
+  const typeFilter: EventType | "all" = isEventType(type) ? type : "all";
 
   const {
     data: events,
@@ -94,15 +85,29 @@ function EventsPage() {
             })
           }
         >
-          <SelectTrigger className="w-[200px]" data-testid="events-type-filter">
+          <SelectTrigger
+            className="w-full sm:w-[260px]"
+            data-testid="events-type-filter"
+          >
             <SelectValue placeholder={t("filterByType")} />
           </SelectTrigger>
           <SelectContent>
-            {eventTypeValues.map((value) => (
-              <SelectItem key={value} value={value}>
-                {value === "all" ? t("allEvents") : t(`types.${value}`)}
-              </SelectItem>
-            ))}
+            <SelectItem value="all">{t("allEvents")}</SelectItem>
+            {EVENT_TYPE_FAMILIES.map((family) => {
+              const types = eventTypesOfFamily(family);
+              if (types.length === 0) return null;
+
+              return (
+                <SelectGroup key={family}>
+                  <SelectLabel>{t(`audit.families.${family}`)}</SelectLabel>
+                  {types.map((value) => (
+                    <SelectItem key={value} value={value}>
+                      {getEventLabel(value, t)}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              );
+            })}
           </SelectContent>
         </Select>
         <Button
