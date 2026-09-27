@@ -73,7 +73,7 @@ test.describe("Region placement", () => {
     const placement = page.getByTestId("check-placement");
     await expect(placement).toHaveAttribute("data-placement", "auto");
     await expect(page.getByTestId("check-placement-summary")).toContainText("Automatic");
-    await expect(page.getByTestId("check-placement-region")).toHaveCount(1);
+    await expect(page.getByTestId("check-placement-summary")).toContainText("Default");
 
     await page.request.delete(`${API_BASE}/api/v1/orgs/test/checks/${uid}`, {
       headers: { Authorization: `Bearer ${token}` },

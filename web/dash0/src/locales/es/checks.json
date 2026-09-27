@@ -758,13 +758,7 @@
       "reasons": {
         "region_offline": "región fuera de línea",
         "other": "movida"
-      },
-      "lastResult": "último resultado",
-      "noResult": "aún sin resultado",
-      "quorum": "Se abre un incidente cuando fallan {{quorum}} de {{count}} regiones",
-      "quorumAll": "Se abre un incidente cuando fallan las {{count}} regiones",
-      "failing": "en fallo",
-      "failingSince": "en fallo desde {{time}}"
+      }
     },
     "regionalIssue": {
       "title": "Problema regional: fallos desde {{regions}}",

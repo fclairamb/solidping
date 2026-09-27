@@ -758,13 +758,7 @@
       "reasons": {
         "region_offline": "Region offline",
         "other": "verschoben"
-      },
-      "lastResult": "letztes Ergebnis",
-      "noResult": "noch kein Ergebnis",
-      "quorum": "Ein Vorfall wird eröffnet, wenn {{quorum}} von {{count}} Regionen fehlschlagen",
-      "quorumAll": "Ein Vorfall wird eröffnet, wenn alle {{count}} Regionen fehlschlagen",
-      "failing": "fehlerhaft",
-      "failingSince": "fehlerhaft seit {{time}}"
+      }
     },
     "regionalIssue": {
       "title": "Regionales Problem: Fehler aus {{regions}}",

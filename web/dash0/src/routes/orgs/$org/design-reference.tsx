@@ -2243,11 +2243,7 @@ function ButtonsBadgesSection() {
           picks N healthy regions and moves the check off a region that goes
           dark. The form shows the automatic mode as one line with a "Choose
           regions" way out to the pinned picker; the check detail shows the
-          placement, each region's last result (from{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
-            regionFreshness
-          </code>
-          ) and the automatic moves (the{" "}
+          placement and the automatic moves (the{" "}
           <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
             check.placement_changed
           </code>{" "}
@@ -2281,15 +2277,9 @@ function ButtonsBadgesSection() {
           <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">warning</code>{" "}
           (status0 shows exactly that, nothing more), and the check page says
           which regions and why with the amber banner, never the destructive
-          one (no incident is open). The placement block states the rule and
-          marks each failing region in destructive red with the time it
-          started failing. Both read the server&apos;s{" "}
+          one (no incident is open). The banner reads the server&apos;s{" "}
           <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">regionalIssue</code>{" "}
-          and{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
-            regionFreshness[].status
-          </code>
-          ; the banner renders nothing without a regional issue. The check
+          and renders nothing without one. The check
           form&apos;s &ldquo;Regions that must fail&rdquo; select (in Incident
           tracking, shown from 2 regions) defaults to Default and says what it
           resolves to for the picked regions.
