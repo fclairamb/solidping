@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.35.0](https://github.com/fclairamb/solidping/compare/v0.34.0...v0.35.0) (2026-09-27)
+
+
+### Features
+
+* every event type in the filter, open-incident row tint, token-at-rest docs, zero-warning status0 lint ([#445](https://github.com/fclairamb/solidping/issues/445)) ([2d2d6dc](https://github.com/fclairamb/solidping/commit/2d2d6dc1802c31b21203bc46f8ab59da277c1cca))
+
 ## [0.34.0](https://github.com/fclairamb/solidping/compare/v0.33.0...v0.34.0) (2026-09-27)
 
 
