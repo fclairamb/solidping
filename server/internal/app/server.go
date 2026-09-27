@@ -232,6 +232,19 @@ type Server struct {
 	cancelCtx         context.CancelFunc
 	workersWg         sync.WaitGroup // Tracks workers
 
+	// headless makes this process run everything `serve` runs except what the
+	// api role exposes to inbound traffic: no HTTP/TLS listener, no heartbeat
+	// beat listeners, no Telegram webhook self-heal, no Slack Socket Mode or
+	// Discord Gateway consumer. Set by `solidping mcp --stdio` (spec
+	// 2026-09-26-05) through SetHeadless, before SetupRoutes.
+	headless bool
+	// ready is closed by Start once the startup job has run and the workers
+	// are up, i.e. when the default org exists on a fresh database. Lazily
+	// created so a test Server literal needs no constructor.
+	readyOnce  sync.Once
+	ready      chan struct{}
+	readyClose sync.Once
+
 	// dbFault latches the first structural database fault (the schema this
 	// process needs is gone). Armed in Start to trigger a graceful shutdown:
 	// no retry can bring a missing table back, and exiting lets the supervisor
@@ -2135,7 +2148,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Build the Socket Mode supervisor up-front when enabled so its status is
 	// readable via GET /integrations/slack/socket/status even before Start().
 	// The actual Run() goroutine is launched from Start() under workersWg.
-	if s.config.Slack.Enabled && s.config.Slack.SocketModeEnabled && s.config.ShouldRunAPI() {
+	if s.config.Slack.Enabled && s.config.Slack.SocketModeEnabled && s.servesAPI() {
 		s.slackSocketSupervisor = slack.NewSlackSocketSupervisor(slackService, s.config, slog.Default())
 		slackHandler.SetSocketSupervisor(s.slackSocketSupervisor)
 	}
@@ -2162,7 +2175,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Build the Gateway supervisor up-front when enabled so its status is
 	// readable even before Start(). The Run() goroutine is launched from
 	// Start() under workersWg, exactly like the Slack Socket Mode supervisor.
-	if s.config.Discord.Enabled && s.config.Discord.GatewayEnabled && s.config.ShouldRunAPI() {
+	if s.config.Discord.Enabled && s.config.Discord.GatewayEnabled && s.servesAPI() {
 		s.discordGatewaySupervisor = discord.NewGatewaySupervisor(discordService, s.config, slog.Default())
 		discordHandler.SetGatewaySupervisor(s.discordGatewaySupervisor)
 	}
@@ -3666,8 +3679,12 @@ func (s *Server) Start(ctx context.Context) error {
 	// Telegram boot-time sanity check + webhook self-heal (no-op unless this
 	// node serves the API and Telegram is configured). Best-effort and off the
 	// startup path: a Telegram outage must never stop the server from booting.
-	//nolint:contextcheck // runnerCtx is intentionally separate from request context
-	go bootstrapTelegram(runnerCtx, s.dbService, s.config)
+	//
+	// A headless node serves no webhook, so it must not re-point Telegram's.
+	if !s.headless {
+		//nolint:contextcheck // runnerCtx is intentionally separate from request context
+		go bootstrapTelegram(runnerCtx, s.dbService, s.config)
+	}
 	// Run startup job synchronously to ensure default org exists before workers start
 	if s.config.ShouldRunJobs() {
 		if err := s.runStartupJob(ctx); err != nil {
@@ -3696,6 +3713,10 @@ func (s *Server) Start(ctx context.Context) error {
 	} else {
 		slog.InfoContext(ctx, "Skipping check worker", "role", s.config.Node.Role)
 	}
+
+	// The startup job has run and the workers are up: a headless caller may
+	// now resolve org-scoped state (the default org exists on a fresh DB).
+	s.markReady()
 
 	// Serve the API surfaces (HTTP + the embedded heartbeat beat listeners), or
 	// simply wait for shutdown when this node's role does not serve them.
@@ -3728,8 +3749,8 @@ func (s *Server) Start(ctx context.Context) error {
 // the job and check workers: they must keep accepting until the HTTP server
 // has drained, not stop the instant the shutdown signal arrives.
 func (s *Server) serveAPIOrWait(ctx, runnerCtx context.Context) error {
-	if !s.config.ShouldRunAPI() {
-		slog.InfoContext(ctx, "Skipping HTTP server", "role", s.config.Node.Role)
+	if !s.servesAPI() {
+		slog.InfoContext(ctx, "Skipping HTTP server", "role", s.config.Node.Role, "headless", s.headless)
 
 		<-ctx.Done()
 		slog.InfoContext(ctx, "Shutting down node", "timeout", s.config.Server.ShutdownTimeout)
@@ -3742,6 +3763,41 @@ func (s *Server) serveAPIOrWait(ctx, runnerCtx context.Context) error {
 	}
 
 	return s.serveHTTP(ctx)
+}
+
+// SetHeadless makes the server run without the api role's inbound surfaces
+// (see the headless field). Call it before SetupRoutes: the Slack and Discord
+// supervisors are built there.
+func (s *Server) SetHeadless() {
+	s.headless = true
+}
+
+// servesAPI reports whether this process runs the api role's inbound
+// surfaces: the role asks for them and the server is not headless.
+func (s *Server) servesAPI() bool {
+	return !s.headless && s.config.ShouldRunAPI()
+}
+
+// Ready is closed once Start has run the startup job and started the workers.
+// It never closes if Start fails before that.
+func (s *Server) Ready() <-chan struct{} {
+	return s.readyChan()
+}
+
+func (s *Server) readyChan() chan struct{} {
+	s.readyOnce.Do(func() { s.ready = make(chan struct{}) })
+
+	return s.ready
+}
+
+func (s *Server) markReady() {
+	s.readyClose.Do(func() { close(s.readyChan()) })
+}
+
+// MCPHandler returns the MCP handler SetupRoutes built, for the stdio
+// transport. Nil before SetupRoutes.
+func (s *Server) MCPHandler() *mcp.Handler {
+	return s.mcpHandler
 }
 
 // startHeartbeatPush binds the embedded heartbeat beat listeners alongside the
