@@ -18,6 +18,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/require"
+	"github.com/urfave/cli/v3"
 
 	"github.com/fclairamb/solidping/server/pkg/cli/apihelper"
 	"github.com/fclairamb/solidping/server/pkg/cli/config"
@@ -47,6 +48,19 @@ type fakeMCPServer struct {
 	valid  string
 	seen   []fakeMCPRequest
 	extras map[string]http.HandlerFunc
+	// noScope is a token the server knows but that lacks the mcp scope: it
+	// gets the real handler's 403 JSON-RPC error, which carries no id.
+	noScope string
+	// sseInitialize answers initialize as an event stream.
+	sseInitialize bool
+}
+
+// configure changes the fake's behavior under its lock, before any request.
+func (f *fakeMCPServer) configure(change func(*fakeMCPServer)) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	change(f)
 }
 
 func newFakeMCPServer(t *testing.T, validToken string) *fakeMCPServer {
@@ -93,6 +107,7 @@ func (f *fakeMCPServer) serve(w http.ResponseWriter, req *http.Request) {
 	var env struct {
 		ID     json.RawMessage `json:"id"`
 		Method string          `json:"method"`
+		Params json.RawMessage `json:"params"`
 	}
 
 	body, _ := io.ReadAll(req.Body)
@@ -105,7 +120,17 @@ func (f *fakeMCPServer) serve(w http.ResponseWriter, req *http.Request) {
 		authorization: req.Header.Get("Authorization"),
 		sessionID:     req.Header.Get(mcpHeaderSessionID),
 	})
+	noScope, sseInitialize := f.noScope, f.sseInitialize
 	f.mu.Unlock()
+
+	if noScope != "" && req.Header.Get("Authorization") == "Bearer "+noScope {
+		// Same shape as mcp.Handler.Handle: errorResponse(nil, ...) omits the id.
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","error":{"code":-32002,"message":"Token lacks mcp or mcp:read scope"}}`))
+
+		return
+	}
 
 	if req.Header.Get("Authorization") != "Bearer "+f.valid {
 		w.Header().Set("Content-Type", "application/json")
@@ -125,6 +150,15 @@ func (f *fakeMCPServer) serve(w http.ResponseWriter, req *http.Request) {
 	switch env.Method {
 	case "initialize":
 		w.Header().Set(mcpHeaderSessionID, testMCPSessionID)
+
+		if sseInitialize {
+			w.Header().Set("Content-Type", "text/event-stream")
+			_, _ = w.Write([]byte("event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":" + string(env.ID) +
+				",\"result\":{\"protocolVersion\":\"2025-03-26\"}}\n\n"))
+
+			return
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":` + string(env.ID) +
 			`,"result":{"protocolVersion":"2025-03-26","serverInfo":{"name":"solidping","version":"test"}}}`))
@@ -134,6 +168,9 @@ func (f *fakeMCPServer) serve(w http.ResponseWriter, req *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 		_, _ = w.Write([]byte(": keep-alive\nevent: message\nid: 1\ndata: {\"jsonrpc\":\"2.0\",\"id\":" +
 			string(env.ID) + ",\ndata: \"result\":{\"tools\":[{\"name\":\"list_checks\"}]}}\n\n"))
+	case "echo":
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":` + string(env.ID) + `,"result":` + string(env.Params) + `}`))
 	case "tools/call":
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte("{\n  \"jsonrpc\": \"2.0\",\n  \"id\": " + string(env.ID) +
@@ -169,7 +206,10 @@ func startBridge(t *testing.T, bridge *mcpBridge) *bridgeHarness {
 		bridge.httpClient = &http.Client{Timeout: testMCPTimeout}
 	}
 
-	harness := &bridgeHarness{t: t, stdin: inW, stdout: bufio.NewScanner(outR), done: make(chan error, 1)}
+	stdout := bufio.NewScanner(outR)
+	stdout.Buffer(make([]byte, 0, mcpReadBufferSize), 4*1024*1024)
+
+	harness := &bridgeHarness{t: t, stdin: inW, stdout: stdout, done: make(chan error, 1)}
 
 	go func() {
 		harness.done <- bridge.run(context.Background(), inR)
@@ -191,8 +231,20 @@ func (h *bridgeHarness) send(line string) {
 	require.NoError(h.t, err)
 }
 
-// next returns the next stdout line decoded, failing on a timeout.
+// next returns the next stdout line decoded as one object.
 func (h *bridgeHarness) next() map[string]any {
+	h.t.Helper()
+
+	line := h.nextRaw()
+
+	var msg map[string]any
+	require.NoError(h.t, json.Unmarshal([]byte(line), &msg), "every stdout line must be one JSON message: %q", line)
+
+	return msg
+}
+
+// nextRaw returns the next stdout line, failing on a timeout.
+func (h *bridgeHarness) nextRaw() string {
 	h.t.Helper()
 
 	lineCh := make(chan string, 1)
@@ -209,14 +261,11 @@ func (h *bridgeHarness) next() map[string]any {
 	case line, ok := <-lineCh:
 		require.True(h.t, ok, "stdout closed before a reply arrived")
 
-		var msg map[string]any
-		require.NoError(h.t, json.Unmarshal([]byte(line), &msg), "every stdout line must be one JSON message: %q", line)
-
-		return msg
+		return line
 	case <-time.After(testMCPTimeout):
 		require.FailNow(h.t, "timed out waiting for a stdout line")
 
-		return nil
+		return ""
 	}
 }
 
@@ -510,6 +559,132 @@ func TestMCPBridgeNonJSONRPCError(t *testing.T) {
 	h.closeAndWait()
 }
 
+// TestMCPBridgeScopeRefusal: the server refuses a token without the mcp scope
+// with an id-less JSON-RPC error. A notification must get no reply at all,
+// and a request must get the error with its own id stamped on.
+func TestMCPBridgeScopeRefusal(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	fake := newFakeMCPServer(t, "pat_good")
+	fake.configure(func(f *fakeMCPServer) { f.noScope = "pat_noscope" })
+
+	h := startBridge(t, &mcpBridge{endpoint: fake.srv.URL + mcpAPIPath, token: "pat_noscope"})
+
+	h.send(`{"jsonrpc":"2.0","method":"notifications/initialized"}`)
+	h.send(`{"jsonrpc":"2.0","id":9,"method":"tools/list"}`)
+
+	msg := h.next()
+	r.InDelta(9, msg["id"], 0, "the notification's refusal must not produce a line, and the request's carries its id")
+	r.InDelta(-32002, errorOf(t, msg)["code"], 0)
+	r.Contains(errorOf(t, msg)["message"], "mcp")
+
+	h.send(`{"jsonrpc":"2.0","id":"s-1","method":"tools/call"}`)
+	r.Equal("s-1", h.next()["id"], "string ids are stamped as sent")
+
+	h.closeAndWait()
+	r.Len(fake.requests(), 3)
+}
+
+// TestMCPBridgeBatch: a batch is relayed member by member and answered with
+// one array of the requests' replies. Notifications add nothing, and a batch
+// of only notifications gets no line at all.
+func TestMCPBridgeBatch(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	fake := newFakeMCPServer(t, "pat_good")
+	h := startBridge(t, &mcpBridge{endpoint: fake.srv.URL + mcpAPIPath, token: "pat_good"})
+
+	h.send(`[{"jsonrpc":"2.0","method":"notifications/initialized"}]`)
+	h.send(`[{"jsonrpc":"2.0","id":1,"method":"tools/list"},` +
+		`{"jsonrpc":"2.0","method":"notifications/initialized"},` +
+		`{"jsonrpc":"2.0","id":2,"method":"tools/call"}]`)
+
+	line := h.nextRaw()
+
+	var replies []map[string]any
+	r.NoError(json.Unmarshal([]byte(line), &replies), "a batch is answered with one array: %s", line)
+	r.Len(replies, 2)
+	r.InDelta(1, replies[0]["id"], 0)
+	r.InDelta(2, replies[1]["id"], 0)
+
+	h.send(`[]`)
+	msg := h.next()
+	r.Nil(msg["id"])
+	r.InDelta(mcpCodeInvalidRequest, errorOf(t, msg)["code"], 0)
+
+	h.closeAndWait()
+
+	for _, req := range fake.requests() {
+		r.NotEmpty(req.rpcMethod, "every member is POSTed on its own, never the array")
+	}
+}
+
+// TestMCPBridgeSSEInitializeSession: the session id is captured when the
+// initialize reply is an event stream, and sent on the next request.
+func TestMCPBridgeSSEInitializeSession(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	fake := newFakeMCPServer(t, "pat_good")
+	fake.configure(func(f *fakeMCPServer) { f.sseInitialize = true })
+
+	h := startBridge(t, &mcpBridge{endpoint: fake.srv.URL + mcpAPIPath, token: "pat_good"})
+
+	h.send(`{"jsonrpc":"2.0","id":1,"method":"initialize"}`)
+	r.Equal("2025-03-26", dig[string](t, h.next(), "result", "protocolVersion"))
+
+	h.send(`{"jsonrpc":"2.0","id":2,"method":"tools/list"}`)
+	r.InDelta(2, h.next()["id"], 0)
+
+	h.closeAndWait()
+
+	seen := fake.requests()
+	r.Len(seen, 3)
+	r.Equal(testMCPSessionID, seen[1].sessionID)
+	r.Equal(http.MethodDelete, seen[2].httpMethod)
+	r.Equal(testMCPSessionID, seen[2].sessionID)
+}
+
+// TestMCPBridgeLongLine: a stdin line well past the 64 KiB read buffer is
+// relayed intact, and so is the equally long reply.
+func TestMCPBridgeLongLine(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	fake := newFakeMCPServer(t, "pat_good")
+	h := startBridge(t, &mcpBridge{endpoint: fake.srv.URL + mcpAPIPath, token: "pat_good"})
+
+	payload := strings.Repeat("0123456789abcdef", 12*1024) // 192 KiB
+	h.send(`{"jsonrpc":"2.0","id":1,"method":"echo","params":{"blob":"` + payload + `"}}`)
+
+	msg := h.next()
+	r.Equal(payload, dig[string](t, msg, "result", "blob"))
+
+	h.closeAndWait()
+}
+
+// TestMCPFailureExitsQuietly: a failure is logged to the bridge's logger and
+// becomes an exit code with an empty message, so urfave exits by itself and
+// nothing is handed back to a main that would log it on stdout.
+func TestMCPFailureExitsQuietly(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	var logs strings.Builder
+
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+
+	err := mcpFailure(t.Context(), logger, io.ErrUnexpectedEOF)
+
+	var exitCoder cli.ExitCoder
+	r.ErrorAs(err, &exitCoder)
+	r.Equal(1, exitCoder.ExitCode())
+	r.Empty(err.Error(), "a non-empty message would be printed by urfave")
+	r.Contains(logs.String(), "unexpected EOF")
+}
+
 func TestIsJSONRPC(t *testing.T) {
 	t.Parallel()
 
@@ -519,7 +694,7 @@ func TestIsJSONRPC(t *testing.T) {
 		want bool
 	}{
 		{name: "response", body: `{"jsonrpc":"2.0","id":1,"result":{}}`, want: true},
-		{name: "batch", body: `[{"jsonrpc":"2.0","id":1,"result":{}}]`, want: true},
+		{name: "batch", body: `[{"jsonrpc":"2.0","id":1,"result":{}}]`, want: false},
 		{name: "rest error", body: `{"title":"Invalid or expired token","code":"INVALID_TOKEN"}`, want: false},
 		{name: "wrong version", body: `{"jsonrpc":"1.0","id":1}`, want: false},
 		{name: "html", body: `<html></html>`, want: false},

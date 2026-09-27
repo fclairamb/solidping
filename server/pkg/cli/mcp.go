@@ -54,9 +54,10 @@ const (
 	// JSON-RPC error codes the bridge answers with when the server gave no
 	// JSON-RPC reply of its own. -32001 sits in the implementation-defined
 	// range, next to the server's -32002 (forbidden) and -32003 (not found).
-	mcpCodeParseError   = -32700
-	mcpCodeInternal     = -32603
-	mcpCodeUnauthorized = -32001
+	mcpCodeParseError     = -32700
+	mcpCodeInvalidRequest = -32600
+	mcpCodeInternal       = -32603
+	mcpCodeUnauthorized   = -32001
 
 	mcpContentTypeSSE  = "text/event-stream"
 	mcpContentTypeJSON = "application/json"
@@ -85,17 +86,36 @@ func mcpCommand() *cli.Command {
 }
 
 func mcpAction(ctx context.Context, cmd *cli.Command) error {
+	var level slog.LevelVar
+
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: &level}))
+
+	if err := mcpServe(ctx, cmd, logger, &level); err != nil {
+		return mcpFailure(ctx, logger, err)
+	}
+
+	return nil
+}
+
+// mcpFailure logs why `sp mcp` stopped, to stderr, and turns the error into an
+// exit code with no message. urfave then exits by itself instead of handing
+// the error back to main, and the solidping binary's main logs a returned
+// error through a logger that writes to stdout, which is the protocol stream.
+func mcpFailure(ctx context.Context, logger *slog.Logger, err error) error {
+	logger.ErrorContext(ctx, "sp mcp stopped", "error", err)
+
+	return cli.Exit("", 1)
+}
+
+func mcpServe(ctx context.Context, cmd *cli.Command, logger *slog.Logger, level *slog.LevelVar) error {
 	cliCtx, err := NewCLIContext(cmd)
 	if err != nil {
 		return err
 	}
 
-	level := slog.LevelInfo
 	if cliCtx.Verbose {
-		level = slog.LevelDebug
+		level.Set(slog.LevelDebug)
 	}
-
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
 
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -148,6 +168,10 @@ type mcpBridge struct {
 	// sessionID is the Mcp-Session-Id minted by the last `initialize`.
 	sessionID string
 }
+
+// nullID is the id JSON-RPC mandates on an error that answers a message whose
+// own id cannot be read (a parse error, an empty batch).
+var nullID = json.RawMessage("null") //nolint:gochecknoglobals // Immutable JSON literal.
 
 // rpcEnvelope is the part of an incoming message the bridge needs to answer
 // on the server's behalf when the server gives no JSON-RPC reply.
@@ -226,22 +250,72 @@ func (b *mcpBridge) run(ctx context.Context, input io.Reader) error {
 	}
 }
 
-// handle relays one message and writes whatever reply it produces.
+// handle relays one stdin line and writes the reply it produces, if any.
 func (b *mcpBridge) handle(ctx context.Context, msg []byte) error {
 	if !json.Valid(msg) {
-		return b.writeError(ctx, nil, mcpCodeParseError, "Parse error", nil)
+		// JSON-RPC 2.0 §5.1: no id can be read from an unparseable message,
+		// so the spec mandates a null id on the parse error.
+		return b.writeLine(ctx, b.errorMessage(ctx, nullID, mcpCodeParseError, "Parse error", nil))
 	}
 
+	if msg[0] == '[' {
+		return b.handleBatch(ctx, msg)
+	}
+
+	for _, reply := range b.relay(ctx, msg) {
+		if err := b.writeLine(ctx, reply); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// handleBatch relays a JSON-RPC batch one member at a time and answers with
+// one array holding the replies to its requests, or nothing when it held only
+// notifications. The server takes a single message per POST, so forwarding
+// the array as is would only earn an id-less parse error.
+func (b *mcpBridge) handleBatch(ctx context.Context, msg []byte) error {
+	var members []json.RawMessage
+	if err := json.Unmarshal(msg, &members); err != nil || len(members) == 0 {
+		// §6: an empty batch gets a single Invalid Request with a null id.
+		return b.writeLine(ctx, b.errorMessage(ctx, nullID, mcpCodeInvalidRequest, "Invalid Request", nil))
+	}
+
+	replies := make([]json.RawMessage, 0, len(members))
+	for _, member := range members {
+		replies = append(replies, b.relay(ctx, bytes.TrimSpace(member))...)
+	}
+
+	if len(replies) == 0 {
+		return nil
+	}
+
+	payload, err := json.Marshal(replies)
+	if err != nil {
+		return fmt.Errorf("encoding batch reply: %w", err)
+	}
+
+	return b.writeLine(ctx, payload)
+}
+
+// relay forwards one JSON-RPC message and returns what goes back to the
+// client: nothing for a notification, the response for a request (always
+// carrying the request's id), after any server-initiated messages an event
+// stream carried first.
+func (b *mcpBridge) relay(ctx context.Context, msg []byte) []json.RawMessage {
 	var env rpcEnvelope
-	// A batch (JSON array) has no single id; it is forwarded as is and any
-	// synthesized error carries a null id.
-	_ = json.Unmarshal(msg, &env)
+	if len(msg) == 0 || msg[0] != '{' || json.Unmarshal(msg, &env) != nil {
+		// §6: a batch member that is not a request object has no id to
+		// answer with, so the spec mandates a null one.
+		return []json.RawMessage{b.errorMessage(ctx, nullID, mcpCodeInvalidRequest, "Invalid Request", nil)}
+	}
 
 	resp, err := b.post(ctx, msg)
 	if err != nil {
 		b.log.ErrorContext(ctx, "MCP request failed", "method", env.Method, "error", err)
 
-		return b.replyError(ctx, env, mcpCodeInternal, "SolidPing MCP endpoint unreachable: "+err.Error(), nil)
+		return b.errorReply(ctx, env, mcpCodeInternal, "SolidPing MCP endpoint unreachable: "+err.Error(), nil)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -258,23 +332,63 @@ func (b *mcpBridge) handle(ctx context.Context, msg []byte) error {
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return b.replyError(ctx, env, mcpCodeInternal, "Reading the SolidPing reply failed: "+err.Error(), nil)
+		return b.errorReply(ctx, env, mcpCodeInternal, "Reading the SolidPing reply failed: "+err.Error(), nil)
 	}
 
 	if len(bytes.TrimSpace(body)) == 0 {
 		// 202 for a notification, 204 for a response: nothing to relay.
 		if resp.StatusCode >= http.StatusBadRequest {
-			return b.replyHTTPError(ctx, env, resp.StatusCode, nil)
+			return b.httpErrorReply(ctx, env, resp.StatusCode, nil)
 		}
 
 		return nil
 	}
 
 	if isJSONRPC(body) {
-		return b.writeLine(ctx, body)
+		return b.answer(ctx, env, body)
 	}
 
-	return b.replyHTTPError(ctx, env, resp.StatusCode, body)
+	return b.httpErrorReply(ctx, env, resp.StatusCode, body)
+}
+
+// answer vets one message from the server before it reaches the client.
+//
+// A server-initiated message (it has a method) passes as is. A response is
+// dropped when the client sent a notification, which must never be replied
+// to, and gets the request's id when the server left it out: the server
+// answers some refusals (a token without the mcp scope, an unparseable body)
+// with an id-less error that the client could not match to its request.
+func (b *mcpBridge) answer(ctx context.Context, env rpcEnvelope, reply []byte) []json.RawMessage {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(reply, &fields); err != nil {
+		b.log.ErrorContext(ctx, "SolidPing sent a reply that is not a JSON object", "method", env.Method, "error", err)
+
+		return b.errorReply(ctx, env, mcpCodeInternal, "SolidPing sent a malformed reply", nil)
+	}
+
+	if _, serverMessage := fields["method"]; serverMessage {
+		return []json.RawMessage{reply}
+	}
+
+	if !env.isRequest() {
+		b.log.WarnContext(ctx, "Dropping the server's reply to a notification",
+			"method", env.Method, "error", string(fields["error"]))
+
+		return nil
+	}
+
+	if id, ok := fields["id"]; ok && !isNullID(id) {
+		return []json.RawMessage{reply}
+	}
+
+	fields["id"] = env.ID
+
+	stamped, err := json.Marshal(fields)
+	if err != nil {
+		return b.errorReply(ctx, env, mcpCodeInternal, "SolidPing sent a malformed reply", nil)
+	}
+
+	return []json.RawMessage{stamped}
 }
 
 // post sends one message, renewing the credential and retrying once on a 401.
@@ -332,25 +446,24 @@ func (b *mcpBridge) send(ctx context.Context, method string, body []byte) (*http
 	return resp, nil
 }
 
-// relaySSE writes the data of every event in a text/event-stream reply as one
-// stdout line. Event names, ids and comments carry nothing the client needs.
-func (b *mcpBridge) relaySSE(ctx context.Context, body io.Reader, env rpcEnvelope) error {
+// relaySSE vets the data of every event in a text/event-stream reply as one
+// message. Event names, ids and comments carry nothing the client needs.
+func (b *mcpBridge) relaySSE(ctx context.Context, body io.Reader, env rpcEnvelope) []json.RawMessage {
 	reader := bufio.NewReaderSize(body, mcpReadBufferSize)
 
-	var data []string
+	var (
+		data    []string
+		replies []json.RawMessage
+	)
 
-	relayed := false
-
-	flush := func() error {
+	flush := func() {
 		if len(data) == 0 {
-			return nil
+			return
 		}
 
 		payload := []byte(strings.Join(data, "\n"))
 		data = data[:0]
-		relayed = true
-
-		return b.writeLine(ctx, payload)
+		replies = append(replies, b.answer(ctx, env, payload)...)
 	}
 
 	for {
@@ -359,34 +472,32 @@ func (b *mcpBridge) relaySSE(ctx context.Context, body io.Reader, env rpcEnvelop
 
 		switch {
 		case line == "":
-			if flushErr := flush(); flushErr != nil {
-				return flushErr
-			}
+			flush()
 		case strings.HasPrefix(line, "data:"):
 			data = append(data, strings.TrimPrefix(strings.TrimPrefix(line, "data:"), " "))
 		}
 
-		if err != nil {
-			if flushErr := flush(); flushErr != nil {
-				return flushErr
-			}
-
-			if !errors.Is(err, io.EOF) {
-				b.log.ErrorContext(ctx, "Reading the SolidPing event stream failed", "error", err)
-
-				if !relayed {
-					return b.replyError(ctx, env, mcpCodeInternal, "Reading the SolidPing event stream failed: "+err.Error(), nil)
-				}
-			}
-
-			return nil
+		if err == nil {
+			continue
 		}
+
+		flush()
+
+		if !errors.Is(err, io.EOF) {
+			b.log.ErrorContext(ctx, "Reading the SolidPing event stream failed", "error", err)
+
+			if len(replies) == 0 {
+				return b.errorReply(ctx, env, mcpCodeInternal, "Reading the SolidPing event stream failed: "+err.Error(), nil)
+			}
+		}
+
+		return replies
 	}
 }
 
-// replyHTTPError answers a request whose HTTP reply carried no JSON-RPC
+// httpErrorReply answers a request whose HTTP reply carried no JSON-RPC
 // envelope (auth middleware errors, proxies, a wrong URL).
-func (b *mcpBridge) replyHTTPError(ctx context.Context, env rpcEnvelope, status int, body []byte) error {
+func (b *mcpBridge) httpErrorReply(ctx context.Context, env rpcEnvelope, status int, body []byte) []json.RawMessage {
 	var rest restError
 	if body != nil {
 		_ = json.Unmarshal(body, &rest)
@@ -414,40 +525,40 @@ func (b *mcpBridge) replyHTTPError(ctx context.Context, env rpcEnvelope, status 
 
 	b.log.WarnContext(ctx, "SolidPing refused the MCP request", "method", env.Method, "status", status, "code", rest.Code)
 
-	return b.replyError(ctx, env, code, message, data)
+	return b.errorReply(ctx, env, code, message, data)
 }
 
-// replyError writes an error for a request. A notification (no id) gets no
-// reply by definition, so the failure is only logged.
-func (b *mcpBridge) replyError(
+// errorReply builds the error for a request. A notification gets no reply by
+// definition, so its failure is only logged.
+func (b *mcpBridge) errorReply(
 	ctx context.Context, env rpcEnvelope, code int, message string, data map[string]any,
-) error {
-	if len(env.ID) == 0 || string(env.ID) == "null" {
+) []json.RawMessage {
+	if !env.isRequest() {
 		b.log.WarnContext(ctx, "Dropping an error for a notification", "method", env.Method, "error", message)
 
 		return nil
 	}
 
-	return b.writeError(ctx, env.ID, code, message, data)
+	return []json.RawMessage{b.errorMessage(ctx, env.ID, code, message, data)}
 }
 
-func (b *mcpBridge) writeError(
+// errorMessage encodes a JSON-RPC error reply written by the bridge itself.
+func (b *mcpBridge) errorMessage(
 	ctx context.Context, id json.RawMessage, code int, message string, data map[string]any,
-) error {
-	if id == nil {
-		id = json.RawMessage("null")
-	}
+) json.RawMessage {
+	reply := rpcError{JSONRPC: jsonRPCVersion, ID: id, Error: rpcErrorBody{Code: code, Message: message, Data: data}}
 
-	payload, err := json.Marshal(rpcError{
-		JSONRPC: jsonRPCVersion,
-		ID:      id,
-		Error:   rpcErrorBody{Code: code, Message: message, Data: data},
-	})
+	payload, err := json.Marshal(reply)
 	if err != nil {
-		return fmt.Errorf("encoding JSON-RPC error: %w", err)
+		// Unreachable with the ids and data the bridge passes; answer with a
+		// bare internal error rather than nothing.
+		b.log.ErrorContext(ctx, "Encoding a JSON-RPC error failed", "error", err)
+
+		return fmt.Appendf(nil, `{"jsonrpc":"2.0","id":%s,"error":{"code":%d,"message":"Internal error"}}`,
+			id, mcpCodeInternal)
 	}
 
-	return b.writeLine(ctx, payload)
+	return payload
 }
 
 // writeLine writes one JSON message as a single stdout line. The JSON is
@@ -456,7 +567,7 @@ func (b *mcpBridge) writeError(
 func (b *mcpBridge) writeLine(ctx context.Context, payload []byte) error {
 	var buf bytes.Buffer
 	if err := json.Compact(&buf, payload); err != nil {
-		b.log.ErrorContext(ctx, "SolidPing sent a reply that is not JSON, dropping it", "error", err)
+		b.log.ErrorContext(ctx, "Dropping a reply that is not JSON", "error", err)
 
 		return nil
 	}
@@ -492,21 +603,26 @@ func (b *mcpBridge) closeSession(ctx context.Context) {
 	b.sessionID = ""
 }
 
-// isJSONRPC reports whether body is a JSON-RPC reply (or a batch of them)
-// rather than some other JSON document such as the REST error shape.
+// isJSONRPC reports whether body is one JSON-RPC message rather than some
+// other JSON document such as the REST error shape. Batches never come back:
+// the bridge splits them before they reach the server.
 func isJSONRPC(body []byte) bool {
-	trimmed := bytes.TrimSpace(body)
-	if len(trimmed) == 0 {
-		return false
-	}
-
-	if trimmed[0] == '[' {
-		return json.Valid(trimmed)
-	}
-
 	var probe struct {
 		JSONRPC string `json:"jsonrpc"`
 	}
 
-	return json.Unmarshal(trimmed, &probe) == nil && probe.JSONRPC == jsonRPCVersion
+	trimmed := bytes.TrimSpace(body)
+
+	return len(trimmed) > 0 && trimmed[0] == '{' &&
+		json.Unmarshal(trimmed, &probe) == nil && probe.JSONRPC == jsonRPCVersion
+}
+
+// isRequest reports whether the message expects a reply. A missing or null id
+// makes it a notification.
+func (e rpcEnvelope) isRequest() bool {
+	return len(e.ID) > 0 && !isNullID(e.ID)
+}
+
+func isNullID(id json.RawMessage) bool {
+	return bytes.Equal(bytes.TrimSpace(id), []byte("null"))
 }
