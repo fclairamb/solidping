@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.0](https://github.com/fclairamb/solidping/compare/v0.33.0...v0.34.0) (2026-09-27)
+
+
+### Features
+
+* MCP stdio and demo access, viewport screenshots, incident kinds ([#443](https://github.com/fclairamb/solidping/issues/443)) ([d226e0c](https://github.com/fclairamb/solidping/commit/d226e0c933bfbfb4ae07e1880e8d382923b3979d))
+
 ## [0.33.0](https://github.com/fclairamb/solidping/compare/v0.32.1...v0.33.0) (2026-09-26)
 
 
