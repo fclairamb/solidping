@@ -26,6 +26,7 @@ import {
   INCIDENT_KINDS,
   incidentKindOf,
   incidentKindTextClass,
+  incidentRowClass,
   type IncidentKind,
 } from "@/lib/incident-kind";
 import { Button } from "@/components/ui/button";
@@ -470,7 +471,10 @@ function IncidentsIndexPage() {
                         data-testid="incident-row"
                         data-incident-uid={incident.uid}
                         data-incident-kind={incidentKindOf(incident.kind)}
-                        className="hover:bg-muted/40 transition-colors"
+                        className={cn(
+                          "transition-colors",
+                          incidentRowClass(incident.state, incident.kind),
+                        )}
                       >
                         <TableCell className="align-top">
                           <div className="flex flex-wrap items-center gap-2">

@@ -134,7 +134,11 @@
       "config": "Configuración como código",
       "check": "Comprobaciones",
       "incident": "Incidencias",
-      "org": "Organización"
+      "org": "Organización",
+      "statuspage": "Publicaciones de páginas de estado",
+      "status_update": "Actualizaciones de estado",
+      "region": "Regiones",
+      "agent": "Ubicaciones privadas"
     },
     "columns": {
       "time": "Fecha",

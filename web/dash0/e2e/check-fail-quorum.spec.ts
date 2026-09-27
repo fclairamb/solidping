@@ -163,15 +163,6 @@ test.describe("Multi-region quorum", () => {
     // Not an outage: neither the region-offline banner nor an incident.
     await expect(page.getByTestId("region-outage-banner")).toHaveCount(0);
 
-    // The placement block states the rule and marks the failing region.
-    await expect(page.getByTestId("check-placement-quorum")).toContainText("2 of 3 regions");
-    const failing = page.locator("[data-testid='check-placement-region'][data-region='e2e-third']");
-    await expect(failing).toHaveAttribute("data-failing", "true");
-    await expect(failing).toContainText("failing since");
-    await expect(
-      page.locator("[data-testid='check-placement-region'][data-region='default']"),
-    ).not.toHaveAttribute("data-failing", "true");
-
     await deleteCheck(page, token, uid);
   });
 

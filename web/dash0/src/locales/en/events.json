@@ -134,7 +134,11 @@
       "config": "Config as code",
       "check": "Checks",
       "incident": "Incidents",
-      "org": "Organization"
+      "org": "Organization",
+      "statuspage": "Status page publications",
+      "status_update": "Status updates",
+      "region": "Regions",
+      "agent": "Private locations"
     },
     "columns": {
       "time": "Time",

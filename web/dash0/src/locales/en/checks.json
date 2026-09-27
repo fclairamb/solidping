@@ -802,13 +802,7 @@
       "reasons": {
         "region_offline": "region offline",
         "other": "moved"
-      },
-      "lastResult": "last result",
-      "noResult": "no result yet",
-      "quorum": "An incident opens when {{quorum}} of {{count}} regions fail",
-      "quorumAll": "An incident opens when all {{count}} regions fail",
-      "failing": "failing",
-      "failingSince": "failing since {{time}}"
+      }
     },
     "regionalIssue": {
       "title": "Regional issue: failing from {{regions}}",

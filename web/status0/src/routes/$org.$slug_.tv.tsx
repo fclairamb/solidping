@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { TvPage } from "@/components/tv/tv-route";
+import { SlugTvRoute } from "@/components/tv/tv-route";
 
 /**
  * TV mode for a named status page (spec 2026-08-29-08).
@@ -14,9 +14,3 @@ import { TvPage } from "@/components/tv/tv-route";
 export const Route = createFileRoute("/$org/$slug_/tv")({
   component: SlugTvRoute,
 });
-
-function SlugTvRoute() {
-  const { org, slug } = Route.useParams();
-
-  return <TvPage org={org} slug={slug} />;
-}

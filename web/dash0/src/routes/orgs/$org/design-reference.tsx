@@ -98,6 +98,7 @@ import { OnboardingChecklistCard } from "@/components/dashboard/onboarding-check
 import { PageHeader } from "@/components/shared/page-header";
 import { KpiTile } from "@/components/shared/kpi-tile";
 import { AVAILABILITY_TIER_HERO_BADGE } from "@/lib/availability-tier";
+import { incidentRowClass } from "@/lib/incident-kind";
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -208,7 +209,9 @@ import { PasswordInput } from "@/components/ui/password-input";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -2243,11 +2246,7 @@ function ButtonsBadgesSection() {
           picks N healthy regions and moves the check off a region that goes
           dark. The form shows the automatic mode as one line with a "Choose
           regions" way out to the pinned picker; the check detail shows the
-          placement, each region's last result (from{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
-            regionFreshness
-          </code>
-          ) and the automatic moves (the{" "}
+          placement and the automatic moves (the{" "}
           <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
             check.placement_changed
           </code>{" "}
@@ -2281,15 +2280,9 @@ function ButtonsBadgesSection() {
           <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">warning</code>{" "}
           (status0 shows exactly that, nothing more), and the check page says
           which regions and why with the amber banner, never the destructive
-          one (no incident is open). The placement block states the rule and
-          marks each failing region in destructive red with the time it
-          started failing. Both read the server&apos;s{" "}
+          one (no incident is open). The banner reads the server&apos;s{" "}
           <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">regionalIssue</code>{" "}
-          and{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
-            regionFreshness[].status
-          </code>
-          ; the banner renders nothing without a regional issue. The check
+          and renders nothing without one. The check
           form&apos;s &ldquo;Regions that must fail&rdquo; select (in Incident
           tracking, shown from 2 regions) defaults to Default and says what it
           resolves to for the picked regions.
@@ -2433,6 +2426,81 @@ function ButtonsBadgesSection() {
             </div>
           }
           importLine={`import { IncidentKindChip } from "@/components/shared/incident-kind-chip";\n\n<IncidentKindChip kind={incident.kind} state={incident.state} />`}
+        />
+
+        <h3 className="text-sm font-medium">Open-incident row tint</h3>
+        <p className="text-sm text-muted-foreground">
+          The incidents list tints a row whose incident has not ended yet, so
+          that <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            state=all
+          </code>{" "}
+          separates what is happening from what ended without the chip saying
+          it twice. The colour follows the kind, one step lighter than the
+          chip&apos;s fill so the chip stays the stronger element on top of it:
+          light red for an outage, light amber for a degraded check, light
+          violet for an SLO burn. A resolved row keeps the card&apos;s own
+          background — the tint is the whole signal.{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            incidentRowClass
+          </code>{" "}
+          (lib/incident-kind.ts) returns the tint, or the neutral hover once
+          the incident resolves, so the row never carries both.
+        </p>
+        <ExampleRow
+          preview={
+            <div className="w-full overflow-hidden rounded-xl border bg-card shadow-card">
+              <Table>
+                <TableHeader className="bg-muted/30">
+                  <TableRow>
+                    <TableHead>Incident</TableHead>
+                    <TableHead className="w-px whitespace-nowrap">
+                      When
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {[
+                    {
+                      label: "demo-api-health is down",
+                      state: "active",
+                      kind: "check",
+                      when: "ongoing · 1d 5h",
+                    },
+                    {
+                      label: "demo-docs is degraded",
+                      state: "active",
+                      kind: "degraded",
+                      when: "ongoing · 2h 3m",
+                    },
+                    {
+                      label: "demo-dns-solidping is down",
+                      state: "resolved",
+                      kind: "check",
+                      when: "✓ lasted 21m",
+                    },
+                  ].map((row) => (
+                    <TableRow
+                      key={row.label}
+                      className={cn(
+                        "transition-colors",
+                        incidentRowClass(row.state, row.kind),
+                      )}
+                    >
+                      <TableCell>
+                        <span className="font-medium text-foreground">
+                          {row.label}
+                        </span>
+                      </TableCell>
+                      <TableCell className="w-px whitespace-nowrap text-xs font-mono text-muted-foreground">
+                        {row.when}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          }
+          importLine={`// The helper returns the tint AND the row's hover state — pass it both\n// ways so an open row and a resolved one never both emit a hover class.\nimport { incidentRowClass } from "@/lib/incident-kind";\nimport { cn } from "@/lib/utils";\n\n<TableRow\n  className={cn("transition-colors", incidentRowClass(incident.state, incident.kind))}\n>`}
         />
 
         <h3 className="text-sm font-medium">Row-kind badge</h3>
@@ -3217,6 +3285,35 @@ function FormsSection() {
             </div>
           }
           importLine={`import {\n  Select,\n  SelectContent,\n  SelectItem,\n  SelectTrigger,\n  SelectValue,\n} from "@/components/ui/select";`}
+        />
+
+        {/* Grouped options: for a long list that a flat Select would make
+            unscannable — the events page's type filter (every event type, in
+            families) is the shipped case. */}
+        <ExampleRow
+          preview={
+            <div className="w-full max-w-sm space-y-2">
+              <Label htmlFor="dr-select-grouped">Select with groups</Label>
+              <Select defaultValue="beta">
+                <SelectTrigger id="dr-select-grouped">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All of them</SelectItem>
+                  <SelectGroup>
+                    <SelectLabel>First group</SelectLabel>
+                    <SelectItem value="alpha">Alpha</SelectItem>
+                    <SelectItem value="beta">Beta</SelectItem>
+                  </SelectGroup>
+                  <SelectGroup>
+                    <SelectLabel>Second group</SelectLabel>
+                    <SelectItem value="gamma">Gamma</SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </div>
+          }
+          importLine={`import {\n  Select,\n  SelectContent,\n  SelectGroup,\n  SelectItem,\n  SelectLabel,\n  SelectTrigger,\n  SelectValue,\n} from "@/components/ui/select";`}
         />
 
         <ExampleRow

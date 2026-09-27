@@ -394,12 +394,14 @@ jobs:
       - name: Type-check e2e
         run: bun run typecheck:e2e
 
-      # Errors fail the job; warnings do not (eslint's default exit code).
-      # The baseline here is 0 errors plus a dozen pre-existing
-      # react-refresh/only-export-components warnings on the route files, so
-      # --max-warnings 0 would land red on day one. Unlike dash0 — whose src/
-      # ESLint debt forces its lint step to be scoped to e2e/ — this is a bare
-      # `eslint .`, so it already covers e2e/ and needs no extra step.
+      # Blocking: the lint script is `eslint . --max-warnings 0`, so any warning
+      # fails the job. status0 holds a zero-warning baseline — the
+      # react-refresh/only-export-components warnings that used to sit on the
+      # route files are gone (route files export only `Route`; the components
+      # live under src/components), and new ones must not come back. Unlike
+      # dash0 — whose src/ ESLint debt forces its lint step to be scoped to
+      # e2e/ — this is a bare `eslint .`, so it already covers e2e/ and needs
+      # no extra step.
       - name: Run lint
         run: bun run lint
 
