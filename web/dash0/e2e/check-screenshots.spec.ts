@@ -183,6 +183,97 @@ test.describe("Check page screenshots", () => {
     }
   });
 
+  // Spec 2026-09-27-01: a "Capture now" whose run comes back without a
+  // screenshot is reported by the listing (`captureOutcome`), and the card
+  // stops waiting and says why — but only for THIS request, and not before.
+  //
+  // The listing is intercepted so the outcome is deterministic: this side-car
+  // may or may not have a Chrome behind it, so the real run could succeed,
+  // fail, or never be claimed. The POST is real; its requestedAt is what the
+  // injected outcome answers. The recording of the outcome itself is covered
+  // by the Go tests (checkworker/backend, handlers/workers, checkscreenshots).
+  test("a Capture now that produced no screenshot stops waiting and says why", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+    const uid = await createCheck(page, token, {
+      name: `E2E capture failed ${uniqueStamp()}`,
+      type: "browser",
+      // Pinned for the same reason as the empty-state check above.
+      placement: "pinned",
+      regions: ["default"],
+      period: "01:00:00",
+      config: { url: "https://acme.com/capture-failed" },
+    });
+
+    // What the intercepted listing reports as the latest failed request.
+    let outcome: { requestedAt: string; failed: boolean; error?: string } | undefined = {
+      // An EARLIER failed request: it must not end the new wait.
+      requestedAt: "2026-01-01T00:00:00.000001Z",
+      failed: true,
+      error: "an older failure",
+    };
+
+    await page.route(`**/api/v1/orgs/test/checks/${uid}/screenshots?*`, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: [], captureOutcome: outcome }),
+      });
+    });
+
+    try {
+      await page.goto(`${DASH_BASE}/orgs/test/checks/${uid}`);
+
+      const button = page.getByTestId("check-screenshots-capture-now");
+      await expect(button).toBeEnabled();
+      // An old failure is not shown before anything was requested.
+      await expect(page.getByTestId("check-screenshots-failed")).toHaveCount(0);
+
+      const accepted = page.waitForResponse(
+        (resp) =>
+          resp.url().endsWith(`/checks/${uid}/screenshots/capture`) &&
+          resp.request().method() === "POST",
+      );
+      await button.click();
+      const resp = await accepted;
+      expect(resp.status()).toBe(202);
+      const { requestedAt } = (await resp.json()) as { requestedAt: string };
+
+      // Waiting: capturing, no failure — the older outcome does not match, even
+      // across a poll (the card re-lists every 5 s while waiting).
+      await expect(page.getByTestId("check-screenshots-pending")).toBeVisible();
+      const polled = page.waitForResponse((r) =>
+        r.url().includes(`/checks/${uid}/screenshots?`),
+      );
+      await polled;
+      await expect(page.getByTestId("check-screenshots-pending")).toBeVisible();
+      await expect(page.getByTestId("check-screenshots-failed")).toHaveCount(0);
+      await expect(button).toBeDisabled();
+      await expect(button).toContainText("Capturing");
+
+      // The run reports this request as failed.
+      outcome = { requestedAt, failed: true, error: "the capture timed out after 5s" };
+
+      const failed = page.getByTestId("check-screenshots-failed");
+      await expect(failed).toBeVisible({ timeout: 15_000 });
+      await expect(failed).toContainText("The capture failed");
+      await expect(page.getByTestId("check-screenshots-failed-reason")).toHaveText(
+        "the capture timed out after 5s",
+      );
+      await expect(
+        page.getByText("The capture failed: the capture timed out after 5s"),
+      ).toBeVisible();
+      await expect(page.getByTestId("check-screenshots-pending")).toHaveCount(0);
+      await expect(button).toBeEnabled();
+      await expect(button).toContainText("Capture now");
+    } finally {
+      await page.unroute(`**/api/v1/orgs/test/checks/${uid}/screenshots?*`);
+      await deleteCheck(page, token, uid);
+    }
+  });
+
   test("the card is usable on mobile", async ({ authenticatedPage }) => {
     const page = authenticatedPage;
 

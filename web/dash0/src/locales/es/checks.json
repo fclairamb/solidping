@@ -800,7 +800,9 @@
       "rateLimitedNoDelay": "«Capturar ahora» está limitado. Inténtalo de nuevo en un minuto.",
       "forbidden": "No tienes permiso para ejecutar este check.",
       "noScheduledRun": "Este check no tiene ejecuciones programadas. Actívalo para tomar una captura.",
-      "captureFailed": "No se pudo solicitar la captura."
+      "captureFailed": "No se pudo solicitar la captura.",
+      "runFailedTitle": "La captura ha fallado",
+      "runFailed": "La captura ha fallado: {{reason}}"
     },
     "uidShort": "uid: {{uid}}..."
   },

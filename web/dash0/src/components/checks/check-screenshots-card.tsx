@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import { Camera, Loader2 } from "lucide-react";
+import { AlertCircle, Camera, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { ApiError } from "@/api/client";
@@ -10,6 +10,7 @@ import {
   useCheckScreenshots,
   type CheckScreenshot,
 } from "@/api/hooks";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -21,11 +22,14 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { TimeAgo } from "@/components/ui/time-ago";
 import { ScreenshotImageLink } from "@/components/shared/screenshot-image";
+import { pendingCaptureFailure } from "@/lib/check-screenshots";
 
 /** How often the card re-lists while a "Capture now" run is on its way. */
 const PENDING_POLL_MS = 5_000;
-/** When the card stops waiting for a requested capture. A browser run takes a
- * few seconds; the rest of the budget covers the worker picking the job up. */
+/** When the card stops waiting for a requested capture whose run never reports
+ * back. A browser run takes a few seconds; the rest of the budget covers the
+ * worker picking the job up. A run that finishes WITHOUT a capture ends the
+ * wait at once instead (spec 2026-09-27-01). */
 const PENDING_TIMEOUT_MS = 3 * 60 * 1000;
 
 interface PendingCapture {
@@ -48,7 +52,9 @@ export interface CheckScreenshotsCardProps {
  * CheckScreenshotsCard shows a check's latest screenshots on the check page
  * (spec 2026-09-25-34): the newest capture as a thumbnail that opens full size,
  * when and where it was taken, the incident it belongs to, and the older ones
- * in a strip. "Capture now" runs the check once with the capture forced.
+ * in a strip. "Capture now" runs the check once with the capture forced; if
+ * that run comes back without a screenshot the listing says so and the card
+ * stops waiting and shows why (spec 2026-09-27-01).
  *
  * Like the incident card it is careful about what it claims: a capture of a
  * failing run is what the page looked like a moment AFTER the check decided it
@@ -66,11 +72,15 @@ export function CheckScreenshotsCard({
   const announced = useRef<string | null>(null);
 
   const listing = useCheckScreenshots(org, checkUid);
-  const shots = listing.data ?? [];
+  const shots = listing.data?.screenshots ?? [];
 
   const arrived =
     pending !== null && shots.some((shot) => !pending.knownUids.has(shot.uid));
-  const waiting = pending !== null && !arrived && !expired;
+  const failure =
+    pending !== null && !arrived
+      ? pendingCaptureFailure(pending.requestedAt, listing.data?.captureOutcome)
+      : null;
+  const waiting = pending !== null && !arrived && failure === null && !expired;
 
   // Re-list on a short interval only while a requested capture is on its way.
   useCheckScreenshots(org, checkUid, {
@@ -91,11 +101,18 @@ export function CheckScreenshotsCard({
     if (arrived) {
       announced.current = pending.requestedAt;
       toast.success(t("detail.screenshots.captured"));
+    } else if (failure) {
+      announced.current = pending.requestedAt;
+      toast.error(
+        failure.error
+          ? t("detail.screenshots.runFailed", { reason: failure.error })
+          : t("detail.screenshots.runFailedTitle"),
+      );
     } else if (expired) {
       announced.current = pending.requestedAt;
       toast.info(t("detail.screenshots.stillWaiting"));
     }
-  }, [arrived, expired, pending, t]);
+  }, [arrived, expired, failure, pending, t]);
 
   const onCaptureNow = () => {
     const knownUids = new Set(shots.map((shot) => shot.uid));
@@ -147,6 +164,18 @@ export function CheckScreenshotsCard({
           >
             {t("detail.screenshots.pending")}
           </p>
+        )}
+
+        {failure && (
+          <Alert variant="destructive" data-testid="check-screenshots-failed">
+            <AlertCircle />
+            <AlertTitle>{t("detail.screenshots.runFailedTitle")}</AlertTitle>
+            {failure.error && (
+              <AlertDescription data-testid="check-screenshots-failed-reason">
+                {failure.error}
+              </AlertDescription>
+            )}
+          </Alert>
         )}
 
         {listing.isLoading ? (

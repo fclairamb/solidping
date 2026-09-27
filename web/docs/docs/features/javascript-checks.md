@@ -356,7 +356,9 @@ verdicts a browser check keeps one for — and dropped otherwise, so a shot on
 an `up` run costs a CDP round-trip and nothing else. As with a browser check,
 the image is what the page looked like when *the script asked*, not a frame
 from the instant of failure — and, as with a browser check, it is a **WebP**
-full-page capture. The format is not selectable from the script.
+image of the **first screen only**: the page is laid out in a 1280x800 window
+and the capture is that viewport, not the full page. Neither the format nor the
+size is selectable from the script.
 
 The capture shows up on the check page's **Screenshots** card, with the same
 rules as a [browser check's](./check-types.md#browser-screenshots). **Capture
