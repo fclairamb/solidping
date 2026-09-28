@@ -2941,6 +2941,16 @@ paths:
           description: Filter by state (comma-separated, e.g., "active,resolved")
           schema:
             type: string
+        - name: kind
+          in: query
+          description: >-
+            Filter by incident kind, comma-separated: "check" (an outage),
+            "degraded" (intermittence or latency) and/or "slo_burn" (an SLO
+            error-budget burn alert), e.g. "check,degraded". Absent or empty
+            means every kind. Any other value answers 400 VALIDATION_ERROR.
+          schema:
+            type: string
+          example: "degraded"
         - name: cursor
           in: query
           description: Cursor for pagination

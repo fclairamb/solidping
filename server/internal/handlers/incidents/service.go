@@ -2136,6 +2136,7 @@ type ListIncidentsOptions struct {
 	CheckGroupUID  string
 	MemberCheckUID string
 	States         []string // "active", "resolved"
+	Kinds          []string // models.IncidentKind*; empty means every kind
 	Since          *time.Time
 	Until          *time.Time
 	Cursor         string
@@ -2494,6 +2495,7 @@ func buildListIncidentsFilter(orgUID string, opts *ListIncidentsOptions) *models
 		Until:           opts.Until,
 		HideSuppressed:  opts.HideSuppressed,
 		CausedByUID:     opts.CausedByUID,
+		Kinds:           opts.Kinds,
 		Limit:           opts.Size + 1, // Fetch one extra to determine hasMore
 	}
 
