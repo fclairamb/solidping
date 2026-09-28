@@ -170,6 +170,27 @@ Create an API token from the dashboard or with the [CLI](/cli) (`sp tokens creat
 
 Replace the URL with your `SP_BASE_URL` and supply a token carrying the `mcp` or `mcp:read` scope. The API itself accepts a `scopes` field on token creation (`mcp:read` for read-only); the dashboard's token page does not yet expose a scope picker in its UI, so a scoped token currently needs to be created via the API or CLI.
 
+## Clients that run a command (stdio)
+
+Some MCP clients only launch a command and talk to it over stdin/stdout. The [CLI](/cli) covers them: `sp mcp` relays each message to your instance's `/api/v1/mcp` endpoint with your credential and writes the replies back.
+
+```json
+{
+  "mcpServers": {
+    "solidping": {
+      "command": "sp",
+      "args": ["mcp"],
+      "env": {
+        "SOLIDPING_URL": "https://monitoring.example.com",
+        "SP_TOKEN": "<your-token>"
+      }
+    }
+  }
+}
+```
+
+`SP_TOKEN` is a personal access token (see above). Leave it out to use the login saved by `sp auth login`, which `sp mcp` refreshes on its own when it expires. The server applies the same scopes and roles as over HTTP. Logs go to stderr, so they never mix with the protocol.
+
 ## See also
 
 The **AI assistants** page in the dashboard sidebar (`/d/orgs/<org>/mcp`) has the same instructions rendered with your instance's actual URL — copy buttons and one-click install links included.
