@@ -26,6 +26,16 @@ const mcpTestIssuer = "https://solidping.test"
 func setupMCPAuth(t *testing.T) (*middleware.AuthMiddleware, *auth.Service, *models.User, context.Context) {
 	t.Helper()
 
+	return setupMCPAuthWithUser(t, nil)
+}
+
+// setupMCPAuthWithUser is setupMCPAuth with a hook to shape the seeded user
+// before it is stored (e.g. to make it the demo principal).
+func setupMCPAuthWithUser(
+	t *testing.T, shape func(*models.User),
+) (*middleware.AuthMiddleware, *auth.Service, *models.User, context.Context) {
+	t.Helper()
+
 	ctx := t.Context()
 
 	dbService, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
@@ -50,6 +60,10 @@ func setupMCPAuth(t *testing.T) (*middleware.AuthMiddleware, *auth.Service, *mod
 	require.NoError(t, dbService.CreateOrganization(ctx, org))
 
 	user := models.NewUser("mcp-auth@example.com")
+	if shape != nil {
+		shape(user)
+	}
+
 	require.NoError(t, dbService.CreateUser(ctx, user))
 
 	return mw, authSvc, user, ctx
@@ -133,4 +147,41 @@ func TestRequireMCPAuthWrongAudienceRejected(t *testing.T) {
 	require.False(t, called, "wrong-audience token must not reach the handler")
 	require.Equal(t, http.StatusUnauthorized, rec.Code)
 	require.Contains(t, rec.Header().Get("WWW-Authenticate"), "resource_metadata=")
+}
+
+// TestRequireMCPAuthLetsADemoSessionThrough pins the move of the demo decision
+// from the route to the tool call: RequireMCPAuth no longer answers 403
+// DEMO_READ_ONLY on POST or DELETE /mcp, it hands the request to the MCP
+// handler with claims.Demo set, so handleToolsCall and checks.Service can take
+// the decision.
+func TestRequireMCPAuthLetsADemoSessionThrough(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	mw, authSvc, user, ctx := setupMCPAuthWithUser(t, func(u *models.User) { u.Demo = true })
+
+	token, err := authSvc.GenerateMCPAccessToken(
+		ctx, user.UID, "mcp-auth-org", []string{"mcp"}, mcpTestIssuer+"/api/v1/mcp", time.Hour, "",
+	)
+	r.NoError(err)
+
+	for _, method := range []string{http.MethodPost, http.MethodDelete} {
+		var sawDemo bool
+
+		req := httptest.NewRequestWithContext(ctx, method, "/api/v1/mcp", http.NoBody)
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+
+		err = mw.RequireMCPAuth(func(w http.ResponseWriter, req *http.Request) error {
+			claims, ok := middleware.GetClaimsFromContext(req.Context())
+			sawDemo = ok && claims.Demo
+			w.WriteHeader(http.StatusOK)
+
+			return nil
+		})(rec, req)
+		r.NoError(err)
+
+		r.Equalf(http.StatusOK, rec.Code, "%s /mcp: a demo token must reach the handler (body %s)", method, rec.Body)
+		r.Truef(sawDemo, "%s /mcp: the handler must see claims.Demo", method)
+	}
 }
