@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.36.0](https://github.com/fclairamb/solidping/compare/v0.35.0...v0.36.0) (2026-09-28)
+
+
+### Features
+
+* **dash0:** name the agent on events rows, PageHeader on the Organization layout ([#450](https://github.com/fclairamb/solidping/issues/450)) ([9646540](https://github.com/fclairamb/solidping/commit/9646540e5b7c83bf580a0de3967315fa1db20289))
+
+
+### Bug Fixes
+
+* **mcp:** declare tool annotations and output schemas, wrap list results ([#448](https://github.com/fclairamb/solidping/issues/448)) ([c99645b](https://github.com/fclairamb/solidping/commit/c99645bcec54ccbc7d6d16f467199322310f0ff1))
+* **renovate:** tidy every go module depending on an updated vendored one ([#446](https://github.com/fclairamb/solidping/issues/446)) ([3460a4c](https://github.com/fclairamb/solidping/commit/3460a4c7a08866273ffd97a40696d1a7ad6fb5f1))
+
 ## [0.35.0](https://github.com/fclairamb/solidping/compare/v0.34.0...v0.35.0) (2026-09-27)
 
 
