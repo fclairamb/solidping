@@ -2144,6 +2144,9 @@ export function useIncidents(
     // "acked" / "snoozed" are derived states the backend translates to
     // active + filter; the frontend just passes the literal through.
     state?: "active" | "resolved" | "acked" | "snoozed";
+    // Comma-separated incident kinds ("check", "degraded", "slo_burn").
+    // Part of the query key, so switching it refetches.
+    kind?: string;
     checkUid?: string;
     since?: string;
     until?: string;
@@ -2168,6 +2171,7 @@ export function useIncidents(
     queryFn: async () => {
       const params = new URLSearchParams();
       if (options?.state) params.set("state", options.state);
+      if (options?.kind) params.set("kind", options.kind);
       if (options?.checkUid) params.set("checkUid", options.checkUid);
       if (options?.since) params.set("since", options.since);
       if (options?.until) params.set("until", options.until);

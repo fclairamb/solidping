@@ -9,7 +9,12 @@
     "check": "Comprobación",
     "started": "Iniciado",
     "duration": "Duración",
-    "failures": "Fallos"
+    "failures": "Fallos",
+    "when": "Cuándo"
+  },
+  "when": {
+    "ongoing": "en curso · {{duration}}",
+    "lasted": "duró {{duration}}"
   },
   "allOperational": "Todos los sistemas funcionan correctamente",
   "noResolved": "Aún no hay incidentes resueltos",
@@ -20,6 +25,20 @@
   "backToIncidents": "Volver a incidentes",
   "filterByState": "Filtrar por estado",
   "filterByCheck": "Filtrar por check",
+  "kindFilter": {
+    "placeholder": "Filtrar por tipo",
+    "all": "Todos los tipos"
+  },
+  "kind": {
+    "check": "Caído",
+    "degraded": "Degradado",
+    "slo_burn": "Consumo SLO"
+  },
+  "noIncidentsOfKind": {
+    "check": "No hay incidentes de caída",
+    "degraded": "No hay incidentes de degradación",
+    "slo_burn": "No hay incidentes de consumo SLO"
+  },
   "relapse": "{{count}}× recaída",
   "flapping": "inestabilidad ×{{count}}",
   "flappingHint": "Abierto en el nivel de inestabilidad {{count}} — la recuperación adaptativa aumentó la estabilidad requerida antes de la resolución automática de este incidente.",
@@ -32,6 +51,8 @@
     "times": "veces"
   },
   "escalated": "Escalado",
+  "escalatedTo": "Escalado → #{{number}}",
+  "escalatedHint": "Mientras este incidente estaba abierto se abrió una caída real en esta comprobación",
   "fallbackTitle": "Incidente",
   "actions": {
     "back": "Volver a incidentes",

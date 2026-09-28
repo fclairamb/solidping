@@ -134,6 +134,7 @@ import { SupportMessageBubble } from "@/components/support/message-bubble";
 import { Ipv6CapabilityBadge } from "@/components/shared/ipv6-capability";
 import { BrowserCapabilityIcon } from "@/components/shared/browser-capability";
 import { FlappingBadge } from "@/components/shared/flapping-badge";
+import { IncidentKindChip } from "@/components/shared/incident-kind-chip";
 import {
   formatBudgetSeconds,
   sloBudgetBarClass,
@@ -2394,6 +2395,44 @@ function ButtonsBadgesSection() {
             </div>
           }
           importLine={`import { FlappingBadge } from "@/components/shared/flapping-badge";\n\n{(incident.flapLevel ?? 0) > 0 && (\n  <FlappingBadge flapLevel={incident.flapLevel} t={t} />\n)}`}
+        />
+
+        <h3 className="text-sm font-medium">Incident kind chip</h3>
+        <p className="text-sm text-muted-foreground">
+          What an incident is <em>about</em> (spec 2026-09-27-02):{" "}
+          <strong>Down</strong> (red, an outage), <strong>Degraded</strong>{" "}
+          (amber, intermittence or latency) and <strong>SLO burn</strong>{" "}
+          (violet, an error-budget burn alert). Kind and state read
+          independently: an active incident gets a tinted fill and border, a
+          resolved one a transparent fill and a neutral border while the icon
+          and label keep the kind colour. A missing or unknown kind renders as
+          Down, since every pre-existing incident is an outage. It replaces the
+          active/resolved status dot on the incidents list; the kind colour
+          itself comes from{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            incidentKindTextClass
+          </code>{" "}
+          (lib/incident-kind.ts), so copy next to the chip (the list&apos;s
+          &quot;ongoing · 8m&quot;) matches it.
+        </p>
+        <ExampleRow
+          preview={
+            <div
+              className="grid grid-cols-3 gap-2"
+              data-testid="incident-kind-chip-matrix"
+            >
+              {(["active", "resolved"] as const).map((state) =>
+                (["check", "degraded", "slo_burn"] as const).map((kind) => (
+                  <IncidentKindChip
+                    key={`${state}-${kind}`}
+                    kind={kind}
+                    state={state}
+                  />
+                )),
+              )}
+            </div>
+          }
+          importLine={`import { IncidentKindChip } from "@/components/shared/incident-kind-chip";\n\n<IncidentKindChip kind={incident.kind} state={incident.state} />`}
         />
 
         <h3 className="text-sm font-medium">Row-kind badge</h3>
