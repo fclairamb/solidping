@@ -343,8 +343,13 @@ func TestMCPStdioCommandRunsChecks(t *testing.T) {
 
 	var gotResult bool
 
+	// Wait for a finished "up" result, not any row: a raw result is written
+	// as created/running before the probe completes, so an unfiltered poll
+	// can see a row while the target has not been hit yet (it raced on CI).
 	for time.Now().Before(deadline) {
-		listed := session.tool("list_results", map[string]any{"checkUid": checkUID, "periodType": "raw"})
+		listed := session.tool("list_results", map[string]any{
+			"checkUid": checkUID, "periodType": "raw", "status": "up",
+		})
 		if data, isList := listed["data"].([]any); isList && len(data) > 0 {
 			gotResult = true
 
@@ -354,7 +359,7 @@ func TestMCPStdioCommandRunsChecks(t *testing.T) {
 		time.Sleep(500 * time.Millisecond)
 	}
 
-	r.True(gotResult, "no result within a minute; stderr: %s", stderr.String())
+	r.True(gotResult, "no up result within a minute; stderr: %s", stderr.String())
 	r.Positive(probes.Load(), "the in-process check worker never probed the target")
 
 	r.NoError(stdin.Close())
