@@ -1,9 +1,10 @@
 import { test, expect, DASH_BASE } from "./fixtures";
 
 /**
- * Spec 2026-08-28-11: the Incidents list "Check" column must render the
- * check's display NAME, not its slug — the fallback order used to be
- * inverted (`checkSlug || checkName`).
+ * Spec 2026-08-28-11: the Incidents list must render the check's display
+ * NAME, not its slug — the fallback order used to be inverted
+ * (`checkSlug || checkName`). Since spec 2026-09-27-02 there is no Check
+ * column: the name is a muted link under the title (sm and up).
  *
  * The fixture deliberately uses a name and slug that read differently, so
  * the assertion actually proves which field won. A fixture where
@@ -35,7 +36,7 @@ const INCIDENTS = [
   },
 ];
 
-test.describe("Incidents list: Check column", () => {
+test.describe("Incidents list: check name under the title", () => {
   test("renders the check name, not its slug", async ({ authenticatedPage }) => {
     const page = authenticatedPage;
 
@@ -64,7 +65,17 @@ test.describe("Incidents list: Check column", () => {
     await expect(row).toBeVisible();
 
     const checkLink = row.locator('a[href*="/checks/"]');
+    await expect(checkLink).toHaveCount(1);
+    await expect(checkLink).toBeVisible();
     await expect(checkLink).toHaveText(CHECK_NAME);
     await expect(checkLink).not.toHaveText(CHECK_SLUG);
+    await expect(checkLink).toHaveAttribute("data-testid", "incident-check-link");
+
+    // It sits under the title, not beside it in a column of its own.
+    const titleBox = await row.getByTestId("incident-title").boundingBox();
+    const checkBox = await checkLink.boundingBox();
+    expect(titleBox).not.toBeNull();
+    expect(checkBox).not.toBeNull();
+    expect(checkBox!.y).toBeGreaterThanOrEqual(titleBox!.y + titleBox!.height - 1);
   });
 });
