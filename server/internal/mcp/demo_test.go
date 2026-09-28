@@ -101,7 +101,7 @@ func (e *demoMCPEnv) rpc(t *testing.T, claims *auth.Claims, method string, param
 func (e *demoMCPEnv) tool(t *testing.T, claims *auth.Claims, name string, args map[string]any) Response {
 	t.Helper()
 
-	return e.rpc(t, claims, methodToolsCall, map[string]any{"name": name, "arguments": args})
+	return e.rpc(t, claims, methodToolsCall, map[string]any{schemaKeyName: name, "arguments": args})
 }
 
 // toolResult decodes a successful tools/call result.
@@ -164,10 +164,10 @@ func TestMCPDemoSessionOwnsWhatItCreates(t *testing.T) {
 	claims := env.demoClaims()
 
 	created := toolResult(t, env.tool(t, claims, toolCreateCheck, map[string]any{
-		"name":   "Mine",
-		"slug":   "mine",
-		"type":   "http",
-		"config": map[string]any{"url": "https://acme.com/health"},
+		schemaKeyName: "Mine",
+		schemaKeySlug: "mine",
+		schemaKeyType: "http",
+		"config":      map[string]any{"url": "https://acme.com/health"},
 	}))
 	r.Falsef(created.IsError, "create_check must be allowed for a demo session: %v", created.Content)
 

@@ -22,9 +22,9 @@ func TestDiagnoseCheckDef(t *testing.T) {
 
 	schema, ok := def.InputSchema.(map[string]any)
 	r.True(ok)
-	r.Equal("object", schema["type"])
+	r.Equal(schemaTypeObject, schema[schemaKeyType])
 
-	props, ok := schema["properties"].(map[string]any)
+	props, ok := schema[schemaKeyProperties].(map[string]any)
 	r.True(ok)
 	r.Contains(props, propIdentifier)
 	r.Contains(props, propRecentResultsLimit)
@@ -32,6 +32,70 @@ func TestDiagnoseCheckDef(t *testing.T) {
 	required, ok := schema["required"].([]string)
 	r.True(ok)
 	r.Equal([]string{propIdentifier}, required)
+}
+
+// TestDiagnoseCheckDef_AnnotationsAndOutputSchema: diagnose_check is
+// read-only and its outputSchema mirrors DiagnoseCheckResult — with the two
+// nullable incidents declared as object-or-null so a null satisfies it.
+func TestDiagnoseCheckDef_AnnotationsAndOutputSchema(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	def := diagnoseCheckDef()
+
+	r.NotNil(def.Annotations)
+	r.True(def.Annotations.ReadOnlyHint)
+	r.False(def.Annotations.DestructiveHint)
+	r.True(def.Annotations.IdempotentHint)
+	r.False(def.Annotations.OpenWorldHint)
+	r.Equal("Diagnose check", def.Annotations.Title)
+	r.Contains(def.Description, "Read-only: works with mcp:read tokens.")
+
+	schema, ok := def.OutputSchema.(map[string]any)
+	r.True(ok)
+	r.Equal(schemaTypeObject, schema[schemaKeyType])
+
+	props, ok := schema[schemaKeyProperties].(map[string]any)
+	r.True(ok)
+
+	for _, key := range []string{
+		schemaKeyCheck, "freshness", "regionalIssue", "recentResults",
+		"activeIncident", "lastResolvedIncident",
+	} {
+		r.Contains(props, key)
+	}
+
+	required, ok := schema["required"].([]string)
+	r.True(ok)
+	r.ElementsMatch(
+		[]string{schemaKeyCheck, "recentResults", "activeIncident", "lastResolvedIncident"},
+		required,
+	)
+
+	// The check object reuses the shared check output schema.
+	checkProp, ok := props[schemaKeyCheck].(map[string]any)
+	r.True(ok)
+	r.Equal(schemaTypeObject, checkProp[schemaKeyType])
+	checkProps, ok := checkProp[schemaKeyProperties].(map[string]any)
+	r.True(ok)
+	r.Contains(checkProps, propUID)
+
+	for _, key := range []string{"activeIncident", "lastResolvedIncident"} {
+		incidentProp, iOK := props[key].(map[string]any)
+		r.True(iOK)
+		incidentType, tOK := incidentProp[schemaKeyType].([]string)
+		r.True(tOK, "%s must allow null", key)
+		r.ElementsMatch([]string{schemaTypeObject, schemaTypeNull}, incidentType)
+	}
+
+	recent, ok := props["recentResults"].(map[string]any)
+	r.True(ok)
+	recentItems, ok := recent[schemaKeyItems].(map[string]any)
+	r.True(ok)
+	recentProps, ok := recentItems[schemaKeyProperties].(map[string]any)
+	r.True(ok)
+	r.Contains(recentProps, schemaKeyRegion)
+	r.Contains(recentProps, propStatus)
 }
 
 func TestClampPerRegion(t *testing.T) {

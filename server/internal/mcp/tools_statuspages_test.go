@@ -7,32 +7,76 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type statusPageToolCase struct {
+	def             ToolDefinition
+	wantTitle       string
+	wantReadOnly    bool
+	wantDestructive bool
+}
+
+func statusPageToolCases() []statusPageToolCase {
+	return []statusPageToolCase{
+		{listStatusPagesDef(), "List status pages", true, false},
+		{getStatusPageDef(), "Get status page", true, false},
+		{createStatusPageDef(), "Create status page", false, false},
+		{updateStatusPageDef(), "Update status page", false, false},
+		{deleteStatusPageDef(), "Delete status page", false, true},
+		{listStatusPageSectionsDef(), "List status page sections", true, false},
+		{createStatusPageSectionDef(), "Create status page section", false, false},
+		{updateStatusPageSectionDef(), "Update status page section", false, false},
+		{deleteStatusPageSectionDef(), "Delete status page section", false, true},
+		{listStatusPageResourcesDef(), "List status page resources", true, false},
+		{createStatusPageResourceDef(), "Create status page resource", false, false},
+		{updateStatusPageResourceDef(), "Update status page resource", false, false},
+		{deleteStatusPageResourceDef(), "Delete status page resource", false, true},
+	}
+}
+
 func TestStatusPageToolDefinitions(t *testing.T) {
 	t.Parallel()
-	r := require.New(t)
 
-	defs := []ToolDefinition{
-		listStatusPagesDef(),
-		getStatusPageDef(),
-		createStatusPageDef(),
-		updateStatusPageDef(),
-		deleteStatusPageDef(),
-		listStatusPageSectionsDef(),
-		createStatusPageSectionDef(),
-		updateStatusPageSectionDef(),
-		deleteStatusPageSectionDef(),
-		listStatusPageResourcesDef(),
-		createStatusPageResourceDef(),
-		updateStatusPageResourceDef(),
-		deleteStatusPageResourceDef(),
-	}
-
-	for _, def := range defs {
-		t.Run(def.Name, func(t *testing.T) {
+	for _, tc := range statusPageToolCases() {
+		t.Run(tc.def.Name, func(t *testing.T) {
 			t.Parallel()
-			r.NotEmpty(def.Name)
-			r.NotEmpty(def.Description)
-			r.NotNil(def.InputSchema)
+			r := require.New(t)
+			r.NotEmpty(tc.def.Name)
+			r.NotEmpty(tc.def.Description)
+			r.NotNil(tc.def.InputSchema)
+
+			r.NotNil(tc.def.Annotations, "%s must declare annotations", tc.def.Name)
+			r.Equal(tc.wantTitle, tc.def.Annotations.Title)
+			r.Equal(tc.wantReadOnly, tc.def.Annotations.ReadOnlyHint)
+			r.Equal(tc.wantDestructive, tc.def.Annotations.DestructiveHint)
+			r.False(tc.def.Annotations.OpenWorldHint)
+
+			r.NotNil(tc.def.OutputSchema, "%s must declare an output schema", tc.def.Name)
+			schema, ok := tc.def.OutputSchema.(map[string]any)
+			r.True(ok, "%s output schema must be an object schema", tc.def.Name)
+			r.Equal(schemaTypeObject, schema[schemaKeyType])
+		})
+	}
+}
+
+// TestStatusPageToolDescriptionsDiscloseAuth pins the exact auth sentences the
+// tool descriptions are required to carry.
+func TestStatusPageToolDescriptionsDiscloseAuth(t *testing.T) {
+	t.Parallel()
+
+	const readSentence = "Read-only: works with mcp:read tokens."
+	const writeSentence = "Requires the mcp scope (mcp:read tokens are refused) and at least the " +
+		"user role in the organization."
+
+	for _, tc := range statusPageToolCases() {
+		t.Run(tc.def.Name, func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+
+			if tc.wantReadOnly {
+				r.Contains(tc.def.Description, readSentence)
+				return
+			}
+
+			r.Contains(tc.def.Description, writeSentence)
 		})
 	}
 }
@@ -155,16 +199,16 @@ func TestBuildUpdateStatusPageRequest_PassThrough(t *testing.T) {
 	r := require.New(t)
 
 	args := map[string]any{
-		"name":             "New name",
-		"slug":             "new-slug",
-		"description":      "details",
-		"visibility":       "public",
-		"isDefault":        true,
-		"enabled":          false,
-		"showAvailability": true,
-		"showResponseTime": false,
-		"historyDays":      float64(30),
-		"language":         "fr",
+		schemaKeyName:        "New name",
+		schemaKeySlug:        "new-slug",
+		schemaKeyDescription: "details",
+		"visibility":         "public",
+		propIsDefault:        true,
+		schemaKeyEnabled:     false,
+		"showAvailability":   true,
+		"showResponseTime":   false,
+		"historyDays":        float64(30),
+		"language":           "fr",
 	}
 	req := buildUpdateStatusPageRequest(args)
 

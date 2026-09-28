@@ -47,9 +47,17 @@ func autoPublishProps(schema map[string]any) map[string]any {
 
 func listStatusPagesDef() ToolDefinition {
 	return ToolDefinition{
-		Name:        "list_status_pages",
-		Description: "List all status pages for the organization.",
+		Name: "list_status_pages",
+		Description: "List every status page in the organization, newest first, and " +
+			"return {data: [...]}. Use get_status_page for a single page by UID or " +
+			"slug (with=sections for its contents) and list_status_page_sections " +
+			"for one page's sections. Read-only: works with mcp:read tokens.",
 		InputSchema: objectSchema(map[string]any{}, nil),
+		OutputSchema: dataOutputSchema(
+			"Status pages in the organization.",
+			statusPageResponseOutputProps(),
+		),
+		Annotations: readOnlyAnnotations("List status pages"),
 	}
 }
 
@@ -58,17 +66,22 @@ func (h *Handler) toolListStatusPages(ctx context.Context, orgSlug string, _ map
 	if err != nil {
 		return errorResult(err.Error())
 	}
-	return marshalResult(pages)
+	return marshalResult(map[string]any{schemaKeyData: pages})
 }
 
 func getStatusPageDef() ToolDefinition {
 	return ToolDefinition{
-		Name:        "get_status_page",
-		Description: "Get a single status page by UID or slug.",
+		Name: "get_status_page",
+		Description: "Get one status page by UID or slug and return it; pass " +
+			"with=sections to embed its sections and their resources. Use " +
+			"list_status_pages to browse every page instead. Read-only: works " +
+			"with mcp:read tokens.",
 		InputSchema: objectSchema(map[string]any{
 			propIdentifier: stringProp("Status page UID or URL-friendly slug, e.g. \"public\"."),
 			propWith:       stringProp("\"sections\" to include nested sections and their resources"),
 		}, []string{propIdentifier}),
+		OutputSchema: statusPageWithSectionsOutputSchema(),
+		Annotations:  readOnlyAnnotations("Get status page"),
 	}
 }
 
@@ -91,14 +104,21 @@ func (h *Handler) toolGetStatusPage(ctx context.Context, orgSlug string, args ma
 func createStatusPageDef() ToolDefinition {
 	return ToolDefinition{
 		Name: "create_status_page",
-		Description: "Create a new status page for the organization. A status page is the " +
-			"public-facing dashboard that displays the current health of selected checks.",
+		Description: "Create a new status page for the organization and return the " +
+			"created page. A duplicate slug is rejected with a conflict, never " +
+			"merged. Only one page can be the default: the first page always " +
+			"becomes it, and isDefault:true demotes the previous default. Every " +
+			"new page is seeded with a default \"Services\" section and starts " +
+			"enabled and public — use create_status_page_section to add more " +
+			"sections and update_status_page to edit the page later. Requires the " +
+			"mcp scope (mcp:read tokens are refused) and at least the user role in " +
+			"the organization.",
 		InputSchema: objectSchema(autoPublishProps(map[string]any{
 			schemaKeyName:        stringProp("Status page display name (required), e.g. \"Public status\"."),
 			schemaKeySlug:        stringProp("URL-friendly slug (required, unique per org), e.g. \"public\"."),
 			schemaKeyDescription: stringProp("Optional free-text description shown in the UI."),
 			propVisibility: stringProp(
-				"Visibility setting. Allowed: \"public\", \"private\". Default depends on system config.",
+				"Visibility setting. Allowed: \"public\", \"private\". Default \"public\".",
 			),
 			propIsDefault:        boolProp("Whether this is the org's default status page (only one allowed)."),
 			propShowAvailability: boolProp("Display availability percentage on the public page."),
@@ -111,6 +131,8 @@ func createStatusPageDef() ToolDefinition {
 					"colors, and the .dark variant). Max 64 KB; @import is rejected.",
 			),
 		}), []string{schemaKeyName, schemaKeySlug}),
+		OutputSchema: statusPageOutputSchema(),
+		Annotations:  createAnnotations("Create status page"),
 	}
 }
 
@@ -163,8 +185,14 @@ func (h *Handler) toolCreateStatusPage(ctx context.Context, orgSlug string, args
 
 func updateStatusPageDef() ToolDefinition {
 	return ToolDefinition{
-		Name:        "update_status_page",
-		Description: "Update an existing status page (PATCH semantics — only provided fields change).",
+		Name: "update_status_page",
+		Description: "Update an existing status page by UID or slug and return the " +
+			"updated page. PATCH semantics — only fields you pass change, omitted " +
+			"fields keep their current values; the page must already exist and a " +
+			"slug that collides with another page is rejected. Use " +
+			"create_status_page to make a new page and delete_status_page to remove " +
+			"one instead. Requires the mcp scope (mcp:read tokens are refused) and " +
+			"at least the user role in the organization.",
 		InputSchema: objectSchema(autoPublishProps(map[string]any{
 			propIdentifier:       stringProp("Status page UID or URL-friendly slug, e.g. \"public\"."),
 			schemaKeyName:        stringProp("New display name, e.g. \"Public status page\"."),
@@ -182,6 +210,8 @@ func updateStatusPageDef() ToolDefinition {
 					"Max 64 KB; @import is rejected. Pass an empty string to clear it.",
 			),
 		}), []string{propIdentifier}),
+		OutputSchema: statusPageOutputSchema(),
+		Annotations:  updateAnnotations("Update status page"),
 	}
 }
 
@@ -240,11 +270,23 @@ func buildUpdateStatusPageRequest(args map[string]any) *statuspages.UpdateStatus
 
 func deleteStatusPageDef() ToolDefinition {
 	return ToolDefinition{
-		Name:        "delete_status_page",
-		Description: "Soft-delete a status page by UID or slug.",
+		Name: "delete_status_page",
+		Description: "Soft-delete a status page by UID or slug: the page disappears " +
+			"from the API and the public site, taking its sections and resources " +
+			"with it, and its uploaded brand assets are deleted. There is no " +
+			"undelete — use update_status_page with enabled:false to take a page " +
+			"down without destroying it. Returns {deleted: true, identifier}. Use " +
+			"delete_status_page_section or delete_status_page_resource to remove " +
+			"part of a page instead. Requires the mcp scope (mcp:read tokens are " +
+			"refused) and at least the user role in the organization.",
 		InputSchema: objectSchema(map[string]any{
 			propIdentifier: stringProp("Status page UID or URL-friendly slug, e.g. \"public\"."),
 		}, []string{propIdentifier}),
+		OutputSchema: objectSchema(map[string]any{
+			schemaKeyDeleted: boolProp("Always true on success."),
+			propIdentifier:   stringProp("The identifier that was deleted."),
+		}, []string{schemaKeyDeleted, propIdentifier}),
+		Annotations: deleteAnnotations("Delete status page"),
 	}
 }
 
@@ -256,7 +298,7 @@ func (h *Handler) toolDeleteStatusPage(ctx context.Context, orgSlug string, args
 	if err := h.statusPagesSvc.DeleteStatusPage(ctx, orgSlug, identifier); err != nil {
 		return errorResult(err.Error())
 	}
-	return textResult("Status page deleted successfully.")
+	return marshalResult(map[string]any{schemaKeyDeleted: true, propIdentifier: identifier})
 }
 
 // --- Sections ---
@@ -264,11 +306,19 @@ func (h *Handler) toolDeleteStatusPage(ctx context.Context, orgSlug string, args
 func listStatusPageSectionsDef() ToolDefinition {
 	return ToolDefinition{
 		Name: "list_status_page_sections",
-		Description: "List sections within a status page. Sections group resources " +
-			"(pinned checks) on the public-facing page.",
+		Description: "List the sections of one status page (UID or slug), in display " +
+			"order, and return {data: [...]} — section metadata only, without their " +
+			"resources. Use get_status_page with with=sections for the page with " +
+			"sections and resources together, and list_status_page_resources for " +
+			"one section's resources. Read-only: works with mcp:read tokens.",
 		InputSchema: objectSchema(map[string]any{
 			propPageIdentifier: stringProp("Status page UID or URL-friendly slug, e.g. \"public\"."),
 		}, []string{propPageIdentifier}),
+		OutputSchema: dataOutputSchema(
+			"Sections of the status page, in display order.",
+			sectionResponseOutputProps(),
+		),
+		Annotations: readOnlyAnnotations("List status page sections"),
 	}
 }
 
@@ -283,19 +333,28 @@ func (h *Handler) toolListStatusPageSections(
 	if err != nil {
 		return errorResult(err.Error())
 	}
-	return marshalResult(sections)
+	return marshalResult(map[string]any{schemaKeyData: sections})
 }
 
 func createStatusPageSectionDef() ToolDefinition {
 	return ToolDefinition{
-		Name:        "create_status_page_section",
-		Description: "Create a new section within a status page.",
+		Name: "create_status_page_section",
+		Description: "Create a section on a status page and return the created " +
+			"section; the page must already exist. A duplicate slug within the page " +
+			"is rejected with a conflict, and without position the section is " +
+			"appended last. Every new page ships with a default \"Services\" " +
+			"section. Use update_status_page_section to rename or reposition a " +
+			"section and create_status_page_resource to pin a check into one. " +
+			"Requires the mcp scope (mcp:read tokens are refused) and at least the " +
+			"user role in the organization.",
 		InputSchema: objectSchema(map[string]any{
 			propPageIdentifier: stringProp("Status page UID or URL-friendly slug, e.g. \"public\"."),
 			schemaKeyName:      stringProp("Section display name (required), e.g. \"API services\"."),
 			schemaKeySlug:      stringProp("URL-friendly slug (required, unique within the page), e.g. \"api\"."),
 			propPosition:       intProp("Display position within the page (smaller renders earlier)."),
 		}, []string{propPageIdentifier, schemaKeyName, schemaKeySlug}),
+		OutputSchema: sectionOutputSchema(),
+		Annotations:  createAnnotations("Create status page section"),
 	}
 }
 
@@ -323,8 +382,14 @@ func (h *Handler) toolCreateStatusPageSection(
 func updateStatusPageSectionDef() ToolDefinition {
 	return ToolDefinition{
 		Name: "update_status_page_section",
-		Description: "Update a section within a status page (PATCH semantics — only " +
-			"provided fields change).",
+		Description: "Update a section of a status page and return the updated " +
+			"section; the section must already exist. PATCH semantics — only " +
+			"fields you pass change, omitted fields keep their current values, and " +
+			"a slug that collides with another section on the page is rejected. " +
+			"Use create_status_page_section to add a section and " +
+			"delete_status_page_section to remove one instead. Requires the mcp " +
+			"scope (mcp:read tokens are refused) and at least the user role in the " +
+			"organization.",
 		InputSchema: objectSchema(map[string]any{
 			propPageIdentifier:    stringProp("Status page UID or URL-friendly slug, e.g. \"public\"."),
 			propSectionIdentifier: stringProp("Status page section UID or URL-friendly slug, e.g. \"api\"."),
@@ -332,6 +397,8 @@ func updateStatusPageSectionDef() ToolDefinition {
 			schemaKeySlug:         stringProp("New URL-friendly slug, e.g. \"api\"."),
 			propPosition:          intProp("New display position within the page (smaller renders earlier)."),
 		}, []string{propPageIdentifier, propSectionIdentifier}),
+		OutputSchema: sectionOutputSchema(),
+		Annotations:  updateAnnotations("Update status page section"),
 	}
 }
 
@@ -364,12 +431,21 @@ func (h *Handler) toolUpdateStatusPageSection(
 func deleteStatusPageSectionDef() ToolDefinition {
 	return ToolDefinition{
 		Name: "delete_status_page_section",
-		Description: "Delete a section from a status page. Resources in the section are " +
-			"removed too.",
+		Description: "Delete a section from a status page: the section and the " +
+			"resources it displays disappear from the page. There is no undelete — " +
+			"use delete_status_page_resource to remove a single pinned check while " +
+			"keeping the section. Returns {deleted: true, identifier}. Requires the " +
+			"mcp scope (mcp:read tokens are refused) and at least the user role in " +
+			"the organization.",
 		InputSchema: objectSchema(map[string]any{
 			propPageIdentifier:    stringProp("Status page UID or URL-friendly slug, e.g. \"public\"."),
 			propSectionIdentifier: stringProp("Status page section UID or URL-friendly slug, e.g. \"api\"."),
 		}, []string{propPageIdentifier, propSectionIdentifier}),
+		OutputSchema: objectSchema(map[string]any{
+			schemaKeyDeleted: boolProp("Always true on success."),
+			propIdentifier:   stringProp("The identifier that was deleted."),
+		}, []string{schemaKeyDeleted, propIdentifier}),
+		Annotations: deleteAnnotations("Delete status page section"),
 	}
 }
 
@@ -384,19 +460,28 @@ func (h *Handler) toolDeleteStatusPageSection(
 	if err := h.statusPagesSvc.DeleteSection(ctx, orgSlug, pageID, sectionID); err != nil {
 		return errorResult(err.Error())
 	}
-	return textResult("Status page section deleted successfully.")
+	return marshalResult(map[string]any{schemaKeyDeleted: true, propIdentifier: sectionID})
 }
 
 // --- Resources ---
 
 func listStatusPageResourcesDef() ToolDefinition {
 	return ToolDefinition{
-		Name:        "list_status_page_resources",
-		Description: "List resources (checks pinned to a section) within a status page section.",
+		Name: "list_status_page_resources",
+		Description: "List the resources (pinned checks and check groups) of one " +
+			"status page section, in display order, and return {data: [...]}. Use " +
+			"list_status_page_sections to find the section first, or get_status_page " +
+			"with with=sections for the whole page at once. Read-only: works with " +
+			"mcp:read tokens.",
 		InputSchema: objectSchema(map[string]any{
 			propPageIdentifier:    stringProp("Status page UID or URL-friendly slug, e.g. \"public\"."),
 			propSectionIdentifier: stringProp("Status page section UID or URL-friendly slug, e.g. \"api\"."),
 		}, []string{propPageIdentifier, propSectionIdentifier}),
+		OutputSchema: dataOutputSchema(
+			"Resources pinned to the section, in display order.",
+			resourceResponseOutputProps(),
+		),
+		Annotations: readOnlyAnnotations("List status page resources"),
 	}
 }
 
@@ -412,14 +497,22 @@ func (h *Handler) toolListStatusPageResources(
 	if err != nil {
 		return errorResult(err.Error())
 	}
-	return marshalResult(resources)
+	return marshalResult(map[string]any{schemaKeyData: resources})
 }
 
 func createStatusPageResourceDef() ToolDefinition {
 	return ToolDefinition{
 		Name: "create_status_page_resource",
-		Description: "Pin a check — or a whole check group, rendered as one aggregated component " +
-			"that never lists its members — to a status-page section as a publicly-displayed resource.",
+		Description: "Pin a check or a whole check group to a status-page section as " +
+			"a publicly displayed resource, and return the created resource. The " +
+			"page and section must already exist, exactly one of checkUid/" +
+			"checkGroupUid must resolve to this organization, and pinning the same " +
+			"target twice in one section is rejected (an existing selector-managed " +
+			"row for it is replaced instead). Without position the resource " +
+			"is appended last. Use update_status_page_resource to change its display " +
+			"fields and delete_status_page_resource to unpin it. Requires the mcp " +
+			"scope (mcp:read tokens are refused) and at least the user role in the " +
+			"organization.",
 		InputSchema: objectSchema(map[string]any{
 			propPageIdentifier:    stringProp("Status page UID or URL-friendly slug, e.g. \"public\"."),
 			propSectionIdentifier: stringProp("Status page section UID or URL-friendly slug, e.g. \"api\"."),
@@ -432,6 +525,8 @@ func createStatusPageResourceDef() ToolDefinition {
 			propExplanation: stringProp("Short explanation rendered under the resource"),
 			propPosition:    intProp("Display position within the section"),
 		}, []string{propPageIdentifier, propSectionIdentifier}),
+		OutputSchema: resourceOutputSchema(),
+		Annotations:  createAnnotations("Create status page resource"),
 	}
 }
 
@@ -471,8 +566,16 @@ func (h *Handler) toolCreateStatusPageResource(
 
 func updateStatusPageResourceDef() ToolDefinition {
 	return ToolDefinition{
-		Name:        "update_status_page_resource",
-		Description: "Update a status page resource (display name, explanation, position).",
+		Name: "update_status_page_resource",
+		Description: "Update a pinned resource's display name, explanation or " +
+			"position and return the updated resource; the page, section and " +
+			"resource must already exist. PATCH semantics — only fields you pass " +
+			"change, omitted fields keep their current values, and a resource " +
+			"managed by a section selector refuses position changes. Use " +
+			"create_status_page_resource to pin a new check, list_status_page_resources " +
+			"to find resource UIDs, and delete_status_page_resource to unpin. " +
+			"Requires the mcp scope (mcp:read tokens are refused) and at least the " +
+			"user role in the organization.",
 		InputSchema: objectSchema(map[string]any{
 			propPageIdentifier:    stringProp("Status page UID or URL-friendly slug, e.g. \"public\"."),
 			propSectionIdentifier: stringProp("Status page section UID or URL-friendly slug, e.g. \"api\"."),
@@ -481,6 +584,8 @@ func updateStatusPageResourceDef() ToolDefinition {
 			propExplanation:       stringProp("New short explanation rendered under the resource."),
 			propPosition:          intProp("New display position within the section (smaller renders earlier)."),
 		}, []string{propPageIdentifier, propSectionIdentifier, propResourceUID}),
+		OutputSchema: resourceOutputSchema(),
+		Annotations:  updateAnnotations("Update status page resource"),
 	}
 }
 
@@ -513,13 +618,24 @@ func (h *Handler) toolUpdateStatusPageResource(
 
 func deleteStatusPageResourceDef() ToolDefinition {
 	return ToolDefinition{
-		Name:        "delete_status_page_resource",
-		Description: "Remove a resource (pinned check) from a status-page section.",
+		Name: "delete_status_page_resource",
+		Description: "Remove a pinned resource from its section, returning " +
+			"{deleted: true, identifier}; the underlying check or group itself is " +
+			"untouched. The delete is permanent, a resource managed by a section " +
+			"selector refuses it, and a matching selector re-adopts the freed check " +
+			"right away. Use delete_status_page_section to remove a whole section " +
+			"with all its resources instead. Requires the mcp scope (mcp:read " +
+			"tokens are refused) and at least the user role in the organization.",
 		InputSchema: objectSchema(map[string]any{
 			propPageIdentifier:    stringProp("Status page UID or URL-friendly slug, e.g. \"public\"."),
 			propSectionIdentifier: stringProp("Status page section UID or URL-friendly slug, e.g. \"api\"."),
 			propResourceUID:       stringProp("Status page resource UID (returned by list/create_status_page_resource)."),
 		}, []string{propPageIdentifier, propSectionIdentifier, propResourceUID}),
+		OutputSchema: objectSchema(map[string]any{
+			schemaKeyDeleted: boolProp("Always true on success."),
+			propIdentifier:   stringProp("The identifier that was deleted."),
+		}, []string{schemaKeyDeleted, propIdentifier}),
+		Annotations: deleteAnnotations("Delete status page resource"),
 	}
 }
 
@@ -535,5 +651,87 @@ func (h *Handler) toolDeleteStatusPageResource(
 	if err := h.statusPagesSvc.DeleteResource(ctx, orgSlug, pageID, sectionID, resourceUID); err != nil {
 		return errorResult(err.Error())
 	}
-	return textResult("Status page resource deleted successfully.")
+	return marshalResult(map[string]any{schemaKeyDeleted: true, propIdentifier: resourceUID})
+}
+
+// Output schemas (MCP 2025-06-18). Each one documents the fields agents rely
+// on; the DTOs carry more (custom-domain state, availability thresholds,
+// selector diagnostics…), and extra properties stay allowed by default, so
+// this documents without freezing the whole DTO into the contract.
+
+// statusPageResponseOutputProps is the shared page shape of the four
+// single-page tools and the list's items.
+func statusPageResponseOutputProps() map[string]any {
+	return map[string]any{
+		propUID:            stringProp("Status page UID."),
+		schemaKeyName:      stringProp("Display name."),
+		schemaKeySlug:      stringProp("URL-friendly slug."),
+		"visibility":       stringProp("\"public\", \"private\" or \"password\"."),
+		propIsDefault:      boolProp("Whether this is the organization's default page."),
+		schemaKeyEnabled:   boolProp("Whether the public page is served."),
+		"historyPeriod":    stringProp("History window: \"24h\", \"7d\", \"30d\" or \"90d\"."),
+		schemaKeyCreatedAt: stringProp("RFC3339 creation timestamp."),
+	}
+}
+
+// statusPageOutputSchema is the output shape of create_status_page,
+// update_status_page and the list items' element (via
+// statusPageResponseOutputProps).
+func statusPageOutputSchema() map[string]any {
+	return objectSchema(statusPageResponseOutputProps(), []string{propUID})
+}
+
+// statusPageWithSectionsOutputSchema is get_status_page's output: the page
+// plus its sections (and each section's resources) when with=sections was
+// passed, absent otherwise.
+func statusPageWithSectionsOutputSchema() map[string]any {
+	sectionProps := sectionResponseOutputProps()
+	sectionProps["resources"] = arrayOfObjectsProp(
+		"Pinned checks and groups of the section.",
+		resourceResponseOutputProps(),
+	)
+
+	props := statusPageResponseOutputProps()
+	props["sections"] = arrayOfObjectsProp(
+		"Nested sections; absent unless with=sections was passed.",
+		sectionProps,
+	)
+
+	return objectSchema(props, []string{propUID})
+}
+
+// sectionResponseOutputProps is the section shape shared by the section list
+// and the section write tools (and by the nested sections of get_status_page).
+func sectionResponseOutputProps() map[string]any {
+	return map[string]any{
+		propUID:       stringProp("Section UID."),
+		schemaKeyName: stringProp("Section display name."),
+		schemaKeySlug: stringProp("URL-friendly slug, unique within the page."),
+		"position":    intProp("Display position (smaller renders earlier)."),
+		"selector": objectProp(
+			"Dynamic membership rule; absent on hand-curated sections.",
+		),
+	}
+}
+
+func sectionOutputSchema() map[string]any {
+	return objectSchema(sectionResponseOutputProps(), []string{propUID})
+}
+
+// resourceResponseOutputProps is the resource shape shared by the resource
+// list and the resource write tools. Exactly one of checkUid/checkGroupUid
+// is set (spec 2026-08-01-03).
+func resourceResponseOutputProps() map[string]any {
+	return map[string]any{
+		propUID:         stringProp("Resource UID."),
+		propCheckUID:    stringProp("Pinned check UID, when the resource targets a check."),
+		"checkGroupUid": stringProp("Pinned check group UID, when the resource targets a group."),
+		"publicName":    stringProp("Display name shown on the public page."),
+		"explanation":   stringProp("Short explanation rendered under the resource."),
+		"position":      intProp("Display position within the section (smaller renders earlier)."),
+	}
+}
+
+func resourceOutputSchema() map[string]any {
+	return objectSchema(resourceResponseOutputProps(), []string{propUID})
 }

@@ -111,7 +111,7 @@ func TestMarshalResult(t *testing.T) {
 
 	t.Run("valid struct populates both content and structuredContent", func(t *testing.T) {
 		t.Parallel()
-		input := map[string]string{"name": "test"}
+		input := map[string]string{schemaKeyName: "test"}
 		result := marshalResult(input)
 
 		r.False(result.IsError)
@@ -121,7 +121,7 @@ func TestMarshalResult(t *testing.T) {
 
 		structured, ok := result.StructuredContent.(map[string]string)
 		r.True(ok, "StructuredContent should be the original typed value")
-		r.Equal("test", structured["name"])
+		r.Equal("test", structured[schemaKeyName])
 	})
 
 	t.Run("unmarshalable value yields error result with empty StructuredContent", func(t *testing.T) {
@@ -137,7 +137,7 @@ func TestToolCallResult_JSONIncludesBothFieldsWhenStructured(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	result := marshalResult(map[string]string{"name": "test"})
+	result := marshalResult(map[string]string{schemaKeyName: "test"})
 	data, err := json.Marshal(result)
 	r.NoError(err)
 
@@ -148,7 +148,7 @@ func TestToolCallResult_JSONIncludesBothFieldsWhenStructured(t *testing.T) {
 
 	structured, ok := parsed["structuredContent"].(map[string]any)
 	r.True(ok, "structuredContent should marshal as a real object, not a string")
-	r.Equal("test", structured["name"])
+	r.Equal("test", structured[schemaKeyName])
 }
 
 func TestToolCallResult_JSONOmitsStructuredContentForTextResult(t *testing.T) {

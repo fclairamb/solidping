@@ -60,8 +60,15 @@ func (h *Handler) registerTools() {
 	h.tools = make([]ToolDefinition, len(all))
 	h.toolMap = make(map[string]toolFunc, len(all))
 	for i := range all {
-		h.tools[i] = all[i].def
-		h.toolMap[all[i].def.Name] = all[i].fn
+		def := all[i].def
+		// Title lives with the annotations (one place per tool) and is
+		// mirrored onto the definition, since MCP's display precedence is
+		// Tool.title → annotations.title → name.
+		if def.Title == "" && def.Annotations != nil {
+			def.Title = def.Annotations.Title
+		}
+		h.tools[i] = def
+		h.toolMap[def.Name] = all[i].fn
 	}
 }
 
@@ -69,8 +76,8 @@ func (h *Handler) registerTools() {
 
 func objectSchema(props map[string]any, required []string) map[string]any {
 	schema := map[string]any{
-		schemaKeyType: "object",
-		"properties":  props,
+		schemaKeyType:       schemaTypeObject,
+		schemaKeyProperties: props,
 	}
 	if len(required) > 0 {
 		schema["required"] = required
@@ -92,12 +99,37 @@ func boolProp(desc string) map[string]any {
 
 func arrayOfStringsProp(desc string) map[string]any {
 	return map[string]any{
-		schemaKeyType:        "array",
+		schemaKeyType:        schemaTypeArray,
 		schemaKeyItems:       map[string]any{schemaKeyType: "string"},
 		schemaKeyDescription: desc,
 	}
 }
 
 func objectProp(desc string) map[string]any {
-	return map[string]any{schemaKeyType: "object", schemaKeyDescription: desc}
+	return map[string]any{schemaKeyType: schemaTypeObject, schemaKeyDescription: desc}
+}
+
+// Output-schema helpers (MCP 2025-06-18). An outputSchema MUST have an
+// object root, and whenever one is declared the server MUST return
+// structuredContent conforming to it — so these are always paired with
+// marshalResult, never textResult. Item/property maps deliberately leave
+// additionalProperties at its default (true): they document the fields an
+// agent relies on without freezing every DTO field into the contract.
+
+// arrayOfObjectsProp builds an array-of-objects property whose items expose
+// the given (verified) fields.
+func arrayOfObjectsProp(desc string, itemProps map[string]any) map[string]any {
+	return map[string]any{
+		schemaKeyType:        schemaTypeArray,
+		schemaKeyItems:       map[string]any{schemaKeyType: schemaTypeObject, schemaKeyProperties: itemProps},
+		schemaKeyDescription: desc,
+	}
+}
+
+// dataOutputSchema is the output shape of a list tool: the repo-standard
+// {data: [...]} envelope (REST list responses are wrapped the same way).
+func dataOutputSchema(desc string, itemProps map[string]any) map[string]any {
+	return objectSchema(map[string]any{
+		schemaKeyData: arrayOfObjectsProp(desc, itemProps),
+	}, nil)
 }

@@ -1,6 +1,8 @@
 package mcp
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -13,13 +15,13 @@ func TestObjectSchema(t *testing.T) {
 	t.Run("with properties only", func(t *testing.T) {
 		t.Parallel()
 		schema := objectSchema(map[string]any{
-			"name": stringProp("A name"),
+			schemaKeyName: stringProp("A name"),
 		}, nil)
 
-		r.Equal("object", schema["type"])
-		props, ok := schema["properties"].(map[string]any)
+		r.Equal(schemaTypeObject, schema[schemaKeyType])
+		props, ok := schema[schemaKeyProperties].(map[string]any)
 		r.True(ok)
-		r.Contains(props, "name")
+		r.Contains(props, schemaKeyName)
 		_, hasRequired := schema["required"]
 		r.False(hasRequired, "required should be omitted when nil")
 	})
@@ -27,8 +29,8 @@ func TestObjectSchema(t *testing.T) {
 	t.Run("with required fields", func(t *testing.T) {
 		t.Parallel()
 		schema := objectSchema(map[string]any{
-			"id":   stringProp("ID"),
-			"name": stringProp("Name"),
+			"id":          stringProp("ID"),
+			schemaKeyName: stringProp("Name"),
 		}, []string{"id"})
 
 		required, ok := schema["required"].([]string)
@@ -39,8 +41,8 @@ func TestObjectSchema(t *testing.T) {
 	t.Run("empty properties", func(t *testing.T) {
 		t.Parallel()
 		schema := objectSchema(map[string]any{}, nil)
-		r.Equal("object", schema["type"])
-		props, ok := schema["properties"].(map[string]any)
+		r.Equal(schemaTypeObject, schema[schemaKeyType])
+		props, ok := schema[schemaKeyProperties].(map[string]any)
 		r.True(ok)
 		r.Empty(props)
 	})
@@ -53,39 +55,39 @@ func TestPropertyHelpers(t *testing.T) {
 	t.Run("stringProp", func(t *testing.T) {
 		t.Parallel()
 		prop := stringProp("a description")
-		r.Equal("string", prop["type"])
-		r.Equal("a description", prop["description"])
+		r.Equal("string", prop[schemaKeyType])
+		r.Equal("a description", prop[schemaKeyDescription])
 	})
 
 	t.Run("intProp", func(t *testing.T) {
 		t.Parallel()
 		prop := intProp("count of items")
-		r.Equal("integer", prop["type"])
-		r.Equal("count of items", prop["description"])
+		r.Equal("integer", prop[schemaKeyType])
+		r.Equal("count of items", prop[schemaKeyDescription])
 	})
 
 	t.Run("boolProp", func(t *testing.T) {
 		t.Parallel()
 		prop := boolProp("is enabled")
-		r.Equal("boolean", prop["type"])
-		r.Equal("is enabled", prop["description"])
+		r.Equal("boolean", prop[schemaKeyType])
+		r.Equal("is enabled", prop[schemaKeyDescription])
 	})
 
 	t.Run("arrayOfStringsProp", func(t *testing.T) {
 		t.Parallel()
 		prop := arrayOfStringsProp("list of regions")
-		r.Equal("array", prop["type"])
-		r.Equal("list of regions", prop["description"])
+		r.Equal(schemaTypeArray, prop[schemaKeyType])
+		r.Equal("list of regions", prop[schemaKeyDescription])
 		items, ok := prop["items"].(map[string]any)
 		r.True(ok)
-		r.Equal("string", items["type"])
+		r.Equal("string", items[schemaKeyType])
 	})
 
 	t.Run("objectProp", func(t *testing.T) {
 		t.Parallel()
 		prop := objectProp("config object")
-		r.Equal("object", prop["type"])
-		r.Equal("config object", prop["description"])
+		r.Equal(schemaTypeObject, prop[schemaKeyType])
+		r.Equal("config object", prop[schemaKeyDescription])
 	})
 }
 
@@ -93,57 +95,95 @@ func TestToolDefinitions(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	// Verify each tool definition has the required fields
-	defs := []ToolDefinition{
-		listChecksDef(),
-		getCheckDef(),
-		createCheckDef(),
-		updateCheckDef(),
-		deleteCheckDef(),
-		listResultsDef(),
-		listIncidentsDef(),
-		getIncidentDef(),
-		listIntegrationsDef(),
-		createIntegrationDef(),
-		listCheckGroupsDef(),
-		listRegionsDef(),
-		diagnoseCheckDef(),
-		listStatusPagesDef(),
-		getStatusPageDef(),
-		createStatusPageDef(),
-		updateStatusPageDef(),
-		deleteStatusPageDef(),
-		listStatusPageSectionsDef(),
-		createStatusPageSectionDef(),
-		updateStatusPageSectionDef(),
-		deleteStatusPageSectionDef(),
-		listStatusPageResourcesDef(),
-		createStatusPageResourceDef(),
-		updateStatusPageResourceDef(),
-		deleteStatusPageResourceDef(),
-		listMaintenanceWindowsDef(),
-		getMaintenanceWindowDef(),
-		createMaintenanceWindowDef(),
-		updateMaintenanceWindowDef(),
-		deleteMaintenanceWindowDef(),
-		setMaintenanceWindowChecksDef(),
-		listCheckTypesDef(),
-		getCheckTypeSamplesDef(),
-		validateCheckDef(),
-	}
+	// Verify each registered tool definition has the required fields.
+	handler := newTestHandler()
+	r.NotEmpty(handler.tools)
 
-	for _, def := range defs {
+	for _, def := range handler.tools {
 		t.Run(def.Name, func(t *testing.T) {
 			t.Parallel()
+			r := require.New(t)
 			r.NotEmpty(def.Name)
 			r.NotEmpty(def.Description)
 			r.NotNil(def.InputSchema)
 
 			schema, ok := def.InputSchema.(map[string]any)
 			r.True(ok)
-			r.Equal("object", schema["type"])
-			_, hasProps := schema["properties"]
+			r.Equal(schemaTypeObject, schema[schemaKeyType])
+			_, hasProps := schema[schemaKeyProperties]
 			r.True(hasProps)
+		})
+	}
+}
+
+// TestEveryToolDeclaresAnnotationsAndOutputSchema gates the MCP 2025-06-18
+// surface: every tool must carry behavioral annotations, a display title and
+// an object-rooted output schema, and the read-only hint must stay in sync
+// with the scope gate (isMutationTool) so a new write tool can never ship
+// advertised as read-only. The per-hint assertions also pin the semantics of
+// each annotation class (see annotations.go).
+func TestEveryToolDeclaresAnnotationsAndOutputSchema(t *testing.T) {
+	t.Parallel()
+
+	handler := newTestHandler()
+
+	for _, tool := range handler.tools {
+		t.Run(tool.Name, func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+
+			r.NotNil(tool.Annotations, "tool %q has no annotations", tool.Name)
+			r.Equal(tool.Annotations.Title, tool.Title,
+				"tool %q title not mirrored from annotations", tool.Name)
+
+			r.NotNil(tool.OutputSchema, "tool %q has no output schema", tool.Name)
+			schema, ok := tool.OutputSchema.(map[string]any)
+			r.True(ok, "tool %q output schema is not an object schema", tool.Name)
+			r.Equal(schemaTypeObject, schema[schemaKeyType],
+				"tool %q output schema must have an object root", tool.Name)
+
+			ann := tool.Annotations
+			r.False(ann.OpenWorldHint,
+				"tool %q must not claim open-world: every tool only touches SolidPing data",
+				tool.Name)
+			r.Equal(!isMutationTool(tool.Name), ann.ReadOnlyHint,
+				"tool %q readOnlyHint out of sync with the scope gate", tool.Name)
+
+			// The hints must all be present in the emitted JSON: omitempty
+			// on a false would drop the key and let the client fall back to
+			// the spec default (destructiveHint/openWorldHint default true).
+			raw, err := json.Marshal(ann)
+			r.NoError(err)
+			var decoded map[string]any
+			r.NoError(json.Unmarshal(raw, &decoded))
+			for _, hint := range []string{
+				"readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint",
+			} {
+				_, present := decoded[hint]
+				r.True(present, "tool %q annotation %q not emitted", tool.Name, hint)
+			}
+
+			switch {
+			case !isMutationTool(tool.Name):
+				r.False(ann.DestructiveHint, "read tool %q flagged destructive", tool.Name)
+				r.True(ann.IdempotentHint, "read tool %q not flagged idempotent", tool.Name)
+			case strings.HasPrefix(tool.Name, "delete_"),
+				strings.HasPrefix(tool.Name, "set_"):
+				r.True(ann.DestructiveHint,
+					"deleting/replacing tool %q must be flagged destructive", tool.Name)
+			case strings.HasPrefix(tool.Name, "create_"):
+				r.False(ann.IdempotentHint,
+					"create tool %q must not claim idempotency (it makes a new row)",
+					tool.Name)
+				r.False(ann.DestructiveHint,
+					"create tool %q must not claim destructive", tool.Name)
+			case strings.HasPrefix(tool.Name, "update_"):
+				r.True(ann.IdempotentHint,
+					"update tool %q should be idempotent (PATCH keeps omitted fields)",
+					tool.Name)
+				r.False(ann.DestructiveHint,
+					"update tool %q must not claim destructive", tool.Name)
+			}
 		})
 	}
 }
@@ -186,7 +226,7 @@ func TestAllToolDescriptionsMeetMinimum(t *testing.T) {
 			)
 			schema, ok := tool.InputSchema.(map[string]any)
 			r.True(ok)
-			props, ok := schema["properties"].(map[string]any)
+			props, ok := schema[schemaKeyProperties].(map[string]any)
 			if !ok {
 				return
 			}
