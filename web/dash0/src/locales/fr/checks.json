@@ -802,13 +802,7 @@
       "reasons": {
         "region_offline": "région hors ligne",
         "other": "déplacé"
-      },
-      "lastResult": "dernier résultat",
-      "noResult": "pas encore de résultat",
-      "quorum": "Un incident s'ouvre quand {{quorum}} régions sur {{count}} échouent",
-      "quorumAll": "Un incident s'ouvre quand les {{count}} régions échouent",
-      "failing": "en échec",
-      "failingSince": "en échec depuis {{time}}"
+      }
     },
     "regionalIssue": {
       "title": "Problème régional : échec depuis {{regions}}",

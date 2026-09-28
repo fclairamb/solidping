@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   failQuorumMode,
   failQuorumValue,
-  isFailingRegionStatus,
   resolveFailQuorum,
 } from "@/lib/fail-quorum";
 
@@ -43,16 +42,5 @@ describe("failQuorumMode / failQuorumValue", () => {
     expect(failQuorumValue("count", "0")).toBeUndefined();
     expect(failQuorumValue("count", "2.5")).toBeUndefined();
     expect(failQuorumValue("count", "101")).toBeUndefined();
-  });
-});
-
-describe("isFailingRegionStatus", () => {
-  it("counts down, timeout and error only", () => {
-    expect(isFailingRegionStatus("down")).toBe(true);
-    expect(isFailingRegionStatus("timeout")).toBe(true);
-    expect(isFailingRegionStatus("error")).toBe(true);
-    expect(isFailingRegionStatus("warning")).toBe(false);
-    expect(isFailingRegionStatus("up")).toBe(false);
-    expect(isFailingRegionStatus(undefined)).toBe(false);
   });
 });

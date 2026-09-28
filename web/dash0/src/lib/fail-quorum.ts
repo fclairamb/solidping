@@ -1,10 +1,10 @@
-import type { FailQuorum, RegionFreshness } from "@/api/hooks";
+import type { FailQuorum } from "@/api/hooks";
 
 // Multi-region quorum (spec 2026-09-25-10): a client-side mirror of the
 // server's resolution (server/internal/regionquorum), used by the check form to
 // say what the setting means for the regions being picked. The server has the
-// last word: the check detail shows its `effectiveFailQuorum` and
-// `regionalIssue`, never a value derived here.
+// last word: the check detail shows its `regionalIssue`, never a value derived
+// here.
 
 /** The form's four choices. */
 export type FailQuorumMode = "default" | "all" | "majority" | "count";
@@ -72,9 +72,4 @@ export function resolveFailQuorum(value: FailQuorum | undefined, regions: number
     default:
       return regions < MAJORITY_FROM ? regions : Math.floor(regions / 2) + 1;
   }
-}
-
-/** A region reading counts as failing: down, timeout or error. */
-export function isFailingRegionStatus(status: RegionFreshness["status"]): boolean {
-  return status === "down" || status === "timeout" || status === "error";
 }
