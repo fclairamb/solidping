@@ -86,11 +86,35 @@ type ServerInfo struct {
 	Version string `json:"version"`
 }
 
-// ToolDefinition represents a tool exposed by the server.
+// ToolDefinition represents a tool exposed by the server. The shape follows
+// the MCP 2025-06-18 revision: title, outputSchema and annotations were all
+// added there, and clients negotiate down to 2025-03-26 by asking for it
+// (unknown fields are ignored by older parsers).
 type ToolDefinition struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	InputSchema any    `json:"inputSchema"`
+	Name         string           `json:"name"`
+	Title        string           `json:"title,omitempty"`
+	Description  string           `json:"description"`
+	InputSchema  any              `json:"inputSchema"`
+	OutputSchema any              `json:"outputSchema,omitempty"`
+	Annotations  *ToolAnnotations `json:"annotations,omitempty"`
+}
+
+// ToolAnnotations is the MCP behavioral-hint set. Every hint is advisory —
+// the spec requires clients to treat them as untrusted — but they are what
+// lets an agent know a tool's side effects before calling it, so each tool
+// declares all four rather than leaning on the spec defaults (the defaults
+// for destructiveHint and openWorldHint are both true, which would badly
+// misdescribe this server's read-mostly surface).
+//
+// Display precedence for title is: Tool.title, annotations.title, then
+// name; constructors below fill annotations.title and registerTools copies
+// it onto the ToolDefinition, so each tool states its title once.
+type ToolAnnotations struct {
+	Title           string `json:"title,omitempty"`
+	ReadOnlyHint    bool   `json:"readOnlyHint"`
+	DestructiveHint bool   `json:"destructiveHint"`
+	IdempotentHint  bool   `json:"idempotentHint"`
+	OpenWorldHint   bool   `json:"openWorldHint"`
 }
 
 // ToolsListResult represents the result of a tools/list request.

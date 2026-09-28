@@ -9,24 +9,78 @@ import (
 
 func TestMaintenanceWindowToolDefinitions(t *testing.T) {
 	t.Parallel()
-	r := require.New(t)
 
-	defs := []ToolDefinition{
-		listMaintenanceWindowsDef(),
-		getMaintenanceWindowDef(),
-		createMaintenanceWindowDef(),
-		updateMaintenanceWindowDef(),
-		deleteMaintenanceWindowDef(),
-		setMaintenanceWindowChecksDef(),
+	cases := []struct {
+		def         ToolDefinition
+		title       string
+		readOnly    bool
+		destructive bool
+		idempotent  bool
+	}{
+		{listMaintenanceWindowsDef(), "List maintenance windows", true, false, true},
+		{getMaintenanceWindowDef(), "Get maintenance window", true, false, true},
+		{createMaintenanceWindowDef(), "Create maintenance window", false, false, false},
+		{updateMaintenanceWindowDef(), "Update maintenance window", false, false, true},
+		{deleteMaintenanceWindowDef(), "Delete maintenance window", false, true, true},
+		{setMaintenanceWindowChecksDef(), "Set maintenance window checks", false, true, true},
 	}
 
-	for _, def := range defs {
-		t.Run(def.Name, func(t *testing.T) {
+	for _, tc := range cases {
+		t.Run(tc.def.Name, func(t *testing.T) {
 			t.Parallel()
+			r := require.New(t)
+			def := tc.def
 			r.NotEmpty(def.Name)
 			r.NotEmpty(def.Description)
 			r.NotNil(def.InputSchema)
+
+			r.NotNil(def.Annotations, "%s must declare annotations", def.Name)
+			r.Equal(tc.title, def.Annotations.Title, "sentence-case title")
+			r.Equal(tc.readOnly, def.Annotations.ReadOnlyHint, def.Name)
+			r.Equal(tc.destructive, def.Annotations.DestructiveHint, def.Name)
+			r.Equal(tc.idempotent, def.Annotations.IdempotentHint, def.Name)
+			r.False(def.Annotations.OpenWorldHint, def.Name)
+
+			if tc.readOnly {
+				r.Contains(def.Description, "Read-only: works with mcp:read tokens.")
+			} else {
+				r.Contains(def.Description,
+					"Requires the mcp scope (mcp:read tokens are refused) and at least the "+
+						"user role in the organization.")
+			}
+
+			r.NotNil(def.OutputSchema, "%s must declare an outputSchema", def.Name)
+			schema, ok := def.OutputSchema.(map[string]any)
+			r.True(ok, "%s outputSchema must be an object schema", def.Name)
+			r.Equal(schemaTypeObject, schema[schemaKeyType])
+			props, hasProps := schema[schemaKeyProperties].(map[string]any)
+			r.True(hasProps, "%s outputSchema must declare properties", def.Name)
+			r.NotEmpty(props)
 		})
+	}
+}
+
+// TestMaintenanceWindowWriteResultsAreStructured locks the two formerly
+// text-only results (delete, set checks) to structuredContent objects that
+// match their declared outputSchemas.
+func TestMaintenanceWindowWriteResultsAreStructured(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	deleteSchema, ok := deleteMaintenanceWindowDef().OutputSchema.(map[string]any)
+	r.True(ok)
+	deleteProps, ok := deleteSchema[schemaKeyProperties].(map[string]any)
+	r.True(ok)
+	for _, key := range []string{schemaKeyDeleted, propUID} {
+		r.Contains(deleteProps, key, "delete outputSchema must declare %q", key)
+	}
+
+	setSchema, ok := setMaintenanceWindowChecksDef().OutputSchema.(map[string]any)
+	r.True(ok)
+	setProps, ok := setSchema[schemaKeyProperties].(map[string]any)
+	r.True(ok)
+	for _, key := range []string{schemaKeyUpdated, propCheckUIDs, propCheckGroupUIDs} {
+		r.Contains(setProps, key, "set outputSchema must declare %q", key)
 	}
 }
 
@@ -37,7 +91,7 @@ func TestMaintenanceWindowDescriptionsIncludeExamples(t *testing.T) {
 	def := createMaintenanceWindowDef()
 	schema, ok := def.InputSchema.(map[string]any)
 	r.True(ok)
-	props, ok := schema["properties"].(map[string]any)
+	props, ok := schema[schemaKeyProperties].(map[string]any)
 	r.True(ok)
 
 	// Recurrence description must document the real enum, NOT iCalendar RRULE — the
@@ -70,7 +124,7 @@ func TestUpdateMaintenanceRecurrenceDocsNoRRULE(t *testing.T) {
 	def := updateMaintenanceWindowDef()
 	schema, ok := def.InputSchema.(map[string]any)
 	r.True(ok)
-	props, ok := schema["properties"].(map[string]any)
+	props, ok := schema[schemaKeyProperties].(map[string]any)
 	r.True(ok)
 
 	rec, ok := props[propRecurrence].(map[string]any)
@@ -79,6 +133,10 @@ func TestUpdateMaintenanceRecurrenceDocsNoRRULE(t *testing.T) {
 	r.True(ok)
 	r.NotContains(desc, "FREQ=", "update recurrence docs must not advertise iCalendar RRULE")
 	r.Contains(desc, "monthly")
+	// The service rejects recurrence "" (ErrInvalidRecurrence), so the docs
+	// must route clearing through "none", never through an empty string.
+	r.Contains(desc, "\"none\"")
+	r.NotContains(desc, "empty string")
 }
 
 func TestMaintenanceWindowRequiredArgs(t *testing.T) {
@@ -101,25 +159,25 @@ func TestMaintenanceWindowRequiredArgs(t *testing.T) {
 		{
 			name:        "create_maintenance_window rejects missing title",
 			tool:        handler.toolCreateMaintenanceWindow,
-			args:        map[string]any{"startAt": "2026-05-03T22:00:00Z", "endAt": "2026-05-03T23:00:00Z"},
+			args:        map[string]any{propStartAt: "2026-05-03T22:00:00Z", propEndAt: "2026-05-03T23:00:00Z"},
 			errContains: "title is required",
 		},
 		{
 			name:        "create_maintenance_window rejects missing time bounds",
 			tool:        handler.toolCreateMaintenanceWindow,
-			args:        map[string]any{"title": "X"},
+			args:        map[string]any{propTitle: "X"},
 			errContains: "startAt and endAt are required",
 		},
 		{
 			name:        "create_maintenance_window rejects malformed startAt",
 			tool:        handler.toolCreateMaintenanceWindow,
-			args:        map[string]any{"title": "X", "startAt": "yesterday", "endAt": "2026-05-03T23:00:00Z"},
+			args:        map[string]any{propTitle: "X", propStartAt: "yesterday", propEndAt: "2026-05-03T23:00:00Z"},
 			errContains: "startAt must be RFC3339",
 		},
 		{
 			name:        "create_maintenance_window rejects malformed endAt",
 			tool:        handler.toolCreateMaintenanceWindow,
-			args:        map[string]any{"title": "X", "startAt": "2026-05-03T22:00:00Z", "endAt": "later"},
+			args:        map[string]any{propTitle: "X", propStartAt: "2026-05-03T22:00:00Z", propEndAt: "later"},
 			errContains: "endAt must be RFC3339",
 		},
 		{
@@ -131,7 +189,7 @@ func TestMaintenanceWindowRequiredArgs(t *testing.T) {
 		{
 			name:        "update_maintenance_window rejects malformed startAt",
 			tool:        handler.toolUpdateMaintenanceWindow,
-			args:        map[string]any{"uid": "u", "startAt": "soon"},
+			args:        map[string]any{propUID: "u", propStartAt: "soon"},
 			errContains: "startAt must be RFC3339",
 		},
 		{
@@ -164,12 +222,12 @@ func TestBuildCreateMaintenanceRequest_Happy(t *testing.T) {
 	r := require.New(t)
 
 	args := map[string]any{
-		"title":         "DB upgrade",
-		"startAt":       "2026-05-03T22:00:00Z",
-		"endAt":         "2026-05-03T23:30:00Z",
-		"description":   "Upgrade Postgres major version",
-		"recurrence":    "weekly",
-		"recurrenceEnd": "2026-12-31T00:00:00Z",
+		propTitle:            "DB upgrade",
+		propStartAt:          "2026-05-03T22:00:00Z",
+		propEndAt:            "2026-05-03T23:30:00Z",
+		schemaKeyDescription: "Upgrade Postgres major version",
+		"recurrence":         "weekly",
+		"recurrenceEnd":      "2026-12-31T00:00:00Z",
 	}
 	req, errMsg := buildCreateMaintenanceRequest(args)
 	r.Empty(errMsg)
@@ -187,9 +245,9 @@ func TestBuildCreateMaintenanceRequest_BadRecurrenceEnd(t *testing.T) {
 	r := require.New(t)
 
 	args := map[string]any{
-		"title":         "X",
-		"startAt":       "2026-05-03T22:00:00Z",
-		"endAt":         "2026-05-03T23:00:00Z",
+		propTitle:       "X",
+		propStartAt:     "2026-05-03T22:00:00Z",
+		propEndAt:       "2026-05-03T23:00:00Z",
 		"recurrenceEnd": "soon",
 	}
 	req, errMsg := buildCreateMaintenanceRequest(args)
@@ -202,7 +260,7 @@ func TestBuildUpdateMaintenanceRequest_PartialPatch(t *testing.T) {
 	r := require.New(t)
 
 	args := map[string]any{
-		"description": "updated note only",
+		schemaKeyDescription: "updated note only",
 	}
 	req, errMsg := buildUpdateMaintenanceRequest(args)
 	r.Empty(errMsg)
@@ -220,12 +278,13 @@ func TestBuildUpdateMaintenanceRequest_ClearRecurrence(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	// Caller passes recurrence: "" to explicitly clear
+	// The documented way to clear recurrence on update is "none" — the service
+	// rejects any value outside none|daily|weekly|monthly, including "".
 	args := map[string]any{
-		"recurrence": "",
+		"recurrence": "none",
 	}
 	req, errMsg := buildUpdateMaintenanceRequest(args)
 	r.Empty(errMsg)
 	r.NotNil(req.Recurrence)
-	r.Empty(*req.Recurrence)
+	r.Equal("none", *req.Recurrence)
 }

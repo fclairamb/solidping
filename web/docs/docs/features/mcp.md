@@ -17,7 +17,7 @@ SolidPing's MCP server supports the full **OAuth 2.1** authorization flow, inclu
 |----------|-------|
 | URL | `{SP_BASE_URL}/api/v1/mcp` |
 | Transport | JSON-RPC 2.0 over HTTP (Streamable HTTP) |
-| Protocol version | `2025-03-26` |
+| Protocol version | `2025-06-18` (falls back to `2025-03-26` on request) |
 
 Paste that URL into your client, log in when prompted, and approve the requested scope — that's the entire setup.
 
@@ -148,6 +148,13 @@ The server exposes tools covering the core SolidPing surface, including:
 - **Check groups & regions** — list
 - **Check types** — list types, fetch sample configs, and validate a config
 - **Diagnostics** — diagnose a check and inspect incident notifications
+
+Every tool also declares MCP **tool annotations** (`readOnlyHint`,
+`destructiveHint`, `idempotentHint`, `openWorldHint`) and an
+**output schema**, so a client can tell reads from writes and knows
+what a tool returns before calling it. List results come back as
+`{data: [...]}` (with a `pagination` block where the tool pages),
+matching the REST API.
 
 ## Headless agents / CI
 
