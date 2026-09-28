@@ -2,12 +2,17 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 import i18next, { type TFunction } from "i18next";
+import { Plug, Unplug } from "lucide-react";
 
 import {
   EVENT_TYPE_MARKS,
   EVENT_TYPE_REGISTRY,
+  getEventAgentName,
+  getEventAgentRegion,
+  getEventDisconnectReason,
   getEventEmoji,
   getEventLabel,
+  getEventLucideIcon,
   getEventTone,
   getCommentSource,
 } from "@/components/dashboard/event-display";
@@ -347,5 +352,65 @@ describe("an unmapped event type still degrades gracefully", () => {
   it("has no emoji and the neutral outline tone", () => {
     expect(getEventEmoji("something.unmapped")).toBeUndefined();
     expect(getEventTone("something.unmapped")).toBe("");
+  });
+});
+
+// Spec 2026-09-28-02: the payload already carries the agent's identity
+// (target_name / region / reason, see models.AgentEventPayload* and
+// audit.PayloadKeyTargetName) — these getters read it and nothing else, and
+// every one of them returns undefined when the key is missing so the caller
+// can skip the line entirely.
+describe("agent identity getters read the payload, and nothing else", () => {
+  const fullPayload = {
+    eventType: "agent.disconnected",
+    payload: {
+      target_type: "agent",
+      target_uid: "ag-74782dfcd3e5",
+      target_name: "74782dfcd3e5",
+      region: "@acme-paris",
+      reason: "ping_timeout",
+    },
+  };
+
+  it("reads name, region and a known reason off a full payload", () => {
+    expect(getEventAgentName(fullPayload)).toBe("74782dfcd3e5");
+    expect(getEventAgentRegion(fullPayload)).toBe("@acme-paris");
+    expect(getEventDisconnectReason(fullPayload)).toBe("ping_timeout");
+  });
+
+  it("leaves a region-only row's name undefined", () => {
+    const regionOnly = {
+      eventType: "agent.disconnected",
+      payload: { region: "@acme-paris", reason: "revoked" },
+    };
+    expect(getEventAgentName(regionOnly)).toBeUndefined();
+    expect(getEventAgentRegion(regionOnly)).toBe("@acme-paris");
+    expect(getEventDisconnectReason(regionOnly)).toBe("revoked");
+  });
+
+  it("drops an unknown reason rather than returning a raw machine code", () => {
+    expect(
+      getEventDisconnectReason({
+        eventType: "agent.disconnected",
+        payload: { reason: "exploded" },
+      }),
+    ).toBeUndefined();
+  });
+
+  it("is all undefined on a non-agent event", () => {
+    const notAgent = {
+      eventType: "incident.created",
+      payload: { check_name: "Payments API", check_slug: "payments-api" },
+    };
+    expect(getEventAgentName(notAgent)).toBeUndefined();
+    expect(getEventAgentRegion(notAgent)).toBeUndefined();
+    expect(getEventDisconnectReason(notAgent)).toBeUndefined();
+  });
+
+  it("exposes the registered mark as the chip icon", () => {
+    // event-log-table.tsx renders this at chip size instead of importing
+    // Plug/Unplug itself (spec 2026-09-28-02 proposal step 2).
+    expect(getEventLucideIcon("agent.connected")).toBe(Plug);
+    expect(getEventLucideIcon("agent.disconnected")).toBe(Unplug);
   });
 });
