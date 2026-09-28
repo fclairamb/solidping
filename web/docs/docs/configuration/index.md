@@ -271,7 +271,7 @@ install.
 | `SP_ENCRYPTION_MASTER_KEY_FILE` | - | Path to a file holding the base64 master key |
 | `SP_ENCRYPTION_AUTO_MIGRATE` | `true` | Encrypt existing plaintext credentials on startup |
 
-See [Security & Encryption](/configuration/security) for the full guide.
+See [Security & Encryption](/configuration/security) for the full guide — credential encryption, and why refresh tokens, API tokens and single-use links are stored only as hashes.
 
 ### File Storage
 
@@ -396,7 +396,7 @@ The SolidPing CLI client (`sp`) uses its own configuration:
 - [Database Configuration](/configuration/database) - PostgreSQL and SQLite options
 - [Notifications](/configuration/notifications) - Email, Slack, Discord, webhooks, and more
 - [Authentication](/configuration/authentication) - OAuth providers, 2FA, and access control
-- [Security & Encryption](/configuration/security) - Credentials encryption at rest
+- [Security & Encryption](/configuration/security) - Credential encryption at rest, and tokens stored hashed so a database dump replays nothing
 - [Security Headers](/configuration/security-headers) - Content-Security-Policy, framing and embedding status pages
 - [File Storage](/configuration/file-storage) - Where uploaded blobs (org logos, status-page assets, screenshots) are stored, and the container volume trap
 - [Product Analytics](/configuration/analytics) - Optional PostHog integration, off unless configured
