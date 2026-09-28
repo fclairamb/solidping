@@ -108,3 +108,62 @@ func TestAgentOnDemandMarkerNeedsARealRequest(t *testing.T) {
 
 	r.Nil(e.reload(requested.UID).CaptureClaimedAt, "the release spends the request")
 }
+
+// TestAgentCaptureNowFailureIsRecorded is spec 2026-09-27-01 §3 on the agent
+// submission path: a result frame without a screenshot, from a lease that
+// carried a "Capture now" request, records the failure with the agent's own
+// reason. A frame WITH a capture marker records nothing, and neither does a
+// screenshot-less frame from a lease that carried no request.
+func TestAgentCaptureNowFailureIsRecorded(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	e := newSubmitEnv(t)
+
+	lease := func(jobUID string, claimedAt *time.Time) {
+		update := e.dbSvc.DB().NewUpdate().Model((*models.CheckJob)(nil)).
+			Set("lease_worker_uid = ?", e.workerUID).
+			Set("lease_expires_at = ?", time.Now().Add(time.Minute)).
+			Set("capture_claimed_at = ?", claimedAt).
+			Where("uid = ?", jobUID)
+
+		_, leaseErr := update.Exec(ctx)
+		r.NoError(leaseErr)
+	}
+
+	submit := func(jobUID string, diagnostics *checkerdef.Diagnostics) {
+		_, err := e.svc.SubmitResult(ctx, &workers.SubmitResultRequest{
+			JobUID: jobUID, WorkerUID: e.workerUID, Status: int(models.ResultStatusUp), Duration: 800,
+			Diagnostics: diagnostics,
+		})
+		r.NoError(err)
+	}
+
+	job := e.leasedJob(100, 0, 0)
+
+	// No request on the lease: nothing recorded, screenshot or not.
+	lease(job.UID, nil)
+	submit(job.UID, &checkerdef.Diagnostics{ScreenshotError: "renderer gone"})
+	r.Nil(e.reload(job.UID).CaptureFailedRequestAt, "a run no one asked a capture of records nothing")
+
+	// The request's run comes back with a capture marker: nothing recorded.
+	requested := time.Now().Add(-time.Minute).UTC().Truncate(time.Millisecond)
+	lease(job.UID, &requested)
+	submit(job.UID, &checkerdef.Diagnostics{Screenshot: &checkerdef.Screenshot{
+		Available: true, CaptureID: "cap-1", OnDemand: true,
+	}})
+	r.Nil(e.reload(job.UID).CaptureFailedRequestAt, "a capture that arrived is not a failure")
+
+	// The request's run comes back without one: the failure and the agent's
+	// reason are recorded against that request.
+	lease(job.UID, &requested)
+	submit(job.UID, &checkerdef.Diagnostics{ScreenshotError: "the agent could not keep the image for upload"})
+
+	stored := e.reload(job.UID)
+	r.NotNil(stored.CaptureFailedRequestAt)
+	r.True(stored.CaptureFailedRequestAt.Equal(requested), "got %s", stored.CaptureFailedRequestAt)
+	r.NotNil(stored.CaptureFailureReason)
+	r.Equal("the agent could not keep the image for upload", *stored.CaptureFailureReason)
+	r.Nil(stored.CaptureClaimedAt, "the release still spends the request")
+}

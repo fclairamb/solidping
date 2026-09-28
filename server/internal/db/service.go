@@ -443,6 +443,14 @@ type Service interface {
 	// that picks the row up consumes the request. sql.ErrNoRows when the job
 	// is gone.
 	RequestCheckCapture(ctx context.Context, jobUID string, requestedAt time.Time) error
+	// RecordCheckCaptureFailure records that the "Capture now" request made at
+	// requestedAt produced no screenshot, and why (spec 2026-09-27-01):
+	// capture_failed_request_at and capture_failure_reason on the job row.
+	// Ordering needs no guard: it is written by the submission of the lease
+	// that carried the request, before that lease is released, and the next
+	// request on the row can only be claimed after the release. A missing job
+	// is not an error.
+	RecordCheckCaptureFailure(ctx context.Context, jobUID string, requestedAt time.Time, reason string) error
 
 	// Label operations
 	GetOrCreateLabel(ctx context.Context, orgUID, key, value string) (*models.Label, error)

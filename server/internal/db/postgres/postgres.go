@@ -2304,6 +2304,21 @@ func (s *Service) RequestCheckCapture(ctx context.Context, jobUID string, reques
 	return nil
 }
 
+// RecordCheckCaptureFailure records a "Capture now" request that produced no
+// screenshot (spec 2026-09-27-01).
+func (s *Service) RecordCheckCaptureFailure(
+	ctx context.Context, jobUID string, requestedAt time.Time, reason string,
+) error {
+	_, err := s.db.NewUpdate().
+		Model((*models.CheckJob)(nil)).
+		Set("capture_failed_request_at = ?", requestedAt).
+		Set("capture_failure_reason = ?", reason).
+		Where("uid = ?", jobUID).
+		Exec(ctx)
+
+	return err
+}
+
 func (s *Service) ListCheckJobsByCheckUID(ctx context.Context, checkUID string) ([]*models.CheckJob, error) {
 	var jobs []*models.CheckJob
 

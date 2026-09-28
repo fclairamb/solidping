@@ -23,9 +23,13 @@ func NewHandler(svc *Service, cfg *config.Config) *Handler {
 	return &Handler{HandlerBase: base.NewHandlerBase(cfg), svc: svc}
 }
 
-// ListResponse wraps the listing, per the API convention.
+// ListResponse wraps the listing, per the API convention. CaptureOutcome sits
+// NEXT to data, not inside it: it is about the check's latest failed "Capture
+// now" request, not about any one screenshot (spec 2026-09-27-01). Omitted
+// when no request failed.
 type ListResponse struct {
-	Data []attachments.CheckScreenshot `json:"data"`
+	Data           []attachments.CheckScreenshot `json:"data"`
+	CaptureOutcome *CaptureOutcome               `json:"captureOutcome,omitempty"`
 }
 
 // List handles GET /api/v1/orgs/:org/checks/:checkUid/screenshots?limit=N.
@@ -43,16 +47,17 @@ func (h *Handler) List(writer http.ResponseWriter, req *http.Request) error {
 		limit = parsed
 	}
 
-	shots, err := h.svc.ListScreenshots(req.Context(), httpx.Param(req, "org"), httpx.Param(req, "checkUid"), limit)
+	listing, err := h.svc.ListScreenshots(req.Context(), httpx.Param(req, "org"), httpx.Param(req, "checkUid"), limit)
 	if err != nil {
 		return h.writeError(writer, req, err)
 	}
 
+	shots := listing.Screenshots
 	if shots == nil {
 		shots = []attachments.CheckScreenshot{}
 	}
 
-	return h.WriteJSON(writer, http.StatusOK, ListResponse{Data: shots})
+	return h.WriteJSON(writer, http.StatusOK, ListResponse{Data: shots, CaptureOutcome: listing.CaptureOutcome})
 }
 
 // Capture handles POST /api/v1/orgs/:org/checks/:checkUid/screenshots/capture
