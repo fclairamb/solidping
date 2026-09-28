@@ -185,7 +185,7 @@ func TestDispatch_Initialize(t *testing.T) {
 
 	serverInfo, ok := result["serverInfo"].(map[string]any)
 	r.True(ok)
-	r.Equal("solidping", serverInfo["name"])
+	r.Equal("solidping", serverInfo[schemaKeyName])
 
 	// Verify session was stored
 	_, loaded := handler.sessions.Load(sessionID)
@@ -228,7 +228,7 @@ func TestDispatch_ToolsList(t *testing.T) {
 		toolMap, mapOK := tool.(map[string]any)
 		r.True(mapOK)
 
-		name, strOK := toolMap["name"].(string)
+		name, strOK := toolMap[schemaKeyName].(string)
 		r.True(strOK)
 		names[name] = true
 	}
@@ -413,27 +413,27 @@ func TestGetBoolArg(t *testing.T) {
 
 	t.Run("true value", func(t *testing.T) {
 		t.Parallel()
-		result := getBoolArg(map[string]any{"enabled": true}, "enabled")
+		result := getBoolArg(map[string]any{schemaKeyEnabled: true}, schemaKeyEnabled)
 		r.NotNil(result)
 		r.True(*result)
 	})
 
 	t.Run("false value", func(t *testing.T) {
 		t.Parallel()
-		result := getBoolArg(map[string]any{"enabled": false}, "enabled")
+		result := getBoolArg(map[string]any{schemaKeyEnabled: false}, schemaKeyEnabled)
 		r.NotNil(result)
 		r.False(*result)
 	})
 
 	t.Run("missing key", func(t *testing.T) {
 		t.Parallel()
-		result := getBoolArg(map[string]any{}, "enabled")
+		result := getBoolArg(map[string]any{}, schemaKeyEnabled)
 		r.Nil(result)
 	})
 
 	t.Run("non-bool value", func(t *testing.T) {
 		t.Parallel()
-		result := getBoolArg(map[string]any{"enabled": "yes"}, "enabled")
+		result := getBoolArg(map[string]any{schemaKeyEnabled: "yes"}, schemaKeyEnabled)
 		r.Nil(result)
 	})
 }

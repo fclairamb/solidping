@@ -31,10 +31,11 @@ The other methods are handled per the transport spec
 Unmatched paths under `/api/` never fall through to the SPA shell — they
 answer the standard JSON error shape (`NOT_FOUND`).
 
-The supported protocol version is **`2025-03-26`**
-([`mcp/handler.go:39`](../../server/internal/mcp/handler.go)). Newer
-versions (e.g. `2025-06-18` once `structuredContent` / `outputSchema`
-are wired) get added to the front of the supported list as they're
+The supported protocol versions are **`2025-06-18`** (latest — the
+revision that introduced tool `annotations`, `outputSchema` and
+`structuredContent`, all of which this server now provides) and
+**`2025-03-26`** ([`mcp/handler.go`](../../server/internal/mcp/handler.go)).
+Newer versions get added to the front of the supported list as they're
 adopted.
 
 Protocol negotiation per MCP spec: if the client requests a version we
@@ -90,9 +91,15 @@ Two custom scopes gate access:
 A token with **no scopes at all** (a full dashboard JWT) is treated as
 having full access — back-compat for the dashboard's own MCP-over-PAT
 flow that pre-dates the scope split. The deny-list (rather than
-per-tool annotations) is intentional: every new write tool naturally
-falls under one of the four prefixes, and a stray miss is a reviewable
-oversight rather than a silent privilege escalation.
+trusting per-tool annotations) stays the enforcement mechanism: every
+new write tool naturally falls under one of the four prefixes, and a
+stray miss is a reviewable oversight rather than a silent privilege
+escalation. The MCP 2025-06-18 `annotations` every tool now carries
+(`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`,
+mirrored from the same prefixes in [`annotations.go`](../../server/internal/mcp/annotations.go))
+are advisory metadata for the *client*, not an authorization input —
+the spec requires clients to treat them as untrusted, so the server
+never makes a gate decision from them.
 
 PAT tokens can be issued with `mcp:read` for safer agent embedding —
 "let the assistant browse our infra without letting it create or
@@ -342,22 +349,60 @@ here. The image already defaults to SQLite under `/data`:
    `Description`, and `InputSchema`. Use the schema helpers in
    `tools.go` (`objectSchema`, `stringProp`, `intProp`,
    `objectProp`).
-2. **Implement the handler**: a method on `*Handler` with the
+2. **Declare its annotations**: pick the constructor in
+   `annotations.go` matching the verb class — `readOnlyAnnotations`,
+   `createAnnotations`, `updateAnnotations`, `replaceAnnotations`
+   (full-replacement writes that can clear a collection),
+   `deleteAnnotations` — with a sentence-case title. The title is
+   mirrored onto the definition automatically. The
+   `TestEveryToolDeclaresAnnotationsAndOutputSchema` gate fails the
+   build if the hints drift from the name-prefix scope gate, so the
+   class you pick must match the prefix you pick in step 6.
+3. **Declare an output schema**: `OutputSchema` with an object root
+   (`objectSchema(...)` / `dataOutputSchema(...)`), matching what
+   `marshalResult` will actually return. If the handler returns a bare
+   slice, wrap it as `{data: [...]}` first — `structuredContent` must
+   be a JSON object, and once an `outputSchema` is declared the server
+   MUST return conforming structured content (MCP 2025-06-18). Never
+   pair an output schema with `textResult`.
+4. **Implement the handler**: a method on `*Handler` with the
    signature `func(ctx context.Context, orgSlug string, args map[string]any) ToolCallResult`.
-3. **Register it**: add a `{def, fn}` entry to the slice in
+5. **Register it**: add a `{def, fn}` entry to the slice in
    `registerTools()` ([`tools.go:9`](../../server/internal/mcp/tools.go)).
-4. **Pick the right name prefix** for the scope gate:
+6. **Pick the right name prefix** for the scope gate:
    - `list_…` / `get_…` / read verbs → mutation prefix detection skips it; `mcp:read` allowed.
    - `create_…` / `update_…` / `delete_…` / `set_…` → blocked from `mcp:read`.
-5. **Use `objectProp("description")` for nested-object args** — the
+7. **Use `objectProp("description")` for nested-object args** — the
    LLM will pass JSON; `stringProp` would force the model to stringify
    first.
-6. **Limit response size**. Tools that can return many rows must accept
+8. **Limit response size**. Tools that can return many rows must accept
    `limit` (and ideally `cursor`) and clamp to a reasonable max
    (existing tools cap at 100). LLMs degrade fast on huge responses.
-7. **Test**: add an entry to the matching `tools_<area>_test.go`. The
+9. **Test**: add an entry to the matching `tools_<area>_test.go`. The
    test framework spins up the handler with a fake DB and invokes the
    tool over the JSON-RPC surface — same shape the LLM client uses.
+
+### Writing the description
+
+Descriptions are graded (Glama TDQS re-scores the published server on
+Behavior / Conciseness / Completeness / Parameters / Purpose / Usage
+Guidelines), and the four things every description must carry are:
+
+1. **What it returns** — one sentence, e.g. `Returns the updated section.`
+   or `Returns {data: [...]}.`
+2. **Side effects and prerequisites** — what a successful call does to
+   the world, what must already exist, what is refused.
+3. **Sibling routing** — `Use X instead of Y when Z.`, explicit, so an
+   agent never has to infer usage from the tool name.
+4. **The exact auth trailer** — reads end with
+   `Read-only: works with mcp:read tokens.`; writes end with
+   `Requires the mcp scope (mcp:read tokens are refused) and at least
+   the user role in the organization.`
+
+Keep it front-loaded and tight (~4–6 sentences); never restate what
+the input schema already documents parameter-by-parameter — that earns
+no points and costs tokens. `TestAllToolDescriptionsMeetMinimum`
+enforces the floor.
 
 ## Caveats
 
@@ -367,11 +412,15 @@ here. The image already defaults to SQLite under `/data`:
 - **No streaming partial results** today. A `list_*` tool returns the
   full slice (capped by `limit`); the SSE binding is used for the
   protocol envelope, not for chunked tool output.
-- **`structuredContent` not yet wired.** Tools today return
-  `Content` (textual). Once the next protocol version's
-  `structuredContent` / `outputSchema` lands, the tools that already
-  return structured shapes (counts, JSON results) can declare them
-  and skip the JSON.stringify round-trip on the client side.
+- **`structuredContent` and `outputSchema` are wired (2025-06-18).**
+  Every tool declares an object-rooted `outputSchema` and returns its
+  payload both as `structuredContent` and as stringified JSON in
+  `Content` (the dual-form transition pattern). Two shape changes came
+  with it: list tools that used to return a bare JSON array now wrap
+  rows as `{data: [...]}` (what MCP requires for `structuredContent`,
+  and what the REST API already does), and the delete / replace tools
+  that used to return a plain confirmation sentence now return a small
+  object (`{deleted: true, identifier: ...}` etc.).
 
 ## Where to look in the code
 
@@ -382,6 +431,7 @@ here. The image already defaults to SQLite under `/data`:
 | Protocol version negotiation | [`server/internal/mcp/handler.go:45`](../../server/internal/mcp/handler.go) |
 | Scope gating | [`server/internal/mcp/scope.go`](../../server/internal/mcp/scope.go) |
 | Tool registry | [`server/internal/mcp/tools.go`](../../server/internal/mcp/tools.go) |
+| Tool annotation constructors | [`server/internal/mcp/annotations.go`](../../server/internal/mcp/annotations.go) |
 | Tool implementations | [`server/internal/mcp/tools_*.go`](../../server/internal/mcp/) |
 | Prompts | [`server/internal/mcp/prompts.go`](../../server/internal/mcp/prompts.go) |
 | stdio bridge (`sp mcp`) | [`server/pkg/cli/mcp.go`](../../server/pkg/cli/mcp.go) |

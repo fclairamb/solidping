@@ -28,18 +28,63 @@ const recurrenceDoc = "One of \"none\", \"daily\", \"weekly\", or \"monthly\". T
 	"months). Each occurrence lasts endAt - startAt. Omit (or \"none\") for a one-off window. " +
 	"iCalendar RRULE strings are NOT supported."
 
+// maintenanceWindowOutputProps documents the window fields agents rely on,
+// verified against maintenancewindows.MaintenanceWindowResponse's JSON tags.
+// Optional (omitempty) fields are left out of `required`.
+func maintenanceWindowOutputProps() map[string]any {
+	return map[string]any{
+		propUID:              stringProp("Maintenance window UID."),
+		propTitle:            stringProp("Human-readable title."),
+		schemaKeyDescription: stringProp("Free-text description, when set."),
+		propStartAt:          stringProp("RFC3339 start of one occurrence."),
+		propEndAt:            stringProp("RFC3339 end of one occurrence."),
+		"recurrence":         stringProp("\"none\", \"daily\", \"weekly\" or \"monthly\"."),
+		"recurrenceEnd":      stringProp("RFC3339 timestamp at which a recurring window stops, when set."),
+		schemaKeyCreatedAt:   stringProp("RFC3339 creation timestamp."),
+		schemaKeyUpdatedAt:   stringProp("RFC3339 last-update timestamp."),
+		propStatus:           stringProp("Server-computed lifecycle: \"active\", \"upcoming\" or \"past\"."),
+		"nextOccurrences": map[string]any{
+			schemaKeyType: []string{schemaTypeArray, schemaTypeNull},
+			schemaKeyItems: map[string]any{
+				schemaKeyType: schemaTypeObject,
+				schemaKeyProperties: map[string]any{
+					propStartAt: stringProp("RFC3339 start of this occurrence."),
+					propEndAt:   stringProp("RFC3339 end of this occurrence."),
+				},
+			},
+			schemaKeyDescription: "Next concrete activations (up to 3), active one first; " +
+				"null once none remain (e.g. a past one-off window).",
+		},
+	}
+}
+
+// maintenanceWindowOutputSchema is the output shape of the single-window
+// tools (get, create, update): the window object itself.
+func maintenanceWindowOutputSchema() map[string]any {
+	return objectSchema(maintenanceWindowOutputProps(), []string{
+		propUID, propTitle, propStartAt, propEndAt, "recurrence", propStatus,
+	})
+}
+
 func listMaintenanceWindowsDef() ToolDefinition {
 	return ToolDefinition{
 		Name: "list_maintenance_windows",
-		Description: "List maintenance windows for the organization, optionally filtered by status. " +
-			"Each window includes a server-computed status (active/upcoming/past) and " +
-			"nextOccurrences (the next concrete activations).",
+		Description: "List maintenance windows for the organization, optionally filtered by " +
+			"lifecycle status. Returns {data: [...]}; each window carries its schedule, " +
+			"recurrence, server-computed status (active/upcoming/past) and nextOccurrences. " +
+			"Use get_maintenance_window to inspect a single window by UID. " +
+			"Read-only: works with mcp:read tokens.",
 		InputSchema: objectSchema(map[string]any{
 			propStatus: stringProp(
 				"Filter by lifecycle: \"upcoming\", \"active\", or \"past\". Omit for all windows.",
 			),
 			propLimit: intProp("Max results (1-200, default 50)."),
 		}, nil),
+		OutputSchema: dataOutputSchema(
+			"Maintenance windows on this page.",
+			maintenanceWindowOutputProps(),
+		),
+		Annotations: readOnlyAnnotations("List maintenance windows"),
 	}
 }
 
@@ -58,18 +103,24 @@ func (h *Handler) toolListMaintenanceWindows(
 	if err != nil {
 		return errorResult(err.Error())
 	}
-	return marshalResult(windows)
+	// Bare slice wrapped in the repo-standard {data: [...]} envelope: MCP
+	// structuredContent must be an object.
+	return marshalResult(map[string]any{schemaKeyData: windows})
 }
 
 func getMaintenanceWindowDef() ToolDefinition {
 	return ToolDefinition{
 		Name: "get_maintenance_window",
-		Description: "Get a single maintenance window by UID, including title, schedule, " +
-			"recurrence rule, server-computed status (active/upcoming/past), and " +
-			"nextOccurrences (the next concrete activations).",
+		Description: "Get one maintenance window by UID: title, schedule, recurrence, " +
+			"server-computed status (active/upcoming/past) and nextOccurrences. Attached " +
+			"checks are NOT part of the response — set_maintenance_window_checks fully " +
+			"replaces them. Use list_maintenance_windows to search or filter. " +
+			"Read-only: works with mcp:read tokens.",
 		InputSchema: objectSchema(map[string]any{
 			propUID: stringProp("Maintenance window UID returned by list_maintenance_windows."),
 		}, []string{propUID}),
+		OutputSchema: maintenanceWindowOutputSchema(),
+		Annotations:  readOnlyAnnotations("Get maintenance window"),
 	}
 }
 
@@ -90,9 +141,13 @@ func (h *Handler) toolGetMaintenanceWindow(
 func createMaintenanceWindowDef() ToolDefinition {
 	return ToolDefinition{
 		Name: "create_maintenance_window",
-		Description: "Schedule a new maintenance window. Optionally attach checks in the same call " +
-			"by passing checkUids — the underlying service does this in two steps but the tool " +
-			"handles it for you.",
+		Description: "Schedule a new maintenance window and return it (uid, schedule, " +
+			"recurrence, status, nextOccurrences). Pass checkUids/checkGroupUids to attach " +
+			"what the window suppresses in the same call; the window is created first, then " +
+			"the checks are attached. Use set_maintenance_window_checks to attach checks to " +
+			"an existing window and update_maintenance_window to change one. Requires the " +
+			"mcp scope (mcp:read tokens are refused) and at least the user role in the " +
+			"organization.",
 		InputSchema: objectSchema(map[string]any{
 			propTitle: stringProp("Human-readable title (required), e.g. \"DB upgrade\"."),
 			propStartAt: stringProp(
@@ -118,6 +173,8 @@ func createMaintenanceWindowDef() ToolDefinition {
 					"Example: [\"groupUid1\"]. Pass an empty array (or omit) for no groups.",
 			),
 		}, []string{propTitle, propStartAt, propEndAt}),
+		OutputSchema: maintenanceWindowOutputSchema(),
+		Annotations:  createAnnotations("Create maintenance window"),
 	}
 }
 
@@ -188,17 +245,28 @@ func buildCreateMaintenanceRequest(args map[string]any) (*maintenancewindows.Cre
 
 func updateMaintenanceWindowDef() ToolDefinition {
 	return ToolDefinition{
-		Name:        "update_maintenance_window",
-		Description: "Update a maintenance window (PATCH semantics — only provided fields change).",
+		Name: "update_maintenance_window",
+		Description: "Update an existing maintenance window by UID and return the updated " +
+			"window. PATCH semantics — only the fields you pass change, and the UID must " +
+			"refer to a live window (soft-deleted or unknown UIDs are not-found). Moving " +
+			"startAt re-anchors any recurrence to the new start, and the effective end must " +
+			"stay after start. Use create_maintenance_window to schedule a new window and " +
+			"set_maintenance_window_checks to change which checks it covers — this tool " +
+			"never touches attachments. Requires the mcp scope (mcp:read tokens are " +
+			"refused) and at least the user role in the organization.",
 		InputSchema: objectSchema(map[string]any{
 			propUID:              stringProp("Maintenance window UID (required)."),
 			propTitle:            stringProp("New title for the maintenance window."),
 			propStartAt:          stringProp("New start (RFC3339, e.g. \"2026-05-03T22:00:00Z\")."),
 			propEndAt:            stringProp("New end (RFC3339, must be later than startAt)."),
 			schemaKeyDescription: stringProp("New free-text description shown in the UI."),
-			propRecurrence:       stringProp(recurrenceDoc + " Pass an empty string to clear (make it one-off)."),
-			propRecurrenceEnd:    stringProp("New RFC3339 recurrence end timestamp."),
+			propRecurrence: stringProp(recurrenceDoc +
+				" When updating, omitting this field keeps the current recurrence; " +
+				"pass \"none\" to clear it (make the window one-off)."),
+			propRecurrenceEnd: stringProp("New RFC3339 recurrence end timestamp."),
 		}, []string{propUID}),
+		OutputSchema: maintenanceWindowOutputSchema(),
+		Annotations:  updateAnnotations("Update maintenance window"),
 	}
 }
 
@@ -258,11 +326,23 @@ func buildUpdateMaintenanceRequest(args map[string]any) (*maintenancewindows.Upd
 
 func deleteMaintenanceWindowDef() ToolDefinition {
 	return ToolDefinition{
-		Name:        "delete_maintenance_window",
-		Description: "Delete a maintenance window by UID (soft delete).",
+		Name: "delete_maintenance_window",
+		Description: "Delete a maintenance window by UID. Soft delete: it vanishes from " +
+			"list_maintenance_windows and get_maintenance_window immediately and stops " +
+			"suppressing its checks; the row survives in the database, but no endpoint " +
+			"restores it, so treat deletion as permanent. Returns {deleted: true, uid}. " +
+			"Use update_maintenance_window to keep the window with changes, or " +
+			"set_maintenance_window_checks to change only what it covers. Requires the mcp " +
+			"scope (mcp:read tokens are refused) and at least the user role in the " +
+			"organization.",
 		InputSchema: objectSchema(map[string]any{
 			propUID: stringProp("Maintenance window UID."),
 		}, []string{propUID}),
+		OutputSchema: objectSchema(map[string]any{
+			schemaKeyDeleted: boolProp("Always true on success."),
+			propUID:          stringProp("UID of the deleted maintenance window."),
+		}, []string{schemaKeyDeleted, propUID}),
+		Annotations: deleteAnnotations("Delete maintenance window"),
 	}
 }
 
@@ -276,15 +356,20 @@ func (h *Handler) toolDeleteMaintenanceWindow(
 	if err := h.maintenanceSvc.DeleteMaintenanceWindow(ctx, orgSlug, uid); err != nil {
 		return errorResult(err.Error())
 	}
-	return textResult("Maintenance window deleted successfully.")
+	return marshalResult(map[string]any{schemaKeyDeleted: true, propUID: uid})
 }
 
 func setMaintenanceWindowChecksDef() ToolDefinition {
 	return ToolDefinition{
 		Name: toolSetMaintenanceWindowCheck,
-		Description: "Replace the set of checks (and/or check groups) attached to a maintenance window. " +
-			"Pass empty arrays to clear. To leave one of the two collections untouched, pass it with its " +
-			"current contents — partial updates are not supported by this endpoint.",
+		Description: "Replace the set of checks and check groups attached to an existing " +
+			"maintenance window, in one write. Both lists are set together: a list you omit " +
+			"or pass empty clears that side, and a list you keep must be passed with its " +
+			"current contents (partial updates are not supported). Returns {updated: true, " +
+			"checkUids, checkGroupUids} — the attachments as they now stand. Use it " +
+			"instead of create_maintenance_window to attach checks to an existing window; " +
+			"update_maintenance_window never touches attachments. Requires the mcp scope " +
+			"(mcp:read tokens are refused) and at least the user role in the organization.",
 		InputSchema: objectSchema(map[string]any{
 			propUID: stringProp("Maintenance window UID."),
 			propCheckUIDs: arrayOfStringsProp(
@@ -294,6 +379,12 @@ func setMaintenanceWindowChecksDef() ToolDefinition {
 				"Array of check-group UIDs to attach. Example: [\"groupUid1\"]. Empty array clears.",
 			),
 		}, []string{propUID}),
+		OutputSchema: objectSchema(map[string]any{
+			schemaKeyUpdated:   boolProp("Always true on success."),
+			propCheckUIDs:      arrayOfStringsProp("Check UIDs attached after this call (empty if cleared)."),
+			propCheckGroupUIDs: arrayOfStringsProp("Check-group UIDs attached after this call (empty if cleared)."),
+		}, []string{schemaKeyUpdated, propCheckUIDs, propCheckGroupUIDs}),
+		Annotations: replaceAnnotations("Set maintenance window checks"),
 	}
 }
 
@@ -319,5 +410,9 @@ func (h *Handler) toolSetMaintenanceWindowChecks(
 	if err != nil {
 		return errorResult(err.Error())
 	}
-	return textResult("Maintenance window checks updated successfully.")
+	return marshalResult(map[string]any{
+		schemaKeyUpdated:   true,
+		propCheckUIDs:      checkUIDs,
+		propCheckGroupUIDs: groupUIDs,
+	})
 }

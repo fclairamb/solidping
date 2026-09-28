@@ -26,11 +26,57 @@ func diagnoseCheckDef() ToolDefinition {
 			"a single check's current state in one call: current status, recent raw " +
 			"results across regions, any active incident, and the most recent resolved " +
 			"incident. Use this instead of chaining list_results + list_incidents " +
-			"when a human asks \"what's wrong with check X?\".",
+			"when a human asks \"what's wrong with check X?\". Returns {check, " +
+			"freshness, regionalIssue, recentResults, activeIncident, " +
+			"lastResolvedIncident} — freshness and regionalIssue are omitted when " +
+			"there is nothing to report, the incidents are null when there are none. " +
+			"Read-only: works with mcp:read tokens.",
 		InputSchema: objectSchema(map[string]any{
 			propIdentifier:         stringProp("Check UID or slug (e.g. \"api-prod\" or a UUID)."),
 			propRecentResultsLimit: intProp("Recent raw results per region (1-20, default 5)."),
 		}, []string{propIdentifier}),
+		OutputSchema: objectSchema(map[string]any{
+			schemaKeyCheck: checkOutputSchema(),
+			"freshness": arrayOfStringsProp(
+				"One sentence per silent region naming it and since when it has gone " +
+					"quiet; empty when every region is reporting.",
+			),
+			"regionalIssue": stringProp(
+				"One sentence describing the regional issue (some, but fewer than the " +
+					"quorum, of the check's regions failing); empty when there is none.",
+			),
+			"recentResults": arrayOfObjectsProp(
+				"Newest-first raw results, trimmed to recentResultsLimit per region; "+
+					"includes region, output and durationMs.",
+				resultResponseOutputProps(),
+			),
+			"activeIncident": map[string]any{
+				schemaKeyType:        []string{schemaTypeObject, schemaTypeNull},
+				schemaKeyDescription: "Currently-open incident for the check, or null when none is open.",
+				schemaKeyProperties:  diagnoseIncidentOutputProps(),
+			},
+			"lastResolvedIncident": map[string]any{
+				schemaKeyType:        []string{schemaTypeObject, schemaTypeNull},
+				schemaKeyDescription: "Most recently resolved incident for the check, or null when there is none.",
+				schemaKeyProperties:  diagnoseIncidentOutputProps(),
+			},
+		}, []string{schemaKeyCheck, "recentResults", "activeIncident", "lastResolvedIncident"}),
+		Annotations: readOnlyAnnotations("Diagnose check"),
+	}
+}
+
+// diagnoseIncidentOutputProps documents the incident fields the diagnosis
+// surfaces. The DTO carries more (acknowledgement, snooze, membership…);
+// extra properties stay allowed by default.
+func diagnoseIncidentOutputProps() map[string]any {
+	return map[string]any{
+		propUID:             stringProp("Incident UID."),
+		schemaTypeNumber:    intProp("Short per-org reference, rendered as #42."),
+		propCheckUID:        stringProp("UID of the check the incident belongs to."),
+		propKind:            stringProp("What the incident is about: check, slo_burn or degraded."),
+		propState:           stringProp("Incident state, e.g. active or resolved."),
+		schemaKeyStartedAt:  stringProp("RFC3339 timestamp of the incident's onset."),
+		schemaKeyResolvedAt: stringProp("RFC3339 resolution timestamp; absent while the incident is open."),
 	}
 }
 
@@ -107,7 +153,7 @@ func (h *Handler) fetchRecentResults(
 		Checks:      []string{check.UID},
 		PeriodTypes: []string{"raw"},
 		Size:        rawSize,
-		With:        []string{"region", "output", "durationMs"},
+		With:        []string{schemaKeyRegion, "output", "durationMs"},
 	})
 	if err != nil {
 		return nil, err

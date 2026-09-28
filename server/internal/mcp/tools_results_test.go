@@ -89,8 +89,8 @@ func TestBuildListResultsOptions_ExplicitValuesNotOverridden(t *testing.T) {
 	explicit := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
 	now := time.Date(2026, 5, 3, 12, 0, 0, 0, time.UTC)
 	opts := buildListResultsOptions(map[string]any{
-		"periodType":       "day",
-		"periodStartAfter": explicit.Format(time.RFC3339),
+		"periodType":         "day",
+		propPeriodStartAfter: explicit.Format(time.RFC3339),
 	}, now)
 
 	r.Equal([]string{periodTypeDay}, opts.PeriodTypes)
@@ -105,7 +105,7 @@ func TestBuildListResultsOptions_PeriodEndBeforeAloneStillDefaultsStart(t *testi
 	end := time.Date(2026, 5, 3, 11, 0, 0, 0, time.UTC)
 	now := time.Date(2026, 5, 3, 12, 0, 0, 0, time.UTC)
 	opts := buildListResultsOptions(map[string]any{
-		"periodEndBefore": end.Format(time.RFC3339),
+		propPeriodEndBefore: end.Format(time.RFC3339),
 	}, now)
 
 	r.NotNil(opts.PeriodStartAfter)
@@ -151,5 +151,54 @@ func TestListResultsResponseWithFilter_AlwaysIncludesEffectiveFilter(t *testing.
 	filter, ok := decoded["effectiveFilter"].(map[string]any)
 	r.True(ok)
 	r.Contains(filter, "periodType")
-	r.Contains(filter, "periodStartAfter")
+	r.Contains(filter, propPeriodStartAfter)
+}
+
+// TestListResultsDef_AnnotationsAndOutputSchema: list_results is read-only
+// and its outputSchema mirrors the ListResultsResponseWithFilter payload
+// ({data, pagination, window, effectiveFilter}).
+func TestListResultsDef_AnnotationsAndOutputSchema(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	def := listResultsDef()
+
+	r.NotNil(def.Annotations)
+	r.True(def.Annotations.ReadOnlyHint)
+	r.False(def.Annotations.DestructiveHint)
+	r.True(def.Annotations.IdempotentHint)
+	r.False(def.Annotations.OpenWorldHint)
+	r.Equal("List results", def.Annotations.Title)
+	r.Contains(def.Description, "Read-only: works with mcp:read tokens.")
+
+	schema, ok := def.OutputSchema.(map[string]any)
+	r.True(ok)
+	r.Equal(schemaTypeObject, schema[schemaKeyType])
+
+	props, ok := schema[schemaKeyProperties].(map[string]any)
+	r.True(ok)
+
+	for _, key := range []string{"data", schemaKeyPagination, "window", "effectiveFilter"} {
+		r.Contains(props, key)
+	}
+
+	data, ok := props["data"].(map[string]any)
+	r.True(ok)
+	r.Equal(schemaTypeArray, data[schemaKeyType])
+
+	items, ok := data[schemaKeyItems].(map[string]any)
+	r.True(ok)
+	itemProps, ok := items[schemaKeyProperties].(map[string]any)
+	r.True(ok)
+
+	for _, key := range []string{propUID, propCheckUID, "periodType", "periodStart", propStatus} {
+		r.Contains(itemProps, key)
+	}
+
+	effective, ok := props["effectiveFilter"].(map[string]any)
+	r.True(ok)
+	effectiveProps, ok := effective[schemaKeyProperties].(map[string]any)
+	r.True(ok)
+	r.Contains(effectiveProps, "periodType")
+	r.Contains(effectiveProps, propPeriodStartAfter)
 }

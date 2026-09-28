@@ -15,9 +15,11 @@ func listChecksDef() ToolDefinition {
 	return ToolDefinition{
 		Name: toolListChecks,
 		Description: "List monitoring checks for the organization, optionally filtered by " +
-			"name/slug substring, labels, or check group. Use this for browsing or " +
-			"filtering a fleet of checks. To investigate a single check's current " +
-			"health, use diagnose_check instead.",
+			"name/slug substring, labels, or check group. Returns {data, pagination}; " +
+			"pass pagination.cursor back as cursor for the next page. Use this for " +
+			"browsing or filtering a fleet of checks. To investigate a single check's " +
+			"current health, use diagnose_check instead; if you already know its UID " +
+			"or slug, get_check is more direct. Read-only: works with mcp:read tokens.",
 		InputSchema: objectSchema(map[string]any{
 			"q": stringProp(
 				"Case-insensitive substring match on check name or slug, e.g. \"api\".",
@@ -37,13 +39,29 @@ func listChecksDef() ToolDefinition {
 			propLimit:  intProp(descLimit),
 			propCursor: stringProp(descCursor),
 		}, nil),
+		OutputSchema: objectSchema(map[string]any{
+			schemaKeyData: arrayOfObjectsProp(
+				"Checks on this page.",
+				checkResponseOutputProps(),
+			),
+			schemaKeyPagination: map[string]any{
+				schemaKeyType:        schemaTypeObject,
+				schemaKeyDescription: "Cursor pagination state for the filter.",
+				schemaKeyProperties: map[string]any{
+					"total":    intProp("Total checks matching the filter."),
+					propCursor: stringProp("Opaque cursor for the next page; absent on the last page."),
+					"limit":    intProp("Page size used for this response."),
+				},
+			},
+		}, nil),
+		Annotations: readOnlyAnnotations("List checks"),
 	}
 }
 
 func (h *Handler) toolListChecks(ctx context.Context, orgSlug string, args map[string]any) ToolCallResult {
 	opts := checks.ListChecksOptions{
 		Query:  getStringArg(args, "q"),
-		Cursor: getStringArg(args, "cursor"),
+		Cursor: getStringArg(args, propCursor),
 		Limit:  getIntArg(args, "limit", 20),
 	}
 
@@ -107,9 +125,11 @@ func parseLabelsArg(raw any) (map[string]string, string) {
 func getCheckDef() ToolDefinition {
 	return ToolDefinition{
 		Name: toolGetCheck,
-		Description: "Get a single check's metadata by UID or slug. For a full triage " +
-			"briefing (current status + recent results + active incidents), prefer " +
-			"diagnose_check instead.",
+		Description: "Get a single check's metadata by UID or slug; ask for extras with " +
+			"with=lastResult,lastStatusChange. For a full triage briefing (current " +
+			"status + recent results + active incidents), prefer diagnose_check; to " +
+			"search by name or label, use list_checks. Read-only: works with " +
+			"mcp:read tokens.",
 		InputSchema: objectSchema(map[string]any{
 			propIdentifier: stringProp(descIdentifier),
 			propWith: stringProp(
@@ -119,11 +139,13 @@ func getCheckDef() ToolDefinition {
 					"Example: \"lastResult,lastStatusChange\".",
 			),
 		}, []string{propIdentifier}),
+		OutputSchema: checkOutputSchema(),
+		Annotations:  readOnlyAnnotations("Get check"),
 	}
 }
 
 func (h *Handler) toolGetCheck(ctx context.Context, orgSlug string, args map[string]any) ToolCallResult {
-	identifier := getStringArg(args, "identifier")
+	identifier := getStringArg(args, propIdentifier)
 	if identifier == "" {
 		return errorResult("identifier is required")
 	}
@@ -151,9 +173,15 @@ func (h *Handler) toolGetCheck(ctx context.Context, orgSlug string, args map[str
 func createCheckDef() ToolDefinition {
 	return ToolDefinition{
 		Name: toolCreateCheck,
-		Description: "Create a new monitoring check. If you don't know what config shape a " +
-			"given type expects, call get_check_type_samples first to fetch a working " +
-			"starting config, then use validate_check to dry-run before creating.",
+		Description: "Create a new monitoring check and return it (uid, slug, placement, " +
+			"resolved periods). If you don't know what config shape a given type " +
+			"expects, call get_check_type_samples first to fetch a working starting " +
+			"config, then use validate_check to dry-run before creating. An enabled " +
+			"check starts running on its next tick and opens an incident after its " +
+			"confirmation period; pass enabled:false to create it paused. A duplicate " +
+			"slug is rejected with a conflict, never merged — use update_check to " +
+			"change an existing check. Requires the mcp scope (mcp:read tokens are " +
+			"refused) and at least the user role in the organization.",
 		InputSchema: objectSchema(map[string]any{
 			schemaKeyName: stringProp(
 				"Human-readable name, e.g. \"API production\". Auto-generated from URL if omitted.",
@@ -171,7 +199,7 @@ func createCheckDef() ToolDefinition {
 					"{\"url\": \"https://example.com\", \"method\": \"GET\"}. " +
 					"Use get_check_type_samples to discover the shape for other types.",
 			),
-			"regions": arrayOfStringsProp(
+			schemaKeyRegions: arrayOfStringsProp(
 				"Region slugs to pin the check to, e.g. [\"eu-west-1\",\"us-east-1\"]. An explicit list " +
 					"means placement \"pinned\": the check runs from exactly these regions and is never " +
 					"moved. When omitted, the check is placed automatically (placement \"auto\"): the " +
@@ -180,7 +208,7 @@ func createCheckDef() ToolDefinition {
 					"that goes dark. (An org whose own default_regions names a private location keeps " +
 					"pinned checks on those defaults.)",
 			),
-			"placement": stringProp(
+			schemaKeyPlacement: stringProp(
 				"\"pinned\" or \"auto\". Omit to infer it: regions given means pinned, otherwise auto. " +
 					"\"auto\" cannot be combined with regions. Private (@) regions are pinned-only.",
 			),
@@ -194,7 +222,7 @@ func createCheckDef() ToolDefinition {
 					"[\"paris\",\"gravelines\"]. Omit for any cloud region. Implies placement auto.",
 			),
 			schemaKeyEnabled: boolProp("Whether the check should run. Default true."),
-			"period": stringProp(
+			schemaKeyPeriod: stringProp(
 				"Check interval as HH:MM:SS, e.g. \"00:00:30\" for 30 seconds, " +
 					"\"00:01:00\" for 1 minute (default).",
 			),
@@ -218,6 +246,8 @@ func createCheckDef() ToolDefinition {
 			"failQuorum": stringProp(failQuorumDescription +
 				" Omit for the default."),
 		}, []string{schemaKeyConfig}),
+		OutputSchema: checkOutputSchema(),
+		Annotations:  createAnnotations("Create check"),
 	}
 }
 
@@ -228,17 +258,17 @@ func (h *Handler) toolCreateCheck(ctx context.Context, orgSlug string, args map[
 	}
 
 	req := checks.CreateCheckRequest{
-		Name:        getStringArg(args, "name"),
-		Slug:        getStringArg(args, "slug"),
-		Type:        getStringArg(args, "type"),
+		Name:        getStringArg(args, schemaKeyName),
+		Slug:        getStringArg(args, schemaKeySlug),
+		Type:        getStringArg(args, schemaKeyType),
 		Config:      config,
-		Regions:     getStringSliceArg(args, "regions"),
-		Enabled:     getBoolArg(args, "enabled"),
-		Description: getStringArg(args, "description"),
+		Regions:     getStringSliceArg(args, schemaKeyRegions),
+		Enabled:     getBoolArg(args, schemaKeyEnabled),
+		Description: getStringArg(args, schemaKeyDescription),
 		Labels:      getStringMapArg(args, "labels"),
 	}
 
-	if p := getStringArg(args, "period"); p != "" {
+	if p := getStringArg(args, schemaKeyPeriod); p != "" {
 		req.Period = &p
 	}
 
@@ -271,21 +301,24 @@ func (h *Handler) toolCreateCheck(ctx context.Context, orgSlug string, args map[
 func updateCheckDef() ToolDefinition {
 	return ToolDefinition{
 		Name: toolUpdateCheck,
-		Description: "Update an existing check by UID or slug. PATCH semantics — only the " +
-			"fields you pass are modified, others stay as-is.",
+		Description: "Update an existing check by UID or slug and return the updated check. " +
+			"PATCH semantics — only the fields you pass are modified, others stay as-is. " +
+			"Use create_check to make a new check and delete_check to remove one; to " +
+			"pause without deleting, set enabled:false instead. Requires the mcp scope " +
+			"(mcp:read tokens are refused) and at least the user role in the organization.",
 		InputSchema: objectSchema(map[string]any{
 			propIdentifier:  stringProp(descIdentifier),
 			schemaKeyName:   stringProp("New human-readable name, e.g. \"API production\"."),
 			schemaKeySlug:   stringProp("New URL-friendly slug, e.g. \"api-prod\"."),
 			schemaKeyConfig: objectProp("Replace check-specific config (full object — not merged)."),
-			"regions": arrayOfStringsProp(
+			schemaKeyRegions: arrayOfStringsProp(
 				"Pin the check to exactly these regions, e.g. [\"eu-west-1\",\"us-east-1\"] " +
 					"(placement becomes \"pinned\"). An empty array puts the check back on the default " +
 					"placement: automatic across regionCount healthy regions (unless the org's own " +
 					"default_regions names a private location, which pins it to those defaults). The " +
 					"check keeps running either way; use enabled: false to stop it.",
 			),
-			"placement": stringProp(
+			schemaKeyPlacement: stringProp(
 				"Switch the placement: \"auto\" lets the scheduler place the check (keeping its current " +
 					"region count and every current region still healthy) and move it off a region that " +
 					"goes dark; \"pinned\" freezes the current regions unless regions is also given.",
@@ -300,7 +333,7 @@ func updateCheckDef() ToolDefinition {
 			schemaKeyEnabled: boolProp(
 				"Toggle whether the check runs. Set to false to pause the check, true to resume it.",
 			),
-			"period": stringProp(
+			schemaKeyPeriod: stringProp(
 				"New check interval as HH:MM:SS, e.g. \"00:00:30\" for 30 seconds.",
 			),
 			propLabels: objectProp(
@@ -322,38 +355,40 @@ func updateCheckDef() ToolDefinition {
 			"failQuorum": stringProp(failQuorumDescription +
 				" Pass \"default\" to put the check back on the default."),
 		}, []string{propIdentifier}),
+		OutputSchema: checkOutputSchema(),
+		Annotations:  updateAnnotations("Update check"),
 	}
 }
 
 func (h *Handler) toolUpdateCheck(ctx context.Context, orgSlug string, args map[string]any) ToolCallResult {
-	identifier := getStringArg(args, "identifier")
+	identifier := getStringArg(args, propIdentifier)
 	if identifier == "" {
 		return errorResult("identifier is required")
 	}
 
 	req := checks.UpdateCheckRequest{}
 
-	if v := getStringArg(args, "name"); v != "" {
+	if v := getStringArg(args, schemaKeyName); v != "" {
 		req.Name = &v
 	}
-	if v := getStringArg(args, "slug"); v != "" {
+	if v := getStringArg(args, schemaKeySlug); v != "" {
 		req.Slug = &v
 	}
-	if v := getStringArg(args, "description"); v != "" {
+	if v := getStringArg(args, schemaKeyDescription); v != "" {
 		req.Description = &v
 	}
 	if v := getMapArg(args, "config"); v != nil {
 		req.Config = &v
 	}
-	if v := getStringSliceArg(args, "regions"); v != nil {
+	if v := getStringSliceArg(args, schemaKeyRegions); v != nil {
 		req.Regions = &v
 	}
 	req.Placement, req.RegionCount = placementArgs(args)
 	if v := getStringSliceArg(args, "regionPool"); v != nil {
 		req.RegionPool = &v
 	}
-	req.Enabled = getBoolArg(args, "enabled")
-	if v := getStringArg(args, "period"); v != "" {
+	req.Enabled = getBoolArg(args, schemaKeyEnabled)
+	if v := getStringArg(args, schemaKeyPeriod); v != "" {
 		req.Period = &v
 	}
 	if v := getStringMapArg(args, "labels"); v != nil {
@@ -386,15 +421,25 @@ func deleteCheckDef() ToolDefinition {
 	return ToolDefinition{
 		Name: toolDeleteCheck,
 		Description: "Soft-delete a monitoring check by UID or slug. The check stops running " +
-			"immediately; historical results are kept.",
+			"immediately, its active incidents are resolved and its scheduling jobs " +
+			"removed; historical results are kept. A check that other checks tunnel " +
+			"through is refused. To stop a check without losing it, use update_check " +
+			"with enabled:false instead. Returns {deleted: true, identifier}. Requires " +
+			"the mcp scope (mcp:read tokens are refused) and at least the user role in " +
+			"the organization.",
 		InputSchema: objectSchema(map[string]any{
 			propIdentifier: stringProp(descIdentifier),
 		}, []string{propIdentifier}),
+		OutputSchema: objectSchema(map[string]any{
+			schemaKeyDeleted: boolProp("Always true on success."),
+			propIdentifier:   stringProp("The UID or slug that was deleted."),
+		}, []string{schemaKeyDeleted, propIdentifier}),
+		Annotations: deleteAnnotations("Delete check"),
 	}
 }
 
 func (h *Handler) toolDeleteCheck(ctx context.Context, orgSlug string, args map[string]any) ToolCallResult {
-	identifier := getStringArg(args, "identifier")
+	identifier := getStringArg(args, propIdentifier)
 	if identifier == "" {
 		return errorResult("identifier is required")
 	}
@@ -403,7 +448,41 @@ func (h *Handler) toolDeleteCheck(ctx context.Context, orgSlug string, args map[
 		return checkWriteErrorResult(err)
 	}
 
-	return textResult("Check deleted successfully.")
+	return marshalResult(map[string]any{
+		schemaKeyDeleted: true,
+		propIdentifier:   identifier,
+	})
+}
+
+// checkResponseOutputProps documents the check fields agents rely on. The
+// DTO carries more (scheduling telemetry, flapping state, resolved
+// degraded-detection values…); extra properties stay allowed by default, so
+// this documents without freezing the whole DTO into the contract.
+func checkResponseOutputProps() map[string]any {
+	return map[string]any{
+		propUID:              stringProp("Check UID."),
+		schemaKeyName:        stringProp("Human-readable name."),
+		schemaKeySlug:        stringProp("URL-friendly slug."),
+		schemaKeyType:        stringProp("Check type, e.g. \"http\"."),
+		"config":             objectProp("Check-specific configuration for the type."),
+		schemaKeyEnabled:     boolProp("Whether the check runs."),
+		schemaKeyPeriod:      stringProp("Check interval as HH:MM:SS."),
+		propStatus:           stringProp("Synthesized status: up, down, validating, created or degraded."),
+		schemaKeyRegions:     arrayOfStringsProp("Regions the check runs from."),
+		schemaKeyPlacement:   stringProp("\"pinned\" or \"auto\"."),
+		"labels":             objectProp("Key-value labels."),
+		"checkGroupUid":      stringProp("Check group UID, when the check belongs to a group."),
+		schemaKeyDescription: stringProp("Free-text description."),
+		"statusChangedAt":    stringProp("RFC3339 timestamp of the last status change."),
+		"lastResultAt":       stringProp("RFC3339 timestamp of the newest real result."),
+		schemaKeyCreatedAt:   stringProp("RFC3339 creation timestamp."),
+	}
+}
+
+// checkOutputSchema is the output shape of the single-check tools
+// (get_check, create_check, update_check): the check object itself.
+func checkOutputSchema() map[string]any {
+	return objectSchema(checkResponseOutputProps(), []string{propUID})
 }
 
 // marshalResult wraps a typed value as a tool call result. It populates both
@@ -457,7 +536,7 @@ func failQuorumArg(args map[string]any) *regionquorum.Value {
 // create_check / update_check (spec 2026-09-25-06); nil when absent.
 func placementArgs(args map[string]any) (*string, *int) {
 	var placement *string
-	if v := getStringArg(args, "placement"); v != "" {
+	if v := getStringArg(args, schemaKeyPlacement); v != "" {
 		placement = &v
 	}
 

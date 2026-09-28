@@ -224,13 +224,17 @@ func (s *Service) list(
 	out := make([]*NotificationRow, 0, len(rows))
 
 	for _, r := range rows {
-		out = append(out, toNotificationRow(r))
+		out = append(out, NotificationRowFromModel(r))
 	}
 
 	return out, nil
 }
 
-func toNotificationRow(src *models.IncidentNotificationRow) *NotificationRow {
+// NotificationRowFromModel flattens a raw notification row into the public
+// DTO — the camelCase wire shape the REST list endpoints return. Exported
+// for callers that hold *models.IncidentNotificationRow and need that shape
+// (the MCP surface marshals notifications directly).
+func NotificationRowFromModel(src *models.IncidentNotificationRow) *NotificationRow {
 	row := &NotificationRow{
 		UID:         src.UID,
 		IncidentUID: src.IncidentUID,
@@ -286,7 +290,7 @@ func toNotificationRow(src *models.IncidentNotificationRow) *NotificationRow {
 
 func toNotificationDetail(src *models.IncidentNotificationRow) *NotificationDetail {
 	return &NotificationDetail{
-		NotificationRow: *toNotificationRow(src),
+		NotificationRow: *NotificationRowFromModel(src),
 		FailedAt:        src.FailedAt,
 		CancelledAt:     src.CanceledAt,
 		JobUID:          src.JobUID,
