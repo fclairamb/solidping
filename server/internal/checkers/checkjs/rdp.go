@@ -355,6 +355,8 @@ func (r *jsRuntime) newRDPObject(session checkrdp.RDPSession) *goja.Object {
 		return r.rdpAction(func(_ context.Context) (map[string]any, error) {
 			shot, err := session.ScreenshotPNG()
 			if err != nil {
+				r.screenshotErr = err.Error()
+
 				return nil, err
 			}
 

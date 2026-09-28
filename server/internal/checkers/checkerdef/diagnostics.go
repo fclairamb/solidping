@@ -35,6 +35,16 @@ type Diagnostics struct {
 	// WS control channel.
 	Screenshot *Screenshot `json:"screenshot,omitempty"`
 
+	// ScreenshotError says why a capture that WAS attempted produced no
+	// Screenshot: the capture errored or timed out, came back empty, or was
+	// dropped over the size cap (spec 2026-09-27-01). Empty when no capture was
+	// attempted, and empty when Screenshot is set.
+	//
+	// Serialized, so a deported agent's result frame carries it: the server
+	// reports it to the operator who clicked "Capture now" instead of leaving
+	// them waiting on an image that will never come.
+	ScreenshotError string `json:"screenshotError,omitempty"`
+
 	// NetworkFailure states that this probe failed to REACH its target, and
 	// names the endpoint it was dialing (spec 2026-08-21-10). It is set at
 	// transport-error sites only, which is what makes "an application-level

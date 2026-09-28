@@ -269,6 +269,8 @@ func (r *jsRuntime) newPageObject() *goja.Object {
 		return r.pageAction(func(session BrowserSession) (map[string]any, error) {
 			shot, err := session.Screenshot(r.execCtx)
 			if err != nil {
+				r.screenshotErr = checkbrowser.CaptureErrorMessage(err, 0)
+
 				return nil, err
 			}
 
@@ -445,12 +447,20 @@ func (r *jsRuntime) callContext(opts map[string]any) (context.Context, context.C
 // KEPT is decided after the script returns — see Execute — so a shot on an
 // `up` run costs a CDP round-trip and nothing else.
 func (r *jsRuntime) recordScreenshot(shot checkbrowser.Capture) {
-	if shot.Empty() || len(shot.Image) > checkbrowser.MaxScreenshotBytes {
+	switch {
+	case shot.Empty():
+		r.screenshotErr = "the capture returned an empty image"
+
+		return
+	case len(shot.Image) > checkbrowser.MaxScreenshotBytes:
+		r.screenshotErr = checkbrowser.OverCapMessage(len(shot.Image))
+
 		return
 	}
 
 	r.screenshot = shot
 	r.screenshotAt = time.Now()
+	r.screenshotErr = ""
 }
 
 // attachScreenshot hangs the recorded capture on a finished result, but only
@@ -460,12 +470,26 @@ func (r *jsRuntime) recordScreenshot(shot checkbrowser.Capture) {
 // WHETHER to shoot: a script that never calls page.screenshot() yields nothing,
 // forced or not.
 func (r *jsRuntime) attachScreenshot(result *checkerdef.Result) {
-	if result == nil || r.screenshot.Empty() {
+	if result == nil {
 		return
 	}
 
 	forced := r.execCtx != nil && checkerdef.ForcedCapture(r.execCtx)
 	if !forced && !checkbrowser.CapturableStatus(result.Status) {
+		return
+	}
+
+	if r.screenshot.Empty() {
+		// A capture the script attempted and lost says why (spec
+		// 2026-09-27-01); a script that never shot says nothing.
+		if r.screenshotErr != "" {
+			if result.Diagnostics == nil {
+				result.Diagnostics = &checkerdef.Diagnostics{}
+			}
+
+			result.Diagnostics.ScreenshotError = r.screenshotErr
+		}
+
 		return
 	}
 

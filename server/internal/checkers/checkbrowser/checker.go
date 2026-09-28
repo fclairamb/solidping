@@ -4,6 +4,7 @@ package checkbrowser
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"time"
@@ -19,10 +20,10 @@ const microsecondsPerMilli = 1000.0
 
 // MaxScreenshotBytes caps a single capture (spec 2026-08-21-01).
 //
-// Deliberately far below files.MaxFileSize (25 MB): a full-page WebP of a real
-// site is tens to a couple of hundred KB, so anything past 4 MiB is a
-// pathological page (an enormous infinite-scroll canvas, a print-stylesheet
-// poster) whose capture is worth less than the storage and transfer it costs.
+// Deliberately far below files.MaxFileSize (25 MB). Captures are viewport-only
+// at ViewportWidth x ViewportHeight (spec 2026-09-27-01), so a WebP of a real
+// page is tens of KB; anything past 4 MiB is pathological and worth less than
+// the storage and transfer it costs.
 // An over-cap capture is DROPPED, never truncated — a half-written image is
 // not an image, it is a corrupt file that renders as a broken icon three days
 // later.
@@ -44,9 +45,8 @@ const screenshotTimeout = checkconfig.ScreenshotTimeout
 // store refused the result:
 //
 //   - 25-35% smaller than JPEG at equal visual quality, which keeps
-//     MaxScreenshotBytes comfortable on the busy full-page captures the cap
-//     exists for. A full-page PNG of a real site is several times larger and
-//     would start hitting the cap on exactly those pages.
+//     MaxScreenshotBytes comfortable on busy pages. A PNG of the same viewport
+//     is several times larger.
 //   - Decoded by every browser that can open the dashboard, which is the only
 //     consumer: the incident card's <img> and the signed download URL.
 //   - It is on files.safeInlineMIME's allowlist, so it is served inline rather
@@ -58,6 +58,20 @@ const screenshotTimeout = checkconfig.ScreenshotTimeout
 // format as a value all the same, so promoting this to a system parameter is a
 // one-line follow-up.
 const ScreenshotFormat = checkerdef.ImageFormatWebP
+
+// ViewportWidth and ViewportHeight are the CSS-pixel size of every browser
+// session's viewport, set before the first navigation (spec 2026-09-27-01).
+//
+// Nothing used to set one, so Chrome's headless default of 800x600 applied and
+// pages laid out at a width many sites treat as tablet or mobile (the stored
+// images were 785 px wide: 800 minus the scrollbar). 1280x800 is a common
+// laptop size, lays a desktop site out as a desktop site, and — because every
+// capture is viewport-only — is also exactly the size of every screenshot.
+// Device scale factor 1 and not mobile, so one CSS pixel is one image pixel.
+const (
+	ViewportWidth  = 1280
+	ViewportHeight = 800
+)
 
 // screenshotQuality is the lossy-encoder quality Page.captureScreenshot is
 // driven with. Ignored by Chrome for PNG (lossless); 85 is the usual
@@ -317,17 +331,21 @@ func (c *BrowserChecker) captureScreenshot(
 	if err != nil {
 		slog.WarnContext(ctx, "browser check: screenshot capture failed",
 			"url", cfg.URL, "error", err, "budget_remaining_ms", budgetRemaining.Milliseconds())
+		setScreenshotError(result, CaptureErrorMessage(err, budgetRemaining))
 
 		return
 	}
 
 	if shot.Empty() {
+		setScreenshotError(result, "the capture returned an empty image")
+
 		return
 	}
 
 	if len(shot.Image) > MaxScreenshotBytes {
 		slog.WarnContext(ctx, "browser check: screenshot dropped, over cap",
 			"url", cfg.URL, "bytes", len(shot.Image), "cap", MaxScreenshotBytes)
+		setScreenshotError(result, OverCapMessage(len(shot.Image)))
 
 		return
 	}
@@ -336,11 +354,46 @@ func (c *BrowserChecker) captureScreenshot(
 		result.Diagnostics = &checkerdef.Diagnostics{}
 	}
 
+	result.Diagnostics.ScreenshotError = ""
 	result.Diagnostics.Screenshot = &checkerdef.Screenshot{
 		Image:      shot.Image,
 		Format:     shot.Format,
 		CapturedAt: time.Now(),
 	}
+}
+
+// setScreenshotError records why an attempted capture produced no image
+// (spec 2026-09-27-01). Diagnostics only, like the capture itself, so it can
+// never change the verdict.
+func setScreenshotError(result *checkerdef.Result, reason string) {
+	if result.Diagnostics == nil {
+		result.Diagnostics = &checkerdef.Diagnostics{}
+	}
+
+	result.Diagnostics.ScreenshotError = reason
+}
+
+// CaptureErrorMessage turns a failed capture into the sentence an operator
+// reads after "The capture failed:". A deadline is spelled out, with the
+// budget the attempt started with when it is known (budget > 0), because
+// "context deadline exceeded" says nothing about which deadline. Shared with
+// the JS runtime's page.screenshot(), which passes 0.
+func CaptureErrorMessage(err error, budget time.Duration) string {
+	if errors.Is(err, context.DeadlineExceeded) {
+		if budget > 0 {
+			return fmt.Sprintf("the capture timed out after %s", budget.Round(100*time.Millisecond))
+		}
+
+		return "the capture timed out"
+	}
+
+	return err.Error()
+}
+
+// OverCapMessage is the ScreenshotError of a capture dropped over
+// MaxScreenshotBytes. Shared with the JS runtime.
+func OverCapMessage(size int) string {
+	return fmt.Sprintf("the image was %d bytes, over the %d-byte limit", size, MaxScreenshotBytes)
 }
 
 // wantsCapture reports whether this execution may take a screenshot at all:

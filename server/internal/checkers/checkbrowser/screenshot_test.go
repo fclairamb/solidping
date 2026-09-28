@@ -145,10 +145,10 @@ func TestScreenshotFailureNeverChangesOutcome(t *testing.T) {
 			r.NoError(err)
 			r.Equal(checkerdef.StatusDown, result.Status)
 
-			if result.Diagnostics != nil {
-				r.Nil(result.Diagnostics.Screenshot,
-					"a failed or unusable capture must be dropped, never attached")
-			}
+			r.NotNil(result.Diagnostics, "an attempted capture that failed reports why")
+			r.Nil(result.Diagnostics.Screenshot,
+				"a failed or unusable capture must be dropped, never attached")
+			r.NotEmpty(result.Diagnostics.ScreenshotError)
 		})
 	}
 
@@ -351,7 +351,10 @@ func TestScreenshotStaysBoundToCallerCancellation(t *testing.T) {
 
 	r.ErrorIs(captureErr, context.Canceled,
 		"the capture context must still be canceled by the caller's cancellation")
-	r.Nil(result.Diagnostics, "and a canceled capture is dropped, not stored")
+	r.NotNil(result.Diagnostics)
+	r.Nil(result.Diagnostics.Screenshot, "and a canceled capture is dropped, not stored")
+	r.Equal(context.Canceled.Error(), result.Diagnostics.ScreenshotError,
+		"the attempted capture says why it produced nothing")
 	r.Equal(checkerdef.StatusDown, result.Status, "the verdict is untouched either way")
 }
 

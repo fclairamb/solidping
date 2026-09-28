@@ -29,9 +29,14 @@ const (
 //
 // Five seconds, deliberately: the capture runs AFTER the verdict is decided,
 // so this budget can never delay or change a check's outcome; it exists so a
-// wedged renderer cannot hold a browser slot open indefinitely, while still
-// giving a real capture (measured around 0.34s for a typical page) generous
-// headroom.
+// wedged renderer cannot hold a browser slot open indefinitely.
+//
+// Captures are viewport-only (1280x800) since spec 2026-09-27-01: measured at
+// about 1s, 43 KB WebP, on a heavy WebGL page against the production browser
+// sidecar, so 5s is generous headroom. Full-page captures were dropped because
+// on that same ~10k px page 3 of 4 WebP attempts were still running after 55s
+// (software-rendered WebGL under --disable-gpu is the likely cause), which is
+// no budget at all.
 const ScreenshotTimeout = 5 * time.Second
 
 // BrowserConfig holds the configuration for browser-based health checks.

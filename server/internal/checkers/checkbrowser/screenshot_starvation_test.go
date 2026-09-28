@@ -95,8 +95,11 @@ func TestScreenshotStarvesWithoutTheWorkersExtraBudget(t *testing.T) {
 		t.Parallel()
 
 		result := run(t, probeTimeout+flatMargin)
-		require.Nil(t, result.Diagnostics,
+		require.NotNil(t, result.Diagnostics)
+		require.Nil(t, result.Diagnostics.Screenshot,
 			"the capture starves: this IS the bug spec 2026-09-25-35 reports")
+		require.Contains(t, result.Diagnostics.ScreenshotError, "timed out",
+			"and the starved capture says so (spec 2026-09-27-01)")
 	})
 
 	t.Run("fixed worker shape: flat margin plus the checker's own ExtraBudget", func(t *testing.T) {
