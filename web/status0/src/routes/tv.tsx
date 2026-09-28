@@ -1,6 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { TvPage, TvNotConfigured } from "@/components/tv/tv-route";
-import { readSpPage } from "@/lib/sp-page";
+import { CustomDomainTvRoute } from "@/components/tv/tv-route";
 
 /**
  * TV mode at the root of a CUSTOM DOMAIN (spec 2026-08-29-08).
@@ -16,11 +15,3 @@ import { readSpPage } from "@/lib/sp-page";
 export const Route = createFileRoute("/tv")({
   component: CustomDomainTvRoute,
 });
-
-function CustomDomainTvRoute() {
-  const spPage = readSpPage();
-
-  if (!spPage) return <TvNotConfigured />;
-
-  return <TvPage org={spPage.org} slug={spPage.slug} />;
-}

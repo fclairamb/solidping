@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useParams } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import {
   isLockedError,
@@ -12,6 +13,7 @@ import {
 } from "@/api/hooks";
 import { useLanguageFromPage } from "@/hooks/useLanguageFromPage";
 import { captureKioskToken } from "@/lib/kiosk";
+import { readSpPage } from "@/lib/sp-page";
 import {
   SUMMARY_POLL_MS,
   activeIncidents,
@@ -253,4 +255,34 @@ export function TvNotConfigured() {
       </div>
     </TvShell>
   );
+}
+
+/**
+ * The `/tv` route on a CUSTOM DOMAIN: resolve the page from the host-resolved
+ * `sp-page` bootstrap stamp and hand it to the shared board, or explain that
+ * this host has no page to point a TV at.
+ *
+ * Lives here rather than in routes/tv.tsx so that file exports only `Route`
+ * (react-refresh/only-export-components).
+ */
+export function CustomDomainTvRoute() {
+  const spPage = readSpPage();
+
+  if (!spPage) return <TvNotConfigured />;
+
+  return <TvPage org={spPage.org} slug={spPage.slug} />;
+}
+
+/** The `/{org}/tv` route: the org's default page on the board. */
+export function DefaultTvRoute() {
+  const { org } = useParams({ from: "/$org/tv" });
+
+  return <TvPage org={org} />;
+}
+
+/** The `/{org}/{slug}/tv` route: a named page on the board. */
+export function SlugTvRoute() {
+  const { org, slug } = useParams({ from: "/$org/$slug_/tv" });
+
+  return <TvPage org={org} slug={slug} />;
 }
