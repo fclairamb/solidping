@@ -844,7 +844,9 @@
       "rateLimitedNoDelay": "Capture now is rate limited. Try again in a minute.",
       "forbidden": "You do not have permission to run this check.",
       "noScheduledRun": "This check has no scheduled run. Enable it to capture a screenshot.",
-      "captureFailed": "The capture could not be requested."
+      "captureFailed": "The capture could not be requested.",
+      "runFailedTitle": "The capture failed",
+      "runFailed": "The capture failed: {{reason}}"
     },
     "uidShort": "uid: {{uid}}..."
   },

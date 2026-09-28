@@ -800,7 +800,9 @@
       "rateLimitedNoDelay": "„Jetzt aufnehmen“ ist begrenzt. Versuchen Sie es in einer Minute erneut.",
       "forbidden": "Sie haben keine Berechtigung, diesen Check auszuführen.",
       "noScheduledRun": "Dieser Check hat keinen geplanten Lauf. Aktivieren Sie ihn, um einen Screenshot aufzunehmen.",
-      "captureFailed": "Die Aufnahme konnte nicht angefordert werden."
+      "captureFailed": "Die Aufnahme konnte nicht angefordert werden.",
+      "runFailedTitle": "Die Aufnahme ist fehlgeschlagen",
+      "runFailed": "Die Aufnahme ist fehlgeschlagen: {{reason}}"
     },
     "uidShort": "UID: {{uid}}..."
   },
