@@ -5,13 +5,41 @@
 
 ### Features
 
-* **dash0:** name the agent on events rows, PageHeader on the Organization layout ([#450](https://github.com/fclairamb/solidping/issues/450)) ([9646540](https://github.com/fclairamb/solidping/commit/9646540e5b7c83bf580a0de3967315fa1db20289))
+* **dash0:** **Events rows now name the private-location agent they are about.** `agent.connected`
+  and `agent.disconnected` used to read identically whatever happened — same label, `System` as
+  the actor, an empty Related column — so a day with 144 reconnects from a single agent never said
+  *which* agent, *which* private location, or *why* it dropped. A row now shows the agent's name
+  and its private location under the label, a disconnect spells out the reason (`ping timeout`,
+  `revoked`, `server shutdown` or `error`) instead of leaving the reader to guess, and the Related
+  column links the agent to **Organization → Private locations**. The payload was already recorded
+  and already returned; the dashboard simply never read it. An unknown or absent reason renders
+  nothing rather than a raw machine code, and rows predating the payload are unchanged
+  ([#450](https://github.com/fclairamb/solidping/issues/450))
+  ([9646540](https://github.com/fclairamb/solidping/commit/9646540e5b7c83bf580a0de3967315fa1db20289))
 
+* **dash0:** **The Organization layout header uses the shared page header**, so the members page
+  and every other Organization tab gets the same icon tile as the rest of the dashboard
+  ([#450](https://github.com/fclairamb/solidping/issues/450))
+  ([9646540](https://github.com/fclairamb/solidping/commit/9646540e5b7c83bf580a0de3967315fa1db20289))
 
 ### Bug Fixes
 
-* **mcp:** declare tool annotations and output schemas, wrap list results ([#448](https://github.com/fclairamb/solidping/issues/448)) ([c99645b](https://github.com/fclairamb/solidping/commit/c99645bcec54ccbc7d6d16f467199322310f0ff1))
-* **renovate:** tidy every go module depending on an updated vendored one ([#446](https://github.com/fclairamb/solidping/issues/446)) ([3460a4c](https://github.com/fclairamb/solidping/commit/3460a4c7a08866273ffd97a40696d1a7ad6fb5f1))
+* **mcp:** **MCP tools now declare what they do and what they return.** Every tool carries a
+  `title`, an `annotations` block (`readOnly` / `create` / `update` / `replace` / `delete`) and an
+  object-rooted `outputSchema`, and the server negotiates protocol `2025-06-18` alongside
+  `2025-03-26`, so a client keeps the version it asks for. Clients that decide what is safe to run
+  unattended can now read the annotations instead of inferring it from prose. **A list tool that
+  returned a bare JSON array now returns `{"data": [...]}`**, and delete/replace tools return small
+  objects such as `{"deleted": true}` — a response-shape change for any client that parsed the
+  array directly. Descriptions were rewritten to state the return value, the side effects and the
+  exact auth each tool needs ([#448](https://github.com/fclairamb/solidping/issues/448))
+  ([c99645b](https://github.com/fclairamb/solidping/commit/c99645bcec54ccbc7d6d16f467199322310f0ff1))
+
+* **deps:** **Renovate runs `go mod tidy` on every module that depends on one it updated through a
+  local `replace` directive.** Before, an update inside the vendored `server/third_party/grdp`
+  module left `server/go.mod` pinned at the old pseudo-version and every Go job failed with
+  "updates to go.mod needed" ([#446](https://github.com/fclairamb/solidping/issues/446))
+  ([3460a4c](https://github.com/fclairamb/solidping/commit/3460a4c7a08866273ffd97a40696d1a7ad6fb5f1))
 
 ## [0.35.0](https://github.com/fclairamb/solidping/compare/v0.34.0...v0.35.0) (2026-09-27)
 
