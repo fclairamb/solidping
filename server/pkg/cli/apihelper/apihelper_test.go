@@ -426,3 +426,76 @@ func TestLoginUnflaggedAccountIsSilent(t *testing.T) {
 	r.NoError(err)
 	r.NotEmpty(token)
 }
+
+// TestRenewTokenPicksUpNewerTokenFile: a credential written by another process
+// since the rejected one was read (`sp auth login` in a second terminal) wins,
+// with no network call at all.
+func TestRenewTokenPicksUpNewerTokenFile(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	helper := NewHelper(&config.Config{URL: "http://127.0.0.1:1", Org: "acme"},
+		filepath.Join(t.TempDir(), "token.json"), false)
+	r.NoError(helper.SavePAT("pat_new"))
+
+	token, err := helper.RenewToken(t.Context(), "pat_old")
+	r.NoError(err)
+	r.Equal("pat_new", token)
+}
+
+// TestRenewTokenNeverReturnsTheRejectedCredential: the same PAT that was just
+// refused is not handed back, and with nothing else configured RenewToken
+// fails instead of prompting on stdin.
+func TestRenewTokenNeverReturnsTheRejectedCredential(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	helper := NewHelper(&config.Config{URL: "http://127.0.0.1:1", Org: "acme"},
+		filepath.Join(t.TempDir(), "token.json"), false)
+	r.NoError(helper.SavePAT("pat_revoked"))
+
+	_, err := helper.RenewToken(t.Context(), "pat_revoked")
+	r.ErrorIs(err, ErrNoAuthentication)
+}
+
+// TestRenewTokenFallsBackToAutoLogin: with no usable token file, configured
+// credentials are used to log in again, and the new session is saved.
+func TestRenewTokenFallsBackToAutoLogin(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	var logins int
+
+	var mu sync.Mutex
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.URL.Path != "/api/v1/auth/login" {
+			w.WriteHeader(http.StatusNotFound)
+
+			return
+		}
+
+		mu.Lock()
+		logins++
+		mu.Unlock()
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"accessToken":"` + testJWTToken + `","refreshToken":"rt","expiresIn":3600}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	cfg := &config.Config{URL: srv.URL, Org: "acme", Auth: config.Auth{Email: "alice@acme.com", Password: "pw"}}
+	helper := NewHelper(cfg, filepath.Join(t.TempDir(), "token.json"), false)
+
+	token, err := helper.RenewToken(t.Context(), "stale")
+	r.NoError(err)
+	r.Equal(testJWTToken, token)
+
+	mu.Lock()
+	r.Equal(1, logins)
+	mu.Unlock()
+
+	saved, err := helper.readTokenFile()
+	r.NoError(err)
+	r.Equal(testJWTToken, saved.AccessToken)
+}

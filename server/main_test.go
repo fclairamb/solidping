@@ -122,3 +122,32 @@ func TestClientOrgFlag_NotSetFallsBackToDefault(t *testing.T) {
 	r.False(capture.isSet)
 	r.Equal("default", capture.org)
 }
+
+// TestClientMCPCommand pins `solidping client mcp`, the stdio bridge to a
+// remote MCP endpoint (spec 2026-09-26-04). It lives under "client", so the
+// server binary's own top-level `mcp` command (the in-process variant, spec
+// 2026-09-26-05) can never shadow it, and --url set before "client" reaches it.
+func TestClientMCPCommand(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	root := buildRootCommand()
+
+	client := findSubcommand(root, "client")
+	r.NotNil(client)
+
+	mcpCmd := findSubcommand(client, "mcp")
+	r.NotNil(mcpCmd, `"client" must have an "mcp" node`)
+
+	var gotURL string
+
+	mcpCmd.Action = func(_ context.Context, c *cli.Command) error {
+		gotURL = c.String("url")
+		return nil
+	}
+
+	err := root.Run(context.Background(),
+		[]string{"solidping", "--url", "https://solidping.acme.com", "client", "mcp"})
+	r.NoError(err)
+	r.Equal("https://solidping.acme.com", gotURL)
+}
