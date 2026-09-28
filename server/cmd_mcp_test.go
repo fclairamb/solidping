@@ -433,6 +433,51 @@ func TestMCPStdioCommandPrincipalErrors(t *testing.T) {
 	}
 }
 
+// TestMCPStdioCommandSurvivesClosedStdout: a client that closes its end of
+// stdout while stdin stays open makes the next reply fail with EPIPE, and the
+// command shuts down through its error path (exit 1, reason on stderr)
+// instead of being killed by SIGPIPE.
+func TestMCPStdioCommandSurvivesClosedStdout(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	ctx, cancel := context.WithTimeout(t.Context(), mcpStdioTimeout)
+	defer cancel()
+
+	cmd := mcpStdioChild(ctx, t, t.TempDir(), []string{"SP_NODE_ROLE=jobs"}, "mcp", "--stdio")
+
+	stdoutR, stdoutW, err := os.Pipe()
+	r.NoError(err)
+
+	cmd.Stdout = stdoutW
+
+	stdin, err := cmd.StdinPipe()
+	r.NoError(err)
+
+	var stderr bytes.Buffer
+
+	cmd.Stderr = &stderr
+
+	r.NoError(cmd.Start())
+
+	// Nobody reads the child's stdout any more.
+	r.NoError(stdoutW.Close())
+	r.NoError(stdoutR.Close())
+
+	// stdin stays open: only the failed write can end the session.
+	_, err = io.WriteString(stdin, `{"jsonrpc":"2.0","id":1,"method":"ping"}`+"\n")
+	r.NoError(err)
+
+	err = cmd.Wait()
+
+	var exitErr *exec.ExitError
+	r.ErrorAs(err, &exitErr, "must exit non-zero; stderr: %s", stderr.String())
+	r.Equal(1, exitErr.ExitCode(), "must exit 1 through the shutdown path, not die of a signal (%v); stderr: %s",
+		exitErr, stderr.String())
+	r.Contains(stderr.String(), "writing to stdout")
+	r.Contains(stderr.String(), "All runners stopped", "the server must have shut down gracefully")
+}
+
 // TestMCPCommandFlags pins the flag wiring on the real tree: --org is the
 // global flag, valid before or after "mcp", and --user / --stdio belong to
 // "mcp".

@@ -92,6 +92,16 @@ func mcpAction(ctx context.Context, cmd *cli.Command) error {
 
 	defer func() { os.Stdout = protocolOut }()
 
+	// A client that closes its end of the pipe must not kill the process:
+	// unless SIGPIPE is being notified, the Go runtime dies of it on a write
+	// to fd 1 or 2, skipping the graceful shutdown. Notified, the write
+	// returns EPIPE instead, ServeStdio fails with "writing to stdout", and
+	// the server shuts down through the normal path.
+	sigpipe := make(chan os.Signal, 1)
+	signal.Notify(sigpipe, syscall.SIGPIPE)
+
+	defer signal.Stop(sigpipe)
+
 	if err := serveMCPStdio(ctx, cmd.String(flagOrg), cmd.String(flagMCPUser), os.Stdin, protocolOut); err != nil {
 		// Logged here, on stderr, and turned into an exit code with no
 		// message: the error then never reaches main's logger.
