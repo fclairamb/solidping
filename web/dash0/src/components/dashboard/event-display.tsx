@@ -384,6 +384,14 @@ export function getEventMark(eventType?: string): EventMark {
   return { icon: Calendar, tone: MARK_QUIET };
 }
 
+// getEventLucideIcon returns the lucide icon registered for an event type
+// (EVENT_TYPE_MARKS), so a sibling table can render the same mark at its own
+// size and color without importing lucide itself. Falls back exactly like
+// getEventMark.
+export function getEventLucideIcon(eventType?: string): LucideIcon {
+  return getEventMark(eventType).icon;
+}
+
 export function isLoudEvent(eventType?: string): boolean {
   return getEventMark(eventType).loud === true;
 }
@@ -472,6 +480,54 @@ export function getEventCheckName(event: {
 
   const slug = event.payload?.check_slug;
   return typeof slug === "string" && slug.length > 0 ? slug : undefined;
+}
+
+// getEventAgentName returns the private-location agent's name captured in the
+// event payload when the event was recorded (audit.PayloadKeyTargetName =
+// "target_name"). Returns undefined when the payload has none, so callers can
+// skip the line entirely (historical rows, other event types).
+export function getEventAgentName(event: {
+  payload?: Record<string, unknown>;
+}): string | undefined {
+  const name = event.payload?.target_name;
+  return typeof name === "string" && name.length > 0 ? name : undefined;
+}
+
+// getEventAgentRegion returns the agent's private region (`@<slug>`,
+// models.AgentEventPayloadRegion = "region"), or undefined when the payload
+// has none.
+export function getEventAgentRegion(event: {
+  payload?: Record<string, unknown>;
+}): string | undefined {
+  const region = event.payload?.region;
+  return typeof region === "string" && region.length > 0 ? region : undefined;
+}
+
+// AGENT_DISCONNECT_REASONS mirrors models.AgentDisconnectReason*
+// (server/internal/db/models/event.go) — the only reason values the backend
+// writes. Kept in sync with that list.
+export const AGENT_DISCONNECT_REASONS = [
+  "ping_timeout",
+  "revoked",
+  "server_shutdown",
+  "error",
+] as const;
+
+export type AgentDisconnectReason = (typeof AGENT_DISCONNECT_REASONS)[number];
+
+// getEventDisconnectReason returns why an agent connection closed
+// (models.AgentEventPayloadReason = "reason"), narrowed to the four
+// AgentDisconnectReason* values. Anything else — missing key, historical row,
+// a future reason this build does not know — returns undefined rather than a
+// raw machine code: the row must never render `ping_timeout` untranslated.
+export function getEventDisconnectReason(event: {
+  payload?: Record<string, unknown>;
+}): AgentDisconnectReason | undefined {
+  const reason = event.payload?.reason;
+  if (typeof reason !== "string") return undefined;
+  return (AGENT_DISCONNECT_REASONS as readonly string[]).includes(reason)
+    ? (reason as AgentDisconnectReason)
+    : undefined;
 }
 
 // getEventChannelName returns the notification channel name captured in the

@@ -91,7 +91,14 @@
   },
   "links": {
     "check": "Contrôle",
-    "incident": "Incident"
+    "incident": "Incident",
+    "privateLocation": "Emplacement privé"
+  },
+  "disconnectReasons": {
+    "ping_timeout": "délai de ping dépassé",
+    "revoked": "révoqué",
+    "server_shutdown": "arrêt du serveur",
+    "error": "erreur"
   },
   "actorTypes": {
     "user": "utilisateur",

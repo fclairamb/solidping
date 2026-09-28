@@ -1,7 +1,9 @@
 import { createFileRoute, Outlet, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
+import { Building } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { TabNav } from "@/components/shared/tab-nav";
+import { PageHeader } from "@/components/shared/page-header";
 import { useOrgMembershipRequests } from "@/api/hooks";
 import { isOrgDeleted } from "@/api/client";
 
@@ -69,10 +71,11 @@ function OrganizationLayout() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">{t("org:layout.title")}</h1>
-        <p className="text-muted-foreground">{t("org:layout.subtitle")}</p>
-      </div>
+      <PageHeader
+        icon={Building}
+        title={t("org:layout.title")}
+        description={t("org:layout.subtitle")}
+      />
       <TabNav tabs={tabs} org={org} />
       <Outlet />
     </div>
