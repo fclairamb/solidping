@@ -66,3 +66,5 @@ server/tmp/
 # Claude Code
 .claude/scheduled_tasks.lock
 .claude/worktrees/
+
+.bb/
