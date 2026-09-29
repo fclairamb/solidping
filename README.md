@@ -46,7 +46,7 @@ https://github.com/user-attachments/assets/471694b0-b136-4764-86c1-5f85615c45f4
 | **Hosted** | [www.solidping.io](https://www.solidping.io) — sign up, no card needed |
 | **Live status page** | [status.solidping.io](https://status.solidping.io) — a real SolidPing instance watching the production one, from another provider in another country |
 | **Documentation** | [docs.solidping.io](https://docs.solidping.io) |
-| **Self-host** | `docker run -p 4000:4000 --hostname solidping ghcr.io/fclairamb/solidping` — SQLite by default, no other service needed. First login is `admin@solidping.io` / `solidpass`, and you must change it (see [Default Credentials](#default-credentials)). Prefer a bare binary? Every release also publishes one for Linux, macOS and Windows — see the [installation guides](https://docs.solidping.io/installation/linux). |
+| **Self-host** | `docker run -p 4000:4000 --hostname solidping ghcr.io/fclairamb/solidping` — SQLite by default, no other service needed. First login is `admin@solidping.io` / `solidpass`, and you must change it (see [Default Credentials](#default-credentials)). Prefer a bare binary? Every release also publishes one for Linux, macOS and Windows — see the [installation guides](https://docs.solidping.io/installation/linux). Also: `brew install fclairamb/tap/solidping` ([tap](https://github.com/fclairamb/homebrew-tap)), and a [Helm chart](deploy/helm/solidping). |
 
 ## Overview
 
