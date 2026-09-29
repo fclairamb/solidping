@@ -31,6 +31,12 @@ membership and integration changes, and more — each with its own label and
 badge. The dropdown's seven entries are shortcuts for the day-to-day noise,
 not the full list of what can appear here.
 
+Private-location agent rows (`agent.connected` / `agent.disconnected`) name
+the agent under the label — its name and private location, plus the reason
+it dropped (`ping timeout`, `revoked`, `server shutdown` or `error`) on a
+disconnect — and the **Related** column links the agent to
+**Organization → Private locations**.
+
 The **Actor** column names the user, integration, or system process that
 triggered the event — including a Slack, Discord, or phone acknowledgment,
 which has no dashboard user behind it.
