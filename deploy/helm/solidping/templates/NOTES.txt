@@ -1,0 +1,9 @@
+SolidPing {{ .Chart.AppVersion }} is starting.
+
+First login is admin@solidping.io / solidpass and you must change it right away.
+{{- if .Values.ingress.enabled }}
+Open {{ .Values.baseUrl }}
+{{- else }}
+kubectl port-forward svc/{{ include "solidping.fullname" . }} 4000:{{ .Values.service.port }}
+then open http://localhost:4000
+{{- end }}

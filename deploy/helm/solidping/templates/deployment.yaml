@@ -1,0 +1,96 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "solidping.fullname" . }}
+  labels:
+    {{- include "solidping.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  # One writer on the SQLite volume: never run two pods at once.
+  strategy:
+    type: {{ if eq .Values.database.type "sqlite" }}Recreate{{ else }}RollingUpdate{{ end }}
+  selector:
+    matchLabels:
+      {{- include "solidping.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "solidping.selectorLabels" . | nindent 8 }}
+    spec:
+      securityContext:
+        fsGroup: 65532
+      containers:
+        - name: solidping
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 4000
+          env:
+            - name: SP_BASE_URL
+              value: {{ .Values.baseUrl | quote }}
+            - name: SP_AUTH_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "solidping.authSecret" . }}
+                  key: jwt-secret
+            {{- if eq .Values.database.type "postgres" }}
+            - name: SP_DB_TYPE
+              value: postgres
+            - name: SP_DB_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "database.existingSecret is required with database.type=postgres" .Values.database.existingSecret }}
+                  key: url
+            {{- end }}
+            {{- range $k, $v := .Values.extraEnv }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+          {{- if .Values.icmp.enabled }}
+          securityContext:
+            capabilities:
+              add: ["NET_RAW"]
+          {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /api/mgmt/health
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/mgmt/health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 30
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if eq .Values.database.type "sqlite" }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          {{- end }}
+      {{- if eq .Values.database.type "sqlite" }}
+      volumes:
+        - name: data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.existingClaim | default (include "solidping.fullname" .) }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

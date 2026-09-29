@@ -1,0 +1,53 @@
+image:
+  repository: ghcr.io/fclairamb/solidping
+  # Defaults to the chart appVersion.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# Public URL of the instance, used in links and notifications.
+baseUrl: "http://localhost:4000"
+
+# SQLite on a persistent volume by default. SQLite means a single replica.
+# For PostgreSQL set database.type=postgres and point database.existingSecret
+# at a Secret holding the connection string under the key "url".
+database:
+  type: sqlite
+  existingSecret: ""
+
+# Secret holding the JWT signing key under the key "jwt-secret". When empty,
+# the chart generates one and keeps it across upgrades.
+auth:
+  existingSecret: ""
+
+persistence:
+  enabled: true
+  size: 1Gi
+  storageClass: ""
+  existingClaim: ""
+
+# Extra SP_* environment variables, e.g. { SP_SERVER_COMPRESSION: "true" }.
+extraEnv: {}
+
+# ICMP (ping) checks need a raw socket.
+icmp:
+  enabled: true
+
+service:
+  type: ClusterIP
+  port: 4000
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: solidping.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+resources: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
