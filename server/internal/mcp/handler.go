@@ -41,9 +41,14 @@ const (
 	cleanupInterval = 5 * time.Minute
 )
 
-// protocolVersion2025_03_26 is the MCP protocol version published in March
-// 2025. Add newer entries to supportedProtocolVersions as they ship.
-const protocolVersion2025_03_26 = "2025-03-26"
+// MCP protocol versions we can speak. 2025-06-18 is the latest we implement
+// — it is the revision that introduced tool annotations, outputSchema and
+// structuredContent, all of which this server now provides. Add newer
+// entries to the front of supportedProtocolVersions as they ship.
+const (
+	protocolVersion2025_03_26 = "2025-03-26"
+	protocolVersion2025_06_18 = "2025-06-18"
+)
 
 // negotiateProtocolVersion returns the version we should advertise to a
 // client that requested clientVersion. Per the MCP spec: if we support the
@@ -51,9 +56,8 @@ const protocolVersion2025_03_26 = "2025-03-26"
 // is responsible for disconnecting if it cannot speak what we returned.
 func negotiateProtocolVersion(clientVersion string) string {
 	supported := []string{
+		protocolVersion2025_06_18,
 		protocolVersion2025_03_26,
-		// Add new versions to the front as we adopt them, e.g.
-		// "2025-06-18" once structuredContent / outputSchema are wired.
 	}
 
 	if clientVersion != "" {

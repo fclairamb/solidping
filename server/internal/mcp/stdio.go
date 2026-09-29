@@ -211,7 +211,7 @@ type stdioReply struct {
 }
 
 // stdioNullID is the id of an error answering a message whose id is unreadable.
-var stdioNullID = json.RawMessage("null") //nolint:gochecknoglobals // Immutable JSON literal.
+var stdioNullID = json.RawMessage(schemaTypeNull) //nolint:gochecknoglobals // Immutable JSON literal.
 
 // ServeStdio serves MCP to one client over input/out until input reaches EOF or ctx
 // is canceled. Messages are handled one at a time, in order. It returns an

@@ -16,10 +16,11 @@ func TestNegotiateProtocolVersion(t *testing.T) {
 		client string
 		want   string
 	}{
-		{name: "exact match", client: protocolVersion2025_03_26, want: protocolVersion2025_03_26},
-		{name: "empty falls back to latest", client: "", want: protocolVersion2025_03_26},
-		{name: "future version falls back to latest", client: "2099-01-01", want: protocolVersion2025_03_26},
-		{name: "unknown older falls back to latest", client: "2024-01-01", want: protocolVersion2025_03_26},
+		{name: "exact match 2025-03-26", client: protocolVersion2025_03_26, want: protocolVersion2025_03_26},
+		{name: "exact match 2025-06-18", client: protocolVersion2025_06_18, want: protocolVersion2025_06_18},
+		{name: "empty falls back to latest", client: "", want: protocolVersion2025_06_18},
+		{name: "future version falls back to latest", client: "2099-01-01", want: protocolVersion2025_06_18},
+		{name: "unknown older falls back to latest", client: "2024-01-01", want: protocolVersion2025_06_18},
 	}
 
 	for _, tc := range cases {
@@ -49,14 +50,14 @@ func TestHandleInitialize_NegotiatedVersionInResponseAndSession(t *testing.T) {
 		{
 			name:        "fallback for unsupported client version",
 			clientVer:   "2099-01-01",
-			wantInResp:  protocolVersion2025_03_26,
-			sessionWant: protocolVersion2025_03_26,
+			wantInResp:  protocolVersion2025_06_18,
+			sessionWant: protocolVersion2025_06_18,
 		},
 		{
 			name:        "empty client version",
 			clientVer:   "",
-			wantInResp:  protocolVersion2025_03_26,
-			sessionWant: protocolVersion2025_03_26,
+			wantInResp:  protocolVersion2025_06_18,
+			sessionWant: protocolVersion2025_06_18,
 		},
 	}
 
