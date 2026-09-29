@@ -1743,6 +1743,13 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// ListUsers was the operator-notifications job; this is the first HTTP
 	// exposure.
 	systemActions.GET("/users", systemHandler.ListUsers)
+	// Super-admin impersonation (spec 2026-09-29-03): a 30-minute access token
+	// acting as the user, with their real role, no refresh token and no
+	// session row. Refusals (super-admin target, self, chaining, demo user,
+	// non-member) and the auth.impersonation_enabled kill switch live in
+	// auth.Service.Impersonate; what the token may not do is enforced in
+	// RequireAuth (auth.IsImpersonationAllowed) and in startSession.
+	systemActions.POST("/users/:uid/impersonate", authHandler.Impersonate)
 	// Fleet-wide agent view (spec 2026-08-05-01): org agents are already
 	// listed per-org, but system agents (kind='system', no owning org) are
 	// otherwise visible nowhere short of querying the DB by hand.

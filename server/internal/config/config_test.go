@@ -470,6 +470,26 @@ func TestApplyAuthEnv_InvalidKeepsExisting(t *testing.T) {
 	r.Equal(time.Hour, cfg.AccessTokenExpiry)
 }
 
+// TestApplyAuthEnv_ImpersonationKillSwitch: SP_AUTH_IMPERSONATION_ENABLED
+// reaches the snake_case auth.impersonation_enabled field (koanf alone would
+// bind auth.impersonation.enabled and silently leave the switch on).
+func TestApplyAuthEnv_ImpersonationKillSwitch(t *testing.T) {
+	r := require.New(t)
+
+	cfg := AuthConfig{ImpersonationEnabled: true}
+	t.Setenv("SP_AUTH_IMPERSONATION_ENABLED", "false")
+	applyAuthEnv(&cfg)
+	r.False(cfg.ImpersonationEnabled)
+
+	t.Setenv("SP_AUTH_IMPERSONATION_ENABLED", "true")
+	applyAuthEnv(&cfg)
+	r.True(cfg.ImpersonationEnabled)
+
+	t.Setenv("SP_AUTH_IMPERSONATION_ENABLED", "garbage")
+	applyAuthEnv(&cfg)
+	r.True(cfg.ImpersonationEnabled, "an unparseable value keeps the existing setting")
+}
+
 func TestApplyRealtimeEnv(t *testing.T) {
 	r := require.New(t)
 

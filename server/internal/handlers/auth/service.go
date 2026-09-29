@@ -212,7 +212,23 @@ type Claims struct {
 	// omitempty: the field is only ever meaningful when true, and every
 	// ordinary session's token stays byte-identical to what it was before.
 	Demo bool `json:"demo,omitempty"`
+	// ImpersonatedBy is the UID of the super admin who minted this token to
+	// act as UserUID (spec 2026-09-29-03). Set ONLY by Service.Impersonate,
+	// which never issues a refresh token, so the field lives exactly as long
+	// as the short-lived access token. When set, RequireSuperAdmin denies, the
+	// credential-changing surface answers IMPERSONATION_FORBIDDEN, no session
+	// can be minted from the request, and every audit row written under it
+	// carries the real actor.
+	//
+	// omitempty keeps every ordinary token byte-identical to before.
+	ImpersonatedBy string `json:"impersonatedBy,omitempty"`
 	jwt.RegisteredClaims
+}
+
+// IsImpersonation reports whether these claims come from an impersonation
+// token.
+func (c *Claims) IsImpersonation() bool {
+	return c != nil && c.ImpersonatedBy != ""
 }
 
 // RoleSuperAdmin is the role value for super administrators.
@@ -434,6 +450,10 @@ type MeResponse struct {
 	PasskeyCount              int                        `json:"passkeyCount"`
 	HasPassword               bool                       `json:"hasPassword"`
 	PendingMembershipRequests []MembershipRequestSummary `json:"pendingMembershipRequests,omitempty"`
+	// Impersonation is present only when the caller's token is a super-admin
+	// impersonation token (spec 2026-09-29-03), so every tab of the dashboard,
+	// including a freshly opened one, shows the "viewing as" banner.
+	Impersonation *ImpersonationInfo `json:"impersonation,omitempty"`
 }
 
 // MembershipRequestSummary is the compact form returned on /auth/me and
@@ -833,6 +853,16 @@ func (s *Service) startSession(
 	role, method string,
 	authContext Context,
 ) error {
+	// No session can ever be minted from an impersonated request (spec
+	// 2026-09-29-03). Switch-org, org creation and org rename all re-mint a
+	// session for the caller; under an impersonation token that would hand the
+	// admin a long-lived refresh token AS the target, which is exactly the
+	// account takeover impersonation must never allow. Checked here, at the one
+	// choke point every session path shares, rather than per route.
+	if audit.ActorFromContext(ctx).ImpersonatedBy != "" {
+		return ErrImpersonationForbidden
+	}
+
 	if err := s.db.CreateUserToken(ctx, refreshToken); err != nil {
 		return err
 	}

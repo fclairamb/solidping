@@ -114,6 +114,12 @@ const (
 	// offering sign-up — the session is perfectly valid, it is the demo that
 	// is bounded.
 	ErrorCodeDemoReadOnly ErrorCode = "DEMO_READ_ONLY"
+	// ErrorCodeImpersonationForbidden accompanies the 403 a super admin gets
+	// for anything an impersonation token must never do (spec 2026-09-29-03):
+	// change the target's credentials, mint a token or a session for them, or
+	// impersonate again. Distinct from ErrorCodeForbidden so the dashboard can
+	// explain it rather than render a dead "Permission denied".
+	ErrorCodeImpersonationForbidden ErrorCode = "IMPERSONATION_FORBIDDEN"
 )
 
 // ContextKey is the type used for context keys in middleware and handlers.

@@ -1148,6 +1148,11 @@ type AuthConfig struct {
 	SessionMaxDuration time.Duration  `koanf:"session_max_duration"`
 	WebAuthn           WebAuthnConfig `koanf:"webauthn"`
 	Password           PasswordConfig `koanf:"password"`
+	// ImpersonationEnabled is the kill switch for super-admin impersonation
+	// (spec 2026-09-29-03). Default true; when false,
+	// POST /api/v1/system/users/:uid/impersonate answers 404. snake_case, so
+	// SP_AUTH_IMPERSONATION_ENABLED is bound by hand in applyAuthEnv.
+	ImpersonationEnabled bool `koanf:"impersonation_enabled"`
 }
 
 // PasswordConfig selects the password-hashing algorithm and its cost
@@ -1824,6 +1829,9 @@ func Load() (*Config, error) {
 			JWTSecret:          "change-me-in-production",
 			AccessTokenExpiry:  time.Hour,
 			RefreshTokenExpiry: 7 * 24 * time.Hour,
+			// Super-admin impersonation is on by default (spec 2026-09-29-03);
+			// auth.impersonation_enabled=false is the kill switch.
+			ImpersonationEnabled: true,
 			WebAuthn: WebAuthnConfig{
 				Enabled:       true,
 				RPDisplayName: "SolidPing",
@@ -2447,6 +2455,16 @@ func applyAuthEnv(cfg *AuthConfig) {
 	if v := os.Getenv("SP_AUTH_REFRESH_TOKEN_EXPIRY"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
 			cfg.RefreshTokenExpiry = d
+		}
+	}
+	// auth.impersonation_enabled: koanf would map the env var to
+	// auth.impersonation.enabled and bind nothing.
+	if v := strings.TrimSpace(strings.ToLower(os.Getenv("SP_AUTH_IMPERSONATION_ENABLED"))); v != "" {
+		switch v {
+		case "true", "1", "yes":
+			cfg.ImpersonationEnabled = true
+		case "false", "0", "no":
+			cfg.ImpersonationEnabled = false
 		}
 	}
 }

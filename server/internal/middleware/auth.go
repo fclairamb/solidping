@@ -107,6 +107,14 @@ func (m *AuthMiddleware) RequireAuth(next httpx.HandlerFunc) httpx.HandlerFunc {
 				base.ErrorCodeDemoReadOnly, auth.DemoWriteMessage)
 		}
 
+		// Super-admin impersonation (spec 2026-09-29-03). Same choke-point
+		// reasoning as the demo guard, reusing its route-pattern mechanism:
+		// the token acts as the target everywhere except the
+		// credential-changing surface.
+		if denied := impersonationDenial(claims, user, httpx.RoutePattern(req), req.Method); denied != "" {
+			return m.WriteError(writer, http.StatusForbidden, base.ErrorCodeImpersonationForbidden, denied)
+		}
+
 		// Add claims and user to context
 		ctx := req.Context()
 		ctx = context.WithValue(ctx, base.ContextKeyClaims, claims)
@@ -117,10 +125,52 @@ func (m *AuthMiddleware) RequireAuth(next httpx.HandlerFunc) httpx.HandlerFunc {
 		// not read the same in a security trail — so the token form is
 		// recorded as such while ActorUID still names the owning user.
 		ctx = audit.WithUser(ctx, user.UID, actorTypeForToken(token))
+		// Under an impersonation token the audit actor is the TARGET (every
+		// permission check runs as them), and every row written must still
+		// name the admin behind it.
+		if claims.IsImpersonation() {
+			ctx = audit.WithImpersonator(ctx, claims.ImpersonatedBy)
+		}
+
 		setSentryIdentity(ctx, claims)
 
 		return next(writer, req.WithContext(ctx))
 	}
+}
+
+// impersonationDenial returns the refusal message for a request an
+// impersonation token may not make, or "" when it may proceed (including every
+// request that is not an impersonation at all).
+func impersonationDenial(claims *auth.Claims, user *models.User, routePattern, method string) string {
+	if !claims.IsImpersonation() {
+		return ""
+	}
+
+	// The target was promoted to super admin after the token was minted:
+	// Service.Impersonate would refuse them today, so the token must not
+	// become a way to borrow those rights either.
+	if user != nil && user.SuperAdmin {
+		return "This impersonation token targets a super admin and can no longer be used."
+	}
+
+	if !auth.IsImpersonationAllowed(method, routePattern) {
+		return auth.ImpersonationForbiddenMessage
+	}
+
+	return ""
+}
+
+// GetImpersonatorFromContext returns the UID of the super admin behind the
+// request's impersonation token, and whether the request is an impersonation
+// at all (spec 2026-09-29-03). The authenticated user on the context is the
+// TARGET in that case.
+func GetImpersonatorFromContext(ctx context.Context) (string, bool) {
+	claims, ok := GetClaimsFromContext(ctx)
+	if !ok || !claims.IsImpersonation() {
+		return "", false
+	}
+
+	return claims.ImpersonatedBy, true
 }
 
 // applyDemoClaim reconciles the demo flag on a set of claims with the user row
@@ -229,6 +279,14 @@ func (m *AuthMiddleware) RequireMCPAuth(next httpx.HandlerFunc) httpx.HandlerFun
 			!auth.IsPasswordRotationExempt(req.Method, req.URL.Path) {
 			return m.WriteError(writer, http.StatusForbidden,
 				base.ErrorCodePasswordChangeRequired, auth.PasswordRotationMessage)
+		}
+
+		// Impersonation is a dashboard feature (spec 2026-09-29-03). MCP is a
+		// programmatic client surface whose writes the route denylist cannot
+		// see (one POST route), so an impersonation token never reaches it.
+		if claims.IsImpersonation() {
+			return m.WriteError(writer, http.StatusForbidden,
+				base.ErrorCodeImpersonationForbidden, auth.ImpersonationForbiddenMessage)
 		}
 
 		// The demo flag is re-derived from the user row exactly as in
@@ -725,6 +783,14 @@ func (m *AuthMiddleware) RequireSuperAdmin(next httpx.HandlerFunc) httpx.Handler
 		if !user.SuperAdmin {
 			return m.WriteError(
 				writer, http.StatusForbidden, base.ErrorCodeForbidden, "Super admin access required")
+		}
+
+		// An impersonation token never carries super-admin rights, even if
+		// the user row it points at somehow does (spec 2026-09-29-03). The
+		// user on the context is the target, not the admin who minted it.
+		if _, impersonating := GetImpersonatorFromContext(req.Context()); impersonating {
+			return m.WriteError(writer, http.StatusForbidden,
+				base.ErrorCodeImpersonationForbidden, "Super admin access is not available while impersonating a user")
 		}
 
 		return next(writer, req)
