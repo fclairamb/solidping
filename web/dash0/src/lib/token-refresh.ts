@@ -11,6 +11,7 @@
 // decide what to do next (redirect to login).
 
 import { clearToken, getRefreshToken, getToken, redirectToExpiredLogin, setSession } from "@/api/client";
+import { exitImpersonation, isImpersonating } from "@/lib/impersonation";
 
 interface RefreshResponse {
   accessToken: string;
@@ -65,6 +66,17 @@ function escalate(reason: "no-refresh-token" | "rejected"): void {
 }
 
 async function doRefresh(): Promise<RefreshOutcome> {
+  // An impersonation token (spec 2026-09-29-03) has no refresh token and must
+  // never be "refreshed" into the admin's session behind the admin's back, nor
+  // clear it as a dead session would. Its expiry ends the impersonation: drop
+  // it and reload on the admin's own session, which is still intact in
+  // localStorage. The admin's token is handed back so the request in flight
+  // does not wipe that session by treating the 401 as a logout.
+  if (isImpersonating()) {
+    exitImpersonation();
+    return { accessToken: getToken() };
+  }
+
   const refreshToken = getRefreshToken();
   if (!refreshToken) {
     // No refresh token to spend. If there's no access token either, the

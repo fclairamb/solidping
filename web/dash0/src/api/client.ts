@@ -6,6 +6,7 @@
 // behavior synchronous-enough to unit test without extra await hops.
 import { refreshAccessToken } from "@/lib/token-refresh";
 import { isOrgPublicRoute } from "@/lib/org-public-routes";
+import { clearImpersonation, getImpersonationToken } from "@/lib/impersonation";
 // A refused demo write is announced, not navigated away from (see
 // announceDemoReadOnly). Static, because sonner is already in every page's
 // bundle — a dynamic import here bought nothing and split no chunk.
@@ -37,8 +38,14 @@ export function msSinceLastApiActivity(): number {
   return Date.now() - lastApiActivityTs;
 }
 
+/**
+ * The access token every request carries. While this tab is impersonating a
+ * user (spec 2026-09-29-03) that is the impersonation token from
+ * sessionStorage; the admin's own session stays untouched in localStorage and
+ * comes back the moment the impersonation is dropped.
+ */
 export function getToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY);
+  return getImpersonationToken() ?? localStorage.getItem(TOKEN_KEY);
 }
 
 export function getRefreshToken(): string | null {
@@ -101,6 +108,8 @@ export function setSession(
 }
 
 export function clearToken(): void {
+  // A session that is over takes any impersonation riding on it with it.
+  clearImpersonation();
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(REFRESH_TOKEN_KEY);
   localStorage.removeItem(EXPIRES_AT_KEY);
@@ -309,6 +318,14 @@ export const PASSWORD_CHANGE_REQUIRED_CODE = "PASSWORD_CHANGE_REQUIRED";
 export const DEMO_READ_ONLY_CODE = "DEMO_READ_ONLY";
 
 /**
+ * The code the API returns (with HTTP 403) when an impersonation session tries
+ * something it may never do: change the user's credentials, mint a token or a
+ * session in their name (spec 2026-09-29-03). Like DEMO_READ_ONLY it is
+ * announced as a toast, not rendered as a Permission Denied page.
+ */
+export const IMPERSONATION_FORBIDDEN_CODE = "IMPERSONATION_FORBIDDEN";
+
+/**
  * Announces a refused demo write as a toast rather than by routing to the 403
  * page.
  *
@@ -461,12 +478,20 @@ export async function handleResponse<T>(
     // gets the localized string for free from a single translation point.
     const isDemoReadOnly =
       response.status === 403 && error.code === DEMO_READ_ONLY_CODE;
+    const isImpersonationForbidden =
+      response.status === 403 && error.code === IMPERSONATION_FORBIDDEN_CODE;
     const message = isDemoReadOnly
       ? i18n.t("demo.writeRefused", { ns: "org" })
-      : error.title || "An error occurred";
+      : isImpersonationForbidden
+        ? i18n.t("impersonation.forbidden", { ns: "server" })
+        : error.title || "An error occurred";
 
     if (isDemoReadOnly) {
       announceDemoReadOnly(message);
+    }
+
+    if (isImpersonationForbidden) {
+      toast.info(message, { id: IMPERSONATION_FORBIDDEN_CODE });
     }
 
     throw new ApiError(

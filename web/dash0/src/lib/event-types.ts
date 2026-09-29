@@ -82,6 +82,7 @@ export const ALL_EVENT_TYPES = [
   "auth.token_created",
   "auth.token_revoked",
   "auth.token_misuse",
+  "auth.impersonation_started",
 
   "member.invited",
   "member.joined",

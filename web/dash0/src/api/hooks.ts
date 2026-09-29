@@ -7051,6 +7051,33 @@ export function useAdminUsersList(params: {
   });
 }
 
+/** POST /api/v1/system/users/:uid/impersonate (spec 2026-09-29-03). */
+export interface ImpersonateResponse {
+  accessToken: string;
+  expiresIn: number;
+  tokenType?: string;
+  user: { uid: string; email: string; role: string };
+  organization: { uid: string; slug: string; name?: string };
+}
+
+/**
+ * Starts a super-admin impersonation. It only fetches the token: storing it
+ * for this tab and reloading the dashboard is the caller's job (see
+ * lib/impersonation.ts), because the whole app has to be rebuilt as the target.
+ */
+export function useImpersonateUser() {
+  return useMutation({
+    mutationFn: ({ uid, orgSlug }: { uid: string; orgSlug?: string }) =>
+      apiFetch<ImpersonateResponse>(
+        `/api/v1/system/users/${encodeURIComponent(uid)}/impersonate`,
+        {
+          method: "POST",
+          body: JSON.stringify(orgSlug ? { orgSlug } : {}),
+        },
+      ),
+  });
+}
+
 /** What the superadmin PUT / DELETE answer with. */
 export interface AdminEntitlementsWriteResponse {
   limits: EntitlementsLimits;

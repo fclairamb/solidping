@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ChevronLeft, ChevronRight, Loader2, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, Eye, Loader2, Search } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,10 +16,31 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { TimeAgo } from "@/components/ui/time-ago";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ApiError } from "@/api/client";
 import { PermissionDenied } from "@/components/shared/error-views";
-import { useAdminUsersList } from "@/api/hooks";
+import { useAdminUsersList, useImpersonateUser } from "@/api/hooks";
 import type { AdminUserRow } from "@/api/hooks";
+import { useAuth } from "@/contexts/AuthContext";
+import { DASH_BASE } from "@/lib/base-path";
+import { canImpersonate, startImpersonation } from "@/lib/impersonation";
 import { useDebounce } from "@/lib/use-debounce";
 
 const PAGE_SIZE = 50;
@@ -97,6 +118,9 @@ function UsersListPage() {
                     <TableHead>{t("users.columns.flags")}</TableHead>
                     <TableHead>{t("users.columns.lastActive")}</TableHead>
                     <TableHead>{t("users.columns.created")}</TableHead>
+                    <TableHead className="w-12">
+                      <span className="sr-only">{t("users.columns.actions")}</span>
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -140,8 +164,117 @@ function UsersListPage() {
   );
 }
 
+function ImpersonateButton({ org, row }: { org: string; row: AdminUserRow }) {
+  const { t } = useTranslation("server");
+  const [open, setOpen] = useState(false);
+  const [orgSlug, setOrgSlug] = useState(row.orgs[0]?.slug ?? "");
+  const [error, setError] = useState<string | null>(null);
+  const impersonate = useImpersonateUser();
+
+  const start = () => {
+    setError(null);
+    impersonate.mutate(
+      { uid: row.uid, orgSlug },
+      {
+        onSuccess: (resp) => {
+          startImpersonation({
+            accessToken: resp.accessToken,
+            expiresAt: Date.now() + resp.expiresIn * 1000,
+            targetEmail: resp.user.email,
+            orgSlug: resp.organization.slug,
+            returnPath: `/orgs/${org}/server/users`,
+          });
+          // A full load, not a router push: every cached query, the live
+          // socket and the auth context must be rebuilt as the target.
+          window.location.assign(`${DASH_BASE}/orgs/${resp.organization.slug}`);
+        },
+        onError: (err) => {
+          setError(
+            t("users.impersonate.error", {
+              message: err instanceof Error ? err.message : String(err),
+            }),
+          );
+        },
+      },
+    );
+  };
+
+  return (
+    <>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-9 w-9"
+        onClick={() => setOpen(true)}
+        title={t("users.impersonate.button")}
+        aria-label={t("users.impersonate.button")}
+        data-testid={`users-impersonate-${row.uid}`}
+      >
+        <Eye className="h-4 w-4" />
+      </Button>
+      <AlertDialog open={open} onOpenChange={setOpen}>
+        <AlertDialogContent data-testid="impersonate-dialog">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="break-words">
+              {t("users.impersonate.title", { email: row.email })}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("users.impersonate.description", { email: row.email })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {row.orgs.length > 1 ? (
+            <div className="space-y-2">
+              <Label htmlFor={`impersonate-org-${row.uid}`}>
+                {t("users.impersonate.organization")}
+              </Label>
+              <Select value={orgSlug} onValueChange={setOrgSlug}>
+                <SelectTrigger id={`impersonate-org-${row.uid}`}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {row.orgs.map((membership) => (
+                    <SelectItem key={membership.uid} value={membership.slug}>
+                      {membership.slug} · {membership.role}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : null}
+          {error ? (
+            <p className="text-sm text-destructive" data-testid="impersonate-error">
+              {error}
+            </p>
+          ) : null}
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("users.impersonate.cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                // Keep the dialog open until the page navigates away, so an
+                // error has somewhere to show.
+                event.preventDefault();
+                start();
+              }}
+              disabled={impersonate.isPending}
+              data-testid="impersonate-confirm"
+            >
+              {impersonate.isPending ? (
+                <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+              ) : (
+                <Eye className="mr-1 h-4 w-4" />
+              )}
+              {t("users.impersonate.confirm")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
+
 function UserRow({ org, row }: { org: string; row: AdminUserRow }) {
   const { t } = useTranslation("server");
+  const { user } = useAuth();
 
   return (
     <TableRow data-testid={`users-row-${row.uid}`}>
@@ -203,6 +336,9 @@ function UserRow({ org, row }: { org: string; row: AdminUserRow }) {
       </TableCell>
       <TableCell className="text-sm">
         <TimeAgo date={row.createdAt} />
+      </TableCell>
+      <TableCell className="text-right">
+        {canImpersonate(row, user) ? <ImpersonateButton org={org} row={row} /> : null}
       </TableCell>
     </TableRow>
   );

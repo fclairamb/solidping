@@ -78,6 +78,7 @@
     "config.applied": "Configuration Applied",
     "org.settings_updated": "Organization Settings Updated",
     "auth.token_misuse": "Token Misuse Attempt",
+    "auth.impersonation_started": "Impersonation Started",
     "agent.connected": "Agent Connected",
     "agent.disconnected": "Agent Disconnected"
   },

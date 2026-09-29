@@ -7,6 +7,7 @@ import {
   CircleCheck,
   CircleX,
   Cpu,
+  Eye,
   Globe,
   KeyRound,
   LogIn,
@@ -135,6 +136,10 @@ export const EVENT_TYPE_REGISTRY: Record<string, { emoji: string; tone: string }
   // housekeeping like the two above it — it is a leaked token being tried, or
   // a confused-deputy bug, and it must not read as bookkeeping in a feed.
   "auth.token_misuse": { emoji: "🚨", tone: TONE_DESTRUCTIVE },
+  // A super admin viewing the dashboard as one of this org's users (spec
+  // 2026-09-29-03). Amber: not an attack, but not routine either — an org
+  // admin reading the log should notice it.
+  "auth.impersonation_started": { emoji: "🎭", tone: TONE_AMBER },
 };
 
 // CONFIG_EVENT_FAMILIES are the audit families that describe a configuration
@@ -364,6 +369,7 @@ export const EVENT_TYPE_MARKS: Record<string, EventMark> = {
   "auth.token_created": { icon: KeyRound, tone: MARK_QUIET },
   "auth.token_revoked": { icon: KeyRound, tone: MARK_QUIET },
   "auth.token_misuse": { icon: ShieldAlert, tone: MARK_DANGER, loud: true },
+  "auth.impersonation_started": { icon: Eye, tone: MARK_WARNING },
 };
 
 export function getEventMark(eventType?: string): EventMark {

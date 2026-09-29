@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { DemoBanner } from "@/components/shared/demo-banner";
+import { ImpersonationBanner } from "@/components/shared/impersonation-banner";
 import { CommandMenu, CommandMenuTrigger } from "@/components/CommandMenu";
 import { Separator } from "@/components/ui/separator";
 import { useAuth, isSwitchOrgInFlight } from "@/contexts/AuthContext";
@@ -1249,6 +1250,9 @@ function OrgLayout() {
               dashboard: a visitor who deep-links into a check detail must
               learn the sandbox rules there too. */}
           <DemoBanner org={org} />
+          {/* Super-admin impersonation (spec 2026-09-29-03): on every org
+              page, never dismissible. */}
+          <ImpersonationBanner />
           <Outlet />
         </div>
       </SidebarInset>

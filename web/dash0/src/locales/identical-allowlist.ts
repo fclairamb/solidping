@@ -442,6 +442,7 @@ export const DASH0_IDENTICAL_ALLOWLIST: IdenticalAllowlist = {
   "server:entitlements.limits.maxSlos": ["de"], // "SLOs"
   "server:users.columns.name": ["de"], // "Name"
   "server:users.flags.demo": ["de", "es"], // "Demo"
+  "server:users.columns.actions": ["fr"], // "Actions"
   "slos:list.columns.state": ["de"], // "Status"
   "slos:detail.budgetTotal": ["fr", "de"], // "Budget"
   "slos:detail.incidents": ["fr"], // "Incidents"
