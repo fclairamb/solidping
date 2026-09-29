@@ -86,6 +86,10 @@ func (s *Service) TelegramEnabled() bool {
 func (s *Service) CreateTelegramLink(
 	ctx context.Context, orgSlug string, user *models.User,
 ) (*TelegramLinkResponse, error) {
+	if err := refuseImpersonation(ctx); err != nil {
+		return nil, err
+	}
+
 	if !s.telegramCfg.Active() {
 		return nil, ErrTelegramNotEnabled
 	}

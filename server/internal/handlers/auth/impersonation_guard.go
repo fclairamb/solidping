@@ -24,6 +24,9 @@ const (
 	ImpersonationPatternOrgTokens       = "/api/v1/orgs/{org}/tokens"
 	ImpersonationPatternEnrollmentToken = "/api/v1/orgs/{org}/agent-enrollment-tokens"
 	ImpersonationPatternImpersonate     = "/api/v1/system/users/{uid}/impersonate"
+	ImpersonationPatternDiscordLink     = "/api/v1/orgs/{org}/users/me/discord/link-start"
+	ImpersonationPatternDiscordConnect  = "/api/v1/orgs/{org}/users/me/discord/connect"
+	ImpersonationPatternTelegramLink    = "/api/v1/orgs/{org}/users/me/telegram/link"
 )
 
 // impersonationForbiddenRoutes is the credential-changing surface. It is a
@@ -59,6 +62,16 @@ var impersonationForbiddenRoutes = []demoAllowedRoute{
 	{http.MethodPost, ImpersonationPatternOrgTokens},
 	{http.MethodPost, ImpersonationPatternEnrollmentToken},
 	{http.MethodPost, ImpersonationPathDeviceConsent},
+	// External identity binding. The Discord link round trip binds whatever
+	// Discord account completes the OAuth dance to the TARGET, and a bound
+	// Discord identity signs in: under impersonation that is the admin's own
+	// Discord account, i.e. a lasting login as the target.
+	{http.MethodPost, ImpersonationPatternDiscordLink},
+	// Paging redirection. Both bind a DM channel as the target's contact; the
+	// Telegram link is redeemed by whichever Telegram account opens it, so the
+	// target's pages would land on an admin-controlled chat.
+	{http.MethodPost, ImpersonationPatternDiscordConnect},
+	{http.MethodPost, ImpersonationPatternTelegramLink},
 	// No chaining. RequireSuperAdmin already refuses it; this makes the
 	// answer the explicit IMPERSONATION_FORBIDDEN.
 	{http.MethodPost, ImpersonationPatternImpersonate},
