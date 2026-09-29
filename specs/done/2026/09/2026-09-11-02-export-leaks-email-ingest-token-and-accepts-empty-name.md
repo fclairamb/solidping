@@ -9,7 +9,7 @@ effort: medium
 
 Two things a config-as-code export must guarantee — *it contains no secret* and
 *it re-imports as-is* — both broke on the first real refresh of a tracked org
-(exp-devops `solidping/config.yaml`, PR stonal-tech/exp-devops#663, 2026-09-11).
+(exp-devops `solidping/config.yaml`, PR acme-tech/exp-devops#663, 2026-09-11).
 
 ### 1. The email ingest token is exported, twice
 
@@ -45,7 +45,7 @@ the file".
 
 ### 2. An empty `name` is accepted, then exported as absent, then rejected
 
-The instance held `domain-stonal-dev-io` with `name: ""`. The API accepted it
+The instance held `domain-acme-dev-io` with `name: ""`. The API accepted it
 (create or PATCH — the validation treats an empty string as present), the
 exporter omits empty strings, and the import path requires `name`. Result: the
 org's own export failed the exp-devops validator with `missing required key

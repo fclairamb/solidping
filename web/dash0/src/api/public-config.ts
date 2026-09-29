@@ -1,7 +1,9 @@
 import { useQuery, type QueryClient } from "@tanstack/react-query";
+import type { DeploymentMode } from "@/lib/marketing-url";
 import {
   fetchPublicConfig,
   type DemoPublicConfig,
+  type HeartbeatPublicConfig,
   type PublicConfig,
   type SMSPublicConfig,
 } from "@/lib/analytics";
@@ -28,6 +30,40 @@ export function usePublicConfig() {
     // null rather than throwing.
     retry: false,
   });
+}
+
+/**
+ * Whether the in-app bug-report button is offered. Off while loading, and off
+ * unless the operator wired a GitHub issues token and repo.
+ */
+export function useBugReportEnabled(): boolean {
+  const { data } = usePublicConfig();
+
+  return Boolean(data?.bugReport?.enabled);
+}
+
+/**
+ * The embedded TCP/UDP heartbeat push transports. Undefined while loading, so
+ * callers render nothing until the instance has said what is reachable.
+ */
+export function useHeartbeatPush(): HeartbeatPublicConfig | undefined {
+  const { data } = usePublicConfig();
+
+  return data?.heartbeat;
+}
+
+/** "saas" | "self-hosted", or undefined while loading. */
+export function useDeploymentMode(): DeploymentMode | undefined {
+  const { data } = usePublicConfig();
+
+  return data?.deploymentMode;
+}
+
+/** The server run mode ("normal" | "demo" | "test"), or undefined while loading. */
+export function useRunMode(): string | undefined {
+  const { data } = usePublicConfig();
+
+  return data?.runMode;
 }
 
 /**

@@ -181,6 +181,14 @@ func (h *Handler) Logout(writer http.ResponseWriter, req *http.Request) error {
 		})
 	}
 
+	// Signing the target out of their other sessions is not something an
+	// impersonation may do (spec 2026-09-29-03). A plain logout is harmless:
+	// the impersonation token backs no session row.
+	if claims.IsImpersonation() && (logoutReq.DeleteAllTokens || logoutReq.SignOutOthers) {
+		return h.WriteError(writer, http.StatusForbidden,
+			base.ErrorCodeImpersonationForbidden, ImpersonationForbiddenMessage)
+	}
+
 	if logoutReq.DeleteAllTokens {
 		resp, logoutErr := h.svc.LogoutUser(req.Context(), claims.UserUID)
 		if logoutErr != nil {
@@ -273,6 +281,8 @@ func (h *Handler) Me(writer http.ResponseWriter, req *http.Request) error {
 	if err != nil {
 		return h.handleUserInfoError(writer, req, err)
 	}
+
+	resp.Impersonation = h.svc.ImpersonationInfoFor(req.Context(), claims)
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
 }

@@ -3,7 +3,7 @@
 Per-organization plan limits and the audit trail of who changed them. Written by
 the external billing service through `PUT /api/v1/orgs/:org/entitlements`. See
 [README.md](README.md) for the full index, and the SaaS section of the root
-`CLAUDE.md` for the deployment story.
+`AGENTS.md` for the deployment story.
 
 ### org_entitlements
 One row per organization. Limits, features, and source live inside `payload`;

@@ -8,7 +8,7 @@
 // warning/critical days, and periods stop at 24h".
 //
 // `sleep` is a synthetic/testing check type (not customer-facing, see
-// server/internal/checkers/CLAUDE.md) and has no docs section — it is
+// server/internal/checkers/AGENTS.md) and has no docs section — it is
 // intentionally omitted here.
 //
 // Keyed by the raw backend check-type string (server/internal/checkers/

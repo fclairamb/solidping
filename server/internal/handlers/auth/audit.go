@@ -13,6 +13,11 @@ const (
 	auditKeyEmail  = "email"
 	auditKeyRole   = "role"
 	auditKeySource = "source"
+	// Keys of auth.impersonation_started (spec 2026-09-29-03). The actor
+	// column already names the admin; the email makes the row readable, and
+	// expires_at says how long the token could be used.
+	auditKeyImpersonatorEmail = "impersonator_email"
+	auditKeyExpiresAt         = "expires_at"
 
 	// Audit target types owned by this package. Named because they recur and
 	// goconst (rightly) refuses a third bare literal.
@@ -176,6 +181,11 @@ const (
 	// AuthMethodSwitchOrg is a session minted for a different organization the
 	// user already belongs to.
 	AuthMethodSwitchOrg = "switch_org"
+	// AuthMethodImpersonate is a super admin acting as another user through a
+	// short-lived impersonation token (spec 2026-09-29-03). It mints no
+	// session, so it is recorded on auth.impersonation_started, never on
+	// auth.login_succeeded.
+	AuthMethodImpersonate = "impersonate"
 	// AuthMethodOrgSession is a session re-minted because the org itself
 	// changed under the caller (creation, slug rename).
 	AuthMethodOrgSession = "org_session"
@@ -220,6 +230,8 @@ func authMethods() []string {
 		AuthMethodRegistration,
 		AuthMethodSwitchOrg,
 		AuthMethodOrgSession,
+		// Super-admin impersonation (auth.impersonation_started only).
+		AuthMethodImpersonate,
 	}
 }
 

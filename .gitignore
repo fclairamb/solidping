@@ -22,9 +22,12 @@ bin/
 !.env.example
 
 # Frontend builds
-server/internal/app/dash0res/
-server/internal/app/status0res/
-server/internal/app/docsres/
+server/internal/app/dash0res/*
+!server/internal/app/dash0res/.gitkeep
+server/internal/app/status0res/*
+!server/internal/app/status0res/.gitkeep
+server/internal/app/docsres/*
+!server/internal/app/docsres/.gitkeep
 
 # Test data
 test-results/
@@ -66,3 +69,10 @@ server/tmp/
 # Claude Code
 .claude/scheduled_tasks.lock
 .claude/worktrees/
+
+.bb/
+
+# Backend coverage profiles (make test-cover)
+server/coverage*.out
+web/dash0/coverage/
+web/status0/coverage/

@@ -1,6 +1,6 @@
-.PHONY: docker-build build build-backend build-dash0 build-status0 build-docs copy-dash0 copy-status0 copy-docs \
+.PHONY: docker-build build build-backend build-dash0 build-status0 build-docs copy-dash0 copy-status0 copy-docs embed-placeholders cloud-setup check-clean-clone \
 	build-cli install-cli clean clean-all run run-test dev dev-test dev-saas dev-dash0 dev-status0 dev-docs dev-backend \
-	test test-postgres test-slow test-scenario test-dash0 test-docs lint lint-back lint-dash0 lint-status0 fmt deps migrate help sync-brand-assets build-favicons \
+	test test-cover test-postgres test-slow test-scenario test-dash0 test-docs lint lint-agent-docs lint-back lint-dash0 lint-status0 fmt deps migrate help sync-brand-assets build-favicons \
 	showcase showcase-terminal showcase-cut \
 	build-loadgen bench-checks bench-checks-sqlite bench-checks-postgres \
 	build-scenario scenario-test
@@ -109,8 +109,8 @@ build-dash0: ## Build dash0 status page with bun
 
 copy-dash0: ## Copy dash0 dist to backend dash0res directory
 	@echo "Copying dash0 dist to backend resources..."
-	@rm -rf $(BACK_DASH0_RES)
 	@mkdir -p $(BACK_DASH0_RES)
+	@find $(BACK_DASH0_RES) -mindepth 1 ! -name .gitkeep -delete
 	@cp -r $(DASH0_DIST)/* $(BACK_DASH0_RES)/
 	@echo "Dash0 resources copied to $(BACK_DASH0_RES)"
 
@@ -121,8 +121,8 @@ build-status0: ## Build status0 public status page with bun
 
 copy-status0: ## Copy status0 dist to backend status0res directory
 	@echo "Copying status0 dist to backend resources..."
-	@rm -rf $(BACK_STATUS0_RES)
 	@mkdir -p $(BACK_STATUS0_RES)
+	@find $(BACK_STATUS0_RES) -mindepth 1 ! -name .gitkeep -delete
 	@cp -r $(STATUS0_DIST)/* $(BACK_STATUS0_RES)/
 	@echo "Status0 resources copied to $(BACK_STATUS0_RES)"
 
@@ -133,8 +133,8 @@ build-docs: ## Build docs site (Docusaurus, incl. generated API ref) with bun
 
 copy-docs: ## Copy docs build to backend docsres directory
 	@echo "Copying docs build to backend resources..."
-	@rm -rf $(BACK_DOCS_RES)
 	@mkdir -p $(BACK_DOCS_RES)
+	@find $(BACK_DOCS_RES) -mindepth 1 ! -name .gitkeep -delete
 	@cp -r $(DOCS_DIST)/* $(BACK_DOCS_RES)/
 	@echo "Docs resources copied to $(BACK_DOCS_RES)"
 
@@ -320,6 +320,9 @@ dev-test: kill ## Run backend, dash0 and status0 in development test mode
 	@echo "Running application in development test mode..."
 	@cd $(BACK_DIR) && SP_RUNMODE=test SP_REDIRECTS="/d:localhost:5174/d,/s:localhost:5175/s" \
 		SP_DB_MIGRATION_GUARD_MODE=warn \
+		SP_SERVER_RATE_LIMITING_REQUESTS_PER_MINUTE=0 \
+		SP_SERVER_RATE_LIMITING_MAX_CONCURRENT=0 \
+		SP_AUTH_REGISTRATION_EMAIL_PATTERN='.*' \
 		go run ./cmd/devloop $(DEVLOOP_LOG_FLAGS) $(DEVLOOP_PROCS)
 
 dev-saas: kill ## Run backend (SaaS mode) + dash0 + status0 — pairs with ../solidping-billing `make dev`
@@ -354,10 +357,35 @@ clean-all: clean ## Remove all generated files including node_modules
 	@rm -rf $(STATUS0_DIR)/node_modules $(STATUS0_DIR)/.bun
 	@echo "Deep clean complete"
 
-test: ## Run all tests (SQLite only — `-short` skips every Postgres suite)
+embed-placeholders: ## Create missing placeholder files in the embedded frontend dirs (backend-only work)
+	@scripts/embed-placeholders.sh
+
+check-clean-clone: ## Clone HEAD and run go build + make test with no frontend build and no Docker (nightly guard)
+	@scripts/check-clean-clone.sh
+
+cloud-setup: ## Bootstrap a fresh Linux sandbox (verify Go, install bun + golangci-lint, deps, frontend)
+	@scripts/cloud-setup.sh
+
+test: embed-placeholders ## Run all tests (SQLite only — `-short` skips every Postgres suite)
 	@echo "Running backend tests..."
 	@cd $(BACK_DIR) && go test ./... -short
 	@echo "Tests complete"
+
+# Backend coverage (spec 2026-09-29-06). -short by default (SQLite only, ~8 min);
+# COVER_FULL=1 runs the Postgres layer as CI does. Generated and vendored code
+# (pkg/client, third_party, mocks) is filtered out of the profile so the number
+# reflects hand-written code. Output: server/coverage.out (filtered) plus a total.
+test-cover: ## Backend coverage profile + total (COVER_FULL=1 for the Postgres layer)
+	@echo "Running backend tests with coverage..."
+	@cd $(BACK_DIR) && \
+		if [ -n "$(COVER_FULL)" ]; then \
+			SP_TEST_REQUIRE_POSTGRES=1 go test -count=1 -p 1 -coverprofile=coverage.raw.out -coverpkg=./... ./... ; \
+		else \
+			go test -count=1 -short -coverprofile=coverage.raw.out -coverpkg=./... ./... ; \
+		fi
+	@cd $(BACK_DIR) && ../scripts/coverage.sh filter coverage.raw.out coverage.out && rm -f coverage.raw.out
+	@cd $(BACK_DIR) && go tool cover -func=coverage.out | tail -1
+	@echo "Coverage profile: $(BACK_DIR)/coverage.out"
 
 # `make test` above is -short, which means it has NEVER exercised Postgres.
 # That is deliberate (it keeps the inner loop fast) and it is exactly how spec
@@ -428,7 +456,11 @@ lint-status0: ## Run status0 linter
 	@cd $(STATUS0_DIR) && bun run lint
 	@echo "Status0 linting complete"
 
-lint: lint-back lint-dash0 lint-status0 ## Run all linters
+lint-agent-docs: ## Check AGENTS.md size limits and CLAUDE.md stubs
+	@scripts/check-agent-docs_test.sh
+	@scripts/check-agent-docs.sh
+
+lint: lint-agent-docs lint-back lint-dash0 lint-status0 ## Run all linters
 
 fmt: ## Format code
 	@echo "Formatting backend code..."

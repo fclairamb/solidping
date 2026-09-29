@@ -241,6 +241,8 @@ describe("EVENT_TYPE_REGISTRY pins the binding emoji per event type", () => {
     ["auth.token_created", "🔑"],
     ["auth.token_revoked", "🔒"],
     ["auth.token_misuse", "🚨"],
+    // Super-admin impersonation (spec 2026-09-29-03).
+    ["auth.impersonation_started", "🎭"],
   ];
 
   it.each(BINDING_PAIRS)("%s pairs with %s", (eventType, emoji) => {

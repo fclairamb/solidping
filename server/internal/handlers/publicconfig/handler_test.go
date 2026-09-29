@@ -403,3 +403,94 @@ func TestBuildDiscordBotEnabled(t *testing.T) {
 
 	r.False(publicconfig.Build(&config.Config{}).Discord.BotEnabled)
 }
+
+func nestedBlock(t *testing.T, body map[string]any, key string) map[string]any {
+	t.Helper()
+
+	block, ok := body[key].(map[string]any)
+	require.True(t, ok, "%s block must be present", key)
+
+	return block
+}
+
+// TestGetConfigBugReport: off on the default config, on once a GitHub issues
+// token and repo are configured (spec 2026-09-29-02 rule).
+func TestGetConfigBugReport(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	r.Equal(false, nestedBlock(t, serve(t, &config.Config{}), "bugReport")["enabled"])
+
+	cfg := &config.Config{}
+	cfg.App.EnableBugReport = config.ComputeBugReportEnabled(&config.AppGitHubConfig{
+		IssuesToken: "tok", Repo: "acme/reports",
+	})
+	r.Equal(true, nestedBlock(t, serve(t, cfg), "bugReport")["enabled"])
+}
+
+// TestGetConfigHeartbeatOff is the default: do not advertise a transport
+// nobody can reach.
+func TestGetConfigHeartbeatOff(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	hb := nestedBlock(t, serve(t, &config.Config{}), "heartbeat")
+	r.Equal(false, hb["tcpEnabled"])
+	r.Equal(false, hb["udpEnabled"])
+	r.InDelta(0, hb["tcpPort"], 0)
+	r.InDelta(0, hb["udpPort"], 0)
+}
+
+// TestGetConfigHeartbeatOn pins that the HTTP port is NOT carried over from
+// the base URL.
+func TestGetConfigHeartbeatOn(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	cfg := &config.Config{}
+	cfg.Server.BaseURL = "https://solidping.example.com:8443"
+	cfg.Heartbeat.TCPListen = ":4001"
+	cfg.Heartbeat.UDPListen = "4002"
+
+	hb := nestedBlock(t, serve(t, cfg), "heartbeat")
+	r.Equal(true, hb["tcpEnabled"])
+	r.Equal(true, hb["udpEnabled"])
+	r.Equal("solidping.example.com", hb["host"])
+	r.InDelta(4001, hb["tcpPort"], 0)
+	r.InDelta(4002, hb["udpPort"], 0)
+}
+
+// TestGetConfigHeartbeatOneTransport covers an operator who only opened UDP.
+func TestGetConfigHeartbeatOneTransport(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	cfg := &config.Config{}
+	cfg.Heartbeat.UDPListen = "true"
+
+	hb := nestedBlock(t, serve(t, cfg), "heartbeat")
+	r.Equal(false, hb["tcpEnabled"])
+	r.Equal(true, hb["udpEnabled"])
+	r.InDelta(0, hb["tcpPort"], 0)
+	r.InDelta(config.DefaultHeartbeatPushPort, hb["udpPort"], 0)
+}
+
+// TestGetConfigRunAndDeploymentMode: both echo the config.
+func TestGetConfigRunAndDeploymentMode(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	cfg := &config.Config{RunMode: "test"}
+	cfg.Deployment.Mode = config.DeploymentModeSaaS
+
+	body := serve(t, cfg)
+	r.Equal("test", body["runMode"])
+	r.Equal("saas", body["deploymentMode"])
+
+	cfg = &config.Config{RunMode: "demo"}
+	cfg.Deployment.Mode = config.DeploymentModeSelfHosted
+
+	body = serve(t, cfg)
+	r.Equal("demo", body["runMode"])
+	r.Equal("self-hosted", body["deploymentMode"])
+}

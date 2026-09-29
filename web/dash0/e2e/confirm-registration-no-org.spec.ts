@@ -30,10 +30,10 @@ test.describe("Confirm registration with no matching org", () => {
     // A pre-existing, unrelated bug found while writing this test (not part
     // of spec 2026-08-29-06) used to bounce an unauthenticated visitor here
     // straight to /login before the form ever rendered — OrgLayout called
-    // useFeatures() unconditionally, including on this public route, and its
-    // 401 triggered the "session expired" redirect. Fixed by spec
-    // 2026-08-29-12 (useFeatures is now gated by isLoginPage), so no stub is
-    // needed here any more; register-page-stays-public coverage for that bug
+    // an authenticated call unconditionally, including on this public route, and
+    // its 401 triggered the "session expired" redirect. Fixed by spec
+    // 2026-08-29-12 (and /api/v1/config is public since spec 2026-09-29-05), so
+    // no stub is needed here any more; register-page-stays-public coverage for that bug
     // lives in login.spec.ts's "Register: public route stays public".
     await page.goto("orgs/test/register");
     await page.waitForLoadState("networkidle");

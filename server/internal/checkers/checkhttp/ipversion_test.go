@@ -13,25 +13,42 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
-// TestBuildTransport_AutoKeepsDefaultTransport is the single most important
+// TestBuildTransport_AutoSharesTheCheckTransport is the single most important
 // backward-compatibility assertion for HTTP: with nothing configured the check
-// must return a NIL transport, because that is what makes net/http fall back to
-// the shared http.DefaultTransport — keeping its connection pool and its Happy
-// Eyeballs dialing. Any non-nil transport here would silently change how every
-// existing HTTP check connects.
-func TestBuildTransport_AutoKeepsDefaultTransport(t *testing.T) {
+// must run on ONE shared transport, so its connection pool survives across
+// executions, and must dial by name so net.Dialer keeps Happy Eyeballs.
+//
+// What changed on 2026-09-28 (spec 2026-09-28-04) is WHICH shared transport: it
+// used to be nil, which makes net/http fall back to http.DefaultTransport — and
+// DefaultTransport negotiates HTTP/2, whose canceled-request handling strands
+// the connection in the pool ("consuming a concurrency slot until we can confirm
+// the server is still responding"). Every later probe then rode the stranded
+// connection, turning a ~1-minute network blip on a production worker into 16
+// consecutive failing probes. HTTP/1.1 drops the connection of any request that
+// did not complete, so a strand cannot outlive the probe that hit it.
+func TestBuildTransport_AutoSharesTheCheckTransport(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
 
-	r.Nil(buildTransport(nil, false, checkerdef.IPVersionAuto))
-	// The zero value of IPVersion is the "never configured" case and must behave
-	// identically.
-	r.Nil(buildTransport(nil, false, ""))
+	transport, ok := buildTransport(nil, false, checkerdef.IPVersionAuto).(*http.Transport)
+	r.True(ok, "auto must produce the shared *http.Transport, not a nil sentinel")
 
-	// Positive controls: each of the three reasons for a transport does produce
-	// one, so the nil above is about auto and not about a function that always
-	// returns nil.
+	// The zero value of IPVersion is the "never configured" case and must behave
+	// identically — identically meaning the SAME object, i.e. pooled.
+	zero, ok := buildTransport(nil, false, "").(*http.Transport)
+	r.True(ok, "the zero value of IPVersion must produce a transport too")
+	r.Same(transport, zero, "auto must share one transport across executions")
+
+	r.False(transport.ForceAttemptHTTP2, "checks must not negotiate HTTP/2 (spec 2026-09-28-04)")
+	r.NotNil(transport.DialContext,
+		"auto dials by name: Happy Eyeballs comes from net.Dialer, not from HTTP/2")
+	r.NotSame(http.DefaultTransport, transport,
+		"http.DefaultTransport speaks HTTP/2 — exactly what a probe must not use")
+
+	// Positive controls: each of the three reasons for a PRIVATE transport does
+	// produce one, so the shared transport above is about auto and not about a
+	// function that always returns the same thing.
 	r.NotNil(buildTransport(nil, true, checkerdef.IPVersionAuto))
 	r.NotNil(buildTransport(nil, false, checkerdef.IPVersionIPv6))
 	r.NotNil(buildTransport(checkerdef.DialerFunc(nil), false, checkerdef.IPVersionAuto))

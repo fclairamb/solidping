@@ -691,6 +691,37 @@ var (
 		[]string{"outcome"},
 	)
 
+	// AgentWSConnStale counts agent WebSocket connections going live → stale:
+	// a keepalive probe went unanswered (spec 2026-09-28-03). A stale
+	// connection recovers on its next observed frame, ping or pong; only a
+	// second consecutive silent cycle closes it.
+	AgentWSConnStale = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "solidping_agent_ws_conn_stale_total",
+			Help: "Agent WebSocket connections that went stale (a keepalive probe went unanswered)",
+		},
+	)
+
+	// AgentWSConnClosed counts agent WebSocket connections ended, by the
+	// recorded disconnect reason (ping_timeout, revoked, server_shutdown,
+	// error). A burst of reason="ping_timeout" is the flapping signature.
+	AgentWSConnClosed = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "solidping_agent_ws_conn_closed_total",
+			Help: "Agent WebSocket connections closed, by disconnect reason",
+		},
+		[]string{"reason"},
+	)
+
+	// AgentWSReconnects counts agent WebSocket reconnects (signed-header
+	// connections, as opposed to first-time enrollments).
+	AgentWSReconnects = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "solidping_agent_ws_reconnects_total",
+			Help: "Agent WebSocket reconnections (signed reconnects, not enrollments)",
+		},
+	)
+
 	allCollectors = []prometheus.Collector{
 		SupportCapture, SupportMirror, SupportDMUnavailable, OrgProviderLinksDangling,
 		OperatorNotice,
@@ -714,6 +745,7 @@ var (
 		TLSEdgeConnections,
 		HeartbeatPushBeats, HeartbeatPushConnections,
 		StatusPageMemoHits, StatusPageMemoMisses, StatusPageMemoSingleflightShared,
+		AgentWSConnStale, AgentWSConnClosed, AgentWSReconnects,
 	}
 )
 

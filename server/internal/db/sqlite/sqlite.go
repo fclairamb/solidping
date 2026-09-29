@@ -22,6 +22,7 @@ import (
 	"github.com/uptrace/bun/dialect/sqlitedialect"
 	"github.com/uptrace/bun/migrate"
 
+	"github.com/fclairamb/solidping/server/internal/audit"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
 	"github.com/fclairamb/solidping/server/internal/db"
@@ -3955,6 +3956,11 @@ func (s *Service) UpdateCheckFlapState(
 // Event operations
 
 func (s *Service) CreateEvent(ctx context.Context, event *models.Event) error {
+	// Every event row passes through here, including the ones services build
+	// by hand with models.NewEvent, so this is where an action taken under a
+	// super-admin impersonation token is guaranteed to name the admin.
+	audit.StampImpersonation(ctx, event)
+
 	_, err := s.db.NewInsert().Model(event).Exec(ctx)
 	return err
 }

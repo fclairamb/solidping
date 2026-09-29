@@ -52,6 +52,10 @@ const (
 	PayloadKeyTargetUID = "target_uid"
 	// PayloadKeyTargetName is its human-readable name at the time of the event.
 	PayloadKeyTargetName = "target_name"
+	// PayloadKeyImpersonatedBy names the super admin who acted through an
+	// impersonation token (spec 2026-09-29-03). Present on every event written
+	// while such a token is in use; absent otherwise.
+	PayloadKeyImpersonatedBy = "impersonated_by"
 	// PayloadKeyChangedFields lists the field names an update touched.
 	PayloadKeyChangedFields = "changed_fields"
 	// PayloadKeyChanges holds safe scalar old→new values for the non-sensitive
@@ -132,6 +136,52 @@ func WithUser(ctx context.Context, userUID string, actorType models.ActorType) c
 	}
 
 	return context.WithValue(ctx, actorContextKey{}, actor)
+}
+
+type impersonatorContextKey struct{}
+
+// WithImpersonator records the real actor behind an impersonation token
+// (spec 2026-09-29-03). Called by RequireAuth, right after WithUser, when the
+// claims carry impersonatedBy: the actor is then the impersonated TARGET, and
+// every event written carries this UID under PayloadKeyImpersonatedBy so the
+// trail never attributes an admin's action to the target alone.
+//
+// Its own context key rather than an Actor field, so no WithActor rewrite
+// (the auth service rebuilds the actor for its own events) can drop it.
+func WithImpersonator(ctx context.Context, impersonatorUID string) context.Context {
+	return context.WithValue(ctx, impersonatorContextKey{}, impersonatorUID)
+}
+
+// ImpersonatorFromContext returns the UID of the super admin behind the
+// request's impersonation token, or "" for an ordinary request.
+func ImpersonatorFromContext(ctx context.Context) string {
+	uid, _ := ctx.Value(impersonatorContextKey{}).(string)
+
+	return uid
+}
+
+// StampImpersonation records the impersonating admin on an event about to be
+// written, when ctx carries one (spec 2026-09-29-03). It is called by NewEvent
+// AND by both db.CreateEvent implementations: several services build their
+// event rows by hand with models.NewEvent (incident acknowledgements,
+// comments, status updates…), and the one place every row passes through is
+// the insert. Stamped after the caller's payload so no emitter can overwrite
+// or forget it. Idempotent.
+func StampImpersonation(ctx context.Context, event *models.Event) {
+	if event == nil {
+		return
+	}
+
+	impersonator := ImpersonatorFromContext(ctx)
+	if impersonator == "" {
+		return
+	}
+
+	if event.Payload == nil {
+		event.Payload = models.JSONMap{}
+	}
+
+	event.Payload[PayloadKeyImpersonatedBy] = impersonator
 }
 
 // WithActor replaces the whole actor. Mostly for tests and for the auth
@@ -271,6 +321,8 @@ func NewEvent(
 	}
 
 	event.Payload = buildPayload(target, payload)
+
+	StampImpersonation(ctx, event)
 
 	return event
 }

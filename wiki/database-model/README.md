@@ -19,6 +19,7 @@ keys, and notable indexes or constraints.
 | [discovery.md](discovery.md) | 1 | discovered_checks |
 | [entitlements.md](entitlements.md) | 2 | org_entitlements, org_entitlement_audits |
 | [jobs.md](jobs.md) | 2 | jobs, state_entries |
+| [schema-notes.md](schema-notes.md) | — | Behavioural notes: slug aliases, parameter keys, roles, results statuses, credential encryption |
 | [patterns.md](patterns.md) | — | Entity-relationship overview, design patterns, file locations |
 
 ## Entity Relationship Overview

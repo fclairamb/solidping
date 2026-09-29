@@ -48,6 +48,8 @@ func NewHandler(
 
 func (h *Handler) handleError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
+	case errors.Is(err, ErrImpersonationForbidden):
+		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeImpersonationForbidden, err.Error())
 	case errors.Is(err, ErrOrgNotFound):
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
 	case errors.Is(err, ErrRouteNotFound):

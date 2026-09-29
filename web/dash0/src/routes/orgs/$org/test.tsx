@@ -1,6 +1,6 @@
 import { createFileRoute, Outlet } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import { useVersion } from "@/api/hooks";
+import { useRunMode } from "@/api/public-config";
 import { TabNav } from "@/components/shared/tab-nav";
 
 export const Route = createFileRoute("/orgs/$org/test")({
@@ -10,8 +10,7 @@ export const Route = createFileRoute("/orgs/$org/test")({
 function TestToolsLayout() {
   const { t } = useTranslation("nav");
   const { org } = Route.useParams();
-  const { data: versionData } = useVersion();
-  const isTestMode = versionData?.runMode === "test";
+  const isTestMode = useRunMode() === "test";
 
   const tabs = [
     { label: t("test.tabs.templates"), path: "/orgs/$org/test/templates" },

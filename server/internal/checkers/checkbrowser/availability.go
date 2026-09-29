@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
 // AvailabilityTTL bounds how stale the reported `browser` capability may get.
@@ -150,7 +152,11 @@ func probeCDP(ctx context.Context, cdpURL string) error {
 		return err
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	// The shared HTTP/1.1 check transport rather than http.DefaultClient: no
+	// check probe runs on http.DefaultTransport (spec 2026-09-28-04). Not the
+	// guarded client: the CDP endpoint is the worker's own browser, typically
+	// on a private address the egress policy would refuse.
+	resp, err := (&http.Client{Transport: checkerdef.CheckHTTPTransport()}).Do(req)
 	if err != nil {
 		return err
 	}

@@ -8420,6 +8420,63 @@ paths:
         "403":
           $ref: "#/components/responses/Forbidden"
 
+  /api/v1/system/users/{uid}/impersonate:
+    post:
+      tags: [System]
+      summary: Sign in as another user (super admin)
+      operationId: impersonateUser
+      description: |
+        Mints a 30-minute access token that acts as the user, with their real
+        membership role in the chosen organization. There is no refresh token
+        and no session row: the user's own sessions are untouched, and when the
+        token expires the caller is back on their own session.
+
+        The token cannot reach super-admin routes, cannot change the user's
+        credentials (password, 2FA, passkeys), cannot create tokens or
+        sessions in their name, and cannot start another impersonation. Those
+        requests answer `403` with code `IMPERSONATION_FORBIDDEN`. Every audit
+        event written with it carries `impersonated_by`, and starting one
+        records `auth.impersonation_started` in the user's organization.
+
+        Refused with `403 IMPERSONATION_FORBIDDEN` when the target is a super
+        admin, the caller themselves, or the shared demo account, or when the
+        caller's own token is an impersonation token. Answers `404` when the
+        user does not exist, is not a member of `orgSlug`, or when
+        `auth.impersonation_enabled` is false.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          description: UID of the user to impersonate
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                orgSlug:
+                  type: string
+                  description: Organization to view the dashboard in. Defaults to the user's first organization.
+      responses:
+        "200":
+          description: Impersonation token (no refresh token)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   # File storage APIs (org-scoped metadata + content)
   /api/v1/orgs/{org}/files:
     get:
@@ -9288,11 +9345,13 @@ components:
           type: string
         gitTime:
           type: string
-        runMode:
-          type: string
-        deploymentMode:
-          type: string
-          enum: [saas, self-hosted]
+        uptimeSeconds:
+          type: integer
+          format: int64
+          minimum: 0
+          description: >
+            Seconds since this process started. Commit and gitTime fall back
+            to "unknown" when the binary was built without ldflags.
 
     CostDistributionPercentiles:
       type: object
@@ -9853,6 +9912,20 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/OrganizationMemberSummary"
+        impersonation:
+          type: object
+          description: >-
+            Present only when the caller's token is a super-admin impersonation
+            token (see POST /api/v1/system/users/{uid}/impersonate).
+          properties:
+            impersonatorUid:
+              type: string
+              format: uuid
+            impersonatorEmail:
+              type: string
+            expiresAt:
+              type: string
+              format: date-time
 
     OrganizationSummary:
       type: object
@@ -10083,6 +10156,35 @@ components:
           $ref: "#/components/schemas/PublicWhatsAppConfig"
         telegram:
           $ref: "#/components/schemas/PublicTelegramConfig"
+        bugReport:
+          type: object
+          required: [enabled]
+          description: Whether the in-app bug-report button is offered (needs a GitHub issues token and repo).
+          properties:
+            enabled:
+              type: boolean
+        heartbeat:
+          type: object
+          required: [tcpEnabled, udpEnabled, host, tcpPort, udpPort]
+          description: Embedded TCP/UDP heartbeat push transports. Ports are 0 when the transport is off.
+          properties:
+            tcpEnabled:
+              type: boolean
+            udpEnabled:
+              type: boolean
+            host:
+              type: string
+              description: Hostname devices should send beats to (from the base URL, no port). Empty when unknown.
+            tcpPort:
+              type: integer
+            udpPort:
+              type: integer
+        runMode:
+          type: string
+          description: Server run mode (`normal`, `demo` or `test`).
+        deploymentMode:
+          type: string
+          enum: [saas, self-hosted]
 
     PublicTelegramConfig:
       type: object

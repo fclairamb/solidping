@@ -470,6 +470,26 @@ func TestApplyAuthEnv_InvalidKeepsExisting(t *testing.T) {
 	r.Equal(time.Hour, cfg.AccessTokenExpiry)
 }
 
+// TestApplyAuthEnv_ImpersonationKillSwitch: SP_AUTH_IMPERSONATION_ENABLED
+// reaches the snake_case auth.impersonation_enabled field (koanf alone would
+// bind auth.impersonation.enabled and silently leave the switch on).
+func TestApplyAuthEnv_ImpersonationKillSwitch(t *testing.T) {
+	r := require.New(t)
+
+	cfg := AuthConfig{ImpersonationEnabled: true}
+	t.Setenv("SP_AUTH_IMPERSONATION_ENABLED", "false")
+	applyAuthEnv(&cfg)
+	r.False(cfg.ImpersonationEnabled)
+
+	t.Setenv("SP_AUTH_IMPERSONATION_ENABLED", "true")
+	applyAuthEnv(&cfg)
+	r.True(cfg.ImpersonationEnabled)
+
+	t.Setenv("SP_AUTH_IMPERSONATION_ENABLED", "garbage")
+	applyAuthEnv(&cfg)
+	r.True(cfg.ImpersonationEnabled, "an unparseable value keeps the existing setting")
+}
+
 func TestApplyRealtimeEnv(t *testing.T) {
 	r := require.New(t)
 
@@ -1811,6 +1831,42 @@ func TestSchedulingCheckTimeout(t *testing.T) {
 
 			cfg := SchedulingConfig{CheckTimeoutMs: tc.ms}
 			require.Equal(t, tc.want, cfg.CheckTimeout())
+		})
+	}
+}
+
+func TestLoad_BugReportDisabledByDefault(t *testing.T) {
+	r := require.New(t)
+
+	t.Setenv("SP_APP_GITHUB_ISSUES_TOKEN", "")
+	t.Setenv("GITHUB_ISSUES_TOKEN", "")
+	t.Setenv("SP_APP_GITHUB_REPO", "")
+
+	cfg, err := Load()
+	r.NoError(err)
+	r.Empty(cfg.App.GitHub.Repo)
+	r.False(cfg.App.EnableBugReport)
+}
+
+func TestLoad_BugReportNeedsTokenAndRepo(t *testing.T) {
+	tests := []struct {
+		name, token, repo string
+		want              bool
+	}{
+		{"token only", "tok", "", false},
+		{"repo only", "", "acme/reports", false},
+		{"both", "tok", "acme/reports", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("SP_APP_GITHUB_ISSUES_TOKEN", tt.token)
+			t.Setenv("GITHUB_ISSUES_TOKEN", "")
+			t.Setenv("SP_APP_GITHUB_REPO", tt.repo)
+
+			cfg, err := Load()
+			require.NoError(t, err)
+			require.Equal(t, tt.want, cfg.App.EnableBugReport)
 		})
 	}
 }

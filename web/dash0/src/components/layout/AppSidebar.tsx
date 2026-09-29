@@ -42,7 +42,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/contexts/AuthContext";
-import { useVersion } from "@/api/hooks";
+import { useRunMode } from "@/api/public-config";
 import { useTranslation } from "react-i18next";
 import { LanguageSwitcher } from "@/components/shared/language-switcher";
 import { Logo } from "@/components/ui/logo";
@@ -166,8 +166,7 @@ export function AppSidebar() {
   const navigate = useNavigate();
   const params = useParams({ strict: false });
   const org = (params as { org?: string }).org || "test";
-  const { data: versionData } = useVersion();
-  const isTestMode = versionData?.runMode === "test";
+  const isTestMode = useRunMode() === "test";
 
   const passes = (gate?: NavGate) => {
     if (!gate) return true;

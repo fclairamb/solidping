@@ -595,7 +595,7 @@ A channel:
   second connection type — see [../discord/README.md](../discord/README.md);
 - carries type-specific config in a JSONB column with secret fields split
   into a `settings_private` envelope (see the encryption-at-rest section
-  of `CLAUDE.md`);
+  of `AGENTS.md`);
 - is bound to checks individually via `check_connections`. A channel
   marked `is_default = true` is auto-bound to every newly created check.
   Existing checks are not touched when the default flag flips.

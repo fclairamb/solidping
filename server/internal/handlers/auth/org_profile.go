@@ -266,6 +266,13 @@ func (s *Service) attachRenameSession(
 	ctx context.Context, userUID string, org *models.Organization,
 	authContext Context, resp *OrgProfileResponse,
 ) (*OrgProfileResponse, error) {
+	// An impersonation session never gets a session minted for the target
+	// (spec 2026-09-29-03): the rename itself stands, and the short-lived
+	// impersonation token keeps working through the previous-slug redirect.
+	if impersonatorFromContext(ctx) != "" {
+		return resp, nil
+	}
+
 	role := string(models.MemberRoleOwner)
 	if member, err := s.db.GetMemberByUserAndOrg(ctx, userUID, org.UID); err == nil && member != nil {
 		role = string(member.Role)

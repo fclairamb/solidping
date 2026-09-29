@@ -16,7 +16,10 @@
 package publicconfig
 
 import (
+	"net"
 	"net/http"
+	"net/url"
+	"strconv"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
@@ -134,6 +137,32 @@ type DiscordPublicConfig struct {
 	BotEnabled bool `json:"botEnabled"`
 }
 
+// BugReportPublicConfig tells the dashboard whether to render the bug-report
+// button. It is true only when the operator wired a GitHub issues token and
+// repository (config.ComputeBugReportEnabled).
+type BugReportPublicConfig struct {
+	Enabled bool `json:"enabled"`
+}
+
+// HeartbeatPublicConfig describes the embedded TCP/UDP heartbeat transports to
+// the dashboard (spec 2026-09-01-06).
+//
+// The dashboard renders the netcat / firmware examples only when a listener is
+// actually enabled, so it needs to learn both which transports are up and what
+// host:port a device should send to. Host and ports are derived from the
+// server's own configuration; they are advertising, not authorization.
+type HeartbeatPublicConfig struct {
+	TCPEnabled bool `json:"tcpEnabled"`
+	UDPEnabled bool `json:"udpEnabled"`
+	// Host is the hostname a device should send beats to, derived from the
+	// configured base URL. Empty when it cannot be derived, in which case the
+	// dashboard tells the reader to substitute their own host.
+	Host string `json:"host"`
+	// TCPPort / UDPPort are 0 when the matching transport is disabled.
+	TCPPort int `json:"tcpPort"`
+	UDPPort int `json:"udpPort"`
+}
+
 // Response is the public config document. Fields are added here as new public
 // flags appear; every one of them must be non-secret and browser-safe.
 type Response struct {
@@ -143,6 +172,14 @@ type Response struct {
 	SMS      SMSPublicConfig      `json:"sms"`
 	Demo     DemoPublicConfig     `json:"demo"`
 	Discord  DiscordPublicConfig  `json:"discord"`
+	// BugReport and Heartbeat used to live on the authenticated
+	// GET /api/v1/features; none of it is secret.
+	BugReport BugReportPublicConfig `json:"bugReport"`
+	Heartbeat HeartbeatPublicConfig `json:"heartbeat"`
+	// RunMode ("normal", "demo" or "test") and DeploymentMode ("saas" or
+	// "self-hosted") used to ride on GET /api/mgmt/version.
+	RunMode        string `json:"runMode"`
+	DeploymentMode string `json:"deploymentMode"`
 }
 
 // Handler serves the public config document.
@@ -199,6 +236,13 @@ func Build(cfg *config.Config) Response {
 	}
 
 	if cfg != nil {
+		resp.BugReport = BugReportPublicConfig{Enabled: cfg.App.EnableBugReport}
+		resp.Heartbeat = heartbeatConfig(cfg)
+		resp.RunMode = cfg.RunMode
+		resp.DeploymentMode = cfg.Deployment.Mode
+	}
+
+	if cfg != nil {
 		resp.SMS.VoiceEnabled = cfg.Voice.Active()
 
 		if cfg.SMS.Active() {
@@ -214,4 +258,52 @@ func Build(cfg *config.Config) Response {
 // GetConfig handles GET /api/v1/config (public, no authentication).
 func (h *Handler) GetConfig(writer http.ResponseWriter, _ *http.Request) error {
 	return h.WriteJSON(writer, http.StatusOK, Build(h.cfg))
+}
+
+// heartbeatConfig summarizes the push-transport configuration.
+func heartbeatConfig(cfg *config.Config) HeartbeatPublicConfig {
+	return HeartbeatPublicConfig{
+		TCPEnabled: cfg.Heartbeat.TCPEnabled(),
+		UDPEnabled: cfg.Heartbeat.UDPEnabled(),
+		Host:       baseURLHost(cfg.Server.BaseURL),
+		TCPPort:    listenPort(cfg.Heartbeat.TCPListen),
+		UDPPort:    listenPort(cfg.Heartbeat.UDPListen),
+	}
+}
+
+// listenPort extracts the port from a configured listen address, returning 0
+// when the listener is off or the address carries no usable port.
+func listenPort(value string) int {
+	normalized := config.NormalizeHeartbeatListen(value)
+	if normalized == "" {
+		return 0
+	}
+
+	_, portStr, err := net.SplitHostPort(normalized)
+	if err != nil {
+		return 0
+	}
+
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		return 0
+	}
+
+	return port
+}
+
+// baseURLHost returns the hostname of the configured public base URL, without
+// its port: the beat listeners live on their own port, so carrying the HTTP
+// one over would print a wrong example.
+func baseURLHost(baseURL string) string {
+	if baseURL == "" {
+		return ""
+	}
+
+	parsed, err := url.Parse(baseURL)
+	if err != nil {
+		return ""
+	}
+
+	return parsed.Hostname()
 }

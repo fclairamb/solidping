@@ -449,7 +449,8 @@
       "organizations": "Organizations",
       "flags": "Flags",
       "lastActive": "Last active",
-      "created": "Created"
+      "created": "Created",
+      "actions": "Actions"
     },
     "flags": {
       "superAdmin": "Super admin",
@@ -458,6 +459,15 @@
       "unverified": "Unverified",
       "passwordResetPending": "Password reset pending",
       "ssoOnly": "SSO only"
+    },
+    "impersonate": {
+      "button": "View as this user",
+      "title": "View the dashboard as {{email}}?",
+      "description": "You will see exactly what {{email}} sees, with their role. The session is audited in the organization's log and lasts 30 minutes. Their password, 2FA, passkeys and tokens cannot be changed from it.",
+      "organization": "Organization",
+      "confirm": "View as user",
+      "cancel": "Cancel",
+      "error": "Could not start the session: {{message}}"
     }
   },
   "notifications": {
@@ -493,5 +503,13 @@
     "firstNotifier": "First notifier",
     "firstIncident": "First page",
     "openAudit": "Open audit log"
+  },
+  "impersonation": {
+    "banner": {
+      "title": "You are viewing the dashboard as {{email}}",
+      "description": "This session is audited and ends at {{time}}. Credentials, tokens and sessions of this user cannot be changed.",
+      "exit": "Exit"
+    },
+    "forbidden": "Not available while viewing the dashboard as another user."
   }
 }

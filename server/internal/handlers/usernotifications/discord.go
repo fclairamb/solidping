@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/audit"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/discordlink"
@@ -15,6 +16,24 @@ import (
 // ErrDiscordNotEnabled is returned when the instance has no usable Discord bot
 // configured, so no DM contact can be created and no link can be minted.
 var ErrDiscordNotEnabled = errors.New("the Discord bot is not configured on this instance")
+
+// ErrImpersonationForbidden is returned when a request under a super admin's
+// impersonation token tries to bind a channel as the target's own paging
+// contact (Discord connect, Telegram link) or start a Discord link (spec
+// 2026-09-29-03). Those would route the target's pages, or a sign-in identity,
+// to whoever completes the round trip: the admin. The routes are on the
+// impersonation denylist; this is the second wall.
+var ErrImpersonationForbidden = errors.New("this action is not available while impersonating a user")
+
+// refuseImpersonation returns ErrImpersonationForbidden for an impersonated
+// request.
+func refuseImpersonation(ctx context.Context) error {
+	if audit.ImpersonatorFromContext(ctx) != "" {
+		return ErrImpersonationForbidden
+	}
+
+	return nil
+}
 
 // ErrDiscordContactNotDirect is returned when someone tries to create a
 // `discord` contact through the generic contact endpoint.
@@ -115,6 +134,10 @@ func (s *Service) DiscordEnabled() bool {
 func (s *Service) ConnectDiscord(
 	ctx context.Context, orgSlug string, user *models.User,
 ) (*RouteResponse, error) {
+	if err := refuseImpersonation(ctx); err != nil {
+		return nil, err
+	}
+
 	if !s.DiscordEnabled() {
 		return nil, ErrDiscordNotEnabled
 	}
@@ -228,6 +251,10 @@ func (s *Service) CreateDiscordLink(
 		OrgUID:      orgUID,
 		RedirectURI: redirectURI,
 	})
+	if errors.Is(err, discordlink.ErrImpersonation) {
+		return nil, ErrImpersonationForbidden
+	}
+
 	if err != nil {
 		return nil, err
 	}

@@ -20,7 +20,7 @@ import (
 )
 
 // dekParameterKey is where the wrapped DEK lives in the parameters table.
-// The key follows the convention documented in server/CLAUDE.md (dotted
+// The key follows the convention documented in server/AGENTS.md (dotted
 // hierarchy, snake_case within a segment).
 const dekParameterKey = "encryption.dek"
 

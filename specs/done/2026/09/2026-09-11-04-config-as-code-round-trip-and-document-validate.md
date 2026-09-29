@@ -8,8 +8,8 @@ effort: high
 ## Problem
 
 From the `#solidping-dev` thread of 2026-09-11
-(https://stonaltech.slack.com/archives/C0BFC2XG4K0/p1789139320451959?thread_ts=1789138055.738169&cid=C0BFC2XG4K0),
-on the tracked config of the `stonal` org (exp-devops `solidping/config.yaml`):
+(https://acmetech.slack.com/archives/C0BFC2XG4K0/p1789139320451959?thread_ts=1789138055.738169&cid=C0BFC2XG4K0),
+on the tracked config of the `acme` org (exp-devops `solidping/config.yaml`):
 
 > « la config dans git elle est hors sol … et en plus elle valide pas du tout …
 > j'ai 200 erreurs alors que c'est juste la conf exportée de base »
@@ -26,7 +26,7 @@ error:
 1. **The org's own export failed the org's validator with 197 problems.** 183
    were regions: the server stores and exports private locations in the folded
    form `@aws-paris`, while the documented/accepted long form is
-   `@stonaltech/aws-paris`. The server's own
+   `@acmetech/aws-paris`. The server's own
    [`regionRegex`](server/internal/handlers/checks/validate_document.go:38)
    accepts both; nothing tells a third party that the short form is what comes
    back. 12 more were check types (`domain`, `oracle`, `smtp`, `email`) the
@@ -51,7 +51,7 @@ error:
    diff` and `sp checks diff` had to build.
 
 4. **An export can be invalid.** An empty `name` is accepted on write, omitted
-   by the exporter, required by the importer (`domain-stonal-dev-io`, same
+   by the exporter, required by the importer (`domain-acme-dev-io`, same
    day). Filed with its fix in `2026-09-11-02`; listed here because the
    round-trip test below is what catches the *class*.
 

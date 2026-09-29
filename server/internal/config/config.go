@@ -1148,6 +1148,11 @@ type AuthConfig struct {
 	SessionMaxDuration time.Duration  `koanf:"session_max_duration"`
 	WebAuthn           WebAuthnConfig `koanf:"webauthn"`
 	Password           PasswordConfig `koanf:"password"`
+	// ImpersonationEnabled is the kill switch for super-admin impersonation
+	// (spec 2026-09-29-03). Default true; when false,
+	// POST /api/v1/system/users/:uid/impersonate answers 404. snake_case, so
+	// SP_AUTH_IMPERSONATION_ENABLED is bound by hand in applyAuthEnv.
+	ImpersonationEnabled bool `koanf:"impersonation_enabled"`
 }
 
 // PasswordConfig selects the password-hashing algorithm and its cost
@@ -1824,6 +1829,9 @@ func Load() (*Config, error) {
 			JWTSecret:          "change-me-in-production",
 			AccessTokenExpiry:  time.Hour,
 			RefreshTokenExpiry: 7 * 24 * time.Hour,
+			// Super-admin impersonation is on by default (spec 2026-09-29-03);
+			// auth.impersonation_enabled=false is the kill switch.
+			ImpersonationEnabled: true,
 			WebAuthn: WebAuthnConfig{
 				Enabled:       true,
 				RPDisplayName: "SolidPing",
@@ -1877,9 +1885,9 @@ func Load() (*Config, error) {
 			LocalRoot: "./data/files",
 		},
 		App: AppConfig{
-			GitHub: AppGitHubConfig{
-				Repo: "fclairamb/solidping",
-			},
+			// No token and no repo: the in-app bug report is off unless the
+			// operator sets both SP_APP_GITHUB_ISSUES_TOKEN and SP_APP_GITHUB_REPO.
+			GitHub:                  AppGitHubConfig{},
 			FeedbackMaxStorageBytes: DefaultFeedbackMaxStorageBytes,
 		},
 		Google:    GoogleOAuthConfig{Enabled: false},
@@ -2448,6 +2456,11 @@ func applyAuthEnv(cfg *AuthConfig) {
 		if d, err := time.ParseDuration(v); err == nil {
 			cfg.RefreshTokenExpiry = d
 		}
+	}
+	// auth.impersonation_enabled: koanf would map the env var to
+	// auth.impersonation.enabled and bind nothing.
+	if v, err := strconv.ParseBool(strings.TrimSpace(os.Getenv("SP_AUTH_IMPERSONATION_ENABLED"))); err == nil {
+		cfg.ImpersonationEnabled = v
 	}
 }
 

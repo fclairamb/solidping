@@ -449,7 +449,8 @@
       "organizations": "Organizaciones",
       "flags": "Indicadores",
       "lastActive": "Última actividad",
-      "created": "Creado"
+      "created": "Creado",
+      "actions": "Acciones"
     },
     "flags": {
       "superAdmin": "Superadministrador",
@@ -458,6 +459,15 @@
       "unverified": "Sin verificar",
       "passwordResetPending": "Restablecimiento pendiente",
       "ssoOnly": "Solo SSO"
+    },
+    "impersonate": {
+      "button": "Ver como este usuario",
+      "title": "¿Ver el panel como {{email}}?",
+      "description": "Verás exactamente lo que ve {{email}}, con su rol. La sesión queda registrada en el registro de auditoría de la organización y dura 30 minutos. Su contraseña, 2FA, llaves de acceso y tokens no se pueden modificar desde ella.",
+      "organization": "Organización",
+      "confirm": "Ver como usuario",
+      "cancel": "Cancelar",
+      "error": "No se pudo iniciar la sesión: {{message}}"
     }
   },
   "notifications": {
@@ -493,5 +503,13 @@
     "firstNotifier": "Primera notificación",
     "firstIncident": "Primer aviso",
     "openAudit": "Abrir registro de auditoría"
+  },
+  "impersonation": {
+    "banner": {
+      "title": "Estás viendo el panel como {{email}}",
+      "description": "Esta sesión queda registrada y termina a las {{time}}. Las credenciales, tokens y sesiones de este usuario no se pueden modificar.",
+      "exit": "Salir"
+    },
+    "forbidden": "No disponible mientras ves el panel como otro usuario."
   }
 }

@@ -2,6 +2,7 @@ package version
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -22,4 +23,39 @@ func TestGetStripsLeadingV(t *testing.T) {
 
 	Version = "dev"
 	r.Equal("dev", Get().Version)
+}
+
+func TestUptimeSince(t *testing.T) {
+	t.Parallel()
+
+	start := time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)
+
+	tests := []struct {
+		name string
+		now  time.Time
+		want int64
+	}{
+		{"same instant", start, 0},
+		{"sub-second truncates", start.Add(999 * time.Millisecond), 0},
+		{"90 seconds", start.Add(90 * time.Second), 90},
+		{"clock stepped backwards clamps to zero", start.Add(-time.Minute), 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.want, uptimeSince(start, tt.now))
+		})
+	}
+}
+
+// A binary built without ldflags reports documented defaults, never empty
+// strings, so /api/mgmt/version cannot render blanks or fail.
+func TestGetDefaultsWithoutLdflags(t *testing.T) {
+	t.Parallel()
+
+	info := Get()
+	require.Equal(t, "unknown", info.Commit)
+	require.Equal(t, "unknown", info.GitTime)
+	require.GreaterOrEqual(t, info.UptimeSeconds, int64(0))
 }

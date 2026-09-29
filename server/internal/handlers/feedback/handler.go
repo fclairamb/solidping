@@ -43,6 +43,13 @@ func NewHandler(svc *Service, authSvc *auth.Service, cfg *config.Config) *Handle
 
 // SubmitReport handles POST /api/mgmt/report.
 func (h *Handler) SubmitReport(writer http.ResponseWriter, req *http.Request) error {
+	// Off by default: answer 404 before reading the body, so an anonymous
+	// caller cannot push uploads at an endpoint that would drop them.
+	if !h.svc.cfg.App.EnableBugReport {
+		return h.WriteErrorErr(writer, req, http.StatusNotFound,
+			base.ErrorCodeNotFound, "Not found", ErrReportDisabled)
+	}
+
 	req.Body = http.MaxBytesReader(writer, req.Body, MaxReportSize)
 
 	if err := req.ParseMultipartForm(MaxReportSize); err != nil {
@@ -136,6 +143,18 @@ func (h *Handler) attachUserIfAuthenticated(ctx context.Context, authHeader stri
 	user, err := h.svc.db.GetUser(ctx, claims.UserUID)
 	if err == nil && user != nil {
 		sub.UserEmail = user.Email
+	}
+
+	// Filed under an impersonation token: the report shows the target's
+	// screen, so it stays attributed to them, but it must also say who
+	// really sent it.
+	if claims.IsImpersonation() {
+		sub.ImpersonatedBy = claims.ImpersonatedBy
+
+		admin, adminErr := h.svc.db.GetUser(ctx, claims.ImpersonatedBy)
+		if adminErr == nil && admin != nil {
+			sub.ImpersonatedBy = admin.Email
+		}
 	}
 }
 

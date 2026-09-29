@@ -47,7 +47,7 @@ response is exactly:
 (`posthog.enabled == true && posthog.project_api_key != ""`), which is the same
 rule the backend capture client and the dashboard apply.
 
-The document also carries the instance-level messaging capability flags, each
+The document also carries `bugReport.enabled`, `heartbeat` (`tcpEnabled`, `udpEnabled`, `host`, `tcpPort`, `udpPort`), `runMode` and `deploymentMode` (these replace the removed `GET /api/v1/features` and the deployment fields of `GET /api/mgmt/version`), plus the instance-level messaging capability flags, each
 resolved the same way:
 
 ```json

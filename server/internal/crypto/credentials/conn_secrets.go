@@ -21,7 +21,7 @@ const (
 // URL fields are intentionally NOT secret: webhook `url` and the
 // `webhook_url` of Discord / GoogleChat / Mattermost / MSTeams stay in the
 // public `settings` JSONB so the dashboard can render them on the edit form.
-// The threat model (DB-theft only, see server/CLAUDE.md) doesn't require
+// The threat model (DB-theft only, see server/AGENTS.md) doesn't require
 // encrypting endpoint URLs.
 //
 //nolint:gochecknoglobals // registry of secret-key declarations; treated as a constant lookup table
@@ -44,7 +44,7 @@ var connectionSecretFields = map[models.ConnectionType][]string{
 	// webhook/Discord/GoogleChat/Mattermost/MSTeams URLs above).
 	models.ConnectionTypeZulip: {"api_key"},
 	// PagerDuty: the Events API v2 integration (routing) key. There is no
-	// OAuth, REST API v2 or schedule import — see server/CLAUDE.md.
+	// OAuth, REST API v2 or schedule import — see server/AGENTS.md.
 	models.ConnectionTypePagerduty: {"routing_key"},
 	models.ConnectionTypePushover:  {"user_key", "api_token"},
 	models.ConnectionTypeFreebox:   {"appToken"},

@@ -19,10 +19,12 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"net/url"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/audit"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
@@ -50,6 +52,14 @@ const (
 	Scopes = "identify email"
 )
 
+// ErrImpersonation is returned by Mint when the request runs under a super
+// admin's impersonation token (spec 2026-09-29-03). A link token binds
+// whichever Discord account completes the round trip to the target, and a bound
+// Discord identity signs in: minting one while impersonating would hand the
+// admin a lasting login as the target. The route is on the impersonation
+// denylist too; this is the second wall, like startSession's.
+var ErrImpersonation = errors.New("a Discord account cannot be linked while impersonating a user")
+
 // Payload is what a link token stands for: the SolidPing account the resulting
 // Discord identity is bound to, and where to send the browser afterwards.
 type Payload struct {
@@ -71,6 +81,10 @@ type Payload struct {
 // would be unfindable at redemption time. The org lives in the value and the
 // token's entropy is what protects it.
 func Mint(ctx context.Context, dbSvc db.Service, payload Payload) (string, error) {
+	if audit.ImpersonatorFromContext(ctx) != "" {
+		return "", ErrImpersonation
+	}
+
 	buf := make([]byte, tokenBytes)
 	if _, err := rand.Read(buf); err != nil {
 		return "", fmt.Errorf("generate discord link token: %w", err)

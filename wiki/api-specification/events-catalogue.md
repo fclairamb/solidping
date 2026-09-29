@@ -45,6 +45,7 @@ These are contract, not implementation detail:
 | Key | Meaning |
 |---|---|
 | `target_type` / `target_uid` / `target_name` | What the event is about |
+| `impersonated_by` | UID of the super admin who acted through an impersonation token. Present on EVERY event written under such a token (the actor is then the impersonated user), absent otherwise |
 | `changed_fields` | Sorted names of the fields an update touched |
 | `changes` | `{field: {from, to}}` for the non-sensitive scalar subset |
 
@@ -60,6 +61,7 @@ These are contract, not implementation detail:
 | `auth.token_created` | `token_kind` (`pat` / `agent_enrollment` / `oauth_grant`), `token_name`, `token_prefix`; for an OAuth grant: `client_id`, `scope`, `resource`, `grant_type` |
 | `auth.token_revoked` | `token_kind`, `token_name`; for an OAuth grant: `client_id`, `scope` |
 | `auth.token_misuse` | `token_kind`, `reason`, `client_id` (the grant's owner), `presented_client_id` (who tried) |
+| `auth.impersonation_started` | `auth_method` (`impersonate`), `email` / `role` (the target), `impersonator_email`, `expires_at`; actor = the super admin, target = the impersonated user, recorded in the target's org |
 
 **OAuth / MCP grants.** Completing the OAuth authorization-code exchange
 (`internal/oauth`) hands an external client the right to act as a user, in an
@@ -138,8 +140,13 @@ invitation
 registration
 switch_org
 org_session
+impersonate
 ```
 <!-- auth-methods:end -->
+
+`impersonate` is the one value never seen on `auth.login_succeeded`: a
+super-admin impersonation mints no session, so it is recorded on
+`auth.impersonation_started` instead.
 
 A federated login that is NOT admitted to the org (the membership-request
 outcome) mints no org-scoped session, and therefore records no login — claiming
