@@ -72,7 +72,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/escalationpolicies"
 	"github.com/fclairamb/solidping/server/internal/handlers/events"
-	"github.com/fclairamb/solidping/server/internal/handlers/features"
 	"github.com/fclairamb/solidping/server/internal/handlers/feedback"
 	"github.com/fclairamb/solidping/server/internal/handlers/files"
 	"github.com/fclairamb/solidping/server/internal/handlers/filestorage/localfs"
@@ -1640,11 +1639,9 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgOwnerGroup.POST("/logo", orgLogoHandler.Upload)
 	orgOwnerGroup.DELETE("/logo", orgLogoHandler.Delete)
 
-	// Bug report (public POST under /api/mgmt) and features endpoint (auth)
+	// Bug report (public POST under /api/mgmt)
 	feedbackService := feedback.NewService(s.dbService, filesService, s.config, nil)
 	feedbackHandler := feedback.NewHandler(feedbackService, s.authService, s.config)
-	featuresHandler := features.NewHandler(s.config)
-	api.NewGroup("/features").Use(authMiddleware.RequireAuth).GET("", featuresHandler.GetFeatures)
 
 	// Members routes (authentication required).
 	//
@@ -2758,8 +2755,6 @@ func (s *Server) getVersion(writer http.ResponseWriter, _ *http.Request) error {
 	writer.WriteHeader(http.StatusOK)
 
 	versionInfo := version.Get()
-	versionInfo.RunMode = s.config.RunMode
-	versionInfo.DeploymentMode = s.config.Deployment.Mode
 
 	data, err := json.Marshal(versionInfo)
 	if err != nil {

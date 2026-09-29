@@ -9345,11 +9345,6 @@ components:
           type: string
         gitTime:
           type: string
-        runMode:
-          type: string
-        deploymentMode:
-          type: string
-          enum: [saas, self-hosted]
 
     CostDistributionPercentiles:
       type: object
@@ -10154,6 +10149,35 @@ components:
           $ref: "#/components/schemas/PublicWhatsAppConfig"
         telegram:
           $ref: "#/components/schemas/PublicTelegramConfig"
+        bugReport:
+          type: object
+          required: [enabled]
+          description: Whether the in-app bug-report button is offered (needs a GitHub issues token and repo).
+          properties:
+            enabled:
+              type: boolean
+        heartbeat:
+          type: object
+          required: [tcpEnabled, udpEnabled, host, tcpPort, udpPort]
+          description: Embedded TCP/UDP heartbeat push transports. Ports are 0 when the transport is off.
+          properties:
+            tcpEnabled:
+              type: boolean
+            udpEnabled:
+              type: boolean
+            host:
+              type: string
+              description: Hostname devices should send beats to (from the base URL, no port). Empty when unknown.
+            tcpPort:
+              type: integer
+            udpPort:
+              type: integer
+        runMode:
+          type: string
+          description: Server run mode (`normal`, `demo` or `test`).
+        deploymentMode:
+          type: string
+          enum: [saas, self-hosted]
 
     PublicTelegramConfig:
       type: object

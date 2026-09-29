@@ -28,11 +28,9 @@ func DefaultUserAgent() string {
 
 // Info holds all version information.
 type Info struct {
-	Version        string `json:"version"`
-	Commit         string `json:"commit"`
-	GitTime        string `json:"gitTime"`
-	RunMode        string `json:"runMode,omitempty"`
-	DeploymentMode string `json:"deploymentMode,omitempty"`
+	Version string `json:"version"`
+	Commit  string `json:"commit"`
+	GitTime string `json:"gitTime"`
 }
 
 // Get returns all version information as a struct. The leading "v" sometimes

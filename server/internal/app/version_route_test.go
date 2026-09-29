@@ -40,22 +40,18 @@ func versionRouteServer(t *testing.T, deploymentMode string) *httptest.Server {
 	return ts
 }
 
-// TestGetVersionDeploymentMode covers spec 2026-09-06-01: GET /api/mgmt/version
-// must surface the deployment mode so the dashboard can pick the right
-// marketing UTM campaign. Config.Validate() (exercised separately in
-// TestValidateDeploymentMode, internal/config) resolves an unset mode to
-// "self-hosted" before the server ever sees it, so this test feeds the
-// handler the two post-validation values it will actually see in practice.
-func TestGetVersionDeploymentMode(t *testing.T) {
+// TestDeploymentFieldsMovedToPublicConfig covers spec 2026-09-29-05:
+// GET /api/mgmt/version carries build identity only, /api/v1/config carries
+// runMode and deploymentMode, and the old /api/v1/features route is gone.
+func TestDeploymentFieldsMovedToPublicConfig(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name           string
 		deploymentMode string
-		want           string
 	}{
-		{"resolved self-hosted", config.DeploymentModeSelfHosted, config.DeploymentModeSelfHosted},
-		{"explicit saas", config.DeploymentModeSaaS, config.DeploymentModeSaaS},
+		{"resolved self-hosted", config.DeploymentModeSelfHosted},
+		{"explicit saas", config.DeploymentModeSaaS},
 	}
 
 	for _, tt := range tests {
@@ -65,17 +61,35 @@ func TestGetVersionDeploymentMode(t *testing.T) {
 
 			ts := versionRouteServer(t, tt.deploymentMode)
 
-			resp, err := http.Get(ts.URL + "/api/mgmt/version") //nolint:noctx // test-only call
+			version := getJSON(t, ts.URL+"/api/mgmt/version")
+			r.NotEmpty(version["version"])
+			r.NotContains(version, "runMode")
+			r.NotContains(version, "deploymentMode")
+
+			cfgBody := getJSON(t, ts.URL+"/api/v1/config")
+			r.Equal(tt.deploymentMode, cfgBody["deploymentMode"])
+			r.Contains(cfgBody, "runMode")
+
+			resp, err := http.Get(ts.URL + "/api/v1/features") //nolint:noctx // test-only call
 			r.NoError(err)
 			defer func() { _ = resp.Body.Close() }()
-			r.Equal(http.StatusOK, resp.StatusCode)
-
-			var body struct {
-				Version        string `json:"version"`
-				DeploymentMode string `json:"deploymentMode"`
-			}
-			r.NoError(json.NewDecoder(resp.Body).Decode(&body))
-			r.Equal(tt.want, body.DeploymentMode)
+			r.Equal(http.StatusNotFound, resp.StatusCode)
 		})
 	}
+}
+
+func getJSON(t *testing.T, url string) map[string]any {
+	t.Helper()
+
+	resp, err := http.Get(url) //nolint:noctx // test-only call
+	require.NoError(t, err)
+
+	defer func() { _ = resp.Body.Close() }()
+
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var body map[string]any
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+
+	return body
 }
