@@ -26,6 +26,20 @@ import (
 // leaving each probe interval/2 = 50 ms for its pong.
 const fastPingInterval = 100 * time.Millisecond
 
+// survivalPingInterval is the probe cadence of the test asserting a healthy
+// frame-sending connection is NEVER closed. Its only wall-clock dependency is
+// scheduler latency on the path ping → client callback → server reader, which
+// must stay under 1.5 intervals for each probe-driven frame. Measured under
+// `-cpu=1 -parallel=64` plus CPU burners, a goroutine could wait over 1 s to
+// run (reader_blocked_for=0s: CPU starvation, not a parked reader), so 2 s is
+// used. The tests assert behavior, not a speed.
+const survivalPingInterval = 2 * time.Second
+
+// answeredPingInterval is the cadence of the test asserting that NO probe ever
+// goes unanswered: every pong must be read within interval/2, so it gets
+// 1.5 s — above the > 1 s goroutine starvation measured under that same load.
+const answeredPingInterval = 3 * time.Second
+
 // Log lines the keepalive state machine emits (asserted verbatim).
 const (
 	logStale       = "agent connection stale: keepalive probe unanswered"
@@ -55,6 +69,28 @@ func (l *logRecorder) Handle(_ context.Context, record slog.Record) error {
 func (l *logRecorder) WithAttrs([]slog.Attr) slog.Handler { return l }
 
 func (l *logRecorder) WithGroup(string) slog.Handler { return l }
+
+// dump renders every record as one line, for failure diagnostics.
+func (l *logRecorder) dump() []string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	out := make([]string, 0, len(l.records))
+
+	for i := range l.records {
+		line := l.records[i].Time.Format("15:04:05.000000") + " " +
+			l.records[i].Level.String() + " " + l.records[i].Message
+		l.records[i].Attrs(func(a slog.Attr) bool {
+			line += " " + a.Key + "=" + a.Value.String()
+
+			return true
+		})
+
+		out = append(out, line)
+	}
+
+	return out
+}
 
 // messages returns the attributes of every record logged with msg, in order.
 func (l *logRecorder) messages(msg string) []map[string]string {
@@ -95,6 +131,16 @@ func newKeepaliveEnvWith(t *testing.T, interval time.Duration) (*env, *logRecord
 
 	logs := &logRecorder{}
 
+	// On failure, replay what the connection path logged (with timestamps):
+	// the stale/close lines carry the last observation and its age.
+	t.Cleanup(func() {
+		if t.Failed() {
+			for _, line := range logs.dump() {
+				t.Log(line)
+			}
+		}
+	})
+
 	e := newEnvConfigured(t, nil, func(h *agentws.Handler) {
 		h.SetPingInterval(interval)
 		h.SetLogger(slog.New(logs))
@@ -107,13 +153,15 @@ func newKeepaliveEnvWith(t *testing.T, interval time.Duration) (*env, *logRecord
 // lets a test block until a given count is reached — driven by the pings
 // themselves, never by sleeping.
 type probeCounter struct {
-	mu      sync.Mutex
-	n       int
-	changed chan struct{}
+	mu       sync.Mutex
+	n        int
+	changed  chan struct{}
+	interval time.Duration
 }
 
-func newProbeCounter() *probeCounter {
-	return &probeCounter{changed: make(chan struct{})}
+// newProbeCounter counts the probes of a connection probing every interval.
+func newProbeCounter(interval time.Duration) *probeCounter {
+	return &probeCounter{changed: make(chan struct{}), interval: interval}
 }
 
 func (p *probeCounter) inc() {
@@ -138,7 +186,9 @@ func (p *probeCounter) count() int {
 func (p *probeCounter) await(t *testing.T, want int, readErr <-chan error) {
 	t.Helper()
 
-	deadline := time.After(10 * time.Second)
+	// Generous: the probes themselves pace this, the deadline only turns a
+	// dead pinger into a failure instead of a hang.
+	deadline := time.After(10*time.Second + time.Duration(want)*p.interval)
 
 	for {
 		p.mu.Lock()
@@ -203,9 +253,9 @@ func TestFrameAheadOfPongDoesNotKillTheConnection(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	// A roomier cycle than fastPingInterval: this test asserts that NO probe
-	// ever goes unanswered, so each pong gets 150 ms even under -race load.
-	e, logs := newKeepaliveEnvWith(t, 300*time.Millisecond)
+	// This test asserts that NO probe ever goes unanswered: see
+	// answeredPingInterval.
+	e, logs := newKeepaliveEnvWith(t, answeredPingInterval)
 
 	var (
 		claiming atomic.Bool
@@ -214,7 +264,7 @@ func TestFrameAheadOfPongDoesNotKillTheConnection(t *testing.T) {
 		client   atomic.Pointer[websocket.Conn]
 	)
 
-	probes := newProbeCounter()
+	probes := newProbeCounter(answeredPingInterval)
 
 	conn, _, enrolled := e.enrollWith(e.mintToken(), "office-1", &websocket.DialOptions{
 		OnPingReceived: func(ctx context.Context, _ []byte) bool {
@@ -273,8 +323,8 @@ func TestFrameAheadOfPongDoesNotKillTheConnection(t *testing.T) {
 	claimsSent := sent.Load()
 	quietSeen := e.agentLastSeen(enrolled.AgentUID)
 
-	// Two more answered probe cycles, no frames at all.
-	probes.await(t, probes.count()+2, readErr)
+	// One more answered probe cycle, no frames at all.
+	probes.await(t, probes.count()+1, readErr)
 	require.Eventually(t, func() bool {
 		return e.agentLastSeen(enrolled.AgentUID).After(quietSeen)
 	}, 5*time.Second, 5*time.Millisecond, "an answered probe must refresh last_seen_at on its own")
@@ -295,47 +345,58 @@ func TestFrameAheadOfPongDoesNotKillTheConnection(t *testing.T) {
 		return len(logs.messages(logConnectionClosed)) > 0
 	}, 10*time.Second, 5*time.Millisecond, "the log capture must see the handler's own lines")
 	r.Empty(logs.messages(logStale))
+
+	// Join the disconnect write before the test's database closes.
+	waitCtx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+
+	r.NoError(e.handler.WaitForEvents(waitCtx))
 }
 
 // TestFramesKeepAConnectionAliveWithoutPongs pins the any-frame rule: an agent
 // that keeps sending frames but NEVER answers a ping is alive by construction.
 // It goes stale on every unanswered probe and back to live on its next frame,
 // and is never closed — this must not regress into "pong or die".
+//
+// Frames are driven by the probes themselves: the agent writes one claim from
+// inside every ping callback (and never pongs), so every probe cycle carries a
+// frame observed after that probe was sent — no server round trip, no DB work
+// and no timer sits between a probe and its frame.
 func TestFramesKeepAConnectionAliveWithoutPongs(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
-	e, logs := newKeepaliveEnv(t)
+	e, logs := newKeepaliveEnvWith(t, survivalPingInterval)
 
-	var armed atomic.Bool
+	var (
+		armed  atomic.Bool
+		client atomic.Pointer[websocket.Conn]
+		sent   atomic.Int64
+	)
 
-	probes := newProbeCounter()
+	probes := newProbeCounter(survivalPingInterval)
 
 	conn, _, enrolled := e.enrollWith(e.mintToken(), "office-1", &websocket.DialOptions{
-		OnPingReceived: func(context.Context, []byte) bool {
-			if armed.Load() {
-				probes.inc()
+		OnPingReceived: func(ctx context.Context, _ []byte) bool {
+			if !armed.Load() {
+				return false
 			}
+
+			probes.inc()
+
+			id := fmt.Sprintf("c-%d", sent.Add(1))
+			_ = wsjson.Write(ctx, client.Load(), agentcrypto.ClientFrame{
+				Type: agentcrypto.MsgTypeClaim, ID: id, MaxJobs: 1,
+			})
 
 			return false // never pong
 		},
 	})
+	client.Store(conn)
+	armed.Store(true)
 
 	readErr := make(chan error, 1)
 
-	// A continuous claim chain: every claim response triggers the next claim,
-	// so frames keep flowing independently of the probe schedule.
-	sendClaim := func(ctx context.Context, n int) error {
-		return wsjson.Write(ctx, conn, agentcrypto.ClientFrame{
-			Type: agentcrypto.MsgTypeClaim, ID: fmt.Sprintf("c-%d", n), MaxJobs: 1,
-		})
-	}
-
-	armed.Store(true)
-	r.NoError(sendClaim(t.Context(), 0))
-
 	go func() {
-		sent := 0
-
 		for {
 			var frame agentcrypto.ServerFrame
 			if err := wsjson.Read(t.Context(), conn, &frame); err != nil {
@@ -343,19 +404,10 @@ func TestFramesKeepAConnectionAliveWithoutPongs(t *testing.T) {
 
 				return
 			}
-
-			if strings.HasPrefix(frame.ID, "c-") {
-				sent++
-				if err := sendClaim(t.Context(), sent); err != nil {
-					readErr <- err
-
-					return
-				}
-			}
 		}
 	}()
 
-	// Five probe cycles, none of them answered.
+	// Five probe cycles survived, none of them answered.
 	probes.await(t, 6, readErr)
 
 	// Positive control: the machine DID see the missing pongs — the connection
@@ -369,20 +421,53 @@ func TestFramesKeepAConnectionAliveWithoutPongs(t *testing.T) {
 }
 
 // TestSilentAgentIsClosedAfterTwoMissedProbes: detection stays bounded. An
-// agent that neither reads nor writes is closed as ping_timeout after exactly
-// two consecutive unanswered probes, the first of which logged the stale WARN
-// naming the agent and its last observation.
+// agent that sends nothing at all — no frame, no ping, no pong — is closed as
+// ping_timeout after exactly two consecutive unanswered probes, the first of
+// which logged the stale WARN naming the agent and its last observation.
+//
+// The fake agent keeps a reader running but its ping callback refuses every
+// pong, so the server observes exactly the silence of a dead peer, while the
+// test still receives the server's close frame the instant it is written (a
+// client that stopped reading would have to catch it inside the server's
+// 5 s close-handshake window, a wall-clock race under load).
 func TestSilentAgentIsClosedAfterTwoMissedProbes(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 	e, logs := newKeepaliveEnv(t)
 
-	conn, _, enrolled := e.enroll(e.mintToken(), "office-1")
+	conn, _, enrolled := e.enrollWith(e.mintToken(), "office-1", &websocket.DialOptions{
+		OnPingReceived: func(context.Context, []byte) bool { return false }, // never pong
+	})
 
-	// The client neither reads nor writes: nothing answers the server's probes.
-	require.Eventually(t, func() bool {
-		return len(logs.messages(logSilentClose)) > 0
-	}, 10*time.Second, 5*time.Millisecond)
+	readErr := make(chan error, 1)
+
+	go func() {
+		for {
+			var frame agentcrypto.ServerFrame
+			if err := wsjson.Read(t.Context(), conn, &frame); err != nil {
+				readErr <- err
+
+				return
+			}
+		}
+	}()
+
+	// The server closes the connection on its own.
+	var closeErr error
+
+	select {
+	case closeErr = <-readErr:
+	case <-time.After(30 * time.Second):
+		r.FailNow("the silent agent was never closed")
+	}
+
+	r.Equal(websocket.StatusGoingAway, websocket.CloseStatus(closeErr), "closed by the server: %v", closeErr)
+
+	// Join the connection's teardown and its detached event write.
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+
+	r.NoError(e.handler.WaitForEvents(ctx))
 
 	stale := logs.messages(logStale)
 	r.Len(stale, 1, "exactly one stale transition before the close: two consecutive missed probes")
@@ -397,20 +482,7 @@ func TestSilentAgentIsClosedAfterTwoMissedProbes(t *testing.T) {
 	r.Len(closing, 1)
 	r.Equal(enrolled.AgentUID, closing[0]["agent"])
 
-	// Only now read: the server's close frame is waiting in the stream.
-	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
-	defer cancel()
-
-	var readErr error
-
-	for readErr == nil {
-		var frame agentcrypto.ServerFrame
-		readErr = wsjson.Read(ctx, conn, &frame)
-	}
-
-	r.Equal(websocket.StatusGoingAway, websocket.CloseStatus(readErr), "closed by the server: %v", readErr)
-
-	disconnected := e.waitForEvent(models.EventTypeAgentDisconnected)
+	disconnected := e.agentEvents(models.EventTypeAgentDisconnected)
 	r.Len(disconnected, 1)
 	r.Equal(models.AgentDisconnectReasonPingTimeout, disconnected[0].Payload[models.AgentEventPayloadReason])
 }
