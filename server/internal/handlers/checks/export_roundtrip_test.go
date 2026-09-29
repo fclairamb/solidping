@@ -443,7 +443,7 @@ func TestCreateWithoutANameFallsBackToTheSlug(t *testing.T) {
 //
 // The long spelling is the single most important case here. On the tracked org
 // that motivated this spec, 183 of 197 "errors" were exactly that: the file
-// said `@stonaltech/aws-paris`, the export said `@aws-paris`, and every
+// said `@acmetech/aws-paris`, the export said `@aws-paris`, and every
 // external validator concluded the file was wrong.
 func (rig *roundTripRig) seedRoundTripFixture(t *testing.T) int {
 	t.Helper()
