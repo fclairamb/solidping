@@ -4,6 +4,7 @@ package version
 import (
 	"fmt"
 	"strings"
+	"time"
 )
 
 // Build-time variables set via ldflags.
@@ -21,6 +22,21 @@ var (
 	UserAgent string
 )
 
+// startedAt is the process start time, captured when the package is loaded.
+//
+//nolint:gochecknoglobals // process-lifetime constant, fixed at init
+var startedAt = time.Now()
+
+// uptimeSince returns whole seconds elapsed between start and now, never
+// negative (a clock step backwards reads as 0, not a negative uptime).
+func uptimeSince(start, now time.Time) int64 {
+	if now.Before(start) {
+		return 0
+	}
+
+	return int64(now.Sub(start) / time.Second)
+}
+
 // DefaultUserAgent returns the default user-agent string: "solidping.io/{version}".
 func DefaultUserAgent() string {
 	return "solidping.io/" + Version
@@ -31,6 +47,8 @@ type Info struct {
 	Version string `json:"version"`
 	Commit  string `json:"commit"`
 	GitTime string `json:"gitTime"`
+	// UptimeSeconds is how long this process has been running.
+	UptimeSeconds int64 `json:"uptimeSeconds"`
 }
 
 // Get returns all version information as a struct. The leading "v" sometimes
@@ -42,6 +60,8 @@ func Get() Info {
 		Version: strings.TrimPrefix(Version, "v"),
 		Commit:  Commit,
 		GitTime: GitTime,
+
+		UptimeSeconds: uptimeSince(startedAt, time.Now()),
 	}
 }
 

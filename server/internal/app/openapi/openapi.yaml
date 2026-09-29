@@ -9345,6 +9345,13 @@ components:
           type: string
         gitTime:
           type: string
+        uptimeSeconds:
+          type: integer
+          format: int64
+          minimum: 0
+          description: >
+            Seconds since this process started. Commit and gitTime fall back
+            to "unknown" when the binary was built without ldflags.
 
     CostDistributionPercentiles:
       type: object

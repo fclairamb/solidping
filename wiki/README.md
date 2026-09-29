@@ -98,6 +98,7 @@ Operational procedures for diagnosing the running system.
 - [runbooks/invite-link-invalid-or-expired.md](runbooks/invite-link-invalid-or-expired.md) — The 2026-08-31 "invitation link invalid or expired" report was reporter error, not a defect — what to check before re-opening the hunt, and the two lasting fixes that came out of it anyway (error-conflation split, E2E coverage).
 - [runbooks/discord-bot-setup.md](runbooks/discord-bot-setup.md) — Provisioning the Discord **bot**: the two credentials login does not need (`SP_DISCORD_BOT_TOKEN`, `SP_DISCORD_PUBLIC_KEY`) and their gopass paths, the install-params/scope and redirect-URI changes the application record needs, and how to verify. Read this when the boot log says "Discord bot disabled: missing configuration".
 - [runbooks/api-testing-with-curl.md](runbooks/api-testing-with-curl.md) — Log in, save a token, and exercise the REST API by hand with curl; default credentials, forced password rotation, troubleshooting.
+- [runbooks/claude-cloud.md](runbooks/claude-cloud.md) — Working in a Claude cloud (remote) sandbox with no Docker, secrets or built frontend: `scripts/cloud-setup.sh`, what a clean clone needs (embed placeholders), SQLite smoke server, CI env parity for E2E, what to run before pushing.
 - [runbooks/observability-toggles.md](runbooks/observability-toggles.md) — `SP_PROMETHEUS_ENABLED`, `SP_METRICS_SCRAPE_TOKEN`, `SP_PROFILER_ENABLED`, `SP_OTEL_ENABLED`: what each switches and how they interact.
 
 ## Testing

@@ -26,6 +26,24 @@ permissions:
   contents: read
 
 jobs:
+  # Spec 2026-09-29-08: a fresh clone must build and pass the SQLite layer with
+  # no frontend build, no Docker step and no .env (what a Claude cloud session
+  # gets). Guards the tracked .gitkeep files in the embedded frontend dirs.
+  clean-clone:
+    name: Clean clone builds and tests
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.27"
+          cache-dependency-path: server/go.sum
+
+      - name: Clone HEAD, go build ./..., make test
+        run: scripts/check-clean-clone.sh
+
   slowtests:
     name: Live network + Docker suites
     runs-on: ubuntu-26.04

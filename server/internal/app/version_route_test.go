@@ -63,6 +63,11 @@ func TestDeploymentFieldsMovedToPublicConfig(t *testing.T) {
 
 			version := getJSON(t, ts.URL+"/api/mgmt/version")
 			r.NotEmpty(version["version"])
+			r.Contains(version, "commit")
+			r.Contains(version, "gitTime")
+			uptime, ok := version["uptimeSeconds"].(float64)
+			r.True(ok, "uptimeSeconds must be a JSON number, got %T", version["uptimeSeconds"])
+			r.GreaterOrEqual(uptime, float64(0))
 			r.NotContains(version, "runMode")
 			r.NotContains(version, "deploymentMode")
 

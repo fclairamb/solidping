@@ -17,7 +17,7 @@ Agent instructions for every coding agent (Claude Code, Codex, Cursor, Copilot, 
   - The only competitor-facing pages in `web/docs/` are the `migrate-from-*.md` import guides.
 
 ## Development workflow
-If the server is running on port 4000, apply code changes directly — `make dev` / `make dev-test` hot-reloads both backend and frontend.
+Laptop only: if a server already runs on port 4000, apply code changes directly (`make dev` / `make dev-test` hot-reload). `rtk` prefixes, the k8xp VPN and `gopass` are user-global setup, not part of the repo. Sandboxes and Claude cloud sessions: see [Without Docker](#without-docker-cloud-sessions-ci-like-sandboxes).
 
 1. Start infrastructure: `docker-compose up -d`
 2. Run everything: `make dev` (backend + dash0 + status0 with hot reload)
@@ -25,6 +25,13 @@ If the server is running on port 4000, apply code changes directly — `make dev
 4. Database changes: add migrations, then `make migrate`
 
 Dev logs live in `logs/*.log` (`backend.log`, `dash0.log`, `status0.log`), size-rotated with `.1`/`.2` suffixes (~20 MB cap); all three processes run as children of the `server/cmd/devloop` supervisor, so Ctrl-C stops everything.
+
+### Without Docker (cloud sessions, CI-like sandboxes)
+No Docker or Postgres is needed. SQLite is the default database. Full runbook: [wiki/runbooks/claude-cloud.md](wiki/runbooks/claude-cloud.md).
+
+- Once per fresh sandbox: `scripts/cloud-setup.sh` (verifies Go, installs bun and golangci-lint into `~/.local/bin`, `make deps`, builds the frontend).
+- Smoke-test server (run it in the background, then `curl localhost:4000/api/mgmt/version`): `cd server && SP_RUNMODE=test SP_DB_TYPE=sqlite SP_DB_DIR=$(mktemp -d) go run . serve`. Test-mode login is `test@test.com` / `test` / org `test`.
+- Before pushing from a sandbox run `make lint` and `make test`. Leave `make test-postgres`, `make test-slow` and the full Playwright suite to CI.
 
 ### Key Makefile targets
 | Target | Purpose |

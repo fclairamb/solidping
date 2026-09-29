@@ -1,4 +1,4 @@
-.PHONY: docker-build build build-backend build-dash0 build-status0 build-docs copy-dash0 copy-status0 copy-docs embed-placeholders cloud-setup \
+.PHONY: docker-build build build-backend build-dash0 build-status0 build-docs copy-dash0 copy-status0 copy-docs embed-placeholders cloud-setup check-clean-clone \
 	build-cli install-cli clean clean-all run run-test dev dev-test dev-saas dev-dash0 dev-status0 dev-docs dev-backend \
 	test test-cover test-postgres test-slow test-scenario test-dash0 test-docs lint lint-agent-docs lint-back lint-dash0 lint-status0 fmt deps migrate help sync-brand-assets build-favicons \
 	showcase showcase-terminal showcase-cut \
@@ -320,6 +320,9 @@ dev-test: kill ## Run backend, dash0 and status0 in development test mode
 	@echo "Running application in development test mode..."
 	@cd $(BACK_DIR) && SP_RUNMODE=test SP_REDIRECTS="/d:localhost:5174/d,/s:localhost:5175/s" \
 		SP_DB_MIGRATION_GUARD_MODE=warn \
+		SP_SERVER_RATE_LIMITING_REQUESTS_PER_MINUTE=0 \
+		SP_SERVER_RATE_LIMITING_MAX_CONCURRENT=0 \
+		SP_AUTH_REGISTRATION_EMAIL_PATTERN='.*' \
 		go run ./cmd/devloop $(DEVLOOP_LOG_FLAGS) $(DEVLOOP_PROCS)
 
 dev-saas: kill ## Run backend (SaaS mode) + dash0 + status0 — pairs with ../solidping-billing `make dev`
@@ -356,6 +359,9 @@ clean-all: clean ## Remove all generated files including node_modules
 
 embed-placeholders: ## Create missing placeholder files in the embedded frontend dirs (backend-only work)
 	@scripts/embed-placeholders.sh
+
+check-clean-clone: ## Clone HEAD and run go build + make test with no frontend build and no Docker (nightly guard)
+	@scripts/check-clean-clone.sh
 
 cloud-setup: ## Bootstrap a fresh Linux sandbox (verify Go, install bun + golangci-lint, deps, frontend)
 	@scripts/cloud-setup.sh
