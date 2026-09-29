@@ -19,6 +19,7 @@ package egress
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
@@ -43,9 +44,16 @@ const ParamAllowPrivate = "egress.allow_private_targets"
 // its execution was refused by the egress policy.
 const OutputKeyDenied = "egress_denied"
 
+// Dial and transport settings mirror http.DefaultTransport's, so a check that
+// moves onto the guard keeps the connect timeout, keep-alive probing and pool
+// behavior it always had.
 const (
-	defaultDialTimeout   = 30 * time.Second
-	defaultDialKeepAlive = 30 * time.Second
+	defaultDialTimeout           = 30 * time.Second
+	defaultDialKeepAlive         = 30 * time.Second
+	defaultMaxIdleConns          = 100
+	defaultIdleConnTimeout       = 90 * time.Second
+	defaultTLSHandshakeTimeout   = 10 * time.Second
+	defaultExpectContinueTimeout = 1 * time.Second
 )
 
 // ErrDenied is the sentinel every egress refusal matches with errors.Is.
@@ -501,8 +509,8 @@ func (g *Guard) controlFor(
 }
 
 // HTTPTransport returns one shared, pooled *http.Transport whose every dial
-// goes through the guard — the enforcing counterpart of http.DefaultTransport,
-// so an HTTP check keeps its connection reuse under the policy.
+// goes through the guard — the enforcing counterpart of the checks' shared
+// transport, so an HTTP check keeps its connection reuse under the policy.
 //
 // The environment proxy is deliberately disabled: a proxy would perform the
 // real connection on our behalf, from where we cannot see the destination.
@@ -513,20 +521,26 @@ func (g *Guard) controlFor(
 // uncompletable stream and every later probe rides it — one network blip became
 // sixteen minutes of false failures. HTTP/1.1 closes the connection of any
 // request that did not complete, so a stranded connection can never outlive the
-// probe that hit it. Cloning http.DefaultTransport carries ForceAttemptHTTP2
-// over, hence the explicit reset.
+// probe that hit it. The empty TLSNextProto is net/http's documented way to say
+// "no alternate protocols".
+//
+// The transport is built from scratch rather than cloned from
+// http.DefaultTransport: once anything has used DefaultTransport, net/http has
+// written NextProtos ["h2", "http/1.1"] into its TLSClientConfig, and a clone
+// with HTTP/2 disabled would still offer h2 in ALPN — the server picks it and
+// the client writes HTTP/1.1 onto an HTTP/2 connection. The timeouts and pool
+// sizes mirror DefaultTransport's.
 func (g *Guard) HTTPTransport() *http.Transport {
 	g.transportOnce.Do(func() {
-		base, ok := http.DefaultTransport.(*http.Transport)
-		if ok {
-			g.transport = base.Clone()
-		} else {
-			g.transport = &http.Transport{}
+		g.transport = &http.Transport{
+			DialContext:           g.DialContext,
+			ForceAttemptHTTP2:     false,
+			TLSNextProto:          map[string]func(string, *tls.Conn) http.RoundTripper{},
+			MaxIdleConns:          defaultMaxIdleConns,
+			IdleConnTimeout:       defaultIdleConnTimeout,
+			TLSHandshakeTimeout:   defaultTLSHandshakeTimeout,
+			ExpectContinueTimeout: defaultExpectContinueTimeout,
 		}
-
-		g.transport.Proxy = nil
-		g.transport.DialContext = g.DialContext
-		g.transport.ForceAttemptHTTP2 = false
 	})
 
 	return g.transport

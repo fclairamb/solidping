@@ -2,6 +2,8 @@ package egress_test
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"net"
 	"net/http"
@@ -367,6 +369,69 @@ func TestHTTPTransport(t *testing.T) {
 	defer func() { _ = allowResp.Body.Close() }()
 
 	r.Equal(http.StatusOK, allowResp.StatusCode)
+}
+
+// The guard's shared transport must speak HTTP/1.1 to a server that offers h2
+// (spec 2026-09-28-04: over HTTP/2 a probe canceled by its budget strands its
+// pooled connection), and it must do so COHERENTLY: whatever it offers in
+// ALPN, it must be able to speak.
+//
+// The trap this pins: once anything in the process has used
+// http.DefaultTransport, net/http has written NextProtos ["h2", "http/1.1"]
+// into its TLSClientConfig. A transport cloned from it then advertises h2
+// while having HTTP/2 disabled, the server picks h2, and the client writes an
+// HTTP/1.1 request onto an HTTP/2 connection — every HTTPS probe to an
+// h2-capable target fails with EOF.
+func TestHTTPTransportSpeaksHTTP1ToAnH2Server(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	// What any earlier use of http.DefaultTransport does: initialize its
+	// HTTP/2 support (Clone runs the same one-time setup as a request).
+	defaultTransport, ok := http.DefaultTransport.(*http.Transport)
+	r.True(ok)
+
+	_ = defaultTransport.Clone()
+
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	server.EnableHTTP2 = true
+	server.StartTLS()
+	t.Cleanup(server.Close)
+
+	guard := egress.New(false, egress.WithPublicOverride(net.ParseIP("127.0.0.1")))
+	transport := guard.HTTPTransport()
+
+	if transport.TLSClientConfig != nil {
+		r.NotContains(transport.TLSClientConfig.NextProtos, "h2",
+			"a transport with HTTP/2 off must not offer h2 in ALPN")
+	}
+
+	// Trust the test certificate on top of whatever TLS config the guard built
+	// (this guard is private to the test), without dropping its NextProtos.
+	roots := x509.NewCertPool()
+	roots.AddCert(server.Certificate())
+
+	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12}
+	if transport.TLSClientConfig != nil {
+		tlsConfig = transport.TLSClientConfig.Clone()
+	}
+
+	tlsConfig.RootCAs = roots
+	transport.TLSClientConfig = tlsConfig
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL, nil)
+	r.NoError(err)
+
+	resp, err := (&http.Client{Transport: transport}).Do(req)
+	r.NoError(err)
+
+	defer func() { _ = resp.Body.Close() }()
+
+	r.Equal(http.StatusOK, resp.StatusCode)
+	r.Equal(1, resp.ProtoMajor, "the guard's shared transport must never negotiate HTTP/2")
 }
 
 // ParseURLHost reads hosts the way a browser does (WHATWG URL standard).
