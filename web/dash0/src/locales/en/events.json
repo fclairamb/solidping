@@ -91,7 +91,14 @@
   },
   "links": {
     "check": "Check",
-    "incident": "Incident"
+    "incident": "Incident",
+    "privateLocation": "Private location"
+  },
+  "disconnectReasons": {
+    "ping_timeout": "ping timeout",
+    "revoked": "revoked",
+    "server_shutdown": "server shutdown",
+    "error": "error"
   },
   "actorTypes": {
     "user": "user",

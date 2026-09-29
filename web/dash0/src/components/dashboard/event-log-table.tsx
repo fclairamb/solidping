@@ -5,10 +5,14 @@ import type { Event } from "@/api/hooks";
 import {
   EventTypeLabel,
   getEventActorName,
+  getEventAgentName,
+  getEventAgentRegion,
   getEventChannelName,
   getEventChannelUid,
   getEventCheckName,
   getEventDescription,
+  getEventDisconnectReason,
+  getEventLucideIcon,
   getEventRowStripe,
 } from "@/components/dashboard/event-display";
 import { DurationAgo } from "@/components/shared/relative-time";
@@ -43,17 +47,45 @@ interface EventLogTableProps {
   variant?: "standalone" | "embedded";
 }
 
-// getActivationDetail returns the second line kept for org.activation.*
-// events (spec 2026-09-25-32 proposal step 3): a translated description, or
-// — for first_notification_configured specifically — the channel name linked
-// to its integration page. Returns null for every other event type (which is
-// every event carrying a checkUid/incidentUid instead), so callers can skip
-// rendering the wrapping element entirely.
-function getActivationDetail(
+// isAgentConnectionEvent covers the two private-location agent lifecycle
+// events (spec 2026-09-25-05) — the only rows that carry agent identity.
+function isAgentConnectionEvent(eventType?: string): boolean {
+  return eventType === "agent.connected" || eventType === "agent.disconnected";
+}
+
+// getEventDetail returns the second line kept under the label (spec
+// 2026-09-25-32 proposal step 3, generalised for agent rows by spec
+// 2026-09-28-02):
+//
+// - org.activation.*: a translated description, or — for
+//   first_notification_configured specifically — the channel name linked to
+//   its integration page.
+// - agent.connected / agent.disconnected: `name · region`, plus the
+//   translated disconnect reason on a disconnect — the three questions a
+//   reader has about an agent row (which agent, which private location, why
+//   it dropped), answered from the payload the backend already records.
+//
+// Returns null when there is nothing to add (every other event type,
+// historical rows without the payload keys), so callers can skip rendering
+// the wrapping element entirely.
+function getEventDetail(
   event: Event,
   org: string,
   t: EventT,
 ): ReactNode | null {
+  if (isAgentConnectionEvent(event.eventType)) {
+    const reason =
+      event.eventType === "agent.disconnected"
+        ? getEventDisconnectReason(event)
+        : undefined;
+    const parts = [
+      getEventAgentName(event),
+      getEventAgentRegion(event),
+      reason ? t(`disconnectReasons.${reason}`) : undefined,
+    ].filter(Boolean);
+    return parts.length > 0 ? parts.join(" · ") : null;
+  }
+
   const channelName =
     event.eventType === "org.activation.first_notification_configured"
       ? getEventChannelName(event)
@@ -114,7 +146,14 @@ export function EventLogTable({
       </TableHeader>
       <TableBody>
         {events.map((event) => {
-          const activationDetail = getActivationDetail(event, org, t);
+          const eventDetail = getEventDetail(event, org, t);
+          // The Related chip names the agent (falling back to its region,
+          // then to nothing — today's empty cell) and opens the Private
+          // Locations page, the agent's only detail surface.
+          const agentLabel = isAgentConnectionEvent(event.eventType)
+            ? getEventAgentName(event) ?? getEventAgentRegion(event)
+            : undefined;
+          const AgentIcon = getEventLucideIcon(event.eventType);
 
           return (
             <TableRow
@@ -139,11 +178,11 @@ export function EventLogTable({
               </TableCell>
               <TableCell>
                 <EventTypeLabel eventType={event.eventType} t={t} />
-                {activationDetail ? (
+                {eventDetail ? (
                   // Indented to align under the label text rather than the
                   // icon: size-4 (16px) + gap-2 (8px) = 24px = pl-6.
                   <div className="pl-6 text-xs text-muted-foreground truncate">
-                    {activationDetail}
+                    {eventDetail}
                   </div>
                 ) : null}
               </TableCell>
@@ -182,6 +221,17 @@ export function EventLogTable({
                     >
                       <Cpu className="h-3 w-3 shrink-0 text-muted-foreground/70" />
                       {getEventCheckName(event) ?? t("links.check")}
+                    </Link>
+                  )}
+                  {agentLabel && (
+                    <Link
+                      to="/orgs/$org/organization/private-locations"
+                      params={{ org }}
+                      title={t("links.privateLocation")}
+                      className="inline-flex items-center gap-1.5 text-xs font-medium text-foreground transition-colors hover:text-primary hover:underline"
+                    >
+                      <AgentIcon className="h-3 w-3 shrink-0 text-muted-foreground/70" />
+                      {agentLabel}
                     </Link>
                   )}
                   {event.incidentUid && (
