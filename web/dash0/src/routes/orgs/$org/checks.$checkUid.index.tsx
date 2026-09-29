@@ -1167,7 +1167,7 @@ function CheckDetailPage() {
       )}
       <div className="flex flex-col gap-3" data-testid="check-detail-header">
         <Breadcrumb aria-label={t("checks:detail.breadcrumb")}>
-          <BreadcrumbItem>
+          <BreadcrumbItem className="shrink-0">
             <Link
               to="/orgs/$org/checks"
               params={{ org }}

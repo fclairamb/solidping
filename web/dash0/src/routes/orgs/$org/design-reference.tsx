@@ -1128,7 +1128,7 @@ import { PageHeader } from "@/components/shared/page-header";
         preview={
           <div className="flex w-full flex-col gap-3">
             <Breadcrumb aria-label="Breadcrumb">
-              <BreadcrumbItem>
+              <BreadcrumbItem className="shrink-0">
                 <span className={breadcrumbLinkClassName}>
                   <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
                   Checks

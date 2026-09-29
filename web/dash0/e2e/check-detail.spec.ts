@@ -1178,10 +1178,9 @@ test.describe("Check Detail Page", () => {
 
   test("Copy check link writes the check URL to the clipboard and toasts", async ({
     authenticatedPage,
-    context,
   }) => {
     const page = authenticatedPage;
-    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
     const resp = await page.request.post(`${API_BASE}/api/v1/auth/login`, {
       data: { org: "test", email: "test@test.com", password: "test" },
     });
