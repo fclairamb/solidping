@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/coder/websocket"
@@ -77,13 +78,35 @@ func withServerVersion(t *testing.T, v string) {
 	t.Cleanup(func() { version.Version = previous })
 }
 
+// lockedBuffer is a bytes.Buffer safe for the connection goroutines writing
+// logs while the test body reads them (a bare bytes.Buffer is a data race
+// under -race).
+type lockedBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	return b.buf.Write(p)
+}
+
+func (b *lockedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	return b.buf.String()
+}
+
 // captureLogs redirects slog.Default() to a buffer for the duration of the
 // test. MUST be called BEFORE constructing the handler under test — NewHandler
 // captures slog.Default() once, at construction time, into Handler.logger.
-func captureLogs(t *testing.T) *bytes.Buffer {
+func captureLogs(t *testing.T) *lockedBuffer {
 	t.Helper()
 
-	buf := &bytes.Buffer{}
+	buf := &lockedBuffer{}
 	previous := slog.Default()
 	slog.SetDefault(slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
 	t.Cleanup(func() { slog.SetDefault(previous) })
