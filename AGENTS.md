@@ -2,14 +2,19 @@
 
 Agent instructions for every coding agent (Claude Code, Codex, Cursor, Copilot, Gemini CLI). Each `CLAUDE.md` in the repo is a one-line `@AGENTS.md` stub so Claude Code loads the same file. Edit `AGENTS.md`, never the stub.
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
 ## Core technologies
 - **Backend**: Go 1.24+ (see `server/AGENTS.md` for details)
 - **Dashboard**: React + TanStack Router (see `web/dash0/AGENTS.md` for details)
 - **Infrastructure**: Docker Compose with PostgreSQL for monitoring data storage
 - **Monitoring**: Multi-protocol ping/health checking with distributed worker system
-- **Docs site**: Docusaurus in `web/docs/` (baseUrl `/docs/`), embedded in the Go binary and served at the **`/docs`** path on every host (like `/d`, `/s`) — so `solidping.io/docs` works with no extra infra. `docs.solidping.io` redirects its root into `/docs` (config `server.docs_host` / `SP_DOCS_HOST`). The API reference is generated at build from `server/internal/app/openapi/openapi.yaml`; the interactive OpenAPI (Swagger) explorer is at `/openapi`. `/docs/changelog` is generated at build from the root `CHANGELOG.md` (see `wiki/conventions/changelog.md` for entry-writing conventions). `docusaurus-plugin-llms` generates `llms.txt` / `llms-full.txt` from the docs content; they're served both at `/docs/llms.txt` / `/docs/llms-full.txt` and, for crawler convenience, at the conventional root path `/llms.txt` / `/llms-full.txt` (same embedded file, no duplication). The marketing site (`www.solidping.io`) is the separate `solidping-website` repo; internal engineering notes live in `wiki/`. **Competitor comparisons never go in the published docs site** — all competitor/comparison content belongs in `wiki/competitors/` (one `{name}.md` per competitor, indexed in `wiki/README.md`). The only competitor-facing pages `web/docs/` carries are the `migrate-from-*.md` import guides.
+- **Docs site**: Docusaurus in `web/docs/` (baseUrl `/docs/`), embedded in the Go binary.
+  - Served at `/docs` on every host (like `/d`, `/s`). `docs.solidping.io` redirects its root into `/docs` (`server.docs_host` / `SP_DOCS_HOST`).
+  - The API reference is generated at build from `server/internal/app/openapi/openapi.yaml`. The OpenAPI explorer is at `/openapi`.
+  - `/docs/changelog` is generated at build from the root `CHANGELOG.md` (entry conventions: `wiki/conventions/changelog.md`).
+  - `llms.txt` / `llms-full.txt` come from `docusaurus-plugin-llms`. They are served at `/docs/` and at the root path `/` (same embedded file).
+  - The marketing site (`www.solidping.io`) is the separate `solidping-website` repo. Internal engineering notes live in `wiki/`.
+  - Never put competitor comparisons in the docs site. They go in `wiki/competitors/` (one `{name}.md` each, indexed in `wiki/README.md`).
+  - The only competitor-facing pages in `web/docs/` are the `migrate-from-*.md` import guides.
 
 ## Development workflow
 If the server is running on port 4000, apply code changes directly — `make dev` / `make dev-test` hot-reloads both backend and frontend.
@@ -28,7 +33,7 @@ Dev logs live in `logs/*.log` (`backend.log`, `dash0.log`, `status0.log`), size-
 | `make dev` | Hot-reload backend + dash0 + status0 |
 | `make dev-test` | Same, with `SP_RUNMODE=test` |
 | `make dev-saas` | Same, in SaaS mode — pairs with `../solidping-billing` `make dev` (see SaaS mode below) |
-| `make test` | Run backend tests — **`-short`, so it exercises SQLite only and skips every Postgres suite** (`wiki/testing/test-layers.md`) |
+| `make test` | Run backend tests (`-short`: SQLite only, skips every Postgres suite) (`wiki/testing/test-layers.md`) |
 | `make test-postgres` | Run the Postgres test layer (non-short, `-p 1`, `SP_TEST_REQUIRE_POSTGRES=1`) — exactly what the `backend-postgres` CI job runs, ~12 min |
 | `make test-slow` | Run the `slowtests` build-tagged layer (live network + Docker); nightly in CI |
 | `make test-dash` | Run dash0 Playwright tests |
@@ -45,18 +50,11 @@ Dev logs live in `logs/*.log` (`backend.log`, `dash0.log`, `status0.log`), size-
 | Normal | `admin@solidping.io` | `solidpass` | `default` |
 | Test (`SP_RUNMODE=test`) | `test@test.com` | `test` | `test` |
 
-**The normal seeded admin lands on a forced password rotation.** On a fresh
-database the seeded `admin@solidping.io` carries `users.must_change_password`,
-so the first successful login yields a session that can reach only
-`POST /auth/change-password`, `GET /auth/me` and `POST /auth/logout` —
-everything else answers `403 PASSWORD_CHANGE_REQUIRED` and dash0 lands on
-`/d/change-password`. This is unconditional: `make dev` against a fresh
-database prompts for a new password too. Pick one, and every example below
-works with it in place of `solidpass`.
-
-The test-mode user (`test@test.com`) is deliberately **not** flagged — it is
-created by a different path (`server/test/testdata/testdata.go`) and the
-Playwright suites sign in with those fixed credentials.
+Rules:
+- The seeded `admin@solidping.io` has `users.must_change_password`. This applies to every fresh database, including `make dev`.
+- Its first login yields a session that reaches only `POST /auth/change-password`, `GET /auth/me` and `POST /auth/logout`. Everything else answers `403 PASSWORD_CHANGE_REQUIRED`, and dash0 lands on `/d/change-password`.
+- Pick a new password, then use it in place of `solidpass` in every example.
+- The test-mode user `test@test.com` is not flagged (created in `server/test/testdata/testdata.go`). Playwright suites sign in with these fixed credentials.
 
 ## SaaS mode & entitlements
 
@@ -64,21 +62,23 @@ Playwright suites sign in with those fixed credentials.
 
 ## Frontend UI conventions
 
-> **Before writing or modifying any UI**, check the live design reference at
-> `http://localhost:4000/d/orgs/default/design-reference` — source:
-> [`web/dash0/src/routes/orgs/$org/design-reference.tsx`](web/dash0/src/routes/orgs/$org/design-reference.tsx).
->
-> It renders every shipped primitive (buttons, alerts, dialogs, tables, forms, name+slug pairs…) with the exact import line alongside it. **Reuse those components and patterns** — don't reach for a raw Radix primitive or a custom implementation if the design reference already ships what you need.
->
-> **This is mandatory for _any_ frontend change** — new pages, tweaks to existing UI, or one-off components alike. Always start from [`web/dash0/src/routes/orgs/$org/design-reference.tsx`](web/dash0/src/routes/orgs/$org/design-reference.tsx); it is the single source of truth for components and conventions. If a needed primitive or pattern is missing, add it to the reference page as part of your change so the catalog stays canonical.
+Design reference (live): `http://localhost:4000/d/orgs/default/design-reference`. Source: [`web/dash0/src/routes/orgs/$org/design-reference.tsx`](web/dash0/src/routes/orgs/$org/design-reference.tsx).
 
-Additional frontend rules:
-- **All pages must be fully usable on mobile** — use responsive layouts, avoid fixed widths, ensure touch targets are large enough.
-- **401** → redirect to login with `?returnTo={currentPath}`; **403** → show "Permission Denied", never redirect (causes loops). See `wiki/conventions/frontend-errors.md`.
+- Read it before any frontend change (new page, tweak, one-off component).
+- It renders every shipped primitive with its import line. Reuse those, not raw Radix or custom code.
+- If a needed primitive or pattern is missing, add it to the reference page in the same change.
+
+Frontend rules:
+- Every page must be usable on mobile: responsive layouts, no fixed widths, large touch targets.
+- 401: redirect to login with `?returnTo={currentPath}`. 403: show "Permission Denied", never redirect (causes loops). See `wiki/conventions/frontend-errors.md`.
 - Editing always navigates to a dedicated route (`/<resource>/new`, `/<resource>/$id`) — never in a modal dialog.
 - Row actions: prefer two ghost icon buttons (`Pencil` / `Trash2`) over a `MoreVertical` menu.
-- **Every page runs under a Content-Security-Policy** (spec 2026-09-25-28, `server/internal/securityheaders`, docs `web/docs/docs/configuration/security-headers.md`). No `eval`/`new Function` anywhere (dash0 sets zod `jitless` for this reason), no new inline `<script>` outside the SPA shell (the shell's inline scripts are hashed from the embedded build, never from the per-request bytes), and status0 may only fetch first-party (`img-src`/`font-src`/`connect-src 'self'`). A new external origin dash0 genuinely needs goes into `dashboardPolicy()` with a comment saying why, or it is silently blocked in production while `make dev` (proxied to Vite, no CSP) keeps working. The E2E `status-page-appearance.spec.ts` asserts the dashboard raises zero violations.
-- **Delete is always red, always a trash bin** — every delete/irreversible action uses the `Trash2` icon in the destructive red (`variant="destructive"`, or `text-destructive` for icon buttons and dropdown items). Never delete with a different icon or color, and never use destructive red for non-destructive actions.
+- Every page runs under a Content-Security-Policy (spec 2026-09-25-28, `server/internal/securityheaders`, docs `web/docs/docs/configuration/security-headers.md`).
+  - No `eval` / `new Function` anywhere (dash0 sets zod `jitless` for this).
+  - No new inline `<script>` outside the SPA shell (shell scripts are hashed from the embedded build).
+  - status0 may only fetch first-party (`img-src` / `font-src` / `connect-src 'self'`).
+  - Add a new external origin dash0 needs to `dashboardPolicy()` with a comment saying why. Otherwise prod blocks it silently (`make dev` proxies to Vite, no CSP).
+  - E2E `status-page-appearance.spec.ts` asserts zero violations.
 
 ## REST API conventions
 - Wrap list responses in `{ "data": [...] }`, never return a bare array.
@@ -113,13 +113,9 @@ curl -s -H "Authorization: Bearer $TOKEN" 'http://localhost:4000/api/v1/orgs/def
 
 ## Never name a real company — use `acme`
 
-**No real company name ever appears in this repository.** Not in specs, tests, fixtures,
-sample data, code comments, doc examples, commit messages, changelog entries, PR
-descriptions, wiki pages, or issue reports. This applies to every third party: employers,
-customers, vendors, and the organizations of people who report bugs.
-
-Replace the name with **`acme`**, keeping the shape of whatever you're replacing so the
-example still reads naturally:
+- Never write a real company name in this repository: specs, tests, fixtures, sample data, code comments, doc examples, commit messages, changelog, PR descriptions, wiki, issue reports.
+- This covers every third party: employers, customers, vendors, organizations of bug reporters.
+- Replace it with `acme`, keeping the shape of what you replace:
 
 | Instead of | Use |
 |---|---|
@@ -129,26 +125,20 @@ example still reads naturally:
 | an email | `alice@acme.com` |
 | a person at a company | `alice` / `bob` (no surname, no employer) |
 
-Why: this repository is public, and a bug report or a realistic-looking test fixture is a
-poor place to disclose who a customer is, what they run, or that they had an outage. A
-name that reaches a released tag cannot be recalled — scrubbing the working tree later
-does not rewrite published history. So the rule is enforced at the point of writing, not
-by a later cleanup pass.
+Why: the repository is public and a released tag cannot be recalled. Enforce the rule when writing, not in a later cleanup.
 
-Two things this rule does *not* mean: it does not apply to the names of the technologies,
-libraries and services SolidPing genuinely integrates with (Slack, Telegram, OVH,
-Prometheus, Cloudflare and so on — naming those is unavoidable and correct), and it is not
-a reason to strip a real name from something that is already published. If you find a real
-name in the repo, replace it and say so; do not quietly rewrite history around it.
+Exceptions:
+- Names of technologies and services SolidPing integrates with (Slack, Telegram, OVH, Prometheus, Cloudflare...) are fine.
+- Do not rewrite already-published history. If you find a real name in the tree, replace it and say so.
 
 ## Specs
 - Filename format: `YYYY-MM-DD-NN-title.md` (`NN` unique per day across `specs/todos/` and `specs/done/YYYY/MM/`)
 - Active: `specs/todos/`, Done: `specs/done/YYYY/MM/`, Backlog: `specs/backlog/`, Cancelled: `specs/cancelled/`
 
 ## Batch branches
-`/implement-todos` and similar multi-spec runs integrate onto a dated **batch branch** (e.g. `batch/2026-06-23`).
-- **When the working tree is on a batch branch, never change the current branch.** Keep it checked out on the batch branch and do all integration there.
-- The working tree is shared — subagents and concurrent automations run against it — so a `git checkout` onto another branch can strand the batch branch, race another automation's git operations, or leave the tree parked on a feature branch after a crashed step.
+`/implement-todos` and similar multi-spec runs integrate onto a dated batch branch (e.g. `batch/2026-06-23`).
+- On a batch branch, never change the current branch. Keep it checked out on the batch branch and do all integration there.
+- The working tree is shared with subagents and concurrent automations. A `git checkout` can strand the batch branch or race their git operations.
 - If a step genuinely needs an isolated branch, use a separate `git worktree` instead of switching this tree's current branch.
 
 ## Agent instruction files

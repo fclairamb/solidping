@@ -253,7 +253,7 @@ During a release cycle developers add scratch migrations as needed (e.g., `002_a
 4. Run the new single migration on a fresh DB, dump schema, diff against golden — must match exactly.
 5. Run `make test` to confirm both backends pass.
 
-See `.claude/skills/database.md` for the full SQL style guide.
+See `wiki/conventions/migrations.md` for the full SQL style guide.
 
 ## Advisory-lock keys
 

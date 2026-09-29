@@ -1,6 +1,6 @@
 # docs/ — Documentation Directory
 
-Claude has full authority to organize this directory. It may rename, move, split, merge, or restructure any file or subdirectory here as it sees fit to keep the documentation clear, discoverable, and maintainable.
+The agent has full authority to organize this directory. It may rename, move, split, merge, or restructure any file or subdirectory here as it sees fit to keep the documentation clear, discoverable, and maintainable.
 
 ## Organization Rules
 
