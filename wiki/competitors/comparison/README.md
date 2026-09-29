@@ -3,7 +3,7 @@
 Comprehensive comparison of uptime monitoring services for the SolidPing project.
 
 This directory replaces the previous monolithic `competitors/comparison.md` (598
-lines) and re-organizes the material per the size rule in `../../CLAUDE.md`.
+lines) and re-organizes the material per the size rule in `../../AGENTS.md`.
 Content is unchanged — only the file layout is.
 
 ## Files in this directory

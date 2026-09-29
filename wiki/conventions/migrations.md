@@ -1,9 +1,6 @@
----
-name: database
-description: Database conventions for SolidPing SQL migrations. Use when creating or modifying migration files, tables, columns, or indexes.
----
+# Migration conventions
 
-# Database Conventions
+Read when creating or modifying migration files, tables, columns or indexes.
 
 ## Migration file naming and consolidation rule
 

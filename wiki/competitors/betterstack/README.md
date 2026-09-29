@@ -2,7 +2,7 @@
 
 BetterStack Uptime (formerly Better Uptime) is a SaaS uptime + status-page + on-call platform that markets itself as a one-stop replacement for "PagerDuty + Pingdom + Statuspage.io". For SolidPing it's the most relevant competitive reference — closest in scope and the source of several patterns we already adopt (escalation policies, multi-step on-call, group-incident correlation).
 
-This directory replaces the previous monolithic `betterstack.md` (1004 lines) and re-organizes the material per the size rule in `../../CLAUDE.md`. New depth on **detection logic, recovery semantics, escalation, on-call, and ack/snooze** has been folded in from a fresh research pass (2026-05).
+This directory replaces the previous monolithic `betterstack.md` (1004 lines) and re-organizes the material per the size rule in `../../AGENTS.md`. New depth on **detection logic, recovery semantics, escalation, on-call, and ack/snooze** has been folded in from a fresh research pass (2026-05).
 
 ## Files in this directory
 

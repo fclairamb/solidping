@@ -1,7 +1,7 @@
 # Contributing to SolidPing
 
 Thanks for considering a contribution. This is a one-page on-ramp; deeper
-conventions live in [`CLAUDE.md`](CLAUDE.md) (repo-wide) and the `CLAUDE.md`
+conventions live in [`AGENTS.md`](AGENTS.md) (repo-wide) and the `AGENTS.md`
 files under `server/` and `web/dash0/`.
 
 ## Before you start
@@ -9,7 +9,7 @@ files under `server/` and `web/dash0/`.
 Search [open issues](https://github.com/fclairamb/solidping/issues) first.
 For anything beyond a small fix, open an issue to discuss the approach before
 writing code. Larger work at SolidPing is tracked as a spec file in
-`specs/todos/` (see the naming convention in [`CLAUDE.md`](CLAUDE.md#specs));
+`specs/todos/` (see the naming convention in [`AGENTS.md`](AGENTS.md#specs));
 you don't need to write one yourself, but it explains why a PR may reference
 `specs/todos/YYYY-MM-DD-NN-*.md`.
 
@@ -26,7 +26,7 @@ make dev                # backend + dash0 + status0, hot reload
 make dev-test           # same, with SP_RUNMODE=test
 ```
 
-Default credentials are in [`CLAUDE.md`](CLAUDE.md#default-credentials) — note
+Default credentials are in [`AGENTS.md`](AGENTS.md#default-credentials) — note
 that the normal seeded admin (`admin@solidping.io` / `solidpass`) is forced
 through a password change on first login; the test-mode user
 (`test@test.com` / `test`) is not.
@@ -42,7 +42,7 @@ make fmt && make lint && make test
 ```
 
 If you touched `web/dash0`, also run its own gates from
-[`web/dash0/CLAUDE.md`](web/dash0/CLAUDE.md):
+[`web/dash0/AGENTS.md`](web/dash0/AGENTS.md):
 
 ```bash
 make build-dash0
@@ -72,7 +72,7 @@ per topic.
 No real company name (employer, customer, vendor) belongs anywhere in this
 repository — not in fixtures, tests, sample data, comments, or commit/PR text.
 Use `acme` (`acme.com`, `acmetech`, `alice@acme.com`) instead, keeping the
-shape of what you're replacing. See [`CLAUDE.md`](CLAUDE.md#never-name-a-real-company--use-acme)
+shape of what you're replacing. See [`AGENTS.md`](AGENTS.md#never-name-a-real-company--use-acme)
 for the full rule and why.
 
 ## Docs & wiki

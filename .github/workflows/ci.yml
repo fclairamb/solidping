@@ -79,6 +79,7 @@ jobs:
           while IFS= read -r file; do
             if [[ -z "$file" ]]; then continue; fi
             case "$file" in
+              wiki/AGENTS.md|wiki/CLAUDE.md) code=true ;;
               wiki/*) ;;
               *) code=true ;;
             esac
@@ -176,6 +177,12 @@ jobs:
             echo "::error::internal/checkers/schemas is stale — run \`go generate ./internal/checkers/schemas/...\` in server/ and commit the result"
             exit 1
           fi
+
+      - name: Agent docs size limits
+        working-directory: .
+        run: |
+          scripts/check-agent-docs_test.sh
+          scripts/check-agent-docs.sh
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v9.3.0

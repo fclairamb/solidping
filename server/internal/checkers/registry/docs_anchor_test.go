@@ -14,7 +14,7 @@ import (
 
 // docsAnchorExemptTypes lists check types that are intentionally exempt from
 // the docs-anchor sync check below: `sleep` is a synthetic/testing check type
-// (see server/internal/checkers/CLAUDE.md) with no docs section and is never
+// (see server/internal/checkers/AGENTS.md) with no docs section and is never
 // customer-facing.
 //
 //nolint:gochecknoglobals // test lookup table

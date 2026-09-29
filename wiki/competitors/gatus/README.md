@@ -2,7 +2,7 @@
 
 Gatus is an advanced, developer-oriented health dashboard and status page system created by TwinProduction (Chris Gervais). It's positioned as "the most advanced status page in the world" with a focus on configuration-as-code, lightweight architecture, and powerful condition-based monitoring.
 
-This directory replaces the previous monolithic `gatus.md` (879 lines) and re-organizes the material per the size rule in `../../CLAUDE.md`.
+This directory replaces the previous monolithic `gatus.md` (879 lines) and re-organizes the material per the size rule in `../../AGENTS.md`.
 
 **GitHub**: https://github.com/TwiN/gatus · **Website**: https://gatus.io · **License**: Apache 2.0 · **Technology**: Go (backend), simple HTML/CSS/JS (frontend) · **Database**: SQLite or PostgreSQL (optional) · **Current Version**: v5.34.0 (as of March 2026)
 

@@ -46,7 +46,7 @@ path, so what it shows is what the mailer produces.
   monospace with `word-break: break-all`, meant for URLs, and mangles prose.
 - **Timestamps carry their zone.** `notifications.mailTimestamp` renders UTC with
   the suffix; a bare `2026-07-05 10:00:00` in an alert is unreadable on call.
-- **No real company names** anywhere, fixtures included — see the root `CLAUDE.md`.
+- **No real company names** anywhere, fixtures included — see the root `AGENTS.md`.
 
 ## Rendering, and the traps in it
 

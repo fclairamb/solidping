@@ -18,7 +18,7 @@
  *   - text with no run of letters ("—", "&gt;", "#", "{count}"),
  *   - `placeholder`, which in this app is mostly a sample value
  *     ("example.com", "SELECT 1"). Placeholders that are real prose go through
- *     t() too; web/dash0/CLAUDE.md documents how to sweep them,
+ *     t() too; web/dash0/AGENTS.md documents how to sweep them,
  *   - text made only of the phrases in the `allow` option (whole words), plus
  *     punctuation and numbers: brand and protocol names, units and commands a
  *     user types verbatim ("SolidPing", "UDP", "ms", "docker run"), so

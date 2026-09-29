@@ -1283,7 +1283,7 @@ func (h *Handler) dropUnsealableJob(
 // block could not be built: an explicit StatusError result naming the fix
 // (which also releases the lease via SubmitResult) instead of a half-armed
 // dispatch or a silent skip. Mirrors the sealed-envelope drop documented in
-// server/CLAUDE.md.
+// server/AGENTS.md.
 func (h *Handler) dropTunnelJob(ctx context.Context, state *connState, job *models.CheckJob, cause error) {
 	h.logger.WarnContext(ctx, "dropping tunneled job: cannot build tunnel block",
 		"check_uid", job.CheckUID, "job_uid", job.UID, "error", cause)
