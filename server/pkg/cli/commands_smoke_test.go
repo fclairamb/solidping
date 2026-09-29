@@ -96,6 +96,7 @@ func runSmoke(t *testing.T, status int, body string, format string, allFlags boo
 	t.Cleanup(srv.Close)
 
 	home := t.TempDir()
+	t.Chdir(t.TempDir()) // some commands write files named after their args
 	t.Setenv("HOME", home)
 	cfgDir := filepath.Join(home, ".config", "solidping")
 	if err := os.MkdirAll(cfgDir, 0o750); err != nil {
