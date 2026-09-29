@@ -209,9 +209,13 @@ type Server struct {
 	discordGatewaySupervisor *discord.GatewaySupervisor
 	rateLimiter              *middleware.RateLimiter // For the /api/mgmt/limits introspection handler
 	realtimeHub              *realtime.Hub           // Live hint stream fan-out (nil when realtime disabled)
-	statusPagesService       *statuspages.Service    // Public status-page lookups for status0 OG-metadata injection
-	customDomainCache        *customDomainCache      // host -> status-page resolution cache for custom-domain routing
-	tlsEdge                  *tlsedge.Edge           // in-server ACME/TLS listeners (nil unless acme.enabled)
+	// agentWS serves the private-location agent WebSocket. Kept so shutdown
+	// can end its hijacked connections and wait for their disconnect events
+	// (spec 2026-09-28-03 §4); nil until the routes are registered.
+	agentWS            *agentws.Handler
+	statusPagesService *statuspages.Service // Public status-page lookups for status0 OG-metadata injection
+	customDomainCache  *customDomainCache   // host -> status-page resolution cache for custom-domain routing
+	tlsEdge            *tlsedge.Edge        // in-server ACME/TLS listeners (nil unless acme.enabled)
 	// heartbeatPush serves the embedded TCP/UDP beat listeners (spec
 	// 2026-09-01-06). Non-nil once SetupRoutes has run, but binds nothing
 	// unless heartbeat.tcp_listen / heartbeat.udp_listen are set.
@@ -1376,6 +1380,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	)
 	agentWSHandler.SetLivenessMonitors(checksService)
 	api.GET("/agent/ws", agentWSHandler.Serve)
+	s.agentWS = agentWSHandler
 
 	// Agent attachment upload (spec 2026-08-21-01) — the WS route's sibling,
 	// and its counterpart: the socket is the JSON control channel, this is the
@@ -3581,6 +3586,11 @@ func (s *Server) serveHTTP(ctx context.Context) error {
 		s.realtimeHub.Close()
 	}
 
+	// Same for agent connections, which srv.Shutdown cannot see either: end
+	// them now and wait for their agent.disconnected {server_shutdown} rows,
+	// or every restart leaves orphan agent.connected events behind.
+	s.closeAgentConnections(ctx)
+
 	// Shutdown HTTP server first to stop accepting new requests.
 	// Using a fresh context for the shutdown timeout after main ctx is canceled.
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), s.config.Server.ShutdownTimeout)
@@ -3601,6 +3611,32 @@ func (s *Server) serveHTTP(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// closeAgentConnections ends every live agent WebSocket connection and waits,
+// bounded by the server shutdown timeout, for their teardown and every pending
+// agent connection event write. No-op when the agent routes were never built.
+func (s *Server) closeAgentConnections(ctx context.Context) {
+	if s.agentWS == nil {
+		return
+	}
+
+	s.agentWS.Close()
+
+	// A zero timeout (bare test configs) would abandon the wait instantly.
+	const fallbackTimeout = 10 * time.Second
+
+	timeout := s.config.Server.ShutdownTimeout
+	if timeout <= 0 {
+		timeout = fallbackTimeout
+	}
+
+	waitCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
+	defer cancel()
+
+	if err := s.agentWS.WaitForEvents(waitCtx); err != nil {
+		slog.WarnContext(ctx, "Agent connection events still pending at shutdown", "error", err)
+	}
 }
 
 // Start starts the HTTP server and blocks until shutdown.
@@ -4021,6 +4057,9 @@ func (s *Server) Close(ctx context.Context) error {
 	if s.realtimeHub != nil {
 		s.realtimeHub.Close()
 	}
+	// Idempotent: serveHTTP already did this on the API path. Must run before
+	// the database closes so pending agent events can still land.
+	s.closeAgentConnections(ctx)
 	if s.services != nil {
 		// nil-safe; the shutdown flush deliberately runs on a background
 		// context (the caller's ctx is already canceled at this point).
