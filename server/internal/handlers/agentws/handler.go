@@ -68,8 +68,9 @@ const (
 	maxClaimJobs = 32
 	// enrollTimeout bounds how long the server waits for the enroll frame.
 	enrollTimeout = 30 * time.Second
-	// pingInterval drives keepalive pings and last_seen_at updates.
-	pingInterval = 25 * time.Second
+	// defaultPingInterval drives keepalive probes and last_seen_at updates
+	// (Handler.pingInterval; SetPingInterval overrides it for tests).
+	defaultPingInterval = 25 * time.Second
 	// claimMaxAhead is the claim-ahead window for agent claims.
 	claimMaxAhead = 5 * time.Minute
 	// nonceRetention is how long a consumed reconnect nonce stays remembered:
@@ -124,6 +125,10 @@ type Handler struct {
 	// monitors re-ensures a private location's liveness monitor after an
 	// enrollment (spec 2026-09-25-05). Optional; nil skips it.
 	monitors LivenessMonitorEnsurer
+	// pingInterval is the keepalive probe cadence (defaultPingInterval). A
+	// field rather than a constant only so tests can run probe cycles in
+	// milliseconds; see SetPingInterval.
+	pingInterval time.Duration
 }
 
 // LivenessMonitorEnsurer is the one call this package makes into the checks
@@ -166,6 +171,17 @@ func NewHandler(
 		reseal:       reseal,
 		conns:        newConnRegistry(),
 		logger:       slog.Default().With("component", "agent_ws"),
+		pingInterval: defaultPingInterval,
+	}
+}
+
+// SetPingInterval overrides the keepalive probe cadence (default 25 s) for
+// connections accepted afterwards. It mirrors the agent's WithPingInterval and
+// exists for tests; production keeps the default, which the 5-minute liveness
+// window (spec 2026-09-25-05) is sized against.
+func (h *Handler) SetPingInterval(d time.Duration) {
+	if d > 0 {
+		h.pingInterval = d
 	}
 }
 
@@ -770,7 +786,7 @@ type connChannels struct {
 func (h *Handler) serveConnEvents(
 	ctx context.Context, conn *websocket.Conn, state *connState, chans *connChannels,
 ) string {
-	ping := time.NewTicker(pingInterval)
+	ping := time.NewTicker(h.pingInterval)
 	defer ping.Stop()
 
 	for {
@@ -815,7 +831,7 @@ func disconnectReason(state *connState) string {
 // handlePingTick sends a keepalive ping, refreshes last_seen_at, and enforces
 // revocation on live connections. Returns false to end the connection.
 func (h *Handler) handlePingTick(ctx context.Context, conn *websocket.Conn, state *connState) bool {
-	pingCtx, cancel := context.WithTimeout(ctx, pingInterval/2)
+	pingCtx, cancel := context.WithTimeout(ctx, h.pingInterval/2)
 	err := conn.Ping(pingCtx)
 
 	cancel()
