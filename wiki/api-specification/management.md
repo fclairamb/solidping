@@ -82,7 +82,7 @@ template. Any other value is a 400. See
 Registered only when `SP_RUNMODE=test`. Auth: public (test mode only)
 
 ### POST /api/mgmt/report
-Submit an in-app bug report (multipart/form-data). Public endpoint, optional bearer token for user attribution. Body fields: `url` (required), `comment`, `org`, `annotations`, `context` (JSON), `screenshot` (file). Returns `{ uid }`. The screenshot is stored as a `File` (group `reports`) and a GitHub issue is created asynchronously when `app.github.*` is configured.
+Submit an in-app bug report (multipart/form-data). Public endpoint, optional bearer token for user attribution. Body fields: `url` (required), `comment`, `org`, `annotations`, `context` (JSON), `screenshot` (file). Returns `{ uid }`. The screenshot is stored as a `File` (group `reports`) and a GitHub issue is created asynchronously. The feature is off by default (no repo baked into the code): it is on only when both `SP_APP_GITHUB_ISSUES_TOKEN` and `SP_APP_GITHUB_REPO` are set, and while off the endpoint answers `404` and stores nothing.
 
 ### GET /api/v1/features
 Return the active feature flags for the frontend (e.g. `{ "bugReport": true }`). Auth required.

@@ -27,6 +27,7 @@ import (
 var (
 	ErrOrganizationNotFound = errors.New("organization not found")
 	ErrURLRequired          = errors.New("url is required")
+	ErrReportDisabled       = errors.New("bug report is disabled")
 	// ErrGitHubBadStatus indicates a non-2xx response from the GitHub Issues API.
 	// The error string includes the status code and body preview for diagnostics.
 	ErrGitHubBadStatus = errors.New("github returned non-2xx status")
@@ -118,6 +119,10 @@ func NewService(
 func (s *Service) SubmitReport(
 	ctx context.Context, req *SubmitReportRequest,
 ) (*SubmitReportResponse, error) {
+	if !s.cfg.App.EnableBugReport {
+		return nil, ErrReportDisabled
+	}
+
 	if req.URL == "" {
 		return nil, ErrURLRequired
 	}
@@ -181,11 +186,9 @@ func (s *Service) SubmitReport(
 		fileUID = uuid.NewString()
 	}
 
-	if s.cfg.App.EnableBugReport {
-		// Detached context — the HTTP request is already done. We log the
-		// goroutine err separately rather than propagating to the caller.
-		go s.dispatchGitHubIssue(context.WithoutCancel(ctx), req, org.Slug, fileUID, fileURI, fileMIME)
-	}
+	// Detached context: the HTTP request is already done. We log the
+	// goroutine err separately rather than propagating to the caller.
+	go s.dispatchGitHubIssue(context.WithoutCancel(ctx), req, org.Slug, fileUID, fileURI, fileMIME)
 
 	return &SubmitReportResponse{UID: fileUID}, nil
 }

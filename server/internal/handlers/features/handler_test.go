@@ -76,3 +76,17 @@ func TestFeaturesReportsOneTransport(t *testing.T) {
 	r.Zero(out.HeartbeatPush.TCPPort)
 	r.Equal(config.DefaultHeartbeatPushPort, out.HeartbeatPush.UDPPort)
 }
+
+func TestFeaturesBugReport(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	r.False(getFeatures(t, &config.Config{}).BugReport)
+
+	cfg := &config.Config{}
+	cfg.App.EnableBugReport = config.ComputeBugReportEnabled(&config.AppGitHubConfig{
+		IssuesToken: "tok", Repo: "acme/reports",
+	})
+	r.True(getFeatures(t, cfg).BugReport)
+}

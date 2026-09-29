@@ -43,6 +43,13 @@ func NewHandler(svc *Service, authSvc *auth.Service, cfg *config.Config) *Handle
 
 // SubmitReport handles POST /api/mgmt/report.
 func (h *Handler) SubmitReport(writer http.ResponseWriter, req *http.Request) error {
+	// Off by default: answer 404 before reading the body, so an anonymous
+	// caller cannot push uploads at an endpoint that would drop them.
+	if !h.svc.cfg.App.EnableBugReport {
+		return h.WriteErrorErr(writer, req, http.StatusNotFound,
+			base.ErrorCodeNotFound, "Not found", ErrReportDisabled)
+	}
+
 	req.Body = http.MaxBytesReader(writer, req.Body, MaxReportSize)
 
 	if err := req.ParseMultipartForm(MaxReportSize); err != nil {

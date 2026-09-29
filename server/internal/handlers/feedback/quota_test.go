@@ -33,6 +33,7 @@ func newFeedbackQuotaConfig(t *testing.T, quotaBytes int64) *config.Config {
 	t.Helper()
 
 	cfg := &config.Config{}
+	cfg.App.EnableBugReport = true
 	cfg.App.FeedbackMaxStorageBytes = quotaBytes
 	cfg.FileStorage.Type = "local"
 	cfg.FileStorage.LocalRoot = t.TempDir()

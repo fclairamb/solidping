@@ -1877,9 +1877,9 @@ func Load() (*Config, error) {
 			LocalRoot: "./data/files",
 		},
 		App: AppConfig{
-			GitHub: AppGitHubConfig{
-				Repo: "fclairamb/solidping",
-			},
+			// No token and no repo: the in-app bug report is off unless the
+			// operator sets both SP_APP_GITHUB_ISSUES_TOKEN and SP_APP_GITHUB_REPO.
+			GitHub:                  AppGitHubConfig{},
 			FeedbackMaxStorageBytes: DefaultFeedbackMaxStorageBytes,
 		},
 		Google:    GoogleOAuthConfig{Enabled: false},

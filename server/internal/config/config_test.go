@@ -1814,3 +1814,39 @@ func TestSchedulingCheckTimeout(t *testing.T) {
 		})
 	}
 }
+
+func TestLoad_BugReportDisabledByDefault(t *testing.T) {
+	r := require.New(t)
+
+	t.Setenv("SP_APP_GITHUB_ISSUES_TOKEN", "")
+	t.Setenv("GITHUB_ISSUES_TOKEN", "")
+	t.Setenv("SP_APP_GITHUB_REPO", "")
+
+	cfg, err := Load()
+	r.NoError(err)
+	r.Empty(cfg.App.GitHub.Repo)
+	r.False(cfg.App.EnableBugReport)
+}
+
+func TestLoad_BugReportNeedsTokenAndRepo(t *testing.T) {
+	tests := []struct {
+		name, token, repo string
+		want              bool
+	}{
+		{"token only", "tok", "", false},
+		{"repo only", "", "acme/reports", false},
+		{"both", "tok", "acme/reports", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("SP_APP_GITHUB_ISSUES_TOKEN", tt.token)
+			t.Setenv("GITHUB_ISSUES_TOKEN", "")
+			t.Setenv("SP_APP_GITHUB_REPO", tt.repo)
+
+			cfg, err := Load()
+			require.NoError(t, err)
+			require.Equal(t, tt.want, cfg.App.EnableBugReport)
+		})
+	}
+}

@@ -58,6 +58,7 @@ func TestFeedbackReport_RateLimitedAnonymously(t *testing.T) {
 
 	cfg := &config.Config{}
 	cfg.Database.Type = dbTypeSQLiteMemory
+	cfg.App.EnableBugReport = true // the endpoint is a 404 while the feature is off
 	cfg.Auth.JWTSecret = "feedback-ratelimit-secret"
 	cfg.FileStorage.Type = "local"
 	cfg.FileStorage.LocalRoot = t.TempDir()

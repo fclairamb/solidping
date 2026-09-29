@@ -6,9 +6,12 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/fclairamb/solidping/server/internal/config"
 )
 
 func TestHTTPPoster_RequestShape(t *testing.T) {
@@ -85,4 +88,37 @@ func TestHTTPPoster_FailureStatus(t *testing.T) {
 	)
 	r.Error(err)
 	r.Contains(err.Error(), "401")
+}
+
+// TestSubmitReport_DisabledStoresNothing: with the default config (no token,
+// no repo) the report is refused before any org lookup, file write or GitHub
+// call. A nil db/files would panic if the service got any further.
+func TestSubmitReport_DisabledStoresNothing(t *testing.T) {
+	t.Parallel()
+
+	poster := &countingGitHubPoster{}
+	svc := NewService(nil, nil, &config.Config{}, poster)
+
+	_, err := svc.SubmitReport(t.Context(), &SubmitReportRequest{
+		URL:            "https://example.com/page",
+		OrgSlug:        "default",
+		Screenshot:     strings.NewReader("x"),
+		ScreenshotSize: 1,
+	})
+	require.ErrorIs(t, err, ErrReportDisabled)
+	require.Zero(t, poster.calls)
+}
+
+// TestHandlerSubmitReport_DisabledIs404 pins the endpoint contract: 404, not
+// 201, when the feature is off.
+func TestHandlerSubmitReport_DisabledIs404(t *testing.T) {
+	t.Parallel()
+
+	cfg := &config.Config{}
+	handler := NewHandler(NewService(nil, nil, cfg, &countingGitHubPoster{}), nil, cfg)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/mgmt/report", strings.NewReader(""))
+
+	require.NoError(t, handler.SubmitReport(rec, req))
+	require.Equal(t, http.StatusNotFound, rec.Code)
 }
