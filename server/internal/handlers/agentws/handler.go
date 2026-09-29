@@ -727,27 +727,7 @@ func (h *Handler) runAgentConnection(
 	frames := make(chan agentcrypto.ClientFrame, framesBufferSize)
 	readErr := make(chan error, 1)
 
-	go func() {
-		for {
-			var frame agentcrypto.ClientFrame
-			if err := wsjson.Read(loopCtx, conn, &frame); err != nil {
-				readErr <- err
-
-				return
-			}
-
-			// Observed BEFORE the handoff: handling may lag, liveness never does.
-			live.observe(observedFrame)
-			live.handoffStarted()
-
-			select {
-			case frames <- frame:
-				live.handoffDone()
-			case <-loopCtx.Done():
-				return
-			}
-		}
-	}()
+	go readFrames(loopCtx, conn, live, frames, readErr)
 
 	probes := make(chan error)
 	go runPinger(loopCtx, conn, h.pingInterval, probes)
@@ -773,6 +753,33 @@ func (h *Handler) runAgentConnection(
 	}
 
 	h.recordConnectionEvent(ctx, agent, models.EventTypeAgentDisconnected, reason)
+}
+
+// readFrames is the connection's reader: it decodes client frames and hands
+// them to the event loop until the first read error (sent on readErr).
+func readFrames(
+	ctx context.Context, conn *websocket.Conn, live *liveness,
+	frames chan<- agentcrypto.ClientFrame, readErr chan<- error,
+) {
+	for {
+		var frame agentcrypto.ClientFrame
+		if err := wsjson.Read(ctx, conn, &frame); err != nil {
+			readErr <- err
+
+			return
+		}
+
+		// Observed BEFORE the handoff: handling may lag, liveness never does.
+		live.observe(observedFrame)
+		live.handoffStarted()
+
+		select {
+		case frames <- frame:
+			live.handoffDone()
+		case <-ctx.Done():
+			return
+		}
+	}
 }
 
 // recordConnectionEvent writes an org agent's agent.connected /
