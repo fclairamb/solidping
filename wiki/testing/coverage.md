@@ -55,6 +55,25 @@ Check the first CI run against the 45 minute budget and note the delta here.
 raise `COVERAGE_MIN` to the last measured value (rounded down); never lower
 it to make a PR pass. Add tests instead.
 
+## README badge
+
+The README coverage badge shows the backend total only (the gated number).
+dash0 and status0 coverage is report-only and never mixed in.
+
+- `scripts/coverage.sh badge <profile>` prints a shields.io endpoint JSON.
+  Colour: green at or above `COVERAGE_MIN`, yellow within 5 points below,
+  red otherwise. A missing or empty profile exits non-zero with no output.
+  Tested in `scripts/coverage_test.sh`.
+- The `Publish coverage badge` step of `backend-postgres` runs on `push` to
+  `main` only, after the gate passes, and commits `coverage.json` to the
+  orphan `badges` branch (created on first run) using `GITHUB_TOKEN`
+  (job-level `contents: write`).
+- The `badges` branch is machine-written: never edit it or merge it.
+- `backend-postgres` is skipped on pushes that change only `wiki/` (the
+  `changes` job), so the badge refreshes only when the job runs.
+- If a branch ruleset blocks `GITHUB_TOKEN` from creating or pushing to
+  `badges`, exempt that branch from it.
+
 ## Frontend (report-only)
 
 - dash0: `bun run test:unit:cover` (vitest, `@vitest/coverage-v8`,
