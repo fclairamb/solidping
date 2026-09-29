@@ -6,6 +6,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
@@ -154,5 +155,46 @@ func TestMetrics(t *testing.T) {
 		case "solidping_jobs_queue_depth":
 			r.InDelta(7.0, f.GetMetric()[0].GetGauge().GetValue(), 0.001)
 		}
+	}
+}
+
+// TestAgentWSConnectionMetrics: the agent keepalive state machine's counters
+// (spec 2026-09-28-03 §3) are registered and count per call, with the close
+// counter split by disconnect reason.
+func TestAgentWSConnectionMetrics(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	reg := prometheus.NewRegistry()
+	prommetrics.Register(reg)
+
+	staleBefore := testutil.ToFloat64(prommetrics.AgentWSConnStale)
+	pingTimeoutBefore := testutil.ToFloat64(prommetrics.AgentWSConnClosed.WithLabelValues("ping_timeout"))
+	reconnectsBefore := testutil.ToFloat64(prommetrics.AgentWSReconnects)
+
+	prommetrics.RecordAgentWSStale()
+	prommetrics.RecordAgentWSClosed("ping_timeout")
+	prommetrics.RecordAgentWSClosed("ping_timeout")
+	prommetrics.RecordAgentWSReconnect()
+
+	r.InDelta(staleBefore+1, testutil.ToFloat64(prommetrics.AgentWSConnStale), 0.001)
+	r.InDelta(pingTimeoutBefore+2,
+		testutil.ToFloat64(prommetrics.AgentWSConnClosed.WithLabelValues("ping_timeout")), 0.001)
+	r.InDelta(reconnectsBefore+1, testutil.ToFloat64(prommetrics.AgentWSReconnects), 0.001)
+
+	families, err := reg.Gather()
+	r.NoError(err)
+
+	names := make(map[string]bool, len(families))
+	for _, f := range families {
+		names[f.GetName()] = true
+	}
+
+	for _, name := range []string{
+		"solidping_agent_ws_conn_stale_total",
+		"solidping_agent_ws_conn_closed_total",
+		"solidping_agent_ws_reconnects_total",
+	} {
+		r.True(names[name], "missing %s", name)
 	}
 }
