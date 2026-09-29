@@ -30,6 +30,8 @@ const fastPingInterval = 100 * time.Millisecond
 const (
 	logStale       = "agent connection stale: keepalive probe unanswered"
 	logSilentClose = "closing silent agent connection"
+	// logConnectionClosed is the handler's DEBUG line when the socket ends.
+	logConnectionClosed = "agent connection closed"
 )
 
 // logRecorder is a slog.Handler keeping every record, so a test can assert on
@@ -84,10 +86,17 @@ func (l *logRecorder) messages(msg string) []map[string]string {
 func newKeepaliveEnv(t *testing.T) (*env, *logRecorder) {
 	t.Helper()
 
+	return newKeepaliveEnvWith(t, fastPingInterval)
+}
+
+// newKeepaliveEnvWith is newKeepaliveEnv with an explicit probe interval.
+func newKeepaliveEnvWith(t *testing.T, interval time.Duration) (*env, *logRecorder) {
+	t.Helper()
+
 	logs := &logRecorder{}
 
 	e := newEnvConfigured(t, nil, func(h *agentws.Handler) {
-		h.SetPingInterval(fastPingInterval)
+		h.SetPingInterval(interval)
 		h.SetLogger(slog.New(logs))
 	})
 
@@ -116,6 +125,14 @@ func (p *probeCounter) inc() {
 	p.changed = make(chan struct{})
 }
 
+// count is the number of probes received so far.
+func (p *probeCounter) count() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	return p.n
+}
+
 // await blocks until at least want probes were received, failing the test if
 // the connection ends first (readErr) or it takes unreasonably long.
 func (p *probeCounter) await(t *testing.T, want int, readErr <-chan error) {
@@ -142,6 +159,24 @@ func (p *probeCounter) await(t *testing.T, want int, readErr <-chan error) {
 	}
 }
 
+// connectedEventsFor returns the agent.connected events of one agent, once
+// the (detached) connect write has landed.
+func (e *env) connectedEventsFor(agentUID string) []*models.Event {
+	e.t.Helper()
+
+	e.waitForEvent(models.EventTypeAgentConnected)
+
+	var out []*models.Event
+
+	for _, event := range e.agentEvents(models.EventTypeAgentConnected) {
+		if event.Payload["target_uid"] == agentUID {
+			out = append(out, event)
+		}
+	}
+
+	return out
+}
+
 // agentLastSeen reads the agent's last_seen_at.
 func (e *env) agentLastSeen(agentUID string) time.Time {
 	e.t.Helper()
@@ -160,26 +195,34 @@ func (e *env) agentLastSeen(agentUID string) time.Time {
 // parked on the unbuffered frame handoff while the loop awaited the pong, the
 // pong was never read, and the first probe closed a perfectly healthy
 // connection as ping_timeout.
+//
+// A second phase stops the claims: probes alone, answered, must keep
+// last_seen_at moving (claim frames refresh it too, so the first phase cannot
+// prove the probe-driven refresh on its own).
 func TestFrameAheadOfPongDoesNotKillTheConnection(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
-	e, logs := newKeepaliveEnv(t)
+
+	// A roomier cycle than fastPingInterval: this test asserts that NO probe
+	// ever goes unanswered, so each pong gets 150 ms even under -race load.
+	e, logs := newKeepaliveEnvWith(t, 300*time.Millisecond)
 
 	var (
-		armed  atomic.Bool
-		sent   atomic.Int64
-		client atomic.Pointer[websocket.Conn]
+		claiming atomic.Bool
+		sent     atomic.Int64
+		answered atomic.Int64
+		client   atomic.Pointer[websocket.Conn]
 	)
 
 	probes := newProbeCounter()
 
 	conn, _, enrolled := e.enrollWith(e.mintToken(), "office-1", &websocket.DialOptions{
 		OnPingReceived: func(ctx context.Context, _ []byte) bool {
-			if !armed.Load() {
+			probes.inc()
+
+			if !claiming.Load() {
 				return true
 			}
-
-			probes.inc()
 
 			// Written synchronously, before this callback returns and the
 			// library writes the pong: TCP order is claim, THEN pong.
@@ -192,8 +235,7 @@ func TestFrameAheadOfPongDoesNotKillTheConnection(t *testing.T) {
 		},
 	})
 	client.Store(conn)
-
-	startSeen := e.agentLastSeen(enrolled.AgentUID)
+	claiming.Store(true)
 
 	readErr := make(chan error, 1)
 
@@ -205,21 +247,54 @@ func TestFrameAheadOfPongDoesNotKillTheConnection(t *testing.T) {
 
 				return
 			}
+
+			if strings.HasPrefix(frame.ID, "c-") {
+				answered.Add(1)
+			}
 		}
 	}()
 
-	armed.Store(true)
-
-	// ≥ 3 full probe cycles survived: the 4th probe only goes out if the
-	// connection is still open after the first three.
+	// Phase 1 — ≥ 3 full probe cycles survived with a frame ahead of every
+	// pong: the 4th probe only goes out if the connection is still open after
+	// the first three.
 	probes.await(t, 4, readErr)
+	r.Positive(sent.Load(), "claims were written ahead of the pongs")
 
+	// Phase 2 — stop claiming. Ping callbacks run one at a time on the
+	// client's reader, so once the next probe was seen no callback can still
+	// be writing a claim; then wait for every claim to be answered, so no
+	// claim-driven last_seen_at refresh is left in flight.
+	claiming.Store(false)
+	probes.await(t, probes.count()+1, readErr)
 	require.Eventually(t, func() bool {
-		return e.agentLastSeen(enrolled.AgentUID).After(startSeen)
-	}, 5*time.Second, 10*time.Millisecond, "last_seen_at must keep moving")
+		return answered.Load() == sent.Load()
+	}, 10*time.Second, 5*time.Millisecond, "every claim answered")
 
+	claimsSent := sent.Load()
+	quietSeen := e.agentLastSeen(enrolled.AgentUID)
+
+	// Two more answered probe cycles, no frames at all.
+	probes.await(t, probes.count()+2, readErr)
+	require.Eventually(t, func() bool {
+		return e.agentLastSeen(enrolled.AgentUID).After(quietSeen)
+	}, 5*time.Second, 5*time.Millisecond, "an answered probe must refresh last_seen_at on its own")
+	r.Equal(claimsSent, sent.Load(), "no claim was sent during the quiet phase")
+
+	// Event recording works (positive control), and nothing disconnected.
+	r.Len(e.connectedEventsFor(enrolled.AgentUID), 1)
 	r.Empty(e.agentEvents(models.EventTypeAgentDisconnected), "no disconnect for a healthy agent")
+
+	// Every probe was answered: never stale, never closed.
+	r.Empty(logs.messages(logStale), "the agent answered every probe")
 	r.Empty(logs.messages(logSilentClose))
+
+	// Positive control for the log capture: the same logger records the
+	// connection ending once the agent goes away.
+	r.NoError(conn.CloseNow())
+	require.Eventually(t, func() bool {
+		return len(logs.messages(logConnectionClosed)) > 0
+	}, 10*time.Second, 5*time.Millisecond, "the log capture must see the handler's own lines")
+	r.Empty(logs.messages(logStale))
 }
 
 // TestFramesKeepAConnectionAliveWithoutPongs pins the any-frame rule: an agent
@@ -235,7 +310,7 @@ func TestFramesKeepAConnectionAliveWithoutPongs(t *testing.T) {
 
 	probes := newProbeCounter()
 
-	conn, _, _ := e.enrollWith(e.mintToken(), "office-1", &websocket.DialOptions{
+	conn, _, enrolled := e.enrollWith(e.mintToken(), "office-1", &websocket.DialOptions{
 		OnPingReceived: func(context.Context, []byte) bool {
 			if armed.Load() {
 				probes.inc()
@@ -287,6 +362,9 @@ func TestFramesKeepAConnectionAliveWithoutPongs(t *testing.T) {
 	// survived because of its frames, not because a probe succeeded.
 	r.NotEmpty(logs.messages(logStale), "unanswered probes must mark the connection stale")
 	r.Empty(logs.messages(logSilentClose))
+
+	// Event recording works (positive control), and nothing disconnected.
+	r.Len(e.connectedEventsFor(enrolled.AgentUID), 1)
 	r.Empty(e.agentEvents(models.EventTypeAgentDisconnected))
 }
 
