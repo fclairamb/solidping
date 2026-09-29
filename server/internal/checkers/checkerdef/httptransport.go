@@ -20,12 +20,12 @@ const (
 )
 
 // BuildHTTPTransport returns the http.Transport an HTTP-speaking check needs,
-// or nil when it needs none.
+// or the shared check transport when it needs nothing special.
 //
-// Returning nil matters: with a nil Transport net/http uses the shared
-// http.DefaultTransport, which keeps its connection pool across executions.
-// Only a check that actually needs a tunnel dialer, a relaxed TLS config, or a
-// pinned address family pays for a private transport.
+// Not returning nil matters in the other direction: net/http would then use
+// http.DefaultTransport, which speaks HTTP/2 — and HTTP/2 is exactly what a
+// check must not use (see checkTransport below). The shared checkTransport
+// keeps the connection pool across executions without that hazard.
 //
 // It lives in checkerdef (rather than in checkhttp, where it was born) so every
 // checker that speaks plain HTTP — checkhttp, checkprometheus — honors
@@ -42,12 +42,56 @@ func BuildHTTPTransport(
 // HTTP-speaking checker goes through it, which is what makes the egress policy
 // a single choke point rather than a per-checker convention.
 //
-// Under an enforcing guard an untunneled check never gets a nil (default)
-// transport: with nothing else to customize it shares the guard's pooled
-// transport, so connection reuse survives; otherwise its private transport
-// dials through the guard.
+// With nothing to customize an untunneled check shares a pooled transport —
+// the guard's under an enforcing policy, checkTransport otherwise — so
+// connection reuse survives; anything to customize (tunnel, `ipVersion` pin,
+// verifySsl: false) gets a private transport for this execution only, dialing
+// through the guard when it enforces.
 func HTTPTransportFor(ctx context.Context, skipTLSVerify bool) http.RoundTripper {
 	return buildHTTPTransport(TunnelDialerFrom(ctx), skipTLSVerify, IPVersionFrom(ctx), egress.FromContext(ctx))
+}
+
+// checkTransport is the transport HTTP checks dial through when nothing else
+// customizes the dial: no tunnel, no pinned family, no verifySsl: false and no
+// enforcing egress guard (the self-hosted posture).
+//
+// It is deliberately NOT http.DefaultTransport, and it deliberately does NOT
+// speak HTTP/2. HTTP/2's handling of a canceled request is what turns one
+// network blip into an outage: when a probe's context expires, the client
+// cancels the STREAM, and — if it has read no frames since sending the request —
+// Go keeps that stream "consuming a concurrency slot until we can confirm the
+// server is still responding" (`net/http/internal/http2`,
+// clientStream.cleanupWriteRequest). The connection therefore goes back into
+// the pool holding a stream that never completes, `CloseIdleConnections`
+// refuses to touch it (`len(cc.streams) > 0`), and every later probe rides the
+// same dead connection until the kernel gives up on the 5-tuple
+// (`tcp_retries2`, ~15 min). Measured on a production worker: a ~1-minute IPv6
+// blackhole cost 16 consecutive failing probes, 86 % of that check's failures
+// over a day (spec 2026-09-28-04).
+//
+// HTTP/1.1 has the opposite guarantee: net/http closes the connection of any
+// request that did not complete normally, so a connection can never outlive the
+// probe that stranded it — while pooling across executions (and across a
+// redirect chain inside one execution) is kept. Every private transport below
+// was already HTTP/1.1 (a custom DialContext or TLSClientConfig makes net/http
+// "conservatively disable HTTP/2"); this makes the two shared ones match.
+var checkTransport = &http.Transport{ //nolint:gochecknoglobals // shared, constant after init
+	// HTTP/2 off — see the doc comment. An explicit empty TLSNextProto says
+	// "no alternate protocols", which stops net/http re-enabling h2 on top of
+	// this flag.
+	TLSNextProto:      map[string]func(authority string, c *tls.Conn) http.RoundTripper{},
+	ForceAttemptHTTP2: false,
+	// Dialer settings mirror http.DefaultTransport so a check that used to run
+	// on it keeps the same connect timeout and keep-alive probing.
+	DialContext: (&net.Dialer{
+		Timeout:   30 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}).DialContext,
+	Proxy:                 http.ProxyFromEnvironment,
+	MaxIdleConns:          100,
+	IdleConnTimeout:       90 * time.Second,
+	TLSHandshakeTimeout:   10 * time.Second,
+	ExpectContinueTimeout: 1 * time.Second,
 }
 
 func buildHTTPTransport(
@@ -61,7 +105,7 @@ func buildHTTPTransport(
 			return guard.HTTPTransport()
 		}
 
-		return nil
+		return checkTransport
 	}
 
 	transport := &http.Transport{}

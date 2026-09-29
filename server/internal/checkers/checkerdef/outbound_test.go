@@ -25,8 +25,9 @@ func allowCtx(t *testing.T) context.Context {
 	return egress.WithGuard(t.Context(), egress.New(true))
 }
 
-// A permissive (or absent) guard changes nothing: no dialer is handed out and
-// the plain HTTP path keeps http.DefaultTransport.
+// A permissive (or absent) guard changes nothing: no dialer is handed out, and
+// the plain HTTP path keeps the shared check transport — pooled, and HTTP/1.1
+// rather than http.DefaultTransport, which negotiates HTTP/2.
 func TestOutboundSeamIsInertWhenNotEnforcing(t *testing.T) {
 	t.Parallel()
 
@@ -34,7 +35,14 @@ func TestOutboundSeamIsInertWhenNotEnforcing(t *testing.T) {
 
 	for _, ctx := range []context.Context{t.Context(), allowCtx(t)} {
 		r.Nil(checkerdef.OutboundDialer(ctx))
-		r.Nil(checkerdef.HTTPTransportFor(ctx, false), "nil transport = DefaultTransport and its pool")
+
+		transport, ok := checkerdef.HTTPTransportFor(ctx, false).(*http.Transport)
+		r.True(ok, "the plain HTTP path must hand out an *http.Transport")
+		r.False(transport.ForceAttemptHTTP2,
+			"a check must not negotiate HTTP/2: a canceled probe strands its connection (spec 2026-09-28-04)")
+		r.NotNil(transport.DialContext,
+			"auto still dials by name, so net.Dialer keeps Happy Eyeballs")
+
 		r.False(checkerdef.EgressEnforcing(ctx))
 
 		base := &net.Dialer{}

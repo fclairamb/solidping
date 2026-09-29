@@ -888,9 +888,10 @@ func (r *jsRuntime) httpRequest(
 	client := &http.Client{
 		Timeout:       opts.timeout,
 		CheckRedirect: redirectPolicy(&opts, &redirects),
-		// nil when untunneled and no IP version is pinned (js does not declare
-		// SupportsIPVersion), which keeps http.DefaultTransport and its pooled
-		// connections byte-for-byte as before this feature. When a dialer is
+		// the shared pooled HTTP/1.1 check transport when untunneled and no IP
+		// version is pinned (js does not declare SupportsIPVersion) — the same
+		// transport the http and prometheus checkers run on (spec 2026-09-28-04
+		// replaced http.DefaultTransport's HTTP/2 there). When a dialer is
 		// present the transport hands the raw host:port to it — no local
 		// resolution — exactly like the http and prometheus checkers.
 		//

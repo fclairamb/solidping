@@ -506,6 +506,15 @@ func (g *Guard) controlFor(
 //
 // The environment proxy is deliberately disabled: a proxy would perform the
 // real connection on our behalf, from where we cannot see the destination.
+//
+// HTTP/2 is deliberately off (spec 2026-09-28-04): a probe canceled by its
+// execution budget leaves a stream on the connection "until we can confirm the
+// server is still responding", so the connection stays in the pool with an
+// uncompletable stream and every later probe rides it — one network blip became
+// sixteen minutes of false failures. HTTP/1.1 closes the connection of any
+// request that did not complete, so a stranded connection can never outlive the
+// probe that hit it. Cloning http.DefaultTransport carries ForceAttemptHTTP2
+// over, hence the explicit reset.
 func (g *Guard) HTTPTransport() *http.Transport {
 	g.transportOnce.Do(func() {
 		base, ok := http.DefaultTransport.(*http.Transport)
@@ -517,6 +526,7 @@ func (g *Guard) HTTPTransport() *http.Transport {
 
 		g.transport.Proxy = nil
 		g.transport.DialContext = g.DialContext
+		g.transport.ForceAttemptHTTP2 = false
 	})
 
 	return g.transport
