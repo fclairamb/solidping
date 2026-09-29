@@ -29,13 +29,13 @@ import {
   useCloneCheck,
   useDeleteCheck,
   useUpdateCheck,
-  useFeatures,
   useRotateHeartbeatToken,
   useResults,
   useChartWindowResults,
   useIncidents,
   useRegions,
 } from "@/api/hooks";
+import { useHeartbeatPush } from "@/api/public-config";
 import { useEmailAddressDomain, emailCheckAddress } from "@/api/email-inbox";
 import {
   stretchWhileLive,
@@ -518,9 +518,8 @@ function HeartbeatPushEndpoint({
   check: { slug?: string; uid: string; config?: Record<string, unknown> };
 }) {
   const { t } = useTranslation("checks");
-  const { data: features } = useFeatures();
   const updateCheck = useUpdateCheck(org, check.uid);
-  const push = features?.heartbeatPush;
+  const push = useHeartbeatPush();
   const requireHmac = check.config?.require_hmac === true;
 
   if (!push || (!push.tcpEnabled && !push.udpEnabled)) return null;

@@ -25,7 +25,12 @@ import {
 } from "lucide-react";
 import { ApiError } from "@/api/client";
 import { useVersion, useProviders } from "@/api/hooks";
-import { useDemoConfig, usePublicConfigLoading } from "@/api/public-config";
+import {
+  useDemoConfig,
+  useDeploymentMode,
+  usePublicConfigLoading,
+  useRunMode,
+} from "@/api/public-config";
 import {
   demoAutoLoginOwnsRedirect,
   demoEntryDecision,
@@ -110,6 +115,8 @@ function LoginPage() {
   // is a service method, not a React hook, but its name triggers the rule.
   const submitRecoveryCode = auth.useRecoveryCode;
   const { data: versionData } = useVersion();
+  const deploymentMode = useDeploymentMode();
+  const runMode = useRunMode();
   const { data: providersData } = useProviders();
   const providers = providersData?.providers;
   const registrationEnabled = providersData?.registrationEnabled;
@@ -948,7 +955,7 @@ function LoginPage() {
       {versionData && (
         <div className="mt-4 text-center text-xs text-muted-foreground">
           <a
-            href={marketingSiteUrl(versionData.deploymentMode)}
+            href={marketingSiteUrl(deploymentMode)}
             target="_blank"
             rel="noopener noreferrer"
             data-testid="login-brand-link"
@@ -965,13 +972,12 @@ function LoginPage() {
           >
             v{versionData.version || "unknown"}
           </a>
-          {(versionData.runMode === "demo" ||
-            versionData.runMode === "test") && (
+          {(runMode === "demo" || runMode === "test") && (
             <span
               className="ml-2 px-2 py-0.5 rounded bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
               data-testid="login-runmode"
             >
-              {versionData.runMode}
+              {runMode}
             </span>
           )}
         </div>

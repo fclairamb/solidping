@@ -4327,8 +4327,6 @@ export function useVersion() {
         version?: string;
         commit?: string;
         gitTime?: string;
-        runMode?: string;
-        deploymentMode?: "saas" | "self-hosted";
       }>("/api/mgmt/version"),
     // Poll for server redeploys (spec 2026-08-28-01: dash0 has no way to
     // tell the user their loaded app is older than the running server).
@@ -4361,37 +4359,6 @@ export function useEmailPreviewIndex() {
       apiFetch<{ data: EmailTemplateSummary[] }>("/api/mgmt/email-preview"),
     staleTime: 30000,
     retry: false,
-  });
-}
-
-/**
- * Embedded TCP/UDP heartbeat push transports (spec 2026-09-01-06).
- *
- * Reported by the server so the check detail page only advertises a transport
- * a device can actually reach — the listeners are off by default and opening
- * their ports is a deployment decision.
- */
-export interface HeartbeatPushFeature {
-  tcpEnabled: boolean;
-  udpEnabled: boolean;
-  /** Hostname devices should send beats to; empty when it can't be derived. */
-  host: string;
-  /** 0 when the matching transport is disabled. */
-  tcpPort: number;
-  udpPort: number;
-}
-
-export interface FeaturesResponse {
-  bugReport: boolean;
-  heartbeatPush?: HeartbeatPushFeature;
-}
-
-export function useFeatures(opts?: { enabled?: boolean }) {
-  return useQuery({
-    queryKey: ["features"],
-    queryFn: () => apiFetch<FeaturesResponse>("/api/v1/features"),
-    staleTime: 5 * 60 * 1000,
-    enabled: opts?.enabled ?? true,
   });
 }
 
