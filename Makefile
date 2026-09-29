@@ -1,6 +1,6 @@
 .PHONY: docker-build build build-backend build-dash0 build-status0 build-docs copy-dash0 copy-status0 copy-docs \
 	build-cli install-cli clean clean-all run run-test dev dev-test dev-saas dev-dash0 dev-status0 dev-docs dev-backend \
-	test test-postgres test-slow test-scenario test-dash0 test-docs lint lint-back lint-dash0 lint-status0 fmt deps migrate help sync-brand-assets build-favicons \
+	test test-cover test-postgres test-slow test-scenario test-dash0 test-docs lint lint-back lint-dash0 lint-status0 fmt deps migrate help sync-brand-assets build-favicons \
 	showcase showcase-terminal showcase-cut \
 	build-loadgen bench-checks bench-checks-sqlite bench-checks-postgres \
 	build-scenario scenario-test
@@ -358,6 +358,22 @@ test: ## Run all tests (SQLite only — `-short` skips every Postgres suite)
 	@echo "Running backend tests..."
 	@cd $(BACK_DIR) && go test ./... -short
 	@echo "Tests complete"
+
+# Backend coverage (spec 2026-09-29-06). -short by default (SQLite only, ~8 min);
+# COVER_FULL=1 runs the Postgres layer as CI does. Generated and vendored code
+# (pkg/client, third_party, mocks) is filtered out of the profile so the number
+# reflects hand-written code. Output: server/coverage.out (filtered) plus a total.
+test-cover: ## Backend coverage profile + total (COVER_FULL=1 for the Postgres layer)
+	@echo "Running backend tests with coverage..."
+	@cd $(BACK_DIR) && \
+		if [ -n "$(COVER_FULL)" ]; then \
+			SP_TEST_REQUIRE_POSTGRES=1 go test -count=1 -p 1 -coverprofile=coverage.raw.out -coverpkg=./... ./... ; \
+		else \
+			go test -count=1 -short -coverprofile=coverage.raw.out -coverpkg=./... ./... ; \
+		fi
+	@cd $(BACK_DIR) && ../scripts/coverage.sh filter coverage.raw.out coverage.out && rm -f coverage.raw.out
+	@cd $(BACK_DIR) && go tool cover -func=coverage.out | tail -1
+	@echo "Coverage profile: $(BACK_DIR)/coverage.out"
 
 # `make test` above is -short, which means it has NEVER exercised Postgres.
 # That is deliberate (it keeps the inner loop fast) and it is exactly how spec

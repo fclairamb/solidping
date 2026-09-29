@@ -68,3 +68,8 @@ server/tmp/
 .claude/worktrees/
 
 .bb/
+
+# Backend coverage profiles (make test-cover)
+server/coverage*.out
+web/dash0/coverage/
+web/status0/coverage/

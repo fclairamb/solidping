@@ -189,6 +189,11 @@ jobs:
       - name: Run tests
         run: go test -count=1 ./... -short
 
+      # Self-test of the coverage filter/gate used by the backend-postgres job.
+      - name: Coverage script self-test
+        working-directory: .
+        run: scripts/coverage_test.sh
+
   # The Postgres half of the Go suite. `backend-lint` above runs `-short`, and
   # `-short` is precisely what every *_postgres_test.go self-skips on — so
   # before this job existed the only database CI had ever exercised was SQLite.
@@ -268,8 +273,32 @@ jobs:
       - name: Run the Postgres test layer
         run: |
           set -o pipefail
-          SP_TEST_REQUIRE_POSTGRES=1 go test -count=1 -p 1 -v ./... 2>&1 \
+          SP_TEST_REQUIRE_POSTGRES=1 go test -count=1 -p 1 -v \
+            -coverprofile="$RUNNER_TEMP/coverage.raw.out" -coverpkg=./... ./... 2>&1 \
             | tee "$RUNNER_TEMP/postgres-tests.log"
+
+      # Coverage (spec 2026-09-29-06). This is the layer that runs every suite,
+      # so it produces the profile. Generated and vendored code (pkg/client,
+      # third_party, mocks) is filtered out, the total goes to the job summary,
+      # and the job fails below COVERAGE_MIN. Ratchet rule: raise COVERAGE_MIN
+      # to the last measured value whenever coverage improves, never lower it.
+      # No third-party service: the artifact plus the summary is enough.
+      - name: Backend coverage gate
+        if: ${{ !cancelled() }}
+        env:
+          COVERAGE_MIN: "80"
+        run: |
+          set -euo pipefail
+          ../scripts/coverage.sh filter "$RUNNER_TEMP/coverage.raw.out" coverage.out
+          ../scripts/coverage.sh gate coverage.out
+
+      - name: Upload coverage profile
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: backend-coverage
+          path: server/coverage.out
+          retention-days: 14
 
       # A green exit code is not evidence: `go test` prints ok for a package
       # whose every test skipped. This step asserts the layer actually EXECUTED.
@@ -355,8 +384,21 @@ jobs:
       - name: Lint e2e
         run: bun run lint:e2e
 
-      - name: Run unit tests
-        run: bun run test:unit
+      # Report-only (spec 2026-09-29-06): the 80% target and the gate are
+      # backend-only. Same tests as `test:unit`, so a broken test still fails.
+      - name: Run unit tests (with coverage)
+        run: |
+          set -o pipefail
+          bun run test:unit:cover | tee "$RUNNER_TEMP/dash0-cover.txt"
+          { echo '### dash0 unit-test coverage'; echo '```'; sed -n '/Coverage summary/,$p' "$RUNNER_TEMP/dash0-cover.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload dash0 coverage report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: dash0-coverage
+          path: web/dash0/coverage
+          retention-days: 14
 
       - name: Build
         run: bun run build
@@ -411,8 +453,13 @@ jobs:
       # rather than through `tsc -b` because tsconfig.app.json deliberately
       # excludes src/**/*.test.ts — bun-types' ambient globals collide with that
       # project's DOM lib.
+      # --coverage is report-only (spec 2026-09-29-06); a failing test still
+      # fails the step because of pipefail.
       - name: Run unit tests
-        run: bun test ./src
+        run: |
+          set -o pipefail
+          bun test --coverage ./src 2>&1 | tee "$RUNNER_TEMP/status0-cover.txt"
+          { echo '### status0 unit-test coverage'; echo '```'; sed -n '/^-*|/,$p' "$RUNNER_TEMP/status0-cover.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Build
         run: bun run build
