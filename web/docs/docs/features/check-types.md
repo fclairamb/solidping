@@ -51,6 +51,12 @@ https://api.example.com/health
 method and body; 301/302/303 behave the same as they do for any other
 non-`GET`/`HEAD` method).
 
+**Protocol:** checks speak HTTP/1.1, even when the target offers HTTP/2. A
+probe that times out closes its connection, so the next probe opens a fresh
+one instead of waiting on a stalled connection until the operating system
+gives up on it (up to ~15 minutes). Connections are still reused between
+probes that succeed.
+
 **Basic Auth storage:** you still enter a username and a password in the form,
 but the pair is stored as a single encrypted credential (a reserved `basicAuth`
 config key) — both halves are protected, not just the password. The dashboard
