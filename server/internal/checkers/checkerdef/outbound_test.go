@@ -49,7 +49,10 @@ func TestOutboundSeamIsInertWhenNotEnforcing(t *testing.T) {
 		r.Same(base, checkerdef.GuardDialerOr(ctx, base))
 		r.Same(base, checkerdef.OutboundDialerOr(ctx, base))
 		r.Same(base, checkerdef.GuardedNetDialer(ctx, base))
-		r.Same(http.DefaultClient, checkerdef.GuardedHTTPClient(ctx))
+		r.NotSame(http.DefaultClient, checkerdef.GuardedHTTPClient(ctx),
+			"not even the non-enforcing client may ride http.DefaultTransport's HTTP/2")
+		r.Same(transport, checkerdef.GuardedHTTPClient(ctx).Transport,
+			"it shares the pooled HTTP/1.1 check transport instead")
 
 		host, err := checkerdef.PinTargetHost(ctx, "localhost")
 		r.NoError(err)

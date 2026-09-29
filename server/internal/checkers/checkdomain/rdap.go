@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
 // bootstrapURL is the IANA RDAP bootstrap registry that maps a TLD to the
@@ -88,7 +90,11 @@ type rdapClient struct {
 // newRDAPClient builds a client pointed at the real IANA bootstrap registry.
 func newRDAPClient() *rdapClient {
 	return &rdapClient{
-		httpClient:   &http.Client{Timeout: rdapHTTPTimeout},
+		// The shared HTTP/1.1 check transport, not http.DefaultTransport: over
+		// HTTP/2 one RDAP request canceled mid-blip would strand its pooled
+		// connection and fail every later lookup to that registry until the
+		// kernel gave up on it (spec 2026-09-28-04).
+		httpClient:   &http.Client{Timeout: rdapHTTPTimeout, Transport: checkerdef.CheckHTTPTransport()},
 		bootstrapURL: bootstrapURL,
 		cacheTTL:     bootstrapCacheTTL,
 	}

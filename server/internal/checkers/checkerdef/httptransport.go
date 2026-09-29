@@ -79,7 +79,7 @@ var checkTransport = &http.Transport{ //nolint:gochecknoglobals // shared, const
 	// HTTP/2 off — see the doc comment. An explicit empty TLSNextProto says
 	// "no alternate protocols", which stops net/http re-enabling h2 on top of
 	// this flag.
-	TLSNextProto:      map[string]func(authority string, c *tls.Conn) http.RoundTripper{},
+	TLSNextProto:      noHTTP2(),
 	ForceAttemptHTTP2: false,
 	// Dialer settings mirror http.DefaultTransport so a check that used to run
 	// on it keeps the same connect timeout and keep-alive probing.
@@ -92,6 +92,21 @@ var checkTransport = &http.Transport{ //nolint:gochecknoglobals // shared, const
 	IdleConnTimeout:       90 * time.Second,
 	TLSHandshakeTimeout:   10 * time.Second,
 	ExpectContinueTimeout: 1 * time.Second,
+}
+
+// CheckHTTPTransport returns the shared, pooled HTTP/1.1 transport for check
+// traffic that has no execution context to read a tunnel, a pinned family or
+// an egress guard from (e.g. the domain check's RDAP client, built once per
+// process). A check's main probe goes through HTTPTransportFor instead.
+func CheckHTTPTransport() http.RoundTripper {
+	return checkTransport
+}
+
+// noHTTP2 is an explicit, empty TLSNextProto: net/http's documented way to
+// disable HTTP/2 on a transport, independent of ForceAttemptHTTP2 and of the
+// custom-dialer heuristic. Every transport a check probe runs on carries one.
+func noHTTP2() map[string]func(string, *tls.Conn) http.RoundTripper {
+	return map[string]func(string, *tls.Conn) http.RoundTripper{}
 }
 
 func buildHTTPTransport(
@@ -108,7 +123,10 @@ func buildHTTPTransport(
 		return checkTransport
 	}
 
-	transport := &http.Transport{}
+	// Private transports were already HTTP/1.1 (a custom DialContext or
+	// TLSClientConfig makes net/http "conservatively disable HTTP/2"); the
+	// explicit TLSNextProto keeps them so without relying on that heuristic.
+	transport := &http.Transport{TLSNextProto: noHTTP2()}
 
 	switch {
 	case dialer != nil:
