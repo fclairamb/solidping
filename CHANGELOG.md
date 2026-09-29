@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.36.1](https://github.com/fclairamb/solidping/compare/v0.36.0...v0.36.1) (2026-09-29)
+
+
+### Bug Fixes
+
+* agent keepalive no longer kills busy agents, check probes speak HTTP/1.1 ([#453](https://github.com/fclairamb/solidping/issues/453)) ([1d99c15](https://github.com/fclairamb/solidping/commit/1d99c15172fdc31c650c352097e39e43d9086e69))
+* **deps:** update github.com/lunixbochs/struc digest to 8d528fa ([#435](https://github.com/fclairamb/solidping/issues/435)) ([f493e44](https://github.com/fclairamb/solidping/commit/f493e44b4b14428baefe8b417169e03eac0dbd07))
+
 ## [0.36.0](https://github.com/fclairamb/solidping/compare/v0.35.0...v0.36.0) (2026-09-28)
 
 
