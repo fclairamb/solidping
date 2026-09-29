@@ -135,19 +135,59 @@ func (l *liveness) snapshot() livenessSnapshot {
 	return snap
 }
 
-// keepalive is the event loop's side of the state machine: whether the
-// connection is stale, and the sensor sequence it went stale at.
+// keepalive is the event loop's side of the state machine.
 type keepalive struct {
-	sensor   *liveness
-	stale    bool
+	sensor *liveness
+	stale  bool
+	// staleSeq is the sensor sequence at the moment the probe that made the
+	// connection stale was SENT — not when it failed. Anything observed while
+	// that probe was outstanding proves the peer alive during that cycle.
 	staleSeq uint64
+}
+
+// probeAnswered records an answered probe: the connection is live.
+func (k *keepalive) probeAnswered() {
+	k.stale = false
+}
+
+// probeFailed records an unanswered probe, sent when the sensor stood at
+// sentSeq; it stands at nowSeq now. It reports whether the peer is dead: the
+// connection was already stale and nothing at all was observed since the
+// PREVIOUS unanswered probe was sent — two consecutive probe cycles of
+// silence. Otherwise the connection is (again) stale, as of this probe.
+//
+// Judging silence from the previous probe's send (not its failure) matters:
+// a frame that lands while a probe is outstanding belongs to that cycle, and
+// discarding it would kill a peer whose frames are merely a little over one
+// interval apart.
+func (k *keepalive) probeFailed(sentSeq, nowSeq uint64) bool {
+	if k.stale && nowSeq == k.staleSeq {
+		return true
+	}
+
+	k.stale = true
+	k.staleSeq = sentSeq
+
+	return false
+}
+
+// probeResult is one keepalive probe outcome handed from the pinger to the
+// loop.
+type probeResult struct {
+	// err is nil when the probe was answered.
+	err error
+	// sentSeq is the sensor sequence when the probe was sent.
+	sentSeq uint64
 }
 
 // runPinger probes the peer every interval, OUTSIDE the event loop: Ping must
 // never occupy the goroutine that drains frames, and a silent-but-healthy
 // agent (nothing to claim, nothing to submit) still needs a probe to be
-// observable at all. Each outcome (nil = answered) is handed to the loop.
-func runPinger(ctx context.Context, conn *websocket.Conn, interval time.Duration, probes chan<- error) {
+// observable at all. Each outcome is handed to the loop with the sensor
+// sequence at send time.
+func runPinger(
+	ctx context.Context, conn *websocket.Conn, sensor *liveness, interval time.Duration, probes chan<- probeResult,
+) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
@@ -158,13 +198,14 @@ func runPinger(ctx context.Context, conn *websocket.Conn, interval time.Duration
 		case <-ticker.C:
 		}
 
+		sentSeq := sensor.snapshot().seq
 		pingCtx, cancel := context.WithTimeout(ctx, interval/2)
 		err := conn.Ping(pingCtx)
 
 		cancel()
 
 		select {
-		case probes <- err:
+		case probes <- probeResult{err: err, sentSeq: sentSeq}:
 		case <-ctx.Done():
 			return
 		}
@@ -184,12 +225,13 @@ func (h *Handler) handleObserved(ctx context.Context, state *connState) {
 // handleProbe feeds one probe outcome into the state machine, refreshes
 // last_seen_at on an answered probe, and enforces revocation. Returns false to
 // end the connection.
-func (h *Handler) handleProbe(ctx context.Context, conn *websocket.Conn, state *connState, probeErr error) bool {
+func (h *Handler) handleProbe(ctx context.Context, conn *websocket.Conn, state *connState, probe probeResult) bool {
 	keep := &state.keepalive
+	probeErr := probe.err
 
 	switch {
 	case probeErr == nil:
-		keep.stale = false
+		keep.probeAnswered()
 
 		_ = h.dbService.UpdateAgentLastSeen(ctx, state.agent.UID, time.Now())
 	case errors.Is(probeErr, net.ErrClosed):
@@ -198,7 +240,7 @@ func (h *Handler) handleProbe(ctx context.Context, conn *websocket.Conn, state *
 	default:
 		snap := keep.sensor.snapshot()
 
-		if keep.stale && snap.seq == keep.staleSeq {
+		if keep.probeFailed(probe.sentSeq, snap.seq) {
 			// Second consecutive probe cycle with no observation at all.
 			h.logger.WarnContext(ctx, "closing silent agent connection",
 				"agent", state.agent.UID, "region", state.agent.Region,
@@ -212,10 +254,7 @@ func (h *Handler) handleProbe(ctx context.Context, conn *websocket.Conn, state *
 		}
 
 		// live → stale (or stale → live → stale when something was observed
-		// since the previous miss).
-		keep.stale = true
-		keep.staleSeq = snap.seq
-
+		// since the previous miss was sent).
 		prommetrics.RecordAgentWSStale()
 		h.logger.WarnContext(ctx, "agent connection stale: keepalive probe unanswered",
 			"agent", state.agent.UID, "region", state.agent.Region,

@@ -197,7 +197,9 @@ Any client frame, the agent's own ping, or a pong is proof of life. A pinger
 goroutine probes outside the event loop; one unanswered probe makes the
 connection `stale` (WARN naming the agent, region, last observation and how long
 the reader was blocked), any observation makes it `live` again, and only a
-second consecutive silent cycle (~50 s) closes it as `ping_timeout`. The reader
+second consecutive silent cycle (~50 s) closes it as `ping_timeout`. Silence
+is measured from when the previous unanswered probe was *sent*, so a frame that
+lands while a probe is outstanding counts for that cycle. The reader
 hands frames to the loop through a 64-slot buffer so it always returns to
 `Read`, which is the only place `coder/websocket` processes pongs and answers
 pings. The old design (unbuffered handoff + the loop blocking in `conn.Ping`)

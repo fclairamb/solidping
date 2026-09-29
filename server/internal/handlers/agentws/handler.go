@@ -729,8 +729,8 @@ func (h *Handler) runAgentConnection(
 
 	go readFrames(loopCtx, conn, live, frames, readErr)
 
-	probes := make(chan error)
-	go runPinger(loopCtx, conn, h.pingInterval, probes)
+	probes := make(chan probeResult)
+	go runPinger(loopCtx, conn, live, h.pingInterval, probes)
 
 	reason := h.serveConnEvents(loopCtx, conn, state, &connChannels{
 		frames:   frames,
@@ -855,9 +855,8 @@ type connChannels struct {
 	frames <-chan agentcrypto.ClientFrame
 	// readErr ends the connection on the first read failure.
 	readErr <-chan error
-	// probes carries each keepalive probe outcome from the pinger goroutine
-	// (nil = answered).
-	probes <-chan error
+	// probes carries each keepalive probe outcome from the pinger goroutine.
+	probes <-chan probeResult
 	// observed nudges the loop whenever the liveness sensor saw anything.
 	observed <-chan struct{}
 	// outbound carries UNSOLICITED server->agent frames (today: capture upload
@@ -881,12 +880,12 @@ func (h *Handler) serveConnEvents(
 			h.logger.DebugContext(ctx, "agent connection closed", "agent", state.agent.UID, "error", err)
 
 			return disconnectReason(ctx, state)
-		case probeErr := <-chans.probes:
+		case probe := <-chans.probes:
 			if ctx.Err() != nil {
 				return models.AgentDisconnectReasonServerShutdown
 			}
 
-			if !h.handleProbe(ctx, conn, state, probeErr) {
+			if !h.handleProbe(ctx, conn, state, probe) {
 				return disconnectReason(ctx, state)
 			}
 		case <-chans.observed:
