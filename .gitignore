@@ -22,9 +22,12 @@ bin/
 !.env.example
 
 # Frontend builds
-server/internal/app/dash0res/
-server/internal/app/status0res/
-server/internal/app/docsres/
+server/internal/app/dash0res/*
+!server/internal/app/dash0res/.gitkeep
+server/internal/app/status0res/*
+!server/internal/app/status0res/.gitkeep
+server/internal/app/docsres/*
+!server/internal/app/docsres/.gitkeep
 
 # Test data
 test-results/

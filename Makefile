@@ -1,4 +1,4 @@
-.PHONY: docker-build build build-backend build-dash0 build-status0 build-docs copy-dash0 copy-status0 copy-docs \
+.PHONY: docker-build build build-backend build-dash0 build-status0 build-docs copy-dash0 copy-status0 copy-docs embed-placeholders cloud-setup \
 	build-cli install-cli clean clean-all run run-test dev dev-test dev-saas dev-dash0 dev-status0 dev-docs dev-backend \
 	test test-cover test-postgres test-slow test-scenario test-dash0 test-docs lint lint-agent-docs lint-back lint-dash0 lint-status0 fmt deps migrate help sync-brand-assets build-favicons \
 	showcase showcase-terminal showcase-cut \
@@ -109,8 +109,8 @@ build-dash0: ## Build dash0 status page with bun
 
 copy-dash0: ## Copy dash0 dist to backend dash0res directory
 	@echo "Copying dash0 dist to backend resources..."
-	@rm -rf $(BACK_DASH0_RES)
 	@mkdir -p $(BACK_DASH0_RES)
+	@find $(BACK_DASH0_RES) -mindepth 1 ! -name .gitkeep -delete
 	@cp -r $(DASH0_DIST)/* $(BACK_DASH0_RES)/
 	@echo "Dash0 resources copied to $(BACK_DASH0_RES)"
 
@@ -121,8 +121,8 @@ build-status0: ## Build status0 public status page with bun
 
 copy-status0: ## Copy status0 dist to backend status0res directory
 	@echo "Copying status0 dist to backend resources..."
-	@rm -rf $(BACK_STATUS0_RES)
 	@mkdir -p $(BACK_STATUS0_RES)
+	@find $(BACK_STATUS0_RES) -mindepth 1 ! -name .gitkeep -delete
 	@cp -r $(STATUS0_DIST)/* $(BACK_STATUS0_RES)/
 	@echo "Status0 resources copied to $(BACK_STATUS0_RES)"
 
@@ -133,8 +133,8 @@ build-docs: ## Build docs site (Docusaurus, incl. generated API ref) with bun
 
 copy-docs: ## Copy docs build to backend docsres directory
 	@echo "Copying docs build to backend resources..."
-	@rm -rf $(BACK_DOCS_RES)
 	@mkdir -p $(BACK_DOCS_RES)
+	@find $(BACK_DOCS_RES) -mindepth 1 ! -name .gitkeep -delete
 	@cp -r $(DOCS_DIST)/* $(BACK_DOCS_RES)/
 	@echo "Docs resources copied to $(BACK_DOCS_RES)"
 
@@ -354,7 +354,13 @@ clean-all: clean ## Remove all generated files including node_modules
 	@rm -rf $(STATUS0_DIR)/node_modules $(STATUS0_DIR)/.bun
 	@echo "Deep clean complete"
 
-test: ## Run all tests (SQLite only — `-short` skips every Postgres suite)
+embed-placeholders: ## Create missing placeholder files in the embedded frontend dirs (backend-only work)
+	@scripts/embed-placeholders.sh
+
+cloud-setup: ## Bootstrap a fresh Linux sandbox (verify Go, install bun + golangci-lint, deps, frontend)
+	@scripts/cloud-setup.sh
+
+test: embed-placeholders ## Run all tests (SQLite only — `-short` skips every Postgres suite)
 	@echo "Running backend tests..."
 	@cd $(BACK_DIR) && go test ./... -short
 	@echo "Tests complete"
