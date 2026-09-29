@@ -11,7 +11,9 @@ import {
   ArrowLeft,
   ArrowRight,
   ArrowUpRight,
+  BadgeCheck,
   Bell,
+  BookOpen,
   Bot,
   Building,
   Check,
@@ -26,6 +28,7 @@ import {
   Info,
   Building2,
   KeyRound,
+  Link2,
   LayoutDashboard,
   Layers,
   ListChecks,
@@ -910,7 +913,7 @@ import { PageHeader } from "@/components/shared/page-header";
     <Section
       id="page-header"
       title="Page header"
-      description="Every page opens with a page header — the page title plus its right-aligned actions. 'Page title' and 'page header' are the same surface, not two primitives. List and section pages render it with the boxed PageHeader component (@/components/shared/page-header); detail and edit pages compose the same header inline so it can carry a back arrow and per-record actions. Both patterns are documented here."
+      description="Every page opens with a page header — the page title plus its right-aligned actions. 'Page title' and 'page header' are the same surface, not two primitives. List and section pages render it with the boxed PageHeader component (@/components/shared/page-header); detail and edit pages compose the header inline: a breadcrumb (never a back arrow) above the title row, with per-record actions on the right. Both patterns are documented here."
     >
       <h3 className="text-sm font-medium">
         List &amp; section pages: the PageHeader component
@@ -1008,84 +1011,10 @@ import { PageHeader } from "@/components/shared/page-header";
         <a href="#docs-link" className="text-primary hover:underline">
           Docs link
         </a>{" "}
-        section below for the standalone primitive. The detail/edit-page header
-        — back arrow inside the right-aligned action cluster — is the same
-        surface for detail pages; it is documented just below.
+        section below for the standalone primitive. Detail and edit pages use a
+        different header (breadcrumb, title row, one primary and one secondary
+        action, the rest in a ⋯ menu), documented just below.
       </p>
-
-      <h3 className="text-sm font-medium">
-        Detail &amp; edit pages: title block + right-aligned action cluster
-        (back arrow first)
-      </h3>
-      <p className="text-sm text-muted-foreground">
-        On detail/edit pages, compose a{" "}
-        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
-          flex items-start justify-between gap-3
-        </code>{" "}
-        row. The <strong>left</strong> is the title block — the page{" "}
-        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">h1</code>{" "}
-        plus any subtitle/status — wrapped in{" "}
-        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
-          min-w-0 flex-1
-        </code>{" "}
-        so it truncates instead of shoving the actions off-screen. The{" "}
-        <strong>right</strong> is a{" "}
-        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
-          flex gap-2 shrink-0
-        </code>{" "}
-        cluster whose{" "}
-        <strong>first child is the icon-only ghost back button</strong>,
-        followed by the page actions (View / Edit / Delete, Refresh, …). The
-        back arrow is <strong>not</strong> on the far left — it leads the
-        right-aligned cluster. It is <strong>always icon-only</strong> — never
-        paired with a &quot;Back&quot; label. Use{" "}
-        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
-          ArrowLeft
-        </code>{" "}
-        with{" "}
-        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
-          variant=&quot;ghost&quot; size=&quot;icon&quot;
-        </code>{" "}
-        and an{" "}
-        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
-          aria-label
-        </code>
-        . A trailing Refresh button labels itself on desktop and collapses to
-        the icon below{" "}
-        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">sm</code>.
-      </p>
-      <ExampleRow
-        preview={
-          <div className="flex w-full items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <h1 className="truncate text-2xl font-bold tracking-tight sm:text-3xl">
-                Page title
-              </h1>
-              <p className="mt-1 truncate text-muted-foreground">
-                Optional subtitle / status
-              </p>
-            </div>
-            <div className="flex shrink-0 gap-2">
-              <Button variant="ghost" size="icon" aria-label="Back">
-                <ArrowLeft />
-              </Button>
-              <Button variant="outline" aria-label="Edit">
-                <Pencil className="h-4 w-4 sm:mr-2" />
-                <span className="hidden sm:inline">Edit</span>
-              </Button>
-              <Button variant="outline" aria-label="Refresh">
-                <RotateCw className="h-4 w-4 sm:mr-2" />
-                <span className="hidden sm:inline">Refresh</span>
-              </Button>
-              <Button variant="destructive" aria-label="Delete">
-                <Trash2 className="h-4 w-4 sm:mr-2" />
-                <span className="hidden sm:inline">Delete</span>
-              </Button>
-            </div>
-          </div>
-        }
-        importLine={`<div className="flex items-start justify-between gap-3">\n  <div className="min-w-0 flex-1">\n    <h1 className="truncate text-2xl sm:text-3xl font-bold tracking-tight">{title}</h1>\n    {subtitle && <p className="mt-1 text-muted-foreground truncate">{subtitle}</p>}\n  </div>\n  <div className="flex gap-2 shrink-0">\n    <Button asChild variant="ghost" size="icon" aria-label="Back">\n      <Link to="/orgs/$org/things" params={{ org }}>\n        <ArrowLeft className="h-4 w-4" />\n      </Link>\n    </Button>\n    {/* One cluster = one button height. Don't mix size="sm" with the default. */}\n    <Button variant="outline" onClick={handleEdit} aria-label="Edit">\n      <Pencil className="h-4 w-4 sm:mr-2" />\n      <span className="hidden sm:inline">Edit</span>\n    </Button>\n    <Button variant="outline" onClick={handleRefresh} aria-label="Refresh">\n      <RotateCw className="h-4 w-4 sm:mr-2" />\n      <span className="hidden sm:inline">Refresh</span>\n    </Button>\n    <Button variant="destructive" onClick={handleDelete} aria-label="Delete">\n      <Trash2 className="h-4 w-4 sm:mr-2" />\n      <span className="hidden sm:inline">Delete</span>\n    </Button>\n  </div>\n</div>`}
-      />
 
       <h3 className="text-sm font-medium">
         Detail pages with many actions: one primary, one secondary, the rest in
@@ -1122,7 +1051,11 @@ import { PageHeader } from "@/components/shared/page-header";
         muted meta line of facts. The two visible buttons show their label from{" "}
         <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">md</code>{" "}
         up and are icon-only below. The check detail page is the reference
-        implementation.
+        implementation. The breadcrumb is the standalone{" "}
+        <a href="#breadcrumbs" className="text-primary hover:underline">
+          Breadcrumb
+        </a>{" "}
+        primitive shown in the example below.
       </p>
       <ExampleRow
         preview={
@@ -1177,6 +1110,18 @@ import { PageHeader } from "@/components/shared/page-header";
                     <DropdownMenuItem>
                       <Copy className="mr-2 h-4 w-4" />
                       Clone
+                    </DropdownMenuItem>
+                    <DropdownMenuItem>
+                      <Link2 className="mr-2 h-4 w-4" />
+                      Copy link
+                    </DropdownMenuItem>
+                    <DropdownMenuItem>
+                      <BadgeCheck className="mr-2 h-4 w-4" />
+                      Badges
+                    </DropdownMenuItem>
+                    <DropdownMenuItem>
+                      <BookOpen className="mr-2 h-4 w-4" />
+                      Documentation
                     </DropdownMenuItem>
                     <DropdownMenuItem>
                       <Globe className="mr-2 h-4 w-4" />
