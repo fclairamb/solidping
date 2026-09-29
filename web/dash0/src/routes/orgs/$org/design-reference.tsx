@@ -19,6 +19,8 @@ import {
   ChevronDown,
   ChevronRight,
   Copy,
+  Ellipsis,
+  Power,
   Eye,
   FolderPlus,
   Info,
@@ -124,6 +126,13 @@ import {
 import { CheckRateMeter } from "@/components/shared/check-rate-meter";
 import { StatTile } from "@/components/shared/stat-tile";
 import { StatusBadge } from "@/components/shared/status-badge";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+  breadcrumbLinkClassName,
+} from "@/components/ui/breadcrumb";
 import { EvaluationCard } from "@/components/checks/evaluation-card";
 import { ScreenshotImageLink } from "@/components/shared/screenshot-image";
 import { StatusDot } from "@/components/shared/status-dot";
@@ -1079,89 +1088,104 @@ import { PageHeader } from "@/components/shared/page-header";
       />
 
       <h3 className="text-sm font-medium">
-        Detail &amp; edit pages: collapse the action cluster into an overflow
-        menu on mobile
+        Detail pages with many actions: one primary, one secondary, the rest in
+        ⋯
       </h3>
       <p className="text-sm text-muted-foreground">
-        When a detail header carries more than two or three actions, the inline
-        toolbar overflows on a phone. Keep only the icon-only ghost{" "}
-        <strong>back button</strong> always visible; render the labeled action
-        buttons in a{" "}
+        When a detail page carries more than two actions, do not line them all
+        up: nine equal-weight buttons have no hierarchy and the loudest one ends
+        up being Delete. The rule: <strong>at most two visible actions</strong>{" "}
+        beside the title. The primary one uses{" "}
         <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
-          hidden md:flex
-        </code>{" "}
-        cluster, and mirror every one of them as items inside a{" "}
+          variant=&quot;default&quot;
+        </code>
+        , the secondary one{" "}
         <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
-          md:hidden
-        </code>{" "}
+          outline
+        </code>
+        , and <strong>everything else goes in a ⋯ overflow menu at every
+        width</strong> (
         <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
-          DropdownMenu
+          Button variant=&quot;outline&quot; size=&quot;icon&quot;
         </code>{" "}
-        triggered by a{" "}
+        with an{" "}
         <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
-          MoreVertical
+          Ellipsis
         </code>{" "}
-        (⋯) button. The delete item is{" "}
+        icon and an aria-label). <strong>Delete is always the last menu item</strong>,
+        after a separator, in{" "}
         <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
           text-destructive focus:text-destructive
-        </code>{" "}
-        with a{" "}
-        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
-          Trash2
-        </code>{" "}
-        icon, just like the inline destructive button. Drive any confirm dialog
-        from controlled state so it opens from either surface.
+        </code>
+        . The layout is a breadcrumb line (back link + current name), then a
+        title row (title, status pill, type badge; actions on the right), then a
+        muted meta line of facts. The two visible buttons show their label from{" "}
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">md</code>{" "}
+        up and are icon-only below. The check detail page is the reference
+        implementation.
       </p>
       <ExampleRow
         preview={
-          <div className="flex w-full items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <h1 className="truncate text-2xl font-bold tracking-tight sm:text-3xl">
-                Page title
-              </h1>
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <Button variant="ghost" size="icon" aria-label="Back">
-                <ArrowLeft />
-              </Button>
-              <div className="hidden items-center gap-2 md:flex">
-                <Button variant="outline" aria-label="Edit">
-                  <Pencil className="h-4 w-4 sm:mr-2" />
-                  <span className="hidden sm:inline">Edit</span>
-                </Button>
-                <Button variant="outline" aria-label="Refresh">
-                  <RotateCw className="h-4 w-4 sm:mr-2" />
-                  <span className="hidden sm:inline">Refresh</span>
-                </Button>
-                <Button variant="destructive" aria-label="Delete">
-                  <Trash2 className="h-4 w-4 sm:mr-2" />
-                  <span className="hidden sm:inline">Delete</span>
-                </Button>
+          <div className="flex w-full flex-col gap-3">
+            <Breadcrumb aria-label="Breadcrumb">
+              <BreadcrumbItem>
+                <span className={breadcrumbLinkClassName}>
+                  <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+                  Checks
+                </span>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbPage>acme.com (http)</BreadcrumbPage>
+              </BreadcrumbItem>
+            </Breadcrumb>
+            <div className="flex flex-wrap items-start gap-3">
+              <div className="min-w-0 flex-1 basis-64">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                  <h1 className="min-w-0 max-w-full truncate text-2xl font-bold tracking-tight sm:text-3xl">
+                    acme.com (http)
+                  </h1>
+                  <StatusBadge status="up" />
+                  <CheckTypeBadge type="http" withIcon />
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+                  <span className="inline-flex items-center gap-1">
+                    https://acme.com
+                    <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+                  </span>
+                  <span className="hidden md:inline">Every 1m</span>
+                  <span>3 regions</span>
+                  <span>Checked 12s ago</span>
+                </div>
               </div>
-              <div className="md:hidden">
+              <div className="flex shrink-0 items-center gap-2">
+                <Button variant="outline" aria-label="Disable">
+                  <Power className="h-4 w-4 md:mr-2" />
+                  <span className="hidden md:inline">Disable</span>
+                </Button>
+                <Button aria-label="Edit">
+                  <Pencil className="h-4 w-4 md:mr-2" />
+                  <span className="hidden md:inline">Edit</span>
+                </Button>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      aria-label="More actions"
-                    >
-                      <MoreVertical />
+                    <Button variant="outline" size="icon" aria-label="More actions">
+                      <Ellipsis className="h-4 w-4" />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
                     <DropdownMenuItem>
-                      <Pencil />
-                      Edit
+                      <Copy className="mr-2 h-4 w-4" />
+                      Clone
                     </DropdownMenuItem>
                     <DropdownMenuItem>
-                      <RotateCw />
-                      Refresh
+                      <Globe className="mr-2 h-4 w-4" />
+                      Publish on a status page
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem className="text-destructive focus:text-destructive">
-                      <Trash2 />
-                      Delete
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Delete check
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -1169,76 +1193,7 @@ import { PageHeader } from "@/components/shared/page-header";
             </div>
           </div>
         }
-        importLine={`<div className="flex shrink-0 items-center gap-2">\n  <Button variant="ghost" size="icon" aria-label="Back" onClick={goBack}>\n    <ArrowLeft className="h-4 w-4" />\n  </Button>\n  <div className="hidden items-center gap-2 md:flex">\n    {/* labeled action buttons */}\n  </div>\n  <div className="md:hidden">\n    <DropdownMenu>\n      <DropdownMenuTrigger asChild>\n        <Button variant="outline" size="icon" aria-label="More actions">\n          <MoreVertical className="h-4 w-4" />\n        </Button>\n      </DropdownMenuTrigger>\n      <DropdownMenuContent align="end">\n        {/* mirror each action; delete = text-destructive */}\n      </DropdownMenuContent>\n    </DropdownMenu>\n  </div>\n</div>`}
-      />
-
-      <h3 className="text-sm font-medium">
-        Detail &amp; edit pages: stack the action toolbar on its own row
-        (action-dense headers)
-      </h3>
-      <p className="text-sm text-muted-foreground">
-        When a detail header carries <strong>more than ~three actions</strong>{" "}
-        (e.g. the check detail page: back + Edit, Enable/Disable, Clone, Badges,
-        Refresh, Delete) the labeled toolbar and a long title fight for the same
-        row — even on a wide desktop. Instead of shrinking the buttons or hiding
-        them behind an overflow menu, drop the toolbar onto its own row. Make
-        the outer wrapper a{" "}
-        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
-          flex flex-col gap-3
-        </code>{" "}
-        column: the title block (still wrapped in{" "}
-        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
-          min-w-0 flex-1
-        </code>{" "}
-        so the{" "}
-        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">h1</code>{" "}
-        truncates) takes the first row, then the action cluster — back arrow
-        leading, as ever — sits on a second row wrapped in{" "}
-        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
-          flex flex-wrap items-center justify-end gap-2
-        </code>
-        . It is right-aligned and wraps across lines on a narrow phone rather
-        than overflowing. The per-button responsive behaviour (icon-only below{" "}
-        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">lg</code>,
-        icon + label at{" "}
-        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">lg+</code>)
-        is unchanged — only the wrappers move.
-      </p>
-      <ExampleRow
-        preview={
-          <div className="flex w-full flex-col gap-3">
-            <div className="min-w-0 flex-1">
-              <h1 className="truncate text-2xl font-bold tracking-tight sm:text-3xl">
-                A long page title that would otherwise crowd the toolbar
-              </h1>
-              <p className="mt-1 truncate text-muted-foreground">
-                Optional subtitle / status
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              <Button variant="ghost" size="icon" aria-label="Back">
-                <ArrowLeft />
-              </Button>
-              <Button variant="outline" aria-label="Edit">
-                <Pencil className="h-4 w-4 sm:mr-2" />
-                <span className="hidden sm:inline">Edit</span>
-              </Button>
-              <Button variant="outline" aria-label="Clone">
-                <Copy className="h-4 w-4 sm:mr-2" />
-                <span className="hidden sm:inline">Clone</span>
-              </Button>
-              <Button variant="outline" aria-label="Refresh">
-                <RotateCw className="h-4 w-4 sm:mr-2" />
-                <span className="hidden sm:inline">Refresh</span>
-              </Button>
-              <Button variant="destructive" aria-label="Delete">
-                <Trash2 className="h-4 w-4 sm:mr-2" />
-                <span className="hidden sm:inline">Delete</span>
-              </Button>
-            </div>
-          </div>
-        }
-        importLine={`<div className="flex flex-col gap-3">\n  <div className="min-w-0 flex-1">\n    <h1 className="truncate text-2xl sm:text-3xl font-bold tracking-tight">{title}</h1>\n    {subtitle && <p className="mt-1 text-muted-foreground truncate">{subtitle}</p>}\n  </div>\n  <div className="flex flex-wrap items-center justify-end gap-2">\n    <Button variant="ghost" size="icon" aria-label="Back" onClick={goBack}>\n      <ArrowLeft className="h-4 w-4" />\n    </Button>\n    {/* labeled action buttons — icon-only below lg, icon + label at lg+ */}\n  </div>\n</div>`}
+        importLine={`import { Breadcrumb, BreadcrumbItem, BreadcrumbPage, BreadcrumbSeparator, breadcrumbLinkClassName } from "@/components/ui/breadcrumb";\n\n<Breadcrumb aria-label={t("breadcrumb")}>\n  <BreadcrumbItem><Link to="/orgs/$org/checks" params={{ org }} className={breadcrumbLinkClassName}><ArrowLeft className="h-3.5 w-3.5" />Checks</Link></BreadcrumbItem>\n  <BreadcrumbSeparator />\n  <BreadcrumbItem><BreadcrumbPage>{name}</BreadcrumbPage></BreadcrumbItem>\n</Breadcrumb>\n<div className="flex flex-wrap items-start gap-3">\n  <div className="min-w-0 flex-1 basis-64">{/* h1 + status pill + type badge, then the muted meta line */}</div>\n  <div className="flex shrink-0 items-center gap-2">\n    <Button variant="outline">…secondary…</Button>\n    <Button>…primary…</Button>\n    <DropdownMenu>{/* Ellipsis trigger; Delete last, after a separator, text-destructive */}</DropdownMenu>\n  </div>\n</div>`}
       />
 
       <div className="rounded-md border border-dashed bg-muted/30 p-4">
@@ -1700,7 +1655,7 @@ function ButtonsBadgesSection() {
     <Section
       id="buttons-badges"
       title="Buttons & badges"
-      description="All variants and sizes shipped today. Pick the one with the least visual weight that still does the job. Action buttons should pair an icon with a short verb and collapse to icon-only on mobile. The detail-page header that composes these into a back button + action cluster lives in the Page header section."
+      description="All variants and sizes shipped today. Pick the one with the least visual weight that still does the job. Action buttons should pair an icon with a short verb and collapse to icon-only on mobile. The detail-page header that composes these into a breadcrumb, title row and primary/secondary/overflow action cluster lives in the Page header section."
     >
       <div className="space-y-4">
         <h3 className="text-sm font-medium">Button variants</h3>
@@ -1986,7 +1941,7 @@ function ButtonsBadgesSection() {
           Header refresh button (icon-only on mobile)
         </h3>
         <p className="text-sm text-muted-foreground">
-          The canonical list/detail header refresh control. An{" "}
+          The canonical list-page refresh control (detail pages rely on live updates and do not carry one). An{" "}
           <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
             outline
           </code>{" "}

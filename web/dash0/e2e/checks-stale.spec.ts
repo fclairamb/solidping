@@ -95,8 +95,8 @@ test.describe("No data (stale) status", () => {
     const header = page.getByTestId("check-detail-header");
     await expect(header).toBeVisible();
 
-    // The header dot is gray, never green.
-    await expect(header.getByTestId("check-status-dot")).toHaveAttribute("data-status", "stale");
+    // The header status pill is the gray "No data" badge, never green.
+    await expect(header.locator('[data-status="stale"]').first()).toHaveText("No data");
 
     // The gray clock badge (a div, unlike the dot's span), labelled — never the
     // raw wire token.

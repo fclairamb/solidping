@@ -559,7 +559,7 @@ test.describe("Public live demo", () => {
     // Back on the detail page, showing the new name — and no refusal toast.
     await page.waitForURL(/\/checks\/[0-9a-f-]{36}$/, { timeout: 30000 });
     await expect(
-      page.getByTestId("check-detail-header").getByText(renamed),
+      page.getByTestId("check-detail-header").getByRole("heading", { name: renamed }),
     ).toBeVisible({ timeout: 20000 });
     await expect(page.getByText(/read-only live demo/i)).toHaveCount(0);
 
@@ -568,8 +568,9 @@ test.describe("Public live demo", () => {
     await page.waitForLoadState("networkidle");
     await page
       .getByTestId("check-detail-header")
-      .getByRole("button", { name: "Delete", exact: true })
+      .getByRole("button", { name: "More actions" })
       .click();
+    await page.getByRole("menuitem", { name: "Delete check" }).click();
     await page
       .getByRole("alertdialog")
       .getByRole("button", { name: "Delete", exact: true })
