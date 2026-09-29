@@ -144,6 +144,18 @@ func (h *Handler) attachUserIfAuthenticated(ctx context.Context, authHeader stri
 	if err == nil && user != nil {
 		sub.UserEmail = user.Email
 	}
+
+	// Filed under an impersonation token: the report shows the target's
+	// screen, so it stays attributed to them, but it must also say who
+	// really sent it.
+	if claims.IsImpersonation() {
+		sub.ImpersonatedBy = claims.ImpersonatedBy
+
+		admin, adminErr := h.svc.db.GetUser(ctx, claims.ImpersonatedBy)
+		if adminErr == nil && admin != nil {
+			sub.ImpersonatedBy = admin.Email
+		}
+	}
 }
 
 func formValue(form *multipart.Form, key string) string {
