@@ -165,6 +165,14 @@ the PR layer.
   `//go:build slowtests`, and add it to the nightly workflow's by-name PASS
   assertion.
 
+## Coverage target
+
+The backend target is 80% of hand-written statements, measured on the Postgres
+layer and enforced by the `backend-postgres` job through `COVERAGE_MIN`
+(ratchet rule: raise it to the last measured value, never lower it). Frontend
+coverage (dash0, status0) is report-only, with no threshold. Details and the
+baseline: [coverage.md](coverage.md).
+
 ## Known gap
 
 The Postgres layer costs ~12 minutes per PR because embedded PostgreSQL boots

@@ -15,14 +15,16 @@ import (
 
 // smokeSkip lists leaf commands that legitimately block (interactive login,
 // stdio bridges, long-running watchers) and cannot be driven by a smoke run.
-var smokeSkip = map[string]bool{
-	"auth login":  true,
-	"mcp":         true,
-	"mcp bridge":  true,
-	"server":      true,
-	"agent":       true,
-	"completion":  true,
-	"checks edit": true,
+func smokeSkip() map[string]bool {
+	return map[string]bool{
+		"auth login":  true,
+		"mcp":         true,
+		"mcp bridge":  true,
+		"server":      true,
+		"agent":       true,
+		"completion":  true,
+		"checks edit": true,
+	}
 }
 
 const smokeUID = "00000000-0000-0000-0000-000000000001"
@@ -49,7 +51,7 @@ func collectLeaves(prefix []string, cmds []*cli.Command, out *[]smokeLeaf) {
 
 // smokeArgs builds a plausible argument vector for a leaf: every required
 // flag gets a value, and a few positional args are supplied.
-func smokeArgs(leaf smokeLeaf) []string {
+func smokeArgs(leaf smokeLeaf, allFlags bool) []string {
 	args := append([]string{}, leaf.path...)
 
 	for _, f := range leaf.cmd.Flags {
@@ -60,11 +62,11 @@ func smokeArgs(leaf smokeLeaf) []string {
 
 		switch ff := f.(type) {
 		case *cli.StringFlag:
-			if ff.Required {
+			if ff.Required || allFlags {
 				args = append(args, "--"+names[0], smokeUID)
 			}
 		case *cli.IntFlag:
-			if ff.Required {
+			if ff.Required || allFlags {
 				args = append(args, "--"+names[0], "1")
 			}
 		case *cli.StringSliceFlag:
@@ -72,6 +74,8 @@ func smokeArgs(leaf smokeLeaf) []string {
 				args = append(args, "--"+names[0], smokeUID)
 			}
 		case *cli.BoolFlag:
+			// Bool flags are only forced when required: "watch"/"follow"
+			// style switches would make the command loop.
 			if ff.Required {
 				args = append(args, "--"+names[0])
 			}
@@ -81,7 +85,7 @@ func smokeArgs(leaf smokeLeaf) []string {
 	return append(args, smokeUID, smokeUID, smokeUID)
 }
 
-func runSmoke(t *testing.T, status int, body string, format string) {
+func runSmoke(t *testing.T, status int, body string, format string, allFlags bool) {
 	t.Helper()
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -107,7 +111,7 @@ func runSmoke(t *testing.T, status int, body string, format string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer devNull.Close()
+	defer func() { _ = devNull.Close() }()
 
 	origOut, origErr, origIn := os.Stdout, os.Stderr, os.Stdin
 	os.Stdout, os.Stderr, os.Stdin = devNull, devNull, devNull
@@ -116,8 +120,9 @@ func runSmoke(t *testing.T, status int, body string, format string) {
 	var leaves []smokeLeaf
 	collectLeaves(nil, GetCommands(), &leaves)
 
+	skip := smokeSkip()
 	for _, leaf := range leaves {
-		if smokeSkip[strings.Join(leaf.path, " ")] || smokeSkip[leaf.path[0]] {
+		if skip[strings.Join(leaf.path, " ")] || skip[leaf.path[0]] {
 			continue
 		}
 
@@ -129,7 +134,7 @@ func runSmoke(t *testing.T, status int, body string, format string) {
 		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		args := append([]string{"sp", "-o", format}, smokeArgs(leaf)...)
+		args := append([]string{"sp", "-o", format}, smokeArgs(leaf, allFlags)...)
 		// Errors are expected (dummy args, error statuses); the point is to
 		// exercise every action end to end without panicking or hanging.
 		_ = root.Run(ctx, args)
@@ -141,23 +146,36 @@ func runSmoke(t *testing.T, status int, body string, format string) {
 // TestCommandsSmoke drives every leaf command of the real tree against a
 // fake server, on the success path (text and JSON output) and on the
 // server-error path, and requires that none of them panics or hangs.
+//
+//nolint:paralleltest // swaps os.Stdout/Stdin and HOME, which are process-global
 func TestCommandsSmoke(t *testing.T) {
 	okBody := `{"data":[],"uid":"` + smokeUID + `","slug":"x","name":"x","items":[],"checks":[]}`
 
-	t.Run("ok text", func(t *testing.T) { runSmoke(t, http.StatusOK, okBody, "text") })
+	//nolint:paralleltest // see above
+	t.Run("ok text", func(t *testing.T) { runSmoke(t, http.StatusOK, okBody, "text", false) })
 	item := `{"uid":"` + smokeUID + `","slug":"x","name":"x","type":"http","state":"up","enabled":true,` +
 		`"period":"00:01:00","status":"up","createdAt":"2026-01-01T00:00:00Z","email":"a@acme.com",` +
 		`"role":"admin","title":"t","url":"https://acme.com","config":{},"labels":{"a":"b"}}`
 	populated := `{"data":[` + item + `,` + item + `],"pagination":{"cursor":"c","total":2},` + item[:len(item)-1] + `}`
 
-	t.Run("populated text", func(t *testing.T) { runSmoke(t, http.StatusOK, populated, "text") })
-	t.Run("populated json", func(t *testing.T) { runSmoke(t, http.StatusOK, populated, "jsonl") })
-	t.Run("ok json", func(t *testing.T) { runSmoke(t, http.StatusOK, okBody, "json") })
-	t.Run("created json", func(t *testing.T) { runSmoke(t, http.StatusCreated, okBody, "json") })
+	//nolint:paralleltest // see above
+	t.Run("populated text", func(t *testing.T) { runSmoke(t, http.StatusOK, populated, "text", false) })
+	//nolint:paralleltest // see above
+	t.Run("populated json", func(t *testing.T) { runSmoke(t, http.StatusOK, populated, "jsonl", false) })
+	//nolint:paralleltest // see above
+	t.Run("populated all flags", func(t *testing.T) { runSmoke(t, http.StatusOK, populated, "text", true) })
+	//nolint:paralleltest // see above
+	t.Run("ok all flags json", func(t *testing.T) { runSmoke(t, http.StatusOK, okBody, "json", true) })
+	//nolint:paralleltest // see above
+	t.Run("ok json", func(t *testing.T) { runSmoke(t, http.StatusOK, okBody, "json", false) })
+	//nolint:paralleltest // see above
+	t.Run("created json", func(t *testing.T) { runSmoke(t, http.StatusCreated, okBody, "json", false) })
+	//nolint:paralleltest // see above
 	t.Run("server error text", func(t *testing.T) {
-		runSmoke(t, http.StatusInternalServerError, `{"title":"boom","code":"INTERNAL_ERROR"}`, "text")
+		runSmoke(t, http.StatusInternalServerError, `{"title":"boom","code":"INTERNAL_ERROR"}`, "text", false)
 	})
+	//nolint:paralleltest // see above
 	t.Run("server error json", func(t *testing.T) {
-		runSmoke(t, http.StatusNotFound, `{"title":"nope","code":"NOT_FOUND"}`, "json")
+		runSmoke(t, http.StatusNotFound, `{"title":"nope","code":"NOT_FOUND"}`, "json", false)
 	})
 }
