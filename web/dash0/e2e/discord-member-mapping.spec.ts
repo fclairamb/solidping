@@ -73,18 +73,34 @@ async function stubDiscordIntegration(
     destinationsMode?: "ok" | "error";
     /** Whether anybody in the org has a resolved Discord identity. */
     anybodyLinked?: boolean;
+    /** "error": the identities list answers 500 (a real load failure). */
+    identitiesMode?: "ok" | "error";
   } = {},
 ) {
   const destinationsMode = opts.destinationsMode ?? "ok";
   const anybodyLinked = opts.anybodyLinked ?? true;
-  const state = { syncCalls: 0, deleteCalls: 0 };
+  const state = { syncCalls: 0, deleteCalls: 0, identitiesGets: 0 };
+  // The stored settings; a PATCH mutates them so the refetch after save sees
+  // the new destination, like the real API.
+  const stored: Record<string, unknown> = {
+    guild_id: "G-ACME",
+    guild_name: "acme",
+    channel_id: "C-ALERTS",
+    channel_name: "alerts",
+    mention_on_call: false,
+  };
 
   await stubPublicConfig(page);
 
   await page.route(
     `**/api/v1/orgs/test/integrations/${CHANNEL_UID}`,
     async (route) => {
-      if (route.request().method() !== "GET") {
+      if (route.request().method() === "PATCH") {
+        const body = route.request().postDataJSON() as {
+          settings?: Record<string, unknown>;
+        };
+        Object.assign(stored, body.settings ?? {});
+      } else if (route.request().method() !== "GET") {
         await route.continue();
 
         return;
@@ -99,13 +115,7 @@ async function stubDiscordIntegration(
           name: "acme discord",
           enabled: true,
           isDefault: false,
-          settings: {
-            guild_id: "G-ACME",
-            guild_name: "acme",
-            channel_id: "C-ALERTS",
-            channel_name: "alerts",
-            mention_on_call: false,
-          },
+          settings: stored,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         }),
@@ -136,7 +146,10 @@ async function stubDiscordIntegration(
           guildId: "G-ACME",
           guildName: "acme",
           connected: true,
-          channels: [{ id: "C-ALERTS", name: "alerts", type: 0 }],
+          channels: [
+            { id: "C-ALERTS", name: "alerts", type: 0 },
+            { id: "C-OTHER", name: "other", type: 0 },
+          ],
           users: anybodyLinked
             ? [{ id: "SNOW-ALICE", name: "Alice", userUid: "user-alice" }]
             : [],
@@ -164,6 +177,17 @@ async function stubDiscordIntegration(
   await page.route(
     `**/api/v1/orgs/test/integrations/${CHANNEL_UID}/identities`,
     async (route) => {
+      state.identitiesGets += 1;
+      if (opts.identitiesMode === "error") {
+        await route.fulfill({
+          status: 500,
+          contentType: "application/json",
+          body: JSON.stringify({ code: "INTERNAL_ERROR", title: "boom" }),
+        });
+
+        return;
+      }
+
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -330,5 +354,50 @@ test.describe("Discord member mapping", () => {
     await expect(
       page.getByTestId("slack-mapping-clear-alice@acme.test"),
     ).toBeEnabled();
+  });
+
+  test("an unsaved channel shows a neutral save-first hint, not a red error", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const state = await stubDiscordIntegration(page, { anybodyLinked: false });
+
+    await page.goto(`orgs/test/integrations/${CHANNEL_UID}`);
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("discord-mapping-nobody-linked")).toBeVisible();
+
+    const before = state.identitiesGets;
+    await page.getByTestId("discord-channel-combobox").click();
+    await page.getByTestId("discord-channel-option-C-OTHER").click();
+
+    const hint = page.getByTestId("discord-mapping-save-first");
+    await expect(hint).toBeVisible();
+    await expect(hint).toContainText(/Save your changes first/i);
+    await expect(hint.locator(".text-destructive")).toHaveCount(0);
+    await expect(page.getByText("Could not load the member mapping.")).toHaveCount(0);
+    await expect(page.getByTestId("slack-mapping-sync")).toBeDisabled();
+    expect(state.identitiesGets).toBe(before);
+
+    // Saving flips the card to the real mapping without a reload.
+    await page.getByTestId("integration-save").click();
+    await expect(page.getByTestId("discord-mapping-save-first")).toHaveCount(0);
+    await expect(page.getByTestId("discord-mapping-nobody-linked")).toBeVisible();
+    await expect(page.getByTestId("slack-mapping-sync")).toBeEnabled();
+  });
+
+  test("a real identities failure on a saved integration is still red", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await stubDiscordIntegration(page, { identitiesMode: "error" });
+
+    await page.goto(`orgs/test/integrations/${CHANNEL_UID}`);
+    await page.waitForLoadState("networkidle");
+
+    const error = page.getByText("Could not load the member mapping.");
+    // React Query retries a failed list before surfacing the error.
+    await expect(error).toBeVisible({ timeout: 20_000 });
+    await expect(error).toHaveClass(/text-destructive/);
+    await expect(page.getByTestId("discord-mapping-save-first")).toHaveCount(0);
   });
 });

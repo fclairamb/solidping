@@ -22,6 +22,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { RecipientsInput } from "@/components/shared/recipients-input";
 import { TokenChipsInput } from "@/components/shared/token-chips-input";
 import { isValidEmail } from "@/lib/email";
+import { isDiscordDestinationSaved } from "@/lib/discord-destination";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -161,6 +162,7 @@ export function IntegrationForm({ type, initial, initialName, onChange, org, cha
         channelUid={channelUid}
         privateKeys={initial?.settingsPrivateKeys}
         canTest={canTest}
+        savedSettings={initial?.settings}
       />
 
       <div className="flex items-center justify-between rounded border p-3">
@@ -325,9 +327,11 @@ interface PerTypePanelProps {
   privateKeys?: string[];
   /** Whether a "test connection" probe may run (false while edits unsaved). */
   canTest?: boolean;
+  /** Settings as stored on the server (undefined on create). */
+  savedSettings?: Record<string, unknown>;
 }
 
-function PerTypePanel({ type, settings, onChange, org, channelUid, privateKeys, canTest }: PerTypePanelProps) {
+function PerTypePanel({ type, settings, onChange, org, channelUid, privateKeys, canTest, savedSettings }: PerTypePanelProps) {
   const { t } = useTranslation("integrations");
 
   const update = (key: string, value: unknown) =>
@@ -358,6 +362,7 @@ function PerTypePanel({ type, settings, onChange, org, channelUid, privateKeys, 
           onChange={onChange}
           org={org}
           channelUid={channelUid}
+          savedSettings={savedSettings}
         />
       );
     case "googlechat":
@@ -1252,6 +1257,8 @@ interface DiscordDestinationPanelProps {
   onChange: (next: Record<string, unknown>) => void;
   org?: string;
   channelUid?: string;
+  /** Settings as stored on the server, to tell an unsaved destination apart. */
+  savedSettings?: Record<string, unknown>;
 }
 
 /**
@@ -1273,6 +1280,7 @@ function DiscordDestinationPanel({
   onChange,
   org,
   channelUid,
+  savedSettings,
 }: DiscordDestinationPanelProps) {
   const { t } = useTranslation("integrations");
 
@@ -1475,12 +1483,41 @@ function DiscordDestinationPanel({
         <DiscordCommentIngestionSwitch settings={settings} onChange={onChange} />
 
         {org && channelUid && currentId && (
-          <SlackMemberMapping
-            org={org}
-            integrationUid={channelUid}
-            workspaceUsers={[]}
-            variant="discord"
-          />
+          isDiscordDestinationSaved(settings, savedSettings) ? (
+            <SlackMemberMapping
+              org={org}
+              integrationUid={channelUid}
+              workspaceUsers={[]}
+              variant="discord"
+            />
+          ) : (
+            <div
+              className="rounded border bg-background p-3 space-y-3"
+              data-testid="discord-mapping-save-first"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <p className="font-medium">
+                  {t("form.slackMemberMapping", "Member mapping")}
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled
+                  data-testid="slack-mapping-sync"
+                >
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  {t("form.slackMappingResync", "Re-sync")}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {t(
+                  "form.discordMappingSaveFirst",
+                  "Save your changes first. Member mapping and re-sync become available once the destination is saved.",
+                )}
+              </p>
+            </div>
+          )
         )}
       </div>
 

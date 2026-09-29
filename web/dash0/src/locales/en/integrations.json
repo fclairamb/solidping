@@ -140,6 +140,7 @@
     "slackMappingSynced": "{{matched}} matched, {{notFound}} not found, {{ambiguous}} ambiguous",
     "slackMappingSyncFailed": "Member sync failed",
     "slackMappingError": "Could not load the member mapping.",
+    "discordMappingSaveFirst": "Save your changes first. Member mapping and re-sync become available once the destination is saved.",
     "slackMappingEmpty": "No organization members yet.",
     "slackMappingCounts": "{{matched}} matched · {{unmatched}} not mapped",
     "slackMappingMatched": "Matched",

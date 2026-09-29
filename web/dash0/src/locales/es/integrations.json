@@ -133,6 +133,7 @@
     "slackMappingSynced": "{{matched}} asociados, {{notFound}} no encontrados, {{ambiguous}} ambiguos",
     "slackMappingSyncFailed": "Error al sincronizar los miembros",
     "slackMappingError": "No se pudo cargar la asignación de miembros.",
+    "discordMappingSaveFirst": "Guarde primero sus cambios. La asignación de miembros y la resincronización estarán disponibles cuando se guarde el destino.",
     "slackMappingEmpty": "Todavía no hay miembros en la organización.",
     "slackMappingCounts": "{{matched}} asociados · {{unmatched}} sin asociar",
     "slackMappingMatched": "Asociado",
