@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.36.1](https://github.com/fclairamb/solidping/compare/v0.36.0...v0.36.1) (2026-09-29)
+
+
+### Bug Fixes
+
+* **agentws:** **The server no longer times out busy agents on its own keepalive pings.** The
+  event loop blocked on a ping while the frame reader waited on an unbuffered channel, so a data
+  frame sitting ahead of the pong made the pong unreadable and busy agents were closed with
+  `ping_timeout` every few minutes (142 of 146 disconnects on one agent). Liveness now counts
+  anything the read path sees (frames, pongs, the peer's pings), the pinger runs outside the loop,
+  and a connection closes only after two consecutive probe cycles with no sign of life. Dead-agent
+  detection moves from 12.5 s to about 50 s. Shutdown now records `agent.disconnected` with reason
+  `server_shutdown`, and three metrics are new: `solidping_agent_ws_conn_stale_total`,
+  `solidping_agent_ws_conn_closed_total{reason}` and `solidping_agent_ws_reconnects_total`. No agent
+  or wire change ([#453](https://github.com/fclairamb/solidping/issues/453)) ([1d99c15](https://github.com/fclairamb/solidping/commit/1d99c15172fdc31c650c352097e39e43d9086e69))
+
+* **checkers:** **Check probes now always speak HTTP/1.1, even to targets that offer h2.** A probe
+  cancelled over HTTP/2 left a stream that never completed in the pool, and every later probe rode
+  that connection until `tcp_retries2` gave up: one 1-minute blip cost 16 failed probes. Checks,
+  RDAP, the CDP probe and `GuardedHTTPClient` now share a pooled HTTP/1.1 transport
+  ([#453](https://github.com/fclairamb/solidping/issues/453)) ([1d99c15](https://github.com/fclairamb/solidping/commit/1d99c15172fdc31c650c352097e39e43d9086e69))
+
+* **deps:** update github.com/lunixbochs/struc digest to 8d528fa ([#435](https://github.com/fclairamb/solidping/issues/435)) ([f493e44](https://github.com/fclairamb/solidping/commit/f493e44b4b14428baefe8b417169e03eac0dbd07))
+
 ## [0.36.0](https://github.com/fclairamb/solidping/compare/v0.35.0...v0.36.0) (2026-09-28)
 
 
