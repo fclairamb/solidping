@@ -26,19 +26,23 @@ type ContextPayload struct {
 // IssueInput bundles everything buildIssueBody needs. Kept as a struct so
 // adding fields doesn't churn every test signature.
 type IssueInput struct {
-	URL           string
-	Comment       string
-	OrgSlug       string
-	UserEmail     string
-	ServerVersion string
-	GitHash       string
-	FrontendBuild string
-	Context       ContextPayload
-	FileUID       string
-	SignedURL     string
-	SignedURLExp  time.Time
-	MimeType      string
-	ReportedAt    time.Time
+	URL       string
+	Comment   string
+	OrgSlug   string
+	UserEmail string
+	// ImpersonatedBy names the super admin who filed the report while
+	// impersonating UserEmail. Empty for an ordinary report, and then no row
+	// is written at all.
+	ImpersonatedBy string
+	ServerVersion  string
+	GitHash        string
+	FrontendBuild  string
+	Context        ContextPayload
+	FileUID        string
+	SignedURL      string
+	SignedURLExp   time.Time
+	MimeType       string
+	ReportedAt     time.Time
 }
 
 // BuildIssueTitle returns the issue title: "Bug report: <first 60 chars>".
@@ -82,6 +86,11 @@ func BuildIssueBody(input *IssueInput) string {
 	builder.WriteString("| Field | Value |\n|-------|-------|\n")
 	writeContextRow(&builder, "Organization", input.OrgSlug)
 	writeContextRow(&builder, "User", input.UserEmail)
+
+	if input.ImpersonatedBy != "" {
+		writeContextRow(&builder, "Impersonated By", input.ImpersonatedBy)
+	}
+
 	writeContextRow(&builder, "Server Version", joinNonEmpty(input.ServerVersion, input.GitHash, " "))
 	writeContextRow(&builder, "Frontend Version", input.FrontendBuild)
 	writeContextRow(&builder, "Browser", input.Context.UserAgent)

@@ -449,7 +449,8 @@
       "organizations": "Organisationen",
       "flags": "Merkmale",
       "lastActive": "Zuletzt aktiv",
-      "created": "Erstellt"
+      "created": "Erstellt",
+      "actions": "Aktionen"
     },
     "flags": {
       "superAdmin": "Super-Admin",
@@ -458,6 +459,15 @@
       "unverified": "Nicht verifiziert",
       "passwordResetPending": "Passwort-Reset ausstehend",
       "ssoOnly": "Nur SSO"
+    },
+    "impersonate": {
+      "button": "Als dieser Benutzer ansehen",
+      "title": "Dashboard als {{email}} ansehen?",
+      "description": "Sie sehen genau das, was {{email}} sieht, mit deren Rolle. Die Sitzung wird im Audit-Log der Organisation protokolliert und dauert 30 Minuten. Passwort, 2FA, Passkeys und Tokens dieses Benutzers können darin nicht geändert werden.",
+      "organization": "Organisation",
+      "confirm": "Als Benutzer ansehen",
+      "cancel": "Abbrechen",
+      "error": "Die Sitzung konnte nicht gestartet werden: {{message}}"
     }
   },
   "notifications": {
@@ -493,5 +503,13 @@
     "firstNotifier": "Erste Benachrichtigung",
     "firstIncident": "Erste Alarmierung",
     "openAudit": "Audit-Protokoll öffnen"
+  },
+  "impersonation": {
+    "banner": {
+      "title": "Sie sehen das Dashboard als {{email}}",
+      "description": "Diese Sitzung wird protokolliert und endet um {{time}}. Anmeldedaten, Tokens und Sitzungen dieses Benutzers können nicht geändert werden.",
+      "exit": "Beenden"
+    },
+    "forbidden": "Nicht verfügbar, während Sie das Dashboard als anderer Benutzer ansehen."
   }
 }

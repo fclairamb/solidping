@@ -12,8 +12,8 @@ import { toast } from "sonner";
 import {
   useFreeboxPairingStatus,
   useStartFreeboxPairing,
-  useVersion,
 } from "@/api/hooks";
+import { useDeploymentMode } from "@/api/public-config";
 
 const DEFAULT_BASE_URL = "http://mafreebox.freebox.fr";
 
@@ -58,8 +58,7 @@ export function FreeboxForm({ org, onPaired, onCancel }: FreeboxFormProps) {
   // network or a private-location agent, never a shared worker) — the field
   // is disabled here so the dashboard explains that up front instead of
   // letting the user fill it in and hit a validation error on submit.
-  const { data: versionData } = useVersion();
-  const isSaaS = versionData?.deploymentMode === "saas";
+  const isSaaS = useDeploymentMode() === "saas";
 
   const start = useStartFreeboxPairing(org);
 

@@ -63,6 +63,17 @@ type entitlementsProvisioner func(*sqlite.Service, *models.Organization) *entitl
 func newEnvWith(t *testing.T, provision entitlementsProvisioner) *env {
 	t.Helper()
 
+	return newEnvConfigured(t, provision, nil)
+}
+
+// newEnvConfigured is newEnvWith plus a hook that tunes the handler BEFORE the
+// test server starts serving (so the tuning happens-before every connection,
+// which a setter called after newEnv could not guarantee under -race).
+func newEnvConfigured(
+	t *testing.T, provision entitlementsProvisioner, configure func(*agentws.Handler),
+) *env {
+	t.Helper()
+
 	ctx := t.Context()
 	r := require.New(t)
 
@@ -90,6 +101,9 @@ func newEnvWith(t *testing.T, provision entitlementsProvisioner) *env {
 	)
 
 	handler := agentws.NewHandler(&config.Config{}, dbSvc, checkJobSvc, workersSvc, entSvc, events, nil, nil)
+	if configure != nil {
+		configure(handler)
+	}
 
 	router := httpx.New()
 	router.GET("/api/v1/agent/ws", handler.Serve)
@@ -159,12 +173,16 @@ func (e *env) createCheck(slug string, regions []string) *models.Check {
 // dial opens a WS connection with the given headers, returning the HTTP
 // status of the handshake response (0 when no response was received).
 func (e *env) dial(headers http.Header) (*websocket.Conn, int, error) {
+	return e.dialWith(&websocket.DialOptions{HTTPHeader: headers})
+}
+
+// dialWith is dial with full control over the client's dial options (e.g. its
+// ping/pong callbacks).
+func (e *env) dialWith(opts *websocket.DialOptions) (*websocket.Conn, int, error) {
 	ctx, cancel := context.WithTimeout(e.t.Context(), 10*time.Second)
 	e.t.Cleanup(cancel)
 
-	conn, resp, err := websocket.Dial(ctx, e.server.URL+"/api/v1/agent/ws", &websocket.DialOptions{
-		HTTPHeader: headers,
-	})
+	conn, resp, err := websocket.Dial(ctx, e.server.URL+"/api/v1/agent/ws", opts)
 
 	status := 0
 	if resp != nil {
@@ -182,16 +200,29 @@ func (e *env) dial(headers http.Header) (*websocket.Conn, int, error) {
 // (post identity-hello), the agent keys, and the enrolled frame.
 func (e *env) enroll(token, name string) (*websocket.Conn, *agentcrypto.AgentKeys, agentcrypto.ServerFrame) {
 	e.t.Helper()
+
+	return e.enrollWith(token, name, &websocket.DialOptions{})
+}
+
+// enrollWith is enroll with caller-supplied dial options (the Authorization
+// header is added to them).
+func (e *env) enrollWith(
+	token, name string, opts *websocket.DialOptions,
+) (*websocket.Conn, *agentcrypto.AgentKeys, agentcrypto.ServerFrame) {
+	e.t.Helper()
 	r := require.New(e.t)
 	ctx := e.t.Context()
 
 	keys, err := agentcrypto.GenerateAgentKeys()
 	r.NoError(err)
 
-	headers := http.Header{}
-	headers.Set("Authorization", "Bearer "+token)
+	if opts.HTTPHeader == nil {
+		opts.HTTPHeader = http.Header{}
+	}
 
-	conn, _, err := e.dial(headers)
+	opts.HTTPHeader.Set("Authorization", "Bearer "+token)
+
+	conn, _, err := e.dialWith(opts)
 	r.NoError(err)
 	e.t.Cleanup(func() { _ = conn.CloseNow() })
 

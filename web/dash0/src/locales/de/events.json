@@ -78,6 +78,7 @@
     "config.applied": "Konfiguration angewendet",
     "org.settings_updated": "Organisationseinstellungen geändert",
     "auth.token_misuse": "Missbrauchsversuch mit Token",
+    "auth.impersonation_started": "Identitätsübernahme gestartet",
     "agent.connected": "Agent verbunden",
     "agent.disconnected": "Agent getrennt"
   },

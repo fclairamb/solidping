@@ -2,7 +2,7 @@
 
 UptimeRobot positions itself as "the world's leading uptime monitoring service" with over 2.5 million active users. The platform offers a generous free tier with 50 monitors and provides comprehensive monitoring capabilities through a modern REST API.
 
-This directory replaces the previous monolithic `uptimerobot.md` and re-organizes the material per the size rule in `../../CLAUDE.md`.
+This directory replaces the previous monolithic `uptimerobot.md` and re-organizes the material per the size rule in `../../AGENTS.md`.
 
 ## Files in this directory
 

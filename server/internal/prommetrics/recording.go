@@ -214,3 +214,19 @@ func RecordStatusPageMemoMiss(product string) {
 func RecordStatusPageMemoShared(product string) {
 	StatusPageMemoSingleflightShared.WithLabelValues(product).Inc()
 }
+
+// RecordAgentWSStale counts one agent connection going live → stale.
+func RecordAgentWSStale() {
+	AgentWSConnStale.Inc()
+}
+
+// RecordAgentWSClosed counts one agent connection closed with the given
+// disconnect reason (models.AgentDisconnectReason*).
+func RecordAgentWSClosed(reason string) {
+	AgentWSConnClosed.WithLabelValues(reason).Inc()
+}
+
+// RecordAgentWSReconnect counts one agent reconnect.
+func RecordAgentWSReconnect() {
+	AgentWSReconnects.Inc()
+}

@@ -185,9 +185,27 @@ optimization, and the poll remains the correctness guarantee. (This is what
 [`2026-07-20-03-sub-minute-checks-idle-worker-poll`](../../specs/done/2026/07/2026-07-20-03-sub-minute-checks-idle-worker-poll.md)
 tightened.)
 
-A 25s ping ticker on the server refreshes `last_seen_at`; the agent runs a
+A 25s probe on the server refreshes `last_seen_at`; the agent runs a
 matching keepalive with drop detection and exponential-backoff reconnect
 ([`checkworker/backend/ws.go`](../../server/internal/checkworker/backend/ws.go)).
+
+Server-side liveness is a state machine over observed traffic, not a blocking
+round trip (spec
+[`2026-09-28-03`](../../specs/todos/2026-09-28-03-agent-ws-ping-timeout-flapping.md),
+[`agentws/keepalive.go`](../../server/internal/handlers/agentws/keepalive.go)).
+Any client frame, the agent's own ping, or a pong is proof of life. A pinger
+goroutine probes outside the event loop; one unanswered probe makes the
+connection `stale` (WARN naming the agent, region, last observation and how long
+the reader was blocked), any observation makes it `live` again, and only a
+second consecutive silent cycle (~50 s) closes it as `ping_timeout`. Silence
+is measured from when the previous unanswered probe was *sent*, so a frame that
+lands while a probe is outstanding counts for that cycle. The reader
+hands frames to the loop through a 64-slot buffer so it always returns to
+`Read`, which is the only place `coder/websocket` processes pongs and answers
+pings. The old design (unbuffered handoff + the loop blocking in `conn.Ping`)
+parked the reader behind any frame sent just before a pong and killed busy,
+healthy agents every few minutes. Metrics: `solidping_agent_ws_conn_stale_total`,
+`solidping_agent_ws_conn_closed_total{reason}`, `solidping_agent_ws_reconnects_total`.
 
 ---
 
@@ -380,7 +398,10 @@ party that can restart it:
   (`CheckType.IsQuotaExempt`) and from `maxChecksPerMinute` (passive).
 - **Events.** `runAgentConnection` writes `agent.connected` / `agent.disconnected`
   (`ping_timeout`, `revoked`, `server_shutdown`, `error`), org agents only, on a
-  detached goroutine.
+  detached goroutine tracked by `Handler.WaitForEvents`. `server_shutdown` is
+  written synchronously: on shutdown `app/server.go` calls `Handler.Close()`
+  (hijacked sockets are invisible to `http.Server.Shutdown`) and then
+  `WaitForEvents`, so a deploy records one disconnect per connected agent.
 
 ---
 

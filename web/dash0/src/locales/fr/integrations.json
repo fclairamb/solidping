@@ -136,6 +136,7 @@
     "slackMappingSynced": "{{matched}} associés, {{notFound}} introuvables, {{ambiguous}} ambigus",
     "slackMappingSyncFailed": "Échec de la synchronisation des membres",
     "slackMappingError": "Impossible de charger la correspondance des membres.",
+    "discordMappingSaveFirst": "Enregistrez d'abord vos modifications. La correspondance des membres et la resynchronisation seront disponibles une fois la destination enregistrée.",
     "slackMappingEmpty": "Aucun membre dans l'organisation pour l'instant.",
     "slackMappingCounts": "{{matched}} associés · {{unmatched}} non associés",
     "slackMappingMatched": "Associé",

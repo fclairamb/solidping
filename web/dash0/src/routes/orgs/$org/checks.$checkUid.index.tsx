@@ -29,13 +29,13 @@ import {
   useCloneCheck,
   useDeleteCheck,
   useUpdateCheck,
-  useFeatures,
   useRotateHeartbeatToken,
   useResults,
   useChartWindowResults,
   useIncidents,
   useRegions,
 } from "@/api/hooks";
+import { useHeartbeatPush } from "@/api/public-config";
 import { useEmailAddressDomain, emailCheckAddress } from "@/api/email-inbox";
 import {
   stretchWhileLive,
@@ -103,7 +103,10 @@ import { QueryErrorView } from "@/components/shared/error-views";
 import { NeedsResealAlert } from "@/components/checks/needs-reseal-alert";
 import { PublishOnStatusPageDialog } from "@/components/checks/publish-on-status-page-dialog";
 import { CheckSummaryCards } from "@/components/checks/check-summary-cards";
-import { RegionFreshnessList, StaleSince } from "@/components/checks/check-freshness";
+import {
+  RegionFreshnessList,
+  StaleSince,
+} from "@/components/checks/check-freshness";
 import { CheckPlacementDetail } from "@/components/checks/check-placement";
 import { CheckRegionalIssueBanner } from "@/components/checks/regional-issue-banner";
 import { SslChainCard } from "@/components/checks/ssl-chain-card";
@@ -164,6 +167,10 @@ interface CheckDetailSearch {
    */
   publish?: boolean;
 }
+
+// Rows shown in the "Recent Incidents" card; the underlying query fetches more
+// (chart bands and the stat total need the full list).
+const RECENT_INCIDENTS_LIMIT = 10;
 
 export const Route = createFileRoute("/orgs/$org/checks/$checkUid/")({
   validateSearch: (search: Record<string, unknown>): CheckDetailSearch => ({
@@ -511,9 +518,8 @@ function HeartbeatPushEndpoint({
   check: { slug?: string; uid: string; config?: Record<string, unknown> };
 }) {
   const { t } = useTranslation("checks");
-  const { data: features } = useFeatures();
   const updateCheck = useUpdateCheck(org, check.uid);
-  const push = features?.heartbeatPush;
+  const push = useHeartbeatPush();
   const requireHmac = check.config?.require_hmac === true;
 
   if (!push || (!push.tcpEnabled && !push.udpEnabled)) return null;
@@ -1385,10 +1391,7 @@ function CheckDetailPage() {
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>{t("common:cancel")}</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={handleDelete}
-                  variant="destructive"
-                >
+                <AlertDialogAction onClick={handleDelete} variant="destructive">
                   {deleteCheck.isPending ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -1567,7 +1570,11 @@ function CheckDetailPage() {
             )}
             {/* Placement + regions + per-region last result + the automatic
                 moves (spec 2026-09-25-06). */}
-            <CheckPlacementDetail org={org} check={check} regions={regionsData?.regions} />
+            <CheckPlacementDetail
+              org={org}
+              check={check}
+              regions={regionsData?.regions}
+            />
             <TunnelVia org={org} check={check} />
             <TunnelDependents org={org} check={check} />
             <DeliveryVia org={org} check={check} />
@@ -1783,7 +1790,8 @@ function CheckDetailPage() {
           checkUid={checkUid}
           checkType={check.type ?? ""}
           screenshotEnabled={
-            check.config?.screenshot === true || check.config?.screenshot === "true"
+            check.config?.screenshot === true ||
+            check.config?.screenshot === "true"
           }
         />
       )}
@@ -2042,7 +2050,7 @@ function CheckDetailPage() {
       </Card>
 
       {incidents?.data && incidents.data.length > 0 && (
-        <Card>
+        <Card data-testid="recent-incidents-card">
           <CardHeader>
             <CardTitle>{t("checks:detail.recentIncidents")}</CardTitle>
             <CardDescription>
@@ -2053,57 +2061,97 @@ function CheckDetailPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>{t("checks:detail.incidents.id")}</TableHead>
                   <TableHead>{t("checks:detail.incidents.started")}</TableHead>
                   <TableHead>{t("checks:detail.incidents.state")}</TableHead>
                   <TableHead>{t("checks:detail.incidents.duration")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {incidents.data.map((incident) => (
-                  <TableRow
-                    key={incident.uid}
-                    className={
-                      incident.uid ? "cursor-pointer hover:bg-muted/50" : ""
-                    }
-                    data-testid={`incident-row-${incident.uid}`}
-                    onClick={() => {
-                      if (!incident.uid) return;
-                      navigate({
-                        to: "/orgs/$org/incidents/$incidentUid",
-                        params: { org, incidentUid: incident.uid },
-                      });
-                    }}
-                  >
-                    <TableCell className="text-sm">
-                      {incident.startedAt
-                        ? formatResultTime(incident.startedAt)
-                        : "-"}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1">
-                        <Badge
-                          variant={
-                            incident.state === "active"
-                              ? "destructive"
-                              : "secondary"
-                          }
-                        >
-                          {incident.state}
-                        </Badge>
-                        {incident.pagingSuppressed && (
-                          <Badge variant="outline" className="text-xs">
-                            {t("incidents:rollup.rolledUpBadge")}
-                          </Badge>
+                {[...incidents.data]
+                  .sort(
+                    (a, b) =>
+                      new Date(b.startedAt ?? 0).getTime() -
+                      new Date(a.startedAt ?? 0).getTime(),
+                  )
+                  .slice(0, RECENT_INCIDENTS_LIMIT)
+                  .map((incident) => (
+                    <TableRow
+                      key={incident.uid}
+                      className={
+                        incident.uid ? "cursor-pointer hover:bg-muted/50" : ""
+                      }
+                      data-testid={`incident-row-${incident.uid}`}
+                      onClick={() => {
+                        if (!incident.uid) return;
+                        navigate({
+                          to: "/orgs/$org/incidents/$incidentUid",
+                          params: { org, incidentUid: incident.uid },
+                        });
+                      }}
+                    >
+                      <TableCell className="text-sm">
+                        {incident.number && incident.uid ? (
+                          <Link
+                            to="/orgs/$org/incidents/$incidentUid"
+                            params={{ org, incidentUid: incident.uid }}
+                            onClick={(e) => e.stopPropagation()}
+                            className="font-mono text-xs text-muted-foreground font-semibold px-1.5 py-0.5 rounded bg-muted shrink-0 hover:text-foreground transition-colors"
+                            data-testid="incident-number"
+                          >
+                            #{incident.number}
+                          </Link>
+                        ) : (
+                          "-"
                         )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      <IncidentDuration incident={incident} />
-                    </TableCell>
-                  </TableRow>
-                ))}
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {incident.startedAt
+                          ? formatResultTime(incident.startedAt)
+                          : "-"}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          <Badge
+                            variant={
+                              incident.state === "active"
+                                ? "destructive"
+                                : "secondary"
+                            }
+                          >
+                            {incident.state}
+                          </Badge>
+                          {incident.pagingSuppressed && (
+                            <Badge variant="outline" className="text-xs">
+                              {t("incidents:rollup.rolledUpBadge")}
+                            </Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        <IncidentDuration incident={incident} />
+                      </TableCell>
+                    </TableRow>
+                  ))}
               </TableBody>
             </Table>
+            {incidents.data.length > RECENT_INCIDENTS_LIMIT && check?.uid && (
+              <div className="mt-3 text-sm">
+                <Link
+                  to="/orgs/$org/incidents"
+                  params={{ org }}
+                  search={{
+                    checkUid: check.uid,
+                    state: "all",
+                    showSuppressed: undefined,
+                  }}
+                  className="text-primary hover:underline"
+                  data-testid="recent-incidents-view-all"
+                >
+                  {t("checks:detail.incidents.viewAll")}
+                </Link>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

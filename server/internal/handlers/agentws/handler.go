@@ -27,6 +27,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/coder/websocket"
@@ -44,6 +45,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/handlers/workers"
 	"github.com/fclairamb/solidping/server/internal/notifier"
+	"github.com/fclairamb/solidping/server/internal/prommetrics"
 	"github.com/fclairamb/solidping/server/internal/regions"
 	"github.com/fclairamb/solidping/server/internal/version"
 )
@@ -68,8 +70,9 @@ const (
 	maxClaimJobs = 32
 	// enrollTimeout bounds how long the server waits for the enroll frame.
 	enrollTimeout = 30 * time.Second
-	// pingInterval drives keepalive pings and last_seen_at updates.
-	pingInterval = 25 * time.Second
+	// defaultPingInterval drives keepalive probes and last_seen_at updates
+	// (Handler.pingInterval; SetPingInterval overrides it for tests).
+	defaultPingInterval = 25 * time.Second
 	// claimMaxAhead is the claim-ahead window for agent claims.
 	claimMaxAhead = 5 * time.Minute
 	// nonceRetention is how long a consumed reconnect nonce stays remembered:
@@ -124,6 +127,22 @@ type Handler struct {
 	// monitors re-ensures a private location's liveness monitor after an
 	// enrollment (spec 2026-09-25-05). Optional; nil skips it.
 	monitors LivenessMonitorEnsurer
+	// pingInterval is the keepalive probe cadence (defaultPingInterval). A
+	// field rather than a constant only so tests can run probe cycles in
+	// milliseconds; see SetPingInterval.
+	pingInterval time.Duration
+
+	// Shutdown machinery (spec 2026-09-28-03 §4). shutdownCtx is canceled by
+	// Close and cancels every live connection's loop; connsWG counts live
+	// connections (until their teardown, shutdown event included, is over);
+	// eventsWG counts detached event writes. lifecycleMu orders
+	// beginConnection's Add against Close so no Add can race a Wait.
+	lifecycleMu sync.Mutex
+	closed      bool
+	shutdownCtx context.Context //nolint:containedctx // handler-lifetime cancellation, not a request context
+	stopConns   context.CancelFunc
+	connsWG     sync.WaitGroup
+	eventsWG    sync.WaitGroup
 }
 
 // LivenessMonitorEnsurer is the one call this package makes into the checks
@@ -153,7 +172,11 @@ func NewHandler(
 	creds credentials.Service,
 	reseal ResealFunc,
 ) *Handler {
+	shutdownCtx, stopConns := context.WithCancel(context.Background())
+
 	return &Handler{
+		shutdownCtx:  shutdownCtx,
+		stopConns:    stopConns,
 		HandlerBase:  base.NewHandlerBase(cfg),
 		dbService:    dbService,
 		checkJobSvc:  checkJobSvc,
@@ -166,6 +189,17 @@ func NewHandler(
 		reseal:       reseal,
 		conns:        newConnRegistry(),
 		logger:       slog.Default().With("component", "agent_ws"),
+		pingInterval: defaultPingInterval,
+	}
+}
+
+// SetPingInterval overrides the keepalive probe cadence (default 25 s) for
+// connections accepted afterwards. It mirrors the agent's WithPingInterval and
+// exists for tests; production keeps the default, which the 5-minute liveness
+// window (spec 2026-09-25-05) is sized against.
+func (h *Handler) SetPingInterval(d time.Duration) {
+	if d > 0 {
+		h.pingInterval = d
 	}
 }
 
@@ -209,9 +243,9 @@ func (h *Handler) serveEnrollment(
 			"Enrollment token is invalid, expired, or already used")
 	}
 
-	conn, err := websocket.Accept(writer, req, &websocket.AcceptOptions{
-		CompressionMode: websocket.CompressionDisabled,
-	})
+	live := newLiveness()
+
+	conn, err := websocket.Accept(writer, req, live.acceptOptions())
 	if err != nil {
 		return nil //nolint:nilerr // the client never got a socket; nothing to answer
 	}
@@ -248,7 +282,7 @@ func (h *Handler) serveEnrollment(
 	// version to compare — an agent that omitted it (or predates the field)
 	// leaves the drift check for the first claim to perform, same as a bare
 	// reconnect.
-	h.runAgentConnection(ctx, conn, agent, versionChecked)
+	h.runAgentConnection(ctx, conn, live, agent, versionChecked)
 
 	return nil
 }
@@ -431,18 +465,20 @@ func (h *Handler) serveReconnect(
 		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeInvalidToken, "Invalid signature")
 	}
 
-	conn, acceptErr := websocket.Accept(writer, req, &websocket.AcceptOptions{
-		CompressionMode: websocket.CompressionDisabled,
-	})
+	live := newLiveness()
+
+	conn, acceptErr := websocket.Accept(writer, req, live.acceptOptions())
 	if acceptErr != nil {
 		return nil //nolint:nilerr // the client never got a socket; nothing to answer
 	}
 	conn.SetReadLimit(maxFrameBytes)
 
+	prommetrics.RecordAgentWSReconnect()
+
 	// false: a bare reconnect carries no frame at all, so the version-drift
 	// check has never had a chance to run yet — the first claim on this
 	// connection does it.
-	h.runAgentConnection(ctx, conn, agent, false)
+	h.runAgentConnection(ctx, conn, live, agent, false)
 
 	return nil
 }
@@ -501,6 +537,9 @@ type connState struct {
 	// closeReason is why the server ended the connection, when it did
 	// (models.AgentDisconnectReason*). Empty means the socket itself failed.
 	closeReason string
+	// keepalive is the loop's side of the liveness state machine
+	// (keepalive.go).
+	keepalive keepalive
 }
 
 // agentEgressReportInterval bounds how often a claim frame refreshes the
@@ -618,8 +657,15 @@ func isDevBuild(v string) bool {
 // wrote it, and a reconnect has nothing new to report — so it can never
 // clobber what the enroll frame (or a subsequent claim) already stored.
 func (h *Handler) runAgentConnection(
-	ctx context.Context, conn *websocket.Conn, agent *models.Agent, versionChecked bool,
+	ctx context.Context, conn *websocket.Conn, live *liveness, agent *models.Agent, versionChecked bool,
 ) {
+	if !h.beginConnection() {
+		_ = conn.Close(websocket.StatusGoingAway, "server shutting down")
+
+		return
+	}
+	defer h.connsWG.Done()
+
 	workerUID, err := h.ensureWorkerRow(ctx, agent, "")
 	if err != nil {
 		h.logger.ErrorContext(ctx, "failed to ensure agent worker row", "error", err)
@@ -628,7 +674,10 @@ func (h *Handler) runAgentConnection(
 		return
 	}
 
-	state := &connState{agent: agent, workerUID: workerUID, versionChecked: versionChecked}
+	state := &connState{
+		agent: agent, workerUID: workerUID, versionChecked: versionChecked,
+		keepalive: keepalive{sensor: live},
+	}
 
 	// Publish the connection so the incident pipeline can reach this agent, and
 	// retire it on the way out. The registration is identity-checked on removal
@@ -670,34 +719,67 @@ func (h *Handler) runAgentConnection(
 	loopCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	frames := make(chan agentcrypto.ClientFrame)
+	// Close (server shutdown) ends this connection like a canceled request.
+	defer h.cancelOnClose(cancel)()
+
+	// Buffered: see framesBufferSize — the reader must never park behind a
+	// busy loop, because Read is where liveness is observed.
+	frames := make(chan agentcrypto.ClientFrame, framesBufferSize)
 	readErr := make(chan error, 1)
 
-	go func() {
-		for {
-			var frame agentcrypto.ClientFrame
-			if err := wsjson.Read(loopCtx, conn, &frame); err != nil {
-				readErr <- err
+	go readFrames(loopCtx, conn, live, frames, readErr)
 
-				return
-			}
-
-			select {
-			case frames <- frame:
-			case <-loopCtx.Done():
-				return
-			}
-		}
-	}()
+	probes := make(chan probeResult)
+	go runPinger(loopCtx, conn, live, h.pingInterval, probes)
 
 	reason := h.serveConnEvents(loopCtx, conn, state, &connChannels{
 		frames:   frames,
 		readErr:  readErr,
+		probes:   probes,
+		observed: live.observed,
 		outbound: outbound,
 		hints:    hints,
 	})
 
+	prommetrics.RecordAgentWSClosed(reason)
+
+	if reason == models.AgentDisconnectReasonServerShutdown {
+		// The process is going away: nothing would wait for a detached write,
+		// and the connection path is ending anyway, so record synchronously
+		// (still bounded by connectionEventTimeout).
+		h.writeConnectionEvent(ctx, agent, models.EventTypeAgentDisconnected, reason)
+
+		return
+	}
+
 	h.recordConnectionEvent(ctx, agent, models.EventTypeAgentDisconnected, reason)
+}
+
+// readFrames is the connection's reader: it decodes client frames and hands
+// them to the event loop until the first read error (sent on readErr).
+func readFrames(
+	ctx context.Context, conn *websocket.Conn, live *liveness,
+	frames chan<- agentcrypto.ClientFrame, readErr chan<- error,
+) {
+	for {
+		var frame agentcrypto.ClientFrame
+		if err := wsjson.Read(ctx, conn, &frame); err != nil {
+			readErr <- err
+
+			return
+		}
+
+		// Observed BEFORE the handoff: handling may lag, liveness never does.
+		live.observe(observedFrame)
+		live.handoffStarted()
+
+		select {
+		case frames <- frame:
+			live.handoffDone()
+		case <-ctx.Done():
+			return
+		}
+	}
 }
 
 // recordConnectionEvent writes an org agent's agent.connected /
@@ -714,20 +796,36 @@ func (h *Handler) recordConnectionEvent(
 		return
 	}
 
+	// Tracked so WaitForEvents can join it before the process exits.
+	h.eventsWG.Add(1)
+
+	go func() {
+		defer h.eventsWG.Done()
+
+		h.writeConnectionEvent(ctx, agent, eventType, reason)
+	}()
+}
+
+// writeConnectionEvent is the synchronous write behind recordConnectionEvent,
+// bounded by connectionEventTimeout on a context that survives ctx's
+// cancellation.
+func (h *Handler) writeConnectionEvent(
+	ctx context.Context, agent *models.Agent, eventType models.EventType, reason string,
+) {
+	if agent.IsSystem() || agent.OrgUID() == "" {
+		return
+	}
+
 	payload := models.JSONMap{models.AgentEventPayloadRegion: agent.Region}
 	if reason != "" {
 		payload[models.AgentEventPayloadReason] = reason
 	}
 
-	detached := context.WithoutCancel(ctx)
+	writeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), connectionEventTimeout)
+	defer cancel()
 
-	go func() {
-		writeCtx, cancel := context.WithTimeout(detached, connectionEventTimeout)
-		defer cancel()
-
-		audit.Record(writeCtx, h.dbService, agent.OrgUID(), eventType,
-			audit.Target{Type: "agent", UID: agent.UID, Name: agent.Name}, payload)
-	}()
+	audit.Record(writeCtx, h.dbService, agent.OrgUID(), eventType,
+		audit.Target{Type: "agent", UID: agent.UID, Name: agent.Name}, payload)
 }
 
 // ensureLivenessMonitor re-ensures, after an org agent enrolled, that its
@@ -757,6 +855,10 @@ type connChannels struct {
 	frames <-chan agentcrypto.ClientFrame
 	// readErr ends the connection on the first read failure.
 	readErr <-chan error
+	// probes carries each keepalive probe outcome from the pinger goroutine.
+	probes <-chan probeResult
+	// observed nudges the loop whenever the liveness sensor saw anything.
+	observed <-chan struct{}
 	// outbound carries UNSOLICITED server->agent frames (today: capture upload
 	// requests). Drained here, from the connection's own goroutine, so such a
 	// frame can never interleave with the responses handleFrame writes.
@@ -770,9 +872,6 @@ type connChannels struct {
 func (h *Handler) serveConnEvents(
 	ctx context.Context, conn *websocket.Conn, state *connState, chans *connChannels,
 ) string {
-	ping := time.NewTicker(pingInterval)
-	defer ping.Stop()
-
 	for {
 		select {
 		case <-ctx.Done():
@@ -780,14 +879,20 @@ func (h *Handler) serveConnEvents(
 		case err := <-chans.readErr:
 			h.logger.DebugContext(ctx, "agent connection closed", "agent", state.agent.UID, "error", err)
 
-			return disconnectReason(state)
-		case <-ping.C:
-			if !h.handlePingTick(ctx, conn, state) {
-				return disconnectReason(state)
+			return disconnectReason(ctx, state)
+		case probe := <-chans.probes:
+			if ctx.Err() != nil {
+				return models.AgentDisconnectReasonServerShutdown
 			}
+
+			if !h.handleProbe(ctx, conn, state, probe) {
+				return disconnectReason(ctx, state)
+			}
+		case <-chans.observed:
+			h.handleObserved(ctx, state)
 		case frame := <-chans.outbound:
 			if err := wsjson.Write(ctx, conn, frame); err != nil {
-				return disconnectReason(state)
+				return disconnectReason(ctx, state)
 			}
 		case <-chans.hints:
 			// Express hint: a check was created somewhere. The agent's claim is
@@ -795,50 +900,38 @@ func (h *Handler) serveConnEvents(
 			// foreign check simply returns no jobs.
 			_ = wsjson.Write(ctx, conn, agentcrypto.ServerFrame{Type: agentcrypto.MsgTypeJobsAvailable})
 		case frame := <-chans.frames:
+			// select picks among ready cases at random: a frame drained after
+			// shutdown began must not be handled on a dead context (its
+			// revocation lookup would fail and misreport the close as revoked).
+			if ctx.Err() != nil {
+				return models.AgentDisconnectReasonServerShutdown
+			}
+
 			if !h.handleFrame(ctx, conn, state, &frame) {
-				return disconnectReason(state)
+				return disconnectReason(ctx, state)
 			}
 		}
 	}
 }
 
 // disconnectReason is the reason the server recorded when it closed the
-// connection itself, else `error` (the socket failed, or the agent went away).
-func disconnectReason(state *connState) string {
+// connection itself, else `server_shutdown` when the loop's context was
+// canceled (Close, or the request went away — the read that failed was merely
+// aborted by it), else `error` (the socket failed, or the agent went away).
+func disconnectReason(ctx context.Context, state *connState) string {
 	if state.closeReason != "" {
 		return state.closeReason
+	}
+
+	if ctx.Err() != nil {
+		return models.AgentDisconnectReasonServerShutdown
 	}
 
 	return models.AgentDisconnectReasonError
 }
 
-// handlePingTick sends a keepalive ping, refreshes last_seen_at, and enforces
-// revocation on live connections. Returns false to end the connection.
-func (h *Handler) handlePingTick(ctx context.Context, conn *websocket.Conn, state *connState) bool {
-	pingCtx, cancel := context.WithTimeout(ctx, pingInterval/2)
-	err := conn.Ping(pingCtx)
-
-	cancel()
-
-	if err != nil {
-		state.closeReason = models.AgentDisconnectReasonPingTimeout
-		_ = conn.Close(websocket.StatusGoingAway, "ping timeout")
-
-		return false
-	}
-
-	_ = h.dbService.UpdateAgentLastSeen(ctx, state.agent.UID, time.Now())
-
-	// A revoked agent's live connection is closed on the next tick.
-	if !h.agentStillActive(ctx, conn, state) {
-		return false
-	}
-
-	return true
-}
-
 // agentStillActive re-fetches the agent and closes the connection when it has
-// been revoked (or deleted). Shared by the ping tick and every frame handler.
+// been revoked (or deleted). Shared by the keepalive probe and every frame handler.
 func (h *Handler) agentStillActive(ctx context.Context, conn *websocket.Conn, state *connState) bool {
 	agent, err := h.dbService.GetAgent(ctx, state.agent.UID)
 	if err != nil || agent.Status != models.AgentStatusActive {
@@ -1190,7 +1283,7 @@ func (h *Handler) dropUnsealableJob(
 // block could not be built: an explicit StatusError result naming the fix
 // (which also releases the lease via SubmitResult) instead of a half-armed
 // dispatch or a silent skip. Mirrors the sealed-envelope drop documented in
-// server/CLAUDE.md.
+// server/AGENTS.md.
 func (h *Handler) dropTunnelJob(ctx context.Context, state *connState, job *models.CheckJob, cause error) {
 	h.logger.WarnContext(ctx, "dropping tunneled job: cannot build tunnel block",
 		"check_uid", job.CheckUID, "job_uid", job.UID, "error", cause)

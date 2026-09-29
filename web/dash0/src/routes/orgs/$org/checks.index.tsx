@@ -1100,7 +1100,7 @@ function ChecksIndexPage() {
   };
 
   // The view mode ("Group by: Groups / Host") is the page's primary
-  // navigation, so — per this repo's convention (see web/dash0/CLAUDE.md,
+  // navigation, so — per this repo's convention (see web/dash0/AGENTS.md,
   // "A page's core navigation belongs in the URL", and jobs.index.tsx's
   // `tab`) — it lives in the URL search param `groupBy` and is read directly
   // via Route.useSearch(), with no local-state mirror: validateSearch already

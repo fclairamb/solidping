@@ -27,6 +27,7 @@ import (
 var (
 	ErrOrganizationNotFound = errors.New("organization not found")
 	ErrURLRequired          = errors.New("url is required")
+	ErrReportDisabled       = errors.New("bug report is disabled")
 	// ErrGitHubBadStatus indicates a non-2xx response from the GitHub Issues API.
 	// The error string includes the status code and body preview for diagnostics.
 	ErrGitHubBadStatus = errors.New("github returned non-2xx status")
@@ -50,13 +51,18 @@ const maxIssueDispatchesPerHour = 20
 // SubmitReportRequest carries all the inputs from the multipart form.
 // Screenshot is optional — text-only reports are valid.
 type SubmitReportRequest struct {
-	URL            string
-	Comment        string
-	OrgSlug        string
-	Annotations    string
-	Context        ContextPayload
-	UserUID        string
-	UserEmail      string
+	URL         string
+	Comment     string
+	OrgSlug     string
+	Annotations string
+	Context     ContextPayload
+	UserUID     string
+	UserEmail   string
+	// ImpersonatedBy is the email (or, failing that, the UID) of the super
+	// admin behind an impersonation token, "" otherwise (spec 2026-09-29-03).
+	// The report is attributed to the TARGET, whose screen it shows; this
+	// names who actually filed it.
+	ImpersonatedBy string
 	Screenshot     io.Reader
 	ScreenshotSize int64
 	ScreenshotName string
@@ -118,6 +124,10 @@ func NewService(
 func (s *Service) SubmitReport(
 	ctx context.Context, req *SubmitReportRequest,
 ) (*SubmitReportResponse, error) {
+	if !s.cfg.App.EnableBugReport {
+		return nil, ErrReportDisabled
+	}
+
 	if req.URL == "" {
 		return nil, ErrURLRequired
 	}
@@ -181,11 +191,9 @@ func (s *Service) SubmitReport(
 		fileUID = uuid.NewString()
 	}
 
-	if s.cfg.App.EnableBugReport {
-		// Detached context — the HTTP request is already done. We log the
-		// goroutine err separately rather than propagating to the caller.
-		go s.dispatchGitHubIssue(context.WithoutCancel(ctx), req, org.Slug, fileUID, fileURI, fileMIME)
-	}
+	// Detached context: the HTTP request is already done. We log the
+	// goroutine err separately rather than propagating to the caller.
+	go s.dispatchGitHubIssue(context.WithoutCancel(ctx), req, org.Slug, fileUID, fileURI, fileMIME)
 
 	return &SubmitReportResponse{UID: fileUID}, nil
 }
@@ -272,19 +280,20 @@ func (s *Service) dispatchGitHubIssue(
 	signedURL, exp := s.signedScreenshotURL(req.URL, fileUID, fileURI)
 
 	input := &IssueInput{
-		URL:           req.URL,
-		Comment:       req.Comment,
-		OrgSlug:       orgSlug,
-		UserEmail:     req.UserEmail,
-		ServerVersion: version.Version,
-		GitHash:       version.Commit,
-		FrontendBuild: req.Context.Build,
-		Context:       req.Context,
-		FileUID:       fileUID,
-		SignedURL:     signedURL,
-		SignedURLExp:  exp,
-		MimeType:      fileMIME,
-		ReportedAt:    s.clock(),
+		URL:            req.URL,
+		Comment:        req.Comment,
+		OrgSlug:        orgSlug,
+		UserEmail:      req.UserEmail,
+		ImpersonatedBy: req.ImpersonatedBy,
+		ServerVersion:  version.Version,
+		GitHash:        version.Commit,
+		FrontendBuild:  req.Context.Build,
+		Context:        req.Context,
+		FileUID:        fileUID,
+		SignedURL:      signedURL,
+		SignedURLExp:   exp,
+		MimeType:       fileMIME,
+		ReportedAt:     s.clock(),
 	}
 
 	title := BuildIssueTitle(input)

@@ -15,6 +15,14 @@ export default defineConfig({
   },
   test: {
     environment: "node",
+    // Report-only (spec 2026-09-29-06): no thresholds, the 80% target is
+    // backend-only. Used by `bun run test:unit:cover`.
+    coverage: {
+      provider: "v8",
+      reporter: ["text-summary", "json-summary"],
+      include: ["src/**/*.{ts,tsx}"],
+      exclude: ["src/**/*.test.{ts,tsx}"],
+    },
     include: [
       "src/**/*.test.ts",
       "src/**/*.test.tsx",

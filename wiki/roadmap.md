@@ -193,4 +193,4 @@ the `incidents` table.
   emails and check credentials.
 - **Importers, SLA reports, and the Terraform provider all depend on a stable
   REST API.** The API is stable; new endpoints follow the same shape
-  (camelCase, `data` envelope, `$uid` paths) — see `../CLAUDE.md`.
+  (camelCase, `data` envelope, `$uid` paths) — see `../AGENTS.md`.

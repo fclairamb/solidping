@@ -180,9 +180,9 @@ test.describe("Login Flow", () => {
 
 test.describe("Register: public route stays public", () => {
   // Regression e2e for spec 2026-08-29-12: OrgLayout ($org.tsx) computed
-  // isOrgPublicRoute but never used it to gate useFeatures(), so an
-  // unauthenticated visitor to /orgs/:org/register triggered a 401 on
-  // GET /api/v1/features and was silently bounced to
+  // isOrgPublicRoute but never used it to gate an authenticated background
+  // call, so an unauthenticated visitor to /orgs/:org/register triggered a 401
+  // and was silently bounced to
   // /login?session_expired=true before ever seeing the sign-up form.
   // redirectToExpiredLogin's own no-op guard only covered "/login", not
   // "/register", so the redirect was fully user-visible there. Must prove
@@ -558,5 +558,35 @@ test.describe("Login: passkey error handling", () => {
 
     // The run-mode badge is untouched by this change.
     await expect(page.getByTestId("login-runmode")).toHaveText("test");
+  });
+
+  // Spec 2026-09-29-05: runMode and deploymentMode live on the public config,
+  // not on /api/mgmt/version. Stub the version without those fields and the
+  // config with them, and check the login page follows the config.
+  test("the demo badge and SaaS marketing link come from /api/v1/config, not /api/mgmt/version", async ({
+    page,
+  }) => {
+    await page.route("**/api/mgmt/version", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ version: "9.9.9", commit: "abc123" }),
+      }),
+    );
+    await page.route("**/api/v1/config", async (route) => {
+      const response = await route.fetch();
+      const body = await response.json();
+      await route.fulfill({
+        response,
+        json: { ...body, runMode: "demo", deploymentMode: "saas" },
+      });
+    });
+
+    await page.goto("orgs/test/login");
+    await page.waitForLoadState("networkidle");
+
+    await expect(page.getByTestId("login-runmode")).toHaveText("demo");
+    const brandHref = await page.getByTestId("login-brand-link").getAttribute("href");
+    expect(new URL(brandHref!).searchParams.get("utm_campaign")).toBe("saas");
   });
 });

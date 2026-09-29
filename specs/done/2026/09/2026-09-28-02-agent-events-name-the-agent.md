@@ -16,7 +16,7 @@ effort: medium
 ```
 
 The label is identical for every agent, Actor is always `System`, and the
-Related column is empty — so a page full of them (org `stonal` on
+Related column is empty — so a page full of them (org `acme` on
 solidping.k8xp.com had **158 connects / 146 disconnects in 25 h**, 144 of them
 from a single agent) never answers the three questions a reader actually has:
 *which* agent, *which* private location, and *why* it dropped.
@@ -47,7 +47,7 @@ reads `payload.check_name` — so this spec follows that pattern rather than
 inventing a new one.
 
 This is not cosmetic. Reading "why" is what turned the flapping reported in
-`/d/orgs/stonal/events` into a diagnosis: **142 of the 146 disconnects carry
+`/d/orgs/acme/events` into a diagnosis: **142 of the 146 disconnects carry
 `reason: "ping_timeout"`**, which is a server-declared keepalive failure, not a
 dead agent (root cause and fix in spec `2026-09-28-03`). Today that fact is
 reachable only with `psql` against the deployment's database.

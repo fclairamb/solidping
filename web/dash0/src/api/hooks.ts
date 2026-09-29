@@ -4327,8 +4327,6 @@ export function useVersion() {
         version?: string;
         commit?: string;
         gitTime?: string;
-        runMode?: string;
-        deploymentMode?: "saas" | "self-hosted";
       }>("/api/mgmt/version"),
     // Poll for server redeploys (spec 2026-08-28-01: dash0 has no way to
     // tell the user their loaded app is older than the running server).
@@ -4361,37 +4359,6 @@ export function useEmailPreviewIndex() {
       apiFetch<{ data: EmailTemplateSummary[] }>("/api/mgmt/email-preview"),
     staleTime: 30000,
     retry: false,
-  });
-}
-
-/**
- * Embedded TCP/UDP heartbeat push transports (spec 2026-09-01-06).
- *
- * Reported by the server so the check detail page only advertises a transport
- * a device can actually reach — the listeners are off by default and opening
- * their ports is a deployment decision.
- */
-export interface HeartbeatPushFeature {
-  tcpEnabled: boolean;
-  udpEnabled: boolean;
-  /** Hostname devices should send beats to; empty when it can't be derived. */
-  host: string;
-  /** 0 when the matching transport is disabled. */
-  tcpPort: number;
-  udpPort: number;
-}
-
-export interface FeaturesResponse {
-  bugReport: boolean;
-  heartbeatPush?: HeartbeatPushFeature;
-}
-
-export function useFeatures(opts?: { enabled?: boolean }) {
-  return useQuery({
-    queryKey: ["features"],
-    queryFn: () => apiFetch<FeaturesResponse>("/api/v1/features"),
-    staleTime: 5 * 60 * 1000,
-    enabled: opts?.enabled ?? true,
   });
 }
 
@@ -7048,6 +7015,33 @@ export function useAdminUsersList(params: {
     queryFn: () =>
       apiFetch<AdminUsersListResponse>(`/api/v1/system/users${suffix}`),
     enabled: params.enabled !== false,
+  });
+}
+
+/** POST /api/v1/system/users/:uid/impersonate (spec 2026-09-29-03). */
+export interface ImpersonateResponse {
+  accessToken: string;
+  expiresIn: number;
+  tokenType?: string;
+  user: { uid: string; email: string; role: string };
+  organization: { uid: string; slug: string; name?: string };
+}
+
+/**
+ * Starts a super-admin impersonation. It only fetches the token: storing it
+ * for this tab and reloading the dashboard is the caller's job (see
+ * lib/impersonation.ts), because the whole app has to be rebuilt as the target.
+ */
+export function useImpersonateUser() {
+  return useMutation({
+    mutationFn: ({ uid, orgSlug }: { uid: string; orgSlug?: string }) =>
+      apiFetch<ImpersonateResponse>(
+        `/api/v1/system/users/${encodeURIComponent(uid)}/impersonate`,
+        {
+          method: "POST",
+          body: JSON.stringify(orgSlug ? { orgSlug } : {}),
+        },
+      ),
   });
 }
 

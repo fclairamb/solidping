@@ -5504,6 +5504,7 @@ const EVENT_LABEL_SAMPLES: { type: string; label: string }[] = [
   { type: "incident.acknowledged", label: "Incident Acknowledged" },
   { type: "auth.login_succeeded", label: "Sign-in Succeeded" },
   { type: "auth.token_misuse", label: "Token Misuse" },
+  { type: "auth.impersonation_started", label: "Impersonation Started" },
   { type: "check.updated", label: "Check Updated" },
 ];
 

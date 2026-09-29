@@ -10,7 +10,7 @@ effort: high
 An HTTP check created through the API with a request body was broken by
 opening it in the dashboard and pressing **Save** without changing anything.
 
-Concrete case (2026-09-11, solidping.k8xp.com, org `stonal`, check
+Concrete case (2026-09-11, solidping.k8xp.com, org `acme`, check
 `sso-keycloak-login`): a `POST` to a Keycloak token endpoint with
 
 ```json
@@ -41,7 +41,7 @@ alone that Save would delete them.
 
 Reported in the field the same day, in the `#solidping-dev` thread on the
 incident this check raised
-(https://stonaltech.slack.com/archives/C0BFC2XG4K0/p1789139320451959?thread_ts=1789138055.738169&cid=C0BFC2XG4K0):
+(https://acmetech.slack.com/archives/C0BFC2XG4K0/p1789139320451959?thread_ts=1789138055.738169&cid=C0BFC2XG4K0):
 « le check de type `http` … l'UI ne permet pas de passer un body donc si on
 l'édite on le casse ». The sibling specs filed from that thread are
 `2026-09-11-02` (export leaks), `-03` (secret references), `-04`

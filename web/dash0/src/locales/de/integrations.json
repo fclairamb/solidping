@@ -133,6 +133,7 @@
     "slackMappingSynced": "{{matched}} zugeordnet, {{notFound}} nicht gefunden, {{ambiguous}} mehrdeutig",
     "slackMappingSyncFailed": "Mitgliedersynchronisierung fehlgeschlagen",
     "slackMappingError": "Die Mitgliederzuordnung konnte nicht geladen werden.",
+    "discordMappingSaveFirst": "Speichern Sie zuerst Ihre Änderungen. Mitgliederzuordnung und erneute Synchronisierung sind verfügbar, sobald das Ziel gespeichert ist.",
     "slackMappingEmpty": "Noch keine Organisationsmitglieder.",
     "slackMappingCounts": "{{matched}} zugeordnet · {{unmatched}} nicht zugeordnet",
     "slackMappingMatched": "Zugeordnet",

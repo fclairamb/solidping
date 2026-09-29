@@ -131,6 +131,12 @@ func (h *Handler) session(req *http.Request) (*auth.Claims, bool) {
 		return nil, false
 	}
 
+	// An impersonation token may never consent to an OAuth grant: that would
+	// mint a long-lived credential in the target's name (spec 2026-09-29-03).
+	if claims.IsImpersonation() {
+		return nil, false
+	}
+
 	return claims, true
 }
 

@@ -10,7 +10,7 @@ effort: medium
 `/dash0/orgs/$org/incidents` only offers two filters: the state `Select`
 (`all` / `active` / `acked` / `snoozed` / `resolved`) and the "show rolled up"
 `Switch` — see [incidents.index.tsx:120-165](web/dash0/src/routes/orgs/$org/incidents.index.tsx#L120).
-On an org with many checks (e.g. `stonal` on solidping.k8xp.com), the history
+On an org with many checks (e.g. `acme` on solidping.k8xp.com), the history
 view `?state=all` is a long undifferentiated list and there is no way to focus
 on the incidents of one particular check.
 

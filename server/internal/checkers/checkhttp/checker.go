@@ -76,7 +76,8 @@ func (c *HTTPChecker) Validate(spec *checkerdef.CheckSpec) error {
 // family is pinned on the transport (see buildTransport) rather than through
 // checkerdef.SelectIPAddr, and the family actually used is observed after the
 // fact with httptrace — which is a pure observer, so an `ipVersion: auto` check
-// still runs on the shared http.DefaultTransport exactly as before.
+// still runs on the shared check transport (pooled, HTTP/1.1 — spec
+// 2026-09-28-04) exactly as before.
 func (c *HTTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*checkerdef.Result, error) {
 	tracker := &connFamilyTracker{}
 	ctx = httptrace.WithClientTrace(ctx, tracker.clientTrace())
@@ -289,13 +290,14 @@ func (c *HTTPChecker) executeRequest(ctx context.Context, config checkerdef.Conf
 	// changes — http.Transport still performs its own TLS handshake over the
 	// tunneled conn, with ServerName taken from the URL host, so https targets
 	// keep verifying exactly as they do untunneled. Redirects, auth, headers:
-	// all unchanged. With no dialer on the context, client.Transport stays nil
-	// and net/http uses DefaultTransport as before.
+	// all unchanged. With nothing to customize, client.Transport is the shared
+	// check transport — pooled, HTTP/1.1 (spec 2026-09-28-04).
 	//
 	// verifySsl: false composes with the tunnel dialer on the same transport:
 	// whichever of DialContext/TLSClientConfig applies gets set on one shared
-	// http.Transport, so client.Transport stays nil only when neither is in
-	// play (preserving DefaultTransport's connection pooling in the common case).
+	// http.Transport, so the shared check transport comes back whenever neither
+	// is in play: connection pooling in the common case is preserved, and no
+	// check ever falls through to http.DefaultTransport's HTTP/2.
 	//
 	// The egress guard (spec 2026-09-25-19) rides the same transport: under an
 	// enforcing policy every dial — redirect hops included — resolves once,

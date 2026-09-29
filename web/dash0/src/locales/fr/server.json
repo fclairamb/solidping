@@ -449,7 +449,8 @@
       "organizations": "Organisations",
       "flags": "Indicateurs",
       "lastActive": "Dernière activité",
-      "created": "Créé le"
+      "created": "Créé le",
+      "actions": "Actions"
     },
     "flags": {
       "superAdmin": "Super-administrateur",
@@ -458,6 +459,15 @@
       "unverified": "Non vérifié",
       "passwordResetPending": "Réinitialisation en attente",
       "ssoOnly": "SSO uniquement"
+    },
+    "impersonate": {
+      "button": "Voir en tant que cet utilisateur",
+      "title": "Voir le tableau de bord en tant que {{email}} ?",
+      "description": "Vous verrez exactement ce que voit {{email}}, avec son rôle. La session est tracée dans le journal d'audit de l'organisation et dure 30 minutes. Son mot de passe, sa 2FA, ses passkeys et ses jetons ne peuvent pas être modifiés depuis cette session.",
+      "organization": "Organisation",
+      "confirm": "Voir en tant qu'utilisateur",
+      "cancel": "Annuler",
+      "error": "Impossible de démarrer la session : {{message}}"
     }
   },
   "notifications": {
@@ -493,5 +503,13 @@
     "firstNotifier": "Première notification",
     "firstIncident": "Première alerte",
     "openAudit": "Ouvrir le journal d'audit"
+  },
+  "impersonation": {
+    "banner": {
+      "title": "Vous voyez le tableau de bord en tant que {{email}}",
+      "description": "Cette session est tracée et se termine à {{time}}. Les identifiants, jetons et sessions de cet utilisateur ne peuvent pas être modifiés.",
+      "exit": "Quitter"
+    },
+    "forbidden": "Indisponible pendant que vous voyez le tableau de bord en tant qu'un autre utilisateur."
   }
 }

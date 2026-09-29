@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { DemoBanner } from "@/components/shared/demo-banner";
+import { ImpersonationBanner } from "@/components/shared/impersonation-banner";
 import { CommandMenu, CommandMenuTrigger } from "@/components/CommandMenu";
 import { Separator } from "@/components/ui/separator";
 import { useAuth, isSwitchOrgInFlight } from "@/contexts/AuthContext";
@@ -48,7 +49,6 @@ import {
   useCheckJob,
   useIntegration,
   useEscalationPolicy,
-  useFeatures,
   useIncident,
   useMaintenanceWindow,
   useOnCallSchedule,
@@ -65,7 +65,7 @@ import { useFeedback } from "@/components/feedback/useFeedback";
 import { LiveEventsProvider } from "@/contexts/LiveEventsContext";
 import { isOrgPublicRoute } from "@/lib/org-public-routes";
 import { demoFlagFromLocation } from "@/lib/demo";
-import { readCachedDemoOrgSlug } from "@/api/public-config";
+import { readCachedDemoOrgSlug, useBugReportEnabled } from "@/api/public-config";
 import { pickAccessibleOrg } from "@/lib/accessible-org";
 import { needsOrgSwitch as needsOrgSwitchFor } from "@/lib/org-switch";
 import { toast } from "sonner";
@@ -1023,8 +1023,8 @@ function OrgLayout() {
   const pendingOrg = orgFromPathname(location.pathname);
   const routerSnapshotIsTorn = pendingOrg !== null && pendingOrg !== org;
   const [commandMenuOpen, setCommandMenuOpen] = useState(false);
-  const { data: features } = useFeatures({ enabled: !isLoginPage });
-  const feedback = useFeedback({ enabled: features?.bugReport === true, org });
+  const bugReportEnabled = useBugReportEnabled();
+  const feedback = useFeedback({ enabled: bugReportEnabled, org });
 
   // Auto switch-org on cross-org navigation. Org access is enforced by
   // token-scope equality on every surface (REST + live WS): a token minted for
@@ -1229,13 +1229,13 @@ function OrgLayout() {
           <Separator orientation="vertical" className="mr-2 h-4" />
           <Breadcrumbs org={org} />
           <div className="ml-auto flex items-center gap-1">
-            {features?.bugReport && (
+            {bugReportEnabled && (
               <FeedbackButton onClick={() => void feedback.open()} isCapturing={feedback.isCapturing} />
             )}
             <CommandMenuTrigger onOpen={() => setCommandMenuOpen(true)} />
           </div>
         </header>
-        {features?.bugReport && (
+        {bugReportEnabled && (
           <FeedbackDialog
             open={feedback.isOpen}
             onOpenChange={(next) => (next ? null : feedback.close())}
@@ -1249,6 +1249,9 @@ function OrgLayout() {
               dashboard: a visitor who deep-links into a check detail must
               learn the sandbox rules there too. */}
           <DemoBanner org={org} />
+          {/* Super-admin impersonation (spec 2026-09-29-03): on every org
+              page, never dismissible. */}
+          <ImpersonationBanner />
           <Outlet />
         </div>
       </SidebarInset>

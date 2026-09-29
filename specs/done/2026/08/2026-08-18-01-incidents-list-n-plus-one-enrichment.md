@@ -7,7 +7,7 @@ effort: high
 
 ## Problem
 
-`GET /api/v1/orgs/stonal/incidents?limit=50` takes ~900ms on solidping.k8xp.com
+`GET /api/v1/orgs/acme/incidents?limit=50` takes ~900ms on solidping.k8xp.com
 even though it returns very little data.
 
 The base query is **not** the problem — there are no joins at all.

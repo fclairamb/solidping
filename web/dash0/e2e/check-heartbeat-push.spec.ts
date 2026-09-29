@@ -6,7 +6,7 @@ import { test, expect, mockSloCoverage, type Page } from "./fixtures";
 //
 // The listeners are off by default and opening their ports is a deployment
 // decision, so the dashboard must render this block ONLY when the server says
-// a listener is up. The feature response is stubbed here rather than requiring
+// a listener is up. The config response is stubbed here rather than requiring
 // the dev server to bind port 4001.
 
 test.beforeEach(async ({ authenticatedPage }) => {
@@ -14,24 +14,23 @@ test.beforeEach(async ({ authenticatedPage }) => {
 });
 
 /**
- * Stub GET /api/v1/features with a given heartbeatPush section.
+ * Stub GET /api/v1/config with a given heartbeat section, merged into the real
+ * body so the other capabilities stay as the server reports them.
  *
- * The reload matters: useFeatures caches for five minutes, and the
+ * The reload matters: the public config caches for five minutes, and the
  * authenticated fixture has already fetched it by the time a test installs
  * this route. Without the reload every assertion below would run against the
  * real (listener-less) response and silently test nothing.
  */
 async function mockFeatures(
   page: Page,
-  heartbeatPush: Record<string, unknown> | undefined,
+  heartbeat: Record<string, unknown> | undefined,
 ): Promise<void> {
-  await page.route("**/api/v1/features", (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ bugReport: false, heartbeatPush }),
-    }),
-  );
+  await page.route("**/api/v1/config", async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    await route.fulfill({ response, json: { ...body, heartbeat } });
+  });
 
   await page.reload();
   await page.waitForLoadState("networkidle");

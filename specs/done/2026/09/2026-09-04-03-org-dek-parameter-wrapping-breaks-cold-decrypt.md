@@ -7,7 +7,7 @@ effort: high
 
 ## Problem
 
-Incident #506 on the dev instance (org `stonal`, check `api.stonal.io/datalake (http)`,
+Incident #506 on the dev instance (org `acme`, check `api.acme.io/datalake (http)`,
 uid `2d188b92-b5da-4742-ae9e-c308f53c686d`, region `gravelines`) opened at
 2026-09-03 22:48 UTC with the user-facing cause:
 

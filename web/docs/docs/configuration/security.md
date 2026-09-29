@@ -89,3 +89,22 @@ An earlier version expects plaintext tokens, finds only hashes and degrades by d
 If no master key is configured, encryption is disabled and credentials are stored as-is (the original behavior). Setting a master key enables encryption and — with `SP_ENCRYPTION_AUTO_MIGRATE` — transparently migrates existing data. Configuring the master key is strongly recommended for any production deployment.
 
 Token hashing has no such fallback and no configuration: it is not keyed off the master key, and it never stores a token in plaintext.
+
+## Super-Admin Impersonation
+
+A super admin can sign in as another user to see exactly what they see: **Server → Users**, then the eye icon on the user's row. It is meant for support and debugging, and it is built so it cannot become an account takeover:
+
+- The session acts as the user, with **their** role in **their** organization. The admin's super-admin rights do not travel with it.
+- It lasts **30 minutes** and has **no refresh token**. When it ends, or when the admin clicks **Exit** in the banner, the dashboard goes back to the admin's own session.
+- The user's own sessions are untouched: nothing is added to their session list and they are not signed out.
+- It **cannot** change the user's password, 2FA or passkeys, create API tokens or sessions in their name, revoke their sessions, or start another impersonation. Those requests answer `403 IMPERSONATION_FORBIDDEN`.
+- Super admins, the shared demo account and yourself cannot be impersonated. A user with 2FA can be: the admin's own sign-in is what gates it.
+- Every start is recorded as `auth.impersonation_started` in the user's organization audit log, and every event written during the session carries `impersonated_by` with the admin's user ID.
+
+The user is not notified by email. The audit log is the record.
+
+To turn the feature off entirely:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SP_AUTH_IMPERSONATION_ENABLED` | `true` | When `false`, `POST /api/v1/system/users/:uid/impersonate` answers `404` |

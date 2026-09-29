@@ -35,7 +35,7 @@ The mechanism:
 - Restarting the server does nothing (verified live): the breakage is persisted
   state, not scheduler memory.
 
-The live remediation was 311 individual `PATCH /orgs/stonal/checks/:uid` calls
+The live remediation was 311 individual `PATCH /orgs/acme/checks/:uid` calls
 re-sending each check's own `regions` array just to trigger the reconcile —
 and that path was only available because the *checks* already carried the new
 slugs. It also could not touch the other orgs' checks (org-scoped auth), so
@@ -93,7 +93,7 @@ Semantics:
    {
      "from": "default", "to": "gravelines", "dryRun": false,
      "checksUpdated": 370, "jobsReassigned": 370, "jobsDeleted": 0,
-     "byOrg": {"stonal": 311, "public": 38, "...": 0},
+     "byOrg": {"acme": 311, "public": 38, "...": 0},
      "overdueRecovered": 345
    }
    ```

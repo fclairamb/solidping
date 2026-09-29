@@ -110,14 +110,16 @@ func GuardedNetDialer(ctx context.Context, base *net.Dialer) *net.Dialer {
 	return &guarded
 }
 
-// GuardedHTTPClient is http.DefaultClient for the paths that used it directly,
-// except under an enforcing egress policy, where it is a client on the guard's
-// pooled transport. It is NOT tunnel-aware, exactly like the DefaultClient it
+// GuardedHTTPClient replaces http.DefaultClient for the paths that used it
+// directly: a client on the shared, pooled HTTP/1.1 check transport, or on the
+// guard's pooled transport under an enforcing egress policy. Neither speaks
+// HTTP/2 (spec 2026-09-28-04: a canceled probe must not strand its connection
+// in the pool). It is NOT tunnel-aware, exactly like the DefaultClient it
 // replaces: use HTTPTransportFor for a check's main probe.
 func GuardedHTTPClient(ctx context.Context) *http.Client {
 	guard := egress.FromContext(ctx)
 	if !guard.Enforcing() {
-		return http.DefaultClient
+		return &http.Client{Transport: checkTransport}
 	}
 
 	return &http.Client{Transport: guard.HTTPTransport()}

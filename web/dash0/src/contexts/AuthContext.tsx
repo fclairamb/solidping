@@ -23,6 +23,7 @@ import { refreshAccessToken, refreshWithOutcome, shouldRefreshNow } from "@/lib/
 import { identifyAnalytics, resetAnalytics } from "@/lib/analytics";
 import { disconnectAllLiveSockets } from "@/contexts/LiveEventsContext";
 import { persistSessionOrg, SESSION_ORG_KEY } from "@/lib/session-org";
+import { exitImpersonation, getImpersonation, isImpersonationExpired } from "@/lib/impersonation";
 
 interface User {
   // Pseudonymous user UUID. Used for the analytics distinct id; never shown.
@@ -41,6 +42,16 @@ interface User {
   // anything it creates is deleted within the hour — so the UI says so, and
   // hides the actions the server's write guard would refuse anyway.
   isDemo: boolean;
+  // Set only when this session is a super admin viewing the dashboard as this
+  // user (spec 2026-09-29-03), as reported by /auth/me. Drives the
+  // non-dismissible "viewing as" banner.
+  impersonation?: ImpersonationInfo | null;
+}
+
+export interface ImpersonationInfo {
+  impersonatorUid: string;
+  impersonatorEmail?: string;
+  expiresAt?: string;
 }
 
 export interface OrganizationSummary {
@@ -228,6 +239,8 @@ interface MeResponse {
     name?: string;
   };
   organizations: OrganizationSummary[];
+  // Present only for a super-admin impersonation token (spec 2026-09-29-03).
+  impersonation?: ImpersonationInfo;
 }
 
 const ORG_KEY = SESSION_ORG_KEY;
@@ -289,7 +302,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // clears it in the catch. This defers the "give up" decision to real
     // evidence instead of blindly killing a session that /auth/me can still
     // validate — the genuinely-dead case is still cleared, just by /auth/me.
-    if (getExpiresAt() === null && getRefreshToken() !== null) {
+    if (getExpiresAt() === null && getRefreshToken() !== null && !getImpersonation()) {
       const outcome = await refreshWithOutcome();
       if (!outcome.accessToken && outcome.failureReason !== "network-error") {
         // escalate() inside token-refresh.ts already cleared the session
@@ -323,6 +336,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isOwner: data.user.role === "owner" || data.user.role === "superadmin",
         isSuperAdmin: data.user.role === "superadmin",
         isDemo: Boolean(data.user.demo),
+        impersonation: data.impersonation ?? null,
       });
       // Update org from server response. An org-less token clears it: a slug
       // left over from an earlier session would read as "already scoped to
@@ -359,6 +373,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // (tab was fully suspended, laptop asleep, etc.).
   useEffect(() => {
     const interval = setInterval(() => {
+      // An impersonation token is never refreshed (spec 2026-09-29-03): it
+      // ends, and the tab goes back to the admin's own session.
+      const impersonation = getImpersonation();
+      if (impersonation) {
+        if (isImpersonationExpired(impersonation)) {
+          exitImpersonation();
+        }
+        return;
+      }
+
       if (shouldRefreshNow(getExpiresAt(), getExpiresInSeconds())) {
         void refreshAccessToken();
       }
@@ -669,6 +693,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = async () => {
+    // Signing out of an impersonation is exiting it: the admin's own session
+    // is untouched, and the target's sessions are none of this tab's business.
+    if (getImpersonation()) {
+      exitImpersonation();
+      return;
+    }
+
     // setLoggingOut(true) below must always be paired with setLoggingOut(false)
     // in the finally, or a throw from any pre-POST step (cancelQueries,
     // disconnectAllLiveSockets — none expected to throw today, but nothing

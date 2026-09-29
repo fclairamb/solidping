@@ -31,6 +31,7 @@
  */
 
 import { redactCapturedNetworkRequest, redactCredentialsBeforeSend } from "./analytics-redaction";
+import type { DeploymentMode } from "@/lib/marketing-url";
 
 /**
  * `$exception` events matched here are dropped outright in `before_send` —
@@ -124,6 +125,26 @@ export interface DiscordPublicConfig {
   botEnabled: boolean;
 }
 
+/** Whether the in-app bug-report button is offered, from GET /api/v1/config. */
+export interface BugReportPublicConfig {
+  enabled: boolean;
+}
+
+/**
+ * Embedded TCP/UDP heartbeat push transports (spec 2026-09-01-06), from
+ * GET /api/v1/config. Reported by the server so the check detail page only
+ * advertises a transport a device can actually reach.
+ */
+export interface HeartbeatPublicConfig {
+  tcpEnabled: boolean;
+  udpEnabled: boolean;
+  /** Hostname devices should send beats to; empty when it can't be derived. */
+  host: string;
+  /** 0 when the matching transport is disabled. */
+  tcpPort: number;
+  udpPort: number;
+}
+
 /** The public config document. Extra keys are ignored. */
 export interface PublicConfig {
   posthog?: PostHogPublicConfig;
@@ -132,6 +153,10 @@ export interface PublicConfig {
   sms?: SMSPublicConfig;
   demo?: DemoPublicConfig;
   discord?: DiscordPublicConfig;
+  bugReport?: BugReportPublicConfig;
+  heartbeat?: HeartbeatPublicConfig;
+  runMode?: string;
+  deploymentMode?: DeploymentMode;
 }
 
 /**

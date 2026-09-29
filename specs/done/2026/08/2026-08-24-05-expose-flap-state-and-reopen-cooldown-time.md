@@ -20,7 +20,7 @@ it is observable from the outside:
 - The only visible effect of the 6h window is "incidents stay open ~30 min", which
   reads as *slow recovery*, not as *backoff at work*. This caused a real
   "the 6h flapping window doesn't seem to be applied" investigation today (org
-  `stonal`, check `http-laplacedelimmobilier-com`, incidents #362–#365): the
+  `acme`, check `http-acme-com`, incidents #362–#365): the
   window was applying correctly the whole time.
 
 Separately, the **Reopen Cooldown Multiplier** field in the check form asks for a

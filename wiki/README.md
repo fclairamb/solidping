@@ -40,6 +40,7 @@
   - [database-model/maintenance.md](database-model/maintenance.md) — Maintenance windows and the checks/groups they cover
   - [database-model/discovery.md](database-model/discovery.md) — discovered_checks: scan-produced check suggestions awaiting promotion
   - [database-model/entitlements.md](database-model/entitlements.md) — Per-org plan limits and the entitlement change audit trail
+  - [database-model/schema-notes.md](database-model/schema-notes.md) — Behavioural notes per table (org slug aliases, parameter keys, roles, workers, results statuses and aggregation, credential encryption) moved out of the backend agent file.
   - [database-model/jobs.md](database-model/jobs.md) — Generic background job queue and the key-value state store
   - [database-model/patterns.md](database-model/patterns.md) — Schema-wide design patterns, migration layout, file locations
 - [terraform-provider-api-audit.md](terraform-provider-api-audit.md) — API completeness audit for the out-of-tree Terraform provider: per-resource lifecycle/secret/import coverage and gaps
@@ -53,6 +54,7 @@ the relevant code.
 - [features/degraded-detection.md](features/degraded-detection.md) — The second, statistical detector beside the confirmation period: the "M of the last N countable probes" rule over failures and over slow successes, the `degraded` incident kind (no cascade, no paging escalation, no auto-publish), the suppression rule that makes it shippable, the off-for-existing/on-for-new per-check rollout, and the availability-denominator regression to watch.
 - [features/check-dependencies.md](features/check-dependencies.md) — Hard vs soft dependency edges, cascade rollup walk, parent-resolve re-evaluation, correlation windows, edge cases.
 - [features/entitlements.md](features/entitlements.md) — Per-org limits (`maxChecks`, `maxUsers`, `maxChecksPerMinute`) and where each is enforced; defaults per deployment mode, resolution (defaults → row → live usage), sources, stale fallback, audit log. Note: there are **no** feature toggles.
+- [features/saas-mode.md](features/saas-mode.md) — `SP_DEPLOYMENT_MODE=saas`: billing-service signed writes, signing-key rotation, the upgrade-token secret and its operator migration, `make dev-saas`.
 - [features/email-inbox-checks.md](features/email-inbox-checks.md) — Passive checks that succeed when an email arrives. JMAP supervisor, per-check token, status resolution priority, mailbox retention, distinction from email-as-channel.
 - [features/mcp.md](features/mcp.md) — Model Context Protocol surface: endpoint, scopes (`mcp` / `mcp:read`), tool inventory, prompts, sessions, protocol version negotiation, how to add a new tool.
 - [features/credentials-encryption.md](features/credentials-encryption.md) — Secrets at rest: the KEK/per-org-DEK envelope layers, how the wrapped DEK is stored in `parameters` (`encryption.dek`), the process-lifetime DEK cache and the cold-process failure it can hide, plus the diagnosis table for "credentials could not be decrypted".
@@ -76,6 +78,10 @@ Project-wide standards and naming rules.
 - [conventions/runners.md](conventions/runners.md) — Check & job runner pools: configuration, sizing, fetching architecture, node roles
 - [conventions/state-entries.md](conventions/state-entries.md) — State entries table for Slack thread metadata
 - [conventions/frontend-urls.md](conventions/frontend-urls.md) — SPA base paths (`/d`, `/s`), the legacy `/dash0` / `/status0` redirects, and dashboard URL routing (`/d/orgs/{orgSlug}/...`)
+- [conventions/migrations.md](conventions/migrations.md) — Migration file naming and release-time consolidation rules.
+- [conventions/specs-workflow.md](conventions/specs-workflow.md) — The `specs/` directory layout, lifecycle, filename and template.
+- [conventions/agent-commands.md](conventions/agent-commands.md) — Agent-neutral bodies of the `/idea` and `/sync-pg-to-sqlite` slash commands.
+- [conventions/dash0-translations.md](conventions/dash0-translations.md) — dash0 i18n rules: locale parity tests, the untranslated-JSX lint rule, per-locale terminology.
 - [conventions/email-templates.md](conventions/email-templates.md) — Transactional email templates: required blocks (preheader, text), the label/value fact grid, and why the subject and plaintext parts render through text/template
 - [conventions/event-colors.md](conventions/event-colors.md) — Event color scheme: per-type color assignments for check and incident events
 - [conventions/frontend-errors.md](conventions/frontend-errors.md) — Frontend error handling by HTTP status code
@@ -91,12 +97,17 @@ Operational procedures for diagnosing the running system.
 - [runbooks/custom-domain-tls.md](runbooks/custom-domain-tls.md) — Custom-domain TLS: single-CNAME verification modes (`shared`/`token`), in-server ACME (`acme.*`) vs. an external TLS proxy, the four edge options (SNI passthrough, dedicated LB, chained instances, external proxy), config reference, acceptance checklist, troubleshooting, and the 2026-08-23 investigation of *intermittent* re-verification failure while `dig` succeeds (class: resolver/transport fault, infra-side).
 - [runbooks/invite-link-invalid-or-expired.md](runbooks/invite-link-invalid-or-expired.md) — The 2026-08-31 "invitation link invalid or expired" report was reporter error, not a defect — what to check before re-opening the hunt, and the two lasting fixes that came out of it anyway (error-conflation split, E2E coverage).
 - [runbooks/discord-bot-setup.md](runbooks/discord-bot-setup.md) — Provisioning the Discord **bot**: the two credentials login does not need (`SP_DISCORD_BOT_TOKEN`, `SP_DISCORD_PUBLIC_KEY`) and their gopass paths, the install-params/scope and redirect-URI changes the application record needs, and how to verify. Read this when the boot log says "Discord bot disabled: missing configuration".
+- [runbooks/api-testing-with-curl.md](runbooks/api-testing-with-curl.md) — Log in, save a token, and exercise the REST API by hand with curl; default credentials, forced password rotation, troubleshooting.
+- [runbooks/claude-cloud.md](runbooks/claude-cloud.md) — Working in a Claude cloud (remote) sandbox with no Docker, secrets or built frontend: `scripts/cloud-setup.sh`, what a clean clone needs (embed placeholders), SQLite smoke server, CI env parity for E2E, what to run before pushing.
+- [runbooks/observability-toggles.md](runbooks/observability-toggles.md) — `SP_PROMETHEUS_ENABLED`, `SP_METRICS_SCRAPE_TOKEN`, `SP_PROFILER_ENABLED`, `SP_OTEL_ENABLED`: what each switches and how they interact.
 
 ## Testing
 
+- [testing/coverage.md](testing/coverage.md) — Backend coverage: how `make test-cover` and the `backend-postgres` gate measure it, what is excluded (generated/vendored), the baseline, the `COVERAGE_MIN` ratchet, and report-only frontend coverage
 - [testing/test-layers.md](testing/test-layers.md) — Which Go test layer runs where (PR CI / nightly / local only): `make test` is `-short` and covers **no** Postgres, `make test-postgres` and the `backend-postgres` job do, `SP_TEST_REQUIRE_POSTGRES` turns a skip into a failure, and the `slowtests` build tag holds the live-network/Docker suites
 - [testing/e2e-ci.md](testing/e2e-ci.md) — E2E test infrastructure: CI environment, Playwright config, local execution
 - [testing/http-test-checks.md](testing/http-test-checks.md) — Fake API test checks: 5 predefined scenarios (stable, flaky, unstable, slow, 503)
+- [testing/dash0-e2e-typecheck-and-lint.md](testing/dash0-e2e-typecheck-and-lint.md) — Why `e2e/` has its own tsconfig and scoped lint, and the `page.evaluate` closure guard.
 
 ## Integrations
 

@@ -186,6 +186,12 @@ const (
 	// This is a different fact — an attempt, not an outcome — and an org
 	// should be able to alert on it on its own.
 	EventTypeAuthTokenMisuse EventType = "auth.token_misuse"
+	// EventTypeAuthImpersonationStarted records a super admin minting a
+	// short-lived token to act as another user (spec 2026-09-29-03). The actor
+	// is the ADMIN; the target user, the org, the expiry and the provenance are
+	// in the payload. Recorded in the TARGET's organization, so that org's
+	// admins can see that someone viewed their dashboard as one of them.
+	EventTypeAuthImpersonationStarted EventType = "auth.impersonation_started"
 
 	// EventTypeMemberInvited records an invitation being sent.
 	EventTypeMemberInvited EventType = "member.invited"
