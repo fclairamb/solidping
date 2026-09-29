@@ -108,8 +108,6 @@ func (f *impersonationFixture) refreshRows(ctx context.Context, t *testing.T, us
 
 // runImpersonationContract is the whole behavioral contract, shared by the
 // SQLite test below and its Postgres twin.
-//
-//nolint:funlen // One contract, read top to bottom.
 func runImpersonationContract(t *testing.T, newFixture func(t *testing.T) (*impersonationFixture, context.Context)) {
 	t.Helper()
 

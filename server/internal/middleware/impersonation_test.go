@@ -50,11 +50,20 @@ var impersonationForbiddenCalls = []struct {
 	{"2FA setup", http.MethodPost, "/api/v1/auth/2fa/setup", "/api/v1/auth/2fa/setup"},
 	{"2FA confirm", http.MethodPost, "/api/v1/auth/2fa/confirm", "/api/v1/auth/2fa/confirm"},
 	{"2FA removal", http.MethodDelete, "/api/v1/auth/2fa", "/api/v1/auth/2fa"},
-	{"passkey add (begin)", http.MethodPost, "/api/v1/auth/passkeys/register/begin", "/api/v1/auth/passkeys/register/begin"},
-	{"passkey add (finish)", http.MethodPost, "/api/v1/auth/passkeys/register/finish", "/api/v1/auth/passkeys/register/finish"},
+	{
+		"passkey add (begin)", http.MethodPost,
+		"/api/v1/auth/passkeys/register/begin", "/api/v1/auth/passkeys/register/begin",
+	},
+	{
+		"passkey add (finish)", http.MethodPost,
+		"/api/v1/auth/passkeys/register/finish", "/api/v1/auth/passkeys/register/finish",
+	},
 	{"passkey removal", http.MethodDelete, "/api/v1/auth/passkeys/:uid", "/api/v1/auth/passkeys/abc"},
 	{"PAT creation", http.MethodPost, "/api/v1/orgs/:org/tokens", "/api/v1/orgs/acme/tokens"},
-	{"agent enrollment token", http.MethodPost, "/api/v1/orgs/:org/agent-enrollment-tokens", "/api/v1/orgs/acme/agent-enrollment-tokens"},
+	{
+		"agent enrollment token", http.MethodPost,
+		"/api/v1/orgs/:org/agent-enrollment-tokens", "/api/v1/orgs/acme/agent-enrollment-tokens",
+	},
 	{"device grant consent", http.MethodPost, "/api/v1/auth/device/consent", "/api/v1/auth/device/consent"},
 	{"session revocation", http.MethodDelete, "/api/v1/auth/tokens/:tokenUid", "/api/v1/auth/tokens/abc"},
 	{"current session revocation", http.MethodDelete, "/api/v1/auth/tokens/current", "/api/v1/auth/tokens/current"},
@@ -118,7 +127,7 @@ func setupImpersonationFixture(t *testing.T) *impersonationFixture {
 		}
 
 		f.lastImperson, _ = middleware.GetImpersonatorFromContext(req.Context())
-		f.lastAuditImp = audit.ActorFromContext(req.Context()).ImpersonatedBy
+		f.lastAuditImp = audit.ImpersonatorFromContext(req.Context())
 		w.WriteHeader(http.StatusOK)
 
 		return nil
@@ -171,7 +180,10 @@ func TestImpersonationTokenIsDeniedSuperAdminRoutes(t *testing.T) {
 }
 
 // TestImpersonationTokenCannotChangeCredentials walks the whole
-// credential-changing surface.
+// credential-changing surface. The sub-tests share one fixture, whose handler
+// records the last request, so they run sequentially.
+//
+//nolint:paralleltest,tparallel // shared fixture; see above
 func TestImpersonationTokenCannotChangeCredentials(t *testing.T) {
 	t.Parallel()
 	f := setupImpersonationFixture(t)

@@ -104,12 +104,6 @@ type Actor struct {
 	SourceIP string
 	// UserAgent is the raw User-Agent header.
 	UserAgent string
-	// ImpersonatedBy is the UID of the super admin driving this request with
-	// an impersonation token (spec 2026-09-29-03). UserUID is then the
-	// impersonated TARGET, and every event written carries this value under
-	// PayloadKeyImpersonatedBy so the trail never attributes an admin's action
-	// to the target alone.
-	ImpersonatedBy string
 }
 
 type actorContextKey struct{}
@@ -144,16 +138,26 @@ func WithUser(ctx context.Context, userUID string, actorType models.ActorType) c
 	return context.WithValue(ctx, actorContextKey{}, actor)
 }
 
-// WithImpersonator records the real actor behind an impersonation token.
-// Called by RequireAuth, right after WithUser, when the claims carry
-// impersonatedBy. It survives every later WithUser/WithActor rewrite that
-// starts from ActorFromContext, which is how the auth service derives its
-// audit contexts.
-func WithImpersonator(ctx context.Context, impersonatorUID string) context.Context {
-	actor := ActorFromContext(ctx)
-	actor.ImpersonatedBy = impersonatorUID
+type impersonatorContextKey struct{}
 
-	return context.WithValue(ctx, actorContextKey{}, actor)
+// WithImpersonator records the real actor behind an impersonation token
+// (spec 2026-09-29-03). Called by RequireAuth, right after WithUser, when the
+// claims carry impersonatedBy: the actor is then the impersonated TARGET, and
+// every event written carries this UID under PayloadKeyImpersonatedBy so the
+// trail never attributes an admin's action to the target alone.
+//
+// Its own context key rather than an Actor field, so no WithActor rewrite
+// (the auth service rebuilds the actor for its own events) can drop it.
+func WithImpersonator(ctx context.Context, impersonatorUID string) context.Context {
+	return context.WithValue(ctx, impersonatorContextKey{}, impersonatorUID)
+}
+
+// ImpersonatorFromContext returns the UID of the super admin behind the
+// request's impersonation token, or "" for an ordinary request.
+func ImpersonatorFromContext(ctx context.Context) string {
+	uid, _ := ctx.Value(impersonatorContextKey{}).(string)
+
+	return uid
 }
 
 // StampImpersonation records the impersonating admin on an event about to be
@@ -168,7 +172,7 @@ func StampImpersonation(ctx context.Context, event *models.Event) {
 		return
 	}
 
-	impersonator := ActorFromContext(ctx).ImpersonatedBy
+	impersonator := ImpersonatorFromContext(ctx)
 	if impersonator == "" {
 		return
 	}

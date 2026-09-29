@@ -101,7 +101,7 @@ func (s *Service) ImpersonationInfoFor(ctx context.Context, claims *Claims) *Imp
 // Both signals RequireAuth puts on the context are read, so a caller that only
 // carries one of them (the audit actor, or the claims) is still recognized.
 func impersonatorFromContext(ctx context.Context) string {
-	if uid := audit.ActorFromContext(ctx).ImpersonatedBy; uid != "" {
+	if uid := audit.ImpersonatorFromContext(ctx); uid != "" {
 		return uid
 	}
 
@@ -115,7 +115,7 @@ func impersonatorFromContext(ctx context.Context) string {
 // Impersonate mints a short-lived access token that acts as targetUID in
 // orgSlug, on behalf of the super admin actorUID (spec 2026-09-29-03).
 //
-// Modelled on SwitchOrg, with the differences that make it safe:
+// Modeled on SwitchOrg, with the differences that make it safe:
 //   - the role is the target's REAL membership role, never RoleSuperAdmin, so
 //     every permission check downstream runs as the target;
 //   - no refresh token and no user_tokens row: the target's session list is

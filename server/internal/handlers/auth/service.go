@@ -859,7 +859,7 @@ func (s *Service) startSession(
 	// admin a long-lived refresh token AS the target, which is exactly the
 	// account takeover impersonation must never allow. Checked here, at the one
 	// choke point every session path shares, rather than per route.
-	if audit.ActorFromContext(ctx).ImpersonatedBy != "" {
+	if audit.ImpersonatorFromContext(ctx) != "" {
 		return ErrImpersonationForbidden
 	}
 

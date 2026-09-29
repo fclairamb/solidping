@@ -2459,13 +2459,8 @@ func applyAuthEnv(cfg *AuthConfig) {
 	}
 	// auth.impersonation_enabled: koanf would map the env var to
 	// auth.impersonation.enabled and bind nothing.
-	if v := strings.TrimSpace(strings.ToLower(os.Getenv("SP_AUTH_IMPERSONATION_ENABLED"))); v != "" {
-		switch v {
-		case "true", "1", "yes":
-			cfg.ImpersonationEnabled = true
-		case "false", "0", "no":
-			cfg.ImpersonationEnabled = false
-		}
+	if v, err := strconv.ParseBool(strings.TrimSpace(os.Getenv("SP_AUTH_IMPERSONATION_ENABLED"))); err == nil {
+		cfg.ImpersonationEnabled = v
 	}
 }
 
