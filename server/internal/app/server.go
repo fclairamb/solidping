@@ -1086,6 +1086,9 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	mainGroup.GET(oauth.PathAuthorizationServerMetadata, oauthHandler.AuthorizationServerMetadata)
 	mainGroup.GET(oauth.PathOpenIDConfiguration, oauthHandler.AuthorizationServerMetadata)
 	mainGroup.GET(oauth.PathJWKS, oauthHandler.JWKS)
+	// MCP server card (SEP-1649): the credential-free description directories read
+	// because tools/list itself needs a token.
+	mainGroup.GET(mcp.PathServerCard, s.mcpHandler.HandleServerCard)
 	oauthGroup := api.NewGroup("/oauth")
 	oauthGroup.GET("/authorize", oauthHandler.Authorize)
 	oauthGroup.POST("/authorize", oauthHandler.ApproveAuthorize)
