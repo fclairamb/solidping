@@ -153,4 +153,35 @@ describe("vncModule", () => {
     const { errors } = vncModule.toConfig(vncModule.fromConfig({}));
     expect(errors.map((e) => e.name)).toContain("host");
   });
+
+  it("round-trips username and tlsVerify, and omits them by default", () => {
+    const state = vncModule.fromConfig({
+      host: "vnc.acme.com",
+      password: "pw",
+      username: "alice",
+      tlsVerify: true,
+    });
+    expect(state.tlsVerify).toBe(true);
+    expect(vncModule.toConfig(state).config).toEqual({
+      host: "vnc.acme.com",
+      password: "pw",
+      username: "alice",
+      tlsVerify: true,
+      requireAuth: true,
+    });
+    const plain = vncModule.fromConfig({ host: "vnc.acme.com" });
+    expect(plain.tlsVerify).toBe(false);
+    expect(vncModule.toConfig(plain).config).not.toHaveProperty("tlsVerify");
+  });
+
+  it("flags a username without a password, and one over 63 bytes", () => {
+    const noPw = vncModule.fromConfig({ host: "vnc.acme.com", username: "alice" });
+    expect(vncModule.toConfig(noPw).errors.map((e) => e.name)).toEqual(["password"]);
+
+    const ok = vncModule.fromConfig({ host: "h", password: "pw", username: "u".repeat(63) });
+    expect(vncModule.toConfig(ok).errors).toEqual([]);
+
+    const long = vncModule.fromConfig({ host: "h", password: "pw", username: "u".repeat(64) });
+    expect(vncModule.toConfig(long).errors.map((e) => e.name)).toEqual(["username"]);
+  });
 });
