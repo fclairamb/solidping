@@ -348,6 +348,14 @@ func TestFormatter_TextBlockRendering(t *testing.T) {
 				[]string{"Sun, 05 Jul 2026 10:00:00 UTC"},
 			},
 			{
+				"email-changed.html",
+				map[string]any{
+					"ChangedAt": "Sun, 05 Jul 2026 10:00:00 UTC", "OldEmail": "alice@acme.com",
+					"NewEmail": "alice@acme.org",
+				},
+				[]string{"Sun, 05 Jul 2026 10:00:00 UTC", "alice@acme.com", "alice@acme.org"},
+			},
+			{
 				"membership_request_new.html",
 				map[string]any{
 					"OrgName": "Acme", "RequesterName": "Bob", "RequesterEmail": "bob@x.test",
@@ -599,6 +607,9 @@ func TestFormatter_AllShippedTemplatesRenderCleanly(t *testing.T) {
 		}},
 		{"welcome.html", map[string]any{"DashboardURL": "https://x.test/dash"}},
 		{"password-changed.html", map[string]any{"ChangedAt": "Sun, 05 Jul 2026 10:00:00 UTC"}},
+		{"email-changed.html", map[string]any{
+			"ChangedAt": "Sun, 05 Jul 2026 10:00:00 UTC", "OldEmail": "alice@acme.com", "NewEmail": "alice@acme.org",
+		}},
 		{"membership_request_new.html", map[string]any{
 			"OrgName": "Acme", "RequesterName": "Bob", "RequesterEmail": "bob@x.test",
 			"RequestsURL": "https://x.test/requests",

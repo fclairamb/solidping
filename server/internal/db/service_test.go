@@ -743,6 +743,24 @@ func testUsersWithOrg(ctx context.Context, t *testing.T, svc db.Service) {
 		assert.Equal(t, &newPasswordHash, updated.PasswordHash)
 	})
 
+	t.Run("UpdateEmailClearsVerification", func(t *testing.T) {
+		user := models.NewUser("verified@example.com")
+		now := time.Now()
+		user.EmailVerifiedAt = &now
+		require.NoError(t, svc.CreateUser(ctx, user))
+
+		newEmail := "renamed@example.com"
+		require.NoError(t, svc.UpdateUser(ctx, user.UID, &models.UserUpdate{
+			Email:                &newEmail,
+			ClearEmailVerifiedAt: true,
+		}))
+
+		updated, err := svc.GetUser(ctx, user.UID)
+		require.NoError(t, err)
+		assert.Equal(t, newEmail, updated.Email)
+		assert.Nil(t, updated.EmailVerifiedAt)
+	})
+
 	t.Run("Delete", func(t *testing.T) {
 		user := models.NewUser("delete@example.com")
 		err := svc.CreateUser(ctx, user)

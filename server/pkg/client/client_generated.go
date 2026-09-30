@@ -3810,6 +3810,20 @@ type AdminOrgMembership struct {
 	Uid  string `json:"uid"`
 }
 
+// AdminUpdateUserRequest Fields a super admin can change on a user. Only email today.
+type AdminUpdateUserRequest struct {
+	// Email New sign-in email.
+	Email *openapi_types.Email `json:"email,omitempty"`
+}
+
+// AdminUpdateUserResponse defines model for AdminUpdateUserResponse.
+type AdminUpdateUserResponse struct {
+	Email         string `json:"email"`
+	EmailVerified bool   `json:"emailVerified"`
+	Name          string `json:"name"`
+	Uid           string `json:"uid"`
+}
+
 // AdminUserRow A deliberate allow-list projection of the user record. It never carries passwordHash, totpSecret or totpRecoveryCodes.
 type AdminUserRow struct {
 	AvatarUrl     string    `json:"avatarUrl"`
@@ -8232,6 +8246,12 @@ type UpdateOrgSettingsRequest struct {
 
 // UpdateProfileRequest defines model for UpdateProfileRequest.
 type UpdateProfileRequest struct {
+	// CurrentPassword The account's current password, required to change the email.
+	CurrentPassword *string `json:"currentPassword,omitempty"`
+
+	// Email New sign-in email. Requires currentPassword when it differs from the current one.
+	Email *openapi_types.Email `json:"email,omitempty"`
+
 	// Name New display name for the authenticated user
 	Name *string `json:"name,omitempty"`
 }
@@ -9695,6 +9715,9 @@ type MigrateRegionJSONRequestBody = RegionMigrationRequest
 // SendTestEmailJSONRequestBody defines body for SendTestEmail for application/json ContentType.
 type SendTestEmailJSONRequestBody = TestEmailRequest
 
+// UpdateAdminUserJSONRequestBody defines body for UpdateAdminUser for application/json ContentType.
+type UpdateAdminUserJSONRequestBody = AdminUpdateUserRequest
+
 // ImpersonateUserJSONRequestBody defines body for ImpersonateUser for application/json ContentType.
 type ImpersonateUserJSONRequestBody ImpersonateUserJSONBody
 
@@ -10150,12 +10173,42 @@ type ClientInterface interface {
 
 	// UpdateMeWithBody Update the authenticated user's profile
 	//
+	// Updates the display name and, optionally, the sign-in email.
+	//
+	// Changing `email` requires `currentPassword`. The address is trimmed
+	// and lowercased, the account's email verification is cleared, every
+	// other session of the user is signed out (the caller's own session is
+	// kept), and a notice is sent to the previous address when email
+	// sending is configured. Sending the current address (in any case) is
+	// a no-op. Refusals: `400 VALIDATION_ERROR` for a malformed address,
+	// `403 INVALID_CURRENT_PASSWORD` for a missing or wrong password,
+	// `403 FORBIDDEN` for an account without a password (change the email at
+	// the identity provider), `403 DEMO_READ_ONLY` for the shared demo
+	// account, `403 IMPERSONATION_FORBIDDEN` for an impersonation token, and
+	// `409 CONFLICT` when another account already uses the address. Records
+	// `auth.email_changed` in each of the user's organizations.
+	//
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with PATCH /api/v1/auth/me (the `UpdateMe` operationId).
 	UpdateMeWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// UpdateMe Update the authenticated user's profile
+	//
+	// Updates the display name and, optionally, the sign-in email.
+	//
+	// Changing `email` requires `currentPassword`. The address is trimmed
+	// and lowercased, the account's email verification is cleared, every
+	// other session of the user is signed out (the caller's own session is
+	// kept), and a notice is sent to the previous address when email
+	// sending is configured. Sending the current address (in any case) is
+	// a no-op. Refusals: `400 VALIDATION_ERROR` for a malformed address,
+	// `403 INVALID_CURRENT_PASSWORD` for a missing or wrong password,
+	// `403 FORBIDDEN` for an account without a password (change the email at
+	// the identity provider), `403 DEMO_READ_ONLY` for the shared demo
+	// account, `403 IMPERSONATION_FORBIDDEN` for an impersonation token, and
+	// `409 CONFLICT` when another account already uses the address. Records
+	// `auth.email_changed` in each of the user's organizations.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -12720,6 +12773,40 @@ type ClientInterface interface {
 	// Corresponds with GET /api/v1/system/users (the `ListAdminUsers` operationId).
 	ListAdminUsers(ctx context.Context, params *ListAdminUsersParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// UpdateAdminUserWithBody Update a user account (super admin)
+	//
+	// Changes a user's sign-in email without their password. The address is
+	// trimmed and lowercased, the account's email verification is cleared,
+	// every session of the user is signed out (the caller's own session is
+	// kept when they edit themselves), and a notice is sent to the previous
+	// address when email sending is configured. Records `auth.email_changed`
+	// in each of the user's organizations. This is how the seeded
+	// `admin@solidping.io` gets a real address. Answers `400` for a
+	// malformed address, `404` for an unknown user and `409 CONFLICT` when
+	// another account already uses the address.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PATCH /api/v1/system/users/{uid} (the `UpdateAdminUser` operationId).
+	UpdateAdminUserWithBody(ctx context.Context, uid openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateAdminUser Update a user account (super admin)
+	//
+	// Changes a user's sign-in email without their password. The address is
+	// trimmed and lowercased, the account's email verification is cleared,
+	// every session of the user is signed out (the caller's own session is
+	// kept when they edit themselves), and a notice is sent to the previous
+	// address when email sending is configured. Records `auth.email_changed`
+	// in each of the user's organizations. This is how the seeded
+	// `admin@solidping.io` gets a real address. Answers `400` for a
+	// malformed address, `404` for an unknown user and `409 CONFLICT` when
+	// another account already uses the address.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PATCH /api/v1/system/users/{uid} (the `UpdateAdminUser` operationId).
+	UpdateAdminUser(ctx context.Context, uid openapi_types.UUID, body UpdateAdminUserJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ImpersonateUserWithBody Sign in as another user (super admin)
 	//
 	// Mints a 30-minute access token that acts as the user, with their real
@@ -13230,6 +13317,21 @@ func (c *Client) GetCurrentUser(ctx context.Context, reqEditors ...RequestEditor
 
 // UpdateMeWithBody Update the authenticated user's profile
 //
+// Updates the display name and, optionally, the sign-in email.
+//
+// Changing `email` requires `currentPassword`. The address is trimmed
+// and lowercased, the account's email verification is cleared, every
+// other session of the user is signed out (the caller's own session is
+// kept), and a notice is sent to the previous address when email
+// sending is configured. Sending the current address (in any case) is
+// a no-op. Refusals: `400 VALIDATION_ERROR` for a malformed address,
+// `403 INVALID_CURRENT_PASSWORD` for a missing or wrong password,
+// `403 FORBIDDEN` for an account without a password (change the email at
+// the identity provider), `403 DEMO_READ_ONLY` for the shared demo
+// account, `403 IMPERSONATION_FORBIDDEN` for an impersonation token, and
+// `409 CONFLICT` when another account already uses the address. Records
+// `auth.email_changed` in each of the user's organizations.
+//
 // Takes any type of body and a specified content type.
 //
 // Corresponds with PATCH /api/v1/auth/me (the `UpdateMe` operationId).
@@ -13246,6 +13348,21 @@ func (c *Client) UpdateMeWithBody(ctx context.Context, contentType string, body 
 }
 
 // UpdateMe Update the authenticated user's profile
+//
+// Updates the display name and, optionally, the sign-in email.
+//
+// Changing `email` requires `currentPassword`. The address is trimmed
+// and lowercased, the account's email verification is cleared, every
+// other session of the user is signed out (the caller's own session is
+// kept), and a notice is sent to the previous address when email
+// sending is configured. Sending the current address (in any case) is
+// a no-op. Refusals: `400 VALIDATION_ERROR` for a malformed address,
+// `403 INVALID_CURRENT_PASSWORD` for a missing or wrong password,
+// `403 FORBIDDEN` for an account without a password (change the email at
+// the identity provider), `403 DEMO_READ_ONLY` for the shared demo
+// account, `403 IMPERSONATION_FORBIDDEN` for an impersonation token, and
+// `409 CONFLICT` when another account already uses the address. Records
+// `auth.email_changed` in each of the user's organizations.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -19280,6 +19397,60 @@ func (c *Client) SendTestEmail(ctx context.Context, body SendTestEmailJSONReques
 // Corresponds with GET /api/v1/system/users (the `ListAdminUsers` operationId).
 func (c *Client) ListAdminUsers(ctx context.Context, params *ListAdminUsersParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListAdminUsersRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateAdminUserWithBody Update a user account (super admin)
+//
+// Changes a user's sign-in email without their password. The address is
+// trimmed and lowercased, the account's email verification is cleared,
+// every session of the user is signed out (the caller's own session is
+// kept when they edit themselves), and a notice is sent to the previous
+// address when email sending is configured. Records `auth.email_changed`
+// in each of the user's organizations. This is how the seeded
+// `admin@solidping.io` gets a real address. Answers `400` for a
+// malformed address, `404` for an unknown user and `409 CONFLICT` when
+// another account already uses the address.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PATCH /api/v1/system/users/{uid} (the `UpdateAdminUser` operationId).
+func (c *Client) UpdateAdminUserWithBody(ctx context.Context, uid openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateAdminUserRequestWithBody(c.Server, uid, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateAdminUser Update a user account (super admin)
+//
+// Changes a user's sign-in email without their password. The address is
+// trimmed and lowercased, the account's email verification is cleared,
+// every session of the user is signed out (the caller's own session is
+// kept when they edit themselves), and a notice is sent to the previous
+// address when email sending is configured. Records `auth.email_changed`
+// in each of the user's organizations. This is how the seeded
+// `admin@solidping.io` gets a real address. Answers `400` for a
+// malformed address, `404` for an unknown user and `409 CONFLICT` when
+// another account already uses the address.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PATCH /api/v1/system/users/{uid} (the `UpdateAdminUser` operationId).
+func (c *Client) UpdateAdminUser(ctx context.Context, uid openapi_types.UUID, body UpdateAdminUserJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateAdminUserRequest(c.Server, uid, body)
 	if err != nil {
 		return nil, err
 	}
@@ -33630,6 +33801,53 @@ func NewListAdminUsersRequest(server string, params *ListAdminUsersParams) (*htt
 	return req, nil
 }
 
+// NewUpdateAdminUserRequest calls the generic UpdateAdminUser builder with application/json body
+func NewUpdateAdminUserRequest(server string, uid openapi_types.UUID, body UpdateAdminUserJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateAdminUserRequestWithBody(server, uid, "application/json", bodyReader)
+}
+
+// NewUpdateAdminUserRequestWithBody constructs an http.Request for the UpdateAdminUser method, with any body, and a specified content type
+func NewUpdateAdminUserRequestWithBody(server string, uid openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "uid", uid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/system/users/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewImpersonateUserRequest calls the generic ImpersonateUser builder with application/json body
 func NewImpersonateUserRequest(server string, uid openapi_types.UUID, body ImpersonateUserJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -33956,12 +34174,42 @@ type ClientWithResponsesInterface interface {
 
 	// UpdateMeWithBodyWithResponse Update the authenticated user's profile
 	//
+	// Updates the display name and, optionally, the sign-in email.
+	//
+	// Changing `email` requires `currentPassword`. The address is trimmed
+	// and lowercased, the account's email verification is cleared, every
+	// other session of the user is signed out (the caller's own session is
+	// kept), and a notice is sent to the previous address when email
+	// sending is configured. Sending the current address (in any case) is
+	// a no-op. Refusals: `400 VALIDATION_ERROR` for a malformed address,
+	// `403 INVALID_CURRENT_PASSWORD` for a missing or wrong password,
+	// `403 FORBIDDEN` for an account without a password (change the email at
+	// the identity provider), `403 DEMO_READ_ONLY` for the shared demo
+	// account, `403 IMPERSONATION_FORBIDDEN` for an impersonation token, and
+	// `409 CONFLICT` when another account already uses the address. Records
+	// `auth.email_changed` in each of the user's organizations.
+	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with PATCH /api/v1/auth/me (the `UpdateMe` operationId).
 	UpdateMeWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateMeResult, error)
 
 	// UpdateMeWithResponse Update the authenticated user's profile
+	//
+	// Updates the display name and, optionally, the sign-in email.
+	//
+	// Changing `email` requires `currentPassword`. The address is trimmed
+	// and lowercased, the account's email verification is cleared, every
+	// other session of the user is signed out (the caller's own session is
+	// kept), and a notice is sent to the previous address when email
+	// sending is configured. Sending the current address (in any case) is
+	// a no-op. Refusals: `400 VALIDATION_ERROR` for a malformed address,
+	// `403 INVALID_CURRENT_PASSWORD` for a missing or wrong password,
+	// `403 FORBIDDEN` for an account without a password (change the email at
+	// the identity provider), `403 DEMO_READ_ONLY` for the shared demo
+	// account, `403 IMPERSONATION_FORBIDDEN` for an impersonation token, and
+	// `409 CONFLICT` when another account already uses the address. Records
+	// `auth.email_changed` in each of the user's organizations.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -36882,6 +37130,40 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/v1/system/users (the `ListAdminUsers` operationId).
 	ListAdminUsersWithResponse(ctx context.Context, params *ListAdminUsersParams, reqEditors ...RequestEditorFn) (*ListAdminUsersResult, error)
 
+	// UpdateAdminUserWithBodyWithResponse Update a user account (super admin)
+	//
+	// Changes a user's sign-in email without their password. The address is
+	// trimmed and lowercased, the account's email verification is cleared,
+	// every session of the user is signed out (the caller's own session is
+	// kept when they edit themselves), and a notice is sent to the previous
+	// address when email sending is configured. Records `auth.email_changed`
+	// in each of the user's organizations. This is how the seeded
+	// `admin@solidping.io` gets a real address. Answers `400` for a
+	// malformed address, `404` for an unknown user and `409 CONFLICT` when
+	// another account already uses the address.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /api/v1/system/users/{uid} (the `UpdateAdminUser` operationId).
+	UpdateAdminUserWithBodyWithResponse(ctx context.Context, uid openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAdminUserResult, error)
+
+	// UpdateAdminUserWithResponse Update a user account (super admin)
+	//
+	// Changes a user's sign-in email without their password. The address is
+	// trimmed and lowercased, the account's email verification is cleared,
+	// every session of the user is signed out (the caller's own session is
+	// kept when they edit themselves), and a notice is sent to the previous
+	// address when email sending is configured. Records `auth.email_changed`
+	// in each of the user's organizations. This is how the seeded
+	// `admin@solidping.io` gets a real address. Answers `400` for a
+	// malformed address, `404` for an unknown user and `409 CONFLICT` when
+	// another account already uses the address.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /api/v1/system/users/{uid} (the `UpdateAdminUser` operationId).
+	UpdateAdminUserWithResponse(ctx context.Context, uid openapi_types.UUID, body UpdateAdminUserJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAdminUserResult, error)
+
 	// ImpersonateUserWithBodyWithResponse Sign in as another user (super admin)
 	//
 	// Mints a 30-minute access token that acts as the user, with their real
@@ -37795,6 +38077,10 @@ type UpdateMeResult struct {
 	JSON400 *ValidationError
 	// JSON401 the response for an HTTP 401 `application/json` response
 	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Conflict
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -37810,6 +38096,16 @@ func (r UpdateMeResult) GetJSON400() *ValidationError {
 // GetJSON401 returns the response for an HTTP 401 `application/json` response
 func (r UpdateMeResult) GetJSON401() *Unauthorized {
 	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r UpdateMeResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r UpdateMeResult) GetJSON409() *Conflict {
+	return r.JSON409
 }
 
 // GetBody returns the raw response body bytes
@@ -52780,6 +53076,82 @@ func (r ListAdminUsersResult) ContentType() string {
 	return ""
 }
 
+type UpdateAdminUserResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AdminUpdateUserResponse
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ValidationError
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Conflict
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateAdminUserResult) GetJSON200() *AdminUpdateUserResponse {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r UpdateAdminUserResult) GetJSON400() *ValidationError {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r UpdateAdminUserResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r UpdateAdminUserResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r UpdateAdminUserResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r UpdateAdminUserResult) GetJSON409() *Conflict {
+	return r.JSON409
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateAdminUserResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateAdminUserResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateAdminUserResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateAdminUserResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ImpersonateUserResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -53247,6 +53619,21 @@ func (c *ClientWithResponses) GetCurrentUserWithResponse(ctx context.Context, re
 
 // UpdateMeWithBodyWithResponse Update the authenticated user's profile
 //
+// Updates the display name and, optionally, the sign-in email.
+//
+// Changing `email` requires `currentPassword`. The address is trimmed
+// and lowercased, the account's email verification is cleared, every
+// other session of the user is signed out (the caller's own session is
+// kept), and a notice is sent to the previous address when email
+// sending is configured. Sending the current address (in any case) is
+// a no-op. Refusals: `400 VALIDATION_ERROR` for a malformed address,
+// `403 INVALID_CURRENT_PASSWORD` for a missing or wrong password,
+// `403 FORBIDDEN` for an account without a password (change the email at
+// the identity provider), `403 DEMO_READ_ONLY` for the shared demo
+// account, `403 IMPERSONATION_FORBIDDEN` for an impersonation token, and
+// `409 CONFLICT` when another account already uses the address. Records
+// `auth.email_changed` in each of the user's organizations.
+//
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with PATCH /api/v1/auth/me (the `UpdateMe` operationId).
@@ -53259,6 +53646,21 @@ func (c *ClientWithResponses) UpdateMeWithBodyWithResponse(ctx context.Context, 
 }
 
 // UpdateMeWithResponse Update the authenticated user's profile
+//
+// Updates the display name and, optionally, the sign-in email.
+//
+// Changing `email` requires `currentPassword`. The address is trimmed
+// and lowercased, the account's email verification is cleared, every
+// other session of the user is signed out (the caller's own session is
+// kept), and a notice is sent to the previous address when email
+// sending is configured. Sending the current address (in any case) is
+// a no-op. Refusals: `400 VALIDATION_ERROR` for a malformed address,
+// `403 INVALID_CURRENT_PASSWORD` for a missing or wrong password,
+// `403 FORBIDDEN` for an account without a password (change the email at
+// the identity provider), `403 DEMO_READ_ONLY` for the shared demo
+// account, `403 IMPERSONATION_FORBIDDEN` for an impersonation token, and
+// `409 CONFLICT` when another account already uses the address. Records
+// `auth.email_changed` in each of the user's organizations.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -58267,6 +58669,52 @@ func (c *ClientWithResponses) ListAdminUsersWithResponse(ctx context.Context, pa
 	return ParseListAdminUsersResult(rsp)
 }
 
+// UpdateAdminUserWithBodyWithResponse Update a user account (super admin)
+//
+// Changes a user's sign-in email without their password. The address is
+// trimmed and lowercased, the account's email verification is cleared,
+// every session of the user is signed out (the caller's own session is
+// kept when they edit themselves), and a notice is sent to the previous
+// address when email sending is configured. Records `auth.email_changed`
+// in each of the user's organizations. This is how the seeded
+// `admin@solidping.io` gets a real address. Answers `400` for a
+// malformed address, `404` for an unknown user and `409 CONFLICT` when
+// another account already uses the address.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /api/v1/system/users/{uid} (the `UpdateAdminUser` operationId).
+func (c *ClientWithResponses) UpdateAdminUserWithBodyWithResponse(ctx context.Context, uid openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAdminUserResult, error) {
+	rsp, err := c.UpdateAdminUserWithBody(ctx, uid, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateAdminUserResult(rsp)
+}
+
+// UpdateAdminUserWithResponse Update a user account (super admin)
+//
+// Changes a user's sign-in email without their password. The address is
+// trimmed and lowercased, the account's email verification is cleared,
+// every session of the user is signed out (the caller's own session is
+// kept when they edit themselves), and a notice is sent to the previous
+// address when email sending is configured. Records `auth.email_changed`
+// in each of the user's organizations. This is how the seeded
+// `admin@solidping.io` gets a real address. Answers `400` for a
+// malformed address, `404` for an unknown user and `409 CONFLICT` when
+// another account already uses the address.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /api/v1/system/users/{uid} (the `UpdateAdminUser` operationId).
+func (c *ClientWithResponses) UpdateAdminUserWithResponse(ctx context.Context, uid openapi_types.UUID, body UpdateAdminUserJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAdminUserResult, error) {
+	rsp, err := c.UpdateAdminUser(ctx, uid, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateAdminUserResult(rsp)
+}
+
 // ImpersonateUserWithBodyWithResponse Sign in as another user (super admin)
 //
 // Mints a 30-minute access token that acts as the user, with their real
@@ -58970,6 +59418,20 @@ func ParseUpdateMeResult(rsp *http.Response) (*UpdateMeResult, error) {
 			return nil, err
 		}
 		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
 
 	}
 
@@ -70102,6 +70564,67 @@ func ParseListAdminUsersResult(rsp *http.Response) (*ListAdminUsersResult, error
 			return nil, err
 		}
 		response.JSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateAdminUserResult parses an HTTP response from a UpdateAdminUserWithResponse call
+func ParseUpdateAdminUserResult(rsp *http.Response) (*UpdateAdminUserResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateAdminUserResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AdminUpdateUserResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
 
 	}
 
