@@ -144,7 +144,7 @@ test.describe("Server > Users > Edit", () => {
     await page.getByTestId("users-search").fill(email);
     await page.waitForLoadState("networkidle");
 
-    const row = page.getByRole("row", { name: new RegExp(email.replace(/[.+]/g, "\\$&")) });
+    const row = page.getByRole("row", { name: new RegExp(email.replace(/[\\.+]/g, "\\$&")) });
     await expect(row).toBeVisible();
     await row.locator('[data-testid^="users-edit-"]').click();
     await expect(page).toHaveURL(/server\/users\/[0-9a-f-]+$/);
