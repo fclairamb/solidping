@@ -81,6 +81,7 @@ func newUsersSetup(t *testing.T) *usersSetup {
 		Use(authMW.RequireAuth).
 		Use(authMW.RequireSuperAdmin)
 	usersGroup.GET("/users", systemHandler.ListUsers)
+	usersGroup.GET("/users/:uid", systemHandler.GetUser)
 
 	server := httptest.NewServer(router)
 	t.Cleanup(server.Close)
@@ -335,4 +336,32 @@ func TestListMembersByUsersEmptyInputSkipsQuery(t *testing.T) {
 	members, err = setup.dbSvc.ListMembersByUsers(ctx, []string{})
 	r.NoError(err)
 	r.Empty(members)
+}
+
+// TestGetUser: GET /system/users/:uid returns one directory row to a super
+// admin, 404s for an unknown user, and refuses an org admin (spec 2026-09-30-08).
+func TestGetUser(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	setup := newUsersSetup(t)
+
+	user, err := setup.dbSvc.GetUserByEmail(t.Context(), "admin@acme.com")
+	r.NoError(err)
+
+	code, _ := setup.call(t, "/api/v1/system/users/"+user.UID, setup.adminToken)
+	r.Equal(http.StatusForbidden, code)
+
+	code, body := setup.call(t, "/api/v1/system/users/"+user.UID, setup.superToken)
+	r.Equal(http.StatusOK, code, string(body))
+
+	var row system.AdminUserRow
+	r.NoError(json.Unmarshal(body, &row))
+	r.Equal(user.UID, row.UID)
+	r.Equal("admin@acme.com", row.Email)
+	r.Len(row.Orgs, 1)
+	r.NotContains(string(body), "passwordHash")
+
+	code, _ = setup.call(t, "/api/v1/system/users/00000000-0000-0000-0000-000000000000", setup.superToken)
+	r.Equal(http.StatusNotFound, code)
 }

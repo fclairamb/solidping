@@ -1752,6 +1752,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	systemActions.POST("/users/:uid/impersonate", authHandler.Impersonate)
 	// Super-admin user edit (spec 2026-09-30-08): today only the email, which
 	// is how the seeded admin@solidping.io gets a real address.
+	systemActions.GET("/users/:uid", systemHandler.GetUser)
 	systemActions.PATCH("/users/:uid", authHandler.AdminUpdateUser)
 	// Fleet-wide agent view (spec 2026-08-05-01): org agents are already
 	// listed per-org, but system agents (kind='system', no owning org) are
