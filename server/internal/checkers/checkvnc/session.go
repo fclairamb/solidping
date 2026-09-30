@@ -1,14 +1,19 @@
 package checkvnc
 
 import (
+	"bufio"
 	"bytes"
+	"context"
 	"crypto/des"
+	"crypto/rand"
+	"crypto/x509"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"image"
 	"image/png"
 	"io"
+	"net"
 	"strings"
 )
 
@@ -66,7 +71,8 @@ const (
 	// requireAuth is on: anyone can attach to the desktop.
 	FailureNoAuthOffered failureCode = "NO_AUTH_OFFERED"
 	// FailureAuthUnsupported is a password configured but no security type
-	// this checker can authenticate with (e.g. only VeNCrypt or ARD).
+	// this checker can authenticate with (e.g. only RA2, ARD without a
+	// username, or VeNCrypt with only anonymous-TLS sub-types).
 	FailureAuthUnsupported failureCode = "AUTH_TYPE_UNSUPPORTED"
 	// FailureAuthFailed is a rejected password.
 	FailureAuthFailed failureCode = "AUTH_FAILED"
@@ -74,6 +80,12 @@ const (
 	FailureTooManyAttempts failureCode = "TOO_MANY_ATTEMPTS"
 	// FailureNoFrame is a screenshot whose frame never arrived in time.
 	FailureNoFrame failureCode = "NO_FRAME"
+	// FailureTLS is a failed VeNCrypt TLS handshake, including an
+	// untrusted certificate when tlsVerify is on.
+	FailureTLS failureCode = "TLS_FAILED"
+	// FailureCertExpiry is a VeNCrypt certificate expired or inside the
+	// warning/critical thresholds.
+	FailureCertExpiry failureCode = "CERT_EXPIRY"
 	// FailureProtocol is any other malformed or unexpected exchange.
 	FailureProtocol failureCode = "PROTOCOL_ERROR"
 )
@@ -144,53 +156,134 @@ func vncAuthResponse(password string, challenge []byte) ([]byte, error) {
 	return response, nil
 }
 
-// chooseSecurityType picks the type an authenticated run uses: VNC
-// authentication when offered, None when that is all there is (requireAuth
-// already refused it earlier when on). Anything else is unsupported here
-// (VeNCrypt and ARD are spec 2026-09-30-07).
-func chooseSecurityType(offer *handshakeResult) (uint8, error) {
-	switch {
-	case offer.offers(secVNCAuth):
-		return secVNCAuth, nil
-	case offer.offers(secNone):
-		return secNone, nil
-	default:
-		return 0, failure(FailureAuthUnsupported, nil,
-			"no supported authentication method offered (supported: VNC Authentication (2)); server offers: %s",
-			describeSecurityTypes(offer.securityTypes))
-	}
+// authOutcome is what a security negotiation leaves behind.
+type authOutcome struct {
+	// conn is the stream to continue on: TLS-wrapped after VeNCrypt.
+	conn    net.Conn
+	secType uint8
+	// subtype is the VeNCrypt sub-type, 0 for other types.
+	subtype uint32
+	// cert is the VeNCrypt X.509 leaf certificate, kept even when the
+	// handshake failed verification so it can still be reported.
+	cert *x509.Certificate
 }
 
-// authenticate selects secType (3.7+), runs VNC authentication when chosen
-// and reads SecurityResult where the protocol version sends one.
-func authenticate(stream io.ReadWriter, offer *handshakeResult, secType uint8, password string) error {
-	if offer.version != version33 {
-		if _, err := stream.Write([]byte{secType}); err != nil {
-			return fmt.Errorf("write security type: %w", err)
-		}
+// redialFunc opens a fresh connection and re-runs the handshake. It is how
+// a run falls back when VeNCrypt, once selected, offers no usable sub-type:
+// RFB has no way back to the type list on the same connection.
+type redialFunc func() (net.Conn, *handshakeResult, error)
+
+// secure authenticates with the strongest candidate type, falling back to
+// the next one on a fresh connection (when redial is set) if VeNCrypt turns
+// out unusable. The outcome may be non-nil on error (it carries the TLS
+// certificate for the report). A connection secure opened itself is closed
+// on error; on success the caller closes outcome.conn.
+func secure(
+	ctx context.Context, conn net.Conn, offer *handshakeResult, cfg *VNCConfig, redial redialFunc,
+) (*authOutcome, error) {
+	candidates, err := securityCandidates(offer, cfg)
+	if err != nil {
+		return nil, err
 	}
 
-	if secType == secVNCAuth {
-		challenge := make([]byte, challengeLen)
-		if _, err := io.ReadFull(stream, challenge); err != nil {
-			return fmt.Errorf("read challenge: %w", err)
+	redialed := false
+
+	for i, secType := range candidates {
+		outcome, authErr := authenticate(ctx, conn, offer, secType, cfg)
+		if authErr == nil {
+			return outcome, nil
 		}
 
-		response, err := vncAuthResponse(password, challenge)
+		last := i == len(candidates)-1
+		if !errors.Is(authErr, errNoUsableSubtype) || last || redial == nil {
+			if redialed {
+				_ = conn.Close()
+			}
+
+			return outcome, authErr
+		}
+
+		_ = conn.Close()
+
+		conn, offer, err = redial()
 		if err != nil {
-			return err
+			return nil, err
 		}
 
-		if _, err := stream.Write(response); err != nil {
-			return fmt.Errorf("write challenge response: %w", err)
-		}
-	} else if offer.version != version38 {
-		// None on 3.3/3.7: no SecurityResult, straight to ClientInit.
-		return nil
+		redialed = true
 	}
 
-	return readSecurityResult(stream, offer.version)
+	// Unreachable: the loop returns on its last candidate.
+	return nil, failure(FailureProtocol, nil, "no authentication method left to try")
 }
+
+// authenticate selects secType (3.7+), runs its authentication and reads
+// SecurityResult where the protocol version sends one.
+func authenticate(
+	ctx context.Context, conn net.Conn, offer *handshakeResult, secType uint8, cfg *VNCConfig,
+) (*authOutcome, error) {
+	if offer.version != version33 {
+		if _, err := conn.Write([]byte{secType}); err != nil {
+			return nil, fmt.Errorf("write security type: %w", err)
+		}
+	}
+
+	outcome := &authOutcome{conn: conn, secType: secType}
+
+	switch secType {
+	case secVNCAuth:
+		if err := vncAuthenticate(conn, cfg.Password); err != nil {
+			return nil, err
+		}
+	case secVeNCrypt:
+		if err := vencryptAuthenticate(ctx, outcome, cfg); err != nil {
+			return outcome, err
+		}
+	case secARD:
+		if err := ardAuthenticate(conn, cfg.Username, cfg.Password, rand.Reader); err != nil {
+			return nil, err
+		}
+	default:
+		if offer.version != version38 {
+			// None on 3.3/3.7: no SecurityResult, straight to ClientInit.
+			return outcome, nil
+		}
+	}
+
+	return outcome, readSecurityResult(outcome.conn, offer.version)
+}
+
+// vncAuthenticate answers the type-2 DES challenge.
+func vncAuthenticate(stream io.ReadWriter, password string) error {
+	challenge := make([]byte, challengeLen)
+	if _, err := io.ReadFull(stream, challenge); err != nil {
+		return fmt.Errorf("read challenge: %w", err)
+	}
+
+	response, err := vncAuthResponse(password, challenge)
+	if err != nil {
+		return err
+	}
+
+	if _, err := stream.Write(response); err != nil {
+		return fmt.Errorf("write challenge response: %w", err)
+	}
+
+	return nil
+}
+
+// bufferedConn is a connection whose reads go through a buffered reader, so
+// a TLS upgrade or a redial keeps whatever the reader already buffered.
+type bufferedConn struct {
+	net.Conn
+	reader *bufio.Reader
+}
+
+func newBufferedConn(conn net.Conn) *bufferedConn {
+	return &bufferedConn{Conn: conn, reader: bufio.NewReader(conn)}
+}
+
+func (b *bufferedConn) Read(p []byte) (int, error) { return b.reader.Read(p) } //nolint:wrapcheck // passthrough
 
 // readSecurityResult reads the uint32 result and, on 3.8, the reason string.
 func readSecurityResult(reader io.Reader, version rfbVersion) error {

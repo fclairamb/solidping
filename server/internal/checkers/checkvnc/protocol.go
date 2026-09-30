@@ -263,3 +263,42 @@ func readReason(reader io.Reader) string {
 
 	return strings.TrimSpace(string(buf[:n]))
 }
+
+// securityCandidates lists the security types an authenticated run tries,
+// strongest first: VeNCrypt (TLS) > Apple Remote Desktop > VNC authentication
+// > None. A type is a candidate only when the server offers it and the
+// configured credentials can satisfy it (ARD needs a username). None is only
+// reachable with requireAuth off: the caller refused the server earlier
+// otherwise. VeNCrypt's own sub-types are only known once it is selected, so
+// a VeNCrypt that turns out unusable falls back to the next candidate.
+func securityCandidates(offer *handshakeResult, cfg *VNCConfig) ([]uint8, error) {
+	candidates := make([]uint8, 0, len(offer.securityTypes))
+
+	if offer.offers(secVeNCrypt) {
+		candidates = append(candidates, secVeNCrypt)
+	}
+
+	if offer.offers(secARD) && cfg.Username != "" {
+		candidates = append(candidates, secARD)
+	}
+
+	for _, t := range []uint8{secVNCAuth, secNone} {
+		if offer.offers(t) {
+			candidates = append(candidates, t)
+		}
+	}
+
+	if len(candidates) > 0 {
+		return candidates, nil
+	}
+
+	hint := ""
+	if offer.offers(secARD) {
+		hint = "; Apple Remote Desktop needs a username"
+	}
+
+	return nil, failure(FailureAuthUnsupported, nil,
+		"no supported authentication method offered (supported: VeNCrypt (19), "+
+			"Apple Remote Desktop (30), VNC Authentication (2)); server offers: %s%s",
+		describeSecurityTypes(offer.securityTypes), hint)
+}

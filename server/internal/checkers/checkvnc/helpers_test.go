@@ -115,3 +115,59 @@ func serverInitBytes(w, h uint16, name string) []byte {
 
 	return append(out, reasonBytes(name)...)
 }
+
+// fakeServerSeq runs scripts[i] on the i-th connection accepted, in order.
+// It reports the first script error (or nil once all ran) through errs.
+func fakeServerSeq(t *testing.T, scripts ...func(conn net.Conn) error) (string, int, <-chan error) {
+	t.Helper()
+
+	ln, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = ln.Close() })
+
+	errs := make(chan error, 1)
+
+	go func() {
+		for _, script := range scripts {
+			conn, acceptErr := ln.Accept()
+			if acceptErr != nil {
+				errs <- acceptErr
+
+				return
+			}
+
+			_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
+			scriptErr := script(conn)
+			_ = conn.Close()
+
+			if scriptErr != nil {
+				errs <- scriptErr
+
+				return
+			}
+		}
+
+		errs <- nil
+	}()
+
+	host, portStr, err := net.SplitHostPort(ln.Addr().String())
+	require.NoError(t, err)
+
+	port, err := strconv.Atoi(portStr)
+	require.NoError(t, err)
+
+	return host, port, errs
+}
+
+// rfbGreeting writes the 3.8 banner, reads the client's and offers types.
+func rfbGreeting(conn net.Conn, types ...byte) error {
+	if err := writeAll(conn, []byte("RFB 003.008\n")); err != nil {
+		return err
+	}
+
+	if _, err := readN(conn, bannerLen); err != nil {
+		return err
+	}
+
+	return writeAll(conn, []byte{byte(len(types))}, types)
+}

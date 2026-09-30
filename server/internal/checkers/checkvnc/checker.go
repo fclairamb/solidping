@@ -6,14 +6,17 @@
 // the offered authentication methods (requireAuth, on by default, fails a
 // server that offers "None").
 //
-// With a password it authenticates with VNC authentication (security type 2),
+// With a password it authenticates with the strongest method both sides
+// support (VeNCrypt X.509 TLS, Apple Remote Desktop, VNC authentication),
 // reads ServerInit (desktop size and name) and optionally captures one frame
 // as a PNG. It always attaches with the shared flag set, so an existing viewer
 // is never disconnected.
 package checkvnc
 
 import (
+	"bytes"
 	"context"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -28,6 +31,7 @@ import (
 
 const (
 	microsecondsPerMilli = 1000.0
+	hoursPerDay          = 24
 
 	outputFailureCode = "failure_code"
 )
@@ -53,6 +57,8 @@ type run struct {
 	start   time.Time
 	metrics map[string]any
 	output  map[string]any
+	// cert is the VeNCrypt server certificate, graded by up().
+	cert *x509.Certificate
 }
 
 // Execute performs the VNC check and returns the result.
@@ -128,16 +134,17 @@ func (c *VNCChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 
 // authenticated runs the password path: auth, ServerInit, optional capture.
 func (s *run) authenticated(conn net.Conn, offer *handshakeResult) *checkerdef.Result {
-	secType, err := chooseSecurityType(offer)
+	authStart := time.Now()
+
+	outcome, err := secure(s.ctx, conn, offer, s.cfg, s.redial)
+	s.recordSecurity(outcome)
+
 	if err != nil {
 		return s.fail(err)
 	}
 
-	authStart := time.Now()
-
-	if authErr := authenticate(conn, offer, secType, s.cfg.Password); authErr != nil {
-		return s.fail(authErr)
-	}
+	conn = outcome.conn
+	defer func() { _ = conn.Close() }()
 
 	init, err := clientServerInit(conn)
 	if err != nil {
@@ -146,7 +153,6 @@ func (s *run) authenticated(conn net.Conn, offer *handshakeResult) *checkerdef.R
 
 	s.metrics["auth_ms"] = durationMs(time.Since(authStart))
 	s.output["authenticated"] = true
-	s.output["securityType"] = securityTypeName(secType)
 	s.output["desktopName"] = init.name
 	s.output["width"] = int(init.width)
 	s.output["height"] = int(init.height)
@@ -194,6 +200,83 @@ func (s *run) authenticated(conn net.Conn, offer *handshakeResult) *checkerdef.R
 	attachScreenshot(s.ctx, shot, result)
 
 	return result
+}
+
+// redial opens a fresh connection for the fallback after an unusable
+// VeNCrypt (see secure).
+func (s *run) redial() (net.Conn, *handshakeResult, error) {
+	port := s.cfg.Port
+	if port == 0 {
+		port = defaultPort
+	}
+
+	conn, err := dialTarget(s.ctx, s.cfg.Host, port, map[string]any{})
+	if err != nil {
+		return nil, nil, failure(FailureConnection, err, "connection failed: %v", err)
+	}
+
+	offer, err := handshake(conn)
+	if err != nil {
+		_ = conn.Close()
+
+		return nil, nil, classifyHandshakeError(err)
+	}
+
+	return conn, offer, nil
+}
+
+// recordSecurity reports the negotiated method and, after VeNCrypt, the
+// server certificate (kept even when the TLS handshake failed on it).
+func (s *run) recordSecurity(outcome *authOutcome) {
+	if outcome == nil {
+		return
+	}
+
+	s.output["securityType"] = securityTypeName(outcome.secType)
+
+	if outcome.subtype != 0 {
+		s.output["vencryptSubtype"] = vencryptSubtypeName(outcome.subtype)
+	}
+
+	if outcome.cert == nil {
+		return
+	}
+
+	s.cert = outcome.cert
+	s.output["certSubject"] = outcome.cert.Subject.String()
+	s.output["certIssuer"] = outcome.cert.Issuer.String()
+	s.output["certExpiresAt"] = outcome.cert.NotAfter.Format(time.RFC3339)
+	s.output["certSelfSigned"] = bytes.Equal(outcome.cert.RawSubject, outcome.cert.RawIssuer)
+	s.metrics["days_remaining"] = certDaysRemaining(outcome.cert)
+}
+
+// certDaysRemaining returns whole days until the certificate's NotAfter.
+func certDaysRemaining(cert *x509.Certificate) int {
+	return int(time.Until(cert.NotAfter).Hours() / hoursPerDay)
+}
+
+// gradeCertificate applies the expiry thresholds (0 = disabled) to the
+// VeNCrypt certificate, the SSL-style grading checkrdp uses. An expired
+// certificate is always Down.
+func gradeCertificate(cfg *VNCConfig, cert *x509.Certificate) (checkerdef.Status, string) {
+	if cert == nil {
+		return checkerdef.StatusUp, ""
+	}
+
+	days := certDaysRemaining(cert)
+
+	switch {
+	case time.Now().After(cert.NotAfter):
+		return checkerdef.StatusDown, "server certificate has expired"
+	case cfg.CriticalDays > 0 && days <= cfg.CriticalDays:
+		return checkerdef.StatusDown, fmt.Sprintf(
+			"server certificate expires in %d days (critical threshold: %d)", days, cfg.CriticalDays)
+	case cfg.WarningDays > 0 && days <= cfg.WarningDays:
+		return checkerdef.StatusWarning, fmt.Sprintf(
+			"server certificate expires in %d days (warning threshold: %d)", days, cfg.WarningDays)
+	default:
+		return checkerdef.StatusUp, ""
+	}
 }
 
 // captureFrame requests one full frame and PNG-encodes it.
@@ -251,10 +334,17 @@ func classifyHandshakeError(err error) *FailureError {
 	}
 }
 
-// up builds a successful result.
+// up builds a successful result, downgraded by the VeNCrypt certificate
+// grade when it is expiring.
 func (s *run) up() *checkerdef.Result {
+	status, msg := gradeCertificate(s.cfg, s.cert)
+	if status != checkerdef.StatusUp {
+		s.output[outputFailureCode] = string(FailureCertExpiry)
+		s.output[checkerdef.OutputKeyError] = msg
+	}
+
 	return &checkerdef.Result{
-		Status: checkerdef.StatusUp, Duration: time.Since(s.start), Metrics: s.metrics, Output: s.output,
+		Status: status, Duration: time.Since(s.start), Metrics: s.metrics, Output: s.output,
 	}
 }
 

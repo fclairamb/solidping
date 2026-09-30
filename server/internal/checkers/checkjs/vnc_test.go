@@ -142,6 +142,32 @@ return { status: s.ok ? "up" : "down", output: { code: s.failureCode } };`)
 	r.Equal("AUTH_FAILED", result.Output["code"])
 }
 
+// TestVNCConnectPassesUsernameAndTLSVerify: the VeNCrypt/ARD options reach
+// the session config.
+//
+//nolint:paralleltest // mutates the package-level OpenVNCSession seam
+func TestVNCConnectPassesUsernameAndTLSVerify(t *testing.T) {
+	r := require.New(t)
+
+	previous := checkvnc.OpenVNCSession
+	t.Cleanup(func() { checkvnc.OpenVNCSession = previous })
+
+	var got *checkvnc.VNCConfig
+
+	checkvnc.OpenVNCSession = func(_ context.Context, cfg *checkvnc.VNCConfig, _ net.Conn) (checkvnc.VNCSession, error) {
+		got = cfg
+
+		return nil, &checkvnc.FailureError{Code: checkvnc.FailureAuthFailed, Msg: "authentication failed"}
+	}
+
+	runVNCScript(t, `vnc.connect({host:"vnc.acme.com", username:"alice", password:"pw", tlsVerify:true});
+return { status: "up" };`)
+
+	r.NotNil(got)
+	r.Equal("alice", got.Username)
+	r.True(got.TLSVerify)
+}
+
 //nolint:paralleltest // mutates the package-level TypeEnabled and OpenVNCSession seams
 func TestVNCConnectRefusedWhenTypeDisabled(t *testing.T) {
 	r := require.New(t)
