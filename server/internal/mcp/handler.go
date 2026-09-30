@@ -98,6 +98,9 @@ type Handler struct {
 	// post this update), and the auto-publish pipeline belongs to the server.
 	publicationsSvc *incidentpublications.Service
 	dbService       db.Service
+	// baseURL is the public base URL, used only to build the icon URL on the
+	// static server card. Empty when no config is available (tests).
+	baseURL string
 
 	sessions sync.Map // map[string]*session
 	tools    []ToolDefinition
@@ -169,6 +172,10 @@ func NewHandler(
 	// update_check can turn degraded detection off; its open degraded incident
 	// closes in the same call, exactly as over the HTTP API (spec 2026-09-24-08).
 	handler.checksSvc.SetDegradedIncidentResolver(incidentsSvc)
+
+	if cfg != nil {
+		handler.baseURL = cfg.Server.BaseURL
+	}
 
 	handler.registerTools()
 
@@ -422,7 +429,8 @@ func (h *Handler) handleInitialize(
 			Prompts:   &PromptsCap{},
 		},
 		// The link-time build version (Dockerfile ldflags); "dev" locally.
-		ServerInfo: ServerInfo{Name: "solidping", Version: version.Version},
+		ServerInfo:   ServerInfo{Name: "solidping", Version: version.Version},
+		Instructions: serverInstructions,
 	})
 
 	return &resp, http.StatusOK

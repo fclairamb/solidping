@@ -794,3 +794,33 @@ func TestMCPInitializeReportsBuildVersion(t *testing.T) {
 	r.Equal(version.Version, resp.Result.ServerInfo.Version)
 	r.NotEqual("0.1.0", resp.Result.ServerInfo.Version)
 }
+
+func TestInitialize_ReturnsInstructionsAuthedAndAnonymous(t *testing.T) {
+	t.Parallel()
+
+	for name, claims := range map[string]*auth.Claims{"authed": defaultClaims(), "anonymous": nil} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+
+			handler := newTestHandler()
+			rec, req := makeRequest(t, http.MethodPost,
+				`{"jsonrpc":"2.0","id":1,"method":"initialize"}`, claims)
+			r.NoError(handler.Handle(rec, req))
+
+			resp := decodeResponse(t, rec)
+			r.Nil(resp.Error)
+
+			result, ok := resp.Result.(map[string]any)
+			r.True(ok)
+
+			instructions, _ := result["instructions"].(string)
+			r.NotEmpty(instructions)
+			r.Contains(instructions, "list_checks")
+			r.Contains(instructions, "diagnose_check")
+			r.Contains(instructions, "validate_check")
+			r.Contains(instructions, "get_check_type_samples")
+			r.Contains(instructions, "mcp scope")
+		})
+	}
+}

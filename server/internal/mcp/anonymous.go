@@ -27,7 +27,9 @@ const maxHandshakeProbeBytes = 64 * 1024
 // initialized` carries no payload and returns 202 with no body. Every other
 // method (tools/list, resources/list, every tools/call) stays behind
 // RequireMCPAuth: the tool surface is a product fingerprint and the calls
-// touch org data.
+// touch org data. The one anonymous read beyond the handshake is the static
+// server card (ServerCardPath, spec 2026-09-30-03): a separate GET route,
+// never a JSON-RPC method, so this list stays exactly two entries.
 func isAnonymousMethod(method string) bool {
 	// Exact match, deliberately not a prefix or a case-folded compare: a
 	// method named `initialize_and_dump` must not be mistaken for the

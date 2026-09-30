@@ -1075,6 +1075,9 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	mcpGroup.Use(mcp.AllowAnonymousHandshake(authMiddleware.RequireMCPAuth)).
 		POST("", s.mcpHandler.Handle)
 	mcpAuthed.DELETE("", s.mcpHandler.HandleDelete)
+	// Static MCP server card for directories that cannot introspect the
+	// OAuth-gated endpoint (Smithery). Public by design, served on every host.
+	mainGroup.GET(mcp.ServerCardPath, s.mcpHandler.HandleServerCard)
 
 	// OAuth 2.1 authorization server for the MCP resource (spec
 	// 2026-06-20-03). Discovery docs are served at the site root where MCP

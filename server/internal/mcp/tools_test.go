@@ -242,3 +242,122 @@ func TestAllToolDescriptionsMeetMinimum(t *testing.T) {
 		})
 	}
 }
+
+// lintToolDefinition returns every registry-quality violation of one tool
+// (spec 2026-09-30-03). Directories such as Smithery and Glama score exactly
+// these: a real description that opens with a verb and every input property,
+// nested ones and array items included, documented.
+func lintToolDefinition(def ToolDefinition) []string {
+	const minToolDescChars = 40
+
+	var problems []string
+
+	desc := strings.TrimSpace(def.Description)
+	switch {
+	case len(desc) < minToolDescChars:
+		problems = append(problems, "description shorter than 40 chars")
+	case strings.HasPrefix(desc, "This tool"), strings.HasPrefix(desc, "A tool"), strings.HasPrefix(desc, "Tool "):
+		problems = append(problems, "description must open with a verb, not describe itself as a tool")
+	case desc[0] < 'A' || desc[0] > 'Z':
+		problems = append(problems, "description must start with a capitalised verb")
+	}
+
+	schema, ok := def.InputSchema.(map[string]any)
+	if !ok {
+		return append(problems, "inputSchema is not an object")
+	}
+
+	return append(problems, lintSchemaProperties(schema, "inputSchema")...)
+}
+
+// lintSchemaProperties walks a JSON-schema node: each property needs a
+// non-empty description, and object properties and array items are descended.
+func lintSchemaProperties(node map[string]any, path string) []string {
+	var problems []string
+
+	if props, ok := node[schemaKeyProperties].(map[string]any); ok {
+		for name, raw := range props {
+			prop, isMap := raw.(map[string]any)
+			propPath := path + "." + name
+
+			if !isMap {
+				problems = append(problems, propPath+" is malformed")
+
+				continue
+			}
+
+			if d, _ := prop[schemaKeyDescription].(string); strings.TrimSpace(d) == "" {
+				problems = append(problems, propPath+" has no description")
+			}
+
+			problems = append(problems, lintSchemaProperties(prop, propPath)...)
+		}
+	}
+
+	if items, ok := node[schemaKeyItems].(map[string]any); ok {
+		problems = append(problems, lintSchemaProperties(items, path+"[]")...)
+	}
+
+	return problems
+}
+
+func TestEveryToolPassesTheRegistryLint(t *testing.T) {
+	t.Parallel()
+
+	handler := newTestHandler()
+	require.NotEmpty(t, handler.tools)
+
+	for i := range handler.tools {
+		def := handler.tools[i]
+		t.Run(def.Name, func(t *testing.T) {
+			t.Parallel()
+			require.Empty(t, lintToolDefinition(def), "tool %q", def.Name)
+		})
+	}
+}
+
+func TestRegistryLintRejectsABadTool(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	bad := ToolDefinition{
+		Name:        "bad_tool",
+		Description: "This tool does things.",
+		InputSchema: map[string]any{
+			schemaKeyType: schemaTypeObject,
+			schemaKeyProperties: map[string]any{
+				"url": map[string]any{schemaKeyType: "string"},
+				"nested": map[string]any{
+					schemaKeyType:        schemaTypeObject,
+					schemaKeyDescription: "A nested object with a documented shape.",
+					schemaKeyProperties: map[string]any{
+						"inner": map[string]any{schemaKeyType: "string"},
+					},
+				},
+				"list": map[string]any{
+					schemaKeyType:        schemaTypeArray,
+					schemaKeyDescription: "A list whose items are undocumented objects.",
+					schemaKeyItems: map[string]any{
+						schemaKeyType: schemaTypeObject,
+						schemaKeyProperties: map[string]any{
+							"leaf": map[string]any{schemaKeyType: "string"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	problems := strings.Join(lintToolDefinition(bad), "\n")
+	r.Contains(problems, "description")
+	r.Contains(problems, "inputSchema.url has no description")
+	r.Contains(problems, "inputSchema.nested.inner has no description")
+	r.Contains(problems, "inputSchema.list[].leaf has no description")
+
+	good := ToolDefinition{
+		Name:        "good_tool",
+		Description: "List the widgets of the organization, newest first.",
+		InputSchema: objectSchema(map[string]any{"q": stringProp("Free-text search, for example 'api'.")}, nil),
+	}
+	r.Empty(lintToolDefinition(good), "positive control")
+}
