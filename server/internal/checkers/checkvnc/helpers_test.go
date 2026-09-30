@@ -3,6 +3,7 @@ package checkvnc
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"io"
 	"net"
 	"strconv"
@@ -14,13 +15,16 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
+// errFakeServer tags a fake server's own assertion failures.
+var errFakeServer = errors.New("fake server")
+
 // fakeServer runs script on the first connection accepted on a loopback
 // listener. Failures inside the script are reported through errs so the
 // test goroutine asserts them (require must not be called off it).
 func fakeServer(t *testing.T, script func(conn net.Conn) error) (string, int, <-chan error) {
 	t.Helper()
 
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	ln, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = ln.Close() })
 

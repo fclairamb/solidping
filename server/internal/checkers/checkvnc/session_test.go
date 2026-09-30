@@ -3,9 +3,8 @@ package checkvnc
 import (
 	"bytes"
 	"context"
-	"crypto/des" //nolint:gosec // reference computation for the VNC-auth vector
+	"crypto/des"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"image/color"
 	"image/png"
@@ -111,10 +110,10 @@ func (s *vncAuthServer) run(conn net.Conn) error {
 	}
 
 	if chosen[0] != secVNCAuth {
-		return fmt.Errorf("client chose %d, want VNC auth", chosen[0])
+		return fmt.Errorf("%w: client chose %d, want VNC auth", errFakeServer, chosen[0])
 	}
 
-	if err := writeAll(conn, fixedChallenge()); err != nil {
+	if err = writeAll(conn, fixedChallenge()); err != nil {
 		return err
 	}
 
@@ -125,14 +124,14 @@ func (s *vncAuthServer) run(conn net.Conn) error {
 
 	want, _ := vncAuthResponse(s.password, fixedChallenge())
 	if s.result == 0 && !bytes.Equal(response, want) {
-		return errors.New("client sent a wrong challenge response")
+		return fmt.Errorf("%w: client sent a wrong challenge response", errFakeServer)
 	}
 
 	if s.result != 0 {
 		return writeAll(conn, u32(s.result), reasonBytes(s.reason))
 	}
 
-	if err := writeAll(conn, u32(0)); err != nil {
+	if err = writeAll(conn, u32(0)); err != nil {
 		return err
 	}
 
@@ -223,16 +222,16 @@ func frameServer(conn net.Conn) error {
 	}
 
 	if req[0] != msgSetPixelFormat || req[4] != 32 || req[7] != 1 {
-		return fmt.Errorf("bad SetPixelFormat %x", req[:20])
+		return fmt.Errorf("%w: bad SetPixelFormat %x", errFakeServer, req[:20])
 	}
 
 	if req[20] != msgSetEncodings || req[23] != 2 {
-		return fmt.Errorf("bad SetEncodings %x", req[20:32])
+		return fmt.Errorf("%w: bad SetEncodings %x", errFakeServer, req[20:32])
 	}
 
 	fbur := req[32:]
 	if fbur[0] != msgFramebufferUpdateRequest || fbur[1] != 0 || !bytes.Equal(fbur[6:10], []byte{0, 4, 0, 2}) {
-		return fmt.Errorf("bad FramebufferUpdateRequest %x", fbur)
+		return fmt.Errorf("%w: bad FramebufferUpdateRequest %x", errFakeServer, fbur)
 	}
 
 	// Pixels as B, G, R, X: red, green / blue, white.
@@ -241,7 +240,8 @@ func frameServer(conn net.Conn) error {
 		255, 0, 0, 0, 255, 255, 255, 0,
 	}
 
-	update := []byte{msgFramebufferUpdate, 0}
+	update := make([]byte, 0, 64)
+	update = append(update, msgFramebufferUpdate, 0)
 	update = append(update, u16(2)...)
 	update = append(update, u16(0)...)
 	update = append(update, u16(0)...)
@@ -295,8 +295,14 @@ func TestScreenshotRawAndCopyRect(t *testing.T) {
 		x, y int
 		want color.RGBA
 	}{
-		{0, 0, red}, {1, 0, green}, {0, 1, blue}, {1, 1, white},
-		{2, 0, red}, {3, 0, green}, {2, 1, blue}, {3, 1, white},
+		{0, 0, red},
+		{1, 0, green},
+		{0, 1, blue},
+		{1, 1, white},
+		{2, 0, red},
+		{3, 0, green},
+		{2, 1, blue},
+		{3, 1, white},
 	} {
 		r.Equal(px.want, color.RGBAModel.Convert(img.At(px.x, px.y)), "pixel (%d,%d)", px.x, px.y)
 	}
@@ -315,7 +321,8 @@ func TestScreenshotUnexpectedEncoding(t *testing.T) {
 				return err
 			}
 
-			update := []byte{msgFramebufferUpdate, 0}
+			update := make([]byte, 0, 16)
+			update = append(update, msgFramebufferUpdate, 0)
 			update = append(update, u16(1)...)
 			update = append(update, u16(0)...)
 			update = append(update, u16(0)...)

@@ -1,6 +1,7 @@
 package checkvnc
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"testing"
@@ -45,7 +46,7 @@ func TestVersionNegotiation(t *testing.T) {
 				}
 
 				if string(got) != tc.wantClient {
-					return fmt.Errorf("client answered %q, want %q", got, tc.wantClient)
+					return fmt.Errorf("%w: client answered %q, want %q", errFakeServer, got, tc.wantClient)
 				}
 
 				if tc.wantVersion == "3.3" {
@@ -224,7 +225,7 @@ func TestConnectionRefused(t *testing.T) {
 
 	r := require.New(t)
 
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	ln, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:0")
 	r.NoError(err)
 
 	addr, ok := ln.Addr().(*net.TCPAddr)
