@@ -324,7 +324,7 @@ func readFrame(reader io.Reader, width, height uint16) (*image.RGBA, error) {
 
 		switch msgType[0] {
 		case msgFramebufferUpdate:
-			rects, err := readFramebufferUpdate(reader, img)
+			rects, err := readFramebufferUpdate(reader, img, nil)
 			if err != nil {
 				return nil, err
 			}
@@ -349,8 +349,9 @@ func readFrame(reader io.Reader, width, height uint16) (*image.RGBA, error) {
 }
 
 // readFramebufferUpdate decodes one FramebufferUpdate (after its type byte)
-// and returns the number of rectangles it carried.
-func readFramebufferUpdate(reader io.Reader, img *image.RGBA) (int, error) {
+// and returns the number of rectangles it carried. When dirty is not nil it
+// accumulates the union of the painted areas.
+func readFramebufferUpdate(reader io.Reader, img *image.RGBA, dirty *image.Rectangle) (int, error) {
 	var header [3]byte // padding + number-of-rectangles
 	if _, err := io.ReadFull(reader, header[:]); err != nil {
 		return 0, fmt.Errorf("%w: %w", errNoFrame, err)
@@ -384,6 +385,10 @@ func readFramebufferUpdate(reader io.Reader, img *image.RGBA) (int, error) {
 			}
 		default:
 			return 0, failure(FailureProtocol, nil, "unexpected rectangle encoding %d", rect.Encoding)
+		}
+
+		if dirty != nil {
+			*dirty = dirty.Union(area)
 		}
 	}
 

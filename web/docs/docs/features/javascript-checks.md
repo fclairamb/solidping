@@ -414,6 +414,45 @@ script that ends without calling either gets a log off â€” the check's default â
 and the slot is released when the script ends whatever it did, so an early
 `return`, a throw, or an interrupt never leaks a session.
 
+### `vnc` {#vnc-object}
+
+`vnc.connect(options)` gives a script a **live VNC desktop** to drive, the
+mirror of [`rdp`](#rdp-object) for the [VNC check type](./check-types.md#vnc).
+It authenticates with VNC authentication (or connects to a passwordless server),
+keeps the framebuffer up to date and lets a script click, type and assert on
+what a user would see. Assertions are **pixels only**, as for `rdp`.
+
+| Call | Returns | Notes |
+|---|---|---|
+| `vnc.connect({ host, port?, password?, timeout? })` | `session` | `port` defaults to 5900. Connection and authentication failures **return** `{ ok: false, error, failureCode?, timedOut? }`; script bugs (no `host`, a second `connect`) and infrastructure **throw**. |
+| `session.waitForStable({ quietMs? })` | `{ ok, duration, error? }` | Blocks until no framebuffer update arrived for `quietMs` (default 2000). |
+| `session.waitForChange(timeoutMs)` | `{ ok, error? }` | Blocks until a new update arrives. Timeout expiry is `{ ok: false, error }`, a value the script decides on. |
+| `session.click(x, y)` / `rightClick` / `doubleClick` | `{ ok, error? }` | Presses and releases the left / right button (double-click is two pairs). |
+| `session.move(x, y)` | `{ ok, error? }` | Repositions the pointer without pressing. |
+| `session.type(text)` | `{ ok, error? }` | One key down/up per character, as X keysyms (Latin-1 directly, anything else as a Unicode keysym). |
+| `session.key("ctrl+alt+delete")` / `"enter"` / `"f5"` | `{ ok, error? }` | Named keys and combos: modifiers held, released in reverse order. Names: `enter`, `esc`, `tab`, `space`, `backspace`, `delete`, `insert`, `home`, `end`, `pgup`, `pgdn`, arrows, `f1`-`f12`, `ctrl`, `alt`, `shift`, `win`/`super`, or one character. |
+| `session.pixel(x, y)` | `{ ok, r, g, b, error? }` | One pixel. Out-of-bounds is `{ ok: false, error }`. |
+| `session.regionHash(x, y, w, h)` | `{ ok, hash, error? }` | Stable FNV-1a hash of a rectangle. |
+| `session.screenshot()` | `{ ok, error? }` | Attaches a PNG to the result's diagnostics (browser rules: last call wins, kept on `down`/`timeout`). |
+| `session.disconnect()` / `session.close()` | `{ ok }` / `undefined` | Closes the connection. VNC has no logoff: the desktop session keeps running. |
+
+A script may open **one** VNC session per execution and call at most 100
+session methods. The connection is always opened shared, so an existing viewer
+is not disconnected, and it is closed when the script ends whatever it did.
+Unlike `rdp`, VNC has no period floor: nothing is logged on, it attaches to a
+running screen.
+
+```js
+var s = vnc.connect({ host: "kiosk.acme.com", password: "secret" });
+if (!s.ok) { return { status: "down", output: { error: s.error } }; }
+s.waitForStable();
+var before = s.regionHash(0, 0, 200, 100).hash;
+s.click(100, 50);
+s.type("hello");
+var changed = s.waitForChange(3000);
+return { status: changed.ok ? "up" : "down", output: { before: before } };
+```
+
 ### `tcp` {#tcp}
 
 `tcp.connect(address, options)` gives a script a **live TCP connection** to

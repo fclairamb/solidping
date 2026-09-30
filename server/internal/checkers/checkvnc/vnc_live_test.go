@@ -47,9 +47,10 @@ func startX11VNC(t *testing.T) (string, int) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	t.Cleanup(cancel)
 
-	script := "apk add --no-cache xvfb x11vnc >/dev/null && " +
+	script := "apk add --no-cache xvfb x11vnc xterm font-misc-misc >/dev/null && " +
 		"(Xvfb :0 -screen 0 " + strconv.Itoa(liveVNCWidth) + "x" + strconv.Itoa(liveVNCHeight) + "x24 &) && " +
-		"sleep 1 && exec x11vnc -display :0 -forever -shared -passwd " + liveVNCPassword + " -rfbport 5900"
+		"sleep 1 && (DISPLAY=:0 xterm -geometry 80x24+0+0 &) && sleep 1 && " +
+		"exec x11vnc -display :0 -forever -shared -passwd " + liveVNCPassword + " -rfbport 5900"
 
 	ctr, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{
@@ -108,4 +109,37 @@ func TestLiveVNCScreenshot(t *testing.T) {
 	badResult, err := (&VNCChecker{}).Execute(context.Background(), bad)
 	r.NoError(err)
 	r.Equal(checkerdef.StatusDown, badResult.Status, badResult.Output)
+}
+
+// TestLiveVNCScriptedSession drives the real x11vnc through the session API:
+// type into the xterm and the terminal region's hash changes.
+//
+//nolint:paralleltest // testcontainer lifecycle
+func TestLiveVNCScriptedSession(t *testing.T) {
+	r := require.New(t)
+	host, port := startX11VNC(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	session, err := OpenVNCSession(ctx, &VNCConfig{
+		Host: host, Port: port, Password: liveVNCPassword, Timeout: 30 * time.Second,
+	}, nil)
+	r.NoError(err)
+
+	defer session.End()
+
+	r.NoError(session.WaitForStable(ctx, time.Second))
+
+	before, err := session.RegionHash(0, 0, 400, 200)
+	r.NoError(err)
+
+	r.NoError(session.Click(100, 100))
+	r.NoError(session.Type("echo scripted\n"))
+	r.NoError(session.WaitForChange(ctx, 10*time.Second))
+	r.NoError(session.WaitForStable(ctx, time.Second))
+
+	after, err := session.RegionHash(0, 0, 400, 200)
+	r.NoError(err)
+	r.NotEqual(before, after, "typing into the xterm must change the terminal region")
 }
