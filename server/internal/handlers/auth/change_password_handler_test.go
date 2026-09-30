@@ -22,7 +22,7 @@ import (
 //
 //nolint:revive // ctx-second matches the existing helpers in this package
 func changePasswordFixture(
-	t *testing.T, ctx context.Context, dbSvc db.Service, slug, email, password string,
+	t *testing.T, ctx context.Context, dbSvc db.Service, slug, email string,
 ) {
 	t.Helper()
 	r := require.New(t)
@@ -30,7 +30,7 @@ func changePasswordFixture(
 	org := models.NewOrganization(slug, slug)
 	r.NoError(dbSvc.CreateOrganization(ctx, org))
 
-	hash, err := passwords.Hash(password)
+	hash, err := passwords.Hash("testpass1234")
 	r.NoError(err)
 
 	user := models.NewUser(email)
@@ -75,7 +75,7 @@ func TestChangePasswordHandlerKeepsCallerSessionAndKillsOthers(t *testing.T) {
 	r := require.New(t)
 
 	svc, dbSvc, ctx := setupAuthTestService(t)
-	changePasswordFixture(t, ctx, dbSvc, "cp-sessions", "cp-sessions@example.com", "testpass1234")
+	changePasswordFixture(t, ctx, dbSvc, "cp-sessions", "cp-sessions@example.com")
 
 	sessionA, err := svc.Login(ctx, "cp-sessions", "cp-sessions@example.com", "testpass1234", Context{})
 	r.NoError(err)
@@ -162,7 +162,7 @@ func TestChangePasswordHandlerErrorMapping(t *testing.T) {
 			svc, dbSvc, ctx := setupAuthTestService(t)
 			slug := "cp-" + strings.ReplaceAll(strings.Fields(tc.name)[0], " ", "")
 			email := slug + "@example.com"
-			changePasswordFixture(t, ctx, dbSvc, slug, email, "testpass1234")
+			changePasswordFixture(t, ctx, dbSvc, slug, email)
 
 			login, err := svc.Login(ctx, slug, email, "testpass1234", Context{})
 			r.NoError(err)
@@ -201,7 +201,7 @@ func TestChangePasswordHandlerRateLimitMapsTo429(t *testing.T) {
 	r := require.New(t)
 
 	svc, dbSvc, ctx := setupAuthTestService(t)
-	changePasswordFixture(t, ctx, dbSvc, "cp-rl", "cp-rl@example.com", "testpass1234")
+	changePasswordFixture(t, ctx, dbSvc, "cp-rl", "cp-rl@example.com")
 
 	login, err := svc.Login(ctx, "cp-rl", "cp-rl@example.com", "testpass1234", Context{})
 	r.NoError(err)

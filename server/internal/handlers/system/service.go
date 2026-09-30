@@ -215,6 +215,7 @@ func applyActivationEvent(row *ActivationFunnelRow, event *models.Event) {
 		models.EventTypeAuthLogout,
 		models.EventTypeAuthTokenCreated, models.EventTypeAuthTokenRevoked,
 		models.EventTypeAuthTokenMisuse, models.EventTypeAuthImpersonationStarted,
+		models.EventTypeAuthEmailChanged,
 		models.EventTypeMemberInvited, models.EventTypeMemberJoined,
 		models.EventTypeMemberRemoved, models.EventTypeMemberRoleChanged,
 		models.EventTypeIntegrationCreated, models.EventTypeIntegrationUpdated,

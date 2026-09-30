@@ -40,7 +40,7 @@ func newEmailChangeFixture(t *testing.T, email string) (*emailChangeFixture, con
 	r := require.New(t)
 
 	svc, dbSvc, ctx := setupAuthTestService(t)
-	changePasswordFixture(t, ctx, dbSvc, emailChangeOrg, email, emailChangePassword)
+	changePasswordFixture(t, ctx, dbSvc, emailChangeOrg, email)
 
 	user, err := dbSvc.GetUserByEmail(ctx, email)
 	r.NoError(err)
