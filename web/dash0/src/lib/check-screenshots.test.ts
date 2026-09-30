@@ -3,14 +3,16 @@ import { describe, expect, it } from "vitest";
 import { checkTypeCanCapture, pendingCaptureFailure } from "./check-screenshots";
 
 describe("checkTypeCanCapture", () => {
-  it("is true for the two types that can capture", () => {
+  it("is true for the types that can capture", () => {
     expect(checkTypeCanCapture("browser")).toBe(true);
     expect(checkTypeCanCapture("js")).toBe(true);
+    expect(checkTypeCanCapture("rdp")).toBe(true);
+    expect(checkTypeCanCapture("vnc")).toBe(true);
   });
 
   it("is false for every other type, and for a missing one", () => {
     expect(checkTypeCanCapture("http")).toBe(false);
-    expect(checkTypeCanCapture("rdp")).toBe(false);
+    expect(checkTypeCanCapture("ssh")).toBe(false);
     expect(checkTypeCanCapture(undefined)).toBe(false);
   });
 });

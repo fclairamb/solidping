@@ -5,11 +5,11 @@ title: Check Types
 
 # Check Types
 
-SolidPing supports **40 check types** across multiple categories for monitoring your services. Each check type has specific configuration options and validation capabilities.
+SolidPing supports **41 check types** across multiple categories for monitoring your services. Each check type has specific configuration options and validation capabilities.
 
 <!--
   Keep this number equal to the number of `###` sections above "Common Options"
-  on this page. `GET /api/v1/check-types` returns 41; the extra one is `sleep`
+  on this page. `GET /api/v1/check-types` returns 42; the extra one is `sleep`
   ("Sleep for a fixed duration (synthetic/testing)"), which is a testing type
   rather than a monitoring capability and is deliberately not documented here.
   So: API count minus the synthetic types = the number in the sentence above.
@@ -384,6 +384,30 @@ Authentication is NTLM through CredSSP only; Kerberos is not supported, so domai
 
 :::note Network access
 RDP hosts are typically reachable only from inside a network — run the check from a worker with network access to the host. The handshake is pre-auth and closes cleanly, so it generates connection events but no authentication-failure noise in Windows event logs.
+:::
+
+### VNC {#vnc}
+
+Monitor VNC servers (the RFB protocol, RFC 6143). Unlike a plain TCP/5900 port probe, this checker reads the server's `RFB xxx.yyy` banner, negotiates a protocol version (3.3, 3.7 or 3.8) and reads the list of **authentication methods** the server offers. A server offering **no authentication** (security type 1, "None") is marked **down** by default: an exposed VNC desktop anyone can attach to is almost always a mistake.
+
+With a **password** set, the check also logs in with VNC authentication (security type 2), reads the desktop size and name, and can capture a **screenshot** of the desktop. The connection always sets the *shared* flag, so the check never disconnects a viewer already attached to the desktop.
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| Host | VNC server hostname or IP | - (required) |
+| Port | TCP port (display `:0` is `5900`, `:1` is `5901`, ...) | `5900` |
+| Timeout | Check timeout (max `60s`) | `10s` |
+| Password | VNC password. Only the first 8 characters are used by the protocol. Stored encrypted | off |
+| Require authentication | Mark **down** when the server offers security type None | on |
+| Screenshot | Capture a PNG of the desktop after logging in (needs a password) | off |
+
+- **Without a password** the verdict is the handshake: TCP connect, a valid RFB banner and a non-empty list of security types. Nothing is authenticated.
+- The check output lists `rfbVersion` (negotiated), `serverRfbVersion` (announced), `securityTypes` (name and number of each offered method) and, after a login, `desktopName`, `width` and `height`. Timings: `connect_ms`, `handshake_ms`, `auth_ms`, `first_frame_ms`.
+- **Failures** carry a stable `failure_code` in the output: `CONNECTION_FAILED`, `NOT_RFB` (the port answers another protocol), `SERVER_REFUSED` (the server sent an empty method list and a reason), `NO_AUTH_OFFERED` (None offered while authentication is required), `AUTH_TYPE_UNSUPPORTED` (a password is set but the server offers no VNC authentication, for example only VeNCrypt or Apple Remote Desktop; the offered list is in the message), `AUTH_FAILED` (wrong password, with the server's reason), `TOO_MANY_ATTEMPTS` (the server's brute-force lockout), `NO_FRAME` (a configured screenshot never arrived) and `PROTOCOL_ERROR`.
+- There is no special minimum period: attaching to a VNC console has no logon side effects. Many servers do lock out after repeated wrong passwords, so fix a failing password quickly.
+
+:::note Network access
+VNC hosts are typically reachable only from inside a network. Run the check from a worker with network access to the host, or through an SSH tunnel.
 :::
 
 ## Security & Certificates

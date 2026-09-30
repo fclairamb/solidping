@@ -10266,7 +10266,7 @@ components:
           type: string
           # Every registered check type (checkerdef.ListCheckTypes), pinned by
           # TestCheckTypeEnumsMatchTheRegistry.
-          enum: [http, tcp, icmp, dns, heartbeat, email, domain, ssl, smtp, udp, ssh, pop3, imap, websocket, postgresql, ftp, sftp, js, mysql, redis, mongodb, mssql, oracle, clickhouse, grpc, kafka, mqtt, a2s, minecraft, rabbitmq, snmp, docker, browser, freebox_line, dnsbl, sip, kubernetes, ntp, rdp, prometheus, private-location, sleep]
+          enum: [http, tcp, icmp, dns, heartbeat, email, domain, ssl, smtp, udp, ssh, pop3, imap, websocket, postgresql, ftp, sftp, js, mysql, redis, mongodb, mssql, oracle, clickhouse, grpc, kafka, mqtt, a2s, minecraft, rabbitmq, snmp, docker, browser, freebox_line, dnsbl, sip, kubernetes, ntp, rdp, vnc, prometheus, private-location, sleep]
         config:
           type: object
           description: >-
@@ -10858,7 +10858,7 @@ components:
           type: string
           # Every registered check type (checkerdef.ListCheckTypes), pinned by
           # TestCheckTypeEnumsMatchTheRegistry.
-          enum: [http, tcp, icmp, dns, heartbeat, email, domain, ssl, smtp, udp, ssh, pop3, imap, websocket, postgresql, ftp, sftp, js, mysql, redis, mongodb, mssql, oracle, clickhouse, grpc, kafka, mqtt, a2s, minecraft, rabbitmq, snmp, docker, browser, freebox_line, dnsbl, sip, kubernetes, ntp, rdp, prometheus, private-location, sleep]
+          enum: [http, tcp, icmp, dns, heartbeat, email, domain, ssl, smtp, udp, ssh, pop3, imap, websocket, postgresql, ftp, sftp, js, mysql, redis, mongodb, mssql, oracle, clickhouse, grpc, kafka, mqtt, a2s, minecraft, rabbitmq, snmp, docker, browser, freebox_line, dnsbl, sip, kubernetes, ntp, rdp, vnc, prometheus, private-location, sleep]
           description: Check type (auto-inferred from URL if not provided)
         config:
           type: object
@@ -11190,7 +11190,7 @@ components:
           type: string
           # Every registered check type (checkerdef.ListCheckTypes), pinned by
           # TestCheckTypeEnumsMatchTheRegistry.
-          enum: [http, tcp, icmp, dns, heartbeat, email, domain, ssl, smtp, udp, ssh, pop3, imap, websocket, postgresql, ftp, sftp, js, mysql, redis, mongodb, mssql, oracle, clickhouse, grpc, kafka, mqtt, a2s, minecraft, rabbitmq, snmp, docker, browser, freebox_line, dnsbl, sip, kubernetes, ntp, rdp, prometheus, private-location, sleep]
+          enum: [http, tcp, icmp, dns, heartbeat, email, domain, ssl, smtp, udp, ssh, pop3, imap, websocket, postgresql, ftp, sftp, js, mysql, redis, mongodb, mssql, oracle, clickhouse, grpc, kafka, mqtt, a2s, minecraft, rabbitmq, snmp, docker, browser, freebox_line, dnsbl, sip, kubernetes, ntp, rdp, vnc, prometheus, private-location, sleep]
           description: Check type (auto-inferred from URL if not provided)
         config:
           type: object

@@ -171,6 +171,7 @@ export interface Check {
     | "sip"
     | "ntp"
     | "rdp"
+    | "vnc"
     | "prometheus"
     | "sleep";
   config?: Record<string, unknown>;
@@ -386,6 +387,7 @@ export interface CreateCheckRequest {
     | "sip"
     | "ntp"
     | "rdp"
+    | "vnc"
     | "prometheus"
     | "sleep";
   config: Record<string, unknown>;
