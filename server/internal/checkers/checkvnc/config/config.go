@@ -83,8 +83,6 @@ func (c *VNCConfig) Authenticated() bool {
 }
 
 // FromMap populates the configuration from a map.
-//
-//nolint:cyclop // Config parsing requires handling many optional fields
 func (c *VNCConfig) FromMap(configMap map[string]any) error {
 	if host, ok := configMap[keyHost].(string); ok {
 		c.Host = host

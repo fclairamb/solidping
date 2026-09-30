@@ -16,6 +16,7 @@ import (
 
 const (
 	bannerLen = 12
+	rfbPrefix = "RFB "
 	// maxReasonLen caps any server-supplied reason string. RFC 6143 puts no
 	// limit on it; a hostile server must not make us allocate gigabytes.
 	maxReasonLen = 4096
@@ -39,40 +40,33 @@ const (
 	secMSLogon2 uint8 = 113
 )
 
+// securityTypeNames names the RFB security types this checker knows.
+//
+//nolint:gochecknoglobals // immutable lookup table
+var securityTypeNames = map[uint8]string{
+	secInvalid:  "Invalid",
+	secNone:     "None",
+	secVNCAuth:  "VNC Authentication",
+	secRA2:      "RA2",
+	secRA2ne:    "RA2ne",
+	secTight:    "Tight",
+	secUltra:    "Ultra",
+	secTLS:      "TLS",
+	secVeNCrypt: "VeNCrypt",
+	secSASL:     "SASL",
+	secMD5:      "MD5 hash",
+	secXVP:      "xvp",
+	secARD:      "Apple Remote Desktop",
+	secMSLogon2: "MS Logon II",
+}
+
 // securityTypeName returns a human name for an RFB security type.
 func securityTypeName(t uint8) string {
-	switch t {
-	case secInvalid:
-		return "Invalid"
-	case secNone:
-		return "None"
-	case secVNCAuth:
-		return "VNC Authentication"
-	case secRA2:
-		return "RA2"
-	case secRA2ne:
-		return "RA2ne"
-	case secTight:
-		return "Tight"
-	case secUltra:
-		return "Ultra"
-	case secTLS:
-		return "TLS"
-	case secVeNCrypt:
-		return "VeNCrypt"
-	case secSASL:
-		return "SASL"
-	case secMD5:
-		return "MD5 hash"
-	case secXVP:
-		return "xvp"
-	case secARD:
-		return "Apple Remote Desktop"
-	case secMSLogon2:
-		return "MS Logon II"
-	default:
-		return "Unknown (" + strconv.Itoa(int(t)) + ")"
+	if name, ok := securityTypeNames[t]; ok {
+		return name
 	}
+
+	return "Unknown (" + strconv.Itoa(int(t)) + ")"
 }
 
 // describeSecurityTypes renders a list as "VeNCrypt (19), Apple Remote Desktop (30)".
@@ -159,13 +153,13 @@ func (h *handshakeResult) offers(t uint8) bool {
 // 3.889 from macOS, 4.x/5.x from RealVNC): anything below 3.7 is spoken as
 // 3.3, 3.7 as 3.7, anything above as 3.8 (RFC 6143 §7.1.1).
 func parseBanner(raw []byte) (string, rfbVersion, error) {
-	m := bannerPattern.FindSubmatch(raw)
-	if m == nil {
+	match := bannerPattern.FindSubmatch(raw)
+	if match == nil {
 		return "", rfbVersion{}, fmt.Errorf("%w: unexpected banner %q", errNotRFB, sanitizeBanner(raw))
 	}
 
-	major, _ := strconv.Atoi(string(m[1]))
-	minor, _ := strconv.Atoi(string(m[2]))
+	major, _ := strconv.Atoi(string(match[1]))
+	minor, _ := strconv.Atoi(string(match[2]))
 	announced := fmt.Sprintf("%d.%d", major, minor)
 
 	switch {
@@ -194,12 +188,12 @@ func sanitizeBanner(raw []byte) string {
 // handshake reads the server's version, answers with the negotiated one and
 // reads the security types. It never selects a type: the caller decides
 // whether to go further (authenticate) or just close.
-func handshake(rw io.ReadWriter) (*handshakeResult, error) {
+func handshake(stream io.ReadWriter) (*handshakeResult, error) {
 	raw := make([]byte, bannerLen)
-	if n, err := io.ReadFull(rw, raw); err != nil {
+	if n, err := io.ReadFull(stream, raw); err != nil {
 		// A short answer that does not even start like "RFB " is a foreign
 		// protocol that closed on us, not a slow RFB server.
-		if n > 0 && !strings.HasPrefix("RFB ", string(raw[:min(n, 4)])) {
+		if n > 0 && string(raw[:min(n, len(rfbPrefix))]) != rfbPrefix[:min(n, len(rfbPrefix))] {
 			return nil, fmt.Errorf("%w: unexpected banner %q", errNotRFB, sanitizeBanner(raw[:n]))
 		}
 
@@ -211,7 +205,7 @@ func handshake(rw io.ReadWriter) (*handshakeResult, error) {
 		return nil, err
 	}
 
-	if _, err := rw.Write(version.banner()); err != nil {
+	if _, err := stream.Write(version.banner()); err != nil {
 		return nil, fmt.Errorf("write client version: %w", err)
 	}
 
@@ -220,12 +214,12 @@ func handshake(rw io.ReadWriter) (*handshakeResult, error) {
 	if version == version33 {
 		// 3.3: the server decides and sends one uint32 security type.
 		var secType uint32
-		if err := binary.Read(rw, binary.BigEndian, &secType); err != nil {
+		if err := binary.Read(stream, binary.BigEndian, &secType); err != nil {
 			return nil, fmt.Errorf("read security type: %w", err)
 		}
 
 		if secType == uint32(secInvalid) {
-			return nil, &ServerRefusedError{Reason: readReason(rw)}
+			return nil, &ServerRefusedError{Reason: readReason(stream)}
 		}
 
 		if secType > 0xff {
@@ -238,16 +232,16 @@ func handshake(rw io.ReadWriter) (*handshakeResult, error) {
 	}
 
 	var count [1]byte
-	if _, err := io.ReadFull(rw, count[:]); err != nil {
+	if _, err := io.ReadFull(stream, count[:]); err != nil {
 		return nil, fmt.Errorf("read security types count: %w", err)
 	}
 
 	if count[0] == 0 {
-		return nil, &ServerRefusedError{Reason: readReason(rw)}
+		return nil, &ServerRefusedError{Reason: readReason(stream)}
 	}
 
 	types := make([]uint8, count[0])
-	if _, err := io.ReadFull(rw, types); err != nil {
+	if _, err := io.ReadFull(stream, types); err != nil {
 		return nil, fmt.Errorf("read security types: %w", err)
 	}
 
@@ -258,14 +252,14 @@ func handshake(rw io.ReadWriter) (*handshakeResult, error) {
 
 // readReason reads a uint32-length-prefixed reason string. Best effort: a
 // server that closes before (or while) sending it yields what arrived.
-func readReason(r io.Reader) string {
+func readReason(reader io.Reader) string {
 	var length uint32
-	if err := binary.Read(r, binary.BigEndian, &length); err != nil {
+	if err := binary.Read(reader, binary.BigEndian, &length); err != nil {
 		return ""
 	}
 
 	buf := make([]byte, min(length, maxReasonLen))
-	n, _ := io.ReadFull(r, buf)
+	n, _ := io.ReadFull(reader, buf)
 
 	return strings.TrimSpace(string(buf[:n]))
 }

@@ -2,7 +2,7 @@ package checkvnc
 
 import (
 	"bytes"
-	"crypto/des" //nolint:gosec // VNC authentication (RFC 6143 §7.2.2) is DES by definition
+	"crypto/des"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -36,10 +36,10 @@ const (
 	msgFramebufferUpdateRequest = 3
 
 	// Server-to-client message types.
-	msgFramebufferUpdate   = 0
-	msgSetColourMapEntries = 1
-	msgBell                = 2
-	msgServerCutText       = 3
+	msgFramebufferUpdate  = 0
+	msgSetColorMapEntries = 1
+	msgBell               = 2
+	msgServerCutText      = 3
 
 	// Encodings.
 	encodingRaw      int32 = 0
@@ -78,20 +78,20 @@ const (
 	FailureProtocol failureCode = "PROTOCOL_ERROR"
 )
 
-// Failure is a classified check failure.
-type Failure struct {
+// FailureError is a classified check failure.
+type FailureError struct {
 	Code failureCode
 	Msg  string
 	// Cause is the underlying error, if any (kept for timeout detection).
 	Cause error
 }
 
-func (e *Failure) Error() string { return e.Msg }
+func (e *FailureError) Error() string { return e.Msg }
 
-func (e *Failure) Unwrap() error { return e.Cause }
+func (e *FailureError) Unwrap() error { return e.Cause }
 
-func failure(code failureCode, cause error, format string, args ...any) *Failure {
-	return &Failure{Code: code, Msg: fmt.Sprintf(format, args...), Cause: cause}
+func failure(code failureCode, cause error, format string, args ...any) *FailureError {
+	return &FailureError{Code: code, Msg: fmt.Sprintf(format, args...), Cause: cause}
 }
 
 // serverInit is the parsed ServerInit message.
@@ -129,7 +129,7 @@ func vncAuthKey(password string) []byte {
 // password-derived key.
 func vncAuthResponse(password string, challenge []byte) ([]byte, error) {
 	if len(challenge) != challengeLen {
-		return nil, fmt.Errorf("challenge must be %d bytes, got %d", challengeLen, len(challenge))
+		return nil, fmt.Errorf("%w: got %d bytes", errBadChallenge, len(challenge))
 	}
 
 	block, err := des.NewCipher(vncAuthKey(password))
@@ -148,31 +148,31 @@ func vncAuthResponse(password string, challenge []byte) ([]byte, error) {
 // authentication when offered, None when that is all there is (requireAuth
 // already refused it earlier when on). Anything else is unsupported here
 // (VeNCrypt and ARD are spec 2026-09-30-07).
-func chooseSecurityType(hs *handshakeResult) (uint8, error) {
+func chooseSecurityType(offer *handshakeResult) (uint8, error) {
 	switch {
-	case hs.offers(secVNCAuth):
+	case offer.offers(secVNCAuth):
 		return secVNCAuth, nil
-	case hs.offers(secNone):
+	case offer.offers(secNone):
 		return secNone, nil
 	default:
 		return 0, failure(FailureAuthUnsupported, nil,
 			"no supported authentication method offered (supported: VNC Authentication (2)); server offers: %s",
-			describeSecurityTypes(hs.securityTypes))
+			describeSecurityTypes(offer.securityTypes))
 	}
 }
 
 // authenticate selects secType (3.7+), runs VNC authentication when chosen
 // and reads SecurityResult where the protocol version sends one.
-func authenticate(rw io.ReadWriter, hs *handshakeResult, secType uint8, password string) error {
-	if hs.version != version33 {
-		if _, err := rw.Write([]byte{secType}); err != nil {
+func authenticate(stream io.ReadWriter, offer *handshakeResult, secType uint8, password string) error {
+	if offer.version != version33 {
+		if _, err := stream.Write([]byte{secType}); err != nil {
 			return fmt.Errorf("write security type: %w", err)
 		}
 	}
 
 	if secType == secVNCAuth {
 		challenge := make([]byte, challengeLen)
-		if _, err := io.ReadFull(rw, challenge); err != nil {
+		if _, err := io.ReadFull(stream, challenge); err != nil {
 			return fmt.Errorf("read challenge: %w", err)
 		}
 
@@ -181,21 +181,21 @@ func authenticate(rw io.ReadWriter, hs *handshakeResult, secType uint8, password
 			return err
 		}
 
-		if _, err := rw.Write(response); err != nil {
+		if _, err := stream.Write(response); err != nil {
 			return fmt.Errorf("write challenge response: %w", err)
 		}
-	} else if hs.version != version38 {
+	} else if offer.version != version38 {
 		// None on 3.3/3.7: no SecurityResult, straight to ClientInit.
 		return nil
 	}
 
-	return readSecurityResult(rw, hs.version)
+	return readSecurityResult(stream, offer.version)
 }
 
 // readSecurityResult reads the uint32 result and, on 3.8, the reason string.
-func readSecurityResult(r io.Reader, version rfbVersion) error {
+func readSecurityResult(reader io.Reader, version rfbVersion) error {
 	var result uint32
-	if err := binary.Read(r, binary.BigEndian, &result); err != nil {
+	if err := binary.Read(reader, binary.BigEndian, &result); err != nil {
 		return fmt.Errorf("read security result: %w", err)
 	}
 
@@ -205,7 +205,7 @@ func readSecurityResult(r io.Reader, version rfbVersion) error {
 
 	reason := ""
 	if version == version38 {
-		reason = readReason(r)
+		reason = readReason(reader)
 	}
 
 	code := FailureAuthFailed
@@ -236,14 +236,14 @@ func isLockoutReason(reason string) bool {
 
 // clientServerInit sends ClientInit with shared-flag = 1 (never kick an
 // existing viewer) and parses ServerInit.
-func clientServerInit(rw io.ReadWriter) (*serverInit, error) {
-	if _, err := rw.Write([]byte{1}); err != nil {
+func clientServerInit(stream io.ReadWriter) (*serverInit, error) {
+	if _, err := stream.Write([]byte{1}); err != nil {
 		return nil, fmt.Errorf("write client init: %w", err)
 	}
 
 	// width(2) height(2) pixel-format(16) name-length(4)
 	header := make([]byte, 24)
-	if _, err := io.ReadFull(rw, header); err != nil {
+	if _, err := io.ReadFull(stream, header); err != nil {
 		return nil, fmt.Errorf("read server init: %w", err)
 	}
 
@@ -258,7 +258,7 @@ func clientServerInit(rw io.ReadWriter) (*serverInit, error) {
 	}
 
 	name := make([]byte, nameLen)
-	if _, err := io.ReadFull(rw, name); err != nil {
+	if _, err := io.ReadFull(stream, name); err != nil {
 		return nil, fmt.Errorf("read desktop name: %w", err)
 	}
 
@@ -267,13 +267,13 @@ func clientServerInit(rw io.ReadWriter) (*serverInit, error) {
 	return init, nil
 }
 
-// requestFrame sets a known 32 bpp true-colour pixel format, advertises Raw
+// requestFrame sets a known 32 bpp true-color pixel format, advertises Raw
 // and CopyRect only, and asks for one non-incremental full-screen update.
-func requestFrame(w io.Writer, width, height uint16) error {
+func requestFrame(writer io.Writer, width, height uint16) error {
 	var buf bytes.Buffer
 
 	// SetPixelFormat: type, 3 padding, then the 16-byte PIXEL_FORMAT:
-	// bpp 32, depth 24, little-endian, true-colour, maxes 255, shifts R16 G8 B0.
+	// bpp 32, depth 24, little-endian, true-color, maxes 255, shifts R16 G8 B0.
 	buf.Write([]byte{msgSetPixelFormat, 0, 0, 0})
 	buf.Write([]byte{32, 24, 0, 1})
 	_ = binary.Write(&buf, binary.BigEndian, [3]uint16{255, 255, 255})
@@ -288,21 +288,24 @@ func requestFrame(w io.Writer, width, height uint16) error {
 	buf.Write([]byte{msgFramebufferUpdateRequest, 0})
 	_ = binary.Write(&buf, binary.BigEndian, [4]uint16{0, 0, width, height})
 
-	if _, err := w.Write(buf.Bytes()); err != nil {
+	if _, err := writer.Write(buf.Bytes()); err != nil {
 		return fmt.Errorf("write frame request: %w", err)
 	}
 
 	return nil
 }
 
+// errBadChallenge is a VNC-auth challenge that is not 16 bytes.
+var errBadChallenge = errors.New("vnc auth challenge must be 16 bytes")
+
 // errNoFrame is a frame read that ended before any framebuffer update.
 var errNoFrame = errors.New("no frame received")
 
 // readFrame reads server messages until the first FramebufferUpdate carrying
 // at least one rectangle, decoding it into an RGBA image. Bell,
-// SetColourMapEntries and ServerCutText are skipped; an unknown message type
+// SetColorMapEntries and ServerCutText are skipped; an unknown message type
 // or encoding fails cleanly (the stream cannot be resynchronized).
-func readFrame(r io.Reader, width, height uint16) (*image.RGBA, error) {
+func readFrame(reader io.Reader, width, height uint16) (*image.RGBA, error) {
 	if int(width)*int(height) > maxFramePixels {
 		return nil, failure(FailureProtocol, nil, "framebuffer %dx%d too large to capture", width, height)
 	}
@@ -315,13 +318,13 @@ func readFrame(r io.Reader, width, height uint16) (*image.RGBA, error) {
 
 	for {
 		var msgType [1]byte
-		if _, err := io.ReadFull(r, msgType[:]); err != nil {
+		if _, err := io.ReadFull(reader, msgType[:]); err != nil {
 			return nil, fmt.Errorf("%w: %w", errNoFrame, err)
 		}
 
 		switch msgType[0] {
 		case msgFramebufferUpdate:
-			rects, err := readFramebufferUpdate(r, img)
+			rects, err := readFramebufferUpdate(reader, img)
 			if err != nil {
 				return nil, err
 			}
@@ -329,14 +332,14 @@ func readFrame(r io.Reader, width, height uint16) (*image.RGBA, error) {
 			if rects > 0 {
 				return img, nil
 			}
-		case msgSetColourMapEntries:
-			if err := skipColourMap(r); err != nil {
+		case msgSetColorMapEntries:
+			if err := skipColorMap(reader); err != nil {
 				return nil, err
 			}
 		case msgBell:
 			// no payload
 		case msgServerCutText:
-			if err := skipCutText(r); err != nil {
+			if err := skipCutText(reader); err != nil {
 				return nil, err
 			}
 		default:
@@ -347,9 +350,9 @@ func readFrame(r io.Reader, width, height uint16) (*image.RGBA, error) {
 
 // readFramebufferUpdate decodes one FramebufferUpdate (after its type byte)
 // and returns the number of rectangles it carried.
-func readFramebufferUpdate(r io.Reader, img *image.RGBA) (int, error) {
+func readFramebufferUpdate(reader io.Reader, img *image.RGBA) (int, error) {
 	var header [3]byte // padding + number-of-rectangles
-	if _, err := io.ReadFull(r, header[:]); err != nil {
+	if _, err := io.ReadFull(reader, header[:]); err != nil {
 		return 0, fmt.Errorf("%w: %w", errNoFrame, err)
 	}
 
@@ -361,7 +364,7 @@ func readFramebufferUpdate(r io.Reader, img *image.RGBA) (int, error) {
 			X, Y, W, H uint16
 			Encoding   int32
 		}
-		if err := binary.Read(r, binary.BigEndian, &rect); err != nil {
+		if err := binary.Read(reader, binary.BigEndian, &rect); err != nil {
 			return 0, fmt.Errorf("%w: %w", errNoFrame, err)
 		}
 
@@ -372,11 +375,11 @@ func readFramebufferUpdate(r io.Reader, img *image.RGBA) (int, error) {
 
 		switch rect.Encoding {
 		case encodingRaw:
-			if err := decodeRaw(r, img, area); err != nil {
+			if err := decodeRaw(reader, img, area); err != nil {
 				return 0, err
 			}
 		case encodingCopyRect:
-			if err := decodeCopyRect(r, img, area); err != nil {
+			if err := decodeCopyRect(reader, img, area); err != nil {
 				return 0, err
 			}
 		default:
@@ -389,11 +392,11 @@ func readFramebufferUpdate(r io.Reader, img *image.RGBA) (int, error) {
 
 // decodeRaw copies a Raw rectangle: little-endian 32 bpp pixels, so each
 // pixel arrives as B, G, R, X with the shifts requestFrame set.
-func decodeRaw(r io.Reader, img *image.RGBA, area image.Rectangle) error {
+func decodeRaw(reader io.Reader, img *image.RGBA, area image.Rectangle) error {
 	row := make([]byte, area.Dx()*bytesPerPixel)
 
 	for y := area.Min.Y; y < area.Max.Y; y++ {
-		if _, err := io.ReadFull(r, row); err != nil {
+		if _, err := io.ReadFull(reader, row); err != nil {
 			return fmt.Errorf("%w: %w", errNoFrame, err)
 		}
 
@@ -409,9 +412,9 @@ func decodeRaw(r io.Reader, img *image.RGBA, area image.Rectangle) error {
 }
 
 // decodeCopyRect copies an already-decoded region of the framebuffer.
-func decodeCopyRect(r io.Reader, img *image.RGBA, area image.Rectangle) error {
+func decodeCopyRect(reader io.Reader, img *image.RGBA, area image.Rectangle) error {
 	var src [2]uint16
-	if err := binary.Read(r, binary.BigEndian, &src); err != nil {
+	if err := binary.Read(reader, binary.BigEndian, &src); err != nil {
 		return fmt.Errorf("%w: %w", errNoFrame, err)
 	}
 
@@ -436,15 +439,15 @@ func decodeCopyRect(r io.Reader, img *image.RGBA, area image.Rectangle) error {
 	return nil
 }
 
-// skipColourMap discards a SetColourMapEntries payload (after the type byte).
-func skipColourMap(r io.Reader) error {
-	var header [5]byte // padding, first-colour, number-of-colours
-	if _, err := io.ReadFull(r, header[:]); err != nil {
+// skipColorMap discards a SetColorMapEntries payload (after the type byte).
+func skipColorMap(reader io.Reader) error {
+	var header [5]byte // padding, first-color, number-of-colors
+	if _, err := io.ReadFull(reader, header[:]); err != nil {
 		return fmt.Errorf("%w: %w", errNoFrame, err)
 	}
 
 	n := int64(binary.BigEndian.Uint16(header[3:5])) * 6
-	if _, err := io.CopyN(io.Discard, r, n); err != nil {
+	if _, err := io.CopyN(io.Discard, reader, n); err != nil {
 		return fmt.Errorf("%w: %w", errNoFrame, err)
 	}
 
@@ -452,9 +455,9 @@ func skipColourMap(r io.Reader) error {
 }
 
 // skipCutText discards a ServerCutText payload (after the type byte).
-func skipCutText(r io.Reader) error {
+func skipCutText(reader io.Reader) error {
 	var header [7]byte // 3 padding + uint32 length
-	if _, err := io.ReadFull(r, header[:]); err != nil {
+	if _, err := io.ReadFull(reader, header[:]); err != nil {
 		return fmt.Errorf("%w: %w", errNoFrame, err)
 	}
 
@@ -463,7 +466,7 @@ func skipCutText(r io.Reader) error {
 		return failure(FailureProtocol, nil, "server cut text too long (%d bytes)", n)
 	}
 
-	if _, err := io.CopyN(io.Discard, r, int64(n)); err != nil {
+	if _, err := io.CopyN(io.Discard, reader, int64(n)); err != nil {
 		return fmt.Errorf("%w: %w", errNoFrame, err)
 	}
 

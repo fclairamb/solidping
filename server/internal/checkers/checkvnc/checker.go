@@ -95,20 +95,20 @@ func (c *VNCChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 
 	handshakeStart := time.Now()
 
-	hs, err := handshake(conn)
+	offer, err := handshake(conn)
 	if err != nil {
 		return state.fail(classifyHandshakeError(err)), nil
 	}
 
 	state.metrics["handshake_ms"] = durationMs(time.Since(handshakeStart))
-	state.output["rfbVersion"] = hs.version.String()
-	state.output["serverRfbVersion"] = hs.serverVersion
-	state.output["securityTypes"] = securityTypesOutput(hs.securityTypes)
+	state.output["rfbVersion"] = offer.version.String()
+	state.output["serverRfbVersion"] = offer.serverVersion
+	state.output["securityTypes"] = securityTypesOutput(offer.securityTypes)
 
-	if cfg.RequiresAuth() && hs.offers(secNone) {
+	if cfg.RequiresAuth() && offer.offers(secNone) {
 		return state.fail(failure(FailureNoAuthOffered, nil,
 			"server offers security type None: anyone can attach without a password (offered: %s)",
-			describeSecurityTypes(hs.securityTypes))), nil
+			describeSecurityTypes(offer.securityTypes))), nil
 	}
 
 	if !cfg.Authenticated() {
@@ -123,20 +123,20 @@ func (c *VNCChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 		return result, nil
 	}
 
-	return state.authenticated(conn, hs), nil
+	return state.authenticated(conn, offer), nil
 }
 
 // authenticated runs the password path: auth, ServerInit, optional capture.
-func (s *run) authenticated(conn net.Conn, hs *handshakeResult) *checkerdef.Result {
-	secType, err := chooseSecurityType(hs)
+func (s *run) authenticated(conn net.Conn, offer *handshakeResult) *checkerdef.Result {
+	secType, err := chooseSecurityType(offer)
 	if err != nil {
 		return s.fail(err)
 	}
 
 	authStart := time.Now()
 
-	if err := authenticate(conn, hs, secType, s.cfg.Password); err != nil {
-		return s.fail(err)
+	if authErr := authenticate(conn, offer, secType, s.cfg.Password); authErr != nil {
+		return s.fail(authErr)
 	}
 
 	init, err := clientServerInit(conn)
@@ -159,7 +159,7 @@ func (s *run) authenticated(conn net.Conn, hs *handshakeResult) *checkerdef.Resu
 
 	shot, err := captureFrame(conn, init)
 	if err != nil {
-		var classified *Failure
+		var classified *FailureError
 		if !errors.As(err, &classified) {
 			classified = failure(FailureNoFrame, err, "no frame received in time: %v", err)
 		}
@@ -234,7 +234,7 @@ func attachScreenshot(ctx context.Context, shot []byte, result *checkerdef.Resul
 }
 
 // classifyHandshakeError maps a handshake error onto a stable failure.
-func classifyHandshakeError(err error) *Failure {
+func classifyHandshakeError(err error) *FailureError {
 	var refused *ServerRefusedError
 
 	switch {
@@ -261,7 +261,7 @@ func (s *run) up() *checkerdef.Result {
 // fail renders a failure: Timeout when the deadline fired, Down otherwise,
 // with the stable code in `failure_code` when there is one.
 func (s *run) fail(err error) *checkerdef.Result {
-	var classified *Failure
+	var classified *FailureError
 	if !errors.As(err, &classified) {
 		classified = failure(FailureProtocol, err, "%v", err)
 	}
