@@ -22,6 +22,18 @@
     },
     "screenshot": {
       "type": "boolean"
+    },
+    "username": {
+      "type": "string"
+    },
+    "tlsVerify": {
+      "type": "boolean"
+    },
+    "warningDays": {
+      "type": "integer"
+    },
+    "criticalDays": {
+      "type": "integer"
     }
   },
   "type": "object",
