@@ -192,6 +192,12 @@ const (
 	// in the payload. Recorded in the TARGET's organization, so that org's
 	// admins can see that someone viewed their dashboard as one of them.
 	EventTypeAuthImpersonationStarted EventType = "auth.impersonation_started"
+	// EventTypeAuthEmailChanged records a user's sign-in email being changed
+	// (spec 2026-09-30-08), either by the user from their profile or by a super
+	// admin from the system user directory. Recorded in every organization the
+	// user belongs to; the payload carries the old and new address and who
+	// made the change.
+	EventTypeAuthEmailChanged EventType = "auth.email_changed"
 
 	// EventTypeMemberInvited records an invitation being sent.
 	EventTypeMemberInvited EventType = "member.invited"

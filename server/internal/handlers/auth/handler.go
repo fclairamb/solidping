@@ -303,10 +303,78 @@ func (h *Handler) UpdateMe(writer http.ResponseWriter, req *http.Request) error 
 
 	resp, err := h.svc.UpdateProfile(req.Context(), claims, updateReq)
 	if err != nil {
+		if handled, writeErr := h.handleEmailChangeError(writer, req, err); handled {
+			return writeErr
+		}
+
 		return h.handleUserInfoError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
+}
+
+// AdminUpdateUser handles PATCH /api/v1/system/users/:uid (super admin only).
+func (h *Handler) AdminUpdateUser(writer http.ResponseWriter, req *http.Request) error {
+	claims, ok := getClaimsFromContext(req)
+	if !ok {
+		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
+	}
+
+	var body AdminUpdateUserRequest
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
+			{Name: fieldBody, Message: msgInvalidJSON},
+		})
+	}
+
+	resp, err := h.svc.AdminUpdateUser(req.Context(), claims, httpx.Param(req, "uid"), body)
+	if err != nil {
+		if handled, writeErr := h.handleEmailChangeError(writer, req, err); handled {
+			return writeErr
+		}
+
+		if errors.Is(err, ErrUserNotFound) {
+			return h.WriteErrorErr(writer, req, http.StatusNotFound, base.ErrorCodeUserNotFound, "User not found", err)
+		}
+
+		return h.WriteInternalError(writer, req, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, resp)
+}
+
+// handleEmailChangeError maps the email-change refusals (spec 2026-09-30-08).
+// handled is false for any other error.
+func (h *Handler) handleEmailChangeError(
+	writer http.ResponseWriter, req *http.Request, err error,
+) (bool, error) {
+	switch {
+	case errors.Is(err, ErrInvalidEmail):
+		return true, h.WriteErrorErr(writer, req, http.StatusBadRequest, base.ErrorCodeValidationError,
+			"Must be a valid email address", err)
+	case errors.Is(err, ErrInvalidCurrentPassword):
+		// 403, not 401: the session is valid, and a 401 would send the
+		// dashboard back to the login page.
+		return true, h.WriteErrorErr(writer, req, http.StatusForbidden, base.ErrorCodeInvalidCurrentPassword,
+			"Current password is incorrect", err)
+	case errors.Is(err, ErrEmailAlreadyTaken):
+		return true, h.WriteErrorErr(writer, req, http.StatusConflict, base.ErrorCodeConflict,
+			"This email address is already used by another account", err)
+	case errors.Is(err, ErrEmailChangeNoPassword):
+		return true, h.WriteErrorErr(writer, req, http.StatusForbidden, base.ErrorCodeForbidden, err.Error(), err)
+	case errors.Is(err, ErrEmailChangeDemo):
+		return true, h.WriteErrorErr(writer, req, http.StatusForbidden, base.ErrorCodeDemoReadOnly, err.Error(), err)
+	case errors.Is(err, ErrImpersonationForbidden):
+		return true, h.WriteErrorErr(writer, req, http.StatusForbidden, base.ErrorCodeImpersonationForbidden,
+			ImpersonationForbiddenMessage, err)
+	case errors.Is(err, ErrEmailChangeNotSuperAdmin):
+		return true, h.WriteErrorErr(writer, req, http.StatusForbidden, base.ErrorCodeForbidden, err.Error(), err)
+	case errors.Is(err, ErrRateLimited):
+		return true, h.WriteErrorErr(writer, req, http.StatusTooManyRequests, base.ErrorCodeRateLimited,
+			"Too many attempts, please try again later", err)
+	default:
+		return false, nil
+	}
 }
 
 // GetAllUserTokens returns all tokens for the authenticated user across all orgs.
