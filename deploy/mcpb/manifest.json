@@ -1,0 +1,55 @@
+{
+  "manifest_version": "0.3",
+  "name": "solidping",
+  "display_name": "SolidPing",
+  "version": "0.0.0",
+  "description": "Read and manage uptime checks, incidents, status pages and maintenance windows on a SolidPing instance.",
+  "long_description": "Connects an MCP client to a SolidPing instance (self-hosted or solidping.io). List and create checks, read results and incidents, manage maintenance windows and status pages. Needs the instance URL and a Personal Access Token. The extension downloads the matching sp release binary on first start and verifies its SHA-256 against a value pinned in this bundle.",
+  "author": {
+    "name": "Florent Clairambault",
+    "url": "https://github.com/fclairamb"
+  },
+  "homepage": "https://solidping.io",
+  "documentation": "https://docs.solidping.io",
+  "support": "https://github.com/fclairamb/solidping/issues",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fclairamb/solidping"
+  },
+  "icon": "icon.png",
+  "license": "AGPL-3.0-only",
+  "keywords": ["monitoring", "uptime", "status-page", "incidents", "alerting"],
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/server/index.js"],
+      "env": {
+        "SOLIDPING_URL": "${user_config.url}",
+        "SP_TOKEN": "${user_config.token}"
+      }
+    }
+  },
+  "tools_generated": true,
+  "user_config": {
+    "url": {
+      "type": "string",
+      "title": "SolidPing URL",
+      "description": "Base URL of your SolidPing instance, for example https://solidping.io or http://localhost:4000.",
+      "default": "https://solidping.io",
+      "required": true
+    },
+    "token": {
+      "type": "string",
+      "title": "Personal Access Token",
+      "description": "A SolidPing Personal Access Token. Create one in the dashboard. It is passed to the sp binary through the environment and never written to disk.",
+      "sensitive": true,
+      "required": true
+    }
+  },
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": { "node": ">=18.0.0" }
+  }
+}
