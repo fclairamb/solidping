@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+
+### Features
+
+* **checks:** **New `vnc` check type.** It connects to a VNC server, negotiates the RFB version (3.3, 3.7, 3.8), audits the offered security types (`requireAuth` defaults to true), logs on with VNC authentication when a password is set, and captures a screenshot. Failures carry stable codes such as `CONNECTION_FAILED`, `NOT_RFB`, `NO_AUTH_OFFERED`, `AUTH_FAILED` and `NO_FRAME`.
+* **checks:** **Scripted VNC remote control from JavaScript checks.** `vnc.connect()` opens a session with incremental framebuffer updates, pointer and key input, and pixel, region hash and screenshot reads. One session per execution, 100 actions at most.
+* **checks:** **The `vnc` check supports VeNCrypt (TLS) and Apple Remote Desktop.** It picks the strongest security type both sides support that your credentials satisfy, and falls back to the next one on a fresh connection. New config keys: `username`, `tlsVerify` (default false), `warningDays`, `criticalDays`. The VeNCrypt certificate is reported and graded, with new failure codes `TLS_FAILED` and `CERT_EXPIRY`.
+* **auth:** **You can change your own email address, and a super admin can change anyone's.** `PATCH /api/v1/auth/me` takes `email` and `currentPassword`; `PATCH /api/v1/system/users/{uid}` does it for another user. The change clears email verification, signs the user out of their other sessions, notifies the old address and records an `auth.email_changed` event. Also available from the profile page and a new super-admin user edit page in the dashboard.
+* **auth:** **`SP_ADMIN_EMAIL` sets the email of the seeded super admin** on the first start of an empty database, instead of `admin@solidping.io`.
+
 ## [0.37.0](https://github.com/fclairamb/solidping/compare/v0.36.1...v0.37.0) (2026-09-30)
 
 
