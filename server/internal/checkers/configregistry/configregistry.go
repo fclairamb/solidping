@@ -56,6 +56,7 @@ import (
 	sslconfig "github.com/fclairamb/solidping/server/internal/checkers/checkssl/config"
 	tcpconfig "github.com/fclairamb/solidping/server/internal/checkers/checktcp/config"
 	udpconfig "github.com/fclairamb/solidping/server/internal/checkers/checkudp/config"
+	vncconfig "github.com/fclairamb/solidping/server/internal/checkers/checkvnc/config"
 	websocketconfig "github.com/fclairamb/solidping/server/internal/checkers/checkwebsocket/config"
 	"github.com/fclairamb/solidping/server/internal/checkers/urlparse"
 )
@@ -148,6 +149,8 @@ func ParseConfig(checkType checkerdef.CheckType) (checkerdef.Config, bool) {
 		return &prometheusconfig.PrometheusConfig{}, true
 	case checkerdef.CheckTypeRDP:
 		return &rdpconfig.RDPConfig{}, true
+	case checkerdef.CheckTypeVNC:
+		return &vncconfig.VNCConfig{}, true
 	case checkerdef.CheckTypeSleep:
 		return &sleepconfig.SleepConfig{}, true
 	default:
@@ -258,6 +261,8 @@ func ValidateSpec(checkType checkerdef.CheckType, spec *checkerdef.CheckSpec) er
 		return prometheusconfig.ValidateSpec(spec)
 	case checkerdef.CheckTypeRDP:
 		return rdpconfig.ValidateSpec(spec)
+	case checkerdef.CheckTypeVNC:
+		return vncconfig.ValidateSpec(spec)
 	case checkerdef.CheckTypeSleep:
 		return sleepconfig.ValidateSpec(spec)
 	default:
