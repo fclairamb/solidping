@@ -8440,6 +8440,33 @@ paths:
           $ref: "#/components/responses/Forbidden"
 
   /api/v1/system/users/{uid}:
+    get:
+      tags: [System]
+      summary: Get one user of the global directory (super admin)
+      operationId: getAdminUser
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          description: UID of the user
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The user, with the organizations it belongs to
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUserRow"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
     patch:
       tags: [System]
       summary: Update a user account (super admin)

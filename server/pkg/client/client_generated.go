@@ -12773,6 +12773,11 @@ type ClientInterface interface {
 	// Corresponds with GET /api/v1/system/users (the `ListAdminUsers` operationId).
 	ListAdminUsers(ctx context.Context, params *ListAdminUsersParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetAdminUser Get one user of the global directory (super admin)
+	//
+	// Corresponds with GET /api/v1/system/users/{uid} (the `GetAdminUser` operationId).
+	GetAdminUser(ctx context.Context, uid openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// UpdateAdminUserWithBody Update a user account (super admin)
 	//
 	// Changes a user's sign-in email without their password. The address is
@@ -19397,6 +19402,21 @@ func (c *Client) SendTestEmail(ctx context.Context, body SendTestEmailJSONReques
 // Corresponds with GET /api/v1/system/users (the `ListAdminUsers` operationId).
 func (c *Client) ListAdminUsers(ctx context.Context, params *ListAdminUsersParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListAdminUsersRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetAdminUser Get one user of the global directory (super admin)
+//
+// Corresponds with GET /api/v1/system/users/{uid} (the `GetAdminUser` operationId).
+func (c *Client) GetAdminUser(ctx context.Context, uid openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAdminUserRequest(c.Server, uid)
 	if err != nil {
 		return nil, err
 	}
@@ -33801,6 +33821,40 @@ func NewListAdminUsersRequest(server string, params *ListAdminUsersParams) (*htt
 	return req, nil
 }
 
+// NewGetAdminUserRequest constructs an http.Request for the GetAdminUser method
+func NewGetAdminUserRequest(server string, uid openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "uid", uid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/system/users/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewUpdateAdminUserRequest calls the generic UpdateAdminUser builder with application/json body
 func NewUpdateAdminUserRequest(server string, uid openapi_types.UUID, body UpdateAdminUserJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -37129,6 +37183,13 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /api/v1/system/users (the `ListAdminUsers` operationId).
 	ListAdminUsersWithResponse(ctx context.Context, params *ListAdminUsersParams, reqEditors ...RequestEditorFn) (*ListAdminUsersResult, error)
+
+	// GetAdminUserWithResponse Get one user of the global directory (super admin)
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/system/users/{uid} (the `GetAdminUser` operationId).
+	GetAdminUserWithResponse(ctx context.Context, uid openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAdminUserResult, error)
 
 	// UpdateAdminUserWithBodyWithResponse Update a user account (super admin)
 	//
@@ -53076,6 +53137,68 @@ func (r ListAdminUsersResult) ContentType() string {
 	return ""
 }
 
+type GetAdminUserResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AdminUserRow
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetAdminUserResult) GetJSON200() *AdminUserRow {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetAdminUserResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r GetAdminUserResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetAdminUserResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r GetAdminUserResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAdminUserResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAdminUserResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetAdminUserResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type UpdateAdminUserResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -58667,6 +58790,19 @@ func (c *ClientWithResponses) ListAdminUsersWithResponse(ctx context.Context, pa
 		return nil, err
 	}
 	return ParseListAdminUsersResult(rsp)
+}
+
+// GetAdminUserWithResponse Get one user of the global directory (super admin)
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/system/users/{uid} (the `GetAdminUser` operationId).
+func (c *ClientWithResponses) GetAdminUserWithResponse(ctx context.Context, uid openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAdminUserResult, error) {
+	rsp, err := c.GetAdminUser(ctx, uid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAdminUserResult(rsp)
 }
 
 // UpdateAdminUserWithBodyWithResponse Update a user account (super admin)
@@ -70564,6 +70700,53 @@ func ParseListAdminUsersResult(rsp *http.Response) (*ListAdminUsersResult, error
 			return nil, err
 		}
 		response.JSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetAdminUserResult parses an HTTP response from a GetAdminUserWithResponse call
+func ParseGetAdminUserResult(rsp *http.Response) (*GetAdminUserResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAdminUserResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AdminUserRow
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	}
 
