@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.37.0](https://github.com/fclairamb/solidping/compare/v0.36.1...v0.37.0) (2026-09-30)
+
+
+### Features
+
+* **dash0:** **The check detail page and the checks list get a cleaner header.** The check detail header is redesigned, and the checks list header and filter bar are tidied, with shared filter triggers and a scope filter ([#464](https://github.com/fclairamb/solidping/issues/464)) ([abe5d38](https://github.com/fclairamb/solidping/commit/abe5d3884b53cb3f0a32ab1a23ab09aa6fc7e3f1))
+* **mcp:** **The MCP server publishes a public server card** with initialize instructions and a registry lint, so Smithery indexes it with its tools and capabilities ([#464](https://github.com/fclairamb/solidping/issues/464)) ([abe5d38](https://github.com/fclairamb/solidping/commit/abe5d3884b53cb3f0a32ab1a23ab09aa6fc7e3f1))
+* **deploy:** add an MCPB bundle for Claude Desktop and Smithery ([#458](https://github.com/fclairamb/solidping/issues/458)) ([13c78d2](https://github.com/fclairamb/solidping/commit/13c78d2b0e181ee98fbc223d607e0cd419eceb41))
+* **ci:** the backend coverage badge is published to the README ([#464](https://github.com/fclairamb/solidping/issues/464)) ([abe5d38](https://github.com/fclairamb/solidping/commit/abe5d3884b53cb3f0a32ab1a23ab09aa6fc7e3f1))
+
+
+### Bug Fixes
+
+* **checks:** **Region freshness no longer warns about a region the check has left.** After automatic placement moved a check out of Paris, the detail page kept showing "No result from Paris" with a stale age. Regions the check is not placed in are now ignored, both on the page and in the MCP diagnose tool ([#464](https://github.com/fclairamb/solidping/issues/464)) ([abe5d38](https://github.com/fclairamb/solidping/commit/abe5d3884b53cb3f0a32ab1a23ab09aa6fc7e3f1))
+* **deps:** update Go dependencies: goja, golang-ical v0.3.7, posthog-go v1.27.1 and non-major bumps ([#452](https://github.com/fclairamb/solidping/issues/452), [#456](https://github.com/fclairamb/solidping/issues/456), [#459](https://github.com/fclairamb/solidping/issues/459), [#462](https://github.com/fclairamb/solidping/issues/462))
+
 ## [0.36.1](https://github.com/fclairamb/solidping/compare/v0.36.0...v0.36.1) (2026-09-29)
 
 
