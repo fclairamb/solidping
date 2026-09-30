@@ -255,6 +255,7 @@ test.describe("Region placement", () => {
     expect(created.placement).toBe("pinned");
 
     await page.goto("orgs/test/checks");
+    await page.getByTestId("checks-more-actions").click();
     await page.getByTestId("auto-placement-button").click();
     await expect(page.getByTestId("auto-placement-dialog")).toBeVisible();
     await expect(page.getByTestId("auto-placement-description")).toContainText("automatic placement");

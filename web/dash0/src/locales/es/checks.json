@@ -6,8 +6,23 @@
   "newCheck": "Nueva comprobación",
   "newGroup": "Nuevo grupo",
   "searchChecks": "Buscar comprobaciones...",
-  "export": "Exportar",
   "import": "Importar",
+  "importChecks": "Importar comprobaciones…",
+  "exportChecks": "Exportar comprobaciones",
+  "checkTypesDocs": "Documentación de los tipos de comprobación",
+  "filters": {
+    "status": "Estado",
+    "type": "Tipo",
+    "labels": "Etiquetas",
+    "scope": "Ámbito",
+    "selected_one": "{{count}} seleccionado",
+    "selected_other": "{{count}} seleccionados"
+  },
+  "resetFilters": "Restablecer",
+  "resultCount_one": "{{count}} comprobación",
+  "resultCount_other": "{{count}} comprobaciones",
+  "resultCountFiltered_one": "{{shown}} de {{count}} comprobación",
+  "resultCountFiltered_other": "{{shown}} de {{count}} comprobaciones",
   "edit": "Editar",
   "userChecks": "Comprobaciones del usuario",
   "internalOnly": "Solo internas",
@@ -16,8 +31,8 @@
   "ungroupedChecks": "Comprobaciones sin grupo",
   "groupBy": {
     "label": "Agrupar por:",
-    "groups": "Grupos",
-    "host": "Host"
+    "byGroup": "Por grupo",
+    "byHost": "Por host"
   },
   "noHostBucket": "Sin host",
   "hostBucketDescription": "Derivado de la configuración de cada comprobación: renombrar un host lo mueve a otra sección.",
@@ -31,16 +46,6 @@
     "degraded": "Degradado",
     "abandoned": "Abandonado",
     "unknown": "Desconocido"
-  },
-  "statusFilter": {
-    "all": "Todos los estados",
-    "count": "{{count}} estados",
-    "plusOne": "{{label}} +{{count}}"
-  },
-  "typeFilter": {
-    "all": "Todos los tipos",
-    "count": "{{count}} tipos",
-    "plusOne": "{{label}} +{{count}}"
   },
   "groupSummary": {
     "allUp": "{{count}}/{{count}} activos",
@@ -690,7 +695,17 @@
     "clone": "Clonar",
     "badges": "Insignias",
     "publishOnStatusPage": "Publicar en una página de estado",
-    "refresh": "Actualizar",
+    "deleteCheck": "Eliminar check",
+    "breadcrumb": "Ruta de navegación",
+    "copyLink": "Copiar enlace del check",
+    "copyLinkFailed": "No se pudo copiar el enlace",
+    "linkCopied": "Enlace del check copiado",
+    "typeDocs": "Documentación del check {{type}}",
+    "every": "Cada {{period}}",
+    "regionCount_one": "{{count}} región",
+    "regionCount_other": "{{count}} regiones",
+    "allRegions": "Todas las regiones",
+    "checkedAgo": "Comprobado <time/>",
     "moreActions": "Más acciones",
     "cloned": "Comprobación clonada — lista para editar",
     "cloneFailed": "No se pudo clonar la comprobación",
@@ -1325,8 +1340,6 @@
     "switched_other": "{{count}} comprobaciones pasadas a ubicación automática",
     "failed": "No se pudieron pasar las comprobaciones a ubicación automática"
   },
-  "labelFilterLabel": "Etiquetas:",
-  "clearFilters": "Borrar filtros",
   "intervalUnits": {
     "second_one": "{{count}} segundo",
     "second_other": "{{count}} segundos",

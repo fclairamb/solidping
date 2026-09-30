@@ -347,6 +347,7 @@ test.describe("Check scheduling page", () => {
     await page.goto("orgs/test/checks");
     await page.waitForLoadState("networkidle");
 
+    await page.getByTestId("checks-more-actions").click();
     await page.getByTestId("scheduling-link").click();
     await page.waitForURL(/\/checks\/scheduling/, { timeout: 10000 });
     await expect(page.getByTestId("check-rate-meter")).toBeVisible();

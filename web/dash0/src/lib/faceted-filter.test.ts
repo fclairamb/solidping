@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  facetedFilterTriggerLabel,
+  facetedFilterBadges,
   parseFacetedFilterParam,
   serializeFacetedFilterParam,
 } from "@/lib/faceted-filter";
@@ -49,38 +49,43 @@ describe("serializeFacetedFilterParam", () => {
   });
 });
 
-describe("facetedFilterTriggerLabel", () => {
+describe("facetedFilterBadges", () => {
   const options = [
     { value: "up", label: "Up" },
     { value: "down", label: "Down" },
     { value: "validating", label: "Validating" },
     { value: "warning", label: "Warning" },
   ];
-  const strings = {
-    all: "All statuses",
-    count: (count: number) => `${count} statuses`,
-    plusOne: (label: string, extra: number) => `${label} +${extra}`,
-  };
+  const selectedLabel = (count: number) => `${count} selected`;
 
-  it("shows the all-label when nothing is selected", () => {
-    expect(facetedFilterTriggerLabel([], options, strings)).toBe("All statuses");
+  it("gives no badge when nothing is selected (the trigger shows the name only)", () => {
+    expect(facetedFilterBadges([], options, selectedLabel)).toEqual([]);
   });
 
-  it("shows the option's own label for a single selection", () => {
-    expect(facetedFilterTriggerLabel(["down"], options, strings)).toBe("Down");
+  it("gives the option's own label for a single selection", () => {
+    expect(facetedFilterBadges(["down"], options, selectedLabel)).toEqual(["Down"]);
   });
 
-  it("falls back to the raw value for a single selection with no matching option", () => {
-    expect(facetedFilterTriggerLabel(["degraded"], options, strings)).toBe("degraded");
+  it("gives both labels for two selections", () => {
+    expect(facetedFilterBadges(["down", "validating"], options, selectedLabel)).toEqual([
+      "Down",
+      "Validating",
+    ]);
   });
 
-  it("shows 'label +1' for exactly two selections", () => {
-    expect(facetedFilterTriggerLabel(["down", "validating"], options, strings)).toBe("Down +1");
+  it("collapses three or more selections into one count badge", () => {
+    expect(
+      facetedFilterBadges(["down", "validating", "warning"], options, selectedLabel),
+    ).toEqual(["3 selected"]);
   });
 
-  it("shows 'N statuses' for three or more selections", () => {
-    expect(facetedFilterTriggerLabel(["down", "validating", "warning"], options, strings)).toBe(
-      "3 statuses",
-    );
+  it("ignores values that match no option", () => {
+    expect(facetedFilterBadges(["bogus"], options, selectedLabel)).toEqual([]);
+    expect(facetedFilterBadges(["down", "bogus"], options, selectedLabel)).toEqual(["Down"]);
+    // Unknown values must not push a real selection over the 3 threshold.
+    expect(facetedFilterBadges(["down", "up", "bogus"], options, selectedLabel)).toEqual([
+      "Down",
+      "Up",
+    ]);
   });
 });

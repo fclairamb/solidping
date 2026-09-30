@@ -65,6 +65,7 @@ test.describe("Publish a check on a status page", () => {
       await page.goto(`orgs/test/checks/${check.uid}`);
       await page.waitForLoadState("networkidle");
 
+      await page.getByRole("button", { name: "More actions" }).click();
       const publishButton = page.getByTestId("publish-status-page-link");
       await expect(publishButton).toBeVisible();
       await publishButton.click();

@@ -215,6 +215,11 @@ jobs:
     runs-on: ubuntu-26.04
     needs: [changes]
     if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) && needs.changes.outputs.code == 'true' }}
+    # contents: write is only for the "Publish coverage badge" step (push to the
+    # `badges` branch), which never runs on pull requests. A job-level block
+    # replaces the top-level one, so re-state what this job needs.
+    permissions:
+      contents: write
     # 20 was extrapolated from a warm laptop (10m19s for internal/db/postgres
     # alone) and proved far too tight: the first real run was KILLED at 20m
     # having reached only ~122 of 232 packages, with internal/db/postgres alone
@@ -298,6 +303,40 @@ jobs:
           set -euo pipefail
           ../scripts/coverage.sh filter "$RUNNER_TEMP/coverage.raw.out" coverage.out
           ../scripts/coverage.sh gate coverage.out
+
+      # Coverage badge (spec 2026-09-29-10). Push to main only, never on pull
+      # requests or forks. Writes coverage.json on the machine-written orphan
+      # `badges` branch (created on first run); README reads it via shields.io.
+      # `badge` exits non-zero on a missing or empty profile, so a broken run
+      # publishes nothing.
+      - name: Publish coverage badge
+        if: ${{ success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'fclairamb/solidping' }}
+        env:
+          COVERAGE_MIN: "80"
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ../scripts/coverage.sh badge coverage.out > "$RUNNER_TEMP/coverage.json"
+          cat "$RUNNER_TEMP/coverage.json"
+          dir="$RUNNER_TEMP/badges"
+          url="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          if git ls-remote --exit-code --heads "$url" badges >/dev/null 2>&1; then
+            git clone --quiet --depth 1 --branch badges "$url" "$dir"
+          else
+            git init --quiet -b badges "$dir"
+            git -C "$dir" remote add origin "$url"
+          fi
+          cp "$RUNNER_TEMP/coverage.json" "$dir/coverage.json"
+          cd "$dir"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add coverage.json
+          if git diff --cached --quiet; then
+            echo "badge unchanged"
+          else
+            git commit --quiet -m "chore: update coverage badge [skip ci]"
+            git push --quiet origin badges
+          fi
 
       - name: Upload coverage profile
         if: ${{ !cancelled() }}

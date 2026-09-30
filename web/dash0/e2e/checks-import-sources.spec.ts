@@ -64,6 +64,7 @@ test.describe("Checks import sources", () => {
     await page.goto("orgs/test/checks");
     await page.waitForLoadState("networkidle");
 
+    await page.getByTestId("checks-more-actions").click();
     await page.getByTestId("import-button").click();
 
     // The source picker offers the native export plus the three converters.
@@ -104,6 +105,7 @@ test.describe("Checks import sources", () => {
     await page.goto("orgs/test/checks");
     await page.waitForLoadState("networkidle");
 
+    await page.getByTestId("checks-more-actions").click();
     await page.getByTestId("import-button").click();
 
     // "SolidPing export (JSON/YAML)" is the default selection.
@@ -129,6 +131,7 @@ test.describe("Checks import sources", () => {
     await page.goto("orgs/test/checks");
     await page.waitForLoadState("networkidle");
 
+    await page.getByTestId("checks-more-actions").click();
     await page.getByTestId("import-button").click();
     await page.getByTestId("import-source").click();
     await page.getByTestId("import-source-betterstack").click();

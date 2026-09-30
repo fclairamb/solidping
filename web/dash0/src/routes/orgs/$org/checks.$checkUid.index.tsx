@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useIsDemoSession } from "@/hooks/use-is-demo-session";
 import { canDemoEditCheck } from "@/lib/demo";
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate, useRouter } from "@tanstack/react-router";
 import { Trans, useTranslation } from "react-i18next";
 import type { IncidentDetail, OrgResult } from "@/api/hooks";
 import { flappingSummaryParams } from "@/lib/flap-summary";
@@ -10,15 +10,21 @@ import {
   AlertTriangle,
   ArrowLeft,
   BadgeCheck,
+  BookOpen,
   Check as CheckIcon,
   Clock,
   Copy,
+  Ellipsis,
   ExternalLink,
   Globe,
+  Hash,
+  Link2,
+  MapPin,
   Loader2,
   Pencil,
   Power,
   RefreshCw,
+  Timer,
   Trash2,
   X,
   FlaskConical,
@@ -91,12 +97,29 @@ import {
   DeliverySources,
   DeliveryVia,
 } from "@/components/checks/smtp-delivery-detail";
-import { StatusDot } from "@/components/shared/status-dot";
 import {
   CheckTypeBadge,
   CheckTypeIcon,
+  getCheckTypeIdentity,
 } from "@/components/shared/check-type-identity";
 import { DocsLink } from "@/components/shared/docs-link";
+import { formatDurationCoarse } from "@/components/shared/relative-time";
+import { TimeAgo } from "@/components/ui/time-ago";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+  breadcrumbLinkClassName,
+} from "@/components/ui/breadcrumb";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { lastRealResultAt } from "@/lib/check-freshness";
 import { docsHrefForType } from "@/components/shared/check-type-docs-anchors";
 import { SloCoverageChip } from "@/components/slos/slo-coverage-chip";
 import { QueryErrorView } from "@/components/shared/error-views";
@@ -382,6 +405,18 @@ function parsePeriodMs(period?: string): number | undefined {
   const [h, m, s] = parts;
   const ms = (h * 3600 + m * 60 + s) * 1000;
   return ms > 0 ? ms : undefined;
+}
+
+/** The check's probed target for the header meta line: url, else host. Types
+ * with neither (heartbeat, email, …) have none and the item is omitted. */
+function headerTargetOf(check: {
+  config?: Record<string, unknown>;
+}): string | undefined {
+  const url = check.config?.url;
+  if (typeof url === "string" && url) return url;
+  const host = check.config?.host;
+  if (typeof host === "string" && host) return host;
+  return undefined;
 }
 
 function HeartbeatEndpoint({
@@ -762,6 +797,7 @@ function CheckDetailPage() {
     publish,
   } = Route.useSearch();
   const navigate = useNavigate();
+  const router = useRouter();
   const { user: authUser } = useAuth();
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(publish === true);
@@ -774,7 +810,6 @@ function CheckDetailPage() {
     isLoading,
     error,
     refetch,
-    isRefetching,
   } = useCheck(org, checkUid);
 
   const isDemoSession = useIsDemoSession();
@@ -1035,6 +1070,22 @@ function CheckDetailPage() {
     }
   };
 
+  const handleCopyLink = async () => {
+    if (!check) return;
+    const href = router.buildLocation({
+      to: "/orgs/$org/checks/$checkUid",
+      params: { org, checkUid: check.slug || check.uid! },
+    }).href;
+    try {
+      await navigator.clipboard.writeText(
+        new URL(href, window.location.origin).toString(),
+      );
+      toast.success(t("checks:detail.linkCopied"));
+    } catch {
+      toast.error(t("checks:detail.copyLinkFailed"));
+    }
+  };
+
   const handleToggleEnabled = async () => {
     if (!check) return;
     const next = !check.enabled;
@@ -1090,6 +1141,12 @@ function CheckDetailPage() {
   }
 
   const headerStatus = check.status ?? check.lastResult?.status;
+  const checkDisplayName =
+    check.name || check.slug || check.uid?.slice(0, 8) || "";
+  const headerTarget = headerTargetOf(check);
+  const headerTargetIsUrl = headerTarget ? /^https?:\/\//i.test(headerTarget) : false;
+  const headerPeriodMs = parsePeriodMs(check.period);
+  const headerLastResultAt = lastRealResultAt(check);
   const flapSummary = flappingSummaryParams(check);
 
   return (
@@ -1109,24 +1166,38 @@ function CheckDetailPage() {
         </Alert>
       )}
       <div className="flex flex-col gap-3" data-testid="check-detail-header">
-        <div className="flex min-w-0 flex-1 items-center gap-3">
-          <StatusDot
-            status={headerStatus}
-            enabled={check.enabled}
-            className="h-3 w-3"
-            title={
-              check.enabled === false ? t("checks:detail.disabled") : undefined
-            }
-          />
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-3">
-              <h1 className="truncate text-2xl font-bold tracking-tight sm:text-3xl">
-                {check.name || check.slug || check.uid?.slice(0, 8)}
+        <Breadcrumb aria-label={t("checks:detail.breadcrumb")}>
+          <BreadcrumbItem className="shrink-0">
+            <Link
+              to="/orgs/$org/checks"
+              params={{ org }}
+              aria-label={t("checks:detail.backToChecks") ?? "Back to checks"}
+              className={breadcrumbLinkClassName}
+              data-testid="check-detail-back"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+              {t("checks:title")}
+            </Link>
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>
+            <BreadcrumbPage>{checkDisplayName}</BreadcrumbPage>
+          </BreadcrumbItem>
+        </Breadcrumb>
+        <div className="flex flex-wrap items-start gap-3">
+          <div className="min-w-0 flex-1 basis-64">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+              <h1 className="min-w-0 max-w-full truncate text-2xl font-bold tracking-tight sm:text-3xl">
+                {checkDisplayName}
               </h1>
-              <span className="hidden shrink-0 items-center gap-1.5 sm:inline-flex">
-                <CheckTypeIcon type={check.type} />
-                <CheckTypeBadge type={check.type} />
-              </span>
+              {check.enabled === false ? (
+                <Badge variant="secondary" className="shrink-0">
+                  {t("checks:detail.disabled")}
+                </Badge>
+              ) : (
+                <StatusBadge status={headerStatus} className="shrink-0" />
+              )}
+              <CheckTypeBadge type={check.type} withIcon className="shrink-0" />
               {check.uid && <SloCoverageChip org={org} checkUid={check.uid} />}
               {isPendingFirstRun && (
                 <Badge
@@ -1159,8 +1230,72 @@ function CheckDetailPage() {
                 </Tooltip>
               )}
             </div>
+            <div
+              className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground"
+              data-testid="check-detail-meta"
+            >
+              {headerTarget && (
+                <span
+                  className="inline-flex min-w-0 max-w-full items-center gap-1.5"
+                  data-testid="check-meta-target"
+                >
+                  {headerTargetIsUrl ? (
+                    <a
+                      href={headerTarget}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex min-w-0 items-center gap-1 hover:text-foreground hover:underline"
+                    >
+                      <span className="truncate">{headerTarget}</span>
+                      <ExternalLink
+                        className="h-3.5 w-3.5 shrink-0"
+                        aria-hidden="true"
+                      />
+                    </a>
+                  ) : (
+                    <span className="truncate">{headerTarget}</span>
+                  )}
+                </span>
+              )}
+              {headerPeriodMs != null && (
+                <span
+                  className="hidden items-center gap-1.5 md:inline-flex"
+                  data-testid="check-meta-interval"
+                >
+                  <Timer className="h-3.5 w-3.5" aria-hidden="true" />
+                  {t("checks:detail.every", {
+                    period: formatDurationCoarse(headerPeriodMs),
+                  })}
+                </span>
+              )}
+              {check.regions && (
+                <span
+                  className="inline-flex items-center gap-1.5"
+                  data-testid="check-meta-regions"
+                >
+                  <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
+                  {check.regions.length === 0
+                    ? t("checks:detail.allRegions")
+                    : t("checks:detail.regionCount", {
+                        count: check.regions.length,
+                      })}
+                </span>
+              )}
+              {!isPendingFirstRun && headerLastResultAt && (
+                <span
+                  className="inline-flex items-center gap-1.5"
+                  data-testid="check-meta-last-check"
+                >
+                  <Clock className="h-3.5 w-3.5" aria-hidden="true" />
+                  <Trans
+                    t={t}
+                    i18nKey="checks:detail.checkedAgo"
+                    components={{ time: <TimeAgo date={headerLastResultAt} /> }}
+                  />
+                </span>
+              )}
             {check.slug && !editingSlug && (
-              <div className="hidden sm:flex items-center gap-1 mt-1">
+              <div className="hidden md:flex items-center gap-1">
                 <Link
                   to="/orgs/$org/checks/$checkUid"
                   params={{ org, checkUid: check.slug }}
@@ -1174,7 +1309,7 @@ function CheckDetailPage() {
                   }}
                   className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs font-mono text-muted-foreground hover:text-foreground transition-colors"
                 >
-                  <span>🔗</span>
+                  <Hash className="h-3 w-3" aria-hidden="true" />
                   {check.slug}
                 </Link>
                 <button
@@ -1187,8 +1322,8 @@ function CheckDetailPage() {
               </div>
             )}
             {editingSlug && (
-              <div className="hidden sm:flex items-center gap-1 mt-1">
-                <span className="text-xs">🔗</span>
+              <div className="hidden md:flex items-center gap-1">
+                <Hash className="h-3 w-3" aria-hidden="true" />
                 <input
                   ref={slugInputRef}
                   value={slugValue}
@@ -1223,7 +1358,7 @@ function CheckDetailPage() {
               </div>
             )}
             {check.uid && checkUid !== check.uid && (
-              <div className="hidden sm:flex items-center gap-1 mt-1">
+              <div className="hidden md:flex items-center gap-1">
                 <Link
                   to="/orgs/$org/checks/$checkUid"
                   params={{ org, checkUid: check.uid }}
@@ -1241,41 +1376,13 @@ function CheckDetailPage() {
                 </Link>
               </div>
             )}
+            </div>
           </div>
-        </div>
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label={t("checks:detail.backToChecks") ?? "Back to checks"}
-            onClick={() =>
-              navigate({ to: "/orgs/$org/checks", params: { org } })
-            }
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-
-          {/* Inline toolbar — always visible; icon-only below lg, icon + label at lg+ */}
-          <div className="flex items-center gap-2">
-            <Button
-              asChild
-              variant="outline"
-              size="icon"
-              className="lg:h-9 lg:w-auto lg:px-4 lg:py-2"
-              aria-label={t("checks:edit")}
-            >
-              <Link
-                to="/orgs/$org/checks/$checkUid/edit"
-                params={{ org, checkUid }}
-              >
-                <Pencil className="h-4 w-4 lg:mr-2" />
-                <span className="hidden lg:inline">{t("checks:edit")}</span>
-              </Link>
-            </Button>
+          <div className="flex shrink-0 items-center gap-2">
             <Button
               variant="outline"
               size="icon"
-              className="lg:h-9 lg:w-auto lg:px-4 lg:py-2"
+              className="md:h-9 md:w-auto md:px-4 md:py-2"
               aria-label={
                 check.enabled
                   ? (t("checks:detail.disable") ?? "Disable")
@@ -1284,99 +1391,99 @@ function CheckDetailPage() {
               disabled={updateCheck.isPending}
               onClick={handleToggleEnabled}
             >
-              <Power className="h-4 w-4 lg:mr-2" />
-              <span className="hidden lg:inline">
+              <Power className="h-4 w-4 md:mr-2" />
+              <span className="hidden md:inline">
                 {check.enabled
                   ? t("checks:detail.disable")
                   : t("checks:detail.enable")}
               </span>
             </Button>
             <Button
-              variant="outline"
-              size="icon"
-              className="lg:h-9 lg:w-auto lg:px-4 lg:py-2"
-              aria-label={t("checks:detail.clone") ?? "Clone"}
-              disabled={cloneCheck.isPending}
-              onClick={handleClone}
-            >
-              <Copy className="h-4 w-4 lg:mr-2" />
-              <span className="hidden lg:inline">
-                {t("checks:detail.clone")}
-              </span>
-            </Button>
-            <Button
               asChild
-              variant="outline"
+              variant="default"
               size="icon"
-              className="lg:h-9 lg:w-auto lg:px-4 lg:py-2"
-              aria-label={t("checks:detail.badges") ?? "Badges"}
+              className="md:h-9 md:w-auto md:px-4 md:py-2"
+              aria-label={t("checks:edit")}
             >
               <Link
-                to="/orgs/$org/checks/$checkUid/badges"
+                to="/orgs/$org/checks/$checkUid/edit"
                 params={{ org, checkUid }}
-                search={{}}
               >
-                <BadgeCheck className="h-4 w-4 lg:mr-2" />
-                <span className="hidden lg:inline">
-                  {t("checks:detail.badges")}
-                </span>
+                <Pencil className="h-4 w-4 md:mr-2" />
+                <span className="hidden md:inline">{t("checks:edit")}</span>
               </Link>
             </Button>
-            {/*
-              Opens a dialog rather than navigating straight to the CREATE-a-
-              page form: for an operator who already has a status page, that
-              navigation answered "add this check to my page" by offering a
-              second page (spec 2026-09-16-11). The testid is unchanged so the
-              affordance stays the same one to look for.
-            */}
-            <Button
-              variant="outline"
-              size="icon"
-              className="lg:h-9 lg:w-auto lg:px-4 lg:py-2"
-              aria-label={
-                t("checks:detail.publishOnStatusPage") ??
-                "Publish on a status page"
-              }
-              onClick={() => setPublishOpen(true)}
-              data-testid="publish-status-page-link"
-            >
-              <Globe className="h-4 w-4 lg:mr-2" />
-              <span className="hidden lg:inline">
-                {t("checks:detail.publishOnStatusPage")}
-              </span>
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              className="lg:h-9 lg:w-auto lg:px-4 lg:py-2"
-              aria-label={t("checks:detail.refresh") ?? "Refresh"}
-              onClick={() => refetch()}
-              disabled={isRefetching}
-            >
-              <RefreshCw
-                className={`h-4 w-4 lg:mr-2 ${isRefetching ? "animate-spin" : ""}`}
-              />
-              <span className="hidden lg:inline">
-                {t("checks:detail.refresh")}
-              </span>
-            </Button>
-            <Button
-              variant="destructive"
-              size="icon"
-              className="lg:h-9 lg:w-auto lg:px-4 lg:py-2"
-              aria-label={t("checks:detail.delete") ?? "Delete"}
-              onClick={() => setDeleteOpen(true)}
-            >
-              <Trash2 className="h-4 w-4 lg:mr-2" />
-              <span className="hidden lg:inline">
-                {t("checks:detail.delete")}
-              </span>
-            </Button>
-          </div>
-
-          {/* Deep link into the docs section for *this* check's type, so the
-              page's own protocol reference is one click away. */}
-          <DocsLink href={docsHrefForType(check.type)} />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  aria-label={t("checks:detail.moreActions")}
+                  data-testid="check-more-actions"
+                >
+                  <Ellipsis className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  disabled={cloneCheck.isPending}
+                  onSelect={handleClone}
+                >
+                  <Copy className="mr-2 h-4 w-4" />
+                  {t("checks:detail.clone")}
+                </DropdownMenuItem>
+                {/*
+                  Opens a dialog rather than navigating straight to the
+                  CREATE-a-page form: for an operator who already has a status
+                  page, that navigation answered "add this check to my page"
+                  by offering a second page (spec 2026-09-16-11).
+                */}
+                <DropdownMenuItem
+                  onSelect={() => setPublishOpen(true)}
+                  data-testid="publish-status-page-link"
+                >
+                  <Globe className="mr-2 h-4 w-4" />
+                  {t("checks:detail.publishOnStatusPage")}
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link
+                    to="/orgs/$org/checks/$checkUid/badges"
+                    params={{ org, checkUid }}
+                    search={{}}
+                  >
+                    <BadgeCheck className="mr-2 h-4 w-4" />
+                    {t("checks:detail.badges")}
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={handleCopyLink}>
+                  <Link2 className="mr-2 h-4 w-4" />
+                  {t("checks:detail.copyLink")}
+                </DropdownMenuItem>
+                {/* Deep link into the docs section for *this* check's type. */}
+                <DropdownMenuItem asChild>
+                  <a
+                    href={docsHrefForType(check.type)}
+                    target="_blank"
+                    rel="noopener"
+                    data-testid="docs-link"
+                  >
+                    <BookOpen className="mr-2 h-4 w-4" />
+                    {t("checks:detail.typeDocs", {
+                      type: getCheckTypeIdentity(check.type).label,
+                    })}
+                  </a>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onSelect={() => setDeleteOpen(true)}
+                  data-testid="check-delete-item"
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  {t("checks:detail.deleteCheck")}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
 
           {/* Triggerless, controlled delete dialog */}
           <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
@@ -1413,6 +1520,7 @@ function CheckDetailPage() {
             open={publishOpen}
             onOpenChange={setPublishOpen}
           />
+          </div>
         </div>
       </div>
 

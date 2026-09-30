@@ -6,8 +6,23 @@
   "newCheck": "Nouveau contrôle",
   "newGroup": "Nouveau groupe",
   "searchChecks": "Rechercher des contrôles...",
-  "export": "Exporter",
   "import": "Importer",
+  "importChecks": "Importer des contrôles…",
+  "exportChecks": "Exporter les contrôles",
+  "checkTypesDocs": "Documentation des types de contrôle",
+  "filters": {
+    "status": "Statut",
+    "type": "Type",
+    "labels": "Étiquettes",
+    "scope": "Périmètre",
+    "selected_one": "{{count}} sélectionné",
+    "selected_other": "{{count}} sélectionnés"
+  },
+  "resetFilters": "Réinitialiser",
+  "resultCount_one": "{{count}} contrôle",
+  "resultCount_other": "{{count}} contrôles",
+  "resultCountFiltered_one": "{{shown}} sur {{count}} contrôle",
+  "resultCountFiltered_other": "{{shown}} sur {{count}} contrôles",
   "edit": "Modifier",
   "userChecks": "Contrôles utilisateur",
   "internalOnly": "Internes uniquement",
@@ -16,8 +31,8 @@
   "ungroupedChecks": "Contrôles non groupés",
   "groupBy": {
     "label": "Grouper par :",
-    "groups": "Groupes",
-    "host": "Hôte"
+    "byGroup": "Par groupe",
+    "byHost": "Par hôte"
   },
   "noHostBucket": "Sans hôte",
   "hostBucketDescription": "Dérivé de la configuration de chaque contrôle — renommer un hôte le déplace vers une autre section.",
@@ -31,16 +46,6 @@
     "degraded": "Dégradé",
     "abandoned": "Abandonné",
     "unknown": "Inconnu"
-  },
-  "statusFilter": {
-    "all": "Tous les statuts",
-    "count": "{{count}} statuts",
-    "plusOne": "{{label}} +{{count}}"
-  },
-  "typeFilter": {
-    "all": "Tous les types",
-    "count": "{{count}} types",
-    "plusOne": "{{label}} +{{count}}"
   },
   "groupSummary": {
     "allUp": "{{count}}/{{count}} opérationnels",
@@ -734,7 +739,17 @@
     "clone": "Cloner",
     "badges": "Badges",
     "publishOnStatusPage": "Publier sur une page de statut",
-    "refresh": "Actualiser",
+    "deleteCheck": "Supprimer le check",
+    "breadcrumb": "Fil d'Ariane",
+    "copyLink": "Copier le lien du check",
+    "copyLinkFailed": "Impossible de copier le lien",
+    "linkCopied": "Lien du check copié",
+    "typeDocs": "Documentation du check {{type}}",
+    "every": "Toutes les {{period}}",
+    "regionCount_one": "{{count}} région",
+    "regionCount_other": "{{count}} régions",
+    "allRegions": "Toutes les régions",
+    "checkedAgo": "Vérifié <time/>",
     "moreActions": "Plus d'actions",
     "cloned": "Contrôle cloné — prêt à modifier",
     "cloneFailed": "Échec du clonage du contrôle",
@@ -1325,8 +1340,6 @@
     "switched_other": "{{count}} contrôles passés en placement automatique",
     "failed": "Impossible de passer les contrôles en placement automatique"
   },
-  "labelFilterLabel": "Étiquettes :",
-  "clearFilters": "Effacer les filtres",
   "intervalUnits": {
     "second_one": "{{count}} seconde",
     "second_other": "{{count}} secondes",

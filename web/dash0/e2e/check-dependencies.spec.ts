@@ -272,7 +272,8 @@ test.describe("Check dependencies", () => {
     // Delete the parent check from its own detail page. The dependencies card
     // is read-only now, so the only trash-icon button on this page is the
     // check-delete one.
-    await page.locator('button:has([class*="lucide-trash"])').click();
+    await page.getByRole("button", { name: "More actions" }).click();
+    await page.getByRole("menuitem", { name: "Delete check" }).click();
     await page.getByRole("button", { name: "Delete" }).click();
     await page.waitForURL(/\/checks$/, { timeout: 10000 });
 

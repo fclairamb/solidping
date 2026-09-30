@@ -72,3 +72,70 @@ func TestBuildRegionFreshness(t *testing.T) {
 	r.True(got[2].Stale, "a configured region with no result at all is silent")
 	r.Nil(got[2].LastResultAt)
 }
+
+// A region the check no longer runs in (moved out by automatic placement) must
+// not show up, let alone as silent.
+func TestBuildRegionFreshnessIgnoresUnplacedRegions(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	now := time.Date(2026, 9, 30, 9, 0, 0, 0, time.UTC)
+	check := &models.Check{
+		Period:  timeutils.Duration(time.Minute),
+		Regions: []string{"gravelines", "kansas-city"},
+	}
+	rows := []models.RegionLastResult{
+		{Region: "gravelines", LastResultAt: now.Add(-49 * time.Second)},
+		{Region: "kansas-city", LastResultAt: now.Add(-18 * time.Second)},
+		{Region: "paris", LastResultAt: now.Add(-39 * time.Minute)},
+	}
+
+	got := BuildRegionFreshness(check, rows, now)
+	r.Len(got, 2)
+
+	for _, f := range got {
+		r.NotEqual("paris", f.Region)
+		r.False(f.Stale)
+	}
+}
+
+func TestBuildRegionFreshnessKeepsSilentPlacedRegions(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	now := time.Date(2026, 9, 30, 9, 0, 0, 0, time.UTC)
+	check := &models.Check{
+		Period:  timeutils.Duration(time.Minute),
+		Regions: []string{"gravelines", "kansas-city", "tokyo"},
+	}
+	rows := []models.RegionLastResult{
+		{Region: "gravelines", LastResultAt: now.Add(-10 * time.Second)},
+		{Region: "kansas-city", LastResultAt: now.Add(-39 * time.Minute)},
+		{Region: "paris", LastResultAt: now.Add(-39 * time.Minute)},
+	}
+
+	got := BuildRegionFreshness(check, rows, now)
+	r.Len(got, 3)
+	r.Equal("kansas-city", got[1].Region)
+	r.True(got[1].Stale)
+	r.Equal("tokyo", got[2].Region)
+	r.True(got[2].Stale)
+	r.Nil(got[2].LastResultAt)
+}
+
+func TestBuildRegionFreshnessNoConfiguredRegionsNoFiltering(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	now := time.Date(2026, 9, 30, 9, 0, 0, 0, time.UTC)
+	check := &models.Check{Period: timeutils.Duration(time.Minute)}
+	rows := []models.RegionLastResult{
+		{Region: "paris", LastResultAt: now.Add(-10 * time.Second)},
+		{Region: "tokyo", LastResultAt: now.Add(-10 * time.Second)},
+	}
+
+	got := BuildRegionFreshness(check, rows, now)
+	r.Len(got, 2)
+	r.Equal("paris", got[0].Region)
+	r.Equal("tokyo", got[1].Region)
+}

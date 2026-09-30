@@ -247,9 +247,12 @@ const TRANSLATABLE_LABEL_KEYS: Record<string, string> = {
 export function CheckTypeBadge({
   type,
   className,
+  withIcon = false,
 }: {
   type?: string;
   className?: string;
+  /** Renders the registry icon inside the badge (check detail header). */
+  withIcon?: boolean;
 }) {
   const { t } = useTranslation("checks");
   const identity = getCheckTypeIdentity(type);
@@ -261,6 +264,9 @@ export function CheckTypeBadge({
       className={cn(CHECK_TYPE_BADGE_BASE, identity.tone, className)}
       title={type}
     >
+      {withIcon && (
+        <CheckTypeIcon type={type} className="mr-1 h-3 w-3" />
+      )}
       {label}
     </Badge>
   );

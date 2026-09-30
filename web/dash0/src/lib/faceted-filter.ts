@@ -1,7 +1,7 @@
 // Shared helpers for the checks-list faceted filters (status, type): parsing
 // a comma-separated `?status=`/`?type=` URL param into a value list, its
-// inverse serializer, and the trigger-label formatting the popover button
-// shows for the current selection.
+// inverse serializer, and the value badges the popover trigger shows for the
+// current selection.
 
 /**
  * Parses a comma-separated URL param into a de-duplicated, order-preserving
@@ -36,33 +36,25 @@ export function serializeFacetedFilterParam(values: string[]): string {
   return values.join(",");
 }
 
-export interface FacetedFilterLabelStrings {
-  /** Shown when nothing is selected, e.g. "All statuses". */
-  all: string;
-  /** Shown for 3+ selections — receives `{{count}}`, e.g. "{{count}} statuses". */
-  count: (count: number) => string;
-  /** Shown for exactly 2 selections — receives `{{label}}` and `{{count}}` (extra count), e.g. "{{label}} +{{count}}". */
-  plusOne: (label: string, extraCount: number) => string;
-}
-
 /**
- * Computes the FacetedFilter trigger text for a selection:
- * - none selected → `all`
- * - one selected → that option's own label
- * - two selected → `plusOne(firstLabel, 1)` (e.g. "Down +1")
- * - three or more → `count(selected.length)` (e.g. "4 statuses")
+ * Value badges a FacetedFilter trigger shows next to its dimension name:
+ * - nothing selected (or only values with no matching option) → no badge
+ * - one or two selected → each option's own label
+ * - three or more → a single `selectedLabel(count)` badge (e.g. "3 selected")
+ *
+ * Selected values that match no option are ignored: a stale URL token must not
+ * render a badge for a value the popover cannot show ticked.
  */
-export function facetedFilterTriggerLabel(
+export function facetedFilterBadges(
   selected: string[],
   options: { value: string; label: string }[],
-  strings: FacetedFilterLabelStrings,
-): string {
-  if (selected.length === 0) return strings.all;
-
-  const labelOf = (value: string) =>
-    options.find((o) => o.value === value)?.label ?? value;
-
-  if (selected.length === 1) return labelOf(selected[0]);
-  if (selected.length === 2) return strings.plusOne(labelOf(selected[0]), selected.length - 1);
-  return strings.count(selected.length);
+  selectedLabel: (count: number) => string,
+): string[] {
+  const labels: string[] = [];
+  for (const value of selected) {
+    const option = options.find((o) => o.value === value);
+    if (option) labels.push(option.label);
+  }
+  if (labels.length <= 2) return labels;
+  return [selectedLabel(labels.length)];
 }

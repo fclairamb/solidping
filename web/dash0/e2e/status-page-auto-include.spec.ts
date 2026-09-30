@@ -149,6 +149,7 @@ test.describe("Status page auto-include discoverability", () => {
       await page.goto(`orgs/test/checks/${check.uid}`);
       await page.waitForLoadState("networkidle");
 
+      await page.getByRole("button", { name: "More actions" }).click();
       await page.getByTestId("publish-status-page-link").click();
 
       const addButton = page.getByTestId(
@@ -224,6 +225,7 @@ test.describe("Status page auto-include discoverability", () => {
       await page.goto(`orgs/test/checks/${check.uid}`);
       await page.waitForLoadState("networkidle");
 
+      await page.getByRole("button", { name: "More actions" }).click();
       await page.getByTestId("publish-status-page-link").click();
 
       await expect(page.getByTestId("publish-already-published")).toBeVisible({

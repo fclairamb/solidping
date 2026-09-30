@@ -1,6 +1,6 @@
-import type { ReactNode } from "react";
-import { ChevronDown } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { useTranslation } from "react-i18next";
+import { FilterTrigger } from "@/components/shared/filter-trigger";
+import { facetedFilterBadges } from "@/lib/faceted-filter";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
@@ -16,19 +16,16 @@ export interface FacetedFilterProps {
   selected: string[];
   onChange: (next: string[]) => void;
   /**
-   * Trigger button text. Computed by the caller (not this component) so the
-   * "All X" / single-value / "N selected" / "X +1" formatting stays in the
-   * caller's i18n strings — see `facetedFilterTriggerLabel` in
-   * `@/lib/faceted-filter`.
+   * The dimension name shown on the trigger ("Status", "Type"). The selected
+   * option labels are appended as value badges, see `facetedFilterBadges`.
    */
-  triggerLabel: string;
+  title: string;
   /** data-testid on the trigger button, e.g. "status-filter". */
   testId?: string;
-  icon?: ReactNode;
 }
 
-// FacetedFilter is the checks-list multi-select popover: a trigger whose
-// label reflects the current selection, opening a checkbox list where each
+// FacetedFilter is the checks-list multi-select popover: a trigger showing the
+// dimension name and the current selection as value badges, opening a checkbox list where each
 // click toggles one option. It's the answer to "pick a value, then
 // optionally another" for a small, known option set (status, check type) —
 // the multi-key/multi-value sibling of LabelFilter
@@ -42,11 +39,14 @@ export function FacetedFilter({
   options,
   selected,
   onChange,
-  triggerLabel,
+  title,
   testId,
-  icon,
 }: FacetedFilterProps) {
+  const { t } = useTranslation("checks");
   const selectedSet = new Set(selected);
+  const badges = facetedFilterBadges(selected, options, (count) =>
+    t("filters.selected", { count }),
+  );
 
   const toggle = (value: string) => {
     if (selectedSet.has(value)) {
@@ -59,19 +59,12 @@ export function FacetedFilter({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-9 w-[160px] justify-between font-normal"
+        <FilterTrigger
+          title={title}
+          badges={badges}
+          count={selected.filter((v) => options.some((o) => o.value === v)).length}
           data-testid={testId}
-        >
-          <span className="flex min-w-0 items-center gap-2">
-            {icon}
-            <span className="truncate">{triggerLabel}</span>
-          </span>
-          <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
-        </Button>
+        />
       </PopoverTrigger>
       <PopoverContent align="start" className="w-56 p-1">
         <div className="flex max-h-72 flex-col overflow-y-auto">
