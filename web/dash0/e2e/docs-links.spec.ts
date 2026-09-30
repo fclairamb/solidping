@@ -36,11 +36,14 @@ test.describe("Docs links", () => {
     await page.waitForURL(/\/checks/);
     await page.waitForLoadState("networkidle");
 
-    const docsLink = page.getByTestId("docs-link");
+    // The docs entry lives in the "more actions" menu, not the page header.
+    await expect(page.getByTestId("docs-link")).toHaveCount(0);
+    await page.getByTestId("checks-more-actions").click();
+    const docsLink = page.getByTestId("check-types-docs-link");
     await expect(docsLink).toBeVisible();
     await expect(docsLink).toHaveAttribute("href", "/docs/features/check-types");
     await expect(docsLink).toHaveAttribute("target", "_blank");
-    await expect(docsLink).toHaveAttribute("rel", "noopener");
+    await expect(docsLink).toHaveAttribute("rel", "noreferrer");
   });
 
   test("status pages list renders a docs link to status-pages", async ({ authenticatedPage }) => {
