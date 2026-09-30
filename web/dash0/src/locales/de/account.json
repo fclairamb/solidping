@@ -314,5 +314,21 @@
     "deniedDescription": "Es wurde kein Token erstellt. Die Kommandozeile meldet, dass die Anfrage abgelehnt wurde.",
     "approvedToast": "Gerät genehmigt — kehren Sie zu Ihrem Terminal zurück",
     "decisionFailed": "Ihre Entscheidung konnte nicht gespeichert werden"
+  },
+  "email": {
+    "title": "E-Mail",
+    "subtitle": "Die Adresse, mit der Sie sich anmelden und Konto-E-Mails erhalten.",
+    "current": "Aktuelle E-Mail",
+    "newEmail": "Neue E-Mail",
+    "currentPassword": "Aktuelles Passwort",
+    "notice": "Ihre anderen Sitzungen werden abgemeldet, und die aktuelle Adresse wird über die Änderung informiert.",
+    "submit": "E-Mail ändern",
+    "saved": "E-Mail geändert. Verwenden Sie bei der nächsten Anmeldung die neue Adresse.",
+    "ssoOnly": "Dieses Konto meldet sich über einen Identitätsanbieter an. Ändern Sie Ihre E-Mail-Adresse dort.",
+    "errors": {
+      "conflict": "Diese E-Mail-Adresse wird bereits von einem anderen Konto verwendet.",
+      "wrongPassword": "Das aktuelle Passwort ist falsch.",
+      "invalid": "Geben Sie eine gültige E-Mail-Adresse ein."
+    }
   }
 }

@@ -314,5 +314,21 @@
     "deniedDescription": "No se creó ningún token. La línea de comandos informará que la solicitud fue denegada.",
     "approvedToast": "Dispositivo aprobado — vuelve a tu terminal",
     "decisionFailed": "No se pudo registrar tu decisión"
+  },
+  "email": {
+    "title": "Correo electrónico",
+    "subtitle": "La dirección con la que inicias sesión y recibes los correos de la cuenta.",
+    "current": "Correo actual",
+    "newEmail": "Nuevo correo",
+    "currentPassword": "Contraseña actual",
+    "notice": "Se cerrarán tus otras sesiones y se avisará del cambio a la dirección actual.",
+    "submit": "Cambiar correo",
+    "saved": "Correo cambiado. Usa la nueva dirección la próxima vez que inicies sesión.",
+    "ssoOnly": "Esta cuenta inicia sesión con un proveedor de identidad. Cambia tu dirección de correo allí.",
+    "errors": {
+      "conflict": "Esta dirección ya la usa otra cuenta.",
+      "wrongPassword": "La contraseña actual es incorrecta.",
+      "invalid": "Introduce una dirección de correo válida."
+    }
   }
 }
