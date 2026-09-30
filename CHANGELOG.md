@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.37.0](https://github.com/fclairamb/solidping/compare/v0.36.1...v0.37.0) (2026-09-30)
+
+
+### Features
+
+* **deploy:** add an MCPB bundle for Claude Desktop and Smithery ([#458](https://github.com/fclairamb/solidping/issues/458)) ([13c78d2](https://github.com/fclairamb/solidping/commit/13c78d2b0e181ee98fbc223d607e0cd419eceb41))
+* redesigned check headers, MCP server card, coverage badge, region freshness fix ([#464](https://github.com/fclairamb/solidping/issues/464)) ([abe5d38](https://github.com/fclairamb/solidping/commit/abe5d3884b53cb3f0a32ab1a23ab09aa6fc7e3f1))
+
+
+### Bug Fixes
+
+* **deps:** update github.com/dop251/goja digest to 39ec265 ([#452](https://github.com/fclairamb/solidping/issues/452)) ([51a6eae](https://github.com/fclairamb/solidping/commit/51a6eae42984ed878a7c3d20a9036be391e51eab))
+* **deps:** update go dependencies (non-major) ([#456](https://github.com/fclairamb/solidping/issues/456)) ([1e35b3d](https://github.com/fclairamb/solidping/commit/1e35b3d90c61ff9c85843fd3b60be03ff0ea1283))
+* **deps:** update module github.com/arran4/golang-ical to v0.3.7 ([#462](https://github.com/fclairamb/solidping/issues/462)) ([2ea5da2](https://github.com/fclairamb/solidping/commit/2ea5da259f949555ca35c64cf764749936d43330))
+* **deps:** update module github.com/posthog/posthog-go to v1.27.1 ([#459](https://github.com/fclairamb/solidping/issues/459)) ([464acf7](https://github.com/fclairamb/solidping/commit/464acf7a794b28d166027ba470fc3597ec362846))
+
 ## [0.36.1](https://github.com/fclairamb/solidping/compare/v0.36.0...v0.36.1) (2026-09-29)
 
 
