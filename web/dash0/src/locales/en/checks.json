@@ -6,8 +6,23 @@
   "newCheck": "New Check",
   "newGroup": "New Group",
   "searchChecks": "Search checks...",
-  "export": "Export",
   "import": "Import",
+  "importChecks": "Import checks…",
+  "exportChecks": "Export checks",
+  "checkTypesDocs": "Check types docs",
+  "filters": {
+    "status": "Status",
+    "type": "Type",
+    "labels": "Labels",
+    "scope": "Scope",
+    "selected_one": "{{count}} selected",
+    "selected_other": "{{count}} selected"
+  },
+  "resetFilters": "Reset",
+  "resultCount_one": "{{count}} check",
+  "resultCount_other": "{{count}} checks",
+  "resultCountFiltered_one": "{{shown}} of {{count}} check",
+  "resultCountFiltered_other": "{{shown}} of {{count}} checks",
   "edit": "Edit",
   "userChecks": "User checks",
   "internalOnly": "Internal only",
@@ -16,8 +31,8 @@
   "ungroupedChecks": "Ungrouped Checks",
   "groupBy": {
     "label": "Group by:",
-    "groups": "Groups",
-    "host": "Host"
+    "byGroup": "By group",
+    "byHost": "By host"
   },
   "noHostBucket": "No host",
   "hostBucketDescription": "Derived from each check's config — renaming a host moves it to a different section.",
@@ -31,16 +46,6 @@
     "degraded": "Degraded",
     "abandoned": "Abandoned",
     "unknown": "Unknown"
-  },
-  "statusFilter": {
-    "all": "All statuses",
-    "count": "{{count}} statuses",
-    "plusOne": "{{label}} +{{count}}"
-  },
-  "typeFilter": {
-    "all": "All types",
-    "count": "{{count}} types",
-    "plusOne": "{{label}} +{{count}}"
   },
   "groupSummary": {
     "allUp": "{{count}}/{{count}} up",
@@ -1335,8 +1340,6 @@
     "switched_other": "{{count}} checks switched to automatic placement",
     "failed": "Could not switch checks to automatic placement"
   },
-  "labelFilterLabel": "Labels:",
-  "clearFilters": "Clear filters",
   "intervalUnits": {
     "second_one": "{{count}} second",
     "second_other": "{{count}} seconds",

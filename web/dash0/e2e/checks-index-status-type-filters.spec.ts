@@ -89,6 +89,16 @@ async function mockChecksIndex(
     });
   });
 
+  // The result count's org-wide total (GET /checks/stats). Registered after the
+  // catch-all /checks route above so it wins for this one path.
+  await page.route("**/api/v1/orgs/*/checks/stats*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ total: opts.checks.length, enabled: opts.checks.length, disabled: 0, byStatus: {}, down: 0 }),
+    }),
+  );
+
   await page.route("**/api/v1/orgs/*/check-types*", (route) =>
     route.fulfill({
       status: 200,
@@ -148,7 +158,10 @@ test.describe("Checks list — status faceted filter", () => {
     // narrowed list — not just "fewer rows".
     await expect(page.getByText("ST Up Check")).not.toBeVisible();
 
-    await expect(page.getByTestId("status-filter")).toContainText("Down +1");
+    // The trigger reads "Status" plus one badge per selected value.
+    await expect(page.getByTestId("status-filter")).toContainText("Status");
+    await expect(page.getByTestId("status-filter")).toContainText("Down");
+    await expect(page.getByTestId("status-filter")).toContainText("Validating");
   });
 
   test("cold deep link with two statuses shows both selected on first paint and filters the list", async ({
@@ -172,7 +185,8 @@ test.describe("Checks list — status faceted filter", () => {
     await expect(page.getByText("Cold Validating Check")).toBeVisible();
     await expect(page.getByText("Cold Up Check")).not.toBeVisible();
 
-    await expect(page.getByTestId("status-filter")).toContainText("Down +1");
+    await expect(page.getByTestId("status-filter")).toContainText("Down");
+    await expect(page.getByTestId("status-filter")).toContainText("Validating");
     await page.getByTestId("status-filter").click();
     await expect(page.getByTestId("status-filter-option-down").getByRole("checkbox")).toBeChecked();
     await expect(page.getByTestId("status-filter-option-validating").getByRole("checkbox")).toBeChecked();
@@ -247,5 +261,105 @@ test.describe("Checks list — validating status against the real backend", () =
 
     await expect(page.getByText("Validating Check")).toBeVisible();
     await expect(page.getByTestId("status-filter")).toContainText("Validating");
+  });
+});
+
+test.describe("Checks list — trigger look, result count and Reset", () => {
+  const checks: MockCheck[] = [
+    { uid: "e2e-rc-up", name: "RC Up Check", status: "up", type: "http" },
+    { uid: "e2e-rc-down", name: "RC Down Check", status: "down", type: "tcp" },
+    { uid: "e2e-rc-up2", name: "RC Up Two", status: "up", type: "http" },
+  ];
+
+  test("triggers read as bare names with no selection and show value badges once selected", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await mockChecksIndex(page, { checks, checkTypes: ["http", "tcp"] });
+    await page.goto("orgs/test/checks");
+    await page.waitForLoadState("networkidle");
+
+    await expect(page.getByTestId("status-filter")).toHaveText("Status");
+    await expect(page.getByTestId("type-filter")).toHaveText("Type");
+    await expect(page.getByTestId("status-filter")).toHaveAttribute("data-active", "false");
+
+    await page.getByTestId("type-filter").click();
+    await page.getByTestId("type-filter-option-http").click();
+    await page.getByTestId("type-filter-option-tcp").click();
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("type-filter")).toHaveAttribute("data-active", "true");
+    await expect(page.getByTestId("type-filter")).toContainText("HTTP");
+    await expect(page.getByTestId("type-filter")).toContainText("TCP");
+    expect(new URL(page.url()).searchParams.get("type")?.split(",").sort()).toEqual(["http", "tcp"]);
+  });
+
+  test("no filter: count reads the total and there is no Reset", async ({ authenticatedPage }) => {
+    const page = authenticatedPage;
+    await mockChecksIndex(page, { checks, checkTypes: ["http", "tcp"] });
+    await page.goto("orgs/test/checks");
+    await page.waitForLoadState("networkidle");
+
+    await expect(page.getByTestId("checks-result-count")).toHaveText("3 checks");
+    await expect(page.getByTestId("reset-filters")).toHaveCount(0);
+  });
+
+  test("filtering shows 'N of M checks' and Reset clears facets but keeps search and groupBy", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await mockChecksIndex(page, { checks, checkTypes: ["http", "tcp"] });
+    await page.goto("orgs/test/checks?groupBy=host&q=RC");
+    await page.waitForLoadState("networkidle");
+
+    await page.getByTestId("status-filter").click();
+    await page.getByTestId("status-filter-option-down").click();
+    await page.keyboard.press("Escape");
+    await page.getByTestId("type-filter").click();
+    await page.getByTestId("type-filter-option-tcp").click();
+    await page.keyboard.press("Escape");
+    await page.waitForLoadState("networkidle");
+
+    await expect(page.getByTestId("checks-result-count")).toHaveText("1 of 3 checks");
+    await expect(page.getByTestId("reset-filters")).toBeVisible();
+
+    await page.getByTestId("reset-filters").click();
+    await expect(page.getByTestId("reset-filters")).toHaveCount(0);
+    await expect
+      .poll(() => {
+        const u = new URL(page.url());
+        return [u.searchParams.get("status"), u.searchParams.get("type"), u.searchParams.get("labels")];
+      })
+      .toEqual([null, null, null]);
+    const u = new URL(page.url());
+    expect(u.searchParams.get("q")).toBe("RC");
+    expect(u.searchParams.get("groupBy")).toBe("host");
+    await expect(page.getByTestId("status-filter")).toHaveText("Status");
+    await expect(page.getByTestId("group-by-host")).toHaveAttribute("aria-pressed", "true");
+  });
+
+  test("mobile (390px): header actions are icon-only, the page does not scroll sideways, Import is in the menu", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await page.setViewportSize({ width: 390, height: 812 });
+    await mockChecksIndex(page, { checks, checkTypes: ["http", "tcp"] });
+    await page.goto("orgs/test/checks");
+    await page.waitForLoadState("networkidle");
+
+    for (const testId of ["new-check-button", "new-group-button", "checks-more-actions"]) {
+      await expect(page.getByTestId(testId)).toBeVisible();
+    }
+    // Icon-only: the text label span is hidden (display: none) below sm.
+    await expect(page.getByTestId("new-check-button").locator("span")).toBeHidden();
+    await expect(page.getByTestId("new-group-button").locator("span")).toBeHidden();
+
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(0);
+
+    await page.getByTestId("checks-more-actions").click();
+    await expect(page.getByTestId("import-button")).toBeVisible();
+    await expect(page.getByTestId("export-button")).toBeVisible();
   });
 });

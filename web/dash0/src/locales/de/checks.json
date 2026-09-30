@@ -6,8 +6,23 @@
   "newCheck": "Neue Prüfung",
   "newGroup": "Neue Gruppe",
   "searchChecks": "Prüfungen durchsuchen...",
-  "export": "Exportieren",
   "import": "Importieren",
+  "importChecks": "Prüfungen importieren…",
+  "exportChecks": "Prüfungen exportieren",
+  "checkTypesDocs": "Dokumentation der Prüfungstypen",
+  "filters": {
+    "status": "Status",
+    "type": "Typ",
+    "labels": "Labels",
+    "scope": "Bereich",
+    "selected_one": "{{count}} ausgewählt",
+    "selected_other": "{{count}} ausgewählt"
+  },
+  "resetFilters": "Zurücksetzen",
+  "resultCount_one": "{{count}} Prüfung",
+  "resultCount_other": "{{count}} Prüfungen",
+  "resultCountFiltered_one": "{{shown}} von {{count}} Prüfung",
+  "resultCountFiltered_other": "{{shown}} von {{count}} Prüfungen",
   "edit": "Bearbeiten",
   "userChecks": "Benutzerprüfungen",
   "internalOnly": "Nur intern",
@@ -16,8 +31,8 @@
   "ungroupedChecks": "Nicht gruppierte Prüfungen",
   "groupBy": {
     "label": "Gruppieren nach:",
-    "groups": "Gruppen",
-    "host": "Host"
+    "byGroup": "Nach Gruppe",
+    "byHost": "Nach Host"
   },
   "noHostBucket": "Kein Host",
   "hostBucketDescription": "Abgeleitet aus der Konfiguration jeder Prüfung — das Umbenennen eines Hosts verschiebt ihn in einen anderen Abschnitt.",
@@ -31,16 +46,6 @@
     "degraded": "Beeinträchtigt",
     "abandoned": "Abgebrochen",
     "unknown": "Unbekannt"
-  },
-  "statusFilter": {
-    "all": "Alle Status",
-    "count": "{{count}} Status",
-    "plusOne": "{{label}} +{{count}}"
-  },
-  "typeFilter": {
-    "all": "Alle Typen",
-    "count": "{{count}} Typen",
-    "plusOne": "{{label}} +{{count}}"
   },
   "groupSummary": {
     "allUp": "{{count}}/{{count}} aktiv",
@@ -1335,8 +1340,6 @@
     "switched_other": "{{count}} Prüfungen auf automatische Platzierung umgestellt",
     "failed": "Prüfungen konnten nicht auf automatische Platzierung umgestellt werden"
   },
-  "labelFilterLabel": "Labels:",
-  "clearFilters": "Filter zurücksetzen",
   "intervalUnits": {
     "second_one": "{{count}} Sekunde",
     "second_other": "{{count}} Sekunden",

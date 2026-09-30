@@ -22,6 +22,8 @@ import {
   ChevronRight,
   Copy,
   Ellipsis,
+  Folder,
+  Server,
   Power,
   Eye,
   FolderPlus,
@@ -254,7 +256,6 @@ import { AvailabilityStrip } from "@/components/ui/availability-strip";
 import { useIsDarkTheme } from "@/hooks/use-is-dark-theme";
 import { OAuthProviderButtons } from "@/components/auth/oauth-provider-buttons";
 import { useDebounce } from "@/lib/use-debounce";
-import { facetedFilterTriggerLabel } from "@/lib/faceted-filter";
 import { cn, slugify } from "@/lib/utils";
 
 export const Route = createFileRoute("/orgs/$org/design-reference")({
@@ -1163,30 +1164,58 @@ import { PageHeader } from "@/components/shared/page-header";
 }
 
 function ButtonPlacementSection() {
-  const buttonPlacementSnippet = `// A page WITH a search/filter toolbar: PageHeader actions carries only the
-// primary "New X" action. Refresh moves into the toolbar row, right of search.
+  const buttonPlacementSnippet = `// A list page WITH a search/filter toolbar. PageHeader actions holds the
+// primary "New X", at most one secondary create action, and a ⋯ menu for the
+// org-level tools (import, export, bulk operations, docs). No row of equal
+// outline buttons.
 <PageHeader
-  icon={Globe}
-  title="Status pages"
+  icon={ListChecks}
+  title="Checks"
   actions={
-    <Button asChild>
-      <Link to="/orgs/$org/status-pages/new" params={{ org }}>
-        <Plus className="mr-2 h-4 w-4" />
-        New page
-      </Link>
-    </Button>
+    <>
+      <Button variant="outline" aria-label="New group">
+        <FolderPlus className="sm:mr-2 h-4 w-4" />
+        <span className="hidden sm:inline">New group</span>
+      </Button>
+      <Button asChild>
+        <Link to="/orgs/$org/checks/new" params={{ org }}>
+          <Plus className="sm:mr-2 h-4 w-4" />
+          <span className="hidden sm:inline">New check</span>
+        </Link>
+      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" size="icon" aria-label="More actions">
+            <Ellipsis className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onSelect={openImport}><Upload className="mr-2 h-4 w-4" />Import checks…</DropdownMenuItem>
+          <DropdownMenuItem onSelect={exportAll}><Download className="mr-2 h-4 w-4" />Export checks</DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem asChild><a href="/docs/features/check-types" target="_blank" rel="noreferrer"><BookOpen className="mr-2 h-4 w-4" />Check types docs</a></DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </>
   }
 />
-<div className="flex flex-wrap items-center gap-4">
-  <div className="relative flex-1 min-w-[200px] max-w-sm">
+// Toolbar: filters on the LEFT (search, faceted triggers, Reset), view controls
+// on the RIGHT (result count, grouping toggle, icon-only Refresh). Every
+// control is 36px high (h-9).
+<div className="flex flex-wrap items-center gap-2">
+  <div className="relative w-full min-w-[200px] flex-1 sm:w-auto sm:max-w-sm">
     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
     <Input placeholder="Search…" className="pl-9" />
   </div>
-  {/* Any filter selects go here, between search and Refresh. */}
-  <Button variant="outline" onClick={() => refetch()} disabled={isRefetching} aria-label={t("common:refresh")}>
-    <RefreshCw className={\`h-4 w-4 sm:mr-2 \${isRefetching ? "animate-spin" : ""}\`} />
-    <span className="hidden sm:inline">{t("common:refresh")}</span>
-  </Button>
+  <FacetedFilter title="Status" options={statusOptions} selected={statusValues} onChange={setStatusValues} />
+  <Button variant="ghost" onClick={reset}>Reset <X className="h-4 w-4" /></Button>
+  <div className="ml-auto flex items-center gap-2">
+    <span className="hidden text-sm text-muted-foreground sm:inline">3 of 42 checks</span>
+    <SegmentedControl size="md" value={groupBy} onValueChange={setGroupBy} aria-label="Group by" options={…} />
+    <Button variant="outline" size="icon" onClick={() => refetch()} aria-label={t("common:refresh")}>
+      <RefreshCw className="h-4 w-4" />
+    </Button>
+  </div>
 </div>
 
 // A page with NO search/filter toolbar (e.g. on-call) keeps Refresh in the
@@ -1220,8 +1249,13 @@ function ButtonPlacementSection() {
         slot on{" "}
         <code className="rounded bg-muted px-1 py-0.5 text-xs">PageHeader</code>{" "}
         is reserved for the page's primary action — typically a single &quot;New
-        &lt;resource&gt;&quot; create button, plus at most one secondary
-        page-level action (export/import, a scope toggle). It is{" "}
+        &lt;resource&gt;&quot; create button, plus at most one secondary create
+        action (e.g. &quot;New group&quot;). Org-level tools that run a few
+        times a year (import, export, bulk operations, docs) go in a{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">⋯</code> menu
+        (<code className="rounded bg-muted px-1 py-0.5 text-xs">Button variant=&quot;outline&quot; size=&quot;icon&quot;</code>{" "}
+        with a &quot;More actions&quot; label), never a row of equal outline
+        buttons. Same rule as the detail header in Page header above. It is{" "}
         <strong>not</strong> a catch-all toolbar: a page that has a
         search/filter toolbar row below the header does not put Refresh in the
         header — Refresh moves into that row (see below). The one exception is a
@@ -1243,17 +1277,19 @@ function ButtonPlacementSection() {
       </p>
 
       <h3 className="text-sm font-medium">
-        Toolbar row: search, filters, then Refresh
+        Toolbar row: filters left, view controls right
       </h3>
       <p className="text-sm text-muted-foreground">
-        Data/view controls — the search input, any filter selects, and the
-        Refresh button — live in their own{" "}
+        Data/view controls live in their own{" "}
         <code className="rounded bg-muted px-1 py-0.5 text-xs">
-          flex flex-wrap items-center gap-4
+          flex flex-wrap items-center gap-2
         </code>{" "}
-        row below the header. Refresh sits to the{" "}
-        <strong>right of the search input</strong> (after any filter selects, if
-        the row has them) — mirror{" "}
+        row below the header, every control 36px high. The{" "}
+        <strong>filters go on the left</strong> (search, faceted triggers, a
+        Reset button once one is active); the <strong>view controls go on the
+        right</strong> (result count, grouping toggle, then an icon-only Refresh
+        with a tooltip). Search-only toolbars keep Refresh right of the search
+        input — mirror{" "}
         <code className="rounded bg-muted px-1 py-0.5 text-xs">
           integrations.index.tsx
         </code>{" "}
@@ -1261,7 +1297,8 @@ function ButtonPlacementSection() {
         <code className="rounded bg-muted px-1 py-0.5 text-xs">
           checks.index.tsx
         </code>{" "}
-        (search + several filters, Refresh trailing).
+        (search + faceted filters on the left, count, grouping and Refresh on
+        the right).
       </p>
 
       <div className="space-y-3 rounded-md border bg-card p-4">
@@ -6179,8 +6216,8 @@ function LabelFilterSection() {
   const snippet = `import { LabelFilter } from "@/components/shared/label-filter";
 
 // Faceted label picker for list toolbars. Applied filters render as removable
-// chips; the compact "+ Label" trigger opens one popover with a guided two-step
-// cmdk list (pick a key, then pick/type a value). Selecting a value applies
+// chips; the compact dashed "⊕ Labels" trigger (solid with a count badge once a
+// label is applied) opens one popover with a guided two-step cmdk list (pick a key, then pick/type a value). Selecting a value applies
 // immediately — no Add button. The caller owns URL serialization via onChange.
 <LabelFilter
   org={org}
@@ -6197,10 +6234,15 @@ function LabelFilterSection() {
     <Section
       id="label-filter"
       title="Label filter"
-      description="Faceted key:value filter used in the checks-list toolbar. Reuse this instead of LabelInput when filtering a list (LabelInput stays for authoring labels in a form). Applied filters are removable chips; the compact + Label trigger opens a single popover with a two-step key→value cmdk picker that applies on select. Try it below."
+      description="Faceted key:value filter used in the checks-list toolbar. Reuse this instead of LabelInput when filtering a list (LabelInput stays for authoring labels in a form). Same trigger look as the faceted filter: dashed “⊕ Labels” when empty, solid with a count badge otherwise. Applied filters are removable accent chips right after the trigger; it opens a single popover with a two-step key→value cmdk picker that applies on select. Try it below."
     >
       <ExampleRow
-        preview={<LabelFilter org={org} value={labels} onChange={setLabels} />}
+        preview={
+          <div className="flex flex-wrap items-center gap-4">
+            <LabelFilter org={org} value={labels} onChange={setLabels} />
+            <LabelFilter org={org} value={{}} onChange={() => {}} />
+          </div>
+        }
         importLine={snippet}
       />
     </Section>
@@ -6268,14 +6310,8 @@ function FacetedFilterSection() {
     { value: "warning", label: "Warning" },
     { value: "created", label: "Pending" },
   ];
-  const triggerLabel = facetedFilterTriggerLabel(selected, options, {
-    all: "All statuses",
-    count: (count) => `${count} statuses`,
-    plusOne: (label, extra) => `${label} +${extra}`,
-  });
   const snippet = `import { FacetedFilter } from "@/components/shared/faceted-filter";
 import {
-  facetedFilterTriggerLabel,
   parseFacetedFilterParam,
   serializeFacetedFilterParam,
 } from "@/lib/faceted-filter";
@@ -6284,9 +6320,10 @@ import {
 // the checkbox sibling of LabelFilter's open-ended key:value picker. The
 // caller owns URL state: read selected values with parseFacetedFilterParam
 // (lenient — unknown tokens are dropped so a stale URL never wedges the UI),
-// compute the trigger text with facetedFilterTriggerLabel (none → "all",
-// one → its label, two → "label +1", 3+ → "N selected"), and write back with
-// serializeFacetedFilterParam.
+// and write back with serializeFacetedFilterParam. The trigger renders itself:
+// inactive it is a dashed "⊕ Status"; active it is solid with the name, a
+// separator and up to two value badges ("3 selected" from three; a plain
+// count below sm).
 const selected = parseFacetedFilterParam(statusParam, new Set(["up", "down", …]));
 <FacetedFilter
   options={options}
@@ -6297,24 +6334,32 @@ const selected = parseFacetedFilterParam(statusParam, new Set(["up", "down", …
       replace: true,
     })
   }
-  triggerLabel={facetedFilterTriggerLabel(selected, options, statusFilterStrings)}
+  title="Status"
   testId="status-filter"
 />`;
   return (
     <Section
       id="faceted-filter"
       title="Faceted filter"
-      description="Multi-select popover for a small, known option set — used for the checks-list status and check-type filters. A checkbox per option, trigger text reflects the selection (All / one label / label +1 / N selected). Reuse this instead of a single-value Select whenever several values can be picked at once; reuse LabelFilter instead when the facet is an open-ended key:value pair. Try it below — the trigger starts on “Down”."
+      description="Multi-select popover for a small, known option set — used for the checks-list status and check-type filters. A checkbox per option. The trigger is one shared look (FilterTrigger): dashed with a ⊕ and the dimension name when inactive, solid with a separator and accent value badges when active (up to two labels, then “N selected”; a count only below sm). The LabelFilter and the super-admin Scope filter use the same trigger. Reuse this instead of a single-value Select whenever several values can be picked at once; reuse LabelFilter instead when the facet is an open-ended key:value pair. Try it below — the first trigger starts on “Down”, the second shows the inactive look."
     >
       <ExampleRow
         preview={
-          <FacetedFilter
-            options={options}
-            selected={selected}
-            onChange={setSelected}
-            triggerLabel={triggerLabel}
-            testId="design-reference-faceted-filter"
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            <FacetedFilter
+              options={options}
+              selected={selected}
+              onChange={setSelected}
+              title="Status"
+              testId="design-reference-faceted-filter"
+            />
+            <FacetedFilter
+              options={options}
+              selected={[]}
+              onChange={() => {}}
+              title="Type"
+            />
+          </div>
         }
         importLine={snippet}
       />
@@ -7049,6 +7094,41 @@ function JobsPrimitivesSection() {
               value: "second",
               label: "Host",
               tooltip: "Bucket checks by the host they target",
+            },
+          ]}
+        />
+        <p className="text-xs text-muted-foreground">
+          <code>size=&quot;md&quot;</code> renders the control 36px high (same
+          as a default Button) for a toolbar next to buttons and inputs; give
+          each option an <code>ariaLabel</code> when its label is an icon that
+          collapses below <code>sm</code> (checks index &ldquo;By group / By
+          host&rdquo;).
+        </p>
+        <SegmentedControl
+          size="md"
+          value={segmented}
+          onValueChange={setSegmented}
+          aria-label="Group by"
+          options={[
+            {
+              value: "first",
+              label: (
+                <>
+                  <Folder className="h-4 w-4" />
+                  <span className="hidden sm:inline">By group</span>
+                </>
+              ),
+              ariaLabel: "By group",
+            },
+            {
+              value: "second",
+              label: (
+                <>
+                  <Server className="h-4 w-4" />
+                  <span className="hidden sm:inline">By host</span>
+                </>
+              ),
+              ariaLabel: "By host",
             },
           ]}
         />
