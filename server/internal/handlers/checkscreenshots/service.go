@@ -85,7 +85,7 @@ func (e *RateLimitedError) Error() string {
 // captureTypes are the check types that can produce a screenshot.
 //
 //nolint:gochecknoglobals // immutable lookup table
-var captureTypes = []string{"browser", "js"}
+var captureTypes = []string{"browser", "js", "rdp"}
 
 // IsCapturableType reports whether a check type can produce a screenshot.
 func IsCapturableType(checkType string) bool {
