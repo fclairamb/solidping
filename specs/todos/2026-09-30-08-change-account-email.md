@@ -115,6 +115,17 @@ their own or someone else's.
    exists. It helps new installs only, and the password stays `solidpass` + `must_change_password`.
    Trade-off: one more config key, but it goes through the koanf manual env reader for multi-word keys.
 
+## Resolved open questions
+
+Decided on the user's behalf during an unattended `/implement-todos` run (2026-09-30), taking the
+spec's recommended answers. Listed in the run report for review.
+
+1. **Do not verify the new address before switching.** Switch immediately, clear `email_verified_at`,
+   and notify the old address when email sending is configured.
+2. **Add `SP_ADMIN_EMAIL` (email only)** for the first-start seed, default `admin@solidping.io`, read in
+   `job_startup.go` when no org exists, wired through the koanf manual env reader. No `SP_ADMIN_PASSWORD`:
+   the seed password stays `solidpass` with `must_change_password`.
+
 ## Closing the issue
 
 This spec closes #463. The implementing PR body **must** carry one `Closes #463` line so the
