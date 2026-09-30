@@ -97,7 +97,7 @@ A super admin can sign in as another user to see exactly what they see: **Server
 - The session acts as the user, with **their** role in **their** organization. The admin's super-admin rights do not travel with it.
 - It lasts **30 minutes** and has **no refresh token**. When it ends, or when the admin clicks **Exit** in the banner, the dashboard goes back to the admin's own session.
 - The user's own sessions are untouched: nothing is added to their session list and they are not signed out.
-- It **cannot** change the user's password, 2FA or passkeys, create API tokens or sessions in their name, revoke their sessions, or start another impersonation. Those requests answer `403 IMPERSONATION_FORBIDDEN`.
+- It **cannot** change the user's password, email, profile, 2FA or passkeys, create API tokens or sessions in their name, revoke their sessions, or start another impersonation. Those requests answer `403 IMPERSONATION_FORBIDDEN`.
 - Super admins, the shared demo account and yourself cannot be impersonated. A user with 2FA can be: the admin's own sign-in is what gates it.
 - Every start is recorded as `auth.impersonation_started` in the user's organization audit log, and every event written during the session carries `impersonated_by` with the admin's user ID.
 

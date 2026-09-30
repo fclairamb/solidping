@@ -93,6 +93,29 @@ The `bcrypt` algorithm pre-hashes passwords as `base64(sha256(password))` before
 The server validates the hashing policy at startup and **fails fast** on a misconfiguration (unknown algorithm; bcrypt cost outside `10–31`; argon2id memory below the `8192` KiB floor). Values below the OWASP-recommended floors are allowed but warn-logged. There is never a silent fallback.
 :::
 
+## Changing an email address
+
+A user changes their sign-in email from **Account > Profile**: enter the new address and the current password. A super admin changes anyone's email from **Server > Users**, with the pencil icon on the user's row, without the user's password.
+
+When an email changes:
+
+- the new address is marked unverified,
+- every other session of the user is signed out (the session that made the change stays signed in),
+- the previous address gets a notice, when [email sending](/configuration/notifications) is configured,
+- `auth.email_changed` is recorded in the audit log of each organization the user belongs to.
+
+An account without a password (it signs in through OAuth, OIDC, SAML or LDAP) cannot change its email in SolidPing. Change it at the identity provider, or ask a super admin. An address already used by another account is refused.
+
+Over the API: `PATCH /api/v1/auth/me` with `{"email": "...", "currentPassword": "..."}`, or, as a super admin, `PATCH /api/v1/system/users/{uid}` with `{"email": "..."}`.
+
+### Email of the first admin
+
+On the first start of an empty database, SolidPing creates a super admin named `admin@solidping.io`. Set `SP_ADMIN_EMAIL` to seed it with your own address instead. It is only read when no organization exists yet. The password is still `solidpass` and must be changed at first login.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SP_ADMIN_EMAIL` | `admin@solidping.io` | Email of the super admin created on the first start |
+
 ## OAuth Providers
 
 SolidPing supports OAuth2 authentication with major identity providers. Set both `_CLIENT_ID` and `_CLIENT_SECRET` to enable each provider.
