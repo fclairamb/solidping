@@ -468,6 +468,22 @@
       "confirm": "Als Benutzer ansehen",
       "cancel": "Abbrechen",
       "error": "Die Sitzung konnte nicht gestartet werden: {{message}}"
+    },
+    "edit": {
+      "button": "Benutzer bearbeiten",
+      "back": "Zurück zu den Benutzern",
+      "title": "{{email}} bearbeiten",
+      "description": "Ändern Sie die Adresse, mit der sich dieser Benutzer anmeldet. Vom Benutzer wird kein Passwort verlangt.",
+      "email": "E-Mail",
+      "emailHelp": "Die Sitzungen des Benutzers werden abgemeldet, die neue Adresse gilt als unbestätigt, und die alte Adresse wird über die Änderung informiert.",
+      "save": "Speichern",
+      "saved": "E-Mail geändert.",
+      "notFound": "Dieser Benutzer existiert nicht.",
+      "loadError": "Der Benutzer konnte nicht geladen werden.",
+      "errors": {
+        "conflict": "Diese E-Mail-Adresse wird bereits von einem anderen Konto verwendet.",
+        "invalid": "Geben Sie eine gültige E-Mail-Adresse ein."
+      }
     }
   },
   "notifications": {

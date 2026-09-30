@@ -468,6 +468,22 @@
       "confirm": "Ver como usuario",
       "cancel": "Cancelar",
       "error": "No se pudo iniciar la sesión: {{message}}"
+    },
+    "edit": {
+      "button": "Editar usuario",
+      "back": "Volver a los usuarios",
+      "title": "Editar {{email}}",
+      "description": "Cambia la dirección con la que este usuario inicia sesión. No se le pide contraseña al usuario.",
+      "email": "Correo electrónico",
+      "emailHelp": "Se cierran las sesiones del usuario, la nueva dirección queda sin verificar y se avisa del cambio a la dirección anterior.",
+      "save": "Guardar",
+      "saved": "Correo cambiado.",
+      "notFound": "Este usuario no existe.",
+      "loadError": "No se pudo cargar el usuario.",
+      "errors": {
+        "conflict": "Esta dirección ya la usa otra cuenta.",
+        "invalid": "Introduce una dirección de correo válida."
+      }
     }
   },
   "notifications": {

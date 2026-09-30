@@ -243,6 +243,8 @@ describe("EVENT_TYPE_REGISTRY pins the binding emoji per event type", () => {
     ["auth.token_misuse", "🚨"],
     // Super-admin impersonation (spec 2026-09-29-03).
     ["auth.impersonation_started", "🎭"],
+    // Sign-in email change (spec 2026-09-30-08).
+    ["auth.email_changed", "📧"],
   ];
 
   it.each(BINDING_PAIRS)("%s pairs with %s", (eventType, emoji) => {
