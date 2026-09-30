@@ -73,7 +73,16 @@ authentication is intact, only their org context is gone, so the response
 degrades instead.
 
 ### PATCH /api/v1/auth/me
-Update the current user's profile (name, password, etc.). Auth: required
+Update the current user's profile. Auth: required. Refused for impersonation
+tokens (`403 IMPERSONATION_FORBIDDEN`).
+
+Body: `name`, and optionally `email` + `currentPassword` (spec 2026-09-30-08).
+A changed email is trimmed and lowercased, clears `email_verified_at`, revokes
+every other session refresh token (the caller's is kept), notifies the old
+address when email is enabled, and records `auth.email_changed`. Errors: `400
+VALIDATION_ERROR` (malformed), `403 INVALID_CURRENT_PASSWORD`, `403 FORBIDDEN`
+(password-less account), `403 DEMO_READ_ONLY`, `409 CONFLICT` (address taken,
+case-insensitive), `429 RATE_LIMITED` (shares the change-password counter).
 
 ### GET /api/v1/me/ui-state/:key
 ### PUT /api/v1/me/ui-state/:key
