@@ -1,0 +1,21 @@
+apiVersion: v2
+name: solidping
+description: Self-hostable uptime monitoring, alerting and status pages in one container.
+type: application
+version: 0.1.0
+appVersion: "0.36.0"
+home: https://solidping.io
+icon: https://raw.githubusercontent.com/fclairamb/solidping/main/res/logo_256.png
+sources:
+  - https://github.com/fclairamb/solidping
+keywords:
+  - monitoring
+  - uptime
+  - status-page
+  - alerting
+maintainers:
+  - name: Florent Clairambault
+    url: https://github.com/fclairamb
+annotations:
+  artifacthub.io/license: AGPL-3.0-only
+  artifacthub.io/category: monitoring-logging
