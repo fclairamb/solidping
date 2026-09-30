@@ -98,6 +98,7 @@ func TestCheckTypesRefuseLoopbackTargetsUnderAnEnforcingPolicy(t *testing.T) {
 		checkerdef.CheckTypeMQTT:       {"host": host, "port": port},
 		checkerdef.CheckTypeRabbitMQ:   {"host": host, "port": port},
 		checkerdef.CheckTypeRDP:        {"host": host, "port": port},
+		checkerdef.CheckTypeVNC:        {"host": host, "port": port},
 		checkerdef.CheckTypeSIP:        {"host": host, "port": port, "transport": "tcp"},
 		checkerdef.CheckTypeUDP:        {"host": host, "port": port},
 		checkerdef.CheckTypeNTP:        {"host": host, "port": port},

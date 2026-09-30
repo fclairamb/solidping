@@ -31,6 +31,7 @@ export const checkTypeDocsAnchors: Partial<Record<string, string>> = {
   dns: "dns",
   websocket: "websocket",
   rdp: "rdp-remote-desktop",
+  vnc: "vnc",
   ssl: "ssltls-certificate",
   domain: "domain-expiration",
   dnsbl: "dnsbl-dns-blocklist",

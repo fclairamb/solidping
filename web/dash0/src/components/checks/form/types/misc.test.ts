@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { jsModule } from "./misc";
+import { jsModule, vncModule } from "./misc";
 import { assembleSubmittedConfig, type CheckConfig } from "./common";
 import { secretRowsBecameDirty } from "@/components/ui/secret-key-value-rows";
 
@@ -113,5 +113,44 @@ describe("secretRowsBecameDirty", () => {
 
   it("removing a row dirties the section", () => {
     expect(secretRowsBecameDirty([row("A"), row("B")], [row("A")])).toBe(true);
+  });
+});
+
+describe("vncModule", () => {
+  it("defaults requireAuth to on and always serializes it", () => {
+    const state = vncModule.fromConfig({ host: "vnc.acme.com" });
+    expect(state.requireAuth).toBe(true);
+    const { config, errors } = vncModule.toConfig(state);
+    expect(config).toEqual({ host: "vnc.acme.com", requireAuth: true });
+    expect(errors).toEqual([]);
+  });
+
+  it("round-trips an explicit requireAuth false, port, password and screenshot", () => {
+    const state = vncModule.fromConfig({
+      host: "vnc.acme.com",
+      port: 5901,
+      requireAuth: false,
+      password: "pw",
+      screenshot: true,
+    });
+    expect(state.requireAuth).toBe(false);
+    expect(vncModule.toConfig(state).config).toEqual({
+      host: "vnc.acme.com",
+      port: 5901,
+      requireAuth: false,
+      password: "pw",
+      screenshot: true,
+    });
+  });
+
+  it("flags a screenshot without a password on the password field", () => {
+    const state = vncModule.fromConfig({ host: "vnc.acme.com", screenshot: true });
+    const { errors } = vncModule.toConfig(state);
+    expect(errors.map((e) => e.name)).toEqual(["password"]);
+  });
+
+  it("requires a host", () => {
+    const { errors } = vncModule.toConfig(vncModule.fromConfig({}));
+    expect(errors.map((e) => e.name)).toContain("host");
   });
 });

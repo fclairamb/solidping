@@ -397,6 +397,7 @@ const (
 	CheckTypeSsl             CheckType = "ssl"
 	CheckTypeTcp             CheckType = "tcp"
 	CheckTypeUdp             CheckType = "udp"
+	CheckTypeVnc             CheckType = "vnc"
 	CheckTypeWebsocket       CheckType = "websocket"
 )
 
@@ -484,6 +485,8 @@ func (e CheckType) Valid() bool {
 	case CheckTypeTcp:
 		return true
 	case CheckTypeUdp:
+		return true
+	case CheckTypeVnc:
 		return true
 	case CheckTypeWebsocket:
 		return true
@@ -703,6 +706,7 @@ const (
 	CheckListItemTypeSsl             CheckListItemType = "ssl"
 	CheckListItemTypeTcp             CheckListItemType = "tcp"
 	CheckListItemTypeUdp             CheckListItemType = "udp"
+	CheckListItemTypeVnc             CheckListItemType = "vnc"
 	CheckListItemTypeWebsocket       CheckListItemType = "websocket"
 )
 
@@ -790,6 +794,8 @@ func (e CheckListItemType) Valid() bool {
 	case CheckListItemTypeTcp:
 		return true
 	case CheckListItemTypeUdp:
+		return true
+	case CheckListItemTypeVnc:
 		return true
 	case CheckListItemTypeWebsocket:
 		return true
@@ -907,6 +913,7 @@ const (
 	CreateCheckRequestTypeSsl             CreateCheckRequestType = "ssl"
 	CreateCheckRequestTypeTcp             CreateCheckRequestType = "tcp"
 	CreateCheckRequestTypeUdp             CreateCheckRequestType = "udp"
+	CreateCheckRequestTypeVnc             CreateCheckRequestType = "vnc"
 	CreateCheckRequestTypeWebsocket       CreateCheckRequestType = "websocket"
 )
 
@@ -994,6 +1001,8 @@ func (e CreateCheckRequestType) Valid() bool {
 	case CreateCheckRequestTypeTcp:
 		return true
 	case CreateCheckRequestTypeUdp:
+		return true
+	case CreateCheckRequestTypeVnc:
 		return true
 	case CreateCheckRequestTypeWebsocket:
 		return true
@@ -2109,6 +2118,24 @@ func (e OrganizationMemberSummaryRole) Valid() bool {
 	}
 }
 
+// Defines values for PublicConfigResponseDeploymentMode.
+const (
+	PublicConfigResponseDeploymentModeSaas       PublicConfigResponseDeploymentMode = "saas"
+	PublicConfigResponseDeploymentModeSelfHosted PublicConfigResponseDeploymentMode = "self-hosted"
+)
+
+// Valid indicates whether the value is a known member of the PublicConfigResponseDeploymentMode enum.
+func (e PublicConfigResponseDeploymentMode) Valid() bool {
+	switch e {
+	case PublicConfigResponseDeploymentModeSaas:
+		return true
+	case PublicConfigResponseDeploymentModeSelfHosted:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PublicIncidentSeverity.
 const (
 	PublicIncidentSeverityCritical PublicIncidentSeverity = "critical"
@@ -3052,6 +3079,7 @@ const (
 	UpsertCheckRequestTypeSsl             UpsertCheckRequestType = "ssl"
 	UpsertCheckRequestTypeTcp             UpsertCheckRequestType = "tcp"
 	UpsertCheckRequestTypeUdp             UpsertCheckRequestType = "udp"
+	UpsertCheckRequestTypeVnc             UpsertCheckRequestType = "vnc"
 	UpsertCheckRequestTypeWebsocket       UpsertCheckRequestType = "websocket"
 )
 
@@ -3139,6 +3167,8 @@ func (e UpsertCheckRequestType) Valid() bool {
 	case UpsertCheckRequestTypeTcp:
 		return true
 	case UpsertCheckRequestTypeUdp:
+		return true
+	case UpsertCheckRequestTypeVnc:
 		return true
 	case UpsertCheckRequestTypeWebsocket:
 		return true
@@ -3234,24 +3264,6 @@ func (e ValidationErrorFieldSeverity) Valid() bool {
 	case ValidationErrorFieldSeverityInfo:
 		return true
 	case ValidationErrorFieldSeverityWarning:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for VersionResponseDeploymentMode.
-const (
-	VersionResponseDeploymentModeSaas       VersionResponseDeploymentMode = "saas"
-	VersionResponseDeploymentModeSelfHosted VersionResponseDeploymentMode = "self-hosted"
-)
-
-// Valid indicates whether the value is a known member of the VersionResponseDeploymentMode enum.
-func (e VersionResponseDeploymentMode) Valid() bool {
-	switch e {
-	case VersionResponseDeploymentModeSaas:
-		return true
-	case VersionResponseDeploymentModeSelfHosted:
 		return true
 	default:
 		return false
@@ -6187,6 +6199,12 @@ type MaintenanceWindowOccurrence struct {
 
 // MeResponse defines model for MeResponse.
 type MeResponse struct {
+	// Impersonation Present only when the caller's token is a super-admin impersonation token (see POST /api/v1/system/users/{uid}/impersonate).
+	Impersonation *struct {
+		ExpiresAt         *time.Time          `json:"expiresAt,omitempty"`
+		ImpersonatorEmail *string             `json:"impersonatorEmail,omitempty"`
+		ImpersonatorUid   *openapi_types.UUID `json:"impersonatorUid,omitempty"`
+	} `json:"impersonation,omitempty"`
 	Organization  *OrganizationSummary         `json:"organization,omitempty"`
 	Organizations *[]OrganizationMemberSummary `json:"organizations,omitempty"`
 	User          *UserSummary                 `json:"user,omitempty"`
@@ -6856,7 +6874,25 @@ type PromoteChecksRequest struct {
 // future public feature flags are added as sibling properties rather than
 // as new endpoints.
 type PublicConfigResponse struct {
+	// BugReport Whether the in-app bug-report button is offered (needs a GitHub issues token and repo).
+	BugReport *struct {
+		Enabled bool `json:"enabled"`
+	} `json:"bugReport,omitempty"`
+	DeploymentMode *PublicConfigResponseDeploymentMode `json:"deploymentMode,omitempty"`
+
+	// Heartbeat Embedded TCP/UDP heartbeat push transports. Ports are 0 when the transport is off.
+	Heartbeat *struct {
+		// Host Hostname devices should send beats to (from the base URL, no port). Empty when unknown.
+		Host       string `json:"host"`
+		TcpEnabled bool   `json:"tcpEnabled"`
+		TcpPort    int    `json:"tcpPort"`
+		UdpEnabled bool   `json:"udpEnabled"`
+		UdpPort    int    `json:"udpPort"`
+	} `json:"heartbeat,omitempty"`
 	Posthog *PublicPostHogConfig `json:"posthog,omitempty"`
+
+	// RunMode Server run mode (`normal`, `demo` or `test`).
+	RunMode *string `json:"runMode,omitempty"`
 
 	// Telegram Instance-level Telegram capability flag. The dashboard reads it to
 	// decide whether to offer the "Connect Telegram" action and the
@@ -6872,6 +6908,9 @@ type PublicConfigResponse struct {
 	// template name is ever exposed here.
 	Whatsapp *PublicWhatsAppConfig `json:"whatsapp,omitempty"`
 }
+
+// PublicConfigResponseDeploymentMode defines model for PublicConfigResponse.DeploymentMode.
+type PublicConfigResponseDeploymentMode string
 
 // PublicIncident One customer-facing incident on a status page — the PUBLICATION, not the internal incident. The operational `incidents` row carries ack/snooze metadata, an auto-generated title built from the check slug, and probe diagnostics; none of that has a field here.
 type PublicIncident struct {
@@ -8508,15 +8547,13 @@ type ValidationErrorFieldSeverity string
 
 // VersionResponse defines model for VersionResponse.
 type VersionResponse struct {
-	Commit         *string                        `json:"commit,omitempty"`
-	DeploymentMode *VersionResponseDeploymentMode `json:"deploymentMode,omitempty"`
-	GitTime        *string                        `json:"gitTime,omitempty"`
-	RunMode        *string                        `json:"runMode,omitempty"`
-	Version        *string                        `json:"version,omitempty"`
-}
+	Commit  *string `json:"commit,omitempty"`
+	GitTime *string `json:"gitTime,omitempty"`
 
-// VersionResponseDeploymentMode defines model for VersionResponse.DeploymentMode.
-type VersionResponseDeploymentMode string
+	// UptimeSeconds Seconds since this process started. Commit and gitTime fall back to "unknown" when the binary was built without ldflags.
+	UptimeSeconds *int64  `json:"uptimeSeconds,omitempty"`
+	Version       *string `json:"version,omitempty"`
+}
 
 // WorkerLaneLoad defines model for WorkerLaneLoad.
 type WorkerLaneLoad struct {
@@ -9367,6 +9404,12 @@ type ListAdminUsersParams struct {
 	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
+// ImpersonateUserJSONBody defines parameters for ImpersonateUser.
+type ImpersonateUserJSONBody struct {
+	// OrgSlug Organization to view the dashboard in. Defaults to the user's first organization.
+	OrgSlug *string `json:"orgSlug,omitempty"`
+}
+
 // AcceptInviteJSONRequestBody defines body for AcceptInvite for application/json ContentType.
 type AcceptInviteJSONRequestBody = AcceptInviteRequest
 
@@ -9651,6 +9694,9 @@ type MigrateRegionJSONRequestBody = RegionMigrationRequest
 
 // SendTestEmailJSONRequestBody defines body for SendTestEmail for application/json ContentType.
 type SendTestEmailJSONRequestBody = TestEmailRequest
+
+// ImpersonateUserJSONRequestBody defines body for ImpersonateUser for application/json ContentType.
+type ImpersonateUserJSONRequestBody ImpersonateUserJSONBody
 
 // AsFailQuorum0 returns the union data inside the FailQuorum as a FailQuorum0
 func (t FailQuorum) AsFailQuorum0() (FailQuorum0, error) {
@@ -12673,6 +12719,56 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /api/v1/system/users (the `ListAdminUsers` operationId).
 	ListAdminUsers(ctx context.Context, params *ListAdminUsersParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ImpersonateUserWithBody Sign in as another user (super admin)
+	//
+	// Mints a 30-minute access token that acts as the user, with their real
+	// membership role in the chosen organization. There is no refresh token
+	// and no session row: the user's own sessions are untouched, and when the
+	// token expires the caller is back on their own session.
+	//
+	// The token cannot reach super-admin routes, cannot change the user's
+	// credentials (password, 2FA, passkeys), cannot create tokens or
+	// sessions in their name, and cannot start another impersonation. Those
+	// requests answer `403` with code `IMPERSONATION_FORBIDDEN`. Every audit
+	// event written with it carries `impersonated_by`, and starting one
+	// records `auth.impersonation_started` in the user's organization.
+	//
+	// Refused with `403 IMPERSONATION_FORBIDDEN` when the target is a super
+	// admin, the caller themselves, or the shared demo account, or when the
+	// caller's own token is an impersonation token. Answers `404` when the
+	// user does not exist, is not a member of `orgSlug`, or when
+	// `auth.impersonation_enabled` is false.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/v1/system/users/{uid}/impersonate (the `ImpersonateUser` operationId).
+	ImpersonateUserWithBody(ctx context.Context, uid openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ImpersonateUser Sign in as another user (super admin)
+	//
+	// Mints a 30-minute access token that acts as the user, with their real
+	// membership role in the chosen organization. There is no refresh token
+	// and no session row: the user's own sessions are untouched, and when the
+	// token expires the caller is back on their own session.
+	//
+	// The token cannot reach super-admin routes, cannot change the user's
+	// credentials (password, 2FA, passkeys), cannot create tokens or
+	// sessions in their name, and cannot start another impersonation. Those
+	// requests answer `403` with code `IMPERSONATION_FORBIDDEN`. Every audit
+	// event written with it carries `impersonated_by`, and starting one
+	// records `auth.impersonation_started` in the user's organization.
+	//
+	// Refused with `403 IMPERSONATION_FORBIDDEN` when the target is a super
+	// admin, the caller themselves, or the shared demo account, or when the
+	// caller's own token is an impersonation token. Answers `404` when the
+	// user does not exist, is not a member of `orgSlug`, or when
+	// `auth.impersonation_enabled` is false.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/v1/system/users/{uid}/impersonate (the `ImpersonateUser` operationId).
+	ImpersonateUser(ctx context.Context, uid openapi_types.UUID, body ImpersonateUserJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetEmbedWidgetV1 Embeddable live status widget script
 	//
@@ -19184,6 +19280,76 @@ func (c *Client) SendTestEmail(ctx context.Context, body SendTestEmailJSONReques
 // Corresponds with GET /api/v1/system/users (the `ListAdminUsers` operationId).
 func (c *Client) ListAdminUsers(ctx context.Context, params *ListAdminUsersParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListAdminUsersRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ImpersonateUserWithBody Sign in as another user (super admin)
+//
+// Mints a 30-minute access token that acts as the user, with their real
+// membership role in the chosen organization. There is no refresh token
+// and no session row: the user's own sessions are untouched, and when the
+// token expires the caller is back on their own session.
+//
+// The token cannot reach super-admin routes, cannot change the user's
+// credentials (password, 2FA, passkeys), cannot create tokens or
+// sessions in their name, and cannot start another impersonation. Those
+// requests answer `403` with code `IMPERSONATION_FORBIDDEN`. Every audit
+// event written with it carries `impersonated_by`, and starting one
+// records `auth.impersonation_started` in the user's organization.
+//
+// Refused with `403 IMPERSONATION_FORBIDDEN` when the target is a super
+// admin, the caller themselves, or the shared demo account, or when the
+// caller's own token is an impersonation token. Answers `404` when the
+// user does not exist, is not a member of `orgSlug`, or when
+// `auth.impersonation_enabled` is false.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/v1/system/users/{uid}/impersonate (the `ImpersonateUser` operationId).
+func (c *Client) ImpersonateUserWithBody(ctx context.Context, uid openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewImpersonateUserRequestWithBody(c.Server, uid, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ImpersonateUser Sign in as another user (super admin)
+//
+// Mints a 30-minute access token that acts as the user, with their real
+// membership role in the chosen organization. There is no refresh token
+// and no session row: the user's own sessions are untouched, and when the
+// token expires the caller is back on their own session.
+//
+// The token cannot reach super-admin routes, cannot change the user's
+// credentials (password, 2FA, passkeys), cannot create tokens or
+// sessions in their name, and cannot start another impersonation. Those
+// requests answer `403` with code `IMPERSONATION_FORBIDDEN`. Every audit
+// event written with it carries `impersonated_by`, and starting one
+// records `auth.impersonation_started` in the user's organization.
+//
+// Refused with `403 IMPERSONATION_FORBIDDEN` when the target is a super
+// admin, the caller themselves, or the shared demo account, or when the
+// caller's own token is an impersonation token. Answers `404` when the
+// user does not exist, is not a member of `orgSlug`, or when
+// `auth.impersonation_enabled` is false.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/v1/system/users/{uid}/impersonate (the `ImpersonateUser` operationId).
+func (c *Client) ImpersonateUser(ctx context.Context, uid openapi_types.UUID, body ImpersonateUserJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewImpersonateUserRequest(c.Server, uid, body)
 	if err != nil {
 		return nil, err
 	}
@@ -33464,6 +33630,53 @@ func NewListAdminUsersRequest(server string, params *ListAdminUsersParams) (*htt
 	return req, nil
 }
 
+// NewImpersonateUserRequest calls the generic ImpersonateUser builder with application/json body
+func NewImpersonateUserRequest(server string, uid openapi_types.UUID, body ImpersonateUserJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewImpersonateUserRequestWithBody(server, uid, "application/json", bodyReader)
+}
+
+// NewImpersonateUserRequestWithBody constructs an http.Request for the ImpersonateUser method, with any body, and a specified content type
+func NewImpersonateUserRequestWithBody(server string, uid openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "uid", uid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/system/users/%s/impersonate", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewGetEmbedWidgetV1Request constructs an http.Request for the GetEmbedWidgetV1 method
 func NewGetEmbedWidgetV1Request(server string) (*http.Request, error) {
 	var err error
@@ -36668,6 +36881,56 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /api/v1/system/users (the `ListAdminUsers` operationId).
 	ListAdminUsersWithResponse(ctx context.Context, params *ListAdminUsersParams, reqEditors ...RequestEditorFn) (*ListAdminUsersResult, error)
+
+	// ImpersonateUserWithBodyWithResponse Sign in as another user (super admin)
+	//
+	// Mints a 30-minute access token that acts as the user, with their real
+	// membership role in the chosen organization. There is no refresh token
+	// and no session row: the user's own sessions are untouched, and when the
+	// token expires the caller is back on their own session.
+	//
+	// The token cannot reach super-admin routes, cannot change the user's
+	// credentials (password, 2FA, passkeys), cannot create tokens or
+	// sessions in their name, and cannot start another impersonation. Those
+	// requests answer `403` with code `IMPERSONATION_FORBIDDEN`. Every audit
+	// event written with it carries `impersonated_by`, and starting one
+	// records `auth.impersonation_started` in the user's organization.
+	//
+	// Refused with `403 IMPERSONATION_FORBIDDEN` when the target is a super
+	// admin, the caller themselves, or the shared demo account, or when the
+	// caller's own token is an impersonation token. Answers `404` when the
+	// user does not exist, is not a member of `orgSlug`, or when
+	// `auth.impersonation_enabled` is false.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/system/users/{uid}/impersonate (the `ImpersonateUser` operationId).
+	ImpersonateUserWithBodyWithResponse(ctx context.Context, uid openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ImpersonateUserResult, error)
+
+	// ImpersonateUserWithResponse Sign in as another user (super admin)
+	//
+	// Mints a 30-minute access token that acts as the user, with their real
+	// membership role in the chosen organization. There is no refresh token
+	// and no session row: the user's own sessions are untouched, and when the
+	// token expires the caller is back on their own session.
+	//
+	// The token cannot reach super-admin routes, cannot change the user's
+	// credentials (password, 2FA, passkeys), cannot create tokens or
+	// sessions in their name, and cannot start another impersonation. Those
+	// requests answer `403` with code `IMPERSONATION_FORBIDDEN`. Every audit
+	// event written with it carries `impersonated_by`, and starting one
+	// records `auth.impersonation_started` in the user's organization.
+	//
+	// Refused with `403 IMPERSONATION_FORBIDDEN` when the target is a super
+	// admin, the caller themselves, or the shared demo account, or when the
+	// caller's own token is an impersonation token. Answers `404` when the
+	// user does not exist, is not a member of `orgSlug`, or when
+	// `auth.impersonation_enabled` is false.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/system/users/{uid}/impersonate (the `ImpersonateUser` operationId).
+	ImpersonateUserWithResponse(ctx context.Context, uid openapi_types.UUID, body ImpersonateUserJSONRequestBody, reqEditors ...RequestEditorFn) (*ImpersonateUserResult, error)
 
 	// GetEmbedWidgetV1WithResponse Embeddable live status widget script
 	//
@@ -52517,6 +52780,68 @@ func (r ListAdminUsersResult) ContentType() string {
 	return ""
 }
 
+type ImpersonateUserResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *LoginResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ImpersonateUserResult) GetJSON200() *LoginResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ImpersonateUserResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ImpersonateUserResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ImpersonateUserResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r ImpersonateUserResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ImpersonateUserResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ImpersonateUserResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ImpersonateUserResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetEmbedWidgetV1Result struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -57940,6 +58265,68 @@ func (c *ClientWithResponses) ListAdminUsersWithResponse(ctx context.Context, pa
 		return nil, err
 	}
 	return ParseListAdminUsersResult(rsp)
+}
+
+// ImpersonateUserWithBodyWithResponse Sign in as another user (super admin)
+//
+// Mints a 30-minute access token that acts as the user, with their real
+// membership role in the chosen organization. There is no refresh token
+// and no session row: the user's own sessions are untouched, and when the
+// token expires the caller is back on their own session.
+//
+// The token cannot reach super-admin routes, cannot change the user's
+// credentials (password, 2FA, passkeys), cannot create tokens or
+// sessions in their name, and cannot start another impersonation. Those
+// requests answer `403` with code `IMPERSONATION_FORBIDDEN`. Every audit
+// event written with it carries `impersonated_by`, and starting one
+// records `auth.impersonation_started` in the user's organization.
+//
+// Refused with `403 IMPERSONATION_FORBIDDEN` when the target is a super
+// admin, the caller themselves, or the shared demo account, or when the
+// caller's own token is an impersonation token. Answers `404` when the
+// user does not exist, is not a member of `orgSlug`, or when
+// `auth.impersonation_enabled` is false.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/system/users/{uid}/impersonate (the `ImpersonateUser` operationId).
+func (c *ClientWithResponses) ImpersonateUserWithBodyWithResponse(ctx context.Context, uid openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ImpersonateUserResult, error) {
+	rsp, err := c.ImpersonateUserWithBody(ctx, uid, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseImpersonateUserResult(rsp)
+}
+
+// ImpersonateUserWithResponse Sign in as another user (super admin)
+//
+// Mints a 30-minute access token that acts as the user, with their real
+// membership role in the chosen organization. There is no refresh token
+// and no session row: the user's own sessions are untouched, and when the
+// token expires the caller is back on their own session.
+//
+// The token cannot reach super-admin routes, cannot change the user's
+// credentials (password, 2FA, passkeys), cannot create tokens or
+// sessions in their name, and cannot start another impersonation. Those
+// requests answer `403` with code `IMPERSONATION_FORBIDDEN`. Every audit
+// event written with it carries `impersonated_by`, and starting one
+// records `auth.impersonation_started` in the user's organization.
+//
+// Refused with `403 IMPERSONATION_FORBIDDEN` when the target is a super
+// admin, the caller themselves, or the shared demo account, or when the
+// caller's own token is an impersonation token. Answers `404` when the
+// user does not exist, is not a member of `orgSlug`, or when
+// `auth.impersonation_enabled` is false.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/system/users/{uid}/impersonate (the `ImpersonateUser` operationId).
+func (c *ClientWithResponses) ImpersonateUserWithResponse(ctx context.Context, uid openapi_types.UUID, body ImpersonateUserJSONRequestBody, reqEditors ...RequestEditorFn) (*ImpersonateUserResult, error) {
+	rsp, err := c.ImpersonateUser(ctx, uid, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseImpersonateUserResult(rsp)
 }
 
 // GetEmbedWidgetV1WithResponse Embeddable live status widget script
@@ -69715,6 +70102,53 @@ func ParseListAdminUsersResult(rsp *http.Response) (*ListAdminUsersResult, error
 			return nil, err
 		}
 		response.JSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseImpersonateUserResult parses an HTTP response from a ImpersonateUserWithResponse call
+func ParseImpersonateUserResult(rsp *http.Response) (*ImpersonateUserResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ImpersonateUserResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest LoginResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	}
 
