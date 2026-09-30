@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -253,4 +254,76 @@ func TestParseBannerRejectsGarbage(t *testing.T) {
 	r.NoError(err)
 	r.Equal("3.5", announced)
 	r.Equal(version33, v)
+}
+
+// TestSecurityCandidates pins the type order: VeNCrypt > ARD (with a
+// username) > VNC auth > None, whatever order the server lists them in.
+func TestSecurityCandidates(t *testing.T) {
+	t.Parallel()
+
+	offer := &handshakeResult{securityTypes: []uint8{secNone, secVNCAuth, secARD, secVeNCrypt}}
+
+	got, err := securityCandidates(offer, &VNCConfig{Username: "u", Password: "p"})
+	require.NoError(t, err)
+	require.Equal(t, []uint8{secVeNCrypt, secARD, secVNCAuth, secNone}, got)
+
+	got, err = securityCandidates(offer, &VNCConfig{Password: "p"})
+	require.NoError(t, err)
+	require.Equal(t, []uint8{secVeNCrypt, secVNCAuth, secNone}, got, "ARD needs a username")
+}
+
+// TestPrefersVeNCryptOverVNCAuth: a server listing VNC auth first and
+// VeNCrypt second gets VeNCrypt.
+func TestPrefersVeNCryptOverVNCAuth(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	srv := &vencryptServer{
+		extraTypes: []byte{secVNCAuth},
+		subtypes:   []uint32{vencryptX509Vnc},
+		cert:       selfSignedCert(t, 365*24*time.Hour),
+		password:   "pw",
+	}
+	host, port, errs := fakeServer(t, srv.run)
+
+	result := runCheck(t, &VNCConfig{Host: host, Port: port, Password: "pw"})
+	r.NoError(serverErr(t, errs))
+	r.Equal(checkerdef.StatusUp, result.Status, result.Output)
+	r.Equal("VeNCrypt", result.Output["securityType"])
+}
+
+// TestFallsBackToVNCAuth: without a username, a VeNCrypt that only offers
+// X509Plain is unusable, so the check reconnects and uses VNC auth, which
+// the server also offers.
+func TestFallsBackToVNCAuth(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	first := &vencryptServer{extraTypes: []byte{secVNCAuth}, subtypes: []uint32{vencryptX509Plain}}
+	second := &vncAuthServer{
+		types: []byte{secVeNCrypt, secVNCAuth}, password: "pw",
+		init: serverInitBytes(testW, testH, "fallback"),
+	}
+
+	host, port, errs := fakeServerSeq(t, first.run, second.run)
+
+	result := runCheck(t, &VNCConfig{Host: host, Port: port, Password: "pw"})
+	r.NoError(serverErr(t, errs))
+	r.Equal(checkerdef.StatusUp, result.Status, result.Output)
+	r.Equal("VNC Authentication", result.Output["securityType"])
+	r.Equal("fallback", result.Output["desktopName"])
+	r.NotContains(result.Output, "vencryptSubtype")
+
+	// Negative control: with no fallback type offered, the unusable VeNCrypt
+	// is the verdict.
+	only := &vencryptServer{subtypes: []uint32{vencryptX509Plain}}
+	host2, port2, errs2 := fakeServer(t, only.run)
+
+	down := runCheck(t, &VNCConfig{Host: host2, Port: port2, Password: "pw"})
+	r.NoError(serverErr(t, errs2))
+	r.Equal(checkerdef.StatusDown, down.Status)
+	r.Equal(string(FailureAuthUnsupported), down.Output["failure_code"])
+	r.Contains(down.Output["error"], "X509Plain needs a username")
 }

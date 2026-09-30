@@ -374,8 +374,9 @@ func TestScreenshotNoFrame(t *testing.T) {
 	r.NotEmpty(result.Diagnostics.ScreenshotError)
 }
 
-// TestAuthTypeUnsupported: only VeNCrypt or only ARD offered, with a
-// password configured, is AUTH_TYPE_UNSUPPORTED listing what was offered.
+// TestAuthTypeUnsupported: only RA2 (proprietary), or ARD without a
+// username, with a password configured, is AUTH_TYPE_UNSUPPORTED listing
+// what was offered.
 func TestAuthTypeUnsupported(t *testing.T) {
 	t.Parallel()
 
@@ -384,9 +385,9 @@ func TestAuthTypeUnsupported(t *testing.T) {
 		types []byte
 		want  string
 	}{
-		{"vencrypt", []byte{secVeNCrypt}, "VeNCrypt (19)"},
-		{"ard", []byte{secARD}, "Apple Remote Desktop (30)"},
-		{"both", []byte{secVeNCrypt, secARD}, "VeNCrypt (19), Apple Remote Desktop (30)"},
+		{"ra2", []byte{secRA2}, "RA2 (5)"},
+		{"ard without username", []byte{secARD}, "Apple Remote Desktop needs a username"},
+		{"both", []byte{secRA2, secARD}, "RA2 (5), Apple Remote Desktop (30)"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

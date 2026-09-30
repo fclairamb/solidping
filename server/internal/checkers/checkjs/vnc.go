@@ -36,7 +36,10 @@ type vncConnectOptions struct {
 	host     string
 	port     int
 	password string
-	timeout  time.Duration
+	// username is used by VeNCrypt Plain and Apple Remote Desktop.
+	username  string
+	tlsVerify bool
+	timeout   time.Duration
 }
 
 // registerVNC exposes the `vnc` global: `vnc.connect(options)` and nothing
@@ -88,6 +91,7 @@ func (r *jsRuntime) openVNCSession(opts map[string]any) (*goja.Object, map[strin
 
 	cfg := &checkvnc.VNCConfig{
 		Host: parsed.host, Port: parsed.port, Password: parsed.password,
+		Username: parsed.username, TLSVerify: parsed.tlsVerify,
 		Timeout: parsed.timeout, RequireAuth: &requireAuth,
 	}
 
@@ -115,6 +119,8 @@ func parseVNCConnectOptions(opts map[string]any) vncConnectOptions {
 
 	parsed.host, _ = opts["host"].(string)
 	parsed.password, _ = opts["password"].(string)
+	parsed.username, _ = opts["username"].(string)
+	parsed.tlsVerify, _ = opts["tlsVerify"].(bool)
 
 	if p, ok := numericOption(opts["port"]); ok && int(p) > 0 {
 		parsed.port = int(p)

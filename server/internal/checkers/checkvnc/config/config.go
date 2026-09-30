@@ -29,12 +29,24 @@ const (
 	// longer is silently truncated by every VNC server and client.
 	MaxPasswordLen = 8
 
-	keyHost        = "host"
-	keyPort        = "port"
-	keyTimeout     = "timeout"
-	keyPassword    = "password"
-	keyRequireAuth = "requireAuth"
-	keyScreenshot  = "screenshot"
+	// MaxUsernameLen is the longest username Apple Remote Desktop can carry:
+	// its credentials block reserves 64 bytes per field, null terminator
+	// included. VeNCrypt Plain has no such limit, but a username that works
+	// with one method and not the other would be a trap.
+	MaxUsernameLen = 63
+
+	maxThresholdDays = 3650 // 10 years, mirrors checkssl and checkrdp
+
+	keyHost         = "host"
+	keyPort         = "port"
+	keyTimeout      = "timeout"
+	keyPassword     = "password"
+	keyRequireAuth  = "requireAuth"
+	keyScreenshot   = "screenshot"
+	keyUsername     = "username"
+	keyTLSVerify    = "tlsVerify"
+	keyWarningDays  = "warningDays"
+	keyCriticalDays = "criticalDays"
 )
 
 // VNCConfig holds the configuration for a VNC (RFB, RFC 6143) check.
@@ -43,9 +55,11 @@ const (
 // version negotiation plus the security-types list, which is enough to prove
 // an RFB server answers and to audit the offered authentication methods.
 //
-// With a password it also authenticates with VNC authentication (security
-// type 2), reads ServerInit (desktop size and name) and, when Screenshot is
-// set, captures one full frame as a PNG. The connection is always opened with
+// With a password it also authenticates, reads ServerInit (desktop size and name) and, when Screenshot is
+// set, captures one full frame as a PNG. The method is the strongest both
+// sides support that the credentials satisfy: VeNCrypt (TLS, X509 sub-types)
+// > Apple Remote Desktop (needs a username) > VNC authentication > None.
+// The connection is always opened with
 // the shared flag set, so the probe never disconnects a viewer already
 // attached to the desktop.
 type VNCConfig struct {
@@ -69,6 +83,24 @@ type VNCConfig struct {
 
 	// Screenshot captures the desktop once authenticated. Requires Password.
 	Screenshot bool `json:"screenshot,omitempty"`
+
+	// Username is used by VeNCrypt Plain and Apple Remote Desktop. Without
+	// it those methods are skipped. Requires Password.
+	Username string `json:"username,omitempty"`
+
+	// TLSVerify verifies the VeNCrypt X.509 certificate chain and hostname.
+	// Off by default: VeNCrypt certificates are almost always self-signed.
+	// The certificate is reported and its expiry graded either way.
+	TLSVerify bool `json:"tlsVerify,omitempty"`
+
+	// WarningDays marks the check Warning when the VeNCrypt certificate
+	// expires within this many days. 0 = disabled.
+	WarningDays int `json:"warningDays,omitempty"`
+
+	// CriticalDays marks the check Down when the VeNCrypt certificate expires
+	// within this many days. 0 = disabled. An expired certificate is always
+	// Down.
+	CriticalDays int `json:"criticalDays,omitempty"`
 }
 
 // RequiresAuth reports the effective requireAuth setting (default true).
@@ -125,6 +157,35 @@ func (c *VNCConfig) FromMap(configMap map[string]any) error {
 		return checkerdef.NewConfigError(keyScreenshot, "must be a boolean")
 	}
 
+	return c.readTLSKeys(configMap)
+}
+
+// readTLSKeys reads username, tlsVerify and the certificate thresholds.
+func (c *VNCConfig) readTLSKeys(configMap map[string]any) error {
+	if username, ok := configMap[keyUsername].(string); ok {
+		c.Username = username
+	} else if configMap[keyUsername] != nil {
+		return checkerdef.NewConfigError(keyUsername, "must be a string")
+	}
+
+	if tlsVerify, ok := configMap[keyTLSVerify].(bool); ok {
+		c.TLSVerify = tlsVerify
+	} else if configMap[keyTLSVerify] != nil {
+		return checkerdef.NewConfigError(keyTLSVerify, "must be a boolean")
+	}
+
+	if v, ok := readIntKey(configMap, keyWarningDays); ok {
+		c.WarningDays = v
+	} else if configMap[keyWarningDays] != nil {
+		return checkerdef.NewConfigError(keyWarningDays, "must be a number")
+	}
+
+	if v, ok := readIntKey(configMap, keyCriticalDays); ok {
+		c.CriticalDays = v
+	} else if configMap[keyCriticalDays] != nil {
+		return checkerdef.NewConfigError(keyCriticalDays, "must be a number")
+	}
+
 	return nil
 }
 
@@ -168,6 +229,22 @@ func (c *VNCConfig) GetConfig() map[string]any {
 		cfg[keyScreenshot] = true
 	}
 
+	if c.Username != "" {
+		cfg[keyUsername] = c.Username
+	}
+
+	if c.TLSVerify {
+		cfg[keyTLSVerify] = true
+	}
+
+	if c.WarningDays != 0 {
+		cfg[keyWarningDays] = c.WarningDays
+	}
+
+	if c.CriticalDays != 0 {
+		cfg[keyCriticalDays] = c.CriticalDays
+	}
+
 	return cfg
 }
 
@@ -205,6 +282,35 @@ func (c *VNCConfig) Validate() error {
 
 	if c.Screenshot && !c.Authenticated() {
 		return checkerdef.NewConfigError(keyScreenshot, "requires a password")
+	}
+
+	if c.Username != "" && !c.Authenticated() {
+		return checkerdef.NewConfigError(keyUsername, "requires a password")
+	}
+
+	if len(c.Username) > MaxUsernameLen {
+		return checkerdef.NewConfigErrorf(keyUsername, "must be at most %d bytes, got %d", MaxUsernameLen, len(c.Username))
+	}
+
+	return c.validateThresholds()
+}
+
+// validateThresholds enforces non-negative thresholds, a sanity cap and the
+// warning >= critical ordering when both are set (same rule as checkssl).
+func (c *VNCConfig) validateThresholds() error {
+	for _, field := range []struct {
+		key   string
+		value int
+	}{{keyWarningDays, c.WarningDays}, {keyCriticalDays, c.CriticalDays}} {
+		if field.value < 0 || field.value > maxThresholdDays {
+			return checkerdef.NewConfigErrorf(field.key, "must be between 0 and %d, got %d", maxThresholdDays, field.value)
+		}
+	}
+
+	if c.WarningDays != 0 && c.CriticalDays != 0 && c.WarningDays < c.CriticalDays {
+		return checkerdef.NewConfigErrorf(
+			keyWarningDays, "must be >= criticalDays (%d), got %d", c.CriticalDays, c.WarningDays,
+		)
 	}
 
 	return nil

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -131,4 +132,71 @@ func TestVNCValidateSpecDefaults(t *testing.T) {
 
 	bad := &checkerdef.CheckSpec{Config: map[string]any{"host": "h", "screenshot": true}}
 	r.Error(ValidateSpec(bad))
+}
+
+// TestVNCUsernameAndTLSKeys: username, tlsVerify and the certificate
+// thresholds survive a FromMap/GetConfig round trip; tlsVerify defaults to
+// false and is only written when set.
+func TestVNCUsernameAndTLSKeys(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	cfg := &VNCConfig{}
+	r.NoError(cfg.FromMap(map[string]any{
+		"host": "h", "password": "pw", "username": "alice", "tlsVerify": true,
+		"warningDays": float64(30), "criticalDays": float64(7),
+	}))
+	r.Equal("alice", cfg.Username)
+	r.True(cfg.TLSVerify)
+	r.Equal(30, cfg.WarningDays)
+	r.Equal(7, cfg.CriticalDays)
+	r.NoError(cfg.Validate())
+
+	out := cfg.GetConfig()
+	r.Equal("alice", out["username"])
+	r.Equal(true, out["tlsVerify"])
+	r.Equal(30, out["warningDays"])
+	r.Equal(7, out["criticalDays"])
+
+	def := &VNCConfig{}
+	r.NoError(def.FromMap(map[string]any{"host": "h"}))
+	r.False(def.TLSVerify, "tlsVerify defaults to false")
+	r.NotContains(def.GetConfig(), "tlsVerify")
+
+	r.ErrorContains((&VNCConfig{}).FromMap(map[string]any{"username": 1}), "username")
+	r.ErrorContains((&VNCConfig{}).FromMap(map[string]any{"tlsVerify": "yes"}), "tlsVerify")
+	r.ErrorContains((&VNCConfig{}).FromMap(map[string]any{"warningDays": "x"}), "warningDays")
+}
+
+// TestVNCUsernameValidation: a username needs a password and fits Apple
+// Remote Desktop's 64-byte field (63 bytes + terminator). 63 bytes passes
+// (positive control), 64 is rejected.
+func TestVNCUsernameValidation(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	r.ErrorContains((&VNCConfig{Host: "h", Username: "alice"}).Validate(), "username")
+	r.NoError((&VNCConfig{Host: "h", Username: "alice", Password: "pw"}).Validate())
+
+	ok := strings.Repeat("u", MaxUsernameLen)
+	r.NoError((&VNCConfig{Host: "h", Username: ok, Password: "pw"}).Validate())
+
+	err := (&VNCConfig{Host: "h", Username: ok + "u", Password: "pw"}).Validate()
+	r.ErrorContains(err, "username")
+	r.ErrorContains(err, "63")
+}
+
+// TestVNCThresholdValidation: negative, oversized and inverted thresholds
+// are refused.
+func TestVNCThresholdValidation(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	r.ErrorContains((&VNCConfig{Host: "h", WarningDays: -1}).Validate(), "warningDays")
+	r.ErrorContains((&VNCConfig{Host: "h", CriticalDays: 4000}).Validate(), "criticalDays")
+	r.ErrorContains((&VNCConfig{Host: "h", WarningDays: 5, CriticalDays: 10}).Validate(), "warningDays")
+	r.NoError((&VNCConfig{Host: "h", WarningDays: 30, CriticalDays: 7}).Validate())
 }

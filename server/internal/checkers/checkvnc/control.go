@@ -135,7 +135,8 @@ func openVNCSession(ctx context.Context, cfg *VNCConfig, conn net.Conn) (*vncSes
 	openCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	if conn == nil {
+	dialed := conn == nil
+	if dialed {
 		port := cfg.Port
 		if port == 0 {
 			port = defaultPort
@@ -153,7 +154,12 @@ func openVNCSession(ctx context.Context, cfg *VNCConfig, conn net.Conn) (*vncSes
 		_ = conn.SetDeadline(deadline)
 	}
 
-	session, err := negotiate(conn, cfg)
+	var redial redialFunc
+	if dialed {
+		redial = sessionRedial(openCtx, cfg)
+	}
+
+	session, err := negotiate(openCtx, conn, cfg, redial)
 	if err != nil {
 		_ = conn.Close()
 
@@ -162,7 +168,7 @@ func openVNCSession(ctx context.Context, cfg *VNCConfig, conn net.Conn) (*vncSes
 
 	// The open deadline no longer applies: the runtime budget bounds every
 	// call, and the parent context closes the connection.
-	_ = conn.SetDeadline(time.Time{})
+	_ = session.conn.SetDeadline(time.Time{})
 	session.stopCtx = context.AfterFunc(ctx, session.End)
 
 	go session.readLoop()
@@ -176,14 +182,38 @@ func openVNCSession(ctx context.Context, cfg *VNCConfig, conn net.Conn) (*vncSes
 	return session, nil
 }
 
+// sessionRedial is the fallback dialer of a session that dialed itself.
+func sessionRedial(ctx context.Context, cfg *VNCConfig) redialFunc {
+	return func() (net.Conn, *handshakeResult, error) {
+		port := cfg.Port
+		if port == 0 {
+			port = defaultPort
+		}
+
+		fresh, err := dialTarget(ctx, cfg.Host, port, map[string]any{})
+		if err != nil {
+			return nil, nil, failure(FailureConnection, err, "connection failed: %v", err)
+		}
+
+		buffered := newBufferedConn(fresh)
+
+		offer, err := handshake(buffered)
+		if err != nil {
+			_ = fresh.Close()
+
+			return nil, nil, classifyHandshakeError(err)
+		}
+
+		return buffered, offer, nil
+	}
+}
+
 // negotiate runs handshake, authentication and ServerInit, and sends the
 // initial pixel format, encodings and full-screen request.
-func negotiate(conn net.Conn, cfg *VNCConfig) (*vncSession, error) {
-	reader := bufio.NewReader(conn)
+func negotiate(ctx context.Context, conn net.Conn, cfg *VNCConfig, redial redialFunc) (*vncSession, error) {
+	buffered := newBufferedConn(conn)
 
-	stream := readWriter{reader, conn}
-
-	offer, err := handshake(stream)
+	offer, err := handshake(buffered)
 	if err != nil {
 		return nil, classifyHandshakeError(err)
 	}
@@ -194,15 +224,31 @@ func negotiate(conn net.Conn, cfg *VNCConfig) (*vncSession, error) {
 			describeSecurityTypes(offer.securityTypes))
 	}
 
-	secType, err := chooseSecurityType(offer)
+	outcome, err := secure(ctx, buffered, offer, cfg, redial)
 	if err != nil {
 		return nil, err
 	}
 
-	if authErr := authenticate(stream, offer, secType, cfg.Password); authErr != nil {
-		return nil, authErr
+	// After VeNCrypt the stream is TLS: buffer its plaintext side instead.
+	stream, ok := outcome.conn.(*bufferedConn)
+	if !ok {
+		stream = newBufferedConn(outcome.conn)
 	}
 
+	session, err := startSession(stream)
+	if err != nil {
+		// secure may have redialed or wrapped in TLS: close what it left.
+		_ = stream.Close()
+
+		return nil, err
+	}
+
+	return session, nil
+}
+
+// startSession runs ClientInit/ServerInit on the authenticated stream and
+// sends the initial pixel format, encodings and full-screen request.
+func startSession(stream *bufferedConn) (*vncSession, error) {
 	init, err := clientServerInit(stream)
 	if err != nil {
 		return nil, err
@@ -212,23 +258,15 @@ func negotiate(conn net.Conn, cfg *VNCConfig) (*vncSession, error) {
 		return nil, failure(FailureProtocol, nil, "unsupported framebuffer %dx%d", init.width, init.height)
 	}
 
-	if err := requestFrame(conn, init.width, init.height); err != nil {
+	if err := requestFrame(stream, init.width, init.height); err != nil {
 		return nil, err
 	}
 
 	return &vncSession{
-		conn: conn, reader: reader, width: init.width, height: init.height,
+		conn: stream, reader: stream.reader, width: init.width, height: init.height,
 		shown: image.NewRGBA(image.Rect(0, 0, int(init.width), int(init.height))),
 	}, nil
 }
-
-// readWriter glues the buffered reader to the raw connection's writes.
-type readWriter struct {
-	*bufio.Reader
-	conn net.Conn
-}
-
-func (rw readWriter) Write(data []byte) (int, error) { return rw.conn.Write(data) } //nolint:wrapcheck // passthrough
 
 // readLoop paints updates until the connection ends.
 func (s *vncSession) readLoop() {
