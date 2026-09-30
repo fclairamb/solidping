@@ -390,21 +390,42 @@ RDP hosts are typically reachable only from inside a network — run the check f
 
 Monitor VNC servers (the RFB protocol, RFC 6143). Unlike a plain TCP/5900 port probe, this checker reads the server's `RFB xxx.yyy` banner, negotiates a protocol version (3.3, 3.7 or 3.8) and reads the list of **authentication methods** the server offers. A server offering **no authentication** (security type 1, "None") is marked **down** by default: an exposed VNC desktop anyone can attach to is almost always a mistake.
 
-With a **password** set, the check also logs in with VNC authentication (security type 2), reads the desktop size and name, and can capture a **screenshot** of the desktop. The connection always sets the *shared* flag, so the check never disconnects a viewer already attached to the desktop.
+With a **password** set, the check also logs in with the strongest method both sides support (see [Authentication methods](#vnc-authentication-methods)), reads the desktop size and name, and can capture a **screenshot** of the desktop. The connection always sets the *shared* flag, so the check never disconnects a viewer already attached to the desktop.
 
 | Option | Description | Default |
 |--------|-------------|---------|
 | Host | VNC server hostname or IP | - (required) |
 | Port | TCP port (display `:0` is `5900`, `:1` is `5901`, ...) | `5900` |
 | Timeout | Check timeout (max `60s`) | `10s` |
-| Password | VNC password. Only the first 8 characters are used by the protocol. Stored encrypted | off |
+| Username | Used by VeNCrypt Plain and Apple Remote Desktop (at most 63 bytes). Needs a password | off |
+| Password | Password. VNC authentication only uses the first 8 characters; VeNCrypt Plain and Apple Remote Desktop use it whole. Stored encrypted | off |
+| Verify TLS certificate (`tlsVerify`) | VeNCrypt only: verify the certificate chain and hostname. Off because VeNCrypt certificates are almost always self-signed. The certificate is reported either way | off |
+| `warningDays` / `criticalDays` | VeNCrypt certificate expiry thresholds (API only): **warning** / **down** when it expires within that many days. An expired certificate is always down | off |
 | Require authentication | Mark **down** when the server offers security type None | on |
 | Screenshot | Capture a PNG of the desktop after logging in (needs a password) | off |
 
 - **Without a password** the verdict is the handshake: TCP connect, a valid RFB banner and a non-empty list of security types. Nothing is authenticated.
 - The check output lists `rfbVersion` (negotiated), `serverRfbVersion` (announced), `securityTypes` (name and number of each offered method) and, after a login, `desktopName`, `width` and `height`. Timings: `connect_ms`, `handshake_ms`, `auth_ms`, `first_frame_ms`.
-- **Failures** carry a stable `failure_code` in the output: `CONNECTION_FAILED`, `NOT_RFB` (the port answers another protocol), `SERVER_REFUSED` (the server sent an empty method list and a reason), `NO_AUTH_OFFERED` (None offered while authentication is required), `AUTH_TYPE_UNSUPPORTED` (a password is set but the server offers no VNC authentication, for example only VeNCrypt or Apple Remote Desktop; the offered list is in the message), `AUTH_FAILED` (wrong password, with the server's reason), `TOO_MANY_ATTEMPTS` (the server's brute-force lockout), `NO_FRAME` (a configured screenshot never arrived) and `PROTOCOL_ERROR`.
-- There is no special minimum period: attaching to a VNC console has no logon side effects. Many servers do lock out after repeated wrong passwords, so fix a failing password quickly.
+- After a login the output also has `securityType` (the method used) and, for VeNCrypt, `vencryptSubtype` plus the certificate: `certSubject`, `certIssuer`, `certExpiresAt`, `certSelfSigned` and the `days_remaining` metric.
+- **Failures** carry a stable `failure_code` in the output: `CONNECTION_FAILED`, `NOT_RFB` (the port answers another protocol), `SERVER_REFUSED` (the server sent an empty method list and a reason), `NO_AUTH_OFFERED` (None offered while authentication is required), `AUTH_TYPE_UNSUPPORTED` (a password is set but no offered method is usable, for example only RealVNC RA2, Apple Remote Desktop without a username, or VeNCrypt with only anonymous-TLS sub-types; the offered list is in the message), `TLS_FAILED` (the VeNCrypt TLS handshake failed, or the certificate did not verify with `tlsVerify` on), `CERT_EXPIRY` (the VeNCrypt certificate is expired or inside a threshold), `AUTH_FAILED` (wrong password, with the server's reason), `TOO_MANY_ATTEMPTS` (the server's brute-force lockout), `NO_FRAME` (a configured screenshot never arrived) and `PROTOCOL_ERROR`.
+- There is no special minimum period: attaching to a VNC console has no logon side effects.
+
+#### Authentication methods {#vnc-authentication-methods}
+
+The check picks the first method in this order that the server offers and the configured credentials can satisfy:
+
+| Method | RFB type | Needs | Typical servers | Supported |
+|--------|----------|-------|-----------------|-----------|
+| VeNCrypt `X509Plain` | 19 / 262 | username + password | TigerVNC, libvirt/QEMU with a certificate | yes |
+| VeNCrypt `X509Vnc` | 19 / 261 | password | TigerVNC, libvirt/QEMU | yes |
+| VeNCrypt `X509None` | 19 / 260 | password set, **Require authentication** off | libvirt/QEMU | yes |
+| Apple Remote Desktop | 30 | username + password | macOS Screen Sharing | yes |
+| VNC Authentication | 2 | password | almost every server | yes |
+| None | 1 | **Require authentication** off | | yes |
+| VeNCrypt `TLSNone` / `TLSVnc` / `TLSPlain` | 19 / 257-259 | | TigerVNC without a certificate | no: anonymous Diffie-Hellman TLS, which Go does not implement |
+| RealVNC RA2 / RA2ne | 5 / 6 | | RealVNC Server | no: proprietary |
+
+If VeNCrypt is offered but none of its sub-types is usable (for example `X509Plain` without a username, or only `TLS*`), the check reconnects and uses the next method the server offers, such as VNC authentication. Many servers do lock out after repeated wrong passwords, so fix a failing password quickly.
 
 :::note Network access
 VNC hosts are typically reachable only from inside a network. Run the check from a worker with network access to the host, or through an SSH tunnel.

@@ -418,13 +418,14 @@ and the slot is released when the script ends whatever it did, so an early
 
 `vnc.connect(options)` gives a script a **live VNC desktop** to drive, the
 mirror of [`rdp`](#rdp-object) for the [VNC check type](./check-types.md#vnc).
-It authenticates with VNC authentication (or connects to a passwordless server),
+It authenticates like the check does (VeNCrypt, Apple Remote Desktop with a
+`username`, VNC authentication) or connects to a passwordless server,
 keeps the framebuffer up to date and lets a script click, type and assert on
 what a user would see. Assertions are **pixels only**, as for `rdp`.
 
 | Call | Returns | Notes |
 |---|---|---|
-| `vnc.connect({ host, port?, password?, timeout? })` | `session` | `port` defaults to 5900. Connection and authentication failures **return** `{ ok: false, error, failureCode?, timedOut? }`; script bugs (no `host`, a second `connect`) and infrastructure **throw**. |
+| `vnc.connect({ host, port?, username?, password?, tlsVerify?, timeout? })` | `session` | `port` defaults to 5900. `username` enables VeNCrypt Plain and Apple Remote Desktop; `tlsVerify` (default off) verifies the VeNCrypt certificate. Connection and authentication failures **return** `{ ok: false, error, failureCode?, timedOut? }`; script bugs (no `host`, a second `connect`) and infrastructure **throw**. |
 | `session.waitForStable({ quietMs? })` | `{ ok, duration, error? }` | Blocks until no framebuffer update arrived for `quietMs` (default 2000). |
 | `session.waitForChange(timeoutMs)` | `{ ok, error? }` | Blocks until a new update arrives. Timeout expiry is `{ ok: false, error }`, a value the script decides on. |
 | `session.click(x, y)` / `rightClick` / `doubleClick` | `{ ok, error? }` | Presses and releases the left / right button (double-click is two pairs). |
