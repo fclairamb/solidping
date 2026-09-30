@@ -44,6 +44,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkssl"
 	"github.com/fclairamb/solidping/server/internal/checkers/checktcp"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkudp"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkvnc"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkwebsocket"
 	"github.com/fclairamb/solidping/server/internal/checkers/configregistry"
 )
@@ -153,6 +154,8 @@ func GetChecker(checkType checkerdef.CheckType) (checkerdef.Checker, bool) {
 		return &checkprometheus.PrometheusChecker{}, true
 	case checkerdef.CheckTypeRDP:
 		return &checkrdp.RDPChecker{}, true
+	case checkerdef.CheckTypeVNC:
+		return &checkvnc.VNCChecker{}, true
 	case checkerdef.CheckTypeSleep:
 		return &checksleep.SleepChecker{}, true
 	default:
