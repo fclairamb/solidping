@@ -47,6 +47,10 @@ const (
 	auditKeyOldEmail  = "old_email"
 	auditKeyNewEmail  = "new_email"
 	auditKeyChangedBy = "changed_by"
+
+	// tmplKeyChangedAt is the timestamp field of the security-notice email
+	// templates (password-changed.html, email-changed.html).
+	tmplKeyChangedAt = "ChangedAt"
 )
 
 // normalizeEmail trims and lowercases an address and checks it is a single
@@ -101,7 +105,7 @@ func (s *Service) ensureEmailAvailable(ctx context.Context, userUID, newEmail st
 // applyEmailChange persists the new address, clears email_verified_at,
 // revokes the user's other sessions, notifies the old address and records
 // auth.email_changed. The caller has already authorized the change.
-func (s *Service) applyEmailChange(ctx context.Context, change emailChange) error {
+func (s *Service) applyEmailChange(ctx context.Context, change *emailChange) error {
 	if err := s.ensureEmailAvailable(ctx, change.user.UID, change.newEmail); err != nil {
 		return err
 	}
@@ -130,9 +134,9 @@ func (s *Service) applyEmailChange(ctx context.Context, change emailChange) erro
 
 	if s.fullCfg != nil && s.fullCfg.Email.Enabled {
 		s.enqueueEmail(ctx, "", oldEmail, email.TemplateEmailChanged, map[string]any{
-			"ChangedAt": changedAt.Format(time.RFC1123),
-			"OldEmail":  oldEmail,
-			"NewEmail":  change.newEmail,
+			tmplKeyChangedAt: changedAt.Format(time.RFC1123),
+			"OldEmail":       oldEmail,
+			"NewEmail":       change.newEmail,
 		})
 	} else {
 		slog.WarnContext(ctx, "Email sending is disabled: the previous address was not told about the email change",
@@ -146,7 +150,7 @@ func (s *Service) applyEmailChange(ctx context.Context, change emailChange) erro
 
 // recordEmailChanged writes auth.email_changed in every organization the user
 // belongs to, so each org's admins see that a member's sign-in changed.
-func (s *Service) recordEmailChanged(ctx context.Context, change emailChange, oldEmail string) {
+func (s *Service) recordEmailChanged(ctx context.Context, change *emailChange, oldEmail string) {
 	members, err := s.db.ListMembersByUser(ctx, change.user.UID)
 	if err != nil {
 		slog.ErrorContext(ctx, "Failed to list memberships for the email-change audit", "error", err)
@@ -165,6 +169,33 @@ func (s *Service) recordEmailChanged(ctx context.Context, change emailChange, ol
 				auditKeyChangedBy: change.changedBy,
 			})
 	}
+}
+
+// verifyEmailChangePassword re-authenticates a self-service email change. The
+// current-password check is a brute-force surface, like the one in
+// ChangePassword, so it shares that per-user counter.
+func (s *Service) verifyEmailChangePassword(ctx context.Context, user *models.User, currentPassword *string) error {
+	limited, err := s.bumpChangePasswordCounter(ctx, user.UID)
+	if err != nil {
+		return fmt.Errorf("failed to bump change-password counter: %w", err)
+	}
+
+	if limited {
+		return ErrRateLimited
+	}
+
+	given := ""
+	if currentPassword != nil {
+		given = *currentPassword
+	}
+
+	// Always run the verify, even for an empty password, so "missing" and
+	// "wrong" cost the same time.
+	if !passwords.Verify(given, *user.PasswordHash) {
+		return ErrInvalidCurrentPassword
+	}
+
+	return nil
 }
 
 // changeOwnEmail validates and applies a self-service email change requested
@@ -197,27 +228,11 @@ func (s *Service) changeOwnEmail(ctx context.Context, claims *Claims, req Update
 		return false, ErrEmailChangeNoPassword
 	}
 
-	// The current-password check is a brute-force surface, like the one in
-	// ChangePassword: share its per-user counter.
-	limited, err := s.bumpChangePasswordCounter(ctx, user.UID)
-	if err != nil {
-		return false, fmt.Errorf("failed to bump change-password counter: %w", err)
+	if err := s.verifyEmailChangePassword(ctx, user, req.CurrentPassword); err != nil {
+		return false, err
 	}
 
-	if limited {
-		return false, ErrRateLimited
-	}
-
-	currentPassword := ""
-	if req.CurrentPassword != nil {
-		currentPassword = *req.CurrentPassword
-	}
-
-	if !passwords.Verify(currentPassword, *user.PasswordHash) {
-		return false, ErrInvalidCurrentPassword
-	}
-
-	if err := s.applyEmailChange(ctx, emailChange{
+	if err := s.applyEmailChange(ctx, &emailChange{
 		user:           user,
 		newEmail:       newEmail,
 		changedBy:      emailChangedBySelf,
@@ -279,27 +294,8 @@ func (s *Service) AdminUpdateUser(
 	}
 
 	if req.Email != nil {
-		newEmail, normErr := normalizeEmail(*req.Email)
-		if normErr != nil {
-			return nil, normErr
-		}
-
-		if !strings.EqualFold(target.Email, newEmail) {
-			keep := ""
-			if target.UID == actor.UID {
-				// A super admin renaming themselves keeps their own session.
-				keep = claims.RefreshUID
-			}
-
-			if err := s.applyEmailChange(ctx, emailChange{
-				user:           target,
-				newEmail:       newEmail,
-				changedBy:      emailChangedBySuperAdmin,
-				actorUID:       actor.UID,
-				keepRefreshUID: keep,
-			}); err != nil {
-				return nil, err
-			}
+		if changeErr := s.adminChangeEmail(ctx, claims, actor, target, *req.Email); changeErr != nil {
+			return nil, changeErr
 		}
 	}
 
@@ -314,4 +310,33 @@ func (s *Service) AdminUpdateUser(
 		Name:          updated.Name,
 		EmailVerified: updated.EmailVerifiedAt != nil,
 	}, nil
+}
+
+// adminChangeEmail applies a super admin's change of target's email. An
+// unchanged address (in any case) is a no-op.
+func (s *Service) adminChangeEmail(
+	ctx context.Context, claims *Claims, actor, target *models.User, rawEmail string,
+) error {
+	newEmail, err := normalizeEmail(rawEmail)
+	if err != nil {
+		return err
+	}
+
+	if strings.EqualFold(target.Email, newEmail) {
+		return nil
+	}
+
+	keep := ""
+	if target.UID == actor.UID {
+		// A super admin renaming themselves keeps their own session.
+		keep = claims.RefreshUID
+	}
+
+	return s.applyEmailChange(ctx, &emailChange{
+		user:           target,
+		newEmail:       newEmail,
+		changedBy:      emailChangedBySuperAdmin,
+		actorUID:       actor.UID,
+		keepRefreshUID: keep,
+	})
 }
