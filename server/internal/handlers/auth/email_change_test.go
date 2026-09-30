@@ -66,7 +66,9 @@ func newEmailChangeFixture(t *testing.T, email string) (*emailChangeFixture, con
 }
 
 //nolint:revive // ctx-second matches the existing helpers in this package
-func patchMe(t *testing.T, ctx context.Context, handler *Handler, claims *Claims, body string) *httptest.ResponseRecorder {
+func patchMe(
+	t *testing.T, ctx context.Context, handler *Handler, claims *Claims, body string,
+) *httptest.ResponseRecorder {
 	t.Helper()
 
 	reqCtx := context.WithValue(ctx, base.ContextKeyClaims, claims)

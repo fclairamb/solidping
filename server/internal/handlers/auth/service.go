@@ -3120,7 +3120,7 @@ func (s *Service) ResetPassword(ctx context.Context, req ResetPasswordRequest) (
 	// Confirmation email so the legitimate user sees a record of the
 	// change even if the attacker controls the password-reset link.
 	s.enqueueEmail(ctx, "", user.Email, "password-changed.html",
-		map[string]any{"ChangedAt": time.Now().UTC().Format(time.RFC1123)},
+		map[string]any{tmplKeyChangedAt: time.Now().UTC().Format(time.RFC1123)},
 	)
 
 	return &ResetPasswordResponse{
@@ -3234,7 +3234,7 @@ func (s *Service) ChangePassword(
 	s.revokeRefreshTokensForUserExcept(ctx, user.UID, currentRefreshUID)
 
 	s.enqueueEmail(ctx, "", user.Email, "password-changed.html",
-		map[string]any{"ChangedAt": time.Now().UTC().Format(time.RFC1123)},
+		map[string]any{tmplKeyChangedAt: time.Now().UTC().Format(time.RFC1123)},
 	)
 
 	return &ChangePasswordResponse{
