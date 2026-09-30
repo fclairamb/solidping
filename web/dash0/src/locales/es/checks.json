@@ -1161,7 +1161,11 @@
     "rdpCaveatsHelp": "Cada ejecución autenticada es una sesión interactiva real de Windows: carga un perfil de usuario, ejecuta scripts de inicio y GPO, puede consumir una licencia RDS, puede desconectar a un usuario real en un servidor de sesión única y aparece en el registro de seguridad (4624/4634) en cada ejecución. Usa una cuenta de monitorización dedicada, nunca la cuenta de una persona.",
     "vncRequireAuth": "Exigir autenticación",
     "vncRequireAuthHelp": "Caído cuando el servidor ofrece el tipo de seguridad None: cualquiera podría conectarse al escritorio sin contraseña.",
-    "vncPasswordHelp": "Con una contraseña, la comprobación también inicia sesión con autenticación VNC (solo cuentan los primeros 8 caracteres). Déjela vacía para comprobar solo el handshake y los métodos de autenticación ofrecidos.",
+    "vncPasswordHelp": "Con una contraseña, la comprobación también inicia sesión, con el método más fuerte que ofrece el servidor: VeNCrypt (TLS), Apple Remote Desktop (requiere un nombre de usuario) o la autenticación VNC (solo cuentan los 8 primeros caracteres). Déjala vacía para comprobar solo la negociación y los métodos de autenticación ofrecidos.",
+    "vncUsername": "Nombre de usuario (opcional)",
+    "vncUsernameHelp": "Lo usan VeNCrypt Plain (TigerVNC, libvirt) y Apple Remote Desktop (Compartir pantalla de macOS). Requiere una contraseña.",
+    "vncTlsVerify": "Verificar el certificado TLS",
+    "vncTlsVerifyHelp": "Solo VeNCrypt. Desactivado por defecto: los certificados VeNCrypt casi siempre son autofirmados. El certificado se informa en todos los casos.",
     "vncScreenshot": "Capturar el escritorio tras iniciar sesión",
     "vncSharedHelp": "La comprobación se conecta en modo compartido, así que nunca desconecta a un visor ya conectado. Los workers necesitan acceso de red al host VNC (normalmente interno).",
     "privateLocationRegion": "Ubicación privada",
@@ -1391,6 +1395,8 @@
     "invalidIp_one": "No es una dirección {{family}}: {{values}}",
     "invalidIp_other": "No son direcciones {{family}}: {{values}}",
     "invalidMetadataKeys_one": "Clave de metadatos no válida: {{keys}} (letras minúsculas, dígitos, '-', '.' o '_'; 'grpc-' y '-bin' están reservados)",
-    "invalidMetadataKeys_other": "Claves de metadatos no válidas: {{keys}} (letras minúsculas, dígitos, '-', '.' o '_'; 'grpc-' y '-bin' están reservados)"
+    "invalidMetadataKeys_other": "Claves de metadatos no válidas: {{keys}} (letras minúsculas, dígitos, '-', '.' o '_'; 'grpc-' y '-bin' están reservados)",
+    "usernameRequiresPassword": "Un nombre de usuario requiere una contraseña.",
+    "vncUsernameTooLong": "El nombre de usuario debe tener como máximo {{max}} bytes."
   }
 }

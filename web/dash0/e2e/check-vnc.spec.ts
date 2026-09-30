@@ -5,6 +5,9 @@ import { test, expect, API_BASE, type Page } from "./fixtures";
 // (never echoed back), and editing a screenshot check without re-entering the
 // password still saves (the stored secret satisfies "screenshot needs a
 // password").
+//
+// Spec 2026-09-30-07 (VeNCrypt and Apple ARD): the username and tlsVerify
+// fields save, a username needs a password, and tlsVerify is off by default.
 
 async function getAuthToken(page: Page): Promise<string> {
   const resp = await page.request.post(`${API_BASE}/api/v1/auth/login`, {
@@ -79,6 +82,63 @@ test.describe("VNC check", () => {
     expect(edited.config.host).toBe("vnc2.internal.example");
     expect(edited.config.requireAuth).toBe(false);
     expect(edited.configPrivateKeys, "the stored password survived the edit").toContain("password");
+
+    await page.request.delete(`${API_BASE}/api/v1/orgs/test/checks/${uid}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  });
+
+  test("saves a username and tlsVerify for VeNCrypt / Apple Remote Desktop", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+
+    await page.goto("orgs/test/checks/new?checkType=vnc");
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("check-name-input")).toBeVisible();
+
+    // tlsVerify is off by default.
+    await expect(page.getByTestId("check-vnc-tls-verify-checkbox")).toHaveAttribute(
+      "data-state",
+      "unchecked",
+    );
+
+    const checkName = `E2E VNC ARD ${Date.now()}`;
+    await page.getByTestId("check-name-input").fill(checkName);
+    await page.getByTestId("check-host-input").fill("mac.internal.example");
+
+    // A username without a password is refused client-side.
+    await page.getByTestId("check-vnc-username-input").fill("alice");
+    await page.getByTestId("check-submit-button").click();
+    await expect(page.getByText("A username requires a password.").first()).toBeVisible();
+
+    await page.getByTestId("check-vnc-password-input").fill("a long mac password");
+    await page.getByTestId("check-vnc-tls-verify-checkbox").click();
+    await page.getByTestId("check-submit-button").click();
+    await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
+    await page.waitForLoadState("networkidle");
+    const uid = page.url().match(/\/checks\/([0-9a-f-]{36})/)![1];
+
+    const created = await getCheck(page, token, uid);
+    expect(created.config.username).toBe("alice");
+    expect(created.config.tlsVerify).toBe(true);
+    expect(created.configPrivateKeys).toContain("password");
+
+    // Edit with the stored password: the username field is prefilled and an
+    // unrelated edit saves without re-entering the password.
+    await page.goto(`orgs/test/checks/${uid}/edit`);
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("check-vnc-username-input")).toHaveValue("alice");
+    await page.getByTestId("check-vnc-tls-verify-checkbox").click();
+    await page.getByTestId("check-submit-button").click();
+    await page.waitForURL(/\/checks\/[0-9a-f-]{36}$/, { timeout: 10000 });
+    await page.waitForLoadState("networkidle");
+
+    const edited = await getCheck(page, token, uid);
+    expect(edited.config.username).toBe("alice");
+    expect(edited.config.tlsVerify ?? false).toBe(false);
+    expect(edited.configPrivateKeys).toContain("password");
 
     await page.request.delete(`${API_BASE}/api/v1/orgs/test/checks/${uid}`, {
       headers: { Authorization: `Bearer ${token}` },
