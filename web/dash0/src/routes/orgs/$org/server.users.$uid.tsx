@@ -48,9 +48,9 @@ function UserEditPage() {
       ) : error || !data ? (
         <p className="text-sm text-destructive">{t("users.edit.loadError")}</p>
       ) : (
-        // Keyed on the stored email: a save remounts the form with the new
-        // value.
-        <UserEmailForm key={data.email} user={data} />
+        // Keyed on the user: a refetch after a save keeps the form (and its
+        // "saved" notice) mounted.
+        <UserEmailForm key={data.uid} user={data} />
       )}
     </div>
   );
