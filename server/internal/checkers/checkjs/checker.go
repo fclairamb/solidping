@@ -19,6 +19,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checkjs/config"
 	checkrdp "github.com/fclairamb/solidping/server/internal/checkers/checkrdp"
+	checkvnc "github.com/fclairamb/solidping/server/internal/checkers/checkvnc"
 )
 
 // JS result map keys.
@@ -144,6 +145,9 @@ func (c *JSChecker) Execute(ctx context.Context, config checkerdef.Config) (*che
 	// script that ended without calling logoff() gets one, the check's
 	// default end-session mode.
 	defer runtime.closeRDP()
+
+	// Same rule for the VNC session.
+	defer runtime.closeVNC()
 
 	// Same rule for every socket the script opened: a script that returns
 	// early, throws or is interrupted never leaks a TCP/UDP/WebSocket
@@ -277,6 +281,12 @@ type jsRuntime struct {
 	// subCheckCount — see maxRDPActions.
 	rdpActions atomic.Int32
 
+	// vnc is the VNC session this execution opened, nil until vnc.connect();
+	// vncOpened stays true after a close (one session per execution).
+	vnc        checkvnc.VNCSession
+	vncOpened  bool
+	vncActions atomic.Int32
+
 	// sockets holds one disposer per connection the script opened through the
 	// `tcp` / `udp` / `websocket` globals, in open order. Execute defers
 	// closeSockets() over it, so nothing leaks whatever the script did.
@@ -347,6 +357,7 @@ func (r *jsRuntime) registerGlobals() {
 	r.registerBase64()
 	r.registerBrowser()
 	r.registerRDP()
+	r.registerVNC()
 	r.registerTCP()
 	r.registerUDP()
 	r.registerWebSocket()
@@ -497,7 +508,7 @@ func (r *jsRuntime) registerSolidping() {
 	checkerTypes := []string{
 		"http", "tcp", "dns", "ssl", "icmp", "smtp", "udp", "ssh",
 		"pop3", "imap", "websocket", "postgresql", "ftp", "sftp", "domain",
-		"browser", "rdp",
+		"browser", "rdp", "vnc",
 	}
 
 	for _, typeName := range checkerTypes {
