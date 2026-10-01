@@ -61,15 +61,15 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.52
 	github.com/microsoft/go-mssqldb v1.11.2
 	github.com/miekg/dns v1.1.73
-	github.com/moby/moby/api v1.56.0
-	github.com/moby/moby/client v0.6.0
+	github.com/moby/moby/api v1.56.1
+	github.com/moby/moby/client v0.6.1
 	github.com/oapi-codegen/oapi-codegen/v2 v2.8.0
 	github.com/oapi-codegen/runtime v1.7.0
 	github.com/ohler55/ojg v1.28.7
 	github.com/pires/go-proxyproto v0.15.0
 	github.com/pkg/sftp v1.13.11
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2
-	github.com/posthog/posthog-go v1.28.1
+	github.com/posthog/posthog-go v1.29.0
 	github.com/pquerna/otp v1.5.0
 	github.com/prometheus/client_golang v1.24.1
 	github.com/prometheus/client_model v0.6.3
