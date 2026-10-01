@@ -241,6 +241,12 @@ func (c *ICMPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 	// Add RTT metrics if we had any successful checks
 	if successCount > 0 {
 		avgRTT := totalRTT / time.Duration(successCount)
+
+		// The response time is the average round trip, not the wall-clock
+		// time of the burst: a count > 1 burst waits `interval` between
+		// packets, so the elapsed time would report ~1s for a 10ms ping
+		// (#465). The elapsed time is kept only when no reply came back.
+		result.Duration = avgRTT
 		result.Metrics["rtt_ms_min"] = float64(minRTT.Microseconds()) / microsecondsToMillis
 		result.Metrics["rtt_ms_max"] = float64(maxRTT.Microseconds()) / microsecondsToMillis
 		result.Metrics["rtt_ms_avg"] = float64(avgRTT.Microseconds()) / microsecondsToMillis
