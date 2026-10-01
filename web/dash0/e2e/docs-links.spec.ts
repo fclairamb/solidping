@@ -36,11 +36,14 @@ test.describe("Docs links", () => {
     await page.waitForURL(/\/checks/);
     await page.waitForLoadState("networkidle");
 
-    const docsLink = page.getByTestId("docs-link");
+    // The docs entry lives in the "more actions" menu, not the page header.
+    await expect(page.getByTestId("docs-link")).toHaveCount(0);
+    await page.getByTestId("checks-more-actions").click();
+    const docsLink = page.getByTestId("check-types-docs-link");
     await expect(docsLink).toBeVisible();
     await expect(docsLink).toHaveAttribute("href", "/docs/features/check-types");
     await expect(docsLink).toHaveAttribute("target", "_blank");
-    await expect(docsLink).toHaveAttribute("rel", "noopener");
+    await expect(docsLink).toHaveAttribute("rel", "noreferrer");
   });
 
   test("status pages list renders a docs link to status-pages", async ({ authenticatedPage }) => {
@@ -82,7 +85,8 @@ test.describe("Docs links", () => {
     );
     await page.goto(`orgs/test/checks/${check.uid}`);
     await page.waitForLoadState("networkidle");
-    await page.getByLabel("Badges").click();
+    await page.getByRole("button", { name: "More actions" }).click();
+    await page.getByRole("menuitem", { name: "Badges" }).click();
     await page.waitForURL(/\/checks\/[^/]+\/badges/);
     // No networkidle: the badges page never reaches Playwright's network-idle
     // state after a client-side navigation (page rendered, network quiet, the
@@ -156,7 +160,9 @@ test.describe("Docs links", () => {
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-detail-header")).toBeVisible();
 
-    const tcpDocsLink = page.getByTestId("docs-link");
+    // The docs link lives in the ⋯ overflow menu, labelled per type.
+    await page.getByRole("button", { name: "More actions" }).click();
+    const tcpDocsLink = page.getByRole("menuitem", { name: "TCP check docs" });
     await expect(tcpDocsLink).toBeVisible();
     await expect(tcpDocsLink).toHaveAttribute(
       "href",
@@ -171,7 +177,8 @@ test.describe("Docs links", () => {
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-detail-header")).toBeVisible();
 
-    await expect(page.getByTestId("docs-link")).toHaveAttribute(
+    await page.getByRole("button", { name: "More actions" }).click();
+    await expect(page.getByRole("menuitem", { name: "DNS check docs" })).toHaveAttribute(
       "href",
       "/docs/features/check-types#dns",
     );

@@ -80,7 +80,23 @@ test.describe("Checks label filter", () => {
     await expect.poll(() => new URL(page.url()).searchParams.get("labels")).toBeNull();
   });
 
-  test("clear filters empties the labels param and removes chips", async ({ authenticatedPage }) => {
+  test("the trigger shows a count badge once a label is picked", async ({ authenticatedPage }) => {
+    const page = authenticatedPage;
+    await gotoChecks(page);
+
+    const trigger = page.getByTestId("label-filter-trigger");
+    // Inactive: dashed "Labels" with no badge (negative control).
+    await expect(trigger).toHaveText("Labels");
+    await expect(trigger).toHaveAttribute("data-active", "false");
+
+    await addFilter(page, "env", "prod");
+    await page.keyboard.press("Escape");
+    await expect(trigger).toHaveAttribute("data-active", "true");
+    await expect(trigger).toContainText("Labels");
+    await expect(trigger).toContainText("1");
+  });
+
+  test("reset clears labels and removes chips", async ({ authenticatedPage }) => {
     const page = authenticatedPage;
     await gotoChecks(page);
 
@@ -88,7 +104,7 @@ test.describe("Checks label filter", () => {
     await page.keyboard.press("Escape");
     await expect(page.getByTestId("label-chips")).toContainText("env: prod");
 
-    await page.getByTestId("clear-label-filters").click();
+    await page.getByTestId("reset-filters").click();
     await expect(page.getByTestId("label-chips")).toHaveCount(0);
     await expect.poll(() => new URL(page.url()).searchParams.get("labels")).toBeNull();
   });
@@ -104,6 +120,8 @@ test.describe("Checks label filter", () => {
     await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("label-chips")).toContainText("env: prod");
-    await expect(page.getByTestId("clear-label-filters")).toBeVisible();
+    await expect(page.getByTestId("reset-filters")).toBeVisible();
+    // The old labels-only button is gone.
+    await expect(page.getByTestId("clear-label-filters")).toHaveCount(0);
   });
 });

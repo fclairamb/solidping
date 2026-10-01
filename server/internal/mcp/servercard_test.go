@@ -10,61 +10,131 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestHandleServerCard(t *testing.T) {
+func serveCard(ctx context.Context, t *testing.T, handler *Handler) *httptest.ResponseRecorder {
+	t.Helper()
+
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, ServerCardPath, nil)
+	rec := httptest.NewRecorder()
+	require.NoError(t, handler.HandleServerCard(rec, req))
+
+	return rec
+}
+
+func TestServerCard_ServedWithoutCredentials(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	handler := newTestHandler()
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, PathServerCard, nil)
-
-	r.NoError(handler.HandleServerCard(rec, req))
+	rec := serveCard(t.Context(), t, newTestHandler())
 	r.Equal(http.StatusOK, rec.Code)
 	r.Contains(rec.Header().Get("Content-Type"), "application/json")
 
-	var card struct {
-		ServerInfo     ServerInfo `json:"serverInfo"`
-		Authentication struct {
-			Required bool     `json:"required"`
-			Schemes  []string `json:"schemes"`
-		} `json:"authentication"`
-		Tools     []map[string]any `json:"tools"`
-		Resources []map[string]any `json:"resources"`
-		Prompts   []map[string]any `json:"prompts"`
-	}
+	var card map[string]any
 	r.NoError(json.Unmarshal(rec.Body.Bytes(), &card))
 
-	r.Equal("solidping", card.ServerInfo.Name)
-	r.NotEmpty(card.ServerInfo.Version)
-	r.True(card.Authentication.Required)
-	r.Contains(card.Authentication.Schemes, "oauth2")
-	r.NotEmpty(card.Tools)
-	r.NotEmpty(card.Prompts)
+	info, ok := card["serverInfo"].(map[string]any)
+	r.True(ok)
+	r.Equal("solidping", info["name"])
+	r.NotEmpty(info["version"])
 
-	// A directory needs name, description and an object inputSchema for every
-	// tool: that is what its score is computed from.
-	for _, tool := range card.Tools {
-		name, _ := tool["name"].(string)
-		r.NotEmpty(name)
-		r.NotEmpty(tool["description"], "tool %s has no description", name)
-		schema, ok := tool["inputSchema"].(map[string]any)
-		r.True(ok, "tool %s has no inputSchema object", name)
-		r.Equal("object", schema["type"], "tool %s inputSchema.type", name)
-	}
+	auth, ok := card["authentication"].(map[string]any)
+	r.True(ok)
+	r.Equal(true, auth["required"])
+	r.Equal([]any{"oauth2"}, auth["schemes"])
+
+	r.NotEmpty(card["instructions"])
+	r.NotEmpty(card["prompts"])
+	r.NotEmpty(card["resources"])
 }
 
-func TestServerCardMatchesToolsList(t *testing.T) {
+func TestServerCard_ToolsMatchTheRegistry(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
 	handler := newTestHandler()
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, PathServerCard, nil)
-	r.NoError(handler.HandleServerCard(rec, req))
+	rec := serveCard(t.Context(), t, handler)
 
 	var card struct {
 		Tools []ToolDefinition `json:"tools"`
 	}
 	r.NoError(json.Unmarshal(rec.Body.Bytes(), &card))
-	r.Len(card.Tools, len(handler.tools), "the card must list exactly what tools/list answers")
+
+	got := map[string]bool{}
+	for i := range card.Tools {
+		got[card.Tools[i].Name] = true
+	}
+
+	want := map[string]bool{}
+	for i := range handler.tools {
+		want[handler.tools[i].Name] = true
+	}
+
+	r.Equal(want, got, "the card must list exactly the registered tools")
+	r.True(got["list_checks"], "positive control: a known tool is present")
+	r.False(got["not_a_registered_tool"], "negative control: an unregistered name is absent")
+}
+
+func TestServerCard_EveryToolCarriesItsMetadata(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	handler := newTestHandler()
+	rec := serveCard(t.Context(), t, handler)
+
+	var card struct {
+		Tools []map[string]any `json:"tools"`
+	}
+	r.NoError(json.Unmarshal(rec.Body.Bytes(), &card))
+	r.Len(card.Tools, len(handler.tools))
+
+	registry := map[string]ToolDefinition{}
+	for i := range handler.tools {
+		registry[handler.tools[i].Name] = handler.tools[i]
+	}
+
+	withOutput := 0
+	for _, tool := range card.Tools {
+		name, _ := tool["name"].(string)
+		r.NotNil(tool["annotations"], "tool %q lacks annotations", name)
+		r.NotNil(tool["inputSchema"], "tool %q lacks inputSchema", name)
+
+		if registry[name].OutputSchema != nil {
+			withOutput++
+			r.NotNil(tool["outputSchema"], "tool %q lost its outputSchema", name)
+		}
+	}
+
+	r.Positive(withOutput, "positive control: some tools declare an outputSchema")
+}
+
+func TestServerCard_ConfigSchemaHasNoRequiredFields(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	rec := serveCard(t.Context(), t, newTestHandler())
+
+	var card map[string]any
+	r.NoError(json.Unmarshal(rec.Body.Bytes(), &card))
+
+	schema, ok := card["configSchema"].(map[string]any)
+	r.True(ok, "configSchema must be present")
+	r.Equal("object", schema["type"])
+	r.NotContains(schema, "required")
+	r.Empty(schema["properties"])
+	r.NotEmpty(schema["description"])
+}
+
+type ctxKeyProbe struct{}
+
+func TestServerCard_IsIdenticalForEveryCaller(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	handler := newTestHandler()
+
+	anonymous := serveCard(t.Context(), t, handler)
+	authed := serveCard(context.WithValue(t.Context(), ctxKeyProbe{}, defaultClaims()), t, handler)
+	otherOrg := serveCard(context.WithValue(t.Context(), ctxKeyProbe{}, "another-org"), t, handler)
+
+	r.Equal(anonymous.Body.String(), authed.Body.String())
+	r.Equal(anonymous.Body.String(), otherOrg.Body.String())
 }

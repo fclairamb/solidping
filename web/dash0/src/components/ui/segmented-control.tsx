@@ -11,6 +11,8 @@ export type SegmentedControlOption<T extends string> = {
   tooltip?: React.ReactNode;
   /** Forwarded verbatim — E2E asserts on it. */
   testId?: string;
+  /** Accessible name for this segment, needed when `label` is icon-only. */
+  ariaLabel?: string;
 };
 
 export type SegmentedControlProps<T extends string> = {
@@ -20,6 +22,12 @@ export type SegmentedControlProps<T extends string> = {
   /** Accessible name for the group. */
   "aria-label"?: string;
   className?: string;
+  /**
+   * "sm" (default) keeps the compact control. "md" renders the whole control
+   * 36px high, the same as a default Button, so it lines up with the buttons
+   * and inputs of a toolbar (spec 2026-09-30-02).
+   */
+  size?: "sm" | "md";
 };
 
 /**
@@ -38,6 +46,7 @@ export function SegmentedControl<T extends string>({
   onValueChange,
   options,
   className,
+  size = "sm",
   ...props
 }: SegmentedControlProps<T>) {
   return (
@@ -45,7 +54,8 @@ export function SegmentedControl<T extends string>({
       role="group"
       aria-label={props["aria-label"]}
       className={cn(
-        "inline-flex flex-wrap rounded-lg border bg-muted p-0.5 dark:bg-background",
+        "inline-flex rounded-lg border bg-muted p-0.5 dark:bg-background",
+        size === "md" ? "h-9 flex-nowrap" : "flex-wrap",
         className
       )}
     >
@@ -55,7 +65,11 @@ export function SegmentedControl<T extends string>({
           <Button
             size="sm"
             variant="ghost"
-            className={selected ? "bg-card shadow-sm hover:bg-card" : undefined}
+            className={cn(
+              size === "md" && "h-[1.875rem]",
+              selected && "bg-card shadow-sm hover:bg-card"
+            )}
+            aria-label={option.ariaLabel}
             onClick={() => onValueChange(option.value)}
             aria-pressed={selected}
             data-testid={option.testId}

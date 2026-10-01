@@ -1845,7 +1845,10 @@ func (s *Service) regionFreshness(ctx context.Context, check *models.Check) ([]R
 
 // BuildRegionFreshness is the pure half of regionFreshness, shared with the MCP
 // diagnose tool. Rows keep the query's region order; configured regions with
-// no row are appended in their configured order.
+// no row are appended in their configured order. When the check has configured
+// regions, rows for any other region (one the check was moved out of, e.g. by
+// automatic placement) are dropped: their silence is expected. With no
+// configured regions there is nothing to compare against and rows pass through.
 func BuildRegionFreshness(
 	check *models.Check, rows []models.RegionLastResult, now time.Time,
 ) []RegionFreshnessResponse {
@@ -1853,7 +1856,16 @@ func BuildRegionFreshness(
 	out := make([]RegionFreshnessResponse, 0, len(rows)+len(check.Regions))
 	seen := make(map[string]bool, len(rows))
 
+	placed := make(map[string]bool, len(check.Regions))
+	for _, region := range check.Regions {
+		placed[region] = true
+	}
+
 	for i := range rows {
+		if len(placed) > 0 && !placed[rows[i].Region] {
+			continue
+		}
+
 		at := rows[i].LastResultAt
 		seen[rows[i].Region] = true
 		out = append(out, RegionFreshnessResponse{

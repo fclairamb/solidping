@@ -517,7 +517,8 @@ func createStatusPageResourceDef() ToolDefinition {
 			propPageIdentifier:    stringProp("Status page UID or URL-friendly slug, e.g. \"public\"."),
 			propSectionIdentifier: stringProp("Status page section UID or URL-friendly slug, e.g. \"api\"."),
 			propCheckUID: stringProp(
-				"Check UID or slug to pin. Mutually exclusive with checkGroupUid; exactly one is required."),
+				"Check UID or slug to pin (for example api-health). " +
+					"Mutually exclusive with checkGroupUid; exactly one is required."),
 			propCheckGroupUID: stringProp(
 				"Check group UID or slug to pin as one aggregated component. " +
 					"Mutually exclusive with checkUid; exactly one is required."),

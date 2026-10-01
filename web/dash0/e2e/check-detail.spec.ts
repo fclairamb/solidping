@@ -1,4 +1,4 @@
-import { test, expect, mockSloCoverage } from "./fixtures";
+import { test, expect, API_BASE, mockSloCoverage } from "./fixtures";
 
 // Every test in this file lands on the check detail page and immediately waits
 // on networkidle, and several mock the rest of that page's traffic to stay
@@ -931,7 +931,7 @@ test.describe("Check Detail Page", () => {
     await expect(stats).toContainText(/last week/i);
   });
 
-  test("header shows full labels on desktop and shrinks to icon-only on mobile (never collapses to a menu)", async ({
+  test("header: Edit and Disable stay inline, everything else lives behind the ⋯ menu (desktop and mobile)", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
@@ -955,48 +955,47 @@ test.describe("Check Detail Page", () => {
     await page.waitForLoadState("networkidle");
     await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
 
-    // ---- Desktop viewport (>= md): the full inline toolbar is visible and the
-    // ⋯ overflow trigger is hidden. ----
+    // ---- Desktop (>= md): Edit and Disable carry their labels, the rest is
+    // hidden until the ⋯ menu opens. There is no Refresh anywhere. ----
     await page.setViewportSize({ width: 1280, height: 800 });
 
     const moreActions = page.getByRole("button", { name: "More actions" });
-    await expect(moreActions).toBeHidden();
+    await expect(moreActions).toBeVisible();
+    await expect(page.getByLabel("Edit").getByText("Edit")).toBeVisible();
+    await expect(page.getByLabel("Disable").getByText("Disable")).toBeVisible();
+    await expect(page.getByLabel("Clone")).toHaveCount(0);
+    await expect(page.getByLabel("Badges")).toHaveCount(0);
+    await expect(page.getByLabel("Delete")).toHaveCount(0);
+    await expect(page.getByLabel("Refresh")).toHaveCount(0);
+    await expect(page.getByText("Refresh")).toHaveCount(0);
 
-    // Each inline action shows its icon + label. The Badges button is an
-    // asChild <Link> (anchor) pointing at this check's own badge builder
+    await moreActions.click();
+    await expect(page.getByRole("menuitem", { name: "Clone" })).toBeVisible();
+    await expect(
+      page.getByRole("menuitem", { name: "Publish on a status page" }),
+    ).toBeVisible();
+    // Badges is an asChild <Link> pointing at this check's own badge builder
     // (spec 2026-09-16-08) — no search param, the check is in the path.
-    const badgesLink = page.getByLabel("Badges");
-    await expect(badgesLink).toBeVisible();
-    await expect(badgesLink).toHaveAttribute(
+    await expect(page.getByRole("menuitem", { name: "Badges" })).toHaveAttribute(
       "href",
       /\/orgs\/test\/checks\/[^/]+\/badges$/,
     );
-    await expect(badgesLink.getByText("Badges")).toBeVisible();
-    await expect(page.getByLabel("Edit").getByText("Edit")).toBeVisible();
-    await expect(page.getByLabel("Clone").getByText("Clone")).toBeVisible();
-    await expect(page.getByLabel("Refresh").getByText("Refresh")).toBeVisible();
-    await expect(page.getByLabel("Delete").getByText("Delete")).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Copy check link" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "HTTP check docs" })).toBeVisible();
+    const deleteItem = page.getByRole("menuitem", { name: "Delete check" });
+    await expect(deleteItem).toBeVisible();
+    await expect(deleteItem).toHaveClass(/text-destructive/);
+    await page.keyboard.press("Escape");
+    await expect(deleteItem).toBeHidden();
 
-    // The leading back button stays icon-only (no visible "Back" label).
-    const backButton = page.getByRole("button", { name: "Back to checks" });
-    await expect(backButton).toBeVisible();
-
-    // ---- Mobile viewport (< lg): the action buttons never collapse into an
-    // overflow menu. They stay inline and shrink to icon-only (text labels
-    // hide); there is no ⋯ "More actions" trigger. ----
+    // ---- Mobile (< md): Edit and ⋯ stay visible, icon-only; the breadcrumb
+    // link back to the list is the "Back to checks" handle. ----
     await page.setViewportSize({ width: 390, height: 812 });
 
-    await expect(backButton).toBeVisible();
-    await expect(moreActions).toBeHidden();
-
-    // The inline action buttons remain visible (icon-only); only their text
-    // labels are hidden below lg.
+    await expect(moreActions).toBeVisible();
     await expect(page.getByLabel("Edit")).toBeVisible();
-    await expect(page.getByLabel("Clone")).toBeVisible();
-    await expect(page.getByLabel("Refresh")).toBeVisible();
-    await expect(page.getByLabel("Delete")).toBeVisible();
     await expect(page.getByLabel("Edit").getByText("Edit")).toBeHidden();
-    await expect(page.getByLabel("Delete").getByText("Delete")).toBeHidden();
+    await expect(page.getByLabel("Disable").getByText("Disable")).toBeHidden();
 
     // The header must not overflow horizontally even with a long check name.
     const hasOverflow = await page.evaluate(
@@ -1011,14 +1010,24 @@ test.describe("Check Detail Page", () => {
       fullPage: true,
     });
 
-    // The inline Delete button opens the confirm dialog directly.
-    await page.getByLabel("Delete").click();
+    // Delete opens the confirm dialog; cancelling keeps the check.
+    await moreActions.click();
+    await page.getByRole("menuitem", { name: "Delete check" }).click();
     await expect(
       page.getByRole("alertdialog").getByText("Delete Check"),
     ).toBeVisible();
+    await page.getByRole("alertdialog").getByRole("button", { name: "Cancel" }).click();
+    await expect(page.getByRole("alertdialog")).toBeHidden();
+    await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
+
+    // The breadcrumb link navigates back to the checks list.
+    const back = page.getByRole("link", { name: "Back to checks" });
+    await expect(back).toBeVisible();
+    await back.click();
+    await page.waitForURL(/\/orgs\/test\/checks\/?(\?.*)?$/);
   });
 
-  test("header stacks the action toolbar on its own row below a long title (no horizontal overflow)", async ({
+  test("header puts the title and the actions on one row (no horizontal overflow)", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
@@ -1041,44 +1050,34 @@ test.describe("Check Detail Page", () => {
     await page.waitForLoadState("networkidle");
     await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
 
-    // ---- Wide desktop: the title block and the action toolbar are on two
-    // separate rows, and the page does not overflow horizontally. ----
     await page.setViewportSize({ width: 1280, height: 800 });
 
-    // All six actions plus the back arrow are present with their labels visible.
-    const backButton = page.getByRole("button", { name: "Back to checks" });
-    await expect(backButton).toBeVisible();
+    // The breadcrumb link, the toggle and Edit are all there.
+    await expect(page.getByRole("link", { name: "Back to checks" })).toBeVisible();
     await expect(page.getByLabel("Edit").getByText("Edit")).toBeVisible();
-    await expect(page.getByLabel("Clone").getByText("Clone")).toBeVisible();
-    await expect(page.getByLabel("Badges").getByText("Badges")).toBeVisible();
-    await expect(page.getByLabel("Refresh").getByText("Refresh")).toBeVisible();
-    await expect(page.getByLabel("Delete").getByText("Delete")).toBeVisible();
-    // Enable/Disable toggles its label; match either.
     await expect(
       page.getByRole("button", { name: /Disable|Enable/ }),
     ).toBeVisible();
 
-    // The toolbar sits BELOW the title block: a toolbar button's top edge is
-    // past the title's bottom edge.
+    // The actions sit NEXT to the title, not below it: the Edit button's top
+    // edge is above the title's bottom edge.
     const titleBox = await page
       .getByRole("heading", { name: checkName })
       .boundingBox();
-    const deleteBox = await page.getByLabel("Delete").boundingBox();
+    const editBox = await page.getByLabel("Edit").boundingBox();
     expect(titleBox).not.toBeNull();
-    expect(deleteBox).not.toBeNull();
-    expect(deleteBox!.y).toBeGreaterThan(titleBox!.y + titleBox!.height);
+    expect(editBox).not.toBeNull();
+    expect(editBox!.y).toBeLessThan(titleBox!.y + titleBox!.height);
 
-    // The header itself does not overflow horizontally: the truncating title
-    // and the wrapping toolbar fit within the header's own width. Scope the
-    // check to the header element — unrelated page content (e.g. a chart that
-    // sizes differently in headless CI) must not flake this header assertion.
+    // The header itself does not overflow horizontally. Scope the check to the
+    // header element — unrelated page content must not flake this assertion.
     const headerOverflow = await page
       .getByTestId("check-detail-header")
       .evaluate((el) => el.scrollWidth > el.clientWidth + 1);
     expect(headerOverflow).toBe(false);
   });
 
-  test("disabling a check turns the header status dot grey and toggling re-colours it", async ({
+  test("disabling a check shows a Disabled pill in the header and toggling restores the status", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
@@ -1101,30 +1100,113 @@ test.describe("Check Detail Page", () => {
     await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
 
     const header = page.getByTestId("check-detail-header");
-    const dot = header.getByTestId("check-status-dot");
 
-    // Enabled by default: the dot is not in the disabled state, and there is no
-    // "Disabled" badge in the status block.
-    await expect(dot).toHaveAttribute("data-disabled", "false");
+    // Enabled by default: no "Disabled" pill and no status dot in the header.
+    await expect(header.getByText("Disabled", { exact: true })).toHaveCount(0);
+    await expect(header.getByTestId("check-status-dot")).toHaveCount(0);
 
-    // Disable from the header toggle. The dot goes grey (data-disabled="true",
-    // overriding the last/live status colour) and the outline "Disabled" badge
-    // appears beside the StatusBadge.
+    // Disable from the header toggle: the pill replaces the status badge.
     await page.getByRole("button", { name: /Disable|Enable/ }).click();
     await expect(page.getByRole("button", { name: /Enable/ })).toBeVisible();
-    await expect(dot).toHaveAttribute("data-disabled", "true");
-    await expect(dot).toHaveAttribute("aria-label", "Disabled");
-    await expect(page.getByText("Disabled", { exact: true })).toBeVisible();
+    await expect(header.getByText("Disabled", { exact: true })).toBeVisible();
 
     await page.screenshot({
       path: "test-results/screenshots/check-detail-disabled-dot.png",
       fullPage: true,
     });
 
-    // Re-enable: the dot flips back out of the disabled state live, no reload.
+    // Re-enable: the pill goes away live, no reload.
     await page.getByRole("button", { name: /Enable/ }).click();
     await expect(page.getByRole("button", { name: /Disable/ })).toBeVisible();
-    await expect(dot).toHaveAttribute("data-disabled", "false");
+    await expect(header.getByText("Disabled", { exact: true })).toHaveCount(0);
+  });
+
+  test("header meta line shows target link, interval and last check; a never-run check shows the pending badge and no Checked item", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const resp = await page.request.post(`${API_BASE}/api/v1/auth/login`, {
+      data: { org: "test", email: "test@test.com", password: "test" },
+    });
+    const token = (await resp.json()).accessToken;
+    const created = await page.request.post(`${API_BASE}/api/v1/orgs/test/checks`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: {
+        type: "http",
+        name: `E2E Meta ${Date.now()}`,
+        config: { url: "https://example.com/meta" },
+        period: "00:01:00",
+      },
+    });
+    expect(created.status()).toBe(201);
+    const check = await created.json();
+
+    await page.setViewportSize({ width: 1280, height: 800 });
+
+    // Negative case first: strip lastResult from the check payload so the page
+    // is deterministically in the pending-first-run state.
+    await page.route(
+      new RegExp(`/api/v1/orgs/test/checks/${check.uid}(\\?.*)?$`),
+      async (route) => {
+        const upstream = await route.fetch();
+        const body = await upstream.json();
+        delete body.lastResult;
+        delete body.lastResultAt;
+        await route.fulfill({ response: upstream, json: body });
+      },
+    );
+    await page.goto(`orgs/test/checks/${check.uid}`);
+    await page.waitForLoadState("networkidle");
+    const meta = page.getByTestId("check-detail-meta");
+    await expect(page.getByText("Pending first run")).toBeVisible();
+    await expect(meta.getByTestId("check-meta-last-check")).toHaveCount(0);
+    await expect(meta.getByText(/Checked/)).toHaveCount(0);
+    await page.unroute(new RegExp(`/api/v1/orgs/test/checks/${check.uid}(\\?.*)?$`));
+
+    // Positive case: the real check gets a result within a few seconds.
+    await page.goto(`orgs/test/checks/${check.uid}`);
+    const target = meta.getByRole("link", { name: /example\.com\/meta/ });
+    await expect(target).toHaveAttribute("href", "https://example.com/meta");
+    await expect(meta.getByText("Every 1m")).toBeVisible();
+    await expect(meta.getByTestId("check-meta-last-check")).toContainText(
+      /Checked/,
+      { timeout: 60000 },
+    );
+    // The slug chip uses a Lucide icon, not the link emoji.
+    await expect(page.getByTestId("check-detail-header")).not.toContainText("🔗");
+  });
+
+  test("Copy check link writes the check URL to the clipboard and toasts", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+    const resp = await page.request.post(`${API_BASE}/api/v1/auth/login`, {
+      data: { org: "test", email: "test@test.com", password: "test" },
+    });
+    const token = (await resp.json()).accessToken;
+    const created = await page.request.post(`${API_BASE}/api/v1/orgs/test/checks`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: {
+        type: "http",
+        name: `E2E CopyLink ${Date.now()}`,
+        config: { url: "https://example.com/copy" },
+        period: "00:05:00",
+      },
+    });
+    expect(created.status()).toBe(201);
+    const check = await created.json();
+
+    await page.goto(`orgs/test/checks/${check.uid}`);
+    await page.waitForLoadState("networkidle");
+    await page.getByRole("button", { name: "More actions" }).click();
+    await page.getByRole("menuitem", { name: "Copy check link" }).click();
+
+    await expect(page.getByText("Check link copied")).toBeVisible();
+    const copied = await page.evaluate(() => navigator.clipboard.readText());
+    expect(copied).toMatch(
+      new RegExp(`/orgs/test/checks/(${check.slug}|${check.uid})$`),
+    );
   });
 
   test("direct URL navigation with graphFull=true activates the chart's full-range toggle", async ({

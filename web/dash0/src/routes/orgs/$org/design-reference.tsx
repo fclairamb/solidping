@@ -11,7 +11,9 @@ import {
   ArrowLeft,
   ArrowRight,
   ArrowUpRight,
+  BadgeCheck,
   Bell,
+  BookOpen,
   Bot,
   Building,
   Check,
@@ -19,11 +21,16 @@ import {
   ChevronDown,
   ChevronRight,
   Copy,
+  Ellipsis,
+  Folder,
+  Server,
+  Power,
   Eye,
   FolderPlus,
   Info,
   Building2,
   KeyRound,
+  Link2,
   LayoutDashboard,
   Layers,
   ListChecks,
@@ -124,6 +131,13 @@ import {
 import { CheckRateMeter } from "@/components/shared/check-rate-meter";
 import { StatTile } from "@/components/shared/stat-tile";
 import { StatusBadge } from "@/components/shared/status-badge";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+  breadcrumbLinkClassName,
+} from "@/components/ui/breadcrumb";
 import { EvaluationCard } from "@/components/checks/evaluation-card";
 import { ScreenshotImageLink } from "@/components/shared/screenshot-image";
 import { StatusDot } from "@/components/shared/status-dot";
@@ -242,7 +256,6 @@ import { AvailabilityStrip } from "@/components/ui/availability-strip";
 import { useIsDarkTheme } from "@/hooks/use-is-dark-theme";
 import { OAuthProviderButtons } from "@/components/auth/oauth-provider-buttons";
 import { useDebounce } from "@/lib/use-debounce";
-import { facetedFilterTriggerLabel } from "@/lib/faceted-filter";
 import { cn, slugify } from "@/lib/utils";
 
 export const Route = createFileRoute("/orgs/$org/design-reference")({
@@ -901,7 +914,7 @@ import { PageHeader } from "@/components/shared/page-header";
     <Section
       id="page-header"
       title="Page header"
-      description="Every page opens with a page header — the page title plus its right-aligned actions. 'Page title' and 'page header' are the same surface, not two primitives. List and section pages render it with the boxed PageHeader component (@/components/shared/page-header); detail and edit pages compose the same header inline so it can carry a back arrow and per-record actions. Both patterns are documented here."
+      description="Every page opens with a page header — the page title plus its right-aligned actions. 'Page title' and 'page header' are the same surface, not two primitives. List and section pages render it with the boxed PageHeader component (@/components/shared/page-header); detail and edit pages compose the header inline: a breadcrumb (never a back arrow) above the title row, with per-record actions on the right. Both patterns are documented here."
     >
       <h3 className="text-sm font-medium">
         List &amp; section pages: the PageHeader component
@@ -999,169 +1012,126 @@ import { PageHeader } from "@/components/shared/page-header";
         <a href="#docs-link" className="text-primary hover:underline">
           Docs link
         </a>{" "}
-        section below for the standalone primitive. The detail/edit-page header
-        — back arrow inside the right-aligned action cluster — is the same
-        surface for detail pages; it is documented just below.
+        section below for the standalone primitive. Detail and edit pages use a
+        different header (breadcrumb, title row, one primary and one secondary
+        action, the rest in a ⋯ menu), documented just below.
       </p>
 
       <h3 className="text-sm font-medium">
-        Detail &amp; edit pages: title block + right-aligned action cluster
-        (back arrow first)
+        Detail pages with many actions: one primary, one secondary, the rest in
+        ⋯
       </h3>
       <p className="text-sm text-muted-foreground">
-        On detail/edit pages, compose a{" "}
+        When a detail page carries more than two actions, do not line them all
+        up: nine equal-weight buttons have no hierarchy and the loudest one ends
+        up being Delete. The rule: <strong>at most two visible actions</strong>{" "}
+        beside the title. The primary one uses{" "}
         <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
-          flex items-start justify-between gap-3
-        </code>{" "}
-        row. The <strong>left</strong> is the title block — the page{" "}
-        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">h1</code>{" "}
-        plus any subtitle/status — wrapped in{" "}
-        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
-          min-w-0 flex-1
-        </code>{" "}
-        so it truncates instead of shoving the actions off-screen. The{" "}
-        <strong>right</strong> is a{" "}
-        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
-          flex gap-2 shrink-0
-        </code>{" "}
-        cluster whose{" "}
-        <strong>first child is the icon-only ghost back button</strong>,
-        followed by the page actions (View / Edit / Delete, Refresh, …). The
-        back arrow is <strong>not</strong> on the far left — it leads the
-        right-aligned cluster. It is <strong>always icon-only</strong> — never
-        paired with a &quot;Back&quot; label. Use{" "}
-        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
-          ArrowLeft
-        </code>{" "}
-        with{" "}
-        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
-          variant=&quot;ghost&quot; size=&quot;icon&quot;
-        </code>{" "}
-        and an{" "}
-        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
-          aria-label
+          variant=&quot;default&quot;
         </code>
-        . A trailing Refresh button labels itself on desktop and collapses to
-        the icon below{" "}
-        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">sm</code>.
-      </p>
-      <ExampleRow
-        preview={
-          <div className="flex w-full items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <h1 className="truncate text-2xl font-bold tracking-tight sm:text-3xl">
-                Page title
-              </h1>
-              <p className="mt-1 truncate text-muted-foreground">
-                Optional subtitle / status
-              </p>
-            </div>
-            <div className="flex shrink-0 gap-2">
-              <Button variant="ghost" size="icon" aria-label="Back">
-                <ArrowLeft />
-              </Button>
-              <Button variant="outline" aria-label="Edit">
-                <Pencil className="h-4 w-4 sm:mr-2" />
-                <span className="hidden sm:inline">Edit</span>
-              </Button>
-              <Button variant="outline" aria-label="Refresh">
-                <RotateCw className="h-4 w-4 sm:mr-2" />
-                <span className="hidden sm:inline">Refresh</span>
-              </Button>
-              <Button variant="destructive" aria-label="Delete">
-                <Trash2 className="h-4 w-4 sm:mr-2" />
-                <span className="hidden sm:inline">Delete</span>
-              </Button>
-            </div>
-          </div>
-        }
-        importLine={`<div className="flex items-start justify-between gap-3">\n  <div className="min-w-0 flex-1">\n    <h1 className="truncate text-2xl sm:text-3xl font-bold tracking-tight">{title}</h1>\n    {subtitle && <p className="mt-1 text-muted-foreground truncate">{subtitle}</p>}\n  </div>\n  <div className="flex gap-2 shrink-0">\n    <Button asChild variant="ghost" size="icon" aria-label="Back">\n      <Link to="/orgs/$org/things" params={{ org }}>\n        <ArrowLeft className="h-4 w-4" />\n      </Link>\n    </Button>\n    {/* One cluster = one button height. Don't mix size="sm" with the default. */}\n    <Button variant="outline" onClick={handleEdit} aria-label="Edit">\n      <Pencil className="h-4 w-4 sm:mr-2" />\n      <span className="hidden sm:inline">Edit</span>\n    </Button>\n    <Button variant="outline" onClick={handleRefresh} aria-label="Refresh">\n      <RotateCw className="h-4 w-4 sm:mr-2" />\n      <span className="hidden sm:inline">Refresh</span>\n    </Button>\n    <Button variant="destructive" onClick={handleDelete} aria-label="Delete">\n      <Trash2 className="h-4 w-4 sm:mr-2" />\n      <span className="hidden sm:inline">Delete</span>\n    </Button>\n  </div>\n</div>`}
-      />
-
-      <h3 className="text-sm font-medium">
-        Detail &amp; edit pages: collapse the action cluster into an overflow
-        menu on mobile
-      </h3>
-      <p className="text-sm text-muted-foreground">
-        When a detail header carries more than two or three actions, the inline
-        toolbar overflows on a phone. Keep only the icon-only ghost{" "}
-        <strong>back button</strong> always visible; render the labeled action
-        buttons in a{" "}
+        , the secondary one{" "}
         <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
-          hidden md:flex
-        </code>{" "}
-        cluster, and mirror every one of them as items inside a{" "}
+          outline
+        </code>
+        , and <strong>everything else goes in a ⋯ overflow menu at every
+        width</strong> (
         <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
-          md:hidden
+          Button variant=&quot;outline&quot; size=&quot;icon&quot;
         </code>{" "}
+        with an{" "}
         <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
-          DropdownMenu
+          Ellipsis
         </code>{" "}
-        triggered by a{" "}
-        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
-          MoreVertical
-        </code>{" "}
-        (⋯) button. The delete item is{" "}
+        icon and an aria-label). <strong>Delete is always the last menu item</strong>,
+        after a separator, in{" "}
         <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
           text-destructive focus:text-destructive
-        </code>{" "}
-        with a{" "}
-        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
-          Trash2
-        </code>{" "}
-        icon, just like the inline destructive button. Drive any confirm dialog
-        from controlled state so it opens from either surface.
+        </code>
+        . The layout is a breadcrumb line (back link + current name), then a
+        title row (title, status pill, type badge; actions on the right), then a
+        muted meta line of facts. The two visible buttons show their label from{" "}
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">md</code>{" "}
+        up and are icon-only below. The check detail page is the reference
+        implementation. The breadcrumb is the standalone{" "}
+        <a href="#breadcrumbs" className="text-primary hover:underline">
+          Breadcrumb
+        </a>{" "}
+        primitive shown in the example below.
       </p>
       <ExampleRow
         preview={
-          <div className="flex w-full items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <h1 className="truncate text-2xl font-bold tracking-tight sm:text-3xl">
-                Page title
-              </h1>
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <Button variant="ghost" size="icon" aria-label="Back">
-                <ArrowLeft />
-              </Button>
-              <div className="hidden items-center gap-2 md:flex">
-                <Button variant="outline" aria-label="Edit">
-                  <Pencil className="h-4 w-4 sm:mr-2" />
-                  <span className="hidden sm:inline">Edit</span>
-                </Button>
-                <Button variant="outline" aria-label="Refresh">
-                  <RotateCw className="h-4 w-4 sm:mr-2" />
-                  <span className="hidden sm:inline">Refresh</span>
-                </Button>
-                <Button variant="destructive" aria-label="Delete">
-                  <Trash2 className="h-4 w-4 sm:mr-2" />
-                  <span className="hidden sm:inline">Delete</span>
-                </Button>
+          <div className="flex w-full flex-col gap-3">
+            <Breadcrumb aria-label="Breadcrumb">
+              <BreadcrumbItem className="shrink-0">
+                <span className={breadcrumbLinkClassName}>
+                  <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+                  Checks
+                </span>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbPage>acme.com (http)</BreadcrumbPage>
+              </BreadcrumbItem>
+            </Breadcrumb>
+            <div className="flex flex-wrap items-start gap-3">
+              <div className="min-w-0 flex-1 basis-64">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                  <h1 className="min-w-0 max-w-full truncate text-2xl font-bold tracking-tight sm:text-3xl">
+                    acme.com (http)
+                  </h1>
+                  <StatusBadge status="up" />
+                  <CheckTypeBadge type="http" withIcon />
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+                  <span className="inline-flex items-center gap-1">
+                    https://acme.com
+                    <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+                  </span>
+                  <span className="hidden md:inline">Every 1m</span>
+                  <span>3 regions</span>
+                  <span>Checked 12s ago</span>
+                </div>
               </div>
-              <div className="md:hidden">
+              <div className="flex shrink-0 items-center gap-2">
+                <Button variant="outline" aria-label="Disable">
+                  <Power className="h-4 w-4 md:mr-2" />
+                  <span className="hidden md:inline">Disable</span>
+                </Button>
+                <Button aria-label="Edit">
+                  <Pencil className="h-4 w-4 md:mr-2" />
+                  <span className="hidden md:inline">Edit</span>
+                </Button>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      aria-label="More actions"
-                    >
-                      <MoreVertical />
+                    <Button variant="outline" size="icon" aria-label="More actions">
+                      <Ellipsis className="h-4 w-4" />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
                     <DropdownMenuItem>
-                      <Pencil />
-                      Edit
+                      <Copy className="mr-2 h-4 w-4" />
+                      Clone
                     </DropdownMenuItem>
                     <DropdownMenuItem>
-                      <RotateCw />
-                      Refresh
+                      <Link2 className="mr-2 h-4 w-4" />
+                      Copy link
+                    </DropdownMenuItem>
+                    <DropdownMenuItem>
+                      <BadgeCheck className="mr-2 h-4 w-4" />
+                      Badges
+                    </DropdownMenuItem>
+                    <DropdownMenuItem>
+                      <BookOpen className="mr-2 h-4 w-4" />
+                      Documentation
+                    </DropdownMenuItem>
+                    <DropdownMenuItem>
+                      <Globe className="mr-2 h-4 w-4" />
+                      Publish on a status page
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem className="text-destructive focus:text-destructive">
-                      <Trash2 />
-                      Delete
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Delete check
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -1169,76 +1139,7 @@ import { PageHeader } from "@/components/shared/page-header";
             </div>
           </div>
         }
-        importLine={`<div className="flex shrink-0 items-center gap-2">\n  <Button variant="ghost" size="icon" aria-label="Back" onClick={goBack}>\n    <ArrowLeft className="h-4 w-4" />\n  </Button>\n  <div className="hidden items-center gap-2 md:flex">\n    {/* labeled action buttons */}\n  </div>\n  <div className="md:hidden">\n    <DropdownMenu>\n      <DropdownMenuTrigger asChild>\n        <Button variant="outline" size="icon" aria-label="More actions">\n          <MoreVertical className="h-4 w-4" />\n        </Button>\n      </DropdownMenuTrigger>\n      <DropdownMenuContent align="end">\n        {/* mirror each action; delete = text-destructive */}\n      </DropdownMenuContent>\n    </DropdownMenu>\n  </div>\n</div>`}
-      />
-
-      <h3 className="text-sm font-medium">
-        Detail &amp; edit pages: stack the action toolbar on its own row
-        (action-dense headers)
-      </h3>
-      <p className="text-sm text-muted-foreground">
-        When a detail header carries <strong>more than ~three actions</strong>{" "}
-        (e.g. the check detail page: back + Edit, Enable/Disable, Clone, Badges,
-        Refresh, Delete) the labeled toolbar and a long title fight for the same
-        row — even on a wide desktop. Instead of shrinking the buttons or hiding
-        them behind an overflow menu, drop the toolbar onto its own row. Make
-        the outer wrapper a{" "}
-        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
-          flex flex-col gap-3
-        </code>{" "}
-        column: the title block (still wrapped in{" "}
-        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
-          min-w-0 flex-1
-        </code>{" "}
-        so the{" "}
-        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">h1</code>{" "}
-        truncates) takes the first row, then the action cluster — back arrow
-        leading, as ever — sits on a second row wrapped in{" "}
-        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
-          flex flex-wrap items-center justify-end gap-2
-        </code>
-        . It is right-aligned and wraps across lines on a narrow phone rather
-        than overflowing. The per-button responsive behaviour (icon-only below{" "}
-        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">lg</code>,
-        icon + label at{" "}
-        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">lg+</code>)
-        is unchanged — only the wrappers move.
-      </p>
-      <ExampleRow
-        preview={
-          <div className="flex w-full flex-col gap-3">
-            <div className="min-w-0 flex-1">
-              <h1 className="truncate text-2xl font-bold tracking-tight sm:text-3xl">
-                A long page title that would otherwise crowd the toolbar
-              </h1>
-              <p className="mt-1 truncate text-muted-foreground">
-                Optional subtitle / status
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              <Button variant="ghost" size="icon" aria-label="Back">
-                <ArrowLeft />
-              </Button>
-              <Button variant="outline" aria-label="Edit">
-                <Pencil className="h-4 w-4 sm:mr-2" />
-                <span className="hidden sm:inline">Edit</span>
-              </Button>
-              <Button variant="outline" aria-label="Clone">
-                <Copy className="h-4 w-4 sm:mr-2" />
-                <span className="hidden sm:inline">Clone</span>
-              </Button>
-              <Button variant="outline" aria-label="Refresh">
-                <RotateCw className="h-4 w-4 sm:mr-2" />
-                <span className="hidden sm:inline">Refresh</span>
-              </Button>
-              <Button variant="destructive" aria-label="Delete">
-                <Trash2 className="h-4 w-4 sm:mr-2" />
-                <span className="hidden sm:inline">Delete</span>
-              </Button>
-            </div>
-          </div>
-        }
-        importLine={`<div className="flex flex-col gap-3">\n  <div className="min-w-0 flex-1">\n    <h1 className="truncate text-2xl sm:text-3xl font-bold tracking-tight">{title}</h1>\n    {subtitle && <p className="mt-1 text-muted-foreground truncate">{subtitle}</p>}\n  </div>\n  <div className="flex flex-wrap items-center justify-end gap-2">\n    <Button variant="ghost" size="icon" aria-label="Back" onClick={goBack}>\n      <ArrowLeft className="h-4 w-4" />\n    </Button>\n    {/* labeled action buttons — icon-only below lg, icon + label at lg+ */}\n  </div>\n</div>`}
+        importLine={`import { Breadcrumb, BreadcrumbItem, BreadcrumbPage, BreadcrumbSeparator, breadcrumbLinkClassName } from "@/components/ui/breadcrumb";\n\n<Breadcrumb aria-label={t("breadcrumb")}>\n  <BreadcrumbItem><Link to="/orgs/$org/checks" params={{ org }} className={breadcrumbLinkClassName}><ArrowLeft className="h-3.5 w-3.5" />Checks</Link></BreadcrumbItem>\n  <BreadcrumbSeparator />\n  <BreadcrumbItem><BreadcrumbPage>{name}</BreadcrumbPage></BreadcrumbItem>\n</Breadcrumb>\n<div className="flex flex-wrap items-start gap-3">\n  <div className="min-w-0 flex-1 basis-64">{/* h1 + status pill + type badge, then the muted meta line */}</div>\n  <div className="flex shrink-0 items-center gap-2">\n    <Button variant="outline">…secondary…</Button>\n    <Button>…primary…</Button>\n    <DropdownMenu>{/* Ellipsis trigger; Delete last, after a separator, text-destructive */}</DropdownMenu>\n  </div>\n</div>`}
       />
 
       <div className="rounded-md border border-dashed bg-muted/30 p-4">
@@ -1263,30 +1164,58 @@ import { PageHeader } from "@/components/shared/page-header";
 }
 
 function ButtonPlacementSection() {
-  const buttonPlacementSnippet = `// A page WITH a search/filter toolbar: PageHeader actions carries only the
-// primary "New X" action. Refresh moves into the toolbar row, right of search.
+  const buttonPlacementSnippet = `// A list page WITH a search/filter toolbar. PageHeader actions holds the
+// primary "New X", at most one secondary create action, and a ⋯ menu for the
+// org-level tools (import, export, bulk operations, docs). No row of equal
+// outline buttons.
 <PageHeader
-  icon={Globe}
-  title="Status pages"
+  icon={ListChecks}
+  title="Checks"
   actions={
-    <Button asChild>
-      <Link to="/orgs/$org/status-pages/new" params={{ org }}>
-        <Plus className="mr-2 h-4 w-4" />
-        New page
-      </Link>
-    </Button>
+    <>
+      <Button variant="outline" aria-label="New group">
+        <FolderPlus className="sm:mr-2 h-4 w-4" />
+        <span className="hidden sm:inline">New group</span>
+      </Button>
+      <Button asChild>
+        <Link to="/orgs/$org/checks/new" params={{ org }}>
+          <Plus className="sm:mr-2 h-4 w-4" />
+          <span className="hidden sm:inline">New check</span>
+        </Link>
+      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" size="icon" aria-label="More actions">
+            <Ellipsis className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onSelect={openImport}><Upload className="mr-2 h-4 w-4" />Import checks…</DropdownMenuItem>
+          <DropdownMenuItem onSelect={exportAll}><Download className="mr-2 h-4 w-4" />Export checks</DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem asChild><a href="/docs/features/check-types" target="_blank" rel="noreferrer"><BookOpen className="mr-2 h-4 w-4" />Check types docs</a></DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </>
   }
 />
-<div className="flex flex-wrap items-center gap-4">
-  <div className="relative flex-1 min-w-[200px] max-w-sm">
+// Toolbar: filters on the LEFT (search, faceted triggers, Reset), view controls
+// on the RIGHT (result count, grouping toggle, icon-only Refresh). Every
+// control is 36px high (h-9).
+<div className="flex flex-wrap items-center gap-2">
+  <div className="relative w-full min-w-[200px] flex-1 sm:w-auto sm:max-w-sm">
     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
     <Input placeholder="Search…" className="pl-9" />
   </div>
-  {/* Any filter selects go here, between search and Refresh. */}
-  <Button variant="outline" onClick={() => refetch()} disabled={isRefetching} aria-label={t("common:refresh")}>
-    <RefreshCw className={\`h-4 w-4 sm:mr-2 \${isRefetching ? "animate-spin" : ""}\`} />
-    <span className="hidden sm:inline">{t("common:refresh")}</span>
-  </Button>
+  <FacetedFilter title="Status" options={statusOptions} selected={statusValues} onChange={setStatusValues} />
+  <Button variant="ghost" onClick={reset}>Reset <X className="h-4 w-4" /></Button>
+  <div className="ml-auto flex items-center gap-2">
+    <span className="hidden text-sm text-muted-foreground sm:inline">3 of 42 checks</span>
+    <SegmentedControl size="md" value={groupBy} onValueChange={setGroupBy} aria-label="Group by" options={…} />
+    <Button variant="outline" size="icon" onClick={() => refetch()} aria-label={t("common:refresh")}>
+      <RefreshCw className="h-4 w-4" />
+    </Button>
+  </div>
 </div>
 
 // A page with NO search/filter toolbar (e.g. on-call) keeps Refresh in the
@@ -1320,8 +1249,13 @@ function ButtonPlacementSection() {
         slot on{" "}
         <code className="rounded bg-muted px-1 py-0.5 text-xs">PageHeader</code>{" "}
         is reserved for the page's primary action — typically a single &quot;New
-        &lt;resource&gt;&quot; create button, plus at most one secondary
-        page-level action (export/import, a scope toggle). It is{" "}
+        &lt;resource&gt;&quot; create button, plus at most one secondary create
+        action (e.g. &quot;New group&quot;). Org-level tools that run a few
+        times a year (import, export, bulk operations, docs) go in a{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">⋯</code> menu
+        (<code className="rounded bg-muted px-1 py-0.5 text-xs">Button variant=&quot;outline&quot; size=&quot;icon&quot;</code>{" "}
+        with a &quot;More actions&quot; label), never a row of equal outline
+        buttons. Same rule as the detail header in Page header above. It is{" "}
         <strong>not</strong> a catch-all toolbar: a page that has a
         search/filter toolbar row below the header does not put Refresh in the
         header — Refresh moves into that row (see below). The one exception is a
@@ -1343,17 +1277,19 @@ function ButtonPlacementSection() {
       </p>
 
       <h3 className="text-sm font-medium">
-        Toolbar row: search, filters, then Refresh
+        Toolbar row: filters left, view controls right
       </h3>
       <p className="text-sm text-muted-foreground">
-        Data/view controls — the search input, any filter selects, and the
-        Refresh button — live in their own{" "}
+        Data/view controls live in their own{" "}
         <code className="rounded bg-muted px-1 py-0.5 text-xs">
-          flex flex-wrap items-center gap-4
+          flex flex-wrap items-center gap-2
         </code>{" "}
-        row below the header. Refresh sits to the{" "}
-        <strong>right of the search input</strong> (after any filter selects, if
-        the row has them) — mirror{" "}
+        row below the header, every control 36px high. The{" "}
+        <strong>filters go on the left</strong> (search, faceted triggers, a
+        Reset button once one is active); the <strong>view controls go on the
+        right</strong> (result count, grouping toggle, then an icon-only Refresh
+        with a tooltip). Search-only toolbars keep Refresh right of the search
+        input — mirror{" "}
         <code className="rounded bg-muted px-1 py-0.5 text-xs">
           integrations.index.tsx
         </code>{" "}
@@ -1361,7 +1297,8 @@ function ButtonPlacementSection() {
         <code className="rounded bg-muted px-1 py-0.5 text-xs">
           checks.index.tsx
         </code>{" "}
-        (search + several filters, Refresh trailing).
+        (search + faceted filters on the left, count, grouping and Refresh on
+        the right).
       </p>
 
       <div className="space-y-3 rounded-md border bg-card p-4">
@@ -1700,7 +1637,7 @@ function ButtonsBadgesSection() {
     <Section
       id="buttons-badges"
       title="Buttons & badges"
-      description="All variants and sizes shipped today. Pick the one with the least visual weight that still does the job. Action buttons should pair an icon with a short verb and collapse to icon-only on mobile. The detail-page header that composes these into a back button + action cluster lives in the Page header section."
+      description="All variants and sizes shipped today. Pick the one with the least visual weight that still does the job. Action buttons should pair an icon with a short verb and collapse to icon-only on mobile. The detail-page header that composes these into a breadcrumb, title row and primary/secondary/overflow action cluster lives in the Page header section."
     >
       <div className="space-y-4">
         <h3 className="text-sm font-medium">Button variants</h3>
@@ -1986,7 +1923,7 @@ function ButtonsBadgesSection() {
           Header refresh button (icon-only on mobile)
         </h3>
         <p className="text-sm text-muted-foreground">
-          The canonical list/detail header refresh control. An{" "}
+          The canonical list-page refresh control (detail pages rely on live updates and do not carry one). An{" "}
           <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
             outline
           </code>{" "}
@@ -6279,8 +6216,8 @@ function LabelFilterSection() {
   const snippet = `import { LabelFilter } from "@/components/shared/label-filter";
 
 // Faceted label picker for list toolbars. Applied filters render as removable
-// chips; the compact "+ Label" trigger opens one popover with a guided two-step
-// cmdk list (pick a key, then pick/type a value). Selecting a value applies
+// chips; the compact dashed "⊕ Labels" trigger (solid with a count badge once a
+// label is applied) opens one popover with a guided two-step cmdk list (pick a key, then pick/type a value). Selecting a value applies
 // immediately — no Add button. The caller owns URL serialization via onChange.
 <LabelFilter
   org={org}
@@ -6297,10 +6234,15 @@ function LabelFilterSection() {
     <Section
       id="label-filter"
       title="Label filter"
-      description="Faceted key:value filter used in the checks-list toolbar. Reuse this instead of LabelInput when filtering a list (LabelInput stays for authoring labels in a form). Applied filters are removable chips; the compact + Label trigger opens a single popover with a two-step key→value cmdk picker that applies on select. Try it below."
+      description="Faceted key:value filter used in the checks-list toolbar. Reuse this instead of LabelInput when filtering a list (LabelInput stays for authoring labels in a form). Same trigger look as the faceted filter: dashed “⊕ Labels” when empty, solid with a count badge otherwise. Applied filters are removable accent chips right after the trigger; it opens a single popover with a two-step key→value cmdk picker that applies on select. Try it below."
     >
       <ExampleRow
-        preview={<LabelFilter org={org} value={labels} onChange={setLabels} />}
+        preview={
+          <div className="flex flex-wrap items-center gap-4">
+            <LabelFilter org={org} value={labels} onChange={setLabels} />
+            <LabelFilter org={org} value={{}} onChange={() => {}} />
+          </div>
+        }
         importLine={snippet}
       />
     </Section>
@@ -6368,14 +6310,8 @@ function FacetedFilterSection() {
     { value: "warning", label: "Warning" },
     { value: "created", label: "Pending" },
   ];
-  const triggerLabel = facetedFilterTriggerLabel(selected, options, {
-    all: "All statuses",
-    count: (count) => `${count} statuses`,
-    plusOne: (label, extra) => `${label} +${extra}`,
-  });
   const snippet = `import { FacetedFilter } from "@/components/shared/faceted-filter";
 import {
-  facetedFilterTriggerLabel,
   parseFacetedFilterParam,
   serializeFacetedFilterParam,
 } from "@/lib/faceted-filter";
@@ -6384,9 +6320,10 @@ import {
 // the checkbox sibling of LabelFilter's open-ended key:value picker. The
 // caller owns URL state: read selected values with parseFacetedFilterParam
 // (lenient — unknown tokens are dropped so a stale URL never wedges the UI),
-// compute the trigger text with facetedFilterTriggerLabel (none → "all",
-// one → its label, two → "label +1", 3+ → "N selected"), and write back with
-// serializeFacetedFilterParam.
+// and write back with serializeFacetedFilterParam. The trigger renders itself:
+// inactive it is a dashed "⊕ Status"; active it is solid with the name, a
+// separator and up to two value badges ("3 selected" from three; a plain
+// count below sm).
 const selected = parseFacetedFilterParam(statusParam, new Set(["up", "down", …]));
 <FacetedFilter
   options={options}
@@ -6397,24 +6334,32 @@ const selected = parseFacetedFilterParam(statusParam, new Set(["up", "down", …
       replace: true,
     })
   }
-  triggerLabel={facetedFilterTriggerLabel(selected, options, statusFilterStrings)}
+  title="Status"
   testId="status-filter"
 />`;
   return (
     <Section
       id="faceted-filter"
       title="Faceted filter"
-      description="Multi-select popover for a small, known option set — used for the checks-list status and check-type filters. A checkbox per option, trigger text reflects the selection (All / one label / label +1 / N selected). Reuse this instead of a single-value Select whenever several values can be picked at once; reuse LabelFilter instead when the facet is an open-ended key:value pair. Try it below — the trigger starts on “Down”."
+      description="Multi-select popover for a small, known option set — used for the checks-list status and check-type filters. A checkbox per option. The trigger is one shared look (FilterTrigger): dashed with a ⊕ and the dimension name when inactive, solid with a separator and accent value badges when active (up to two labels, then “N selected”; a count only below sm). The LabelFilter and the super-admin Scope filter use the same trigger. Reuse this instead of a single-value Select whenever several values can be picked at once; reuse LabelFilter instead when the facet is an open-ended key:value pair. Try it below — the first trigger starts on “Down”, the second shows the inactive look."
     >
       <ExampleRow
         preview={
-          <FacetedFilter
-            options={options}
-            selected={selected}
-            onChange={setSelected}
-            triggerLabel={triggerLabel}
-            testId="design-reference-faceted-filter"
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            <FacetedFilter
+              options={options}
+              selected={selected}
+              onChange={setSelected}
+              title="Status"
+              testId="design-reference-faceted-filter"
+            />
+            <FacetedFilter
+              options={options}
+              selected={[]}
+              onChange={() => {}}
+              title="Type"
+            />
+          </div>
         }
         importLine={snippet}
       />
@@ -7149,6 +7094,41 @@ function JobsPrimitivesSection() {
               value: "second",
               label: "Host",
               tooltip: "Bucket checks by the host they target",
+            },
+          ]}
+        />
+        <p className="text-xs text-muted-foreground">
+          <code>size=&quot;md&quot;</code> renders the control 36px high (same
+          as a default Button) for a toolbar next to buttons and inputs; give
+          each option an <code>ariaLabel</code> when its label is an icon that
+          collapses below <code>sm</code> (checks index &ldquo;By group / By
+          host&rdquo;).
+        </p>
+        <SegmentedControl
+          size="md"
+          value={segmented}
+          onValueChange={setSegmented}
+          aria-label="Group by"
+          options={[
+            {
+              value: "first",
+              label: (
+                <>
+                  <Folder className="h-4 w-4" />
+                  <span className="hidden sm:inline">By group</span>
+                </>
+              ),
+              ariaLabel: "By group",
+            },
+            {
+              value: "second",
+              label: (
+                <>
+                  <Server className="h-4 w-4" />
+                  <span className="hidden sm:inline">By host</span>
+                </>
+              ),
+              ariaLabel: "By host",
             },
           ]}
         />

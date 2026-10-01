@@ -91,6 +91,9 @@ test.describe("Checks index host view", () => {
 
     // Default is Groups mode — the host view isn't rendered yet.
     await expect(page.getByTestId("group-by-groups")).toHaveAttribute("aria-pressed", "true");
+    // The control keeps its accessible name even though its segments are now
+    // "By group" / "By host".
+    await expect(page.getByRole("group", { name: "Group by" })).toBeVisible();
     await expect(page.getByTestId("host-view")).not.toBeVisible();
 
     await page.getByTestId("group-by-host").click();

@@ -23,9 +23,15 @@ import {
   Waypoints,
   ArrowUpRight,
   CalendarClock,
+  Ellipsis,
+  Shuffle,
+  BookOpen,
+  Folder,
+  Server,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
-import { AutoPlacementBulkButton } from "@/components/checks/auto-placement-bulk";
+import { AutoPlacementBulkDialog } from "@/components/checks/auto-placement-bulk";
 import {
   useInfiniteChecks,
   useRegions,
@@ -37,6 +43,7 @@ import {
   useEscalationPolicies,
   useCheckTypes,
   useEntitlements,
+  useCheckStats,
   useStalePublications,
   type Check,
   type CheckGroup,
@@ -71,6 +78,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { ScopeFilter } from "@/components/checks/scope-filter";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -93,17 +101,17 @@ import { Textarea } from "@/components/ui/textarea";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { LabelFilter } from "@/components/shared/label-filter";
 import { FacetedFilter } from "@/components/shared/faceted-filter";
@@ -113,7 +121,6 @@ import { ApiError, apiFetch, getApiErrorField } from "@/api/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseLabelsParam, serializeLabelsParam } from "@/lib/labels";
 import {
-  facetedFilterTriggerLabel,
   parseFacetedFilterParam,
   serializeFacetedFilterParam,
 } from "@/lib/faceted-filter";
@@ -1067,11 +1074,6 @@ function ChecksIndexPage() {
     () => STATUS_FILTER_VALUES.map((value) => ({ value, label: t(`status.${value}`) })),
     [t],
   );
-  const statusTriggerLabel = facetedFilterTriggerLabel(statusValues, statusOptions, {
-    all: t("statusFilter.all"),
-    count: (count) => t("statusFilter.count", { count }),
-    plusOne: (label, extra) => t("statusFilter.plusOne", { label, count: extra }),
-  });
   const setStatusValues = (next: string[]) => {
     void navigate({
       search: (prev) => ({ ...prev, status: serializeFacetedFilterParam(next) || undefined }),
@@ -1087,11 +1089,6 @@ function ChecksIndexPage() {
         .sort((a, b) => a.label.localeCompare(b.label)),
     [checkTypes],
   );
-  const typeTriggerLabel = facetedFilterTriggerLabel(typeValues, typeOptions, {
-    all: t("typeFilter.all"),
-    count: (count) => t("typeFilter.count", { count }),
-    plusOne: (label, extra) => t("typeFilter.plusOne", { label, count: extra }),
-  });
   const setTypeValues = (next: string[]) => {
     void navigate({
       search: (prev) => ({ ...prev, type: serializeFacetedFilterParam(next) || undefined }),
@@ -1164,6 +1161,22 @@ function ChecksIndexPage() {
     typeValues.length > 0 ||
     Boolean(labelsParam) ||
     internalFilter !== "false";
+
+  // "Reset" only tracks the four facet filters (status, type, labels, scope).
+  // Search and groupBy are deliberately left out: they are not filters the
+  // Reset button clears (spec 2026-09-30-02).
+  const hasActiveFacets =
+    statusValues.length > 0 ||
+    typeValues.length > 0 ||
+    Boolean(labelsParam) ||
+    internalFilter !== "false";
+  const resetFilters = () => {
+    setInternalFilter("false");
+    void navigate({
+      search: (prev) => ({ ...prev, status: undefined, type: undefined, labels: undefined }),
+      replace: true,
+    });
+  };
 
   // Live updates: a `checks` hint (status transition, membership/config
   // change) invalidates both the flat ["checks", org] root and the infinite
@@ -1274,6 +1287,24 @@ function ChecksIndexPage() {
   const { data: regionsData } = useRegions(org);
   const loadedChecks = useMemo(() => Array.from(checksByUid.values()), [checksByUid]);
 
+  // Result count (spec 2026-09-30-02). The org-wide total comes from the
+  // existing /checks/stats aggregate (non-internal, non-deleted: exactly the
+  // default list), so no group's checkCount is summed and no new endpoint is
+  // needed. It is only a valid denominator while the scope is the default: an
+  // internal/all scope shows checks the aggregate does not count, so then only
+  // "N checks" is shown. Unfiltered, the loaded list IS the total. Hidden while
+  // the stream is still climbing, so the number never counts up on screen.
+  const { data: checkStats } = useCheckStats(org, { refetchInterval: 30_000 });
+  const resultCountText = (() => {
+    if (checksStreaming) return null;
+    const shown = loadedChecks.length;
+    if (!isFiltering) return t("resultCount", { count: shown });
+    if (internalFilter === "false" && typeof checkStats?.total === "number") {
+      return t("resultCountFiltered", { shown, count: checkStats.total });
+    }
+    return t("resultCount", { count: shown });
+  })();
+
   // Host-mode bucketing (spec 2026-08-01-04): every loaded check bucketed by
   // its derived targetHost, section order following first-appearance in the
   // sort=targetHost stream (already host-ascending, so sections fill top to
@@ -1329,6 +1360,7 @@ function ChecksIndexPage() {
   // applied. The Better Stack token lives in component state for the duration
   // of the import only — it is never persisted here or server-side.
   const [importOpen, setImportOpen] = useState(false);
+  const [autoPlacementOpen, setAutoPlacementOpen] = useState(false);
   const [importSource, setImportSource] = useState<ImportSourceId>("solidping");
   const [importText, setImportText] = useState("");
   const [importToken, setImportToken] = useState("");
@@ -1528,57 +1560,76 @@ function ChecksIndexPage() {
         description={t("subtitle")}
         actions={
           <>
-            <Button
-              variant="outline"
-              onClick={handleExport}
-              data-testid="export-button"
-              className="hidden sm:inline-flex"
-            >
-              <Download className="mr-2 h-4 w-4" />
-              {t("export")}
-            </Button>
-            <Button
-              variant="outline"
-              onClick={openImportDialog}
-              data-testid="import-button"
-              className="hidden sm:inline-flex"
-            >
-              <Upload className="mr-2 h-4 w-4" />
-              {t("import")}
-            </Button>
-            {/* Bulk "Switch to automatic placement" (spec 2026-09-25-06). */}
-            <AutoPlacementBulkButton org={org} />
-            <Button variant="outline" onClick={() => setShowNewGroup(true)} data-testid="new-group-button">
+            <Button variant="outline" onClick={() => setShowNewGroup(true)} data-testid="new-group-button" aria-label={t("newGroup")}>
               <FolderPlus className="sm:mr-2 h-4 w-4" />
               <span className="hidden sm:inline">{t("newGroup")}</span>
             </Button>
-            {/*
-              The scheduling page (spec 2026-08-26-04) edits one field across
-              many checks, so it belongs next to the list rather than inside a
-              row. Reachable here whether or not the org is over its cap — an
-              org can want to plan its execution budget before it breaches it.
-            */}
-            <Button asChild variant="outline">
-              <Link
-                to="/orgs/$org/checks/scheduling"
-                params={{ org }}
-                data-testid="scheduling-link"
-                aria-label={t("scheduling.title")}
-              >
-                <CalendarClock className="sm:mr-2 h-4 w-4" />
-                <span className="hidden sm:inline">{t("scheduling.title")}</span>
-              </Link>
-            </Button>
             <Link to="/orgs/$org/checks/new" params={{ org }} search={{ checkType: undefined, checkPeriod: undefined, checkName: undefined, checkSlug: undefined, httpUrl: undefined, httpMethod: undefined, host: undefined, port: undefined, url: undefined, domain: undefined, username: undefined, database: undefined, expectedStatus: undefined, timeout: undefined, label: undefined, region: undefined, group: undefined, confirmationPeriod: undefined, recoveryPeriod: undefined, section: undefined }}>
-              <Button data-testid="new-check-button">
+              <Button data-testid="new-check-button" aria-label={t("newCheck")}>
                 <Plus className="sm:mr-2 h-4 w-4" />
                 <span className="hidden sm:inline">{t("newCheck")}</span>
               </Button>
             </Link>
+            {/*
+              Org-level tools run a few times a year, so they sit behind one
+              menu instead of four equal-weight buttons (spec 2026-09-30-02).
+              Scheduling (spec 2026-08-26-04) edits one field across many
+              checks; it stays reachable whether or not the org is over its cap.
+              The automatic-placement dialog is mounted outside this menu (below)
+              so closing the menu does not unmount it.
+            */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  aria-label={t("detail.moreActions")}
+                  data-testid="checks-more-actions"
+                >
+                  <Ellipsis className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={openImportDialog} data-testid="import-button">
+                  <Upload className="mr-2 h-4 w-4" />
+                  {t("importChecks")}
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => void handleExport()} data-testid="export-button">
+                  <Download className="mr-2 h-4 w-4" />
+                  {t("exportChecks")}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link to="/orgs/$org/checks/scheduling" params={{ org }} data-testid="scheduling-link">
+                    <CalendarClock className="mr-2 h-4 w-4" />
+                    {t("scheduling.title")}
+                  </Link>
+                </DropdownMenuItem>
+                {/* Bulk "Switch to automatic placement" (spec 2026-09-25-06). */}
+                <DropdownMenuItem
+                  onSelect={() => setAutoPlacementOpen(true)}
+                  data-testid="auto-placement-button"
+                >
+                  <Shuffle className="mr-2 h-4 w-4" />
+                  {t("autoPlacement.button")}…
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <a href="/docs/features/check-types" target="_blank" rel="noreferrer" data-testid="check-types-docs-link">
+                    <BookOpen className="mr-2 h-4 w-4" />
+                    {t("checkTypesDocs")}
+                  </a>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </>
         }
-        docsHref="/docs/features/check-types"
         className="flex-wrap"
+      />
+      <AutoPlacementBulkDialog
+        org={org}
+        open={autoPlacementOpen}
+        onOpenChange={setAutoPlacementOpen}
       />
 
       {/*
@@ -1607,8 +1658,8 @@ function ChecksIndexPage() {
       */}
       <ChecksRegionOutageBanner org={org} checks={loadedChecks} regions={regionsData?.regions} />
 
-      <div className="flex flex-wrap items-center gap-4">
-        <div className="relative flex-1 min-w-[200px] max-w-sm">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative w-full min-w-[200px] flex-1 sm:w-auto sm:max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder={t("searchChecks")}
@@ -1618,94 +1669,110 @@ function ChecksIndexPage() {
             data-testid="checks-search-input"
           />
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-muted-foreground">
-            {t("groupBy.label")}
-          </span>
-          <SegmentedControl
-            value={groupBy}
-            onValueChange={setGroupByMode}
-            aria-label={t("groupBy.label")}
-            options={[
-              {
-                value: "groups",
-                label: t("groupBy.groups"),
-                testId: "group-by-groups",
-              },
-              {
-                value: "host",
-                label: t("groupBy.host"),
-                tooltip: t("hostBucketDescription"),
-                testId: "group-by-host",
-              },
-            ]}
-          />
-        </div>
-        {user?.isSuperAdmin && (
-          <Select value={internalFilter} onValueChange={setInternalFilter}>
-            <SelectTrigger className="w-[160px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="false">{t("userChecks")}</SelectItem>
-              <SelectItem value="true">{t("internalOnly")}</SelectItem>
-              <SelectItem value="all">{t("allChecks")}</SelectItem>
-            </SelectContent>
-          </Select>
-        )}
-        <FacetedFilter
-          options={statusOptions}
-          selected={statusValues}
-          onChange={setStatusValues}
-          triggerLabel={statusTriggerLabel}
-          testId="status-filter"
-        />
-        <FacetedFilter
-          options={typeOptions}
-          selected={typeValues}
-          onChange={setTypeValues}
-          triggerLabel={typeTriggerLabel}
-          testId="type-filter"
-        />
-        <Button
-          variant="outline"
-          onClick={handleRefresh}
-          disabled={isRefetching}
-          aria-label={t("common:refresh")}
-        >
-          <RefreshCw
-            className={`h-4 w-4 sm:mr-2 ${isRefetching ? "animate-spin" : ""}`}
-          />
-          <span className="hidden sm:inline">{t("common:refresh")}</span>
-        </Button>
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-medium text-muted-foreground">{t("labelFilterLabel")}</span>
-          <LabelFilter
-            org={org}
-            value={labelFilters}
-            onChange={(next) => {
-              const serialized = serializeLabelsParam(next);
-              void navigate({
-                search: (prev) => ({ ...prev, labels: serialized || undefined }),
-                replace: true,
-              });
-            }}
-          />
-          {Object.keys(labelFilters).length > 0 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() =>
+        {/*
+          Filters left, view controls right; one 36px height throughout. Below
+          sm the facet triggers scroll sideways in their own strip so the page
+          never does (spec 2026-09-30-02).
+        */}
+        <div className="flex w-full min-w-0 flex-1 items-center gap-2 sm:contents">
+          <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto sm:contents">
+            <FacetedFilter
+              options={statusOptions}
+              selected={statusValues}
+              onChange={setStatusValues}
+              title={t("filters.status")}
+              testId="status-filter"
+            />
+            <FacetedFilter
+              options={typeOptions}
+              selected={typeValues}
+              onChange={setTypeValues}
+              title={t("filters.type")}
+              testId="type-filter"
+            />
+            <LabelFilter
+              org={org}
+              value={labelFilters}
+              onChange={(next) => {
+                const serialized = serializeLabelsParam(next);
                 void navigate({
-                  search: (prev) => ({ ...prev, labels: undefined }),
+                  search: (prev) => ({ ...prev, labels: serialized || undefined }),
                   replace: true,
-                })
-              }
-              data-testid="clear-label-filters"
-            >
-              {t("clearFilters")}
-            </Button>
-          )}
+                });
+              }}
+            />
+            {user?.isSuperAdmin && (
+              <ScopeFilter value={internalFilter} onChange={setInternalFilter} />
+            )}
+            {hasActiveFacets && (
+              <Button
+                variant="ghost"
+                onClick={resetFilters}
+                className="shrink-0"
+                data-testid="reset-filters"
+              >
+                {t("resetFilters")}
+                <X className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+          <div className="flex shrink-0 items-center gap-2 sm:ml-auto">
+            {resultCountText && (
+              <span
+                className="hidden whitespace-nowrap text-sm text-muted-foreground sm:inline"
+                data-testid="checks-result-count"
+              >
+                {resultCountText}
+              </span>
+            )}
+            <SegmentedControl
+              size="md"
+              value={groupBy}
+              onValueChange={setGroupByMode}
+              aria-label={t("groupBy.label")}
+              options={[
+                {
+                  value: "groups",
+                  label: (
+                    <>
+                      <Folder className="h-4 w-4" />
+                      <span className="hidden sm:inline">{t("groupBy.byGroup")}</span>
+                    </>
+                  ),
+                  ariaLabel: t("groupBy.byGroup"),
+                  tooltip: t("groupBy.byGroup"),
+                  testId: "group-by-groups",
+                },
+                {
+                  value: "host",
+                  label: (
+                    <>
+                      <Server className="h-4 w-4" />
+                      <span className="hidden sm:inline">{t("groupBy.byHost")}</span>
+                    </>
+                  ),
+                  ariaLabel: t("groupBy.byHost"),
+                  tooltip: t("hostBucketDescription"),
+                  testId: "group-by-host",
+                },
+              ]}
+            />
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={handleRefresh}
+                  disabled={isRefetching}
+                  aria-label={t("common:refresh")}
+                  data-testid="checks-refresh"
+                >
+                  <RefreshCw className={`h-4 w-4 ${isRefetching ? "animate-spin" : ""}`} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{t("common:refresh")}</TooltipContent>
+            </Tooltip>
+          </div>
         </div>
       </div>
 

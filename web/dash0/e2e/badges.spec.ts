@@ -68,7 +68,8 @@ test.describe("Badges", () => {
     // The builder is reached from the check it belongs to, not from a global
     // sidebar entry.
     await page.goto(`${DASH_BASE}/orgs/test/checks/${check.uid}`);
-    await page.getByLabel("Badges").click();
+    await page.getByRole("button", { name: "More actions" }).click();
+    await page.getByRole("menuitem", { name: "Badges" }).click();
 
     await page.waitForURL(`**${badgesUrl(check.uid)}`);
 

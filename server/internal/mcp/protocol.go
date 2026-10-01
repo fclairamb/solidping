@@ -62,6 +62,10 @@ type InitializeResult struct {
 	ProtocolVersion string     `json:"protocolVersion"`
 	Capabilities    ServerCaps `json:"capabilities"`
 	ServerInfo      ServerInfo `json:"serverInfo"`
+	// Instructions is static routing guidance for the client's model
+	// (MCP 2025-03-26+). Identical for every caller, so it is also safe on the
+	// anonymous handshake.
+	Instructions string `json:"instructions,omitempty"`
 }
 
 // ServerCaps represents the server capabilities.

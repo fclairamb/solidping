@@ -576,8 +576,8 @@ test.describe("Checks", () => {
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/, { timeout: 10000 });
 
     // Find and click the delete button (trash icon)
-    const deleteButton = page.locator('button:has([class*="lucide-trash"])');
-    await deleteButton.click();
+    await page.getByRole("button", { name: "More actions" }).click();
+    await page.getByRole("menuitem", { name: "Delete check" }).click();
 
     // Confirm deletion in the alert dialog
     const confirmButton = page.getByRole("button", { name: "Delete" });

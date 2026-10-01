@@ -155,6 +155,63 @@ Tool descriptions are LLM-facing prose — they explain *when* to pick a
 tool, not just what it does. Pagination (`limit` / `cursor`) is
 exposed where relevant; `with` flags surface eager-load options.
 
+## Smithery server card
+
+Smithery scans the live URL. `tools/list` and friends answer 401, so its
+indexer saw an empty server ("No capabilities", "No config schema provided",
+quality score 60/100). The fix is a static server card (spec 2026-09-30-03):
+`GET /.well-known/mcp/server-card.json`, public, served on every host like the
+OAuth `.well-known` routes ([`mcp/servercard.go`](../../server/internal/mcp/servercard.go),
+wired next to `/mcp` in `internal/app/server.go`).
+
+- It is **generated from the live registry** (`h.tools`, `getResourceDefinitions`,
+  `listPrompts`), so it cannot drift from `tools/list`. The registry is not
+  filtered per caller, so the card lists the full set and is byte-identical for
+  every caller (no org data).
+- Keys read by Smithery (https://smithery.ai/docs/build/external): `serverInfo`,
+  `authentication` (`required: true`, `oauth2`), `tools`, `resources`,
+  `prompts`, and `configSchema` (empty object, no `required`: sign-in is OAuth,
+  no key to paste). `instructions`, `description`, `iconUrl`,
+  `documentationUrl` and `serverInfo.{title,websiteUrl,repository,license}` are
+  SEP-1649 metadata: Smithery's page does not list them, so they may be ignored.
+- `initialize` also returns `instructions` (routing guidance), authed and
+  anonymous. The same text is on the card.
+- `isAnonymousMethod` is unchanged: `tools/list`, `resources/list` and every
+  `tools/call` still need a token. The card is the only new anonymous surface.
+- Tool names stay snake_case (a dotted name is invalid for Anthropic/OpenAI
+  tool APIs and would break existing clients), so the target is 95/100.
+- The registry lint (`TestEveryToolPassesTheRegistryLint`) enforces verb-first
+  descriptions and a description on every input property, nested and array
+  items included.
+
+Re-scan after a release: Smithery dashboard, server settings, "Rescan".
+
+Rubric as documented in the spec (from two public write-ups, NOT yet checked
+against the dashboard tooltips): server metadata 30, config UX 25, tool
+descriptions 12, parameter descriptions 11, annotations 7, tool names 5 (skipped
+on purpose), prompts 5, resources 5, instructions varies. Score reached: not
+measured yet (needs a prod deploy).
+
+### Manual steps for Florent
+
+1. After the next release is deployed to prod, open
+   https://smithery.ai/servers/fclairamb/solidping/settings logged in, trigger a
+   re-scan, and check the scan finds the tools, prompts and resources and no
+   longer warns "No config schema provided".
+2. Record each rubric dimension's points and tooltip here, correct the table
+   above if it differs, and write down the score reached. Done at 95/100 (only
+   tool names missing); if another dimension is short, fix it first.
+3. Set in the settings UI whatever the card does not carry:
+   - Description: `Uptime and incident monitoring. List, create and diagnose
+     checks, read incidents and results, manage status pages and maintenance
+     windows.`
+   - Homepage `https://www.solidping.io`, docs `https://docs.solidping.io/docs`,
+     repository `https://github.com/fclairamb/solidping`, license AGPL-3.0,
+     icon `web/dash0/public/logo.png`.
+   - Categories: `monitoring`, `devops`, `observability`.
+   - Tags: `uptime`, `incident-management`, `status-page`, `alerting`,
+     `synthetic-monitoring`.
+
 ## Prompts
 
 The server registers three named prompts

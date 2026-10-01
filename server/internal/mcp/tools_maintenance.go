@@ -258,12 +258,12 @@ func updateMaintenanceWindowDef() ToolDefinition {
 			propUID:              stringProp("Maintenance window UID (required)."),
 			propTitle:            stringProp("New title for the maintenance window."),
 			propStartAt:          stringProp("New start (RFC3339, e.g. \"2026-05-03T22:00:00Z\")."),
-			propEndAt:            stringProp("New end (RFC3339, must be later than startAt)."),
+			propEndAt:            stringProp("New end (RFC3339, for example 2026-10-01T04:00:00Z; must be later than startAt)."),
 			schemaKeyDescription: stringProp("New free-text description shown in the UI."),
 			propRecurrence: stringProp(recurrenceDoc +
 				" When updating, omitting this field keeps the current recurrence; " +
 				"pass \"none\" to clear it (make the window one-off)."),
-			propRecurrenceEnd: stringProp("New RFC3339 recurrence end timestamp."),
+			propRecurrenceEnd: stringProp("New RFC3339 recurrence end timestamp (for example 2026-12-31T00:00:00Z)."),
 		}, []string{propUID}),
 		OutputSchema: maintenanceWindowOutputSchema(),
 		Annotations:  updateAnnotations("Update maintenance window"),

@@ -107,7 +107,7 @@ test.describe("Checks list (mobile)", () => {
     await expect(actionsButton).toBeVisible();
 
     // Secondary columns are hidden below their breakpoint.
-    await expect(page.getByText("Type", { exact: true })).toBeHidden();
+    await expect(page.getByRole("columnheader", { name: "Type", exact: true })).toBeHidden();
     await expect(page.getByText("Target", { exact: true })).toBeHidden();
   });
 });

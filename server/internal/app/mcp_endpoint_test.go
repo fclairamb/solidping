@@ -549,3 +549,56 @@ func TestMCPClientWalkthroughPAT(t *testing.T) {
 	r.True(ok, "tools/list result: %v", rpc)
 	r.NotEmpty(result["tools"])
 }
+
+// TestMCPServerCardIsPublicOnEveryHost drives the real router: the static
+// server card answers without credentials on the API host and on foreign hosts
+// (status page, docs, custom domain), while tools/list stays behind auth.
+func TestMCPServerCardIsPublicOnEveryHost(t *testing.T) {
+	t.Parallel()
+	env := newMCPTestEnv(t)
+
+	for _, host := range []string{"", "status.acme.com", "docs.solidping.io", "solidping.example"} {
+		t.Run("host="+host, func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+
+			req, err := http.NewRequestWithContext(
+				t.Context(), http.MethodGet, env.ts.URL+"/.well-known/mcp/server-card.json", nil)
+			r.NoError(err)
+
+			if host != "" {
+				req.Host = host
+			}
+
+			res := env.do(t, req)
+			r.Equal(http.StatusOK, res.status)
+			r.Contains(res.header.Get("Content-Type"), "application/json")
+
+			var card struct {
+				ServerInfo struct {
+					Name string `json:"name"`
+				} `json:"serverInfo"`
+				Tools []struct {
+					Name string `json:"name"`
+				} `json:"tools"`
+			}
+			r.NoError(json.Unmarshal(res.body, &card))
+			r.Equal("solidping", card.ServerInfo.Name)
+			r.NotEmpty(card.Tools)
+		})
+	}
+
+	t.Run("tools/list stays behind auth", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, env.ts.URL+"/api/v1/mcp",
+			strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`))
+		r.NoError(err)
+		req.Header.Set("Content-Type", "application/json")
+
+		res := env.do(t, req)
+		r.Equal(http.StatusUnauthorized, res.status)
+		r.NotContains(string(res.body), "list_checks")
+	})
+}

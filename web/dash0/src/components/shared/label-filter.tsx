@@ -1,5 +1,5 @@
 import { Command } from "cmdk";
-import { ChevronLeft, Tags, X } from "lucide-react";
+import { ChevronLeft, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -11,8 +11,7 @@ import {
   useDebounced,
   VALUE_MAX,
 } from "@/components/shared/label-shared";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { FILTER_VALUE_BADGE_CLASS, FilterTrigger } from "@/components/shared/filter-trigger";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 export type LabelFilterProps = {
@@ -28,6 +27,7 @@ export type LabelFilterProps = {
 // The URL contract (?labels=key:value,…) is owned by the caller via onChange.
 export function LabelFilter({ org, value, onChange }: LabelFilterProps) {
   const { t } = useTranslation("common");
+  const { t: tChecks } = useTranslation("checks");
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<"key" | "value">("key");
   const [activeKey, setActiveKey] = useState("");
@@ -82,28 +82,7 @@ export function LabelFilter({ org, value, onChange }: LabelFilterProps) {
   const entries = Object.entries(value).sort(([a], [b]) => a.localeCompare(b));
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      {entries.length > 0 && (
-        <div className="flex flex-wrap gap-2" data-testid="label-chips">
-          {entries.map(([k, v]) => (
-            <Badge key={k} variant="secondary" className="gap-1 pr-1">
-              <span>
-                {k}: {v}
-              </span>
-              <button
-                type="button"
-                aria-label={t("labelPicker.removeLabel", { key: k })}
-                onClick={() => remove(k)}
-                className="ml-1 rounded-sm p-0.5 hover:bg-foreground/10"
-                data-testid={`label-chip-remove-${k}`}
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </Badge>
-          ))}
-        </div>
-      )}
-
+    <div className="flex items-center gap-2 sm:flex-wrap">
       <Popover
         open={open}
         onOpenChange={(next) => {
@@ -112,15 +91,11 @@ export function LabelFilter({ org, value, onChange }: LabelFilterProps) {
         }}
       >
         <PopoverTrigger asChild>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
+          <FilterTrigger
+            title={tChecks("filters.labels")}
+            badges={entries.length > 0 ? [String(entries.length)] : []}
             data-testid="label-filter-trigger"
-          >
-            <Tags className="h-4 w-4" />
-            {t("labelPicker.trigger")}
-          </Button>
+          />
         </PopoverTrigger>
         <PopoverContent
           align="start"
@@ -152,6 +127,29 @@ export function LabelFilter({ org, value, onChange }: LabelFilterProps) {
           )}
         </PopoverContent>
       </Popover>
+      {entries.length > 0 && (
+        <div className="flex gap-2 sm:flex-wrap" data-testid="label-chips">
+          {entries.map(([k, v]) => (
+            <span
+              key={k}
+              className={`inline-flex shrink-0 items-center gap-1 pr-1 ${FILTER_VALUE_BADGE_CLASS}`}
+            >
+              <span>
+                {k}: {v}
+              </span>
+              <button
+                type="button"
+                aria-label={t("labelPicker.removeLabel", { key: k })}
+                onClick={() => remove(k)}
+                className="ml-1 rounded-sm p-0.5 hover:bg-foreground/10"
+                data-testid={`label-chip-remove-${k}`}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
