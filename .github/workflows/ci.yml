@@ -351,7 +351,7 @@ jobs:
       # fails the job. Skipped on fork PRs, which have no access to the secret.
       - name: Upload coverage to Codecov
         if: ${{ !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: server/coverage.out
