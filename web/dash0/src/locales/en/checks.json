@@ -742,7 +742,6 @@
     "badges": "Badges",
     "publishOnStatusPage": "Publish on a status page",
     "deleteCheck": "Delete check",
-    "breadcrumb": "Breadcrumb",
     "copyLink": "Copy check link",
     "copyLinkFailed": "Could not copy the link",
     "linkCopied": "Check link copied",

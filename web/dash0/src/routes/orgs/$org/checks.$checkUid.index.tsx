@@ -8,7 +8,6 @@ import type { IncidentDetail, OrgResult } from "@/api/hooks";
 import { flappingSummaryParams } from "@/lib/flap-summary";
 import {
   AlertTriangle,
-  ArrowLeft,
   BadgeCheck,
   BookOpen,
   Check as CheckIcon,
@@ -105,13 +104,6 @@ import {
 import { DocsLink } from "@/components/shared/docs-link";
 import { formatDurationCoarse } from "@/components/shared/relative-time";
 import { TimeAgo } from "@/components/ui/time-ago";
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-  breadcrumbLinkClassName,
-} from "@/components/ui/breadcrumb";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -1166,24 +1158,6 @@ function CheckDetailPage() {
         </Alert>
       )}
       <div className="flex flex-col gap-3" data-testid="check-detail-header">
-        <Breadcrumb aria-label={t("checks:detail.breadcrumb")}>
-          <BreadcrumbItem className="shrink-0">
-            <Link
-              to="/orgs/$org/checks"
-              params={{ org }}
-              aria-label={t("checks:detail.backToChecks") ?? "Back to checks"}
-              className={breadcrumbLinkClassName}
-              data-testid="check-detail-back"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
-              {t("checks:title")}
-            </Link>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbPage>{checkDisplayName}</BreadcrumbPage>
-          </BreadcrumbItem>
-        </Breadcrumb>
         <div className="flex flex-wrap items-start gap-3">
           <div className="min-w-0 flex-1 basis-64">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">

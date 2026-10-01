@@ -1020,8 +1020,8 @@ test.describe("Check Detail Page", () => {
     await expect(page.getByRole("alertdialog")).toBeHidden();
     await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
 
-    // The breadcrumb link navigates back to the checks list.
-    const back = page.getByRole("link", { name: "Back to checks" });
+    // The top-bar breadcrumb link navigates back to the checks list.
+    const back = page.locator("header").first().getByRole("link", { name: "Checks" });
     await expect(back).toBeVisible();
     await back.click();
     await page.waitForURL(/\/orgs\/test\/checks\/?(\?.*)?$/);
@@ -1052,8 +1052,10 @@ test.describe("Check Detail Page", () => {
 
     await page.setViewportSize({ width: 1280, height: 800 });
 
-    // The breadcrumb link, the toggle and Edit are all there.
-    await expect(page.getByRole("link", { name: "Back to checks" })).toBeVisible();
+    // The top-bar breadcrumb link, the toggle and Edit are all there.
+    await expect(
+      page.locator("header").first().getByRole("link", { name: "Checks" }),
+    ).toBeVisible();
     await expect(page.getByLabel("Edit").getByText("Edit")).toBeVisible();
     await expect(
       page.getByRole("button", { name: /Disable|Enable/ }),
@@ -1115,8 +1117,10 @@ test.describe("Check Detail Page", () => {
       fullPage: true,
     });
 
-    // Re-enable: the pill goes away live, no reload.
-    await page.getByRole("button", { name: /Enable/ }).click();
+    // Re-enable: the pill goes away live, no reload. With the in-page
+    // breadcrumb gone the header actions sit under the top-right toast stack,
+    // so dispatch the click instead of hitting the toast's pointer area.
+    await page.getByRole("button", { name: /Enable/ }).dispatchEvent("click");
     await expect(page.getByRole("button", { name: /Disable/ })).toBeVisible();
     await expect(header.getByText("Disabled", { exact: true })).toHaveCount(0);
   });
@@ -1244,5 +1248,31 @@ test.describe("Check Detail Page", () => {
     await expect(
       page.getByTestId("response-time-chart-full-range-toggle")
     ).toHaveAttribute("data-state", "checked");
+  });
+
+  test("renders a single breadcrumb: the top bar one, no in-page duplicate", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
+    await page.waitForURL(/\/checks/);
+    await page.waitForLoadState("networkidle");
+    await page.getByTestId("new-check-button").click();
+    await page.waitForURL(/\/checks\/new/);
+    await page.getByTestId("check-name-input").fill(`E2E Breadcrumb ${Date.now()}`);
+    await page.getByTestId("check-url-input").fill("https://example.com/breadcrumb");
+    await page.getByTestId("check-submit-button").click();
+    await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
+    await expect(page.getByTestId("check-detail-header")).toBeVisible();
+
+    // The in-page breadcrumb (a <nav>) and its back link are gone. The top-bar
+    // breadcrumb is plain spans, so no breadcrumb <nav> remains in the page.
+    await expect(page.getByRole("navigation", { name: /breadcrumb/i })).toHaveCount(0);
+    await expect(page.getByTestId("check-detail-back")).toHaveCount(0);
+
+    // Positive control: the top-bar breadcrumb still links back to the list.
+    const topBar = page.locator("header").first();
+    await topBar.getByRole("link", { name: "Checks" }).click();
+    await page.waitForURL(/\/orgs\/[^/]+\/checks$/);
   });
 });
