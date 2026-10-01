@@ -539,3 +539,45 @@ func TestBurstBudget(t *testing.T) {
 		})
 	}
 }
+
+// TestExecuteDurationIsAverageRTTNotBurstTime guards #465: the seeded ICMP
+// samples send 2 packets 1s apart, and Result.Duration (what the response
+// time chart plots) used to be the wall-clock time of the whole burst, so a
+// 10ms ping showed up as ~1010ms. It must be the average round trip.
+func TestExecuteDurationIsAverageRTTNotBurstTime(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	burstHookMu.Lock()
+	defer burstHookMu.Unlock()
+
+	_, restore := withEchoAll()
+	defer restore()
+
+	checker := &ICMPChecker{}
+
+	const interval = 300 * time.Millisecond
+
+	start := time.Now()
+	result, err := checker.Execute(context.Background(), &ICMPConfig{
+		Host:     "127.0.0.1",
+		Count:    3,
+		Interval: interval,
+		Timeout:  time.Second,
+	})
+	elapsed := time.Since(start)
+
+	r.NoError(err)
+	r.Equal(checkerdef.StatusUp, result.Status)
+
+	// Positive control: the burst itself really took at least two intervals.
+	r.GreaterOrEqual(elapsed, 2*interval)
+
+	// The reported duration is the average RTT, far below the burst time.
+	r.Less(result.Duration, interval)
+
+	avg, ok := result.Metrics["rtt_ms_avg"].(float64)
+	r.True(ok)
+	r.InDelta(avg, float64(result.Duration.Microseconds())/microsecondsToMillis, 0.001)
+}
