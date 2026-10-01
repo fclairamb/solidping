@@ -79,6 +79,7 @@
     "org.settings_updated": "Paramètres de l'organisation modifiés",
     "auth.token_misuse": "Tentative d'usage abusif de jeton",
     "auth.impersonation_started": "Session « voir en tant que » démarrée",
+    "auth.email_changed": "Adresse e-mail modifiée",
     "agent.connected": "Agent connecté",
     "agent.disconnected": "Agent déconnecté"
   },

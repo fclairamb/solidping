@@ -450,6 +450,8 @@
     "ntpDescription": "Monitorizar servidores de tiempo NTP",
     "rdp": "RDP",
     "rdpDescription": "Monitorizar servidores RDP (Escritorio remoto)",
+    "vnc": "VNC",
+    "vncDescription": "Supervisar servidores VNC (RFB)",
     "sleep": "Espera",
     "sleepDescription": "Esperar una duración fija (sintético/pruebas, sin E/S de red)",
     "freebox_line": "Calidad de línea Freebox",
@@ -1157,6 +1159,15 @@
     "rdpEndSessionDisconnect": "Solo desconectar (la sesión sigue en el servidor)",
     "rdpEndSessionHelp": "Cerrar sesión elimina la sesión del servidor. Desconectar la deja en marcha hasta que la política de inactividad del servidor la finalice, de modo que la siguiente ejecución se vuelva a adjuntar (comprobaciones más rápidas).",
     "rdpCaveatsHelp": "Cada ejecución autenticada es una sesión interactiva real de Windows: carga un perfil de usuario, ejecuta scripts de inicio y GPO, puede consumir una licencia RDS, puede desconectar a un usuario real en un servidor de sesión única y aparece en el registro de seguridad (4624/4634) en cada ejecución. Usa una cuenta de monitorización dedicada, nunca la cuenta de una persona.",
+    "vncRequireAuth": "Exigir autenticación",
+    "vncRequireAuthHelp": "Caído cuando el servidor ofrece el tipo de seguridad None: cualquiera podría conectarse al escritorio sin contraseña.",
+    "vncPasswordHelp": "Con una contraseña, la comprobación también inicia sesión, con el método más fuerte que ofrece el servidor: VeNCrypt (TLS), Apple Remote Desktop (requiere un nombre de usuario) o la autenticación VNC (solo cuentan los 8 primeros caracteres). Déjala vacía para comprobar solo la negociación y los métodos de autenticación ofrecidos.",
+    "vncUsername": "Nombre de usuario (opcional)",
+    "vncUsernameHelp": "Lo usan VeNCrypt Plain (TigerVNC, libvirt) y Apple Remote Desktop (Compartir pantalla de macOS). Requiere una contraseña.",
+    "vncTlsVerify": "Verificar el certificado TLS",
+    "vncTlsVerifyHelp": "Solo VeNCrypt. Desactivado por defecto: los certificados VeNCrypt casi siempre son autofirmados. El certificado se informa en todos los casos.",
+    "vncScreenshot": "Capturar el escritorio tras iniciar sesión",
+    "vncSharedHelp": "La comprobación se conecta en modo compartido, así que nunca desconecta a un visor ya conectado. Los workers necesitan acceso de red al host VNC (normalmente interno).",
     "privateLocationRegion": "Ubicación privada",
     "privateLocationHelp": "SolidPing creó este check junto con la ubicación. Vigila los agentes de la ubicación y cae cuando ninguno está conectado. La ubicación vigilada no se puede cambiar.",
     "defaultsToHost": "por defecto, el host",
@@ -1369,6 +1380,7 @@
     "passwordRequiredWithUsername": "La contraseña es obligatoria cuando se indica un nombre de usuario.",
     "usernameRequiredWithPassword": "El nombre de usuario es obligatorio cuando se indica una contraseña.",
     "screenshotRequiresCredentials": "La captura de pantalla requiere nombre de usuario y contraseña (un inicio de sesión autenticado).",
+    "screenshotRequiresPassword": "La captura de pantalla requiere una contraseña.",
     "usernameRequiredRegister": "El nombre de usuario es obligatorio en modo registro",
     "passwordRequiredRegister": "La contraseña es obligatoria en modo registro",
     "scriptRequired": "El script es obligatorio",
@@ -1383,6 +1395,8 @@
     "invalidIp_one": "No es una dirección {{family}}: {{values}}",
     "invalidIp_other": "No son direcciones {{family}}: {{values}}",
     "invalidMetadataKeys_one": "Clave de metadatos no válida: {{keys}} (letras minúsculas, dígitos, '-', '.' o '_'; 'grpc-' y '-bin' están reservados)",
-    "invalidMetadataKeys_other": "Claves de metadatos no válidas: {{keys}} (letras minúsculas, dígitos, '-', '.' o '_'; 'grpc-' y '-bin' están reservados)"
+    "invalidMetadataKeys_other": "Claves de metadatos no válidas: {{keys}} (letras minúsculas, dígitos, '-', '.' o '_'; 'grpc-' y '-bin' están reservados)",
+    "usernameRequiresPassword": "Un nombre de usuario requiere una contraseña.",
+    "vncUsernameTooLong": "El nombre de usuario debe tener como máximo {{max}} bytes."
   }
 }

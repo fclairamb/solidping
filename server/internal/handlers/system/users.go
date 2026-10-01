@@ -2,12 +2,15 @@ package system
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
 // The user directory's paging bounds. Mirrors the entitlements admin editor's
@@ -63,6 +66,17 @@ func (s *Service) SearchUsers(
 		return nil, err
 	}
 
+	rows, err := s.adminUserRows(ctx, users)
+	if err != nil {
+		return nil, err
+	}
+
+	return &AdminUsersListResponse{Data: rows, Total: total}, nil
+}
+
+// adminUserRows projects users onto directory rows, with their memberships
+// fetched in one batched query (never 1+N).
+func (s *Service) adminUserRows(ctx context.Context, users []*models.User) ([]AdminUserRow, error) {
 	uids := make([]string, len(users))
 	for i, u := range users {
 		uids[i] = u.UID
@@ -114,7 +128,33 @@ func (s *Service) SearchUsers(
 		}
 	}
 
-	return &AdminUsersListResponse{Data: rows, Total: total}, nil
+	return rows, nil
+}
+
+// ErrUserNotFound is returned by GetUser for an unknown or deleted user.
+var ErrUserNotFound = errors.New("user not found")
+
+// GetUser returns one directory row (spec 2026-09-30-08, the edit page).
+func (s *Service) GetUser(ctx context.Context, uid string) (*AdminUserRow, error) {
+	user, err := s.db.GetUser(ctx, uid)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrUserNotFound
+		}
+
+		return nil, err
+	}
+
+	if user == nil || user.DeletedAt != nil {
+		return nil, ErrUserNotFound
+	}
+
+	rows, err := s.adminUserRows(ctx, []*models.User{user})
+	if err != nil {
+		return nil, err
+	}
+
+	return &rows[0], nil
 }
 
 // ListUsers handles GET /api/v1/system/users — superadmin only. See
@@ -144,4 +184,18 @@ func (h *Handler) ListUsers(writer http.ResponseWriter, req *http.Request) error
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
+}
+
+// GetUser handles GET /api/v1/system/users/:uid — superadmin only.
+func (h *Handler) GetUser(writer http.ResponseWriter, req *http.Request) error {
+	row, err := h.svc.GetUser(req.Context(), httpx.Param(req, "uid"))
+	if err != nil {
+		if errors.Is(err, ErrUserNotFound) {
+			return h.WriteErrorErr(writer, req, http.StatusNotFound, base.ErrorCodeUserNotFound, "User not found", err)
+		}
+
+		return h.WriteInternalError(writer, req, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, row)
 }

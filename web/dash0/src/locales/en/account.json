@@ -314,5 +314,21 @@
     "deniedDescription": "No token was created. The command line will report that the request was denied.",
     "approvedToast": "Device approved — return to your terminal",
     "decisionFailed": "Could not record your decision"
+  },
+  "email": {
+    "title": "Email",
+    "subtitle": "The address you sign in with and receive account emails at.",
+    "current": "Current email",
+    "newEmail": "New email",
+    "currentPassword": "Current password",
+    "notice": "Your other sessions will be signed out, and the current address will be told about the change.",
+    "submit": "Change email",
+    "saved": "Email changed. Use the new address the next time you sign in.",
+    "ssoOnly": "This account signs in through an identity provider. Change your email address there.",
+    "errors": {
+      "conflict": "This email address is already used by another account.",
+      "wrongPassword": "The current password is incorrect.",
+      "invalid": "Enter a valid email address."
+    }
   }
 }

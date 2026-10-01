@@ -158,15 +158,18 @@ func NewUser(email string) *User {
 
 // UserUpdate represents fields that can be updated.
 type UserUpdate struct {
-	Email             *string
-	Name              *string
-	AvatarURL         *string
-	PasswordHash      *string
-	EmailVerifiedAt   *time.Time
-	SuperAdmin        *bool
-	TOTPSecret        *string
-	TOTPEnabled       *bool
-	TOTPRecoveryCodes *[]string
+	Email           *string
+	Name            *string
+	AvatarURL       *string
+	PasswordHash    *string
+	EmailVerifiedAt *time.Time
+	// ClearEmailVerifiedAt sets email_verified_at to NULL (an email change
+	// un-verifies the account). It wins over EmailVerifiedAt.
+	ClearEmailVerifiedAt bool
+	SuperAdmin           *bool
+	TOTPSecret           *string
+	TOTPEnabled          *bool
+	TOTPRecoveryCodes    *[]string
 	// MustChangePassword sets or clears the forced-rotation flag. Nil leaves it
 	// alone — so an unrelated profile update can never silently un-force a
 	// pending rotation.

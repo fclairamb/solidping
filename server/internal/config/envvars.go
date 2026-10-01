@@ -214,6 +214,8 @@ func manualReaderServerEnvVars() []string {
 		"SP_AUTH_ACCESS_TOKEN_EXPIRY",
 		"SP_AUTH_REFRESH_TOKEN_EXPIRY",
 		"SP_AUTH_IMPERSONATION_ENABLED",
+		"SP_AUTH_ADMIN_EMAIL",
+		"SP_ADMIN_EMAIL",
 		// applyServerEnv
 		"SP_SERVER_DOCS_HOST",
 		"SP_DOCS_HOST",

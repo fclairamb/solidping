@@ -490,6 +490,24 @@ func TestApplyAuthEnv_ImpersonationKillSwitch(t *testing.T) {
 	r.True(cfg.ImpersonationEnabled, "an unparseable value keeps the existing setting")
 }
 
+// TestApplyAuthEnv_AdminEmail: SP_ADMIN_EMAIL reaches auth.admin_email (spec
+// 2026-09-30-08), and wins over the long SP_AUTH_ADMIN_EMAIL form.
+func TestApplyAuthEnv_AdminEmail(t *testing.T) {
+	r := require.New(t)
+
+	cfg := AuthConfig{}
+	applyAuthEnv(&cfg)
+	r.Empty(cfg.AdminEmail, "unset leaves the seed on its default")
+
+	t.Setenv("SP_AUTH_ADMIN_EMAIL", "ops@acme.com")
+	applyAuthEnv(&cfg)
+	r.Equal("ops@acme.com", cfg.AdminEmail)
+
+	t.Setenv("SP_ADMIN_EMAIL", " admin@acme.com ")
+	applyAuthEnv(&cfg)
+	r.Equal("admin@acme.com", cfg.AdminEmail)
+}
+
 func TestApplyRealtimeEnv(t *testing.T) {
 	r := require.New(t)
 

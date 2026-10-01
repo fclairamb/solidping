@@ -139,6 +139,7 @@ export const CHECK_TYPE_IDENTITY: Partial<Record<string, CheckTypeIdentity>> = {
   sftp: { label: "SFTP", tone: TONE_TEAL, icon: FolderLock },
   ftp: { label: "FTP", tone: TONE_TEAL, icon: FolderOpen },
   rdp: { label: "RDP", tone: TONE_TEAL, icon: MonitorDot },
+  vnc: { label: "VNC", tone: TONE_TEAL, icon: MonitorDot },
 
   // Mail.
   smtp: { label: "SMTP", tone: TONE_ROSE, icon: Send },

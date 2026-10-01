@@ -285,7 +285,14 @@ func testExchangeFailuresAreIndistinguishable(t *testing.T, svc *Service, dbSvc 
 
 	forged := issue()
 	rewrite(forged, func(row *models.AuthHandoffCode) {
-		row.Payload = strings.ToUpper(row.Payload[:10]) + row.Payload[10:]
+		// Always changes the first character (upper-casing could be a no-op
+		// on a digit or an already upper-case letter).
+		flipped := "A"
+		if strings.HasPrefix(row.Payload, "A") {
+			flipped = "B"
+		}
+
+		row.Payload = flipped + row.Payload[1:]
 	})
 
 	bodies := map[string][]byte{}

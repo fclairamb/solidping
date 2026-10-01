@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/registry"
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/defaults"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
@@ -335,7 +337,7 @@ func (r *StartupJobRun) ensureDefaultOrganization(ctx context.Context, jctx *job
 	log.InfoContext(ctx, "Created default organization", "uid", defaultOrg.UID, "slug", defaultOrg.Slug)
 
 	// Create admin user
-	adminEmail := defaults.Email
+	adminEmail := seedAdminEmail(jctx.AppConfig)
 	adminPassword := defaults.Password
 
 	passwordHash, err := passwords.Hash(adminPassword)
@@ -810,4 +812,17 @@ func (r *StartupJobRun) ensureSupportCleanupJob(ctx context.Context, jctx *jobde
 	}
 
 	return nil
+}
+
+// seedAdminEmail is the email of the first-start super admin: auth.admin_email
+// (SP_ADMIN_EMAIL) when set, trimmed and lowercased, else defaults.Email
+// (spec 2026-09-30-08).
+func seedAdminEmail(cfg *config.Config) string {
+	if cfg != nil {
+		if email := strings.ToLower(strings.TrimSpace(cfg.Auth.AdminEmail)); email != "" {
+			return email
+		}
+	}
+
+	return defaults.Email
 }

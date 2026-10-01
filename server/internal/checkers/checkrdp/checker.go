@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"strconv"
 	"time"
@@ -113,19 +114,38 @@ func (c *RDPChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 		return c.executeAuthenticated(ctx, cfg, start, metrics, output), nil
 	}
 
+	result := c.executePreAuth(ctx, cfg, port, start, metrics, output)
+
+	if checkerdef.ForcedCapture(ctx) {
+		// The pre-auth handshake never opens a session, so there is no desktop
+		// to photograph. Say so instead of leaving "Capture now" silent.
+		if result.Diagnostics == nil {
+			result.Diagnostics = &checkerdef.Diagnostics{}
+		}
+
+		result.Diagnostics.ScreenshotError = "a screenshot needs a real logon: set a username and password on this check"
+	}
+
+	return result, nil
+}
+
+// executePreAuth runs the credential-less liveness handshake.
+func (c *RDPChecker) executePreAuth(
+	ctx context.Context, cfg *RDPConfig, port int, start time.Time, metrics, output map[string]any,
+) *checkerdef.Result {
 	conn, err := dialTarget(ctx, cfg.Host, port, metrics)
 	if err != nil {
-		return errorResult(ctx, err, start, metrics, output, fmt.Sprintf("connection failed: %v", err)), nil
+		return errorResult(ctx, err, start, metrics, output, fmt.Sprintf("connection failed: %v", err))
 	}
 
 	defer func() { _ = conn.Close() }()
 
 	negotiation, err := negotiate(conn, metrics)
 	if err != nil {
-		return errorResult(ctx, err, start, metrics, output, fmt.Sprintf("RDP negotiation failed: %v", err)), nil
+		return errorResult(ctx, err, start, metrics, output, fmt.Sprintf("RDP negotiation failed: %v", err))
 	}
 
-	return c.classify(ctx, conn, cfg, start, negotiation, metrics, output), nil
+	return c.classify(ctx, conn, cfg, start, negotiation, metrics, output)
 }
 
 // executeAuthenticated runs the interactive-logon path: slot, connect,
@@ -181,17 +201,21 @@ func (c *RDPChecker) executeAuthenticated(
 		output["logoff_error"] = fmt.Sprintf("%s: %v", msgLogoffFailed, outcome.logoffErr)
 	}
 
-	if outcome.shotError != "" {
-		output["screenshot_error"] = outcome.shotError
-	}
-
-	if cfg.Screenshot {
-		c.attachScreenshot(cfg, outcome.screenshot, output)
-	}
-
-	return &checkerdef.Result{
+	result := &checkerdef.Result{
 		Status: checkerdef.StatusUp, Duration: time.Since(start), Metrics: metrics, Output: output,
 	}
+
+	if wantsCapture(ctx, cfg) {
+		attachScreenshot(ctx, outcome, result)
+	}
+
+	return result
+}
+
+// wantsCapture reports whether this run takes a screenshot: the check opted in,
+// or the run is an on-demand "Capture now" (spec 2026-09-25-34).
+func wantsCapture(ctx context.Context, cfg *RDPConfig) bool {
+	return cfg.Screenshot || checkerdef.ForcedCapture(ctx)
 }
 
 // runAuthSession opens the session through the seam (or the real path) and
@@ -209,7 +233,7 @@ func (c *RDPChecker) runAuthSession(ctx context.Context, cfg *RDPConfig, conn ne
 
 	outcome := &authRunOutcome{endSession: cfg.EndSession}
 
-	if cfg.Screenshot {
+	if wantsCapture(ctx, cfg) {
 		if shot, shotErr := session.ScreenshotPNG(); shotErr != nil {
 			// A capture failure is detail, not a verdict: the logon itself
 			// worked. The browser capture follows the same rule.
@@ -268,25 +292,33 @@ func authErrorResult(
 	}
 }
 
-// attachScreenshot hangs the capture on the result through the same
-// Diagnostics path the browser screenshots use, with the same size cap. A
-// capture over the cap is dropped, never truncated; a failed capture is
-// reported in the output only.
-func (c *RDPChecker) attachScreenshot(cfg *RDPConfig, shot []byte, output map[string]any) {
-	_ = cfg
-
-	if len(shot) == 0 {
-		return
+// attachScreenshot hangs the capture on the result's Diagnostics, the same
+// place and shape the browser checker uses, so the worker stores it and the
+// dashboard lists it like any other capture. Best-effort: it only touches
+// Diagnostics, so no outcome here can change the verdict.
+func attachScreenshot(ctx context.Context, outcome *authRunOutcome, result *checkerdef.Result) {
+	if result.Diagnostics == nil {
+		result.Diagnostics = &checkerdef.Diagnostics{}
 	}
 
-	if len(shot) > checkbrowser.MaxScreenshotBytes {
-		output["screenshot_dropped"] = fmt.Sprintf(
-			"capture of %d bytes exceeds the %d-byte cap", len(shot), checkbrowser.MaxScreenshotBytes)
-
-		return
+	switch {
+	case outcome.shotError != "":
+		result.Diagnostics.ScreenshotError = outcome.shotError
+	case len(outcome.screenshot) == 0:
+		result.Diagnostics.ScreenshotError = "the capture returned an empty image"
+	case len(outcome.screenshot) > checkbrowser.MaxScreenshotBytes:
+		result.Diagnostics.ScreenshotError = checkbrowser.OverCapMessage(len(outcome.screenshot))
+	default:
+		result.Diagnostics.Screenshot = &checkerdef.Screenshot{
+			Image:      outcome.screenshot,
+			Format:     checkerdef.ImageFormatPNG,
+			CapturedAt: time.Now(),
+		}
 	}
 
-	output["screenshot_bytes"] = len(shot)
+	if result.Diagnostics.ScreenshotError != "" {
+		slog.WarnContext(ctx, "rdp check: screenshot not kept", "reason", result.Diagnostics.ScreenshotError)
+	}
 }
 
 // dialTarget opens the TCP connection and applies the context deadline to all

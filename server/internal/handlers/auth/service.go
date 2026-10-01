@@ -478,6 +478,11 @@ type OrganizationRef struct {
 // UpdateProfileRequest contains the fields that can be updated on the user profile.
 type UpdateProfileRequest struct {
 	Name *string `json:"name"`
+	// Email changes the sign-in address (spec 2026-09-30-08). It requires
+	// CurrentPassword, and is refused for password-less, demo and
+	// impersonation sessions.
+	Email           *string `json:"email,omitempty"`
+	CurrentPassword *string `json:"currentPassword,omitempty"`
 }
 
 // LogoutResponse contains the response data for a logout operation.
@@ -1748,6 +1753,22 @@ func (s *Service) getUserInfoNoOrg(ctx context.Context, claims *Claims) (*MeResp
 
 // UpdateProfile updates the current user's profile fields.
 func (s *Service) UpdateProfile(ctx context.Context, claims *Claims, req UpdateProfileRequest) (*MeResponse, error) {
+	if req.Email != nil {
+		// A changed email is applied together with the name, in one UPDATE.
+		changed, err := s.changeOwnEmail(ctx, claims, req)
+		if err != nil {
+			return nil, err
+		}
+
+		if changed {
+			return s.GetUserInfo(ctx, claims)
+		}
+	}
+
+	if req.Name == nil {
+		return s.GetUserInfo(ctx, claims)
+	}
+
 	update := models.UserUpdate{
 		Name: req.Name,
 	}
@@ -3099,7 +3120,7 @@ func (s *Service) ResetPassword(ctx context.Context, req ResetPasswordRequest) (
 	// Confirmation email so the legitimate user sees a record of the
 	// change even if the attacker controls the password-reset link.
 	s.enqueueEmail(ctx, "", user.Email, "password-changed.html",
-		map[string]any{"ChangedAt": time.Now().UTC().Format(time.RFC1123)},
+		map[string]any{tmplKeyChangedAt: time.Now().UTC().Format(time.RFC1123)},
 	)
 
 	return &ResetPasswordResponse{
@@ -3213,7 +3234,7 @@ func (s *Service) ChangePassword(
 	s.revokeRefreshTokensForUserExcept(ctx, user.UID, currentRefreshUID)
 
 	s.enqueueEmail(ctx, "", user.Email, "password-changed.html",
-		map[string]any{"ChangedAt": time.Now().UTC().Format(time.RFC1123)},
+		map[string]any{tmplKeyChangedAt: time.Now().UTC().Format(time.RFC1123)},
 	)
 
 	return &ChangePasswordResponse{

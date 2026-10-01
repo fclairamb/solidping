@@ -452,6 +452,8 @@
     "ntpDescription": "Monitor NTP time servers",
     "rdp": "RDP",
     "rdpDescription": "Monitor RDP (Remote Desktop) servers",
+    "vnc": "VNC",
+    "vncDescription": "Monitor VNC (RFB) servers",
     "sleep": "Sleep",
     "sleepDescription": "Sleep for a fixed duration (synthetic/testing, no network I/O)",
     "email": "Email",
@@ -1157,6 +1159,15 @@
     "rdpEndSessionDisconnect": "Disconnect (session stays on the server)",
     "rdpEndSessionHelp": "Log off removes the session from the server. Disconnect leaves it running until the server's idle policy ends it, so the next run reattaches to it (faster checks).",
     "rdpCaveatsHelp": "Every authenticated run is a real interactive Windows logon: it loads a user profile, runs logon scripts and GPOs, may consume an RDS client access license, can disconnect a real logged-in user on a single-session server, and shows up in the Security event log (4624/4634) every run. Use a dedicated monitoring account, never a person's account — the 15-minute minimum interval enforces the rest.",
+    "vncRequireAuth": "Require authentication",
+    "vncRequireAuthHelp": "Down when the server offers security type None: anyone could attach to the desktop without a password.",
+    "vncPasswordHelp": "With a password the check also logs in, with the strongest method the server offers: VeNCrypt (TLS), Apple Remote Desktop (needs a username) or VNC authentication (only the first 8 characters count). Leave it empty to check the handshake and the offered authentication methods only.",
+    "vncUsername": "Username (optional)",
+    "vncUsernameHelp": "Used by VeNCrypt Plain (TigerVNC, libvirt) and Apple Remote Desktop (macOS Screen Sharing). Needs a password.",
+    "vncTlsVerify": "Verify the TLS certificate",
+    "vncTlsVerifyHelp": "VeNCrypt only. Off by default: VeNCrypt certificates are almost always self-signed. The certificate is reported either way.",
+    "vncScreenshot": "Capture a screenshot of the desktop after logging in",
+    "vncSharedHelp": "The check attaches in shared mode, so it never disconnects a viewer already connected. Workers need network access to the VNC host (typically internal).",
     "privateLocationRegion": "Private location",
     "privateLocationHelp": "SolidPing created this check with the location. It watches the location's agents and goes down when none is connected. The location it watches cannot be changed.",
     "defaultsToHost": "defaults to host",
@@ -1369,6 +1380,7 @@
     "passwordRequiredWithUsername": "Password is required when a username is set.",
     "usernameRequiredWithPassword": "Username is required when a password is set.",
     "screenshotRequiresCredentials": "Screenshot requires username and password (an authenticated logon).",
+    "screenshotRequiresPassword": "Screenshot requires a password.",
     "usernameRequiredRegister": "Username is required for register mode",
     "passwordRequiredRegister": "Password is required for register mode",
     "scriptRequired": "Script is required",
@@ -1383,6 +1395,8 @@
     "invalidIp_one": "Not {{family}} address: {{values}}",
     "invalidIp_other": "Not {{family}} addresses: {{values}}",
     "invalidMetadataKeys_one": "Invalid metadata key: {{keys}} (lowercase letters, digits, '-', '.' or '_'; 'grpc-' and '-bin' are reserved)",
-    "invalidMetadataKeys_other": "Invalid metadata keys: {{keys}} (lowercase letters, digits, '-', '.' or '_'; 'grpc-' and '-bin' are reserved)"
+    "invalidMetadataKeys_other": "Invalid metadata keys: {{keys}} (lowercase letters, digits, '-', '.' or '_'; 'grpc-' and '-bin' are reserved)",
+    "usernameRequiresPassword": "A username requires a password.",
+    "vncUsernameTooLong": "Username must be at most {{max}} bytes."
   }
 }

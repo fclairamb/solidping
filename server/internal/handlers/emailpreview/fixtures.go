@@ -71,6 +71,7 @@ var fixtureBuilders = map[string]func() map[string]any{
 	"invitation.html":                  invitationFixture,
 	"welcome.html":                     welcomeFixture,
 	"password-changed.html":            passwordChangedFixture,
+	"email-changed.html":               emailChangedFixture,
 	"membership_request_new.html":      membershipRequestNewFixture,
 	"membership_request_decision.html": membershipRequestDecisionFixture,
 	"uptime-report.html":               uptimeReportFixture,
@@ -317,6 +318,14 @@ func welcomeFixture() map[string]any {
 func passwordChangedFixture() map[string]any {
 	return map[string]any{
 		"ChangedAt": "Sunday, July 5, 2026 at 10:00 UTC",
+	}
+}
+
+func emailChangedFixture() map[string]any {
+	return map[string]any{
+		"ChangedAt": "Sunday, July 5, 2026 at 10:00 UTC",
+		"OldEmail":  "alice@acme.com",
+		"NewEmail":  "alice@acme.org",
 	}
 }
 

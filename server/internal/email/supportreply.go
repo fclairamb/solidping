@@ -35,6 +35,7 @@ const (
 	TemplateIncidentBurnResolved    = "incident-burn-resolved.html"
 	TemplateIncidentDegradedCreated = "incident-degraded-created.html"
 	TemplateIncidentDegradedResolv  = "incident-degraded-resolved.html"
+	TemplateEmailChanged            = "email-changed.html"
 	TemplateIncidentAcknowledged    = "incident-acknowledged.html"
 	TemplateIncidentUnacknowledged  = "incident-unacknowledged.html"
 	TemplateIncidentComment         = "incident-comment.html"
@@ -118,6 +119,7 @@ var supportReplyableTemplates = map[string]bool{
 	// Security-critical / identity mail — never carries a reply path.
 	TemplateInvitation:              false,
 	TemplatePasswordChanged:         false,
+	TemplateEmailChanged:            false,
 	TemplatePasswordReset:           false,
 	TemplatePasswordResetSSO:        false,
 	TemplateRegistration:            false,
