@@ -346,6 +346,18 @@ jobs:
           path: server/coverage.out
           retention-days: 14
 
+      # Codecov gives the coverage a public page and PR comments (awesome-go
+      # asks for a coverage service link). Non-blocking: the gate above is what
+      # fails the job. Skipped on fork PRs, which have no access to the secret.
+      - name: Upload coverage to Codecov
+        if: ${{ !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: server/coverage.out
+          flags: backend
+          fail_ci_if_error: false
+
       # A green exit code is not evidence: `go test` prints ok for a package
       # whose every test skipped. This step asserts the layer actually EXECUTED.
       - name: Assert the Postgres layer really ran
