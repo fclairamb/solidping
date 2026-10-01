@@ -9,7 +9,7 @@
 incidents and on-call escalation — in a single Go binary.
 
 [![Build](https://img.shields.io/github/actions/workflow/status/fclairamb/solidping/ci.yml?branch=main&label=build&logo=github)](https://github.com/fclairamb/solidping/actions/workflows/ci.yml)
-[![Coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/fclairamb/solidping/badges/coverage.json)](https://github.com/fclairamb/solidping/actions/workflows/ci.yml)
+[![Coverage](https://codecov.io/gh/fclairamb/solidping/graph/badge.svg)](https://codecov.io/gh/fclairamb/solidping)
 [![Release](https://img.shields.io/github/v/release/fclairamb/solidping?label=release&logo=github)](https://github.com/fclairamb/solidping/releases/latest)
 [![Go](https://img.shields.io/github/go-mod/go-version/fclairamb/solidping?filename=server%2Fgo.mod&logo=go)](https://github.com/fclairamb/solidping/blob/main/server/go.mod)
 [![Go Reference](https://pkg.go.dev/badge/github.com/fclairamb/solidping/server.svg)](https://pkg.go.dev/github.com/fclairamb/solidping/server)
@@ -71,7 +71,7 @@ SolidPing is a multi-tenant monitoring system that enables organizations to moni
 - **Maintenance windows**: Recurring suppression of alerts
 - **JavaScript scripting**: Sandboxed custom monitoring logic
 - **Browser monitoring**: Headless Chrome via Rod
-- **MCP server**: AI/LLM tool access via Model Context Protocol
+- **MCP server**: AI/LLM tool access via Model Context Protocol (listed on [Smithery](https://smithery.ai/servers/fclairamb/solidping))
 - **SSO / OAuth**: Google, GitHub, GitLab, Microsoft, Slack, Discord, plus generic OIDC, SAML, and LDAP / Active Directory (per-provider enable toggle, with self-service token revocation)
 - **Observability**: Prometheus `/metrics`, Sentry integration, OpenTelemetry
 - **CLI client**: Manage checks and results from the terminal
