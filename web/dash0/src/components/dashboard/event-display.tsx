@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import {
   AlarmClockOff,
+  AtSign,
   BellOff,
   Calendar,
   CircleAlert,
@@ -140,6 +141,9 @@ export const EVENT_TYPE_REGISTRY: Record<string, { emoji: string; tone: string }
   // 2026-09-29-03). Amber: not an attack, but not routine either — an org
   // admin reading the log should notice it.
   "auth.impersonation_started": { emoji: "🎭", tone: TONE_AMBER },
+  // A member's sign-in email changed, by themselves or by a super admin
+  // (spec 2026-09-30-08). Amber: an account-takeover path worth noticing.
+  "auth.email_changed": { emoji: "📧", tone: TONE_AMBER },
 };
 
 // CONFIG_EVENT_FAMILIES are the audit families that describe a configuration
@@ -370,6 +374,7 @@ export const EVENT_TYPE_MARKS: Record<string, EventMark> = {
   "auth.token_revoked": { icon: KeyRound, tone: MARK_QUIET },
   "auth.token_misuse": { icon: ShieldAlert, tone: MARK_DANGER, loud: true },
   "auth.impersonation_started": { icon: Eye, tone: MARK_WARNING },
+  "auth.email_changed": { icon: AtSign, tone: MARK_WARNING },
 };
 
 export function getEventMark(eventType?: string): EventMark {

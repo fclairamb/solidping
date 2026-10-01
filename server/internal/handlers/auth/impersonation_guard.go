@@ -11,6 +11,8 @@ import (
 const (
 	ImpersonationPathSwitchOrg          = "/api/v1/auth/switch-org"
 	ImpersonationPathChangePassword     = "/api/v1/auth/change-password"
+	ImpersonationPathMe                 = "/api/v1/auth/me"
+	ImpersonationPatternSystemUser      = "/api/v1/system/users/{uid}"
 	ImpersonationPath2FASetup           = "/api/v1/auth/2fa/setup"
 	ImpersonationPath2FAConfirm         = "/api/v1/auth/2fa/confirm"
 	ImpersonationPath2FA                = "/api/v1/auth/2fa"
@@ -49,6 +51,11 @@ var impersonationForbiddenRoutes = []demoAllowedRoute{
 	{http.MethodPost, ImpersonationPathOrgs},
 	// Credentials.
 	{http.MethodPost, ImpersonationPathChangePassword},
+	// The profile update carries the sign-in email (spec 2026-09-30-08).
+	{http.MethodPatch, ImpersonationPathMe},
+	// A super-admin route (RequireSuperAdmin refuses it already) that changes
+	// another user's sign-in email.
+	{http.MethodPatch, ImpersonationPatternSystemUser},
 	{http.MethodPost, ImpersonationPath2FASetup},
 	{http.MethodPost, ImpersonationPath2FAConfirm},
 	{http.MethodDelete, ImpersonationPath2FA},

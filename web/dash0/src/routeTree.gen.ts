@@ -74,7 +74,6 @@ import { Route as OrgsOrgStatusPagesStatusPageUidRouteImport } from './routes/or
 import { Route as OrgsOrgSlosNewRouteImport } from './routes/orgs/$org/slos.new'
 import { Route as OrgsOrgSlosUidRouteImport } from './routes/orgs/$org/slos.$uid'
 import { Route as OrgsOrgServerWebRouteImport } from './routes/orgs/$org/server.web'
-import { Route as OrgsOrgServerUsersRouteImport } from './routes/orgs/$org/server.users'
 import { Route as OrgsOrgServerSlackRouteImport } from './routes/orgs/$org/server.slack'
 import { Route as OrgsOrgServerPerformanceRouteImport } from './routes/orgs/$org/server.performance'
 import { Route as OrgsOrgServerNotificationsRouteImport } from './routes/orgs/$org/server.notifications'
@@ -126,6 +125,7 @@ import { Route as OrgsOrgAccountMcpRouteImport } from './routes/orgs/$org/accoun
 import { Route as OrgsOrgAccountDeviceRouteImport } from './routes/orgs/$org/account.device'
 import { Route as OrgsOrgStatusPagesStatusPageUidIndexRouteImport } from './routes/orgs/$org/status-pages.$statusPageUid.index'
 import { Route as OrgsOrgSlosUidIndexRouteImport } from './routes/orgs/$org/slos.$uid.index'
+import { Route as OrgsOrgServerUsersIndexRouteImport } from './routes/orgs/$org/server.users.index'
 import { Route as OrgsOrgServerEntitlementsIndexRouteImport } from './routes/orgs/$org/server.entitlements.index'
 import { Route as OrgsOrgOrganizationReportSchedulesIndexRouteImport } from './routes/orgs/$org/organization.report-schedules.index'
 import { Route as OrgsOrgOrganizationPrivateLocationsIndexRouteImport } from './routes/orgs/$org/organization.private-locations.index'
@@ -139,6 +139,7 @@ import { Route as OrgsOrgStatusUpdatesUpdateUidEditRouteImport } from './routes/
 import { Route as OrgsOrgStatusPagesStatusPageUidEditRouteImport } from './routes/orgs/$org/status-pages.$statusPageUid.edit'
 import { Route as OrgsOrgStatusPagesStatusPageUidAppearanceRouteImport } from './routes/orgs/$org/status-pages.$statusPageUid.appearance'
 import { Route as OrgsOrgSlosUidEditRouteImport } from './routes/orgs/$org/slos.$uid.edit'
+import { Route as OrgsOrgServerUsersUidRouteImport } from './routes/orgs/$org/server.users.$uid'
 import { Route as OrgsOrgServerEntitlementsTargetOrgRouteImport } from './routes/orgs/$org/server.entitlements.$targetOrg'
 import { Route as OrgsOrgOrganizationReportSchedulesNewRouteImport } from './routes/orgs/$org/organization.report-schedules.new'
 import { Route as OrgsOrgOrganizationReportSchedulesUidRouteImport } from './routes/orgs/$org/organization.report-schedules.$uid'
@@ -494,11 +495,6 @@ const OrgsOrgServerWebRoute = OrgsOrgServerWebRouteImport.update({
   path: '/web',
   getParentRoute: () => OrgsOrgServerRoute,
 } as any)
-const OrgsOrgServerUsersRoute = OrgsOrgServerUsersRouteImport.update({
-  id: '/users',
-  path: '/users',
-  getParentRoute: () => OrgsOrgServerRoute,
-} as any)
 const OrgsOrgServerSlackRoute = OrgsOrgServerSlackRouteImport.update({
   id: '/slack',
   path: '/slack',
@@ -777,6 +773,11 @@ const OrgsOrgSlosUidIndexRoute = OrgsOrgSlosUidIndexRouteImport.update({
   path: '/',
   getParentRoute: () => OrgsOrgSlosUidRoute,
 } as any)
+const OrgsOrgServerUsersIndexRoute = OrgsOrgServerUsersIndexRouteImport.update({
+  id: '/users/',
+  path: '/users/',
+  getParentRoute: () => OrgsOrgServerRoute,
+} as any)
 const OrgsOrgServerEntitlementsIndexRoute =
   OrgsOrgServerEntitlementsIndexRouteImport.update({
     id: '/entitlements/',
@@ -852,6 +853,11 @@ const OrgsOrgSlosUidEditRoute = OrgsOrgSlosUidEditRouteImport.update({
   id: '/edit',
   path: '/edit',
   getParentRoute: () => OrgsOrgSlosUidRoute,
+} as any)
+const OrgsOrgServerUsersUidRoute = OrgsOrgServerUsersUidRouteImport.update({
+  id: '/users/$uid',
+  path: '/users/$uid',
+  getParentRoute: () => OrgsOrgServerRoute,
 } as any)
 const OrgsOrgServerEntitlementsTargetOrgRoute =
   OrgsOrgServerEntitlementsTargetOrgRouteImport.update({
@@ -1055,7 +1061,6 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/server/notifications': typeof OrgsOrgServerNotificationsRoute
   '/orgs/$org/server/performance': typeof OrgsOrgServerPerformanceRoute
   '/orgs/$org/server/slack': typeof OrgsOrgServerSlackRoute
-  '/orgs/$org/server/users': typeof OrgsOrgServerUsersRoute
   '/orgs/$org/server/web': typeof OrgsOrgServerWebRoute
   '/orgs/$org/slos/$uid': typeof OrgsOrgSlosUidRouteWithChildren
   '/orgs/$org/slos/new': typeof OrgsOrgSlosNewRoute
@@ -1096,6 +1101,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/organization/report-schedules/$uid': typeof OrgsOrgOrganizationReportSchedulesUidRoute
   '/orgs/$org/organization/report-schedules/new': typeof OrgsOrgOrganizationReportSchedulesNewRoute
   '/orgs/$org/server/entitlements/$targetOrg': typeof OrgsOrgServerEntitlementsTargetOrgRoute
+  '/orgs/$org/server/users/$uid': typeof OrgsOrgServerUsersUidRoute
   '/orgs/$org/slos/$uid/edit': typeof OrgsOrgSlosUidEditRoute
   '/orgs/$org/status-pages/$statusPageUid/appearance': typeof OrgsOrgStatusPagesStatusPageUidAppearanceRoute
   '/orgs/$org/status-pages/$statusPageUid/edit': typeof OrgsOrgStatusPagesStatusPageUidEditRoute
@@ -1109,6 +1115,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/organization/private-locations/': typeof OrgsOrgOrganizationPrivateLocationsIndexRoute
   '/orgs/$org/organization/report-schedules/': typeof OrgsOrgOrganizationReportSchedulesIndexRoute
   '/orgs/$org/server/entitlements/': typeof OrgsOrgServerEntitlementsIndexRoute
+  '/orgs/$org/server/users/': typeof OrgsOrgServerUsersIndexRoute
   '/orgs/$org/slos/$uid/': typeof OrgsOrgSlosUidIndexRoute
   '/orgs/$org/status-pages/$statusPageUid/': typeof OrgsOrgStatusPagesStatusPageUidIndexRoute
   '/orgs/$org/checks/$checkUid/results/$resultUid': typeof OrgsOrgChecksCheckUidResultsResultUidRoute
@@ -1182,7 +1189,6 @@ export interface FileRoutesByTo {
   '/orgs/$org/server/notifications': typeof OrgsOrgServerNotificationsRoute
   '/orgs/$org/server/performance': typeof OrgsOrgServerPerformanceRoute
   '/orgs/$org/server/slack': typeof OrgsOrgServerSlackRoute
-  '/orgs/$org/server/users': typeof OrgsOrgServerUsersRoute
   '/orgs/$org/server/web': typeof OrgsOrgServerWebRoute
   '/orgs/$org/slos/new': typeof OrgsOrgSlosNewRoute
   '/orgs/$org/status-pages/new': typeof OrgsOrgStatusPagesNewRoute
@@ -1220,6 +1226,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/organization/report-schedules/$uid': typeof OrgsOrgOrganizationReportSchedulesUidRoute
   '/orgs/$org/organization/report-schedules/new': typeof OrgsOrgOrganizationReportSchedulesNewRoute
   '/orgs/$org/server/entitlements/$targetOrg': typeof OrgsOrgServerEntitlementsTargetOrgRoute
+  '/orgs/$org/server/users/$uid': typeof OrgsOrgServerUsersUidRoute
   '/orgs/$org/slos/$uid/edit': typeof OrgsOrgSlosUidEditRoute
   '/orgs/$org/status-pages/$statusPageUid/appearance': typeof OrgsOrgStatusPagesStatusPageUidAppearanceRoute
   '/orgs/$org/status-pages/$statusPageUid/edit': typeof OrgsOrgStatusPagesStatusPageUidEditRoute
@@ -1233,6 +1240,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/organization/private-locations': typeof OrgsOrgOrganizationPrivateLocationsIndexRoute
   '/orgs/$org/organization/report-schedules': typeof OrgsOrgOrganizationReportSchedulesIndexRoute
   '/orgs/$org/server/entitlements': typeof OrgsOrgServerEntitlementsIndexRoute
+  '/orgs/$org/server/users': typeof OrgsOrgServerUsersIndexRoute
   '/orgs/$org/slos/$uid': typeof OrgsOrgSlosUidIndexRoute
   '/orgs/$org/status-pages/$statusPageUid': typeof OrgsOrgStatusPagesStatusPageUidIndexRoute
   '/orgs/$org/checks/$checkUid/results/$resultUid': typeof OrgsOrgChecksCheckUidResultsResultUidRoute
@@ -1331,7 +1339,6 @@ export interface FileRoutesById {
   '/orgs/$org/server/notifications': typeof OrgsOrgServerNotificationsRoute
   '/orgs/$org/server/performance': typeof OrgsOrgServerPerformanceRoute
   '/orgs/$org/server/slack': typeof OrgsOrgServerSlackRoute
-  '/orgs/$org/server/users': typeof OrgsOrgServerUsersRoute
   '/orgs/$org/server/web': typeof OrgsOrgServerWebRoute
   '/orgs/$org/slos/$uid': typeof OrgsOrgSlosUidRouteWithChildren
   '/orgs/$org/slos/new': typeof OrgsOrgSlosNewRoute
@@ -1372,6 +1379,7 @@ export interface FileRoutesById {
   '/orgs/$org/organization/report-schedules/$uid': typeof OrgsOrgOrganizationReportSchedulesUidRoute
   '/orgs/$org/organization/report-schedules/new': typeof OrgsOrgOrganizationReportSchedulesNewRoute
   '/orgs/$org/server/entitlements/$targetOrg': typeof OrgsOrgServerEntitlementsTargetOrgRoute
+  '/orgs/$org/server/users/$uid': typeof OrgsOrgServerUsersUidRoute
   '/orgs/$org/slos/$uid/edit': typeof OrgsOrgSlosUidEditRoute
   '/orgs/$org/status-pages/$statusPageUid/appearance': typeof OrgsOrgStatusPagesStatusPageUidAppearanceRoute
   '/orgs/$org/status-pages/$statusPageUid/edit': typeof OrgsOrgStatusPagesStatusPageUidEditRoute
@@ -1385,6 +1393,7 @@ export interface FileRoutesById {
   '/orgs/$org/organization/private-locations/': typeof OrgsOrgOrganizationPrivateLocationsIndexRoute
   '/orgs/$org/organization/report-schedules/': typeof OrgsOrgOrganizationReportSchedulesIndexRoute
   '/orgs/$org/server/entitlements/': typeof OrgsOrgServerEntitlementsIndexRoute
+  '/orgs/$org/server/users/': typeof OrgsOrgServerUsersIndexRoute
   '/orgs/$org/slos/$uid/': typeof OrgsOrgSlosUidIndexRoute
   '/orgs/$org/status-pages/$statusPageUid/': typeof OrgsOrgStatusPagesStatusPageUidIndexRoute
   '/orgs/$org/checks/$checkUid/results/$resultUid': typeof OrgsOrgChecksCheckUidResultsResultUidRoute
@@ -1484,7 +1493,6 @@ export interface FileRouteTypes {
     | '/orgs/$org/server/notifications'
     | '/orgs/$org/server/performance'
     | '/orgs/$org/server/slack'
-    | '/orgs/$org/server/users'
     | '/orgs/$org/server/web'
     | '/orgs/$org/slos/$uid'
     | '/orgs/$org/slos/new'
@@ -1525,6 +1533,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/organization/report-schedules/$uid'
     | '/orgs/$org/organization/report-schedules/new'
     | '/orgs/$org/server/entitlements/$targetOrg'
+    | '/orgs/$org/server/users/$uid'
     | '/orgs/$org/slos/$uid/edit'
     | '/orgs/$org/status-pages/$statusPageUid/appearance'
     | '/orgs/$org/status-pages/$statusPageUid/edit'
@@ -1538,6 +1547,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/organization/private-locations/'
     | '/orgs/$org/organization/report-schedules/'
     | '/orgs/$org/server/entitlements/'
+    | '/orgs/$org/server/users/'
     | '/orgs/$org/slos/$uid/'
     | '/orgs/$org/status-pages/$statusPageUid/'
     | '/orgs/$org/checks/$checkUid/results/$resultUid'
@@ -1611,7 +1621,6 @@ export interface FileRouteTypes {
     | '/orgs/$org/server/notifications'
     | '/orgs/$org/server/performance'
     | '/orgs/$org/server/slack'
-    | '/orgs/$org/server/users'
     | '/orgs/$org/server/web'
     | '/orgs/$org/slos/new'
     | '/orgs/$org/status-pages/new'
@@ -1649,6 +1658,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/organization/report-schedules/$uid'
     | '/orgs/$org/organization/report-schedules/new'
     | '/orgs/$org/server/entitlements/$targetOrg'
+    | '/orgs/$org/server/users/$uid'
     | '/orgs/$org/slos/$uid/edit'
     | '/orgs/$org/status-pages/$statusPageUid/appearance'
     | '/orgs/$org/status-pages/$statusPageUid/edit'
@@ -1662,6 +1672,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/organization/private-locations'
     | '/orgs/$org/organization/report-schedules'
     | '/orgs/$org/server/entitlements'
+    | '/orgs/$org/server/users'
     | '/orgs/$org/slos/$uid'
     | '/orgs/$org/status-pages/$statusPageUid'
     | '/orgs/$org/checks/$checkUid/results/$resultUid'
@@ -1759,7 +1770,6 @@ export interface FileRouteTypes {
     | '/orgs/$org/server/notifications'
     | '/orgs/$org/server/performance'
     | '/orgs/$org/server/slack'
-    | '/orgs/$org/server/users'
     | '/orgs/$org/server/web'
     | '/orgs/$org/slos/$uid'
     | '/orgs/$org/slos/new'
@@ -1800,6 +1810,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/organization/report-schedules/$uid'
     | '/orgs/$org/organization/report-schedules/new'
     | '/orgs/$org/server/entitlements/$targetOrg'
+    | '/orgs/$org/server/users/$uid'
     | '/orgs/$org/slos/$uid/edit'
     | '/orgs/$org/status-pages/$statusPageUid/appearance'
     | '/orgs/$org/status-pages/$statusPageUid/edit'
@@ -1813,6 +1824,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/organization/private-locations/'
     | '/orgs/$org/organization/report-schedules/'
     | '/orgs/$org/server/entitlements/'
+    | '/orgs/$org/server/users/'
     | '/orgs/$org/slos/$uid/'
     | '/orgs/$org/status-pages/$statusPageUid/'
     | '/orgs/$org/checks/$checkUid/results/$resultUid'
@@ -2298,13 +2310,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgServerWebRouteImport
       parentRoute: typeof OrgsOrgServerRoute
     }
-    '/orgs/$org/server/users': {
-      id: '/orgs/$org/server/users'
-      path: '/users'
-      fullPath: '/orgs/$org/server/users'
-      preLoaderRoute: typeof OrgsOrgServerUsersRouteImport
-      parentRoute: typeof OrgsOrgServerRoute
-    }
     '/orgs/$org/server/slack': {
       id: '/orgs/$org/server/slack'
       path: '/slack'
@@ -2662,6 +2667,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgSlosUidIndexRouteImport
       parentRoute: typeof OrgsOrgSlosUidRoute
     }
+    '/orgs/$org/server/users/': {
+      id: '/orgs/$org/server/users/'
+      path: '/users'
+      fullPath: '/orgs/$org/server/users/'
+      preLoaderRoute: typeof OrgsOrgServerUsersIndexRouteImport
+      parentRoute: typeof OrgsOrgServerRoute
+    }
     '/orgs/$org/server/entitlements/': {
       id: '/orgs/$org/server/entitlements/'
       path: '/entitlements'
@@ -2752,6 +2764,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/orgs/$org/slos/$uid/edit'
       preLoaderRoute: typeof OrgsOrgSlosUidEditRouteImport
       parentRoute: typeof OrgsOrgSlosUidRoute
+    }
+    '/orgs/$org/server/users/$uid': {
+      id: '/orgs/$org/server/users/$uid'
+      path: '/users/$uid'
+      fullPath: '/orgs/$org/server/users/$uid'
+      preLoaderRoute: typeof OrgsOrgServerUsersUidRouteImport
+      parentRoute: typeof OrgsOrgServerRoute
     }
     '/orgs/$org/server/entitlements/$targetOrg': {
       id: '/orgs/$org/server/entitlements/$targetOrg'
@@ -3272,11 +3291,12 @@ interface OrgsOrgServerRouteChildren {
   OrgsOrgServerNotificationsRoute: typeof OrgsOrgServerNotificationsRoute
   OrgsOrgServerPerformanceRoute: typeof OrgsOrgServerPerformanceRoute
   OrgsOrgServerSlackRoute: typeof OrgsOrgServerSlackRoute
-  OrgsOrgServerUsersRoute: typeof OrgsOrgServerUsersRoute
   OrgsOrgServerWebRoute: typeof OrgsOrgServerWebRoute
   OrgsOrgServerIndexRoute: typeof OrgsOrgServerIndexRoute
   OrgsOrgServerEntitlementsTargetOrgRoute: typeof OrgsOrgServerEntitlementsTargetOrgRoute
+  OrgsOrgServerUsersUidRoute: typeof OrgsOrgServerUsersUidRoute
   OrgsOrgServerEntitlementsIndexRoute: typeof OrgsOrgServerEntitlementsIndexRoute
+  OrgsOrgServerUsersIndexRoute: typeof OrgsOrgServerUsersIndexRoute
 }
 
 const OrgsOrgServerRouteChildren: OrgsOrgServerRouteChildren = {
@@ -3292,12 +3312,13 @@ const OrgsOrgServerRouteChildren: OrgsOrgServerRouteChildren = {
   OrgsOrgServerNotificationsRoute: OrgsOrgServerNotificationsRoute,
   OrgsOrgServerPerformanceRoute: OrgsOrgServerPerformanceRoute,
   OrgsOrgServerSlackRoute: OrgsOrgServerSlackRoute,
-  OrgsOrgServerUsersRoute: OrgsOrgServerUsersRoute,
   OrgsOrgServerWebRoute: OrgsOrgServerWebRoute,
   OrgsOrgServerIndexRoute: OrgsOrgServerIndexRoute,
   OrgsOrgServerEntitlementsTargetOrgRoute:
     OrgsOrgServerEntitlementsTargetOrgRoute,
+  OrgsOrgServerUsersUidRoute: OrgsOrgServerUsersUidRoute,
   OrgsOrgServerEntitlementsIndexRoute: OrgsOrgServerEntitlementsIndexRoute,
+  OrgsOrgServerUsersIndexRoute: OrgsOrgServerUsersIndexRoute,
 }
 
 const OrgsOrgServerRouteWithChildren = OrgsOrgServerRoute._addFileChildren(

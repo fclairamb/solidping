@@ -175,6 +175,7 @@ export const checkTypes: {
   { value: "sip", label: "SIP", description: "Check SIP server reachability and registration" },
   { value: "ntp", label: "NTP", description: "Monitor NTP time servers" },
   { value: "rdp", label: "RDP", description: "Monitor RDP (Remote Desktop) servers" },
+  { value: "vnc", label: "VNC", description: "Monitor VNC (RFB) servers" },
   { value: "private-location", label: "Private location", description: "Alert when a private location's agents go offline", systemCreated: true },
   { value: "sleep", label: "Sleep", description: "Sleep for a fixed duration (synthetic/testing, no network I/O)", synthetic: true },
 ];

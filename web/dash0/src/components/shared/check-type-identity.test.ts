@@ -58,6 +58,7 @@ const ALL_CHECK_TYPES: Record<CheckType, true> = {
   sip: true,
   ntp: true,
   rdp: true,
+  vnc: true,
   "private-location": true,
   sleep: true,
 };

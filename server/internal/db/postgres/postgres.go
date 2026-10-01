@@ -867,7 +867,9 @@ func (s *Service) UpdateUser(ctx context.Context, uid string, update *models.Use
 		query = query.Set("password_hash = ?", *update.PasswordHash)
 	}
 
-	if update.EmailVerifiedAt != nil {
+	if update.ClearEmailVerifiedAt {
+		query = query.Set("email_verified_at = NULL")
+	} else if update.EmailVerifiedAt != nil {
 		query = query.Set("email_verified_at = ?", *update.EmailVerifiedAt)
 	}
 

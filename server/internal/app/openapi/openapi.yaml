@@ -962,6 +962,21 @@ paths:
       tags: [Authentication]
       summary: Update the authenticated user's profile
       operationId: updateMe
+      description: |
+        Updates the display name and, optionally, the sign-in email.
+
+        Changing `email` requires `currentPassword`. The address is trimmed
+        and lowercased, the account's email verification is cleared, every
+        other session of the user is signed out (the caller's own session is
+        kept), and a notice is sent to the previous address when email
+        sending is configured. Sending the current address (in any case) is
+        a no-op. Refusals: `400 VALIDATION_ERROR` for a malformed address,
+        `403 INVALID_CURRENT_PASSWORD` for a missing or wrong password,
+        `403 FORBIDDEN` for an account without a password (change the email at
+        the identity provider), `403 DEMO_READ_ONLY` for the shared demo
+        account, `403 IMPERSONATION_FORBIDDEN` for an impersonation token, and
+        `409 CONFLICT` when another account already uses the address. Records
+        `auth.email_changed` in each of the user's organizations.
       security:
         - bearerAuth: []
       requestBody:
@@ -981,6 +996,10 @@ paths:
           $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
 
   /api/v1/auth/providers:
     get:
@@ -8420,6 +8439,82 @@ paths:
         "403":
           $ref: "#/components/responses/Forbidden"
 
+  /api/v1/system/users/{uid}:
+    get:
+      tags: [System]
+      summary: Get one user of the global directory (super admin)
+      operationId: getAdminUser
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          description: UID of the user
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The user, with the organizations it belongs to
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUserRow"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [System]
+      summary: Update a user account (super admin)
+      operationId: updateAdminUser
+      description: |
+        Changes a user's sign-in email without their password. The address is
+        trimmed and lowercased, the account's email verification is cleared,
+        every session of the user is signed out (the caller's own session is
+        kept when they edit themselves), and a notice is sent to the previous
+        address when email sending is configured. Records `auth.email_changed`
+        in each of the user's organizations. This is how the seeded
+        `admin@solidping.io` gets a real address. Answers `400` for a
+        malformed address, `404` for an unknown user and `409 CONFLICT` when
+        another account already uses the address.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          description: UID of the user to update
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminUpdateUserRequest"
+      responses:
+        "200":
+          description: The updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUpdateUserResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
   /api/v1/system/users/{uid}/impersonate:
     post:
       tags: [System]
@@ -10039,6 +10134,35 @@ components:
         name:
           type: string
           description: New display name for the authenticated user
+        email:
+          type: string
+          format: email
+          description: New sign-in email. Requires currentPassword when it differs from the current one.
+        currentPassword:
+          type: string
+          description: The account's current password, required to change the email.
+
+    AdminUpdateUserRequest:
+      type: object
+      description: Fields a super admin can change on a user. Only email today.
+      properties:
+        email:
+          type: string
+          format: email
+          description: New sign-in email.
+
+    AdminUpdateUserResponse:
+      type: object
+      required: [uid, email, name, emailVerified]
+      properties:
+        uid:
+          type: string
+        email:
+          type: string
+        name:
+          type: string
+        emailVerified:
+          type: boolean
 
     RegisterRequest:
       type: object
@@ -10266,7 +10390,7 @@ components:
           type: string
           # Every registered check type (checkerdef.ListCheckTypes), pinned by
           # TestCheckTypeEnumsMatchTheRegistry.
-          enum: [http, tcp, icmp, dns, heartbeat, email, domain, ssl, smtp, udp, ssh, pop3, imap, websocket, postgresql, ftp, sftp, js, mysql, redis, mongodb, mssql, oracle, clickhouse, grpc, kafka, mqtt, a2s, minecraft, rabbitmq, snmp, docker, browser, freebox_line, dnsbl, sip, kubernetes, ntp, rdp, prometheus, private-location, sleep]
+          enum: [http, tcp, icmp, dns, heartbeat, email, domain, ssl, smtp, udp, ssh, pop3, imap, websocket, postgresql, ftp, sftp, js, mysql, redis, mongodb, mssql, oracle, clickhouse, grpc, kafka, mqtt, a2s, minecraft, rabbitmq, snmp, docker, browser, freebox_line, dnsbl, sip, kubernetes, ntp, rdp, vnc, prometheus, private-location, sleep]
         config:
           type: object
           description: >-
@@ -10858,7 +10982,7 @@ components:
           type: string
           # Every registered check type (checkerdef.ListCheckTypes), pinned by
           # TestCheckTypeEnumsMatchTheRegistry.
-          enum: [http, tcp, icmp, dns, heartbeat, email, domain, ssl, smtp, udp, ssh, pop3, imap, websocket, postgresql, ftp, sftp, js, mysql, redis, mongodb, mssql, oracle, clickhouse, grpc, kafka, mqtt, a2s, minecraft, rabbitmq, snmp, docker, browser, freebox_line, dnsbl, sip, kubernetes, ntp, rdp, prometheus, private-location, sleep]
+          enum: [http, tcp, icmp, dns, heartbeat, email, domain, ssl, smtp, udp, ssh, pop3, imap, websocket, postgresql, ftp, sftp, js, mysql, redis, mongodb, mssql, oracle, clickhouse, grpc, kafka, mqtt, a2s, minecraft, rabbitmq, snmp, docker, browser, freebox_line, dnsbl, sip, kubernetes, ntp, rdp, vnc, prometheus, private-location, sleep]
           description: Check type (auto-inferred from URL if not provided)
         config:
           type: object
@@ -11190,7 +11314,7 @@ components:
           type: string
           # Every registered check type (checkerdef.ListCheckTypes), pinned by
           # TestCheckTypeEnumsMatchTheRegistry.
-          enum: [http, tcp, icmp, dns, heartbeat, email, domain, ssl, smtp, udp, ssh, pop3, imap, websocket, postgresql, ftp, sftp, js, mysql, redis, mongodb, mssql, oracle, clickhouse, grpc, kafka, mqtt, a2s, minecraft, rabbitmq, snmp, docker, browser, freebox_line, dnsbl, sip, kubernetes, ntp, rdp, prometheus, private-location, sleep]
+          enum: [http, tcp, icmp, dns, heartbeat, email, domain, ssl, smtp, udp, ssh, pop3, imap, websocket, postgresql, ftp, sftp, js, mysql, redis, mongodb, mssql, oracle, clickhouse, grpc, kafka, mqtt, a2s, minecraft, rabbitmq, snmp, docker, browser, freebox_line, dnsbl, sip, kubernetes, ntp, rdp, vnc, prometheus, private-location, sleep]
           description: Check type (auto-inferred from URL if not provided)
         config:
           type: object

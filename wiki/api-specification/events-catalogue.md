@@ -61,6 +61,7 @@ These are contract, not implementation detail:
 | `auth.token_created` | `token_kind` (`pat` / `agent_enrollment` / `oauth_grant`), `token_name`, `token_prefix`; for an OAuth grant: `client_id`, `scope`, `resource`, `grant_type` |
 | `auth.token_revoked` | `token_kind`, `token_name`; for an OAuth grant: `client_id`, `scope` |
 | `auth.token_misuse` | `token_kind`, `reason`, `client_id` (the grant's owner), `presented_client_id` (who tried) |
+| `auth.email_changed` | `old_email`, `new_email`, `changed_by` (`self` or `super_admin`); actor = the user or the super admin, target = the user, recorded in every org the user belongs to |
 | `auth.impersonation_started` | `auth_method` (`impersonate`), `email` / `role` (the target), `impersonator_email`, `expires_at`; actor = the super admin, target = the impersonated user, recorded in the target's org |
 
 **OAuth / MCP grants.** Completing the OAuth authorization-code exchange

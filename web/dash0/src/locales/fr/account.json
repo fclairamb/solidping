@@ -314,5 +314,21 @@
     "deniedDescription": "Aucun jeton n'a été créé. La ligne de commande signalera que la demande a été refusée.",
     "approvedToast": "Appareil approuvé — retournez à votre terminal",
     "decisionFailed": "Impossible d'enregistrer votre décision"
+  },
+  "email": {
+    "title": "Adresse e-mail",
+    "subtitle": "L'adresse avec laquelle vous vous connectez et recevez les e-mails du compte.",
+    "current": "Adresse actuelle",
+    "newEmail": "Nouvelle adresse",
+    "currentPassword": "Mot de passe actuel",
+    "notice": "Vos autres sessions seront déconnectées, et l'adresse actuelle sera prévenue du changement.",
+    "submit": "Changer d'adresse",
+    "saved": "Adresse modifiée. Utilisez la nouvelle adresse à votre prochaine connexion.",
+    "ssoOnly": "Ce compte se connecte via un fournisseur d'identité. Changez votre adresse e-mail chez ce fournisseur.",
+    "errors": {
+      "conflict": "Cette adresse est déjà utilisée par un autre compte.",
+      "wrongPassword": "Le mot de passe actuel est incorrect.",
+      "invalid": "Saisissez une adresse e-mail valide."
+    }
   }
 }

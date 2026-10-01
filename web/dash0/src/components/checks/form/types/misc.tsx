@@ -563,6 +563,204 @@ function RdpFields({ state, onChange, errors }: CheckTypeFieldsProps<RdpState>) 
   );
 }
 
+// ── VNC ──
+export interface VncState {
+  host: string;
+  port: string;
+  password: string;
+  requireAuth: boolean;
+  screenshot: boolean;
+  username: string;
+  tlsVerify: boolean;
+}
+
+// VNC_MAX_USERNAME_LEN is Apple Remote Desktop's 64-byte field minus the
+// null terminator (backend MaxUsernameLen).
+const VNC_MAX_USERNAME_LEN = 63;
+
+export const vncModule: CheckTypeModule<VncState> = {
+  types: ["vnc"],
+  ownedKeys: ["host", "port", "password", "requireAuth", "screenshot", "username", "tlsVerify"],
+  fromConfig: (config) => ({
+    host: getConfigField(config, "host"),
+    port: getConfigField(config, "port"),
+    password: getConfigField(config, "password"),
+    // Default on: only an explicit false turns the audit off.
+    requireAuth: getConfigField(config, "requireAuth") !== "false",
+    screenshot: getConfigField(config, "screenshot") === "true",
+    username: getConfigField(config, "username"),
+    tlsVerify: getConfigField(config, "tlsVerify") === "true",
+  }),
+  toConfig: (state) => {
+    const cfg: CheckConfig = {};
+    if (state.host) cfg.host = state.host;
+    if (state.port) cfg.port = parseInt(state.port, 10);
+    if (state.password) cfg.password = state.password;
+    // Always explicit, so switching it back on overrides a stored false.
+    cfg.requireAuth = state.requireAuth;
+    if (state.screenshot) cfg.screenshot = true;
+    if (state.username) cfg.username = state.username;
+    if (state.tlsVerify) cfg.tlsVerify = true;
+    return { config: cfg, errors: vncErrors(state) };
+  },
+  Fields: VncFields,
+};
+
+// vncErrors mirrors the backend validator: host required, screenshot and
+// username need a password, username fits ARD's field. The screenshot error is keyed on `password` on purpose: the
+// form drops an error whose field is stored encrypted (configPrivateKeys), so
+// editing a check whose password was never echoed back still saves.
+function vncErrors(state: VncState): FieldErrors {
+  const errors: FieldErrors = hostRequired(state.host);
+  if (state.screenshot && !state.password) {
+    errors.push({ name: "password", message: validationMessage("screenshotRequiresPassword") });
+  } else if (state.username && !state.password) {
+    errors.push({ name: "password", message: validationMessage("usernameRequiresPassword") });
+  }
+  if (new TextEncoder().encode(state.username).length > VNC_MAX_USERNAME_LEN) {
+    errors.push({
+      name: "username",
+      message: validationMessage("vncUsernameTooLong", { max: VNC_MAX_USERNAME_LEN }),
+    });
+  }
+  return errors;
+}
+
+function VncFields({ state, onChange, errors }: CheckTypeFieldsProps<VncState>) {
+  const { t } = useTranslation("checks");
+  const { configPrivateKeys } = useCheckFormFields();
+  const passwordStored = !!configPrivateKeys?.includes("password");
+  return (
+    <>
+      <div className="space-y-2">
+        <Label>{t("form.host")}</Label>
+        <div className="flex gap-2">
+          <Input
+            id="host"
+            type="text"
+            placeholder="vnc.example.internal"
+            value={state.host}
+            onChange={(e) => onChange({ ...state, host: e.target.value })}
+            className={cn(
+              "flex-1",
+              getFieldError(errors, "host") && "border-destructive",
+            )}
+            data-testid="check-host-input"
+          />
+          <Input
+            id="port"
+            type="number"
+            placeholder="5900"
+            value={state.port}
+            onChange={(e) => onChange({ ...state, port: e.target.value })}
+            className={cn(
+              "w-24",
+              getFieldError(errors, "port") && "border-destructive",
+            )}
+            data-testid="check-port-input"
+          />
+        </div>
+        {getFieldError(errors, "host") && (
+          <p className="text-xs text-destructive">
+            {getFieldError(errors, "host")}
+          </p>
+        )}
+        {getFieldError(errors, "port") && (
+          <p className="text-xs text-destructive">
+            {getFieldError(errors, "port")}
+          </p>
+        )}
+      </div>
+      <div className="space-y-2">
+        <label className="flex items-center gap-2">
+          <Checkbox
+            checked={state.requireAuth}
+            onCheckedChange={(v) => onChange({ ...state, requireAuth: v === true })}
+            data-testid="check-vnc-require-auth-checkbox"
+          />
+          <span className="text-sm">{t("misc.vncRequireAuth")}</span>
+        </label>
+        <p className="text-xs text-muted-foreground">
+          {t("misc.vncRequireAuthHelp")}
+        </p>
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="vnc-username">{t("misc.vncUsername")}</Label>
+        <Input
+          id="vnc-username"
+          type="text"
+          autoComplete="off"
+          value={state.username}
+          onChange={(e) => onChange({ ...state, username: e.target.value })}
+          className={cn(getFieldError(errors, "username") && "border-destructive")}
+          data-testid="check-vnc-username-input"
+        />
+        {getFieldError(errors, "username") && (
+          <p className="text-xs text-destructive">
+            {getFieldError(errors, "username")}
+          </p>
+        )}
+        <p className="text-xs text-muted-foreground">
+          {t("misc.vncUsernameHelp")}
+        </p>
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="vnc-password">{t("form.passwordOptional")}</Label>
+        <Input
+          id="vnc-password"
+          type="password"
+          value={state.password}
+          onChange={(e) => onChange({ ...state, password: e.target.value })}
+          className={cn(
+            getFieldError(errors, "password") && !passwordStored && "border-destructive",
+          )}
+          data-testid="check-vnc-password-input"
+        />
+        {passwordStored && !state.password && (
+          <p className="text-xs text-muted-foreground" data-testid="vnc-password-encrypted">
+            <span className="font-mono tracking-widest">••••</span>{" "}
+            <span className="italic">{t("sip.passwordEncrypted")}</span>
+          </p>
+        )}
+        {getFieldError(errors, "password") && !passwordStored && (
+          <p className="text-xs text-destructive">
+            {getFieldError(errors, "password")}
+          </p>
+        )}
+        <p className="text-xs text-muted-foreground">
+          {t("misc.vncPasswordHelp")}
+        </p>
+      </div>
+      <div className="space-y-2">
+        <label className="flex items-center gap-2">
+          <Checkbox
+            checked={state.screenshot}
+            onCheckedChange={(v) => onChange({ ...state, screenshot: v === true })}
+            data-testid="check-vnc-screenshot-checkbox"
+          />
+          <span className="text-sm">{t("misc.vncScreenshot")}</span>
+        </label>
+      </div>
+      <div className="space-y-2">
+        <label className="flex items-center gap-2">
+          <Checkbox
+            checked={state.tlsVerify}
+            onCheckedChange={(v) => onChange({ ...state, tlsVerify: v === true })}
+            data-testid="check-vnc-tls-verify-checkbox"
+          />
+          <span className="text-sm">{t("misc.vncTlsVerify")}</span>
+        </label>
+        <p className="text-xs text-muted-foreground">
+          {t("misc.vncTlsVerifyHelp")}
+        </p>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {t("misc.vncSharedHelp")}
+      </p>
+    </>
+  );
+}
+
 // ── SIP ──
 export interface SipState {
   host: string;

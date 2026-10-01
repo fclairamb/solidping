@@ -171,6 +171,7 @@ export interface Check {
     | "sip"
     | "ntp"
     | "rdp"
+    | "vnc"
     | "prometheus"
     | "sleep";
   config?: Record<string, unknown>;
@@ -386,6 +387,7 @@ export interface CreateCheckRequest {
     | "sip"
     | "ntp"
     | "rdp"
+    | "vnc"
     | "prometheus"
     | "sleep";
   config: Record<string, unknown>;
@@ -3830,6 +3832,19 @@ export function useUpdateProfile() {
   });
 }
 
+// Sign-in email change (spec 2026-09-30-08). The server asks for the current
+// password, answers 409 when the address is taken and 403
+// INVALID_CURRENT_PASSWORD when the password is wrong.
+export function useChangeEmail() {
+  return useMutation({
+    mutationFn: (data: { email: string; currentPassword: string }) =>
+      apiFetch<{ user: { uid: string; email: string } }>("/api/v1/auth/me", {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
+  });
+}
+
 // Organization creation hook. The response carries a fresh session
 // (accessToken/refreshToken/expiresIn/tokenType) scoped to the new org —
 // the caller must adopt it (see api/client.ts setSession) before navigating
@@ -7042,6 +7057,38 @@ export function useImpersonateUser() {
           body: JSON.stringify(orgSlug ? { orgSlug } : {}),
         },
       ),
+  });
+}
+
+/** GET /api/v1/system/users/:uid (spec 2026-09-30-08). */
+export function useAdminUser(uid: string) {
+  return useQuery({
+    queryKey: ["adminUser", uid],
+    queryFn: () =>
+      apiFetch<AdminUserRow>(`/api/v1/system/users/${encodeURIComponent(uid)}`),
+  });
+}
+
+/** PATCH /api/v1/system/users/:uid (spec 2026-09-30-08). */
+export interface AdminUpdateUserResponse {
+  uid: string;
+  email: string;
+  name: string;
+  emailVerified: boolean;
+}
+
+export function useAdminUpdateUser(uid: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { email?: string }) =>
+      apiFetch<AdminUpdateUserResponse>(
+        `/api/v1/system/users/${encodeURIComponent(uid)}`,
+        { method: "PATCH", body: JSON.stringify(data) },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["adminUser", uid] });
+      queryClient.invalidateQueries({ queryKey: ["adminUsers"] });
+    },
   });
 }
 
