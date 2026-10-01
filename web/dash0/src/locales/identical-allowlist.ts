@@ -71,6 +71,7 @@ export const DASH0_IDENTICAL_ALLOWLIST: IdenticalAllowlist = {
   "checks:types.sip": ["fr", "de", "es"], // "SIP"
   "checks:types.ntp": ["fr", "de", "es"], // "NTP"
   "checks:types.rdp": ["fr", "de", "es"], // "RDP"
+  "checks:types.vnc": ["fr", "de", "es"], // "VNC"
   "checks:types.udp": ["fr", "de", "es"], // "UDP"
   "checks:types.ssh": ["fr", "de", "es"], // "SSH"
   "checks:types.pop3": ["fr", "de", "es"], // "POP3"

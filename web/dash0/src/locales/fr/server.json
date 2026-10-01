@@ -468,6 +468,22 @@
       "confirm": "Voir en tant qu'utilisateur",
       "cancel": "Annuler",
       "error": "Impossible de démarrer la session : {{message}}"
+    },
+    "edit": {
+      "button": "Modifier l'utilisateur",
+      "back": "Retour aux utilisateurs",
+      "title": "Modifier {{email}}",
+      "description": "Changez l'adresse avec laquelle cet utilisateur se connecte. Aucun mot de passe ne lui est demandé.",
+      "email": "Adresse e-mail",
+      "emailHelp": "Les sessions de l'utilisateur sont déconnectées, la nouvelle adresse est marquée non vérifiée, et l'ancienne adresse est prévenue du changement.",
+      "save": "Enregistrer",
+      "saved": "Adresse modifiée.",
+      "notFound": "Cet utilisateur n'existe pas.",
+      "loadError": "Impossible de charger l'utilisateur.",
+      "errors": {
+        "conflict": "Cette adresse est déjà utilisée par un autre compte.",
+        "invalid": "Saisissez une adresse e-mail valide."
+      }
     }
   },
   "notifications": {

@@ -1153,6 +1153,12 @@ type AuthConfig struct {
 	// POST /api/v1/system/users/:uid/impersonate answers 404. snake_case, so
 	// SP_AUTH_IMPERSONATION_ENABLED is bound by hand in applyAuthEnv.
 	ImpersonationEnabled bool `koanf:"impersonation_enabled"`
+	// AdminEmail is the email of the super admin seeded on the first start of
+	// an empty database (spec 2026-09-30-08). Empty means defaults.Email
+	// (admin@solidping.io). It is read only when no organization exists yet;
+	// the seeded password stays the public default with must_change_password.
+	// Env: SP_ADMIN_EMAIL (or SP_AUTH_ADMIN_EMAIL), bound in applyAuthEnv.
+	AdminEmail string `koanf:"admin_email"`
 }
 
 // PasswordConfig selects the password-hashing algorithm and its cost
@@ -2461,6 +2467,13 @@ func applyAuthEnv(cfg *AuthConfig) {
 	// auth.impersonation.enabled and bind nothing.
 	if v, err := strconv.ParseBool(strings.TrimSpace(os.Getenv("SP_AUTH_IMPERSONATION_ENABLED"))); err == nil {
 		cfg.ImpersonationEnabled = v
+	}
+	// auth.admin_email: SP_ADMIN_EMAIL is the documented short name.
+	if v := strings.TrimSpace(os.Getenv("SP_AUTH_ADMIN_EMAIL")); v != "" {
+		cfg.AdminEmail = v
+	}
+	if v := strings.TrimSpace(os.Getenv("SP_ADMIN_EMAIL")); v != "" {
+		cfg.AdminEmail = v
 	}
 }
 

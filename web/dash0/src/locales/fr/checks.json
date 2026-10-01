@@ -452,6 +452,8 @@
     "ntpDescription": "Surveiller les serveurs de temps NTP",
     "rdp": "RDP",
     "rdpDescription": "Surveiller les serveurs RDP (Bureau à distance)",
+    "vnc": "VNC",
+    "vncDescription": "Surveiller les serveurs VNC (RFB)",
     "sleep": "Attente",
     "sleepDescription": "Attendre une durée fixe (synthétique/test, sans I/O réseau)",
     "email": "E-mail",
@@ -1157,6 +1159,15 @@
     "rdpEndSessionDisconnect": "Déconnexion (la session reste sur le serveur)",
     "rdpEndSessionHelp": "La déconnexion supprime la session du serveur. La déconnexion réseau la laisse tourner jusqu'à ce que la politique d'inactivité du serveur la termine : l'exécution suivante s'y rattache (vérifications plus rapides).",
     "rdpCaveatsHelp": "Chaque exécution authentifiée est une vraie connexion Windows interactive : chargement d'un profil utilisateur, scripts d'ouverture de session et GPO, consommation possible d'une licence RDS, déconnexion possible d'un utilisateur réel sur un serveur à session unique, et une trace 4624/4634 dans le journal de sécurité à chaque exécution. Utilisez un compte de supervision dédié, jamais le compte d'une personne.",
+    "vncRequireAuth": "Exiger une authentification",
+    "vncRequireAuthHelp": "En panne quand le serveur propose le type de sécurité None : n'importe qui pourrait se connecter au bureau sans mot de passe.",
+    "vncPasswordHelp": "Avec un mot de passe, la vérification se connecte aussi, avec la méthode la plus forte proposée par le serveur : VeNCrypt (TLS), Apple Remote Desktop (nécessite un nom d’utilisateur) ou l’authentification VNC (seuls les 8 premiers caractères comptent). Laissez vide pour ne vérifier que la négociation et les méthodes d’authentification proposées.",
+    "vncUsername": "Nom d’utilisateur (facultatif)",
+    "vncUsernameHelp": "Utilisé par VeNCrypt Plain (TigerVNC, libvirt) et Apple Remote Desktop (Partage d’écran macOS). Nécessite un mot de passe.",
+    "vncTlsVerify": "Vérifier le certificat TLS",
+    "vncTlsVerifyHelp": "VeNCrypt uniquement. Désactivé par défaut : les certificats VeNCrypt sont presque toujours auto-signés. Le certificat est rapporté dans tous les cas.",
+    "vncScreenshot": "Capturer le bureau après la connexion",
+    "vncSharedHelp": "La vérification se connecte en mode partagé : elle ne déconnecte jamais un client déjà connecté. Les workers doivent avoir accès au réseau de l'hôte VNC (souvent interne).",
     "privateLocationRegion": "Emplacement privé",
     "privateLocationHelp": "SolidPing a créé ce check avec l'emplacement. Il surveille les agents de l'emplacement et passe en panne quand aucun n'est connecté. L'emplacement surveillé ne peut pas être changé.",
     "defaultsToHost": "hôte par défaut",
@@ -1369,6 +1380,7 @@
     "passwordRequiredWithUsername": "Le mot de passe est requis quand un nom d'utilisateur est défini.",
     "usernameRequiredWithPassword": "Le nom d'utilisateur est requis quand un mot de passe est défini.",
     "screenshotRequiresCredentials": "La capture d'écran nécessite un nom d'utilisateur et un mot de passe (une connexion authentifiée).",
+    "screenshotRequiresPassword": "La capture d’écran nécessite un mot de passe.",
     "usernameRequiredRegister": "Le nom d'utilisateur est requis en mode enregistrement",
     "passwordRequiredRegister": "Le mot de passe est requis en mode enregistrement",
     "scriptRequired": "Le script est requis",
@@ -1383,6 +1395,8 @@
     "invalidIp_one": "Adresse {{family}} invalide : {{values}}",
     "invalidIp_other": "Adresses {{family}} invalides : {{values}}",
     "invalidMetadataKeys_one": "Clé de métadonnées invalide : {{keys}} (lettres minuscules, chiffres, '-', '.' ou '_' ; 'grpc-' et '-bin' sont réservés)",
-    "invalidMetadataKeys_other": "Clés de métadonnées invalides : {{keys}} (lettres minuscules, chiffres, '-', '.' ou '_' ; 'grpc-' et '-bin' sont réservés)"
+    "invalidMetadataKeys_other": "Clés de métadonnées invalides : {{keys}} (lettres minuscules, chiffres, '-', '.' ou '_' ; 'grpc-' et '-bin' sont réservés)",
+    "usernameRequiresPassword": "Un nom d’utilisateur nécessite un mot de passe.",
+    "vncUsernameTooLong": "Le nom d’utilisateur doit faire au plus {{max}} octets."
   }
 }

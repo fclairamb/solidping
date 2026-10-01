@@ -98,6 +98,9 @@ exactly one login. SolidPing takes you straight to a "set a new password"
 screen, and the account can do nothing else until you complete it.
 :::
 
+Change the seeded admin email from **Account > Profile** after first login, or set
+`SP_ADMIN_EMAIL` before the first start. See [Changing an email address](/configuration/authentication#changing-an-email-address).
+
 ## Next Steps
 
 - [Docker Installation](/installation/docker) - Recommended for most users

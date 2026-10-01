@@ -468,6 +468,22 @@
       "confirm": "View as user",
       "cancel": "Cancel",
       "error": "Could not start the session: {{message}}"
+    },
+    "edit": {
+      "button": "Edit user",
+      "back": "Back to users",
+      "title": "Edit {{email}}",
+      "description": "Change the address this user signs in with. No password is asked of the user.",
+      "email": "Email",
+      "emailHelp": "The user's sessions are signed out, the new address is marked unverified, and the old address is told about the change.",
+      "save": "Save",
+      "saved": "Email changed.",
+      "notFound": "This user does not exist.",
+      "loadError": "Failed to load the user.",
+      "errors": {
+        "conflict": "This email address is already used by another account.",
+        "invalid": "Enter a valid email address."
+      }
     }
   },
   "notifications": {

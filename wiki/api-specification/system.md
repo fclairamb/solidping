@@ -167,3 +167,15 @@ carries `passwordHash`, `totpSecret` or `totpRecoveryCodes`. `hasPassword` is
 all versus being SSO/OAuth-only. `orgs` excludes a soft-deleted user (the row
 itself is absent), a soft-deleted membership, and a membership whose
 organization is soft-deleted; a user with no org has `orgs: []`.
+
+### GET /api/v1/system/users/:uid
+One row of the directory, same shape as a `data[]` entry. `404` for an unknown
+or deleted user. Super admin only.
+
+### PATCH /api/v1/system/users/:uid
+Super-admin user edit (spec 2026-09-30-08). Body `{ "email": "..." }` (only
+field today). No password is asked of the target. Same normalization, `400`,
+`409` and side effects as the self-service change on `PATCH /auth/me`, except
+that every session of the target is revoked (the caller's own is kept when
+they edit themselves) and `changed_by` is `super_admin`. `404` for an unknown
+user.

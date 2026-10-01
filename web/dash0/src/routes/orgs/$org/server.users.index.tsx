@@ -1,7 +1,14 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ChevronLeft, ChevronRight, Eye, Loader2, Search } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  Loader2,
+  Pencil,
+  Search,
+} from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -45,7 +52,7 @@ import { useDebounce } from "@/lib/use-debounce";
 
 const PAGE_SIZE = 50;
 
-export const Route = createFileRoute("/orgs/$org/server/users")({
+export const Route = createFileRoute("/orgs/$org/server/users/")({
   component: UsersListPage,
 });
 
@@ -118,7 +125,7 @@ function UsersListPage() {
                     <TableHead>{t("users.columns.flags")}</TableHead>
                     <TableHead>{t("users.columns.lastActive")}</TableHead>
                     <TableHead>{t("users.columns.created")}</TableHead>
-                    <TableHead className="w-12">
+                    <TableHead className="w-24">
                       <span className="sr-only">{t("users.columns.actions")}</span>
                     </TableHead>
                   </TableRow>
@@ -338,7 +345,25 @@ function UserRow({ org, row }: { org: string; row: AdminUserRow }) {
         <TimeAgo date={row.createdAt} />
       </TableCell>
       <TableCell className="text-right">
-        {canImpersonate(row, user) ? <ImpersonateButton org={org} row={row} /> : null}
+        <div className="flex justify-end gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9"
+            asChild
+            title={t("users.edit.button")}
+          >
+            <Link
+              to="/orgs/$org/server/users/$uid"
+              params={{ org, uid: row.uid }}
+              aria-label={t("users.edit.button")}
+              data-testid={`users-edit-${row.uid}`}
+            >
+              <Pencil className="h-4 w-4" />
+            </Link>
+          </Button>
+          {canImpersonate(row, user) ? <ImpersonateButton org={org} row={row} /> : null}
+        </div>
       </TableCell>
     </TableRow>
   );
