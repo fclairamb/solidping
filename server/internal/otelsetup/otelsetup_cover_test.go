@@ -22,8 +22,8 @@ func TestProviderStartDisabled(t *testing.T) {
 	p.Shutdown(context.Background())
 }
 
+//nolint:paralleltest // providers set process-global otel state
 func TestProviderStartProtocols(t *testing.T) {
-	// Not parallel: providers set process-global otel state.
 	tests := []struct {
 		name     string
 		protocol string
@@ -58,6 +58,7 @@ func TestProviderStartProtocols(t *testing.T) {
 	}
 }
 
+//nolint:paralleltest // providers set process-global otel state
 func TestProviderStartNoSignals(t *testing.T) {
 	p := NewProvider(config.OTelConfig{Enabled: true, Endpoint: "127.0.0.1:1"})
 	lp, err := p.Start(context.Background())

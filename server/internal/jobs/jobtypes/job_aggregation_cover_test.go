@@ -191,7 +191,6 @@ func TestRetentionFromDBParam(t *testing.T) {
 	require.Positive(t, d)
 }
 
-//nolint:paralleltest // t.Setenv cannot be combined with t.Parallel
 func TestRetentionFromEnv(t *testing.T) {
 	const envVar = "SP_TEST_COVER_RETENTION"
 
@@ -219,7 +218,6 @@ func TestRetentionFromEnv(t *testing.T) {
 	}
 }
 
-//nolint:paralleltest // t.Setenv cannot be combined with t.Parallel
 func TestResolveRetentionTierPrecedence(t *testing.T) {
 	ctx := context.Background()
 	key := systemconfig.KeyPerfAggRetentionRawHours

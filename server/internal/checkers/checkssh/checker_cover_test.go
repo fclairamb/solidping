@@ -28,12 +28,14 @@ func TestSSHTypeValidateSamples(t *testing.T) {
 	}))
 }
 
+var errPlain = errors.New("plain")
+
 func TestIsExitError(t *testing.T) {
 	t.Parallel()
 
 	var target *ssh.ExitError
 
-	require.False(t, isExitError(errors.New("plain"), &target))
+	require.False(t, isExitError(errPlain, &target))
 	require.True(t, isExitError(&ssh.ExitError{}, &target))
 	require.NotNil(t, target)
 }
@@ -53,7 +55,7 @@ func TestExecuteWithAuthConnectFailures(t *testing.T) {
 	t.Parallel()
 
 	// Refused connection.
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	ln, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 
 	addr := ln.Addr().String()
@@ -63,7 +65,7 @@ func TestExecuteWithAuthConnectFailures(t *testing.T) {
 		&SSHConfig{Username: "u", Password: "p", ExpectedFingerprint: "SHA256:abc"}, time.Second, map[string]any{})
 	require.Equal(t, checkerdef.StatusDown, res.Status)
 
-	// Cancelled context is reported as a timeout.
+	// Canceled context is reported as a timeout.
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 

@@ -28,7 +28,8 @@ const coverItem = `{"uid":"` + smokeUID + `","slug":"acme","name":"acme","type":
 	`"resolvedAt":"2026-01-01T02:00:00Z","failureCount":3,"message":"acme","visibility":"public"}`
 
 func coverListBody() string {
-	return `{"status":"ok","version":"1.0.0","data":[` + coverItem + `,` + coverItem + `],"pagination":{"cursor":"c","total":2},"total":2}`
+	return `{"status":"ok","version":"1.0.0","data":[` + coverItem + `,` + coverItem +
+		`],"pagination":{"cursor":"c","total":2},"total":2}`
 }
 
 func coverObjBody(dataAsObject bool) string {
@@ -41,8 +42,6 @@ func coverObjBody(dataAsObject bool) string {
 
 // runRouted drives every leaf command against a fake server whose body shape
 // depends on whether the request path targets a single resource.
-//
-//nolint:paralleltest // process-global stdio and HOME
 func runRouted(t *testing.T, format string, allFlags bool, dataAsObject bool) {
 	t.Helper()
 

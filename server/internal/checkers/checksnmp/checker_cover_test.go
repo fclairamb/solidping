@@ -70,7 +70,11 @@ func TestBuildClient(t *testing.T) {
 		{"v2c", SNMPConfig{Host: "h"}, gosnmp.Version2c, "public", 0},
 		{"v3 noauth", SNMPConfig{Host: "h", Username: "u"}, gosnmp.Version3, "", gosnmp.NoAuthNoPriv},
 		{"v3 auth", SNMPConfig{Username: "u", AuthProtocol: "SHA"}, gosnmp.Version3, "", gosnmp.AuthNoPriv},
-		{"v3 priv", SNMPConfig{Username: "u", AuthProtocol: "SHA", PrivProtocol: "AES"}, gosnmp.Version3, "", gosnmp.AuthPriv},
+		{
+			"v3 priv",
+			SNMPConfig{Username: "u", AuthProtocol: "SHA", PrivProtocol: "AES"},
+			gosnmp.Version3, "", gosnmp.AuthPriv,
+		},
 	}
 
 	versions := map[string]string{"v1": "1", "v1 community": "1", "v2c": "2c"}
@@ -181,6 +185,8 @@ func TestBuildSuccessResult(t *testing.T) {
 	require.NotContains(t, res.Output, "match")
 }
 
+var errStubBoom = errors.New("boom")
+
 func TestErrorHandlers(t *testing.T) {
 	t.Parallel()
 
@@ -189,7 +195,7 @@ func TestErrorHandlers(t *testing.T) {
 	dead, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	err := errors.New("boom")
+	err := errStubBoom
 
 	res := handleConnectError(live, err, cfg, time.Now())
 	require.Equal(t, checkerdef.StatusDown, res.Status)
@@ -209,12 +215,15 @@ func TestErrorHandlers(t *testing.T) {
 func TestExecuteSilentAgent(t *testing.T) {
 	t.Parallel()
 
-	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
+	pc, err := (&net.ListenConfig{}).ListenPacket(context.Background(), "udp", "127.0.0.1:0")
 	require.NoError(t, err)
 
 	defer func() { _ = pc.Close() }()
 
-	port := pc.LocalAddr().(*net.UDPAddr).Port
+	udpAddr, ok := pc.LocalAddr().(*net.UDPAddr)
+	require.True(t, ok)
+
+	port := udpAddr.Port
 
 	c := &SNMPChecker{}
 	res, err := c.Execute(context.Background(), &SNMPConfig{

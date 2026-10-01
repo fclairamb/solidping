@@ -18,16 +18,23 @@ import (
 	"github.com/fclairamb/solidping/server/internal/statuspagelock"
 )
 
+var (
+	errBoom         = errors.New("boom")
+	errSQLiteUnique = errors.New("UNIQUE constraint failed: x.y")
+	errPGDuplicate  = errors.New("duplicate key value violates")
+	errSQLState     = errors.New("ERROR (SQLSTATE 23505)")
+)
+
 type pubHandlerEnv struct {
 	*pubSetup
 	router *httpx.Router
 	h      *incidentpublications.Handler
 }
 
-func newPubHandlerEnv(t *testing.T, opts setupOptions) *pubHandlerEnv {
+func newPubHandlerEnv(t *testing.T) *pubHandlerEnv {
 	t.Helper()
 
-	setup := newPubSetup(t, opts)
+	setup := newPubSetup(t, setupOptions{})
 	handler := incidentpublications.NewHandler(setup.pubs, &config.Config{})
 
 	router := httpx.New()
@@ -65,7 +72,7 @@ func (e *pubHandlerEnv) pagesPath() string {
 func TestHandlerListQueryValidation(t *testing.T) {
 	t.Parallel()
 
-	env := newPubHandlerEnv(t, setupOptions{})
+	env := newPubHandlerEnv(t)
 
 	tests := []struct {
 		name  string
@@ -101,7 +108,7 @@ func TestHandlerPublicationLifecycle(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
-	env := newPubHandlerEnv(t, setupOptions{})
+	env := newPubHandlerEnv(t)
 
 	// Create
 	rec := env.do(t, http.MethodPost, env.pagesPath(),
@@ -136,7 +143,7 @@ func TestHandlerPublicationLifecycle(t *testing.T) {
 func TestHandlerWriteErrors(t *testing.T) {
 	t.Parallel()
 
-	env := newPubHandlerEnv(t, setupOptions{})
+	env := newPubHandlerEnv(t)
 	base := env.pagesPath()
 
 	tests := []struct {
@@ -148,19 +155,27 @@ func TestHandlerWriteErrors(t *testing.T) {
 	}{
 		{"create bad json", http.MethodPost, base, `{`, http.StatusUnprocessableEntity},
 		{"create empty title", http.MethodPost, base, `{"title":""}`, http.StatusUnprocessableEntity},
-		{"create long title", http.MethodPost, base, `{"title":"` + string(bytes.Repeat([]byte("a"), 300)) + `"}`,
-			http.StatusUnprocessableEntity},
+		{
+			"create long title", http.MethodPost, base, `{"title":"` + string(bytes.Repeat([]byte("a"), 300)) + `"}`,
+			http.StatusUnprocessableEntity,
+		},
 		{"create invalid state", http.MethodPost, base, `{"title":"x","state":"bogus"}`, http.StatusUnprocessableEntity},
-		{"create invalid severity", http.MethodPost, base, `{"title":"x","severity":"bogus"}`,
-			http.StatusUnprocessableEntity},
-		{"create unknown incident", http.MethodPost, base, `{"title":"x","incidentUid":"nope"}`,
-			http.StatusNotFound},
+		{
+			"create invalid severity", http.MethodPost, base, `{"title":"x","severity":"bogus"}`,
+			http.StatusUnprocessableEntity,
+		},
+		{
+			"create unknown incident", http.MethodPost, base, `{"title":"x","incidentUid":"nope"}`,
+			http.StatusNotFound,
+		},
 		{"get unknown", http.MethodGet, base + "/nope", "", http.StatusNotFound},
 		{"update bad json", http.MethodPatch, base + "/nope", `{`, http.StatusUnprocessableEntity},
 		{"update unknown", http.MethodPatch, base + "/nope", `{"title":"x"}`, http.StatusNotFound},
 		{"append bad json", http.MethodPost, base + "/nope/updates", `{`, http.StatusUnprocessableEntity},
-		{"append unknown", http.MethodPost, base + "/nope/updates",
-			`{"kind":"info","bodyMarkdown":"x"}`, http.StatusNotFound},
+		{
+			"append unknown", http.MethodPost, base + "/nope/updates",
+			`{"kind":"info","bodyMarkdown":"x"}`, http.StatusNotFound,
+		},
 		{"unknown org", http.MethodGet, "/api/v1/orgs/nope/status-pages/x/incidents", "", http.StatusNotFound},
 	}
 
@@ -178,7 +193,7 @@ func TestHandlerAppendUpdateValidation(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
-	env := newPubHandlerEnv(t, setupOptions{})
+	env := newPubHandlerEnv(t)
 
 	rec := env.do(t, http.MethodPost, env.pagesPath(), `{"title":"Outage"}`)
 	r.Equal(http.StatusCreated, rec.Code, rec.Body.String())
@@ -202,8 +217,8 @@ func TestHandlerAppendUpdateValidation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			rec := env.do(t, http.MethodPost, path+"/updates", tt.body)
-			require.Equal(t, http.StatusUnprocessableEntity, rec.Code, rec.Body.String())
+			resp := env.do(t, http.MethodPost, path+"/updates", tt.body)
+			require.Equal(t, http.StatusUnprocessableEntity, resp.Code, resp.Body.String())
 		})
 	}
 
@@ -215,7 +230,7 @@ func TestHandlerIncidentPublications(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
-	env := newPubHandlerEnv(t, setupOptions{})
+	env := newPubHandlerEnv(t)
 
 	env.submit(models.ResultStatusDown)
 
@@ -261,7 +276,7 @@ func TestHandlerIncidentPublications(t *testing.T) {
 func TestIncidentPublicationsServiceValidatesInput(t *testing.T) {
 	t.Parallel()
 
-	env := newPubHandlerEnv(t, setupOptions{})
+	env := newPubHandlerEnv(t)
 	ctx := t.Context()
 
 	_, err := env.pubs.ListForIncident(ctx, "nope", "x")
@@ -294,7 +309,7 @@ func TestHandlerErrorMapping(t *testing.T) {
 		{"body", incidentpublications.ErrBodyRequired, http.StatusUnprocessableEntity},
 		{"body long", incidentpublications.ErrBodyTooLong, http.StatusUnprocessableEntity},
 		{"wrapped", fmt.Errorf("ctx: %w", incidentpublications.ErrIncidentNotFound), http.StatusNotFound},
-		{"unknown", errors.New("boom"), http.StatusInternalServerError},
+		{"unknown", errBoom, http.StatusInternalServerError},
 	}
 
 	for _, tt := range tests {
@@ -320,10 +335,10 @@ func TestIsUniqueViolation(t *testing.T) {
 		want bool
 	}{
 		{"nil", nil, false},
-		{"sqlite", errors.New("UNIQUE constraint failed: x.y"), true},
-		{"postgres", errors.New("duplicate key value violates"), true},
-		{"sqlstate", errors.New("ERROR (SQLSTATE 23505)"), true},
-		{"other", errors.New("boom"), false},
+		{"sqlite", errSQLiteUnique, true},
+		{"postgres", errPGDuplicate, true},
+		{"sqlstate", errSQLState, true},
+		{"other", errBoom, false},
 	}
 
 	for _, tt := range tests {

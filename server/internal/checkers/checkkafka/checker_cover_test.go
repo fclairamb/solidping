@@ -40,7 +40,11 @@ func TestBuildSaramaConfig(t *testing.T) {
 	}{
 		{"plain no auth", KafkaConfig{}, false, "", false},
 		{"tls", KafkaConfig{TLS: true, TLSSkipVerify: true}, false, "", true},
-		{"PLAIN", KafkaConfig{SASLMechanism: "PLAIN", SASLUsername: "u", SASLPassword: "p"}, true, sarama.SASLTypePlaintext, false},
+		{
+			"PLAIN",
+			KafkaConfig{SASLMechanism: "PLAIN", SASLUsername: "u", SASLPassword: "p"},
+			true, sarama.SASLTypePlaintext, false,
+		},
 		{"SCRAM256", KafkaConfig{SASLMechanism: "SCRAM-SHA-256"}, true, sarama.SASLTypeSCRAMSHA256, false},
 		{"SCRAM512", KafkaConfig{SASLMechanism: "SCRAM-SHA-512"}, true, sarama.SASLTypeSCRAMSHA512, false},
 	}

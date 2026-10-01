@@ -19,7 +19,10 @@ func TestApplyFuncsAcceptEveryValueShape(t *testing.T) {
 	values := []any{
 		"x", "", "true", "false", "1", "42", "30s", "a,b", "https://acme.com",
 		float64(0), float64(7), float64(1.5), 3, int64(5), true, false,
-		nil, []any{"a", "b"}, []string{"c"}, map[string]any{"k": "v"},
+		nil,
+		[]any{"a", "b"},
+		[]string{"c"},
+		map[string]any{"k": "v"},
 	}
 
 	for _, def := range getKnownParameters() {

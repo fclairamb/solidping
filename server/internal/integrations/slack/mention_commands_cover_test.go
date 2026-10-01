@@ -10,6 +10,9 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
+// The subtests share the handler's respond hook (and its captured output), so they must run sequentially.
+//
+//nolint:paralleltest,tparallel // shared h.respond capture
 func TestMentionCommandsCover(t *testing.T) {
 	t.Parallel()
 
@@ -18,13 +21,17 @@ func TestMentionCommandsCover(t *testing.T) {
 
 	var got []string
 	h.respond = func(msg *MessageResponse) error {
-		text := msg.Text
+		var text strings.Builder
+
+		text.WriteString(msg.Text)
+
 		for i := range msg.Blocks {
 			if msg.Blocks[i].Text != nil {
-				text += "\n" + msg.Blocks[i].Text.Text
+				text.WriteString("\n" + msg.Blocks[i].Text.Text)
 			}
 		}
-		got = append(got, text)
+
+		got = append(got, text.String())
 
 		return nil
 	}
@@ -69,10 +76,22 @@ func TestMentionCommandsCover(t *testing.T) {
 		{"checks add missing", ev, ParsedCommand{Command: "checks", Subcommand: "add"}, "Missing URL"},
 		{"checks add fake", ev, ParsedCommand{Command: "checks", Subcommand: "add", Args: []string{"fake"}}, "added"},
 		{"checks add host", ev, ParsedCommand{Command: "checks", Subcommand: "add", Args: []string{"acme.com"}}, "added"},
-		{"checks add no team", badTeam, ParsedCommand{Command: "checks", Subcommand: "add", Args: []string{"acme.com"}}, "Failed to create"},
+		{
+			"checks add no team", badTeam,
+			ParsedCommand{Command: "checks", Subcommand: "add", Args: []string{"acme.com"}},
+			"Failed to create",
+		},
 		{"checks rm missing", ev, ParsedCommand{Command: "checks", Subcommand: "rm"}, "Missing check slug"},
-		{"checks rm no team", badTeam, ParsedCommand{Command: "checks", Subcommand: "rm", Args: []string{"x"}}, "not connected"},
-		{"checks rm unknown", ev, ParsedCommand{Command: "checks", Subcommand: "rm", Args: []string{"nonexistent"}}, "Failed to remove"},
+		{
+			"checks rm no team", badTeam,
+			ParsedCommand{Command: "checks", Subcommand: "rm", Args: []string{"x"}},
+			"not connected",
+		},
+		{
+			"checks rm unknown", ev,
+			ParsedCommand{Command: "checks", Subcommand: "rm", Args: []string{"nonexistent"}},
+			"Failed to remove",
+		},
 		{"checks rm ok", ev, ParsedCommand{Command: "checks", Subcommand: "rm", Args: []string{"gone"}}, "removed"},
 		{"results missing", ev, ParsedCommand{Command: "results"}, "Missing check"},
 		{"results no team", badTeam, ParsedCommand{Command: "results", Args: []string{"api"}}, "not connected"},
@@ -82,13 +101,29 @@ func TestMentionCommandsCover(t *testing.T) {
 		{"incidents no team", badTeam, ParsedCommand{Command: "incidents"}, "not connected"},
 		{"incidents unknown check", ev, ParsedCommand{Command: "incidents", Args: []string{"zzz"}}, "not found"},
 		{"incidents list", ev, ParsedCommand{Command: "incidents", Subcommand: "list"}, "2 incidents"},
-		{"incidents for check", ev, ParsedCommand{Command: "incidents", Flags: map[string]string{"check": "api"}}, "2 incidents"},
+		{
+			"incidents for check", ev,
+			ParsedCommand{Command: "incidents", Flags: map[string]string{"check": "api"}},
+			"2 incidents",
+		},
 		{"incidents none", ev, ParsedCommand{Command: "incidents", Args: []string{"quiet"}}, "No incidents found for check"},
 		{"config missing", ev, ParsedCommand{Command: "config"}, "Missing config option"},
 		{"config unknown", ev, ParsedCommand{Command: "config", Subcommand: "zzz"}, "Unknown config option"},
-		{"config default current", ev, ParsedCommand{Command: "config", Subcommand: "default-channel"}, "Default channel updated"},
-		{"config default ref", ev, ParsedCommand{Command: "config", Subcommand: "default-channel", Args: []string{"<#C-NEW|alerts>"}}, "Default channel updated"},
-		{"config default invalid", ev, ParsedCommand{Command: "config", Subcommand: "default-channel", Args: []string{"alerts"}}, "Invalid channel"},
+		{
+			"config default current", ev,
+			ParsedCommand{Command: "config", Subcommand: "default-channel"},
+			"Default channel updated",
+		},
+		{
+			"config default ref", ev,
+			ParsedCommand{Command: "config", Subcommand: "default-channel", Args: []string{"<#C-NEW|alerts>"}},
+			"Default channel updated",
+		},
+		{
+			"config default invalid", ev,
+			ParsedCommand{Command: "config", Subcommand: "default-channel", Args: []string{"alerts"}},
+			"Invalid channel",
+		},
 		{"config default no team", badTeam, ParsedCommand{Command: "config", Subcommand: "default-channel"}, "Failed to set"},
 	}
 

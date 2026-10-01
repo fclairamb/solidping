@@ -457,8 +457,10 @@ func TestEscalationPageAllAdmins(t *testing.T) {
 	}{
 		{name: "admin gets the fallback email", role: models.MemberRoleAdmin, wantEmails: 1},
 		{name: "plain member is not paged", role: models.MemberRoleViewer, wantEmails: 0},
-		{name: "sms-only severity sends no email", role: models.MemberRoleAdmin,
-			filter: map[string]bool{channelTokenSMS: true}, wantEmails: 0},
+		{
+			name: "sms-only severity sends no email", role: models.MemberRoleAdmin,
+			filter: map[string]bool{channelTokenSMS: true}, wantEmails: 0,
+		},
 	}
 
 	for _, tt := range tests {

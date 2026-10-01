@@ -11,6 +11,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// Subtests are order-dependent (app_uninstalled removes the workspace connection), so they run sequentially.
+//
+//nolint:paralleltest,tparallel // order-dependent subtests sharing one service
 func TestDispatchEventCover(t *testing.T) {
 	t.Parallel()
 
@@ -106,7 +109,9 @@ func TestClientMethodsCover(t *testing.T) {
 	}
 
 	require.NoError(t, c.UpdateMessage(ctx, UpdateMessageOptions{Channel: "C", TS: "1", Message: msg}))
-	require.NoError(t, c.UpdateMessage(ctx, UpdateMessageOptions{Channel: "C", TS: "1", Message: &MessageResponse{Text: "x"}}))
+	require.NoError(t, c.UpdateMessage(ctx, UpdateMessageOptions{
+		Channel: "C", TS: "1", Message: &MessageResponse{Text: "x"},
+	}))
 	require.NoError(t, c.PostEphemeral(ctx, "C", "U", msg))
 	require.NoError(t, c.PostEphemeral(ctx, "C", "U", &MessageResponse{Text: "x"}))
 	require.NoError(t, c.UnfurlLinks(ctx, "C", "1", map[string]Unfurl{"u": {}}))

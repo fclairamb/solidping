@@ -44,11 +44,19 @@ func TestDispatchCommandCover(t *testing.T) {
 		{"checks add invalid", Command{Command: "checks", Subcommand: "add", Args: []string{"http://"}}, "Invalid URL"},
 		{"checks add blank", Command{Command: "check", Args: []string{"  "}}, "Invalid URL"},
 		{"checks add ok", Command{Command: "check", Args: []string{"acme.com"}}, "created"},
-		{"checks add unconnected", Command{Command: "check", GuildID: "G-NOPE", Args: []string{"acme.com"}}, "Failed to create"},
+		{
+			"checks add unconnected",
+			Command{Command: "check", GuildID: "G-NOPE", Args: []string{"acme.com"}},
+			"Failed to create",
+		},
 		{"checks list", Command{Command: "checks", Subcommand: "ls"}, "checks"},
 		{"checks list unconnected", Command{Command: "checks", GuildID: "G-NOPE"}, "not connected"},
 		{"checks rm missing", Command{Command: "checks", Subcommand: "rm"}, "Missing check slug"},
-		{"checks rm unconnected", Command{Command: "checks", Subcommand: "rm", GuildID: "G-NOPE", Args: []string{"x"}}, "not connected"},
+		{
+			"checks rm unconnected",
+			Command{Command: "checks", Subcommand: "rm", GuildID: "G-NOPE", Args: []string{"x"}},
+			"not connected",
+		},
 		{"checks rm unknown", Command{Command: "checks", Subcommand: "delete", Args: []string{"zzz"}}, "Failed to remove"},
 		{"checks rm ok", Command{Command: "checks", Subcommand: "remove", Args: []string{"gone"}}, "removed"},
 		{"checks bad sub", Command{Command: "checks", Subcommand: "zzz"}, "Unknown checks subcommand"},
@@ -60,13 +68,19 @@ func TestDispatchCommandCover(t *testing.T) {
 		{"incidents none", Command{Command: "incidents", Args: []string{"quiet"}}, "No incidents"},
 		{"config usage", Command{Command: "config"}, "Usage"},
 		{"config no args", Command{Command: "config", Subcommand: "default-channel"}, "Usage"},
-		{"config bad channel", Command{Command: "config", Subcommand: "default-channel", Args: []string{"nope"}}, "Could not set that channel"},
+		{
+			"config bad channel",
+			Command{Command: "config", Subcommand: "default-channel", Args: []string{"nope"}},
+			"Could not set that channel",
+		},
 		{"help", Command{Command: "help"}, "SolidPing"},
 		{"unknown", Command{Command: "zzz"}, "Unknown command"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			cmd := tt.cmd
 			if cmd.GuildID == "" {
 				cmd.GuildID = guild

@@ -26,6 +26,8 @@ type coverEnv struct {
 	handler *integrations.Handler
 }
 
+var errCoverBoom = errors.New("boom")
+
 func newCoverEnv(t *testing.T, slug string) *coverEnv {
 	t.Helper()
 
@@ -246,8 +248,8 @@ func TestHandlerIdentities(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		rec := env.do(t, "admin", tt.method, tt.path, tt.body)
-		r.Equal(tt.code, rec.Code, "%s: %s", tt.name, rec.Body.String())
+		resp := env.do(t, "admin", tt.method, tt.path, tt.body)
+		r.Equal(tt.code, resp.Code, "%s: %s", tt.name, resp.Body.String())
 	}
 
 	// Claim conflict: alice owns U1 after sync.
@@ -301,7 +303,7 @@ func TestHandlerErrorMappings(t *testing.T) {
 		{"member", integrations.ErrIdentityMemberNotFound, http.StatusNotFound},
 		{"claimed", integrations.ErrIdentityAlreadyClaimed, http.StatusConflict},
 		{"wrapped", fmt.Errorf("x: %w", integrations.ErrConnectionNotFound), http.StatusNotFound},
-		{"unknown", errors.New("boom"), http.StatusInternalServerError},
+		{"unknown", errCoverBoom, http.StatusInternalServerError},
 	}
 
 	for _, tt := range tests {

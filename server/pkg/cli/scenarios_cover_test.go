@@ -23,7 +23,7 @@ type coverRoute struct {
 // coverRun executes `sp <args>` against a fake server answering with routes.
 // It returns the command error. Stdio is silenced.
 //
-//nolint:paralleltest,thelper // process-global stdio and HOME
+//nolint:thelper // process-global stdio and HOME
 func coverRun(t *testing.T, routes []coverRoute, args ...string) error {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -76,6 +76,7 @@ const (
 	cts   = "2026-01-01T00:00:00Z"
 )
 
+//nolint:paralleltest,lll // coverRun swaps process-global stdio and HOME; table rows mirror CLI argv
 func TestCLIScenariosCover(t *testing.T) {
 	edge := `{"uid":"` + cuid + `","kind":"hard","description":"d","parentCheck":{"uid":"` + cuid2 +
 		`","slug":"parent","name":"Parent"},"childCheck":{"uid":"` + cuid + `","slug":"child","name":"Child"}}`
@@ -143,8 +144,11 @@ func TestCLIScenariosCover(t *testing.T) {
 		{"deps update none", depRoutes, []string{"checks", "deps", "update", "child", "parent"}},
 		{"deps update missing", depRoutes, []string{"checks", "deps", "update", "child", "zzz", "--kind", "soft"}},
 		{"deps update noarg", depRoutes, []string{"checks", "deps", "update", "child"}},
-		{"deps update 500", []coverRoute{{"GET", "/dependencies", 200, deps}, {"PATCH", "", 500, `{"title":"x"}`}},
-			[]string{"checks", "deps", "update", "child", "parent", "--kind", "soft"}},
+		{
+			"deps update 500",
+			[]coverRoute{{"GET", "/dependencies", 200, deps}, {"PATCH", "", 500, `{"title":"x"}`}},
+			[]string{"checks", "deps", "update", "child", "parent", "--kind", "soft"},
+		},
 		{"deps graph", ok(graph), []string{"checks", "deps", "graph"}},
 		{"deps graph json", ok(graph), []string{"-o", "json", "checks", "deps", "graph"}},
 		{"deps graph empty", ok(`{"data":{"edges":[]}}`), []string{"checks", "deps", "graph"}},
@@ -153,12 +157,21 @@ func TestCLIScenariosCover(t *testing.T) {
 		{"deps set json", depRoutes, []string{"checks", "deps", "set", "child", "--from", setJSON}},
 		{"deps set bad", depRoutes, []string{"checks", "deps", "set", "child", "--from", bad}},
 		{"deps set missing file", depRoutes, []string{"checks", "deps", "set", "child", "--from", filepath.Join(dir, "none")}},
-		{"deps set put 500", []coverRoute{{"GET", "/checks/child", 200, check}, {"PUT", "", 500, `{}`}},
-			[]string{"checks", "deps", "set", "child", "--from", setYAML}},
-		{"deps set put 400", []coverRoute{{"GET", "/checks/child", 200, check}, {"PUT", "", 204, ``}},
-			[]string{"checks", "deps", "set", "child", "--from", setYAML}},
-		{"deps set nocheck", []coverRoute{{"GET", "/checks/child", 404, `{}`}},
-			[]string{"checks", "deps", "set", "child", "--from", setYAML}},
+		{
+			"deps set put 500",
+			[]coverRoute{{"GET", "/checks/child", 200, check}, {"PUT", "", 500, `{}`}},
+			[]string{"checks", "deps", "set", "child", "--from", setYAML},
+		},
+		{
+			"deps set put 400",
+			[]coverRoute{{"GET", "/checks/child", 200, check}, {"PUT", "", 204, ``}},
+			[]string{"checks", "deps", "set", "child", "--from", setYAML},
+		},
+		{
+			"deps set nocheck",
+			[]coverRoute{{"GET", "/checks/child", 404, `{}`}},
+			[]string{"checks", "deps", "set", "child", "--from", setYAML},
+		},
 		{"deps set noarg", nil, []string{"checks", "deps", "set", "--from", setYAML}},
 
 		{"validate single", ok(`{"valid":true}`), []string{"checks", "validate", singleCheck}},
@@ -170,15 +183,19 @@ func TestCLIScenariosCover(t *testing.T) {
 		{"validate doc json", nil, []string{"-o", "json", "checks", "validate", doc}},
 		{"validate missing", nil, []string{"checks", "validate", filepath.Join(dir, "none")}},
 
-		{"maint create", created(window), []string{"maintenance-windows", "create", "--title", "t", "--start", cts, "--end", "2026-01-01T01:00:00Z",
-			"--description", "d", "--recurrence", "weekly", "--recurrence-end", "2026-06-01T00:00:00Z"}},
+		{"maint create", created(window), []string{
+			"maintenance-windows", "create", "--title", "t", "--start", cts, "--end", "2026-01-01T01:00:00Z",
+			"--description", "d", "--recurrence", "weekly", "--recurrence-end", "2026-06-01T00:00:00Z",
+		}},
 		{"maint create json", created(window), []string{"-o", "json", "maintenance-windows", "create", "--title", "t", "--start", cts, "--end", cts}},
 		{"maint create missing", nil, []string{"maintenance-windows", "create", "--title", "t"}},
 		{"maint create bad time", nil, []string{"maintenance-windows", "create", "--title", "t", "--start", "zz", "--end", cts}},
 		{"maint create 500", []coverRoute{{"", "", 500, `{}`}}, []string{"maintenance-windows", "create", "--title", "t", "--start", cts, "--end", cts}},
 
-		{"oncall create", created(schedule), []string{"oncall", "create", "--name", "n", "--timezone", "UTC", "--rotation-type", "weekly",
-			"--handoff-time", "09:00", "--user", cuid, "--start", cts, "--description", "d", "--handoff-weekday", "1"}},
+		{"oncall create", created(schedule), []string{
+			"oncall", "create", "--name", "n", "--timezone", "UTC", "--rotation-type", "weekly",
+			"--handoff-time", "09:00", "--user", cuid, "--start", cts, "--description", "d", "--handoff-weekday", "1",
+		}},
 		{"oncall create json", created(schedule), []string{"-o", "json", "oncall", "create", "--name", "n", "--timezone", "UTC", "--rotation-type", "daily", "--handoff-time", "09:00"}},
 		{"oncall create missing", nil, []string{"oncall", "create", "--name", "n"}},
 		{"oncall create bad user", nil, []string{"oncall", "create", "--name", "n", "--timezone", "UTC", "--rotation-type", "daily", "--handoff-time", "09:00", "--user", "zz"}},
@@ -197,15 +214,27 @@ func TestCLIScenariosCover(t *testing.T) {
 		{"resource create none", nil, []string{"status-pages", "resources", "create", cuid, cuid2}},
 		{"resource create 500", []coverRoute{{"", "", 500, `{}`}}, []string{"status-pages", "resources", "create", cuid, cuid2, "--check", cuid}},
 
-		{"auth login token", []coverRoute{{"", "/auth/me", 200, `{"user":{"uid":"` + cuid + `","email":"a@acme.com"},"organization":{"slug":"acme"}}`}},
-			[]string{"auth", "login", "--token", "sp_pat_x"}},
-		{"auth login token json", []coverRoute{{"", "/auth/me", 200, `{"user":{"uid":"` + cuid + `","email":"a@acme.com"},"organization":{"slug":"acme"}}`}},
-			[]string{"-o", "json", "auth", "login", "--token", "sp_pat_x"}},
+		{
+			"auth login token",
+			[]coverRoute{{"", "/auth/me", 200, `{"user":{"uid":"` + cuid + `","email":"a@acme.com"},"organization":{"slug":"acme"}}`}},
+			[]string{"auth", "login", "--token", "sp_pat_x"},
+		},
+		{
+			"auth login token json",
+			[]coverRoute{{"", "/auth/me", 200, `{"user":{"uid":"` + cuid + `","email":"a@acme.com"},"organization":{"slug":"acme"}}`}},
+			[]string{"-o", "json", "auth", "login", "--token", "sp_pat_x"},
+		},
 		{"auth login token bad", []coverRoute{{"", "/auth/me", 401, `{"title":"no"}`}}, []string{"auth", "login", "--token", "sp_pat_x"}},
-		{"auth login password", []coverRoute{{"", "/auth/login", 200, `{"accessToken":"a","refreshToken":"r","user":{"uid":"` + cuid + `","email":"a@acme.com"}}`}},
-			[]string{"auth", "login", "--email", "a@acme.com", "--password", "p"}},
-		{"auth login password json", []coverRoute{{"", "/auth/login", 200, `{"accessToken":"a","refreshToken":"r","user":{"uid":"` + cuid + `","email":"a@acme.com"}}`}},
-			[]string{"-o", "json", "auth", "login", "--email", "a@acme.com", "--password", "p"}},
+		{
+			"auth login password",
+			[]coverRoute{{"", "/auth/login", 200, `{"accessToken":"a","refreshToken":"r","user":{"uid":"` + cuid + `","email":"a@acme.com"}}`}},
+			[]string{"auth", "login", "--email", "a@acme.com", "--password", "p"},
+		},
+		{
+			"auth login password json",
+			[]coverRoute{{"", "/auth/login", 200, `{"accessToken":"a","refreshToken":"r","user":{"uid":"` + cuid + `","email":"a@acme.com"}}`}},
+			[]string{"-o", "json", "auth", "login", "--email", "a@acme.com", "--password", "p"},
+		},
 		{"auth login password bad", []coverRoute{{"", "/auth/login", 401, `{"title":"no"}`}}, []string{"auth", "login", "--email", "a@acme.com", "--password", "p"}},
 		{"auth login password bad json", []coverRoute{{"", "/auth/login", 401, `{"title":"no"}`}}, []string{"-o", "json", "auth", "login", "--email", "a@acme.com", "--password", "p"}},
 		{"auth me", []coverRoute{{"", "/auth/me", 200, `{"user":{"uid":"` + cuid + `","email":"a@acme.com"},"organization":{"slug":"acme"}}`}}, []string{"auth", "me"}},
@@ -218,7 +247,6 @@ func TestCLIScenariosCover(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		//nolint:paralleltest // process-global stdio and HOME
 		t.Run(tt.name, func(t *testing.T) {
 			_ = coverRun(t, tt.routes, tt.args...)
 		})

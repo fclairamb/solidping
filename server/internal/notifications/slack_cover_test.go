@@ -153,22 +153,48 @@ func TestSlackSender_ThreadHandlers(t *testing.T) {
 		wantErr   string
 	}{
 		{"resolve updates then replies", eventTypeIncidentResolved, entry(full), "", []string{"update", "postMessage"}, ""},
-		{"resolve without thread_ts only updates", eventTypeIncidentResolved,
-			entry(models.JSONMap{"message_id": "1.1", "channel_id": "C42"}), "", []string{"update"}, ""},
-		{"resolve without message id is a no-op", eventTypeIncidentResolved,
-			entry(models.JSONMap{"channel_id": "C42"}), "", nil, ""},
-		{"resolve without channel is a no-op", eventTypeIncidentResolved,
-			entry(models.JSONMap{"message_id": "1.1"}), "", nil, ""},
-		{"resolve update failure", eventTypeIncidentResolved, entry(full), "update", []string{"update"}, "updating slack message"},
-		{"resolve reply failure", eventTypeIncidentResolved, entry(full), "postMessage",
-			[]string{"update", "postMessage"}, "posting thread reply"},
+		{
+			"resolve without thread_ts only updates", eventTypeIncidentResolved,
+			entry(models.JSONMap{"message_id": "1.1", "channel_id": "C42"}), "",
+			[]string{"update"},
+			"",
+		},
+		{
+			"resolve without message id is a no-op", eventTypeIncidentResolved,
+			entry(models.JSONMap{"channel_id": "C42"}), "", nil, "",
+		},
+		{
+			"resolve without channel is a no-op", eventTypeIncidentResolved,
+			entry(models.JSONMap{"message_id": "1.1"}), "", nil, "",
+		},
+		{
+			"resolve update failure", eventTypeIncidentResolved, entry(full), "update",
+			[]string{"update"},
+			"updating slack message",
+		},
+		{
+			"resolve reply failure", eventTypeIncidentResolved, entry(full), "postMessage",
+			[]string{"update", "postMessage"},
+			"posting thread reply",
+		},
 		{"reopen updates then replies", eventTypeIncidentReopened, entry(full), "", []string{"update", "postMessage"}, ""},
-		{"reopen without thread_ts only updates", eventTypeIncidentReopened,
-			entry(models.JSONMap{"message_id": "1.1", "channel_id": "C42"}), "", []string{"update"}, ""},
+		{
+			"reopen without thread_ts only updates", eventTypeIncidentReopened,
+			entry(models.JSONMap{"message_id": "1.1", "channel_id": "C42"}), "",
+			[]string{"update"},
+			"",
+		},
 		{"reopen without ids is a no-op", eventTypeIncidentReopened, entry(models.JSONMap{}), "", nil, ""},
-		{"reopen update failure", eventTypeIncidentReopened, entry(full), "update", []string{"update"}, "updating slack message for reopen"},
-		{"reopen reply failure", eventTypeIncidentReopened, entry(full), "postMessage",
-			[]string{"update", "postMessage"}, "posting reopen thread reply"},
+		{
+			"reopen update failure", eventTypeIncidentReopened, entry(full), "update",
+			[]string{"update"},
+			"updating slack message for reopen",
+		},
+		{
+			"reopen reply failure", eventTypeIncidentReopened, entry(full), "postMessage",
+			[]string{"update", "postMessage"},
+			"posting reopen thread reply",
+		},
 	}
 
 	for _, tc := range tests {

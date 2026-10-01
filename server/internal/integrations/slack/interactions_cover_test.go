@@ -5,6 +5,8 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -55,9 +57,14 @@ func (f *coverIncidentSvc) AddCommentFromSlackCommand(
 func coverFakeSlack(t *testing.T, svc *Service) map[string]int {
 	t.Helper()
 
+	var mu sync.Mutex
+
 	calls := map[string]int{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
 		calls[r.URL.Path]++
+		mu.Unlock()
+
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"ok":true,"channels":[{"id":"C-NEW","name":"alerts"}],"ts":"1.2"}`))
 	}))
@@ -110,9 +117,20 @@ func TestDispatchInteractionCover(t *testing.T) {
 		{"block add", &Interaction{Type: "block_actions", Team: team, Actions: act(ActionAddCheck, "")}, "", false},
 		{"block dashboard", &Interaction{Type: "block_actions", Team: team, Actions: act("view_dashboard", "")}, "", false},
 		{"block unknown", &Interaction{Type: "block_actions", Team: team, Actions: act("zzz", "")}, "", false},
-		{"unavailable", &Interaction{Type: "block_actions", Team: team, Actions: act("unavailable_incident", "i")}, "unacknowledged", false},
-		{"ack empty uid", &Interaction{Type: "block_actions", Team: team, Actions: act("acknowledge_incident", "")}, "Invalid incident", false},
-		{"ack no conn", &Interaction{Type: "block_actions", Team: Team{ID: "nope"}, Actions: act("acknowledge_incident", "i")}, "Could not find organization", false},
+		{
+			"unavailable", &Interaction{Type: "block_actions", Team: team, Actions: act("unavailable_incident", "i")},
+			"unacknowledged", false,
+		},
+		{
+			"ack empty uid",
+			&Interaction{Type: "block_actions", Team: team, Actions: act("acknowledge_incident", "")},
+			"Invalid incident", false,
+		},
+		{
+			"ack no conn",
+			&Interaction{Type: "block_actions", Team: Team{ID: "nope"}, Actions: act("acknowledge_incident", "i")},
+			"Could not find organization", false,
+		},
 		{"ack ok", &Interaction{
 			Type: "block_actions", Team: team, User: user, Channel: Channel{ID: msgChannel},
 			Message: &InteractionMessage{Ts: "1.1"}, Actions: act("acknowledge_incident", "i"),
@@ -121,23 +139,52 @@ func TestDispatchInteractionCover(t *testing.T) {
 			Type: "block_actions", Team: team, User: user,
 			Container: InteractionContainer{MessageTs: "1.1", ChannelID: msgChannel}, Actions: act("acknowledge_incident", "i"),
 		}, "acknowledged", false},
-		{"ack ok no ts", &Interaction{Type: "block_actions", Team: team, User: user, Actions: act("acknowledge_incident", "i")}, "acknowledged", false},
+		{
+			"ack ok no ts",
+			&Interaction{Type: "block_actions", Team: team, User: user, Actions: act("acknowledge_incident", "i")},
+			"acknowledged", false,
+		},
 		{"ack ok no channel", &Interaction{
-			Type: "block_actions", Team: team, User: user, Message: &InteractionMessage{Ts: "1.1"}, Actions: act("acknowledge_incident", "i"),
+			Type: "block_actions", Team: team, User: user, Message: &InteractionMessage{Ts: "1.1"},
+			Actions: act("acknowledge_incident", "i"),
 		}, "acknowledged", false},
-		{"escalate empty", &Interaction{Type: "block_actions", Team: team, Actions: act("escalate_incident", "")}, "Invalid incident", false},
-		{"escalate no conn", &Interaction{Type: "block_actions", Team: Team{ID: "nope"}, Actions: act("escalate_incident", "i")}, "Could not find organization", false},
-		{"escalate ok", &Interaction{Type: "block_actions", Team: team, User: user, Actions: act("escalate_incident", "i")}, "Escalation requested", false},
+		{
+			"escalate empty", &Interaction{Type: "block_actions", Team: team, Actions: act("escalate_incident", "")},
+			"Invalid incident", false,
+		},
+		{
+			"escalate no conn",
+			&Interaction{Type: "block_actions", Team: Team{ID: "nope"}, Actions: act("escalate_incident", "i")},
+			"Could not find organization", false,
+		},
+		{
+			"escalate ok",
+			&Interaction{Type: "block_actions", Team: team, User: user, Actions: act("escalate_incident", "i")},
+			"Escalation requested", false,
+		},
 		{"view nil", &Interaction{Type: "view_submission", Team: team}, "", false},
 		{"view unknown", &Interaction{Type: "view_submission", Team: team, View: &View{CallbackID: "zzz"}}, "", false},
-		{"view no state", &Interaction{Type: "view_submission", Team: team, View: &View{CallbackID: "add_check_modal"}}, "", true},
+		{
+			"view no state",
+			&Interaction{Type: "view_submission", Team: team, View: &View{CallbackID: "add_check_modal"}}, "", true,
+		},
 		{"view empty url", &Interaction{Type: "view_submission", Team: team, View: form("", "")}, "URL is required", false},
-		{"view ok", &Interaction{Type: "view_submission", Team: team, User: user, View: form("https://acme.com", "n")}, "", false},
-		{"view ok no team", &Interaction{Type: "view_submission", Team: Team{ID: "nope"}, View: form("https://acme.com", "n")}, "", true},
+		{
+			"view ok",
+			&Interaction{Type: "view_submission", Team: team, User: user, View: form("https://acme.com", "n")}, "",
+			false,
+		},
+		{
+			"view ok no team",
+			&Interaction{Type: "view_submission", Team: Team{ID: "nope"}, View: form("https://acme.com", "n")}, "",
+			true,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			resp, err := h.handleInteraction(t.Context(), tt.in)
 			if tt.err {
 				require.Error(t, err)
@@ -154,12 +201,12 @@ func TestDispatchInteractionCover(t *testing.T) {
 }
 
 func attachmentText(resp *MessageResponse) string {
-	out := ""
+	var out strings.Builder
 	for i := range resp.Attachments {
-		out += resp.Attachments[i].Fallback
+		out.WriteString(resp.Attachments[i].Fallback)
 	}
 
-	return out
+	return out.String()
 }
 
 func TestEscalateAndAckErrorsCover(t *testing.T) {
