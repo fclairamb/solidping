@@ -71,7 +71,7 @@ SolidPing is a multi-tenant monitoring system that enables organizations to moni
 - **Maintenance windows**: Recurring suppression of alerts
 - **JavaScript scripting**: Sandboxed custom monitoring logic
 - **Browser monitoring**: Headless Chrome via Rod
-- **MCP server**: AI/LLM tool access via Model Context Protocol
+- **MCP server**: AI/LLM tool access via Model Context Protocol (listed on [Smithery](https://smithery.ai/servers/fclairamb/solidping))
 - **SSO / OAuth**: Google, GitHub, GitLab, Microsoft, Slack, Discord, plus generic OIDC, SAML, and LDAP / Active Directory (per-provider enable toggle, with self-service token revocation)
 - **Observability**: Prometheus `/metrics`, Sentry integration, OpenTelemetry
 - **CLI client**: Manage checks and results from the terminal
