@@ -33,8 +33,8 @@ export interface ZoomWindow {
 }
 
 /** The chart's default window start for a range, as RFC3339. */
-export function getStartFor(range: TimeRange): string {
-  const now = startOfMinute(new Date());
+export function getStartFor(range: TimeRange, nowMs: number = Date.now()): string {
+  const now = startOfMinute(new Date(nowMs));
   switch (range) {
     case "hour":
       return subHours(now, 1).toISOString();
@@ -60,6 +60,9 @@ export function rangeForSpan(spanMs: number): TimeRange {
   return "month";
 }
 
+/** Default raw retention (server aggregation.retention_raw = 24 h). */
+const RAW_RETENTION_MS = 24 * 3_600_000;
+
 /** The rollup tier list for a window, or "" when raw IS the tier for it (an
  * hour view, or a day view of a check slow enough that raw is already sparse).
  * Exported so a caller can tell "pass 1 has nothing to fetch" from "pass 1
@@ -68,9 +71,24 @@ export function chartRollupTier(
   timeRange: TimeRange,
   periodMs: number | undefined,
   zoom?: ZoomWindow,
+  nowMs: number = Date.now(),
 ): string {
   const effectiveRange = zoom ? rangeForSpan(zoom.to - zoom.from) : timeRange;
   const denseEnoughForHourly = (periodMs ?? 60_000) < 5 * 60_000;
+
+  // Raw rows are kept RAW_RETENTION_MS (aggregation.retention_raw, default
+  // 24 h). A window that starts older than that has no raw rows at all, so for a
+  // sparse check (where "raw is the tier") it would come back empty: the
+  // previous-window trend of a day view (24-48 h ago) would silently vanish.
+  // Fall back to the hourly rollup there. Only a zoom/explicit window can start
+  // that far back; a default range always ends at now.
+  if (
+    zoom &&
+    zoom.from < nowMs - RAW_RETENTION_MS &&
+    (effectiveRange === "hour" || effectiveRange === "day")
+  ) {
+    return "hour";
+  }
 
   return effectiveRange === "month"
     ? "hour,day"
@@ -85,13 +103,14 @@ export function chartRollupTier(
 export function chartWindowBounds(
   timeRange: TimeRange,
   zoom?: ZoomWindow,
+  nowMs?: number,
 ): Pick<ChartTierFetch, "periodStartAfter" | "periodEndBefore"> {
   return zoom
     ? {
         periodStartAfter: new Date(zoom.from).toISOString(),
         periodEndBefore: new Date(zoom.to).toISOString(),
       }
-    : { periodStartAfter: getStartFor(timeRange) };
+    : { periodStartAfter: getStartFor(timeRange, nowMs) };
 }
 
 /** Row shape `seamStartFrom` needs — structural, so this module stays free of

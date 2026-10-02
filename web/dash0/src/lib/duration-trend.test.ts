@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DurationStats } from "@/lib/duration-stats";
+import { getStartFor } from "@/lib/chart-window";
 import { computeDurationTrend, previousWindowFor } from "./duration-trend";
 
 const stats = (avg: number, count: number): DurationStats => ({
@@ -66,5 +67,20 @@ describe("previousWindowFor", () => {
     const w = previousWindowFor("day");
     expect(w.to - w.from).toBe(24 * 3_600_000);
     expect(Math.abs(Date.now() - 24 * 3_600_000 - w.to)).toBeLessThan(61_000);
+  });
+
+  it("stays adjacent to the current window as time advances", () => {
+    const t0 = Date.parse("2026-10-02T10:00:30Z");
+    for (const advance of [0, 61_000, 3 * 3_600_000]) {
+      const now = t0 + advance;
+      const currentStart = Date.parse(getStartFor("day", now));
+      const prev = previousWindowFor("day", undefined, now);
+      expect(prev.to).toBe(currentStart);
+      expect(prev.to - prev.from).toBe(24 * 3_600_000);
+    }
+    // The old behaviour read the wall clock: a fixed anchor must not drift.
+    const a = previousWindowFor("day", undefined, t0);
+    const b = previousWindowFor("day", undefined, t0 + 3 * 3_600_000);
+    expect(b.to - a.to).toBe(3 * 3_600_000);
   });
 });

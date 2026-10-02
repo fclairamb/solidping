@@ -135,7 +135,8 @@ describe("chartFetchParams tier plan", () => {
         ).toEqual(expected(range, periodMs).sort());
 
         for (const span of ZOOM_SPANS_MS) {
-          const to = Date.UTC(2026, 7, 22, 12, 0, 0);
+          // Recent: a window older than raw retention is served by rollups.
+          const to = Date.now();
           const zoomed = chartFetchParams(range, periodMs, {
             from: to - span,
             to,

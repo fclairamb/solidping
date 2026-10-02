@@ -17,8 +17,11 @@ const RANGE_MS: Record<TimeRange, number> = {
 export function previousWindowFor(
   range: TimeRange,
   zoom?: ZoomWindow,
+  nowMs: number = Date.now(),
 ): ZoomWindow {
-  const to = zoom ? zoom.from : Date.parse(getStartFor(range));
+  // `nowMs` must be the same anchor the current window was built from, so the
+  // two windows stay adjacent however long the tab has been open.
+  const to = zoom ? zoom.from : Date.parse(getStartFor(range, nowMs));
   const length = zoom ? zoom.to - zoom.from : RANGE_MS[range];
 
   return { from: to - length, to };

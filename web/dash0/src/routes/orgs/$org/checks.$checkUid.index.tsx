@@ -796,10 +796,19 @@ function CheckDetailPage() {
         : undefined,
     [graphFrom, graphTo],
   );
+  // One anchor, advanced every minute, feeds BOTH the current window and the
+  // previous one, so the previous window always ends exactly where the current
+  // one starts (same length) and both refetch with fresh bounds on a tab left
+  // open.
+  const [windowNow, setWindowNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setWindowNow(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
   const { data: chartWindowResults } = useChartWindowResults(
     org,
     checkUid,
-    { timeRange: graphTimeRange, periodMs, zoom: graphZoom },
+    { timeRange: graphTimeRange, periodMs, zoom: graphZoom, now: windowNow },
     { rawRefetchInterval: refetchInterval },
   );
 
@@ -850,8 +859,8 @@ function CheckDetailPage() {
   // tier-aware hook (rollup and raw as separate queries, never one query
   // straddling the split) as a zoom window ending where the current one starts.
   const previousWindow = useMemo(
-    () => previousWindowFor(graphTimeRange, graphZoom),
-    [graphTimeRange, graphZoom],
+    () => previousWindowFor(graphTimeRange, graphZoom, windowNow),
+    [graphTimeRange, graphZoom, windowNow],
   );
   const { data: previousWindowResults, isLoading: previousWindowLoading } =
     useChartWindowResults(

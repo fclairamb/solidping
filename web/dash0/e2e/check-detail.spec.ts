@@ -950,6 +950,80 @@ test.describe("Check Detail Page", () => {
     await expect(stats).toContainText("40ms");
   });
 
+  for (const { name, previousMs, direction, text, color } of [
+    { name: "up", previousMs: 50, direction: "up", text: "+100%", color: "text-red-500" },
+    { name: "down", previousMs: 200, direction: "down", text: "-50%", color: "text-green-500" },
+  ]) {
+    test(`Recent Results: avg trend renders ${name} (sign and colour) when the previous window differs`, async ({
+      authenticatedPage,
+    }) => {
+      const page = authenticatedPage;
+      const now = Date.now();
+
+      // Current window (no periodEndBefore): avg 100ms. Previous window (the
+      // zoom-shaped query carrying periodEndBefore): avg `previousMs`.
+      await page.route("**/api/v1/orgs/*/results*", (route) => {
+        const url = new URL(route.request().url());
+        const isPrevious = url.searchParams.has("periodEndBefore");
+        const periodType = url.searchParams.get("periodType") ?? "";
+        const isChartRollup = periodType.includes("hour");
+        const duration = isPrevious ? previousMs : 100;
+        const rows = isChartRollup
+          ? [0, 1, 2, 3].map((i) => ({
+              uid: `${isPrevious ? "prev" : "cur"}-${i}`,
+              durationMs: duration,
+              durationMinMs: duration,
+              durationMaxMs: duration,
+              totalChecks: 10,
+              status: "up",
+              region: "us-1",
+              periodStart: new Date(now - (isPrevious ? 8 * 86_400_000 : 3600_000) - i * 60_000).toISOString(),
+              periodType: "hour",
+            }))
+          : !isPrevious
+            ? // Recent Results list / chart raw seam: a few current raw rows.
+              [0, 1].map((i) => ({
+                uid: `list-${i}`,
+                durationMs: 100,
+                status: "up",
+                region: "us-1",
+                periodStart: new Date(now - (i + 1) * 60_000).toISOString(),
+                periodType: "raw",
+              }))
+            : [];
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            data: rows,
+            pagination: { total: rows.length, size: rows.length },
+          }),
+        });
+      });
+
+      await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
+      await page.waitForURL(/\/checks/);
+      await page.waitForLoadState("networkidle");
+      await page.getByTestId("new-check-button").click();
+      await page.waitForURL(/\/checks\/new/);
+      await page.waitForLoadState("networkidle");
+      await page.getByTestId("check-name-input").fill(`E2E Trend ${name} ${Date.now()}`);
+      await page.getByTestId("check-url-input").fill("https://example.com/trend-test");
+      await page.getByTestId("check-submit-button").click();
+      await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
+      await page.waitForLoadState("networkidle");
+
+      await page.goto(`${page.url()}?graphPeriod=week`);
+      await page.waitForLoadState("networkidle");
+
+      const trend = page.getByTestId("results-duration-trend");
+      await expect(trend).toBeVisible({ timeout: 15000 });
+      await expect(trend).toHaveAttribute("data-direction", direction);
+      await expect(trend).toContainText(text);
+      await expect(trend).toHaveClass(new RegExp(color));
+    });
+  }
+
   test("header: Edit and Disable stay inline, everything else lives behind the ⋯ menu (desktop and mobile)", async ({
     authenticatedPage,
   }) => {
