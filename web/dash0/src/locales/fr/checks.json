@@ -714,6 +714,8 @@
         "max": "Max",
         "p95": "P95",
         "p50": "Médiane",
+        "trend": "{{percent}}% vs fenêtre précédente",
+        "trendFlat": "stable vs fenêtre précédente",
         "samples": "Échantillons",
         "window": "{{period}}",
         "scopeAll_one": "sur {{count}} région",

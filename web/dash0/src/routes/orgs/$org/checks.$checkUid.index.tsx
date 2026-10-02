@@ -12,6 +12,7 @@ import { Trans, useTranslation } from "react-i18next";
 import type { IncidentDetail } from "@/api/hooks";
 import { flappingSummaryParams } from "@/lib/flap-summary";
 import { computeDurationStats } from "@/lib/duration-stats";
+import { computeDurationTrend, previousWindowFor } from "@/lib/duration-trend";
 import {
   AlertTriangle,
   BadgeCheck,
@@ -845,6 +846,39 @@ function CheckDetailPage() {
     [chartWindowResults, effectiveRegion],
   );
 
+  // The immediately preceding window of equal length, fetched through the same
+  // tier-aware hook (rollup and raw as separate queries, never one query
+  // straddling the split) as a zoom window ending where the current one starts.
+  const previousWindow = useMemo(
+    () => previousWindowFor(graphTimeRange, graphZoom),
+    [graphTimeRange, graphZoom],
+  );
+  const { data: previousWindowResults, isLoading: previousWindowLoading } =
+    useChartWindowResults(
+      org,
+      checkUid,
+      { timeRange: graphTimeRange, periodMs, zoom: previousWindow },
+      { rawRefetchInterval: refetchInterval },
+    );
+  const durationTrend = useMemo(
+    () =>
+      previousWindowLoading
+        ? null
+        : computeDurationTrend(
+            durationStats,
+            computeDurationStats(
+              previousWindowResults?.data ?? [],
+              effectiveRegion,
+            ),
+          ),
+    [
+      durationStats,
+      previousWindowResults,
+      previousWindowLoading,
+      effectiveRegion,
+    ],
+  );
+
   const durationStatsStrip = durationStats ? (
     <div
       className="mt-3 rounded-md border bg-muted/30 px-3 py-2 text-sm"
@@ -894,7 +928,28 @@ function CheckDetailPage() {
             <dt className="text-xs text-muted-foreground">
               {t(`checks:detail.results.stats.${key}`)}
             </dt>
-            <dd className="font-medium">{value}</dd>
+            <dd className="font-medium">
+              {value}
+              {key === "avg" && durationTrend ? (
+                <span
+                  data-testid="results-duration-trend"
+                  data-direction={durationTrend.direction}
+                  className={`ml-1 text-xs font-normal ${
+                    durationTrend.direction === "up"
+                      ? "text-red-500"
+                      : durationTrend.direction === "down"
+                        ? "text-green-500"
+                        : "text-muted-foreground"
+                  }`}
+                >
+                  {durationTrend.direction === "flat"
+                    ? t("checks:detail.results.stats.trendFlat")
+                    : t("checks:detail.results.stats.trend", {
+                        percent: `${durationTrend.percent > 0 ? "+" : ""}${durationTrend.percent}`,
+                      })}
+                </span>
+              ) : null}
+            </dd>
           </div>
         ))}
       </dl>

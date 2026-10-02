@@ -929,6 +929,12 @@ test.describe("Check Detail Page", () => {
     await expect(stats).toContainText("9");
     // Window label reflects the current graphPeriod (week -> "Last week").
     await expect(stats).toContainText(/last week/i);
+    // The mock serves the same data for the previous window, so the average is
+    // unchanged: the trend renders "flat", not a signed percentage.
+    await expect(page.getByTestId("results-duration-trend")).toHaveAttribute(
+      "data-direction",
+      "flat",
+    );
     await expect(page.getByTestId("results-duration-stats-scope")).toContainText(
       /US East/,
     );
