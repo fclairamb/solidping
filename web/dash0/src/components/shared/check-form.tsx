@@ -1481,6 +1481,7 @@ export function CheckForm({
         configPrivateKeys: initialData?.configPrivateKeys,
         name,
         setName,
+        tunneled: supportsTunnel && tunnelCheckUid !== "",
       }}
     >
       <div className="space-y-6 max-w-2xl">

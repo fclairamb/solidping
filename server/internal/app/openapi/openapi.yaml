@@ -10404,7 +10404,14 @@ components:
             `redirectHostPolicy` (string, default "any" — "same-host" refuses
             any followed redirect hop whose host differs from the previous
             hop's, failing the check instead of following it; an unknown
-            value is a VALIDATION_ERROR) and
+            value is a VALIDATION_ERROR),
+            `httpVersion` (string, default "1.1" and omitted at default — "2"
+            forces HTTP/2, h2 over TLS or h2c with prior knowledge over
+            http://; "3" forces HTTP/3 over QUIC with no TCP fallback; a
+            response over another version fails the check; any other value,
+            and "3" on a check with `tunnelCheckUid`, is a VALIDATION_ERROR;
+            results record the negotiated protocol as `http_protocol` and the
+            Alt-Svc header as `alt_svc`) and
             `capture_failure_response` (boolean, default false — when true a
             FAILING execution keeps what the probe received: status line,
             redacted response headers and a 16 KiB-capped body, stored on the
@@ -10991,9 +10998,9 @@ components:
           description: >-
             Check-specific configuration (e.g., url, port, timeout). HTTP
             checks additionally accept `verifySsl` and `followRedirects`
-            (both booleans, default true) and `capture_failure_response`
-            (boolean, default false) — see the Check schema above for
-            details.
+            (both booleans, default true), `httpVersion` ("1.1", "2" or "3")
+            and `capture_failure_response` (boolean, default false) — see the
+            Check schema above for details.
         enabled:
           type: boolean
           default: true
@@ -11322,9 +11329,9 @@ components:
           type: object
           description: >-
             Check-specific configuration. HTTP checks additionally accept
-            `verifySsl` and `followRedirects` (both booleans, default true)
-            and `capture_failure_response` (boolean, default false) — see the
-            Check schema above for details.
+            `verifySsl` and `followRedirects` (both booleans, default true),
+            `httpVersion` ("1.1", "2" or "3") and `capture_failure_response`
+            (boolean, default false) — see the Check schema above for details.
         enabled:
           type: boolean
           default: true

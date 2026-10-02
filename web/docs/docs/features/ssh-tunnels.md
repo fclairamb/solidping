@@ -62,6 +62,9 @@ UDP- and ICMP-based types (`icmp`, `udp`, `ntp`, `snmp`, `dns`, `dnsbl`, `sip`,
 `a2s`) cannot tunnel: an SSH `direct-tcpip` forward carries **TCP only**. For
 those, use a [private location / agent](./private-locations.md) instead.
 
+For the same reason an `http` check with `httpVersion: "3"` cannot tunnel:
+HTTP/3 runs over QUIC, which is UDP. HTTP/1.1 and HTTP/2 tunnel normally.
+
 :::note FTP passive mode
 For `ftp`, both the control connection and passive-mode (PASV) data connections
 are dialed through the bastion. One caveat: a tunneled **implicit-TLS** FTPS

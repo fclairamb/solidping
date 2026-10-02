@@ -19,6 +19,9 @@ export interface CheckFormFieldsContextValue {
   configPrivateKeys: string[] | undefined;
   name: string;
   setName: (name: string) => void;
+  // Whether the check routes through an SSH tunnel (`tunnelCheckUid` set), so
+  // a field can disable an option a tunnel cannot carry (HTTP/3 over UDP).
+  tunneled: boolean;
 }
 
 const CheckFormFieldsContext =

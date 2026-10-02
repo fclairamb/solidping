@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { httpModule, type HttpState } from "./http";
+import {
+  httpModule,
+  httpOptionsSummary,
+  httpVersionOptions,
+  type HttpState,
+} from "./http";
 import { jsModule } from "./misc";
 import { checkTypeRegistry, type CheckTypeModule } from "./index";
 import {
@@ -24,6 +29,7 @@ function baseState(overrides: Partial<HttpState> = {}): HttpState {
     verifySsl: true,
     followRedirects: true,
     redirectHostPolicy: "any",
+    httpVersion: "1.1",
     captureFailureResponse: false,
     authDirty: false,
     headersDirty: false,
@@ -994,5 +1000,58 @@ describe("httpModule — bodyAssertions round-trip", () => {
     expect(saved.body_pattern_reject).toBe("stack trace");
     expect(saved.headers_pattern).toEqual({ "Content-Type": "text/plain" });
     expect(saved.bodyAssertions).toEqual(leaf);
+  });
+});
+
+describe("httpModule — httpVersion", () => {
+  it("defaults to 1.1 and never writes the default", () => {
+    const state = httpModule.fromConfig({ url: "https://example.com" });
+    expect(state.httpVersion).toBe("1.1");
+    expect(httpModule.toConfig(state).config).not.toHaveProperty("httpVersion");
+  });
+
+  it.each(["2", "3"] as const)("round-trips %s", (version) => {
+    const state = httpModule.fromConfig({
+      url: "https://example.com",
+      httpVersion: version,
+    });
+    expect(state.httpVersion).toBe(version);
+    expect(httpModule.toConfig(state).config.httpVersion).toBe(version);
+    expect(saveUntouched({ url: "https://example.com", httpVersion: version }))
+      .toMatchObject({ httpVersion: version });
+  });
+
+  it("reads a YAML number", () => {
+    expect(
+      httpModule.fromConfig({ url: "https://example.com", httpVersion: 2 })
+        .httpVersion,
+    ).toBe("2");
+  });
+
+  it("clears a stored version when set back to 1.1", () => {
+    const state = httpModule.fromConfig({
+      url: "https://example.com",
+      httpVersion: "2",
+    });
+    const config = assembleSubmittedConfig({
+      initialConfig: { url: "https://example.com", httpVersion: "2" },
+      ownedKeys: httpModule.ownedKeys,
+      secretFields: HTTP_SECRET_FIELDS,
+      moduleConfig: httpModule.toConfig({ ...state, httpVersion: "1.1" }).config,
+    });
+    expect(config).not.toHaveProperty("httpVersion");
+  });
+
+  it("makes 3 unavailable on a tunneled check", () => {
+    const tunneled = httpVersionOptions(true);
+    expect(tunneled.find((o) => o.value === "3")?.disabled).toBe(true);
+    expect(tunneled.filter((o) => o.disabled)).toHaveLength(1);
+    expect(httpVersionOptions(false).every((o) => !o.disabled)).toBe(true);
+  });
+
+  it("shows a forced version in the Advanced summary", () => {
+    expect(httpOptionsSummary(baseState({ httpVersion: "2" })).text).toContain(
+      "HTTP/2",
+    );
   });
 });
