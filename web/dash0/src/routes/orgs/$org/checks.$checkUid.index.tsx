@@ -2,15 +2,11 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useIsDemoSession } from "@/hooks/use-is-demo-session";
 import { canDemoEditCheck } from "@/lib/demo";
-import {
-  createFileRoute,
-  Link,
-  useNavigate,
-  useRouter,
-} from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate, useRouter } from "@tanstack/react-router";
 import { Trans, useTranslation } from "react-i18next";
-import type { IncidentDetail, OrgResult } from "@/api/hooks";
+import type { IncidentDetail } from "@/api/hooks";
 import { flappingSummaryParams } from "@/lib/flap-summary";
+import { computeDurationStats } from "@/lib/duration-stats";
 import {
   AlertTriangle,
   BadgeCheck,
@@ -287,116 +283,6 @@ function formatResultTime(iso: string): string {
     d.getMonth() === now.getMonth() &&
     d.getDate() === now.getDate();
   return sameDay ? d.toLocaleTimeString() : d.toLocaleString();
-}
-
-interface DurationStats {
-  min: number;
-  max: number;
-  avg: number;
-  p95: number;
-  count: number;
-  /** True when the window includes any rollup (non-raw) row, so avg/p95 are
-   * combined estimates rather than exact values (display with a `~` prefix). */
-  isEstimate: boolean;
-}
-
-/**
- * Tier-aware min/avg/max/p95 + sample count for one region (or all regions
- * when `region` is undefined) over the given result set; the stats strip
- * renders both scopes. Mirrors the combination method
- * server/internal/jobs/jobtypes/job_aggregation.go actually uses for
- * combining child buckets:
- *   - min/max: exact min-of-mins / max-of-maxes across all contributing rows
- *     (raw rows contribute their own durationMs as both min and max).
- *   - avg: totalChecks-weighted mean of each rollup row's durationAvgMs
- *     (falling back to its plotted durationMs when durationAvgMs is missing —
- *     e.g. a rollup row that predates this field), each raw row contributing
- *     its own durationMs with weight 1.
- *   - p95: an unweighted average of each row's own p95 — rollup rows
- *     contribute their stored durationP95Ms (falling back to durationMs when
- *     absent), raw rows contribute their own durationMs as a degenerate
- *     single-sample p95. This mirrors calculateAggregatedMetrics's plain
- *     p95Sum / p95Count combination (NOT totalChecks-weighted — the
- *     aggregator does not weight p95 by count when combining buckets).
- * Multi-region fold (region undefined, several regions in the window): the
- * rules above apply across every region's rows. min/max are the extremes over
- * all regions, avg is totalChecks-weighted so a dense region is not out-voted
- * by a sparse one, and p95 is the unweighted mean of per-row p95s, which is
- * not a true percentile across regions with different latencies, so
- * isEstimate is also set whenever more than one region contributes.
- * Returns null when there is no duration data for the region in this window.
- */
-function computeDurationStats(
-  allPoints: OrgResult[],
-  region: string | undefined,
-): DurationStats | null {
-  const points = region
-    ? allPoints.filter((p) => p.region === region)
-    : allPoints;
-  if (points.length === 0) return null;
-
-  let min = Infinity;
-  let max = -Infinity;
-  let count = 0;
-  let avgWeightedSum = 0;
-  let avgWeight = 0;
-  let p95Sum = 0;
-  let p95Count = 0;
-  let isEstimate = new Set(points.map((p) => p.region ?? "")).size > 1;
-
-  for (const p of points) {
-    const isRaw = p.periodType === "raw" || !p.periodType;
-
-    if (isRaw) {
-      if (p.durationMs == null) continue;
-      min = Math.min(min, p.durationMs);
-      max = Math.max(max, p.durationMs);
-      count += 1;
-      avgWeightedSum += p.durationMs;
-      avgWeight += 1;
-      p95Sum += p.durationMs;
-      p95Count += 1;
-      continue;
-    }
-
-    // Rollup row (hour/day/month) — combined stats become estimates.
-    isEstimate = true;
-    const weight = p.totalChecks ?? 1;
-    count += weight;
-
-    if (p.durationMinMs != null) min = Math.min(min, p.durationMinMs);
-    if (p.durationMaxMs != null) max = Math.max(max, p.durationMaxMs);
-
-    const avgFallback = p.durationAvgMs ?? p.durationMs;
-    if (avgFallback != null) {
-      avgWeightedSum += avgFallback * weight;
-      avgWeight += weight;
-    }
-
-    const p95Fallback = p.durationP95Ms ?? p.durationMs;
-    if (p95Fallback != null) {
-      p95Sum += p95Fallback;
-      p95Count += 1;
-    }
-  }
-
-  if (
-    !Number.isFinite(min) ||
-    !Number.isFinite(max) ||
-    avgWeight === 0 ||
-    p95Count === 0
-  ) {
-    return null;
-  }
-
-  return {
-    min,
-    max,
-    avg: avgWeightedSum / avgWeight,
-    p95: p95Sum / p95Count,
-    count,
-    isEstimate,
-  };
 }
 
 /** Parse HH:MM:SS period string to milliseconds */
@@ -807,7 +693,12 @@ function CheckDetailPage() {
   const [slugValue, setSlugValue] = useState("");
   const slugInputRef = useRef<HTMLInputElement>(null);
 
-  const { data: check, isLoading, error, refetch } = useCheck(org, checkUid);
+  const {
+    data: check,
+    isLoading,
+    error,
+    refetch,
+  } = useCheck(org, checkUid);
 
   const isDemoSession = useIsDemoSession();
   const { t: tOrg } = useTranslation(["org"]);
@@ -1191,9 +1082,7 @@ function CheckDetailPage() {
   const checkDisplayName =
     check.name || check.slug || check.uid?.slice(0, 8) || "";
   const headerTarget = headerTargetOf(check);
-  const headerTargetIsUrl = headerTarget
-    ? /^https?:\/\//i.test(headerTarget)
-    : false;
+  const headerTargetIsUrl = headerTarget ? /^https?:\/\//i.test(headerTarget) : false;
   const headerPeriodMs = parsePeriodMs(check.period);
   const headerLastResultAt = lastRealResultAt(check);
   const flapSummary = flappingSummaryParams(check);
@@ -1325,88 +1214,88 @@ function CheckDetailPage() {
                   />
                 </span>
               )}
-              {check.slug && !editingSlug && (
-                <div className="hidden md:flex items-center gap-1">
-                  <Link
-                    to="/orgs/$org/checks/$checkUid"
-                    params={{ org, checkUid: check.slug }}
-                    search={{
-                      graphPeriod: undefined,
-                      graphFull: undefined,
-                      region: undefined,
-                      graphFrom: undefined,
-                      graphTo: undefined,
-                      graphSelected: undefined,
-                    }}
-                    className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs font-mono text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    <Hash className="h-3 w-3" aria-hidden="true" />
-                    {check.slug}
-                  </Link>
-                  <button
-                    type="button"
-                    onClick={startEditingSlug}
-                    className="text-muted-foreground hover:text-foreground p-0.5 rounded"
-                  >
-                    <Pencil className="h-3 w-3" />
-                  </button>
-                </div>
-              )}
-              {editingSlug && (
-                <div className="hidden md:flex items-center gap-1">
+            {check.slug && !editingSlug && (
+              <div className="hidden md:flex items-center gap-1">
+                <Link
+                  to="/orgs/$org/checks/$checkUid"
+                  params={{ org, checkUid: check.slug }}
+                  search={{
+                    graphPeriod: undefined,
+                    graphFull: undefined,
+                    region: undefined,
+                    graphFrom: undefined,
+                    graphTo: undefined,
+                    graphSelected: undefined,
+                  }}
+                  className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs font-mono text-muted-foreground hover:text-foreground transition-colors"
+                >
                   <Hash className="h-3 w-3" aria-hidden="true" />
-                  <input
-                    ref={slugInputRef}
-                    value={slugValue}
-                    onChange={(e) => setSlugValue(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") saveSlug();
-                      if (e.key === "Escape") cancelEditingSlug();
-                    }}
-                    className="h-6 rounded border bg-background px-1.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-ring"
-                    disabled={updateCheck.isPending}
-                  />
-                  <button
-                    type="button"
-                    onClick={saveSlug}
-                    disabled={updateCheck.isPending}
-                    className="text-muted-foreground hover:text-green-500 p-0.5 rounded"
-                  >
-                    {updateCheck.isPending ? (
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                    ) : (
-                      <CheckIcon className="h-3 w-3" />
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={cancelEditingSlug}
-                    disabled={updateCheck.isPending}
-                    className="text-muted-foreground hover:text-red-500 p-0.5 rounded"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </div>
-              )}
-              {check.uid && checkUid !== check.uid && (
-                <div className="hidden md:flex items-center gap-1">
-                  <Link
-                    to="/orgs/$org/checks/$checkUid"
-                    params={{ org, checkUid: check.uid }}
-                    search={{
-                      graphPeriod: undefined,
-                      graphFull: undefined,
-                      region: undefined,
-                      graphFrom: undefined,
-                      graphTo: undefined,
-                      graphSelected: undefined,
-                    }}
-                    className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs font-mono text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    {t("detail.uidShort", { uid: check.uid.slice(0, 8) })}
-                  </Link>
-                </div>
-              )}
+                  {check.slug}
+                </Link>
+                <button
+                  type="button"
+                  onClick={startEditingSlug}
+                  className="text-muted-foreground hover:text-foreground p-0.5 rounded"
+                >
+                  <Pencil className="h-3 w-3" />
+                </button>
+              </div>
+            )}
+            {editingSlug && (
+              <div className="hidden md:flex items-center gap-1">
+                <Hash className="h-3 w-3" aria-hidden="true" />
+                <input
+                  ref={slugInputRef}
+                  value={slugValue}
+                  onChange={(e) => setSlugValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") saveSlug();
+                    if (e.key === "Escape") cancelEditingSlug();
+                  }}
+                  className="h-6 rounded border bg-background px-1.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-ring"
+                  disabled={updateCheck.isPending}
+                />
+                <button
+                  type="button"
+                  onClick={saveSlug}
+                  disabled={updateCheck.isPending}
+                  className="text-muted-foreground hover:text-green-500 p-0.5 rounded"
+                >
+                  {updateCheck.isPending ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <CheckIcon className="h-3 w-3" />
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={cancelEditingSlug}
+                  disabled={updateCheck.isPending}
+                  className="text-muted-foreground hover:text-red-500 p-0.5 rounded"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            )}
+            {check.uid && checkUid !== check.uid && (
+              <div className="hidden md:flex items-center gap-1">
+                <Link
+                  to="/orgs/$org/checks/$checkUid"
+                  params={{ org, checkUid: check.uid }}
+                  search={{
+                    graphPeriod: undefined,
+                    graphFull: undefined,
+                    region: undefined,
+                    graphFrom: undefined,
+                    graphTo: undefined,
+                    graphSelected: undefined,
+                  }}
+                  className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs font-mono text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {t("detail.uidShort", { uid: check.uid.slice(0, 8) })}
+                </Link>
+              </div>
+            )}
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
@@ -1516,44 +1405,41 @@ function CheckDetailPage() {
               </DropdownMenuContent>
             </DropdownMenu>
 
-            {/* Triggerless, controlled delete dialog */}
-            <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>
-                    {t("checks:detail.deleteTitle")}
-                  </AlertDialogTitle>
-                  <AlertDialogDescription>
-                    {t("checks:detail.deleteDescription")}
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>{t("common:cancel")}</AlertDialogCancel>
-                  <AlertDialogAction
-                    onClick={handleDelete}
-                    variant="destructive"
-                  >
-                    {deleteCheck.isPending ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        {t("checks:detail.deleting")}
-                      </>
-                    ) : (
-                      t("checks:detail.delete")
-                    )}
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+          {/* Triggerless, controlled delete dialog */}
+          <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  {t("checks:detail.deleteTitle")}
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  {t("checks:detail.deleteDescription")}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>{t("common:cancel")}</AlertDialogCancel>
+                <AlertDialogAction onClick={handleDelete} variant="destructive">
+                  {deleteCheck.isPending ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      {t("checks:detail.deleting")}
+                    </>
+                  ) : (
+                    t("checks:detail.delete")
+                  )}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
 
-            {/* Triggerless, controlled publish dialog — also opened by the
+          {/* Triggerless, controlled publish dialog — also opened by the
               `?publish=true` deep link from the post-create line. */}
-            <PublishOnStatusPageDialog
-              org={org}
-              check={check}
-              open={publishOpen}
-              onOpenChange={setPublishOpen}
-            />
+          <PublishOnStatusPageDialog
+            org={org}
+            check={check}
+            open={publishOpen}
+            onOpenChange={setPublishOpen}
+          />
           </div>
         </div>
       </div>
@@ -1614,6 +1500,8 @@ function CheckDetailPage() {
         initialFullRange={graphFull}
         region={region}
         onRegionChange={setRegion}
+        // The strip is intentionally rendered below the chart (not next to the
+        // region filter in the chart header), inside the same card.
         footer={durationStatsStrip}
         zoomFrom={graphFrom}
         zoomTo={graphTo}
