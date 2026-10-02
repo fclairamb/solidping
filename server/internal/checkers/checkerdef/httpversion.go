@@ -65,6 +65,8 @@ func (v HTTPVersion) ProtoMajor() int {
 		return 2
 	case HTTPVersion3:
 		return 3
+	case HTTPVersion11:
+		return 1
 	default:
 		return 1
 	}

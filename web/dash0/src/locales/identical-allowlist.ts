@@ -48,6 +48,8 @@ export const DASH0_IDENTICAL_ALLOWLIST: IdenticalAllowlist = {
   "checks:dialog.importSources.gatus": ["fr", "de", "es"], // "Gatus (config.yaml)"
   "checks:form.url": ["fr", "de", "es"], // "URL"
   "checks:form.tls": ["fr", "de", "es"], // "TLS"
+  "checks:http.httpVersion2": ["fr", "de", "es"], // "HTTP/2"
+  "checks:http.httpVersion3": ["fr", "de", "es"], // "HTTP/3"
   "checks:types.http": ["fr", "de", "es"], // "HTTP"
   "checks:types.tcp": ["fr", "de", "es"], // "TCP"
   "checks:types.icmp": ["fr", "de", "es"], // "ICMP"

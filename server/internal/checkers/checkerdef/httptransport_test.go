@@ -2,7 +2,6 @@ package checkerdef
 
 import (
 	"context"
-	"errors"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -99,7 +98,7 @@ func TestHTTPProbeTransportFor_EgressGuardRefusesPrivate(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
-	defer server.Close()
+	t.Cleanup(server.Close)
 
 	_, port, err := net.SplitHostPort(server.Listener.Addr().String())
 	require.NoError(t, err)
@@ -146,7 +145,7 @@ func TestHTTPProbeTransportFor_EgressGuardRefusesPrivate(t *testing.T) {
 					}
 
 					r.Error(rtErr)
-					r.True(errors.Is(rtErr, egress.ErrDenied), "want an egress refusal, got %v", rtErr)
+					r.ErrorIs(rtErr, egress.ErrDenied)
 				})
 			}
 		}
@@ -164,7 +163,8 @@ func TestStrandedConnectionDoesNotSurviveTheProbeThatHitIt_HTTP2(t *testing.T) {
 	server, seen := strandedFirstConnServer(t)
 	defer server.Close()
 
-	probe := func() (*http.Response, error) {
+	// probe returns the status code and protocol major of one probe.
+	probe := func() (int, int, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 400*time.Millisecond)
 		defer cancel()
 
@@ -175,26 +175,26 @@ func TestStrandedConnectionDoesNotSurviveTheProbeThatHitIt_HTTP2(t *testing.T) {
 
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL, nil)
 		if err != nil {
-			return nil, err
+			return 0, 0, err
 		}
 
 		resp, err := (&http.Client{Transport: transport}).Do(req)
 		if err != nil {
-			return nil, err
+			return 0, 0, err
 		}
 
 		_ = resp.Body.Close()
 
-		return resp, nil
+		return resp.StatusCode, resp.ProtoMajor, nil
 	}
 
-	_, err := probe()
+	_, _, err := probe()
 	r.Error(err, "the first probe must time out on the stranded connection")
 
-	resp, err := probe()
+	status, protoMajor, err := probe()
 	r.NoError(err, "the probe after a stranded one must dial fresh, not inherit the corpse")
-	r.Equal(http.StatusOK, resp.StatusCode)
-	r.Equal(2, resp.ProtoMajor)
+	r.Equal(http.StatusOK, status)
+	r.Equal(2, protoMajor)
 
 	conns := seen()
 	r.Len(conns, 2)

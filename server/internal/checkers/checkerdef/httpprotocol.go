@@ -54,6 +54,8 @@ func buildProbeTransport(
 		transport := buildHTTP3Transport(skipTLSVerify, version, guard)
 
 		return transport, func() { _ = transport.Close() }
+	case HTTPVersion11:
+		return buildHTTPTransport(dialer, skipTLSVerify, version, guard), func() {}
 	default:
 		return buildHTTPTransport(dialer, skipTLSVerify, version, guard), func() {}
 	}
