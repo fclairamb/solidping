@@ -68,6 +68,11 @@ Add `duration_p50` alongside the existing four, end to end:
   wants a t-digest, and write the decision down next to the code — it is the
   question that will be asked again.
 
+## Resolved open questions
+
+- Store a real p50 column on rollup rows and seam bins (the honest answer), so the median shows for every range. Check the row-count math in `job_aggregation_rowcount.go` first and note the result in the commit body.
+- Averaging children's p50 is an accepted approximation, same as p95. No t-digest. Write this decision in a comment next to `calculateAggregatedMetrics`.
+
 ## Not in scope
 
 Any other percentile, and the two sibling items from the same report:

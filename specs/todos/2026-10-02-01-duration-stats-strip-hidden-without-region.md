@@ -64,6 +64,11 @@ Two smaller problems in the same place:
 - The strip and the chart read the same `chartWindowResults` query, so this
   adds no fetch. Confirm that is still true after the move.
 
+## Resolved open questions
+
+- Region gate: treat it as not a correctness guard. Render the strip for "All regions" and label the scope explicitly (for example "across 3 regions"). Do not keep it hidden.
+- Same query: the strip and the chart keep reading `chartWindowResults`. Add no new fetch, and verify that after the move.
+
 ## Not in scope
 
 The median (`specs/todos/2026-10-02-02-store-duration-p50.md`) and the

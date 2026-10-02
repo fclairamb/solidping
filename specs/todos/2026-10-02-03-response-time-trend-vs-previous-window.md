@@ -57,6 +57,12 @@ before it.
   duration aggregates. Check what the existing avg does with them before
   deciding what the comparison does.
 
+## Resolved open questions
+
+- Compare against the previous window of equal length, not a longer baseline.
+- Show it as a number in the stats strip, not as a ghosted overlay series on the chart.
+- Maintenance windows: mirror whatever the existing avg does with them (check it), so the comparison is consistent with the strip. Record the finding in a comment.
+
 ## Not in scope
 
 Alerting on a trend — that is what SLOs and burn-rate alerting are for
