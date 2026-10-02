@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useCallback, useEffect } from "react";
+import { type ReactNode, useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { ZoomOut } from "lucide-react";
 import {
@@ -87,6 +87,8 @@ interface ResponseTimeChartProps {
   // a shared link reproduces the selection. Controlled — no local fallback.
   selectedUid?: string;
   onSelectChange?: (uid?: string) => void;
+  /** Rendered inside the card under the chart (the page's stats strip). */
+  footer?: ReactNode;
   /**
    * Degraded episodes to shade, as epoch-ms spans (spec 2026-09-22-03).
    *
@@ -414,6 +416,7 @@ export function ResponseTimeChart({
   onZoomChange,
   selectedUid,
   onSelectChange,
+  footer,
   degradedSpans,
 }: ResponseTimeChartProps) {
   const { t } = useTranslation("checks");
@@ -1574,6 +1577,7 @@ export function ResponseTimeChart({
             ) : null}
           </div>
         )}
+        {footer}
         {!isLoading && chartData.length > 0 && (
           <p className="mt-2 text-center text-xs text-muted-foreground">
             {zoomed

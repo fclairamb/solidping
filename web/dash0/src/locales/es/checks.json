@@ -671,6 +671,9 @@
         "p95": "P95",
         "samples": "Muestras",
         "window": "{{period}}",
+        "scopeAll_one": "en {{count}} región",
+        "scopeAll_other": "en {{count}} regiones",
+        "scopeRegion": "región {{region}}",
         "windowPeriod": {
           "hour": "Última hora",
           "day": "Último día",

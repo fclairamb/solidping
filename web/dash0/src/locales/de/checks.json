@@ -671,6 +671,9 @@
         "p95": "P95",
         "samples": "Stichproben",
         "window": "{{period}}",
+        "scopeAll_one": "über {{count}} Region",
+        "scopeAll_other": "über {{count}} Regionen",
+        "scopeRegion": "Region {{region}}",
         "windowPeriod": {
           "hour": "Letzte Stunde",
           "day": "Letzter Tag",

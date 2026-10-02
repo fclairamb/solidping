@@ -404,9 +404,9 @@ test.describe("Check Detail Page", () => {
     ).toHaveCount(0);
 
     // Single-region checks also show no Recent Results filter chips, no
-    // swatch legend, and no stats strip (spec 2026-07-05-13, criterion 2).
+    // swatch legend (spec 2026-07-05-13, criterion 2). The stats strip is
+    // not region-gated any more (spec 2026-10-02-01).
     await expect(page.getByTestId("results-region-filter")).toHaveCount(0);
-    await expect(page.getByTestId("results-duration-stats")).toHaveCount(0);
     await expect(
       page.locator('[data-testid^="response-time-chart-region-swatch-"]'),
     ).toHaveCount(0);
@@ -929,6 +929,19 @@ test.describe("Check Detail Page", () => {
     await expect(stats).toContainText("9");
     // Window label reflects the current graphPeriod (week -> "Last week").
     await expect(stats).toContainText(/last week/i);
+    await expect(page.getByTestId("results-duration-stats-scope")).toContainText(
+      /US East/,
+    );
+
+    // "All regions" (no ?region=) shows the strip too, scoped explicitly, and
+    // it sits inside the chart card.
+    await page.goto(`${page.url().split("?")[0]}?graphPeriod=week`);
+    await page.waitForLoadState("networkidle");
+    await expect(stats).toBeVisible({ timeout: 15000 });
+    await expect(page.getByTestId("results-duration-stats-scope")).toContainText(
+      /across 1 region/i,
+    );
+    await expect(stats).toContainText("40ms");
   });
 
   test("header: Edit and Disable stay inline, everything else lives behind the ⋯ menu (desktop and mobile)", async ({
