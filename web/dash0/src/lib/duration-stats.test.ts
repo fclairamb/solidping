@@ -55,4 +55,46 @@ describe("computeDurationStats", () => {
     expect(s?.avg).toBeCloseTo(19);
     expect(s?.isEstimate).toBe(true);
   });
+
+  describe("p50", () => {
+    const rollup = (p50: number | undefined, avg = 50): OrgResult =>
+      ({
+        region: "eu",
+        periodType: "hour",
+        durationAvgMs: avg,
+        durationMinMs: 1,
+        durationMaxMs: 99,
+        durationP95Ms: 90,
+        durationP50Ms: p50,
+        totalChecks: 5,
+      }) as OrgResult;
+
+    it("uses each raw row as a degenerate single-sample median", () => {
+      const s = computeDurationStats([raw("eu", 10), raw("eu", 30)], undefined);
+      expect(s?.p50).toBe(20);
+    });
+
+    it("averages the rollup medians and marks the window an estimate", () => {
+      const s = computeDurationStats([rollup(10), rollup(30)], undefined);
+      expect(s?.p50).toBe(20);
+      expect(s?.isEstimate).toBe(true);
+    });
+
+    it("skips rollup rows that predate the column instead of counting 0", () => {
+      const s = computeDurationStats(
+        [rollup(40), rollup(undefined), raw("eu", 20)],
+        undefined,
+      );
+      expect(s?.p50).toBe(30);
+    });
+
+    it("is null when no contributing row carries a median", () => {
+      const s = computeDurationStats(
+        [rollup(undefined), rollup(undefined)],
+        undefined,
+      );
+      expect(s?.p50).toBeNull();
+      expect(s?.avg).toBeGreaterThan(0);
+    });
+  });
 });

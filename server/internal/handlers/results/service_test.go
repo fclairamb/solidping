@@ -316,7 +316,24 @@ func TestApplyDurationFields(t *testing.T) {
 		wantMaxMs      *float32
 		wantAvgMs      *float32
 		wantP95Ms      *float32
+		wantP50Ms      *float32
 	}{
+		{
+			name:      "p50 is returned when requested and present",
+			result:    &models.Result{DurationP50: float32Ptr(77)},
+			with:      []string{"durationP50Ms"},
+			wantP50Ms: float32Ptr(77),
+		},
+		{
+			name:   "older rollup with nil p50 leaves the field absent",
+			result: &models.Result{DurationP95: float32Ptr(9)},
+			with:   []string{"durationP50Ms"},
+		},
+		{
+			name:   "p50 not requested stays absent",
+			result: &models.Result{DurationP50: float32Ptr(77)},
+			with:   []string{"durationAvgMs"},
+		},
 		{
 			name: "aggregated row requesting avg and p95 returns both",
 			result: &models.Result{
@@ -389,6 +406,7 @@ func TestApplyDurationFields(t *testing.T) {
 			r.Equal(tc.wantMaxMs, resp.DurationMaxMs)
 			r.Equal(tc.wantAvgMs, resp.DurationAvgMs)
 			r.Equal(tc.wantP95Ms, resp.DurationP95Ms)
+			r.Equal(tc.wantP50Ms, resp.DurationP50Ms)
 		})
 	}
 }

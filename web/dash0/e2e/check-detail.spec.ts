@@ -919,12 +919,12 @@ test.describe("Check Detail Page", () => {
     const stats = page.getByTestId("results-duration-stats");
     await expect(stats).toBeVisible({ timeout: 15000 });
 
-    // Rollup row present in the window -> avg and p95 are ~-prefixed
+    // Rollup row present in the window -> avg, p95 and the median are ~-prefixed
     // estimates; min/max stay exact (min-of-mins/max-of-maxes: raw min 40 vs
     // rollup min 150 -> 40; raw max 100 vs rollup max 250 -> 250).
     await expect(stats).toContainText("40ms");
     await expect(stats).toContainText("250ms");
-    await expect(stats.getByText(/~\d/)).toHaveCount(2);
+    await expect(stats.getByText(/~\d/)).toHaveCount(3);
     // Sample count sums raw rows (1 each) + the rollup's totalChecks: 4 + 5 = 9.
     await expect(stats).toContainText("9");
     // Window label reflects the current graphPeriod (week -> "Last week").

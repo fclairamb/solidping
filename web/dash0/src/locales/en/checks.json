@@ -713,6 +713,7 @@
         "avg": "Avg",
         "max": "Max",
         "p95": "P95",
+        "p50": "Median",
         "samples": "Samples",
         "window": "{{period}}",
         "scopeAll_one": "across {{count}} region",

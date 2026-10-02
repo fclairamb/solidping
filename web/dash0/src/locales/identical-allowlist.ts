@@ -83,6 +83,7 @@ export const DASH0_IDENTICAL_ALLOWLIST: IdenticalAllowlist = {
   "checks:resultDetail.durationP95": ["fr", "de", "es"], // "P95"
   "checks:resultDetail.callerUserAgent": ["fr", "de", "es"], // "User-Agent"
   "checks:detail.results.stats.p95": ["fr", "de", "es"], // "P95"
+  "checks:detail.results.stats.p50": ["de"], // "Median"
   "checks:detail.incidents.id": ["fr", "de", "es"], // "ID"
   "checks:endpoints.heartbeat.push.summaryTcp": ["fr", "de", "es"], // "TCP {{port}}"
   "checks:endpoints.heartbeat.push.summaryUdp": ["fr", "de", "es"], // "UDP {{port}}"

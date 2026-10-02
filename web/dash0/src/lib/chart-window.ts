@@ -8,7 +8,7 @@ export type TimeRange = "hour" | "day" | "week" | "month";
  * strip can compute tier-aware min/avg/max/p95 from this same dataset without
  * an extra HTTP request. Raw rows simply omit the aggregate-only fields. */
 export const CHART_WITH_FIELDS =
-  "durationMs,region,durationMinMs,durationMaxMs,durationAvgMs,durationP95Ms,totalChecks";
+  "durationMs,region,durationMinMs,durationMaxMs,durationAvgMs,durationP95Ms,durationP50Ms,totalChecks";
 
 /** One tier's fetch parameters. `periodType` is either a rollup list
  * ("hour", "hour,day") or exactly "raw" — **never both**. The two partial

@@ -713,6 +713,7 @@
         "avg": "Moy",
         "max": "Max",
         "p95": "P95",
+        "p50": "Médiane",
         "samples": "Échantillons",
         "window": "{{period}}",
         "scopeAll_one": "sur {{count}} région",

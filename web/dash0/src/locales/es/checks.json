@@ -669,6 +669,7 @@
         "avg": "Media",
         "max": "Máx",
         "p95": "P95",
+        "p50": "Mediana",
         "samples": "Muestras",
         "window": "{{period}}",
         "scopeAll_one": "en {{count}} región",

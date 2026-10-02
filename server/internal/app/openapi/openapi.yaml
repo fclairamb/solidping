@@ -2718,9 +2718,11 @@ paths:
           in: query
           description: >
             Comma-separated optional fields to include. durationAvgMs and
-            durationP95Ms are populated on aggregated rollup rows (hour/day/
-            month) from the stored duration_avg/duration_p95 columns; both
-            are absent on raw rows, which don't store them.
+            durationP95Ms and durationP50Ms are populated on aggregated rollup
+            rows (hour/day/month) from the stored duration_avg/duration_p95/
+            duration_p50 columns; all are absent on raw rows, which don't
+            store them. durationP50Ms is also absent on rollups that predate
+            the column.
           schema:
             type: string
           example: "metrics,output,durationMs,region"
@@ -12060,6 +12062,13 @@ components:
             95th-percentile duration in milliseconds, from the stored
             aggregate (with=durationP95Ms). Populated on aggregated rollup
             rows (hour/day/month); absent on raw rows, which don't store it.
+        durationP50Ms:
+          type: number
+          description: >
+            Median (nearest-rank p50) duration in milliseconds, from the
+            stored aggregate (with=durationP50Ms). Populated on aggregated
+            rollup rows (hour/day/month) written after the column was added;
+            absent on raw rows and on older rollups, which have no median.
         region:
           type: string
           description: Region identifier (with=region)

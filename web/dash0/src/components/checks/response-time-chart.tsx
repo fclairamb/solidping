@@ -114,6 +114,7 @@ export interface ChartPoint {
   durationMaxMs?: number;
   durationAvgMs?: number;
   durationP95Ms?: number;
+  durationP50Ms?: number;
   totalChecks?: number;
   // Multi-series mode only: each region's own Area uses a distinct dataKey
   // (regionDataKey(slug)) so a chart-level click's activeDataKey identifies
@@ -574,6 +575,7 @@ export function ResponseTimeChart({
           durationMaxMs: r.durationMaxMs,
           durationAvgMs: r.durationAvgMs,
           durationP95Ms: r.durationP95Ms,
+          durationP50Ms: r.durationP50Ms,
           totalChecks: r.totalChecks,
         };
       });

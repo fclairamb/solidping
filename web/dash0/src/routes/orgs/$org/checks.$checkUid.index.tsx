@@ -2,7 +2,12 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useIsDemoSession } from "@/hooks/use-is-demo-session";
 import { canDemoEditCheck } from "@/lib/demo";
-import { createFileRoute, Link, useNavigate, useRouter } from "@tanstack/react-router";
+import {
+  createFileRoute,
+  Link,
+  useNavigate,
+  useRouter,
+} from "@tanstack/react-router";
 import { Trans, useTranslation } from "react-i18next";
 import type { IncidentDetail } from "@/api/hooks";
 import { flappingSummaryParams } from "@/lib/flap-summary";
@@ -693,12 +698,7 @@ function CheckDetailPage() {
   const [slugValue, setSlugValue] = useState("");
   const slugInputRef = useRef<HTMLInputElement>(null);
 
-  const {
-    data: check,
-    isLoading,
-    error,
-    refetch,
-  } = useCheck(org, checkUid);
+  const { data: check, isLoading, error, refetch } = useCheck(org, checkUid);
 
   const isDemoSession = useIsDemoSession();
   const { t: tOrg } = useTranslation(["org"]);
@@ -870,7 +870,7 @@ function CheckDetailPage() {
               })}
         </span>
       </p>
-      <dl className="grid grid-cols-3 gap-x-4 gap-y-2 sm:grid-cols-5">
+      <dl className="grid grid-cols-3 gap-x-4 gap-y-2 sm:grid-cols-6">
         {[
           ["min", formatMs(durationStats.min)],
           [
@@ -881,6 +881,12 @@ function CheckDetailPage() {
           [
             "p95",
             `${durationStats.isEstimate ? "~" : ""}${formatMs(durationStats.p95)}`,
+          ],
+          [
+            "p50",
+            durationStats.p50 == null
+              ? "–"
+              : `${durationStats.isEstimate ? "~" : ""}${formatMs(durationStats.p50)}`,
           ],
           ["samples", String(durationStats.count)],
         ].map(([key, value]) => (
@@ -1082,7 +1088,9 @@ function CheckDetailPage() {
   const checkDisplayName =
     check.name || check.slug || check.uid?.slice(0, 8) || "";
   const headerTarget = headerTargetOf(check);
-  const headerTargetIsUrl = headerTarget ? /^https?:\/\//i.test(headerTarget) : false;
+  const headerTargetIsUrl = headerTarget
+    ? /^https?:\/\//i.test(headerTarget)
+    : false;
   const headerPeriodMs = parsePeriodMs(check.period);
   const headerLastResultAt = lastRealResultAt(check);
   const flapSummary = flappingSummaryParams(check);
@@ -1214,88 +1222,88 @@ function CheckDetailPage() {
                   />
                 </span>
               )}
-            {check.slug && !editingSlug && (
-              <div className="hidden md:flex items-center gap-1">
-                <Link
-                  to="/orgs/$org/checks/$checkUid"
-                  params={{ org, checkUid: check.slug }}
-                  search={{
-                    graphPeriod: undefined,
-                    graphFull: undefined,
-                    region: undefined,
-                    graphFrom: undefined,
-                    graphTo: undefined,
-                    graphSelected: undefined,
-                  }}
-                  className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs font-mono text-muted-foreground hover:text-foreground transition-colors"
-                >
+              {check.slug && !editingSlug && (
+                <div className="hidden md:flex items-center gap-1">
+                  <Link
+                    to="/orgs/$org/checks/$checkUid"
+                    params={{ org, checkUid: check.slug }}
+                    search={{
+                      graphPeriod: undefined,
+                      graphFull: undefined,
+                      region: undefined,
+                      graphFrom: undefined,
+                      graphTo: undefined,
+                      graphSelected: undefined,
+                    }}
+                    className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs font-mono text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <Hash className="h-3 w-3" aria-hidden="true" />
+                    {check.slug}
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={startEditingSlug}
+                    className="text-muted-foreground hover:text-foreground p-0.5 rounded"
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </button>
+                </div>
+              )}
+              {editingSlug && (
+                <div className="hidden md:flex items-center gap-1">
                   <Hash className="h-3 w-3" aria-hidden="true" />
-                  {check.slug}
-                </Link>
-                <button
-                  type="button"
-                  onClick={startEditingSlug}
-                  className="text-muted-foreground hover:text-foreground p-0.5 rounded"
-                >
-                  <Pencil className="h-3 w-3" />
-                </button>
-              </div>
-            )}
-            {editingSlug && (
-              <div className="hidden md:flex items-center gap-1">
-                <Hash className="h-3 w-3" aria-hidden="true" />
-                <input
-                  ref={slugInputRef}
-                  value={slugValue}
-                  onChange={(e) => setSlugValue(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") saveSlug();
-                    if (e.key === "Escape") cancelEditingSlug();
-                  }}
-                  className="h-6 rounded border bg-background px-1.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-ring"
-                  disabled={updateCheck.isPending}
-                />
-                <button
-                  type="button"
-                  onClick={saveSlug}
-                  disabled={updateCheck.isPending}
-                  className="text-muted-foreground hover:text-green-500 p-0.5 rounded"
-                >
-                  {updateCheck.isPending ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                  ) : (
-                    <CheckIcon className="h-3 w-3" />
-                  )}
-                </button>
-                <button
-                  type="button"
-                  onClick={cancelEditingSlug}
-                  disabled={updateCheck.isPending}
-                  className="text-muted-foreground hover:text-red-500 p-0.5 rounded"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </div>
-            )}
-            {check.uid && checkUid !== check.uid && (
-              <div className="hidden md:flex items-center gap-1">
-                <Link
-                  to="/orgs/$org/checks/$checkUid"
-                  params={{ org, checkUid: check.uid }}
-                  search={{
-                    graphPeriod: undefined,
-                    graphFull: undefined,
-                    region: undefined,
-                    graphFrom: undefined,
-                    graphTo: undefined,
-                    graphSelected: undefined,
-                  }}
-                  className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs font-mono text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  {t("detail.uidShort", { uid: check.uid.slice(0, 8) })}
-                </Link>
-              </div>
-            )}
+                  <input
+                    ref={slugInputRef}
+                    value={slugValue}
+                    onChange={(e) => setSlugValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") saveSlug();
+                      if (e.key === "Escape") cancelEditingSlug();
+                    }}
+                    className="h-6 rounded border bg-background px-1.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-ring"
+                    disabled={updateCheck.isPending}
+                  />
+                  <button
+                    type="button"
+                    onClick={saveSlug}
+                    disabled={updateCheck.isPending}
+                    className="text-muted-foreground hover:text-green-500 p-0.5 rounded"
+                  >
+                    {updateCheck.isPending ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <CheckIcon className="h-3 w-3" />
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={cancelEditingSlug}
+                    disabled={updateCheck.isPending}
+                    className="text-muted-foreground hover:text-red-500 p-0.5 rounded"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              )}
+              {check.uid && checkUid !== check.uid && (
+                <div className="hidden md:flex items-center gap-1">
+                  <Link
+                    to="/orgs/$org/checks/$checkUid"
+                    params={{ org, checkUid: check.uid }}
+                    search={{
+                      graphPeriod: undefined,
+                      graphFull: undefined,
+                      region: undefined,
+                      graphFrom: undefined,
+                      graphTo: undefined,
+                      graphSelected: undefined,
+                    }}
+                    className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs font-mono text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {t("detail.uidShort", { uid: check.uid.slice(0, 8) })}
+                  </Link>
+                </div>
+              )}
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
@@ -1405,41 +1413,44 @@ function CheckDetailPage() {
               </DropdownMenuContent>
             </DropdownMenu>
 
-          {/* Triggerless, controlled delete dialog */}
-          <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>
-                  {t("checks:detail.deleteTitle")}
-                </AlertDialogTitle>
-                <AlertDialogDescription>
-                  {t("checks:detail.deleteDescription")}
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>{t("common:cancel")}</AlertDialogCancel>
-                <AlertDialogAction onClick={handleDelete} variant="destructive">
-                  {deleteCheck.isPending ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      {t("checks:detail.deleting")}
-                    </>
-                  ) : (
-                    t("checks:detail.delete")
-                  )}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+            {/* Triggerless, controlled delete dialog */}
+            <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>
+                    {t("checks:detail.deleteTitle")}
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {t("checks:detail.deleteDescription")}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>{t("common:cancel")}</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={handleDelete}
+                    variant="destructive"
+                  >
+                    {deleteCheck.isPending ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        {t("checks:detail.deleting")}
+                      </>
+                    ) : (
+                      t("checks:detail.delete")
+                    )}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
 
-          {/* Triggerless, controlled publish dialog — also opened by the
+            {/* Triggerless, controlled publish dialog — also opened by the
               `?publish=true` deep link from the post-create line. */}
-          <PublishOnStatusPageDialog
-            org={org}
-            check={check}
-            open={publishOpen}
-            onOpenChange={setPublishOpen}
-          />
+            <PublishOnStatusPageDialog
+              org={org}
+              check={check}
+              open={publishOpen}
+              onOpenChange={setPublishOpen}
+            />
           </div>
         </div>
       </div>

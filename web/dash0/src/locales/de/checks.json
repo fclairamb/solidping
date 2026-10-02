@@ -669,6 +669,7 @@
         "avg": "Durchschn.",
         "max": "Max",
         "p95": "P95",
+        "p50": "Median",
         "samples": "Stichproben",
         "window": "{{period}}",
         "scopeAll_one": "über {{count}} Region",

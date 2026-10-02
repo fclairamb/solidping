@@ -479,6 +479,7 @@ export interface OrgResult {
   durationMaxMs?: number;
   durationAvgMs?: number;
   durationP95Ms?: number;
+  durationP50Ms?: number;
   availabilityPct?: number;
   totalChecks?: number;
   successfulChecks?: number;

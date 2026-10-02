@@ -5,6 +5,9 @@ export interface DurationStats {
   max: number;
   avg: number;
   p95: number;
+  /** Median. Null when no contributing row carried one (every rollup row
+   * predates the duration_p50 column and the window holds no raw row). */
+  p50: number | null;
   count: number;
   /** True when the window includes any rollup (non-raw) row, so avg/p95 are
    * combined estimates rather than exact values (display with a `~` prefix). */
@@ -29,6 +32,12 @@ export interface DurationStats {
  *     single-sample p95. This mirrors calculateAggregatedMetrics's plain
  *     p95Sum / p95Count combination (NOT totalChecks-weighted — the
  *     aggregator does not weight p95 by count when combining buckets).
+ *   - p50: same unweighted mean as p95, over the rows that carry a median.
+ *     Raw rows contribute their own durationMs; rollup rows contribute their
+ *     stored durationP50Ms and are SKIPPED when it is absent (rows written
+ *     before the column existed, never backfilled) rather than faked from
+ *     durationMs. Any rollup row makes isEstimate true, so the median is
+ *     always rendered with the `~` whenever it is combined.
  * Multi-region fold (region undefined, several regions in the window): the
  * rules above apply across every region's rows. min/max are the extremes over
  * all regions, avg is totalChecks-weighted so a dense region is not out-voted
@@ -53,6 +62,8 @@ export function computeDurationStats(
   let avgWeight = 0;
   let p95Sum = 0;
   let p95Count = 0;
+  let p50Sum = 0;
+  let p50Count = 0;
   let isEstimate = new Set(points.map((p) => p.region ?? "")).size > 1;
 
   for (const p of points) {
@@ -67,6 +78,8 @@ export function computeDurationStats(
       avgWeight += 1;
       p95Sum += p.durationMs;
       p95Count += 1;
+      p50Sum += p.durationMs;
+      p50Count += 1;
       continue;
     }
 
@@ -89,6 +102,11 @@ export function computeDurationStats(
       p95Sum += p95Fallback;
       p95Count += 1;
     }
+
+    if (p.durationP50Ms != null) {
+      p50Sum += p.durationP50Ms;
+      p50Count += 1;
+    }
   }
 
   if (
@@ -105,6 +123,7 @@ export function computeDurationStats(
     max,
     avg: avgWeightedSum / avgWeight,
     p95: p95Sum / p95Count,
+    p50: p50Count > 0 ? p50Sum / p50Count : null,
     count,
     isEstimate,
   };
