@@ -72,7 +72,14 @@ type responseInfo struct {
 }
 
 // HTTPChecker implements the Checker interface for HTTP checks.
-type HTTPChecker struct{}
+type HTTPChecker struct {
+	// probeTransport overrides checkerdef.HTTPProbeTransportFor. Nil in
+	// production; tests set it to reach the response-protocol assertion with a
+	// round-tripper that answers over a different version than the one forced.
+	probeTransport func(
+		ctx context.Context, skipTLSVerify bool, httpVersion checkerdef.HTTPVersion,
+	) (http.RoundTripper, func())
+}
 
 // Type returns the check type identifier.
 func (c *HTTPChecker) Type() checkerdef.CheckType {
@@ -331,7 +338,12 @@ func (c *HTTPChecker) executeRequest(
 	// outlive the probe.
 	httpVersion := cfg.RequiredHTTPVersion()
 
-	transport, releaseTransport := checkerdef.HTTPProbeTransportFor(ctx, skipTLSVerify, httpVersion)
+	probeTransport := checkerdef.HTTPProbeTransportFor
+	if c.probeTransport != nil {
+		probeTransport = c.probeTransport
+	}
+
+	transport, releaseTransport := probeTransport(ctx, skipTLSVerify, httpVersion)
 	defer releaseTransport()
 
 	client.Transport = transport

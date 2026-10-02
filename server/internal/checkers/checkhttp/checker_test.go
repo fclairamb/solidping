@@ -2295,3 +2295,53 @@ func TestHTTPChecker_HTTPVersion3WithoutUDPListenerFails(t *testing.T) {
 	r.NotEmpty(result.Output[checkerdef.OutputKeyError])
 	r.NotContains(result.Output, outputKeyHTTPProtocol, "no response must have been received")
 }
+
+// roundTripFunc adapts a function to http.RoundTripper.
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+// TestHTTPChecker_HTTPVersionResponseProtocolMismatch reaches the
+// resp.ProtoMajor assertion: the forced HTTP/2 transport hands back an
+// HTTP/1.1 response, so the check must go DOWN before any other assertion.
+func TestHTTPChecker_HTTPVersionResponseProtocolMismatch(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	var gotVersion checkerdef.HTTPVersion
+
+	checker := &HTTPChecker{
+		probeTransport: func(
+			_ context.Context, _ bool, httpVersion checkerdef.HTTPVersion,
+		) (http.RoundTripper, func()) {
+			gotVersion = httpVersion
+
+			return roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				return &http.Response{
+					Status:     "200 OK",
+					StatusCode: http.StatusOK,
+					Proto:      "HTTP/1.1",
+					ProtoMajor: 1,
+					ProtoMinor: 1,
+					Header:     http.Header{},
+					Body:       io.NopCloser(strings.NewReader("ok")),
+					Request:    req,
+				}, nil
+			}), func() {}
+		},
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	result, err := checker.Execute(ctx, httpVersionCheck("https://acme.com/", checkerdef.HTTPVersion2))
+	r.NoError(err)
+	r.NotNil(result)
+	r.Equal(checkerdef.HTTPVersion2, gotVersion)
+	r.Equal(checkerdef.StatusDown, result.Status, "output: %v", result.Output)
+	r.Equal("expected HTTP/2, got HTTP/1.1", result.Output[checkerdef.OutputKeyError])
+	r.Equal(http.StatusOK, result.Output[checkerdef.OutputKeyStatusCode])
+}
