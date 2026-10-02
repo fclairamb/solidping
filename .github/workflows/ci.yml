@@ -16,6 +16,12 @@ permissions:
   packages: write
   pull-requests: read
 
+# A new push to a PR cancels the run still going for the previous commit.
+# main and tag runs are never cancelled: they publish and deploy.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   # Wiki-only pull requests build and test nothing: wiki/ holds internal
   # engineering notes and is not an input to any build (the published docs site
