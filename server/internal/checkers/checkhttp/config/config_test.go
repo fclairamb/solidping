@@ -502,3 +502,97 @@ func TestNormalizeConfigFor_Probe(t *testing.T) {
 
 // boolPtr is the local pointer helper for the optional boolean fields.
 func boolPtr(b bool) *bool { return &b }
+
+func TestHTTPConfigHTTPVersion_FromMapAndGetConfig(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		raw       any
+		want      checkerdef.HTTPVersion
+		persisted any // nil means the key is omitted
+	}{
+		{name: "unset defaults to 1.1", raw: nil, want: checkerdef.HTTPVersion11},
+		{name: "1.1 is omitted on serialization", raw: "1.1", want: checkerdef.HTTPVersion11},
+		{name: "2", raw: "2", want: checkerdef.HTTPVersion2, persisted: "2"},
+		{name: "3", raw: "3", want: checkerdef.HTTPVersion3, persisted: "3"},
+		{name: "YAML number 2", raw: float64(2), want: checkerdef.HTTPVersion2, persisted: "2"},
+		{name: "YAML number 1.1", raw: 1.1, want: checkerdef.HTTPVersion11},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+			configMap := map[string]any{"url": "https://example.com"}
+
+			if tc.raw != nil {
+				configMap["httpVersion"] = tc.raw
+			}
+
+			cfg := &HTTPConfig{}
+			r.NoError(cfg.FromMap(configMap))
+			r.Equal(tc.want, cfg.RequiredHTTPVersion())
+
+			out := cfg.GetConfig()
+			if tc.persisted == nil {
+				r.NotContains(out, "httpVersion")
+			} else {
+				r.Equal(tc.persisted, out["httpVersion"])
+			}
+		})
+	}
+}
+
+func TestHTTPConfigHTTPVersion_FromMapRejectsNonString(t *testing.T) {
+	t.Parallel()
+
+	cfg := &HTTPConfig{}
+	require.Error(t, cfg.FromMap(map[string]any{"url": "https://example.com", "httpVersion": true}))
+}
+
+func TestValidateSpec_HTTPVersion(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		config  map[string]any
+		wantErr string
+	}{
+		{name: "1.1", config: map[string]any{"httpVersion": "1.1"}},
+		{name: "2", config: map[string]any{"httpVersion": "2"}},
+		{name: "3", config: map[string]any{"httpVersion": "3"}},
+		{name: "2 tunneled", config: map[string]any{"httpVersion": "2", "tunnelCheckUid": "ssh-1"}},
+		{name: "4 rejected", config: map[string]any{"httpVersion": "4"}, wantErr: `got "4"`},
+		{name: "http2 rejected", config: map[string]any{"httpVersion": "http2"}, wantErr: `got "http2"`},
+		{
+			name:    "3 tunneled rejected",
+			config:  map[string]any{"httpVersion": "3", "tunnelCheckUid": "ssh-1"},
+			wantErr: "SSH tunnel only carries TCP",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+			tc.config["url"] = "https://example.com"
+
+			err := ValidateSpec(&checkerdef.CheckSpec{Config: tc.config})
+			if tc.wantErr == "" {
+				r.NoError(err)
+
+				return
+			}
+
+			r.Error(err)
+			r.Contains(err.Error(), tc.wantErr)
+
+			var cfgErr *checkerdef.ConfigError
+			r.ErrorAs(err, &cfgErr)
+			r.Equal("httpVersion", cfgErr.Parameter)
+		})
+	}
+}

@@ -52,7 +52,24 @@ const (
 	// a chain went without turning on capture_failure_response. Absent when
 	// the request never redirected.
 	outputKeyRedirectChain = "redirect_chain"
+
+	// outputKeyHTTPProtocol is the Output key holding the protocol the
+	// response came over (resp.Proto: "HTTP/1.1", "HTTP/2.0", "HTTP/3.0"),
+	// on every result that got a response, up or down (spec 2026-10-03-01).
+	outputKeyHTTPProtocol = "http_protocol"
+
+	// outputKeyAltSvc is the Output key holding the response's Alt-Svc
+	// header when the server sent one, so a user can see whether h3 is
+	// advertised.
+	outputKeyAltSvc = "alt_svc"
 )
+
+// responseInfo is what executeRequest learned about the response, for
+// Execute to stamp onto the result whatever branch produced it.
+type responseInfo struct {
+	proto  string
+	altSvc string
+}
 
 // HTTPChecker implements the Checker interface for HTTP checks.
 type HTTPChecker struct{}
@@ -82,10 +99,14 @@ func (c *HTTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 	tracker := &connFamilyTracker{}
 	ctx = httptrace.WithClientTrace(ctx, tracker.clientTrace())
 
-	result, err := c.executeRequest(ctx, config)
+	info := &responseInfo{}
+
+	result, err := c.executeRequest(ctx, config, info)
 	if err != nil || result == nil {
 		return result, err
 	}
+
+	stampResponseInfo(result, info)
 
 	if version := tracker.version(); version != checkerdef.IPVersionAuto {
 		if result.Output == nil {
@@ -182,7 +203,9 @@ func locateHTTPNetworkFailure(result *checkerdef.Result, dialed string) {
 // executeRequest is the HTTP probe proper.
 //
 //nolint:funlen,gocognit,cyclop // HTTP checking with pattern matching requires comprehensive validation
-func (c *HTTPChecker) executeRequest(ctx context.Context, config checkerdef.Config) (*checkerdef.Result, error) {
+func (c *HTTPChecker) executeRequest(
+	ctx context.Context, config checkerdef.Config, info *responseInfo,
+) (*checkerdef.Result, error) {
 	cfg, err := checkerdef.AssertConfig[*HTTPConfig](config)
 	if err != nil {
 		return nil, err
@@ -302,12 +325,36 @@ func (c *HTTPChecker) executeRequest(ctx context.Context, config checkerdef.Conf
 	// The egress guard (spec 2026-09-25-19) rides the same transport: under an
 	// enforcing policy every dial — redirect hops included — resolves once,
 	// refuses a non-public address and connects to the pinned IP.
-	client.Transport = checkerdef.HTTPTransportFor(ctx, skipTLSVerify)
+	//
+	// httpVersion "2" / "3" (spec 2026-10-03-01) swap in a transport built for
+	// this probe only and released right after it, so nothing it opened can
+	// outlive the probe.
+	httpVersion := cfg.RequiredHTTPVersion()
+
+	transport, releaseTransport := checkerdef.HTTPProbeTransportFor(ctx, skipTLSVerify, httpVersion)
+	defer releaseTransport()
+
+	client.Transport = transport
 
 	resp, err := client.Do(req)
 	duration := time.Since(start)
 
 	if err != nil {
+		// A forced HTTP/2 or HTTP/3 the target refused at the handshake is
+		// the protocol assertion failing, not a reachability problem.
+		if httpVersion != checkerdef.HTTPVersion11 && ctx.Err() == nil &&
+			checkerdef.IsProtocolNegotiationError(err) {
+			return &checkerdef.Result{
+				Status:   checkerdef.StatusDown,
+				Duration: duration,
+				Output: withRedirectChain(withTLSVerifySkipped(map[string]any{
+					checkerdef.OutputKeyError: fmt.Sprintf(
+						"expected %s, but the server did not negotiate it: %v", httpVersion.Label(), err),
+					checkerdef.OutputKeyURL: cfg.URL,
+				}, skipTLSVerify), redirectChain),
+			}, nil
+		}
+
 		// redirect_host_policy: same-host refused a hop. This is a policy
 		// decision, not a reachability problem — no NetworkFailure marker, and
 		// deliberately checked before the timeout/dial branches below so a
@@ -361,6 +408,9 @@ func (c *HTTPChecker) executeRequest(ctx context.Context, config checkerdef.Conf
 	defer func() {
 		_ = resp.Body.Close()
 	}()
+
+	info.proto = resp.Proto
+	info.altSvc = resp.Header.Get("Alt-Svc")
 
 	// bodyDrivesAssertions is the read gate: it must list EVERY config key
 	// whose evaluation needs the response body, because respBody below is
@@ -439,6 +489,18 @@ func (c *HTTPChecker) executeRequest(ctx context.Context, config checkerdef.Conf
 			Output:      withRedirectChain(output, redirectChain),
 			Diagnostics: buildFailureCapture(cfg, resp, bodyBytes),
 		}
+	}
+
+	// Protocol assertion (spec 2026-10-03-01): a forced version must be the
+	// one the response came over. Checked before every body/header assertion,
+	// since a response over the wrong protocol answers the wrong question.
+	if resp.ProtoMajor != httpVersion.ProtoMajor() {
+		return failed(map[string]any{
+			checkerdef.OutputKeyError:      fmt.Sprintf("expected %s, got %s", httpVersion.Label(), resp.Proto),
+			checkerdef.OutputKeyURL:        cfg.URL,
+			checkerdef.OutputKeyStatusCode: resp.StatusCode,
+			checkerdef.OutputKeyMethod:     method,
+		}), nil
 	}
 
 	// Compile regex patterns if not already compiled
@@ -631,6 +693,27 @@ func (c *HTTPChecker) executeRequest(ctx context.Context, config checkerdef.Conf
 	}
 
 	return finalResult, nil
+}
+
+// stampResponseInfo records the negotiated protocol and the Alt-Svc header on
+// a result, up or down. A result produced before any response (dial error,
+// timeout) has neither and gains no key.
+func stampResponseInfo(result *checkerdef.Result, info *responseInfo) {
+	if info.proto == "" && info.altSvc == "" {
+		return
+	}
+
+	if result.Output == nil {
+		result.Output = make(map[string]any)
+	}
+
+	if info.proto != "" {
+		result.Output[outputKeyHTTPProtocol] = info.proto
+	}
+
+	if info.altSvc != "" {
+		result.Output[outputKeyAltSvc] = info.altSvc
+	}
 }
 
 // withTLSVerifySkipped adds the tls_verify_skipped marker to a result output

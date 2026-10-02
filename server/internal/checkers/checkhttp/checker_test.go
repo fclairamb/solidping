@@ -4,6 +4,7 @@ package checkhttp
 import (
 	"context"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -11,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/quic-go/quic-go/http3"
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
@@ -2126,4 +2128,170 @@ func TestHTTPChecker_Execute_JSONPathAssertionsWithoutBodyMatchers(t *testing.T)
 			}
 		})
 	}
+}
+
+// httpVersionCheck builds an HTTP check config forcing version against url,
+// with verification off (test servers use self-signed certificates).
+func httpVersionCheck(url string, version checkerdef.HTTPVersion) *HTTPConfig {
+	verify := false
+
+	return &HTTPConfig{URL: url, HTTPVersion: string(version), VerifySsl: &verify}
+}
+
+func executeHTTPVersionCheck(t *testing.T, cfg *HTTPConfig) *checkerdef.Result {
+	t.Helper()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	result, err := (&HTTPChecker{}).Execute(ctx, cfg)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	return result
+}
+
+func altSvcHandler(status int) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Alt-Svc", `h3=":443"; ma=86400`)
+		w.WriteHeader(status)
+	})
+}
+
+func TestHTTPChecker_HTTPVersion2OverTLS(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	server := httptest.NewUnstartedServer(altSvcHandler(http.StatusOK))
+	server.EnableHTTP2 = true
+	server.StartTLS()
+
+	defer server.Close()
+
+	result := executeHTTPVersionCheck(t, httpVersionCheck(server.URL, checkerdef.HTTPVersion2))
+	r.Equal(checkerdef.StatusUp, result.Status, "output: %v", result.Output)
+	r.Equal("HTTP/2.0", result.Output[outputKeyHTTPProtocol])
+	r.Equal(`h3=":443"; ma=86400`, result.Output[outputKeyAltSvc])
+}
+
+func TestHTTPChecker_HTTPVersion2Cleartext(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	protocols := new(http.Protocols)
+	protocols.SetHTTP1(true)
+	protocols.SetUnencryptedHTTP2(true)
+
+	server := httptest.NewUnstartedServer(altSvcHandler(http.StatusOK))
+	server.Config.Protocols = protocols
+	server.Start()
+
+	defer server.Close()
+
+	result := executeHTTPVersionCheck(t, httpVersionCheck(server.URL, checkerdef.HTTPVersion2))
+	r.Equal(checkerdef.StatusUp, result.Status, "output: %v", result.Output)
+	r.Equal("HTTP/2.0", result.Output[outputKeyHTTPProtocol])
+}
+
+func TestHTTPChecker_HTTPVersion2AgainstHTTP1OnlyServer(t *testing.T) {
+	t.Parallel()
+
+	for name, start := range map[string]func(*httptest.Server){
+		"tls":       (*httptest.Server).StartTLS,
+		"cleartext": (*httptest.Server).Start,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+
+			server := httptest.NewUnstartedServer(altSvcHandler(http.StatusOK))
+			start(server)
+
+			defer server.Close()
+
+			result := executeHTTPVersionCheck(t, httpVersionCheck(server.URL, checkerdef.HTTPVersion2))
+			r.Equal(checkerdef.StatusDown, result.Status)
+			r.Contains(result.Output[checkerdef.OutputKeyError], "expected HTTP/2")
+		})
+	}
+}
+
+// TestHTTPChecker_HTTPVersionResultCarriesProtocolWhenDown pins that the
+// negotiated protocol (and Alt-Svc, when sent) is recorded on every result
+// that got a response, up or down, not only in the failure capture.
+func TestHTTPChecker_HTTPVersionResultCarriesProtocolWhenDown(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	server := httptest.NewServer(altSvcHandler(http.StatusInternalServerError))
+	defer server.Close()
+
+	result := executeHTTPVersionCheck(t, &HTTPConfig{URL: server.URL})
+	r.Equal(checkerdef.StatusDown, result.Status)
+	r.Equal("HTTP/1.1", result.Output[outputKeyHTTPProtocol])
+	r.Equal(`h3=":443"; ma=86400`, result.Output[outputKeyAltSvc])
+
+	// Up, without Alt-Svc: the protocol is recorded, alt_svc is absent.
+	plain := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer plain.Close()
+
+	result = executeHTTPVersionCheck(t, &HTTPConfig{URL: plain.URL})
+	r.Equal(checkerdef.StatusUp, result.Status)
+	r.Equal("HTTP/1.1", result.Output[outputKeyHTTPProtocol])
+	r.NotContains(result.Output, outputKeyAltSvc)
+}
+
+func TestHTTPChecker_HTTPVersion3(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	// Borrow httptest's self-signed certificate for the QUIC listener.
+	certSource := httptest.NewTLSServer(http.NotFoundHandler())
+	tlsConfig := certSource.TLS.Clone()
+	certSource.Close()
+
+	udpConn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	r.NoError(err)
+
+	h3Server := &http3.Server{
+		Handler:   altSvcHandler(http.StatusOK),
+		TLSConfig: http3.ConfigureTLSConfig(tlsConfig),
+	}
+
+	go func() { _ = h3Server.Serve(udpConn) }()
+
+	defer func() {
+		_ = h3Server.Close()
+		_ = udpConn.Close()
+	}()
+
+	url := "https://" + udpConn.LocalAddr().String() + "/"
+
+	result := executeHTTPVersionCheck(t, httpVersionCheck(url, checkerdef.HTTPVersion3))
+	r.Equal(checkerdef.StatusUp, result.Status, "output: %v", result.Output)
+	r.Equal("HTTP/3.0", result.Output[outputKeyHTTPProtocol])
+	r.Equal(`h3=":443"; ma=86400`, result.Output[outputKeyAltSvc])
+}
+
+func TestHTTPChecker_HTTPVersion3WithoutUDPListenerFails(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	// A TCP server answers on the port, but nothing listens on UDP: HTTP/3
+	// must fail rather than silently fall back to TCP.
+	server := httptest.NewTLSServer(altSvcHandler(http.StatusOK))
+	defer server.Close()
+
+	result := executeHTTPVersionCheck(t, httpVersionCheck(server.URL, checkerdef.HTTPVersion3))
+	r.NotEqual(checkerdef.StatusUp, result.Status)
+	r.NotEmpty(result.Output[checkerdef.OutputKeyError])
+	r.NotContains(result.Output, outputKeyHTTPProtocol, "no response must have been received")
 }
