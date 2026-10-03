@@ -447,6 +447,14 @@ than every finding.
    usually their own site, but agencies often crawl staging sites with
    `Disallow: /`, so the opt-out matters.
 
+## Resolved open questions
+
+Answered unattended on 2026-10-03 with the spec's recommended answers; to be reviewed by the owner.
+
+1. `broken_external_link` does not make the check `down`: it is a warning by default. `failOn` lets the user opt in to `down`.
+2. `maxPages` has one fixed ceiling of 2000 for every plan. No per-plan entitlement in this spec.
+3. Respect robots.txt by default, with a per-check opt-out.
+
 ## Out of scope
 
 - Multi-step checks on private agents. It needs the state shipped with the

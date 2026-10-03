@@ -229,6 +229,13 @@ Output (in addition to what the HTTP part stamps):
    alert can't currently promote a warning to down; leave that for later unless
    asked.
 
+## Resolved open questions
+
+Answered unattended on 2026-10-03 with the spec's recommended answers; to be reviewed by the owner.
+
+1. Default `max_age` is 10 minutes. Formats without a timestamp skip the rule.
+2. `warning` components do not open an incident: they map to `StatusWarning`, like a certificate close to expiry. No warning-to-down promotion in this spec.
+
 ## Out of scope
 
 - One check (and incident, status-page resource, maintenance window) per
