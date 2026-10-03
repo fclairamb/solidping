@@ -234,6 +234,27 @@ to pending). Both result-submission paths honor a capture's `onDemand` marker
 only when that column is set, so an agent cannot get a healthy run stored as
 `capture-now` by claiming it.
 
+### GET /api/v1/orgs/:org/checks/:checkUid/run
+The run in progress of a multi-step check (the `crawl` type, spec
+2026-10-03-03): `{ running: true, runUid, startedAt, steps, progress }`, or
+`{ running: false }` (also for every type that does not run in steps).
+`progress` is the last slice's progress (crawl: `pagesDone`, `maxPages`,
+`queued`, `findings`, `phase`), read from the current `checks/<uid>/step-state`
+file's details bag (`check_jobs.step_state_file_uid`). Auth: read.
+
+### DELETE /api/v1/orgs/:org/checks/:checkUid/run
+Cancels the run in progress: clears the job's `step_*` columns, purges the
+state files and schedules the next regular tick. No result is written. A slice
+still running is fenced out when it saves (`step_run_uid` no longer matches).
+`204`; `400` for a type that does not run in steps. Auth: write.
+
+### GET /api/v1/orgs/:org/checks/:checkUid/crawl-reports
+The last 5 crawl reports (`checks/<uid>/crawl-report`), newest first, as
+`{ data: [{ uid, kind, name, mimeType, size, downloadUrl, createdAt,
+capturedAt, checkUid }] }`. The report JSON is `{ findings: [{ type, url,
+source, status, error, fingerprint }], pagesCrawled, incomplete }`; a run's
+result names its report in `output.reportFileUid`. Auth: read.
+
 ### GET /api/v1/orgs/:org/checks/:check/results/:uid
 Get one result of a check by uid, with the full payload
 (`output`, `metrics`). Auth: required
