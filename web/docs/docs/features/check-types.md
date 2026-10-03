@@ -354,6 +354,14 @@ dns://8.8.8.8/example.com?type=MX
 | Domain | Domain to resolve | `example.com` |
 | Type | Record type | `A`, `AAAA`, `MX`, `TXT`, `CNAME`, `NS`, `SOA` |
 | Expected | Expected values | `93.184.216.34` |
+| Detect changes (`detect_changes`) | Report any record added or removed since a captured baseline | `true` |
+| On change (`on_change`) | Status when the records changed: `down` (default) or `warning` | `warning` |
+
+**Change detection.** With `detect_changes: true`, the first successful run of each region stores its answer in `baseline` (region to values). Every later run compares the full answer with it, and any added or removed value is reported on the check page and in the result's `changes` output. Values are compared lower-cased, without a trailing dot, deduplicated and sorted (TXT keeps its case). Each region has its own baseline, because GeoDNS answers differ by region.
+
+The check goes back up when the old records come back. To accept new records, click **Accept current records** on the check page, or PATCH the check with `baseline: {}`: every region runs right away and captures the current answer. A PATCH or `sp apply` that omits `baseline` keeps the stored one.
+
+Watching `NS` records is the most useful setup: a changed delegation is the classic sign of a hijacked or expired domain. `A` and `AAAA` records behind a load balancer or CDN rotate, so use `on_change: warning` for them.
 
 ### WebSocket {#websocket}
 
