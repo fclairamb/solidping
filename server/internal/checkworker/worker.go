@@ -1055,6 +1055,10 @@ func (r *CheckWorker) executeJob(
 
 	checkConfig = config
 
+	// Configs holding per-region data (the dns change-detection baseline, spec
+	// 2026-10-03-04) learn the region this run reports under before Execute.
+	r.selectRegion(checkConfig, checkJob)
+
 	// Burst-style checkers (icmp, spec 2026-09-21-01) size their cost from
 	// count/interval/timeout, not from a single probe. `timeout` keeps only its
 	// per-packet meaning from here down — it is never the whole-burst budget —
@@ -1580,6 +1584,22 @@ func (r *CheckWorker) resolveResultRegion(checkJob *models.CheckJob) *string {
 	}
 
 	return r.getWorker().Region
+}
+
+// selectRegion hands the job's resolved region (the value the result row
+// records) to a config implementing checkerdef.RegionSelector.
+func (r *CheckWorker) selectRegion(checkConfig checkerdef.Config, checkJob *models.CheckJob) {
+	selector, ok := checkConfig.(checkerdef.RegionSelector)
+	if !ok {
+		return
+	}
+
+	region := ""
+	if resolved := r.resolveResultRegion(checkJob); resolved != nil {
+		region = *resolved
+	}
+
+	selector.SelectRegion(region)
 }
 
 // dockerBlockedOnThisWorker reports whether THIS process must refuse a docker

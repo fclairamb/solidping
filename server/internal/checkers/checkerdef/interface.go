@@ -104,6 +104,23 @@ type BurstBudgeter interface {
 	BurstBudget() time.Duration
 }
 
+// RegionSelector is implemented by configs that hold per-region data. The
+// worker calls it after parsing, with the job's region, before Execute (spec
+// 2026-10-03-04). The region is the one the result row gets: the job's
+// region, or the worker's own for a region-less job.
+type RegionSelector interface {
+	SelectRegion(region string)
+}
+
+// AbsentFieldPreserver is implemented by configs holding server-maintained
+// fields a config update must keep when it omits them (spec 2026-10-03-04,
+// the dns change-detection baseline). stored is the check's current public
+// config, merged the config about to be stored; the implementation copies
+// what it keeps into merged. An explicitly supplied key is never touched.
+type AbsentFieldPreserver interface {
+	PreserveAbsentFields(stored, merged map[string]any)
+}
+
 // ExtraBudgeter is an optional interface a checker config implements when its
 // execution needs wall-clock time beyond the checker's own probe timeout for
 // work that happens AFTER the verdict is decided — the browser checker's

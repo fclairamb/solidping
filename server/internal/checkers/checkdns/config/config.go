@@ -24,6 +24,97 @@ type DNSConfig struct {
 	RecordType     string        `json:"record_type,omitempty"`     //nolint:tagliatelle // API uses snake_case
 	ExpectedIPs    []string      `json:"expected_ips,omitempty"`    //nolint:tagliatelle // API uses snake_case
 	ExpectedValues []string      `json:"expected_values,omitempty"` //nolint:tagliatelle // API uses snake_case
+
+	// DetectChanges turns on baseline change detection (spec 2026-10-03-04):
+	// the first successful run of each region captures its answer into
+	// Baseline, every later run compares the full answer set with it.
+	DetectChanges bool `json:"detect_changes,omitempty"` //nolint:tagliatelle // API uses snake_case
+	// Baseline maps a region (BaselineKey) to its normalized answer values.
+	// Filled by the server on capture, editable (and resettable) by the user.
+	Baseline map[string][]string `json:"baseline,omitempty"`
+	// OnChange is the status a difference from the baseline produces:
+	// OnChangeDown (default) or OnChangeWarning.
+	OnChange string `json:"on_change,omitempty"` //nolint:tagliatelle // API uses snake_case
+
+	// region is the job's region, set by SelectRegion before Execute.
+	region string
+}
+
+const (
+	// OnChangeDown reports a baseline difference as down (the default).
+	OnChangeDown = "down"
+	// OnChangeWarning reports a baseline difference as warning (amber, counts
+	// as up, opens no incident).
+	OnChangeWarning = "warning"
+
+	// MaxBaselineValues caps the values stored for one region.
+	MaxBaselineValues = 100
+
+	// DefaultBaselineKey is the baseline key of a run without a region.
+	DefaultBaselineKey = "default"
+
+	keyDetectChanges = "detect_changes"
+	keyBaseline      = "baseline"
+	keyOnChange      = "on_change"
+)
+
+// BaselineKey is the Baseline map key for a region: the region itself, or
+// DefaultBaselineKey for a region-less run. The worker-side selection and the
+// server-side capture both go through it, so they always agree.
+func BaselineKey(region string) string {
+	if region == "" {
+		return DefaultBaselineKey
+	}
+
+	return region
+}
+
+// SelectRegion implements checkerdef.RegionSelector: the worker hands the
+// job's region over before Execute, so the checker compares against that
+// region's baseline only (GeoDNS answers differ by region by design).
+func (c *DNSConfig) SelectRegion(region string) {
+	c.region = region
+}
+
+// Region returns the region selected by SelectRegion (empty when none).
+func (c *DNSConfig) Region() string {
+	return c.region
+}
+
+// RegionBaseline returns the selected region's baseline and whether one is
+// stored. An empty slice counts as absent: a capture never stores one.
+func (c *DNSConfig) RegionBaseline() ([]string, bool) {
+	values := c.Baseline[BaselineKey(c.region)]
+
+	return values, len(values) > 0
+}
+
+// EffectiveOnChange returns OnChange with its default applied.
+func (c *DNSConfig) EffectiveOnChange() string {
+	if c.OnChange == "" {
+		return OnChangeDown
+	}
+
+	return c.OnChange
+}
+
+// PreserveAbsentFields implements checkerdef.AbsentFieldPreserver: a config
+// update that omits `baseline` keeps the stored one, so a PATCH or an
+// `sp apply` of a manifest exported before the capture never resets it. An
+// explicit `baseline: {}` clears it. Only while detection stays on: turning
+// it off drops the baseline with it.
+func (c *DNSConfig) PreserveAbsentFields(stored, merged map[string]any) {
+	if _, present := merged[keyBaseline]; present {
+		return
+	}
+
+	if on, _ := merged[keyDetectChanges].(bool); !on {
+		return
+	}
+
+	if baseline, ok := stored[keyBaseline]; ok && baseline != nil {
+		merged[keyBaseline] = baseline
+	}
 }
 
 // FromMap populates the configuration from a map.
@@ -122,7 +213,87 @@ func (c *DNSConfig) FromMap(configMap map[string]any) error {
 		return checkerdef.NewConfigError("expected_values", "must be a string array")
 	}
 
+	return c.parseChangeDetection(configMap)
+}
+
+// parseChangeDetection reads detect_changes, baseline and on_change.
+func (c *DNSConfig) parseChangeDetection(configMap map[string]any) error {
+	if raw, present := configMap[keyDetectChanges]; present && raw != nil {
+		on, ok := raw.(bool)
+		if !ok {
+			return checkerdef.NewConfigError(keyDetectChanges, "must be a boolean")
+		}
+
+		c.DetectChanges = on
+	}
+
+	if raw, present := configMap[keyOnChange]; present && raw != nil {
+		onChange, ok := raw.(string)
+		if !ok {
+			return checkerdef.NewConfigError(keyOnChange, "must be a string")
+		}
+
+		c.OnChange = onChange
+	}
+
+	baseline, err := parseBaseline(configMap[keyBaseline])
+	if err != nil {
+		return err
+	}
+
+	c.Baseline = baseline
+
 	return nil
+}
+
+// parseBaseline reads a region → values map from its JSON-decoded form
+// (map[string]any of []any) or its typed form.
+func parseBaseline(raw any) (map[string][]string, error) {
+	switch typed := raw.(type) {
+	case nil:
+		return nil, nil
+	case map[string][]string:
+		return typed, nil
+	case map[string]any:
+		baseline := make(map[string][]string, len(typed))
+
+		for region, rawValues := range typed {
+			values, err := toStringSlice(rawValues)
+			if err != nil {
+				return nil, checkerdef.NewConfigErrorf(keyBaseline, "region %q: must be a string array", region)
+			}
+
+			baseline[region] = values
+		}
+
+		return baseline, nil
+	default:
+		return nil, checkerdef.NewConfigError(keyBaseline, "must be an object of region to string array")
+	}
+}
+
+func toStringSlice(raw any) ([]string, error) {
+	switch typed := raw.(type) {
+	case []string:
+		return typed, nil
+	case []any:
+		values := make([]string, len(typed))
+
+		for i, v := range typed {
+			str, ok := v.(string)
+			if !ok {
+				return nil, checkerdef.NewConfigError(keyBaseline, "must be a string array")
+			}
+
+			values[i] = str
+		}
+
+		return values, nil
+	case nil:
+		return []string{}, nil
+	default:
+		return nil, checkerdef.NewConfigError(keyBaseline, "must be a string array")
+	}
 }
 
 // GetConfig implements the GetConfig interface by returning the configuration as a map.
@@ -153,6 +324,18 @@ func (c *DNSConfig) GetConfig() map[string]any {
 
 	if len(c.ExpectedValues) > 0 {
 		cfg["expected_values"] = c.ExpectedValues
+	}
+
+	if c.DetectChanges {
+		cfg[keyDetectChanges] = true
+	}
+
+	if len(c.Baseline) > 0 {
+		cfg[keyBaseline] = c.Baseline
+	}
+
+	if c.OnChange != "" && c.OnChange != OnChangeDown {
+		cfg[keyOnChange] = c.OnChange
 	}
 
 	return cfg
