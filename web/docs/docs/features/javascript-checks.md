@@ -310,6 +310,10 @@ request interception, header/UA overrides, viewport emulation, video or
 tracing; `page.evaluate()` is the escape hatch for everything the table does
 not have. This is not Playwright and does not try to become it.
 
+A `selector` is a CSS selector (`#email`, `button[type=submit]`, `h1`), matched
+with `querySelector`: the first element wins. XPath and text matching are not
+supported.
+
 | Call | Returns | Notes |
 |---|---|---|
 | `browser.open()` | `page` | Acquires a browser slot, opens a fresh isolated context and tab. **Throws** — see below. |
