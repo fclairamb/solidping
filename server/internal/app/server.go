@@ -1938,6 +1938,8 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// keep up with.
 	incidentPublicationsService.SetPageMemoInvalidator(statusPagesService)
 	statusUpdatesService.SetPageMemoInvalidator(statusPagesService)
+	orgLogoService.SetPageMemoInvalidator(statusPagesService)
+	s.authService.SetPageMemoInvalidator(statusPagesService)
 	// A hard demotion reached through the synchronous Verify button alerts the
 	// org exactly like one the periodic sweep reaches (spec 2026-08-23-03, R4).
 	statusPagesService.SetJobsService(s.services.Jobs)
