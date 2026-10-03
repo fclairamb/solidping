@@ -22,7 +22,7 @@ func (c *HealthChecker) GetSampleConfigs(_ *checkerdef.ListSampleOptions) []chec
 	}
 
 	return []checkerdef.CheckSpec{
-		sample("Laravel health (Oh Dear format)", "health-laravel", "spatie",
+		sample("Laravel health (spatie format)", "health-laravel", "spatie",
 			"https://app.acme.com/health", map[string]string{"oh-dear-health-check-secret": "change-me"}),
 		sample("Spring Boot actuator health", "health-spring", "spring",
 			"https://api.acme.com/actuator/health", nil),

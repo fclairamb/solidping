@@ -232,7 +232,7 @@ export const DASH0_IDENTICAL_ALLOWLIST: IdenticalAllowlist = {
   "checks:types.postgresql": ["fr", "de", "es"], // "PostgreSQL"
   "checks:types.js": ["fr", "de", "es"], // "JavaScript"
   "checks:types.prometheus": ["fr", "de", "es"], // "Prometheus"
-  "checks:health.formats.spatie": ["fr", "de", "es"], // "Laravel / Oh Dear (spatie)"
+  "checks:health.formats.spatie": ["fr", "de", "es"], // "Laravel (spatie)"
   "checks:health.formats.spring": ["fr", "de", "es"], // "Spring Boot Actuator"
   "checks:health.formats.ietf": ["fr", "de", "es"], // "IETF health+json"
   "checks:health.formats.aspnet": ["fr", "de", "es"], // "ASP.NET Core HealthChecks"

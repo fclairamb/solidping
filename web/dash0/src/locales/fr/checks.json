@@ -1440,7 +1440,7 @@
     "formatHelp": "Automatique détecte le format d'après la forme du JSON. Forcez-en un si la détection se trompe.",
     "formats": {
       "auto": "Automatique",
-      "spatie": "Laravel / Oh Dear (spatie)",
+      "spatie": "Laravel (spatie)",
       "spring": "Spring Boot Actuator",
       "ietf": "IETF health+json",
       "aspnet": "ASP.NET Core HealthChecks",

@@ -15,8 +15,8 @@ func spatieStatus(raw string) ComponentStatus {
 	}
 }
 
-// spatieFormat is the Oh Dear health format produced by spatie/laravel-health
-// and ohdearapp/health-check-results: a `checkResults` array.
+// spatieFormat is the spatie health format produced by spatie/laravel-health
+//: a `checkResults` array.
 func spatieFormat() Format {
 	return Format{
 		Name: NameSpatie,

@@ -16,7 +16,7 @@ import (
 
 const (
 	// DefaultMaxAge is how old a result timestamp may be before the results are
-	// stale (Oh Dear's rule).
+	// stale (the usual rule for this kind of endpoint).
 	DefaultMaxAge = 10 * time.Minute
 
 	// MaxIgnored caps the `ignore` list.

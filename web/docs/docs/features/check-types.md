@@ -5,7 +5,7 @@ title: Check Types
 
 # Check Types
 
-SolidPing supports **41 check types** across multiple categories for monitoring your services. Each check type has specific configuration options and validation capabilities.
+SolidPing supports **43 check types** across multiple categories for monitoring your services. Each check type has specific configuration options and validation capabilities.
 
 <!--
   Keep this number equal to the number of `###` sections above "Common Options"
@@ -506,7 +506,7 @@ Read the health endpoint your application already exposes and get one result **p
 
 | Format (`format`) | Produced by | Component statuses |
 |---|---|---|
-| `spatie` | `spatie/laravel-health`, `ohdearapp/health-check-results` (the Oh Dear format): a `checkResults` array | `ok`, `warning`, `failed`/`crashed` (down), `skipped` |
+| `spatie` | `spatie/laravel-health`: a `checkResults` array | `ok`, `warning`, `failed`/`crashed` (down), `skipped` |
 | `spring` | Spring Boot Actuator `/actuator/health`: `status` plus `components` (or legacy `details`). Nested components are named `parent.child` | `UP`, `DOWN`/`OUT_OF_SERVICE` (down), `UNKNOWN` |
 | `ietf` | IETF `draft-inadarei-api-health-check` (`application/health+json`): a `checks` object. Several entries under one key are named `key#componentId` | `pass`, `warn`, `fail` (down) |
 | `aspnet` | ASP.NET Core HealthChecks (UI response writer): an `entries` object | `Healthy`, `Degraded`, `Unhealthy` (down) |

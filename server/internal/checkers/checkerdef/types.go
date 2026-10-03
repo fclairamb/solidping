@@ -265,7 +265,7 @@ const (
 	// 2026-10-03-03): it runs as a series of resumable slices.
 	CheckTypeCrawl CheckType = "crawl"
 	// CheckTypeHealth reads an application's health endpoint (Spring, ASP.NET,
-	// Laravel/Oh Dear, IETF, MicroProfile) and reports per component.
+	// Laravel spatie, IETF, MicroProfile) and reports per component.
 	CheckTypeHealth CheckType = "health"
 )
 
