@@ -104,7 +104,8 @@ Compare against SolidPing **Cloud** (hosted vs hosted), per
 | Free tier | 10-day trial | permanent free plan |
 | Fastest interval | 1 min | sub-minute, within the checks/min budget |
 | Probe families | HTTP, ICMP, TCP | ~40 (DNS, mail, SSH, DB, MQ, gRPC, browser, JS...) |
-| Website-quality checks | broken links, mixed content, Lighthouse, sitemap, DNSBL, AI checks | ❌ |
+| Website-quality checks | broken links, mixed content, Lighthouse, sitemap, AI checks | ❌ |
+| DNS blocklist | ✅ | ✅ (`checkdnsbl`) |
 | Probe locations | 33 servers / 16 cities, 2-location confirmation | 6 shared regions + private agents |
 | On-call / escalation | ❌ (delegated) | ✅ schedules, rotations, escalation |
 | SMS / voice | SMS | ❌ on Cloud |
@@ -122,7 +123,7 @@ Compare against SolidPing **Cloud** (hosted vs hosted), per
    throughput model was designed for.
 3. **Gaps they expose:** crawl-based checks (broken links, mixed content), Lighthouse,
    monthly client reports, Telegram/Teams, two-location confirmation before alerting.
-   Reports and Telegram/Teams are cheap to close. Crawling is a product-scope decision.
+   (DNSBL is already covered.) Reports and Telegram/Teams are cheap to close. Crawling is a product-scope decision.
 
 ## Sources
 
