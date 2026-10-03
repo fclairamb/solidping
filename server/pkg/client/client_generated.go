@@ -368,6 +368,7 @@ const (
 	CheckTypeFreeboxLine     CheckType = "freebox_line"
 	CheckTypeFtp             CheckType = "ftp"
 	CheckTypeGrpc            CheckType = "grpc"
+	CheckTypeHealth          CheckType = "health"
 	CheckTypeHeartbeat       CheckType = "heartbeat"
 	CheckTypeHttp            CheckType = "http"
 	CheckTypeIcmp            CheckType = "icmp"
@@ -428,6 +429,8 @@ func (e CheckType) Valid() bool {
 	case CheckTypeFtp:
 		return true
 	case CheckTypeGrpc:
+		return true
+	case CheckTypeHealth:
 		return true
 	case CheckTypeHeartbeat:
 		return true
@@ -680,6 +683,7 @@ const (
 	CheckListItemTypeFreeboxLine     CheckListItemType = "freebox_line"
 	CheckListItemTypeFtp             CheckListItemType = "ftp"
 	CheckListItemTypeGrpc            CheckListItemType = "grpc"
+	CheckListItemTypeHealth          CheckListItemType = "health"
 	CheckListItemTypeHeartbeat       CheckListItemType = "heartbeat"
 	CheckListItemTypeHttp            CheckListItemType = "http"
 	CheckListItemTypeIcmp            CheckListItemType = "icmp"
@@ -740,6 +744,8 @@ func (e CheckListItemType) Valid() bool {
 	case CheckListItemTypeFtp:
 		return true
 	case CheckListItemTypeGrpc:
+		return true
+	case CheckListItemTypeHealth:
 		return true
 	case CheckListItemTypeHeartbeat:
 		return true
@@ -905,6 +911,7 @@ const (
 	CreateCheckRequestTypeFreeboxLine     CreateCheckRequestType = "freebox_line"
 	CreateCheckRequestTypeFtp             CreateCheckRequestType = "ftp"
 	CreateCheckRequestTypeGrpc            CreateCheckRequestType = "grpc"
+	CreateCheckRequestTypeHealth          CreateCheckRequestType = "health"
 	CreateCheckRequestTypeHeartbeat       CreateCheckRequestType = "heartbeat"
 	CreateCheckRequestTypeHttp            CreateCheckRequestType = "http"
 	CreateCheckRequestTypeIcmp            CreateCheckRequestType = "icmp"
@@ -965,6 +972,8 @@ func (e CreateCheckRequestType) Valid() bool {
 	case CreateCheckRequestTypeFtp:
 		return true
 	case CreateCheckRequestTypeGrpc:
+		return true
+	case CreateCheckRequestTypeHealth:
 		return true
 	case CreateCheckRequestTypeHeartbeat:
 		return true
@@ -3074,6 +3083,7 @@ const (
 	UpsertCheckRequestTypeFreeboxLine     UpsertCheckRequestType = "freebox_line"
 	UpsertCheckRequestTypeFtp             UpsertCheckRequestType = "ftp"
 	UpsertCheckRequestTypeGrpc            UpsertCheckRequestType = "grpc"
+	UpsertCheckRequestTypeHealth          UpsertCheckRequestType = "health"
 	UpsertCheckRequestTypeHeartbeat       UpsertCheckRequestType = "heartbeat"
 	UpsertCheckRequestTypeHttp            UpsertCheckRequestType = "http"
 	UpsertCheckRequestTypeIcmp            UpsertCheckRequestType = "icmp"
@@ -3134,6 +3144,8 @@ func (e UpsertCheckRequestType) Valid() bool {
 	case UpsertCheckRequestTypeFtp:
 		return true
 	case UpsertCheckRequestTypeGrpc:
+		return true
+	case UpsertCheckRequestTypeHealth:
 		return true
 	case UpsertCheckRequestTypeHeartbeat:
 		return true

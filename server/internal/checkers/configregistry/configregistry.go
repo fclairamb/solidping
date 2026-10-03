@@ -27,6 +27,7 @@ import (
 	freeboxlineconfig "github.com/fclairamb/solidping/server/internal/checkers/checkfreeboxline/config"
 	ftpconfig "github.com/fclairamb/solidping/server/internal/checkers/checkftp/config"
 	grpcconfig "github.com/fclairamb/solidping/server/internal/checkers/checkgrpc/config"
+	healthconfig "github.com/fclairamb/solidping/server/internal/checkers/checkhealth/config"
 	heartbeatconfig "github.com/fclairamb/solidping/server/internal/checkers/checkheartbeat/config"
 	httpconfig "github.com/fclairamb/solidping/server/internal/checkers/checkhttp/config"
 	icmpconfig "github.com/fclairamb/solidping/server/internal/checkers/checkicmp/config"
@@ -154,6 +155,8 @@ func ParseConfig(checkType checkerdef.CheckType) (checkerdef.Config, bool) {
 		return &vncconfig.VNCConfig{}, true
 	case checkerdef.CheckTypeCrawl:
 		return &crawlconfig.CrawlConfig{}, true
+	case checkerdef.CheckTypeHealth:
+		return &healthconfig.HealthConfig{}, true
 	case checkerdef.CheckTypeSleep:
 		return &sleepconfig.SleepConfig{}, true
 	default:
@@ -268,6 +271,8 @@ func ValidateSpec(checkType checkerdef.CheckType, spec *checkerdef.CheckSpec) er
 		return vncconfig.ValidateSpec(spec)
 	case checkerdef.CheckTypeCrawl:
 		return crawlconfig.ValidateSpec(spec)
+	case checkerdef.CheckTypeHealth:
+		return healthconfig.ValidateSpec(spec)
 	case checkerdef.CheckTypeSleep:
 		return sleepconfig.ValidateSpec(spec)
 	default:

@@ -5444,23 +5444,33 @@ func secretPlaceholderShapeFor(checkType, key string) any {
 		return placeholderSecretValue
 	}
 
-	typ := val.Type()
+	if field, found := structFieldByJSONTag(val.Type(), key); found && field.Type.Kind() == reflect.Map {
+		return map[string]any{}
+	}
+
+	return placeholderSecretValue
+}
+
+// structFieldByJSONTag finds the field whose `json` name is key, looking through
+// embedded structs (the health check embeds the http check's config, so its
+// secretHeaders field lives one level down).
+func structFieldByJSONTag(typ reflect.Type, key string) (reflect.StructField, bool) {
 	for i := range typ.NumField() {
 		field := typ.Field(i)
 
 		jsonTag, _, _ := strings.Cut(field.Tag.Get("json"), ",")
-		if jsonTag == "" || jsonTag != key {
-			continue
+		if jsonTag == key {
+			return field, true
 		}
 
-		if field.Type.Kind() == reflect.Map {
-			return map[string]any{}
+		if field.Anonymous && jsonTag == "" && field.Type.Kind() == reflect.Struct {
+			if inner, found := structFieldByJSONTag(field.Type, key); found {
+				return inner, true
+			}
 		}
-
-		break
 	}
 
-	return placeholderSecretValue
+	return reflect.StructField{}, false
 }
 
 // applyRegionSealing implements phase 2 of spec 2026-07-16-02. When the check

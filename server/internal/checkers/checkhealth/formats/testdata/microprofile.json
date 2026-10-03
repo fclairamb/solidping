@@ -1,0 +1,7 @@
+{
+  "status": "DOWN",
+  "checks": [
+    {"name": "database", "status": "UP", "data": {"pool": "main"}},
+    {"name": "kafka", "status": "DOWN", "data": {"error": "broker not available"}}
+  ]
+}

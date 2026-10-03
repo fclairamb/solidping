@@ -264,6 +264,9 @@ const (
 	// sitemap errors. It is the first multi-step check type (spec
 	// 2026-10-03-03): it runs as a series of resumable slices.
 	CheckTypeCrawl CheckType = "crawl"
+	// CheckTypeHealth reads an application's health endpoint (Spring, ASP.NET,
+	// Laravel/Oh Dear, IETF, MicroProfile) and reports per component.
+	CheckTypeHealth CheckType = "health"
 )
 
 // IsPassive reports whether the check type is passive — driven by an inbound
@@ -455,6 +458,7 @@ var checkTypesRegistry = []CheckTypeMeta{
 	{Type: CheckTypeVNC, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Monitor VNC (RFB) servers", SupportsTunnel: true},
 	{Type: CheckTypePrometheus, Labels: []string{labelSafe, labelStandalone, labelCatInfrastructure}, Description: "Alert on Prometheus metric thresholds", DefaultPeriod: time.Minute, SupportsTunnel: true, SupportsIPVersion: true},
 	{Type: CheckTypePrivateLocation, Labels: []string{labelSafe, labelStandalone, labelCatInfrastructure}, Description: "Alert when a private location's agents go offline (system-created)", DefaultPeriod: time.Minute},
+	{Type: CheckTypeHealth, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Read an application's health endpoint and report per component", DefaultPeriod: time.Minute, SupportsTunnel: true, SupportsIPVersion: true},
 	{Type: CheckTypeCrawl, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Crawl a website for broken links, mixed content and sitemap errors", MinPeriod: time.Hour, DefaultPeriod: 24 * time.Hour, MultiStep: true},
 	{Type: CheckTypeSleep, Labels: []string{labelSafe, labelStandalone, labelCatOther}, Description: "Sleep for a fixed duration (synthetic/testing)", DefaultPeriod: 1 * time.Minute},
 }
@@ -554,6 +558,7 @@ func ListCheckTypes(_ *ListSampleOptions) []CheckType {
 		CheckTypePrometheus,
 		CheckTypePrivateLocation,
 		CheckTypeCrawl,
+		CheckTypeHealth,
 		CheckTypeSleep,
 	}
 }
