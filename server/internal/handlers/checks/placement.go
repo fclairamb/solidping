@@ -532,6 +532,14 @@ func cloudRegionsOf(regionList []string) []string {
 func (s *Service) autoPlace(
 	ctx context.Context, subject *placementSubject, requested int, explicit bool, pool []string,
 ) (*placementOutcome, error) {
+	// A multi-step check (the website crawl) runs from one region (spec
+	// 2026-10-03-03): six regions would cost six times as much and find the
+	// same links.
+	if checkerdef.CheckType(subject.checkType).IsMultiStep() {
+		requested = 1
+		explicit = false
+	}
+
 	env, err := s.loadPlacementEnv(ctx, subject.orgUID)
 	if err != nil {
 		return nil, err
