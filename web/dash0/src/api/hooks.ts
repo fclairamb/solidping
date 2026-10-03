@@ -5313,6 +5313,7 @@ export function useDeleteEscalationPolicy(org: string) {
 // types rather than a single anything-goes blob.
 export type ConnectionType =
   | "slack"
+  | "slack-webhook"
   | "discord"
   | "webhook"
   | "email"
@@ -5346,6 +5347,7 @@ const SOURCE: IntegrationCapabilities = { canNotify: false, canSource: true };
 
 export const CAPABILITIES: Record<ConnectionType, IntegrationCapabilities> = {
   slack: NOTIFY,
+  "slack-webhook": NOTIFY,
   discord: NOTIFY,
   webhook: NOTIFY,
   email: NOTIFY,

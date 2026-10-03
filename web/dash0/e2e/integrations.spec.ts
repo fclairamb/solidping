@@ -358,6 +358,51 @@ test.describe("Notification Channels", () => {
     await deleteConnection(page, token, uid);
   });
 
+  test("create a Slack (webhook) channel via the form and persist its URL", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+
+    await page.goto("orgs/test/integrations/new?type=slack-webhook");
+    await page.waitForLoadState("networkidle");
+
+    const name = `E2E Slack webhook ${Date.now()}`;
+    const hookUrl = "https://hooks.slack.com/services/T0000/B0000/abcdef";
+    await page.getByLabel("Name").fill(name);
+    await page.getByLabel(/webhook url/i).fill(hookUrl);
+
+    await page.getByRole("button", { name: /create integration/i }).click();
+    await page.waitForURL((url) =>
+      /\/integrations\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
+        url.pathname,
+      ),
+    );
+    const uid = page.url().split("/").pop()!;
+
+    await page.goto(`orgs/test/integrations/${uid}`);
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByLabel(/webhook url/i)).toHaveValue(hookUrl);
+
+    await deleteConnection(page, token, uid);
+  });
+
+  test("Slack (webhook) rejects a non-Slack URL with a validation error", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    await page.goto("orgs/test/integrations/new?type=slack-webhook");
+    await page.waitForLoadState("networkidle");
+
+    await page.getByLabel("Name").fill(`E2E Slack invalid ${Date.now()}`);
+    await page.getByLabel(/webhook url/i).fill("https://example.com/hook");
+    await page.getByRole("button", { name: /create integration/i }).click();
+
+    await expect(page.getByText(/hooks\.slack\.com/).first()).toBeVisible();
+    await expect(page).toHaveURL(/integrations\/new/);
+  });
+
   test("webpush channel panel renders subscribe button and empty device list", async ({
     authenticatedPage,
   }) => {

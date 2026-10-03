@@ -69,6 +69,7 @@
     "email": "E-Mail",
     "msteams": "Microsoft Teams",
     "msteams-bot": "Microsoft Teams",
+    "slack-webhook": "Slack (Webhook)",
     "googlechat": "Google Chat",
     "mattermost": "Mattermost",
     "ntfy": "ntfy",

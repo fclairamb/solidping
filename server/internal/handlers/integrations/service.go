@@ -566,15 +566,18 @@ func (s *Service) checkCreateTypeConstraints(
 // and Twilio all POST to a fixed vendor host and are deliberately absent —
 // there is no caller-supplied URL to validate.
 //
+// senderKeyWebhookURL is the settings key shared by the incoming-webhook senders.
+const senderKeyWebhookURL = "webhook_url"
+
 //nolint:gochecknoglobals // constant lookup table
 var senderURLSettingsKey = map[models.ConnectionType]string{
 	models.ConnectionTypeWebhook:      "url",
 	models.ConnectionTypeGotify:       "server_url",
 	models.ConnectionTypeNtfy:         "serverUrl",
 	models.ConnectionTypeMatrix:       "homeserverUrl",
-	models.ConnectionTypeGoogleChat:   "webhook_url",
-	models.ConnectionTypeMattermost:   "webhook_url",
-	models.ConnectionTypeSlackWebhook: "webhook_url",
+	models.ConnectionTypeGoogleChat:   senderKeyWebhookURL,
+	models.ConnectionTypeMattermost:   senderKeyWebhookURL,
+	models.ConnectionTypeSlackWebhook: senderKeyWebhookURL,
 }
 
 // slackIncomingWebhookHost is the only host a slack-webhook connection may

@@ -96,6 +96,7 @@ export const DASH0_IDENTICAL_ALLOWLIST: IdenticalAllowlist = {
   "common:channels.sms": ["fr", "de", "es"], // "SMS"
   "common:channels.msteams": ["fr", "de", "es"], // "Microsoft Teams"
   "common:channels.msteams-bot": ["fr", "de", "es"], // "Microsoft Teams"
+  "common:channels.slack-webhook": ["fr", "es"], // "Slack (webhook)"
   "common:channels.googlechat": ["fr", "de", "es"], // "Google Chat"
   "common:channels.mattermost": ["fr", "de", "es"], // "Mattermost"
   "common:channels.ntfy": ["fr", "de", "es"], // "ntfy"

@@ -12,6 +12,7 @@ SolidPing supports multiple notification channels to alert you when incidents oc
 | Channel | Status | Configuration |
 |---------|--------|---------------|
 | Slack | Available | OAuth integration |
+| Slack (webhook) | Available | Incoming webhook URL (one-way, no app install) |
 | Microsoft Teams (bot) | Available | Azure Bot / Bot Framework (two-way) |
 | Microsoft Teams (webhook) | Available | Teams Workflow webhook (one-way) |
 | Discord | Available | Bot (OAuth install, two-way) or webhook (one-way) |
@@ -242,6 +243,26 @@ Slack notifications include:
 - Status change (Up → Down, Down → Up)
 - Error details (for failures)
 - Direct link to the check in SolidPing
+
+## Slack (webhook)
+
+If you cannot install the Slack app (self-hosted without a Slack app, or no workspace admin to approve it), add a **Slack (webhook)** integration. It is a separate type from the OAuth `slack` integration and an organization can use both.
+
+1. In Slack, create an [incoming webhook](https://api.slack.com/messaging/webhooks) and pick the channel.
+2. In SolidPing, go to **Integrations** → **New** → **Slack (webhook)**.
+3. Paste the URL (`https://hooks.slack.com/services/...`) in **Webhook URL** and save.
+
+The URL must be on `hooks.slack.com`. Other hosts, `http://` and private addresses are rejected when you save.
+
+Every event (created, resolved, escalated, reopened, comment, acknowledged, unacknowledged) is posted as a standalone message that carries the incident reference (`#42`). New organizations get `slack-webhook` in their `default` and `critical` severities. Existing organizations keep their current severities, so add it there yourself.
+
+What it cannot do compared to the Slack app:
+
+- no threads (a webhook returns no message id, so updates are not grouped under the alert)
+- no Acknowledge / Escalate buttons
+- no slash commands (`/check`, `/comment`)
+- no capture of thread replies as incident comments
+- no on-call mentions (Slack user ids are only known to the app)
 
 ## Microsoft Teams
 

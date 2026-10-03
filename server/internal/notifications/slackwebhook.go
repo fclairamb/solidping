@@ -16,6 +16,9 @@ import (
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
 
+// slackBlockTypeActions is the Block Kit type of an interactive button row.
+const slackBlockTypeActions = "actions"
+
 const slackWebhookTimeout = 30 * time.Second
 
 var (
@@ -100,7 +103,7 @@ func (s *SlackWebhookSender) parseSettings(payload *Payload) (string, error) {
 }
 
 // buildMessage reuses the Slack app's block builders, then removes what a
-// webhook cannot honour: on-call mentions (they are Slack user ids), action
+// webhook cannot support: on-call mentions (they are Slack user ids), action
 // buttons, and the "please acknowledge" prompt that points at them. The
 // fallback text is guaranteed to carry the incident reference because there is
 // no thread to give the message context.
@@ -115,7 +118,8 @@ func (s *SlackWebhookSender) buildMessage(payload *Payload) *slack.MessageRespon
 		msg.Attachments[i].Blocks = stripWebhookBlocks(msg.Attachments[i].Blocks)
 	}
 
-	if ref := incidentRefPrefix(payload.Incident); ref != "" && !strings.Contains(msg.Text, fmt.Sprintf("#%d", payload.Incident.Number)) {
+	if ref := incidentRefPrefix(payload.Incident); ref != "" &&
+		!strings.Contains(msg.Text, fmt.Sprintf("#%d", payload.Incident.Number)) {
 		msg.Text = ref + msg.Text
 	}
 
@@ -130,7 +134,7 @@ func stripWebhookBlocks(blocks []slack.Block) []slack.Block {
 	out := make([]slack.Block, 0, len(blocks))
 
 	for i := range blocks {
-		if blocks[i].Type == "actions" {
+		if blocks[i].Type == slackBlockTypeActions {
 			continue
 		}
 

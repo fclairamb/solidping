@@ -35,6 +35,7 @@ const TRANSLATED_CHANNELS = new Set([
   "pagerduty",
   "pushover",
   "slack",
+  "slack-webhook",
   "discord",
   "webhook",
 ]);
