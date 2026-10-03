@@ -9,7 +9,10 @@ import (
 	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
-const fieldVersion = "version"
+const (
+	fieldVersion       = "version"
+	msgPositiveInteger = "must be a positive integer"
+)
 
 // Check version history endpoints (spec 2026-10-03-06), under
 // /api/v1/orgs/:org/checks/:checkUid/versions.
@@ -18,7 +21,7 @@ func (h *Handler) versionParam(writer http.ResponseWriter, req *http.Request) (i
 	version, err := strconv.Atoi(httpx.Param(req, fieldVersion))
 	if err != nil || version < 1 {
 		return 0, false, h.WriteValidationError(writer, "Invalid version", []base.ValidationErrorField{
-			{Name: fieldVersion, Message: "must be a positive integer"},
+			{Name: fieldVersion, Message: msgPositiveInteger},
 		})
 	}
 
@@ -33,7 +36,7 @@ func (h *Handler) ListCheckVersions(writer http.ResponseWriter, req *http.Reques
 		parsed, err := strconv.Atoi(raw)
 		if err != nil || parsed < 1 {
 			return h.WriteValidationError(writer, "Invalid limit", []base.ValidationErrorField{
-				{Name: "limit", Message: "must be a positive integer"},
+				{Name: "limit", Message: msgPositiveInteger},
 			})
 		}
 
@@ -76,7 +79,7 @@ func (h *Handler) DiffCheckVersion(writer http.ResponseWriter, req *http.Request
 		parsed, parseErr := strconv.Atoi(raw)
 		if parseErr != nil || parsed < 1 {
 			return h.WriteValidationError(writer, "Invalid against", []base.ValidationErrorField{
-				{Name: "against", Message: "must be a positive integer"},
+				{Name: "against", Message: msgPositiveInteger},
 			})
 		}
 

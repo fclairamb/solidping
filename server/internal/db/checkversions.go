@@ -35,11 +35,14 @@ const eventPayloadVersionKey = "version"
 func CheckDefinitionTouched(update *models.CheckUpdate) bool {
 	return update.CheckGroupUID != nil || update.Name != nil || update.Slug != nil ||
 		update.Description != nil || update.Type != nil || update.Config != nil ||
-		update.Regions != nil || update.Placement != nil ||
+		update.Enabled != nil || update.Period != nil || placementTouched(update)
+}
+
+func placementTouched(update *models.CheckUpdate) bool {
+	return update.Regions != nil || update.Placement != nil ||
 		update.RegionCount != nil || update.ClearRegionCount ||
 		update.RegionPool != nil || update.ClearRegionPool ||
-		update.FailQuorum != nil || update.ClearFailQuorum ||
-		update.Enabled != nil || update.Period != nil
+		update.FailQuorum != nil || update.ClearFailQuorum
 }
 
 // lockCheckForVersion serializes version numbering per check. PostgreSQL
@@ -221,21 +224,9 @@ func RecordCheckVersion(ctx context.Context, idb bun.IDB, checkUID string) (*mod
 
 	source := dbctx.ChangeSourceFromContext(ctx)
 
-	amended, wasProposal, err := amendRecordedVersion(ctx, idb, source, row)
-	if err != nil {
+	handled, err := recordAmendment(ctx, idb, source, check, row)
+	if err != nil || handled {
 		return nil, err
-	}
-
-	if amended {
-		// An approved proposal becomes live here: that is the update.
-		if wasProposal {
-			version, _ := source.RecordedVersion(checkUID)
-			if err := insertCheckUpdatedEvent(ctx, idb, check, version); err != nil {
-				return nil, err
-			}
-		}
-
-		return nil, nil //nolint:nilnil // amended in place, no new row
 	}
 
 	latest, err := LatestAppliedCheckVersion(ctx, idb, checkUID)
@@ -247,42 +238,84 @@ func RecordCheckVersion(ctx context.Context, idb bun.IDB, checkUID string) (*mod
 		return nil, nil //nolint:nilnil // nothing changed, nothing recorded
 	}
 
-	if row.Version, err = nextCheckVersion(ctx, idb, checkUID); err != nil {
+	if err := insertNewVersion(ctx, idb, source, check, row); err != nil {
 		return nil, err
-	}
-
-	applyChangeSource(row, source)
-
-	if _, err := idb.NewInsert().Model(row).Exec(ctx); err != nil {
-		return nil, fmt.Errorf("inserting check version: %w", err)
-	}
-
-	source.SetRecordedVersion(checkUID, row.Version)
-
-	if err := pruneCheckVersions(ctx, idb, checkUID); err != nil {
-		return nil, err
-	}
-
-	if row.Version > 1 {
-		if err := insertCheckUpdatedEvent(ctx, idb, check, row.Version); err != nil {
-			return nil, err
-		}
 	}
 
 	return row, nil
 }
 
+func insertNewVersion(
+	ctx context.Context, idb bun.IDB, source *dbctx.ChangeSource, check *models.Check, row *models.CheckVersion,
+) error {
+	version, err := nextCheckVersion(ctx, idb, check.UID)
+	if err != nil {
+		return err
+	}
+
+	row.Version = version
+	applyChangeSource(row, source)
+
+	if _, err := idb.NewInsert().Model(row).Exec(ctx); err != nil {
+		return fmt.Errorf("inserting check version: %w", err)
+	}
+
+	source.SetRecordedVersion(check.UID, row.Version)
+
+	if err := pruneCheckVersions(ctx, idb, check.UID); err != nil {
+		return err
+	}
+
+	if row.Version > 1 {
+		return insertCheckUpdatedEvent(ctx, idb, check, row.Version)
+	}
+
+	return nil
+}
+
+// amendOutcome says what amendRecordedVersion did.
+type amendOutcome int
+
+const (
+	// amendNone: no row to amend, the caller records a new version.
+	amendNone amendOutcome = iota
+	// amendedApplied: a version this change already recorded was rewritten.
+	amendedApplied
+	// amendedProposal: a proposal being approved became the applied version.
+	amendedProposal
+)
+
+// recordAmendment amends the version this change already recorded, and emits
+// check.updated when that version is an approved proposal going live.
+// Reports whether the write was handled.
+func recordAmendment(
+	ctx context.Context, idb bun.IDB, source *dbctx.ChangeSource, check *models.Check, row *models.CheckVersion,
+) (bool, error) {
+	outcome, err := amendRecordedVersion(ctx, idb, source, row)
+	if err != nil {
+		return false, err
+	}
+
+	if outcome == amendedProposal {
+		version, _ := source.RecordedVersion(check.UID)
+		if eventErr := insertCheckUpdatedEvent(ctx, idb, check, version); eventErr != nil {
+			return false, eventErr
+		}
+	}
+
+	return outcome != amendNone, nil
+}
+
 // amendRecordedVersion rewrites the version this change already recorded for
 // the check (a second write in the same request, or the proposal being
-// approved, reported by wasProposal). Reports amended=false when there is
-// none, or when that row is gone (its transaction rolled back), so the caller
-// records a new one.
+// approved). amendNone when there is none, or when that row is gone (its
+// transaction rolled back), so the caller records a new one.
 func amendRecordedVersion(
 	ctx context.Context, idb bun.IDB, source *dbctx.ChangeSource, row *models.CheckVersion,
-) (amended, wasProposal bool, err error) {
+) (amendOutcome, error) {
 	version, ok := source.RecordedVersion(row.CheckUID)
 	if !ok {
-		return false, false, nil
+		return amendNone, nil
 	}
 
 	for _, fromStatus := range []models.CheckVersionStatus{
@@ -299,20 +332,24 @@ func amendRecordedVersion(
 			Where("status = ?", fromStatus).
 			Exec(ctx)
 		if updateErr != nil {
-			return false, false, fmt.Errorf("amending check version: %w", updateErr)
+			return amendNone, fmt.Errorf("amending check version: %w", updateErr)
 		}
 
 		affected, affErr := res.RowsAffected()
 		if affErr != nil {
-			return false, false, fmt.Errorf("amending check version: %w", affErr)
+			return amendNone, fmt.Errorf("amending check version: %w", affErr)
 		}
 
 		if affected > 0 {
-			return true, fromStatus == models.CheckVersionStatusProposed, nil
+			if fromStatus == models.CheckVersionStatusProposed {
+				return amendedProposal, nil
+			}
+
+			return amendedApplied, nil
 		}
 	}
 
-	return false, false, nil
+	return amendNone, nil
 }
 
 func applyChangeSource(row *models.CheckVersion, source *dbctx.ChangeSource) {
@@ -488,7 +525,7 @@ func DecideCheckVersion(
 	// An approval that already went through the recorder flipped the row to
 	// applied; stamping the decision on it is still allowed.
 	if status == models.CheckVersionStatusApplied {
-		query = query.Where("status IN (?)", bun.In([]models.CheckVersionStatus{
+		query = query.Where("status IN (?)", bun.List([]models.CheckVersionStatus{
 			models.CheckVersionStatusProposed, models.CheckVersionStatusApplied,
 		}))
 	} else {

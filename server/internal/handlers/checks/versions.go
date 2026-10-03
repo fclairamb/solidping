@@ -209,7 +209,7 @@ func (s *Service) DiffCheckVersion(
 		return nil, err
 	}
 
-	to, err := redactedSnapshot(row)
+	target, err := redactedSnapshot(row)
 	if err != nil {
 		return nil, err
 	}
@@ -237,7 +237,7 @@ func (s *Service) DiffCheckVersion(
 	return &CheckVersionDiffResponse{
 		Version: version,
 		Against: against,
-		Changes: diffSnapshots(from, to),
+		Changes: diffSnapshots(from, target),
 	}, nil
 }
 
@@ -255,7 +255,7 @@ func (s *Service) previousAppliedVersion(ctx context.Context, checkUID string, v
 		}
 	}
 
-	return nil, nil
+	return nil, nil //nolint:nilnil // no earlier applied version: diff against nothing
 }
 
 // RestoreCheckVersion applies an applied version's definition again through
@@ -350,8 +350,8 @@ func (s *Service) RejectCheckVersion(
 		return nil, err
 	}
 
-	if _, err := s.loadCheckVersion(ctx, check.UID, version); err != nil {
-		return nil, err
+	if _, loadErr := s.loadCheckVersion(ctx, check.UID, version); loadErr != nil {
+		return nil, loadErr
 	}
 
 	decider, _ := callerChangeIdentity(ctx)
@@ -399,7 +399,6 @@ func (s *Service) applySnapshot(
 	return s.UpdateCheck(ctx, orgSlug, check.UID, req)
 }
 
-//nolint:cyclop // one branch per snapshot field
 func snapshotPatch(current, target *checkversion.Snapshot) *UpdateCheckRequest {
 	req := &UpdateCheckRequest{}
 
@@ -520,7 +519,7 @@ func redactedSnapshot(row *models.CheckVersion) (*checkversion.Snapshot, error) 
 
 // diffSnapshots lists the fields that differ between two snapshots. Config
 // and labels diff per key. Values carrying a ${...} reference are masked.
-func diffSnapshots(from, to *checkversion.Snapshot) []CheckFieldChange {
+func diffSnapshots(from, target *checkversion.Snapshot) []CheckFieldChange {
 	changes := []CheckFieldChange{}
 
 	add := func(field, before, after string) {
@@ -531,31 +530,31 @@ func diffSnapshots(from, to *checkversion.Snapshot) []CheckFieldChange {
 		}
 	}
 
-	add("name", from.Name, to.Name)
-	add("slug", from.Slug, to.Slug)
-	add("description", from.Description, to.Description)
-	add("type", from.Type, to.Type)
-	add("checkGroupUid", from.CheckGroupUID, to.CheckGroupUID)
+	add("name", from.Name, target.Name)
+	add("slug", from.Slug, target.Slug)
+	add("description", from.Description, target.Description)
+	add("type", from.Type, target.Type)
+	add("checkGroupUid", from.CheckGroupUID, target.CheckGroupUID)
 	// Nothing before the first version: "enabled: false -> true" would be noise.
 	enabledBefore := strconv.FormatBool(from.Enabled)
 	if from.Type == "" {
 		enabledBefore = ""
 	}
 
-	add("enabled", enabledBefore, strconv.FormatBool(to.Enabled))
-	add("period", from.Period, to.Period)
-	add("placement", from.Placement, to.Placement)
-	add("regions", strings.Join(from.Regions, ","), strings.Join(to.Regions, ","))
-	add("regionCount", intPtrString(from.RegionCount), intPtrString(to.RegionCount))
-	add("regionPool", strings.Join(from.RegionPool, ","), strings.Join(to.RegionPool, ","))
-	add("failQuorum", from.FailQuorum, to.FailQuorum)
+	add("enabled", enabledBefore, strconv.FormatBool(target.Enabled))
+	add("period", from.Period, target.Period)
+	add("placement", from.Placement, target.Placement)
+	add("regions", strings.Join(from.Regions, ","), strings.Join(target.Regions, ","))
+	add("regionCount", intPtrString(from.RegionCount), intPtrString(target.RegionCount))
+	add("regionPool", strings.Join(from.RegionPool, ","), strings.Join(target.RegionPool, ","))
+	add("failQuorum", from.FailQuorum, target.FailQuorum)
 
-	for _, key := range unionKeys(from.Config, to.Config) {
-		add("config."+key, canonicalConfigValue(from.Config[key]), canonicalConfigValue(to.Config[key]))
+	for _, key := range unionKeys(from.Config, target.Config) {
+		add("config."+key, canonicalConfigValue(from.Config[key]), canonicalConfigValue(target.Config[key]))
 	}
 
-	for _, key := range unionKeys(from.Labels, to.Labels) {
-		add("labels."+key, from.Labels[key], to.Labels[key])
+	for _, key := range unionKeys(from.Labels, target.Labels) {
+		add("labels."+key, from.Labels[key], target.Labels[key])
 	}
 
 	return changes

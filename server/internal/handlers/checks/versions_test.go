@@ -34,7 +34,7 @@ func versionsUser(t *testing.T, dbSvc db.Service, email string) (context.Context
 	return ctx, user
 }
 
-func createSSHCheck(t *testing.T, ctx context.Context, svc *checks.Service, orgSlug string) checks.CheckResponse {
+func createSSHCheck(ctx context.Context, t *testing.T, svc *checks.Service, orgSlug string) checks.CheckResponse {
 	t.Helper()
 
 	created, err := svc.CreateCheck(ctx, orgSlug, checks.CreateCheckRequest{
@@ -59,7 +59,7 @@ func TestCheckVersionsRecordTheCaller(t *testing.T) {
 	svc, dbSvc, _, org := setupPlaintextChecksService(t)
 	ctx, user := versionsUser(t, dbSvc, "alice@acme.com")
 
-	created := createSSHCheck(t, ctx, svc, org.Slug)
+	created := createSSHCheck(ctx, t, svc, org.Slug)
 
 	name := "ssh renamed"
 	_, err := svc.UpdateCheck(ctx, org.Slug, created.UID, &checks.UpdateCheckRequest{Name: &name})
@@ -114,7 +114,7 @@ func TestCheckVersionsSystemWriteWithoutCaller(t *testing.T) {
 	r := require.New(t)
 	svc, dbSvc, _, org := setupPlaintextChecksService(t)
 
-	created := createSSHCheck(t, t.Context(), svc, org.Slug)
+	created := createSSHCheck(t.Context(), t, svc, org.Slug)
 
 	latest, err := dbSvc.GetLatestAppliedCheckVersion(t.Context(), created.UID)
 	r.NoError(err)
@@ -129,7 +129,7 @@ func TestRestoreCheckVersionKeepsSecrets(t *testing.T) {
 	svc, dbSvc, creds, org := setupPlaintextChecksService(t)
 	ctx, user := versionsUser(t, dbSvc, "bob@acme.com")
 
-	created := createSSHCheck(t, ctx, svc, org.Slug)
+	created := createSSHCheck(ctx, t, svc, org.Slug)
 
 	config := map[string]any{"host": "b.acme.com", "username": "bob", "password": "second-secret"}
 	labels := map[string]string{"env": "prod"}
@@ -204,7 +204,7 @@ func TestApproveAndRejectProposals(t *testing.T) {
 	svc, dbSvc, _, org := setupPlaintextChecksService(t)
 	ctx, user := versionsUser(t, dbSvc, "carol@acme.com")
 
-	created := createSSHCheck(t, ctx, svc, org.Slug)
+	created := createSSHCheck(ctx, t, svc, org.Slug)
 
 	// Reject leaves the check unchanged.
 	rejected := proposeRename(t, dbSvc, created.UID, "rejected name", 1)
@@ -258,7 +258,7 @@ func TestCheckVersionsHTTP(t *testing.T) {
 	svc, dbSvc, _, org := setupPlaintextChecksService(t)
 	ctx, _ := versionsUser(t, dbSvc, "dave@acme.com")
 
-	created := createSSHCheck(t, ctx, svc, org.Slug)
+	created := createSSHCheck(ctx, t, svc, org.Slug)
 
 	other := models.NewOrganization("versions-other", "Other Org")
 	r.NoError(dbSvc.CreateOrganization(t.Context(), other))

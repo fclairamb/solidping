@@ -1057,6 +1057,28 @@ func (m *mockDBService) GetLabelsForChecks(_ context.Context, _ []string) (map[s
 	panic("not implemented")
 }
 
+func (m *mockDBService) ListCheckVersions(_ context.Context, _ string, _ int) ([]*models.CheckVersion, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) GetCheckVersion(_ context.Context, _ string, _ int) (*models.CheckVersion, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) GetLatestAppliedCheckVersion(_ context.Context, _ string) (*models.CheckVersion, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) CreateCheckVersionProposal(_ context.Context, _ *models.CheckVersion) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) DecideCheckVersion(
+	_ context.Context, _ string, _ int, _ models.CheckVersionStatus, _ string,
+) error {
+	panic("not implemented")
+}
+
 func (m *mockDBService) ListDistinctLabelKeys(
 	_ context.Context, _, _ string, _ int,
 ) ([]models.LabelSuggestion, error) {

@@ -118,6 +118,8 @@ func versionsOf(t *testing.T, svc db.Service, checkUID string) []*models.CheckVe
 }
 
 func testVersionCreateThenRename(t *testing.T, svc db.Service, org *models.Organization) {
+	t.Helper()
+
 	r := require.New(t)
 	ctx := t.Context()
 
@@ -154,6 +156,8 @@ func testVersionCreateThenRename(t *testing.T, svc db.Service, org *models.Organ
 }
 
 func testVersionSecretOnlyWrite(t *testing.T, svc db.Service, org *models.Organization) {
+	t.Helper()
+
 	r := require.New(t)
 	ctx := t.Context()
 
@@ -179,6 +183,8 @@ func testVersionSecretOnlyWrite(t *testing.T, svc db.Service, org *models.Organi
 }
 
 func testVersionRuntimeOnlyWrite(t *testing.T, svc db.Service, org *models.Organization) {
+	t.Helper()
+
 	r := require.New(t)
 	ctx := t.Context()
 
@@ -196,6 +202,8 @@ func testVersionRuntimeOnlyWrite(t *testing.T, svc db.Service, org *models.Organ
 }
 
 func testVersionChangeSource(t *testing.T, svc db.Service, org *models.Organization) {
+	t.Helper()
+
 	r := require.New(t)
 
 	user := models.NewUser(fmt.Sprintf("alice-%d@acme.com", time.Now().UnixNano()))
@@ -221,6 +229,8 @@ func testVersionChangeSource(t *testing.T, svc db.Service, org *models.Organizat
 }
 
 func testVersionOneVersionPerChange(t *testing.T, svc db.Service, org *models.Organization) {
+	t.Helper()
+
 	r := require.New(t)
 
 	check := newVersionedCheck(t, svc, org, "coalesce")
@@ -241,6 +251,8 @@ func testVersionOneVersionPerChange(t *testing.T, svc db.Service, org *models.Or
 }
 
 func testVersionLabels(t *testing.T, svc db.Service, org *models.Organization) {
+	t.Helper()
+
 	r := require.New(t)
 	ctx := t.Context()
 
@@ -258,6 +270,8 @@ func testVersionLabels(t *testing.T, svc db.Service, org *models.Organization) {
 }
 
 func testVersionBaselineForOldCheck(t *testing.T, svc db.Service, org *models.Organization) {
+	t.Helper()
+
 	r := require.New(t)
 	ctx := t.Context()
 
@@ -280,6 +294,8 @@ func testVersionBaselineForOldCheck(t *testing.T, svc db.Service, org *models.Or
 }
 
 func testVersionRetention(t *testing.T, svc db.Service, org *models.Organization) {
+	t.Helper()
+
 	r := require.New(t)
 	ctx := t.Context()
 
@@ -297,6 +313,8 @@ func testVersionRetention(t *testing.T, svc db.Service, org *models.Organization
 }
 
 func testVersionPurgeCascades(t *testing.T, svc db.Service, org *models.Organization) {
+	t.Helper()
+
 	r := require.New(t)
 	ctx := t.Context()
 
@@ -329,6 +347,8 @@ func proposeName(t *testing.T, svc db.Service, check *models.Check, name string,
 }
 
 func testVersionProposalDecide(t *testing.T, svc db.Service, org *models.Organization) {
+	t.Helper()
+
 	r := require.New(t)
 	ctx := t.Context()
 
@@ -367,6 +387,8 @@ func testVersionProposalDecide(t *testing.T, svc db.Service, org *models.Organiz
 }
 
 func testVersionApprovalAmendsProposal(t *testing.T, svc db.Service, org *models.Organization) {
+	t.Helper()
+
 	r := require.New(t)
 
 	check := newVersionedCheck(t, svc, org, "approve")
