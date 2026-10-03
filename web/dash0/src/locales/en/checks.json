@@ -1556,5 +1556,47 @@
       "ai_generate": "AI generated",
       "ai_repair": "AI repair"
     }
+  },
+  "ai": {
+    "describeButton": "Describe it",
+    "title": "Describe a check",
+    "subtitle": "Say what to watch. An AI writes and tests a js script once; from then on the plain script runs, with no AI.",
+    "disabled": "AI-authored checks are not enabled on this server.",
+    "errorTitle": "Something went wrong",
+    "describeStep": "1. Describe it",
+    "describeHelp": "The AI only sees the description, the parameters and the names of the secrets.",
+    "promptLabel": "What should this check watch?",
+    "promptPlaceholder": "Log in to https://app.acme.com with the test account, the dashboard shows at least one project",
+    "envLabel": "Parameters (env)",
+    "envHelp": "Read by the script as env.NAME. The AI sees them.",
+    "addEnv": "Add a parameter",
+    "secretsLabel": "Secrets",
+    "secretsHelp": "Read by the script as secrets.NAME. Used to run the script, never sent to the AI.",
+    "addSecret": "Add a secret",
+    "repairLabel": "When the script drifts",
+    "repair": {
+      "propose": "Propose a repair",
+      "auto": "Repair automatically",
+      "off": "Do nothing"
+    },
+    "proposeContract": "Propose a contract",
+    "cancel": "Cancel",
+    "contractTitle": "2. Confirm the contract",
+    "contractHelp": "The assertions the script will check, one per line, in order. Edit them, then generate.",
+    "generate": "Generate the script",
+    "generating": "Writing and testing the script...",
+    "scriptTitle": "3. Script",
+    "lastRun": "Last run: {{status}}",
+    "writtenBy": "Written by {{model}} in {{turns}} turns",
+    "nameLabel": "Check name",
+    "save": "Save the check",
+    "saved": "Check created",
+    "defaultName": "AI-authored check",
+    "detailTitle": "AI-authored",
+    "detailRepair": "Repair: {{mode}}",
+    "detailPrompt": "Prompt",
+    "detailContract": "Contract",
+    "detailModel": "Written by {{model}}",
+    "detailHistory": "History and repair proposals"
   }
 }

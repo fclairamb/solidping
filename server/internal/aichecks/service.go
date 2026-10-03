@@ -194,7 +194,7 @@ func (s *Service) budgetLeft(ctx context.Context, orgUID string) error {
 	return nil
 }
 
-// recordUsage writes one ai.usage event. Best-effort: a failed write never
+// recordUsage writes one check.ai_usage event. Best-effort: a failed write never
 // fails the call it accounts for.
 func (s *Service) recordUsage(ctx context.Context, usage ai.Usage) {
 	meta := ai.CallMetaFromContext(ctx)

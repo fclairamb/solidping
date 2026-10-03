@@ -1556,5 +1556,47 @@
       "ai_generate": "Generada por IA",
       "ai_repair": "Reparación por IA"
     }
+  },
+  "ai": {
+    "describeButton": "Describir",
+    "title": "Describir un check",
+    "subtitle": "Diga qué vigilar. Una IA escribe y prueba un script js una sola vez; después el script se ejecuta solo, sin IA.",
+    "disabled": "Los checks escritos por IA no están activados en este servidor.",
+    "errorTitle": "Algo salió mal",
+    "describeStep": "1. Describir",
+    "describeHelp": "La IA solo ve la descripción, los parámetros y los nombres de los secretos.",
+    "promptLabel": "¿Qué debe vigilar este check?",
+    "promptPlaceholder": "Iniciar sesión en https://app.acme.com con la cuenta de prueba, el panel muestra al menos un proyecto",
+    "envLabel": "Parámetros (env)",
+    "envHelp": "El script los lee como env.NOMBRE. La IA los ve.",
+    "addEnv": "Añadir un parámetro",
+    "secretsLabel": "Secretos",
+    "secretsHelp": "El script los lee como secrets.NOMBRE. Sirven para ejecutar el script, nunca se envían a la IA.",
+    "addSecret": "Añadir un secreto",
+    "repairLabel": "Cuando el script deriva",
+    "repair": {
+      "propose": "Proponer una reparación",
+      "auto": "Reparar automáticamente",
+      "off": "No hacer nada"
+    },
+    "proposeContract": "Proponer un contrato",
+    "cancel": "Cancelar",
+    "contractTitle": "2. Confirmar el contrato",
+    "contractHelp": "Las comprobaciones que hará el script, una por línea, en orden. Edítelas y luego genere.",
+    "generate": "Generar el script",
+    "generating": "Escribiendo y probando el script...",
+    "scriptTitle": "3. Script",
+    "lastRun": "Última ejecución: {{status}}",
+    "writtenBy": "Escrito por {{model}} en {{turns}} turnos",
+    "nameLabel": "Nombre del check",
+    "save": "Guardar el check",
+    "saved": "Check creado",
+    "defaultName": "Check escrito por IA",
+    "detailTitle": "Escrito por IA",
+    "detailRepair": "Reparación: {{mode}}",
+    "detailPrompt": "Descripción",
+    "detailContract": "Contrato",
+    "detailModel": "Escrito por {{model}}",
+    "detailHistory": "Historial y propuestas de reparación"
   }
 }

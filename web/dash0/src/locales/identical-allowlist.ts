@@ -51,6 +51,8 @@ export const DASH0_IDENTICAL_ALLOWLIST: IdenticalAllowlist = {
   "checks:http.httpVersion2": ["fr", "de", "es"], // "HTTP/2"
   "checks:http.httpVersion3": ["fr", "de", "es"], // "HTTP/3"
   "checks:history.versionLabel": ["fr", "de", "es"], // "v{{version}}"
+  "checks:ai.secretsLabel": ["fr", "de"], // "Secrets"
+  "checks:ai.scriptTitle": ["fr", "es"], // "3. Script"
   "checks:history.origins.mcp": ["fr", "de", "es"], // "MCP"
   "checks:history.versions": ["fr"], // "Versions"
   "checks:history.version": ["fr", "de"], // "Version"

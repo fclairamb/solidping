@@ -126,6 +126,7 @@ import { QueryErrorView } from "@/components/shared/error-views";
 import { NeedsResealAlert } from "@/components/checks/needs-reseal-alert";
 import { PublishOnStatusPageDialog } from "@/components/checks/publish-on-status-page-dialog";
 import { CheckSummaryCards } from "@/components/checks/check-summary-cards";
+import { AIAuthoredDetail } from "@/components/checks/ai-authored-detail";
 import {
   RegionFreshnessList,
   StaleSince,
@@ -1790,6 +1791,7 @@ function CheckDetailPage() {
             {check.type === "email" && (check.config?.token as string) && (
               <EmailEndpoint check={check} />
             )}
+            <AIAuthoredDetail org={org} check={check} />
           </CardContent>
         </Card>
 

@@ -1556,5 +1556,47 @@
       "ai_generate": "Générée par IA",
       "ai_repair": "Réparation par IA"
     }
+  },
+  "ai": {
+    "describeButton": "Décrire",
+    "title": "Décrire un check",
+    "subtitle": "Dites quoi surveiller. Une IA écrit et teste un script js une seule fois, puis le script tourne seul, sans IA.",
+    "disabled": "Les checks écrits par IA ne sont pas activés sur ce serveur.",
+    "errorTitle": "Une erreur est survenue",
+    "describeStep": "1. Décrire",
+    "describeHelp": "L'IA ne voit que la description, les paramètres et le nom des secrets.",
+    "promptLabel": "Que doit surveiller ce check ?",
+    "promptPlaceholder": "Se connecter à https://app.acme.com avec le compte de test, le tableau de bord affiche au moins un projet",
+    "envLabel": "Paramètres (env)",
+    "envHelp": "Lus par le script via env.NOM. L'IA les voit.",
+    "addEnv": "Ajouter un paramètre",
+    "secretsLabel": "Secrets",
+    "secretsHelp": "Lus par le script via secrets.NOM. Servent à exécuter le script, jamais envoyés à l'IA.",
+    "addSecret": "Ajouter un secret",
+    "repairLabel": "Quand le script dérive",
+    "repair": {
+      "propose": "Proposer une réparation",
+      "auto": "Réparer automatiquement",
+      "off": "Ne rien faire"
+    },
+    "proposeContract": "Proposer un contrat",
+    "cancel": "Annuler",
+    "contractTitle": "2. Confirmer le contrat",
+    "contractHelp": "Les assertions que le script vérifiera, une par ligne, dans l'ordre. Modifiez-les, puis générez.",
+    "generate": "Générer le script",
+    "generating": "Écriture et test du script...",
+    "scriptTitle": "3. Script",
+    "lastRun": "Dernière exécution : {{status}}",
+    "writtenBy": "Écrit par {{model}} en {{turns}} tours",
+    "nameLabel": "Nom du check",
+    "save": "Enregistrer le check",
+    "saved": "Check créé",
+    "defaultName": "Check écrit par IA",
+    "detailTitle": "Écrit par IA",
+    "detailRepair": "Réparation : {{mode}}",
+    "detailPrompt": "Description",
+    "detailContract": "Contrat",
+    "detailModel": "Écrit par {{model}}",
+    "detailHistory": "Historique et propositions de réparation"
   }
 }

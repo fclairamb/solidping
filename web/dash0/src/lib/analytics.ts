@@ -155,6 +155,8 @@ export interface PublicConfig {
   discord?: DiscordPublicConfig;
   bugReport?: BugReportPublicConfig;
   heartbeat?: HeartbeatPublicConfig;
+  /** AI-authored js checks (spec 2026-10-03-07): on when SP_AI_PROVIDER is set. */
+  ai?: { enabled: boolean };
   runMode?: string;
   deploymentMode?: DeploymentMode;
 }

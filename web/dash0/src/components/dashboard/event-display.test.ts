@@ -228,6 +228,11 @@ describe("EVENT_TYPE_REGISTRY pins the binding emoji per event type", () => {
     ["check.placement_changed", "🔀"],
     // DNS baseline capture (spec 2026-10-03-04): timeline only, dash0 owns it.
     ["check.baseline_captured", "📌"],
+    // AI-authored js checks (spec 2026-10-03-07): timeline only, dash0 owns it.
+    ["check.ai_repair_attempted", "🤖"],
+    ["check.ai_repair_proposed", "📝"],
+    ["check.ai_repair_applied", "🛠️"],
+    ["check.ai_usage", "🧮"],
     // Private-location agent connections (spec 2026-09-25-05). Recorded as
     // audit events only, never sent through a chat integration, so dash0 owns
     // the pairing outright.

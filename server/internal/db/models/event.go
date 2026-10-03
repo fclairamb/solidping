@@ -38,7 +38,7 @@ const (
 	EventTypeCheckAIRepairApplied EventType = "check.ai_repair_applied"
 	// EventTypeAIUsage records the tokens of one LLM call (spec
 	// 2026-10-03-07). The org's daily AI token budget sums these rows.
-	EventTypeAIUsage EventType = "ai.usage"
+	EventTypeAIUsage EventType = "check.ai_usage"
 
 	// EventTypeIncidentCreated indicates an incident was created.
 	EventTypeIncidentCreated EventType = "incident.created"

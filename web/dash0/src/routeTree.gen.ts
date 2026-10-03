@@ -114,6 +114,7 @@ import { Route as OrgsOrgDiscoveryNewRouteImport } from './routes/orgs/$org/disc
 import { Route as OrgsOrgDiscoveryJobUidRouteImport } from './routes/orgs/$org/discovery.$jobUid'
 import { Route as OrgsOrgChecksSchedulingRouteImport } from './routes/orgs/$org/checks.scheduling'
 import { Route as OrgsOrgChecksNewRouteImport } from './routes/orgs/$org/checks.new'
+import { Route as OrgsOrgChecksDescribeRouteImport } from './routes/orgs/$org/checks.describe'
 import { Route as OrgsOrgChecksCheckUidRouteImport } from './routes/orgs/$org/checks.$checkUid'
 import { Route as OrgsOrgAccountTokensRouteImport } from './routes/orgs/$org/account.tokens'
 import { Route as OrgsOrgAccountSessionsRouteImport } from './routes/orgs/$org/account.sessions'
@@ -716,6 +717,11 @@ const OrgsOrgChecksNewRoute = OrgsOrgChecksNewRouteImport.update({
   path: '/new',
   getParentRoute: () => OrgsOrgChecksRoute,
 } as any)
+const OrgsOrgChecksDescribeRoute = OrgsOrgChecksDescribeRouteImport.update({
+  id: '/describe',
+  path: '/describe',
+  getParentRoute: () => OrgsOrgChecksRoute,
+} as any)
 const OrgsOrgChecksCheckUidRoute = OrgsOrgChecksCheckUidRouteImport.update({
   id: '/$checkUid',
   path: '/$checkUid',
@@ -1028,6 +1034,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/account/sessions': typeof OrgsOrgAccountSessionsRoute
   '/orgs/$org/account/tokens': typeof OrgsOrgAccountTokensRoute
   '/orgs/$org/checks/$checkUid': typeof OrgsOrgChecksCheckUidRouteWithChildren
+  '/orgs/$org/checks/describe': typeof OrgsOrgChecksDescribeRoute
   '/orgs/$org/checks/new': typeof OrgsOrgChecksNewRoute
   '/orgs/$org/checks/scheduling': typeof OrgsOrgChecksSchedulingRoute
   '/orgs/$org/discovery/$jobUid': typeof OrgsOrgDiscoveryJobUidRouteWithChildren
@@ -1163,6 +1170,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/account/security': typeof OrgsOrgAccountSecurityRoute
   '/orgs/$org/account/sessions': typeof OrgsOrgAccountSessionsRoute
   '/orgs/$org/account/tokens': typeof OrgsOrgAccountTokensRoute
+  '/orgs/$org/checks/describe': typeof OrgsOrgChecksDescribeRoute
   '/orgs/$org/checks/new': typeof OrgsOrgChecksNewRoute
   '/orgs/$org/checks/scheduling': typeof OrgsOrgChecksSchedulingRoute
   '/orgs/$org/discovery/new': typeof OrgsOrgDiscoveryNewRoute
@@ -1308,6 +1316,7 @@ export interface FileRoutesById {
   '/orgs/$org/account/sessions': typeof OrgsOrgAccountSessionsRoute
   '/orgs/$org/account/tokens': typeof OrgsOrgAccountTokensRoute
   '/orgs/$org/checks/$checkUid': typeof OrgsOrgChecksCheckUidRouteWithChildren
+  '/orgs/$org/checks/describe': typeof OrgsOrgChecksDescribeRoute
   '/orgs/$org/checks/new': typeof OrgsOrgChecksNewRoute
   '/orgs/$org/checks/scheduling': typeof OrgsOrgChecksSchedulingRoute
   '/orgs/$org/discovery/$jobUid': typeof OrgsOrgDiscoveryJobUidRouteWithChildren
@@ -1463,6 +1472,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/account/sessions'
     | '/orgs/$org/account/tokens'
     | '/orgs/$org/checks/$checkUid'
+    | '/orgs/$org/checks/describe'
     | '/orgs/$org/checks/new'
     | '/orgs/$org/checks/scheduling'
     | '/orgs/$org/discovery/$jobUid'
@@ -1598,6 +1608,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/account/security'
     | '/orgs/$org/account/sessions'
     | '/orgs/$org/account/tokens'
+    | '/orgs/$org/checks/describe'
     | '/orgs/$org/checks/new'
     | '/orgs/$org/checks/scheduling'
     | '/orgs/$org/discovery/new'
@@ -1742,6 +1753,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/account/sessions'
     | '/orgs/$org/account/tokens'
     | '/orgs/$org/checks/$checkUid'
+    | '/orgs/$org/checks/describe'
     | '/orgs/$org/checks/new'
     | '/orgs/$org/checks/scheduling'
     | '/orgs/$org/discovery/$jobUid'
@@ -2603,6 +2615,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgChecksNewRouteImport
       parentRoute: typeof OrgsOrgChecksRoute
     }
+    '/orgs/$org/checks/describe': {
+      id: '/orgs/$org/checks/describe'
+      path: '/describe'
+      fullPath: '/orgs/$org/checks/describe'
+      preLoaderRoute: typeof OrgsOrgChecksDescribeRouteImport
+      parentRoute: typeof OrgsOrgChecksRoute
+    }
     '/orgs/$org/checks/$checkUid': {
       id: '/orgs/$org/checks/$checkUid'
       path: '/$checkUid'
@@ -2998,6 +3017,7 @@ const OrgsOrgChecksCheckUidRouteWithChildren =
 
 interface OrgsOrgChecksRouteChildren {
   OrgsOrgChecksCheckUidRoute: typeof OrgsOrgChecksCheckUidRouteWithChildren
+  OrgsOrgChecksDescribeRoute: typeof OrgsOrgChecksDescribeRoute
   OrgsOrgChecksNewRoute: typeof OrgsOrgChecksNewRoute
   OrgsOrgChecksSchedulingRoute: typeof OrgsOrgChecksSchedulingRoute
   OrgsOrgChecksIndexRoute: typeof OrgsOrgChecksIndexRoute
@@ -3005,6 +3025,7 @@ interface OrgsOrgChecksRouteChildren {
 
 const OrgsOrgChecksRouteChildren: OrgsOrgChecksRouteChildren = {
   OrgsOrgChecksCheckUidRoute: OrgsOrgChecksCheckUidRouteWithChildren,
+  OrgsOrgChecksDescribeRoute: OrgsOrgChecksDescribeRoute,
   OrgsOrgChecksNewRoute: OrgsOrgChecksNewRoute,
   OrgsOrgChecksSchedulingRoute: OrgsOrgChecksSchedulingRoute,
   OrgsOrgChecksIndexRoute: OrgsOrgChecksIndexRoute,

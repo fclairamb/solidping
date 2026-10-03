@@ -38,6 +38,10 @@ export const ALL_EVENT_TYPES = [
   "check.deleted",
   "check.placement_changed",
   "check.baseline_captured",
+  "check.ai_repair_attempted",
+  "check.ai_repair_proposed",
+  "check.ai_repair_applied",
+  "check.ai_usage",
 
   "incident.created",
   "incident.escalated",

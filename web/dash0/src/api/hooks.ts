@@ -1393,6 +1393,84 @@ export function useCheckVersionDiff(
   });
 }
 
+/** AI-authored js checks (spec 2026-10-03-07). */
+export type AIRepairMode = "off" | "propose" | "auto";
+
+export interface AIUsage {
+  inputTokens: number;
+  outputTokens: number;
+}
+
+export interface AIScriptRun {
+  status: string;
+  durationMs?: number;
+  output?: Record<string, unknown>;
+  metrics?: Record<string, unknown>;
+}
+
+export interface AIContractResponse {
+  contract: string[];
+  model: string;
+  usage?: AIUsage;
+}
+
+export interface AIGenerateRequest {
+  prompt: string;
+  contract: string[];
+  env?: Record<string, string>;
+  secrets?: Record<string, string>;
+  repair?: AIRepairMode;
+}
+
+export interface AIGenerateResponse {
+  script: string;
+  config: Record<string, unknown>;
+  secretNames: string[];
+  lastRun: AIScriptRun;
+  model: string;
+  turns: number;
+  usage?: AIUsage;
+}
+
+/** The 422 body of a generation that produced no passing script. */
+export interface AIGenerationFailed {
+  title: string;
+  code: "AI_GENERATION_FAILED";
+  detail?: string;
+  lastScript?: string;
+  lastRun?: AIScriptRun;
+  turns: number;
+}
+
+/** The `ai` block of an AI-authored js check's config. */
+export interface AICheckBlock {
+  prompt?: string;
+  contract?: string[];
+  model?: string;
+  generated_at?: string;
+  repair?: AIRepairMode;
+}
+
+export function useAIContract(org: string) {
+  return useMutation({
+    mutationFn: (prompt: string) =>
+      apiFetch<AIContractResponse>(`/api/v1/orgs/${org}/checks/ai/contract`, {
+        method: "POST",
+        body: JSON.stringify({ prompt }),
+      }),
+  });
+}
+
+export function useAIGenerate(org: string) {
+  return useMutation({
+    mutationFn: (req: AIGenerateRequest) =>
+      apiFetch<AIGenerateResponse>(`/api/v1/orgs/${org}/checks/ai/generate`, {
+        method: "POST",
+        body: JSON.stringify(req),
+      }),
+  });
+}
+
 /** Restore, approve or reject one version of a check. */
 export function useCheckVersionAction(
   org: string,

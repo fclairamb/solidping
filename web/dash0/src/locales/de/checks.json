@@ -1556,5 +1556,47 @@
       "ai_generate": "KI-generiert",
       "ai_repair": "KI-Reparatur"
     }
+  },
+  "ai": {
+    "describeButton": "Beschreiben",
+    "title": "Check beschreiben",
+    "subtitle": "Sagen Sie, was überwacht werden soll. Eine KI schreibt und testet einmal ein js-Skript, danach läuft das Skript allein, ohne KI.",
+    "disabled": "KI-geschriebene Checks sind auf diesem Server nicht aktiviert.",
+    "errorTitle": "Etwas ist schiefgelaufen",
+    "describeStep": "1. Beschreiben",
+    "describeHelp": "Die KI sieht nur die Beschreibung, die Parameter und die Namen der Secrets.",
+    "promptLabel": "Was soll dieser Check überwachen?",
+    "promptPlaceholder": "Mit dem Testkonto bei https://app.acme.com anmelden, das Dashboard zeigt mindestens ein Projekt",
+    "envLabel": "Parameter (env)",
+    "envHelp": "Im Skript als env.NAME lesbar. Die KI sieht sie.",
+    "addEnv": "Parameter hinzufügen",
+    "secretsLabel": "Secrets",
+    "secretsHelp": "Im Skript als secrets.NAME lesbar. Dienen zum Ausführen des Skripts, werden nie an die KI gesendet.",
+    "addSecret": "Secret hinzufügen",
+    "repairLabel": "Wenn das Skript abweicht",
+    "repair": {
+      "propose": "Reparatur vorschlagen",
+      "auto": "Automatisch reparieren",
+      "off": "Nichts tun"
+    },
+    "proposeContract": "Vertrag vorschlagen",
+    "cancel": "Abbrechen",
+    "contractTitle": "2. Vertrag bestätigen",
+    "contractHelp": "Die Prüfungen des Skripts, eine pro Zeile, in Reihenfolge. Bearbeiten Sie sie und generieren Sie dann.",
+    "generate": "Skript generieren",
+    "generating": "Skript wird geschrieben und getestet...",
+    "scriptTitle": "3. Skript",
+    "lastRun": "Letzter Lauf: {{status}}",
+    "writtenBy": "Geschrieben von {{model}} in {{turns}} Runden",
+    "nameLabel": "Name des Checks",
+    "save": "Check speichern",
+    "saved": "Check erstellt",
+    "defaultName": "KI-geschriebener Check",
+    "detailTitle": "Von KI geschrieben",
+    "detailRepair": "Reparatur: {{mode}}",
+    "detailPrompt": "Beschreibung",
+    "detailContract": "Vertrag",
+    "detailModel": "Geschrieben von {{model}}",
+    "detailHistory": "Verlauf und Reparaturvorschläge"
   }
 }
