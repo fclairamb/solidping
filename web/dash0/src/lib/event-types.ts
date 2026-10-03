@@ -48,6 +48,7 @@ export const ALL_EVENT_TYPES = [
   "incident.rollup_detached",
   "incident.monitoring_interrupted",
   "incident.monitoring_resumed",
+  "incident.components_changed",
   "incident.acknowledged",
   "incident.unacknowledged",
   "incident.snoozed",

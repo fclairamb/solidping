@@ -177,6 +177,7 @@ export const checkTypes: {
   { value: "rdp", label: "RDP", description: "Monitor RDP (Remote Desktop) servers" },
   { value: "vnc", label: "VNC", description: "Monitor VNC (RFB) servers" },
   { value: "crawl", label: "Crawl", description: "Crawl a website for broken links, mixed content and sitemap errors" },
+  { value: "health", label: "Health", description: "Read an application's health endpoint and report per component" },
   { value: "private-location", label: "Private location", description: "Alert when a private location's agents go offline", systemCreated: true },
   { value: "sleep", label: "Sleep", description: "Sleep for a fixed duration (synthetic/testing, no network I/O)", synthetic: true },
 ];
@@ -1483,6 +1484,7 @@ export function CheckForm({
         name,
         setName,
         tunneled: supportsTunnel && tunnelCheckUid !== "",
+        lastResultOutput: initialData?.lastResult?.output as Record<string, unknown> | undefined,
       }}
     >
       <div className="space-y-6 max-w-2xl">

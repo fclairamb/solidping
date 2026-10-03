@@ -454,6 +454,8 @@
     "vncDescription": "VNC-Server (RFB) überwachen",
     "crawl": "Website-Crawl",
     "crawlDescription": "Eine Website nach defekten Links, gemischten Inhalten und Sitemap-Fehlern durchsuchen",
+    "health": "Zustand",
+    "healthDescription": "Den Health-Endpunkt einer Anwendung lesen und pro Komponente melden",
     "sleep": "Warten",
     "sleepDescription": "Für eine feste Dauer warten (synthetisch/Test, ohne Netzwerk-I/O)",
     "freebox_line": "Freebox-Leitungsqualität",
@@ -1430,7 +1432,36 @@
     "usernameRequiresPassword": "Ein Benutzername erfordert ein Passwort.",
     "vncUsernameTooLong": "Der Benutzername darf höchstens {{max}} Bytes lang sein.",
     "crawlMaxPagesRange": "Die Seitenzahl muss zwischen 1 und {{max}} liegen",
-    "crawlMaxRunRange": "Die maximale Laufzeit muss zwischen {{min}} und {{max}} Minuten liegen"
+    "crawlMaxRunRange": "Die maximale Laufzeit muss zwischen {{min}} und {{max}} Minuten liegen",
+    "healthMaxAge": "Das Höchstalter muss eine Dauer wie 10m sein (0 deaktiviert)"
+  },
+  "health": {
+    "format": "Health-Format",
+    "formatHelp": "Automatisch erkennt das Format an der JSON-Struktur. Erzwingen Sie eines, wenn die Erkennung danebenliegt.",
+    "formats": {
+      "auto": "Automatisch",
+      "spatie": "Laravel / Oh Dear (spatie)",
+      "spring": "Spring Boot Actuator",
+      "ietf": "IETF health+json",
+      "aspnet": "ASP.NET Core HealthChecks",
+      "microprofile": "MicroProfile Health",
+      "simple": "Einfach (nur Status)"
+    },
+    "maxAge": "Höchstalter der Ergebnisse",
+    "maxAgeHelp": "Ältere Ergebnisse gelten als veraltet und der Check fällt aus. Nur für Formate mit Zeitstempel. Standard 10m, 0 deaktiviert.",
+    "ignore": "Ignorierte Komponenten",
+    "namesHelp": "Ein Komponentenname pro Zeile, exakte Übereinstimmung, höchstens 50.",
+    "warnOnly": "Komponenten nur mit Warnung",
+    "warnOnlyHelp": "Ein Komponentenname pro Zeile. Ihr Ausfall warnt, ohne einen Vorfall zu öffnen.",
+    "knownComponents": "Im letzten Ergebnis gefundene Komponenten",
+    "suggestIgnore": "Ignorieren",
+    "suggestWarn": "Nur warnen",
+    "detail": {
+      "title": "Komponenten",
+      "noComponents": "Keine Komponente im letzten Ergebnis.",
+      "ignored": "ignoriert",
+      "timeline": "Letzte Ergebnisse"
+    }
   },
   "crawl": {
     "url": "Start-URL",

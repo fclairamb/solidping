@@ -60,6 +60,7 @@ const ALL_CHECK_TYPES: Record<CheckType, true> = {
   rdp: true,
   vnc: true,
   crawl: true,
+  health: true,
   "private-location": true,
   sleep: true,
 };

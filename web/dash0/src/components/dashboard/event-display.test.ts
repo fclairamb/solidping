@@ -92,6 +92,8 @@ const INTENTIONALLY_UNMAPPED: Record<string, string> = {
     "timeline record that the check went stale ('No data') while its incident stays open (spec 2026-09-25-02) — never pages; the incident family fallback is enough",
   "incident.monitoring_resumed":
     "timeline record that results came back for a stale check with an open incident (spec 2026-09-25-02) — never pages; the incident family fallback is enough",
+  "incident.components_changed":
+    "timeline record that the failing components of an open health incident changed (spec 2026-10-03-05) — never pages; the incident family fallback is enough",
   "status_update.created": "status-page activity — family fallback (blue) is enough",
   "status_update.updated": "status-page activity — family fallback (blue) is enough",
   "status_update.deleted": "status-page activity — family fallback (blue) is enough",

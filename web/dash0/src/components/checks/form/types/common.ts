@@ -60,6 +60,7 @@ export type CheckType =
   | "rdp"
   | "vnc"
   | "crawl"
+  | "health"
   | "private-location"
   | "sleep";
 

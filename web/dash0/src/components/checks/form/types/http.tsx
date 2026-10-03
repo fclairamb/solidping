@@ -173,7 +173,7 @@ function seedHeaderRows(raw: unknown): { key: string; value: string }[] {
   }));
 }
 
-function fromConfig(config: CheckConfig): HttpState {
+export function httpFromConfig(config: CheckConfig): HttpState {
   const rawHeaders = config.secretHeaders;
   const hasHeaders =
     !!rawHeaders &&
@@ -237,7 +237,7 @@ function fromConfig(config: CheckConfig): HttpState {
   };
 }
 
-function toConfig(state: HttpState): {
+export function httpToConfig(state: HttpState): {
   config: CheckConfig;
   errors: FieldErrors;
 } {
@@ -329,17 +329,13 @@ function toConfig(state: HttpState): {
   return { config: cfg, errors };
 }
 
-function Fields({ state, onChange, errors }: CheckTypeFieldsProps<HttpState>) {
+// HttpRequestLine is the method + URL row, shared with the health check form.
+export function HttpRequestLine({
+  state,
+  onChange,
+  errors,
+}: CheckTypeFieldsProps<HttpState>) {
   const { t } = useTranslation("checks");
-  const invalidCodes = state.expectedStatusCodes.filter(
-    (code) => !isValidStatusPattern(code),
-  );
-  const statusCodesError =
-    invalidCodes.length > 0
-      ? t("form.statusCodeInvalidSummary", "Invalid: {{codes}}", {
-          codes: invalidCodes.join(", "),
-        })
-      : getFieldError(errors, "expected_status_codes");
   return (
     <>
       <div className="space-y-2">
@@ -388,6 +384,24 @@ function Fields({ state, onChange, errors }: CheckTypeFieldsProps<HttpState>) {
           </p>
         )}
       </div>
+    </>
+  );
+}
+
+function Fields({ state, onChange, errors }: CheckTypeFieldsProps<HttpState>) {
+  const { t } = useTranslation("checks");
+  const invalidCodes = state.expectedStatusCodes.filter(
+    (code) => !isValidStatusPattern(code),
+  );
+  const statusCodesError =
+    invalidCodes.length > 0
+      ? t("form.statusCodeInvalidSummary", "Invalid: {{codes}}", {
+          codes: invalidCodes.join(", "),
+        })
+      : getFieldError(errors, "expected_status_codes");
+  return (
+    <>
+      <HttpRequestLine state={state} onChange={onChange} errors={errors} />
       <div className="space-y-2">
         <Label htmlFor="expectedStatusCodes">{t("http.expectedStatus")}</Label>
         <TokenChipsInput
@@ -580,10 +594,18 @@ export function HttpAuthFields({
 // OptionsFields renders the "Advanced" section's HTTP-specific toggles:
 // TLS certificate verification and redirect following. Both default on
 // (today's hardcoded behavior).
-export function HttpOptionsFields({
+export function HttpOptionsFields(props: CheckTypeFieldsProps<HttpState>) {
+  return <HttpOptionsBody {...props} assertions />;
+}
+
+// HttpOptionsBody is the Advanced section body. `assertions` shows the
+// response assertion editors; the health check hides them because its health
+// document is the only thing that judges the response.
+export function HttpOptionsBody({
   state,
   onChange,
-}: CheckTypeFieldsProps<HttpState>) {
+  assertions,
+}: CheckTypeFieldsProps<HttpState> & { assertions: boolean }) {
   const { t } = useTranslation("checks");
   const { tunneled } = useCheckFormFields();
   return (
@@ -764,6 +786,8 @@ export function HttpOptionsFields({
           testIdPrefix="request-header"
         />
       </div>
+      {assertions && (
+        <>
       <div className="space-y-2 border-t pt-3">
         <div>
           <Label>{t("jsonAssertions")}</Label>
@@ -793,6 +817,8 @@ export function HttpOptionsFields({
           onChange={(bodyAssertions) => onChange({ ...state, bodyAssertions })}
         />
       </div>
+        </>
+      )}
     </div>
   );
 }
@@ -853,8 +879,8 @@ export const httpModule: CheckTypeModule<HttpState> = {
     "body",
     "headers",
   ],
-  fromConfig,
-  toConfig,
+  fromConfig: httpFromConfig,
+  toConfig: httpToConfig,
   Fields,
 };
 

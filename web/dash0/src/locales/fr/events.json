@@ -36,6 +36,7 @@
     "incident.rollup_detached": "Détaché de l'incident parent",
     "incident.monitoring_interrupted": "Surveillance interrompue",
     "incident.monitoring_resumed": "Surveillance reprise",
+    "incident.components_changed": "Composants de l'incident modifiés",
     "incident.comment": "Commentaire",
     "statuspage.incident.published": "Publié sur la page de statut",
     "statuspage.incident.updated": "Incident de page de statut mis à jour",

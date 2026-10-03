@@ -456,6 +456,8 @@
     "vncDescription": "Monitor VNC (RFB) servers",
     "crawl": "Crawl",
     "crawlDescription": "Crawl a website for broken links, mixed content and sitemap errors",
+    "health": "Health",
+    "healthDescription": "Read an application's health endpoint and report per component",
     "sleep": "Sleep",
     "sleepDescription": "Sleep for a fixed duration (synthetic/testing, no network I/O)",
     "email": "Email",
@@ -1430,7 +1432,36 @@
     "usernameRequiresPassword": "A username requires a password.",
     "vncUsernameTooLong": "Username must be at most {{max}} bytes.",
     "crawlMaxPagesRange": "Max pages must be between 1 and {{max}}",
-    "crawlMaxRunRange": "Max run duration must be between {{min}} and {{max}} minutes"
+    "crawlMaxRunRange": "Max run duration must be between {{min}} and {{max}} minutes",
+    "healthMaxAge": "Max age must be a duration such as 10m (0 disables)"
+  },
+  "health": {
+    "format": "Health format",
+    "formatHelp": "Automatic detects the format from the JSON shape. Force one if detection picks the wrong format.",
+    "formats": {
+      "auto": "Automatic",
+      "spatie": "Laravel / Oh Dear (spatie)",
+      "spring": "Spring Boot Actuator",
+      "ietf": "IETF health+json",
+      "aspnet": "ASP.NET Core HealthChecks",
+      "microprofile": "MicroProfile Health",
+      "simple": "Simple (status only)"
+    },
+    "maxAge": "Maximum age of the results",
+    "maxAgeHelp": "Results older than this are stale and the check goes down. Only for formats with a timestamp. Default 10m, 0 disables.",
+    "ignore": "Ignored components",
+    "namesHelp": "One component name per line, exact match, at most 50.",
+    "warnOnly": "Warning only components",
+    "warnOnlyHelp": "One component name per line. A failure of these warns and opens no incident.",
+    "knownComponents": "Components found in the last result",
+    "suggestIgnore": "Ignore",
+    "suggestWarn": "Warn only",
+    "detail": {
+      "title": "Components",
+      "noComponents": "No component in the last result.",
+      "ignored": "ignored",
+      "timeline": "Last results"
+    }
   },
   "crawl": {
     "url": "Start URL",

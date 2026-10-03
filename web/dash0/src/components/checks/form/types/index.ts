@@ -98,6 +98,8 @@ import {
   privateLocationModule,
 } from "./misc";
 
+import { healthModule, HealthAdvancedFields, healthAdvancedSummary } from "./health";
+import type { HealthState } from "./health";
 import { crawlModule, CrawlAdvancedFields, crawlAdvancedSummary } from "./crawl";
 import type { CrawlState } from "./crawl";
 
@@ -141,6 +143,7 @@ const modules: CheckTypeModule[] = [
   entry(rdpModule),
   entry(vncModule),
   entry(crawlModule),
+  entry(healthModule),
   entry(sipModule),
   entry(jsModule),
   entry(sleepModule),
@@ -178,6 +181,11 @@ export const authFieldsRegistry: Partial<Record<CheckType, AuthSection>> = {
     summary: (state, configPrivateKeys) =>
       httpAuthSummary(state as HttpState, configPrivateKeys),
   },
+  health: {
+    Fields: HttpAuthFields as unknown as FC<CheckTypeFieldsProps>,
+    summary: (state, configPrivateKeys) =>
+      httpAuthSummary(state as HttpState, configPrivateKeys),
+  },
   grpc: {
     Fields: GrpcAuthFields as unknown as FC<CheckTypeFieldsProps>,
     summary: (state, configPrivateKeys) =>
@@ -207,6 +215,10 @@ export const advancedFieldsRegistry: Partial<
   grpc: {
     Fields: GrpcAdvancedFields as unknown as FC<CheckTypeFieldsProps>,
     summary: (state) => grpcAdvancedSummary(state as GrpcState),
+  },
+  health: {
+    Fields: HealthAdvancedFields as unknown as FC<CheckTypeFieldsProps>,
+    summary: (state) => healthAdvancedSummary(state as HealthState),
   },
   crawl: {
     Fields: CrawlAdvancedFields as unknown as FC<CheckTypeFieldsProps>,

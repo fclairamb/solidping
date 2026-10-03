@@ -174,6 +174,7 @@ export interface Check {
     | "vnc"
     | "prometheus"
     | "crawl"
+    | "health"
     | "sleep";
   config?: Record<string, unknown>;
   /**
@@ -391,6 +392,7 @@ export interface CreateCheckRequest {
     | "vnc"
     | "prometheus"
     | "crawl"
+    | "health"
     | "sleep";
   config: Record<string, unknown>;
   /** An explicit list pins the check. Omit to let it be placed automatically. */
