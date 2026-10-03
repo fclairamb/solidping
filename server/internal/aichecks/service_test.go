@@ -303,9 +303,16 @@ func TestRepairValidCandidateBecomesAProposal(t *testing.T) {
 	check := fx.createAICheck(t, tg.srv.URL, "propose")
 	fx.driftResults(t, check.UID, 3, driftOutput())
 
+	before, err := fx.db.GetCheck(fx.ctx, fx.org.UID, check.UID)
+	r.NoError(err)
+
 	outcome, err := fx.svc.Repair(fx.ctx, fx.org.UID, check.UID)
 	r.NoError(err)
 	r.Equal(aichecks.OutcomeProposed, outcome.Outcome, outcome.Reason)
+
+	after, err := fx.db.GetCheck(fx.ctx, fx.org.UID, check.UID)
+	r.NoError(err)
+	r.Equal(before.Status, after.Status, "a proposal leaves the check status alone")
 
 	row, err := fx.db.GetCheckVersion(fx.ctx, check.UID, outcome.Version)
 	r.NoError(err)
