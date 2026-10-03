@@ -76,8 +76,18 @@ func (p *fakeProvider) sawSecret() bool {
 	return false
 }
 
+// runScript is a run_script call of the finished script.
 func runScript(script string) *ai.Response {
-	args, err := json.Marshal(map[string]string{"script": script})
+	return runScriptCall(script, true)
+}
+
+// probeScript is an exploratory run_script call: never the check.
+func probeScript(script string) *ai.Response {
+	return runScriptCall(script, false)
+}
+
+func runScriptCall(script string, final bool) *ai.Response {
+	args, err := json.Marshal(map[string]any{"script": script, "final": final})
 	if err != nil {
 		panic(err)
 	}
@@ -578,6 +588,7 @@ func TestGenerateWritesATestedScript(t *testing.T) {
 	r.False(fx.provider.sawSecret(), "the model never receives a secret value")
 	r.Contains(fx.provider.requests[0].Messages[0].Content, "TOKEN")
 	r.Contains(fx.provider.requests[0].System, `failure: "drift"`)
+	r.Contains(fx.provider.requests[0].System, "When the user asks for a screenshot, call page.screenshot()")
 
 	// The usage is recorded per call.
 	events, err := fx.db.ListEvents(fx.ctx, &models.ListEventsFilter{
@@ -585,6 +596,70 @@ func TestGenerateWritesATestedScript(t *testing.T) {
 	})
 	r.NoError(err)
 	r.Len(events, 2)
+}
+
+// TestGenerateNeverKeepsAProbe: a probe that returns "up" asserts nothing, so
+// it neither ends the loop nor becomes the check.
+func TestGenerateNeverKeepsAProbe(t *testing.T) {
+	t.Parallel()
+
+	const probe = `return { status: "up", output: { probe: "done" } };`
+
+	t.Run("the final run is kept, not the probe", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+		tg := newTarget(t)
+		fx := newFixture(t, func(call int, _ ai.Request) *ai.Response {
+			if call == 0 {
+				return probeScript(probe)
+			}
+
+			return runScript(fixedScript)
+		}, nil)
+
+		resp, err := fx.svc.Generate(fx.ctx, fx.org.UID, &aichecks.GenerateRequest{
+			Prompt:   "the acme api at " + tg.srv.URL + " lists at least one project",
+			Contract: []string{"the list has at least one project"},
+			Env:      map[string]string{"BASE_URL": tg.srv.URL},
+		})
+		r.NoError(err)
+		r.Equal(fixedScript, resp.Script)
+		r.Equal(2, resp.Turns, "the passing probe did not end the loop")
+	})
+
+	t.Run("only probes is an error", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+		fx := newFixture(t, func(int, ai.Request) *ai.Response { return probeScript(probe) }, nil)
+
+		_, err := fx.svc.Generate(fx.ctx, fx.org.UID, &aichecks.GenerateRequest{
+			Prompt:   "watch https://app.acme.com",
+			Contract: []string{"app answers"},
+		})
+		r.ErrorIs(err, aichecks.ErrNoPassingScript)
+	})
+
+	t.Run("a script handed back in a code block counts", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+		fx := newFixture(t, func(call int, _ ai.Request) *ai.Response {
+			if call == 0 {
+				return probeScript(probe)
+			}
+
+			return &ai.Response{Text: "Done.\n```js\n" + probe + "\n```\n"}
+		}, nil)
+
+		resp, err := fx.svc.Generate(fx.ctx, fx.org.UID, &aichecks.GenerateRequest{
+			Prompt:   "watch https://app.acme.com",
+			Contract: []string{"app answers"},
+		})
+		r.NoError(err)
+		r.Equal(probe, resp.Script)
+	})
 }
 
 // TestGenerateFillsStoredSecrets regenerates an existing check: the dashboard

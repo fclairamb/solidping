@@ -382,7 +382,8 @@ func (s *Service) attemptRepair(ctx context.Context, target *repairTarget) (*Rep
 		usage = result.Usage
 	}
 
-	if rec.lastUp == nil {
+	passing := rec.passing(result)
+	if passing == nil {
 		reason := "no candidate passed its test run"
 		if loopErr != nil {
 			reason += ": " + loopErr.Error()
@@ -391,7 +392,7 @@ func (s *Service) attemptRepair(ctx context.Context, target *repairTarget) (*Rep
 		return &RepairOutcome{Outcome: OutcomeNoCandidate, Reason: reason}, usage, nil
 	}
 
-	outcome, err := s.storeCandidate(ctx, target, rec.lastUp.Script)
+	outcome, err := s.storeCandidate(ctx, target, passing.Script)
 
 	return outcome, usage, err
 }

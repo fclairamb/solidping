@@ -32,6 +32,15 @@ On the checks page or the **New check** page, click **Describe it**.
    turn cap is hit. You see the script and its last run.
 4. Save. The check is a normal `js` check with an `ai` block in its config.
 
+The AI may run probe scripts while it explores the target. A probe is never
+saved, even when it returns `up`: only the finished script, the one that
+implements every line of the contract, ends the generation.
+
+Ask for a screenshot in the description ("then take a screenshot") and the
+script calls `page.screenshot()` at that point, and again before any `down`.
+The capture follows the [js check rules](./javascript-checks.md): it is kept on
+`down` and `timeout` runs and on **Capture now**, and dropped on other `up` runs.
+
 The AI never receives a secret value. It only sees the secret names, and the
 script reads them as `secrets.NAME`. A test run only gets the real values when
 every host the script contacts appears in your description or parameters.

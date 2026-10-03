@@ -37,7 +37,10 @@ Globals:
   page.click(selector) / page.fill(selector, text) / page.press(selector, key) -> { ok, error? }
   page.text(selector) -> { ok, text, error? }
   page.evaluate(expression) -> { ok, value, error? } (runs inside the page)
-  page.url() -> string, page.cookies() -> [...], page.screenshot(), page.close()
+  page.url() -> string, page.cookies() -> [...], page.close()
+  page.screenshot() -> { ok, error? }: captures the visible 1280x800 viewport and attaches
+  it to the result (the check page's Screenshots card). The last call wins. It is kept
+  on "down"/"timeout" runs and on "Capture now" runs, dropped on other "up" runs.
 - tcp.connect(host, port, opts) / udp / websocket.connect(url) sockets, rdp, vnc:
   only when the user asks for those protocols.
 - solidping.check(type, config) / solidping.http(config): run another check type.
@@ -58,8 +61,14 @@ const scriptRules = `# Rules for the script you write
    (base URL, user name) come from env.NAME when they are provided.
 5. Only contact the hosts the user named.
 6. Keep it short, readable and deterministic. Report useful metrics (durations).
-7. Use run_script to test the script. When it returns "up", stop and answer with
-   the final script in a single fenced js code block.
+7. When the user asks for a screenshot, call page.screenshot() at the moment
+   they describe (e.g. after filling a form), and again just before returning
+   "down" so a failure shows the page. A screenshot is never an assertion: do
+   not fail the check because page.screenshot() returned ok: false.
+8. You may use run_script with final: false to probe the target (list headings,
+   try a selector). A probe is never saved. Test the finished script, the one that
+   implements every contract line, with final: true. When a final run returns
+   "up", stop and answer with that script in a single fenced js code block.
 `
 
 // systemPrompt is the stable system prompt of every authoring call: the API

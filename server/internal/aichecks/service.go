@@ -450,7 +450,8 @@ func (s *Service) Generate(ctx context.Context, orgUID string, req *GenerateRequ
 		return rec.done() || s.budgetLeft(ctx, orgUID) != nil
 	}).Run(ctx, []ai.Message{{Role: ai.RoleUser, Content: generationBrief(req)}})
 
-	if rec.lastUp == nil {
+	passing := rec.passing(result)
+	if passing == nil {
 		cause := ErrNoPassingScript
 		if err != nil {
 			cause = fmt.Errorf("%w: %w", ErrNoPassingScript, err)
@@ -468,7 +469,7 @@ func (s *Service) Generate(ctx context.Context, orgUID string, req *GenerateRequ
 		return nil, genErr
 	}
 
-	return s.generated(req, rec.lastUp, result), nil
+	return s.generated(req, passing, result), nil
 }
 
 func (s *Service) generated(req *GenerateRequest, run *scriptRun, result *ai.LoopResult) *GenerateResponse {

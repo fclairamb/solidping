@@ -22,6 +22,7 @@ const (
 	schemaObject     = "object"
 	schemaProperties = "properties"
 	schemaRequired   = "required"
+	schemaDesc       = "description"
 )
 
 var errScriptRequired = errors.New("script is required")
@@ -32,12 +33,16 @@ type urlArgs struct {
 
 type scriptArgs struct {
 	Script string `json:"script"`
+	// Final marks the finished check script. Only a final run that passes
+	// ends the loop and is kept: an exploratory probe that returns "up"
+	// asserts nothing and must never become the check.
+	Final bool `json:"final"`
 }
 
 func urlSchema(desc string) map[string]any {
 	return map[string]any{
 		schemaType:       schemaObject,
-		schemaProperties: map[string]any{"url": map[string]any{schemaType: "string", "description": desc}},
+		schemaProperties: map[string]any{"url": map[string]any{schemaType: "string", schemaDesc: desc}},
 		schemaRequired:   []string{"url"},
 	}
 }
@@ -95,6 +100,7 @@ func (r *Runner) browserSnapshotTool() ai.Tool {
 type scriptRun struct {
 	Script string
 	Result *RunResult
+	Final  bool
 }
 
 // runRecorder is the run_script tool of one loop: it runs the script, and
@@ -106,8 +112,11 @@ type runRecorder struct {
 	prepare func(script string) (map[string]string, string, error)
 	env     map[string]string
 
-	last   *scriptRun
+	last *scriptRun
+	// lastUp is the last passing run marked final.
 	lastUp *scriptRun
+	// ups are the passing runs by script, final or not, for passing().
+	ups map[string]*scriptRun
 }
 
 func (rec *runRecorder) tool() ai.Tool {
@@ -116,13 +125,19 @@ func (rec *runRecorder) tool() ai.Tool {
 			Name: ToolRunScript,
 			Description: "Run a js check script exactly as a SolidPing worker would, with the check's env " +
 				"and secrets. Returns status, output (with console) and metrics. Secret values are " +
-				"never shown: they appear as [secret:NAME].",
+				"never shown: they appear as [secret:NAME]. Set final to true only for the finished " +
+				"check script that implements the whole contract; a final run returning \"up\" ends the work.",
 			Parameters: map[string]any{
 				schemaType: schemaObject,
 				schemaProperties: map[string]any{
-					"script": map[string]any{schemaType: "string", "description": "The full js check script."},
+					"script": map[string]any{schemaType: "string", schemaDesc: "The full js check script."},
+					"final": map[string]any{
+						schemaType: "boolean",
+						schemaDesc: "true for the finished check script, false for an exploratory probe " +
+							"(a probe is never saved, even when it returns \"up\").",
+					},
 				},
-				schemaRequired: []string{"script"},
+				schemaRequired: []string{"script", "final"},
 			},
 		},
 		Run: func(ctx context.Context, raw json.RawMessage) (string, error) {
@@ -145,11 +160,19 @@ func (rec *runRecorder) tool() ai.Tool {
 				return "", err
 			}
 
-			run := &scriptRun{Script: args.Script, Result: res}
+			run := &scriptRun{Script: args.Script, Result: res, Final: args.Final}
 			rec.last = run
 
 			if res.Up() {
-				rec.lastUp = run
+				if rec.ups == nil {
+					rec.ups = map[string]*scriptRun{}
+				}
+
+				rec.ups[strings.TrimSpace(args.Script)] = run
+
+				if args.Final {
+					rec.lastUp = run
+				}
 			}
 
 			payload := map[string]any{"result": res}
@@ -163,7 +186,49 @@ func (rec *runRecorder) tool() ai.Tool {
 }
 
 func (rec *runRecorder) done() bool {
-	return rec.last != nil && rec.last.Result.Up()
+	return rec.last != nil && rec.last.Final && rec.last.Result.Up()
+}
+
+// passing is the script the loop produced: the last passing final run, or,
+// when the model never set final, the passing run of the script its last
+// answer hands back in a fenced code block (the protocol of the rules). Nil
+// when neither exists: a probe that returned "up" is never the check.
+func (rec *runRecorder) passing(result *ai.LoopResult) *scriptRun {
+	if rec.lastUp != nil {
+		return rec.lastUp
+	}
+
+	if result == nil {
+		return nil
+	}
+
+	script := fencedScript(result.Text)
+	if script == "" {
+		return nil
+	}
+
+	return rec.ups[script]
+}
+
+// fencedScript is the content of the last fenced code block of text, trimmed.
+func fencedScript(text string) string {
+	end := strings.LastIndex(text, "```")
+	if end < 0 {
+		return ""
+	}
+
+	start := strings.LastIndex(text[:end], "```")
+	if start < 0 {
+		return ""
+	}
+
+	block := text[start+3 : end]
+	// Drop the language tag line (```js).
+	if nl := strings.IndexByte(block, '\n'); nl >= 0 && !strings.ContainsAny(block[:nl], " ;({=") {
+		block = block[nl+1:]
+	}
+
+	return strings.TrimSpace(block)
 }
 
 // secretNames lists the keys of a secrets map, as the model sees them.
