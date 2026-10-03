@@ -617,6 +617,12 @@ type StatusPageResponse struct {
 	// deliberately world-readable, and status0 is the primary consumer.
 	LogoURL    *string `json:"logoUrl,omitempty"`
 	FaviconURL *string `json:"faviconUrl,omitempty"`
+	// OrgName / OrgLogoURL carry the owning organization's identity on the
+	// PUBLIC payload so status0 can show it. OrgLogoURL is only ever a
+	// first-party `/pub/assets/<uid>` path: status0 runs under `img-src
+	// 'self'`, so an external http(s) org logo would be blocked and is omitted.
+	OrgName    string  `json:"orgName,omitempty"`
+	OrgLogoURL *string `json:"orgLogoUrl,omitempty"`
 	// CustomCSS is the operator-authored stylesheet the public page injects as
 	// a <style> text node. Unlike the custom-domain fields below it is set on
 	// the PUBLIC responses too — status0 is its only consumer.
@@ -2583,6 +2589,8 @@ func (s *Service) computeStatusPageView(
 ) (StatusPageResponse, error) {
 	response := convertPageToResponse(page)
 	s.resolvePublicBranding(ctx, org.UID, &response)
+	response.OrgName = org.Name
+	response.OrgLogoURL = publicOrgLogoURL(org)
 
 	sections, _, err := s.loadSectionsWithResources(ctx, page.UID, false)
 	if err != nil {
@@ -4550,6 +4558,22 @@ func anyWindowActive(windows []*models.MaintenanceWindow) bool {
 	}
 
 	return false
+}
+
+// publicOrgLogoURL returns the org logo only when it is a first-party public
+// asset path (served unauthenticated, same origin on custom domains, allowed by
+// status0's `img-src 'self'`). External URLs and an unset logo yield nil.
+func publicOrgLogoURL(org *models.Organization) *string {
+	if org == nil || org.LogoURL == nil {
+		return nil
+	}
+
+	logo := *org.LogoURL
+	if !strings.HasPrefix(logo, files.PublicAssetPathPrefix) || len(logo) == len(files.PublicAssetPathPrefix) {
+		return nil
+	}
+
+	return &logo
 }
 
 func convertPageToResponse(page *models.StatusPage) StatusPageResponse {

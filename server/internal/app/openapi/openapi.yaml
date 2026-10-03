@@ -13794,6 +13794,16 @@ components:
         faviconUrl:
           type: string
           description: Public path of the page's uploaded favicon, if any.
+        orgName:
+          type: string
+          description: Name of the owning organization. Public view endpoints only.
+        orgLogoUrl:
+          type: string
+          description: >-
+            Public `/pub/assets/<file uid>` path of the organization's logo.
+            Omitted when the org has no logo or uses an external URL logo
+            (status0's CSP only allows first-party images). Public view
+            endpoints only.
         isDefault:
           type: boolean
         enabled:
