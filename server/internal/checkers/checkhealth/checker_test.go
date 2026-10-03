@@ -324,7 +324,7 @@ func TestSecretHeaderIsSentAndNeverInTheOutput(t *testing.T) {
 	var got string
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		got = r.Header.Get("oh-dear-health-check-secret")
+		got = r.Header.Get("Oh-Dear-Health-Check-Secret")
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(spatieBody(time.Minute, "failed")))
 	}))
