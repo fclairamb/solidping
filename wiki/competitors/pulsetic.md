@@ -273,7 +273,8 @@ marketing angle both sides can now claim.
 
 ### Similarities
 
-- Multi-region checks with cross-region confirmation before alerting
+- Multi-region checks (Pulsetic confirms a failure across regions before alerting;
+  SolidPing has no cross-region confirmation step, see the Hyperping compare page)
 - Status pages with custom domains, subscribers, incidents and maintenance windows
 - Heartbeat/cron monitoring
 - Token-auth REST API with an OpenAPI schema
