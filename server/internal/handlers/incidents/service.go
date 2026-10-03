@@ -1341,6 +1341,10 @@ func (s *Service) handleFailure(
 		FailureCount: &newFailureCount,
 	}
 
+	// A health check's failing components can change while the incident stays
+	// open: that is an incident update, not silence.
+	s.recordComponentChange(ctx, check, result, incident, &update)
+
 	// Check if we should escalate (once per incident)
 	if incident.EscalatedAt == nil && newFailureCount >= check.EscalationThreshold {
 		now := s.clock.Now()
@@ -1465,7 +1469,7 @@ func (s *Service) createIncident(ctx context.Context, check *models.Check, resul
 	title := s.generateIncidentTitle(check)
 
 	incident := models.NewIncident(check.OrganizationUID, check.UID, result.PeriodStart, title)
-	incident.Details = failureDetails(result)
+	incident.Details = withFailedComponents(check, result, failureDetails(result))
 	// FlapLevel snapshots the flap count recordFlap just bumped, so the
 	// incident carries the level it actually opened at (spec 2026-08-24-05).
 	incident.FlapLevel = check.FlapCount
@@ -1855,6 +1859,10 @@ func (s *Service) queueLifecycleNotifications(
 		// A captured dns baseline (spec 2026-10-03-04) is bookkeeping: on the
 		// check's timeline, never paged.
 		models.EventTypeCheckBaselineCaptured,
+		// A health incident's failing components changing (spec
+		// 2026-10-03-05) is a timeline update on an incident that already
+		// paged: recorded, never paged again.
+		models.EventTypeIncidentComponentsChanged,
 		// Ack and unack DO notify — they simply do not travel through here,
 		// exactly like incident.comment. Their transitions call
 		// queueAckNotifications / queueUnackNotifications directly, because the

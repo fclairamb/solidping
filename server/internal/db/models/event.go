@@ -65,6 +65,11 @@ const (
 	// recovery window: the sweep cleared the recovery clock on the way in.
 	// Never pages.
 	EventTypeIncidentMonitoringResumed EventType = "incident.monitoring_resumed"
+	// EventTypeIncidentComponentsChanged records, on an OPEN health-check
+	// incident's timeline, that the set of failing components changed (spec
+	// 2026-10-03-05). The payload carries `added`, `removed` and `failed`. It
+	// never pages.
+	EventTypeIncidentComponentsChanged EventType = "incident.components_changed"
 	// EventTypeIncidentAcknowledged indicates an incident was acknowledged.
 	EventTypeIncidentAcknowledged EventType = "incident.acknowledged"
 	// EventTypeIncidentUnacknowledged indicates an acknowledgment was cleared.
