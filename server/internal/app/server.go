@@ -1368,7 +1368,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		s.dbService,
 		s.services.CheckJobs,
 		agentWorkerIncidents,
-		scheduling.ParamsFromConfig(s.config.Server.Scheduling),
+		scheduling.ParamsFromConfig(&s.config.Server.Scheduling),
 	)
 	agentWSHandler := agentws.NewHandler(
 		s.config,

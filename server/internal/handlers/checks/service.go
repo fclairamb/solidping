@@ -3221,6 +3221,7 @@ func (s *Service) reconcileCheckJobs(ctx context.Context, check *models.Check, r
 		scheduledAt := scheduling.NextAligned(time.Now(), basePeriod, basePeriod, check.UID, nil, nil, 0)
 		job := models.NewCheckJob(check.OrganizationUID, check.UID, check.Period)
 		job.Type = check.Type
+		job.Lane = models.InitialLaneForType(check.Type)
 		job.Config = check.Config
 		job.ConfigPrivate = check.ConfigPrivate
 		job.ConfigPrivateKeys = check.ConfigPrivateKeys
@@ -3322,6 +3323,26 @@ func (s *Service) reconcileCheckJobs(ctx context.Context, check *models.Check, r
 					Set("updated_at = ?", time.Now()).
 					Where("uid = ?", existing.UID)
 
+				// A multi-step run in progress (spec 2026-10-03-03) was started
+				// against the old config: drop it, the next claim starts fresh.
+				if existing.StepRunUID != nil &&
+					(existing.Type != check.Type || !configEqual(existing.Config, check.Config)) {
+					query = query.
+						Set("step_run_uid = NULL").
+						Set("step_run_started_at = NULL").
+						Set("step_count = 0").
+						Set("step_state_file_uid = NULL").
+						Set("step_failures = 0")
+				}
+
+				// A type change crossing the multi-step boundary moves the job
+				// between the bulk lane and the fast lane (spec 2026-10-03-03):
+				// the cost classifier never moves a job out of bulk on its own.
+				if existing.Type != check.Type &&
+					checkerdef.CheckType(existing.Type).IsMultiStep() != checkerdef.CheckType(check.Type).IsMultiStep() {
+					query = query.Set("lane = ?", models.InitialLaneForType(check.Type))
+				}
+
 				if scheduleChanged {
 					scheduledAt := scheduling.NextAligned(
 						time.Now(), basePeriod, basePeriod, check.UID, &regionCopy, targetRegions, spread,
@@ -3346,6 +3367,7 @@ func (s *Service) reconcileCheckJobs(ctx context.Context, check *models.Check, r
 
 			job := models.NewCheckJob(check.OrganizationUID, check.UID, check.Period)
 			job.Type = check.Type
+			job.Lane = models.InitialLaneForType(check.Type)
 			job.Config = check.Config
 			job.ConfigPrivate = check.ConfigPrivate
 			job.ConfigPrivateKeys = check.ConfigPrivateKeys

@@ -1596,6 +1596,7 @@ func createCheckJobs(ctx context.Context, tx bun.Tx, check *models.Check) error 
 		// No regions: create a single job without region
 		checkJob := models.NewCheckJob(check.OrganizationUID, check.UID, check.Period)
 		checkJob.Type = check.Type
+		checkJob.Lane = models.InitialLaneForType(check.Type)
 		checkJob.Config = check.Config
 		checkJob.ConfigPrivate = check.ConfigPrivate
 		checkJob.ConfigPrivateKeys = check.ConfigPrivateKeys
@@ -1622,6 +1623,7 @@ func createCheckJobs(ctx context.Context, tx bun.Tx, check *models.Check) error 
 
 		checkJob := models.NewCheckJob(check.OrganizationUID, check.UID, check.Period)
 		checkJob.Type = check.Type
+		checkJob.Lane = models.InitialLaneForType(check.Type)
 		checkJob.Config = check.Config
 		checkJob.ConfigPrivate = check.ConfigPrivate
 		checkJob.ConfigPrivateKeys = check.ConfigPrivateKeys

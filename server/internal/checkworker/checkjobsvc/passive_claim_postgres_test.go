@@ -90,7 +90,7 @@ func TestClaimPassiveJobsConcurrentClaimers_Postgres(t *testing.T) {
 	_, err = dbSvc.DB().NewInsert().Model(cloudWorker).Exec(ctx)
 	r.NoError(err)
 
-	cloudClaimed, _, err := svc.ClaimJobs(ctx, cloudWorker.UID, &cloud, 50, 50, 5*time.Minute)
+	cloudClaimed, _, err := svc.ClaimJobs(ctx, cloudWorker.UID, &cloud, 50, 50, 0, 5*time.Minute)
 	r.NoError(err)
 	r.Empty(cloudClaimed, "a cloud worker never claims a passive job")
 

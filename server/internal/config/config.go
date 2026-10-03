@@ -1684,6 +1684,13 @@ type SchedulingConfig struct {
 	// with a startup warning when out of range. Default 5; 0 disables the
 	// reservation (slow may fill the pool, pre-lane behavior).
 	FastLaneReserved int `koanf:"fast_lane_reserved"`
+	// BulkLaneMax caps the multi-step slices (bulk lane, spec 2026-10-03-03)
+	// in flight per worker. Bulk shares the non-reserved part of the pool
+	// with the slow lane, slow first. Default 4; <= 0 falls back to 4.
+	BulkLaneMax int `koanf:"bulk_lane_max"`
+	// BulkSliceBudgetMs is the wall-clock budget of one multi-step slice in
+	// ms. Default 10000; <= 0 falls back to it; clamped to 60000.
+	BulkSliceBudgetMs float64 `koanf:"bulk_slice_budget_ms"`
 }
 
 // CheckTimeout returns CheckTimeoutMs as a duration.
@@ -1698,7 +1705,7 @@ type SchedulingConfig struct {
 // A non-positive CheckTimeoutMs is returned as 0 — the documented "falls back
 // to the built-in default" behavior belongs to each consumer (see
 // incidents.DefaultCheckTimeoutFallback), not to the raw conversion.
-func (c SchedulingConfig) CheckTimeout() time.Duration {
+func (c *SchedulingConfig) CheckTimeout() time.Duration {
 	return time.Duration(c.CheckTimeoutMs * float64(time.Millisecond))
 }
 
@@ -1800,6 +1807,8 @@ func Load() (*Config, error) {
 				LaneSlowThresholdMs: 2000,
 				LaneFastThresholdMs: 1000,
 				FastLaneReserved:    5,
+				BulkLaneMax:         4,
+				BulkSliceBudgetMs:   10000,
 			},
 			RateLimiting: DefaultRateLimitConfig(),
 			// One CNAME, pointing at the plain instance target. See
@@ -2631,6 +2640,14 @@ func applySchedulingEnv(cfg *SchedulingConfig) {
 	if v := os.Getenv("SP_SCHEDULING_FAST_LANE_RESERVED"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
 			cfg.FastLaneReserved = n
+		}
+	}
+
+	parseFloat("SP_SCHEDULING_BULK_SLICE_BUDGET_MS", &cfg.BulkSliceBudgetMs)
+
+	if v := os.Getenv("SP_SCHEDULING_BULK_LANE_MAX"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.BulkLaneMax = n
 		}
 	}
 }

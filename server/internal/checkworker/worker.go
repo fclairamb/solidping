@@ -198,6 +198,10 @@ type CheckWorker struct {
 	busySlow         atomic.Int32
 	fastLaneReserved int // reserved fast-only slots, clamped to [0, poolSize−1]
 
+	// busyBulk counts in-flight multi-step slices (bulk lane, spec
+	// 2026-10-03-03), with the same claim-time accounting as busySlow.
+	busyBulk atomic.Int32
+
 	// Cost-aware, plan-weighted scheduling (spec 2026-06-30-09): schedParams is
 	// the pure math config that deprioritizes slow checks (and credits paid
 	// tiers) by pushing each job's effective scheduled_at on reschedule. It only
@@ -252,6 +256,9 @@ func NewCheckWorker(
 	directBackend := backend.NewDirectBackend(
 		dbService, checkJobSvc, incidentSvc, svc.EventNotifier, svc.Credentials,
 	)
+	// Multi-step checks (spec 2026-10-03-03) keep their state and reports on
+	// the attachment rail, written by this process only.
+	directBackend.SetStepStore(attachmentSvc)
 
 	worker := newCheckWorker(cfg, directBackend)
 	worker.dbService = dbService
@@ -340,7 +347,7 @@ func newCheckWorker(cfg *config.Config, workerBackend backend.WorkerBackend) *Ch
 		fastLaneReserved = poolSize - 1
 	}
 
-	schedParams := scheduling.ParamsFromConfig(cfg.Server.Scheduling)
+	schedParams := scheduling.ParamsFromConfig(&cfg.Server.Scheduling)
 
 	// Install the browser backend here, in the ONE constructor both the
 	// in-process worker and the deported agent go through, so a `browser` check
@@ -390,30 +397,6 @@ func newCheckWorker(cfg *config.Config, workerBackend backend.WorkerBackend) *Ch
 		completionChan:   make(chan struct{}, 1),
 		schedParams:      schedParams,
 	}
-}
-
-// laneLimits computes the per-lane claim limits (fast, slow) for one fetch
-// (spec 2026-07-01-03 D3). Fast jobs may occupy any free slot (the fast limit
-// is the full free capacity); slow jobs may only occupy slots above the
-// reserved fast floor:
-//
-//	slowBudget = max(0, (poolSize − fastReserved) − busySlow)
-//
-// clamped to the free slots. An idle slow lane donates everything to fast
-// (trivially); an idle fast stream lets slow borrow up to poolSize −
-// fastReserved; a fast burst never finds fewer than fastReserved slots
-// occupied by nothing slower than another fast check. Per-worker enforcement
-// is fleet-correct: every worker independently guarantees its own floor.
-func laneLimits(free, poolSize, fastReserved, busySlow int) (int, int) {
-	slowLimit := (poolSize - fastReserved) - busySlow
-	if slowLimit < 0 {
-		slowLimit = 0
-	}
-	if slowLimit > free {
-		slowLimit = free
-	}
-
-	return free, slowLimit
 }
 
 // Run starts the runner loop (blocking).
@@ -639,9 +622,10 @@ func (r *CheckWorker) fetchAndDistributeJobs(
 	}
 
 	// Per-lane reservation (spec 2026-07-01-03 D3): fast may fill every free
-	// slot; slow is bounded by the budget left under the fast floor.
-	fastLimit, slowLimit := laneLimits(
-		available, r.poolSize, r.fastLaneReserved, int(r.busySlow.Load()),
+	// slot; slow and bulk share the budget left above the fast floor.
+	limits := scheduling.LaneLimits(
+		available, r.poolSize, r.fastLaneReserved,
+		int(r.busySlow.Load()), int(r.busyBulk.Load()), r.schedParams.EffectiveBulkLaneMax(),
 	)
 
 	cfg := r.config.Server.CheckWorker
@@ -651,8 +635,9 @@ func (r *CheckWorker) fetchAndDistributeJobs(
 		ctx,
 		worker.UID,
 		worker.Region,
-		fastLimit,
-		slowLimit,
+		limits.Fast,
+		limits.Slow,
+		limits.Bulk,
 		cfg.FetchMaxAhead,
 	)
 	prommetrics.RecordCheckStage("fetch", time.Since(fetchStart).Seconds())
@@ -678,15 +663,7 @@ func (r *CheckWorker) fetchAndDistributeJobs(
 	// runner-side increment would leave a window between channel handoff and
 	// runner start where a re-fetch could over-claim slow. The runner
 	// decrements when the job finishes.
-	slowClaimed := 0
-	for _, job := range jobs {
-		if job.Lane == scheduling.LaneSlow {
-			r.busySlow.Add(1)
-			slowClaimed++
-		}
-	}
-	prommetrics.RecordLaneClaims(prommetrics.LaneLabelFast, len(jobs)-slowClaimed)
-	prommetrics.RecordLaneClaims(prommetrics.LaneLabelSlow, slowClaimed)
+	r.accountClaimedLanes(jobs)
 
 	// Distribute jobs to runners
 	for _, job := range jobs {
@@ -705,6 +682,27 @@ func (r *CheckWorker) fetchAndDistributeJobs(
 	}
 
 	return nextIn, nil
+}
+
+// accountClaimedLanes counts freshly claimed slow and bulk jobs as in flight
+// (claim-time accounting, D4) and records the per-lane claim metrics.
+func (r *CheckWorker) accountClaimedLanes(jobs []*models.CheckJob) {
+	slowClaimed, bulkClaimed := 0, 0
+
+	for _, job := range jobs {
+		switch job.Lane {
+		case scheduling.LaneSlow:
+			r.busySlow.Add(1)
+			slowClaimed++
+		case scheduling.LaneBulk:
+			r.busyBulk.Add(1)
+			bulkClaimed++
+		}
+	}
+
+	prommetrics.RecordLaneClaims(prommetrics.LaneLabelFast, len(jobs)-slowClaimed-bulkClaimed)
+	prommetrics.RecordLaneClaims(prommetrics.LaneLabelSlow, slowClaimed)
+	prommetrics.RecordLaneClaims(prommetrics.LaneLabelBulk, bulkClaimed)
 }
 
 // expressLoop subscribes to check.created and runs the freshly-created
@@ -814,8 +812,11 @@ func (r *CheckWorker) runnerLoop(ctx context.Context, id int) {
 
 		// A finished slow-lane job frees its reserved-budget slot (the
 		// matching increment happened in the fetcher at claim time).
-		if job.Lane == scheduling.LaneSlow {
+		switch job.Lane {
+		case scheduling.LaneSlow:
 			r.busySlow.Add(-1)
+		case scheduling.LaneBulk:
+			r.busyBulk.Add(-1)
 		}
 
 		// Signal completion to wake fetcher (non-blocking)
@@ -1010,6 +1011,12 @@ func (r *CheckWorker) executeJob(
 	// would look green.
 	if refErr := r.materializeConfig(checkJob); refErr != nil {
 		return r.saveErrorResult(ctx, checkJob, refErr)
+	}
+
+	// Multi-step checks (spec 2026-10-03-03) run one bounded slice per claim
+	// instead of one Execute: their own budget, units and state.
+	if stepChecker, isStep := r.stepCheckerFor(checkerdef.CheckType(checkType)); isStep {
+		return r.executeStepJob(ctx, logger, checkJob, stepChecker)
 	}
 
 	// 2. Parse check configuration
@@ -1975,7 +1982,13 @@ func waitAndDelay(sleepTime time.Duration) (time.Duration, time.Duration) {
 // attached check (defensive only — the regular claim path always attaches
 // one) or when either period is non-positive.
 func (r *CheckWorker) calculateNextScheduledAt(checkJob *models.CheckJob) time.Time {
-	now := time.Now()
+	return r.calculateNextScheduledAtFrom(checkJob, time.Now())
+}
+
+// calculateNextScheduledAtFrom is calculateNextScheduledAt anchored on an
+// arbitrary instant: a multi-step run anchors its next run on the run's
+// start, not on its last slice (spec 2026-10-03-03).
+func (r *CheckWorker) calculateNextScheduledAtFrom(checkJob *models.CheckJob, now time.Time) time.Time {
 	jobPeriod := time.Duration(checkJob.Period)
 
 	if checkJob.Check != nil {
