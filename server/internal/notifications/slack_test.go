@@ -1670,6 +1670,10 @@ func (m *mockDBService) RecordCheckCaptureFailure(_ context.Context, _ string, _
 	panic("not implemented")
 }
 
+func (m *mockDBService) CaptureCheckConfigBaseline(_ context.Context, _, _ string, _ []string) (bool, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) ListOrphanAttachments(
 	_ context.Context, _ string, _ time.Time, _ int,
 ) ([]*models.File, error) {

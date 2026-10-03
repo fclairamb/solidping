@@ -463,6 +463,14 @@ func diffCheckConfig(existing *models.Check, current, desired *ExportCheck) []Ch
 		desiredPublic[key] = value
 	}
 
+	// A server-maintained field the document omits is kept by the write
+	// (the dns baseline, spec 2026-10-03-04), so it is no drift either.
+	if cfg, ok := configregistry.ParseConfig(checkerdef.CheckType(existing.Type)); ok {
+		if preserver, isPreserver := cfg.(checkerdef.AbsentFieldPreserver); isPreserver {
+			preserver.PreserveAbsentFields(current.Config, desiredPublic)
+		}
+	}
+
 	keys := make(map[string]struct{}, max(len(current.Config), len(desiredPublic)))
 	for key := range current.Config {
 		keys[key] = struct{}{}

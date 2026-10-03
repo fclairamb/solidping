@@ -1852,6 +1852,9 @@ func (s *Service) queueLifecycleNotifications(
 		// routing around its own outage: recorded on the check's timeline,
 		// never paged.
 		models.EventTypeCheckPlacementChanged,
+		// A captured dns baseline (spec 2026-10-03-04) is bookkeeping: on the
+		// check's timeline, never paged.
+		models.EventTypeCheckBaselineCaptured,
 		// Ack and unack DO notify — they simply do not travel through here,
 		// exactly like incident.comment. Their transitions call
 		// queueAckNotifications / queueUnackNotifications directly, because the

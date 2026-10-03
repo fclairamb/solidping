@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/fclairamb/solidping/server/internal/baselinecapture"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
@@ -299,6 +300,9 @@ func (b *DirectBackend) SubmitResult(
 	prommetrics.RecordCheckStage("save_result", time.Since(saveStart).Seconds())
 
 	if saveErr == nil {
+		// A dns run asking for its region's first baseline (spec 2026-10-03-04).
+		baselinecapture.Capture(ctx, b.dbService, job, job.Check, result.Region, req.Output)
+
 		incStart := time.Now()
 		b.processIncidents(ctx, job, result)
 		prommetrics.RecordCheckStage("process_incident", time.Since(incStart).Seconds())

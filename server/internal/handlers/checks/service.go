@@ -5764,6 +5764,14 @@ func preserveAbsentRedactedFields(check *models.Check, merged map[string]any) {
 			merged[field] = stored
 		}
 	}
+
+	// Server-maintained fields follow the same "omitted is kept" rule: the dns
+	// change-detection baseline (spec 2026-10-03-04) is captured by the
+	// server, so a manifest exported before the capture must not reset it on
+	// every apply. An explicit value (including `{}`) is honored.
+	if preserver, ok := cfg.(checkerdef.AbsentFieldPreserver); ok {
+		preserver.PreserveAbsentFields(check.Config, merged)
+	}
 }
 
 // deriveRedactedFields computes the export-redacted config values a document

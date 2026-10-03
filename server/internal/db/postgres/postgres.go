@@ -2324,6 +2324,64 @@ func (s *Service) RecordCheckCaptureFailure(
 	return err
 }
 
+// CaptureCheckConfigBaseline stores a region's first change-detection
+// baseline (spec 2026-10-03-04). See the db.Service contract.
+func (s *Service) CaptureCheckConfigBaseline(
+	ctx context.Context, checkUID, key string, values []string,
+) (bool, error) {
+	if key == "" || strings.ContainsAny(key, `"\\`) {
+		return false, fmt.Errorf("%w: %q", db.ErrInvalidBaselineKey, key)
+	}
+
+	encoded, err := json.Marshal(values)
+	if err != nil {
+		return false, fmt.Errorf("encode baseline: %w", err)
+	}
+
+	var written bool
+
+	err = s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		res, execErr := tx.NewRaw(
+			"UPDATE checks SET config = jsonb_set(COALESCE(config, '{}'::jsonb), '{baseline}', "+
+				"(CASE WHEN jsonb_typeof(config->'baseline') = 'object' THEN config->'baseline' "+
+				"ELSE '{}'::jsonb END) || jsonb_build_object(?::text, ?::jsonb)), updated_at = ? "+
+				"WHERE uid = ? AND deleted_at IS NULL AND config->>'detect_changes' = 'true' "+
+				"AND (CASE WHEN jsonb_typeof(config->'baseline'->?::text) = 'array' "+
+				"THEN jsonb_array_length(config->'baseline'->?::text) ELSE 0 END) = 0",
+			key, string(encoded), time.Now(), checkUID, key, key,
+		).Exec(ctx)
+		if execErr != nil {
+			return fmt.Errorf("capture baseline: %w", execErr)
+		}
+
+		rows, rowsErr := res.RowsAffected()
+		if rowsErr != nil {
+			return rowsErr
+		}
+
+		if rows == 0 {
+			return nil
+		}
+
+		written = true
+
+		// The jobs hold a materialized copy of the config. Copying the row's
+		// CURRENT config (not a value computed here) keeps every job in step
+		// whatever order concurrent captures commit in.
+		if _, execErr = tx.NewRaw(
+			"UPDATE check_jobs SET config = (SELECT config FROM checks WHERE uid = ?), updated_at = ? "+
+				"WHERE check_uid = ?",
+			checkUID, time.Now(), checkUID,
+		).Exec(ctx); execErr != nil {
+			return fmt.Errorf("propagate baseline to check jobs: %w", execErr)
+		}
+
+		return nil
+	})
+
+	return written, err
+}
+
 func (s *Service) ListCheckJobsByCheckUID(ctx context.Context, checkUID string) ([]*models.CheckJob, error) {
 	var jobs []*models.CheckJob
 

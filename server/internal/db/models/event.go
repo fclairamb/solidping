@@ -21,6 +21,10 @@ const (
 	// being moved off a region that went dark (spec 2026-09-25-06). Payload:
 	// `from` and `to` region slugs and the `reason` (PlacementReason*).
 	EventTypeCheckPlacementChanged EventType = "check.placement_changed"
+	// EventTypeCheckBaselineCaptured records the server storing a region's
+	// first change-detection baseline of a dns check (spec 2026-10-03-04).
+	// Payload: `region` and `valueCount`.
+	EventTypeCheckBaselineCaptured EventType = "check.baseline_captured"
 
 	// EventTypeIncidentCreated indicates an incident was created.
 	EventTypeIncidentCreated EventType = "incident.created"

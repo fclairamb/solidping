@@ -2227,6 +2227,65 @@ func (s *Service) RecordCheckCaptureFailure(
 	return err
 }
 
+// CaptureCheckConfigBaseline stores a region's first change-detection
+// baseline (spec 2026-10-03-04). See the db.Service contract.
+func (s *Service) CaptureCheckConfigBaseline(
+	ctx context.Context, checkUID, key string, values []string,
+) (bool, error) {
+	if key == "" || strings.ContainsAny(key, `"\\`) {
+		return false, fmt.Errorf("%w: %q", db.ErrInvalidBaselineKey, key)
+	}
+
+	encoded, err := json.Marshal(values)
+	if err != nil {
+		return false, fmt.Errorf("encode baseline: %w", err)
+	}
+
+	path := `$."` + key + `"`
+
+	var written bool
+
+	err = s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		res, execErr := tx.NewRaw(
+			"UPDATE checks SET config = json_set(COALESCE(config, '{}'), '$.baseline', "+
+				"json_set(CASE WHEN json_type(config, '$.baseline') = 'object' "+
+				"THEN json_extract(config, '$.baseline') ELSE '{}' END, ?, json(?))), updated_at = ? "+
+				"WHERE uid = ? AND deleted_at IS NULL AND json_extract(config, '$.detect_changes') = 1 "+
+				"AND COALESCE(json_array_length(config, ?), 0) = 0",
+			path, string(encoded), time.Now(), checkUID, "$.baseline"+path[1:],
+		).Exec(ctx)
+		if execErr != nil {
+			return fmt.Errorf("capture baseline: %w", execErr)
+		}
+
+		rows, rowsErr := res.RowsAffected()
+		if rowsErr != nil {
+			return rowsErr
+		}
+
+		if rows == 0 {
+			return nil
+		}
+
+		written = true
+
+		// The jobs hold a materialized copy of the config. Copying the row's
+		// CURRENT config (not a value computed here) keeps every job in step
+		// whatever order concurrent captures commit in.
+		if _, execErr = tx.NewRaw(
+			"UPDATE check_jobs SET config = (SELECT config FROM checks WHERE uid = ?), updated_at = ? "+
+				"WHERE check_uid = ?",
+			checkUID, time.Now(), checkUID,
+		).Exec(ctx); execErr != nil {
+			return fmt.Errorf("propagate baseline to check jobs: %w", execErr)
+		}
+
+		return nil
+	})
+
+	return written, err
+}
+
 func (s *Service) ListCheckJobsByCheckUID(ctx context.Context, checkUID string) ([]*models.CheckJob, error) {
 	var jobs []*models.CheckJob
 

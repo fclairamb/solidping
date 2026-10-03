@@ -21,6 +21,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/fclairamb/solidping/server/internal/activation"
+	"github.com/fclairamb/solidping/server/internal/baselinecapture"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
 	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
@@ -181,10 +182,15 @@ func (s *Service) SubmitResult(
 		models.EventTypeOrgActivationFirstResultReceived,
 		activation.SourceSystem, "")
 
-	// 4. Process incidents (best-effort).
 	check, checkErr := s.db.GetCheck(
 		ctx, job.OrganizationUID, job.CheckUID,
 	)
+
+	// A dns run asking for its region's first baseline (spec 2026-10-03-04):
+	// the agent path captures exactly like the in-process one.
+	baselinecapture.Capture(ctx, s.db, &job, check, result.Region, req.Output)
+
+	// 4. Process incidents (best-effort).
 	if checkErr != nil {
 		slog.WarnContext(ctx,
 			"Failed to fetch check for incidents", "error", checkErr)

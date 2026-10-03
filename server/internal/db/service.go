@@ -24,6 +24,10 @@ var ErrEnrollmentTokenInvalid = errors.New("enrollment token is invalid, expired
 // signature, rejected cluster-wide rather than per API replica.
 var ErrAgentNonceReplayed = errors.New("agent reconnect nonce already used")
 
+// ErrInvalidBaselineKey is returned by CaptureCheckConfigBaseline for an empty
+// key or one that cannot be used as a JSON path segment.
+var ErrInvalidBaselineKey = errors.New("invalid baseline key")
+
 // ErrUnknownAttachmentEntity is returned by ListOrphanAttachments for an
 // entity segment it has no owning table for.
 var ErrUnknownAttachmentEntity = errors.New("no orphan sweep for this attachment entity")
@@ -451,6 +455,14 @@ type Service interface {
 	// request on the row can only be claimed after the release. A missing job
 	// is not an error.
 	RecordCheckCaptureFailure(ctx context.Context, jobUID string, requestedAt time.Time, reason string) error
+	// CaptureCheckConfigBaseline stores values as config.baseline[key] of a
+	// check with config.detect_changes on, and copies the resulting config to
+	// the check's jobs (spec 2026-10-03-04, the dns change-detection
+	// baseline). It is a single-key update guarded by "key absent or empty",
+	// never a rewrite from a stale copy: two regions capturing at the same
+	// moment both end up stored, and a stored baseline is never overwritten.
+	// Reports whether it wrote anything.
+	CaptureCheckConfigBaseline(ctx context.Context, checkUID, key string, values []string) (bool, error)
 
 	// Label operations
 	GetOrCreateLabel(ctx context.Context, orgUID, key, value string) (*models.Label, error)
