@@ -12,6 +12,10 @@ form and confirm you get a session, chain a bearer-token login into an
 authenticated call, aggregate several other checks into one result, or skip a
 probe outside business hours.
 
+Rather describe the check than write it? See
+[AI-authored checks](/features/ai-authored-checks): an AI writes and tests the
+script once, then the plain script runs.
+
 This page documents the runtime's actual API surface — every global a script
 can call, what it returns, and where its limits are — with full, tested
 examples for the workflows above. Every fenced example on this page is parsed
