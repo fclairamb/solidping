@@ -5656,6 +5656,9 @@ type GetOrgResultResponse struct {
 	// DurationMs Duration in milliseconds (with=durationMs)
 	DurationMs *float32 `json:"durationMs,omitempty"`
 
+	// DurationP50Ms Median (nearest-rank p50) duration in milliseconds, from the stored aggregate (with=durationP50Ms). Populated on aggregated rollup rows (hour/day/month) written after the column was added; absent on raw rows and on older rollups, which have no median.
+	DurationP50Ms *float32 `json:"durationP50Ms,omitempty"`
+
 	// DurationP95Ms 95th-percentile duration in milliseconds, from the stored aggregate (with=durationP95Ms). Populated on aggregated rollup rows (hour/day/month); absent on raw rows, which don't store it.
 	DurationP95Ms *float32 `json:"durationP95Ms,omitempty"`
 
@@ -6764,6 +6767,9 @@ type OrgResult struct {
 
 	// DurationMs Duration in milliseconds (with=durationMs)
 	DurationMs *float32 `json:"durationMs,omitempty"`
+
+	// DurationP50Ms Median (nearest-rank p50) duration in milliseconds, from the stored aggregate (with=durationP50Ms). Populated on aggregated rollup rows (hour/day/month) written after the column was added; absent on raw rows and on older rollups, which have no median.
+	DurationP50Ms *float32 `json:"durationP50Ms,omitempty"`
 
 	// DurationP95Ms 95th-percentile duration in milliseconds, from the stored aggregate (with=durationP95Ms). Populated on aggregated rollup rows (hour/day/month); absent on raw rows, which don't store it.
 	DurationP95Ms *float32 `json:"durationP95Ms,omitempty"`
@@ -9199,7 +9205,7 @@ type ListOrgResultsParams struct {
 	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	Size *int `form:"size,omitempty" json:"size,omitempty"`
 
-	// With Comma-separated optional fields to include. durationAvgMs and durationP95Ms are populated on aggregated rollup rows (hour/day/ month) from the stored duration_avg/duration_p95 columns; both are absent on raw rows, which don't store them.
+	// With Comma-separated optional fields to include. durationAvgMs and durationP95Ms and durationP50Ms are populated on aggregated rollup rows (hour/day/month) from the stored duration_avg/duration_p95/ duration_p50 columns; all are absent on raw rows, which don't store them. durationP50Ms is also absent on rollups that predate the column.
 	With *string `form:"with,omitempty" json:"with,omitempty"`
 }
 

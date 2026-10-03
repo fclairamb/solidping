@@ -267,6 +267,7 @@ require (
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
 	github.com/prometheus/procfs v0.21.1 // indirect
 	github.com/puzpuzpuz/xsync/v3 v3.5.1 // indirect
+	github.com/quic-go/qpack v0.6.0 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20250401214520-65e299d6c5c9 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/russellhaering/goxmldsig v1.6.0 // indirect
@@ -329,5 +330,6 @@ require (
 
 require (
 	github.com/fclairamb/solidping/server/third_party/grdp v0.0.0
+	github.com/quic-go/quic-go v0.63.0
 	github.com/testcontainers/testcontainers-go v0.44.0
 )

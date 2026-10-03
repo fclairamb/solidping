@@ -404,9 +404,9 @@ test.describe("Check Detail Page", () => {
     ).toHaveCount(0);
 
     // Single-region checks also show no Recent Results filter chips, no
-    // swatch legend, and no stats strip (spec 2026-07-05-13, criterion 2).
+    // swatch legend (spec 2026-07-05-13, criterion 2). The stats strip is
+    // not region-gated any more (spec 2026-10-02-01).
     await expect(page.getByTestId("results-region-filter")).toHaveCount(0);
-    await expect(page.getByTestId("results-duration-stats")).toHaveCount(0);
     await expect(
       page.locator('[data-testid^="response-time-chart-region-swatch-"]'),
     ).toHaveCount(0);
@@ -919,17 +919,110 @@ test.describe("Check Detail Page", () => {
     const stats = page.getByTestId("results-duration-stats");
     await expect(stats).toBeVisible({ timeout: 15000 });
 
-    // Rollup row present in the window -> avg and p95 are ~-prefixed
+    // Rollup row present in the window -> avg, p95 and the median are ~-prefixed
     // estimates; min/max stay exact (min-of-mins/max-of-maxes: raw min 40 vs
     // rollup min 150 -> 40; raw max 100 vs rollup max 250 -> 250).
     await expect(stats).toContainText("40ms");
     await expect(stats).toContainText("250ms");
-    await expect(stats.getByText(/~\d/)).toHaveCount(2);
+    await expect(stats.getByText(/~\d/)).toHaveCount(3);
     // Sample count sums raw rows (1 each) + the rollup's totalChecks: 4 + 5 = 9.
     await expect(stats).toContainText("9");
     // Window label reflects the current graphPeriod (week -> "Last week").
     await expect(stats).toContainText(/last week/i);
+    // The mock serves the same data for the previous window, so the average is
+    // unchanged: the trend renders "flat", not a signed percentage.
+    await expect(page.getByTestId("results-duration-trend")).toHaveAttribute(
+      "data-direction",
+      "flat",
+    );
+    await expect(page.getByTestId("results-duration-stats-scope")).toContainText(
+      /US East/,
+    );
+
+    // "All regions" (no ?region=) shows the strip too, scoped explicitly, and
+    // it sits inside the chart card.
+    await page.goto(`${page.url().split("?")[0]}?graphPeriod=week`);
+    await page.waitForLoadState("networkidle");
+    await expect(stats).toBeVisible({ timeout: 15000 });
+    await expect(page.getByTestId("results-duration-stats-scope")).toContainText(
+      /across 1 region/i,
+    );
+    await expect(stats).toContainText("40ms");
   });
+
+  for (const { name, previousMs, direction, text, color } of [
+    { name: "up", previousMs: 50, direction: "up", text: "+100%", color: "text-red-500" },
+    { name: "down", previousMs: 200, direction: "down", text: "-50%", color: "text-green-500" },
+  ]) {
+    test(`Recent Results: avg trend renders ${name} (sign and colour) when the previous window differs`, async ({
+      authenticatedPage,
+    }) => {
+      const page = authenticatedPage;
+      const now = Date.now();
+
+      // Current window (no periodEndBefore): avg 100ms. Previous window (the
+      // zoom-shaped query carrying periodEndBefore): avg `previousMs`.
+      await page.route("**/api/v1/orgs/*/results*", (route) => {
+        const url = new URL(route.request().url());
+        const isPrevious = url.searchParams.has("periodEndBefore");
+        const periodType = url.searchParams.get("periodType") ?? "";
+        const isChartRollup = periodType.includes("hour");
+        const duration = isPrevious ? previousMs : 100;
+        const rows = isChartRollup
+          ? [0, 1, 2, 3].map((i) => ({
+              uid: `${isPrevious ? "prev" : "cur"}-${i}`,
+              durationMs: duration,
+              durationMinMs: duration,
+              durationMaxMs: duration,
+              totalChecks: 10,
+              status: "up",
+              region: "us-1",
+              periodStart: new Date(now - (isPrevious ? 8 * 86_400_000 : 3600_000) - i * 60_000).toISOString(),
+              periodType: "hour",
+            }))
+          : !isPrevious
+            ? // Recent Results list / chart raw seam: a few current raw rows.
+              [0, 1].map((i) => ({
+                uid: `list-${i}`,
+                durationMs: 100,
+                status: "up",
+                region: "us-1",
+                periodStart: new Date(now - (i + 1) * 60_000).toISOString(),
+                periodType: "raw",
+              }))
+            : [];
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            data: rows,
+            pagination: { total: rows.length, size: rows.length },
+          }),
+        });
+      });
+
+      await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
+      await page.waitForURL(/\/checks/);
+      await page.waitForLoadState("networkidle");
+      await page.getByTestId("new-check-button").click();
+      await page.waitForURL(/\/checks\/new/);
+      await page.waitForLoadState("networkidle");
+      await page.getByTestId("check-name-input").fill(`E2E Trend ${name} ${Date.now()}`);
+      await page.getByTestId("check-url-input").fill("https://example.com/trend-test");
+      await page.getByTestId("check-submit-button").click();
+      await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
+      await page.waitForLoadState("networkidle");
+
+      await page.goto(`${page.url()}?graphPeriod=week`);
+      await page.waitForLoadState("networkidle");
+
+      const trend = page.getByTestId("results-duration-trend");
+      await expect(trend).toBeVisible({ timeout: 15000 });
+      await expect(trend).toHaveAttribute("data-direction", direction);
+      await expect(trend).toContainText(text);
+      await expect(trend).toHaveClass(new RegExp(color));
+    });
+  }
 
   test("header: Edit and Disable stay inline, everything else lives behind the ⋯ menu (desktop and mobile)", async ({
     authenticatedPage,
@@ -1020,8 +1113,8 @@ test.describe("Check Detail Page", () => {
     await expect(page.getByRole("alertdialog")).toBeHidden();
     await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
 
-    // The breadcrumb link navigates back to the checks list.
-    const back = page.getByRole("link", { name: "Back to checks" });
+    // The top-bar breadcrumb link navigates back to the checks list.
+    const back = page.locator("header").first().getByRole("link", { name: "Checks" });
     await expect(back).toBeVisible();
     await back.click();
     await page.waitForURL(/\/orgs\/test\/checks\/?(\?.*)?$/);
@@ -1052,8 +1145,10 @@ test.describe("Check Detail Page", () => {
 
     await page.setViewportSize({ width: 1280, height: 800 });
 
-    // The breadcrumb link, the toggle and Edit are all there.
-    await expect(page.getByRole("link", { name: "Back to checks" })).toBeVisible();
+    // The top-bar breadcrumb link, the toggle and Edit are all there.
+    await expect(
+      page.locator("header").first().getByRole("link", { name: "Checks" }),
+    ).toBeVisible();
     await expect(page.getByLabel("Edit").getByText("Edit")).toBeVisible();
     await expect(
       page.getByRole("button", { name: /Disable|Enable/ }),
@@ -1115,8 +1210,10 @@ test.describe("Check Detail Page", () => {
       fullPage: true,
     });
 
-    // Re-enable: the pill goes away live, no reload.
-    await page.getByRole("button", { name: /Enable/ }).click();
+    // Re-enable: the pill goes away live, no reload. With the in-page
+    // breadcrumb gone the header actions sit under the top-right toast stack,
+    // so dispatch the click instead of hitting the toast's pointer area.
+    await page.getByRole("button", { name: /Enable/ }).dispatchEvent("click");
     await expect(page.getByRole("button", { name: /Disable/ })).toBeVisible();
     await expect(header.getByText("Disabled", { exact: true })).toHaveCount(0);
   });
@@ -1244,5 +1341,31 @@ test.describe("Check Detail Page", () => {
     await expect(
       page.getByTestId("response-time-chart-full-range-toggle")
     ).toHaveAttribute("data-state", "checked");
+  });
+
+  test("renders a single breadcrumb: the top bar one, no in-page duplicate", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
+    await page.waitForURL(/\/checks/);
+    await page.waitForLoadState("networkidle");
+    await page.getByTestId("new-check-button").click();
+    await page.waitForURL(/\/checks\/new/);
+    await page.getByTestId("check-name-input").fill(`E2E Breadcrumb ${Date.now()}`);
+    await page.getByTestId("check-url-input").fill("https://example.com/breadcrumb");
+    await page.getByTestId("check-submit-button").click();
+    await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
+    await expect(page.getByTestId("check-detail-header")).toBeVisible();
+
+    // The in-page breadcrumb (a <nav>) and its back link are gone. The top-bar
+    // breadcrumb is plain spans, so no breadcrumb <nav> remains in the page.
+    await expect(page.getByRole("navigation", { name: /breadcrumb/i })).toHaveCount(0);
+    await expect(page.getByTestId("check-detail-back")).toHaveCount(0);
+
+    // Positive control: the top-bar breadcrumb still links back to the list.
+    const topBar = page.locator("header").first();
+    await topBar.getByRole("link", { name: "Checks" }).click();
+    await page.waitForURL(/\/orgs\/[^/]+\/checks$/);
   });
 });

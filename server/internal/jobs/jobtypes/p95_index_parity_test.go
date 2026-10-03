@@ -44,12 +44,18 @@ func TestRawMetricsP95UsesTheSharedNearestRankIndex(t *testing.T) {
 			total += duration
 		}
 
-		_, p95 := calculateRawMetrics(durations, total)
+		_, p95, p50 := calculateRawMetrics(durations, total)
 
 		wantIndex := models.ResponseTimeBinP95Index(n)
 		r.InDelta(float32(wantIndex+1), p95, 0.0001,
 			"n=%d: the job picked sample %v, models.ResponseTimeBinP95Index says index %d",
 			n, p95, wantIndex)
+
+		wantP50Index := models.ResponseTimeBinP50Index(n)
+		r.InDelta(float32(wantP50Index+1), p50, 0.0001,
+			"n=%d: the job picked p50 sample %v, models.ResponseTimeBinP50Index says index %d",
+			n, p50, wantP50Index)
+		r.Equal(wantP50Index, n/2, "n=%d: p50 is the sample at int(n * 0.5)", n)
 	}
 }
 
@@ -69,5 +75,20 @@ func TestResponseTimeBinP95IndexIsInRange(t *testing.T) {
 		index := models.ResponseTimeBinP95Index(n)
 		r.GreaterOrEqual(index, 0, "n=%d", n)
 		r.Less(index, n, "n=%d: rank %d would match no row", n, index+1)
+	}
+}
+
+// TestResponseTimeBinP50IndexIsInRange is the p50 twin of the p95 range test.
+func TestResponseTimeBinP50IndexIsInRange(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	r.Zero(models.ResponseTimeBinP50Index(0))
+
+	for n := 1; n <= 10_000; n++ {
+		index := models.ResponseTimeBinP50Index(n)
+		r.GreaterOrEqual(index, 0, "n=%d", n)
+		r.Less(index, n, "n=%d", n)
 	}
 }

@@ -100,6 +100,10 @@ type ResponseTimeBin struct {
 	// calculateRawMetrics uses for duration_p95 — deliberately, since a seam
 	// point sits on the chart next to the hour rollups that will replace it.
 	DurationP95 *float32
+	// DurationP50 is the NEAREST-RANK median over the same probes, at
+	// ResponseTimeBinP50Index, the index the aggregation job's calculateRawMetrics
+	// uses for duration_p50.
+	DurationP50 *float32
 	// DurationAvg / DurationMin / DurationMax are the mean and the extremes over
 	// the same set of probes.
 	DurationAvg *float32
@@ -127,11 +131,25 @@ type ResponseTimeBin struct {
 // float multiplication that lands a hair below an integer silently shifts the
 // chosen rank by one for exactly the sizes where n * 0.95 is a whole number.
 func ResponseTimeBinP95Index(n int) int {
+	return nearestRankIndex(n, 19, 20)
+}
+
+// ResponseTimeBinP50Index is the median's nearest-rank index, `n / 2`, in the
+// same integer arithmetic as ResponseTimeBinP95Index (it is
+// `int(float64(n) * 0.5)`). The aggregation job and both SQL dialects use it, so
+// a seam bin and the rollup that replaces it pick the same sample.
+func ResponseTimeBinP50Index(n int) int {
+	return nearestRankIndex(n, 1, 2)
+}
+
+// nearestRankIndex is the single rounding rule behind every percentile index:
+// the 0-based index `(n * num) / den`, clamped into [0, n-1].
+func nearestRankIndex(n, num, den int) int {
 	if n <= 0 {
 		return 0
 	}
 
-	index := (n * 19) / 20
+	index := (n * num) / den
 	if index >= n {
 		index = n - 1
 	}

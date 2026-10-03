@@ -479,6 +479,7 @@ export interface OrgResult {
   durationMaxMs?: number;
   durationAvgMs?: number;
   durationP95Ms?: number;
+  durationP50Ms?: number;
   availabilityPct?: number;
   totalChecks?: number;
   successfulChecks?: number;
@@ -2052,10 +2053,16 @@ const ROLLUP_REFETCH_MS = 60 * 60_000;
 export function useChartWindowResults(
   org: string,
   checkUid: string,
-  window: { timeRange: TimeRange; periodMs?: number; zoom?: ZoomWindow },
+  window: {
+    timeRange: TimeRange;
+    periodMs?: number;
+    zoom?: ZoomWindow;
+    /** Anchor for an unzoomed window start; lets a caller slide it on a tick. */
+    now?: number;
+  },
   options?: { rawRefetchInterval?: number },
 ) {
-  const { timeRange, periodMs, zoom } = window;
+  const { timeRange, periodMs, zoom, now } = window;
   const zoomFrom = zoom?.from;
   const zoomTo = zoom?.to;
 
@@ -2066,9 +2073,9 @@ export function useChartWindowResults(
   // sites (the chart and the check-detail route) into two HTTP requests where
   // there should be one cache hit.
   const bounds = useMemo(
-    () => chartWindowBounds(timeRange, zoom),
+    () => chartWindowBounds(timeRange, zoom, now),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- zoom is derived from zoomFrom/zoomTo
-    [timeRange, zoomFrom, zoomTo],
+    [timeRange, zoomFrom, zoomTo, now],
   );
 
   // Pass 1 — rollups over the whole window. Empty for a range where raw IS the

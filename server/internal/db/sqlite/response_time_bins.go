@@ -21,6 +21,7 @@ type responseTimeBinRow struct {
 	Total        int      `bun:"total"`
 	Up           int      `bun:"up"`
 	DurationP95  *float32 `bun:"dur_p95"`
+	DurationP50  *float32 `bun:"dur_p50"`
 	DurationAvg  *float32 `bun:"dur_avg"`
 	DurationMin  *float32 `bun:"dur_min"`
 	DurationMax  *float32 `bun:"dur_max"`
@@ -94,11 +95,8 @@ func responseTimeBinsSQL(filter *models.ResponseTimeBinFilter) (string, []any) {
 			FROM probes
 			WHERE duration IS NOT NULL
 		),
-		p95 AS (
-			SELECT check_uid, region, bin, duration AS dur_p95
-			FROM ranked
-			WHERE ` + p95Rank + `
-		),
+		` + percentileCTE("p95", p95Rank) + `,
+		` + percentileCTE("p50", p50Rank) + `,
 		mix AS (
 			SELECT check_uid, region, bin, json_group_object(CAST(status AS TEXT), n) AS status_counts
 			FROM (
@@ -109,11 +107,14 @@ func responseTimeBinsSQL(filter *models.ResponseTimeBinFilter) (string, []any) {
 			GROUP BY 1, 2, 3
 		)
 		SELECT agg.check_uid, agg.region, agg.bin AS bin_start, agg.total, agg.up,
-		       p95.dur_p95, agg.dur_avg, agg.dur_min, agg.dur_max, mix.status_counts
+		       p95.dur_p95, p50.dur_p50, agg.dur_avg, agg.dur_min, agg.dur_max, mix.status_counts
 		FROM agg
 		LEFT JOIN p95 ON p95.check_uid = agg.check_uid
 		             AND p95.bin = agg.bin
 		             AND p95.region IS agg.region
+		LEFT JOIN p50 ON p50.check_uid = agg.check_uid
+		             AND p50.bin = agg.bin
+		             AND p50.region IS agg.region
 		LEFT JOIN mix ON mix.check_uid = agg.check_uid
 		             AND mix.bin = agg.bin
 		             AND mix.region IS agg.region`
@@ -169,6 +170,7 @@ func (s *Service) AggregateResponseTimeBins(
 			Total:        row.Total,
 			Up:           row.Up,
 			DurationP95:  row.DurationP95,
+			DurationP50:  row.DurationP50,
 			DurationAvg:  row.DurationAvg,
 			DurationMin:  row.DurationMin,
 			DurationMax:  row.DurationMax,
@@ -177,4 +179,18 @@ func (s *Service) AggregateResponseTimeBins(
 	}
 
 	return bins, nil
+}
+
+// p50Rank is models.ResponseTimeBinP50Index's 0-based index (n / 2) as a 1-based
+// ROW_NUMBER, integer division in both engines.
+const p50Rank = "ranked.rn = ranked.cnt / 2 + 1"
+
+// percentileCTE is the `<name> AS (...)` CTE that picks the one `ranked` sample at
+// the given nearest-rank condition, exposing it as `dur_<name>`.
+func percentileCTE(name, rank string) string {
+	return name + ` AS (
+			SELECT check_uid, region, bin, duration AS dur_` + name + `
+			FROM ranked
+			WHERE ` + rank + `
+		)`
 }

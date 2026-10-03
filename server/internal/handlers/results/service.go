@@ -113,6 +113,7 @@ type ResultResponse struct {
 	DurationMaxMs    *float32       `json:"durationMaxMs,omitempty"`
 	DurationAvgMs    *float32       `json:"durationAvgMs,omitempty"`
 	DurationP95Ms    *float32       `json:"durationP95Ms,omitempty"`
+	DurationP50Ms    *float32       `json:"durationP50Ms,omitempty"`
 	Region           *string        `json:"region,omitempty"`
 	CheckSlug        *string        `json:"checkSlug,omitempty"`
 	CheckName        *string        `json:"checkName,omitempty"`
@@ -466,6 +467,10 @@ func (s *Service) applyDurationFields(resp *ResultResponse, result *models.Resul
 	if withSet["durationp95ms"] && result.DurationP95 != nil {
 		resp.DurationP95Ms = result.DurationP95
 	}
+
+	if withSet[withDurationP50Ms] && result.DurationP50 != nil {
+		resp.DurationP50Ms = result.DurationP50
+	}
 }
 
 func (s *Service) applyDetailFields(resp *ResultResponse, result *models.Result, withSet map[string]bool) {
@@ -553,6 +558,7 @@ const (
 	withDurationMaxMs    = "durationmaxms"
 	withDurationAvgMs    = "durationavgms"
 	withDurationP95Ms    = "durationp95ms"
+	withDurationP50Ms    = "durationp50ms"
 	withRegion           = "region"
 	withMetrics          = "metrics"
 	withOutput           = "output"
@@ -568,7 +574,7 @@ const (
 func allWithFields() []string {
 	return []string{
 		withDurationMs, withDurationMinMs, withDurationMaxMs,
-		withDurationAvgMs, withDurationP95Ms,
+		withDurationAvgMs, withDurationP95Ms, withDurationP50Ms,
 		withRegion, withMetrics, withOutput,
 		withAvailabilityPct, withTotalChecks, withSuccessfulChecks,
 		withCheckSlug, withCheckName,

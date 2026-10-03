@@ -35,6 +35,7 @@ https://api.example.com/health
 | Method | HTTP method | `GET`, `POST`, `PUT`, `DELETE`, `QUERY` |
 | Timeout | Request timeout | `30s` |
 | Expected Status | Status code to expect | `200`, `2XX` (wildcard) |
+| HTTP version | Protocol the target must answer over (`httpVersion`): `1.1` (default), `2` or `3`. See **Protocol** below | `2` |
 | Headers | Custom request headers | `Authorization: Bearer token` |
 | Body | Request body (for POST/PUT/PATCH/QUERY) | `{"key": "value"}` |
 | Response assertions | Assert on the response body — see [Response assertions](#response-assertions) below | `bodyAssertions`, `json_path_assertions`, `body_expect` |
@@ -51,11 +52,36 @@ https://api.example.com/health
 method and body; 301/302/303 behave the same as they do for any other
 non-`GET`/`HEAD` method).
 
-**Protocol:** checks speak HTTP/1.1, even when the target offers HTTP/2. A
-probe that times out closes its connection, so the next probe opens a fresh
-one instead of waiting on a stalled connection until the operating system
-gives up on it (up to ~15 minutes). Connections are still reused between
-probes that succeed.
+**Protocol:** by default checks speak HTTP/1.1, even when the target offers HTTP/2. A probe that times out closes its connection, so the next
+probe opens a fresh one instead of waiting on a stalled connection until the
+operating system gives up on it (up to ~15 minutes). Connections are still
+reused between probes that succeed.
+
+Set `httpVersion` to verify that the target still speaks a newer protocol, for
+example after a CDN, ingress or proxy change:
+
+| `httpVersion` | What the probe does |
+|---|---|
+| `1.1` (default, omitted) | HTTP/1.1, pooled connections, as above |
+| `2` | HTTP/2 only: `h2` over TLS for `https://`, `h2c` with prior knowledge for `http://` |
+| `3` | HTTP/3 over QUIC (UDP). No fallback to TCP: a blocked UDP path fails the check |
+
+If the server answers over another version, or refuses the forced one at the
+handshake, the check goes down with `expected HTTP/2, got HTTP/1.1` (or
+similar). HTTP/2 and HTTP/3 probes open a fresh connection every time and close
+it afterwards. `httpVersion: "3"` is rejected on a check that uses an
+[SSH tunnel](./ssh-tunnels.md): the tunnel only carries TCP.
+
+Every result that got a response records the negotiated protocol under
+`http_protocol` (`HTTP/1.1`, `HTTP/2.0`, `HTTP/3.0`), up or down, and the
+response's `Alt-Svc` header under `alt_svc` when the server sends one. That
+shows whether HTTP/3 is advertised before you force it.
+
+```yaml
+type: http
+url: https://www.acme.com/
+httpVersion: "2"
+```
 
 **Basic Auth storage:** you still enter a username and a password in the form,
 but the pair is stored as a single encrypted credential (a reserved `basicAuth`

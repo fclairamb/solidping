@@ -553,7 +553,7 @@ func aggregateResults(
 
 	// Calculate final metrics. Availability is no longer stored — it is derived
 	// at read time from successful_checks / total_checks.
-	avgDuration, p95Duration := calculateFinalMetrics(
+	avgDuration, p95Duration, p50Duration := calculateFinalMetrics(
 		state.isRawData, state.durations, state.totalDuration, results,
 	)
 
@@ -568,7 +568,7 @@ func aggregateResults(
 
 	// Build and return aggregated result
 	return buildAggregatedResult(results, targetPeriodType, periodStart, periodEnd, state,
-		avgDuration, p95Duration, dominantStatus, durationAvg)
+		avgDuration, p95Duration, p50Duration, dominantStatus, durationAvg)
 }
 
 // resolveDurationAvg returns the duration_avg to persist for the aggregated row.
@@ -1020,6 +1020,8 @@ func processAggregatedResult(
 		state.durationAvgWeight += weight
 	}
 
+	state.noteP50(result)
+
 	if result.DurationMin != nil && *result.DurationMin < *minDuration {
 		*minDuration = *result.DurationMin
 	}
@@ -1084,6 +1086,9 @@ type aggregationState struct {
 	// directly from the collected durations instead.
 	durationAvgWeightedSum float64
 	durationAvgWeight      int
+
+	// hasP50 is set when at least one aggregated child carried a duration_p50.
+	hasP50 bool
 }
 
 // initializeAggregationState initializes the aggregation state from the first result.
@@ -1123,7 +1128,7 @@ func buildAggregatedResult(
 	targetPeriodType string,
 	periodStart, periodEnd time.Time,
 	state *aggregationState,
-	avgDuration, p95Duration float32,
+	avgDuration, p95Duration, p50Duration float32,
 	dominantStatus int,
 	durationAvg *float32,
 ) *models.Result {
@@ -1158,6 +1163,7 @@ func buildAggregatedResult(
 		DurationMin:      &state.minDuration,
 		DurationMax:      &state.maxDuration,
 		DurationP95:      &p95Duration,
+		DurationP50:      resolveDurationP50(state, p50Duration),
 		DurationAvg:      durationAvg,
 		TotalChecks:      &totalChecksInt,
 		SuccessfulChecks: &successfulChecksInt,
@@ -1177,13 +1183,36 @@ func buildAggregatedResult(
 	}
 }
 
-// calculateFinalMetrics computes the final aggregated metrics.
+// noteP50 records whether any aggregated child carries a duration_p50.
+func (s *aggregationState) noteP50(result *models.Result) {
+	if result.DurationP50 != nil {
+		s.hasP50 = true
+	}
+}
+
+// resolveDurationP50 returns the duration_p50 to persist. Raw rollups always
+// have one. A rollup of children keeps it only when at least one child carried
+// a median: if every child predates the column, the result stays NULL ("no
+// median") instead of a fabricated 0.
+func resolveDurationP50(state *aggregationState, p50 float32) *float32 {
+	if state.isRawData && len(state.durations) == 0 {
+		return nil
+	}
+
+	if !state.isRawData && !state.hasP50 {
+		return nil
+	}
+
+	return &p50
+}
+
+// calculateFinalMetrics computes the final aggregated metrics (avg, p95, p50).
 func calculateFinalMetrics(
 	isRawData bool,
 	durations []float32,
 	totalDuration float32,
 	results []*models.Result,
-) (float32, float32) {
+) (float32, float32, float32) {
 	if isRawData {
 		return calculateRawMetrics(durations, totalDuration)
 	}
@@ -1192,48 +1221,63 @@ func calculateFinalMetrics(
 
 // calculateRawMetrics computes duration metrics from raw data. Availability is
 // no longer computed here — it is derived at read time from the count columns.
+// One sort serves both percentiles, and both indexes come from the shared
+// nearest-rank helpers in models (pinned by p95_index_parity_test.go).
 func calculateRawMetrics(
 	durations []float32, totalDuration float32,
-) (float32, float32) {
-	var avgDuration, p95Duration float32
+) (float32, float32, float32) {
+	var avgDuration, p95Duration, p50Duration float32
 
 	if len(durations) > 0 {
 		avgDuration = totalDuration / float32(len(durations))
 
-		// Calculate p95
 		sort.Slice(durations, func(i, j int) bool { return durations[i] < durations[j] })
-		p95Index := int(float64(len(durations)) * 0.95)
-		if p95Index >= len(durations) {
-			p95Index = len(durations) - 1
-		}
-		p95Duration = durations[p95Index]
+		p95Duration = durations[models.ResponseTimeBinP95Index(len(durations))]
+		p50Duration = durations[models.ResponseTimeBinP50Index(len(durations))]
 	}
 
-	return avgDuration, p95Duration
+	return avgDuration, p95Duration, p50Duration
 }
 
 // calculateAggregatedMetrics computes duration metrics from aggregated data.
+//
+// Decision (spec 2026-10-02-02): p95 AND p50 of a rollup are the unweighted mean
+// of the children's own percentiles. That is an approximation (a percentile of
+// percentiles is not the percentile), accepted for p95 already and tighter for
+// the median; a t-digest was considered and rejected as not worth the storage
+// and complexity. Children without a p50 (rows that predate the column) are
+// skipped, never counted as zero.
 func calculateAggregatedMetrics(
 	totalDuration float32, results []*models.Result,
-) (float32, float32) {
-	var avgDuration, p95Duration float32
+) (float32, float32, float32) {
+	var avgDuration, p95Duration, p50Duration float32
 
 	if len(results) > 0 {
 		avgDuration = totalDuration / float32(len(results))
 	}
 
-	// For p95, we approximate by averaging the p95 values
-	p95Sum := float32(0)
-	p95Count := 0
+	p95Sum, p95Count := float32(0), 0
+	p50Sum, p50Count := float32(0), 0
+
 	for _, result := range results {
 		if result.DurationP95 != nil {
 			p95Sum += *result.DurationP95
 			p95Count++
 		}
+
+		if result.DurationP50 != nil {
+			p50Sum += *result.DurationP50
+			p50Count++
+		}
 	}
+
 	if p95Count > 0 {
 		p95Duration = p95Sum / float32(p95Count)
 	}
 
-	return avgDuration, p95Duration
+	if p50Count > 0 {
+		p50Duration = p50Sum / float32(p50Count)
+	}
+
+	return avgDuration, p95Duration, p50Duration
 }

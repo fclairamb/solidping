@@ -136,11 +136,38 @@ func ValidateSpec(spec *checkerdef.CheckSpec) error {
 			"must be %q or %q, got %q", RedirectHostPolicyAny, RedirectHostPolicySameHost, cfg.RedirectHostPolicy)
 	}
 
+	if err := validateHTTPVersion(cfg, spec.Config); err != nil {
+		return err
+	}
+
 	// Validate SecretHeaders names
 	for k := range cfg.SecretHeaders {
 		if k == "" {
 			return checkerdef.NewConfigError("secretHeaders", "header name must not be empty")
 		}
+	}
+
+	return nil
+}
+
+// validateHTTPVersion rejects an unknown `httpVersion` and HTTP/3 on a
+// tunneled check: the SSH tunnel forwards TCP only, and HTTP/3 runs over UDP.
+// It reads the tunnel reference off the raw config map, which is where it
+// lives on both the create and the (merged) PATCH path.
+func validateHTTPVersion(cfg *HTTPConfig, raw map[string]any) error {
+	version, err := checkerdef.ParseHTTPVersion(cfg.HTTPVersion)
+	if err != nil {
+		return checkerdef.NewConfigError(
+			checkerdef.HTTPVersionConfigKey,
+			strings.TrimPrefix(err.Error(), checkerdef.ErrInvalidHTTPVersion.Error()+": "),
+		)
+	}
+
+	if _, tunneled := checkerdef.TunnelCheckUIDFrom(raw); tunneled && version == checkerdef.HTTPVersion3 {
+		return checkerdef.NewConfigError(
+			checkerdef.HTTPVersionConfigKey,
+			"HTTP/3 runs over UDP and an SSH tunnel only carries TCP: use 1.1 or 2, or remove the tunnel",
+		)
 	}
 
 	return nil

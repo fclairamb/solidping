@@ -244,6 +244,10 @@ func TestAggregateResults_RawData(t *testing.T) {
 	require.NotNil(t, compacted.DurationAvg)
 	assert.InDelta(t, float32(150.0), *compacted.DurationAvg, 0.01)
 
+	// duration_p50 of 100/150/200 is the nearest-rank sample at n/2: 150.
+	require.NotNil(t, compacted.DurationP50)
+	assert.InDelta(t, float32(150.0), *compacted.DurationP50, 0.01)
+
 	require.NotNil(t, compacted.TotalChecks)
 	assert.Equal(t, 3, *compacted.TotalChecks)
 
