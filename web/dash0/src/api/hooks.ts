@@ -173,6 +173,7 @@ export interface Check {
     | "rdp"
     | "vnc"
     | "prometheus"
+    | "crawl"
     | "sleep";
   config?: Record<string, unknown>;
   /**
@@ -389,6 +390,7 @@ export interface CreateCheckRequest {
     | "rdp"
     | "vnc"
     | "prometheus"
+    | "crawl"
     | "sleep";
   config: Record<string, unknown>;
   /** An explicit list pins the check. Omit to let it be placed automatically. */
@@ -1221,6 +1223,63 @@ export function useCheckScreenshots(
     },
     enabled: (options.enabled ?? true) && !!org && !!checkUid,
     refetchInterval: options.pollMs ?? CHECK_SCREENSHOTS_REFRESH_MS,
+  });
+}
+
+/** The run in progress of a multi-step check (spec 2026-10-03-03). */
+export interface CheckRun {
+  running: boolean;
+  runUid?: string;
+  startedAt?: string;
+  steps?: number;
+  progress?: Record<string, unknown>;
+}
+
+/** One stored crawl report (`checks/<uid>/crawl-report`). */
+export interface CrawlReport {
+  uid: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  /** Relative signed URL: `/pub/files/<uid>?exp=…&sig=…`, valid 1 h. */
+  downloadUrl: string;
+  createdAt: string;
+  capturedAt?: string;
+}
+
+/** Poll faster while a crawl is running so its progress line moves. */
+const CHECK_RUN_ACTIVE_POLL_MS = 5_000;
+const CHECK_RUN_IDLE_POLL_MS = 60_000;
+
+export function useCheckRun(org: string, checkUid: string, options: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: ["check-run", org, checkUid],
+    queryFn: () => apiFetch<CheckRun>(`/api/v1/orgs/${org}/checks/${checkUid}/run`),
+    enabled: (options.enabled ?? true) && !!org && !!checkUid,
+    refetchInterval: (query) =>
+      query.state.data?.running ? CHECK_RUN_ACTIVE_POLL_MS : CHECK_RUN_IDLE_POLL_MS,
+  });
+}
+
+export function useCancelCheckRun(org: string, checkUid: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<void>(`/api/v1/orgs/${org}/checks/${checkUid}/run`, { method: "DELETE" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["check-run", org, checkUid] });
+    },
+  });
+}
+
+export function useCrawlReports(org: string, checkUid: string, options: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: ["crawl-reports", org, checkUid],
+    queryFn: async () =>
+      (await apiFetch<{ data: CrawlReport[] }>(`/api/v1/orgs/${org}/checks/${checkUid}/crawl-reports`)).data,
+    enabled: (options.enabled ?? true) && !!org && !!checkUid,
+    refetchInterval: CHECK_RUN_IDLE_POLL_MS,
   });
 }
 

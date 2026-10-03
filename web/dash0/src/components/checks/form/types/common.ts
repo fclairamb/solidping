@@ -59,6 +59,7 @@ export type CheckType =
   | "ntp"
   | "rdp"
   | "vnc"
+  | "crawl"
   | "private-location"
   | "sleep";
 

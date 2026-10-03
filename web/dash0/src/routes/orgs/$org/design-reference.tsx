@@ -5253,7 +5253,7 @@ const CHECK_TYPE_FAMILY_TABLE: {
 }[] = [
   {
     family: "Web",
-    types: "http/https, websocket, browser",
+    types: "http/https, websocket, browser, crawl",
     tone: "blue (shipped)",
   },
   {

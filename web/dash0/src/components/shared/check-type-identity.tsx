@@ -45,6 +45,7 @@ import {
   Logs,
   MailCheck,
   MonitorDot,
+  Network,
   Moon,
   Pickaxe,
   PhoneCall,
@@ -114,6 +115,7 @@ export const CHECK_TYPE_IDENTITY: Partial<Record<string, CheckTypeIdentity>> = {
   https: { label: "HTTP", tone: TONE_BLUE, icon: Globe }, // legacy alias
   websocket: { label: "WebSocket", tone: TONE_BLUE, icon: Cable },
   browser: { label: "Browser", tone: TONE_BLUE, icon: AppWindow },
+  crawl: { label: "Crawl", tone: TONE_BLUE, icon: Network },
 
   // Raw network — shipped cyan, extended to the rest of the raw-socket family.
   tcp: { label: "TCP", tone: TONE_CYAN, icon: EthernetPort },

@@ -134,6 +134,7 @@ import { CheckRegionalIssueBanner } from "@/components/checks/regional-issue-ban
 import { SslChainCard } from "@/components/checks/ssl-chain-card";
 import { DockerRestartLoopCard } from "@/components/checks/docker-restart-loop-card";
 import { DnsblCard, DNSBL_OUTPUT_KEYS } from "@/components/checks/dnsbl-card";
+import { CrawlCard } from "@/components/checks/crawl-card";
 import { isEvaluationOutput } from "@/components/checks/evaluation-card";
 import { isPassiveCheckType } from "@/lib/check-scheduling";
 import {
@@ -1923,6 +1924,15 @@ function CheckDetailPage() {
           output={
             check.lastResult?.output as Record<string, unknown> | undefined
           }
+        />
+      )}
+
+      {check.type === "crawl" && (
+        <CrawlCard
+          org={org}
+          checkUid={checkUid}
+          output={check.lastResult?.output as Record<string, unknown> | undefined}
+          canCancel={ownsThisCheck}
         />
       )}
 

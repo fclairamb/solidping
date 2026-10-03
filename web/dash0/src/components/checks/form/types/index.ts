@@ -98,6 +98,9 @@ import {
   privateLocationModule,
 } from "./misc";
 
+import { crawlModule, CrawlAdvancedFields, crawlAdvancedSummary } from "./crawl";
+import type { CrawlState } from "./crawl";
+
 // Widen a concrete `CheckTypeModule<S>` to the registry's `unknown` state type.
 // The form only ever pairs a module with the `configState` it produced, so the
 // erasure is sound.
@@ -137,6 +140,7 @@ const modules: CheckTypeModule[] = [
   entry(ntpModule),
   entry(rdpModule),
   entry(vncModule),
+  entry(crawlModule),
   entry(sipModule),
   entry(jsModule),
   entry(sleepModule),
@@ -203,5 +207,9 @@ export const advancedFieldsRegistry: Partial<
   grpc: {
     Fields: GrpcAdvancedFields as unknown as FC<CheckTypeFieldsProps>,
     summary: (state) => grpcAdvancedSummary(state as GrpcState),
+  },
+  crawl: {
+    Fields: CrawlAdvancedFields as unknown as FC<CheckTypeFieldsProps>,
+    summary: (state) => crawlAdvancedSummary(state as CrawlState),
   },
 };
