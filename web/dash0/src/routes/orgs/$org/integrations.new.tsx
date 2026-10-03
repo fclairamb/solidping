@@ -35,7 +35,7 @@ interface NewIntegrationSearch {
 
 export const Route = createFileRoute("/orgs/$org/integrations/new")({
   validateSearch: (search: Record<string, unknown>): NewIntegrationSearch => ({
-    type: search.type as ConnectionType | undefined,
+    type: ALL_TYPES.find((c) => c === search.type),
   }),
   component: NewIntegrationPage,
 });
@@ -69,7 +69,16 @@ function NewIntegrationPage() {
   const navigate = useNavigate();
   const create = useCreateIntegration(org);
 
-  const [type, setType] = useState<ConnectionType | null>(search.type ?? null);
+  // The URL is the source of truth for the selected type, so reload, shared
+  // links and the browser Back button all behave.
+  const type = search.type ?? null;
+  const setType = (next: ConnectionType | null) => {
+    void navigate({
+      to: "/orgs/$org/integrations/new",
+      params: { org },
+      search: next ? { type: next } : {},
+    });
+  };
   const [form, setForm] = useState<IntegrationFormState | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -182,10 +191,14 @@ function NewIntegrationPage() {
               <IntegrationIcon type={type} className="h-5 w-5" />
               {integrationLabel(type)}
             </CardTitle>
-            <Button asChild variant="ghost" size="sm">
-              <Link to="/orgs/$org/integrations" params={{ org }}>
-                {t("cancel", "Cancel")}
-              </Link>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setType(null)}
+              data-testid="integration-cancel"
+            >
+              {t("cancel", "Cancel")}
             </Button>
           </div>
           <CardDescription>
@@ -214,10 +227,14 @@ function NewIntegrationPage() {
               <IntegrationIcon type={type} className="h-5 w-5" />
               {integrationLabel(type)}
             </CardTitle>
-            <Button asChild variant="ghost" size="sm">
-              <Link to="/orgs/$org/integrations" params={{ org }}>
-                {t("cancel", "Cancel")}
-              </Link>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setType(null)}
+              data-testid="integration-cancel"
+            >
+              {t("cancel", "Cancel")}
             </Button>
           </div>
           <CardDescription>
@@ -266,10 +283,14 @@ function NewIntegrationPage() {
             <IntegrationIcon type={type} className="h-5 w-5" />
             {integrationLabel(type)}
           </CardTitle>
-          <Button asChild variant="ghost" size="sm">
-            <Link to="/orgs/$org/integrations" params={{ org }}>
-              {t("cancel", "Cancel")}
-            </Link>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setType(null)}
+            data-testid="integration-cancel"
+          >
+            {t("cancel", "Cancel")}
           </Button>
         </div>
         <CardDescription>

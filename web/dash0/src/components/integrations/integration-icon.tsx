@@ -72,9 +72,9 @@ export function integrationLabel(type: ConnectionType): string {
     case "mattermost":
       return "Mattermost";
     case "msteams":
-      return "Microsoft Teams";
+      return "Teams (webhook)";
     case "msteams-bot":
-      return "Microsoft Teams (bot)";
+      return "Teams (bot)";
     case "ntfy":
       return "ntfy";
     case "gotify":

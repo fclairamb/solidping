@@ -13,8 +13,8 @@ SolidPing supports multiple notification channels to alert you when incidents oc
 |---------|--------|---------------|
 | Slack | Available | OAuth integration |
 | Slack (webhook) | Available | Incoming webhook URL (one-way, no app install) |
-| Microsoft Teams (bot) | Available | Azure Bot / Bot Framework (two-way) |
-| Microsoft Teams (webhook) | Available | Teams Workflow webhook (one-way) |
+| Teams (bot) | Available | Azure Bot / Bot Framework (two-way) |
+| Teams (webhook) | Available | Teams Workflow webhook (one-way) |
 | Discord | Available | Bot (OAuth install, two-way) or webhook (one-way) |
 | Email | Available | SMTP |
 | Webhooks | Available | HTTP POST |
@@ -274,7 +274,7 @@ use both:
 | `msteams` | One-way: posts Adaptive Cards into a channel | A Teams Workflow URL. No server configuration, works behind a firewall. |
 | `msteams-bot` | Two-way: alerts **plus** `@SolidPing` commands, and incident cards that update in place | An Entra ID app + Azure Bot, and a **publicly reachable HTTPS endpoint**. |
 
-### Microsoft Teams (webhook) — the zero-infra option
+### Teams (webhook) — the zero-infra option
 
 1. In Teams, open **Workflows** → "Post to a channel when a webhook request is
    received"
@@ -284,7 +284,7 @@ use both:
 The legacy "Incoming Webhook" Office 365 connector is retired by Microsoft and
 will not work.
 
-### Microsoft Teams (bot) — the Slack-grade option
+### Teams (bot) — the Slack-grade option
 
 :::warning Public HTTPS endpoint required
 The Bot Framework has **no Socket-Mode equivalent**: Microsoft's servers push
@@ -332,7 +332,7 @@ on, precisely because of the public-endpoint requirement above.
 
 #### 3. Install the app in Teams and link your tenant
 
-1. In SolidPing, create a **Microsoft Teams (bot)** integration and open it.
+1. In SolidPing, create a **Teams (bot)** integration and open it.
 2. Click **Download Teams app package** — the zip is generated with your
    instance's app ID and URL already filled in, so nothing has to be edited.
 3. In Teams: **Apps → Manage your apps → Upload a custom app**, pick the zip,

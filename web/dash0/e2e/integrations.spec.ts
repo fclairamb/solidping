@@ -296,6 +296,64 @@ test.describe("Notification Channels", () => {
     await deleteCheck(page, token, check.uid);
   });
 
+  test("new-integration type lives in the URL: pick, reload, Back", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await page.goto("orgs/test/integrations/new");
+    await page.waitForLoadState("networkidle");
+
+    await page.getByTestId("pick-slack").click();
+    await expect(page).toHaveURL(/[?&]type=slack(&|$)/);
+    await expect(page.getByTestId("slack-install")).toBeVisible();
+
+    await page.reload();
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("slack-install")).toBeVisible();
+
+    await page.goBack();
+    await expect(page).toHaveURL(/integrations\/new$/);
+    await expect(page.getByTestId("group-notify")).toBeVisible();
+  });
+
+  test("new-integration Cancel returns to the picker, picker Cancel to the list", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await page.goto("orgs/test/integrations/new?type=webhook");
+    await page.waitForLoadState("networkidle");
+
+    await page.getByTestId("integration-cancel").click();
+    await expect(page).toHaveURL(/integrations\/new$/);
+    await expect(page.getByTestId("group-notify")).toBeVisible();
+
+    await page.getByRole("link", { name: /^cancel$/i }).click();
+    await expect(page).toHaveURL(/\/orgs\/test\/integrations$/);
+  });
+
+  test("new-integration ignores an unknown ?type=", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await page.goto("orgs/test/integrations/new?type=bogus");
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("group-notify")).toBeVisible();
+  });
+
+  test("new-integration picker shows distinct Teams tiles", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await page.goto("orgs/test/integrations/new");
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("pick-msteams")).toContainText(
+      "Teams (webhook)",
+    );
+    await expect(page.getByTestId("pick-msteams-bot")).toContainText(
+      "Teams (bot)",
+    );
+  });
+
   test("new-integration picker groups notification channels and data sources", async ({
     authenticatedPage,
   }) => {
