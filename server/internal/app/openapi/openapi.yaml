@@ -2010,6 +2010,96 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/v1/orgs/{org}/checks/{checkUid}/run:
+    get:
+      tags: [Checks]
+      summary: Get the run in progress of a multi-step check
+      description: >-
+        A multi-step check (the website crawl) runs as a series of short
+        slices, each saving its progress. This returns the run in progress:
+        its uid, start, completed slices and the progress of its last slice
+        (for a crawl `pagesDone`, `maxPages`, `queued`, `findings`, `phase`).
+        `{"running": false}` when no run is in progress, and for every check
+        type that does not run in steps.
+      operationId: getCheckRun
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/CheckUidPath"
+      responses:
+        "200":
+          description: The run in progress, or running false
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckRun"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Checks]
+      summary: Cancel the run in progress of a multi-step check
+      description: >-
+        Drops the run in progress: its saved progress is deleted and the check
+        is scheduled for its next regular run. No result is written for the
+        canceled run. A no-op when no run is in progress. Requires write
+        access (viewers get 403).
+      operationId: cancelCheckRun
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/CheckUidPath"
+      responses:
+        "204":
+          description: The run is canceled (or there was none)
+        "400":
+          description: The check type does not run in steps
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/checks/{checkUid}/crawl-reports:
+    get:
+      tags: [Checks]
+      summary: List the crawl reports of a check
+      description: >-
+        The full findings report of the last 5 finished crawl runs, newest
+        first. Each entry carries a short-lived signed `downloadUrl` to the
+        report JSON: `{"findings": [{type, url, source, status, error,
+        fingerprint}], "pagesCrawled", "incomplete"}`. The result of a run
+        names its report in `output.reportFileUid`.
+      operationId: listCheckCrawlReports
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/CheckUidPath"
+      responses:
+        "200":
+          description: The reports, newest first
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CrawlReportListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/v1/orgs/{org}/dependencies:
     get:
       tags: [Checks]
@@ -12442,6 +12532,64 @@ components:
           format: uuid
           description: The incident the capture is attached to. Absent for a check-scoped capture.
 
+    CheckRun:
+      type: object
+      description: The run in progress of a multi-step check (spec 2026-10-03-03).
+      required: [running]
+      properties:
+        running:
+          type: boolean
+        runUid:
+          type: string
+          format: uuid
+        startedAt:
+          type: string
+          format: date-time
+        steps:
+          type: integer
+          description: Slices completed so far.
+        progress:
+          type: object
+          additionalProperties: true
+          description: Progress reported by the last slice.
+    CrawlReport:
+      type: object
+      description: One stored crawl report. The JSON is fetched through `downloadUrl`.
+      required: [uid, name, mimeType, size, downloadUrl, createdAt]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum: [crawl-report]
+        name:
+          type: string
+        mimeType:
+          type: string
+        size:
+          type: integer
+          format: int64
+        downloadUrl:
+          type: string
+          description: RELATIVE, short-lived signed URL (`/pub/files/<uid>?exp=…&sig=…`).
+        createdAt:
+          type: string
+          format: date-time
+        capturedAt:
+          type: string
+          format: date-time
+        checkUid:
+          type: string
+          format: uuid
+    CrawlReportListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/CrawlReport"
     CheckScreenshotListResponse:
       type: object
       required: [data]

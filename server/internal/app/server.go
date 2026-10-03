@@ -60,6 +60,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/checkdependencies"
 	"github.com/fclairamb/solidping/server/internal/handlers/checkgroups"
 	"github.com/fclairamb/solidping/server/internal/handlers/checkjobs"
+	"github.com/fclairamb/solidping/server/internal/handlers/checkruns"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks/importers"
 	"github.com/fclairamb/solidping/server/internal/handlers/checkscreenshots"
@@ -1405,6 +1406,14 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgCheckScreenshots := orgGroup("/orgs/:org/checks/:checkUid/screenshots")
 	orgCheckScreenshots.GET("", checkScreenshotsHandler.List)
 	orgCheckScreenshots.POST("/capture", checkScreenshotsHandler.Capture)
+
+	// Multi-step runs (spec 2026-10-03-03): the run in progress (read), its
+	// cancellation (write: orgGroup refuses viewers) and the crawl reports.
+	checkRunsHandler := checkruns.NewHandler(checkruns.NewService(s.dbService, attachmentsService), s.config)
+	orgCheckRuns := orgGroup("/orgs/:org/checks/:checkUid")
+	orgCheckRuns.GET("/run", checkRunsHandler.GetRun)
+	orgCheckRuns.DELETE("/run", checkRunsHandler.CancelRun)
+	orgCheckRuns.GET("/crawl-reports", checkRunsHandler.ListCrawlReports)
 
 	// …and its counterpart for DEPORTED agents (spec 2026-08-21-05): an agent
 	// cannot put image bytes on the JSON socket, so a result that opens or reopens an

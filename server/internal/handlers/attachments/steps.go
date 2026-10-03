@@ -144,6 +144,24 @@ func (s *Service) ReadCheckFile(
 	return body, file, nil
 }
 
+// CheckFileDetails returns the details bag of one live file of the org that
+// belongs to checkUID under kind, without reading its bytes.
+func (s *Service) CheckFileDetails(
+	ctx context.Context, orgUID, checkUID, kind, fileUID string,
+) (models.JSONMap, error) {
+	if s.files == nil {
+		return nil, errNoFiles
+	}
+
+	file, err := s.files.GetFileByUID(ctx, fileUID)
+	if err != nil || file == nil || file.OrganizationUID != orgUID ||
+		file.Topic == nil || *file.Topic != CheckTopicPrefix(checkUID)+kind {
+		return nil, ErrStepFileMissing
+	}
+
+	return file.Details, nil
+}
+
 // LatestCrawlReport returns the newest stored crawl report of a check, or
 // nil when there is none.
 func (s *Service) LatestCrawlReport(ctx context.Context, orgUID, checkUID string) ([]byte, error) {
