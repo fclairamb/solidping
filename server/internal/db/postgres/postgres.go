@@ -1663,6 +1663,11 @@ func (s *Service) CreateCheck(ctx context.Context, check *models.Check) error {
 			return err
 		}
 
+		// Version 1 of the check's history (spec 2026-10-03-06).
+		if _, err := db.RecordCheckVersion(ctx, tx, check.UID); err != nil {
+			return err
+		}
+
 		return nil
 	})
 }
@@ -2070,9 +2075,32 @@ func (s *Service) ListChecks(
 	return checks, int64(total), err
 }
 
-//nolint:cyclop // long but flat: one branch per optional column
+// UpdateCheck applies a partial update. A write touching the definition runs
+// in a transaction that also records the check's version history (spec
+// 2026-10-03-06); runtime- and secret-only writes skip it.
 func (s *Service) UpdateCheck(ctx context.Context, uid string, update *models.CheckUpdate) error {
-	query := s.db.NewUpdate().
+	if !db.CheckDefinitionTouched(update) {
+		return s.updateCheck(ctx, s.db, uid, update)
+	}
+
+	return s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if err := db.EnsureCheckVersionBaseline(ctx, tx, uid); err != nil {
+			return err
+		}
+
+		if err := s.updateCheck(ctx, tx, uid, update); err != nil {
+			return err
+		}
+
+		_, err := db.RecordCheckVersion(ctx, tx, uid)
+
+		return err
+	})
+}
+
+//nolint:cyclop // long but flat: one branch per optional column
+func (s *Service) updateCheck(ctx context.Context, idb bun.IDB, uid string, update *models.CheckUpdate) error {
+	query := idb.NewUpdate().
 		Model((*models.Check)(nil)).
 		Where("uid = ?", uid).
 		Where("deleted_at IS NULL").
@@ -2441,28 +2469,45 @@ func (s *Service) GetOrCreateLabel(ctx context.Context, orgUID, key, value strin
 
 func (s *Service) SetCheckLabels(ctx context.Context, checkUID string, labelUIDs []string) error {
 	return s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
-		// Delete existing labels
-		_, err := tx.NewDelete().
-			Model((*models.CheckLabel)(nil)).
-			Where("check_uid = ?", checkUID).
-			Exec(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to delete existing check labels: %w", err)
+		// Labels are part of the check's versioned definition (spec
+		// 2026-10-03-06).
+		if err := db.EnsureCheckVersionBaseline(ctx, tx, checkUID); err != nil {
+			return err
 		}
 
-		// Insert new labels
-		if len(labelUIDs) > 0 {
-			checkLabels := make([]*models.CheckLabel, len(labelUIDs))
-			for i, labelUID := range labelUIDs {
-				checkLabels[i] = models.NewCheckLabel(checkUID, labelUID)
-			}
-			_, err = tx.NewInsert().Model(&checkLabels).Exec(ctx)
-			if err != nil {
-				return fmt.Errorf("failed to insert check labels: %w", err)
-			}
+		if err := s.replaceCheckLabels(ctx, tx, checkUID, labelUIDs); err != nil {
+			return err
 		}
-		return nil
+
+		_, err := db.RecordCheckVersion(ctx, tx, checkUID)
+
+		return err
 	})
+}
+
+func (s *Service) replaceCheckLabels(ctx context.Context, tx bun.Tx, checkUID string, labelUIDs []string) error {
+	// Delete existing labels
+	_, err := tx.NewDelete().
+		Model((*models.CheckLabel)(nil)).
+		Where("check_uid = ?", checkUID).
+		Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to delete existing check labels: %w", err)
+	}
+
+	// Insert new labels
+	if len(labelUIDs) > 0 {
+		checkLabels := make([]*models.CheckLabel, len(labelUIDs))
+		for i, labelUID := range labelUIDs {
+			checkLabels[i] = models.NewCheckLabel(checkUID, labelUID)
+		}
+		_, err = tx.NewInsert().Model(&checkLabels).Exec(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to insert check labels: %w", err)
+		}
+	}
+
+	return nil
 }
 
 func (s *Service) GetLabelsForCheck(ctx context.Context, checkUID string) ([]*models.Label, error) {
@@ -7860,4 +7905,31 @@ func (s *Service) GetIncidentAny(ctx context.Context, uid string) (*models.Incid
 	}
 
 	return incident, nil
+}
+
+// Check version history (spec 2026-10-03-06). The queries are shared with the
+// other engine in the db package.
+
+func (s *Service) ListCheckVersions(ctx context.Context, checkUID string, limit int) ([]*models.CheckVersion, error) {
+	return db.ListCheckVersions(ctx, s.db, checkUID, limit)
+}
+
+func (s *Service) GetCheckVersion(ctx context.Context, checkUID string, version int) (*models.CheckVersion, error) {
+	return db.GetCheckVersion(ctx, s.db, checkUID, version)
+}
+
+func (s *Service) GetLatestAppliedCheckVersion(ctx context.Context, checkUID string) (*models.CheckVersion, error) {
+	return db.LatestAppliedCheckVersion(ctx, s.db, checkUID)
+}
+
+func (s *Service) CreateCheckVersionProposal(ctx context.Context, row *models.CheckVersion) error {
+	return s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		return db.CreateCheckVersionProposal(ctx, tx, row)
+	})
+}
+
+func (s *Service) DecideCheckVersion(
+	ctx context.Context, checkUID string, version int, status models.CheckVersionStatus, userUID string,
+) error {
+	return db.DecideCheckVersion(ctx, s.db, checkUID, version, status, userUID)
 }

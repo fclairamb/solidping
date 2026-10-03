@@ -10,7 +10,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/configregistry"
-	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
+	"github.com/fclairamb/solidping/server/internal/checkversion"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/secretref"
 )
@@ -509,28 +509,9 @@ func diffCheckConfig(existing *models.Check, current, desired *ExportCheck) []Ch
 // private. Same set stripSecretKeysForExport computes, named so the differ and
 // the exporter cannot drift.
 func hiddenExportConfigKeys(checkType string, configPrivateKeys *string) map[string]struct{} {
-	hidden := map[string]struct{}{}
-
-	if cfg, ok := configregistry.ParseConfig(checkerdef.CheckType(checkType)); ok {
-		for _, key := range credentials.SecretFieldsFor(cfg) {
-			hidden[key] = struct{}{}
-		}
-
-		for _, key := range credentials.ExportRedactedFieldsFor(cfg) {
-			hidden[key] = struct{}{}
-		}
-	}
-
-	if configPrivateKeys != nil && *configPrivateKeys != "" {
-		var privateKeys []string
-		if err := json.Unmarshal([]byte(*configPrivateKeys), &privateKeys); err == nil {
-			for _, key := range privateKeys {
-				hidden[key] = struct{}{}
-			}
-		}
-	}
-
-	return hidden
+	// One definition shared with the check version snapshot (spec
+	// 2026-10-03-06), which strips exactly the same keys.
+	return checkversion.HiddenConfigKeys(checkType, configPrivateKeys)
 }
 
 // canonicalConfigValue renders a config value so a YAML integer and a JSON

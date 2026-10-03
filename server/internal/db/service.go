@@ -468,6 +468,20 @@ type Service interface {
 	GetOrCreateLabel(ctx context.Context, orgUID, key, value string) (*models.Label, error)
 	SetCheckLabels(ctx context.Context, checkUID string, labelUIDs []string) error
 	GetLabelsForCheck(ctx context.Context, checkUID string) ([]*models.Label, error)
+
+	// Check version history (spec 2026-10-03-06). Versions are recorded by
+	// CreateCheck, UpdateCheck and SetCheckLabels themselves.
+	ListCheckVersions(ctx context.Context, checkUID string, limit int) ([]*models.CheckVersion, error)
+	// GetCheckVersion returns sql.ErrNoRows when the version does not exist.
+	GetCheckVersion(ctx context.Context, checkUID string, version int) (*models.CheckVersion, error)
+	// GetLatestAppliedCheckVersion returns nil when the check has no version.
+	GetLatestAppliedCheckVersion(ctx context.Context, checkUID string) (*models.CheckVersion, error)
+	CreateCheckVersionProposal(ctx context.Context, row *models.CheckVersion) error
+	// DecideCheckVersion returns ErrCheckVersionNotProposed when the row is
+	// not a pending proposal.
+	DecideCheckVersion(
+		ctx context.Context, checkUID string, version int, status models.CheckVersionStatus, userUID string,
+	) error
 	GetLabelsForChecks(ctx context.Context, checkUIDs []string) (map[string][]*models.Label, error)
 	ListDistinctLabelKeys(
 		ctx context.Context, orgUID, query string, limit int,
