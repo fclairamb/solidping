@@ -1559,6 +1559,7 @@
   },
   "ai": {
     "describeButton": "Beschreiben",
+    "newCheckBanner": "Lieber beschreiben, was überwacht werden soll? Eine KI schreibt und testet einen js-Check für Sie.",
     "title": "Check beschreiben",
     "subtitle": "Sagen Sie, was überwacht werden soll. Eine KI schreibt und testet einmal ein js-Skript, danach läuft das Skript allein, ohne KI.",
     "disabled": "KI-geschriebene Checks sind auf diesem Server nicht aktiviert.",

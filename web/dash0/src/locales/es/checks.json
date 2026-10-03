@@ -1559,6 +1559,7 @@
   },
   "ai": {
     "describeButton": "Describir",
+    "newCheckBanner": "¿Prefiere describir qué vigilar? Una IA escribe y prueba un check js por usted.",
     "title": "Describir un check",
     "subtitle": "Diga qué vigilar. Una IA escribe y prueba un script js una sola vez; después el script se ejecuta solo, sin IA.",
     "disabled": "Los checks escritos por IA no están activados en este servidor.",

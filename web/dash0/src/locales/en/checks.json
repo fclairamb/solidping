@@ -1559,6 +1559,7 @@
   },
   "ai": {
     "describeButton": "Describe it",
+    "newCheckBanner": "Rather describe what to watch? An AI writes and tests a js check for you.",
     "title": "Describe a check",
     "subtitle": "Say what to watch. An AI writes and tests a js script once; from then on the plain script runs, with no AI.",
     "disabled": "AI-authored checks are not enabled on this server.",

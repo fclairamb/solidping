@@ -4,7 +4,7 @@ import { filterCheckTypesForDemo, isDemoReadOnlyError } from "@/lib/demo";
 import { DemoReadOnlyNote } from "@/components/shared/demo-read-only-note";
 import { useTranslation } from "react-i18next";
 import { translateIntervalLabel } from "./interval-label";
-import { AlertTriangle, ArrowLeft, Loader2, ChevronsUpDown, Check, FolderPlus, Search, Shuffle, WifiOff } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Loader2, ChevronsUpDown, Check, FolderPlus, Search, Shuffle, Sparkles, WifiOff } from "lucide-react";
 import {
   useCheckValidationResult,
   getFieldError,
@@ -65,6 +65,7 @@ import { DocsLink } from "@/components/shared/docs-link";
 import { docsHrefForType } from "@/components/shared/check-type-docs-anchors";
 import { CheckTypeIcon } from "@/components/shared/check-type-identity";
 import { Link } from "@tanstack/react-router";
+import { useAIChecksEnabled } from "@/api/public-config";
 import { ApiError } from "@/api/client";
 import type {
   Check as CheckModel,
@@ -1325,6 +1326,7 @@ export function CheckForm({
   };
 
   const isEdit = mode === "edit";
+  const aiChecksEnabled = useAIChecksEnabled();
   const title = isEdit ? t("form.editCheck") : t("form.newCheck");
   const subtitle = isEdit ? t("form.editCheckSubtitle") : t("form.newCheckSubtitle");
   const submitLabel = isEdit ? t("form.saveChanges") : t("form.createCheck");
@@ -1499,6 +1501,21 @@ export function CheckForm({
           </div>
           <DocsLink href={docsHrefForType(type)} className="ml-auto" />
         </div>
+
+        {/* "Describe it" (spec 2026-10-03-07): only when the server has an AI provider. */}
+        {!isEdit && aiChecksEnabled && (
+          <Alert data-testid="check-form-describe-banner">
+            <Sparkles />
+            <AlertDescription className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <span>{t("ai.newCheckBanner")}</span>
+              <Button asChild variant="outline" size="sm" className="shrink-0">
+                <Link to="/orgs/$org/checks/describe" params={{ org }} data-testid="check-form-describe-link">
+                  {t("ai.describeButton")}
+                </Link>
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && (
