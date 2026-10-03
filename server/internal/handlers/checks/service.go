@@ -2131,6 +2131,9 @@ func (s *Service) UpdateCheck(
 			}
 		}
 	}
+	// The stored config before this PATCH, to spot a dns baseline reset
+	// ("Accept current records", spec 2026-10-03-04) once the write landed.
+	configBefore := check.Config
 	if req.Config != nil {
 		if cfgErr := s.applyConfigUpdate(ctx, check, *req.Config, &update); cfgErr != nil {
 			return CheckResponse{}, cfgErr
@@ -2296,6 +2299,12 @@ func (s *Service) UpdateCheck(
 		relevel := req.RegionSpread != nil
 		if reconcileErr := s.reconcileCheckJobs(ctx, updatedCheck, relevel); reconcileErr != nil {
 			return CheckResponse{}, fmt.Errorf("failed to reconcile check jobs: %w", reconcileErr)
+		}
+
+		if dnsBaselineReset(updatedCheck.Type, configBefore, updatedCheck.Config) {
+			if dueErr := s.makeCheckJobsDue(ctx, updatedCheck.UID); dueErr != nil {
+				return CheckResponse{}, dueErr
+			}
 		}
 	}
 
@@ -5726,6 +5735,46 @@ func (s *Service) applyConfigPatch(
 	}
 
 	return mergePatchConfig(existing, patch, credentials.SecretFieldsFor(cfg)), nil
+}
+
+// dnsBaselineReset reports whether a config update cleared a dns check's
+// change-detection baseline while detection stays on: the "Accept current
+// records" action (spec 2026-10-03-04), which must be followed by a run so
+// every region captures the new answer right away.
+func dnsBaselineReset(checkType string, before, after map[string]any) bool {
+	if checkType != string(checkerdef.CheckTypeDNS) {
+		return false
+	}
+
+	if on, _ := after["detect_changes"].(bool); !on {
+		return false
+	}
+
+	return hasBaseline(before) && !hasBaseline(after)
+}
+
+func hasBaseline(config map[string]any) bool {
+	baseline, _ := config["baseline"].(map[string]any)
+
+	return len(baseline) > 0
+}
+
+// makeCheckJobsDue makes every job of a check due now, without touching its
+// phase for the runs after this one.
+func (s *Service) makeCheckJobsDue(ctx context.Context, checkUID string) error {
+	now := time.Now()
+
+	if _, err := s.db.DB().NewUpdate().
+		Model((*models.CheckJob)(nil)).
+		Set("scheduled_at = ?", now).
+		Set("effective_scheduled_at = ?", now).
+		Set("updated_at = ?", now).
+		Where("check_uid = ?", checkUID).
+		Exec(ctx); err != nil {
+		return fmt.Errorf("make check jobs due: %w", err)
+	}
+
+	return nil
 }
 
 // preserveAbsentRedactedFields carries a check's existing export-redacted

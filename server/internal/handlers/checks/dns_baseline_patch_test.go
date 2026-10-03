@@ -2,9 +2,11 @@ package checks_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 )
@@ -12,7 +14,7 @@ import (
 func TestDNSBaselinePatch(t *testing.T) {
 	t.Parallel()
 
-	setup := func(t *testing.T) (*checks.Service, string, string, func() models.JSONMap) {
+	setup := func(t *testing.T) (*checks.Service, string, string, func() models.JSONMap, db.Service) {
 		t.Helper()
 
 		r := require.New(t)
@@ -40,14 +42,14 @@ func TestDNSBaselinePatch(t *testing.T) {
 			return row.Config
 		}
 
-		return svc, org.Slug, created.UID, stored
+		return svc, org.Slug, created.UID, stored, dbSvc
 	}
 
 	t.Run("PATCH without baseline keeps it", func(t *testing.T) {
 		t.Parallel()
 
 		r := require.New(t)
-		svc, orgSlug, uid, stored := setup(t)
+		svc, orgSlug, uid, stored, _ := setup(t)
 
 		patch := map[string]any{
 			"host": "acme.com", "record_type": "NS", "detect_changes": true, "on_change": "warning",
@@ -61,27 +63,41 @@ func TestDNSBaselinePatch(t *testing.T) {
 		r.Equal([]any{"ns1.acme.com"}, baseline["eu-west"])
 	})
 
-	t.Run("PATCH with an empty baseline clears it", func(t *testing.T) {
+	t.Run("PATCH with an empty baseline clears it and runs the check", func(t *testing.T) {
 		t.Parallel()
 
 		r := require.New(t)
-		svc, orgSlug, uid, stored := setup(t)
+		svc, orgSlug, uid, stored, dbSvc := setup(t)
+
+		later := time.Now().Add(time.Hour)
+		_, err := dbSvc.DB().NewUpdate().Model((*models.CheckJob)(nil)).
+			Set("scheduled_at = ?", later).Where("check_uid = ?", uid).Exec(t.Context())
+		r.NoError(err)
 
 		patch := map[string]any{
 			"host": "acme.com", "record_type": "NS", "detect_changes": true, "baseline": map[string]any{},
 		}
-		_, err := svc.UpdateCheck(t.Context(), orgSlug, uid, &checks.UpdateCheckRequest{Config: &patch})
+		_, err = svc.UpdateCheck(t.Context(), orgSlug, uid, &checks.UpdateCheckRequest{Config: &patch})
 		r.NoError(err)
 
 		baseline, _ := stored()["baseline"].(map[string]any)
 		r.Empty(baseline, "accepting the current records resets every region")
+
+		jobs, err := dbSvc.ListCheckJobsByCheckUID(t.Context(), uid)
+		r.NoError(err)
+		r.NotEmpty(jobs)
+
+		for _, job := range jobs {
+			r.NotNil(job.ScheduledAt)
+			r.True(job.ScheduledAt.Before(time.Now().Add(time.Second)), "the reset makes every region run now")
+		}
 	})
 
 	t.Run("turning detection off drops the baseline", func(t *testing.T) {
 		t.Parallel()
 
 		r := require.New(t)
-		svc, orgSlug, uid, stored := setup(t)
+		svc, orgSlug, uid, stored, _ := setup(t)
 
 		patch := map[string]any{"host": "acme.com", "record_type": "NS"}
 		_, err := svc.UpdateCheck(t.Context(), orgSlug, uid, &checks.UpdateCheckRequest{Config: &patch})
@@ -92,7 +108,7 @@ func TestDNSBaselinePatch(t *testing.T) {
 	t.Run("baseline without detection is refused", func(t *testing.T) {
 		t.Parallel()
 
-		svc, orgSlug, uid, _ := setup(t)
+		svc, orgSlug, uid, _, _ := setup(t)
 
 		patch := map[string]any{
 			"host": "acme.com", "record_type": "NS",
