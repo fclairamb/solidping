@@ -309,7 +309,7 @@ type GenerateRequest struct {
 	Env      map[string]string `json:"env,omitempty"`
 	// Secrets are the values the user typed for the check. They are used to
 	// run the script and never reach the model, which only sees their names.
-	Secrets map[string]string    `json:"secrets,omitempty"`
+	Secrets map[string]string   `json:"secrets,omitempty"`
 	Repair  jsconfig.RepairMode `json:"repair,omitempty"`
 }
 

@@ -27,8 +27,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	k8sclient "k8s.io/client-go/kubernetes"
 
-	"github.com/fclairamb/solidping/server/internal/analytics"
 	"github.com/fclairamb/solidping/server/internal/aichecks"
+	"github.com/fclairamb/solidping/server/internal/analytics"
 	"github.com/fclairamb/solidping/server/internal/app/services"
 	"github.com/fclairamb/solidping/server/internal/audit"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
@@ -52,6 +52,7 @@ import (
 	entitlementsapi "github.com/fclairamb/solidping/server/internal/entitlements"
 	agentsadmin "github.com/fclairamb/solidping/server/internal/handlers/agents"
 	"github.com/fclairamb/solidping/server/internal/handlers/agentws"
+	aichecksapi "github.com/fclairamb/solidping/server/internal/handlers/aichecks"
 	"github.com/fclairamb/solidping/server/internal/handlers/attachments"
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
 	"github.com/fclairamb/solidping/server/internal/handlers/availability"
@@ -94,7 +95,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/orgparams"
 	"github.com/fclairamb/solidping/server/internal/handlers/ovhsmscb"
 	"github.com/fclairamb/solidping/server/internal/handlers/publicconfig"
-	aichecksapi "github.com/fclairamb/solidping/server/internal/handlers/aichecks"
 	"github.com/fclairamb/solidping/server/internal/handlers/realtimews"
 	regionshandler "github.com/fclairamb/solidping/server/internal/handlers/regions"
 	"github.com/fclairamb/solidping/server/internal/handlers/reportschedules"
@@ -198,7 +198,7 @@ type Server struct {
 	services  *services.Registry
 	// aiChecks authors and repairs AI-written js checks (spec 2026-10-03-07).
 	aiChecks *aichecks.Service
-	router    *httpx.Router
+	router   *httpx.Router
 	// handler is s.router, optionally wrapped by compressionWrapper (see
 	// SetupRoutes). It is the outermost handler: Server.Handler() and
 	// handlerWithDocsHost's fallthrough both serve this, never s.router
