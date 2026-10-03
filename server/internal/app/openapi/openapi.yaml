@@ -1898,6 +1898,230 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/orgs/{org}/checks/{checkUid}/versions:
+    get:
+      tags: [Checks]
+      summary: List a check's versions
+      description: >-
+        The check's version history, newest first (spec 2026-10-03-06). A
+        version is recorded on every change of the check definition (name,
+        slug, description, type, public config, group, placement, quorum,
+        enabled, period, labels), whoever made it. Secrets are never
+        versioned. Proposed and rejected versions are listed too. The list
+        items carry no snapshot. The last 100 applied versions are kept.
+      operationId: listCheckVersions
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/CheckUidPath"
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of versions to return (default and max 500).
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: Versions, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CheckVersion"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/checks/{checkUid}/versions/{version}:
+    get:
+      tags: [Checks]
+      summary: Get one version of a check
+      description: >-
+        One version with its snapshot. The snapshot is redacted like an
+        export: secret and export-redacted config keys are never present.
+      operationId: getCheckVersion
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/CheckUidPath"
+        - name: version
+          in: path
+          required: true
+          description: The version number (starts at 1).
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: The version and its snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckVersion"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/checks/{checkUid}/versions/{version}/diff:
+    get:
+      tags: [Checks]
+      summary: Diff a version against another one
+      description: >-
+        The fields that differ between this version and `against` (default:
+        the applied version before it). Config and labels diff per key
+        (`config.url`, `labels.env`). `against` is null for the first version,
+        which is diffed against nothing.
+      operationId: diffCheckVersion
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/CheckUidPath"
+        - name: version
+          in: path
+          required: true
+          description: The version number (starts at 1).
+          schema:
+            type: integer
+            minimum: 1
+        - name: against
+          in: query
+          required: false
+          description: The version to compare with. Defaults to the previous applied version.
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: The field diff
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckVersionDiff"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/checks/{checkUid}/versions/{version}/restore:
+    post:
+      tags: [Checks]
+      summary: Restore a version of a check
+      description: >-
+        Applies an applied version's definition again, through the same path as a PATCH (validation, job reconciliation, labels). This records a new version with origin `user` (or `api`) and reason `restored vN`. Secrets are not versioned: the check keeps its current ones. 409 when the version is a proposal or was rejected.
+      operationId: restoreCheckVersion
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/CheckUidPath"
+        - name: version
+          in: path
+          required: true
+          description: The version number (starts at 1).
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Check"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/v1/orgs/{org}/checks/{checkUid}/versions/{version}/approve:
+    post:
+      tags: [Checks]
+      summary: Approve a proposed version
+      description: >-
+        Applies a proposed version. The proposal becomes the applied version and the caller is recorded as the decider. 409 when the version is not a pending proposal, or when it was built on an applied version that is no longer the latest (`baseVersion`).
+      operationId: approveCheckVersion
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/CheckUidPath"
+        - name: version
+          in: path
+          required: true
+          description: The version number (starts at 1).
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Check"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/v1/orgs/{org}/checks/{checkUid}/versions/{version}/reject:
+    post:
+      tags: [Checks]
+      summary: Reject a proposed version
+      description: >-
+        Marks a proposed version rejected. The check is not changed. 409 when the version is not a pending proposal.
+      operationId: rejectCheckVersion
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/CheckUidPath"
+        - name: version
+          in: path
+          required: true
+          description: The version number (starts at 1).
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckVersion"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
   /api/v1/orgs/{org}/checks/{checkUid}/screenshots:
     get:
       tags: [Checks]
@@ -11552,6 +11776,105 @@ components:
         code: REGION_FORMAT
         message: 'region "Paris!" must be a slug or "@private-location"'
 
+    CheckVersion:
+      type: object
+      description: One version of a check definition (spec 2026-10-03-06).
+      required: [version, status, origin, createdAt]
+      properties:
+        version:
+          type: integer
+          description: Per-check version number, starting at 1.
+        status:
+          type: string
+          enum: [applied, proposed, rejected]
+        origin:
+          type: string
+          enum: [user, api, apply, mcp, system, ai_generate, ai_repair]
+          description: >-
+            Where the change came from: user (dashboard session), api (API
+            token), apply (config-as-code apply or import), mcp, system (no
+            caller), ai_generate, ai_repair.
+        actorUserUid:
+          type: string
+          description: The user who made the change. Absent for system changes.
+        actorName:
+          type: string
+          description: The actor's name, or email when it has no name.
+        reason:
+          type: string
+          description: Optional one-line note, e.g. `restored v3`.
+        baseVersion:
+          type: integer
+          description: For a proposal, the applied version it was built on.
+        decidedByUserUid:
+          type: string
+          description: Who approved or rejected a proposal.
+        decidedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        snapshot:
+          $ref: "#/components/schemas/CheckVersionSnapshot"
+    CheckVersionSnapshot:
+      type: object
+      description: >-
+        The versioned definition of a check. Only returned when reading a
+        single version. Never contains secrets.
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: string
+        type:
+          type: string
+        config:
+          type: object
+          additionalProperties: true
+        checkGroupUid:
+          type: string
+        regions:
+          type: array
+          items:
+            type: string
+          description: Pinned regions. Absent for an automatically placed check.
+        placement:
+          type: string
+          enum: [pinned, auto]
+        regionCount:
+          type: integer
+        regionPool:
+          type: array
+          items:
+            type: string
+        failQuorum:
+          type: string
+        enabled:
+          type: boolean
+        period:
+          type: string
+          example: "00:01:00"
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+    CheckVersionDiff:
+      type: object
+      required: [version, against, changes]
+      properties:
+        version:
+          type: integer
+        against:
+          type: integer
+          nullable: true
+          description: The version compared with; null for the first version.
+        changes:
+          type: array
+          items:
+            $ref: "#/components/schemas/CheckFieldChange"
     CheckFieldChange:
       type: object
       required: [field, from, to]

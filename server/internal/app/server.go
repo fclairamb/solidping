@@ -1206,6 +1206,15 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// ping URL immediately (400 for non-heartbeat checks).
 	orgChecks.POST("/:checkUid/rotate-token", checksHandler.RotateHeartbeatToken)
 
+	// Check version history (spec 2026-10-03-06): list, read, diff, restore,
+	// and the decision on proposed versions.
+	orgChecks.GET("/:checkUid/versions", checksHandler.ListCheckVersions)
+	orgChecks.GET("/:checkUid/versions/:version", checksHandler.GetCheckVersion)
+	orgChecks.GET("/:checkUid/versions/:version/diff", checksHandler.DiffCheckVersion)
+	orgChecks.POST("/:checkUid/versions/:version/restore", checksHandler.RestoreCheckVersion)
+	orgChecks.POST("/:checkUid/versions/:version/approve", checksHandler.ApproveCheckVersion)
+	orgChecks.POST("/:checkUid/versions/:version/reject", checksHandler.RejectCheckVersion)
+
 	// Network discovery routes. Registered through orgGroup (rather than a
 	// bare api.NewGroup, as before spec 2026-09-16-09) so the viewer-role
 	// write floor (RequireOrgWrite) applies structurally here too, same as

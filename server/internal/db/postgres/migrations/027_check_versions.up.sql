@@ -21,9 +21,9 @@ create table if not exists check_versions (
   base_version         integer,
   origin               text not null default 'system'
                          check (origin in ('user', 'api', 'apply', 'mcp', 'system', 'ai_generate', 'ai_repair')),
-  actor_user_uid       uuid references users(uid) on delete set null,
+  actor_user_uid       text,
   reason               text,
-  decided_by_user_uid  uuid references users(uid) on delete set null,
+  decided_by_user_uid  text,
   decided_at           timestamptz,
   created_at           timestamptz not null default now(),
   updated_at           timestamptz not null default now()
@@ -83,7 +83,7 @@ comment on column check_versions.origin is 'Where the change came from: user (da
 
 --bun:split
 
-comment on column check_versions.actor_user_uid is 'User who made the change. NULL for system changes or when the user was deleted.';
+comment on column check_versions.actor_user_uid is 'User who made the change, NULL for system changes. Deliberately not a foreign key: like checks.created_by, it is a historical attribution that outlives the account.';
 
 --bun:split
 

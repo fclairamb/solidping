@@ -16,9 +16,9 @@ create table if not exists check_versions (
   base_version         integer, -- Applied version a proposal was built on, NULL otherwise
   origin               text not null default 'system'
                          check (origin in ('user', 'api', 'apply', 'mcp', 'system', 'ai_generate', 'ai_repair')), -- Where the change came from
-  actor_user_uid       text references users(uid) on delete set null, -- User who made the change, NULL for system
+  actor_user_uid       text, -- User who made the change, NULL for system
   reason               text, -- Optional one-line note
-  decided_by_user_uid  text references users(uid) on delete set null, -- User who approved or rejected a proposal
+  decided_by_user_uid  text, -- User who approved or rejected a proposal
   decided_at           text, -- When a proposal was approved or rejected
   created_at           text not null default (datetime('now')),
   updated_at           text not null default (datetime('now'))

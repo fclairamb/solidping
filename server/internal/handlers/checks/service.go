@@ -1526,6 +1526,9 @@ type CreateCheckRequest struct {
 //
 //nolint:cyclop,funlen,gocritic,gocognit // Complex due to validation and field handling
 func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateCheckRequest) (CheckResponse, error) {
+	// Version 1 of the check's history names the caller (spec 2026-10-03-06).
+	ctx = withCallerChangeSource(ctx)
+
 	// Get organization by slug
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
 	if err != nil {
@@ -2023,6 +2026,10 @@ type UpsertCheckRequest struct {
 func (s *Service) UpdateCheck(
 	ctx context.Context, orgSlug, identifier string, req *UpdateCheckRequest,
 ) (CheckResponse, error) {
+	// Every write of this PATCH (row, labels) folds into one version of the
+	// check's history, attributed to the caller (spec 2026-10-03-06).
+	ctx = withCallerChangeSource(ctx)
+
 	// `internal` is not writable, on update no more than on create (spec
 	// 2026-08-27-01): flipping it on would un-meter an existing check, and
 	// flipping it off would re-meter a plumbing check the server owns.
@@ -3678,6 +3685,12 @@ func (s *Service) emitEvent(
 		})
 	event.CheckUID = &check.UID
 
+	// A created check is version 1 of its history (spec 2026-10-03-06);
+	// check.updated is emitted with its version by the DB layer.
+	if eventType == models.EventTypeCheckCreated {
+		event.Payload["version"] = 1
+	}
+
 	if err := s.db.CreateEvent(ctx, event); err != nil {
 		return fmt.Errorf("failed to create event: %w", err)
 	}
@@ -4185,6 +4198,9 @@ func redactSecretConfig(check *models.Check, privateKeys []string) (map[string]a
 func (s *Service) ImportChecks(
 	ctx context.Context, orgSlug string, doc *ExportDocument, dryRun bool,
 ) (*ImportResult, error) {
+	// Config-as-code: versions written by an import say so (spec 2026-10-03-06).
+	ctx = WithChangeOrigin(ctx, models.CheckVersionOriginApply)
+
 	// A plain import stamps no managed label, so the label is ordinary user
 	// data here and a document that drops it really would drop it.
 	return s.importChecks(ctx, orgSlug, doc, dryRun, diffOptions{})
@@ -4842,6 +4858,8 @@ type CloneCheckRequest struct {
 func (s *Service) CloneCheck(
 	ctx context.Context, orgSlug, sourceIdentifier string, req *CloneCheckRequest,
 ) (CheckResponse, error) {
+	ctx = withCallerChangeSource(ctx)
+
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
 	if err != nil {
 		return CheckResponse{}, ErrOrganizationNotFound

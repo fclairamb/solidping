@@ -221,8 +221,21 @@ func RecordCheckVersion(ctx context.Context, idb bun.IDB, checkUID string) (*mod
 
 	source := dbctx.ChangeSourceFromContext(ctx)
 
-	if amended, amendErr := amendRecordedVersion(ctx, idb, source, row); amendErr != nil || amended {
-		return nil, amendErr
+	amended, wasProposal, err := amendRecordedVersion(ctx, idb, source, row)
+	if err != nil {
+		return nil, err
+	}
+
+	if amended {
+		// An approved proposal becomes live here: that is the update.
+		if wasProposal {
+			version, _ := source.RecordedVersion(checkUID)
+			if err := insertCheckUpdatedEvent(ctx, idb, check, version); err != nil {
+				return nil, err
+			}
+		}
+
+		return nil, nil //nolint:nilnil // amended in place, no new row
 	}
 
 	latest, err := LatestAppliedCheckVersion(ctx, idb, checkUID)
@@ -261,35 +274,45 @@ func RecordCheckVersion(ctx context.Context, idb bun.IDB, checkUID string) (*mod
 
 // amendRecordedVersion rewrites the version this change already recorded for
 // the check (a second write in the same request, or the proposal being
-// approved). Reports false when there is none, or when that row is gone (its
-// transaction rolled back), so the caller records a new one.
+// approved, reported by wasProposal). Reports amended=false when there is
+// none, or when that row is gone (its transaction rolled back), so the caller
+// records a new one.
 func amendRecordedVersion(
 	ctx context.Context, idb bun.IDB, source *dbctx.ChangeSource, row *models.CheckVersion,
-) (bool, error) {
+) (amended, wasProposal bool, err error) {
 	version, ok := source.RecordedVersion(row.CheckUID)
 	if !ok {
-		return false, nil
+		return false, false, nil
 	}
 
-	res, err := idb.NewUpdate().
-		Model((*models.CheckVersion)(nil)).
-		Set("snapshot = ?", row.Snapshot).
-		Set("snapshot_hash = ?", row.SnapshotHash).
-		Set("status = ?", models.CheckVersionStatusApplied).
-		Set("updated_at = ?", time.Now()).
-		Where("check_uid = ?", row.CheckUID).
-		Where("version = ?", version).
-		Exec(ctx)
-	if err != nil {
-		return false, fmt.Errorf("amending check version: %w", err)
+	for _, fromStatus := range []models.CheckVersionStatus{
+		models.CheckVersionStatusProposed, models.CheckVersionStatusApplied,
+	} {
+		res, updateErr := idb.NewUpdate().
+			Model((*models.CheckVersion)(nil)).
+			Set("snapshot = ?", row.Snapshot).
+			Set("snapshot_hash = ?", row.SnapshotHash).
+			Set("status = ?", models.CheckVersionStatusApplied).
+			Set("updated_at = ?", time.Now()).
+			Where("check_uid = ?", row.CheckUID).
+			Where("version = ?", version).
+			Where("status = ?", fromStatus).
+			Exec(ctx)
+		if updateErr != nil {
+			return false, false, fmt.Errorf("amending check version: %w", updateErr)
+		}
+
+		affected, affErr := res.RowsAffected()
+		if affErr != nil {
+			return false, false, fmt.Errorf("amending check version: %w", affErr)
+		}
+
+		if affected > 0 {
+			return true, fromStatus == models.CheckVersionStatusProposed, nil
+		}
 	}
 
-	affected, err := res.RowsAffected()
-	if err != nil {
-		return false, fmt.Errorf("amending check version: %w", err)
-	}
-
-	return affected > 0, nil
+	return false, false, nil
 }
 
 func applyChangeSource(row *models.CheckVersion, source *dbctx.ChangeSource) {
