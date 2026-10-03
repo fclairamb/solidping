@@ -21,6 +21,7 @@
     "check.updated": "Prüfung aktualisiert",
     "check.deleted": "Prüfung gelöscht",
     "check.placement_changed": "Prüfung in eine andere Region verschoben",
+    "check.baseline_captured": "DNS-Referenz gespeichert",
     "incident.created": "Vorfall erstellt",
     "incident.opened": "Vorfall eröffnet",
     "incident.resolved": "Vorfall gelöst",

@@ -527,6 +527,24 @@
     "maxRxPowerMw": "Max Rx power (mW)",
     "integrationsLink": "Integrations"
   },
+  "dnsChanges": {
+    "detect": "Detect changes",
+    "detectHelp": "Capture the current answer as a baseline on the first successful run of each region, then report any added or removed record.",
+    "onChange": "When records change",
+    "onChangeDown": "Mark the check down",
+    "onChangeWarning": "Warn only",
+    "rotatingHint": "A and AAAA records behind load balancers and CDNs rotate, so a warning is preselected.",
+    "baseline": "Stored baseline",
+    "baselineEmpty": "No baseline yet. Each region captures one on its next successful run.",
+    "resetBaseline": "Reset baseline",
+    "title": "DNS records changed",
+    "description": "The latest answer differs from the stored baseline.",
+    "added": "Added",
+    "removed": "Removed",
+    "accept": "Accept current records",
+    "accepted": "Baseline reset. Each region captures the current records on its next run.",
+    "acceptFailed": "Could not reset the baseline"
+  },
   "dnsbl": {
     "target": "Target IP or hostname",
     "targetHelp": "IPv4 address or hostname to check against the blocklists.",

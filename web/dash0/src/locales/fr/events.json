@@ -21,6 +21,7 @@
     "check.updated": "Contrôle mis à jour",
     "check.deleted": "Contrôle supprimé",
     "check.placement_changed": "Contrôle déplacé vers une autre région",
+    "check.baseline_captured": "Référence DNS enregistrée",
     "incident.created": "Incident créé",
     "incident.opened": "Incident ouvert",
     "incident.resolved": "Incident résolu",

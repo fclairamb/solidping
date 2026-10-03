@@ -483,6 +483,24 @@
     "prometheus": "Prometheus",
     "prometheusDescription": "Alerta según umbrales de métricas de Prometheus"
   },
+  "dnsChanges": {
+    "detect": "Detectar cambios",
+    "detectHelp": "Guarda la respuesta actual como referencia en la primera ejecución correcta de cada región y luego informa de cualquier registro añadido o eliminado.",
+    "onChange": "Cuando cambian los registros",
+    "onChangeDown": "Marcar el check como caído",
+    "onChangeWarning": "Solo avisar",
+    "rotatingHint": "Los registros A y AAAA detrás de balanceadores de carga y CDN rotan, por eso se preselecciona un aviso.",
+    "baseline": "Referencia guardada",
+    "baselineEmpty": "Todavía no hay referencia. Cada región guarda una en su próxima ejecución correcta.",
+    "resetBaseline": "Restablecer la referencia",
+    "title": "Registros DNS modificados",
+    "description": "La última respuesta difiere de la referencia guardada.",
+    "added": "Añadidos",
+    "removed": "Eliminados",
+    "accept": "Aceptar los registros actuales",
+    "accepted": "Referencia restablecida. Cada región guarda los registros actuales en su próxima ejecución.",
+    "acceptFailed": "No se pudo restablecer la referencia"
+  },
   "dnsbl": {
     "target": "IP o nombre de host objetivo",
     "targetHelp": "Dirección IPv4 o nombre de host a comprobar contra las listas de bloqueo.",

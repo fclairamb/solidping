@@ -21,6 +21,7 @@
     "check.updated": "Comprobación actualizada",
     "check.deleted": "Comprobación eliminada",
     "check.placement_changed": "Comprobación movida a otra región",
+    "check.baseline_captured": "Referencia DNS guardada",
     "incident.created": "Incidente creado",
     "incident.opened": "Incidente abierto",
     "incident.resolved": "Incidente resuelto",

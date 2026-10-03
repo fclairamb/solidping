@@ -483,6 +483,24 @@
     "prometheus": "Prometheus",
     "prometheusDescription": "Bei Prometheus-Metrikschwellen alarmieren"
   },
+  "dnsChanges": {
+    "detect": "Änderungen erkennen",
+    "detectHelp": "Speichert die aktuelle Antwort beim ersten erfolgreichen Lauf jeder Region als Referenz und meldet danach jeden hinzugefügten oder entfernten Eintrag.",
+    "onChange": "Wenn sich Einträge ändern",
+    "onChangeDown": "Check als ausgefallen markieren",
+    "onChangeWarning": "Nur warnen",
+    "rotatingHint": "A- und AAAA-Einträge hinter Load Balancern und CDNs rotieren, daher ist eine Warnung vorausgewählt.",
+    "baseline": "Gespeicherte Referenz",
+    "baselineEmpty": "Noch keine Referenz. Jede Region speichert eine beim nächsten erfolgreichen Lauf.",
+    "resetBaseline": "Referenz zurücksetzen",
+    "title": "DNS-Einträge geändert",
+    "description": "Die letzte Antwort weicht von der gespeicherten Referenz ab.",
+    "added": "Hinzugefügt",
+    "removed": "Entfernt",
+    "accept": "Aktuelle Einträge übernehmen",
+    "accepted": "Referenz zurückgesetzt. Jede Region speichert die aktuellen Einträge beim nächsten Lauf.",
+    "acceptFailed": "Referenz konnte nicht zurückgesetzt werden"
+  },
   "dnsbl": {
     "target": "Ziel-IP oder Hostname",
     "targetHelp": "IPv4-Adresse oder Hostname, der gegen die Blocklisten geprüft wird.",

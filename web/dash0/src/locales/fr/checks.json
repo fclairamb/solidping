@@ -527,6 +527,24 @@
     "maxRxPowerMw": "Puissance Rx max (mW)",
     "integrationsLink": "Intégrations"
   },
+  "dnsChanges": {
+    "detect": "Détecter les changements",
+    "detectHelp": "Enregistre la réponse actuelle comme référence au premier succès de chaque région, puis signale tout enregistrement ajouté ou supprimé.",
+    "onChange": "Quand les enregistrements changent",
+    "onChangeDown": "Marquer le check en panne",
+    "onChangeWarning": "Avertir seulement",
+    "rotatingHint": "Les enregistrements A et AAAA derrière un répartiteur de charge ou un CDN changent régulièrement, d'où l'avertissement présélectionné.",
+    "baseline": "Référence enregistrée",
+    "baselineEmpty": "Pas encore de référence. Chaque région en enregistre une à son prochain succès.",
+    "resetBaseline": "Réinitialiser la référence",
+    "title": "Enregistrements DNS modifiés",
+    "description": "La dernière réponse diffère de la référence enregistrée.",
+    "added": "Ajoutés",
+    "removed": "Supprimés",
+    "accept": "Accepter les enregistrements actuels",
+    "accepted": "Référence réinitialisée. Chaque région enregistre les valeurs actuelles à sa prochaine exécution.",
+    "acceptFailed": "Impossible de réinitialiser la référence"
+  },
   "dnsbl": {
     "target": "IP ou nom d'hôte cible",
     "targetHelp": "Adresse IPv4 ou nom d'hôte à vérifier auprès des listes de blocage.",
