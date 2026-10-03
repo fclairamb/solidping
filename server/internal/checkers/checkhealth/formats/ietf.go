@@ -2,31 +2,38 @@ package formats
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 )
 
-var ietfStatuses = map[string]ComponentStatus{
-	"pass": StatusOK,
-	"ok":   StatusOK,
-	"up":   StatusOK,
-	"warn": StatusWarning,
-	"fail": StatusFailed,
-	"down": StatusFailed,
+func ietfStatus(raw string) ComponentStatus {
+	switch normalize(raw) {
+	case "pass", wordOK, wordUp:
+		return StatusOK
+	case wordWarn:
+		return StatusWarning
+	case "fail", wordDown:
+		return StatusFailed
+	default:
+		return StatusUnknown
+	}
 }
 
 // ietfFormat is draft-inadarei-api-health-check: `Content-Type:
 // application/health+json`, or a `checks` object whose values are arrays.
-var ietfFormat = Format{
-	Name: NameIETF,
-	Detect: func(contentType string, body map[string]any) bool {
-		if strings.Contains(strings.ToLower(contentType), "application/health+json") {
-			return true
-		}
+func ietfFormat() Format {
+	return Format{
+		Name: NameIETF,
+		Detect: func(contentType string, body map[string]any) bool {
+			if strings.Contains(strings.ToLower(contentType), "application/health+json") {
+				return true
+			}
 
-		return ietfChecks(body)
-	},
-	Parse: parseIETF,
+			return ietfChecks(body)
+		},
+		Parse: parseIETF,
+	}
 }
 
 // ietfChecks reports whether body has a non-empty `checks` object of arrays.
@@ -55,7 +62,7 @@ func parseIETF(body map[string]any) (Report, error) {
 
 	report := Report{
 		Format:  NameIETF,
-		Overall: mapStatus(asString(body["status"]), ietfStatuses),
+		Overall: ietfStatus(asString(body["status"])),
 	}
 
 	var latest *time.Time
@@ -73,7 +80,7 @@ func parseIETF(body map[string]any) (Report, error) {
 			if len(entries) > 1 {
 				suffix := asString(entry["componentId"])
 				if suffix == "" {
-					suffix = fmt.Sprintf("%d", index)
+					suffix = strconv.Itoa(index)
 				}
 
 				name = key + "#" + suffix
@@ -84,7 +91,7 @@ func parseIETF(body map[string]any) (Report, error) {
 				Label:   key,
 				Message: asString(entry["output"]),
 				Summary: ietfSummary(entry),
-				Status:  mapStatus(asString(entry["status"]), ietfStatuses),
+				Status:  ietfStatus(asString(entry["status"])),
 				Meta:    primitiveMeta(entry),
 			})
 

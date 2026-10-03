@@ -30,7 +30,7 @@ func TestHealthIsRegistered(t *testing.T) {
 	require.Equal(t, time.Minute, meta.DefaultPeriod)
 	require.True(t, meta.SupportsTunnel)
 	require.True(t, meta.SupportsIPVersion)
-	require.Contains(t, checkerdef.ListCheckTypes(), checkerdef.CheckTypeHealth)
+	require.Contains(t, checkerdef.ListCheckTypes(nil), checkerdef.CheckTypeHealth)
 
 	require.ErrorContains(t,
 		configregistry.ValidateSpec(checkerdef.CheckTypeHealth, &checkerdef.CheckSpec{

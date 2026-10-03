@@ -1,20 +1,28 @@
 package formats
 
-var microprofileStatuses = map[string]ComponentStatus{
-	"up":   StatusOK,
-	"down": StatusFailed,
+func microprofileStatus(raw string) ComponentStatus {
+	switch normalize(raw) {
+	case wordUp:
+		return StatusOK
+	case wordDown:
+		return StatusFailed
+	default:
+		return StatusUnknown
+	}
 }
 
 // microprofileFormat is MicroProfile Health (Quarkus, Open Liberty): a
 // `checks` array of {name, status}.
-var microprofileFormat = Format{
-	Name: NameMicroProfile,
-	Detect: func(_ string, body map[string]any) bool {
-		_, ok := body["checks"].([]any)
+func microprofileFormat() Format {
+	return Format{
+		Name: NameMicroProfile,
+		Detect: func(_ string, body map[string]any) bool {
+			_, ok := body["checks"].([]any)
 
-		return ok
-	},
-	Parse: parseMicroProfile,
+			return ok
+		},
+		Parse: parseMicroProfile,
+	}
 }
 
 func parseMicroProfile(body map[string]any) (Report, error) {
@@ -25,7 +33,7 @@ func parseMicroProfile(body map[string]any) (Report, error) {
 
 	report := Report{
 		Format:  NameMicroProfile,
-		Overall: mapStatus(asString(body["status"]), microprofileStatuses),
+		Overall: microprofileStatus(asString(body["status"])),
 	}
 
 	for _, item := range checks {
@@ -40,7 +48,7 @@ func parseMicroProfile(body map[string]any) (Report, error) {
 			Name:    asString(entry["name"]),
 			Label:   asString(entry["name"]),
 			Message: asString(data["error"]),
-			Status:  mapStatus(asString(entry["status"]), microprofileStatuses),
+			Status:  microprofileStatus(asString(entry["status"])),
 			Meta:    primitiveMeta(data),
 		})
 	}

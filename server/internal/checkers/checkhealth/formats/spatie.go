@@ -1,23 +1,32 @@
 package formats
 
-var spatieStatuses = map[string]ComponentStatus{
-	"ok":      StatusOK,
-	"warning": StatusWarning,
-	"failed":  StatusFailed,
-	"crashed": StatusFailed,
-	"skipped": StatusSkipped,
+func spatieStatus(raw string) ComponentStatus {
+	switch normalize(raw) {
+	case wordOK:
+		return StatusOK
+	case "warning":
+		return StatusWarning
+	case "failed", "crashed":
+		return StatusFailed
+	case "skipped":
+		return StatusSkipped
+	default:
+		return StatusUnknown
+	}
 }
 
 // spatieFormat is the Oh Dear health format produced by spatie/laravel-health
 // and ohdearapp/health-check-results: a `checkResults` array.
-var spatieFormat = Format{
-	Name: NameSpatie,
-	Detect: func(_ string, body map[string]any) bool {
-		_, ok := body["checkResults"].([]any)
+func spatieFormat() Format {
+	return Format{
+		Name: NameSpatie,
+		Detect: func(_ string, body map[string]any) bool {
+			_, ok := body["checkResults"].([]any)
 
-		return ok
-	},
-	Parse: parseSpatie,
+			return ok
+		},
+		Parse: parseSpatie,
+	}
 }
 
 func parseSpatie(body map[string]any) (Report, error) {
@@ -46,7 +55,7 @@ func parseSpatie(body map[string]any) (Report, error) {
 			Label:   label,
 			Message: asString(entry["notificationMessage"]),
 			Summary: asString(entry["shortSummary"]),
-			Status:  mapStatus(asString(entry["status"]), spatieStatuses),
+			Status:  spatieStatus(asString(entry["status"])),
 			Meta:    primitiveMeta(asMap(entry["meta"])),
 		})
 	}

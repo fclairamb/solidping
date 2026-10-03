@@ -49,7 +49,9 @@ func TestDetectEachFixtureMatchesOnlyItsFormat(t *testing.T) {
 	for _, fixture := range names {
 		body := load(t, fixture)
 
-		for _, format := range formats.All {
+		all := formats.All()
+		for index := range all {
+			format := &all[index]
 			// simple is the fallback: any top-level status matches it, which is
 			// why it comes last in the auto order.
 			if format.Name == "simple" && fixture != "simple" {

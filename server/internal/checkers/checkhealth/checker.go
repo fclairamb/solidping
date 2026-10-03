@@ -24,7 +24,7 @@ const (
 	// maxMetaMetrics caps the numeric meta values exported as metrics.
 	maxMetaMetrics = 20
 
-	errNotRecognised = "health response not recognised"
+	errNotRecognised = "health response not recognised" //nolint:misspell // spec wording
 
 	outputKeyFormat              = "format"
 	outputKeyFinishedAt          = "finished_at"
@@ -123,11 +123,11 @@ func judge(cfg *HealthConfig, resp *checkhttp.Response, result *checkerdef.Resul
 		result.Output[outputKeyFinishedAt] = report.FinishedAt.Format(time.RFC3339)
 	}
 
-	failed, warning, downNames, downMessages := classify(cfg, report)
+	verdict := classify(cfg, report)
 	writeComponents(cfg, report, result)
-	result.Output[outputKeyFailed] = failed
-	result.Output[outputKeyWarning] = warning
-	result.Metrics = buildMetrics(cfg, report, len(failed), len(warning))
+	result.Output[outputKeyFailed] = verdict.failed
+	result.Output[outputKeyWarning] = verdict.warning
+	result.Metrics = buildMetrics(cfg, report, len(verdict.failed), len(verdict.warning))
 
 	// Rule 3: stale results.
 	if maxAge := cfg.EffectiveMaxAge(); maxAge > 0 && report.FinishedAt != nil {
@@ -141,10 +141,10 @@ func judge(cfg *HealthConfig, resp *checkhttp.Response, result *checkerdef.Resul
 	}
 
 	switch {
-	case len(downNames) > 0: // rule 4
+	case len(verdict.downNames) > 0: // rule 4
 		result.Status = checkerdef.StatusDown
-		result.Output[checkerdef.OutputKeyError] = strings.Join(downMessages, "; ")
-	case len(warning) > 0 || len(failed) > 0: // rule 5 (failed here are all downgraded)
+		result.Output[checkerdef.OutputKeyError] = strings.Join(verdict.downMessages, "; ")
+	case len(verdict.warning) > 0 || len(verdict.failed) > 0: // rule 5 (failed here are all downgraded)
 		result.Status = checkerdef.StatusWarning
 	case len(report.Components) == 0: // rule 6
 		overallVerdict(report, result)
@@ -161,7 +161,7 @@ func overallVerdict(report formats.Report, result *checkerdef.Result) {
 		result.Output[checkerdef.OutputKeyError] = fmt.Sprintf("health endpoint reports status %q", report.Overall)
 	case formats.StatusWarning:
 		result.Status = checkerdef.StatusWarning
-	default:
+	case formats.StatusOK, formats.StatusSkipped, formats.StatusUnknown:
 		result.Status = checkerdef.StatusUp
 	}
 }
@@ -171,44 +171,54 @@ func notRecognised(result *checkerdef.Result, resp *checkhttp.Response) {
 	result.Output[checkerdef.OutputKeyError] = fmt.Sprintf("%s (HTTP %d)", errNotRecognised, resp.StatusCode)
 }
 
-// classify lists the non-ignored failed and warning components, and the ones
-// among the failed that bring the check down, with their `Name: message` text.
-func classify(cfg *HealthConfig, report formats.Report) (failed, warning, downNames, downMessages []string) {
-	failed, warning = []string{}, []string{}
+// verdict is the classification of a report's non-ignored components.
+type verdict struct {
+	// failed and warning list the names of the failed and warning components.
+	failed, warning []string
+	// downNames and downMessages are the failed components that bring the
+	// check down, with their `Name: message` text.
+	downNames, downMessages []string
+}
 
-	for _, component := range report.Components {
+// classify sorts the non-ignored components of a report.
+func classify(cfg *HealthConfig, report formats.Report) verdict {
+	out := verdict{failed: []string{}, warning: []string{}}
+
+	for i := range report.Components {
+		component := &report.Components[i]
 		if cfg.IsIgnored(component.Name) {
 			continue
 		}
 
 		switch component.Status {
 		case formats.StatusFailed:
-			failed = append(failed, component.Name)
+			out.failed = append(out.failed, component.Name)
 
 			if cfg.OnFailed(component.Name) == config.OnFailedDown {
-				downNames = append(downNames, component.Name)
+				out.downNames = append(out.downNames, component.Name)
 
 				text := component.Name
 				if component.Message != "" {
 					text += ": " + component.Message
 				}
 
-				downMessages = append(downMessages, text)
+				out.downMessages = append(out.downMessages, text)
 			}
 		case formats.StatusWarning:
-			warning = append(warning, component.Name)
+			out.warning = append(out.warning, component.Name)
 		case formats.StatusOK, formats.StatusSkipped, formats.StatusUnknown:
 		}
 	}
 
-	return failed, warning, downNames, downMessages
+	return out
 }
 
 // writeComponents stores at most maxOutputComponents components in the output.
 func writeComponents(cfg *HealthConfig, report formats.Report, result *checkerdef.Result) {
 	components := make([]map[string]any, 0, min(len(report.Components), maxOutputComponents))
 
-	for index, component := range report.Components {
+	for index := range report.Components {
+		component := &report.Components[index]
 		if index >= maxOutputComponents {
 			result.Output[outputKeyComponentsTruncated] = true
 
@@ -249,7 +259,8 @@ func buildMetrics(cfg *HealthConfig, report formats.Report, failed, warning int)
 
 	added := 0
 
-	for _, component := range report.Components {
+	for i := range report.Components {
+		component := &report.Components[i]
 		if cfg.IsIgnored(component.Name) {
 			continue
 		}

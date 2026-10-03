@@ -26,7 +26,7 @@ const (
 
 // ErrNotRecognised is returned by Parse when the document does not have the
 // shape of the format.
-var ErrNotRecognised = errors.New("health response not recognised")
+var ErrNotRecognised = errors.New("health response not recognised") //nolint:misspell // spec wording
 
 // ComponentStatus is the normalised state of one component.
 type ComponentStatus string
@@ -72,20 +72,23 @@ type Format struct {
 }
 
 // All lists the formats in the order `auto` tries them.
-var All = []Format{
-	spatieFormat,
-	springFormat,
-	ietfFormat,
-	aspnetFormat,
-	microprofileFormat,
-	simpleFormat,
+func All() []Format {
+	return []Format{
+		spatieFormat(),
+		springFormat(),
+		ietfFormat(),
+		aspnetFormat(),
+		microprofileFormat(),
+		simpleFormat(),
+	}
 }
 
 // ByName returns the format with that name.
 func ByName(name string) (Format, bool) {
-	for _, format := range All {
-		if format.Name == name {
-			return format, true
+	all := All()
+	for i := range all {
+		if all[i].Name == name {
+			return all[i], true
 		}
 	}
 
@@ -94,11 +97,12 @@ func ByName(name string) (Format, bool) {
 
 // Names lists every format name accepted by the `format` key, `auto` first.
 func Names() []string {
-	names := make([]string, 0, len(All)+1)
+	all := All()
+	names := make([]string, 0, len(all)+1)
 	names = append(names, NameAuto)
 
-	for _, format := range All {
-		names = append(names, format.Name)
+	for i := range all {
+		names = append(names, all[i].Name)
 	}
 
 	return names
@@ -106,9 +110,10 @@ func Names() []string {
 
 // Detect returns the first format whose detection matches.
 func Detect(contentType string, body map[string]any) (Format, bool) {
-	for _, format := range All {
-		if format.Detect(contentType, body) {
-			return format, true
+	all := All()
+	for i := range all {
+		if all[i].Detect(contentType, body) {
+			return all[i], true
 		}
 	}
 
@@ -192,14 +197,17 @@ func primitiveMeta(object map[string]any) map[string]any {
 	return meta
 }
 
-// mapStatus maps a vendor status word (case-insensitive) through table;
-// anything unlisted is StatusUnknown.
-func mapStatus(raw string, table map[string]ComponentStatus) ComponentStatus {
-	if status, ok := table[strings.ToLower(strings.TrimSpace(raw))]; ok {
-		return status
-	}
+// Vendor status words shared by several formats.
+const (
+	wordUp   = "up"
+	wordDown = "down"
+	wordOK   = "ok"
+	wordWarn = "warn"
+)
 
-	return StatusUnknown
+// normalize lowercases and trims a vendor status word.
+func normalize(raw string) string {
+	return strings.ToLower(strings.TrimSpace(raw))
 }
 
 // parseTime reads a timestamp given as unix seconds, unix milliseconds or an

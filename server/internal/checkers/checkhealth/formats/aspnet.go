@@ -1,19 +1,28 @@
 package formats
 
-var aspnetStatuses = map[string]ComponentStatus{
-	"healthy":   StatusOK,
-	"degraded":  StatusWarning,
-	"unhealthy": StatusFailed,
+func aspnetStatus(raw string) ComponentStatus {
+	switch normalize(raw) {
+	case "healthy":
+		return StatusOK
+	case "degraded":
+		return StatusWarning
+	case "unhealthy":
+		return StatusFailed
+	default:
+		return StatusUnknown
+	}
 }
 
 // aspnetFormat is the ASP.NET Core HealthChecks UI response writer: an
 // `entries` object.
-var aspnetFormat = Format{
-	Name: NameASPNet,
-	Detect: func(_ string, body map[string]any) bool {
-		return asMap(body["entries"]) != nil
-	},
-	Parse: parseASPNet,
+func aspnetFormat() Format {
+	return Format{
+		Name: NameASPNet,
+		Detect: func(_ string, body map[string]any) bool {
+			return asMap(body["entries"]) != nil
+		},
+		Parse: parseASPNet,
+	}
 }
 
 func parseASPNet(body map[string]any) (Report, error) {
@@ -24,7 +33,7 @@ func parseASPNet(body map[string]any) (Report, error) {
 
 	report := Report{
 		Format:  NameASPNet,
-		Overall: mapStatus(asString(body["status"]), aspnetStatuses),
+		Overall: aspnetStatus(asString(body["status"])),
 	}
 
 	for _, key := range sortedKeys(entries) {
@@ -42,7 +51,7 @@ func parseASPNet(body map[string]any) (Report, error) {
 			Name:    key,
 			Label:   key,
 			Message: message,
-			Status:  mapStatus(asString(entry["status"]), aspnetStatuses),
+			Status:  aspnetStatus(asString(entry["status"])),
 			Meta:    primitiveMeta(asMap(entry["data"])),
 		})
 	}

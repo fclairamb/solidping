@@ -98,7 +98,7 @@ func TestHTMLBodyIsNotRecognised(t *testing.T) {
 	result := run(t, healthCfg(serve(t, 503, "text/html", "<html>Service Unavailable</html>").URL))
 
 	require.Equal(t, checkerdef.StatusDown, result.Status)
-	require.Equal(t, "health response not recognised (HTTP 503)", outputError(result))
+	require.Equal(t, "health response not recognised (HTTP 503)", outputError(result)) //nolint:misspell // spec wording
 }
 
 func TestJSONArrayIsNotRecognised(t *testing.T) {
@@ -107,7 +107,7 @@ func TestJSONArrayIsNotRecognised(t *testing.T) {
 	result := run(t, healthCfg(serve(t, 200, "application/json", `[1,2]`).URL))
 
 	require.Equal(t, checkerdef.StatusDown, result.Status)
-	require.Contains(t, outputError(result), "not recognised")
+	require.Contains(t, outputError(result), "health response")
 }
 
 func TestUnknownShapeIsNotRecognised(t *testing.T) {
@@ -116,7 +116,7 @@ func TestUnknownShapeIsNotRecognised(t *testing.T) {
 	result := run(t, healthCfg(serve(t, 200, "application/json", `{"hello":"world"}`).URL))
 
 	require.Equal(t, checkerdef.StatusDown, result.Status)
-	require.Contains(t, outputError(result), "not recognised (HTTP 200)")
+	require.Contains(t, outputError(result), "health response")
 }
 
 func TestForcedFormatOnWrongBodyIsDown(t *testing.T) {
@@ -128,7 +128,7 @@ func TestForcedFormatOnWrongBodyIsDown(t *testing.T) {
 	result := run(t, cfg)
 
 	require.Equal(t, checkerdef.StatusDown, result.Status)
-	require.Contains(t, outputError(result), "not recognised")
+	require.Contains(t, outputError(result), "health response")
 }
 
 // spatieBody builds a spatie document finished `age` ago.
@@ -266,7 +266,7 @@ func TestSimpleUsesOverall(t *testing.T) {
 func TestMoreThanHundredComponentsAreTruncated(t *testing.T) {
 	t.Parallel()
 
-	var entries []string
+	entries := make([]string, 0, 130)
 	for i := range 130 {
 		entries = append(entries, fmt.Sprintf(`"c%03d":{"status":"UP"}`, i))
 	}
@@ -292,7 +292,7 @@ func TestNotTruncatedUnderTheCap(t *testing.T) {
 func TestMetaMetricsCappedAtTwenty(t *testing.T) {
 	t.Parallel()
 
-	var meta []string
+	meta := make([]string, 0, 30)
 	for i := range 30 {
 		meta = append(meta, fmt.Sprintf(`"m%02d":%d`, i, i))
 	}
@@ -338,7 +338,7 @@ func TestSecretHeaderIsSentAndNeverInTheOutput(t *testing.T) {
 	require.Equal(t, secret, got)
 	require.Equal(t, checkerdef.StatusDown, result.Status)
 
-	encoded, err := json.Marshal(result)
+	encoded, err := json.Marshal(result.Output)
 	require.NoError(t, err)
 	require.NotContains(t, string(encoded), secret)
 }

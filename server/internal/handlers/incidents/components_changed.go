@@ -140,7 +140,8 @@ func (s *Service) recordComponentChange(
 		"failureError": failureReasonFromResult(result),
 	}
 
-	if err := s.emitEvent(ctx, check.OrganizationUID, models.EventTypeIncidentComponentsChanged, incident, payload); err != nil {
+	err := s.emitEvent(ctx, check.OrganizationUID, models.EventTypeIncidentComponentsChanged, incident, payload)
+	if err != nil {
 		slog.WarnContext(ctx, "Failed to record a component change on the incident timeline",
 			"checkUID", check.UID, "incidentUid", incident.UID, "error", err)
 	}

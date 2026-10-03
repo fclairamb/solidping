@@ -97,10 +97,12 @@ func TestValidateRefusals(t *testing.T) {
 	}
 
 	cases := map[string]map[string]any{
-		"body_expect":           {"body_expect": "ok"},
-		"bodyExpect":            {"bodyExpect": "ok"},
-		"body_pattern":          {"body_pattern": "ok"},
-		"json_path_assertions":  {"json_path_assertions": map[string]any{"type": "assertion", "path": "$.a", "operator": "exists"}},
+		"body_expect":  {"body_expect": "ok"},
+		"bodyExpect":   {"bodyExpect": "ok"},
+		"body_pattern": {"body_pattern": "ok"},
+		"json_path_assertions": {"json_path_assertions": map[string]any{
+			"type": "assertion", "path": "$.a", "operator": "exists",
+		}},
 		"bodyAssertions":        {"bodyAssertions": map[string]any{"type": "assertion", "operator": "eq", "value": "ok"}},
 		"expected_status":       {"expected_status": 200},
 		"expected_status_codes": {"expected_status_codes": []any{"2XX"}},

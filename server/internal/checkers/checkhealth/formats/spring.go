@@ -1,20 +1,26 @@
 package formats
 
-var springStatuses = map[string]ComponentStatus{
-	"up":             StatusOK,
-	"down":           StatusFailed,
-	"out_of_service": StatusFailed,
-	"unknown":        StatusUnknown,
+func springStatus(raw string) ComponentStatus {
+	switch normalize(raw) {
+	case wordUp:
+		return StatusOK
+	case wordDown, "out_of_service":
+		return StatusFailed
+	default:
+		return StatusUnknown
+	}
 }
 
 // springFormat is Spring Boot Actuator's /actuator/health: a top-level
 // `status` plus a `components` object (or the legacy `details` object).
-var springFormat = Format{
-	Name: NameSpring,
-	Detect: func(_ string, body map[string]any) bool {
-		return springShape(body)
-	},
-	Parse: parseSpring,
+func springFormat() Format {
+	return Format{
+		Name: NameSpring,
+		Detect: func(_ string, body map[string]any) bool {
+			return springShape(body)
+		},
+		Parse: parseSpring,
+	}
 }
 
 func springShape(body map[string]any) bool {
@@ -40,7 +46,7 @@ func parseSpring(body map[string]any) (Report, error) {
 		group = asMap(body["details"])
 	}
 
-	report := Report{Format: NameSpring, Overall: mapStatus(status, springStatuses)}
+	report := Report{Format: NameSpring, Overall: springStatus(status)}
 	flattenSpring(&report, "", group)
 
 	return report, nil
@@ -72,7 +78,7 @@ func flattenSpring(report *Report, prefix string, group map[string]any) {
 			Name:    name,
 			Label:   key,
 			Message: asString(details["error"]),
-			Status:  mapStatus(asString(entry["status"]), springStatuses),
+			Status:  springStatus(asString(entry["status"])),
 			Meta:    primitiveMeta(details),
 		})
 	}

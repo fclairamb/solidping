@@ -1,16 +1,16 @@
 package formats
 
-import "strings"
-
 // simpleFormat is the fallback: a top-level `status` string and nothing else.
-var simpleFormat = Format{
-	Name: NameSimple,
-	Detect: func(_ string, body map[string]any) bool {
-		_, ok := body["status"].(string)
+func simpleFormat() Format {
+	return Format{
+		Name: NameSimple,
+		Detect: func(_ string, body map[string]any) bool {
+			_, ok := body["status"].(string)
 
-		return ok
-	},
-	Parse: parseSimple,
+			return ok
+		},
+		Parse: parseSimple,
+	}
 }
 
 func parseSimple(body map[string]any) (Report, error) {
@@ -25,10 +25,10 @@ func parseSimple(body map[string]any) (Report, error) {
 // simpleStatus maps a free-form status word: the known good words are ok, the
 // known degraded words are warning, anything else is failed.
 func simpleStatus(raw string) ComponentStatus {
-	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case "ok", "up", "pass", "healthy":
+	switch normalize(raw) {
+	case wordOK, wordUp, "pass", "healthy":
 		return StatusOK
-	case "warn", "degraded":
+	case wordWarn, "degraded":
 		return StatusWarning
 	default:
 		return StatusFailed
