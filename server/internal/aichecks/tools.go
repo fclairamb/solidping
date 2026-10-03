@@ -17,6 +17,13 @@ const (
 	ToolBrowserSnapshot = "browser_snapshot"
 )
 
+const (
+	schemaType       = "type"
+	schemaObject     = "object"
+	schemaProperties = "properties"
+	schemaRequired   = "required"
+)
+
 var errScriptRequired = errors.New("script is required")
 
 type urlArgs struct {
@@ -29,9 +36,9 @@ type scriptArgs struct {
 
 func urlSchema(desc string) map[string]any {
 	return map[string]any{
-		"type":       "object",
-		"properties": map[string]any{"url": map[string]any{"type": "string", "description": desc}},
-		"required":   []string{"url"},
+		schemaType:       schemaObject,
+		schemaProperties: map[string]any{"url": map[string]any{schemaType: "string", "description": desc}},
+		schemaRequired:   []string{"url"},
 	}
 }
 
@@ -111,11 +118,11 @@ func (rec *runRecorder) tool() ai.Tool {
 				"and secrets. Returns status, output (with console) and metrics. Secret values are " +
 				"never shown: they appear as [secret:NAME].",
 			Parameters: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"script": map[string]any{"type": "string", "description": "The full js check script."},
+				schemaType: schemaObject,
+				schemaProperties: map[string]any{
+					"script": map[string]any{schemaType: "string", "description": "The full js check script."},
 				},
-				"required": []string{"script"},
+				schemaRequired: []string{"script"},
 			},
 		},
 		Run: func(ctx context.Context, raw json.RawMessage) (string, error) {

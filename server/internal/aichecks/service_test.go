@@ -53,13 +53,34 @@ func (p *fakeProvider) sawSecret() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	raw, _ := json.Marshal(p.requests)
+	for i := range p.requests {
+		req := &p.requests[i]
+		if strings.Contains(req.System, testSecret) {
+			return true
+		}
 
-	return strings.Contains(string(raw), testSecret)
+		for j := range req.Messages {
+			msg := &req.Messages[j]
+			if strings.Contains(msg.Content, testSecret) {
+				return true
+			}
+
+			for k := range msg.ToolCalls {
+				if strings.Contains(string(msg.ToolCalls[k].Arguments), testSecret) {
+					return true
+				}
+			}
+		}
+	}
+
+	return false
 }
 
 func runScript(script string) *ai.Response {
-	args, _ := json.Marshal(map[string]string{"script": script})
+	args, err := json.Marshal(map[string]string{"script": script})
+	if err != nil {
+		panic(err)
+	}
 
 	return &ai.Response{
 		ToolCalls: []ai.ToolCall{{ID: "call", Name: aichecks.ToolRunScript, Arguments: args}},
@@ -142,7 +163,7 @@ func newFixture(t *testing.T, respond func(int, ai.Request) *ai.Response, limits
 		db: dbSvc, checks: checksSvc, provider: provider, org: org, user: user, ctx: userCtx,
 		now: time.Now(),
 	}
-	fx.svc = aichecks.NewService(aichecks.Options{
+	fx.svc = aichecks.NewService(&aichecks.Options{
 		Client:       &ai.Client{Provider: provider, Model: testModel, MaxTurns: 4},
 		DB:           dbSvc,
 		Checks:       checksSvc,
@@ -197,13 +218,15 @@ func newTarget(t *testing.T) *target {
 	return tg
 }
 
-const oldScript = `var r = http.get(env.BASE_URL + "/api", { headers: { "Authorization": "Bearer " + secrets.TOKEN } });
+const oldScript = `var auth = { headers: { "Authorization": "Bearer " + secrets.TOKEN } };
+var r = http.get(env.BASE_URL + "/api", auth);
 if (r.error) { return { status: "down", output: { failure: "assertion", error: r.error } }; }
 var data = JSON.parse(r.body);
 if (!data.projects) { return { status: "down", output: { failure: "drift", step: "parse" } }; }
 return { status: data.projects.length > 0 ? "up" : "down", output: { failure: "assertion" } };`
 
-const fixedScript = `var r = http.get(env.BASE_URL + "/api", { headers: { "Authorization": "Bearer " + secrets.TOKEN } });
+const fixedScript = `var auth = { headers: { "Authorization": "Bearer " + secrets.TOKEN } };
+var r = http.get(env.BASE_URL + "/api", auth);
 if (r.error) { return { status: "down", output: { failure: "assertion", error: r.error } }; }
 var data = JSON.parse(r.body);
 if (!data.items) { return { status: "down", output: { failure: "drift", step: "parse" } }; }
@@ -340,7 +363,8 @@ func TestRepairCandidateAddingAHostIsRejected(t *testing.T) {
 	r.Contains(fx.provider.requests[1].Messages[2].Content, "refused")
 }
 
-const tryCatchScript = `var r = http.get(env.BASE_URL + "/api", { headers: { "Authorization": "Bearer " + secrets.TOKEN } });
+const tryCatchScript = `var auth = { headers: { "Authorization": "Bearer " + secrets.TOKEN } };
+var r = http.get(env.BASE_URL + "/api", auth);
 try {
   var data = JSON.parse(r.body);
   if (!data.items.length) { return { status: "down", output: { failure: "assertion" } }; }
@@ -645,7 +669,7 @@ func TestBudgetExceeded(t *testing.T) {
 func TestDisabledService(t *testing.T) {
 	t.Parallel()
 
-	svc := aichecks.NewService(aichecks.Options{})
+	svc := aichecks.NewService(&aichecks.Options{})
 	require.False(t, svc.Enabled())
 
 	_, err := svc.Contract(t.Context(), "org", "p")

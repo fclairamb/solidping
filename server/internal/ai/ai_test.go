@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -58,7 +57,9 @@ func newClient(t *testing.T, provider, baseURL string) *ai.Client {
 
 // loggedLoop returns a loop whose logs land in buf.
 func loggedLoop(client *ai.Client, buf *bytes.Buffer) *ai.Loop {
-	return &ai.Loop{Client: client, Logger: slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug}))}
+	handler := slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug})
+
+	return &ai.Loop{Client: client, Logger: slog.New(handler)}
 }
 
 func TestNewDisabled(t *testing.T) {
@@ -94,7 +95,9 @@ func TestOpenAITextReply(t *testing.T) {
 
 	msgs, _ := fake.lastReq["messages"].([]any)
 	r.Len(msgs, 2)
-	r.Equal("system", msgs[0].(map[string]any)["role"])
+	first, ok := msgs[0].(map[string]any)
+	r.True(ok)
+	r.Equal("system", first["role"])
 
 	r.Contains(logs.String(), "org_uid=org-1")
 	r.Contains(logs.String(), "check_uid=chk-1")
@@ -134,7 +137,9 @@ func TestOpenAIToolCallsReply(t *testing.T) {
 
 	msgs, _ := fake.lastReq["messages"].([]any)
 	r.Len(msgs, 3)
-	r.Equal("c0", msgs[2].(map[string]any)["tool_call_id"])
+	toolMsg, ok := msgs[2].(map[string]any)
+	r.True(ok)
+	r.Equal("c0", toolMsg["tool_call_id"])
 }
 
 func TestOpenAIErrorMappedAndKeyRedacted(t *testing.T) {
@@ -180,7 +185,9 @@ func TestAnthropicTextReply(t *testing.T) {
 	// The system prompt carries a cache breakpoint.
 	system, _ := fake.lastReq["system"].([]any)
 	r.Len(system, 1)
-	r.Contains(system[0].(map[string]any), "cache_control")
+	block, ok := system[0].(map[string]any)
+	r.True(ok)
+	r.Contains(block, "cache_control")
 	r.NotContains(logs.String(), testKey)
 }
 
@@ -218,7 +225,8 @@ func TestAnthropicToolUseReply(t *testing.T) {
 	// Both tool results fold into one user message.
 	msgs, _ := fake.lastReq["messages"].([]any)
 	r.Len(msgs, 3)
-	last := msgs[2].(map[string]any)
+	last, ok := msgs[2].(map[string]any)
+	r.True(ok)
 	r.Equal("user", last["role"])
 	r.Len(last["content"], 2)
 }
@@ -241,5 +249,5 @@ func TestAnthropicErrorMappedAndKeyRedacted(t *testing.T) {
 	r.ErrorAs(err, &apiErr)
 	r.Equal(400, apiErr.StatusCode)
 	r.NotContains(err.Error(), testKey)
-	r.False(strings.Contains(logs.String(), testKey))
+	r.NotContains(logs.String(), testKey)
 }

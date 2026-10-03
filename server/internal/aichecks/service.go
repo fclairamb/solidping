@@ -78,7 +78,7 @@ type Options struct {
 }
 
 // NewService builds the service. A nil Client is the feature off.
-func NewService(opts Options) *Service {
+func NewService(opts *Options) *Service {
 	svc := &Service{
 		client:       opts.Client,
 		db:           opts.DB,
@@ -110,8 +110,13 @@ func (s *Service) Enabled() bool {
 	return s != nil && s.client != nil
 }
 
-// Runner returns the script runner, shared with the MCP tools.
+// Runner returns the script runner, shared with the MCP tools. Nil on a nil
+// service.
 func (s *Service) Runner() *Runner {
+	if s == nil {
+		return nil
+	}
+
 	return s.runner
 }
 

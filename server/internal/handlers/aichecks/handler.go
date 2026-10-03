@@ -91,7 +91,7 @@ func (h *Handler) Contract(writer http.ResponseWriter, req *http.Request) error 
 	}
 
 	var body ContractRequest
-	if err := decode(req, &body); err != nil {
+	if decodeErr := decode(req, &body); decodeErr != nil {
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid JSON body")
 	}
 
@@ -115,7 +115,7 @@ func (h *Handler) Generate(writer http.ResponseWriter, req *http.Request) error 
 	}
 
 	var body svc.GenerateRequest
-	if err := decode(req, &body); err != nil {
+	if decodeErr := decode(req, &body); decodeErr != nil {
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid JSON body")
 	}
 

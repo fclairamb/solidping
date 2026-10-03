@@ -20,6 +20,8 @@ const (
 	propSecrets = "secrets"
 	propURL     = "url"
 	propTimeout = "timeout"
+	// propDurationMs is the run duration key of a probe result.
+	propDurationMs = "durationMs"
 )
 
 // defaultScriptRunner runs probes behind the config's egress policy.
@@ -48,10 +50,10 @@ func (h *Handler) SetScriptRunner(runner *aichecks.Runner) {
 
 func runResultOutputSchema() map[string]any {
 	return objectSchema(map[string]any{
-		"status":     stringProp("up, down, timeout or error, as a SolidPing worker would report it."),
-		"durationMs": intProp("Run duration in milliseconds."),
-		"output":     objectProp("The script's output object, with console output under `console`."),
-		"metrics":    objectProp("The script's metrics."),
+		"status":       stringProp("up, down, timeout or error, as a SolidPing worker would report it."),
+		propDurationMs: intProp("Run duration in milliseconds."),
+		"output":       objectProp("The script's output object, with console output under `console`."),
+		"metrics":      objectProp("The script's metrics."),
 	}, []string{"status"})
 }
 

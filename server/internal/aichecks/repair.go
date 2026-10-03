@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/ai"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkjs"
 	jsconfig "github.com/fclairamb/solidping/server/internal/checkers/checkjs/config"
 	"github.com/fclairamb/solidping/server/internal/checkversion"
@@ -18,6 +19,14 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
+)
+
+// Repair errors.
+var (
+	// ErrVerificationFailed is a candidate whose verification run did not
+	// return up.
+	ErrVerificationFailed = errors.New("the verification run returned")
+	errAppliedMissing     = errors.New("the applied repair has no version")
 )
 
 // Repair outcomes, recorded on the attempt event.
@@ -106,12 +115,13 @@ func (s *Service) Repair(ctx context.Context, orgUID, checkUID string) (*RepairO
 		return nil, err
 	}
 
-	if ok, reason := ShouldRepair(gates); !ok {
+	if ok, reason := ShouldRepair(&gates); !ok {
 		return &RepairOutcome{Outcome: OutcomeSkipped, Reason: reason}, nil
 	}
 
-	if err := s.budgetLeft(ctx, orgUID); err != nil {
-		return &RepairOutcome{Outcome: OutcomeSkipped, Reason: err.Error()}, nil //nolint:nilerr // a spent budget is a skip
+	if budgetErr := s.budgetLeft(ctx, orgUID); budgetErr != nil {
+		// A spent budget is a skip, not a failure.
+		return &RepairOutcome{Outcome: OutcomeSkipped, Reason: budgetErr.Error()}, nil //nolint:nilerr // see above
 	}
 
 	ctx = ai.WithCallMeta(ctx, ai.CallMeta{OrgUID: orgUID, CheckUID: checkUID, Purpose: ai.PurposeRepair})
@@ -128,12 +138,12 @@ func (s *Service) loadRepairTarget(ctx context.Context, orgUID, checkUID string)
 		return nil, "check not found", nil //nolint:nilerr // a deleted check is a skip
 	}
 
-	if check.Type != "js" || !check.Enabled || check.DeletedAt != nil {
+	if check.Type != string(checkerdef.CheckTypeJS) || !check.Enabled || check.DeletedAt != nil {
 		return nil, "not an enabled js check", nil
 	}
 
 	cfg := &checkjs.JSConfig{}
-	if err := cfg.FromMap(check.Config); err != nil || cfg.AI == nil {
+	if parseErr := cfg.FromMap(check.Config); parseErr != nil || cfg.AI == nil {
 		return nil, "not an AI-authored check", nil //nolint:nilerr // a bad config is a skip
 	}
 
@@ -398,7 +408,7 @@ func (s *Service) storeCandidate(ctx context.Context, target *repairTarget, cand
 		if err != nil {
 			guardErr = err
 		} else if !verify.Up() {
-			guardErr = fmt.Errorf("the verification run returned %s", verify.Status)
+			guardErr = fmt.Errorf("%w: %s", ErrVerificationFailed, verify.Status)
 		}
 	}
 
@@ -546,13 +556,18 @@ func (s *Service) applyRepair(
 	config := s.repairedConfig(target, candidate)
 	req := &checks.UpdateCheckRequest{Config: &config}
 
-	if _, err := s.checks.UpdateCheck(dbctx.WithChange(ctx, source), target.org.Slug, target.check.UID, req); err != nil {
+	_, err = s.checks.UpdateCheck(dbctx.WithChange(ctx, source), target.org.Slug, target.check.UID, req)
+	if err != nil {
 		return nil, fmt.Errorf("applying the repair: %w", err)
 	}
 
 	applied, err := s.db.GetLatestAppliedCheckVersion(ctx, target.check.UID)
-	if err != nil || applied == nil {
-		return nil, errors.Join(errors.New("reading the applied repair"), err)
+	if err != nil {
+		return nil, fmt.Errorf("reading the applied repair: %w", err)
+	}
+
+	if applied == nil {
+		return nil, errAppliedMissing
 	}
 
 	s.notifyApplied(ctx, target, previousScriptDiff(target.cfg.Script, candidate), applied, latest)

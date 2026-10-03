@@ -32,7 +32,7 @@ func buildAIChecks(
 		client = nil
 	}
 
-	svc := aichecks.NewService(aichecks.Options{
+	svc := aichecks.NewService(&aichecks.Options{
 		Client:       client,
 		DB:           dbService,
 		Checks:       checksSvc,

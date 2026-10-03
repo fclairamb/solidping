@@ -1067,9 +1067,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		s.services.Credentials, s.services.Entitlements, s.services.Realtime,
 		s.config,
 	)
-	if s.aiChecks != nil {
-		s.mcpHandler.SetScriptRunner(s.aiChecks.Runner())
-	}
+	s.mcpHandler.SetScriptRunner(s.aiChecks.Runner())
 	mcpGroup := api.NewGroup("/mcp")
 	// GET is deliberately outside RequireMCPAuth: a browser opening the
 	// endpoint has no token and gets a helpful redirect to the dashboard MCP

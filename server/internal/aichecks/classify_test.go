@@ -21,21 +21,39 @@ func TestClassifyFailure(t *testing.T) {
 		want   aichecks.FailureClass
 	}{
 		{"up", models.ResultStatusUp, nil, aichecks.FailureNone},
-		{"exception", models.ResultStatusError,
-			map[string]any{"error": "script error: TypeError: Cannot read property 'x' of undefined"}, aichecks.FailureDrift},
-		{"missing return", models.ResultStatusError,
-			map[string]any{"error": "script must return a result object"}, aichecks.FailureDrift},
+		{
+			"exception", models.ResultStatusError,
+			map[string]any{"error": "script error: TypeError: Cannot read property 'x' of undefined"},
+			aichecks.FailureDrift,
+		},
+		{
+			"missing return", models.ResultStatusError,
+			map[string]any{"error": "script must return a result object"},
+			aichecks.FailureDrift,
+		},
 		{"drift tag on down", models.ResultStatusDown, map[string]any{"failure": "drift"}, aichecks.FailureDrift},
 		{"assertion tag", models.ResultStatusDown, map[string]any{"failure": "assertion"}, aichecks.FailureAssertion},
 		{"untagged down", models.ResultStatusDown, map[string]any{"reason": "503"}, aichecks.FailureAssertion},
-		{"timeout", models.ResultStatusTimeout, map[string]any{"error": "script timed out after 30s"}, aichecks.FailureTimeout},
-		{"connection refused", models.ResultStatusError,
+		{
+			"timeout", models.ResultStatusTimeout,
+			map[string]any{"error": "script timed out after 30s"},
+			aichecks.FailureTimeout,
+		},
+		{
+			"connection refused", models.ResultStatusError,
 			map[string]any{"error": "script error: GoError: dial tcp 10.0.0.1:443: connect: connection refused"},
-			aichecks.FailureConnection},
-		{"no such host", models.ResultStatusError,
-			map[string]any{"error": "script error: lookup acme.invalid: no such host"}, aichecks.FailureConnection},
-		{"error tagged assertion", models.ResultStatusError,
-			map[string]any{"failure": "assertion", "error": "boom"}, aichecks.FailureAssertion},
+			aichecks.FailureConnection,
+		},
+		{
+			"no such host", models.ResultStatusError,
+			map[string]any{"error": "script error: lookup acme.invalid: no such host"},
+			aichecks.FailureConnection,
+		},
+		{
+			"error tagged assertion", models.ResultStatusError,
+			map[string]any{"failure": "assertion", "error": "boom"},
+			aichecks.FailureAssertion,
+		},
 	}
 
 	for _, tc := range cases {
@@ -75,16 +93,22 @@ func TestShouldRepair(t *testing.T) {
 		{"repair off", with(func(g *aichecks.Gates) { g.Mode = jsconfig.RepairOff }), false, aichecks.ReasonRepairOff},
 		{"assertion", with(func(g *aichecks.Gates) { g.Class = aichecks.FailureAssertion }), false, aichecks.ReasonNotDrift},
 		{"timeout", with(func(g *aichecks.Gates) { g.Class = aichecks.FailureTimeout }), false, aichecks.ReasonNotDrift},
-		{"connection refused", with(func(g *aichecks.Gates) { g.Class = aichecks.FailureConnection }),
-			false, aichecks.ReasonNotDrift},
+		{
+			"connection refused", with(func(g *aichecks.Gates) { g.Class = aichecks.FailureConnection }),
+			false, aichecks.ReasonNotDrift,
+		},
 		{"two failures only", with(func(g *aichecks.Gates) { g.ConsecutiveFailures = 2 }), false, aichecks.ReasonNotEnough},
 		{"custom threshold", with(func(g *aichecks.Gates) { g.ConsecutiveFailures = 2; g.Threshold = 2 }), true, ""},
 		{"target unhealthy", with(func(g *aichecks.Gates) { g.TargetHealthy = false }), false, aichecks.ReasonTargetDown},
-		{"attempted 2 h ago", with(func(g *aichecks.Gates) { g.LastAttempt = now.Add(-2 * time.Hour) }),
-			false, aichecks.ReasonCheckCooldown},
+		{
+			"attempted 2 h ago", with(func(g *aichecks.Gates) { g.LastAttempt = now.Add(-2 * time.Hour) }),
+			false, aichecks.ReasonCheckCooldown,
+		},
 		{"attempted 25 h ago", with(func(g *aichecks.Gates) { g.LastAttempt = now.Add(-25 * time.Hour) }), true, ""},
-		{"org cap reached", with(func(g *aichecks.Gates) { g.OrgAttemptsToday = aichecks.DefaultOrgDailyAttempts }),
-			false, aichecks.ReasonOrgCap},
+		{
+			"org cap reached", with(func(g *aichecks.Gates) { g.OrgAttemptsToday = aichecks.DefaultOrgDailyAttempts }),
+			false, aichecks.ReasonOrgCap,
+		},
 		{"org under custom cap", with(func(g *aichecks.Gates) { g.OrgAttemptsToday = 1; g.OrgDailyCap = 2 }), true, ""},
 	}
 
@@ -92,7 +116,7 @@ func TestShouldRepair(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			ok, reason := aichecks.ShouldRepair(tc.gates)
+			ok, reason := aichecks.ShouldRepair(&tc.gates)
 			require.Equal(t, tc.want, ok)
 			require.Equal(t, tc.reason, reason)
 		})

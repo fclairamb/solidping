@@ -47,7 +47,7 @@ func (a *Anthropic) buildParams(req Request) anthropic.MessageNewParams {
 	}
 
 	params := anthropic.MessageNewParams{
-		Model:     anthropic.Model(a.model),
+		Model:     a.model,
 		MaxTokens: int64(maxTokens),
 		Messages:  anthropicMessages(req.Messages),
 	}
@@ -59,7 +59,8 @@ func (a *Anthropic) buildParams(req Request) anthropic.MessageNewParams {
 		}}
 	}
 
-	for _, tool := range req.Tools {
+	for i := range req.Tools {
+		tool := &req.Tools[i]
 		schema := anthropic.ToolInputSchemaParam{}
 		if props, ok := tool.Parameters["properties"]; ok {
 			schema.Properties = props
@@ -95,7 +96,9 @@ func anthropicMessages(messages []Message) []anthropic.MessageParam {
 		}
 	}
 
-	for _, msg := range messages {
+	for i := range messages {
+		msg := &messages[i]
+
 		switch msg.Role {
 		case RoleTool:
 			pendingResults = append(pendingResults, anthropic.NewToolResultBlock(msg.ToolCallID, msg.Content, false))
@@ -107,17 +110,19 @@ func anthropicMessages(messages []Message) []anthropic.MessageParam {
 				blocks = append(blocks, anthropic.NewTextBlock(msg.Content))
 			}
 
-			for _, call := range msg.ToolCalls {
+			for j := range msg.ToolCalls {
+				call := &msg.ToolCalls[j]
+
 				var input any = map[string]any{}
 				if len(call.Arguments) > 0 {
-					input = json.RawMessage(call.Arguments)
+					input = call.Arguments
 				}
 
 				blocks = append(blocks, anthropic.NewToolUseBlock(call.ID, input, call.Name))
 			}
 
 			out = append(out, anthropic.NewAssistantMessage(blocks...))
-		default:
+		case RoleUser:
 			flush()
 
 			out = append(out, anthropic.NewUserMessage(anthropic.NewTextBlock(msg.Content)))
@@ -142,7 +147,7 @@ func (a *Anthropic) Complete(ctx context.Context, req Request) (*Response, error
 			}
 		}
 
-		return nil, fmt.Errorf("ai: calling %s: %s", providerAnthropic, redact(err.Error(), a.apiKey))
+		return nil, fmt.Errorf("%w: %s: %s", ErrCallFailed, providerAnthropic, redact(err.Error(), a.apiKey))
 	}
 
 	out := &Response{
@@ -156,7 +161,9 @@ func (a *Anthropic) Complete(ctx context.Context, req Request) (*Response, error
 
 	var text strings.Builder
 
-	for _, block := range msg.Content {
+	for i := range msg.Content {
+		block := &msg.Content[i]
+
 		switch block.Type {
 		case "text":
 			text.WriteString(block.Text)

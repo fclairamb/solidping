@@ -90,9 +90,9 @@ func (l *Loop) Run(ctx context.Context, messages []Message) (*LoopResult, error)
 	tools := make(map[string]ToolFunc, len(l.Tools))
 	defs := make([]ToolDef, 0, len(l.Tools))
 
-	for _, tool := range l.Tools {
-		tools[tool.Def.Name] = tool.Run
-		defs = append(defs, tool.Def)
+	for i := range l.Tools {
+		tools[l.Tools[i].Def.Name] = l.Tools[i].Run
+		defs = append(defs, l.Tools[i].Def)
 	}
 
 	result := &LoopResult{Messages: append([]Message(nil), messages...)}
@@ -115,7 +115,8 @@ func (l *Loop) Run(ctx context.Context, messages []Message) (*LoopResult, error)
 			return result, nil
 		}
 
-		for _, call := range resp.ToolCalls {
+		for i := range resp.ToolCalls {
+			call := &resp.ToolCalls[i]
 			result.Messages = append(result.Messages, Message{
 				Role: RoleTool, ToolCallID: call.ID, ToolName: call.Name,
 				Content: runTool(ctx, tools, call),
@@ -130,7 +131,7 @@ func (l *Loop) Run(ctx context.Context, messages []Message) (*LoopResult, error)
 	return result, fmt.Errorf("%w (%d turns)", ErrMaxTurns, maxTurns)
 }
 
-func runTool(ctx context.Context, tools map[string]ToolFunc, call ToolCall) string {
+func runTool(ctx context.Context, tools map[string]ToolFunc, call *ToolCall) string {
 	run, ok := tools[call.Name]
 	if !ok {
 		return fmt.Sprintf("error: unknown tool %q", call.Name)

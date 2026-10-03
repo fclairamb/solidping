@@ -37,6 +37,7 @@ func NewOpenAI(baseURL, apiKey, model string, httpClient *http.Client) *OpenAI {
 	return &OpenAI{baseURL: strings.TrimRight(baseURL, "/"), apiKey: apiKey, model: model, http: httpClient}
 }
 
+// The wire structs below follow OpenAI's snake_case JSON.
 type openAIFunction struct {
 	Name        string         `json:"name"`
 	Description string         `json:"description,omitempty"`
@@ -59,6 +60,7 @@ type openAIToolCall struct {
 	Function openAIToolCallFunction `json:"function"`
 }
 
+//nolint:tagliatelle // OpenAI wire format
 type openAIMessage struct {
 	Role       string           `json:"role"`
 	Content    *string          `json:"content"`
@@ -66,6 +68,7 @@ type openAIMessage struct {
 	ToolCallID string           `json:"tool_call_id,omitempty"`
 }
 
+//nolint:tagliatelle // OpenAI wire format
 type openAIRequest struct {
 	Model     string          `json:"model"`
 	Messages  []openAIMessage `json:"messages"`
@@ -73,6 +76,7 @@ type openAIRequest struct {
 	MaxTokens int             `json:"max_tokens,omitempty"`
 }
 
+//nolint:tagliatelle // OpenAI wire format
 type openAIResponse struct {
 	Choices []struct {
 		Message      openAIMessage `json:"message"`
@@ -96,13 +100,15 @@ func (o *OpenAI) buildRequest(req Request) openAIRequest {
 		body.Messages = append(body.Messages, openAIMessage{Role: "system", Content: strPtr(req.System)})
 	}
 
-	for _, msg := range req.Messages {
+	for i := range req.Messages {
+		msg := &req.Messages[i]
 		wire := openAIMessage{Role: string(msg.Role), ToolCallID: msg.ToolCallID}
 		if msg.Content != "" || msg.Role != RoleAssistant {
 			wire.Content = strPtr(msg.Content)
 		}
 
-		for _, call := range msg.ToolCalls {
+		for j := range msg.ToolCalls {
+			call := &msg.ToolCalls[j]
 			args := string(call.Arguments)
 			if args == "" {
 				args = "{}"
@@ -117,10 +123,11 @@ func (o *OpenAI) buildRequest(req Request) openAIRequest {
 		body.Messages = append(body.Messages, wire)
 	}
 
-	for _, tool := range req.Tools {
+	for i := range req.Tools {
+		tool := req.Tools[i]
 		body.Tools = append(body.Tools, openAITool{
 			Type:     "function",
-			Function: openAIFunction{Name: tool.Name, Description: tool.Description, Parameters: tool.Parameters},
+			Function: openAIFunction(tool),
 		})
 	}
 
@@ -134,7 +141,9 @@ func (o *OpenAI) Complete(ctx context.Context, req Request) (*Response, error) {
 		return nil, fmt.Errorf("ai: encoding the request: %w", err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, o.baseURL+"/chat/completions", bytes.NewReader(payload))
+	endpoint := o.baseURL + "/chat/completions"
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
 	if err != nil {
 		return nil, fmt.Errorf("ai: building the request: %w", err)
 	}
@@ -147,7 +156,7 @@ func (o *OpenAI) Complete(ctx context.Context, req Request) (*Response, error) {
 
 	resp, err := o.http.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("ai: calling %s: %s", providerOpenAI, redact(err.Error(), o.apiKey))
+		return nil, fmt.Errorf("%w: %s: %s", ErrCallFailed, providerOpenAI, redact(err.Error(), o.apiKey))
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -170,7 +179,7 @@ func (o *OpenAI) Complete(ctx context.Context, req Request) (*Response, error) {
 	}
 
 	if len(decoded.Choices) == 0 {
-		return nil, fmt.Errorf("ai: %s returned no choice", providerOpenAI)
+		return nil, fmt.Errorf("%w: %s", ErrNoChoice, providerOpenAI)
 	}
 
 	choice := decoded.Choices[0]
@@ -183,7 +192,8 @@ func (o *OpenAI) Complete(ctx context.Context, req Request) (*Response, error) {
 		out.Text = *choice.Message.Content
 	}
 
-	for _, call := range choice.Message.ToolCalls {
+	for i := range choice.Message.ToolCalls {
+		call := &choice.Message.ToolCalls[i]
 		args := json.RawMessage(call.Function.Arguments)
 		if !json.Valid(args) {
 			args = json.RawMessage("{}")

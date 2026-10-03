@@ -25,11 +25,10 @@ var (
 var (
 	urlLiteralRE = regexp.MustCompile(`(?i)\b(?:https?|wss?)://[^\s"'` + "`" + `<>\\)]+`)
 	// hostArgRE catches tcp.connect("host", ...) style literal hosts.
-	hostArgRE  = regexp.MustCompile(`\b(?:tcp|udp|rdp|vnc)\s*\.\s*connect\s*\(\s*["']([^"']+)["']`)
-	envRefRE   = regexp.MustCompile(`\benv\s*(?:\.\s*([A-Za-z_$][\w$]*)|\[\s*["']([^"']+)["']\s*\])`)
-	tryRE      = regexp.MustCompile(`\btry\s*\{`)
-	downRE     = regexp.MustCompile(`["']down["']`)
-	apiGlobals = []string{"browser", "tcp", "udp", "websocket", "rdp", "vnc", "solidping"}
+	hostArgRE = regexp.MustCompile(`\b(?:tcp|udp|rdp|vnc)\s*\.\s*connect\s*\(\s*["']([^"']+)["']`)
+	envRefRE  = regexp.MustCompile(`\benv\s*(?:\.\s*([A-Za-z_$][\w$]*)|\[\s*["']([^"']+)["']\s*\])`)
+	tryRE     = regexp.MustCompile(`\btry\s*\{`)
+	downRE    = regexp.MustCompile(`["']down["']`)
 )
 
 // ScriptHosts lists the hosts a script contacts: URL literals in the script,
@@ -97,47 +96,56 @@ func scanScript(script string) (string, string) {
 	runes := []rune(script)
 
 	for i := 0; i < len(runes); i++ {
-		char := runes[i]
-		next := rune(0)
-
-		if i+1 < len(runes) {
-			next = runes[i+1]
-		}
-
 		switch {
-		case char == '/' && next == '/':
-			for i < len(runes) && runes[i] != '\n' {
-				i++
-			}
-
+		case startsComment(runes, i, '/'):
+			i = lineCommentEnd(runes, i)
 			if i < len(runes) {
 				noComments.WriteRune('\n')
 				code.WriteRune('\n')
 			}
-		case char == '/' && next == '*':
-			i += 2
-			for i+1 < len(runes) && (runes[i] != '*' || runes[i+1] != '/') {
-				i++
-			}
-
-			i++
+		case startsComment(runes, i, '*'):
+			i = blockCommentEnd(runes, i)
 
 			noComments.WriteRune(' ')
 			code.WriteRune(' ')
-		case char == '"' || char == '\'' || char == '`':
+		case runes[i] == '"' || runes[i] == '\'' || runes[i] == '`':
 			end := stringEnd(runes, i)
 			noComments.WriteString(string(runes[i : end+1]))
-			code.WriteRune(char)
-			code.WriteRune(char)
+			code.WriteRune(runes[i])
+			code.WriteRune(runes[i])
 
 			i = end
 		default:
-			noComments.WriteRune(char)
-			code.WriteRune(char)
+			noComments.WriteRune(runes[i])
+			code.WriteRune(runes[i])
 		}
 	}
 
 	return noComments.String(), code.String()
+}
+
+// startsComment reports a "/" followed by marker ("/" or "*") at i.
+func startsComment(runes []rune, i int, marker rune) bool {
+	return runes[i] == '/' && i+1 < len(runes) && runes[i+1] == marker
+}
+
+// lineCommentEnd returns the index of the newline ending the comment at i.
+func lineCommentEnd(runes []rune, i int) int {
+	for i < len(runes) && runes[i] != '\n' {
+		i++
+	}
+
+	return i
+}
+
+// blockCommentEnd returns the index of the "/" closing the comment at i.
+func blockCommentEnd(runes []rune, i int) int {
+	i += 2
+	for i+1 < len(runes) && (runes[i] != '*' || runes[i+1] != '/') {
+		i++
+	}
+
+	return i + 1
 }
 
 // stringEnd returns the index of the quote closing the string opened at
@@ -205,7 +213,7 @@ func CheckStillReportsDown(previous, candidate string) error {
 func CheckSameAPIs(previous, candidate string) error {
 	prev, cand := codeOnly(previous), codeOnly(candidate)
 
-	for _, name := range apiGlobals {
+	for _, name := range []string{"browser", "tcp", "udp", "websocket", "rdp", "vnc", "solidping"} {
 		re := regexp.MustCompile(`\b` + name + `\s*\.`)
 		if re.MatchString(cand) && !re.MatchString(prev) {
 			return fmt.Errorf("%w: %s", ErrNewAPI, name)
@@ -235,10 +243,12 @@ func CheckCandidate(previous, candidate string, env map[string]string) error {
 // user's own words (prompt, contract, env values). A generated script only
 // gets the real secret values when it does.
 func hostsDeclared(script string, env map[string]string, declared ...string) bool {
-	text := strings.ToLower(strings.Join(declared, "\n"))
+	parts := append([]string(nil), declared...)
 	for _, value := range env {
-		text += "\n" + strings.ToLower(value)
+		parts = append(parts, value)
 	}
+
+	text := strings.ToLower(strings.Join(parts, "\n"))
 
 	for _, host := range ScriptHosts(script, env) {
 		if !strings.Contains(text, host) {

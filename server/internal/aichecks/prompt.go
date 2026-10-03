@@ -72,13 +72,14 @@ func systemPrompt() string {
 	builder.WriteString(jsAPIReference)
 	builder.WriteString("\n# Examples\n")
 
-	for _, sample := range (&checkjs.JSChecker{}).GetSampleConfigs(&checkerdef.ListSampleOptions{}) {
-		script, _ := sample.Config["script"].(string)
+	samples := (&checkjs.JSChecker{}).GetSampleConfigs(&checkerdef.ListSampleOptions{})
+	for i := range samples {
+		script, _ := samples[i].Config["script"].(string)
 		if script == "" {
 			continue
 		}
 
-		fmt.Fprintf(&builder, "\n## %s\n```js\n%s\n```\n", sample.Name, strings.TrimSpace(script))
+		fmt.Fprintf(&builder, "\n## %s\n```js\n%s\n```\n", samples[i].Name, strings.TrimSpace(script))
 	}
 
 	builder.WriteString("\n")

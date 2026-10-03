@@ -88,7 +88,8 @@ func TestFetchPageTool(t *testing.T) {
 	resp := decodeResponse(t, rec)
 	r.Nil(resp.Error)
 
-	raw, _ := json.Marshal(resp.Result)
+	raw, err := json.Marshal(resp.Result)
+	r.NoError(err)
 	r.Contains(string(raw), `"statusCode":200`)
 	r.Contains(string(raw), `projects`)
 
@@ -96,7 +97,8 @@ func TestFetchPageTool(t *testing.T) {
 	rec, req = makeRequest(t, http.MethodPost, toolCall(t, toolFetchPage, map[string]any{}), claimsWithScopes("mcp"))
 	r.NoError(handler.Handle(rec, req))
 
-	raw, _ = json.Marshal(decodeResponse(t, rec).Result)
+	raw, err = json.Marshal(decodeResponse(t, rec).Result)
+	r.NoError(err)
 	r.Contains(string(raw), `"isError":true`)
 }
 
@@ -147,7 +149,8 @@ func TestDefaultRunnerRefusesPrivateTargets(t *testing.T) {
 		claimsWithScopes("mcp"))
 	r.NoError(handler.Handle(rec, req))
 
-	raw, _ := json.Marshal(decodeResponse(t, rec).Result)
+	raw, err := json.Marshal(decodeResponse(t, rec).Result)
+	r.NoError(err)
 	r.NotContains(string(raw), "projects")
 	r.Contains(string(raw), `"status":"down"`)
 }

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -101,7 +102,7 @@ func (r *Runner) FetchPage(ctx context.Context, rawURL string) (*RunResult, erro
 	}
 
 	return r.Run(ctx, fetchScript, map[string]string{
-		"URL": rawURL, "LIMIT": fmt.Sprint(fetchBodyLimit),
+		"URL": rawURL, "LIMIT": strconv.Itoa(fetchBodyLimit),
 	}, nil, 0)
 }
 
@@ -160,7 +161,7 @@ func (r *Runner) BrowserSnapshot(ctx context.Context, rawURL string) (*RunResult
 	}
 
 	return r.Run(ctx, snapshotScript, map[string]string{
-		"URL": rawURL, "EXPR": snapshotExpression, "LIMIT": fmt.Sprint(snapshotLimit),
+		"URL": rawURL, "EXPR": snapshotExpression, "LIMIT": strconv.Itoa(snapshotLimit),
 	}, nil, 0)
 }
 
@@ -191,11 +192,11 @@ func scrubResult(result *RunResult, secrets map[string]string) {
 
 	replacer := strings.NewReplacer(pairs...)
 
-	if scrubbed, ok := scrubValue(map[string]any(result.Output), replacer).(map[string]any); ok {
+	if scrubbed, ok := scrubValue(result.Output, replacer).(map[string]any); ok {
 		result.Output = scrubbed
 	}
 
-	if scrubbed, ok := scrubValue(map[string]any(result.Metrics), replacer).(map[string]any); ok {
+	if scrubbed, ok := scrubValue(result.Metrics, replacer).(map[string]any); ok {
 		result.Metrics = scrubbed
 	}
 }

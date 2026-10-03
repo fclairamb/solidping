@@ -38,8 +38,6 @@ const (
 
 	failureTagDrift     = "drift"
 	failureTagAssertion = "assertion"
-
-	scriptErrorPrefix = "script error:"
 )
 
 // connectionMarkers are substrings of a Go network error. A script exception
@@ -145,7 +143,7 @@ const (
 
 // ShouldRepair reports whether a repair attempt may start, and why not.
 // Every gate must be open; only drift ever qualifies.
-func ShouldRepair(gates Gates) (bool, string) {
+func ShouldRepair(gates *Gates) (bool, string) {
 	if gates.Mode != jsconfig.RepairPropose && gates.Mode != jsconfig.RepairAuto {
 		return false, ReasonRepairOff
 	}

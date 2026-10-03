@@ -28,7 +28,10 @@ func (p *textProvider) Complete(context.Context, ai.Request) (*ai.Response, erro
 type downProvider struct{}
 
 func (downProvider) Complete(context.Context, ai.Request) (*ai.Response, error) {
-	args, _ := json.Marshal(map[string]string{"script": `return { status: "down" };`})
+	args, err := json.Marshal(map[string]string{"script": `return { status: "down" };`})
+	if err != nil {
+		return nil, err
+	}
 
 	return &ai.Response{ToolCalls: []ai.ToolCall{{ID: "1", Name: svc.ToolRunScript, Arguments: args}}}, nil
 }
@@ -45,7 +48,7 @@ func newRouter(t *testing.T, client *ai.Client) (*httpx.Router, *models.Organiza
 	org := models.NewOrganization("acme", "Acme")
 	require.NoError(t, dbSvc.CreateOrganization(ctx, org))
 
-	service := svc.NewService(svc.Options{Client: client, DB: dbSvc})
+	service := svc.NewService(&svc.Options{Client: client, DB: dbSvc})
 	handler := aichecks.NewHandler(service, dbSvc, &config.Config{})
 
 	router := httpx.New()

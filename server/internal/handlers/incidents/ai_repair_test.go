@@ -1,7 +1,6 @@
 package incidents_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -57,7 +56,7 @@ func TestDriftQueuesOneAIRepairJob(t *testing.T) {
 		result := models.NewResult(org.UID, check.UID, status, 0)
 		result.Output = output
 		r.NoError(dbSvc.CreateResult(ctx, result))
-		r.NoError(svc.ProcessCheckResult(context.Background(), check, result))
+		r.NoError(svc.ProcessCheckResult(ctx, check, result))
 	}
 
 	repairJobs := func() int {

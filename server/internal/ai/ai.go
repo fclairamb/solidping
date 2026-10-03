@@ -30,6 +30,10 @@ var (
 	// ErrMaxTurns means the agent loop hit its turn cap before the model
 	// finished.
 	ErrMaxTurns = errors.New("ai: turn cap reached")
+	// ErrCallFailed is a provider call that never got an answer.
+	ErrCallFailed = errors.New("ai: provider call failed")
+	// ErrNoChoice is an answer without any completion.
+	ErrNoChoice = errors.New("ai: provider returned no completion")
 )
 
 // Role is a chat message role.

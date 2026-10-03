@@ -819,6 +819,9 @@ const (
 	defaultAITimeout  = 120 * time.Second
 )
 
+// ErrInvalidAIConfig is a bad SP_AI_* setting.
+var ErrInvalidAIConfig = errors.New("invalid AI configuration")
+
 // AIConfig configures the LLM provider used to author and repair `js` checks
 // (spec 2026-10-03-07). An empty Provider turns the whole feature off. The key
 // only ever lives on the server: it is never logged and never sent to workers
@@ -854,11 +857,12 @@ func (c *AIConfig) Validate() error {
 		return nil
 	case AIProviderOpenAI, AIProviderAnthropic:
 	default:
-		return fmt.Errorf("ai.provider must be %q or %q, got %q", AIProviderOpenAI, AIProviderAnthropic, c.Provider)
+		return fmt.Errorf("%w: ai.provider must be %q or %q, got %q",
+			ErrInvalidAIConfig, AIProviderOpenAI, AIProviderAnthropic, c.Provider)
 	}
 
 	if c.Model == "" {
-		return errors.New("ai.model (SP_AI_MODEL) is required when ai.provider is set")
+		return fmt.Errorf("%w: ai.model (SP_AI_MODEL) is required when ai.provider is set", ErrInvalidAIConfig)
 	}
 
 	return nil
