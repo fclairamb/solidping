@@ -109,7 +109,9 @@ Compare against SolidPing **Cloud** (hosted vs hosted), per
 | Probe locations | 33 servers / 16 cities, 2-location confirmation | 6 shared regions + private agents |
 | On-call / escalation | ❌ (delegated) | ✅ schedules, rotations, escalation |
 | SMS / voice | SMS | ❌ on Cloud |
-| Telegram / Teams / Opsgenie | ✅ | ❌ |
+| Telegram | ✅ | ❌ |
+| Microsoft Teams | ✅ | ✅ (`msteams`, `msteamsbot`) |
+| Opsgenie | ✅ | ❌ (sender removed in v0.17.0) |
 | Client reports (PDF) | ✅ | ❌ |
 | Self-host | ❌ | ✅ AGPL |
 
@@ -122,8 +124,8 @@ Compare against SolidPing **Cloud** (hosted vs hosted), per
    $439/mo. That is exactly the "agency with 200 sites @5-min" buyer the
    throughput model was designed for.
 3. **Gaps they expose:** crawl-based checks (broken links, mixed content), Lighthouse,
-   monthly client reports, Telegram/Teams, two-location confirmation before alerting.
-   (DNSBL is already covered.) Reports and Telegram/Teams are cheap to close. Crawling is a product-scope decision.
+   monthly client reports, Telegram, Opsgenie, two-location confirmation before alerting.
+   (DNSBL is already covered.) Reports and Telegram are cheap to close (Teams already ships). Crawling is a product-scope decision.
 
 ## Sources
 

@@ -303,9 +303,10 @@ integration**.
 3. **Dual PostgreSQL / SQLite backend with distributed workers** for horizontal
    scale. Maintenant's Pro multi-host agents add fleet *coverage* but the core is
    still a single SQLite instance with no HA.
-4. **All notification channels in the free/open tier** — SolidPing ships 10 native
+4. **All notification channels in the free/open tier** — SolidPing ships native
    channels (Slack, Discord, Email, Webhooks, Google Chat, Mattermost, Ntfy,
-   Opsgenie, Pushover) without paywalling Slack/Teams/email behind Pro.
+   Microsoft Teams, Matrix, Zulip, Gotify, Pushover, PagerDuty, web push, Twilio
+   SMS/voice; no Opsgenie since v0.17.0) without paywalling Slack/Teams/email behind Pro.
 5. **Richer incident management in the open product** — adaptive resolution,
    group-incident correlation, ack/snooze/manual-resolve, on-call schedules,
    multi-step escalation — not gated behind a paid tier.
