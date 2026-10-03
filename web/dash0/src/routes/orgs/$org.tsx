@@ -405,6 +405,8 @@ function Breadcrumbs({ org }: { org: string }) {
     // 2026-09-16-08), so it reads as "Checks › <check> › Badges" instead of
     // the old org-level crumb.
     const isCheckBadges = routeIds.has("/orgs/$org/checks/$checkUid/badges");
+    // Version history (spec 2026-10-03-06): "Checks › <check> › History".
+    const isCheckHistory = routeIds.has("/orgs/$org/checks/$checkUid/history");
     const isNewCheck = routeIds.has("/orgs/$org/checks/new");
     // Scheduling is a sibling page of the list (no checkUid), so it needs its
     // own leaf crumb — without it the page rendered a bare, non-clickable
@@ -437,7 +439,7 @@ function Breadcrumbs({ org }: { org: string }) {
         {checkUid && (
           <>
             <BreadcrumbSeparator />
-            {isCheckEdit || isCheckResult || isCheckBadges ? (
+            {isCheckEdit || isCheckResult || isCheckBadges || isCheckHistory ? (
               <Link to="/orgs/$org/checks/$checkUid" params={{ org, checkUid }} search={{ graphPeriod: undefined, graphFull: undefined, region: undefined }} className={linkClass}>
                 {checkName}
               </Link>
@@ -458,6 +460,14 @@ function Breadcrumbs({ org }: { org: string }) {
             <span className={activeClass} data-testid="badge-breadcrumb">
               <BadgeCheck className={iconClass} />
               {t("badges")}
+            </span>
+          </>
+        )}
+        {isCheckHistory && (
+          <>
+            <BreadcrumbSeparator />
+            <span className={activeClass} data-testid="history-breadcrumb">
+              {t("history")}
             </span>
           </>
         )}

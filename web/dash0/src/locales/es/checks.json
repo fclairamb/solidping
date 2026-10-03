@@ -1513,5 +1513,48 @@
       "download": "Descargar el informe",
       "noReports": "Todavía no hay ningún informe guardado."
     }
+  },
+  "history": {
+    "menuItem": "Historial",
+    "title": "Historial del check",
+    "subtitle": "Cada cambio en la definición de este check, quién lo hizo y qué cambió. Los secretos no se versionan.",
+    "proposals": "Cambios propuestos",
+    "proposalsDescription": "Cambios pendientes de decisión. Aprobar uno lo aplica al check.",
+    "versions": "Versiones",
+    "version": "Versión",
+    "change": "Cambio",
+    "when": "Fecha",
+    "versionLabel": "v{{version}}",
+    "empty": "Todavía no hay ninguna versión registrada.",
+    "diff": "Cambios",
+    "diffTitle": "v{{version}} comparada con v{{against}}",
+    "firstVersion": "Primera versión registrada: todos los campos son nuevos.",
+    "noChanges": "Ningún cambio en los campos versionados.",
+    "field": "Campo",
+    "before": "Antes",
+    "after": "Después",
+    "restore": "Restaurar",
+    "restoreTitle": "¿Restaurar v{{version}}?",
+    "restoreDescription": "El check recupera la definición de esta versión. Se conservan sus secretos actuales. La restauración se registra como una nueva versión.",
+    "cancel": "Cancelar",
+    "restored": "v{{version}} restaurada",
+    "approve": "Aprobar",
+    "reject": "Rechazar",
+    "approved": "v{{version}} aprobada",
+    "rejected": "v{{version}} rechazada",
+    "statuses": {
+      "applied": "Aplicada",
+      "proposed": "Propuesta",
+      "rejected": "Rechazada"
+    },
+    "origins": {
+      "user": "Panel",
+      "api": "Token de API",
+      "apply": "Configuración como código",
+      "mcp": "MCP",
+      "system": "Sistema",
+      "ai_generate": "Generada por IA",
+      "ai_repair": "Reparación por IA"
+    }
   }
 }

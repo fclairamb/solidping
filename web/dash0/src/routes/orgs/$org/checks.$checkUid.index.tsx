@@ -24,6 +24,7 @@ import {
   ExternalLink,
   Globe,
   Hash,
+  History,
   Link2,
   MapPin,
   Loader2,
@@ -1448,6 +1449,17 @@ function CheckDetailPage() {
                   >
                     <BadgeCheck className="mr-2 h-4 w-4" />
                     {t("checks:detail.badges")}
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link
+                    to="/orgs/$org/checks/$checkUid/history"
+                    params={{ org, checkUid }}
+                    search={{}}
+                    data-testid="check-history-link"
+                  >
+                    <History className="mr-2 h-4 w-4" />
+                    {t("checks:history.menuItem")}
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={handleCopyLink}>

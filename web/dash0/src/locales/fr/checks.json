@@ -1513,5 +1513,48 @@
       "download": "Télécharger le rapport",
       "noReports": "Aucun rapport enregistré pour l'instant."
     }
+  },
+  "history": {
+    "menuItem": "Historique",
+    "title": "Historique du check",
+    "subtitle": "Chaque modification de la définition de ce check, son auteur et ce qui a changé. Les secrets ne sont pas versionnés.",
+    "proposals": "Modifications proposées",
+    "proposalsDescription": "Des modifications en attente de décision. En approuver une l'applique au check.",
+    "versions": "Versions",
+    "version": "Version",
+    "change": "Modification",
+    "when": "Date",
+    "versionLabel": "v{{version}}",
+    "empty": "Aucune version enregistrée.",
+    "diff": "Modifications",
+    "diffTitle": "v{{version}} comparée à v{{against}}",
+    "firstVersion": "Première version enregistrée : tous les champs sont nouveaux.",
+    "noChanges": "Aucun changement dans les champs versionnés.",
+    "field": "Champ",
+    "before": "Avant",
+    "after": "Après",
+    "restore": "Restaurer",
+    "restoreTitle": "Restaurer v{{version}} ?",
+    "restoreDescription": "Le check reprend la définition de cette version. Ses secrets actuels sont conservés. La restauration est enregistrée comme une nouvelle version.",
+    "cancel": "Annuler",
+    "restored": "v{{version}} restaurée",
+    "approve": "Approuver",
+    "reject": "Rejeter",
+    "approved": "v{{version}} approuvée",
+    "rejected": "v{{version}} rejetée",
+    "statuses": {
+      "applied": "Appliquée",
+      "proposed": "Proposée",
+      "rejected": "Rejetée"
+    },
+    "origins": {
+      "user": "Tableau de bord",
+      "api": "Jeton d'API",
+      "apply": "Configuration en code",
+      "mcp": "MCP",
+      "system": "Système",
+      "ai_generate": "Générée par IA",
+      "ai_repair": "Réparation par IA"
+    }
   }
 }

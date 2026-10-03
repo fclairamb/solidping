@@ -1513,5 +1513,48 @@
       "download": "Bericht herunterladen",
       "noReports": "Noch kein Bericht gespeichert."
     }
+  },
+  "history": {
+    "menuItem": "Verlauf",
+    "title": "Check-Verlauf",
+    "subtitle": "Jede Änderung an der Definition dieses Checks, wer sie gemacht hat und was sich geändert hat. Geheimnisse werden nicht versioniert.",
+    "proposals": "Vorgeschlagene Änderungen",
+    "proposalsDescription": "Änderungen, die auf eine Entscheidung warten. Eine Genehmigung wendet sie auf den Check an.",
+    "versions": "Versionen",
+    "version": "Version",
+    "change": "Änderung",
+    "when": "Zeitpunkt",
+    "versionLabel": "v{{version}}",
+    "empty": "Noch keine Version aufgezeichnet.",
+    "diff": "Änderungen",
+    "diffTitle": "v{{version}} verglichen mit v{{against}}",
+    "firstVersion": "Erste aufgezeichnete Version: alle Felder sind neu.",
+    "noChanges": "Keine Änderung an den versionierten Feldern.",
+    "field": "Feld",
+    "before": "Vorher",
+    "after": "Nachher",
+    "restore": "Wiederherstellen",
+    "restoreTitle": "v{{version}} wiederherstellen?",
+    "restoreDescription": "Der Check erhält die Definition dieser Version zurück. Seine aktuellen Geheimnisse bleiben erhalten. Die Wiederherstellung wird als neue Version aufgezeichnet.",
+    "cancel": "Abbrechen",
+    "restored": "v{{version}} wiederhergestellt",
+    "approve": "Genehmigen",
+    "reject": "Ablehnen",
+    "approved": "v{{version}} genehmigt",
+    "rejected": "v{{version}} abgelehnt",
+    "statuses": {
+      "applied": "Angewendet",
+      "proposed": "Vorgeschlagen",
+      "rejected": "Abgelehnt"
+    },
+    "origins": {
+      "user": "Dashboard",
+      "api": "API-Token",
+      "apply": "Konfiguration als Code",
+      "mcp": "MCP",
+      "system": "System",
+      "ai_generate": "KI-generiert",
+      "ai_repair": "KI-Reparatur"
+    }
   }
 }

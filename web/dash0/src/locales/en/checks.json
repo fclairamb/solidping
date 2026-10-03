@@ -1513,5 +1513,48 @@
       "download": "Download report",
       "noReports": "No report stored yet."
     }
+  },
+  "history": {
+    "menuItem": "History",
+    "title": "Check history",
+    "subtitle": "Every change to this check's definition, who made it, and what changed. Secrets are not versioned.",
+    "proposals": "Proposed changes",
+    "proposalsDescription": "Changes waiting for a decision. Approving one applies it to the check.",
+    "versions": "Versions",
+    "version": "Version",
+    "change": "Change",
+    "when": "When",
+    "versionLabel": "v{{version}}",
+    "empty": "No version recorded yet.",
+    "diff": "Changes",
+    "diffTitle": "v{{version}} compared with v{{against}}",
+    "firstVersion": "First recorded version: every field is new.",
+    "noChanges": "No change in the versioned fields.",
+    "field": "Field",
+    "before": "Before",
+    "after": "After",
+    "restore": "Restore",
+    "restoreTitle": "Restore v{{version}}?",
+    "restoreDescription": "The check gets this version's definition back. Its current secrets are kept. The restore is recorded as a new version.",
+    "cancel": "Cancel",
+    "restored": "v{{version}} restored",
+    "approve": "Approve",
+    "reject": "Reject",
+    "approved": "v{{version}} approved",
+    "rejected": "v{{version}} rejected",
+    "statuses": {
+      "applied": "Applied",
+      "proposed": "Proposed",
+      "rejected": "Rejected"
+    },
+    "origins": {
+      "user": "Dashboard",
+      "api": "API token",
+      "apply": "Config as code",
+      "mcp": "MCP",
+      "system": "System",
+      "ai_generate": "AI generated",
+      "ai_repair": "AI repair"
+    }
   }
 }

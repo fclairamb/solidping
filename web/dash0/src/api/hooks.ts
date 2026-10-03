@@ -1321,6 +1321,102 @@ export function useRotateHeartbeatToken(org: string, uid: string) {
   });
 }
 
+/** Check version history (spec 2026-10-03-06). */
+export type CheckVersionStatus = "applied" | "proposed" | "rejected";
+
+export interface CheckVersionSnapshot {
+  name?: string;
+  slug?: string;
+  description?: string;
+  type?: string;
+  config?: Record<string, unknown>;
+  checkGroupUid?: string;
+  regions?: string[];
+  placement?: string;
+  regionCount?: number;
+  regionPool?: string[];
+  failQuorum?: string;
+  enabled?: boolean;
+  period?: string;
+  labels?: Record<string, string>;
+}
+
+export interface CheckVersion {
+  version: number;
+  status: CheckVersionStatus;
+  origin: string;
+  actorUserUid?: string;
+  actorName?: string;
+  reason?: string;
+  baseVersion?: number;
+  decidedByUserUid?: string;
+  decidedAt?: string;
+  createdAt: string;
+  snapshot?: CheckVersionSnapshot;
+}
+
+export interface CheckVersionChange {
+  field: string;
+  from: string;
+  to: string;
+}
+
+export interface CheckVersionDiff {
+  version: number;
+  against: number | null;
+  changes: CheckVersionChange[];
+}
+
+export function useCheckVersions(org: string, uid: string) {
+  return useQuery({
+    queryKey: ["check-versions", org, uid],
+    queryFn: async () =>
+      apiFetch<{ data: CheckVersion[] }>(
+        `/api/v1/orgs/${org}/checks/${uid}/versions`,
+      ),
+    enabled: !!org && !!uid,
+  });
+}
+
+export function useCheckVersionDiff(
+  org: string,
+  uid: string,
+  version: number | undefined,
+) {
+  return useQuery({
+    queryKey: ["check-version-diff", org, uid, version],
+    queryFn: async () =>
+      apiFetch<CheckVersionDiff>(
+        `/api/v1/orgs/${org}/checks/${uid}/versions/${version}/diff`,
+      ),
+    enabled: !!org && !!uid && !!version,
+  });
+}
+
+/** Restore, approve or reject one version of a check. */
+export function useCheckVersionAction(
+  org: string,
+  uid: string,
+  action: "restore" | "approve" | "reject",
+) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (version: number) =>
+      apiFetch<unknown>(
+        `/api/v1/orgs/${org}/checks/${uid}/versions/${version}/${action}`,
+        { method: "POST" },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["check-versions", org, uid] });
+      queryClient.invalidateQueries({ queryKey: ["check-version-diff", org, uid] });
+      queryClient.invalidateQueries({ queryKey: ["check", org, uid] });
+      queryClient.invalidateQueries({ queryKey: ["checks", org] });
+      queryClient.invalidateQueries({ queryKey: ["checks", "infinite", org] });
+    },
+  });
+}
+
 export function useDeleteCheck(org: string) {
   const queryClient = useQueryClient();
 
