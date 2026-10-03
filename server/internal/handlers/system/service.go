@@ -196,6 +196,8 @@ func applyActivationEvent(row *ActivationFunnelRow, event *models.Event) {
 	case models.EventTypeCheckCreated, models.EventTypeCheckUpdated,
 		models.EventTypeCheckDeleted, models.EventTypeCheckPlacementChanged,
 		models.EventTypeCheckBaselineCaptured,
+		models.EventTypeCheckAIRepairAttempted, models.EventTypeCheckAIRepairProposed,
+		models.EventTypeCheckAIRepairApplied, models.EventTypeAIUsage,
 		models.EventTypeIncidentCreated, models.EventTypeIncidentResolved,
 		models.EventTypeIncidentEscalated, models.EventTypeIncidentReopened,
 		models.EventTypeIncidentAcknowledged, models.EventTypeIncidentUnacknowledged,

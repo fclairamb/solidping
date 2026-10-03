@@ -28,6 +28,7 @@ import (
 	k8sclient "k8s.io/client-go/kubernetes"
 
 	"github.com/fclairamb/solidping/server/internal/analytics"
+	"github.com/fclairamb/solidping/server/internal/aichecks"
 	"github.com/fclairamb/solidping/server/internal/app/services"
 	"github.com/fclairamb/solidping/server/internal/audit"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
@@ -93,6 +94,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/orgparams"
 	"github.com/fclairamb/solidping/server/internal/handlers/ovhsmscb"
 	"github.com/fclairamb/solidping/server/internal/handlers/publicconfig"
+	aichecksapi "github.com/fclairamb/solidping/server/internal/handlers/aichecks"
 	"github.com/fclairamb/solidping/server/internal/handlers/realtimews"
 	regionshandler "github.com/fclairamb/solidping/server/internal/handlers/regions"
 	"github.com/fclairamb/solidping/server/internal/handlers/reportschedules"
@@ -194,6 +196,8 @@ type Server struct {
 	dbService db.Service
 	jobSvc    jobsvc.Service
 	services  *services.Registry
+	// aiChecks authors and repairs AI-written js checks (spec 2026-10-03-07).
+	aiChecks *aichecks.Service
 	router    *httpx.Router
 	// handler is s.router, optionally wrapped by compressionWrapper (see
 	// SetupRoutes). It is the outermost handler: Server.Handler() and
@@ -480,6 +484,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	checksSvc.SetDeploymentMode(cfg.Deployment.Mode)
 	svcList.Checks = checksSvc
 	svcList.PrivateLocationMonitors = checksSvc
+	aiChecksSvc := buildAIChecks(cfg, dbService, checksSvc, entitlementsService, credSvc, svcList)
 
 	// Instance-level SMS/voice providers, built ONCE here and shared by every
 	// org that has not brought its own account. A misconfiguration (unknown
@@ -543,6 +548,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		dbService:         dbService,
 		jobSvc:            jobService,
 		services:          svcList,
+		aiChecks:          aiChecksSvc,
 		config:            cfg,
 		authService:       authService,
 		profilerSrv:       profiler.New(&cfg.Profiler),
@@ -1061,6 +1067,9 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		s.services.Credentials, s.services.Entitlements, s.services.Realtime,
 		s.config,
 	)
+	if s.aiChecks != nil {
+		s.mcpHandler.SetScriptRunner(s.aiChecks.Runner())
+	}
 	mcpGroup := api.NewGroup("/mcp")
 	// GET is deliberately outside RequireMCPAuth: a browser opening the
 	// endpoint has no token and gets a helpful redirect to the dashboard MCP
@@ -1197,6 +1206,12 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Import, apply and export are deliberately NOT relaxed: they mutate, and
 	// apply can delete by absence.
 	orgGroupSelf("/orgs/:org/checks").POST("/validate", checksHandler.ValidateCheck)
+	// AI authoring of js checks (spec 2026-10-03-07): literal segments,
+	// registered ahead of the "/:checkUid" routes. 404 when no AI provider
+	// is configured.
+	aiChecksHandler := aichecksapi.NewHandler(s.aiChecks, s.dbService, s.config)
+	orgChecks.POST("/ai/contract", aiChecksHandler.Contract)
+	orgChecks.POST("/ai/generate", aiChecksHandler.Generate)
 	orgChecks.GET("/:checkUid", checksHandler.GetCheck)
 	orgChecks.PUT("/:slug", checksHandler.UpsertCheck)
 	orgChecks.PATCH("/:checkUid", checksHandler.UpdateCheck)

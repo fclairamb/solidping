@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/fclairamb/solidping/server/internal/aichecks"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
@@ -102,6 +103,11 @@ type Handler struct {
 	// static server card. Empty when no config is available (tests).
 	baseURL string
 
+	// scriptRunner runs the js authoring probes (run_js_script, fetch_page,
+	// browser_snapshot). Defaults to a runner behind this config's egress
+	// policy; the server swaps in its shared one.
+	scriptRunner *aichecks.Runner
+
 	sessions sync.Map // map[string]*session
 	tools    []ToolDefinition
 	toolMap  map[string]toolFunc
@@ -164,6 +170,7 @@ func NewHandler(
 		regionsSvc:      regionshandler.NewService(dbService),
 		publicationsSvc: incidentpublications.NewService(dbService, clock.Real{}, rtPub),
 		dbService:       dbService,
+		scriptRunner:    defaultScriptRunner(cfg),
 	}
 
 	// A check created over MCP has to land on a dynamic status page section

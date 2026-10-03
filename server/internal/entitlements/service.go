@@ -599,6 +599,9 @@ func nullFillLimits(dst, src *Limits) {
 	if src.MaxSlos != nil {
 		dst.MaxSlos = src.MaxSlos
 	}
+	if src.MaxAITokensPerDay != nil {
+		dst.MaxAITokensPerDay = src.MaxAITokensPerDay
+	}
 	if src.WhiteLabel != nil {
 		dst.WhiteLabel = src.WhiteLabel
 	}

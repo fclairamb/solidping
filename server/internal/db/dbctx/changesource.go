@@ -21,6 +21,9 @@ type ChangeSource struct {
 	UserUID string
 	// Reason is an optional one-line note stored on the version.
 	Reason string
+	// BaseVersion is the version this change was built on, stored on the
+	// version it records (an AI repair applied directly, spec 2026-10-03-07).
+	BaseVersion *int
 
 	mu sync.Mutex
 	// versions maps a check UID to the version row already written under

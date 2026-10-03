@@ -1528,6 +1528,8 @@ type CreateCheckRequest struct {
 func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateCheckRequest) (CheckResponse, error) {
 	// Version 1 of the check's history names the caller (spec 2026-10-03-06).
 	ctx = withCallerChangeSource(ctx)
+	// A freshly generated script records origin ai_generate (spec 2026-10-03-07).
+	markAIGenerated(ctx, req.Type, req.Config, nil)
 
 	// Get organization by slug
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
@@ -2054,6 +2056,10 @@ func (s *Service) UpdateCheck(
 	// here without any "protected" column.
 	if demoErr := assertDemoMayWriteCheck(ctx, check); demoErr != nil {
 		return CheckResponse{}, demoErr
+	}
+
+	if req.Config != nil {
+		markAIGenerated(ctx, check.Type, *req.Config, check.Config)
 	}
 
 	// Validate slug if provided

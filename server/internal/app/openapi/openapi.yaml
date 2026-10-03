@@ -17508,6 +17508,12 @@ components:
           type: integer
           nullable: true
           description: Maximum service-level objectives (null = unlimited)
+        maxAiTokensPerDay:
+          type: integer
+          nullable: true
+          description: >-
+            LLM tokens (input + output) per UTC day for AI-authored js checks
+            (null = unlimited)
         whiteLabel:
           type: boolean
           nullable: true

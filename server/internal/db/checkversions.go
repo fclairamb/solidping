@@ -370,6 +370,11 @@ func applyChangeSource(row *models.CheckVersion, source *dbctx.ChangeSource) {
 		reason := source.Reason
 		row.Reason = &reason
 	}
+
+	if source.BaseVersion != nil {
+		base := *source.BaseVersion
+		row.BaseVersion = &base
+	}
 }
 
 // pruneCheckVersions keeps the newest models.CheckVersionRetention applied
@@ -435,8 +440,22 @@ func insertCheckUpdatedEvent(ctx context.Context, idb bun.IDB, check *models.Che
 // after every existing version. The caller fills the snapshot, base version,
 // origin, actor and reason; status and number are set here.
 func CreateCheckVersionProposal(ctx context.Context, idb bun.IDB, row *models.CheckVersion) error {
-	if err := lockCheckForVersion(ctx, idb, row.CheckUID); err != nil {
+	// A check created before the history existed gets its baseline first, so
+	// the proposal has an applied version to be based on and diffed against.
+	if err := EnsureCheckVersionBaseline(ctx, idb, row.CheckUID); err != nil {
 		return err
+	}
+
+	if row.BaseVersion == nil {
+		latest, err := LatestAppliedCheckVersion(ctx, idb, row.CheckUID)
+		if err != nil {
+			return err
+		}
+
+		if latest != nil {
+			base := latest.Version
+			row.BaseVersion = &base
+		}
 	}
 
 	snap, err := checkversion.FromJSONMap(row.Snapshot)

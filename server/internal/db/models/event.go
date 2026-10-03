@@ -25,6 +25,20 @@ const (
 	// first change-detection baseline of a dns check (spec 2026-10-03-04).
 	// Payload: `region` and `valueCount`.
 	EventTypeCheckBaselineCaptured EventType = "check.baseline_captured"
+	// EventTypeCheckAIRepairAttempted records an AI repair attempt on a
+	// drifting js check (spec 2026-10-03-07). The payload carries the outcome
+	// and the tokens spent. The per-check and per-org repair rate limits
+	// count these rows.
+	EventTypeCheckAIRepairAttempted EventType = "check.ai_repair_attempted"
+	// EventTypeCheckAIRepairProposed records a repair stored as a proposed
+	// check version, awaiting approval.
+	EventTypeCheckAIRepairProposed EventType = "check.ai_repair_proposed"
+	// EventTypeCheckAIRepairApplied records a `repair: auto` candidate applied
+	// as a new check version. The payload carries the diff.
+	EventTypeCheckAIRepairApplied EventType = "check.ai_repair_applied"
+	// EventTypeAIUsage records the tokens of one LLM call (spec
+	// 2026-10-03-07). The org's daily AI token budget sums these rows.
+	EventTypeAIUsage EventType = "ai.usage"
 
 	// EventTypeIncidentCreated indicates an incident was created.
 	EventTypeIncidentCreated EventType = "incident.created"

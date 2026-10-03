@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/audit"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkversion"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/dbctx"
@@ -102,6 +103,36 @@ func callerChangeIdentity(ctx context.Context) (string, models.CheckVersionOrigi
 	}
 
 	return userUID, models.CheckVersionOriginUser
+}
+
+// markAIGenerated switches the change's origin to ai_generate when the write
+// saves a freshly generated js script: an `ai` block whose generated_at
+// differs from the stored one (spec 2026-10-03-07). Only a caller-attributed
+// change (user, api) is relabeled; the actor stays the caller.
+func markAIGenerated(ctx context.Context, checkType string, config, stored map[string]any) {
+	source := dbctx.ChangeSourceFromContext(ctx)
+	// A restore carries its own reason ("restored vN") and keeps its origin.
+	if source == nil || source.Reason != "" || checkType != string(checkerdef.CheckTypeJS) {
+		return
+	}
+
+	if source.Origin != string(models.CheckVersionOriginUser) && source.Origin != string(models.CheckVersionOriginAPI) {
+		return
+	}
+
+	generatedAt := aiGeneratedAt(config)
+	if generatedAt == "" || generatedAt == aiGeneratedAt(stored) {
+		return
+	}
+
+	source.Origin = string(models.CheckVersionOriginAIGenerate)
+}
+
+func aiGeneratedAt(config map[string]any) string {
+	block, _ := config["ai"].(map[string]any)
+	value, _ := block["generated_at"].(string)
+
+	return value
 }
 
 // WithChangeOrigin starts a new change on the context with the given origin

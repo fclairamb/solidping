@@ -735,6 +735,8 @@ func (s *Service) ProcessCheckResult(ctx context.Context, check *models.Check, r
 
 	s.persistCheckScreenshot(ctx, check, result)
 
+	s.queueAIRepair(ctx, check, result)
+
 	return err
 }
 
@@ -1859,6 +1861,11 @@ func (s *Service) queueLifecycleNotifications(
 		// A captured dns baseline (spec 2026-10-03-04) is bookkeeping: on the
 		// check's timeline, never paged.
 		models.EventTypeCheckBaselineCaptured,
+		// AI repair bookkeeping and token usage (spec 2026-10-03-07): on the
+		// check's timeline, never paged. An applied auto-repair notifies its
+		// owner by email from the repair itself.
+		models.EventTypeCheckAIRepairAttempted, models.EventTypeCheckAIRepairProposed,
+		models.EventTypeCheckAIRepairApplied, models.EventTypeAIUsage,
 		// A health incident's failing components changing (spec
 		// 2026-10-03-05) is a timeline update on an incident that already
 		// paged: recorded, never paged again.
