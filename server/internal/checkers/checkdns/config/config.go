@@ -236,12 +236,14 @@ func (c *DNSConfig) parseChangeDetection(configMap map[string]any) error {
 		c.OnChange = onChange
 	}
 
-	baseline, err := parseBaseline(configMap[keyBaseline])
-	if err != nil {
-		return err
-	}
+	if raw := configMap[keyBaseline]; raw != nil {
+		baseline, err := parseBaseline(raw)
+		if err != nil {
+			return err
+		}
 
-	c.Baseline = baseline
+		c.Baseline = baseline
+	}
 
 	return nil
 }
@@ -250,8 +252,6 @@ func (c *DNSConfig) parseChangeDetection(configMap map[string]any) error {
 // (map[string]any of []any) or its typed form.
 func parseBaseline(raw any) (map[string][]string, error) {
 	switch typed := raw.(type) {
-	case nil:
-		return nil, nil
 	case map[string][]string:
 		return typed, nil
 	case map[string]any:

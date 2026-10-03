@@ -113,7 +113,6 @@ func capture(ctx context.Context, svc db.Service, f *fixture, region string, val
 		map[string]any{"baseline_capture": values})
 }
 
-//nolint:funlen // One suite, several scenarios
 func runCaptureSuite(t *testing.T, svc db.Service) {
 	t.Helper()
 

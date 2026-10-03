@@ -2300,11 +2300,12 @@ func (s *Service) UpdateCheck(
 		if reconcileErr := s.reconcileCheckJobs(ctx, updatedCheck, relevel); reconcileErr != nil {
 			return CheckResponse{}, fmt.Errorf("failed to reconcile check jobs: %w", reconcileErr)
 		}
+	}
 
-		if dnsBaselineReset(updatedCheck.Type, configBefore, updatedCheck.Config) {
-			if dueErr := s.makeCheckJobsDue(ctx, updatedCheck.UID); dueErr != nil {
-				return CheckResponse{}, dueErr
-			}
+	// check.Config holds the stored public config once applyConfigUpdate ran.
+	if req.Config != nil && dnsBaselineReset(check.Type, configBefore, check.Config) {
+		if dueErr := s.makeCheckJobsDue(ctx, check.UID); dueErr != nil {
+			return CheckResponse{}, dueErr
 		}
 	}
 

@@ -86,7 +86,7 @@ func (c *DNSChecker) GetSampleConfigs(opts *checkerdef.ListSampleOptions) []chec
 			// rotate the way A records behind a CDN do.
 			Name:   "GitHub NS change detection",
 			Slug:   "dns-github-ns-changes",
-			Period: time.Minute * 15,
+			Period: time.Minute * 5,
 			Config: (&DNSConfig{
 				Host:          "github.com",
 				RecordType:    recordTypeNS,
