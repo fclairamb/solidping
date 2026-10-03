@@ -5,6 +5,7 @@
 
 ### Features
 
+* **status-pages:** **The status page and its TV view show your organization's name and logo.** The header displays the organization name, and the organization logo replaces the SolidPing mark when the page has no logo of its own (a page logo still wins). The TV board shows both above the headline. Only uploaded logos are shown; an external-URL organization logo is skipped because status pages only load first-party images. The public status page API gains `orgName` and `orgLogoUrl`.
 * **checks:** **New `vnc` check type.** It connects to a VNC server, negotiates the RFB version (3.3, 3.7, 3.8), audits the offered security types (`requireAuth` defaults to true), logs on with VNC authentication when a password is set, and captures a screenshot. Failures carry stable codes such as `CONNECTION_FAILED`, `NOT_RFB`, `NO_AUTH_OFFERED`, `AUTH_FAILED` and `NO_FRAME`.
 * **checks:** **Scripted VNC remote control from JavaScript checks.** `vnc.connect()` opens a session with incremental framebuffer updates, pointer and key input, and pixel, region hash and screenshot reads. One session per execution, 100 actions at most.
 * **checks:** **The `vnc` check supports VeNCrypt (TLS) and Apple Remote Desktop.** It picks the strongest security type both sides support that your credentials satisfy, and falls back to the next one on a fresh connection. New config keys: `username`, `tlsVerify` (default false), `warningDays`, `criticalDays`. The VeNCrypt certificate is reported and graded, with new failure codes `TLS_FAILED` and `CERT_EXPIRY`.
