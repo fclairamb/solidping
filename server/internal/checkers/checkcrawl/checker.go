@@ -192,7 +192,12 @@ func progress(cfg *CrawlConfig, state *crawlState) map[string]any {
 func (c *CrawlChecker) finish(
 	cfg *CrawlConfig, state *crawlState, used int, incomplete bool,
 ) (checkerdef.StepOutput, error) {
-	report, err := json.Marshal(Report{Findings: state.Findings, PagesCrawled: state.Pages, Incomplete: incomplete})
+	findings := state.Findings
+	if findings == nil {
+		findings = []Finding{} // a clean crawl reports an empty list, never null
+	}
+
+	report, err := json.Marshal(Report{Findings: findings, PagesCrawled: state.Pages, Incomplete: incomplete})
 	if err != nil {
 		return checkerdef.StepOutput{}, fmt.Errorf("encode crawl report: %w", err)
 	}

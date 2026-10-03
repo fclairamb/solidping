@@ -457,6 +457,18 @@ func TestCrawlExecuteRunsAWholeCrawl(t *testing.T) {
 	require.Equal(t, 2, result.Output[OutputKeyPagesCrawled])
 }
 
+// A clean crawl's report carries an empty findings list, never null: the
+// attachment rail refuses a report without a findings array.
+func TestCrawlCleanReportHasAnEmptyFindingsList(t *testing.T) {
+	t.Parallel()
+
+	web := newSite(t, false)
+	web.html("/", `clean`)
+
+	out := crawl(t, &CrawlChecker{}, map[string]any{"url": web.url("/"), "sitemap": "off"}, 20)
+	require.Contains(t, string(out.Report), `"findings":[]`)
+}
+
 func TestCrawlConfigValidation(t *testing.T) {
 	t.Parallel()
 
