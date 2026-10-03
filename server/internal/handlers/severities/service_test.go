@@ -64,6 +64,16 @@ func TestSeedDefaultsCreatesThreeRows(t *testing.T) {
 	r.True(slugs["default"])
 	r.True(slugs["critical"])
 	r.Equal(1, defaultCount, "exactly one row must carry is_default")
+
+	for _, sev := range list {
+		switch sev.Slug {
+		case "low":
+			r.NotContains(sev.Channels, "slack-webhook")
+		case "default", "critical":
+			r.Contains(sev.Channels, "slack-webhook",
+				"%s severity must page slack-webhook channels", sev.Slug)
+		}
+	}
 }
 
 // TestCreateRejectsBadChannel pins channel-array validation: unknown
