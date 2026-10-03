@@ -178,4 +178,19 @@ test.describe("JS check — public env vs encrypted secrets", () => {
       headers: { Authorization: `Bearer ${token}` },
     });
   });
+
+  test("a sample declaring a secret shows an empty row for it", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await page.goto("orgs/test/checks/new?checkType=js");
+    await page.waitForLoadState("networkidle");
+
+    await page.getByTestId("check-load-template-button").click();
+    await page.getByTestId("check-sample-js-tcp-redis-ping").click();
+
+    await expect(page.getByTestId("js-secret-key-0")).toHaveValue("REDIS_PASSWORD");
+    await expect(page.getByTestId("js-secret-value-0")).toHaveValue("");
+    await expect(page.getByTestId("js-env-key-0")).toHaveValue("REDIS_ADDR");
+  });
 });

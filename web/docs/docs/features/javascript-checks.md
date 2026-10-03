@@ -845,7 +845,8 @@ return { status: "up", metrics: { loginMs: nav.duration + dash.duration } };
 The screenshot on the failing branch is kept only because that branch returns
 `down`; the same call on the success path would be dropped. This example is
 also shipped as the **JS: Browser Form Login** sample in the dashboard's sample
-picker, from the same source, so the two cannot drift.
+picker, from the same source, so the two cannot drift. Picking it adds an empty
+`PASSWORD` row to the **Secrets** editor, to be filled in before saving.
 
 ### Redis: AUTH, then PING (tested)
 
@@ -879,7 +880,8 @@ A test with the wrong password proves this example actually checks the
 credential: RESP answers `-ERR …`, the `+` test fails, and the check reports
 `down` at the `auth` step instead of sailing on to `PING`. This example is also
 shipped as the **JS: Redis AUTH + PING** sample in the dashboard's sample
-picker, from the same source, so the two cannot drift.
+picker, from the same source, so the two cannot drift. Picking it adds an empty
+`REDIS_PASSWORD` row to the **Secrets** editor, to be filled in before saving.
 
 ### A binary UDP query (tested)
 

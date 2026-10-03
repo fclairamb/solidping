@@ -32,6 +32,9 @@ export interface CheckTypeModule<S = unknown> {
   // fully-populated state is declared here.
   ownedKeys: readonly string[];
   fromConfig(config: CheckConfig): S;
+  // Seeds the state from a sample config (the "Load sample" picker) instead of
+  // from a stored check. Optional: modules without it use `fromConfig`.
+  fromSample?(config: CheckConfig): S;
   toConfig(state: S): { config: CheckConfig; errors: FieldErrors };
   Fields: FC<CheckTypeFieldsProps<S>>;
 }

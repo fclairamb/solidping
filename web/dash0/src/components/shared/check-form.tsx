@@ -1139,7 +1139,8 @@ export function CheckForm({
     setName(sample.name);
     setSlug(sample.slug);
     setPeriod(secondsToHMS(sample.periodSeconds));
-    setConfigState(checkTypeRegistry[type].fromConfig(sample.config));
+    const typeModule = checkTypeRegistry[type];
+    setConfigState((typeModule.fromSample ?? typeModule.fromConfig)(sample.config));
     setPassthroughSource({ type, config: sample.config });
     setTimeoutSeconds(durationStringToSeconds(getConfigField(sample.config, "timeout")));
     setTunnelCheckUid(getConfigField(sample.config, "tunnelCheckUid"));

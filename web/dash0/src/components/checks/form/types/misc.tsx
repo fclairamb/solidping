@@ -992,6 +992,17 @@ export const jsModule: CheckTypeModule<JsState> = {
     secrets: [],
     secretsDirty: false,
   }),
+  // A sample declares secret KEYS (empty values) so the editor shows the row to
+  // fill. The value is forced to "" whatever the sample carries, and
+  // `secretsDirty` stays false until the user types.
+  fromSample: (config) => ({
+    ...jsModule.fromConfig(config),
+    secrets: Object.keys(
+      config.secrets && typeof config.secrets === "object" && !Array.isArray(config.secrets)
+        ? (config.secrets as Record<string, unknown>)
+        : {}
+    ).map((key) => ({ key, value: "" })),
+  }),
   toConfig: (state) => {
     const cfg: CheckConfig = {};
     if (state.script) cfg.script = state.script;

@@ -185,3 +185,20 @@ describe("vncModule", () => {
     expect(vncModule.toConfig(long).errors.map((e) => e.name)).toEqual(["username"]);
   });
 });
+
+describe("jsModule.fromSample", () => {
+  it("seeds one empty secret row per declared key", () => {
+    const state = jsModule.fromSample!({ script: "x", secrets: { REDIS_PASSWORD: "" } });
+    expect(state.secrets).toEqual([{ key: "REDIS_PASSWORD", value: "" }]);
+    expect(state.secretsDirty).toBe(false);
+  });
+
+  it("never carries a sample secret value", () => {
+    const state = jsModule.fromSample!({ script: "x", secrets: { PASSWORD: "leak" } });
+    expect(state.secrets).toEqual([{ key: "PASSWORD", value: "" }]);
+  });
+
+  it("fromConfig still seeds no secrets for an existing check", () => {
+    expect(jsModule.fromConfig({ script: "x", secrets: { PASSWORD: "p" } }).secrets).toEqual([]);
+  });
+});
