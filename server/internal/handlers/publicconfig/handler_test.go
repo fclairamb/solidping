@@ -494,3 +494,22 @@ func TestGetConfigRunAndDeploymentMode(t *testing.T) {
 	r.Equal("demo", body["runMode"])
 	r.Equal("self-hosted", body["deploymentMode"])
 }
+
+// TestBuildAIFlag: ai.enabled follows SP_AI_PROVIDER, and nothing about the
+// provider leaks (spec 2026-10-03-07).
+func TestBuildAIFlag(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	r.False(publicconfig.Build(&config.Config{}).AI.Enabled)
+
+	on := publicconfig.Build(&config.Config{AI: config.AIConfig{
+		Provider: config.AIProviderOpenAI, Model: "m", APIKey: "sk-should-not-leak",
+	}})
+	r.True(on.AI.Enabled)
+
+	raw, err := json.Marshal(on)
+	r.NoError(err)
+	r.NotContains(string(raw), "sk-should-not-leak")
+	r.Contains(string(raw), `"ai":{"enabled":true}`)
+}

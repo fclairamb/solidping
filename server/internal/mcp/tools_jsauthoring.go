@@ -29,6 +29,16 @@ func defaultScriptRunner(cfg *config.Config) *aichecks.Runner {
 	return &aichecks.Runner{Guard: func() *egress.Guard { return guard }}
 }
 
+// runner returns the probe runner, defaulting to one behind the strictest
+// egress policy when the handler was built without NewHandler.
+func (h *Handler) runner() *aichecks.Runner {
+	if h.scriptRunner == nil {
+		return defaultScriptRunner(nil)
+	}
+
+	return h.scriptRunner
+}
+
 // SetScriptRunner replaces the runner of the js authoring probes.
 func (h *Handler) SetScriptRunner(runner *aichecks.Runner) {
 	if runner != nil {
@@ -123,7 +133,7 @@ func (h *Handler) toolRunJSScript(ctx context.Context, _ string, args map[string
 		secrets[name] = ""
 	}
 
-	result, err := h.scriptRunner.Run(ctx, script, stringMapArg(args, propEnv), secrets, timeout)
+	result, err := h.runner().Run(ctx, script, stringMapArg(args, propEnv), secrets, timeout)
 	if err != nil {
 		return errorResult(err.Error())
 	}
@@ -132,7 +142,7 @@ func (h *Handler) toolRunJSScript(ctx context.Context, _ string, args map[string
 }
 
 func (h *Handler) toolFetchPage(ctx context.Context, _ string, args map[string]any) ToolCallResult {
-	result, err := h.scriptRunner.FetchPage(ctx, getStringArg(args, propURL))
+	result, err := h.runner().FetchPage(ctx, getStringArg(args, propURL))
 	if err != nil {
 		return errorResult(err.Error())
 	}
@@ -141,7 +151,7 @@ func (h *Handler) toolFetchPage(ctx context.Context, _ string, args map[string]a
 }
 
 func (h *Handler) toolBrowserSnapshot(ctx context.Context, _ string, args map[string]any) ToolCallResult {
-	result, err := h.scriptRunner.BrowserSnapshot(ctx, getStringArg(args, propURL))
+	result, err := h.runner().BrowserSnapshot(ctx, getStringArg(args, propURL))
 	if err != nil {
 		return errorResult(err.Error())
 	}
