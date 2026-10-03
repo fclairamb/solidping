@@ -1,0 +1,19 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.fclairamb/solidping",
+  "title": "SolidPing",
+  "description": "Self-hostable uptime monitoring: create checks, read incidents, manage status pages.",
+  "version": "0.37.0",
+  "repository": {
+    "url": "https://github.com/fclairamb/solidping",
+    "source": "github",
+    "id": "1189028253"
+  },
+  "websiteUrl": "https://solidping.io",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://solidping.io/api/v1/mcp"
+    }
+  ]
+}
