@@ -17,6 +17,7 @@ import (
 	a2sconfig "github.com/fclairamb/solidping/server/internal/checkers/checka2s/config"
 	browserconfig "github.com/fclairamb/solidping/server/internal/checkers/checkbrowser/config"
 	clickhouseconfig "github.com/fclairamb/solidping/server/internal/checkers/checkclickhouse/config"
+	crawlconfig "github.com/fclairamb/solidping/server/internal/checkers/checkcrawl/config"
 	dnsconfig "github.com/fclairamb/solidping/server/internal/checkers/checkdns/config"
 	dnsblconfig "github.com/fclairamb/solidping/server/internal/checkers/checkdnsbl/config"
 	dockerconfig "github.com/fclairamb/solidping/server/internal/checkers/checkdocker/config"
@@ -151,6 +152,8 @@ func ParseConfig(checkType checkerdef.CheckType) (checkerdef.Config, bool) {
 		return &rdpconfig.RDPConfig{}, true
 	case checkerdef.CheckTypeVNC:
 		return &vncconfig.VNCConfig{}, true
+	case checkerdef.CheckTypeCrawl:
+		return &crawlconfig.CrawlConfig{}, true
 	case checkerdef.CheckTypeSleep:
 		return &sleepconfig.SleepConfig{}, true
 	default:
@@ -263,6 +266,8 @@ func ValidateSpec(checkType checkerdef.CheckType, spec *checkerdef.CheckSpec) er
 		return rdpconfig.ValidateSpec(spec)
 	case checkerdef.CheckTypeVNC:
 		return vncconfig.ValidateSpec(spec)
+	case checkerdef.CheckTypeCrawl:
+		return crawlconfig.ValidateSpec(spec)
 	case checkerdef.CheckTypeSleep:
 		return sleepconfig.ValidateSpec(spec)
 	default:

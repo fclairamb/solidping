@@ -359,6 +359,7 @@ const (
 	CheckTypeA2s             CheckType = "a2s"
 	CheckTypeBrowser         CheckType = "browser"
 	CheckTypeClickhouse      CheckType = "clickhouse"
+	CheckTypeCrawl           CheckType = "crawl"
 	CheckTypeDns             CheckType = "dns"
 	CheckTypeDnsbl           CheckType = "dnsbl"
 	CheckTypeDocker          CheckType = "docker"
@@ -409,6 +410,8 @@ func (e CheckType) Valid() bool {
 	case CheckTypeBrowser:
 		return true
 	case CheckTypeClickhouse:
+		return true
+	case CheckTypeCrawl:
 		return true
 	case CheckTypeDns:
 		return true
@@ -668,6 +671,7 @@ const (
 	CheckListItemTypeA2s             CheckListItemType = "a2s"
 	CheckListItemTypeBrowser         CheckListItemType = "browser"
 	CheckListItemTypeClickhouse      CheckListItemType = "clickhouse"
+	CheckListItemTypeCrawl           CheckListItemType = "crawl"
 	CheckListItemTypeDns             CheckListItemType = "dns"
 	CheckListItemTypeDnsbl           CheckListItemType = "dnsbl"
 	CheckListItemTypeDocker          CheckListItemType = "docker"
@@ -718,6 +722,8 @@ func (e CheckListItemType) Valid() bool {
 	case CheckListItemTypeBrowser:
 		return true
 	case CheckListItemTypeClickhouse:
+		return true
+	case CheckListItemTypeCrawl:
 		return true
 	case CheckListItemTypeDns:
 		return true
@@ -875,6 +881,7 @@ const (
 	CreateCheckRequestTypeA2s             CreateCheckRequestType = "a2s"
 	CreateCheckRequestTypeBrowser         CreateCheckRequestType = "browser"
 	CreateCheckRequestTypeClickhouse      CreateCheckRequestType = "clickhouse"
+	CreateCheckRequestTypeCrawl           CreateCheckRequestType = "crawl"
 	CreateCheckRequestTypeDns             CreateCheckRequestType = "dns"
 	CreateCheckRequestTypeDnsbl           CreateCheckRequestType = "dnsbl"
 	CreateCheckRequestTypeDocker          CreateCheckRequestType = "docker"
@@ -925,6 +932,8 @@ func (e CreateCheckRequestType) Valid() bool {
 	case CreateCheckRequestTypeBrowser:
 		return true
 	case CreateCheckRequestTypeClickhouse:
+		return true
+	case CreateCheckRequestTypeCrawl:
 		return true
 	case CreateCheckRequestTypeDns:
 		return true
@@ -3041,6 +3050,7 @@ const (
 	UpsertCheckRequestTypeA2s             UpsertCheckRequestType = "a2s"
 	UpsertCheckRequestTypeBrowser         UpsertCheckRequestType = "browser"
 	UpsertCheckRequestTypeClickhouse      UpsertCheckRequestType = "clickhouse"
+	UpsertCheckRequestTypeCrawl           UpsertCheckRequestType = "crawl"
 	UpsertCheckRequestTypeDns             UpsertCheckRequestType = "dns"
 	UpsertCheckRequestTypeDnsbl           UpsertCheckRequestType = "dnsbl"
 	UpsertCheckRequestTypeDocker          UpsertCheckRequestType = "docker"
@@ -3091,6 +3101,8 @@ func (e UpsertCheckRequestType) Valid() bool {
 	case UpsertCheckRequestTypeBrowser:
 		return true
 	case UpsertCheckRequestTypeClickhouse:
+		return true
+	case UpsertCheckRequestTypeCrawl:
 		return true
 	case UpsertCheckRequestTypeDns:
 		return true
@@ -4021,7 +4033,7 @@ type Check struct {
 	// CheckGroupUid Group this check belongs to, or null.
 	CheckGroupUid *openapi_types.UUID `json:"checkGroupUid,omitempty"`
 
-	// Config Check-specific configuration; the fields accepted depend on `type`. HTTP checks additionally accept `verifySsl` (boolean, default true — set false to skip TLS certificate verification), `followRedirects` (boolean, default true — set false to stop at the first response instead of following redirects), `redirectHostPolicy` (string, default "any" — "same-host" refuses any followed redirect hop whose host differs from the previous hop's, failing the check instead of following it; an unknown value is a VALIDATION_ERROR) and `capture_failure_response` (boolean, default false — when true a FAILING execution keeps what the probe received: status line, redacted response headers and a 16 KiB-capped body, stored on the incident it opens as `details.failureResponse`. Opt-in because a response body can contain PII; never exposed on a status page). See wiki/conventions/checker-config.md for the full per-type field reference.
+	// Config Check-specific configuration; the fields accepted depend on `type`. HTTP checks additionally accept `verifySsl` (boolean, default true — set false to skip TLS certificate verification), `followRedirects` (boolean, default true — set false to stop at the first response instead of following redirects), `redirectHostPolicy` (string, default "any" — "same-host" refuses any followed redirect hop whose host differs from the previous hop's, failing the check instead of following it; an unknown value is a VALIDATION_ERROR), `httpVersion` (string, default "1.1" and omitted at default — "2" forces HTTP/2, h2 over TLS or h2c with prior knowledge over http://; "3" forces HTTP/3 over QUIC with no TCP fallback; a response over another version fails the check; any other value, and "3" on a check with `tunnelCheckUid`, is a VALIDATION_ERROR; results record the negotiated protocol as `http_protocol` and the Alt-Svc header as `alt_svc`) and `capture_failure_response` (boolean, default false — when true a FAILING execution keeps what the probe received: status line, redacted response headers and a 16 KiB-capped body, stored on the incident it opens as `details.failureResponse`. Opt-in because a response body can contain PII; never exposed on a status page). See wiki/conventions/checker-config.md for the full per-type field reference.
 	Config    *map[string]interface{} `json:"config,omitempty"`
 	CreatedAt *time.Time              `json:"createdAt,omitempty"`
 
@@ -4320,7 +4332,7 @@ type CheckListItem struct {
 	// CheckGroupUid Group this check belongs to, or null.
 	CheckGroupUid *openapi_types.UUID `json:"checkGroupUid,omitempty"`
 
-	// Config Check-specific configuration; the fields accepted depend on `type`. HTTP checks additionally accept `verifySsl` (boolean, default true — set false to skip TLS certificate verification), `followRedirects` (boolean, default true — set false to stop at the first response instead of following redirects), `redirectHostPolicy` (string, default "any" — "same-host" refuses any followed redirect hop whose host differs from the previous hop's, failing the check instead of following it; an unknown value is a VALIDATION_ERROR) and `capture_failure_response` (boolean, default false — when true a FAILING execution keeps what the probe received: status line, redacted response headers and a 16 KiB-capped body, stored on the incident it opens as `details.failureResponse`. Opt-in because a response body can contain PII; never exposed on a status page). See wiki/conventions/checker-config.md for the full per-type field reference.
+	// Config Check-specific configuration; the fields accepted depend on `type`. HTTP checks additionally accept `verifySsl` (boolean, default true — set false to skip TLS certificate verification), `followRedirects` (boolean, default true — set false to stop at the first response instead of following redirects), `redirectHostPolicy` (string, default "any" — "same-host" refuses any followed redirect hop whose host differs from the previous hop's, failing the check instead of following it; an unknown value is a VALIDATION_ERROR), `httpVersion` (string, default "1.1" and omitted at default — "2" forces HTTP/2, h2 over TLS or h2c with prior knowledge over http://; "3" forces HTTP/3 over QUIC with no TCP fallback; a response over another version fails the check; any other value, and "3" on a check with `tunnelCheckUid`, is a VALIDATION_ERROR; results record the negotiated protocol as `http_protocol` and the Alt-Svc header as `alt_svc`) and `capture_failure_response` (boolean, default false — when true a FAILING execution keeps what the probe received: status line, redacted response headers and a 16 KiB-capped body, stored on the incident it opens as `details.failureResponse`. Opt-in because a response body can contain PII; never exposed on a status page). See wiki/conventions/checker-config.md for the full per-type field reference.
 	Config    *map[string]interface{} `json:"config,omitempty"`
 	CreatedAt *time.Time              `json:"createdAt,omitempty"`
 
@@ -4707,7 +4719,7 @@ type CreateCheckRequest struct {
 	// CheckGroupUid Group to place this check in.
 	CheckGroupUid *openapi_types.UUID `json:"checkGroupUid,omitempty"`
 
-	// Config Check-specific configuration (e.g., url, port, timeout). HTTP checks additionally accept `verifySsl` and `followRedirects` (both booleans, default true) and `capture_failure_response` (boolean, default false) — see the Check schema above for details.
+	// Config Check-specific configuration (e.g., url, port, timeout). HTTP checks additionally accept `verifySsl` and `followRedirects` (both booleans, default true), `httpVersion` ("1.1", "2" or "3") and `capture_failure_response` (boolean, default false) — see the Check schema above for details.
 	Config map[string]interface{} `json:"config"`
 
 	// DegradedEnabled Whether degraded detection runs on this check. When false, degraded detection is not evaluated for this check. New checks are on; every check that predates the feature is off. Turning it off resolves the check's open degraded incident, if any.
@@ -8391,7 +8403,7 @@ type UpdateSupportThreadRequestStatus string
 
 // UpsertCheckRequest defines model for UpsertCheckRequest.
 type UpsertCheckRequest struct {
-	// Config Check-specific configuration. HTTP checks additionally accept `verifySsl` and `followRedirects` (both booleans, default true) and `capture_failure_response` (boolean, default false) — see the Check schema above for details.
+	// Config Check-specific configuration. HTTP checks additionally accept `verifySsl` and `followRedirects` (both booleans, default true), `httpVersion` ("1.1", "2" or "3") and `capture_failure_response` (boolean, default false) — see the Check schema above for details.
 	Config map[string]interface{} `json:"config"`
 
 	// DependsOn Replaces the full dependsOn set when present. Omit to leave deps

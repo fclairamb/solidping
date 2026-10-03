@@ -616,9 +616,10 @@ func (s *Service) capRegionCountForRate(
 	regionProbe := make([]string, regions.MaxAutoRegionCount)
 
 	for n := count; n >= floor; n-- {
-		projected, err := s.entitlements.ProjectChecksPerMinute(ctx, subject.orgUID, entcore.CheckRateProposal{
+		projected, err := s.entitlements.ProjectChecksPerMinute(ctx, subject.orgUID, &entcore.CheckRateProposal{
 			ExcludeCheckUID: subject.excludeUID,
 			Type:            subject.checkType,
+			Config:          subject.config,
 			Period:          subject.period,
 			Regions:         regionProbe[:min(n, len(regionProbe))],
 			Enabled:         true,

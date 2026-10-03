@@ -735,6 +735,9 @@ type CheckRate struct {
 	Period  timeutils.Duration `bun:"period"`
 	Regions []string           `bun:"regions,type:text[],array"`
 	Type    string             `bun:"type"`
+	// Config is read for multi-step types only, whose per-run cost depends on
+	// it (checkerdef.UnitsPerRunHint, spec 2026-10-03-03).
+	Config JSONMap `bun:"config"`
 }
 
 // CheckUpdate represents fields that can be updated.

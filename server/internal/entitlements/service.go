@@ -342,6 +342,58 @@ func (s *Service) ReserveCheckExecution(ctx context.Context, orgUID string) erro
 	return nil
 }
 
+// ReserveCheckExecutionsUpTo is the multi-unit variant of
+// ReserveCheckExecution for multi-step checks (spec 2026-10-03-03): one slice
+// of a website crawl does up to n units of work (one page fetched = one unit)
+// and must draw that many tokens from the same per-org bucket. It grants
+// min(n, available whole tokens) and never errors on a drained bucket: 0
+// granted is the caller's signal to defer, exactly like a QuotaError on the
+// single-unit path.
+//
+// nil cap = unlimited: n is granted without touching any bucket. A cap <= 0
+// grants nothing.
+func (s *Service) ReserveCheckExecutionsUpTo(ctx context.Context, orgUID string, n int) (int, error) {
+	if n <= 0 {
+		return 0, nil
+	}
+
+	resolved, err := s.Resolve(ctx, orgUID)
+	if err != nil {
+		return 0, fmt.Errorf("resolve entitlements: %w", err)
+	}
+
+	if resolved.Limits.MaxChecksPerMinute == nil {
+		return n, nil
+	}
+
+	limit := *resolved.Limits.MaxChecksPerMinute
+	if limit <= 0 {
+		return 0, nil
+	}
+
+	return s.limiterFor(orgUID, limit).take(n, s.now()), nil
+}
+
+// RefundCheckExecutions gives k unused units back to the org's bucket, after a
+// slice used fewer units than ReserveCheckExecutionsUpTo granted. The bucket
+// never grows past its burst cap, so a refund can never mint capacity the org
+// did not have. A no-op for an unlimited org or one with no bucket yet.
+func (s *Service) RefundCheckExecutions(_ context.Context, orgUID string, unused int) {
+	if unused <= 0 {
+		return
+	}
+
+	s.limitersMu.Lock()
+	bucket, ok := s.limiters[orgUID]
+	s.limitersMu.Unlock()
+
+	if !ok {
+		return
+	}
+
+	bucket.refund(unused)
+}
+
 // Plan-weight tiers used by the cost-aware scheduler (spec 2026-06-30-09).
 // Higher weight = more protected (reserved capacity + deadline credit under
 // contention). Kept deliberately coarse: the OSS knows nothing about SKUs, so
@@ -732,4 +784,36 @@ func (b *tokenBucket) allow(now time.Time) bool {
 	}
 
 	return false
+}
+
+// take consumes up to n whole tokens and returns how many it consumed.
+func (b *tokenBucket) take(n int, now time.Time) int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	b.refillLocked(now)
+
+	granted := int(b.tokens)
+	if granted > n {
+		granted = n
+	}
+
+	if granted < 0 {
+		granted = 0
+	}
+
+	b.tokens -= float64(granted)
+
+	return granted
+}
+
+// refund gives k tokens back, clamped to the burst cap.
+func (b *tokenBucket) refund(k int) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	b.tokens += float64(k)
+	if b.tokens > float64(b.capacity) {
+		b.tokens = float64(b.capacity)
+	}
 }

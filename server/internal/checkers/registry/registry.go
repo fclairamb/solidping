@@ -5,6 +5,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checka2s"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkbrowser"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkclickhouse"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkcrawl"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkdns"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkdnsbl"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkdocker"
@@ -156,6 +157,8 @@ func GetChecker(checkType checkerdef.CheckType) (checkerdef.Checker, bool) {
 		return &checkrdp.RDPChecker{}, true
 	case checkerdef.CheckTypeVNC:
 		return &checkvnc.VNCChecker{}, true
+	case checkerdef.CheckTypeCrawl:
+		return &checkcrawl.CrawlChecker{}, true
 	case checkerdef.CheckTypeSleep:
 		return &checksleep.SleepChecker{}, true
 	default:

@@ -682,9 +682,10 @@ func (s *Service) orgRateWarning(
 	// selection is the automatic placement (frequently more than one region).
 	// Projecting the raw request would under-count exactly the case (a fresh
 	// check, no regions touched) the warning exists for.
-	projected, err := s.entitlements.ProjectChecksPerMinute(ctx, orgUID, entcore.CheckRateProposal{
+	projected, err := s.entitlements.ProjectChecksPerMinute(ctx, orgUID, &entcore.CheckRateProposal{
 		ExcludeCheckUID: req.ExcludeCheckUID,
 		Type:            req.Type,
+		Config:          req.Config,
 		Period:          period,
 		Regions:         proposedRegions,
 		Enabled:         true,

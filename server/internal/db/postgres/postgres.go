@@ -6974,7 +6974,7 @@ func (s *Service) ListOrgCheckRates(ctx context.Context, orgUID string) ([]model
 
 	err := s.db.NewSelect().
 		Model((*models.Check)(nil)).
-		Column("uid", "enabled", "period", "regions", "type").
+		Column("uid", "enabled", "period", "regions", "type", "config").
 		Where("organization_uid = ?", orgUID).
 		Where("deleted_at IS NULL").
 		Where("internal = ?", false).

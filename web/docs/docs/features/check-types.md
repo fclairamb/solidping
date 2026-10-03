@@ -457,6 +457,41 @@ If VeNCrypt is offered but none of its sub-types is usable (for example `X509Pla
 VNC hosts are typically reachable only from inside a network. Run the check from a worker with network access to the host, or through an SSH tunnel.
 :::
 
+### Website crawl {#website-crawl}
+
+Crawl a whole website for **broken links**, **mixed content** and **sitemap errors**. A crawl is a long job (hundreds of pages), so it runs as a series of short slices: each slice fetches up to 20 URLs in about 10 seconds, saves its progress and gives its runner back. A crawl never blocks your other checks, and a worker restart resumes it from the last saved slice.
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| URL | Start page. Its host is the crawled site (`www` and the apex are different hosts) | - (required) |
+| Max pages (`maxPages`) | Internal URLs fetched per run, between 1 and 2000 | `200` |
+| Check external links (`checkExternalLinks`) | `HEAD` every external link once per run (`GET` when the server refuses `HEAD`) | on |
+| Check mixed content (`checkMixedContent`) | Report `http://` resources on `https` pages | on |
+| Sitemap (`sitemap`) | `auto` reads the `Sitemap:` lines of `robots.txt`, else `/sitemap.xml`. `off`, or a sitemap URL | `auto` |
+| Respect robots.txt (`respectRobots`) | Skip the paths `robots.txt` disallows. Turn it off to crawl a staging site that disallows everything | on |
+| `include` / `exclude` | Up to 20 path prefixes or globs each (`/blog`, `/*/print`). An include that starts with a host (`www.acme.com`) adds that host to the crawled site | none |
+| `concurrency` | Parallel requests, 1 to 4 | `2` |
+| `delayMs` | Pause between requests, 0 to 5000 ms | `250` |
+| Timeout (`timeout`) | Per request, 1 to 30 s | `10s` |
+| `maxRunDuration` | A run still going after this ends with what it found, marked incomplete. 5 min to 2 h | `30m` |
+| `failOn` | Finding types that make the run **down** | `broken_link`, `mixed_content_active`, `sitemap_error` |
+
+Findings:
+
+| Type | Meaning | Default effect |
+|------|---------|----------------|
+| `broken_link` | Internal link answering 4xx/5xx, a network error, or a redirect loop | down |
+| `broken_external_link` | External link answering 4xx/5xx or a network error | warning |
+| `mixed_content_active` | `http://` script, stylesheet, iframe, object or form action on an `https` page | down |
+| `mixed_content_passive` | `http://` image, audio, video or source on an `https` page | warning |
+| `sitemap_error` | Sitemap unreachable or invalid XML, or a listed URL not answering 2xx | down |
+
+- The result output carries the count per type, the first 50 findings, `newFindings` (findings absent from the previous run) and `pagesCrawled`. Incident notifications name the new findings first.
+- The full findings list of the last 5 runs is downloadable from the check page (or `GET /api/v1/orgs/{org}/checks/{check}/crawl-reports`). `GET .../checks/{check}/run` shows the run in progress and `DELETE` on it cancels it.
+- Each fetched URL counts as one execution against your organization's checks-per-minute limit: a daily 500-page crawl counts as 500 executions per day.
+- A crawl runs from one region only, and never on a private location. Its minimum period is `1h`, default `24h`.
+- The crawler identifies itself as `SolidPing-Crawler/<version> (+https://solidping.io/bot)` and only parses server-rendered HTML (no JavaScript).
+
 ## Security & Certificates
 
 ### SSL/TLS Certificate {#ssltls-certificate}
@@ -1802,6 +1837,7 @@ on direct API calls (`400 VALIDATION_ERROR` naming the floor):
 | `ssl` | `1h` | `6h` |
 | `domain` | `6h` | `24h` |
 | `dnsbl` | `15m` | `1h` |
+| `crawl` | `1h` | `24h` |
 | All other types | `10s` | `1m` |
 
 Heavy check types (headless browser, custom scripts) carry higher floors

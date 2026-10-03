@@ -17,11 +17,20 @@ var periodBackfillTypesMarker = regexp.MustCompile(`PERIOD_BACKFILL_TYPES:\s*([a
 
 // typesDeclaringMinPeriod returns, sorted, every checkerdef type whose meta
 // declares a MinPeriod above the global floor.
+// typesAddedAfterPeriodBackfill lists types introduced after migration 021
+// shipped: no row of theirs predates their floor, so they need no backfill,
+// and a released migration is never edited to add them.
+//
+//nolint:gochecknoglobals // read-only test table
+var typesAddedAfterPeriodBackfill = map[CheckType]bool{
+	CheckTypeCrawl: true, // spec 2026-10-03-03
+}
+
 func typesDeclaringMinPeriod() []string {
 	var types []string
 
 	for _, meta := range ListCheckTypeMetas() {
-		if meta.MinPeriod > 0 {
+		if meta.MinPeriod > 0 && !typesAddedAfterPeriodBackfill[meta.Type] {
 			types = append(types, string(meta.Type))
 		}
 	}

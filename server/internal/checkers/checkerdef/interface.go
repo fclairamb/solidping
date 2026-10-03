@@ -124,3 +124,53 @@ type ExtraBudgeter interface {
 	// check's stored configuration, so the config alone cannot know it.
 	ExtraBudget(forcedCapture bool) time.Duration
 }
+
+// StepChecker is implemented by checkers that run as a series of bounded
+// slices with persisted state (spec 2026-10-03-03). A check type whose
+// CheckTypeMeta.MultiStep is true must implement it (a registry test pins
+// that); the worker then calls Step instead of Execute.
+type StepChecker interface {
+	Checker
+	// Step runs one slice. in.State is nil on a run's first slice. It must
+	// return before in.Budget elapses and must not use more than in.MaxUnits
+	// work units. When in.Final is true the run is over (deadline or state cap
+	// reached): the checker must return Done with a Result built from what it
+	// has.
+	Step(ctx context.Context, config Config, in StepInput) (StepOutput, error)
+	// UnitsPerSlice is the per-slice work-unit cap the worker reserves from
+	// the org's checks-per-minute bucket before running a slice.
+	UnitsPerSlice() int
+}
+
+// StepInput is what the worker hands one slice of a multi-step run.
+type StepInput struct {
+	State    []byte        // opaque, checker-owned; nil on the first slice
+	Budget   time.Duration // wall-clock budget of this slice
+	MaxUnits int           // work units reserved for this slice
+	Final    bool          // finish now with what you have
+}
+
+// StepOutput is what one slice returns.
+type StepOutput struct {
+	State    []byte         // next state; ignored when Done
+	Done     bool           // the run is over, Result is set
+	Result   *Result        // set when Done
+	Report   []byte         // optional full report (JSON) when Done
+	Units    int            // units actually used
+	Progress map[string]any // small, shown in the UI (e.g. pagesDone, queued)
+}
+
+// MaxRunDurationHint is the optional interface a multi-step config implements
+// to bound how long one run may last before the worker forces a Final slice.
+type MaxRunDurationHint interface {
+	MaxRunDuration() time.Duration
+}
+
+// ReportDiffer is the optional interface a StepChecker implements to compare
+// a finished run's report with the previous run's (spec 2026-10-03-03 §2.5:
+// newFindings). The worker reads the previous report server-side and calls
+// it once, on the Done slice, before the result is submitted. previous is nil
+// when there is no previous report.
+type ReportDiffer interface {
+	DiffAgainst(previous []byte, out *StepOutput)
+}
