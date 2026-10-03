@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -478,24 +479,25 @@ func (s *Service) CreateIntegration(
 //
 //nolint:gochecknoglobals // constant lookup set.
 var validConnectionTypes = map[models.ConnectionType]bool{
-	models.ConnectionTypeSlack:      true,
-	models.ConnectionTypeDiscord:    true,
-	models.ConnectionTypeWebhook:    true,
-	models.ConnectionTypeEmail:      true,
-	models.ConnectionTypeGoogleChat: true,
-	models.ConnectionTypeMattermost: true,
-	models.ConnectionTypeMSTeams:    true,
-	models.ConnectionTypeMSTeamsBot: true,
-	models.ConnectionTypeNtfy:       true,
-	models.ConnectionTypeGotify:     true,
-	models.ConnectionTypeMatrix:     true,
-	models.ConnectionTypeZulip:      true,
-	models.ConnectionTypePagerduty:  true,
-	models.ConnectionTypePushover:   true,
-	models.ConnectionTypeFreebox:    true,
-	models.ConnectionTypeWebPush:    true,
-	models.ConnectionTypeKubernetes: true,
-	models.ConnectionTypeTwilio:     true,
+	models.ConnectionTypeSlack:        true,
+	models.ConnectionTypeDiscord:      true,
+	models.ConnectionTypeWebhook:      true,
+	models.ConnectionTypeEmail:        true,
+	models.ConnectionTypeGoogleChat:   true,
+	models.ConnectionTypeMattermost:   true,
+	models.ConnectionTypeMSTeams:      true,
+	models.ConnectionTypeMSTeamsBot:   true,
+	models.ConnectionTypeSlackWebhook: true,
+	models.ConnectionTypeNtfy:         true,
+	models.ConnectionTypeGotify:       true,
+	models.ConnectionTypeMatrix:       true,
+	models.ConnectionTypeZulip:        true,
+	models.ConnectionTypePagerduty:    true,
+	models.ConnectionTypePushover:     true,
+	models.ConnectionTypeFreebox:      true,
+	models.ConnectionTypeWebPush:      true,
+	models.ConnectionTypeKubernetes:   true,
+	models.ConnectionTypeTwilio:       true,
 }
 
 // validateConnectionType checks the type is known and, for types with per-type
@@ -566,12 +568,36 @@ func (s *Service) checkCreateTypeConstraints(
 //
 //nolint:gochecknoglobals // constant lookup table
 var senderURLSettingsKey = map[models.ConnectionType]string{
-	models.ConnectionTypeWebhook:    "url",
-	models.ConnectionTypeGotify:     "server_url",
-	models.ConnectionTypeNtfy:       "serverUrl",
-	models.ConnectionTypeMatrix:     "homeserverUrl",
-	models.ConnectionTypeGoogleChat: "webhook_url",
-	models.ConnectionTypeMattermost: "webhook_url",
+	models.ConnectionTypeWebhook:      "url",
+	models.ConnectionTypeGotify:       "server_url",
+	models.ConnectionTypeNtfy:         "serverUrl",
+	models.ConnectionTypeMatrix:       "homeserverUrl",
+	models.ConnectionTypeGoogleChat:   "webhook_url",
+	models.ConnectionTypeMattermost:   "webhook_url",
+	models.ConnectionTypeSlackWebhook: "webhook_url",
+}
+
+// slackIncomingWebhookHost is the only host a slack-webhook connection may
+// post to. It stops the type being used as a generic webhook and catches a
+// pasted Workflow-builder or otherwise wrong URL at save time.
+const slackIncomingWebhookHost = "hooks.slack.com"
+
+// validateSlackWebhookURL requires a present https://hooks.slack.com/ URL.
+// Unlike the other sender types, an empty URL is rejected here: the type has
+// no other setting, so a connection without it can never deliver.
+func validateSlackWebhookURL(raw string) error {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return fmt.Errorf("%w: webhook_url is required", ErrInvalidSettings)
+	}
+
+	parsed, err := url.Parse(trimmed)
+	if err != nil || parsed.Scheme != "https" || !strings.EqualFold(parsed.Hostname(), slackIncomingWebhookHost) {
+		return fmt.Errorf("%w: webhook_url must be a https://%s/ incoming-webhook URL",
+			ErrInvalidSettings, slackIncomingWebhookHost)
+	}
+
+	return nil
 }
 
 // validateSenderURLSettings validates the target URL of a notification sender
@@ -594,6 +620,13 @@ func (s *Service) validateSenderURLSettings(
 	}
 
 	raw, _ := settings[key].(string)
+
+	if connType == models.ConnectionTypeSlackWebhook {
+		if err := validateSlackWebhookURL(raw); err != nil {
+			return err
+		}
+	}
+
 	if raw == "" {
 		return nil
 	}

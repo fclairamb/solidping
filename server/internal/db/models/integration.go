@@ -33,6 +33,11 @@ const (
 	ConnectionTypeKubernetes ConnectionType = "kubernetes"
 	ConnectionTypeTwilio     ConnectionType = "twilio"
 	ConnectionTypeMSTeams    ConnectionType = "msteams"
+	// ConnectionTypeSlackWebhook is the zero-infra, one-way Slack incoming
+	// webhook. It is deliberately distinct from ConnectionTypeSlack (the OAuth
+	// bot install): the two coexist and an org may use either or both, the
+	// same way msteams and msteams-bot do.
+	ConnectionTypeSlackWebhook ConnectionType = "slack-webhook"
 	// ConnectionTypeMSTeamsBot is the two-way Microsoft Teams bot integration
 	// (Azure Bot / Bot Framework). It is deliberately distinct from
 	// ConnectionTypeMSTeams, which stays as the zero-infra, one-way Teams
