@@ -1433,7 +1433,8 @@
     "vncUsernameTooLong": "Username must be at most {{max}} bytes.",
     "crawlMaxPagesRange": "Max pages must be between 1 and {{max}}",
     "crawlMaxRunRange": "Max run duration must be between {{min}} and {{max}} minutes",
-    "healthMaxAge": "Max age must be a duration such as 10m (0 disables)"
+    "healthMaxAge": "Max age must be a duration such as 10m (0 disables)",
+    "aiContractRequired": "The contract needs at least one line when there is a prompt"
   },
   "health": {
     "format": "Health format",
@@ -1598,6 +1599,9 @@
     "detailPrompt": "Prompt",
     "detailContract": "Contract",
     "detailModel": "Written by {{model}}",
-    "detailHistory": "History and repair proposals"
+    "detailHistory": "History and repair proposals",
+    "regenerate": "Regenerate the script",
+    "regenerateHelp": "Edit the prompt or the contract, then regenerate. Saving without regenerating keeps the current script.",
+    "regeneratedHelp": "The new script is in the editor below. Save the check to keep it; the previous script stays in History."
   }
 }

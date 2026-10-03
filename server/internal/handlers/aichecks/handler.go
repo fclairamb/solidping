@@ -152,6 +152,8 @@ func (h *Handler) writeServiceError(writer http.ResponseWriter, req *http.Reques
 		return h.WriteError(writer, http.StatusTooManyRequests, base.ErrorCodeQuotaExceeded, err.Error())
 	case errors.Is(err, svc.ErrPromptRequired), errors.Is(err, svc.ErrContractRequired):
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error())
+	case errors.Is(err, svc.ErrCheckNotFound):
+		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, err.Error())
 	case errors.Is(err, svc.ErrNoContract):
 		return h.WriteError(writer, http.StatusUnprocessableEntity, base.ErrorCodeValidationError, err.Error())
 	case errors.As(err, &apiErr):

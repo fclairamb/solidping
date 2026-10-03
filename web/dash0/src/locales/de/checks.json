@@ -1433,7 +1433,8 @@
     "vncUsernameTooLong": "Der Benutzername darf höchstens {{max}} Bytes lang sein.",
     "crawlMaxPagesRange": "Die Seitenzahl muss zwischen 1 und {{max}} liegen",
     "crawlMaxRunRange": "Die maximale Laufzeit muss zwischen {{min}} und {{max}} Minuten liegen",
-    "healthMaxAge": "Das Höchstalter muss eine Dauer wie 10m sein (0 deaktiviert)"
+    "healthMaxAge": "Das Höchstalter muss eine Dauer wie 10m sein (0 deaktiviert)",
+    "aiContractRequired": "Der Vertrag braucht mindestens eine Zeile, wenn ein Prompt gesetzt ist"
   },
   "health": {
     "format": "Health-Format",
@@ -1598,6 +1599,9 @@
     "detailPrompt": "Beschreibung",
     "detailContract": "Vertrag",
     "detailModel": "Geschrieben von {{model}}",
-    "detailHistory": "Verlauf und Reparaturvorschläge"
+    "detailHistory": "Verlauf und Reparaturvorschläge",
+    "regenerate": "Skript neu generieren",
+    "regenerateHelp": "Bearbeiten Sie den Prompt oder den Vertrag und generieren Sie dann neu. Speichern ohne Neugenerierung behält das aktuelle Skript.",
+    "regeneratedHelp": "Das neue Skript steht unten im Editor. Speichern Sie den Check, um es zu behalten; das vorherige Skript bleibt im Verlauf."
   }
 }

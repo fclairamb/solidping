@@ -19,7 +19,7 @@ and the endpoints answer 404.
 
 ## Describe it
 
-On the checks page, click **Describe it**.
+On the checks page or the **New check** page, click **Describe it**.
 
 1. Write what the check should watch, for example "log in to
    `https://app.acme.com` with the test account, the dashboard shows at least
@@ -36,6 +36,16 @@ The AI never receives a secret value. It only sees the secret names, and the
 script reads them as `secrets.NAME`. A test run only gets the real values when
 every host the script contacts appears in your description or parameters.
 Secret values are scrubbed from everything handed back to the AI. The scrubbing matches the literal value, so a script that prints an encoded form (base64, URL-encoded) of a secret to the console would not be caught: never log secrets.
+
+### Edit and regenerate
+
+The check's edit page shows its prompt, contract and repair mode at the top of
+the script section. Change the prompt or the contract, then click
+**Regenerate the script**: the AI writes and tests a new script, which replaces
+the one in the editor. The test run uses the check's stored secrets, unless you
+typed new ones in the form. Nothing changes until you save, and the previous
+script stays in the check's history. Saving without regenerating keeps the
+current script and only updates the prompt, contract or repair mode.
 
 ## The `ai` block
 

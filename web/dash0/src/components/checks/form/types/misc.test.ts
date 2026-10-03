@@ -202,3 +202,44 @@ describe("jsModule.fromSample", () => {
     expect(jsModule.fromConfig({ script: "x", secrets: { PASSWORD: "p" } }).secrets).toEqual([]);
   });
 });
+
+describe("jsModule — the ai block of an AI-authored check", () => {
+  const stored: CheckConfig = {
+    script: "return { status: 'up' };",
+    ai: {
+      prompt: "the acme dashboard shows a project",
+      contract: ["GET / answers 200", "a project is listed"],
+      model: "glm-5-3-flash",
+      generated_at: "2026-10-03T22:55:33Z",
+      repair: "auto",
+    },
+  };
+
+  it("survives an unrelated edit untouched", () => {
+    const { config } = jsModule.toConfig(jsModule.fromConfig(stored));
+    expect(config.ai).toEqual(stored.ai);
+  });
+
+  it("carries an edited prompt and contract", () => {
+    const state = jsModule.fromConfig(stored);
+    expect(state.ai?.contract).toBe("GET / answers 200\na project is listed");
+    const { config, errors } = jsModule.toConfig({
+      ...state,
+      ai: { ...state.ai!, prompt: "  new prompt ", contract: "first\n\n  second  \n" },
+    });
+    expect(errors).toEqual([]);
+    expect(config.ai).toMatchObject({ prompt: "new prompt", contract: ["first", "second"], repair: "auto" });
+  });
+
+  it("rejects a prompt without a contract", () => {
+    const state = jsModule.fromConfig(stored);
+    const { errors } = jsModule.toConfig({ ...state, ai: { ...state.ai!, contract: "  \n" } });
+    expect(errors.map((e) => e.name)).toContain("aiContract");
+  });
+
+  it("is absent for a hand-written script", () => {
+    const state = jsModule.fromConfig({ script: "x" });
+    expect(state.ai).toBeUndefined();
+    expect(jsModule.toConfig(state).config).not.toHaveProperty("ai");
+  });
+});

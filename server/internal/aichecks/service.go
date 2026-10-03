@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/ai"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	jsconfig "github.com/fclairamb/solidping/server/internal/checkers/checkjs/config"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
@@ -35,6 +36,8 @@ var (
 	ErrNoContract = errors.New("the model did not return a contract")
 	// ErrNoPassingScript is a loop that ended without a passing script.
 	ErrNoPassingScript = errors.New("no script passed its test run")
+	// ErrCheckNotFound is a regeneration for a check the org does not have.
+	ErrCheckNotFound = errors.New("check not found")
 )
 
 // enabled mirrors whether a provider is configured, for the hot result path
@@ -316,6 +319,10 @@ type GenerateRequest struct {
 	// run the script and never reach the model, which only sees their names.
 	Secrets map[string]string   `json:"secrets,omitempty"`
 	Repair  jsconfig.RepairMode `json:"repair,omitempty"`
+	// CheckUID regenerates an existing js check: its stored secrets fill
+	// every name Secrets does not carry, since the dashboard never reads them
+	// back.
+	CheckUID string `json:"checkUid,omitempty"`
 }
 
 // GenerateResponse is a script that passed its test run, ready to save.
@@ -367,6 +374,37 @@ func validateGenerate(req *GenerateRequest) error {
 	return block.Validate()
 }
 
+// fillStoredSecrets adds the stored secrets of req.CheckUID that the request
+// does not carry. A typed value wins over the stored one.
+func (s *Service) fillStoredSecrets(ctx context.Context, orgUID string, req *GenerateRequest) error {
+	check, err := s.db.GetCheck(ctx, orgUID, req.CheckUID)
+	if err != nil || check == nil || check.DeletedAt != nil || check.Type != string(checkerdef.CheckTypeJS) {
+		return ErrCheckNotFound
+	}
+
+	stored, err := s.checkSecrets(ctx, check)
+	if err != nil {
+		return err
+	}
+
+	if len(stored) == 0 {
+		return nil
+	}
+
+	merged := make(map[string]string, len(stored)+len(req.Secrets))
+	for key, value := range stored {
+		merged[key] = value
+	}
+
+	for key, value := range req.Secrets {
+		merged[key] = value
+	}
+
+	req.Secrets = merged
+
+	return nil
+}
+
 // Generate runs the authoring loop until a script passes run_script, or the
 // turn cap is hit (an error, never a saved script).
 func (s *Service) Generate(ctx context.Context, orgUID string, req *GenerateRequest) (*GenerateResponse, error) {
@@ -382,7 +420,13 @@ func (s *Service) Generate(ctx context.Context, orgUID string, req *GenerateRequ
 		return nil, err
 	}
 
-	ctx = ai.WithCallMeta(ctx, ai.CallMeta{OrgUID: orgUID, Purpose: ai.PurposeGenerate})
+	if req.CheckUID != "" {
+		if err := s.fillStoredSecrets(ctx, orgUID, req); err != nil {
+			return nil, err
+		}
+	}
+
+	ctx = ai.WithCallMeta(ctx, ai.CallMeta{OrgUID: orgUID, CheckUID: req.CheckUID, Purpose: ai.PurposeGenerate})
 
 	declared := append([]string{req.Prompt}, req.Contract...)
 	rec := &runRecorder{

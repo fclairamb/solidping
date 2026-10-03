@@ -2173,7 +2173,8 @@ paths:
         (SP_AI_MAX_TURNS) is hit. Returns the script, its last run and the js config to save
         through POST /checks (without the secrets, which only the caller holds). The LLM only
         ever sees secret names. Nothing is saved. 422 with the last attempt when no script
-        passed. 404 when no AI provider is configured.
+        passed. 404 when no AI provider is configured, or when checkUid names no js check
+        of the org.
       operationId: aiCheckGenerate
       security:
         - bearerAuth: []
@@ -2205,6 +2206,12 @@ paths:
                 repair:
                   type: string
                   enum: ["off", propose, auto]
+                checkUid:
+                  type: string
+                  description: >-
+                    Regenerate this existing js check. Its stored secrets fill every name
+                    `secrets` does not carry (a typed value wins). Nothing is saved: send the
+                    returned config through PATCH /checks/{checkUid}.
       responses:
         "200":
           description: A script that passed its test run

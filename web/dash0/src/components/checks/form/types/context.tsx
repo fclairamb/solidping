@@ -15,6 +15,8 @@ import type { CheckType } from "./common";
 export interface CheckFormFieldsContextValue {
   type: CheckType;
   org: string;
+  /** The saved check being edited; undefined on create. */
+  checkUid?: string;
   connections: Integration[] | undefined;
   configPrivateKeys: string[] | undefined;
   name: string;

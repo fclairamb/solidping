@@ -587,6 +587,62 @@ func TestGenerateWritesATestedScript(t *testing.T) {
 	r.Len(events, 2)
 }
 
+// TestGenerateFillsStoredSecrets regenerates an existing check: the dashboard
+// never reads secrets back, so the server runs the script with the stored ones.
+func TestGenerateFillsStoredSecrets(t *testing.T) {
+	t.Parallel()
+
+	const usesToken = `return { status: secrets.TOKEN ? "up" : "down", output: { failure: "assertion" } };`
+
+	t.Run("stored secret runs the script", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+		fx := newFixture(t, always(usesToken), nil)
+		check := fx.createAICheck(t, "https://app.acme.com", "propose")
+
+		resp, err := fx.svc.Generate(fx.ctx, fx.org.UID, &aichecks.GenerateRequest{
+			Prompt:   "the acme api lists at least one project",
+			Contract: []string{"the list has at least one project"},
+			CheckUID: check.UID,
+		})
+		r.NoError(err)
+		r.True(resp.LastRun.Up())
+		r.Equal(1, resp.Turns)
+		r.Equal([]string{"TOKEN"}, resp.SecretNames)
+		r.NotContains(resp.Config, "secrets")
+		r.False(fx.provider.sawSecret(), "the model never receives a stored secret value")
+	})
+
+	t.Run("without the check the script runs without it", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+		fx := newFixture(t, always(usesToken), nil)
+
+		_, err := fx.svc.Generate(fx.ctx, fx.org.UID, &aichecks.GenerateRequest{
+			Prompt:   "the acme api lists at least one project",
+			Contract: []string{"the list has at least one project"},
+		})
+		r.ErrorIs(err, aichecks.ErrNoPassingScript)
+	})
+
+	t.Run("unknown check", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+		fx := newFixture(t, always(usesToken), nil)
+
+		_, err := fx.svc.Generate(fx.ctx, fx.org.UID, &aichecks.GenerateRequest{
+			Prompt:   "p",
+			Contract: []string{"a"},
+			CheckUID: "00000000-0000-0000-0000-000000000000",
+		})
+		r.ErrorIs(err, aichecks.ErrCheckNotFound)
+		r.Empty(fx.provider.requests, "no AI call for a check the org does not have")
+	})
+}
+
 func TestGenerateTurnCapIsAnError(t *testing.T) {
 	t.Parallel()
 

@@ -1482,6 +1482,7 @@ export function CheckForm({
       value={{
         type,
         org,
+        checkUid: isEdit ? initialData?.uid : undefined,
         connections,
         configPrivateKeys: initialData?.configPrivateKeys,
         name,

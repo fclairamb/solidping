@@ -1433,7 +1433,8 @@
     "vncUsernameTooLong": "El nombre de usuario debe tener como máximo {{max}} bytes.",
     "crawlMaxPagesRange": "El número de páginas debe estar entre 1 y {{max}}",
     "crawlMaxRunRange": "La duración máxima debe estar entre {{min}} y {{max}} minutos",
-    "healthMaxAge": "La antigüedad máxima debe ser una duración como 10m (0 la desactiva)"
+    "healthMaxAge": "La antigüedad máxima debe ser una duración como 10m (0 la desactiva)",
+    "aiContractRequired": "El contrato necesita al menos una línea cuando hay un prompt"
   },
   "health": {
     "format": "Formato de salud",
@@ -1598,6 +1599,9 @@
     "detailPrompt": "Descripción",
     "detailContract": "Contrato",
     "detailModel": "Escrito por {{model}}",
-    "detailHistory": "Historial y propuestas de reparación"
+    "detailHistory": "Historial y propuestas de reparación",
+    "regenerate": "Regenerar el script",
+    "regenerateHelp": "Edite el prompt o el contrato y luego regenere. Guardar sin regenerar conserva el script actual.",
+    "regeneratedHelp": "El nuevo script está en el editor de abajo. Guarde el check para conservarlo; el script anterior queda en el historial."
   }
 }
