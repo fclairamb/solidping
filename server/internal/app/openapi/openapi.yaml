@@ -2122,6 +2122,111 @@ paths:
         "409":
           $ref: "#/components/responses/Conflict"
 
+  /api/v1/orgs/{org}/checks/ai/contract:
+    post:
+      tags: [Checks]
+      summary: Turn a prompt into a contract for an AI-authored js check
+      description: >-
+        First step of the "Describe it" flow (spec 2026-10-03-07): the LLM turns the user's
+        description into an ordered list of human-readable assertions, returned for the user to
+        confirm. Nothing is saved. 404 when no AI provider is configured (SP_AI_PROVIDER empty).
+        429 when the organization spent its daily AI token budget (maxAiTokensPerDay).
+      operationId: aiCheckContract
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [prompt]
+              properties:
+                prompt:
+                  type: string
+                  description: What to watch, in plain words.
+      responses:
+        "200":
+          description: The proposed contract
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AICheckContract"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  /api/v1/orgs/{org}/checks/ai/generate:
+    post:
+      tags: [Checks]
+      summary: Write and test a js check script from a confirmed contract
+      description: >-
+        Runs SolidPing's agent loop: the LLM explores the target (fetch_page, browser_snapshot)
+        and tests its script (run_script) until a run returns up or the turn cap
+        (SP_AI_MAX_TURNS) is hit. Returns the script, its last run and the js config to save
+        through POST /checks (without the secrets, which only the caller holds). The LLM only
+        ever sees secret names. Nothing is saved. 422 with the last attempt when no script
+        passed. 404 when no AI provider is configured.
+      operationId: aiCheckGenerate
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [prompt, contract]
+              properties:
+                prompt:
+                  type: string
+                contract:
+                  type: array
+                  items:
+                    type: string
+                env:
+                  type: object
+                  additionalProperties:
+                    type: string
+                secrets:
+                  type: object
+                  description: Secret values used to run the script, never sent to the LLM.
+                  additionalProperties:
+                    type: string
+                repair:
+                  type: string
+                  enum: ["off", propose, auto]
+      responses:
+        "200":
+          description: A script that passed its test run
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AICheckGenerated"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          description: No script passed its test run
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AICheckGenerationFailed"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
   /api/v1/orgs/{org}/checks/{checkUid}/screenshots:
     get:
       tags: [Checks]
@@ -10596,6 +10701,13 @@ components:
           $ref: "#/components/schemas/PublicWhatsAppConfig"
         telegram:
           $ref: "#/components/schemas/PublicTelegramConfig"
+        ai:
+          type: object
+          required: [enabled]
+          description: Whether AI-authored js checks are offered (an AI provider is configured, SP_AI_PROVIDER).
+          properties:
+            enabled:
+              type: boolean
         bugReport:
           type: object
           required: [enabled]
@@ -17522,6 +17634,84 @@ components:
             on its status pages. Unlike the caps above, null does NOT mean
             unlimited — it means "use the deployment default" (true
             self-hosted, false on the SaaS).
+
+    AICheckContract:
+      type: object
+      required: [contract, model]
+      properties:
+        contract:
+          type: array
+          items:
+            type: string
+        model:
+          type: string
+        usage:
+          $ref: "#/components/schemas/AIUsage"
+
+    AIUsage:
+      type: object
+      properties:
+        inputTokens:
+          type: integer
+        outputTokens:
+          type: integer
+
+    AIScriptRun:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          description: up, down, timeout or error.
+        durationMs:
+          type: integer
+        output:
+          type: object
+          additionalProperties: true
+        metrics:
+          type: object
+          additionalProperties: true
+
+    AICheckGenerated:
+      type: object
+      required: [script, config, lastRun, model]
+      properties:
+        script:
+          type: string
+        config:
+          type: object
+          additionalProperties: true
+          description: The js check config to save (script, env, ai), without secrets.
+        secretNames:
+          type: array
+          items:
+            type: string
+        lastRun:
+          $ref: "#/components/schemas/AIScriptRun"
+        model:
+          type: string
+        turns:
+          type: integer
+        usage:
+          $ref: "#/components/schemas/AIUsage"
+
+    AICheckGenerationFailed:
+      type: object
+      required: [title, code]
+      properties:
+        title:
+          type: string
+        code:
+          type: string
+          enum: [AI_GENERATION_FAILED]
+        detail:
+          type: string
+        lastScript:
+          type: string
+        lastRun:
+          $ref: "#/components/schemas/AIScriptRun"
+        turns:
+          type: integer
 
     EntitlementsUsage:
       type: object
