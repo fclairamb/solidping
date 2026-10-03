@@ -35,7 +35,7 @@ On the checks page, click **Describe it**.
 The AI never receives a secret value. It only sees the secret names, and the
 script reads them as `secrets.NAME`. A test run only gets the real values when
 every host the script contacts appears in your description or parameters.
-Secret values are scrubbed from everything handed back to the AI.
+Secret values are scrubbed from everything handed back to the AI. The scrubbing matches the literal value, so a script that prints an encoded form (base64, URL-encoded) of a secret to the console would not be caught: never log secrets.
 
 ## The `ai` block
 
