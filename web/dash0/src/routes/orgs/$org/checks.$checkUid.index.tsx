@@ -127,6 +127,7 @@ import { NeedsResealAlert } from "@/components/checks/needs-reseal-alert";
 import { PublishOnStatusPageDialog } from "@/components/checks/publish-on-status-page-dialog";
 import { CheckSummaryCards } from "@/components/checks/check-summary-cards";
 import { AIAuthoredDetail } from "@/components/checks/ai-authored-detail";
+import { CheckConfigView } from "@/components/checks/check-config-view";
 import {
   RegionFreshnessList,
   StaleSince,
@@ -1738,37 +1739,13 @@ function CheckDetailPage() {
                 </div>
               </div>
             )}
+            <AIAuthoredDetail org={org} check={check} />
             {check.config && Object.keys(check.config).length > 0 && (
               <div>
                 <div className="text-sm font-medium text-muted-foreground mb-2">
                   {t("checks:detail.configuration")}
                 </div>
-                <div className="bg-muted rounded-md p-3 text-sm font-mono">
-                  {Object.entries(check.config).map(([key, value]) => (
-                    <div key={key} className="flex gap-2">
-                      <span className="text-muted-foreground">{key}:</span>
-                      <span>
-                        {typeof value === "string" ? (
-                          value.startsWith("http") ? (
-                            <a
-                              href={value}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-primary hover:underline inline-flex items-center gap-1"
-                            >
-                              {value}
-                              <ExternalLink className="h-3 w-3" />
-                            </a>
-                          ) : (
-                            value
-                          )
-                        ) : (
-                          JSON.stringify(value)
-                        )}
-                      </span>
-                    </div>
-                  ))}
-                </div>
+                <CheckConfigView check={check} />
               </div>
             )}
             {check.labels && Object.keys(check.labels).length > 0 && (
@@ -1791,7 +1768,6 @@ function CheckDetailPage() {
             {check.type === "email" && (check.config?.token as string) && (
               <EmailEndpoint check={check} />
             )}
-            <AIAuthoredDetail org={org} check={check} />
           </CardContent>
         </Card>
 

@@ -4,7 +4,6 @@ import { AlertCircle, History, Sparkles } from "lucide-react";
 import { useEvents, type AICheckBlock, type Check } from "@/api/hooks";
 import { useAIChecksEnabled, usePublicConfigLoading } from "@/api/public-config";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { TimeAgo } from "@/components/ui/time-ago";
 
@@ -49,64 +48,86 @@ export function AIAuthoredDetail({ org, check }: { org: string; check: Check }) 
         ? attempt.payload.reason
         : "";
 
+  // Same panel, header and field order as AIBlockEditor on the edit form.
   return (
-    <div className="space-y-3 border-t pt-4" data-testid="ai-authored-detail">
+    <div
+      className="space-y-4 rounded-md border border-primary/40 bg-primary/5 p-4"
+      data-testid="ai-authored-detail"
+    >
       <div className="flex flex-wrap items-center gap-2">
         <Sparkles className="h-4 w-4 text-primary" />
         <span className="text-sm font-medium">{t("ai.detailTitle")}</span>
-        <Badge variant="outline" data-testid="ai-detail-repair">
-          {t("ai.detailRepair", { mode: t(`ai.repair.${repair}`) })}
-        </Badge>
+        {block.model && (
+          <span className="text-xs text-muted-foreground">
+            {t("ai.detailModel", { model: block.model })}
+            {block.generated_at && (
+              <>
+                {" · "}
+                <TimeAgo date={block.generated_at} />
+              </>
+            )}
+          </span>
+        )}
       </div>
-      {repair !== "off" && !configLoading && !aiEnabled && (
-        <Alert variant="warning" data-testid="ai-detail-repair-unavailable">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{t("ai.repairUnavailable")}</AlertDescription>
-        </Alert>
-      )}
-      {repair !== "off" && aiEnabled && (
-        <p className="text-xs text-muted-foreground" data-testid="ai-detail-last-repair">
-          {attempt?.createdAt ? (
-            <>
-              {t("ai.lastRepair")} <TimeAgo date={attempt.createdAt} />
-              {": "}
-              {REPAIR_OUTCOMES.includes(outcome) ? t(`ai.repairOutcome.${outcome}`) : outcome}
-              {reason && <span className="block break-words">{reason}</span>}
-            </>
-          ) : (
-            t("ai.noRepairYet")
-          )}
-        </p>
-      )}
+
       {block.prompt && (
-        <div>
+        <div className="space-y-2">
           <Label>{t("ai.detailPrompt")}</Label>
-          <p className="text-sm text-muted-foreground whitespace-pre-wrap" data-testid="ai-detail-prompt">
+          <p
+            className="whitespace-pre-wrap break-words rounded-md border border-input bg-control px-3 py-2 text-sm"
+            data-testid="ai-detail-prompt"
+          >
             {block.prompt}
           </p>
         </div>
       )}
+
       {block.contract && block.contract.length > 0 && (
-        <div>
+        <div className="space-y-2">
           <Label>{t("ai.detailContract")}</Label>
-          <ol className="ml-5 list-decimal text-sm text-muted-foreground" data-testid="ai-detail-contract">
+          <ol
+            className="list-decimal space-y-0.5 rounded-md border border-input bg-control py-2 pl-8 pr-3 text-sm"
+            data-testid="ai-detail-contract"
+          >
             {block.contract.map((item, idx) => (
-              <li key={idx}>{item}</li>
+              <li key={idx} className="break-words">
+                {item}
+              </li>
             ))}
           </ol>
         </div>
       )}
-      {block.model && (
-        <p className="text-xs text-muted-foreground">
-          {t("ai.detailModel", { model: block.model })}
-          {block.generated_at && (
-            <>
-              {" · "}
-              <TimeAgo date={block.generated_at} />
-            </>
-          )}
+
+      <div className="space-y-2">
+        <Label>{t("ai.repairLabel")}</Label>
+        <p
+          className="w-full rounded-md border border-input bg-control px-3 py-2 text-sm sm:w-72"
+          data-testid="ai-detail-repair"
+        >
+          {t(`ai.repair.${repair}`)}
         </p>
-      )}
+        {repair !== "off" && !configLoading && !aiEnabled && (
+          <Alert variant="warning" data-testid="ai-detail-repair-unavailable">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{t("ai.repairUnavailable")}</AlertDescription>
+          </Alert>
+        )}
+        {repair !== "off" && aiEnabled && (
+          <p className="text-xs text-muted-foreground" data-testid="ai-detail-last-repair">
+            {attempt?.createdAt ? (
+              <>
+                {t("ai.lastRepair")} <TimeAgo date={attempt.createdAt} />
+                {": "}
+                {REPAIR_OUTCOMES.includes(outcome) ? t(`ai.repairOutcome.${outcome}`) : outcome}
+                {reason && <span className="block break-words">{reason}</span>}
+              </>
+            ) : (
+              t("ai.noRepairYet")
+            )}
+          </p>
+        )}
+      </div>
+
       <Link
         to="/orgs/$org/checks/$checkUid/history"
         params={{ org, checkUid: check.uid }}
