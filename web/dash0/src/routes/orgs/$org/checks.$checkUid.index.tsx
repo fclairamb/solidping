@@ -99,6 +99,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { IncidentKindChip } from "@/components/shared/incident-kind-chip";
+import { incidentKindTextClass, incidentRowClass } from "@/lib/incident-kind";
 import { TunnelDependents, TunnelVia } from "@/components/checks/tunnel-detail";
 import {
   DeliverySources,
@@ -2152,9 +2154,11 @@ function CheckDetailPage() {
                   .map((incident) => (
                     <TableRow
                       key={incident.uid}
-                      className={
-                        incident.uid ? "cursor-pointer hover:bg-muted/50" : ""
-                      }
+                      className={cn(
+                        "transition-colors",
+                        incidentRowClass(incident.state, incident.kind),
+                        incident.uid && "cursor-pointer",
+                      )}
                       data-testid={`incident-row-${incident.uid}`}
                       onClick={() => {
                         if (!incident.uid) return;
@@ -2185,13 +2189,21 @@ function CheckDetailPage() {
                           : "-"}
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-1">
+                        <div className="flex flex-wrap items-center gap-1">
+                          <IncidentKindChip
+                            kind={incident.kind}
+                            state={incident.state}
+                          />
                           <Badge
                             variant={
                               incident.state === "active"
-                                ? "destructive"
+                                ? "outline"
                                 : "secondary"
                             }
+                            className={cn(
+                              incident.state === "active" &&
+                                incidentKindTextClass(incident.kind),
+                            )}
                           >
                             {incident.state}
                           </Badge>
