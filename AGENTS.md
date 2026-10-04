@@ -21,7 +21,7 @@ Laptop only: if a server already runs on port 4000, apply code changes directly 
 
 1. Start infrastructure: `docker-compose up -d`
 2. Run everything: `make dev` (backend + dash0 + status0 with hot reload)
-2b. Local env: `make dev` sources `dev.priv.env` (git-ignored, shell `KEY=value` lines) when it exists, e.g. the `SP_AI_*` variables. Read secrets there with `$(gopass show -o <path>)`.
+2b. Local env: `make dev` sources `dev.priv.env` (git-ignored, shell `KEY=value` lines) when it exists, e.g. the `SP_AI_*` variables. A git worktree without one uses the main checkout's. Read secrets there with `$(gopass show -o <path>)`.
 3. Test mode: `make dev-test` (same but with `SP_RUNMODE=test`)
 4. Database changes: add migrations, then `make migrate`
 
