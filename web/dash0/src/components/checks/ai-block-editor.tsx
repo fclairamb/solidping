@@ -1,8 +1,13 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Loader2, Sparkles } from "lucide-react";
-import { ApiError } from "@/api/client";
-import { useAIGenerate, type AIGenerateResponse, type AIRepairMode } from "@/api/hooks";
+import { AIGenerationFailedError, ApiError } from "@/api/client";
+import {
+  useAIGenerate,
+  type AIGenerateResponse,
+  type AIGenerationFailed,
+  type AIRepairMode,
+} from "@/api/hooks";
 import { useAIChecksEnabled } from "@/api/public-config";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +23,8 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { TimeAgo } from "@/components/ui/time-ago";
 import { REPAIR_MODES, aiBlockStateFromConfig, contractLines, type AIBlockState } from "./ai-block";
+import { AIGenerationFailure, AIGenerationProgress } from "./ai-generation-progress";
+import { useAIGenerationProgress } from "./use-ai-generation-progress";
 
 function errorMessage(err: unknown): string {
   if (err instanceof ApiError) {
@@ -58,12 +65,16 @@ export function AIBlockEditor({
   const generate = useAIGenerate(org);
   const [result, setResult] = useState<AIGenerateResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [failure, setFailure] = useState<AIGenerationFailed | null>(null);
+  const progress = useAIGenerationProgress();
 
   const canRegenerate = value.prompt.trim() !== "" && contractLines(value.contract).length > 0;
 
   async function regenerate() {
     setError(null);
+    setFailure(null);
     setResult(null);
+    progress.start();
     try {
       const resp = await generate.mutateAsync({
         prompt: value.prompt,
@@ -73,11 +84,16 @@ export function AIBlockEditor({
         // Typed secrets replace the stored ones (that is what saving them
         // does), so they run alone. Untouched, the server reads the stored ones.
         ...(typedSecrets ? { secrets: typedSecrets } : checkUid ? { checkUid } : {}),
+        onProgress: progress.onProgress,
       });
       setResult(resp);
       onRegenerated(resp.script, aiBlockStateFromConfig(resp.config.ai) ?? value);
     } catch (err) {
-      setError(errorMessage(err));
+      if (err instanceof AIGenerationFailedError) {
+        setFailure(err.failure);
+      } else {
+        setError(errorMessage(err));
+      }
     }
   }
 
@@ -167,6 +183,8 @@ export function AIBlockEditor({
           <p className="text-xs text-muted-foreground">
             {result ? t("ai.regeneratedHelp") : t("ai.regenerateHelp")}
           </p>
+          <AIGenerationProgress state={progress.state} running={generate.isPending} />
+          {failure && <AIGenerationFailure failure={failure} />}
         </div>
       )}
 

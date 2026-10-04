@@ -8,7 +8,7 @@ Spec 2026-10-03-07. Public docs: `web/docs/docs/features/ai-authored-checks.md`.
 |---|---|
 | `SP_AI_PROVIDER` | `openai` |
 | `SP_AI_BASE_URL` | `https://ark.ap-southeast.bytepluses.com/api/v3` |
-| `SP_AI_MODEL` | `glm-5-3-flash-260828` (the dotted `glm-5.3-flash` answers `InvalidEndpointOrModel.NotFound`) |
+| `SP_AI_MODEL` | `glm-5.3-flash` |
 | `SP_AI_API_KEY` | from gopass `solidping/byteplus/api-key`, mounted as a k8s secret |
 
 Never write the key value anywhere else.

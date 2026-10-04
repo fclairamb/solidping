@@ -1602,6 +1602,34 @@
     "detailHistory": "Historial y propuestas de reparación",
     "regenerate": "Regenerar el script",
     "regenerateHelp": "Edite el prompt o el contrato y luego regenere. Guardar sin regenerar conserva el script actual.",
-    "regeneratedHelp": "El nuevo script está en el editor de abajo. Guarde el check para conservarlo; el script anterior queda en el historial."
+    "regeneratedHelp": "El nuevo script está en el editor de abajo. Guarde el check para conservarlo; el script anterior queda en el historial.",
+    "progress": {
+      "running": "Escribiendo y probando el script",
+      "finished": "Lo que hizo la IA",
+      "turn": "Turno {{turn}} de {{max}}",
+      "starting": "Iniciando...",
+      "thinking": "La IA está pensando...",
+      "slowHint": "Algunos modelos piensan un minuto o más entre dos pasos.",
+      "fetch": "Obteniendo {{url}}",
+      "snapshot": "Abriendo {{url}} en un navegador",
+      "probe": "Probando un script exploratorio",
+      "final": "Probando el script final"
+    },
+    "failure": {
+      "title": "Ningún script pasó su prueba",
+      "explanation": "Lo que respondió la IA",
+      "lastRun": "Última prueba",
+      "lastScript": "Último script probado"
+    },
+    "repairUnavailable": "La reparación no puede ejecutarse: este servidor no tiene ningún proveedor de IA configurado (SP_AI_PROVIDER).",
+    "lastRepair": "Último intento de reparación",
+    "noRepairYet": "Aún no se ha intentado ninguna reparación. Un intento empieza tras 3 fallos seguidos en los que el propio script se rompió, mientras el sitio responde. Como máximo un intento al día.",
+    "repairOutcome": {
+      "no_candidate": "ningún script nuevo pasó su prueba",
+      "rejected": "los controles de seguridad rechazaron el script nuevo",
+      "proposed": "se propuso un script nuevo, ver Historial",
+      "applied": "se aplicó un script nuevo",
+      "error": "el intento falló"
+    }
   }
 }

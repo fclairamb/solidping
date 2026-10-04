@@ -1602,6 +1602,34 @@
     "detailHistory": "History and repair proposals",
     "regenerate": "Regenerate the script",
     "regenerateHelp": "Edit the prompt or the contract, then regenerate. Saving without regenerating keeps the current script.",
-    "regeneratedHelp": "The new script is in the editor below. Save the check to keep it; the previous script stays in History."
+    "regeneratedHelp": "The new script is in the editor below. Save the check to keep it; the previous script stays in History.",
+    "progress": {
+      "running": "Writing and testing the script",
+      "finished": "What the AI did",
+      "turn": "Turn {{turn}} of {{max}}",
+      "starting": "Starting...",
+      "thinking": "The AI is thinking...",
+      "slowHint": "Some models think for a minute or more between two steps.",
+      "fetch": "Fetching {{url}}",
+      "snapshot": "Opening {{url}} in a browser",
+      "probe": "Testing an exploratory script",
+      "final": "Testing the finished script"
+    },
+    "failure": {
+      "title": "No script passed its test run",
+      "explanation": "What the AI said",
+      "lastRun": "Last test run",
+      "lastScript": "Last script tried"
+    },
+    "repairUnavailable": "Repair cannot run: this server has no AI provider configured (SP_AI_PROVIDER).",
+    "lastRepair": "Last repair attempt",
+    "noRepairYet": "No repair attempted yet. One starts after 3 failing runs in a row where the script itself broke, while the site still answers. At most one attempt per day.",
+    "repairOutcome": {
+      "no_candidate": "no new script passed its test run",
+      "rejected": "the new script was rejected by the safety checks",
+      "proposed": "a new script was proposed, see History",
+      "applied": "a new script was applied",
+      "error": "the attempt failed"
+    }
   }
 }

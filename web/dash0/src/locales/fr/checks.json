@@ -1602,6 +1602,34 @@
     "detailHistory": "Historique et propositions de réparation",
     "regenerate": "Régénérer le script",
     "regenerateHelp": "Modifiez la description ou le contrat, puis régénérez. Enregistrer sans régénérer conserve le script actuel.",
-    "regeneratedHelp": "Le nouveau script est dans l'éditeur ci-dessous. Enregistrez le check pour le garder ; l'ancien script reste dans l'historique."
+    "regeneratedHelp": "Le nouveau script est dans l'éditeur ci-dessous. Enregistrez le check pour le garder ; l'ancien script reste dans l'historique.",
+    "progress": {
+      "running": "Écriture et test du script",
+      "finished": "Ce que l'IA a fait",
+      "turn": "Tour {{turn}} sur {{max}}",
+      "starting": "Démarrage...",
+      "thinking": "L'IA réfléchit...",
+      "slowHint": "Certains modèles réfléchissent une minute ou plus entre deux étapes.",
+      "fetch": "Récupération de {{url}}",
+      "snapshot": "Ouverture de {{url}} dans un navigateur",
+      "probe": "Test d'un script exploratoire",
+      "final": "Test du script final"
+    },
+    "failure": {
+      "title": "Aucun script n'a passé son test",
+      "explanation": "Ce que l'IA a répondu",
+      "lastRun": "Dernier test",
+      "lastScript": "Dernier script essayé"
+    },
+    "repairUnavailable": "La réparation ne peut pas tourner : ce serveur n'a pas de fournisseur d'IA configuré (SP_AI_PROVIDER).",
+    "lastRepair": "Dernière tentative de réparation",
+    "noRepairYet": "Aucune réparation tentée pour l'instant. Une tentative démarre après 3 échecs d'affilée où le script lui-même a cassé, alors que le site répond. Au plus une tentative par jour.",
+    "repairOutcome": {
+      "no_candidate": "aucun nouveau script n'a passé son test",
+      "rejected": "le nouveau script a été refusé par les contrôles de sécurité",
+      "proposed": "un nouveau script a été proposé, voir l'historique",
+      "applied": "un nouveau script a été appliqué",
+      "error": "la tentative a échoué"
+    }
   }
 }

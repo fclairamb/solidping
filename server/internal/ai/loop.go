@@ -63,8 +63,8 @@ type LoopResult struct {
 
 // Loop is SolidPing's own agent loop: call the model, run the tools it asks
 // for, append their results, repeat. It stops when the model answers without
-// a tool call, when Done reports true after a tool round, or with ErrMaxTurns
-// at the cap.
+// a tool call (unless Nudge sends it back to work), when Done reports true
+// after a tool round, or with ErrMaxTurns at the cap.
 type Loop struct {
 	Client *Client
 	System string
@@ -72,9 +72,19 @@ type Loop struct {
 	// Done is checked after every tool round. Nil means "only stop when the
 	// model does".
 	Done func() bool
+	// Nudge is asked when the model answers without a tool call. A non-empty
+	// answer goes back to the model as a user message and the loop goes on.
+	// Nil, or an empty answer, ends the loop on the model's answer.
+	Nudge func(ctx context.Context, text string) string
+	// OnTurn is called before every provider call, with the 1-based turn and
+	// the turn cap.
+	OnTurn func(ctx context.Context, turn, maxTurns int)
+	// OnResponse is called after every successful provider call.
+	OnResponse func(ctx context.Context, resp *Response)
 	// OnUsage is called after every call with its token usage.
 	OnUsage func(ctx context.Context, usage Usage)
-	// Logger receives one line per call. Nil uses slog.Default().
+	// Logger receives one line per call and per tool call. Nil uses
+	// slog.Default().
 	Logger *slog.Logger
 }
 
@@ -98,11 +108,19 @@ func (l *Loop) Run(ctx context.Context, messages []Message) (*LoopResult, error)
 	result := &LoopResult{Messages: append([]Message(nil), messages...)}
 
 	for result.Turns < maxTurns {
+		if l.OnTurn != nil {
+			l.OnTurn(ctx, result.Turns+1, maxTurns)
+		}
+
 		resp, err := l.call(ctx, Request{System: l.System, Messages: result.Messages, Tools: defs})
 		result.Turns++
 
 		if err != nil {
 			return result, err
+		}
+
+		if l.OnResponse != nil {
+			l.OnResponse(ctx, resp)
 		}
 
 		result.Usage = result.Usage.Add(resp.Usage)
@@ -112,14 +130,25 @@ func (l *Loop) Run(ctx context.Context, messages []Message) (*LoopResult, error)
 		})
 
 		if len(resp.ToolCalls) == 0 {
-			return result, nil
+			nudge := ""
+			if l.Nudge != nil {
+				nudge = l.Nudge(ctx, resp.Text)
+			}
+
+			if nudge == "" {
+				return result, nil
+			}
+
+			result.Messages = append(result.Messages, Message{Role: RoleUser, Content: nudge})
+
+			continue
 		}
 
 		for i := range resp.ToolCalls {
 			call := &resp.ToolCalls[i]
 			result.Messages = append(result.Messages, Message{
 				Role: RoleTool, ToolCallID: call.ID, ToolName: call.Name,
-				Content: runTool(ctx, tools, call),
+				Content: l.runTool(ctx, tools, call),
 			})
 		}
 
@@ -131,18 +160,40 @@ func (l *Loop) Run(ctx context.Context, messages []Message) (*LoopResult, error)
 	return result, fmt.Errorf("%w (%d turns)", ErrMaxTurns, maxTurns)
 }
 
-func runTool(ctx context.Context, tools map[string]ToolFunc, call *ToolCall) string {
+func (l *Loop) runTool(ctx context.Context, tools map[string]ToolFunc, call *ToolCall) string {
 	run, ok := tools[call.Name]
 	if !ok {
+		l.logger().WarnContext(ctx, "AI tool call", "tool", call.Name, "error", "unknown tool")
+
 		return fmt.Sprintf("error: unknown tool %q", call.Name)
 	}
 
+	start := time.Now()
 	out, err := run(ctx, call.Arguments)
+
+	meta := CallMetaFromContext(ctx)
+	attrs := []any{
+		"org_uid", meta.OrgUID, "check_uid", meta.CheckUID, "purpose", string(meta.Purpose),
+		"tool", call.Name, "duration_ms", time.Since(start).Milliseconds(),
+	}
+
 	if err != nil {
+		l.logger().InfoContext(ctx, "AI tool call", append(attrs, "error", err.Error())...)
+
 		return "error: " + err.Error()
 	}
 
+	l.logger().InfoContext(ctx, "AI tool call", append(attrs, "result_bytes", len(out))...)
+
 	return out
+}
+
+func (l *Loop) logger() *slog.Logger {
+	if l.Logger != nil {
+		return l.Logger
+	}
+
+	return slog.Default()
 }
 
 // Complete makes one logged, metered call outside a loop.
@@ -162,11 +213,7 @@ func (l *Loop) call(ctx context.Context, req Request) (*Response, error) {
 
 	start := time.Now()
 	resp, err := l.Client.Provider.Complete(callCtx, req)
-
-	logger := l.Logger
-	if logger == nil {
-		logger = slog.Default()
-	}
+	logger := l.logger()
 
 	meta := CallMetaFromContext(ctx)
 	attrs := []any{

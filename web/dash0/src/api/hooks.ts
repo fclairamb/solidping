@@ -6,7 +6,15 @@ import {
   useMutation,
   useQueryClient,
 } from "@tanstack/react-query";
-import { ApiError, apiFetch, getToken } from "./client";
+import {
+  AIGenerationFailedError,
+  ApiError,
+  NetworkError,
+  apiFetch,
+  apiFetchResponse,
+  getToken,
+  type AIGenerationFailed,
+} from "./client";
 
 /**
  * Opt-in knobs shared by the plain list hooks. A caller that renders a list
@@ -1420,6 +1428,8 @@ export interface AIGenerateRequest {
   env?: Record<string, string>;
   secrets?: Record<string, string>;
   repair?: AIRepairMode;
+  /** Regenerates a saved check: the server fills its stored secrets. */
+  checkUid?: string;
 }
 
 export interface AIGenerateResponse {
@@ -1432,14 +1442,71 @@ export interface AIGenerateResponse {
   usage?: AIUsage;
 }
 
-/** The 422 body of a generation that produced no passing script. */
-export interface AIGenerationFailed {
-  title: string;
-  code: "AI_GENERATION_FAILED";
+export type { AIGenerationFailed } from "./client";
+
+/** One step of a streamed generation. */
+export interface AIProgressEvent {
+  type: "turn" | "message" | "tool" | "toolResult";
+  turn?: number;
+  maxTurns?: number;
+  text?: string;
+  tool?: "run_script" | "fetch_page" | "browser_snapshot" | string;
+  url?: string;
+  final?: boolean;
+  status?: string;
   detail?: string;
-  lastScript?: string;
-  lastRun?: AIScriptRun;
-  turns: number;
+  error?: string;
+  durationMs?: number;
+}
+
+type AIStreamLine =
+  | AIProgressEvent
+  | { type: "ping" }
+  | { type: "result"; result: AIGenerateResponse }
+  | { type: "error"; httpStatus: number; response: { title?: string; code?: string; detail?: string } };
+
+function aiStreamError(status: number, body: { title?: string; code?: string; detail?: string }): ApiError {
+  if (body.code === "AI_GENERATION_FAILED") {
+    return new AIGenerationFailedError(body as AIGenerationFailed);
+  }
+  return new ApiError(body.title || "An error occurred", body.code || "UNKNOWN_ERROR", body.detail, status);
+}
+
+/** POST /checks/ai/generate with its progress streamed as NDJSON. */
+async function streamAIGenerate(
+  org: string,
+  req: AIGenerateRequest,
+  onProgress?: (event: AIProgressEvent) => void,
+): Promise<AIGenerateResponse> {
+  const response = await apiFetchResponse(`/api/v1/orgs/${org}/checks/ai/generate`, {
+    method: "POST",
+    headers: { Accept: "application/x-ndjson" },
+    body: JSON.stringify(req),
+  });
+
+  if (!response.body || !response.headers.get("Content-Type")?.includes("ndjson")) {
+    return (await response.json()) as AIGenerateResponse;
+  }
+
+  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buffer = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (value) buffer += value;
+    let newline = buffer.indexOf("\n");
+    while (newline >= 0) {
+      const raw = buffer.slice(0, newline).trim();
+      buffer = buffer.slice(newline + 1);
+      newline = buffer.indexOf("\n");
+      if (!raw) continue;
+      const line = JSON.parse(raw) as AIStreamLine;
+      if (line.type === "result") return line.result;
+      if (line.type === "error") throw aiStreamError(line.httpStatus, line.response);
+      if (line.type !== "ping") onProgress?.(line);
+    }
+    if (done) break;
+  }
+  throw new NetworkError("The generation stream ended before its result");
 }
 
 /** The `ai` block of an AI-authored js check's config. */
@@ -1463,11 +1530,11 @@ export function useAIContract(org: string) {
 
 export function useAIGenerate(org: string) {
   return useMutation({
-    mutationFn: (req: AIGenerateRequest) =>
-      apiFetch<AIGenerateResponse>(`/api/v1/orgs/${org}/checks/ai/generate`, {
-        method: "POST",
-        body: JSON.stringify(req),
-      }),
+    mutationFn: ({
+      onProgress,
+      ...req
+    }: AIGenerateRequest & { onProgress?: (event: AIProgressEvent) => void }) =>
+      streamAIGenerate(org, req, onProgress),
   });
 }
 
@@ -2539,9 +2606,11 @@ export function useEvents(
     cursor?: string;
     size?: number;
     refetchInterval?: number;
+    /** False holds the query (e.g. until its filter is known). */
+    enabled?: boolean;
   },
 ) {
-  const { refetchInterval, ...queryOptions } = options || {};
+  const { refetchInterval, enabled = true, ...queryOptions } = options || {};
   return useQuery({
     queryKey: ["events", org, queryOptions],
     queryFn: async () => {
@@ -2563,7 +2632,7 @@ export function useEvents(
         total: response.pagination?.total,
       };
     },
-    enabled: !!org,
+    enabled: !!org && enabled,
     refetchInterval,
   });
 }

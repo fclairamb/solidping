@@ -2174,7 +2174,11 @@ paths:
         through POST /checks (without the secrets, which only the caller holds). The LLM only
         ever sees secret names. Nothing is saved. 422 with the last attempt when no script
         passed. 404 when no AI provider is configured, or when checkUid names no js check
-        of the org.
+        of the org. Send `Accept: application/x-ndjson` to get the progress streamed: a 200
+        whose body is one JSON object per line, `turn`, `message`, `tool`, `toolResult` and
+        `ping` lines while it runs, then a last `result` line (`result` holds the 200 body)
+        or `error` line (`httpStatus` and `response` hold what the plain call would have
+        answered).
       operationId: aiCheckGenerate
       security:
         - bearerAuth: []
@@ -2219,6 +2223,9 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AICheckGenerated"
+            application/x-ndjson:
+              schema:
+                $ref: "#/components/schemas/AICheckGenerateStreamLine"
         "400":
           $ref: "#/components/responses/ValidationError"
         "401":
@@ -17729,6 +17736,52 @@ components:
           $ref: "#/components/schemas/AIScriptRun"
         turns:
           type: integer
+        explanation:
+          type: string
+          description: The model's last message, often why it gave up.
+
+    AICheckGenerateStreamLine:
+      type: object
+      description: One line of a generation streamed as application/x-ndjson.
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [turn, message, tool, toolResult, ping, result, error]
+        turn:
+          type: integer
+        maxTurns:
+          type: integer
+        text:
+          type: string
+          description: "`message`: what the model wrote, without code blocks."
+        tool:
+          type: string
+          enum: [run_script, fetch_page, browser_snapshot]
+        url:
+          type: string
+        final:
+          type: boolean
+          description: "`run_script`: the finished script rather than a probe."
+        status:
+          type: string
+          description: "`toolResult`: the run status (up, down, error)."
+        detail:
+          type: string
+        error:
+          type: string
+          description: "`toolResult`: why the tool call failed."
+        durationMs:
+          type: integer
+          format: int64
+        result:
+          $ref: "#/components/schemas/AICheckGenerated"
+        httpStatus:
+          type: integer
+          description: "`error` line: the HTTP status the plain call would have answered."
+        response:
+          type: object
+          description: "`error` line: the body the plain call would have answered."
 
     EntitlementsUsage:
       type: object
