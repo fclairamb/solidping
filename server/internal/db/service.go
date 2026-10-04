@@ -19,6 +19,10 @@ import (
 // it first.
 var ErrEnrollmentTokenInvalid = errors.New("enrollment token is invalid, expired, or already used")
 
+// ErrCheckJobBusy is returned by RequestCheckRun when the job is leased or
+// carries a multi-step run in progress: it cannot be made due on demand.
+var ErrCheckJobBusy = errors.New("check job is running")
+
 // ErrAgentNonceReplayed is returned by CheckAndStoreAgentNonce when a reconnect
 // nonce was already consumed inside the retention window — a replayed
 // signature, rejected cluster-wide rather than per API replica.
@@ -447,6 +451,14 @@ type Service interface {
 	// that picks the row up consumes the request. sql.ErrNoRows when the job
 	// is gone.
 	RequestCheckCapture(ctx context.Context, jobUID string, requestedAt time.Time) error
+	// RequestCheckRun makes one job row due at requestedAt (spec
+	// 2026-10-04-01, "Run now"): scheduled_at and effective_scheduled_at are
+	// set to it, capture_requested_at is left alone. It only touches a job
+	// that is neither leased nor carrying a multi-step run: a release
+	// overwrites scheduled_at, so a due time written under a live lease would
+	// be lost. Such a job gives ErrCheckJobBusy (its running result answers
+	// the request); sql.ErrNoRows when the job is gone.
+	RequestCheckRun(ctx context.Context, jobUID string, requestedAt time.Time) error
 	// RecordCheckCaptureFailure records that the "Capture now" request made at
 	// requestedAt produced no screenshot, and why (spec 2026-09-27-01):
 	// capture_failed_request_at and capture_failure_reason on the job row.

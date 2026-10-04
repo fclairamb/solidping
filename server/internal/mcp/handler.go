@@ -19,6 +19,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/handlers/checkgroups"
+	"github.com/fclairamb/solidping/server/internal/handlers/checkrunnow"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/handlers/checktypes"
 	"github.com/fclairamb/solidping/server/internal/handlers/events"
@@ -92,6 +93,7 @@ type Handler struct {
 	maintenanceSvc  *maintenancewindows.Service
 	integrationsSvc *integrations.Service
 	checkGroupsSvc  *checkgroups.Service
+	runNowSvc       *checkrunnow.Service
 	regionsSvc      *regionshandler.Service
 	// publicationsSvc manages the status-page incident publication overlay
 	// (spec 2026-08-19-08). No scheduler and no subscriber notifier are wired
@@ -167,6 +169,7 @@ func NewHandler(
 		// only for the Twilio test-run verification bypass today.
 		integrationsSvc: integrations.NewService(dbService, creds, nil, cfg),
 		checkGroupsSvc:  checkgroups.NewService(dbService),
+		runNowSvc:       checkrunnow.NewService(dbService, eventNotifier, clock.Real{}),
 		regionsSvc:      regionshandler.NewService(dbService),
 		publicationsSvc: incidentpublications.NewService(dbService, clock.Real{}, rtPub),
 		dbService:       dbService,

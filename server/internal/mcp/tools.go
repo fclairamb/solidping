@@ -21,6 +21,7 @@ func (h *Handler) registerTools() {
 		{listCheckGroupsDef(), h.toolListCheckGroups},
 		{listRegionsDef(), h.toolListRegions},
 		{diagnoseCheckDef(), h.toolDiagnoseCheck},
+		{runCheckDef(), h.toolRunCheck},
 		// Status pages
 		{listStatusPagesDef(), h.toolListStatusPages},
 		{getStatusPageDef(), h.toolGetStatusPage},

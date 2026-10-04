@@ -193,6 +193,30 @@ nothing. Only `browser` and `js` checks report one; the newest across the
 check's job rows wins. The dashboard matches `requestedAt` to the value the
 capture endpoint returned (both at microsecond precision).
 
+### POST /api/v1/orgs/:org/checks/:checkUid/run-now
+"Run now": run any check once on demand, in every region (spec
+2026-10-04-01). Auth: required, write access (viewers 403). An action path, not a
+`POST` on `…/run` (the multi-step run resource, which this does not create).
+
+Every job row of the check that is not running gets `scheduled_at` and
+`effective_scheduled_at` set to now (`db.Service.RequestCheckRun`, no capture
+flag), then one express hint is sent. A job is running when it is leased or
+carries a multi-step run (`step_run_uid`); it is reported `running` and left
+alone, because a release would overwrite a due time written under a live lease.
+The result goes through the normal result path and the incident pipeline.
+
+Response `200 { requestedAt, regions: [{ region, status }] }`, `status` being
+`queued` or `running`. A result with `periodStart >= requestedAt` answers it.
+
+| Status | When |
+|---|---|
+| 404 | org or check not found |
+| 409 | the check is disabled or has no job row |
+| 429 `RATE_LIMITED` | 3 per check per minute and 60 per org per hour (browser, js, rdp, vnc: 1 and 20); `Retry-After` in seconds |
+
+Windows: state entries `run-now.check.<uid>` and `run-now.org`, admitted
+atomically like "Capture now". The MCP tool `run_check` calls the same service.
+
 ### POST /api/v1/orgs/:org/checks/:checkUid/screenshots/capture
 "Capture now": run a `browser` or `js` check once on demand, screenshot forced
 whatever the verdict and whatever the check's `screenshot` option (spec

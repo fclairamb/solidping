@@ -220,7 +220,7 @@ func TestDispatch_ToolsList(t *testing.T) {
 
 	tools, ok := result["tools"].([]any)
 	r.True(ok)
-	r.Len(tools, 45)
+	r.Len(tools, 46)
 
 	// Verify tool names
 	names := make(map[string]bool)
@@ -238,7 +238,7 @@ func TestDispatch_ToolsList(t *testing.T) {
 		"list_results", "list_incidents", "get_incident",
 		"list_integrations", "create_integration",
 		"list_check_groups", "list_regions",
-		"diagnose_check",
+		"diagnose_check", "run_check",
 		"list_status_pages", "get_status_page", "create_status_page",
 		"update_status_page", "delete_status_page",
 		"list_status_page_sections", "create_status_page_section",

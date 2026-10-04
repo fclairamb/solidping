@@ -198,8 +198,8 @@ func TestRegisterTools(t *testing.T) {
 
 	handler := newTestHandler()
 
-	r.Len(handler.tools, 45)
-	r.Len(handler.toolMap, 45)
+	r.Len(handler.tools, 46)
+	r.Len(handler.toolMap, 46)
 
 	// Every tool definition should have a corresponding function in the map
 	for _, tool := range handler.tools {

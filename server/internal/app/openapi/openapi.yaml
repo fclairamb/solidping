@@ -2353,6 +2353,61 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/v1/orgs/{org}/checks/{checkUid}/run-now:
+    post:
+      tags: [Checks]
+      summary: Run a check once, now
+      description: >-
+        "Run now": runs any check once, on demand, in every region, instead of
+        waiting for its next period. Each region's job is made due at once and
+        the workers are told; a region whose job is leased, or carries a
+        multi-step run in progress, is reported `running` and left alone (its
+        result answers the request). The results go through the normal path,
+        so they can open or resolve an incident like any scheduled result. A
+        result with `periodStart >= requestedAt` is this request's answer.
+        This is an action path: it does not create the multi-step run resource
+        at `…/run`. Rate limited per check and per organization (3 per minute
+        and 60 per hour; browser, js, rdp and vnc checks 1 per minute and 20
+        per hour); a refusal carries `Retry-After`. Requires write access
+        (viewers get 403).
+      operationId: runCheckNow
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/CheckUidPath"
+      responses:
+        "200":
+          description: The run is requested
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunNowResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: The check has no scheduled run (it is disabled)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: >-
+            Rate limited (code `RATE_LIMITED`). `Retry-After` gives the
+            seconds until the refusing window reopens.
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /api/v1/orgs/{org}/checks/{checkUid}/run:
     get:
       tags: [Checks]
@@ -13073,6 +13128,31 @@ components:
         error:
           type: string
           description: Why the run produced no screenshot.
+
+    RunNowResponse:
+      type: object
+      required: [requestedAt, regions]
+      properties:
+        requestedAt:
+          type: string
+          format: date-time
+          description: >-
+            When the request was recorded (microsecond precision). A result
+            with a later or equal `periodStart` answers it.
+        regions:
+          type: array
+          items:
+            type: object
+            required: [region, status]
+            properties:
+              region:
+                type: string
+              status:
+                type: string
+                enum: [queued, running]
+                description: >-
+                  `queued`: the region's job is due now. `running`: it is
+                  already running, its current result answers the request.
 
     CheckScreenshotCaptureResponse:
       type: object

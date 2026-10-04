@@ -62,6 +62,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/checkdependencies"
 	"github.com/fclairamb/solidping/server/internal/handlers/checkgroups"
 	"github.com/fclairamb/solidping/server/internal/handlers/checkjobs"
+	"github.com/fclairamb/solidping/server/internal/handlers/checkrunnow"
 	"github.com/fclairamb/solidping/server/internal/handlers/checkruns"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks/importers"
@@ -1436,6 +1437,15 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgCheckRuns.GET("/run", checkRunsHandler.GetRun)
 	orgCheckRuns.DELETE("/run", checkRunsHandler.CancelRun)
 	orgCheckRuns.GET("/crawl-reports", checkRunsHandler.ListCrawlReports)
+
+	// "Run now" (spec 2026-10-04-01): any check, once, in every region. An
+	// action path, deliberately not a POST on /run (the multi-step run
+	// resource, which a run-now request does not create). A write, rate
+	// limited in the service.
+	checkRunNowHandler := checkrunnow.NewHandler(
+		checkrunnow.NewService(s.dbService, s.services.EventNotifier, s.services.Clock), s.config,
+	)
+	orgCheckRuns.POST("/run-now", checkRunNowHandler.RunNow)
 
 	// …and its counterpart for DEPORTED agents (spec 2026-08-21-05): an agent
 	// cannot put image bytes on the JSON socket, so a result that opens or reopens an
