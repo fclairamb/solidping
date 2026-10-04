@@ -300,7 +300,8 @@ func (h *Handler) writeServiceError(writer http.ResponseWriter, req *http.Reques
 		return h.notEnabled(writer)
 	case errors.Is(err, svc.ErrBudgetExceeded):
 		return h.WriteError(writer, http.StatusTooManyRequests, base.ErrorCodeQuotaExceeded, err.Error())
-	case errors.Is(err, svc.ErrPromptRequired), errors.Is(err, svc.ErrContractRequired):
+	case errors.Is(err, svc.ErrPromptRequired), errors.Is(err, svc.ErrContractRequired),
+		errors.Is(err, svc.ErrMissingSecret):
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error())
 	case errors.Is(err, svc.ErrCheckNotFound):
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, err.Error())

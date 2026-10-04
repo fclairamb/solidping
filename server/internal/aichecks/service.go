@@ -38,6 +38,9 @@ var (
 	ErrNoPassingScript = errors.New("no script passed its test run")
 	// ErrCheckNotFound is a regeneration for a check the org does not have.
 	ErrCheckNotFound = errors.New("check not found")
+	// ErrMissingSecret is a prompt or contract naming a secret the request
+	// does not carry: the script would read it as undefined.
+	ErrMissingSecret = errors.New("the prompt uses a secret that was not given")
 )
 
 // enabled mirrors whether a provider is configured, for the hot result path
@@ -411,6 +414,25 @@ func validateGenerate(req *GenerateRequest) error {
 	return block.Validate()
 }
 
+// checkSecretsGiven refuses a generation whose prompt or contract names a
+// secret (secrets.NAME) without a value. The script would read it as
+// undefined, and the model would blame the target for refusing it.
+func checkSecretsGiven(req *GenerateRequest) error {
+	var missing []string
+
+	for _, name := range SecretRefs(append([]string{req.Prompt}, req.Contract...)...) {
+		if req.Secrets[name] == "" {
+			missing = append(missing, name)
+		}
+	}
+
+	if len(missing) == 0 {
+		return nil
+	}
+
+	return fmt.Errorf("%w: add a value for %s under Secrets", ErrMissingSecret, strings.Join(missing, ", "))
+}
+
 // fillStoredSecrets adds the stored secrets of req.CheckUID that the request
 // does not carry. A typed value wins over the stored one.
 func (s *Service) fillStoredSecrets(ctx context.Context, orgUID string, req *GenerateRequest) error {
@@ -461,6 +483,10 @@ func (s *Service) Generate(ctx context.Context, orgUID string, req *GenerateRequ
 		if err := s.fillStoredSecrets(ctx, orgUID, req); err != nil {
 			return nil, err
 		}
+	}
+
+	if err := checkSecretsGiven(req); err != nil {
+		return nil, err
 	}
 
 	ctx = ai.WithCallMeta(ctx, ai.CallMeta{OrgUID: orgUID, CheckUID: req.CheckUID, Purpose: ai.PurposeGenerate})

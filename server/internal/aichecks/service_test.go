@@ -881,6 +881,54 @@ return { status: "up", output: { sent: secrets.TOKEN } };`
 	r.Empty(resp.LastRun.Output["sent"], "the script ran with a blank secret")
 }
 
+// TestGenerateRefusesAMissingSecret: a prompt naming secrets.PASSWORD without
+// a PASSWORD value would run the login with "undefined".
+func TestGenerateRefusesAMissingSecret(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	fx := newFixture(t, always(`return { status: "up" };`), nil)
+
+	for _, secrets := range []map[string]string{nil, {"PASSWORD": ""}, {"TOKEN": testSecret}} {
+		_, err := fx.svc.Generate(fx.ctx, fx.org.UID, &aichecks.GenerateRequest{
+			Prompt:   "log in to https://app.acme.com as alice@acme.com with secrets.PASSWORD",
+			Contract: []string{"logging in with secrets[\"PASSWORD\"] succeeds"},
+			Secrets:  secrets,
+		})
+		r.ErrorIs(err, aichecks.ErrMissingSecret)
+		r.Contains(err.Error(), "PASSWORD")
+	}
+
+	r.Empty(fx.provider.requests, "the model is never called")
+}
+
+// TestGenerateTellsTheModelAboutUnknownSecrets: a script reading a secret
+// the check does not have is told so, instead of seeing the target refuse
+// the text "undefined".
+func TestGenerateTellsTheModelAboutUnknownSecrets(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	reads := `return { status: secrets.PASSWORD ? "up" : "down", output: { failure: "assertion" } };`
+	fx := newFixture(t, func(call int, _ ai.Request) *ai.Response {
+		if call == 0 {
+			return probeScript(reads)
+		}
+
+		return runScript(`return { status: "up" };`)
+	}, nil)
+
+	_, err := fx.svc.Generate(fx.ctx, fx.org.UID, &aichecks.GenerateRequest{
+		Prompt:   "watch https://app.acme.com",
+		Contract: []string{"app answers"},
+		Secrets:  map[string]string{"TOKEN": testSecret},
+	})
+	r.NoError(err)
+
+	messages := fx.provider.requests[1].Messages
+	r.Contains(messages[len(messages)-1].Content, "the check has no secrets.PASSWORD")
+}
+
 func TestSecretsAreScrubbedFromRunOutput(t *testing.T) {
 	t.Parallel()
 

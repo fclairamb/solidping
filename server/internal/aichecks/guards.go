@@ -27,6 +27,7 @@ var (
 	// hostArgRE catches tcp.connect("host", ...) style literal hosts.
 	hostArgRE = regexp.MustCompile(`\b(?:tcp|udp|rdp|vnc)\s*\.\s*connect\s*\(\s*["']([^"']+)["']`)
 	envRefRE  = regexp.MustCompile(`\benv\s*(?:\.\s*([A-Za-z_$][\w$]*)|\[\s*["']([^"']+)["']\s*\])`)
+	secretRE  = regexp.MustCompile(`\bsecrets\s*(?:\.\s*([A-Za-z_$][\w$]*)|\[\s*["']([^"']+)["']\s*\])`)
 	tryRE     = regexp.MustCompile(`\btry\s*\{`)
 	downRE    = regexp.MustCompile(`["']down["']`)
 )
@@ -72,6 +73,32 @@ func ScriptHosts(script string, env map[string]string) []string {
 	out := make([]string, 0, len(set))
 	for host := range set {
 		out = append(out, host)
+	}
+
+	sort.Strings(out)
+
+	return out
+}
+
+// SecretRefs lists the secret names (secrets.NAME, secrets["NAME"]) the texts
+// refer to. Sorted, deduplicated.
+func SecretRefs(texts ...string) []string {
+	set := map[string]struct{}{}
+
+	for _, text := range texts {
+		for _, match := range secretRE.FindAllStringSubmatch(text, -1) {
+			name := match[1]
+			if name == "" {
+				name = match[2]
+			}
+
+			set[name] = struct{}{}
+		}
+	}
+
+	out := make([]string, 0, len(set))
+	for name := range set {
+		out = append(out, name)
 	}
 
 	sort.Strings(out)

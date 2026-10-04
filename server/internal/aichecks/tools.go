@@ -217,6 +217,10 @@ func (rec *runRecorder) runScript(ctx context.Context, script string, final bool
 		}
 	}
 
+	if unknown := unknownSecrets(script, secrets); unknown != "" {
+		note = strings.TrimSpace(note + " " + unknown)
+	}
+
 	payload := map[string]any{"result": res}
 	if note != "" {
 		payload["note"] = note
@@ -358,6 +362,28 @@ func secretNames(secrets map[string]string) []string {
 	}
 
 	return names
+}
+
+// unknownSecrets is a note for the model when the script reads secrets the
+// check does not have. They are undefined, so a login filled with one sends
+// the text "undefined": the target is right to refuse it.
+func unknownSecrets(script string, secrets map[string]string) string {
+	noComments, _ := scanScript(script)
+
+	var unknown []string
+
+	for _, name := range SecretRefs(noComments) {
+		if _, ok := secrets[name]; !ok {
+			unknown = append(unknown, "secrets."+name)
+		}
+	}
+
+	if len(unknown) == 0 {
+		return ""
+	}
+
+	return "the check has no " + strings.Join(unknown, ", ") + ": the script read undefined, " +
+		"use only the secrets listed in the request"
 }
 
 // blankSecrets maps every secret name to an empty value.
