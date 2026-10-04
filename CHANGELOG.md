@@ -12,6 +12,26 @@
 * **checks:** **HTTP checks can require HTTP/2 or HTTP/3.** The new `httpVersion` option takes `1.1` (default, unchanged behavior), `2` or `3`. With `2` or `3` the check goes down when the server does not negotiate that protocol, with an error such as `expected HTTP/2, got HTTP/1.1`. HTTP/3 runs over QUIC (UDP), so it is refused on checks that go through a tunnel. Every HTTP result that got a response now carries the negotiated protocol in `http_protocol` and, when the server sent one, its `Alt-Svc` header in `alt_svc`, so you can see a server advertising HTTP/3 before you require it. The option is also in the dashboard as an "HTTP version" select.
 * **auth:** **`SP_ADMIN_EMAIL` sets the email of the seeded super admin** on the first start of an empty database, instead of `admin@solidping.io`.
 
+## [0.38.0](https://github.com/fclairamb/solidping/compare/v0.37.0...v0.38.0) (2026-10-04)
+
+
+### Features
+
+* vnc check type and account email change ([#467](https://github.com/fclairamb/solidping/issues/467)) ([725a191](https://github.com/fclairamb/solidping/commit/725a191aed4f353bfc8857af1fd76459160442f9))
+* vnc check, HTTP/2 and HTTP/3 checks, email change, impersonation, response-time stats, MCP stdio ([#480](https://github.com/fclairamb/solidping/issues/480)) ([9a7d162](https://github.com/fclairamb/solidping/commit/9a7d162a6b4deae7a3d7ff188eee6bd1ae3cdd06))
+
+
+### Bug Fixes
+
+* **deps:** update github.com/dop251/goja digest to 0f92c90 ([#469](https://github.com/fclairamb/solidping/issues/469)) ([b5d5431](https://github.com/fclairamb/solidping/commit/b5d54313c8d99a73136e00de843a85c2318f28d4))
+* **deps:** update github.com/dop251/goja digest to 104bc28 ([#481](https://github.com/fclairamb/solidping/issues/481)) ([4ef9c32](https://github.com/fclairamb/solidping/commit/4ef9c32c5adb3c1e80a0d055f65c5f0ecc7981e7))
+* **deps:** update github.com/dop251/goja digest to 3ccc9c7 ([#475](https://github.com/fclairamb/solidping/issues/475)) ([46c2850](https://github.com/fclairamb/solidping/commit/46c28509452de354bdd2b0ce0f1ae57e1940d553))
+* **deps:** update github.com/dop251/goja digest to 43ac577 ([#474](https://github.com/fclairamb/solidping/issues/474)) ([4501ce0](https://github.com/fclairamb/solidping/commit/4501ce0294c0b5091ab771b244987a561cddb3c7))
+* **deps:** update go dependencies (non-major) ([#472](https://github.com/fclairamb/solidping/issues/472)) ([2229bf0](https://github.com/fclairamb/solidping/commit/2229bf0226a58877fde2509c005766a9056876ea))
+* **deps:** update go dependencies (non-major) ([#476](https://github.com/fclairamb/solidping/issues/476)) ([ab6d274](https://github.com/fclairamb/solidping/commit/ab6d274e21bf7847f8d5a121af0a23038e0e51f2))
+* **deps:** update go dependencies (non-major) ([#478](https://github.com/fclairamb/solidping/issues/478)) ([43296e9](https://github.com/fclairamb/solidping/commit/43296e9dc417128f67b90462c622800ab39d56be))
+* report the average ICMP round trip as the check duration ([#466](https://github.com/fclairamb/solidping/issues/466)) ([2adeab4](https://github.com/fclairamb/solidping/commit/2adeab464b01b3b92a2b24f33cf1250e38134be0))
+
 ## [0.37.0](https://github.com/fclairamb/solidping/compare/v0.36.1...v0.37.0) (2026-09-30)
 
 
