@@ -3,7 +3,9 @@
 // contract to confirm, POST /orgs/:org/checks/ai/generate writes and tests the
 // script. Nothing is saved here: the dashboard saves the returned config
 // through the regular create path. Both answer 404 when no AI provider is
-// configured.
+// configured. A generate request sent with Accept: application/x-ndjson gets
+// its progress streamed, one JSON object per line, ending with a "result" or
+// an "error" line.
 package aichecks
 
 import (
@@ -11,7 +13,11 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"mime"
 	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/ai"
@@ -27,6 +33,19 @@ const (
 	maxBodyBytes = 256 * 1024
 	// generateBudget bounds one generation end to end.
 	generateBudget = 10 * time.Minute
+	// ndjsonContentType is the streamed generation's media type.
+	ndjsonContentType = "application/x-ndjson"
+	// streamHeartbeat keeps a streamed generation's connection busy while a
+	// reasoning model thinks for a minute without any event, so no proxy
+	// drops it as idle.
+	streamHeartbeat = 15 * time.Second
+)
+
+// Stream line types besides the svc.Progress ones.
+const (
+	streamPing   = "ping"
+	streamResult = "result"
+	streamError  = "error"
 )
 
 // Handler serves the AI authoring endpoints.
@@ -54,6 +73,19 @@ type GenerationFailedResponse struct {
 	LastScript string         `json:"lastScript,omitempty"`
 	LastRun    *svc.RunResult `json:"lastRun,omitempty"`
 	Turns      int            `json:"turns"`
+	// Explanation is the model's last message, often why it gave up.
+	Explanation string `json:"explanation,omitempty"`
+}
+
+// StreamLine is the last line of a streamed generation: the response the
+// plain endpoint would have sent, with its HTTP status for an error.
+type StreamLine struct {
+	Type   string                `json:"type"`
+	Result *svc.GenerateResponse `json:"result,omitempty"`
+	// HTTPStatus and Response are the error the plain call would have
+	// answered.
+	HTTPStatus int             `json:"httpStatus,omitempty"`
+	Response   json.RawMessage `json:"response,omitempty"`
 }
 
 func (h *Handler) notEnabled(writer http.ResponseWriter) error {
@@ -122,6 +154,12 @@ func (h *Handler) Generate(writer http.ResponseWriter, req *http.Request) error 
 	ctx, cancel := context.WithTimeout(req.Context(), generateBudget)
 	defer cancel()
 
+	if wantsStream(req) {
+		h.generateStream(ctx, writer, req, orgUID, &body)
+
+		return nil
+	}
+
 	resp, err := h.svc.Generate(ctx, orgUID, &body)
 	if err != nil {
 		return h.writeServiceError(writer, req, err)
@@ -130,16 +168,97 @@ func (h *Handler) Generate(writer http.ResponseWriter, req *http.Request) error 
 	return h.WriteJSON(writer, http.StatusOK, resp)
 }
 
+func wantsStream(req *http.Request) bool {
+	for _, part := range strings.Split(req.Header.Get("Accept"), ",") {
+		if mediaType, _, err := mime.ParseMediaType(strings.TrimSpace(part)); err == nil &&
+			mediaType == ndjsonContentType {
+			return true
+		}
+	}
+
+	return false
+}
+
+// generateStream runs a generation and streams its progress as NDJSON. The
+// status is 200 once the stream starts: an error is the last line, carrying
+// the status and body the plain endpoint would have answered.
+func (h *Handler) generateStream(
+	ctx context.Context, writer http.ResponseWriter, req *http.Request, orgUID string, body *svc.GenerateRequest,
+) {
+	flusher, _ := writer.(http.Flusher)
+
+	writer.Header().Set("Content-Type", ndjsonContentType)
+	writer.Header().Set("Cache-Control", "no-cache")
+	writer.Header().Set("X-Accel-Buffering", "no")
+	writer.WriteHeader(http.StatusOK)
+
+	var writeMu sync.Mutex
+
+	write := func(line any) {
+		raw, err := json.Marshal(line)
+		if err != nil {
+			return
+		}
+
+		writeMu.Lock()
+		defer writeMu.Unlock()
+
+		_, _ = writer.Write(append(raw, '\n'))
+
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}
+
+	body.OnProgress = func(event svc.Progress) { write(event) }
+
+	stop := make(chan struct{})
+	heartbeatDone := make(chan struct{})
+
+	go func() {
+		defer close(heartbeatDone)
+
+		ticker := time.NewTicker(streamHeartbeat)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-stop:
+				return
+			case <-ticker.C:
+				write(StreamLine{Type: streamPing})
+			}
+		}
+	}()
+
+	resp, err := h.svc.Generate(ctx, orgUID, body)
+
+	close(stop)
+	<-heartbeatDone
+
+	if err != nil {
+		// The same mapping as the plain endpoint, recorded instead of sent.
+		recorder := httptest.NewRecorder()
+		_ = h.writeServiceError(recorder, req, err)
+		write(StreamLine{Type: streamError, HTTPStatus: recorder.Code, Response: recorder.Body.Bytes()})
+
+		return
+	}
+
+	write(StreamLine{Type: streamResult, Result: resp})
+}
+
 func (h *Handler) writeServiceError(writer http.ResponseWriter, req *http.Request, err error) error {
 	var genErr *svc.GenerationError
 	if errors.As(err, &genErr) {
 		return h.WriteJSON(writer, http.StatusUnprocessableEntity, GenerationFailedResponse{
-			Title:      "No script passed its test run",
-			Code:       "AI_GENERATION_FAILED",
-			Detail:     genErr.Error(),
-			LastScript: genErr.LastScript,
-			LastRun:    genErr.LastRun,
-			Turns:      genErr.Turns,
+			Title:       "No script passed its test run",
+			Code:        "AI_GENERATION_FAILED",
+			Detail:      genErr.Detail(),
+			LastScript:  genErr.LastScript,
+			LastRun:     genErr.LastRun,
+			Turns:       genErr.Turns,
+			Explanation: genErr.Explanation,
 		})
 	}
 

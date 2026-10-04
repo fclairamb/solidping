@@ -742,6 +742,126 @@ func TestGenerateTurnCapIsAnError(t *testing.T) {
 	r.Equal(4, genErr.Turns)
 }
 
+// TestGenerateWhenTheModelStopsTalking covers a model answering with text
+// instead of a passing final run_script, the usual way weaker models end.
+func TestGenerateWhenTheModelStopsTalking(t *testing.T) {
+	t.Parallel()
+
+	failing := strings.ReplaceAll(fixedScript, "data.items", "data.projects")
+
+	t.Run("an untested script in the answer is tested as final", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+		tg := newTarget(t)
+		fx := newFixture(t, func(int, ai.Request) *ai.Response {
+			return &ai.Response{Text: "Here is the check.\n```js\n" + fixedScript + "\n```"}
+		}, nil)
+
+		var events []aichecks.Progress
+
+		resp, err := fx.svc.Generate(fx.ctx, fx.org.UID, &aichecks.GenerateRequest{
+			Prompt:     "the acme api at " + tg.srv.URL + " lists at least one project",
+			Contract:   []string{"the list has at least one project"},
+			Env:        map[string]string{"BASE_URL": tg.srv.URL},
+			Secrets:    map[string]string{"TOKEN": testSecret},
+			OnProgress: func(event aichecks.Progress) { events = append(events, event) },
+		})
+		r.NoError(err)
+		r.Equal(fixedScript, resp.Script)
+		r.Equal(1, resp.Turns, "no extra model call to test it")
+
+		types := make([]string, 0, len(events))
+		for _, event := range events {
+			types = append(types, event.Type)
+		}
+
+		r.Equal([]string{"turn", "message", "tool", "toolResult"}, types)
+		r.Equal("Here is the check.", events[1].Text, "the code block is not repeated in the message")
+		r.True(events[3].Final)
+		r.Equal("up", events[3].Status)
+	})
+
+	t.Run("a model that stops without a script is sent back to work", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+		tg := newTarget(t)
+		fx := newFixture(t, func(call int, _ ai.Request) *ai.Response {
+			if call == 0 {
+				return &ai.Response{Text: "I explored the API, it lists projects."}
+			}
+
+			return runScript(fixedScript)
+		}, nil)
+
+		resp, err := fx.svc.Generate(fx.ctx, fx.org.UID, &aichecks.GenerateRequest{
+			Prompt:   "the acme api at " + tg.srv.URL + " lists at least one project",
+			Contract: []string{"the list has at least one project"},
+			Env:      map[string]string{"BASE_URL": tg.srv.URL},
+			Secrets:  map[string]string{"TOKEN": testSecret},
+		})
+		r.NoError(err)
+		r.Equal(fixedScript, resp.Script)
+		r.Equal(2, resp.Turns)
+
+		second := fx.provider.requests[1].Messages
+		r.Equal(ai.RoleUser, second[len(second)-1].Role)
+		r.Contains(second[len(second)-1].Content, "No final script has passed yet")
+	})
+
+	t.Run("the failure shows the last final attempt, even one that cannot run", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+		fx := newFixture(t, func(call int, _ ai.Request) *ai.Response {
+			if call == 0 {
+				return probeScript(`return { status: "up" };`)
+			}
+
+			return runScript(`return { status: "up" ;`)
+		}, nil)
+
+		_, err := fx.svc.Generate(fx.ctx, fx.org.UID, &aichecks.GenerateRequest{
+			Prompt:   "watch https://app.acme.com",
+			Contract: []string{"app answers"},
+		})
+
+		var genErr *aichecks.GenerationError
+		r.ErrorAs(err, &genErr)
+		r.Equal(`return { status: "up" ;`, genErr.LastScript)
+		r.Equal("error", genErr.LastRun.Status)
+		r.Contains(genErr.Detail(), "The last test run returned error (error: ")
+	})
+
+	t.Run("a model giving up explains why", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+		tg := newTarget(t)
+		fx := newFixture(t, func(call int, _ ai.Request) *ai.Response {
+			if call == 0 {
+				return runScript(failing)
+			}
+
+			return &ai.Response{Text: "The API has no projects field, the contract cannot pass."}
+		}, nil)
+
+		_, err := fx.svc.Generate(fx.ctx, fx.org.UID, &aichecks.GenerateRequest{
+			Prompt:   "the acme api at " + tg.srv.URL + " lists at least one project",
+			Contract: []string{"the list has at least one project"},
+			Env:      map[string]string{"BASE_URL": tg.srv.URL},
+		})
+
+		var genErr *aichecks.GenerationError
+		r.ErrorAs(err, &genErr)
+		r.Equal(3, genErr.Turns, "one run, one answer, one nudge answered")
+		r.Equal("The API has no projects field, the contract cannot pass.", genErr.Explanation)
+		r.Equal("The AI stopped after 3 turns. The last test run returned down (step: parse, failure: drift).",
+			genErr.Detail())
+	})
+}
+
 func TestGenerateBlanksSecretsForUndeclaredHosts(t *testing.T) {
 	t.Parallel()
 

@@ -8,10 +8,13 @@ import {
   useAIGenerate,
   useCreateCheck,
   type AIGenerateResponse,
+  type AIGenerationFailed,
   type AIRepairMode,
 } from "@/api/hooks";
-import { ApiError } from "@/api/client";
+import { AIGenerationFailedError, ApiError } from "@/api/client";
 import { useAIChecksEnabled, usePublicConfigLoading } from "@/api/public-config";
+import { AIGenerationFailure, AIGenerationProgress } from "@/components/checks/ai-generation-progress";
+import { useAIGenerationProgress } from "@/components/checks/use-ai-generation-progress";
 import { PageHeader } from "@/components/shared/page-header";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -75,6 +78,8 @@ function DescribeCheckPage() {
   const [generated, setGenerated] = useState<AIGenerateResponse | null>(null);
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [failure, setFailure] = useState<AIGenerationFailed | null>(null);
+  const progress = useAIGenerationProgress();
 
   if (!loading && !enabled) {
     return (
@@ -92,6 +97,7 @@ function DescribeCheckPage() {
 
   async function proposeContract() {
     setError(null);
+    setFailure(null);
     setGenerated(null);
     try {
       const resp = await contractMutation.mutateAsync(prompt);
@@ -103,7 +109,9 @@ function DescribeCheckPage() {
 
   async function generate() {
     setError(null);
+    setFailure(null);
     setGenerated(null);
+    progress.start();
     try {
       const resp = await generateMutation.mutateAsync({
         prompt,
@@ -111,11 +119,16 @@ function DescribeCheckPage() {
         env: rowsToMap(envRows),
         secrets: rowsToMap(secretRows),
         repair,
+        onProgress: progress.onProgress,
       });
       setGenerated(resp);
       if (!name) setName(prompt.slice(0, 60));
     } catch (err) {
-      setError(errorMessage(err));
+      if (err instanceof AIGenerationFailedError) {
+        setFailure(err.failure);
+      } else {
+        setError(errorMessage(err));
+      }
     }
   }
 
@@ -252,6 +265,8 @@ function DescribeCheckPage() {
               {generating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {generating ? t("ai.generating") : t("ai.generate")}
             </Button>
+            <AIGenerationProgress state={progress.state} running={generating} />
+            {failure && <AIGenerationFailure failure={failure} />}
           </CardContent>
         </Card>
       )}

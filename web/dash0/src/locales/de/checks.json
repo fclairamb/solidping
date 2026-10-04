@@ -1602,6 +1602,34 @@
     "detailHistory": "Verlauf und Reparaturvorschläge",
     "regenerate": "Skript neu generieren",
     "regenerateHelp": "Bearbeiten Sie den Prompt oder den Vertrag und generieren Sie dann neu. Speichern ohne Neugenerierung behält das aktuelle Skript.",
-    "regeneratedHelp": "Das neue Skript steht unten im Editor. Speichern Sie den Check, um es zu behalten; das vorherige Skript bleibt im Verlauf."
+    "regeneratedHelp": "Das neue Skript steht unten im Editor. Speichern Sie den Check, um es zu behalten; das vorherige Skript bleibt im Verlauf.",
+    "progress": {
+      "running": "Skript wird geschrieben und getestet",
+      "finished": "Was die KI getan hat",
+      "turn": "Runde {{turn}} von {{max}}",
+      "starting": "Wird gestartet...",
+      "thinking": "Die KI denkt nach...",
+      "slowHint": "Manche Modelle denken zwischen zwei Schritten eine Minute oder länger nach.",
+      "fetch": "{{url}} wird abgerufen",
+      "snapshot": "{{url}} wird in einem Browser geöffnet",
+      "probe": "Erkundungsskript wird getestet",
+      "final": "Fertiges Skript wird getestet"
+    },
+    "failure": {
+      "title": "Kein Skript hat seinen Testlauf bestanden",
+      "explanation": "Antwort der KI",
+      "lastRun": "Letzter Testlauf",
+      "lastScript": "Zuletzt versuchtes Skript"
+    },
+    "repairUnavailable": "Die Reparatur kann nicht laufen: Auf diesem Server ist kein KI-Anbieter konfiguriert (SP_AI_PROVIDER).",
+    "lastRepair": "Letzter Reparaturversuch",
+    "noRepairYet": "Noch kein Reparaturversuch. Ein Versuch startet nach 3 Fehlschlägen in Folge, bei denen das Skript selbst kaputt ist, während die Website antwortet. Höchstens ein Versuch pro Tag.",
+    "repairOutcome": {
+      "no_candidate": "kein neues Skript hat seinen Testlauf bestanden",
+      "rejected": "das neue Skript wurde von den Sicherheitsprüfungen abgelehnt",
+      "proposed": "ein neues Skript wurde vorgeschlagen, siehe Verlauf",
+      "applied": "ein neues Skript wurde übernommen",
+      "error": "der Versuch ist fehlgeschlagen"
+    }
   }
 }

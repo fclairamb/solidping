@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/fclairamb/solidping/server/internal/ai"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
 // Tool names, shared with the MCP server.
@@ -111,8 +113,15 @@ type runRecorder struct {
 	// model, or a refusal (an error the model sees instead of a run).
 	prepare func(script string) (map[string]string, string, error)
 	env     map[string]string
+	// progress receives every run, for the dashboard. Nil drops them.
+	progress func(Progress)
+	nudges   int
+	// invitedToStop is set once the model was told it may stop and explain.
+	invitedToStop bool
 
 	last *scriptRun
+	// lastFinal is the last run marked final, passing or not.
+	lastFinal *scriptRun
 	// lastUp is the last passing run marked final.
 	lastUp *scriptRun
 	// ups are the passing runs by script, final or not, for passing().
@@ -146,43 +155,142 @@ func (rec *runRecorder) tool() ai.Tool {
 				return "", fmt.Errorf("invalid arguments: %w", err)
 			}
 
-			if strings.TrimSpace(args.Script) == "" {
-				return "", errScriptRequired
-			}
-
-			secrets, note, err := rec.prepare(args.Script)
-			if err != nil {
-				return "", err
-			}
-
-			res, err := rec.runner.Run(ctx, args.Script, rec.env, secrets, 0)
-			if err != nil {
-				return "", err
-			}
-
-			run := &scriptRun{Script: args.Script, Result: res, Final: args.Final}
-			rec.last = run
-
-			if res.Up() {
-				if rec.ups == nil {
-					rec.ups = map[string]*scriptRun{}
-				}
-
-				rec.ups[strings.TrimSpace(args.Script)] = run
-
-				if args.Final {
-					rec.lastUp = run
-				}
-			}
-
-			payload := map[string]any{"result": res}
-			if note != "" {
-				payload["note"] = note
-			}
-
-			return forModel(payload), nil
+			return rec.run(ctx, args.Script, args.Final)
 		},
 	}
+}
+
+// run runs one script for the model and returns the tool result it reads.
+func (rec *runRecorder) run(ctx context.Context, script string, final bool) (string, error) {
+	if strings.TrimSpace(script) == "" {
+		return "", errScriptRequired
+	}
+
+	rec.emit(&Progress{Type: ProgressTool, Tool: ToolRunScript, Final: final})
+
+	out, err := rec.runScript(ctx, script, final)
+	if err != nil {
+		rec.emit(&Progress{Type: ProgressToolResult, Tool: ToolRunScript, Final: final, Error: err.Error()})
+
+		return "", err
+	}
+
+	res := rec.last.Result
+	rec.emit(&Progress{
+		Type: ProgressToolResult, Tool: ToolRunScript, Final: final,
+		Status: res.Status, Detail: runSummary(res), DurationMs: res.DurationMs,
+	})
+
+	return out, nil
+}
+
+func (rec *runRecorder) runScript(ctx context.Context, script string, final bool) (string, error) {
+	secrets, note, err := rec.prepare(script)
+	if err != nil {
+		return "", err
+	}
+
+	res, err := rec.runner.Run(ctx, script, rec.env, secrets, 0)
+	if err != nil {
+		// A script that cannot run (a syntax error) is still an attempt the
+		// user should see when nothing passes.
+		rec.record(&scriptRun{
+			Script: script, Final: final,
+			Result: &RunResult{Status: checkerdef.StatusError.String(), Output: map[string]any{outputKeyError: err.Error()}},
+		})
+
+		return "", err
+	}
+
+	run := &scriptRun{Script: script, Result: res, Final: final}
+	rec.record(run)
+
+	if res.Up() {
+		if rec.ups == nil {
+			rec.ups = map[string]*scriptRun{}
+		}
+
+		rec.ups[strings.TrimSpace(script)] = run
+
+		if final {
+			rec.lastUp = run
+		}
+	}
+
+	payload := map[string]any{"result": res}
+	if note != "" {
+		payload["note"] = note
+	}
+
+	return forModel(payload), nil
+}
+
+func (rec *runRecorder) record(run *scriptRun) {
+	rec.last = run
+	if run.Final {
+		rec.lastFinal = run
+	}
+}
+
+// attempt is the run to show when nothing passed: the last final one, else
+// the last probe.
+func (rec *runRecorder) attempt() *scriptRun {
+	if rec.lastFinal != nil {
+		return rec.lastFinal
+	}
+
+	return rec.last
+}
+
+func (rec *runRecorder) emit(event *Progress) {
+	if rec.progress != nil {
+		rec.progress(*event)
+	}
+}
+
+// maxNudges bounds how many times a model that stopped without a passing
+// final script is sent back to work.
+const maxNudges = 2
+
+// nudge is the loop's answer to a model that stopped talking without a
+// passing final run. Weaker models often answer with the finished script in a
+// fenced block instead of testing it, or rewrite it slightly after a passing
+// probe: that script is run as final here, and kept when it passes. Otherwise
+// the model is told why it is not done yet, at most maxNudges times. An empty
+// answer ends the loop.
+func (rec *runRecorder) nudge(ctx context.Context, text string) string {
+	if rec.done() || rec.nudges >= maxNudges {
+		return ""
+	}
+
+	rec.nudges++
+
+	if script := fencedScript(text); script != "" && rec.ups[script] == nil {
+		out, err := rec.run(ctx, script, true)
+		if err != nil {
+			return "The script in your answer could not run: " + err.Error() +
+				". Fix it and test it with run_script, final: true."
+		}
+
+		if rec.done() {
+			return ""
+		}
+
+		return "The script in your answer was tested as final and did not pass:\n" + out +
+			"\nFix it and test it with run_script, final: true."
+	}
+
+	if script := fencedScript(text); script != "" || rec.invitedToStop {
+		// A passing probe handed back as the answer (passing() accepts it),
+		// or a model that already had its chance to say what fails.
+		return ""
+	}
+
+	rec.invitedToStop = true
+
+	return "No final script has passed yet. Write the whole check and test it with run_script, " +
+		"final: true. If the target cannot satisfy the contract (wrong credentials, page missing, " +
+		"service down), answer with one sentence saying what fails, without calling a tool."
 }
 
 func (rec *runRecorder) done() bool {
@@ -229,6 +337,17 @@ func fencedScript(text string) string {
 	}
 
 	return strings.TrimSpace(block)
+}
+
+// explanationLimit bounds the model's last message carried by a failure.
+const explanationLimit = 2000
+
+var fenceRE = regexp.MustCompile("(?s)```.*?(```|$)")
+
+// withoutFences drops the fenced code blocks of a model message, keeping its
+// prose.
+func withoutFences(text string) string {
+	return strings.TrimSpace(fenceRE.ReplaceAllString(text, ""))
 }
 
 // secretNames lists the keys of a secrets map, as the model sees them.

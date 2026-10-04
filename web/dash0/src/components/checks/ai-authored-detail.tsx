@@ -1,7 +1,9 @@
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import { History, Sparkles } from "lucide-react";
-import type { AICheckBlock, Check } from "@/api/hooks";
+import { AlertCircle, History, Sparkles } from "lucide-react";
+import { useEvents, type AICheckBlock, type Check } from "@/api/hooks";
+import { useAIChecksEnabled, usePublicConfigLoading } from "@/api/public-config";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { TimeAgo } from "@/components/ui/time-ago";
@@ -20,13 +22,32 @@ export function aiBlockOf(check: Pick<Check, "type" | "config">): AICheckBlock |
  * page (spec 2026-10-03-06), linked from here. Renders nothing for any other
  * check.
  */
+const REPAIR_OUTCOMES = ["no_candidate", "rejected", "proposed", "applied", "error"];
+
 export function AIAuthoredDetail({ org, check }: { org: string; check: Check }) {
   const { t } = useTranslation("checks");
   const block = aiBlockOf(check);
+  const aiEnabled = useAIChecksEnabled();
+  const configLoading = usePublicConfigLoading();
+  const repair = block?.repair ?? "propose";
+  const lastAttempt = useEvents(org, {
+    checkUid: check.uid,
+    eventType: "check.ai_repair_attempted",
+    size: 1,
+    enabled: !!block && repair !== "off" && aiEnabled,
+    refetchInterval: 60_000,
+  });
 
   if (!block) return null;
 
-  const repair = block.repair ?? "propose";
+  const attempt = lastAttempt.data?.data?.[0];
+  const outcome = typeof attempt?.payload?.outcome === "string" ? attempt.payload.outcome : "";
+  const reason =
+    typeof attempt?.payload?.error === "string"
+      ? attempt.payload.error
+      : typeof attempt?.payload?.reason === "string"
+        ? attempt.payload.reason
+        : "";
 
   return (
     <div className="space-y-3 border-t pt-4" data-testid="ai-authored-detail">
@@ -37,6 +58,26 @@ export function AIAuthoredDetail({ org, check }: { org: string; check: Check }) 
           {t("ai.detailRepair", { mode: t(`ai.repair.${repair}`) })}
         </Badge>
       </div>
+      {repair !== "off" && !configLoading && !aiEnabled && (
+        <Alert variant="warning" data-testid="ai-detail-repair-unavailable">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{t("ai.repairUnavailable")}</AlertDescription>
+        </Alert>
+      )}
+      {repair !== "off" && aiEnabled && (
+        <p className="text-xs text-muted-foreground" data-testid="ai-detail-last-repair">
+          {attempt?.createdAt ? (
+            <>
+              {t("ai.lastRepair")} <TimeAgo date={attempt.createdAt} />
+              {": "}
+              {REPAIR_OUTCOMES.includes(outcome) ? t(`ai.repairOutcome.${outcome}`) : outcome}
+              {reason && <span className="block break-words">{reason}</span>}
+            </>
+          ) : (
+            t("ai.noRepairYet")
+          )}
+        </p>
+      )}
       {block.prompt && (
         <div>
           <Label>{t("ai.detailPrompt")}</Label>

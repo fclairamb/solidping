@@ -29,12 +29,17 @@ On the checks page or the **New check** page, click **Describe it**.
    will check. Edit it until it says what you want.
 3. Generate. The AI explores the target (`fetch_page`, `browser_snapshot`),
    writes a script and runs it (`run_script`) until a run returns `up`, or the
-   turn cap is hit. You see the script and its last run.
+   turn cap is hit. The page shows each step live: what the AI says, the pages
+   it opens and the scripts it tests. You see the script and its last run.
+   When no script passes, you see why: the last test run, the last script and
+   the AI's last message.
 4. Save. The check is a normal `js` check with an `ai` block in its config.
 
 The AI may run probe scripts while it explores the target. A probe is never
 saved, even when it returns `up`: only the finished script, the one that
-implements every line of the contract, ends the generation.
+implements every line of the contract, ends the generation. When the AI
+answers with a script it did not test, SolidPing tests it as the finished
+script. When it stops without one, it is sent back to work, up to twice.
 
 Ask for a screenshot in the description ("then take a screenshot") and the
 script calls `page.screenshot()` at that point, and again before any `down`.
@@ -68,7 +73,7 @@ config:
     contract:
       - "GET /api answers 200"
       - "the list has at least one project"
-    model: glm-5-3-flash-260828
+    model: glm-5.3-flash
     generated_at: "2026-10-03T10:00:00Z"
     repair: propose
 ```
@@ -153,12 +158,13 @@ BytePlus ModelArk example:
 ```bash
 SP_AI_PROVIDER=openai
 SP_AI_BASE_URL=https://ark.ap-southeast.bytepluses.com/api/v3
-SP_AI_MODEL=glm-5-3-flash-260828   # the dotted name glm-5.3-flash is refused
-SP_AI_API_KEY=...                  # activate the model in the Ark console first
+SP_AI_MODEL=glm-5.3-flash
+SP_AI_API_KEY=...          # activate the model in the Ark console first
 ```
 
 Every LLM call is logged with the organization, the check, the purpose
-(`contract`, `generate`, `repair`) and the token usage, and recorded as a
+(`contract`, `generate`, `repair`) and the token usage, every tool call with its
+duration and outcome, and each call is recorded as a
 `check.ai_usage` event. On the SaaS, the `maxAiTokensPerDay` entitlement caps
 the tokens an organization spends per UTC day (429 once spent). Self-hosted is
 unlimited: your key pays.

@@ -1895,7 +1895,7 @@ func TestAIEnvVarsBind(t *testing.T) {
 	t.Setenv("SP_AI_PROVIDER", "OpenAI")
 	t.Setenv("SP_AI_BASE_URL", "https://ark.example.test/api/v3")
 	t.Setenv("SP_AI_API_KEY", "sk-test")
-	t.Setenv("SP_AI_MODEL", "glm-5-3-flash-260828")
+	t.Setenv("SP_AI_MODEL", "glm-5.3-flash")
 	t.Setenv("SP_AI_MAX_TURNS", "7")
 	t.Setenv("SP_AI_TIMEOUT", "45s")
 
@@ -1905,7 +1905,7 @@ func TestAIEnvVarsBind(t *testing.T) {
 	r.Equal(AIProviderOpenAI, cfg.AI.Provider)
 	r.Equal("https://ark.example.test/api/v3", cfg.AI.BaseURL)
 	r.Equal("sk-test", cfg.AI.APIKey)
-	r.Equal("glm-5-3-flash-260828", cfg.AI.Model)
+	r.Equal("glm-5.3-flash", cfg.AI.Model)
 	r.Equal(7, cfg.AI.MaxTurns)
 	r.Equal(45*time.Second, cfg.AI.Timeout)
 	r.True(cfg.AI.Enabled())

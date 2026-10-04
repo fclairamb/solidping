@@ -209,7 +209,7 @@ describe("jsModule — the ai block of an AI-authored check", () => {
     ai: {
       prompt: "the acme dashboard shows a project",
       contract: ["GET / answers 200", "a project is listed"],
-      model: "glm-5-3-flash",
+      model: "glm-5.3-flash",
       generated_at: "2026-10-03T22:55:33Z",
       repair: "auto",
     },

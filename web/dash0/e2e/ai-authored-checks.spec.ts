@@ -19,6 +19,67 @@ async function enableAI(page: Page) {
 }
 
 test.describe("AI-authored checks", () => {
+  test("generate streams its steps, and a failure shows why", async ({ authenticatedPage }) => {
+    const page = authenticatedPage;
+    await enableAI(page);
+
+    await page.route("**/api/v1/orgs/test/checks/ai/contract", async (route: Route) => {
+      await route.fulfill({ json: { contract: ["login succeeds"], model: "stub-model" } });
+    });
+
+    let accept = "";
+    await page.route("**/api/v1/orgs/test/checks/ai/generate", async (route: Route) => {
+      accept = route.request().headers()["accept"] ?? "";
+      const lines = [
+        { type: "turn", turn: 1, maxTurns: 12 },
+        { type: "message", text: "Exploring the sign-in page." },
+        { type: "tool", tool: "fetch_page", url: "https://app.acme.com" },
+        { type: "toolResult", tool: "fetch_page", url: "https://app.acme.com", status: "up", detail: "statusCode: 200", durationMs: 40 },
+        { type: "ping" },
+        { type: "tool", tool: "run_script", final: true },
+        { type: "toolResult", tool: "run_script", final: true, status: "down", detail: "step: login, failure: assertion", durationMs: 900 },
+        {
+          type: "error",
+          httpStatus: 422,
+          response: {
+            title: "No script passed its test run",
+            code: "AI_GENERATION_FAILED",
+            detail: "The AI stopped after 2 turns. The last test run returned down (step: login, failure: assertion).",
+            explanation: "The login answers 401: check secrets.PASSWORD.",
+            lastScript: SCRIPT,
+            lastRun: { status: "down", output: { step: "login", failure: "assertion" } },
+            turns: 2,
+          },
+        },
+      ];
+      await route.fulfill({
+        contentType: "application/x-ndjson",
+        body: lines.map((line) => JSON.stringify(line)).join("\n") + "\n",
+      });
+    });
+
+    await page.goto("orgs/test/checks/describe");
+    await page.getByTestId("ai-prompt-input").fill("log in to https://app.acme.com");
+    await page.getByTestId("ai-propose-contract").click();
+    await expect(page.getByTestId("ai-contract-input")).toHaveValue("login succeeds");
+    await page.getByTestId("ai-generate").click();
+
+    const progress = page.getByTestId("ai-progress");
+    await expect(progress).toContainText("Exploring the sign-in page.");
+    await expect(progress).toContainText("Fetching https://app.acme.com");
+    await expect(progress).toContainText("Testing the finished script");
+    await expect(page.getByTestId("ai-progress-turn")).toHaveText("Turn 1 of 12");
+    expect(accept).toContain("application/x-ndjson");
+
+    const failure = page.getByTestId("ai-generation-failure");
+    await expect(failure).toContainText("The AI stopped after 2 turns.");
+    await expect(page.getByTestId("ai-failure-explanation")).toHaveText("The login answers 401: check secrets.PASSWORD.");
+    await expect(page.getByTestId("ai-failure-output")).toContainText('"step": "login"');
+    await page.getByTestId("ai-failure-script-toggle").click();
+    await expect(page.getByTestId("ai-failure-script")).toContainText("env.BASE_URL");
+    await expect(page.getByTestId("ai-describe-error")).toHaveCount(0);
+  });
+
   test("describe it: prompt, confirm the contract, generate, save", async ({ authenticatedPage }) => {
     test.setTimeout(90_000);
     const page = authenticatedPage;

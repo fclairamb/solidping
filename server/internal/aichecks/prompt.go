@@ -36,6 +36,9 @@ Globals:
   page.waitFor(selector, { timeout? }) -> { ok, duration, error? }
   page.click(selector) / page.fill(selector, text) / page.press(selector, key) -> { ok, error? }
   page.text(selector) -> { ok, text, error? }
+  click, fill, press and text wait for their selector until the whole run budget is
+  spent: call page.waitFor(selector, { timeout: "5s" }) first, so a missing element
+  fails in 5 s instead of timing the run out.
   page.evaluate(expression) -> { ok, value, error? } (runs inside the page)
   page.url() -> string, page.cookies() -> [...], page.close()
   page.screenshot() -> { ok, error? }: captures the visible 1280x800 viewport and attaches
@@ -69,6 +72,10 @@ const scriptRules = `# Rules for the script you write
    try a selector). A probe is never saved. Test the finished script, the one that
    implements every contract line, with final: true. When a final run returns
    "up", stop and answer with that script in a single fenced js code block.
+9. When a run shows the target itself fails the contract (credentials rejected,
+   a 4xx/5xx answer, the data missing), a correct script returns "down" and can
+   never pass the test. Do not keep rewriting it: answer in one or two sentences
+   what fails and what the user should fix, without calling a tool.
 `
 
 // systemPrompt is the stable system prompt of every authoring call: the API

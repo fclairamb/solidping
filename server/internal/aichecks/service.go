@@ -323,6 +323,9 @@ type GenerateRequest struct {
 	// every name Secrets does not carry, since the dashboard never reads them
 	// back.
 	CheckUID string `json:"checkUid,omitempty"`
+	// OnProgress receives every step of the generation (model turns, tool
+	// calls, test runs), for a dashboard showing it live. Nil drops them.
+	OnProgress func(Progress) `json:"-"`
 }
 
 // GenerateResponse is a script that passed its test run, ready to save.
@@ -345,11 +348,45 @@ type GenerationError struct {
 	LastScript string
 	LastRun    *RunResult
 	Turns      int
+	// Explanation is the model's last message, often why it gave up.
+	Explanation string
 }
 
 // Error implements error.
 func (e *GenerationError) Error() string {
 	return e.Err.Error()
+}
+
+// Detail says in one sentence why no script passed, for the user.
+func (e *GenerationError) Detail() string {
+	var detail string
+
+	switch {
+	case errors.Is(e.Err, ai.ErrMaxTurns):
+		detail = fmt.Sprintf("The AI used its %d turns without a passing script.", e.Turns)
+	case errors.Is(e.Err, context.DeadlineExceeded):
+		detail = "The generation ran out of time."
+	case errors.Is(e.Err, context.Canceled):
+		detail = "The generation was canceled."
+	case errors.Unwrap(e.Err) != nil:
+		// A provider failure wrapped under ErrNoPassingScript.
+		detail = "The AI provider call failed: " + strings.TrimPrefix(e.Err.Error(), ErrNoPassingScript.Error()+": ")
+	case e.LastRun == nil:
+		detail = fmt.Sprintf("The AI stopped after %d turns without testing a script.", e.Turns)
+	default:
+		detail = fmt.Sprintf("The AI stopped after %d turns.", e.Turns)
+	}
+
+	if e.LastRun != nil {
+		detail += " The last test run returned " + e.LastRun.Status
+		if summary := runSummary(e.LastRun); summary != "" {
+			detail += " (" + summary + ")"
+		}
+
+		detail += "."
+	}
+
+	return detail
 }
 
 // Unwrap implements errors.Unwrap.
@@ -429,9 +466,15 @@ func (s *Service) Generate(ctx context.Context, orgUID string, req *GenerateRequ
 	ctx = ai.WithCallMeta(ctx, ai.CallMeta{OrgUID: orgUID, CheckUID: req.CheckUID, Purpose: ai.PurposeGenerate})
 
 	declared := append([]string{req.Prompt}, req.Contract...)
+	progress := req.OnProgress
+	if progress == nil {
+		progress = func(Progress) {}
+	}
+
 	rec := &runRecorder{
-		runner: s.runner,
-		env:    req.Env,
+		runner:   s.runner,
+		env:      req.Env,
+		progress: progress,
 		prepare: func(script string) (map[string]string, string, error) {
 			// The real values only run a script whose every host the user
 			// named: page content cannot talk the model into sending them
@@ -445,10 +488,18 @@ func (s *Service) Generate(ctx context.Context, orgUID string, req *GenerateRequ
 		},
 	}
 
-	tools := []ai.Tool{rec.tool(), s.runner.fetchPageTool(), s.runner.browserSnapshotTool()}
-	result, err := s.loop(systemPrompt(), tools, func() bool {
+	tools := []ai.Tool{
+		rec.tool(),
+		observeTool(s.runner.fetchPageTool(), progress),
+		observeTool(s.runner.browserSnapshotTool(), progress),
+	}
+
+	loop := s.loop(systemPrompt(), tools, func() bool {
 		return rec.done() || s.budgetLeft(ctx, orgUID) != nil
-	}).Run(ctx, []ai.Message{{Role: ai.RoleUser, Content: generationBrief(req)}})
+	})
+	observeLoop(loop, rec, progress)
+
+	result, err := loop.Run(ctx, []ai.Message{{Role: ai.RoleUser, Content: generationBrief(req)}})
 
 	passing := rec.passing(result)
 	if passing == nil {
@@ -460,10 +511,11 @@ func (s *Service) Generate(ctx context.Context, orgUID string, req *GenerateRequ
 		genErr := &GenerationError{Err: cause}
 		if result != nil {
 			genErr.Turns = result.Turns
+			genErr.Explanation = clip(withoutFences(result.Text), explanationLimit)
 		}
 
-		if rec.last != nil {
-			genErr.LastScript, genErr.LastRun = rec.last.Script, rec.last.Result
+		if attempt := rec.attempt(); attempt != nil {
+			genErr.LastScript, genErr.LastRun = attempt.Script, attempt.Result
 		}
 
 		return nil, genErr

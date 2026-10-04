@@ -21,7 +21,7 @@ func TestAIBlockRoundTrip(t *testing.T) {
 		"ai": map[string]any{
 			"prompt":       "log in, the dashboard lists a project",
 			"contract":     []any{"login answers 200", "the dashboard shows at least one project"},
-			"model":        "glm-5-3-flash-260828",
+			"model":        "glm-5.3-flash",
 			"generated_at": "2026-10-03T10:00:00Z",
 			"repair":       "auto",
 		},

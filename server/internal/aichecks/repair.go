@@ -94,7 +94,11 @@ type repairTarget struct {
 // runs one repair attempt. It is the ai_repair job's body. A gate refusing is
 // not an error: it is the common case.
 func (s *Service) RepairCheck(ctx context.Context, orgUID, checkUID string) error {
-	_, err := s.Repair(ctx, orgUID, checkUID)
+	outcome, err := s.Repair(ctx, orgUID, checkUID)
+	if outcome != nil {
+		s.logger.InfoContext(ctx, "AI repair evaluated", "org_uid", orgUID, "check_uid", checkUID,
+			"outcome", outcome.Outcome, "reason", outcome.Reason, "version", outcome.Version)
+	}
 
 	return err
 }
@@ -373,7 +377,10 @@ func (s *Service) attemptRepair(ctx context.Context, target *repairTarget) (*Rep
 	}
 
 	tools := []ai.Tool{rec.tool(), s.runner.fetchPageTool(), s.runner.browserSnapshotTool()}
-	result, loopErr := s.loop(systemPrompt(), tools, rec.done).Run(ctx, []ai.Message{
+	loop := s.loop(systemPrompt(), tools, rec.done)
+	loop.Nudge = rec.nudge
+
+	result, loopErr := loop.Run(ctx, []ai.Message{
 		{Role: ai.RoleUser, Content: s.repairBrief(ctx, target)},
 	})
 
