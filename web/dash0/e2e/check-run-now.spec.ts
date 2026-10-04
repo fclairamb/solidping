@@ -29,6 +29,18 @@ test.describe("Run now", () => {
       const button = page.getByTestId("check-run-now");
       await expect(button).toBeEnabled();
 
+      // A health check answers in milliseconds, so the run would settle before
+      // the pending state can be observed. Hold the watcher's polls
+      // (the only results requests that carry periodStartAfter) until released.
+      let release: () => void = () => {};
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      await page.route(/\/results\?.*periodStartAfter/, async (route) => {
+        await gate;
+        await route.continue().catch(() => {});
+      });
+
       const accepted = page.waitForResponse(
         (resp) =>
           resp.url().endsWith(`/checks/${uid}/run-now`) && resp.request().method() === "POST",
@@ -39,6 +51,7 @@ test.describe("Run now", () => {
       // Pending state, then the outcome.
       await expect(page.getByText("Run requested.")).toBeVisible();
       await expect(button).toBeDisabled();
+      release();
       await expect(page.getByText(/Run finished: (up|down)\./)).toBeVisible({ timeout: 60_000 });
       await expect(button).toBeEnabled();
     } finally {
