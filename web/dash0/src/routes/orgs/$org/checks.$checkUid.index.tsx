@@ -157,6 +157,7 @@ import {
 import { AvailabilityTable } from "@/components/checks/availability-table";
 import { DependenciesCard } from "@/components/checks/dependencies-card";
 import { CheckScreenshotsCard } from "@/components/checks/check-screenshots-card";
+import { RunNowButton } from "@/components/checks/run-now-button";
 import { checkTypeCanCapture } from "@/lib/check-screenshots";
 
 // The result-output key reporting which address family the probe used, and the
@@ -1379,6 +1380,7 @@ function CheckDetailPage() {
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            {check.enabled && <RunNowButton org={org} checkUid={checkUid} />}
             <Button
               variant="outline"
               size="icon"

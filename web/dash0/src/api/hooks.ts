@@ -8995,3 +8995,27 @@ export function useDeleteOrgParameter(org: string) {
     },
   });
 }
+
+/** Response of POST …/run-now ("Run now"): one entry per region. */
+export interface RunCheckNowResponse {
+  requestedAt: string;
+  regions: { region: string; status: "queued" | "running" }[];
+}
+
+/** Runs the check once, now, in every region (spec 2026-10-04-01). The
+ *  results arrive through the normal path: match them with
+ *  `periodStart >= requestedAt`. */
+export function useRunCheckNow(org: string, checkUid: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<RunCheckNowResponse>(
+        `/api/v1/orgs/${org}/checks/${checkUid}/run-now`,
+        { method: "POST" },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["check-run", org, checkUid] });
+    },
+  });
+}

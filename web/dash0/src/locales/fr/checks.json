@@ -854,6 +854,18 @@
       "title": "Problème régional : échec depuis {{regions}}",
       "detail": "{{failing}} régions sur {{count}} en échec. Un incident ne s'ouvre que lorsque {{quorum}} régions échouent pendant la période de confirmation."
     },
+    "runNow": {
+      "button": "Lancer maintenant",
+      "running": "Exécution…",
+      "requested": "Exécution demandée.",
+      "done": "Exécution terminée : {{status}}.",
+      "stillWaiting": "Pas encore de résultat. Il apparaîtra à la fin de l'exécution.",
+      "rateLimited": "Lancer maintenant est limité. Réessayez dans {{seconds}} s.",
+      "rateLimitedNoDelay": "Lancer maintenant est limité. Réessayez dans une minute.",
+      "forbidden": "Permission refusée. Vous n'avez pas le droit de lancer cette vérification.",
+      "noScheduledRun": "Cette vérification n'a aucune exécution planifiée (est-elle désactivée ?).",
+      "failed": "Impossible de lancer la vérification."
+    },
     "screenshots": {
       "title": "Captures d'écran",
       "description": "Ce que la sonde a vu. La capture d'une exécution en échec est prise un instant après que le check a jugé la page en erreur, depuis une seule région.",

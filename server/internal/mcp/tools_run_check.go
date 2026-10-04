@@ -24,8 +24,8 @@ func runCheckDef() ToolDefinition {
 		OutputSchema: objectSchema(map[string]any{
 			"requestedAt": stringProp("RFC3339 time the request was recorded."),
 			"regions": arrayOfObjectsProp("One entry per region.", map[string]any{
-				"region": stringProp("Region code."),
-				"status": stringProp("queued or running."),
+				"region":   stringProp("Region code."),
+				propStatus: stringProp("queued or running."),
 			}),
 		}, []string{"requestedAt", "regions"}),
 		Annotations: createAnnotations("Run check now"),

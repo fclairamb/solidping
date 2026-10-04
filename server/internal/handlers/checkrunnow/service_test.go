@@ -1,7 +1,6 @@
 package checkrunnow_test
 
 import (
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -186,7 +185,7 @@ func TestRunNowRateLimits(t *testing.T) {
 
 		var limited *checkrunnow.RateLimitedError
 
-		r.True(errors.As(err, &limited))
+		r.ErrorAs(err, &limited)
 		r.Equal("check", limited.Scope)
 		r.Positive(limited.RetryAfter)
 		r.LessOrEqual(limited.RetryAfter, time.Minute)
@@ -205,7 +204,7 @@ func TestRunNowRateLimits(t *testing.T) {
 
 		var limited *checkrunnow.RateLimitedError
 
-		r.True(errors.As(err, &limited))
+		r.ErrorAs(err, &limited)
 		r.Equal("check", limited.Scope)
 	})
 
@@ -228,7 +227,7 @@ func TestRunNowRateLimits(t *testing.T) {
 
 		var limited *checkrunnow.RateLimitedError
 
-		r.True(errors.As(err, &limited))
+		r.ErrorAs(err, &limited)
 		r.Equal("organization", limited.Scope)
 
 		entry, err := e.db.GetStateEntry(t.Context(), &e.org.UID, "run-now.check."+check.UID)
@@ -247,7 +246,9 @@ func TestRunNowThenWorkerClaim(t *testing.T) {
 	r := require.New(t)
 	e := newEnv(t)
 
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }))
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
 	t.Cleanup(ts.Close)
 
 	check := models.NewCheck(e.org.UID, "live", "http")

@@ -50,7 +50,7 @@ const (
 )
 
 //nolint:gochecknoglobals // immutable
-var captureLimits = checkrunnow.Limits{
+var captureLimits = &checkrunnow.Limits{
 	Action:         "capture now",
 	CheckKeyPrefix: captureCheckKeyPrefix,
 	OrgKey:         captureOrgKey,

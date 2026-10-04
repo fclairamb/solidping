@@ -810,6 +810,18 @@
       "title": "Regionales Problem: Fehler aus {{regions}}",
       "detail": "{{failing}} von {{count}} Regionen fehlerhaft. Ein Vorfall wird erst eröffnet, wenn {{quorum}} Regionen während der Bestätigungszeit fehlschlagen."
     },
+    "runNow": {
+      "button": "Jetzt ausführen",
+      "running": "Läuft…",
+      "requested": "Ausführung angefordert.",
+      "done": "Ausführung beendet: {{status}}.",
+      "stillWaiting": "Noch kein Ergebnis. Es erscheint, sobald die Ausführung fertig ist.",
+      "rateLimited": "Jetzt ausführen ist begrenzt. Versuchen Sie es in {{seconds}} s erneut.",
+      "rateLimitedNoDelay": "Jetzt ausführen ist begrenzt. Versuchen Sie es in einer Minute erneut.",
+      "forbidden": "Zugriff verweigert. Sie dürfen diese Prüfung nicht ausführen.",
+      "noScheduledRun": "Diese Prüfung hat keine geplante Ausführung (ist sie deaktiviert?).",
+      "failed": "Die Prüfung konnte nicht ausgeführt werden."
+    },
     "screenshots": {
       "title": "Screenshots",
       "description": "Was die Probe gesehen hat. Ein Screenshot eines fehlgeschlagenen Laufs entsteht kurz nachdem der Check die Seite als fehlerhaft erkannt hat, aus einer einzigen Region.",

@@ -854,6 +854,18 @@
       "title": "Regional issue: failing from {{regions}}",
       "detail": "{{failing}} of {{count}} regions failing. An incident opens only when {{quorum}} regions fail for the confirmation period."
     },
+    "runNow": {
+      "button": "Run now",
+      "running": "Running…",
+      "requested": "Run requested.",
+      "done": "Run finished: {{status}}.",
+      "stillWaiting": "No result yet. It will show up when the run completes.",
+      "rateLimited": "Run now is rate limited. Try again in {{seconds}} s.",
+      "rateLimitedNoDelay": "Run now is rate limited. Try again in a minute.",
+      "forbidden": "Permission Denied. You do not have permission to run this check.",
+      "noScheduledRun": "This check has no scheduled run (is it disabled?).",
+      "failed": "Could not run the check."
+    },
     "screenshots": {
       "title": "Screenshots",
       "description": "What the probe saw. A capture of a failing run is taken a moment after the check decided the page was unhealthy, from one region.",

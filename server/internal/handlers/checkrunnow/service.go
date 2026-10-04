@@ -93,7 +93,7 @@ type Limits struct {
 // across concurrent requests: both counters are read and written under row
 // locks in one transaction, and a refused request counts against neither.
 func Admit(
-	ctx context.Context, dbSvc db.Service, orgUID, checkUID string, now time.Time, limits Limits,
+	ctx context.Context, dbSvc db.Service, orgUID, checkUID string, now time.Time, limits *Limits,
 ) error {
 	windows := []models.FixedWindow{
 		{Key: limits.CheckKeyPrefix + checkUID, Limit: limits.CheckLimit, Window: limits.CheckWindow},
@@ -207,8 +207,8 @@ func IsCapturableType(checkType string) bool {
 }
 
 // LimitsFor returns the "Run now" windows for a check type.
-func LimitsFor(checkType string) Limits {
-	limits := Limits{
+func LimitsFor(checkType string) *Limits {
+	limits := &Limits{
 		Action:         "run now",
 		CheckKeyPrefix: "run-now.check.",
 		OrgKey:         "run-now.org",

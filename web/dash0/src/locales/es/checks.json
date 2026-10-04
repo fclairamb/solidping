@@ -810,6 +810,18 @@
       "title": "Problema regional: fallos desde {{regions}}",
       "detail": "{{failing}} de {{count}} regiones en fallo. Solo se abre un incidente cuando {{quorum}} regiones fallan durante el período de confirmación."
     },
+    "runNow": {
+      "button": "Ejecutar ahora",
+      "running": "Ejecutando…",
+      "requested": "Ejecución solicitada.",
+      "done": "Ejecución terminada: {{status}}.",
+      "stillWaiting": "Aún no hay resultado. Aparecerá cuando termine la ejecución.",
+      "rateLimited": "Ejecutar ahora está limitado. Inténtelo de nuevo en {{seconds}} s.",
+      "rateLimitedNoDelay": "Ejecutar ahora está limitado. Inténtelo de nuevo en un minuto.",
+      "forbidden": "Permiso denegado. No tiene permiso para ejecutar esta comprobación.",
+      "noScheduledRun": "Esta comprobación no tiene ninguna ejecución programada (¿está desactivada?).",
+      "failed": "No se pudo ejecutar la comprobación."
+    },
     "screenshots": {
       "title": "Capturas de pantalla",
       "description": "Lo que vio la sonda. La captura de una ejecución fallida se toma un momento después de que el check decida que la página falla, desde una sola región.",

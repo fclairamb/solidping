@@ -1688,6 +1688,10 @@ func (m *mockDBService) RequestCheckCapture(_ context.Context, _ string, _ time.
 	panic("not implemented")
 }
 
+func (m *mockDBService) RequestCheckRun(_ context.Context, _ string, _ time.Time) error {
+	panic("not implemented")
+}
+
 func (m *mockDBService) RecordCheckCaptureFailure(_ context.Context, _ string, _ time.Time, _ string) error {
 	panic("not implemented")
 }
