@@ -27,6 +27,9 @@ export SP_AI_BASE_URL="${SP_AI_BASE_URL:-https://ark.ap-southeast.bytepluses.com
 export SP_AI_MODEL="${SP_AI_MODEL:-glm-5-3-flash-260828}"
 
 if [[ -z "${SP_AI_API_KEY:-}" ]]; then
+  # With a cold gpg-agent cache gopass blocks on a pinentry dialog (pinentry-mac
+  # opens a GUI window that can sit behind other apps), with nothing on the terminal.
+  echo "Reading the API key from gopass (${GOPASS_KEY_PATH}); if this waits, unlock the pinentry dialog..." >&2
   if ! SP_AI_API_KEY="$(gopass show -o "${GOPASS_KEY_PATH}")" || [[ -z "${SP_AI_API_KEY}" ]]; then
     echo "error: set SP_AI_API_KEY or store the key in gopass at ${GOPASS_KEY_PATH}" >&2
     exit 1
