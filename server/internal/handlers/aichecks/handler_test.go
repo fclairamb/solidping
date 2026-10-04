@@ -217,3 +217,29 @@ func TestGenerateEndpointStreamsTheFailure(t *testing.T) {
 	r.Len(lines, 1)
 	r.InDelta(http.StatusBadRequest, lines[0]["httpStatus"], 0)
 }
+
+type nanProvider struct{}
+
+func (nanProvider) Complete(context.Context, ai.Request) (*ai.Response, error) {
+	args, err := json.Marshal(map[string]any{
+		"script": `var t; return { status: "up", metrics: { loginMs: Date.now() - t } };`, "final": true,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &ai.Response{ToolCalls: []ai.ToolCall{{ID: "1", Name: svc.ToolRunScript, Arguments: args}}}, nil
+}
+
+// TestGenerateEndpointStreamsANaNMetric: a script reporting NaN (an
+// undefined start time) still ends the stream with a result line.
+func TestGenerateEndpointStreamsANaNMetric(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	router, org := newRouter(t, &ai.Client{Provider: nanProvider{}, Model: "m"})
+
+	lines := postStream(t, router, "/api/v1/orgs/"+org.Slug+"/checks/ai/generate",
+		`{"prompt":"watch acme","contract":["acme answers"]}`)
+	r.Equal("result", lines[len(lines)-1]["type"], lineTypes(lines))
+}

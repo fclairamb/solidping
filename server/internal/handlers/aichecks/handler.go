@@ -12,6 +12,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"mime"
 	"net/http"
@@ -179,12 +180,15 @@ func wantsStream(req *http.Request) bool {
 	return false
 }
 
-// generateStream runs a generation and streams its progress as NDJSON. The
-// status is 200 once the stream starts: an error is the last line, carrying
-// the status and body the plain endpoint would have answered.
-func (h *Handler) generateStream(
-	ctx context.Context, writer http.ResponseWriter, req *http.Request, orgUID string, body *svc.GenerateRequest,
-) {
+// ndjsonStream writes one JSON object per line and flushes each, safe for
+// the generation and its heartbeat to share.
+type ndjsonStream struct {
+	mu      sync.Mutex
+	writer  http.ResponseWriter
+	flusher http.Flusher
+}
+
+func newNDJSONStream(writer http.ResponseWriter) *ndjsonStream {
 	flusher, _ := writer.(http.Flusher)
 
 	writer.Header().Set("Content-Type", ndjsonContentType)
@@ -192,60 +196,87 @@ func (h *Handler) generateStream(
 	writer.Header().Set("X-Accel-Buffering", "no")
 	writer.WriteHeader(http.StatusOK)
 
-	var writeMu sync.Mutex
+	return &ndjsonStream{writer: writer, flusher: flusher}
+}
 
-	write := func(line any) {
-		raw, err := json.Marshal(line)
-		if err != nil {
-			return
-		}
-
-		writeMu.Lock()
-		defer writeMu.Unlock()
-
-		_, _ = writer.Write(append(raw, '\n'))
-
-		if flusher != nil {
-			flusher.Flush()
-		}
+func (s *ndjsonStream) write(line any) error {
+	raw, err := json.Marshal(line)
+	if err != nil {
+		return fmt.Errorf("encoding a stream line: %w", err)
 	}
 
-	body.OnProgress = func(event svc.Progress) { write(event) }
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-	stop := make(chan struct{})
-	heartbeatDone := make(chan struct{})
+	_, _ = s.writer.Write(append(raw, '\n'))
+
+	if s.flusher != nil {
+		s.flusher.Flush()
+	}
+
+	return nil
+}
+
+// heartbeat writes a ping line every streamHeartbeat until the returned stop
+// function is called; stop returns once the last ping is written.
+func (s *ndjsonStream) heartbeat() func() {
+	done := make(chan struct{})
+	exited := make(chan struct{})
 
 	go func() {
-		defer close(heartbeatDone)
+		defer close(exited)
 
 		ticker := time.NewTicker(streamHeartbeat)
 		defer ticker.Stop()
 
 		for {
 			select {
-			case <-stop:
+			case <-done:
 				return
 			case <-ticker.C:
-				write(StreamLine{Type: streamPing})
+				_ = s.write(StreamLine{Type: streamPing})
 			}
 		}
 	}()
 
+	return func() {
+		close(done)
+		<-exited
+	}
+}
+
+// generateStream runs a generation and streams its progress as NDJSON. The
+// status is 200 once the stream starts: an error is the last line, carrying
+// the status and body the plain endpoint would have answered.
+func (h *Handler) generateStream(
+	ctx context.Context, writer http.ResponseWriter, req *http.Request, orgUID string, body *svc.GenerateRequest,
+) {
+	stream := newNDJSONStream(writer)
+	body.OnProgress = func(event svc.Progress) { _ = stream.write(event) }
+
+	stop := stream.heartbeat()
 	resp, err := h.svc.Generate(ctx, orgUID, body)
 
-	close(stop)
-	<-heartbeatDone
+	stop()
 
+	last := StreamLine{Type: streamResult, Result: resp}
 	if err != nil {
-		// The same mapping as the plain endpoint, recorded instead of sent.
-		recorder := httptest.NewRecorder()
-		_ = h.writeServiceError(recorder, req, err)
-		write(StreamLine{Type: streamError, HTTPStatus: recorder.Code, Response: recorder.Body.Bytes()})
-
-		return
+		last = h.errorLine(req, err)
 	}
 
-	write(StreamLine{Type: streamResult, Result: resp})
+	// The last line always goes out: a stream that just stops reads as a
+	// network failure on the dashboard.
+	if writeErr := stream.write(last); writeErr != nil {
+		_ = stream.write(h.errorLine(req, writeErr))
+	}
+}
+
+// errorLine is the error the plain endpoint would answer, as a stream line.
+func (h *Handler) errorLine(req *http.Request, err error) StreamLine {
+	recorder := httptest.NewRecorder()
+	_ = h.writeServiceError(recorder, req, err)
+
+	return StreamLine{Type: streamError, HTTPStatus: recorder.Code, Response: recorder.Body.Bytes()}
 }
 
 func (h *Handler) writeServiceError(writer http.ResponseWriter, req *http.Request, err error) error {
