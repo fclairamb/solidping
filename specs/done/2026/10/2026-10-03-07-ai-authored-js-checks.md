@@ -32,11 +32,11 @@ Two drivers:
 - `openai`: OpenAI **Chat Completions** (`POST {base_url}/chat/completions`, `tools` / `tool_calls`). Covers BytePlus ModelArk, OpenAI, Mistral, Groq, DeepSeek, Gemini's OpenAI endpoint, OpenRouter, LiteLLM, Ollama, vLLM.
 - `anthropic`: native Messages API (official Go SDK), with prompt caching on the system prompt (the JS API reference is a large stable prefix).
 
-Nothing provider-specific is hardcoded. Config in `server/internal/config/config.go`(env vars registered like the other `SP_*` ones, `server/internal/config/envvars.go`):
+Nothing provider-specific is hardcoded. Config in `server/internal/config/config.go` (env vars registered like the other `SP_*` ones, `server/internal/config/envvars.go`):
 
 | Env | Meaning |
 | --- | --- |
-| `SP_AI_PROVIDER` | `openai` | `anthropic`. Empty = feature off. |
+| `SP_AI_PROVIDER` | `openai` \| `anthropic`. Empty = feature off. |
 | `SP_AI_BASE_URL` | Endpoint base URL. |
 | `SP_AI_API_KEY` | Secret. Never logged, never sent to workers or agents. |
 | `SP_AI_MODEL` | Model ID passed verbatim. |
@@ -47,7 +47,7 @@ First deployment (k8xp):
 
 - `SP_AI_PROVIDER=openai`
 - `SP_AI_BASE_URL=https://ark.ap-southeast.bytepluses.com/api/v3`
-- `SP_AI_MODEL=glm-5.3-flash` (BytePlus ID for `glm-5.3-flash`; the dotted name returns `InvalidEndpointOrModel.NotFound`)
+- `SP_AI_MODEL=glm-5.3-flash`
 - key from gopass `solidping/byteplus/api-key`, mounted as a k8s secret. Document the gopass path, never the value.
 
 The agent loop is SolidPing's own code (call, run tools, append results, repeat, stop at `SP_AI_MAX_TURNS`). No agent framework. Every call is logged with org, check, purpose (`generate` / `repair`) and token usage.
@@ -62,9 +62,9 @@ The agent loop is SolidPing's own code (call, run tools, append results, repeat,
 | `contract` | Ordered list of human-readable assertions, confirmed by the user. |
 | `model` | Model that wrote the current script. |
 | `generated_at` | Timestamp. |
-| `repair` | `off` | `propose` (default) | `auto`. `auto` ships in v1: a candidate that passes every guard and whose verification run returns `up` is applied directly as a new `applied` version (origin `ai_repair`, `base_version` set), the incident resolves on the next run, and the owner is notified with the diff. The user can undo it with a normal version restore. A candidate failing any guard or verification falls back to a `proposed` version, as in `propose`. |
+| `repair` | `off` \| `propose` (default) \| `auto`. `auto` ships in v1: a candidate that passes every guard and whose verification run returns `up` is applied directly as a new `applied` version (origin `ai_repair`, `base_version` set), the incident resolves on the next run, and the owner is notified with the diff. The user can undo it with a normal version restore. A candidate failing any guard or verification falls back to a `proposed` version, as in `propose`. |
 
-- Parse in `FromMap`, emit in `GetConfig`, validate in `ValidateSpec`(contract non-empty when `prompt` set, `repair` in the closed set `off|propose|auto`).
+- Parse in `FromMap`, emit in `GetConfig`, validate in `ValidateSpec` (contract non-empty when `prompt` set, `repair` in the closed set `off|propose|auto`).
 - The script stays a normal `js` script: editable, exported by `sp export`, executed unchanged by cloud workers and private agents. Workers never see the AI config's provider or key (they only exist on the server).
 - History and repair proposals use check versions (spec 2026-10-03-06, which must land first). A generated script is saved as a version with origin `ai_generate`, a repair as a `proposed` version with origin `ai_repair` and `base_version` set.
 
@@ -73,7 +73,7 @@ The agent loop is SolidPing's own code (call, run tools, append results, repeat,
 None in this spec. The `check_versions` table comes from spec 2026-10-03-06. Also no migration for:
 
 - The `ai` block: `checks.config` is already JSON (`models/check.go:227`).
-- AI usage and repair attempts: new event types on `events`(`models/event.go`, `event_type` is free text) with tokens in `payload`. The per-check rate limit and the org daily cap query them.
+- AI usage and repair attempts: new event types on `events` (`models/event.go`, `event_type` is free text) with tokens in `payload`. The per-check rate limit and the org daily cap query them.
 - The SaaS token budget: a new key in `org_entitlements.payload` (JSON, `models/org_entitlements.go:53`).
 
 ### 3. Generation (server-side agent loop)
@@ -84,7 +84,7 @@ Endpoint `POST /api/v1/orgs/$org/checks/ai/generate` (and a step to confirm the 
 2. With the confirmed contract, the loop runs with tools:
    - `fetch_page(url)`: status, headers, truncated body.
    - `browser_snapshot(url)`: accessibility tree via the existing browser runtime (`checkjs/browser.go`).
-   - `run_script(script)`: executes through `JSChecker.Execute`(`checkjs/checker.go:120`) with the check's env/secrets **names** only; returns status, output, console (capped at `maxConsoleOutput`, `checker.go:69`).
+   - `run_script(script)`: executes through `JSChecker.Execute` (`checkjs/checker.go:120`) with the check's env/secrets **names** only; returns status, output, console (capped at `maxConsoleOutput`, `checker.go:69`).
 3. System prompt: the js API reference (docs + `checkjs/samples.go`) and the rule that the script must tag failures `output.failure = "assertion" | "drift"`.
 4. Loop ends when `run_script` returns `up` or the turn cap is hit. The user sees the script and the last run before saving.
 
