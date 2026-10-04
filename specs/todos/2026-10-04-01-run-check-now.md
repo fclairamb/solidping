@@ -95,6 +95,7 @@ That spec built the run-now path but kept it screenshot-only. Spec 2026-05-05-03
 - `CreateCheck` already makes the new job due at once (`scheduled_at = now` in `createCheckJobs`) and `emitEvent` sends the express hint (`check.created` with the `check_uid`). Step 7 is dropped, nothing was added.
 - A release overwrites `scheduled_at` for a leased job, so `RequestCheckRun` is guarded (`step_run_uid IS NULL AND (lease_expires_at IS NULL OR lease_expires_at < requestedAt)`). A guarded miss returns `db.ErrCheckJobBusy` and the region is reported `running`.
 - The results API exposes `periodStart`. A result's `region` is null for a check without a named region, so dash0 counts fresh results rather than matching region names.
+- A request that queues nothing (every region already running) answers 200 with every region `running` and spends no rate-limit budget: the running check happens before admission.
 - `CHANGELOG.md` is owned by release-please: the entry lives in the commit body.
 
 ## Decisions

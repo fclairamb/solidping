@@ -150,6 +150,70 @@ func TestRunNowLeavesRunningJobsAlone(t *testing.T) {
 	}
 }
 
+func (e *env) checkWindowCount(t *testing.T, checkUID string) float64 {
+	t.Helper()
+
+	entry, err := e.db.GetStateEntry(t.Context(), &e.org.UID, "run-now.check."+checkUID)
+	require.NoError(t, err)
+
+	if entry == nil || entry.Value == nil {
+		return 0
+	}
+
+	return (*entry.Value)["count"].(float64) //nolint:forcetypeassert // test
+}
+
+func (e *env) lease(t *testing.T, job *models.CheckJob) {
+	t.Helper()
+
+	_, err := e.db.DB().NewUpdate().Model((*models.CheckJob)(nil)).
+		Set("lease_expires_at = ?", time.Now().Add(time.Hour)).Where("uid = ?", job.UID).Exec(t.Context())
+	require.NoError(t, err)
+}
+
+func TestRunNowAllRunningSpendsNoBudget(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	e := newEnv(t)
+	check := e.check(t, "allbusy", "http", []string{"eu", "us"}, true)
+
+	before := e.jobs(t, check.UID)
+	for _, job := range before {
+		e.lease(t, job)
+	}
+
+	resp, err := e.svc.RunNow(t.Context(), e.org.Slug, check.UID)
+	r.NoError(err)
+	r.Equal([]checkrunnow.RegionRun{
+		{Region: "eu", Status: checkrunnow.StatusRunning},
+		{Region: "us", Status: checkrunnow.StatusRunning},
+	}, resp.Regions)
+
+	after := e.jobs(t, check.UID)
+	for region, job := range before {
+		r.True(job.ScheduledAt.Equal(*after[region].ScheduledAt), "job untouched: "+region)
+	}
+
+	r.InDelta(0, e.orgWindowCount(t), 0, "org window unchanged")
+	r.InDelta(0, e.checkWindowCount(t, check.UID), 0, "check window unchanged")
+}
+
+func TestRunNowMixedSpendsOneSlot(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	e := newEnv(t)
+	check := e.check(t, "mixed", "http", []string{"eu", "us"}, true)
+
+	e.lease(t, e.jobs(t, check.UID)["eu"])
+
+	resp, err := e.svc.RunNow(t.Context(), e.org.Slug, check.UID)
+	r.NoError(err)
+	r.Equal(checkrunnow.StatusRunning, resp.Regions[0].Status)
+	r.Equal(checkrunnow.StatusQueued, resp.Regions[1].Status)
+	r.InDelta(1, e.orgWindowCount(t), 0)
+	r.InDelta(1, e.checkWindowCount(t, check.UID), 0)
+}
+
 func TestRunNowRefusals(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)

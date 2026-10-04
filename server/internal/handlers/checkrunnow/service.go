@@ -268,6 +268,36 @@ func isRunning(job *models.CheckJob, now time.Time) bool {
 	return job.LeaseExpiresAt != nil && !job.LeaseExpiresAt.Before(now)
 }
 
+func regionOf(job *models.CheckJob) string {
+	if job.Region == nil {
+		return ""
+	}
+
+	return *job.Region
+}
+
+func allRunning(jobs []*models.CheckJob, now time.Time) bool {
+	for _, job := range jobs {
+		if !isRunning(job, now) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func runningResponse(jobs []*models.CheckJob, now time.Time) *RunNowResponse {
+	resp := &RunNowResponse{RequestedAt: now, Regions: make([]RegionRun, 0, len(jobs))}
+
+	for _, job := range SortedByRegion(jobs) {
+		region := regionOf(job)
+
+		resp.Regions = append(resp.Regions, RegionRun{Region: region, Status: StatusRunning})
+	}
+
+	return resp
+}
+
 // RunNow makes every region of the check run once, now.
 //
 // Validation runs before admission, so a request that could never run spends
@@ -295,6 +325,11 @@ func (s *Service) RunNow(ctx context.Context, orgSlug, identifier string) (*RunN
 	// handed back compares exactly with a result's periodStart.
 	now := s.clock.Now().Truncate(time.Microsecond)
 
+	// Nothing to queue: report every region running and spend no budget.
+	if allRunning(jobs, now) {
+		return runningResponse(jobs, now), nil
+	}
+
 	if err := Admit(ctx, s.db, check.OrganizationUID, check.UID, now, LimitsFor(check.Type)); err != nil {
 		return nil, err
 	}
@@ -303,10 +338,7 @@ func (s *Service) RunNow(ctx context.Context, orgSlug, identifier string) (*RunN
 	queued := false
 
 	for _, job := range SortedByRegion(jobs) {
-		region := ""
-		if job.Region != nil {
-			region = *job.Region
-		}
+		region := regionOf(job)
 
 		status := StatusRunning
 

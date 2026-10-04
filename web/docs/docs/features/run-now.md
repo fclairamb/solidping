@@ -52,6 +52,9 @@ The next scheduled run keeps its regular period.
 | Most types | 3 per minute | 60 per hour |
 | `browser`, `js`, `rdp`, `vnc` | 1 per minute | 20 per hour |
 
+A request that queues nothing (every region is already running) answers `200`
+and spends no budget.
+
 A refused request answers `429` with a `Retry-After` header. A disabled check
 answers `409`.
 
