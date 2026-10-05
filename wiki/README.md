@@ -179,7 +179,9 @@ Market analysis of uptime monitoring services.
   - [gatus/comparison.md](competitors/gatus/comparison.md) — Strengths, weaknesses, vs SolidPing, use cases
   - [gatus/sources.md](competitors/gatus/sources.md) — Source URLs
 - [competitors/healthchecks-io.md](competitors/healthchecks-io.md) — Healthchecks.io analysis (passive/heartbeat monitoring)
+- [competitors/kener.md](competitors/kener.md) — Kener analysis (MIT, SvelteKit + Node + required Redis; status-page-first, 12 monitor types, 4 alert channels)
 - [competitors/maintenant.md](competitors/maintenant.md) — Maintenant analysis (self-hosted Go, container observability, MCP, AGPL open-core)
+- [competitors/oneuptime.md](competitors/oneuptime.md) — OneUptime analysis (Apache-2.0 + `ee/`; full observability platform on PostgreSQL + ClickHouse + Valkey, per-user cloud pricing, 1-minute self-hosted floor)
 - Pingdom — [pingdom/](competitors/pingdom/)
   - [pingdom/README.md](competitors/pingdom/README.md) — Index, at-a-glance, key features
   - [pingdom/monitoring.md](competitors/pingdom/monitoring.md) — Check types in-depth (HTTP, transaction, ping, TCP/UDP, DNS, mail) and global probe network
@@ -191,6 +193,7 @@ Market analysis of uptime monitoring services.
 - [competitors/pulsetic.md](competitors/pulsetic.md) — Pulsetic analysis (Designmodo; uptime + RUM + **dependency monitoring across 4,300+ third-party status pages**, white-label agency model, first-party MCP server, Team-plan-gated unversioned API)
 - [competitors/site24x7.md](competitors/site24x7.md) — Site24x7 analysis (Zoho/ManageEngine all-in-one, 100+ monitor types, AIOps)
 - [competitors/statuscake.md](competitors/statuscake.md) — StatusCake analysis (43 probe locations)
+- [competitors/upptime.md](competitors/upptime.md) — Upptime analysis (MIT; runs on GitHub Actions, Issues and Pages; HTTP + TCP, 5-minute schedule)
 - [competitors/uptime-kuma.md](competitors/uptime-kuma.md) — Uptime Kuma analysis (self-hosted, Vue.js)
 - UptimeRobot — [uptimerobot/](competitors/uptimerobot/)
   - [uptimerobot/README.md](competitors/uptimerobot/README.md) — Index, at-a-glance, headline takeaways
