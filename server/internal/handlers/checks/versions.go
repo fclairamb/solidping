@@ -592,7 +592,7 @@ func diffSnapshots(from, target *checkversion.Snapshot) []CheckFieldChange {
 }
 
 func unionKeys[V any](a, b map[string]V) []string {
-	keys := make([]string, 0, len(a)+len(b))
+	keys := make([]string, 0, len(a))
 	seen := map[string]struct{}{}
 
 	for _, m := range []map[string]V{a, b} {
