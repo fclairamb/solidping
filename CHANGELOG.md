@@ -3,6 +3,9 @@
 ## Unreleased
 
 
+## [0.38.0](https://github.com/fclairamb/solidping/compare/v0.37.0...v0.38.0) (2026-10-05)
+
+
 ### Features
 
 * **status-pages:** **The status page and its TV view show your organization's name and logo.** The header displays the organization name, and the organization logo replaces the SolidPing mark when the page has no logo of its own (a page logo still wins). The TV board shows both above the headline. Only uploaded logos are shown; an external-URL organization logo is skipped because status pages only load first-party images. The public status page API gains `orgName` and `orgLogoUrl`.
@@ -22,11 +25,14 @@
 * **dash0:** **The check page shows the configuration like the edit form.** Settings are a key/value grid, a `js` script is shown in the editor (read-only) instead of on one line, and the AI-authored block uses the edit form's panel.
 * **dash0:** **Recent incidents on a check tell degraded from down.** The table uses the Down / Degraded / SLO burn chip and colors of the incidents list, so a degraded incident no longer looks like an outage.
 
+
 ### Bug Fixes
 
 * **checks:** **Browser selectors match elements only.** `page.text`, `page.click`, `page.fill`, `page.press` and `page.waitFor` (and the `browser` check's `waitSelector` and keyword search) also matched the selector as plain text, so `page.text("h1")` on a page whose inline style mentions `h1` failed with "encountered an undefined value". Selectors are now CSS only, through `querySelector`.
 * **checks:** **A JavaScript check computing a `NaN` metric no longer loses its result.** A metric such as `Date.now() - start` with `start` unset produced `NaN`, which cannot be stored, so the whole result was dropped. Non-finite metrics are now skipped and non-finite output values become `null`.
 * **checks:** **JavaScript check samples show the secrets they need.** The Redis, bearer chain and browser login samples read secrets without declaring them, so the form showed no field to fill them in. Loading a sample now adds the secret rows (names only, values empty).
+* **icmp:** **ICMP checks report the average round trip as their duration.** The response time chart plotted the wall-clock time of the whole burst, so the default samples (`count: 2`, 1 s interval) showed about 1 s plus the RTT, for example 1047 ms for a 10 ms reply. On success the duration is now the average RTT (the same figure as `rtt_ms_avg`); a burst with no reply keeps the elapsed time. Rows already stored keep their old values and age out ([#466](https://github.com/fclairamb/solidping/issues/466))
+* **deps:** update Go dependencies: goja and non-major bumps ([#469](https://github.com/fclairamb/solidping/issues/469), [#472](https://github.com/fclairamb/solidping/issues/472), [#474](https://github.com/fclairamb/solidping/issues/474), [#475](https://github.com/fclairamb/solidping/issues/475), [#476](https://github.com/fclairamb/solidping/issues/476), [#478](https://github.com/fclairamb/solidping/issues/478), [#481](https://github.com/fclairamb/solidping/issues/481), [#482](https://github.com/fclairamb/solidping/issues/482))
 
 ## [0.37.0](https://github.com/fclairamb/solidping/compare/v0.36.1...v0.37.0) (2026-09-30)
 
