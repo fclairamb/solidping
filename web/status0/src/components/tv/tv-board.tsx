@@ -403,6 +403,25 @@ export function TvBoard({
           data-testid="tv-state-icon"
         />
         <div className="min-w-0 flex-1">
+          <div
+            className="mb-1 flex min-w-0 items-center gap-3 opacity-80"
+            data-testid="tv-org"
+          >
+            {page?.orgLogoUrl && (
+              <img
+                src={page.orgLogoUrl}
+                alt={page.orgName ?? ""}
+                className="h-8 w-auto max-w-[200px] shrink-0 object-contain sm:h-12"
+                data-testid="tv-org-logo"
+              />
+            )}
+            <span
+              className="truncate text-lg font-medium sm:text-2xl"
+              data-testid="tv-org-name"
+            >
+              {page?.orgName ?? ""}
+            </span>
+          </div>
           <h1
             className={`truncate text-4xl font-bold leading-tight sm:text-6xl ${style.tvAccent}`}
             data-testid="tv-headline"

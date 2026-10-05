@@ -4,7 +4,7 @@ import { filterCheckTypesForDemo, isDemoReadOnlyError } from "@/lib/demo";
 import { DemoReadOnlyNote } from "@/components/shared/demo-read-only-note";
 import { useTranslation } from "react-i18next";
 import { translateIntervalLabel } from "./interval-label";
-import { AlertTriangle, ArrowLeft, Loader2, ChevronsUpDown, Check, FolderPlus, Search, Shuffle, WifiOff } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Loader2, ChevronsUpDown, Check, FolderPlus, Search, Shuffle, Sparkles, WifiOff } from "lucide-react";
 import {
   useCheckValidationResult,
   getFieldError,
@@ -65,6 +65,7 @@ import { DocsLink } from "@/components/shared/docs-link";
 import { docsHrefForType } from "@/components/shared/check-type-docs-anchors";
 import { CheckTypeIcon } from "@/components/shared/check-type-identity";
 import { Link } from "@tanstack/react-router";
+import { useAIChecksEnabled } from "@/api/public-config";
 import { ApiError } from "@/api/client";
 import type {
   Check as CheckModel,
@@ -176,6 +177,8 @@ export const checkTypes: {
   { value: "ntp", label: "NTP", description: "Monitor NTP time servers" },
   { value: "rdp", label: "RDP", description: "Monitor RDP (Remote Desktop) servers" },
   { value: "vnc", label: "VNC", description: "Monitor VNC (RFB) servers" },
+  { value: "crawl", label: "Crawl", description: "Crawl a website for broken links, mixed content and sitemap errors" },
+  { value: "health", label: "Health", description: "Read an application's health endpoint and report per component" },
   { value: "private-location", label: "Private location", description: "Alert when a private location's agents go offline", systemCreated: true },
   { value: "sleep", label: "Sleep", description: "Sleep for a fixed duration (synthetic/testing, no network I/O)", synthetic: true },
 ];
@@ -1137,7 +1140,8 @@ export function CheckForm({
     setName(sample.name);
     setSlug(sample.slug);
     setPeriod(secondsToHMS(sample.periodSeconds));
-    setConfigState(checkTypeRegistry[type].fromConfig(sample.config));
+    const typeModule = checkTypeRegistry[type];
+    setConfigState((typeModule.fromSample ?? typeModule.fromConfig)(sample.config));
     setPassthroughSource({ type, config: sample.config });
     setTimeoutSeconds(durationStringToSeconds(getConfigField(sample.config, "timeout")));
     setTunnelCheckUid(getConfigField(sample.config, "tunnelCheckUid"));
@@ -1322,6 +1326,7 @@ export function CheckForm({
   };
 
   const isEdit = mode === "edit";
+  const aiChecksEnabled = useAIChecksEnabled();
   const title = isEdit ? t("form.editCheck") : t("form.newCheck");
   const subtitle = isEdit ? t("form.editCheckSubtitle") : t("form.newCheckSubtitle");
   const submitLabel = isEdit ? t("form.saveChanges") : t("form.createCheck");
@@ -1477,11 +1482,13 @@ export function CheckForm({
       value={{
         type,
         org,
+        checkUid: isEdit ? initialData?.uid : undefined,
         connections,
         configPrivateKeys: initialData?.configPrivateKeys,
         name,
         setName,
         tunneled: supportsTunnel && tunnelCheckUid !== "",
+        lastResultOutput: initialData?.lastResult?.output as Record<string, unknown> | undefined,
       }}
     >
       <div className="space-y-6 max-w-2xl">
@@ -1495,6 +1502,21 @@ export function CheckForm({
           </div>
           <DocsLink href={docsHrefForType(type)} className="ml-auto" />
         </div>
+
+        {/* "Describe it" (spec 2026-10-03-07): only when the server has an AI provider. */}
+        {!isEdit && aiChecksEnabled && (
+          <Alert data-testid="check-form-describe-banner">
+            <Sparkles />
+            <AlertDescription className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <span>{t("ai.newCheckBanner")}</span>
+              <Button asChild variant="outline" size="sm" className="shrink-0">
+                <Link to="/orgs/$org/checks/describe" params={{ org }} data-testid="check-form-describe-link">
+                  {t("ai.describeButton")}
+                </Link>
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && (

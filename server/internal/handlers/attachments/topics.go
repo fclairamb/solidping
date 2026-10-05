@@ -30,6 +30,12 @@ const (
 	// when a check went down on a network-reachability failure
 	// (spec 2026-08-21-10).
 	KindTraceroute = "traceroute"
+	// KindStepState is the kind segment for the persisted state of a
+	// multi-step check run (spec 2026-10-03-03). Written in-process only.
+	KindStepState = "step-state"
+	// KindCrawlReport is the kind segment for the full findings report of a
+	// finished crawl run (spec 2026-10-03-03). Written in-process only.
+	KindCrawlReport = "crawl-report"
 )
 
 // MaxTopicLength bounds a topic. Topics are machine-generated
@@ -86,12 +92,52 @@ func CheckScreenshotTopic(checkUID string) string {
 	return CheckTopicPrefix(checkUID) + KindScreenshot
 }
 
-// isCheckScreenshotTopic reports whether topic is a check-scoped screenshot,
-// the one topic whose writes append and prune instead of replacing.
-func isCheckScreenshotTopic(topic string) bool {
-	parsed, err := ParseTopic(topic)
+// MaxStepStateFiles is how many state files a multi-step run keeps (spec
+// 2026-10-03-03). Two, not one: a worker that dies after writing state N+1 but
+// before moving check_jobs.step_state_file_uid still leaves state N readable,
+// and the pointer, not recency, decides which one is current.
+const MaxStepStateFiles = 2
 
-	return err == nil && parsed.Entity == EntityChecks && parsed.Kind == KindScreenshot
+// MaxCrawlReports is how many crawl reports a check keeps.
+const MaxCrawlReports = 5
+
+// CheckStepStateTopic returns the topic a check's multi-step state is stored
+// under.
+func CheckStepStateTopic(checkUID string) string {
+	return CheckTopicPrefix(checkUID) + KindStepState
+}
+
+// CheckCrawlReportTopic returns the topic a check's crawl reports are stored
+// under.
+func CheckCrawlReportTopic(checkUID string) string {
+	return CheckTopicPrefix(checkUID) + KindCrawlReport
+}
+
+// appendKeepFor returns how many files an append-and-prune check topic keeps,
+// or 0 for a replace-on-write topic. Check screenshots keep 5, step state 2,
+// crawl reports 5.
+func appendKeepFor(topic string) int {
+	parsed, err := ParseTopic(topic)
+	if err != nil || parsed.Entity != EntityChecks {
+		return 0
+	}
+
+	switch parsed.Kind {
+	case KindScreenshot:
+		return MaxCheckScreenshots
+	case KindStepState:
+		return MaxStepStateFiles
+	case KindCrawlReport:
+		return MaxCrawlReports
+	default:
+		return 0
+	}
+}
+
+// isServerOnlyKind reports whether a kind may only be written by the server
+// itself: the agent upload endpoint refuses it (spec 2026-10-03-03).
+func isServerOnlyKind(kind string) bool {
+	return kind == KindStepState || kind == KindCrawlReport
 }
 
 // ParsedTopic is a topic split into its three segments.

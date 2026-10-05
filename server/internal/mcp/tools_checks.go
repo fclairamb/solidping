@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/regionquorum"
 )
@@ -290,7 +291,8 @@ func (h *Handler) toolCreateCheck(ctx context.Context, orgSlug string, args map[
 
 	req.FailQuorum = failQuorumArg(args)
 
-	result, err := h.checksSvc.CreateCheck(ctx, orgSlug, req)
+	// Versions written through MCP say so (spec 2026-10-03-06).
+	result, err := h.checksSvc.CreateCheck(checks.WithChangeOrigin(ctx, models.CheckVersionOriginMCP), orgSlug, req)
 	if err != nil {
 		return errorResult(err.Error())
 	}
@@ -409,7 +411,8 @@ func (h *Handler) toolUpdateCheck(ctx context.Context, orgSlug string, args map[
 
 	req.FailQuorum = failQuorumArg(args)
 
-	result, err := h.checksSvc.UpdateCheck(ctx, orgSlug, identifier, &req)
+	result, err := h.checksSvc.UpdateCheck(
+		checks.WithChangeOrigin(ctx, models.CheckVersionOriginMCP), orgSlug, identifier, &req)
 	if err != nil {
 		return checkWriteErrorResult(err)
 	}

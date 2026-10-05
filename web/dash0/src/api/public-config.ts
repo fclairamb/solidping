@@ -43,6 +43,16 @@ export function useBugReportEnabled(): boolean {
 }
 
 /**
+ * Whether AI-authored js checks are offered (an AI provider is configured on
+ * the server, spec 2026-10-03-07). Off while loading.
+ */
+export function useAIChecksEnabled(): boolean {
+  const { data } = usePublicConfig();
+
+  return Boolean(data?.ai?.enabled);
+}
+
+/**
  * The embedded TCP/UDP heartbeat push transports. Undefined while loading, so
  * callers render nothing until the instance has said what is reachable.
  */

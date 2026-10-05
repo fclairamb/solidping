@@ -52,8 +52,40 @@ func ValidateSpec(spec *checkerdef.CheckSpec) error {
 		return checkerdef.NewConfigError("expected_values", "cannot specify both expected_ips and expected_values")
 	}
 
+	if err := validateChangeDetection(cfg); err != nil {
+		return err
+	}
+
 	if spec.Slug == "" {
 		spec.Slug = "dns-" + strings.ReplaceAll(cfg.Host, ".", "-")
+	}
+
+	return nil
+}
+
+// validateChangeDetection applies the baseline change-detection rules (spec
+// 2026-10-03-04).
+func validateChangeDetection(cfg *DNSConfig) error {
+	switch cfg.OnChange {
+	case "", OnChangeDown, OnChangeWarning:
+	default:
+		return checkerdef.NewConfigErrorf(keyOnChange, "must be one of down, warning, got %s", cfg.OnChange)
+	}
+
+	if len(cfg.Baseline) > 0 && !cfg.DetectChanges {
+		return checkerdef.NewConfigError(keyBaseline, "requires detect_changes to be true")
+	}
+
+	for region, values := range cfg.Baseline {
+		if strings.TrimSpace(region) == "" {
+			return checkerdef.NewConfigError(keyBaseline, "region keys must not be empty")
+		}
+
+		if len(values) > MaxBaselineValues {
+			return checkerdef.NewConfigErrorf(
+				keyBaseline, "region %q: at most %d values, got %d", region, MaxBaselineValues, len(values),
+			)
+		}
 	}
 
 	return nil

@@ -29,6 +29,16 @@ type MinPeriodHint interface {
 	MinPeriodHint() time.Duration
 }
 
+// UnitsPerRunHint is the optional interface a Config implements when one run
+// of the check costs more than one execution against the org's
+// checks-per-minute budget (spec 2026-10-03-03): a website crawl fetching up
+// to maxPages pages costs maxPages units. Consulted by the checks-per-minute
+// projection so a daily 500-page crawl projects 500/1440 checks/min, not
+// 1/1440. Returning <= 0 means one unit.
+type UnitsPerRunHint interface {
+	UnitsPerRunHint() int
+}
+
 // Sources a MinPeriodHint can name, so the refusal message explains the floor
 // that actually applied (a script can hit the browser floor, the RDP floor,
 // or both — the higher wins).
@@ -250,6 +260,13 @@ const (
 	// generator for the scheduler. It is NOT a customer-facing check type and
 	// must not be counted in the customer "N check types" tally.
 	CheckTypeSleep CheckType = "sleep"
+	// CheckTypeCrawl crawls a website for broken links, mixed content and
+	// sitemap errors. It is the first multi-step check type (spec
+	// 2026-10-03-03): it runs as a series of resumable slices.
+	CheckTypeCrawl CheckType = "crawl"
+	// CheckTypeHealth reads an application's health endpoint (Spring, ASP.NET,
+	// Laravel spatie, IETF, MicroProfile) and reports per component.
+	CheckTypeHealth CheckType = "health"
 )
 
 // IsPassive reports whether the check type is passive — driven by an inbound
@@ -267,6 +284,14 @@ const (
 // be evaluated on the jobs node, never inside the private region it watches.
 func (t CheckType) IsPassive() bool {
 	return t == CheckTypeHeartbeat || t == CheckTypeEmail || t == CheckTypePrivateLocation
+}
+
+// IsMultiStep reports whether the type runs as a series of resumable slices
+// on the bulk lane (spec 2026-10-03-03).
+func (t CheckType) IsMultiStep() bool {
+	meta := GetCheckTypeMeta(t)
+
+	return meta != nil && meta.MultiStep
 }
 
 // IsQuotaExempt reports whether a check of this type is left out of the
@@ -380,6 +405,11 @@ type CheckTypeMeta struct {
 	// target (heartbeat, email, sleep) or dials by name through a client
 	// library that exposes no address-family seam.
 	SupportsIPVersion bool `json:"supportsIpVersion"`
+
+	// MultiStep marks a type that runs as a series of bounded slices with
+	// persisted state on the bulk lane (spec 2026-10-03-03). Its checker must
+	// implement StepChecker (pinned by a registry test).
+	MultiStep bool `json:"multiStep"`
 }
 
 // checkTypesRegistry is the authoritative registry of all check types with metadata.
@@ -428,6 +458,8 @@ var checkTypesRegistry = []CheckTypeMeta{
 	{Type: CheckTypeVNC, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Monitor VNC (RFB) servers", SupportsTunnel: true},
 	{Type: CheckTypePrometheus, Labels: []string{labelSafe, labelStandalone, labelCatInfrastructure}, Description: "Alert on Prometheus metric thresholds", DefaultPeriod: time.Minute, SupportsTunnel: true, SupportsIPVersion: true},
 	{Type: CheckTypePrivateLocation, Labels: []string{labelSafe, labelStandalone, labelCatInfrastructure}, Description: "Alert when a private location's agents go offline (system-created)", DefaultPeriod: time.Minute},
+	{Type: CheckTypeHealth, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Read an application's health endpoint and report per component", DefaultPeriod: time.Minute, SupportsTunnel: true, SupportsIPVersion: true},
+	{Type: CheckTypeCrawl, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Crawl a website for broken links, mixed content and sitemap errors", MinPeriod: time.Hour, DefaultPeriod: 24 * time.Hour, MultiStep: true},
 	{Type: CheckTypeSleep, Labels: []string{labelSafe, labelStandalone, labelCatOther}, Description: "Sleep for a fixed duration (synthetic/testing)", DefaultPeriod: 1 * time.Minute},
 }
 
@@ -525,6 +557,8 @@ func ListCheckTypes(_ *ListSampleOptions) []CheckType {
 		CheckTypeVNC,
 		CheckTypePrometheus,
 		CheckTypePrivateLocation,
+		CheckTypeCrawl,
+		CheckTypeHealth,
 		CheckTypeSleep,
 	}
 }

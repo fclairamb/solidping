@@ -174,5 +174,6 @@
     "alerting": "Alarmierung",
     "publicStatus": "Öffentlicher Status",
     "administration": "Administration"
-  }
+  },
+  "history": "Verlauf"
 }

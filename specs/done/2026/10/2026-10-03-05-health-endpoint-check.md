@@ -15,9 +15,9 @@ one pass/fail for the whole check: the user has to know the format, write the
 assertions by hand, and the alert says "assertion failed" instead of "Redis is
 down".
 
-Oh Dear sells this as "application health monitoring" on every plan
-(`wiki/competitors/ohdear.md`), with its own JSON format produced by
-`spatie/laravel-health` and `ohdearapp/health-check-results`. Supporting that
+A competitor sells this as "application health monitoring" on every plan
+(see `wiki/competitors/`), with its own JSON format produced by
+`spatie/laravel-health`. Supporting that
 format lets those users switch by changing a URL.
 
 ## Proposal
@@ -35,7 +35,7 @@ New package `checkers/checkhealth/formats/`, one file per format, each with a
 
 | `format` | Produced by | Detection | Component statuses → ours |
 |---|---|---|---|
-| `spatie` | `spatie/laravel-health`, `ohdearapp/health-check-results` (Oh Dear format) | `checkResults` array present | `ok`→ok, `warning`→warning, `failed`/`crashed`→failed, `skipped`→skipped |
+| `spatie` | `spatie/laravel-health` | `checkResults` array present | `ok`→ok, `warning`→warning, `failed`/`crashed`→failed, `skipped`→skipped |
 | `spring` | Spring Boot Actuator `/actuator/health` | top-level `status` + `components` (or legacy `details`) object | `UP`→ok, `DOWN`/`OUT_OF_SERVICE`→failed, `UNKNOWN`→unknown. Nested `components` are flattened as `parent.child`. |
 | `ietf` | IETF `draft-inadarei-api-health-check` | `Content-Type: application/health+json`, or `checks` object whose values are arrays | `pass`→ok, `warn`→warning, `fail`→failed. One component per `checks` key (`component:measurement`); multiple entries under a key are suffixed with their `componentId`. |
 | `aspnet` | ASP.NET Core HealthChecks (UI response writer) | `entries` object | `Healthy`→ok, `Degraded`→warning, `Unhealthy`→failed |
@@ -154,7 +154,7 @@ Output (in addition to what the HTTP part stamps):
   existing notification templates show it with no template change.
 - **Metrics:** `components_total`, `components_failed`,
   `components_warning`, plus numeric `Meta` values as
-  `meta.<component>.<key>`, at most 20 per check (same cap as Oh Dear), first
+  `meta.<component>.<key>`, at most 20 per check (same cap as that competitor), first
   20 in component order. Non-numeric meta stays in the output only.
 - **Incident updates:** when the set of failed components changes during an
   open incident (Database then also Cache), the change must show up as an
@@ -176,7 +176,7 @@ Output (in addition to what the HTTP part stamps):
 ### 7. Samples
 
 `checkers/checkhealth/samples.go`: one sample per format (Laravel
-`/health` with the Oh Dear secret header in `secretHeaders`, Spring
+`/health` with the spatie secret header in `secretHeaders`, Spring
 `/actuator/health`, ASP.NET `/healthz`, IETF `/health`).
 
 ## Tests
@@ -222,12 +222,19 @@ Output (in addition to what the HTTP part stamps):
 
 ## Open questions
 
-1. **Default `max_age`.** Recommended: 10 minutes, Oh Dear's rule, so spatie
+1. **Default `max_age`.** Recommended: 10 minutes, the usual rule for these endpoints, so spatie
    users get the same behaviour. Formats without a timestamp skip the rule.
 2. **Should `warning` components open an incident?** Recommended: no, they map
    to `StatusWarning` like a certificate close to expiry. A user who wants an
    alert can't currently promote a warning to down; leave that for later unless
    asked.
+
+## Resolved open questions
+
+Answered unattended on 2026-10-03 with the spec's recommended answers; to be reviewed by the owner.
+
+1. Default `max_age` is 10 minutes. Formats without a timestamp skip the rule.
+2. `warning` components do not open an incident: they map to `StatusWarning`, like a certificate close to expiry. No warning-to-down promotion in this spec.
 
 ## Out of scope
 
@@ -237,5 +244,5 @@ Output (in addition to what the HTTP part stamps):
 - Push mode: letting a heartbeat push (`heartbeatpush/`) carry a health body
   for apps we can't reach. Natural follow-up once the parsers exist.
 - Non-JSON formats (Kubernetes `/readyz?verbose` text, Prometheus metrics).
-- A `/migrate/oh-dear` page on the website. That is marketing work in
+- A migration-guide page on the website. That is marketing work in
   solidping-business once this ships.

@@ -1,0 +1,16 @@
+{
+  "status": "DOWN",
+  "components": {
+    "db": {"status": "UP", "details": {"database": "PostgreSQL", "validationQuery": "isValid()"}},
+    "diskSpace": {"status": "UP", "details": {"total": 499963174912, "free": 91943821312, "threshold": 10485760}},
+    "mail": {"status": "DOWN", "details": {"error": "org.springframework.mail.MailSendException: connection refused"}},
+    "broker": {
+      "status": "OUT_OF_SERVICE",
+      "components": {
+        "primary": {"status": "UP", "details": {"version": "3.12"}},
+        "secondary": {"status": "OUT_OF_SERVICE"},
+        "audit": {"status": "UNKNOWN"}
+      }
+    }
+  }
+}

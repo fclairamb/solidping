@@ -148,6 +148,11 @@ The server exposes tools covering the core SolidPing surface, including:
 - **Check groups & regions** — list
 - **Check types** — list types, fetch sample configs, and validate a config
 - **Diagnostics** — diagnose a check and inspect incident notifications
+- **js check authoring** — `run_js_script`, `fetch_page` and `browser_snapshot`
+  run a script, fetch a page or snapshot it in the server's browser, so your own
+  agent can write a [js check](/features/javascript-checks) without SolidPing
+  calling an LLM ([AI-authored checks](/features/ai-authored-checks)). They write
+  nothing and work with `mcp:read` tokens
 
 Every tool also declares MCP **tool annotations** (`readOnlyHint`,
 `destructiveHint`, `idempotentHint`, `openWorldHint`) and an

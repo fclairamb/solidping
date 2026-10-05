@@ -1062,3 +1062,54 @@ func TestReserveCheckExecutionCapacityChangeIsRaceFree(t *testing.T) {
 
 	wg.Wait()
 }
+
+// Multi-step checks reserve several units per slice (spec 2026-10-03-03).
+func TestReserveCheckExecutionsUpTo(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+
+	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(dbSvc.Initialize(ctx))
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	org := models.NewOrganization("units-org", "Units Org")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	// SaaS default cap is 10/min, bucket starts full.
+	svc := entitlements.NewService(dbSvc, entitlements.DefaultsFor(config.DeploymentModeSaaS), 0)
+
+	granted, err := svc.ReserveCheckExecutionsUpTo(ctx, org.UID, 4)
+	r.NoError(err)
+	r.Equal(4, granted, "min(n, available) when n fits")
+
+	granted, err = svc.ReserveCheckExecutionsUpTo(ctx, org.UID, 20)
+	r.NoError(err)
+	r.Equal(6, granted, "min(n, available) when n exceeds what is left")
+
+	granted, err = svc.ReserveCheckExecutionsUpTo(ctx, org.UID, 3)
+	r.NoError(err)
+	r.Equal(0, granted, "an empty bucket grants nothing")
+
+	// A refund larger than what was taken never exceeds the burst cap.
+	svc.RefundCheckExecutions(ctx, org.UID, 1000)
+
+	granted, err = svc.ReserveCheckExecutionsUpTo(ctx, org.UID, 1000)
+	r.NoError(err)
+	r.Equal(10, granted, "refunds are clamped to the burst cap")
+}
+
+func TestReserveCheckExecutionsUpToUnlimited(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	svc, org, _ := setup(t)
+
+	// Self-hosted defaults: no cap, every unit is granted.
+	granted, err := svc.ReserveCheckExecutionsUpTo(t.Context(), org.UID, 500)
+	r.NoError(err)
+	r.Equal(500, granted)
+
+	// A refund on an org with no bucket is a harmless no-op.
+	svc.RefundCheckExecutions(t.Context(), org.UID, 10)
+}

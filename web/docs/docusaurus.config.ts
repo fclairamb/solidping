@@ -126,7 +126,7 @@ const config: Config = {
         ignoreFiles: [],
         title: "SolidPing",
         description:
-          "SolidPing is an open-source uptime monitoring and alerting platform: 41 check types (HTTP, TCP, DNS, SSL, databases, message queues, gRPC, Kubernetes and more), distributed workers, status pages, on-call and 16 notification channels. Free to self-host (AGPL-3.0), or hosted at solidping.io.",
+          "SolidPing is an open-source uptime monitoring and alerting platform: 43 check types (HTTP, TCP, DNS, SSL, databases, message queues, gRPC, Kubernetes and more), distributed workers, status pages, on-call and 16 notification channels. Free to self-host (AGPL-3.0), or hosted at solidping.io.",
         includeBlog: false,
       },
     ],

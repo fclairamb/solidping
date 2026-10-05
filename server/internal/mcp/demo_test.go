@@ -260,3 +260,32 @@ func TestMCPDemoGateLeavesOtherSessionsAlone(t *testing.T) {
 	require.False(t, demoToolRefused(&auth.Claims{UserUID: "u", Demo: true}, toolValidateCheck))
 	require.False(t, demoToolRefused(&auth.Claims{UserUID: "u", Demo: true}, toolCreateCheck))
 }
+
+// TestMCPRunCheck covers run_check (spec 2026-10-04-01): it returns the
+// per-region response, errors on an unknown check, and is a mutation tool, so
+// mcp:read tokens and demo sessions are refused before it runs.
+func TestMCPRunCheck(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	env := newDemoMCPEnv(t)
+	member := &auth.Claims{UserUID: env.demo.UID, OrgSlug: env.org.Slug}
+
+	res := toolResult(t, env.tool(t, member, toolRunCheck, map[string]any{propIdentifier: env.seeded.Slug}))
+	r.Falsef(res.IsError, "run_check must succeed: %v", res.Content)
+	r.Contains(res.Content[0].Text, "requestedAt")
+	r.Contains(res.Content[0].Text, "queued")
+
+	missing := toolResult(t, env.tool(t, member, toolRunCheck, map[string]any{propIdentifier: "nope"}))
+	r.True(missing.IsError)
+	r.Contains(missing.Content[0].Text, "not found")
+
+	r.True(isMutationTool(toolRunCheck))
+
+	readOnly := &auth.Claims{UserUID: env.demo.UID, OrgSlug: env.org.Slug, Scopes: []string{scopeMCPRead}}
+	refused := env.tool(t, readOnly, toolRunCheck, map[string]any{propIdentifier: env.seeded.Slug})
+	r.NotNil(refused.Error)
+	r.Equal(CodeForbidden, refused.Error.Code)
+
+	requireDemoRefusal(t, env.tool(t, env.demoClaims(), toolRunCheck, map[string]any{propIdentifier: env.seeded.Slug}))
+}

@@ -144,17 +144,9 @@ func (c *JSChecker) GetSampleConfigs(_ *checkerdef.ListSampleOptions) []checkerd
 			}).GetConfig(),
 		},
 		{
-			// Deliberately no `Secrets` entry here: a sample with a REAL value
-			// in a map-shaped secret field is (as of this writing) the one
-			// case that trips a shape mismatch in the server's dry-run
-			// secret-placeholder injection (tracked separately — see
-			// specs/todos/2026-09-12-02-secret-placeholder-must-match-the-fields-shape.md).
-			// The script still reads `secrets.PASSWORD`, exactly like the doc
-			// example; the dashboard `js` form already has its own `secrets`
-			// editor (misc.tsx), so a user who picks this sample fills the
-			// password in there directly — no API/CLI/config-as-code detour
-			// required, just an empty field to fill in like any other blank
-			// credential field.
+			// Secrets are declared with empty values so the form shows the key.
+			// The user must fill the value in before saving; a sample never
+			// ships a credential.
 			Name:   "JS: Bearer Token Login Chain",
 			Slug:   sampleBearerChainSlug,
 			Period: time.Minute * 5,
@@ -164,12 +156,10 @@ func (c *JSChecker) GetSampleConfigs(_ *checkerdef.ListSampleOptions) []checkerd
 					"BASE_URL": "https://api.example.com",
 					"USERNAME": "probe",
 				},
+				Secrets: map[string]string{"PASSWORD": ""},
 			}).GetConfig(),
 		},
 		{
-			// Like the bearer-chain sample above, deliberately no `Secrets`
-			// entry: the script reads secrets.PASSWORD and the dashboard's
-			// `js` form has its own secrets editor to fill it in.
 			Name:   "JS: Browser Form Login",
 			Slug:   sampleBrowserLoginSlug,
 			Period: time.Minute,
@@ -179,12 +169,10 @@ func (c *JSChecker) GetSampleConfigs(_ *checkerdef.ListSampleOptions) []checkerd
 					"BASE_URL": "https://app.example.com",
 					"USERNAME": "probe@example.com",
 				},
+				Secrets: map[string]string{"PASSWORD": ""},
 			}).GetConfig(),
 		},
 		{
-			// Like the two above, deliberately no `Secrets` entry: the script
-			// reads secrets.REDIS_PASSWORD and the dashboard's `js` form has
-			// its own secrets editor to fill it in.
 			Name:   "JS: Redis AUTH + PING",
 			Slug:   sampleTCPRedisPingSlug,
 			Period: time.Minute,
@@ -193,6 +181,7 @@ func (c *JSChecker) GetSampleConfigs(_ *checkerdef.ListSampleOptions) []checkerd
 				Env: map[string]string{
 					"REDIS_ADDR": "redis.example.com:6379",
 				},
+				Secrets: map[string]string{"REDIS_PASSWORD": ""},
 			}).GetConfig(),
 		},
 		{

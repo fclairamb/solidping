@@ -59,3 +59,25 @@ func TestSamples_IncludeCustomNameserver(t *testing.T) {
 
 	r.GreaterOrEqual(withNameserver, 1, "at least one DNS sample should set a custom nameserver")
 }
+
+// TestSamples_IncludeNSChangeDetection pins the NS change-detection sample
+// (spec 2026-10-03-04).
+func TestSamples_IncludeNSChangeDetection(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	checker := &DNSChecker{}
+
+	var found bool
+
+	for _, spec := range checker.GetSampleConfigs(nil) {
+		cfg := &DNSConfig{}
+		r.NoError(cfg.FromMap(spec.Config))
+
+		if cfg.DetectChanges && cfg.RecordType == recordTypeNS {
+			found = true
+		}
+	}
+
+	r.True(found, "a sample should watch NS records for changes")
+}

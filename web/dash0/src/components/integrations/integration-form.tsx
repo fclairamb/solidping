@@ -367,6 +367,7 @@ function PerTypePanel({ type, settings, onChange, org, channelUid, privateKeys, 
       );
     case "googlechat":
     case "mattermost":
+    case "slack-webhook":
       return (
         <UrlPanel
           label={t("form.webhookUrl", "Webhook URL")}

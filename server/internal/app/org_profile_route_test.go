@@ -381,3 +381,58 @@ func TestPublicAssetRouteRefusesANonAllowlistedFile(t *testing.T) {
 	defer func() { _ = shotResp.Body.Close() }()
 	r.Equal(http.StatusNotFound, shotResp.StatusCode, "an incident screenshot is not a public asset")
 }
+
+// TestOrgIdentityEvictsTheStatusPageMemo pins that the public status-page
+// payload (orgName, orgLogoUrl) never lags an org profile edit: the view is
+// memoized, so the logo upload, rename and logo clear must each evict it.
+func TestOrgIdentityEvictsTheStatusPageMemo(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := context.Background()
+
+	env := newProfileEnv(t)
+
+	page := models.NewStatusPage(env.orgUID, "Public", "identity-page")
+	page.IsDefault = true
+	r.NoError(env.dbService.CreateStatusPage(ctx, page))
+
+	read := func() (string, string) {
+		resp := env.do(http.MethodGet, "/api/v1/status-pages/"+env.orgSlug+"/identity-page", "", "", nil)
+		defer func() { _ = resp.Body.Close() }()
+		r.Equal(http.StatusOK, resp.StatusCode)
+
+		var body struct {
+			OrgName    string `json:"orgName"`
+			OrgLogoURL string `json:"orgLogoUrl"`
+		}
+		r.NoError(json.NewDecoder(resp.Body).Decode(&body))
+
+		return body.OrgName, body.OrgLogoURL
+	}
+
+	// Warm the memo with no logo.
+	name, logo := read()
+	r.Equal("Profile Org", name)
+	r.Empty(logo)
+
+	up := env.uploadLogo(env.ownerJWT, "logo.png", "image/png", []byte("\x89PNG\r\n\x1a\nfake"))
+	_ = up.Body.Close()
+	r.Equal(http.StatusOK, up.StatusCode)
+
+	_, logo = read()
+	r.NotEmpty(logo, "logo upload must evict the memoized page")
+
+	renamed := env.patchProfile(env.ownerJWT, `{"name":"Renamed Org"}`)
+	_ = renamed.Body.Close()
+	r.Equal(http.StatusOK, renamed.StatusCode)
+
+	name, _ = read()
+	r.Equal("Renamed Org", name, "profile rename must evict the memoized page")
+
+	cleared := env.do(http.MethodDelete, "/api/v1/orgs/"+env.orgSlug+"/logo", env.ownerJWT, "", nil)
+	_ = cleared.Body.Close()
+	r.Equal(http.StatusOK, cleared.StatusCode)
+
+	_, logo = read()
+	r.Empty(logo, "logo clear must evict the memoized page")
+}

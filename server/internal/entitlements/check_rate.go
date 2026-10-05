@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/checkers/configregistry"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
@@ -121,7 +122,8 @@ func checksPerMinuteRate(rates []models.CheckRate, excludePassive bool) float64 
 			regions = 1
 		}
 
-		perMin += float64(time.Minute) / float64(time.Duration(rate.Period)) * float64(regions)
+		perMin += float64(time.Minute) / float64(time.Duration(rate.Period)) * float64(regions) *
+			float64(unitsPerRun(rate.Type, rate.Config))
 	}
 
 	return perMin
@@ -130,6 +132,27 @@ func checksPerMinuteRate(rates []models.CheckRate, excludePassive bool) float64 
 // dayStart returns the UTC day of t as an ISO date string. The rate-limited
 // skip counter buckets by day, not by month, so the banner clears itself once
 // an org spends a full day back under its cap.
+// unitsPerRun is how many executions one run of a check costs: 1, except for
+// a multi-step type whose config declares more through
+// checkerdef.UnitsPerRunHint (a crawl costs maxPages, spec 2026-10-03-03).
+func unitsPerRun(checkType string, cfgMap map[string]any) int {
+	if !checkerdef.CheckType(checkType).IsMultiStep() {
+		return 1
+	}
+
+	cfg, ok := configregistry.ParseConfig(checkerdef.CheckType(checkType))
+	if !ok || cfg.FromMap(cfgMap) != nil {
+		return 1
+	}
+
+	hint, ok := cfg.(checkerdef.UnitsPerRunHint)
+	if !ok || hint.UnitsPerRunHint() < 1 {
+		return 1
+	}
+
+	return hint.UnitsPerRunHint()
+}
+
 func dayStart(t time.Time) string {
 	return t.UTC().Format("2006-01-02")
 }
@@ -152,6 +175,9 @@ type CheckRateProposal struct {
 	// Regions is the proposed region set; each region runs the check every
 	// period, so the cost scales with max(1, len(Regions)).
 	Regions []string
+	// Config is the proposed config, read only for multi-step types whose
+	// per-run cost depends on it (a crawl's maxPages).
+	Config map[string]any
 	// Enabled is the proposed enabled state. A disabled check is scheduled
 	// nowhere and costs nothing.
 	Enabled bool
@@ -187,7 +213,7 @@ func (p ProjectedRate) Over() bool {
 // A nil receiver (entitlements disabled) yields a zero projection and no
 // error: there is no cap to be over.
 func (s *Service) ProjectChecksPerMinute(
-	ctx context.Context, orgUID string, proposal CheckRateProposal,
+	ctx context.Context, orgUID string, proposal *CheckRateProposal,
 ) (ProjectedRate, error) {
 	if s == nil {
 		return ProjectedRate{}, nil
@@ -219,6 +245,7 @@ func (s *Service) ProjectChecksPerMinute(
 			Period:  timeutils.Duration(proposal.Period),
 			Regions: proposal.Regions,
 			Type:    proposal.Type,
+			Config:  proposal.Config,
 		})
 	}
 

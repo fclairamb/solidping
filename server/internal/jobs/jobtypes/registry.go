@@ -11,6 +11,7 @@ import (
 //nolint:gochecknoglobals // static lookup table, treated as a constant.
 var jobDefinitionFactories = map[jobdef.JobType]func() jobdef.JobDefinition{
 	jobdef.JobTypeSleep:            func() jobdef.JobDefinition { return &SleepJobDefinition{} },
+	jobdef.JobTypeAIRepair:         func() jobdef.JobDefinition { return &AIRepairJobDefinition{} },
 	jobdef.JobTypeEmail:            func() jobdef.JobDefinition { return &EmailJobDefinition{} },
 	jobdef.JobTypeWebhook:          func() jobdef.JobDefinition { return &WebhookJobDefinition{} },
 	jobdef.JobTypeStartup:          func() jobdef.JobDefinition { return &StartupJobDefinition{} },

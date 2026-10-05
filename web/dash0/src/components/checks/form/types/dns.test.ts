@@ -5,6 +5,7 @@ import {
   domainModule,
   isValidIPv4,
   isValidIPv6,
+  toggleDetectChanges,
   type DnsState,
   type DomainState,
 } from "./dns";
@@ -18,6 +19,10 @@ function baseState(overrides: Partial<DnsState> = {}): DnsState {
     recordType: "A",
     expectedIps: [],
     expectedValues: "",
+    detectChanges: false,
+    onChange: "",
+    baseline: {},
+    resetBaseline: false,
     ...overrides,
   };
 }
@@ -181,5 +186,56 @@ describe("IP validators", () => {
     expect(isValidIPv6("2001:db8")).toBe(false);
     expect(isValidIPv6("g::1")).toBe(false);
     expect(isValidIPv6("1::2::3")).toBe(false);
+  });
+});
+
+describe("dnsModule — change detection (spec 2026-10-03-04)", () => {
+  it("seeds detect_changes, on_change and the stored baseline", () => {
+    const state = dnsModule.fromConfig({
+      host: "acme.com",
+      record_type: "NS",
+      detect_changes: true,
+      on_change: "warning",
+      baseline: { "eu-west": ["ns1.acme.com"], "us-east": [] },
+    });
+    expect(state.detectChanges).toBe(true);
+    expect(state.onChange).toBe("warning");
+    expect(state.baseline).toEqual({ "eu-west": ["ns1.acme.com"] });
+    expect(state.resetBaseline).toBe(false);
+  });
+
+  it("omits baseline on save so the server keeps it", () => {
+    const { config } = dnsModule.toConfig(
+      baseState({ recordType: "NS", detectChanges: true, baseline: { "eu-west": ["ns1.acme.com"] } }),
+    );
+    expect(config.detect_changes).toBe(true);
+    expect("baseline" in config).toBe(false);
+    expect("on_change" in config).toBe(false);
+  });
+
+  it("sends an empty baseline after a reset", () => {
+    const { config } = dnsModule.toConfig(
+      baseState({ recordType: "NS", detectChanges: true, resetBaseline: true, onChange: "warning" }),
+    );
+    expect(config.baseline).toEqual({});
+    expect(config.on_change).toBe("warning");
+  });
+
+  it("writes none of the keys when detection is off", () => {
+    const { config } = dnsModule.toConfig(baseState({ onChange: "warning", resetBaseline: true }));
+    expect(config.detect_changes).toBeUndefined();
+    expect(config.on_change).toBeUndefined();
+    expect(config.baseline).toBeUndefined();
+  });
+
+  it("owns the three keys so the passthrough never resurrects them", () => {
+    expect(dnsModule.ownedKeys).toEqual(expect.arrayContaining(["detect_changes", "on_change", "baseline"]));
+  });
+
+  it("preselects warning when detection is turned on for A/AAAA", () => {
+    expect(toggleDetectChanges(baseState({ recordType: "A" }), true).onChange).toBe("warning");
+    expect(toggleDetectChanges(baseState({ recordType: "AAAA" }), true).onChange).toBe("warning");
+    expect(toggleDetectChanges(baseState({ recordType: "NS" }), true).onChange).toBe("");
+    expect(toggleDetectChanges(baseState({ recordType: "A", onChange: "down" }), true).onChange).toBe("down");
   });
 });

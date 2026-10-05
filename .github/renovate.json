@@ -45,6 +45,24 @@
       "allowedVersions": "<0.21.0"
     },
     {
+      "description": "bun: hold below 1.3.0. v1.3.0 changed Limit/Offset and the count helpers to int64, which breaks ~100 call sites (PR #482). Lift once the int/int64 migration is done.",
+      "matchDepNames": [
+        "github.com/uptrace/bun",
+        "github.com/uptrace/bun/dialect/pgdialect",
+        "github.com/uptrace/bun/dialect/sqlitedialect",
+        "github.com/uptrace/bun/driver/pgdriver"
+      ],
+      "allowedVersions": "<1.3.0"
+    },
+    {
+      "description": "chromedp/cdproto: hold at chromedp 0.16.x. v0.17 moved to a generic Action[T] API (Run, Title, Location, Evaluate, ListenTarget...) and breaks checkbrowser/session.go (PR #482). cdproto is pinned to the pseudo-version chromedp 0.16 builds against.",
+      "matchDepNames": [
+        "github.com/chromedp/chromedp",
+        "github.com/chromedp/cdproto"
+      ],
+      "enabled": false
+    },
+    {
       "description": "goja: always automerge, whatever the update type (it only ships pseudo-versions)",
       "matchDepNames": ["github.com/dop251/goja"],
       "groupName": null,

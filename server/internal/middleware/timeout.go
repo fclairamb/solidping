@@ -4,12 +4,23 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/httpx"
 )
+
+// aiAuthoringSegment marks the AI authoring endpoints (spec 2026-10-03-07):
+// an agent loop of several LLM calls and script runs, bounded by its own
+// budget (turn cap x per-call timeout) rather than the per-request one. They
+// stay rate limited: only the timeout is lifted.
+const aiAuthoringSegment = "/checks/ai/"
+
+func isLongRunningAI(path string) bool {
+	return strings.HasPrefix(path, "/api/v1/orgs/") && strings.Contains(path, aiAuthoringSegment)
+}
 
 // RequestTimeout returns a middleware that aborts a request with
 // 504 REQUEST_TIMEOUT when the handler (plus any time it spent in earlier
@@ -23,7 +34,7 @@ import (
 func RequestTimeout(maxDuration time.Duration) func(httpx.HandlerFunc) httpx.HandlerFunc {
 	return func(next httpx.HandlerFunc) httpx.HandlerFunc {
 		return func(writer http.ResponseWriter, req *http.Request) error {
-			if maxDuration <= 0 || isExcluded(req.URL.Path) {
+			if maxDuration <= 0 || isExcluded(req.URL.Path) || isLongRunningAI(req.URL.Path) {
 				return next(writer, req)
 			}
 

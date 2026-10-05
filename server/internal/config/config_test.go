@@ -1888,3 +1888,48 @@ func TestLoad_BugReportNeedsTokenAndRepo(t *testing.T) {
 		})
 	}
 }
+
+// TestAIEnvVarsBind proves every SP_AI_* name lands on its field
+// (spec 2026-10-03-07).
+func TestAIEnvVarsBind(t *testing.T) {
+	t.Setenv("SP_AI_PROVIDER", "OpenAI")
+	t.Setenv("SP_AI_BASE_URL", "https://ark.example.test/api/v3")
+	t.Setenv("SP_AI_API_KEY", "sk-test")
+	t.Setenv("SP_AI_MODEL", "glm-5.3-flash")
+	t.Setenv("SP_AI_MAX_TURNS", "7")
+	t.Setenv("SP_AI_TIMEOUT", "45s")
+
+	r := require.New(t)
+	cfg, err := Load()
+	r.NoError(err)
+	r.Equal(AIProviderOpenAI, cfg.AI.Provider)
+	r.Equal("https://ark.example.test/api/v3", cfg.AI.BaseURL)
+	r.Equal("sk-test", cfg.AI.APIKey)
+	r.Equal("glm-5.3-flash", cfg.AI.Model)
+	r.Equal(7, cfg.AI.MaxTurns)
+	r.Equal(45*time.Second, cfg.AI.Timeout)
+	r.True(cfg.AI.Enabled())
+}
+
+// TestAIConfigDefaultsOff pins the feature off by default with the documented
+// loop defaults.
+func TestAIConfigDefaultsOff(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	cfg, err := Load()
+	r.NoError(err)
+	r.False(cfg.AI.Enabled())
+	r.Equal(12, cfg.AI.MaxTurns)
+	r.Equal(120*time.Second, cfg.AI.Timeout)
+}
+
+func TestAIConfigValidate(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	r.NoError((&AIConfig{}).Validate())
+	r.NoError((&AIConfig{Provider: AIProviderAnthropic, Model: "m"}).Validate())
+	r.Error((&AIConfig{Provider: "gemini", Model: "m"}).Validate())
+	r.Error((&AIConfig{Provider: AIProviderOpenAI}).Validate())
+}

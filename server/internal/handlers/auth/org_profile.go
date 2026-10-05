@@ -154,6 +154,11 @@ func (s *Service) UpdateOrgProfile(
 		}
 	}
 
+	// The public status-page payload carries the org's name and logo.
+	if s.pageMemo != nil {
+		s.pageMemo.InvalidateOrg(org.UID)
+	}
+
 	previousSlug := ""
 
 	if newSlug != "" {
@@ -380,4 +385,15 @@ func (s *Service) mintOrgSession(
 		ExpiresIn:    int(s.cfg.AccessTokenExpiry.Seconds()),
 		TokenType:    tokenTypeBearer,
 	}, nil
+}
+
+// PageMemoInvalidator evicts memoized public status-page views of one
+// organization. Injected, because the status-pages package owns the memo.
+type PageMemoInvalidator interface {
+	InvalidateOrg(orgUID string)
+}
+
+// SetPageMemoInvalidator wires the status-page view memo. Optional.
+func (s *Service) SetPageMemoInvalidator(inv PageMemoInvalidator) {
+	s.pageMemo = inv
 }

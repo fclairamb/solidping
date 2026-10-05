@@ -191,6 +191,13 @@ record to watch and the least prone to false positives.
    any other check. Recommended: keep it that way, so the baseline only moves
    when a user accepts the change.
 
+## Resolved open questions
+
+Answered unattended on 2026-10-03 with the spec's recommended answers; to be reviewed by the owner.
+
+1. Keep `down` as the backend default `on_change` for every record type. When the user turns detection on for `A`/`AAAA`, the form preselects `warning` and shows a one-line hint about rotating load-balancer/CDN records.
+2. A change auto-resolves: the check goes back up when the answer matches the baseline again. The baseline only moves when a user accepts the change.
+
 ## Out of scope
 
 - `SOA` serial monitoring. `SOA` is listed as a valid record type

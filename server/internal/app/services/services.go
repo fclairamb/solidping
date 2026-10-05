@@ -122,6 +122,16 @@ type Registry struct {
 	// bare Registry — every consumer treats nil as "no policy" (allow
 	// everything), matching a nil *egress.Guard's own contract.
 	EgressGuard *egress.Guard
+
+	// AIRepair runs the drift-only repair of AI-authored js checks (spec
+	// 2026-10-03-07), the ai_repair job's body. Nil when no AI provider is
+	// configured; the job nil-guards.
+	AIRepair AIRepairer
+}
+
+// AIRepairer is the repair entry point the ai_repair job calls.
+type AIRepairer interface {
+	RepairCheck(ctx context.Context, orgUID, checkUID string) error
 }
 
 // PrivateLocationMonitorBackfiller is the startup half of the private-location

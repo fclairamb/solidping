@@ -241,6 +241,7 @@ func (b *WSBackend) ClaimJobs(
 	_ *string,
 	fastLimit int,
 	_ int,
+	_ int,
 	_ time.Duration,
 ) ([]*models.CheckJob, time.Duration, error) {
 	return b.claim(ctx, fastLimit, "")

@@ -15,6 +15,8 @@ import type { CheckType } from "./common";
 export interface CheckFormFieldsContextValue {
   type: CheckType;
   org: string;
+  /** The saved check being edited; undefined on create. */
+  checkUid?: string;
   connections: Integration[] | undefined;
   configPrivateKeys: string[] | undefined;
   name: string;
@@ -22,6 +24,9 @@ export interface CheckFormFieldsContextValue {
   // Whether the check routes through an SSH tunnel (`tunnelCheckUid` set), so
   // a field can disable an option a tunnel cannot carry (HTTP/3 over UDP).
   tunneled: boolean;
+  // Output of the edited check's last result, when there is one. The health
+  // form suggests the component names found in it.
+  lastResultOutput?: Record<string, unknown>;
 }
 
 const CheckFormFieldsContext =

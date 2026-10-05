@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   chartFetchParams,
@@ -61,6 +61,10 @@ function allPlans(): { label: string; plan: ChartTierFetch[] }[] {
 }
 
 describe("chartFetchParams tier plan", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   // THE guard for spec 2026-08-22-04: `results` carries exactly two useful
   // indexes and both are partial, split on `period_type = 'raw'`. A single
   // query naming raw AND a rollup tier is implied by neither, so Postgres can
@@ -107,6 +111,12 @@ describe("chartFetchParams tier plan", () => {
   // The split must not lose data: the union of the tiers asked for has to be
   // exactly the set the old single mixed query named.
   it("covers the same tier set the pre-split mixed query used", () => {
+    // A zoom span of exactly one day starts on the raw-retention edge: if the
+    // clock ticks between building the window and choosing the tier, `from`
+    // falls a millisecond past it and the plan gains an hourly tier. Freeze it.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-05T12:00:00.000Z"));
+
     const expected = (
       range: string,
       periodMs: number | undefined,

@@ -1,0 +1,17 @@
+{
+  "status": "warn",
+  "version": "1",
+  "serviceId": "f03e522f-1f44-4062-9b55-9587f91c9c41",
+  "checks": {
+    "cassandra:responseTime": [
+      {"componentId": "dfd6cf2b-1b6e-4412-a0b8-f6f7797a60d2", "componentType": "datastore", "observedValue": 250, "observedUnit": "ms", "status": "pass", "time": "2018-01-17T03:36:48Z"}
+    ],
+    "uptime": [
+      {"componentType": "system", "observedValue": 1209600.245, "observedUnit": "s", "status": "pass", "time": "2018-01-17T03:36:48Z"}
+    ],
+    "memory:utilization": [
+      {"componentId": "node-1", "observedValue": 85, "observedUnit": "percent", "status": "warn", "output": "memory is high", "time": "2018-01-17T03:36:48Z"},
+      {"componentId": "node-2", "observedValue": 99, "observedUnit": "percent", "status": "fail", "output": "memory exhausted", "time": "2018-01-17T03:36:48Z"}
+    ]
+  }
+}
