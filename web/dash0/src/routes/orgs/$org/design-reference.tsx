@@ -4,6 +4,9 @@
 
 import { useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
+import type { AIGenerationFailed } from "@/api/hooks";
+import { AIGenerationFailure, AIGenerationProgress } from "@/components/checks/ai-generation-progress";
+import type { AIGenerationState } from "@/components/checks/use-ai-generation-progress";
 import {
   Activity,
   AlertCircle,
@@ -331,6 +334,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "paging-coverage", label: "Paging coverage" },
   { id: "onboarding-checklist", label: "Onboarding checklist" },
   { id: "magic-wand", label: "Magic wand" },
+  { id: "ai-generation-progress", label: "AI generation progress" },
 ];
 
 function DesignReferencePage() {
@@ -394,6 +398,7 @@ function DesignReferencePage() {
       <PagingCoverageSection />
       <OnboardingChecklistSection />
       <MagicWandSection />
+      <AIGenerationProgressSection />
     </div>
   );
 }
@@ -5253,7 +5258,7 @@ const CHECK_TYPE_FAMILY_TABLE: {
 }[] = [
   {
     family: "Web",
-    types: "http/https, websocket, browser",
+    types: "http/https, websocket, browser, crawl, health",
     tone: "blue (shipped)",
   },
   {
@@ -7600,6 +7605,48 @@ function MagicWandSection() {
         </div>
       </div>
       <CodeSnippet code={snippet} />
+    </Section>
+  );
+}
+
+// Static fixtures: a generation half-way through, and one that failed.
+const designReferenceAIProgress: AIGenerationState = {
+  startedAt: 0,
+  lastEventAt: 0,
+  turn: 3,
+  maxTurns: 12,
+  steps: [
+    { kind: "message", text: "The home page is a sign-in form. Probing the login flow next." },
+    { kind: "tool", tool: "fetch_page", url: "https://app.acme.com", status: "up", detail: "statusCode: 200", durationMs: 84, done: true },
+    { kind: "tool", tool: "run_script", status: "down", detail: "step: login, failure: drift", durationMs: 2140, done: true },
+    { kind: "tool", tool: "run_script", final: true, done: false },
+  ],
+};
+
+const designReferenceAIFailure: AIGenerationFailed = {
+  title: "No script passed its test run",
+  code: "AI_GENERATION_FAILED",
+  detail: "The AI stopped after 8 turns. The last test run returned down (step: login, failure: assertion).",
+  explanation: "The login form answers 401 with these credentials. Check secrets.PASSWORD.",
+  lastRun: { status: "down", output: { step: "login", failure: "assertion", statusCode: 401 } },
+  lastScript: "var r = http.post(env.BASE_URL + \"/login\", { body: ... });",
+  turns: 8,
+};
+
+function AIGenerationProgressSection() {
+  return (
+    <Section
+      id="ai-generation-progress"
+      title="AI generation progress"
+      description="Live view of a streamed AI script generation (POST /checks/ai/generate with Accept: application/x-ndjson): elapsed time, turn counter, what the model says, each page it opens and each script it tests, with a thinking row while the model works. A generation can take minutes, so it is never just a spinner. On failure, AIGenerationFailure shows the reason, the model's last message, the last test run and the last script."
+    >
+      <div className="grid gap-4 md:grid-cols-2">
+        <AIGenerationProgress state={designReferenceAIProgress} running={false} />
+        <AIGenerationFailure failure={designReferenceAIFailure} />
+      </div>
+      <CodeSnippet
+        code={`import { AIGenerationFailure, AIGenerationProgress } from "@/components/checks/ai-generation-progress";\nimport { useAIGenerationProgress } from "@/components/checks/use-ai-generation-progress";\n\nconst progress = useAIGenerationProgress();\nprogress.start();\nawait generate.mutateAsync({ ...req, onProgress: progress.onProgress });\n\n<AIGenerationProgress state={progress.state} running={generate.isPending} />\n{failure && <AIGenerationFailure failure={failure} />}`}
+      />
     </Section>
   );
 }

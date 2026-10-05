@@ -1,6 +1,32 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://solidping.io/schemas/checks/js.json",
+  "$defs": {
+    "AIConfig": {
+      "properties": {
+        "prompt": {
+          "type": "string"
+        },
+        "contract": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "model": {
+          "type": "string"
+        },
+        "generated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "repair": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
   "properties": {
     "script": {
       "type": "string"
@@ -22,6 +48,9 @@
       "type": "object",
       "format": "solidping-secret-ref",
       "description": "Stored encrypted. Prefer a `${env:VAR}` or `${param:key}` reference over an inlined credential in a config-as-code manifest."
+    },
+    "ai": {
+      "$ref": "#/$defs/AIConfig"
     }
   },
   "type": "object",

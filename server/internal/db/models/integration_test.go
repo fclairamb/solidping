@@ -23,6 +23,7 @@ func TestCapabilitiesFor(t *testing.T) {
 		{name: "mattermost", connType: ConnectionTypeMattermost, canNotify: true, canSource: false},
 		{name: "msteams", connType: ConnectionTypeMSTeams, canNotify: true, canSource: false},
 		{name: "msteams-bot", connType: ConnectionTypeMSTeamsBot, canNotify: true, canSource: false},
+		{name: "slack-webhook", connType: ConnectionTypeSlackWebhook, canNotify: true, canSource: false},
 		{name: "ntfy", connType: ConnectionTypeNtfy, canNotify: true, canSource: false},
 		{name: "pagerduty", connType: ConnectionTypePagerduty, canNotify: true, canSource: false},
 		{name: "pushover", connType: ConnectionTypePushover, canNotify: true, canSource: false},

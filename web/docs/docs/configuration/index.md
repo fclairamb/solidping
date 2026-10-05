@@ -313,6 +313,19 @@ See [Product Analytics](/configuration/analytics) for exactly what is and is not
 
 See [Observability](/features/observability) for Sentry and OpenTelemetry details.
 
+### AI-authored checks
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SP_AI_PROVIDER` | - | `openai` (Chat Completions, also every OpenAI-compatible endpoint) or `anthropic` (Messages API). Empty turns the feature off |
+| `SP_AI_BASE_URL` | driver default | Endpoint base URL, e.g. `https://ark.ap-southeast.bytepluses.com/api/v3` for BytePlus ModelArk |
+| `SP_AI_API_KEY` | - | Provider key. Never logged, never sent to workers or agents |
+| `SP_AI_MODEL` | - | Model ID, passed verbatim. Required when `SP_AI_PROVIDER` is set |
+| `SP_AI_MAX_TURNS` | `12` | Cap of the agent loop (LLM calls per generation or repair) |
+| `SP_AI_TIMEOUT` | `120s` | Timeout of one LLM call |
+
+See [AI-authored checks](/features/ai-authored-checks).
+
 ### Development
 
 | Variable | Description |

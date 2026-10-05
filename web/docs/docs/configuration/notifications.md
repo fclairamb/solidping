@@ -12,8 +12,9 @@ SolidPing supports multiple notification channels to alert you when incidents oc
 | Channel | Status | Configuration |
 |---------|--------|---------------|
 | Slack | Available | OAuth integration |
-| Microsoft Teams (bot) | Available | Azure Bot / Bot Framework (two-way) |
-| Microsoft Teams (webhook) | Available | Teams Workflow webhook (one-way) |
+| Slack (webhook) | Available | Incoming webhook URL (one-way, no app install) |
+| Teams (bot) | Available | Azure Bot / Bot Framework (two-way) |
+| Teams (webhook) | Available | Teams Workflow webhook (one-way) |
 | Discord | Available | Bot (OAuth install, two-way) or webhook (one-way) |
 | Email | Available | SMTP |
 | Webhooks | Available | HTTP POST |
@@ -243,6 +244,26 @@ Slack notifications include:
 - Error details (for failures)
 - Direct link to the check in SolidPing
 
+## Slack (webhook)
+
+If you cannot install the Slack app (self-hosted without a Slack app, or no workspace admin to approve it), add a **Slack (webhook)** integration. It is a separate type from the OAuth `slack` integration and an organization can use both.
+
+1. In Slack, create an [incoming webhook](https://api.slack.com/messaging/webhooks) and pick the channel.
+2. In SolidPing, go to **Integrations** → **New** → **Slack (webhook)**.
+3. Paste the URL (`https://hooks.slack.com/services/...`) in **Webhook URL** and save.
+
+The URL must be on `hooks.slack.com`. Other hosts, `http://` and private addresses are rejected when you save.
+
+Every event (created, resolved, escalated, reopened, comment, acknowledged, unacknowledged) is posted as a standalone message that carries the incident reference (`#42`). New organizations get `slack-webhook` in their `default` and `critical` severities. Existing organizations keep their current severities, so add it there yourself.
+
+What it cannot do compared to the Slack app:
+
+- no threads (a webhook returns no message id, so updates are not grouped under the alert)
+- no Acknowledge / Escalate buttons
+- no slash commands (`/check`, `/comment`)
+- no capture of thread replies as incident comments
+- no on-call mentions (Slack user ids are only known to the app)
+
 ## Microsoft Teams
 
 There are **two** Teams integrations, and they are independent — pick either, or
@@ -253,7 +274,7 @@ use both:
 | `msteams` | One-way: posts Adaptive Cards into a channel | A Teams Workflow URL. No server configuration, works behind a firewall. |
 | `msteams-bot` | Two-way: alerts **plus** `@SolidPing` commands, and incident cards that update in place | An Entra ID app + Azure Bot, and a **publicly reachable HTTPS endpoint**. |
 
-### Microsoft Teams (webhook) — the zero-infra option
+### Teams (webhook) — the zero-infra option
 
 1. In Teams, open **Workflows** → "Post to a channel when a webhook request is
    received"
@@ -263,7 +284,7 @@ use both:
 The legacy "Incoming Webhook" Office 365 connector is retired by Microsoft and
 will not work.
 
-### Microsoft Teams (bot) — the Slack-grade option
+### Teams (bot) — the Slack-grade option
 
 :::warning Public HTTPS endpoint required
 The Bot Framework has **no Socket-Mode equivalent**: Microsoft's servers push
@@ -311,7 +332,7 @@ on, precisely because of the public-endpoint requirement above.
 
 #### 3. Install the app in Teams and link your tenant
 
-1. In SolidPing, create a **Microsoft Teams (bot)** integration and open it.
+1. In SolidPing, create a **Teams (bot)** integration and open it.
 2. Click **Download Teams app package** — the zip is generated with your
    instance's app ID and URL already filled in, so nothing has to be edited.
 3. In Teams: **Apps → Manage your apps → Upload a custom app**, pick the zip,

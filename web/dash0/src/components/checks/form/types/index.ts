@@ -32,6 +32,9 @@ export interface CheckTypeModule<S = unknown> {
   // fully-populated state is declared here.
   ownedKeys: readonly string[];
   fromConfig(config: CheckConfig): S;
+  // Seeds the state from a sample config (the "Load sample" picker) instead of
+  // from a stored check. Optional: modules without it use `fromConfig`.
+  fromSample?(config: CheckConfig): S;
   toConfig(state: S): { config: CheckConfig; errors: FieldErrors };
   Fields: FC<CheckTypeFieldsProps<S>>;
 }
@@ -98,6 +101,11 @@ import {
   privateLocationModule,
 } from "./misc";
 
+import { healthModule, HealthAdvancedFields, healthAdvancedSummary } from "./health";
+import type { HealthState } from "./health";
+import { crawlModule, CrawlAdvancedFields, crawlAdvancedSummary } from "./crawl";
+import type { CrawlState } from "./crawl";
+
 // Widen a concrete `CheckTypeModule<S>` to the registry's `unknown` state type.
 // The form only ever pairs a module with the `configState` it produced, so the
 // erasure is sound.
@@ -137,6 +145,8 @@ const modules: CheckTypeModule[] = [
   entry(ntpModule),
   entry(rdpModule),
   entry(vncModule),
+  entry(crawlModule),
+  entry(healthModule),
   entry(sipModule),
   entry(jsModule),
   entry(sleepModule),
@@ -174,6 +184,11 @@ export const authFieldsRegistry: Partial<Record<CheckType, AuthSection>> = {
     summary: (state, configPrivateKeys) =>
       httpAuthSummary(state as HttpState, configPrivateKeys),
   },
+  health: {
+    Fields: HttpAuthFields as unknown as FC<CheckTypeFieldsProps>,
+    summary: (state, configPrivateKeys) =>
+      httpAuthSummary(state as HttpState, configPrivateKeys),
+  },
   grpc: {
     Fields: GrpcAuthFields as unknown as FC<CheckTypeFieldsProps>,
     summary: (state, configPrivateKeys) =>
@@ -203,5 +218,13 @@ export const advancedFieldsRegistry: Partial<
   grpc: {
     Fields: GrpcAdvancedFields as unknown as FC<CheckTypeFieldsProps>,
     summary: (state) => grpcAdvancedSummary(state as GrpcState),
+  },
+  health: {
+    Fields: HealthAdvancedFields as unknown as FC<CheckTypeFieldsProps>,
+    summary: (state) => healthAdvancedSummary(state as HealthState),
+  },
+  crawl: {
+    Fields: CrawlAdvancedFields as unknown as FC<CheckTypeFieldsProps>,
+    summary: (state) => crawlAdvancedSummary(state as CrawlState),
   },
 };

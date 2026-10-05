@@ -446,12 +446,30 @@ export function StatusPageView({
                 className="sp-logo h-[26px] w-auto max-w-[160px] object-contain"
                 data-testid="status-page-logo"
               />
+            ) : page.orgLogoUrl ? (
+              /* The org's own logo is the fallback before the SolidPing mark.
+                 It is the org's identity, not SolidPing branding, so
+                 hideBranding does not hide it. */
+              <img
+                src={page.orgLogoUrl}
+                alt={page.orgName ?? page.name}
+                className="sp-logo h-[26px] w-auto max-w-[160px] object-contain"
+                data-testid="status-page-org-logo"
+              />
             ) : (
               <Logo size={26} />
             )}
             <span className="sp-page-name text-sm font-semibold tracking-tight">
               {page.name}
             </span>
+            {page.orgName && (
+              <span
+                className="truncate text-xs text-muted-foreground"
+                data-testid="status-page-org-name"
+              >
+                {page.orgName}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <LanguageSwitcher />

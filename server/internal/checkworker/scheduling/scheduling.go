@@ -22,6 +22,7 @@
 package scheduling
 
 import (
+	"math"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/config"
@@ -67,6 +68,22 @@ const (
 	// LaneSlow is the capacity-capped lane for expensive checks (cost EWMA at
 	// or above LaneSlowThresholdMs).
 	LaneSlow uint8 = 1
+	// LaneBulk is the lane of multi-step slices (spec 2026-10-03-03): claimed
+	// last, never ahead of time, capped per worker by BulkLaneMax and sharing
+	// the non-reserved part of the pool with the slow lane (slow first). A job
+	// is created there by type and cost never moves it out.
+	LaneBulk uint8 = 2
+)
+
+// Bulk lane defaults (spec 2026-10-03-03).
+const (
+	// DefaultBulkLaneMax is the per-worker cap on slices in flight.
+	DefaultBulkLaneMax = 4
+	// DefaultBulkSliceBudget is the wall-clock budget of one slice.
+	DefaultBulkSliceBudget = 10 * time.Second
+	// MaxBulkSliceBudget clamps a configured slice budget: a slice is the
+	// lane's unit of preemption, and the bulk lease is sized off it.
+	MaxBulkSliceBudget = time.Minute
 )
 
 // Params bundles every tunable knob the scheduling math reads. It is built once
@@ -124,6 +141,15 @@ type Params struct {
 	// dead-band stops a check hovering at one threshold from flipping lanes
 	// every run and churning the partial claim indexes.
 	LaneFastThresholdMs float64
+
+	// BulkLaneMax caps bulk-lane slices in flight per worker (default 4).
+	// int32 with BulkSliceBudgetMs so Params stays small enough to pass by
+	// value.
+	BulkLaneMax int32
+
+	// BulkSliceBudgetMs is the wall-clock budget of one multi-step slice in
+	// ms (default 10s, clamped to MaxBulkSliceBudget).
+	BulkSliceBudgetMs int32
 }
 
 // ClassifyLane returns the lane a job belongs to after folding in its latest
@@ -136,6 +162,11 @@ type Params struct {
 // LaneSlowThresholdMs <= 0 the classifier is off and prevLane is returned
 // unchanged.
 func ClassifyLane(prevLane uint8, costEWMAMs float64, params Params) uint8 {
+	// A bulk job is bulk by type (spec 2026-10-03-03): cost never moves it.
+	if prevLane == LaneBulk {
+		return LaneBulk
+	}
+
 	if params.LaneSlowThresholdMs <= 0 {
 		return prevLane
 	}
@@ -416,7 +447,7 @@ func DelaySampleMs(scheduledAt, effectiveScheduledAt *time.Time, execStart time.
 // It lives here rather than in the worker because both sides of the post-exec
 // accounting need it: the in-process worker and the server-side submit path
 // that scores results arriving over the agent transport.
-func ParamsFromConfig(cfg config.SchedulingConfig) Params {
+func ParamsFromConfig(cfg *config.SchedulingConfig) Params {
 	secs := func(seconds float64) time.Duration { return time.Duration(seconds * float64(time.Second)) }
 	millis := func(ms float64) time.Duration { return time.Duration(ms * float64(time.Millisecond)) }
 
@@ -429,5 +460,73 @@ func ParamsFromConfig(cfg config.SchedulingConfig) Params {
 		CostTimeoutFloor:    millis(cfg.CostTimeoutFloorMs),
 		LaneSlowThresholdMs: cfg.LaneSlowThresholdMs,
 		LaneFastThresholdMs: cfg.LaneFastThresholdMs,
+		BulkLaneMax:         clampInt32(cfg.BulkLaneMax),
+		BulkSliceBudgetMs:   clampInt32(int(min(cfg.BulkSliceBudgetMs, float64(MaxBulkSliceBudget.Milliseconds())))),
 	}
+}
+
+// EffectiveBulkLaneMax returns BulkLaneMax with its default applied.
+func (p Params) EffectiveBulkLaneMax() int {
+	if p.BulkLaneMax <= 0 {
+		return DefaultBulkLaneMax
+	}
+
+	return int(p.BulkLaneMax)
+}
+
+// clampInt32 narrows a config int to int32, saturating.
+func clampInt32(value int) int32 {
+	return int32(max(0, min(value, math.MaxInt32)))
+}
+
+// EffectiveBulkSliceBudget returns BulkSliceBudget with its default and clamp
+// applied.
+func (p Params) EffectiveBulkSliceBudget() time.Duration {
+	budget := time.Duration(p.BulkSliceBudgetMs) * time.Millisecond
+
+	switch {
+	case budget <= 0:
+		return DefaultBulkSliceBudget
+	case budget > MaxBulkSliceBudget:
+		return MaxBulkSliceBudget
+	default:
+		return budget
+	}
+}
+
+// Limits is the per-lane claim budget of one fetch.
+type Limits struct {
+	// Fast is the total claim capacity: every free runner slot.
+	Fast int
+	// Slow is the slow lane's budget.
+	Slow int
+	// Bulk is the bulk lane's budget BEFORE the slow jobs claimed in the same
+	// transaction are deducted (the claim subtracts them: slow has priority).
+	Bulk int
+}
+
+// LaneLimits computes the per-lane claim limits of one fetch (spec
+// 2026-07-01-03 D3, bulk lane added by spec 2026-10-03-03). Fast jobs may use
+// any free slot. Slow and bulk share the non-reserved part of the pool,
+// shared = poolSize − fastReserved:
+//
+//	slow = clamp(shared − busySlow − busyBulk, 0, free)
+//	bulk = clamp(min(bulkMax − busyBulk, shared − busySlow − busyBulk), 0, free)
+//
+// and the claim deducts the slow jobs it just claimed from bulk, so slow and
+// bulk together never exceed shared and the fast reservation is never reduced.
+// Per-worker enforcement is fleet-correct: every worker guarantees its own
+// floor.
+func LaneLimits(free, poolSize, fastReserved, busySlow, busyBulk, bulkMax int) Limits {
+	shared := (poolSize - fastReserved) - busySlow - busyBulk
+
+	return Limits{
+		Fast: free,
+		Slow: clampInt(shared, 0, free),
+		Bulk: clampInt(min(bulkMax-busyBulk, shared), 0, free),
+	}
+}
+
+func clampInt(value, low, high int) int {
+	return max(low, min(value, high))
 }

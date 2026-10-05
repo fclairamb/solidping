@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
   Plus,
+  Sparkles,
   Search,
   RefreshCw,
   MoreVertical,
@@ -30,6 +31,7 @@ import {
   Server,
   X,
 } from "lucide-react";
+import { useAIChecksEnabled } from "@/api/public-config";
 import { toast } from "sonner";
 import { AutoPlacementBulkDialog } from "@/components/checks/auto-placement-bulk";
 import {
@@ -1036,6 +1038,7 @@ function ChecksIndexPage() {
   const { t } = useTranslation("checks");
   const { t: tc } = useTranslation("common");
   const { org } = Route.useParams();
+  const aiChecksEnabled = useAIChecksEnabled();
   const {
     labels: labelsParam,
     status: statusParam,
@@ -1570,6 +1573,15 @@ function ChecksIndexPage() {
                 <span className="hidden sm:inline">{t("newCheck")}</span>
               </Button>
             </Link>
+            {/* "Describe it" (spec 2026-10-03-07): only when the server has an AI provider. */}
+            {aiChecksEnabled && (
+              <Button variant="outline" asChild data-testid="describe-check-button" aria-label={t("ai.describeButton")}>
+                <Link to="/orgs/$org/checks/describe" params={{ org }}>
+                  <Sparkles className="sm:mr-2 h-4 w-4" />
+                  <span className="hidden sm:inline">{t("ai.describeButton")}</span>
+                </Link>
+              </Button>
+            )}
             {/*
               Org-level tools run a few times a year, so they sit behind one
               menu instead of four equal-weight buttons (spec 2026-09-30-02).

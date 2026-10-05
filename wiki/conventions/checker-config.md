@@ -232,6 +232,9 @@ Either `url` or `host` is required. Requires raw socket privileges.
 | `record_type` | string | O | | Record type: A, AAAA, MX, CNAME, TXT, etc. |
 | `expected_ips` | string[] | O | | Expected IP addresses in response |
 | `expected_values` | string[] | O | | Expected values in response records |
+| `detect_changes` | bool | O | false | Capture the answer as a per-region baseline and report any change against it |
+| `baseline` | object | O | | Region to normalized values. Filled by the server on the first successful run of each region; `{}` resets it, omitting it keeps it |
+| `on_change` | string | O | `down` | Status on a baseline difference: `down` or `warning` |
 
 Either `url` or `host` is required. Default period: 5 minutes.
 

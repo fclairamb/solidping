@@ -37,6 +37,7 @@ The OSS never models "you're on the Pro plan, so you get…". It stores the
 | `maxCallsPerMonth` | Outbound voice calls placed by the org per UTC calendar month. | notification dispatch (voice channel) |
 | `maxWhatsappPerMonth` | Outbound WhatsApp template messages per UTC calendar month. | notification dispatch (WhatsApp channel) |
 | `maxSlos` | Service-level objectives the org may hold. | `SloCreateAllowed` → [`entitlements/usage.go`](../../server/internal/entitlements/usage.go), called from [`slos/service.go` (`CreateSLO`)](../../server/internal/handlers/slos/service.go) |
+| `maxAiTokensPerDay` | LLM tokens (input + output) the org spends per UTC day on AI-authored js checks (spec 2026-10-03-07). Summed from `check.ai_usage` events. | `budgetLeft` → [`aichecks/service.go`](../../server/internal/aichecks/service.go), before every contract, generation and repair (429 `QUOTA_EXCEEDED`) |
 | `whiteLabel` | **Boolean, not a cap.** Whether the org may drop the "powered by SolidPing" badge from its status pages (spec 2026-08-21-07). | `WhiteLabelAllowed` → [`entitlements/service.go`](../../server/internal/entitlements/service.go), called from [`statuspages/service.go`](../../server/internal/handlers/statuspages/service.go) |
 
 **An internal check counts nowhere, in all three systems** (spec
@@ -139,10 +140,10 @@ after an upgrade or after deleting another agent.
 
 `DefaultsFor(mode)` — anything not listed is `nil` (unlimited):
 
-| Mode | maxChecks | maxUsers | maxChecksPerMinute | maxDeportedAgents | maxCustomDomains | maxSmsPerMonth | maxCallsPerMonth | maxWhatsappPerMonth | maxSlos | whiteLabel | Display identity |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| Self-hosted | unlimited | 30 | unlimited | unlimited | unlimited | unlimited | unlimited | unlimited | unlimited | **true** | 🏠 Self-hosted |
-| SaaS | 100 | 5 | 10 | 1 | 0 | 0 | 0 | 0 | 2 | **false** | 🆓 Free |
+| Mode | maxChecks | maxUsers | maxChecksPerMinute | maxDeportedAgents | maxCustomDomains | maxSmsPerMonth | maxCallsPerMonth | maxWhatsappPerMonth | maxSlos | maxAiTokensPerDay | whiteLabel | Display identity |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Self-hosted | unlimited | 30 | unlimited | unlimited | unlimited | unlimited | unlimited | unlimited | unlimited | unlimited | **true** | 🏠 Self-hosted |
+| SaaS | 100 | 5 | 10 | 1 | 0 | 0 | 0 | 0 | 2 | 200000 | **false** | 🆓 Free |
 
 Self-hosted gets `whiteLabel` unconditionally: an operator running their own
 instance should never have to pay to take our badge off their own status page.

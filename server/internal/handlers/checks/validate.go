@@ -23,6 +23,14 @@ import (
 // private (agent-hosted) regions.
 var ErrDockerNotAvailableInSaaS = errors.New("docker checks are not available on this deployment")
 
+// Multi-step placement errors (spec 2026-10-03-03).
+var (
+	// ErrMultiStepPrivateLocation refuses a crawl on a private location.
+	ErrMultiStepPrivateLocation = errors.New("website crawls run on cloud regions only, not on a private location")
+	// ErrMultiStepSingleRegion refuses a crawl pinned to several regions.
+	ErrMultiStepSingleRegion = errors.New("a website crawl runs from a single region")
+)
+
 // Machine codes carried by validate findings (spec 2026-08-26-05). They are
 // the stable half of a finding: messages are prose and get reworded, codes are
 // what a client may branch on.
@@ -419,7 +427,33 @@ func (s *Service) configValidationErrors(
 		errs = append(errs, err)
 	}
 
+	if err := validateMultiStepPlacement(checkType, checkRegions); err != nil {
+		errs = append(errs, err)
+	}
+
 	return errs
+}
+
+// validateMultiStepPlacement holds a multi-step check (spec 2026-10-03-03) to
+// one cloud region: its state is stored and read by the server's own workers
+// only, so it can never run on a private location, and a crawl from several
+// regions costs that many times more for the same findings.
+func validateMultiStepPlacement(checkType string, checkRegions []string) error {
+	if !checkerdef.CheckType(checkType).IsMultiStep() {
+		return nil
+	}
+
+	for _, region := range checkRegions {
+		if regions.IsPrivateRegion(region) {
+			return checkerdef.NewConfigError("regions", ErrMultiStepPrivateLocation.Error())
+		}
+	}
+
+	if len(checkRegions) > 1 {
+		return checkerdef.NewConfigError("regions", ErrMultiStepSingleRegion.Error())
+	}
+
+	return nil
 }
 
 // validateDockerDeploymentConfig rejects a docker check in SaaS mode unless
@@ -682,9 +716,10 @@ func (s *Service) orgRateWarning(
 	// selection is the automatic placement (frequently more than one region).
 	// Projecting the raw request would under-count exactly the case (a fresh
 	// check, no regions touched) the warning exists for.
-	projected, err := s.entitlements.ProjectChecksPerMinute(ctx, orgUID, entcore.CheckRateProposal{
+	projected, err := s.entitlements.ProjectChecksPerMinute(ctx, orgUID, &entcore.CheckRateProposal{
 		ExcludeCheckUID: req.ExcludeCheckUID,
 		Type:            req.Type,
+		Config:          req.Config,
 		Period:          period,
 		Regions:         proposedRegions,
 		Enabled:         true,

@@ -919,38 +919,6 @@ func TestExecuteHeartbeatJob_RunningStatus(t *testing.T) {
 	})
 }
 
-// TestLaneLimits covers the per-fetch reservation formula (spec 2026-07-01-03
-// D3): slowBudget = max(0, (P − F) − busySlow), clamped to the free slots;
-// fast always gets the full free capacity.
-func TestLaneLimits(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name                       string
-		free, pool, reserved, busy int
-		wantFast, wantSlow         int
-	}{
-		{"idle pool, default floor", 4, 4, 1, 0, 4, 3},
-		{"slow at the cap claims no more slow", 1, 4, 1, 3, 1, 0},
-		{"partially busy slow", 2, 4, 1, 2, 2, 1},
-		{"no reservation (F=0) lets slow fill the pool", 4, 4, 0, 0, 4, 4},
-		{"slow budget clamped to free slots", 1, 25, 5, 0, 1, 1},
-		{"busy beyond budget floors at zero", 2, 4, 1, 5, 2, 0},
-		{"floor at pool−1 leaves one slow slot", 4, 4, 3, 0, 4, 1},
-		{"no free slots", 0, 4, 1, 1, 0, 0},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			fast, slow := laneLimits(tt.free, tt.pool, tt.reserved, tt.busy)
-			require.Equal(t, tt.wantFast, fast, "fastLimit")
-			require.Equal(t, tt.wantSlow, slow, "slowLimit")
-		})
-	}
-}
-
 // TestNewCheckWorkerClampsFastLaneReserved verifies the startup clamp (spec
 // 2026-07-01-03 risk log): a floor at or above the pool size is pulled back to
 // pool−1 so the slow lane is never silently killed; a negative floor becomes 0.

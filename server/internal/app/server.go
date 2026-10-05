@@ -27,6 +27,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	k8sclient "k8s.io/client-go/kubernetes"
 
+	"github.com/fclairamb/solidping/server/internal/aichecks"
 	"github.com/fclairamb/solidping/server/internal/analytics"
 	"github.com/fclairamb/solidping/server/internal/app/services"
 	"github.com/fclairamb/solidping/server/internal/audit"
@@ -51,6 +52,7 @@ import (
 	entitlementsapi "github.com/fclairamb/solidping/server/internal/entitlements"
 	agentsadmin "github.com/fclairamb/solidping/server/internal/handlers/agents"
 	"github.com/fclairamb/solidping/server/internal/handlers/agentws"
+	aichecksapi "github.com/fclairamb/solidping/server/internal/handlers/aichecks"
 	"github.com/fclairamb/solidping/server/internal/handlers/attachments"
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
 	"github.com/fclairamb/solidping/server/internal/handlers/availability"
@@ -60,6 +62,8 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/checkdependencies"
 	"github.com/fclairamb/solidping/server/internal/handlers/checkgroups"
 	"github.com/fclairamb/solidping/server/internal/handlers/checkjobs"
+	"github.com/fclairamb/solidping/server/internal/handlers/checkrunnow"
+	"github.com/fclairamb/solidping/server/internal/handlers/checkruns"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks/importers"
 	"github.com/fclairamb/solidping/server/internal/handlers/checkscreenshots"
@@ -193,7 +197,9 @@ type Server struct {
 	dbService db.Service
 	jobSvc    jobsvc.Service
 	services  *services.Registry
-	router    *httpx.Router
+	// aiChecks authors and repairs AI-written js checks (spec 2026-10-03-07).
+	aiChecks *aichecks.Service
+	router   *httpx.Router
 	// handler is s.router, optionally wrapped by compressionWrapper (see
 	// SetupRoutes). It is the outermost handler: Server.Handler() and
 	// handlerWithDocsHost's fallthrough both serve this, never s.router
@@ -479,6 +485,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	checksSvc.SetDeploymentMode(cfg.Deployment.Mode)
 	svcList.Checks = checksSvc
 	svcList.PrivateLocationMonitors = checksSvc
+	aiChecksSvc := buildAIChecks(cfg, dbService, checksSvc, entitlementsService, credSvc, svcList)
 
 	// Instance-level SMS/voice providers, built ONCE here and shared by every
 	// org that has not brought its own account. A misconfiguration (unknown
@@ -542,6 +549,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		dbService:         dbService,
 		jobSvc:            jobService,
 		services:          svcList,
+		aiChecks:          aiChecksSvc,
 		config:            cfg,
 		authService:       authService,
 		profilerSrv:       profiler.New(&cfg.Profiler),
@@ -1060,6 +1068,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		s.services.Credentials, s.services.Entitlements, s.services.Realtime,
 		s.config,
 	)
+	s.mcpHandler.SetScriptRunner(s.aiChecks.Runner())
 	mcpGroup := api.NewGroup("/mcp")
 	// GET is deliberately outside RequireMCPAuth: a browser opening the
 	// endpoint has no token and gets a helpful redirect to the dashboard MCP
@@ -1196,6 +1205,12 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Import, apply and export are deliberately NOT relaxed: they mutate, and
 	// apply can delete by absence.
 	orgGroupSelf("/orgs/:org/checks").POST("/validate", checksHandler.ValidateCheck)
+	// AI authoring of js checks (spec 2026-10-03-07): literal segments,
+	// registered ahead of the "/:checkUid" routes. 404 when no AI provider
+	// is configured.
+	aiChecksHandler := aichecksapi.NewHandler(s.aiChecks, s.dbService, s.config)
+	orgChecks.POST("/ai/contract", aiChecksHandler.Contract)
+	orgChecks.POST("/ai/generate", aiChecksHandler.Generate)
 	orgChecks.GET("/:checkUid", checksHandler.GetCheck)
 	orgChecks.PUT("/:slug", checksHandler.UpsertCheck)
 	orgChecks.PATCH("/:checkUid", checksHandler.UpdateCheck)
@@ -1204,6 +1219,15 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Heartbeat-only: mints a fresh ping token, invalidating every existing
 	// ping URL immediately (400 for non-heartbeat checks).
 	orgChecks.POST("/:checkUid/rotate-token", checksHandler.RotateHeartbeatToken)
+
+	// Check version history (spec 2026-10-03-06): list, read, diff, restore,
+	// and the decision on proposed versions.
+	orgChecks.GET("/:checkUid/versions", checksHandler.ListCheckVersions)
+	orgChecks.GET("/:checkUid/versions/:version", checksHandler.GetCheckVersion)
+	orgChecks.GET("/:checkUid/versions/:version/diff", checksHandler.DiffCheckVersion)
+	orgChecks.POST("/:checkUid/versions/:version/restore", checksHandler.RestoreCheckVersion)
+	orgChecks.POST("/:checkUid/versions/:version/approve", checksHandler.ApproveCheckVersion)
+	orgChecks.POST("/:checkUid/versions/:version/reject", checksHandler.RejectCheckVersion)
 
 	// Network discovery routes. Registered through orgGroup (rather than a
 	// bare api.NewGroup, as before spec 2026-09-16-09) so the viewer-role
@@ -1368,7 +1392,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		s.dbService,
 		s.services.CheckJobs,
 		agentWorkerIncidents,
-		scheduling.ParamsFromConfig(s.config.Server.Scheduling),
+		scheduling.ParamsFromConfig(&s.config.Server.Scheduling),
 	)
 	agentWSHandler := agentws.NewHandler(
 		s.config,
@@ -1405,6 +1429,23 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgCheckScreenshots := orgGroup("/orgs/:org/checks/:checkUid/screenshots")
 	orgCheckScreenshots.GET("", checkScreenshotsHandler.List)
 	orgCheckScreenshots.POST("/capture", checkScreenshotsHandler.Capture)
+
+	// Multi-step runs (spec 2026-10-03-03): the run in progress (read), its
+	// cancellation (write: orgGroup refuses viewers) and the crawl reports.
+	checkRunsHandler := checkruns.NewHandler(checkruns.NewService(s.dbService, attachmentsService), s.config)
+	orgCheckRuns := orgGroup("/orgs/:org/checks/:checkUid")
+	orgCheckRuns.GET("/run", checkRunsHandler.GetRun)
+	orgCheckRuns.DELETE("/run", checkRunsHandler.CancelRun)
+	orgCheckRuns.GET("/crawl-reports", checkRunsHandler.ListCrawlReports)
+
+	// "Run now" (spec 2026-10-04-01): any check, once, in every region. An
+	// action path, deliberately not a POST on /run (the multi-step run
+	// resource, which a run-now request does not create). A write, rate
+	// limited in the service.
+	checkRunNowHandler := checkrunnow.NewHandler(
+		checkrunnow.NewService(s.dbService, s.services.EventNotifier, s.services.Clock), s.config,
+	)
+	orgCheckRuns.POST("/run-now", checkRunNowHandler.RunNow)
 
 	// …and its counterpart for DEPORTED agents (spec 2026-08-21-05): an agent
 	// cannot put image bytes on the JSON socket, so a result that opens or reopens an
@@ -1907,6 +1948,8 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// keep up with.
 	incidentPublicationsService.SetPageMemoInvalidator(statusPagesService)
 	statusUpdatesService.SetPageMemoInvalidator(statusPagesService)
+	orgLogoService.SetPageMemoInvalidator(statusPagesService)
+	s.authService.SetPageMemoInvalidator(statusPagesService)
 	// A hard demotion reached through the synchronous Verify button alerts the
 	// org exactly like one the periodic sweep reaches (spec 2026-08-23-03, R4).
 	statusPagesService.SetJobsService(s.services.Jobs)

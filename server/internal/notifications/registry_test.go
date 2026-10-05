@@ -22,6 +22,7 @@ func TestGetSender_NotifyCapableTypesResolve(t *testing.T) {
 		models.ConnectionTypeMattermost,
 		models.ConnectionTypeMSTeams,
 		models.ConnectionTypeMSTeamsBot,
+		models.ConnectionTypeSlackWebhook,
 		models.ConnectionTypeNtfy,
 		models.ConnectionTypeMatrix,
 		models.ConnectionTypePagerduty,
@@ -98,6 +99,7 @@ func TestAcceptsEventType_CommentOptOut(t *testing.T) {
 		models.ConnectionTypeMattermost,
 		models.ConnectionTypeMSTeams,
 		models.ConnectionTypeMSTeamsBot,
+		models.ConnectionTypeSlackWebhook,
 		models.ConnectionTypeNtfy,
 		models.ConnectionTypeMatrix,
 		models.ConnectionTypePagerduty,
@@ -106,4 +108,12 @@ func TestAcceptsEventType_CommentOptOut(t *testing.T) {
 	} {
 		r.True(AcceptsEventType(connType, "incident.comment"), string(connType))
 	}
+}
+
+func TestGetSender_SlackWebhookResolvesToItsOwnSender(t *testing.T) {
+	t.Parallel()
+
+	sender, ok := GetSender(models.ConnectionTypeSlackWebhook)
+	require.True(t, ok)
+	require.IsType(t, &SlackWebhookSender{}, sender)
 }

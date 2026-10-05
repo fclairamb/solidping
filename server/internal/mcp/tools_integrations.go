@@ -52,8 +52,8 @@ func listIntegrationsDef() ToolDefinition {
 			"with mcp:read tokens.",
 		InputSchema: objectSchema(map[string]any{
 			schemaKeyType: stringProp(
-				"Filter by integration type. Allowed: slack, webhook, email, msteams, " +
-					"msteams-bot. Example: \"slack\". (\"msteams\" is the one-way Teams " +
+				"Filter by integration type. Allowed: slack, slack-webhook, webhook, email, " +
+					"msteams, msteams-bot. Example: \"slack\". (\"msteams\" is the one-way Teams " +
 					"Workflow webhook; \"msteams-bot\" is the two-way Teams bot.)",
 			),
 		}, nil),

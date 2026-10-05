@@ -353,16 +353,19 @@ func (s *Service) ListIncidentAttachments(
 // SNIFFED media type, so the name a user downloads can never disagree with the
 // bytes inside it.
 //
-// ONE EXCEPTION: `checks/<uid>/screenshot` (spec 2026-09-25-34) names the
+// EXCEPTIONS: `checks/<uid>/screenshot` (spec 2026-09-25-34) names the
 // check's recent captures, not one current artifact. It appends, then prunes
-// to MaxCheckScreenshots — see appendCapped. Deciding it HERE rather than in
+// to MaxCheckScreenshots — see appendCapped. `checks/<uid>/step-state` and
+// `checks/<uid>/crawl-report` (spec 2026-10-03-03) append too, keeping 2 and 5:
+// deleting the current state before the new one is pointed at would strand a
+// run whose worker died in between. Deciding it HERE rather than in
 // each caller is what makes the in-process path and the agent upload share
 // the cap.
 func (s *Service) Put(
 	ctx context.Context, orgUID, topic, baseName string, body []byte, details models.JSONMap,
 ) (string, error) {
-	if isCheckScreenshotTopic(topic) {
-		return s.appendCapped(ctx, orgUID, topic, baseName, body, details, MaxCheckScreenshots)
+	if keep := appendKeepFor(topic); keep > 0 {
+		return s.appendCapped(ctx, orgUID, topic, baseName, body, details, keep)
 	}
 
 	if _, err := s.files.DeleteAttachmentsByTopic(ctx, orgUID, topic); err != nil {
@@ -452,7 +455,7 @@ func (s *Service) put(
 	}
 
 	file, err := s.files.CreateFile(
-		ctx, parsedOrg, filestorage.GroupTypeScreenshots,
+		ctx, parsedOrg, groupForTopic(topic),
 		baseName+extensionFor(mimeType), mimeType, nil, bytes.NewReader(body), int64(len(body)),
 		files.WithTopic(topic), files.WithDetails(details),
 	)
@@ -461,6 +464,25 @@ func (s *Service) put(
 	}
 
 	return file.UID, nil
+}
+
+// groupForTopic is the storage group a topic's blobs land in: step state in
+// its own group, reports with the reports, every other attachment with the
+// screenshots (where they always were).
+func groupForTopic(topic string) filestorage.GroupType {
+	parsed, err := ParseTopic(topic)
+	if err != nil {
+		return filestorage.GroupTypeScreenshots
+	}
+
+	switch parsed.Kind {
+	case KindStepState:
+		return filestorage.GroupTypeCheckState
+	case KindCrawlReport:
+		return filestorage.GroupTypeReports
+	default:
+		return filestorage.GroupTypeScreenshots
+	}
 }
 
 // sniffMime validates the bytes against the allowlist FOR THIS TOPIC'S KIND.
@@ -493,6 +515,20 @@ func sniffMime(topic string, body []byte) (string, error) {
 		// worse stored than refused.
 		if _, parseErr := nettrace.ParseCapture(body); parseErr != nil {
 			return "", fmt.Errorf("%w: %s", ErrUnsupportedMediaType, parseErr.Error())
+		}
+
+		return mimeJSON, nil
+
+	case KindStepState:
+		if err := validateStepStateEnvelope(body); err != nil {
+			return "", fmt.Errorf("%w: %s", ErrUnsupportedMediaType, err.Error())
+		}
+
+		return mimeJSON, nil
+
+	case KindCrawlReport:
+		if err := validateCrawlReport(body); err != nil {
+			return "", fmt.Errorf("%w: %s", ErrUnsupportedMediaType, err.Error())
 		}
 
 		return mimeJSON, nil
@@ -664,6 +700,13 @@ func NewCheckAuthorizer(dbSvc db.Service) TopicAuthorizer {
 	return AuthorizerFunc(func(
 		ctx context.Context, topic ParsedTopic, who UploaderIdentity,
 	) (string, error) {
+		// Multi-step state and crawl reports are written by the in-process
+		// worker only (spec 2026-10-03-03): an agent never runs a multi-step
+		// slice, so an upload under these kinds is refused outright.
+		if isServerOnlyKind(topic.Kind) {
+			return "", fmt.Errorf("%w: only the server writes %s attachments", ErrTopicForbidden, topic.Kind)
+		}
+
 		check, err := dbSvc.GetCheckAny(ctx, topic.EntityUID)
 		if err != nil || check == nil {
 			return "", fmt.Errorf("%w: unknown check", ErrTopicForbidden)

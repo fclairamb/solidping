@@ -79,5 +79,20 @@ func (c *DNSChecker) GetSampleConfigs(opts *checkerdef.ListSampleOptions) []chec
 				Timeout:    sampleTimeout,
 			}).GetConfig(),
 		},
+		{
+			// Baseline change detection (spec 2026-10-03-04) on the record
+			// most worth watching: a changed NS delegation is the classic sign
+			// of a hijack or a lapsed domain taken over, and NS answers do not
+			// rotate the way A records behind a CDN do.
+			Name:   "GitHub NS change detection",
+			Slug:   "dns-github-ns-changes",
+			Period: time.Minute * 5,
+			Config: (&DNSConfig{
+				Host:          "github.com",
+				RecordType:    recordTypeNS,
+				Timeout:       sampleTimeout,
+				DetectChanges: true,
+			}).GetConfig(),
+		},
 	}
 }

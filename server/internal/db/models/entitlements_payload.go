@@ -59,6 +59,11 @@ type EntitlementLimits struct {
 	// nil = unlimited (self-hosted default); SaaS defaults to 2 and billing
 	// raises it per plan.
 	MaxSlos *int `json:"maxSlos,omitempty"`
+	// MaxAITokensPerDay caps the LLM tokens (input + output) the org may
+	// spend per UTC day on AI-authored js checks (spec 2026-10-03-07): the
+	// SaaS runs them on a server key. nil = unlimited (self-hosted default,
+	// the operator's own key).
+	MaxAITokensPerDay *int `json:"maxAiTokensPerDay,omitempty"`
 	// WhiteLabel is the one non-numeric entitlement: whether the org may drop
 	// the "powered by SolidPing" badge from its status pages (spec
 	// 2026-08-21-07). It lives here rather than in a sibling struct because
@@ -98,6 +103,7 @@ func (l *EntitlementLimits) UnmarshalJSON(data []byte) error {
 		MaxCallsPerMonth    *int  `json:"maxCallsPerMonth"`
 		MaxWhatsappPerMonth *int  `json:"maxWhatsappPerMonth"`
 		MaxSlos             *int  `json:"maxSlos"`
+		MaxAITokensPerDay   *int  `json:"maxAiTokensPerDay"`
 		WhiteLabel          *bool `json:"whiteLabel"`
 	}
 
@@ -119,6 +125,7 @@ func (l *EntitlementLimits) UnmarshalJSON(data []byte) error {
 	l.MaxCallsPerMonth = wire.MaxCallsPerMonth
 	l.MaxWhatsappPerMonth = wire.MaxWhatsappPerMonth
 	l.MaxSlos = wire.MaxSlos
+	l.MaxAITokensPerDay = wire.MaxAITokensPerDay
 	l.WhiteLabel = wire.WhiteLabel
 
 	if wire.MaxUsers != nil {

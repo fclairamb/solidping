@@ -21,6 +21,7 @@ func (h *Handler) registerTools() {
 		{listCheckGroupsDef(), h.toolListCheckGroups},
 		{listRegionsDef(), h.toolListRegions},
 		{diagnoseCheckDef(), h.toolDiagnoseCheck},
+		{runCheckDef(), h.toolRunCheck},
 		// Status pages
 		{listStatusPagesDef(), h.toolListStatusPages},
 		{getStatusPageDef(), h.toolGetStatusPage},
@@ -55,6 +56,11 @@ func (h *Handler) registerTools() {
 		{listCheckTypesDef(), h.toolListCheckTypes},
 		{getCheckTypeSamplesDef(), h.toolGetCheckTypeSamples},
 		{validateCheckDef(), h.toolValidateCheck},
+		// js check authoring probes (spec 2026-10-03-07): no LLM involved,
+		// so they are listed whether or not an AI provider is configured.
+		{runJSScriptDef(), h.toolRunJSScript},
+		{fetchPageDef(), h.toolFetchPage},
+		{browserSnapshotDef(), h.toolBrowserSnapshot},
 	}
 
 	h.tools = make([]ToolDefinition, len(all))

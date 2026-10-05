@@ -144,6 +144,14 @@ const (
 // The status-update write paths, in package statusupdates — the page's
 // recentUpdates timeline.
 const (
+	// WritePathOrgLogoUpload and WritePathOrgLogoClear change the org logo the
+	// public payload carries as orgLogoUrl.
+	WritePathOrgLogoUpload PageMemoWritePath = "orglogo.Upload"
+	WritePathOrgLogoClear  PageMemoWritePath = "orglogo.Clear"
+	// WritePathUpdateOrgProfile renames the org or changes its logo URL, both of
+	// which the public payload carries (orgName, orgLogoUrl).
+	WritePathUpdateOrgProfile PageMemoWritePath = "auth.UpdateOrgProfile"
+
 	// WritePathCreateStatusUpdate posts a status update.
 	WritePathCreateStatusUpdate PageMemoWritePath = "statusupdates.CreateStatusUpdate"
 	// WritePathUpdateStatusUpdate edits one.
@@ -174,6 +182,8 @@ const (
 	filePublicationsSvc    = "internal/handlers/incidentpublications/service.go"
 	filePublicationsPolicy = "internal/handlers/incidentpublications/policy.go"
 	fileStatusUpdatesSvc   = "internal/handlers/statusupdates/service.go"
+	fileOrgLogoSvc         = "internal/handlers/orglogo/service.go"
+	fileOrgProfile         = "internal/handlers/auth/org_profile.go"
 )
 
 // PageMemoWritePaths is THE list of write paths that evict the view memo, each
@@ -215,6 +225,10 @@ var PageMemoWritePaths = []pageMemoWritePathSite{
 	{WritePathAutoPublish, filePublicationsPolicy, "AutoPublish"},
 	{WritePathApplyResolvePolicy, filePublicationsPolicy, "applyResolvePolicy"},
 	{WritePathOnIncidentReopened, filePublicationsPolicy, "OnIncidentReopened"},
+
+	{WritePathOrgLogoUpload, fileOrgLogoSvc, "Upload"},
+	{WritePathOrgLogoClear, fileOrgLogoSvc, "Clear"},
+	{WritePathUpdateOrgProfile, fileOrgProfile, "UpdateOrgProfile"},
 
 	{WritePathCreateStatusUpdate, fileStatusUpdatesSvc, "CreateStatusUpdate"},
 	{WritePathUpdateStatusUpdate, fileStatusUpdatesSvc, "UpdateStatusUpdate"},

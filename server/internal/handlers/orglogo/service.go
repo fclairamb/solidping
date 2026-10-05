@@ -69,6 +69,26 @@ func allowedLogoType(mimeType string) bool {
 type Service struct {
 	db    db.Service
 	files *files.Service
+	// pageMemo evicts the public status-page views of the org after a logo
+	// change: the public payload carries orgLogoUrl. Optional.
+	pageMemo PageMemoInvalidator
+}
+
+// PageMemoInvalidator evicts memoized public status-page views of one
+// organization. Injected, because the status-pages package owns the memo.
+type PageMemoInvalidator interface {
+	InvalidateOrg(orgUID string)
+}
+
+// SetPageMemoInvalidator wires the status-page view memo. Optional.
+func (s *Service) SetPageMemoInvalidator(inv PageMemoInvalidator) {
+	s.pageMemo = inv
+}
+
+func (s *Service) invalidatePageMemo(orgUID string) {
+	if s.pageMemo != nil {
+		s.pageMemo.InvalidateOrg(orgUID)
+	}
 }
 
 // NewService constructs the org-logo service.
@@ -131,6 +151,7 @@ func (s *Service) Upload(
 	}
 
 	s.retireFile(ctx, org, file.UID)
+	s.invalidatePageMemo(org.UID)
 
 	return s.db.GetOrganization(ctx, org.UID)
 }
@@ -152,6 +173,7 @@ func (s *Service) Clear(ctx context.Context, orgSlug string) (*models.Organizati
 	}
 
 	s.retireFile(ctx, org, "")
+	s.invalidatePageMemo(org.UID)
 
 	return s.db.GetOrganization(ctx, org.UID)
 }

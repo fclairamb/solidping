@@ -107,7 +107,7 @@ func (f *fairnessFixture) claimInProcess(t *testing.T) []*models.CheckJob {
 	t.Helper()
 
 	jobs, _, err := f.svc.ClaimJobs(
-		f.ctx, f.worker.UID, &f.region, fairnessChecks, fairnessChecks, 5*time.Minute,
+		f.ctx, f.worker.UID, &f.region, fairnessChecks, fairnessChecks, 0, 5*time.Minute,
 	)
 	require.NoError(t, err)
 

@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/fclairamb/solidping/server/internal/aichecks"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
@@ -18,6 +19,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/handlers/checkgroups"
+	"github.com/fclairamb/solidping/server/internal/handlers/checkrunnow"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/handlers/checktypes"
 	"github.com/fclairamb/solidping/server/internal/handlers/events"
@@ -91,6 +93,7 @@ type Handler struct {
 	maintenanceSvc  *maintenancewindows.Service
 	integrationsSvc *integrations.Service
 	checkGroupsSvc  *checkgroups.Service
+	runNowSvc       *checkrunnow.Service
 	regionsSvc      *regionshandler.Service
 	// publicationsSvc manages the status-page incident publication overlay
 	// (spec 2026-08-19-08). No scheduler and no subscriber notifier are wired
@@ -101,6 +104,11 @@ type Handler struct {
 	// baseURL is the public base URL, used only to build the icon URL on the
 	// static server card. Empty when no config is available (tests).
 	baseURL string
+
+	// scriptRunner runs the js authoring probes (run_js_script, fetch_page,
+	// browser_snapshot). Defaults to a runner behind this config's egress
+	// policy; the server swaps in its shared one.
+	scriptRunner *aichecks.Runner
 
 	sessions sync.Map // map[string]*session
 	tools    []ToolDefinition
@@ -161,9 +169,11 @@ func NewHandler(
 		// only for the Twilio test-run verification bypass today.
 		integrationsSvc: integrations.NewService(dbService, creds, nil, cfg),
 		checkGroupsSvc:  checkgroups.NewService(dbService),
+		runNowSvc:       checkrunnow.NewService(dbService, eventNotifier, clock.Real{}),
 		regionsSvc:      regionshandler.NewService(dbService),
 		publicationsSvc: incidentpublications.NewService(dbService, clock.Real{}, rtPub),
 		dbService:       dbService,
+		scriptRunner:    defaultScriptRunner(cfg),
 	}
 
 	// A check created over MCP has to land on a dynamic status page section

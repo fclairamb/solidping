@@ -295,3 +295,42 @@ func TestTestIntegration_RejectsNonPublicSenderURL(t *testing.T) {
 
 	r.Zero(requestsReceived.Load(), "the target must never receive a request once the policy denies it")
 }
+
+// TestSlackWebhook_CreateValidation covers the slack-webhook URL contract: a
+// hooks.slack.com URL is accepted, everything else (private, wrong host, http,
+// missing) is rejected with ErrInvalidSettings.
+func TestSlackWebhook_CreateValidation(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name     string
+		settings map[string]any
+		ok       bool
+	}{
+		{"public slack url", map[string]any{"webhook_url": "https://hooks.slack.com/services/T0/B0/xyz"}, true},
+		{"private url", map[string]any{"webhook_url": "http://169.254.169.254/hook"}, false},
+		{"other public host", map[string]any{"webhook_url": "https://example.com/hook"}, false},
+		{"http scheme", map[string]any{"webhook_url": "http://hooks.slack.com/services/T0/B0/xyz"}, false},
+		{"no url", map[string]any{}, false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			svc, org, ctx := newGuardedSenderURLSvc(t, egress.New(false))
+			created, err := svc.CreateIntegration(ctx, org.Slug, integrations.CreateIntegrationRequest{
+				Type: "slack-webhook", Name: "slack-hook", Settings: tc.settings,
+			})
+
+			if tc.ok {
+				require.NoError(t, err)
+				require.NotNil(t, created)
+
+				return
+			}
+
+			require.ErrorIs(t, err, integrations.ErrInvalidSettings)
+		})
+	}
+}

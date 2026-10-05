@@ -93,6 +93,18 @@ type CheckJob struct {
 	CaptureFailedRequestAt *time.Time `bun:"capture_failed_request_at"`
 	CaptureFailureReason   *string    `bun:"capture_failure_reason"`
 
+	// Multi-step run pointers (spec 2026-10-03-03). A multi-step check (the
+	// website crawl) runs as a series of slices on the bulk lane; these name
+	// the run in progress. StepRunUID nil = no run in progress. The state of
+	// the run is the `checks/<uid>/step-state` attachment StepStateFileUID
+	// names (nil on the first slice). StepFailures counts consecutive failed
+	// slices: three end the run.
+	StepRunUID       *string    `bun:"step_run_uid"`
+	StepRunStartedAt *time.Time `bun:"step_run_started_at"`
+	StepCount        int        `bun:"step_count,notnull"`
+	StepStateFileUID *string    `bun:"step_state_file_uid"`
+	StepFailures     int        `bun:"step_failures,notnull"`
+
 	// ParamOverlay carries the ${param:…} values resolved at the claim /
 	// dispatch boundary (checkjobsvc.ParamOverlay). Transient: never persisted
 	// (bun:"-"), and deliberately kept OUT of Config until the worker is about
@@ -124,9 +136,24 @@ func NewCheckJob(orgUID string, checkUID string, period timeutils.Duration) *Che
 		EffectiveScheduledAt: &now,
 		// New jobs start in the fast lane (Lane zero value = 0): the first run
 		// is FIFO and the post-exec write reclassifies from the measured cost.
+		// A multi-step type is moved to the bulk lane (InitialLaneForType).
 		Lane:      0,
 		UpdatedAt: now,
 	}
+}
+
+// LaneBulk mirrors scheduling.LaneBulk (models cannot import scheduling; a
+// test pins the two together). Multi-step check types run on it.
+const LaneBulk uint8 = 2
+
+// InitialLaneForType is the lane a new job of checkType starts in: bulk for a
+// multi-step type (spec 2026-10-03-03), fast for everything else.
+func InitialLaneForType(checkType string) uint8 {
+	if checkerdef.CheckType(checkType).IsMultiStep() {
+		return LaneBulk
+	}
+
+	return 0
 }
 
 // IsInternal reports whether this job belongs to an internal, server-created

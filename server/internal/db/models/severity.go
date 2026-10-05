@@ -99,16 +99,17 @@ type SeveritySeed struct {
 func DefaultSeveritySeeds() []SeveritySeed {
 	emailType := string(ConnectionTypeEmail)
 	slackType := string(ConnectionTypeSlack)
+	slackWebhookType := string(ConnectionTypeSlackWebhook)
 
 	return []SeveritySeed{
 		{Slug: "low", Name: "Low", Channels: []string{emailType}, IsDefault: false},
 		{
 			Slug: "default", Name: "Default",
-			Channels: []string{emailType, slackType}, IsDefault: true,
+			Channels: []string{emailType, slackType, slackWebhookType}, IsDefault: true,
 		},
 		{
 			Slug: "critical", Name: "Critical",
-			Channels:  []string{emailType, slackType, "sms", "voice", "critical_push"},
+			Channels:  []string{emailType, slackType, slackWebhookType, "sms", "voice", "critical_push"},
 			IsDefault: false,
 		},
 	}

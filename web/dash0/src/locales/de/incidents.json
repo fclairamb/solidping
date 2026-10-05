@@ -190,6 +190,8 @@
     "monitoringInterrupted": "Überwachung unterbrochen",
     "monitoringInterruptedSince": "Überwachung unterbrochen seit {{time}}",
     "monitoringResumed": "Überwachung fortgesetzt",
+    "componentsChanged": "Fehlerhafte Komponenten geändert: {{components}}",
+    "componentsChangedNone": "Keine fehlerhafte Komponente mehr",
     "acknowledgedBy": "von {{name}}",
     "acknowledgedByVia": "von {{name}} über {{channel}}",
     "ackChannels": {

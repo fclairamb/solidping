@@ -5,6 +5,10 @@ type JobType string
 
 // Supported job types.
 const (
+	// JobTypeAIRepair evaluates the repair gates of one drifting AI-authored
+	// js check and, when they all hold, runs one repair attempt (spec
+	// 2026-10-03-07). Queued from the result path, deduplicated per check.
+	JobTypeAIRepair JobType = "ai_repair"
 	// JobTypeSleep is a simple sleep job for testing.
 	JobTypeSleep JobType = "sleep"
 	// JobTypeEmail sends an email notification.

@@ -190,6 +190,8 @@
     "monitoringInterrupted": "Surveillance interrompue",
     "monitoringInterruptedSince": "Surveillance interrompue depuis {{time}}",
     "monitoringResumed": "Surveillance reprise",
+    "componentsChanged": "Composants en échec modifiés : {{components}}",
+    "componentsChangedNone": "Plus aucun composant en échec",
     "acknowledgedBy": "par {{name}}",
     "acknowledgedByVia": "par {{name}} via {{channel}}",
     "ackChannels": {

@@ -11,16 +11,14 @@ package checkscreenshots
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
-	"slices"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/attachments"
+	"github.com/fclairamb/solidping/server/internal/handlers/checkrunnow"
 	"github.com/fclairamb/solidping/server/internal/notifier"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
 )
@@ -51,45 +49,35 @@ const (
 	captureOrgKey         = "capture-now.org"
 )
 
-// expressHintEvent is the notifier channel the check workers' express path
-// listens on (in-process: DirectBackend.Hints; deported agents: the WS relay's
-// jobs-available frames). It is named after check creation for historical
-// reasons; its payload only says "this check has a due job, claim it now".
-const expressHintEvent = string(models.EventTypeCheckCreated)
+//nolint:gochecknoglobals // immutable
+var captureLimits = &checkrunnow.Limits{
+	Action:         "capture now",
+	CheckKeyPrefix: captureCheckKeyPrefix,
+	OrgKey:         captureOrgKey,
+	CheckLimit:     CaptureCheckLimit,
+	CheckWindow:    CaptureCheckWindow,
+	OrgLimit:       CaptureOrgLimit,
+	OrgWindow:      CaptureOrgWindow,
+}
 
 // Errors returned by the service.
 var (
 	// ErrOrganizationNotFound means the org slug resolves to nothing.
-	ErrOrganizationNotFound = errors.New("organization not found")
+	ErrOrganizationNotFound = checkrunnow.ErrOrganizationNotFound
 	// ErrCheckNotFound means the check does not exist in this org.
-	ErrCheckNotFound = errors.New("check not found")
+	ErrCheckNotFound = checkrunnow.ErrCheckNotFound
 	// ErrNotCapturable means the check type never produces a screenshot.
 	ErrNotCapturable = errors.New("only browser and js checks can capture a screenshot")
 	// ErrNoScheduledJob means the check has no job to run (disabled).
-	ErrNoScheduledJob = errors.New("the check has no scheduled run (is it disabled?)")
+	ErrNoScheduledJob = checkrunnow.ErrNoScheduledJob
 )
 
 // RateLimitedError is "Capture now" refused by one of its windows.
-type RateLimitedError struct {
-	// RetryAfter is how long until the window that refused reopens.
-	RetryAfter time.Duration
-	// Scope is "check" or "organization".
-	Scope string
-}
-
-func (e *RateLimitedError) Error() string {
-	return fmt.Sprintf("capture now is limited per %s: try again in %d s",
-		e.Scope, int(e.RetryAfter.Round(time.Second).Seconds()))
-}
-
-// captureTypes are the check types that can produce a screenshot.
-//
-//nolint:gochecknoglobals // immutable lookup table
-var captureTypes = []string{"browser", "js", "rdp", "vnc"}
+type RateLimitedError = checkrunnow.RateLimitedError
 
 // IsCapturableType reports whether a check type can produce a screenshot.
 func IsCapturableType(checkType string) bool {
-	return slices.Contains(captureTypes, checkType)
+	return checkrunnow.IsCapturableType(checkType)
 }
 
 // Lister is the attachment side the listing needs.
@@ -126,17 +114,7 @@ type CaptureResponse struct {
 
 // resolveCheck resolves an org slug and a check uid-or-slug.
 func (s *Service) resolveCheck(ctx context.Context, orgSlug, identifier string) (*models.Check, error) {
-	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
-	if err != nil || org == nil {
-		return nil, ErrOrganizationNotFound
-	}
-
-	check, err := s.db.GetCheckByUidOrSlug(ctx, org.UID, identifier)
-	if err != nil || check == nil {
-		return nil, ErrCheckNotFound
-	}
-
-	return check, nil
+	return checkrunnow.ResolveCheck(ctx, s.db, orgSlug, identifier)
 }
 
 // CaptureOutcome is how the latest FAILED "Capture now" request ended (spec
@@ -257,7 +235,7 @@ func (s *Service) CaptureNow(ctx context.Context, orgSlug, identifier string) (*
 		return nil, fmt.Errorf("list check jobs: %w", err)
 	}
 
-	job := pickJob(jobs, s.clock.Now())
+	job := checkrunnow.PickJob(jobs, s.clock.Now())
 	if job == nil {
 		return nil, ErrNoScheduledJob
 	}
@@ -270,7 +248,7 @@ func (s *Service) CaptureNow(ctx context.Context, orgSlug, identifier string) (*
 	// Both windows are admitted atomically, or neither: a request the org cap
 	// refuses does not burn the check's minute, and concurrent requests can
 	// never exceed either cap (see db.Service.AdmitFixedWindows).
-	if err := s.admit(ctx, check.OrganizationUID, check.UID, now); err != nil {
+	if err := checkrunnow.Admit(ctx, s.db, check.OrganizationUID, check.UID, now, captureLimits); err != nil {
 		return nil, err
 	}
 
@@ -282,7 +260,7 @@ func (s *Service) CaptureNow(ctx context.Context, orgSlug, identifier string) (*
 		return nil, fmt.Errorf("request capture: %w", err)
 	}
 
-	s.hint(ctx, check.UID)
+	checkrunnow.Hint(ctx, s.notifier, check.UID)
 
 	resp := &CaptureResponse{RequestedAt: now}
 	if job.Region != nil {
@@ -290,88 +268,4 @@ func (s *Service) CaptureNow(ctx context.Context, orgSlug, identifier string) (*
 	}
 
 	return resp, nil
-}
-
-// pickJob chooses the job row "Capture now" runs on: one that is not leased
-// right now if there is one (it can be claimed at once), in region order so the
-// choice is stable; otherwise the first one — the release keeps a pending
-// request due, so a leased job only delays the capture by its current run.
-func pickJob(jobs []*models.CheckJob, now time.Time) *models.CheckJob {
-	if len(jobs) == 0 {
-		return nil
-	}
-
-	sorted := slices.Clone(jobs)
-	slices.SortStableFunc(sorted, func(a, b *models.CheckJob) int {
-		return compareRegion(a.Region, b.Region)
-	})
-
-	for _, job := range sorted {
-		if job.LeaseExpiresAt == nil || job.LeaseExpiresAt.Before(now) {
-			return job
-		}
-	}
-
-	return sorted[0]
-}
-
-func compareRegion(leftRegion, rightRegion *string) int {
-	left, right := "", ""
-	if leftRegion != nil {
-		left = *leftRegion
-	}
-
-	if rightRegion != nil {
-		right = *rightRegion
-	}
-
-	switch {
-	case left < right:
-		return -1
-	case left > right:
-		return 1
-	default:
-		return 0
-	}
-}
-
-// hint publishes the express hint for the check. Best-effort: without it the
-// flagged job still runs on the workers' next regular poll.
-func (s *Service) hint(ctx context.Context, checkUID string) {
-	if s.notifier == nil {
-		return
-	}
-
-	payload, err := json.Marshal(map[string]string{"check_uid": checkUID})
-	if err != nil {
-		return
-	}
-
-	if err := s.notifier.Notify(ctx, expressHintEvent, string(payload)); err != nil {
-		slog.WarnContext(ctx, "Failed to send the capture-now express hint", "checkUid", checkUID, "error", err)
-	}
-}
-
-// admit counts one "Capture now" against the check window and the org window,
-// atomically and in the database — so the caps hold across API replicas AND
-// across concurrent requests on one replica: the admission reads and writes
-// both counters under row locks in one transaction, and a refused request
-// counts against neither window.
-func (s *Service) admit(ctx context.Context, orgUID, checkUID string, now time.Time) error {
-	windows := []models.FixedWindow{
-		{Key: captureCheckKeyPrefix + checkUID, Limit: CaptureCheckLimit, Window: CaptureCheckWindow},
-		{Key: captureOrgKey, Limit: CaptureOrgLimit, Window: CaptureOrgWindow},
-	}
-	scopes := []string{"check", "organization"}
-
-	refused, retryAfter, err := s.db.AdmitFixedWindows(ctx, orgUID, windows, now)
-	if err != nil {
-		return fmt.Errorf("admit capture: %w", err)
-	}
-
-	if refused >= 0 {
-		return &RateLimitedError{RetryAfter: retryAfter, Scope: scopes[refused]}
-	}
-
-	return nil
 }

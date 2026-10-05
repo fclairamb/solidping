@@ -1898,6 +1898,349 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/orgs/{org}/checks/{checkUid}/versions:
+    get:
+      tags: [Checks]
+      summary: List a check's versions
+      description: >-
+        The check's version history, newest first (spec 2026-10-03-06). A
+        version is recorded on every change of the check definition (name,
+        slug, description, type, public config, group, placement, quorum,
+        enabled, period, labels), whoever made it. Secrets are never
+        versioned. Proposed and rejected versions are listed too. The list
+        items carry no snapshot. The last 100 applied versions are kept.
+      operationId: listCheckVersions
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/CheckUidPath"
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of versions to return (default and max 500).
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: Versions, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CheckVersion"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/checks/{checkUid}/versions/{version}:
+    get:
+      tags: [Checks]
+      summary: Get one version of a check
+      description: >-
+        One version with its snapshot. The snapshot is redacted like an
+        export: secret and export-redacted config keys are never present.
+      operationId: getCheckVersion
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/CheckUidPath"
+        - name: version
+          in: path
+          required: true
+          description: The version number (starts at 1).
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: The version and its snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckVersion"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/checks/{checkUid}/versions/{version}/diff:
+    get:
+      tags: [Checks]
+      summary: Diff a version against another one
+      description: >-
+        The fields that differ between this version and `against` (default:
+        the applied version before it). Config and labels diff per key
+        (`config.url`, `labels.env`). `against` is null for the first version,
+        which is diffed against nothing.
+      operationId: diffCheckVersion
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/CheckUidPath"
+        - name: version
+          in: path
+          required: true
+          description: The version number (starts at 1).
+          schema:
+            type: integer
+            minimum: 1
+        - name: against
+          in: query
+          required: false
+          description: The version to compare with. Defaults to the previous applied version.
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: The field diff
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckVersionDiff"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/checks/{checkUid}/versions/{version}/restore:
+    post:
+      tags: [Checks]
+      summary: Restore a version of a check
+      description: >-
+        Applies an applied version's definition again, through the same path as a PATCH (validation, job reconciliation, labels). This records a new version with origin `user` (or `api`) and reason `restored vN`. Secrets are not versioned: the check keeps its current ones. 409 when the version is a proposal or was rejected.
+      operationId: restoreCheckVersion
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/CheckUidPath"
+        - name: version
+          in: path
+          required: true
+          description: The version number (starts at 1).
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Check"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/v1/orgs/{org}/checks/{checkUid}/versions/{version}/approve:
+    post:
+      tags: [Checks]
+      summary: Approve a proposed version
+      description: >-
+        Applies a proposed version. The proposal becomes the applied version and the caller is recorded as the decider. 409 when the version is not a pending proposal, or when it was built on an applied version that is no longer the latest (`baseVersion`).
+      operationId: approveCheckVersion
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/CheckUidPath"
+        - name: version
+          in: path
+          required: true
+          description: The version number (starts at 1).
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Check"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/v1/orgs/{org}/checks/{checkUid}/versions/{version}/reject:
+    post:
+      tags: [Checks]
+      summary: Reject a proposed version
+      description: >-
+        Marks a proposed version rejected. The check is not changed. 409 when the version is not a pending proposal.
+      operationId: rejectCheckVersion
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/CheckUidPath"
+        - name: version
+          in: path
+          required: true
+          description: The version number (starts at 1).
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckVersion"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/v1/orgs/{org}/checks/ai/contract:
+    post:
+      tags: [Checks]
+      summary: Turn a prompt into a contract for an AI-authored js check
+      description: >-
+        First step of the "Describe it" flow (spec 2026-10-03-07): the LLM turns the user's
+        description into an ordered list of human-readable assertions, returned for the user to
+        confirm. Nothing is saved. 404 when no AI provider is configured (SP_AI_PROVIDER empty).
+        429 when the organization spent its daily AI token budget (maxAiTokensPerDay).
+      operationId: aiCheckContract
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [prompt]
+              properties:
+                prompt:
+                  type: string
+                  description: What to watch, in plain words.
+      responses:
+        "200":
+          description: The proposed contract
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AICheckContract"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  /api/v1/orgs/{org}/checks/ai/generate:
+    post:
+      tags: [Checks]
+      summary: Write and test a js check script from a confirmed contract
+      description: >-
+        Runs SolidPing's agent loop: the LLM explores the target (fetch_page, browser_snapshot)
+        and tests its script (run_script) until a run returns up or the turn cap
+        (SP_AI_MAX_TURNS) is hit. Returns the script, its last run and the js config to save
+        through POST /checks (without the secrets, which only the caller holds). The LLM only
+        ever sees secret names. Nothing is saved. 422 with the last attempt when no script
+        passed. 404 when no AI provider is configured, or when checkUid names no js check
+        of the org. Send `Accept: application/x-ndjson` to get the progress streamed: a 200
+        whose body is one JSON object per line, `turn`, `message`, `tool`, `toolResult` and
+        `ping` lines while it runs, then a last `result` line (`result` holds the 200 body)
+        or `error` line (`httpStatus` and `response` hold what the plain call would have
+        answered).
+      operationId: aiCheckGenerate
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [prompt, contract]
+              properties:
+                prompt:
+                  type: string
+                contract:
+                  type: array
+                  items:
+                    type: string
+                env:
+                  type: object
+                  additionalProperties:
+                    type: string
+                secrets:
+                  type: object
+                  description: Secret values used to run the script, never sent to the LLM.
+                  additionalProperties:
+                    type: string
+                repair:
+                  type: string
+                  enum: ["off", propose, auto]
+                checkUid:
+                  type: string
+                  description: >-
+                    Regenerate this existing js check. Its stored secrets fill every name
+                    `secrets` does not carry (a typed value wins). Nothing is saved: send the
+                    returned config through PATCH /checks/{checkUid}.
+      responses:
+        "200":
+          description: A script that passed its test run
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AICheckGenerated"
+            application/x-ndjson:
+              schema:
+                $ref: "#/components/schemas/AICheckGenerateStreamLine"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          description: No script passed its test run
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AICheckGenerationFailed"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
   /api/v1/orgs/{org}/checks/{checkUid}/screenshots:
     get:
       tags: [Checks]
@@ -2009,6 +2352,151 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+
+  /api/v1/orgs/{org}/checks/{checkUid}/run-now:
+    post:
+      tags: [Checks]
+      summary: Run a check once, now
+      description: >-
+        "Run now": runs any check once, on demand, in every region, instead of
+        waiting for its next period. Each region's job is made due at once and
+        the workers are told; a region whose job is leased, or carries a
+        multi-step run in progress, is reported `running` and left alone (its
+        result answers the request). The results go through the normal path,
+        so they can open or resolve an incident like any scheduled result. A
+        result with `periodStart >= requestedAt` is this request's answer.
+        This is an action path: it does not create the multi-step run resource
+        at `…/run`. Rate limited per check and per organization (3 per minute
+        and 60 per hour; browser, js, rdp and vnc checks 1 per minute and 20
+        per hour); a refusal carries `Retry-After`. Requires write access
+        (viewers get 403).
+      operationId: runCheckNow
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/CheckUidPath"
+      responses:
+        "200":
+          description: The run is requested
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunNowResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: The check has no scheduled run (it is disabled)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: >-
+            Rate limited (code `RATE_LIMITED`). `Retry-After` gives the
+            seconds until the refusing window reopens.
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/orgs/{org}/checks/{checkUid}/run:
+    get:
+      tags: [Checks]
+      summary: Get the run in progress of a multi-step check
+      description: >-
+        A multi-step check (the website crawl) runs as a series of short
+        slices, each saving its progress. This returns the run in progress:
+        its uid, start, completed slices and the progress of its last slice
+        (for a crawl `pagesDone`, `maxPages`, `queued`, `findings`, `phase`).
+        `{"running": false}` when no run is in progress, and for every check
+        type that does not run in steps.
+      operationId: getCheckRun
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/CheckUidPath"
+      responses:
+        "200":
+          description: The run in progress, or running false
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckRun"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Checks]
+      summary: Cancel the run in progress of a multi-step check
+      description: >-
+        Drops the run in progress: its saved progress is deleted and the check
+        is scheduled for its next regular run. No result is written for the
+        canceled run. A no-op when no run is in progress. Requires write
+        access (viewers get 403).
+      operationId: cancelCheckRun
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/CheckUidPath"
+      responses:
+        "204":
+          description: The run is canceled (or there was none)
+        "400":
+          description: The check type does not run in steps
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/checks/{checkUid}/crawl-reports:
+    get:
+      tags: [Checks]
+      summary: List the crawl reports of a check
+      description: >-
+        The full findings report of the last 5 finished crawl runs, newest
+        first. Each entry carries a short-lived signed `downloadUrl` to the
+        report JSON: `{"findings": [{type, url, source, status, error,
+        fingerprint}], "pagesCrawled", "incomplete"}`. The result of a run
+        names its report in `output.reportFileUid`.
+      operationId: listCheckCrawlReports
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/CheckUidPath"
+      responses:
+        "200":
+          description: The reports, newest first
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CrawlReportListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /api/v1/orgs/{org}/dependencies:
     get:
@@ -10282,6 +10770,13 @@ components:
           $ref: "#/components/schemas/PublicWhatsAppConfig"
         telegram:
           $ref: "#/components/schemas/PublicTelegramConfig"
+        ai:
+          type: object
+          required: [enabled]
+          description: Whether AI-authored js checks are offered (an AI provider is configured, SP_AI_PROVIDER).
+          properties:
+            enabled:
+              type: boolean
         bugReport:
           type: object
           required: [enabled]
@@ -10392,7 +10887,7 @@ components:
           type: string
           # Every registered check type (checkerdef.ListCheckTypes), pinned by
           # TestCheckTypeEnumsMatchTheRegistry.
-          enum: [http, tcp, icmp, dns, heartbeat, email, domain, ssl, smtp, udp, ssh, pop3, imap, websocket, postgresql, ftp, sftp, js, mysql, redis, mongodb, mssql, oracle, clickhouse, grpc, kafka, mqtt, a2s, minecraft, rabbitmq, snmp, docker, browser, freebox_line, dnsbl, sip, kubernetes, ntp, rdp, vnc, prometheus, private-location, sleep]
+          enum: [http, tcp, icmp, dns, heartbeat, email, domain, ssl, smtp, udp, ssh, pop3, imap, websocket, postgresql, ftp, sftp, js, mysql, redis, mongodb, mssql, oracle, clickhouse, grpc, kafka, mqtt, a2s, minecraft, rabbitmq, snmp, docker, browser, freebox_line, dnsbl, sip, kubernetes, ntp, rdp, vnc, prometheus, private-location, crawl, health, sleep]
         config:
           type: object
           description: >-
@@ -10991,7 +11486,7 @@ components:
           type: string
           # Every registered check type (checkerdef.ListCheckTypes), pinned by
           # TestCheckTypeEnumsMatchTheRegistry.
-          enum: [http, tcp, icmp, dns, heartbeat, email, domain, ssl, smtp, udp, ssh, pop3, imap, websocket, postgresql, ftp, sftp, js, mysql, redis, mongodb, mssql, oracle, clickhouse, grpc, kafka, mqtt, a2s, minecraft, rabbitmq, snmp, docker, browser, freebox_line, dnsbl, sip, kubernetes, ntp, rdp, vnc, prometheus, private-location, sleep]
+          enum: [http, tcp, icmp, dns, heartbeat, email, domain, ssl, smtp, udp, ssh, pop3, imap, websocket, postgresql, ftp, sftp, js, mysql, redis, mongodb, mssql, oracle, clickhouse, grpc, kafka, mqtt, a2s, minecraft, rabbitmq, snmp, docker, browser, freebox_line, dnsbl, sip, kubernetes, ntp, rdp, vnc, prometheus, private-location, crawl, health, sleep]
           description: Check type (auto-inferred from URL if not provided)
         config:
           type: object
@@ -11323,7 +11818,7 @@ components:
           type: string
           # Every registered check type (checkerdef.ListCheckTypes), pinned by
           # TestCheckTypeEnumsMatchTheRegistry.
-          enum: [http, tcp, icmp, dns, heartbeat, email, domain, ssl, smtp, udp, ssh, pop3, imap, websocket, postgresql, ftp, sftp, js, mysql, redis, mongodb, mssql, oracle, clickhouse, grpc, kafka, mqtt, a2s, minecraft, rabbitmq, snmp, docker, browser, freebox_line, dnsbl, sip, kubernetes, ntp, rdp, vnc, prometheus, private-location, sleep]
+          enum: [http, tcp, icmp, dns, heartbeat, email, domain, ssl, smtp, udp, ssh, pop3, imap, websocket, postgresql, ftp, sftp, js, mysql, redis, mongodb, mssql, oracle, clickhouse, grpc, kafka, mqtt, a2s, minecraft, rabbitmq, snmp, docker, browser, freebox_line, dnsbl, sip, kubernetes, ntp, rdp, vnc, prometheus, private-location, crawl, health, sleep]
           description: Check type (auto-inferred from URL if not provided)
         config:
           type: object
@@ -11462,6 +11957,105 @@ components:
         code: REGION_FORMAT
         message: 'region "Paris!" must be a slug or "@private-location"'
 
+    CheckVersion:
+      type: object
+      description: One version of a check definition (spec 2026-10-03-06).
+      required: [version, status, origin, createdAt]
+      properties:
+        version:
+          type: integer
+          description: Per-check version number, starting at 1.
+        status:
+          type: string
+          enum: [applied, proposed, rejected]
+        origin:
+          type: string
+          enum: [user, api, apply, mcp, system, ai_generate, ai_repair]
+          description: >-
+            Where the change came from: user (dashboard session), api (API
+            token), apply (config-as-code apply or import), mcp, system (no
+            caller), ai_generate, ai_repair.
+        actorUserUid:
+          type: string
+          description: The user who made the change. Absent for system changes.
+        actorName:
+          type: string
+          description: The actor's name, or email when it has no name.
+        reason:
+          type: string
+          description: Optional one-line note, e.g. `restored v3`.
+        baseVersion:
+          type: integer
+          description: For a proposal, the applied version it was built on.
+        decidedByUserUid:
+          type: string
+          description: Who approved or rejected a proposal.
+        decidedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        snapshot:
+          $ref: "#/components/schemas/CheckVersionSnapshot"
+    CheckVersionSnapshot:
+      type: object
+      description: >-
+        The versioned definition of a check. Only returned when reading a
+        single version. Never contains secrets.
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: string
+        type:
+          type: string
+        config:
+          type: object
+          additionalProperties: true
+        checkGroupUid:
+          type: string
+        regions:
+          type: array
+          items:
+            type: string
+          description: Pinned regions. Absent for an automatically placed check.
+        placement:
+          type: string
+          enum: [pinned, auto]
+        regionCount:
+          type: integer
+        regionPool:
+          type: array
+          items:
+            type: string
+        failQuorum:
+          type: string
+        enabled:
+          type: boolean
+        period:
+          type: string
+          example: "00:01:00"
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+    CheckVersionDiff:
+      type: object
+      required: [version, against, changes]
+      properties:
+        version:
+          type: integer
+        against:
+          type: integer
+          nullable: true
+          description: The version compared with; null for the first version.
+        changes:
+          type: array
+          items:
+            $ref: "#/components/schemas/CheckFieldChange"
     CheckFieldChange:
       type: object
       required: [field, from, to]
@@ -12442,6 +13036,64 @@ components:
           format: uuid
           description: The incident the capture is attached to. Absent for a check-scoped capture.
 
+    CheckRun:
+      type: object
+      description: The run in progress of a multi-step check (spec 2026-10-03-03).
+      required: [running]
+      properties:
+        running:
+          type: boolean
+        runUid:
+          type: string
+          format: uuid
+        startedAt:
+          type: string
+          format: date-time
+        steps:
+          type: integer
+          description: Slices completed so far.
+        progress:
+          type: object
+          additionalProperties: true
+          description: Progress reported by the last slice.
+    CrawlReport:
+      type: object
+      description: One stored crawl report. The JSON is fetched through `downloadUrl`.
+      required: [uid, name, mimeType, size, downloadUrl, createdAt]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum: [crawl-report]
+        name:
+          type: string
+        mimeType:
+          type: string
+        size:
+          type: integer
+          format: int64
+        downloadUrl:
+          type: string
+          description: RELATIVE, short-lived signed URL (`/pub/files/<uid>?exp=…&sig=…`).
+        createdAt:
+          type: string
+          format: date-time
+        capturedAt:
+          type: string
+          format: date-time
+        checkUid:
+          type: string
+          format: uuid
+    CrawlReportListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/CrawlReport"
     CheckScreenshotListResponse:
       type: object
       required: [data]
@@ -12476,6 +13128,31 @@ components:
         error:
           type: string
           description: Why the run produced no screenshot.
+
+    RunNowResponse:
+      type: object
+      required: [requestedAt, regions]
+      properties:
+        requestedAt:
+          type: string
+          format: date-time
+          description: >-
+            When the request was recorded (microsecond precision). A result
+            with a later or equal `periodStart` answers it.
+        regions:
+          type: array
+          items:
+            type: object
+            required: [region, status]
+            properties:
+              region:
+                type: string
+              status:
+                type: string
+                enum: [queued, running]
+                description: >-
+                  `queued`: the region's job is due now. `running`: it is
+                  already running, its current result answers the request.
 
     CheckScreenshotCaptureResponse:
       type: object
@@ -13211,6 +13888,16 @@ components:
         faviconUrl:
           type: string
           description: Public path of the page's uploaded favicon, if any.
+        orgName:
+          type: string
+          description: Name of the owning organization. Public view endpoints only.
+        orgLogoUrl:
+          type: string
+          description: >-
+            Public `/pub/assets/<file uid>` path of the organization's logo.
+            Omitted when the org has no logo or uses an external URL logo
+            (status0's CSP only allows first-party images). Public view
+            endpoints only.
         isDefault:
           type: boolean
         enabled:
@@ -17037,6 +17724,12 @@ components:
           type: integer
           nullable: true
           description: Maximum service-level objectives (null = unlimited)
+        maxAiTokensPerDay:
+          type: integer
+          nullable: true
+          description: >-
+            LLM tokens (input + output) per UTC day for AI-authored js checks
+            (null = unlimited)
         whiteLabel:
           type: boolean
           nullable: true
@@ -17045,6 +17738,130 @@ components:
             on its status pages. Unlike the caps above, null does NOT mean
             unlimited — it means "use the deployment default" (true
             self-hosted, false on the SaaS).
+
+    AICheckContract:
+      type: object
+      required: [contract, model]
+      properties:
+        contract:
+          type: array
+          items:
+            type: string
+        model:
+          type: string
+        usage:
+          $ref: "#/components/schemas/AIUsage"
+
+    AIUsage:
+      type: object
+      properties:
+        inputTokens:
+          type: integer
+        outputTokens:
+          type: integer
+
+    AIScriptRun:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          description: up, down, timeout or error.
+        durationMs:
+          type: integer
+        output:
+          type: object
+          additionalProperties: true
+        metrics:
+          type: object
+          additionalProperties: true
+
+    AICheckGenerated:
+      type: object
+      required: [script, config, lastRun, model]
+      properties:
+        script:
+          type: string
+        config:
+          type: object
+          additionalProperties: true
+          description: The js check config to save (script, env, ai), without secrets.
+        secretNames:
+          type: array
+          items:
+            type: string
+        lastRun:
+          $ref: "#/components/schemas/AIScriptRun"
+        model:
+          type: string
+        turns:
+          type: integer
+        usage:
+          $ref: "#/components/schemas/AIUsage"
+
+    AICheckGenerationFailed:
+      type: object
+      required: [title, code]
+      properties:
+        title:
+          type: string
+        code:
+          type: string
+          enum: [AI_GENERATION_FAILED]
+        detail:
+          type: string
+        lastScript:
+          type: string
+        lastRun:
+          $ref: "#/components/schemas/AIScriptRun"
+        turns:
+          type: integer
+        explanation:
+          type: string
+          description: The model's last message, often why it gave up.
+
+    AICheckGenerateStreamLine:
+      type: object
+      description: One line of a generation streamed as application/x-ndjson.
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [turn, message, tool, toolResult, ping, result, error]
+        turn:
+          type: integer
+        maxTurns:
+          type: integer
+        text:
+          type: string
+          description: "`message`: what the model wrote, without code blocks."
+        tool:
+          type: string
+          enum: [run_script, fetch_page, browser_snapshot]
+        url:
+          type: string
+        final:
+          type: boolean
+          description: "`run_script`: the finished script rather than a probe."
+        status:
+          type: string
+          description: "`toolResult`: the run status (up, down, error)."
+        detail:
+          type: string
+        error:
+          type: string
+          description: "`toolResult`: why the tool call failed."
+        durationMs:
+          type: integer
+          format: int64
+        result:
+          $ref: "#/components/schemas/AICheckGenerated"
+        httpStatus:
+          type: integer
+          description: "`error` line: the HTTP status the plain call would have answered."
+        response:
+          type: object
+          description: "`error` line: the body the plain call would have answered."
 
     EntitlementsUsage:
       type: object

@@ -69,6 +69,58 @@ const (
 type responseInfo struct {
 	proto  string
 	altSvc string
+
+	// captureBody is the opt-in body capture the health check type uses (spec
+	// 2026-10-03-05). Off for every http check: with it false nothing below
+	// reads or keeps a body that no assertion asked for.
+	captureBody bool
+	// body, statusCode and contentType are filled only when captureBody is set
+	// and a response was received.
+	body        []byte
+	statusCode  int
+	contentType string
+	// verdictReached is set once every post-response failure branch (protocol
+	// assertion, unreadable body, header patterns) has passed, just before the
+	// status code is judged. A caller that judges the body itself acts on the
+	// body only when this is true; otherwise the http result stands as is.
+	verdictReached bool
+}
+
+// Response is what ExecuteCapturingBody learned about the HTTP response.
+type Response struct {
+	// StatusCode is the HTTP status of the final response.
+	StatusCode int
+	// ContentType is the Content-Type header of the final response.
+	ContentType string
+	// Body is the response body, capped at 10 MB.
+	Body []byte
+	// Reached is true when a response was received and passed every
+	// request-level check (negotiated protocol, readable body, header
+	// patterns). When false, the returned result already carries the failure.
+	Reached bool
+}
+
+// ExecuteCapturingBody runs the HTTP probe exactly as Execute does, with the
+// response body kept for the caller. The returned result is the http verdict
+// (which judges the status code only, never the body); a caller that judges
+// the body itself overrides the status when Response.Reached is true. Network
+// failures, timeouts and their diagnostics are those of an http check.
+func (c *HTTPChecker) ExecuteCapturingBody(
+	ctx context.Context, cfg *HTTPConfig,
+) (*checkerdef.Result, *Response, error) {
+	info := &responseInfo{captureBody: true}
+
+	result, err := c.execute(ctx, cfg, info)
+	if err != nil || result == nil {
+		return result, nil, err
+	}
+
+	return result, &Response{
+		StatusCode:  info.statusCode,
+		ContentType: info.contentType,
+		Body:        info.body,
+		Reached:     info.verdictReached,
+	}, nil
 }
 
 // HTTPChecker implements the Checker interface for HTTP checks.
@@ -103,10 +155,15 @@ func (c *HTTPChecker) Validate(spec *checkerdef.CheckSpec) error {
 // still runs on the shared check transport (pooled, HTTP/1.1 — spec
 // 2026-09-28-04) exactly as before.
 func (c *HTTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*checkerdef.Result, error) {
+	return c.execute(ctx, config, &responseInfo{})
+}
+
+// execute is Execute with the response bookkeeping supplied by the caller.
+func (c *HTTPChecker) execute(
+	ctx context.Context, config checkerdef.Config, info *responseInfo,
+) (*checkerdef.Result, error) {
 	tracker := &connFamilyTracker{}
 	ctx = httptrace.WithClientTrace(ctx, tracker.clientTrace())
-
-	info := &responseInfo{}
 
 	result, err := c.executeRequest(ctx, config, info)
 	if err != nil || result == nil {
@@ -424,6 +481,11 @@ func (c *HTTPChecker) executeRequest(
 	info.proto = resp.Proto
 	info.altSvc = resp.Header.Get("Alt-Svc")
 
+	if info.captureBody {
+		info.statusCode = resp.StatusCode
+		info.contentType = resp.Header.Get("Content-Type")
+	}
+
 	// bodyDrivesAssertions is the read gate: it must list EVERY config key
 	// whose evaluation needs the response body, because respBody below is
 	// populated only when it is true, and every body-reading assertion keys
@@ -452,7 +514,7 @@ func (c *HTTPChecker) executeRequest(
 	// misconfigured regex is exactly when you want the evidence.
 	var bodyBytes []byte
 
-	if bodyDrivesAssertions || cfg.CaptureFailureResponse {
+	if bodyDrivesAssertions || cfg.CaptureFailureResponse || info.captureBody {
 		// Limit body size to prevent memory issues
 		limitedReader := io.LimitReader(resp.Body, maxBodySize)
 
@@ -671,6 +733,11 @@ func (c *HTTPChecker) executeRequest(
 				"json_path_assertions":         assertionResult,
 			}), nil
 		}
+	}
+
+	info.verdictReached = true
+	if info.captureBody {
+		info.body = bodyBytes
 	}
 
 	// Determine status based on expected status code(s)

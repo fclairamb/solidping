@@ -895,7 +895,7 @@ func TestTunnelEndToEndThroughAgent(t *testing.T) {
 	r.NoError(e.dbSvc.CreateCheck(ctx, dep))
 
 	// Claim: the WSBackend unseals the tunnel block and registers the snapshot.
-	jobs, _, err := wsBackend.ClaimJobs(ctx, worker.UID, nil, 10, 10, time.Minute)
+	jobs, _, err := wsBackend.ClaimJobs(ctx, worker.UID, nil, 10, 10, 0, time.Minute)
 	r.NoError(err)
 
 	var depJob *models.CheckJob
@@ -1043,7 +1043,7 @@ func TestWSBackendClientEndToEnd(t *testing.T) {
 	r.NoError(e.dbSvc.CreateCheck(ctx, check))
 
 	// ClaimJobs unseals and merges the secrets in memory.
-	jobs, _, err := wsBackend.ClaimJobs(ctx, worker.UID, nil, 5, 5, time.Minute)
+	jobs, _, err := wsBackend.ClaimJobs(ctx, worker.UID, nil, 5, 5, 0, time.Minute)
 	r.NoError(err)
 	r.Len(jobs, 1)
 	r.Equal("hunter2", jobs[0].Config["password"], "the client must unseal and merge the secrets")
@@ -1095,7 +1095,7 @@ func TestWSBackendUnsealFailureReportsJobError(t *testing.T) {
 	worker, err := wsBackend.Register(ctx, nil)
 	r.NoError(err)
 
-	jobs, _, err := wsBackend.ClaimJobs(ctx, worker.UID, nil, 5, 5, time.Minute)
+	jobs, _, err := wsBackend.ClaimJobs(ctx, worker.UID, nil, 5, 5, 0, time.Minute)
 	r.NoError(err)
 	r.Empty(jobs, "an undecryptable job must be dropped from the batch")
 
@@ -1153,7 +1153,7 @@ func TestClaimCarriesNextEligibleHint(t *testing.T) {
 	worker, err := wsBackend.Register(ctx, nil)
 	r.NoError(err)
 
-	jobs, nextIn, err := wsBackend.ClaimJobs(ctx, worker.UID, nil, 5, 5, time.Minute)
+	jobs, nextIn, err := wsBackend.ClaimJobs(ctx, worker.UID, nil, 5, 5, 0, time.Minute)
 	r.NoError(err)
 	r.Empty(jobs)
 	r.InDelta((5 * time.Second).Seconds(), nextIn.Seconds(), 1.5,

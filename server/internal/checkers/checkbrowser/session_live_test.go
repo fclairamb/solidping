@@ -138,6 +138,14 @@ func liveFixtureServer(t *testing.T) *httptest.Server {
 			`<body><div style="height:3000px;background:linear-gradient(#fff,#36c)">tall</div></body></html>`))
 	})
 
+	// The selector's own text sits in an inline <style>, as on many real
+	// pages: a plain-text match would land on that text node.
+	mux.HandleFunc("/styled", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`<html><head><style>h1 { color: #36c } button { margin: 0 }</style></head>` +
+			`<body><h1>Acme Domain</h1><button id="b" onclick="this.textContent='clicked'">button</button>` +
+			`</body></html>`))
+	})
+
 	mux.HandleFunc("/dashboard", func(w http.ResponseWriter, req *http.Request) {
 		cookie, err := req.Cookie("session")
 		if err != nil || cookie.Value != "sess-1" {
@@ -272,6 +280,46 @@ func TestSessionDrivesARealPage(t *testing.T) {
 	_, closedErr := session.Navigate(ctx, base+"/login")
 	r.ErrorIs(closedErr, errSessionClosed)
 	r.True(Infra(closedErr), "driving a closed page is infrastructure, not a verdict")
+}
+
+// TestSessionSelectorsAreCSSOnly: a selector whose text also appears in the
+// page (an inline <style> here) still resolves to the element.
+//
+//nolint:paralleltest // mutates the process-wide settings
+func TestSessionSelectorsAreCSSOnly(t *testing.T) {
+	settings, ok := liveBrowserSettings()
+	if !ok {
+		t.Skip(liveBrowserSkipReason)
+	}
+
+	r := require.New(t)
+
+	withSettings(t, settings)
+
+	base := browserReachableURL(t, liveFixtureServer(t).URL)
+
+	ctx, cancel := contextWithTimeout(t, 60*time.Second)
+	defer cancel()
+
+	session, err := Open(ctx)
+	r.NoError(err)
+
+	defer session.Close()
+
+	_, err = session.Navigate(ctx, base+"/styled")
+	r.NoError(err)
+
+	r.NoError(session.WaitVisible(ctx, "h1"))
+
+	text, err := session.Text(ctx, "h1")
+	r.NoError(err)
+	r.Equal("Acme Domain", text)
+
+	r.NoError(session.Click(ctx, "button"))
+
+	text, err = session.Text(ctx, "button")
+	r.NoError(err)
+	r.Equal("clicked", text)
 }
 
 // contextWithTimeout is t.Context() with a deadline, kept as a helper so the

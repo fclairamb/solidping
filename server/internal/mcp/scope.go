@@ -70,7 +70,8 @@ func isMutationTool(name string) bool {
 	return strings.HasPrefix(name, mutationPrefixCreate) ||
 		strings.HasPrefix(name, mutationPrefixUpdate) ||
 		strings.HasPrefix(name, mutationPrefixDelete) ||
-		strings.HasPrefix(name, mutationPrefixSet)
+		strings.HasPrefix(name, mutationPrefixSet) ||
+		name == toolRunCheck
 }
 
 // mutationRoleDenial is the ROLE half of the mutation gate, next to the scope

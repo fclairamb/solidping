@@ -362,6 +362,9 @@ func (s *Service) secretRefFindings(
 func (s *Service) ApplyChecks(
 	ctx context.Context, orgSlug string, doc *ExportDocument, opts ApplyOptions,
 ) (*ApplyResult, error) {
+	// Config-as-code: versions written by an apply say so (spec 2026-10-03-06).
+	ctx = WithChangeOrigin(ctx, models.CheckVersionOriginApply)
+
 	if !isSupportedExportVersion(doc.Version) {
 		return nil, ErrUnsupportedExportVersion
 	}

@@ -42,7 +42,7 @@ describe("channelTypeLabel", () => {
   it("renders other known channels from the locale bundle", () => {
     expect(channelTypeLabel(t, "sms")).toBe("SMS");
     expect(channelTypeLabel(t, "webpush")).toBe("Browser push");
-    expect(channelTypeLabel(t, "msteams-bot")).toBe("Microsoft Teams");
+    expect(channelTypeLabel(t, "msteams-bot")).toBe("Teams (bot)");
   });
 
   it("renders Telegram from the locale bundle rather than raw-capitalising it", () => {

@@ -49,6 +49,7 @@ func allowedChannels() map[string]bool {
 		"slack": true, "discord": true, "webhook": true, "email": true,
 		"googlechat": true, "mattermost": true, "msteams": true, "ntfy": true,
 		"matrix": true, "pagerduty": true, "pushover": true, "msteams-bot": true,
+		"slack-webhook": true,
 		// Direct-channel types. These are synthetic tokens, not connection
 		// types: "whatsapp" pages a user's verified WhatsApp contact through
 		// the instance-level WABA, exactly as "sms" pages their phone contact,

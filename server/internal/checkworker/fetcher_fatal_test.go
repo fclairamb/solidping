@@ -41,7 +41,7 @@ func newClaimFailBackend(err error) *claimFailBackend {
 }
 
 func (b *claimFailBackend) ClaimJobs(
-	context.Context, string, *string, int, int, time.Duration,
+	context.Context, string, *string, int, int, int, time.Duration,
 ) ([]*models.CheckJob, time.Duration, error) {
 	select {
 	case b.claims <- struct{}{}:

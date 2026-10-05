@@ -58,7 +58,7 @@ func TestCloudLaneNeverClaimsPrivateRegionJobs(t *testing.T) {
 
 			worker := createTestWorker(t, ctx, dbSvc, tc.workerRegion)
 
-			claimed, _, err := svc.ClaimJobs(ctx, worker.UID, tc.workerRegion, 10, 10, 5*time.Minute)
+			claimed, _, err := svc.ClaimJobs(ctx, worker.UID, tc.workerRegion, 10, 10, 0, 5*time.Minute)
 			r.NoError(err)
 
 			for _, job := range claimed {

@@ -36,6 +36,9 @@ const (
 	LaneLabelFast = "fast"
 	// LaneLabelSlow is the lane label for slow-lane (lane 1) claims.
 	LaneLabelSlow = "slow"
+	// LaneLabelBulk is the lane label for bulk-lane (lane 2) claims: the
+	// slices of multi-step checks (spec 2026-10-03-03).
+	LaneLabelBulk = "bulk"
 )
 
 //nolint:gochecknoglobals // Prometheus metrics are conventionally package-level vars
