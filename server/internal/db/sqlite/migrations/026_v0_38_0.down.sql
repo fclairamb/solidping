@@ -1,5 +1,9 @@
 -- Teardown/parity half of 026_v0_38_0.up.sql.
 
+-- SECTION: check-versions
+drop table if exists check_versions;
+--bun:split
+
 -- SECTION: multistep-bulk-checks
 drop index if exists idx_check_jobs_claim_bulk;
 --bun:split
