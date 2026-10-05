@@ -1018,6 +1018,22 @@ jobs:
             COMMIT=${{ steps.version.outputs.GIT_HASH }}
             GIT_TIME=${{ steps.version.outputs.GIT_TIME }}
 
+      # Docker Hub mirror: most self-hosting catalogues and many users look for
+      # the image on Docker Hub first. Copies the multi-arch manifest that was
+      # just pushed to GHCR (no rebuild). Skipped when the secret is not set.
+      - name: Mirror image to Docker Hub
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          if [ -z "$DOCKERHUB_TOKEN" ]; then echo "DOCKERHUB_TOKEN not set, skipping"; exit 0; fi
+          echo "$DOCKERHUB_TOKEN" | docker login docker.io -u "$DOCKERHUB_USERNAME" --password-stdin
+          for src in $TAGS; do
+            dst="docker.io/fclairamb/solidping:${src##*:}"
+            docker buildx imagetools create -t "$dst" "$src"
+          done
+
       # Regression guard for the bug fixed by fix(docker): persist data with
       # zero env vars — a bare `docker run -v <volume>:/data` used to lose the
       # SQLite database and every upload because the image had no ENV/VOLUME
