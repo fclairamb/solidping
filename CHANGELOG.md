@@ -28,6 +28,28 @@
 * **checks:** **A JavaScript check computing a `NaN` metric no longer loses its result.** A metric such as `Date.now() - start` with `start` unset produced `NaN`, which cannot be stored, so the whole result was dropped. Non-finite metrics are now skipped and non-finite output values become `null`.
 * **checks:** **JavaScript check samples show the secrets they need.** The Redis, bearer chain and browser login samples read secrets without declaring them, so the form showed no field to fill them in. Loading a sample now adds the secret rows (names only, values empty).
 
+## [0.38.0](https://github.com/fclairamb/solidping/compare/v0.37.0...v0.38.0) (2026-10-05)
+
+
+### Features
+
+* crawl and health checks, DNS change detection, check history, AI-authored checks, run now ([#489](https://github.com/fclairamb/solidping/issues/489)) ([881ca8d](https://github.com/fclairamb/solidping/commit/881ca8d6ca824a65487eeaa30d362ff4f4705b61))
+* vnc check type and account email change ([#467](https://github.com/fclairamb/solidping/issues/467)) ([725a191](https://github.com/fclairamb/solidping/commit/725a191aed4f353bfc8857af1fd76459160442f9))
+* vnc check, HTTP/2 and HTTP/3 checks, email change, impersonation, response-time stats, MCP stdio ([#480](https://github.com/fclairamb/solidping/issues/480)) ([9a7d162](https://github.com/fclairamb/solidping/commit/9a7d162a6b4deae7a3d7ff188eee6bd1ae3cdd06))
+
+
+### Bug Fixes
+
+* **deps:** update github.com/dop251/goja digest to 0f92c90 ([#469](https://github.com/fclairamb/solidping/issues/469)) ([b5d5431](https://github.com/fclairamb/solidping/commit/b5d54313c8d99a73136e00de843a85c2318f28d4))
+* **deps:** update github.com/dop251/goja digest to 104bc28 ([#481](https://github.com/fclairamb/solidping/issues/481)) ([4ef9c32](https://github.com/fclairamb/solidping/commit/4ef9c32c5adb3c1e80a0d055f65c5f0ecc7981e7))
+* **deps:** update github.com/dop251/goja digest to 3ccc9c7 ([#475](https://github.com/fclairamb/solidping/issues/475)) ([46c2850](https://github.com/fclairamb/solidping/commit/46c28509452de354bdd2b0ce0f1ae57e1940d553))
+* **deps:** update github.com/dop251/goja digest to 43ac577 ([#474](https://github.com/fclairamb/solidping/issues/474)) ([4501ce0](https://github.com/fclairamb/solidping/commit/4501ce0294c0b5091ab771b244987a561cddb3c7))
+* **deps:** update go dependencies (non-major) ([#472](https://github.com/fclairamb/solidping/issues/472)) ([2229bf0](https://github.com/fclairamb/solidping/commit/2229bf0226a58877fde2509c005766a9056876ea))
+* **deps:** update go dependencies (non-major) ([#476](https://github.com/fclairamb/solidping/issues/476)) ([ab6d274](https://github.com/fclairamb/solidping/commit/ab6d274e21bf7847f8d5a121af0a23038e0e51f2))
+* **deps:** update go dependencies (non-major) ([#478](https://github.com/fclairamb/solidping/issues/478)) ([43296e9](https://github.com/fclairamb/solidping/commit/43296e9dc417128f67b90462c622800ab39d56be))
+* **deps:** update go dependencies (non-major) ([#482](https://github.com/fclairamb/solidping/issues/482)) ([3ed5ed9](https://github.com/fclairamb/solidping/commit/3ed5ed930b08be0d8f06da455d87a8e9048dfd33))
+* report the average ICMP round trip as the check duration ([#466](https://github.com/fclairamb/solidping/issues/466)) ([2adeab4](https://github.com/fclairamb/solidping/commit/2adeab464b01b3b92a2b24f33cf1250e38134be0))
+
 ## [0.37.0](https://github.com/fclairamb/solidping/compare/v0.36.1...v0.37.0) (2026-09-30)
 
 
