@@ -52,6 +52,7 @@ the relevant code.
 
 - [features/notifications-and-escalation.md](features/notifications-and-escalation.md) — How a check failure becomes a page: incident lifecycle, channel fan-out, escalation policies, on-call resolution, suppression layers (maintenance windows, cascade rollup, ack/snooze).
 - [features/degraded-detection.md](features/degraded-detection.md) — The second, statistical detector beside the confirmation period: the "M of the last N countable probes" rule over failures and over slow successes, the `degraded` incident kind (no cascade, no paging escalation, no auto-publish), the suppression rule that makes it shippable, the off-for-existing/on-for-new per-check rollout, and the availability-denominator regression to watch.
+- [features/multistep-checks.md](features/multistep-checks.md) — Multi-step checks (the website crawl): slices on the bulk lane, state on the attachment rail, fencing, units per slice, run deadline and failures.
 - [features/check-dependencies.md](features/check-dependencies.md) — Hard vs soft dependency edges, cascade rollup walk, parent-resolve re-evaluation, correlation windows, edge cases.
 - [features/entitlements.md](features/entitlements.md) — Per-org limits (`maxChecks`, `maxUsers`, `maxChecksPerMinute`) and where each is enforced; defaults per deployment mode, resolution (defaults → row → live usage), sources, stale fallback, audit log. Note: there are **no** feature toggles.
 - [features/saas-mode.md](features/saas-mode.md) — `SP_DEPLOYMENT_MODE=saas`: billing-service signed writes, signing-key rotation, the upgrade-token secret and its operator migration, `make dev-saas`.
@@ -97,6 +98,7 @@ Operational procedures for diagnosing the running system.
 - [runbooks/custom-domain-tls.md](runbooks/custom-domain-tls.md) — Custom-domain TLS: single-CNAME verification modes (`shared`/`token`), in-server ACME (`acme.*`) vs. an external TLS proxy, the four edge options (SNI passthrough, dedicated LB, chained instances, external proxy), config reference, acceptance checklist, troubleshooting, and the 2026-08-23 investigation of *intermittent* re-verification failure while `dig` succeeds (class: resolver/transport fault, infra-side).
 - [runbooks/invite-link-invalid-or-expired.md](runbooks/invite-link-invalid-or-expired.md) — The 2026-08-31 "invitation link invalid or expired" report was reporter error, not a defect — what to check before re-opening the hunt, and the two lasting fixes that came out of it anyway (error-conflation split, E2E coverage).
 - [runbooks/discord-bot-setup.md](runbooks/discord-bot-setup.md) — Provisioning the Discord **bot**: the two credentials login does not need (`SP_DISCORD_BOT_TOKEN`, `SP_DISCORD_PUBLIC_KEY`) and their gopass paths, the install-params/scope and redirect-URI changes the application record needs, and how to verify. Read this when the boot log says "Discord bot disabled: missing configuration".
+- [runbooks/ai-provider.md](runbooks/ai-provider.md) — The LLM provider behind AI-authored js checks: the k8xp BytePlus settings and the gopass path of the key, what to check before the first deployment, where the code lives.
 - [runbooks/api-testing-with-curl.md](runbooks/api-testing-with-curl.md) — Log in, save a token, and exercise the REST API by hand with curl; default credentials, forced password rotation, troubleshooting.
 - [runbooks/claude-cloud.md](runbooks/claude-cloud.md) — Working in a Claude cloud (remote) sandbox with no Docker, secrets or built frontend: `scripts/cloud-setup.sh`, what a clean clone needs (embed placeholders), SQLite smoke server, CI env parity for E2E, what to run before pushing.
 - [runbooks/observability-toggles.md](runbooks/observability-toggles.md) — `SP_PROMETHEUS_ENABLED`, `SP_METRICS_SCRAPE_TOKEN`, `SP_PROFILER_ENABLED`, `SP_OTEL_ENABLED`: what each switches and how they interact.
@@ -177,7 +179,9 @@ Market analysis of uptime monitoring services.
   - [gatus/comparison.md](competitors/gatus/comparison.md) — Strengths, weaknesses, vs SolidPing, use cases
   - [gatus/sources.md](competitors/gatus/sources.md) — Source URLs
 - [competitors/healthchecks-io.md](competitors/healthchecks-io.md) — Healthchecks.io analysis (passive/heartbeat monitoring)
+- [competitors/kener.md](competitors/kener.md) — Kener analysis (MIT, SvelteKit + Node + required Redis; status-page-first, 12 monitor types, 4 alert channels)
 - [competitors/maintenant.md](competitors/maintenant.md) — Maintenant analysis (self-hosted Go, container observability, MCP, AGPL open-core)
+- [competitors/oneuptime.md](competitors/oneuptime.md) — OneUptime analysis (Apache-2.0 + `ee/`; full observability platform on PostgreSQL + ClickHouse + Valkey, per-user cloud pricing, 1-minute self-hosted floor)
 - Pingdom — [pingdom/](competitors/pingdom/)
   - [pingdom/README.md](competitors/pingdom/README.md) — Index, at-a-glance, key features
   - [pingdom/monitoring.md](competitors/pingdom/monitoring.md) — Check types in-depth (HTTP, transaction, ping, TCP/UDP, DNS, mail) and global probe network
@@ -189,6 +193,7 @@ Market analysis of uptime monitoring services.
 - [competitors/pulsetic.md](competitors/pulsetic.md) — Pulsetic analysis (Designmodo; uptime + RUM + **dependency monitoring across 4,300+ third-party status pages**, white-label agency model, first-party MCP server, Team-plan-gated unversioned API)
 - [competitors/site24x7.md](competitors/site24x7.md) — Site24x7 analysis (Zoho/ManageEngine all-in-one, 100+ monitor types, AIOps)
 - [competitors/statuscake.md](competitors/statuscake.md) — StatusCake analysis (43 probe locations)
+- [competitors/upptime.md](competitors/upptime.md) — Upptime analysis (MIT; runs on GitHub Actions, Issues and Pages; HTTP + TCP, 5-minute schedule)
 - [competitors/uptime-kuma.md](competitors/uptime-kuma.md) — Uptime Kuma analysis (self-hosted, Vue.js)
 - UptimeRobot — [uptimerobot/](competitors/uptimerobot/)
   - [uptimerobot/README.md](competitors/uptimerobot/README.md) — Index, at-a-glance, headline takeaways

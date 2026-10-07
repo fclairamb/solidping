@@ -37,6 +37,10 @@ const (
 	// so "what is world-readable" stays a storage-level question rather than a
 	// per-row one.
 	GroupTypeStatusPageAssets GroupType = "status-page-assets"
+	// GroupTypeCheckState holds the state files of multi-step check runs
+	// (spec 2026-10-03-03): server-written, never served to anyone but the
+	// worker that resumes the run.
+	GroupTypeCheckState GroupType = "check-state"
 )
 
 // FileMetadata is the small bag of attributes a backend may need to write

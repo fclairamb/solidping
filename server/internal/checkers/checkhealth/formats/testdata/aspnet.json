@@ -1,0 +1,9 @@
+{
+  "status": "Unhealthy",
+  "totalDuration": "00:00:00.0123456",
+  "entries": {
+    "sql": {"data": {"server": "db01"}, "description": "Connection refused", "duration": "00:00:00.0100000", "status": "Unhealthy", "tags": ["db"]},
+    "redis": {"data": {}, "duration": "00:00:00.0010000", "status": "Healthy", "tags": []},
+    "cache": {"data": {}, "description": "Slow responses", "duration": "00:00:00.0020000", "status": "Degraded", "tags": []}
+  }
+}

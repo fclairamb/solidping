@@ -114,6 +114,7 @@ import { Route as OrgsOrgDiscoveryNewRouteImport } from './routes/orgs/$org/disc
 import { Route as OrgsOrgDiscoveryJobUidRouteImport } from './routes/orgs/$org/discovery.$jobUid'
 import { Route as OrgsOrgChecksSchedulingRouteImport } from './routes/orgs/$org/checks.scheduling'
 import { Route as OrgsOrgChecksNewRouteImport } from './routes/orgs/$org/checks.new'
+import { Route as OrgsOrgChecksDescribeRouteImport } from './routes/orgs/$org/checks.describe'
 import { Route as OrgsOrgChecksCheckUidRouteImport } from './routes/orgs/$org/checks.$checkUid'
 import { Route as OrgsOrgAccountTokensRouteImport } from './routes/orgs/$org/account.tokens'
 import { Route as OrgsOrgAccountSessionsRouteImport } from './routes/orgs/$org/account.sessions'
@@ -149,6 +150,7 @@ import { Route as OrgsOrgOrganizationDiscoveryJobUidRouteImport } from './routes
 import { Route as OrgsOrgOnCallUidEditRouteImport } from './routes/orgs/$org/on-call.$uid.edit'
 import { Route as OrgsOrgMaintenanceWindowsMaintenanceWindowUidEditRouteImport } from './routes/orgs/$org/maintenance-windows.$maintenanceWindowUid.edit'
 import { Route as OrgsOrgJobsCheckCheckJobUidRouteImport } from './routes/orgs/$org/jobs.check.$checkJobUid'
+import { Route as OrgsOrgChecksCheckUidHistoryRouteImport } from './routes/orgs/$org/checks.$checkUid.history'
 import { Route as OrgsOrgChecksCheckUidEditRouteImport } from './routes/orgs/$org/checks.$checkUid.edit'
 import { Route as OrgsOrgChecksCheckUidBadgesRouteImport } from './routes/orgs/$org/checks.$checkUid.badges'
 import { Route as OrgsOrgCheckGroupsUidEditRouteImport } from './routes/orgs/$org/check-groups.$uid.edit'
@@ -715,6 +717,11 @@ const OrgsOrgChecksNewRoute = OrgsOrgChecksNewRouteImport.update({
   path: '/new',
   getParentRoute: () => OrgsOrgChecksRoute,
 } as any)
+const OrgsOrgChecksDescribeRoute = OrgsOrgChecksDescribeRouteImport.update({
+  id: '/describe',
+  path: '/describe',
+  getParentRoute: () => OrgsOrgChecksRoute,
+} as any)
 const OrgsOrgChecksCheckUidRoute = OrgsOrgChecksCheckUidRouteImport.update({
   id: '/$checkUid',
   path: '/$checkUid',
@@ -912,6 +919,12 @@ const OrgsOrgJobsCheckCheckJobUidRoute =
     path: '/check/$checkJobUid',
     getParentRoute: () => OrgsOrgJobsRoute,
   } as any)
+const OrgsOrgChecksCheckUidHistoryRoute =
+  OrgsOrgChecksCheckUidHistoryRouteImport.update({
+    id: '/history',
+    path: '/history',
+    getParentRoute: () => OrgsOrgChecksCheckUidRoute,
+  } as any)
 const OrgsOrgChecksCheckUidEditRoute =
   OrgsOrgChecksCheckUidEditRouteImport.update({
     id: '/edit',
@@ -1021,6 +1034,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/account/sessions': typeof OrgsOrgAccountSessionsRoute
   '/orgs/$org/account/tokens': typeof OrgsOrgAccountTokensRoute
   '/orgs/$org/checks/$checkUid': typeof OrgsOrgChecksCheckUidRouteWithChildren
+  '/orgs/$org/checks/describe': typeof OrgsOrgChecksDescribeRoute
   '/orgs/$org/checks/new': typeof OrgsOrgChecksNewRoute
   '/orgs/$org/checks/scheduling': typeof OrgsOrgChecksSchedulingRoute
   '/orgs/$org/discovery/$jobUid': typeof OrgsOrgDiscoveryJobUidRouteWithChildren
@@ -1092,6 +1106,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/check-groups/$uid/edit': typeof OrgsOrgCheckGroupsUidEditRoute
   '/orgs/$org/checks/$checkUid/badges': typeof OrgsOrgChecksCheckUidBadgesRoute
   '/orgs/$org/checks/$checkUid/edit': typeof OrgsOrgChecksCheckUidEditRoute
+  '/orgs/$org/checks/$checkUid/history': typeof OrgsOrgChecksCheckUidHistoryRoute
   '/orgs/$org/jobs/check/$checkJobUid': typeof OrgsOrgJobsCheckCheckJobUidRoute
   '/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit': typeof OrgsOrgMaintenanceWindowsMaintenanceWindowUidEditRoute
   '/orgs/$org/on-call/$uid/edit': typeof OrgsOrgOnCallUidEditRoute
@@ -1155,6 +1170,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/account/security': typeof OrgsOrgAccountSecurityRoute
   '/orgs/$org/account/sessions': typeof OrgsOrgAccountSessionsRoute
   '/orgs/$org/account/tokens': typeof OrgsOrgAccountTokensRoute
+  '/orgs/$org/checks/describe': typeof OrgsOrgChecksDescribeRoute
   '/orgs/$org/checks/new': typeof OrgsOrgChecksNewRoute
   '/orgs/$org/checks/scheduling': typeof OrgsOrgChecksSchedulingRoute
   '/orgs/$org/discovery/new': typeof OrgsOrgDiscoveryNewRoute
@@ -1218,6 +1234,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/check-groups/$uid/edit': typeof OrgsOrgCheckGroupsUidEditRoute
   '/orgs/$org/checks/$checkUid/badges': typeof OrgsOrgChecksCheckUidBadgesRoute
   '/orgs/$org/checks/$checkUid/edit': typeof OrgsOrgChecksCheckUidEditRoute
+  '/orgs/$org/checks/$checkUid/history': typeof OrgsOrgChecksCheckUidHistoryRoute
   '/orgs/$org/jobs/check/$checkJobUid': typeof OrgsOrgJobsCheckCheckJobUidRoute
   '/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit': typeof OrgsOrgMaintenanceWindowsMaintenanceWindowUidEditRoute
   '/orgs/$org/on-call/$uid/edit': typeof OrgsOrgOnCallUidEditRoute
@@ -1299,6 +1316,7 @@ export interface FileRoutesById {
   '/orgs/$org/account/sessions': typeof OrgsOrgAccountSessionsRoute
   '/orgs/$org/account/tokens': typeof OrgsOrgAccountTokensRoute
   '/orgs/$org/checks/$checkUid': typeof OrgsOrgChecksCheckUidRouteWithChildren
+  '/orgs/$org/checks/describe': typeof OrgsOrgChecksDescribeRoute
   '/orgs/$org/checks/new': typeof OrgsOrgChecksNewRoute
   '/orgs/$org/checks/scheduling': typeof OrgsOrgChecksSchedulingRoute
   '/orgs/$org/discovery/$jobUid': typeof OrgsOrgDiscoveryJobUidRouteWithChildren
@@ -1370,6 +1388,7 @@ export interface FileRoutesById {
   '/orgs/$org/check-groups/$uid/edit': typeof OrgsOrgCheckGroupsUidEditRoute
   '/orgs/$org/checks/$checkUid/badges': typeof OrgsOrgChecksCheckUidBadgesRoute
   '/orgs/$org/checks/$checkUid/edit': typeof OrgsOrgChecksCheckUidEditRoute
+  '/orgs/$org/checks/$checkUid/history': typeof OrgsOrgChecksCheckUidHistoryRoute
   '/orgs/$org/jobs/check/$checkJobUid': typeof OrgsOrgJobsCheckCheckJobUidRoute
   '/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit': typeof OrgsOrgMaintenanceWindowsMaintenanceWindowUidEditRoute
   '/orgs/$org/on-call/$uid/edit': typeof OrgsOrgOnCallUidEditRoute
@@ -1453,6 +1472,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/account/sessions'
     | '/orgs/$org/account/tokens'
     | '/orgs/$org/checks/$checkUid'
+    | '/orgs/$org/checks/describe'
     | '/orgs/$org/checks/new'
     | '/orgs/$org/checks/scheduling'
     | '/orgs/$org/discovery/$jobUid'
@@ -1524,6 +1544,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/check-groups/$uid/edit'
     | '/orgs/$org/checks/$checkUid/badges'
     | '/orgs/$org/checks/$checkUid/edit'
+    | '/orgs/$org/checks/$checkUid/history'
     | '/orgs/$org/jobs/check/$checkJobUid'
     | '/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit'
     | '/orgs/$org/on-call/$uid/edit'
@@ -1587,6 +1608,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/account/security'
     | '/orgs/$org/account/sessions'
     | '/orgs/$org/account/tokens'
+    | '/orgs/$org/checks/describe'
     | '/orgs/$org/checks/new'
     | '/orgs/$org/checks/scheduling'
     | '/orgs/$org/discovery/new'
@@ -1650,6 +1672,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/check-groups/$uid/edit'
     | '/orgs/$org/checks/$checkUid/badges'
     | '/orgs/$org/checks/$checkUid/edit'
+    | '/orgs/$org/checks/$checkUid/history'
     | '/orgs/$org/jobs/check/$checkJobUid'
     | '/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit'
     | '/orgs/$org/on-call/$uid/edit'
@@ -1730,6 +1753,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/account/sessions'
     | '/orgs/$org/account/tokens'
     | '/orgs/$org/checks/$checkUid'
+    | '/orgs/$org/checks/describe'
     | '/orgs/$org/checks/new'
     | '/orgs/$org/checks/scheduling'
     | '/orgs/$org/discovery/$jobUid'
@@ -1801,6 +1825,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/check-groups/$uid/edit'
     | '/orgs/$org/checks/$checkUid/badges'
     | '/orgs/$org/checks/$checkUid/edit'
+    | '/orgs/$org/checks/$checkUid/history'
     | '/orgs/$org/jobs/check/$checkJobUid'
     | '/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit'
     | '/orgs/$org/on-call/$uid/edit'
@@ -2590,6 +2615,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgChecksNewRouteImport
       parentRoute: typeof OrgsOrgChecksRoute
     }
+    '/orgs/$org/checks/describe': {
+      id: '/orgs/$org/checks/describe'
+      path: '/describe'
+      fullPath: '/orgs/$org/checks/describe'
+      preLoaderRoute: typeof OrgsOrgChecksDescribeRouteImport
+      parentRoute: typeof OrgsOrgChecksRoute
+    }
     '/orgs/$org/checks/$checkUid': {
       id: '/orgs/$org/checks/$checkUid'
       path: '/$checkUid'
@@ -2835,6 +2867,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgJobsCheckCheckJobUidRouteImport
       parentRoute: typeof OrgsOrgJobsRoute
     }
+    '/orgs/$org/checks/$checkUid/history': {
+      id: '/orgs/$org/checks/$checkUid/history'
+      path: '/history'
+      fullPath: '/orgs/$org/checks/$checkUid/history'
+      preLoaderRoute: typeof OrgsOrgChecksCheckUidHistoryRouteImport
+      parentRoute: typeof OrgsOrgChecksCheckUidRoute
+    }
     '/orgs/$org/checks/$checkUid/edit': {
       id: '/orgs/$org/checks/$checkUid/edit'
       path: '/edit'
@@ -2957,6 +2996,7 @@ const OrgsOrgAccountRouteWithChildren = OrgsOrgAccountRoute._addFileChildren(
 interface OrgsOrgChecksCheckUidRouteChildren {
   OrgsOrgChecksCheckUidBadgesRoute: typeof OrgsOrgChecksCheckUidBadgesRoute
   OrgsOrgChecksCheckUidEditRoute: typeof OrgsOrgChecksCheckUidEditRoute
+  OrgsOrgChecksCheckUidHistoryRoute: typeof OrgsOrgChecksCheckUidHistoryRoute
   OrgsOrgChecksCheckUidIndexRoute: typeof OrgsOrgChecksCheckUidIndexRoute
   OrgsOrgChecksCheckUidResultsResultUidRoute: typeof OrgsOrgChecksCheckUidResultsResultUidRoute
 }
@@ -2964,6 +3004,7 @@ interface OrgsOrgChecksCheckUidRouteChildren {
 const OrgsOrgChecksCheckUidRouteChildren: OrgsOrgChecksCheckUidRouteChildren = {
   OrgsOrgChecksCheckUidBadgesRoute: OrgsOrgChecksCheckUidBadgesRoute,
   OrgsOrgChecksCheckUidEditRoute: OrgsOrgChecksCheckUidEditRoute,
+  OrgsOrgChecksCheckUidHistoryRoute: OrgsOrgChecksCheckUidHistoryRoute,
   OrgsOrgChecksCheckUidIndexRoute: OrgsOrgChecksCheckUidIndexRoute,
   OrgsOrgChecksCheckUidResultsResultUidRoute:
     OrgsOrgChecksCheckUidResultsResultUidRoute,
@@ -2976,6 +3017,7 @@ const OrgsOrgChecksCheckUidRouteWithChildren =
 
 interface OrgsOrgChecksRouteChildren {
   OrgsOrgChecksCheckUidRoute: typeof OrgsOrgChecksCheckUidRouteWithChildren
+  OrgsOrgChecksDescribeRoute: typeof OrgsOrgChecksDescribeRoute
   OrgsOrgChecksNewRoute: typeof OrgsOrgChecksNewRoute
   OrgsOrgChecksSchedulingRoute: typeof OrgsOrgChecksSchedulingRoute
   OrgsOrgChecksIndexRoute: typeof OrgsOrgChecksIndexRoute
@@ -2983,6 +3025,7 @@ interface OrgsOrgChecksRouteChildren {
 
 const OrgsOrgChecksRouteChildren: OrgsOrgChecksRouteChildren = {
   OrgsOrgChecksCheckUidRoute: OrgsOrgChecksCheckUidRouteWithChildren,
+  OrgsOrgChecksDescribeRoute: OrgsOrgChecksDescribeRoute,
   OrgsOrgChecksNewRoute: OrgsOrgChecksNewRoute,
   OrgsOrgChecksSchedulingRoute: OrgsOrgChecksSchedulingRoute,
   OrgsOrgChecksIndexRoute: OrgsOrgChecksIndexRoute,

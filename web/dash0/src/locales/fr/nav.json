@@ -174,5 +174,6 @@
     "alerting": "Alertes",
     "publicStatus": "Statut public",
     "administration": "Administration"
-  }
+  },
+  "history": "Historique"
 }

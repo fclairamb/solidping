@@ -147,6 +147,8 @@ var (
 // Service provides authentication business logic.
 type Service struct {
 	db db.Service
+	// pageMemo evicts the org's public status-page views on a profile edit. Optional.
+	pageMemo PageMemoInvalidator
 	// cfg is a boot-time-FROZEN value copy of config.AuthConfig, taken in
 	// NewService BEFORE InitializeSystemConfig applies the system-parameter
 	// overlay (see server/main.go boot order). Read it ONLY for fields the

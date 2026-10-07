@@ -51,6 +51,7 @@ const (
 	fieldScript  = "script"
 	fieldEnv     = "env"
 	fieldSecrets = "secrets"
+	fieldAI      = "ai"
 )
 
 // JSConfig holds the configuration for JavaScript checks.
@@ -69,6 +70,10 @@ type JSConfig struct {
 	// would silently drop `env:` from every existing export and config-as-code
 	// document. See spec 2026-09-11-05.
 	Secrets map[string]string `json:"secrets,omitempty"`
+	// AI is set on a script an LLM wrote from a prompt (spec 2026-10-03-07).
+	// It is plain data: the script stays a normal js script, and the provider
+	// and key never reach a worker.
+	AI *AIConfig `json:"ai,omitempty"`
 }
 
 // stringMapFromConfig reads an optional map[string]string config key,
@@ -144,6 +149,13 @@ func (c *JSConfig) FromMap(configMap map[string]any) error {
 
 	c.Secrets = secrets
 
+	aiCfg, err := aiFromConfig(configMap)
+	if err != nil {
+		return err
+	}
+
+	c.AI = aiCfg
+
 	return nil
 }
 
@@ -163,6 +175,10 @@ func (c *JSConfig) GetConfig() map[string]any {
 
 	if len(c.Secrets) > 0 {
 		cfg[fieldSecrets] = stringMapToAny(c.Secrets)
+	}
+
+	if c.AI != nil {
+		cfg[fieldAI] = c.AI.toMap()
 	}
 
 	return cfg
@@ -269,6 +285,12 @@ func (c *JSConfig) Validate() error {
 	if len(c.Secrets) > MaxEnvEntries {
 		return checkerdef.NewConfigErrorf(fieldSecrets,
 			"must have at most %d entries, got %d", MaxEnvEntries, len(c.Secrets))
+	}
+
+	if c.AI != nil {
+		if err := c.AI.Validate(); err != nil {
+			return err
+		}
 	}
 
 	// Check for JavaScript syntax errors via Goja compilation

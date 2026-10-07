@@ -144,6 +144,7 @@ func requireSameResponseTimeBins(
 			// counts only, and never a confident zero for a response time nobody
 			// measured.
 			r.Nil(bin.DurationP95, "%s: bin %+v p95", label, key)
+			r.Nil(bin.DurationP50, "%s: bin %+v p50", label, key)
 			r.Nil(bin.DurationAvg, "%s: bin %+v avg", label, key)
 			r.Nil(bin.DurationMin, "%s: bin %+v min", label, key)
 			r.Nil(bin.DurationMax, "%s: bin %+v max", label, key)
@@ -162,6 +163,9 @@ func requireSameResponseTimeBins(
 		r.NotNil(bin.DurationP95, "%s: bin %+v p95", label, key)
 		r.InDelta(sorted[models.ResponseTimeBinP95Index(len(sorted))], *bin.DurationP95, 0.001,
 			"%s: bin %+v p95", label, key)
+		r.NotNil(bin.DurationP50, "%s: bin %+v p50", label, key)
+		r.InDelta(sorted[models.ResponseTimeBinP50Index(len(sorted))], *bin.DurationP50, 0.001,
+			"%s: bin %+v p50", label, key)
 		r.NotNil(bin.DurationAvg, "%s: bin %+v avg", label, key)
 		r.InDelta(sum/float32(len(sorted)), *bin.DurationAvg, 0.01, "%s: bin %+v avg", label, key)
 		r.NotNil(bin.DurationMin, "%s: bin %+v min", label, key)
@@ -384,6 +388,9 @@ func TestAggregateResponseTimeBinsNearestRankP95_Postgres(t *testing.T) {
 	r.NotNil(dense.DurationP95)
 	r.InDelta(390.0, *dense.DurationP95, 0.001,
 		"nearest-rank p95 of 10..400 is 390; 395 means the SQL interpolated")
+	r.NotNil(dense.DurationP50)
+	r.InDelta(210.0, *dense.DurationP50, 0.001,
+		"nearest-rank p50 of 10..400 is 210 (index n/2); 205 means the SQL interpolated")
 	r.InDelta(205.0, *dense.DurationAvg, 0.01)
 	r.InDelta(10.0, *dense.DurationMin, 0.001)
 	r.InDelta(400.0, *dense.DurationMax, 0.001)

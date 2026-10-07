@@ -296,6 +296,64 @@ test.describe("Notification Channels", () => {
     await deleteCheck(page, token, check.uid);
   });
 
+  test("new-integration type lives in the URL: pick, reload, Back", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await page.goto("orgs/test/integrations/new");
+    await page.waitForLoadState("networkidle");
+
+    await page.getByTestId("pick-slack").click();
+    await expect(page).toHaveURL(/[?&]type=slack(&|$)/);
+    await expect(page.getByTestId("slack-install")).toBeVisible();
+
+    await page.reload();
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("slack-install")).toBeVisible();
+
+    await page.goBack();
+    await expect(page).toHaveURL(/integrations\/new$/);
+    await expect(page.getByTestId("group-notify")).toBeVisible();
+  });
+
+  test("new-integration Cancel returns to the picker, picker Cancel to the list", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await page.goto("orgs/test/integrations/new?type=webhook");
+    await page.waitForLoadState("networkidle");
+
+    await page.getByTestId("integration-cancel").click();
+    await expect(page).toHaveURL(/integrations\/new$/);
+    await expect(page.getByTestId("group-notify")).toBeVisible();
+
+    await page.getByRole("link", { name: /^cancel$/i }).click();
+    await expect(page).toHaveURL(/\/orgs\/test\/integrations$/);
+  });
+
+  test("new-integration ignores an unknown ?type=", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await page.goto("orgs/test/integrations/new?type=bogus");
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("group-notify")).toBeVisible();
+  });
+
+  test("new-integration picker shows distinct Teams tiles", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await page.goto("orgs/test/integrations/new");
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("pick-msteams")).toContainText(
+      "Teams (webhook)",
+    );
+    await expect(page.getByTestId("pick-msteams-bot")).toContainText(
+      "Teams (bot)",
+    );
+  });
+
   test("new-integration picker groups notification channels and data sources", async ({
     authenticatedPage,
   }) => {
@@ -356,6 +414,51 @@ test.describe("Notification Channels", () => {
     await expect(page.getByLabel(/webhook url/i)).toHaveValue(workflowUrl);
 
     await deleteConnection(page, token, uid);
+  });
+
+  test("create a Slack (webhook) channel via the form and persist its URL", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+
+    await page.goto("orgs/test/integrations/new?type=slack-webhook");
+    await page.waitForLoadState("networkidle");
+
+    const name = `E2E Slack webhook ${Date.now()}`;
+    const hookUrl = "https://hooks.slack.com/services/T0000/B0000/abcdef";
+    await page.getByLabel("Name").fill(name);
+    await page.getByLabel(/webhook url/i).fill(hookUrl);
+
+    await page.getByRole("button", { name: /create integration/i }).click();
+    await page.waitForURL((url) =>
+      /\/integrations\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
+        url.pathname,
+      ),
+    );
+    const uid = page.url().split("/").pop()!;
+
+    await page.goto(`orgs/test/integrations/${uid}`);
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByLabel(/webhook url/i)).toHaveValue(hookUrl);
+
+    await deleteConnection(page, token, uid);
+  });
+
+  test("Slack (webhook) rejects a non-Slack URL with a validation error", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    await page.goto("orgs/test/integrations/new?type=slack-webhook");
+    await page.waitForLoadState("networkidle");
+
+    await page.getByLabel("Name").fill(`E2E Slack invalid ${Date.now()}`);
+    await page.getByLabel(/webhook url/i).fill("https://example.com/hook");
+    await page.getByRole("button", { name: /create integration/i }).click();
+
+    await expect(page.getByText(/hooks\.slack\.com/).first()).toBeVisible();
+    await expect(page).toHaveURL(/integrations\/new/);
   });
 
   test("webpush channel panel renders subscribe button and empty device list", async ({

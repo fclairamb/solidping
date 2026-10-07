@@ -89,6 +89,10 @@ const (
 	toolUpdateCheck               = "update_check"
 	toolDeleteCheck               = "delete_check"
 	toolDiagnoseCheck             = "diagnose_check"
+	toolRunCheck                  = "run_check"
 	toolValidateCheck             = "validate_check"
+	toolRunJSScript               = "run_js_script"
+	toolFetchPage                 = "fetch_page"
+	toolBrowserSnapshot           = "browser_snapshot"
 	toolSetMaintenanceWindowCheck = "set_maintenance_window_checks"
 )

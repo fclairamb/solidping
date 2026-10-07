@@ -19,10 +19,18 @@ import (
 // it first.
 var ErrEnrollmentTokenInvalid = errors.New("enrollment token is invalid, expired, or already used")
 
+// ErrCheckJobBusy is returned by RequestCheckRun when the job is leased or
+// carries a multi-step run in progress: it cannot be made due on demand.
+var ErrCheckJobBusy = errors.New("check job is running")
+
 // ErrAgentNonceReplayed is returned by CheckAndStoreAgentNonce when a reconnect
 // nonce was already consumed inside the retention window — a replayed
 // signature, rejected cluster-wide rather than per API replica.
 var ErrAgentNonceReplayed = errors.New("agent reconnect nonce already used")
+
+// ErrInvalidBaselineKey is returned by CaptureCheckConfigBaseline for an empty
+// key or one that cannot be used as a JSON path segment.
+var ErrInvalidBaselineKey = errors.New("invalid baseline key")
 
 // ErrUnknownAttachmentEntity is returned by ListOrphanAttachments for an
 // entity segment it has no owning table for.
@@ -443,6 +451,14 @@ type Service interface {
 	// that picks the row up consumes the request. sql.ErrNoRows when the job
 	// is gone.
 	RequestCheckCapture(ctx context.Context, jobUID string, requestedAt time.Time) error
+	// RequestCheckRun makes one job row due at requestedAt (spec
+	// 2026-10-04-01, "Run now"): scheduled_at and effective_scheduled_at are
+	// set to it, capture_requested_at is left alone. It only touches a job
+	// that is neither leased nor carrying a multi-step run: a release
+	// overwrites scheduled_at, so a due time written under a live lease would
+	// be lost. Such a job gives ErrCheckJobBusy (its running result answers
+	// the request); sql.ErrNoRows when the job is gone.
+	RequestCheckRun(ctx context.Context, jobUID string, requestedAt time.Time) error
 	// RecordCheckCaptureFailure records that the "Capture now" request made at
 	// requestedAt produced no screenshot, and why (spec 2026-09-27-01):
 	// capture_failed_request_at and capture_failure_reason on the job row.
@@ -451,11 +467,33 @@ type Service interface {
 	// request on the row can only be claimed after the release. A missing job
 	// is not an error.
 	RecordCheckCaptureFailure(ctx context.Context, jobUID string, requestedAt time.Time, reason string) error
+	// CaptureCheckConfigBaseline stores values as config.baseline[key] of a
+	// check with config.detect_changes on, and copies the resulting config to
+	// the check's jobs (spec 2026-10-03-04, the dns change-detection
+	// baseline). It is a single-key update guarded by "key absent or empty",
+	// never a rewrite from a stale copy: two regions capturing at the same
+	// moment both end up stored, and a stored baseline is never overwritten.
+	// Reports whether it wrote anything.
+	CaptureCheckConfigBaseline(ctx context.Context, checkUID, key string, values []string) (bool, error)
 
 	// Label operations
 	GetOrCreateLabel(ctx context.Context, orgUID, key, value string) (*models.Label, error)
 	SetCheckLabels(ctx context.Context, checkUID string, labelUIDs []string) error
 	GetLabelsForCheck(ctx context.Context, checkUID string) ([]*models.Label, error)
+
+	// Check version history (spec 2026-10-03-06). Versions are recorded by
+	// CreateCheck, UpdateCheck and SetCheckLabels themselves.
+	ListCheckVersions(ctx context.Context, checkUID string, limit int) ([]*models.CheckVersion, error)
+	// GetCheckVersion returns sql.ErrNoRows when the version does not exist.
+	GetCheckVersion(ctx context.Context, checkUID string, version int) (*models.CheckVersion, error)
+	// GetLatestAppliedCheckVersion returns nil when the check has no version.
+	GetLatestAppliedCheckVersion(ctx context.Context, checkUID string) (*models.CheckVersion, error)
+	CreateCheckVersionProposal(ctx context.Context, row *models.CheckVersion) error
+	// DecideCheckVersion returns ErrCheckVersionNotProposed when the row is
+	// not a pending proposal.
+	DecideCheckVersion(
+		ctx context.Context, checkUID string, version int, status models.CheckVersionStatus, userUID string,
+	) error
 	GetLabelsForChecks(ctx context.Context, checkUIDs []string) (map[string][]*models.Label, error)
 	ListDistinctLabelKeys(
 		ctx context.Context, orgUID, query string, limit int,

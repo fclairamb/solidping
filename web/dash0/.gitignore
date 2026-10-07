@@ -26,3 +26,7 @@ bun.lockb
 
 # E2E test server
 .test-server.pid
+
+# Local runtime storage and one-off Playwright configs
+/data/
+/pw.*.config.ts

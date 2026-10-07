@@ -163,6 +163,13 @@ type HeartbeatPublicConfig struct {
 	UDPPort int `json:"udpPort"`
 }
 
+// AIPublicConfig tells the dashboard whether to offer AI-authored js checks
+// (spec 2026-10-03-07): true when an AI provider is configured. Nothing about
+// the provider itself is exposed.
+type AIPublicConfig struct {
+	Enabled bool `json:"enabled"`
+}
+
 // Response is the public config document. Fields are added here as new public
 // flags appear; every one of them must be non-secret and browser-safe.
 type Response struct {
@@ -176,6 +183,7 @@ type Response struct {
 	// GET /api/v1/features; none of it is secret.
 	BugReport BugReportPublicConfig `json:"bugReport"`
 	Heartbeat HeartbeatPublicConfig `json:"heartbeat"`
+	AI        AIPublicConfig        `json:"ai"`
 	// RunMode ("normal", "demo" or "test") and DeploymentMode ("saas" or
 	// "self-hosted") used to ride on GET /api/mgmt/version.
 	RunMode        string `json:"runMode"`
@@ -238,6 +246,7 @@ func Build(cfg *config.Config) Response {
 	if cfg != nil {
 		resp.BugReport = BugReportPublicConfig{Enabled: cfg.App.EnableBugReport}
 		resp.Heartbeat = heartbeatConfig(cfg)
+		resp.AI = AIPublicConfig{Enabled: cfg.AI.Enabled()}
 		resp.RunMode = cfg.RunMode
 		resp.DeploymentMode = cfg.Deployment.Mode
 	}

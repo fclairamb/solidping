@@ -143,8 +143,12 @@ func TestEveryToolDeclaresAnnotationsAndOutputSchema(t *testing.T) {
 				"tool %q output schema must have an object root", tool.Name)
 
 			ann := tool.Annotations
-			r.False(ann.OpenWorldHint,
-				"tool %q must not claim open-world: every tool only touches SolidPing data",
+			// The js authoring probes reach the target the caller names
+			// (spec 2026-10-03-07): they are the only open-world tools.
+			probe := tool.Name == toolRunJSScript || tool.Name == toolFetchPage ||
+				tool.Name == toolBrowserSnapshot
+			r.Equal(probe, ann.OpenWorldHint,
+				"tool %q open-world hint: only the js authoring probes reach outside SolidPing data",
 				tool.Name)
 			r.Equal(!isMutationTool(tool.Name), ann.ReadOnlyHint,
 				"tool %q readOnlyHint out of sync with the scope gate", tool.Name)
@@ -194,8 +198,8 @@ func TestRegisterTools(t *testing.T) {
 
 	handler := newTestHandler()
 
-	r.Len(handler.tools, 42)
-	r.Len(handler.toolMap, 42)
+	r.Len(handler.tools, 46)
+	r.Len(handler.toolMap, 46)
 
 	// Every tool definition should have a corresponding function in the map
 	for _, tool := range handler.tools {

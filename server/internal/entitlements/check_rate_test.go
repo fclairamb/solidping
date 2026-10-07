@@ -276,3 +276,32 @@ func TestRecordRateLimitedSkipNilServiceIsInert(t *testing.T) {
 		svc.RecordRateLimitedSkip(t.Context(), "any-org")
 	})
 }
+
+// A multi-step check costs its units per run, not one (spec 2026-10-03-03):
+// a daily 500-page crawl projects to 500/1440 checks per minute.
+func TestChecksPerMinuteCountsUnitsPerRun(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+	svc, org, dbSvc := setup(t)
+
+	projected, err := svc.ProjectChecksPerMinute(ctx, org.UID, &entitlements.CheckRateProposal{
+		Type:    "crawl",
+		Config:  map[string]any{"url": "https://www.acme.com/", "maxPages": 500},
+		Period:  24 * time.Hour,
+		Enabled: true,
+	})
+	r.NoError(err)
+	r.InDelta(500.0/1440.0, projected.Demand, 0.0001)
+	r.InDelta(0.35, projected.Demand, 0.01)
+
+	// The stored row reads the same hint from the check's config.
+	check := models.NewCheck(org.UID, "crawl-acme", "crawl")
+	check.Period = timeutils.Duration(24 * time.Hour)
+	check.Config = models.JSONMap{"url": "https://www.acme.com/"} // default maxPages = 200
+	r.NoError(dbSvc.CreateCheck(ctx, check))
+
+	status, err := svc.ChecksPerMinuteStatus(ctx, org.UID)
+	r.NoError(err)
+	r.InDelta(200.0/1440.0, status.Demand, 0.0001)
+}

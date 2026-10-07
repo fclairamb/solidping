@@ -583,6 +583,7 @@ type Config struct {
 	Heartbeat    HeartbeatConfig    `koanf:"heartbeat"`
 	Demo         DemoConfig         `koanf:"demo"`
 	Headers      HeadersConfig      `koanf:"headers"`
+	AI           AIConfig           `koanf:"ai"`
 	RunMode      string             `koanf:"runmode"`   // "test" for test mode, empty for normal mode
 	UserAgent    string             `koanf:"useragent"` // Identity string for protocol checks (SP_USERAGENT)
 	LogLevel     slog.Level         `koanf:"-"`         // Logging level (parsed from LOG_LEVEL env var)
@@ -803,6 +804,99 @@ type NodeConfig struct {
 	// Kubernetes pods running with `hostNetwork: true`, where the host UTS
 	// namespace makes os.Hostname() return the (dotted) node name.
 	Name string `koanf:"name"`
+}
+
+// AI provider defaults (spec 2026-10-03-07).
+const (
+	// AIProviderOpenAI is the OpenAI Chat Completions driver, which also covers
+	// every OpenAI-compatible endpoint (BytePlus ModelArk, Mistral, Groq,
+	// OpenRouter, LiteLLM, Ollama, vLLM...).
+	AIProviderOpenAI = "openai"
+	// AIProviderAnthropic is the native Anthropic Messages API driver.
+	AIProviderAnthropic = "anthropic"
+
+	defaultAIMaxTurns = 12
+	defaultAITimeout  = 120 * time.Second
+)
+
+// ErrInvalidAIConfig is a bad SP_AI_* setting.
+var ErrInvalidAIConfig = errors.New("invalid AI configuration")
+
+// AIConfig configures the LLM provider used to author and repair `js` checks
+// (spec 2026-10-03-07). An empty Provider turns the whole feature off. The key
+// only ever lives on the server: it is never logged and never sent to workers
+// or agents.
+//
+// base_url, api_key and max_turns have snake_case tags koanf's env loader
+// cannot reach, so applyAIEnv reads every SP_AI_* name by hand.
+type AIConfig struct {
+	// Provider is "openai" or "anthropic" (SP_AI_PROVIDER). Empty = off.
+	Provider string `koanf:"provider"`
+	// BaseURL is the endpoint base URL (SP_AI_BASE_URL), e.g.
+	// https://api.openai.com/v1. Empty uses the driver's default.
+	BaseURL string `koanf:"base_url"`
+	// APIKey is the provider secret (SP_AI_API_KEY).
+	APIKey string `koanf:"api_key"`
+	// Model is passed verbatim to the provider (SP_AI_MODEL).
+	Model string `koanf:"model"`
+	// MaxTurns caps the agent loop (SP_AI_MAX_TURNS, default 12).
+	MaxTurns int `koanf:"max_turns"`
+	// Timeout is the per-call timeout (SP_AI_TIMEOUT, default 120s).
+	Timeout time.Duration `koanf:"timeout"`
+}
+
+// Enabled reports whether an AI provider is configured.
+func (c *AIConfig) Enabled() bool {
+	return c.Provider != ""
+}
+
+// Validate rejects an unknown provider and a provider without a model.
+func (c *AIConfig) Validate() error {
+	switch c.Provider {
+	case "":
+		return nil
+	case AIProviderOpenAI, AIProviderAnthropic:
+	default:
+		return fmt.Errorf("%w: ai.provider must be %q or %q, got %q",
+			ErrInvalidAIConfig, AIProviderOpenAI, AIProviderAnthropic, c.Provider)
+	}
+
+	if c.Model == "" {
+		return fmt.Errorf("%w: ai.model (SP_AI_MODEL) is required when ai.provider is set", ErrInvalidAIConfig)
+	}
+
+	return nil
+}
+
+// applyAIEnv reads every SP_AI_* variable. See AIConfig.
+func applyAIEnv(cfg *AIConfig) {
+	if v := os.Getenv("SP_AI_PROVIDER"); v != "" {
+		cfg.Provider = strings.ToLower(strings.TrimSpace(v))
+	}
+
+	if v := os.Getenv("SP_AI_BASE_URL"); v != "" {
+		cfg.BaseURL = strings.TrimSpace(v)
+	}
+
+	if v := os.Getenv("SP_AI_API_KEY"); v != "" {
+		cfg.APIKey = strings.TrimSpace(v)
+	}
+
+	if v := os.Getenv("SP_AI_MODEL"); v != "" {
+		cfg.Model = strings.TrimSpace(v)
+	}
+
+	if v := os.Getenv("SP_AI_MAX_TURNS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.MaxTurns = n
+		}
+	}
+
+	if v := os.Getenv("SP_AI_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			cfg.Timeout = d
+		}
+	}
 }
 
 // ProfilerConfig contains pprof profiler server configuration.
@@ -1684,6 +1778,13 @@ type SchedulingConfig struct {
 	// with a startup warning when out of range. Default 5; 0 disables the
 	// reservation (slow may fill the pool, pre-lane behavior).
 	FastLaneReserved int `koanf:"fast_lane_reserved"`
+	// BulkLaneMax caps the multi-step slices (bulk lane, spec 2026-10-03-03)
+	// in flight per worker. Bulk shares the non-reserved part of the pool
+	// with the slow lane, slow first. Default 4; <= 0 falls back to 4.
+	BulkLaneMax int `koanf:"bulk_lane_max"`
+	// BulkSliceBudgetMs is the wall-clock budget of one multi-step slice in
+	// ms. Default 10000; <= 0 falls back to it; clamped to 60000.
+	BulkSliceBudgetMs float64 `koanf:"bulk_slice_budget_ms"`
 }
 
 // CheckTimeout returns CheckTimeoutMs as a duration.
@@ -1698,7 +1799,7 @@ type SchedulingConfig struct {
 // A non-positive CheckTimeoutMs is returned as 0 — the documented "falls back
 // to the built-in default" behavior belongs to each consumer (see
 // incidents.DefaultCheckTimeoutFallback), not to the raw conversion.
-func (c SchedulingConfig) CheckTimeout() time.Duration {
+func (c *SchedulingConfig) CheckTimeout() time.Duration {
 	return time.Duration(c.CheckTimeoutMs * float64(time.Millisecond))
 }
 
@@ -1800,6 +1901,8 @@ func Load() (*Config, error) {
 				LaneSlowThresholdMs: 2000,
 				LaneFastThresholdMs: 1000,
 				FastLaneReserved:    5,
+				BulkLaneMax:         4,
+				BulkSliceBudgetMs:   10000,
 			},
 			RateLimiting: DefaultRateLimitConfig(),
 			// One CNAME, pointing at the plain instance target. See
@@ -1944,6 +2047,10 @@ func Load() (*Config, error) {
 		},
 		Agent: AgentConfig{
 			KeysFile: "/data/agent-keys.json",
+		},
+		AI: AIConfig{
+			MaxTurns: defaultAIMaxTurns,
+			Timeout:  defaultAITimeout,
 		},
 		Profiler: ProfilerConfig{
 			Enabled: false,
@@ -2111,6 +2218,7 @@ func Load() (*Config, error) {
 	applyRealtimeEnv(&cfg.Realtime)
 	applyEgressEnv(&cfg.Egress)
 	applyHeadersEnv(&cfg.Headers)
+	applyAIEnv(&cfg.AI)
 
 	// When in test mode and no database type is specified, default to sqlite-memory
 	if cfg.RunMode == "test" && cfg.Database.Type == "" {
@@ -2631,6 +2739,14 @@ func applySchedulingEnv(cfg *SchedulingConfig) {
 	if v := os.Getenv("SP_SCHEDULING_FAST_LANE_RESERVED"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
 			cfg.FastLaneReserved = n
+		}
+	}
+
+	parseFloat("SP_SCHEDULING_BULK_SLICE_BUDGET_MS", &cfg.BulkSliceBudgetMs)
+
+	if v := os.Getenv("SP_SCHEDULING_BULK_LANE_MAX"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.BulkLaneMax = n
 		}
 	}
 }
@@ -3190,7 +3306,7 @@ func (c *Config) Validate() error {
 		return err
 	}
 
-	return nil
+	return c.AI.Validate()
 }
 
 // validateNodeConfig validates the node block: the role itself, the

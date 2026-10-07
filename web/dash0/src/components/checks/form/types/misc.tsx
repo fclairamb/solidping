@@ -24,6 +24,13 @@ import type { CheckTypeModule } from "./index";
 import type { CheckConfig, CheckTypeFieldsProps, FieldErrors } from "./common";
 import { getConfigField, validationMessage } from "./common";
 import { useCheckFormFields } from "./context";
+import { AIBlockEditor } from "@/components/checks/ai-block-editor";
+import {
+  aiBlockStateFromConfig,
+  aiBlockStateToConfig,
+  contractLines,
+  type AIBlockState,
+} from "@/components/checks/ai-block";
 
 const hostRequired = (host: string): FieldErrors =>
   host ? [] : [{ name: "host", message: validationMessage("hostRequired") }];
@@ -959,6 +966,9 @@ export interface JsState {
   // edit (specs 2026-05-18-07, 2026-08-28-12). Always seeded false: unlike
   // HTTP's basic-auth pair there is no public half that could come back.
   secretsDirty: boolean;
+  // The prompt, contract and repair mode of an AI-authored check (spec
+  // 2026-10-03-07). Undefined for a hand-written script.
+  ai?: AIBlockState;
 }
 
 // seedKeyValueRows turns a config map into editor rows, tolerating a missing or
@@ -983,14 +993,26 @@ function rowsToMap(rows: KeyValueRow[]): Record<string, string> {
 
 export const jsModule: CheckTypeModule<JsState> = {
   types: ["js"],
-  ownedKeys: ["script", "env", "secrets"],
+  ownedKeys: ["script", "env", "secrets", "ai"],
   fromConfig: (config) => ({
     script: getConfigField(config, "script"),
+    ai: aiBlockStateFromConfig(config.ai),
     env: seedKeyValueRows(config.env),
     // `secrets` is never in a GET response; if a deployment somehow returned
     // it, seeding from it would re-send a credential the operator never typed.
     secrets: [],
     secretsDirty: false,
+  }),
+  // A sample declares secret KEYS (empty values) so the editor shows the row to
+  // fill. The value is forced to "" whatever the sample carries, and
+  // `secretsDirty` stays false until the user types.
+  fromSample: (config) => ({
+    ...jsModule.fromConfig(config),
+    secrets: Object.keys(
+      config.secrets && typeof config.secrets === "object" && !Array.isArray(config.secrets)
+        ? (config.secrets as Record<string, unknown>)
+        : {}
+    ).map((key) => ({ key, value: "" })),
   }),
   toConfig: (state) => {
     const cfg: CheckConfig = {};
@@ -1000,9 +1022,14 @@ export const jsModule: CheckTypeModule<JsState> = {
     // Untouched ⇒ key absent ⇒ the stored secrets are preserved. Touched ⇒ the
     // map is sent, and an explicit {} is what clears them.
     if (state.secretsDirty) cfg.secrets = rowsToMap(state.secrets);
+    if (state.ai) cfg.ai = aiBlockStateToConfig(state.ai);
     const errors: FieldErrors = state.script
       ? []
       : [{ name: "script", message: validationMessage("scriptRequired") }];
+    // The server rejects a prompt without a contract.
+    if (state.ai && state.ai.prompt.trim() && contractLines(state.ai.contract).length === 0) {
+      errors.push({ name: "aiContract", message: validationMessage("aiContractRequired") });
+    }
     return { config: cfg, errors };
   },
   Fields: JsFields,
@@ -1010,9 +1037,25 @@ export const jsModule: CheckTypeModule<JsState> = {
 
 function JsFields({ state, onChange, errors }: CheckTypeFieldsProps<JsState>) {
   const { t } = useTranslation("checks");
-  const { configPrivateKeys } = useCheckFormFields();
+  const { configPrivateKeys, org, checkUid } = useCheckFormFields();
   return (
     <div className="space-y-4">
+      {state.ai && (
+        <div className="space-y-1">
+          <AIBlockEditor
+            org={org}
+            checkUid={checkUid}
+            value={state.ai}
+            onChange={(ai) => onChange({ ...state, ai })}
+            env={rowsToMap(state.env)}
+            typedSecrets={state.secretsDirty ? rowsToMap(state.secrets) : undefined}
+            onRegenerated={(script, ai) => onChange({ ...state, script, ai })}
+          />
+          {getFieldError(errors, "aiContract") && (
+            <p className="text-xs text-destructive">{getFieldError(errors, "aiContract")}</p>
+          )}
+        </div>
+      )}
       <div className="space-y-2">
         <Label htmlFor="script">{t("misc.script")}</Label>
         <CodeMirror

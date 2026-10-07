@@ -16,6 +16,12 @@ permissions:
   packages: write
   pull-requests: read
 
+# A new push to a PR cancels the run still going for the previous commit.
+# main and tag runs are never cancelled: they publish and deploy.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   # Wiki-only pull requests build and test nothing: wiki/ holds internal
   # engineering notes and is not an input to any build (the published docs site
@@ -1012,6 +1018,22 @@ jobs:
             COMMIT=${{ steps.version.outputs.GIT_HASH }}
             GIT_TIME=${{ steps.version.outputs.GIT_TIME }}
 
+      # Docker Hub mirror: most self-hosting catalogues and many users look for
+      # the image on Docker Hub first. Copies the multi-arch manifest that was
+      # just pushed to GHCR (no rebuild). Skipped when the secret is not set.
+      - name: Mirror image to Docker Hub
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          if [ -z "$DOCKERHUB_TOKEN" ]; then echo "DOCKERHUB_TOKEN not set, skipping"; exit 0; fi
+          echo "$DOCKERHUB_TOKEN" | docker login docker.io -u "$DOCKERHUB_USERNAME" --password-stdin
+          for src in $TAGS; do
+            dst="docker.io/fclairamb/solidping:${src##*:}"
+            docker buildx imagetools create -t "$dst" "$src"
+          done
+
       # Regression guard for the bug fixed by fix(docker): persist data with
       # zero env vars — a bare `docker run -v <volume>:/data` used to lose the
       # SQLite database and every upload because the image had no ENV/VOLUME
@@ -1431,3 +1453,26 @@ jobs:
 
           # Wait for rollout to complete
           ./kubectl rollout status deployment/solidping -n solidping-dev --context=k8xp --timeout=5m
+
+  mcp-registry:
+    name: Publish to the MCP Registry
+    runs-on: ubuntu-latest
+    needs: [docker]
+    if: ${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') }}
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # Keeps io.github.fclairamb/solidping on registry.modelcontextprotocol.io
+      # at the released version. Auth is GitHub OIDC, no secret needed.
+      - name: Publish server.json
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          jq --arg v "$VERSION" '.version = $v' server.json > server.release.json
+          mv server.release.json server.json
+          curl -sL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish

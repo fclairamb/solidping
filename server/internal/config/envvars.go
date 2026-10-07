@@ -245,6 +245,8 @@ func manualReaderServerEnvVars() []string {
 		"SP_SCHEDULING_LANE_SLOW_THRESHOLD_MS",
 		"SP_SCHEDULING_LANE_FAST_THRESHOLD_MS",
 		"SP_SCHEDULING_FAST_LANE_RESERVED",
+		"SP_SCHEDULING_BULK_LANE_MAX",
+		"SP_SCHEDULING_BULK_SLICE_BUDGET_MS",
 	}, manualReaderACMEEnvVars()...)
 }
 
@@ -259,6 +261,13 @@ func manualReaderPlatformEnvVars() []string {
 		"SP_DEMO_ORG_SLUG",
 		"SP_DEMO_CHECK_TTL",
 		"SP_DEMO_CLEANUP_INTERVAL",
+		// applyAIEnv (spec 2026-10-03-07)
+		"SP_AI_PROVIDER",
+		"SP_AI_BASE_URL",
+		"SP_AI_API_KEY",
+		"SP_AI_MODEL",
+		"SP_AI_MAX_TURNS",
+		"SP_AI_TIMEOUT",
 		// applyProfilerEnv
 		"SP_PROFILER_BLOCK_RATE",
 		"SP_PROFILER_MUTEX_FRACTION",

@@ -26,6 +26,7 @@ interface IntegrationIconProps {
 
 const ICONS: Record<ConnectionType, typeof Webhook> = {
   slack: MessagesSquare,
+  "slack-webhook": MessagesSquare,
   discord: MessageCircle,
   webhook: Webhook,
   email: Mail,
@@ -58,6 +59,8 @@ export function integrationLabel(type: ConnectionType): string {
   switch (type) {
     case "slack":
       return "Slack";
+    case "slack-webhook":
+      return "Slack (webhook)";
     case "discord":
       return "Discord";
     case "webhook":
@@ -69,9 +72,9 @@ export function integrationLabel(type: ConnectionType): string {
     case "mattermost":
       return "Mattermost";
     case "msteams":
-      return "Microsoft Teams";
+      return "Teams (webhook)";
     case "msteams-bot":
-      return "Microsoft Teams (bot)";
+      return "Teams (bot)";
     case "ntfy":
       return "ntfy";
     case "gotify":

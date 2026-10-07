@@ -75,6 +75,12 @@ func HTTPTransportFor(ctx context.Context, skipTLSVerify bool) http.RoundTripper
 // redirect chain inside one execution) is kept. Every private transport below
 // was already HTTP/1.1 (a custom DialContext or TLSClientConfig makes net/http
 // "conservatively disable HTTP/2"); this makes the two shared ones match.
+//
+// HTTP/2 and HTTP/3 are opt-in per check (`httpVersion`, spec 2026-10-03-01)
+// and never pooled: HTTPProbeTransportFor builds a fresh transport for each
+// probe, with keep-alives off, and closes it once the probe is done. A stream
+// stranded by a timed-out HTTP/2 probe therefore dies with its transport and
+// cannot poison the next probe.
 var checkTransport = &http.Transport{ //nolint:gochecknoglobals // shared, constant after init
 	// HTTP/2 off — see the doc comment. An explicit empty TLSNextProto says
 	// "no alternate protocols", which stops net/http re-enabling h2 on top of
@@ -126,22 +132,41 @@ func buildHTTPTransport(
 	// Private transports were already HTTP/1.1 (a custom DialContext or
 	// TLSClientConfig makes net/http "conservatively disable HTTP/2"); the
 	// explicit TLSNextProto keeps them so without relying on that heuristic.
-	transport := &http.Transport{TLSNextProto: noHTTP2()}
+	return &http.Transport{
+		TLSNextProto:    noHTTP2(),
+		DialContext:     probeDialContext(dialer, version, guard),
+		TLSClientConfig: probeTLSConfig(skipTLSVerify),
+	}
+}
 
+// probeDialContext is the dial step every per-probe transport shares, whatever
+// the HTTP version: the tunnel dialer when the check is tunneled, the
+// family-pinning and/or egress-guarded dialer when either applies, and nil
+// (net/http's default dialer) otherwise.
+func probeDialContext(
+	dialer ContextDialer, version IPVersion, guard *egress.Guard,
+) func(context.Context, string, string) (net.Conn, error) {
 	switch {
 	case dialer != nil:
-		transport.DialContext = dialer.DialContext
-	case pinFamily || enforce:
-		transport.DialContext = guardedFamilyDialContext(version, guard)
+		return dialer.DialContext
+	case version.Explicit() || guard.Enforcing():
+		return guardedFamilyDialContext(version, guard)
+	default:
+		return nil
+	}
+}
+
+// probeTLSConfig is the TLS client config every per-probe transport shares:
+// nil (verify against the system roots) unless the operator explicitly opted
+// out of verification via verifySsl: false.
+func probeTLSConfig(skipTLSVerify bool) *tls.Config {
+	if !skipTLSVerify {
+		return nil
 	}
 
-	if skipTLSVerify {
-		// InsecureSkipVerify is only set when the operator explicitly
-		// opted out of verification via verifySsl: false.
-		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
-	}
-
-	return transport
+	// InsecureSkipVerify is only set when the operator explicitly opted out of
+	// verification via verifySsl: false.
+	return &tls.Config{InsecureSkipVerify: true}
 }
 
 // FamilyDialContext returns a DialContext pinned to one address family.
@@ -179,34 +204,78 @@ func guardedFamilyDialContext(
 			return nil, fmt.Errorf("invalid address %q: %w", addr, err)
 		}
 
-		if ip := net.ParseIP(host); ip != nil {
-			if !MatchesIPVersion(ip, version) {
-				return nil, fmt.Errorf(
-					"%w: %s is not an %s address", ErrNoAddressForFamily, host, version.Label(),
-				)
-			}
-
-			if denyErr := guard.CheckAddr(ctx, host, ip); denyErr != nil {
-				return nil, denyErr
-			}
-
-			return baseDialer.DialContext(ctx, network, addr)
-		}
-
-		addrs, err := LookupIPAddr(ctx, host)
-		if err != nil {
-			return nil, fmt.Errorf("failed to resolve hostname: %w", err)
-		}
-
-		ip, err := SelectIPAddr(host, addrs, version)
+		ip, err := resolveGuardedPinned(ctx, host, version, guard)
 		if err != nil {
 			return nil, err
+		}
+
+		return baseDialer.DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
+	}
+}
+
+// resolveGuarded resolves host to the single address a probe must dial, under
+// the same rules as the TCP dial path: the pinned family is honored, and under
+// an enforcing egress guard the name is resolved ONCE and a non-public answer
+// is refused. The caller dials the returned IP, never the name again. It is
+// what the QUIC dial hook uses, since QUIC cannot go through a net.Dialer.
+func resolveGuarded(ctx context.Context, host string, version IPVersion, guard *egress.Guard) (net.IP, error) {
+	if version.Explicit() {
+		return resolveGuardedPinned(ctx, host, version, guard)
+	}
+
+	if guard.Enforcing() {
+		return guard.ResolveOne(ctx, host)
+	}
+
+	if ip := net.ParseIP(host); ip != nil {
+		return ip, nil
+	}
+
+	addrs, err := LookupIPAddr(ctx, host)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve hostname: %w", err)
+	}
+
+	if len(addrs) == 0 {
+		return nil, &net.DNSError{Err: "no such host", Name: host, IsNotFound: true}
+	}
+
+	return addrs[0].IP, nil
+}
+
+// resolveGuardedPinned is resolveGuarded for a pinned family: the family
+// selection is checkerdef's (cataloged errors naming the host and family), and
+// the selected IP is checked against the guard before it is returned.
+func resolveGuardedPinned(
+	ctx context.Context, host string, version IPVersion, guard *egress.Guard,
+) (net.IP, error) {
+	if ip := net.ParseIP(host); ip != nil {
+		if !MatchesIPVersion(ip, version) {
+			return nil, fmt.Errorf(
+				"%w: %s is not an %s address", ErrNoAddressForFamily, host, version.Label(),
+			)
 		}
 
 		if denyErr := guard.CheckAddr(ctx, host, ip); denyErr != nil {
 			return nil, denyErr
 		}
 
-		return baseDialer.DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
+		return ip, nil
 	}
+
+	addrs, err := LookupIPAddr(ctx, host)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve hostname: %w", err)
+	}
+
+	ip, err := SelectIPAddr(host, addrs, version)
+	if err != nil {
+		return nil, err
+	}
+
+	if denyErr := guard.CheckAddr(ctx, host, ip); denyErr != nil {
+		return nil, denyErr
+	}
+
+	return ip, nil
 }

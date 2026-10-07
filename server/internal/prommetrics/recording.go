@@ -114,7 +114,7 @@ func RecordClaimJobsOutcome(outcome string) {
 }
 
 // RecordLaneClaims adds n claimed jobs to the per-lane claim counter.
-// lane ∈ {LaneLabelFast, LaneLabelSlow}. A zero n is a no-op so callers can
+// lane ∈ {LaneLabelFast, LaneLabelSlow, LaneLabelBulk}. A zero n is a no-op so callers can
 // pass raw per-batch counts without pre-filtering.
 func RecordLaneClaims(lane string, n int) {
 	if n <= 0 {

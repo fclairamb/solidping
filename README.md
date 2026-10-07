@@ -5,7 +5,7 @@
 # SolidPing
 
 **Distributed, self-hostable uptime monitoring.**
-41 check types, multi-region workers, private agents, status pages,
+43 check types, multi-region workers, private agents, status pages,
 incidents and on-call escalation — in a single Go binary.
 
 [![Build](https://img.shields.io/github/actions/workflow/status/fclairamb/solidping/ci.yml?branch=main&label=build&logo=github)](https://github.com/fclairamb/solidping/actions/workflows/ci.yml)
@@ -47,7 +47,7 @@ https://github.com/user-attachments/assets/471694b0-b136-4764-86c1-5f85615c45f4
 | **Hosted** | [www.solidping.io](https://www.solidping.io) — sign up, no card needed |
 | **Live status page** | [status.solidping.io](https://status.solidping.io) — a real SolidPing instance watching the production one, from another provider in another country |
 | **Documentation** | [docs.solidping.io](https://docs.solidping.io) |
-| **Self-host** | `docker run -p 4000:4000 --hostname solidping ghcr.io/fclairamb/solidping` — SQLite by default, no other service needed. First login is `admin@solidping.io` / `solidpass`, and you must change it (see [Default Credentials](#default-credentials)). Prefer a bare binary? Every release also publishes one for Linux, macOS and Windows — see the [installation guides](https://docs.solidping.io/installation/linux). Also: `brew install fclairamb/tap/solidping` ([tap](https://github.com/fclairamb/homebrew-tap)), `scoop bucket add fclairamb https://github.com/fclairamb/scoop-bucket` then `scoop install solidping`, and a [Helm chart](deploy/helm/solidping). |
+| **Self-host** | `docker run -p 4000:4000 --hostname solidping ghcr.io/fclairamb/solidping` (also on Docker Hub as [`fclairamb/solidping`](https://hub.docker.com/r/fclairamb/solidping)) — SQLite by default, no other service needed. First login is `admin@solidping.io` / `solidpass`, and you must change it (see [Default Credentials](#default-credentials)). Prefer a bare binary? Every release also publishes one for Linux, macOS and Windows — see the [installation guides](https://docs.solidping.io/installation/linux). Also: `brew install fclairamb/tap/solidping` ([tap](https://github.com/fclairamb/homebrew-tap)), `scoop bucket add fclairamb https://github.com/fclairamb/scoop-bucket` then `scoop install solidping`, and a [Helm chart](deploy/helm/solidping). |
 
 ## Overview
 
@@ -55,7 +55,7 @@ SolidPing is a multi-tenant monitoring system that enables organizations to moni
 
 ### Key Features
 
-- **41 check types**: HTTP, TCP, UDP, ICMP, DNS, DNSBL, NTP, SSL/Domain, SSH, RDP, VNC, FTP/SFTP, SMTP/POP3/IMAP, Email (JMAP passive inbox), WebSocket, SIP, gRPC, Prometheus, 7 databases (Postgres, MySQL, MSSQL, Oracle, ClickHouse, MongoDB, Redis), 3 message queues (Kafka, RabbitMQ, MQTT), Docker, Kubernetes, SNMP, Freebox line, game server (Source/A2S, Minecraft), headless browser, custom JS, heartbeat
+- **43 check types**: HTTP, TCP, UDP, ICMP, DNS, DNSBL, NTP, SSL/Domain, SSH, RDP, VNC, FTP/SFTP, SMTP/POP3/IMAP, Email (JMAP passive inbox), WebSocket, SIP, gRPC, Prometheus, 7 databases (Postgres, MySQL, MSSQL, Oracle, ClickHouse, MongoDB, Redis), 3 message queues (Kafka, RabbitMQ, MQTT), Docker, Kubernetes, SNMP, Freebox line, game server (Source/A2S, Minecraft), headless browser, custom JS, website crawl, health endpoint, heartbeat
 - **Distributed workers**: Multi-region check execution with lease-based scheduling, per-region check periods with spread control, and per-org check-rate quotas
 - **Private locations**: Deported agents run checks from inside your own network over an outbound WebSocket, with per-org agent quotas
 - **Multi-tenant**: Organization-scoped data isolation, RBAC, 2FA (TOTP), labels with autocomplete

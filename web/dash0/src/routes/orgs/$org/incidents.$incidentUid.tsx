@@ -1172,6 +1172,35 @@ function IncidentDetailPage() {
                     icon={getEventIcon(e.eventType)}
                   />
                 ))}
+              {/* A health check's failing components changed while this
+                  incident was open (spec 2026-10-03-05). */}
+              {(events?.data ?? [])
+                .filter((e) => e.eventType === "incident.components_changed")
+                .slice()
+                .sort(
+                  (a, b) =>
+                    new Date(a.createdAt ?? 0).getTime() -
+                    new Date(b.createdAt ?? 0).getTime(),
+                )
+                .map((e) => {
+                  const failed = Array.isArray(e.payload?.failed)
+                    ? (e.payload.failed as unknown[]).filter(
+                        (name): name is string => typeof name === "string",
+                      )
+                    : [];
+                  return (
+                    <TimelineItem
+                      key={e.uid}
+                      label={
+                        failed.length > 0
+                          ? t("timeline.componentsChanged", { components: failed.join(", ") })
+                          : t("timeline.componentsChangedNone")
+                      }
+                      timestamp={e.createdAt}
+                      icon={getEventIcon(e.eventType)}
+                    />
+                  );
+                })}
               {incident.resolvedAt && (
                 <TimelineItem
                   label={t("timeline.resolved")}

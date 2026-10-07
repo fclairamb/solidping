@@ -540,7 +540,7 @@ func TestProjectChecksPerMinuteReusesTheDemandFormula(t *testing.T) {
 	live, err := entSvc.ChecksPerMinuteStatus(ctx, env.org.UID)
 	r.NoError(err)
 
-	projected, err := entSvc.ProjectChecksPerMinute(ctx, env.org.UID, entcore.CheckRateProposal{})
+	projected, err := entSvc.ProjectChecksPerMinute(ctx, env.org.UID, &entcore.CheckRateProposal{})
 	r.NoError(err)
 
 	r.InDelta(live.Demand, projected.Current, 0.0001)
@@ -548,7 +548,7 @@ func TestProjectChecksPerMinuteReusesTheDemandFormula(t *testing.T) {
 	r.Equal(live.Limit, projected.Limit)
 
 	// And a proposal is additive on top of it.
-	withProposal, err := entSvc.ProjectChecksPerMinute(ctx, env.org.UID, entcore.CheckRateProposal{
+	withProposal, err := entSvc.ProjectChecksPerMinute(ctx, env.org.UID, &entcore.CheckRateProposal{
 		Type: "http", Period: time.Minute, Enabled: true,
 	})
 	r.NoError(err)

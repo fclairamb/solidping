@@ -103,6 +103,11 @@ const (
 	// Keep in sync with solidping-billing's Free SKU before release, the same
 	// rule as every other SaaS default in this block.
 	defaultMaxSlosSaaS = 2
+	// defaultMaxAITokensPerDaySaaS bounds what one SaaS org spends on the
+	// server's LLM key per UTC day for AI-authored js checks (spec
+	// 2026-10-03-07): a handful of generations and repairs. Billing raises it
+	// per plan. Self-hosted stays unlimited (nil): the operator's own key pays.
+	defaultMaxAITokensPerDaySaaS = 200_000
 )
 
 // White-label defaults. Neither mode grants it: white labeling is what a paid
@@ -162,6 +167,7 @@ func DefaultsFor(mode string) Entitlements {
 				MaxCallsPerMonth:    Int(defaultMaxCallsPerMonthSaaS),
 				MaxWhatsappPerMonth: Int(defaultMaxWhatsappPerMonthSaaS),
 				MaxSlos:             Int(defaultMaxSlosSaaS),
+				MaxAITokensPerDay:   Int(defaultMaxAITokensPerDaySaaS),
 				WhiteLabel:          Bool(defaultWhiteLabelSaaS),
 			},
 			Source:       models.EntitlementSourceDefault,

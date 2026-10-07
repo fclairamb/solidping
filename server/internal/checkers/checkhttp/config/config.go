@@ -152,6 +152,12 @@ type HTTPConfig struct {
 	// fallback to "any".
 	RedirectHostPolicy string `json:"redirectHostPolicy,omitempty"`
 
+	// HTTPVersion is the HTTP version the target must speak (spec
+	// 2026-10-03-01): "1.1" (the default, never written back), "2" or "3". A
+	// response over any other version fails the check. Validated in
+	// ValidateSpec, including the "3 cannot be tunneled" rule.
+	HTTPVersion string `json:"httpVersion,omitempty" jsonschema:"enum=1.1,enum=2,enum=3"`
+
 	// CaptureFailureResponse opts this check into capturing what the probe
 	// actually received when the check FAILS — status line, redacted response
 	// headers and a size-capped body — for persistence as incident
@@ -401,6 +407,23 @@ func (c *HTTPConfig) FromMap(configMap map[string]any) error {
 		c.RedirectHostPolicy = s
 	}
 
+	// Extract HTTPVersion (optional). A config-as-code manifest naturally
+	// writes `httpVersion: 2` (a YAML number), so numbers are accepted and
+	// spelled back as their shortest decimal form ("1.1", "2", "3"). Value
+	// validity is checked in ValidateSpec.
+	if v, ok := configMap[checkerdef.HTTPVersionConfigKey]; ok && v != nil {
+		switch typed := v.(type) {
+		case string:
+			c.HTTPVersion = typed
+		case float64:
+			c.HTTPVersion = strconv.FormatFloat(typed, 'f', -1, 64)
+		case int:
+			c.HTTPVersion = strconv.Itoa(typed)
+		default:
+			return checkerdef.NewConfigError(checkerdef.HTTPVersionConfigKey, "must be a string")
+		}
+	}
+
 	// Extract CaptureFailureResponse (optional). Canonical key is the
 	// snake_case one; the camelCase spelling is accepted so a config written
 	// by the frontend's usual convention still parses.
@@ -586,6 +609,22 @@ func (c *HTTPConfig) addToggleConfig(cfg map[string]any) {
 	if c.CaptureFailureResponse {
 		cfg["capture_failure_response"] = true
 	}
+
+	if v := c.RequiredHTTPVersion(); v != checkerdef.HTTPVersion11 {
+		cfg[checkerdef.HTTPVersionConfigKey] = string(v)
+	}
+}
+
+// RequiredHTTPVersion is the HTTP version the probe must speak. An unset or
+// unknown value reads as the HTTP/1.1 default (ValidateSpec rejects an unknown
+// one on every write).
+func (c *HTTPConfig) RequiredHTTPVersion() checkerdef.HTTPVersion {
+	v, err := checkerdef.ParseHTTPVersion(c.HTTPVersion)
+	if err != nil {
+		return checkerdef.HTTPVersion11
+	}
+
+	return v
 }
 
 // SkipTLSVerify reports whether TLS certificate verification should be

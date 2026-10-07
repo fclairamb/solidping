@@ -1526,6 +1526,11 @@ type CreateCheckRequest struct {
 //
 //nolint:cyclop,funlen,gocritic,gocognit // Complex due to validation and field handling
 func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateCheckRequest) (CheckResponse, error) {
+	// Version 1 of the check's history names the caller (spec 2026-10-03-06).
+	ctx = withCallerChangeSource(ctx)
+	// A freshly generated script records origin ai_generate (spec 2026-10-03-07).
+	markAIGenerated(ctx, req.Type, req.Config, nil)
+
 	// Get organization by slug
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
 	if err != nil {
@@ -2023,6 +2028,10 @@ type UpsertCheckRequest struct {
 func (s *Service) UpdateCheck(
 	ctx context.Context, orgSlug, identifier string, req *UpdateCheckRequest,
 ) (CheckResponse, error) {
+	// Every write of this PATCH (row, labels) folds into one version of the
+	// check's history, attributed to the caller (spec 2026-10-03-06).
+	ctx = withCallerChangeSource(ctx)
+
 	// `internal` is not writable, on update no more than on create (spec
 	// 2026-08-27-01): flipping it on would un-meter an existing check, and
 	// flipping it off would re-meter a plumbing check the server owns.
@@ -2047,6 +2056,10 @@ func (s *Service) UpdateCheck(
 	// here without any "protected" column.
 	if demoErr := assertDemoMayWriteCheck(ctx, check); demoErr != nil {
 		return CheckResponse{}, demoErr
+	}
+
+	if req.Config != nil {
+		markAIGenerated(ctx, check.Type, *req.Config, check.Config)
 	}
 
 	// Validate slug if provided
@@ -2131,6 +2144,9 @@ func (s *Service) UpdateCheck(
 			}
 		}
 	}
+	// The stored config before this PATCH, to spot a dns baseline reset
+	// ("Accept current records", spec 2026-10-03-04) once the write landed.
+	configBefore := check.Config
 	if req.Config != nil {
 		if cfgErr := s.applyConfigUpdate(ctx, check, *req.Config, &update); cfgErr != nil {
 			return CheckResponse{}, cfgErr
@@ -2296,6 +2312,13 @@ func (s *Service) UpdateCheck(
 		relevel := req.RegionSpread != nil
 		if reconcileErr := s.reconcileCheckJobs(ctx, updatedCheck, relevel); reconcileErr != nil {
 			return CheckResponse{}, fmt.Errorf("failed to reconcile check jobs: %w", reconcileErr)
+		}
+	}
+
+	// check.Config holds the stored public config once applyConfigUpdate ran.
+	if req.Config != nil && dnsBaselineReset(check.Type, configBefore, check.Config) {
+		if dueErr := s.makeCheckJobsDue(ctx, check.UID); dueErr != nil {
+			return CheckResponse{}, dueErr
 		}
 	}
 
@@ -3221,6 +3244,7 @@ func (s *Service) reconcileCheckJobs(ctx context.Context, check *models.Check, r
 		scheduledAt := scheduling.NextAligned(time.Now(), basePeriod, basePeriod, check.UID, nil, nil, 0)
 		job := models.NewCheckJob(check.OrganizationUID, check.UID, check.Period)
 		job.Type = check.Type
+		job.Lane = models.InitialLaneForType(check.Type)
 		job.Config = check.Config
 		job.ConfigPrivate = check.ConfigPrivate
 		job.ConfigPrivateKeys = check.ConfigPrivateKeys
@@ -3322,6 +3346,26 @@ func (s *Service) reconcileCheckJobs(ctx context.Context, check *models.Check, r
 					Set("updated_at = ?", time.Now()).
 					Where("uid = ?", existing.UID)
 
+				// A multi-step run in progress (spec 2026-10-03-03) was started
+				// against the old config: drop it, the next claim starts fresh.
+				if existing.StepRunUID != nil &&
+					(existing.Type != check.Type || !configEqual(existing.Config, check.Config)) {
+					query = query.
+						Set("step_run_uid = NULL").
+						Set("step_run_started_at = NULL").
+						Set("step_count = 0").
+						Set("step_state_file_uid = NULL").
+						Set("step_failures = 0")
+				}
+
+				// A type change crossing the multi-step boundary moves the job
+				// between the bulk lane and the fast lane (spec 2026-10-03-03):
+				// the cost classifier never moves a job out of bulk on its own.
+				if existing.Type != check.Type &&
+					checkerdef.CheckType(existing.Type).IsMultiStep() != checkerdef.CheckType(check.Type).IsMultiStep() {
+					query = query.Set("lane = ?", models.InitialLaneForType(check.Type))
+				}
+
 				if scheduleChanged {
 					scheduledAt := scheduling.NextAligned(
 						time.Now(), basePeriod, basePeriod, check.UID, &regionCopy, targetRegions, spread,
@@ -3346,6 +3390,7 @@ func (s *Service) reconcileCheckJobs(ctx context.Context, check *models.Check, r
 
 			job := models.NewCheckJob(check.OrganizationUID, check.UID, check.Period)
 			job.Type = check.Type
+			job.Lane = models.InitialLaneForType(check.Type)
 			job.Config = check.Config
 			job.ConfigPrivate = check.ConfigPrivate
 			job.ConfigPrivateKeys = check.ConfigPrivateKeys
@@ -3645,6 +3690,12 @@ func (s *Service) emitEvent(
 			"check_type":             check.Type,
 		})
 	event.CheckUID = &check.UID
+
+	// A created check is version 1 of its history (spec 2026-10-03-06);
+	// check.updated is emitted with its version by the DB layer.
+	if eventType == models.EventTypeCheckCreated {
+		event.Payload["version"] = 1
+	}
 
 	if err := s.db.CreateEvent(ctx, event); err != nil {
 		return fmt.Errorf("failed to create event: %w", err)
@@ -4153,6 +4204,9 @@ func redactSecretConfig(check *models.Check, privateKeys []string) (map[string]a
 func (s *Service) ImportChecks(
 	ctx context.Context, orgSlug string, doc *ExportDocument, dryRun bool,
 ) (*ImportResult, error) {
+	// Config-as-code: versions written by an import say so (spec 2026-10-03-06).
+	ctx = WithChangeOrigin(ctx, models.CheckVersionOriginApply)
+
 	// A plain import stamps no managed label, so the label is ordinary user
 	// data here and a document that drops it really would drop it.
 	return s.importChecks(ctx, orgSlug, doc, dryRun, diffOptions{})
@@ -4810,6 +4864,8 @@ type CloneCheckRequest struct {
 func (s *Service) CloneCheck(
 	ctx context.Context, orgSlug, sourceIdentifier string, req *CloneCheckRequest,
 ) (CheckResponse, error) {
+	ctx = withCallerChangeSource(ctx)
+
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
 	if err != nil {
 		return CheckResponse{}, ErrOrganizationNotFound
@@ -5412,23 +5468,33 @@ func secretPlaceholderShapeFor(checkType, key string) any {
 		return placeholderSecretValue
 	}
 
-	typ := val.Type()
+	if field, found := structFieldByJSONTag(val.Type(), key); found && field.Type.Kind() == reflect.Map {
+		return map[string]any{}
+	}
+
+	return placeholderSecretValue
+}
+
+// structFieldByJSONTag finds the field whose `json` name is key, looking through
+// embedded structs (the health check embeds the http check's config, so its
+// secretHeaders field lives one level down).
+func structFieldByJSONTag(typ reflect.Type, key string) (reflect.StructField, bool) {
 	for i := range typ.NumField() {
 		field := typ.Field(i)
 
 		jsonTag, _, _ := strings.Cut(field.Tag.Get("json"), ",")
-		if jsonTag == "" || jsonTag != key {
-			continue
+		if jsonTag == key {
+			return field, true
 		}
 
-		if field.Type.Kind() == reflect.Map {
-			return map[string]any{}
+		if field.Anonymous && jsonTag == "" && field.Type.Kind() == reflect.Struct {
+			if inner, found := structFieldByJSONTag(field.Type, key); found {
+				return inner, true
+			}
 		}
-
-		break
 	}
 
-	return placeholderSecretValue
+	return reflect.StructField{}, false
 }
 
 // applyRegionSealing implements phase 2 of spec 2026-07-16-02. When the check
@@ -5706,6 +5772,46 @@ func (s *Service) applyConfigPatch(
 	return mergePatchConfig(existing, patch, credentials.SecretFieldsFor(cfg)), nil
 }
 
+// dnsBaselineReset reports whether a config update cleared a dns check's
+// change-detection baseline while detection stays on: the "Accept current
+// records" action (spec 2026-10-03-04), which must be followed by a run so
+// every region captures the new answer right away.
+func dnsBaselineReset(checkType string, before, after map[string]any) bool {
+	if checkType != string(checkerdef.CheckTypeDNS) {
+		return false
+	}
+
+	if on, _ := after["detect_changes"].(bool); !on {
+		return false
+	}
+
+	return hasBaseline(before) && !hasBaseline(after)
+}
+
+func hasBaseline(config map[string]any) bool {
+	baseline, _ := config["baseline"].(map[string]any)
+
+	return len(baseline) > 0
+}
+
+// makeCheckJobsDue makes every job of a check due now, without touching its
+// phase for the runs after this one.
+func (s *Service) makeCheckJobsDue(ctx context.Context, checkUID string) error {
+	now := time.Now()
+
+	if _, err := s.db.DB().NewUpdate().
+		Model((*models.CheckJob)(nil)).
+		Set("scheduled_at = ?", now).
+		Set("effective_scheduled_at = ?", now).
+		Set("updated_at = ?", now).
+		Where("check_uid = ?", checkUID).
+		Exec(ctx); err != nil {
+		return fmt.Errorf("make check jobs due: %w", err)
+	}
+
+	return nil
+}
+
 // preserveAbsentRedactedFields carries a check's existing export-redacted
 // config values across a config PATCH that does not mention them.
 //
@@ -5741,6 +5847,14 @@ func preserveAbsentRedactedFields(check *models.Check, merged map[string]any) {
 		if stored, present := check.Config[field].(string); present && stored != "" {
 			merged[field] = stored
 		}
+	}
+
+	// Server-maintained fields follow the same "omitted is kept" rule: the dns
+	// change-detection baseline (spec 2026-10-03-04) is captured by the
+	// server, so a manifest exported before the capture must not reset it on
+	// every apply. An explicit value (including `{}`) is honored.
+	if preserver, ok := cfg.(checkerdef.AbsentFieldPreserver); ok {
+		preserver.PreserveAbsentFields(check.Config, merged)
 	}
 }
 

@@ -21,6 +21,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/fclairamb/solidping/server/internal/activation"
+	"github.com/fclairamb/solidping/server/internal/baselinecapture"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
 	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
@@ -181,19 +182,8 @@ func (s *Service) SubmitResult(
 		models.EventTypeOrgActivationFirstResultReceived,
 		activation.SourceSystem, "")
 
-	// 4. Process incidents (best-effort).
-	check, checkErr := s.db.GetCheck(
-		ctx, job.OrganizationUID, job.CheckUID,
-	)
-	if checkErr != nil {
-		slog.WarnContext(ctx,
-			"Failed to fetch check for incidents", "error", checkErr)
-	} else if incErr := s.incidentSvc.ProcessCheckResult(
-		ctx, check, result,
-	); incErr != nil {
-		slog.WarnContext(ctx,
-			"Failed to process incidents", "error", incErr)
-	}
+	// 4. Baseline capture and incidents (best-effort).
+	s.afterSave(ctx, &job, result, req)
 
 	// 5. Release lease, folding in the post-exec scheduling state.
 	//
@@ -215,6 +205,23 @@ func (s *Service) SubmitResult(
 	return &SubmitResultResponse{
 		NextScheduledAt: nextScheduledAt,
 	}, nil
+}
+
+// afterSave runs the best-effort steps that follow a saved result: the dns
+// baseline capture, as on the in-process path (spec 2026-10-03-04), then
+// incident processing.
+func (s *Service) afterSave(
+	ctx context.Context, job *models.CheckJob, result *models.Result, req *SubmitResultRequest,
+) {
+	check, checkErr := s.db.GetCheck(ctx, job.OrganizationUID, job.CheckUID)
+
+	baselinecapture.Capture(ctx, s.db, job, check, result.Region, req.Output)
+
+	if checkErr != nil {
+		slog.WarnContext(ctx, "Failed to fetch check for incidents", "error", checkErr)
+	} else if incErr := s.incidentSvc.ProcessCheckResult(ctx, check, result); incErr != nil {
+		slog.WarnContext(ctx, "Failed to process incidents", "error", incErr)
+	}
 }
 
 // releaseLease releases the job's lease: with the recomputed scheduling state

@@ -4,9 +4,10 @@ package mcp
 // definition picks exactly one; together with the prose description they
 // form the tool's behavior disclosure.
 //
-// openWorldHint is false everywhere on purpose: every tool operates on the
-// SolidPing server's own data and never reaches out to an external entity
-// on the caller's behalf.
+// openWorldHint is false everywhere but on the probe tools (run_js_script,
+// fetch_page, browser_snapshot, spec 2026-10-03-07): every other tool
+// operates on the SolidPing server's own data and never reaches out to an
+// external entity on the caller's behalf.
 //
 // The split between the classes:
 //
@@ -28,6 +29,19 @@ func readOnlyAnnotations(title string) *ToolAnnotations {
 		DestructiveHint: false,
 		IdempotentHint:  true,
 		OpenWorldHint:   false,
+	}
+}
+
+// probeAnnotations is a tool that writes nothing but reaches the target the
+// caller names (a script run, a page fetch): open-world, and idempotent like
+// every read (a repeat has no additional effect on SolidPing).
+func probeAnnotations(title string) *ToolAnnotations {
+	return &ToolAnnotations{
+		Title:           title,
+		ReadOnlyHint:    true,
+		DestructiveHint: false,
+		IdempotentHint:  true,
+		OpenWorldHint:   true,
 	}
 }
 

@@ -50,6 +50,10 @@ type SubmitResultRequest struct {
 	// Sched, when non-nil, releases the lease with the updated scheduling
 	// state; nil uses the plain release.
 	Sched *SchedulingState `json:"sched,omitempty"`
+	// StepRunUID, when set, marks the result as the end of a multi-step run
+	// (spec 2026-10-03-03): the release clears the job's step_* columns,
+	// fenced on the run the claim saw, instead of a plain release.
+	StepRunUID *string `json:"stepRunUid,omitempty"`
 }
 
 // PrivateLocationReader is the extra read the private-location liveness
@@ -89,8 +93,10 @@ type WorkerBackend interface {
 	Heartbeat(ctx context.Context, workerUID string, capabilities []string, version string) error
 
 	// ClaimJobs claims due jobs with per-lane reservation (fastLimit is the
-	// total capacity, slowLimit the slow-lane budget — see
-	// checkjobsvc.Service.ClaimJobs). The second return is the next-eligible
+	// total capacity, slowLimit the slow-lane budget, bulkLimit the bulk-lane
+	// budget before the slow claims are deducted — see
+	// checkjobsvc.Service.ClaimJobs). A remote backend ignores bulkLimit: no
+	// multi-step job ever reaches an agent (spec 2026-10-03-03). The second return is the next-eligible
 	// hint: how long until the earliest still-unleased job in this worker's
 	// scope becomes claimable (0 = none known). The fetcher sleeps on it
 	// instead of its flat fallback poll, which is what keeps sub-minute
@@ -101,6 +107,7 @@ type WorkerBackend interface {
 		region *string,
 		fastLimit int,
 		slowLimit int,
+		bulkLimit int,
 		maxAhead time.Duration,
 	) ([]*models.CheckJob, time.Duration, error)
 
@@ -161,4 +168,49 @@ type WorkerBackend interface {
 	// (check.created events in-process; jobs-available frames over WS). Each
 	// call returns an independent subscription.
 	Hints() <-chan string
+}
+
+// SubmitStepRequest is the write of one non-final multi-step slice (spec
+// 2026-10-03-03). The slice's progress travels with the state file (its
+// details bag), not here.
+type SubmitStepRequest struct {
+	RunUID       string
+	RunStartedAt time.Time
+	// StateFileUID is the state file the slice just wrote; nil keeps the
+	// previous one (a failed slice).
+	StateFileUID *string
+	// Failed counts the slice as failed.
+	Failed bool
+	// NextAt is when the next slice is due.
+	NextAt time.Time
+}
+
+// SaveStepStateRequest is one state file to write.
+type SaveStepStateRequest struct {
+	RunUID   string
+	Step     int
+	Payload  []byte // the checker's state (JSON)
+	Progress map[string]any
+}
+
+// StepBackend is the optional backend surface multi-step checks need (spec
+// 2026-10-03-03). Only DirectBackend implements it: multi-step checks run on
+// the server's own workers, never on an agent, so a worker whose backend
+// lacks it refuses the job with an error result.
+type StepBackend interface {
+	// LoadStepState returns the checker payload of the job's current state
+	// file. A missing or corrupt file (or one of another run) is an error:
+	// the worker then restarts the run from a nil state.
+	LoadStepState(ctx context.Context, job *models.CheckJob) ([]byte, error)
+	// SaveStepState writes a new state file (the previous one is kept) and
+	// returns its uid. ErrStepStateTooLarge when the envelope is over the cap.
+	SaveStepState(ctx context.Context, job *models.CheckJob, req *SaveStepStateRequest) (string, error)
+	// SubmitStep releases the lease after a non-final slice, fenced on the
+	// lease and on the run the claim saw.
+	SubmitStep(ctx context.Context, job *models.CheckJob, workerUID string, req *SubmitStepRequest) error
+	// SaveStepReport stores a finished run's report and returns its file uid.
+	SaveStepReport(ctx context.Context, job *models.CheckJob, runUID string, report []byte) (string, error)
+	// PreviousStepReport returns the newest stored report of the check (nil
+	// when none), read before the new one is stored.
+	PreviousStepReport(ctx context.Context, job *models.CheckJob) ([]byte, error)
 }

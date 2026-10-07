@@ -38,7 +38,7 @@ async function stubTeamsBotConnection(page: Page, opts: StubOptions = {}) {
         body: JSON.stringify({
           uid: CHANNEL_UID,
           type: "msteams-bot",
-          name: "Microsoft Teams",
+          name: "Teams (bot)",
           enabled: true,
           isDefault: false,
           settings: {

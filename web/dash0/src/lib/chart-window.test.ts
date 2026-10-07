@@ -128,3 +128,20 @@ describe("chartFetchParams raw seam", () => {
     expect(plan[1].periodStartAfter).toBe(plan[0].periodStartAfter);
   });
 });
+
+describe("chartRollupTier raw retention fallback", () => {
+  it("uses the hourly rollup for a sparse day window older than raw retention", () => {
+    const now = Date.parse("2026-10-02T12:00:00Z");
+    const DAY = 24 * 3_600_000;
+    const previous = { from: now - 2 * DAY, to: now - DAY };
+
+    // Sparse check: raw is the tier for the current day view...
+    expect(chartRollupTier("day", 15 * 60_000, undefined, now)).toBe("");
+    // ...but the previous 24h has no raw rows left, so it must read rollups.
+    expect(chartRollupTier("day", 15 * 60_000, previous, now)).toBe("hour");
+    // A recent zoom stays on raw.
+    expect(
+      chartRollupTier("day", 15 * 60_000, { from: now - 3_600_000, to: now }, now),
+    ).toBe("");
+  });
+});

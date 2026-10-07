@@ -232,6 +232,10 @@ implementation, the same rule OneUptime#2937 forced on advertised intervals.
 cannot win on volume, only on being first-hand, dated, and verifiable.
 
 ### OneUptime — https://oneuptime.com
+*Promoted to a full analysis 2026-10-06, see [oneuptime.md](oneuptime.md). Correction: the
+Growth and Scale prices below are **per user per month**, with active monitors billed on top
+from $1 each.*
+
 Open-source observability platform (uptime + APM + status pages + incident mgmt +
 on-call), both SaaS and self-hostable. Likely the closest **functional** rival:
 broader scope than SolidPing (APM, logs, sessions), heavier deploy footprint than
@@ -411,7 +415,7 @@ self-hosted discovery. Early — verify traction before treating as head-to-head
   `docker compose up`. Stack: Laravel 12 + PostgreSQL + Redis Streams + Go probes +
   TimescaleDB for results. Same self-host lane; no distributed multi-region or
   on-call depth surfaced yet.
-- **Kener** — https://kener.ing · OSS (SvelteKit), lightweight status-page + basic
+- **Kener** — *promoted to a full analysis 2026-10-06, see [kener.md](kener.md)* — https://kener.ing · OSS (SvelteKit), lightweight status-page + basic
   monitoring. Status-page-first, narrower than SolidPing; SEO competitor for
   "open-source status page" queries.
 

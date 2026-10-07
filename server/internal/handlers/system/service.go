@@ -195,6 +195,9 @@ func applyActivationEvent(row *ActivationFunnelRow, event *models.Event) {
 		row.FirstIncidentAt = &occurredAt
 	case models.EventTypeCheckCreated, models.EventTypeCheckUpdated,
 		models.EventTypeCheckDeleted, models.EventTypeCheckPlacementChanged,
+		models.EventTypeCheckBaselineCaptured,
+		models.EventTypeCheckAIRepairAttempted, models.EventTypeCheckAIRepairProposed,
+		models.EventTypeCheckAIRepairApplied, models.EventTypeAIUsage,
 		models.EventTypeIncidentCreated, models.EventTypeIncidentResolved,
 		models.EventTypeIncidentEscalated, models.EventTypeIncidentReopened,
 		models.EventTypeIncidentAcknowledged, models.EventTypeIncidentUnacknowledged,
@@ -202,6 +205,7 @@ func applyActivationEvent(row *ActivationFunnelRow, event *models.Event) {
 		models.EventTypeIncidentEscalationFailed, models.EventTypeIncidentComment,
 		models.EventTypeIncidentRolledUp, models.EventTypeIncidentRollupDetached,
 		models.EventTypeIncidentMonitoringInterrupted, models.EventTypeIncidentMonitoringResumed,
+		models.EventTypeIncidentComponentsChanged,
 		models.EventTypeStatusUpdateCreated, models.EventTypeStatusUpdateUpdated,
 		models.EventTypeStatusUpdateDeleted,
 		models.EventTypeStatusPageIncidentPublished,

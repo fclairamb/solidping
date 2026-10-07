@@ -158,10 +158,10 @@ These services have full analysis documents in this directory:
 
 ## Simplified/Budget Options (Tier 2)
 
-14. **Oh Dear**
+14. **Oh Dear** — see [ohdear.md](ohdear.md) for the analysis
     - URL: https://ohdear.app
-    - Focus: Modern uptime + mixed content checking
-    - Pricing: $10-$99/month
+    - Focus: Website health (uptime, ping, TCP, crawl, Lighthouse, DNS, cron)
+    - Pricing: $17/month (2 monitors) to $439/month (200 monitors), per monitor
     - Free Tier: 10-day trial
     - Notable: Laravel ecosystem, certificate monitoring
     - API: Yes
@@ -212,14 +212,14 @@ These services have full analysis documents in this directory:
     - API: Team plan and up only, unversioned path
     - Check Intervals: 30 seconds (Team+), 60 seconds (Solo), 5 minutes (Free)
 
-20. **Upptime**
+20. **Upptime** — *promoted to a full analysis 2026-10-06, see [upptime.md](upptime.md)*
     - URL: https://upptime.js.org
     - Focus: Open-source GitHub Actions monitoring
     - Pricing: Free (GitHub Actions costs)
     - Free Tier: Fully free
     - Notable: Completely open source
     - API: GitHub API
-    - Check Intervals: Configurable (GitHub Actions)
+    - Check Intervals: 5 minutes by default, which is also GitHub's minimum for scheduled workflows
 
 21. **Statping-ng**
     - URL: https://github.com/statping-ng/statping-ng

@@ -1,124 +1,12 @@
 module github.com/fclairamb/solidping/server
 
-go 1.26.3
+go 1.27
 
 // The RDP client library is vendored in-tree as its own module: the fork
 // carries the SolidPing patches (Unicode input, logoff PDU, tunnel dialing)
 // and the cgo-only codecs are deleted outright — see
 // third_party/grdp/README-solidping.md.
 replace github.com/fclairamb/solidping/server/third_party/grdp => ./third_party/grdp
-
-require (
-	filippo.io/age v1.3.2
-	github.com/ClickHouse/clickhouse-go/v2 v2.48.0
-	github.com/IBM/sarama v1.61.1
-	github.com/SherClockHolmes/webpush-go v1.4.0
-	github.com/arran4/golang-ical v0.3.7
-	github.com/aws/aws-sdk-go-v2 v1.47.1
-	github.com/aws/aws-sdk-go-v2/config v1.33.6
-	github.com/aws/aws-sdk-go-v2/credentials v1.20.6
-	github.com/aws/aws-sdk-go-v2/service/s3 v1.114.0
-	github.com/beevik/ntp v1.6.0
-	github.com/caddyserver/certmagic v0.25.6
-	github.com/chromedp/cdproto v0.0.0-20260922220944-a19bff23514f
-	github.com/chromedp/chromedp v0.16.0
-	github.com/coder/websocket v1.8.15
-	github.com/coreos/go-oidc/v3 v3.21.0
-	github.com/crewjam/saml v0.5.1
-	github.com/docker/go-units v0.5.0
-	github.com/dop251/goja v0.0.0-20261001174550-3ccc9c78af18
-	github.com/dreamscached/minequery/v2 v2.5.0
-	github.com/dustin/go-humanize v1.1.0
-	github.com/eclipse/paho.mqtt.golang v1.5.1
-	github.com/fergusstrange/embedded-postgres v1.34.0
-	github.com/fsnotify/fsnotify v1.10.1
-	github.com/getsentry/sentry-go v0.49.0
-	github.com/go-asn1-ber/asn1-ber v1.5.8
-	github.com/go-chi/chi/v5 v5.3.2
-	github.com/go-jose/go-jose/v4 v4.1.5
-	github.com/go-ldap/ldap/v3 v3.4.14
-	github.com/go-sql-driver/mysql v1.10.1
-	github.com/go-webauthn/webauthn v0.18.2
-	github.com/golang-jwt/jwt/v5 v5.3.1
-	github.com/google/uuid v1.6.0
-	github.com/gookit/color v1.6.1
-	github.com/gosnmp/gosnmp v1.45.0
-	github.com/invopop/jsonschema v0.14.0
-	github.com/jedib0t/go-pretty/v6 v6.8.3
-	github.com/jimlambrt/gldap v0.1.14
-	github.com/jlaffaye/ftp v0.2.4
-	github.com/jonboulle/clockwork v0.5.0
-	github.com/klauspost/compress v1.20.1
-	github.com/knadh/koanf/parsers/json v1.0.1
-	github.com/knadh/koanf/parsers/yaml v1.1.1
-	github.com/knadh/koanf/providers/env/v2 v2.0.1
-	github.com/knadh/koanf/providers/file v1.2.1
-	github.com/knadh/koanf/providers/structs v1.0.1
-	github.com/knadh/koanf/v2 v2.3.7
-	github.com/lib/pq v1.12.3
-	github.com/likexian/whois v1.15.7
-	github.com/likexian/whois-parser v1.24.21
-	github.com/mattn/go-sqlite3 v1.14.52
-	github.com/microsoft/go-mssqldb v1.11.2
-	github.com/miekg/dns v1.1.73
-	github.com/moby/moby/api v1.56.0
-	github.com/moby/moby/client v0.6.0
-	github.com/oapi-codegen/oapi-codegen/v2 v2.8.0
-	github.com/oapi-codegen/runtime v1.7.0
-	github.com/ohler55/ojg v1.28.7
-	github.com/pires/go-proxyproto v0.15.0
-	github.com/pkg/sftp v1.13.11
-	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2
-	github.com/posthog/posthog-go v1.28.1
-	github.com/pquerna/otp v1.5.0
-	github.com/prometheus/client_golang v1.24.1
-	github.com/prometheus/client_model v0.6.3
-	github.com/prometheus/common v0.72.0
-	github.com/rabbitmq/amqp091-go v1.15.0
-	github.com/redis/go-redis/v9 v9.22.0
-	github.com/rumblefrog/go-a2s v1.0.3
-	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
-	github.com/sijms/go-ora/v3 v3.0.1
-	github.com/slack-go/slack v0.29.0
-	github.com/stretchr/testify v1.12.1
-	github.com/uptrace/bun v1.2.18
-	github.com/uptrace/bun/dialect/pgdialect v1.2.18
-	github.com/uptrace/bun/dialect/sqlitedialect v1.2.18
-	github.com/uptrace/bun/driver/pgdriver v1.2.18
-	github.com/urfave/cli/v3 v3.13.0
-	github.com/vanng822/go-premailer v1.36.0
-	github.com/wneessen/go-mail v0.8.1
-	github.com/xdg-go/scram v1.2.0
-	go.mongodb.org/mongo-driver/v2 v2.9.1
-	go.opentelemetry.io/contrib/bridges/otelslog v0.20.1
-	go.opentelemetry.io/otel v1.46.0
-	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc v0.21.0
-	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp v0.21.0
-	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc v1.46.0
-	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp v1.46.0
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.46.0
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.46.0
-	go.opentelemetry.io/otel/metric v1.46.0
-	go.opentelemetry.io/otel/sdk v1.46.0
-	go.opentelemetry.io/otel/sdk/log v0.21.0
-	go.opentelemetry.io/otel/sdk/metric v1.46.0
-	go.opentelemetry.io/otel/trace v1.46.0
-	go.uber.org/goleak v1.3.0
-	go.uber.org/zap v1.28.0
-	golang.org/x/crypto v0.57.0
-	golang.org/x/net v0.59.0
-	golang.org/x/oauth2 v0.37.0
-	golang.org/x/sync v0.23.0
-	golang.org/x/sys v0.48.0
-	golang.org/x/term v0.46.0
-	golang.org/x/time v0.16.0
-	google.golang.org/grpc v1.84.0
-	gopkg.in/yaml.v3 v3.0.1
-	k8s.io/api v0.37.1
-	k8s.io/apimachinery v0.37.1
-	k8s.io/client-go v0.37.1
-	modernc.org/sqlite v1.60.1
-)
 
 require (
 	dario.cat/mergo v1.0.2 // indirect
@@ -267,6 +155,7 @@ require (
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
 	github.com/prometheus/procfs v0.21.1 // indirect
 	github.com/puzpuzpuz/xsync/v3 v3.5.1 // indirect
+	github.com/quic-go/qpack v0.6.0 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20250401214520-65e299d6c5c9 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/russellhaering/goxmldsig v1.6.0 // indirect
@@ -278,6 +167,11 @@ require (
 	github.com/speakeasy-api/openapi v1.24.0 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/ssor/bom v0.0.0-20170718123548-6386211fdfcf // indirect
+	github.com/standard-webhooks/standard-webhooks/libraries v0.0.1 // indirect
+	github.com/tidwall/gjson v1.18.0 // indirect
+	github.com/tidwall/match v1.1.1 // indirect
+	github.com/tidwall/pretty v1.2.1 // indirect
+	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/tinylib/msgp v1.6.4 // indirect
 	github.com/tklauser/go-sysconf v0.4.0 // indirect
 	github.com/tklauser/numcpus v0.12.0 // indirect
@@ -296,8 +190,8 @@ require (
 	github.com/zeebo/blake3 v0.2.4 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.70.0 // indirect
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.46.0 // indirect
-	go.opentelemetry.io/otel/log v0.22.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.47.0 // indirect
+	go.opentelemetry.io/otel/log v1.47.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.11.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
@@ -309,8 +203,8 @@ require (
 	golang.org/x/mod v0.41.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
 	golang.org/x/tools v0.50.0 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20260819154853-08b0e4226688 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260819154853-08b0e4226688 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20260928230214-8a89bd6388cc // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260928230214-8a89bd6388cc // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
@@ -328,6 +222,117 @@ require (
 )
 
 require (
+	filippo.io/age v1.3.2
+	github.com/ClickHouse/clickhouse-go/v2 v2.48.0
+	github.com/IBM/sarama v1.61.1
+	github.com/SherClockHolmes/webpush-go v1.4.0
+	github.com/anthropics/anthropic-sdk-go v1.78.0
+	github.com/arran4/golang-ical v0.3.7
+	github.com/aws/aws-sdk-go-v2 v1.47.1
+	github.com/aws/aws-sdk-go-v2/config v1.33.6
+	github.com/aws/aws-sdk-go-v2/credentials v1.20.6
+	github.com/aws/aws-sdk-go-v2/service/s3 v1.114.0
+	github.com/beevik/ntp v1.6.0
+	github.com/caddyserver/certmagic v0.25.6
+	github.com/chromedp/cdproto v0.0.0-20260922220944-a19bff23514f
+	github.com/chromedp/chromedp v0.16.0
+	github.com/coder/websocket v1.8.15
+	github.com/coreos/go-oidc/v3 v3.21.0
+	github.com/crewjam/saml v0.5.1
+	github.com/docker/go-units v0.5.0
+	github.com/dop251/goja v0.0.0-20261002135814-104bc28c3abd
+	github.com/dreamscached/minequery/v2 v2.5.0
+	github.com/dustin/go-humanize v1.1.0
+	github.com/eclipse/paho.mqtt.golang v1.5.1
 	github.com/fclairamb/solidping/server/third_party/grdp v0.0.0
+	github.com/fergusstrange/embedded-postgres v1.34.0
+	github.com/fsnotify/fsnotify v1.10.1
+	github.com/getsentry/sentry-go v0.49.0
+	github.com/go-asn1-ber/asn1-ber v1.5.8
+	github.com/go-chi/chi/v5 v5.3.2
+	github.com/go-jose/go-jose/v4 v4.1.5
+	github.com/go-ldap/ldap/v3 v3.4.14
+	github.com/go-sql-driver/mysql v1.10.1
+	github.com/go-webauthn/webauthn v0.18.2
+	github.com/golang-jwt/jwt/v5 v5.3.1
+	github.com/google/uuid v1.6.0
+	github.com/gookit/color v1.6.1
+	github.com/gosnmp/gosnmp v1.45.0
+	github.com/invopop/jsonschema v0.14.0
+	github.com/jedib0t/go-pretty/v6 v6.8.3
+	github.com/jimlambrt/gldap v0.1.14
+	github.com/jlaffaye/ftp v0.2.4
+	github.com/jonboulle/clockwork v0.5.0
+	github.com/klauspost/compress v1.20.1
+	github.com/knadh/koanf/parsers/json v1.0.1
+	github.com/knadh/koanf/parsers/yaml v1.1.1
+	github.com/knadh/koanf/providers/env/v2 v2.0.1
+	github.com/knadh/koanf/providers/file v1.2.1
+	github.com/knadh/koanf/providers/structs v1.0.1
+	github.com/knadh/koanf/v2 v2.3.7
+	github.com/lib/pq v1.12.3
+	github.com/likexian/whois v1.15.7
+	github.com/likexian/whois-parser v1.24.21
+	github.com/mattn/go-sqlite3 v1.14.52
+	github.com/microsoft/go-mssqldb v1.11.2
+	github.com/miekg/dns v1.1.73
+	github.com/moby/moby/api v1.56.1
+	github.com/moby/moby/client v0.6.1
+	github.com/oapi-codegen/oapi-codegen/v2 v2.8.0
+	github.com/oapi-codegen/runtime v1.7.0
+	github.com/ohler55/ojg v1.28.7
+	github.com/pires/go-proxyproto v0.15.0
+	github.com/pkg/sftp v1.13.11
+	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2
+	github.com/posthog/posthog-go v1.32.0
+	github.com/pquerna/otp v1.5.0
+	github.com/prometheus/client_golang v1.24.1
+	github.com/prometheus/client_model v0.6.3
+	github.com/prometheus/common v0.72.0
+	github.com/quic-go/quic-go v0.63.0
+	github.com/rabbitmq/amqp091-go v1.15.0
+	github.com/redis/go-redis/v9 v9.22.0
+	github.com/rumblefrog/go-a2s v1.0.3
+	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
+	github.com/sijms/go-ora/v3 v3.0.1
+	github.com/slack-go/slack v0.29.0
+	github.com/stretchr/testify v1.12.1
 	github.com/testcontainers/testcontainers-go v0.44.0
+	github.com/uptrace/bun v1.2.18
+	github.com/uptrace/bun/dialect/pgdialect v1.2.18
+	github.com/uptrace/bun/dialect/sqlitedialect v1.2.18
+	github.com/uptrace/bun/driver/pgdriver v1.2.18
+	github.com/urfave/cli/v3 v3.14.0
+	github.com/vanng822/go-premailer v1.37.0
+	github.com/wneessen/go-mail v0.8.1
+	github.com/xdg-go/scram v1.2.0
+	go.mongodb.org/mongo-driver/v2 v2.9.1
+	go.opentelemetry.io/contrib/bridges/otelslog v0.21.0
+	go.opentelemetry.io/otel v1.47.0
+	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc v0.21.0
+	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp v0.21.0
+	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc v1.47.0
+	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp v1.47.0
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.47.0
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.47.0
+	go.opentelemetry.io/otel/metric v1.47.0
+	go.opentelemetry.io/otel/sdk v1.47.0
+	go.opentelemetry.io/otel/sdk/log v0.21.0
+	go.opentelemetry.io/otel/sdk/metric v1.47.0
+	go.opentelemetry.io/otel/trace v1.47.0
+	go.uber.org/goleak v1.3.0
+	go.uber.org/zap v1.28.0
+	golang.org/x/crypto v0.57.0
+	golang.org/x/net v0.59.0
+	golang.org/x/oauth2 v0.37.0
+	golang.org/x/sync v0.23.0
+	golang.org/x/sys v0.48.0
+	golang.org/x/term v0.46.0
+	golang.org/x/time v0.16.0
+	google.golang.org/grpc v1.84.0
+	gopkg.in/yaml.v3 v3.0.1
+	k8s.io/api v0.37.1
+	k8s.io/apimachinery v0.37.1
+	k8s.io/client-go v0.37.1
+	modernc.org/sqlite v1.60.1
 )

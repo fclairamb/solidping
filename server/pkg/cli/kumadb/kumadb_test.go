@@ -61,7 +61,7 @@ func TestReadColumnsMatchFixtureSchema(t *testing.T) {
 
 	ctx := context.Background()
 
-	db, err := sql.Open(sqlitedriver.Name, "file:"+fixturePath+"?mode=ro")
+	db, err := sql.Open(sqlitedriver.Name, "file:"+fixturePath+"?mode=ro&_busy_timeout=5000")
 	r.NoError(err)
 	defer db.Close() //nolint:errcheck // read-only test handle
 

@@ -277,7 +277,11 @@ type Result struct {
 	DurationMin                 *float32 `bun:"duration_min"`
 	DurationMax                 *float32 `bun:"duration_max"`
 	DurationP95                 *float32 `bun:"duration_p95"`
-	DurationAvg                 *float32 `bun:"duration_avg"`
+	// DurationP50 is the median duration. Nil on rows that predate the column
+	// (never backfilled: the raw rows they came from are gone), which must stay
+	// distinguishable from a real 0.
+	DurationP50 *float32 `bun:"duration_p50"`
+	DurationAvg *float32 `bun:"duration_avg"`
 
 	CreatedAt time.Time `bun:"created_at,notnull,default:current_timestamp"`
 

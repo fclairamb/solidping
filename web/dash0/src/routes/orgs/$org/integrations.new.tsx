@@ -18,6 +18,7 @@ import {
   canSource,
   type ConnectionType,
 } from "@/api/hooks";
+import { ApiError } from "@/api/client";
 import {
   IntegrationIcon,
   integrationLabel,
@@ -34,13 +35,14 @@ interface NewIntegrationSearch {
 
 export const Route = createFileRoute("/orgs/$org/integrations/new")({
   validateSearch: (search: Record<string, unknown>): NewIntegrationSearch => ({
-    type: search.type as ConnectionType | undefined,
+    type: ALL_TYPES.find((c) => c === search.type),
   }),
   component: NewIntegrationPage,
 });
 
 const ALL_TYPES: ConnectionType[] = [
   "slack",
+  "slack-webhook",
   "discord",
   "webhook",
   "email",
@@ -67,7 +69,16 @@ function NewIntegrationPage() {
   const navigate = useNavigate();
   const create = useCreateIntegration(org);
 
-  const [type, setType] = useState<ConnectionType | null>(search.type ?? null);
+  // The URL is the source of truth for the selected type, so reload, shared
+  // links and the browser Back button all behave.
+  const type = search.type ?? null;
+  const setType = (next: ConnectionType | null) => {
+    void navigate({
+      to: "/orgs/$org/integrations/new",
+      params: { org },
+      search: next ? { type: next } : {},
+    });
+  };
   const [form, setForm] = useState<IntegrationFormState | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -87,8 +98,15 @@ function NewIntegrationPage() {
         to: "/orgs/$org/integrations/$integrationUid",
         params: { org, integrationUid: created.uid },
       });
-    } catch {
-      toast.error(t("createFailed", "Failed to create integration"));
+    } catch (err) {
+      const base = t("createFailed", "Failed to create integration");
+      // A rejected setting (e.g. a Slack webhook URL on the wrong host) is the
+      // operator's to fix, so show the server's reason rather than a bare failure.
+      const reason =
+        err instanceof ApiError && err.code === "VALIDATION_ERROR"
+          ? err.detail || err.message
+          : "";
+      toast.error(reason ? `${base}: ${reason}` : base);
     }
   };
 
@@ -173,10 +191,14 @@ function NewIntegrationPage() {
               <IntegrationIcon type={type} className="h-5 w-5" />
               {integrationLabel(type)}
             </CardTitle>
-            <Button asChild variant="ghost" size="sm">
-              <Link to="/orgs/$org/integrations" params={{ org }}>
-                {t("cancel", "Cancel")}
-              </Link>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setType(null)}
+              data-testid="integration-cancel"
+            >
+              {t("cancel", "Cancel")}
             </Button>
           </div>
           <CardDescription>
@@ -205,10 +227,14 @@ function NewIntegrationPage() {
               <IntegrationIcon type={type} className="h-5 w-5" />
               {integrationLabel(type)}
             </CardTitle>
-            <Button asChild variant="ghost" size="sm">
-              <Link to="/orgs/$org/integrations" params={{ org }}>
-                {t("cancel", "Cancel")}
-              </Link>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setType(null)}
+              data-testid="integration-cancel"
+            >
+              {t("cancel", "Cancel")}
             </Button>
           </div>
           <CardDescription>
@@ -219,6 +245,15 @@ function NewIntegrationPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-2">
+          <p
+            className="w-full text-sm text-muted-foreground"
+            data-testid="slack-webhook-alternative"
+          >
+            {t(
+              "form.slackWebhookAlternative",
+              'Cannot install the Slack app? Use "Slack (webhook)" instead: paste an incoming webhook URL, no workspace admin needed.',
+            )}
+          </p>
           <Button
             type="button"
             onClick={() => {
@@ -248,10 +283,14 @@ function NewIntegrationPage() {
             <IntegrationIcon type={type} className="h-5 w-5" />
             {integrationLabel(type)}
           </CardTitle>
-          <Button asChild variant="ghost" size="sm">
-            <Link to="/orgs/$org/integrations" params={{ org }}>
-              {t("cancel", "Cancel")}
-            </Link>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setType(null)}
+            data-testid="integration-cancel"
+          >
+            {t("cancel", "Cancel")}
           </Button>
         </div>
         <CardDescription>

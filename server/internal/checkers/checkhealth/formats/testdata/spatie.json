@@ -1,0 +1,10 @@
+{
+  "finishedAt": 1759482720,
+  "checkResults": [
+    {"name": "Database", "label": "Database", "notificationMessage": "", "shortSummary": "Ok", "status": "ok", "meta": {"connection_name": "mysql"}},
+    {"name": "UsedDiskSpace", "label": "Used Disk Space", "notificationMessage": "The disk is almost full (91% used)", "shortSummary": "91%", "status": "failed", "meta": {"disk_space_used_percentage": 91}},
+    {"name": "Cache", "label": "Cache", "notificationMessage": "Cache is slow", "shortSummary": "Slow", "status": "warning", "meta": []},
+    {"name": "Queue", "label": "Queue", "notificationMessage": "Job crashed", "shortSummary": "Crashed", "status": "crashed", "meta": {}},
+    {"name": "Horizon", "label": "Horizon", "notificationMessage": "", "shortSummary": "", "status": "skipped", "meta": {}}
+  ]
+}

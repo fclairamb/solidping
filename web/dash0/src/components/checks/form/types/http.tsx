@@ -31,6 +31,27 @@ import type { CheckConfig, CheckTypeFieldsProps, FieldErrors } from "./common";
 import { getConfigField, validationMessage } from "./common";
 import { useCheckFormFields } from "./context";
 
+export type HttpVersion = "1.1" | "2" | "3";
+
+// The select's options. "3" is disabled on a tunneled check, mirroring the
+// server's validation (QUIC runs over UDP, the SSH tunnel forwards TCP only).
+export function httpVersionOptions(
+  tunneled: boolean,
+): { value: HttpVersion; labelKey: string; disabled: boolean }[] {
+  return [
+    { value: "1.1", labelKey: "http.httpVersion11", disabled: false },
+    { value: "2", labelKey: "http.httpVersion2", disabled: false },
+    { value: "3", labelKey: "http.httpVersion3", disabled: tunneled },
+  ];
+}
+
+// A YAML manifest may store the version as a number (2, 1.1), so both shapes
+// are read. Anything unknown reads as the default, like the server.
+function seedHttpVersion(raw: unknown): HttpVersion {
+  const value = typeof raw === "number" ? String(raw) : raw;
+  return value === "2" || value === "3" ? value : "1.1";
+}
+
 export interface HttpState {
   url: string;
   method: string;
@@ -51,6 +72,10 @@ export interface HttpState {
   // never written to config, matching the server's omit-at-default GetConfig)
   // or "same-host" (refuse a hop whose host differs from the previous one).
   redirectHostPolicy: "any" | "same-host";
+  // The HTTP version the target must speak. "1.1" is the default and is never
+  // written to config (the server omits it at default too). "3" is refused on
+  // a tunneled check: the SSH tunnel only carries TCP.
+  httpVersion: HttpVersion;
   // Opt-in capture of what the probe received when the check FAILS, kept as
   // incident diagnostics. Defaults to false (off) — unlike the two above, whose
   // default is on — because a response body can contain PII or session
@@ -148,7 +173,7 @@ function seedHeaderRows(raw: unknown): { key: string; value: string }[] {
   }));
 }
 
-function fromConfig(config: CheckConfig): HttpState {
+export function httpFromConfig(config: CheckConfig): HttpState {
   const rawHeaders = config.secretHeaders;
   const hasHeaders =
     !!rawHeaders &&
@@ -197,6 +222,7 @@ function fromConfig(config: CheckConfig): HttpState {
     verifySsl,
     followRedirects,
     redirectHostPolicy,
+    httpVersion: seedHttpVersion(config.httpVersion),
     captureFailureResponse,
     jsonPathAssertions: seedJsonPathAssertions(config),
     bodyAssertions: seedBodyAssertions(config),
@@ -211,7 +237,7 @@ function fromConfig(config: CheckConfig): HttpState {
   };
 }
 
-function toConfig(state: HttpState): {
+export function httpToConfig(state: HttpState): {
   config: CheckConfig;
   errors: FieldErrors;
 } {
@@ -258,6 +284,7 @@ function toConfig(state: HttpState): {
   if (state.redirectHostPolicy === "same-host") {
     cfg.redirectHostPolicy = "same-host";
   }
+  if (state.httpVersion !== "1.1") cfg.httpVersion = state.httpVersion;
   // Written only when opted in, under the canonical snake_case key.
   if (state.captureFailureResponse) cfg.capture_failure_response = true;
   // Not a secret field (see HttpState.jsonPathAssertions), so — like
@@ -302,17 +329,13 @@ function toConfig(state: HttpState): {
   return { config: cfg, errors };
 }
 
-function Fields({ state, onChange, errors }: CheckTypeFieldsProps<HttpState>) {
+// HttpRequestLine is the method + URL row, shared with the health check form.
+export function HttpRequestLine({
+  state,
+  onChange,
+  errors,
+}: CheckTypeFieldsProps<HttpState>) {
   const { t } = useTranslation("checks");
-  const invalidCodes = state.expectedStatusCodes.filter(
-    (code) => !isValidStatusPattern(code),
-  );
-  const statusCodesError =
-    invalidCodes.length > 0
-      ? t("form.statusCodeInvalidSummary", "Invalid: {{codes}}", {
-          codes: invalidCodes.join(", "),
-        })
-      : getFieldError(errors, "expected_status_codes");
   return (
     <>
       <div className="space-y-2">
@@ -361,6 +384,24 @@ function Fields({ state, onChange, errors }: CheckTypeFieldsProps<HttpState>) {
           </p>
         )}
       </div>
+    </>
+  );
+}
+
+function Fields({ state, onChange, errors }: CheckTypeFieldsProps<HttpState>) {
+  const { t } = useTranslation("checks");
+  const invalidCodes = state.expectedStatusCodes.filter(
+    (code) => !isValidStatusPattern(code),
+  );
+  const statusCodesError =
+    invalidCodes.length > 0
+      ? t("form.statusCodeInvalidSummary", "Invalid: {{codes}}", {
+          codes: invalidCodes.join(", "),
+        })
+      : getFieldError(errors, "expected_status_codes");
+  return (
+    <>
+      <HttpRequestLine state={state} onChange={onChange} errors={errors} />
       <div className="space-y-2">
         <Label htmlFor="expectedStatusCodes">{t("http.expectedStatus")}</Label>
         <TokenChipsInput
@@ -553,13 +594,56 @@ export function HttpAuthFields({
 // OptionsFields renders the "Advanced" section's HTTP-specific toggles:
 // TLS certificate verification and redirect following. Both default on
 // (today's hardcoded behavior).
-export function HttpOptionsFields({
+export function HttpOptionsFields(props: CheckTypeFieldsProps<HttpState>) {
+  return <HttpOptionsBody {...props} assertions />;
+}
+
+// HttpOptionsBody is the Advanced section body. `assertions` shows the
+// response assertion editors; the health check hides them because its health
+// document is the only thing that judges the response.
+export function HttpOptionsBody({
   state,
   onChange,
-}: CheckTypeFieldsProps<HttpState>) {
+  assertions,
+}: CheckTypeFieldsProps<HttpState> & { assertions: boolean }) {
   const { t } = useTranslation("checks");
+  const { tunneled } = useCheckFormFields();
   return (
     <div className="space-y-3">
+      <div className="space-y-2">
+        <Label htmlFor="http-version">{t("http.httpVersion")}</Label>
+        <Select
+          value={state.httpVersion}
+          onValueChange={(value) =>
+            onChange({ ...state, httpVersion: value as HttpVersion })
+          }
+        >
+          <SelectTrigger
+            id="http-version"
+            className="w-56"
+            data-testid="check-http-version-select"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {httpVersionOptions(tunneled).map((option) => (
+              <SelectItem
+                key={option.value}
+                value={option.value}
+                disabled={option.disabled}
+                data-testid={`check-http-version-${option.value}`}
+              >
+                {t(option.labelKey)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">
+          {tunneled
+            ? t("http.httpVersion3Tunneled")
+            : t("http.httpVersionHelp")}
+        </p>
+      </div>
       <div className="flex items-center gap-2">
         <Switch
           id="http-verify-ssl"
@@ -702,6 +786,8 @@ export function HttpOptionsFields({
           testIdPrefix="request-header"
         />
       </div>
+      {assertions && (
+        <>
       <div className="space-y-2 border-t pt-3">
         <div>
           <Label>{t("jsonAssertions")}</Label>
@@ -731,6 +817,8 @@ export function HttpOptionsFields({
           onChange={(bodyAssertions) => onChange({ ...state, bodyAssertions })}
         />
       </div>
+        </>
+      )}
     </div>
   );
 }
@@ -742,6 +830,7 @@ export function httpOptionsSummary(state: HttpState): {
   customized: boolean;
 } {
   const parts: string[] = [];
+  if (state.httpVersion !== "1.1") parts.push(`HTTP/${state.httpVersion}`);
   if (!state.verifySsl) parts.push("TLS verification off");
   if (!state.followRedirects) parts.push("redirects not followed");
   if (state.followRedirects && state.redirectHostPolicy === "same-host")
@@ -780,6 +869,7 @@ export const httpModule: CheckTypeModule<HttpState> = {
     "follow_redirects",
     "redirectHostPolicy",
     "redirect_host_policy",
+    "httpVersion",
     "capture_failure_response",
     "captureFailureResponse",
     "jsonPathAssertions",
@@ -789,8 +879,8 @@ export const httpModule: CheckTypeModule<HttpState> = {
     "body",
     "headers",
   ],
-  fromConfig,
-  toConfig,
+  fromConfig: httpFromConfig,
+  toConfig: httpToConfig,
   Fields,
 };
 
