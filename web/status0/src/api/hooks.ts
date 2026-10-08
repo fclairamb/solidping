@@ -194,6 +194,14 @@ export interface StatusPage {
   logoUrl?: string;
   /** Same, for the favicon written into <link rel="icon">. */
   faviconUrl?: string;
+  /** Owning organization's name. Public view endpoints only. */
+  orgName?: string;
+  /**
+   * First-party `/pub/assets/<uid>` path of the org's logo; absent when the
+   * org has none (or only an external-URL logo, which `img-src 'self'` would
+   * block). The brand bar falls back to it after the page's own logo.
+   */
+  orgLogoUrl?: string;
   /**
    * RESOLVED white-label decision: true only when the org holds the
    * `whiteLabel` entitlement AND the page opted in. The server does the AND —

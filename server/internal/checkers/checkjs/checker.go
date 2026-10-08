@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -1043,6 +1044,7 @@ func (r *jsRuntime) parseResult(val goja.Value, duration time.Duration) *checker
 	var metrics map[string]any
 	if metricsVal := obj.Get("metrics"); metricsVal != nil && !goja.IsUndefined(metricsVal) {
 		metrics, _ = metricsVal.Export().(map[string]any)
+		dropNonFinite(metrics)
 	}
 
 	output := r.buildOutputFromObj(obj)
@@ -1053,6 +1055,38 @@ func (r *jsRuntime) parseResult(val goja.Value, duration time.Duration) *checker
 		Metrics:  metrics,
 		Output:   output,
 	}
+}
+
+// dropNonFinite removes the NaN and ±Infinity metrics a script computes from
+// an undefined value (`Date.now() - undefined`): JSON cannot encode them, so
+// one would make the whole result unstorable.
+func dropNonFinite(metrics map[string]any) {
+	for key, val := range metrics {
+		if num, ok := val.(float64); ok && (math.IsNaN(num) || math.IsInf(num, 0)) {
+			delete(metrics, key)
+		}
+	}
+}
+
+// finiteJSON returns val with every NaN or ±Infinity number, at any depth,
+// replaced by nil (JSON null), for the same reason as dropNonFinite.
+func finiteJSON(val any) any {
+	switch typed := val.(type) {
+	case float64:
+		if math.IsNaN(typed) || math.IsInf(typed, 0) {
+			return nil
+		}
+	case map[string]any:
+		for key, inner := range typed {
+			typed[key] = finiteJSON(inner)
+		}
+	case []any:
+		for i, inner := range typed {
+			typed[i] = finiteJSON(inner)
+		}
+	}
+
+	return val
 }
 
 // parseStatus extracts the status from the returned object.
@@ -1095,7 +1129,7 @@ func (r *jsRuntime) buildOutputFromObj(obj *goja.Object) map[string]any {
 	if outputVal := obj.Get("output"); outputVal != nil && !goja.IsUndefined(outputVal) {
 		if exported, ok := outputVal.Export().(map[string]any); ok {
 			for key, val := range exported {
-				out[key] = val
+				out[key] = finiteJSON(val)
 			}
 		}
 	}

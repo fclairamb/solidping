@@ -92,6 +92,8 @@ const INTENTIONALLY_UNMAPPED: Record<string, string> = {
     "timeline record that the check went stale ('No data') while its incident stays open (spec 2026-09-25-02) — never pages; the incident family fallback is enough",
   "incident.monitoring_resumed":
     "timeline record that results came back for a stale check with an open incident (spec 2026-09-25-02) — never pages; the incident family fallback is enough",
+  "incident.components_changed":
+    "timeline record that the failing components of an open health incident changed (spec 2026-10-03-05) — never pages; the incident family fallback is enough",
   "status_update.created": "status-page activity — family fallback (blue) is enough",
   "status_update.updated": "status-page activity — family fallback (blue) is enough",
   "status_update.deleted": "status-page activity — family fallback (blue) is enough",
@@ -224,6 +226,13 @@ describe("EVENT_TYPE_REGISTRY pins the binding emoji per event type", () => {
     // Automatic re-placement (spec 2026-09-25-06): an audit/timeline event
     // only, never sent through a chat integration, so dash0 owns the pairing.
     ["check.placement_changed", "🔀"],
+    // DNS baseline capture (spec 2026-10-03-04): timeline only, dash0 owns it.
+    ["check.baseline_captured", "📌"],
+    // AI-authored js checks (spec 2026-10-03-07): timeline only, dash0 owns it.
+    ["check.ai_repair_attempted", "🤖"],
+    ["check.ai_repair_proposed", "📝"],
+    ["check.ai_repair_applied", "🛠️"],
+    ["check.ai_usage", "🧮"],
     // Private-location agent connections (spec 2026-09-25-05). Recorded as
     // audit events only, never sent through a chat integration, so dash0 owns
     // the pairing outright.

@@ -6,7 +6,15 @@ import {
   useMutation,
   useQueryClient,
 } from "@tanstack/react-query";
-import { ApiError, apiFetch, getToken } from "./client";
+import {
+  AIGenerationFailedError,
+  ApiError,
+  NetworkError,
+  apiFetch,
+  apiFetchResponse,
+  getToken,
+  type AIGenerationFailed,
+} from "./client";
 
 /**
  * Opt-in knobs shared by the plain list hooks. A caller that renders a list
@@ -173,6 +181,8 @@ export interface Check {
     | "rdp"
     | "vnc"
     | "prometheus"
+    | "crawl"
+    | "health"
     | "sleep";
   config?: Record<string, unknown>;
   /**
@@ -389,6 +399,8 @@ export interface CreateCheckRequest {
     | "rdp"
     | "vnc"
     | "prometheus"
+    | "crawl"
+    | "health"
     | "sleep";
   config: Record<string, unknown>;
   /** An explicit list pins the check. Omit to let it be placed automatically. */
@@ -1224,6 +1236,63 @@ export function useCheckScreenshots(
   });
 }
 
+/** The run in progress of a multi-step check (spec 2026-10-03-03). */
+export interface CheckRun {
+  running: boolean;
+  runUid?: string;
+  startedAt?: string;
+  steps?: number;
+  progress?: Record<string, unknown>;
+}
+
+/** One stored crawl report (`checks/<uid>/crawl-report`). */
+export interface CrawlReport {
+  uid: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  /** Relative signed URL: `/pub/files/<uid>?exp=…&sig=…`, valid 1 h. */
+  downloadUrl: string;
+  createdAt: string;
+  capturedAt?: string;
+}
+
+/** Poll faster while a crawl is running so its progress line moves. */
+const CHECK_RUN_ACTIVE_POLL_MS = 5_000;
+const CHECK_RUN_IDLE_POLL_MS = 60_000;
+
+export function useCheckRun(org: string, checkUid: string, options: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: ["check-run", org, checkUid],
+    queryFn: () => apiFetch<CheckRun>(`/api/v1/orgs/${org}/checks/${checkUid}/run`),
+    enabled: (options.enabled ?? true) && !!org && !!checkUid,
+    refetchInterval: (query) =>
+      query.state.data?.running ? CHECK_RUN_ACTIVE_POLL_MS : CHECK_RUN_IDLE_POLL_MS,
+  });
+}
+
+export function useCancelCheckRun(org: string, checkUid: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<void>(`/api/v1/orgs/${org}/checks/${checkUid}/run`, { method: "DELETE" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["check-run", org, checkUid] });
+    },
+  });
+}
+
+export function useCrawlReports(org: string, checkUid: string, options: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: ["crawl-reports", org, checkUid],
+    queryFn: async () =>
+      (await apiFetch<{ data: CrawlReport[] }>(`/api/v1/orgs/${org}/checks/${checkUid}/crawl-reports`)).data,
+    enabled: (options.enabled ?? true) && !!org && !!checkUid,
+    refetchInterval: CHECK_RUN_IDLE_POLL_MS,
+  });
+}
+
 export function useCaptureCheckScreenshot(org: string, checkUid: string) {
   const queryClient = useQueryClient();
 
@@ -1253,6 +1322,239 @@ export function useRotateHeartbeatToken(org: string, uid: string) {
         method: "POST",
       }),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["check", org, uid] });
+      queryClient.invalidateQueries({ queryKey: ["checks", org] });
+      queryClient.invalidateQueries({ queryKey: ["checks", "infinite", org] });
+    },
+  });
+}
+
+/** Check version history (spec 2026-10-03-06). */
+export type CheckVersionStatus = "applied" | "proposed" | "rejected";
+
+export interface CheckVersionSnapshot {
+  name?: string;
+  slug?: string;
+  description?: string;
+  type?: string;
+  config?: Record<string, unknown>;
+  checkGroupUid?: string;
+  regions?: string[];
+  placement?: string;
+  regionCount?: number;
+  regionPool?: string[];
+  failQuorum?: string;
+  enabled?: boolean;
+  period?: string;
+  labels?: Record<string, string>;
+}
+
+export interface CheckVersion {
+  version: number;
+  status: CheckVersionStatus;
+  origin: string;
+  actorUserUid?: string;
+  actorName?: string;
+  reason?: string;
+  baseVersion?: number;
+  decidedByUserUid?: string;
+  decidedAt?: string;
+  createdAt: string;
+  snapshot?: CheckVersionSnapshot;
+}
+
+export interface CheckVersionChange {
+  field: string;
+  from: string;
+  to: string;
+}
+
+export interface CheckVersionDiff {
+  version: number;
+  against: number | null;
+  changes: CheckVersionChange[];
+}
+
+export function useCheckVersions(org: string, uid: string) {
+  return useQuery({
+    queryKey: ["check-versions", org, uid],
+    queryFn: async () =>
+      apiFetch<{ data: CheckVersion[] }>(
+        `/api/v1/orgs/${org}/checks/${uid}/versions`,
+      ),
+    enabled: !!org && !!uid,
+  });
+}
+
+export function useCheckVersionDiff(
+  org: string,
+  uid: string,
+  version: number | undefined,
+) {
+  return useQuery({
+    queryKey: ["check-version-diff", org, uid, version],
+    queryFn: async () =>
+      apiFetch<CheckVersionDiff>(
+        `/api/v1/orgs/${org}/checks/${uid}/versions/${version}/diff`,
+      ),
+    enabled: !!org && !!uid && !!version,
+  });
+}
+
+/** AI-authored js checks (spec 2026-10-03-07). */
+export type AIRepairMode = "off" | "propose" | "auto";
+
+export interface AIUsage {
+  inputTokens: number;
+  outputTokens: number;
+}
+
+export interface AIScriptRun {
+  status: string;
+  durationMs?: number;
+  output?: Record<string, unknown>;
+  metrics?: Record<string, unknown>;
+}
+
+export interface AIContractResponse {
+  contract: string[];
+  model: string;
+  usage?: AIUsage;
+}
+
+export interface AIGenerateRequest {
+  prompt: string;
+  contract: string[];
+  env?: Record<string, string>;
+  secrets?: Record<string, string>;
+  repair?: AIRepairMode;
+  /** Regenerates a saved check: the server fills its stored secrets. */
+  checkUid?: string;
+}
+
+export interface AIGenerateResponse {
+  script: string;
+  config: Record<string, unknown>;
+  secretNames: string[];
+  lastRun: AIScriptRun;
+  model: string;
+  turns: number;
+  usage?: AIUsage;
+}
+
+export type { AIGenerationFailed } from "./client";
+
+/** One step of a streamed generation. */
+export interface AIProgressEvent {
+  type: "turn" | "message" | "tool" | "toolResult";
+  turn?: number;
+  maxTurns?: number;
+  text?: string;
+  tool?: "run_script" | "fetch_page" | "browser_snapshot" | string;
+  url?: string;
+  final?: boolean;
+  status?: string;
+  detail?: string;
+  error?: string;
+  durationMs?: number;
+}
+
+type AIStreamLine =
+  | AIProgressEvent
+  | { type: "ping" }
+  | { type: "result"; result: AIGenerateResponse }
+  | { type: "error"; httpStatus: number; response: { title?: string; code?: string; detail?: string } };
+
+function aiStreamError(status: number, body: { title?: string; code?: string; detail?: string }): ApiError {
+  if (body.code === "AI_GENERATION_FAILED") {
+    return new AIGenerationFailedError(body as AIGenerationFailed);
+  }
+  return new ApiError(body.title || "An error occurred", body.code || "UNKNOWN_ERROR", body.detail, status);
+}
+
+/** POST /checks/ai/generate with its progress streamed as NDJSON. */
+async function streamAIGenerate(
+  org: string,
+  req: AIGenerateRequest,
+  onProgress?: (event: AIProgressEvent) => void,
+): Promise<AIGenerateResponse> {
+  const response = await apiFetchResponse(`/api/v1/orgs/${org}/checks/ai/generate`, {
+    method: "POST",
+    headers: { Accept: "application/x-ndjson" },
+    body: JSON.stringify(req),
+  });
+
+  if (!response.body || !response.headers.get("Content-Type")?.includes("ndjson")) {
+    return (await response.json()) as AIGenerateResponse;
+  }
+
+  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buffer = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (value) buffer += value;
+    let newline = buffer.indexOf("\n");
+    while (newline >= 0) {
+      const raw = buffer.slice(0, newline).trim();
+      buffer = buffer.slice(newline + 1);
+      newline = buffer.indexOf("\n");
+      if (!raw) continue;
+      const line = JSON.parse(raw) as AIStreamLine;
+      if (line.type === "result") return line.result;
+      if (line.type === "error") throw aiStreamError(line.httpStatus, line.response);
+      if (line.type !== "ping") onProgress?.(line);
+    }
+    if (done) break;
+  }
+  throw new NetworkError("The generation stream ended before its result");
+}
+
+/** The `ai` block of an AI-authored js check's config. */
+export interface AICheckBlock {
+  prompt?: string;
+  contract?: string[];
+  model?: string;
+  generated_at?: string;
+  repair?: AIRepairMode;
+}
+
+export function useAIContract(org: string) {
+  return useMutation({
+    mutationFn: (prompt: string) =>
+      apiFetch<AIContractResponse>(`/api/v1/orgs/${org}/checks/ai/contract`, {
+        method: "POST",
+        body: JSON.stringify({ prompt }),
+      }),
+  });
+}
+
+export function useAIGenerate(org: string) {
+  return useMutation({
+    mutationFn: ({
+      onProgress,
+      ...req
+    }: AIGenerateRequest & { onProgress?: (event: AIProgressEvent) => void }) =>
+      streamAIGenerate(org, req, onProgress),
+  });
+}
+
+/** Restore, approve or reject one version of a check. */
+export function useCheckVersionAction(
+  org: string,
+  uid: string,
+  action: "restore" | "approve" | "reject",
+) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (version: number) =>
+      apiFetch<unknown>(
+        `/api/v1/orgs/${org}/checks/${uid}/versions/${version}/${action}`,
+        { method: "POST" },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["check-versions", org, uid] });
+      queryClient.invalidateQueries({ queryKey: ["check-version-diff", org, uid] });
       queryClient.invalidateQueries({ queryKey: ["check", org, uid] });
       queryClient.invalidateQueries({ queryKey: ["checks", org] });
       queryClient.invalidateQueries({ queryKey: ["checks", "infinite", org] });
@@ -2304,9 +2606,11 @@ export function useEvents(
     cursor?: string;
     size?: number;
     refetchInterval?: number;
+    /** False holds the query (e.g. until its filter is known). */
+    enabled?: boolean;
   },
 ) {
-  const { refetchInterval, ...queryOptions } = options || {};
+  const { refetchInterval, enabled = true, ...queryOptions } = options || {};
   return useQuery({
     queryKey: ["events", org, queryOptions],
     queryFn: async () => {
@@ -2328,7 +2632,7 @@ export function useEvents(
         total: response.pagination?.total,
       };
     },
-    enabled: !!org,
+    enabled: !!org && enabled,
     refetchInterval,
   });
 }
@@ -8688,6 +8992,30 @@ export function useDeleteOrgParameter(org: string) {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["orgParameters", org] });
+    },
+  });
+}
+
+/** Response of POST …/run-now ("Run now"): one entry per region. */
+export interface RunCheckNowResponse {
+  requestedAt: string;
+  regions: { region: string; status: "queued" | "running" }[];
+}
+
+/** Runs the check once, now, in every region (spec 2026-10-04-01). The
+ *  results arrive through the normal path: match them with
+ *  `periodStart >= requestedAt`. */
+export function useRunCheckNow(org: string, checkUid: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<RunCheckNowResponse>(
+        `/api/v1/orgs/${org}/checks/${checkUid}/run-now`,
+        { method: "POST" },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["check-run", org, checkUid] });
     },
   });
 }

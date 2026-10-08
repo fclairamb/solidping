@@ -190,6 +190,8 @@
     "monitoringInterrupted": "Monitoreo interrumpido",
     "monitoringInterruptedSince": "Monitoreo interrumpido desde las {{time}}",
     "monitoringResumed": "Monitoreo reanudado",
+    "componentsChanged": "Componentes con fallo modificados: {{components}}",
+    "componentsChangedNone": "Ya no hay componentes con fallo",
     "acknowledgedBy": "por {{name}}",
     "acknowledgedByVia": "por {{name}} vía {{channel}}",
     "ackChannels": {

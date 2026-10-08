@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
+	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
 // defaultParams is a representative "feature on" configuration used across the
@@ -399,4 +400,120 @@ func TestSlowThreshold(t *testing.T) {
 	noBand := scheduling.Params{SlowThresholdMs: 0}
 	require.Equal(t, base.Add(60*time.Millisecond), noBand.EffectiveScheduledAt(base, 30, 0),
 		"threshold 0 applies even a tiny offset")
+}
+
+// A bulk job stays bulk at every cost, with the classifier on or off (spec
+// 2026-10-03-03).
+func TestClassifyLaneKeepsBulk(t *testing.T) {
+	t.Parallel()
+
+	on := scheduling.Params{LaneSlowThresholdMs: 2000, LaneFastThresholdMs: 1000}
+
+	for _, cost := range []float64{0, 500, 1500, 2000, 15000, 1e9} {
+		require.Equal(t, scheduling.LaneBulk, scheduling.ClassifyLane(scheduling.LaneBulk, cost, on), "cost %v", cost)
+		require.Equal(t, scheduling.LaneBulk,
+			scheduling.ClassifyLane(scheduling.LaneBulk, cost, scheduling.Params{}), "cost %v, classifier off", cost)
+	}
+}
+
+// TestLaneLimits covers the per-fetch reservation formula (spec 2026-07-01-03
+// D3, bulk added by spec 2026-10-03-03): fast always gets the full free
+// capacity, slow the budget above the fast floor, bulk the same budget capped
+// by BulkLaneMax.
+func TestLaneLimits(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name                       string
+		free, pool, reserved, busy int
+		busyBulk, bulkMax          int
+		wantFast, wantSlow, wantBk int
+	}{
+		{"idle pool, default floor", 4, 4, 1, 0, 0, 4, 4, 3, 3},
+		{"slow at the cap claims no more slow", 1, 4, 1, 3, 0, 4, 1, 0, 0},
+		{"partially busy slow", 2, 4, 1, 2, 0, 4, 2, 1, 1},
+		{"no reservation (F=0) lets slow fill the pool", 4, 4, 0, 0, 0, 4, 4, 4, 4},
+		{"slow budget clamped to free slots", 1, 25, 5, 0, 0, 4, 1, 1, 1},
+		{"busy beyond budget floors at zero", 2, 4, 1, 5, 0, 4, 2, 0, 0},
+		{"floor at pool−1 leaves one slow slot", 4, 4, 3, 0, 0, 4, 4, 1, 1},
+		{"no free slots", 0, 4, 1, 1, 0, 4, 0, 0, 0},
+		{"bulk capped by BulkLaneMax", 25, 25, 5, 0, 0, 4, 25, 20, 4},
+		{"bulk at its cap claims no more bulk", 21, 25, 5, 0, 4, 4, 21, 16, 0},
+		{"busy bulk shrinks the slow budget", 21, 25, 5, 0, 4, 8, 21, 16, 4},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := scheduling.LaneLimits(tt.free, tt.pool, tt.reserved, tt.busy, tt.busyBulk, tt.bulkMax)
+			require.Equal(t, tt.wantFast, got.Fast, "fast")
+			require.Equal(t, tt.wantSlow, got.Slow, "slow")
+			require.Equal(t, tt.wantBk, got.Bulk, "bulk")
+		})
+	}
+}
+
+// Property test over pool / reserved / busy values: with the claim deducting
+// slow from bulk exactly as checkjobsvc does, the fast reservation is never
+// reduced, bulk never exceeds BulkLaneMax, bulk + slow never exceed
+// poolSize − fastReserved, and slow takes its slots before bulk.
+func TestLaneLimitsProperties(t *testing.T) {
+	t.Parallel()
+
+	for pool := 1; pool <= 12; pool++ {
+		for reserved := 0; reserved < pool; reserved++ {
+			for busyFast := 0; busyFast <= pool; busyFast++ {
+				for busySlow := 0; busySlow+busyFast <= pool; busySlow++ {
+					for busyBulk := 0; busyBulk+busySlow+busyFast <= pool; busyBulk++ {
+						for bulkMax := 1; bulkMax <= 5; bulkMax++ {
+							checkLaneProperty(t, pool, reserved, busyFast, busySlow, busyBulk, bulkMax)
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+func checkLaneProperty(t *testing.T, pool, reserved, busyFast, busySlow, busyBulk, bulkMax int) {
+	t.Helper()
+
+	free := pool - busyFast - busySlow - busyBulk
+	limits := scheduling.LaneLimits(free, pool, reserved, busySlow, busyBulk, bulkMax)
+
+	// Worst case: every lane has more due jobs than its budget. The claim
+	// takes slow first, then bulk minus what slow took, then fast.
+	slowClaimed := min(limits.Slow, limits.Fast)
+	bulkClaimed := max(0, min(limits.Bulk-slowClaimed, limits.Fast-slowClaimed))
+	fastClaimed := limits.Fast - slowClaimed - bulkClaimed
+
+	msg := []any{
+		"pool", pool, "reserved", reserved, "busyFast", busyFast,
+		"busySlow", busySlow, "busyBulk", busyBulk, "bulkMax", bulkMax,
+	}
+
+	require.Equal(t, free, limits.Fast, msg...)
+	require.LessOrEqual(t, busyBulk+bulkClaimed, max(bulkMax, busyBulk), msg...)
+
+	if busySlow+busyBulk <= pool-reserved {
+		require.LessOrEqual(t, busySlow+slowClaimed+busyBulk+bulkClaimed, pool-reserved, msg...)
+		// The fast reservation: slots left for fast are never below what the
+		// floor guarantees.
+		require.GreaterOrEqual(t, busyFast+fastClaimed, min(reserved, pool-busySlow-busyBulk), msg...)
+	}
+
+	if bulkClaimed > 0 {
+		require.Equal(t, min(limits.Slow, limits.Fast), slowClaimed, "slow is served before bulk", msg)
+	}
+}
+
+// models cannot import scheduling, so it mirrors the bulk lane value; a new
+// multi-step job must start in the lane the claim reads.
+func TestModelsBulkLaneMatches(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, scheduling.LaneBulk, models.LaneBulk)
+	require.Equal(t, scheduling.LaneBulk, models.InitialLaneForType("crawl"))
+	require.Equal(t, scheduling.LaneFast, models.InitialLaneForType("http"))
 }

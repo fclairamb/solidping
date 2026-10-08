@@ -190,6 +190,8 @@
     "monitoringInterrupted": "Monitoring interrupted",
     "monitoringInterruptedSince": "Monitoring interrupted since {{time}}",
     "monitoringResumed": "Monitoring resumed",
+    "componentsChanged": "Failing components changed: {{components}}",
+    "componentsChangedNone": "No failing component left",
     "acknowledgedBy": "by {{name}}",
     "acknowledgedByVia": "by {{name}} via {{channel}}",
     "ackChannels": {

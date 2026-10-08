@@ -350,6 +350,16 @@ page is not enough.
 The `sp-logo` CSS hook still applies to an uploaded logo, so existing custom CSS
 keeps working.
 
+### Organization name and logo
+
+The header also shows your organization's name next to the logo, on the page
+and on its [TV view](#tv-mode). When the page has no logo of its own, the
+organization's logo (set in the organization profile) is shown instead of the
+SolidPing mark; a page logo always wins. Only a logo uploaded to SolidPing is
+shown: an organization logo given as an external URL is skipped, because status
+pages only load images from their own origin. White label does not hide the
+organization's name or logo.
+
 ### White label
 
 Turning on **Hide "Powered by SolidPing"** removes the footer link from the

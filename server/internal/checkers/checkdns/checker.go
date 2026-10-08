@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"slices"
 	"strings"
 	"time"
 
@@ -20,8 +21,17 @@ const (
 
 var errSOANotSupported = errors.New("SOA record type not yet supported")
 
+// lookupFunc resolves host for recordType, returning addresses (A/AAAA) or
+// values (every other type). Tests swap it for a stub resolver.
+type lookupFunc func(ctx context.Context, cfg *DNSConfig, recordType string, timeout time.Duration) (
+	ips, values []string, err error,
+)
+
 // DNSChecker implements the Checker interface for DNS checks.
-type DNSChecker struct{}
+type DNSChecker struct {
+	// lookup overrides the real resolver (tests only); nil uses net.Resolver.
+	lookup lookupFunc
+}
 
 // Type returns the check type identifier.
 func (c *DNSChecker) Type() checkerdef.CheckType {
@@ -57,30 +67,12 @@ func (c *DNSChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 
 	start := time.Now()
 
-	// Create resolver
-	resolver := c.createResolver(cfg.Nameserver, timeout)
-
-	// Perform DNS lookup based on record type
-	var resolvedIPs []string
-
-	var resolvedValues []string
-
-	switch recordType {
-	case recordTypeA:
-		resolvedIPs, err = c.lookupA(ctx, resolver, cfg.Host)
-	case recordTypeAAAA:
-		resolvedIPs, err = c.lookupAAAA(ctx, resolver, cfg.Host)
-	case recordTypeCNAME:
-		resolvedValues, err = c.lookupCNAME(ctx, resolver, cfg.Host)
-	case recordTypeMX:
-		resolvedValues, err = c.lookupMX(ctx, resolver, cfg.Host)
-	case recordTypeNS:
-		resolvedValues, err = c.lookupNS(ctx, resolver, cfg.Host)
-	case recordTypeTXT:
-		resolvedValues, err = c.lookupTXT(ctx, resolver, cfg.Host)
-	case recordTypeSOA:
-		resolvedValues, err = c.lookupSOA(ctx, resolver, cfg.Host)
+	lookup := c.lookup
+	if lookup == nil {
+		lookup = c.resolve
 	}
+
+	resolvedIPs, resolvedValues, err := lookup(ctx, cfg, recordType, timeout)
 
 	duration := time.Since(start)
 
@@ -173,7 +165,51 @@ func (c *DNSChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 		result.Output[checkerdef.OutputKeyError] = "resolved values do not match expected values"
 	}
 
+	if cfg.DetectChanges {
+		applyChangeDetection(cfg, recordType, slices.Concat(resolvedIPs, resolvedValues), &result)
+	}
+
 	return &result, nil
+}
+
+// resolve performs the real lookup for recordType.
+func (c *DNSChecker) resolve(
+	ctx context.Context, cfg *DNSConfig, recordType string, timeout time.Duration,
+) ([]string, []string, error) {
+	resolver := c.createResolver(cfg.Nameserver, timeout)
+
+	switch recordType {
+	case recordTypeA:
+		ips, err := c.lookupA(ctx, resolver, cfg.Host)
+
+		return ips, nil, err
+	case recordTypeAAAA:
+		ips, err := c.lookupAAAA(ctx, resolver, cfg.Host)
+
+		return ips, nil, err
+	case recordTypeCNAME:
+		values, err := c.lookupCNAME(ctx, resolver, cfg.Host)
+
+		return nil, values, err
+	case recordTypeMX:
+		values, err := c.lookupMX(ctx, resolver, cfg.Host)
+
+		return nil, values, err
+	case recordTypeNS:
+		values, err := c.lookupNS(ctx, resolver, cfg.Host)
+
+		return nil, values, err
+	case recordTypeTXT:
+		values, err := c.lookupTXT(ctx, resolver, cfg.Host)
+
+		return nil, values, err
+	case recordTypeSOA:
+		values, err := c.lookupSOA(ctx, resolver, cfg.Host)
+
+		return nil, values, err
+	}
+
+	return nil, nil, nil
 }
 
 // createResolver creates a DNS resolver with optional custom nameserver.

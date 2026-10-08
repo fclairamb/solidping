@@ -1663,6 +1663,11 @@ func (s *Service) CreateCheck(ctx context.Context, check *models.Check) error {
 			return err
 		}
 
+		// Version 1 of the check's history (spec 2026-10-03-06).
+		if _, err := db.RecordCheckVersion(ctx, tx, check.UID); err != nil {
+			return err
+		}
+
 		return nil
 	})
 }
@@ -1681,6 +1686,7 @@ func createCheckJobs(ctx context.Context, tx bun.Tx, check *models.Check) error 
 		// No regions: create a single job without region
 		checkJob := models.NewCheckJob(check.OrganizationUID, check.UID, check.Period)
 		checkJob.Type = check.Type
+		checkJob.Lane = models.InitialLaneForType(check.Type)
 		checkJob.Config = check.Config
 		checkJob.ConfigPrivate = check.ConfigPrivate
 		checkJob.ConfigPrivateKeys = check.ConfigPrivateKeys
@@ -1709,6 +1715,7 @@ func createCheckJobs(ctx context.Context, tx bun.Tx, check *models.Check) error 
 
 		checkJob := models.NewCheckJob(check.OrganizationUID, check.UID, check.Period)
 		checkJob.Type = check.Type
+		checkJob.Lane = models.InitialLaneForType(check.Type)
 		checkJob.Config = check.Config
 		checkJob.ConfigPrivate = check.ConfigPrivate
 		checkJob.ConfigPrivateKeys = check.ConfigPrivateKeys
@@ -2068,9 +2075,32 @@ func (s *Service) ListChecks(
 	return checks, int64(total), err
 }
 
-//nolint:cyclop // long but flat: one branch per optional column
+// UpdateCheck applies a partial update. A write touching the definition runs
+// in a transaction that also records the check's version history (spec
+// 2026-10-03-06); runtime- and secret-only writes skip it.
 func (s *Service) UpdateCheck(ctx context.Context, uid string, update *models.CheckUpdate) error {
-	query := s.db.NewUpdate().
+	if !db.CheckDefinitionTouched(update) {
+		return s.updateCheck(ctx, s.db, uid, update)
+	}
+
+	return s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if err := db.EnsureCheckVersionBaseline(ctx, tx, uid); err != nil {
+			return err
+		}
+
+		if err := s.updateCheck(ctx, tx, uid, update); err != nil {
+			return err
+		}
+
+		_, err := db.RecordCheckVersion(ctx, tx, uid)
+
+		return err
+	})
+}
+
+//nolint:cyclop // long but flat: one branch per optional column
+func (s *Service) updateCheck(ctx context.Context, idb bun.IDB, uid string, update *models.CheckUpdate) error {
+	query := idb.NewUpdate().
 		Model((*models.Check)(nil)).
 		Where("uid = ?", uid).
 		Where("deleted_at IS NULL").
@@ -2307,6 +2337,49 @@ func (s *Service) RequestCheckCapture(ctx context.Context, jobUID string, reques
 	return nil
 }
 
+// RequestCheckRun makes one job row due at requestedAt (spec 2026-10-04-01).
+// It leaves a leased job, and one carrying a multi-step run, alone
+// (db.ErrCheckJobBusy): the release would overwrite the due time.
+func (s *Service) RequestCheckRun(ctx context.Context, jobUID string, requestedAt time.Time) error {
+	res, err := s.db.NewUpdate().
+		Model((*models.CheckJob)(nil)).
+		Set("scheduled_at = ?", requestedAt).
+		Set("effective_scheduled_at = ?", requestedAt).
+		Set("updated_at = ?", requestedAt).
+		Where("uid = ?", jobUID).
+		Where("step_run_uid IS NULL").
+		WhereGroup(" AND ", func(q *bun.UpdateQuery) *bun.UpdateQuery {
+			return q.Where("lease_expires_at IS NULL").WhereOr("lease_expires_at < ?", requestedAt)
+		}).
+		Exec(ctx)
+	if err != nil {
+		return err
+	}
+
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rows > 0 {
+		return nil
+	}
+
+	exists, err := s.db.NewSelect().
+		Model((*models.CheckJob)(nil)).
+		Where("uid = ?", jobUID).
+		Exists(ctx)
+	if err != nil {
+		return err
+	}
+
+	if !exists {
+		return sql.ErrNoRows
+	}
+
+	return db.ErrCheckJobBusy
+}
+
 // RecordCheckCaptureFailure records a "Capture now" request that produced no
 // screenshot (spec 2026-09-27-01).
 func (s *Service) RecordCheckCaptureFailure(
@@ -2320,6 +2393,64 @@ func (s *Service) RecordCheckCaptureFailure(
 		Exec(ctx)
 
 	return err
+}
+
+// CaptureCheckConfigBaseline stores a region's first change-detection
+// baseline (spec 2026-10-03-04). See the db.Service contract.
+func (s *Service) CaptureCheckConfigBaseline(
+	ctx context.Context, checkUID, key string, values []string,
+) (bool, error) {
+	if key == "" || strings.ContainsAny(key, `"\\`) {
+		return false, fmt.Errorf("%w: %q", db.ErrInvalidBaselineKey, key)
+	}
+
+	encoded, err := json.Marshal(values)
+	if err != nil {
+		return false, fmt.Errorf("encode baseline: %w", err)
+	}
+
+	var written bool
+
+	err = s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		res, execErr := tx.NewRaw(
+			"UPDATE checks SET config = jsonb_set(COALESCE(config, '{}'::jsonb), '{baseline}', "+
+				"(CASE WHEN jsonb_typeof(config->'baseline') = 'object' THEN config->'baseline' "+
+				"ELSE '{}'::jsonb END) || jsonb_build_object(?::text, ?::jsonb)), updated_at = ? "+
+				"WHERE uid = ? AND deleted_at IS NULL AND config->>'detect_changes' = 'true' "+
+				"AND (CASE WHEN jsonb_typeof(config->'baseline'->?::text) = 'array' "+
+				"THEN jsonb_array_length(config->'baseline'->?::text) ELSE 0 END) = 0",
+			key, string(encoded), time.Now(), checkUID, key, key,
+		).Exec(ctx)
+		if execErr != nil {
+			return fmt.Errorf("capture baseline: %w", execErr)
+		}
+
+		rows, rowsErr := res.RowsAffected()
+		if rowsErr != nil {
+			return rowsErr
+		}
+
+		if rows == 0 {
+			return nil
+		}
+
+		written = true
+
+		// The jobs hold a materialized copy of the config. Copying the row's
+		// CURRENT config (not a value computed here) keeps every job in step
+		// whatever order concurrent captures commit in.
+		if _, execErr = tx.NewRaw(
+			"UPDATE check_jobs SET config = (SELECT config FROM checks WHERE uid = ?), updated_at = ? "+
+				"WHERE check_uid = ?",
+			checkUID, time.Now(), checkUID,
+		).Exec(ctx); execErr != nil {
+			return fmt.Errorf("propagate baseline to check jobs: %w", execErr)
+		}
+
+		return nil
+	})
+
+	return written, err
 }
 
 func (s *Service) ListCheckJobsByCheckUID(ctx context.Context, checkUID string) ([]*models.CheckJob, error) {
@@ -2381,28 +2512,45 @@ func (s *Service) GetOrCreateLabel(ctx context.Context, orgUID, key, value strin
 
 func (s *Service) SetCheckLabels(ctx context.Context, checkUID string, labelUIDs []string) error {
 	return s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
-		// Delete existing labels
-		_, err := tx.NewDelete().
-			Model((*models.CheckLabel)(nil)).
-			Where("check_uid = ?", checkUID).
-			Exec(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to delete existing check labels: %w", err)
+		// Labels are part of the check's versioned definition (spec
+		// 2026-10-03-06).
+		if err := db.EnsureCheckVersionBaseline(ctx, tx, checkUID); err != nil {
+			return err
 		}
 
-		// Insert new labels
-		if len(labelUIDs) > 0 {
-			checkLabels := make([]*models.CheckLabel, len(labelUIDs))
-			for i, labelUID := range labelUIDs {
-				checkLabels[i] = models.NewCheckLabel(checkUID, labelUID)
-			}
-			_, err = tx.NewInsert().Model(&checkLabels).Exec(ctx)
-			if err != nil {
-				return fmt.Errorf("failed to insert check labels: %w", err)
-			}
+		if err := s.replaceCheckLabels(ctx, tx, checkUID, labelUIDs); err != nil {
+			return err
 		}
-		return nil
+
+		_, err := db.RecordCheckVersion(ctx, tx, checkUID)
+
+		return err
 	})
+}
+
+func (s *Service) replaceCheckLabels(ctx context.Context, tx bun.Tx, checkUID string, labelUIDs []string) error {
+	// Delete existing labels
+	_, err := tx.NewDelete().
+		Model((*models.CheckLabel)(nil)).
+		Where("check_uid = ?", checkUID).
+		Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to delete existing check labels: %w", err)
+	}
+
+	// Insert new labels
+	if len(labelUIDs) > 0 {
+		checkLabels := make([]*models.CheckLabel, len(labelUIDs))
+		for i, labelUID := range labelUIDs {
+			checkLabels[i] = models.NewCheckLabel(checkUID, labelUID)
+		}
+		_, err = tx.NewInsert().Model(&checkLabels).Exec(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to insert check labels: %w", err)
+		}
+	}
+
+	return nil
 }
 
 func (s *Service) GetLabelsForCheck(ctx context.Context, checkUID string) ([]*models.Label, error) {
@@ -6974,7 +7122,7 @@ func (s *Service) ListOrgCheckRates(ctx context.Context, orgUID string) ([]model
 
 	err := s.db.NewSelect().
 		Model((*models.Check)(nil)).
-		Column("uid", "enabled", "period", "regions", "type").
+		Column("uid", "enabled", "period", "regions", "type", "config").
 		Where("organization_uid = ?", orgUID).
 		Where("deleted_at IS NULL").
 		Where("internal = ?", false).
@@ -7800,4 +7948,31 @@ func (s *Service) GetIncidentAny(ctx context.Context, uid string) (*models.Incid
 	}
 
 	return incident, nil
+}
+
+// Check version history (spec 2026-10-03-06). The queries are shared with the
+// other engine in the db package.
+
+func (s *Service) ListCheckVersions(ctx context.Context, checkUID string, limit int) ([]*models.CheckVersion, error) {
+	return db.ListCheckVersions(ctx, s.db, checkUID, limit)
+}
+
+func (s *Service) GetCheckVersion(ctx context.Context, checkUID string, version int) (*models.CheckVersion, error) {
+	return db.GetCheckVersion(ctx, s.db, checkUID, version)
+}
+
+func (s *Service) GetLatestAppliedCheckVersion(ctx context.Context, checkUID string) (*models.CheckVersion, error) {
+	return db.LatestAppliedCheckVersion(ctx, s.db, checkUID)
+}
+
+func (s *Service) CreateCheckVersionProposal(ctx context.Context, row *models.CheckVersion) error {
+	return s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		return db.CreateCheckVersionProposal(ctx, tx, row)
+	})
+}
+
+func (s *Service) DecideCheckVersion(
+	ctx context.Context, checkUID string, version int, status models.CheckVersionStatus, userUID string,
+) error {
+	return db.DecideCheckVersion(ctx, s.db, checkUID, version, status, userUID)
 }

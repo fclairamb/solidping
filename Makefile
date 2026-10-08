@@ -309,9 +309,20 @@ DEVLOOP_PROCS := -proc "dash0:$(CURDIR)/$(DASH0_DIR):bun run dev" -proc "status0
 # is not listed below because test run mode already forces the demo on.
 DEMO ?= true
 
-dev: kill ## Run backend, dash0 and status0 in development mode (demo on; DEMO=false to disable)
+# Optional, git-ignored (*.priv*) shell file of KEY=value lines sourced by `make dev`
+# when present, e.g. SP_AI_PROVIDER=openai, or SP_AI_API_KEY="$(gopass show -o <path>)"
+# to keep the secret out of the file. Values set by the recipe itself (SP_DEMO_ENABLED...) win.
+DEV_ENV_FILE ?= dev.priv.env
+# A git worktree has no copy of the git-ignored file: it falls back to the one
+# in the main checkout (the parent of the shared git dir).
+DEV_ENV_PATH := $(firstword $(wildcard $(CURDIR)/$(DEV_ENV_FILE) \
+	$(abspath $(shell git rev-parse --git-common-dir 2>/dev/null)/../$(DEV_ENV_FILE))))
+
+dev: kill ## Run backend, dash0 and status0 in development mode (demo on; DEMO=false to disable; loads dev.priv.env if present)
 	@echo "Running application in development mode (demo: $(DEMO))..."
-	@cd $(BACK_DIR) && SP_REDIRECTS="/d:localhost:5174/d,/s:localhost:5175/s" SP_PROFILER_ENABLED=true \
+	@if [ -n "$(DEV_ENV_PATH)" ]; then echo "Loading env from $(DEV_ENV_PATH)"; fi
+	@set -a; if [ -n "$(DEV_ENV_PATH)" ]; then . "$(DEV_ENV_PATH)"; fi; set +a; \
+		cd $(BACK_DIR) && SP_REDIRECTS="/d:localhost:5174/d,/s:localhost:5175/s" SP_PROFILER_ENABLED=true \
 		SP_DB_MIGRATION_GUARD_MODE=warn \
 		SP_DEMO_ENABLED=$(DEMO) \
 		go run ./cmd/devloop $(DEVLOOP_LOG_FLAGS) $(DEVLOOP_PROCS)

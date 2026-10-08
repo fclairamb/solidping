@@ -174,7 +174,7 @@ func claimJob(
 	worker, err := wsBackend.Register(ctx, nil)
 	r.NoError(err)
 
-	jobs, _, err := wsBackend.ClaimJobs(ctx, worker.UID, nil, 10, 10, time.Minute)
+	jobs, _, err := wsBackend.ClaimJobs(ctx, worker.UID, nil, 10, 10, 0, time.Minute)
 	r.NoError(err)
 
 	for _, job := range jobs {

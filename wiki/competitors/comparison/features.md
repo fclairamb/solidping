@@ -29,7 +29,7 @@ prompted this table is a vendor advertising 1-second checks while shipping 60.
 |---|---|---|---|
 | **SolidPing** | **10 seconds** | No — self-hosted, unlimited | `GlobalMinPeriod = 10 * time.Second`, `server/internal/checkers/checkerdef/types.go:240` |
 | Uptime Kuma | ~20 seconds | No — self-hosted | user reports, incl. OneUptime#2937 |
-| OneUptime | **1 minute self-hosted** (product page advertises 1 second) | n/a — the advertised figure is not reachable self-hosted | [OneUptime#2937](https://github.com/OneUptime/oneuptime/issues/2937), open, 2026-07-30, v11.7.3 Docker Compose |
+| OneUptime | **1 minute self-hosted** (product page advertises 1 second) | n/a — the advertised figure is not reachable self-hosted | [OneUptime#2937](https://github.com/OneUptime/oneuptime/issues/2937), open, 2026-07-30, v11.7.3 Docker Compose; still open with 0 comments on 2026-10-06 (v14.0.14). See [../oneuptime.md](../oneuptime.md) |
 | BetterStack | 30 seconds | Yes (paid); free tier 3 min | comparison table above |
 | UptimeRobot | 30 seconds | Yes (Enterprise); free tier 5 min | comparison table above |
 | Pingdom | 1 minute | Yes | comparison table above |

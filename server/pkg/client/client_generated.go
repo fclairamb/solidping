@@ -359,6 +359,7 @@ const (
 	CheckTypeA2s             CheckType = "a2s"
 	CheckTypeBrowser         CheckType = "browser"
 	CheckTypeClickhouse      CheckType = "clickhouse"
+	CheckTypeCrawl           CheckType = "crawl"
 	CheckTypeDns             CheckType = "dns"
 	CheckTypeDnsbl           CheckType = "dnsbl"
 	CheckTypeDocker          CheckType = "docker"
@@ -367,6 +368,7 @@ const (
 	CheckTypeFreeboxLine     CheckType = "freebox_line"
 	CheckTypeFtp             CheckType = "ftp"
 	CheckTypeGrpc            CheckType = "grpc"
+	CheckTypeHealth          CheckType = "health"
 	CheckTypeHeartbeat       CheckType = "heartbeat"
 	CheckTypeHttp            CheckType = "http"
 	CheckTypeIcmp            CheckType = "icmp"
@@ -410,6 +412,8 @@ func (e CheckType) Valid() bool {
 		return true
 	case CheckTypeClickhouse:
 		return true
+	case CheckTypeCrawl:
+		return true
 	case CheckTypeDns:
 		return true
 	case CheckTypeDnsbl:
@@ -425,6 +429,8 @@ func (e CheckType) Valid() bool {
 	case CheckTypeFtp:
 		return true
 	case CheckTypeGrpc:
+		return true
+	case CheckTypeHealth:
 		return true
 	case CheckTypeHeartbeat:
 		return true
@@ -668,6 +674,7 @@ const (
 	CheckListItemTypeA2s             CheckListItemType = "a2s"
 	CheckListItemTypeBrowser         CheckListItemType = "browser"
 	CheckListItemTypeClickhouse      CheckListItemType = "clickhouse"
+	CheckListItemTypeCrawl           CheckListItemType = "crawl"
 	CheckListItemTypeDns             CheckListItemType = "dns"
 	CheckListItemTypeDnsbl           CheckListItemType = "dnsbl"
 	CheckListItemTypeDocker          CheckListItemType = "docker"
@@ -676,6 +683,7 @@ const (
 	CheckListItemTypeFreeboxLine     CheckListItemType = "freebox_line"
 	CheckListItemTypeFtp             CheckListItemType = "ftp"
 	CheckListItemTypeGrpc            CheckListItemType = "grpc"
+	CheckListItemTypeHealth          CheckListItemType = "health"
 	CheckListItemTypeHeartbeat       CheckListItemType = "heartbeat"
 	CheckListItemTypeHttp            CheckListItemType = "http"
 	CheckListItemTypeIcmp            CheckListItemType = "icmp"
@@ -719,6 +727,8 @@ func (e CheckListItemType) Valid() bool {
 		return true
 	case CheckListItemTypeClickhouse:
 		return true
+	case CheckListItemTypeCrawl:
+		return true
 	case CheckListItemTypeDns:
 		return true
 	case CheckListItemTypeDnsbl:
@@ -734,6 +744,8 @@ func (e CheckListItemType) Valid() bool {
 	case CheckListItemTypeFtp:
 		return true
 	case CheckListItemTypeGrpc:
+		return true
+	case CheckListItemTypeHealth:
 		return true
 	case CheckListItemTypeHeartbeat:
 		return true
@@ -831,6 +843,21 @@ func (e CheckScreenshotTrigger) Valid() bool {
 	}
 }
 
+// Defines values for CrawlReportKind.
+const (
+	CrawlReportKindCrawlReport CrawlReportKind = "crawl-report"
+)
+
+// Valid indicates whether the value is a known member of the CrawlReportKind enum.
+func (e CrawlReportKind) Valid() bool {
+	switch e {
+	case CrawlReportKindCrawlReport:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CreateCheckRequestPlacement.
 const (
 	CreateCheckRequestPlacementAuto   CreateCheckRequestPlacement = "auto"
@@ -875,6 +902,7 @@ const (
 	CreateCheckRequestTypeA2s             CreateCheckRequestType = "a2s"
 	CreateCheckRequestTypeBrowser         CreateCheckRequestType = "browser"
 	CreateCheckRequestTypeClickhouse      CreateCheckRequestType = "clickhouse"
+	CreateCheckRequestTypeCrawl           CreateCheckRequestType = "crawl"
 	CreateCheckRequestTypeDns             CreateCheckRequestType = "dns"
 	CreateCheckRequestTypeDnsbl           CreateCheckRequestType = "dnsbl"
 	CreateCheckRequestTypeDocker          CreateCheckRequestType = "docker"
@@ -883,6 +911,7 @@ const (
 	CreateCheckRequestTypeFreeboxLine     CreateCheckRequestType = "freebox_line"
 	CreateCheckRequestTypeFtp             CreateCheckRequestType = "ftp"
 	CreateCheckRequestTypeGrpc            CreateCheckRequestType = "grpc"
+	CreateCheckRequestTypeHealth          CreateCheckRequestType = "health"
 	CreateCheckRequestTypeHeartbeat       CreateCheckRequestType = "heartbeat"
 	CreateCheckRequestTypeHttp            CreateCheckRequestType = "http"
 	CreateCheckRequestTypeIcmp            CreateCheckRequestType = "icmp"
@@ -926,6 +955,8 @@ func (e CreateCheckRequestType) Valid() bool {
 		return true
 	case CreateCheckRequestTypeClickhouse:
 		return true
+	case CreateCheckRequestTypeCrawl:
+		return true
 	case CreateCheckRequestTypeDns:
 		return true
 	case CreateCheckRequestTypeDnsbl:
@@ -941,6 +972,8 @@ func (e CreateCheckRequestType) Valid() bool {
 	case CreateCheckRequestTypeFtp:
 		return true
 	case CreateCheckRequestTypeGrpc:
+		return true
+	case CreateCheckRequestTypeHealth:
 		return true
 	case CreateCheckRequestTypeHeartbeat:
 		return true
@@ -3041,6 +3074,7 @@ const (
 	UpsertCheckRequestTypeA2s             UpsertCheckRequestType = "a2s"
 	UpsertCheckRequestTypeBrowser         UpsertCheckRequestType = "browser"
 	UpsertCheckRequestTypeClickhouse      UpsertCheckRequestType = "clickhouse"
+	UpsertCheckRequestTypeCrawl           UpsertCheckRequestType = "crawl"
 	UpsertCheckRequestTypeDns             UpsertCheckRequestType = "dns"
 	UpsertCheckRequestTypeDnsbl           UpsertCheckRequestType = "dnsbl"
 	UpsertCheckRequestTypeDocker          UpsertCheckRequestType = "docker"
@@ -3049,6 +3083,7 @@ const (
 	UpsertCheckRequestTypeFreeboxLine     UpsertCheckRequestType = "freebox_line"
 	UpsertCheckRequestTypeFtp             UpsertCheckRequestType = "ftp"
 	UpsertCheckRequestTypeGrpc            UpsertCheckRequestType = "grpc"
+	UpsertCheckRequestTypeHealth          UpsertCheckRequestType = "health"
 	UpsertCheckRequestTypeHeartbeat       UpsertCheckRequestType = "heartbeat"
 	UpsertCheckRequestTypeHttp            UpsertCheckRequestType = "http"
 	UpsertCheckRequestTypeIcmp            UpsertCheckRequestType = "icmp"
@@ -3092,6 +3127,8 @@ func (e UpsertCheckRequestType) Valid() bool {
 		return true
 	case UpsertCheckRequestTypeClickhouse:
 		return true
+	case UpsertCheckRequestTypeCrawl:
+		return true
 	case UpsertCheckRequestTypeDns:
 		return true
 	case UpsertCheckRequestTypeDnsbl:
@@ -3107,6 +3144,8 @@ func (e UpsertCheckRequestType) Valid() bool {
 	case UpsertCheckRequestTypeFtp:
 		return true
 	case UpsertCheckRequestTypeGrpc:
+		return true
+	case UpsertCheckRequestTypeHealth:
 		return true
 	case UpsertCheckRequestTypeHeartbeat:
 		return true
@@ -4021,7 +4060,7 @@ type Check struct {
 	// CheckGroupUid Group this check belongs to, or null.
 	CheckGroupUid *openapi_types.UUID `json:"checkGroupUid,omitempty"`
 
-	// Config Check-specific configuration; the fields accepted depend on `type`. HTTP checks additionally accept `verifySsl` (boolean, default true — set false to skip TLS certificate verification), `followRedirects` (boolean, default true — set false to stop at the first response instead of following redirects), `redirectHostPolicy` (string, default "any" — "same-host" refuses any followed redirect hop whose host differs from the previous hop's, failing the check instead of following it; an unknown value is a VALIDATION_ERROR) and `capture_failure_response` (boolean, default false — when true a FAILING execution keeps what the probe received: status line, redacted response headers and a 16 KiB-capped body, stored on the incident it opens as `details.failureResponse`. Opt-in because a response body can contain PII; never exposed on a status page). See wiki/conventions/checker-config.md for the full per-type field reference.
+	// Config Check-specific configuration; the fields accepted depend on `type`. HTTP checks additionally accept `verifySsl` (boolean, default true — set false to skip TLS certificate verification), `followRedirects` (boolean, default true — set false to stop at the first response instead of following redirects), `redirectHostPolicy` (string, default "any" — "same-host" refuses any followed redirect hop whose host differs from the previous hop's, failing the check instead of following it; an unknown value is a VALIDATION_ERROR), `httpVersion` (string, default "1.1" and omitted at default — "2" forces HTTP/2, h2 over TLS or h2c with prior knowledge over http://; "3" forces HTTP/3 over QUIC with no TCP fallback; a response over another version fails the check; any other value, and "3" on a check with `tunnelCheckUid`, is a VALIDATION_ERROR; results record the negotiated protocol as `http_protocol` and the Alt-Svc header as `alt_svc`) and `capture_failure_response` (boolean, default false — when true a FAILING execution keeps what the probe received: status line, redacted response headers and a 16 KiB-capped body, stored on the incident it opens as `details.failureResponse`. Opt-in because a response body can contain PII; never exposed on a status page). See wiki/conventions/checker-config.md for the full per-type field reference.
 	Config    *map[string]interface{} `json:"config,omitempty"`
 	CreatedAt *time.Time              `json:"createdAt,omitempty"`
 
@@ -4320,7 +4359,7 @@ type CheckListItem struct {
 	// CheckGroupUid Group this check belongs to, or null.
 	CheckGroupUid *openapi_types.UUID `json:"checkGroupUid,omitempty"`
 
-	// Config Check-specific configuration; the fields accepted depend on `type`. HTTP checks additionally accept `verifySsl` (boolean, default true — set false to skip TLS certificate verification), `followRedirects` (boolean, default true — set false to stop at the first response instead of following redirects), `redirectHostPolicy` (string, default "any" — "same-host" refuses any followed redirect hop whose host differs from the previous hop's, failing the check instead of following it; an unknown value is a VALIDATION_ERROR) and `capture_failure_response` (boolean, default false — when true a FAILING execution keeps what the probe received: status line, redacted response headers and a 16 KiB-capped body, stored on the incident it opens as `details.failureResponse`. Opt-in because a response body can contain PII; never exposed on a status page). See wiki/conventions/checker-config.md for the full per-type field reference.
+	// Config Check-specific configuration; the fields accepted depend on `type`. HTTP checks additionally accept `verifySsl` (boolean, default true — set false to skip TLS certificate verification), `followRedirects` (boolean, default true — set false to stop at the first response instead of following redirects), `redirectHostPolicy` (string, default "any" — "same-host" refuses any followed redirect hop whose host differs from the previous hop's, failing the check instead of following it; an unknown value is a VALIDATION_ERROR), `httpVersion` (string, default "1.1" and omitted at default — "2" forces HTTP/2, h2 over TLS or h2c with prior knowledge over http://; "3" forces HTTP/3 over QUIC with no TCP fallback; a response over another version fails the check; any other value, and "3" on a check with `tunnelCheckUid`, is a VALIDATION_ERROR; results record the negotiated protocol as `http_protocol` and the Alt-Svc header as `alt_svc`) and `capture_failure_response` (boolean, default false — when true a FAILING execution keeps what the probe received: status line, redacted response headers and a 16 KiB-capped body, stored on the incident it opens as `details.failureResponse`. Opt-in because a response body can contain PII; never exposed on a status page). See wiki/conventions/checker-config.md for the full per-type field reference.
 	Config    *map[string]interface{} `json:"config,omitempty"`
 	CreatedAt *time.Time              `json:"createdAt,omitempty"`
 
@@ -4479,6 +4518,18 @@ type CheckRef struct {
 	Name string             `json:"name"`
 	Slug string             `json:"slug"`
 	Uid  openapi_types.UUID `json:"uid"`
+}
+
+// CheckRun The run in progress of a multi-step check (spec 2026-10-03-03).
+type CheckRun struct {
+	// Progress Progress reported by the last slice.
+	Progress  *map[string]interface{} `json:"progress,omitempty"`
+	RunUid    *openapi_types.UUID     `json:"runUid,omitempty"`
+	Running   bool                    `json:"running"`
+	StartedAt *time.Time              `json:"startedAt,omitempty"`
+
+	// Steps Slices completed so far.
+	Steps *int `json:"steps,omitempty"`
 }
 
 // CheckScheduleStats Check-schedule counts derived from lease state.
@@ -4680,6 +4731,29 @@ type CostDistributionResponse struct {
 	Data *CostDistribution `json:"data,omitempty"`
 }
 
+// CrawlReport One stored crawl report. The JSON is fetched through `downloadUrl`.
+type CrawlReport struct {
+	CapturedAt *time.Time          `json:"capturedAt,omitempty"`
+	CheckUid   *openapi_types.UUID `json:"checkUid,omitempty"`
+	CreatedAt  time.Time           `json:"createdAt"`
+
+	// DownloadUrl RELATIVE, short-lived signed URL (`/pub/files/<uid>?exp=…&sig=…`).
+	DownloadUrl string             `json:"downloadUrl"`
+	Kind        *CrawlReportKind   `json:"kind,omitempty"`
+	MimeType    string             `json:"mimeType"`
+	Name        string             `json:"name"`
+	Size        int64              `json:"size"`
+	Uid         openapi_types.UUID `json:"uid"`
+}
+
+// CrawlReportKind defines model for CrawlReport.Kind.
+type CrawlReportKind string
+
+// CrawlReportListResponse defines model for CrawlReportListResponse.
+type CrawlReportListResponse struct {
+	Data []CrawlReport `json:"data"`
+}
+
 // CreateChannelRequest defines model for CreateChannelRequest.
 type CreateChannelRequest struct {
 	Enabled   *bool                   `json:"enabled,omitempty"`
@@ -4707,7 +4781,7 @@ type CreateCheckRequest struct {
 	// CheckGroupUid Group to place this check in.
 	CheckGroupUid *openapi_types.UUID `json:"checkGroupUid,omitempty"`
 
-	// Config Check-specific configuration (e.g., url, port, timeout). HTTP checks additionally accept `verifySsl` and `followRedirects` (both booleans, default true) and `capture_failure_response` (boolean, default false) — see the Check schema above for details.
+	// Config Check-specific configuration (e.g., url, port, timeout). HTTP checks additionally accept `verifySsl` and `followRedirects` (both booleans, default true), `httpVersion` ("1.1", "2" or "3") and `capture_failure_response` (boolean, default false) — see the Check schema above for details.
 	Config map[string]interface{} `json:"config"`
 
 	// DegradedEnabled Whether degraded detection runs on this check. When false, degraded detection is not evaluated for this check. New checks are on; every check that predates the feature is off. Turning it off resolves the check's open degraded incident, if any.
@@ -8391,7 +8465,7 @@ type UpdateSupportThreadRequestStatus string
 
 // UpsertCheckRequest defines model for UpsertCheckRequest.
 type UpsertCheckRequest struct {
-	// Config Check-specific configuration. HTTP checks additionally accept `verifySsl` and `followRedirects` (both booleans, default true) and `capture_failure_response` (boolean, default false) — see the Check schema above for details.
+	// Config Check-specific configuration. HTTP checks additionally accept `verifySsl` and `followRedirects` (both booleans, default true), `httpVersion` ("1.1", "2" or "3") and `capture_failure_response` (boolean, default false) — see the Check schema above for details.
 	Config map[string]interface{} `json:"config"`
 
 	// DependsOn Replaces the full dependsOn set when present. Omit to leave deps
@@ -10703,6 +10777,13 @@ type ClientInterface interface {
 	// Corresponds with POST /api/v1/orgs/{org}/checks/{checkUid}/clone (the `CloneCheck` operationId).
 	CloneCheck(ctx context.Context, org OrgPath, checkUid CheckUidPath, body CloneCheckJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListCheckCrawlReports List the crawl reports of a check
+	//
+	// The full findings report of the last 5 finished crawl runs, newest first. Each entry carries a short-lived signed `downloadUrl` to the report JSON: `{"findings": [{type, url, source, status, error, fingerprint}], "pagesCrawled", "incomplete"}`. The result of a run names its report in `output.reportFileUid`.
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/checks/{checkUid}/crawl-reports (the `ListCheckCrawlReports` operationId).
+	ListCheckCrawlReports(ctx context.Context, org OrgPath, checkUid CheckUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListCheckEvents List events for a check
 	//
 	// Corresponds with GET /api/v1/orgs/{org}/checks/{checkUid}/events (the `ListCheckEvents` operationId).
@@ -10714,6 +10795,20 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /api/v1/orgs/{org}/checks/{checkUid}/rotate-token (the `RotateHeartbeatToken` operationId).
 	RotateHeartbeatToken(ctx context.Context, org OrgPath, checkUid CheckUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CancelCheckRun Cancel the run in progress of a multi-step check
+	//
+	// Drops the run in progress: its saved progress is deleted and the check is scheduled for its next regular run. No result is written for the canceled run. A no-op when no run is in progress. Requires write access (viewers get 403).
+	//
+	// Corresponds with DELETE /api/v1/orgs/{org}/checks/{checkUid}/run (the `CancelCheckRun` operationId).
+	CancelCheckRun(ctx context.Context, org OrgPath, checkUid CheckUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetCheckRun Get the run in progress of a multi-step check
+	//
+	// A multi-step check (the website crawl) runs as a series of short slices, each saving its progress. This returns the run in progress: its uid, start, completed slices and the progress of its last slice (for a crawl `pagesDone`, `maxPages`, `queued`, `findings`, `phase`). `{"running": false}` when no run is in progress, and for every check type that does not run in steps.
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/checks/{checkUid}/run (the `GetCheckRun` operationId).
+	GetCheckRun(ctx context.Context, org OrgPath, checkUid CheckUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListCheckScreenshots List a check's latest screenshots
 	//
@@ -14502,6 +14597,23 @@ func (c *Client) CloneCheck(ctx context.Context, org OrgPath, checkUid CheckUidP
 	return c.Client.Do(req)
 }
 
+// ListCheckCrawlReports List the crawl reports of a check
+//
+// The full findings report of the last 5 finished crawl runs, newest first. Each entry carries a short-lived signed `downloadUrl` to the report JSON: `{"findings": [{type, url, source, status, error, fingerprint}], "pagesCrawled", "incomplete"}`. The result of a run names its report in `output.reportFileUid`.
+//
+// Corresponds with GET /api/v1/orgs/{org}/checks/{checkUid}/crawl-reports (the `ListCheckCrawlReports` operationId).
+func (c *Client) ListCheckCrawlReports(ctx context.Context, org OrgPath, checkUid CheckUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListCheckCrawlReportsRequest(c.Server, org, checkUid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ListCheckEvents List events for a check
 //
 // Corresponds with GET /api/v1/orgs/{org}/checks/{checkUid}/events (the `ListCheckEvents` operationId).
@@ -14524,6 +14636,40 @@ func (c *Client) ListCheckEvents(ctx context.Context, org OrgPath, checkUid Chec
 // Corresponds with POST /api/v1/orgs/{org}/checks/{checkUid}/rotate-token (the `RotateHeartbeatToken` operationId).
 func (c *Client) RotateHeartbeatToken(ctx context.Context, org OrgPath, checkUid CheckUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewRotateHeartbeatTokenRequest(c.Server, org, checkUid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CancelCheckRun Cancel the run in progress of a multi-step check
+//
+// Drops the run in progress: its saved progress is deleted and the check is scheduled for its next regular run. No result is written for the canceled run. A no-op when no run is in progress. Requires write access (viewers get 403).
+//
+// Corresponds with DELETE /api/v1/orgs/{org}/checks/{checkUid}/run (the `CancelCheckRun` operationId).
+func (c *Client) CancelCheckRun(ctx context.Context, org OrgPath, checkUid CheckUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCancelCheckRunRequest(c.Server, org, checkUid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetCheckRun Get the run in progress of a multi-step check
+//
+// A multi-step check (the website crawl) runs as a series of short slices, each saving its progress. This returns the run in progress: its uid, start, completed slices and the progress of its last slice (for a crawl `pagesDone`, `maxPages`, `queued`, `findings`, `phase`). `{"running": false}` when no run is in progress, and for every check type that does not run in steps.
+//
+// Corresponds with GET /api/v1/orgs/{org}/checks/{checkUid}/run (the `GetCheckRun` operationId).
+func (c *Client) GetCheckRun(ctx context.Context, org OrgPath, checkUid CheckUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetCheckRunRequest(c.Server, org, checkUid)
 	if err != nil {
 		return nil, err
 	}
@@ -22357,6 +22503,47 @@ func NewCloneCheckRequestWithBody(server string, org OrgPath, checkUid CheckUidP
 	return req, nil
 }
 
+// NewListCheckCrawlReportsRequest constructs an http.Request for the ListCheckCrawlReports method
+func NewListCheckCrawlReportsRequest(server string, org OrgPath, checkUid CheckUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "checkUid", checkUid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/checks/%s/crawl-reports", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListCheckEventsRequest constructs an http.Request for the ListCheckEvents method
 func NewListCheckEventsRequest(server string, org OrgPath, checkUid CheckUidPath, params *ListCheckEventsParams) (*http.Request, error) {
 	var err error
@@ -22471,6 +22658,88 @@ func NewRotateHeartbeatTokenRequest(server string, org OrgPath, checkUid CheckUi
 	}
 
 	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCancelCheckRunRequest constructs an http.Request for the CancelCheckRun method
+func NewCancelCheckRunRequest(server string, org OrgPath, checkUid CheckUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "checkUid", checkUid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/checks/%s/run", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetCheckRunRequest constructs an http.Request for the GetCheckRun method
+func NewGetCheckRunRequest(server string, org OrgPath, checkUid CheckUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "checkUid", checkUid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/checks/%s/run", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -34812,6 +35081,15 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /api/v1/orgs/{org}/checks/{checkUid}/clone (the `CloneCheck` operationId).
 	CloneCheckWithResponse(ctx context.Context, org OrgPath, checkUid CheckUidPath, body CloneCheckJSONRequestBody, reqEditors ...RequestEditorFn) (*CloneCheckResult, error)
 
+	// ListCheckCrawlReportsWithResponse List the crawl reports of a check
+	//
+	// The full findings report of the last 5 finished crawl runs, newest first. Each entry carries a short-lived signed `downloadUrl` to the report JSON: `{"findings": [{type, url, source, status, error, fingerprint}], "pagesCrawled", "incomplete"}`. The result of a run names its report in `output.reportFileUid`.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/checks/{checkUid}/crawl-reports (the `ListCheckCrawlReports` operationId).
+	ListCheckCrawlReportsWithResponse(ctx context.Context, org OrgPath, checkUid CheckUidPath, reqEditors ...RequestEditorFn) (*ListCheckCrawlReportsResult, error)
+
 	// ListCheckEventsWithResponse List events for a check
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -34827,6 +35105,24 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /api/v1/orgs/{org}/checks/{checkUid}/rotate-token (the `RotateHeartbeatToken` operationId).
 	RotateHeartbeatTokenWithResponse(ctx context.Context, org OrgPath, checkUid CheckUidPath, reqEditors ...RequestEditorFn) (*RotateHeartbeatTokenResult, error)
+
+	// CancelCheckRunWithResponse Cancel the run in progress of a multi-step check
+	//
+	// Drops the run in progress: its saved progress is deleted and the check is scheduled for its next regular run. No result is written for the canceled run. A no-op when no run is in progress. Requires write access (viewers get 403).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/v1/orgs/{org}/checks/{checkUid}/run (the `CancelCheckRun` operationId).
+	CancelCheckRunWithResponse(ctx context.Context, org OrgPath, checkUid CheckUidPath, reqEditors ...RequestEditorFn) (*CancelCheckRunResult, error)
+
+	// GetCheckRunWithResponse Get the run in progress of a multi-step check
+	//
+	// A multi-step check (the website crawl) runs as a series of short slices, each saving its progress. This returns the run in progress: its uid, start, completed slices and the progress of its last slice (for a crawl `pagesDone`, `maxPages`, `queued`, `findings`, `phase`). `{"running": false}` when no run is in progress, and for every check type that does not run in steps.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/checks/{checkUid}/run (the `GetCheckRun` operationId).
+	GetCheckRunWithResponse(ctx context.Context, org OrgPath, checkUid CheckUidPath, reqEditors ...RequestEditorFn) (*GetCheckRunResult, error)
 
 	// ListCheckScreenshotsWithResponse List a check's latest screenshots
 	//
@@ -40620,6 +40916,68 @@ func (r CloneCheckResult) ContentType() string {
 	return ""
 }
 
+type ListCheckCrawlReportsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *CrawlReportListResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListCheckCrawlReportsResult) GetJSON200() *CrawlReportListResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListCheckCrawlReportsResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ListCheckCrawlReportsResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ListCheckCrawlReportsResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r ListCheckCrawlReportsResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListCheckCrawlReportsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListCheckCrawlReportsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListCheckCrawlReportsResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListCheckEventsResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -40731,6 +41089,130 @@ func (r RotateHeartbeatTokenResult) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r RotateHeartbeatTokenResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CancelCheckRunResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r CancelCheckRunResult) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r CancelCheckRunResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r CancelCheckRunResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r CancelCheckRunResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r CancelCheckRunResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CancelCheckRunResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CancelCheckRunResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CancelCheckRunResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetCheckRunResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *CheckRun
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetCheckRunResult) GetJSON200() *CheckRun {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetCheckRunResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r GetCheckRunResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetCheckRunResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r GetCheckRunResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetCheckRunResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetCheckRunResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetCheckRunResult) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -54716,6 +55198,21 @@ func (c *ClientWithResponses) CloneCheckWithResponse(ctx context.Context, org Or
 	return ParseCloneCheckResult(rsp)
 }
 
+// ListCheckCrawlReportsWithResponse List the crawl reports of a check
+//
+// The full findings report of the last 5 finished crawl runs, newest first. Each entry carries a short-lived signed `downloadUrl` to the report JSON: `{"findings": [{type, url, source, status, error, fingerprint}], "pagesCrawled", "incomplete"}`. The result of a run names its report in `output.reportFileUid`.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/orgs/{org}/checks/{checkUid}/crawl-reports (the `ListCheckCrawlReports` operationId).
+func (c *ClientWithResponses) ListCheckCrawlReportsWithResponse(ctx context.Context, org OrgPath, checkUid CheckUidPath, reqEditors ...RequestEditorFn) (*ListCheckCrawlReportsResult, error) {
+	rsp, err := c.ListCheckCrawlReports(ctx, org, checkUid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListCheckCrawlReportsResult(rsp)
+}
+
 // ListCheckEventsWithResponse List events for a check
 //
 // Returns a wrapper object for the known response body format(s).
@@ -54742,6 +55239,36 @@ func (c *ClientWithResponses) RotateHeartbeatTokenWithResponse(ctx context.Conte
 		return nil, err
 	}
 	return ParseRotateHeartbeatTokenResult(rsp)
+}
+
+// CancelCheckRunWithResponse Cancel the run in progress of a multi-step check
+//
+// Drops the run in progress: its saved progress is deleted and the check is scheduled for its next regular run. No result is written for the canceled run. A no-op when no run is in progress. Requires write access (viewers get 403).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/v1/orgs/{org}/checks/{checkUid}/run (the `CancelCheckRun` operationId).
+func (c *ClientWithResponses) CancelCheckRunWithResponse(ctx context.Context, org OrgPath, checkUid CheckUidPath, reqEditors ...RequestEditorFn) (*CancelCheckRunResult, error) {
+	rsp, err := c.CancelCheckRun(ctx, org, checkUid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCancelCheckRunResult(rsp)
+}
+
+// GetCheckRunWithResponse Get the run in progress of a multi-step check
+//
+// A multi-step check (the website crawl) runs as a series of short slices, each saving its progress. This returns the run in progress: its uid, start, completed slices and the progress of its last slice (for a crawl `pagesDone`, `maxPages`, `queued`, `findings`, `phase`). `{"running": false}` when no run is in progress, and for every check type that does not run in steps.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/orgs/{org}/checks/{checkUid}/run (the `GetCheckRun` operationId).
+func (c *ClientWithResponses) GetCheckRunWithResponse(ctx context.Context, org OrgPath, checkUid CheckUidPath, reqEditors ...RequestEditorFn) (*GetCheckRunResult, error) {
+	rsp, err := c.GetCheckRun(ctx, org, checkUid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetCheckRunResult(rsp)
 }
 
 // ListCheckScreenshotsWithResponse List a check's latest screenshots
@@ -61320,6 +61847,53 @@ func ParseCloneCheckResult(rsp *http.Response) (*CloneCheckResult, error) {
 	return response, nil
 }
 
+// ParseListCheckCrawlReportsResult parses an HTTP response from a ListCheckCrawlReportsWithResponse call
+func ParseListCheckCrawlReportsResult(rsp *http.Response) (*ListCheckCrawlReportsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListCheckCrawlReportsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CrawlReportListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListCheckEventsResult parses an HTTP response from a ListCheckEventsWithResponse call
 func ParseListCheckEventsResult(rsp *http.Response) (*ListCheckEventsResult, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -61394,6 +61968,103 @@ func ParseRotateHeartbeatTokenResult(rsp *http.Response) (*RotateHeartbeatTokenR
 			return nil, err
 		}
 		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCancelCheckRunResult parses an HTTP response from a CancelCheckRunWithResponse call
+func ParseCancelCheckRunResult(rsp *http.Response) (*CancelCheckRunResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CancelCheckRunResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetCheckRunResult parses an HTTP response from a GetCheckRunWithResponse call
+func ParseGetCheckRunResult(rsp *http.Response) (*GetCheckRunResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetCheckRunResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CheckRun
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
 		var dest NotFound

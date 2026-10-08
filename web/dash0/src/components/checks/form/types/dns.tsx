@@ -12,6 +12,8 @@ import {
 } from "@/components/ui/select";
 import { getFieldError } from "@/hooks/use-check-validation";
 import { TokenChipsInput } from "@/components/shared/token-chips-input";
+import { Switch } from "@/components/ui/switch";
+import { Button } from "@/components/ui/button";
 import type { CheckTypeModule } from "./index";
 import type { CheckConfig, CheckTypeFieldsProps, FieldErrors } from "./common";
 import { getConfigField, splitBlocklists, validationMessage } from "./common";
@@ -30,6 +32,16 @@ export interface DnsState {
   // answers). A textarea rather than chips because TXT values legitimately
   // contain spaces (e.g. an SPF record), which a chip input would split on.
   expectedValues: string;
+  // Baseline change detection (spec 2026-10-03-04): `detect_changes`,
+  // `on_change` ("down" | "warning", "" = backend default "down") and the
+  // server-captured `baseline` (region → values), shown read-only.
+  detectChanges: boolean;
+  onChange: string;
+  baseline: Record<string, string[]>;
+  // True once the user clicked "Reset baseline": the save sends
+  // `baseline: {}` and every region captures again on its next run. Otherwise
+  // `baseline` is omitted, which the server reads as "keep the stored one".
+  resetBaseline: boolean;
 }
 
 // A/AAAA lookups resolve to IPs and assert against `expected_ips`; every other
@@ -57,6 +69,26 @@ export function isValidIPv6(token: string): boolean {
   return groups.every((g) => /^[0-9a-f]{1,4}$/i.test(g));
 }
 
+function seedBaseline(config: CheckConfig): Record<string, string[]> {
+  const raw = config.baseline;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out: Record<string, string[]> = {};
+  for (const [region, values] of Object.entries(raw as Record<string, unknown>)) {
+    if (Array.isArray(values) && values.length > 0) out[region] = values.map(String);
+  }
+  return out;
+}
+
+// Turning detection on for A/AAAA preselects "warning": names behind load
+// balancers and CDNs rotate their addresses, which would page on every
+// rotation (spec 2026-10-03-04, resolved question 1).
+export function toggleDetectChanges(state: DnsState, detectChanges: boolean): DnsState {
+  if (detectChanges && !state.onChange && isIpRecordType(state.recordType || "A")) {
+    return { ...state, detectChanges, onChange: "warning" };
+  }
+  return { ...state, detectChanges };
+}
+
 function seedStringArray(config: CheckConfig, field: string): string[] {
   const raw = config[field];
   if (!Array.isArray(raw)) return [];
@@ -65,13 +97,26 @@ function seedStringArray(config: CheckConfig, field: string): string[] {
 
 export const dnsModule: CheckTypeModule<DnsState> = {
   types: ["dns"],
-  ownedKeys: ["host", "nameserver", "record_type", "expected_ips", "expected_values"],
+  ownedKeys: [
+    "host",
+    "nameserver",
+    "record_type",
+    "expected_ips",
+    "expected_values",
+    "detect_changes",
+    "on_change",
+    "baseline",
+  ],
   fromConfig: (config) => ({
     host: getConfigField(config, "host"),
     nameserver: getConfigField(config, "nameserver"),
     recordType: getConfigField(config, "record_type") || "A",
     expectedIps: seedStringArray(config, "expected_ips"),
     expectedValues: seedStringArray(config, "expected_values").join("\n"),
+    detectChanges: config.detect_changes === true,
+    onChange: getConfigField(config, "on_change"),
+    baseline: seedBaseline(config),
+    resetBaseline: false,
   }),
   toConfig: (state) => {
     const cfg: CheckConfig = {};
@@ -102,6 +147,12 @@ export const dnsModule: CheckTypeModule<DnsState> = {
     } else {
       const values = splitBlocklists(state.expectedValues);
       if (values.length > 0) cfg.expected_values = values;
+    }
+    if (state.detectChanges) {
+      cfg.detect_changes = true;
+      if (state.onChange && state.onChange !== "down") cfg.on_change = state.onChange;
+      // Omitted = the server keeps the stored baseline; {} = capture again.
+      if (state.resetBaseline) cfg.baseline = {};
     }
     return { config: cfg, errors };
   },
@@ -240,7 +291,90 @@ function DnsFields({ state, onChange, errors }: CheckTypeFieldsProps<DnsState>) 
           )}
         </div>
       )}
+      <DnsChangeDetectionFields state={state} onChange={onChange} errors={errors} />
     </>
+  );
+}
+
+function DnsChangeDetectionFields({ state, onChange, errors }: CheckTypeFieldsProps<DnsState>) {
+  const { t } = useTranslation("checks");
+  const regions = Object.keys(state.baseline).sort();
+  const ipMode = isIpRecordType(state.recordType || "A");
+  return (
+    <div className="space-y-3" data-testid="check-dns-change-detection">
+      <label className="flex items-center gap-3 cursor-pointer min-h-11">
+        <Switch
+          checked={state.detectChanges}
+          onCheckedChange={(on) => onChange(toggleDetectChanges(state, on))}
+          data-testid="check-dns-detect-changes-switch"
+        />
+        <span className="text-sm font-medium">{t("dnsChanges.detect")}</span>
+      </label>
+      <p className="text-xs text-muted-foreground">{t("dnsChanges.detectHelp")}</p>
+      {state.detectChanges && (
+        <>
+          <div className="space-y-2">
+            <Label htmlFor="dnsOnChange">{t("dnsChanges.onChange")}</Label>
+            <Select
+              value={state.onChange || "down"}
+              onValueChange={(value) => onChange({ ...state, onChange: value })}
+            >
+              <SelectTrigger
+                id="dnsOnChange"
+                className="w-full sm:w-60"
+                data-testid="check-dns-on-change-select"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="down">{t("dnsChanges.onChangeDown")}</SelectItem>
+                <SelectItem value="warning">{t("dnsChanges.onChangeWarning")}</SelectItem>
+              </SelectContent>
+            </Select>
+            {ipMode && (
+              <p className="text-xs text-muted-foreground" data-testid="check-dns-on-change-hint">
+                {t("dnsChanges.rotatingHint")}
+              </p>
+            )}
+            {getFieldError(errors, "on_change") && (
+              <p className="text-xs text-destructive">{getFieldError(errors, "on_change")}</p>
+            )}
+          </div>
+          <div className="space-y-2" data-testid="check-dns-baseline">
+            <Label>{t("dnsChanges.baseline")}</Label>
+            {state.resetBaseline || regions.length === 0 ? (
+              <p className="text-xs text-muted-foreground" data-testid="check-dns-baseline-empty">
+                {t("dnsChanges.baselineEmpty")}
+              </p>
+            ) : (
+              <>
+                <ul className="space-y-2">
+                  {regions.map((region) => (
+                    <li key={region} className="rounded-md border p-2 text-sm break-all">
+                      <span className="font-medium">{region}</span>
+                      <span className="text-muted-foreground">: </span>
+                      <span className="font-mono text-xs">{state.baseline[region].join(", ")}</span>
+                    </li>
+                  ))}
+                </ul>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onChange({ ...state, resetBaseline: true })}
+                  data-testid="check-dns-reset-baseline"
+                >
+                  {t("dnsChanges.resetBaseline")}
+                </Button>
+              </>
+            )}
+            {getFieldError(errors, "baseline") && (
+              <p className="text-xs text-destructive">{getFieldError(errors, "baseline")}</p>
+            )}
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 

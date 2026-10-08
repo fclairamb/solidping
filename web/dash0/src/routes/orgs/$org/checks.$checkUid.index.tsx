@@ -24,6 +24,7 @@ import {
   ExternalLink,
   Globe,
   Hash,
+  History,
   Link2,
   MapPin,
   Loader2,
@@ -98,6 +99,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { IncidentKindChip } from "@/components/shared/incident-kind-chip";
+import { incidentKindTextClass, incidentRowClass } from "@/lib/incident-kind";
 import { TunnelDependents, TunnelVia } from "@/components/checks/tunnel-detail";
 import {
   DeliverySources,
@@ -125,6 +128,8 @@ import { QueryErrorView } from "@/components/shared/error-views";
 import { NeedsResealAlert } from "@/components/checks/needs-reseal-alert";
 import { PublishOnStatusPageDialog } from "@/components/checks/publish-on-status-page-dialog";
 import { CheckSummaryCards } from "@/components/checks/check-summary-cards";
+import { AIAuthoredDetail } from "@/components/checks/ai-authored-detail";
+import { CheckConfigView } from "@/components/checks/check-config-view";
 import {
   RegionFreshnessList,
   StaleSince,
@@ -134,6 +139,9 @@ import { CheckRegionalIssueBanner } from "@/components/checks/regional-issue-ban
 import { SslChainCard } from "@/components/checks/ssl-chain-card";
 import { DockerRestartLoopCard } from "@/components/checks/docker-restart-loop-card";
 import { DnsblCard, DNSBL_OUTPUT_KEYS } from "@/components/checks/dnsbl-card";
+import { DnsChangesCard } from "@/components/checks/dns-changes-card";
+import { CrawlCard } from "@/components/checks/crawl-card";
+import { HealthCard } from "@/components/checks/health-card";
 import { isEvaluationOutput } from "@/components/checks/evaluation-card";
 import { isPassiveCheckType } from "@/lib/check-scheduling";
 import {
@@ -149,6 +157,7 @@ import {
 import { AvailabilityTable } from "@/components/checks/availability-table";
 import { DependenciesCard } from "@/components/checks/dependencies-card";
 import { CheckScreenshotsCard } from "@/components/checks/check-screenshots-card";
+import { RunNowButton } from "@/components/checks/run-now-button";
 import { checkTypeCanCapture } from "@/lib/check-screenshots";
 
 // The result-output key reporting which address family the probe used, and the
@@ -1371,6 +1380,7 @@ function CheckDetailPage() {
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            {check.enabled && <RunNowButton org={org} checkUid={checkUid} />}
             <Button
               variant="outline"
               size="icon"
@@ -1445,6 +1455,17 @@ function CheckDetailPage() {
                   >
                     <BadgeCheck className="mr-2 h-4 w-4" />
                     {t("checks:detail.badges")}
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link
+                    to="/orgs/$org/checks/$checkUid/history"
+                    params={{ org, checkUid }}
+                    search={{}}
+                    data-testid="check-history-link"
+                  >
+                    <History className="mr-2 h-4 w-4" />
+                    {t("checks:history.menuItem")}
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={handleCopyLink}>
@@ -1722,37 +1743,13 @@ function CheckDetailPage() {
                 </div>
               </div>
             )}
+            <AIAuthoredDetail org={org} check={check} />
             {check.config && Object.keys(check.config).length > 0 && (
               <div>
                 <div className="text-sm font-medium text-muted-foreground mb-2">
                   {t("checks:detail.configuration")}
                 </div>
-                <div className="bg-muted rounded-md p-3 text-sm font-mono">
-                  {Object.entries(check.config).map(([key, value]) => (
-                    <div key={key} className="flex gap-2">
-                      <span className="text-muted-foreground">{key}:</span>
-                      <span>
-                        {typeof value === "string" ? (
-                          value.startsWith("http") ? (
-                            <a
-                              href={value}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-primary hover:underline inline-flex items-center gap-1"
-                            >
-                              {value}
-                              <ExternalLink className="h-3 w-3" />
-                            </a>
-                          ) : (
-                            value
-                          )
-                        ) : (
-                          JSON.stringify(value)
-                        )}
-                      </span>
-                    </div>
-                  ))}
-                </div>
+                <CheckConfigView check={check} />
               </div>
             )}
             {check.labels && Object.keys(check.labels).length > 0 && (
@@ -1918,11 +1915,40 @@ function CheckDetailPage() {
         />
       )}
 
+      {check.type === "dns" && (
+        <DnsChangesCard
+          org={org}
+          checkUid={checkUid}
+          config={check.config}
+          output={
+            check.lastResult?.output as Record<string, unknown> | undefined
+          }
+          canEdit={ownsThisCheck}
+        />
+      )}
+
       {check.type === "dnsbl" && (
         <DnsblCard
           output={
             check.lastResult?.output as Record<string, unknown> | undefined
           }
+        />
+      )}
+
+      {check.type === "health" && (
+        <HealthCard
+          org={org}
+          checkUid={checkUid}
+          output={check.lastResult?.output as Record<string, unknown> | undefined}
+        />
+      )}
+
+      {check.type === "crawl" && (
+        <CrawlCard
+          org={org}
+          checkUid={checkUid}
+          output={check.lastResult?.output as Record<string, unknown> | undefined}
+          canCancel={ownsThisCheck}
         />
       )}
 
@@ -2130,9 +2156,11 @@ function CheckDetailPage() {
                   .map((incident) => (
                     <TableRow
                       key={incident.uid}
-                      className={
-                        incident.uid ? "cursor-pointer hover:bg-muted/50" : ""
-                      }
+                      className={cn(
+                        "transition-colors",
+                        incidentRowClass(incident.state, incident.kind),
+                        incident.uid && "cursor-pointer",
+                      )}
                       data-testid={`incident-row-${incident.uid}`}
                       onClick={() => {
                         if (!incident.uid) return;
@@ -2163,13 +2191,21 @@ function CheckDetailPage() {
                           : "-"}
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-1">
+                        <div className="flex flex-wrap items-center gap-1">
+                          <IncidentKindChip
+                            kind={incident.kind}
+                            state={incident.state}
+                          />
                           <Badge
                             variant={
                               incident.state === "active"
-                                ? "destructive"
+                                ? "outline"
                                 : "secondary"
                             }
+                            className={cn(
+                              incident.state === "active" &&
+                                incidentKindTextClass(incident.kind),
+                            )}
                           >
                             {incident.state}
                           </Badge>

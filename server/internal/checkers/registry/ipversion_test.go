@@ -78,6 +78,14 @@ func ipVersionCases() []ipVersionCase {
 				"timeout": "2s",
 			}
 		}),
+		// health reuses the http request stack wholesale (ExecuteCapturingBody),
+		// so its family pin and failure wording are http's.
+		shared(checkerdef.CheckTypeHealth, func(host string, port int) map[string]any {
+			return map[string]any{
+				"url":     "http://" + net.JoinHostPort(host, strconv.Itoa(port)) + "/health",
+				"timeout": "2s",
+			}
+		}),
 		// prometheus is the second type that pins the family on an
 		// http.Transport rather than picking an address itself. It shares
 		// checkhttp's transport helper, so the point of this case is exactly

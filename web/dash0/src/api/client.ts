@@ -203,6 +203,26 @@ export class ApiError extends Error {
   }
 }
 
+/** The 422 body of an AI script generation that produced no passing script. */
+export interface AIGenerationFailed {
+  title: string;
+  code: "AI_GENERATION_FAILED";
+  detail?: string;
+  lastScript?: string;
+  lastRun?: { status: string; durationMs?: number; output?: Record<string, unknown> };
+  turns: number;
+  /** The model's last message, often why it gave up. */
+  explanation?: string;
+}
+
+/** An AI script generation that produced no passing script, with its last attempt. */
+export class AIGenerationFailedError extends ApiError {
+  constructor(public failure: AIGenerationFailed) {
+    super(failure.title, failure.code, failure.detail, 422);
+    this.name = "AIGenerationFailedError";
+  }
+}
+
 /** Looks up a single field's message from an ApiError's `fields`, if present. */
 export function getApiErrorField(
   err: unknown,
@@ -362,6 +382,27 @@ export async function apiFetch<T>(
   url: string,
   options: FetchOptions = {}
 ): Promise<T> {
+  const { response, flags } = await fetchWithAuth(url, options);
+  return handleResponse<T>(response, flags);
+}
+
+/** Like apiFetch, for a body the caller reads itself (an NDJSON stream): the
+ * same auth and 401 refresh apply, and a non-2xx throws the usual ApiError. */
+export async function apiFetchResponse(url: string, options: FetchOptions = {}): Promise<Response> {
+  const { response, flags } = await fetchWithAuth(url, options);
+  if (!response.ok || response.status === 401) {
+    await handleResponse<never>(response, flags);
+  }
+  return response;
+}
+
+async function fetchWithAuth(
+  url: string,
+  options: FetchOptions
+): Promise<{
+  response: Response;
+  flags: { skipAuth: boolean; suppress401Redirect: boolean; suppress401Handling: boolean };
+}> {
   const {
     skipAuth = false,
     suppress401Redirect = false,
@@ -413,7 +454,7 @@ export async function apiFetch<T>(
     }
   }
 
-  return handleResponse<T>(response, { skipAuth, suppress401Redirect, suppress401Handling });
+  return { response, flags: { skipAuth, suppress401Redirect, suppress401Handling } };
 }
 
 /** True when a JSON `Content-Type` header value denotes a JSON media type

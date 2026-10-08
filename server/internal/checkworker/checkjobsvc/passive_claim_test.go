@@ -110,7 +110,7 @@ func TestPassiveJobsNeverReachCheckWorkersOrAgents(t *testing.T) {
 	t.Run("cloud worker", func(t *testing.T) { //nolint:paralleltest // shares database state
 		worker := createTestWorker(t, ctx, dbSvc, &cloud)
 
-		claimed, _, err := svc.ClaimJobs(ctx, worker.UID, &cloud, 20, 20, 5*time.Minute)
+		claimed, _, err := svc.ClaimJobs(ctx, worker.UID, &cloud, 20, 20, 0, 5*time.Minute)
 		r.NoError(err)
 		assertNoPassive("cloud worker", claimed)
 		r.True(jobUIDs(claimed)[cloudHTTP.UID], "positive control: the cloud http job is claimable")
@@ -120,7 +120,7 @@ func TestPassiveJobsNeverReachCheckWorkersOrAgents(t *testing.T) {
 	t.Run("region-less cloud worker", func(t *testing.T) { //nolint:paralleltest // shares database state
 		worker := createTestWorker(t, ctx, dbSvc, nil)
 
-		claimed, _, err := svc.ClaimJobs(ctx, worker.UID, nil, 20, 20, 5*time.Minute)
+		claimed, _, err := svc.ClaimJobs(ctx, worker.UID, nil, 20, 20, 0, 5*time.Minute)
 		r.NoError(err)
 		assertNoPassive("region-less cloud worker", claimed)
 		r.True(jobUIDs(claimed)[cloudHTTP.UID], "positive control: the cloud http job is claimable")

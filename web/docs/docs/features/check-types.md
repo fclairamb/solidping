@@ -5,7 +5,7 @@ title: Check Types
 
 # Check Types
 
-SolidPing supports **41 check types** across multiple categories for monitoring your services. Each check type has specific configuration options and validation capabilities.
+SolidPing supports **43 check types** across multiple categories for monitoring your services. Each check type has specific configuration options and validation capabilities.
 
 <!--
   Keep this number equal to the number of `###` sections above "Common Options"
@@ -354,6 +354,14 @@ dns://8.8.8.8/example.com?type=MX
 | Domain | Domain to resolve | `example.com` |
 | Type | Record type | `A`, `AAAA`, `MX`, `TXT`, `CNAME`, `NS`, `SOA` |
 | Expected | Expected values | `93.184.216.34` |
+| Detect changes (`detect_changes`) | Report any record added or removed since a captured baseline | `true` |
+| On change (`on_change`) | Status when the records changed: `down` (default) or `warning` | `warning` |
+
+**Change detection.** With `detect_changes: true`, the first successful run of each region stores its answer in `baseline` (region to values). Every later run compares the full answer with it, and any added or removed value is reported on the check page and in the result's `changes` output. Values are compared lower-cased, without a trailing dot, deduplicated and sorted (TXT keeps its case). Each region has its own baseline, because GeoDNS answers differ by region.
+
+The check goes back up when the old records come back. To accept new records, click **Accept current records** on the check page, or PATCH the check with `baseline: {}`: every region runs right away and captures the current answer. A PATCH or `sp apply` that omits `baseline` keeps the stored one.
+
+Watching `NS` records is the most useful setup: a changed delegation is the classic sign of a hijacked or expired domain. `A` and `AAAA` records behind a load balancer or CDN rotate, so use `on_change: warning` for them.
 
 ### WebSocket {#websocket}
 
@@ -456,6 +464,80 @@ If VeNCrypt is offered but none of its sub-types is usable (for example `X509Pla
 :::note Network access
 VNC hosts are typically reachable only from inside a network. Run the check from a worker with network access to the host, or through an SSH tunnel.
 :::
+
+### Website crawl {#website-crawl}
+
+Crawl a whole website for **broken links**, **mixed content** and **sitemap errors**. A crawl is a long job (hundreds of pages), so it runs as a series of short slices: each slice fetches up to 20 URLs in about 10 seconds, saves its progress and gives its runner back. A crawl never blocks your other checks, and a worker restart resumes it from the last saved slice.
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| URL | Start page. Its host is the crawled site (`www` and the apex are different hosts) | - (required) |
+| Max pages (`maxPages`) | Internal URLs fetched per run, between 1 and 2000 | `200` |
+| Check external links (`checkExternalLinks`) | `HEAD` every external link once per run (`GET` when the server refuses `HEAD`) | on |
+| Check mixed content (`checkMixedContent`) | Report `http://` resources on `https` pages | on |
+| Sitemap (`sitemap`) | `auto` reads the `Sitemap:` lines of `robots.txt`, else `/sitemap.xml`. `off`, or a sitemap URL | `auto` |
+| Respect robots.txt (`respectRobots`) | Skip the paths `robots.txt` disallows. Turn it off to crawl a staging site that disallows everything | on |
+| `include` / `exclude` | Up to 20 path prefixes or globs each (`/blog`, `/*/print`). An include that starts with a host (`www.acme.com`) adds that host to the crawled site | none |
+| `concurrency` | Parallel requests, 1 to 4 | `2` |
+| `delayMs` | Pause between requests, 0 to 5000 ms | `250` |
+| Timeout (`timeout`) | Per request, 1 to 30 s | `10s` |
+| `maxRunDuration` | A run still going after this ends with what it found, marked incomplete. 5 min to 2 h | `30m` |
+| `failOn` | Finding types that make the run **down** | `broken_link`, `mixed_content_active`, `sitemap_error` |
+
+Findings:
+
+| Type | Meaning | Default effect |
+|------|---------|----------------|
+| `broken_link` | Internal link answering 4xx/5xx, a network error, or a redirect loop | down |
+| `broken_external_link` | External link answering 4xx/5xx or a network error | warning |
+| `mixed_content_active` | `http://` script, stylesheet, iframe, object or form action on an `https` page | down |
+| `mixed_content_passive` | `http://` image, audio, video or source on an `https` page | warning |
+| `sitemap_error` | Sitemap unreachable or invalid XML, or a listed URL not answering 2xx | down |
+
+- The result output carries the count per type, the first 50 findings, `newFindings` (findings absent from the previous run) and `pagesCrawled`. Incident notifications name the new findings first.
+- The full findings list of the last 5 runs is downloadable from the check page (or `GET /api/v1/orgs/{org}/checks/{check}/crawl-reports`). `GET .../checks/{check}/run` shows the run in progress and `DELETE` on it cancels it.
+- Each fetched URL counts as one execution against your organization's checks-per-minute limit: a daily 500-page crawl counts as 500 executions per day.
+- A crawl runs from one region only, and never on a private location. Its minimum period is `1h`, default `24h`.
+- The crawler identifies itself as `SolidPing-Crawler/<version> (+https://solidping.io/bot)` and only parses server-rendered HTML (no JavaScript).
+
+### Application health {#application-health}
+
+Read the health endpoint your application already exposes and get one result **per component** ("Redis is down", not "assertion failed"). The check sends the same request as an HTTP check, parses the JSON body with one of the formats below and turns it into a list of components. One check, one incident: the components live in the result output.
+
+| Format (`format`) | Produced by | Component statuses |
+|---|---|---|
+| `spatie` | `spatie/laravel-health`: a `checkResults` array | `ok`, `warning`, `failed`/`crashed` (down), `skipped` |
+| `spring` | Spring Boot Actuator `/actuator/health`: `status` plus `components` (or legacy `details`). Nested components are named `parent.child` | `UP`, `DOWN`/`OUT_OF_SERVICE` (down), `UNKNOWN` |
+| `ietf` | IETF `draft-inadarei-api-health-check` (`application/health+json`): a `checks` object. Several entries under one key are named `key#componentId` | `pass`, `warn`, `fail` (down) |
+| `aspnet` | ASP.NET Core HealthChecks (UI response writer): an `entries` object | `Healthy`, `Degraded`, `Unhealthy` (down) |
+| `microprofile` | MicroProfile Health (Quarkus, Open Liberty): a `checks` array of `{name, status}` | `UP`, `DOWN` (down) |
+| `simple` | Anything else with a top-level `status` string and no components | `ok`/`up`/`pass`/`healthy`, `warn`/`degraded`, everything else is down |
+
+`auto` (the default) tries them in this order and uses the first whose JSON shape matches. The URL is never used for detection.
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| URL, method, headers, `secretHeaders`, basic auth, TLS, redirects, `ipVersion`, SSH tunnel | Exactly the [HTTP check](#httphttps) request options | - |
+| `format` | One of the formats above, or `auto` | `auto` |
+| `maxAge` | Results whose timestamp (spatie `finishedAt`, ietf `time`) is older than this are stale and the check is down. `0` disables. Ignored by formats without a timestamp | `10m` |
+| `ignore` | Up to 50 component names left out of the verdict (exact match) | none |
+| `components` | Per-component downgrade: `{"Cache": {"onFailed": "warning"}}`. `onFailed` is `down` or `warning` | none |
+
+The HTTP body and status assertions (`body_expect`, `body_pattern`, `json_path_assertions`, `bodyAssertions`, `expected_status`, `expected_status_codes`) are refused on a health check: the health document is the only thing that judges the response.
+
+Health endpoints answer `503` with a JSON body when unhealthy (Spring, ASP.NET), so any HTTP status with a parseable body is judged by the body. A `503` with an HTML body is down.
+
+The verdict, first match wins:
+
+1. Network error or timeout: as an HTTP check.
+2. Body not JSON, no format matches, or the forced `format` does not fit: **down**, `health response not recognised`.
+3. Results older than `maxAge`: **down**, `health results are stale (last run 23 min ago)`. This catches the scheduled job that computes the results having stopped.
+4. A non-ignored component failed (and its `onFailed` is `down`): **down**.
+5. A non-ignored component is in warning, or failed with `onFailed: warning`: **warning** (counts as up, opens no incident).
+6. No components (`simple`): the status the application reports.
+7. Otherwise **up**. `skipped` and `unknown` components are shown and never change the status.
+
+The output has `format`, `finished_at`, the `components` (at most 100, `components_truncated` past that), and the `failed` and `warning` name lists. `error` lists the failing components as `Name: message`, joined with `; `, so notifications name them with no template change. Metrics: `components_total`, `components_failed`, `components_warning`, plus numeric component metadata as `meta.<component>.<key>` (at most 20 per check).
 
 ## Security & Certificates
 
@@ -1802,6 +1884,7 @@ on direct API calls (`400 VALIDATION_ERROR` naming the floor):
 | `ssl` | `1h` | `6h` |
 | `domain` | `6h` | `24h` |
 | `dnsbl` | `15m` | `1h` |
+| `crawl` | `1h` | `24h` |
 | All other types | `10s` | `1m` |
 
 Heavy check types (headless browser, custom scripts) carry higher floors
