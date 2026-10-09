@@ -15,5 +15,11 @@
   "tool_arrow": "Pfeil",
   "tool_text": "Text",
   "undo": "Rückgängig",
-  "screenshot_alt": "Bildschirmfoto"
+  "screenshot_alt": "Bildschirmfoto",
+  "tool_pen": "Stift",
+  "tool_highlight": "Markieren",
+  "tool_blur": "Unscharf",
+  "redo": "Wiederholen",
+  "text_placeholder": "Text eingeben, Enter zum Hinzufügen",
+  "color": "Farbe {{color}}"
 }
