@@ -813,6 +813,15 @@ func (s *SlackSender) buildIncidentResolvedThreadReply(payload *Payload) *slack.
 
 	refLink := incidentRefLink(payload.Incident, incidentURL)
 	nameLink := checkNameLink(checkURL, incidentURL, checkName, payload.Incident)
+
+	if ResolvedByCheckDeletion(payload.Incident) {
+		return &slack.MessageResponse{Text: fmt.Sprintf(
+			":white_circle: %s%s was deleted after %s, so its incident was closed. "+
+				"The check did not necessarily recover.",
+			refLink, nameLink, duration,
+		)}
+	}
+
 	text := fmt.Sprintf(
 		":large_green_circle: %s%s — incident resolved after %s.",
 		refLink, nameLink, duration,
@@ -1026,7 +1035,12 @@ func (s *SlackSender) buildResolvedUpdateMessage(payload *Payload) *slack.Messag
 	checkName := getCheckName(payload.Check)
 	checkURL := checkDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Check)
 	incidentURL := incidentDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Incident)
-	fallbackText := fmt.Sprintf("Automatically resolved %s incident", checkName)
+	headline := fmt.Sprintf("Automatically resolved %s incident", checkName)
+	if ResolvedByCheckDeletion(payload.Incident) {
+		headline = fmt.Sprintf("Closed %s incident: the check was deleted", checkName)
+	}
+
+	fallbackText := headline
 
 	// Calculate duration
 	duration := ""
@@ -1057,8 +1071,8 @@ func (s *SlackSender) buildResolvedUpdateMessage(payload *Payload) *slack.Messag
 			Type: slack.BlockTypeHeader,
 			Text: &slack.Text{
 				Type: slack.BlockTypePlainText,
-				Text: fmt.Sprintf(":large_green_circle: %sAutomatically resolved %s incident",
-					incidentRefPrefix(payload.Incident), checkName),
+				Text: fmt.Sprintf(":large_green_circle: %s%s",
+					incidentRefPrefix(payload.Incident), headline),
 				Emoji: true,
 			},
 		},

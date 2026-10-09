@@ -135,8 +135,10 @@ func (r *NotificationJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) e
 		return fmt.Errorf("%w: %w", ErrIncidentNotFound, err)
 	}
 
-	// 3. Load check
-	check, err := jctx.DBService.GetCheck(ctx, connection.OrganizationUID, incident.CheckUID)
+	// 3. Load check. An incident closed because its check was deleted (spec
+	// 2026-10-08-02) still has to name that check in its one "resolved"
+	// notification, so only that case reads past deleted_at.
+	check, err := loadNotificationCheck(ctx, jctx, connection.OrganizationUID, incident)
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrCheckNotFound, err)
 	}
@@ -191,6 +193,19 @@ func (r *NotificationJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) e
 		})
 
 	return nil
+}
+
+// loadNotificationCheck loads the incident's check. Only an incident resolved
+// by its check's deletion may load a soft-deleted check: every other event on
+// a deleted check keeps failing the job as before.
+func loadNotificationCheck(
+	ctx context.Context, jctx *jobdef.JobContext, orgUID string, incident *models.Incident,
+) (*models.Check, error) {
+	if incident.ResolutionType != nil && *incident.ResolutionType == models.ResolutionTypeCheckDeleted {
+		return jctx.DBService.GetCheckIncludingDeleted(ctx, orgUID, incident.CheckUID)
+	}
+
+	return jctx.DBService.GetCheck(ctx, orgUID, incident.CheckUID)
 }
 
 // buildPayload assembles everything a sender needs for one delivery.

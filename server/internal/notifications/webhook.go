@@ -88,6 +88,9 @@ type WebhookIncident struct {
 	FailureCount          int        `json:"failureCount"`
 	RelapseCount          int        `json:"relapseCount"`
 	RecoveryPeriodSeconds *int       `json:"recoveryPeriodSeconds"`
+	// ResolutionType says how a resolved incident closed (auto | manual |
+	// expired | escalated | disabled | check_deleted). Omitted while active.
+	ResolutionType *string `json:"resolutionType,omitempty"`
 }
 
 // WebhookCheck is the check projection inside a webhook payload.
@@ -429,6 +432,7 @@ func (s *WebhookSender) buildPayload(payload *Payload) WebhookPayload {
 		Title:          payload.Incident.Title,
 		FailureCount:   payload.Incident.FailureCount,
 		RelapseCount:   payload.Incident.RelapseCount,
+		ResolutionType: payload.Incident.ResolutionType,
 	}
 
 	if payload.Incident.ResolvedAt != nil {

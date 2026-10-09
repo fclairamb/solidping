@@ -192,7 +192,7 @@ func (s *PushoverSender) buildContent(
 		title = "[DOWN] " + checkName
 		body = s.buildDownBody(payload, checkName)
 	case eventTypeIncidentResolved:
-		title = "[RECOVERED] " + checkName
+		title = resolvedTag(payload.Incident) + checkName
 		body = s.buildResolvedBody(payload, checkName)
 	case eventTypeIncidentEscalated:
 		title = "[ESCALATED] " + checkName
@@ -230,6 +230,10 @@ func (s *PushoverSender) buildDownBody(payload *Payload, checkName string) strin
 
 func (s *PushoverSender) buildResolvedBody(payload *Payload, checkName string) string {
 	var builder strings.Builder
+
+	if ResolvedByCheckDeletion(payload.Incident) {
+		builder.WriteString(checkDeletedSentence + "\n")
+	}
 
 	fmt.Fprintf(&builder, "<b>Check:</b> %s (%s)\n", checkName, payload.Check.Type)
 

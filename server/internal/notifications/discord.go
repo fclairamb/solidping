@@ -616,9 +616,14 @@ func (ds *DiscordSender) buildIncidentResolvedEmbed(payload *Payload) discord.Em
 		})
 	}
 
+	description := "The incident has been automatically resolved."
+	if ResolvedByCheckDeletion(payload.Incident) {
+		description = checkDeletedSentence
+	}
+
 	return discord.Embed{
 		Title:       incidentRefPrefix(payload.Incident) + "Incident resolved for " + checkName,
-		Description: "The incident has been automatically resolved.",
+		Description: description,
 		Color:       discord.ColorGreen,
 		Fields:      fields,
 		Timestamp:   time.Now().Format(time.RFC3339),
@@ -740,10 +745,14 @@ func (ds *DiscordSender) buildResolvedUpdateMessage(payload *Payload) *discord.M
 		})
 	}
 
+	title := fmt.Sprintf("%sAutomatically resolved %s incident", incidentRefPrefix(payload.Incident), checkName)
+	if ResolvedByCheckDeletion(payload.Incident) {
+		title = fmt.Sprintf("%sClosed %s incident: the check was deleted", incidentRefPrefix(payload.Incident), checkName)
+	}
+
 	return &discord.Message{
 		Embeds: []discord.Embed{{
-			Title: fmt.Sprintf("%sAutomatically resolved %s incident",
-				incidentRefPrefix(payload.Incident), checkName),
+			Title:     title,
 			URL:       incidentDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Incident),
 			Color:     discord.ColorGreen,
 			Fields:    fields,

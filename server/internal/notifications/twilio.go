@@ -111,6 +111,11 @@ func (s *TwilioSender) buildBody(
 	var msg string
 	switch payload.EventType {
 	case eventTypeIncidentResolved:
+		if ResolvedByCheckDeletion(payload.Incident) {
+			return fmt.Sprintf("[%s] %s: %s was deleted, incident closed.", productName, org, checkName) +
+				twilio.OptOutFooter
+		}
+
 		return fmt.Sprintf("[%s] %s: %s RECOVERED.", productName, org, checkName) + twilio.OptOutFooter
 	case eventTypeIncidentEscalated:
 		msg = fmt.Sprintf("[%s] %s: %s STILL DOWN (escalated).", productName, org, checkName)

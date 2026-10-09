@@ -160,7 +160,7 @@ func (s *GoogleChatSender) buildMessage(payload *Payload) *googleChatMessage {
 		title = "[DOWN] " + checkName
 		subtitle = getFailureReason(payload.Incident)
 	case eventTypeIncidentResolved:
-		title = "[RECOVERED] " + checkName
+		title = resolvedTag(payload.Incident) + checkName
 		subtitle = s.resolvedSubtitle(payload)
 	case eventTypeIncidentEscalated:
 		title = "[ESCALATED] " + checkName
@@ -255,6 +255,10 @@ func (s *GoogleChatSender) buildWidgets(payload *Payload, checkName string) []go
 }
 
 func (s *GoogleChatSender) resolvedSubtitle(payload *Payload) string {
+	if ResolvedByCheckDeletion(payload.Incident) {
+		return checkDeletedSentence
+	}
+
 	if payload.Incident.ResolvedAt != nil {
 		duration := payload.Incident.ResolvedAt.Sub(payload.Incident.StartedAt)
 

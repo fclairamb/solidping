@@ -185,7 +185,7 @@ func (s *MattermostSender) eventColorAndTitle(payload *Payload, checkName string
 	case eventTypeIncidentCreated:
 		return mattermostColorRed, ":red_circle: [DOWN] " + checkName
 	case eventTypeIncidentResolved:
-		return mattermostColorGreen, ":white_check_mark: [RECOVERED] " + checkName
+		return mattermostColorGreen, ":white_check_mark: " + resolvedTag(payload.Incident) + checkName
 	case eventTypeIncidentEscalated:
 		return mattermostColorOrange, ":warning: [ESCALATED] " + checkName
 	case eventTypeIncidentReopened:
@@ -258,6 +258,10 @@ func (s *MattermostSender) buildFields(payload *Payload, checkName string) []mat
 func (s *MattermostSender) buildResolvedFields(payload *Payload, checkName string) []mattermostField {
 	fields := []mattermostField{
 		{Short: true, Title: mmFieldCheck, Value: checkName},
+	}
+
+	if ResolvedByCheckDeletion(payload.Incident) {
+		fields = append(fields, mattermostField{Short: false, Title: "Reason", Value: checkDeletedSentence})
 	}
 
 	if payload.Incident.ResolvedAt != nil {

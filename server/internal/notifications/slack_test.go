@@ -288,6 +288,10 @@ func (m *mockDBService) GetCheck(_ context.Context, _, _ string) (*models.Check,
 	panic("not implemented")
 }
 
+func (m *mockDBService) GetCheckIncludingDeleted(_ context.Context, _, _ string) (*models.Check, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) GetChecksByUIDs(_ context.Context, _ string, _ []string) (map[string]*models.Check, error) {
 	panic("not implemented")
 }

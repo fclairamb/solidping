@@ -155,7 +155,7 @@ func (s *GotifySender) buildMessage(settings *gotifySettings, payload *Payload) 
 		title = "[DOWN] " + checkName
 		body = s.buildDownBody(payload, checkName)
 	case eventTypeIncidentResolved:
-		title = "[RECOVERED] " + checkName
+		title = resolvedTag(payload.Incident) + checkName
 		body = s.buildResolvedBody(payload, checkName)
 	case eventTypeIncidentEscalated:
 		title = "[ESCALATED] " + checkName
@@ -217,6 +217,10 @@ func (s *GotifySender) buildDownBody(payload *Payload, checkName string) string 
 
 func (s *GotifySender) buildResolvedBody(payload *Payload, checkName string) string {
 	var builder strings.Builder
+
+	if ResolvedByCheckDeletion(payload.Incident) {
+		builder.WriteString(checkDeletedSentence + "\n")
+	}
 
 	fmt.Fprintf(&builder, "Check: %s (%s)\n", checkName, payload.Check.Type)
 

@@ -145,7 +145,7 @@ func (s *NtfySender) buildContent(
 		tags = "rotating_light"
 		body = s.buildDownBody(payload, checkName)
 	case eventTypeIncidentResolved:
-		title = "[RECOVERED] " + checkName
+		title = resolvedTag(payload.Incident) + checkName
 		tags = "white_check_mark"
 		body = s.buildResolvedBody(payload, checkName)
 	case eventTypeIncidentEscalated:
@@ -190,6 +190,10 @@ func (s *NtfySender) buildDownBody(payload *Payload, checkName string) string {
 
 func (s *NtfySender) buildResolvedBody(payload *Payload, checkName string) string {
 	var builder strings.Builder
+
+	if ResolvedByCheckDeletion(payload.Incident) {
+		builder.WriteString(checkDeletedSentence + "\n")
+	}
 
 	fmt.Fprintf(&builder, "Check: %s (%s)\n", checkName, payload.Check.Type)
 

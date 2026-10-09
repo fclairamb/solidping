@@ -261,7 +261,7 @@ func (s *MatrixSender) titleAndLines(payload *Payload) (string, []string) {
 		title = "[DOWN] " + checkName
 		lines = s.downLines(payload, checkName)
 	case eventTypeIncidentResolved:
-		title = "[RECOVERED] " + checkName
+		title = resolvedTag(payload.Incident) + checkName
 		lines = s.resolvedLines(payload, checkName)
 	case eventTypeIncidentEscalated:
 		title = "[ESCALATED] " + checkName
@@ -297,6 +297,10 @@ func (s *MatrixSender) downLines(payload *Payload, checkName string) []string {
 
 func (s *MatrixSender) resolvedLines(payload *Payload, checkName string) []string {
 	lines := []string{fmt.Sprintf("Check: %s (%s)", checkName, payload.Check.Type)}
+
+	if ResolvedByCheckDeletion(payload.Incident) {
+		lines = append([]string{checkDeletedSentence}, lines...)
+	}
 
 	if payload.Incident.ResolvedAt != nil {
 		duration := payload.Incident.ResolvedAt.Sub(payload.Incident.StartedAt)

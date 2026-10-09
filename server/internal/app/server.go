@@ -483,6 +483,10 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	checksSvc := checks.NewService(
 		dbService, svcList.EventNotifier, credSvc, entitlementsService)
 	checksSvc.SetDeploymentMode(cfg.Deployment.Mode)
+	// The demo cleanup and private-location monitor deletes notify like a
+	// user's DELETE does (spec 2026-10-08-02).
+	checksSvc.SetCheckDeletedIncidentNotifier(
+		incidents.NewService(dbService, jobService, svcList.Clock, svcList.Realtime))
 	svcList.Checks = checksSvc
 	svcList.PrivateLocationMonitors = checksSvc
 	aiChecksSvc := buildAIChecks(cfg, dbService, checksSvc, entitlementsService, credSvc, svcList)
@@ -1963,6 +1967,9 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// incident in the same request (spec 2026-09-24-08): the evaluator only
 	// sweeps checks with it on, so nothing else ever would.
 	checksService.SetDegradedIncidentResolver(incidentsService)
+	// Deleting a check resolves its open incidents (the DB layer does that);
+	// this tells whoever was paged, once, that it closed (spec 2026-10-08-02).
+	checksService.SetCheckDeletedIncidentNotifier(incidentsService)
 	// The MCP surface builds its OWN statuspages.Service (mcp.NewHandler runs
 	// far earlier in this function), and every NewService starts with its own
 	// view memo. Point it at this one's, or an MCP-driven page edit evicts a map
