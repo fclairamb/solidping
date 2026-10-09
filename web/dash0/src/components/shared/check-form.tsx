@@ -1140,7 +1140,14 @@ export function CheckForm({
     () =>
       submitAttempts > 0
         ? serverFieldErrors
-        : serverFieldErrors.filter((fe) => isFieldTouched(touchedFields, fe.name)),
+        : serverFieldErrors.filter(
+            (fe) =>
+              isFieldTouched(touchedFields, fe.name) ||
+              // A region change can be rejected on the tunnel field (the SSH
+              // tunnel must cover every region), so editing a region reveals it.
+              (fe.name === "tunnelCheckUid" &&
+                touchedFields.includes("regionsedited")),
+          ),
     [serverFieldErrors, touchedFields, submitAttempts],
   );
 
@@ -1156,6 +1163,11 @@ export function CheckForm({
   );
 
   const toggleRegion = (slug: string) => {
+    // The checkbox has no id/name, so the form-level blur/input handler cannot
+    // see it: record the touch here (see the tunnelCheckUid gating above).
+    setTouchedFields((prev) =>
+      prev.includes("regionsedited") ? prev : [...prev, "regionsedited"],
+    );
     setSelectedRegions((prev) =>
       prev.includes(slug) ? prev.filter((r) => r !== slug) : [...prev, slug]
     );
