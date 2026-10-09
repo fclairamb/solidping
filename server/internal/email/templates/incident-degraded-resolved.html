@@ -4,15 +4,15 @@
 {{define "statusbanner"}}{{if .DegradedTurnedOff}}{{template "statusbanner-render" dict "Variant" "recovered" "Label" "Degraded closed"}}{{else}}{{template "statusbanner-render" dict "Variant" "recovered" "Label" "Degraded cleared"}}{{end}}{{end}}
 {{define "content"}}
     {{if .DegradedTurnedOff}}
-    <h1>Degraded detection turned off for {{.CheckName}}</h1>
+    <h1>Degraded detection turned off for {{nolink .CheckName}}</h1>
     <p>Degraded detection was turned off on this check, so the open degraded episode was closed. The check did not necessarily recover.</p>
     {{else}}
-    <h1>{{.CheckName}} is steady again</h1>
+    <h1>{{nolink .CheckName}} is steady again</h1>
     <p>The degraded condition has been false for long enough to close the episode.</p>
     {{end}}
 
     <table class="details-table" role="presentation" cellpadding="0" cellspacing="0">
-        <tr><td class="label">Monitor</td><td class="value">{{if .CheckURL}}<a href="{{.CheckURL}}">{{.CheckName}}</a>{{else}}{{.CheckName}}{{end}}</td></tr>
+        <tr><td class="label">Monitor</td><td class="value">{{if .CheckURL}}<a href="{{.CheckURL}}">{{nolink .CheckName}}</a>{{else}}{{nolink .CheckName}}{{end}}</td></tr>
         <tr><td class="label">Started at</td><td class="value">{{.StartedAt}}</td></tr>
         <tr><td class="label">Resolved at</td><td class="value">{{.ResolvedAt}}</td></tr>
         {{if .Duration}}<tr><td class="label">Duration</td><td class="value">{{.Duration}}</td></tr>{{end}}

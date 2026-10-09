@@ -3,12 +3,12 @@
 {{template "base.html" .}}
 {{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "recovered" "Label" "Region back online"}}{{end}}
 {{define "content"}}
-    <h1>Region {{.RegionName}} is back</h1>
+    <h1>Region {{nolink .RegionName}} is back</h1>
     <p>Hi,</p>
     <p>
-      {{if .Moved}}The checks of {{.OrgName}} that ran only from <strong>{{.RegionName}}</strong>
+      {{if .Moved}}The checks of {{.OrgName}} that ran only from <strong>{{nolink .RegionName}}</strong>
       no longer depend on it and are being checked again.{{else}}The SolidPing region
-      <strong>{{.RegionName}}</strong> is back online, and the checks of {{.OrgName}} that
+      <strong>{{nolink .RegionName}}</strong> is back online, and the checks of {{.OrgName}} that
       ran only from it resumed.{{end}}
     </p>
     <table class="metric" role="presentation" width="100%" cellpadding="0" cellspacing="0">

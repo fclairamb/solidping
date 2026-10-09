@@ -3,10 +3,10 @@
 {{template "base.html" .}}
 {{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "down" "Label" "Region offline"}}{{end}}
 {{define "content"}}
-    <h1>Region {{.RegionName}} is offline</h1>
+    <h1>Region {{nolink .RegionName}} is offline</h1>
     <p>Hi,</p>
     <p>
-      The SolidPing region <strong>{{.RegionName}}</strong> has been offline since
+      The SolidPing region <strong>{{nolink .RegionName}}</strong> has been offline since
       <strong>{{.Since}}</strong>. {{.BlindCount}} of your checks in {{.OrgName}} run
       only from this region, so they are not being checked right now:
     </p>
