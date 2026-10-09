@@ -4853,6 +4853,22 @@ async function fetchSystemParameters(): Promise<SystemParametersResponse> {
   };
 }
 
+export interface DiscordSetupInfo {
+  baseUrl: string;
+  baseUrlIsDefault: boolean;
+  loginRedirectUri: string;
+  installRedirectUri: string;
+  interactionsUrl: string;
+}
+
+/** Discord developer-portal values, computed server-side from the base URL. */
+export function useDiscordSetup() {
+  return useQuery({
+    queryKey: ["discord-setup"],
+    queryFn: () => apiFetch<DiscordSetupInfo>("/api/v1/system/discord-setup"),
+  });
+}
+
 export function useSystemParameters() {
   return useQuery({
     queryKey: ["system-parameters"],

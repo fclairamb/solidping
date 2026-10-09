@@ -559,11 +559,43 @@ under **Server → Discord**:
 
 | Setting | Env var | Purpose |
 |---|---|---|
+| Enabled | `SP_DISCORD_ENABLED` | Master switch: nothing Discord (login routes, bot) is mounted without it |
 | Client ID | `SP_DISCORD_CLIENT_ID` | Identifies the application during install |
 | Client secret | `SP_DISCORD_CLIENT_SECRET` | Completes the install token exchange |
 | Bot token | `SP_DISCORD_BOT_TOKEN` | Authenticates every outbound call |
 | Public key | `SP_DISCORD_PUBLIC_KEY` | Verifies Discord's signed interaction requests |
 | Gateway enabled | `SP_DISCORD_GATEWAY_ENABLED` | Turns on the inbound WebSocket |
+
+#### Discord application setup
+
+Create the application at the [Discord Developer Portal](https://discord.com/developers/applications),
+then fill in these pages in the order the portal shows them. **Server → Discord**
+and **Server → Authentication** in the dashboard show the exact URLs below for
+your instance, each with a copy button. `{SP_BASE_URL}` is your instance's public
+address.
+
+1. **OAuth2 → Redirects**: add **both** URIs. Login and the bot install are two
+   different flows on the same application, and each one needs its own entry.
+   Registering only one makes the other fail with Discord's "Invalid OAuth2
+   redirect_uri".
+   - `{SP_BASE_URL}/api/v1/auth/discord/callback` (Sign in with Discord)
+   - `{SP_BASE_URL}/api/v1/integrations/discord/oauth` (Install Discord bot)
+2. **Installation**: scopes `bot`, `applications.commands` and `identify`. Bot
+   permissions: View Channels, Send Messages, Embed Links, Read Message History,
+   Manage Threads, Create Public Threads, Send Messages in Threads.
+3. **General Information → Interactions Endpoint URL**:
+   `{SP_BASE_URL}/api/v1/integrations/discord/interactions`. Save it **after**
+   `SP_DISCORD_PUBLIC_KEY` is set: Discord probes the URL on save and rejects it
+   if SolidPing cannot verify signatures yet.
+4. **Bot → Privileged Gateway Intents**: enable **Message Content Intent** if
+   you turn the Gateway on.
+
+If `SP_BASE_URL` is still `http://localhost:4000`, Discord redirects the browser
+to localhost. Set it to the address users reach SolidPing on. The dashboard
+warns about this next to the URLs.
+
+`SP_DISCORD_REDIRECT_URL` no longer exists. Both URIs derive from `SP_BASE_URL`,
+and setting the variable only logs a warning at startup.
 
 Three things are worth understanding before you turn the bot on:
 

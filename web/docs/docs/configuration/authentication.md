@@ -254,6 +254,12 @@ SP_DISCORD_CLIENT_SECRET=your-discord-client-secret
 2. Create an application and open **OAuth2**
 3. Add redirect URL: `{SP_BASE_URL}/api/v1/auth/discord/callback`
 
+Set `SP_DISCORD_ENABLED=true` too: the login routes are not mounted without it.
+
+If you also want the Discord bot (the **Install Discord bot** button), the same
+application needs a second redirect URI and a few more settings. See
+[Discord application setup](notifications.md#discord-application-setup).
+
 ### After the provider sends you back
 
 Whatever the provider, the callback never puts your session in the URL. It

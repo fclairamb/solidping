@@ -16,6 +16,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { ApiError } from "@/api/client";
+import { DiscordSetupPanel } from "@/components/server/discord-setup-panel";
 import {
   useDiscordGatewayStatus,
   useSetSystemParameter,
@@ -142,6 +143,8 @@ function DiscordSettingsPage() {
 
   return (
     <div className="space-y-4">
+      <DiscordSetupPanel />
+
       <Card>
         <CardHeader>
           <CardTitle>{t("server:discord.bot.title", "Discord bot")}</CardTitle>
