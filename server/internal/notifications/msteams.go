@@ -39,7 +39,7 @@ const msTeamsMessageType = "message"
 
 var (
 	// ErrMSTeamsWebhookURLNotConfigured is returned when the Teams webhook URL is missing.
-	ErrMSTeamsWebhookURLNotConfigured = errors.New("microsoft teams webhook URL not configured")
+	ErrMSTeamsWebhookURLNotConfigured = newConfigError("microsoft teams webhook URL not configured", "webhook URL")
 	// errMSTeamsWebhookFailed is returned when the Teams webhook request fails.
 	errMSTeamsWebhookFailed = errors.New("microsoft teams webhook failed")
 )

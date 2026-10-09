@@ -29,9 +29,9 @@ const gotifyResolvedPriority = 2
 
 var (
 	// ErrGotifyServerURLNotConfigured is returned when the Gotify server URL is missing.
-	ErrGotifyServerURLNotConfigured = errors.New("gotify server url not configured")
+	ErrGotifyServerURLNotConfigured = newConfigError("gotify server url not configured", "server URL")
 	// ErrGotifyAppTokenNotConfigured is returned when the Gotify application token is missing.
-	ErrGotifyAppTokenNotConfigured = errors.New("gotify app token not configured")
+	ErrGotifyAppTokenNotConfigured = newConfigError("gotify app token not configured", "app token")
 	// errGotifyRequestFailed is returned when the Gotify request fails.
 	errGotifyRequestFailed = errors.New("gotify request failed")
 )

@@ -573,7 +573,7 @@ const senderKeyWebhookURL = "webhook_url"
 var senderURLSettingsKey = map[models.ConnectionType]string{
 	models.ConnectionTypeWebhook:      "url",
 	models.ConnectionTypeGotify:       "server_url",
-	models.ConnectionTypeNtfy:         "serverUrl",
+	models.ConnectionTypeNtfy:         notifications.NtfySettingServerURL,
 	models.ConnectionTypeMatrix:       "homeserverUrl",
 	models.ConnectionTypeGoogleChat:   senderKeyWebhookURL,
 	models.ConnectionTypeMattermost:   senderKeyWebhookURL,
@@ -623,6 +623,12 @@ func (s *Service) validateSenderURLSettings(
 	}
 
 	raw, _ := settings[key].(string)
+
+	// ntfy still reads its pre-2026-10-08-03 key as a fallback, so a URL
+	// written there must pass the same egress policy.
+	if connType == models.ConnectionTypeNtfy && raw == "" {
+		raw, _ = settings[notifications.NtfyLegacySettingServerURL].(string)
+	}
 
 	if connType == models.ConnectionTypeSlackWebhook {
 		if err := validateSlackWebhookURL(raw); err != nil {
@@ -1422,6 +1428,11 @@ func (s *Service) DeleteIntegration(ctx context.Context, orgSlug, connectionUID 
 	return nil
 }
 
+// TestResultCodeMisconfigured is IntegrationTestResult.Code when the sender
+// sent nothing because a required setting is missing (spec 2026-10-08-03).
+// The endpoint still answers 200: it is a result, not an HTTP error.
+const TestResultCodeMisconfigured = "INTEGRATION_MISCONFIGURED"
+
 // IntegrationTestResult is returned by TestIntegration. Success reports whether
 // the integration delivered the sample notification. StatusCode carries the HTTP
 // status for HTTP-based integrations (e.g. webhooks); it is 0 for senders with
@@ -1436,6 +1447,13 @@ type IntegrationTestResult struct {
 	// Kubernetes cluster's reported server version). Empty for notification
 	// tests, which have nothing extra to report on success.
 	Detail string `json:"detail,omitempty"`
+	// Code is INTEGRATION_MISCONFIGURED when the sender refused to send
+	// because a required setting is missing: a configuration error, not a
+	// delivery failure. Empty otherwise.
+	Code string `json:"code,omitempty"`
+	// MissingSetting names what is missing ("API token") when Code is
+	// INTEGRATION_MISCONFIGURED.
+	MissingSetting string `json:"missingSetting,omitempty"`
 }
 
 // loadChannel resolves the org + connection and verifies the connection belongs
@@ -1620,6 +1638,11 @@ func (s *Service) TestIntegration(
 	if sendErr != nil {
 		result.Error = sendErr.Error()
 		result.StatusCode = statusCodeFromErr(sendErr)
+
+		if setting, ok := notifications.MissingSetting(sendErr); ok {
+			result.Code = TestResultCodeMisconfigured
+			result.MissingSetting = setting
+		}
 
 		return result, nil
 	}

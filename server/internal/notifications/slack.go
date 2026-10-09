@@ -16,7 +16,7 @@ import (
 
 var (
 	// ErrSlackAccessTokenNotConfigured is returned when the Slack access token is missing.
-	ErrSlackAccessTokenNotConfigured = errors.New("slack access token not configured")
+	ErrSlackAccessTokenNotConfigured = newConfigError("slack access token not configured", "access token")
 	// ErrNoDefaultChannelConfigured is returned when no default channel is configured for Slack.
 	ErrNoDefaultChannelConfigured = errors.New("no default channel configured for slack connection")
 )

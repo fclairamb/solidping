@@ -13655,6 +13655,16 @@ components:
         detail:
           type: string
           description: Optional human-readable success note
+        code:
+          type: string
+          enum: [INTEGRATION_MISCONFIGURED]
+          description: >-
+            Set when nothing was sent because a required setting is missing
+            (a configuration error, not a delivery failure).
+        missingSetting:
+          type: string
+          description: Human name of the missing setting (e.g. "API token") when code is INTEGRATION_MISCONFIGURED
+          example: API token
 
     MemberChannelCoverage:
       type: object

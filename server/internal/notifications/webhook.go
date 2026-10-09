@@ -48,7 +48,7 @@ const (
 
 var (
 	// ErrWebhookURLNotConfigured is returned when the webhook URL is not configured.
-	ErrWebhookURLNotConfigured = errors.New("webhook url not configured")
+	ErrWebhookURLNotConfigured = newConfigError("webhook url not configured", "URL")
 	// ErrWebhookRequestFailed is returned when the webhook request returns a non-2xx status code.
 	ErrWebhookRequestFailed = errors.New("webhook request failed")
 	// ErrInvalidSigningSecret is returned when a signing secret is malformed.

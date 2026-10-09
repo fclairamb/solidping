@@ -19,7 +19,7 @@ const googleChatTimeout = 30 * time.Second
 
 var (
 	// ErrGoogleChatWebhookURLNotConfigured is returned when the Google Chat webhook URL is missing.
-	ErrGoogleChatWebhookURLNotConfigured = errors.New("google chat webhook URL not configured")
+	ErrGoogleChatWebhookURLNotConfigured = newConfigError("google chat webhook URL not configured", "webhook URL")
 	// errGoogleChatWebhookFailed is returned when the Google Chat webhook request fails.
 	errGoogleChatWebhookFailed = errors.New("google chat webhook failed")
 )

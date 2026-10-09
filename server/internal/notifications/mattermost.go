@@ -38,7 +38,7 @@ const (
 
 var (
 	// ErrMattermostWebhookURLNotConfigured is returned when the Mattermost webhook URL is missing.
-	ErrMattermostWebhookURLNotConfigured = errors.New("mattermost webhook URL not configured")
+	ErrMattermostWebhookURLNotConfigured = newConfigError("mattermost webhook URL not configured", "webhook URL")
 	// errMattermostWebhookFailed is returned when the Mattermost webhook request fails.
 	errMattermostWebhookFailed = errors.New("mattermost webhook failed")
 )
