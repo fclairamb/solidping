@@ -1363,6 +1363,7 @@ function DiscordDestinationPanel({
       label={t("form.webhookUrl", "Webhook URL")}
       value={(settings.webhook_url as string) || ""}
       onChange={(v) => onChange({ ...settings, webhook_url: v })}
+      placeholder="https://discord.com/api/webhooks/…"
     />
   );
 
@@ -1403,7 +1404,7 @@ function DiscordDestinationPanel({
             </Button>
           )}
         </div>
-        {/* Legacy webhook mode. On an instance WITH the bot, a fresh Discord
+        {/* Webhook mode. On an instance WITH the bot, a fresh Discord
             integration should be installed, not webhook-wired, so an empty
             field here is pure clutter next to the install button. It stays
             visible in the two cases where it is the real answer: the instance
@@ -2671,10 +2672,12 @@ function UrlPanel({
   label,
   value,
   onChange,
+  placeholder = "https://",
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
+  placeholder?: string;
 }) {
   return (
     <div className="space-y-2">
@@ -2684,7 +2687,7 @@ function UrlPanel({
         type="url"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        placeholder="https://"
+        placeholder={placeholder}
       />
     </div>
   );

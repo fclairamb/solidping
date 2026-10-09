@@ -459,10 +459,17 @@ Discord comes in two flavours, and an organization may use either.
 | Thread replies → incident comments | Yes (needs the Gateway) | No |
 | Needs instance-level configuration | Yes | No |
 
-The bot is the recommended mode. The webhook mode is unchanged and still fully
-supported: an integration created before the bot existed keeps working exactly
-as it did, with no migration, and on an instance where no Discord bot is
-configured at all.
+The bot is the recommended mode when the instance has one. The webhook mode
+needs no Discord application, so it is what an instance without a Discord bot
+uses, and an integration created before the bot existed keeps working with no
+migration.
+
+Which mode an integration uses is decided at send time:
+
+- a bot destination (server and channel, or a direct message) is set: the bot;
+- otherwise a webhook URL is set: the webhook;
+- otherwise the test and every alert fail with "This Discord integration has no
+  destination. Install the bot or add a webhook URL."
 
 ### Setting up the bot (organization admins)
 
@@ -604,6 +611,9 @@ Available as slash commands (`/solidping …`) and as bot mentions
 
 ### Setting up a webhook instead
 
+Use a webhook when this instance has no Discord bot configured (no
+`SP_DISCORD_BOT_TOKEN`), or when you only want one-way alerts in a channel.
+
 1. In your Discord server, go to Server Settings → Integrations
 2. Click "Webhooks" → "New Webhook"
 3. Name it "SolidPing" and select the channel
@@ -615,6 +625,10 @@ Webhook URL format:
 ```
 https://discord.com/api/webhooks/{webhook.id}/{webhook.token}
 ```
+
+Only Discord webhook URLs are accepted on save: `https://discord.com/api/webhooks/…`
+or `https://discordapp.com/api/webhooks/…` (and their `canary.` / `ptb.`
+variants). Anything else is rejected with a validation error.
 
 ## Google Chat
 

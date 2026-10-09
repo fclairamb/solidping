@@ -52,7 +52,7 @@ type discordRateLimitBody struct {
 }
 
 // sendViaWebhook is the webhook delivery path: one standalone embed per event,
-// the same title, colour, fields and link as the bot message. A webhook cannot
+// the same title, color, fields and link as the bot message. A webhook cannot
 // receive interactions and returns no thread, so there are no buttons, no
 // threads and no mentions.
 func (ds *DiscordSender) sendViaWebhook(
