@@ -33,6 +33,11 @@ const (
 	// detection was turned off on its check (spec 2026-09-24-08). The check did
 	// not necessarily recover: the evaluator simply stops looking at it.
 	ResolutionTypeDisabled = "disabled"
+	// ResolutionTypeCheckDeleted closes an active incident because its check
+	// was deleted (spec 2026-10-08-02), by any path: a single-check delete, an
+	// org deletion, the test API. The DB layer's DeleteCheck sets it in the
+	// same transaction as the soft delete, so no incident outlives its check.
+	ResolutionTypeCheckDeleted = "check_deleted"
 )
 
 // Incident kinds. `kind` discriminates what an incident row is ABOUT. It is a

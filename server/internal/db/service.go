@@ -392,7 +392,13 @@ type Service interface {
 	// break them, so the API answers 409 with the dependents instead.
 	ListChecksByTunnelCheckUID(ctx context.Context, orgUID, tunnelCheckUID string) ([]*models.Check, error)
 	UpdateCheck(ctx context.Context, uid string, update *models.CheckUpdate) error
+	// DeleteCheck soft-deletes the check and resolves its active incidents
+	// (resolution_type = 'check_deleted') in the same transaction.
 	DeleteCheck(ctx context.Context, uid string) error
+	// GetCheckIncludingDeleted is GetCheck without the deleted_at filter. Only
+	// for readers that must still name a deleted check (the check_deleted
+	// resolved notification, the in-flight result guard).
+	GetCheckIncludingDeleted(ctx context.Context, orgUID, checkUID string) (*models.Check, error)
 	// PurgeCheck HARD-deletes a check row (and, through the on-delete-cascade
 	// foreign keys, its check_jobs / check_labels / check_connections /
 	// results). DeleteCheck is a soft delete and keeps the slug claimed; this
