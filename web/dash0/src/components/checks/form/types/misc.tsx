@@ -24,6 +24,8 @@ import type { CheckTypeModule } from "./index";
 import type { CheckConfig, CheckTypeFieldsProps, FieldErrors } from "./common";
 import { getConfigField, validationMessage } from "./common";
 import { useCheckFormFields } from "./context";
+import { PortInput, PortRangeError } from "../port-input";
+import { applyHostInput } from "./ports";
 import { AIBlockEditor } from "@/components/checks/ai-block-editor";
 import {
   aiBlockStateFromConfig,
@@ -85,26 +87,21 @@ function SslFields({ state, onChange, errors }: CheckTypeFieldsProps<SslState>) 
             type="text"
             placeholder="example.com"
             value={state.host}
-            onChange={(e) => onChange({ ...state, host: e.target.value })}
+            onChange={(e) => onChange(applyHostInput(state, e.target.value))}
             className={cn(
               "flex-1",
               getFieldError(errors, "host") && "border-destructive",
             )}
             data-testid="check-host-input"
           />
-          <Input
-            id="port"
-            type="number"
+          <PortInput
             placeholder="443"
             value={state.port}
-            onChange={(e) => onChange({ ...state, port: e.target.value })}
-            className={cn(
-              "w-24",
-              getFieldError(errors, "port") && "border-destructive",
-            )}
-            data-testid="check-port-input"
+            onChange={(port) => onChange({ ...state, port })}
+            invalid={Boolean(getFieldError(errors, "port"))}
           />
         </div>
+        <PortRangeError value={state.port} />
         {getFieldError(errors, "host") && (
           <p className="text-xs text-destructive">
             {getFieldError(errors, "host")}

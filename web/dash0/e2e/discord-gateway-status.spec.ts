@@ -75,6 +75,47 @@ test.describe("Discord Gateway settings", () => {
     await expect(page.getByTestId("discord-save")).toHaveCount(0);
   });
 
+  test("shows the redirect URIs and the interactions URL to register", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const now = new Date().toISOString();
+
+    await mockSystemParameters(page, [
+      { key: KEY_ENABLED, value: true, secret: false, updatedAt: now },
+    ]);
+    await mockGatewayStatus(page, { enabled: false, connected: false });
+    await page.route("**/api/v1/system/discord-setup", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          baseUrl: "https://status.acme.com",
+          baseUrlIsDefault: false,
+          loginRedirectUri: "https://status.acme.com/api/v1/auth/discord/callback",
+          installRedirectUri:
+            "https://status.acme.com/api/v1/integrations/discord/oauth",
+          interactionsUrl:
+            "https://status.acme.com/api/v1/integrations/discord/interactions",
+        }),
+      }),
+    );
+
+    await page.goto("orgs/test/server/discord");
+    await page.waitForLoadState("networkidle");
+
+    await expect(page.getByTestId("discord-setup-login")).toContainText(
+      "https://status.acme.com/api/v1/auth/discord/callback",
+    );
+    await expect(page.getByTestId("discord-setup-install")).toContainText(
+      "https://status.acme.com/api/v1/integrations/discord/oauth",
+    );
+    await expect(page.getByTestId("discord-setup-interactions")).toContainText(
+      "/api/v1/integrations/discord/interactions",
+    );
+    await expect(page.getByTestId("discord-localhost-warning")).toHaveCount(0);
+  });
+
   test("shows the Connected badge and the server count", async ({
     authenticatedPage,
   }) => {

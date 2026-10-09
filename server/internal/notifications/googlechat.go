@@ -19,7 +19,7 @@ const googleChatTimeout = 30 * time.Second
 
 var (
 	// ErrGoogleChatWebhookURLNotConfigured is returned when the Google Chat webhook URL is missing.
-	ErrGoogleChatWebhookURLNotConfigured = errors.New("google chat webhook URL not configured")
+	ErrGoogleChatWebhookURLNotConfigured = newConfigError("google chat webhook URL not configured", "webhook URL")
 	// errGoogleChatWebhookFailed is returned when the Google Chat webhook request fails.
 	errGoogleChatWebhookFailed = errors.New("google chat webhook failed")
 )
@@ -160,7 +160,7 @@ func (s *GoogleChatSender) buildMessage(payload *Payload) *googleChatMessage {
 		title = "[DOWN] " + checkName
 		subtitle = getFailureReason(payload.Incident)
 	case eventTypeIncidentResolved:
-		title = "[RECOVERED] " + checkName
+		title = resolvedTag(payload.Incident) + checkName
 		subtitle = s.resolvedSubtitle(payload)
 	case eventTypeIncidentEscalated:
 		title = "[ESCALATED] " + checkName
@@ -255,6 +255,10 @@ func (s *GoogleChatSender) buildWidgets(payload *Payload, checkName string) []go
 }
 
 func (s *GoogleChatSender) resolvedSubtitle(payload *Payload) string {
+	if ResolvedByCheckDeletion(payload.Incident) {
+		return checkDeletedSentence
+	}
+
 	if payload.Incident.ResolvedAt != nil {
 		duration := payload.Incident.ResolvedAt.Sub(payload.Incident.StartedAt)
 

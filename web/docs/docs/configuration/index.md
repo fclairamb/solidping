@@ -208,7 +208,7 @@ Set both `_CLIENT_ID` and `_CLIENT_SECRET` to enable each provider:
 | GitLab | `SP_GITLAB_CLIENT_ID`, `SP_GITLAB_CLIENT_SECRET` |
 | Microsoft | `SP_MICROSOFT_CLIENT_ID`, `SP_MICROSOFT_CLIENT_SECRET`, `SP_MICROSOFT_TENANT_ID` (default `common`) |
 | Slack | `SP_SLACK_CLIENT_ID`, `SP_SLACK_CLIENT_SECRET` |
-| Discord | `SP_DISCORD_CLIENT_ID`, `SP_DISCORD_CLIENT_SECRET` |
+| Discord | `SP_DISCORD_ENABLED`, `SP_DISCORD_CLIENT_ID`, `SP_DISCORD_CLIENT_SECRET` |
 
 Users can also enable TOTP two-factor authentication on their accounts. See [Authentication](/configuration/authentication) for details.
 

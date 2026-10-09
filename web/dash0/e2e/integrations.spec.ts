@@ -461,6 +461,78 @@ test.describe("Notification Channels", () => {
     await expect(page).toHaveURL(/integrations\/new/);
   });
 
+  test("create a webhook-only Discord integration on a bot-less instance", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+
+    // The E2E server runs without SP_DISCORD_BOT_TOKEN, so the webhook is the
+    // only Discord transport it offers.
+    const config = await page.request
+      .get(`${API_BASE}/api/v1/config`)
+      .then((r) => r.json());
+    test.skip(Boolean(config.discord?.botEnabled), "instance has a Discord bot");
+
+    await page.goto("orgs/test/integrations/new?type=discord");
+    await page.waitForLoadState("networkidle");
+
+    await expect(page.getByTestId("discord-not-connected")).toBeVisible();
+    await expect(
+      page.getByText(/does not have the Discord bot configured/i),
+    ).toBeVisible();
+
+    const name = `E2E Discord webhook ${Date.now()}`;
+    const hookUrl = "https://discord.com/api/webhooks/123456789/acme-token";
+    await page.getByLabel("Name").fill(name);
+    await page.getByLabel(/webhook url/i).fill(hookUrl);
+
+    await page.getByRole("button", { name: /create integration/i }).click();
+    await page.waitForURL((url) =>
+      /\/integrations\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
+        url.pathname,
+      ),
+    );
+    const uid = page.url().split("/").pop()!;
+
+    await page.goto(`orgs/test/integrations/${uid}`);
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByLabel(/webhook url/i)).toHaveValue(hookUrl);
+
+    // Stored as a webhook-only integration: no bot fields.
+    const stored = await page.request
+      .get(`${API_BASE}/api/v1/orgs/test/integrations/${uid}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      .then((r) => r.json());
+    expect(stored.type).toBe("discord");
+    expect(stored.settings.webhook_url).toBe(hookUrl);
+    expect(stored.settings.guild_id).toBeUndefined();
+
+    await deleteConnection(page, token, uid);
+  });
+
+  test("Discord rejects a non-Discord webhook URL with a validation error", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    const config = await page.request
+      .get(`${API_BASE}/api/v1/config`)
+      .then((r) => r.json());
+    test.skip(Boolean(config.discord?.botEnabled), "instance has a Discord bot");
+
+    await page.goto("orgs/test/integrations/new?type=discord");
+    await page.waitForLoadState("networkidle");
+
+    await page.getByLabel("Name").fill(`E2E Discord invalid ${Date.now()}`);
+    await page.getByLabel(/webhook url/i).fill("https://example.com/hook");
+    await page.getByRole("button", { name: /create integration/i }).click();
+
+    await expect(page.getByText(/must be a Discord webhook/i).first()).toBeVisible();
+    await expect(page).toHaveURL(/integrations\/new/);
+  });
+
   test("webpush channel panel renders subscribe button and empty device list", async ({
     authenticatedPage,
   }) => {
@@ -601,7 +673,7 @@ test.describe("Notification Channels", () => {
         data: {
           type: "discord",
           name,
-          settings: { webhook_url: "https://discord.example/hook" },
+          settings: { webhook_url: "https://discord.com/api/webhooks/1/acme" },
         },
       },
     );

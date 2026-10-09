@@ -484,5 +484,5 @@ func (s *DiscordOAuthService) findOrCreateUser(
 
 // getCallbackURL returns the OAuth callback URL for Discord.
 func (s *DiscordOAuthService) getCallbackURL() string {
-	return s.cfg.Server.BaseURL + "/api/v1/auth/discord/callback"
+	return config.DiscordLoginRedirectURI(s.cfg.Server.BaseURL)
 }

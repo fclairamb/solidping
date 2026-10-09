@@ -1,8 +1,16 @@
-// Annotation types reserved for a future spec — not used in v1 (the dialog
-// posts the screenshot as captured, no overlay tools yet). Defining the
-// shape now keeps the API contract with the backend forward-compatible.
+// Annotation shapes drawn over the bug report screenshot. Coordinates are
+// normalized to [0, 1] relative to the captured image, so they stay correct
+// when the preview is resized between drawing and submit. The overlay is
+// baked into the outgoing PNG client-side (blur included), so redacted pixels
+// never leave the browser.
 
-export type AnnotationKind = "rect" | "arrow" | "text";
+export type AnnotationKind =
+  | "rect"
+  | "arrow"
+  | "text"
+  | "pen"
+  | "highlight"
+  | "blur";
 
 export interface BaseAnnotation {
   type: AnnotationKind;
@@ -18,6 +26,20 @@ export interface RectAnnotation extends BaseAnnotation {
   h: number;
 }
 
+// HighlightAnnotation is a semi-transparent filled rectangle.
+export interface HighlightAnnotation extends BaseAnnotation {
+  type: "highlight";
+  w: number;
+  h: number;
+}
+
+// BlurAnnotation pixelates the region it covers.
+export interface BlurAnnotation extends BaseAnnotation {
+  type: "blur";
+  w: number;
+  h: number;
+}
+
 export interface ArrowAnnotation extends BaseAnnotation {
   type: "arrow";
   x2: number;
@@ -29,4 +51,18 @@ export interface TextAnnotation extends BaseAnnotation {
   text: string;
 }
 
-export type Annotation = RectAnnotation | ArrowAnnotation | TextAnnotation;
+// PenAnnotation is a freehand stroke. x/y duplicate the first point.
+export interface PenAnnotation extends BaseAnnotation {
+  type: "pen";
+  points: { x: number; y: number }[];
+}
+
+export type Annotation =
+  | RectAnnotation
+  | ArrowAnnotation
+  | TextAnnotation
+  | PenAnnotation
+  | HighlightAnnotation
+  | BlurAnnotation;
+
+export const ANNOTATION_COLORS = ["#ef4444", "#eab308", "#22c55e", "#3b82f6"];

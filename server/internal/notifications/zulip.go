@@ -24,13 +24,13 @@ const zulipTopicMaxLen = 60
 
 var (
 	// ErrZulipSiteURLNotConfigured is returned when the Zulip realm URL is missing.
-	ErrZulipSiteURLNotConfigured = errors.New("zulip site url not configured")
+	ErrZulipSiteURLNotConfigured = newConfigError("zulip site url not configured", "site URL")
 	// ErrZulipBotEmailNotConfigured is returned when the Zulip bot's email is missing.
-	ErrZulipBotEmailNotConfigured = errors.New("zulip bot email not configured")
+	ErrZulipBotEmailNotConfigured = newConfigError("zulip bot email not configured", "bot email")
 	// ErrZulipAPIKeyNotConfigured is returned when the Zulip bot's API key is missing.
-	ErrZulipAPIKeyNotConfigured = errors.New("zulip api key not configured")
+	ErrZulipAPIKeyNotConfigured = newConfigError("zulip api key not configured", "API key")
 	// ErrZulipStreamNotConfigured is returned when the target stream is missing.
-	ErrZulipStreamNotConfigured = errors.New("zulip stream not configured")
+	ErrZulipStreamNotConfigured = newConfigError("zulip stream not configured", "stream")
 	// errZulipRequestFailed is returned when the Zulip request fails, either at
 	// the HTTP level (non-2xx) or at the application level (a 200 response
 	// carrying "result": "error" — Zulip reports invalid stream/topic/auth

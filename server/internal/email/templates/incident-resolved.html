@@ -1,10 +1,14 @@
-{{define "subject"}}{{if .SubjectPrefix}}{{.SubjectPrefix}} {{end}}[RECOVERED] {{.CheckName}} is back up{{if gt .IncidentNumber 0}} (#{{.IncidentNumber}}){{end}}{{end}}
-{{define "preheader"}}{{if .Duration}}Down for {{.Duration}}. {{end}}Checks are passing again — nothing left to do.{{end}}
+{{define "subject"}}{{if .SubjectPrefix}}{{.SubjectPrefix}} {{end}}{{if .CheckDeleted}}[CHECK DELETED] {{.CheckName}}: incident closed{{else}}[RECOVERED] {{.CheckName}} is back up{{end}}{{if gt .IncidentNumber 0}} (#{{.IncidentNumber}}){{end}}{{end}}
+{{define "preheader"}}{{if .CheckDeleted}}{{.CheckName}} was deleted, so its incident was closed.{{else}}{{if .Duration}}Down for {{.Duration}}. {{end}}Checks are passing again — nothing left to do.{{end}}{{end}}
 {{template "base.html" .}}
-{{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "recovered" "Label" "Recovered"}}{{end}}
+{{define "statusbanner"}}{{if .CheckDeleted}}{{template "statusbanner-render" dict "Variant" "recovered" "Label" "Check deleted"}}{{else}}{{template "statusbanner-render" dict "Variant" "recovered" "Label" "Recovered"}}{{end}}{{end}}
 {{define "content"}}
-    <h1>{{if .CheckURL}}<a href="{{.CheckURL}}">{{.CheckName}}</a>{{else}}{{.CheckName}}{{end}} recovered</h1>
-    <p>The incident for <strong>{{if .CheckURL}}<a href="{{.CheckURL}}">{{.CheckName}}</a>{{else}}{{.CheckName}}{{end}}</strong> has been resolved.</p>
+    <h1>{{if .CheckURL}}<a href="{{.CheckURL}}">{{nolink .CheckName}}</a>{{else}}{{nolink .CheckName}}{{end}} {{if .CheckDeleted}}was deleted{{else}}recovered{{end}}</h1>
+    {{if .CheckDeleted}}
+    <p>The check was deleted, so this incident was closed. It did not necessarily recover.</p>
+    {{else}}
+    <p>The incident for <strong>{{if .CheckURL}}<a href="{{.CheckURL}}">{{nolink .CheckName}}</a>{{else}}{{nolink .CheckName}}{{end}}</strong> has been resolved.</p>
+    {{end}}
     {{if .Duration}}
     {{/* How long it was down is the one fact this mail exists to deliver. */}}
     <table class="metric" role="presentation" width="100%" cellpadding="0" cellspacing="0">
@@ -17,7 +21,7 @@
     </table>
     {{end}}
     <table class="details-table" role="presentation" cellpadding="0" cellspacing="0">
-        <tr><td class="label">Check</td><td class="value">{{if .CheckURL}}<a href="{{.CheckURL}}">{{.CheckName}}</a>{{else}}{{.CheckName}}{{end}}</td></tr>
+        <tr><td class="label">Check</td><td class="value">{{if .CheckURL}}<a href="{{.CheckURL}}">{{nolink .CheckName}}</a>{{else}}{{nolink .CheckName}}{{end}}</td></tr>
         <tr><td class="label">Type</td><td class="value">{{.CheckType}}</td></tr>
         <tr><td class="label">Started at</td><td class="value">{{.StartedAt}}</td></tr>
         <tr><td class="label">Resolved at</td><td class="value">{{.ResolvedAt}}</td></tr>
@@ -28,10 +32,13 @@
     {{end}}
     <p class="footnote">Incident reference <span class="mono">{{.IncidentUID}}</span> — quote it if you contact support.</p>
 {{end}}
-{{define "text"}}{{.CheckName}} recovered
+{{define "text"}}{{if .CheckDeleted}}{{.CheckName}} was deleted
+
+The check was deleted, so this incident was closed. It did not necessarily recover.
+{{else}}{{.CheckName}} recovered
 
 The incident for {{.CheckName}} has been resolved.
-
+{{end}}
 Check: {{.CheckName}}
 {{if .CheckURL}}Check URL: {{.CheckURL}}
 {{end}}Type: {{.CheckType}}

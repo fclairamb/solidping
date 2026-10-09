@@ -83,10 +83,13 @@ func NewFormatter(opts ...Option) (*TemplateFormatter, error) {
 	}
 
 	formatter.funcMap = template.FuncMap{
-		"upper": strings.ToUpper,
-		"lower": strings.ToLower,
-		"dict":  dict,
-		"field": field,
+		"upper":  strings.ToUpper,
+		"lower":  strings.ToLower,
+		"dict":   dict,
+		"field":  field,
+		"link":   linkHTML,
+		"mailto": mailtoHTML,
+		"nolink": noLinkHTML,
 		// absURL and productLogoURL close over the formatter so templates never
 		// have to know the base URL — no view model carries it.
 		"absURL":         formatter.absoluteURL,
@@ -94,6 +97,47 @@ func NewFormatter(opts ...Option) (*TemplateFormatter, error) {
 	}
 
 	return formatter, nil
+}
+
+// linkColorStyle is the inline style on every author-owned link. Gmail's
+// Android app paints auto-detected links with its own dark-theme blue; an
+// explicit <a> with an inline color keeps ours (inline survives where <style>
+// rules are stripped).
+const linkColorStyle = "color:#1e64ef;text-decoration:underline;"
+
+// zeroWidthJoiner is inserted after "@", "://" and "." to stop clients
+// auto-linking values that must stay plain text.
+const zeroWidthJoiner = "&#8205;"
+
+func noLinkReplacer() *strings.Replacer {
+	return strings.NewReplacer("@", "@"+zeroWidthJoiner, "://", "://"+zeroWidthJoiner, ".", "."+zeroWidthJoiner)
+}
+
+// linkHTML renders <a href=url style=...>text</a>. When text is empty the url
+// is the visible text.
+func linkHTML(url, text any) template.HTML {
+	href := stringify(url)
+	label := stringify(text)
+	if label == "" {
+		label = href
+	}
+
+	return template.HTML(`<a href="` + template.HTMLEscapeString(href) + `" style="` + linkColorStyle + `">` +
+		template.HTMLEscapeString(label) + `</a>`)
+}
+
+// mailtoHTML renders an email address as an owned mailto: link.
+func mailtoHTML(address any) template.HTML {
+	addr := stringify(address)
+
+	return linkHTML("mailto:"+addr, addr)
+}
+
+// noLinkHTML escapes value and breaks the patterns mail clients auto-link.
+func noLinkHTML(value any) template.HTML {
+	escaped := template.HTMLEscapeString(stringify(value))
+
+	return template.HTML(noLinkReplacer().Replace(escaped))
 }
 
 // productLogoURL returns the absolute URL of the SolidPing logo, or "" when no

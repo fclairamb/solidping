@@ -13,6 +13,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { AlertCircle, Check, Eye, EyeOff, Loader2 } from "lucide-react";
+import { secretInputVisible, shouldSendSecret } from "@/lib/secret-input";
 import { ApiError } from "@/api/client";
 import { useSystemParameters, useSetSystemParameter } from "@/api/hooks";
 
@@ -50,7 +51,7 @@ function WebSettingsPage() {
 
     try {
       await setParam.mutateAsync({ key: "server.base_url", value: baseUrl });
-      if (editingJwt) {
+      if (shouldSendSecret(editingJwt, !!isJwtSecret, jwtSecret)) {
         await setParam.mutateAsync({
           key: "auth.jwt_secret",
           value: jwtSecret,
@@ -115,7 +116,7 @@ function WebSettingsPage() {
 
           <div className="space-y-2">
             <Label htmlFor="jwtSecret">{t("server:web.jwtSecret")}</Label>
-            {!editingJwt && isJwtSecret ? (
+            {!secretInputVisible(editingJwt, !!isJwtSecret) ? (
               <div className="flex items-center gap-2">
                 <Input
                   id="jwtSecret"

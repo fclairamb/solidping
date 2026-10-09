@@ -15,5 +15,11 @@
   "tool_arrow": "Arrow",
   "tool_text": "Text",
   "undo": "Undo",
-  "screenshot_alt": "Screenshot"
+  "screenshot_alt": "Screenshot",
+  "tool_pen": "Pen",
+  "tool_highlight": "Highlight",
+  "tool_blur": "Blur",
+  "redo": "Redo",
+  "text_placeholder": "Type text, Enter to add",
+  "color": "Color {{color}}"
 }

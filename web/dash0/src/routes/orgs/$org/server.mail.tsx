@@ -22,7 +22,25 @@ import {
 } from "@/components/ui/select";
 import { AlertCircle, Check, Eye, EyeOff, Loader2, Send } from "lucide-react";
 import { ApiError } from "@/api/client";
-import { useSystemParameters, useSetSystemParameter, useTestEmail } from "@/api/hooks";
+import {
+  useSystemParameters,
+  useSystemParameterEnvOverrides,
+  useSetSystemParameter,
+  useTestEmail,
+} from "@/api/hooks";
+import { secretInputVisible, shouldSendSecret } from "@/lib/secret-input";
+
+const EMAIL_ENV_VARS: Record<string, string> = {
+  "email.enabled": "SP_EMAIL_ENABLED",
+  "email.host": "SP_EMAIL_HOST",
+  "email.port": "SP_EMAIL_PORT",
+  "email.username": "SP_EMAIL_USERNAME",
+  "email.password": "SP_EMAIL_PASSWORD",
+  "email.auth_type": "SP_EMAIL_AUTHTYPE",
+  "email.protocol": "SP_EMAIL_PROTOCOL",
+  "email.from": "SP_EMAIL_FROM",
+  "email.from_name": "SP_EMAIL_FROMNAME",
+};
 
 export const Route = createFileRoute("/orgs/$org/server/mail")({
   component: MailSettingsPage,
@@ -31,6 +49,7 @@ export const Route = createFileRoute("/orgs/$org/server/mail")({
 function MailSettingsPage() {
   const { t } = useTranslation(["server", "common"]);
   const { data: params, isLoading } = useSystemParameters();
+  const { data: envOverrides } = useSystemParameterEnvOverrides();
   const setParam = useSetSystemParameter();
   const testEmail = useTestEmail();
 
@@ -68,7 +87,14 @@ function MailSettingsPage() {
     }
   }, [params]);
 
-  const isPasswordSecret = params?.find((p) => p.key === "email.password")?.secret;
+  const isPasswordSecret = !!params?.find((p) => p.key === "email.password")?.secret;
+  const isEnv = (key: string) => (envOverrides ?? []).includes(key);
+  const envHint = (key: string) =>
+    isEnv(key) ? (
+      <p className="text-xs text-amber-600 dark:text-amber-500" data-testid={`env-override-${key}`}>
+        {t("server:mail.envOverride", { name: EMAIL_ENV_VARS[key] })}
+      </p>
+    ) : null;
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,16 +102,22 @@ function MailSettingsPage() {
     setSaved(false);
 
     try {
+      const writes: [string, unknown][] = [
+        ["email.enabled", enabled],
+        ["email.host", host.trim()],
+        ["email.port", parseInt(port, 10)],
+        ["email.username", username.trim()],
+        ["email.auth_type", authType],
+        ["email.protocol", protocol],
+        ["email.from", from.trim()],
+        ["email.from_name", fromName],
+      ];
       await Promise.all([
-        setParam.mutateAsync({ key: "email.enabled", value: enabled }),
-        setParam.mutateAsync({ key: "email.host", value: host }),
-        setParam.mutateAsync({ key: "email.port", value: parseInt(port, 10) }),
-        setParam.mutateAsync({ key: "email.username", value: username }),
-        setParam.mutateAsync({ key: "email.auth_type", value: authType }),
-        setParam.mutateAsync({ key: "email.protocol", value: protocol }),
-        setParam.mutateAsync({ key: "email.from", value: from }),
-        setParam.mutateAsync({ key: "email.from_name", value: fromName }),
-        ...(editingPassword
+        ...writes
+          .filter(([key]) => !isEnv(key))
+          .map(([key, value]) => setParam.mutateAsync({ key, value })),
+        ...(!isEnv("email.password") &&
+        shouldSendSecret(editingPassword, isPasswordSecret, password)
           ? [
               setParam.mutateAsync({
                 key: "email.password",
@@ -142,9 +174,10 @@ function MailSettingsPage() {
               id="emailEnabled"
               checked={enabled}
               onCheckedChange={setEnabled}
-              disabled={setParam.isPending}
+              disabled={setParam.isPending || isEnv("email.enabled")}
             />
             <Label htmlFor="emailEnabled">{t("server:mail.enable")}</Label>
+            {envHint("email.enabled")}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -155,8 +188,9 @@ function MailSettingsPage() {
                 placeholder={t("server:mail.hostPlaceholder")}
                 value={host}
                 onChange={(e) => setHost(e.target.value)}
-                disabled={setParam.isPending}
+                disabled={setParam.isPending || isEnv("email.host")}
               />
+              {envHint("email.host")}
             </div>
             <div className="space-y-2">
               <Label htmlFor="port">{t("server:mail.port")}</Label>
@@ -166,8 +200,9 @@ function MailSettingsPage() {
                 placeholder="587"
                 value={port}
                 onChange={(e) => setPort(e.target.value)}
-                disabled={setParam.isPending}
+                disabled={setParam.isPending || isEnv("email.port")}
               />
+              {envHint("email.port")}
             </div>
           </div>
 
@@ -179,14 +214,16 @@ function MailSettingsPage() {
                 placeholder={t("server:mail.usernamePlaceholder")}
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                disabled={setParam.isPending}
+                disabled={setParam.isPending || isEnv("email.username")}
               />
+              {envHint("email.username")}
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">{t("server:mail.password")}</Label>
-              {!editingPassword && isPasswordSecret ? (
+              {isEnv("email.password") || !secretInputVisible(editingPassword, isPasswordSecret) ? (
                 <div className="flex items-center gap-2">
                   <Input id="password" type="password" value="******" disabled />
+                  {!isEnv("email.password") && (
                   <Button
                     type="button"
                     variant="outline"
@@ -198,6 +235,7 @@ function MailSettingsPage() {
                   >
                     {t("common:edit")}
                   </Button>
+                  )}
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
@@ -242,6 +280,7 @@ function MailSettingsPage() {
                   )}
                 </div>
               )}
+              {envHint("email.password")}
             </div>
           </div>
 
@@ -251,7 +290,7 @@ function MailSettingsPage() {
               <Select
                 value={authType}
                 onValueChange={setAuthType}
-                disabled={setParam.isPending}
+                disabled={setParam.isPending || isEnv("email.auth_type")}
               >
                 <SelectTrigger id="authType">
                   <SelectValue />
@@ -268,7 +307,7 @@ function MailSettingsPage() {
               <Select
                 value={protocol}
                 onValueChange={setProtocol}
-                disabled={setParam.isPending}
+                disabled={setParam.isPending || isEnv("email.protocol")}
               >
                 <SelectTrigger id="protocol">
                   <SelectValue />
@@ -291,8 +330,9 @@ function MailSettingsPage() {
                 placeholder={t("server:mail.fromPlaceholder")}
                 value={from}
                 onChange={(e) => setFrom(e.target.value)}
-                disabled={setParam.isPending}
+                disabled={setParam.isPending || isEnv("email.from")}
               />
+              {envHint("email.from")}
             </div>
             <div className="space-y-2">
               <Label htmlFor="fromName">{t("server:mail.fromName")}</Label>
@@ -301,8 +341,9 @@ function MailSettingsPage() {
                 placeholder={t("server:mail.fromNamePlaceholder")}
                 value={fromName}
                 onChange={(e) => setFromName(e.target.value)}
-                disabled={setParam.isPending}
+                disabled={setParam.isPending || isEnv("email.from_name")}
               />
+              {envHint("email.from_name")}
             </div>
           </div>
 

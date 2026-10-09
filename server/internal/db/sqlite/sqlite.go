@@ -2189,14 +2189,55 @@ func applyDegradedFieldsSQLite(query *bun.UpdateQuery, update *models.CheckUpdat
 	return query
 }
 
+// DeleteCheck soft-deletes a check and, in the same transaction, resolves
+// every active incident on it with resolution_type = 'check_deleted' (spec
+// 2026-10-08-02). Doing it here rather than in each caller makes "no active
+// incident outlives its check" impossible to bypass: org deletion and the test
+// API call this directly. Already-resolved incidents are left untouched.
 func (s *Service) DeleteCheck(ctx context.Context, uid string) error {
-	_, err := s.db.NewUpdate().
-		Model((*models.Check)(nil)).
-		Where("uid = ?", uid).
-		Set("deleted_at = ?", time.Now()).
-		Exec(ctx)
+	now := time.Now()
 
-	return err
+	return s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if _, err := tx.NewUpdate().
+			Model((*models.Check)(nil)).
+			Where("uid = ?", uid).
+			Set("deleted_at = ?", now).
+			Exec(ctx); err != nil {
+			return err
+		}
+
+		_, err := tx.NewUpdate().
+			Model((*models.Incident)(nil)).
+			Where("check_uid = ?", uid).
+			Where("state = ?", models.IncidentStateActive).
+			Where("deleted_at IS NULL").
+			Set("state = ?", models.IncidentStateResolved).
+			Set("resolved_at = ?", now).
+			Set("resolution_type = ?", models.ResolutionTypeCheckDeleted).
+			Set("updated_at = ?", now).
+			Exec(ctx)
+
+		return err
+	})
+}
+
+// GetCheckIncludingDeleted loads a check by UID within an organization,
+// soft-deleted or not. For the few readers that must still name a check after
+// it was deleted: the "check deleted" resolved notification and the guard that
+// stops an in-flight result opening an incident on a deleted check.
+func (s *Service) GetCheckIncludingDeleted(ctx context.Context, orgUID, checkUID string) (*models.Check, error) {
+	check := new(models.Check)
+
+	err := s.db.NewSelect().
+		Model(check).
+		Where("uid = ?", checkUID).
+		Where("organization_uid = ?", orgUID).
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return check, nil
 }
 
 // PurgeCheck hard-deletes the check row; every child table that references

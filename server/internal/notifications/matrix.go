@@ -24,11 +24,11 @@ const matrixTimeout = 30 * time.Second
 
 var (
 	// ErrMatrixHomeserverNotConfigured is returned when the homeserver URL is missing.
-	ErrMatrixHomeserverNotConfigured = errors.New("matrix homeserver URL not configured")
+	ErrMatrixHomeserverNotConfigured = newConfigError("matrix homeserver URL not configured", "homeserver URL")
 	// ErrMatrixAccessTokenNotConfigured is returned when the access token is missing.
-	ErrMatrixAccessTokenNotConfigured = errors.New("matrix access token not configured")
+	ErrMatrixAccessTokenNotConfigured = newConfigError("matrix access token not configured", "access token")
 	// ErrMatrixRoomNotConfigured is returned when the room id/alias is missing.
-	ErrMatrixRoomNotConfigured = errors.New("matrix room not configured")
+	ErrMatrixRoomNotConfigured = newConfigError("matrix room not configured", "room ID")
 	// ErrMatrixUnauthorized is a permanent failure: the access token is bad or expired.
 	ErrMatrixUnauthorized = errors.New("matrix request unauthorized: bad or expired access token")
 	// ErrMatrixForbidden is a permanent failure: the bot is not a member of the room.
@@ -261,7 +261,7 @@ func (s *MatrixSender) titleAndLines(payload *Payload) (string, []string) {
 		title = "[DOWN] " + checkName
 		lines = s.downLines(payload, checkName)
 	case eventTypeIncidentResolved:
-		title = "[RECOVERED] " + checkName
+		title = resolvedTag(payload.Incident) + checkName
 		lines = s.resolvedLines(payload, checkName)
 	case eventTypeIncidentEscalated:
 		title = "[ESCALATED] " + checkName
@@ -297,6 +297,10 @@ func (s *MatrixSender) downLines(payload *Payload, checkName string) []string {
 
 func (s *MatrixSender) resolvedLines(payload *Payload, checkName string) []string {
 	lines := []string{fmt.Sprintf("Check: %s (%s)", checkName, payload.Check.Type)}
+
+	if ResolvedByCheckDeletion(payload.Incident) {
+		lines = append([]string{checkDeletedSentence}, lines...)
+	}
 
 	if payload.Incident.ResolvedAt != nil {
 		duration := payload.Incident.ResolvedAt.Sub(payload.Incident.StartedAt)

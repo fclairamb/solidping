@@ -720,7 +720,13 @@ export interface IncidentDetail {
   escalatedAt?: string;
   resolvedAt?: string;
   resolvedBy?: string;
-  resolutionType?: "auto" | "manual" | "expired" | "escalated" | "disabled";
+  resolutionType?:
+    | "auto"
+    | "manual"
+    | "expired"
+    | "escalated"
+    | "disabled"
+    | "check_deleted";
   failureCount?: number;
   relapseCount?: number;
   /**
@@ -4847,6 +4853,22 @@ async function fetchSystemParameters(): Promise<SystemParametersResponse> {
   };
 }
 
+export interface DiscordSetupInfo {
+  baseUrl: string;
+  baseUrlIsDefault: boolean;
+  loginRedirectUri: string;
+  installRedirectUri: string;
+  interactionsUrl: string;
+}
+
+/** Discord developer-portal values, computed server-side from the base URL. */
+export function useDiscordSetup() {
+  return useQuery({
+    queryKey: ["discord-setup"],
+    queryFn: () => apiFetch<DiscordSetupInfo>("/api/v1/system/discord-setup"),
+  });
+}
+
 export function useSystemParameters() {
   return useQuery({
     queryKey: ["system-parameters"],
@@ -5785,6 +5807,11 @@ export interface IntegrationTestResult {
   error?: string;
   /** Optional human-readable success note (e.g. the Kubernetes server version). */
   detail?: string;
+  /** INTEGRATION_MISCONFIGURED when nothing was sent because a required
+   *  setting is missing: a configuration error, not a delivery failure. */
+  code?: "INTEGRATION_MISCONFIGURED";
+  /** Human name of the missing setting (e.g. "API token"). */
+  missingSetting?: string;
 }
 
 export function useRotateWebhookSecret(org: string, integrationUid: string) {

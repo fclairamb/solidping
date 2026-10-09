@@ -8,7 +8,6 @@ type DiscordOAuthConfig struct {
 	ClientID     string `koanf:"client_id"`
 	ClientSecret string `koanf:"client_secret"`
 	BotToken     string `koanf:"bot_token"`
-	RedirectURL  string `koanf:"redirect_url"`
 	// PublicKey is the application's Ed25519 public key (hex), used to verify
 	// every inbound interactions request. Discord DEACTIVATES an interactions
 	// endpoint whose signature checks fail its probes, so this is mandatory
@@ -21,6 +20,32 @@ type DiscordOAuthConfig struct {
 	// intent, which Discord gates behind review once an app reaches 100 guilds.
 	GatewayEnabled bool `koanf:"gateway_enabled"`
 }
+
+// Paths Discord redirects back to, appended to SP_BASE_URL. Login and the bot
+// install are two flows on one Discord application and each needs its own
+// entry under OAuth2 > Redirects. Every place that builds or displays one of
+// these goes through the helpers below, so they cannot drift apart.
+const (
+	DiscordLoginCallbackPath = "/api/v1/auth/discord/callback"
+	DiscordInstallOAuthPath  = "/api/v1/integrations/discord/oauth"
+	DiscordInteractionsPath  = "/api/v1/integrations/discord/interactions"
+
+	// EnvDiscordRedirectURL was read into a field nothing used. It is gone;
+	// setting it only logs a startup warning.
+	EnvDiscordRedirectURL = "SP_DISCORD_REDIRECT_URL"
+
+	// DefaultBaseURL is the SP_BASE_URL a fresh install starts with.
+	DefaultBaseURL = "http://localhost:4000"
+)
+
+// DiscordLoginRedirectURI is the redirect URI for "Sign in with Discord".
+func DiscordLoginRedirectURI(baseURL string) string { return baseURL + DiscordLoginCallbackPath }
+
+// DiscordInstallRedirectURI is the redirect URI for the bot install.
+func DiscordInstallRedirectURI(baseURL string) string { return baseURL + DiscordInstallOAuthPath }
+
+// DiscordInteractionsURL is the Interactions Endpoint URL.
+func DiscordInteractionsURL(baseURL string) string { return baseURL + DiscordInteractionsPath }
 
 // Environment-variable names for the Discord settings, used to name the
 // missing ones in the boot warning. Operators read env vars (or the matching

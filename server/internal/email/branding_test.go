@@ -1,6 +1,7 @@
 package email
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -543,4 +544,52 @@ func TestApplyOrgBrandingBlankNameNeverRendersAHole(t *testing.T) {
 	r.NotContains(html, "admin of .")
 	r.NotContains(text, "join  on SolidPing")
 	r.NotContains(text, "admin of .")
+}
+
+func TestBranding_DarkModeFallbackStaysLightOnDark(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	raw, err := templateFS.ReadFile("templates/base.html")
+	r.NoError(err)
+
+	src := string(raw)
+	start := strings.Index(src, "@media (prefers-color-scheme: dark)")
+	r.GreaterOrEqual(start, 0)
+	r.Contains(src[start:], ".fallback { font-size: 13px; color: #cbd5e1;")
+}
+
+func TestNoLinkHTML_BreaksAutoLinkPatterns(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	for _, in := range []string{"api.acme.com", "10.0.0.1", "https://acme.com/x", "ops@acme.com"} {
+		out := string(noLinkHTML(in))
+		r.NotEqual(in, out, "%q must be altered", in)
+		r.NotContains(out, in, "%q must not survive intact", in)
+	}
+
+	r.Equal("&lt;b&gt;", string(noLinkHTML("<b>")))
+	r.Equal("plain text", string(noLinkHTML("plain text")))
+}
+
+func TestBranding_CustomDomainDemotedBreaksDomainAutoLink(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	formatter, err := NewFormatter(WithBaseURL(brandingTestBaseURL))
+	r.NoError(err)
+
+	_, html, _, err := formatter.Format("custom-domain-demoted.html", map[string]any{
+		"Domain": "status.acme.com", "StatusPageName": "Acme", "OrgName": "Acme Corp",
+		"Diagnostic": "CNAME for status.acme.com points at 10.0.0.1",
+	})
+	r.NoError(err)
+	r.NotContains(html, "status.acme.com is no longer")
+	r.NotContains(html, "<strong>status.acme.com</strong>")
+	r.NotContains(html, "10.0.0.1")
+	r.Contains(html, "no longer serving your status page")
 }

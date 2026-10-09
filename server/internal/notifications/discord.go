@@ -18,9 +18,11 @@ var (
 	// ErrDiscordBotNotConfigured is returned when a bot-mode integration is
 	// asked to send but the instance has no Discord bot token.
 	ErrDiscordBotNotConfigured = errors.New("discord bot token is not configured on this instance")
-	// ErrDiscordNoDestination is returned when no destination channel is
-	// configured on the integration.
-	ErrDiscordNoDestination = errors.New("no default channel configured for discord connection")
+	// ErrDiscordNoDestination is returned when the integration has neither a
+	// bot destination nor a webhook URL.
+	ErrDiscordNoDestination = newConfigError(
+		"This Discord integration has no destination. Install the bot or add a webhook URL.",
+		"webhook URL")
 )
 
 // State keys for the incident → Discord message/thread mapping: defined by the
@@ -32,10 +34,15 @@ const (
 	discordKeyThreadID  = discord.IncidentStateKeyThreadID
 )
 
-// DiscordSender sends notifications to Discord via the instance bot: rich
-// embeds with an Acknowledge button, a real thread per incident, and an
-// in-place edit of the original embed when the incident resolves — the Slack
-// behavior, on Discord's primitives.
+// DiscordSender sends notifications to Discord, in one of two modes chosen by
+// the integration's data (see models.DiscordSettings):
+//
+//   - Bot: rich embeds with an Acknowledge button, a real thread per incident,
+//     and an in-place edit of the original embed when the incident resolves,
+//     the Slack behavior on Discord's primitives.
+//   - Webhook: one standalone embed per event, POSTed to a channel webhook.
+//     It needs no Discord application, so it is what an instance without the
+//     bot uses (the Discord counterpart of SlackWebhookSender).
 type DiscordSender struct {
 	// newBotClient builds the Discord REST client. Tests override it to point
 	// at an httptest fake Discord; nil means the real one.
@@ -44,9 +51,10 @@ type DiscordSender struct {
 
 // Send sends a notification to Discord.
 //
-// Sending requires a resolved destination channel, plus either a guild or a DM
-// destination (a DM channel id needs no guild to post into). Anything else has
-// nowhere to deliver and fails with ErrDiscordNoDestination.
+// The bot is used when a bot destination resolves: a destination channel plus
+// either a guild or a DM destination (a DM channel id needs no guild to post
+// into). Otherwise the webhook URL is used when one is set. With neither,
+// there is nowhere to deliver and Send fails with ErrDiscordNoDestination.
 func (ds *DiscordSender) Send(ctx context.Context, jctx *jobdef.JobContext, payload *Payload) error {
 	settings, err := ds.parseSettings(payload)
 	if err != nil {
@@ -56,11 +64,15 @@ func (ds *DiscordSender) Send(ctx context.Context, jctx *jobdef.JobContext, payl
 	channel := ds.determineChannel(settings, payload)
 	// A DM destination qualifies on its own: its ChannelID is a DM channel id,
 	// which needs no guild to post into.
-	if channel == "" || (settings.GuildID == "" && !settings.IsDM()) {
-		return ErrDiscordNoDestination
+	if channel != "" && (settings.GuildID != "" || settings.IsDM()) {
+		return ds.sendViaBot(ctx, jctx, settings, payload, channel)
 	}
 
-	return ds.sendViaBot(ctx, jctx, settings, payload, channel)
+	if webhookURL := strings.TrimSpace(settings.WebhookURL); webhookURL != "" {
+		return ds.sendViaWebhook(ctx, jctx, webhookURL, payload)
+	}
+
+	return ErrDiscordNoDestination
 }
 
 // parseSettings extracts the Discord settings from the payload.
@@ -616,9 +628,14 @@ func (ds *DiscordSender) buildIncidentResolvedEmbed(payload *Payload) discord.Em
 		})
 	}
 
+	description := "The incident has been automatically resolved."
+	if ResolvedByCheckDeletion(payload.Incident) {
+		description = checkDeletedSentence
+	}
+
 	return discord.Embed{
 		Title:       incidentRefPrefix(payload.Incident) + "Incident resolved for " + checkName,
-		Description: "The incident has been automatically resolved.",
+		Description: description,
 		Color:       discord.ColorGreen,
 		Fields:      fields,
 		Timestamp:   time.Now().Format(time.RFC3339),
@@ -740,10 +757,14 @@ func (ds *DiscordSender) buildResolvedUpdateMessage(payload *Payload) *discord.M
 		})
 	}
 
+	title := fmt.Sprintf("%sAutomatically resolved %s incident", incidentRefPrefix(payload.Incident), checkName)
+	if ResolvedByCheckDeletion(payload.Incident) {
+		title = fmt.Sprintf("%sClosed %s incident: the check was deleted", incidentRefPrefix(payload.Incident), checkName)
+	}
+
 	return &discord.Message{
 		Embeds: []discord.Embed{{
-			Title: fmt.Sprintf("%sAutomatically resolved %s incident",
-				incidentRefPrefix(payload.Incident), checkName),
+			Title:     title,
 			URL:       incidentDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Incident),
 			Color:     discord.ColorGreen,
 			Fields:    fields,

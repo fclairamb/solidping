@@ -411,6 +411,10 @@ func (s *MSTeamsBotSender) titleAndColor(payload *Payload, checkName string) (st
 	case eventTypeIncidentCreated:
 		return "🔴 " + checkName + " is DOWN", msteams.CardColorAttention
 	case eventTypeIncidentResolved:
+		if ResolvedByCheckDeletion(payload.Incident) {
+			return "⚪ " + checkName + " was DELETED, incident closed", msteams.CardColorGood
+		}
+
 		return "🟢 " + checkName + " has RECOVERED", msteams.CardColorGood
 	case eventTypeIncidentEscalated:
 		return "⚠️ " + checkName + " ESCALATED", msteams.CardColorWarning

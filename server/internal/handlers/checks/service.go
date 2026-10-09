@@ -603,6 +603,10 @@ type Service struct {
 	// degraded detection is turned off (spec 2026-09-24-08). nil = not wired,
 	// in which case nothing is resolved; see SetDegradedIncidentResolver.
 	degradedResolver DegradedIncidentResolver
+	// checkDeletedNotifier tells whoever was paged that a deleted check's
+	// incident closed (spec 2026-10-08-02). nil = not wired: the incidents
+	// still resolve, silently. See SetCheckDeletedIncidentNotifier.
+	checkDeletedNotifier CheckDeletedIncidentNotifier
 	// deploymentMode gates checker types that hand a shared SaaS worker a
 	// local-machine primitive (spec 2026-09-25-22, docker's local socket).
 	// Zero value "" behaves like self-hosted (no gate) — only tests and paths
@@ -2737,18 +2741,20 @@ func (s *Service) DeleteCheck(ctx context.Context, orgSlug, identifier string) e
 		return tunnelErr
 	}
 
-	// Count active incidents for the event payload
-	activeIncidentCount, err := s.db.CountActiveIncidentsByCheckUID(ctx, check.UID)
+	// The active incidents DeleteCheck is about to resolve (it does so in the
+	// same transaction as the soft delete, spec 2026-10-08-02). Listed first so
+	// the event payload can count them and the notifier can tell whoever was
+	// paged that they closed.
+	activeIncidents, _, err := s.db.ListIncidents(ctx, &models.ListIncidentsFilter{
+		OrganizationUID: org.UID,
+		CheckUIDs:       []string{check.UID},
+		States:          []models.IncidentState{models.IncidentStateActive},
+	})
 	if err != nil {
-		return fmt.Errorf("failed to check active incidents: %w", err)
+		return fmt.Errorf("failed to list active incidents: %w", err)
 	}
 
-	// Resolve any active incidents before deleting
-	if activeIncidentCount > 0 {
-		if resolveErr := s.resolveActiveIncidentsForDelete(ctx, org.UID, check.UID); resolveErr != nil {
-			return resolveErr
-		}
-	}
+	activeIncidentCount := len(activeIncidents)
 
 	// Delete all check jobs for this check
 	existingJobs, err := s.db.ListCheckJobsByCheckUID(ctx, check.UID)
@@ -2771,6 +2777,8 @@ func (s *Service) DeleteCheck(ctx context.Context, orgSlug, identifier string) e
 	if err := s.db.DeleteCheck(ctx, check.UID); err != nil {
 		return fmt.Errorf("failed to delete check: %w", err)
 	}
+
+	s.notifyCheckDeletedIncidents(ctx, org.UID, check, activeIncidents)
 
 	s.reapCheckAttachments(ctx, org.UID, check.UID)
 
@@ -2806,31 +2814,36 @@ func (s *Service) DeleteCheck(ctx context.Context, orgSlug, identifier string) e
 	return nil
 }
 
-// resolveActiveIncidentsForDelete resolves every active incident on a check
-// about to be deleted, so no incident outlives the check it points at.
-func (s *Service) resolveActiveIncidentsForDelete(ctx context.Context, orgUID, checkUID string) error {
-	incidents, _, err := s.db.ListIncidents(ctx, &models.ListIncidentsFilter{
-		OrganizationUID: orgUID,
-		CheckUIDs:       []string{checkUID},
-		States:          []models.IncidentState{models.IncidentStateActive},
-	})
-	if err != nil {
-		return fmt.Errorf("failed to list active incidents: %w", err)
+// CheckDeletedIncidentNotifier sends the one "resolved, check deleted"
+// notification for each incident a single-check delete closed (spec
+// 2026-10-08-02, resolved open question). The DB layer has already resolved
+// them; this only cancels their pending escalation and notifies. An interface
+// because the incidents package already depends on this one.
+type CheckDeletedIncidentNotifier interface {
+	NotifyCheckDeletedIncidents(ctx context.Context, orgUID string, check *models.Check, incidentUIDs []string)
+}
+
+// SetCheckDeletedIncidentNotifier wires the notifier. Without it a delete
+// still resolves the check's incidents (the DB layer guarantees that), it just
+// tells nobody. Org deletion never goes through here, by design: nobody is
+// left to read it.
+func (s *Service) SetCheckDeletedIncidentNotifier(notifier CheckDeletedIncidentNotifier) {
+	s.checkDeletedNotifier = notifier
+}
+
+func (s *Service) notifyCheckDeletedIncidents(
+	ctx context.Context, orgUID string, check *models.Check, incidents []*models.Incident,
+) {
+	if s.checkDeletedNotifier == nil || len(incidents) == 0 {
+		return
 	}
 
-	now := time.Now()
-	resolvedState := models.IncidentStateResolved
-
+	uids := make([]string, 0, len(incidents))
 	for _, incident := range incidents {
-		if updateErr := s.db.UpdateIncident(ctx, incident.UID, &models.IncidentUpdate{
-			State:      &resolvedState,
-			ResolvedAt: &now,
-		}); updateErr != nil {
-			return fmt.Errorf("failed to resolve incident %s: %w", incident.UID, updateErr)
-		}
+		uids = append(uids, incident.UID)
 	}
 
-	return nil
+	s.checkDeletedNotifier.NotifyCheckDeletedIncidents(ctx, orgUID, check, uids)
 }
 
 // ensureUniqueSlug ensures the slug is unique within the organization.

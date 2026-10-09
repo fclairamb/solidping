@@ -21,7 +21,7 @@ const ntfyDefaultServerURL = "https://ntfy.sh"
 
 var (
 	// ErrNtfyTopicNotConfigured is returned when the ntfy topic is missing.
-	ErrNtfyTopicNotConfigured = errors.New("ntfy topic not configured")
+	ErrNtfyTopicNotConfigured = newConfigError("ntfy topic not configured", "topic")
 	// errNtfyRequestFailed is returned when the ntfy request fails.
 	errNtfyRequestFailed = errors.New("ntfy request failed")
 )
@@ -54,8 +54,13 @@ func (s *NtfySender) Send(ctx context.Context, jctx *jobdef.JobContext, payload 
 	req.Header.Set("Tags", tags)
 	req.Header.Set("User-Agent", productName)
 
-	if settings.AccessToken != "" {
-		req.Header.Set("Authorization", "Bearer "+settings.AccessToken)
+	token := settings.AuthToken
+	if token == "" {
+		token = settings.AccessToken
+	}
+
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
 	}
 
 	client := httpclientpool.NewGuardedClient(ntfyTimeout, guard)
@@ -75,11 +80,25 @@ func (s *NtfySender) Send(ctx context.Context, jctx *jobdef.JobContext, payload 
 	return nil
 }
 
+// NtfySettingServerURL is the canonical ntfy server URL key, the one the
+// dashboard form writes. NtfyLegacySettingServerURL is the name the sender
+// read before spec 2026-10-08-03; it is still read as a fallback.
+const (
+	NtfySettingServerURL       = "server_url"
+	NtfyLegacySettingServerURL = "serverUrl"
+)
+
 type ntfySettings struct {
-	ServerURL       string            `json:"serverUrl"`
-	Topic           string            `json:"topic"`
+	ServerURL string `json:"server_url"` //nolint:tagliatelle // matches dashboard form key
+	Topic     string `json:"topic"`
+	// AuthToken is the canonical access-token key, the one the credentials
+	// registry encrypts (conn_secrets.go). accessToken is the legacy name.
+	AuthToken       string            `json:"auth_token"` //nolint:tagliatelle // matches the secret registry key
 	AccessToken     string            `json:"accessToken"`
 	PriorityMapping map[string]string `json:"priorityMapping"`
+	// Priority is the dashboard's single 1-5 priority. When set, it replaces
+	// the default priority of every event except resolved (like gotify).
+	Priority *int `json:"priority"`
 }
 
 func (s *NtfySender) parseSettings(payload *Payload) (*ntfySettings, error) {
@@ -91,6 +110,10 @@ func (s *NtfySender) parseSettings(payload *Payload) (*ntfySettings, error) {
 	var settings ntfySettings
 	if err := json.Unmarshal(data, &settings); err != nil {
 		return nil, fmt.Errorf("parsing ntfy settings: %w", err)
+	}
+
+	if settings.ServerURL == "" {
+		settings.ServerURL = firstStringSetting(payload.Integration.Settings, []string{NtfyLegacySettingServerURL})
 	}
 
 	if settings.ServerURL == "" {
@@ -123,6 +146,11 @@ func (s *NtfySender) getPriority(settings *ntfySettings, eventType string) strin
 		}
 	}
 
+	if settings.Priority != nil && *settings.Priority >= 1 && *settings.Priority <= 5 &&
+		eventType != eventTypeIncidentResolved {
+		return strconv.Itoa(*settings.Priority)
+	}
+
 	defaults := ntfyDefaultPriorities()
 	if p, ok := defaults[shortType]; ok {
 		return p
@@ -145,7 +173,7 @@ func (s *NtfySender) buildContent(
 		tags = "rotating_light"
 		body = s.buildDownBody(payload, checkName)
 	case eventTypeIncidentResolved:
-		title = "[RECOVERED] " + checkName
+		title = resolvedTag(payload.Incident) + checkName
 		tags = "white_check_mark"
 		body = s.buildResolvedBody(payload, checkName)
 	case eventTypeIncidentEscalated:
@@ -190,6 +218,10 @@ func (s *NtfySender) buildDownBody(payload *Payload, checkName string) string {
 
 func (s *NtfySender) buildResolvedBody(payload *Payload, checkName string) string {
 	var builder strings.Builder
+
+	if ResolvedByCheckDeletion(payload.Incident) {
+		builder.WriteString(checkDeletedSentence + "\n")
+	}
 
 	fmt.Fprintf(&builder, "Check: %s (%s)\n", checkName, payload.Check.Type)
 

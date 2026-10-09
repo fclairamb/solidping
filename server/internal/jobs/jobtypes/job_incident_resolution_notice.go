@@ -196,6 +196,12 @@ func resolutionAlertParams(
 // telegramResolvedDetail renders how long the incident lasted, or "" when the
 // resolution timestamp is missing (the caller then keeps the alert detail).
 func telegramResolvedDetail(incident *models.Incident) string {
+	// A deleted check did not recover: say why the incident closed instead
+	// (spec 2026-10-08-02).
+	if incident.ResolutionType != nil && *incident.ResolutionType == models.ResolutionTypeCheckDeleted {
+		return "closed because the check was deleted"
+	}
+
 	if incident.ResolvedAt == nil {
 		return ""
 	}

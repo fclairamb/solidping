@@ -60,6 +60,14 @@ type Service struct {
 	// opsNotice is the synchronous operator-notice transport, used only by the
 	// "Send me a test" endpoint. Nil until app/server.go wires it.
 	opsNotice *opsnotify.Deps
+	// emailConfig returns the effective email config (env over DB), the same
+	// one real notifications use. Nil falls back to the database only.
+	emailConfig email.ConfigProvider
+}
+
+// SetEmailConfigProvider wires the effective-config resolver used by TestEmail.
+func (s *Service) SetEmailConfigProvider(p email.ConfigProvider) {
+	s.emailConfig = p
 }
 
 // NewService creates a new system service.
@@ -412,7 +420,15 @@ type TestEmailResponse struct {
 // TestEmail sends a test email using the currently saved SMTP parameters.
 func (s *Service) TestEmail(ctx context.Context, recipient string) (*TestEmailResponse, error) {
 	// Build email config from current DB parameters
-	emailCfg, err := s.buildEmailConfig(ctx)
+	var emailCfg *config.EmailConfig
+
+	var err error
+	if s.emailConfig != nil {
+		emailCfg, err = s.emailConfig(ctx)
+	} else {
+		emailCfg, err = s.buildEmailConfig(ctx)
+	}
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to load email config: %w", err)
 	}

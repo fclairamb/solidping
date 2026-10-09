@@ -39,7 +39,7 @@ const msTeamsMessageType = "message"
 
 var (
 	// ErrMSTeamsWebhookURLNotConfigured is returned when the Teams webhook URL is missing.
-	ErrMSTeamsWebhookURLNotConfigured = errors.New("microsoft teams webhook URL not configured")
+	ErrMSTeamsWebhookURLNotConfigured = newConfigError("microsoft teams webhook URL not configured", "webhook URL")
 	// errMSTeamsWebhookFailed is returned when the Teams webhook request fails.
 	errMSTeamsWebhookFailed = errors.New("microsoft teams webhook failed")
 )
@@ -190,7 +190,7 @@ func (s *MSTeamsSender) eventTitleAndColor(payload *Payload, checkName string) (
 	case eventTypeIncidentCreated:
 		return "[DOWN] " + checkName, msTeamsColorAttention
 	case eventTypeIncidentResolved:
-		return "[RECOVERED] " + checkName, msTeamsColorGood
+		return resolvedTag(payload.Incident) + checkName, msTeamsColorGood
 	case eventTypeIncidentEscalated:
 		return "[ESCALATED] " + checkName, msTeamsColorAttention
 	case eventTypeIncidentReopened:
@@ -240,6 +240,10 @@ func (s *MSTeamsSender) buildFacts(payload *Payload, checkName string) []msTeams
 	}
 
 	if payload.EventType == eventTypeIncidentResolved {
+		if ResolvedByCheckDeletion(payload.Incident) {
+			facts = append(facts, msTeamsFact{Title: "Reason", Value: checkDeletedSentence})
+		}
+
 		if payload.Incident.ResolvedAt != nil {
 			duration := payload.Incident.ResolvedAt.Sub(payload.Incident.StartedAt)
 			facts = append(facts, msTeamsFact{Title: mmFieldDuration, Value: formatDuration(duration)})

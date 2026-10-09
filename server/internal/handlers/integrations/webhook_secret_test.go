@@ -136,7 +136,7 @@ func TestRotateWebhookSecret_WrongType(t *testing.T) {
 	created, err := svc.CreateIntegration(ctx, org.Slug, integrations.CreateIntegrationRequest{
 		Type:     "discord",
 		Name:     "disc",
-		Settings: map[string]any{"webhook_url": "https://discord.example/hook"},
+		Settings: map[string]any{"webhook_url": "https://discord.com/api/webhooks/1/acme"},
 	})
 	r.NoError(err)
 

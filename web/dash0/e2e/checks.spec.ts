@@ -1030,4 +1030,49 @@ test.describe("Checks", () => {
       fullPage: true,
     });
   });
+  test("tcp port field: real default, chips, no spinner, host:port paste, no error before input", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await page.goto("orgs/test/checks/new?checkType=tcp");
+    await page.waitForLoadState("networkidle");
+
+    const port = page.getByTestId("check-port-input");
+    const host = page.getByTestId("check-host-input");
+    await expect(port).toHaveValue("443");
+    await expect(port).not.toHaveAttribute("type", "number");
+
+    // The default port makes the config non-empty, so the server validates the
+    // draft. Give it time: an untouched empty host must still show no error.
+    await page.waitForTimeout(1500);
+    await expect(host).not.toHaveClass(/border-destructive/);
+
+    await page.getByTestId("check-port-chip-22").click();
+    await expect(port).toHaveValue("22");
+
+    // Pasting host:port splits it.
+    await host.fill("example.com:2222");
+    await expect(host).toHaveValue("example.com");
+    await expect(port).toHaveValue("2222");
+
+    await host.fill("tcp-chip.example.com");
+    await page.getByTestId("check-port-chip-22").click();
+    await page.getByTestId("check-name-input").fill(`E2E TCP chip ${Date.now()}`);
+    await page.getByTestId("check-submit-button").click();
+    await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
+    await page.waitForLoadState("networkidle");
+    const uid = page.url().match(/\/checks\/([0-9a-f-]{36})/)![1];
+    await page.goto(`orgs/test/checks/${uid}/edit`);
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("check-port-input")).toHaveValue("22");
+    await expect(page.getByTestId("check-host-input")).toHaveValue("tcp-chip.example.com");
+  });
+
+  test("ssh port field defaults to 22 and shows no chips", async ({ authenticatedPage }) => {
+    const page = authenticatedPage;
+    await page.goto("orgs/test/checks/new?checkType=ssh");
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("check-port-input")).toHaveValue("22");
+    await expect(page.getByTestId("check-port-chips")).toHaveCount(0);
+  });
 });
