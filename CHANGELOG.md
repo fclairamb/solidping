@@ -3,6 +3,13 @@
 ## Unreleased
 
 
+## [0.38.1](https://github.com/fclairamb/solidping/compare/v0.38.0...v0.38.1) (2026-10-09)
+
+
+### Bug Fixes
+
+* implement batch of specs (emails, incidents, Pushover, port fields, bug report, Discord) ([#500](https://github.com/fclairamb/solidping/issues/500)) ([03be40c](https://github.com/fclairamb/solidping/commit/03be40ca854ff241755ed278ac7f74aa397a0aa4))
+
 ## [0.38.0](https://github.com/fclairamb/solidping/compare/v0.37.0...v0.38.0) (2026-10-05)
 
 
