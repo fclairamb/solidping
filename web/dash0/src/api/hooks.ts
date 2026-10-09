@@ -720,7 +720,13 @@ export interface IncidentDetail {
   escalatedAt?: string;
   resolvedAt?: string;
   resolvedBy?: string;
-  resolutionType?: "auto" | "manual" | "expired" | "escalated" | "disabled";
+  resolutionType?:
+    | "auto"
+    | "manual"
+    | "expired"
+    | "escalated"
+    | "disabled"
+    | "check_deleted";
   failureCount?: number;
   relapseCount?: number;
   /**

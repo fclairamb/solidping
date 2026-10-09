@@ -34,7 +34,9 @@ func seedCheckWithIncident(t *testing.T, handler *Handler, slug string) (*models
 	return org, incident
 }
 
-func requireCheckDeletedResolution(t *testing.T, handler *Handler, org *models.Organization, incident *models.Incident) {
+func requireCheckDeletedResolution(
+	t *testing.T, handler *Handler, org *models.Organization, incident *models.Incident,
+) {
 	t.Helper()
 
 	got, err := handler.dbService.GetIncident(t.Context(), org.UID, incident.UID)

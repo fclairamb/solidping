@@ -64,6 +64,8 @@ func TestDeleteCheckResolvesIncidents_Postgres(t *testing.T) {
 	testDeleteCheckResolvesIncidents(t, svc)
 
 	t.Run("Migration027Backfill", func(t *testing.T) {
+		t.Parallel()
+
 		r := require.New(t)
 
 		org := models.NewOrganization("acme-orphans", "Acme")
