@@ -334,3 +334,56 @@ func TestSlackWebhook_CreateValidation(t *testing.T) {
 		})
 	}
 }
+
+// TestDiscordWebhook_CreateAndUpdateValidation covers the Discord webhook URL
+// contract: a discord.com / discordapp.com webhook is accepted, no URL is
+// accepted (bot mode), anything else is rejected with ErrInvalidSettings, on
+// create and on update.
+func TestDiscordWebhook_CreateAndUpdateValidation(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name     string
+		settings map[string]any
+		ok       bool
+	}{
+		{"discord.com webhook", map[string]any{"webhook_url": "https://discord.com/api/webhooks/1/acme"}, true},
+		{"discordapp.com webhook", map[string]any{"webhook_url": "https://discordapp.com/api/webhooks/1/acme"}, true},
+		{"ptb webhook", map[string]any{"webhook_url": "https://ptb.discord.com/api/webhooks/1/acme"}, true},
+		{"no url (bot mode)", map[string]any{}, true},
+		{"other public host", map[string]any{"webhook_url": "https://example.com/hook"}, false},
+		{"slack webhook", map[string]any{"webhook_url": "https://hooks.slack.com/services/T0/B0/xyz"}, false},
+		{"discord channel link", map[string]any{"webhook_url": "https://discord.com/channels/1/2"}, false},
+		{"http scheme", map[string]any{"webhook_url": "http://discord.com/api/webhooks/1/acme"}, false},
+		{"private url", map[string]any{"webhook_url": "http://169.254.169.254/api/webhooks/1/acme"}, false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+			svc, org, ctx := newGuardedSenderURLSvc(t, egress.New(false))
+			created, err := svc.CreateIntegration(ctx, org.Slug, integrations.CreateIntegrationRequest{
+				Type: "discord", Name: "discord-hook", Settings: tc.settings,
+			})
+
+			if !tc.ok {
+				r.ErrorIs(err, integrations.ErrInvalidSettings)
+				r.Contains(err.Error(), "Discord webhook")
+
+				return
+			}
+
+			r.NoError(err)
+			r.NotNil(created)
+
+			// The same rule applies to an update.
+			bad := map[string]any{"webhook_url": "https://example.com/hook"}
+			_, err = svc.UpdateIntegration(ctx, org.Slug, created.UID, integrations.UpdateIntegrationRequest{
+				Settings: bad,
+			})
+			r.ErrorIs(err, integrations.ErrInvalidSettings)
+		})
+	}
+}

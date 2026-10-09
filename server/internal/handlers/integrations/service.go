@@ -29,6 +29,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/egress"
+	"github.com/fclairamb/solidping/server/internal/integrations/discord"
 	"github.com/fclairamb/solidping/server/internal/integrations/freebox"
 	integrationk8s "github.com/fclairamb/solidping/server/internal/integrations/kubernetes"
 	"github.com/fclairamb/solidping/server/internal/integrations/twilio"
@@ -562,7 +563,7 @@ func (s *Service) checkCreateTypeConstraints(
 
 // senderURLSettingsKey names, for each connection type whose sender POSTs to
 // a URL the org member configures, which Settings key holds it (spec
-// 2026-09-25-20). Slack/Discord bot delivery, Telegram, PagerDuty, Pushover
+// 2026-09-25-20). Slack bot delivery, Telegram, PagerDuty, Pushover
 // and Twilio all POST to a fixed vendor host and are deliberately absent —
 // there is no caller-supplied URL to validate.
 //
@@ -578,6 +579,9 @@ var senderURLSettingsKey = map[models.ConnectionType]string{
 	models.ConnectionTypeGoogleChat:   senderKeyWebhookURL,
 	models.ConnectionTypeMattermost:   senderKeyWebhookURL,
 	models.ConnectionTypeSlackWebhook: senderKeyWebhookURL,
+	// Discord's bot mode posts to a fixed host, but its webhook mode POSTs to
+	// the stored webhook_url, which must also be a Discord webhook URL.
+	models.ConnectionTypeDiscord: senderKeyWebhookURL,
 }
 
 // slackIncomingWebhookHost is the only host a slack-webhook connection may
@@ -633,6 +637,14 @@ func (s *Service) validateSenderURLSettings(
 	if connType == models.ConnectionTypeSlackWebhook {
 		if err := validateSlackWebhookURL(raw); err != nil {
 			return err
+		}
+	}
+
+	// Discord: the webhook URL is optional (a bot-mode integration has none),
+	// but a present one must be a Discord channel webhook.
+	if connType == models.ConnectionTypeDiscord && strings.TrimSpace(raw) != "" {
+		if err := discord.ValidateWebhookURL(raw); err != nil {
+			return fmt.Errorf("%w: %w", ErrInvalidSettings, err)
 		}
 	}
 
