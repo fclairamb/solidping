@@ -78,7 +78,8 @@
       "recipientPlaceholder": "empfaenger@beispiel.com",
       "send": "Test-E-Mail senden",
       "sending": "Senden..."
-    }
+    },
+    "envOverride": "Durch die Umgebungsvariable {{name}} gesetzt. Sie hat Vorrang vor allem hier Gespeicherten."
   },
   "auth": {
     "title": "Authentifizierungseinstellungen",

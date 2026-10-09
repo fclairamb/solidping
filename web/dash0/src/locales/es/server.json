@@ -78,7 +78,8 @@
       "recipientPlaceholder": "destinatario@ejemplo.com",
       "send": "Enviar correo de prueba",
       "sending": "Enviando..."
-    }
+    },
+    "envOverride": "Definido por la variable de entorno {{name}}. Tiene prioridad sobre cualquier valor guardado aquí."
   },
   "auth": {
     "title": "Ajustes de autenticación",

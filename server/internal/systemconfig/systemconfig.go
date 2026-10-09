@@ -1691,7 +1691,9 @@ func (s *Service) GetBool(ctx context.Context, key ParameterKey, envVar string, 
 // the SP_EMAIL_* environment variables (env wins), read fresh on every call.
 // Real notifications and the "send a test email" button both go through it, so
 // they can never disagree.
-func EffectiveEmailConfig(ctx context.Context, dbService db.Service, base config.EmailConfig) (*config.EmailConfig, error) {
+func EffectiveEmailConfig(
+	ctx context.Context, dbService db.Service, base *config.EmailConfig,
+) (*config.EmailConfig, error) {
 	params, err := dbService.ListSystemParameters(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load system parameters: %w", err)
@@ -1704,7 +1706,7 @@ func EffectiveEmailConfig(ctx context.Context, dbService db.Service, base config
 		}
 	}
 
-	tmp := &config.Config{Email: base}
+	tmp := &config.Config{Email: *base}
 
 	known := getKnownParameters()
 	for i := range known {

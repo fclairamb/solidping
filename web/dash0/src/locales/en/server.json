@@ -78,7 +78,8 @@
       "recipientPlaceholder": "recipient@example.com",
       "send": "Send Test Email",
       "sending": "Sending..."
-    }
+    },
+    "envOverride": "Set by the {{name}} environment variable. It takes precedence over anything saved here."
   },
   "auth": {
     "title": "Authentication Settings",

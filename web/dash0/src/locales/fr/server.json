@@ -78,7 +78,8 @@
       "recipientPlaceholder": "destinataire@exemple.com",
       "send": "Envoyer un e-mail de test",
       "sending": "Envoi..."
-    }
+    },
+    "envOverride": "Défini par la variable d'environnement {{name}}. Elle prime sur toute valeur enregistrée ici."
   },
   "auth": {
     "title": "Paramètres d'authentification",

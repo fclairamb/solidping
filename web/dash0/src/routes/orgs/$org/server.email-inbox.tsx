@@ -14,6 +14,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { secretInputVisible, shouldSendSecret } from "@/lib/secret-input";
 import { ApiError } from "@/api/client";
 import {
   type EmailInboxConfig,
@@ -104,7 +105,7 @@ function EmailInboxPage() {
       rewriteBaseUrl: rewriteBaseUrl || undefined,
     };
 
-    if (editingPassword && password) {
+    if (shouldSendSecret(editingPassword, isSecretSet, password)) {
       cfg.password = password;
     }
 
@@ -230,7 +231,7 @@ function EmailInboxPage() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="password">{t("server:emailInbox.password")}</Label>
-                {!editingPassword && isSecretSet ? (
+                {!secretInputVisible(editingPassword, isSecretSet) ? (
                   <div className="flex items-center gap-2">
                     <Input id="password" type="password" value="******" disabled />
                     <Button
