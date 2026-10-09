@@ -113,3 +113,6 @@ squash-merge closes it. When the spec is archived to `specs/done/`, verify the i
 closed and, if the merge did not close it, close it by hand:
 
     gh issue close 493 --comment "Implemented by <PR or commit>; spec: <archived spec path>"
+
+## Resolved open questions
+- Do not send a "resolved" notification on org deletion. Send exactly one, with "check deleted" wording, when a single check with an open incident is deleted.

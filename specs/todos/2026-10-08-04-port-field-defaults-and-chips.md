@@ -86,3 +86,6 @@ squash-merge closes it. When the spec is archived to `specs/done/`, verify the i
 closed and, if the merge did not close it, close it by hand:
 
     gh issue close 495 --comment "Implemented by <PR or commit>; spec: <archived spec path>"
+
+## Resolved open questions
+- Apply touched-or-submitted gating to all check form fields through the shared error rendering, not only the port field.
