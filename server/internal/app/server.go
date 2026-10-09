@@ -393,7 +393,11 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	svcList.CheckJobs = checkJobService
 
 	// Create email services
-	emailSender := email.NewSender(&cfg.Email, slog.Default())
+	// The sender resolves the effective email config (env over DB) on every
+	// send, so a saved SMTP setting applies without a restart.
+	emailSender := email.NewDynamicSender(&cfg.Email, func(ctx context.Context) (*config.EmailConfig, error) {
+		return systemconfig.EffectiveEmailConfig(ctx, dbService, cfg.Email)
+	}, slog.Default())
 	svcList.EmailSender = emailSender
 
 	// The base URL is what makes the logo <img> in base.html absolute — the
@@ -1730,6 +1734,9 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// System parameters routes (super admin only)
 	systemService := system.NewService(s.dbService)
 	systemService.SetEmailFormatter(s.services.EmailFormatter)
+	systemService.SetEmailConfigProvider(func(ctx context.Context) (*config.EmailConfig, error) {
+		return systemconfig.EffectiveEmailConfig(ctx, s.dbService, s.config.Email)
+	})
 
 	// JMAP inbox manager: long-running supervisor that connects to the
 	// configured JMAP server and dispatches incoming emails to handlers.

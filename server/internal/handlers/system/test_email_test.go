@@ -111,3 +111,38 @@ func TestTestEmail_NilFormatterGuard(t *testing.T) {
 	r.False(resp.Sent)
 	r.Contains(resp.Message, "formatter")
 }
+
+// TestTestEmail_UsesEffectiveConfig proves the test mail resolves its config
+// through the provider (env over DB) rather than the database alone.
+//
+//nolint:paralleltest // mutates the package-level newEmailSender seam.
+func TestTestEmail_UsesEffectiveConfig(t *testing.T) {
+	r := require.New(t)
+	ctx := context.Background()
+
+	dbSvc := newTestEmailEnv(t)
+
+	formatter, err := email.NewFormatter()
+	r.NoError(err)
+
+	svc := NewService(dbSvc)
+	svc.SetEmailFormatter(formatter)
+	svc.SetEmailConfigProvider(func(context.Context) (*config.EmailConfig, error) {
+		return &config.EmailConfig{Enabled: true, From: "x@acme.com", Password: "from-env"}, nil
+	})
+
+	var got *config.EmailConfig
+
+	prev := newEmailSender
+	newEmailSender = func(cfg *config.EmailConfig, _ *slog.Logger) email.Sender {
+		got = cfg
+
+		return &capturingSender{}
+	}
+	t.Cleanup(func() { newEmailSender = prev })
+
+	resp, err := svc.TestEmail(ctx, "someone@acme.com")
+	r.NoError(err)
+	r.True(resp.Sent)
+	r.Equal("from-env", got.Password)
+}

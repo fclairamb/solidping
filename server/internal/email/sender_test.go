@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"log/slog"
+	"net/textproto"
 	"os"
 	"strconv"
 	"strings"
@@ -341,4 +342,34 @@ func TestBuildMessage_ListUnsubscribeHeaders(t *testing.T) {
 		r.Contains(wire, "List-Unsubscribe:")
 		r.NotContains(wire, "List-Unsubscribe-Post:")
 	})
+}
+
+func TestDescribeSendError_535(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	err := describeSendError(&textproto.Error{Code: 535, Msg: "5.7.8 Authentication failed"})
+	r.ErrorIs(err, errSMTPAuthRejected)
+	r.Contains(err.Error(), "rejected the username or password (535)")
+	r.Contains(err.Error(), "Authentication failed")
+
+	other := describeSendError(&textproto.Error{Code: 550, Msg: "no such user"})
+	r.NotErrorIs(other, errSMTPAuthRejected)
+}
+
+func TestDynamicSender_UsesProviderConfig(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	// The startup config is enabled, the effective one is disabled: the
+	// provider wins, so the send is a no-op rather than a dial.
+	sender := NewDynamicSender(&config.EmailConfig{Enabled: true}, func(context.Context) (*config.EmailConfig, error) {
+		return &config.EmailConfig{Enabled: false}, nil
+	}, slog.Default())
+
+	res, err := sender.Send(context.Background(), &Message{Recipients: Recipients{To: []string{"a@acme.com"}}})
+	r.NoError(err)
+	r.False(res.Sent)
 }

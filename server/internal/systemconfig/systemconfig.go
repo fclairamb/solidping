@@ -1685,3 +1685,46 @@ func (s *Service) GetBool(ctx context.Context, key ParameterKey, envVar string, 
 
 	return defaultValue, nil
 }
+
+// EffectiveEmailConfig returns the email configuration as it stands right now:
+// base (the startup config) overlaid with the database parameters, then with
+// the SP_EMAIL_* environment variables (env wins), read fresh on every call.
+// Real notifications and the "send a test email" button both go through it, so
+// they can never disagree.
+func EffectiveEmailConfig(ctx context.Context, dbService db.Service, base config.EmailConfig) (*config.EmailConfig, error) {
+	params, err := dbService.ListSystemParameters(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load system parameters: %w", err)
+	}
+
+	paramMap := make(map[string]any, len(params))
+	for _, p := range params {
+		if val, ok := p.Value["value"]; ok {
+			paramMap[p.Key] = val
+		}
+	}
+
+	tmp := &config.Config{Email: base}
+
+	known := getKnownParameters()
+	for i := range known {
+		def := &known[i]
+		if !strings.HasPrefix(string(def.Key), "email.") {
+			continue
+		}
+
+		if envVal := os.Getenv(def.EnvVar); envVal != "" {
+			def.ApplyFunc(tmp, envVal)
+
+			continue
+		}
+
+		if dbVal, ok := paramMap[string(def.Key)]; ok {
+			def.ApplyFunc(tmp, dbVal)
+		}
+	}
+
+	out := tmp.Email
+
+	return &out, nil
+}
