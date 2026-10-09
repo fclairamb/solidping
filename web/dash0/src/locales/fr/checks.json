@@ -175,6 +175,7 @@
     "checkMoved": "Contrôle déplacé avec succès"
   },
   "form": {
+    "portOutOfRange": "Le port doit être compris entre 1 et 65535",
     "editCheck": "Modifier le contrôle",
     "newCheck": "Nouveau contrôle",
     "checkType": "Type de contrôle",
