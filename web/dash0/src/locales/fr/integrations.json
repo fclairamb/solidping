@@ -166,6 +166,8 @@
     "slackReinstallButton": "Réinstaller l'application Slack",
     "sendTest": "Envoyer un test",
     "testDelivered": "Livré",
+    "testMissingSetting": "Il manque à cette intégration : {{setting}}",
+    "testMisconfigured": "Il manque un paramètre obligatoire à cette intégration",
     "testHelp": "Envoyez une alerte type pour confirmer que cette intégration est bien configurée. Le test utilise les paramètres enregistrés.",
     "testTitle": "Envoyer une notification de test",
     "webpushNoSubscriptions": "Aucun appareil abonné pour le moment. Cliquez sur le bouton ci-dessous pour ajouter ce navigateur.",

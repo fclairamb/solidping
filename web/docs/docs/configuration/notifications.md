@@ -646,8 +646,11 @@ Mattermost notifications use incoming webhooks, similar to Slack.
 ### Configuration
 
 Add a ntfy connection in SolidPing with:
-- **Server URL**: `https://ntfy.sh` (or your self-hosted instance)
-- **Topic**: Your topic name (e.g., `solidping-alerts`)
+- **Server URL** (setting key `server_url`): `https://ntfy.sh` (or your self-hosted instance)
+- **Topic** (`topic`): Your topic name (e.g., `solidping-alerts`)
+- **Priority** (`priority`, optional): 1 to 5. Replaces the default priority of every
+  alert except recoveries, which stay at the default priority.
+- **Access token** (`auth_token`, optional, API only): sent as a bearer token, stored encrypted.
 
 ### Example
 
@@ -797,8 +800,21 @@ Pushover delivers real-time notifications to your mobile devices and desktop.
 ### Configuration
 
 Add a Pushover connection in SolidPing with:
-- **User Key**: Your Pushover user key
-- **API Token**: Your Pushover application API token
+- **User Key** (setting key `user_key`): Your Pushover user key
+- **API Token** (setting key `api_token`): Your Pushover application API token
+
+Both are stored encrypted. When you create the integration through the API or
+`apply`, use these two keys:
+
+```json
+{ "type": "pushover", "name": "Phone", "settings": { "user_key": "u...", "api_token": "a..." } }
+```
+
+Integrations saved before v0.39 with the keys `user`/`token` or `userKey`/`apiToken`
+are rewritten to `user_key`/`api_token` at startup.
+
+If **Send test** says the integration is missing a setting, nothing was sent:
+fill in that field and save before testing again.
 
 ### Setting Up Pushover
 

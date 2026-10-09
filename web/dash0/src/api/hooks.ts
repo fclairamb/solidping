@@ -5791,6 +5791,11 @@ export interface IntegrationTestResult {
   error?: string;
   /** Optional human-readable success note (e.g. the Kubernetes server version). */
   detail?: string;
+  /** INTEGRATION_MISCONFIGURED when nothing was sent because a required
+   *  setting is missing: a configuration error, not a delivery failure. */
+  code?: "INTEGRATION_MISCONFIGURED";
+  /** Human name of the missing setting (e.g. "API token"). */
+  missingSetting?: string;
 }
 
 export function useRotateWebhookSecret(org: string, integrationUid: string) {

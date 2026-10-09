@@ -296,7 +296,20 @@ function TestNotificationSection({ org, channelUid, canTest = true }: TestNotifi
           )}
         </Tooltip>
       </div>
-      {testResult && (
+      {testResult?.code === "INTEGRATION_MISCONFIGURED" ? (
+        <Badge variant="destructive" data-testid="webhook-test-result">
+          {testResult.missingSetting
+            ? t(
+                "form.testMissingSetting",
+                "This integration is missing its {{setting}}",
+                { setting: testResult.missingSetting },
+              )
+            : t(
+                "form.testMisconfigured",
+                "This integration is missing a required setting",
+              )}
+        </Badge>
+      ) : testResult && (
         <Badge
           variant={testResult.success ? "success" : "destructive"}
           data-testid="webhook-test-result"
@@ -577,14 +590,14 @@ function PerTypePanel({ type, settings, onChange, org, channelUid, privateKeys, 
           <SecretPanel
             id="ch-pushover-user"
             label={t("form.pushoverUser", "User key")}
-            value={(settings.user as string) || ""}
-            onChange={(v) => update("user", v)}
+            value={(settings.user_key as string) || ""}
+            onChange={(v) => update("user_key", v)}
           />
           <SecretPanel
             id="ch-pushover-token"
             label={t("form.pushoverToken", "App token")}
-            value={(settings.token as string) || ""}
-            onChange={(v) => update("token", v)}
+            value={(settings.api_token as string) || ""}
+            onChange={(v) => update("api_token", v)}
           />
         </div>
       );
