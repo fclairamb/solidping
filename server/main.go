@@ -632,13 +632,23 @@ func encryptCredentials(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("encrypt-credentials reconcile failed: %w", recErr)
 	}
 
+	// Pushover key backfill (spec 2026-10-08-03), idempotent.
+	poStats, poErr := credmigrate.NormalizePushoverSettings(ctx, dbSvc, creds, credmigrate.Options{
+		DryRun: dryRun,
+		Logger: slog.Default(),
+	})
+	if poErr != nil {
+		return fmt.Errorf("encrypt-credentials pushover backfill failed: %w", poErr)
+	}
+
 	slog.InfoContext(ctx, "encrypt-credentials done",
 		"dryRun", dryRun,
 		"checksScanned", stats.ChecksScanned,
 		"checksMigrated", stats.ChecksMigrated,
 		"connectionsScanned", stats.ConnectionsScanned,
 		"connectionsMigrated", stats.ConnectionsMigrated,
-		"connectionsReconciled", recStats.ConnectionsReconciled)
+		"connectionsReconciled", recStats.ConnectionsReconciled,
+		"pushoverNormalized", poStats.Normalized)
 
 	return nil
 }

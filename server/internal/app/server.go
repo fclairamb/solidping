@@ -4313,7 +4313,11 @@ func (s *Server) MaybeAutoMigrateEncryption(ctx context.Context) error {
 	if s.services == nil || s.services.Credentials == nil || !s.services.Credentials.Enabled() {
 		s.warnIfEncryptedRowsExist(ctx)
 
-		return s.maybeSplitPlaintextSecrets(ctx)
+		if err := s.maybeSplitPlaintextSecrets(ctx); err != nil {
+			return err
+		}
+
+		return s.maybeNormalizePushoverSettings(ctx, nil)
 	}
 
 	if !s.config.Encryption.AutoMigrate {
@@ -4348,6 +4352,25 @@ func (s *Server) MaybeAutoMigrateEncryption(ctx context.Context) error {
 	if recStats.ConnectionsReconciled > 0 {
 		slog.InfoContext(ctx, "reconciled connection URL fields to public settings at startup",
 			"connectionsReconciled", recStats.ConnectionsReconciled)
+	}
+
+	return s.maybeNormalizePushoverSettings(ctx, s.services.Credentials)
+}
+
+// maybeNormalizePushoverSettings runs the one-shot Pushover key backfill
+// (spec 2026-10-08-03): legacy user/token and userKey/apiToken become
+// user_key/api_token, stored in settings_private. creds is nil when
+// encryption is disabled (plaintext envelope). Gated on AutoMigrate like the
+// other startup row rewrites. Idempotent.
+func (s *Server) maybeNormalizePushoverSettings(ctx context.Context, creds credentials.Service) error {
+	if s.dbService == nil || !s.config.Encryption.AutoMigrate {
+		return nil
+	}
+
+	if _, err := credmigrate.NormalizePushoverSettings(
+		ctx, s.dbService, creds, credmigrate.Options{Logger: slog.Default()},
+	); err != nil {
+		return fmt.Errorf("normalize pushover settings: %w", err)
 	}
 
 	return nil
