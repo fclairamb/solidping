@@ -703,7 +703,11 @@ jobs:
     # membership-requests.spec.ts. This is a capacity bump, NOT a hang guard
     # being loosened: the known Playwright-install hang is still bounded by the
     # per-attempt timeout on that step, and every step here had succeeded.
-    timeout-minutes: 45
+    # Raised 45 -> 60 on 2026-10-09: with 1007 specs the main suite takes ~41 min
+    # on its own, so run 37968728929 passed every test and was then cancelled at
+    # 45 min inside the session-continuity side-car step. Capacity bump, not a
+    # hang guard being loosened.
+    timeout-minutes: 60
     needs: [changes, build]
     if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) && needs.changes.outputs.code == 'true' }}
     defaults:

@@ -94,6 +94,8 @@ import {
 } from "@/components/checks/form/sections/dependencies";
 import type { DependencyDraft } from "@/lib/dependency-diff";
 import { checkTypeRegistry, authFieldsRegistry, advancedFieldsRegistry } from "@/components/checks/form/types";
+import { isFieldTouched, touchIdentifiers } from "@/hooks/touched-fields";
+import { portForTypeSwitch, withDefaultPort } from "@/components/checks/form/types/ports";
 import { CheckFormFieldsProvider } from "@/components/checks/form/types/context";
 import { TunnelSelect } from "@/components/checks/form/tunnel-select";
 import {
@@ -765,9 +767,14 @@ export function CheckForm({
   // The active check type's config state — one object seeded via the type
   // module's `fromConfig` (spec §3), replacing the ~96 flat per-type useState
   // hooks. Re-seeded on type change so shared fields (host, url, …) carry over.
-  const [configState, setConfigState] = useState<unknown>(() =>
-    checkTypeRegistry[initialType].fromConfig(initialData?.config ?? {}),
-  );
+  // A NEW check starts with the type's real default port (443, 22, …); a stored
+  // check's port is never overwritten.
+  const [configState, setConfigState] = useState<unknown>(() => {
+    const seeded = checkTypeRegistry[initialType].fromConfig(
+      initialData?.config ?? {},
+    );
+    return mode === "create" ? withDefaultPort(initialType, seeded) : seeded;
+  });
 
   // Source of the unmodeled-key passthrough (spec 2026-09-11-01): the config
   // this form was seeded from, so keys no type module models — an HTTP check's
@@ -855,6 +862,16 @@ export function CheckForm({
   // Bumped on every submit attempt; collapsible sections that own a live
   // validation error read it via expandSignal to force-expand + scroll.
   const [submitAttempts, setSubmitAttempts] = useState(0);
+  // Identifiers (id / name / data-testid) of the form controls the user focused
+  // or edited, for the touched-or-submitted error gating.
+  const [touchedFields, setTouchedFields] = useState<readonly string[]>([]);
+  const markTouched = (e: React.SyntheticEvent) => {
+    const ids = touchIdentifiers(e.target);
+    if (ids.length === 0) return;
+    setTouchedFields((prev) =>
+      ids.every((id) => prev.includes(id)) ? prev : [...prev, ...ids],
+    );
+  };
 
   // Check type combobox state
   const [typeSearchOpen, setTypeSearchOpen] = useState(false);
@@ -1094,7 +1111,7 @@ export function CheckForm({
     passthroughSource,
   ]);
 
-  const { errors: fieldErrors, warnings: fieldWarnings } = useCheckValidationResult(
+  const { errors: serverFieldErrors, warnings: fieldWarnings } = useCheckValidationResult(
     org,
     {
       type,
@@ -1117,6 +1134,23 @@ export function CheckForm({
     300,
   );
 
+  // A field's error shows only once that field was touched (edited or blurred)
+  // or a submit was attempted, so an untouched required field is not red on open.
+  const fieldErrors = useMemo(
+    () =>
+      submitAttempts > 0
+        ? serverFieldErrors
+        : serverFieldErrors.filter(
+            (fe) =>
+              isFieldTouched(touchedFields, fe.name) ||
+              // A region change can be rejected on the tunnel field (the SSH
+              // tunnel must cover every region), so editing a region reveals it.
+              (fe.name === "tunnelCheckUid" &&
+                touchedFields.includes("regionsedited")),
+          ),
+    [serverFieldErrors, touchedFields, submitAttempts],
+  );
+
   // Server-side slug findings, split by code: a collision is a distinct
   // problem from a malformed slug, and only the client already covers format.
   const slugTakenError = findFinding(fieldErrors, VALIDATION_CODES.slugTaken);
@@ -1129,6 +1163,11 @@ export function CheckForm({
   );
 
   const toggleRegion = (slug: string) => {
+    // The checkbox has no id/name, so the form-level blur/input handler cannot
+    // see it: record the touch here (see the tunnelCheckUid gating above).
+    setTouchedFields((prev) =>
+      prev.includes("regionsedited") ? prev : [...prev, "regionsedited"],
+    );
     setSelectedRegions((prev) =>
       prev.includes(slug) ? prev.filter((r) => r !== slug) : [...prev, slug]
     );
@@ -1518,7 +1557,12 @@ export function CheckForm({
           </Alert>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form
+          onSubmit={handleSubmit}
+          onBlur={markTouched}
+          onInput={markTouched}
+          className="space-y-4"
+        >
           {error && (
             <Alert variant="destructive">
               <AlertDescription>{error}</AlertDescription>
@@ -1591,9 +1635,16 @@ export function CheckForm({
                                   // Re-seed the active module's state, carrying
                                   // over shared fields (host, url, …) from the
                                   // previously-serialized config.
-                                  const nextConfigState = checkTypeRegistry[
-                                    newType
-                                  ].fromConfig(currentConfig);
+                                  const nextConfigState = portForTypeSwitch(
+                                    type,
+                                    newType,
+                                    withDefaultPort(
+                                      newType,
+                                      checkTypeRegistry[newType].fromConfig(
+                                        currentConfig,
+                                      ),
+                                    ),
+                                  );
                                   setConfigState(nextConfigState);
                                   // Drop the passthrough: the keys the PREVIOUS
                                   // type did not model mean nothing to the new

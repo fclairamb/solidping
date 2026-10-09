@@ -19,7 +19,7 @@ var (
 	ErrTwilioNoRecipients = errors.New("twilio connection has no to_numbers configured")
 	// ErrTwilioNotConfigured is returned when required Twilio credentials are
 	// missing from the connection settings.
-	ErrTwilioNotConfigured = errors.New("twilio connection is not fully configured")
+	ErrTwilioNotConfigured = newConfigError("twilio connection is not fully configured", "Twilio credentials")
 )
 
 // smsAckTokenTTL bounds how long the ack link embedded in an SMS stays valid.
@@ -111,6 +111,11 @@ func (s *TwilioSender) buildBody(
 	var msg string
 	switch payload.EventType {
 	case eventTypeIncidentResolved:
+		if ResolvedByCheckDeletion(payload.Incident) {
+			return fmt.Sprintf("[%s] %s: %s was deleted, incident closed.", productName, org, checkName) +
+				twilio.OptOutFooter
+		}
+
 		return fmt.Sprintf("[%s] %s: %s RECOVERED.", productName, org, checkName) + twilio.OptOutFooter
 	case eventTypeIncidentEscalated:
 		msg = fmt.Sprintf("[%s] %s: %s STILL DOWN (escalated).", productName, org, checkName)

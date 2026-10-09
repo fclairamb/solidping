@@ -182,6 +182,9 @@ func NewHandler(
 	// update_check can turn degraded detection off; its open degraded incident
 	// closes in the same call, exactly as over the HTTP API (spec 2026-09-24-08).
 	handler.checksSvc.SetDegradedIncidentResolver(incidentsSvc)
+	// delete_check tells whoever was paged that the check's incident closed,
+	// exactly as over the HTTP API (spec 2026-10-08-02).
+	handler.checksSvc.SetCheckDeletedIncidentNotifier(incidentsSvc)
 
 	if cfg != nil {
 		handler.baseURL = cfg.Server.BaseURL

@@ -1,6 +1,8 @@
 package config
 
 import (
+	"bytes"
+	"log/slog"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -94,4 +96,20 @@ func TestDiscordBotConfiguredImpliesLoginConfigured(t *testing.T) {
 
 	cfg.ClientSecret = ""
 	r.False(cfg.BotConfigured(), "the bot must need everything login needs")
+}
+
+func TestWarnIgnoredDiscordRedirectEnv(t *testing.T) {
+	var buf bytes.Buffer
+
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	t.Setenv(EnvDiscordRedirectURL, "")
+	warnIgnoredDiscordRedirectEnv()
+	require.Empty(t, buf.String())
+
+	t.Setenv(EnvDiscordRedirectURL, "https://x.acme.com/cb")
+	warnIgnoredDiscordRedirectEnv()
+	require.Contains(t, buf.String(), "SP_DISCORD_REDIRECT_URL is ignored")
 }

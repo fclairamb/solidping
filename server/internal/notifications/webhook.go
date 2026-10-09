@@ -48,7 +48,7 @@ const (
 
 var (
 	// ErrWebhookURLNotConfigured is returned when the webhook URL is not configured.
-	ErrWebhookURLNotConfigured = errors.New("webhook url not configured")
+	ErrWebhookURLNotConfigured = newConfigError("webhook url not configured", "URL")
 	// ErrWebhookRequestFailed is returned when the webhook request returns a non-2xx status code.
 	ErrWebhookRequestFailed = errors.New("webhook request failed")
 	// ErrInvalidSigningSecret is returned when a signing secret is malformed.
@@ -88,6 +88,9 @@ type WebhookIncident struct {
 	FailureCount          int        `json:"failureCount"`
 	RelapseCount          int        `json:"relapseCount"`
 	RecoveryPeriodSeconds *int       `json:"recoveryPeriodSeconds"`
+	// ResolutionType says how a resolved incident closed (auto | manual |
+	// expired | escalated | disabled | check_deleted). Omitted while active.
+	ResolutionType *string `json:"resolutionType,omitempty"`
 }
 
 // WebhookCheck is the check projection inside a webhook payload.
@@ -429,6 +432,7 @@ func (s *WebhookSender) buildPayload(payload *Payload) WebhookPayload {
 		Title:          payload.Incident.Title,
 		FailureCount:   payload.Incident.FailureCount,
 		RelapseCount:   payload.Incident.RelapseCount,
+		ResolutionType: payload.Incident.ResolutionType,
 	}
 
 	if payload.Incident.ResolvedAt != nil {

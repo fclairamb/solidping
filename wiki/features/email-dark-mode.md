@@ -112,6 +112,8 @@ shipped CSS made unconditional — never a second palette that can drift.
 
 ## The Gmail decision — open, human-gated
 
+*Data point, 2026-10-08 (issue #492):* the owner reported `membership_request_new` in the Gmail Android app in dark mode, at phone width. With the pin kept, the card stays white (as designed) but Gmail auto-linked the requester email and the fallback URL and painted them in its dark-theme blue (about `#8ab4f8`), near-unreadable on white. Mitigation shipped without flipping the pin: every such value is an `<a>` with an inline `color:#1e64ef` (`link` / `mailto` template funcs), values that must stay plain go through `nolink` (zero-width joiner after `@`, `://`, `.`), the fallback block is plain wrapping text, the card is full-bleed under 480px, and light surfaces are flat (no shadows or light gradients). The pin is unchanged. The device matrix rows still need a human with a phone.
+
 **Not decided here. Do not flip it as a drive-by.**
 
 ### What the flip is

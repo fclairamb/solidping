@@ -1565,6 +1565,16 @@ func (s *Service) resolveIncident(
 func (s *Service) createOrReopenIncident(
 	ctx context.Context, check *models.Check, result *models.Result,
 ) error {
+	// A result that was in flight when its check was deleted must not open
+	// (or reopen) an incident on it: DeleteCheck has just resolved the check's
+	// incidents, and nothing would ever close a new one (spec 2026-10-08-02).
+	// Asked here, on the rare open/reopen, never on the per-result hot path.
+	if s.checkWasDeleted(ctx, check) {
+		slog.InfoContext(ctx, "Skipping incident open: check was deleted", "checkUID", check.UID)
+
+		return nil
+	}
+
 	reopened, err := s.tryReopenIncident(ctx, check, result)
 	if err != nil {
 		return err
@@ -1574,6 +1584,23 @@ func (s *Service) createOrReopenIncident(
 	}
 
 	return s.createIncident(ctx, check, result)
+}
+
+// checkWasDeleted reports whether the check row is soft-deleted now. A lookup
+// error or a missing row answers false: only an explicit deleted_at stops the
+// incident pipeline, never a transient read failure.
+func (s *Service) checkWasDeleted(ctx context.Context, check *models.Check) bool {
+	live, err := s.db.GetCheckIncludingDeleted(ctx, check.OrganizationUID, check.UID)
+	if err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			slog.WarnContext(ctx, "Failed to check whether the check was deleted",
+				"checkUID", check.UID, "error", err)
+		}
+
+		return false
+	}
+
+	return live.DeletedAt != nil
 }
 
 const defaultCooldownMultiplier = 5

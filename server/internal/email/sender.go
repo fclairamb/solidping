@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/textproto"
 	"strings"
 
 	"github.com/wneessen/go-mail"
@@ -26,7 +27,14 @@ var ErrNoRecipients = errors.New("no recipients specified")
 type SMTPSender struct {
 	config *config.EmailConfig
 	logger *slog.Logger
+	// provider, when set, returns the effective email config at send time, so
+	// a saved setting applies without a restart and the test mail and real
+	// alerts can never disagree.
+	provider ConfigProvider
 }
+
+// ConfigProvider returns the effective email configuration (env over DB).
+type ConfigProvider func(ctx context.Context) (*config.EmailConfig, error)
 
 // NewSender creates a new SMTP sender.
 func NewSender(cfg *config.EmailConfig, logger *slog.Logger) *SMTPSender {
@@ -34,6 +42,12 @@ func NewSender(cfg *config.EmailConfig, logger *slog.Logger) *SMTPSender {
 		config: cfg,
 		logger: logger,
 	}
+}
+
+// NewDynamicSender creates an SMTP sender that resolves its configuration
+// through provider on every send. fallback is used when provider fails.
+func NewDynamicSender(fallback *config.EmailConfig, provider ConfigProvider, logger *slog.Logger) *SMTPSender {
+	return &SMTPSender{config: fallback, logger: logger, provider: provider}
 }
 
 // SendResult contains the result of sending an email.
@@ -55,6 +69,17 @@ type SendResult struct {
 
 // Send delivers an email. Returns nil immediately if email is disabled (no-op).
 func (s *SMTPSender) Send(ctx context.Context, msg *Message) (*SendResult, error) {
+	if s.provider != nil {
+		fresh, err := s.provider(ctx)
+		if err != nil {
+			s.logger.WarnContext(ctx, "loading effective email config failed, using startup config", "error", err)
+		} else if fresh != nil {
+			static := &SMTPSender{config: fresh, logger: s.logger}
+
+			return static.Send(ctx, msg)
+		}
+	}
+
 	if !s.config.Enabled {
 		s.logger.DebugContext(ctx, "email sending disabled, skipping", "subject", msg.Subject)
 
@@ -267,7 +292,7 @@ func (s *SMTPSender) sendMessage(ctx context.Context, mailMsg *mail.Msg, msg *Me
 			"error", err,
 		)
 
-		return nil, fmt.Errorf("sending email: %w", err)
+		return nil, fmt.Errorf("sending email: %w", describeSendError(err))
 	}
 
 	messageID := strings.Trim(mailMsg.GetMessageID(), "<>")
@@ -287,3 +312,23 @@ func (s *SMTPSender) sendMessage(ctx context.Context, mailMsg *mail.Msg, msg *Me
 		ServerResponse: serverResponse,
 	}, nil
 }
+
+// errSMTPAuthRejected marks an SMTP 535 authentication failure.
+var errSMTPAuthRejected = errors.New("the SMTP server rejected the username or password (535)")
+
+// describeSendError turns an SMTP 535 reply into a plain message and keeps
+// the raw server text after it. Other errors pass through unchanged.
+func describeSendError(err error) error {
+	var tpErr *textproto.Error
+	if errors.As(err, &tpErr) && tpErr.Code == smtpAuthFailedCode {
+		return fmt.Errorf("%w: %w", errSMTPAuthRejected, err)
+	}
+
+	if strings.Contains(err.Error(), "535") {
+		return fmt.Errorf("%w: %w", errSMTPAuthRejected, err)
+	}
+
+	return err
+}
+
+const smtpAuthFailedCode = 535

@@ -15,5 +15,11 @@
   "tool_arrow": "Flèche",
   "tool_text": "Texte",
   "undo": "Annuler",
-  "screenshot_alt": "Capture d'écran"
+  "screenshot_alt": "Capture d'écran",
+  "tool_pen": "Crayon",
+  "tool_highlight": "Surligneur",
+  "tool_blur": "Flouter",
+  "redo": "Rétablir",
+  "text_placeholder": "Saisir le texte, Entrée pour ajouter",
+  "color": "Couleur {{color}}"
 }

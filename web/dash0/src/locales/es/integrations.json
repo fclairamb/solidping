@@ -166,6 +166,8 @@
     "slackWebhookAlternative": "¿No puedes instalar la app de Slack? Usa \"Slack (webhook)\": pega una URL de webhook entrante, sin necesitar un administrador del espacio de trabajo.",
     "slackNotConnectedTitle": "Espacio de trabajo de Slack no conectado",
     "testDelivered": "Entregado",
+    "testMissingSetting": "A esta integración le falta: {{setting}}",
+    "testMisconfigured": "A esta integración le falta un ajuste obligatorio",
     "testHelp": "Envía una alerta de muestra para confirmar que esta integración está configurada. La prueba usa la configuración guardada.",
     "testTitle": "Enviar una notificación de prueba",
     "webpushNoSubscriptions": "Aún no hay dispositivos suscritos. Haz clic en el botón de abajo para añadir este navegador.",

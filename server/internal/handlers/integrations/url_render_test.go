@@ -112,11 +112,17 @@ func TestGetIntegration_WebhookURLFieldRendered(t *testing.T) {
 				r := require.New(t)
 				svc, org, ctx := newURLTestSvc(t, enc)
 
+				hookURL := "https://" + connType + ".example/hook"
+				if connType == "discord" {
+					// Discord only accepts a Discord webhook URL.
+					hookURL = "https://discord.com/api/webhooks/1/acme"
+				}
+
 				created, err := svc.CreateIntegration(ctx, org.Slug, integrations.CreateIntegrationRequest{
 					Type: connType,
 					Name: connType,
 					Settings: map[string]any{
-						"webhook_url": "https://" + connType + ".example/hook",
+						"webhook_url": hookURL,
 					},
 				})
 				r.NoError(err)
@@ -124,7 +130,7 @@ func TestGetIntegration_WebhookURLFieldRendered(t *testing.T) {
 				got, err := svc.GetIntegration(ctx, org.Slug, created.UID)
 				r.NoError(err)
 
-				r.Equal("https://"+connType+".example/hook", got.Settings["webhook_url"],
+				r.Equal(hookURL, got.Settings["webhook_url"],
 					"%s webhook_url must render on the edit form", connType)
 				// webhook_url is no longer a secret → never a private key.
 				r.NotContains(got.SettingsPrivateKeys, "webhook_url")

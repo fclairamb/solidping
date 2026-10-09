@@ -175,6 +175,7 @@
     "checkMoved": "Prüfung erfolgreich verschoben"
   },
   "form": {
+    "portOutOfRange": "Der Port muss zwischen 1 und 65535 liegen",
     "editCheck": "Prüfung bearbeiten",
     "newCheck": "Neue Prüfung",
     "checkType": "Prüfungstyp",

@@ -187,6 +187,7 @@
     "escalated": "Escalated",
     "reopenedRelapse": "Reopened (relapse #{{count}})",
     "resolved": "Resolved",
+    "resolvedCheckDeleted": "Closed because the check was deleted",
     "monitoringInterrupted": "Monitoring interrupted",
     "monitoringInterruptedSince": "Monitoring interrupted since {{time}}",
     "monitoringResumed": "Monitoring resumed",

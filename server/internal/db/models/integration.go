@@ -280,10 +280,10 @@ func SlackSettingsFromJSONMap(m JSONMap) (*SlackSettings, error) {
 // JSONB. It covers BOTH Discord modes, and which one a connection is in is a
 // function of the data, never of a separate connection type:
 //
-//   - Legacy webhook mode: only WebhookURL is set. This is what every Discord
-//     integration created before the bot existed looks like, and it keeps
-//     working untouched — the sender picks the webhook path whenever the bot
-//     fields are absent, with no migration and no re-install.
+//   - Webhook mode: only WebhookURL is set. It needs no Discord application,
+//     so it is the transport for every instance without the bot (most
+//     self-hosted ones), and every integration created before the bot. The
+//     sender posts to the webhook whenever no bot destination resolves.
 //   - Bot mode: GuildID + ChannelID are set (written by the bot install flow).
 //     Threads, message edits, the Acknowledge button, mentions and inbound
 //     comments are only available here.
@@ -294,8 +294,10 @@ func SlackSettingsFromJSONMap(m JSONMap) (*SlackSettings, error) {
 //
 //nolint:tagliatelle // JSON tags must match Discord webhook field names
 type DiscordSettings struct {
-	// WebhookURL is the legacy, one-way mode. Kept first and unchanged so a
-	// pre-bot row decodes exactly as it always did.
+	// WebhookURL is the one-way webhook mode: a Discord channel webhook
+	// (https://discord.com/api/webhooks/<id>/<token>). Used when no bot
+	// destination resolves. Kept first and unchanged so a pre-bot row decodes
+	// exactly as it always did.
 	WebhookURL string `json:"webhook_url,omitempty"`
 
 	// GuildID / GuildName identify the Discord server the bot was installed
@@ -353,8 +355,9 @@ const (
 )
 
 // UsesBot reports whether this connection is in bot mode. A guild and a target
-// channel are both required: a guild with no channel has nowhere to post, and
-// the sender must fall back to the webhook rather than silently doing nothing.
+// channel are both required: a guild with no channel has nowhere to post. When
+// it is false the sender delivers through WebhookURL if one is set, and
+// otherwise fails with a "no destination" configuration error.
 func (ds *DiscordSettings) UsesBot() bool {
 	return ds != nil && ds.GuildID != "" && ds.ChannelID != ""
 }

@@ -23,7 +23,7 @@ const slackWebhookTimeout = 30 * time.Second
 
 var (
 	// ErrSlackWebhookURLNotConfigured is returned when the Slack webhook URL is missing.
-	ErrSlackWebhookURLNotConfigured = errors.New("slack webhook URL not configured")
+	ErrSlackWebhookURLNotConfigured = newConfigError("slack webhook URL not configured", "webhook URL")
 	// errSlackWebhookFailed is returned when the Slack webhook request fails.
 	errSlackWebhookFailed = errors.New("slack webhook failed")
 )

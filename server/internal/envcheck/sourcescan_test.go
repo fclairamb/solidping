@@ -56,6 +56,9 @@ var sourceScanExceptions = map[string]string{
 	// exclusively from internal/testsupport, which is imported only from
 	// _test.go files (see its package doc). Never read by the running server.
 	"SP_TEST_REQUIRE_POSTGRES": "internal/testsupport/postgres.go — test harness only",
+	// Removed setting: config.go only checks it to log a deprecation warning.
+	// It must stay unrecognized so envcheck also flags it as unknown.
+	"SP_DISCORD_REDIRECT_URL": "internal/config/discord_oauth.go — removed, deprecation warning only",
 }
 
 // spLiteral is one SP_*-shaped string literal found in the source tree.

@@ -3,6 +3,8 @@
 // Only the sidebar entry (nav:designReference) is translated.
 
 import { useMemo, useState } from "react";
+import { Chip } from "@/components/ui/chip";
+import { PortInput, PortChips } from "@/components/checks/form/port-input";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import type { AIGenerationFailed } from "@/api/hooks";
 import { AIGenerationFailure, AIGenerationProgress } from "@/components/checks/ai-generation-progress";
@@ -1636,6 +1638,16 @@ function Swatch({
   );
 }
 
+function PortReferenceExample() {
+  const [port, setPort] = useState("443");
+  return (
+    <div className="space-y-2">
+      <PortInput value={port} onChange={setPort} placeholder="443" />
+      <PortChips type="tcp" value={port} onSelect={setPort} />
+    </div>
+  );
+}
+
 function ButtonsBadgesSection() {
   const { org } = Route.useParams();
   return (
@@ -1658,6 +1670,20 @@ function ButtonsBadgesSection() {
             </>
           }
           importLine={`import { Button } from "@/components/ui/button";`}
+        />
+        <h3 className="text-sm font-medium">Chips and port input</h3>
+        <ExampleRow
+          preview={
+            <>
+              <Chip>22 SSH</Chip>
+              <Chip selected>443 HTTPS</Chip>
+            </>
+          }
+          importLine={`import { Chip } from "@/components/ui/chip";\n// One-click suggested values under a field. Not a toggle group.\n<Chip selected={value === "443"} onClick={() => set("443")}>443 HTTPS</Chip>`}
+        />
+        <ExampleRow
+          preview={<PortReferenceExample />}
+          importLine={`import { PortInput, PortChips } from "@/components/checks/form/port-input";\n// Text input (no spinner), digits only, 1-65535; chips for common ports.\n<PortInput value={port} onChange={setPort} placeholder="443" />\n<PortChips type="tcp" value={port} onSelect={setPort} />`}
         />
         <ExampleRow
           preview={<Button variant="brand">Sign in</Button>}

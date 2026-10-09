@@ -3,10 +3,10 @@
 {{template "base.html" .}}
 {{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "reopened" "Label" "Reopened"}}{{end}}
 {{define "content"}}
-    <h1>{{if .CheckURL}}<a href="{{.CheckURL}}">{{.CheckName}}</a>{{else}}{{.CheckName}}{{end}} incident reopened (relapse #{{.RelapseCount}})</h1>
-    <p>The incident for <strong>{{if .CheckURL}}<a href="{{.CheckURL}}">{{.CheckName}}</a>{{else}}{{.CheckName}}{{end}}</strong> has been reopened after a brief recovery.</p>
+    <h1>{{if .CheckURL}}<a href="{{.CheckURL}}">{{nolink .CheckName}}</a>{{else}}{{nolink .CheckName}}{{end}} incident reopened (relapse #{{.RelapseCount}})</h1>
+    <p>The incident for <strong>{{if .CheckURL}}<a href="{{.CheckURL}}">{{nolink .CheckName}}</a>{{else}}{{nolink .CheckName}}{{end}}</strong> has been reopened after a brief recovery.</p>
     <table class="details-table" role="presentation" cellpadding="0" cellspacing="0">
-        <tr><td class="label">Check</td><td class="value">{{if .CheckURL}}<a href="{{.CheckURL}}">{{.CheckName}}</a>{{else}}{{.CheckName}}{{end}}</td></tr>
+        <tr><td class="label">Check</td><td class="value">{{if .CheckURL}}<a href="{{.CheckURL}}">{{nolink .CheckName}}</a>{{else}}{{nolink .CheckName}}{{end}}</td></tr>
         <tr><td class="label">Type</td><td class="value">{{.CheckType}}</td></tr>
         <tr><td class="label">Started at</td><td class="value">{{.StartedAt}}</td></tr>
         <tr><td class="label">Relapse count</td><td class="value">{{.RelapseCount}}</td></tr>

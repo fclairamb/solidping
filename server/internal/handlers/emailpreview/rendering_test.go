@@ -441,3 +441,91 @@ func TestPalette_EveryLightGradientKeepsASolidFallback(t *testing.T) {
 			"a gradient has no solid fallback — it renders as nothing in Outlook: %s", strings.TrimSpace(line))
 	}
 }
+
+// ownedLinkRE matches an anchor carrying the author's inline link color.
+var ownedLinkRE = regexp.MustCompile(`(?s)<a [^>]*style="[^"]*color:\s*#1e64ef[^"]*"[^>]*>.*?</a>`)
+
+// TestPreview_ValuesGmailWouldAutoLinkAreOwnedLinks guards the Gmail Android
+// dark-mode report: Gmail auto-links bare emails and URLs and paints them with
+// its dark-theme blue on our white card. Every such value must sit inside an
+// <a> with an inline #1e64ef color, never as bare text.
+func TestPreview_ValuesGmailWouldAutoLinkAreOwnedLinks(t *testing.T) {
+	t.Parallel()
+
+	router := newTestRouter(t)
+	urlRE := regexp.MustCompile(`https?://[^\s<>"']+`)
+	emailRE := regexp.MustCompile(`[\w.+-]+@[\w-]+\.[\w.-]+`)
+
+	for _, tmpl := range []string{"membership_request_new", "invitation", "password-reset", "welcome"} {
+		t.Run(tmpl, func(t *testing.T) {
+			t.Parallel()
+
+			rec := doGet(t, router, "/api/mgmt/email-preview/"+tmpl+".html")
+			require.Equal(t, http.StatusOK, rec.Code)
+
+			body := rec.Body.String()
+			// Drop the head (stylesheet) and every owned link, then nothing
+			// auto-linkable may remain in the visible markup outside attributes.
+			if idx := strings.Index(body, "<body"); idx >= 0 {
+				body = body[idx:]
+			}
+			require.Regexp(t, ownedLinkRE, body, "%s has no owned link", tmpl)
+			stripped := ownedLinkRE.ReplaceAllString(body, "")
+			stripped = tagRE.ReplaceAllString(stripped, " ")
+
+			require.Empty(t, urlRE.FindString(stripped), "%s has a bare URL", tmpl)
+			require.Empty(t, emailRE.FindString(stripped), "%s has a bare email", tmpl)
+		})
+	}
+
+	rec := doGet(t, router, "/api/mgmt/email-preview/membership_request_new.html")
+	require.Contains(t, rec.Body.String(), `href="mailto:`)
+}
+
+// TestPreview_FallbackIsPlainWrappableText: the fallback URL line must not use
+// break-all (splits URLs mid-word on a phone) nor a monospace face.
+func TestPreview_FallbackIsPlainWrappableText(t *testing.T) {
+	t.Parallel()
+
+	rule := ruleRE(".fallback").FindStringSubmatch(readBaseHTML(t))
+	require.NotNil(t, rule)
+	require.NotContains(t, rule[1], "break-all")
+	require.NotContains(t, rule[1], "monospace")
+	require.NotContains(t, rule[1], "border")
+	require.Contains(t, rule[1], "overflow-wrap: anywhere")
+}
+
+// TestPreview_PhoneWidthIsFullBleed: under 480px the card loses its wrapper
+// padding, border, radius and shadow.
+func TestPreview_PhoneWidthIsFullBleed(t *testing.T) {
+	t.Parallel()
+
+	src := readBaseHTML(t)
+	idx := strings.Index(src, "@media (max-width: 480px)")
+	require.GreaterOrEqual(t, idx, 0)
+	block := src[idx:]
+
+	wrapper := ruleRE(".wrapper").FindStringSubmatch(block)
+	require.NotNil(t, wrapper)
+	require.Contains(t, wrapper[1], "padding: 0")
+
+	container := ruleRE(".container").FindStringSubmatch(block)
+	require.NotNil(t, container)
+	for _, want := range []string{"border: 0", "border-radius: 0", "box-shadow: none"} {
+		require.Contains(t, container[1], want)
+	}
+}
+
+// TestPreview_LightSurfacesAreFlat: no shadow on the light design's container
+// and cards, and the container radius is 8px.
+func TestPreview_LightSurfacesAreFlat(t *testing.T) {
+	t.Parallel()
+
+	src := readBaseHTML(t)
+	if idx := strings.Index(src, "@media (prefers-color-scheme: dark)"); idx >= 0 {
+		src = src[:idx]
+	}
+
+	require.NotContains(t, src, "box-shadow")
+	require.Contains(t, ruleRE(".container").FindStringSubmatch(src)[1], "border-radius: 8px")
+}

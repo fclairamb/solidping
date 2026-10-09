@@ -59,7 +59,7 @@ const (
 var (
 	// ErrPagerdutyRoutingKeyNotConfigured is returned when the PagerDuty
 	// Events API v2 routing (integration) key is missing.
-	ErrPagerdutyRoutingKeyNotConfigured = errors.New("pagerduty routing key not configured")
+	ErrPagerdutyRoutingKeyNotConfigured = newConfigError("pagerduty routing key not configured", "integration key")
 	// ErrPagerdutyServerError flags a 429/5xx response from the Events API,
 	// always wrapped as retryable.
 	ErrPagerdutyServerError = errors.New("pagerduty server error")

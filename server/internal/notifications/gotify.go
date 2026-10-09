@@ -29,9 +29,9 @@ const gotifyResolvedPriority = 2
 
 var (
 	// ErrGotifyServerURLNotConfigured is returned when the Gotify server URL is missing.
-	ErrGotifyServerURLNotConfigured = errors.New("gotify server url not configured")
+	ErrGotifyServerURLNotConfigured = newConfigError("gotify server url not configured", "server URL")
 	// ErrGotifyAppTokenNotConfigured is returned when the Gotify application token is missing.
-	ErrGotifyAppTokenNotConfigured = errors.New("gotify app token not configured")
+	ErrGotifyAppTokenNotConfigured = newConfigError("gotify app token not configured", "app token")
 	// errGotifyRequestFailed is returned when the Gotify request fails.
 	errGotifyRequestFailed = errors.New("gotify request failed")
 )
@@ -155,7 +155,7 @@ func (s *GotifySender) buildMessage(settings *gotifySettings, payload *Payload) 
 		title = "[DOWN] " + checkName
 		body = s.buildDownBody(payload, checkName)
 	case eventTypeIncidentResolved:
-		title = "[RECOVERED] " + checkName
+		title = resolvedTag(payload.Incident) + checkName
 		body = s.buildResolvedBody(payload, checkName)
 	case eventTypeIncidentEscalated:
 		title = "[ESCALATED] " + checkName
@@ -217,6 +217,10 @@ func (s *GotifySender) buildDownBody(payload *Payload, checkName string) string 
 
 func (s *GotifySender) buildResolvedBody(payload *Payload, checkName string) string {
 	var builder strings.Builder
+
+	if ResolvedByCheckDeletion(payload.Incident) {
+		builder.WriteString(checkDeletedSentence + "\n")
+	}
 
 	fmt.Fprintf(&builder, "Check: %s (%s)\n", checkName, payload.Check.Type)
 

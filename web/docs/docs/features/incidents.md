@@ -93,6 +93,12 @@ Incidents can be managed directly from the dashboard or API:
 
 Auto-resolution (the check recovering on its own) records a `auto` resolution instead.
 
+Deleting a check resolves its open incidents with a `check_deleted` resolution,
+whatever the path (dashboard, API, MCP, chat-ops, deleting the whole
+organization). Their pending escalation steps stop. A single-check delete sends
+one resolved notification per incident, worded "check deleted" rather than
+"recovered". Deleting an organization sends none.
+
 Acknowledging is not dashboard-only: Slack and Telegram alerts both carry an
 **Acknowledge** button, and Telegram additionally accepts `/ack #42`. Every path
 goes through the same service call, so all of them are idempotent and all of

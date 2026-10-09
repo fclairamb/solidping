@@ -393,7 +393,11 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	svcList.CheckJobs = checkJobService
 
 	// Create email services
-	emailSender := email.NewSender(&cfg.Email, slog.Default())
+	// The sender resolves the effective email config (env over DB) on every
+	// send, so a saved SMTP setting applies without a restart.
+	emailSender := email.NewDynamicSender(&cfg.Email, func(ctx context.Context) (*config.EmailConfig, error) {
+		return systemconfig.EffectiveEmailConfig(ctx, dbService, &cfg.Email)
+	}, slog.Default())
 	svcList.EmailSender = emailSender
 
 	// The base URL is what makes the logo <img> in base.html absolute — the
@@ -483,6 +487,10 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	checksSvc := checks.NewService(
 		dbService, svcList.EventNotifier, credSvc, entitlementsService)
 	checksSvc.SetDeploymentMode(cfg.Deployment.Mode)
+	// The demo cleanup and private-location monitor deletes notify like a
+	// user's DELETE does (spec 2026-10-08-02).
+	checksSvc.SetCheckDeletedIncidentNotifier(
+		incidents.NewService(dbService, jobService, svcList.Clock, svcList.Realtime))
 	svcList.Checks = checksSvc
 	svcList.PrivateLocationMonitors = checksSvc
 	aiChecksSvc := buildAIChecks(cfg, dbService, checksSvc, entitlementsService, credSvc, svcList)
@@ -1726,6 +1734,9 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// System parameters routes (super admin only)
 	systemService := system.NewService(s.dbService)
 	systemService.SetEmailFormatter(s.services.EmailFormatter)
+	systemService.SetEmailConfigProvider(func(ctx context.Context) (*config.EmailConfig, error) {
+		return systemconfig.EffectiveEmailConfig(ctx, s.dbService, &s.config.Email)
+	})
 
 	// JMAP inbox manager: long-running supervisor that connects to the
 	// configured JMAP server and dispatches incoming emails to handlers.
@@ -1778,6 +1789,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	systemActions.POST("/email-inbox/test", systemHandler.EmailInboxTest)
 	systemActions.POST("/email-inbox/sync", systemHandler.EmailInboxSync)
 	systemActions.GET("/activation", systemHandler.ListActivationFunnel)
+	systemActions.GET("/discord-setup", systemHandler.DiscordSetup)
 	systemActions.GET("/scheduling/lane-load", systemHandler.LaneLoad)
 	// Global user directory (spec 2026-09-19-04): search/page every user
 	// account across every org, read-only. The only prior consumer of
@@ -1963,6 +1975,9 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// incident in the same request (spec 2026-09-24-08): the evaluator only
 	// sweeps checks with it on, so nothing else ever would.
 	checksService.SetDegradedIncidentResolver(incidentsService)
+	// Deleting a check resolves its open incidents (the DB layer does that);
+	// this tells whoever was paged, once, that it closed (spec 2026-10-08-02).
+	checksService.SetCheckDeletedIncidentNotifier(incidentsService)
 	// The MCP surface builds its OWN statuspages.Service (mcp.NewHandler runs
 	// far earlier in this function), and every NewService starts with its own
 	// view memo. Point it at this one's, or an MCP-driven page edit evicts a map
@@ -4306,7 +4321,11 @@ func (s *Server) MaybeAutoMigrateEncryption(ctx context.Context) error {
 	if s.services == nil || s.services.Credentials == nil || !s.services.Credentials.Enabled() {
 		s.warnIfEncryptedRowsExist(ctx)
 
-		return s.maybeSplitPlaintextSecrets(ctx)
+		if err := s.maybeSplitPlaintextSecrets(ctx); err != nil {
+			return err
+		}
+
+		return s.maybeNormalizePushoverSettings(ctx, nil)
 	}
 
 	if !s.config.Encryption.AutoMigrate {
@@ -4341,6 +4360,25 @@ func (s *Server) MaybeAutoMigrateEncryption(ctx context.Context) error {
 	if recStats.ConnectionsReconciled > 0 {
 		slog.InfoContext(ctx, "reconciled connection URL fields to public settings at startup",
 			"connectionsReconciled", recStats.ConnectionsReconciled)
+	}
+
+	return s.maybeNormalizePushoverSettings(ctx, s.services.Credentials)
+}
+
+// maybeNormalizePushoverSettings runs the one-shot Pushover key backfill
+// (spec 2026-10-08-03): legacy user/token and userKey/apiToken become
+// user_key/api_token, stored in settings_private. creds is nil when
+// encryption is disabled (plaintext envelope). Gated on AutoMigrate like the
+// other startup row rewrites. Idempotent.
+func (s *Server) maybeNormalizePushoverSettings(ctx context.Context, creds credentials.Service) error {
+	if s.dbService == nil || !s.config.Encryption.AutoMigrate {
+		return nil
+	}
+
+	if _, err := credmigrate.NormalizePushoverSettings(
+		ctx, s.dbService, creds, credmigrate.Options{Logger: slog.Default()},
+	); err != nil {
+		return fmt.Errorf("normalize pushover settings: %w", err)
 	}
 
 	return nil

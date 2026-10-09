@@ -1206,6 +1206,12 @@ function IncidentDetailPage() {
                   label={t("timeline.resolved")}
                   timestamp={incident.resolvedAt}
                   icon={getEventIcon("incident.resolved")}
+                  detail={
+                    incident.resolutionType === "check_deleted"
+                      ? t("timeline.resolvedCheckDeleted")
+                      : undefined
+                  }
+                  detailTestId="incident-timeline-resolved-reason"
                 />
               )}
             </div>

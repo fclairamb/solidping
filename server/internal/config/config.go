@@ -868,6 +868,20 @@ func (c *AIConfig) Validate() error {
 	return nil
 }
 
+// warnIgnoredDiscordRedirectEnv tells an operator that SP_DISCORD_REDIRECT_URL
+// does nothing: login and bot install each derive their own redirect URI from
+// SP_BASE_URL, so one override could only be right for one of them.
+func warnIgnoredDiscordRedirectEnv() {
+	if os.Getenv(EnvDiscordRedirectURL) == "" {
+		return
+	}
+
+	slog.Warn("SP_DISCORD_REDIRECT_URL is ignored and can be removed",
+		"effect", "both Discord redirect URIs derive from SP_BASE_URL",
+		"loginRedirectUri", DiscordLoginRedirectURI("<SP_BASE_URL>"),
+		"installRedirectUri", DiscordInstallRedirectURI("<SP_BASE_URL>"))
+}
+
 // applyAIEnv reads every SP_AI_* variable. See AIConfig.
 func applyAIEnv(cfg *AIConfig) {
 	if v := os.Getenv("SP_AI_PROVIDER"); v != "" {
@@ -1851,7 +1865,7 @@ func Load() (*Config, error) {
 	defaults := Config{
 		Server: ServerConfig{
 			Listen:             ":4000",
-			BaseURL:            "http://localhost:4000",
+			BaseURL:            DefaultBaseURL,
 			DocsHost:           "docs.solidping.io",
 			ShutdownTimeout:    30 * time.Second,
 			MaxRequestDuration: 30 * time.Second,
@@ -2219,6 +2233,7 @@ func Load() (*Config, error) {
 	applyEgressEnv(&cfg.Egress)
 	applyHeadersEnv(&cfg.Headers)
 	applyAIEnv(&cfg.AI)
+	warnIgnoredDiscordRedirectEnv()
 
 	// When in test mode and no database type is specified, default to sqlite-memory
 	if cfg.RunMode == "test" && cfg.Database.Type == "" {

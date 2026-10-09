@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/card";
 import { AlertCircle, Check, Eye, EyeOff, Loader2 } from "lucide-react";
 import { ApiError } from "@/api/client";
+import { DiscordSetupPanel } from "@/components/server/discord-setup-panel";
 import {
   useSystemParameters,
   useSetSystemParameter,
@@ -32,7 +33,6 @@ type FieldKind =
   | "appId"
   | "signingSecret"
   | "botToken"
-  | "redirectUrl"
   | "tenantId"
   | "displayName"
   | "issuerUrl"
@@ -136,7 +136,6 @@ const providers: ProviderConfig[] = [
       { key: "auth.discord.client_id", labelKey: "clientId", secret: false },
       { key: "auth.discord.client_secret", labelKey: "clientSecret", secret: true },
       { key: "auth.discord.bot_token", labelKey: "botToken", secret: true },
-      { key: "auth.discord.redirect_url", labelKey: "redirectUrl", secret: false },
     ],
   },
   {
@@ -500,6 +499,7 @@ function AuthSettingsPage() {
                   </p>
                 </div>
               )}
+              {provider.name === "Discord" && <DiscordSetupPanel />}
               {(provider.switches ?? []).length > 0 && (
                 <div className="space-y-3">
                   {provider.switches!.map((sw) => (

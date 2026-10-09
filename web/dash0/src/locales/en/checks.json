@@ -175,6 +175,7 @@
     "checkMoved": "Check moved successfully"
   },
   "form": {
+    "portOutOfRange": "Port must be between 1 and 65535",
     "editCheck": "Edit Check",
     "newCheck": "New Check",
     "checkType": "Check Type",

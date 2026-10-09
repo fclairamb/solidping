@@ -296,7 +296,20 @@ function TestNotificationSection({ org, channelUid, canTest = true }: TestNotifi
           )}
         </Tooltip>
       </div>
-      {testResult && (
+      {testResult?.code === "INTEGRATION_MISCONFIGURED" ? (
+        <Badge variant="destructive" data-testid="webhook-test-result">
+          {testResult.missingSetting
+            ? t(
+                "form.testMissingSetting",
+                "This integration is missing its {{setting}}",
+                { setting: testResult.missingSetting },
+              )
+            : t(
+                "form.testMisconfigured",
+                "This integration is missing a required setting",
+              )}
+        </Badge>
+      ) : testResult && (
         <Badge
           variant={testResult.success ? "success" : "destructive"}
           data-testid="webhook-test-result"
@@ -577,14 +590,14 @@ function PerTypePanel({ type, settings, onChange, org, channelUid, privateKeys, 
           <SecretPanel
             id="ch-pushover-user"
             label={t("form.pushoverUser", "User key")}
-            value={(settings.user as string) || ""}
-            onChange={(v) => update("user", v)}
+            value={(settings.user_key as string) || ""}
+            onChange={(v) => update("user_key", v)}
           />
           <SecretPanel
             id="ch-pushover-token"
             label={t("form.pushoverToken", "App token")}
-            value={(settings.token as string) || ""}
-            onChange={(v) => update("token", v)}
+            value={(settings.api_token as string) || ""}
+            onChange={(v) => update("api_token", v)}
           />
         </div>
       );
@@ -1350,6 +1363,7 @@ function DiscordDestinationPanel({
       label={t("form.webhookUrl", "Webhook URL")}
       value={(settings.webhook_url as string) || ""}
       onChange={(v) => onChange({ ...settings, webhook_url: v })}
+      placeholder="https://discord.com/api/webhooks/…"
     />
   );
 
@@ -1390,7 +1404,7 @@ function DiscordDestinationPanel({
             </Button>
           )}
         </div>
-        {/* Legacy webhook mode. On an instance WITH the bot, a fresh Discord
+        {/* Webhook mode. On an instance WITH the bot, a fresh Discord
             integration should be installed, not webhook-wired, so an empty
             field here is pure clutter next to the install button. It stays
             visible in the two cases where it is the real answer: the instance
@@ -2658,10 +2672,12 @@ function UrlPanel({
   label,
   value,
   onChange,
+  placeholder = "https://",
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
+  placeholder?: string;
 }) {
   return (
     <div className="space-y-2">
@@ -2671,7 +2687,7 @@ function UrlPanel({
         type="url"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        placeholder="https://"
+        placeholder={placeholder}
       />
     </div>
   );

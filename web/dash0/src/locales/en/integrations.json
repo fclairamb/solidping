@@ -110,6 +110,8 @@
     "testNeedsSave": "Save your changes first — the test uses the saved settings.",
     "sendTest": "Send test",
     "testDelivered": "Delivered",
+    "testMissingSetting": "This integration is missing its {{setting}}",
+    "testMisconfigured": "This integration is missing a required setting",
     "msteamsBotCreateHint": "Create the integration first, then install the Teams app package and run the link command shown here to connect your Microsoft 365 tenant.",
     "msteamsBotDisabledTitle": "The Teams bot is disabled on this server",
     "msteamsBotDisabledBody": "Enable it in the server settings. Microsoft must be able to reach this instance over public HTTPS — a firewalled deployment cannot use the Teams bot.",

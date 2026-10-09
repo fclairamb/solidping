@@ -187,6 +187,7 @@
     "escalated": "Escaladé",
     "reopenedRelapse": "Rouvert (rechute n°{{count}})",
     "resolved": "Résolu",
+    "resolvedCheckDeleted": "Clôturé car le contrôle a été supprimé",
     "monitoringInterrupted": "Surveillance interrompue",
     "monitoringInterruptedSince": "Surveillance interrompue depuis {{time}}",
     "monitoringResumed": "Surveillance reprise",

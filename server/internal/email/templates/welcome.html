@@ -12,7 +12,7 @@
     {{if .DashboardURL}}
     <div class="cta-wrap">{{template "button" dict "URL" .DashboardURL "Label" "Open your dashboard" "Variant" "success"}}</div>
     <p>Or paste this link into your browser:</p>
-    <p class="fallback">{{.DashboardURL}}</p>
+    <p class="fallback">{{link .DashboardURL ""}}</p>
     {{end}}
     <p class="meta">Need help getting started? Just reply to this email.</p>
 {{end}}

@@ -15,5 +15,11 @@
   "tool_arrow": "Flecha",
   "tool_text": "Texto",
   "undo": "Deshacer",
-  "screenshot_alt": "Captura de pantalla"
+  "screenshot_alt": "Captura de pantalla",
+  "tool_pen": "Lápiz",
+  "tool_highlight": "Resaltar",
+  "tool_blur": "Desenfocar",
+  "redo": "Rehacer",
+  "text_placeholder": "Escribe el texto, Intro para añadir",
+  "color": "Elegir color {{color}}"
 }

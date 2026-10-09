@@ -22,9 +22,9 @@ const pushoverAPIURL = "https://api.pushover.net/1/messages.json"
 
 var (
 	// ErrPushoverAPITokenNotConfigured is returned when the Pushover API token is missing.
-	ErrPushoverAPITokenNotConfigured = errors.New("pushover api token not configured")
+	ErrPushoverAPITokenNotConfigured = newConfigError("pushover api token not configured", "API token")
 	// ErrPushoverUserKeyNotConfigured is returned when the Pushover user key is missing.
-	ErrPushoverUserKeyNotConfigured = errors.New("pushover user key not configured")
+	ErrPushoverUserKeyNotConfigured = newConfigError("pushover user key not configured", "user key")
 	// errPushoverRequestFailed is returned when a Pushover API request fails.
 	errPushoverRequestFailed = errors.New("pushover request failed")
 	// errPushoverError is returned when Pushover returns an application-level error.
@@ -32,7 +32,20 @@ var (
 )
 
 // PushoverSender sends notifications via Pushover.
-type PushoverSender struct{}
+type PushoverSender struct {
+	// APIURL overrides the Pushover messages endpoint for tests. Empty = the
+	// real pushoverAPIURL. Mirrors PagerDutySender.EventsURL.
+	APIURL string
+}
+
+// apiURL returns APIURL when set (tests), otherwise the real endpoint.
+func (s *PushoverSender) apiURL() string {
+	if s.APIURL != "" {
+		return s.APIURL
+	}
+
+	return pushoverAPIURL
+}
 
 // Send sends a notification to Pushover.
 func (s *PushoverSender) Send(ctx context.Context, _ *jobdef.JobContext, payload *Payload) error {
@@ -68,7 +81,7 @@ func (s *PushoverSender) Send(ctx context.Context, _ *jobdef.JobContext, payload
 
 func (s *PushoverSender) doRequest(ctx context.Context, data url.Values) error {
 	req, err := http.NewRequestWithContext(
-		ctx, http.MethodPost, pushoverAPIURL, strings.NewReader(data.Encode()),
+		ctx, http.MethodPost, s.apiURL(), strings.NewReader(data.Encode()),
 	)
 	if err != nil {
 		return fmt.Errorf("creating pushover request: %w", err)
@@ -105,9 +118,27 @@ type pushoverResponse struct {
 	Errors []string `json:"errors"`
 }
 
+// Pushover setting keys. user_key / api_token are the canonical pair: the
+// dashboard form writes them and the credentials registry encrypts them
+// (crypto/credentials/conn_secrets.go). Spec 2026-10-08-03.
+const (
+	PushoverSettingUserKey  = "user_key"
+	PushoverSettingAPIToken = "api_token"
+)
+
+// PushoverLegacyUserKeys and PushoverLegacyAPITokenKeys are the names older
+// rows used for the same two settings: `user` / `token` (the dashboard form
+// before spec 2026-10-08-03) and `userKey` / `apiToken` (the sender before it).
+//
+//nolint:gochecknoglobals // constant lookup tables
+var (
+	PushoverLegacyUserKeys     = []string{"user", "userKey"}
+	PushoverLegacyAPITokenKeys = []string{"token", "apiToken"}
+)
+
 type pushoverSettings struct {
-	APIToken        string         `json:"apiToken"`
-	UserKey         string         `json:"userKey"`
+	APIToken        string         `json:"api_token"` //nolint:tagliatelle // form key and secret registry
+	UserKey         string         `json:"user_key"`  //nolint:tagliatelle // form key and secret registry
 	Device          string         `json:"device"`
 	SoundDown       string         `json:"soundDown"`
 	SoundUp         string         `json:"soundUp"`
@@ -123,6 +154,17 @@ func (s *PushoverSender) parseSettings(payload *Payload) (*pushoverSettings, err
 	var settings pushoverSettings
 	if err := json.Unmarshal(data, &settings); err != nil {
 		return nil, fmt.Errorf("parsing pushover settings: %w", err)
+	}
+
+	// TODO(2026-10-08-03): drop this fallback once every deployment has run
+	// the startup backfill (credmigrate.NormalizePushoverSettings), which
+	// rewrites legacy rows to the canonical keys.
+	if settings.APIToken == "" {
+		settings.APIToken = firstStringSetting(payload.Integration.Settings, PushoverLegacyAPITokenKeys)
+	}
+
+	if settings.UserKey == "" {
+		settings.UserKey = firstStringSetting(payload.Integration.Settings, PushoverLegacyUserKeys)
 	}
 
 	if settings.APIToken == "" {
@@ -192,7 +234,7 @@ func (s *PushoverSender) buildContent(
 		title = "[DOWN] " + checkName
 		body = s.buildDownBody(payload, checkName)
 	case eventTypeIncidentResolved:
-		title = "[RECOVERED] " + checkName
+		title = resolvedTag(payload.Incident) + checkName
 		body = s.buildResolvedBody(payload, checkName)
 	case eventTypeIncidentEscalated:
 		title = "[ESCALATED] " + checkName
@@ -231,6 +273,10 @@ func (s *PushoverSender) buildDownBody(payload *Payload, checkName string) strin
 func (s *PushoverSender) buildResolvedBody(payload *Payload, checkName string) string {
 	var builder strings.Builder
 
+	if ResolvedByCheckDeletion(payload.Incident) {
+		builder.WriteString(checkDeletedSentence + "\n")
+	}
+
 	fmt.Fprintf(&builder, "<b>Check:</b> %s (%s)\n", checkName, payload.Check.Type)
 
 	if payload.Incident.ResolvedAt != nil {
@@ -250,4 +296,15 @@ func (s *PushoverSender) buildEscalatedBody(payload *Payload, checkName string) 
 	fmt.Fprintf(&builder, "<b>Duration:</b> %s", formatDuration(time.Since(payload.Incident.StartedAt)))
 
 	return builder.String()
+}
+
+// firstStringSetting returns the first non-empty string value among keys.
+func firstStringSetting(settings map[string]any, keys []string) string {
+	for _, key := range keys {
+		if v, ok := settings[key].(string); ok && v != "" {
+			return v
+		}
+	}
+
+	return ""
 }

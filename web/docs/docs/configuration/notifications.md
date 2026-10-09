@@ -459,10 +459,17 @@ Discord comes in two flavours, and an organization may use either.
 | Thread replies → incident comments | Yes (needs the Gateway) | No |
 | Needs instance-level configuration | Yes | No |
 
-The bot is the recommended mode. The webhook mode is unchanged and still fully
-supported: an integration created before the bot existed keeps working exactly
-as it did, with no migration, and on an instance where no Discord bot is
-configured at all.
+The bot is the recommended mode when the instance has one. The webhook mode
+needs no Discord application, so it is what an instance without a Discord bot
+uses, and an integration created before the bot existed keeps working with no
+migration.
+
+Which mode an integration uses is decided at send time:
+
+- a bot destination (server and channel, or a direct message) is set: the bot;
+- otherwise a webhook URL is set: the webhook;
+- otherwise the test and every alert fail with "This Discord integration has no
+  destination. Install the bot or add a webhook URL."
 
 ### Setting up the bot (organization admins)
 
@@ -552,11 +559,43 @@ under **Server → Discord**:
 
 | Setting | Env var | Purpose |
 |---|---|---|
+| Enabled | `SP_DISCORD_ENABLED` | Master switch: nothing Discord (login routes, bot) is mounted without it |
 | Client ID | `SP_DISCORD_CLIENT_ID` | Identifies the application during install |
 | Client secret | `SP_DISCORD_CLIENT_SECRET` | Completes the install token exchange |
 | Bot token | `SP_DISCORD_BOT_TOKEN` | Authenticates every outbound call |
 | Public key | `SP_DISCORD_PUBLIC_KEY` | Verifies Discord's signed interaction requests |
 | Gateway enabled | `SP_DISCORD_GATEWAY_ENABLED` | Turns on the inbound WebSocket |
+
+#### Discord application setup
+
+Create the application at the [Discord Developer Portal](https://discord.com/developers/applications),
+then fill in these pages in the order the portal shows them. **Server → Discord**
+and **Server → Authentication** in the dashboard show the exact URLs below for
+your instance, each with a copy button. `{SP_BASE_URL}` is your instance's public
+address.
+
+1. **OAuth2 → Redirects**: add **both** URIs. Login and the bot install are two
+   different flows on the same application, and each one needs its own entry.
+   Registering only one makes the other fail with Discord's "Invalid OAuth2
+   redirect_uri".
+   - `{SP_BASE_URL}/api/v1/auth/discord/callback` (Sign in with Discord)
+   - `{SP_BASE_URL}/api/v1/integrations/discord/oauth` (Install Discord bot)
+2. **Installation**: scopes `bot`, `applications.commands` and `identify`. Bot
+   permissions: View Channels, Send Messages, Embed Links, Read Message History,
+   Manage Threads, Create Public Threads, Send Messages in Threads.
+3. **General Information → Interactions Endpoint URL**:
+   `{SP_BASE_URL}/api/v1/integrations/discord/interactions`. Save it **after**
+   `SP_DISCORD_PUBLIC_KEY` is set: Discord probes the URL on save and rejects it
+   if SolidPing cannot verify signatures yet.
+4. **Bot → Privileged Gateway Intents**: enable **Message Content Intent** if
+   you turn the Gateway on.
+
+If `SP_BASE_URL` is still `http://localhost:4000`, Discord redirects the browser
+to localhost. Set it to the address users reach SolidPing on. The dashboard
+warns about this next to the URLs.
+
+`SP_DISCORD_REDIRECT_URL` no longer exists. Both URIs derive from `SP_BASE_URL`,
+and setting the variable only logs a warning at startup.
 
 Three things are worth understanding before you turn the bot on:
 
@@ -604,6 +643,9 @@ Available as slash commands (`/solidping …`) and as bot mentions
 
 ### Setting up a webhook instead
 
+Use a webhook when this instance has no Discord bot configured (no
+`SP_DISCORD_BOT_TOKEN`), or when you only want one-way alerts in a channel.
+
 1. In your Discord server, go to Server Settings → Integrations
 2. Click "Webhooks" → "New Webhook"
 3. Name it "SolidPing" and select the channel
@@ -615,6 +657,10 @@ Webhook URL format:
 ```
 https://discord.com/api/webhooks/{webhook.id}/{webhook.token}
 ```
+
+Only Discord webhook URLs are accepted on save: `https://discord.com/api/webhooks/…`
+or `https://discordapp.com/api/webhooks/…` (and their `canary.` / `ptb.`
+variants). Anything else is rejected with a validation error.
 
 ## Google Chat
 
@@ -646,8 +692,11 @@ Mattermost notifications use incoming webhooks, similar to Slack.
 ### Configuration
 
 Add a ntfy connection in SolidPing with:
-- **Server URL**: `https://ntfy.sh` (or your self-hosted instance)
-- **Topic**: Your topic name (e.g., `solidping-alerts`)
+- **Server URL** (setting key `server_url`): `https://ntfy.sh` (or your self-hosted instance)
+- **Topic** (`topic`): Your topic name (e.g., `solidping-alerts`)
+- **Priority** (`priority`, optional): 1 to 5. Replaces the default priority of every
+  alert except recoveries, which stay at the default priority.
+- **Access token** (`auth_token`, optional, API only): sent as a bearer token, stored encrypted.
 
 ### Example
 
@@ -797,8 +846,21 @@ Pushover delivers real-time notifications to your mobile devices and desktop.
 ### Configuration
 
 Add a Pushover connection in SolidPing with:
-- **User Key**: Your Pushover user key
-- **API Token**: Your Pushover application API token
+- **User Key** (setting key `user_key`): Your Pushover user key
+- **API Token** (setting key `api_token`): Your Pushover application API token
+
+Both are stored encrypted. When you create the integration through the API or
+`apply`, use these two keys:
+
+```json
+{ "type": "pushover", "name": "Phone", "settings": { "user_key": "u...", "api_token": "a..." } }
+```
+
+Integrations saved before v0.39 with the keys `user`/`token` or `userKey`/`apiToken`
+are rewritten to `user_key`/`api_token` at startup.
+
+If **Send test** says the integration is missing a setting, nothing was sent:
+fill in that field and save before testing again.
 
 ### Setting Up Pushover
 

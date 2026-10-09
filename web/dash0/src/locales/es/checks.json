@@ -175,6 +175,7 @@
     "checkMoved": "Comprobación movida correctamente"
   },
   "form": {
+    "portOutOfRange": "El puerto debe estar entre 1 y 65535",
     "editCheck": "Editar comprobación",
     "newCheck": "Nueva comprobación",
     "checkType": "Tipo de comprobación",

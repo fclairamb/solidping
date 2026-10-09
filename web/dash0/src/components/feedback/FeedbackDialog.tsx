@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
@@ -12,15 +12,9 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  AnnotationCanvas,
-  renderAnnotations,
-} from "./AnnotationCanvas";
-import {
-  AnnotationToolbar,
-  type AnnotationTool,
-} from "./AnnotationToolbar";
-import type { Annotation } from "./types";
+import { AnnotationCanvas, renderAnnotations } from "./AnnotationCanvas";
+import { AnnotationToolbar, type AnnotationTool } from "./AnnotationToolbar";
+import { ANNOTATION_COLORS, type Annotation } from "./types";
 import type { SubmitPayload } from "./useFeedback";
 
 interface FeedbackDialogProps {
@@ -42,34 +36,53 @@ export function FeedbackDialog({
   const [comment, setComment] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [tool, setTool] = useState<AnnotationTool>("select");
-  const [annotations, setAnnotations] = useState<Annotation[]>([]);
-  const previewURL = useRef<string | null>(null);
+  const [annotations, setAnnotationsState] = useState<Annotation[]>([]);
+  const [redoStack, setRedoStack] = useState<Annotation[]>([]);
+  const [color, setColor] = useState(ANNOTATION_COLORS[0]);
+  const [previewURL, setPreviewURL] = useState<string | null>(null);
 
   // Reset comment + annotations when the dialog opens fresh.
   useEffect(() => {
     if (!open) {
       setComment("");
-      setAnnotations([]);
+      setAnnotationsState([]);
+      setRedoStack([]);
       setTool("select");
+      setColor(ANNOTATION_COLORS[0]);
     }
   }, [open]);
 
-  // Build (and revoke) an object URL for the screenshot preview.
+  // Build (and revoke) an object URL for the screenshot preview. Kept in
+  // state so the preview renders as soon as the URL exists.
   useEffect(() => {
-    if (previewURL.current) {
-      URL.revokeObjectURL(previewURL.current);
-      previewURL.current = null;
+    if (!screenshot) {
+      setPreviewURL(null);
+      return undefined;
     }
-    if (screenshot) {
-      previewURL.current = URL.createObjectURL(screenshot);
-    }
-    return () => {
-      if (previewURL.current) {
-        URL.revokeObjectURL(previewURL.current);
-        previewURL.current = null;
-      }
-    };
+    const url = URL.createObjectURL(screenshot);
+    setPreviewURL(url);
+    return () => URL.revokeObjectURL(url);
   }, [screenshot]);
+
+  // Any new edit invalidates the redo history.
+  function setAnnotations(next: Annotation[]) {
+    setAnnotationsState(next);
+    setRedoStack([]);
+  }
+
+  function undo() {
+    const last = annotations[annotations.length - 1];
+    if (!last) return;
+    setAnnotationsState(annotations.slice(0, -1));
+    setRedoStack((prev) => [...prev, last]);
+  }
+
+  function redo() {
+    const last = redoStack[redoStack.length - 1];
+    if (!last) return;
+    setRedoStack(redoStack.slice(0, -1));
+    setAnnotationsState([...annotations, last]);
+  }
 
   async function handleSubmit() {
     setSubmitting(true);
@@ -87,7 +100,18 @@ export function FeedbackDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-sm w-[calc(100vw-1rem)] sm:max-w-2xl">
+      <DialogContent
+        className="max-h-[90dvh] max-w-sm w-[calc(100vw-1rem)] overflow-y-auto sm:max-w-2xl"
+        // Escape in the inline text input cancels the text, not the dialog.
+        onEscapeKeyDown={(event) => {
+          if (
+            document.activeElement instanceof HTMLElement &&
+            document.activeElement.dataset.testid === "annotation-text-input"
+          ) {
+            event.preventDefault();
+          }
+        }}
+      >
         <DialogHeader>
           <DialogTitle>{t("dialog_title")}</DialogTitle>
           <DialogDescription className="hidden sm:block">
@@ -96,17 +120,22 @@ export function FeedbackDialog({
         </DialogHeader>
 
         <div className="space-y-4">
-          {previewURL.current && (
-            <div className="hidden sm:block space-y-2">
+          {previewURL && (
+            <div className="space-y-2">
               <AnnotationToolbar
                 tool={tool}
                 onToolChange={setTool}
-                onUndo={() => setAnnotations((prev) => prev.slice(0, -1))}
+                color={color}
+                onColorChange={setColor}
+                onUndo={undo}
+                onRedo={redo}
                 canUndo={annotations.length > 0}
+                canRedo={redoStack.length > 0}
               />
               <AnnotationCanvas
-                imageURL={previewURL.current}
+                imageURL={previewURL}
                 tool={tool}
+                color={color}
                 annotations={annotations}
                 onAnnotationsChange={setAnnotations}
               />
@@ -167,11 +196,12 @@ async function bakeAnnotations(
   const ctx = canvas.getContext("2d");
   if (!ctx) return screenshot;
 
-  ctx.drawImage(bitmap, 0, 0);
-  renderAnnotations(ctx, annotations, {
-    width: bitmap.width,
-    height: bitmap.height,
-  });
+  renderAnnotations(
+    ctx,
+    annotations,
+    { width: bitmap.width, height: bitmap.height },
+    bitmap,
+  );
 
   return new Promise<Blob | null>((resolve) => {
     canvas.toBlob((blob) => resolve(blob || screenshot), "image/png");

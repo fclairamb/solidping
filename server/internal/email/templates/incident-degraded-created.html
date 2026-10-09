@@ -6,7 +6,7 @@
      operator learns to mute — along with the real outages. */}}
 {{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "escalated" "Label" "Degraded"}}{{end}}
 {{define "content"}}
-    <h1>{{.CheckName}} is degraded</h1>
+    <h1>{{nolink .CheckName}} is degraded</h1>
     <p>{{.DegradedReason}}. <strong>{{.DegradedStatus}}</strong></p>
     <p class="meta">This is not an outage. Each failure was followed by a success before the confirmation period elapsed, so no outage was ever confirmed — which is exactly why it went unreported until now.</p>
 
@@ -15,7 +15,7 @@
         {{if .DegradedSlowLine}}<tr><td class="label">Slow probes</td><td class="value">{{.DegradedSlowLine}}</td></tr>{{end}}
         <tr><td class="label">Window</td><td class="value">{{.DegradedWindow}}</td></tr>
         <tr><td class="label">Current status</td><td class="value">{{.DegradedStatus}}</td></tr>
-        <tr><td class="label">Monitor</td><td class="value">{{if .DegradedWindowURL}}<a href="{{.DegradedWindowURL}}">{{.CheckName}}</a>{{else}}{{.CheckName}}{{end}}</td></tr>
+        <tr><td class="label">Monitor</td><td class="value">{{if .DegradedWindowURL}}<a href="{{.DegradedWindowURL}}">{{nolink .CheckName}}</a>{{else}}{{nolink .CheckName}}{{end}}</td></tr>
         <tr><td class="label">Started at</td><td class="value">{{.StartedAt}}</td></tr>
         {{if gt .IncidentNumber 0}}<tr><td class="label">Incident</td><td class="value">{{if .IncidentURL}}<a href="{{.IncidentURL}}">#{{.IncidentNumber}}</a>{{else}}#{{.IncidentNumber}}{{end}}</td></tr>{{end}}
     </table>

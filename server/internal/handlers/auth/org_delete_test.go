@@ -187,6 +187,44 @@ func TestDeleteOrgStopsInternalChecksToo(t *testing.T) {
 	}
 }
 
+// TestDeleteOrgResolvesEscalatedIncidents is production orphan 1 of spec
+// 2026-10-08-02: a check's incident opened and escalated, then the owner
+// deleted the whole org. stopOrgChecks soft-deletes the checks through the DB
+// layer, which must resolve the incident (check_deleted) in the same
+// transaction. resolved_at is what the escalation step re-reads before firing
+// (incidentNeedsPaging, TestEscalationStepStopsOnCheckDeletedIncident), so no
+// further step pages anyone. No resolved notification is queued: nobody is
+// left to read it.
+func TestDeleteOrgResolvesEscalatedIncidents(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	svc, dbService, ctx := setupAuthTestService(t)
+	seeded := seedDeletableOrg(ctx, t, dbService, "orphan-incidents")
+
+	escalatedAt := time.Now().Add(-10 * time.Minute)
+	incident := models.NewIncident(seeded.org.UID, seeded.check.UID, time.Now().Add(-time.Hour), "api is down")
+	incident.EscalatedAt = &escalatedAt
+	r.NoError(dbService.CreateIncident(ctx, incident))
+
+	_, err := deleteOrgAsOwner(ctx, t, svc, seeded, seeded.org.Slug)
+	r.NoError(err)
+
+	got, err := dbService.GetIncident(ctx, seeded.org.UID, incident.UID)
+	r.NoError(err)
+	r.Equal(models.IncidentStateResolved, got.State, "an org deletion leaves no active incident behind")
+	r.NotNil(got.ResolvedAt, "resolved_at stops every queued escalation step")
+	r.NotNil(got.ResolutionType)
+	r.Equal(models.ResolutionTypeCheckDeleted, *got.ResolutionType)
+
+	jobs, err := dbService.ListJobs(ctx, &seeded.org.UID, 100)
+	r.NoError(err)
+
+	for _, job := range jobs {
+		r.NotEqual("notification", job.Type, "org deletion sends no resolved notification")
+	}
+}
+
 // TestDeleteOrgSlugConfirmation pins the typed-confirmation guard.
 func TestDeleteOrgSlugConfirmation(t *testing.T) {
 	t.Parallel()

@@ -22,6 +22,8 @@ import type { CheckTypeModule } from "./index";
 import type { CheckConfig, CheckTypeFieldsProps, FieldErrors } from "./common";
 import { getConfigField, validationMessage } from "./common";
 import { useCheckFormFields } from "./context";
+import { PortChips, PortInput, PortRangeError } from "../port-input";
+import { applyHostInput } from "./ports";
 
 const hostRequired = (host: string): FieldErrors =>
   host ? [] : [{ name: "host", message: validationMessage("hostRequired") }];
@@ -166,26 +168,26 @@ function TcpFields({
             type="text"
             placeholder={type === "udp" ? "8.8.8.8" : "example.com"}
             value={state.host}
-            onChange={(e) => onChange({ ...state, host: e.target.value })}
+            onChange={(e) => onChange(applyHostInput(state, e.target.value))}
             className={cn(
               "flex-1",
               getFieldError(errors, "host") && "border-destructive",
             )}
             data-testid="check-host-input"
           />
-          <Input
-            id="port"
-            type="number"
+          <PortInput
             placeholder={type === "udp" ? "53" : "443"}
             value={state.port}
-            onChange={(e) => onChange({ ...state, port: e.target.value })}
-            className={cn(
-              "w-24",
-              getFieldError(errors, "port") && "border-destructive",
-            )}
-            data-testid="check-port-input"
+            onChange={(port) => onChange({ ...state, port })}
+            invalid={Boolean(getFieldError(errors, "port"))}
           />
         </div>
+        <PortRangeError value={state.port} />
+        <PortChips
+          type={type}
+          value={state.port}
+          onSelect={(port) => onChange({ ...state, port })}
+        />
         {getFieldError(errors, "host") && (
           <p className="text-xs text-destructive">
             {getFieldError(errors, "host")}
@@ -355,26 +357,21 @@ function SshFields({
             type="text"
             placeholder="server.example.com"
             value={state.host}
-            onChange={(e) => onChange({ ...state, host: e.target.value })}
+            onChange={(e) => onChange(applyHostInput(state, e.target.value))}
             className={cn(
               "flex-1",
               getFieldError(errors, "host") && "border-destructive",
             )}
             data-testid="check-host-input"
           />
-          <Input
-            id="port"
-            type="number"
+          <PortInput
             placeholder="22"
             value={state.port}
-            onChange={(e) => onChange({ ...state, port: e.target.value })}
-            className={cn(
-              "w-24",
-              getFieldError(errors, "port") && "border-destructive",
-            )}
-            data-testid="check-port-input"
+            onChange={(port) => onChange({ ...state, port })}
+            invalid={Boolean(getFieldError(errors, "port"))}
           />
         </div>
+        <PortRangeError value={state.port} />
         {getFieldError(errors, "host") && (
           <p className="text-xs text-destructive">
             {getFieldError(errors, "host")}
@@ -516,20 +513,17 @@ function SftpFields({
             type="text"
             placeholder="sftp.example.com"
             value={state.host}
-            onChange={(e) => onChange({ ...state, host: e.target.value })}
+            onChange={(e) => onChange(applyHostInput(state, e.target.value))}
             className="flex-1"
             data-testid="check-host-input"
           />
-          <Input
-            id="port"
-            type="number"
+          <PortInput
             placeholder="22"
             value={state.port}
-            onChange={(e) => onChange({ ...state, port: e.target.value })}
-            className="w-24"
-            data-testid="check-port-input"
+            onChange={(port) => onChange({ ...state, port })}
           />
         </div>
+        <PortRangeError value={state.port} />
       </div>
       <div className="space-y-2">
         <Label htmlFor="username">{t("form.username")}</Label>
@@ -639,20 +633,17 @@ function FtpFields({
             type="text"
             placeholder="ftp.example.com"
             value={state.host}
-            onChange={(e) => onChange({ ...state, host: e.target.value })}
+            onChange={(e) => onChange(applyHostInput(state, e.target.value))}
             className="flex-1"
             data-testid="check-host-input"
           />
-          <Input
-            id="port"
-            type="number"
+          <PortInput
             placeholder="21"
             value={state.port}
-            onChange={(e) => onChange({ ...state, port: e.target.value })}
-            className="w-24"
-            data-testid="check-port-input"
+            onChange={(port) => onChange({ ...state, port })}
           />
         </div>
+        <PortRangeError value={state.port} />
       </div>
       <div className="space-y-2">
         <Label htmlFor="username">

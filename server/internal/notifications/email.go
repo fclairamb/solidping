@@ -656,6 +656,7 @@ func (s *EmailSender) buildIncidentViewModel(
 		"RelapseCount":   payload.Incident.RelapseCount,
 		"DashboardURL":   dashboardRootURL(payload.AppBaseURL),
 		"DocsURL":        docsURL(payload.AppBaseURL),
+		"CheckDeleted":   ResolvedByCheckDeletion(payload.Incident),
 	}
 
 	if payload.Incident.ResolvedAt != nil {
