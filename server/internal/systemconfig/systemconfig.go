@@ -94,7 +94,6 @@ const (
 	KeyDiscordClientID          ParameterKey = "auth.discord.client_id"
 	KeyDiscordClientSecret      ParameterKey = "auth.discord.client_secret"
 	KeyDiscordBotToken          ParameterKey = "auth.discord.bot_token"
-	KeyDiscordRedirectURL       ParameterKey = "auth.discord.redirect_url"
 	KeyDiscordPublicKey         ParameterKey = "auth.discord.public_key"
 	KeyDiscordGatewayEnabled    ParameterKey = "auth.discord.gateway_enabled"
 	KeyGoogleEnabled            ParameterKey = "auth.google.enabled"
@@ -876,16 +875,6 @@ func getKnownParameters() []ParameterDefinition {
 			ApplyFunc: func(cfg *config.Config, value any) {
 				if v, ok := value.(string); ok {
 					cfg.Discord.BotToken = v
-				}
-			},
-		},
-		{
-			Key:    KeyDiscordRedirectURL,
-			EnvVar: "SP_DISCORD_REDIRECT_URL",
-			Secret: false,
-			ApplyFunc: func(cfg *config.Config, value any) {
-				if v, ok := value.(string); ok {
-					cfg.Discord.RedirectURL = v
 				}
 			},
 		},

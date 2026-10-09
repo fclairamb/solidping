@@ -1789,6 +1789,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	systemActions.POST("/email-inbox/test", systemHandler.EmailInboxTest)
 	systemActions.POST("/email-inbox/sync", systemHandler.EmailInboxSync)
 	systemActions.GET("/activation", systemHandler.ListActivationFunnel)
+	systemActions.GET("/discord-setup", systemHandler.DiscordSetup)
 	systemActions.GET("/scheduling/lane-load", systemHandler.LaneLoad)
 	// Global user directory (spec 2026-09-19-04): search/page every user
 	// account across every org, read-only. The only prior consumer of

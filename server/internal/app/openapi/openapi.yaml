@@ -497,6 +497,35 @@ paths:
         "403":
           $ref: "#/components/responses/Forbidden"
 
+  /api/v1/system/discord-setup:
+    get:
+      tags: [System]
+      summary: Discord application setup values
+      description: >
+        Returns the redirect URIs and Interactions Endpoint URL to register in
+        the Discord developer portal, derived from the server base URL.
+        Super-admin only.
+      operationId: getDiscordSetup
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Discord setup values
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  baseUrl: {type: string}
+                  baseUrlIsDefault: {type: boolean}
+                  loginRedirectUri: {type: string}
+                  installRedirectUri: {type: string}
+                  interactionsUrl: {type: string}
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
   # System Parameters APIs (Super Admin Only)
   /api/v1/system/parameters:
     get:

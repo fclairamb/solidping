@@ -271,7 +271,7 @@ func (s *Service) installRedirectURI() string {
 		base = s.cfg.Server.BaseURL
 	}
 
-	return base + "/api/v1/integrations/discord/oauth"
+	return config.DiscordInstallRedirectURI(base)
 }
 
 // BuildOrgInstallURL is the authenticated, org-scoped counterpart to
