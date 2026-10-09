@@ -39,5 +39,5 @@ func TestNormalizePushoverSettings_Postgres(t *testing.T) {
 	creds, err := credentials.NewService(newKEK(t), newMemDEKStore())
 	require.NoError(t, err)
 
-	assertPushoverBackfill(t, ctx, dbSvc, creds)
+	assertPushoverBackfill(ctx, t, dbSvc, creds)
 }

@@ -137,8 +137,8 @@ var (
 )
 
 type pushoverSettings struct {
-	APIToken        string         `json:"api_token"` //nolint:tagliatelle // matches dashboard form key and secret registry
-	UserKey         string         `json:"user_key"`  //nolint:tagliatelle // matches dashboard form key and secret registry
+	APIToken        string         `json:"api_token"` //nolint:tagliatelle // form key and secret registry
+	UserKey         string         `json:"user_key"`  //nolint:tagliatelle // form key and secret registry
 	Device          string         `json:"device"`
 	SoundDown       string         `json:"soundDown"`
 	SoundUp         string         `json:"soundUp"`

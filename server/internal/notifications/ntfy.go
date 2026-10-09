@@ -82,7 +82,7 @@ func (s *NtfySender) Send(ctx context.Context, jctx *jobdef.JobContext, payload 
 
 // NtfySettingServerURL is the canonical ntfy server URL key, the one the
 // dashboard form writes. NtfyLegacySettingServerURL is the name the sender
-// read before spec 2026-10-08-03; it is still honoured as a fallback.
+// read before spec 2026-10-08-03; it is still read as a fallback.
 const (
 	NtfySettingServerURL       = "server_url"
 	NtfyLegacySettingServerURL = "serverUrl"

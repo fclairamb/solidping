@@ -32,7 +32,7 @@ func TestNormalizePushoverSettings_SQLiteEncrypted(t *testing.T) {
 	creds, err := credentials.NewService(newKEK(t), newMemDEKStore())
 	require.NoError(t, err)
 
-	assertPushoverBackfill(t, t.Context(), newSQLiteForPushover(t), creds)
+	assertPushoverBackfill(t.Context(), t, newSQLiteForPushover(t), creds)
 }
 
 // TestNormalizePushoverSettings_SQLitePlaintext covers a deployment with no
@@ -41,13 +41,13 @@ func TestNormalizePushoverSettings_SQLiteEncrypted(t *testing.T) {
 func TestNormalizePushoverSettings_SQLitePlaintext(t *testing.T) {
 	t.Parallel()
 
-	assertPushoverBackfill(t, t.Context(), newSQLiteForPushover(t), nil)
+	assertPushoverBackfill(t.Context(), t, newSQLiteForPushover(t), nil)
 }
 
 // assertPushoverBackfill seeds legacy, canonical and unrelated rows, runs the
 // backfill twice and checks the first run normalizes only the legacy rows and
 // the second run is a no-op. Shared by the SQLite and Postgres tests.
-func assertPushoverBackfill(t *testing.T, ctx context.Context, dbSvc db.Service, creds credentials.Service) {
+func assertPushoverBackfill(ctx context.Context, t *testing.T, dbSvc db.Service, creds credentials.Service) {
 	t.Helper()
 	r := require.New(t)
 
