@@ -37,7 +37,11 @@ export function AuthSplitLayout({ children, mobileWordmark = true }: AuthSplitLa
   ];
 
   return (
-    <div className="relative grid min-h-screen bg-background lg:grid-cols-2">
+    // `grid-cols-1` is minmax(0, 1fr): without it the implicit column is `auto`
+    // and any wide child stretches it past the viewport, pushing the card
+    // off-center on a phone. `min-h-dvh` tracks the visible viewport so the
+    // vertical centering ignores the mobile browser's collapsing address bar.
+    <div className="relative grid min-h-screen min-h-dvh grid-cols-1 bg-background lg:grid-cols-2">
       {/* Brand aurora marketing panel — large screens only. */}
       <AuroraPanel className="hidden p-12 lg:block xl:p-16" data-testid="auth-aurora-panel">
         <Logo size={32} variant="wordmark" className="text-white" />
@@ -68,7 +72,7 @@ export function AuthSplitLayout({ children, mobileWordmark = true }: AuthSplitLa
 
       {/* Form / card column, over the page glow at every breakpoint. */}
       <div
-        className="flex flex-col items-center justify-center gap-6 bg-page-glow p-4"
+        className="flex min-w-0 flex-col items-center justify-center gap-6 bg-page-glow p-4"
         data-testid="auth-form-column"
       >
         {mobileWordmark && (
