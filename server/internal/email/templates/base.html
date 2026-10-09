@@ -55,7 +55,7 @@
         table { border-collapse: collapse; mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
         img { border: 0; outline: none; -ms-interpolation-mode: bicubic; }
         .wrapper { width: 100%; background-color: #f5f9fc; padding: 32px 12px; }
-        .container { width: 100%; max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 14px; overflow: hidden; border: 1px solid #dee3eb; box-shadow: 0 1px 2px rgba(9,18,31,0.04), 0 12px 28px -8px rgba(9,18,31,0.14), 0 4px 10px -4px rgba(9,18,31,0.06); }
+        .container { width: 100%; max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; border: 1px solid #dee3eb; }
         /* Header: clean dark navy band matching dashboard chrome */
         /* Every gradient in this file is paired with the background-color it
            degrades to: Outlook's Word engine ignores background-image outright,
@@ -96,7 +96,7 @@
         .content h2.section-title { margin: 26px 0 10px; padding-left: 10px; border-left: 3px solid #1e64ef; font-size: 16px; font-weight: 700; color: #09121f; line-height: 1.25; }
         .content p.eyebrow { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #586474; margin: 0 0 6px; }
         .content .prose { white-space: pre-wrap; margin: 0 0 16px; }
-        .quote { margin: 18px 0; padding: 14px 18px; border-left: 4px solid #1e64ef; background-color: #f8fafc; background-image: linear-gradient(180deg, #fbfcfd 0%, #f1f5f9 100%); color: #1e293b; white-space: pre-wrap; border-radius: 0 10px 10px 0; }
+        .quote { margin: 18px 0; padding: 14px 18px; border-left: 4px solid #1e64ef; background-color: #f8fafc; color: #1e293b; white-space: pre-wrap; border-radius: 0 10px 10px 0; }
         .cta-wrap { margin: 20px 0 12px; }
         .actions-table { margin: 20px 0 12px; }
         .action-cell { padding-right: 12px; padding-bottom: 8px; vertical-align: middle; }
@@ -104,11 +104,11 @@
         .btn-table { border-collapse: separate; }
         .btn-table td { border-radius: 8px; text-align: center; }
         .btn { display: inline-block; padding: 12px 24px; text-decoration: none; font-weight: 600; font-size: 14px; letter-spacing: 0.01em; border-radius: 8px; mso-padding-alt: 0; }
-        .btn-primary td { background-color: #1e64ef; background-image: linear-gradient(135deg, #007bce 0%, #175ee8 50%, #453cdb 100%); box-shadow: 0 2px 5px -1px rgba(30,100,239,0.45); }
+        .btn-primary td { background-color: #1e64ef; background-image: linear-gradient(135deg, #007bce 0%, #175ee8 50%, #453cdb 100%); }
         .btn-primary a.btn { color: #ffffff !important; }
-        .btn-success td { background-color: #16a34a; background-image: linear-gradient(180deg, #22c55e 0%, #16a34a 100%); box-shadow: 0 2px 5px -1px rgba(22,163,74,0.42); }
+        .btn-success td { background-color: #16a34a; background-image: linear-gradient(180deg, #22c55e 0%, #16a34a 100%); }
         .btn-success a.btn { color: #ffffff !important; }
-        .btn-secondary td { background-color: #ffffff; background-image: linear-gradient(180deg, #ffffff 0%, #f1f5f9 100%); border: 1px solid #cbd5e1; box-shadow: 0 1px 2px rgba(9,18,31,0.06); }
+        .btn-secondary td { background-color: #ffffff; border: 1px solid #cbd5e1; }
         .btn-secondary a.btn { color: #334155 !important; }
         /* Legacy single-<a> CTA classes */
         .cta { display: inline-block; padding: 11px 22px; background-color: #1e64ef; color: #ffffff !important; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px; }
@@ -122,7 +122,7 @@
         .details-table { width: 100%; margin: 18px 0 22px; border: 1px solid #dee3eb; border-radius: 12px; overflow: hidden; border-collapse: separate; border-spacing: 0; }
         .details-table td { padding: 12px 16px; font-size: 14px; border-bottom: 1px solid #eef2f6; vertical-align: middle; }
         .details-table tr:last-child td { border-bottom: none; }
-        .details-table td.label { color: #586474; width: 34%; background-color: #f8fafc; background-image: linear-gradient(180deg, #fbfcfd 0%, #f4f7fa 100%); font-weight: 600; font-size: 13px; border-right: 1px solid #eef2f6; }
+        .details-table td.label { color: #586474; width: 34%; background-color: #f8fafc; font-weight: 600; font-size: 13px; border-right: 1px solid #eef2f6; }
         .details-table td.value { color: #09121f; font-weight: 500; }
         /* <th> falls back to the label styling: a browser's default <th> is
            centered, bold and unpadded, which silently wrecks the two-column
@@ -132,7 +132,7 @@
         .details-table th { padding: 11px 16px; font-size: 14px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; text-align: left; color: #586474; width: 34%; background-color: #f8fafc; font-weight: 500; border-right: 1px solid #f1f5f9; }
         .details-table tr:last-child th { border-bottom: none; }
         /* Headline figure — one number that carries the mail (report totals). */
-        .metric { margin: 18px 0 22px; border: 1px solid #dee3eb; border-radius: 12px; background-color: #f8fafc; background-image: linear-gradient(180deg, #ffffff 0%, #f1f5f9 100%); padding: 22px 24px; text-align: center; border-collapse: separate; border-spacing: 0; box-shadow: inset 0 1px 0 #ffffff; }
+        .metric { margin: 18px 0 22px; border: 1px solid #dee3eb; border-radius: 12px; background-color: #f8fafc; padding: 22px 24px; text-align: center; border-collapse: separate; border-spacing: 0; }
         .metric-value { display: block; font-size: 36px; line-height: 1.12; font-weight: 700; color: #09121f; letter-spacing: -0.03em; }
         /* State color on the figure itself — the one number the mail is about
            should read as good or bad before a word of it is. */
@@ -147,14 +147,14 @@
         .badge-bad { background-color: #fee2e2; color: #991b1b; }
         .badge-neutral { background-color: #f1f5f9; color: #475569; }
         .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 13px; color: #475569; }
-        .fallback { font-size: 13px; color: #334155; word-break: break-all; padding: 8px 12px; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+        .fallback { font-size: 13px; color: #475569; word-break: break-word; overflow-wrap: anywhere; }
         .meta { font-size: 13px; color: #586474; margin-top: 16px; line-height: 1.5; }
         .content p.meta { margin: 16px 0 16px; }
         /* Reference line for support (incident uid and friends): present, but
            never competing with the facts a human acts on. */
         .content p.footnote { font-size: 12px; color: #94a3b8; margin: 20px 0 0; padding-top: 14px; border-top: 1px solid #f1f5f9; line-height: 1.5; }
         .content p.footnote .mono { font-size: 12px; color: #94a3b8; }
-        .footer { padding: 26px 32px; background-color: #f8fafc; background-image: linear-gradient(180deg, #ffffff 0%, #f4f7fa 100%); color: #64748b; font-size: 12px; text-align: center; border-top: 1px solid #eef2f6; line-height: 1.6; }
+        .footer { padding: 26px 32px; background-color: #f8fafc; color: #64748b; font-size: 12px; text-align: center; border-top: 1px solid #eef2f6; line-height: 1.6; }
         .footer a { color: #475569; text-decoration: underline; }
         .footer p { margin: 0 0 8px; }
         .footer-brand { display: block; margin-top: 14px; padding-top: 14px; border-top: 1px solid #eef2f6; color: #94a3b8; font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; }
@@ -189,7 +189,7 @@
             .content { color: #cbd5e1; }
             .content h1 { color: #f1f5f9; }
             .content h2 { color: #f1f5f9; }
-            .content a { color: #57a8ff; }
+            .content a { color: #57a8ff !important; }
             .content h2.section-title { color: #f1f5f9; border-left-color: #57a8ff; }
             .content p.eyebrow { color: #94a3b8; }
             .quote { background-color: #18222d; background-image: linear-gradient(180deg, #1b2733 0%, #16202b 100%); border-left-color: #57a8ff; color: #cbd5e1; }
@@ -217,7 +217,7 @@
             .badge-bad { background-color: #4a1a1a; color: #fca5a5; }
             .badge-neutral { background-color: #1f2b37; color: #cbd5e1; }
             .mono { color: #94a3b8; }
-            .fallback { background-color: #18222d; border-color: #243141; color: #cbd5e1; }
+            .fallback { font-size: 13px; color: #475569; word-break: break-word; overflow-wrap: anywhere; }
             .meta { color: #94a3b8; }
             .content p.footnote { color: #7c8b9c; border-top-color: #243141; }
             .content p.footnote .mono { color: #7c8b9c; }
@@ -226,6 +226,8 @@
             .footer-brand { color: #7c8b9c; border-top-color: #243141; }
         }
         @media (max-width: 480px) {
+            .wrapper { padding: 0; }
+            .container { border: 0; border-radius: 0; box-shadow: none; }
             .content { padding: 24px 20px; }
             .header { padding: 18px 20px; }
             .status-banner { padding: 12px 20px; }

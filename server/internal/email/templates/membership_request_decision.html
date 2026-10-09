@@ -9,7 +9,7 @@
     {{if .DashboardURL}}
     <div class="cta-wrap">{{template "button" dict "URL" .DashboardURL "Label" (printf "Open %s" .OrgName) "Variant" "success"}}</div>
     <p>Or paste this link into your browser:</p>
-    <p class="fallback">{{.DashboardURL}}</p>
+    <p class="fallback">{{link .DashboardURL ""}}</p>
     {{end}}
     {{else}}
     <p>Your request to join <strong>{{.OrgName}}</strong> on SolidPing was rejected.</p>
