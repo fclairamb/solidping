@@ -179,4 +179,43 @@ test.describe("Public status page - staged loading", () => {
 
     expect(seen.every((stage) => stage === "base")).toBe(true);
   });
+
+  test("the org's default page (no slug) loads in the same stages", async ({
+    page,
+  }) => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const seen: Stage[] = [];
+
+    // The default page is read from /status-pages/{org}, without a slug.
+    await page.route(
+      (url) => url.pathname === `/api/v1/status-pages/${ORG}`,
+      async (route) => {
+        const stage = stageOf(route.request().url());
+        seen.push(stage);
+        if (stage === "base") return ok(route, payload(false));
+        if (stage === "details") {
+          await gate;
+          return ok(route, payload(true));
+        }
+        return ok(route, { ...payload(false), recentUpdates: [] });
+      },
+    );
+    await page.route(
+      `**/api/v1/status-pages/${ORG}/${SLUG}/incidents*`,
+      (route) => ok(route, { data: [] }),
+    );
+
+    await page.goto(`${BASE}${STATUS_BASE}/${ORG}/`);
+
+    await expect(page.getByText("API")).toBeVisible();
+    await expect(page.getByTestId("availability-skeleton")).toBeVisible();
+
+    release();
+
+    await expect(page.getByTestId("resource-availability-pct")).toBeVisible();
+    expect([...new Set(seen)].sort()).toEqual(["base", "details", "updates"]);
+  });
 });

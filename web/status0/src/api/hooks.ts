@@ -378,11 +378,21 @@ export function withUpdatesDays(
   return `${path}${separator}updatesDays=${days}`;
 }
 
+/**
+ * One read of a public page. `slug: null` addresses the org's default page
+ * (`/api/v1/status-pages/{org}`), which takes the same `include` and
+ * `updatesDays` parameters as a named page.
+ */
 export function usePublicStatusPage(
   org: string,
-  slug: string,
+  slug: string | null,
   options?: PublicReadOptions,
 ) {
+  const path =
+    slug === null
+      ? `/api/v1/status-pages/${org}`
+      : `/api/v1/status-pages/${org}/${slug}`;
+
   return useQuery<StatusPage>({
     // The sorted/deduped include list is part of the key, not just the URL:
     // the ordinary page (no include) and TV mode (include: []) must never
@@ -390,7 +400,7 @@ export function usePublicStatusPage(
     queryKey: [
       "public-status-page",
       org,
-      slug,
+      slug ?? DEFAULT_PAGE_KEY,
       options?.kioskToken ?? null,
       sortedInclude(options?.include) ?? null,
       options?.updatesDays ?? null,
@@ -399,10 +409,7 @@ export function usePublicStatusPage(
       apiFetch<StatusPage>(
         withKiosk(
           withUpdatesDays(
-            withInclude(
-              `/api/v1/status-pages/${org}/${slug}`,
-              options?.include,
-            ),
+            withInclude(path, options?.include),
             options?.updatesDays,
           ),
           options?.kioskToken,
@@ -412,9 +419,12 @@ export function usePublicStatusPage(
     // Refresh every 30 seconds by default; TV mode tightens this during an
     // incident.
     refetchInterval: options?.refetchInterval ?? 30_000,
-    enabled: !!org && !!slug && (options?.enabled ?? true),
+    enabled: !!org && slug !== "" && (options?.enabled ?? true),
   });
 }
+
+/** Query-key stand-in for the default page's missing slug. */
+const DEFAULT_PAGE_KEY = "__default__";
 
 /**
  * The public page, loaded in stages (spec 2026-10-10-01) instead of one
@@ -432,7 +442,7 @@ export function usePublicStatusPage(
  */
 export function useStagedPublicStatusPage(
   org: string,
-  slug: string,
+  slug: string | null,
   options?: PublicReadOptions,
 ) {
   const [showAllUpdates, setShowAllUpdates] = useState(false);
@@ -704,7 +714,7 @@ export function useDefaultStatusPage(org: string, options?: PublicReadOptions) {
     queryKey: [
       "public-status-page",
       org,
-      "__default__",
+      DEFAULT_PAGE_KEY,
       options?.kioskToken ?? null,
       sortedInclude(options?.include) ?? null,
     ],

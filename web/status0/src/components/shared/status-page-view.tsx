@@ -17,6 +17,8 @@ import {
 import { useTranslation } from "react-i18next";
 import { AvailabilityBar } from "./availability-bar";
 import { ResponseTimeChart } from "./response-time-chart";
+import { WhenVisible } from "./when-visible";
+
 import { LanguageSwitcher } from "./language-switcher";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { StatusUpdatesTimeline } from "./status-updates-timeline";
@@ -29,6 +31,10 @@ import {
   statusStyle,
 } from "@/lib/status-style";
 import { usePreviewCss } from "@/lib/preview-css";
+
+// Rendered height of a single-region response-time chart (margin included),
+// reserved while the chart waits to scroll near the viewport.
+const RESPONSE_TIME_CHART_HEIGHT_PX = 142;
 
 function getStatusColor(status: string) {
   return statusStyle(status).color;
@@ -264,10 +270,12 @@ function ResourceCard({
 
       {/* Response time chart */}
       {showResponseTime && avail?.responseTimeSeries && (
-        <ResponseTimeChart
-          series={avail.responseTimeSeries}
-          thresholds={availabilityThresholds}
-        />
+        <WhenVisible placeholderHeight={RESPONSE_TIME_CHART_HEIGHT_PX}>
+          <ResponseTimeChart
+            series={avail.responseTimeSeries}
+            thresholds={availabilityThresholds}
+          />
+        </WhenVisible>
       )}
     </div>
   );
