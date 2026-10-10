@@ -1,6 +1,6 @@
 import { useParams } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import { isLockedError, useDefaultStatusPage } from "@/api/hooks";
+import { isLockedError, useStagedPublicStatusPage } from "@/api/hooks";
 import { StatusPageView } from "@/components/shared/status-page-view";
 import { UnlockForm } from "@/components/shared/unlock-form";
 import { useLanguageFromPage } from "@/hooks/useLanguageFromPage";
@@ -14,7 +14,8 @@ import { useLanguageFromPage } from "@/hooks/useLanguageFromPage";
 export function DefaultStatusPage() {
   const { t } = useTranslation();
   const { org } = useParams({ from: "/$org/" });
-  const { data: page, isLoading, error, refetch } = useDefaultStatusPage(org);
+  const { page, isLoading, error, refetch, ...stages } =
+    useStagedPublicStatusPage(org, null);
 
   useLanguageFromPage(page?.language);
 
@@ -45,5 +46,5 @@ export function DefaultStatusPage() {
     );
   }
 
-  return <StatusPageView page={page} org={org} />;
+  return <StatusPageView page={page} org={org} stages={stages} />;
 }

@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { createContext, useContext, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Logo } from "@/components/ui/logo";
@@ -15,8 +15,16 @@ import {
   type StatusPageResource,
 } from "@/api/hooks";
 import { useTranslation } from "react-i18next";
-import { AvailabilityBar } from "./availability-bar";
-import { ResponseTimeChart } from "./response-time-chart";
+import {
+  AvailabilityBar,
+  AvailabilityBarPlaceholder,
+} from "./availability-bar";
+import {
+  ResponseTimeChart,
+  ResponseTimeChartPlaceholder,
+} from "./response-time-chart";
+import { WhenVisible } from "./when-visible";
+
 import { LanguageSwitcher } from "./language-switcher";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { StatusUpdatesTimeline } from "./status-updates-timeline";
@@ -47,7 +55,10 @@ function getStatusLabelKey(status: string) {
 function formatLastChecked(iso: string, locale: string): string {
   const date = new Date(iso);
   const now = new Date();
-  const time = date.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
+  const time = date.toLocaleTimeString(locale, {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
   if (date.toDateString() === now.toDateString()) return time;
   return `${date.toLocaleDateString(locale, { day: "numeric", month: "short" })} ${time}`;
 }
@@ -119,6 +130,8 @@ interface ResourceCardProps {
   showAvailability: boolean;
   showResponseTime: boolean;
   historyDays: number;
+  /** The page shows 24 hourly buckets rather than days (historyPeriod 24h). */
+  hourly: boolean;
   /**
    * Public display names covered by an OPEN incident publication, keyed by the
    * severity to colour the badge with (empty string = the operator graded the
@@ -139,9 +152,11 @@ function ResourceCard({
   showAvailability,
   showResponseTime,
   historyDays,
+  hourly,
   affectedSeverities,
 }: ResourceCardProps) {
   const { t, i18n } = useTranslation();
+  const detailsLoading = useContext(DetailsLoadingContext);
   const name = resource.publicName || resource.check?.name || t("unknown");
   const incidentSeverity = affectedSeverities.get(name);
   const isAffected = incidentSeverity !== undefined;
@@ -208,6 +223,17 @@ function ResourceCard({
               {avail.overallAvailabilityPct.toFixed(3)}%
             </span>
           )}
+          {/* Same span, same width, blank, while the availability stage is
+              in flight: the badges beside it do not slide when it lands. */}
+          {showAvailability && !avail && detailsLoading && (
+            <span
+              className="invisible text-sm font-medium tabular-nums"
+              data-testid="resource-availability-pct-placeholder"
+              aria-hidden="true"
+            >
+              99.999%
+            </span>
+          )}
           {inMaintenance ? (
             <Badge
               variant="warning"
@@ -228,13 +254,24 @@ function ResourceCard({
                   2026-09-25-02). */}
               {status === "stale" && resource.check?.lastResultAt
                 ? t("noDataLastChecked", {
-                    time: formatLastChecked(resource.check.lastResultAt, i18n.language),
+                    time: formatLastChecked(
+                      resource.check.lastResultAt,
+                      i18n.language,
+                    ),
                   })
                 : t(getStatusLabelKey(status))}
             </Badge>
           )}
         </div>
       </div>
+
+      {/* Stage 2 (availability) has not landed yet: hold the bar's space. */}
+      {showAvailability && !avail && detailsLoading && (
+        <AvailabilityBarPlaceholder
+          historyDays={historyDays}
+          isHourly={hourly}
+        />
+      )}
 
       {/* Availability bars */}
       {showAvailability && avail?.dailyAvailability && (
@@ -247,11 +284,20 @@ function ResourceCard({
       )}
 
       {/* Response time chart */}
+      {showResponseTime && !avail && detailsLoading && (
+        <ResponseTimeChartPlaceholder />
+      )}
       {showResponseTime && avail?.responseTimeSeries && (
-        <ResponseTimeChart
-          series={avail.responseTimeSeries}
-          thresholds={availabilityThresholds}
-        />
+        <WhenVisible
+          placeholder={
+            <ResponseTimeChartPlaceholder series={avail.responseTimeSeries} />
+          }
+        >
+          <ResponseTimeChart
+            series={avail.responseTimeSeries}
+            thresholds={availabilityThresholds}
+          />
+        </WhenVisible>
       )}
     </div>
   );
@@ -263,6 +309,7 @@ interface SectionCardProps {
   showAvailability: boolean;
   showResponseTime: boolean;
   historyDays: number;
+  hourly: boolean;
   affectedSeverities: Map<string, string>;
 }
 
@@ -272,6 +319,7 @@ function SectionCard({
   showAvailability,
   showResponseTime,
   historyDays,
+  hourly,
   affectedSeverities,
 }: SectionCardProps) {
   const { t } = useTranslation();
@@ -305,6 +353,7 @@ function SectionCard({
                   showAvailability={showAvailability}
                   showResponseTime={showResponseTime}
                   historyDays={historyDays}
+                  hourly={hourly}
                   availabilityThresholds={availabilityThresholds}
                   affectedSeverities={affectedSeverities}
                 />
@@ -316,12 +365,27 @@ function SectionCard({
   );
 }
 
+/**
+ * Loading state of the later stages of a staged page load (see
+ * useStagedPublicStatusPage). Absent means everything arrived with the page.
+ */
+export interface PageStages {
+  detailsLoading: boolean;
+  updatesLoading: boolean;
+  canShowOlder: boolean;
+  showOlder: () => void;
+}
+
+const DetailsLoadingContext = createContext(false);
+
 export function StatusPageView({
   page,
   org,
+  stages,
 }: {
   page: StatusPage;
   org: string;
+  stages?: PageStages;
 }) {
   const { t } = useTranslation();
   const sections = page.sections ?? [];
@@ -378,6 +442,9 @@ export function StatusPageView({
   const aggregateUptimePct = uptimeSamples.length
     ? uptimeSamples.reduce((sum, pct) => sum + pct, 0) / uptimeSamples.length
     : null;
+  const uptimePillClass = `flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium tabular-nums ${
+    bannerSeverity?.bannerPill ?? overallStyle.bannerPill
+  }`;
   const { data: versionInfo } = useVersion();
   const feedUrl = `/api/v1/status-pages/${org}/${page.slug}/feed.xml`;
   // Outside preview mode this is just page.customCss; with ?preview=1 the
@@ -559,15 +626,28 @@ export function StatusPageView({
                   bug — the two sat side by side with identical text. */}
               {aggregateUptimePct != null && (
                 <div
-                  className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium tabular-nums ${
-                    bannerSeverity?.bannerPill ?? overallStyle.bannerPill
-                  }`}
+                  className={uptimePillClass}
                   data-testid="overall-uptime-pill"
                   {...NO_TRANSLATE}
                 >
                   {aggregateUptimePct.toFixed(3)}% {t("uptime")}
                 </div>
               )}
+              {/* The pill is the mean of the per-resource numbers, so it only
+                  exists once the availability stage lands. Hold its place,
+                  blank, meanwhile: on a narrow screen it wraps onto its own
+                  line and would push the whole page down by a line. */}
+              {aggregateUptimePct == null &&
+                page.showAvailability &&
+                stages?.detailsLoading && (
+                  <div
+                    className={`${uptimePillClass} invisible`}
+                    data-testid="overall-uptime-pill-placeholder"
+                    aria-hidden="true"
+                  >
+                    99.999% {t("uptime")}
+                  </div>
+                )}
             </div>
           </div>
         </div>
@@ -578,39 +658,62 @@ export function StatusPageView({
         <ActiveIncidents incidents={activeIncidents} />
 
         {/* Sections */}
-        <div className="space-y-6">
-          {sections.length === 0 ? (
-            <Card>
-              <CardContent className="py-12 text-center">
-                <p className="text-muted-foreground">
-                  {t("noSectionsConfigured")}
-                </p>
-              </CardContent>
-            </Card>
-          ) : (
-            sections
-              .sort((a, b) => a.position - b.position)
-              .map((section) => (
-                <SectionCard
-                  key={section.uid}
-                  section={section}
-                  showAvailability={page.showAvailability}
-                  showResponseTime={page.showResponseTime}
-                  historyDays={page.historyDays}
-                  availabilityThresholds={page.availabilityThresholds}
-                  affectedSeverities={affectedSeverities}
-                />
-              ))
-          )}
-        </div>
+        <DetailsLoadingContext.Provider value={stages?.detailsLoading ?? false}>
+          <div className="space-y-6">
+            {sections.length === 0 ? (
+              <Card>
+                <CardContent className="py-12 text-center">
+                  <p className="text-muted-foreground">
+                    {t("noSectionsConfigured")}
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              sections
+                .sort((a, b) => a.position - b.position)
+                .map((section) => (
+                  <SectionCard
+                    key={section.uid}
+                    section={section}
+                    showAvailability={page.showAvailability}
+                    showResponseTime={page.showResponseTime}
+                    historyDays={page.historyDays}
+                    hourly={page.historyPeriod === "24h"}
+                    availabilityThresholds={page.availabilityThresholds}
+                    affectedSeverities={affectedSeverities}
+                  />
+                ))
+            )}
+          </div>
+        </DetailsLoadingContext.Provider>
 
         {/* Recent updates timeline */}
-        {page.recentUpdates && page.recentUpdates.length > 0 && (
+        {((page.recentUpdates && page.recentUpdates.length > 0) ||
+          stages?.updatesLoading ||
+          stages?.canShowOlder) && (
           <section aria-label={t("status.recentUpdates")} className="mt-8">
             <h2 className="text-lg font-semibold mb-4">
               {t("status.recentUpdates")}
             </h2>
-            <StatusUpdatesTimeline updates={page.recentUpdates} />
+            {page.recentUpdates && page.recentUpdates.length > 0 ? (
+              <StatusUpdatesTimeline updates={page.recentUpdates} />
+            ) : stages?.updatesLoading ? (
+              <div
+                className="h-24 animate-pulse rounded bg-muted"
+                data-testid="updates-skeleton"
+                aria-hidden="true"
+              />
+            ) : null}
+            {stages?.canShowOlder && (
+              <button
+                type="button"
+                onClick={stages.showOlder}
+                className="mt-4 text-sm text-primary hover:underline"
+                data-testid="show-older-updates"
+              >
+                {t("status.showOlderUpdates")}
+              </button>
+            )}
           </section>
         )}
 

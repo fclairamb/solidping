@@ -39,6 +39,7 @@
     "created": "Créé",
     "running": "En cours",
     "recentUpdates": "Mises à jour récentes",
+    "showOlderUpdates": "Afficher les mises à jour plus anciennes",
     "readMore": "En savoir plus →",
     "incidentThread": "Fil de l'incident",
     "incidentThreadLabel": "Fil de l'incident {{uid}}",

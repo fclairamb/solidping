@@ -39,6 +39,7 @@
     "created": "Erstellt",
     "running": "Läuft",
     "recentUpdates": "Aktuelle Updates",
+    "showOlderUpdates": "Ältere Updates anzeigen",
     "readMore": "Mehr erfahren →",
     "incidentThread": "Updates zur Störung",
     "incidentThreadLabel": "Updates zur Störung {{uid}}",

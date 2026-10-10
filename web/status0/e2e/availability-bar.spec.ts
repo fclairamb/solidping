@@ -37,7 +37,7 @@ function dailyAvailability() {
 }
 
 async function mockStatusPage(page: Page) {
-  await page.route(`**/api/v1/status-pages/${ORG}/${SLUG}`, (route) =>
+  await page.route(`**/api/v1/status-pages/${ORG}/${SLUG}*`, (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -105,7 +105,7 @@ function distinctDailyAvailability() {
 }
 
 async function mockStatusPageDistinctPct(page: Page) {
-  await page.route(`**/api/v1/status-pages/${ORG}/${SLUG}`, (route) =>
+  await page.route(`**/api/v1/status-pages/${ORG}/${SLUG}*`, (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -329,7 +329,7 @@ test("availability bar tooltip tracks the hovered segment in the hourly (24h) vi
     };
   });
 
-  await page.route(`**/api/v1/status-pages/${ORG}/${SLUG}`, (route) =>
+  await page.route(`**/api/v1/status-pages/${ORG}/${SLUG}*`, (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",

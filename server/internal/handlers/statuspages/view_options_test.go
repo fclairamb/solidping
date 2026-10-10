@@ -56,12 +56,12 @@ func TestParseViewOptions(t *testing.T) {
 		{
 			name:   "both, comma separated",
 			values: url.Values{"include": {"availability,responseTime"}},
-			want:   AllViewOptions(),
+			want:   ViewOptions{Availability: true, ResponseTime: true},
 		},
 		{
 			name:   "order does not matter",
 			values: url.Values{"include": {"responseTime,availability"}},
-			want:   AllViewOptions(),
+			want:   ViewOptions{Availability: true, ResponseTime: true},
 		},
 		{
 			name:   "duplicates are ignored",
@@ -76,7 +76,7 @@ func TestParseViewOptions(t *testing.T) {
 		{
 			name:   "surrounding whitespace is trimmed",
 			values: url.Values{"include": {" availability , responseTime "}},
-			want:   AllViewOptions(),
+			want:   ViewOptions{Availability: true, ResponseTime: true},
 		},
 		{
 			name:       "unknown token is rejected",
@@ -351,7 +351,7 @@ func TestIncludeDedupAndOrderMatchTheDefault(t *testing.T) {
 
 			opts, err := ParseViewOptions(url.Values{"include": {raw}})
 			r.NoError(err)
-			r.Equal(AllViewOptions(), opts)
+			r.Equal(ViewOptions{Availability: true, ResponseTime: true}, opts)
 
 			view, err := svc.ViewStatusPage(ctx, org.Slug, testPublicSlug, opts)
 			r.NoError(err)
@@ -403,6 +403,7 @@ func TestUnknownIncludeTokenIs400WithGatedCache(t *testing.T) {
 	}{
 		{name: "unknown token", query: "include=foo", token: "foo"},
 		{name: "wrong case is unknown too", query: "include=Availability", token: "Availability"},
+		{name: "bad updatesDays", query: "include=updates&updatesDays=0", token: "updatesDays"},
 	}
 
 	for _, testCase := range testCases {

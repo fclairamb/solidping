@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { usePublicStatusPage } from "@/api/hooks";
+import { useStagedPublicStatusPage } from "@/api/hooks";
 import { StatusPageView } from "@/components/shared/status-page-view";
 import { useLanguageFromPage } from "@/hooks/useLanguageFromPage";
 import { readSpPage } from "@/lib/sp-page";
@@ -28,7 +28,8 @@ export function IndexPage() {
 // $org/$slug route's view exactly, but keeps the address bar on the custom host.
 function CustomDomainStatusPage({ org, slug }: { org: string; slug: string }) {
   const { t } = useTranslation();
-  const { data: page, isLoading, error } = usePublicStatusPage(org, slug);
+  const { page, isLoading, error, ...stages } =
+    useStagedPublicStatusPage(org, slug);
 
   useLanguageFromPage(page?.language);
 
@@ -53,7 +54,7 @@ function CustomDomainStatusPage({ org, slug }: { org: string; slug: string }) {
     );
   }
 
-  return <StatusPageView page={page} org={org} />;
+  return <StatusPageView page={page} org={org} stages={stages} />;
 }
 
 function DefaultLanding() {
