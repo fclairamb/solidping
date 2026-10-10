@@ -39,7 +39,9 @@ describe("apiFetch", () => {
     try {
       expect(await apiFetch<{ from: string }>(url)).toEqual({ from: "shell" });
       expect(calls).toHaveLength(0);
-      expect(await apiFetch<{ from: string }>(url)).toEqual({ from: "network" });
+      expect(await apiFetch<{ from: string }>(url)).toEqual({
+        from: "network",
+      });
       expect(calls).toEqual([url]);
     } finally {
       delete (globalThis as { window?: unknown }).window;
