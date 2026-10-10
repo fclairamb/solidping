@@ -20,7 +20,12 @@ export class NetworkError extends Error {
 export async function apiFetch<T>(url: string): Promise<T> {
   let response: Response;
   try {
-    response = await fetch(url);
+    // "no-cache": always ask the server. Public status-page responses carry
+    // `public, max-age=60, stale-while-revalidate=30` so a CDN can absorb an
+    // incident spike, but the browser obeys it too: a page polling every 30 s
+    // was answered from its own disk cache and showed data up to 90 s old.
+    // The CDN in front still caches; the server's 15 s memo absorbs the rest.
+    response = await fetch(url, { cache: "no-cache" });
   } catch {
     throw new NetworkError();
   }
