@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect } from "react";
+import { createContext, memo, useContext, useEffect, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Logo } from "@/components/ui/logo";
@@ -347,7 +347,7 @@ function SectionCard({
             {resources
               .sort((a, b) => a.position - b.position)
               .map((resource) => (
-                <ResourceCard
+                <MemoResourceCard
                   key={resource.uid}
                   resource={resource}
                   showAvailability={showAvailability}
@@ -364,6 +364,14 @@ function SectionCard({
     </Card>
   );
 }
+
+// A refresh hands back a page where unchanged sections, resources and updates
+// keep their identity (React Query's structural sharing), so memoized, a
+// refresh re-renders only what actually changed instead of every row, its bar
+// segments and its chart.
+const MemoSectionCard = memo(SectionCard);
+const MemoResourceCard = memo(ResourceCard);
+const MemoStatusUpdatesTimeline = memo(StatusUpdatesTimeline);
 
 /**
  * Loading state of the later stages of a staged page load (see
@@ -405,16 +413,20 @@ export function StatusPageView({
   // are all derived here so a resource can never be badged as affected by an
   // incident the page is not also showing.
   const activeIncidents = page.activeIncidents ?? [];
-  const affectedSeverities = new Map<string, string>();
-
-  for (const incident of activeIncidents) {
-    for (const resourceName of incident.affectedResources ?? []) {
-      const existing = affectedSeverities.get(resourceName);
-      // A resource caught by two incidents wears the worse severity.
-      const worst = highestSeverity([existing, incident.severity]);
-      affectedSeverities.set(resourceName, worst ?? existing ?? "");
+  // Memoized on the incidents themselves: it is a prop of every memoized row,
+  // and a fresh Map per render would re-render all of them on each refresh.
+  const affectedSeverities = useMemo(() => {
+    const severities = new Map<string, string>();
+    for (const incident of page.activeIncidents ?? []) {
+      for (const resourceName of incident.affectedResources ?? []) {
+        const existing = severities.get(resourceName);
+        // A resource caught by two incidents wears the worse severity.
+        const worst = highestSeverity([existing, incident.severity]);
+        severities.set(resourceName, worst ?? existing ?? "");
+      }
     }
-  }
+    return severities;
+  }, [page.activeIncidents]);
 
   // The banner takes the WORST severity across the open incidents. When no
   // open incident carries one — the operator graded none — it stays on the
@@ -672,7 +684,7 @@ export function StatusPageView({
               sections
                 .sort((a, b) => a.position - b.position)
                 .map((section) => (
-                  <SectionCard
+                  <MemoSectionCard
                     key={section.uid}
                     section={section}
                     showAvailability={page.showAvailability}
@@ -696,7 +708,7 @@ export function StatusPageView({
               {t("status.recentUpdates")}
             </h2>
             {page.recentUpdates && page.recentUpdates.length > 0 ? (
-              <StatusUpdatesTimeline updates={page.recentUpdates} />
+              <MemoStatusUpdatesTimeline updates={page.recentUpdates} />
             ) : stages?.updatesLoading ? (
               <div
                 className="h-24 animate-pulse rounded bg-muted"

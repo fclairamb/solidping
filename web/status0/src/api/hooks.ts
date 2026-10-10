@@ -305,6 +305,12 @@ export interface PublicReadOptions {
    * behaving exactly as before.
    */
   enabled?: boolean;
+  /**
+   * Called as soon as a read's response has arrived, before React renders it.
+   * The staged load uses it to start the later stages without waiting for the
+   * first one's render.
+   */
+  onFetched?: () => void;
 }
 
 /**
@@ -393,29 +399,41 @@ export function usePublicStatusPage(
   slug: string | null,
   options?: PublicReadOptions,
 ) {
-  const path =
-    slug === null
-      ? `/api/v1/status-pages/${org}`
-      : `/api/v1/status-pages/${org}/${slug}`;
-
   return useQuery<StatusPage>({
     queryKey: publicStatusPageKey(org, slug, options),
-    queryFn: () =>
-      apiFetch<StatusPage>(
-        withKiosk(
-          withUpdatesDays(
-            withInclude(path, options?.include),
-            options?.updatesDays,
-          ),
-          options?.kioskToken,
-        ),
-      ),
+    queryFn: async () => {
+      const page = await fetchPublicStatusPage(org, slug, options);
+      options?.onFetched?.();
+      return page;
+    },
     placeholderData: options?.keepPrevious ? keepPreviousData : undefined,
     // Refresh every 30 seconds by default; TV mode tightens this during an
     // incident.
     refetchInterval: options?.refetchInterval ?? 30_000,
     enabled: !!org && slug !== "" && (options?.enabled ?? true),
   });
+}
+
+/** GET of one public page read, with its include/updatesDays/kiosk params. */
+function fetchPublicStatusPage(
+  org: string,
+  slug: string | null,
+  options?: PublicReadOptions,
+): Promise<StatusPage> {
+  const path =
+    slug === null
+      ? `/api/v1/status-pages/${org}`
+      : `/api/v1/status-pages/${org}/${slug}`;
+
+  return apiFetch<StatusPage>(
+    withKiosk(
+      withUpdatesDays(
+        withInclude(path, options?.include),
+        options?.updatesDays,
+      ),
+      options?.kioskToken,
+    ),
+  );
 }
 
 /** Query-key stand-in for the default page's missing slug. */
@@ -511,24 +529,41 @@ export function useStagedPublicStatusPage(
   });
 
   const stagesEnabled = !fullMode && enabled;
+  const detailsOptions: PublicReadOptions = {
+    ...options,
+    include: ["availability", "responseTime"],
+    keepPrevious: true,
+  };
+  const updatesOptions: PublicReadOptions = {
+    ...options,
+    include: ["updates"],
+    updatesDays: olderDays,
+    keepPrevious: true,
+  };
   const base = usePublicStatusPage(org, slug, {
     ...options,
     include: [],
     enabled: stagesEnabled,
+    // Stages 2 and 3 start the moment stage 1 answers, not once React has
+    // rendered it: that render is 35 ms in production and 250 ms under Vite.
+    // Their own queries below then pick up the requests already in flight.
+    onFetched: () => {
+      for (const stage of [detailsOptions, updatesOptions]) {
+        void queryClient.prefetchQuery({
+          queryKey: publicStatusPageKey(org, slug, stage),
+          queryFn: () => fetchPublicStatusPage(org, slug, stage),
+        });
+      }
+    },
   });
   const ready = !!base.data;
   const details = usePublicStatusPage(org, slug, {
-    ...options,
-    include: ["availability", "responseTime"],
+    ...detailsOptions,
     enabled: ready && stagesEnabled,
-    keepPrevious: true,
   });
   const updates = usePublicStatusPage(org, slug, {
-    ...options,
-    include: ["updates"],
-    updatesDays: olderDays,
+    ...updatesOptions,
     enabled: ready && stagesEnabled,
-    keepPrevious: true,
   });
 
   const staged = useMemo(
