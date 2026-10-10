@@ -1,4 +1,5 @@
 import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
 import { ApiError, NetworkError, apiFetch } from "./client";
 // Relative, not the "@/" alias: that alias is a Vite resolve.alias
 // (vite.config.ts), which `bun test` never sees — every existing test that
@@ -280,6 +281,17 @@ export interface PublicReadOptions {
   refetchInterval?: number;
   include?: PublicPageInclude[];
   /**
+   * Window of the `updates` section in days (`updatesDays=`). Only sent with
+   * `include` containing `updates`; the server bounds it by the page's
+   * historyDays. Absent means the server default (7 days).
+   */
+  updatesDays?: number;
+  /**
+   * Keep the previous result on screen while the key changes (a wider
+   * `updatesDays`, say) instead of dropping back to `undefined`.
+   */
+  keepPrevious?: boolean;
+  /**
    * Holds the query back until the caller has whatever it needs to justify the
    * request. ANDed with the hook's own org/slug guard rather than replacing it,
    * so passing `true` can never fire a request at an empty slug.
@@ -295,7 +307,7 @@ export interface PublicReadOptions {
  * (spec 2026-09-22-07). Mirrors the backend's `include` query tokens
  * (statuspages.ParseViewOptions) exactly, including the case.
  */
-export type PublicPageInclude = "availability" | "responseTime";
+export type PublicPageInclude = "availability" | "responseTime" | "updates";
 
 /**
  * Sorts and dedupes an `include` list into the canonical form used both for
@@ -356,6 +368,16 @@ export function usePublicIncidentHistory(
   });
 }
 
+/** Appends `updatesDays=` (only meaningful with `include=updates`). */
+export function withUpdatesDays(
+  path: string,
+  days: number | undefined,
+): string {
+  if (days === undefined) return path;
+  const separator = path.includes("?") ? "&" : "?";
+  return `${path}${separator}updatesDays=${days}`;
+}
+
 export function usePublicStatusPage(
   org: string,
   slug: string,
@@ -371,19 +393,121 @@ export function usePublicStatusPage(
       slug,
       options?.kioskToken ?? null,
       sortedInclude(options?.include) ?? null,
+      options?.updatesDays ?? null,
     ],
     queryFn: () =>
       apiFetch<StatusPage>(
         withKiosk(
-          withInclude(`/api/v1/status-pages/${org}/${slug}`, options?.include),
+          withUpdatesDays(
+            withInclude(
+              `/api/v1/status-pages/${org}/${slug}`,
+              options?.include,
+            ),
+            options?.updatesDays,
+          ),
           options?.kioskToken,
         ),
       ),
+    placeholderData: options?.keepPrevious ? keepPreviousData : undefined,
     // Refresh every 30 seconds by default; TV mode tightens this during an
     // incident.
     refetchInterval: options?.refetchInterval ?? 30_000,
     enabled: !!org && !!slug && (options?.enabled ?? true),
   });
+}
+
+/**
+ * The public page, loaded in stages (spec 2026-10-10-01) instead of one
+ * 1.2 s blocking call:
+ *
+ * 1. `?include=`: sections, resources and current statuses, banner, branding.
+ *    Gates the first paint.
+ * 2. `?include=availability,responseTime`: availability bars and charts,
+ *    merged onto the stage-1 resources by uid.
+ * 3. `?include=updates`: the recent-updates timeline (7 days, widened to the
+ *    page's historyDays by `showOlder`).
+ *
+ * Stages 2 and 3 only start once stage 1 succeeded (so a locked page 401s once
+ * and nothing else fires), and a failure there leaves stage 1 on screen.
+ */
+export function useStagedPublicStatusPage(
+  org: string,
+  slug: string,
+  options?: PublicReadOptions,
+) {
+  const [showAllUpdates, setShowAllUpdates] = useState(false);
+  const base = usePublicStatusPage(org, slug, { ...options, include: [] });
+  const ready = !!base.data;
+  const details = usePublicStatusPage(org, slug, {
+    ...options,
+    include: ["availability", "responseTime"],
+    enabled: ready && (options?.enabled ?? true),
+    keepPrevious: true,
+  });
+  const historyDays = base.data?.historyDays ?? 0;
+  const widened = showAllUpdates && historyDays > DEFAULT_UPDATES_DAYS;
+  const updates = usePublicStatusPage(org, slug, {
+    ...options,
+    include: ["updates"],
+    updatesDays: widened ? historyDays : undefined,
+    enabled: ready && (options?.enabled ?? true),
+    keepPrevious: true,
+  });
+
+  const page = useMemo(
+    () => mergeStages(base.data, details.data, updates.data),
+    [base.data, details.data, updates.data],
+  );
+
+  return {
+    page,
+    isLoading: base.isLoading,
+    error: base.error,
+    refetch: base.refetch,
+    detailsLoading: ready && details.isLoading,
+    updatesLoading: ready && updates.isLoading,
+    canShowOlder: historyDays > DEFAULT_UPDATES_DAYS && !widened,
+    showOlder: () => setShowAllUpdates(true),
+  };
+}
+
+/** Default window of the `updates` stage; mirrors the server's cap. */
+export const DEFAULT_UPDATES_DAYS = 7;
+
+/**
+ * Overlays the details and updates stages onto the stage-1 page. Availability
+ * is joined per resource uid; a resource the details stage does not know
+ * (configuration changed between two polls) simply keeps no bar.
+ */
+export function mergeStages(
+  base: StatusPage | undefined,
+  details: StatusPage | undefined,
+  updates: StatusPage | undefined,
+): StatusPage | undefined {
+  if (!base) return undefined;
+  const byUid = new Map<string, ResourceAvailabilityData>();
+  for (const section of details?.sections ?? []) {
+    for (const resource of section.resources ?? []) {
+      if (resource.availability) byUid.set(resource.uid, resource.availability);
+    }
+  }
+  const sections = byUid.size
+    ? base.sections?.map((section) => ({
+        ...section,
+        resources: section.resources?.map((resource) => ({
+          ...resource,
+          availability: byUid.get(resource.uid) ?? resource.availability,
+        })),
+      }))
+    : base.sections;
+
+  return {
+    ...base,
+    sections,
+    overallAvailabilityPct:
+      details?.overallAvailabilityPct ?? base.overallAvailabilityPct,
+    recentUpdates: updates?.recentUpdates ?? base.recentUpdates,
+  };
 }
 
 /**

@@ -859,6 +859,10 @@ It's public (no authentication), caches like the page it summarizes (see [Cachin
 
 The two public page views (`GET /api/v1/status-pages/{org}/{slug}` and the default-page equivalent) accept `?include=availability,responseTime` to leave out one or both of the optional, expensive sections. A caller that renders neither the availability bar nor the response-time chart can ask for `?include=` and skip both the payload and the server-side query that builds it. The [TV wallboard](#tv-mode) does exactly this: it polls every 15-30s and never draws either chart, so it always requests `?include=` — the cost of that is the page-level uptime number going along with it (it lives inside the `availability` section too), which the board currently just omits, the same way it already does for a page with availability turned off. The parameter is omit-only: leaving it out returns exactly what every existing integration already gets, and it can never turn on a section the page's own settings have hidden.
 
+A third token, `updates`, controls the `recentUpdates` timeline. Without `updates` in an explicit `include`, the timeline (and the query behind it) is left out. With it, the window is the last 7 days, or `updatesDays=N` (bounded by the page's history window) for more. Active incidents are always returned. Leaving `include` out still returns the timeline over the full history window, so existing integrations, the embed widget and the Atom feed see no change.
+
+The public page itself loads in stages with these tokens: `?include=` first (sections and current statuses), then `?include=availability,responseTime` (bars and charts) and `?include=updates` (timeline, with a "show older updates" action that asks for the full history window).
+
 ## Badge
 
 `GET /api/v1/status-pages/{org}/{slug}/badge` returns an SVG badge showing the page's overall status — the static, script-free counterpart to the JS embed widget, for places scripts can't run (a GitHub README, a wiki, an email footer):

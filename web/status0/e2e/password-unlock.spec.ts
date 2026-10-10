@@ -42,7 +42,7 @@ function unlockedPayload() {
  * real server does once the unlock cookie is set.
  */
 async function mockLockedPage(page: Page, state: { unlocked: boolean }) {
-  await page.route(`**/api/v1/status-pages/${ORG}/${SLUG}`, (route) => {
+  await page.route(`**/api/v1/status-pages/${ORG}/${SLUG}*`, (route) => {
     if (state.unlocked) {
       return route.fulfill({
         status: 200,

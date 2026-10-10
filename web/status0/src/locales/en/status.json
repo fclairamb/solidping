@@ -39,6 +39,7 @@
     "created": "Created",
     "running": "Running",
     "recentUpdates": "Recent updates",
+    "showOlderUpdates": "Show older updates",
     "readMore": "Read more →",
     "incidentThread": "Incident thread",
     "incidentThreadLabel": "Incident thread {{uid}}",

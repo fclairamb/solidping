@@ -2774,6 +2774,7 @@ paths:
         - $ref: "#/components/parameters/OrgPath"
         - $ref: "#/components/parameters/KioskTokenQuery"
         - $ref: "#/components/parameters/IncludeQuery"
+        - $ref: "#/components/parameters/UpdatesDaysQuery"
       responses:
         "200":
           description: The default status page
@@ -2818,6 +2819,7 @@ paths:
             type: string
         - $ref: "#/components/parameters/KioskTokenQuery"
         - $ref: "#/components/parameters/IncludeQuery"
+        - $ref: "#/components/parameters/UpdatesDaysQuery"
       responses:
         "200":
           description: The status page
@@ -9406,11 +9408,16 @@ components:
         type: array
         items:
           type: string
-          enum: [availability, responseTime]
+          enum: [availability, responseTime, updates]
       description: >-
         Narrows which optional, expensive sections the response carries.
-        Comma-separated, unordered, duplicates ignored. Absent means both
-        `availability` and `responseTime` — today's payload, byte-for-byte.
+        Comma-separated, unordered, duplicates ignored. Absent means
+        `availability`, `responseTime` and `updates` (the full `historyDays`
+        window) — today's payload, byte-for-byte.
+        `updates` adds `recentUpdates`; when named in an explicit `include` it
+        covers the last 7 days unless `updatesDays` asks for more (bounded by
+        the page's `historyDays`). Without it `recentUpdates` is omitted.
+        Active incidents are returned whatever `include` says.
         `include=` (present, empty) means neither: no resource carries an
         `availability` key at all, and the page has no
         `overallAvailabilityPct`. Case-sensitive — the tokens mirror the JSON
@@ -9419,6 +9426,19 @@ components:
         own `showAvailability` / `showResponseTime` settings would already
         produce, never widen it — those two fields keep describing the
         page's settings regardless of what was requested.
+
+    UpdatesDaysQuery:
+      name: updatesDays
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+      description: >-
+        Window, in days, of `recentUpdates` when `include` contains `updates`.
+        Defaults to 7 and is bounded by the page's `historyDays`. Ignored
+        without `updates`. A non-positive or non-numeric value is
+        `400 VALIDATION_ERROR`.
 
     StatusPageUidPath:
       name: statusPageUid

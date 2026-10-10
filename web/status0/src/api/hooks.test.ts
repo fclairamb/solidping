@@ -1,6 +1,12 @@
 import { describe, test, expect } from "bun:test";
 import { withKiosk } from "../lib/kiosk";
-import { withInclude, type PublicPageInclude } from "./hooks";
+import {
+  mergeStages,
+  withInclude,
+  withUpdatesDays,
+  type PublicPageInclude,
+  type StatusPage,
+} from "./hooks";
 
 // The URL builder for `?include=` (spec 2026-09-22-07). Composed with
 // `withKiosk` the same way the hooks do, so these pin the same order the
@@ -57,5 +63,85 @@ describe("withInclude", () => {
     // string (order within a query string is irrelevant to the server), but
     // the hooks always build include first — pin that composed shape too.
     expect(includeThenKiosk).toBe(`${path}?include=availability&kiosk=tok`);
+  });
+});
+
+// Staged public page load (spec 2026-10-10-01).
+describe("staged page load URLs", () => {
+  const base = "/api/v1/status-pages/acme/main";
+
+  test("each stage builds its own URL", () => {
+    expect(withInclude(base, [])).toBe(`${base}?include=`);
+    expect(withInclude(base, ["availability", "responseTime"])).toBe(
+      `${base}?include=availability,responseTime`,
+    );
+    expect(withInclude(base, ["updates"])).toBe(`${base}?include=updates`);
+  });
+
+  test("updatesDays is appended only when asked for", () => {
+    const updates = withInclude(base, ["updates"]);
+    expect(withUpdatesDays(updates, undefined)).toBe(updates);
+    expect(withUpdatesDays(updates, 90)).toBe(
+      `${base}?include=updates&updatesDays=90`,
+    );
+  });
+});
+
+describe("mergeStages", () => {
+  const page = (extra: Partial<StatusPage>): StatusPage =>
+    ({
+      uid: "p",
+      name: "P",
+      slug: "p",
+      sections: [
+        {
+          uid: "s",
+          name: "S",
+          slug: "s",
+          position: 0,
+          resources: [{ uid: "r1", position: 0 }],
+        },
+      ],
+      ...extra,
+    }) as StatusPage;
+
+  test("returns undefined until stage 1 lands", () => {
+    expect(mergeStages(undefined, page({}), page({}))).toBeUndefined();
+  });
+
+  test("stage 1 alone is the page", () => {
+    const base = page({});
+    expect(mergeStages(base, undefined, undefined)).toEqual(base);
+  });
+
+  test("joins availability by resource uid and takes updates from stage 4", () => {
+    const base = page({});
+    const details = page({
+      overallAvailabilityPct: 99.5,
+      sections: [
+        {
+          uid: "s",
+          name: "S",
+          slug: "s",
+          position: 0,
+          resources: [
+            {
+              uid: "r1",
+              position: 0,
+              availability: { overallAvailabilityPct: 99.5 },
+            },
+          ],
+        },
+      ] as StatusPage["sections"],
+    });
+    const updates = page({
+      recentUpdates: [{ uid: "u1" }] as StatusPage["recentUpdates"],
+    });
+    const merged = mergeStages(base, details, updates);
+    expect(merged?.overallAvailabilityPct).toBe(99.5);
+    expect(
+      merged?.sections?.[0].resources?.[0].availability?.overallAvailabilityPct,
+    ).toBe(99.5);
+    expect(merged?.recentUpdates).toHaveLength(1);
   });
 });

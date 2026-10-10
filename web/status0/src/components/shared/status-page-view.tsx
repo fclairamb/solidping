@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { createContext, useContext, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Logo } from "@/components/ui/logo";
@@ -47,7 +47,10 @@ function getStatusLabelKey(status: string) {
 function formatLastChecked(iso: string, locale: string): string {
   const date = new Date(iso);
   const now = new Date();
-  const time = date.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
+  const time = date.toLocaleTimeString(locale, {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
   if (date.toDateString() === now.toDateString()) return time;
   return `${date.toLocaleDateString(locale, { day: "numeric", month: "short" })} ${time}`;
 }
@@ -142,6 +145,7 @@ function ResourceCard({
   affectedSeverities,
 }: ResourceCardProps) {
   const { t, i18n } = useTranslation();
+  const detailsLoading = useContext(DetailsLoadingContext);
   const name = resource.publicName || resource.check?.name || t("unknown");
   const incidentSeverity = affectedSeverities.get(name);
   const isAffected = incidentSeverity !== undefined;
@@ -228,13 +232,25 @@ function ResourceCard({
                   2026-09-25-02). */}
               {status === "stale" && resource.check?.lastResultAt
                 ? t("noDataLastChecked", {
-                    time: formatLastChecked(resource.check.lastResultAt, i18n.language),
+                    time: formatLastChecked(
+                      resource.check.lastResultAt,
+                      i18n.language,
+                    ),
                   })
                 : t(getStatusLabelKey(status))}
             </Badge>
           )}
         </div>
       </div>
+
+      {/* Stage 2 (availability) has not landed yet: reserve the bar's height. */}
+      {showAvailability && !avail && detailsLoading && (
+        <div
+          className="mt-3 h-8 animate-pulse rounded bg-muted"
+          data-testid="availability-skeleton"
+          aria-hidden="true"
+        />
+      )}
 
       {/* Availability bars */}
       {showAvailability && avail?.dailyAvailability && (
@@ -316,12 +332,27 @@ function SectionCard({
   );
 }
 
+/**
+ * Loading state of the later stages of a staged page load (see
+ * useStagedPublicStatusPage). Absent means everything arrived with the page.
+ */
+export interface PageStages {
+  detailsLoading: boolean;
+  updatesLoading: boolean;
+  canShowOlder: boolean;
+  showOlder: () => void;
+}
+
+const DetailsLoadingContext = createContext(false);
+
 export function StatusPageView({
   page,
   org,
+  stages,
 }: {
   page: StatusPage;
   org: string;
+  stages?: PageStages;
 }) {
   const { t } = useTranslation();
   const sections = page.sections ?? [];
@@ -578,39 +609,61 @@ export function StatusPageView({
         <ActiveIncidents incidents={activeIncidents} />
 
         {/* Sections */}
-        <div className="space-y-6">
-          {sections.length === 0 ? (
-            <Card>
-              <CardContent className="py-12 text-center">
-                <p className="text-muted-foreground">
-                  {t("noSectionsConfigured")}
-                </p>
-              </CardContent>
-            </Card>
-          ) : (
-            sections
-              .sort((a, b) => a.position - b.position)
-              .map((section) => (
-                <SectionCard
-                  key={section.uid}
-                  section={section}
-                  showAvailability={page.showAvailability}
-                  showResponseTime={page.showResponseTime}
-                  historyDays={page.historyDays}
-                  availabilityThresholds={page.availabilityThresholds}
-                  affectedSeverities={affectedSeverities}
-                />
-              ))
-          )}
-        </div>
+        <DetailsLoadingContext.Provider value={stages?.detailsLoading ?? false}>
+          <div className="space-y-6">
+            {sections.length === 0 ? (
+              <Card>
+                <CardContent className="py-12 text-center">
+                  <p className="text-muted-foreground">
+                    {t("noSectionsConfigured")}
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              sections
+                .sort((a, b) => a.position - b.position)
+                .map((section) => (
+                  <SectionCard
+                    key={section.uid}
+                    section={section}
+                    showAvailability={page.showAvailability}
+                    showResponseTime={page.showResponseTime}
+                    historyDays={page.historyDays}
+                    availabilityThresholds={page.availabilityThresholds}
+                    affectedSeverities={affectedSeverities}
+                  />
+                ))
+            )}
+          </div>
+        </DetailsLoadingContext.Provider>
 
         {/* Recent updates timeline */}
-        {page.recentUpdates && page.recentUpdates.length > 0 && (
+        {((page.recentUpdates && page.recentUpdates.length > 0) ||
+          stages?.updatesLoading ||
+          stages?.canShowOlder) && (
           <section aria-label={t("status.recentUpdates")} className="mt-8">
             <h2 className="text-lg font-semibold mb-4">
               {t("status.recentUpdates")}
             </h2>
-            <StatusUpdatesTimeline updates={page.recentUpdates} />
+            {page.recentUpdates && page.recentUpdates.length > 0 ? (
+              <StatusUpdatesTimeline updates={page.recentUpdates} />
+            ) : stages?.updatesLoading ? (
+              <div
+                className="h-24 animate-pulse rounded bg-muted"
+                data-testid="updates-skeleton"
+                aria-hidden="true"
+              />
+            ) : null}
+            {stages?.canShowOlder && (
+              <button
+                type="button"
+                onClick={stages.showOlder}
+                className="mt-4 text-sm text-primary hover:underline"
+                data-testid="show-older-updates"
+              >
+                {t("status.showOlderUpdates")}
+              </button>
+            )}
           </section>
         )}
 

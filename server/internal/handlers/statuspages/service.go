@@ -2650,7 +2650,12 @@ func (s *Service) computeStatusPageView(
 		}
 	}
 
-	response.RecentUpdates = s.loadRecentUpdates(ctx, org.UID, page)
+	// The timeline is the slowest optional section after availability: only
+	// computed when asked for (absent `include` asks for it, with the full
+	// historyDays window; see ParseViewOptions).
+	if opts.Updates {
+		response.RecentUpdates = s.loadRecentUpdates(ctx, org.UID, page, opts.UpdatesDays)
+	}
 
 	return response, nil
 }
@@ -2663,13 +2668,20 @@ func (s *Service) computeStatusPageView(
 // it can't hide again, and a status page that cannot render its timeline is
 // still far more useful than a 500.
 func (s *Service) loadRecentUpdates(
-	ctx context.Context, orgUID string, page *models.StatusPage,
+	ctx context.Context, orgUID string, page *models.StatusPage, days int,
 ) []StatusUpdatePublicResponse {
 	if page.HistoryDays <= 0 {
 		return nil
 	}
 
-	updates, err := s.db.ListPublicStatusUpdates(ctx, page.UID, page.HistoryDays)
+	// days == 0 means the page's whole history window; otherwise it can only
+	// narrow it.
+	window := page.HistoryDays
+	if days > 0 && days < window {
+		window = days
+	}
+
+	updates, err := s.db.ListPublicStatusUpdates(ctx, page.UID, window)
 	if err != nil {
 		slog.ErrorContext(ctx, "Failed to load public status updates for status page",
 			"error", err, "statusPageUID", page.UID, "orgUID", orgUID)

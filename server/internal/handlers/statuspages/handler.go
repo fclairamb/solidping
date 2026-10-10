@@ -1095,7 +1095,11 @@ func (h *Handler) handlePublicError(writer http.ResponseWriter, request *http.Re
 
 	var invalidInclude *InvalidIncludeError
 
+	var invalidUpdatesDays *InvalidUpdatesDaysError
+
 	switch {
+	case errors.As(err, &invalidUpdatesDays):
+		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, invalidUpdatesDays.Error())
 	case errors.As(err, &invalidInclude):
 		// A malformed `include` param is a client mistake, not evidence the
 		// page exists or doesn't — the gated Cache-Control set above still
