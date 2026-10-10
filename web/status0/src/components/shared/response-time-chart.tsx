@@ -27,6 +27,9 @@ import {
   formatAvailabilityPct,
 } from "@/lib/availability-status";
 
+// Height of the plot area. Shared with ResponseTimeChartSkeleton.
+const PLOT_HEIGHT_PX = 100;
+
 function formatDuration(ms: number) {
   if (ms >= 1000) {
     return `${(ms / 1000).toFixed(2)}s`;
@@ -280,7 +283,7 @@ export function ResponseTimeChart({
         <p className="mb-1 text-xs text-muted-foreground">
           {t("responseTime")}
         </p>
-        <ResponsiveContainer width="100%" height={100}>
+        <ResponsiveContainer width="100%" height={PLOT_HEIGHT_PX}>
           <AreaChart
             data={data}
             margin={{ top: 4, right: 4, bottom: 0, left: 4 }}
@@ -389,26 +392,8 @@ export function ResponseTimeChart({
   return (
     <div className="mt-3">
       <p className="mb-1 text-xs text-muted-foreground">{t("responseTime")}</p>
-      <div
-        className="mb-1.5 flex flex-wrap items-center gap-x-3 gap-y-1"
-        data-testid="response-time-chart-legend"
-      >
-        {series.map((s, index) => (
-          <span
-            key={s.region ?? index}
-            className="flex items-center gap-1 text-[11px] text-muted-foreground"
-            data-testid="response-time-chart-legend-item"
-          >
-            <span
-              className="inline-block h-2 w-2 shrink-0 rounded-sm"
-              style={{ backgroundColor: seriesColor(index) }}
-              aria-hidden="true"
-            />
-            <span translate="no">{regionLabel(s.region)}</span>
-          </span>
-        ))}
-      </div>
-      <ResponsiveContainer width="100%" height={100}>
+      <ChartLegend series={series} />
+      <ResponsiveContainer width="100%" height={PLOT_HEIGHT_PX}>
         <AreaChart data={chartRows} margin={{ top: 4, right: 4, bottom: 0, left: 4 }}>
           <defs>
             {series.map((_, index) => (
@@ -526,6 +511,75 @@ export function ResponseTimeChart({
         noDataLabel={t("noData")}
         testId="response-time-chart-availability-strip"
       />
+    </div>
+  );
+}
+
+// The region legend of a multi-region chart. Shared with
+// ResponseTimeChartSkeleton, which shows it as soon as the series are known so
+// the chart mounting under it does not push it down.
+function ChartLegend({
+  series,
+  testIds = true,
+}: {
+  series: ResponseTimeSeries[];
+  testIds?: boolean;
+}) {
+  const { t } = useTranslation();
+
+  return (
+    <div
+      className="mb-1.5 flex flex-wrap items-center gap-x-3 gap-y-1"
+      data-testid={testIds ? "response-time-chart-legend" : undefined}
+    >
+      {series.map((s, index) => (
+        <span
+          key={s.region ?? index}
+          className="flex items-center gap-1 text-[11px] text-muted-foreground"
+          data-testid={testIds ? "response-time-chart-legend-item" : undefined}
+        >
+          <span
+            className="inline-block h-2 w-2 shrink-0 rounded-sm"
+            style={{ backgroundColor: seriesColor(index) }}
+            aria-hidden="true"
+          />
+          <span translate="no">
+            {s.region ||
+              t("unknownRegion", { defaultValue: "Unknown region" })}
+          </span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Stands in for ResponseTimeChart: while the response-time stage is in
+ * flight, and while a loaded chart waits to scroll near the viewport. Same
+ * boxes as the real chart (label, legend when there are several regions, plot,
+ * availability strip), so nothing moves when the chart replaces it.
+ *
+ * Before the stage lands the region count is unknown, so it assumes one
+ * region, which is the common case; a multi-region chart then adds its legend.
+ */
+export function ResponseTimeChartSkeleton({
+  series,
+}: {
+  series?: ResponseTimeSeries[];
+}) {
+  const { t } = useTranslation();
+
+  return (
+    <div className="mt-3" data-testid="response-time-skeleton" aria-hidden="true">
+      <p className="mb-1 text-xs text-muted-foreground">{t("responseTime")}</p>
+      {series && series.length > 1 && (
+        <ChartLegend series={series} testIds={false} />
+      )}
+      <div
+        className="animate-pulse rounded bg-muted"
+        style={{ height: PLOT_HEIGHT_PX }}
+      />
+      <div className="ml-[50px] mr-[4px] mt-1 h-1.5 rounded-sm bg-muted" />
     </div>
   );
 }

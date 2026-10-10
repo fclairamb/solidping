@@ -180,6 +180,85 @@ test.describe("Public status page - staged loading", () => {
     expect(seen.every((stage) => stage === "base")).toBe(true);
   });
 
+  test("a resource row keeps its height when the availability stage lands", async ({
+    page,
+  }) => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    const times = [0, 1, 2].map((i) =>
+      new Date(Date.UTC(2026, 6, 1, i)).toISOString(),
+    );
+    const full = payload(true);
+    const [section] = full.sections;
+    const [res] = section.resources;
+    const details = {
+      ...full,
+      showResponseTime: true,
+      sections: [
+        {
+          ...section,
+          resources: [
+            {
+              ...res,
+              availability: {
+                ...res.availability,
+                responseTimeSeries: [
+                  {
+                    region: "eu1",
+                    points: times.map((time) => ({
+                      time,
+                      durationP95: 40,
+                      status: "up",
+                      totalChecks: 60,
+                      successfulChecks: 60,
+                      availabilityPct: 100,
+                      availabilityStatus: "up",
+                    })),
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    };
+
+    await mockStages(page, async (stage, route) => {
+      if (stage === "base")
+        return ok(route, { ...payload(false), showResponseTime: true });
+      if (stage === "details") {
+        await gate;
+        return ok(route, details);
+      }
+      return ok(route, { ...payload(false), recentUpdates: [] });
+    });
+
+    await page.goto(`${BASE}${STATUS_BASE}/${ORG}/${SLUG}`);
+
+    const row = page.getByTestId("resource-row");
+    await expect(page.getByTestId("availability-skeleton")).toBeVisible();
+    await expect(page.getByTestId("response-time-skeleton")).toBeVisible();
+    await expect(
+      page.getByTestId("overall-uptime-pill-skeleton"),
+    ).toBeVisible();
+    const before = await row.boundingBox();
+
+    release();
+
+    await expect(
+      page.getByTestId("response-time-chart-availability-strip"),
+    ).toBeVisible();
+    await expect(page.getByTestId("overall-uptime-pill")).toBeVisible();
+    await expect(page.getByTestId("availability-skeleton")).toHaveCount(0);
+    await expect(page.getByTestId("response-time-skeleton")).toHaveCount(0);
+    const after = await row.boundingBox();
+
+    expect(Math.abs(after!.height - before!.height)).toBeLessThan(1);
+  });
+
   test("the org's default page (no slug) loads in the same stages", async ({
     page,
   }) => {

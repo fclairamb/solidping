@@ -2,12 +2,14 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 
 interface WhenVisibleProps {
   children: ReactNode;
-  /** Height reserved until the children mount, close to their real height. */
-  placeholderHeight: number;
+  /**
+   * Shown until the children mount. Give it the children's exact boxes (a
+   * skeleton of them) so nothing moves when they replace it.
+   */
+  placeholder: ReactNode;
   /**
    * How far ahead of the viewport to mount. Generous on purpose: the children
-   * should be in place before they scroll into view, so any difference
-   * between the placeholder and the real height happens off-screen.
+   * should be in place before they scroll into view.
    */
   rootMargin?: string;
 }
@@ -22,7 +24,7 @@ interface WhenVisibleProps {
  */
 export function WhenVisible({
   children,
-  placeholderHeight,
+  placeholder,
   rootMargin = "800px 0px",
 }: WhenVisibleProps) {
   const ref = useRef<HTMLDivElement>(null);
@@ -49,12 +51,7 @@ export function WhenVisible({
 
   if (visible) return <>{children}</>;
 
-  return (
-    <div
-      ref={ref}
-      style={{ height: placeholderHeight }}
-      aria-hidden="true"
-      data-testid="deferred-placeholder"
-    />
-  );
+  // No border or padding on the wrapper, so the placeholder's own top margin
+  // collapses through it exactly as the children's would.
+  return <div ref={ref}>{placeholder}</div>;
 }

@@ -231,25 +231,80 @@ export function AvailabilityBar({
           </Tooltip>
         )}
       </div>
-      {/* Same reasoning: every label here is recomputed from poll data, and the
-          middle span appears/disappears with it. */}
-      <div
-        className="mt-1 flex justify-between text-xs text-muted-foreground"
-        data-testid="availability-axis"
-        translate="no"
-      >
-        <span>
-          {isHourly
-            ? t("hoursAgo", { count: 24 })
-            : t("daysAgo", { count: historyDays })}
+      <AvailabilityAxis
+        isHourly={isHourly}
+        historyDays={historyDays}
+        overallAvailabilityPct={overallAvailabilityPct}
+        testId="availability-axis"
+      />
+    </div>
+  );
+}
+
+interface AvailabilityAxisProps {
+  isHourly: boolean;
+  historyDays: number;
+  overallAvailabilityPct?: number;
+  testId?: string;
+}
+
+// The line under the bar: window start, overall uptime, "today". Shared with
+// AvailabilityBarSkeleton so both are exactly the same height.
+function AvailabilityAxis({
+  isHourly,
+  historyDays,
+  overallAvailabilityPct,
+  testId,
+}: AvailabilityAxisProps) {
+  const { t } = useTranslation();
+
+  // translate="no": every label here is recomputed from poll data, and the
+  // middle span appears/disappears with it (see the tooltip above).
+  return (
+    <div
+      className="mt-1 flex justify-between text-xs text-muted-foreground"
+      data-testid={testId}
+      translate="no"
+    >
+      <span>
+        {isHourly
+          ? t("hoursAgo", { count: 24 })
+          : t("daysAgo", { count: historyDays })}
+      </span>
+      {overallAvailabilityPct != null && (
+        <span className="font-medium text-foreground">
+          {overallAvailabilityPct.toFixed(3)}% {t("uptime")}
         </span>
-        {overallAvailabilityPct != null && (
-          <span className="font-medium text-foreground">
-            {overallAvailabilityPct.toFixed(3)}% {t("uptime")}
-          </span>
-        )}
-        <span>{t("today")}</span>
+      )}
+      <span>{t("today")}</span>
+    </div>
+  );
+}
+
+interface AvailabilityBarSkeletonProps {
+  historyDays: number;
+  isHourly: boolean;
+}
+
+/**
+ * Stands in for AvailabilityBar while the availability stage is in flight.
+ * Same boxes as the real bar (padded bar row, axis line), so the row does not
+ * move when the bar replaces it. The axis labels are already the real ones:
+ * the window is known from the first stage.
+ */
+export function AvailabilityBarSkeleton({
+  historyDays,
+  isHourly,
+}: AvailabilityBarSkeletonProps) {
+  return (
+    <div className="mt-2" data-testid="availability-skeleton" aria-hidden="true">
+      <div className="py-1">
+        <div
+          className="animate-pulse rounded bg-muted"
+          style={{ height: BAR_HEIGHT_PX }}
+        />
       </div>
+      <AvailabilityAxis isHourly={isHourly} historyDays={historyDays} />
     </div>
   );
 }

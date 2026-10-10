@@ -15,8 +15,11 @@ import {
   type StatusPageResource,
 } from "@/api/hooks";
 import { useTranslation } from "react-i18next";
-import { AvailabilityBar } from "./availability-bar";
-import { ResponseTimeChart } from "./response-time-chart";
+import { AvailabilityBar, AvailabilityBarSkeleton } from "./availability-bar";
+import {
+  ResponseTimeChart,
+  ResponseTimeChartSkeleton,
+} from "./response-time-chart";
 import { WhenVisible } from "./when-visible";
 
 import { LanguageSwitcher } from "./language-switcher";
@@ -31,10 +34,6 @@ import {
   statusStyle,
 } from "@/lib/status-style";
 import { usePreviewCss } from "@/lib/preview-css";
-
-// Rendered height of a single-region response-time chart (margin included),
-// reserved while the chart waits to scroll near the viewport.
-const RESPONSE_TIME_CHART_HEIGHT_PX = 142;
 
 function getStatusColor(status: string) {
   return statusStyle(status).color;
@@ -128,6 +127,8 @@ interface ResourceCardProps {
   showAvailability: boolean;
   showResponseTime: boolean;
   historyDays: number;
+  /** The page shows 24 hourly buckets rather than days (historyPeriod 24h). */
+  hourly: boolean;
   /**
    * Public display names covered by an OPEN incident publication, keyed by the
    * severity to colour the badge with (empty string = the operator graded the
@@ -148,6 +149,7 @@ function ResourceCard({
   showAvailability,
   showResponseTime,
   historyDays,
+  hourly,
   affectedSeverities,
 }: ResourceCardProps) {
   const { t, i18n } = useTranslation();
@@ -218,6 +220,17 @@ function ResourceCard({
               {avail.overallAvailabilityPct.toFixed(3)}%
             </span>
           )}
+          {/* Same span, same width, while the availability stage is in
+              flight: the badges beside it do not slide when it lands. */}
+          {showAvailability && !avail && detailsLoading && (
+            <span
+              className="animate-pulse rounded bg-muted text-sm font-medium tabular-nums text-transparent"
+              data-testid="resource-availability-pct-skeleton"
+              aria-hidden="true"
+            >
+              99.999%
+            </span>
+          )}
           {inMaintenance ? (
             <Badge
               variant="warning"
@@ -249,13 +262,9 @@ function ResourceCard({
         </div>
       </div>
 
-      {/* Stage 2 (availability) has not landed yet: reserve the bar's height. */}
+      {/* Stage 2 (availability) has not landed yet: reserve the bar. */}
       {showAvailability && !avail && detailsLoading && (
-        <div
-          className="mt-3 h-8 animate-pulse rounded bg-muted"
-          data-testid="availability-skeleton"
-          aria-hidden="true"
-        />
+        <AvailabilityBarSkeleton historyDays={historyDays} isHourly={hourly} />
       )}
 
       {/* Availability bars */}
@@ -269,8 +278,15 @@ function ResourceCard({
       )}
 
       {/* Response time chart */}
+      {showResponseTime && !avail && detailsLoading && (
+        <ResponseTimeChartSkeleton />
+      )}
       {showResponseTime && avail?.responseTimeSeries && (
-        <WhenVisible placeholderHeight={RESPONSE_TIME_CHART_HEIGHT_PX}>
+        <WhenVisible
+          placeholder={
+            <ResponseTimeChartSkeleton series={avail.responseTimeSeries} />
+          }
+        >
           <ResponseTimeChart
             series={avail.responseTimeSeries}
             thresholds={availabilityThresholds}
@@ -287,6 +303,7 @@ interface SectionCardProps {
   showAvailability: boolean;
   showResponseTime: boolean;
   historyDays: number;
+  hourly: boolean;
   affectedSeverities: Map<string, string>;
 }
 
@@ -296,6 +313,7 @@ function SectionCard({
   showAvailability,
   showResponseTime,
   historyDays,
+  hourly,
   affectedSeverities,
 }: SectionCardProps) {
   const { t } = useTranslation();
@@ -329,6 +347,7 @@ function SectionCard({
                   showAvailability={showAvailability}
                   showResponseTime={showResponseTime}
                   historyDays={historyDays}
+                  hourly={hourly}
                   availabilityThresholds={availabilityThresholds}
                   affectedSeverities={affectedSeverities}
                 />
@@ -417,6 +436,9 @@ export function StatusPageView({
   const aggregateUptimePct = uptimeSamples.length
     ? uptimeSamples.reduce((sum, pct) => sum + pct, 0) / uptimeSamples.length
     : null;
+  const uptimePillClass = `flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium tabular-nums ${
+    bannerSeverity?.bannerPill ?? overallStyle.bannerPill
+  }`;
   const { data: versionInfo } = useVersion();
   const feedUrl = `/api/v1/status-pages/${org}/${page.slug}/feed.xml`;
   // Outside preview mode this is just page.customCss; with ?preview=1 the
@@ -598,15 +620,28 @@ export function StatusPageView({
                   bug — the two sat side by side with identical text. */}
               {aggregateUptimePct != null && (
                 <div
-                  className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium tabular-nums ${
-                    bannerSeverity?.bannerPill ?? overallStyle.bannerPill
-                  }`}
+                  className={uptimePillClass}
                   data-testid="overall-uptime-pill"
                   {...NO_TRANSLATE}
                 >
                   {aggregateUptimePct.toFixed(3)}% {t("uptime")}
                 </div>
               )}
+              {/* The pill is the mean of the per-resource numbers, so it only
+                  exists once the availability stage lands. Hold its place
+                  meanwhile: on a narrow screen it wraps onto its own line and
+                  would push the whole page down by a line. */}
+              {aggregateUptimePct == null &&
+                page.showAvailability &&
+                stages?.detailsLoading && (
+                  <div
+                    className={`${uptimePillClass} animate-pulse text-transparent`}
+                    data-testid="overall-uptime-pill-skeleton"
+                    aria-hidden="true"
+                  >
+                    99.999% {t("uptime")}
+                  </div>
+                )}
             </div>
           </div>
         </div>
@@ -637,6 +672,7 @@ export function StatusPageView({
                     showAvailability={page.showAvailability}
                     showResponseTime={page.showResponseTime}
                     historyDays={page.historyDays}
+                    hourly={page.historyPeriod === "24h"}
                     availabilityThresholds={page.availabilityThresholds}
                     affectedSeverities={affectedSeverities}
                   />
