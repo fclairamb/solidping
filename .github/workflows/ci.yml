@@ -634,6 +634,50 @@ jobs:
           path: solidping
           retention-days: 7
 
+  # Guards for the tag-only release jobs (server-release, cli-release, docker):
+  # they prove a release would still package, build its images and
+  # cross-compile, on every PR, since those jobs cannot run before a tag exists.
+  # They used to be the tail of `build`, which kept the E2E shards (which need
+  # only the linux/amd64 binary) waiting ~15 min for them on every run (run
+  # 38082916085: 12.4 min for the cross-compile alone). As their own job they
+  # run alongside the E2E shards instead, and still gate `ci`.
+  release-guards:
+    name: Release Guards
+    runs-on: ubuntu-26.04
+    needs: [changes, build]
+    if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) && needs.changes.outputs.code == 'true' }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.27"
+          cache-dependency-path: server/go.sum
+
+      - name: Download dash0 dist
+        uses: actions/download-artifact@v8
+        with:
+          name: dash0-dist
+          path: server/internal/app/dash0res
+
+      - name: Download status0 dist
+        uses: actions/download-artifact@v8
+        with:
+          name: status0-dist
+          path: server/internal/app/status0res
+
+      - name: Download docs dist
+        uses: actions/download-artifact@v8
+        with:
+          name: docs-dist
+          path: server/internal/app/docsres
+
+      - name: Download solidping binary
+        uses: actions/download-artifact@v8
+        with:
+          name: solidping-linux-amd64
+          path: .
+
       # server-release and cli-release (tag-triggered, below) publish every
       # binary compressed only — a bare executable is never uploaded (spec
       # 2026-09-25-08) — but those jobs only run on refs/tags/, so a typo in
@@ -1027,7 +1071,7 @@ jobs:
   ci:
     name: CI
     runs-on: ubuntu-26.04
-    needs: [changes, backend-lint, backend-postgres, dash0, status0, docs, build, e2e-tests]
+    needs: [changes, backend-lint, backend-postgres, dash0, status0, docs, build, release-guards, e2e-tests]
     if: ${{ always() && !startsWith(github.ref, 'refs/tags/') }}
     steps:
       - name: Verify no failures
