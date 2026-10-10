@@ -57,5 +57,55 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <!--
+      Starts the page's API reads while the bundle is still downloading. The
+      SPA used to send its first read only once the bundle had loaded and
+      booted, ~200 ms after the HTML; the read itself takes ~20 ms. Same order
+      as useStagedPublicStatusPage: the bare page (`include=`), then, only if
+      it succeeded, availability/response time and updates. apiFetch takes
+      these promises by exact URL (src/api/client.ts takePrefetched) instead
+      of sending the same request again. TV routes are left alone.
+    -->
+    <script>
+      (function () {
+        try {
+          var base = "%BASE_URL%";
+          var path = location.pathname;
+          var rest =
+            path.indexOf(base) === 0
+              ? path.slice(base.length)
+              : path + "/" === base || path === "/"
+                ? ""
+                : null;
+          if (rest === null) return;
+          var parts = rest.split("/").filter(Boolean).map(decodeURIComponent);
+          var page = null;
+          if (parts.length === 0) {
+            // A custom domain: the server names the page in a meta tag.
+            var meta = document.querySelector('meta[name="sp-page"]');
+            page = meta && meta.getAttribute("content");
+          } else if (parts.length <= 2 && parts[parts.length - 1] !== "tv") {
+            page = parts.join("/");
+          }
+          if (!page) return;
+          var reads = (window.__spPrefetch = {});
+          var read = function (include) {
+            var url = "/api/v1/status-pages/" + page.trim() + "?include=" + include;
+            var response = fetch(url, { cache: "no-cache" });
+            response.catch(function () {});
+            reads[url] = response;
+            return response;
+          };
+          read("").then(function (response) {
+            if (response.ok) {
+              read("availability,responseTime");
+              read("updates");
+            }
+          });
+        } catch (e) {
+          // The SPA sends its own reads.
+        }
+      })();
+    </script>
   </body>
 </html>

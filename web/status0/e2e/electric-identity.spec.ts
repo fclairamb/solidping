@@ -65,7 +65,7 @@ function payload(overrides: Record<string, unknown> = {}) {
 }
 
 async function openPage(page: Page, overrides: Record<string, unknown> = {}) {
-  await page.route(`**/api/v1/status-pages/${ORG}/${SLUG}`, (route) =>
+  await page.route(`**/api/v1/status-pages/${ORG}/${SLUG}*`, (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -204,7 +204,7 @@ test.describe("Public status page — electric identity", () => {
     });
 
     test("the unlock button uses the same gradient", async ({ page }) => {
-      await page.route(`**/api/v1/status-pages/${ORG}/${SLUG}`, (route) =>
+      await page.route(`**/api/v1/status-pages/${ORG}/${SLUG}*`, (route) =>
         route.fulfill({
           status: 401,
           contentType: "application/json",
@@ -388,7 +388,7 @@ test.describe("Public status page — electric identity", () => {
       // A locked page has no payload, so no stylesheet reaches it: this only
       // proves the unlock button reads the same variables, by setting them on
       // the document the way a stylesheet would.
-      await page.route(`**/api/v1/status-pages/${ORG}/${SLUG}`, (route) =>
+      await page.route(`**/api/v1/status-pages/${ORG}/${SLUG}*`, (route) =>
         route.fulfill({
           status: 401,
           contentType: "application/json",

@@ -32,7 +32,7 @@ function basePayload() {
 }
 
 async function mockOverallStatus(page: Page, overallStatus: string) {
-  await page.route(`**/api/v1/status-pages/${ORG}/${SLUG}`, (route) =>
+  await page.route(`**/api/v1/status-pages/${ORG}/${SLUG}*`, (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -67,7 +67,7 @@ test.describe("Public status page — overall status badge", () => {
   test("missing overallStatus (older/cached response) falls back to Status Unknown, not a crash", async ({
     page,
   }) => {
-    await page.route(`**/api/v1/status-pages/${ORG}/${SLUG}`, (route) =>
+    await page.route(`**/api/v1/status-pages/${ORG}/${SLUG}*`, (route) =>
       route.fulfill({
         status: 200,
         contentType: "application/json",

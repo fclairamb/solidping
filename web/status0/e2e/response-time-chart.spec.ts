@@ -53,7 +53,7 @@ async function mockStatusPage(
   responseTimeSeries: unknown[],
   pageOverrides: Record<string, unknown> = {},
 ) {
-  await page.route(`**/api/v1/status-pages/${ORG}/${SLUG}`, (route) =>
+  await page.route(`**/api/v1/status-pages/${ORG}/${SLUG}*`, (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",

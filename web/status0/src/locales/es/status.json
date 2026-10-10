@@ -39,6 +39,7 @@
     "created": "Creado",
     "running": "En ejecución",
     "recentUpdates": "Actualizaciones recientes",
+    "showOlderUpdates": "Mostrar actualizaciones anteriores",
     "readMore": "Leer más →",
     "incidentThread": "Hilo de la incidencia",
     "incidentThreadLabel": "Hilo de la incidencia {{uid}}",

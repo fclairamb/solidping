@@ -85,13 +85,16 @@ type memoKey struct {
 	pageUID      string
 	availability bool
 	responseTime bool
+	updates      bool
+	updatesDays  int
 }
 
 // flightKey is the singleflight key: the same identity as the map key, flattened
 // to the string that API requires.
 func (k memoKey) flightKey() string {
 	return string(k.product) + "\x00" + k.pageUID + "\x00" +
-		strconv.FormatBool(k.availability) + strconv.FormatBool(k.responseTime)
+		strconv.FormatBool(k.availability) + strconv.FormatBool(k.responseTime) +
+		strconv.FormatBool(k.updates) + strconv.Itoa(k.updatesDays)
 }
 
 // pageViewKey is the key for a full page view under the given include set.
@@ -102,6 +105,8 @@ func pageViewKey(orgUID, pageUID string, opts ViewOptions) memoKey {
 		pageUID:      pageUID,
 		availability: opts.Availability,
 		responseTime: opts.ResponseTime,
+		updates:      opts.Updates,
+		updatesDays:  opts.UpdatesDays,
 	}
 }
 

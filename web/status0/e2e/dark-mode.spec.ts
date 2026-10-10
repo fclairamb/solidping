@@ -35,7 +35,7 @@ function basePayload() {
 }
 
 async function mockStatusPage(page: Page) {
-  await page.route(`**/api/v1/status-pages/${ORG}/${SLUG}`, (route) =>
+  await page.route(`**/api/v1/status-pages/${ORG}/${SLUG}*`, (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
