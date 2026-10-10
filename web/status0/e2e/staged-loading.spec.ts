@@ -123,13 +123,13 @@ test.describe("Public status page - staged loading", () => {
 
     await expect(page.getByText("Core")).toBeVisible();
     await expect(page.getByText("API")).toBeVisible();
-    await expect(page.getByTestId("availability-skeleton")).toBeVisible();
+    await expect(page.getByTestId("availability-placeholder")).toBeAttached();
     await expect(page.getByTestId("resource-availability-pct")).toHaveCount(0);
 
     release();
 
     await expect(page.getByTestId("resource-availability-pct")).toBeVisible();
-    await expect(page.getByTestId("availability-skeleton")).toHaveCount(0);
+    await expect(page.getByTestId("availability-placeholder")).toHaveCount(0);
   });
 
   test("a failing details stage keeps the sections on screen", async ({
@@ -239,11 +239,11 @@ test.describe("Public status page - staged loading", () => {
     await page.goto(`${BASE}${STATUS_BASE}/${ORG}/${SLUG}`);
 
     const row = page.getByTestId("resource-row");
-    await expect(page.getByTestId("availability-skeleton")).toBeVisible();
-    await expect(page.getByTestId("response-time-skeleton")).toBeVisible();
+    await expect(page.getByTestId("availability-placeholder")).toBeAttached();
+    await expect(page.getByTestId("response-time-placeholder")).toBeAttached();
     await expect(
-      page.getByTestId("overall-uptime-pill-skeleton"),
-    ).toBeVisible();
+      page.getByTestId("overall-uptime-pill-placeholder"),
+    ).toBeAttached();
     const before = await row.boundingBox();
 
     release();
@@ -252,8 +252,8 @@ test.describe("Public status page - staged loading", () => {
       page.getByTestId("response-time-chart-availability-strip"),
     ).toBeVisible();
     await expect(page.getByTestId("overall-uptime-pill")).toBeVisible();
-    await expect(page.getByTestId("availability-skeleton")).toHaveCount(0);
-    await expect(page.getByTestId("response-time-skeleton")).toHaveCount(0);
+    await expect(page.getByTestId("availability-placeholder")).toHaveCount(0);
+    await expect(page.getByTestId("response-time-placeholder")).toHaveCount(0);
     const after = await row.boundingBox();
 
     expect(Math.abs(after!.height - before!.height)).toBeLessThan(1);
@@ -290,7 +290,7 @@ test.describe("Public status page - staged loading", () => {
     await page.goto(`${BASE}${STATUS_BASE}/${ORG}/`);
 
     await expect(page.getByText("API")).toBeVisible();
-    await expect(page.getByTestId("availability-skeleton")).toBeVisible();
+    await expect(page.getByTestId("availability-placeholder")).toBeAttached();
 
     release();
 

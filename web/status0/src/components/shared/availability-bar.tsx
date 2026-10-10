@@ -249,7 +249,7 @@ interface AvailabilityAxisProps {
 }
 
 // The line under the bar: window start, overall uptime, "today". Shared with
-// AvailabilityBarSkeleton so both are exactly the same height.
+// AvailabilityBarPlaceholder so both are exactly the same height.
 function AvailabilityAxis({
   isHourly,
   historyDays,
@@ -281,29 +281,28 @@ function AvailabilityAxis({
   );
 }
 
-interface AvailabilityBarSkeletonProps {
+interface AvailabilityBarPlaceholderProps {
   historyDays: number;
   isHourly: boolean;
 }
 
 /**
- * Stands in for AvailabilityBar while the availability stage is in flight.
- * Same boxes as the real bar (padded bar row, axis line), so the row does not
- * move when the bar replaces it. The axis labels are already the real ones:
- * the window is known from the first stage.
+ * Holds AvailabilityBar's space, blank, while the availability stage is in
+ * flight: the same boxes (padded bar row, axis line) under `invisible`, so the
+ * row neither moves nor flashes anything when the bar replaces it.
  */
-export function AvailabilityBarSkeleton({
+export function AvailabilityBarPlaceholder({
   historyDays,
   isHourly,
-}: AvailabilityBarSkeletonProps) {
+}: AvailabilityBarPlaceholderProps) {
   return (
-    <div className="mt-2" data-testid="availability-skeleton" aria-hidden="true">
-      <div className="py-1">
-        <div
-          className="animate-pulse rounded bg-muted"
-          style={{ height: BAR_HEIGHT_PX }}
-        />
-      </div>
+    <div
+      className="invisible mt-2"
+      data-testid="availability-placeholder"
+      aria-hidden="true"
+    >
+      {/* The bar row: the bar plus its `py-1`. */}
+      <div style={{ height: BAR_HEIGHT_PX + 2 * BAR_TOP_PX }} />
       <AvailabilityAxis isHourly={isHourly} historyDays={historyDays} />
     </div>
   );

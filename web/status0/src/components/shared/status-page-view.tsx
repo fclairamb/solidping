@@ -15,10 +15,13 @@ import {
   type StatusPageResource,
 } from "@/api/hooks";
 import { useTranslation } from "react-i18next";
-import { AvailabilityBar, AvailabilityBarSkeleton } from "./availability-bar";
+import {
+  AvailabilityBar,
+  AvailabilityBarPlaceholder,
+} from "./availability-bar";
 import {
   ResponseTimeChart,
-  ResponseTimeChartSkeleton,
+  ResponseTimeChartPlaceholder,
 } from "./response-time-chart";
 import { WhenVisible } from "./when-visible";
 
@@ -220,12 +223,12 @@ function ResourceCard({
               {avail.overallAvailabilityPct.toFixed(3)}%
             </span>
           )}
-          {/* Same span, same width, while the availability stage is in
-              flight: the badges beside it do not slide when it lands. */}
+          {/* Same span, same width, blank, while the availability stage is
+              in flight: the badges beside it do not slide when it lands. */}
           {showAvailability && !avail && detailsLoading && (
             <span
-              className="animate-pulse rounded bg-muted text-sm font-medium tabular-nums text-transparent"
-              data-testid="resource-availability-pct-skeleton"
+              className="invisible text-sm font-medium tabular-nums"
+              data-testid="resource-availability-pct-placeholder"
               aria-hidden="true"
             >
               99.999%
@@ -262,9 +265,12 @@ function ResourceCard({
         </div>
       </div>
 
-      {/* Stage 2 (availability) has not landed yet: reserve the bar. */}
+      {/* Stage 2 (availability) has not landed yet: hold the bar's space. */}
       {showAvailability && !avail && detailsLoading && (
-        <AvailabilityBarSkeleton historyDays={historyDays} isHourly={hourly} />
+        <AvailabilityBarPlaceholder
+          historyDays={historyDays}
+          isHourly={hourly}
+        />
       )}
 
       {/* Availability bars */}
@@ -279,12 +285,12 @@ function ResourceCard({
 
       {/* Response time chart */}
       {showResponseTime && !avail && detailsLoading && (
-        <ResponseTimeChartSkeleton />
+        <ResponseTimeChartPlaceholder />
       )}
       {showResponseTime && avail?.responseTimeSeries && (
         <WhenVisible
           placeholder={
-            <ResponseTimeChartSkeleton series={avail.responseTimeSeries} />
+            <ResponseTimeChartPlaceholder series={avail.responseTimeSeries} />
           }
         >
           <ResponseTimeChart
@@ -628,15 +634,15 @@ export function StatusPageView({
                 </div>
               )}
               {/* The pill is the mean of the per-resource numbers, so it only
-                  exists once the availability stage lands. Hold its place
-                  meanwhile: on a narrow screen it wraps onto its own line and
-                  would push the whole page down by a line. */}
+                  exists once the availability stage lands. Hold its place,
+                  blank, meanwhile: on a narrow screen it wraps onto its own
+                  line and would push the whole page down by a line. */}
               {aggregateUptimePct == null &&
                 page.showAvailability &&
                 stages?.detailsLoading && (
                   <div
-                    className={`${uptimePillClass} animate-pulse text-transparent`}
-                    data-testid="overall-uptime-pill-skeleton"
+                    className={`${uptimePillClass} invisible`}
+                    data-testid="overall-uptime-pill-placeholder"
                     aria-hidden="true"
                   >
                     99.999% {t("uptime")}
