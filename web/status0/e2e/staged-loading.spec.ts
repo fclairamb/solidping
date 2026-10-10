@@ -259,6 +259,39 @@ test.describe("Public status page - staged loading", () => {
     expect(Math.abs(after!.height - before!.height)).toBeLessThan(1);
   });
 
+  test("once loaded, each refresh is one call carrying every section", async ({
+    page,
+  }) => {
+    await page.clock.install();
+    const includes: string[] = [];
+    page.on("request", (request) => {
+      const url = new URL(request.url());
+      if (url.pathname === `/api/v1/status-pages/${ORG}/${SLUG}`) {
+        includes.push(url.searchParams.get("include") ?? "<none>");
+      }
+    });
+    await mockStages(page, (stage, route) => {
+      if (stage === "base") return ok(route, payload(false));
+      if (stage === "details") return ok(route, payload(true));
+      return ok(route, { ...payload(false), recentUpdates: [] });
+    });
+
+    await page.goto(`${BASE}${STATUS_BASE}/${ORG}/${SLUG}`);
+    await expect(page.getByTestId("resource-availability-pct")).toBeVisible();
+    await expect.poll(() => includes.length).toBe(3);
+
+    await page.clock.fastForward(31_000);
+    await expect.poll(() => includes.length).toBe(4);
+    await page.clock.fastForward(31_000);
+    await expect.poll(() => includes.length).toBe(5);
+
+    expect(includes.slice(3)).toEqual([
+      "availability,responseTime,updates",
+      "availability,responseTime,updates",
+    ]);
+    await expect(page.getByTestId("resource-availability-pct")).toBeVisible();
+  });
+
   test("the org's default page (no slug) loads in the same stages", async ({
     page,
   }) => {

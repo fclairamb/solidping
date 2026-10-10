@@ -1,5 +1,10 @@
-import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
 import { ApiError, NetworkError, apiFetch } from "./client";
 // Relative, not the "@/" alias: that alias is a Vite resolve.alias
 // (vite.config.ts), which `bun test` never sees — every existing test that
@@ -394,17 +399,7 @@ export function usePublicStatusPage(
       : `/api/v1/status-pages/${org}/${slug}`;
 
   return useQuery<StatusPage>({
-    // The sorted/deduped include list is part of the key, not just the URL:
-    // the ordinary page (no include) and TV mode (include: []) must never
-    // share a cache entry for two different payload shapes.
-    queryKey: [
-      "public-status-page",
-      org,
-      slug ?? DEFAULT_PAGE_KEY,
-      options?.kioskToken ?? null,
-      sortedInclude(options?.include) ?? null,
-      options?.updatesDays ?? null,
-    ],
+    queryKey: publicStatusPageKey(org, slug, options),
     queryFn: () =>
       apiFetch<StatusPage>(
         withKiosk(
@@ -427,6 +422,35 @@ export function usePublicStatusPage(
 const DEFAULT_PAGE_KEY = "__default__";
 
 /**
+ * Cache key of one public page read. The sorted/deduped include list is part
+ * of the key, not just the URL: the ordinary page (no include) and TV mode
+ * (include: []) must never share a cache entry for two different payload
+ * shapes. `updatesDays` comes last so a prefix without it matches every window
+ * of the same read.
+ */
+function publicStatusPageKey(
+  org: string,
+  slug: string | null,
+  options?: PublicReadOptions,
+) {
+  return [
+    "public-status-page",
+    org,
+    slug ?? DEFAULT_PAGE_KEY,
+    options?.kioskToken ?? null,
+    sortedInclude(options?.include) ?? null,
+    options?.updatesDays ?? null,
+  ];
+}
+
+/** Every optional section: the single read that refreshes a loaded page. */
+const FULL_INCLUDE: PublicPageInclude[] = [
+  "availability",
+  "responseTime",
+  "updates",
+];
+
+/**
  * The public page, loaded in stages (spec 2026-10-10-01) instead of one
  * 1.2 s blocking call:
  *
@@ -439,45 +463,98 @@ const DEFAULT_PAGE_KEY = "__default__";
  *
  * Stages 2 and 3 only start once stage 1 succeeded (so a locked page 401s once
  * and nothing else fires), and a failure there leaves stage 1 on screen.
+ *
+ * Staging only pays on the first paint. Once all three stages have answered,
+ * what they assembled is written into the cache of the single full read
+ * (`?include=availability,responseTime,updates`), and from then on that one
+ * call is the only thing that polls: one request per refresh instead of three.
+ * The seeded entry is fresh, so the first poll waits a full interval. A return
+ * visit that still finds a full read in the cache skips the stages entirely.
  */
 export function useStagedPublicStatusPage(
   org: string,
   slug: string | null,
   options?: PublicReadOptions,
 ) {
-  const [showAllUpdates, setShowAllUpdates] = useState(false);
-  const base = usePublicStatusPage(org, slug, { ...options, include: [] });
+  const queryClient = useQueryClient();
+  const enabled = options?.enabled ?? true;
+  // Days of updates the visitor asked for with "show older"; undefined is the
+  // server's default window.
+  const [olderDays, setOlderDays] = useState<number>();
+
+  const fullOptions: PublicReadOptions = {
+    ...options,
+    include: FULL_INCLUDE,
+    updatesDays: olderDays,
+    keepPrevious: true,
+  };
+  const kioskToken = options?.kioskToken;
+  const fullKey = useMemo(
+    () =>
+      publicStatusPageKey(org, slug, {
+        kioskToken,
+        include: FULL_INCLUDE,
+        updatesDays: olderDays,
+      }),
+    [org, slug, kioskToken, olderDays],
+  );
+  // Matched without updatesDays: a full read of any window means the page has
+  // loaded, so widening the updates refetches the one full read, not the
+  // stages.
+  const fullMode = queryClient
+    .getQueriesData<StatusPage>({ queryKey: fullKey.slice(0, -1) })
+    .some(([, data]) => data !== undefined);
+
+  const full = usePublicStatusPage(org, slug, {
+    ...fullOptions,
+    enabled: fullMode && enabled,
+  });
+
+  const stagesEnabled = !fullMode && enabled;
+  const base = usePublicStatusPage(org, slug, {
+    ...options,
+    include: [],
+    enabled: stagesEnabled,
+  });
   const ready = !!base.data;
   const details = usePublicStatusPage(org, slug, {
     ...options,
     include: ["availability", "responseTime"],
-    enabled: ready && (options?.enabled ?? true),
+    enabled: ready && stagesEnabled,
     keepPrevious: true,
   });
-  const historyDays = base.data?.historyDays ?? 0;
-  const widened = showAllUpdates && historyDays > DEFAULT_UPDATES_DAYS;
   const updates = usePublicStatusPage(org, slug, {
     ...options,
     include: ["updates"],
-    updatesDays: widened ? historyDays : undefined,
-    enabled: ready && (options?.enabled ?? true),
+    updatesDays: olderDays,
+    enabled: ready && stagesEnabled,
     keepPrevious: true,
   });
 
-  const page = useMemo(
+  const staged = useMemo(
     () => mergeStages(base.data, details.data, updates.data),
     [base.data, details.data, updates.data],
   );
 
+  // Every stage has answered (a failed one too: the next poll retries it).
+  const settled = base.isSuccess && !details.isPending && !updates.isPending;
+  useEffect(() => {
+    if (!settled || fullMode || !staged) return;
+    queryClient.setQueryData(fullKey, staged);
+  }, [settled, fullMode, staged, queryClient, fullKey]);
+
+  const page = fullMode ? (full.data ?? staged) : staged;
+  const historyDays = page?.historyDays ?? 0;
+
   return {
     page,
-    isLoading: base.isLoading,
-    error: base.error,
-    refetch: base.refetch,
-    detailsLoading: ready && details.isLoading,
-    updatesLoading: ready && updates.isLoading,
-    canShowOlder: historyDays > DEFAULT_UPDATES_DAYS && !widened,
-    showOlder: () => setShowAllUpdates(true),
+    isLoading: fullMode ? full.isLoading : base.isLoading,
+    error: fullMode ? full.error : base.error,
+    refetch: fullMode ? full.refetch : base.refetch,
+    detailsLoading: !fullMode && ready && details.isLoading,
+    updatesLoading: !fullMode && ready && updates.isLoading,
+    canShowOlder: historyDays > DEFAULT_UPDATES_DAYS && olderDays === undefined,
+    showOlder: () => setOlderDays(historyDays),
   };
 }
 
