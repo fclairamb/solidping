@@ -3,6 +3,15 @@
 ## Unreleased
 
 
+## [0.38.2](https://github.com/fclairamb/solidping/compare/v0.38.1...v0.38.2) (2026-10-10)
+
+
+### Bug Fixes
+
+* **dash0:** center the auth card on mobile ([#490](https://github.com/fclairamb/solidping/issues/490)) ([ca250f6](https://github.com/fclairamb/solidping/commit/ca250f65aba95d2927cbee8a3f83e959cbeea9f9))
+* **deps:** update github.com/dop251/goja digest to 73dc7ed ([#503](https://github.com/fclairamb/solidping/issues/503)) ([d2f7bfa](https://github.com/fclairamb/solidping/commit/d2f7bfa683967ea323e87cbf854fa3195bb2d318))
+* **deps:** update github.com/dop251/goja digest to a4bedf5 ([#499](https://github.com/fclairamb/solidping/issues/499)) ([638a4bb](https://github.com/fclairamb/solidping/commit/638a4bb2dedf8e65d1fbfba09d002f2d60b1cd2c))
+
 ## [0.38.1](https://github.com/fclairamb/solidping/compare/v0.38.0...v0.38.1) (2026-10-09)
 
 
