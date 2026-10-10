@@ -51,6 +51,15 @@ type responseTimeBinRow struct {
 // Postgres twin: it must equal the index the aggregation job's calculateRawMetrics
 // picks, `models.ResponseTimeBinP95Index`, or a seam point and the hour rollup that
 // replaces it would disagree on the same probes.
+//
+// One deliberate departure from the Postgres twin: the percentiles are folded
+// into `agg` by a single GROUP BY over `ranked`, instead of separate p95/p50
+// CTEs LEFT JOINed back. SQLite planned one of those joins as a full SCAN of
+// the materialized `ranked` per `agg` row: 1 754 bins x 58 k probes took 3 s
+// cold and held the only connection for 7 s under load, stalling every other
+// query. `ranked` covers every probe (NULL durations sort last and are not
+// counted in `cnt`), so the non-NULL samples keep ranks 1..cnt and the picked
+// sample is the same one the twin picks.
 func responseTimeBinsSQL(filter *models.ResponseTimeBinFilter) (string, []any) {
 	const rawPredicate = "result.period_type = '" + models.PeriodTypeRaw + "'"
 
@@ -78,25 +87,24 @@ func responseTimeBinsSQL(filter *models.ResponseTimeBinFilter) (string, []any) {
 			  AND result.status IS NOT NULL
 			  AND result.status NOT IN (?)
 		),
+		ranked AS (
+			SELECT check_uid, region, bin, status, duration,
+			       ROW_NUMBER() OVER (` + partition + ` ORDER BY duration NULLS LAST) AS rn,
+			       COUNT(duration) OVER (` + partition + `) AS cnt
+			FROM probes
+		),
 		agg AS (
 			SELECT check_uid, region, bin,
 			       COUNT(*) AS total,
 			       SUM(CASE WHEN status IN (?) THEN 1 ELSE 0 END) AS up,
 			       CAST(AVG(duration) AS REAL) AS dur_avg,
 			       MIN(duration) AS dur_min,
-			       MAX(duration) AS dur_max
-			FROM probes
+			       MAX(duration) AS dur_max,
+			       ` + percentileExpr(p95Rank) + ` AS dur_p95,
+			       ` + percentileExpr(p50Rank) + ` AS dur_p50
+			FROM ranked
 			GROUP BY 1, 2, 3
 		),
-		ranked AS (
-			SELECT check_uid, region, bin, duration,
-			       ROW_NUMBER() OVER (` + partition + ` ORDER BY duration) AS rn,
-			       COUNT(*) OVER (` + partition + `) AS cnt
-			FROM probes
-			WHERE duration IS NOT NULL
-		),
-		` + percentileCTE("p95", p95Rank) + `,
-		` + percentileCTE("p50", p50Rank) + `,
 		mix AS (
 			SELECT check_uid, region, bin, json_group_object(CAST(status AS TEXT), n) AS status_counts
 			FROM (
@@ -107,14 +115,8 @@ func responseTimeBinsSQL(filter *models.ResponseTimeBinFilter) (string, []any) {
 			GROUP BY 1, 2, 3
 		)
 		SELECT agg.check_uid, agg.region, agg.bin AS bin_start, agg.total, agg.up,
-		       p95.dur_p95, p50.dur_p50, agg.dur_avg, agg.dur_min, agg.dur_max, mix.status_counts
+		       agg.dur_p95, agg.dur_p50, agg.dur_avg, agg.dur_min, agg.dur_max, mix.status_counts
 		FROM agg
-		LEFT JOIN p95 ON p95.check_uid = agg.check_uid
-		             AND p95.bin = agg.bin
-		             AND p95.region IS agg.region
-		LEFT JOIN p50 ON p50.check_uid = agg.check_uid
-		             AND p50.bin = agg.bin
-		             AND p50.region IS agg.region
 		LEFT JOIN mix ON mix.check_uid = agg.check_uid
 		             AND mix.bin = agg.bin
 		             AND mix.region IS agg.region`
@@ -185,12 +187,9 @@ func (s *Service) AggregateResponseTimeBins(
 // ROW_NUMBER, integer division in both engines.
 const p50Rank = "ranked.rn = ranked.cnt / 2 + 1"
 
-// percentileCTE is the `<name> AS (...)` CTE that picks the one `ranked` sample at
-// the given nearest-rank condition, exposing it as `dur_<name>`.
-func percentileCTE(name, rank string) string {
-	return name + ` AS (
-			SELECT check_uid, region, bin, duration AS dur_` + name + `
-			FROM ranked
-			WHERE ` + rank + `
-		)`
+// percentileExpr is the aggregate that picks the one `ranked` sample at the
+// given nearest-rank condition within its (check, region, bin) group. NULL
+// durations rank after every sample, so the guard keeps an all-NULL bin at NULL.
+func percentileExpr(rank string) string {
+	return "MAX(CASE WHEN ranked.duration IS NOT NULL AND " + rank + " THEN ranked.duration END)"
 }
