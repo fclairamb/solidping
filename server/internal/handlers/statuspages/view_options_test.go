@@ -403,6 +403,7 @@ func TestUnknownIncludeTokenIs400WithGatedCache(t *testing.T) {
 	}{
 		{name: "unknown token", query: "include=foo", token: "foo"},
 		{name: "wrong case is unknown too", query: "include=Availability", token: "Availability"},
+		{name: "bad updatesDays", query: "include=updates&updatesDays=0", token: "updatesDays"},
 	}
 
 	for _, testCase := range testCases {

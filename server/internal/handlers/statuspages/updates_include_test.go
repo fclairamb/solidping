@@ -21,15 +21,18 @@ func TestParseViewOptionsUpdates(t *testing.T) {
 	}{
 		{"updates alone", url.Values{"include": {"updates"}}, ViewOptions{Updates: true, UpdatesDays: DefaultUpdatesDays}},
 		{
-			"availability and updates", url.Values{"include": {"availability,updates"}},
+			"availability and updates",
+			url.Values{"include": {"availability,updates"}},
 			ViewOptions{Availability: true, Updates: true, UpdatesDays: DefaultUpdatesDays},
 		},
 		{
-			"updatesDays widens the window", url.Values{"include": {"updates"}, "updatesDays": {"30"}},
+			"updatesDays widens the window",
+			url.Values{"include": {"updates"}, "updatesDays": {"30"}},
 			ViewOptions{Updates: true, UpdatesDays: 30},
 		},
 		{
-			"updatesDays without updates is ignored", url.Values{"include": {"availability"}, "updatesDays": {"30"}},
+			"updatesDays without updates is ignored",
+			url.Values{"include": {"availability"}, "updatesDays": {"30"}},
 			ViewOptions{Availability: true},
 		},
 		{"absent include still includes updates", url.Values{}, AllViewOptions()},
@@ -64,7 +67,10 @@ func TestParseViewOptionsUpdatesErrors(t *testing.T) {
 	}
 }
 
-func seedUpdate(ctx context.Context, t *testing.T, svc *Service, org *models.Organization, pageUID, title string, age time.Duration) {
+func seedUpdate(
+	ctx context.Context, t *testing.T, svc *Service, org *models.Organization,
+	pageUID, title string, age time.Duration,
+) {
 	t.Helper()
 
 	upd := models.NewStatusUpdate(org.UID, pageUID, "")
@@ -106,7 +112,8 @@ func TestViewStatusPageUpdatesWindow(t *testing.T) {
 	require.Zero(t, counting.updateReads.Load())
 
 	// `updates`: capped at 7 days even though historyDays is 90.
-	capped, err := svc.ViewStatusPage(ctx, org.Slug, page.Slug, ViewOptions{Updates: true, UpdatesDays: DefaultUpdatesDays})
+	cappedOpts := ViewOptions{Updates: true, UpdatesDays: DefaultUpdatesDays}
+	capped, err := svc.ViewStatusPage(ctx, org.Slug, page.Slug, cappedOpts)
 	require.NoError(t, err)
 	require.Equal(t, []string{"recent"}, titles(capped))
 

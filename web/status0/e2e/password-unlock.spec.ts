@@ -173,7 +173,7 @@ test.describe("Public status page — branding", () => {
 
   async function mockBranded(page: Page, overrides: Record<string, unknown>) {
     await page.route(
-      `**/api/v1/status-pages/${BRAND_ORG}/${BRAND_SLUG}`,
+      `**/api/v1/status-pages/${BRAND_ORG}/${BRAND_SLUG}*`,
       (route) =>
         route.fulfill({
           status: 200,
@@ -192,10 +192,7 @@ test.describe("Public status page — branding", () => {
 
     const logo = page.getByTestId("status-page-logo");
     await expect(logo).toBeVisible();
-    await expect(logo).toHaveAttribute(
-      "src",
-      "/pub/status-page-assets/abc123",
-    );
+    await expect(logo).toHaveAttribute("src", "/pub/status-page-assets/abc123");
   });
 
   test("hideBranding removes the powered-by footer, and the default keeps it", async ({

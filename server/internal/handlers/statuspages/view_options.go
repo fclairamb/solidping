@@ -37,7 +37,7 @@ type ViewOptions struct {
 	// Updates includes the recentUpdates timeline.
 	Updates bool
 	// UpdatesDays is the timeline window in days. 0 means the page's full
-	// historyDays (the legacy, no-`include` behaviour); otherwise it is capped
+	// historyDays (the legacy, no-`include` behavior); otherwise it is capped
 	// at historyDays when computed.
 	UpdatesDays int
 }
