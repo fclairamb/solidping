@@ -20,4 +20,29 @@ describe("apiFetch", () => {
     expect(calls).toHaveLength(1);
     expect(calls[0].init?.cache).toBe("no-cache");
   });
+
+  test("takes a read the shell started once, then goes to the network", async () => {
+    const calls: string[] = [];
+    globalThis.fetch = (async (url: string) => {
+      calls.push(url);
+      return new Response(JSON.stringify({ from: "network" }), { status: 200 });
+    }) as typeof fetch;
+    const url = "/api/v1/status-pages/acme?include=";
+    (globalThis as { window?: unknown }).window = {
+      __spPrefetch: {
+        [url]: Promise.resolve(
+          new Response(JSON.stringify({ from: "shell" }), { status: 200 }),
+        ),
+      },
+    };
+
+    try {
+      expect(await apiFetch<{ from: string }>(url)).toEqual({ from: "shell" });
+      expect(calls).toHaveLength(0);
+      expect(await apiFetch<{ from: string }>(url)).toEqual({ from: "network" });
+      expect(calls).toEqual([url]);
+    } finally {
+      delete (globalThis as { window?: unknown }).window;
+    }
+  });
 });

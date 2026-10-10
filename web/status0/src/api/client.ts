@@ -17,6 +17,22 @@ export class NetworkError extends Error {
   }
 }
 
+declare global {
+  interface Window {
+    /** Reads index.html started before the bundle loaded, by exact URL. */
+    __spPrefetch?: Record<string, Promise<Response>>;
+  }
+}
+
+// Hands over, once, a read the shell already started for this exact URL. Later
+// calls for the same URL (polls) go to the network as usual.
+function takePrefetched(url: string): Promise<Response> | undefined {
+  const reads = typeof window === "undefined" ? undefined : window.__spPrefetch;
+  const response = reads?.[url];
+  if (reads && response) delete reads[url];
+  return response;
+}
+
 export async function apiFetch<T>(url: string): Promise<T> {
   let response: Response;
   try {
@@ -25,7 +41,9 @@ export async function apiFetch<T>(url: string): Promise<T> {
     // incident spike, but the browser obeys it too: a page polling every 30 s
     // was answered from its own disk cache and showed data up to 90 s old.
     // The CDN in front still caches; the server's 15 s memo absorbs the rest.
-    response = await fetch(url, { cache: "no-cache" });
+    // index.html's early reads use the same mode.
+    response =
+      (await takePrefetched(url)) ?? (await fetch(url, { cache: "no-cache" }));
   } catch {
     throw new NetworkError();
   }
