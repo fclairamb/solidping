@@ -21,6 +21,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useTranslation } from "react-i18next";
+import { incidentStateLabel } from "@/lib/incident-kind";
 import { channelTypeLabel, failureReasonLabel } from "@/lib/channel-labels";
 
 export const Route = createFileRoute("/orgs/$org/me/notifications")({
@@ -142,7 +143,7 @@ function MyNotificationsPage() {
                           }
                           className="ml-2 text-xs"
                         >
-                          {row.incident.state}
+                          {incidentStateLabel(t, row.incident.state)}
                         </Badge>
                       )}
                     </TableCell>

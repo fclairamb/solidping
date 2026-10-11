@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 
+import i18n from "@/i18n";
 import {
   incidentKindOf,
   incidentKindTextClass,
   incidentRowClass,
+  incidentStateLabel,
 } from "./incident-kind";
 
 describe("incidentKindOf", () => {
@@ -68,5 +70,15 @@ describe("incidentRowClass", () => {
     expect(incidentRowClass("active", "maintenance")).toBe(
       incidentRowClass("active", "check"),
     );
+  });
+});
+
+describe("incidentStateLabel", () => {
+  // fclairamb/solidping-business#8: the check page showed the raw "resolved".
+  it("translates the state", () => {
+    const fr = i18n.getFixedT("fr");
+    expect(incidentStateLabel(fr, "resolved")).toBe("Résolu");
+    expect(incidentStateLabel(fr, "active")).toBe("Actif");
+    expect(incidentStateLabel(i18n.getFixedT("en"), "resolved")).toBe("Resolved");
   });
 });

@@ -100,7 +100,11 @@ import {
 } from "@/components/ui/table";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { IncidentKindChip } from "@/components/shared/incident-kind-chip";
-import { incidentKindTextClass, incidentRowClass } from "@/lib/incident-kind";
+import {
+  incidentKindTextClass,
+  incidentRowClass,
+  incidentStateLabel,
+} from "@/lib/incident-kind";
 import { TunnelDependents, TunnelVia } from "@/components/checks/tunnel-detail";
 import {
   DeliverySources,
@@ -2206,8 +2210,9 @@ function CheckDetailPage() {
                               incident.state === "active" &&
                                 incidentKindTextClass(incident.kind),
                             )}
+                            data-testid="incident-state"
                           >
-                            {incident.state}
+                            {incidentStateLabel(t, incident.state)}
                           </Badge>
                           {incident.pagingSuppressed && (
                             <Badge variant="outline" className="text-xs">
