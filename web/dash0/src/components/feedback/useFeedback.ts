@@ -3,6 +3,7 @@ import { toBlob } from "html-to-image";
 
 import { getToken } from "@/api/client";
 import { getRecentConsoleErrors } from "./errorCollector";
+import { listenForShake } from "./shake";
 
 export interface SubmitPayload {
   comment: string;
@@ -26,7 +27,7 @@ interface UseFeedbackReturn {
 const FEEDBACK_OPEN_EVENT = "feedback:open";
 
 // useFeedback owns the feedback state and side effects (screenshot capture,
-// keyboard shortcut, submit). When `enabled` is false the hook is fully
+// keyboard shortcut, shake on mobile, submit). When `enabled` is false the hook is fully
 // inert: no listeners, no fetches, no DOM access.
 export function useFeedback({ enabled, org }: UseFeedbackOptions): UseFeedbackReturn {
   const [isOpen, setIsOpen] = useState(false);
@@ -96,7 +97,13 @@ export function useFeedback({ enabled, org }: UseFeedbackOptions): UseFeedbackRe
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [enabled, open]);
 
-  // Test hook + future programmatic openers (mobile shake, etc.)
+  // Shake the phone: same as the bug icon.
+  useEffect(() => {
+    if (!enabled) return undefined;
+    return listenForShake(() => void open());
+  }, [enabled, open]);
+
+  // Test hook + future programmatic openers
   useEffect(() => {
     if (!enabled) return undefined;
 
