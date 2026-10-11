@@ -860,6 +860,13 @@ jobs:
         run: bunx playwright test --shard=${{ matrix.shard }}/2
         env:
           CI: "true"
+          # Playwright splits by test COUNT, and the first (alphabetical) half
+          # is the slower one: run 38099366941 took 1144 s on shard 1 vs 831 s
+          # on shard 2, on top of status0 (93 s, shard 1) and the side-car
+          # (188 s, shard 2). 45:55 evens the two jobs out. This variable is
+          # read by Playwright (lib/cli/testActions.js) but not documented; if
+          # a release drops it, the split silently goes back to 50:50.
+          PWTEST_SHARD_WEIGHTS: "45:55"
 
       # status0's public status page has its own Playwright suite, and the WHOLE
       # of it runs here — no hand-maintained file list, so a new spec is covered
