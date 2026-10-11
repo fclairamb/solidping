@@ -166,3 +166,83 @@ func TestIsCandidateDir(t *testing.T) {
 		require.Equal(t, want, isCandidateDir(name), "isCandidateDir(%q)", name)
 	}
 }
+
+// A live instance has no owner marker while initdb runs (embedded-postgres
+// wipes the data path first). A concurrent package's startup sweep must not
+// mistake that window for an abandoned Start().
+func TestSweepOrphans_UnifiedDirWithoutMarker_RecentIsLeftAlone(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	dir := filepath.Join(root, unifiedPrefix+"-initdb-in-progress-123")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+
+	sweepOrphans(root)
+
+	_, statErr := os.Stat(dir)
+	require.NoError(t, statErr, "a markerless dir inside the init window belongs to a live Start()")
+}
+
+// Positive control for the test above: past the grace window, a markerless
+// unified dir is an interrupted Start() and is still cleaned up.
+func TestSweepOrphans_UnifiedDirWithoutMarker_OldIsRemoved(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	dir := filepath.Join(root, unifiedPrefix+"-interrupted-123")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+
+	old := time.Now().Add(-2 * unmarkedGraceAge)
+	require.NoError(t, os.Chtimes(dir, old, old))
+
+	sweepOrphans(root)
+
+	_, statErr := os.Stat(dir)
+	require.True(t, os.IsNotExist(statErr), "expected the abandoned dir to be removed, stat err: %v", statErr)
+}
+
+func TestEmbeddedDataDirFromCommandLine(t *testing.T) {
+	t.Parallel()
+
+	tmp := "/var/folders/nh/x/T"
+
+	cases := []struct {
+		name    string
+		cmdLine string
+		want    string
+	}{
+		{
+			name:    "postgres server",
+			cmdLine: "/home/u/.embedded-postgres-go/bin/postgres -D " + tmp + "/solidping-embedded-pg-test-42 -p 15434",
+			want:    tmp + "/solidping-embedded-pg-test-42",
+		},
+		{
+			name: "initdb, whose pwfile lives in the runtime dir",
+			cmdLine: "/x/bin/initdb -A password -U postgres -D " + tmp + "/solidping-embedded-pg-notifier-7 --pwfile=" +
+				tmp + "/solidping-pgruntime-notifier-9/pwfile",
+			want: tmp + "/solidping-embedded-pg-notifier-7",
+		},
+		{
+			name:    "legacy scenario prefix",
+			cmdLine: "/x/bin/postgres -D /tmp/solidping-scenario-pg-1234",
+			want:    "/tmp/solidping-scenario-pg-1234",
+		},
+		{
+			name:    "a file inside the data dir resolves to the data dir",
+			cmdLine: "postgres --config_file=/tmp/solidping-embedded-pg-test-1/postgresql.conf",
+			want:    "/tmp/solidping-embedded-pg-test-1",
+		},
+		{
+			name:    "no embedded data dir at all",
+			cmdLine: "/usr/lib/postgresql/16/bin/postgres -D /var/lib/postgresql/data",
+			want:    "",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, embeddedDataDirFromCommandLine(tc.cmdLine))
+		})
+	}
+}

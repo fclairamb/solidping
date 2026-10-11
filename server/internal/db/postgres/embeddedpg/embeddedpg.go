@@ -280,6 +280,18 @@ func Start(opts *Options) (*Instance, error) {
 		return nil, fmt.Errorf("failed to start embedded postgres: %w", startErr)
 	}
 
+	// embedded-postgres wiped dataDir before initdb, owner marker included.
+	// Write it again now that the server is up, so a concurrent process's
+	// startup sweep keeps recognizing this instance as live (see
+	// unmarkedGraceAge for the window before this point).
+	if markErr := writeOwnerMarker(dataDir, suite); markErr != nil {
+		_ = embeddedPG.Stop()
+		_ = os.RemoveAll(dataDir)
+		_ = os.RemoveAll(runtimeDir)
+
+		return nil, fmt.Errorf("failed to rewrite owner marker: %w", markErr)
+	}
+
 	res := resolveOptions(opts)
 	dsn := fmt.Sprintf(
 		"postgres://%s:%s@localhost:%d/%s?sslmode=disable",
