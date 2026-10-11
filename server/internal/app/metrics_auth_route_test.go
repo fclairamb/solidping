@@ -63,9 +63,9 @@ func metricsRouteServer(t *testing.T, enabled bool, dbToken string) (*httptest.S
 // Prometheus.Enabled=false the route is never registered, so /metrics 404s
 // even when a scrape token is sitting in the database — SP_PROMETHEUS_ENABLED
 // wins over metrics.scrape_token, never the other way round.
+//
+//nolint:paralleltest // captureLogs swaps the process-wide slog default (see its comment)
 func TestMetricsRouteDisabledAlwaysWins404(t *testing.T) {
-	t.Parallel()
-
 	r := require.New(t)
 
 	ts, _ := metricsRouteServer(t, false, "a-token-that-must-be-ignored")
@@ -91,9 +91,9 @@ func TestMetricsRouteDisabledAlwaysWins404(t *testing.T) {
 //   - an unauthenticated request is rejected once a token is configured;
 //   - an authenticated scrape sees per-org labels intact
 //     (CheckExecutions{organization=...}), per the spec's point 3.
+//
+//nolint:paralleltest // captureLogs swaps the process-wide slog default (see its comment)
 func TestMetricsRouteDBTokenTakesEffectAndLabelsIntact(t *testing.T) {
-	t.Parallel()
-
 	r := require.New(t)
 
 	const token = "db-only-scrape-token"

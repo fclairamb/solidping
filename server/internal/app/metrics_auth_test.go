@@ -116,9 +116,9 @@ func TestMetricsBearerMatchesIsCaseInsensitiveScheme(t *testing.T) {
 // logs nothing here (SetupRoutes not registering the route already says so),
 // enabled-without-token logs the "disabled, set the parameter" INFO line, and
 // enabled-with-token logs the "requires a bearer" INFO line.
+//
+//nolint:paralleltest // captureLogs swaps the process-wide slog default (see its comment)
 func TestLogMetricsScrapeTokenState(t *testing.T) {
-	t.Parallel()
-
 	r := require.New(t)
 	ctx := t.Context()
 

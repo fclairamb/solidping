@@ -98,6 +98,11 @@ func TestSeedSaaSEntitlementsNoOpOutsideSaaS(t *testing.T) {
 
 // captureLogs swaps the default slog handler for the duration of the test and
 // returns the accumulated output.
+// captureLogs redirects the process-wide slog default to a buffer until the
+// test ends. Because it is process-wide, a caller must NOT be t.Parallel():
+// a parallel test's logs would land in this buffer, and this test's own
+// lines could land in another caller's (TestMetricsRouteDBTokenTakesEffect-
+// AndLabelsIntact failed that way in CI on 2026-10-11).
 func captureLogs(t *testing.T) *bytes.Buffer {
 	t.Helper()
 
