@@ -44,9 +44,14 @@ export function useFeedback({ enabled, org }: UseFeedbackOptions): UseFeedbackRe
     if (!enabled || isOpenRef.current) return;
     setIsCapturing(true);
     try {
-      const restore = await swapCanvasesForImages();
+      const restoreCanvases = await swapCanvasesForImages();
+      const restoreScroll = flattenInnerScroll();
       let blob: Blob | null;
       try {
+        // Capture exactly the viewport. The clone is rendered without any
+        // scroll, so the window scroll becomes a negative margin on the
+        // root: in-flow content moves up, fixed and sticky elements stay
+        // where the user sees them.
         blob = await toBlob(document.documentElement, {
           cacheBust: true,
           // A canvas that could not be swapped (tainted) is skipped, it
@@ -54,12 +59,18 @@ export function useFeedback({ enabled, org }: UseFeedbackOptions): UseFeedbackRe
           filter: (node) =>
             !(node instanceof HTMLCanvasElement && node.dataset.feedbackSkip === "1"),
           pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
+          width: window.innerWidth,
+          height: window.innerHeight,
+          style: {
+            marginTop: `${-window.scrollY}px`,
+            marginLeft: `${-window.scrollX}px`,
+          },
         });
       } finally {
-        restore();
+        restoreScroll();
+        restoreCanvases();
       }
-      const cropped = blob ? await cropToViewport(blob) : blob;
-      setScreenshot(cropped);
+      setScreenshot(blob);
     } catch {
       setScreenshot(null);
     } finally {
@@ -170,30 +181,41 @@ async function swapCanvasesForImages(): Promise<() => void> {
   };
 }
 
-// cropToViewport crops a full-document capture to the visible viewport. On any
-// failure the original blob is returned.
-async function cropToViewport(blob: Blob): Promise<Blob> {
-  try {
-    const bitmap = await createImageBitmap(blob);
-    const ratio = bitmap.width / Math.max(document.documentElement.scrollWidth, 1);
-    const sx = Math.round(window.scrollX * ratio);
-    const sy = Math.round(window.scrollY * ratio);
-    const sw = Math.min(Math.round(window.innerWidth * ratio), bitmap.width - sx);
-    const sh = Math.min(Math.round(window.innerHeight * ratio), bitmap.height - sy);
-    if (sw <= 0 || sh <= 0 || (sw === bitmap.width && sh === bitmap.height)) return blob;
+// flattenInnerScroll makes scrolled inner containers (sidebar menu, a table
+// with overflow-auto, a scrolled panel) render at their current offset: the
+// clone is serialized without scroll positions, so each container is set to
+// scroll 0 and its children are translated by the old offset. Both changes
+// happen in the same task, so the page looks the same. The window scroll is
+// handled by the capture itself. The returned function undoes everything,
+// call it in a `finally`.
+function flattenInnerScroll(): () => void {
+  const undo: (() => void)[] = [];
 
-    const canvas = document.createElement("canvas");
-    canvas.width = sw;
-    canvas.height = sh;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return blob;
-    ctx.drawImage(bitmap, sx, sy, sw, sh, 0, 0, sw, sh);
-    return await new Promise<Blob>((resolve) => {
-      canvas.toBlob((out) => resolve(out || blob), "image/png");
+  for (const el of Array.from(document.body.querySelectorAll("*"))) {
+    const top = el.scrollTop;
+    const left = el.scrollLeft;
+    if (top === 0 && left === 0) continue;
+    const children = Array.from(el.children).filter(
+      (child): child is HTMLElement | SVGElement =>
+        (child instanceof HTMLElement || child instanceof SVGElement) &&
+        getComputedStyle(child).position !== "fixed",
+    );
+    if (children.length === 0) continue;
+
+    const previous = children.map((child) => child.style.translate);
+    for (const child of children) child.style.translate = `${-left}px ${-top}px`;
+    el.scrollTo({ top: 0, left: 0, behavior: "instant" });
+    undo.push(() => {
+      children.forEach((child, index) => {
+        child.style.translate = previous[index];
+      });
+      el.scrollTo({ top, left, behavior: "instant" });
     });
-  } catch {
-    return blob;
   }
+
+  return () => {
+    for (const fn of undo) fn();
+  };
 }
 
 function isEditable(node: HTMLElement): boolean {
@@ -207,6 +229,7 @@ function buildContext(): Record<string, unknown> {
   return {
     userAgent: navigator.userAgent,
     viewport: `${window.innerWidth}x${window.innerHeight}`,
+    scroll: `${Math.round(window.scrollX)},${Math.round(window.scrollY)}`,
     pixelRatio: window.devicePixelRatio || 1,
     platform: navigator.platform,
     language: navigator.language,

@@ -50,3 +50,9 @@ The annotation canvas works on whatever image it gets, so annotations land on th
 
 ## Open questions
 - Offer a "full page" capture toggle in the dialog? Recommended: no. Spec 2026-10-09-01 settled on viewport only, and the bug is about making that work.
+
+## Outcome
+- Implemented in `useFeedback.ts`: viewport-sized capture with the window scroll as a negative margin on the cloned root, `flattenInnerScroll` for scrolled inner containers, `cropToViewport` removed, `scroll` added to the report context.
+- `position: fixed` inside the `foreignObject` stays relative to the capture box, so the margin offset leaves fixed elements in place. Sticky elements also render where the user sees them without extra handling, so item 2 needed no code.
+- No library switch.
+- The 4 new E2E tests fail on the previous code (scrolled: red band at top; bottom: top of page; inner box: white; mobile: wrong band) and pass with the fix. The 11 existing bug report tests still pass.
