@@ -226,18 +226,10 @@ jobs:
     # replaces the top-level one, so re-state what this job needs.
     permissions:
       contents: write
-    # 20 was extrapolated from a warm laptop (10m19s for internal/db/postgres
-    # alone) and proved far too tight: the first real run was KILLED at 20m
-    # having reached only ~122 of 232 packages, with internal/db/postgres alone
-    # taking 325s. A CI runner is slower than the laptop the estimate came
-    # from, and -p 1 removes the parallelism that hid it.
-    #
-    # 45 is deliberately generous rather than fitted: the run it must
-    # accommodate has never completed, so there is no honest number to fit to
-    # yet. Tighten it once a green run reports a real duration — and if that
-    # duration makes a per-PR job too expensive, the decision to revisit is
-    # "move this layer to the nightly", not "raise the timeout again".
-    timeout-minutes: 45
+    # ~40 min at -p 1 (run 38082916085). At -p 4 the same layer took ~13 min
+    # on a laptop (2026-10-11); 30 leaves room for a slower runner without
+    # letting a hang eat an hour.
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: server
@@ -276,10 +268,14 @@ jobs:
           echo "placeholder" > internal/app/docsres/llms-full.txt
           echo '[]' > internal/app/docsres/search-index.json
 
-      # -p 1 is not a performance choice: embedded-postgres shares one extracted
-      # directory (~/.embedded-postgres-go/extracted, pwfile included) across
-      # every instance, so two packages starting concurrently make the loser
-      # fail with "unable to remove password file".
+      # -p 4 runs four packages at once (the runner has 4 vCPUs). It used to be
+      # -p 1, because concurrent embedded-postgres instances killed each other:
+      # first through a shared runtime dir (fixed: each instance has its own),
+      # then through every test process's startup orphan sweep, which took a
+      # live instance mid-initdb for an orphan, and finally through 16 ports
+      # claimed by two packages each. internal/db/postgres/embeddedpg fixes the
+      # sweep, and internal/testsupport's TestFixedTestPortsAreUniqueAcrossPackages
+      # keeps the ports unique. Going back to -p 1 hides a regression in either.
       #
       # SP_TEST_REQUIRE_POSTGRES=1 turns that failure — and every other
       # "embedded postgres unavailable" path — into a test FAILURE instead of a
@@ -291,7 +287,7 @@ jobs:
       - name: Run the Postgres test layer
         run: |
           set -o pipefail
-          SP_TEST_REQUIRE_POSTGRES=1 go test -count=1 -p 1 -v \
+          SP_TEST_REQUIRE_POSTGRES=1 go test -count=1 -p 4 -v \
             -coverprofile="$RUNNER_TEMP/coverage.raw.out" -coverpkg=./... ./... 2>&1 \
             | tee "$RUNNER_TEMP/postgres-tests.log"
 
