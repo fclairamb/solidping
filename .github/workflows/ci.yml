@@ -1669,7 +1669,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@v5
 
       # Pushes oci://ghcr.io/fclairamb/charts/solidping with the chart version
       # and appVersion both set to the release, so `helm install` without
