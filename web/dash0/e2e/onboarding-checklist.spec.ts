@@ -15,8 +15,13 @@ import { test, expect, API_BASE, type Page, uniqueStamp } from "./fixtures";
 // the shared `test` fixture org. Note that such an org is NOT blank: spec
 // 2026-08-28-15 seeds a default email integration and a weekly report
 // schedule for every self-created org, so it starts at 3/5 once a check
-// exists. The "item flips" test deletes the seeded integration first, so it
+// exists. The alerting-step test deletes the seeded integration first, so it
 // observes a real false → true transition instead of passing by accident.
+//
+// Seeding a user + org + check is the expensive part, so each test seeds once
+// and asserts everything that seed can show: the read-only properties of a
+// fresh card together, the in-card interactions together, and the dismissal
+// (which hides the card for good) on its own.
 test.describe("Getting-started checklist", () => {
   async function seedBrowserSession(
     page: Page,
@@ -114,7 +119,7 @@ test.describe("Getting-started checklist", () => {
 
     await seedBrowserSession(page, { ...org, slug: org.slug });
 
-    return { orgSlug: org.slug, auth };
+    return { orgSlug: org.slug, auth, session: org };
   }
 
   async function listIntegrations(
@@ -135,7 +140,7 @@ test.describe("Getting-started checklist", () => {
     await page.waitForLoadState("networkidle");
   }
 
-  test("appears once a check exists, with the check step already ticked", async ({
+  test("a fresh org's card: appears with the check step ticked, a real progress bar with one 'next up' row, muted done steps, usable at mobile width", async ({
     page,
   }) => {
     const { orgSlug } = await seedOrgWithCheck(page);
@@ -170,12 +175,147 @@ test.describe("Getting-started checklist", () => {
     await expect(
       page.getByTestId("onboarding-step-statusPage-cta"),
     ).toHaveAttribute("href", /\/status-pages$/);
+
+    // --- The header carries a real progress bar and the first open step is
+    // the only "next up" row.
+
+    // `data-next` is carried by the step ROWS only (the status wells inside
+    // them carry data-done but not data-next), so this is the row set.
+    const rows = card.locator("[data-next]");
+    const states = await rows.evaluateAll((nodes) =>
+      nodes.map((node) => ({
+        done: node.getAttribute("data-done"),
+        next: node.getAttribute("data-next"),
+      })),
+    );
+    const total = states.length;
+    const doneCount = states.filter((row) => row.done === "true").length;
+
+    // A self-created org starts at 3/5 (spec 2026-08-28-15 seeds an email
+    // channel and a report schedule), so there is genuinely both a done row
+    // and an open row here — these two bounds are the positive control that
+    // the assertions below are not passing on a degenerate list.
+    expect(total).toBeGreaterThan(0);
+    expect(doneCount).toBeGreaterThan(0);
+    expect(doneCount).toBeLessThan(total);
+
+    // Spec 2026-09-03-01 replaced "N of M done" as the ONLY progress signal
+    // with a real bar; its value has to agree with the rows rather than be
+    // decorative.
+    const bar = card.getByRole("progressbar");
+    await expect(bar).toBeVisible();
+    await expect(bar).toHaveAttribute("aria-valuemax", String(total));
+    await expect(bar).toHaveAttribute("aria-valuenow", String(doneCount));
+
+    // Exactly one focal row, and it is the FIRST step still open — that is
+    // the whole point of the "next up" treatment.
+    const firstOpenIndex = states.findIndex((row) => row.done === "false");
+    expect(firstOpenIndex).toBeGreaterThanOrEqual(0);
+    expect(states.map((row) => row.next)).toEqual(
+      states.map((_, i) => (i === firstOpenIndex ? "true" : "false")),
+    );
+
+    // --- A done step is muted, not struck through.
+
+    // The check step is done the moment the card appears, so this is a real
+    // done row rather than a hypothetical one. Five struck-through titles
+    // read as a wall of deletions instead of a finished setup, which is why
+    // spec 2026-09-03-01 removed the strikethrough outright.
+    const doneRow = page.getByTestId("onboarding-step-check");
+    await expect(doneRow).toHaveAttribute("data-done", "true");
+    const doneDecoration = await doneRow
+      .locator("p")
+      .first()
+      .evaluate((el) => getComputedStyle(el).textDecorationLine);
+    expect(doneDecoration).toBe("none");
+
+    // Positive control: a pending title is measured the same way and is also
+    // undecorated, so the assertion above really is reading text-decoration.
+    const pendingRow = page.getByTestId("onboarding-step-team");
+    await expect(pendingRow).toHaveAttribute("data-done", "false");
+    const pendingDecoration = await pendingRow
+      .locator("p")
+      .first()
+      .evaluate((el) => getComputedStyle(el).textDecorationLine);
+    expect(pendingDecoration).toBe("none");
+
+    // --- Stays usable at mobile width.
+
+    await page.setViewportSize({ width: 375, height: 812 });
+    await openDashboard(page, orgSlug);
+
+    await expect(page.getByTestId("onboarding-checklist")).toBeVisible();
+    await expect(page.getByTestId("onboarding-dismiss")).toBeVisible();
+    await expect(page.getByTestId("onboarding-step-check-cta")).toBeVisible();
+
+    // No fixed-width element may force the page wider than the viewport.
+    const hasHorizontalOverflow = await page.evaluate(
+      () =>
+        document.documentElement.scrollWidth >
+        document.documentElement.clientWidth,
+    );
+    expect(hasHorizontalOverflow).toBe(false);
   });
 
-  test("the alerting step is derived: it flips when a channel appears, with nothing stored", async ({
+  test("in-card interactions: the test alert reports what the server said without navigating away, the alerting step is derived from real channels, and a row's body navigates to its step", async ({
     page,
   }) => {
     const { orgSlug, auth } = await seedOrgWithCheck(page);
+
+    // --- The test-alert button reports what the server actually said, and
+    // fires without navigating away.
+
+    // The endpoint answers 200 either way, so both outcomes are stubbed and
+    // both are asserted: a failure must render the server's message, never a
+    // silent success.
+    let succeed = true;
+    await page.route("**/api/v1/orgs/*/integrations/*/test", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(
+          succeed
+            ? {
+                success: true,
+                statusCode: 0,
+                durationMs: 12,
+                detail: "Delivered to alice@acme.com",
+              }
+            : {
+                success: false,
+                statusCode: 0,
+                durationMs: 3,
+                error: "SMTP is not configured on this server",
+              },
+        ),
+      }),
+    );
+
+    // The seeded default email channel is what gives the card its button.
+    await openDashboard(page, orgSlug);
+    const dashboardUrl = page.url();
+
+    // The alerts row nests a second interactive element (the test-alert
+    // button) inside the row's stretched navigation target. Clicking it must
+    // fire the test alert and must NOT trigger the row's own navigation to
+    // the integrations page — this is the load-bearing assertion that the
+    // nested-interactive handling (stopPropagation / z-index layering)
+    // actually works, not just that the button is clickable in isolation.
+    await page.getByTestId("onboarding-test-alert").click();
+    await expect(
+      page.getByText("Delivered to alice@acme.com"),
+    ).toBeVisible();
+    expect(page.url()).toBe(dashboardUrl);
+    await expect(page.getByTestId("onboarding-checklist")).toBeVisible();
+
+    succeed = false;
+    await page.getByTestId("onboarding-test-alert").click();
+    await expect(
+      page.getByText("SMTP is not configured on this server"),
+    ).toBeVisible();
+
+    // --- The alerting step is derived: it flips when a channel appears, with
+    // nothing stored.
 
     // A self-created org is seeded with a default email channel, so start by
     // removing it — otherwise "creating an integration flips the step" would
@@ -218,158 +358,9 @@ test.describe("Getting-started checklist", () => {
       "true",
     );
     await expect(page.getByTestId("onboarding-test-alert")).toBeVisible();
-  });
 
-  test("the test-alert button reports what the server actually said", async ({
-    page,
-  }) => {
-    const { orgSlug } = await seedOrgWithCheck(page);
-
-    // The endpoint answers 200 either way, so both outcomes are stubbed and
-    // both are asserted: a failure must render the server's message, never a
-    // silent success.
-    let succeed = true;
-    await page.route("**/api/v1/orgs/*/integrations/*/test", (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(
-          succeed
-            ? {
-                success: true,
-                statusCode: 0,
-                durationMs: 12,
-                detail: "Delivered to alice@acme.com",
-              }
-            : {
-                success: false,
-                statusCode: 0,
-                durationMs: 3,
-                error: "SMTP is not configured on this server",
-              },
-        ),
-      }),
-    );
-
-    await openDashboard(page, orgSlug);
-
-    await page.getByTestId("onboarding-test-alert").click();
-    await expect(
-      page.getByText("Delivered to alice@acme.com"),
-    ).toBeVisible();
-
-    succeed = false;
-    await page.getByTestId("onboarding-test-alert").click();
-    await expect(
-      page.getByText("SMTP is not configured on this server"),
-    ).toBeVisible();
-  });
-
-  test("dismissing survives a full reload and is undone from the account page", async ({
-    page,
-  }) => {
-    const { orgSlug } = await seedOrgWithCheck(page);
-
-    await openDashboard(page, orgSlug);
-    await expect(page.getByTestId("onboarding-checklist")).toBeVisible();
-
-    await page.getByTestId("onboarding-dismiss").click();
-    await expect(page.getByTestId("onboarding-checklist")).toHaveCount(0);
-
-    // A full reload rebuilds the page from the server's answer. The old
-    // localStorage banner would also have survived this, which is why the
-    // account round trip below is the part that actually proves the storage
-    // moved server-side.
-    await openDashboard(page, orgSlug);
-    await expect(page.getByTestId("onboarding-checklist")).toHaveCount(0);
-
-    await page.goto(`orgs/${orgSlug}/account/profile`);
-    await page.getByTestId("restore-onboarding-checklist").click();
-    await expect(page.getByText(/getting-started checklist is back/i)).toBeVisible();
-
-    await openDashboard(page, orgSlug);
-    await expect(page.getByTestId("onboarding-checklist")).toBeVisible();
-  });
-
-  test("the dismissal follows the user to another browser session", async ({
-    page,
-    browser,
-  }) => {
-    const stamp = uniqueStamp();
-    const email = `onboard-x-${stamp}@unknown.example`;
-    const password = "Strong-Pass-123!";
-
-    const createUserResp = await page.request.post(
-      `${API_BASE}/api/v1/test/users`,
-      { data: { email, password, name: "Onboarding Owner" } },
-    );
-    if (createUserResp.status() !== 201) {
-      test.skip(
-        true,
-        `test user-seed endpoint unavailable (server not in SP_RUNMODE=test?): ${createUserResp.status()}`,
-      );
-    }
-
-    const loginResp = await page.request.post(`${API_BASE}/api/v1/auth/login`, {
-      data: { email, password },
-    });
-    expect(loginResp.status()).toBe(200);
-    const session = (await loginResp.json()) as { accessToken: string };
-
-    const slug = `onbx-${stamp}`;
-    const createOrgResp = await page.request.post(`${API_BASE}/api/v1/orgs`, {
-      headers: { Authorization: `Bearer ${session.accessToken}` },
-      data: { name: `Acme Onboarding X ${stamp}`, slug },
-    });
-    expect(createOrgResp.status()).toBe(201);
-    const org = (await createOrgResp.json()) as {
-      slug: string;
-      accessToken: string;
-      refreshToken?: string;
-      expiresIn?: number;
-    };
-
-    const checkResp = await page.request.post(
-      `${API_BASE}/api/v1/orgs/${org.slug}/checks`,
-      {
-        headers: { Authorization: `Bearer ${org.accessToken}` },
-        data: {
-          name: "Acme site",
-          slug: "acme-site",
-          type: "http",
-          enabled: false,
-          config: { url: "https://acme.com" },
-        },
-      },
-    );
-    expect(checkResp.status()).toBe(201);
-
-    await seedBrowserSession(page, { ...org, slug: org.slug });
-    await openDashboard(page, org.slug);
-    await page.getByTestId("onboarding-dismiss").click();
-    await expect(page.getByTestId("onboarding-checklist")).toHaveCount(0);
-
-    // A brand-new browser context: no localStorage carried over, only the
-    // same user's session. The card must still be hidden — that is the whole
-    // point of moving the dismissal off the device.
-    const other = await browser.newContext();
-    const otherPage = await other.newPage();
-    await seedBrowserSession(otherPage, { ...org, slug: org.slug });
-    await otherPage.goto(`orgs/${org.slug}`);
-
-    // Positive control: the dashboard really did render for this context.
-    await expect(otherPage.getByTestId("kpi-tile-monitored")).toBeVisible();
-    await expect(otherPage.getByTestId("onboarding-checklist")).toHaveCount(0);
-
-    await other.close();
-  });
-
-  test("clicking a step row's body (not the CTA button) navigates to the step's route", async ({
-    page,
-  }) => {
-    const { orgSlug } = await seedOrgWithCheck(page);
-
-    await openDashboard(page, orgSlug);
+    // --- Clicking a step row's body (not the CTA button) navigates to the
+    // step's route. Last, because it leaves the dashboard.
 
     // The "team" step's own CTA links to the members page; clicking the
     // row's status icon (well away from the CTA button) must navigate the
@@ -384,132 +375,46 @@ test.describe("Getting-started checklist", () => {
     await expect(page).toHaveURL(/\/organization\/members$/);
   });
 
-  test("clicking the test-alert button fires the test alert without navigating away", async ({
+  test("dismissing survives a full reload, follows the user to another browser session, and is undone from the account page", async ({
     page,
+    browser,
   }) => {
-    const { orgSlug } = await seedOrgWithCheck(page);
-
-    await page.route("**/api/v1/orgs/*/integrations/*/test", (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          success: true,
-          statusCode: 0,
-          durationMs: 12,
-          detail: "Delivered to alice@acme.com",
-        }),
-      }),
-    );
+    const { orgSlug, session } = await seedOrgWithCheck(page);
 
     await openDashboard(page, orgSlug);
-    const dashboardUrl = page.url();
-
-    // The alerts row nests a second interactive element (the test-alert
-    // button) inside the row's stretched navigation target. Clicking it must
-    // fire the test alert and must NOT trigger the row's own navigation to
-    // the integrations page — this is the load-bearing assertion that the
-    // nested-interactive handling (stopPropagation / z-index layering)
-    // actually works, not just that the button is clickable in isolation.
-    await page.getByTestId("onboarding-test-alert").click();
-    await expect(
-      page.getByText("Delivered to alice@acme.com"),
-    ).toBeVisible();
-    expect(page.url()).toBe(dashboardUrl);
     await expect(page.getByTestId("onboarding-checklist")).toBeVisible();
-  });
 
-  test("the header carries a real progress bar and the first open step is the only 'next up' row", async ({
-    page,
-  }) => {
-    const { orgSlug } = await seedOrgWithCheck(page);
+    await page.getByTestId("onboarding-dismiss").click();
+    await expect(page.getByTestId("onboarding-checklist")).toHaveCount(0);
+
+    // A full reload rebuilds the page from the server's answer. The old
+    // localStorage banner would also have survived this, which is why the
+    // other-session and account round trips below are the parts that
+    // actually prove the storage moved server-side.
+    await openDashboard(page, orgSlug);
+    await expect(page.getByTestId("onboarding-checklist")).toHaveCount(0);
+
+    // A brand-new browser context: no localStorage carried over, only the
+    // same user's session. The card must still be hidden — that is the whole
+    // point of moving the dismissal off the device.
+    const other = await browser.newContext();
+    try {
+      const otherPage = await other.newPage();
+      await seedBrowserSession(otherPage, { ...session, slug: orgSlug });
+      await otherPage.goto(`orgs/${orgSlug}`);
+
+      // Positive control: the dashboard really did render for this context.
+      await expect(otherPage.getByTestId("kpi-tile-monitored")).toBeVisible();
+      await expect(otherPage.getByTestId("onboarding-checklist")).toHaveCount(0);
+    } finally {
+      await other.close();
+    }
+
+    await page.goto(`orgs/${orgSlug}/account/profile`);
+    await page.getByTestId("restore-onboarding-checklist").click();
+    await expect(page.getByText(/getting-started checklist is back/i)).toBeVisible();
 
     await openDashboard(page, orgSlug);
-
-    const card = page.getByTestId("onboarding-checklist");
-    await expect(card).toBeVisible();
-
-    // `data-next` is carried by the step ROWS only (the status wells inside
-    // them carry data-done but not data-next), so this is the row set.
-    const rows = card.locator("[data-next]");
-    const states = await rows.evaluateAll((nodes) =>
-      nodes.map((node) => ({
-        done: node.getAttribute("data-done"),
-        next: node.getAttribute("data-next"),
-      })),
-    );
-    const total = states.length;
-    const doneCount = states.filter((row) => row.done === "true").length;
-
-    // A self-created org starts at 3/5 (spec 2026-08-28-15 seeds an email
-    // channel and a report schedule), so there is genuinely both a done row
-    // and an open row here — these two bounds are the positive control that
-    // the assertions below are not passing on a degenerate list.
-    expect(total).toBeGreaterThan(0);
-    expect(doneCount).toBeGreaterThan(0);
-    expect(doneCount).toBeLessThan(total);
-
-    // Spec 2026-09-03-01 replaced "N of M done" as the ONLY progress signal
-    // with a real bar; its value has to agree with the rows rather than be
-    // decorative.
-    const bar = card.getByRole("progressbar");
-    await expect(bar).toBeVisible();
-    await expect(bar).toHaveAttribute("aria-valuemax", String(total));
-    await expect(bar).toHaveAttribute("aria-valuenow", String(doneCount));
-
-    // Exactly one focal row, and it is the FIRST step still open — that is
-    // the whole point of the "next up" treatment.
-    const firstOpenIndex = states.findIndex((row) => row.done === "false");
-    expect(firstOpenIndex).toBeGreaterThanOrEqual(0);
-    expect(states.map((row) => row.next)).toEqual(
-      states.map((_, i) => (i === firstOpenIndex ? "true" : "false")),
-    );
-  });
-
-  test("a done step is muted, not struck through", async ({ page }) => {
-    const { orgSlug } = await seedOrgWithCheck(page);
-
-    await openDashboard(page, orgSlug);
-
-    // The check step is done the moment the card appears, so this is a real
-    // done row rather than a hypothetical one. Five struck-through titles
-    // read as a wall of deletions instead of a finished setup, which is why
-    // spec 2026-09-03-01 removed the strikethrough outright.
-    const doneRow = page.getByTestId("onboarding-step-check");
-    await expect(doneRow).toHaveAttribute("data-done", "true");
-    const doneDecoration = await doneRow
-      .locator("p")
-      .first()
-      .evaluate((el) => getComputedStyle(el).textDecorationLine);
-    expect(doneDecoration).toBe("none");
-
-    // Positive control: a pending title is measured the same way and is also
-    // undecorated, so the assertion above really is reading text-decoration.
-    const pendingRow = page.getByTestId("onboarding-step-team");
-    await expect(pendingRow).toHaveAttribute("data-done", "false");
-    const pendingDecoration = await pendingRow
-      .locator("p")
-      .first()
-      .evaluate((el) => getComputedStyle(el).textDecorationLine);
-    expect(pendingDecoration).toBe("none");
-  });
-
-  test("stays usable at mobile width", async ({ page }) => {
-    const { orgSlug } = await seedOrgWithCheck(page);
-
-    await page.setViewportSize({ width: 375, height: 812 });
-    await openDashboard(page, orgSlug);
-
     await expect(page.getByTestId("onboarding-checklist")).toBeVisible();
-    await expect(page.getByTestId("onboarding-dismiss")).toBeVisible();
-    await expect(page.getByTestId("onboarding-step-check-cta")).toBeVisible();
-
-    // No fixed-width element may force the page wider than the viewport.
-    const hasHorizontalOverflow = await page.evaluate(
-      () =>
-        document.documentElement.scrollWidth >
-        document.documentElement.clientWidth,
-    );
-    expect(hasHorizontalOverflow).toBe(false);
   });
 });
