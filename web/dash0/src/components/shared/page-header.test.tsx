@@ -62,3 +62,27 @@ describe("PageHeader", () => {
     expect(c).not.toContain("bg-primary");
   });
 });
+
+// The docs link (docs-link.tsx) is opt-in per page through `docsHref`: a page
+// that passes one gets a small icon link into the embedded docs site, a page
+// that does not gets nothing. Which page passes which href is pinned by
+// src/docs-links.test.ts.
+describe("PageHeader docs link", () => {
+  const docsLink = (html: string) =>
+    /<a[^>]*data-testid="docs-link"[^>]*>/.exec(html)?.[0] ?? "";
+
+  it("renders a docs link opening the given docs page in a new tab", () => {
+    const html = renderToStaticMarkup(
+      <PageHeader icon={Globe} title="SLOs" docsHref="/docs/features/slos" />,
+    );
+    const link = docsLink(html);
+    expect(link).toContain('href="/docs/features/slos"');
+    expect(link).toContain('target="_blank"');
+    expect(link).toContain('rel="noopener"');
+  });
+
+  it("renders no docs link when the page passes no docsHref", () => {
+    const html = renderToStaticMarkup(<PageHeader icon={Globe} title="Jobs" />);
+    expect(html).not.toContain('data-testid="docs-link"');
+  });
+});
