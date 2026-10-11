@@ -2,11 +2,12 @@ import CodeMirror from "@uiw/react-codemirror";
 import { javascript } from "@codemirror/lang-javascript";
 import { ExternalLink } from "lucide-react";
 import type { Check } from "@/api/hooks";
+import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { aiBlockOf } from "./ai-authored-detail";
 
 // Read-only rendering of a check's config, laid out like the edit form: short
-// values as label/value rows, the js script in the same CodeMirror editor
+// values as label/value rows, lists such as expectedStatusCodes as chips, the js script in the same CodeMirror editor
 // (read-only), maps such as env as key/value rows, multi-line text as a code
 // block. The `ai` block of an AI-authored check is left to AIAuthoredDetail.
 
@@ -23,6 +24,10 @@ function isScalarMap(value: unknown): value is Record<string, Scalar> {
     !Array.isArray(value) &&
     Object.values(value).every(isScalar)
   );
+}
+
+function isScalarList(value: unknown): value is Scalar[] {
+  return Array.isArray(value) && value.every(isScalar);
 }
 
 function ScalarValue({ value }: { value: Scalar }) {
@@ -75,7 +80,9 @@ export function CheckConfigView({ check }: { check: Check }) {
 
   const rows = entries.filter(
     ([key, value]) =>
-      key !== "script" && isScalar(value) && !(typeof value === "string" && value.includes("\n")),
+      key !== "script" &&
+      (isScalarList(value) ||
+        (isScalar(value) && !(typeof value === "string" && value.includes("\n")))),
   );
   const blocks = entries.filter((entry) => !rows.includes(entry));
 
@@ -95,7 +102,17 @@ export function CheckConfigView({ check }: { check: Check }) {
             <div key={key} className="contents">
               <dt className="text-muted-foreground">{key}</dt>
               <dd className="min-w-0">
-                <ScalarValue value={value as Scalar} />
+                {isScalarList(value) ? (
+                  <div className="flex flex-wrap gap-1" data-testid={`check-config-${key}-chips`}>
+                    {value.map((item, idx) => (
+                      <Badge key={idx} variant="secondary" className="font-mono">
+                        {String(item)}
+                      </Badge>
+                    ))}
+                  </div>
+                ) : (
+                  <ScalarValue value={value as Scalar} />
+                )}
               </dd>
             </div>
           ))}
@@ -121,14 +138,6 @@ export function CheckConfigView({ check }: { check: Check }) {
                   </div>
                 ))}
               </dl>
-            ) : Array.isArray(value) && value.every(isScalar) ? (
-              <ul className="list-disc space-y-0.5 rounded-md border bg-muted/40 py-2 pl-7 pr-3 font-mono text-xs">
-                {value.map((item, idx) => (
-                  <li key={idx}>
-                    <ScalarValue value={item} />
-                  </li>
-                ))}
-              </ul>
             ) : (
               <pre className="max-h-80 overflow-auto rounded-md border bg-muted/40 p-3 font-mono text-xs">
                 {JSON.stringify(value, null, 2)}
