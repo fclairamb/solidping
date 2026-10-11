@@ -160,3 +160,49 @@ func TestHandle2FAErrorMapsOrganizationNotFound(t *testing.T) {
 	code, _ := decodeErrorResponse(t, rec)
 	r.Equal(string(base.ErrorCodeOrganizationNotFound), code)
 }
+
+// TestCreateInvitationHandlerAppField pins the `app` field at the HTTP layer:
+// the handler fills an omitted app with dash0 before calling the service
+// (which rejects an empty app), and maps the service's ErrInvalidApp to a 400.
+// Both used to be checked only by Playwright API calls (e2e/invitations.spec.ts).
+func TestCreateInvitationHandlerAppField(t *testing.T) { //nolint:tparallel // subtests share one fixture
+	t.Parallel()
+
+	f := newCoverFixture(t)
+	orgP := map[string]string{"org": f.org}
+
+	t.Run("omitted app defaults to the dashboard invite URL", func(t *testing.T) { //nolint:paralleltest // shared fixture
+		r := require.New(t)
+
+		rec := f.do(t, coverCall{
+			fn: f.h.CreateInvitation, claims: f.admin, params: orgP,
+			body: `{"email":"default-app@acme.com","role":"user","expiresIn":"24h"}`,
+		})
+		r.Equal(http.StatusCreated, rec.Code)
+
+		var body struct {
+			Token     string `json:"token"`
+			InviteURL string `json:"inviteUrl"`
+			EmailSent *bool  `json:"emailSent"`
+		}
+		r.NoError(json.Unmarshal(rec.Body.Bytes(), &body))
+		r.NotEmpty(body.Token)
+		r.True(strings.HasPrefix(body.InviteURL, "http://127.0.0.1:4000/d/invite/"), body.InviteURL)
+		// No jobs service and email disabled: the link is the only channel.
+		r.NotNil(body.EmailSent)
+		r.False(*body.EmailSent)
+	})
+
+	t.Run("invalid app answers 400 VALIDATION_ERROR", func(t *testing.T) { //nolint:paralleltest // shared fixture
+		r := require.New(t)
+
+		rec := f.do(t, coverCall{
+			fn: f.h.CreateInvitation, claims: f.admin, params: orgP,
+			body: `{"email":"bad-app@acme.com","role":"user","expiresIn":"24h","app":"invalid"}`,
+		})
+		r.Equal(http.StatusBadRequest, rec.Code)
+
+		code, _ := decodeErrorResponse(t, rec)
+		r.Equal(string(base.ErrorCodeValidationError), code)
+	})
+}

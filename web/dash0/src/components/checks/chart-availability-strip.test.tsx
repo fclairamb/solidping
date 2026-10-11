@@ -9,6 +9,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   cleanup,
+  fireEvent,
   render as rtlRender,
   screen,
 } from "@testing-library/react";
@@ -214,6 +215,32 @@ describe("chart availability strip", () => {
       <ResponseTimeChart org="acme" checkUid="c1" initialPeriod="month" />,
     );
     expect(lastQuery().bucketSeconds).toBe(24 * 3600);
+  });
+
+  it("re-buckets when the user switches the chart range", () => {
+    render(
+      <ResponseTimeChart org="acme" checkUid="c1" initialPeriod="day" />,
+    );
+    expect(lastQuery().bucketSeconds).toBe(3600);
+
+    // The range buttons render a short and a long label; jsdom applies no
+    // responsive CSS, so the accessible name carries both ("WWeek").
+    fireEvent.click(screen.getByRole("button", { name: /Week$/ }));
+    expect(lastQuery().bucketSeconds).toBe(6 * 3600);
+
+    fireEvent.click(screen.getByRole("button", { name: /Month$/ }));
+    expect(lastQuery().bucketSeconds).toBe(24 * 3600);
+
+    // Below the 3h floor the strip goes away and the width is left to the
+    // server, while the header figure stays.
+    fireEvent.click(screen.getByRole("button", { name: /Hour$/ }));
+    expect(lastQuery().bucketSeconds).toBeUndefined();
+    expect(
+      screen.queryAllByTestId("response-time-chart-availability-strip-cell"),
+    ).toHaveLength(0);
+    expect(
+      screen.getByTestId("response-time-chart-window-availability"),
+    ).toBeTruthy();
   });
 
   it("re-buckets onto the zoom window when a drag-zoom is active", () => {

@@ -2,29 +2,16 @@ import { test, expect, mockSloCoverage } from "./fixtures";
 import type { Page } from "@playwright/test";
 
 /**
- * Spec 2026-08-26-10 — the availability strip aligned to the response-time
- * chart:
- * - the strip renders one cell per bucket under the chart, coloured from the
- *   server's status, with a distinct gray cell for a no-data bucket;
- * - the header carries the whole-window figure on every range;
- * - changing the range re-buckets (day → 1h, week → 6h, month → 1d);
- * - a drag-zoom re-buckets onto the selected window;
- * - the region filter scopes the strip exactly like the chart;
- * - below the 3h floor no strip is drawn, only the header figure.
+ * Spec 2026-08-26-10: the availability strip aligned to the response-time
+ * chart. Only the real-browser hover behaviour of the cell tooltips lives
+ * here. Cell rendering, the header figure, the 3h floor, and re-bucketing on
+ * range / zoom / region changes are covered by vitest:
+ * src/components/checks/chart-availability-strip.test.tsx and
+ * src/api/hooks.availability-buckets.test.tsx.
  *
- * The buckets endpoint is stubbed so the assertions are about the CLIENT's
- * wiring (window, bucket width, region) rather than about whatever data the
- * dev database happens to hold.
+ * The buckets endpoint is stubbed so the tooltips show known figures rather
+ * than whatever data the dev database happens to hold.
  */
-
-const HOUR_MS = 3_600_000;
-
-interface BucketQuery {
-  from: string;
-  to: string;
-  bucket: string | null;
-  region: string | null;
-}
 
 function buildResults() {
   const now = Date.now();
@@ -81,10 +68,9 @@ function bucketsBody(bucketSeconds: number) {
   };
 }
 
-async function gotoCheckDetail(page: Page): Promise<BucketQuery[]> {
+async function gotoCheckDetail(page: Page): Promise<void> {
   await mockSloCoverage(page);
 
-  const bucketQueries: BucketQuery[] = [];
   const points = buildResults();
 
   await page.route("**/api/v1/orgs/*/results*", (route) =>
@@ -103,12 +89,6 @@ async function gotoCheckDetail(page: Page): Promise<BucketQuery[]> {
     (route) => {
       const url = new URL(route.request().url());
       const bucket = url.searchParams.get("bucket");
-      bucketQueries.push({
-        from: url.searchParams.get("from") ?? "",
-        to: url.searchParams.get("to") ?? "",
-        bucket,
-        region: url.searchParams.get("region"),
-      });
       // Mirror the server: an omitted bucket means "you choose".
       const seconds = bucket ? parseInt(bucket, 10) * 3600 : 3600;
       return route.fulfill({
@@ -145,36 +125,12 @@ async function gotoCheckDetail(page: Page): Promise<BucketQuery[]> {
   await expect(page.locator(".recharts-wrapper")).toBeVisible({
     timeout: 15000,
   });
-
-  return bucketQueries;
 }
 
 const cells = (page: Page) =>
   page.getByTestId("response-time-chart-availability-strip-cell");
 
 test.describe("Chart availability strip", () => {
-  test("renders one cell per bucket with a gray no-data cell, plus a header figure", async ({
-    authenticatedPage,
-  }) => {
-    const page = authenticatedPage;
-    await gotoCheckDetail(page);
-
-    await expect(cells(page)).toHaveCount(6, { timeout: 10000 });
-
-    // The stub's shape: 5 measured cells (one of them red) and one no-data.
-    await expect(cells(page).nth(3)).toHaveAttribute("data-status", "down");
-    await expect(cells(page).nth(5)).toHaveAttribute("data-status", "noData");
-    // A no-data cell must not claim a percentage — that is the third state.
-    await expect(cells(page).nth(5)).toHaveAttribute(
-      "aria-label",
-      /No data/,
-    );
-
-    const header = page.getByTestId("response-time-chart-window-availability");
-    await expect(header).toBeVisible();
-    await expect(header).toContainText("86.7%");
-  });
-
   test("hovering a cell reveals its exact percentage, span and probe counts", async ({
     authenticatedPage,
   }) => {
@@ -243,108 +199,5 @@ test.describe("Chart availability strip", () => {
     await expect(
       page.getByRole("tooltip").filter({ hasText: "20 / 60" }),
     ).toHaveCount(0, { timeout: 5000 });
-  });
-
-  test("re-buckets when the chart range changes", async ({
-    authenticatedPage,
-  }) => {
-    const page = authenticatedPage;
-    const queries = await gotoCheckDetail(page);
-
-    // Day is the default range → 1h cells.
-    await expect
-      .poll(() => queries.at(-1)?.bucket, { timeout: 10000 })
-      .toBe("1h");
-
-    await page.getByRole("button", { name: "Week", exact: true }).click();
-    await expect.poll(() => queries.at(-1)?.bucket, { timeout: 10000 }).toBe(
-      "6h",
-    );
-
-    await page.getByRole("button", { name: "Month", exact: true }).click();
-    await expect.poll(() => queries.at(-1)?.bucket, { timeout: 10000 }).toBe(
-      "24h",
-    );
-  });
-
-  test("hides the strip below the 3h floor but keeps the header figure", async ({
-    authenticatedPage,
-  }) => {
-    const page = authenticatedPage;
-    await gotoCheckDetail(page);
-
-    await expect(cells(page)).toHaveCount(6, { timeout: 10000 });
-
-    await page.getByRole("button", { name: "Hour", exact: true }).click();
-
-    await expect(cells(page)).toHaveCount(0, { timeout: 10000 });
-    await expect(
-      page.getByTestId("response-time-chart-window-availability"),
-    ).toBeVisible();
-  });
-
-  test("re-buckets onto a drag-zoom window", async ({ authenticatedPage }) => {
-    const page = authenticatedPage;
-    const queries = await gotoCheckDetail(page);
-
-    // Start from the month range so the zoom's narrower bucket is a real change
-    // (1d → 1h), not a coincidence of already being at the floor.
-    await page.getByRole("button", { name: "Month", exact: true }).click();
-    await expect.poll(() => queries.at(-1)?.bucket, { timeout: 10000 }).toBe(
-      "24h",
-    );
-
-    const surface = page.locator(".recharts-wrapper").first();
-    const box = await surface.boundingBox();
-    if (!box) throw new Error("chart has no bounding box");
-    const y = box.y + box.height / 2;
-    const startX = box.x + box.width * 0.3;
-    const endX = box.x + box.width * 0.7;
-
-    await page.mouse.move(startX, y);
-    await page.mouse.down();
-    for (let i = 1; i <= 6; i++) {
-      await page.mouse.move(startX + ((endX - startX) * i) / 6, y);
-    }
-    await page.mouse.up();
-
-    await page.waitForURL(/graphFrom=/, { timeout: 5000 });
-
-    // The zoom window replaces the range's window AND its bucket width.
-    await expect
-      .poll(
-        () => {
-          const last = queries.at(-1);
-          if (!last) return null;
-          const spanMs = Date.parse(last.to) - Date.parse(last.from);
-          return spanMs > 0 && spanMs < 30 * 24 * HOUR_MS;
-        },
-        { timeout: 10000 },
-      )
-      .toBe(true);
-    expect(queries.at(-1)?.bucket).not.toBe("24h");
-  });
-
-  test("scopes the strip to the chart's region filter", async ({
-    authenticatedPage,
-  }) => {
-    const page = authenticatedPage;
-    const queries = await gotoCheckDetail(page);
-
-    // No region chip selected → the strip sums every region.
-    await expect
-      .poll(() => queries.at(-1)?.region, { timeout: 10000 })
-      .toBe(null);
-
-    const chip = page.getByTestId("response-time-chart-region-chip-us-east");
-    await expect(chip).toBeVisible({ timeout: 10000 });
-    await chip.click();
-
-    // The chart and the strip must describe the SAME region — that they did not
-    // is the defect this spec exists to fix.
-    await expect
-      .poll(() => queries.at(-1)?.region, { timeout: 10000 })
-      .toBe("us-east");
-    await expect(page).toHaveURL(/region=us-east/);
   });
 });

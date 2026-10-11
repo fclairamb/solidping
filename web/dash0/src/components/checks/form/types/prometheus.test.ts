@@ -136,6 +136,28 @@ describe("prometheusModule.fromConfig", () => {
     expect(prometheusModule.toConfig(state).config).toMatchObject(config);
   });
 
+  it("round-trips a promql config without resurrecting the scrape selector", () => {
+    const config = {
+      url: "https://prometheus.example.com",
+      mode: "promql",
+      query: 'sum(rate(http_requests_total{code=~"5.."}[5m]))',
+      operator: ">",
+      criticalValue: 10,
+    };
+    const state = prometheusModule.fromConfig(config);
+    expect(state.mode).toBe("promql");
+    expect(state.query).toBe(config.query);
+    expect(state.criticalValue).toBe("10");
+    expect(state.warningValue).toBe("");
+
+    const { config: out, errors } = prometheusModule.toConfig(state);
+    expect(errors).toEqual([]);
+    expect(out).toMatchObject(config);
+    expect(out.metric).toBeUndefined();
+    expect(out.labels).toBeUndefined();
+    expect(out).not.toHaveProperty("warningValue");
+  });
+
   it("seeds a 0 threshold as a visible value, not as blank", () => {
     const state = prometheusModule.fromConfig({
       url: "https://x/metrics",
