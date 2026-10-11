@@ -419,7 +419,13 @@ func TestBrowserCheckKeepsScreenshotOnRealTimeout(t *testing.T) {
 
 	checker := &BrowserChecker{}
 
-	const probeTimeout = 3 * time.Second
+	// Long enough that browser session setup cannot eat it. At 3 s, a loaded
+	// machine spent the whole probe budget before navigating ("failed to set
+	// the browser viewport: context deadline exceeded"), which is correctly
+	// reported as an error, not a timeout, and failed this test for a reason
+	// it is not about. The selector never appears, so the probe still runs to
+	// its full timeout and then captures.
+	const probeTimeout = 8 * time.Second
 
 	cfg := &BrowserConfig{
 		URL:          base + "/login",
