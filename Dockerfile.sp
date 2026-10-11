@@ -22,7 +22,7 @@
 # (`docker build -f Dockerfile.sp --target deps .`); the image itself is only
 # built on tags. Every local `replace` target in server/go.mod needs its
 # go.mod/go.sum copied here.
-FROM --platform=$BUILDPLATFORM golang:1.27.1-trixie AS deps
+FROM --platform=$BUILDPLATFORM golang:1.27.2-trixie AS deps
 
 WORKDIR /build
 
