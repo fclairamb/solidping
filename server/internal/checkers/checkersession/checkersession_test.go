@@ -38,10 +38,14 @@ func TestSlotsCapAndRelease(t *testing.T) {
 	r.Equal(2, slots.InUse())
 	r.Equal(2, slots.Capacity())
 
+	// start is taken BEFORE the deadline is set: the deadline counts from
+	// WithTimeout, so a start taken after it measured 50ms minus that gap and
+	// failed the >= 50ms check (49.9ms in CI run 38110374624).
+	start := time.Now()
+
 	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
 	defer cancel()
 
-	start := time.Now()
 	_, err = slots.Acquire(ctx)
 	r.ErrorIs(err, errTestSlotTimeout, "a full semaphore must give up with the checker's own error")
 	r.ErrorIs(err, ErrSlotTimeout, "and that error must match the shared sentinel")
