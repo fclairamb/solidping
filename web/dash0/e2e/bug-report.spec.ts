@@ -389,3 +389,160 @@ test.describe("Bug report annotations", () => {
     await expect(page.locator("canvas[style*='z-index:99999'], canvas[style*='z-index: 99999']")).toBeVisible();
   });
 });
+
+// Viewport capture (spec 2026-10-11-01). A fixture with colored bands at known
+// document offsets is injected, the page is scrolled, and the preview image in
+// the dialog is sampled. Points are in viewport CSS pixels.
+type RGB = [number, number, number];
+
+async function injectViewportFixture(page: Page) {
+  await page.evaluate(() => {
+    const fixture = document.createElement("div");
+    fixture.id = "vp-fixture";
+    fixture.style.cssText = "position:relative;height:4000px";
+    fixture.innerHTML = `
+      <div style="position:absolute;top:0;left:0;right:0;height:200px;background:#ff0000"></div>
+      <div style="position:absolute;top:2000px;left:0;right:0;height:200px;background:#00ff00"></div>
+      <div id="vp-box" style="position:absolute;top:2300px;left:50%;width:150px;height:150px;overflow:auto;background:#ffffff">
+        <div style="position:relative;height:2000px">
+          <div style="position:absolute;top:1000px;left:0;right:0;height:150px;background:#ffff00"></div>
+        </div>
+      </div>`;
+    document.body.prepend(fixture);
+    const fixed = document.createElement("div");
+    fixed.style.cssText =
+      "position:fixed;right:0;bottom:0;width:60px;height:60px;background:#0000ff;z-index:2147483647";
+    document.body.append(fixed);
+  });
+}
+
+async function captureAndSample(page: Page, points: Record<string, [number, number]>) {
+  await page.evaluate(() => window.dispatchEvent(new Event("feedback:open")));
+  const img = page.getByTestId("annotation-container").locator("img");
+  await expect(img).toBeVisible();
+  await expect.poll(() => img.evaluate((el: HTMLImageElement) => el.naturalWidth)).toBeGreaterThan(0);
+  const result = await img.evaluate(async (el: HTMLImageElement, pts) => {
+    // Drawn from the element: the page CSP does not allow fetching blob: URLs.
+    const bmp = await createImageBitmap(el);
+    const canvas = document.createElement("canvas");
+    canvas.width = bmp.width;
+    canvas.height = bmp.height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("no 2d context");
+    ctx.drawImage(bmp, 0, 0);
+    const ratio = bmp.width / window.innerWidth;
+    const samples: Record<string, [number, number, number]> = {};
+    for (const [name, [x, y]] of Object.entries(pts)) {
+      const d = ctx.getImageData(Math.round(x * ratio), Math.round(y * ratio), 1, 1).data;
+      samples[name] = [d[0], d[1], d[2]];
+    }
+    return {
+      width: bmp.width,
+      height: bmp.height,
+      expectedWidth: Math.round(window.innerWidth * Math.min(window.devicePixelRatio || 1, 2)),
+      expectedHeight: Math.round(window.innerHeight * Math.min(window.devicePixelRatio || 1, 2)),
+      samples,
+    };
+  }, points);
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("annotation-container")).toBeHidden();
+  return result;
+}
+
+const isRed = ([r, g, b]: RGB) => r > 200 && g < 60 && b < 60;
+const isGreen = ([r, g, b]: RGB) => g > 200 && r < 60 && b < 60;
+const isBlue = ([r, g, b]: RGB) => b > 200 && r < 60 && g < 60;
+const isYellow = ([r, g, b]: RGB) => r > 200 && g > 200 && b < 60;
+
+test.describe("Bug report viewport capture", () => {
+  async function setup(page: Page) {
+    await stubBugReport(page, true);
+    await page.reload();
+    await page.waitForLoadState("networkidle");
+    await injectViewportFixture(page);
+  }
+
+  function points(page: Page) {
+    const vp = page.viewportSize();
+    if (!vp) throw new Error("no viewport");
+    return {
+      top: [vp.width * 0.75, 20] as [number, number],
+      fixed: [vp.width - 30, vp.height - 30] as [number, number],
+    };
+  }
+
+  test("scrolled page: the image is the viewport, not the top of the page", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await setup(page);
+
+    // Positive control: unscrolled, the red band is at the top.
+    const atTop = await captureAndSample(page, points(page));
+    expect(atTop.width).toBe(atTop.expectedWidth);
+    expect(atTop.height).toBe(atTop.expectedHeight);
+    expect(isRed(atTop.samples.top)).toBe(true);
+    expect(isBlue(atTop.samples.fixed)).toBe(true);
+
+    await page.evaluate(() => window.scrollTo(0, 2000));
+    const scrolled = await captureAndSample(page, points(page));
+    expect(scrolled.width).toBe(scrolled.expectedWidth);
+    expect(scrolled.height).toBe(scrolled.expectedHeight);
+    expect(isGreen(scrolled.samples.top)).toBe(true);
+    expect(isBlue(scrolled.samples.fixed)).toBe(true);
+  });
+
+  test("bottom of the page: full viewport height, not the top of the page", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await setup(page);
+    await page.evaluate(() => window.scrollTo(0, 1e6));
+
+    const result = await captureAndSample(page, points(page));
+    expect(result.width).toBe(result.expectedWidth);
+    expect(result.height).toBe(result.expectedHeight);
+    expect(isRed(result.samples.top)).toBe(false);
+    expect(isBlue(result.samples.fixed)).toBe(true);
+  });
+
+  test("scrolled inner container keeps its offset and is restored", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await setup(page);
+    await page.evaluate(() => window.scrollTo(0, 2000));
+    const boxCenter = async (): Promise<[number, number]> => {
+      const box = await page.locator("#vp-box").boundingBox();
+      if (!box) throw new Error("no box");
+      return [box.x + box.width / 2, box.y + box.height / 2];
+    };
+
+    // Control: the box at scroll 0 shows white, not the yellow band.
+    const plain = await captureAndSample(page, { box: await boxCenter() });
+    expect(isYellow(plain.samples.box)).toBe(false);
+
+    await page.locator("#vp-box").evaluate((el) => {
+      el.scrollTop = 1000;
+    });
+    const scrolled = await captureAndSample(page, { box: await boxCenter() });
+    expect(isYellow(scrolled.samples.box)).toBe(true);
+
+    // The live page is put back as it was.
+    expect(await page.locator("#vp-box").evaluate((el) => el.scrollTop)).toBe(1000);
+    expect(await page.evaluate(() => window.scrollY)).toBe(2000);
+  });
+
+  test("mobile: scrolled capture is the viewport", async ({ authenticatedPage }) => {
+    const page = authenticatedPage;
+    await page.setViewportSize({ width: 375, height: 667 });
+    await setup(page);
+    await page.evaluate(() => window.scrollTo(0, 2000));
+
+    const result = await captureAndSample(page, points(page));
+    expect(result.width).toBe(result.expectedWidth);
+    expect(result.height).toBe(result.expectedHeight);
+    expect(isGreen(result.samples.top)).toBe(true);
+    expect(isBlue(result.samples.fixed)).toBe(true);
+  });
+});
