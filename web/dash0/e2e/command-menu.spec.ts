@@ -1,3 +1,4 @@
+import type { Locator } from "@playwright/test";
 import { test, expect, API_BASE, type Page, uniqueStamp } from "./fixtures";
 
 async function getAuthToken(page: Page): Promise<string> {
@@ -172,302 +173,299 @@ async function deleteSloViaApi(page: Page, token: string, uid: string) {
   });
 }
 
+/**
+ * Opens the Cmd+K palette and returns its input. With `fromDashboard`, starts
+ * from a fresh load of the org dashboard, the page every navigation case used
+ * to start from in its own test.
+ *
+ * The key press is retried until the palette shows: the shortcut is bound by
+ * an effect, so a press that lands before the app has hydrated is lost. It is
+ * only re-sent while the palette is closed, so a slow open is never toggled
+ * shut again.
+ */
+async function openPalette(
+  page: Page,
+  { fromDashboard = false }: { fromDashboard?: boolean } = {},
+): Promise<Locator> {
+  if (fromDashboard) {
+    await page.goto("orgs/test");
+    await expect(page.getByTestId("app-sidebar")).toBeVisible();
+  }
+
+  const input = page.locator("[cmdk-input]");
+  await expect(async () => {
+    if (!(await input.isVisible())) {
+      await page.keyboard.press("Meta+k");
+    }
+    await expect(input).toBeVisible({ timeout: 1000 });
+  }).toPass({ timeout: 10000 });
+
+  return input;
+}
+
 test.describe("Command Menu (Cmd+K)", () => {
-  test("should open command menu with Cmd+K and show pages", async ({
+  test("the palette lists every page group, filters as you type, and closes on Escape or on Enter with no match", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
-    await page.waitForLoadState("networkidle");
+    const input = await openPalette(page);
 
-    // Open command menu with Cmd+K
-    await page.keyboard.press("Meta+k");
+    await test.step("shows pages", async () => {
+      // "Checks" alone is anchored: the palette also lists seeded CHECK
+      // entities, whose item text is name+slug concatenated. A check named
+      // "Screenshot Check" with slug "shot-check" renders "Screenshot
+      // Checkshot-check", which CONTAINS "Checks" — so a plain substring filter
+      // trips strict mode or passes purely on the luck of the org's seed data.
+      // The others stay substring matches on purpose: a string `hasText` is
+      // case-insensitive, which is what lets "Tokens" match the item "API
+      // tokens". Anchoring them all breaks exactly that.
+      await expect(page.getByText("Pages", { exact: true })).toBeVisible();
+      await expect(page.locator('[cmdk-item]').filter({ hasText: "Dashboard" })).toBeVisible();
+      await expect(page.locator('[cmdk-item]').filter({ hasText: /^Checks$/i })).toBeVisible();
+      await expect(page.locator('[cmdk-item]').filter({ hasText: "Incidents" })).toBeVisible();
+      await expect(page.locator('[cmdk-item]').filter({ hasText: "Events" })).toBeVisible();
+      await expect(page.locator('[cmdk-item]').filter({ hasText: "Status Pages" })).toBeVisible();
+      // Badges and Dependencies left the palette with their sidebar entries
+      // (spec 2026-09-16-07): the badge builder moved under its check and the
+      // org-wide dependencies page is gone. Scoped to the Pages GROUP on
+      // purpose — the palette also lists seeded check entities, and other specs
+      // leave behind checks with "Badges" in their name.
+      const pagesGroup = page
+        .locator("[cmdk-group]")
+        .filter({ has: page.locator("[cmdk-group-heading]", { hasText: /^Pages$/ }) });
+      await expect(pagesGroup.locator("[cmdk-item]").filter({ hasText: "Badges" })).toHaveCount(0);
+      await expect(
+        pagesGroup.locator("[cmdk-item]").filter({ hasText: "Dependencies" }),
+      ).toHaveCount(0);
 
-    // Wait for the command menu dialog to appear
-    const input = page.locator('[cmdk-input]');
-    await expect(input).toBeVisible({ timeout: 3000 });
+      // Account group. The group heading itself reads "Account", same as
+      // the section-landing entry's title, so scope the heading assertion
+      // to the [cmdk-group-heading] element to avoid a strict-mode ambiguity.
+      await expect(page.locator("[cmdk-group-heading]", { hasText: "Account" })).toBeVisible();
+      await expect(page.getByTestId("command-menu-account")).toBeVisible();
+      await expect(page.locator('[cmdk-item]').filter({ hasText: "Profile" })).toBeVisible();
+      await expect(page.locator('[cmdk-item]').filter({ hasText: "Tokens" })).toBeVisible();
+      await expect(page.getByTestId("command-menu-ai")).toBeVisible();
+      await expect(page.getByTestId("command-menu-ai")).toContainText("AI assistants");
 
-    // Verify pages group is shown
-    // "Checks" alone is anchored: the palette also lists seeded CHECK
-    // entities, whose item text is name+slug concatenated. A check named
-    // "Screenshot Check" with slug "shot-check" renders "Screenshot
-    // Checkshot-check", which CONTAINS "Checks" — so a plain substring filter
-    // trips strict mode or passes purely on the luck of the org's seed data.
-    // The others stay substring matches on purpose: a string `hasText` is
-    // case-insensitive, which is what lets "Tokens" match the item "API
-    // tokens". Anchoring them all breaks exactly that.
-    await expect(page.getByText("Pages", { exact: true })).toBeVisible();
-    await expect(page.locator('[cmdk-item]').filter({ hasText: "Dashboard" })).toBeVisible();
-    await expect(page.locator('[cmdk-item]').filter({ hasText: /^Checks$/i })).toBeVisible();
-    await expect(page.locator('[cmdk-item]').filter({ hasText: "Incidents" })).toBeVisible();
-    await expect(page.locator('[cmdk-item]').filter({ hasText: "Events" })).toBeVisible();
-    await expect(page.locator('[cmdk-item]').filter({ hasText: "Status Pages" })).toBeVisible();
-    // Badges and Dependencies left the palette with their sidebar entries
-    // (spec 2026-09-16-07): the badge builder moved under its check and the
-    // org-wide dependencies page is gone. Scoped to the Pages GROUP on
-    // purpose — the palette also lists seeded check entities, and other specs
-    // leave behind checks with "Badges" in their name.
-    const pagesGroup = page
-      .locator("[cmdk-group]")
-      .filter({ has: page.locator("[cmdk-group-heading]", { hasText: /^Pages$/ }) });
-    await expect(pagesGroup.locator("[cmdk-item]").filter({ hasText: "Badges" })).toHaveCount(0);
-    await expect(
-      pagesGroup.locator("[cmdk-item]").filter({ hasText: "Dependencies" }),
-    ).toHaveCount(0);
+      // Organization group. Anchored (not a plain substring) because
+      // the "Switch organization" group heading also contains
+      // "Organization" as a substring — test@test.com belongs to 3 orgs
+      // (test, test2, test3), so that group renders here too.
+      await expect(
+        page.locator("[cmdk-group-heading]", { hasText: /^Organization$/ }),
+      ).toBeVisible();
+      await expect(page.getByTestId("command-menu-organization")).toBeVisible();
+      await expect(page.locator('[cmdk-item]').filter({ hasText: "Members" })).toBeVisible();
+      await expect(page.locator('[cmdk-item]').filter({ hasText: "Invitations" })).toBeVisible();
+      await expect(page.locator('[cmdk-item]').filter({ hasText: "Settings" })).toBeVisible();
 
-    // Verify Account group. The group heading itself reads "Account", same as
-    // the new section-landing entry's title, so scope the heading assertion
-    // to the [cmdk-group-heading] element to avoid a strict-mode ambiguity.
-    await expect(page.locator("[cmdk-group-heading]", { hasText: "Account" })).toBeVisible();
-    await expect(page.getByTestId("command-menu-account")).toBeVisible();
-    await expect(page.locator('[cmdk-item]').filter({ hasText: "Profile" })).toBeVisible();
-    await expect(page.locator('[cmdk-item]').filter({ hasText: "Tokens" })).toBeVisible();
-    await expect(page.getByTestId("command-menu-ai")).toBeVisible();
-    await expect(page.getByTestId("command-menu-ai")).toContainText("AI assistants");
+      await page.screenshot({
+        path: "test-results/screenshots/command-menu-open.png",
+        fullPage: true,
+      });
+    });
 
-    // Verify Organization group. Anchored (not a plain substring) because
-    // the new "Switch organization" group heading also contains
-    // "Organization" as a substring — test@test.com belongs to 3 orgs
-    // (test, test2, test3), so that group renders here too.
-    await expect(
-      page.locator("[cmdk-group-heading]", { hasText: /^Organization$/ }),
-    ).toBeVisible();
-    await expect(page.getByTestId("command-menu-organization")).toBeVisible();
-    await expect(page.locator('[cmdk-item]').filter({ hasText: "Members" })).toBeVisible();
-    await expect(page.locator('[cmdk-item]').filter({ hasText: "Invitations" })).toBeVisible();
-    await expect(page.locator('[cmdk-item]').filter({ hasText: "Settings" })).toBeVisible();
+    await test.step("shows the newer sidebar pages without duplicating On-call", async () => {
+      // Spec 2026-08-20-07: the palette had drifted from AppSidebar and was
+      // missing these four entries.
+      await expect(page.locator('[cmdk-item]').filter({ hasText: "Updates & notices" })).toBeVisible();
+      await expect(page.locator('[cmdk-item]').filter({ hasText: "Maintenance" })).toBeVisible();
+      await expect(page.locator('[cmdk-item]').filter({ hasText: "SLOs" })).toBeVisible();
+      await expect(page.locator('[cmdk-item]').filter({ hasText: "My alerts" })).toBeVisible();
 
-    // Take screenshot of command menu open with pages
-    await page.screenshot({
-      path: "test-results/screenshots/command-menu-open.png",
-      fullPage: true,
+      // "On call" already existed — must render exactly once, never duplicated.
+      await expect(page.locator('[cmdk-item]').filter({ hasText: "On-call" })).toHaveCount(1);
+    });
+
+    await test.step("filters results when typing", async () => {
+      await input.fill("inci");
+
+      // Should show Incidents, hide others
+      await expect(page.locator('[cmdk-item]').filter({ hasText: "Incidents" })).toBeVisible();
+      await expect(page.locator('[cmdk-item]').filter({ hasText: "Dashboard" })).not.toBeVisible();
+
+      await page.screenshot({
+        path: "test-results/screenshots/command-menu-filtered.png",
+        fullPage: true,
+      });
+    });
+
+    await test.step("closes on Escape", async () => {
+      await input.fill("");
+      await page.keyboard.press("Escape");
+      await expect(input).not.toBeVisible();
+    });
+
+    await test.step("closes on Enter when no items match", async () => {
+      await openPalette(page);
+      await input.fill("");
+      await input.pressSequentially("zzznomatchzz", { delay: 30 });
+      await page.keyboard.press("Enter");
+
+      await expect(input).not.toBeVisible();
     });
   });
 
-  test("should filter results when typing", async ({
+  test("page entries are findable by name and land on their route: incidents, members, uptime report, SLOs, organization settings", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
-    await page.waitForLoadState("networkidle");
 
-    // Open command menu
-    await page.keyboard.press("Meta+k");
-    const input = page.locator('[cmdk-input]');
-    await expect(input).toBeVisible({ timeout: 3000 });
+    await test.step("navigates to a page when selected", async () => {
+      const input = await openPalette(page, { fromDashboard: true });
 
-    // Type to filter
-    await input.fill("inci");
+      await input.fill("Incidents");
+      await page.locator('[cmdk-item]').filter({ hasText: "Incidents" }).click();
 
-    // Should show Incidents, hide others
-    await expect(page.locator('[cmdk-item]').filter({ hasText: "Incidents" })).toBeVisible();
-    await expect(page.locator('[cmdk-item]').filter({ hasText: "Dashboard" })).not.toBeVisible();
+      await page.waitForURL(/\/incidents/, { timeout: 5000 });
+      expect(page.url()).toContain("/incidents");
+    });
 
-    // Take screenshot of filtered results
-    await page.screenshot({
-      path: "test-results/screenshots/command-menu-filtered.png",
-      fullPage: true,
+    await test.step("navigates to members via keyboard (type + Enter)", async () => {
+      const input = await openPalette(page, { fromDashboard: true });
+
+      await input.pressSequentially("members", { delay: 50 });
+      await page.keyboard.press("Enter");
+
+      await page.waitForURL(/\/organization\/members/, { timeout: 5000 });
+      expect(page.url()).toContain("/organization/members");
+      await expect(input).not.toBeVisible();
+    });
+
+    await test.step("offers the uptime report and navigates to it", async () => {
+      const input = await openPalette(page, { fromDashboard: true });
+
+      // The page lives under Organization and is otherwise only reachable by
+      // clicking through the org tab bar, which is the point of listing it here.
+      await expect(
+        page.getByTestId("command-menu-report-schedules"),
+      ).toBeVisible();
+
+      await input.pressSequentially("uptime", { delay: 50 });
+      await expect(
+        page.getByTestId("command-menu-report-schedules"),
+      ).toBeVisible();
+      await page.keyboard.press("Enter");
+
+      await page.waitForURL(/\/organization\/report-schedules/, { timeout: 5000 });
+      expect(page.url()).toContain("/organization/report-schedules");
+      await expect(input).not.toBeVisible();
+    });
+
+    await test.step("navigates to the SLOs page when typing 'slo'", async () => {
+      const input = await openPalette(page, { fromDashboard: true });
+
+      await input.fill("slo");
+      const sloPageItem = page.locator('[cmdk-item]').filter({ hasText: "SLOs" }).first();
+      await expect(sloPageItem).toBeVisible();
+      await sloPageItem.click();
+
+      await page.waitForURL(/\/slos(\?|$)/, { timeout: 5000 });
+      expect(page.url()).toContain("/slos");
+      await expect(input).not.toBeVisible();
+    });
+
+    await test.step("Organization Settings is still findable by 'settings'", async () => {
+      const input = await openPalette(page, { fromDashboard: true });
+
+      // The label changed from "Settings" to "Organization Settings", but
+      // typing "settings" alone must still find it — a future rename that
+      // silently breaks this substring match would regress discoverability.
+      await input.fill("settings");
+      const settingsItem = page.getByTestId("command-menu-organization-settings");
+      await expect(settingsItem).toBeVisible();
+      await expect(settingsItem).toContainText("Organization Settings");
+
+      await settingsItem.click();
+      await page.waitForURL(/\/organization\/settings/, { timeout: 5000 });
+      expect(page.url()).toContain("/organization/settings");
+      await expect(input).not.toBeVisible();
     });
   });
 
-  test("should navigate to a page when selected", async ({
+  test("action and section entries land on their route: New Check, AI assistants (MCP), Organization, Account", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
-    await page.waitForLoadState("networkidle");
 
-    // Open command menu and select Incidents
-    await page.keyboard.press("Meta+k");
-    const input = page.locator('[cmdk-input]');
-    await expect(input).toBeVisible({ timeout: 3000 });
+    await test.step("exposes a New Check action and navigates to /checks/new", async () => {
+      const input = await openPalette(page, { fromDashboard: true });
 
-    await input.fill("Incidents");
-    await page.locator('[cmdk-item]').filter({ hasText: "Incidents" }).click();
+      // Actions group should be shown with the New Check entry
+      await expect(page.getByText("Actions", { exact: true })).toBeVisible();
+      const newCheckItem = page.getByTestId("command-menu-new-check");
+      await expect(newCheckItem).toBeVisible();
+      await expect(newCheckItem).toContainText("New Check");
+      await expect(newCheckItem).toContainText("Create a new monitoring check");
 
-    // Should navigate to incidents page
-    await page.waitForURL(/\/incidents/, { timeout: 5000 });
-    expect(page.url()).toContain("/incidents");
-  });
+      // Filter by typing — entry should still be reachable
+      await input.fill("new check");
+      await expect(newCheckItem).toBeVisible();
 
-  test("should navigate to members via keyboard (type + Enter)", async ({
-    authenticatedPage,
-  }) => {
-    const page = authenticatedPage;
-    await page.waitForLoadState("networkidle");
+      // Selecting it should navigate to /checks/new
+      await newCheckItem.click();
+      await page.waitForURL(/\/checks\/new/, { timeout: 5000 });
+      expect(page.url()).toContain("/checks/new");
+      await expect(input).not.toBeVisible();
+    });
 
-    await page.keyboard.press("Meta+k");
-    const input = page.locator('[cmdk-input]');
-    await expect(input).toBeVisible({ timeout: 3000 });
+    await test.step("the AI assistants (MCP) entry is findable by MCP → /account/mcp", async () => {
+      const input = await openPalette(page, { fromDashboard: true });
 
-    await input.pressSequentially("members", { delay: 50 });
-    await page.keyboard.press("Enter");
+      // The entry lives in the Account group and matches on "MCP" even though
+      // its title reads "AI assistants" — the description carries the MCP term.
+      const aiItem = page.getByTestId("command-menu-ai");
+      await input.fill("MCP");
+      await expect(aiItem).toBeVisible();
 
-    await page.waitForURL(/\/organization\/members/, { timeout: 5000 });
-    expect(page.url()).toContain("/organization/members");
-    await expect(input).not.toBeVisible();
-  });
+      // Selecting it navigates to the Account MCP page.
+      await aiItem.click();
+      await page.waitForURL(/\/account\/mcp/, { timeout: 5000 });
+      expect(page.url()).toContain("/account/mcp");
+      await expect(input).not.toBeVisible();
+      await expect(
+        page.getByRole("heading", { name: /ai assistants/i }),
+      ).toBeVisible();
+    });
 
-  test("should offer the uptime report and navigate to it", async ({
-    authenticatedPage,
-  }) => {
-    const page = authenticatedPage;
-    await page.waitForLoadState("networkidle");
+    await test.step("the Organization entry is findable by 'organization' → parent redirects to members", async () => {
+      const input = await openPalette(page, { fromDashboard: true });
 
-    await page.keyboard.press("Meta+k");
-    const input = page.locator('[cmdk-input]');
-    await expect(input).toBeVisible({ timeout: 3000 });
+      // Searching "organization" surfaces the section landing entry (not just
+      // its sub-pages, whose titles don't contain the word).
+      const orgItem = page.getByTestId("command-menu-organization");
+      await input.fill("organization");
+      await expect(orgItem).toBeVisible();
+      await expect(orgItem).toContainText("Organization");
 
-    // The page lives under Organization and is otherwise only reachable by
-    // clicking through the org tab bar, which is the point of listing it here.
-    await expect(
-      page.getByTestId("command-menu-report-schedules"),
-    ).toBeVisible();
+      // Selecting it navigates to the parent route, whose index redirects to
+      // the current default child. Members, not Invitations, since
+      // organization.index.tsx's default was changed (see that route's own
+      // history).
+      await orgItem.click();
+      await page.waitForURL(/\/organization\/members/, { timeout: 5000 });
+      expect(page.url()).toContain("/organization/members");
+      await expect(input).not.toBeVisible();
+    });
 
-    await input.pressSequentially("uptime", { delay: 50 });
-    await expect(
-      page.getByTestId("command-menu-report-schedules"),
-    ).toBeVisible();
-    await page.keyboard.press("Enter");
+    await test.step("the Account entry is findable by 'account' → parent redirects to profile", async () => {
+      const input = await openPalette(page, { fromDashboard: true });
 
-    await page.waitForURL(/\/organization\/report-schedules/, { timeout: 5000 });
-    expect(page.url()).toContain("/organization/report-schedules");
-    await expect(input).not.toBeVisible();
-  });
+      // Searching "account" surfaces the section landing entry (not just its
+      // sub-pages, whose titles don't contain the word).
+      const accountItem = page.getByTestId("command-menu-account");
+      await input.fill("account");
+      await expect(accountItem).toBeVisible();
+      await expect(accountItem).toContainText("Account");
 
-  test("should close on Enter when no items match", async ({
-    authenticatedPage,
-  }) => {
-    const page = authenticatedPage;
-    await page.waitForLoadState("networkidle");
-
-    await page.keyboard.press("Meta+k");
-    const input = page.locator('[cmdk-input]');
-    await expect(input).toBeVisible({ timeout: 3000 });
-
-    await input.pressSequentially("zzznomatchzz", { delay: 30 });
-    await page.keyboard.press("Enter");
-
-    await expect(input).not.toBeVisible();
-  });
-
-  test("should close on Escape", async ({ authenticatedPage }) => {
-    const page = authenticatedPage;
-    await page.waitForLoadState("networkidle");
-
-    // Open command menu
-    await page.keyboard.press("Meta+k");
-    const input = page.locator('[cmdk-input]');
-    await expect(input).toBeVisible({ timeout: 3000 });
-
-    // Press Escape
-    await page.keyboard.press("Escape");
-
-    // Dialog should be gone
-    await expect(input).not.toBeVisible();
-  });
-
-  test("should expose a New Check action and navigate to /checks/new", async ({
-    authenticatedPage,
-  }) => {
-    const page = authenticatedPage;
-    await page.waitForLoadState("networkidle");
-
-    await page.keyboard.press("Meta+k");
-    const input = page.locator('[cmdk-input]');
-    await expect(input).toBeVisible({ timeout: 3000 });
-
-    // Actions group should be shown with the New Check entry
-    await expect(page.getByText("Actions", { exact: true })).toBeVisible();
-    const newCheckItem = page.getByTestId("command-menu-new-check");
-    await expect(newCheckItem).toBeVisible();
-    await expect(newCheckItem).toContainText("New Check");
-    await expect(newCheckItem).toContainText("Create a new monitoring check");
-
-    // Filter by typing — entry should still be reachable
-    await input.fill("new check");
-    await expect(newCheckItem).toBeVisible();
-
-    // Selecting it should navigate to /checks/new
-    await newCheckItem.click();
-    await page.waitForURL(/\/checks\/new/, { timeout: 5000 });
-    expect(page.url()).toContain("/checks/new");
-    await expect(input).not.toBeVisible();
-  });
-
-  test("exposes the AI assistants (MCP) entry, findable by MCP, → /account/mcp", async ({
-    authenticatedPage,
-  }) => {
-    const page = authenticatedPage;
-    await page.waitForLoadState("networkidle");
-
-    await page.keyboard.press("Meta+k");
-    const input = page.locator('[cmdk-input]');
-    await expect(input).toBeVisible({ timeout: 3000 });
-
-    // The entry lives in the Account group and matches on "MCP" even though
-    // its title reads "AI assistants" — the description carries the MCP term.
-    const aiItem = page.getByTestId("command-menu-ai");
-    await input.fill("MCP");
-    await expect(aiItem).toBeVisible();
-
-    // Selecting it navigates to the Account MCP page.
-    await aiItem.click();
-    await page.waitForURL(/\/account\/mcp/, { timeout: 5000 });
-    expect(page.url()).toContain("/account/mcp");
-    await expect(input).not.toBeVisible();
-    await expect(
-      page.getByRole("heading", { name: /ai assistants/i }),
-    ).toBeVisible();
-  });
-
-  test("exposes the Organization entry, findable by 'organization', → parent redirects to members", async ({
-    authenticatedPage,
-  }) => {
-    const page = authenticatedPage;
-    await page.waitForLoadState("networkidle");
-
-    await page.keyboard.press("Meta+k");
-    const input = page.locator('[cmdk-input]');
-    await expect(input).toBeVisible({ timeout: 3000 });
-
-    // Searching "organization" surfaces the section landing entry (not just
-    // its sub-pages, whose titles don't contain the word).
-    const orgItem = page.getByTestId("command-menu-organization");
-    await input.fill("organization");
-    await expect(orgItem).toBeVisible();
-    await expect(orgItem).toContainText("Organization");
-
-    // Selecting it navigates to the parent route, whose index redirects to
-    // the current default child. Members, not Invitations, since
-    // organization.index.tsx's default was changed (see that route's own
-    // history) — this test just fell out of sync with it.
-    await orgItem.click();
-    await page.waitForURL(/\/organization\/members/, { timeout: 5000 });
-    expect(page.url()).toContain("/organization/members");
-    await expect(input).not.toBeVisible();
-  });
-
-  test("exposes the Account entry, findable by 'account', → parent redirects to profile", async ({
-    authenticatedPage,
-  }) => {
-    const page = authenticatedPage;
-    await page.waitForLoadState("networkidle");
-
-    await page.keyboard.press("Meta+k");
-    const input = page.locator('[cmdk-input]');
-    await expect(input).toBeVisible({ timeout: 3000 });
-
-    // Searching "account" surfaces the section landing entry (not just its
-    // sub-pages, whose titles don't contain the word).
-    const accountItem = page.getByTestId("command-menu-account");
-    await input.fill("account");
-    await expect(accountItem).toBeVisible();
-    await expect(accountItem).toContainText("Account");
-
-    // Selecting it navigates to the parent route, whose index redirects to
-    // the current default child (profile).
-    await accountItem.click();
-    await page.waitForURL(/\/account\/profile/, { timeout: 5000 });
-    expect(page.url()).toContain("/account/profile");
-    await expect(input).not.toBeVisible();
+      // Selecting it navigates to the parent route, whose index redirects to
+      // the current default child (profile).
+      await accountItem.click();
+      await page.waitForURL(/\/account\/profile/, { timeout: 5000 });
+      expect(page.url()).toContain("/account/profile");
+      await expect(input).not.toBeVisible();
+    });
   });
 
   test("should show checks and navigate to a check", async ({
@@ -516,47 +514,6 @@ test.describe("Command Menu (Cmd+K)", () => {
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 5000 });
     expect(page.url()).toContain("/checks/");
     await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
-  });
-
-  test("shows the newer sidebar pages without duplicating On-call", async ({
-    authenticatedPage,
-  }) => {
-    const page = authenticatedPage;
-    await page.waitForLoadState("networkidle");
-
-    await page.keyboard.press("Meta+k");
-    const input = page.locator('[cmdk-input]');
-    await expect(input).toBeVisible({ timeout: 3000 });
-
-    // Spec 2026-08-20-07: the palette had drifted from AppSidebar and was
-    // missing these four entries.
-    await expect(page.locator('[cmdk-item]').filter({ hasText: "Updates & notices" })).toBeVisible();
-    await expect(page.locator('[cmdk-item]').filter({ hasText: "Maintenance" })).toBeVisible();
-    await expect(page.locator('[cmdk-item]').filter({ hasText: "SLOs" })).toBeVisible();
-    await expect(page.locator('[cmdk-item]').filter({ hasText: "My alerts" })).toBeVisible();
-
-    // "On call" already existed — must render exactly once, never duplicated.
-    await expect(page.locator('[cmdk-item]').filter({ hasText: "On-call" })).toHaveCount(1);
-  });
-
-  test("navigates to the SLOs page when typing 'slo'", async ({
-    authenticatedPage,
-  }) => {
-    const page = authenticatedPage;
-    await page.waitForLoadState("networkidle");
-
-    await page.keyboard.press("Meta+k");
-    const input = page.locator('[cmdk-input]');
-    await expect(input).toBeVisible({ timeout: 3000 });
-
-    await input.fill("slo");
-    const sloPageItem = page.locator('[cmdk-item]').filter({ hasText: "SLOs" }).first();
-    await expect(sloPageItem).toBeVisible();
-    await sloPageItem.click();
-
-    await page.waitForURL(/\/slos(\?|$)/, { timeout: 5000 });
-    expect(page.url()).toContain("/slos");
-    await expect(input).not.toBeVisible();
   });
 
   test("searches status pages and navigates to the matching one", async ({
@@ -673,30 +630,6 @@ test.describe("Command Menu (Cmd+K)", () => {
       await deleteSloViaApi(page, token, slo.uid);
       await deleteCheckViaApi(page, token, check.uid);
     }
-  });
-
-  test("renames the palette's Settings item to Organization Settings, still findable by 'settings'", async ({
-    authenticatedPage,
-  }) => {
-    const page = authenticatedPage;
-    await page.waitForLoadState("networkidle");
-
-    await page.keyboard.press("Meta+k");
-    const input = page.locator('[cmdk-input]');
-    await expect(input).toBeVisible({ timeout: 3000 });
-
-    // The label changed from "Settings" to "Organization Settings", but
-    // typing "settings" alone must still find it — a future rename that
-    // silently breaks this substring match would regress discoverability.
-    await input.fill("settings");
-    const settingsItem = page.getByTestId("command-menu-organization-settings");
-    await expect(settingsItem).toBeVisible();
-    await expect(settingsItem).toContainText("Organization Settings");
-
-    await settingsItem.click();
-    await page.waitForURL(/\/organization\/settings/, { timeout: 5000 });
-    expect(page.url()).toContain("/organization/settings");
-    await expect(input).not.toBeVisible();
   });
 
   test("single-org user sees no 'Switch organization' group in the palette", async ({

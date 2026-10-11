@@ -47,6 +47,7 @@ import {
   useEntitlements,
   useCheckStats,
   useStalePublications,
+  useCheck,
   type Check,
   type CheckGroup,
   type ConversionWarning,
@@ -477,7 +478,14 @@ function CheckRow({
   // just spares the visitor a menu whose only outcome would be a toast.
   const canEdit = canDemoEditCheck(user?.isDemo, user?.uid, check.createdBy);
   const tunnelUid = tunnelCheckUidOf(check);
-  const bastion = tunnelUid ? checksByUid.get(tunnelUid) : undefined;
+  const loadedBastion = tunnelUid ? checksByUid.get(tunnelUid) : undefined;
+  // The bastion is usually loaded on this page already (no request). It is
+  // not when a search or filter leaves it out, or it sits on a page not loaded
+  // yet: fetch it then, so the tooltip still names it instead of falling back
+  // to the generic label. One shared ["check", org, uid] cache entry, so rows
+  // tunneled through the same bastion make one request between them.
+  const { data: fetchedBastion } = useCheck(org, tunnelUid && !loadedBastion ? tunnelUid : "");
+  const bastion = loadedBastion ?? fetchedBastion;
 
   function renderTarget(): React.ReactNode {
     if (check.type === "heartbeat") {

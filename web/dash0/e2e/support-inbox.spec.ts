@@ -274,12 +274,18 @@ test.describe("Support inbox", () => {
       .toBe("we found it, deploying a fix");
   });
 
-  test("an expired WhatsApp thread disables the reply box and says why", async ({
+  test("a blocked thread disables the reply box and names the real reason: an expired WhatsApp window, or no route back", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
-    await stubSupportApi(page, [ACTIVE_THREAD, EXPIRED_THREAD, CLOSED_THREAD]);
+    await stubSupportApi(page, [
+      ACTIVE_THREAD,
+      EXPIRED_THREAD,
+      UNROUTABLE_THREAD,
+      CLOSED_THREAD,
+    ]);
 
+    // --- An expired WhatsApp thread.
     await page.goto("support/thread-expired");
 
     // The reason is SHOWN, not discovered from a provider error at send time.
@@ -290,24 +296,12 @@ test.describe("Support inbox", () => {
     await expect(page.getByTestId("support-reply-box")).toHaveCount(0);
     await expect(page.getByTestId("support-reply-input")).toHaveCount(0);
 
-    // Positive control: the answerable thread DOES get a box, so the assertion
-    // above is not passing because the box never renders.
-    await page.goto("support/thread-active");
-    await expect(page.getByTestId("support-reply-box")).toBeVisible();
-  });
-
-  test("a thread with no route back disables the box and names the real reason", async ({
-    authenticatedPage,
-  }) => {
-    const page = authenticatedPage;
-    await stubSupportApi(page, [ACTIVE_THREAD, UNROUTABLE_THREAD, CLOSED_THREAD]);
-
+    // --- A thread with no route back.
     await page.goto("support/thread-unroutable");
 
     // The operator is told the workspace was never connected — not a generic
     // "this channel has no adapter", which would be false (Slack has one) and
     // would send them looking for the wrong fix.
-    const blocked = page.getByTestId("support-reply-blocked");
     await expect(blocked).toBeVisible();
     await expect(blocked).toContainText("no bot token");
     await expect(blocked).not.toContainText("24-hour");
@@ -315,8 +309,8 @@ test.describe("Support inbox", () => {
     await expect(page.getByTestId("support-reply-box")).toHaveCount(0);
     await expect(page.getByTestId("support-reply-input")).toHaveCount(0);
 
-    // POSITIVE CONTROL: the routable thread on the very same channel-level
-    // adapter still gets a box, so this is per thread, not per channel.
+    // POSITIVE CONTROL: the answerable thread DOES get a box, so the
+    // assertions above are not passing because the box never renders.
     await page.goto("support/thread-active");
     await expect(page.getByTestId("support-reply-box")).toBeVisible();
   });

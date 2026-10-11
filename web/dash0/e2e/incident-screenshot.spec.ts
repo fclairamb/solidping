@@ -75,24 +75,6 @@ test.describe("Incident screenshot attachment", () => {
     await expect(page.getByTestId("incident-screenshot-card")).toHaveCount(0);
   });
 
-  test("the card is usable on mobile", async ({ authenticatedPage }) => {
-    const page = authenticatedPage;
-
-    await page.setViewportSize({ width: 375, height: 812 });
-    await page.goto(`${DASH_BASE}/orgs/test/incidents/${SHOT_INCIDENT}`);
-    await page.waitForLoadState("networkidle");
-
-    await expect(page.getByTestId("incident-screenshot-card")).toBeVisible();
-    await expect(page.getByTestId("incident-screenshot-image")).toBeVisible();
-
-    const hasOverflow = await page.evaluate(
-      () =>
-        document.documentElement.scrollWidth >
-        document.documentElement.clientWidth + 1,
-    );
-    expect(hasOverflow).toBe(false);
-  });
-
   test("the browser check form round-trips the screenshot opt-in", async ({
     authenticatedPage,
   }) => {

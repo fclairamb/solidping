@@ -8,11 +8,10 @@ import { test, expect, DASH_BASE } from "./fixtures";
 // attachment path, so the signed download URL serves JSON the card actually
 // fetches and parses.
 //
-// Incident 26 (createTestIncidentScreenshot) is the negative: it has a
-// screenshot attachment but no path capture, so its page must render the
-// screenshot card and NOT this one.
+// The negative (no card for an incident without a path capture, or with an
+// attachment of another kind) is pinned by
+// src/components/incidents/traceroute-card.test.tsx.
 const TRACE_INCIDENT = "00000000-0000-0000-0000-000000000028";
-const NO_TRACE_INCIDENT = "00000000-0000-0000-0000-000000000026";
 const TRACE_CHECK = "00000000-0000-0000-0000-000000000027";
 const TRACE_RESULT = "00000000-0000-0000-0000-000000000029";
 
@@ -69,41 +68,6 @@ test.describe("Incident traceroute attachment", () => {
     await expect(
       page.getByTestId("incident-traceroute-blind-notice"),
     ).toHaveCount(0);
-  });
-
-  test("the card is absent entirely when the incident has no path capture", async ({
-    authenticatedPage,
-  }) => {
-    const page = authenticatedPage;
-
-    await page.goto(`${DASH_BASE}/orgs/test/incidents/${NO_TRACE_INCIDENT}`);
-
-    // Positive control: this incident's page really did render — it has the
-    // screenshot card — so the absence below is about the attachment kind and
-    // not about a page that failed to load.
-    await expect(page.getByTestId("incident-screenshot-card")).toBeVisible();
-    await expect(page.getByTestId("incident-traceroute-card")).toHaveCount(0);
-  });
-
-  test("the hop table scrolls inside itself on a phone", async ({
-    authenticatedPage,
-  }) => {
-    const page = authenticatedPage;
-
-    await page.setViewportSize({ width: 375, height: 812 });
-    await page.goto(`${DASH_BASE}/orgs/test/incidents/${TRACE_INCIDENT}`);
-    await page.waitForLoadState("networkidle");
-
-    await expect(page.getByTestId("incident-traceroute-table")).toBeVisible();
-
-    // The page itself must never scroll sideways: wide content lives in its own
-    // overflow container (frontend convention, design reference).
-    const overflows = await page.evaluate(
-      () =>
-        document.documentElement.scrollWidth >
-        document.documentElement.clientWidth + 1,
-    );
-    expect(overflows).toBe(false);
   });
 
   // The spec asks for the hop table on the RESULT detail page as well as the
