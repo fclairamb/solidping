@@ -5,15 +5,16 @@ import {
   type BrowserContext,
 } from "@playwright/test";
 
+import { e2eBaseUrl } from "./base-url";
+
 type AuthStorageState = Awaited<ReturnType<BrowserContext["storageState"]>>;
 
-// Honor E2E_BASE_URL (side-car test server) like playwright.config.ts does;
-// fall back to the CI default. Spec files use this for direct page.request
-// setup/cleanup calls so they hit the same server as page navigation instead
-// of silently falling back to :4000.
-export const API_BASE = process.env.E2E_BASE_URL
-  ? new URL(process.env.E2E_BASE_URL).origin
-  : "http://localhost:4000";
+// The origin of the server THIS worker targets (e2e/base-url.ts: a side-car
+// via E2E_BASE_URL, or one server per worker via E2E_BASE_URLS). Spec files use
+// this for direct page.request setup/cleanup calls so they hit the same server
+// as page navigation instead of silently falling back to :4000, or to another
+// worker's database.
+export const API_BASE = new URL(e2eBaseUrl()).origin;
 
 /**
  * DASH_BASE is the URL prefix the dashboard is mounted at, matching
