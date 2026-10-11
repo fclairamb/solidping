@@ -19,7 +19,10 @@ import { test, API_BASE, freshLogin } from "./fixtures";
  * browser "came back to solidping" and the MCP client never got its code.
  */
 
-const CALLBACK_ORIGIN = "http://127.0.0.1:39777";
+// One port per Playwright worker: CI runs two workers per shard, and this
+// file's tests run on both (fullyParallel), so a fixed port collides.
+const CALLBACK_PORT = 39777 + Number(process.env.TEST_PARALLEL_INDEX ?? "0");
+const CALLBACK_ORIGIN = `http://127.0.0.1:${CALLBACK_PORT}`;
 const CALLBACK_URI = `${CALLBACK_ORIGIN}/callback`;
 
 interface PkcePair {
@@ -72,7 +75,7 @@ test.beforeAll(async () => {
     res.end("<title>callback</title>ok");
   });
   await new Promise<void>((resolve) =>
-    callbackServer.listen(39777, "127.0.0.1", resolve),
+    callbackServer.listen(CALLBACK_PORT, "127.0.0.1", resolve),
   );
 });
 
