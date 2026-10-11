@@ -808,9 +808,21 @@ jobs:
       # instance before the real one starts) and false-positive against that
       # temporary instance, which then resets the connection mid-migration.
       # The healthcheck's 5s interval clears that window before its first probe.
+      # The database is thrown away with the runner, so durability buys
+      # nothing: with fsync, synchronous commit and full-page writes off, a
+      # write never waits on the runner's disk. Both servers of a shard share
+      # this instance, and in run 38116043824 a token POST stalled for exactly
+      # 5.04 s on both at the same second (suspected I/O stall, not proven).
+      # All three settings apply on reload, no restart.
       - name: Start PostgreSQL
         working-directory: .
-        run: docker compose up -d --wait postgres
+        run: |
+          docker compose up -d --wait postgres
+          docker compose exec -T postgres psql -U postgres -v ON_ERROR_STOP=1 \
+            -c "ALTER SYSTEM SET fsync = off" \
+            -c "ALTER SYSTEM SET synchronous_commit = off" \
+            -c "ALTER SYSTEM SET full_page_writes = off" \
+            -c "SELECT pg_reload_conf()"
 
       - name: Start solidping server
         working-directory: .
