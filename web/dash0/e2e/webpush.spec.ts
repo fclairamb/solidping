@@ -1,29 +1,8 @@
-import { test, expect, API_BASE, DASH_BASE } from "./fixtures";
+import { test, expect, API_BASE } from "./fixtures";
 
 test.describe("Web Push Foundation", () => {
-  test(`service worker registers at ${DASH_BASE}/sw.js`, async ({
-    authenticatedPage,
-  }) => {
-    const page = authenticatedPage;
-
-    // Grant notification permission so the SW has the right context.
-    await page.context().grantPermissions(["notifications"]);
-
-    // Navigate to the org dashboard.
-    await page.goto(`${API_BASE}${DASH_BASE}/orgs/test`);
-    await page.waitForLoadState("networkidle");
-
-    // Assert the service worker registered for the dashboard's own sw.js
-    // scope (DASH_BASE, i.e. /d today — never a hard-coded /dash0).
-    // DASH_BASE lives in this Node process; the callback is serialized and run
-    // in the page, so it has to be handed in as an argument rather than closed
-    // over (closing over it throws a ReferenceError in the browser).
-    const registration = await page.evaluate(
-      (base) => navigator.serviceWorker.getRegistration(`${base}/sw.js`),
-      DASH_BASE,
-    );
-    expect(registration).toBeTruthy();
-  });
+  // Service worker registration at ${DASH_BASE}/sw.js (scope ${DASH_BASE}/) is
+  // asserted by service-worker-scope.spec.ts.
 
   test("VAPID public key endpoint returns a non-empty string", async ({
     authenticatedPage,

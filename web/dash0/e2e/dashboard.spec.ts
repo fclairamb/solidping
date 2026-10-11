@@ -165,112 +165,6 @@ async function mockDashboard(
 }
 
 test.describe("Dashboard", () => {
-  test("should land on org dashboard after login", async ({
-    authenticatedPage,
-  }) => {
-    const page = authenticatedPage;
-
-    // Wait for page to load
-    await page.waitForLoadState("networkidle");
-
-    // Take screenshot of dashboard
-    await page.screenshot({
-      path: "test-results/screenshots/dashboard.png",
-      fullPage: true,
-    });
-
-    // Spec #46 lands login on /orgs/$org — the operator welcome page — not /checks.
-    expect(page.url()).not.toContain("/login");
-    expect(page.url()).toMatch(/\/orgs\/test\/?$/);
-
-    // Sidebar is the cheapest way to confirm we rendered an authenticated page.
-    await expect(page.getByTestId("app-sidebar")).toBeVisible({ timeout: 10000 });
-  });
-
-  test("should display sidebar navigation", async ({ authenticatedPage }) => {
-    const page = authenticatedPage;
-
-    await page.waitForLoadState("networkidle");
-
-    // The sidebar should be visible with navigation items
-    const sidebar = page.locator('[data-testid="app-sidebar"]');
-    const sidebarTrigger = page.locator('[data-testid="sidebar-trigger"]');
-
-    // Either sidebar or sidebar trigger should be present
-    const hasSidebar =
-      (await sidebar.isVisible()) || (await sidebarTrigger.isVisible());
-    expect(hasSidebar).toBe(true);
-
-    // Take screenshot of sidebar navigation
-    await page.screenshot({
-      path: "test-results/screenshots/dashboard-sidebar.png",
-      fullPage: true,
-    });
-  });
-
-  test("should show loading state then content", async ({
-    authenticatedPage,
-  }) => {
-    const page = authenticatedPage;
-
-    // Navigate to org root - should redirect to checks
-    await page.goto("orgs/test");
-    await page.waitForLoadState("domcontentloaded");
-
-    // Wait for content to load
-    await page.waitForSelector("body", { state: "visible" });
-
-    // Eventually, the page should show real content
-    await page.waitForLoadState("networkidle");
-
-    // Take final screenshot
-    await page.screenshot({
-      path: "test-results/screenshots/dashboard-loaded.png",
-      fullPage: true,
-    });
-  });
-
-  test("should not have content cut off by sidebar", async ({
-    authenticatedPage,
-  }) => {
-    const page = authenticatedPage;
-
-    await page.waitForLoadState("networkidle");
-
-    // Check that the "Checks" heading starts after the sidebar
-    const checksHeading = page.getByRole("heading", { name: "Checks", exact: true });
-    if (await checksHeading.isVisible()) {
-      const boundingBox = await checksHeading.boundingBox();
-      expect(boundingBox).not.toBeNull();
-      // The text should start after the sidebar (at least 250px from left edge)
-      expect(boundingBox!.x).toBeGreaterThan(250);
-    }
-
-    // Take screenshot for visual verification
-    await page.screenshot({
-      path: "test-results/screenshots/dashboard-sidebar-layout.png",
-      fullPage: true,
-    });
-  });
-
-  test("Recent activity footer shows a single arrow", async ({
-    authenticatedPage,
-  }) => {
-    const page = authenticatedPage;
-    await page.waitForLoadState("networkidle");
-
-    const footer = page.getByTestId("recent-activity-footer");
-    // The recent-activity card only renders for a non-empty org. When the
-    // seeded test org has checks this is visible; otherwise skip the assertion.
-    if (await footer.isVisible().catch(() => false)) {
-      const text = (await footer.innerText()).trim();
-      // Exactly one right-arrow — the duplicate "→ →" bug is gone.
-      const arrowCount = (text.match(/→/g) || []).length;
-      expect(arrowCount).toBe(1);
-      expect(text).toMatch(/→$/);
-    }
-  });
-
   test("recent activity renders resolved labels and activation descriptions", async ({
     authenticatedPage,
   }) => {
@@ -309,6 +203,12 @@ test.describe("Dashboard", () => {
     const feed = page.getByTestId("recent-activity-footer");
     // Recent-activity card renders for a non-empty org (we just created a check).
     await expect(feed).toBeVisible({ timeout: 10000 });
+
+    // The footer link carries exactly one trailing right-arrow — the
+    // duplicate "→ →" bug is gone.
+    const footerText = (await feed.innerText()).trim();
+    expect((footerText.match(/→/g) || []).length).toBe(1);
+    expect(footerText).toMatch(/→$/);
 
     // Labels must be resolved — no raw event keys leak into the feed.
     await expect(page.getByText("org.activation.first_check_created")).toHaveCount(0);

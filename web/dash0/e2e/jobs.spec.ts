@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-import { API_BASE, DASH_BASE, uniqueStamp } from "./fixtures";
+import { test, expect, API_BASE, DASH_BASE, uniqueStamp } from "./fixtures";
 
 // Super-admin Jobs observability page (spec 2026-06-15-05; scoped from
 // `isAdmin` to `isSuperAdmin` by spec 2026-09-16-07 — queue internals were
@@ -8,25 +7,27 @@ import { API_BASE, DASH_BASE, uniqueStamp } from "./fixtures";
 // (server/test/testdata/testdata.go), so the gated page, the scope toggle and
 // the Org column are all exercisable here.
 test.describe("Super-admin Jobs page", () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto(`${DASH_BASE}/orgs/test/login`);
-    await page.getByTestId("login-email").fill("test@test.com");
-    await page.getByTestId("login-password").fill("test");
-    await page.getByTestId("login-submit").click();
-    await page.waitForURL((url) => !url.pathname.includes("login"));
-  });
+  // Signed in through the worker-cached session of the authenticatedPage
+  // fixture (e2e/fixtures.ts) rather than by driving the login form before
+  // every test: same user, same super-admin rights.
 
-  test("Jobs sidebar link is visible for a super admin", async ({ page }) => {
-    await page.goto(`${DASH_BASE}/orgs/test`);
+  test("a super admin gets the Jobs link and a page with overview, tabs, filters, scope toggle and breadcrumb, without runtime errors", async ({
+    authenticatedPage: page,
+  }) => {
+    // The fixture lands on the org home: the Jobs sidebar link is there.
     const sidebar = page.getByTestId("app-sidebar");
     await expect(sidebar).toBeVisible();
     await expect(
       sidebar.getByRole("link", { name: /^jobs$/i }),
     ).toBeVisible();
-  });
 
-  test("renders the overview strip and both tabs", async ({ page }) => {
+    const errors: Error[] = [];
+    page.on("pageerror", (e) => errors.push(e));
+
+    // Positive control for the route guard: a super admin is NOT redirected
+    // away from /jobs. (The non-super-admin side is the org-admin test below.)
     await page.goto(`${DASH_BASE}/orgs/test/jobs`);
+    await page.waitForURL(/\/jobs\/?$/);
     await expect(page.getByRole("heading", { name: /^jobs$/i })).toBeVisible();
 
     // Activity overview strip with stat tiles.
@@ -35,21 +36,45 @@ test.describe("Super-admin Jobs page", () => {
     // Two tabs are present.
     await expect(page.getByRole("tab", { name: /background jobs/i })).toBeVisible();
     await expect(page.getByRole("tab", { name: /check schedule/i })).toBeVisible();
-  });
 
-  test("can switch between tabs", async ({ page }) => {
-    await page.goto(`${DASH_BASE}/orgs/test/jobs`);
-    await expect(page.getByRole("tab", { name: /background jobs/i })).toBeVisible();
+    // The background-jobs tab's status & type filters are Radix Select comboboxes.
+    await expect(
+      page.getByRole("combobox", { name: /status/i }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("combobox", { name: /type/i }),
+    ).toBeVisible();
+
+    // The shared breadcrumb bar (rendered by the org layout) carries the Jobs
+    // crumb. On the list page it is an active (non-link) crumb, so scoping to
+    // the header and asserting the text is present is enough.
+    await expect(page.locator("header").getByText(/^jobs$/i)).toBeVisible();
+
+    // The "This org / All orgs (system)" toggle is super-admin only.
+    const allOrgsBtn = page.getByTestId("scope-all-orgs");
+    await expect(allOrgsBtn).toBeVisible();
+    await expect(page.getByTestId("scope-this-org")).toBeVisible();
+
+    // Switch to all-orgs mode; an Org column header should appear in the table.
+    await allOrgsBtn.click();
+    await expect(
+      page.locator("thead").getByText(/^org$/i).first(),
+    ).toBeVisible({ timeout: 10000 });
 
     // Switch to the check-schedule tab.
     await page.getByRole("tab", { name: /check schedule/i }).click();
     await expect(
       page.getByRole("tab", { name: /check schedule/i }),
     ).toHaveAttribute("aria-selected", "true");
+
+    expect(
+      errors,
+      `unexpected page errors: ${errors.map((e) => e.message).join(", ")}`,
+    ).toHaveLength(0);
   });
 
   test("tab selection drives the URL, survives reload, and back/forward works", async ({
-    page,
+    authenticatedPage: page,
   }) => {
     await page.goto(`${DASH_BASE}/orgs/test/jobs`);
     // Default tab is background jobs; URL carries no schedule marker yet.
@@ -80,36 +105,8 @@ test.describe("Super-admin Jobs page", () => {
     ).toHaveAttribute("aria-selected", "true");
   });
 
-  test("background-jobs tab exposes status and type filters", async ({ page }) => {
-    await page.goto(`${DASH_BASE}/orgs/test/jobs`);
-    // The status & type filters are Radix Select comboboxes.
-    await expect(
-      page.getByRole("combobox", { name: /status/i }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("combobox", { name: /type/i }),
-    ).toBeVisible();
-  });
-
-  test("super-admin sees the scope toggle; toggling shows the Org column", async ({
-    page,
-  }) => {
-    await page.goto(`${DASH_BASE}/orgs/test/jobs`);
-
-    // The "This org / All orgs (system)" toggle is super-admin only.
-    const allOrgsBtn = page.getByTestId("scope-all-orgs");
-    await expect(allOrgsBtn).toBeVisible();
-    await expect(page.getByTestId("scope-this-org")).toBeVisible();
-
-    // Switch to all-orgs mode; an Org column header should appear in the table.
-    await allOrgsBtn.click();
-    await expect(
-      page.locator("thead").getByText(/^org$/i).first(),
-    ).toBeVisible({ timeout: 10000 });
-  });
-
   test("an org admin who is not a super admin gets no Jobs link and no Jobs page", async ({
-    page,
+    authenticatedPage: page,
   }) => {
     // The behaviour spec 2026-09-16-07 introduced, and the one nothing covered
     // before: `isAdmin` is no longer enough. A brand-new org's OWNER is an
@@ -145,7 +142,7 @@ test.describe("Super-admin Jobs page", () => {
     const org = (await createOrgResp.json()) as { accessToken: string };
 
     // Swap the browser out of the seeded super admin's session (the
-    // beforeEach above) and into this org admin's — same technique as
+    // authenticatedPage fixture) and into this org admin's — same technique as
     // org-owner-delete.spec.ts, and it survives the reloads below.
     await page.addInitScript(
       ({ accessToken, slug }) => {
@@ -174,32 +171,25 @@ test.describe("Super-admin Jobs page", () => {
     expect(page.url()).toContain(`/orgs/${orgSlug}`);
   });
 
-  test("non-admin route guard redirects to org home", async ({ page }) => {
-    // Simulate a non-admin by clearing the admin flag is not possible here;
-    // instead verify the page is reachable for the admin (positive control).
-    // The guard itself is unit-tested via the layout; here we assert the admin
-    // is NOT redirected away from /jobs.
-    await page.goto(`${DASH_BASE}/orgs/test/jobs`);
-    await page.waitForURL(/\/jobs\/?$/);
-    await expect(page.getByRole("heading", { name: /^jobs$/i })).toBeVisible();
-  });
-
-  test("check-schedule rows link to a check-job detail with no secret values", async ({
-    page,
+  test("check-schedule rows link to a check-job detail with no secret values, whose back arrow and Jobs crumb both return to the list", async ({
+    authenticatedPage: page,
   }) => {
-    await page.goto(`${DASH_BASE}/orgs/test/jobs`);
-    await page.getByRole("tab", { name: /check schedule/i }).click();
+    // Opens the first check-schedule row's detail page, or returns false when
+    // the test org has no scheduled check to drill into.
+    const openFirstScheduledCheck = async (): Promise<boolean> => {
+      await page.goto(`${DASH_BASE}/orgs/test/jobs`);
+      await page.getByRole("tab", { name: /check schedule/i }).click();
 
-    const firstRowLink = page
-      .getByRole("table")
-      .getByRole("link")
-      .first();
+      const firstRowLink = page.getByRole("table").getByRole("link").first();
+      if (!(await firstRowLink.isVisible().catch(() => false))) return false;
 
-    // Only drill in when the test org has at least one scheduled check.
-    if (await firstRowLink.isVisible().catch(() => false)) {
       await firstRowLink.click();
       await page.waitForURL(/\/jobs\/check\/[0-9a-f-]{36}/);
+      return true;
+    };
 
+    // Only drill in when the test org has at least one scheduled check.
+    if (await openFirstScheduledCheck()) {
       // The detail page states secrets are never exposed.
       await expect(
         page.getByText(/secret values are never exposed/i),
@@ -210,30 +200,8 @@ test.describe("Super-admin Jobs page", () => {
       await page.waitForURL(/\/jobs\/?(\?|$)/);
       await expect(page.getByRole("heading", { name: /^jobs$/i })).toBeVisible();
     }
-  });
 
-  test("list page shows a Jobs breadcrumb in the header bar", async ({ page }) => {
-    await page.goto(`${DASH_BASE}/orgs/test/jobs`);
-    await expect(page.getByRole("heading", { name: /^jobs$/i })).toBeVisible();
-    // The shared breadcrumb bar (rendered by the org layout) carries the Jobs
-    // crumb. On the list page it is an active (non-link) crumb, so scoping to
-    // the header and asserting the text is present is enough.
-    await expect(page.locator("header").getByText(/^jobs$/i)).toBeVisible();
-  });
-
-  test("check-job detail extends the breadcrumb and the Jobs crumb links back", async ({
-    page,
-  }) => {
-    await page.goto(`${DASH_BASE}/orgs/test/jobs`);
-    await page.getByRole("tab", { name: /check schedule/i }).click();
-
-    const firstRowLink = page.getByRole("table").getByRole("link").first();
-
-    // Only drill in when the test org has at least one scheduled check.
-    if (await firstRowLink.isVisible().catch(() => false)) {
-      await firstRowLink.click();
-      await page.waitForURL(/\/jobs\/check\/[0-9a-f-]{36}/);
-
+    if (await openFirstScheduledCheck()) {
       // The breadcrumb is extended: the Jobs crumb is now a link back to the
       // list, alongside a leaf crumb for the check.
       const jobsCrumb = page
@@ -248,19 +216,5 @@ test.describe("Super-admin Jobs page", () => {
         page.getByRole("heading", { name: /^jobs$/i }),
       ).toBeVisible();
     }
-  });
-
-  test("page has no runtime errors on load", async ({ page }) => {
-    const errors: Error[] = [];
-    page.on("pageerror", (e) => errors.push(e));
-
-    await page.goto(`${DASH_BASE}/orgs/test/jobs`);
-    await expect(page.getByRole("heading", { name: /^jobs$/i })).toBeVisible();
-    await page.getByRole("tab", { name: /check schedule/i }).click();
-
-    expect(
-      errors,
-      `unexpected page errors: ${errors.map((e) => e.message).join(", ")}`,
-    ).toHaveLength(0);
   });
 });

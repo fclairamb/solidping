@@ -3,11 +3,15 @@ package statuspages
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/uptimebar"
 )
@@ -143,6 +147,46 @@ func TestCreateResource_TargetXOR(t *testing.T) {
 	r.Nil(groupRes.CheckUID)
 	r.NotNil(groupRes.CheckGroupUID)
 	r.Equal(group.UID, *groupRes.CheckGroupUID)
+}
+
+// TestCreateResource_TargetXORWireShape pins what the API caller sees for the
+// XOR rule: zero targets and two targets both answer 422 VALIDATION_ERROR, and
+// the error document names BOTH fields so the caller can see the pair.
+func TestCreateResource_TargetXORWireShape(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, org := setupStatusPagesTest(t)
+	page, section := seedPageWithSection(ctx, t, svc, org.Slug, "")
+	router := newCoverRouter(NewHandler(svc, &config.Config{}))
+
+	check := models.NewCheck(org.UID, "api", "http")
+	r.NoError(svc.db.CreateCheck(ctx, check))
+
+	group := models.NewCheckGroup(org.UID, "Web frontend", "web-frontend")
+	r.NoError(svc.db.CreateCheckGroup(ctx, group))
+
+	path := "/orgs/" + org.Slug + "/status-pages/" + page.UID + "/sections/" + section.UID + "/resources"
+
+	for _, body := range []string{
+		`{}`,
+		`{"checkUid":"` + check.UID + `","checkGroupUid":"` + group.UID + `"}`,
+	} {
+		req := httptest.NewRequestWithContext(ctx, http.MethodPost, path, strings.NewReader(body))
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+
+		r.Equal(http.StatusUnprocessableEntity, rec.Code, body)
+
+		var doc struct {
+			Code string `json:"code"`
+		}
+
+		r.NoError(json.Unmarshal(rec.Body.Bytes(), &doc), body)
+		r.Equal("VALIDATION_ERROR", doc.Code, body)
+		r.Contains(rec.Body.String(), "checkUid", body)
+		r.Contains(rec.Body.String(), "checkGroupUid", body)
+	}
 }
 
 // TestCreateResource_UnknownGroupIsNotFound pins that a group identifier that

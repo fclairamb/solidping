@@ -457,6 +457,40 @@ func TestDemoGuardIgnoresAStaleNonDemoClaim(t *testing.T) {
 	require.Equal(t, string(base.ErrorCodeDemoReadOnly), code)
 }
 
+// TestDemoSessionCannotDeleteASeededCheckOverHTTP pins the wire shape of the
+// ownership refusal. DELETE /checks/:uid is allowlisted (a visitor deletes the
+// checks it created), so the route guard lets it through and the refusal comes
+// from the checks service (TestDemoSessionOwnsOnlyWhatItCreated). This proves
+// the handler maps that refusal to 403 DEMO_READ_ONLY — the code the dashboard
+// keys its read-only message on — and that the check survives.
+func TestDemoSessionCannotDeleteASeededCheckOverHTTP(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	env := newDemoEnv(t)
+	ctx := context.Background()
+
+	// A seeded catalog check: created with no creator, so owned by nobody.
+	seeded := models.NewCheck(env.org.UID, "seeded-catalog-check", "http")
+	r.NoError(env.server.dbService.CreateCheck(ctx, seeded))
+	r.Nil(seeded.CreatedBy)
+
+	path := "/api/v1/orgs/" + env.org.Slug + "/checks/" + seeded.UID
+
+	status, code := env.do(http.MethodDelete, path, env.demoToken)
+	r.Equal(http.StatusForbidden, status)
+	r.Equal(string(base.ErrorCodeDemoReadOnly), code)
+
+	// Positive control: the check is still there, and an ordinary session
+	// reaches the same route and deletes it.
+	status, _ = env.do(http.MethodGet, path, env.demoToken)
+	r.Equal(http.StatusOK, status, "the refused delete must not have removed the check")
+
+	status, code = env.do(http.MethodDelete, path, env.plainToken)
+	r.NotEqual(string(base.ErrorCodeDemoReadOnly), code)
+	r.Less(status, http.StatusMultipleChoices, "an ordinary session must be able to delete it")
+}
+
 // TestPATDerivedDemoClaimsAreGuardedToo is the test §9 names by that phrase.
 //
 // A personal access token belonging to the demo user IS a demo session: the

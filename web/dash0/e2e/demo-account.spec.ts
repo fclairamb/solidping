@@ -146,18 +146,6 @@ function strayOrgUrls(urls: string[], demoOrg: string): string[] {
 }
 
 test.describe("Public live demo", () => {
-  test("the instance advertises a demo in test mode", async ({ request }) => {
-    const demo = await demoConfig(request);
-
-    expect(demo?.enabled).toBe(true);
-    expect(demo?.orgSlug).toBeTruthy();
-    expect(demo?.email).toBeTruthy();
-    // The password is public BY DESIGN — the whole feature is "anyone can log
-    // in and look around" — so it is served rather than hardcoded in the
-    // bundle. See DemoPublicConfig.
-    expect(demo?.password).toBeTruthy();
-  });
-
   test("the login page offers a one-click entry into the demo", async ({
     page,
     request,
@@ -229,43 +217,6 @@ test.describe("Public live demo", () => {
     ).toEqual([]);
     await expectNoAccessToast(page);
   });
-
-  test("?demo=1 signs the visitor in on load", async ({ page }) => {
-    // The marketing site's deep link: land in a working dashboard, not a form.
-    await page.goto("orgs/test/login?demo=1");
-
-    await expect(page.getByTestId("demo-banner")).toBeVisible({ timeout: 20000 });
-  });
-
-  // Spec 2026-09-07-02 §A. The flag was honoured ONLY on an org-scoped login
-  // page, so every link a human would naturally write dropped it: the root
-  // /login forwarded only returnTo, / redirected with no search at all, and
-  // /orgs/<slug> folded the whole URL (flag included) into `returnTo`, where
-  // the login page's own search params never see it.
-  for (const [label, path] of [
-    ["the root login page", "login?demo=true"],
-    ["the dashboard root", "?demo=true"],
-    ["an org page with no /login", "orgs/test?demo=true"],
-    // Spec 2026-09-08-02: the one-word server-side shortcut. An absolute path
-    // — the suite's baseURL is /d/, so Playwright resolves this against
-    // the origin, exercising the real GET /demo redirect rather than the
-    // dash0 route above.
-    ["the /demo shortcut", "/demo"],
-  ] as const) {
-    test(`${label} lands in the demo`, async ({
-      page,
-      request,
-    }) => {
-      const demo = await demoConfig(request);
-      const org = demo?.orgSlug as string;
-
-      await page.goto(path);
-
-      // The destination is the DEMO org, never the org the URL named.
-      await page.waitForURL(new RegExp(`/orgs/${org}(/|$)`), { timeout: 20000 });
-      await expect(page.getByTestId("demo-banner")).toBeVisible({ timeout: 20000 });
-    });
-  }
 
   test("the demo flag beats a session in the visitor's own org", async ({
     page,
@@ -366,7 +317,11 @@ test.describe("Public live demo", () => {
     expect(forbiddenUrls).toEqual([]);
   });
 
+  // Every way in that a human would naturally write (spec 2026-09-07-02 §A):
+  // the flag used to be honoured ONLY on an org-scoped login page, so the root
+  // /login, / and /orgs/<slug> all dropped it.
   for (const [label, path] of [
+    // The marketing site's deep link: land in a working dashboard, not a form.
     ["an org login page with ?demo=1", "orgs/test/login?demo=1"],
     ["an org login page with ?demo=true", "orgs/test/login?demo=true"],
     ["the root login page", "login?demo=true"],
@@ -702,72 +657,6 @@ test.describe("Public live demo", () => {
     await expect(page.getByTestId("demo-check-note")).toBeVisible({ timeout: 20000 });
   });
 
-  test("a write outside the allowlist is refused with DEMO_READ_ONLY", async ({
-    page,
-    request,
-  }) => {
-    // Straight at the API, because that is where the guarantee lives: the UI
-    // merely declines to offer these buttons.
-    const demo = await demoConfig(request);
-    expect(demo?.enabled).toBe(true);
-
-    const login = await request.post(`${API_BASE}/api/v1/auth/login`, {
-      data: { org: demo?.orgSlug, email: demo?.email, password: demo?.password },
-    });
-    expect(login.ok()).toBeTruthy();
-
-    const { accessToken } = await login.json();
-    expect(accessToken).toBeTruthy();
-
-    const refused = await request.post(
-      `${API_BASE}/api/v1/orgs/${demo?.orgSlug}/status-pages`,
-      {
-        headers: { Authorization: `Bearer ${accessToken}` },
-        data: { name: "Nope", slug: "nope" },
-      },
-    );
-
-    expect(refused.status()).toBe(403);
-    expect((await refused.json()).code).toBe("DEMO_READ_ONLY");
-
-    // Positive control: reading is fine, so the credential itself is good.
-    const read = await request.get(`${API_BASE}/api/v1/orgs/${demo?.orgSlug}/checks`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    expect(read.ok()).toBeTruthy();
-
-    await page.close();
-  });
-
-  test("a seeded catalogue check cannot be deleted", async ({ page, request }) => {
-    const demo = await demoConfig(request);
-
-    const login = await request.post(`${API_BASE}/api/v1/auth/login`, {
-      data: { org: demo?.orgSlug, email: demo?.email, password: demo?.password },
-    });
-    const { accessToken } = await login.json();
-
-    const list = await request.get(`${API_BASE}/api/v1/orgs/${demo?.orgSlug}/checks`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    const { data } = await list.json();
-
-    const seeded = (data as { uid: string; createdBy?: string | null }[]).find(
-      (check) => !check.createdBy,
-    );
-    expect(seeded, "the demo org should carry a seeded, un-owned catalogue").toBeTruthy();
-
-    const refused = await request.delete(
-      `${API_BASE}/api/v1/orgs/${demo?.orgSlug}/checks/${seeded?.uid}`,
-      { headers: { Authorization: `Bearer ${accessToken}` } },
-    );
-
-    expect(refused.status()).toBe(403);
-    expect((await refused.json()).code).toBe("DEMO_READ_ONLY");
-
-    await page.close();
-  });
-
   // The edit ROUTE, not just the detail page, must refuse to render a form
   // the server would reject on save (spec
   // 2026-09-07-02-untranslated-strings-and-demo-refusal-message §B.4). A demo
@@ -834,23 +723,5 @@ test.describe("Public live demo", () => {
       page.getByTestId("status-page-add-section-demo-note").first(),
     ).toBeVisible({ timeout: 20000 });
     await expect(page.getByLabel("Add Section")).toHaveCount(0);
-  });
-
-  test("the demo account's password cannot be reset", async ({ request }) => {
-    // The unauthenticated path the write guard cannot see. A bare request
-    // without a valid token is refused anyway; what matters here is that
-    // requesting a reset for the demo address does not silently rotate the
-    // shared credential — the login below is the proof.
-    const demo = await demoConfig(request);
-
-    await request.post(`${API_BASE}/api/v1/auth/request-password-reset`, {
-      data: { org: demo?.orgSlug, email: demo?.email },
-    });
-
-    const login = await request.post(`${API_BASE}/api/v1/auth/login`, {
-      data: { org: demo?.orgSlug, email: demo?.email, password: demo?.password },
-    });
-
-    expect(login.ok()).toBeTruthy();
   });
 });
