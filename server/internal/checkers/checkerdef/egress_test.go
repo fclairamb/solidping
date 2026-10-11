@@ -3,6 +3,7 @@ package checkerdef_test
 import (
 	"errors"
 	"net"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -80,23 +81,32 @@ func TestEgressCacheReprobesAfterTTL(t *testing.T) {
 
 	r := require.New(t)
 
-	hasV6 := false
-	calls := 0
+	// Reuse inside the TTL is checked on its own cache with an hour-long TTL:
+	// with the 1 ms TTL below, a loaded runner can let more than 1 ms pass
+	// between two calls, which re-probes and failed this assertion in CI
+	// (expected 1 call, got 2 on 2026-10-11).
+	reuseCalls := 0
+	reuse := checkerdef.NewEgressCacheWith(time.Hour, func() map[checkerdef.IPVersion]bool {
+		reuseCalls++
+
+		return map[checkerdef.IPVersion]bool{checkerdef.IPVersionIPv6: false}
+	})
+
+	r.False(reuse.Get()[checkerdef.IPVersionIPv6])
+	r.False(reuse.Get()[checkerdef.IPVersionIPv6])
+	r.Equal(1, reuseCalls, "within the TTL the cached answer is reused")
+
+	// Expiry: a host that gains IPv6 must start advertising it without a
+	// restart, once the (short) TTL has passed.
+	var hasV6 atomic.Bool
 
 	cache := checkerdef.NewEgressCacheWith(time.Millisecond, func() map[checkerdef.IPVersion]bool {
-		calls++
-
-		return map[checkerdef.IPVersion]bool{checkerdef.IPVersionIPv6: hasV6}
+		return map[checkerdef.IPVersion]bool{checkerdef.IPVersionIPv6: hasV6.Load()}
 	})
 
 	r.False(cache.Get()[checkerdef.IPVersionIPv6])
-	r.Equal(1, calls)
 
-	// Within the TTL the cached answer is reused.
-	r.False(cache.Get()[checkerdef.IPVersionIPv6])
-	r.Equal(1, calls)
-
-	hasV6 = true
+	hasV6.Store(true)
 
 	require.Eventually(t, func() bool {
 		return cache.Get()[checkerdef.IPVersionIPv6]
