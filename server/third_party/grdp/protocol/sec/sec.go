@@ -345,7 +345,9 @@ func (s *SEC) LegacyEncryptionEnabled() bool {
 }
 
 func (s *SEC) sendFlagged(flag uint16, data []byte) (n int, err error) {
-	slog.Debug("sendFlagged", "flag", flag, "data", core.Hex(data))
+	// Length only: the PDU is still plaintext here and the client info PDU
+	// carries the password.
+	slog.Debug("sendFlagged", "flag", flag, "len", len(data))
 	b := s.encryt(flag, data)
 	return s.transport.Write(b)
 }
@@ -684,7 +686,6 @@ func (e *ClientSecurityExchangePDU) serialize() []byte {
 }
 func (c *Client) sendClientRandom() {
 	clientRandom := core.Random(32)
-	slog.Debug("sendClientRandom", "clientRandom", core.Hex(clientRandom))
 
 	serverRandom := c.ServerSecurityData().ServerRandom
 	slog.Debug("sendlientRandom", "ServerRandom", core.Hex(serverRandom))
