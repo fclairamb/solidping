@@ -134,7 +134,7 @@ func TestMergeJobSecretsClaimedFromPostgres(t *testing.T) {
 
 	dbSvc, err := postgres.New(ctx, &postgres.Config{
 		Embedded: true,
-		Port:     15438,
+		Port:     15700,
 		RunMode:  "test",
 	})
 	if err != nil {

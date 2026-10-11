@@ -38,7 +38,7 @@ func TestGetJobWaitClaimsFutureJobNearDueTime_Postgres(t *testing.T) {
 
 	dbSvc, err := postgres.New(ctx, &postgres.Config{
 		Embedded: true,
-		Port:     15446,
+		Port:     15702,
 		RunMode:  "test",
 	})
 	if err != nil {

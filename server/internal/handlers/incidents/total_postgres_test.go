@@ -19,7 +19,7 @@ import (
 // claimed in the repo (5435, 15434, 15436-15448, 15451-15459, 15461, 15463,
 // 15465-15467) to avoid colliding if the full (non -short) suite ever runs
 // them concurrently.
-const portIncidentsTotalPG = 15460
+const portIncidentsTotalPG = 15705
 
 // TestListIncidents_Total_Postgres is the Postgres-backed sibling of
 // TestListIncidents_Total_ProvesPageSizeTruncation / _ReflectsFilteredSet

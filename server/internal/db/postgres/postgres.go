@@ -256,6 +256,10 @@ func New(ctx context.Context, cfg *Config) (*Service, error) {
 // (e.g. "test", "notifier") — the directory itself, its owner marker, the
 // startup sweep, and the parent-death watchdog are all owned by the
 // embeddedpg package; callers no longer manage their own data directory.
+// embeddedReadTimeout bounds how long NewEmbedded's connections wait for a
+// reply from the local embedded server (see the comment at its use).
+const embeddedReadTimeout = time.Minute
+
 func NewEmbedded(
 	_ context.Context, suite string, port uint32, logSQL bool, runMode string, reset bool,
 	slowQueryThreshold time.Duration,
@@ -279,7 +283,15 @@ func NewEmbedded(
 	// Wait for server to be ready
 	time.Sleep(1 * time.Second)
 
-	sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(inst.DSN())))
+	// pgdriver's default 10 s read timeout is a network guard; this server is a
+	// local child process, so a slow answer means a loaded machine, not a lost
+	// peer. The Postgres test layer runs packages concurrently, and an EXPLAIN
+	// ANALYZE that takes 10 s alone crossed that line under load and failed
+	// with "i/o timeout" (2026-10-11).
+	sqldb := sql.OpenDB(pgdriver.NewConnector(
+		pgdriver.WithDSN(inst.DSN()),
+		pgdriver.WithReadTimeout(embeddedReadTimeout),
+	))
 
 	// Bound the pool by default: the embedded server above is started with
 	// max_connections=10, three of which Postgres reserves for superusers,

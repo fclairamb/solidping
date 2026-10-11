@@ -20,7 +20,7 @@ import (
 // portCheckSlugPG is distinct from every other embedded-Postgres port claimed
 // in the repo (see the port-numbering note in
 // postgres_headroom_postgres_test.go).
-const portCheckSlugPG = 15485
+const portCheckSlugPG = 15709
 
 // Static errors for the hermetic edges below: an ordinary failure, and a
 // check-slug violation as the clone path wraps it on its way up

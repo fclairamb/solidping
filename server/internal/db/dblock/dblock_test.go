@@ -16,7 +16,7 @@ import (
 
 // portDBLock is distinct from every other embedded-Postgres port in this repo
 // (see the port-numbering note in postgres_headroom_postgres_test.go).
-const portDBLock = 15491
+const portDBLock = 15711
 
 // testKey is a throwaway key well outside the registry's allocated range, so
 // a test can never collide with a real lock taken by something else on the

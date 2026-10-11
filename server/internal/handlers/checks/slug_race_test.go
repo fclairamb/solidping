@@ -23,7 +23,7 @@ import (
 // portSlugRacePG is distinct from every other embedded-Postgres port claimed in
 // the repo (see the port-numbering note in
 // postgres_headroom_postgres_test.go).
-const portSlugRacePG = 15484
+const portSlugRacePG = 15708
 
 // raceTarget is ONE url shared by every racing creation, because that is what
 // makes them collide: an auto-generated check slug is derived from the check's

@@ -565,7 +565,7 @@ func newPostgresDirectBackend(
 
 	dbSvc, err := postgres.New(ctx, &postgres.Config{
 		Embedded: true,
-		Port:     15439,
+		Port:     15701,
 		RunMode:  "test",
 	})
 	if err != nil {

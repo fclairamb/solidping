@@ -35,7 +35,7 @@ import (
 //
 // portConfirmationHoldPG is distinct from every other embedded-Postgres port
 // claimed in the repo.
-const portConfirmationHoldPG = 15505
+const portConfirmationHoldPG = 15713
 
 // holdSetup is the dialect-agnostic fixture: everything below runs unchanged
 // against in-memory SQLite and real Postgres.
