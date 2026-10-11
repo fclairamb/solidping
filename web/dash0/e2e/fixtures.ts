@@ -122,6 +122,31 @@ export async function fetchAuthCapabilities(
  * "@playwright/test" instead of from this file, or use the plain `page`
  * fixture, and are unaffected by this change).
  */
+/**
+ * Lets clicks pass through Sonner toasts (the toaster sits top-right, over the
+ * page header's action buttons).
+ *
+ * Creating a check fires a "Not on any status page yet / Publish it" toast
+ * asynchronously, AFTER the detail page has rendered, right on top of the
+ * header's Edit button. A test that then clicks Edit puts the mouse on the
+ * toast, and Sonner pauses a hovered toast's auto-dismiss, so the toast never
+ * leaves and the click times out (checks.spec "TCP check form round-trips…",
+ * 2026-10-11). No test interacts with a toast; they only read its text, which
+ * this keeps intact.
+ *
+ * A constructed stylesheet (CSSOM) rather than a <style> element, so it needs
+ * no CSP allowance.
+ */
+async function makeToastsClickThrough(context: BrowserContext): Promise<void> {
+  await context.addInitScript(() => {
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync(
+      "[data-sonner-toaster], [data-sonner-toaster] * { pointer-events: none !important; }",
+    );
+    document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+  });
+}
+
 export const test = base.extend<
   { authenticatedPage: Page },
   { authWorkerStorageState: AuthStorageState }
@@ -159,6 +184,7 @@ export const test = base.extend<
     const context = await browser.newContext({
       storageState: authWorkerStorageState,
     });
+    await makeToastsClickThrough(context);
     const page = await context.newPage();
 
     // The old fixture ended with the browser sitting on the post-login
