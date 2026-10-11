@@ -3,6 +3,20 @@
 ## Unreleased
 
 
+## [0.38.2](https://github.com/fclairamb/solidping/compare/v0.38.1...v0.38.2) (2026-10-11)
+
+
+### Bug Fixes
+
+* **dash0:** bug report screenshot shows the viewport, not the top of the page ([#516](https://github.com/fclairamb/solidping/issues/516)) ([114c547](https://github.com/fclairamb/solidping/commit/114c54715fe1eeaaada4e55f69c44d9183c7a650))
+* **dash0:** center the auth card on mobile ([#490](https://github.com/fclairamb/solidping/issues/490)) ([ca250f6](https://github.com/fclairamb/solidping/commit/ca250f65aba95d2927cbee8a3f83e959cbeea9f9))
+* **dash0:** name a tunneled check's bastion even when it is not on the page ([#512](https://github.com/fclairamb/solidping/issues/512)) ([d1bb246](https://github.com/fclairamb/solidping/commit/d1bb2462a7323550bc4765327cac5f117d61263d))
+* **deps:** update github.com/dop251/goja digest to 73dc7ed ([#503](https://github.com/fclairamb/solidping/issues/503)) ([d2f7bfa](https://github.com/fclairamb/solidping/commit/d2f7bfa683967ea323e87cbf854fa3195bb2d318))
+* **deps:** update github.com/dop251/goja digest to a4bedf5 ([#499](https://github.com/fclairamb/solidping/issues/499)) ([638a4bb](https://github.com/fclairamb/solidping/commit/638a4bb2dedf8e65d1fbfba09d002f2d60b1cd2c))
+* **deps:** update go dependencies (non-major) ([#517](https://github.com/fclairamb/solidping/issues/517)) ([9f6cbbc](https://github.com/fclairamb/solidping/commit/9f6cbbc81c799b1bea5c00bbb8d541e6405ef671))
+* **security:** address open code scanning and Dependabot alerts ([#514](https://github.com/fclairamb/solidping/issues/514)) ([84dc69d](https://github.com/fclairamb/solidping/commit/84dc69d78a1b6c946a001d4f3792cd1a0a9f0a21))
+* **status-pages:** fast staged loading for public status pages ([#504](https://github.com/fclairamb/solidping/issues/504)) ([a269baa](https://github.com/fclairamb/solidping/commit/a269baa7e9e8702eb4fc7bfc91dba3afd22608f7))
+
 ## [0.38.1](https://github.com/fclairamb/solidping/compare/v0.38.0...v0.38.1) (2026-10-09)
 
 
