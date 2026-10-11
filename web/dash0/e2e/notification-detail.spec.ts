@@ -1,8 +1,10 @@
-import { test, expect, API_BASE, DASH_BASE } from "./fixtures";
+import { test, expect, DASH_BASE } from "./fixtures";
 
-// The new flat notification URL: /orgs/:org/notifications/:uuid (with optional ?from=...)
-const FLAT_NOTIF_RE =
-  /\/notifications\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/;
+// Clicking a notification row into this page is covered by incidents.spec.ts
+// ("clicking a notification row opens the notification detail..."), on the
+// seeded incident. The org-level API contract (404 for an unknown uid, 400
+// without connectionUid) is covered in Go by
+// server/internal/app/org_notifications_route_test.go.
 
 test.describe("Notification delivery detail", () => {
   // Criterion 5: an unknown notificationUid renders a friendly not-found state,
@@ -19,122 +21,6 @@ test.describe("Notification delivery detail", () => {
 
     // Friendly not-found card from QueryErrorView.
     await expect(page.getByText(/not found/i).first()).toBeVisible();
-  });
-
-  // Verifies the org-level single-notification GET endpoint is wired correctly.
-  test("single-notification GET endpoint (org-level) is reachable", async ({
-    authenticatedPage,
-  }) => {
-    const page = authenticatedPage;
-
-    const resp = await page.request.post(`${API_BASE}/api/v1/auth/login`, {
-      data: { org: "test", email: "test@test.com", password: "test" },
-    });
-    const { accessToken } = await resp.json();
-
-    // Unknown notification → 404, never a 500 or a 200.
-    const notFound = await page.request.get(
-      `${API_BASE}/api/v1/orgs/test/notifications/00000000-0000-0000-0000-000000000000`,
-      { headers: { Authorization: `Bearer ${accessToken}` } },
-    );
-    expect(notFound.status()).toBe(404);
-  });
-
-  // Verifies the list-by-org endpoint requires connectionUid.
-  test("org-level notification list requires connectionUid", async ({
-    authenticatedPage,
-  }) => {
-    const page = authenticatedPage;
-
-    const resp = await page.request.post(`${API_BASE}/api/v1/auth/login`, {
-      data: { org: "test", email: "test@test.com", password: "test" },
-    });
-    const { accessToken } = await resp.json();
-
-    const bad = await page.request.get(
-      `${API_BASE}/api/v1/orgs/test/notifications`,
-      { headers: { Authorization: `Bearer ${accessToken}` } },
-    );
-    expect(bad.status()).toBe(400);
-  });
-
-  // Criteria 1, 3, 4: when a notification row exists, clicking it changes the
-  // URL to the flat notification detail route with ?from=incident:... and the
-  // detail content (status, timeline) renders. A deep-link refresh renders the
-  // same detail. Skipped gracefully when no rows are present.
-  test("clicking a notification row opens the flat detail route with ?from=", async ({
-    authenticatedPage,
-  }) => {
-    const page = authenticatedPage;
-
-    // Find an incident that has at least one notification row.
-    await page.goto(`${DASH_BASE}/orgs/test/incidents`);
-    await page.waitForLoadState("networkidle");
-
-    const incidentRows = page.getByTestId("incident-row");
-    const count = await incidentRows.count();
-    if (count === 0) {
-      test.skip(true, "no incidents in the test org");
-      return;
-    }
-
-    // Collect incident hrefs while still on the list (navigating away inside the
-    // loop would detach the incident-row locators).
-    const hrefs: string[] = [];
-    for (let i = 0; i < Math.min(count, 5); i++) {
-      const href = await incidentRows
-        .nth(i)
-        .getByRole("link")
-        .first()
-        .getAttribute("href");
-      if (href) hrefs.push(href);
-    }
-
-    let foundRow = false;
-    for (const href of hrefs) {
-      // hrefs are already app-absolute; strip a duplicate base prefix rather
-      // than concatenating two of them.
-      const path = href.startsWith(DASH_BASE)
-        ? href.slice(DASH_BASE.length)
-        : href;
-      await page.goto(`${DASH_BASE}${path}`);
-      await page.waitForLoadState("networkidle");
-
-      const notifRow = page.getByTestId("notification-row").first();
-      if ((await notifRow.count()) > 0) {
-        await notifRow.scrollIntoViewIfNeeded();
-        await notifRow.click();
-        foundRow = true;
-        break;
-      }
-    }
-
-    if (!foundRow) {
-      test.skip(true, "no incident with notification rows in the test org");
-      return;
-    }
-
-    // The URL changes to the flat notification route (not the old nested route).
-    await page.waitForURL(/[?&]from=incident/, { timeout: 10000 });
-    const detailUrl = page.url();
-
-    // The URL must contain ?from=incident:... (the colon is %-encoded in the URL).
-    expect(decodeURIComponent(detailUrl)).toMatch(/\?from=incident:/);
-    // And use the new flat path (no /incidents/ segment before /notifications/),
-    // carrying a real notification UUID.
-    expect(detailUrl).toMatch(/\/orgs\/test\/notifications\//);
-    expect(detailUrl).toMatch(FLAT_NOTIF_RE);
-
-    // Detail content: a status badge and the delivery timeline are present.
-    await expect(page.getByRole("heading", { name: "Notification" })).toBeVisible();
-    await expect(page.getByText("Delivery timeline")).toBeVisible();
-
-    // Refreshing the deep link renders the same detail directly.
-    await page.reload();
-    await page.waitForLoadState("networkidle");
-    expect(page.url()).toBe(detailUrl);
-    await expect(page.getByRole("heading", { name: "Notification" })).toBeVisible();
-    await expect(page.getByText("Delivery timeline")).toBeVisible();
   });
 
   // Deterministically seeded in test mode (server/test/testdata/testdata.go,
