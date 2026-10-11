@@ -3,6 +3,17 @@
 ## Unreleased
 
 
+## [0.38.3](https://github.com/fclairamb/solidping/compare/v0.38.2...v0.38.3) (2026-10-11)
+
+
+### Bug Fixes
+
+* **dash0:** shaking the phone opens the bug report ([#524](https://github.com/fclairamb/solidping/issues/524)) ([b2c14de](https://github.com/fclairamb/solidping/commit/b2c14de4ca70be8a2b05b439239df3f8c26ca70a))
+* **dash0:** show config lists such as expectedStatusCodes as chips ([#523](https://github.com/fclairamb/solidping/issues/523)) ([25156e3](https://github.com/fclairamb/solidping/commit/25156e3053572856fe2ff9dabddc66b210768c05))
+* **dash0:** translate the incident state badge ([#525](https://github.com/fclairamb/solidping/issues/525)) ([f5262cc](https://github.com/fclairamb/solidping/commit/f5262ccdcd3d44c55eb1b4ee90e84d08d9b4dc22))
+* **deps:** update github.com/dop251/goja digest to 0c9fae1 ([#527](https://github.com/fclairamb/solidping/issues/527)) ([c5ed1f1](https://github.com/fclairamb/solidping/commit/c5ed1f17b077e12e4a8ef2780071f9804f7495c1))
+* **deps:** update github.com/dop251/goja digest to 9b0700c ([#521](https://github.com/fclairamb/solidping/issues/521)) ([9d1bcc3](https://github.com/fclairamb/solidping/commit/9d1bcc33800f0034df4aa3852ee17ff37b7eda3d))
+
 ## [0.38.2](https://github.com/fclairamb/solidping/compare/v0.38.1...v0.38.2) (2026-10-11)
 
 
