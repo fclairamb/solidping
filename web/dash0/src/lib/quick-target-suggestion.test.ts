@@ -72,8 +72,34 @@ describe("suggestQuickTarget", () => {
     expect(suggestQuickTarget(`alice@${domain}`)).toBeNull();
   });
 
+  // Country variants of the big providers, and national providers. A
+  // `@gmx.de` signup was offered `gmx.de` as its first check before these.
+  it.each([
+    "gmx.de",
+    "gmx.net",
+    "yahoo.fr",
+    "hotmail.co.uk",
+    "outlook.de",
+    "mail.ru",
+    "web.de",
+    "t-online.de",
+    "orange.fr",
+    "free.fr",
+    "laposte.net",
+    "uol.com.br",
+  ])("returns null for free-webmail domain %s", (domain) => {
+    expect(suggestQuickTarget(`alice@${domain}`)).toBeNull();
+  });
+
+  it("still suggests a work domain that starts with a webmail brand label", () => {
+    expect(suggestQuickTarget("alice@mail.acme.com")).toBe("mail.acme.com");
+    expect(suggestQuickTarget("alice@live.team.acme.com")).toBe("live.team.acme.com");
+    expect(suggestQuickTarget("alice@gmx.acme.de")).toBe("gmx.acme.de");
+  });
+
   it("is case-insensitive for the denylist too", () => {
     expect(suggestQuickTarget("alice@Gmail.COM")).toBeNull();
+    expect(suggestQuickTarget("alice@GMX.De")).toBeNull();
   });
 
   // Not a plausible host: "/", ":", whitespace, or a leading/trailing dot.
