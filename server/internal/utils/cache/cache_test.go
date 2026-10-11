@@ -280,6 +280,14 @@ func TestCache_MultipleTypes(t *testing.T) {
 	if val, found := structCache.Get("key"); !found || val.Field1 != "test" || val.Field2 != 123 {
 		t.Error("struct cache failed")
 	}
+
+	// The cache holds weak references only: without these, nothing keeps the
+	// three values alive past their Set, and a GC cycle between Set and Get
+	// (likely when other packages' tests run alongside) collects them and
+	// fails the lookup. Seen as "struct cache failed" in CI on 2026-10-11.
+	runtime.KeepAlive(&str)
+	runtime.KeepAlive(&num)
+	runtime.KeepAlive(&structVal)
 }
 
 func TestCache_Len(t *testing.T) {
