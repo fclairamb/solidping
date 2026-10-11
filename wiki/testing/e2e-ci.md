@@ -41,8 +41,9 @@ The `ci` gate depends on `e2e-tests` (both shards). `e2e-report` is reporting on
 
 Playwright splits by test **count** into contiguous halves (alphabetical file order),
 not by duration. status0 (~1.5 min) runs on shard 1 and the session-continuity + SSO
-side-car (~3 min) on shard 2, and `PWTEST_SHARD_WEIGHTS: "97:103"` (read by Playwright
-1.61, undocumented) moves the slow tests around the halfway point to shard 2. Re-check the split in the
+side-car (~3 min) on shard 2, and `PWTEST_SHARD_WEIGHTS: "53:47"` (read by Playwright
+1.61, undocumented) gives shard 1 more tests to make up for it. Recompute it from the
+merged `results.json` when the two shards drift apart. Re-check the split in the
 `E2E Report` step summary when a shard starts finishing much later than the other.
 
 ## CI Environment
