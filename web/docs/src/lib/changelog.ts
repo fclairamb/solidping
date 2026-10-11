@@ -36,6 +36,7 @@ export const SCOPE_LABELS: Record<string, string> = {
   mcp: "MCP",
   tlsedge: "TLS edge",
   auth: "Authentication",
+  security: "Security",
   checks: "Checks",
   incidents: "Incidents",
   integrations: "Integrations",
