@@ -9,6 +9,10 @@ import type { Page } from "@playwright/test";
 // member checks, add it through the editor's "Group" tab, then load the PUBLIC
 // status page and assert exactly one component is rendered under the group's
 // name — with neither member's name anywhere on the page.
+//
+// The checkUid-XOR-checkGroupUid rule is pinned without a browser:
+// server/internal/handlers/statuspages/group_resource_test.go
+// (TestCreateResource_TargetXOR, TestCreateResource_TargetXORWireShape).
 
 async function getAuthToken(page: Page): Promise<string> {
   const resp = await page.request.post(`${API_BASE}/api/v1/auth/login`, {
@@ -120,59 +124,6 @@ test.describe("Status page group resources", () => {
     await expect(page.getByText(groupName).first()).toBeVisible();
     for (const name of memberNames) {
       await expect(page.getByText(name)).toHaveCount(0);
-    }
-  });
-
-  test("the API rejects a resource with zero or two targets", async ({
-    authenticatedPage,
-  }) => {
-    const page = authenticatedPage;
-    const token = await getAuthToken(page);
-    const suffix = Date.now().toString().slice(-9);
-
-    const group = await api(page, token, "/api/v1/orgs/test/check-groups", {
-      name: `E2E XOR Group ${suffix}`,
-      slug: `e2e-xor-${suffix}`,
-    });
-    const check = await api(page, token, "/api/v1/orgs/test/checks", {
-      type: "http",
-      name: `e2e-xor-check-${suffix}`,
-      config: { url: `https://httpbin.org/anything/${suffix}` },
-      period: "00:05:00",
-    });
-
-    const statusPage = await api(page, token, "/api/v1/orgs/test/status-pages", {
-      name: `E2E XOR Page ${suffix}`,
-      slug: `e2e-xor-page-${suffix}`.slice(0, 40),
-      visibility: "public",
-    });
-    const section = await api(
-      page,
-      token,
-      `/api/v1/orgs/test/status-pages/${statusPage.uid}/sections`,
-      { name: "Core", slug: "core" },
-    );
-
-    const resourcesPath =
-      `${API_BASE}/api/v1/orgs/test/status-pages/${statusPage.uid}` +
-      `/sections/${section.uid}/resources`;
-
-    for (const body of [
-      {},
-      { checkUid: check.uid, checkGroupUid: group.uid },
-    ]) {
-      const resp = await page.request.post(resourcesPath, {
-        headers: { Authorization: `Bearer ${token}` },
-        data: body,
-      });
-      expect(resp.status()).toBe(422);
-
-      const err = await resp.json();
-      expect(err.code).toBe("VALIDATION_ERROR");
-      // The message names BOTH fields so the caller can see the pair.
-      const text = JSON.stringify(err);
-      expect(text).toContain("checkUid");
-      expect(text).toContain("checkGroupUid");
     }
   });
 });
