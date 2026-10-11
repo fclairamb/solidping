@@ -118,7 +118,6 @@ test.describe("Check group discoverability", () => {
     await expectNoGroups(page, org);
 
     await page.goto(`orgs/${org.slug}/checks/new`);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible({
       timeout: 15000,
     });
@@ -188,7 +187,6 @@ test.describe("Check group discoverability", () => {
     await expectNoGroups(page, org);
 
     await page.goto(`orgs/${org.slug}/checks`);
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("no-groups-empty-state")).toBeVisible({
       timeout: 15000,

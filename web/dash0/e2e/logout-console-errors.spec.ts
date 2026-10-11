@@ -14,7 +14,6 @@ import { test, expect } from "@playwright/test";
 
 async function login(page: import("@playwright/test").Page): Promise<void> {
   await page.goto("orgs/test/login");
-  await page.waitForLoadState("networkidle");
   await expect(page.getByTestId("login-title")).toBeVisible();
   await page.getByTestId("login-email").fill("test@test.com");
   await page.getByTestId("login-password").fill("test");

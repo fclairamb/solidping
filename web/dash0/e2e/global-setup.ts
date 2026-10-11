@@ -18,14 +18,14 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { writeFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
-import { API_BASE } from "./fixtures";
+import { e2eBaseUrls } from "./base-url";
 
 const PROJECT_ROOT = join(import.meta.dirname, "../../..");
 const PID_FILE = join(import.meta.dirname, ".test-server.pid");
-// API_BASE honors E2E_BASE_URL (side-car test server) like playwright.config.ts
-// does; without it, the readiness check below would silently poll :4000
-// instead of the actual target server.
-const SERVER_URL = `${API_BASE}/api/mgmt/health`;
+// Every server the workers target (e2e/base-url.ts): a side-car via
+// E2E_BASE_URL, or one per worker via E2E_BASE_URLS. Without this, the
+// readiness check below would silently poll :4000 instead.
+const SERVER_URLS = e2eBaseUrls().map((url) => `${new URL(url).origin}/api/mgmt/health`);
 const MAX_RETRIES = 30; // 30 seconds
 const RETRY_DELAY = 1000; // 1 second
 
@@ -163,7 +163,9 @@ export default async function globalSetup(): Promise<void> {
       "[setup] Running in CI environment - skipping build and server start.\n"
     );
     console.log("[setup] Waiting for server to be ready...");
-    await waitForServer(SERVER_URL, MAX_RETRIES);
+    for (const url of SERVER_URLS) {
+      await waitForServer(url, MAX_RETRIES);
+    }
     console.log("[setup] Global setup completed successfully!\n");
     return;
   }
@@ -234,7 +236,9 @@ export default async function globalSetup(): Promise<void> {
     );
 
     // Step 4: Wait for server to be ready
-    await waitForServer(SERVER_URL, MAX_RETRIES);
+    for (const url of SERVER_URLS) {
+      await waitForServer(url, MAX_RETRIES);
+    }
 
     console.log("[setup] Global setup completed successfully!\n");
   } catch (err) {

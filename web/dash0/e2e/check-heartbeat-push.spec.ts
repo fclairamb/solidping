@@ -43,10 +43,8 @@ async function createHeartbeatCheck(page: Page, name: string): Promise<void> {
     .getByRole("link", { name: "Checks" })
     .click();
   await page.waitForURL(/\/checks/);
-  await page.waitForLoadState("networkidle");
   await page.getByTestId("new-check-button").click();
   await page.waitForURL(/\/checks\/new/);
-  await page.waitForLoadState("networkidle");
 
   await expect(page.getByTestId("check-name-input")).toBeVisible();
   await page.getByTestId("check-type-select").click();

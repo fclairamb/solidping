@@ -41,7 +41,6 @@ test.describe("Checks", () => {
     // Navigate to checks page via sidebar
     await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
     await page.waitForURL(/\/checks/);
-    await page.waitForLoadState("networkidle");
 
     // Wait for the "New Check" button to be visible
     await expect(page.getByTestId("new-check-button")).toBeVisible();
@@ -78,10 +77,8 @@ test.describe("Checks", () => {
     // Open the new-check form (default type is HTTP = an active check).
     await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
     await page.waitForURL(/\/checks/);
-    await page.waitForLoadState("networkidle");
     await page.getByTestId("new-check-button").click();
     await page.waitForURL(/\/checks\/new/);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
     // Pin the interval to 1 minute so the count is deterministic (120s / 60s = 2).
@@ -111,10 +108,8 @@ test.describe("Checks", () => {
     // Create a check so we have a known detail page
     await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
     await page.waitForURL(/\/checks/);
-    await page.waitForLoadState("networkidle");
     await page.getByTestId("new-check-button").click();
     await page.waitForURL(/\/checks\/new/);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
     const checkName = `E2E Direct ${Date.now()}`;
@@ -150,10 +145,8 @@ test.describe("Checks", () => {
     // Navigate to checks page, then new check form
     await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
     await page.waitForURL(/\/checks/);
-    await page.waitForLoadState("networkidle");
     await page.getByTestId("new-check-button").click();
     await page.waitForURL(/\/checks\/new/);
-    await page.waitForLoadState("networkidle");
 
     // Wait for form to be ready
     await expect(page.getByTestId("check-name-input")).toBeVisible();
@@ -206,10 +199,8 @@ test.describe("Checks", () => {
     // Navigate to new check form
     await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
     await page.waitForURL(/\/checks/);
-    await page.waitForLoadState("networkidle");
     await page.getByTestId("new-check-button").click();
     await page.waitForURL(/\/checks\/new/);
-    await page.waitForLoadState("networkidle");
 
     // Wait for form to be ready
     await expect(page.getByTestId("check-name-input")).toBeVisible();
@@ -238,7 +229,6 @@ test.describe("Checks", () => {
 
     // Wait for navigation to check detail page
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
-    await page.waitForLoadState("networkidle");
 
     // Verify check name is displayed
     await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
@@ -264,10 +254,8 @@ test.describe("Checks", () => {
     // Create a heartbeat check
     await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
     await page.waitForURL(/\/checks/);
-    await page.waitForLoadState("networkidle");
     await page.getByTestId("new-check-button").click();
     await page.waitForURL(/\/checks\/new/);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
     await page.getByTestId("check-type-select").click();
@@ -334,10 +322,8 @@ test.describe("Checks", () => {
     // Create a heartbeat check
     await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
     await page.waitForURL(/\/checks/);
-    await page.waitForLoadState("networkidle");
     await page.getByTestId("new-check-button").click();
     await page.waitForURL(/\/checks\/new/);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
     await page.getByTestId("check-type-select").click();
@@ -384,10 +370,8 @@ test.describe("Checks", () => {
     // Create a check
     await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
     await page.waitForURL(/\/checks/);
-    await page.waitForLoadState("networkidle");
     await page.getByTestId("new-check-button").click();
     await page.waitForURL(/\/checks\/new/);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
     const checkName = `E2E Flapping ${Date.now()}`;
@@ -397,7 +381,6 @@ test.describe("Checks", () => {
 
     // Wait for check detail page
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
-    await page.waitForLoadState("networkidle");
     await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
 
     // Navigate to edit page
@@ -427,7 +410,6 @@ test.describe("Checks", () => {
 
     // Wait for navigation back to check detail page
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/, { timeout: 10000 });
-    await page.waitForLoadState("networkidle");
 
     // Navigate to edit page again to verify values were persisted
     await page
@@ -459,10 +441,8 @@ test.describe("Checks", () => {
     // Create a check with a 10s timeout (spec 2026-07-11-05).
     await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
     await page.waitForURL(/\/checks/);
-    await page.waitForLoadState("networkidle");
     await page.getByTestId("new-check-button").click();
     await page.waitForURL(/\/checks\/new/);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
     // Timeout lives in the collapsed "Advanced" section on create.
@@ -479,7 +459,6 @@ test.describe("Checks", () => {
 
     // Wait for check detail page
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
-    await page.waitForLoadState("networkidle");
     await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
 
     // The edit form seeds the timeout input from config.timeout ("10s" → 10),
@@ -497,7 +476,6 @@ test.describe("Checks", () => {
     await page.getByTestId("check-timeout-input").fill("");
     await page.getByTestId("check-submit-button").click();
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/, { timeout: 10000 });
-    await page.waitForLoadState("networkidle");
 
     // Back on a fresh edit page the field is empty again (key removed). With the
     // timeout cleared, Advanced is collapsed by default, so expand it first.
@@ -518,7 +496,6 @@ test.describe("Checks", () => {
     // Navigate to new check form
     await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
     await page.waitForURL(/\/checks/);
-    await page.waitForLoadState("networkidle");
     await page.getByTestId("new-check-button").click();
     await page.waitForURL(/\/checks\/new/);
     await page.waitForLoadState("networkidle");
@@ -556,10 +533,8 @@ test.describe("Checks", () => {
     // Navigate to new check form
     await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
     await page.waitForURL(/\/checks/);
-    await page.waitForLoadState("networkidle");
     await page.getByTestId("new-check-button").click();
     await page.waitForURL(/\/checks\/new/);
-    await page.waitForLoadState("networkidle");
 
     // Wait for form to be ready
     await expect(page.getByTestId("check-name-input")).toBeVisible();
@@ -604,10 +579,8 @@ test.describe("Checks", () => {
     // Navigate to new check form
     await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
     await page.waitForURL(/\/checks/);
-    await page.waitForLoadState("networkidle");
     await page.getByTestId("new-check-button").click();
     await page.waitForURL(/\/checks\/new/);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
     // Select WebSocket type
@@ -633,7 +606,6 @@ test.describe("Checks", () => {
     // Submit
     await page.getByTestId("check-submit-button").click();
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
-    await page.waitForLoadState("networkidle");
     await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
 
     // Navigate to edit page to verify fields round-trip
@@ -641,7 +613,6 @@ test.describe("Checks", () => {
       .getByTestId("check-detail-header")
       .getByRole("link", { name: "Edit" }).click();
     await page.waitForURL(/\/edit/);
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("check-url-input")).toHaveValue("wss://echo.websocket.org");
     await expect(page.getByTestId("check-ws-send-input")).toHaveValue("hello");
@@ -662,10 +633,8 @@ test.describe("Checks", () => {
     // Navigate to new check form
     await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
     await page.waitForURL(/\/checks/);
-    await page.waitForLoadState("networkidle");
     await page.getByTestId("new-check-button").click();
     await page.waitForURL(/\/checks\/new/);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
     // Select RDP type
@@ -695,7 +664,6 @@ test.describe("Checks", () => {
     // is accepted (the check itself would run from a worker with access).
     await page.getByTestId("check-submit-button").click();
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
-    await page.waitForLoadState("networkidle");
     await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
 
     // Navigate to edit page to verify fields round-trip
@@ -703,7 +671,6 @@ test.describe("Checks", () => {
       .getByTestId("check-detail-header")
       .getByRole("link", { name: "Edit" }).click();
     await page.waitForURL(/\/edit/);
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("check-host-input")).toHaveValue("rdp.example.internal");
     await expect(page.getByTestId("check-port-input")).toHaveValue("3390");
@@ -725,10 +692,8 @@ test.describe("Checks", () => {
 
     await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
     await page.waitForURL(/\/checks/);
-    await page.waitForLoadState("networkidle");
     await page.getByTestId("new-check-button").click();
     await page.waitForURL(/\/checks\/new/);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
     await page.getByTestId("check-type-select").click();
@@ -750,7 +715,6 @@ test.describe("Checks", () => {
 
     await page.getByTestId("check-submit-button").click();
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
-    await page.waitForLoadState("networkidle");
     await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
 
     // Round-trip through the edit form.
@@ -758,7 +722,6 @@ test.describe("Checks", () => {
       .getByTestId("check-detail-header")
       .getByRole("link", { name: "Edit" }).click();
     await page.waitForURL(/\/edit/);
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("check-rdp-username-input")).toHaveValue("svc-monitor");
     await expect(page.getByTestId("check-rdp-end-session-select")).toHaveValue("disconnect");
@@ -772,10 +735,8 @@ test.describe("Checks", () => {
 
     await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
     await page.waitForURL(/\/checks/);
-    await page.waitForLoadState("networkidle");
     await page.getByTestId("new-check-button").click();
     await page.waitForURL(/\/checks\/new/);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
     // Select TCP type
@@ -810,7 +771,6 @@ test.describe("Checks", () => {
 
     await page.getByTestId("check-submit-button").click();
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
-    await page.waitForLoadState("networkidle");
     await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
 
     // Reopen for edit: every field must round-trip.
@@ -819,7 +779,6 @@ test.describe("Checks", () => {
       .getByRole("link", { name: "Edit" })
       .click();
     await page.waitForURL(/\/edit/);
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("check-host-input")).toHaveValue(
       "redis.example.internal",
@@ -852,14 +811,12 @@ test.describe("Checks", () => {
     await page.getByTestId("check-expect-input").fill("+PONG");
     await page.getByTestId("check-submit-button").click();
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
-    await page.waitForLoadState("networkidle");
 
     await page
       .getByTestId("check-detail-header")
       .getByRole("link", { name: "Edit" })
       .click();
     await page.waitForURL(/\/edit/);
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("check-expect-mode-select")).toContainText(
       "Contains",
@@ -875,10 +832,8 @@ test.describe("Checks", () => {
     // Navigate to new check form
     await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
     await page.waitForURL(/\/checks/);
-    await page.waitForLoadState("networkidle");
     await page.getByTestId("new-check-button").click();
     await page.waitForURL(/\/checks\/new/);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
     // Select IMAP type
@@ -909,7 +864,6 @@ test.describe("Checks", () => {
     // Submit
     await page.getByTestId("check-submit-button").click();
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
-    await page.waitForLoadState("networkidle");
     await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
 
     // Navigate to edit page to verify the auto-toggled tls:true persisted.
@@ -917,7 +871,6 @@ test.describe("Checks", () => {
       .getByTestId("check-detail-header")
       .getByRole("link", { name: "Edit" }).click();
     await page.waitForURL(/\/edit/);
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("check-host-input")).toHaveValue("imap.example.com");
     await expect(page.getByTestId("check-port-input")).toHaveValue("993");
@@ -937,10 +890,8 @@ test.describe("Checks", () => {
     // Navigate to new check form
     await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
     await page.waitForURL(/\/checks/);
-    await page.waitForLoadState("networkidle");
     await page.getByTestId("new-check-button").click();
     await page.waitForURL(/\/checks\/new/);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
     // Select POP3 type
@@ -984,16 +935,13 @@ test.describe("Checks", () => {
     async function createCheck(name: string) {
       await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
       await page.waitForURL(/\/checks/);
-      await page.waitForLoadState("networkidle");
       await page.getByTestId("new-check-button").click();
       await page.waitForURL(/\/checks\/new/);
-      await page.waitForLoadState("networkidle");
       await expect(page.getByTestId("check-name-input")).toBeVisible();
       await page.getByTestId("check-name-input").fill(name);
       await page.getByTestId("check-url-input").fill("https://example.com/dot-test");
       await page.getByTestId("check-submit-button").click();
       await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
-      await page.waitForLoadState("networkidle");
       await expect(page.getByRole("heading", { name })).toBeVisible();
     }
 
@@ -1009,7 +957,6 @@ test.describe("Checks", () => {
     // Back to the listing.
     await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
     await page.waitForURL(/\/checks$/);
-    await page.waitForLoadState("networkidle");
 
     // The disabled row's dot reports data-disabled="true" and carries the
     // localized "Disabled" tooltip/aria-label; the enabled row's dot is "false".
@@ -1035,7 +982,6 @@ test.describe("Checks", () => {
   }) => {
     const page = authenticatedPage;
     await page.goto("orgs/test/checks/new?checkType=tcp");
-    await page.waitForLoadState("networkidle");
 
     const port = page.getByTestId("check-port-input");
     const host = page.getByTestId("check-host-input");
@@ -1063,7 +1009,6 @@ test.describe("Checks", () => {
     await page.waitForLoadState("networkidle");
     const uid = page.url().match(/\/checks\/([0-9a-f-]{36})/)![1];
     await page.goto(`orgs/test/checks/${uid}/edit`);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-port-input")).toHaveValue("22");
     await expect(page.getByTestId("check-host-input")).toHaveValue("tcp-chip.example.com");
   });
@@ -1071,7 +1016,6 @@ test.describe("Checks", () => {
   test("ssh port field defaults to 22 and shows no chips", async ({ authenticatedPage }) => {
     const page = authenticatedPage;
     await page.goto("orgs/test/checks/new?checkType=ssh");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-port-input")).toHaveValue("22");
     await expect(page.getByTestId("check-port-chips")).toHaveCount(0);
   });

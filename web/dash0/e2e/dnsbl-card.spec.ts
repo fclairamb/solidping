@@ -50,7 +50,6 @@ test.describe("DNSBL result card", () => {
     );
 
     await page.goto(`orgs/test/checks/${checkUid}/results/${resultUid}`);
-    await page.waitForLoadState("networkidle");
 
     const card = page.getByTestId("dnsbl-card");
     await expect(card).toBeVisible();
@@ -92,7 +91,6 @@ test.describe("DNSBL result card", () => {
     );
 
     await page.goto(`orgs/test/checks/${checkUid}/results/${resultUid}`);
-    await page.waitForLoadState("networkidle");
 
     const card = page.getByTestId("dnsbl-card");
     await expect(card).toBeVisible();

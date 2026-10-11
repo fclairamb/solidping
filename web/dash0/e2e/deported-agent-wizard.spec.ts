@@ -73,7 +73,6 @@ test.describe.serial("Register an agent wizard", () => {
     // Entry point: the "Register an agent" button on the private-locations
     // list page.
     await page.goto("orgs/test/organization/private-locations");
-    await page.waitForLoadState("networkidle");
     await page.getByTestId("register-agent-button").click();
     await page.waitForURL((url) => url.pathname.endsWith("/private-locations/register"));
 

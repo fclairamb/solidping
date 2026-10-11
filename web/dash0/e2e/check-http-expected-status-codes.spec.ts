@@ -45,7 +45,6 @@ test.describe("HTTP check expected-status codes", () => {
     const token = await getAuthToken(page);
 
     await page.goto("orgs/test/checks/new?checkType=http");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
     const checkName = `E2E Status Codes ${Date.now()}`;
@@ -76,7 +75,6 @@ test.describe("HTTP check expected-status codes", () => {
 
     // Reload the edit page — both chips persist.
     await page.goto(`orgs/test/checks/${uid}/edit`);
-    await page.waitForLoadState("networkidle");
     await expect(
       page.getByTestId("check-expected-status-codes-chip-0"),
     ).toContainText("200");
@@ -95,7 +93,6 @@ test.describe("HTTP check expected-status codes", () => {
     const page = authenticatedPage;
 
     await page.goto("orgs/test/checks/new?checkType=http");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
     // A fresh form seeds the implicit ["200"] default as chip-0 — remove it
@@ -190,7 +187,6 @@ test.describe("HTTP check expected-status codes", () => {
     expect(created.config.expectedStatus).toBe(201);
 
     await page.goto(`orgs/test/checks/${uid}/edit`);
-    await page.waitForLoadState("networkidle");
     await expect(
       page.getByTestId("check-expected-status-codes-chip-0"),
     ).toContainText("201");
@@ -218,7 +214,6 @@ test.describe("HTTP check expected-status codes", () => {
     const token = await getAuthToken(page);
 
     await page.goto("orgs/test/checks/new?checkType=http");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
     const checkName = `E2E Status Default ${Date.now()}`;
@@ -251,7 +246,6 @@ test.describe("HTTP check expected-status codes", () => {
     const page = authenticatedPage;
 
     await page.goto("orgs/test/checks/new?checkType=http&expectedStatus=201");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
     await expect(
@@ -270,7 +264,6 @@ test.describe("HTTP check expected-status codes", () => {
     await page.setViewportSize(MOBILE);
 
     await page.goto("orgs/test/checks/new?checkType=http");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
     const checkName = `E2E Status Mobile ${Date.now()}`;
@@ -335,7 +328,6 @@ test.describe("HTTP check expected-status codes", () => {
     await page.setViewportSize(MOBILE);
 
     await page.goto("orgs/test/design-reference");
-    await page.waitForLoadState("networkidle");
 
     const section = page.locator("#token-chips-input");
     await section.scrollIntoViewIfNeeded();

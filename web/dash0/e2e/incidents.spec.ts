@@ -151,7 +151,6 @@ test.describe("Incidents", () => {
     // Navigate to incidents page via sidebar
     await page.getByTestId("app-sidebar").getByRole("link", { name: "Incidents" }).click();
     await page.waitForURL(/\/incidents/);
-    await page.waitForLoadState("networkidle");
 
     // Open state filter dropdown
     await page.getByTestId("incidents-state-filter").click();
@@ -190,7 +189,6 @@ test.describe("Incidents", () => {
     const incidentUid = "00000000-0000-0000-0000-000000000013";
 
     await page.goto(`${DASH_BASE}/orgs/test/incidents/${incidentUid}`);
-    await page.waitForLoadState("networkidle");
 
     // We're on the incident detail page and the Notifications card is present.
     await expect(page.getByText("Incident Details")).toBeVisible();
@@ -280,7 +278,6 @@ test.describe("Incidents", () => {
     // search object directly), so navigate with page.goto rather than
     // driving the toggle through the UI.
     await page.goto("orgs/test/incidents?showSuppressed=true");
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByRole("heading", { name: "Incidents" })).toBeVisible();
     await expect(page.getByTestId("incidents-show-suppressed-toggle")).toHaveAttribute(
@@ -295,7 +292,6 @@ test.describe("Incidents", () => {
     const page = authenticatedPage;
 
     await page.goto("orgs/test/incidents");
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("incidents-show-suppressed-toggle")).toHaveAttribute(
       "data-state",
@@ -367,13 +363,11 @@ test.describe("Incidents", () => {
     await page.goto(
       `orgs/test/incidents?state=all&checkUid=${otherCheckSlug}`,
     );
-    await page.waitForLoadState("networkidle");
     await expect(page.getByText(otherCheckIncidentTitle)).toBeVisible();
 
     // Now exercise the actual behavior under test: picking a check from the
     // dropdown on an unfiltered list.
     await page.goto("orgs/test/incidents?state=all");
-    await page.waitForLoadState("networkidle");
 
     const picker = page.getByTestId("incidents-check-filter");
     await picker.click();
@@ -398,7 +392,6 @@ test.describe("Incidents", () => {
 
     // Start with an explicit, non-default state filter already in the URL.
     await page.goto("orgs/test/incidents?state=active");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("incidents-state-filter")).toContainText(
       "Active Only",
     );
@@ -433,7 +426,6 @@ test.describe("Incidents", () => {
     const page = authenticatedPage;
 
     await page.goto(`orgs/test/incidents?state=all&checkUid=${capturedCheckUid}`);
-    await page.waitForLoadState("networkidle");
 
     const picker = page.getByTestId("incidents-check-filter");
     await expect(picker).toContainText("Captured Check");
@@ -443,7 +435,6 @@ test.describe("Incidents", () => {
     // Reload cold (a fresh navigation, no client-side router state to fall
     // back on) — this is the regression this layout route has hit before.
     await page.reload();
-    await page.waitForLoadState("networkidle");
 
     await expect(picker).toContainText("Captured Check");
     await expect(page.getByText(capturedCheckIncidentTitle)).toBeVisible();
@@ -456,7 +447,6 @@ test.describe("Incidents", () => {
     const page = authenticatedPage;
 
     await page.goto(`orgs/test/incidents?state=all&checkUid=${capturedCheckSlug}`);
-    await page.waitForLoadState("networkidle");
 
     const picker = page.getByTestId("incidents-check-filter");
     await expect(picker).toContainText("Captured Check");
@@ -474,7 +464,6 @@ test.describe("Incidents", () => {
     await page.goto(
       `orgs/test/incidents?state=resolved&checkUid=${capturedCheckUid}`,
     );
-    await page.waitForLoadState("networkidle");
 
     await expect(
       page.getByRole("heading", { name: "No incidents found" }),

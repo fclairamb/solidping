@@ -15,7 +15,6 @@ test.describe("Organization settings — session length override", () => {
   test.afterEach(async ({ authenticatedPage }) => {
     const page = authenticatedPage;
     await page.goto("orgs/test/organization/settings");
-    await page.waitForLoadState("networkidle");
     const hoursInput = page.getByTestId("session-duration-hours");
     await hoursInput.fill("");
     await page.getByTestId("session-duration-save").click();
@@ -29,7 +28,6 @@ test.describe("Organization settings — session length override", () => {
   }) => {
     const page = authenticatedPage;
     await page.goto("orgs/test/organization/settings");
-    await page.waitForLoadState("networkidle");
 
     await expect(
       page.getByRole("heading", { name: /session length/i }),
@@ -60,7 +58,6 @@ test.describe("Organization settings — session length override", () => {
     // Reload to force a fresh GET /settings — proves the value was actually
     // persisted server-side, not just held in the mutation's local state.
     await page.reload();
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("session-duration-hours")).toHaveValue(
       "11",
@@ -72,7 +69,6 @@ test.describe("Organization settings — session length override", () => {
   }) => {
     const page = authenticatedPage;
     await page.goto("orgs/test/organization/settings");
-    await page.waitForLoadState("networkidle");
 
     const hoursInput = page.getByTestId("session-duration-hours");
 
@@ -103,7 +99,6 @@ test.describe("Organization settings — session length override", () => {
     expect(clearBody.sessionMaxDurationSeconds ?? null).toBeNull();
 
     await page.reload();
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("session-duration-hours")).toHaveValue("");
   });
 });
@@ -116,7 +111,6 @@ test.describe("Organization settings — status page embedding", () => {
   test.afterEach(async ({ authenticatedPage }) => {
     const page = authenticatedPage;
     await page.goto("orgs/test/organization/settings");
-    await page.waitForLoadState("networkidle");
     await page.getByTestId("embed-origins").fill("");
     await page.getByTestId("embed-origins-save").click();
     await expect(page.getByText(/settings saved/i)).toBeVisible({
@@ -129,7 +123,6 @@ test.describe("Organization settings — status page embedding", () => {
   }) => {
     const page = authenticatedPage;
     await page.goto("orgs/test/organization/settings");
-    await page.waitForLoadState("networkidle");
 
     const field = page.getByTestId("embed-origins");
     await field.fill("https://Intranet.Acme.com/\nhttps://*.acme.com");
@@ -149,7 +142,6 @@ test.describe("Organization settings — status page embedding", () => {
     await expect(page.getByText(/settings saved/i)).toBeVisible();
 
     await page.reload();
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("embed-origins")).toHaveValue(
       "https://intranet.acme.com\nhttps://*.acme.com",
     );
@@ -162,7 +154,6 @@ test.describe("Organization settings — status page embedding", () => {
     );
 
     await page.reload();
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("embed-origins")).toHaveValue(
       "https://intranet.acme.com\nhttps://*.acme.com",
     );

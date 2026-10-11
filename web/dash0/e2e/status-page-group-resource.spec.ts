@@ -74,7 +74,6 @@ test.describe("Status page group resources", () => {
 
     // --- Add the group through the editor UI ---
     await page.goto(`orgs/test/status-pages/${statusPage.uid}`);
-    await page.waitForLoadState("networkidle");
 
     // CreateStatusPage now seeds a default "Services" section ahead of this
     // test's own "Core" section (spec 2026-08-28-16), so "Core" is always
@@ -118,7 +117,6 @@ test.describe("Status page group resources", () => {
 
     // The rendered public page shows one component under the group's name.
     await page.goto(`${STATUS_BASE}/test/${pageSlug}`);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByText(groupName).first()).toBeVisible();
     for (const name of memberNames) {
       await expect(page.getByText(name)).toHaveCount(0);

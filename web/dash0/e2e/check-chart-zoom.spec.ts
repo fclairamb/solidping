@@ -80,10 +80,8 @@ async function gotoCheckDetail(page: Page): Promise<string[]> {
 
   await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
   await page.waitForURL(/\/checks/);
-  await page.waitForLoadState("networkidle");
   await page.getByTestId("new-check-button").click();
   await page.waitForURL(/\/checks\/new/);
-  await page.waitForLoadState("networkidle");
 
   await page.getByTestId("check-name-input").fill(`E2E Zoom ${Date.now()}`);
   await page.getByTestId("check-url-input").fill("https://example.com/zoom-test");
@@ -159,7 +157,6 @@ test.describe("Response-time chart zoom", () => {
     const base = page.url().split("?")[0];
     const beforeCount = resultsUrls.length;
     await page.goto(`${base}?graphFrom=${from}&graphTo=${to}`);
-    await page.waitForLoadState("networkidle");
     await expect(page.locator(".recharts-wrapper")).toBeVisible({ timeout: 15000 });
 
     // Reset control present on a cold load (zoom reconstructed from the URL).

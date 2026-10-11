@@ -63,7 +63,6 @@ test.describe("Publish a check on a status page", () => {
     try {
       // --- Start from the check detail page ---
       await page.goto(`orgs/test/checks/${check.uid}`);
-      await page.waitForLoadState("networkidle");
 
       await page.getByRole("button", { name: "More actions" }).click();
       const publishButton = page.getByTestId("publish-status-page-link");
@@ -78,7 +77,6 @@ test.describe("Publish a check on a status page", () => {
       await createLink.click();
 
       await page.waitForURL(/\/status-pages\/new\?checkUid=/);
-      await page.waitForLoadState("networkidle");
 
       // The check is shown as pre-attached.
       const prefilledChip = page.getByTestId("status-page-prefilled-check");
@@ -128,7 +126,6 @@ test.describe("Publish a check on a status page", () => {
       expect(servicesSection.resources[0].checkUid).toBe(check.uid);
 
       await page.goto(`${STATUS_BASE}/test/${publicSlug}`);
-      await page.waitForLoadState("networkidle");
       await expect(page.getByText(checkName).first()).toBeVisible();
     } finally {
       if (pageUid) {

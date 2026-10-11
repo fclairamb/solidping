@@ -196,7 +196,6 @@ test.describe("Support inbox", () => {
     await stubSupportApi(page, [ACTIVE_THREAD, EXPIRED_THREAD, CLOSED_THREAD]);
 
     await page.goto("support");
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("support-thread-list")).toBeVisible();
 
@@ -256,7 +255,6 @@ test.describe("Support inbox", () => {
     );
 
     await page.goto("support/thread-active");
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("support-message-inbound")).toContainText(
       "is the api down for you too?",
@@ -283,7 +281,6 @@ test.describe("Support inbox", () => {
     await stubSupportApi(page, [ACTIVE_THREAD, EXPIRED_THREAD, CLOSED_THREAD]);
 
     await page.goto("support/thread-expired");
-    await page.waitForLoadState("networkidle");
 
     // The reason is SHOWN, not discovered from a provider error at send time.
     const blocked = page.getByTestId("support-reply-blocked");
@@ -296,7 +293,6 @@ test.describe("Support inbox", () => {
     // Positive control: the answerable thread DOES get a box, so the assertion
     // above is not passing because the box never renders.
     await page.goto("support/thread-active");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("support-reply-box")).toBeVisible();
   });
 
@@ -307,7 +303,6 @@ test.describe("Support inbox", () => {
     await stubSupportApi(page, [ACTIVE_THREAD, UNROUTABLE_THREAD, CLOSED_THREAD]);
 
     await page.goto("support/thread-unroutable");
-    await page.waitForLoadState("networkidle");
 
     // The operator is told the workspace was never connected — not a generic
     // "this channel has no adapter", which would be false (Slack has one) and
@@ -323,7 +318,6 @@ test.describe("Support inbox", () => {
     // POSITIVE CONTROL: the routable thread on the very same channel-level
     // adapter still gets a box, so this is per thread, not per channel.
     await page.goto("support/thread-active");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("support-reply-box")).toBeVisible();
   });
 
@@ -334,7 +328,6 @@ test.describe("Support inbox", () => {
     await stubSupportApi(page, [ACTIVE_THREAD, UNROUTABLE_THREAD, CLOSED_THREAD]);
 
     await page.goto("support");
-    await page.waitForLoadState("networkidle");
 
     const active = page.getByTestId("support-section-active");
     const unanswerable = page.getByTestId("support-section-expired");
@@ -379,7 +372,6 @@ test.describe("Support inbox", () => {
     );
 
     await page.goto("support/thread-active");
-    await page.waitForLoadState("networkidle");
 
     // The operator's own words, stored and unsent — with a way out.
     const resend = page.getByTestId("support-message-resend");

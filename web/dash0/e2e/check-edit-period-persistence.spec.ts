@@ -16,10 +16,8 @@ test.describe("Check edit — confirmation/recovery period persistence", () => {
     // Create a check to edit.
     await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
     await page.waitForURL(/\/checks/);
-    await page.waitForLoadState("networkidle");
     await page.getByTestId("new-check-button").click();
     await page.waitForURL(/\/checks\/new/);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
     const checkName = `E2E Period Persist ${Date.now()}`;
@@ -29,7 +27,6 @@ test.describe("Check edit — confirmation/recovery period persistence", () => {
 
     // Wait for check detail page
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
-    await page.waitForLoadState("networkidle");
     await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
 
     // Navigate to edit page
@@ -50,7 +47,6 @@ test.describe("Check edit — confirmation/recovery period persistence", () => {
 
     // Wait for navigation back to check detail page
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/, { timeout: 10000 });
-    await page.waitForLoadState("networkidle");
 
     // Navigate to edit page again to verify the values were persisted
     // server-side (this bug's regression: a fresh fetch would show the old

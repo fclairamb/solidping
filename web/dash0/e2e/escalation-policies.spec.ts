@@ -168,7 +168,6 @@ test.describe("Escalation policy editor", () => {
     try {
       // Navigate to the edit page (addressed by uid).
       await page.goto(`orgs/test/escalation-policies/${policy.uid}`);
-      await page.waitForLoadState("networkidle");
 
       // The first step's type selector must show "Notification connection".
       const typeCombobox = page.getByRole("combobox").first();
@@ -256,7 +255,6 @@ test.describe("Escalation policy editor", () => {
     try {
       // Detail page is addressed by uid; the breadcrumb reads `params.uid`.
       await page.goto(`orgs/test/escalation-policies/${policy.uid}`);
-      await page.waitForLoadState("networkidle");
 
       // Scope to the top header so we assert on the breadcrumb, not the
       // sidebar link or the page heading.

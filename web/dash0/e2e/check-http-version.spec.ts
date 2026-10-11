@@ -20,7 +20,6 @@ test.describe("HTTP check httpVersion", () => {
     const token = await getAuthToken(page);
 
     await page.goto("orgs/test/checks/new?checkType=http");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
     await page.getByTestId("section-advanced-trigger").click();
@@ -53,7 +52,6 @@ test.describe("HTTP check httpVersion", () => {
     // The Advanced section auto-opens on the edit page: it holds a
     // non-default value.
     await page.goto(`orgs/test/checks/${uid}/edit`);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-http-version-select")).toContainText(
       "HTTP/2",
     );

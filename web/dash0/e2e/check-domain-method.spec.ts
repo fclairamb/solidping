@@ -30,7 +30,6 @@ test.describe("Domain check lookup method", () => {
     const token = await getAuthToken(page);
 
     await page.goto("orgs/test/checks/new?checkType=domain");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-domain-input")).toBeVisible();
 
     // Advanced is a collapsed-by-default section — open it.
@@ -65,7 +64,6 @@ test.describe("Domain check lookup method", () => {
     const token = await getAuthToken(page);
 
     await page.goto("orgs/test/checks/new?checkType=domain");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-domain-input")).toBeVisible();
 
     await page.getByTestId("section-advanced-trigger").click();
@@ -89,7 +87,6 @@ test.describe("Domain check lookup method", () => {
     // Reload the edit page — the Advanced section auto-opens (non-default
     // value) and the select reflects the saved method.
     await page.goto(`orgs/test/checks/${uid}/edit`);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-domain-method-select")).toContainText(
       "WHOIS only",
     );

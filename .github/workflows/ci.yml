@@ -730,12 +730,11 @@ jobs:
             echo "::endgroup::"
           done
 
-  # The dash0 suite is split into 2 shards, each with its own Postgres and its
-  # own server, so the shards share no state at all. Within a shard the tests
-  # still run on ONE worker, in the same order as before: the suite shares the
-  # seeded `test` org and several specs mutate it, so tests are not safe to run
-  # concurrently against one server. 2 is a deliberate cap on parallel runners,
-  # not a technical limit.
+  # The dash0 suite is split into 2 shards (2 is a deliberate cap on parallel
+  # runners). Each shard runs 2 Playwright workers, and each worker has its own
+  # server and database, so no two workers share state: the suite shares the
+  # seeded `test` org and several specs mutate it, so two workers against ONE
+  # server would interfere.
   #
   # Playwright splits by test COUNT into two contiguous halves (alphabetical
   # file order). On 2026-09-24 the first half was ~1.5 min heavier, so the two
@@ -809,9 +808,21 @@ jobs:
       # instance before the real one starts) and false-positive against that
       # temporary instance, which then resets the connection mid-migration.
       # The healthcheck's 5s interval clears that window before its first probe.
+      # The database is thrown away with the runner, so durability buys
+      # nothing: with fsync, synchronous commit and full-page writes off, a
+      # write never waits on the runner's disk. Both servers of a shard share
+      # this instance, and in run 38116043824 a token POST stalled for exactly
+      # 5.04 s on both at the same second (suspected I/O stall, not proven).
+      # All three settings apply on reload, no restart.
       - name: Start PostgreSQL
         working-directory: .
-        run: docker compose up -d --wait postgres
+        run: |
+          docker compose up -d --wait postgres
+          docker compose exec -T postgres psql -U postgres -v ON_ERROR_STOP=1 \
+            -c "ALTER SYSTEM SET fsync = off" \
+            -c "ALTER SYSTEM SET synchronous_commit = off" \
+            -c "ALTER SYSTEM SET full_page_writes = off" \
+            -c "SELECT pg_reload_conf()"
 
       - name: Start solidping server
         working-directory: .
@@ -848,27 +859,56 @@ jobs:
           # dot); it works because systemconfig declares this exact EnvVar.
           SP_AUTH_REGISTRATION_EMAIL_PATTERN: ".*"
 
-      - name: Wait for server
+      # A second server on its own database, for the shard's second Playwright
+      # worker (E2E_BASE_URLS below, web/dash0/e2e/base-url.ts). Each worker
+      # gets its own server and database, so the two share no state, exactly
+      # like the two shards. That is what makes a second worker safe: against
+      # ONE server they would interfere, since specs mutate the seeded `test`
+      # org. Same env as the server above, apart from the port and database.
+      - name: Start a second server (second worker)
+        working-directory: .
         run: |
-          for i in $(seq 1 30); do
-            curl -sf http://localhost:4000/api/mgmt/health && exit 0
-            sleep 1
+          docker compose exec -T postgres psql -U postgres -v ON_ERROR_STOP=1 \
+            -c "CREATE DATABASE solidping_w1 OWNER solidping"
+          ./solidping serve > "$GITHUB_WORKSPACE/solidping-server-w1.log" 2>&1 &
+          echo "solidping second server pid $!"
+          disown
+        env:
+          PORT: "4010"
+          SP_RUNMODE: test
+          SP_DB_RESET: "true"
+          SP_DB_TYPE: postgres
+          SP_DB_URL: postgres://solidping:solidping@localhost:55432/solidping_w1?sslmode=disable
+          SP_SERVER_RATE_LIMITING_REQUESTS_PER_MINUTE: "0"
+          SP_SERVER_RATE_LIMITING_MAX_CONCURRENT: "0"
+          SP_AUTH_REGISTRATION_EMAIL_PATTERN: ".*"
+
+      - name: Wait for servers
+        run: |
+          for port in 4000 4010; do
+            ok=""
+            for i in $(seq 1 30); do
+              if curl -sf "http://localhost:$port/api/mgmt/health"; then ok=1; break; fi
+              sleep 1
+            done
+            [[ -n "$ok" ]] || { echo "Server on :$port failed to start"; exit 1; }
           done
-          echo "Server failed to start" && exit 1
 
       - name: Run E2E tests (shard ${{ matrix.shard }}/2)
         run: bunx playwright test --shard=${{ matrix.shard }}/2
         env:
           CI: "true"
-          # Playwright splits by test COUNT, and the first (alphabetical) half
-          # is the slower one: run 38099366941 took 1144 s on shard 1 vs 831 s
-          # on shard 2, on top of status0 (93 s, shard 1) and the side-car
-          # (188 s, shard 2). The tests around the halfway point are slow
-          # (~5.5 s each): 45:55 overshot to 878 s vs 1140 s (run
-          # 38100867178), so 97:103 moves ~16 of them. This variable is
-          # read by Playwright (lib/cli/testActions.js) but not documented; if
-          # a release drops it, the split silently goes back to 50:50.
-          PWTEST_SHARD_WEIGHTS: "97:103"
+          # One worker per server (playwright.config.ts sets workers to the
+          # number of URLs).
+          E2E_BASE_URLS: "http://localhost:4000/d/,http://localhost:4010/d/"
+          # Playwright splits by test COUNT, not duration. Each shard also runs
+          # an extra suite after the dash0 one: status0 (~76 s, shard 1) and
+          # the session-continuity + SSO side-car (~189 s, shard 2). 53:47 is
+          # the count split that evens the two jobs out given the per-test
+          # durations of run 38112104671 (2 workers per shard). This variable
+          # is read by Playwright (lib/cli/testActions.js) but not documented;
+          # if a release drops it, the split silently goes back to 50:50.
+          PWTEST_SHARD_WEIGHTS: "53:47"
 
       # status0's public status page has its own Playwright suite, and the WHOLE
       # of it runs here — no hand-maintained file list, so a new spec is covered
@@ -982,16 +1022,21 @@ jobs:
           echo "::group::solidping server log (tail)"
           tail -n 300 "$GITHUB_WORKSPACE/solidping-server.log" || echo "(no server log)"
           echo "::endgroup::"
+          echo "::group::solidping second server log (tail)"
+          tail -n 300 "$GITHUB_WORKSPACE/solidping-server-w1.log" || echo "(no second server log)"
+          echo "::endgroup::"
           echo "::group::solidping side-car log (tail)"
           tail -n 300 "$GITHUB_WORKSPACE/solidping-sidecar.log" || echo "(no side-car log)"
           echo "::endgroup::"
           echo "::group::server crash signatures"
           grep -nE "panic:|goroutine [0-9]+|fatal error|signal SIG|runtime error|nil pointer|out of memory|Killed" \
-            "$GITHUB_WORKSPACE/solidping-server.log" "$GITHUB_WORKSPACE/solidping-sidecar.log" || echo "(no crash signatures found)"
+            "$GITHUB_WORKSPACE/solidping-server.log" "$GITHUB_WORKSPACE/solidping-server-w1.log" \
+            "$GITHUB_WORKSPACE/solidping-sidecar.log" || echo "(no crash signatures found)"
           echo "::endgroup::"
           # If the server died during the run, report that as the real cause so a
           # connection-refused cascade is treated as a server-crash bug, not a flake.
-          if ! curl -sf http://localhost:4000/api/mgmt/health >/dev/null 2>&1; then
+          if ! curl -sf http://localhost:4000/api/mgmt/health >/dev/null 2>&1 \
+            || ! curl -sf http://localhost:4010/api/mgmt/health >/dev/null 2>&1; then
             echo "::error::solidping server was DOWN at the end of the E2E run — an unrecovered crash (see log above) cascaded into the test failures, not a flake."
           fi
 
@@ -1014,6 +1059,7 @@ jobs:
             web/status0/playwright-report/
             web/status0/test-results/
             solidping-server.log
+            solidping-server-w1.log
             solidping-sidecar.log
           retention-days: 7
 

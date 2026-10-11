@@ -54,7 +54,6 @@ test.describe("Incident notifications", () => {
     }
 
     await firstLink.click();
-    await page.waitForLoadState("networkidle");
 
     // The Notifications card must be present on the incident detail page.
     await expect(page.getByTestId("notifications-card")).toBeVisible();
@@ -71,7 +70,6 @@ test.describe("Incident notifications", () => {
     const page = authenticatedPage;
 
     await page.goto(`${DASH_BASE}/orgs/test/incidents/${SEEDED_INCIDENT_UID}`);
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("notifications-card")).toBeVisible();
 
@@ -96,7 +94,6 @@ test.describe("Incident notifications", () => {
     const page = authenticatedPage;
 
     await page.goto(`${DASH_BASE}/orgs/test/me/notifications`);
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("my-notifications-page")).toBeVisible();
 
@@ -122,7 +119,6 @@ test.describe("Incident notifications", () => {
       .click();
 
     await page.waitForURL(/\/me\/notifications/);
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("my-notifications-page")).toBeVisible();
   });

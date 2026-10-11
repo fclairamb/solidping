@@ -8,7 +8,6 @@ test.describe("Tokens", () => {
 
     // Navigate to tokens page
     await page.goto("orgs/test/account/tokens");
-    await page.waitForLoadState("networkidle");
 
     // Click "New Token" button
     await page.getByTestId("new-token-button").click();
@@ -29,7 +28,6 @@ test.describe("Tokens", () => {
 
     // Close the dialog
     await page.getByTestId("token-created-done").click();
-    await page.waitForLoadState("networkidle");
 
     // Verify the token appears in the table with "Never" expiry
     const tokenRow = page.locator("tr", { hasText: tokenName });
@@ -44,7 +42,6 @@ test.describe("Tokens", () => {
 
     // Navigate to tokens page
     await page.goto("orgs/test/account/tokens");
-    await page.waitForLoadState("networkidle");
 
     // Click "New Token" button
     await page.getByTestId("new-token-button").click();
@@ -65,7 +62,6 @@ test.describe("Tokens", () => {
 
     // Close the dialog
     await page.getByTestId("token-created-done").click();
-    await page.waitForLoadState("networkidle");
 
     // Verify the token appears in the table with a date (not "Never")
     const tokenRow = page.locator("tr", { hasText: tokenName });
@@ -80,7 +76,6 @@ test.describe("Tokens", () => {
 
     // Navigate to tokens page
     await page.goto("orgs/test/account/tokens");
-    await page.waitForLoadState("networkidle");
 
     // Create a token to revoke
     await page.getByTestId("new-token-button").click();
@@ -89,7 +84,6 @@ test.describe("Tokens", () => {
     await page.getByTestId("token-create-button").click();
     await expect(page.getByTestId("token-created-value")).toBeVisible();
     await page.getByTestId("token-created-done").click();
-    await page.waitForLoadState("networkidle");
 
     // Find the token row and click its revoke button
     const tokenRow = page.locator("tr", { hasText: tokenName });

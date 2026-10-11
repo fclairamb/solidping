@@ -244,7 +244,6 @@ test.describe("hero KPI tile", () => {
       await useTheme(page, theme);
       await mockDashboardStats(page, 92);
       await page.goto("orgs/test");
-      await page.waitForLoadState("networkidle");
 
       const hero = page.getByTestId("kpi-tile-availability").locator('[data-slot="kpi-tile"]');
       await expect(hero).toBeVisible({ timeout: 10000 });
@@ -341,7 +340,6 @@ test.describe("page header tile", () => {
     const page = authenticatedPage;
     await useTheme(page, "light");
     await page.goto("orgs/test/checks");
-    await page.waitForLoadState("networkidle");
 
     const tile = page.locator('[data-slot="page-header-tile"]').first();
     await expect(tile).toHaveAttribute("data-tone", "brand");
@@ -378,7 +376,6 @@ test.describe("page header tile", () => {
       });
     });
     await page.goto(`orgs/test/integrations/${uid}`);
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByRole("heading", { level: 1, name: "Acme webhook" })).toBeVisible();
     const tile = page.locator('[data-slot="page-header-tile"]').first();

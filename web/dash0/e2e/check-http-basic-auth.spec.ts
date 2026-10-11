@@ -40,7 +40,6 @@ test.describe("HTTP check basic auth", () => {
 
     // ── Create, through the real form ──
     await page.goto("orgs/test/checks/new?checkType=http");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
     const checkName = `E2E Basic Auth ${Date.now()}`;
@@ -77,7 +76,6 @@ test.describe("HTTP check basic auth", () => {
 
     // ── Edit only the URL ──
     await page.goto(`orgs/test/checks/${uid}/edit`);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-url-input")).toBeVisible();
 
     // The stored credential is advertised, not echoed: the inputs stay empty

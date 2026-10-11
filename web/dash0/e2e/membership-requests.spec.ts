@@ -13,7 +13,6 @@ test.describe("Membership requests", () => {
     const page = authenticatedPage;
 
     await page.goto("orgs/test/organization/members");
-    await page.waitForLoadState("networkidle");
 
     // Tab nav exposes a "Requests" link — even when empty the tab is rendered.
     await expect(page.getByRole("link", { name: /requests/i })).toBeVisible();
@@ -25,7 +24,6 @@ test.describe("Membership requests", () => {
     const page = authenticatedPage;
 
     await page.goto("orgs/test/organization/settings");
-    await page.waitForLoadState("networkidle");
 
     const pattern = page.locator("#emailPattern");
     await pattern.fill(".*");
@@ -58,7 +56,6 @@ test.describe("Membership requests", () => {
     const page = authenticatedPage;
 
     await page.goto("orgs/test/organization/settings");
-    await page.waitForLoadState("networkidle");
 
     await page.locator("#emailPattern").fill(".+@example\\.com");
     const test = page.locator("#testEmail");
@@ -79,7 +76,6 @@ test.describe("Membership requests", () => {
     // at /organization/members?tab=requests. That path never rendered a
     // requests tab — a beforeLoad redirect keeps those old links working.
     await page.goto("orgs/test/organization/members?tab=requests");
-    await page.waitForLoadState("networkidle");
 
     await expect(page).toHaveURL(/\/organization\/requests(?:$|\?)/);
     await expect(
@@ -111,7 +107,6 @@ test.describe("Membership requests", () => {
     // Once the request endpoint exists we just confirm the admin page
     // doesn't crash on any pending row state.
     await page.goto("orgs/test/organization/requests");
-    await page.waitForLoadState("networkidle");
 
     // The Requests page renders without error.
     await expect(
@@ -143,7 +138,6 @@ test.describe("Membership requests", () => {
     });
 
     await page.goto("no-org");
-    await page.waitForLoadState("networkidle");
 
     await expect(
       page.getByRole("heading", { name: /start a new organization/i }),

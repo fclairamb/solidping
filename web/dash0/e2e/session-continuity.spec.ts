@@ -168,6 +168,9 @@ test.describe("Session continuity past access-token expiry", () => {
     const page = authenticatedPage;
     const expirySeconds = configuredExpirySeconds!;
 
+    // The browser's clock is faked so the 60 s proactive interval can be
+    // fast-forwarded instead of waited out; the server's expiry stays real.
+    await page.clock.install();
     await page.goto("orgs/test/checks");
     await page.waitForLoadState("networkidle");
 
@@ -178,7 +181,13 @@ test.describe("Session continuity past access-token expiry", () => {
     // first tick already landed inside the token's lifetime — this
     // specifically exercises "isn't yet in the last third" not firing
     // early, then does fire once inside the window.
-    await page.waitForTimeout((expirySeconds + 65) * 1000);
+    //
+    // Real time first, so the access token is genuinely expired server-side
+    // (otherwise the reload below would pass even with no refresh), then 65 s
+    // of browser time for the interval to tick. It used to be (expiry + 65) s
+    // of real sleep.
+    await page.waitForTimeout((expirySeconds + 2) * 1000);
+    await page.clock.runFor(65_000);
 
     await page.reload();
     await page.waitForLoadState("networkidle");
@@ -205,6 +214,8 @@ test.describe("Session continuity past access-token expiry", () => {
     const page = authenticatedPage;
     const expirySeconds = configuredExpirySeconds!;
 
+    // Faked browser clock, as in "the proactive timer..." above.
+    await page.clock.install();
     await page.goto("orgs/test/checks");
     await page.waitForLoadState("networkidle");
 
@@ -225,14 +236,15 @@ test.describe("Session continuity past access-token expiry", () => {
     // NO user interaction: the proactive 60s timer in AuthContext should
     // find there's no refresh token to use and escalate — clear the
     // session and redirect — on its own, before any reactive 401 or manual
-    // action.
-    await page.waitForTimeout((expirySeconds + 65) * 1000);
+    // action. Real expiry first, then 65 s of browser time (see above).
+    await page.waitForTimeout((expirySeconds + 2) * 1000);
+    await page.clock.runFor(65_000);
 
     await page.waitForURL(/\/login/, { timeout: 10000 });
     await expect(page).toHaveURL(/session_expired=true/);
 
     // The live socket must not have hammered the server with the dead
-    // token for the whole ~75s+ wait — a handful of attempts (the pre-dial
+    // token for the whole ~75s+ (browser time) window — a handful of attempts (the pre-dial
     // check plus at most one or two reconnects before give-up) is fine;
     // dozens (the captured incident's 139-in-70-minutes rate) is not.
     expect(wsAttempts).toBeLessThanOrEqual(5);

@@ -292,7 +292,6 @@ test.describe("Check Groups", () => {
     // Navigate directly to new check form (fresh load to pick up API-created group)
     const newCheckUrl = page.url().replace(/\/orgs\/([^/]+).*/, "/orgs/$1/checks/new");
     await page.goto(newCheckUrl);
-    await page.waitForLoadState("networkidle");
 
     // Wait for form to be ready
     await expect(page.getByTestId("check-name-input")).toBeVisible({

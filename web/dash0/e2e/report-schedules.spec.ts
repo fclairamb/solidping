@@ -20,7 +20,6 @@ test.describe("Uptime report schedules", () => {
     const recipient = `e2e-${Date.now()}@acme.com`;
 
     await page.goto("orgs/test/organization/report-schedules");
-    await page.waitForLoadState("networkidle");
 
     await page.getByTestId("report-new").click();
     await page.waitForURL(/\/report-schedules\/new/, { timeout: 10000 });
@@ -58,7 +57,6 @@ test.describe("Uptime report schedules", () => {
     // The list page shows a COUNT, never the addresses: recipients are PII and
     // a list view is the easiest place for them to be shoulder-surfed.
     await page.goto("orgs/test/organization/report-schedules");
-    await page.waitForLoadState("networkidle");
 
     const row = page.getByTestId("report-row").filter({ hasText: name }).first();
     await expect(row).toBeVisible();
@@ -100,7 +98,6 @@ test.describe("Uptime report schedules", () => {
       // "Send me a test" lives on the edit page — per the design reference,
       // list rows carry only the Pencil/Trash2 icon pair.
       await page.goto(`orgs/test/organization/report-schedules/${uid}`);
-      await page.waitForLoadState("networkidle");
 
       await page.getByTestId("report-test").click();
 
@@ -135,7 +132,6 @@ test.describe("Organization breadcrumb", () => {
       ["report-schedules", "Uptime reports"],
     ] as const) {
       await page.goto(`orgs/test/organization/${path}`);
-      await page.waitForLoadState("networkidle");
       // Section root on its own index page renders as plain (non-link) text
       // — the negative control that keeps "the leaf is visible" from passing
       // vacuously on a blank page.
@@ -153,7 +149,6 @@ test.describe("Organization breadcrumb", () => {
 
     // report-schedules/new: section crumb becomes a link, leaf is "New".
     await page.goto("orgs/test/organization/report-schedules/new");
-    await page.waitForLoadState("networkidle");
     await expect(
       header().getByRole("link", { name: "Uptime reports" }),
     ).toBeVisible();
@@ -177,7 +172,6 @@ test.describe("Organization breadcrumb", () => {
 
     try {
       await page.goto(`orgs/test/organization/report-schedules/${uid}`);
-      await page.waitForLoadState("networkidle");
       await expect(
         header().getByRole("link", { name: "Uptime reports" }),
       ).toBeVisible();
@@ -192,7 +186,6 @@ test.describe("Organization breadcrumb", () => {
     // private-locations/register: section crumb becomes a link, leaf is
     // "Register".
     await page.goto("orgs/test/organization/private-locations/register");
-    await page.waitForLoadState("networkidle");
     await expect(
       header().getByRole("link", { name: "Private locations" }),
     ).toBeVisible();

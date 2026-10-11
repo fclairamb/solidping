@@ -67,7 +67,6 @@ test.describe("Members last seen", () => {
     await memberContext.close();
 
     await page.goto("orgs/test/organization/members");
-    await page.waitForLoadState("networkidle");
 
     const lastSeenCell = page.getByTestId(`member-last-seen-${email}`);
     await expect(lastSeenCell).toBeVisible();
@@ -124,7 +123,6 @@ test.describe("Members last seen", () => {
     await memberContext.close();
 
     await page.goto("orgs/test/organization/members");
-    await page.waitForLoadState("networkidle");
 
     const lastSeenCell = page.getByTestId(`member-last-seen-${email}`);
     await expect(lastSeenCell).toBeVisible();
@@ -155,7 +153,6 @@ test.describe("Members last seen", () => {
     // this is the negative control.
 
     await page.goto("orgs/test/organization/members");
-    await page.waitForLoadState("networkidle");
 
     const lastSeenCell = page.getByTestId(`member-last-seen-${email}`);
     await expect(lastSeenCell).toBeVisible();

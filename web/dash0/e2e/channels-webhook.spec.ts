@@ -130,7 +130,6 @@ test.describe("Standard Webhooks channel form", () => {
     );
 
     await page.goto(`orgs/test/integrations/${uid}`);
-    await page.waitForLoadState("networkidle");
 
     await page.getByTestId("webhook-send-test").click();
 
@@ -175,7 +174,6 @@ test.describe("Standard Webhooks channel form", () => {
     );
 
     await page.goto(`orgs/test/integrations/${uid}`);
-    await page.waitForLoadState("networkidle");
 
     await page.getByTestId("webhook-send-test").click();
 

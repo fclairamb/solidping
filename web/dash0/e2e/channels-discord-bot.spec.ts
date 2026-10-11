@@ -105,7 +105,6 @@ test.describe("Discord bot settings panel", () => {
     );
 
     await page.goto(`orgs/test/integrations/${LEGACY_UID}`);
-    await page.waitForLoadState("networkidle");
 
     // The not-connected block explains the bot, and the webhook field is still
     // there with the stored URL — this is the regression guard for every
@@ -133,7 +132,6 @@ test.describe("Discord bot settings panel", () => {
     await stubIntegration(page, LEGACY_UID, { webhook_url: "" });
 
     await page.goto(`orgs/test/integrations/${LEGACY_UID}`);
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("discord-not-connected")).toBeVisible();
     await expect(page.getByTestId("discord-install")).toBeVisible();
@@ -159,7 +157,6 @@ test.describe("Discord bot settings panel", () => {
     await stubIntegration(page, LEGACY_UID, { webhook_url: "" });
 
     await page.goto(`orgs/test/integrations/${LEGACY_UID}`);
-    await page.waitForLoadState("networkidle");
 
     const installButton = page.getByTestId("discord-install");
     await expect(installButton).toBeVisible();
@@ -233,7 +230,6 @@ test.describe("Discord bot settings panel", () => {
     );
 
     await page.goto(`orgs/test/integrations/${BOT_UID}`);
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("discord-connected")).toBeVisible();
     await expect(page.getByTestId("discord-not-connected")).toHaveCount(0);
@@ -283,7 +279,6 @@ test.describe("Discord bot settings panel", () => {
     );
 
     await page.goto(`orgs/test/integrations/${LEGACY_UID}`);
-    await page.waitForLoadState("networkidle");
 
     // The panel still explains itself and still offers the webhook, which is
     // the only Discord delivery this instance can actually perform.
@@ -331,7 +326,6 @@ test.describe("Discord bot settings panel", () => {
     );
 
     await page.goto(`orgs/test/integrations/${BOT_UID}`);
-    await page.waitForLoadState("networkidle");
 
     // The channel tab is the one that opens for a channel destination.
     await expect(page.getByTestId("discord-channel-combobox")).toBeVisible();
@@ -440,7 +434,6 @@ test.describe("Discord bot settings panel", () => {
     );
 
     await page.goto(`orgs/test/integrations/${BOT_UID}`);
-    await page.waitForLoadState("networkidle");
 
     await page.getByTestId("discord-tab-dm").click();
     await page.getByTestId("discord-user-combobox").click();
@@ -494,7 +487,6 @@ test.describe("Discord bot settings panel", () => {
     );
 
     await page.goto(`orgs/test/integrations/${BOT_UID}`);
-    await page.waitForLoadState("networkidle");
 
     // A stored dm_user_id opens the DM tab, so the destination is never
     // misreported as a channel one.

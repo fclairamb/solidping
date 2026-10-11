@@ -7,10 +7,8 @@ test.describe("Check labels", () => {
   async function gotoNewCheck(page: import("@playwright/test").Page) {
     await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
     await page.waitForURL(/\/checks/);
-    await page.waitForLoadState("networkidle");
     await page.getByTestId("new-check-button").click();
     await page.waitForURL(/\/checks\/new/);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
     // Labels now live in the collapsed "Organization" section.
     await expandSection(page, "section-organization-trigger");

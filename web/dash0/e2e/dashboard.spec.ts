@@ -330,7 +330,6 @@ test.describe("Dashboard", () => {
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
-    await page.waitForLoadState("networkidle");
 
     // Monitored tile → checks list
     await page.getByTestId("kpi-tile-monitored").click();
@@ -338,7 +337,6 @@ test.describe("Dashboard", () => {
     expect(page.url()).toMatch(/\/orgs\/test\/checks\/?$/);
 
     await page.goBack();
-    await page.waitForLoadState("networkidle");
 
     // Down tile → checks list filtered to failing statuses
     await page.getByTestId("kpi-tile-down").click();
@@ -347,7 +345,6 @@ test.describe("Dashboard", () => {
     expect(page.url()).toContain("status=down");
 
     await page.goBack();
-    await page.waitForLoadState("networkidle");
 
     // Active incidents tile → incidents list with state=active
     await page.getByTestId("kpi-tile-incidents").click();
@@ -370,7 +367,6 @@ test.describe("Dashboard", () => {
     });
 
     await page.goto("orgs/test");
-    await page.waitForLoadState("networkidle");
 
     // Glance card is present and lists the seeded checks.
     const glance = page.getByTestId("checks-glance");
@@ -432,7 +428,6 @@ test.describe("Dashboard", () => {
     });
 
     await page.goto("orgs/test");
-    await page.waitForLoadState("networkidle");
 
     // "Monitored" tile shows the org-wide enabled count and the disabled sub.
     const monitored = page.getByTestId("kpi-tile-monitored");
@@ -473,7 +468,6 @@ test.describe("Dashboard", () => {
     });
 
     await page.goto("orgs/test");
-    await page.waitForLoadState("networkidle");
 
     const tile = page.getByTestId("kpi-tile-availability");
     await expect(tile).toBeVisible({ timeout: 10000 });
@@ -512,7 +506,6 @@ test.describe("Dashboard", () => {
       });
 
       await page.goto("orgs/test");
-      await page.waitForLoadState("networkidle");
 
       const tile = page.getByTestId("kpi-tile-availability");
       await expect(tile).toBeVisible({ timeout: 10000 });
@@ -535,7 +528,6 @@ test.describe("Dashboard", () => {
     });
 
     await page.goto("orgs/test");
-    await page.waitForLoadState("networkidle");
 
     const banner = page.getByTestId("overall-status-banner");
     await expect(banner).toBeVisible({ timeout: 10000 });
@@ -565,7 +557,6 @@ test.describe("Dashboard", () => {
     });
 
     await page.goto("orgs/test");
-    await page.waitForLoadState("networkidle");
 
     const glance = page.getByTestId("checks-glance");
     await expect(glance).toBeVisible({ timeout: 10000 });
@@ -596,7 +587,6 @@ test.describe("Dashboard", () => {
     });
 
     await page.goto("orgs/test");
-    await page.waitForLoadState("networkidle");
 
     const rows = page.getByTestId("glance-row");
     await expect(rows).toHaveCount(3);
@@ -683,7 +673,6 @@ test.describe("Dashboard", () => {
     });
 
     await page.goto("orgs/test");
-    await page.waitForLoadState("networkidle");
 
     const incidentsTile = page.getByTestId("kpi-tile-incidents");
     await expect(incidentsTile).toBeVisible({ timeout: 10000 });
@@ -725,7 +714,6 @@ test.describe("Dashboard", () => {
     });
 
     await page.goto("orgs/test");
-    await page.waitForLoadState("networkidle");
 
     const feed = page.getByTestId("recent-activity-footer");
     await expect(feed).toBeVisible({ timeout: 10000 });
@@ -777,7 +765,6 @@ test.describe("Dashboard", () => {
     });
 
     await page.goto("orgs/test");
-    await page.waitForLoadState("networkidle");
 
     const feed = page.getByTestId("recent-activity-footer");
     await expect(feed).toBeVisible({ timeout: 10000 });
@@ -790,7 +777,6 @@ test.describe("Dashboard", () => {
 
     // Same mocked /events response backs the Events page's own query.
     await page.goto("orgs/test/events");
-    await page.waitForLoadState("networkidle");
 
     const eventsRow = page.getByRole("row", { name: /Check Created/ });
     await expect(eventsRow.locator("svg.lucide-cpu.size-4")).toBeVisible();
@@ -865,7 +851,6 @@ test.describe("Dashboard", () => {
     });
 
     await page.goto("orgs/test");
-    await page.waitForLoadState("networkidle");
 
     const feed = page.getByTestId("recent-activity-footer");
     await expect(feed).toBeVisible({ timeout: 10000 });
@@ -959,7 +944,6 @@ test.describe("Dashboard", () => {
     });
 
     await page.goto("orgs/test");
-    await page.waitForLoadState("networkidle");
 
     const banner = page.getByTestId("overall-status-banner");
     await expect(banner).toBeVisible({ timeout: 10000 });
@@ -984,7 +968,6 @@ test.describe("Dashboard", () => {
     });
 
     await page.goto("orgs/test");
-    await page.waitForLoadState("networkidle");
 
     const banner = page.getByTestId("overall-status-banner");
     await expect(banner).toBeVisible({ timeout: 10000 });
@@ -1011,7 +994,6 @@ test.describe("Dashboard", () => {
     });
 
     await page.goto("orgs/test");
-    await page.waitForLoadState("networkidle");
 
     const banner = page.getByTestId("overall-status-banner");
     await expect(banner).toBeVisible({ timeout: 10000 });
@@ -1050,7 +1032,6 @@ test.describe("Dashboard", () => {
     });
 
     await page.goto("orgs/test");
-    await page.waitForLoadState("networkidle");
 
     const banner = page.getByTestId("overall-status-banner");
     await expect(banner).toBeVisible({ timeout: 10000 });
@@ -1087,7 +1068,6 @@ test.describe("Dashboard", () => {
     });
 
     await page.goto("orgs/test");
-    await page.waitForLoadState("networkidle");
 
     const banner = page.getByTestId("overall-status-banner");
     await expect(banner).toBeVisible({ timeout: 10000 });

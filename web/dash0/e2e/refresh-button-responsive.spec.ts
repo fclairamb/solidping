@@ -69,7 +69,6 @@ test.describe("Header refresh button responsiveness", () => {
     const connection = await created.json();
 
     await page.goto("orgs/test/integrations");
-    await page.waitForLoadState("networkidle");
 
     const refresh = page.getByTestId("integrations-refresh");
     await refresh.waitFor({ state: "visible" });

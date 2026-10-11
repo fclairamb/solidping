@@ -72,7 +72,6 @@ test.describe("SMS mode panel", () => {
     });
 
     await page.goto("orgs/test/integrations");
-    await page.waitForLoadState("networkidle");
 
     const panel = page.getByTestId("sms-mode-panel");
     await expect(panel).toBeVisible();
@@ -102,7 +101,6 @@ test.describe("SMS mode panel", () => {
     await mockInstanceSMS(page, { enabled: false, voiceEnabled: false });
 
     await page.goto("orgs/test/integrations");
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("sms-mode-badge")).toHaveText(/not available/i);
 
@@ -127,7 +125,6 @@ test.describe("SMS mode panel", () => {
     });
 
     await page.goto("orgs/test/integrations/new?type=twilio");
-    await page.waitForLoadState("networkidle");
     await page
       .getByTestId("twilio-account-sid")
       .fill("AC00000000000000000000000000000001");
@@ -139,7 +136,6 @@ test.describe("SMS mode panel", () => {
     );
 
     await page.goto("orgs/test/integrations");
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("sms-mode-badge")).toHaveText(/your own account/i);
 
@@ -157,7 +153,6 @@ test.describe("SMS mode panel", () => {
     // Deleting it returns the org to the server-provided mode.
     await deleteAllConnections(page, token);
     await page.reload();
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("sms-mode-badge")).toHaveText(
       /provided by this instance/i,
     );

@@ -9,7 +9,6 @@ test.describe("Status page detail header", () => {
     // Open the status pages list.
     await page.getByTestId("app-sidebar").getByRole("link", { name: "Status Pages" }).click();
     await page.waitForURL(/\/status-pages/);
-    await page.waitForLoadState("networkidle");
 
     // Create a fresh status page so we have a detail page to visit.
     await page.getByRole("link", { name: "New Status Page" }).first().click();
@@ -83,7 +82,6 @@ test.describe("Status page history period (24h)", () => {
     // Create a fresh status page.
     await page.getByTestId("app-sidebar").getByRole("link", { name: "Status Pages" }).click();
     await page.waitForURL(/\/status-pages$/);
-    await page.waitForLoadState("networkidle");
 
     await page.getByRole("link", { name: "New Status Page" }).first().click();
     await page.waitForURL(/\/status-pages\/new/);
@@ -104,7 +102,6 @@ test.describe("Status page history period (24h)", () => {
 
     const statusPageUrl = page.url();
     await page.goto(`${statusPageUrl}/edit`);
-    await page.waitForLoadState("networkidle");
 
     // The History Period select trigger defaults to "90 days".
     const periodSelect = page.locator("#historyPeriod");
@@ -119,11 +116,9 @@ test.describe("Status page history period (24h)", () => {
     // Save.
     await page.getByRole("button", { name: "Save Changes" }).click();
     await page.waitForURL(/\/status-pages\/(?!new$)[^/]+$/, { timeout: 10000 });
-    await page.waitForLoadState("networkidle");
 
     // Reload the edit page — the 24h choice must persist.
     await page.goto(`${statusPageUrl}/edit`);
-    await page.waitForLoadState("networkidle");
     await expect(page.locator("#historyPeriod")).toContainText("24 hours");
   });
 });
@@ -137,7 +132,6 @@ test.describe("Status pages list toolbar", () => {
     // Open the status pages list.
     await page.getByTestId("app-sidebar").getByRole("link", { name: "Status Pages" }).click();
     await page.waitForURL(/\/status-pages$/);
-    await page.waitForLoadState("networkidle");
 
     // Refresh (icon-only label hidden below sm, but its accessible name is
     // always "Refresh") and the New Status Page link both exist.
@@ -174,7 +168,6 @@ test.describe("Status page availability thresholds", () => {
     // Create a fresh status page.
     await page.getByTestId("app-sidebar").getByRole("link", { name: "Status Pages" }).click();
     await page.waitForURL(/\/status-pages$/);
-    await page.waitForLoadState("networkidle");
 
     await page.getByRole("link", { name: "New Status Page" }).first().click();
     await page.waitForURL(/\/status-pages\/new/);
@@ -194,7 +187,6 @@ test.describe("Status page availability thresholds", () => {
 
     const statusPageUrl = page.url();
     await page.goto(`${statusPageUrl}/edit`);
-    await page.waitForLoadState("networkidle");
 
     // Empty by default (page thresholds unset ⇒ platform defaults).
     const thresholdsSection = page.getByTestId("availability-thresholds");
@@ -209,11 +201,9 @@ test.describe("Status page availability thresholds", () => {
     await degradedInput.fill("98");
     await page.getByRole("button", { name: "Save Changes" }).click();
     await page.waitForURL(/\/status-pages\/(?!new$)[^/]+$/, { timeout: 10000 });
-    await page.waitForLoadState("networkidle");
 
     // Reload the edit page — the custom thresholds must persist.
     await page.goto(`${statusPageUrl}/edit`);
-    await page.waitForLoadState("networkidle");
     await expect(page.locator("#thresholdUp")).toHaveValue("99.5");
     await expect(page.locator("#thresholdDegraded")).toHaveValue("98");
 
@@ -222,10 +212,8 @@ test.describe("Status page availability thresholds", () => {
     await page.locator("#thresholdDegraded").fill("");
     await page.getByRole("button", { name: "Save Changes" }).click();
     await page.waitForURL(/\/status-pages\/(?!new$)[^/]+$/, { timeout: 10000 });
-    await page.waitForLoadState("networkidle");
 
     await page.goto(`${statusPageUrl}/edit`);
-    await page.waitForLoadState("networkidle");
     await expect(page.locator("#thresholdUp")).toHaveValue("");
     await expect(page.locator("#thresholdDegraded")).toHaveValue("");
   });

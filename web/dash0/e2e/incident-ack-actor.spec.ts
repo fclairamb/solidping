@@ -31,7 +31,6 @@ test.describe("Incident acknowledgment attribution", () => {
     const page = authenticatedPage;
 
     await page.goto(`${DASH_BASE}/orgs/test/incidents/${incidentUid}`);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByText("Incident Details")).toBeVisible();
 
     // Start from a clean slate: a previous run may have left it acknowledged.

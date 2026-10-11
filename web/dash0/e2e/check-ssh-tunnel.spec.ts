@@ -101,7 +101,6 @@ test.describe("SSH tunnel selector", () => {
 
     // ── Create a tunneled http check through the real form ──
     await page.goto("orgs/test/checks/new?checkType=http");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
     const checkName = `E2E Tunneled ${Date.now()}`;
@@ -129,7 +128,6 @@ test.describe("SSH tunnel selector", () => {
 
     // ── The bastion's detail page lists its dependents ──
     await page.goto(`orgs/test/checks/${bastion.uid}`);
-    await page.waitForLoadState("networkidle");
     const dependents = page.getByTestId("check-tunnel-dependents");
     await expect(dependents).toBeVisible();
     await expect(dependents).toContainText(checkName);
@@ -176,7 +174,6 @@ test.describe("SSH tunnel UX gaps", () => {
 
     await emptyStateLink.click();
     await page.waitForURL(/checkType=ssh/);
-    await page.waitForLoadState("networkidle");
 
     // The new-check form landed with SSH preselected — no picking a type by
     // hand, and no half-filled http/tcp form left behind.
@@ -358,7 +355,6 @@ test.describe("SSH tunnel UX gaps", () => {
     expect(createResp.status()).toBe(201);
 
     await page.goto("orgs/test/checks");
-    await page.waitForLoadState("networkidle");
 
     // Narrow the paginated list to just this check.
     await page.getByPlaceholder("Search checks...").fill(checkName);

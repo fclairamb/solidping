@@ -67,7 +67,6 @@ test.describe("Chart point preview", () => {
     // Create a check and navigate to its detail page.
     await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
     await page.waitForURL(/\/checks/);
-    await page.waitForLoadState("networkidle");
     await page.getByTestId("new-check-button").click();
     await page.waitForURL(/\/checks\/new/);
     await page.waitForLoadState("networkidle");
@@ -220,7 +219,6 @@ test.describe("Chart point preview", () => {
 
     await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
     await page.waitForURL(/\/checks/);
-    await page.waitForLoadState("networkidle");
     await page.getByTestId("new-check-button").click();
     await page.waitForURL(/\/checks\/new/);
     await page.waitForLoadState("networkidle");

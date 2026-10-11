@@ -62,7 +62,6 @@ test.describe("Checks import sources", () => {
     await deleteCheckBySlug(page, token, "e2e-gatus-api");
 
     await page.goto("orgs/test/checks");
-    await page.waitForLoadState("networkidle");
 
     await page.getByTestId("checks-more-actions").click();
     await page.getByTestId("import-button").click();
@@ -103,7 +102,6 @@ test.describe("Checks import sources", () => {
     await deleteCheckBySlug(page, token, "e2e-yaml-export");
 
     await page.goto("orgs/test/checks");
-    await page.waitForLoadState("networkidle");
 
     await page.getByTestId("checks-more-actions").click();
     await page.getByTestId("import-button").click();
@@ -129,7 +127,6 @@ test.describe("Checks import sources", () => {
     const page = authenticatedPage;
 
     await page.goto("orgs/test/checks");
-    await page.waitForLoadState("networkidle");
 
     await page.getByTestId("checks-more-actions").click();
     await page.getByTestId("import-button").click();

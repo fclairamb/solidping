@@ -132,10 +132,8 @@ async function gotoCheckDetail(page: Page): Promise<BucketQuery[]> {
     .getByRole("link", { name: "Checks" })
     .click();
   await page.waitForURL(/\/checks/);
-  await page.waitForLoadState("networkidle");
   await page.getByTestId("new-check-button").click();
   await page.waitForURL(/\/checks\/new/);
-  await page.waitForLoadState("networkidle");
 
   await page.getByTestId("check-name-input").fill(`E2E Strip ${Date.now()}`);
   await page
@@ -144,7 +142,6 @@ async function gotoCheckDetail(page: Page): Promise<BucketQuery[]> {
   await page.getByTestId("check-submit-button").click();
 
   await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
-  await page.waitForLoadState("networkidle");
   await expect(page.locator(".recharts-wrapper")).toBeVisible({
     timeout: 15000,
   });

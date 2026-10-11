@@ -21,7 +21,6 @@ test.describe("Website crawl check", () => {
     const headers = { Authorization: `Bearer ${token}` };
 
     await page.goto("orgs/test/checks/new?checkType=crawl");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
     // Robots and links default on.
@@ -81,7 +80,6 @@ test.describe("Website crawl check", () => {
     expect(run.running).toBe(false);
 
     await page.reload();
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("crawl-reports")).toBeVisible({ timeout: 15000 });
     await expect(page.getByTestId("crawl-card")).toContainText(/pages? crawled/);
 

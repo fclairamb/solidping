@@ -18,7 +18,6 @@ test.describe("Check detail — Incidents card click-through", () => {
     const page = authenticatedPage;
 
     await page.goto(`${DASH_BASE}/orgs/test/checks/${CHECK_WITH_INCIDENT_UID}`);
-    await page.waitForLoadState("networkidle");
 
     const card = page.getByTestId("incidents-card");
     await expect(card).toBeVisible();
@@ -39,7 +38,6 @@ test.describe("Check detail — Incidents card click-through", () => {
     expect(url.searchParams.get("checkUid")).toBe(CHECK_WITH_INCIDENT_UID);
     expect(url.searchParams.get("state")).toBe("all");
 
-    await page.waitForLoadState("networkidle");
 
     // Rendered rows are scoped to this check's incident only.
     const rows = page.getByTestId("incident-row");
@@ -55,10 +53,8 @@ test.describe("Check detail — Incidents card click-through", () => {
     // Create a fresh check via the UI — brand new, so it has zero incidents.
     await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
     await page.waitForURL(/\/checks/);
-    await page.waitForLoadState("networkidle");
     await page.getByTestId("new-check-button").click();
     await page.waitForURL(/\/checks\/new/);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
     const checkName = `E2E Zero Incidents ${Date.now()}`;

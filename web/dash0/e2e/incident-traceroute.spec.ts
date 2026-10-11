@@ -23,7 +23,6 @@ test.describe("Incident traceroute attachment", () => {
     const page = authenticatedPage;
 
     await page.goto(`${DASH_BASE}/orgs/test/incidents/${TRACE_INCIDENT}`);
-    await page.waitForLoadState("networkidle");
 
     const card = page.getByTestId("incident-traceroute-card");
     await expect(card).toBeVisible();
@@ -78,7 +77,6 @@ test.describe("Incident traceroute attachment", () => {
     const page = authenticatedPage;
 
     await page.goto(`${DASH_BASE}/orgs/test/incidents/${NO_TRACE_INCIDENT}`);
-    await page.waitForLoadState("networkidle");
 
     // Positive control: this incident's page really did render — it has the
     // screenshot card — so the absence below is about the attachment kind and
@@ -121,7 +119,6 @@ test.describe("Incident traceroute attachment", () => {
     await page.goto(
       `${DASH_BASE}/orgs/test/checks/${TRACE_CHECK}/results/${TRACE_RESULT}`,
     );
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("incident-traceroute-card")).toBeVisible();
     await expect(page.getByTestId("incident-traceroute-hop-1")).toContainText(

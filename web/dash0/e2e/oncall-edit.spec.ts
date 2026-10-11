@@ -51,7 +51,6 @@ test.describe("On-call schedule edit page", () => {
     try {
       // Visit the detail page (addressed by uid); the Edit button is a route link.
       await page.goto(`orgs/test/on-call/${uid}`);
-      await page.waitForLoadState("networkidle");
       await expect(
         page.getByRole("heading", { name: originalName }),
       ).toBeVisible();
@@ -69,7 +68,6 @@ test.describe("On-call schedule edit page", () => {
       await page.waitForURL(
         (url) => url.pathname.endsWith(`/on-call/${uid}/edit`),
       );
-      await page.waitForLoadState("networkidle");
 
       // The form pre-fills with the current name.
       const nameInput = page.getByLabel(/^name/i).first();
@@ -85,7 +83,6 @@ test.describe("On-call schedule edit page", () => {
           url.pathname.endsWith(`/on-call/${uid}`) &&
           !url.pathname.endsWith("/edit"),
       );
-      await page.waitForLoadState("networkidle");
 
       await expect(
         page.getByRole("heading", { name: updatedName }),

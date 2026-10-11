@@ -35,7 +35,6 @@ async function paint(locator: Locator) {
 
 async function openDesignReference(page: Page) {
   await page.goto("orgs/test/design-reference");
-  await page.waitForLoadState("networkidle");
   await expect(page.getByTestId("gradient-button-group")).toBeVisible();
 }
 

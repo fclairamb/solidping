@@ -35,7 +35,6 @@ test.describe("Status Updates", () => {
     // Navigate to create page
     await newUpdateButton.click();
     await page.waitForURL(/\/status-updates\/new/);
-    await page.waitForLoadState("networkidle");
 
     await expect(
       page.getByRole("heading", { name: "New update" }),
@@ -58,7 +57,6 @@ test.describe("Status Updates", () => {
 
     // Should navigate back to the list
     await page.waitForURL(/\/status-updates\/?$/, { timeout: 10000 });
-    await page.waitForLoadState("networkidle");
 
     // The new row should be visible
     await expect(page.getByText(uniqueTitle)).toBeVisible({ timeout: 10000 });
@@ -97,7 +95,6 @@ test.describe("Status Updates", () => {
       /\/status-updates\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/edit/,
       { timeout: 10000 },
     );
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("status-update-form-title")).toHaveValue(
       uniqueTitle,
     );
@@ -105,7 +102,6 @@ test.describe("Status Updates", () => {
     // Back to the list to continue exercising the Pencil/Trash2 row actions.
     await page.goBack();
     await page.waitForURL(/\/status-updates\/?$/, { timeout: 10000 });
-    await page.waitForLoadState("networkidle");
     await expect(page.getByText(uniqueTitle)).toBeVisible({ timeout: 10000 });
 
     // Click the edit (Pencil) button on the new row (regression: still works)
@@ -117,7 +113,6 @@ test.describe("Status Updates", () => {
       /\/status-updates\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/edit/,
       { timeout: 10000 },
     );
-    await page.waitForLoadState("networkidle");
 
     await expect(
       page.getByRole("heading", { name: "Edit update" }),

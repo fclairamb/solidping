@@ -70,10 +70,8 @@ async function mockAvailability(page: Page, periods: Period[]) {
 async function createCheckAndOpen(page: Page, name: string) {
   await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
   await page.waitForURL(/\/checks/);
-  await page.waitForLoadState("networkidle");
   await page.getByTestId("new-check-button").click();
   await page.waitForURL(/\/checks\/new/);
-  await page.waitForLoadState("networkidle");
 
   await page.getByTestId("check-name-input").fill(name);
   await page

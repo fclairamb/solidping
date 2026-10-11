@@ -61,7 +61,6 @@ test.describe("ICMP burst form fields", () => {
     const token = await getAuthToken(page);
 
     await page.goto("orgs/test/checks/new?checkType=icmp");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
     await page.getByTestId("check-name-input").fill(`E2E burst form ${Date.now()}`);
@@ -127,7 +126,6 @@ test.describe("ICMP burst form fields", () => {
       // this is exactly the save the spec warns about: a module that failed
       // to re-emit them would drop them and the burst would silently die.
       await page.goto(`orgs/test/checks/${uid}/edit`);
-      await page.waitForLoadState("networkidle");
       await expect(page.getByTestId("check-name-input")).toBeVisible();
       await page.getByTestId("check-name-input").fill(`E2E burst rename ${Date.now()}`);
 

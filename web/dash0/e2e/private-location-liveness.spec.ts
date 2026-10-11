@@ -55,7 +55,6 @@ test.describe("Private location liveness monitor", () => {
     expect(checkBody.config).toEqual({ region: `@${SLUG}` });
 
     await page.goto("orgs/test/organization/private-locations");
-    await page.waitForLoadState("networkidle");
 
     // No agent enrolled yet: the location reads "No agent", the monitor is linked.
     await expect(page.getByTestId(`private-region-state-${SLUG}`)).toHaveAttribute("data-state", "empty");
@@ -71,7 +70,6 @@ test.describe("Private location liveness monitor", () => {
     expect(deleted.ok()).toBeTruthy();
 
     await page.reload();
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId(`liveness-monitor-off-${SLUG}`)).toBeVisible();
 
     await page.getByTestId(`enable-liveness-monitor-${SLUG}`).click();

@@ -57,7 +57,6 @@ test.describe("Entitlements usage", () => {
     await resetEntitlements(page, token);
 
     await page.goto("orgs/test/organization/usage");
-    await page.waitForLoadState("networkidle");
 
     // Heading + the seven rows (Checks, Checks per minute, Users, Private
     // location agents, Service level objectives, Custom domains, WhatsApp
@@ -97,7 +96,6 @@ test.describe("Entitlements usage", () => {
     expect(resp.ok()).toBeTruthy();
 
     await page.goto("orgs/test/organization/usage");
-    await page.waitForLoadState("networkidle");
 
     const row = page.getByTestId("usage-row-Custom domains");
     await expect(row).toBeVisible();
@@ -146,7 +144,6 @@ test.describe("Entitlements usage", () => {
 
     // Surface 1: the checks list, where the unexplained gaps actually show up.
     await page.goto("orgs/test/checks");
-    await page.waitForLoadState("networkidle");
 
     const listBanner = page.getByTestId("check-rate-limit-banner");
     await expect(listBanner).toBeVisible();
@@ -158,7 +155,6 @@ test.describe("Entitlements usage", () => {
 
     // Surface 2: the usage page, next to the bar it explains.
     await page.goto("orgs/test/organization/usage");
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("check-rate-limit-banner")).toBeVisible();
     // The remedy link is deliberately ON here, and is no longer a self-link:
@@ -176,7 +172,6 @@ test.describe("Entitlements usage", () => {
     // Surface 3: the scheduling page — the one surface that must NOT link to
     // itself. This is the invariant the old (mis-placed) assertion reached for.
     await page.goto("orgs/test/checks/scheduling");
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("check-rate-limit-banner")).toBeVisible();
     await expect(
@@ -220,7 +215,6 @@ test.describe("Entitlements usage", () => {
 
     // The usage page reflects the saturated checks bar (current / current).
     await page.goto("orgs/test/organization/usage");
-    await page.waitForLoadState("networkidle");
     await expect(
       page.getByTestId(new RegExp(`^usage-row-`)).first(),
     ).toBeVisible();

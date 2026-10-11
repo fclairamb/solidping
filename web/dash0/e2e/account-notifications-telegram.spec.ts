@@ -58,7 +58,6 @@ authTest.describe("Account Notifications — Telegram", () => {
       await stubPublicConfig(page, false);
 
       await page.goto("orgs/test/account/notifications");
-      await page.waitForLoadState("networkidle");
 
       await page.getByTestId("add-contact-button").click();
 
@@ -74,7 +73,6 @@ authTest.describe("Account Notifications — Telegram", () => {
       await stubPublicConfig(page, true);
 
       await page.goto("orgs/test/account/notifications");
-      await page.waitForLoadState("networkidle");
 
       await page.getByTestId("add-contact-button").click();
 
@@ -127,7 +125,6 @@ authTest.describe("Account Notifications — Telegram", () => {
       await page.context().route("https://t.me/**", (route) => route.abort());
 
       await page.goto("orgs/test/account/notifications");
-      await page.waitForLoadState("networkidle");
 
       await page.getByTestId("add-contact-button").click();
       await page.getByTestId("telegram-connect-button").click();
@@ -182,7 +179,6 @@ authTest.describe("Account Notifications — Telegram", () => {
       });
 
       await page.goto("orgs/test/account/notifications");
-      await page.waitForLoadState("networkidle");
 
       // The generic Test affordance every other ready method has.
       const testBtn = page.getByTestId("test-route-route-telegram-1");
@@ -216,7 +212,6 @@ authTest.describe("Account Notifications — Telegram", () => {
       });
 
       await page.goto("orgs/test/account/notifications");
-      await page.waitForLoadState("networkidle");
 
       await expect(page.getByTestId("telegram-reconnect-contact-telegram-1")).toBeVisible();
       await expect(page.getByTestId("test-route-route-telegram-1")).toHaveCount(0);
@@ -244,7 +239,6 @@ authTest.describe("Account Notifications — Telegram", () => {
       });
 
       await page.goto("orgs/test/account/notifications");
-      await page.waitForLoadState("networkidle");
 
       await expect(page.getByTestId("telegram-reconnect-contact-telegram-1")).toBeVisible();
       // ...and NOT the generic verified badge.
@@ -286,7 +280,6 @@ authTest.describe("Account Notifications — Telegram", () => {
       });
 
       await page.goto("orgs/test/me/notifications");
-      await page.waitForLoadState("networkidle");
 
       await expect(page.getByText("Telegram", { exact: true }).first()).toBeVisible();
       // The reason is translated prose that names the fix, not a raw token.

@@ -96,7 +96,6 @@ test.describe("Result detail prev/next navigation", () => {
 
     await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
     await page.waitForURL(/\/checks/);
-    await page.waitForLoadState("networkidle");
     await page.getByTestId("new-check-button").click();
     await page.waitForURL(/\/checks\/new/);
     await page.waitForLoadState("networkidle");
@@ -123,7 +122,6 @@ test.describe("Result detail prev/next navigation", () => {
     const checkUid = await gotoCheckDetail(page);
 
     await page.goto(`orgs/test/checks/${checkUid}/results/${resultUids.newest}`);
-    await page.waitForLoadState("networkidle");
 
     const previousButton = page.getByTestId("result-nav-previous");
     const nextButton = page.getByTestId("result-nav-next");
@@ -165,7 +163,6 @@ test.describe("Result detail prev/next navigation", () => {
     await page.goto(
       `orgs/test/checks/${checkUid}/results/${resultUids.middle}?region=eu`
     );
-    await page.waitForLoadState("networkidle");
 
     const previousButton = page.getByTestId("result-nav-previous");
     const nextButton = page.getByTestId("result-nav-next");

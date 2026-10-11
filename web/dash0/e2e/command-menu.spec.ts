@@ -474,15 +474,12 @@ test.describe("Command Menu (Cmd+K)", () => {
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
-    await page.waitForLoadState("networkidle");
 
     // First create a check so we have one to search for
     await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
     await page.waitForURL(/\/checks/);
-    await page.waitForLoadState("networkidle");
     await page.getByTestId("new-check-button").click();
     await page.waitForURL(/\/checks\/new/);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
     const checkName = `CmdK Test ${Date.now()}`;
@@ -490,7 +487,6 @@ test.describe("Command Menu (Cmd+K)", () => {
     await page.getByTestId("check-url-input").fill("https://example.com/cmdk-test");
     await page.getByTestId("check-submit-button").click();
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
-    await page.waitForLoadState("networkidle");
 
     // Now go back to dashboard and open command menu
     await page.getByRole("link", { name: "Dashboard" }).click();

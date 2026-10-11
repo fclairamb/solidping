@@ -147,7 +147,6 @@ test.describe("Account Notifications — Discord", () => {
     const state = await stubAccount(page, { suggestion: true });
 
     await page.goto("orgs/test/account/notifications");
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("discord-connect-row")).toBeVisible();
 
@@ -214,7 +213,6 @@ test.describe("Account Notifications — Discord", () => {
     });
 
     await page.goto("orgs/test/account/notifications");
-    await page.waitForLoadState("networkidle");
 
     const status = page.getByTestId("discord-mention-status");
     await expect(status).toBeVisible();
@@ -227,7 +225,6 @@ test.describe("Account Notifications — Discord", () => {
     await stubAccount(page, { mention: { linked: false, guild: "acme" } });
 
     await page.goto("orgs/test/account/notifications");
-    await page.waitForLoadState("networkidle");
 
     const status = page.getByTestId("discord-mention-status");
     await expect(status).toBeVisible();
@@ -244,7 +241,6 @@ test.describe("Account Notifications — Discord", () => {
     await stubAccount(page);
 
     await page.goto("orgs/test/account/notifications");
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("discord-connect-row")).toBeVisible();
     await expect(page.getByTestId("discord-mention-status")).toHaveCount(0);
@@ -259,7 +255,6 @@ test.describe("Account Notifications — Discord", () => {
     await stubAccount(page, { botEnabled: false, suggestion: true });
 
     await page.goto("orgs/test/account/notifications");
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("slack-connect-row")).toBeVisible();
     await expect(page.getByTestId("discord-connect-row")).toHaveCount(0);
@@ -289,7 +284,6 @@ test.describe("Account Notifications — Discord", () => {
     );
 
     await page.goto("orgs/test/account/notifications");
-    await page.waitForLoadState("networkidle");
 
     const row = page.getByTestId("notification-routes-list");
     await expect(row).toBeVisible();

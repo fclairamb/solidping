@@ -84,7 +84,6 @@ test.describe("Checks list (mobile)", () => {
     });
 
     await page.goto("orgs/test/checks");
-    await page.waitForLoadState("networkidle");
 
     const row = page.getByRole("row", { name: new RegExp(LONG_CHECK_NAME) });
     await expect(row).toBeVisible();
@@ -182,7 +181,6 @@ test.describe("Incidents list (mobile)", () => {
     );
 
     await page.goto("orgs/test/incidents");
-    await page.waitForLoadState("networkidle");
 
     const groupHeader = page.getByTestId("incident-group-header");
     await expect(groupHeader).toBeVisible();
@@ -256,7 +254,6 @@ test.describe("Members list (mobile)", () => {
     });
 
     await page.goto("orgs/test/organization/members");
-    await page.waitForLoadState("networkidle");
 
     const row = page.getByRole("row", { name: new RegExp(LONG_MEMBER_EMAIL) });
     await expect(row).toBeVisible();
@@ -344,7 +341,6 @@ test.describe("SLOs list (mobile)", () => {
     });
 
     await page.goto("orgs/test/slos");
-    await page.waitForLoadState("networkidle");
 
     const row = page.getByTestId("slo-row").first();
     await expect(row).toBeVisible();

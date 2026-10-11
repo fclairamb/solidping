@@ -127,7 +127,6 @@ test.describe("Slack destination picker", () => {
 
     // Navigate to the channel edit page
     await page.goto(`orgs/test/integrations/${channelUid}`);
-    await page.waitForLoadState("networkidle");
 
     // Open the channel combobox and pick "alerts"
     const combobox = page.getByTestId("slack-channel-combobox");
@@ -154,7 +153,6 @@ test.describe("Notification Channels", () => {
     await deleteAllConnections(page, token);
 
     await page.goto("orgs/test/integrations/new?type=twilio");
-    await page.waitForLoadState("networkidle");
 
     // The Twilio-specific panel renders.
     await expect(page.getByTestId("twilio-panel")).toBeVisible();
@@ -186,7 +184,6 @@ test.describe("Notification Channels", () => {
 
     // 1. Create a webhook channel via the UI
     await page.goto("orgs/test/integrations");
-    await page.waitForLoadState("networkidle");
 
     await page.getByRole("link", { name: /new integration/i }).first().click();
     await page.waitForURL((url) => url.pathname.endsWith("/integrations/new"));
@@ -223,7 +220,6 @@ test.describe("Notification Channels", () => {
 
     // 2. Channel appears in the list
     await page.goto("orgs/test/integrations");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByText(channelName)).toBeVisible({ timeout: 15000 });
 
     // 3. Create a check via API and bind the channel via the edit UI
@@ -242,7 +238,6 @@ test.describe("Notification Channels", () => {
     const check = await checkResp.json();
 
     await page.goto(`orgs/test/checks/${check.uid}/edit`);
-    await page.waitForLoadState("networkidle");
 
     // Toggle the new channel on
     const channelLabel = page.getByText(channelName, { exact: true });
@@ -266,7 +261,6 @@ test.describe("Notification Channels", () => {
 
     // 4. Unbind via the edit page
     await page.goto(`orgs/test/checks/${check.uid}/edit`);
-    await page.waitForLoadState("networkidle");
     await page.getByText(channelName, { exact: true }).click();
     await page.getByTestId("check-submit-button").click();
     await page.waitForURL((url) => !url.pathname.endsWith("/edit"));
@@ -283,7 +277,6 @@ test.describe("Notification Channels", () => {
 
     // 5. Delete the channel via the UI
     await page.goto(`orgs/test/integrations/${channelUid}`);
-    await page.waitForLoadState("networkidle");
     await page.getByRole("button", { name: /delete integration/i }).click();
     const dialog = page.getByRole("alertdialog");
     await expect(dialog).toBeVisible();
@@ -301,14 +294,12 @@ test.describe("Notification Channels", () => {
   }) => {
     const page = authenticatedPage;
     await page.goto("orgs/test/integrations/new");
-    await page.waitForLoadState("networkidle");
 
     await page.getByTestId("pick-slack").click();
     await expect(page).toHaveURL(/[?&]type=slack(&|$)/);
     await expect(page.getByTestId("slack-install")).toBeVisible();
 
     await page.reload();
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("slack-install")).toBeVisible();
 
     await page.goBack();
@@ -321,7 +312,6 @@ test.describe("Notification Channels", () => {
   }) => {
     const page = authenticatedPage;
     await page.goto("orgs/test/integrations/new?type=webhook");
-    await page.waitForLoadState("networkidle");
 
     await page.getByTestId("integration-cancel").click();
     await expect(page).toHaveURL(/integrations\/new$/);
@@ -336,7 +326,6 @@ test.describe("Notification Channels", () => {
   }) => {
     const page = authenticatedPage;
     await page.goto("orgs/test/integrations/new?type=bogus");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("group-notify")).toBeVisible();
   });
 
@@ -345,7 +334,6 @@ test.describe("Notification Channels", () => {
   }) => {
     const page = authenticatedPage;
     await page.goto("orgs/test/integrations/new");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("pick-msteams")).toContainText(
       "Teams (webhook)",
     );
@@ -360,7 +348,6 @@ test.describe("Notification Channels", () => {
     const page = authenticatedPage;
 
     await page.goto("orgs/test/integrations/new");
-    await page.waitForLoadState("networkidle");
 
     // The picker is split into two capability groups.
     const notifyGroup = page.getByTestId("group-notify");
@@ -410,7 +397,6 @@ test.describe("Notification Channels", () => {
     // Reload the edit page — the workflow URL persists (round-trips through
     // the msteams webhook_url settings key on both save and reload).
     await page.goto(`orgs/test/integrations/${uid}`);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByLabel(/webhook url/i)).toHaveValue(workflowUrl);
 
     await deleteConnection(page, token, uid);
@@ -439,7 +425,6 @@ test.describe("Notification Channels", () => {
     const uid = page.url().split("/").pop()!;
 
     await page.goto(`orgs/test/integrations/${uid}`);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByLabel(/webhook url/i)).toHaveValue(hookUrl);
 
     await deleteConnection(page, token, uid);
@@ -451,7 +436,6 @@ test.describe("Notification Channels", () => {
     const page = authenticatedPage;
 
     await page.goto("orgs/test/integrations/new?type=slack-webhook");
-    await page.waitForLoadState("networkidle");
 
     await page.getByLabel("Name").fill(`E2E Slack invalid ${Date.now()}`);
     await page.getByLabel(/webhook url/i).fill("https://example.com/hook");
@@ -475,7 +459,6 @@ test.describe("Notification Channels", () => {
     test.skip(Boolean(config.discord?.botEnabled), "instance has a Discord bot");
 
     await page.goto("orgs/test/integrations/new?type=discord");
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("discord-not-connected")).toBeVisible();
     await expect(
@@ -496,7 +479,6 @@ test.describe("Notification Channels", () => {
     const uid = page.url().split("/").pop()!;
 
     await page.goto(`orgs/test/integrations/${uid}`);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByLabel(/webhook url/i)).toHaveValue(hookUrl);
 
     // Stored as a webhook-only integration: no bot fields.
@@ -523,7 +505,6 @@ test.describe("Notification Channels", () => {
     test.skip(Boolean(config.discord?.botEnabled), "instance has a Discord bot");
 
     await page.goto("orgs/test/integrations/new?type=discord");
-    await page.waitForLoadState("networkidle");
 
     await page.getByLabel("Name").fill(`E2E Discord invalid ${Date.now()}`);
     await page.getByLabel(/webhook url/i).fill("https://example.com/hook");
@@ -539,7 +520,6 @@ test.describe("Notification Channels", () => {
     const page = authenticatedPage;
 
     await page.goto("orgs/test/integrations/new?type=webpush");
-    await page.waitForLoadState("networkidle");
 
     // The WebPushChannelPanel should be rendered.
     const panel = page.getByTestId("webpush-channel-panel");
@@ -600,7 +580,6 @@ test.describe("Notification Channels", () => {
     const check = await checkResp.json();
 
     await page.goto(`orgs/test/checks/${check.uid}/edit`);
-    await page.waitForLoadState("networkidle");
 
     // The notify-capable webhook appears; the freebox source does not.
     await expect(page.getByText(webhookName, { exact: true })).toBeVisible({ timeout: 15000 });
@@ -648,7 +627,6 @@ test.describe("Notification Channels", () => {
     const check = await checkResp.json();
 
     await page.goto(`orgs/test/checks/${check.uid}/edit`);
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByText("No channels yet.")).toBeVisible({ timeout: 15000 });
     await expect(page.getByRole("link", { name: /create one/i })).toBeVisible();
@@ -700,7 +678,6 @@ test.describe("Notification Channels", () => {
     );
 
     await page.goto(`orgs/test/integrations/${integration.uid}`);
-    await page.waitForLoadState("networkidle");
 
     // The generic test section renders for this non-webhook integration.
     await expect(page.getByTestId("integration-test-section")).toBeVisible();
@@ -737,7 +714,6 @@ test.describe("Notification Channels", () => {
     const integration = await resp.json();
 
     await page.goto(`orgs/test/integrations/${integration.uid}`);
-    await page.waitForLoadState("networkidle");
 
     const saveBtn = page.getByTestId("integration-save");
     const sendTest = page.getByTestId("webhook-send-test");
@@ -764,7 +740,6 @@ test.describe("Notification Channels", () => {
 
     // 4. Save → back to clean: Save disabled, Send test enabled again.
     await saveBtn.click();
-    await page.waitForLoadState("networkidle");
     await expect(saveBtn).toBeDisabled();
     await expect(sendTest).toBeEnabled();
 
@@ -826,7 +801,6 @@ test.describe("Integration detail — recent notifications", () => {
     );
 
     await page.goto(`orgs/test/integrations/${webhook.uid}`);
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByText("Recent notifications")).toBeVisible();
 
@@ -914,7 +888,6 @@ test.describe("Email suppressions section", () => {
     );
 
     await page.goto(`orgs/test/integrations/${integration.uid}`);
-    await page.waitForLoadState("networkidle");
 
     // Both rows render: the check-scoped one with its resolved check name,
     // and the org-wide one labeled "All checks".
@@ -970,7 +943,6 @@ test.describe("Email suppressions section", () => {
     );
 
     await page.goto(`orgs/test/integrations/${integration.uid}`);
-    await page.waitForLoadState("networkidle");
 
     await expect(
       page.getByText(/no one has unsubscribed/i),
@@ -1020,7 +992,6 @@ test.describe("Email integration recipients", () => {
 
     // Reload the edit page — both recipients persist as chips.
     await page.goto(`orgs/test/integrations/${uid}`);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("email-recipients-chip-0")).toContainText(
       "a@x.example.com",
     );
@@ -1073,7 +1044,6 @@ test.describe("Email integration recipients", () => {
     // button's disabled state is driven purely by recipient validity, not
     // entangled with the edit page's separate isDirty gating.
     await page.goto("orgs/test/integrations/new?type=email");
-    await page.waitForLoadState("networkidle");
     await page.getByLabel("Name").fill(`E2E Email Invalid ${Date.now()}`);
 
     const recipientsField = page.getByTestId("email-recipients-input");

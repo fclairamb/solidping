@@ -5,15 +5,16 @@ import {
   type BrowserContext,
 } from "@playwright/test";
 
+import { e2eBaseUrl } from "./base-url";
+
 type AuthStorageState = Awaited<ReturnType<BrowserContext["storageState"]>>;
 
-// Honor E2E_BASE_URL (side-car test server) like playwright.config.ts does;
-// fall back to the CI default. Spec files use this for direct page.request
-// setup/cleanup calls so they hit the same server as page navigation instead
-// of silently falling back to :4000.
-export const API_BASE = process.env.E2E_BASE_URL
-  ? new URL(process.env.E2E_BASE_URL).origin
-  : "http://localhost:4000";
+// The origin of the server THIS worker targets (e2e/base-url.ts: a side-car
+// via E2E_BASE_URL, or one server per worker via E2E_BASE_URLS). Spec files use
+// this for direct page.request setup/cleanup calls so they hit the same server
+// as page navigation instead of silently falling back to :4000, or to another
+// worker's database.
+export const API_BASE = new URL(e2eBaseUrl()).origin;
 
 /**
  * DASH_BASE is the URL prefix the dashboard is mounted at, matching
@@ -121,6 +122,31 @@ export async function fetchAuthCapabilities(
  * "@playwright/test" instead of from this file, or use the plain `page`
  * fixture, and are unaffected by this change).
  */
+/**
+ * Lets clicks pass through Sonner toasts (the toaster sits top-right, over the
+ * page header's action buttons).
+ *
+ * Creating a check fires a "Not on any status page yet / Publish it" toast
+ * asynchronously, AFTER the detail page has rendered, right on top of the
+ * header's Edit button. A test that then clicks Edit puts the mouse on the
+ * toast, and Sonner pauses a hovered toast's auto-dismiss, so the toast never
+ * leaves and the click times out (checks.spec "TCP check form round-trips…",
+ * 2026-10-11). No test interacts with a toast; they only read its text, which
+ * this keeps intact.
+ *
+ * A constructed stylesheet (CSSOM) rather than a <style> element, so it needs
+ * no CSP allowance.
+ */
+async function makeToastsClickThrough(context: BrowserContext): Promise<void> {
+  await context.addInitScript(() => {
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync(
+      "[data-sonner-toaster], [data-sonner-toaster] * { pointer-events: none !important; }",
+    );
+    document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+  });
+}
+
 export const test = base.extend<
   { authenticatedPage: Page },
   { authWorkerStorageState: AuthStorageState }
@@ -158,6 +184,7 @@ export const test = base.extend<
     const context = await browser.newContext({
       storageState: authWorkerStorageState,
     });
+    await makeToastsClickThrough(context);
     const page = await context.newPage();
 
     // The old fixture ended with the browser sitting on the post-login

@@ -12,7 +12,6 @@ test.describe("Account Notifications", () => {
     authenticatedPage: page,
   }) => {
     await page.goto("orgs/test/account/notifications");
-    await page.waitForLoadState("networkidle");
 
     // The email contact should be auto-seeded and visible.
     const list = page.getByTestId("notification-routes-list");
@@ -26,11 +25,9 @@ test.describe("Account Notifications", () => {
     authenticatedPage: page,
   }) => {
     await page.goto("orgs/test/account/profile");
-    await page.waitForLoadState("networkidle");
 
     // Click the Notifications tab.
     await page.getByRole("link", { name: "Notifications" }).click();
-    await page.waitForLoadState("networkidle");
 
     await expect(page).toHaveURL(/account\/notifications/);
   });
@@ -39,7 +36,6 @@ test.describe("Account Notifications", () => {
     authenticatedPage: page,
   }) => {
     await page.goto("orgs/test/account/notifications");
-    await page.waitForLoadState("networkidle");
 
     // Click "Add method".
     await page.getByTestId("add-contact-button").click();
@@ -53,7 +49,6 @@ test.describe("Account Notifications", () => {
     await page.getByTestId("add-contact-submit").click();
 
     // The phone row should appear in the list.
-    await page.waitForLoadState("networkidle");
     const list = page.getByTestId("notification-routes-list");
     await expect(list.getByText("Phone (SMS)")).toBeVisible();
   });
@@ -64,7 +59,6 @@ test.describe("Account Notifications", () => {
     // Grant notifications permission so the browser doesn't block PushManager.
     await page.context().grantPermissions(["notifications"]);
     await page.goto("orgs/test/account/notifications");
-    await page.waitForLoadState("networkidle");
 
     // Open the add form.
     await page.getByTestId("add-contact-button").click();
@@ -217,7 +211,6 @@ test.describe("Account Notifications", () => {
     );
 
     await page.goto("orgs/test/account/notifications");
-    await page.waitForLoadState("networkidle");
 
     // The webpush route row should be visible.
     const list = page.getByTestId("notification-routes-list");
@@ -291,7 +284,6 @@ test.describe("Account Notifications", () => {
     });
 
     await page.goto("orgs/test/account/notifications");
-    await page.waitForLoadState("networkidle");
 
     // Open the verify dialog for the unverified phone.
     await page.getByTestId(`verify-phone-${contactUid}`).click();
@@ -346,7 +338,6 @@ test.describe("Account Notifications", () => {
     });
 
     await page.goto("orgs/test/account/notifications");
-    await page.waitForLoadState("networkidle");
 
     await expect(
       page.getByTestId("test-route-route-phone-verified"),

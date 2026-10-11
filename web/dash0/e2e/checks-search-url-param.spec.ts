@@ -108,7 +108,6 @@ test.describe("Checks search box syncs to ?q=", () => {
       const target = new URL(page.url());
       target.searchParams.set("q", matchName);
       await page.goto(target.toString());
-      await page.waitForLoadState("networkidle");
 
       await expect(page.getByTestId("checks-search-input")).toHaveValue(matchName);
       await expect(page.getByText(matchName)).toBeVisible();

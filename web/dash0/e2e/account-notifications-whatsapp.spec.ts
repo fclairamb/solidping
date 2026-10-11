@@ -34,7 +34,6 @@ authTest.describe("Account Notifications — WhatsApp", () => {
       await stubPublicConfig(page, false);
 
       await page.goto("orgs/test/account/notifications");
-      await page.waitForLoadState("networkidle");
 
       await page.getByTestId("add-contact-button").click();
 
@@ -50,7 +49,6 @@ authTest.describe("Account Notifications — WhatsApp", () => {
       await stubPublicConfig(page, true);
 
       await page.goto("orgs/test/account/notifications");
-      await page.waitForLoadState("networkidle");
 
       await page.getByTestId("add-contact-button").click();
 
@@ -72,7 +70,6 @@ authTest.describe("Account Notifications — WhatsApp", () => {
       });
 
       await page.goto("orgs/test/account/notifications");
-      await page.waitForLoadState("networkidle");
 
       await page.getByTestId("add-contact-button").click();
       await page.getByTestId("add-contact-type-whatsapp").click();
@@ -145,7 +142,6 @@ authTest.describe("Account Notifications — WhatsApp", () => {
       });
 
       await page.goto("orgs/test/account/notifications");
-      await page.waitForLoadState("networkidle");
 
       // The row renders with the correctly-cased channel label.
       const list = page.getByTestId("notification-routes-list");
@@ -195,7 +191,6 @@ authTest.describe("Account Notifications — WhatsApp", () => {
       });
 
       await page.goto("orgs/test/me/notifications");
-      await page.waitForLoadState("networkidle");
 
       // Correct brand casing — a plain CSS capitalize would render "Whatsapp".
       await expect(page.getByText("WhatsApp", { exact: true })).toBeVisible();

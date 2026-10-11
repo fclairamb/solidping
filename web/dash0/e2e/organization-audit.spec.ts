@@ -27,7 +27,6 @@ test.describe("Organization audit log", () => {
     const policy = await created.json();
 
     await page.goto("orgs/test/organization/audit");
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("audit-page")).toBeVisible();
 
@@ -35,7 +34,6 @@ test.describe("Organization audit log", () => {
     // on how busy the shared org's trail is.
     await page.getByTestId("audit-family-filter").click();
     await page.getByRole("option", { name: /escalation polic/i }).click();
-    await page.waitForLoadState("networkidle");
 
     const row = page.getByTestId("audit-row").filter({ hasText: name });
     await expect(row).toBeVisible({ timeout: 10000 });
@@ -55,7 +53,6 @@ test.describe("Organization audit log", () => {
     const page = authenticatedPage;
 
     await page.goto("orgs/test/organization/audit");
-    await page.waitForLoadState("networkidle");
 
     await page.getByTestId("audit-family-filter").click();
     await page.getByRole("option", { name: /^Membership$/i }).click();
@@ -63,7 +60,6 @@ test.describe("Organization audit log", () => {
     await expect(page).toHaveURL(/family=member/);
 
     await page.reload();
-    await page.waitForLoadState("networkidle");
 
     // The filter is restored from the URL rather than reset to "all".
     await expect(page.getByTestId("audit-family-filter")).toContainText(
@@ -189,7 +185,6 @@ test.describe("Organization audit log", () => {
     const page = authenticatedPage;
 
     await page.goto("orgs/test/organization/audit");
-    await page.waitForLoadState("networkidle");
 
     // The control exists for an admin (the test org's user is a super admin);
     // the server-side half — that a non-admin's sourceIp is ignored rather

@@ -162,7 +162,6 @@ test.describe("Members write routes are admin-only", () => {
     );
 
     await page.goto(`orgs/${orgSlug}/organization/members`);
-    await page.waitForLoadState("networkidle");
 
     // The entire /organization/* section (organization.tsx, the shared
     // layout for members/invitations/settings/etc.) has redirected non-admins

@@ -83,7 +83,6 @@ test.describe("Private locations", () => {
     const page = authenticatedPage;
 
     await page.goto("orgs/test/organization/private-locations");
-    await page.waitForLoadState("networkidle");
 
     // Empty state (or at least the create form) renders.
     await expect(page.getByTestId("private-regions-card")).toBeVisible();
@@ -143,7 +142,6 @@ test.describe("Private locations", () => {
 
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto("orgs/test/organization/private-locations");
-    await page.waitForLoadState("networkidle");
 
     await page.getByTestId("mint-token-e2e-dc").click();
     const minted = page.getByTestId("minted-token");
@@ -266,7 +264,6 @@ test.describe("Private locations", () => {
     });
 
     await page.goto("orgs/test/organization/private-locations");
-    await page.waitForLoadState("networkidle");
 
     const deleteButton = page.getByTestId(`revoke-agent-${revokedAgent.uid}`);
     await expect(deleteButton).toBeVisible();
@@ -293,7 +290,6 @@ test.describe("Private locations", () => {
     expect(resp.ok()).toBeTruthy();
 
     await page.goto("orgs/test/checks/new");
-    await page.waitForLoadState("networkidle");
 
     // Pick a check type so the form (and its region picker) renders.
     await page.getByText("HTTP", { exact: false }).first().click();

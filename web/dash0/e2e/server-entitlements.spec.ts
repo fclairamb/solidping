@@ -126,7 +126,6 @@ test.describe("Superadmin entitlements editor", () => {
     await stubEntitlementsApi(page);
 
     await page.goto("orgs/test/server/entitlements");
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("entitlements-row-acmetech")).toBeVisible();
     await expect(page.getByTestId("entitlements-over-acmetech")).toBeVisible();
@@ -148,7 +147,6 @@ test.describe("Superadmin entitlements editor", () => {
     const captured = await stubEntitlementsApi(page);
 
     await page.goto("orgs/test/server/entitlements/acmetech");
-    await page.waitForLoadState("networkidle");
 
     // Pre-filled from the resolved values, not blank.
     await expect(page.getByTestId("entitlements-input-maxChecks")).toHaveValue(
@@ -208,7 +206,6 @@ test.describe("Superadmin entitlements editor", () => {
     await stubEntitlementsApi(page);
 
     await page.goto("orgs/test/server/entitlements/acmetech");
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("audit-suppressed")).toBeVisible();
   });

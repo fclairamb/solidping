@@ -1,4 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
+import { e2eBaseUrl, e2eBaseUrls } from "./e2e/base-url";
 
 /**
  * Playwright configuration for E2E testing against production build.
@@ -20,8 +21,10 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   // Retry on CI only
   retries: process.env.CI ? 2 : 0,
-  // Opt out of parallel tests on CI
-  workers: process.env.CI ? 1 : undefined,
+  // On CI, one worker per target server (E2E_BASE_URLS, see e2e/base-url.ts):
+  // every worker gets its own server and database. Workers never share a
+  // server, because the suite mutates the shared `test` org.
+  workers: process.env.CI ? e2eBaseUrls().length : undefined,
   // Reporter to use. On GitHub Actions the suite runs sharded (ci.yml), so
   // each shard writes a blob report and the e2e-report job merges them into
   // the HTML + JSON reports. Keyed on GITHUB_ACTIONS rather than CI so a local
@@ -43,7 +46,8 @@ export default defineConfig({
     // This is the production server with embedded frontend. Overridable via
     // E2E_BASE_URL so a side-car test server (e.g. on another port) can be
     // targeted locally without disturbing a dev server on :4000.
-    baseURL: process.env.E2E_BASE_URL ?? "http://localhost:4000/d/",
+    // E2E_BASE_URLS gives each worker its own server (e2e/base-url.ts).
+    baseURL: e2eBaseUrl(),
     // Collect trace when retrying the failed test
     trace: "on-first-retry",
     // Take screenshot on failure

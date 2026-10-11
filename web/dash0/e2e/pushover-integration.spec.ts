@@ -28,7 +28,6 @@ test.describe("Pushover integration", () => {
     const token = await getAuthToken(page);
 
     await page.goto("orgs/test/integrations/new?type=pushover");
-    await page.waitForLoadState("networkidle");
 
     await page.locator("#ch-name").fill(`E2E Pushover ${Date.now()}`);
     await page.locator("#ch-pushover-user").fill("uE2EUserKey000000000000000000000");
@@ -92,7 +91,6 @@ test.describe("Pushover integration", () => {
       .then((r) => r.json());
 
     await page.goto(`orgs/test/integrations/${created.uid}`);
-    await page.waitForLoadState("networkidle");
 
     await page.getByTestId("webhook-send-test").click();
 

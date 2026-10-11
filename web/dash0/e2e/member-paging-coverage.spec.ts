@@ -86,7 +86,6 @@ test.describe("Member paging coverage", () => {
     await stubCoverage(page);
 
     await page.goto("orgs/test/organization/members");
-    await page.waitForLoadState("networkidle");
 
     const bobRow = page.getByRole("row", { name: /bob@acme\.test/ });
     const zoeRow = page.getByRole("row", { name: /zoe@acme\.test/ });
@@ -110,7 +109,6 @@ test.describe("Member paging coverage", () => {
     await stubCoverage(page);
 
     await page.goto("orgs/test/organization/members");
-    await page.waitForLoadState("networkidle");
 
     await page.getByTestId("member-paging-bob@acme.test").click();
     await page.waitForURL(/\/organization\/members\/member-bob\/paging$/);
@@ -128,7 +126,6 @@ test.describe("Member paging coverage", () => {
     await stubCoverage(page);
 
     await page.goto("orgs/test/on-call/new");
-    await page.waitForLoadState("networkidle");
 
     const bobLabel = page.locator("label", { hasText: "bob@acme.test" });
     await expect(bobLabel.getByTestId("coverage-email-only")).toBeVisible();
@@ -173,7 +170,6 @@ test.describe("Member paging coverage", () => {
     );
 
     await page.goto(`orgs/test/on-call/${scheduleUid}`);
-    await page.waitForLoadState("networkidle");
 
     // The detail roster renders the member's NAME (name || email), unlike the
     // schedule form's checkbox labels which render the email.

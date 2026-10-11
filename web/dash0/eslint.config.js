@@ -32,10 +32,11 @@ export default tseslint.config(
     // server origin by importing API_BASE from ./fixtures, never by reading
     // process.env.E2E_API_BASE (an env var nothing sets — it silently
     // reintroduces a hardcoded localhost:4000 fallback) or by hardcoding
-    // http://localhost:4000 themselves. fixtures.ts itself is exempt since
-    // it's the one file allowed to define these values.
+    // http://localhost:4000 themselves. base-url.ts (which picks each worker's
+    // server) and fixtures.ts are exempt since they are the files allowed to
+    // define these values.
     files: ["e2e/**/*.ts"],
-    ignores: ["e2e/fixtures.ts"],
+    ignores: ["e2e/fixtures.ts", "e2e/base-url.ts"],
     rules: {
       "no-restricted-syntax": [
         "error",

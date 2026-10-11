@@ -76,7 +76,6 @@ test.describe("Login with 2FA", () => {
     email: string,
   ) {
     await page.goto(`orgs/${orgSlug}/login`);
-    await page.waitForLoadState("networkidle");
     await page.getByTestId("login-email").fill(email);
     await page.getByTestId("login-password").fill(PASSWORD);
     await page.getByTestId("login-submit").click();

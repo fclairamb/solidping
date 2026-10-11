@@ -32,7 +32,6 @@ test.describe("gRPC check form", () => {
     const token = await getAuthToken(page);
 
     await page.goto("orgs/test/checks/new?checkType=grpc");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
     const checkName = `E2E gRPC ${Date.now()}`;
@@ -83,7 +82,6 @@ test.describe("gRPC check form", () => {
 
     // ── Edit only the service name ──
     await page.goto(`orgs/test/checks/${uid}/edit`);
-    await page.waitForLoadState("networkidle");
     await expect(page.locator("#serviceName")).toBeVisible();
 
     // The stored secret is advertised, not echoed.

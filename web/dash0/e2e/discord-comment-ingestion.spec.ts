@@ -131,7 +131,6 @@ test.describe("Discord comment ingestion toggle", () => {
     await stubDiscordIntegration(page);
 
     await page.goto(`orgs/test/integrations/${CHANNEL_UID}`);
-    await page.waitForLoadState("networkidle");
 
     const toggle = page.getByTestId("discord-comment-ingestion");
     await expect(toggle).toBeVisible();
@@ -147,7 +146,6 @@ test.describe("Discord comment ingestion toggle", () => {
     await stubDiscordIntegration(page, "all");
 
     await page.goto(`orgs/test/integrations/${CHANNEL_UID}`);
-    await page.waitForLoadState("networkidle");
 
     await expect(
       page.getByTestId("discord-comment-ingestion"),
@@ -161,7 +159,6 @@ test.describe("Discord comment ingestion toggle", () => {
     const state = await stubDiscordIntegration(page, "explicit");
 
     await page.goto(`orgs/test/integrations/${CHANNEL_UID}`);
-    await page.waitForLoadState("networkidle");
 
     await page.getByTestId("discord-comment-ingestion").click();
     await expect(

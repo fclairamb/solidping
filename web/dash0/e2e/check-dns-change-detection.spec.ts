@@ -28,7 +28,6 @@ test.describe("DNS change detection", () => {
       (await page.request.get(`${API_BASE}/api/v1/orgs/test/checks/${uid}?with=last_result`, { headers })).json();
 
     await page.goto("orgs/test/checks/new?checkType=dns");
-    await page.waitForLoadState("networkidle");
     await page.getByTestId("check-name-input").fill(`E2E dns changes ${Date.now()}`);
     // localhost resolves from the hosts file: no outbound DNS needed in CI.
     await page.getByTestId("check-domain-input").fill("localhost");

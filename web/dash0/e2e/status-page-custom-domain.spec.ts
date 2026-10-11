@@ -144,7 +144,6 @@ test.describe("Status page custom domain", () => {
     await expect(editButton).toBeVisible({ timeout: 10000 });
     await editButton.click();
     await page.waitForURL(/\/status-pages\/[^/]+\/edit/);
-    await page.waitForLoadState("networkidle");
 
     // The custom-domain card renders.
     const card = page.getByTestId("status-page-custom-domain");
@@ -208,7 +207,6 @@ test.describe("Status page custom domain", () => {
     await expect(editButton).toBeVisible({ timeout: 10000 });
     await editButton.click();
     await page.waitForURL(/\/status-pages\/[^/]+\/edit/);
-    await page.waitForLoadState("networkidle");
 
     const card = page.getByTestId("status-page-custom-domain");
     await expect(card).toBeVisible({ timeout: 10000 });

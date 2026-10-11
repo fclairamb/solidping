@@ -151,7 +151,6 @@ test.describe("Check group escalation policy", () => {
       // Assign the group policy via the dedicated edit route.
       await groupSection.getByTestId("group-edit-button").click();
       await page.waitForURL(/\/check-groups\/[0-9a-f-]+\/edit$/);
-      await page.waitForLoadState("networkidle");
 
       const select = page.getByTestId("escalation-policy-select");
       await expect(select).toBeVisible();
@@ -174,7 +173,6 @@ test.describe("Check group escalation policy", () => {
       expect(patched.escalationPolicyUid).toBe(groupPolicy.uid);
 
       await page.waitForURL(/\/checks$/);
-      await page.waitForLoadState("networkidle");
 
       // Group header indicator now appears.
       await expect(
@@ -183,7 +181,6 @@ test.describe("Check group escalation policy", () => {
 
       // The check form's inherit label reflects the group's new policy.
       await page.goto(`orgs/test/checks/${check.uid}/edit`);
-      await page.waitForLoadState("networkidle");
       const checkSelect = page.getByTestId("escalation-policy-select");
       await expect(checkSelect).toContainText(groupPolicy.name);
     } finally {
@@ -265,7 +262,6 @@ test.describe("Check group escalation policy", () => {
 
       // The check form's inherit label falls back to the org default again.
       await page.goto(`orgs/test/checks/${check.uid}/edit`);
-      await page.waitForLoadState("networkidle");
       const checkSelect = page.getByTestId("escalation-policy-select");
       await expect(checkSelect).toContainText(orgPolicy.name);
     } finally {

@@ -449,7 +449,6 @@ test.describe("Empty-state onboarding (zero-checks dashboard hero)", () => {
       const orgSlug = await seedEmptyOrg(page);
 
       await page.goto(`orgs/${orgSlug}`);
-      await page.waitForLoadState("networkidle");
 
       // Confirms the "dashboard switches out of the empty state" coverage
       // this test replaces: the hero is present before create.
@@ -507,7 +506,6 @@ test.describe("Empty-state onboarding (zero-checks dashboard hero)", () => {
       const orgSlug = await seedEmptyOrg(page);
 
       await page.goto(`orgs/${orgSlug}`);
-      await page.waitForLoadState("networkidle");
 
       await page.getByTestId("quick-start-ssl").click();
       await page.getByTestId("quick-start-input").fill("acme.com");
@@ -533,7 +531,6 @@ test.describe("Empty-state onboarding (zero-checks dashboard hero)", () => {
       const orgSlug = await seedEmptyOrg(page);
 
       await page.goto(`orgs/${orgSlug}`);
-      await page.waitForLoadState("networkidle");
 
       await page.getByTestId("quick-start-input").fill("acme.com");
       await page.getByTestId("quick-start-submit").click();
@@ -557,7 +554,6 @@ test.describe("Empty-state onboarding (zero-checks dashboard hero)", () => {
       const orgSlug = await seedEmptyOrg(page, "activation", "test.com");
 
       await page.goto(`orgs/${orgSlug}`);
-      await page.waitForLoadState("networkidle");
 
       const input = page.getByTestId("quick-start-input");
       await expect(input).toHaveValue("test.com");
@@ -579,7 +575,6 @@ test.describe("Empty-state onboarding (zero-checks dashboard hero)", () => {
       const orgSlug = await seedEmptyOrg(page, "freewebmail", "gmail.com");
 
       await page.goto(`orgs/${orgSlug}`);
-      await page.waitForLoadState("networkidle");
 
       await expect(page.getByTestId("quick-start-input")).toHaveValue("");
     });

@@ -30,7 +30,6 @@ test.describe("Check history", () => {
 
     // Edit through the dashboard.
     await page.goto(`orgs/test/checks/${uid}/edit`);
-    await page.waitForLoadState("networkidle");
     const nameInput = page.getByTestId("check-name-input");
     await expect(nameInput).toHaveValue(originalName);
     await nameInput.fill(renamed);

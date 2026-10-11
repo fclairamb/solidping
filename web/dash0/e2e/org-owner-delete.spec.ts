@@ -151,7 +151,6 @@ test.describe("Organization owner and deletion", () => {
     const { email, orgSlug } = await seedOwnedOrg(page);
 
     await page.goto(`orgs/${orgSlug}/organization/members`);
-    await page.waitForLoadState("networkidle");
 
     // The creator's own row shows the Owner role (the label rendered by the
     // members.role.owner i18n key in the English locale is exactly "Owner").
@@ -338,7 +337,6 @@ test.describe("Organization owner and deletion", () => {
     );
 
     await page.goto(`orgs/${orgSlug}/organization/settings`);
-    await page.waitForLoadState("networkidle");
 
     // Positive control: the settings page itself rendered for the admin, so the
     // absent danger zone below is about the role, not a blank page.

@@ -272,7 +272,6 @@ test.describe("Check scheduling page", () => {
       await setChecksPerMinute(page, token, 2);
 
       await page.goto("orgs/test/checks/scheduling");
-      await page.waitForLoadState("networkidle");
 
       // The over-limit banner (spec 03) sends people here, so it renders here
       // too — without its own self-referential link.
@@ -345,7 +344,6 @@ test.describe("Check scheduling page", () => {
     const page = authenticatedPage;
 
     await page.goto("orgs/test/checks");
-    await page.waitForLoadState("networkidle");
 
     await page.getByTestId("checks-more-actions").click();
     await page.getByTestId("scheduling-link").click();
@@ -359,7 +357,6 @@ test.describe("Check scheduling page", () => {
     const page = authenticatedPage;
 
     await page.goto("orgs/test/checks/scheduling");
-    await page.waitForLoadState("networkidle");
 
     const header = page.locator("header");
 

@@ -19,7 +19,6 @@ test.describe("Sessions", () => {
     await freshLogin(page);
 
     await page.goto("orgs/test/account/sessions");
-    await page.waitForLoadState("networkidle");
 
     // The login above is this page's own session — it must show up, and be
     // flagged current.
@@ -50,7 +49,6 @@ test.describe("Sessions", () => {
     await freshLogin(page);
 
     await page.goto("orgs/test/account/sessions");
-    await page.waitForLoadState("networkidle");
 
     const currentBadge = page.getByTestId("session-current-badge");
     await expect(currentBadge).toBeVisible();
@@ -77,7 +75,6 @@ test.describe("Sessions", () => {
     await freshLogin(otherPage);
 
     await page.goto("orgs/test/account/sessions");
-    await page.waitForLoadState("networkidle");
 
     // At least the caller's own session plus the one just opened above.
     await expect(page.getByTestId("sign-out-others-button")).toBeEnabled();

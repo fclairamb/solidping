@@ -204,7 +204,6 @@ test.describe("Invitations", () => {
       // about: the invite link is meant to be opened by someone who has no
       // session yet.
       await page.goto(`invite/${token}`);
-      await page.waitForLoadState("networkidle");
 
       await expect(
         page.getByRole("heading", { name: `Join ${info.orgName}` })
@@ -248,7 +247,6 @@ test.describe("Invitations", () => {
       page,
     }) => {
       await page.goto("invite/this-token-does-not-exist-at-all");
-      await page.waitForLoadState("networkidle");
 
       await expect(
         page.getByText("This invitation link is invalid or has expired.")

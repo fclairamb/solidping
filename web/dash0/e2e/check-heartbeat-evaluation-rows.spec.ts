@@ -140,7 +140,6 @@ test.describe("Heartbeat evaluation rows are distinguishable from beats", () => 
 
     await mockSloCoverage(page);
     await page.goto(`orgs/test/checks/${check.uid}`);
-    await page.waitForLoadState("networkidle");
 
     // The evaluation is badged; the beat is not. (A 10 s period can add more
     // evaluations while the test runs, so no exact count.)
@@ -216,7 +215,6 @@ test.describe("Heartbeat evaluation rows are distinguishable from beats", () => 
     await page.goto(
       `orgs/test/checks/${checkUid}/results/${evaluationUid}?region=eu`,
     );
-    await page.waitForLoadState("networkidle");
 
     const card = page.getByTestId("evaluation-card");
     await expect(card).toBeVisible();
