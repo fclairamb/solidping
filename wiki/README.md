@@ -102,12 +102,16 @@ Operational procedures for diagnosing the running system.
 - [runbooks/api-testing-with-curl.md](runbooks/api-testing-with-curl.md) — Log in, save a token, and exercise the REST API by hand with curl; default credentials, forced password rotation, troubleshooting.
 - [runbooks/claude-cloud.md](runbooks/claude-cloud.md) — Working in a Claude cloud (remote) sandbox with no Docker, secrets or built frontend: `scripts/cloud-setup.sh`, what a clean clone needs (embed placeholders), SQLite smoke server, CI env parity for E2E, what to run before pushing.
 - [runbooks/observability-toggles.md](runbooks/observability-toggles.md) — `SP_PROMETHEUS_ENABLED`, `SP_METRICS_SCRAPE_TOKEN`, `SP_PROFILER_ENABLED`, `SP_OTEL_ENABLED`: what each switches and how they interact.
+- [runbooks/ci-and-release-triage.md](runbooks/ci-and-release-triage.md) — CI and release states that lie: skipped jobs, conflicting PRs with zero runs, flapping run states, local golangci-lint vs CI parity, the tag-triggered release flow, release-please silent failures and their recovery, and why squash-merged branches look unmerged.
+- [runbooks/operations-gotchas.md](runbooks/operations-gotchas.md) — Server behaviours that misled whoever ran a real deployment: unlocked migrations on rollout, env vars that silently do nothing, one callback URL per provider app, signed calls to a renamed org, check diagnosis, silent realtime, connection-pool budgets.
 
 ## Testing
 
 - [testing/coverage.md](testing/coverage.md) — Backend coverage: how `make test-cover` and the `backend-postgres` gate measure it, what is excluded (generated/vendored), the baseline, the `COVERAGE_MIN` ratchet, and report-only frontend coverage
 - [testing/test-layers.md](testing/test-layers.md) — Which Go test layer runs where (PR CI / nightly / local only): `make test` is `-short` and covers **no** Postgres, `make test-postgres` and the `backend-postgres` job do, `SP_TEST_REQUIRE_POSTGRES` turns a skip into a failure, and the `slowtests` build tag holds the live-network/Docker suites
 - [testing/e2e-ci.md](testing/e2e-ci.md) — E2E test infrastructure: CI environment, Playwright config, local execution
+- [testing/local-e2e.md](testing/local-e2e.md) — Running dash0 E2E on a laptop: the Postgres side-car recipe, six traps that each fake a red run (stale embed, base URL, env parity...), the `make dev-test` fast path, and how to write specs that survive the full suite.
+- [testing/flaky-tests.md](testing/flaky-tests.md) — Flaky tests are bugs: rules, proof techniques (widen the window, wall-clock landmines), and the known shapes in this repo (testcontainer contention, hand-built middleware fixtures).
 - [testing/http-test-checks.md](testing/http-test-checks.md) — Fake API test checks: 5 predefined scenarios (stable, flaky, unstable, slow, 503)
 - [testing/dash0-e2e-typecheck-and-lint.md](testing/dash0-e2e-typecheck-and-lint.md) — Why `e2e/` has its own tsconfig and scoped lint, and the `page.evaluate` closure guard.
 

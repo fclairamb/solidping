@@ -52,7 +52,7 @@ merged `results.json` when the two shards drift apart. Re-check the split in the
 - **Browser**: Chromium only
 - **Database**: Postgres from `docker-compose.yml` (`SP_DB_TYPE=postgres`), reset at start
 - **Server env**: `SP_RUNMODE=test`, rate limiting off, `SP_AUTH_REGISTRATION_EMAIL_PATTERN=.*`
-  (a local side-car must match these, see the `/implement-todos` side-car recipe)
+  (a local side-car must match these, see [local-e2e.md](local-e2e.md))
 - **Test credentials**: `test@test.com` / `test` / org `test`
 
 ## Playwright Configuration (`web/dash0/playwright.config.ts`)

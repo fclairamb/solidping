@@ -185,6 +185,13 @@ mirror `incidents.index.tsx` and `jobs.index.tsx`. The primary navigation
 `replace: true` only for incidental refinements (filters, scope toggles)
 so they don't spam history.
 
+Caveat: under a layout route, a cold deep link can run a second
+search-validation pass with an empty search and drop the param. If a deep
+link resets, seed local state from the URL once on mount and write the
+param back on every change (`organization.discovery.new.tsx`). Make
+`validateSearch` omit absent keys (return `{}`), or every `<Link>` to the
+route will require a `search` prop.
+
 ### Row actions: icons, not menus
 
 In list/table rows, prefer two ghost icon buttons (`Pencil` for edit,

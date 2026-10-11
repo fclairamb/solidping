@@ -48,3 +48,13 @@ How should we solve it?
 - When searching by slug, match partially (e.g., `credentials` matches `2025-12-06-credentials.md`)
 - Specs in `todos/` are processed oldest-first by `/implement-todos`
 - Archived specs go to `specs/done/YYYY/MM/` based on their date prefix
+- Never delete `specs/todos/` itself, even when emptying it
+- A spec's Proposal and Decisions define its scope. An implementation plan that narrows
+  them does not, and an audit reads the Proposal, not the plan
+- An **investigation** spec (diagnose, not build) names both legitimate outcomes: a
+  product-side cause gets a fix plus a regression test at the layer that was wrong; an
+  infra-side or unreachable cause gets a written finding in `wiki/` ("I could not reach
+  the data, here is what I tried and what to run next" is an honest finding). Restate
+  its non-goals as hard limits, and say whether small writes to a live system are
+  allowed to reach a diagnosis. With no code to commit, the closing
+  `chore: all checks passing for <title>` commit is made with `--allow-empty`
