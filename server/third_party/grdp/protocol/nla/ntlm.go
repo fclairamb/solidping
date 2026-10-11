@@ -5,7 +5,6 @@ import (
 	"crypto/md5"
 	"crypto/rc4"
 	"encoding/binary"
-	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"time"
@@ -450,10 +449,6 @@ func (n *NTLMv2) GetAuthenticateMessage(s []byte) (*AuthenticateMessage, *NTLMv2
 	md.Write(a)
 	ServerSealingKey := md.Sum(nil)
 
-	slog.Debug(fmt.Sprintf("ClientSigningKey:%s", hex.EncodeToString(ClientSigningKey)))
-	slog.Debug(fmt.Sprintf("ServerSigningKey:%s", hex.EncodeToString(ServerSigningKey)))
-	slog.Debug(fmt.Sprintf("ClientSealingKey:%s", hex.EncodeToString(ClientSealingKey)))
-	slog.Debug(fmt.Sprintf("ServerSealingKey:%s", hex.EncodeToString(ServerSealingKey)))
 
 	encryptRC4, _ := rc4.NewCipher(ClientSealingKey)
 	decryptRC4, _ := rc4.NewCipher(ServerSealingKey)

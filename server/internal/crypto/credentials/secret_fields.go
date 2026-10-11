@@ -59,7 +59,7 @@ func SplitConfig(full map[string]any, secrets []string) (map[string]any, map[str
 // MergeConfig returns a new map equal to public ∪ private, with private
 // values winning on conflict (the encrypted side is the source of truth).
 func MergeConfig(public, private map[string]any) map[string]any {
-	merged := make(map[string]any, len(public)+len(private))
+	merged := make(map[string]any, max(len(public), len(private)))
 	for k, v := range public {
 		merged[k] = v
 	}
@@ -77,7 +77,7 @@ func MergeConfig(public, private map[string]any) map[string]any {
 // follow replace-wholesale semantics (anything in `existing` that isn't
 // in `patch` is dropped).
 func MergePatch(existing, patch map[string]any, secretFields []string) map[string]any {
-	merged := make(map[string]any, len(existing)+len(patch))
+	merged := make(map[string]any, max(len(existing), len(patch)))
 	for k, v := range existing {
 		merged[k] = v
 	}
