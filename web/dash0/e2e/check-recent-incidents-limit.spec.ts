@@ -81,6 +81,18 @@ test.describe("Check detail — Recent Incidents card limit", () => {
     await page.waitForURL(/\/incidents\/10000000-0000-0000-0000-000000000003/);
   });
 
+  // fclairamb/solidping-business#8: the state badge showed the raw "resolved".
+  test("the state badge is translated", async ({ authenticatedPage: page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem("solidping_language", "fr");
+    });
+    await mockIncidents(page, 1);
+    await page.goto(`${DASH_BASE}/orgs/test/checks/${CHECK_UID}`);
+
+    const card = page.getByTestId("recent-incidents-card");
+    await expect(card.getByTestId("incident-state")).toHaveText("Résolu");
+  });
+
   test("0 incidents: the card stays hidden", async ({
     authenticatedPage: page,
   }) => {

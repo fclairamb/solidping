@@ -1,3 +1,5 @@
+import type { TFunction } from "i18next";
+
 import type { IncidentDetail } from "@/api/hooks";
 
 export type IncidentKind = NonNullable<IncidentDetail["kind"]>;
@@ -57,4 +59,12 @@ export function incidentRowClass(
 ): string {
   if (state !== "active") return "hover:bg-muted/40";
   return ACTIVE_ROW_CLASS[incidentKindOf(kind)];
+}
+
+/** The incident state as the user reads it ("Résolu", not the raw "resolved"). */
+export function incidentStateLabel(
+  t: TFunction,
+  state: IncidentDetail["state"] | undefined,
+): string {
+  return state === "active" ? t("incidents:active") : t("incidents:resolved");
 }
