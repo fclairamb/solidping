@@ -166,8 +166,17 @@ export const test = base.extend<
     // dashboard content without navigating anywhere themselves first. A
     // fresh context here starts at about:blank, so reproduce the same
     // landing state explicitly instead of just restoring cookies/storage.
+    //
+    // Wait for the app shell, not for "networkidle". The shell is what
+    // consumers need (the sidebar they click through, the URL they assert),
+    // and anything they read from the dashboard is auto-waited by their own
+    // expect(). "networkidle" waits for a 500 ms window with no request in
+    // flight, before EVERY test: ~12 min of the ~33 min CI suite on
+    // 2026-09-24, for a page most tests leave on their first line.
     await page.goto("orgs/test");
-    await page.waitForLoadState("networkidle");
+    await page
+      .getByTestId("app-sidebar")
+      .waitFor({ state: "visible", timeout: 10000 });
 
     // eslint-disable-next-line react-hooks/rules-of-hooks
     await use(page);

@@ -20,7 +20,7 @@ import (
 // _postgres_test.go port claimed in the repo (15438-15466 — see the
 // port-numbering comment in postgres_headroom_postgres_test.go), so the
 // parallel suites never collide.
-const portCheckStatsPG = 15467
+const portCheckStatsPG = 15706
 
 // newStatsPostgresService builds a checks.Service over a REAL embedded
 // Postgres so the GROUP BY aggregation is exercised on the production dialect

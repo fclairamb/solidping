@@ -23,7 +23,7 @@ import (
 // postgres_headroom_postgres_test.go), so the parallel suites never collide.
 const (
 	portStaleReconcilePG = 15456
-	portRegionSpreadPG   = 15457
+	portRegionSpreadPG   = 15704
 )
 
 // newReconcilePostgresService builds a checks.Service over a REAL embedded

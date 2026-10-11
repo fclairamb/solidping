@@ -390,7 +390,7 @@ test-cover: ## Backend coverage profile + total (COVER_FULL=1 for the Postgres l
 	@echo "Running backend tests with coverage..."
 	@cd $(BACK_DIR) && \
 		if [ -n "$(COVER_FULL)" ]; then \
-			SP_TEST_REQUIRE_POSTGRES=1 go test -count=1 -p 1 -coverprofile=coverage.raw.out -coverpkg=./... ./... ; \
+			SP_TEST_REQUIRE_POSTGRES=1 go test -count=1 -p 4 -coverprofile=coverage.raw.out -coverpkg=./... ./... ; \
 		else \
 			go test -count=1 -short -coverprofile=coverage.raw.out -coverpkg=./... ./... ; \
 		fi
@@ -405,15 +405,15 @@ test-cover: ## Backend coverage profile + total (COVER_FULL=1 for the Postgres l
 # `backend-postgres` CI job runs, character for character, so "green locally"
 # and "green in CI" mean the same thing. See wiki/testing/test-layers.md.
 #
-#   -p 1  embedded-postgres shares ~/.embedded-postgres-go/extracted (pwfile
-#         included) across instances, so concurrent packages race and the loser
-#         fails to start.
+#   -p 4  packages run concurrently; safe since each embedded instance has its
+#         own runtime dir, the startup sweep spares live instances, and test
+#         ports are unique per package (see wiki/testing/test-layers.md).
 #   -v    the CI guard step parses --- PASS / --- SKIP out of this.
 #   SP_TEST_REQUIRE_POSTGRES=1  turns "embedded postgres unavailable" from a
 #         silent skip into a failure (internal/testsupport).
-test-postgres: ## Run the backend tests against Postgres (non-short, ~10-15 min)
-	@echo "Running backend tests against embedded PostgreSQL (this takes ~10-15 minutes)..."
-	@cd $(BACK_DIR) && SP_TEST_REQUIRE_POSTGRES=1 go test -count=1 -p 1 -v ./...
+test-postgres: ## Run the backend tests against Postgres (non-short, ~13 min)
+	@echo "Running backend tests against embedded PostgreSQL (this takes ~13 minutes)..."
+	@cd $(BACK_DIR) && SP_TEST_REQUIRE_POSTGRES=1 go test -count=1 -p 4 -v ./...
 	@echo "Postgres test layer complete"
 
 test-slow: ## Run the slowtests layer (live network + Docker; nightly in CI)

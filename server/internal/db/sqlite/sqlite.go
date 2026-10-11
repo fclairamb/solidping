@@ -94,6 +94,7 @@ type Config struct {
 type Service struct {
 	db        *bun.DB
 	dataDir   string
+	inMemory  bool
 	guardMode migrationguard.Mode
 
 	// compactFailpoint, when non-nil, is invoked inside CompactResults after the
@@ -208,6 +209,7 @@ func New(ctx context.Context, cfg Config) (*Service, error) {
 	return &Service{
 		db:        bunDB,
 		dataDir:   cfg.DataDir,
+		inMemory:  cfg.InMemory,
 		guardMode: cfg.GuardMode,
 	}, nil
 }
@@ -281,6 +283,17 @@ func resetSQLiteDatabase(dbPath string) error {
 // a loud startup failure instead of a database that silently lacks the DDL
 // (spec 2026-08-18-02).
 func (s *Service) Initialize(ctx context.Context) error {
+	if !s.inMemory {
+		return s.migrate(ctx)
+	}
+
+	return s.initializeInMemory(ctx)
+}
+
+// migrate runs the migrations (guarded by the checksum guard) and the data
+// steps that must follow them. It is the whole of Initialize for a file
+// database; an in-memory one may be restored from memTemplate instead.
+func (s *Service) migrate(ctx context.Context) error {
 	migrations := migrate.NewMigrations()
 	if err := migrations.Discover(migrationsFS); err != nil {
 		return fmt.Errorf("failed to discover migrations: %w", err)

@@ -226,18 +226,10 @@ jobs:
     # replaces the top-level one, so re-state what this job needs.
     permissions:
       contents: write
-    # 20 was extrapolated from a warm laptop (10m19s for internal/db/postgres
-    # alone) and proved far too tight: the first real run was KILLED at 20m
-    # having reached only ~122 of 232 packages, with internal/db/postgres alone
-    # taking 325s. A CI runner is slower than the laptop the estimate came
-    # from, and -p 1 removes the parallelism that hid it.
-    #
-    # 45 is deliberately generous rather than fitted: the run it must
-    # accommodate has never completed, so there is no honest number to fit to
-    # yet. Tighten it once a green run reports a real duration — and if that
-    # duration makes a per-PR job too expensive, the decision to revisit is
-    # "move this layer to the nightly", not "raise the timeout again".
-    timeout-minutes: 45
+    # ~40 min at -p 1 (run 38082916085). At -p 4 the same layer took ~13 min
+    # on a laptop (2026-10-11); 30 leaves room for a slower runner without
+    # letting a hang eat an hour.
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: server
@@ -276,10 +268,14 @@ jobs:
           echo "placeholder" > internal/app/docsres/llms-full.txt
           echo '[]' > internal/app/docsres/search-index.json
 
-      # -p 1 is not a performance choice: embedded-postgres shares one extracted
-      # directory (~/.embedded-postgres-go/extracted, pwfile included) across
-      # every instance, so two packages starting concurrently make the loser
-      # fail with "unable to remove password file".
+      # -p 4 runs four packages at once (the runner has 4 vCPUs). It used to be
+      # -p 1, because concurrent embedded-postgres instances killed each other:
+      # first through a shared runtime dir (fixed: each instance has its own),
+      # then through every test process's startup orphan sweep, which took a
+      # live instance mid-initdb for an orphan, and finally through 16 ports
+      # claimed by two packages each. internal/db/postgres/embeddedpg fixes the
+      # sweep, and internal/testsupport's TestFixedTestPortsAreUniqueAcrossPackages
+      # keeps the ports unique. Going back to -p 1 hides a regression in either.
       #
       # SP_TEST_REQUIRE_POSTGRES=1 turns that failure — and every other
       # "embedded postgres unavailable" path — into a test FAILURE instead of a
@@ -291,7 +287,7 @@ jobs:
       - name: Run the Postgres test layer
         run: |
           set -o pipefail
-          SP_TEST_REQUIRE_POSTGRES=1 go test -count=1 -p 1 -v \
+          SP_TEST_REQUIRE_POSTGRES=1 go test -count=1 -p 4 -v \
             -coverprofile="$RUNNER_TEMP/coverage.raw.out" -coverpkg=./... ./... 2>&1 \
             | tee "$RUNNER_TEMP/postgres-tests.log"
 
@@ -634,6 +630,50 @@ jobs:
           path: solidping
           retention-days: 7
 
+  # Guards for the tag-only release jobs (server-release, cli-release, docker):
+  # they prove a release would still package, build its images and
+  # cross-compile, on every PR, since those jobs cannot run before a tag exists.
+  # They used to be the tail of `build`, which kept the E2E shards (which need
+  # only the linux/amd64 binary) waiting ~15 min for them on every run (run
+  # 38082916085: 12.4 min for the cross-compile alone). As their own job they
+  # run alongside the E2E shards instead, and still gate `ci`.
+  release-guards:
+    name: Release Guards
+    runs-on: ubuntu-26.04
+    needs: [changes, build]
+    if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) && needs.changes.outputs.code == 'true' }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.27"
+          cache-dependency-path: server/go.sum
+
+      - name: Download dash0 dist
+        uses: actions/download-artifact@v8
+        with:
+          name: dash0-dist
+          path: server/internal/app/dash0res
+
+      - name: Download status0 dist
+        uses: actions/download-artifact@v8
+        with:
+          name: status0-dist
+          path: server/internal/app/status0res
+
+      - name: Download docs dist
+        uses: actions/download-artifact@v8
+        with:
+          name: docs-dist
+          path: server/internal/app/docsres
+
+      - name: Download solidping binary
+        uses: actions/download-artifact@v8
+        with:
+          name: solidping-linux-amd64
+          path: .
+
       # server-release and cli-release (tag-triggered, below) publish every
       # binary compressed only — a bare executable is never uploaded (spec
       # 2026-09-25-08) — but those jobs only run on refs/tags/, so a typo in
@@ -690,26 +730,36 @@ jobs:
             echo "::endgroup::"
           done
 
+  # The dash0 suite is split into 2 shards, each with its own Postgres and its
+  # own server, so the shards share no state at all. Within a shard the tests
+  # still run on ONE worker, in the same order as before: the suite shares the
+  # seeded `test` org and several specs mutate it, so tests are not safe to run
+  # concurrently against one server. 2 is a deliberate cap on parallel runners,
+  # not a technical limit.
+  #
+  # Playwright splits by test COUNT into two contiguous halves (alphabetical
+  # file order). On 2026-09-24 the first half was ~1.5 min heavier, so the two
+  # extra suites are placed to even it out: status0 (~1.5 min) runs on shard 1,
+  # the session-continuity + SSO handoff side-car (~3 min) on shard 2. See
+  # wiki/testing/e2e-ci.md.
+  #
+  # Shards upload a blob report; the e2e-report job merges them into the one
+  # HTML + JSON report.
   e2e-tests:
-    name: E2E Tests
+    name: E2E Tests (${{ matrix.shard }}/2)
     runs-on: ubuntu-26.04
-    # Main suite + status0 specs + ~5 min for the session-continuity side-car
-    # run below (session-continuity.spec.ts waits out real access-token
-    # expiries, so it inherently takes longer than a normal spec).
-    # Raised 30 -> 45 on 2026-08-30: the suite outgrew the old budget. Run
-    # 33280066073 finished every step but got cancelled at exactly 30m during
-    # the last one, after the batch added ~10 specs (TV mode alone adds 7) and
-    # after enabling SP_AUTH_REGISTRATION_EMAIL_PATTERN un-skipped
-    # membership-requests.spec.ts. This is a capacity bump, NOT a hang guard
-    # being loosened: the known Playwright-install hang is still bounded by the
-    # per-attempt timeout on that step, and every step here had succeeded.
-    # Raised 45 -> 60 on 2026-10-09: with 1007 specs the main suite takes ~41 min
-    # on its own, so run 37968728929 passed every test and was then cancelled at
-    # 45 min inside the session-continuity side-car step. Capacity bump, not a
-    # hang guard being loosened.
-    timeout-minutes: 60
+    # ~41 min of dash0 specs on one worker as of 2026-10-09, so ~21 min per
+    # shard plus its extra suite. The known Playwright-install hang is bounded
+    # by the per-attempt timeout on that step, not by this.
+    timeout-minutes: 35
     needs: [changes, build]
     if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) && needs.changes.outputs.code == 'true' }}
+    strategy:
+      # A failure in one shard must not cancel the other: the point of the run
+      # is the full list of failures, not the first one.
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     defaults:
       run:
         working-directory: web/dash0
@@ -806,10 +856,19 @@ jobs:
           done
           echo "Server failed to start" && exit 1
 
-      - name: Run E2E tests
-        run: bun run test:e2e
+      - name: Run E2E tests (shard ${{ matrix.shard }}/2)
+        run: bunx playwright test --shard=${{ matrix.shard }}/2
         env:
           CI: "true"
+          # Playwright splits by test COUNT, and the first (alphabetical) half
+          # is the slower one: run 38099366941 took 1144 s on shard 1 vs 831 s
+          # on shard 2, on top of status0 (93 s, shard 1) and the side-car
+          # (188 s, shard 2). The tests around the halfway point are slow
+          # (~5.5 s each): 45:55 overshot to 878 s vs 1140 s (run
+          # 38100867178), so 97:103 moves ~16 of them. This variable is
+          # read by Playwright (lib/cli/testActions.js) but not documented; if
+          # a release drops it, the split silently goes back to 50:50.
+          PWTEST_SHARD_WEIGHTS: "97:103"
 
       # status0's public status page has its own Playwright suite, and the WHOLE
       # of it runs here — no hand-maintained file list, so a new spec is covered
@@ -830,7 +889,10 @@ jobs:
       #
       # Same browser-install guard as the dash0 step above: no --with-deps, plus
       # a per-attempt `timeout` so a hung download can't eat the job budget.
+      #
+      # Shard 1 only (see the balancing note above the job).
       - name: Run status0 E2E tests
+        if: matrix.shard == 1
         working-directory: web/status0
         run: |
           bun install
@@ -862,7 +924,10 @@ jobs:
       # detects the existing "test" org and skips reseeding, so this is safe
       # without SP_DB_RESET), to give these tests something real to run
       # against instead of skipping every CI run.
+      #
+      # Shard 2 only (see the balancing note above the job).
       - name: Start side-car server (short access-token expiry)
+        if: matrix.shard == 2
         working-directory: .
         run: |
           ./solidping serve > "$GITHUB_WORKSPACE/solidping-sidecar.log" 2>&1 &
@@ -889,6 +954,7 @@ jobs:
           SP_OIDC_CLIENT_SECRET: "e2e-secret"
 
       - name: Wait for side-car server
+        if: matrix.shard == 2
         run: |
           for i in $(seq 1 30); do
             curl -sf http://localhost:4001/api/mgmt/health && exit 0
@@ -897,10 +963,12 @@ jobs:
           echo "Side-car server failed to start" && exit 1
 
       - name: Run session-continuity and SSO handoff E2E tests (side-car)
-        # --reporter=list only: the default html/json reporters write to the
-        # same playwright-report/test-results paths as the main run above,
-        # and would clobber that report/summary in the uploaded artifact.
-        run: bunx playwright test session-continuity.spec.ts sso-handoff.spec.ts --reporter=list
+        if: matrix.shard == 2
+        # --reporter=list only: the configured blob reporter writes to the
+        # same blob-report/ path as the shard run above and would replace its
+        # report. --output keeps this run from wiping test-results/, which
+        # Playwright empties at the start of every run.
+        run: bunx playwright test session-continuity.spec.ts sso-handoff.spec.ts --reporter=list --output=test-results-session-continuity
         env:
           CI: "true"
           E2E_BASE_URL: "http://localhost:4001/d/"
@@ -927,25 +995,88 @@ jobs:
             echo "::error::solidping server was DOWN at the end of the E2E run — an unrecovered crash (see log above) cascaded into the test failures, not a flake."
           fi
 
+      - name: Upload blob report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: blob-report-${{ matrix.shard }}
+          path: web/dash0/blob-report/
+          retention-days: 1
+
       - name: Upload test artifacts
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: playwright-report
+          name: e2e-artifacts-${{ matrix.shard }}
           path: |
-            web/dash0/playwright-report/
             web/dash0/test-results/
+            web/dash0/test-results-session-continuity/
             web/status0/playwright-report/
             web/status0/test-results/
             solidping-server.log
             solidping-sidecar.log
           retention-days: 7
 
+  # Merges the shards' blob reports into the single HTML report and a
+  # results.json with every test's duration (the input for tracking suite time).
+  # Reporting only: the `ci` gate does not depend on it.
+  e2e-report:
+    name: E2E Report
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    needs: [e2e-tests]
+    if: ${{ always() && needs.e2e-tests.result != 'skipped' }}
+    defaults:
+      run:
+        working-directory: web/dash0
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Download blob reports
+        uses: actions/download-artifact@v8
+        with:
+          pattern: blob-report-*
+          path: web/dash0/all-blob-reports
+          merge-multiple: true
+
+      - name: Merge reports
+        run: bunx playwright merge-reports --reporter=html,json all-blob-reports
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_FILE: playwright-report/results.json
+
+      - name: Summarize durations
+        run: |
+          jq -r '
+            def secs: (. / 1000 | floor);
+            [.. | objects | select(has("specs")) | .specs[]? | {file: .file, ms: ([.tests[].results[].duration] | add // 0)}]
+            | group_by(.file) | map({file: .[0].file, ms: (map(.ms) | add)}) | sort_by(-.ms) | .[:15]
+            | "| File | Seconds |\n|---|---|\n" + (map("| \(.file) | \(.ms | secs) |") | join("\n"))
+          ' playwright-report/results.json > slowest.md
+          {
+            echo "### E2E: $(jq -r '.stats | "\(.expected) passed, \(.unexpected) failed, \(.flaky) flaky, \(.skipped) skipped"' playwright-report/results.json)"
+            echo
+            echo "Slowest files:"
+            echo
+            cat slowest.md
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload HTML report
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: web/dash0/playwright-report/
+          retention-days: 7
+
 
   ci:
     name: CI
     runs-on: ubuntu-26.04
-    needs: [changes, backend-lint, backend-postgres, dash0, status0, docs, build, e2e-tests]
+    needs: [changes, backend-lint, backend-postgres, dash0, status0, docs, build, release-guards, e2e-tests]
     if: ${{ always() && !startsWith(github.ref, 'refs/tags/') }}
     steps:
       - name: Verify no failures

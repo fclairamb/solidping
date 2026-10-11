@@ -15,7 +15,7 @@ import (
 // portPresencePG is distinct from every other embedded-Postgres port claimed
 // in the repo (5435, 15434, 15436-15448, 15451-15485) so the suites can never
 // collide if they ever run concurrently.
-const portPresencePG = 15486
+const portPresencePG = 15710
 
 // pgPresenceFixture mirrors presenceFixture from
 // service_update_presence_test.go but against a REAL Postgres backend —

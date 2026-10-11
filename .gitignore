@@ -31,7 +31,10 @@ server/internal/app/docsres/*
 
 # Test data
 test-results/
+test-results-*/
 playwright-report/
+blob-report/
+all-blob-reports/
 
 # Showcase media pipeline scratch: raw Playwright .webm recordings, traces and
 # untrimmed stills. Only the post-processed assets under

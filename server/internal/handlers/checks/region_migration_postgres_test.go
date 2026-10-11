@@ -21,7 +21,7 @@ import (
 // the repo (see the port-numbering comment in
 // postgres_headroom_postgres_test.go), so the parallel suites never collide.
 const (
-	portRegionMigrationPG = 15498
+	portRegionMigrationPG = 15712
 	portRegionStalePG     = 15499
 )
 

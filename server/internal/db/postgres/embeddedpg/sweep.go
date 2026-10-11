@@ -36,6 +36,18 @@ var legacyPrefixes = []string{ //nolint:gochecknoglobals // package-level consta
 // the fallback signal.
 const legacyStaleAge = 1 * time.Hour
 
+// unmarkedGraceAge is how long a unified-prefix directory may exist without
+// its owner.json marker before the sweep treats it as abandoned.
+//
+// A live instance has no marker for a while: embedded-postgres wipes the whole
+// data path before initdb (cleanDataDirectoryAndInit), taking the marker Start
+// wrote with it, and Start only writes it again once the server is up. With
+// `go test -p 1` nothing else could be sweeping during that window; with
+// packages running concurrently, another package's startup sweep would see a
+// markerless dir, kill the initdb or postgres inside it and delete it. That is
+// the "signal: killed" initdb failure the Postgres layer hit at -p 4.
+const unmarkedGraceAge = 10 * time.Minute
+
 // sweepLogPrefix tags every best-effort diagnostic the sweep logs to
 // stderr, so it's easy to grep for and easy to tell apart from actual test
 // output.
@@ -119,9 +131,13 @@ func sweepCandidate(dir, baseName string) {
 			return
 		}
 	default:
-		// Unified-prefix dir with an unreadable/missing marker: treat as
-		// abandoned (a healthy Start() always writes the marker before
-		// returning, so its absence means Start() itself was interrupted).
+		// Unified-prefix dir with an unreadable/missing marker: abandoned once
+		// it is older than the init window (see unmarkedGraceAge). A healthy
+		// Start() rewrites the marker as soon as the server is up, so a
+		// markerless dir past that age means Start() itself was interrupted.
+		if time.Since(info.ModTime()) < unmarkedGraceAge {
+			return
+		}
 	}
 
 	killPostgresForDataDir(dir)
@@ -177,14 +193,44 @@ func readPostmasterPID(dataDir string) (int, error) {
 // process found via postmaster.pid or pgrep: a stale PID could have been
 // recycled by an unrelated process since the data dir was abandoned.
 func commandLineContains(pid int, needle string) bool {
+	cmdLine, ok := processCommandLine(pid)
+
+	return ok && strings.Contains(cmdLine, needle)
+}
+
+// processCommandLine returns the running process pid's command line.
+func processCommandLine(pid int) (string, bool) {
 	cmd := exec.CommandContext(context.Background(), "ps", "-o", "command=", "-p", strconv.Itoa(pid))
 
 	out, err := cmd.Output()
 	if err != nil {
-		return false
+		return "", false
 	}
 
-	return strings.Contains(string(out), needle)
+	return strings.TrimSpace(string(out)), true
+}
+
+// embeddedDataDirFromCommandLine extracts the embedded-postgres data
+// directory a postgres/initdb command line refers to (its -D argument, in
+// practice), or "" when none of its arguments names one.
+func embeddedDataDirFromCommandLine(cmdLine string) string {
+	for _, field := range strings.Fields(cmdLine) {
+		slash := strings.Index(field, "/")
+		if slash < 0 {
+			continue
+		}
+
+		// The argument may name the data dir itself (-D <dir>) or a file
+		// inside it (--config=<dir>/postgresql.conf): walk up to the
+		// component that is the data dir.
+		for path := filepath.Clean(field[slash:]); path != "/" && path != "."; path = filepath.Dir(path) {
+			if isCandidateDir(filepath.Base(path)) {
+				return path
+			}
+		}
+	}
+
+	return ""
 }
 
 // killPostgresForDataDir kills the postgres process that owns dataDir, if
@@ -217,6 +263,12 @@ func killPostgresForDataDir(dataDir string) {
 // process itself survived, or the dir was manually deleted) by matching on
 // the process command line directly via pgrep, then re-verifying via ps
 // before killing — same PID-reuse guard as killPostgresForDataDir.
+//
+// A process whose data directory still exists is NOT this function's
+// business: the directory pass above already decided, with the owner-liveness
+// check, whether it is an orphan. Killing it here regardless is what made
+// concurrently running test packages (and two suites on one laptop) kill each
+// other's live instances.
 func sweepFallbackPgrep() {
 	cmd := exec.CommandContext(context.Background(), "pgrep", "-f", "solidping-embedded-pg|solidping-scenario-pg")
 
@@ -244,8 +296,16 @@ func sweepFallbackPgrep() {
 		// prefixes (pgrep already filtered on this pattern, but re-checking
 		// here keeps the safety invariant local to one function and
 		// protects against a future pattern change becoming too broad).
-		if !commandLineContains(pid, "solidping-embedded-pg") && !commandLineContains(pid, "solidping-scenario-pg") {
+		cmdLine, ok := processCommandLine(pid)
+		ours := strings.Contains(cmdLine, "solidping-embedded-pg") || strings.Contains(cmdLine, "solidping-scenario-pg")
+		if !ok || !ours {
 			continue
+		}
+
+		if dataDir := embeddedDataDirFromCommandLine(cmdLine); dataDir != "" {
+			if _, statErr := os.Stat(dataDir); statErr == nil {
+				continue // still has its data dir: the directory pass owns that decision
+			}
 		}
 
 		fmt.Fprintf(os.Stderr, sweepLogPrefix+"killing orphaned postgres pid %d found via pgrep fallback\n", pid)

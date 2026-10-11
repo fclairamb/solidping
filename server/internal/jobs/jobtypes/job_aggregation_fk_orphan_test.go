@@ -22,7 +22,7 @@ import (
 // portAggFKOrphanRunPG is distinct from every embedded-Postgres port used by the
 // _postgres_test.go files in internal/db/postgres (…15451, 15457…) so this
 // cross-package test never collides when `make test` runs packages in parallel.
-const portAggFKOrphanRunPG = 15452
+const portAggFKOrphanRunPG = 15703
 
 // errForcedStage is returned by errOnListResults to make aggregatePeriod fail
 // deterministically, standing in for the FK-orphan INSERT that used to halt the

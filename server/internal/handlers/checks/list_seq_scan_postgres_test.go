@@ -20,7 +20,7 @@ import (
 // Port for the checks-list scan-accounting suite. Distinct from every other
 // _postgres_test.go port claimed in the repo (15438-15467 — see the
 // port-numbering comment in db/postgres/postgres_headroom_postgres_test.go).
-const portListSeqScanPG = 15468
+const portListSeqScanPG = 15707
 
 // The fixture deliberately reproduces the organization from spec
 // 2026-08-09-07: 356 checks, each with a long raw history. That shape is what

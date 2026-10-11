@@ -48,19 +48,26 @@ make test-postgres
 which is exactly:
 
 ```bash
-cd server && SP_TEST_REQUIRE_POSTGRES=1 go test -count=1 -p 1 -v ./...
+cd server && SP_TEST_REQUIRE_POSTGRES=1 go test -count=1 -p 4 -v ./...
 ```
 
 Three parts, none of them optional:
 
 - **no `-short`** — that is the whole point.
-- **`-p 1`** — not a performance knob. `embedded-postgres-go` keeps its
-  extracted binaries *and its `pwfile`* in one shared
-  `~/.embedded-postgres-go/extracted`, so two instances starting concurrently
-  make the loser fail with "unable to remove password file". Suites are serial
-  *within* a package (`//nolint:paralleltest`), but `go test ./...` runs
-  *packages* concurrently at `-p` = GOMAXPROCS. The full suite also flakes under
-  parallel testcontainer load.
+- **`-p 4`** — packages run concurrently (suites stay serial *within* a
+  package). This was `-p 1` until 2026-10-11, because concurrent embedded
+  instances killed each other in three ways, all fixed now:
+  1. a shared runtime dir (`pwfile` included): each instance has its own;
+  2. every test process's startup orphan sweep took a live instance for an
+     orphan (embedded-postgres wipes the data dir, owner marker included,
+     before initdb) and killed it: `internal/db/postgres/embeddedpg` rewrites
+     the marker, gives markerless dirs a grace window, and its pgrep fallback
+     only kills processes whose data dir is gone;
+  3. 16 hand-numbered ports were claimed by two packages each:
+     `TestFixedTestPortsAreUniqueAcrossPackages` (`internal/testsupport`)
+     fails on any reuse.
+
+  The layer went from ~40 min in CI at `-p 1` to ~13 min on a laptop at `-p 4`.
 - **`SP_TEST_REQUIRE_POSTGRES=1`** — see below.
 
 First run downloads a PostgreSQL distribution into `~/.embedded-postgres-go`;
@@ -156,8 +163,9 @@ the PR layer.
   failure through `testsupport.PostgresUnavailable` /
   `testsupport.PostgresInitFailed` (or `PostgresUnavailableTestMain` from a
   `TestMain`) — never a bare `t.Skipf`, whatever the wording. Claim a port number no other
-  `*_postgres_test.go` uses (see the port-numbering note in
-  `internal/db/postgres/postgres_headroom_postgres_test.go`). Prefer one shared
+  *package* uses (see the port-numbering note in
+  `internal/db/postgres/postgres_headroom_postgres_test.go`);
+  `TestFixedTestPortsAreUniqueAcrossPackages` fails the build otherwise. Prefer one shared
   instance per package via `sync.Once` + `TestMain` —
   `internal/handlers/orgparams/service_postgres_test.go` is the worked example,
   and explains what happens when you do not.
@@ -175,7 +183,7 @@ baseline: [coverage.md](coverage.md).
 
 ## Known gap
 
-The Postgres layer costs ~12 minutes per PR because embedded PostgreSQL boots
+The Postgres layer still costs ~13 minutes per PR (at `-p 4`) because embedded PostgreSQL boots
 once per *suite function* rather than once per run — 83 `Embedded: true` call
 sites each start their own instance. Rewiring those helpers to accept an
 external DSN would let one Postgres serve every suite and cut that

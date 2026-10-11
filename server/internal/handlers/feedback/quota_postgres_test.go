@@ -16,7 +16,7 @@ import (
 // portFeedbackQuotaPG: distinct from every other _postgres_test.go port
 // claimed in the repo (see the port-numbering comment in
 // postgres_headroom_postgres_test.go / orgparams' service_postgres_test.go).
-const portFeedbackQuotaPG = 15561
+const portFeedbackQuotaPG = 15715
 
 // ONE embedded Postgres for the whole package, booted once and shared —
 // mirrors internal/handlers/orgparams' service_postgres_test.go, which

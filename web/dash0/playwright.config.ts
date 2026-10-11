@@ -22,12 +22,17 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   // Opt out of parallel tests on CI
   workers: process.env.CI ? 1 : undefined,
-  // Reporter to use
-  reporter: [
-    ["html"],
-    ["list"],
-    ["json", { outputFile: "test-results/results.json" }],
-  ],
+  // Reporter to use. On GitHub Actions the suite runs sharded (ci.yml), so
+  // each shard writes a blob report and the e2e-report job merges them into
+  // the HTML + JSON reports. Keyed on GITHUB_ACTIONS rather than CI so a local
+  // `CI=true` run against a side-car server keeps its HTML report.
+  reporter: process.env.GITHUB_ACTIONS
+    ? [["blob"], ["list"]]
+    : [
+        ["html"],
+        ["list"],
+        ["json", { outputFile: "test-results/results.json" }],
+      ],
 
   // Global setup and teardown
   globalSetup: "./e2e/global-setup.ts",
@@ -43,8 +48,10 @@ export default defineConfig({
     trace: "on-first-retry",
     // Take screenshot on failure
     screenshot: "only-on-failure",
-    // Video on failure
-    video: "retain-on-failure",
+    // Video on failure. "retain-on-failure" records every test and deletes
+    // the file when it passes, so on CI (where a failure is always retried)
+    // record the first retry only, like the trace.
+    video: process.env.CI ? "on-first-retry" : "retain-on-failure",
   },
 
   // Configure projects for major browsers

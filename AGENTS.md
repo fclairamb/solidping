@@ -42,7 +42,7 @@ No Docker or Postgres is needed. SQLite is the default database. Full runbook: [
 | `make dev-test` | Same, with `SP_RUNMODE=test` |
 | `make dev-saas` | Same, in SaaS mode — pairs with `../solidping-billing` `make dev` (see SaaS mode below) |
 | `make test` | Run backend tests (`-short`: SQLite only, skips every Postgres suite) (`wiki/testing/test-layers.md`) |
-| `make test-postgres` | Run the Postgres test layer (non-short, `-p 1`, `SP_TEST_REQUIRE_POSTGRES=1`) — exactly what the `backend-postgres` CI job runs, ~12 min |
+| `make test-postgres` | Run the Postgres test layer (non-short, `-p 4`, `SP_TEST_REQUIRE_POSTGRES=1`) — exactly what the `backend-postgres` CI job runs, ~13 min |
 | `make test-slow` | Run the `slowtests` build-tagged layer (live network + Docker); nightly in CI |
 | `make test-dash` | Run dash0 Playwright tests |
 | `make lint` | Lint backend + dash |
