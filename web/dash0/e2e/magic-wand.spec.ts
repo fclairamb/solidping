@@ -611,9 +611,12 @@ test.describe("Magic wand defaults", () => {
 
     // Error toast, and the wand does NOT retry with an invented suffix — it
     // stays on the list with no second page created.
-    await expect(page.getByText(/already|conflict|slug/i)).toBeVisible({
-      timeout: 10000,
-    });
+    // Scoped to the toast: page-wide, /slug/i also matches the list's "Slug"
+    // column header as soon as the pre-created page renders (strict-mode
+    // violation, flaky in CI run 38115154978).
+    await expect(
+      page.locator("[data-sonner-toast]").filter({ hasText: /already|conflict/i }),
+    ).toBeVisible({ timeout: 10000 });
     await expect(page).toHaveURL(/\/status-pages$/);
 
     const listResp = await page.request.get(
