@@ -58,7 +58,6 @@ test.describe("JS check — public env vs encrypted secrets", () => {
 
     // ── Create, through the real form ──
     await page.goto("orgs/test/checks/new?checkType=js");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
     const checkName = `E2E JS Secrets ${Date.now()}`;
@@ -91,7 +90,6 @@ test.describe("JS check — public env vs encrypted secrets", () => {
 
     // ── Reload the edit page: env shown, secrets not ──
     await page.goto(`orgs/test/checks/${uid}/edit`);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("js-env-key-0")).toBeVisible();
 
     await expect(page.getByTestId("js-env-key-0")).toHaveValue("BASE_URL");
@@ -184,7 +182,6 @@ test.describe("JS check — public env vs encrypted secrets", () => {
   }) => {
     const page = authenticatedPage;
     await page.goto("orgs/test/checks/new?checkType=js");
-    await page.waitForLoadState("networkidle");
 
     await page.getByTestId("check-load-template-button").click();
     await page.getByTestId("check-sample-js-tcp-redis-ping").click();

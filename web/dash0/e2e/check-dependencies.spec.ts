@@ -19,10 +19,8 @@ test.describe("Check dependencies", () => {
       .getByRole("link", { name: "Checks" })
       .click();
     await page.waitForURL(/\/checks$/);
-    await page.waitForLoadState("networkidle");
     await page.getByTestId("new-check-button").click();
     await page.waitForURL(/\/checks\/new/);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
     await page.getByTestId("check-name-input").fill(name);
     await page
@@ -33,7 +31,6 @@ test.describe("Check dependencies", () => {
       /\/checks\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
       { timeout: 10000 },
     );
-    await page.waitForLoadState("networkidle");
     await expect(page.getByRole("heading", { name })).toBeVisible();
     return page.url();
   }
@@ -52,10 +49,8 @@ test.describe("Check dependencies", () => {
       .getByRole("link", { name: "Checks" })
       .click();
     await page.waitForURL(/\/checks$/);
-    await page.waitForLoadState("networkidle");
     await page.getByTestId("new-check-button").click();
     await page.waitForURL(/\/checks\/new/);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
     await page.getByTestId("check-name-input").fill(name);
     await page
@@ -70,7 +65,6 @@ test.describe("Check dependencies", () => {
       /\/checks\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
       { timeout: 10000 },
     );
-    await page.waitForLoadState("networkidle");
     await expect(page.getByRole("heading", { name })).toBeVisible();
     return page.url();
   }
@@ -79,10 +73,8 @@ test.describe("Check dependencies", () => {
   // page's "Edit" affordance, which deep-links `?section=dependencies`.
   async function openDependencyEditor(page: Page, detailUrl: string) {
     await page.goto(detailUrl);
-    await page.waitForLoadState("networkidle");
     await page.getByTestId("dependencies-edit-link").click();
     await page.waitForURL(/\/edit\?section=dependencies/, { timeout: 10000 });
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("dependency-add-row")).toBeVisible();
   }
 
@@ -262,7 +254,6 @@ test.describe("Check dependencies", () => {
     ).toBeVisible();
 
     await page.goto(parentUrl);
-    await page.waitForLoadState("networkidle");
     await expect(
       page
         .getByTestId("depended-on-by-list")

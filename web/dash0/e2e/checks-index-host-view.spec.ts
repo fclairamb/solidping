@@ -87,7 +87,6 @@ test.describe("Checks index host view", () => {
     await mockChecksIndex(page, hostViewFixture());
 
     await page.goto("orgs/test/checks");
-    await page.waitForLoadState("networkidle");
 
     // Default is Groups mode — the host view isn't rendered yet.
     await expect(page.getByTestId("group-by-groups")).toHaveAttribute("aria-pressed", "true");
@@ -135,7 +134,6 @@ test.describe("Checks index host view", () => {
     await mockChecksIndex(page, hostViewFixture());
 
     await page.goto("orgs/test/checks?groupBy=host");
-    await page.waitForLoadState("networkidle");
 
     // Host view renders on the very first load — no click needed — and the
     // toggle reflects the deep-linked mode.
@@ -175,7 +173,6 @@ test.describe("Checks index host view", () => {
     ]);
 
     await page.goto("orgs/test/checks?groupBy=host");
-    await page.waitForLoadState("networkidle");
 
     const hostView = page.getByTestId("host-view");
     await expect(hostView).toBeVisible({ timeout: 10000 });

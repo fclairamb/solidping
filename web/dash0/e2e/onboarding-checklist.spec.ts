@@ -284,7 +284,6 @@ test.describe("Getting-started checklist", () => {
     await expect(page.getByTestId("onboarding-checklist")).toHaveCount(0);
 
     await page.goto(`orgs/${orgSlug}/account/profile`);
-    await page.waitForLoadState("networkidle");
     await page.getByTestId("restore-onboarding-checklist").click();
     await expect(page.getByText(/getting-started checklist is back/i)).toBeVisible();
 
@@ -357,7 +356,6 @@ test.describe("Getting-started checklist", () => {
     const otherPage = await other.newPage();
     await seedBrowserSession(otherPage, { ...org, slug: org.slug });
     await otherPage.goto(`orgs/${org.slug}`);
-    await otherPage.waitForLoadState("networkidle");
 
     // Positive control: the dashboard really did render for this context.
     await expect(otherPage.getByTestId("kpi-tile-monitored")).toBeVisible();

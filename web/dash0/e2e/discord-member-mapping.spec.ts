@@ -224,7 +224,6 @@ test.describe("Discord member mapping", () => {
     const state = await stubDiscordIntegration(page);
 
     await page.goto(`orgs/test/integrations/${CHANNEL_UID}`);
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("slack-member-mapping")).toBeVisible();
 
@@ -254,7 +253,6 @@ test.describe("Discord member mapping", () => {
     await stubDiscordIntegration(page);
 
     await page.goto(`orgs/test/integrations/${CHANNEL_UID}`);
-    await page.waitForLoadState("networkidle");
 
     const aliceRow = page.getByTestId("slack-mapping-row-alice@acme.test");
     await expect(aliceRow).toBeVisible();
@@ -279,7 +277,6 @@ test.describe("Discord member mapping", () => {
     const state = await stubDiscordIntegration(page);
 
     await page.goto(`orgs/test/integrations/${CHANNEL_UID}`);
-    await page.waitForLoadState("networkidle");
 
     const clear = page.getByTestId("slack-mapping-clear-alice@acme.test");
     await expect(clear).toBeEnabled();
@@ -302,7 +299,6 @@ test.describe("Discord member mapping", () => {
     await stubDiscordIntegration(page, { anybodyLinked: false });
 
     await page.goto(`orgs/test/integrations/${CHANNEL_UID}`);
-    await page.waitForLoadState("networkidle");
 
     const empty = page.getByTestId("discord-mapping-nobody-linked");
     await expect(empty).toBeVisible();
@@ -319,7 +315,6 @@ test.describe("Discord member mapping", () => {
     await stubDiscordIntegration(page);
 
     await page.goto(`orgs/test/integrations/${CHANNEL_UID}`);
-    await page.waitForLoadState("networkidle");
 
     const toggle = page.getByTestId("discord-mention-on-call");
     await expect(toggle).toBeVisible();
@@ -363,7 +358,6 @@ test.describe("Discord member mapping", () => {
     const state = await stubDiscordIntegration(page, { anybodyLinked: false });
 
     await page.goto(`orgs/test/integrations/${CHANNEL_UID}`);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("discord-mapping-nobody-linked")).toBeVisible();
 
     const before = state.identitiesGets;
@@ -392,7 +386,6 @@ test.describe("Discord member mapping", () => {
     await stubDiscordIntegration(page, { identitiesMode: "error" });
 
     await page.goto(`orgs/test/integrations/${CHANNEL_UID}`);
-    await page.waitForLoadState("networkidle");
 
     const error = page.getByText("Could not load the member mapping.");
     // React Query retries a failed list before surfacing the error.

@@ -26,7 +26,6 @@ test.describe("Domain check — docs anchor, thresholds, long period", () => {
     const page = authenticatedPage;
 
     await page.goto("orgs/test/checks/new?checkType=domain");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-domain-input")).toBeVisible();
 
     const docsLink = page.getByTestId("docs-link");
@@ -43,7 +42,6 @@ test.describe("Domain check — docs anchor, thresholds, long period", () => {
     const token = await getAuthToken(page);
 
     await page.goto("orgs/test/checks/new?checkType=domain");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-domain-input")).toBeVisible();
 
     const checkName = `E2E Domain Thresholds ${Date.now()}`;
@@ -72,7 +70,6 @@ test.describe("Domain check — docs anchor, thresholds, long period", () => {
     // Reload the edit page — values must reflect what was actually persisted,
     // not just what the client held after submit.
     await page.goto(`orgs/test/checks/${uid}/edit`);
-    await page.waitForLoadState("networkidle");
     await expect(
       page.getByTestId("check-domain-critical-days-input"),
     ).toHaveValue("7");

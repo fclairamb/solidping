@@ -30,7 +30,6 @@ test.describe("HTTP check verifySsl / followRedirects", () => {
     const token = await getAuthToken(page);
 
     await page.goto("orgs/test/checks/new?checkType=http");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
     // Advanced is a collapsed-by-default section — open it.
@@ -74,7 +73,6 @@ test.describe("HTTP check verifySsl / followRedirects", () => {
     const token = await getAuthToken(page);
 
     await page.goto("orgs/test/checks/new?checkType=http");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
     await page.getByTestId("section-advanced-trigger").click();
@@ -103,7 +101,6 @@ test.describe("HTTP check verifySsl / followRedirects", () => {
     // Advanced section auto-opens here (it holds a non-default value), so no
     // click is needed to reveal it — unlike the fresh "new check" page above.
     await page.goto(`orgs/test/checks/${uid}/edit`);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-verify-ssl-switch")).toHaveAttribute(
       "aria-checked",
       "false",
@@ -122,7 +119,6 @@ test.describe("HTTP check verifySsl / followRedirects", () => {
     const token = await getAuthToken(page);
 
     await page.goto("orgs/test/checks/new?checkType=http");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
     await page.getByTestId("section-advanced-trigger").click();

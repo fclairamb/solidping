@@ -34,7 +34,6 @@ test.describe("HTTP check body assertions", () => {
     const token = await getAuthToken(page);
 
     await page.goto("orgs/test/checks/new?checkType=http");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
     await page
@@ -64,7 +63,6 @@ test.describe("HTTP check body assertions", () => {
     const token = await getAuthToken(page);
 
     await page.goto("orgs/test/checks/new?checkType=http");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
     await page
@@ -106,7 +104,6 @@ test.describe("HTTP check body assertions", () => {
     // without a click. The ignore-case checkbox must come back checked — a
     // flag that silently resets is the whole class of bug this guards.
     await page.goto(`orgs/test/checks/${uid}/edit`);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("body-assertion-editor")).toBeVisible();
     await expect(page.getByTestId("body-assertion-value")).toHaveValue(
       "Healthy",
@@ -137,7 +134,6 @@ test.describe("HTTP check body assertions", () => {
     const page = authenticatedPage;
 
     await page.goto("orgs/test/checks/new?checkType=http");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
     await page.getByTestId("section-advanced-trigger").click();
@@ -194,7 +190,6 @@ test.describe("HTTP check body assertions", () => {
     const { uid } = await createResp.json();
 
     await page.goto(`orgs/test/checks/${uid}/edit`);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("body-assertion-editor")).toBeVisible();
 
     await page.getByTestId("body-assertion-remove").click();
@@ -250,7 +245,6 @@ test.describe("HTTP check body assertions", () => {
     // Two editors on one form: the testIdPrefix split is what keeps them from
     // colliding, and a save must preserve both trees.
     await page.goto(`orgs/test/checks/${uid}/edit`);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("json-assertion-editor")).toBeVisible();
     await expect(page.getByTestId("body-assertion-editor")).toBeVisible();
     await expect(page.getByTestId("json-assertion-path")).toHaveValue(

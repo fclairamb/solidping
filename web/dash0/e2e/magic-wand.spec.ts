@@ -153,7 +153,6 @@ test.describe("Magic wand defaults", () => {
     await deleteAll(page, orgSlug, auth, "integrations");
 
     await page.goto(`orgs/${orgSlug}/integrations`);
-    await page.waitForLoadState("networkidle");
 
     const wand = page.getByTestId("wand-create-email-alerts");
     await expect(wand).toBeVisible();
@@ -198,7 +197,6 @@ test.describe("Magic wand defaults", () => {
     // The Getting Started `alerts` step reads this same query key, so it
     // flips with no extra plumbing.
     await page.goto(`orgs/${orgSlug}`);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("onboarding-step-alerts")).toHaveAttribute(
       "data-done",
       "true",
@@ -239,7 +237,6 @@ test.describe("Magic wand defaults", () => {
     const expectedUids = recentChecks.map((c) => c.uid);
 
     await page.goto(`orgs/${orgSlug}/organization/report-schedules`);
-    await page.waitForLoadState("networkidle");
 
     const wand = page.getByTestId("wand-create-weekly-report");
     await expect(wand).toBeVisible();
@@ -293,7 +290,6 @@ test.describe("Magic wand defaults", () => {
     ).toHaveCount(10);
 
     await page.goto(`orgs/${orgSlug}`);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("onboarding-step-report")).toHaveAttribute(
       "data-done",
       "true",
@@ -316,7 +312,6 @@ test.describe("Magic wand defaults", () => {
     const { orgSlug, auth, orgName, checkNames } = await seedOrg(page, 2);
 
     await page.goto(`orgs/${orgSlug}/status-pages/new`);
-    await page.waitForLoadState("networkidle");
 
     const wand = page.getByTestId("wand-prefill-status-page");
     await expect(wand).toBeVisible();
@@ -374,7 +369,6 @@ test.describe("Magic wand defaults", () => {
     const { orgSlug, auth, checkNames } = await seedOrg(page, 2);
 
     await page.goto(`orgs/${orgSlug}/status-pages/new`);
-    await page.waitForLoadState("networkidle");
 
     const wand = page.getByTestId("wand-prefill-status-page");
     await expect(wand).toBeEnabled({ timeout: 10000 });
@@ -432,7 +426,6 @@ test.describe("Magic wand defaults", () => {
     const { orgSlug } = await seedOrg(page, 2);
 
     await page.goto(`orgs/${orgSlug}/status-pages`);
-    await page.waitForLoadState("networkidle");
 
     // Positive control: a freshly seeded org really is on the empty state, so
     // the absence assertion below is about the button and not about landing on
@@ -455,7 +448,6 @@ test.describe("Magic wand defaults", () => {
     const { orgSlug, auth, orgName, checkNames } = await seedOrg(page, 2);
 
     await page.goto(`orgs/${orgSlug}/status-pages`);
-    await page.waitForLoadState("networkidle");
 
     const wand = page.getByTestId("wand-create-status-page");
     await expect(wand).toBeVisible();
@@ -550,7 +542,6 @@ test.describe("Magic wand defaults", () => {
     });
 
     await page.goto(`orgs/${orgSlug}/status-pages`);
-    await page.waitForLoadState("networkidle");
 
     const wand = page.getByTestId("wand-create-status-page");
     await expect(wand).toBeVisible();
@@ -612,7 +603,6 @@ test.describe("Magic wand defaults", () => {
     expect(preCreateResp.status()).toBe(201);
 
     await page.goto(`orgs/${orgSlug}/status-pages`);
-    await page.waitForLoadState("networkidle");
 
     const wand = page.getByTestId("wand-create-status-page");
     await expect(wand).toBeEnabled({ timeout: 10000 });
@@ -642,7 +632,6 @@ test.describe("Magic wand defaults", () => {
 
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto(`orgs/${orgSlug}/integrations`);
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("wand-create-email-alerts")).toBeVisible();
 

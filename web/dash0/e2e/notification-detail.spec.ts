@@ -16,7 +16,6 @@ test.describe("Notification delivery detail", () => {
     await page.goto(
       `${DASH_BASE}/orgs/test/notifications/does-not-exist`,
     );
-    await page.waitForLoadState("networkidle");
 
     // Friendly not-found card from QueryErrorView.
     await expect(page.getByText(/not found/i).first()).toBeVisible();
@@ -154,7 +153,6 @@ test.describe("Notification delivery detail", () => {
     await page.goto(
       `${DASH_BASE}/orgs/test/notifications/${SEEDED_NOTIF_UID}?from=incident:${SEEDED_INCIDENT_UID}`,
     );
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByRole("heading", { name: "Notification" })).toBeVisible();
 
@@ -278,7 +276,6 @@ test.describe("Notification delivery detail", () => {
     await page.goto(
       `${DASH_BASE}/orgs/test/notifications/${notifUid}?from=incident:11111111-1111-1111-1111-111111111111`,
     );
-    await page.waitForLoadState("networkidle");
 
     // The Delivery section is present with the status-code badge and duration.
     await expect(page.getByText("Delivery", { exact: true })).toBeVisible();
@@ -336,7 +333,6 @@ test.describe("Notification delivery detail", () => {
     await page.goto(
       `${DASH_BASE}/orgs/test/notifications/${notifUid}?from=integration:some-integration-uid`,
     );
-    await page.waitForLoadState("networkidle");
 
     // The page renders normally...
     await expect(page.getByRole("heading", { name: "Notification" })).toBeVisible();

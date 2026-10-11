@@ -95,7 +95,6 @@ test.describe("Organization profile", () => {
     const renamed = `${orgSlug}-x`;
 
     await page.goto(`orgs/${orgSlug}/organization/settings`);
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("org-profile-card")).toBeVisible();
 
@@ -138,7 +137,6 @@ test.describe("Organization profile", () => {
     const { orgSlug } = await seedOwnedOrg(page);
 
     await page.goto(`orgs/${orgSlug}/organization/settings`);
-    await page.waitForLoadState("networkidle");
 
     const nameField = page.getByTestId("org-profile-name");
     const slugField = page.getByTestId("org-profile-slug");
@@ -343,7 +341,6 @@ test.describe("Organization profile", () => {
     await seedBrowserSession(page, adminSession);
 
     await page.goto(`orgs/${orgSlug}/organization/settings`);
-    await page.waitForLoadState("networkidle");
 
     // Positive control: the page rendered for the admin, so the absent card
     // below is about the role, not a blank page.

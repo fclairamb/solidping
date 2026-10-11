@@ -11,7 +11,6 @@ test.describe("Incident comments", () => {
     const page = authenticatedPage;
 
     await page.goto(`${DASH_BASE}/orgs/test/incidents/${incidentUid}`);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByText("Incident Details")).toBeVisible();
 
     // The Comments card renders with a composer.
@@ -47,7 +46,6 @@ test.describe("Incident comments", () => {
     const page = authenticatedPage;
 
     await page.goto(`${DASH_BASE}/orgs/test/incidents/${incidentUid}`);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByText("Incident Details")).toBeVisible();
 
     const composer = page.getByTestId("comment-input");
@@ -99,7 +97,6 @@ test.describe("Incident comments", () => {
     await page.setViewportSize({ width: 375, height: 812 });
 
     await page.goto(`${DASH_BASE}/orgs/test/incidents/${incidentUid}`);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByText("Incident Details")).toBeVisible();
 
     const composer = page.getByTestId("comment-input");

@@ -97,7 +97,6 @@ test.describe("Escalation assignment", () => {
 
     try {
       await page.goto("orgs/test/organization/settings");
-      await page.waitForLoadState("networkidle");
 
       await expect(
         page.getByRole("heading", { name: /default escalation policy/i }),
@@ -209,7 +208,6 @@ test.describe("Escalation assignment", () => {
 
     try {
       await page.goto(`orgs/test/checks/${check.uid}/edit`);
-      await page.waitForLoadState("networkidle");
 
       const select = page.getByTestId("escalation-policy-select");
       await expect(select).toBeVisible();

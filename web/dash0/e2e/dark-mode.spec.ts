@@ -5,7 +5,6 @@ test.describe("Dark Mode Persistence", () => {
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
-    await page.waitForLoadState("networkidle");
 
     // Click theme toggle button (in the header, not a menu)
     await page.getByTestId("theme-toggle").click();

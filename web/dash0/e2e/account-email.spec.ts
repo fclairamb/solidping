@@ -76,7 +76,6 @@ test.describe("Account > Profile > Email", () => {
     await seedBrowserSession(page, org);
 
     await page.goto(`orgs/${org.slug}/account/profile`);
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("profile-current-email")).toHaveText(email);
 
@@ -102,7 +101,6 @@ test.describe("Account > Profile > Email", () => {
     // Log out, then log in through the login page with the new address.
     await page.evaluate(() => localStorage.clear());
     await page.goto(`orgs/${org.slug}/login`);
-    await page.waitForLoadState("networkidle");
     await page.getByTestId("login-email").fill(newEmail);
     await page.getByTestId("login-password").fill(PASSWORD);
     await page.getByTestId("login-submit").click();
@@ -121,7 +119,6 @@ test.describe("Account > Profile > Email", () => {
     await seedBrowserSession(page, second.org);
 
     await page.goto(`orgs/${second.org.slug}/account/profile`);
-    await page.waitForLoadState("networkidle");
 
     await page.getByTestId("profile-new-email").fill(first.email.toUpperCase());
     await page.getByTestId("profile-email-password").fill(PASSWORD);
@@ -140,9 +137,7 @@ test.describe("Server > Users > Edit", () => {
     const { email, stamp } = await seedUserWithOrg(page);
 
     await page.goto("orgs/test/server/users");
-    await page.waitForLoadState("networkidle");
     await page.getByTestId("users-search").fill(email);
-    await page.waitForLoadState("networkidle");
 
     const row = page.getByRole("row", { name: new RegExp(email.replace(/[\\.+]/g, "\\$&")) });
     await expect(row).toBeVisible();

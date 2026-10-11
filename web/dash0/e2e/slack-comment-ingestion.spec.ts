@@ -118,7 +118,6 @@ test.describe("Slack comment ingestion toggle", () => {
     await stubSlackIntegration(page);
 
     await page.goto(`orgs/test/integrations/${CHANNEL_UID}`);
-    await page.waitForLoadState("networkidle");
 
     const toggle = page.getByTestId("slack-comment-ingestion");
     await expect(toggle).toBeVisible();
@@ -134,7 +133,6 @@ test.describe("Slack comment ingestion toggle", () => {
     await stubSlackIntegration(page, "all");
 
     await page.goto(`orgs/test/integrations/${CHANNEL_UID}`);
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("slack-comment-ingestion")).toHaveAttribute(
       "data-state",
@@ -149,7 +147,6 @@ test.describe("Slack comment ingestion toggle", () => {
     const state = await stubSlackIntegration(page, "explicit");
 
     await page.goto(`orgs/test/integrations/${CHANNEL_UID}`);
-    await page.waitForLoadState("networkidle");
 
     await page.getByTestId("slack-comment-ingestion").click();
     await expect(page.getByTestId("slack-comment-ingestion")).toHaveAttribute(

@@ -13,7 +13,6 @@ test.describe("Check form progressive disclosure", () => {
     const page = authenticatedPage;
 
     await page.goto("orgs/test/checks/new?checkType=http");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
     // Organization (which holds the slug) is collapsed on a fresh create form.
@@ -46,7 +45,6 @@ test.describe("Check form progressive disclosure", () => {
 
     // Pre-fill a non-default confirmation period via the query-param whitelist.
     await page.goto("orgs/test/checks/new?checkType=http&confirmationPeriod=300");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
     // Incident tracking must open on load because it carries a non-default value.
@@ -68,7 +66,6 @@ test.describe("Check form progressive disclosure", () => {
     const page = authenticatedPage;
 
     await page.goto("orgs/test/checks/new?checkType=http&section=flapping");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
     await expect(page.getByTestId("section-flapping-trigger")).toHaveAttribute(
@@ -83,7 +80,6 @@ test.describe("Check form progressive disclosure", () => {
     const page = authenticatedPage;
 
     await page.goto("orgs/test/checks/new?checkType=http");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
     const checkName = `E2E Progressive ${Date.now()}`;
@@ -94,7 +90,6 @@ test.describe("Check form progressive disclosure", () => {
     // never requires opening or scrolling past a collapsible section.
     await page.getByTestId("check-submit-button").click();
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
-    await page.waitForLoadState("networkidle");
     await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
   });
 });

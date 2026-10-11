@@ -13,7 +13,6 @@ test.describe("Server Admin", () => {
   }) => {
     const page = authenticatedPage;
 
-    await page.waitForLoadState("networkidle");
 
     // Open user dropdown
     await page.getByTestId("user-menu-button").click();
@@ -66,14 +65,12 @@ test.describe("Server Admin", () => {
     // Click Mail tab
     await page.getByRole("link", { name: "Mail", exact: true }).click();
     await page.waitForURL(/\/server\/mail/);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByLabel("SMTP Host")).toBeVisible();
     await expect(page.getByLabel("From Address")).toBeVisible();
 
     // Click Authentication tab
     await page.getByRole("link", { name: "Authentication" }).click();
     await page.waitForURL(/\/server\/auth/);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByText("Client ID", { exact: true }).first()).toBeVisible();
   });
 
@@ -109,7 +106,6 @@ test.describe("Server Admin", () => {
     await navigateToServer(page);
     await page.getByRole("link", { name: "Mail", exact: true }).click();
     await page.waitForURL(/\/server\/mail/);
-    await page.waitForLoadState("networkidle");
 
     // Verify test email section is visible
     await expect(page.getByLabel("Recipient Email")).toBeVisible();
@@ -338,7 +334,6 @@ test.describe("Server Admin — Microsoft Tenant ID", () => {
     // Reload and confirm the non-secret value round-trips from GET
     // /system/parameters (it is not masked).
     await page.reload();
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId(tenantField)).toHaveValue(tenant);
   });
 });
@@ -371,7 +366,6 @@ test.describe("Server Admin — non-super-admin guard", () => {
     });
 
     await page.goto("orgs/test/server/hashing");
-    await page.waitForLoadState("networkidle");
 
     // The guard navigates back to /orgs/test (replace), dropping /server.
     await page.waitForURL((url) => !url.pathname.includes("/server"), {
@@ -390,7 +384,6 @@ test.describe("Server Performance", () => {
   }) => {
     const page = authenticatedPage;
     await page.goto("orgs/test/server/performance");
-    await page.waitForLoadState("networkidle");
 
     // The check-runner pool and its fast-lane floor render as one group,
     // background jobs as another.
@@ -423,7 +416,6 @@ test.describe("Server Performance", () => {
   }) => {
     const page = authenticatedPage;
     await page.goto("orgs/test/server/performance");
-    await page.waitForLoadState("networkidle");
 
     // The lane-load report renders one table per worker with a fast and a
     // slow row (the test server registers its own worker at startup).
@@ -452,7 +444,6 @@ test.describe("Server Aggregation", () => {
   }) => {
     const page = authenticatedPage;
     await page.goto("orgs/test/server/aggregation");
-    await page.waitForLoadState("networkidle");
 
     // Each tier's field is labelled with its unit (hours / days / months).
     await expect(page.getByLabel("Raw retention (hours)")).toBeVisible();
@@ -476,7 +467,6 @@ test.describe("Server Aggregation", () => {
 
     await page.getByRole("link", { name: "Aggregation" }).click();
     await page.waitForURL(/\/server\/aggregation/, { timeout: 10000 });
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("aggregation-raw-hours-input")).toBeVisible();
   });
@@ -486,7 +476,6 @@ test.describe("Server Aggregation", () => {
   }) => {
     const page = authenticatedPage;
     await page.goto("orgs/test/server/aggregation");
-    await page.waitForLoadState("networkidle");
 
     // Set explicit, valid windows so the test is deterministic regardless of
     // any previously-persisted value.
@@ -501,7 +490,6 @@ test.describe("Server Aggregation", () => {
 
     // The non-secret values round-trip from GET /system/parameters.
     await page.reload();
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("aggregation-hour-days-input")).toHaveValue(
       "14",
     );
@@ -515,7 +503,6 @@ test.describe("Server Aggregation", () => {
   }) => {
     const page = authenticatedPage;
     await page.goto("orgs/test/server/aggregation");
-    await page.waitForLoadState("networkidle");
 
     // 0 is below the floor of 1; the field flags an inline error and the Save
     // button disarms so the invalid value never round-trips.

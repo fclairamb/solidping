@@ -17,7 +17,6 @@ test.describe("Organization parameters", () => {
     const value = `s3cr3t-${Date.now()}`;
 
     await page.goto("orgs/test/organization/parameters");
-    await page.waitForLoadState("networkidle");
 
     await page.getByTestId("parameter-add").click();
     await page.getByTestId("parameter-key-input").fill(key);
@@ -68,7 +67,6 @@ test.describe("Organization parameters", () => {
     const page = authenticatedPage;
 
     await page.goto("orgs/test/organization/parameters");
-    await page.waitForLoadState("networkidle");
 
     await page.getByTestId("parameter-add").click();
     await page.getByTestId("parameter-key-input").fill("NotLowercase");

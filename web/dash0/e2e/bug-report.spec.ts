@@ -37,7 +37,6 @@ test.describe("Bug report", () => {
     });
 
     await page.reload();
-    await page.waitForLoadState("networkidle");
 
     await page.getByTestId("feedback-button").click();
 

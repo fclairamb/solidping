@@ -17,7 +17,6 @@ test.describe("Superadmin user directory", () => {
     const page = authenticatedPage;
 
     await page.goto("orgs/test/server/entitlements");
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByRole("link", { name: "Users" })).toBeVisible();
   });
@@ -28,7 +27,6 @@ test.describe("Superadmin user directory", () => {
     const page = authenticatedPage;
 
     await page.goto("orgs/test/server/users");
-    await page.waitForLoadState("networkidle");
 
     // test@test.com is the OLDEST seeded user, ordered created_at DESC — on
     // a suite with many users created after it, it can be several pages deep
@@ -36,7 +34,6 @@ test.describe("Superadmin user directory", () => {
     // on it happening to land on page 1: that is what proves both that the
     // row renders AND that search actually finds it.
     await page.getByTestId("users-search").fill("test@test.com");
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("users-table")).toBeVisible();
 
@@ -54,14 +51,12 @@ test.describe("Superadmin user directory", () => {
     const page = authenticatedPage;
 
     await page.goto("orgs/test/server/users");
-    await page.waitForLoadState("networkidle");
 
     const search = page.getByTestId("users-search");
 
     // Reach the row via search first (see the test above for why an
     // unsearched first page cannot be relied on to contain it).
     await search.fill("test@test.com");
-    await page.waitForLoadState("networkidle");
     await expect(
       page.getByRole("row", { name: /test@test\.com/ }),
     ).toBeVisible();
@@ -78,7 +73,6 @@ test.describe("Superadmin user directory", () => {
 
     // Clearing the search restores a real table, not just an empty one.
     await search.fill("");
-    await page.waitForLoadState("networkidle");
 
     const table = page.getByTestId("users-table");
     await expect(table).toBeVisible();
@@ -86,7 +80,6 @@ test.describe("Superadmin user directory", () => {
 
     // And searching again reaches the same specific row.
     await search.fill("test@test.com");
-    await page.waitForLoadState("networkidle");
     await expect(
       page.getByRole("row", { name: /test@test\.com/ }),
     ).toBeVisible();
@@ -111,7 +104,6 @@ test.describe("Superadmin user directory", () => {
     });
 
     await page.goto("orgs/test/server/users");
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByText("Permission Denied")).toBeVisible();
     expect(page.url()).toContain("/server/users");

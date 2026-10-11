@@ -95,7 +95,6 @@ test.describe("HTTP check request body and headers", () => {
 
     try {
       await page.goto(`orgs/test/checks/${uid}/edit`);
-      await page.waitForLoadState("networkidle");
       await expect(page.getByTestId("check-url-input")).toHaveValue(config.url);
 
       // Save without touching a single field — the reported scenario.
@@ -132,7 +131,6 @@ test.describe("HTTP check request body and headers", () => {
 
     try {
       await page.goto(`orgs/test/checks/${uid}/edit`);
-      await page.waitForLoadState("networkidle");
       // The chip is seeded from the snake spelling; before the fix it showed
       // the default 200 and the save silently widened the check to accept it.
       await expect(
@@ -164,7 +162,6 @@ test.describe("HTTP check request body and headers", () => {
 
     try {
       await page.goto(`orgs/test/checks/${uid}/edit`);
-      await page.waitForLoadState("networkidle");
       // Advanced auto-opens: a body and a header both count as customized
       // (httpOptionsSummary), so the fields are visible without a click.
       await expect(page.getByTestId("check-http-body-input")).toHaveValue(
@@ -195,7 +192,6 @@ test.describe("HTTP check request body and headers", () => {
 
       // Reload the edit page: both are shown as stored.
       await page.goto(`orgs/test/checks/${uid}/edit`);
-      await page.waitForLoadState("networkidle");
       await expect(page.getByTestId("check-http-body-input")).toHaveValue(
         "{\"query\":\"{ pong }\"}",
       );
@@ -228,7 +224,6 @@ test.describe("HTTP check request body and headers", () => {
 
     try {
       await page.goto(`orgs/test/checks/${uid}/edit`);
-      await page.waitForLoadState("networkidle");
       await expect(page.getByTestId("request-header-key-0")).toHaveValue(
         "x-trace",
       );
@@ -263,7 +258,6 @@ test.describe("HTTP check request body and headers", () => {
 
     try {
       await page.goto(`orgs/test/checks/${uid}/edit`);
-      await page.waitForLoadState("networkidle");
       await expect(page.getByTestId("check-http-body-input")).toHaveValue(
         "keep=me",
       );
@@ -277,7 +271,6 @@ test.describe("HTTP check request body and headers", () => {
       expect((await getCheck(page, token, uid)).config.body).toBe("keep=me");
 
       await page.goto(`orgs/test/checks/${uid}/edit`);
-      await page.waitForLoadState("networkidle");
       await page.getByTestId("check-method-select").click();
       await page.getByRole("option", { name: "POST", exact: true }).click();
       await expect(page.getByTestId("check-http-body-input")).toHaveValue(
@@ -310,7 +303,6 @@ test.describe("HTTP check request body and headers", () => {
 
     try {
       await page.goto(`orgs/test/checks/${uid}/edit`);
-      await page.waitForLoadState("networkidle");
       // Advanced is collapsed by default for an uncustomized check — open it
       // before asserting on the body editor's visibility.
       await page.getByTestId("section-advanced-trigger").click();

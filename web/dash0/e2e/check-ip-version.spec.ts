@@ -137,7 +137,6 @@ test.describe("IP version selector", () => {
     );
 
     await page.goto("orgs/test/checks/new?checkType=tcp");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
     await page.getByTestId("check-name-input").fill(`E2E IPv6 ${Date.now()}`);
@@ -289,7 +288,6 @@ test.describe("IP version selector", () => {
     // The resolved family is visible on the check detail page, next to the raw
     // output rather than buried in it.
     await page.goto(`orgs/test/checks/${control}`);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("last-result-ip-version")).toContainText(
       "ipv4",
     );

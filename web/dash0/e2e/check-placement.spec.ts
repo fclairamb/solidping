@@ -186,7 +186,6 @@ test.describe("Region placement", () => {
     // "undefined" default (orgDefaultIsPrivate = false) instead of the
     // mocked private default.
     await page.goto("orgs/test/checks");
-    await page.waitForLoadState("networkidle");
     await page.getByTestId("new-check-button").click();
     await page.waitForURL(/\/checks\/new/);
     await expect(page.getByTestId("check-name-input")).toBeVisible();

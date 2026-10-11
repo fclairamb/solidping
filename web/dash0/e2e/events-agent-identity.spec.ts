@@ -56,7 +56,6 @@ test.describe("Events page names the agent", () => {
     ]);
 
     await page.goto("orgs/test/events");
-    await page.waitForLoadState("networkidle");
 
     const row = page.getByRole("row", { name: /Agent Disconnected/ });
     await expect(
@@ -83,7 +82,6 @@ test.describe("Events page names the agent", () => {
     ]);
 
     await page.goto("orgs/test/events");
-    await page.waitForLoadState("networkidle");
 
     const row = page.getByRole("row", { name: /Agent Connected/ });
     await expect(
@@ -112,7 +110,6 @@ test.describe("Events page names the agent", () => {
     ]);
 
     await page.goto("orgs/test/events");
-    await page.waitForLoadState("networkidle");
 
     const row = page.getByRole("row", { name: /Agent Disconnected/ });
     await expect(

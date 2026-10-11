@@ -292,7 +292,6 @@ test.describe("Check Groups", () => {
     // Navigate directly to new check form (fresh load to pick up API-created group)
     const newCheckUrl = page.url().replace(/\/orgs\/([^/]+).*/, "/orgs/$1/checks/new");
     await page.goto(newCheckUrl);
-    await page.waitForLoadState("networkidle");
 
     // Wait for form to be ready
     await expect(page.getByTestId("check-name-input")).toBeVisible({
@@ -323,7 +322,6 @@ test.describe("Check Groups", () => {
 
     // Wait for check detail page
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
-    await page.waitForLoadState("networkidle");
     await expect(
       page.getByRole("heading", { name: checkName })
     ).toBeVisible();

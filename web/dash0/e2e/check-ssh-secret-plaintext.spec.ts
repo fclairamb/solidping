@@ -49,7 +49,6 @@ test.describe("SSH check secret in plaintext mode", () => {
 
     // ── Create through the real form ──
     await page.goto("orgs/test/checks/new?checkType=ssh");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
     const checkName = `E2E SSH Secret ${Date.now()}`;
@@ -73,7 +72,6 @@ test.describe("SSH check secret in plaintext mode", () => {
 
     // ── The edit form shows the placeholder, and the textarea is empty ──
     await page.goto(`orgs/test/checks/${uid}/edit`);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-private-key-input")).toBeVisible();
     await expect(page.getByTestId("check-private-key-input")).toHaveValue("");
     await expect(page.getByTestId("private-key-encrypted")).toBeVisible();

@@ -244,7 +244,6 @@ test.describe("hero KPI tile", () => {
       await useTheme(page, theme);
       await mockDashboardStats(page, 92);
       await page.goto("orgs/test");
-      await page.waitForLoadState("networkidle");
 
       const hero = page.getByTestId("kpi-tile-availability").locator('[data-slot="kpi-tile"]');
       await expect(hero).toBeVisible({ timeout: 10000 });
@@ -283,7 +282,6 @@ test.describe("hero KPI tile", () => {
     await page.setViewportSize({ width: 375, height: 812 });
     await mockDashboardStats(page, 99.95);
     await page.goto("orgs/test");
-    await page.waitForLoadState("networkidle");
 
     const monitored = page.getByTestId("kpi-tile-monitored");
     const hero = page.getByTestId("kpi-tile-availability");
@@ -341,7 +339,6 @@ test.describe("page header tile", () => {
     const page = authenticatedPage;
     await useTheme(page, "light");
     await page.goto("orgs/test/checks");
-    await page.waitForLoadState("networkidle");
 
     const tile = page.locator('[data-slot="page-header-tile"]').first();
     await expect(tile).toHaveAttribute("data-tone", "brand");
@@ -378,7 +375,6 @@ test.describe("page header tile", () => {
       });
     });
     await page.goto(`orgs/test/integrations/${uid}`);
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByRole("heading", { level: 1, name: "Acme webhook" })).toBeVisible();
     const tile = page.locator('[data-slot="page-header-tile"]').first();
@@ -399,7 +395,6 @@ test.describe("page glow", () => {
 
     for (const route of ["orgs/test", "orgs/test/checks", "orgs/test/incidents"]) {
       await page.goto(route);
-      await page.waitForLoadState("networkidle");
       const glow = page.getByTestId("page-glow");
       await expect(glow, route).toHaveCount(1);
       await expect(glow).toHaveAttribute("aria-hidden", "true");

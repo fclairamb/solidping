@@ -59,7 +59,6 @@ test.describe("Activation funnel org link to audit", () => {
     const page = authenticatedPage;
 
     await page.goto("orgs/test/server/activation");
-    await page.waitForLoadState("networkidle");
 
     const link = page.getByTestId("activation-org-link-test");
     await expect(link).toBeVisible();
@@ -80,7 +79,6 @@ test.describe("Activation funnel org link to audit", () => {
 
     // Reload the funnel (as the super admin) now that the foreign org exists.
     await page.goto("orgs/test/server/activation");
-    await page.waitForLoadState("networkidle");
 
     const link = page.getByTestId(`activation-org-link-${foreignOrg}`);
     await expect(link).toBeVisible({ timeout: 15000 });
@@ -91,7 +89,6 @@ test.describe("Activation funnel org link to audit", () => {
       new RegExp(`/orgs/${foreignOrg}/organization/audit$`),
       { timeout: 20000 },
     );
-    await page.waitForLoadState("networkidle");
 
     // Proves the cross-org path actually works for a super admin who holds no
     // membership in the target org: the audit page itself renders...

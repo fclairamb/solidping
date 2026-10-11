@@ -66,7 +66,6 @@ test.describe("Discord Gateway settings", () => {
     await mockGatewayStatus(page, { enabled: false, connected: false });
 
     await page.goto("orgs/test/server/discord");
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("discord-not-enabled")).toBeVisible();
     // Nothing editable: offering a public-key field on an instance where Discord
@@ -102,7 +101,6 @@ test.describe("Discord Gateway settings", () => {
     );
 
     await page.goto("orgs/test/server/discord");
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("discord-setup-login")).toContainText(
       "https://status.acme.com/api/v1/auth/discord/callback",
@@ -136,7 +134,6 @@ test.describe("Discord Gateway settings", () => {
     });
 
     await page.goto("orgs/test/server/discord");
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("discord-status-badge")).toHaveText(
       /connected/i,
@@ -170,7 +167,6 @@ test.describe("Discord Gateway settings", () => {
     });
 
     await page.goto("orgs/test/server/discord");
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("discord-status-badge")).toHaveText(
       /disconnected/i,
@@ -244,7 +240,6 @@ test.describe("Discord Gateway settings", () => {
     await mockGatewayStatus(page, { enabled: true, connected: false });
 
     await page.goto("orgs/test/server/discord");
-    await page.waitForLoadState("networkidle");
 
     await page.getByTestId("discord-public-key-input").fill("00112233aabbccdd");
     await page.getByTestId("discord-gateway-enabled").click();

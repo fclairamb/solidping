@@ -32,7 +32,6 @@ test.describe("VNC check", () => {
     const token = await getAuthToken(page);
 
     await page.goto("orgs/test/checks/new?checkType=vnc");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
     // requireAuth is on by default.
@@ -68,7 +67,6 @@ test.describe("VNC check", () => {
 
     // Edit: the password comes back as a placeholder, and an unrelated edit saves.
     await page.goto(`orgs/test/checks/${uid}/edit`);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-vnc-password-input")).toHaveValue("");
     await expect(page.getByTestId("vnc-password-encrypted")).toBeVisible();
 
@@ -95,7 +93,6 @@ test.describe("VNC check", () => {
     const token = await getAuthToken(page);
 
     await page.goto("orgs/test/checks/new?checkType=vnc");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
     // tlsVerify is off by default.
@@ -128,7 +125,6 @@ test.describe("VNC check", () => {
     // Edit with the stored password: the username field is prefilled and an
     // unrelated edit saves without re-entering the password.
     await page.goto(`orgs/test/checks/${uid}/edit`);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-vnc-username-input")).toHaveValue("alice");
     await page.getByTestId("check-vnc-tls-verify-checkbox").click();
     await page.getByTestId("check-submit-button").click();

@@ -98,7 +98,6 @@ test.describe("Maintenance windows", () => {
 
     await page.getByTestId("mw-new-button").click();
     await page.waitForURL(/\/maintenance-windows\/new/);
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("mw-title-input")).toBeVisible();
     await expect(page.getByTestId("mw-description-input")).toBeVisible();
@@ -151,7 +150,6 @@ test.describe("Maintenance windows", () => {
 
     // Lands on the detail route (uid in the trailing segment).
     await page.waitForURL(/\/maintenance-windows\/[^/]+$/, { timeout: 10000 });
-    await page.waitForLoadState("networkidle");
     await expect(page.getByRole("heading", { name: title })).toBeVisible();
 
     await page.screenshot({
@@ -167,7 +165,6 @@ test.describe("Maintenance windows", () => {
     await gotoList(page);
     await page.getByTestId("mw-new-button").click();
     await page.waitForURL(/\/maintenance-windows\/new/);
-    await page.waitForLoadState("networkidle");
 
     // One-time default: start/end datetimes present, no recurring inputs.
     await expect(page.getByTestId("mw-start-input")).toBeVisible();
@@ -204,7 +201,6 @@ test.describe("Maintenance windows", () => {
     await gotoList(page);
     await page.getByTestId("mw-new-button").click();
     await page.waitForURL(/\/maintenance-windows\/new/);
-    await page.waitForLoadState("networkidle");
 
     // The "all times are UTC" affordance is visible on the form.
     await expect(page.getByTestId("mw-utc-note")).toBeVisible();
@@ -236,7 +232,6 @@ test.describe("Maintenance windows", () => {
     await gotoList(page);
     await page.getByTestId("mw-new-button").click();
     await page.waitForURL(/\/maintenance-windows\/new/);
-    await page.waitForLoadState("networkidle");
 
     await page.getByTestId("mw-recurrence-select").click();
     await page.getByRole("option", { name: "Monthly" }).click();
@@ -282,7 +277,6 @@ test.describe("Maintenance windows", () => {
 
     await page.getByTestId("mw-submit-button").click();
     await page.waitForURL(/\/maintenance-windows\/[^/]+$/, { timeout: 10000 });
-    await page.waitForLoadState("networkidle");
     await expect(page.getByRole("heading", { name: title })).toBeVisible();
 
     // Open edit; the recurring inputs should be prefilled to the same values.
@@ -290,7 +284,6 @@ test.describe("Maintenance windows", () => {
     await page.waitForURL(/\/maintenance-windows\/[^/]+\/edit/, {
       timeout: 10000,
     });
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("mw-start-time-input")).toHaveValue("22:00");
     // Duration 2 hours round-trips (exact multiple of 60 → hours unit).
@@ -329,7 +322,6 @@ test.describe("Maintenance windows", () => {
 
     await page.getByTestId("mw-submit-button").click();
     await page.waitForURL(/\/maintenance-windows\/[^/]+$/, { timeout: 10000 });
-    await page.waitForLoadState("networkidle");
     await expect(page.getByRole("heading", { name: title })).toBeVisible();
 
     // The pattern summary stays Monday (no UTC↔local weekday drift) and is
@@ -350,7 +342,6 @@ test.describe("Maintenance windows", () => {
     await page.waitForURL(/\/maintenance-windows\/[^/]+\/edit/, {
       timeout: 10000,
     });
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("mw-start-time-input")).toHaveValue("22:00");
     await expect(page.getByTestId("mw-weekday-1")).toHaveAttribute(
       "aria-pressed",
@@ -374,7 +365,6 @@ test.describe("Maintenance windows", () => {
     await fillSchedule(page, "2030-02-01T02:00", "2030-02-01T04:00");
     await page.getByTestId("mw-submit-button").click();
     await page.waitForURL(/\/maintenance-windows\/[^/]+$/, { timeout: 10000 });
-    await page.waitForLoadState("networkidle");
 
     // Go to edit via the detail Edit button.
     await page.getByTestId("mw-detail-edit-button").click();
@@ -390,7 +380,6 @@ test.describe("Maintenance windows", () => {
     await page.getByTestId("mw-submit-button").click();
 
     await page.waitForURL(/\/maintenance-windows\/[^/]+$/, { timeout: 10000 });
-    await page.waitForLoadState("networkidle");
     await expect(page.getByRole("heading", { name: newTitle })).toBeVisible();
   });
 
@@ -410,7 +399,6 @@ test.describe("Maintenance windows", () => {
     await fillSchedule(page, "2030-03-01T02:00", "2030-03-01T04:00");
     await page.getByTestId("mw-submit-button").click();
     await page.waitForURL(/\/maintenance-windows\/[^/]+$/, { timeout: 10000 });
-    await page.waitForLoadState("networkidle");
 
     // Delete from the detail page: open the confirm dialog then confirm.
     await page.getByTestId("mw-detail-delete-button").click();
@@ -421,7 +409,6 @@ test.describe("Maintenance windows", () => {
 
     // Back on the list.
     await page.waitForURL(/\/maintenance-windows$/, { timeout: 10000 });
-    await page.waitForLoadState("networkidle");
     await expect(
       page.getByRole("heading", { name: "Maintenance Windows" }),
     ).toBeVisible();

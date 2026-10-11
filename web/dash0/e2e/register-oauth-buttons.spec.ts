@@ -62,7 +62,6 @@ test.describe("Register: third-party auth buttons", () => {
     }
 
     await page.goto("orgs/test/register");
-    await page.waitForLoadState("networkidle");
     await expect(
       page.getByRole("button", { name: "Create account" }),
     ).toBeVisible();
@@ -113,7 +112,6 @@ test.describe("Register: third-party auth buttons", () => {
     const requested = await interceptProviderRedirects(page);
 
     await page.goto("orgs/test/register");
-    await page.waitForLoadState("networkidle");
     await page.getByTestId(`register-oauth-${provider.type}`).click();
 
     await expect(() => expect(requested.length).toBeGreaterThan(0)).toPass({
@@ -159,14 +157,12 @@ test.describe("Register: third-party auth buttons", () => {
     // otherwise the assertions below would pass on a page where the feature
     // simply never fires.
     await page.goto("orgs/test/login");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("login-last-used")).toBeVisible();
     await expect(
       page.getByTestId(`login-oauth-${provider.type}-promoted`),
     ).toBeVisible();
 
     await page.goto("orgs/test/register");
-    await page.waitForLoadState("networkidle");
     await expect(
       page.getByTestId(`register-oauth-${provider.type}`),
     ).toBeVisible();
@@ -193,11 +189,9 @@ test.describe("Register: third-party auth buttons", () => {
 
     // Positive control on the same backend config: /login renders it.
     await page.goto("orgs/test/login");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("passkey-login-button")).toBeVisible();
 
     await page.goto("orgs/test/register");
-    await page.waitForLoadState("networkidle");
     await expect(
       page.getByRole("button", { name: "Create account" }),
     ).toBeVisible();

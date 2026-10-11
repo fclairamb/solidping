@@ -51,7 +51,6 @@ test.describe("Docs links", () => {
 
     await page.getByTestId("app-sidebar").getByRole("link", { name: "Status Pages" }).click();
     await page.waitForURL(/\/status-pages/);
-    await page.waitForLoadState("networkidle");
 
     const docsLink = page.getByTestId("docs-link");
     await expect(docsLink).toBeVisible();
@@ -63,7 +62,6 @@ test.describe("Docs links", () => {
 
     await page.getByTestId("app-sidebar").getByRole("link", { name: "SLOs" }).click();
     await page.waitForURL(/\/slos/);
-    await page.waitForLoadState("networkidle");
 
     const docsLink = page.getByTestId("docs-link");
     await expect(docsLink).toBeVisible();
@@ -84,7 +82,6 @@ test.describe("Docs links", () => {
       { url: "https://example.com/docs-badges" },
     );
     await page.goto(`orgs/test/checks/${check.uid}`);
-    await page.waitForLoadState("networkidle");
     await page.getByRole("button", { name: "More actions" }).click();
     await page.getByRole("menuitem", { name: "Badges" }).click();
     await page.waitForURL(/\/checks\/[^/]+\/badges/);
@@ -116,7 +113,6 @@ test.describe("Docs links", () => {
     await expect(tabNav).toBeVisible();
     await tabNav.getByRole("link", { name: /discovery/i }).click();
     await page.waitForURL(/\/organization\/discovery/);
-    await page.waitForLoadState("networkidle");
 
     const docsLink = page.getByTestId("docs-link");
     await expect(docsLink).toBeVisible();
@@ -128,7 +124,6 @@ test.describe("Docs links", () => {
 
     await page.getByTestId("app-sidebar").getByRole("link", { name: "Events" }).click();
     await page.waitForURL(/\/events/);
-    await page.waitForLoadState("networkidle");
 
     const docsLink = page.getByTestId("docs-link");
     await expect(docsLink).toBeVisible();
@@ -157,7 +152,6 @@ test.describe("Docs links", () => {
     });
 
     await page.goto(`orgs/test/checks/${tcp.uid}`);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-detail-header")).toBeVisible();
 
     // The docs link lives in the ⋯ overflow menu, labelled per type.
@@ -174,7 +168,6 @@ test.describe("Docs links", () => {
     // A different type on the same page must move the anchor — otherwise the
     // link is the generic page wearing a per-type costume.
     await page.goto(`orgs/test/checks/${dns.uid}`);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-detail-header")).toBeVisible();
 
     await page.getByRole("button", { name: "More actions" }).click();
@@ -190,7 +183,6 @@ test.describe("Docs links", () => {
     // The audit page sits behind the admin-gated Organization layout; the
     // test user is an admin of the "test" org, so a direct deep-link works.
     await page.goto("orgs/test/organization/audit");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("audit-page")).toBeVisible();
 
     const docsLink = page.getByTestId("docs-link");

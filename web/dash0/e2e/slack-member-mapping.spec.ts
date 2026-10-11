@@ -192,7 +192,6 @@ test.describe("Slack member mapping", () => {
     const state = await stubSlackIntegration(page, { mentionOnCall: true });
 
     await page.goto(`orgs/test/integrations/${CHANNEL_UID}`);
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("slack-member-mapping")).toBeVisible();
 
@@ -220,7 +219,6 @@ test.describe("Slack member mapping", () => {
     const state = await stubSlackIntegration(page, { mentionOnCall: true });
 
     await page.goto(`orgs/test/integrations/${CHANNEL_UID}`);
-    await page.waitForLoadState("networkidle");
 
     const bobRow = page.getByTestId("slack-mapping-row-bob@acme.test");
     await bobRow.getByTestId("slack-user-combobox").click();
@@ -238,7 +236,6 @@ test.describe("Slack member mapping", () => {
     const state = await stubSlackIntegration(page, { mentionOnCall: true });
 
     await page.goto(`orgs/test/integrations/${CHANNEL_UID}`);
-    await page.waitForLoadState("networkidle");
 
     const clear = page.getByTestId("slack-mapping-clear-alice@acme.test");
     await expect(clear).toBeEnabled();
@@ -261,7 +258,6 @@ test.describe("Slack member mapping", () => {
     await stubSlackIntegration(page, { mentionOnCall: false });
 
     await page.goto(`orgs/test/integrations/${CHANNEL_UID}`);
-    await page.waitForLoadState("networkidle");
 
     const toggle = page.getByTestId("slack-mention-on-call");
     await expect(toggle).toBeVisible();
@@ -283,7 +279,6 @@ test.describe("Slack member mapping", () => {
     });
 
     await page.goto(`orgs/test/integrations/${CHANNEL_UID}`);
-    await page.waitForLoadState("networkidle");
 
     // Panel-level copy: the API's own title, not the generic
     // "re-install the bot" advice — the token is fine, the server just
@@ -331,7 +326,6 @@ test.describe("Slack member mapping", () => {
     });
 
     await page.goto(`orgs/test/integrations/${CHANNEL_UID}`);
-    await page.waitForLoadState("networkidle");
 
     const aliceRow = page.getByTestId("slack-mapping-row-alice@acme.test");
     await expect(aliceRow.getByTestId("slack-user-combobox")).toHaveText(

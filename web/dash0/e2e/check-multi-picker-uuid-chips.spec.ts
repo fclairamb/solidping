@@ -110,7 +110,6 @@ test.describe("CheckMultiPicker chips for checks outside the search page", () =>
 
     try {
       await page.goto(`orgs/test/organization/report-schedules/${scheduleUid}`);
-      await page.waitForLoadState("networkidle");
 
       const picker = page.getByTestId("report-checks");
       await expect(picker.getByTestId(`report-checks-chip-remove-${uid}`)).toBeVisible();
@@ -171,7 +170,6 @@ test.describe("CheckMultiPicker chips for checks outside the search page", () =>
 
     try {
       await page.goto(`orgs/test/maintenance-windows/${windowUid}/edit`);
-      await page.waitForLoadState("networkidle");
 
       const picker = page.getByTestId("mw-checks-select");
       await expect(

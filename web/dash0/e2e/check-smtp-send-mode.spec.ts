@@ -103,7 +103,6 @@ test.describe("SMTP send mode", () => {
     const expectedDeliveryTo = `${deliveryCheck.token}@${smtpTestInboxDomain}`;
 
     await page.goto("orgs/test/checks/new?checkType=smtp");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
     // Send mode is off by default: mail_from / picker are not shown yet.
@@ -148,7 +147,6 @@ test.describe("SMTP send mode", () => {
 
     // ── The email check's detail page lists the SMTP check delivering to it ──
     await page.goto(`orgs/test/checks/${deliveryCheck.uid}`);
-    await page.waitForLoadState("networkidle");
     const sources = page.getByTestId("check-smtp-delivery-sources");
     await expect(sources).toBeVisible();
     await expect(sources).toContainText(checkName);
@@ -156,7 +154,6 @@ test.describe("SMTP send mode", () => {
     // ── Editing the check keeps send mode, mail_from, the picker selection,
     // and the resolved delivery_to all showing correctly ──
     await page.goto(`orgs/test/checks/${uid}/edit`);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-smtp-send-email-switch")).toBeVisible();
     await expect(page.getByTestId("check-smtp-mail-from-input")).toHaveValue(
       "prober@e2e-test.invalid",
@@ -189,7 +186,6 @@ test.describe("SMTP send mode", () => {
     );
 
     await page.goto("orgs/test/checks/new?checkType=smtp");
-    await page.waitForLoadState("networkidle");
     await page.getByTestId("check-smtp-send-email-switch").click();
 
     // Per the spec's resolved open question: no "create a delivery check for

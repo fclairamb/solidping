@@ -81,7 +81,6 @@ test.describe("SLOs", () => {
     const page = authenticatedPage;
 
     await page.goto("orgs/test/slos");
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("slo-table")).toBeVisible();
 
@@ -110,7 +109,6 @@ test.describe("SLOs", () => {
     const page = authenticatedPage;
 
     await page.goto("orgs/test/slos");
-    await page.waitForLoadState("networkidle");
 
     await page
       .getByTestId("slo-row")
@@ -148,7 +146,6 @@ test.describe("SLOs", () => {
     const page = authenticatedPage;
 
     await page.goto(`orgs/test/slos/${FIXTURE_UID}`);
-    await page.waitForLoadState("networkidle");
 
     await page.getByTestId("slo-detail-edit-button").click();
     await page.waitForURL(new RegExp(`/slos/${FIXTURE_UID}/edit$`), {
@@ -199,7 +196,6 @@ test.describe("SLOs", () => {
     try {
       // The detail page never touches CheckPicker — it must still render.
       await page.goto(`orgs/test/slos/${slo.uid}`);
-      await page.waitForLoadState("networkidle");
       await expect(page.getByTestId("slo-detail-edit-button")).toBeVisible();
 
       await page.getByTestId("slo-detail-edit-button").click();
@@ -265,7 +261,6 @@ test.describe("SLOs", () => {
     const name = `E2E Objective ${stamp}`;
 
     await page.goto("orgs/test/slos");
-    await page.waitForLoadState("networkidle");
     await page.getByTestId("slo-new").click();
     await page.waitForURL(/\/slos\/new/, { timeout: 10000 });
 
@@ -329,7 +324,6 @@ test.describe("SLOs", () => {
 
     try {
       await page.goto("orgs/test/slos/new");
-      await page.waitForLoadState("networkidle");
 
       await page.getByTestId("slo-name").fill(`E2E Group Objective ${stamp}`);
       await page.getByTestId("slo-scope-group").click();
@@ -393,7 +387,6 @@ test.describe("SLOs", () => {
     const page = authenticatedPage;
 
     await page.goto(`orgs/test/slos/${FIXTURE_UID}`);
-    await page.waitForLoadState("networkidle");
 
     const card = page.getByTestId("slo-alerting-card");
     await expect(card).toBeVisible();
@@ -451,7 +444,6 @@ test.describe("SLOs", () => {
     const token = await getAuthToken(page);
 
     await page.goto(`orgs/test/slos/${FIXTURE_UID}`);
-    await page.waitForLoadState("networkidle");
 
     const toggle = page.getByTestId("slo-alert-toggle-slow");
     await expect(toggle).toBeVisible();
@@ -494,7 +486,6 @@ test.describe("SLOs", () => {
     const page = authenticatedPage;
 
     await page.goto("orgs/test/checks/00000000-0000-0000-0000-000000000022");
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("check-detail-header")).toBeVisible();
     await expect(page.getByTestId("check-slo-chip")).toBeVisible();
@@ -503,7 +494,6 @@ test.describe("SLOs", () => {
     // objective over must NOT get the chip, and the header must still render
     // (otherwise "chip absent" would be vacuously true on a blank page).
     await page.goto("orgs/test/checks/00000000-0000-0000-0000-000000000012");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-detail-header")).toBeVisible();
     await expect(page.getByTestId("check-slo-chip")).toHaveCount(0);
   });

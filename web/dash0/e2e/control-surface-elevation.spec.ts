@@ -121,7 +121,6 @@ test.describe("control surface elevation", () => {
     const page = authenticatedPage;
 
     await page.goto("orgs/test/checks");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("group-by-groups")).toBeVisible();
 
     const isDark = await page.evaluate(() =>

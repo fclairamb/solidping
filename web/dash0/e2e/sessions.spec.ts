@@ -19,7 +19,6 @@ test.describe("Sessions", () => {
     await freshLogin(page);
 
     await page.goto("orgs/test/account/sessions");
-    await page.waitForLoadState("networkidle");
 
     // The login above is this page's own session — it must show up, and be
     // flagged current.
@@ -50,7 +49,6 @@ test.describe("Sessions", () => {
     await freshLogin(page);
 
     await page.goto("orgs/test/account/sessions");
-    await page.waitForLoadState("networkidle");
 
     const currentBadge = page.getByTestId("session-current-badge");
     await expect(currentBadge).toBeVisible();
@@ -77,14 +75,12 @@ test.describe("Sessions", () => {
     await freshLogin(otherPage);
 
     await page.goto("orgs/test/account/sessions");
-    await page.waitForLoadState("networkidle");
 
     // At least the caller's own session plus the one just opened above.
     await expect(page.getByTestId("sign-out-others-button")).toBeEnabled();
 
     await page.getByTestId("sign-out-others-button").click();
     await page.getByTestId("sign-out-others-confirm").click();
-    await page.waitForLoadState("networkidle");
 
     // Only the current session remains, and "sign out others" is now
     // disabled (nothing left to sign out).
@@ -148,7 +144,6 @@ test.describe("Sessions", () => {
     await expect(otherRow).toBeVisible();
     await otherRow.locator("[data-testid^='session-revoke-button-']").click();
     await page.getByTestId("session-revoke-confirm").click();
-    await page.waitForLoadState("networkidle");
 
     await expect(
       page.locator("[data-testid^='session-row-']")

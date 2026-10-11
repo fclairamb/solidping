@@ -36,7 +36,6 @@ test.describe("Confirm registration with no matching org", () => {
     // no stub is needed here any more; register-page-stays-public coverage for that bug
     // lives in login.spec.ts's "Register: public route stays public".
     await page.goto("orgs/test/register");
-    await page.waitForLoadState("networkidle");
 
     await page.locator("#name").fill("Confirm No Org User");
     await page.locator("#email").fill(email);
@@ -80,7 +79,6 @@ test.describe("Confirm registration with no matching org", () => {
     expect(token).toBeTruthy();
 
     await page.goto(`confirm-registration/${token}`);
-    await page.waitForLoadState("networkidle");
 
     // The "confirmed" screen flashes, then the route auto-navigates after
     // 1.5s — wait for the real destination, not the flash.

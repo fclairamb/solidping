@@ -6,7 +6,6 @@ test.describe("On-call schedule create page", () => {
   }) => {
     const page = authenticatedPage;
     await page.goto("orgs/test/on-call/new");
-    await page.waitForLoadState("networkidle");
 
     // The name field is present…
     await expect(page.getByLabel(/^name/i).first()).toBeVisible();

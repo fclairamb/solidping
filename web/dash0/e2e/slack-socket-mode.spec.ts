@@ -62,7 +62,6 @@ test.describe("Slack Socket Mode settings", () => {
     await mockSocketStatus(page, { enabled: false, connected: false });
 
     await page.goto("orgs/test/server/slack");
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("slack-not-enabled")).toBeVisible();
     await expect(page.getByTestId("slack-app-token-input")).toHaveCount(0);
@@ -136,7 +135,6 @@ test.describe("Slack Socket Mode settings", () => {
     await mockSocketStatus(page, { enabled: true, connected: false });
 
     await page.goto("orgs/test/server/slack");
-    await page.waitForLoadState("networkidle");
 
     // Toggle Socket Mode ON
     await page.getByTestId("slack-socket-mode-enabled").click();
@@ -206,7 +204,6 @@ test.describe("Slack Socket Mode settings", () => {
     });
 
     await page.goto("orgs/test/server/slack");
-    await page.waitForLoadState("networkidle");
 
     const badge = page.getByTestId("slack-status-badge");
     await expect(badge).toBeVisible();
@@ -238,7 +235,6 @@ test.describe("Slack Socket Mode settings", () => {
     });
 
     await page.goto("orgs/test/server/slack");
-    await page.waitForLoadState("networkidle");
 
     const badge = page.getByTestId("slack-status-badge");
     await expect(badge).toBeVisible();
@@ -329,7 +325,6 @@ test.describe("Slack Socket Mode key contract (un-mocked)", () => {
     await setParam(page, token, KEY_ENABLED, true);
 
     await page.goto("orgs/test/server/slack");
-    await page.waitForLoadState("networkidle");
 
     // The FORM must render (not the "not enabled" hint) — this alone fails if
     // the gate reads the wrong key.

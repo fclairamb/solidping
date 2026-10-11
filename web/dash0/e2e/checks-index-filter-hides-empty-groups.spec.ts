@@ -162,7 +162,6 @@ test.describe("Checks list hides empty groups while filtering", () => {
     await page.getByTestId("status-filter").click();
     await page.getByTestId("status-filter-option-down").click();
     await page.keyboard.press("Escape");
-    await page.waitForLoadState("networkidle");
 
     await expect(allUpSection).toBeVisible({ timeout: 10000 });
     await expect(hasDownSection).toBeVisible({ timeout: 10000 });

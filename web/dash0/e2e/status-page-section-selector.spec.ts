@@ -124,7 +124,6 @@ test.describe("Status page section selectors", () => {
     // The dashboard marks the row as automatic and offers no delete control
     // for it — the rule owns it.
     await page.goto(`orgs/test/status-pages/${statusPage.uid}`);
-    await page.waitForLoadState("networkidle");
     await expect(
       page.getByTestId("resource-row-name").filter({ hasText: checkName }),
     ).toHaveCount(1);
@@ -167,7 +166,6 @@ test.describe("Status page section selectors", () => {
     // then Membership — a section dialog reads as "create a section", not as
     // a settings page.
     await page.goto(`orgs/test/status-pages/${statusPage.uid}`);
-    await page.waitForLoadState("networkidle");
     await page.getByRole("button", { name: "Add Section" }).first().click();
     const dialogBody = page
       .getByTestId("section-membership")
@@ -233,7 +231,6 @@ test.describe("Status page section selectors", () => {
 
     // The dashboard marks the row as automatic.
     await page.goto(`orgs/test/status-pages/${statusPage.uid}`);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("resource-row-auto-badge")).toHaveCount(1);
 
     // Deleting the group empties the section — a deleted group matches
@@ -272,7 +269,6 @@ test.describe("Status page section selectors", () => {
     });
 
     await page.goto(`orgs/test/status-pages/${statusPage.uid}`);
-    await page.waitForLoadState("networkidle");
 
     await page.getByRole("button", { name: "Add Section" }).first().click();
 
@@ -322,7 +318,6 @@ test.describe("Status page section selectors", () => {
     });
 
     await page.goto(`orgs/test/status-pages/${statusPage.uid}`);
-    await page.waitForLoadState("networkidle");
 
     await page.getByRole("button", { name: "Add Section" }).first().click();
     await page.getByTestId("section-membership-all").click();

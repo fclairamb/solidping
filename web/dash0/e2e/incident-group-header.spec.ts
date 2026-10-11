@@ -93,7 +93,6 @@ test.describe("Incidents list: check-group header", () => {
     );
 
     await page.goto(`${DASH_BASE}/orgs/test/incidents`);
-    await page.waitForLoadState("networkidle");
 
     // Exactly one header, for the one group that has members in hand.
     const header = page.getByTestId("incident-group-header");

@@ -7,7 +7,6 @@ test.describe("Sidebar User and Org Info", () => {
   }) => {
     const page = authenticatedPage;
 
-    await page.waitForLoadState("networkidle");
 
     const userMenuButton = page.getByTestId("user-menu-button");
     await expect(userMenuButton).toBeVisible();
@@ -21,7 +20,6 @@ test.describe("Sidebar User and Org Info", () => {
   }) => {
     const page = authenticatedPage;
 
-    await page.waitForLoadState("networkidle");
 
     const sidebar = page.getByTestId("app-sidebar");
     await expect(sidebar).toBeVisible();
@@ -35,7 +33,6 @@ test.describe("Sidebar User and Org Info", () => {
   }) => {
     const page = authenticatedPage;
 
-    await page.waitForLoadState("networkidle");
 
     // Open user dropdown
     await page.getByTestId("user-menu-button").click();
@@ -61,7 +58,6 @@ test.describe("Sidebar User and Org Info", () => {
   }) => {
     const page = authenticatedPage;
 
-    await page.waitForLoadState("networkidle");
 
     // Open user dropdown and click test2
     await page.getByTestId("user-menu-button").click();
@@ -70,7 +66,6 @@ test.describe("Sidebar User and Org Info", () => {
 
     // Wait for navigation to new org
     await page.waitForURL(/\/orgs\/test2/, { timeout: 10000 });
-    await page.waitForLoadState("networkidle");
 
     // Verify sidebar header shows new org name
     const sidebar = page.getByTestId("app-sidebar");
@@ -105,7 +100,6 @@ test.describe("Sidebar User and Org Info", () => {
   }) => {
     const page = authenticatedPage;
 
-    await page.waitForLoadState("networkidle");
 
     const userMenuButton = page.getByTestId("user-menu-button");
     await expect(userMenuButton).toBeVisible();
@@ -236,7 +230,6 @@ test.describe("Sidebar navigation groups", () => {
 
   test("Organization is in the sidebar for an admin", async ({ authenticatedPage }) => {
     const page = authenticatedPage;
-    await page.waitForLoadState("networkidle");
 
     await expect(
       page.getByTestId("app-sidebar").getByRole("link", { name: "Organization", exact: true }),
@@ -248,7 +241,6 @@ test.describe("Sidebar navigation groups", () => {
   }) => {
     const orgSlug = await loginAsPlainMember(page);
     await page.goto(`${DASH_BASE}/orgs/${orgSlug}`);
-    await page.waitForLoadState("networkidle");
 
     const sidebar = page.getByTestId("app-sidebar");
     await expect(sidebar).toBeVisible();
@@ -268,7 +260,6 @@ test.describe("Sidebar navigation groups", () => {
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
-    await page.waitForLoadState("networkidle");
 
     const sidebar = page.getByTestId("app-sidebar");
     await expect(sidebar).toBeVisible();

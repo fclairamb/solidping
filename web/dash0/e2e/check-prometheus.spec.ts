@@ -34,7 +34,6 @@ test.describe("Prometheus check", () => {
     const page = authenticatedPage;
 
     await page.goto("orgs/test/checks/new?checkType=prometheus");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-prometheus-url-input")).toBeVisible();
 
     await expect(page.getByTestId("docs-link")).toHaveAttribute(
@@ -50,7 +49,6 @@ test.describe("Prometheus check", () => {
     const token = await getAuthToken(page);
 
     await page.goto("orgs/test/checks/new?checkType=prometheus");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-prometheus-url-input")).toBeVisible();
 
     const checkName = `E2E Prometheus Scrape ${Date.now()}`;
@@ -83,7 +81,6 @@ test.describe("Prometheus check", () => {
     expect(created.config.criticalValue).toBe(1000);
 
     await page.goto(`orgs/test/checks/${uid}/edit`);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-prometheus-url-input")).toHaveValue(
       "https://app.example.test/metrics",
     );
@@ -110,7 +107,6 @@ test.describe("Prometheus check", () => {
     const token = await getAuthToken(page);
 
     await page.goto("orgs/test/checks/new?checkType=prometheus");
-    await page.waitForLoadState("networkidle");
 
     await page.getByTestId("check-prometheus-mode-select").click();
     await page.getByRole("option", { name: /PromQL query against/ }).click();
@@ -146,7 +142,6 @@ test.describe("Prometheus check", () => {
     expect(created.config.criticalValue).toBe(10);
 
     await page.goto(`orgs/test/checks/${uid}/edit`);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-prometheus-query-input")).toHaveValue(
       'sum(rate(http_requests_total{code=~"5.."}[5m]))',
     );
@@ -167,7 +162,6 @@ test.describe("Prometheus check", () => {
     const token = await getAuthToken(page);
 
     await page.goto("orgs/test/checks/new?checkType=prometheus");
-    await page.waitForLoadState("networkidle");
 
     await page
       .getByTestId("check-name-input")
@@ -192,7 +186,6 @@ test.describe("Prometheus check", () => {
     expect(created.config.operator).toBe("<=");
 
     await page.goto(`orgs/test/checks/${uid}/edit`);
-    await page.waitForLoadState("networkidle");
     await expect(
       page.getByTestId("check-prometheus-warning-input"),
     ).toHaveValue("0");

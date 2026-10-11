@@ -89,7 +89,6 @@ test.describe("Device authorization consent", () => {
     await page.goto(
       `orgs/test/account/device?user_code=${encodeURIComponent(authz.user_code)}`,
     );
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("device-user-code")).toHaveValue(
       authz.user_code,
@@ -112,7 +111,6 @@ test.describe("Device authorization consent", () => {
 
     // The minted token is a real, named PAT on the tokens page.
     await page.goto("orgs/test/account/tokens");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByText(clientName).first()).toBeVisible();
 
     // Clean up so repeated runs do not pile tokens up.
@@ -142,7 +140,6 @@ test.describe("Device authorization consent", () => {
     await page.goto(
       `orgs/test/account/device?user_code=${encodeURIComponent(authz.user_code)}`,
     );
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("device-consent-card")).toBeVisible();
     await page.getByTestId("device-deny").click();
@@ -170,7 +167,6 @@ test.describe("Device authorization consent", () => {
     const page = authenticatedPage;
 
     await page.goto("orgs/test/account/device?user_code=ZZZZ-9999");
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("device-not-found")).toBeVisible();
     await expect(page.getByTestId("device-consent-card")).toHaveCount(0);

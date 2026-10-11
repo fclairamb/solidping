@@ -39,7 +39,6 @@ async function findRow(page: Page, email: string) {
   );
   await page.getByTestId("users-search").fill(email);
   await searched;
-  await page.waitForLoadState("networkidle");
 
   const row = page.getByRole("row", { name: new RegExp(escapeRegExp(email)) });
   await expect(row).toBeVisible();
@@ -76,7 +75,6 @@ test.describe("Super-admin impersonation", () => {
 
     // The banner follows the admin across pages.
     await page.goto("orgs/test/checks");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("impersonation-banner")).toBeVisible();
 
     // Super-admin pages are closed to the impersonation.
@@ -113,7 +111,6 @@ test.describe("Super-admin impersonation", () => {
     const page = await context.newPage();
 
     await page.goto("orgs/test/login");
-    await page.waitForLoadState("networkidle");
     await page.getByTestId("login-email").fill(email);
     await page.getByTestId("login-password").fill(PASSWORD);
     await page.getByTestId("login-submit").click();

@@ -36,12 +36,10 @@ test.describe("passive checks have no regions", () => {
 
     // Positive control: an active type shows the picker.
     await page.goto("orgs/test/checks/new?checkType=tcp");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-regions-picker")).toBeVisible();
 
     for (const passiveType of ["heartbeat", "email"]) {
       await page.goto(`orgs/test/checks/new?checkType=${passiveType}`);
-      await page.waitForLoadState("networkidle");
       await expect(page.getByTestId("check-name-input")).toBeVisible();
       await expect(page.getByTestId("check-regions-picker")).toHaveCount(0);
     }

@@ -19,7 +19,6 @@ test.describe("Slack install-only channel", () => {
     const page = authenticatedPage;
 
     await page.goto("orgs/test/integrations/new");
-    await page.waitForLoadState("networkidle");
 
     // Pick the Slack tile.
     await page.getByTestId("pick-slack").click();
@@ -120,7 +119,6 @@ test.describe("Slack install-only channel", () => {
     );
 
     await page.goto(`orgs/test/integrations/${channelUid}`);
-    await page.waitForLoadState("networkidle");
 
     // The not-connected CTA is visible with the install button.
     await expect(page.getByTestId("slack-not-connected")).toBeVisible();

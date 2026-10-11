@@ -116,7 +116,6 @@ test.describe("Superadmin operator notifications", () => {
     const captured = await stubOperatorNotifications(page);
 
     await page.goto("orgs/test/server/notifications");
-    await page.waitForLoadState("networkidle");
 
     const enabled = page.getByTestId("operator-notifications-enabled");
     await expect(enabled).toBeVisible();
@@ -147,7 +146,6 @@ test.describe("Superadmin operator notifications", () => {
 
     // And the round trip: reload re-reads the stub's stored document.
     await page.reload();
-    await page.waitForLoadState("networkidle");
 
     await expect(
       page.getByTestId("operator-notifications-enabled"),
@@ -170,7 +168,6 @@ test.describe("Superadmin operator notifications", () => {
     await stubOperatorNotifications(page);
 
     await page.goto("orgs/test/server/notifications");
-    await page.waitForLoadState("networkidle");
 
     const bobRow = page.getByTestId("operator-recipient-bob@acme.com");
     await expect(bobRow).toContainText(/no notification routes/i);
@@ -198,7 +195,6 @@ test.describe("Superadmin operator notifications", () => {
     await stubOperatorNotifications(page);
 
     await page.goto("orgs/test/server/notifications");
-    await page.waitForLoadState("networkidle");
 
     await page.getByTestId("operator-notifications-test").click();
 
@@ -219,7 +215,6 @@ test.describe("Superadmin operator notifications", () => {
     });
 
     await page.goto("orgs/test/server/notifications");
-    await page.waitForLoadState("networkidle");
 
     await page.getByTestId("operator-notifications-test").click();
 

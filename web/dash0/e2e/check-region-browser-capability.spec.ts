@@ -34,7 +34,6 @@ test.describe("region picker browser capability", () => {
     await mockRegions(page);
 
     await page.goto("orgs/test/checks/new?checkType=browser");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
     await choosePinnedRegions(page);
 
@@ -78,7 +77,6 @@ test.describe("region picker browser capability", () => {
     await mockRegions(page);
 
     await page.goto("orgs/test/checks/new?checkType=tcp");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
     await choosePinnedRegions(page);
 

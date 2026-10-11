@@ -638,7 +638,6 @@ test.describe("A non-admin member cannot reach organization/discovery", () => {
     // member (only the write actions 403'd server-side). Reaching the new URL
     // directly — bypassing any nav entirely — must bounce out of /organization.
     await page.goto(`orgs/${orgSlug}/organization/discovery`);
-    await page.waitForLoadState("networkidle");
 
     await expect(page).toHaveURL(
       new RegExp(`/orgs/${orgSlug}(?!/organization)(/)?$`),

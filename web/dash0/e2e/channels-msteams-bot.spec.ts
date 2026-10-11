@@ -111,7 +111,6 @@ test.describe("Microsoft Teams bot setup page", () => {
     });
 
     await page.goto(`orgs/test/integrations/${CHANNEL_UID}`);
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("msteams-bot-panel")).toBeVisible();
 
@@ -153,7 +152,6 @@ test.describe("Microsoft Teams bot setup page", () => {
     await stubTeamsBotConnection(page, { destinations: [] });
 
     await page.goto(`orgs/test/integrations/${CHANNEL_UID}`);
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("msteams-bot-empty")).toBeVisible();
     await expect(page.getByTestId("msteams-bot-destinations")).toHaveCount(0);
@@ -167,7 +165,6 @@ test.describe("Microsoft Teams bot setup page", () => {
     await stubTeamsBotConnection(page, { destinations: [], uninstalled: true });
 
     await page.goto(`orgs/test/integrations/${CHANNEL_UID}`);
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("msteams-bot-uninstalled")).toBeVisible();
   });
@@ -180,7 +177,6 @@ test.describe("Microsoft Teams bot setup page", () => {
     await stubTeamsBotConnection(page, { destinations: [], enabled: false });
 
     await page.goto(`orgs/test/integrations/${CHANNEL_UID}`);
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("msteams-bot-disabled")).toBeVisible();
   });
@@ -212,7 +208,6 @@ test.describe("Microsoft Teams bot setup page", () => {
     );
 
     await page.goto(`orgs/test/integrations/${CHANNEL_UID}`);
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("msteams-bot-not-connected")).toBeVisible();
 
@@ -234,7 +229,6 @@ test.describe("Microsoft Teams bot setup page", () => {
     const page = authenticatedPage;
 
     await page.goto("orgs/test/integrations/new");
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("pick-msteams-bot")).toBeVisible();
   });

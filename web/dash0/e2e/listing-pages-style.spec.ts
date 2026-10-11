@@ -85,7 +85,6 @@ test.describe("Listing pages share the checks-page chrome", () => {
     await createOnCallSchedule(page, token, `Listing B ${stamp}`);
 
     await page.goto("orgs/test/on-call");
-    await page.waitForLoadState("networkidle");
 
     const h1 = page.getByRole("heading", { level: 1 });
     await expect(h1).toHaveClass(/text-2xl/);
@@ -119,7 +118,6 @@ test.describe("Listing pages share the checks-page chrome", () => {
     await createEscalationPolicy(page, token, `Bravo ${stamp}`);
 
     await page.goto("orgs/test/escalation-policies");
-    await page.waitForLoadState("networkidle");
 
     const rows = page.getByTestId("policy-row");
     await expect(rows).toHaveCount(2);
@@ -141,7 +139,6 @@ test.describe("Listing pages share the checks-page chrome", () => {
   }) => {
     const page = authenticatedPage;
     await page.goto("orgs/test/integrations");
-    await page.waitForLoadState("networkidle");
 
     const h1 = page.getByRole("heading", { level: 1 });
     await expect(h1).toHaveClass(/text-2xl/);

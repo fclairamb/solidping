@@ -135,7 +135,6 @@ test.describe("Checks list — status faceted filter", () => {
     ];
     await mockChecksIndex(page, { checks, checkTypes: ["http"] });
     await page.goto("orgs/test/checks");
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByText("ST Up Check")).toBeVisible();
     await expect(page.getByText("ST Down Check")).toBeVisible();
@@ -179,7 +178,6 @@ test.describe("Checks list — status faceted filter", () => {
     // URL is the only source of the selection, read straight off
     // Route.useSearch() with no local-state mirror.
     await page.goto("orgs/test/checks?status=down,validating");
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByText("Cold Down Check")).toBeVisible();
     await expect(page.getByText("Cold Validating Check")).toBeVisible();
@@ -206,13 +204,11 @@ test.describe("Checks list — type faceted filter", () => {
     ];
     await mockChecksIndex(page, { checks, checkTypes: ["http", "tcp"] });
     await page.goto("orgs/test/checks");
-    await page.waitForLoadState("networkidle");
 
     // Type filter alone narrows to the two http checks, hiding the tcp one.
     await page.getByTestId("type-filter").click();
     await page.getByTestId("type-filter-option-http").click();
     await page.keyboard.press("Escape");
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByText("Type HTTP Up")).toBeVisible();
     await expect(page.getByText("Type HTTP Down")).toBeVisible();
@@ -223,7 +219,6 @@ test.describe("Checks list — type faceted filter", () => {
     await page.getByTestId("status-filter").click();
     await page.getByTestId("status-filter-option-down").click();
     await page.keyboard.press("Escape");
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByText("Type HTTP Down")).toBeVisible();
     await expect(page.getByText("Type HTTP Up")).not.toBeVisible();
@@ -237,7 +232,6 @@ test.describe("Checks list — type faceted filter", () => {
     await page.getByTestId("status-filter").click();
     await page.getByTestId("status-filter-option-down").click();
     await page.keyboard.press("Escape");
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByText("Type HTTP Up")).toBeVisible();
     await expect(page.getByText("Type HTTP Down")).toBeVisible();
@@ -257,7 +251,6 @@ test.describe("Checks list — validating status against the real backend", () =
     // handler test in server/internal/handlers/checks covers the negative
     // control and the union/unknown-token cases at the API layer).
     await page.goto("orgs/test/checks?status=validating");
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByText("Validating Check")).toBeVisible();
     await expect(page.getByTestId("status-filter")).toContainText("Validating");
@@ -277,7 +270,6 @@ test.describe("Checks list — trigger look, result count and Reset", () => {
     const page = authenticatedPage;
     await mockChecksIndex(page, { checks, checkTypes: ["http", "tcp"] });
     await page.goto("orgs/test/checks");
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("status-filter")).toHaveText("Status");
     await expect(page.getByTestId("type-filter")).toHaveText("Type");
@@ -297,7 +289,6 @@ test.describe("Checks list — trigger look, result count and Reset", () => {
     const page = authenticatedPage;
     await mockChecksIndex(page, { checks, checkTypes: ["http", "tcp"] });
     await page.goto("orgs/test/checks");
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("checks-result-count")).toHaveText("3 checks");
     await expect(page.getByTestId("reset-filters")).toHaveCount(0);
@@ -309,7 +300,6 @@ test.describe("Checks list — trigger look, result count and Reset", () => {
     const page = authenticatedPage;
     await mockChecksIndex(page, { checks, checkTypes: ["http", "tcp"] });
     await page.goto("orgs/test/checks?groupBy=host&q=RC");
-    await page.waitForLoadState("networkidle");
 
     await page.getByTestId("status-filter").click();
     await page.getByTestId("status-filter-option-down").click();
@@ -317,7 +307,6 @@ test.describe("Checks list — trigger look, result count and Reset", () => {
     await page.getByTestId("type-filter").click();
     await page.getByTestId("type-filter-option-tcp").click();
     await page.keyboard.press("Escape");
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("checks-result-count")).toHaveText("1 of 3 checks");
     await expect(page.getByTestId("reset-filters")).toBeVisible();

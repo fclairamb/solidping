@@ -21,7 +21,6 @@ test.describe("Kubernetes cluster connections", () => {
     const page = authenticatedPage;
 
     await page.goto("orgs/test/integrations/new");
-    await page.waitForLoadState("networkidle");
 
     const sourceGroup = page.getByTestId("group-source");
     const notifyGroup = page.getByTestId("group-notify");
@@ -39,7 +38,6 @@ test.describe("Kubernetes cluster connections", () => {
 
     // 1. Open the kubernetes create form via the picker.
     await page.goto("orgs/test/integrations/new?type=kubernetes");
-    await page.waitForLoadState("networkidle");
 
     // The kubernetes panel renders; default auth mode is token.
     await expect(page.getByTestId("kubernetes-panel")).toBeVisible();
@@ -131,7 +129,6 @@ test.describe("Kubernetes cluster connections", () => {
     const page = authenticatedPage;
 
     await page.goto("orgs/test/integrations/new?type=kubernetes");
-    await page.waitForLoadState("networkidle");
 
     // Switch the auth mode select to in-cluster.
     await page.getByTestId("kubernetes-auth-mode").click();

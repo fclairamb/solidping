@@ -95,7 +95,6 @@ test.describe("Checks list — stale status-page publication", () => {
     await mockStatusPages(page, { stale: true });
 
     await page.goto("orgs/test/checks");
-    await page.waitForLoadState("networkidle");
 
     const banner = page.getByTestId("stale-publications-banner");
     await expect(banner).toBeVisible();
@@ -116,7 +115,6 @@ test.describe("Checks list — stale status-page publication", () => {
     await mockStatusPages(page, { stale: false });
 
     await page.goto("orgs/test/checks");
-    await page.waitForLoadState("networkidle");
 
     // The checks list itself rendered — without this the assertion below would
     // pass on a page that never loaded at all.
@@ -164,7 +162,6 @@ test.describe("Checks list — stale status-page publication", () => {
     );
 
     await page.goto("orgs/test/checks");
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("checks-search-input")).toBeVisible();
     await expect(page.getByTestId("stale-publications-banner")).toHaveCount(0);

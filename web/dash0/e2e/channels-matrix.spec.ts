@@ -44,7 +44,6 @@ test.describe("Matrix channel", () => {
 
     // 2. Lists with icon/label on the integrations index.
     await page.goto("orgs/test/integrations");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByText(name)).toBeVisible({ timeout: 15000 });
     await expect(
       page.getByText("Matrix", { exact: true }).first(),
@@ -54,7 +53,6 @@ test.describe("Matrix channel", () => {
     // never echoed back (it round-trips server-side, see the Go
     // integration test covering the encrypted-envelope round trip).
     await page.goto(`orgs/test/integrations/${uid}`);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByLabel(/homeserver url/i)).toHaveValue(
       "https://matrix.org",
     );
@@ -78,7 +76,6 @@ test.describe("Matrix channel", () => {
     await saved;
 
     await page.goto(`orgs/test/integrations/${uid}`);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByLabel(/^room/i)).toHaveValue("!updated:matrix.org");
 
     // 4. Delete via the UI.
@@ -138,7 +135,6 @@ test.describe("Matrix channel", () => {
     );
 
     await page.goto(`orgs/test/integrations/${integration.uid}`);
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("integration-test-section")).toBeVisible();
     await page.getByTestId("webhook-send-test").click();

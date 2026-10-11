@@ -21,7 +21,6 @@ test.describe("Status page subscribers (admin)", () => {
     await expect(editButton).toBeVisible({ timeout: 10000 });
     await editButton.click();
     await page.waitForURL(/\/status-pages\/[^/]+\/edit/);
-    await page.waitForLoadState("networkidle");
 
     // The subscribers card renders with a count badge.
     const card = page.getByTestId("status-page-subscribers");

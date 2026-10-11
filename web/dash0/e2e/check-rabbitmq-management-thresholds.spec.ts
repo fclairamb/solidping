@@ -27,7 +27,6 @@ test.describe("RabbitMQ check — management mode thresholds", () => {
     const page = authenticatedPage;
 
     await page.goto("orgs/test/checks/new?checkType=rabbitmq");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-host-input")).toBeVisible();
     await expect(page.getByTestId("check-queue-input")).toBeVisible();
 
@@ -59,7 +58,6 @@ test.describe("RabbitMQ check — management mode thresholds", () => {
     const token = await getAuthToken(page);
 
     await page.goto("orgs/test/checks/new?checkType=rabbitmq");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-host-input")).toBeVisible();
 
     const checkName = `E2E RabbitMQ Thresholds ${Date.now()}`;
@@ -97,7 +95,6 @@ test.describe("RabbitMQ check — management mode thresholds", () => {
 
     // Reload the edit page — values must reflect what was actually persisted.
     await page.goto(`orgs/test/checks/${uid}/edit`);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-rabbitmq-mode-select")).toContainText(
       "Management API",
     );

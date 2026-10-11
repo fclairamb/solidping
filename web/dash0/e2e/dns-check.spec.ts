@@ -13,7 +13,6 @@ test.describe("DNS check form", () => {
 
     // Deep-link straight to the DNS new-check form.
     await page.goto("orgs/test/checks/new?checkType=dns");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
     // The Domain field is DNS-specific and must render for this type.
@@ -36,7 +35,6 @@ test.describe("DNS check form", () => {
     // Submit — should succeed (previously failed with "host is required").
     await page.getByTestId("check-submit-button").click();
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
-    await page.waitForLoadState("networkidle");
     await expect(page.getByRole("heading", { name: `E2E DNS Sample ${suffix}` })).toBeVisible();
   });
 
@@ -46,7 +44,6 @@ test.describe("DNS check form", () => {
     const page = authenticatedPage;
 
     await page.goto("orgs/test/checks/new?checkType=dns");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
     // DNS-specific inputs are present.
@@ -67,7 +64,6 @@ test.describe("DNS check form", () => {
 
     await page.getByTestId("check-submit-button").click();
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
-    await page.waitForLoadState("networkidle");
     await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
 
     // Edit round-trip: domain, server, and record type all persist.
@@ -75,7 +71,6 @@ test.describe("DNS check form", () => {
       .getByTestId("check-detail-header")
       .getByRole("link", { name: "Edit" }).click();
     await page.waitForURL(/\/edit/);
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("check-domain-input")).toHaveValue("example.com");
     await expect(page.getByTestId("check-dns-nameserver-input")).toHaveValue("8.8.8.8:53");
@@ -88,7 +83,6 @@ test.describe("DNS check form", () => {
     const page = authenticatedPage;
 
     await page.goto("orgs/test/checks/new?checkType=dns");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-domain-input")).toBeVisible();
 
     // Submit with an empty Domain — the form guards and stays on /new.

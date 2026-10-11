@@ -84,7 +84,6 @@ test.describe("Updates & notices — publication link", () => {
     await mockUpdates(page);
 
     await page.goto("orgs/test/status-updates");
-    await page.waitForLoadState("networkidle");
 
     // The page says what it is before anything else does.
     await expect(

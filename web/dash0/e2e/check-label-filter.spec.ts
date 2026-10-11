@@ -9,7 +9,6 @@ test.describe("Checks label filter", () => {
   async function gotoChecks(page: Page) {
     await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
     await page.waitForURL(/\/checks/);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("label-filter-trigger")).toBeVisible();
   }
 
@@ -117,7 +116,6 @@ test.describe("Checks label filter", () => {
     const target = new URL(page.url());
     target.searchParams.set("labels", "env:prod");
     await page.goto(target.toString());
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("label-chips")).toContainText("env: prod");
     await expect(page.getByTestId("reset-filters")).toBeVisible();

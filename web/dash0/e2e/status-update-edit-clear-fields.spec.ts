@@ -97,7 +97,6 @@ test.describe("Status update edit — clearing fields and stale cache", () => {
 
     // --- Positive control: the edit form loads the non-null baseline ---
     await page.goto(`orgs/test/status-updates/${update.uid}/edit`);
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("status-update-form-title")).toHaveValue(title);
     await expect(page.getByTestId("status-update-form-section")).toContainText(
@@ -121,12 +120,10 @@ test.describe("Status update edit — clearing fields and stale cache", () => {
 
     await page.getByTestId("status-update-form-submit").click();
     await page.waitForURL(/\/status-updates\/?$/, { timeout: 10000 });
-    await page.waitForLoadState("networkidle");
 
     // --- Negative assertion: reload the edit page and prove the fields
     // really cleared (not just that the request returned 200) ---
     await page.goto(`orgs/test/status-updates/${update.uid}/edit`);
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("status-update-form-section")).toContainText(
       "No section",
@@ -163,7 +160,6 @@ test.describe("Status update edit — clearing fields and stale cache", () => {
 
     await page.getByTestId("status-update-form-submit").click();
     await page.waitForURL(/\/status-updates\/?$/, { timeout: 10000 });
-    await page.waitForLoadState("networkidle");
     await expect(page.getByText(newTitle)).toBeVisible({ timeout: 10000 });
 
     // Re-enter the edit page via an IN-APP client-side transition — clicking

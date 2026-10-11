@@ -165,7 +165,6 @@ test.describe("Check scheduling page", () => {
       created.push(multiUid);
 
       await page.goto("orgs/test/checks/scheduling");
-      await page.waitForLoadState("networkidle");
 
       const row = page.getByTestId(`scheduling-row-${fastUid}`);
       await expect(row).toBeVisible();
@@ -272,7 +271,6 @@ test.describe("Check scheduling page", () => {
       await setChecksPerMinute(page, token, 2);
 
       await page.goto("orgs/test/checks/scheduling");
-      await page.waitForLoadState("networkidle");
 
       // The over-limit banner (spec 03) sends people here, so it renders here
       // too — without its own self-referential link.
@@ -326,7 +324,6 @@ test.describe("Check scheduling page", () => {
     await page.setViewportSize({ width: 375, height: 812 });
 
     await page.goto("orgs/test/checks/scheduling");
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("check-rate-meter")).toBeVisible();
     await expect(page.getByTestId("scheduling-rebalance-button")).toBeVisible();
@@ -345,7 +342,6 @@ test.describe("Check scheduling page", () => {
     const page = authenticatedPage;
 
     await page.goto("orgs/test/checks");
-    await page.waitForLoadState("networkidle");
 
     await page.getByTestId("checks-more-actions").click();
     await page.getByTestId("scheduling-link").click();
@@ -359,7 +355,6 @@ test.describe("Check scheduling page", () => {
     const page = authenticatedPage;
 
     await page.goto("orgs/test/checks/scheduling");
-    await page.waitForLoadState("networkidle");
 
     const header = page.locator("header");
 

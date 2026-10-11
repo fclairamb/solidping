@@ -26,7 +26,6 @@ test.describe("Account Notifications — deleting a method", () => {
     authenticatedPage: page,
   }) => {
     await page.goto("orgs/test/account/notifications");
-    await page.waitForLoadState("networkidle");
 
     const list = page.getByTestId("notification-routes-list");
     await expect(list).toBeVisible();

@@ -67,7 +67,6 @@ test.describe("Chart point preview", () => {
     // Create a check and navigate to its detail page.
     await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
     await page.waitForURL(/\/checks/);
-    await page.waitForLoadState("networkidle");
     await page.getByTestId("new-check-button").click();
     await page.waitForURL(/\/checks\/new/);
     await page.waitForLoadState("networkidle");
@@ -220,7 +219,6 @@ test.describe("Chart point preview", () => {
 
     await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
     await page.waitForURL(/\/checks/);
-    await page.waitForLoadState("networkidle");
     await page.getByTestId("new-check-button").click();
     await page.waitForURL(/\/checks\/new/);
     await page.waitForLoadState("networkidle");
@@ -231,7 +229,6 @@ test.describe("Chart point preview", () => {
     await page.getByTestId("check-submit-button").click();
 
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
-    await page.waitForLoadState("networkidle");
     await expect(page.locator(".recharts-wrapper")).toBeVisible({ timeout: 15000 });
 
     // The gradient carries a red (COLOR_DOWN) stop despite the density gate

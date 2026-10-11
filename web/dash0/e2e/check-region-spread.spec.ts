@@ -59,10 +59,8 @@ async function ensureRegionChecked(page: Page, regionTestId: string): Promise<vo
 async function openNewCheckForm(page: Page): Promise<void> {
   await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
   await page.waitForURL(/\/checks/);
-  await page.waitForLoadState("networkidle");
   await page.getByTestId("new-check-button").click();
   await page.waitForURL(/\/checks\/new/);
-  await page.waitForLoadState("networkidle");
   await expect(page.getByTestId("check-name-input")).toBeVisible();
 
   // Pin the interval to 1 minute so the automatic default (period / regions)
@@ -128,7 +126,6 @@ test.describe("Check form — Region Spread", () => {
 
     await page.getByTestId("check-submit-button").click();
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
-    await page.waitForLoadState("networkidle");
     await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
 
     // Re-open the edit form and confirm the override round-tripped through a
@@ -137,7 +134,6 @@ test.describe("Check form — Region Spread", () => {
       .getByTestId("check-detail-header")
       .getByRole("link", { name: "Edit" }).click();
     await page.waitForURL(/\/edit$/, { timeout: 10000 });
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-region-spread-input")).toHaveValue("5");
     await expect(page.getByTestId("region-spread-help")).toContainText(
       "Overrides how far apart regions are staggered",
@@ -147,13 +143,11 @@ test.describe("Check form — Region Spread", () => {
     await page.getByTestId("check-region-spread-input").fill("");
     await page.getByTestId("check-submit-button").click();
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/, { timeout: 10000 });
-    await page.waitForLoadState("networkidle");
 
     await page
       .getByTestId("check-detail-header")
       .getByRole("link", { name: "Edit" }).click();
     await page.waitForURL(/\/edit$/, { timeout: 10000 });
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-region-spread-input")).toHaveValue("");
     await expect(page.getByTestId("region-spread-help")).toContainText("Automatic: 30 s");
 

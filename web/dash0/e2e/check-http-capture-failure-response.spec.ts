@@ -30,7 +30,6 @@ test.describe("HTTP check capture_failure_response", () => {
     const token = await getAuthToken(page);
 
     await page.goto("orgs/test/checks/new?checkType=http");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
     // Advanced is a collapsed-by-default section — open it.
@@ -72,7 +71,6 @@ test.describe("HTTP check capture_failure_response", () => {
     const token = await getAuthToken(page);
 
     await page.goto("orgs/test/checks/new?checkType=http");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
     await page.getByTestId("section-advanced-trigger").click();
@@ -107,7 +105,6 @@ test.describe("HTTP check capture_failure_response", () => {
     // Reload the edit page: Advanced auto-opens (it holds a non-default
     // value), so the switch and its notice are visible without a click.
     await page.goto(`orgs/test/checks/${uid}/edit`);
-    await page.waitForLoadState("networkidle");
     await expect(
       page.getByTestId("check-capture-failure-response-switch"),
     ).toHaveAttribute("aria-checked", "true");

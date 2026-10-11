@@ -22,7 +22,6 @@ test.describe("Incident probe-response capture", () => {
     const page = authenticatedPage;
 
     await page.goto(`${DASH_BASE}/orgs/test/incidents/${TEXT_INCIDENT}`);
-    await page.waitForLoadState("networkidle");
 
     const card = page.getByTestId("probe-response-card");
     await expect(card).toBeVisible();
@@ -78,7 +77,6 @@ test.describe("Incident probe-response capture", () => {
     const page = authenticatedPage;
 
     await page.goto(`${DASH_BASE}/orgs/test/incidents/${TRUNCATED_INCIDENT}`);
-    await page.waitForLoadState("networkidle");
 
     const card = page.getByTestId("probe-response-card");
     await expect(card).toBeVisible();
@@ -107,7 +105,6 @@ test.describe("Incident probe-response capture", () => {
     const page = authenticatedPage;
 
     await page.goto(`${DASH_BASE}/orgs/test/incidents/${BINARY_INCIDENT}`);
-    await page.waitForLoadState("networkidle");
 
     const card = page.getByTestId("probe-response-card");
     await expect(card).toBeVisible();
@@ -141,11 +138,9 @@ test.describe("Incident probe-response capture", () => {
     // rendered, so "absent" below is evidence of the guard and not of a
     // broken page or a wrong test id.
     await page.goto(`${DASH_BASE}/orgs/test/incidents/${TEXT_INCIDENT}`);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("probe-response-card")).toBeVisible();
 
     await page.goto(`${DASH_BASE}/orgs/test/incidents/${NO_CAPTURE_INCIDENT}`);
-    await page.waitForLoadState("networkidle");
 
     // The page really did render (its sibling failure card is there) — it is
     // only the probe-response card that is withheld.
@@ -158,7 +153,6 @@ test.describe("Incident probe-response capture", () => {
 
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto(`${DASH_BASE}/orgs/test/incidents/${TEXT_INCIDENT}`);
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("probe-response-card")).toBeVisible();
     await expect(

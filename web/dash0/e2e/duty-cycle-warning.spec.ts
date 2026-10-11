@@ -45,10 +45,8 @@ async function mockScheduling(
 async function createCheckAndOpen(page: Page, name: string) {
   await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
   await page.waitForURL(/\/checks/);
-  await page.waitForLoadState("networkidle");
   await page.getByTestId("new-check-button").click();
   await page.waitForURL(/\/checks\/new/);
-  await page.waitForLoadState("networkidle");
 
   await page.getByTestId("check-name-input").fill(name);
   await page
@@ -102,7 +100,6 @@ test.describe("Check detail duty-cycle warning", () => {
         lng,
       );
       await page.reload();
-      await page.waitForLoadState("networkidle");
       const localized = page.getByTestId("duty-cycle-warning");
       await expect(localized).toBeVisible({ timeout: 10000 });
       await expect(localized).toContainText(fragment);
@@ -131,7 +128,6 @@ test.describe("Check detail duty-cycle warning", () => {
     // Never-run check: no scheduling block at all → no warning either.
     await mockScheduling(page, null);
     await page.reload();
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-detail-header")).toBeVisible();
     await expect(page.getByTestId("duty-cycle-warning")).toHaveCount(0);
   });

@@ -63,7 +63,6 @@ test.describe("Account Notifications — Slack channel mention", () => {
     });
 
     await page.goto("orgs/test/account/notifications");
-    await page.waitForLoadState("networkidle");
 
     const status = page.getByTestId("slack-mention-status");
     await expect(status).toBeVisible();
@@ -76,7 +75,6 @@ test.describe("Account Notifications — Slack channel mention", () => {
     await stubRoutes(page, { linked: false, workspace: "Acme" });
 
     await page.goto("orgs/test/account/notifications");
-    await page.waitForLoadState("networkidle");
 
     const status = page.getByTestId("slack-mention-status");
     await expect(status).toBeVisible();
@@ -93,7 +91,6 @@ test.describe("Account Notifications — Slack channel mention", () => {
     await stubRoutes(page);
 
     await page.goto("orgs/test/account/notifications");
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("slack-connect-row")).toBeVisible();
     await expect(page.getByTestId("slack-mention-status")).toHaveCount(0);

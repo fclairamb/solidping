@@ -117,7 +117,6 @@ test.describe("Incidents list: kind, full title, escalation", () => {
     await mockIncidentsPage(page);
 
     await page.goto(`${DASH_BASE}/orgs/test/incidents`);
-    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("incident-row")).toHaveCount(3);
 
@@ -179,7 +178,6 @@ test.describe("Incidents list: kind, full title, escalation", () => {
     const incidentRequests = await mockIncidentsPage(page);
 
     await page.goto(`${DASH_BASE}/orgs/test/incidents?state=all`);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("incident-row")).toHaveCount(3);
 
     // Positive control: with no kind picked, nothing is sent.
@@ -231,7 +229,6 @@ test.describe("Incidents list: kind, full title, escalation", () => {
     await mockIncidentsPage(page);
 
     await page.goto(`${DASH_BASE}/orgs/test/incidents`);
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("incident-row")).toHaveCount(3);
 
     const overflows = await page.evaluate(

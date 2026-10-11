@@ -46,7 +46,6 @@ test.describe("Application health check", () => {
     const headers = { Authorization: `Bearer ${token}` };
 
     await page.goto("orgs/test/checks/new?checkType=health");
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
     // The request line is the http check's; the response assertions are not offered.
