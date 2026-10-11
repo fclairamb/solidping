@@ -17,7 +17,9 @@ Agent instructions for every coding agent (Claude Code, Codex, Cursor, Copilot, 
   - The only competitor-facing pages in `web/docs/` are the `migrate-from-*.md` import guides.
 
 ## Development workflow
-Laptop only: if a server already runs on port 4000, apply code changes directly (`make dev` / `make dev-test` hot-reload). `rtk` prefixes, the k8xp VPN and `gopass` are user-global setup, not part of the repo. Sandboxes and Claude cloud sessions: see [Without Docker](#without-docker-cloud-sessions-ci-like-sandboxes).
+Laptop only: if a server already runs on port 4000, apply code changes directly (`make dev` / `make dev-test` hot-reload). Never stop or `pkill` that devloop: run anything else on another port and kill it by PID. `rtk` prefixes, the k8xp VPN and `gopass` are user-global setup, not part of the repo. The maintainer's dev instance (`solidping.k8xp.com`) and the prod fleet are operated from the private `k8xp` repo (`k8s/solidping/OPERATIONS.md`). When a git answer gates a decision (current branch, did a merge land), check it with plain `git`: `rtk git` has reported stale and even invented branch names. Sandboxes and Claude cloud sessions: see [Without Docker](#without-docker-cloud-sessions-ci-like-sandboxes).
+
+Before calling the API of any server, `GET /api/mgmt/version`: it gives the run mode (which credentials apply) and the commit actually serving.
 
 1. Start infrastructure: `docker-compose up -d`
 2. Run everything: `make dev` (backend + dash0 + status0 with hot reload)
@@ -118,6 +120,11 @@ curl -s -H "Authorization: Bearer $TOKEN" 'http://localhost:4000/api/v1/orgs/def
 - **Backend**: table-driven tests + testcontainers for integration (see `server/AGENTS.md`)
 - **Dash0**: Playwright E2E in `web/dash0/e2e/` (see `web/dash0/AGENTS.md`)
 - Comprehensive coverage expected for new features
+- To reproduce or verify UI behaviour, write or run a Playwright spec rather than driving a browser through an MCP tool (much slower). Use the user's browser only when the flow needs their logged-in session.
+- Local E2E runs use a side-car server, never the `:4000` devloop. Recipe and traps: [wiki/testing/local-e2e.md](wiki/testing/local-e2e.md). A full suite run must stay under 1 hour; a slower run is a harness bug to fix, not to wait out.
+- Flaky tests are bugs: root-cause them, never re-run to green ([wiki/testing/flaky-tests.md](wiki/testing/flaky-tests.md)). A test asserting an absence needs a positive control.
+- Fix lint findings in code. Never relax `.golangci.yml` or the eslint config to get green. Local linter vs CI parity, red-CI traps and the release flow: [wiki/runbooks/ci-and-release-triage.md](wiki/runbooks/ci-and-release-triage.md).
+- Server behaviours that mislead when operating a deployment (migrations on rollout, inert env vars, provider callbacks, check diagnosis): [wiki/runbooks/operations-gotchas.md](wiki/runbooks/operations-gotchas.md).
 
 ## Never name a real company — use `acme`
 
@@ -142,6 +149,7 @@ Exceptions:
 ## Specs
 - Filename format: `YYYY-MM-DD-NN-title.md` (`NN` unique per day across `specs/todos/` and `specs/done/YYYY/MM/`)
 - Active: `specs/todos/`, Done: `specs/done/YYYY/MM/`, Backlog: `specs/backlog/`, Cancelled: `specs/cancelled/`
+- Never delete the `specs/todos/` directory itself, even when it is empty.
 
 ## Batch branches
 `/implement-todos` and similar multi-spec runs integrate onto a dated batch branch (e.g. `batch/2026-06-23`).

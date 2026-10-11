@@ -104,8 +104,8 @@ Mechanics worth knowing before you touch an existing file:
   (`make dev` / `dev-test` / `dev-saas`) always runs warn. `solidping migrate repair`
   re-records checksums for applied migrations (no migration runs) to clear a cosmetic-edit
   mismatch. See `wiki/conventions/database.md` for the full guard/repair writeup.
-- **`internal/middleware/`**: Authentication, CORS, logging, and organization context
-- **`internal/config/`**: Configuration management using koanf (YAML + environment variables)
+- **`internal/middleware/`**: Authentication, CORS, logging, and organization context. Adding a middleware to a shared chain (`orgGroup`)? Update the hand-built test fixtures that copy that chain in the same change (`wiki/testing/flaky-tests.md`).
+- **`internal/config/`**: Configuration management using koanf (YAML + environment variables). The env loader maps every `_` after `SP_` to `.`, so a new `SP_*` variable for a multi-word key (`rate_limiting`, `max_open_conns`...) needs a manual reader in `Load()` next to `applyRateLimitingEnv`, or it is silently ignored.
 
 ## Database Schema
 

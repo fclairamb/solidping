@@ -557,6 +557,15 @@ recorded; they just don't trigger paging. When the window ends, the
 next failing result will open a fresh incident if the failure persists.
 There is no "deferred" incident that fires at window end.
 
+Membership is only what the window lists: its checks, plus the checks of
+its groups (`ListMaintenanceWindowsForCheck`). **A window with nothing
+attached suppresses nothing** and shows no "under maintenance" badge on
+status pages. There is no "empty means org-wide" fallback. An operator
+who forgets to attach checks believes they are covered and gets paged
+during planned work, so dash0 renders a 0 count as an amber warning
+(`ChecksCountCell` in `maintenance-windows.index.tsx`), never as a
+neutral number. Keep it that way on any new surface showing the count.
+
 ### Per-incident silencing (ack / snooze / manual resolve)
 
 Operators can ack, snooze, or manually resolve an incident at any time.

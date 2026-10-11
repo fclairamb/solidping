@@ -193,6 +193,36 @@ shipping a permanent migration. `014_v0_17_0` is the consolidated v0.17.0
 migration, unrelated to that draft; see the consolidation rule above for why
 reusing the number is safe here and what it costs dev databases.)
 
+### Diagnosing a "no such column" 500 on a dev database
+
+The usual cause: a spec appended a SECTION to the unreleased migration after your
+dev database had already applied it, so the new statements never ran.
+
+1. **Read the guard first.** `grep -i checksum logs/backend.log*` (glob the rotated
+   `.1`/`.2` files too: the boot-time warning may only be there). The guard names the
+   migration, both checksums and the repair options. It once logged the answer 67
+   times while someone read migration files instead.
+2. **Measure the blast radius.** Grep `logs/backend.log*` for the missing column, not
+   just the endpoint you noticed. The same missing column once also broke the check
+   worker's active-incident query, so incident detection was dead on every probe.
+3. **Pin the applied version.** `select checksum from migration_checksums where name='NNN'`
+   gives the sha256 of the file as applied. `git log --format=%h -- <migration>` then
+   `git show <sha>:<migration> | shasum -a 256` finds the commit whose version ran. The
+   missing delta is `git diff <sha> HEAD -- <migration>`; no `-` lines means it is purely
+   additive and can be applied by hand.
+4. **Prefer a hand fix over a reset when the data matters.** Apply the missing
+   statements, then sweep the current file object by object (every `create table`,
+   `alter table ... add column`, `create index` against `sqlite_master` /
+   `pragma table_info`, and each backfill `UPDATE`'s WHERE as a `count(*)`). A database
+   can be partially stale after earlier hand fixes, so do not assume. Only then run
+   `solidping migrate repair` (option 3 above). SQLite picks up an `ADD COLUMN` without a
+   restart.
+
+When a consolidation is under way, verify it by replay rather than by the test suite:
+apply every `*.up.sql` in order to an empty SQLite file, assert each folded section's
+objects exist, apply the `.down.sql` and assert they are gone. Before deleting a
+migration file, `grep 'migrations/NNN_' --include=*.go` for tests that read it by name.
+
 **The unreleased migration right now is `025_v0_34_0`** (opened 2026-09-27 by
 spec 2026-09-27-01, the "Capture now" failure columns on `check_jobs`).
 `024_v0_33_0` is the last RELEASED migration (it shipped in v0.33.0), so any
