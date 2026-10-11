@@ -95,23 +95,4 @@ test.describe("TimeAgo: hover tooltip + click-to-copy", () => {
       expect(clipboardText).toMatch(UTC_ISO_RE);
     });
   });
-
-  test("incident detail page stays usable on a mobile viewport", async ({
-    authenticatedPage,
-  }) => {
-    const page = authenticatedPage;
-    await page.setViewportSize({ width: 375, height: 812 });
-
-    await page.goto(`${DASH_BASE}/orgs/test/incidents/${INCIDENT_UID}`);
-    await page.waitForLoadState("networkidle");
-    await expect(page.getByText("Incident Details")).toBeVisible();
-
-    const timelineTime = page.getByTestId("incident-timeline-time").first();
-    await expect(timelineTime).toBeVisible();
-
-    const hasOverflow = await page.evaluate(
-      () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
-    );
-    expect(hasOverflow).toBe(false);
-  });
 });

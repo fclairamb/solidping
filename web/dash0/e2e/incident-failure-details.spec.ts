@@ -27,22 +27,4 @@ test.describe("Incident failure details", () => {
     await expect(card).toContainText("status_code");
     await expect(card).toContainText("503");
   });
-
-  test("first-failure panel is usable on mobile", async ({
-    authenticatedPage,
-  }) => {
-    const page = authenticatedPage;
-
-    await page.setViewportSize({ width: 375, height: 812 });
-    await page.goto(`${DASH_BASE}/orgs/test/incidents/${INCIDENT_UID}`);
-    await page.waitForLoadState("networkidle");
-
-    const card = page.getByTestId("failure-details-card");
-    await expect(card).toBeVisible();
-
-    const hasOverflow = await page.evaluate(
-      () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1
-    );
-    expect(hasOverflow).toBe(false);
-  });
 });

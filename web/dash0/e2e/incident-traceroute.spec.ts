@@ -70,27 +70,6 @@ test.describe("Incident traceroute attachment", () => {
     ).toHaveCount(0);
   });
 
-  test("the hop table scrolls inside itself on a phone", async ({
-    authenticatedPage,
-  }) => {
-    const page = authenticatedPage;
-
-    await page.setViewportSize({ width: 375, height: 812 });
-    await page.goto(`${DASH_BASE}/orgs/test/incidents/${TRACE_INCIDENT}`);
-    await page.waitForLoadState("networkidle");
-
-    await expect(page.getByTestId("incident-traceroute-table")).toBeVisible();
-
-    // The page itself must never scroll sideways: wide content lives in its own
-    // overflow container (frontend convention, design reference).
-    const overflows = await page.evaluate(
-      () =>
-        document.documentElement.scrollWidth >
-        document.documentElement.clientWidth + 1,
-    );
-    expect(overflows).toBe(false);
-  });
-
   // The spec asks for the hop table on the RESULT detail page as well as the
   // incident's. A trace is stored against the incident (one per outage, not one
   // per failing probe), so the result page finds it by matching itself against

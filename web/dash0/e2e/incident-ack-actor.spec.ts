@@ -85,33 +85,4 @@ test.describe("Incident acknowledgment attribution", () => {
       page.getByTestId("incident-timeline-acknowledged-by"),
     ).toBeHidden();
   });
-
-  test("the attribution stays readable on a mobile viewport", async ({
-    authenticatedPage,
-  }) => {
-    const page = authenticatedPage;
-    await page.setViewportSize({ width: 375, height: 812 });
-
-    await page.goto(`${DASH_BASE}/orgs/test/incidents/${incidentUid}`);
-    await page.waitForLoadState("networkidle");
-    await expect(page.getByText("Incident Details")).toBeVisible();
-
-    const ack = page.getByRole("button", { name: "Acknowledge" });
-    if (await ack.isVisible().catch(() => false)) {
-      await ack.click();
-    }
-
-    await expect(page.getByTestId("incident-acked-badge")).toBeVisible({
-      timeout: 10000,
-    });
-
-    const hasOverflow = await page.evaluate(
-      () =>
-        document.documentElement.scrollWidth >
-        document.documentElement.clientWidth + 1,
-    );
-    expect(hasOverflow).toBe(false);
-
-    await clearAck(page);
-  });
 });

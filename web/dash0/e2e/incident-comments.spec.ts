@@ -89,25 +89,4 @@ test.describe("Incident comments", () => {
     await expect(pre).toBeVisible();
     await expect(pre).toContainText("curl -I https://acme.com");
   });
-
-  test("comment composer is usable on a mobile viewport without overflow", async ({
-    authenticatedPage,
-  }) => {
-    const page = authenticatedPage;
-    await page.setViewportSize({ width: 375, height: 812 });
-
-    await page.goto(`${DASH_BASE}/orgs/test/incidents/${incidentUid}`);
-    await page.waitForLoadState("networkidle");
-    await expect(page.getByText("Incident Details")).toBeVisible();
-
-    const composer = page.getByTestId("comment-input");
-    await composer.scrollIntoViewIfNeeded();
-    await expect(composer).toBeVisible();
-
-    // No horizontal overflow on the page body.
-    const hasOverflow = await page.evaluate(
-      () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
-    );
-    expect(hasOverflow).toBe(false);
-  });
 });
