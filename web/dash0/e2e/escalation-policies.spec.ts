@@ -287,6 +287,7 @@ test.describe("Escalation policy editor", () => {
 
     try {
       await page.goto(`orgs/test/escalation-policies/${policy.uid}`);
+      await page.waitForLoadState("networkidle");
 
       const backBtn = page.getByRole("link", { name: /back/i });
       const deleteBtn = page.getByRole("button", { name: /delete/i });

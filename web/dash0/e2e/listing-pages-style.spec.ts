@@ -139,6 +139,7 @@ test.describe("Listing pages share the checks-page chrome", () => {
   }) => {
     const page = authenticatedPage;
     await page.goto("orgs/test/integrations");
+    await page.waitForLoadState("networkidle");
 
     const h1 = page.getByRole("heading", { level: 1 });
     await expect(h1).toHaveClass(/text-2xl/);

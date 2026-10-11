@@ -262,6 +262,7 @@ test.describe("Superadmin entitlements editor", () => {
     });
 
     await page.goto("orgs/test/server/entitlements");
+    await page.waitForLoadState("networkidle");
 
     await expect(page.getByText("Permission Denied")).toBeVisible();
     expect(page.url()).toContain("/server/entitlements");

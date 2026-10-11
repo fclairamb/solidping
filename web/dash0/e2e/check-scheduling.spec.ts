@@ -165,6 +165,7 @@ test.describe("Check scheduling page", () => {
       created.push(multiUid);
 
       await page.goto("orgs/test/checks/scheduling");
+      await page.waitForLoadState("networkidle");
 
       const row = page.getByTestId(`scheduling-row-${fastUid}`);
       await expect(row).toBeVisible();
@@ -324,6 +325,7 @@ test.describe("Check scheduling page", () => {
     await page.setViewportSize({ width: 375, height: 812 });
 
     await page.goto("orgs/test/checks/scheduling");
+    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("check-rate-meter")).toBeVisible();
     await expect(page.getByTestId("scheduling-rebalance-button")).toBeVisible();

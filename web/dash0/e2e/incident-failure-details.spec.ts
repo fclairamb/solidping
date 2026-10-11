@@ -35,6 +35,7 @@ test.describe("Incident failure details", () => {
 
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto(`${DASH_BASE}/orgs/test/incidents/${INCIDENT_UID}`);
+    await page.waitForLoadState("networkidle");
 
     const card = page.getByTestId("failure-details-card");
     await expect(card).toBeVisible();

@@ -173,6 +173,7 @@ test.describe("Checks index host view", () => {
     ]);
 
     await page.goto("orgs/test/checks?groupBy=host");
+    await page.waitForLoadState("networkidle");
 
     const hostView = page.getByTestId("host-view");
     await expect(hostView).toBeVisible({ timeout: 10000 });

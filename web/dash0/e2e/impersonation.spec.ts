@@ -75,6 +75,7 @@ test.describe("Super-admin impersonation", () => {
 
     // The banner follows the admin across pages.
     await page.goto("orgs/test/checks");
+    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("impersonation-banner")).toBeVisible();
 
     // Super-admin pages are closed to the impersonation.

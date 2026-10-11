@@ -135,6 +135,7 @@ test.describe("Checks list — status faceted filter", () => {
     ];
     await mockChecksIndex(page, { checks, checkTypes: ["http"] });
     await page.goto("orgs/test/checks");
+    await page.waitForLoadState("networkidle");
 
     await expect(page.getByText("ST Up Check")).toBeVisible();
     await expect(page.getByText("ST Down Check")).toBeVisible();
@@ -209,6 +210,7 @@ test.describe("Checks list — type faceted filter", () => {
     await page.getByTestId("type-filter").click();
     await page.getByTestId("type-filter-option-http").click();
     await page.keyboard.press("Escape");
+    await page.waitForLoadState("networkidle");
 
     await expect(page.getByText("Type HTTP Up")).toBeVisible();
     await expect(page.getByText("Type HTTP Down")).toBeVisible();
@@ -219,6 +221,7 @@ test.describe("Checks list — type faceted filter", () => {
     await page.getByTestId("status-filter").click();
     await page.getByTestId("status-filter-option-down").click();
     await page.keyboard.press("Escape");
+    await page.waitForLoadState("networkidle");
 
     await expect(page.getByText("Type HTTP Down")).toBeVisible();
     await expect(page.getByText("Type HTTP Up")).not.toBeVisible();
@@ -232,6 +235,7 @@ test.describe("Checks list — type faceted filter", () => {
     await page.getByTestId("status-filter").click();
     await page.getByTestId("status-filter-option-down").click();
     await page.keyboard.press("Escape");
+    await page.waitForLoadState("networkidle");
 
     await expect(page.getByText("Type HTTP Up")).toBeVisible();
     await expect(page.getByText("Type HTTP Down")).toBeVisible();
@@ -270,6 +274,7 @@ test.describe("Checks list — trigger look, result count and Reset", () => {
     const page = authenticatedPage;
     await mockChecksIndex(page, { checks, checkTypes: ["http", "tcp"] });
     await page.goto("orgs/test/checks");
+    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("status-filter")).toHaveText("Status");
     await expect(page.getByTestId("type-filter")).toHaveText("Type");
@@ -307,6 +312,7 @@ test.describe("Checks list — trigger look, result count and Reset", () => {
     await page.getByTestId("type-filter").click();
     await page.getByTestId("type-filter-option-tcp").click();
     await page.keyboard.press("Escape");
+    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("checks-result-count")).toHaveText("1 of 3 checks");
     await expect(page.getByTestId("reset-filters")).toBeVisible();

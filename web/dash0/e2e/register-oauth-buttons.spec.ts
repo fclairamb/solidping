@@ -62,6 +62,7 @@ test.describe("Register: third-party auth buttons", () => {
     }
 
     await page.goto("orgs/test/register");
+    await page.waitForLoadState("networkidle");
     await expect(
       page.getByRole("button", { name: "Create account" }),
     ).toBeVisible();

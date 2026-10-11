@@ -53,6 +53,7 @@ test.describe("Checks search box syncs to ?q=", () => {
     try {
       await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
       await page.waitForURL(/\/checks/);
+      await page.waitForLoadState("networkidle");
 
       const searchInput = page.getByTestId("checks-search-input");
       await expect(searchInput).toBeVisible();
@@ -72,6 +73,7 @@ test.describe("Checks search box syncs to ?q=", () => {
       // Cold reload (not client-side nav): the input stays pre-filled and the
       // list stays filtered from the URL alone.
       await page.reload();
+      await page.waitForLoadState("networkidle");
       await expect(page.getByTestId("checks-search-input")).toHaveValue(matchName);
       await expect(page.getByText(matchName)).toBeVisible();
       await expect(page.getByText(otherName)).not.toBeVisible();
@@ -126,6 +128,7 @@ test.describe("Checks search box syncs to ?q=", () => {
     try {
       await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
       await page.waitForURL(/\/checks/);
+      await page.waitForLoadState("networkidle");
 
       const searchInput = page.getByTestId("checks-search-input");
       await searchInput.fill(matchName);

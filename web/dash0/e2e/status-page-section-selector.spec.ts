@@ -166,6 +166,7 @@ test.describe("Status page section selectors", () => {
     // then Membership — a section dialog reads as "create a section", not as
     // a settings page.
     await page.goto(`orgs/test/status-pages/${statusPage.uid}`);
+    await page.waitForLoadState("networkidle");
     await page.getByRole("button", { name: "Add Section" }).first().click();
     const dialogBody = page
       .getByTestId("section-membership")

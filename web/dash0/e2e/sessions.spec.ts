@@ -81,6 +81,7 @@ test.describe("Sessions", () => {
 
     await page.getByTestId("sign-out-others-button").click();
     await page.getByTestId("sign-out-others-confirm").click();
+    await page.waitForLoadState("networkidle");
 
     // Only the current session remains, and "sign out others" is now
     // disabled (nothing left to sign out).
@@ -144,6 +145,7 @@ test.describe("Sessions", () => {
     await expect(otherRow).toBeVisible();
     await otherRow.locator("[data-testid^='session-revoke-button-']").click();
     await page.getByTestId("session-revoke-confirm").click();
+    await page.waitForLoadState("networkidle");
 
     await expect(
       page.locator("[data-testid^='session-row-']")

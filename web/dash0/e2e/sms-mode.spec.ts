@@ -183,6 +183,7 @@ test.describe("SMS mode panel", () => {
     });
 
     await page.goto("orgs/test/integrations");
+    await page.waitForLoadState("networkidle");
 
     const panel = page.getByTestId("sms-mode-panel");
     await expect(panel).toBeVisible();
@@ -207,6 +208,7 @@ test.describe("SMS mode panel", () => {
     // Empty state: same collapsed-by-default + trailing-position behavior.
     await deleteAllConnections(page, token);
     await page.reload();
+    await page.waitForLoadState("networkidle");
 
     const emptyPanel = page.getByTestId("sms-mode-panel");
     await expect(emptyPanel).toBeVisible();

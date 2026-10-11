@@ -404,6 +404,7 @@ test.describe("Support inbox", () => {
     });
 
     await page.goto("support");
+    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("support-permission-denied")).toBeVisible();
     // Never a redirect: an authenticated-but-unauthorized user must not loop.

@@ -63,6 +63,7 @@ test.describe("Check detail — Incidents card click-through", () => {
     await page.getByTestId("check-submit-button").click();
 
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
+    await page.waitForLoadState("networkidle");
 
     const card = page.getByTestId("incidents-card");
     await expect(card).toBeVisible();

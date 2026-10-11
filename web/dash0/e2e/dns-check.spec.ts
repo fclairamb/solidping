@@ -83,6 +83,7 @@ test.describe("DNS check form", () => {
     const page = authenticatedPage;
 
     await page.goto("orgs/test/checks/new?checkType=dns");
+    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-domain-input")).toBeVisible();
 
     // Submit with an empty Domain — the form guards and stays on /new.

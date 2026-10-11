@@ -304,6 +304,7 @@ test.describe("Dashboard", () => {
     ).toBeLessThan(300);
 
     await page.goto("orgs/test");
+    await page.waitForLoadState("networkidle");
 
     const feed = page.getByTestId("recent-activity-footer");
     // Recent-activity card renders for a non-empty org (we just created a check).
@@ -629,6 +630,7 @@ test.describe("Dashboard", () => {
     });
 
     await page.goto("orgs/test");
+    await page.waitForLoadState("networkidle");
 
     const glance = page.getByTestId("checks-glance");
     await expect(glance).toBeVisible({ timeout: 10000 });
@@ -810,6 +812,7 @@ test.describe("Dashboard", () => {
 
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto("orgs/test");
+    await page.waitForLoadState("networkidle");
 
     const feed = page.getByTestId("recent-activity-footer");
     await expect(feed).toBeVisible({ timeout: 10000 });
@@ -889,6 +892,7 @@ test.describe("Dashboard", () => {
     const channel = await createResp.json();
 
     await page.goto("orgs/test");
+    await page.waitForLoadState("networkidle");
 
     const feed = page.getByTestId("recent-activity-footer");
     await expect(feed).toBeVisible({ timeout: 10000 });

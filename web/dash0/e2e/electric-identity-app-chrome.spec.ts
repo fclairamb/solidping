@@ -282,6 +282,7 @@ test.describe("hero KPI tile", () => {
     await page.setViewportSize({ width: 375, height: 812 });
     await mockDashboardStats(page, 99.95);
     await page.goto("orgs/test");
+    await page.waitForLoadState("networkidle");
 
     const monitored = page.getByTestId("kpi-tile-monitored");
     const hero = page.getByTestId("kpi-tile-availability");
@@ -395,6 +396,7 @@ test.describe("page glow", () => {
 
     for (const route of ["orgs/test", "orgs/test/checks", "orgs/test/incidents"]) {
       await page.goto(route);
+      await page.waitForLoadState("networkidle");
       const glow = page.getByTestId("page-glow");
       await expect(glow, route).toHaveCount(1);
       await expect(glow).toHaveAttribute("aria-hidden", "true");

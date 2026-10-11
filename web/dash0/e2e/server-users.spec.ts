@@ -104,6 +104,7 @@ test.describe("Superadmin user directory", () => {
     });
 
     await page.goto("orgs/test/server/users");
+    await page.waitForLoadState("networkidle");
 
     await expect(page.getByText("Permission Denied")).toBeVisible();
     expect(page.url()).toContain("/server/users");

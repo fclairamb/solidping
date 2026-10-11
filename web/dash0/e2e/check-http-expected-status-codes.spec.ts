@@ -114,6 +114,7 @@ test.describe("HTTP check expected-status codes", () => {
     const page = authenticatedPage;
 
     await page.goto("orgs/test/checks/new?checkType=http");
+    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
     const checkName = `E2E Status Invalid ${Date.now()}`;

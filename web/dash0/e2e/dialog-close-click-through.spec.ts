@@ -32,6 +32,7 @@ test.describe("Dismissed dialog", () => {
     const page = authenticatedPage;
 
     await page.goto("orgs/test/organization/parameters");
+    await page.waitForLoadState("networkidle");
 
     const trigger = page.getByTestId("parameter-add");
     const keyInput = page.getByTestId("parameter-key-input");

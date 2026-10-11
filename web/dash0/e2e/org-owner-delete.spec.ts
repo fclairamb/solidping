@@ -108,6 +108,7 @@ test.describe("Organization owner and deletion", () => {
   // user would, and returns once the confirm button has been clicked.
   async function deleteOrgThroughDangerZone(page: Page, orgSlug: string) {
     await page.goto(`orgs/${orgSlug}/organization/settings`);
+    await page.waitForLoadState("networkidle");
 
     // The danger zone is owner-only and visible here.
     await expect(page.getByTestId("org-danger-zone")).toBeVisible();

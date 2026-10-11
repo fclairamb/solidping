@@ -130,6 +130,7 @@ test.describe("Blast radius table (mobile)", () => {
     });
 
     await page.goto(`orgs/test/incidents/${PARENT_UID}`);
+    await page.waitForLoadState("networkidle");
 
     const card = page.getByTestId("blast-radius-card");
     await expect(card).toBeVisible();

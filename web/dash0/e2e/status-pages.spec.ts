@@ -24,6 +24,7 @@ test.describe("Status page detail header", () => {
 
     // Lands on the detail route.
     await page.waitForURL(/\/status-pages\/[^/]+$/, { timeout: 10000 });
+    await page.waitForLoadState("networkidle");
     await expect(page.getByRole("heading", { name })).toBeVisible();
 
     // The back control still exists, icon-only with an accessible label.

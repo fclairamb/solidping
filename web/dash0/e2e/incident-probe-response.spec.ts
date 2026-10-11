@@ -153,6 +153,7 @@ test.describe("Incident probe-response capture", () => {
 
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto(`${DASH_BASE}/orgs/test/incidents/${TEXT_INCIDENT}`);
+    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("probe-response-card")).toBeVisible();
     await expect(

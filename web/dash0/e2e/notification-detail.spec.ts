@@ -276,6 +276,7 @@ test.describe("Notification delivery detail", () => {
     await page.goto(
       `${DASH_BASE}/orgs/test/notifications/${notifUid}?from=incident:11111111-1111-1111-1111-111111111111`,
     );
+    await page.waitForLoadState("networkidle");
 
     // The Delivery section is present with the status-code badge and duration.
     await expect(page.getByText("Delivery", { exact: true })).toBeVisible();

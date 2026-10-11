@@ -16,6 +16,7 @@ test.describe("TimeAgo: hover tooltip + click-to-copy", () => {
     await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
 
     await page.goto(`${DASH_BASE}/orgs/test/incidents`);
+    await page.waitForLoadState("networkidle");
 
     const timestamp = page.getByTestId("incident-started-at").first();
     await expect(timestamp).toBeVisible({ timeout: 15000 });
@@ -61,6 +62,7 @@ test.describe("TimeAgo: hover tooltip + click-to-copy", () => {
       await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
 
       await page.goto(`${DASH_BASE}/orgs/test/incidents/${INCIDENT_UID}`);
+      await page.waitForLoadState("networkidle");
       await expect(page.getByText("Incident Details")).toBeVisible();
 
       // The inline variant shows "HH:MM:SS <zone> · Nx ago" without needing
@@ -101,6 +103,7 @@ test.describe("TimeAgo: hover tooltip + click-to-copy", () => {
     await page.setViewportSize({ width: 375, height: 812 });
 
     await page.goto(`${DASH_BASE}/orgs/test/incidents/${INCIDENT_UID}`);
+    await page.waitForLoadState("networkidle");
     await expect(page.getByText("Incident Details")).toBeVisible();
 
     const timelineTime = page.getByTestId("incident-timeline-time").first();

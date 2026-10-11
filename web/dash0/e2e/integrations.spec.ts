@@ -1008,6 +1008,7 @@ test.describe("Email integration recipients", () => {
     const page = authenticatedPage;
 
     await page.goto("orgs/test/integrations/new?type=email");
+    await page.waitForLoadState("networkidle");
     await page
       .getByLabel("Name")
       .fill(`E2E Email Comma ${Date.now()}`);

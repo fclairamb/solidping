@@ -137,6 +137,7 @@ test.describe("Organization profile", () => {
     const { orgSlug } = await seedOwnedOrg(page);
 
     await page.goto(`orgs/${orgSlug}/organization/settings`);
+    await page.waitForLoadState("networkidle");
 
     const nameField = page.getByTestId("org-profile-name");
     const slugField = page.getByTestId("org-profile-slug");

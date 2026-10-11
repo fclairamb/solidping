@@ -119,6 +119,7 @@ test.describe("Checks", () => {
 
     // Wait for check detail page
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
+    await page.waitForLoadState("networkidle");
     await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
 
     const checkDetailUrl = page.url();
@@ -267,6 +268,7 @@ test.describe("Checks", () => {
 
     // Wait for check detail page
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
+    await page.waitForLoadState("networkidle");
     await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
     await expect(page.getByText("Heartbeat Endpoint")).toBeVisible();
 
@@ -291,6 +293,7 @@ test.describe("Checks", () => {
 
     // Wait for navigation back to check detail page
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/, { timeout: 10000 });
+    await page.waitForLoadState("networkidle");
 
     // Verify updated name is shown
     await expect(page.getByRole("heading", { name: updatedName })).toBeVisible();
@@ -332,6 +335,7 @@ test.describe("Checks", () => {
 
     // Wait for check detail page
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
+    await page.waitForLoadState("networkidle");
     await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
     await expect(page.getByText("Heartbeat Endpoint")).toBeVisible();
 
@@ -494,6 +498,7 @@ test.describe("Checks", () => {
     await page.waitForURL(/\/checks/);
     await page.getByTestId("new-check-button").click();
     await page.waitForURL(/\/checks\/new/);
+    await page.waitForLoadState("networkidle");
 
     // Wait for form to be ready
     await expect(page.getByTestId("check-name-input")).toBeVisible();

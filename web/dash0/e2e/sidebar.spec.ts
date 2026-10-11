@@ -66,6 +66,7 @@ test.describe("Sidebar User and Org Info", () => {
 
     // Wait for navigation to new org
     await page.waitForURL(/\/orgs\/test2/, { timeout: 10000 });
+    await page.waitForLoadState("networkidle");
 
     // Verify sidebar header shows new org name
     const sidebar = page.getByTestId("app-sidebar");
@@ -260,6 +261,7 @@ test.describe("Sidebar navigation groups", () => {
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
+    await page.waitForLoadState("networkidle");
 
     const sidebar = page.getByTestId("app-sidebar");
     await expect(sidebar).toBeVisible();

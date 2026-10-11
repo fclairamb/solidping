@@ -22,6 +22,7 @@ test.describe("Incident screenshot attachment", () => {
     const page = authenticatedPage;
 
     await page.goto(`${DASH_BASE}/orgs/test/incidents/${SHOT_INCIDENT}`);
+    await page.waitForLoadState("networkidle");
 
     const card = page.getByTestId("incident-screenshot-card");
     await expect(card).toBeVisible();
@@ -79,6 +80,7 @@ test.describe("Incident screenshot attachment", () => {
 
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto(`${DASH_BASE}/orgs/test/incidents/${SHOT_INCIDENT}`);
+    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("incident-screenshot-card")).toBeVisible();
     await expect(page.getByTestId("incident-screenshot-image")).toBeVisible();

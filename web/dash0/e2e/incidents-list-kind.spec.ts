@@ -117,6 +117,7 @@ test.describe("Incidents list: kind, full title, escalation", () => {
     await mockIncidentsPage(page);
 
     await page.goto(`${DASH_BASE}/orgs/test/incidents`);
+    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("incident-row")).toHaveCount(3);
 
@@ -229,6 +230,7 @@ test.describe("Incidents list: kind, full title, escalation", () => {
     await mockIncidentsPage(page);
 
     await page.goto(`${DASH_BASE}/orgs/test/incidents`);
+    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("incident-row")).toHaveCount(3);
 
     const overflows = await page.evaluate(

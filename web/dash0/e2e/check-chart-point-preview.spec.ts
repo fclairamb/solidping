@@ -229,6 +229,7 @@ test.describe("Chart point preview", () => {
     await page.getByTestId("check-submit-button").click();
 
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
+    await page.waitForLoadState("networkidle");
     await expect(page.locator(".recharts-wrapper")).toBeVisible({ timeout: 15000 });
 
     // The gradient carries a red (COLOR_DOWN) stop despite the density gate

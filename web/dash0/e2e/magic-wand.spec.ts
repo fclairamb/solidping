@@ -369,6 +369,7 @@ test.describe("Magic wand defaults", () => {
     const { orgSlug, auth, checkNames } = await seedOrg(page, 2);
 
     await page.goto(`orgs/${orgSlug}/status-pages/new`);
+    await page.waitForLoadState("networkidle");
 
     const wand = page.getByTestId("wand-prefill-status-page");
     await expect(wand).toBeEnabled({ timeout: 10000 });
@@ -632,6 +633,7 @@ test.describe("Magic wand defaults", () => {
 
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto(`orgs/${orgSlug}/integrations`);
+    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("wand-create-email-alerts")).toBeVisible();
 

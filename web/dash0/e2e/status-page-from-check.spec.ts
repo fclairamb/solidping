@@ -94,6 +94,7 @@ test.describe("Publish a check on a status page", () => {
       // the default "Services" section — no "Add Section" / "Add Component"
       // step.
       await page.waitForURL(/\/status-pages\/(?!new)[^/]+$/, { timeout: 10000 });
+      await page.waitForLoadState("networkidle");
 
       await expect(page.getByText("Services").first()).toBeVisible();
       const row = page.getByTestId("resource-row-name").filter({ hasText: checkName });

@@ -322,6 +322,7 @@ test.describe("Check Groups", () => {
 
     // Wait for check detail page
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
+    await page.waitForLoadState("networkidle");
     await expect(
       page.getByRole("heading", { name: checkName })
     ).toBeVisible();

@@ -394,6 +394,7 @@ test.describe("Integrations list (mobile)", () => {
     });
 
     await page.goto("orgs/test/integrations");
+    await page.waitForLoadState("networkidle");
 
     const row = page.getByRole("row", { name: new RegExp(LONG_INTEGRATION_NAME) });
     await expect(row).toBeVisible();

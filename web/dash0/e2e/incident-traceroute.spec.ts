@@ -92,6 +92,7 @@ test.describe("Incident traceroute attachment", () => {
 
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto(`${DASH_BASE}/orgs/test/incidents/${TRACE_INCIDENT}`);
+    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("incident-traceroute-table")).toBeVisible();
 

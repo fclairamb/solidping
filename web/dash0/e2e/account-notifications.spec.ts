@@ -355,6 +355,7 @@ test.describe("Account Notifications", () => {
     authenticatedPage: page,
   }) => {
     await page.goto("orgs/test/account/notifications");
+    await page.waitForLoadState("networkidle");
 
     // Find the first switch (email route should be first).
     const switches = page.getByRole("switch");

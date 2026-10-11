@@ -76,6 +76,7 @@ test.describe("Account > Profile > Email", () => {
     await seedBrowserSession(page, org);
 
     await page.goto(`orgs/${org.slug}/account/profile`);
+    await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("profile-current-email")).toHaveText(email);
 

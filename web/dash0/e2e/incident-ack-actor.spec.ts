@@ -63,6 +63,7 @@ test.describe("Incident acknowledgment attribution", () => {
     const page = authenticatedPage;
 
     await page.goto(`${DASH_BASE}/orgs/test/incidents/${incidentUid}`);
+    await page.waitForLoadState("networkidle");
     await expect(page.getByText("Incident Details")).toBeVisible();
 
     const ack = page.getByRole("button", { name: "Acknowledge" });
@@ -92,6 +93,7 @@ test.describe("Incident acknowledgment attribution", () => {
     await page.setViewportSize({ width: 375, height: 812 });
 
     await page.goto(`${DASH_BASE}/orgs/test/incidents/${incidentUid}`);
+    await page.waitForLoadState("networkidle");
     await expect(page.getByText("Incident Details")).toBeVisible();
 
     const ack = page.getByRole("button", { name: "Acknowledge" });

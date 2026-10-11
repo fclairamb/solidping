@@ -31,6 +31,7 @@ test.describe("Check dependencies", () => {
       /\/checks\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
       { timeout: 10000 },
     );
+    await page.waitForLoadState("networkidle");
     await expect(page.getByRole("heading", { name })).toBeVisible();
     return page.url();
   }
@@ -65,6 +66,7 @@ test.describe("Check dependencies", () => {
       /\/checks\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
       { timeout: 10000 },
     );
+    await page.waitForLoadState("networkidle");
     await expect(page.getByRole("heading", { name })).toBeVisible();
     return page.url();
   }

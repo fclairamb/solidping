@@ -201,6 +201,7 @@ test.describe("Private locations", () => {
     });
 
     await page.goto("orgs/test/organization/private-locations");
+    await page.waitForLoadState("networkidle");
 
     // Relative time, not the old absolute toLocaleString() format — assert
     // the shape only, never an exact "Ns ago" value (it ticks every second).

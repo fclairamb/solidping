@@ -88,6 +88,7 @@ async function gotoCheckDetail(page: Page): Promise<string[]> {
   await page.getByTestId("check-submit-button").click();
 
   await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
+  await page.waitForLoadState("networkidle");
   await expect(page.locator(".recharts-wrapper")).toBeVisible({ timeout: 15000 });
 
   return resultsUrls;

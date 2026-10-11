@@ -18,6 +18,7 @@ test.describe("MCP page (AI assistants / MCP connector setup)", () => {
   }) => {
     const page = authenticatedPage;
     await page.goto("orgs/test/account/mcp");
+    await page.waitForLoadState("networkidle");
 
     await expect(
       page.getByRole("heading", { name: /ai assistants/i }),
@@ -138,6 +139,7 @@ test.describe("MCP page (AI assistants / MCP connector setup)", () => {
     await page.setViewportSize({ width: 375, height: 812 });
 
     await page.goto("orgs/test/account/mcp");
+    await page.waitForLoadState("networkidle");
 
     await expect(
       page.getByRole("heading", { name: /ai assistants/i }),
