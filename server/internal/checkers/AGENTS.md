@@ -27,8 +27,8 @@ Each protocol has its own package (e.g., `checkhttp`, `checkicmp`, `checktcp`):
   network I/O; its cost equals `sleep_ms`, so it is a deterministic load
   generator for the scheduler (cost/delay EWMA, cost-aware timeout). It is
   registered like any other type (so `activation_test.go` sees its meta), but it
-  is **not a customer-facing feature** and must **not** be counted in the
-  customer "N check types" tally shown in product surfaces/marketing.
+  is **not a customer-facing feature**: its meta carries `ExcludedFromTally`
+  (see "Adding New Checkers"), as does `private-location`.
 
 ## Adding New Checkers
 
@@ -43,7 +43,11 @@ Each protocol has its own package (e.g., `checkhttp`, `checkicmp`, `checktcp`):
    `internal/checkers/schemas/<type>.json` (CI fails when they are stale). Never hand-edit one —
    a rule reflection cannot see goes on the config via `checkerdef.SchemaNoter` /
    `checkerdef.SchemaExclusiveGrouper`
-7. Run the lint and tests and fix any issues
+7. A type users do not pick (synthetic, system-created) sets `ExcludedFromTally` on its
+   `CheckTypeMeta`. Otherwise the advertised count (`checkerdef.AdvertisedCheckTypeCount()`)
+   goes up by one: `registry/check_type_count_test.go` then fails and names every doc
+   (README, `web/docs/docs/**`, `web/docs/docusaurus.config.ts`) to bump.
+8. Run the lint and tests and fix any issues
 
 ## Config JSON Schemas
 

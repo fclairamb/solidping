@@ -410,6 +410,12 @@ type CheckTypeMeta struct {
 	// persisted state on the bulk lane (spec 2026-10-03-03). Its checker must
 	// implement StepChecker (pinned by a registry test).
 	MultiStep bool `json:"multiStep"`
+
+	// ExcludedFromTally marks a type that is not one a user picks: synthetic
+	// (`sleep`) or system-created (`private-location`). It is left out of the
+	// advertised check-type count (AdvertisedCheckTypeCount). Not called
+	// "Internal": that word already means internal checks elsewhere.
+	ExcludedFromTally bool `json:"excludedFromTally"`
 }
 
 // checkTypesRegistry is the authoritative registry of all check types with metadata.
@@ -457,10 +463,30 @@ var checkTypesRegistry = []CheckTypeMeta{
 	{Type: CheckTypeRDP, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Monitor RDP (Remote Desktop) servers", SupportsTunnel: true},
 	{Type: CheckTypeVNC, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Monitor VNC (RFB) servers", SupportsTunnel: true},
 	{Type: CheckTypePrometheus, Labels: []string{labelSafe, labelStandalone, labelCatInfrastructure}, Description: "Alert on Prometheus metric thresholds", DefaultPeriod: time.Minute, SupportsTunnel: true, SupportsIPVersion: true},
-	{Type: CheckTypePrivateLocation, Labels: []string{labelSafe, labelStandalone, labelCatInfrastructure}, Description: "Alert when a private location's agents go offline (system-created)", DefaultPeriod: time.Minute},
+	{Type: CheckTypePrivateLocation, Labels: []string{labelSafe, labelStandalone, labelCatInfrastructure}, Description: "Alert when a private location's agents go offline (system-created)", DefaultPeriod: time.Minute, ExcludedFromTally: true},
 	{Type: CheckTypeHealth, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Read an application's health endpoint and report per component", DefaultPeriod: time.Minute, SupportsTunnel: true, SupportsIPVersion: true},
 	{Type: CheckTypeCrawl, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Crawl a website for broken links, mixed content and sitemap errors", MinPeriod: time.Hour, DefaultPeriod: 24 * time.Hour, MultiStep: true},
-	{Type: CheckTypeSleep, Labels: []string{labelSafe, labelStandalone, labelCatOther}, Description: "Sleep for a fixed duration (synthetic/testing)", DefaultPeriod: 1 * time.Minute},
+	{Type: CheckTypeSleep, Labels: []string{labelSafe, labelStandalone, labelCatOther}, Description: "Sleep for a fixed duration (synthetic/testing)", DefaultPeriod: 1 * time.Minute, ExcludedFromTally: true},
+}
+
+// AdvertisedCheckTypes returns the check types counted in the public
+// "N check types" tally, in registry order: every type without
+// ExcludedFromTally.
+func AdvertisedCheckTypes() []CheckType {
+	result := make([]CheckType, 0, len(checkTypesRegistry))
+
+	for idx := range checkTypesRegistry {
+		if !checkTypesRegistry[idx].ExcludedFromTally {
+			result = append(result, checkTypesRegistry[idx].Type)
+		}
+	}
+
+	return result
+}
+
+// AdvertisedCheckTypeCount returns the number advertised as "N check types".
+func AdvertisedCheckTypeCount() int {
+	return len(AdvertisedCheckTypes())
 }
 
 // GetCheckTypeMeta returns the metadata for a given check type, or nil if not found.

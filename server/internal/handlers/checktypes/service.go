@@ -35,6 +35,9 @@ type CheckTypeResponse struct {
 	// SupportsTunnel — the dashboard gates its selector on the flag, not on a
 	// hard-coded list.
 	SupportsIPVersion bool `json:"supportsIpVersion"`
+	// ExcludedFromTally mirrors CheckTypeMeta.ExcludedFromTally: a synthetic or
+	// system-created type that is not counted in the advertised check-type total.
+	ExcludedFromTally bool `json:"excludedFromTally"`
 	// SecretFields lists the top-level config keys this type stores encrypted
 	// (the checker's `SecretFields()`), sorted. Their values never come back on
 	// a read, so the dashboard uses this to know which keys it must NOT carry
@@ -180,6 +183,7 @@ func toResponse(statuses []checkerdef.CheckTypeStatus) ListCheckTypesResponse {
 			DefaultPeriodSeconds: durationToSeconds(statuses[idx].DefaultPeriod),
 			SupportsTunnel:       statuses[idx].SupportsTunnel,
 			SupportsIPVersion:    statuses[idx].SupportsIPVersion,
+			ExcludedFromTally:    statuses[idx].ExcludedFromTally,
 			SecretFields:         secretFieldsFor(statuses[idx].Type),
 		})
 	}

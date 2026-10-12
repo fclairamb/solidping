@@ -16899,6 +16899,11 @@ components:
         supportsIpVersion:
           type: boolean
           description: The type honours the shared `ipVersion` key (auto/ipv4/ipv6).
+        excludedFromTally:
+          type: boolean
+          description: >-
+            Synthetic or system-created type, not counted in the advertised
+            check-type total.
         secretFields:
           type: array
           description: >-
