@@ -202,6 +202,38 @@ func (c *HTTPChecker) GetSampleConfigs(opts *checkerdef.ListSampleOptions) []che
 				Method:         methodGET,
 				ExpectedStatus: sampleExpectedStatus,
 			}).GetConfig(),
+			SeedOnInstall: true,
+		},
+		{
+			Name:   "GitHub",
+			Slug:   "http-github",
+			Period: time.Minute,
+			Config: (&HTTPConfig{
+				URL:                 "https://github.com",
+				Method:              methodGET,
+				ExpectedStatusCodes: []string{statusCodePattern2XX},
+			}).GetConfig(),
+			SeedOnInstall: true,
+		},
+		{
+			// A JSONPath assertion on an answer that is always there: Google
+			// Public DNS's JSON API answers `"Status": 0` (NOERROR) when the
+			// name resolves.
+			Name:   "Google Public DNS JSON API",
+			Slug:   "http-google-dns-json",
+			Period: time.Minute,
+			Config: (&HTTPConfig{
+				URL:                 "https://dns.google/resolve?name=example.com&type=A",
+				Method:              methodGET,
+				ExpectedStatusCodes: []string{statusCodePattern2XX},
+				JSONPathAssertions: &AssertionNode{
+					Type:     NodeTypeAssertion,
+					Path:     "$.Status",
+					Operator: opEq,
+					Value:    "0",
+				},
+			}).GetConfig(),
+			SeedOnInstall: true,
 		},
 		{
 			Name:   "Claude API",

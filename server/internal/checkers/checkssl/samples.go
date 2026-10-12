@@ -30,16 +30,18 @@ func (c *SSLChecker) GetSampleConfigs(opts *checkerdef.ListSampleOptions) []chec
 
 	return []checkerdef.CheckSpec{
 		{
-			Name:   "SSL: google.com",
-			Slug:   "ssl-google-com",
-			Period: 15 * time.Minute,
-			Config: (&SSLConfig{Host: sampleHostGoogle}).GetConfig(),
+			Name:          "SSL: google.com",
+			Slug:          "ssl-google-com",
+			Period:        15 * time.Minute,
+			Config:        (&SSLConfig{Host: sampleHostGoogle}).GetConfig(),
+			SeedOnInstall: true,
 		},
 		{
-			Name:   "SSL: github.com",
-			Slug:   "ssl-github-com",
-			Period: 15 * time.Minute,
-			Config: (&SSLConfig{Host: "github.com"}).GetConfig(),
+			Name:          "SSL: github.com",
+			Slug:          "ssl-github-com",
+			Period:        15 * time.Minute,
+			Config:        (&SSLConfig{Host: "github.com"}).GetConfig(),
+			SeedOnInstall: true,
 		},
 	}
 }
