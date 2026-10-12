@@ -21,6 +21,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/maintenance"
 	"github.com/fclairamb/solidping/server/internal/notifications"
 	"github.com/fclairamb/solidping/server/internal/realtime"
+	"github.com/fclairamb/solidping/server/internal/regionquorum"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
 )
 
@@ -1314,7 +1315,7 @@ func (s *Service) routeCheckResultWithIncident(
 			return nil
 		}
 
-		return s.handleFailure(ctx, check, result, incident, holdConfirmation)
+		return s.handleFailure(ctx, check, result, incident, holdConfirmation, sig.eval)
 	}
 
 	return s.handleSuccess(ctx, check, result, incident)
@@ -1323,7 +1324,7 @@ func (s *Service) routeCheckResultWithIncident(
 // handleFailure handles a failed check result.
 func (s *Service) handleFailure(
 	ctx context.Context, check *models.Check, result *models.Result, incident *models.Incident,
-	holdConfirmation bool,
+	holdConfirmation bool, eval *regionquorum.Evaluation,
 ) error {
 	if incident == nil && !confirmationElapsed(check, s.clock.Now()) {
 		// Confirmation window hasn't elapsed; stay validating.
@@ -1341,7 +1342,7 @@ func (s *Service) handleFailure(
 
 	if incident == nil {
 		// Threshold met - try to reopen a recently resolved incident before creating a new one
-		return s.createOrReopenIncident(ctx, check, result)
+		return s.createOrReopenIncident(ctx, check, result, eval)
 	}
 
 	// Update existing incident
@@ -1358,6 +1359,15 @@ func (s *Service) handleFailure(
 	if incident.EscalatedAt == nil && newFailureCount >= check.EscalationThreshold {
 		now := s.clock.Now()
 		update.EscalatedAt = &now
+
+		// More regions may have failed since the incident opened: refresh the
+		// snapshot the escalation notification reads. Not refreshed on
+		// resolve, which reports the regions that had failed.
+		if regions := s.regionsSnapshot(ctx, check, result, eval); regions != nil {
+			details := withRegions(incident.Details, regions)
+			update.Details = &details
+			incident.Details = details
+		}
 		// Emit escalation event
 		if err := s.emitEvent(ctx, check.OrganizationUID, models.EventTypeIncidentEscalated, incident, models.JSONMap{
 			keyCheckUID:            check.UID,
@@ -1468,7 +1478,9 @@ func (s *Service) recordFlap(ctx context.Context, check *models.Check) {
 }
 
 // createIncident creates a new incident.
-func (s *Service) createIncident(ctx context.Context, check *models.Check, result *models.Result) error {
+func (s *Service) createIncident(
+	ctx context.Context, check *models.Check, result *models.Result, eval *regionquorum.Evaluation,
+) error {
 	// Record this outage onset against the rolling flapping window before the
 	// incident is created, so the new incident's effective recovery threshold
 	// already reflects the (possibly escalated) flap level.
@@ -1479,6 +1491,9 @@ func (s *Service) createIncident(ctx context.Context, check *models.Check, resul
 
 	incident := models.NewIncident(check.OrganizationUID, check.UID, result.PeriodStart, title)
 	incident.Details = withFailedComponents(check, result, failureDetails(result))
+	if regions := s.regionsSnapshot(ctx, check, result, eval); regions != nil {
+		incident.Details[regionsDetailsKey] = regions
+	}
 	// FlapLevel snapshots the flap count recordFlap just bumped, so the
 	// incident carries the level it actually opened at (spec 2026-08-24-05).
 	incident.FlapLevel = check.FlapCount
@@ -1570,7 +1585,7 @@ func (s *Service) resolveIncident(
 
 // createOrReopenIncident tries to reopen a recently resolved incident, or creates a new one.
 func (s *Service) createOrReopenIncident(
-	ctx context.Context, check *models.Check, result *models.Result,
+	ctx context.Context, check *models.Check, result *models.Result, eval *regionquorum.Evaluation,
 ) error {
 	// A result that was in flight when its check was deleted must not open
 	// (or reopen) an incident on it: DeleteCheck has just resolved the check's
@@ -1582,7 +1597,7 @@ func (s *Service) createOrReopenIncident(
 		return nil
 	}
 
-	reopened, err := s.tryReopenIncident(ctx, check, result)
+	reopened, err := s.tryReopenIncident(ctx, check, result, eval)
 	if err != nil {
 		return err
 	}
@@ -1590,7 +1605,7 @@ func (s *Service) createOrReopenIncident(
 		return nil
 	}
 
-	return s.createIncident(ctx, check, result)
+	return s.createIncident(ctx, check, result, eval)
 }
 
 // checkWasDeleted reports whether the check row is soft-deleted now. A lookup
@@ -1652,7 +1667,7 @@ func effectiveRecoveryPeriodSeconds(check *models.Check) int {
 // tryReopenIncident looks for a recently resolved incident and reopens it if appropriate.
 // Returns true if an incident was reopened.
 func (s *Service) tryReopenIncident(
-	ctx context.Context, check *models.Check, result *models.Result,
+	ctx context.Context, check *models.Check, result *models.Result, eval *regionquorum.Evaluation,
 ) (bool, error) {
 	cooldown := calculateCooldown(check)
 	if cooldown == 0 {
@@ -1681,12 +1696,13 @@ func (s *Service) tryReopenIncident(
 	// would need a dedicated config-modified timestamp, which does not exist yet;
 	// within the short reopen cooldown the reattach is the right behavior.
 
-	return true, s.reopenIncident(ctx, check, result, incident)
+	return true, s.reopenIncident(ctx, check, result, incident, eval)
 }
 
 // reopenIncident reopens a previously resolved incident.
 func (s *Service) reopenIncident(
 	ctx context.Context, check *models.Check, result *models.Result, incident *models.Incident,
+	eval *regionquorum.Evaluation,
 ) error {
 	now := s.clock.Now()
 
@@ -1700,6 +1716,11 @@ func (s *Service) reopenIncident(
 	newRelapseCount := incident.RelapseCount + 1
 	newFailureCount := incident.FailureCount + 1
 	newDetails := lastFailureDetails(incident.Details, result)
+	if regions := s.regionsSnapshot(ctx, check, result, eval); regions != nil {
+		newDetails[regionsDetailsKey] = regions
+	} else {
+		delete(newDetails, regionsDetailsKey)
+	}
 	// FlapLevel snapshots the flap count recordFlap just bumped above, so a
 	// reopened incident reflects the escalated level it reopened at (spec
 	// 2026-08-24-05) — mirrors the same assignment in createIncident.

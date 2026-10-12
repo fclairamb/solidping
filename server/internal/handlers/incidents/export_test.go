@@ -47,7 +47,7 @@ func BumpFlapForTest(check *models.Check, now time.Time) {
 // tests can assert the failure-details snapshot without driving the full
 // confirmation-threshold state machine in ProcessCheckResult.
 func (s *Service) CreateIncidentForTest(ctx context.Context, check *models.Check, result *models.Result) error {
-	return s.createIncident(ctx, check, result)
+	return s.createIncident(ctx, check, result, nil)
 }
 
 // CreateOrReopenIncidentForTest exposes the unexported createOrReopenIncident
@@ -55,7 +55,7 @@ func (s *Service) CreateIncidentForTest(ctx context.Context, check *models.Check
 func (s *Service) CreateOrReopenIncidentForTest(
 	ctx context.Context, check *models.Check, result *models.Result,
 ) error {
-	return s.createOrReopenIncident(ctx, check, result)
+	return s.createOrReopenIncident(ctx, check, result, nil)
 }
 
 // FailureDetailsForTest exposes the unexported failureDetails helper so

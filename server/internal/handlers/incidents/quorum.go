@@ -41,6 +41,10 @@ type resultSignal struct {
 	// keeps the check validating, so the check never reads `down` with no
 	// incident behind it. The next failing region's result opens it.
 	openable bool
+	// eval is the quorum evaluation behind the signal, kept so an incident
+	// opened (or escalated) on this result can snapshot the regions without a
+	// second ListCheckRegionStates query. Nil outside quorum mode.
+	eval *regionquorum.Evaluation
 }
 
 // known reports whether the result carries a status the state machine acts
@@ -151,7 +155,7 @@ func (s *Service) deriveSignal(
 		return resultSignal{}, err
 	}
 
-	sig := resultSignal{openable: legacy.isFailure}
+	sig := resultSignal{openable: legacy.isFailure, eval: &eval}
 
 	switch {
 	case eval.QuorumFailing():
@@ -185,4 +189,64 @@ func (s *Service) evaluateQuorum(
 	}
 
 	return regionquorum.Evaluate(check.Regions, states, quorum, s.clock.Now(), check.StaleThreshold()), nil
+}
+
+// Keys of the regions snapshot kept in incident.Details. They mirror the
+// checks API block RegionalIssueResponse; the notifications package reads
+// them back (notifications/regions.go) — keep the strings in sync.
+const (
+	regionsDetailsKey     = "regions"
+	regionsKeyFailing     = "failingRegions"
+	regionsKeyRegionCount = "regionCount"
+	regionsKeyFailQuorum  = "failQuorum"
+)
+
+// regionsSnapshot builds the `regions` block stored on an incident: which
+// regions fail right now, out of how many, against which quorum. Nil for a
+// single-region or passive check (senders fall back to the result's region).
+//
+// `eval` is the evaluation deriveSignal already computed (quorum mode). When
+// it is nil and the check still has several regions (`all`, or `default` with
+// 2 regions), the regions are evaluated once here: one ListCheckRegionStates
+// query per incident open or escalation, never per result.
+func (s *Service) regionsSnapshot(
+	ctx context.Context, check *models.Check, result *models.Result, eval *regionquorum.Evaluation,
+) models.JSONMap {
+	if regionquorum.RegionCount(check) < 2 {
+		return nil
+	}
+
+	if eval == nil {
+		_, _, quorum := regionquorum.ForCheck(check)
+
+		var current *regionquorum.RegionState
+		if region := resultRegion(result); region != "" && result.Status != nil {
+			current = &regionquorum.RegionState{
+				Region:       region,
+				Status:       models.ResultStatus(*result.Status),
+				LastResultAt: resultTime(result, s.clock.Now()),
+			}
+		}
+
+		evaluated, err := s.evaluateQuorum(ctx, check, quorum, current)
+		if err != nil {
+			slog.WarnContext(ctx, "Failed to snapshot incident regions",
+				"checkUID", check.UID, "error", err)
+
+			return nil
+		}
+
+		eval = &evaluated
+	}
+
+	failing := eval.Failing
+	if failing == nil {
+		failing = []string{}
+	}
+
+	return models.JSONMap{
+		regionsKeyFailing:     failing,
+		regionsKeyRegionCount: eval.Regions,
+		regionsKeyFailQuorum:  eval.Quorum,
+	}
 }
