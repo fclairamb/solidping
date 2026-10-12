@@ -80,11 +80,15 @@ func (v HTTPVersion) Label() string {
 // protocolNegotiationMarkers are the fragments of the errors net/http and
 // quic-go return when the target does not speak the forced version: a TLS
 // alert for an ALPN refusal (h2 or h3), a non-h2 ALPN answer, and an h2c
-// preface answered by an HTTP/1.1 server.
+// preface answered by an HTTP/1.1 server. That last case has two spellings:
+// the client either reads the HTTP/1.1 answer ("looked like an HTTP/1.1") or
+// finds the connection already closed before the HTTP/2 handshake finished
+// ("client conn could not be established"); which one wins is a race.
 var protocolNegotiationMarkers = []string{ //nolint:gochecknoglobals // constant lookup table
 	"no application protocol",
 	"ALPN",
 	"looked like an HTTP/1.1",
+	"client conn could not be established",
 }
 
 // IsProtocolNegotiationError reports whether err says the target refused (or
