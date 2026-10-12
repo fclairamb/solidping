@@ -3247,27 +3247,7 @@ func (s *Service) reconcileCheckJobs(ctx context.Context, check *models.Check, r
 	// single job (NextAligned with region=nil) so identical checks don't
 	// herd on creation (D1's "single/no-region jobs get jitter-only phase").
 	if n == 0 {
-		// Delete all existing jobs and create one without region
-		for _, job := range existingJobs {
-			if err := s.db.DeleteCheckJob(ctx, job.UID); err != nil {
-				return fmt.Errorf("failed to delete check job: %w", err)
-			}
-		}
-
-		scheduledAt := scheduling.NextAligned(time.Now(), basePeriod, basePeriod, check.UID, nil, nil, 0)
-		job := models.NewCheckJob(check.OrganizationUID, check.UID, check.Period)
-		job.Type = check.Type
-		job.Lane = models.InitialLaneForType(check.Type)
-		job.Config = check.Config
-		job.ConfigPrivate = check.ConfigPrivate
-		job.ConfigPrivateKeys = check.ConfigPrivateKeys
-		job.ConfigSealed = check.ConfigSealed
-		job.Encrypted = check.ConfigPrivate != nil
-		job.ScheduledAt = &scheduledAt
-		job.EffectiveScheduledAt = &scheduledAt
-		job.PlanWeight = planWeight
-
-		return s.db.CreateCheckJob(ctx, job)
+		return s.reconcileRegionlessJob(ctx, check, existingJobs, planWeight, relevel)
 	}
 
 	// Build map of existing regions
@@ -3313,84 +3293,15 @@ func (s *Service) reconcileCheckJobs(ctx context.Context, check *models.Check, r
 	// period); the spread staggers their phases.
 	for _, region := range targetRegions {
 		if existing, ok := existingByRegion[region]; ok {
-			// Two independent reasons to touch the row, deliberately kept
-			// apart (spec 2026-08-29-09):
-			//
-			//   scheduleChanged — something that feeds the phase formula moved
-			//     (period, region set, an explicit relevel) or the check
-			//     changed type. Only these may rewrite scheduled_at.
-			//   contentChanged — the dispatch payload drifted (config, secrets,
-			//     plan weight). These must reach the job row, but must NOT
-			//     shift when it runs: a config edit that also re-leveled the
-			//     phase would silently drift the check's execution timing on
-			//     every unrelated edit.
-			//
-			// Before the split, a stale config could only be repaired as a
-			// side effect of "we decided to reschedule", so any miss in the
-			// comparison stranded the job's config forever.
-			scheduleChanged := relevel ||
-				existing.Period != check.Period ||
-				existing.Type != check.Type ||
-				regionSetChanged
+			regionCopy := region
+			scheduleChanged := relevel || regionSetChanged
 
-			contentChanged := existing.PlanWeight != planWeight ||
-				!configEqual(existing.Config, check.Config) ||
-				!optStrEqual(existing.ConfigPrivate, check.ConfigPrivate) ||
-				!optStrEqual(existing.ConfigPrivateKeys, check.ConfigPrivateKeys) ||
-				!optStrEqual(existing.ConfigSealed, check.ConfigSealed)
-
-			if scheduleChanged || contentChanged {
-				regionCopy := region
-
-				query := s.db.DB().NewUpdate().
-					Model((*models.CheckJob)(nil)).
-					Set("period = ?", check.Period).
-					Set("type = ?", check.Type).
-					Set("config = ?", check.Config).
-					// Keep the job's secret columns in step with the check so an
-					// updated credential (v1 envelope or region-sealed blob)
-					// reaches the dispatch row without waiting for a region-set
-					// change (spec 2026-07-16-02).
-					Set("config_private = ?", check.ConfigPrivate).
-					Set("config_private_keys = ?", check.ConfigPrivateKeys).
-					Set("config_sealed = ?", check.ConfigSealed).
-					Set("encrypted = ?", check.ConfigPrivate != nil).
-					Set("plan_weight = ?", planWeight).
-					Set("updated_at = ?", time.Now()).
-					Where("uid = ?", existing.UID)
-
-				// A multi-step run in progress (spec 2026-10-03-03) was started
-				// against the old config: drop it, the next claim starts fresh.
-				if existing.StepRunUID != nil &&
-					(existing.Type != check.Type || !configEqual(existing.Config, check.Config)) {
-					query = query.
-						Set("step_run_uid = NULL").
-						Set("step_run_started_at = NULL").
-						Set("step_count = 0").
-						Set("step_state_file_uid = NULL").
-						Set("step_failures = 0")
-				}
-
-				// A type change crossing the multi-step boundary moves the job
-				// between the bulk lane and the fast lane (spec 2026-10-03-03):
-				// the cost classifier never moves a job out of bulk on its own.
-				if existing.Type != check.Type &&
-					checkerdef.CheckType(existing.Type).IsMultiStep() != checkerdef.CheckType(check.Type).IsMultiStep() {
-					query = query.Set("lane = ?", models.InitialLaneForType(check.Type))
-				}
-
-				if scheduleChanged {
-					scheduledAt := scheduling.NextAligned(
-						time.Now(), basePeriod, basePeriod, check.UID, &regionCopy, targetRegions, spread,
-					)
-					query = query.
-						Set("scheduled_at = ?", scheduledAt).
-						Set("effective_scheduled_at = ?", scheduledAt)
-				}
-
-				if _, err := query.Exec(ctx); err != nil {
-					return fmt.Errorf("failed to update check job: %w", err)
-				}
+			if err := s.syncExistingJob(ctx, existing, check, planWeight, scheduleChanged, func() time.Time {
+				return scheduling.NextAligned(
+					time.Now(), basePeriod, basePeriod, check.UID, &regionCopy, targetRegions, spread,
+				)
+			}); err != nil {
+				return err
 			}
 		} else {
 			// Create new job, phase-aligned per D1 (replaces the old one-shot
@@ -3401,23 +3312,186 @@ func (s *Service) reconcileCheckJobs(ctx context.Context, check *models.Check, r
 				time.Now(), basePeriod, basePeriod, check.UID, &regionCopy, targetRegions, spread,
 			)
 
-			job := models.NewCheckJob(check.OrganizationUID, check.UID, check.Period)
-			job.Type = check.Type
-			job.Lane = models.InitialLaneForType(check.Type)
-			job.Config = check.Config
-			job.ConfigPrivate = check.ConfigPrivate
-			job.ConfigPrivateKeys = check.ConfigPrivateKeys
-			job.ConfigSealed = check.ConfigSealed
-			job.Encrypted = check.ConfigPrivate != nil
-			job.Region = &regionCopy
-			job.ScheduledAt = &scheduledAt
-			job.EffectiveScheduledAt = &scheduledAt
-			job.PlanWeight = planWeight
+			job := newCheckJobFor(check, planWeight, &regionCopy, scheduledAt)
 
 			if err := s.db.CreateCheckJob(ctx, job); err != nil {
 				return fmt.Errorf("failed to create check job: %w", err)
 			}
 		}
+	}
+
+	return nil
+}
+
+// reconcileRegionlessJob keeps exactly one region-less job for a check with
+// no job region (a passive check, or one with no region at all). The one that
+// is there is updated in place: deleting and recreating it, as this used to do
+// on every edit, made an in-flight run's release fail and dropped the edit's
+// effect for that run (spec 2026-10-12-05). Any other row is deleted.
+func (s *Service) reconcileRegionlessJob(
+	ctx context.Context, check *models.Check, existingJobs []*models.CheckJob, planWeight int, relevel bool,
+) error {
+	basePeriod := time.Duration(check.Period)
+	nextAligned := func() time.Time {
+		return scheduling.NextAligned(time.Now(), basePeriod, basePeriod, check.UID, nil, nil, 0)
+	}
+
+	var kept *models.CheckJob
+
+	for _, job := range existingJobs {
+		if kept == nil && job.Region == nil {
+			kept = job
+
+			continue
+		}
+
+		if err := s.db.DeleteCheckJob(ctx, job.UID); err != nil {
+			return fmt.Errorf("failed to delete check job: %w", err)
+		}
+	}
+
+	if kept != nil {
+		return s.syncExistingJob(ctx, kept, check, planWeight, relevel, nextAligned)
+	}
+
+	scheduledAt := nextAligned()
+
+	return s.db.CreateCheckJob(ctx, newCheckJobFor(check, planWeight, nil, scheduledAt))
+}
+
+// newCheckJobFor materializes a new job row for one region (nil: none) of a
+// check.
+func newCheckJobFor(check *models.Check, planWeight int, region *string, scheduledAt time.Time) *models.CheckJob {
+	job := models.NewCheckJob(check.OrganizationUID, check.UID, check.Period)
+	job.Type = check.Type
+	job.Lane = models.InitialLaneForType(check.Type)
+	job.Config = check.Config
+	job.ConfigPrivate = check.ConfigPrivate
+	job.ConfigPrivateKeys = check.ConfigPrivateKeys
+	job.ConfigSealed = check.ConfigSealed
+	job.Encrypted = check.ConfigPrivate != nil
+	job.Region = region
+	job.ScheduledAt = &scheduledAt
+	job.EffectiveScheduledAt = &scheduledAt
+	job.PlanWeight = planWeight
+
+	return job
+}
+
+// syncExistingJob brings one surviving job row in step with its check, in
+// place. forceSchedule re-levels the phase even when the row's own columns did
+// not change (a region-set change or an explicit relevel); nextScheduledAt
+// gives the re-leveled due time.
+//
+//nolint:cyclop // the two reasons to touch a row, and the multi-step cases
+func (s *Service) syncExistingJob(
+	ctx context.Context, existing *models.CheckJob, check *models.Check, planWeight int,
+	forceSchedule bool, nextScheduledAt func() time.Time,
+) error {
+	// Two independent reasons to touch the row, deliberately kept
+	// apart (spec 2026-08-29-09):
+	//
+	//   scheduleChanged — something that feeds the phase formula moved
+	//     (period, region set, an explicit relevel) or the check
+	//     changed type. Only these may rewrite scheduled_at.
+	//   contentChanged — the dispatch payload drifted (config, secrets,
+	//     plan weight). These must reach the job row, but must NOT
+	//     shift when it runs: a config edit that also re-leveled the
+	//     phase would silently drift the check's execution timing on
+	//     every unrelated edit.
+	//
+	// Before the split, a stale config could only be repaired as a
+	// side effect of "we decided to reschedule", so any miss in the
+	// comparison stranded the job's config forever.
+	scheduleChanged := forceSchedule ||
+		existing.Period != check.Period ||
+		existing.Type != check.Type
+
+	contentChanged := existing.PlanWeight != planWeight ||
+		!configEqual(existing.Config, check.Config) ||
+		!optStrEqual(existing.ConfigPrivate, check.ConfigPrivate) ||
+		!optStrEqual(existing.ConfigPrivateKeys, check.ConfigPrivateKeys) ||
+		!optStrEqual(existing.ConfigSealed, check.ConfigSealed)
+
+	if !scheduleChanged && !contentChanged {
+		return nil
+	}
+
+	query := s.db.DB().NewUpdate().
+		Model((*models.CheckJob)(nil)).
+		Set("period = ?", check.Period).
+		Set("type = ?", check.Type).
+		Set("config = ?", check.Config).
+		// Keep the job's secret columns in step with the check so an
+		// updated credential (v1 envelope or region-sealed blob) reaches the
+		// dispatch row without waiting for a region-set change (spec
+		// 2026-07-16-02).
+		Set("config_private = ?", check.ConfigPrivate).
+		Set("config_private_keys = ?", check.ConfigPrivateKeys).
+		Set("config_sealed = ?", check.ConfigSealed).
+		Set("encrypted = ?", check.ConfigPrivate != nil).
+		Set("plan_weight = ?", planWeight).
+		Set("updated_at = ?", time.Now()).
+		Where("uid = ?", existing.UID)
+
+	// A multi-step run in progress (spec 2026-10-03-03) was started against
+	// the old config: drop it, the next claim starts fresh.
+	if existing.StepRunUID != nil &&
+		(existing.Type != check.Type || !configEqual(existing.Config, check.Config)) {
+		query = query.
+			Set("step_run_uid = NULL").
+			Set("step_run_started_at = NULL").
+			Set("step_count = 0").
+			Set("step_state_file_uid = NULL").
+			Set("step_failures = 0")
+	}
+
+	// A type change crossing the multi-step boundary moves the job between
+	// the bulk lane and the fast lane (spec 2026-10-03-03): the cost
+	// classifier never moves a job out of bulk on its own.
+	if existing.Type != check.Type &&
+		checkerdef.CheckType(existing.Type).IsMultiStep() != checkerdef.CheckType(check.Type).IsMultiStep() {
+		query = query.Set("lane = ?", models.InitialLaneForType(check.Type))
+	}
+
+	if scheduleChanged {
+		scheduledAt := nextScheduledAt()
+		query = query.
+			Set("scheduled_at = ?", scheduledAt).
+			Set("effective_scheduled_at = ?", scheduledAt)
+	}
+
+	if _, err := query.Exec(ctx); err != nil {
+		return fmt.Errorf("failed to update check job: %w", err)
+	}
+
+	// A plan-weight drift alone changes nothing a run sees.
+	if !scheduleChanged && configEqual(existing.Config, check.Config) &&
+		optStrEqual(existing.ConfigPrivate, check.ConfigPrivate) &&
+		optStrEqual(existing.ConfigPrivateKeys, check.ConfigPrivateKeys) &&
+		optStrEqual(existing.ConfigSealed, check.ConfigSealed) {
+		return nil
+	}
+
+	return s.rerunInFlight(ctx, existing.UID)
+}
+
+// rerunInFlight parks a run request on a job a worker holds right now (spec
+// 2026-10-12-05). That worker runs the config and period it claimed, and its
+// release reschedules from the old period: without this an edit made mid-run
+// (a 1 h check moved to 10 s, a new DNS baseline) waited a whole old period.
+// The release makes the job due at once, so the edited config runs next. An
+// idle job is left alone: it picks the edit up on its next claim.
+func (s *Service) rerunInFlight(ctx context.Context, jobUID string) error {
+	now := time.Now()
+
+	if _, err := s.db.DB().NewUpdate().
+		Model((*models.CheckJob)(nil)).
+		Set("run_requested_at = COALESCE(run_requested_at, ?)", now).
+		Where("uid = ?", jobUID).
+		Where("lease_expires_at >= ?", now).
+		Exec(ctx); err != nil {
+		return fmt.Errorf("re-run in-flight check job: %w", err)
 	}
 
 	return nil
@@ -5808,18 +5882,21 @@ func hasBaseline(config map[string]any) bool {
 }
 
 // makeCheckJobsDue makes every job of a check due now, without touching its
-// phase for the runs after this one.
+// phase for the runs after this one. A job a worker holds keeps the request
+// for its release (db.RequestCheckRunOn, spec 2026-10-12-05): a due time
+// written under the lease would be overwritten.
 func (s *Service) makeCheckJobsDue(ctx context.Context, checkUID string) error {
+	jobs, err := s.db.ListCheckJobsByCheckUID(ctx, checkUID)
+	if err != nil {
+		return fmt.Errorf("make check jobs due: %w", err)
+	}
+
 	now := time.Now()
 
-	if _, err := s.db.DB().NewUpdate().
-		Model((*models.CheckJob)(nil)).
-		Set("scheduled_at = ?", now).
-		Set("effective_scheduled_at = ?", now).
-		Set("updated_at = ?", now).
-		Where("check_uid = ?", checkUID).
-		Exec(ctx); err != nil {
-		return fmt.Errorf("make check jobs due: %w", err)
+	for _, job := range jobs {
+		if err := db.RequestCheckRunOn(ctx, s.db.DB(), job.UID, now); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("make check jobs due: %w", err)
+		}
 	}
 
 	return nil
