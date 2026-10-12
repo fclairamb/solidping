@@ -3640,7 +3640,7 @@ func (s *Server) serveHTTP(ctx context.Context) error {
 		return err
 	}
 
-	s.logReady(ctx, listener.Addr())
+	s.logReady(ctx, slog.Default(), listener.Addr())
 
 	// Serve HTTP in a goroutine
 	serverErr := make(chan error, 1)

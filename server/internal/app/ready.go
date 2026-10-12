@@ -29,18 +29,18 @@ const (
 // bound: where to open SolidPing, which version runs, and which database it
 // uses. While the seeded admin still has to rotate its password, a second line
 // gives the first login. A deported agent serves no HTTP and logs neither.
-func (s *Server) logReady(ctx context.Context, listenAddr net.Addr) {
+func (s *Server) logReady(ctx context.Context, logger *slog.Logger, listenAddr net.Addr) {
 	if s.config.IsAgentMode() {
 		return
 	}
 
-	slog.InfoContext(ctx, "SolidPing is ready",
+	logger.InfoContext(ctx, "SolidPing is ready",
 		"url", readyURL(s.config.Server.BaseURL, listenAddr.String()),
 		"listen", listenAddr.String(),
 		"version", version.Get().Version,
 		"database", databaseDescription(&s.config.Database, s.config.RunMode))
 
-	s.logFirstLogin(ctx)
+	s.logFirstLogin(ctx, logger)
 }
 
 // logFirstLogin tells the first login, only while the seeded admin has never
@@ -48,7 +48,7 @@ func (s *Server) logReady(ctx context.Context, listenAddr net.Addr) {
 // alone and cleared by the forced change, so the seed password is still the
 // account's password. That seed password is a constant (defaults.Password,
 // never configurable), and it is the only password this line can print.
-func (s *Server) logFirstLogin(ctx context.Context) {
+func (s *Server) logFirstLogin(ctx context.Context, logger *slog.Logger) {
 	if s.dbService == nil {
 		return
 	}
@@ -60,7 +60,7 @@ func (s *Server) logFirstLogin(ctx context.Context) {
 		return
 	}
 
-	slog.InfoContext(ctx, "First login with the default admin account, you will be asked to change the password",
+	logger.InfoContext(ctx, "First login with the default admin account, you will be asked to change the password",
 		"email", email,
 		"password", defaults.Password)
 }
