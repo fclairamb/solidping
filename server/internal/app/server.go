@@ -534,25 +534,6 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	localfs.Register()
 	s3fs.Register()
 
-	// Initialize VAPID keys for Web Push. Auto-generates and persists to
-	// app_settings when not pre-provisioned via env vars.
-	if pub, priv, err := webpushpkg.GetOrCreateVAPIDKeys(ctx, webpushpkg.Config{
-		VAPIDPublicKey:  cfg.WebPush.VAPIDPublicKey,
-		VAPIDPrivateKey: cfg.WebPush.VAPIDPrivateKey,
-		Subject:         cfg.WebPush.Subject,
-		Enabled:         cfg.WebPush.Enabled,
-	}, dbService); err != nil {
-		slog.WarnContext(ctx, "webpush: VAPID key initialization failed — web push disabled", "err", err)
-	} else {
-		cfg.WebPush.VAPIDPublicKey = pub
-		cfg.WebPush.VAPIDPrivateKey = priv
-		svcList.WebPushOptions = webpushpkg.Options{
-			VAPIDPublicKey:  pub,
-			VAPIDPrivateKey: priv,
-			Subject:         cfg.WebPush.Subject,
-		}
-	}
-
 	server := &Server{
 		dbService:         dbService,
 		jobSvc:            jobService,
@@ -4212,9 +4193,41 @@ func compressionWrapper(enabled bool) func(http.Handler) http.Handler {
 	}
 }
 
-// Initialize initializes the database (runs migrations).
+// Initialize runs the migrations, then the startup state that lives in the
+// database (the Web Push VAPID keypair).
 func (s *Server) Initialize(ctx context.Context) error {
-	return s.dbService.Initialize(ctx)
+	if err := s.dbService.Initialize(ctx); err != nil {
+		return err //nolint:wrapcheck // dbService errors are already contextual
+	}
+
+	s.InitializeWebPush(ctx)
+
+	return nil
+}
+
+// InitializeWebPush loads or creates the VAPID keypair. It needs app_settings,
+// so it must run after the migrations. Failures disable web push for the run.
+func (s *Server) InitializeWebPush(ctx context.Context) {
+	cfg := s.config
+	pub, priv, err := webpushpkg.GetOrCreateVAPIDKeys(ctx, webpushpkg.Config{
+		VAPIDPublicKey:  cfg.WebPush.VAPIDPublicKey,
+		VAPIDPrivateKey: cfg.WebPush.VAPIDPrivateKey,
+		Subject:         cfg.WebPush.Subject,
+		Enabled:         cfg.WebPush.Enabled,
+	}, s.dbService)
+	if err != nil {
+		slog.WarnContext(ctx, "webpush: VAPID key initialization failed, web push disabled", "err", err)
+
+		return
+	}
+
+	cfg.WebPush.VAPIDPublicKey = pub
+	cfg.WebPush.VAPIDPrivateKey = priv
+	s.services.WebPushOptions = webpushpkg.Options{
+		VAPIDPublicKey:  pub,
+		VAPIDPrivateKey: priv,
+		Subject:         cfg.WebPush.Subject,
+	}
 }
 
 // InitializeSystemConfig loads system configuration from the database.

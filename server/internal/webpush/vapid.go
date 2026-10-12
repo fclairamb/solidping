@@ -12,6 +12,8 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 )
 
+var errIncompletePair = errors.New("webpush: stored VAPID keypair is incomplete")
+
 const (
 	// keyPublic is the app_settings key for the VAPID public key.
 	keyPublic = "webpush.vapid_public_key"
@@ -39,48 +41,97 @@ func GetOrCreateVAPIDKeys(ctx context.Context, cfg Config, dbSvc db.Service) (st
 		return cfg.VAPIDPublicKey, cfg.VAPIDPrivateKey, nil
 	}
 
-	// 2. Try to read from the database.
-	pub, pubErr := readVAPIDFromDB(ctx, dbSvc)
-	var priv string
+	// 2. Read from the database. Any read error other than "not found" is
+	// returned: a pair is never generated against a database we cannot read.
+	pub, priv, err := readStoredPair(ctx, dbSvc)
+	if err != nil {
+		return "", "", err
+	}
 
-	if pubErr == nil && pub != "" {
-		var privErr error
-		priv, privErr = dbSvc.GetAppSetting(ctx, keyPrivate)
-		if privErr == nil && priv != "" {
-			return pub, priv, nil
+	if (pub == "") != (priv == "") {
+		// The two reads are not atomic: a concurrent creator may have committed
+		// between them. Re-read once before treating this as a partial state.
+		pub, priv, err = readStoredPair(ctx, dbSvc)
+		if err != nil {
+			return "", "", err
 		}
 	}
 
-	// 3. Generate a new keypair and persist.
+	if pub != "" && priv != "" {
+		return pub, priv, nil
+	}
+
+	// 3. Generate a new keypair and persist it atomically.
 	generatedPriv, generatedPub, err := webpushgo.GenerateVAPIDKeys()
 	if err != nil {
 		return "", "", fmt.Errorf("webpush: generate VAPID keys: %w", err)
 	}
 
-	if setErr := dbSvc.SetAppSetting(ctx, keyPublic, generatedPub); setErr != nil {
-		slog.WarnContext(ctx, "webpush: failed to persist VAPID public key", "err", setErr)
-		return generatedPub, generatedPriv, nil
+	if err = persistPair(ctx, dbSvc, generatedPub, generatedPriv, pub != "" || priv != ""); err != nil {
+		return "", "", err
 	}
 
-	if setErr := dbSvc.SetAppSetting(ctx, keyPrivate, generatedPriv); setErr != nil {
-		slog.WarnContext(ctx, "webpush: failed to persist VAPID private key", "err", setErr)
+	// Re-read what is stored: if another process won the race, use its pair.
+	pub, priv, err = readStoredPair(ctx, dbSvc)
+	if err != nil {
+		return "", "", err
 	}
 
-	slog.InfoContext(ctx, "Generated VAPID keys, persisted to app_settings")
+	if pub == "" || priv == "" {
+		return "", "", errIncompletePair
+	}
 
-	return generatedPub, generatedPriv, nil
+	if pub == generatedPub {
+		slog.InfoContext(ctx, "Generated VAPID keys, persisted to app_settings")
+	}
+
+	return pub, priv, nil
 }
 
-// readVAPIDFromDB attempts to read the public key from app_settings.
-// Returns ("", nil) — not an error — when the key simply doesn't exist yet.
-func readVAPIDFromDB(ctx context.Context, dbSvc db.Service) (string, error) {
-	val, err := dbSvc.GetAppSetting(ctx, keyPublic)
+// persistPair stores a freshly generated pair. A partial pre-existing state
+// is replaced; otherwise the insert leaves an already-stored pair untouched.
+func persistPair(ctx context.Context, dbSvc db.Service, pub, priv string, repair bool) error {
+	pair := map[string]string{keyPublic: pub, keyPrivate: priv}
+
+	var err error
+	if repair {
+		slog.InfoContext(ctx, "webpush: repairing incomplete VAPID keypair in app_settings")
+
+		err = dbSvc.SetAppSettings(ctx, pair)
+	} else {
+		err = dbSvc.CreateAppSettingsIfAbsent(ctx, pair)
+	}
+
+	if err != nil {
+		return fmt.Errorf("webpush: persist VAPID keys: %w", err)
+	}
+
+	return nil
+}
+
+// readStoredPair reads both keys; a missing key yields "" without error.
+func readStoredPair(ctx context.Context, dbSvc db.Service) (string, string, error) {
+	pub, err := readSetting(ctx, dbSvc, keyPublic)
+	if err != nil {
+		return "", "", err
+	}
+
+	priv, err := readSetting(ctx, dbSvc, keyPrivate)
+	if err != nil {
+		return "", "", err
+	}
+
+	return pub, priv, nil
+}
+
+func readSetting(ctx context.Context, dbSvc db.Service, key string) (string, error) {
+	val, err := dbSvc.GetAppSetting(ctx, key)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", nil
 		}
-		// Non-"not found" errors bubble up.
-		return "", fmt.Errorf("webpush: read public key: %w", err)
+
+		return "", fmt.Errorf("webpush: read %s: %w", key, err)
 	}
 
 	return val, nil

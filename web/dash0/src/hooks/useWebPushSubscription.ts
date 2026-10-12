@@ -15,6 +15,29 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
   return outputArray;
 }
 
+function sameKey(existing: ArrayBuffer | null, wanted: Uint8Array): boolean {
+  if (!existing) return false;
+  const a = new Uint8Array(existing);
+  return a.length === wanted.length && a.every((v, i) => v === wanted[i]);
+}
+
+/**
+ * Subscribes with the given VAPID key. A pre-existing subscription bound to a
+ * different key (server key regenerated, env keys changed) makes subscribe()
+ * fail with InvalidStateError, so it is dropped first.
+ */
+export async function subscribeWithKey(
+  pushManager: Pick<PushManager, "getSubscription" | "subscribe">,
+  vapidPublicKey: string,
+): Promise<PushSubscription> {
+  const key = urlBase64ToUint8Array(vapidPublicKey);
+  const existing = await pushManager.getSubscription();
+  if (existing && !sameKey(existing.options?.applicationServerKey ?? null, key)) {
+    await existing.unsubscribe();
+  }
+  return pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
+}
+
 export function useWebPushSubscription(org: string) {
   const { data: keyData } = useVapidPublicKey(org);
   const vapidPublicKey = keyData?.publicKey;
@@ -29,10 +52,7 @@ export function useWebPushSubscription(org: string) {
     const permission = await Notification.requestPermission();
     if (permission !== "granted") return null;
     const reg = await navigator.serviceWorker.ready;
-    const sub = await reg.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
-    });
+    const sub = await subscribeWithKey(reg.pushManager, vapidPublicKey);
     return JSON.stringify(sub);
   }, [isSupported, vapidPublicKey]);
 

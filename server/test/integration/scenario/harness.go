@@ -251,6 +251,7 @@ func NewPostgresScenario(t *testing.T) *Scenario {
 	server.Services().Clock = fakeClock
 
 	// Migrations were already run by TestMain. SetupRoutes only.
+	server.InitializeWebPush(ctx)
 	server.SetupRoutes(ctx)
 
 	httpSrv := httptest.NewServer(server.Handler())
