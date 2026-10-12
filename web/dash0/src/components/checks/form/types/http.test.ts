@@ -35,6 +35,7 @@ function baseState(overrides: Partial<HttpState> = {}): HttpState {
     headersDirty: false,
     jsonPathAssertions: null,
     bodyAssertions: null,
+    headerAssertions: null,
     body: "",
     headers: [],
     ...overrides,
@@ -258,9 +259,7 @@ describe("httpModule — redirectHostPolicy round-trip", () => {
     const { config } = httpModule.toConfig(
       baseState({ redirectHostPolicy: "same-host" }),
     );
-    expect(httpModule.fromConfig(config).redirectHostPolicy).toBe(
-      "same-host",
-    );
+    expect(httpModule.fromConfig(config).redirectHostPolicy).toBe("same-host");
   });
 });
 
@@ -1021,8 +1020,9 @@ describe("httpModule — httpVersion", () => {
     });
     expect(state.httpVersion).toBe(version);
     expect(httpModule.toConfig(state).config.httpVersion).toBe(version);
-    expect(saveUntouched({ url: "https://example.com", httpVersion: version }))
-      .toMatchObject({ httpVersion: version });
+    expect(
+      saveUntouched({ url: "https://example.com", httpVersion: version }),
+    ).toMatchObject({ httpVersion: version });
   });
 
   it("reads a YAML number", () => {
@@ -1041,7 +1041,8 @@ describe("httpModule — httpVersion", () => {
       initialConfig: { url: "https://example.com", httpVersion: "2" },
       ownedKeys: httpModule.ownedKeys,
       secretFields: HTTP_SECRET_FIELDS,
-      moduleConfig: httpModule.toConfig({ ...state, httpVersion: "1.1" }).config,
+      moduleConfig: httpModule.toConfig({ ...state, httpVersion: "1.1" })
+        .config,
     });
     expect(config).not.toHaveProperty("httpVersion");
   });
@@ -1057,5 +1058,71 @@ describe("httpModule — httpVersion", () => {
     expect(httpOptionsSummary(baseState({ httpVersion: "2" })).text).toContain(
       "HTTP/2",
     );
+  });
+});
+
+describe("httpModule — headerAssertions round-trip", () => {
+  const leaf: AssertionNode = {
+    type: "assertion",
+    path: "X-Powered-By",
+    operator: "not_exists",
+  };
+
+  it("seeds from the camelCase key and the snake_case alias", () => {
+    expect(
+      httpModule.fromConfig({ url: "https://acme.com", headerAssertions: leaf })
+        .headerAssertions,
+    ).toEqual(leaf);
+    expect(
+      httpModule.fromConfig({
+        url: "https://acme.com",
+        header_assertions: leaf,
+      }).headerAssertions,
+    ).toEqual(leaf);
+    expect(
+      httpModule.fromConfig({ url: "https://acme.com" }).headerAssertions,
+    ).toBeNull();
+  });
+
+  it("toConfig writes the key when set and omits it when null", () => {
+    expect(
+      httpModule.toConfig(baseState({ headerAssertions: leaf })).config
+        .headerAssertions,
+    ).toEqual(leaf);
+    const { config } = httpModule.toConfig(baseState());
+    expect(config).not.toHaveProperty("headerAssertions");
+    expect(config).not.toHaveProperty("header_assertions");
+  });
+
+  it("owns both spellings so clearing sticks", () => {
+    expect(httpModule.ownedKeys).toContain("headerAssertions");
+    expect(httpModule.ownedKeys).toContain("header_assertions");
+    const state = httpModule.fromConfig({
+      url: "https://acme.com",
+      header_assertions: leaf,
+    });
+    const { config } = httpModule.toConfig({
+      ...state,
+      headerAssertions: null,
+    });
+    const submitted = {
+      ...passthroughConfigFor(httpModule, {
+        url: "https://acme.com",
+        header_assertions: leaf,
+      }),
+      ...config,
+    };
+    expect(submitted).not.toHaveProperty("headerAssertions");
+    expect(submitted).not.toHaveProperty("header_assertions");
+  });
+
+  it("an API-set headers_pattern survives a save untouched", () => {
+    const saved = saveUntouched({
+      url: "https://acme.com",
+      headers_pattern: { "Content-Type": "text/plain" },
+      headerAssertions: leaf,
+    });
+    expect(saved.headers_pattern).toEqual({ "Content-Type": "text/plain" });
+    expect(saved.headerAssertions).toEqual(leaf);
   });
 });

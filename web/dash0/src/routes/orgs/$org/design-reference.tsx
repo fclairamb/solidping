@@ -87,6 +87,7 @@ import {
 import {
   JsonAssertionEditor,
   BodyAssertionEditor,
+  HeaderAssertionEditor,
   type AssertionNode,
 } from "@/components/checks/json-assertion-editor";
 import {
@@ -7006,6 +7007,11 @@ function TokenChipsInputSection() {
 
 function JsonAssertionEditorSection() {
   const [empty, setEmpty] = useState<AssertionNode | null>(null);
+  const [header, setHeader] = useState<AssertionNode | null>({
+    type: "assertion",
+    path: "X-Powered-By",
+    operator: "not_exists",
+  });
   const [body, setBody] = useState<AssertionNode | null>({
     type: "assertion",
     operator: "eq",
@@ -7033,7 +7039,7 @@ function JsonAssertionEditorSection() {
       description="Recursive editor for the HTTP checker's assertion AST — a leaf tests one subject against an operator, and and/or group nodes nest arbitrarily. One component serves both editors: showPath + the full operator list gives the JSONPath editor, while BodyAssertionEditor hides the path input and narrows the operators to the five that are meaningful against a raw response body (eq/neq/contains/not_contains/regex). Every textual leaf carries an Ignore case checkbox wired to ignoreCase. testIdPrefix keeps two editors on one form from colliding. onChange(null) clears the whole tree. Used in the HTTP check form's Advanced section; JsonAssertionResults (not shown here) renders the matching evaluation result on a failed check."
     >
       <p className="text-xs text-muted-foreground">
-        import {"{ JsonAssertionEditor, BodyAssertionEditor }"} from
+        import {"{ JsonAssertionEditor, BodyAssertionEditor, HeaderAssertionEditor }"} from
         "@/components/checks/json-assertion-editor"
       </p>
       <div className="grid gap-4 max-w-2xl">
@@ -7054,6 +7060,12 @@ function JsonAssertionEditorSection() {
             Body assertion — no path input, narrowed operators, ignore case on
           </Label>
           <BodyAssertionEditor value={body} onChange={setBody} />
+        </div>
+        <div className="space-y-2">
+          <Label>
+            Header assertion: path is the header name, exists/not_exists offered
+          </Label>
+          <HeaderAssertionEditor value={header} onChange={setHeader} />
         </div>
       </div>
     </Section>

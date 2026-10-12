@@ -910,6 +910,8 @@
   },
   "jsonAssertions": "Aserciones JSON",
   "jsonAssertionsDescription": "Valida campos del cuerpo de la respuesta JSON mediante una expresión JSONPath.",
+  "headerAssertions": "Aserciones sobre las cabeceras",
+  "headerAssertionsDescription": "Valida las cabeceras de la respuesta. El nombre de la cabecera no distingue mayúsculas. «igual a», «contiene» y «coincide con la regex» pasan si alguna línea de la cabecera coincide y fallan si la cabecera no existe. «distinto de» y «no contiene» pasan si ninguna línea coincide o si la cabecera no existe.",
   "bodyAssertions": "Aserciones sobre el cuerpo",
   "bodyAssertionsDescription": "Valida el cuerpo de la respuesta como texto plano. «igual a» compara el cuerpo completo sin espacios al principio ni al final, de modo que un endpoint de salud de ASP.NET Core que devuelve «Healthy\\n» coincide con igual a «Healthy» con Ignorar mayúsculas activado. «contiene», «no contiene» y «coincide con la regex» ven el cuerpo tal cual.",
   "assertionIgnoreCase": "Ignorar mayúsculas",

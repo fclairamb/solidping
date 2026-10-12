@@ -130,6 +130,11 @@ type HTTPConfig struct {
 	// carry, unlike the body_* matchers above.
 	BodyAssertions *AssertionNode `json:"bodyAssertions,omitempty"`
 
+	// HeaderAssertions validates response headers with the shared assertion
+	// tree; a leaf's Path is the header name (case-insensitive). Evaluated
+	// after HeadersPattern, before the body assertions.
+	HeaderAssertions *AssertionNode `json:"headerAssertions,omitempty"`
+
 	// VerifySsl controls TLS certificate verification. nil (the vast majority
 	// of stored configs) means "unset", which behaves like true — today's
 	// hardcoded behavior. Only an explicit false disables verification, so
@@ -374,6 +379,16 @@ func (c *HTTPConfig) FromMap(configMap map[string]any) error {
 		c.BodyAssertions = node
 	}
 
+	// Extract HeaderAssertions (optional), same spelling rules as bodyAssertions.
+	if v, key, ok := resolveKey(configMap, "headerAssertions", "header_assertions"); ok {
+		node, err := parseAssertionNode(v)
+		if err != nil {
+			return checkerdef.NewConfigError(key, err.Error())
+		}
+
+		c.HeaderAssertions = node
+	}
+
 	// Extract VerifySsl (optional). Presence-aware: only an explicit boolean
 	// value overrides the true default, so a value must be parsed into a
 	// pointer rather than a plain bool.
@@ -508,8 +523,6 @@ func assertionToMap(node *AssertionNode) (any, bool) {
 }
 
 // GetConfig implements the GetConfig interface by returning the configuration as a map.
-//
-//nolint:cyclop // HTTP config has many optional fields; branching is inherently verbose
 func (c *HTTPConfig) GetConfig() map[string]any {
 	cfg := map[string]any{
 		checkerdef.OutputKeyURL: c.URL,
@@ -571,22 +584,34 @@ func (c *HTTPConfig) GetConfig() map[string]any {
 		cfg[configKeySecretHeaders] = c.SecretHeaders
 	}
 
-	if c.JSONPathAssertions != nil {
-		// Serialize via JSON to produce map[string]any so that FromMap can parse it back.
-		if m, ok := assertionToMap(c.JSONPathAssertions); ok {
-			cfg["jsonPathAssertions"] = m
-		}
-	}
-
-	if c.BodyAssertions != nil {
-		if m, ok := assertionToMap(c.BodyAssertions); ok {
-			cfg["bodyAssertions"] = m
-		}
-	}
+	c.addAssertionConfig(cfg)
 
 	c.addToggleConfig(cfg)
 
 	return cfg
+}
+
+// addAssertionConfig writes the three assertion trees, each only when set.
+func (c *HTTPConfig) addAssertionConfig(cfg map[string]any) {
+	trees := []struct {
+		key  string
+		node *AssertionNode
+	}{
+		{"jsonPathAssertions", c.JSONPathAssertions},
+		{"bodyAssertions", c.BodyAssertions},
+		{"headerAssertions", c.HeaderAssertions},
+	}
+
+	for _, tree := range trees {
+		if tree.node == nil {
+			continue
+		}
+
+		// Serialize via JSON to produce map[string]any so that FromMap can parse it back.
+		if m, ok := assertionToMap(tree.node); ok {
+			cfg[tree.key] = m
+		}
+	}
 }
 
 // addToggleConfig writes the three boolean toggles, each omitted at its own

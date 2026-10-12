@@ -160,6 +160,8 @@ import {
   JsonAssertionResultCard,
   JSON_ASSERTION_RESULT_OUTPUT_KEY,
   BodyAssertionResultCard,
+  HeaderAssertionResultCard,
+  HEADER_ASSERTION_RESULT_OUTPUT_KEY,
   BODY_ASSERTION_RESULT_OUTPUT_KEY,
 } from "@/components/checks/json-assertion-result-card";
 import {
@@ -1948,6 +1950,7 @@ function CheckDetailPage() {
                               key !== IP_VERSION_OUTPUT_KEY &&
                               key !== JSON_ASSERTION_RESULT_OUTPUT_KEY &&
                               key !== BODY_ASSERTION_RESULT_OUTPUT_KEY &&
+                              key !== HEADER_ASSERTION_RESULT_OUTPUT_KEY &&
                               // Bookkeeping a passive evaluation row stamps on
                               // itself (spec 2026-09-02-04). "evaluation: true"
                               // and a bare uid are noise here; the badge on the
@@ -2055,6 +2058,14 @@ function CheckDetailPage() {
 
       {check.type === "http" && (
         <JsonAssertionResultCard
+          output={
+            check.lastResult?.output as Record<string, unknown> | undefined
+          }
+        />
+      )}
+
+      {check.type === "http" && (
+        <HeaderAssertionResultCard
           output={
             check.lastResult?.output as Record<string, unknown> | undefined
           }

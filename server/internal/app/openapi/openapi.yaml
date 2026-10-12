@@ -10956,7 +10956,10 @@ components:
             response over another version fails the check; any other value,
             and "3" on a check with `tunnelCheckUid`, is a VALIDATION_ERROR;
             results record the negotiated protocol as `http_protocol` and the
-            Alt-Svc header as `alt_svc`) and
+            Alt-Svc header as `alt_svc`),
+            `headerAssertions` (assertion tree over response headers; a
+            leaf's `path` is the header name, operators eq, neq, contains,
+            not_contains, regex, exists, not_exists) and
             `capture_failure_response` (boolean, default false — when true a
             FAILING execution keeps what the probe received: status line,
             redacted response headers and a 16 KiB-capped body, stored on the

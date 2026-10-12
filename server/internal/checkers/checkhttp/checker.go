@@ -47,6 +47,15 @@ const (
 	// tree is attached to on failure. The dashboard renders it by this name.
 	outputKeyBodyAssertions = "body_assertions"
 
+	// errHeaderAssertionFailed is the output message for a violated
+	// `headerAssertions` tree, with the evaluated tree under
+	// outputKeyHeaderAssertions.
+	errHeaderAssertionFailed = "Header assertion failed"
+
+	// outputKeyHeaderAssertions is the Output key of the evaluated
+	// header-assertion tree. The dashboard renders it by this name.
+	outputKeyHeaderAssertions = "header_assertions"
+
 	// outputKeyRedirectChain is the Output key the URLs of every followed (or
 	// refused) redirect hop are attached under, so an operator can see where
 	// a chain went without turning on capture_failure_response. Absent when
@@ -702,6 +711,20 @@ func (c *HTTPChecker) executeRequest(
 					checkerdef.OutputKeyMethod:     method,
 				}), nil
 			}
+		}
+	}
+
+	// Apply header assertions. No body read needed.
+	if cfg.HeaderAssertions != nil {
+		assertionResult := cfg.HeaderAssertions.EvaluateHeaders(resp.Header)
+		if !assertionResult.Pass {
+			return failed(map[string]any{
+				checkerdef.OutputKeyError:      errHeaderAssertionFailed,
+				checkerdef.OutputKeyURL:        cfg.URL,
+				checkerdef.OutputKeyStatusCode: resp.StatusCode,
+				checkerdef.OutputKeyMethod:     method,
+				outputKeyHeaderAssertions:      assertionResult,
+			}), nil
 		}
 	}
 

@@ -110,6 +110,9 @@
     "bodyAssertions": {
       "$ref": "#/$defs/AssertionNode"
     },
+    "headerAssertions": {
+      "$ref": "#/$defs/AssertionNode"
+    },
     "verifySsl": {
       "type": "boolean"
     },

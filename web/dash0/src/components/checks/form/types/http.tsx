@@ -24,6 +24,7 @@ import { getFieldError } from "@/hooks/use-check-validation";
 import {
   JsonAssertionEditor,
   BodyAssertionEditor,
+  HeaderAssertionEditor,
   type AssertionNode,
 } from "@/components/checks/json-assertion-editor";
 import type { CheckTypeModule } from "./index";
@@ -103,6 +104,7 @@ export interface HttpState {
   // difference is the subject — the raw response body rather than a JSONPath
   // query result — so leaves carry no `path`.
   bodyAssertions: AssertionNode | null;
+  headerAssertions: AssertionNode | null;
   // Request body. Public, round-trips on GET, so no dirty flag: written
   // whenever non-empty, cleared by emptying the textarea. Deliberately written
   // even when the method is GET/HEAD (where the editor is hidden) so switching
@@ -159,6 +161,14 @@ function seedJsonPathAssertions(config: CheckConfig): AssertionNode | null {
 // its assertion the first time the form saves the check.
 function seedBodyAssertions(config: CheckConfig): AssertionNode | null {
   const raw = config.bodyAssertions ?? config.body_assertions;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  return raw as AssertionNode;
+}
+
+// seedHeaderAssertions seeds the response-header assertion tree, reading both
+// spellings like seedBodyAssertions.
+function seedHeaderAssertions(config: CheckConfig): AssertionNode | null {
+  const raw = config.headerAssertions ?? config.header_assertions;
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   return raw as AssertionNode;
 }
@@ -226,6 +236,7 @@ export function httpFromConfig(config: CheckConfig): HttpState {
     captureFailureResponse,
     jsonPathAssertions: seedJsonPathAssertions(config),
     bodyAssertions: seedBodyAssertions(config),
+    headerAssertions: seedHeaderAssertions(config),
     body: getConfigField(config, "body"),
     headers: seedHeaderRows(config.headers),
     // Seeding matters three ways: a legacy row's username is public and comes
@@ -300,6 +311,10 @@ export function httpToConfig(state: HttpState): {
   // passthrough will not resurrect a value this form just cleared.
   if (state.bodyAssertions) {
     cfg.bodyAssertions = state.bodyAssertions;
+  }
+  // Same omit-to-clear rule. `headers_pattern` stays unowned (survives a save).
+  if (state.headerAssertions) {
+    cfg.headerAssertions = state.headerAssertions;
   }
   // Same omit-to-clear rule as jsonPathAssertions: both are public keys that
   // round-trip on GET, so writing them only when non-empty is what lets the
@@ -808,6 +823,20 @@ export function HttpOptionsBody({
       </div>
       <div className="space-y-2 border-t pt-3">
         <div>
+          <Label>{t("headerAssertions")}</Label>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {t("headerAssertionsDescription")}
+          </p>
+        </div>
+        <HeaderAssertionEditor
+          value={state.headerAssertions}
+          onChange={(headerAssertions) =>
+            onChange({ ...state, headerAssertions })
+          }
+        />
+      </div>
+      <div className="space-y-2 border-t pt-3">
+        <div>
           <Label>{t("bodyAssertions")}</Label>
           <p className="text-xs text-muted-foreground mt-0.5">
             {t("bodyAssertionsDescription")}
@@ -838,6 +867,7 @@ export function httpOptionsSummary(state: HttpState): {
     parts.push("redirects restricted to same host");
   if (state.captureFailureResponse) parts.push("failure response captured");
   if (state.jsonPathAssertions) parts.push("JSON assertions");
+  if (state.headerAssertions) parts.push("header assertions");
   if (state.bodyAssertions) parts.push("body assertions");
   if (state.body) parts.push("request body");
   const headerCount = state.headers.filter((h) => h.key).length;
@@ -877,6 +907,8 @@ export const httpModule: CheckTypeModule<HttpState> = {
     "json_path_assertions",
     "bodyAssertions",
     "body_assertions",
+    "headerAssertions",
+    "header_assertions",
     "body",
     "headers",
   ],

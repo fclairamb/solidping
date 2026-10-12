@@ -126,6 +126,12 @@ func ValidateSpec(spec *checkerdef.CheckSpec) error {
 		}
 	}
 
+	if cfg.HeaderAssertions != nil {
+		if err := cfg.HeaderAssertions.ValidateHeaders(); err != nil {
+			return checkerdef.NewConfigError("headerAssertions", err.Error())
+		}
+	}
+
 	// Validate RedirectHostPolicy: an unknown value is a config error rather
 	// than a silent fallback to "any" — a typo here is exactly the case where
 	// silently disabling the policy would be dangerous.

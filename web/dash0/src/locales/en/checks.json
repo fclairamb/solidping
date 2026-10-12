@@ -954,6 +954,8 @@
   },
   "jsonAssertions": "JSON Assertions",
   "jsonAssertionsDescription": "Validate fields in the JSON response body against a JSONPath expression.",
+  "headerAssertions": "Header Assertions",
+  "headerAssertionsDescription": "Assert on response headers. The header name is case-insensitive. \"equals\", \"contains\" and \"matches regex\" pass when any header line matches and fail when the header is absent. \"does not equal\" and \"does not contain\" pass when no line matches, or when the header is absent.",
   "bodyAssertions": "Body Assertions",
   "bodyAssertionsDescription": "Assert on the response body as plain text. \"equals\" compares the whole body with leading and trailing whitespace trimmed, so an ASP.NET Core health endpoint returning \"Healthy\\n\" matches equals \"Healthy\" with Ignore case on. \"contains\", \"does not contain\" and \"matches regex\" see the body exactly as received.",
   "assertionIgnoreCase": "Ignore case",

@@ -954,6 +954,8 @@
   },
   "jsonAssertions": "Assertions JSON",
   "jsonAssertionsDescription": "Valide des champs du corps de la réponse JSON via une expression JSONPath.",
+  "headerAssertions": "Assertions sur les en-têtes",
+  "headerAssertionsDescription": "Valide les en-têtes de la réponse. Le nom de l'en-tête ne tient pas compte de la casse. « égal à », « contient » et « correspond à la regex » réussissent si une ligne de l'en-tête correspond, et échouent si l'en-tête est absent. « différent de » et « ne contient pas » réussissent si aucune ligne ne correspond, ou si l'en-tête est absent.",
   "bodyAssertions": "Assertions sur le corps",
   "bodyAssertionsDescription": "Valide le corps de la réponse en texte brut. « égal à » compare le corps entier, espaces de début et de fin supprimés : un endpoint de santé ASP.NET Core renvoyant « Healthy\\n » correspond donc à égal à « Healthy » avec Ignorer la casse. « contient », « ne contient pas » et « correspond à la regex » voient le corps tel quel.",
   "assertionIgnoreCase": "Ignorer la casse",

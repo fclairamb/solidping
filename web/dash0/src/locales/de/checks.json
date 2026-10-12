@@ -910,6 +910,8 @@
   },
   "jsonAssertions": "JSON-Assertions",
   "jsonAssertionsDescription": "Prüft Felder im JSON-Antwortkörper anhand eines JSONPath-Ausdrucks.",
+  "headerAssertions": "Header-Assertions",
+  "headerAssertionsDescription": "Prüft die Antwort-Header. Der Header-Name ist nicht von der Groß-/Kleinschreibung abhängig. „gleich“, „enthält“ und „passt auf Regex“ bestehen, wenn eine Header-Zeile passt, und scheitern bei fehlendem Header. „ungleich“ und „enthält nicht“ bestehen, wenn keine Zeile passt oder der Header fehlt.",
   "bodyAssertions": "Body-Assertions",
   "bodyAssertionsDescription": "Prüft den Antwortkörper als reinen Text. „gleich“ vergleicht den gesamten Körper ohne führende und nachfolgende Leerzeichen, sodass ein ASP.NET-Core-Health-Endpunkt mit „Healthy\\n“ bei aktivem Groß-/Kleinschreibung ignorieren auf gleich „Healthy“ passt. „enthält“, „enthält nicht“ und „passt auf Regex“ sehen den Körper unverändert.",
   "assertionIgnoreCase": "Groß-/Kleinschreibung ignorieren",

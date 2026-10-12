@@ -212,6 +212,34 @@ json_path_assertions:
 
 A body that is not valid JSON fails the check rather than being skipped.
 
+##### Header assertions (`headerAssertions`)
+
+The same assertion tree, tested against the response headers. A leaf's `path`
+is the header name, matched case-insensitively. No body is read.
+
+| Operator | Passes when | Header absent |
+|---|---|---|
+| `eq`, `contains`, `regex` | any header line matches | fails (`header not found`) |
+| `neq`, `not_contains` | no header line matches | passes |
+| `exists` | the header is sent | fails |
+| `not_exists` | the header is not sent | passes |
+
+- `exists` and `not_exists` take no `value`. Numeric operators are rejected.
+- A repeated header (two `X-Acme` lines) is tested line by line, never split on commas.
+- `ignoreCase` applies to `eq`, `neq`, `contains`, `not_contains` and `regex`.
+- The reported actual value joins the lines with `, `. For sensitive headers (`Set-Cookie`, `Authorization`, names containing token, key or secret) it is `[redacted]`, but the comparison still uses the real value.
+- It runs after `headers_pattern`. Both can be set on one check.
+
+```yaml
+url: https://www.acme.com
+headerAssertions:
+  type: and
+  children:
+    - { type: assertion, path: X-Powered-By, operator: not_exists }
+    - { type: assertion, path: Cache-Control, operator: not_contains, value: no-store }
+    - { type: assertion, path: Content-Type, operator: eq, value: application/json, ignoreCase: true }
+```
+
 ##### The flat matchers
 
 Older, simpler and still supported. They are what the importers map foreign
@@ -223,7 +251,7 @@ conditions onto, so they are not going anywhere.
 | `body_reject` | Substring that must **not** appear |
 | `body_pattern` | [RE2](https://github.com/google/re2/wiki/Syntax) regex the body must match |
 | `body_pattern_reject` | RE2 regex the body must **not** match |
-| `headers_pattern` | Map of response header name to an RE2 regex; every one must match |
+| `headers_pattern` | Map of response header name to an RE2 regex; every one must match. For absent, not-contains or case-insensitive checks use [`headerAssertions`](#header-assertions-headerassertions) |
 
 `body_expect` is a **substring** match, which is why `bodyAssertions` exists:
 `body_expect: HEALTHY` also matches a body of `UNHEALTHY`, and reports a dead
