@@ -186,10 +186,17 @@ func (d *Duration) Scan(value any) error {
 	return fmt.Errorf("%w: %s", ErrInvalidDurationFormat, str)
 }
 
+// postgresIntervalRe matches the PostgreSQL interval format (HH:MM:SS[.frac]).
+// Compiled once: Duration.Scan reaches it for every check period scanned on the
+// claim path, and a per-call compile was ~20% of an idle instance's allocations
+// (spec 2026-10-12-04).
+//
+//nolint:gochecknoglobals // compiled-once regexp
+var postgresIntervalRe = regexp.MustCompile(`^(\d{2,}):(\d{2}):(\d{2})(?:\.(\d+))?$`)
+
 // parsePostgresInterval parses PostgreSQL interval format (HH:MM:SS).
 func parsePostgresInterval(s string) (time.Duration, error) {
-	re := regexp.MustCompile(`^(\d{2,}):(\d{2}):(\d{2})(?:\.(\d+))?$`)
-	matches := re.FindStringSubmatch(s)
+	matches := postgresIntervalRe.FindStringSubmatch(s)
 
 	if matches == nil {
 		return 0, fmt.Errorf("%w: %s", ErrInvalidPostgresInterval, s)
