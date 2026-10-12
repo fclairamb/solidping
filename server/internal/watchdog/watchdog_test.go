@@ -380,6 +380,42 @@ func TestStaleIncidentDetector(t *testing.T) {
 	r.NotContains(stale.Detail, "#2")
 }
 
+// TestStaleIncidentDetectorReadsCompactedChecks: aggregation compacts raw
+// results into hourly rows, so a check with a long period can have no raw row
+// at all while it still runs on schedule (prod, 2026-10-12: a daily heartbeat).
+// checks.last_result_at survives the compaction and must count.
+func TestStaleIncidentDetectorReadsCompactedChecks(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	env := newTestEnv(t)
+
+	compacted := env.createCheck(t, []string{"eu2"})
+	frozen := env.createCheck(t, []string{"eu2"})
+
+	env.clearResults(t, compacted.UID)
+	env.clearResults(t, frozen.UID)
+
+	// Neither check has a raw row left. One ran five minutes ago, the other
+	// three hours ago (the positive control: still reported).
+	_, err := env.db.TouchCheckLastResult(t.Context(), compacted.UID, pinnedNow.Add(-5*time.Minute))
+	r.NoError(err)
+	_, err = env.db.TouchCheckLastResult(t.Context(), frozen.UID, pinnedNow.Add(-3*time.Hour))
+	r.NoError(err)
+
+	env.openIncident(t, compacted.UID, pinnedNow.Add(-4*time.Hour), 1)
+	env.openIncident(t, frozen.UID, pinnedNow.Add(-4*time.Hour), 2)
+
+	report := env.watchdog.Evaluate(t.Context(), enabledConfig())
+	r.Empty(report.Failed)
+
+	stale := findAnomaly(report.Anomalies, watchdog.DetectorStaleIncidents)
+	r.NotNil(stale)
+	r.Equal(1, stale.Count, "only the check silent for 3h counts")
+	r.Contains(stale.Detail, "#2")
+	r.NotContains(stale.Detail, "#1", "a recent last_result_at is a live check")
+}
+
 // TestStaleIncidentDetectorIgnoresDisabledChecks: a check nobody executes on
 // purpose has no business being reported as one that mysteriously stopped.
 func TestStaleIncidentDetectorIgnoresDisabledChecks(t *testing.T) {

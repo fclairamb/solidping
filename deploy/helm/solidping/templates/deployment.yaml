@@ -6,9 +6,10 @@ metadata:
     {{- include "solidping.labels" . | nindent 4 }}
 spec:
   replicas: 1
-  # One writer on the SQLite volume: never run two pods at once.
+  # The /data volume is ReadWriteOnce (and SQLite takes one writer): never run
+  # two pods at once on it.
   strategy:
-    type: {{ if eq .Values.database.type "sqlite" }}Recreate{{ else }}RollingUpdate{{ end }}
+    type: {{ if or .Values.persistence.enabled (eq (include "solidping.dbType" .) "sqlite") }}Recreate{{ else }}RollingUpdate{{ end }}
   selector:
     matchLabels:
       {{- include "solidping.selectorLabels" . | nindent 6 }}
@@ -34,7 +35,19 @@ spec:
                 secretKeyRef:
                   name: {{ include "solidping.authSecret" . }}
                   key: jwt-secret
-            {{- if eq .Values.database.type "postgres" }}
+            {{- if .Values.database.cnpg.enabled }}
+            {{- if .Values.database.existingSecret }}
+            {{- fail "set either database.cnpg.enabled or database.existingSecret, not both" }}
+            {{- end }}
+            - name: SP_DB_TYPE
+              value: postgres
+            - name: SP_DB_URL
+              valueFrom:
+                secretKeyRef:
+                  # Created by the CNPG operator for the bootstrap owner.
+                  name: {{ include "solidping.cnpgCluster" . }}-app
+                  key: uri
+            {{- else if eq .Values.database.type "postgres" }}
             - name: SP_DB_TYPE
               value: postgres
             - name: SP_DB_URL
@@ -72,12 +85,9 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- if eq .Values.database.type "sqlite" }}
           volumeMounts:
             - name: data
               mountPath: /data
-          {{- end }}
-      {{- if eq .Values.database.type "sqlite" }}
       volumes:
         - name: data
           {{- if .Values.persistence.enabled }}
@@ -86,7 +96,6 @@ spec:
           {{- else }}
           emptyDir: {}
           {{- end }}
-      {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

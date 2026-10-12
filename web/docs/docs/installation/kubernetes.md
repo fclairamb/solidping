@@ -238,9 +238,29 @@ The S3 backend keeps no local state, so it works at any replica count:
 See [File Storage](/configuration/file-storage) for the endpoint/path-style
 settings a non-AWS S3-compatible store needs, and the full variable reference.
 
-## With Helm (Coming Soon)
+## With Helm
 
-A Helm chart for SolidPing is planned for future releases.
+The chart is published with each release:
+
+```bash
+helm install solidping oci://ghcr.io/fclairamb/charts/solidping \
+  --set baseUrl=https://status.example.com
+```
+
+It runs on SQLite by default. To run on PostgreSQL through a
+[CloudNativePG](https://cloudnative-pg.io) cluster created by the chart
+(the CNPG operator must be installed):
+
+```bash
+helm install solidping oci://ghcr.io/fclairamb/charts/solidping \
+  --set baseUrl=https://status.example.com \
+  --set database.cnpg.enabled=true
+```
+
+To use an existing PostgreSQL instead, put its connection string in a Secret
+under the key `url` and set `database.type=postgres` and
+`database.existingSecret=<secret name>`. All values are in the chart's
+[`values.yaml`](https://github.com/fclairamb/solidping/blob/main/deploy/helm/solidping/values.yaml).
 
 ## PostgreSQL on Kubernetes
 
