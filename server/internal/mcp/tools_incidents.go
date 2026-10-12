@@ -15,7 +15,7 @@ const incidentEventsCap = 50
 
 func listIncidentsDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "list_incidents",
+		Name: toolListIncidents,
 		Description: "List internal incidents (active or resolved) for the organization, filtered by " +
 			"check, state, or time range. Returns {data, pagination} — total, size, and a cursor " +
 			"naming the last row of a full page; the cursor is not read back on the next call yet, " +
@@ -110,7 +110,7 @@ func (h *Handler) toolListIncidents(ctx context.Context, orgSlug string, args ma
 
 func getIncidentDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "get_incident",
+		Name: toolGetIncident,
 		Description: "Get a single incident by UID; an unknown UID fails with an \"incident not " +
 			"found\" error. Returns the incident object — number, state, timestamps, failure " +
 			"counts — plus the check with with=check and up to 50 timeline events with " +
@@ -140,7 +140,7 @@ type IncidentWithEvents struct {
 
 func incidentNotificationsListDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "incident_notifications_list",
+		Name: toolIncidentNotificationsList,
 		Description: "List the notification attempts for one incident — one row per dispatch target " +
 			"with its delivery status " +
 			"(pending, sent, failed, cancelled, skipped), the channel " + //nolint:misspell // the API value is "cancelled"

@@ -12,7 +12,7 @@ import (
 // session (claims.Demo) may call. It mirrors the REST allowlist in
 // handlers/auth/demo_guard.go: creating, editing and deleting checks is the
 // demo, everything else — status pages, integrations, maintenance windows,
-// incident publications, every set_* tool — is refused.
+// incident publications, every manage_* and set_* tool — is refused.
 //
 // It is an allowlist for the same reason the REST one is: a mutation tool
 // added next year is refused for demo sessions on the day it is registered,
@@ -24,11 +24,10 @@ import (
 // context), and create_check goes through the same demo shape rules and
 // created_by stamping as POST /checks.
 //
-// The unprefixed tools are all reads and need no entry. diagnose_check reads
-// the check, its recent results and its incidents; validate_check is the same
-// dry run as the allowlisted POST /checks/validate and persists nothing. A
-// future unprefixed tool that persists state must either take a mutation
-// prefix or be refused for demo sessions explicitly.
+// Read tools (toolAccessTable) need no entry. diagnose_check reads the check,
+// its recent results and its incidents; validate_check is the same dry run as
+// the allowlisted POST /checks/validate and persists nothing. A tool missing
+// from the access table counts as a write, so it is refused here too.
 //
 //nolint:gochecknoglobals // Effectively a constant set; Go has no const maps.
 var demoAllowedMutationTools = map[string]struct{}{
@@ -42,11 +41,12 @@ var demoAllowedMutationTools = map[string]struct{}{
 //
 // The decision lives here rather than in RequireMCPAuth because MCP is
 // JSON-RPC over a single POST route: the HTTP method and route pattern say
-// nothing about whether a call reads or writes. Only the tool name does.
+// nothing about whether a call reads or writes. Only the tool name (and, for
+// a manage_* tool, its action) does.
 // Non-tool methods (initialize, tools/list, resources/*, prompts/*) are reads
 // and never reach this function.
-func demoToolRefused(claims *auth.Claims, tool string) bool {
-	if claims == nil || !claims.Demo || !isMutationTool(tool) {
+func demoToolRefused(claims *auth.Claims, tool string, args map[string]any) bool {
+	if claims == nil || !claims.Demo || !toolMutates(tool, args) {
 		return false
 	}
 

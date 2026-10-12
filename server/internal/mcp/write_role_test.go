@@ -263,12 +263,11 @@ func TestMCPMutationRoleGateReadsTheMembershipRow(t *testing.T) {
 	r.Equal(CodeForbidden, resp.Error.Code)
 }
 
-// TestIsMutationToolCoversEveryRegisteredWriteTool guards the reuse decision in
-// §3: the role gate keys off isMutationTool's prefix list rather than a second
-// table, so that list has to actually describe the tool set. Every registered
-// tool whose name starts with a mutation verb must be recognized, and no
-// obviously-read tool may be.
-func TestIsMutationToolCoversEveryRegisteredWriteTool(t *testing.T) {
+// TestToolMutatesCoversEveryRegisteredWriteTool: the role gate keys off the
+// same access table as the scope gate, so that table has to actually describe
+// the tool set. Every registered tool whose name starts with a mutation verb
+// must be recognized, and no obviously-read tool may be.
+func TestToolMutatesCoversEveryRegisteredWriteTool(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
@@ -279,7 +278,7 @@ func TestIsMutationToolCoversEveryRegisteredWriteTool(t *testing.T) {
 
 	for _, tool := range handler.tools {
 		switch {
-		case isMutationTool(tool.Name):
+		case toolMutates(tool.Name, map[string]any{}):
 			mutating++
 		default:
 			r.NotContainsf([]string{"create", "update", "delete", "set"},

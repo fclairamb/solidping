@@ -47,7 +47,7 @@ func autoPublishProps(schema map[string]any) map[string]any {
 
 func listStatusPagesDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "list_status_pages",
+		Name: toolListStatusPages,
 		Description: "List every status page in the organization, newest first, and " +
 			"return {data: [...]}. Use get_status_page for a single page by UID or " +
 			"slug (with=sections for its contents) and list_status_page_sections " +
@@ -71,7 +71,7 @@ func (h *Handler) toolListStatusPages(ctx context.Context, orgSlug string, _ map
 
 func getStatusPageDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "get_status_page",
+		Name: toolGetStatusPage,
 		Description: "Get one status page by UID or slug and return it; pass " +
 			"with=sections to embed its sections and their resources. Use " +
 			"list_status_pages to browse every page instead. Read-only: works " +
@@ -103,7 +103,7 @@ func (h *Handler) toolGetStatusPage(ctx context.Context, orgSlug string, args ma
 
 func createStatusPageDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "create_status_page",
+		Name: toolCreateStatusPage,
 		Description: "Create a new status page for the organization and return the " +
 			"created page. A duplicate slug is rejected with a conflict, never " +
 			"merged. Only one page can be the default: the first page always " +
@@ -185,7 +185,7 @@ func (h *Handler) toolCreateStatusPage(ctx context.Context, orgSlug string, args
 
 func updateStatusPageDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "update_status_page",
+		Name: toolUpdateStatusPage,
 		Description: "Update an existing status page by UID or slug and return the " +
 			"updated page. PATCH semantics — only fields you pass change, omitted " +
 			"fields keep their current values; the page must already exist and a " +
@@ -270,7 +270,7 @@ func buildUpdateStatusPageRequest(args map[string]any) *statuspages.UpdateStatus
 
 func deleteStatusPageDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "delete_status_page",
+		Name: toolDeleteStatusPage,
 		Description: "Soft-delete a status page by UID or slug: the page disappears " +
 			"from the API and the public site, taking its sections and resources " +
 			"with it, and its uploaded brand assets are deleted. There is no " +
@@ -305,7 +305,7 @@ func (h *Handler) toolDeleteStatusPage(ctx context.Context, orgSlug string, args
 
 func listStatusPageSectionsDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "list_status_page_sections",
+		Name: toolListStatusPageSections,
 		Description: "List the sections of one status page (UID or slug), in display " +
 			"order, and return {data: [...]} — section metadata only, without their " +
 			"resources. Use get_status_page with with=sections for the page with " +
@@ -338,7 +338,7 @@ func (h *Handler) toolListStatusPageSections(
 
 func createStatusPageSectionDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "create_status_page_section",
+		Name: toolCreateStatusPageSection,
 		Description: "Create a section on a status page and return the created " +
 			"section; the page must already exist. A duplicate slug within the page " +
 			"is rejected with a conflict, and without position the section is " +
@@ -381,7 +381,7 @@ func (h *Handler) toolCreateStatusPageSection(
 
 func updateStatusPageSectionDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "update_status_page_section",
+		Name: toolUpdateStatusPageSection,
 		Description: "Update a section of a status page and return the updated " +
 			"section; the section must already exist. PATCH semantics — only " +
 			"fields you pass change, omitted fields keep their current values, and " +
@@ -430,7 +430,7 @@ func (h *Handler) toolUpdateStatusPageSection(
 
 func deleteStatusPageSectionDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "delete_status_page_section",
+		Name: toolDeleteStatusPageSection,
 		Description: "Delete a section from a status page: the section and the " +
 			"resources it displays disappear from the page. There is no undelete — " +
 			"use delete_status_page_resource to remove a single pinned check while " +
@@ -467,7 +467,7 @@ func (h *Handler) toolDeleteStatusPageSection(
 
 func listStatusPageResourcesDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "list_status_page_resources",
+		Name: toolListStatusPageResources,
 		Description: "List the resources (pinned checks and check groups) of one " +
 			"status page section, in display order, and return {data: [...]}. Use " +
 			"list_status_page_sections to find the section first, or get_status_page " +
@@ -502,7 +502,7 @@ func (h *Handler) toolListStatusPageResources(
 
 func createStatusPageResourceDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "create_status_page_resource",
+		Name: toolCreateStatusPageResource,
 		Description: "Pin a check or a whole check group to a status-page section as " +
 			"a publicly displayed resource, and return the created resource. The " +
 			"page and section must already exist, exactly one of checkUid/" +
@@ -567,7 +567,7 @@ func (h *Handler) toolCreateStatusPageResource(
 
 func updateStatusPageResourceDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "update_status_page_resource",
+		Name: toolUpdateStatusPageResource,
 		Description: "Update a pinned resource's display name, explanation or " +
 			"position and return the updated resource; the page, section and " +
 			"resource must already exist. PATCH semantics — only fields you pass " +
@@ -619,7 +619,7 @@ func (h *Handler) toolUpdateStatusPageResource(
 
 func deleteStatusPageResourceDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "delete_status_page_resource",
+		Name: toolDeleteStatusPageResource,
 		Description: "Remove a pinned resource from its section, returning " +
 			"{deleted: true, identifier}; the underlying check or group itself is " +
 			"untouched. The delete is permanent, a resource managed by a section " +

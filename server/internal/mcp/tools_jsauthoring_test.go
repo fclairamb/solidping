@@ -132,7 +132,7 @@ func TestJSAuthoringToolsAreReadScoped(t *testing.T) {
 	t.Parallel()
 
 	for _, name := range []string{toolRunJSScript, toolFetchPage, toolBrowserSnapshot, toolValidateCheck} {
-		require.False(t, isMutationTool(name), name)
+		require.False(t, toolMutates(name, map[string]any{}), name)
 	}
 }
 

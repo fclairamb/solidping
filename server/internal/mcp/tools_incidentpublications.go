@@ -26,7 +26,7 @@ const mcpActorUID = ""
 
 func listStatusPageIncidentsDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "list_status_page_incidents",
+		Name: toolListStatusPageIncidents,
 		Description: "List the incident publications on one status page — the customer-facing " +
 			"incidents the page shows, distinct from the internal incidents the monitoring " +
 			"system opens; use list_incidents for those. Returns {data} with one publication " +
@@ -69,7 +69,7 @@ func (h *Handler) toolListStatusPageIncidents(
 
 func createStatusPageIncidentDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "create_status_page_incident",
+		Name: toolCreateStatusPageIncident,
 		Description: "Publish a hand-written incident on a status page; the title and body are shown " +
 			"to CUSTOMERS, so never paste probe output, error strings, internal hostnames or IPs " +
 			"into them. The page must already exist, and incidentUid, when given, must be an " +
@@ -132,7 +132,7 @@ func (h *Handler) toolCreateStatusPageIncident(
 
 func updateStatusPageIncidentDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "update_status_page_incident",
+		Name: toolUpdateStatusPageIncident,
 		Description: "Update a published incident's title, severity or state (PATCH semantics — " +
 			"omitted fields are kept as-is). Any edit marks the publication human-authored, which " +
 			"stops the auto-resolve pipeline from closing it, and moving back to an open state " +
@@ -189,7 +189,7 @@ func (h *Handler) toolUpdateStatusPageIncident(
 
 func createStatusPageIncidentUpdateDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "create_status_page_incident_update",
+		Name: toolCreateStatusPageIncidentUpdate,
 		Description: "Append a narrative update to a published incident; updates are APPEND-ONLY — " +
 			"there is no edit or delete, and repeating this call posts ANOTHER entry. The body is " +
 			"shown to customers: never include probe output or internal names. The new entry fans " +
@@ -237,7 +237,7 @@ func (h *Handler) toolCreateStatusPageIncidentUpdate(
 
 func createIncidentPublicationDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "create_incident_publication",
+		Name: toolCreateIncidentPublication,
 		Description: "Publish an EXISTING internal incident onto a status page; both must already " +
 			"exist, and one already published on that page is refused with a conflict. The public " +
 			"title is templated from the page's own public resource names, so the internal title " +
@@ -289,7 +289,7 @@ func (h *Handler) toolCreateIncidentPublication(
 
 func deleteIncidentPublicationDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "delete_incident_publication",
+		Name: toolDeleteIncidentPublication,
 		Description: "Unpublish an incident from a status page. The publication row is kept for audit but " +
 			"disappears from the public page, and the same incident can be published again later. " +
 			"Returns {unpublished: true, publicationUid}. Only a publication linked to an internal " +

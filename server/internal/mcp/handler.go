@@ -469,7 +469,10 @@ func (h *Handler) handleToolsCall(
 		return &resp, http.StatusOK
 	}
 
-	if isMutationTool(params.Name) {
+	// One decision feeds all three gates (spec 2026-10-12-06): the access
+	// table, keyed on the tool name and, for a manage_* tool, its action.
+	// A tool merely absent from the listed toolsets is gated identically.
+	if toolMutates(params.Name, params.Arguments) {
 		// Scope gate: was this credential minted for writing at all?
 		if isMCPReadOnly(claims) {
 			resp := errorResponse(req.ID, CodeForbidden,
@@ -479,7 +482,7 @@ func (h *Handler) handleToolsCall(
 
 		// Demo gate: the shared public demo may create, edit and delete
 		// checks (ownership enforced in checks.Service) and nothing else.
-		if demoToolRefused(claims, params.Name) {
+		if demoToolRefused(claims, params.Name, params.Arguments) {
 			resp := demoRefusalResponse(req.ID)
 			return &resp, http.StatusOK
 		}

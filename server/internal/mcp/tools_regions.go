@@ -28,7 +28,7 @@ func regionOutputProps() map[string]any {
 
 func listRegionsDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "list_regions",
+		Name: toolListRegions,
 		Description: "List monitoring regions available to the organization (e.g. eu-west-1, " +
 			"us-east-1). Returns {data: [...]} — each region's slug, label and per-region " +
 			"metadata — plus defaultRegions, the org's default placement set. Use these " +

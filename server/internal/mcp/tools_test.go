@@ -119,7 +119,7 @@ func TestToolDefinitions(t *testing.T) {
 // TestEveryToolDeclaresAnnotationsAndOutputSchema gates the MCP 2025-06-18
 // surface: every tool must carry behavioral annotations, a display title and
 // an object-rooted output schema, and the read-only hint must stay in sync
-// with the scope gate (isMutationTool) so a new write tool can never ship
+// with the scope gate (toolAccessTable) so a new write tool can never ship
 // advertised as read-only. The per-hint assertions also pin the semantics of
 // each annotation class (see annotations.go).
 func TestEveryToolDeclaresAnnotationsAndOutputSchema(t *testing.T) {
@@ -150,7 +150,7 @@ func TestEveryToolDeclaresAnnotationsAndOutputSchema(t *testing.T) {
 			r.Equal(probe, ann.OpenWorldHint,
 				"tool %q open-world hint: only the js authoring probes reach outside SolidPing data",
 				tool.Name)
-			r.Equal(!isMutationTool(tool.Name), ann.ReadOnlyHint,
+			r.Equal(toolIsReadOnly(tool.Name), ann.ReadOnlyHint,
 				"tool %q readOnlyHint out of sync with the scope gate", tool.Name)
 
 			// The hints must all be present in the emitted JSON: omitempty
@@ -168,7 +168,7 @@ func TestEveryToolDeclaresAnnotationsAndOutputSchema(t *testing.T) {
 			}
 
 			switch {
-			case !isMutationTool(tool.Name):
+			case toolIsReadOnly(tool.Name):
 				r.False(ann.DestructiveHint, "read tool %q flagged destructive", tool.Name)
 				r.True(ann.IdempotentHint, "read tool %q not flagged idempotent", tool.Name)
 			case strings.HasPrefix(tool.Name, "delete_"),

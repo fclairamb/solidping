@@ -10,7 +10,7 @@ import (
 
 func listCheckTypesDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "list_check_types",
+		Name: toolListCheckTypes,
 		Description: "List all monitoring check types supported by this server " +
 			"(e.g. http, tcp, dns, icmp, ssl). Use this first when you don't know what " +
 			"type to use. Then call get_check_type_samples for the chosen type to get a " +
@@ -51,7 +51,7 @@ func (h *Handler) toolListCheckTypes(_ context.Context, _ string, _ map[string]a
 
 func getCheckTypeSamplesDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "get_check_type_samples",
+		Name: toolGetCheckTypeSamples,
 		Description: "Return ready-made sample configs for the given check type. " +
 			"Each sample is a complete, valid config you can clone and modify. Use this " +
 			"to learn the config shape for a type — much more reliable than guessing " +
