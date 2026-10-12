@@ -1,9 +1,11 @@
 package auth
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -11,6 +13,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/defaults"
+	"github.com/fclairamb/solidping/server/internal/handlers/base"
 )
 
 // suppressedOrgCase is one row of the rule-6 carve-out table.
@@ -207,6 +210,49 @@ func TestCreateMembershipRequestRefusedForSuppressedOrgs(t *testing.T) {
 
 			require.NoError(t, err)
 			require.Equal(t, models.MembershipRequestStatusPending, summary.Status)
+		})
+	}
+}
+
+// TestCreateMembershipRequestHandlerRefusedForSuppressedOrgs drives the real
+// HTTP handler: the demo org and the SaaS default org answer 403
+// ORG_NOT_ACCEPTING_REQUESTS, a regular org answers 201.
+func TestCreateMembershipRequestHandlerRefusedForSuppressedOrgs(t *testing.T) {
+	t.Parallel()
+
+	saas, self := config.DeploymentModeSaaS, config.DeploymentModeSelfHosted
+
+	tests := []struct {
+		name       string
+		mode       string
+		orgSlug    string
+		wantStatus int
+	}{
+		{"demo", self, "demo", http.StatusForbidden},
+		{"saas default", saas, defaults.Organization, http.StatusForbidden},
+		{"regular org", saas, "acme", http.StatusCreated},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			svc, org, _, candidate := seedMembershipFixtures(t, tt.orgSlug)
+			svc.fullCfg.Deployment.Mode = tt.mode
+			handler := NewHandler(svc, svc.fullCfg)
+
+			reqCtx := context.WithValue(t.Context(), base.ContextKeyClaims, &Claims{UserUID: candidate.UID})
+			httpReq := httptest.NewRequestWithContext(reqCtx, http.MethodPost,
+				"/api/v1/auth/membership-requests",
+				strings.NewReader(`{"orgSlug":"`+org.Slug+`"}`))
+			rec := httptest.NewRecorder()
+
+			require.NoError(t, handler.CreateMembershipRequestHandler(rec, httpReq))
+			require.Equal(t, tt.wantStatus, rec.Code)
+
+			if tt.wantStatus == http.StatusForbidden {
+				require.Equal(t, "ORG_NOT_ACCEPTING_REQUESTS", decodeErrorCode(t, rec))
+			}
 		})
 	}
 }
