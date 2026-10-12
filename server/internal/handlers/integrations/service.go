@@ -5,13 +5,12 @@ package integrations
 
 import (
 	"context"
-	crypto_rand "crypto/rand"
 	"database/sql"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/url"
 	"sort"
 	"strconv"
@@ -88,42 +87,42 @@ var (
 	ErrInvalidSettings = errors.New("invalid connection settings")
 )
 
-// Signing-secret lifecycle constants (Standard Webhooks). The secret format is
-// `whsec_<base64url-unpadded-32-bytes>` (Svix convention). Keys mirror the
+// Signing-secret lifecycle constants (Standard Webhooks). The secret format
+// itself (`whsec_` + standard padded base64) lives in the notifications
+// package (GenerateWebhookSecret / DecodeWebhookSecret). Keys mirror the
 // names used by the WebhookSender so the public/private split stays consistent.
 const (
-	webhookSecretPrefix              = "whsec_"
-	webhookSecretBytes               = 32
 	webhookRotationGrace             = 24 * time.Hour
 	settingsKeySigningSecret         = "signingSecret"
 	settingsKeySigningSecretPrevious = "signingSecretPrevious"
 	settingsKeySigningSecretExpiry   = "signingSecretPreviousExpiry"
+
+	// A user-supplied signing secret must carry between 24 and 64 key bytes,
+	// the size range the Standard Webhooks specification recommends. Enforced
+	// on input only: a stored legacy value of any length keeps signing.
+	minSuppliedWebhookSecretBytes = 24
+	maxSuppliedWebhookSecretBytes = 64
 )
 
-// generateWebhookSecret returns a fresh `whsec_<base64url-unpadded-32-bytes>`
-// signing secret using crypto/rand.
-func generateWebhookSecret() (string, error) {
-	raw := make([]byte, webhookSecretBytes)
-	if _, err := crypto_rand.Read(raw); err != nil {
-		return "", fmt.Errorf("generating webhook secret: %w", err)
-	}
-
-	return webhookSecretPrefix + base64.RawURLEncoding.EncodeToString(raw), nil
-}
-
 // ensureWebhookCreateSecret returns a settings map guaranteed to contain a
-// signing secret, generating one when absent. Extracted from CreateIntegration to
-// keep that function below the cyclomatic-complexity threshold.
+// signing secret, generating one when absent. A supplied secret is validated
+// and stored in canonical (standard base64) form. Extracted from
+// CreateIntegration to keep that function below the cyclomatic-complexity
+// threshold.
 func ensureWebhookCreateSecret(settings map[string]any) (map[string]any, error) {
 	if settings == nil {
 		settings = map[string]any{}
+	}
+
+	if err := canonicalizeSuppliedWebhookSecrets(settings); err != nil {
+		return nil, err
 	}
 
 	if existing, ok := settings[settingsKeySigningSecret].(string); ok && existing != "" {
 		return settings, nil
 	}
 
-	secret, err := generateWebhookSecret()
+	secret, err := notifications.GenerateWebhookSecret()
 	if err != nil {
 		return nil, err
 	}
@@ -131,6 +130,48 @@ func ensureWebhookCreateSecret(settings map[string]any) (map[string]any, error) 
 	settings[settingsKeySigningSecret] = secret
 
 	return settings, nil
+}
+
+// canonicalizeSuppliedWebhookSecrets validates every non-empty signing secret
+// carried by a create or PATCH request and rewrites it, in place, to its
+// canonical `whsec_` + standard padded base64 spelling. A nil or empty value is
+// left alone (on PATCH it means "clear"). Undecodable or out-of-range input
+// returns ErrInvalidSettings rather than a channel that fails at first delivery.
+func canonicalizeSuppliedWebhookSecrets(settings map[string]any) error {
+	for _, key := range []string{settingsKeySigningSecret, settingsKeySigningSecretPrevious} {
+		raw, present := settings[key]
+		if !present || raw == nil {
+			continue
+		}
+
+		value, isString := raw.(string)
+		if !isString {
+			return fmt.Errorf("%w: %s must be a string", ErrInvalidSettings, key)
+		}
+
+		if value == "" {
+			continue
+		}
+
+		keyBytes, err := notifications.DecodeWebhookSecret(value)
+		if err != nil {
+			return fmt.Errorf("%w: %s is not a valid whsec_ base64 secret", ErrInvalidSettings, key)
+		}
+
+		if len(keyBytes) < minSuppliedWebhookSecretBytes || len(keyBytes) > maxSuppliedWebhookSecretBytes {
+			return fmt.Errorf("%w: %s must decode to %d to %d bytes", ErrInvalidSettings, key,
+				minSuppliedWebhookSecretBytes, maxSuppliedWebhookSecretBytes)
+		}
+
+		canonical, err := notifications.CanonicalWebhookSecret(value)
+		if err != nil {
+			return fmt.Errorf("%w: %s is not a valid whsec_ base64 secret", ErrInvalidSettings, key)
+		}
+
+		settings[key] = canonical
+	}
+
+	return nil
 }
 
 // Service provides business logic for connection management.
@@ -374,10 +415,23 @@ func (s *Service) injectSigningSecrets(
 		resp.Settings = map[string]any{}
 	}
 
+	// Re-encode at read time: the same key bytes in the standard spelling the
+	// official Standard Webhooks libraries accept. Storage is not rewritten.
 	for _, key := range []string{settingsKeySigningSecret, settingsKeySigningSecretPrevious} {
-		if v, ok := effective[key].(string); ok && v != "" {
-			resp.Settings[key] = v
+		v, ok := effective[key].(string)
+		if !ok || v == "" {
+			continue
 		}
+
+		canonical, cErr := notifications.CanonicalWebhookSecret(v)
+		if cErr != nil {
+			slog.WarnContext(ctx, "webhook signing secret does not decode; returning it unchanged",
+				"channel_uid", conn.UID, "key", key)
+
+			canonical = v
+		}
+
+		resp.Settings[key] = canonical
 	}
 
 	if len(resp.SettingsPrivateKeys) > 0 {
@@ -995,6 +1049,16 @@ func (s *Service) applyUpdateSettings(
 		return err
 	}
 
+	// A webhook signing secret carried by the PATCH is validated and stored
+	// canonical. Only the request's own values are checked: a stored legacy
+	// value the request did not touch is never re-validated here.
+	if conn.Type == models.ConnectionTypeWebhook {
+		reqSettings = maps.Clone(reqSettings)
+		if vErr := canonicalizeSuppliedWebhookSecrets(reqSettings); vErr != nil {
+			return vErr
+		}
+	}
+
 	secrets := credentials.ConnectionSecretFields(conn.Type)
 	merged := credentials.MergePatch(existing, reqSettings, secrets)
 
@@ -1552,7 +1616,7 @@ func (s *Service) RotateWebhookSecret(
 		return nil, err
 	}
 
-	newSecret, err := generateWebhookSecret()
+	newSecret, err := notifications.GenerateWebhookSecret()
 	if err != nil {
 		return nil, err
 	}

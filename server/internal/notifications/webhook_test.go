@@ -2,6 +2,7 @@ package notifications
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -12,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	standardwebhooks "github.com/standard-webhooks/standard-webhooks/libraries/go"
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -21,7 +23,7 @@ import (
 // TestSignRequest_KnownVector pins the signature for a fixed secret + id +
 // timestamp + body against the Standard Webhooks reference algorithm. The
 // expected value is computed independently below to guard against regressions
-// in the signing routine (prefix stripping, base64url-decode, HMAC, base64
+// in the signing routine (prefix stripping, base64-decode, HMAC, base64
 // std-encode).
 func TestSignRequest_KnownVector(t *testing.T) {
 	t.Parallel()
@@ -44,6 +46,17 @@ func TestSignRequest_KnownVector(t *testing.T) {
 	// This is the signature published in the Standard Webhooks verification
 	// docs for the above inputs.
 	r.Equal("v1,g0hM9SsE+OTPJTGt/tmIKtSyZlE3uFJELVlNIOLJ1OE=", header)
+
+	// The official Go library signs the same inputs to the same value.
+	wh, err := standardwebhooks.NewWebhook(secret)
+	r.NoError(err)
+
+	ts, err := strconv.ParseInt(timestamp, 10, 64)
+	r.NoError(err)
+
+	official, err := wh.Sign(id, time.Unix(ts, 0), body)
+	r.NoError(err)
+	r.Equal(official, header)
 }
 
 // TestSignRequest_TwoSecrets verifies the rotation case: two secrets produce
@@ -53,9 +66,9 @@ func TestSignRequest_TwoSecrets(t *testing.T) {
 
 	r := require.New(t)
 
-	s1, err := generateWebhookSecret()
+	s1, err := GenerateWebhookSecret()
 	r.NoError(err)
-	s2, err := generateWebhookSecret()
+	s2, err := GenerateWebhookSecret()
 	r.NoError(err)
 
 	header, err := signRequest([]string{s1, s2}, "id-1", "1700000000", []byte(`{}`))
@@ -69,7 +82,7 @@ func TestSignRequest_TwoSecrets(t *testing.T) {
 	r.NotEqual(parts[0], parts[1], "different secrets must yield different signatures")
 }
 
-// TestSignRequest_InvalidSecret rejects a secret whose body isn't base64url.
+// TestSignRequest_InvalidSecret rejects a secret whose body isn't base64.
 func TestSignRequest_InvalidSecret(t *testing.T) {
 	t.Parallel()
 
@@ -123,7 +136,7 @@ func TestWebhookSender_Send_SetsHeaders(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	secret, err := generateWebhookSecret()
+	secret, err := GenerateWebhookSecret()
 	r.NoError(err)
 
 	payload := testPayload(models.JSONMap{
@@ -165,7 +178,7 @@ func TestWebhookSender_Send_PayloadShape(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	secret, err := generateWebhookSecret()
+	secret, err := GenerateWebhookSecret()
 	r.NoError(err)
 
 	payload := testPayload(models.JSONMap{
@@ -204,7 +217,7 @@ func TestWebhookSender_Send_CustomHeadersCannotOverrideSigning(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	secret, err := generateWebhookSecret()
+	secret, err := GenerateWebhookSecret()
 	r.NoError(err)
 
 	payload := testPayload(models.JSONMap{
@@ -249,7 +262,7 @@ func TestWebhookSender_Send_AutoGeneratesSecret(t *testing.T) {
 			called = true
 			secret, ok := ch.Settings[settingsKeySigningSecret].(string)
 			r.True(ok)
-			r.True(strings.HasPrefix(secret, webhookSecretPrefix))
+			r.True(strings.HasPrefix(secret, WebhookSecretPrefix))
 
 			return nil
 		},
@@ -262,7 +275,13 @@ func TestWebhookSender_Send_AutoGeneratesSecret(t *testing.T) {
 	// The channel's in-memory settings now carry the generated secret.
 	secret, ok := payload.Integration.Settings[settingsKeySigningSecret].(string)
 	r.True(ok)
-	r.True(strings.HasPrefix(secret, webhookSecretPrefix))
+	r.True(strings.HasPrefix(secret, WebhookSecretPrefix))
+
+	// ...in standard padded base64, the form the official libraries decode.
+	r.True(strings.HasSuffix(secret, "="))
+	key, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(secret, WebhookSecretPrefix))
+	r.NoError(err)
+	r.Len(key, webhookSecretBytes)
 }
 
 // TestWebhookSender_Send_NoUpdateCallbackWarns ensures auto-generation works
@@ -300,9 +319,9 @@ func TestWebhookSender_Send_TwoActiveSecrets(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	active, err := generateWebhookSecret()
+	active, err := GenerateWebhookSecret()
 	r.NoError(err)
-	previous, err := generateWebhookSecret()
+	previous, err := GenerateWebhookSecret()
 	r.NoError(err)
 
 	payload := testPayload(models.JSONMap{
@@ -317,6 +336,62 @@ func TestWebhookSender_Send_TwoActiveSecrets(t *testing.T) {
 
 	parts := strings.Split(got.Get(headerWebhookSignature), " ")
 	r.Len(parts, 2, "both active and previous secret must sign")
+}
+
+// TestWebhookSender_Send_TwoActiveSecretsMixedEncodings covers the rotation of
+// a legacy channel: the active secret is standard base64, the previous one is
+// the legacy URL-safe unpadded spelling. Both must sign, and the official
+// library must verify the request with either key.
+func TestWebhookSender_Send_TwoActiveSecretsMixedEncodings(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	var (
+		got     http.Header
+		gotBody []byte
+	)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		got = req.Header.Clone()
+		gotBody, _ = io.ReadAll(req.Body)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	active, err := GenerateWebhookSecret()
+	r.NoError(err)
+
+	// A legacy key containing both '-' and '_' in its URL-safe spelling.
+	legacyKey := []byte{0xfb, 0xff, 0xbf, 0xfe, 0x00, 0x01, 0x02, 0x03, 0xfb, 0xef, 0xbe, 0xfb,
+		0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80, 0x90, 0xa0, 0xb0, 0xc0}
+	previous := WebhookSecretPrefix + base64.RawURLEncoding.EncodeToString(legacyKey)
+	r.True(strings.ContainsAny(previous, "-_"))
+
+	payload := testPayload(models.JSONMap{
+		"url":                            srv.URL,
+		settingsKeySigningSecret:         active,
+		settingsKeySigningSecretPrevious: previous,
+		settingsKeySigningSecretExpiry:   time.Now().Add(time.Hour).Format(time.RFC3339),
+	})
+
+	sender := &WebhookSender{}
+	r.NoError(sender.Send(context.Background(), newJobCtx(), payload))
+
+	parts := strings.Split(got.Get(headerWebhookSignature), " ")
+	r.Len(parts, 2, "both active and previous secret must sign")
+
+	whActive, err := standardwebhooks.NewWebhook(active)
+	r.NoError(err)
+	r.NoError(whActive.Verify(gotBody, got))
+
+	prevKey, err := DecodeWebhookSecret(previous)
+	r.NoError(err)
+	r.Equal(legacyKey, prevKey)
+
+	whPrevious, err := standardwebhooks.NewWebhookRaw(prevKey)
+	r.NoError(err)
+	r.NoError(whPrevious.Verify(gotBody, got))
 }
 
 // TestWebhookSender_Send_ExpiredPreviousSecretPurged verifies that an expired
@@ -334,9 +409,9 @@ func TestWebhookSender_Send_ExpiredPreviousSecretPurged(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	active, err := generateWebhookSecret()
+	active, err := GenerateWebhookSecret()
 	r.NoError(err)
-	previous, err := generateWebhookSecret()
+	previous, err := GenerateWebhookSecret()
 	r.NoError(err)
 
 	payload := testPayload(models.JSONMap{
@@ -431,7 +506,7 @@ func TestWebhookSender_Send_CapturesDeliveryDetailsOnFailure(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	secret, err := generateWebhookSecret()
+	secret, err := GenerateWebhookSecret()
 	r.NoError(err)
 
 	payload := testPayload(models.JSONMap{
@@ -468,7 +543,7 @@ func TestWebhookSender_Send_CapturesDeliveryDetailsOnSuccess(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	secret, err := generateWebhookSecret()
+	secret, err := GenerateWebhookSecret()
 	r.NoError(err)
 
 	payload := testPayload(models.JSONMap{
@@ -612,7 +687,7 @@ func TestWebhookSender_Send_RelapseIncludesRecoveryPeriod(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	secret, err := generateWebhookSecret()
+	secret, err := GenerateWebhookSecret()
 	r.NoError(err)
 
 	payload := testPayload(models.JSONMap{

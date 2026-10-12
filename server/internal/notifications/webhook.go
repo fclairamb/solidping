@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/hmac"
-	crypto_rand "crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
@@ -28,10 +27,6 @@ import (
 
 const (
 	webhookTimeout = 30 * time.Second
-	// webhookSecretPrefix is the Svix-compatible prefix for signing secrets.
-	webhookSecretPrefix = "whsec_"
-	// webhookSecretBytes is the number of random bytes in a signing secret.
-	webhookSecretBytes = 32
 
 	// Settings keys used by the signing-secret lifecycle.
 	settingsKeySigningSecret         = "signingSecret"
@@ -110,17 +105,6 @@ type WebhookSender struct {
 	UpdateChannel func(ctx context.Context, channel *models.Integration) error
 }
 
-// generateWebhookSecret returns a fresh `whsec_<base64url-unpadded-32-bytes>`
-// signing secret using crypto/rand.
-func generateWebhookSecret() (string, error) {
-	raw := make([]byte, webhookSecretBytes)
-	if _, err := crypto_rand.Read(raw); err != nil {
-		return "", fmt.Errorf("generating webhook secret: %w", err)
-	}
-
-	return webhookSecretPrefix + base64.RawURLEncoding.EncodeToString(raw), nil
-}
-
 // signRequest computes the Standard Webhooks signature header value over the
 // signed content `"{id}.{timestamp}.{body}"` for each secret. The returned
 // string is a space-separated list of `v1,<base64-hmac>` entries.
@@ -136,11 +120,11 @@ func signRequest(secrets []string, id, timestamp string, body []byte) (string, e
 
 	sigs := make([]string, 0, len(secrets))
 	for _, secret := range secrets {
-		trimmed := strings.TrimPrefix(secret, webhookSecretPrefix)
-
-		secretBytes, err := base64.RawURLEncoding.DecodeString(trimmed)
+		// Tolerant decode: standard or URL-safe, padded or not, so a legacy
+		// stored secret signs exactly as it always did.
+		secretBytes, err := DecodeWebhookSecret(secret)
 		if err != nil {
-			return "", fmt.Errorf("%w: %w", ErrInvalidSigningSecret, err)
+			return "", err
 		}
 
 		mac := hmac.New(sha256.New, secretBytes)
@@ -356,7 +340,7 @@ func (s *WebhookSender) ensureSecrets(
 
 	// Auto-generate on first delivery for legacy channels without a secret.
 	if active == "" {
-		generated, err := generateWebhookSecret()
+		generated, err := GenerateWebhookSecret()
 		if err != nil {
 			return nil, err
 		}
