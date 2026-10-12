@@ -409,29 +409,62 @@ func TestWorkerIdentityValidate_Invalid(t *testing.T) {
 	}
 }
 
-// TestWorkerIdentityWarnIfTruncated proves a truncated hostname produces a WARN
-// naming the resulting slug (silent slug collisions become visible), and that a
-// non-truncated or overridden identity stays quiet.
-func TestWorkerIdentityWarnIfTruncated(t *testing.T) {
+// TestWorkerIdentityLogDerivation proves a truncated or sanitized hostname is
+// reported with the resulting slug, at WARN only when another process can
+// register in the same database, and that an identity needing neither, or an
+// overridden one, stays quiet.
+func TestWorkerIdentityLogDerivation(t *testing.T) {
 	t.Parallel()
 
+	noHostname := func() (string, error) { return "", nil }
+
 	cases := []struct {
-		name     string
-		identity WorkerIdentity
-		wantWarn bool
+		name       string
+		identity   WorkerIdentity
+		mayCollide bool
+		wantLevel  string // empty: nothing logged
+		wantIn     []string
 	}{
 		{
-			name:     "truncated hostname warns",
-			identity: resolveWorkerIdentity("", staticHostname("solidping-checks-eu2-abcde")),
-			wantWarn: true,
+			name:       "truncated hostname on a shared database warns",
+			identity:   resolveWorkerIdentity("", staticHostname("solidping-checks-eu2-abcde")),
+			mayCollide: true,
+			wantLevel:  "level=WARN",
+			wantIn:     []string{"truncated", "slug=solidping-check", "SP_NODE_NAME"},
 		},
 		{
-			name:     "short hostname stays quiet",
-			identity: resolveWorkerIdentity("", staticHostname("worker-eu2")),
+			name:      "truncated laptop hostname on a single node is debug",
+			identity:  resolveWorkerIdentity("", staticHostname("alices-macbook-air.local")),
+			wantLevel: "level=DEBUG",
+			wantIn:    []string{"truncated", "slug=alices-macbook-"},
 		},
 		{
-			name:     "override stays quiet",
-			identity: resolveWorkerIdentity("solidping-eu2", func() (string, error) { return "", nil }),
+			name:       "dotted hostname on a shared database warns",
+			identity:   resolveWorkerIdentity("", staticHostname("host-002.lan")),
+			mayCollide: true,
+			wantLevel:  "level=WARN",
+			wantIn:     []string{"sanitized", "slug=host-002-lan", "SP_NODE_NAME"},
+		},
+		{
+			name:      "dotted hostname on a single node is debug",
+			identity:  resolveWorkerIdentity("", staticHostname("host-002.lan")),
+			wantLevel: "level=DEBUG",
+			wantIn:    []string{"sanitized", "slug=host-002-lan"},
+		},
+		{
+			name:       "short clean hostname stays quiet",
+			identity:   resolveWorkerIdentity("", staticHostname("worker-eu2")),
+			mayCollide: true,
+		},
+		{
+			name:       "override stays quiet",
+			identity:   resolveWorkerIdentity("solidping-eu2", noHostname),
+			mayCollide: true,
+		},
+		{
+			name:       "override stays quiet even with illegal characters",
+			identity:   resolveWorkerIdentity("eu2.example.com", noHostname),
+			mayCollide: true,
 		},
 	}
 
@@ -441,71 +474,75 @@ func TestWorkerIdentityWarnIfTruncated(t *testing.T) {
 			r := require.New(t)
 
 			var buf bytes.Buffer
-			logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+			logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
-			tc.identity.WarnIfTruncated(context.Background(), logger)
+			tc.identity.logDerivation(context.Background(), logger, tc.mayCollide)
 
 			out := buf.String()
-			if !tc.wantWarn {
+			if tc.wantLevel == "" {
 				r.Empty(out)
 
 				return
 			}
 
-			r.Contains(out, "level=WARN")
-			r.Contains(out, "slug=solidping-check")
-			r.Contains(out, "SP_NODE_NAME")
+			r.Contains(out, tc.wantLevel)
+			for _, want := range tc.wantIn {
+				r.Contains(out, want)
+			}
 		})
 	}
 }
 
-// TestWorkerIdentityWarnIfSanitized proves a hostname whose illegal
-// characters had to be substituted produces a WARN naming the resulting slug
-// (in the spirit of WarnIfTruncated), and that a hostname needing no
-// substitution or an overridden identity stays quiet.
-func TestWorkerIdentityWarnIfSanitized(t *testing.T) {
+// TestWorkerIdentityLogDerivationOncePerProcess proves the check worker and
+// the job worker, which resolve the same identity, report it once between
+// them.
+func TestWorkerIdentityLogDerivationOncePerProcess(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	// A hostname no other test logs through LogDerivation: the guard is
+	// process-wide.
+	identity := resolveWorkerIdentity("", staticHostname("bobs-workstation-01.local"))
+	r.True(identity.Truncated)
+
+	var checkWorker, jobWorker bytes.Buffer
+
+	identity.LogDerivation(context.Background(), slog.New(slog.NewTextHandler(&checkWorker, nil)), true)
+	identity.LogDerivation(context.Background(), slog.New(slog.NewTextHandler(&jobWorker, nil)), true)
+
+	r.Contains(checkWorker.String(), "level=WARN")
+	r.Empty(jobWorker.String())
+}
+
+// TestWorkerSlugMayCollide pins when another process can register in the same
+// database: any split role, or a networked Postgres. A single `all` node on
+// SQLite or embedded Postgres cannot collide with anyone.
+func TestWorkerSlugMayCollide(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		name     string
-		identity WorkerIdentity
-		wantWarn bool
+		role   string
+		dbType string
+		want   bool
 	}{
-		{
-			name:     "dotted hostname warns",
-			identity: resolveWorkerIdentity("", staticHostname("host-002.lan")),
-			wantWarn: true,
-		},
-		{
-			name:     "already-clean hostname stays quiet",
-			identity: resolveWorkerIdentity("", staticHostname("worker-eu2")),
-		},
-		{
-			name:     "override stays quiet even with illegal characters",
-			identity: resolveWorkerIdentity("eu2.example.com", func() (string, error) { return "", nil }),
-		},
+		{role: NodeRoleAll, dbType: DatabaseTypeSQLite, want: false},
+		{role: NodeRoleAll, dbType: DatabaseTypeSQLiteMemory, want: false},
+		{role: NodeRoleAll, dbType: DatabaseTypePostgresEmbedded, want: false},
+		{role: NodeRoleAll, dbType: DatabaseTypePostgres, want: true},
+		{role: NodeRoleChecks, dbType: DatabaseTypePostgres, want: true},
+		{role: "api,jobs", dbType: DatabaseTypeSQLite, want: true},
+		{role: NodeRoleAgent, dbType: "", want: true},
 	}
 
 	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
+		t.Run(tc.role+"/"+tc.dbType, func(t *testing.T) {
 			t.Parallel()
-			r := require.New(t)
 
-			var buf bytes.Buffer
-			logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+			cfg := &Config{}
+			cfg.Node.Role = tc.role
+			cfg.Database.Type = tc.dbType
 
-			tc.identity.WarnIfSanitized(context.Background(), logger)
-
-			out := buf.String()
-			if !tc.wantWarn {
-				r.Empty(out)
-
-				return
-			}
-
-			r.Contains(out, "level=WARN")
-			r.Contains(out, "slug=host-002-lan")
-			r.Contains(out, "SP_NODE_NAME")
+			require.Equal(t, tc.want, cfg.WorkerSlugMayCollide())
 		})
 	}
 }
