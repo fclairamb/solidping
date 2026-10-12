@@ -30,6 +30,37 @@ type Policy struct {
 	// RehashOnLogin gates the lazy login-time rehash (see ShouldRehash). It is
 	// part of the resolved policy so it hot-swaps with the rest of it.
 	RehashOnLogin bool
+	// SmallHostProfile reports that Argon2 holds SmallHostArgon2Params because
+	// the host is small and nothing set the cost explicitly. Informational
+	// (boot log); hashing only reads Argon2.
+	SmallHostProfile bool
+}
+
+// SmallHostArgon2Params is the OWASP minimum argon2id profile (m=19 MiB, t=2,
+// p=1) used by default on small hosts (spec 2026-10-12-07). Key and salt
+// lengths stay the defaults.
+//
+//nolint:gochecknoglobals // immutable profile
+var SmallHostArgon2Params = Argon2Params{
+	Memory:     19456,
+	Time:       2,
+	Threads:    1,
+	KeyLength:  32,
+	SaltLength: 16,
+}
+
+// PolicyOption tunes PolicyFromConfig with facts about the running process.
+type PolicyOption func(*policyOptions)
+
+type policyOptions struct {
+	smallHost bool
+}
+
+// WithSmallHost tells PolicyFromConfig whether the process qualifies for the
+// small-host argon2id profile: a small memory budget and a single-process
+// (role "all") deployment. The caller decides, so PolicyFromConfig stays pure.
+func WithSmallHost(small bool) PolicyOption {
+	return func(o *policyOptions) { o.smallHost = small }
 }
 
 // defaultBcryptCost is the fallback bcrypt cost when none is configured.
@@ -88,8 +119,17 @@ func getDefaultPolicy() Policy {
 // a Config assembled directly (e.g. in tests) without going through config.Load
 // behaves exactly like the documented default. A genuinely *unknown* (non-empty
 // but unsupported) algorithm is rejected — never a silent fallback.
-func PolicyFromConfig(authCfg *config.AuthConfig) (Policy, error) {
+//
+// On a small host (WithSmallHost(true)), an argon2id policy whose cost fields
+// were not set explicitly (PasswordConfig.Argon2Explicit) and whose auto-profile
+// is on uses SmallHostArgon2Params instead of the 64 MiB default.
+func PolicyFromConfig(authCfg *config.AuthConfig, opts ...PolicyOption) (Policy, error) {
 	pwCfg := authCfg.Password
+
+	var options policyOptions
+	for _, opt := range opts {
+		opt(&options)
+	}
 
 	algorithm := pwCfg.Algorithm
 	if algorithm == "" {
@@ -113,6 +153,16 @@ func PolicyFromConfig(authCfg *config.AuthConfig) (Policy, error) {
 		policy.RehashOnLogin = true
 	}
 
+	if policy.Algorithm == argon2idID && options.smallHost && !pwCfg.Argon2Explicit &&
+		autoProfileEnabled(pwCfg) {
+		resolved := policy.Argon2
+		policy.Argon2 = SmallHostArgon2Params
+		// Key and salt length are not memory cost: keep what is configured.
+		policy.Argon2.KeyLength = resolved.KeyLength
+		policy.Argon2.SaltLength = resolved.SaltLength
+		policy.SmallHostProfile = true
+	}
+
 	switch policy.Algorithm {
 	case argon2idID, bcryptID:
 		return policy, nil
@@ -126,6 +176,13 @@ func PolicyFromConfig(authCfg *config.AuthConfig) (Policy, error) {
 // defaults). Used to decide whether RehashOnLogin should default to true.
 func isZeroValuePasswordConfig(pwCfg config.PasswordConfig) bool {
 	return pwCfg == config.PasswordConfig{}
+}
+
+// autoProfileEnabled reports whether the small-host profile may apply. A
+// zero-value block (hand-built config, never through config.Load) gets the
+// documented default, on, like RehashOnLogin.
+func autoProfileEnabled(pwCfg config.PasswordConfig) bool {
+	return pwCfg.Argon2.AutoProfile || isZeroValuePasswordConfig(pwCfg)
 }
 
 // ShouldRehash reports whether a stored hash should be re-minted on the user's

@@ -1402,6 +1402,93 @@ func TestApplyPasswordHashingEnvIsIdempotent(t *testing.T) {
 	r.Equal(once, cfg, "re-reading SP_AUTH_PASSWORD_* must be idempotent")
 }
 
+// TestLoad_Argon2ExplicitDefaultsFalse pins that a plain Load (no file, no
+// SP_AUTH_PASSWORD_ARGON2_* variable) leaves the argon2 cost implicit, so the
+// small-host profile may apply, and that the auto-profile defaults to on.
+//
+//nolint:paralleltest // t.Chdir changes the process working directory
+func TestLoad_Argon2ExplicitDefaultsFalse(t *testing.T) {
+	r := require.New(t)
+
+	t.Chdir(t.TempDir())
+
+	cfg, err := Load()
+	r.NoError(err)
+	r.False(cfg.Auth.Password.Argon2Explicit)
+	r.True(cfg.Auth.Password.Argon2.AutoProfile, "auto-profile defaults to true")
+	r.Equal(uint32(64*1024), cfg.Auth.Password.Argon2.Memory)
+}
+
+// TestLoad_Argon2ExplicitFromEnv: each cost variable on its own makes the cost
+// explicit. Key/salt length do not (they do not change the memory cost).
+func TestLoad_Argon2ExplicitFromEnv(t *testing.T) {
+	tests := []struct {
+		name string
+		env  string
+		val  string
+		want bool
+	}{
+		{name: "memory", env: "SP_AUTH_PASSWORD_ARGON2_MEMORY", val: "65536", want: true},
+		{name: "time", env: "SP_AUTH_PASSWORD_ARGON2_TIME", val: "3", want: true},
+		{name: "threads", env: "SP_AUTH_PASSWORD_ARGON2_THREADS", val: "4", want: true},
+		{name: "key length", env: "SP_AUTH_PASSWORD_ARGON2_KEY_LENGTH", val: "32", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := require.New(t)
+
+			t.Chdir(t.TempDir())
+			t.Setenv(tt.env, tt.val)
+
+			cfg, err := Load()
+			r.NoError(err)
+			r.Equal(tt.want, cfg.Auth.Password.Argon2Explicit)
+		})
+	}
+}
+
+// TestLoad_Argon2ExplicitFromConfigFile: a config.yml argon2 cost key makes the
+// cost explicit, while an unrelated password key does not.
+//
+//nolint:paralleltest // t.Chdir changes the process working directory
+func TestLoad_Argon2ExplicitFromConfigFile(t *testing.T) {
+	r := require.New(t)
+
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	yamlDoc := "auth:\n  password:\n    argon2:\n      memory: 65536\n"
+	r.NoError(os.WriteFile(filepath.Join(dir, "config.yml"), []byte(yamlDoc), 0o600))
+
+	cfg, err := Load()
+	r.NoError(err)
+	r.True(cfg.Auth.Password.Argon2Explicit)
+
+	otherDoc := "auth:\n  password:\n    rehash_on_login: false\n"
+	r.NoError(os.WriteFile(filepath.Join(dir, "config.yml"), []byte(otherDoc), 0o600))
+
+	cfg, err = Load()
+	r.NoError(err)
+	r.False(cfg.Auth.Password.Argon2Explicit, "a non-cost key leaves the cost implicit")
+}
+
+// TestApplyPasswordHashingEnvAutoProfile: SP_AUTH_PASSWORD_ARGON2_AUTO_PROFILE
+// turns the small-host profile off, and does not by itself make the cost
+// explicit.
+func TestApplyPasswordHashingEnvAutoProfile(t *testing.T) {
+	r := require.New(t)
+
+	t.Setenv("SP_AUTH_PASSWORD_ARGON2_AUTO_PROFILE", "false")
+
+	cfg := defaultPasswordConfig()
+	cfg.Argon2.AutoProfile = true
+	applyPasswordHashingEnv(&cfg)
+
+	r.False(cfg.Argon2.AutoProfile)
+	r.False(cfg.Argon2Explicit)
+}
+
 // TestValidatePasswordConfig covers the fail-fast validation: defaults pass,
 // bcrypt with honored cost passes, and each misconfiguration is rejected.
 // TestValidateDeploymentMode covers spec 2026-09-06-01: /api/mgmt/version
@@ -1577,7 +1664,7 @@ func TestIsPasswordParameterKey(t *testing.T) {
 	for _, key := range []string{
 		ParamKeyPasswordAlgorithm, ParamKeyPasswordArgon2Memory, ParamKeyPasswordArgon2Time,
 		ParamKeyPasswordArgon2Threads, ParamKeyPasswordArgon2KeyLen, ParamKeyPasswordArgon2SaltLen,
-		ParamKeyPasswordBcryptCost, ParamKeyPasswordRehashOnLogin,
+		ParamKeyPasswordArgon2Auto, ParamKeyPasswordBcryptCost, ParamKeyPasswordRehashOnLogin,
 	} {
 		r.Truef(IsPasswordParameterKey(key), "%s should be a password parameter key", key)
 	}

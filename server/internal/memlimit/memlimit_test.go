@@ -315,3 +315,54 @@ func TestAppliedIsDefault(t *testing.T) {
 	r.False(Applied{MemoryLimitSource: sourceDefault, GCPercentSource: sourceEnv}.IsDefault())
 	r.False(Applied{MemoryLimitSource: sourceConfig, GCPercentSource: sourceConfig}.IsDefault())
 }
+
+func TestSmallHost(t *testing.T) {
+	t.Parallel()
+
+	const (
+		mib = int64(1024 * 1024)
+		gib = 1024 * mib
+	)
+
+	tests := []struct {
+		name   string
+		detect func() (int64, bool)
+		host   func() (int64, bool)
+		want   bool
+	}{
+		{name: "1 GiB host", detect: noCgroup, host: fixedHost(gib), want: true},
+		{name: "2 GiB host is still small", detect: noCgroup, host: fixedHost(2 * gib), want: true},
+		{name: "just above 2 GiB", detect: noCgroup, host: fixedHost(2*gib + 1), want: false},
+		{name: "8 GiB host", detect: noCgroup, host: fixedHost(8 * gib), want: false},
+		{
+			name:   "8 GiB host with a 512 MiB cgroup limit",
+			detect: fixedCgroup(512 * mib), host: fixedHost(8 * gib), want: true,
+		},
+		{name: "1 GiB host with a 4 GiB cgroup limit", detect: fixedCgroup(4 * gib), host: fixedHost(gib), want: false},
+		{name: "non-Linux: nothing detected", detect: noCgroup, host: noHost, want: false},
+		{name: "nil detectors", detect: nil, host: nil, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.want, smallHost(tt.detect, tt.host))
+		})
+	}
+}
+
+func TestEffectiveMemoryPrefersCgroup(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	got, ok := effectiveMemory(fixedCgroup(100), fixedHost(200))
+	r.True(ok)
+	r.Equal(int64(100), got)
+
+	got, ok = effectiveMemory(noCgroup, fixedHost(200))
+	r.True(ok)
+	r.Equal(int64(200), got)
+
+	_, ok = effectiveMemory(noCgroup, noHost)
+	r.False(ok)
+}

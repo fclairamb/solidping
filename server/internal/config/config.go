@@ -1155,8 +1155,9 @@ var deprecatedAggregationRetentionKeys = []string{
 // loadConfigFiles merges config.yml, then config.local.yml (gitignored, for
 // credentials and dev settings), into koanfInstance when they exist. The
 // files are loaded into their own instance first, so what the operator wrote
-// can be told apart from the built-in defaults.
-func loadConfigFiles(koanfInstance *koanf.Koanf) error {
+// can be told apart from the built-in defaults. It returns that file-only
+// instance so callers can ask what the operator set.
+func loadConfigFiles(koanfInstance *koanf.Koanf) (*koanf.Koanf, error) {
 	fileKoanf := koanf.New(".")
 
 	for _, name := range []string{"config.yml", "config.local.yml"} {
@@ -1165,17 +1166,28 @@ func loadConfigFiles(koanfInstance *koanf.Koanf) error {
 		}
 
 		if err := fileKoanf.Load(file.Provider(name), yaml.Parser()); err != nil {
-			return fmt.Errorf("loading %s: %w", name, err)
+			return nil, fmt.Errorf("loading %s: %w", name, err)
 		}
 	}
 
 	warnDeprecatedFileKeys(slog.Default(), fileKoanf)
 
 	if err := koanfInstance.Merge(fileKoanf); err != nil {
-		return fmt.Errorf("merging config files: %w", err)
+		return nil, fmt.Errorf("merging config files: %w", err)
 	}
 
-	return nil
+	return fileKoanf, nil
+}
+
+// argon2CostSetInFile reports whether a config file sets an argon2 cost field.
+func argon2CostSetInFile(fileKoanf *koanf.Koanf) bool {
+	for _, key := range argon2CostFileKeys {
+		if fileKoanf.Exists(key) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // warnDeprecatedFileKeys logs one WARN per deprecated key the operator set in
@@ -1350,6 +1362,13 @@ type PasswordConfig struct {
 	// new passwords (new users, password changes/resets) use the new profile;
 	// existing hashes are left untouched.
 	RehashOnLogin bool `koanf:"rehash_on_login"`
+	// Argon2Explicit records that the operator chose at least one argon2 cost
+	// field (memory, time or threads) in a config file, an
+	// SP_AUTH_PASSWORD_ARGON2_* variable or a DB-stored auth.password.argon2.*
+	// parameter. An explicit choice is never replaced by the small-host
+	// profile (spec 2026-10-12-07). Never read from koanf: Load and the
+	// systemconfig overlay set it.
+	Argon2Explicit bool `koanf:"-"`
 }
 
 // Argon2Params are the argon2id cost parameters (memory in KiB).
@@ -1359,6 +1378,29 @@ type Argon2Params struct {
 	Threads    uint8  `koanf:"threads"`     // default 4
 	KeyLength  uint32 `koanf:"key_length"`  // default 32
 	SaltLength uint32 `koanf:"salt_length"` // default 16
+	// AutoProfile (default true) lets a single-process deployment on a small
+	// host (2 GiB or less) hash with the OWASP minimum profile m=19456 t=2 p=1
+	// instead of 64 MiB, unless the cost fields are set explicitly.
+	// Env: SP_AUTH_PASSWORD_ARGON2_AUTO_PROFILE.
+	AutoProfile bool `koanf:"auto_profile"`
+}
+
+// argon2CostFileKeys are the config-file keys that make the argon2 cost explicit.
+//
+//nolint:gochecknoglobals // immutable key list
+var argon2CostFileKeys = []string{
+	"auth.password.argon2.memory",
+	"auth.password.argon2.time",
+	"auth.password.argon2.threads",
+}
+
+// argon2CostEnvVars are the env variables that make the argon2 cost explicit.
+//
+//nolint:gochecknoglobals // immutable key list
+var argon2CostEnvVars = []string{
+	"SP_AUTH_PASSWORD_ARGON2_MEMORY",
+	"SP_AUTH_PASSWORD_ARGON2_TIME",
+	"SP_AUTH_PASSWORD_ARGON2_THREADS",
 }
 
 // BcryptParams are the bcrypt cost parameters.
@@ -2031,11 +2073,12 @@ func Load() (*Config, error) {
 			Password: PasswordConfig{
 				Algorithm: PasswordAlgorithmArgon2id,
 				Argon2: Argon2Params{
-					Memory:     64 * 1024,
-					Time:       3,
-					Threads:    4,
-					KeyLength:  32,
-					SaltLength: 16,
+					Memory:      64 * 1024,
+					Time:        3,
+					Threads:     4,
+					KeyLength:   32,
+					SaltLength:  16,
+					AutoProfile: true,
 				},
 				Bcrypt:        BcryptParams{Cost: 12},
 				RehashOnLogin: true,
@@ -2179,7 +2222,8 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("loading defaults: %w", err)
 	}
 
-	if err := loadConfigFiles(koanfInstance); err != nil {
+	fileKoanf, err := loadConfigFiles(koanfInstance)
+	if err != nil {
 		return nil, err
 	}
 
@@ -2208,6 +2252,8 @@ func Load() (*Config, error) {
 	if err := koanfInstance.Unmarshal("", &cfg); err != nil {
 		return nil, fmt.Errorf("unmarshaling config: %w", err)
 	}
+
+	cfg.Auth.Password.Argon2Explicit = argon2CostSetInFile(fileKoanf)
 
 	// Adding port from environment variable if it exists
 	if envPort := os.Getenv("PORT"); envPort != "" {
@@ -2490,6 +2536,13 @@ func applyPasswordHashingEnv(cfg *PasswordConfig) {
 	u32Env("SP_AUTH_PASSWORD_ARGON2_SALT_LENGTH", &cfg.Argon2.SaltLength)
 	intEnv("SP_AUTH_PASSWORD_BCRYPT_COST", &cfg.Bcrypt.Cost)
 	boolEnv("SP_AUTH_PASSWORD_REHASH_ON_LOGIN", &cfg.RehashOnLogin)
+	boolEnv("SP_AUTH_PASSWORD_ARGON2_AUTO_PROFILE", &cfg.Argon2.AutoProfile)
+
+	for _, name := range argon2CostEnvVars {
+		if os.Getenv(name) != "" {
+			cfg.Argon2Explicit = true
+		}
+	}
 }
 
 // applyJobsEnv reads SP_JOBS_* into cfg. koanf's env loader collapses every
@@ -3664,6 +3717,7 @@ const (
 	ParamKeyPasswordArgon2Threads = "auth.password.argon2.threads"
 	ParamKeyPasswordArgon2KeyLen  = "auth.password.argon2.key_length"
 	ParamKeyPasswordArgon2SaltLen = "auth.password.argon2.salt_length"
+	ParamKeyPasswordArgon2Auto    = "auth.password.argon2.auto_profile"
 	ParamKeyPasswordBcryptCost    = "auth.password.bcrypt.cost"
 	ParamKeyPasswordRehashOnLogin = "auth.password.rehash_on_login"
 )
@@ -3674,7 +3728,7 @@ func IsPasswordParameterKey(key string) bool {
 	switch key {
 	case ParamKeyPasswordAlgorithm, ParamKeyPasswordArgon2Memory, ParamKeyPasswordArgon2Time,
 		ParamKeyPasswordArgon2Threads, ParamKeyPasswordArgon2KeyLen, ParamKeyPasswordArgon2SaltLen,
-		ParamKeyPasswordBcryptCost, ParamKeyPasswordRehashOnLogin:
+		ParamKeyPasswordArgon2Auto, ParamKeyPasswordBcryptCost, ParamKeyPasswordRehashOnLogin:
 		return true
 	default:
 		return false
@@ -3717,7 +3771,7 @@ func ValidatePasswordParameter(key string, value any) error {
 		return validatePasswordIntBound(key, value, argon2SaltLenFloor)
 	case ParamKeyPasswordBcryptCost:
 		return validatePasswordIntRange(key, value, bcryptCostMin, bcryptCostMax)
-	case ParamKeyPasswordRehashOnLogin:
+	case ParamKeyPasswordRehashOnLogin, ParamKeyPasswordArgon2Auto:
 		if _, ok := value.(bool); !ok {
 			return fmt.Errorf("%w: %s must be a boolean", ErrInvalidPasswordParameter, key)
 		}

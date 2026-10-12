@@ -27,8 +27,10 @@ const unlimited = math.MaxInt64
 // the config knob overrides it.
 const defaultGCPercent = 100
 
-// smallHostMaxBytes is the largest host RAM that gets the host-derived soft cap.
-const smallHostMaxBytes = int64(2) << 30
+// SmallHostMaxBytes is the largest memory budget treated as a "small host": it
+// gets the host-derived soft cap and the lighter argon2id hashing profile
+// (SmallHost). One threshold, so the two never disagree.
+const SmallHostMaxBytes = int64(2) << 30
 
 // hostRatioDivisor sets the host-derived soft cap to half of the host's RAM.
 const hostRatioDivisor = 2
@@ -165,10 +167,49 @@ func memLimitFromHost(cfg Config, detectHost func() (int64, bool)) (memDecision,
 		return memDecision{}, false
 	}
 	total, ok := detectHost()
-	if !ok || total <= 0 || total > smallHostMaxBytes {
+	if !ok || !isSmall(total) {
 		return memDecision{}, false
 	}
 	return memDecision{set: true, bytes: total / hostRatioDivisor, source: sourceHost}, true
+}
+
+// isSmall reports whether a memory budget in bytes counts as a small host.
+func isSmall(total int64) bool {
+	return total > 0 && total <= SmallHostMaxBytes
+}
+
+// EffectiveMemoryBytes returns the memory budget the process runs under: the
+// cgroup limit when one is set, else the host's MemTotal. ok is false when
+// neither is known (always the case off Linux).
+func EffectiveMemoryBytes() (int64, bool) {
+	return effectiveMemory(detectCgroupMemoryLimitOS, detectHostMemoryOS)
+}
+
+// SmallHost reports whether the effective memory budget (EffectiveMemoryBytes)
+// is at most SmallHostMaxBytes. Unknown budgets (non-Linux) are not small.
+func SmallHost() bool {
+	return smallHost(detectCgroupMemoryLimitOS, detectHostMemoryOS)
+}
+
+// effectiveMemory is the testable core of EffectiveMemoryBytes.
+func effectiveMemory(detect, detectHost func() (int64, bool)) (int64, bool) {
+	if detect != nil {
+		if limit, ok := detect(); ok && limit > 0 {
+			return limit, true
+		}
+	}
+	if detectHost != nil {
+		if total, ok := detectHost(); ok && total > 0 {
+			return total, true
+		}
+	}
+	return 0, false
+}
+
+// smallHost is the testable core of SmallHost.
+func smallHost(detect, detectHost func() (int64, bool)) bool {
+	total, ok := effectiveMemory(detect, detectHost)
+	return ok && isSmall(total)
 }
 
 // memLimitFromConfig parses an explicit cfg.MemoryLimit. An unparseable value
