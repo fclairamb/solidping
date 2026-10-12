@@ -60,16 +60,7 @@ jobs:
           cache-dependency-path: server/go.sum
 
       - name: Create embed placeholders for tests
-        run: |
-          mkdir -p internal/app/dash0res && echo "placeholder" > internal/app/dash0res/index.html
-          mkdir -p internal/app/status0res && echo "placeholder" > internal/app/status0res/index.html
-          mkdir -p internal/app/status0res/embed/v1
-          echo "(()=>{})();" > internal/app/status0res/embed/v1/widget.js
-          mkdir -p internal/app/docsres && echo "placeholder" > internal/app/docsres/index.html
-          echo "placeholder" > internal/app/docsres/404.html
-          echo "placeholder" > internal/app/docsres/llms.txt
-          echo "placeholder" > internal/app/docsres/llms-full.txt
-          echo '[]' > internal/app/docsres/search-index.json
+        run: ../scripts/embed-placeholders.sh
 
       # Scoped to the packages that actually carry tagged files. Building the
       # whole tree under a tag it does not use would only slow this down.
@@ -113,7 +104,10 @@ jobs:
   postgres:
     name: Postgres layer (against main)
     runs-on: ubuntu-26.04
-    timeout-minutes: 25
+    # Same budget as backend-postgres in ci.yml. At -p 1 this layer needs ~40
+    # min and hit the old 25 min timeout every night, so the job was cancelled
+    # before it could report anything.
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: server
@@ -133,22 +127,18 @@ jobs:
           restore-keys: |
             embedded-postgres-${{ runner.os }}-
 
+      # The shared script, not an inline copy: the inline copy here drifted
+      # from ci.yml (it lacked the status0 assets/*.js bundle), and
+      # TestCompressionEncodesEmbeddedStatus0JS failed every night for it.
       - name: Create embed placeholders for tests
-        run: |
-          mkdir -p internal/app/dash0res && echo "placeholder" > internal/app/dash0res/index.html
-          mkdir -p internal/app/status0res && echo "placeholder" > internal/app/status0res/index.html
-          mkdir -p internal/app/status0res/embed/v1
-          echo "(()=>{})();" > internal/app/status0res/embed/v1/widget.js
-          mkdir -p internal/app/docsres && echo "placeholder" > internal/app/docsres/index.html
-          echo "placeholder" > internal/app/docsres/404.html
-          echo "placeholder" > internal/app/docsres/llms.txt
-          echo "placeholder" > internal/app/docsres/llms-full.txt
-          echo '[]' > internal/app/docsres/search-index.json
+        run: ../scripts/embed-placeholders.sh
 
+      # -p 4, like backend-postgres in ci.yml (see the comment there for why
+      # concurrent embedded-postgres instances are safe now).
       - name: Run the Postgres test layer
         run: |
           set -o pipefail
-          SP_TEST_REQUIRE_POSTGRES=1 go test -count=1 -p 1 -v ./... 2>&1 \
+          SP_TEST_REQUIRE_POSTGRES=1 go test -count=1 -p 4 -v ./... 2>&1 \
             | tee "$RUNNER_TEMP/postgres-tests.log"
 
       - name: Assert the Postgres layer really ran
