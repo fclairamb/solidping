@@ -11,7 +11,7 @@ The report: the public docs say `SP_SERVER_CHECK_WORKER_NB` defaults to `3`, the
 **The code default.** `CheckWorkerConfig.Nb` (`server/internal/config/config.go:1643-1648`, tag `koanf:"check_worker"` at `:1733`) defaults to `25` at `config.go:1950`. The comment at `:1942-1949` gives the reason (spec 2026-06-30-09): check execution is network I/O, a small pool manufactures head-of-line blocking, and slow checks are deprioritized rather than capped. `newCheckWorker` falls back to `25` too when the value is `<= 0` (`server/internal/checkworker/worker.go:323-330`), although `startCheckWorker` returns before that on `<= 0` (`server/internal/app/server.go:4078-4082`). `JobWorkerConfig.Nb` defaults to `2` (`config.go:1938`). The dashboard performance page agrees with the code: `useState("25")` and `useState("2")` (`web/dash0/src/routes/orgs/$org/server.performance.tsx:45-46`). The history is squashed: `3` was the default from the first commit, `25` arrived in the 2026-07-03 batch (`73ff04718`). The docs were never updated.
 
 **Why 25 is the right default, small hosts included.**
-- Idle cost is negligible. Spec 2026-10-12-04 measured 61-66 goroutines using 3 MB of stack in total with 25 check runners (`specs/todos/2026-10-12-04-reduce-idle-memory-footprint.md:27,65`).
+- Idle cost is negligible. Spec 2026-10-12-04 measured 61-66 goroutines using 3 MB of stack in total with 25 check runners (`2026-10-12-04-reduce-idle-memory-footprint.md:27,65`).
 - It matches the DB pool: `dbPoolMaxOpenConnsDefault = 25` (`config.go:44`).
 - `3` would break another default. `FastLaneReserved` defaults to `5` (`config.go:1980`) and is clamped to `pool − 1` (`checkworker/worker.go:199,343`). With 3 runners the fast lane reservation is clamped to 2 and logs a warning on every start.
 - Browser checks, the only memory-heavy kind, are capped separately at 4 per worker (`web/docs/docs/installation/kubernetes.md:383`).
@@ -43,13 +43,13 @@ A second probe applied candidate string values to every `getKnownParameters()` e
 | `docker-compose.yml:54`, `docker-compose.build.yml:38` | `SP_SERVER_JOB_RUNNERS=1` | `1` | name does not exist | **stale name**, `envcheck` warns |
 | `server/test_region.sh:18-19`, `server/test_checkrunner.sh:60` | `SP_SERVER_CHECK_RUNNERS=1`, `SP_SERVER_JOB_RUNNERS=0` | | names do not exist | **stale names** |
 | `web/dash0/.../server.performance.tsx:45-46` | UI defaults | `25` / `2` | `25` / `2` | correct |
-| `specs/todos/2026-10-12-04-reduce-idle-memory-footprint.md:90,94` | advice + drift note | "lower it on small hosts", `config.go:1887` | var does not bind; the default is now at `config.go:1950` | see below |
+| `2026-10-12-04-reduce-idle-memory-footprint.md:90,94` | advice + drift note | "lower it on small hosts", `config.go:1887` | var does not bind; the default is now at `config.go:1950` | see below |
 
 Places checked with nothing to fix: `deploy/helm/solidping/values.yaml` (only `extraEnv: {}` at `:28-30`, no worker key), `deploy/casaos/solidping/docker-compose.yml`, `deploy/coolify/solidping.yaml`, `deploy/fly/`, `.env.example`, `README.md` (its config table, which also said `3`, was cut in `bed9a99d8` on 2026-09-05). There is no notification-worker pool setting: notifications run as jobs on the job runners.
 
 **`SP_RUNTIME_*`** are documented only in `wiki/runbooks/memory-profiling.md:751-766`. Spec 2026-10-12-04 step 5 already adds them to the public docs. This spec does not.
 
-**Overlap with spec 2026-10-12-04.** Its step 5 last bullet fixes the `3` in `index.md:59` and `runners.md:141`. It is older, so `/implement-todos` will probably land it first. Its step 5 also tells small-host operators to lower `SP_SERVER_CHECK_WORKER_NB`, which does nothing until step 1 below lands. This spec owns the binding and the drift test. If spec 04 already changed the two rows, leave them and let the test confirm.
+**Overlap with spec 2026-10-12-04.** Its step 5 last bullet fixes the `3` in `index.md:59` and `runners.md:141`. It is older, so `/implement-todos` will probably land it first. Its step 5 also tells small-host operators to lower `SP_SERVER_CHECK_WORKER_NB`, which does nothing until step 1 below lands. This spec owns the binding and the drift test. If spec 04 already changed the two rows, leave them and let the test confirm. Update: PR #540 implements spec 04 (and moves it to `specs/done/2026/10/`), including the two `3` to `25` rows.
 
 **Why it recurs.** The docs tables are hand-written and nothing compares them with the code. The repo already has the pattern for this (`server/internal/checkers/registry/docs_anchor_test.go:27-34` resolves the repo root and reads `web/docs`, `server/internal/notifications/settings_drift_test.go` checks drift), just not for config defaults.
 
