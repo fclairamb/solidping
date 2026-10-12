@@ -76,28 +76,32 @@ test.describe("Public status page — stale (No data) status badge", () => {
   test("a stale component reads 'No data, last checked HH:MM', never a normal status label", async ({
     page,
   }) => {
-    // 2 minutes, not 20: this is a mocked API response (no real staleness
-    // sweep to satisfy), and a small offset keeps `lastResultAt` on today's
-    // calendar date even when the test runs in the 00:00-00:20 window, which
-    // otherwise makes `formatLastChecked` prepend a date and desync this
-    // regex (a wall-clock landmine this repo has hit before).
+    // A mocked API response, so no real staleness sweep to satisfy. Even 2
+    // minutes ago can be yesterday when the run starts just after midnight,
+    // and `formatLastChecked` then prepends a short date ("Oct 11 11:59 PM"),
+    // so the regex below accepts that optional prefix.
     const lastResultAt = isoMinutesAgo(2);
     await mockStatusPage(page, lastResultAt);
 
     await page.goto(`${BASE}${STATUS_BASE}/${ORG}/${SLUG}`);
     await page.waitForLoadState("networkidle");
 
-    const row = page.getByTestId("resource-row").filter({ hasText: "Silent Component" });
+    const row = page
+      .getByTestId("resource-row")
+      .filter({ hasText: "Silent Component" });
     await expect(row).toHaveCount(1);
 
     const badge = row.getByTestId("resource-status-badge");
     await expect(badge).toBeVisible();
     await expect(badge).toHaveAttribute("data-status", "stale");
 
-    // The exact HH:MM rendering (24h vs AM/PM) depends on the browser's
-    // detected locale, so this pins the sentence shape — "No data, last
-    // checked" followed by a clock time — rather than the literal digits.
-    await expect(badge).toHaveText(/^No data, last checked \d{1,2}:\d{2}(\s?[AP]M)?$/i);
+    // The exact HH:MM rendering (24h vs AM/PM) and the day/month order depend
+    // on the browser's detected locale, so this pins the sentence shape — "No
+    // data, last checked", an optional "<day> <month>" for a previous day, then
+    // a clock time — rather than the literal digits.
+    await expect(badge).toHaveText(
+      /^No data, last checked (\S+ \S+ )?\d{1,2}:\d{2}(\s?[AP]M)?$/i,
+    );
 
     // Never renders as an ordinary status label or the raw wire token.
     await expect(badge).not.toHaveText(/^stale$/i);
