@@ -1,6 +1,7 @@
 package checktcp
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
@@ -14,17 +15,30 @@ const (
 	// our own.
 	demoHost = "solidping.io"
 
-	// SampleHTTPRequest is a minimal HTTP/1.0 HEAD request against demoHost,
-	// written with `escaped` encoding because CRLF cannot be typed into a
-	// <textarea> any other way.
-	SampleHTTPRequest = `HEAD / HTTP/1.0\r\nHost: ` + demoHost + `\r\n\r\n`
 	// SampleHTTPExpect proves a web server ANSWERED, not merely that the port
 	// accepted a connection and completed a TLS handshake.
 	SampleHTTPExpect = `^HTTP/1\.[01] (200|301|302)`
 )
 
+// sampleHTTPRequest returns a minimal HTTP/1.0 GET request against demoHost,
+// written with `escaped` encoding because CRLF cannot be typed into a
+// <textarea> any other way.
+//
+// GET, not HEAD: solidping.io answers HEAD with "405 Method Not Allowed"
+// (its router only registers GET), so a HEAD sample reported the demo host
+// DOWN and failed the nightly live test every night since it shipped. Every
+// HTTP server answers GET, and "/" on demoHost is a 26-byte redirect, so
+// the body costs nothing.
+//
+// Built with Sprintf rather than as a folded string constant: CodeQL reads a
+// constant holding "solidping.io" as an unescaped hostname regex once it shares
+// the config map with ExpectPattern (go/incomplete-hostname-regexp).
+func sampleHTTPRequest() string {
+	return fmt.Sprintf(`GET / HTTP/1.0\r\nHost: %s\r\n\r\n`, demoHost)
+}
+
 // speakingSolidpingSample is the TCP sample that actually talks: connect over
-// TLS, send a HEAD request, and require a status line back.
+// TLS, send a GET request, and require a status line back.
 func speakingSolidpingSample() map[string]any {
 	return (&TCPConfig{
 		Host:          demoHost,
@@ -32,7 +46,7 @@ func speakingSolidpingSample() map[string]any {
 		Timeout:       sampleTimeout,
 		TLS:           true,
 		TLSVerify:     true,
-		SendData:      SampleHTTPRequest,
+		SendData:      sampleHTTPRequest(),
 		SendEncoding:  checkerdef.PayloadEncodingEscaped,
 		ExpectPattern: SampleHTTPExpect,
 	}).GetConfig()
