@@ -64,36 +64,33 @@ func TestStartupJobCreatesSampleChecks(t *testing.T) {
 	checks, _, err := dbSvc.ListChecks(ctx, defaultOrg.UID, nil)
 	require.NoError(t, err)
 
-	// Verify we have sample checks from all checker types that provide samples
-	require.GreaterOrEqual(t, len(checks), 10, "Should have at least 10 sample checks")
-
-	// Verify check types distribution (at minimum the original 4 types)
-	checksByType := make(map[string]int)
+	// Only the samples that work out of the box are seeded: public targets
+	// over HTTP, DNS, SSL, TCP and ICMP. No local database, broker or game
+	// server, no IPv6, no localhost fake API.
+	slugs := make([]string, 0, len(checks))
 	for _, check := range checks {
-		checksByType[check.Type]++
+		slugs = append(slugs, *check.Slug)
 	}
 
-	require.GreaterOrEqual(t, checksByType["http"], 1, "Should have at least 1 HTTP sample check")
-	require.GreaterOrEqual(t, checksByType["dns"], 3, "Should have at least 3 DNS sample checks")
-	require.GreaterOrEqual(t, checksByType["icmp"], 3, "Should have at least 3 ICMP sample checks")
-	require.GreaterOrEqual(t, checksByType["tcp"], 3, "Should have at least 3 TCP sample checks")
+	require.ElementsMatch(t, []string{
+		"http-cloudflare-dns",
+		"http-github",
+		"http-google-dns-json",
+		"dns-google",
+		"dns-cloudflare",
+		"dns-github-ns-changes",
+		"ssl-google-com",
+		"ssl-github-com",
+		"tcp-google",
+		"tcp-solidping-https",
+		"icmp-cloudflare",
+	}, slugs)
 
 	// Verify all checks are enabled and have periods
 	for _, check := range checks {
 		require.True(t, check.Enabled, "Sample check %s should be enabled", check.Slug)
 		require.NotNil(t, check.Name, "Sample check %s should have a name", check.Slug)
 		require.NotEmpty(t, check.Period, "Sample check %s should have a period", check.Slug)
-	}
-
-	// Verify specific periods for HTTP check
-	checksMap := make(map[string]*models.Check)
-	for i := range checks {
-		checksMap[*checks[i].Slug] = checks[i]
-	}
-
-	// HTTP test-api check has a 20 second period
-	if httpTestAPI, ok := checksMap["http-test-api"]; ok {
-		require.Equal(t, timeutils.Duration(20*time.Second), httpTestAPI.Period, "http-test-api should have 20 second period")
 	}
 
 	// DNS, ICMP, and TCP checks should have 5 minute period
@@ -105,18 +102,6 @@ func TestStartupJobCreatesSampleChecks(t *testing.T) {
 			)
 		}
 	}
-
-	// Verify some specific samples exist
-	slugs := make(map[string]bool)
-	for _, check := range checks {
-		slugs[*check.Slug] = true
-	}
-
-	// Check for expected sample slugs
-	require.True(t, slugs["http-test-api"], "Should have HTTP test-api sample")
-	require.True(t, slugs["dns-google"], "Should have DNS Google sample")
-	require.True(t, slugs["icmp-google-dns"], "Should have ICMP Google DNS sample")
-	require.True(t, slugs["tcp-google"], "Should have TCP Google HTTPS sample")
 
 	t.Logf("Successfully created %d sample checks", len(checks))
 	for _, check := range checks {

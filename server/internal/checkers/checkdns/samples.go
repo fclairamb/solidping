@@ -45,6 +45,7 @@ func (c *DNSChecker) GetSampleConfigs(opts *checkerdef.ListSampleOptions) []chec
 				RecordType: recordTypeA,
 				Timeout:    sampleTimeout,
 			}).GetConfig(),
+			SeedOnInstall: true,
 		},
 		{
 			Name:   "Cloudflare DNS A Record",
@@ -55,6 +56,7 @@ func (c *DNSChecker) GetSampleConfigs(opts *checkerdef.ListSampleOptions) []chec
 				RecordType: recordTypeA,
 				Timeout:    sampleTimeout,
 			}).GetConfig(),
+			SeedOnInstall: true,
 		},
 		{
 			Name:   "GitHub DNS A Record",
@@ -93,6 +95,7 @@ func (c *DNSChecker) GetSampleConfigs(opts *checkerdef.ListSampleOptions) []chec
 				Timeout:       sampleTimeout,
 				DetectChanges: true,
 			}).GetConfig(),
+			SeedOnInstall: true,
 		},
 	}
 }

@@ -482,8 +482,9 @@ func (r *StartupJobRun) loadSamplesForChecker(
 
 	count := 0
 
-	for i := range samples {
-		if err := r.createSampleCheck(ctx, jctx, orgUID, checkType, checker, samples[i]); err != nil {
+	seeds := checkerdef.SamplesToSeed(opts, samples)
+	for i := range seeds {
+		if err := r.createSampleCheck(ctx, jctx, orgUID, checkType, checker, seeds[i]); err != nil {
 			return count, err
 		}
 
