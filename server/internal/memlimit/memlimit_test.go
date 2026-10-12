@@ -13,6 +13,7 @@ func noHost() (int64, bool)   { return 0, false }
 func fixedHost(n int64) func() (int64, bool) {
 	return func() (int64, bool) { return n, true }
 }
+
 func fixedCgroup(n int64) func() (int64, bool) {
 	return func() (int64, bool) { return n, true }
 }

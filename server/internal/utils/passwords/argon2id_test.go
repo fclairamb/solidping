@@ -72,15 +72,20 @@ func TestReleaseScheduling(t *testing.T) {
 		{"four overlapping hashes", func(t *testing.T) {
 			t.Helper()
 			var wg sync.WaitGroup
+
+			errs := make(chan error, 4)
 			for range 4 {
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
+				wg.Go(func() {
 					_, err := Hash("pw")
-					require.NoError(t, err)
-				}()
+					errs <- err
+				})
 			}
 			wg.Wait()
+			close(errs)
+
+			for err := range errs {
+				require.NoError(t, err)
+			}
 		}},
 		{"hash starting while the timer is armed", func(t *testing.T) {
 			t.Helper()

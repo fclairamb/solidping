@@ -131,13 +131,19 @@ func parseFlags() options {
 }
 
 func run(ctx context.Context, opts options) error {
+	// Parsed before anything runs: a typo must not cost an hour of measuring.
+	bounds, err := parseAssertMax(opts.assertMax)
+	if err != nil {
+		return err
+	}
+
 	scenarios, err := selectScenarios(opts)
 	if err != nil {
 		return err
 	}
 
-	if err := os.MkdirAll(opts.outDir, 0o750); err != nil {
-		return fmt.Errorf("create output dir: %w", err)
+	if mkErr := os.MkdirAll(opts.outDir, 0o750); mkErr != nil {
+		return fmt.Errorf("create output dir: %w", mkErr)
 	}
 
 	host, _ := os.Hostname()
@@ -167,9 +173,9 @@ func run(ctx context.Context, opts options) error {
 	}
 
 	for _, sc := range scenarios {
-		result, err := runScenario(ctx, opts, sc)
-		if err != nil {
-			return fmt.Errorf("scenario %s: %w", sc.Name, err)
+		result, scErr := runScenario(ctx, opts, sc)
+		if scErr != nil {
+			return fmt.Errorf("scenario %s: %w", sc.Name, scErr)
 		}
 
 		report.Scenarios = append(report.Scenarios, result)
@@ -186,13 +192,8 @@ func run(ctx context.Context, opts options) error {
 			"and no comparison against this report can be called significant.")
 	}
 
-	bounds, err := parseAssertMax(opts.assertMax)
-	if err != nil {
-		return err
-	}
-
-	if err := writeOutputs(opts, report); err != nil {
-		return err
+	if writeErr := writeOutputs(opts, report); writeErr != nil {
+		return writeErr
 	}
 
 	return checkAssertMax(report, bounds)

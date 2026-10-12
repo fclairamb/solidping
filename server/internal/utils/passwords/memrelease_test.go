@@ -49,7 +49,6 @@ func TestArgon2MemoryIsReturned(t *testing.T) {
 		return
 	}
 
-	//nolint:gosec // re-exec of the test binary itself
 	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestArgon2MemoryIsReturned$", "-test.v")
 	cmd.Env = append(os.Environ(), memReleaseChildEnv+"=1")
 	out, err := cmd.CombinedOutput()

@@ -59,7 +59,7 @@ func argon2Finished() {
 		releaseTimer.Stop()
 	}
 
-	fn := release
+	releaseFn := release
 
 	var timer *time.Timer
 
@@ -75,7 +75,7 @@ func argon2Finished() {
 		releaseMu.Unlock()
 
 		if !stale {
-			fn()
+			releaseFn()
 		}
 	})
 	releaseTimer = timer

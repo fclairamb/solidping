@@ -842,7 +842,7 @@ func TestFormatPeriod(t *testing.T) {
 	}
 }
 
-// TestDuration_ScanPostgresInterval pins the HH:MM:SS behaviour of Duration.Scan
+// TestDuration_ScanPostgresInterval pins the HH:MM:SS behavior of Duration.Scan
 // across the move to a compiled-once regexp (spec 2026-10-12-04).
 func TestDuration_ScanPostgresInterval(t *testing.T) {
 	t.Parallel()

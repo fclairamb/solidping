@@ -3,7 +3,6 @@ package jobtypes
 import (
 	"context"
 	"encoding/json"
-	"io"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -37,7 +36,7 @@ func runFreshStartup(t *testing.T) *sqlite.Service {
 	require.NoError(t, jobRun.Run(ctx, &jobdef.JobContext{
 		DB:        dbSvc.DB(),
 		DBService: dbSvc,
-		Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Logger:    slog.New(slog.DiscardHandler),
 	}))
 
 	return dbSvc
@@ -59,7 +58,8 @@ func TestStartupSeedsAdminWithBcrypt(t *testing.T) {
 	r.NotNil(admin.PasswordHash)
 
 	hash := *admin.PasswordHash
-	r.True(strings.HasPrefix(hash, "$2a$") || strings.HasPrefix(hash, "$2b$"), "seed hash must be bcrypt, got %q", hash[:8])
+	r.True(strings.HasPrefix(hash, "$2a$") || strings.HasPrefix(hash, "$2b$"),
+		"seed hash must be bcrypt, got %q", hash[:8])
 	r.True(passwords.Verify(defaults.Password, hash))
 	r.True(passwords.ShouldRehash(hash), "the first login must re-mint it with the active argon2id policy")
 	r.True(admin.MustChangePassword)
@@ -124,7 +124,6 @@ func TestFreshBootHeapStaysSmall(t *testing.T) {
 		return
 	}
 
-	//nolint:gosec // re-exec of the test binary itself
 	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestFreshBootHeapStaysSmall$", "-test.v")
 	cmd.Env = append(os.Environ(), freshBootChildEnv+"=1")
 	out, err := cmd.CombinedOutput()
