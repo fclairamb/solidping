@@ -30,7 +30,7 @@ func durationMs(d time.Duration) float64 {
 // phaseTimer records the per-phase timings of a probe from httptrace hooks.
 // The dial hooks fire on other goroutines, hence the mutex. Per-hop state is
 // reset at every GetConn, so the phases describe the final hop of a redirect
-// chain; the earlier hops are summarised by redirect_time_ms.
+// chain; the earlier hops are summarized by redirect_time_ms.
 type phaseTimer struct {
 	mu    sync.Mutex
 	start time.Time
@@ -169,16 +169,16 @@ func (p *phaseTimer) metrics(download time.Duration, downloaded bool) map[string
 // stampTimings merges the phase metrics onto a result, keeping any metric the
 // result already carries.
 func stampTimings(result *checkerdef.Result, timer *phaseTimer, info *responseInfo) {
-	m := timer.metrics(info.downloadTime, info.downloaded)
-	if len(m) == 0 {
+	phases := timer.metrics(info.downloadTime, info.downloaded)
+	if len(phases) == 0 {
 		return
 	}
 
 	if result.Metrics == nil {
-		result.Metrics = make(map[string]any, len(m))
+		result.Metrics = make(map[string]any, len(phases))
 	}
 
-	for k, v := range m {
+	for k, v := range phases {
 		if _, exists := result.Metrics[k]; !exists {
 			result.Metrics[k] = v
 		}
