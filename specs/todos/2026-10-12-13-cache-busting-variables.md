@@ -64,6 +64,8 @@ What is stored in result output today: the HTTP checker writes `cfg.URL` into `O
 - Other checkers echo resolved config strings (a host, a DSN) into `Output`. This spec only fixes HTTP `url`. List the others in a follow-up if any echo a field that can hold a `${param:}`.
 - Multi-step checks run one slice per claim (`worker.go:1034`). Each slice gets its own values. Confirm no step checker relies on a value staying the same across slices.
 
-## Open questions
+## Resolved open questions
+
+**Decision (user, 2026-10-12): adopt the recommended answer of every question below. Implement exactly those recommendations.**
 - Namespace `var` or `gen`? Recommended: `var`. It reads naturally in a URL and matches how operators describe it.
 - `${var:timestamp}` as compact UTC digits or Unix epoch milliseconds? Recommended: compact UTC digits as specified. It is readable in a stored URL. Epoch can be added later under its own name if asked.

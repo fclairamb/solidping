@@ -101,7 +101,9 @@ The building blocks already exist:
 - The Slack client has no `reply_broadcast` today. A thread-only reply is easy to miss, so check whether adding `reply_broadcast: true` for reminders is a small change. If it is not, post a new top-level message that links to the thread.
 - Whether a reopened incident keeps `acknowledged_at`. If it does, the guard correctly stops reminders, but say so in the docs.
 
-## Open questions
+## Resolved open questions
+
+**Decision (user, 2026-10-12): adopt the recommended answer of every question below. Implement exactly those recommendations.**
 - Default for existing and new orgs? Recommended: off for both (absent org parameter = 0). Nobody gets new noise after an upgrade, and turning it on is one setting.
 - Minimum and maximum interval? Recommended: 15 min to 24 h.
 - Cap on the number of reminders? Recommended: none. Ack or snooze is the stop button.

@@ -48,6 +48,8 @@ The dashboard exposes `followRedirects` and `redirectHostPolicy` (`web/dash0/src
 - `web/dash0/e2e/check-http-verify-ssl-follow-redirects.spec.ts`: the input is visible only with redirects on; a value saves as `expectedFinalUrl`; switching redirects off hides it and the saved config has no such key.
 - `make test`, `make lint`, `bun run lint:e2e && bun run typecheck:e2e`.
 
-## Open questions
+## Resolved open questions
+
+**Decision (user, 2026-10-12): adopt the recommended answer of every question below. Implement exactly those recommendations.**
 - Also support asserting the first hop's `Location` without following? Recommended: no, keep one field. `followRedirects: false`, `expectedStatusCodes: ["3XX"]` and a `Location` header assertion (spec 2026-10-12-11) already cover it.
 - Exact match after normalisation only, or also a prefix or regex mode? Recommended: exact only for now. It is predictable and covers the http-to-https and apex-to-www cases. Add a mode later if a user needs to ignore a session token in the query.

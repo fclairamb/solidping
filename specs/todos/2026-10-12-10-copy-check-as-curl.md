@@ -67,7 +67,9 @@ So the client already has everything that is safe to show, and nothing that is n
 - `web/dash0/src/components/checks/form/types/http.tsx:110` says the backend ignores a body on a GET probe, but `checker.go:294-302` builds the request with the body for any method. The builder follows the checker. If the comment is right, change the GET rule.
 - How the checker negotiates `"2"` on a cleartext `http://` URL. If it uses prior knowledge, emit `--http2-prior-knowledge` there instead of `--http2`.
 
-## Open questions
+## Resolved open questions
+
+**Decision (user, 2026-10-12): adopt the recommended answer of every question below. Implement exactly those recommendations.**
 - Other check types (TCP through `nc`, DNS through `dig`)? Recommended: no. HTTP is the only type where a one-liner reproduces the probe faithfully.
 - Expose secret header names (not values) from the API so the command can print `-H 'X-Api-Key: $SOLIDPING_SECRET_HEADER_1'`? Recommended: no. It widens what the read path returns for a convenience. The comment line is enough.
 - Rewrite `${env:NAME}` into shell `$NAME`? Recommended: no. One rule for every reference is easier to read than a partial translation.

@@ -63,6 +63,8 @@ How other checks express thresholds, for consistency:
 ## To verify
 - The ICMP docs row calls `timeout` a "Total timeout" with default `10s`. The code default is 5s (`limits.go:9`), the worker threads its own budget when unset, and the config comment treats it as per packet. Check which one is true before correcting that row.
 
-## Open questions
+## Resolved open questions
+
+**Decision (user, 2026-10-12): adopt the recommended answer of every question below. Implement exactly those recommendations.**
 - RTT over the limit: `down` or `warning`? Recommended: `down`. The field is an explicit hard limit, and the confirmation period already absorbs a single spike. The soft signal already exists: `slow_threshold_ms` degraded detection works on ICMP today because `Duration` is the average RTT. A warning tier (`warn_avg_rtt_ms`, like Prometheus `warningValue`) can come later if asked.
 - Reject or warn when a loss limit is set with `count` 1? Recommended: neither on the server. It is coarse but not wrong (it behaves like today). The form hint and the docs are enough.

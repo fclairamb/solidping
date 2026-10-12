@@ -53,7 +53,9 @@ Connection reuse breaks the breakdown today. The default transport is a shared, 
 - Whether the egress guard's transport (`httptransport.go:126`) resolves through a resolver that fires DNSStart/DNSDone with the request context. If not, `dns_time_ms` is absent under an enforcing policy; document it.
 - Day and month rollups average the hourly averages without weighting (`aggregateAvg`, `job_aggregation.go:760`). Fine for a chart; confirm the day tier is built from hour rows.
 
-## Open questions
+## Resolved open questions
+
+**Decision (user, 2026-10-12): adopt the recommended answer of every question below. Implement exactly those recommendations.**
 - Fresh connection per probe, or keep pooling? Recommended: fresh connection (step 3). With pooling, dns/connect/tls show up only when the pool expired, which depends on the check period, and TLS slowness never reaches the response time. The cost is one handshake per probe on the target.
 - For a redirected probe, the final hop's phases or the sum over all hops? Recommended: final hop plus `redirect_time_ms`. Summing TLS time across different hosts describes no real connection.
 - Time the download when nothing needs the body (read and discard up to 10 MB)? Recommended: no. It adds bandwidth to every probe for a number no assertion uses. Download stays absent when the body is not read.

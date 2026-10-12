@@ -67,5 +67,7 @@ The data already exists, it is just never passed to the senders:
 - `ntfy.go` has no `ntfy_test.go` today. Create it for the region case.
 - Check whether a webhook payload JSON schema lives anywhere besides the docs (OpenAPI, `wiki/`), and update it if it does.
 
-## Open questions
+## Resolved open questions
+
+**Decision (user, 2026-10-12): adopt the recommended answer of every question below. Implement exactly those recommendations.**
 - Should `incident.resolved` carry the region line? Recommended: yes, in past tense ("Failed from"). It confirms which path recovered and costs one line.

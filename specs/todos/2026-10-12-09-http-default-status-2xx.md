@@ -41,5 +41,7 @@ The grammar for a range already exists: `NXX` wildcards are validated in `config
 - `web/dash0/e2e/check-http-expected-status-codes.spec.ts`: the tests that remove or count the seeded `["200"]` chip (`:98`, `:126`, `:276`, `:299`) use `2XX`. "a plain-200 check saves with neither status key" (`:210-228`) becomes "the default 2XX check saves with neither status key". New test: replacing the default chip with `200` saves `expectedStatusCodes: ["200"]`.
 - `make test`, `make lint`, `bun run lint:e2e && bun run typecheck:e2e`.
 
-## Open questions
+## Resolved open questions
+
+**Decision (user, 2026-10-12): adopt the recommended answer of every question below. Implement exactly those recommendations.**
 - Apply the new default to existing checks, or only to checks created after the change (by stamping `expectedStatusCodes: ["200"]` on every existing HTTP check that has no status key)? Recommended: all checks. The change only turns 201-299 downs into ups, and stamping would need a data migration that keeps the surprising behaviour alive on every old check.

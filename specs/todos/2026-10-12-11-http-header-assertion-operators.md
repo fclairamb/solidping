@@ -49,6 +49,8 @@ The body side already solved this. `bodyAssertions` is an `AssertionNode` tree (
 - `web/dash0/e2e/check-http-header-assertions.spec.ts` (mirror `check-http-body-assertions.spec.ts`): add a `not_exists` leaf on `X-Powered-By`, save, reload, the editor shows it and the saved config has `headerAssertions`.
 - `make test`, `make lint`, `bun run lint:e2e && bun run typecheck:e2e`.
 
-## Open questions
+## Resolved open questions
+
+**Decision (user, 2026-10-12): adopt the recommended answer of every question below. Implement exactly those recommendations.**
 - Shape: reuse the assertion tree (leaf `path` = header name), or a flat list `[{name, operator, value, ignoreCase}]`? Recommended: the tree. It is what `bodyAssertions` and `json_path_assertions` use, so the editor, validation helpers and result card come for free, and `or` groups work. A flat list reads a bit better in YAML but needs its own editor and result rendering.
 - Repeated headers: any-match for positive operators, all-must-pass for `neq` / `not_contains`? Recommended: yes. "Some `Set-Cookie` contains `Secure`" and "no `Cache-Control` line contains `no-store`" are the questions users ask.
