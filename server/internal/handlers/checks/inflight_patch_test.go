@@ -191,6 +191,34 @@ func TestPatchWhileLeased(t *testing.T) {
 	}
 }
 
+// TestDeleteWhileLeased: a check deleted mid-run keeps the in-flight result,
+// and the worker's release reports nothing wrong (no "no rows updated").
+func TestDeleteWhileLeased(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+	f := newInflight(t)
+
+	created, err := f.svc.CreateCheck(ctx, f.org.Slug, checks.CreateCheckRequest{
+		Type: "http", Config: map[string]any{"url": "https://acme.com"},
+		Regions: []string{"default"}, Period: strPtr("00:00:10"),
+	})
+	r.NoError(err)
+
+	region := "default"
+	job := f.claim(t, created.UID, &region)
+	results := f.resultCount(t, created.UID)
+
+	r.NoError(f.svc.DeleteCheck(ctx, f.org.Slug, created.UID))
+
+	left, err := f.db.ListCheckJobsByCheckUID(ctx, created.UID)
+	r.NoError(err)
+	r.Empty(left, "control: the job row is gone under the lease")
+
+	r.NoError(f.submit(t, job, nil), "the release of a deleted job is the normal end of it")
+	r.Equal(results+1, f.resultCount(t, created.UID), "the in-flight result is stored")
+}
+
 // TestPatchIdleJobIsNotRerun is the control: an edit on a job nobody holds
 // parks nothing and leaves its schedule alone.
 func TestPatchIdleJobIsNotRerun(t *testing.T) {

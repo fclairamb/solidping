@@ -203,6 +203,13 @@ func exerciseRunRequestReleaseVariants(ctx context.Context, t *testing.T, dbSvc 
 	r.NoError(err)
 	lease()
 	r.Nil(loadJob(ctx, t, bunDB, job.UID).RunRequestedAt, "a fresh claim answers a leftover request")
+
+	// Another worker's release is refused as before (the control) ...
+	r.ErrorIs(svc.ReleaseLease(ctx, job.UID, uuid.New().String(), next), checkjobsvc.ErrJobClaimedByAnother)
+
+	// ... while a job deleted under the lease is reported gone, not claimed.
+	r.NoError(dbSvc.DeleteCheckJob(ctx, job.UID))
+	r.ErrorIs(svc.ReleaseLease(ctx, job.UID, worker.UID, next), checkjobsvc.ErrJobGone)
 }
 
 // TestRequestCheckRun runs the contract on SQLite.

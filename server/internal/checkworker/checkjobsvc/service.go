@@ -27,6 +27,12 @@ const BulkLeaseDuration = 2 * time.Minute
 // ErrJobClaimedByAnother is returned when a job has been claimed by another worker.
 var ErrJobClaimedByAnother = errors.New("job may have been claimed by another worker")
 
+// ErrJobGone is returned by a release when the job row no longer exists: the
+// check was deleted or disabled, or the region removed, while the run was in
+// flight (spec 2026-10-12-05). Its result is stored; there is nothing left to
+// reschedule, so callers treat it as the normal end of that job.
+var ErrJobGone = errors.New("job no longer exists")
+
 // Service provides check job queue operations.
 type Service interface {
 	// ClaimJobs atomically claims due check jobs for the given worker with
@@ -1202,7 +1208,7 @@ func (s *serviceImpl) ReleaseLease(
 		Where("uid = ?", jobUID).
 		Where("lease_worker_uid = ?", workerUID) // Safety: only release if we own the lease
 
-	return s.execRelease(ctx, update)
+	return s.execRelease(ctx, jobUID, update)
 }
 
 // DeferLeaseRateLimited releases the lease of a rate-limited job WITHOUT
@@ -1248,7 +1254,7 @@ func (s *serviceImpl) DeferLeaseRateLimited(
 		Where("uid = ?", jobUID).
 		Where("lease_worker_uid = ?", workerUID) // Safety: only release if we own the lease
 
-	return s.execRelease(ctx, update)
+	return s.execRelease(ctx, jobUID, update)
 }
 
 // ReleaseLeaseWithSchedulingState releases the lease and folds the post-exec
@@ -1281,7 +1287,7 @@ func (s *serviceImpl) ReleaseLeaseWithSchedulingState(
 		Where("uid = ?", jobUID).
 		Where("lease_worker_uid = ?", workerUID) // Safety: only release if we own the lease
 
-	return s.execRelease(ctx, update)
+	return s.execRelease(ctx, jobUID, update)
 }
 
 // pendingRequestOr builds a release `SET` for a schedule column that keeps a
@@ -1302,8 +1308,8 @@ func pendingRequestOr(column string) string {
 }
 
 // execRelease runs a release UPDATE and maps the no-rows case to
-// ErrJobClaimedByAnother.
-func (s *serviceImpl) execRelease(ctx context.Context, update *bun.UpdateQuery) error {
+// ErrJobGone when the row was deleted, ErrJobClaimedByAnother otherwise.
+func (s *serviceImpl) execRelease(ctx context.Context, jobUID string, update *bun.UpdateQuery) error {
 	result, err := update.Exec(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to release lease: %w", err)
@@ -1314,11 +1320,23 @@ func (s *serviceImpl) execRelease(ctx context.Context, update *bun.UpdateQuery) 
 		return fmt.Errorf("failed to get rows affected: %w", err)
 	}
 
-	if rows == 0 {
-		return fmt.Errorf("no rows updated: %w", ErrJobClaimedByAnother)
+	if rows > 0 {
+		return nil
 	}
 
-	return nil
+	exists, err := s.db.NewSelect().
+		Model((*models.CheckJob)(nil)).
+		Where("uid = ?", jobUID).
+		Exists(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to check the released job: %w", err)
+	}
+
+	if !exists {
+		return ErrJobGone
+	}
+
+	return fmt.Errorf("no rows updated: %w", ErrJobClaimedByAnother)
 }
 
 // fenceStepRun adds the multi-step fence: the row's run must still be the one
@@ -1362,7 +1380,7 @@ func (s *serviceImpl) SubmitStep(ctx context.Context, jobUID string, workerUID s
 		update = update.Set("step_state_file_uid = ?", *upd.StateFileUID)
 	}
 
-	return s.execRelease(ctx, fenceStepRun(update, upd.ExpectedRunUID))
+	return s.execRelease(ctx, jobUID, fenceStepRun(update, upd.ExpectedRunUID))
 }
 
 // EndStepRun implements Service.
@@ -1389,5 +1407,5 @@ func (s *serviceImpl) EndStepRun(
 		Where("uid = ?", jobUID).
 		Where("lease_worker_uid = ?", workerUID)
 
-	return s.execRelease(ctx, fenceStepRun(update, expectedRunUID))
+	return s.execRelease(ctx, jobUID, fenceStepRun(update, expectedRunUID))
 }
