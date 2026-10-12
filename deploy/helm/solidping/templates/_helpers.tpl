@@ -14,6 +14,14 @@ app.kubernetes.io/name: {{ .Chart.Name }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 
+{{- define "solidping.dbType" -}}
+{{- if .Values.database.cnpg.enabled -}}postgres{{- else -}}{{ .Values.database.type }}{{- end -}}
+{{- end -}}
+
+{{- define "solidping.cnpgCluster" -}}
+{{- printf "%s-db" (include "solidping.fullname" .) | trunc 50 | trimSuffix "-" -}}
+{{- end -}}
+
 {{- define "solidping.authSecret" -}}
 {{- default (printf "%s-auth" (include "solidping.fullname" .)) .Values.auth.existingSecret -}}
 {{- end -}}
