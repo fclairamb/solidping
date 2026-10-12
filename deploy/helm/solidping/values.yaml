@@ -26,6 +26,7 @@ persistence:
   existingClaim: ""
 
 # Extra SP_* environment variables, e.g. { SP_SERVER_COMPRESSION: "true" }.
+# The chart sets SP_LOG_FORMAT=json; an SP_LOG_FORMAT entry here replaces it.
 extraEnv: {}
 
 # ICMP (ping) checks need a raw socket.

@@ -25,11 +25,11 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/envcheck"
 	"github.com/fclairamb/solidping/server/internal/healthcheck"
+	"github.com/fclairamb/solidping/server/internal/logsetup"
 	"github.com/fclairamb/solidping/server/internal/memlimit"
 	"github.com/fclairamb/solidping/server/internal/otelsetup"
 	"github.com/fclairamb/solidping/server/internal/procwatch"
 	slogutil "github.com/fclairamb/solidping/server/internal/utils/slog"
-	"github.com/fclairamb/solidping/server/internal/utils/slog/pretty"
 	"github.com/fclairamb/solidping/server/internal/version"
 	spCli "github.com/fclairamb/solidping/server/pkg/cli"
 )
@@ -40,10 +40,10 @@ const (
 )
 
 func main() {
-	// Set up logger early (before config load to ensure it's always configured)
-	// Read LOG_LEVEL env var directly to configure logger before config load
-	logLevel := config.ParseLogLevel(os.Getenv("LOG_LEVEL"))
-	setupLogger(logLevel, config.ParseLogFormat(os.Getenv("SP_LOG_FORMAT")))
+	// Set up the logger before the configuration loads, from the same
+	// environment variables config.Load reads, so startup logs already honor
+	// them.
+	setupLogger(config.LogLevelFromEnv(os.Getenv), config.ParseLogFormat(os.Getenv("SP_LOG_FORMAT")))
 
 	os.Exit(run(context.Background(), buildRootCommand(), os.Args))
 }
@@ -67,8 +67,8 @@ func run(ctx context.Context, cmd *cli.Command, args []string) int {
 // own "Application failed" included) must never land in it. The other server
 // commands keep logging to stdout.
 func logToStderr(ctx context.Context, _ *cli.Command) (context.Context, error) {
-	handler := newLogHandlerTo(os.Stderr,
-		config.ParseLogLevel(os.Getenv("LOG_LEVEL")), config.ParseLogFormat(os.Getenv("SP_LOG_FORMAT")))
+	handler := logsetup.NewHandler(os.Stderr,
+		config.LogLevelFromEnv(os.Getenv), config.ParseLogFormat(os.Getenv("SP_LOG_FORMAT")))
 	slog.SetDefault(slog.New(handler))
 
 	return ctx, nil
@@ -144,33 +144,12 @@ func buildRootCommand() *cli.Command {
 	}
 }
 
-// newLogHandler builds the stdout handler for the requested format. It is the
-// single place that maps a config.LogFormat onto a slog.Handler, so the plain
-// path and the OTel fanout path below can never drift apart.
-func newLogHandler(level slog.Level, format config.LogFormat) slog.Handler {
-	return newLogHandlerTo(os.Stdout, level, format)
-}
-
-// newLogHandlerTo is newLogHandler writing to out instead of stdout.
-func newLogHandlerTo(out io.Writer, level slog.Level, format config.LogFormat) slog.Handler {
-	opts := &slog.HandlerOptions{Level: level}
-
-	switch format {
-	case config.LogFormatJSON:
-		return slog.NewJSONHandler(out, opts)
-	case config.LogFormatPretty:
-		return pretty.NewPretty(out, opts)
-	case config.LogFormatText:
-		return slog.NewTextHandler(out, opts)
-	default:
-		return slog.NewTextHandler(out, opts)
-	}
-}
-
-// setupLogger configures the default slog logger with the given level and format.
+// setupLogger points the default slog logger at stdout with the given level
+// and format. logsetup.NewHandler is the single place that maps a
+// config.LogFormat onto a slog.Handler, so this path, the stderr one and the
+// OTel fanout path below can never drift apart.
 func setupLogger(level slog.Level, format config.LogFormat) {
-	logger := slog.New(newLogHandler(level, format))
-	slog.SetDefault(logger)
+	slog.SetDefault(slog.New(logsetup.NewHandler(os.Stdout, level, format)))
 }
 
 func serve(ctx context.Context, _ *cli.Command) error {
@@ -231,7 +210,7 @@ func loadServeConfig(ctx context.Context, logOut io.Writer) (*config.Config, fun
 	}
 
 	// Re-configure logger with the log level from config
-	slog.SetDefault(slog.New(newLogHandlerTo(logOut, cfg.LogLevel, cfg.LogFormat)))
+	slog.SetDefault(slog.New(logsetup.NewHandler(logOut, cfg.LogLevel, cfg.LogFormat)))
 
 	// Warn about unrecognized SP_* environment variables before validating: a
 	// typo'd var is often *why* validation fails, so the hint must print before
@@ -291,7 +270,7 @@ func loadServeConfig(ctx context.Context, logOut io.Writer) (*config.Config, fun
 
 	// If OTel logs are enabled, add otelslog bridge via fanout
 	if logProvider != nil {
-		outHandler := newLogHandlerTo(logOut, cfg.LogLevel, cfg.LogFormat)
+		outHandler := logsetup.NewHandler(logOut, cfg.LogLevel, cfg.LogFormat)
 		otelHandler := otelslog.NewHandler(
 			"solidping",
 			otelslog.WithLoggerProvider(logProvider),

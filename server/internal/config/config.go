@@ -586,7 +586,7 @@ type Config struct {
 	AI           AIConfig           `koanf:"ai"`
 	RunMode      string             `koanf:"runmode"`   // "test" for test mode, empty for normal mode
 	UserAgent    string             `koanf:"useragent"` // Identity string for protocol checks (SP_USERAGENT)
-	LogLevel     slog.Level         `koanf:"-"`         // Logging level (parsed from LOG_LEVEL env var)
+	LogLevel     slog.Level         `koanf:"-"`         // Logging level (SP_LOG_LEVEL, LOG_LEVEL as fallback)
 	LogFormat    LogFormat          `koanf:"-"`         // Logging output format (parsed from SP_LOG_FORMAT env var)
 }
 
@@ -2309,8 +2309,7 @@ func Load() (*Config, error) {
 	applyDBSlowQueryEnv(&cfg.Database)
 	applyMigrationGuardModeEnv(&cfg.Database)
 
-	// Parse LOG_LEVEL environment variable
-	cfg.LogLevel = ParseLogLevel(os.Getenv("SP_LOG_LEVEL"))
+	cfg.LogLevel = LogLevelFromEnv(os.Getenv)
 	cfg.LogFormat = ParseLogFormat(os.Getenv("SP_LOG_FORMAT"))
 
 	// App / GitHub: SP_APP_GITHUB_ISSUES_TOKEN takes precedence over the
@@ -3874,27 +3873,42 @@ func ParseLogLevel(level string) slog.Level {
 	}
 }
 
+// LogLevelFromEnv reads the log level from the environment: SP_LOG_LEVEL wins,
+// LOG_LEVEL is the fallback. main (before the configuration loads) and Load
+// both go through it, so LOG_LEVEL set alone is no longer reset to info once
+// the configuration is loaded.
+func LogLevelFromEnv(getenv func(key string) string) slog.Level {
+	if level := strings.TrimSpace(getenv("SP_LOG_LEVEL")); level != "" {
+		return ParseLogLevel(level)
+	}
+
+	return ParseLogLevel(getenv("LOG_LEVEL"))
+}
+
 // LogFormat selects how log records are rendered on stdout.
 type LogFormat string
 
 const (
-	// LogFormatText is Go's key=value logfmt-style handler. The default: it
-	// stays readable with no tooling, which is what a self-hosted operator
-	// tailing a container gets without opting in to anything.
+	// LogFormatAuto is the default: the concrete format is picked from the
+	// environment when the logger is built (json on Kubernetes, pretty on a
+	// terminal or in a container, text otherwise). See internal/logsetup.
+	LogFormatAuto LogFormat = "auto"
+	// LogFormatText is Go's key=value logfmt-style handler. It stays readable
+	// with no tooling.
 	LogFormatText LogFormat = "text"
 	// LogFormatJSON emits one JSON object per record. Pick this when a log
 	// collector parses stdout — attributes become queryable fields instead of
 	// being buried in a formatted message.
 	LogFormatJSON LogFormat = "json"
-	// LogFormatPretty is the colorized, human-first handler. For interactive
-	// development; it is not machine-parseable.
+	// LogFormatPretty is the colorized, human-first handler. For terminals and
+	// `docker logs`; it is not machine-parseable.
 	LogFormatPretty LogFormat = "pretty"
 )
 
 // ParseLogFormat parses a log format string into a LogFormat.
-// Valid values: text, json, pretty (case-insensitive).
-// Returns LogFormatText if the value is empty or unrecognized — an unreadable
-// typo must not cost the operator their logs.
+// Valid values: auto, text, json, pretty (case-insensitive).
+// Returns LogFormatAuto if the value is empty or unrecognized — a typo must
+// not cost the operator their logs.
 func ParseLogFormat(format string) LogFormat {
 	switch strings.ToLower(strings.TrimSpace(format)) {
 	case "json":
@@ -3904,6 +3918,6 @@ func ParseLogFormat(format string) LogFormat {
 	case "text", "logfmt":
 		return LogFormatText
 	default:
-		return LogFormatText
+		return LogFormatAuto
 	}
 }
