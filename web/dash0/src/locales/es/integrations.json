@@ -192,7 +192,7 @@
     "rotate": "Rotar",
     "signingSecretMissing": "Sin secreto de firma: se generará automáticamente en la próxima entrega. Rota para generar uno ahora.",
     "generate": "Generar",
-    "signingSecretHelp": "Los webhooks salientes se firman con este secreto según el esquema Standard Webhooks (HMAC-SHA256). Verifícalo en el extremo receptor.",
+    "signingSecretHelp": "Los webhooks salientes se firman con este secreto según el esquema Standard Webhooks (HMAC-SHA256). Verifícalo en el extremo receptor. Las bibliotecas oficiales de Standard Webhooks lo aceptan tal cual.",
     "rotationBanner": "Secreto anterior activo hasta",
     "rotationBannerHint": "Elimínalo antes rotando de nuevo.",
     "slackInstallFailed": "No se pudo iniciar la instalación de Slack",

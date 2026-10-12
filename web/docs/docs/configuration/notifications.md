@@ -988,8 +988,8 @@ The signature is computed as follows:
    joined with full stops. Use the raw request body exactly as received, not a
    re-serialized copy.
 2. The key is the signing secret with its `whsec_` prefix removed, then
-   base64-decoded. SolidPing generates 32 random bytes encoded as **URL-safe
-   base64 without padding** (`-` and `_` instead of `+` and `/`, no trailing `=`).
+   base64-decoded. SolidPing generates 32 random bytes encoded as **standard
+   base64 with padding** (the secret ends with a single `=`).
 3. The signature is the HMAC-SHA256 of the signed content with that key,
    encoded as standard base64, prefixed with `v1,`.
 
@@ -1006,7 +1006,8 @@ import time
 
 def decode_secret(secret: str) -> bytes:
     key = secret.removeprefix("whsec_")
-    # Accept URL-safe or standard base64, padded or not.
+    # Older secrets were URL-safe base64 without padding; the dashboard now
+    # shows the same key in standard form. Accept both spellings.
     key = key.replace("-", "+").replace("_", "/")
     return base64.b64decode(key + "=" * (-len(key) % 4))
 
@@ -1031,10 +1032,8 @@ def verify_webhook(body: bytes, headers: dict, secret: str, tolerance: int = 300
 :::tip Standard Webhooks libraries
 The official [Standard Webhooks libraries](https://github.com/standard-webhooks/standard-webhooks/tree/main/libraries)
 (`standardwebhooks` on PyPI and npm, plus Go, Rust, Java, Ruby, PHP, C# and
-Elixir) verify these requests. They expect the secret in **standard** base64,
-so convert it first: replace `-` with `+` and `_` with `/`, add `=` padding to
-a multiple of 4 characters, and keep the `whsec_` prefix. The converted secret
-is the same key, only spelled differently.
+Elixir) verify these requests. Pass them the secret exactly as the dashboard
+shows it, `whsec_` prefix included. No conversion is needed.
 :::
 
 ### Rotating the secret
@@ -1044,6 +1043,9 @@ generates a new secret. The previous one stays valid for 24 hours: during that
 window each request carries two `v1,` signatures, one per secret, so receivers
 can switch over without dropping deliveries. Rotating again drops the older
 secret right away: the current one becomes the previous one.
+
+A secret copied before SolidPing switched to standard base64 is the same key in
+another spelling (URL-safe, no padding). It keeps working, no rotation needed.
 
 ## Incident Thresholds
 

@@ -192,7 +192,7 @@
     "rotate": "Rotate",
     "signingSecretMissing": "No signing secret — will be auto-generated on next delivery. Rotate to generate one now.",
     "generate": "Generate",
-    "signingSecretHelp": "Outbound webhooks are signed with this secret using the Standard Webhooks scheme (HMAC-SHA256). Verify it on the receiving end.",
+    "signingSecretHelp": "Outbound webhooks are signed with this secret using the Standard Webhooks scheme (HMAC-SHA256). Verify it on the receiving end. The official Standard Webhooks libraries take it as is.",
     "rotationBanner": "Previous secret active until",
     "rotationBannerHint": "Remove it early by rotating again.",
     "slackInstallFailed": "Failed to start Slack install",
