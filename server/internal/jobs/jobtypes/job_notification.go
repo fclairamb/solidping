@@ -13,6 +13,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/notifications"
+	"github.com/fclairamb/solidping/server/internal/regions"
 )
 
 var (

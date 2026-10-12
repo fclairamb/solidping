@@ -181,9 +181,9 @@ func (s *PagerDutySender) trigger(ctx context.Context, settings *pagerdutySettin
 		pagerdutyFieldDedupKey: payload.Incident.UID,
 		pagerdutyFieldClient:   productName,
 		"payload": map[string]any{
-			"summary":  summary,
-			"source":   pagerdutySource(payload),
-			"severity": pagerdutySeverity(payload.Incident),
+			"summary":        summary,
+			"source":         pagerdutySource(payload),
+			"severity":       pagerdutySeverity(payload.Incident),
 			"custom_details": details,
 		},
 	}
