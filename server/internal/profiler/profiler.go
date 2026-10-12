@@ -30,7 +30,7 @@ func New(cfg *config.ProfilerConfig) *Server {
 // Returns immediately if profiler is disabled.
 func (s *Server) Start(ctx context.Context) error {
 	if !s.config.Enabled {
-		slog.InfoContext(ctx, "Profiler server disabled")
+		slog.DebugContext(ctx, "Profiler server disabled")
 		return nil
 	}
 

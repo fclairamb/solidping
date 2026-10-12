@@ -2553,7 +2553,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 // If no DSN is configured, Sentry is silently disabled.
 func initSentry(cfg config.SentryConfig) error {
 	if cfg.DSN == "" {
-		slog.Info("Sentry disabled (no DSN configured)")
+		slog.Debug("Sentry disabled (no DSN configured)")
 		return nil
 	}
 
@@ -3595,7 +3595,7 @@ func (s *Server) runStartupJob(ctx context.Context) error {
 		return fmt.Errorf("startup job failed: %w", err)
 	}
 
-	slog.InfoContext(ctx, "Startup job completed successfully")
+	slog.DebugContext(ctx, "Startup job completed successfully")
 
 	return nil
 }
@@ -3604,7 +3604,7 @@ func (s *Server) runStartupJob(ctx context.Context) error {
 // TLS listeners) until ctx is canceled or the listener fails, then drains them.
 // It is the body of Start's API-role branch, extracted so Start stays readable.
 func (s *Server) serveHTTP(ctx context.Context) error {
-	slog.InfoContext(ctx, "Starting HTTP server", "listen", s.config.Server.Listen)
+	slog.DebugContext(ctx, "Starting HTTP server", "listen", s.config.Server.Listen)
 
 	const readHeaderTimeout = 10 * time.Second
 
@@ -3622,11 +3622,27 @@ func (s *Server) serveHTTP(ctx context.Context) error {
 		return err
 	}
 
-	// Start HTTP server in a goroutine
+	// Bind first, serve second: the ready line must only be written once the
+	// port is actually ours, and a bind failure is reported right here.
+	listenAddr := srv.Addr
+	if listenAddr == "" {
+		listenAddr = ":http" // what ListenAndServe binds for an empty Addr
+	}
+
+	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", listenAddr)
+	if err != nil {
+		slog.ErrorContext(ctx, "HTTP server error", "error", err)
+
+		return err
+	}
+
+	s.logReady(ctx, slog.Default(), listener.Addr())
+
+	// Serve HTTP in a goroutine
 	serverErr := make(chan error, 1)
 
 	go func() {
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := srv.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.ErrorContext(ctx, "HTTP server error", "error", err)
 			serverErr <- err
 		}
@@ -3806,7 +3822,7 @@ func (s *Server) Start(ctx context.Context) error {
 		if err := regionSvc.ValidateWorkerRegion(ctx, workerRegion); err != nil {
 			return fmt.Errorf("region validation failed: %w", err)
 		}
-		slog.InfoContext(ctx, "Worker region validated", "region", workerRegion)
+		slog.DebugContext(ctx, "Worker region validated", "region", workerRegion)
 
 		s.startCheckWorker(runnerCtx) //nolint:contextcheck // runnerCtx is intentionally separate from request context
 	} else {
@@ -4004,8 +4020,6 @@ func (s *Server) startJobWorker(ctx context.Context) {
 		nbRunners = 2
 	}
 
-	slog.InfoContext(ctx, "Starting job worker", "nbRunners", nbRunners)
-
 	worker := jobworker.NewJobWorker(
 		s.dbService.DB(),
 		s.dbService,
@@ -4038,6 +4052,11 @@ func (s *Server) startJobWorker(ctx context.Context) {
 			slog.ErrorContext(ctx, "Job queue-depth sampler error", "error", err)
 		}
 	}()
+
+	// The job worker's one INFO line, written here rather than from its
+	// goroutine so it always precedes the "SolidPing is ready" line. Runner and
+	// per-job lines are DEBUG; failures stay WARN/ERROR.
+	slog.InfoContext(ctx, "Job worker started", "runners", nbRunners)
 }
 
 // startPassiveEvaluator starts the jobs node's passive-check evaluator, the
@@ -4062,8 +4081,6 @@ func (s *Server) startCheckWorker(ctx context.Context) {
 		return
 	}
 
-	slog.InfoContext(ctx, "Starting check worker", "nbRunners", nbRunners)
-
 	worker := checkworker.NewCheckWorker(
 		s.dbService,
 		s.config,
@@ -4079,6 +4096,13 @@ func (s *Server) startCheckWorker(ctx context.Context) {
 			slog.ErrorContext(ctx, "Check worker error", "error", err)
 		}
 	}()
+
+	// The check worker's one INFO line, written here rather than from its
+	// goroutine so it always precedes the "SolidPing is ready" line. Runner and
+	// per-run lines are DEBUG: after this, a check run is only heard of at INFO
+	// when its check changes status.
+	slog.InfoContext(ctx, "Check worker started",
+		"runners", nbRunners, "region", s.config.Server.CheckWorker.Region)
 }
 
 // Close closes the server and its database connection.
@@ -4302,7 +4326,7 @@ func (s *Server) installEgressGuard(ctx context.Context, cfg *config.Config) {
 
 	s.services.EgressGuard = egress.New(cfg.EgressAllowsPrivateTargets())
 
-	slog.InfoContext(ctx, "Egress policy for notification sender URLs",
+	slog.Log(ctx, cfg.EgressPolicyLogLevel(), "Egress policy for notification sender URLs",
 		"allow_private_targets", s.services.EgressGuard.AllowsPrivate(),
 		"source", cfg.EgressPolicySource(),
 		"env", egress.EnvAllowPrivate,

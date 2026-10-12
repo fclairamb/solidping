@@ -162,7 +162,8 @@ func regionChecksServiceFor(jctx *jobdef.JobContext) *checks.Service {
 // logWatchdogReport writes the run's findings to the log unconditionally —
 // including the anomalies below the delivery bar and the detectors that could
 // not run. Logs and metrics are the observability floor: an instance with no
-// recipients configured still has to leave a trace of what it saw.
+// recipients configured still has to leave a trace of what it saw. A clean run
+// is DEBUG only: an idle instance stays silent at INFO.
 func logWatchdogReport(ctx context.Context, log *slog.Logger, report *watchdog.Report) {
 	for detector, err := range report.Failed {
 		log.ErrorContext(ctx, "Platform watchdog detector failed; the other detectors still ran",
@@ -170,7 +171,7 @@ func logWatchdogReport(ctx context.Context, log *slog.Logger, report *watchdog.R
 	}
 
 	if len(report.Anomalies) == 0 {
-		log.InfoContext(ctx, "Platform watchdog found no anomalies",
+		log.DebugContext(ctx, "Platform watchdog found no anomalies",
 			"detectorsFailed", len(report.Failed))
 
 		return

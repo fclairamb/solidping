@@ -43,7 +43,7 @@ func (p *Provider) Start(ctx context.Context) (
 	*sdklog.LoggerProvider, error,
 ) {
 	if !p.cfg.Enabled {
-		slog.InfoContext(ctx, "OpenTelemetry disabled")
+		slog.DebugContext(ctx, "OpenTelemetry disabled")
 
 		return nil, nil //nolint:nilnil // nil provider is valid when disabled
 	}

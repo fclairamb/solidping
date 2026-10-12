@@ -47,8 +47,8 @@ type StartupJobRun struct {
 func (r *StartupJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) error {
 	log := jctx.Logger
 
-	log.InfoContext(ctx, "Starting startup job")
-	log.InfoContext(ctx, "Checking if default organization exists")
+	log.DebugContext(ctx, "Starting startup job")
+	log.DebugContext(ctx, "Checking if default organization exists")
 
 	if err := r.ensureDefaultOrganization(ctx, jctx); err != nil {
 		return err
@@ -158,7 +158,7 @@ func (r *StartupJobRun) ensurePlatformWatchdogJob(ctx context.Context, jctx *job
 	log := jctx.Logger
 
 	if jctx.Services == nil || jctx.Services.Jobs == nil {
-		log.InfoContext(ctx, "Skipping platform watchdog provisioning (services not available)")
+		log.DebugContext(ctx, "Skipping platform watchdog provisioning (services not available)")
 
 		return nil
 	}
@@ -166,9 +166,9 @@ func (r *StartupJobRun) ensurePlatformWatchdogJob(ctx context.Context, jctx *job
 	if _, err := jctx.Services.Jobs.CreateJob(
 		ctx, "", string(jobdef.JobTypePlatformWatchdog), nil, nil,
 	); err != nil {
-		log.InfoContext(ctx, "Failed to create platform watchdog job (non-fatal)", "error", err)
+		log.WarnContext(ctx, "Failed to create platform watchdog job (non-fatal)", "error", err)
 	} else {
-		log.InfoContext(ctx, "Ensured platform watchdog job exists")
+		log.DebugContext(ctx, "Ensured platform watchdog job exists")
 	}
 
 	return nil
@@ -223,15 +223,15 @@ func (r *StartupJobRun) ensureGlobalSweep(
 	log := jctx.Logger
 
 	if jctx.Services == nil || jctx.Services.Jobs == nil {
-		log.InfoContext(ctx, "Skipping sweep provisioning (services not available)", "sweep", what)
+		log.DebugContext(ctx, "Skipping sweep provisioning (services not available)", "sweep", what)
 
 		return nil
 	}
 
 	if _, err := jctx.Services.Jobs.CreateJob(ctx, "", string(jobType), nil, nil); err != nil {
-		log.InfoContext(ctx, "Failed to create sweep job (non-fatal)", "sweep", what, "error", err)
+		log.WarnContext(ctx, "Failed to create sweep job (non-fatal)", "sweep", what, "error", err)
 	} else {
-		log.InfoContext(ctx, "Ensured sweep job exists", "sweep", what)
+		log.DebugContext(ctx, "Ensured sweep job exists", "sweep", what)
 	}
 
 	return nil
@@ -244,16 +244,16 @@ func (r *StartupJobRun) ensureSLOBurnEvalJob(ctx context.Context, jctx *jobdef.J
 	log := jctx.Logger
 
 	if jctx.Services == nil || jctx.Services.Jobs == nil {
-		log.InfoContext(ctx, "Skipping SLO burn evaluation provisioning (services not available)")
+		log.DebugContext(ctx, "Skipping SLO burn evaluation provisioning (services not available)")
 
 		return nil
 	}
 
 	_, err := jctx.Services.Jobs.CreateJob(ctx, "", string(jobdef.JobTypeSLOBurnEval), nil, nil)
 	if err != nil {
-		log.InfoContext(ctx, "Failed to create SLO burn evaluation job (non-fatal)", "error", err)
+		log.WarnContext(ctx, "Failed to create SLO burn evaluation job (non-fatal)", "error", err)
 	} else {
-		log.InfoContext(ctx, "Ensured SLO burn evaluation job exists")
+		log.DebugContext(ctx, "Ensured SLO burn evaluation job exists")
 	}
 
 	return nil
@@ -266,16 +266,16 @@ func (r *StartupJobRun) ensureDegradedEvalJob(ctx context.Context, jctx *jobdef.
 	log := jctx.Logger
 
 	if jctx.Services == nil || jctx.Services.Jobs == nil {
-		log.InfoContext(ctx, "Skipping degraded evaluation provisioning (services not available)")
+		log.DebugContext(ctx, "Skipping degraded evaluation provisioning (services not available)")
 
 		return nil
 	}
 
 	_, err := jctx.Services.Jobs.CreateJob(ctx, "", string(jobdef.JobTypeDegradedEval), nil, nil)
 	if err != nil {
-		log.InfoContext(ctx, "Failed to create degraded evaluation job (non-fatal)", "error", err)
+		log.WarnContext(ctx, "Failed to create degraded evaluation job (non-fatal)", "error", err)
 	} else {
-		log.InfoContext(ctx, "Ensured degraded evaluation job exists")
+		log.DebugContext(ctx, "Ensured degraded evaluation job exists")
 	}
 
 	return nil
@@ -289,18 +289,18 @@ func (r *StartupJobRun) ensureUptimeReportJob(ctx context.Context, jctx *jobdef.
 	log := jctx.Logger
 
 	if jctx.Services == nil || jctx.Services.Jobs == nil {
-		log.InfoContext(ctx, "Skipping uptime report provisioning (services not available)")
+		log.DebugContext(ctx, "Skipping uptime report provisioning (services not available)")
 
 		return nil
 	}
 
-	log.InfoContext(ctx, "Ensuring uptime report job exists")
+	log.DebugContext(ctx, "Ensuring uptime report job exists")
 
 	_, err := jctx.Services.Jobs.CreateJob(ctx, "", string(jobdef.JobTypeUptimeReport), nil, nil)
 	if err != nil {
-		log.InfoContext(ctx, "Failed to create uptime report job (non-fatal)", "error", err)
+		log.WarnContext(ctx, "Failed to create uptime report job (non-fatal)", "error", err)
 	} else {
-		log.InfoContext(ctx, "Ensured uptime report job exists")
+		log.DebugContext(ctx, "Ensured uptime report job exists")
 	}
 
 	return nil
@@ -320,11 +320,11 @@ func (r *StartupJobRun) ensureDefaultOrganization(ctx context.Context, jctx *job
 	}
 
 	if count > 0 {
-		log.InfoContext(ctx, "Organizations already exist, skipping default org creation", "count", count)
+		log.DebugContext(ctx, "Organizations already exist, skipping default org creation", "count", count)
 		return nil
 	}
 
-	log.InfoContext(ctx, "No organizations found, creating default organization")
+	log.DebugContext(ctx, "No organizations found, creating default organization")
 
 	// Create default organization
 	defaultOrg := models.NewOrganization(defaults.Organization, "")
@@ -376,7 +376,7 @@ func (r *StartupJobRun) ensureDefaultOrganization(ctx context.Context, jctx *job
 		return fmt.Errorf("failed to create admin membership: %w", createErr)
 	}
 
-	log.InfoContext(ctx, "Created owner membership for default organization", "memberUID", membership.UID)
+	log.DebugContext(ctx, "Created owner membership for default organization", "memberUID", membership.UID)
 
 	// Load sample checks if SP_RUN_MODE is not set to "test"
 	if err := r.loadSampleChecks(ctx, jctx, defaultOrg.UID); err != nil {
@@ -403,13 +403,13 @@ func (r *StartupJobRun) loadSampleChecks(ctx context.Context, jctx *jobdef.JobCo
 
 	if param != nil {
 		if loaded, ok := param.Value["value"].(bool); ok && loaded {
-			log.InfoContext(ctx, "Samples already loaded, skipping", "org_uid", orgUID)
+			log.DebugContext(ctx, "Samples already loaded, skipping", "org_uid", orgUID)
 
 			return nil
 		}
 	}
 
-	log.InfoContext(ctx, "Loading sample checks")
+	log.DebugContext(ctx, "Loading sample checks")
 
 	// Determine sample type based on run mode
 	var sampleType checkerdef.ListSampleOptionType
@@ -442,7 +442,7 @@ func (r *StartupJobRun) loadSampleChecks(ctx context.Context, jctx *jobdef.JobCo
 		sampleCount += count
 	}
 
-	log.InfoContext(ctx, "Finished loading sample checks", "total", sampleCount)
+	log.InfoContext(ctx, "Loaded sample checks", "total", sampleCount)
 
 	// Mark samples as loaded
 	if err := jctx.DBService.SetOrgParameter(ctx, orgUID, paramKey, true, false); err != nil {
@@ -464,7 +464,7 @@ func (r *StartupJobRun) loadSamplesForChecker(
 
 	checker, found := registry.GetChecker(checkType)
 	if !found {
-		log.InfoContext(ctx, "Checker not found, skipping", "type", checkType)
+		log.DebugContext(ctx, "Checker not found, skipping", "type", checkType)
 
 		return 0, nil
 	}
@@ -472,13 +472,13 @@ func (r *StartupJobRun) loadSamplesForChecker(
 	// Check if checker implements CheckerSamplesProvider
 	provider, found := checker.(checkerdef.CheckerSamplesProvider)
 	if !found {
-		log.InfoContext(ctx, "Checker does not provide samples, skipping", "type", checkType)
+		log.DebugContext(ctx, "Checker does not provide samples, skipping", "type", checkType)
 
 		return 0, nil
 	}
 
 	samples := provider.GetSampleConfigs(opts)
-	log.InfoContext(ctx, "Loading samples for checker", "type", checkType, "count", len(samples))
+	log.DebugContext(ctx, "Loading samples for checker", "type", checkType, "count", len(samples))
 
 	count := 0
 
@@ -517,7 +517,7 @@ func (r *StartupJobRun) createSampleCheck(
 
 	// Validate the sample config
 	if validationErr := checker.Validate(&sample); validationErr != nil {
-		log.InfoContext(ctx, "Sample config validation failed, skipping",
+		log.DebugContext(ctx, "Sample config validation failed, skipping",
 			"type", checkType, "name", sample.Name, "error", validationErr)
 
 		return nil
@@ -528,12 +528,12 @@ func (r *StartupJobRun) createSampleCheck(
 		return fmt.Errorf("failed to create sample check %s: %w", slug, createErr)
 	}
 
-	log.InfoContext(ctx, "Created sample check", "type", checkType, "slug", slug, "name", sample.Name)
+	log.DebugContext(ctx, "Created sample check", "type", checkType, "slug", slug, "name", sample.Name)
 
 	// Emit check.created audit event
 	event := newCheckCreatedEvent(orgUID, check, "startup_samples")
 	if createErr := jctx.DBService.CreateEvent(ctx, event); createErr != nil {
-		log.InfoContext(ctx, "Failed to create check.created event (non-fatal)", "error", createErr)
+		log.WarnContext(ctx, "Failed to create check.created event (non-fatal)", "error", createErr)
 	}
 
 	// Notify check runners to wake up and claim the new check immediately
@@ -541,7 +541,7 @@ func (r *StartupJobRun) createSampleCheck(
 	if jctx.Services != nil && jctx.Services.EventNotifier != nil {
 		if err := jctx.Services.EventNotifier.Notify(ctx, string(models.EventTypeCheckCreated), "{}"); err != nil {
 			// Best-effort notification, log but don't fail the job
-			log.InfoContext(ctx, "Failed to notify check runners (non-fatal)", "error", err)
+			log.WarnContext(ctx, "Failed to notify check runners (non-fatal)", "error", err)
 		}
 	}
 
@@ -572,11 +572,11 @@ func (r *StartupJobRun) ensureAggregationJobs(ctx context.Context, jctx *jobdef.
 
 	// Skip if services are not available (e.g., in tests without full service setup)
 	if jctx.Services == nil || jctx.Services.Jobs == nil {
-		log.InfoContext(ctx, "Skipping aggregation job provisioning (services not available)")
+		log.DebugContext(ctx, "Skipping aggregation job provisioning (services not available)")
 		return nil
 	}
 
-	log.InfoContext(ctx, "Ensuring aggregation jobs exist for all organizations")
+	log.DebugContext(ctx, "Ensuring aggregation jobs exist for all organizations")
 
 	// List all organizations
 	orgs, err := jctx.DBService.ListOrganizations(ctx)
@@ -584,16 +584,16 @@ func (r *StartupJobRun) ensureAggregationJobs(ctx context.Context, jctx *jobdef.
 		return fmt.Errorf("failed to list organizations: %w", err)
 	}
 
-	log.InfoContext(ctx, "Found organizations", "count", len(orgs))
+	log.DebugContext(ctx, "Found organizations", "count", len(orgs))
 
 	// Create aggregation job for each organization
 	for _, org := range orgs {
 		_, err := jctx.Services.Jobs.CreateJob(ctx, org.UID, string(jobdef.JobTypeAggregation), nil, nil)
 		if err != nil {
 			// Log error but continue with other organizations
-			log.InfoContext(ctx, "Failed to create aggregation job (non-fatal)", "org_uid", org.UID, "error", err)
+			log.WarnContext(ctx, "Failed to create aggregation job (non-fatal)", "org_uid", org.UID, "error", err)
 		} else {
-			log.InfoContext(ctx, "Ensured aggregation job exists", "org_uid", org.UID)
+			log.DebugContext(ctx, "Ensured aggregation job exists", "org_uid", org.UID)
 		}
 	}
 
@@ -606,19 +606,19 @@ func (r *StartupJobRun) ensureStateCleanupJob(ctx context.Context, jctx *jobdef.
 
 	// Skip if services are not available (e.g., in tests without full service setup)
 	if jctx.Services == nil || jctx.Services.Jobs == nil {
-		log.InfoContext(ctx, "Skipping state cleanup job provisioning (services not available)")
+		log.DebugContext(ctx, "Skipping state cleanup job provisioning (services not available)")
 		return nil
 	}
 
-	log.InfoContext(ctx, "Ensuring state cleanup job exists")
+	log.DebugContext(ctx, "Ensuring state cleanup job exists")
 
 	// Create state cleanup job (empty org_uid = global job)
 	_, err := jctx.Services.Jobs.CreateJob(ctx, "", string(jobdef.JobTypeStateCleanup), nil, nil)
 	if err != nil {
 		// Log error but don't fail the startup
-		log.InfoContext(ctx, "Failed to create state cleanup job (non-fatal)", "error", err)
+		log.WarnContext(ctx, "Failed to create state cleanup job (non-fatal)", "error", err)
 	} else {
-		log.InfoContext(ctx, "Ensured state cleanup job exists")
+		log.DebugContext(ctx, "Ensured state cleanup job exists")
 	}
 
 	return nil
@@ -630,17 +630,17 @@ func (r *StartupJobRun) ensureSnoozeSweepJob(ctx context.Context, jctx *jobdef.J
 	log := jctx.Logger
 
 	if jctx.Services == nil || jctx.Services.Jobs == nil {
-		log.InfoContext(ctx, "Skipping snooze sweep job provisioning (services not available)")
+		log.DebugContext(ctx, "Skipping snooze sweep job provisioning (services not available)")
 		return nil
 	}
 
-	log.InfoContext(ctx, "Ensuring snooze sweep job exists")
+	log.DebugContext(ctx, "Ensuring snooze sweep job exists")
 
 	_, err := jctx.Services.Jobs.CreateJob(ctx, "", string(jobdef.JobTypeSnoozeSweep), nil, nil)
 	if err != nil {
-		log.InfoContext(ctx, "Failed to create snooze sweep job (non-fatal)", "error", err)
+		log.WarnContext(ctx, "Failed to create snooze sweep job (non-fatal)", "error", err)
 	} else {
-		log.InfoContext(ctx, "Ensured snooze sweep job exists")
+		log.DebugContext(ctx, "Ensured snooze sweep job exists")
 	}
 
 	return nil
@@ -654,17 +654,17 @@ func (r *StartupJobRun) ensureJobsCleanupJob(ctx context.Context, jctx *jobdef.J
 	log := jctx.Logger
 
 	if jctx.Services == nil || jctx.Services.Jobs == nil {
-		log.InfoContext(ctx, "Skipping jobs cleanup provisioning (services not available)")
+		log.DebugContext(ctx, "Skipping jobs cleanup provisioning (services not available)")
 		return nil
 	}
 
-	log.InfoContext(ctx, "Ensuring jobs cleanup job exists")
+	log.DebugContext(ctx, "Ensuring jobs cleanup job exists")
 
 	_, err := jctx.Services.Jobs.CreateJob(ctx, "", string(jobdef.JobTypeJobsCleanup), nil, nil)
 	if err != nil {
-		log.InfoContext(ctx, "Failed to create jobs cleanup job (non-fatal)", "error", err)
+		log.WarnContext(ctx, "Failed to create jobs cleanup job (non-fatal)", "error", err)
 	} else {
-		log.InfoContext(ctx, "Ensured jobs cleanup job exists")
+		log.DebugContext(ctx, "Ensured jobs cleanup job exists")
 	}
 
 	return nil
@@ -678,18 +678,18 @@ func (r *StartupJobRun) ensureEventsCleanupJob(ctx context.Context, jctx *jobdef
 	log := jctx.Logger
 
 	if jctx.Services == nil || jctx.Services.Jobs == nil {
-		log.InfoContext(ctx, "Skipping events cleanup provisioning (services not available)")
+		log.DebugContext(ctx, "Skipping events cleanup provisioning (services not available)")
 
 		return nil
 	}
 
-	log.InfoContext(ctx, "Ensuring events cleanup job exists")
+	log.DebugContext(ctx, "Ensuring events cleanup job exists")
 
 	_, err := jctx.Services.Jobs.CreateJob(ctx, "", string(jobdef.JobTypeEventsCleanup), nil, nil)
 	if err != nil {
-		log.InfoContext(ctx, "Failed to create events cleanup job (non-fatal)", "error", err)
+		log.WarnContext(ctx, "Failed to create events cleanup job (non-fatal)", "error", err)
 	} else {
-		log.InfoContext(ctx, "Ensured events cleanup job exists")
+		log.DebugContext(ctx, "Ensured events cleanup job exists")
 	}
 
 	return nil
@@ -701,17 +701,17 @@ func (r *StartupJobRun) ensureStuckJobReaperJob(ctx context.Context, jctx *jobde
 	log := jctx.Logger
 
 	if jctx.Services == nil || jctx.Services.Jobs == nil {
-		log.InfoContext(ctx, "Skipping stuck-job reaper provisioning (services not available)")
+		log.DebugContext(ctx, "Skipping stuck-job reaper provisioning (services not available)")
 		return nil
 	}
 
-	log.InfoContext(ctx, "Ensuring stuck-job reaper exists")
+	log.DebugContext(ctx, "Ensuring stuck-job reaper exists")
 
 	_, err := jctx.Services.Jobs.CreateJob(ctx, "", string(jobdef.JobTypeStuckJobReaper), nil, nil)
 	if err != nil {
-		log.InfoContext(ctx, "Failed to create stuck-job reaper job (non-fatal)", "error", err)
+		log.WarnContext(ctx, "Failed to create stuck-job reaper job (non-fatal)", "error", err)
 	} else {
-		log.InfoContext(ctx, "Ensured stuck-job reaper exists")
+		log.DebugContext(ctx, "Ensured stuck-job reaper exists")
 	}
 
 	return nil
@@ -725,18 +725,18 @@ func (r *StartupJobRun) ensureCustomDomainVerifyJob(ctx context.Context, jctx *j
 	log := jctx.Logger
 
 	if jctx.Services == nil || jctx.Services.Jobs == nil {
-		log.InfoContext(ctx, "Skipping custom-domain verify provisioning (services not available)")
+		log.DebugContext(ctx, "Skipping custom-domain verify provisioning (services not available)")
 
 		return nil
 	}
 
-	log.InfoContext(ctx, "Ensuring custom-domain verify job exists")
+	log.DebugContext(ctx, "Ensuring custom-domain verify job exists")
 
 	_, err := jctx.Services.Jobs.CreateJob(ctx, "", string(jobdef.JobTypeCustomDomainVerify), nil, nil)
 	if err != nil {
-		log.InfoContext(ctx, "Failed to create custom-domain verify job (non-fatal)", "error", err)
+		log.WarnContext(ctx, "Failed to create custom-domain verify job (non-fatal)", "error", err)
 	} else {
-		log.InfoContext(ctx, "Ensured custom-domain verify job exists")
+		log.DebugContext(ctx, "Ensured custom-domain verify job exists")
 	}
 
 	return nil
@@ -749,18 +749,18 @@ func (r *StartupJobRun) ensureAgentGCJob(ctx context.Context, jctx *jobdef.JobCo
 	log := jctx.Logger
 
 	if jctx.Services == nil || jctx.Services.Jobs == nil {
-		log.InfoContext(ctx, "Skipping agent GC provisioning (services not available)")
+		log.DebugContext(ctx, "Skipping agent GC provisioning (services not available)")
 
 		return nil
 	}
 
-	log.InfoContext(ctx, "Ensuring agent GC job exists")
+	log.DebugContext(ctx, "Ensuring agent GC job exists")
 
 	_, err := jctx.Services.Jobs.CreateJob(ctx, "", string(jobdef.JobTypeAgentGC), nil, nil)
 	if err != nil {
-		log.InfoContext(ctx, "Failed to create agent GC job (non-fatal)", "error", err)
+		log.WarnContext(ctx, "Failed to create agent GC job (non-fatal)", "error", err)
 	} else {
-		log.InfoContext(ctx, "Ensured agent GC job exists")
+		log.DebugContext(ctx, "Ensured agent GC job exists")
 	}
 
 	return nil
@@ -774,18 +774,18 @@ func (r *StartupJobRun) ensureAbandonedResultReaperJob(ctx context.Context, jctx
 	log := jctx.Logger
 
 	if jctx.Services == nil || jctx.Services.Jobs == nil {
-		log.InfoContext(ctx, "Skipping abandoned-result reaper provisioning (services not available)")
+		log.DebugContext(ctx, "Skipping abandoned-result reaper provisioning (services not available)")
 
 		return nil
 	}
 
-	log.InfoContext(ctx, "Ensuring abandoned-result reaper exists")
+	log.DebugContext(ctx, "Ensuring abandoned-result reaper exists")
 
 	_, err := jctx.Services.Jobs.CreateJob(ctx, "", string(jobdef.JobTypeAbandonedResultReaper), nil, nil)
 	if err != nil {
-		log.InfoContext(ctx, "Failed to create abandoned-result reaper job (non-fatal)", "error", err)
+		log.WarnContext(ctx, "Failed to create abandoned-result reaper job (non-fatal)", "error", err)
 	} else {
-		log.InfoContext(ctx, "Ensured abandoned-result reaper exists")
+		log.DebugContext(ctx, "Ensured abandoned-result reaper exists")
 	}
 
 	return nil
@@ -799,7 +799,7 @@ func (r *StartupJobRun) ensureSupportCleanupJob(ctx context.Context, jctx *jobde
 	log := jctx.Logger
 
 	if jctx.Services == nil || jctx.Services.Jobs == nil {
-		log.InfoContext(ctx, "Skipping support cleanup provisioning (services not available)")
+		log.DebugContext(ctx, "Skipping support cleanup provisioning (services not available)")
 
 		return nil
 	}
@@ -807,9 +807,9 @@ func (r *StartupJobRun) ensureSupportCleanupJob(ctx context.Context, jctx *jobde
 	if _, err := jctx.Services.Jobs.CreateJob(
 		ctx, "", string(jobdef.JobTypeSupportCleanup), nil, nil,
 	); err != nil {
-		log.InfoContext(ctx, "Failed to create support cleanup job (non-fatal)", "error", err)
+		log.WarnContext(ctx, "Failed to create support cleanup job (non-fatal)", "error", err)
 	} else {
-		log.InfoContext(ctx, "Ensured support cleanup job exists")
+		log.DebugContext(ctx, "Ensured support cleanup job exists")
 	}
 
 	return nil
