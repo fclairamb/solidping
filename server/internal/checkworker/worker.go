@@ -458,8 +458,7 @@ func (r *CheckWorker) registerWorker(ctx context.Context) error {
 	// hostname truncated to config.WorkerHostnameMaxLen. Config.Validate() has
 	// already rejected a slug the database CHECK constraint would refuse.
 	identity := r.config.WorkerIdentity()
-	identity.WarnIfTruncated(ctx, r.logger)
-	identity.WarnIfSanitized(ctx, r.logger)
+	identity.LogDerivation(ctx, r.logger, r.config.WorkerSlugMayCollide())
 
 	region := "default"
 	if r.config.Server.CheckWorker.Region != "" {

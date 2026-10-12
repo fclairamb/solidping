@@ -26,8 +26,11 @@ const tunnelNetwork = "solidping-tunnel"
 
 var errNoTunnelDialer = errors.New("mysql tunnel dial: no tunnel dialer on connection context")
 
-//nolint:gochecknoinits // one-time global tunnel-network registration (mysql's dial registry never shrinks)
+//nolint:gochecknoinits // one-time process-wide registrations: the dial registry (never shrinks) and the logger
 func init() {
+	// SetLogger only fails on a nil logger.
+	_ = mysql.SetLogger(mysqlLogger{})
+
 	mysql.RegisterDialContext(tunnelNetwork, func(ctx context.Context, addr string) (net.Conn, error) {
 		// The tunnel dialer, or the egress guard when the policy is
 		// enforcing (spec 2026-09-25-19): both ride the connection context.
