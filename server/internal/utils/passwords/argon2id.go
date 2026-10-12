@@ -47,11 +47,14 @@ func hashConcurrency() int {
 
 // boundedIDKey runs argon2.IDKey while holding a hashSem slot, bounding the
 // number of simultaneous large derivations.
-func boundedIDKey(password, salt []byte, time, memory uint32, threads uint8, keyLen uint32) []byte {
+func boundedIDKey(password, salt []byte, iterations, memory uint32, threads uint8, keyLen uint32) []byte {
+	argon2Started()
+	defer argon2Finished()
+
 	hashSem <- struct{}{}
 	defer func() { <-hashSem }()
 
-	return argon2.IDKey(password, salt, time, memory, threads, keyLen)
+	return argon2.IDKey(password, salt, iterations, memory, threads, keyLen)
 }
 
 // hashArgon2id derives an argon2id PHC-style hash of password using the supplied
