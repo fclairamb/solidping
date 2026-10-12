@@ -199,7 +199,8 @@ Resolution happens **on every job run** (`retentionFromConfig` →
 2. Global DB parameter (`organization_uid IS NULL`):
    `performance.aggregation_retention_raw_hours` / `_hour_days` / `_day_months`
    (`systemconfig/systemconfig.go`)
-3. Legacy koanf `aggregation.retention_*` (deprecated, warns on use)
+3. Legacy koanf `aggregation.retention_*` (deprecated; `config.Load` warns
+   once at boot when a config file sets one, never for the built-in default)
 4. The hardcoded defaults
 
 Values must be whole numbers ≥ 1 — enforced at write time

@@ -84,9 +84,9 @@ Table-driven per `server/AGENTS.md`.
 - Separate, cosmetic: a fresh install logs `Using deprecated koanf aggregation retention` (`server/internal/jobs/jobtypes/job_aggregation.go:391`) for `audit.retention_days` although the operator set nothing. Worth checking whether it fires on defaults.
 
 ## Acceptance Criteria
-- [ ] A fresh SQLite or Postgres database boots without any `app_settings`, `SQL query failed` or `webpush:` warning.
-- [ ] The VAPID public key served after the first boot is the same after a restart.
-- [ ] `GetOrCreateVAPIDKeys` never returns a pair that is not stored in `app_settings`.
-- [ ] Two processes creating the keys at the same time end up with one stored pair, and both use it.
-- [ ] Env-provisioned keys still win and still need no database.
-- [ ] A browser holding a subscription for an old key can re-enable push from the UI.
+- [x] A fresh SQLite or Postgres database boots without any `app_settings`, `SQL query failed` or `webpush:` warning.
+- [x] The VAPID public key served after the first boot is the same after a restart.
+- [x] `GetOrCreateVAPIDKeys` never returns a pair that is not stored in `app_settings`.
+- [x] Two processes creating the keys at the same time end up with one stored pair, and both use it.
+- [x] Env-provisioned keys still win and still need no database.
+- [x] A browser holding a subscription for an old key can re-enable push from the UI.

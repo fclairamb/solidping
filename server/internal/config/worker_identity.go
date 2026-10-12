@@ -8,6 +8,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 )
 
 // WorkerSlugPattern mirrors the `workers.slug` CHECK constraint as last
@@ -175,39 +176,76 @@ func (i WorkerIdentity) Validate() error {
 	)
 }
 
-// WarnIfTruncated logs a WARN when the identity came from a hostname long
-// enough to be cut. Two hosts sharing the first WorkerHostnameMaxLen characters
-// (Kubernetes pod names routinely do) otherwise collapse onto a single
-// upsert-by-slug `workers` row and silently fight over it.
-func (i WorkerIdentity) WarnIfTruncated(ctx context.Context, logger *slog.Logger) {
-	if !i.Truncated || logger == nil {
-		return
+// WorkerSlugMayCollide reports whether another process can register a worker
+// in the same database as this one. Only then can two hostnames cut or
+// sanitized to the same slug fight over one upsert-by-slug `workers` row.
+//
+// That is the case for a split deployment (any node role other than `all`,
+// agents included) and for a networked Postgres, which several `all` replicas
+// can share. A single `all` node on SQLite or embedded Postgres is the only
+// process registering a worker in its database, so its slug cannot collide.
+func (c *Config) WorkerSlugMayCollide() bool {
+	if !c.NodeRoles().Has(NodeRoleAll) {
+		return true
 	}
 
-	logger.WarnContext(ctx,
-		"Worker hostname truncated to build the worker slug; hosts sharing this "+
-			"prefix collapse onto the same workers row — set SP_NODE_NAME to pin an identity",
-		"hostname", i.Hostname,
-		"slug", i.Slug,
-		"maxLength", WorkerHostnameMaxLen,
-	)
+	return c.Database.Type == DatabaseTypePostgres
 }
 
-// WarnIfSanitized logs a WARN when the hostname contained characters outside
-// [a-z0-9-] and had to be substituted to build the worker slug. Two hosts
-// that only differ by such characters (e.g. "host-002.lan" and
-// "host-002-lan") otherwise collapse onto a single upsert-by-slug `workers`
-// row and silently fight over it.
-func (i WorkerIdentity) WarnIfSanitized(ctx context.Context, logger *slog.Logger) {
-	if !i.Sanitized || logger == nil {
+// loggedWorkerIdentities remembers the identities LogDerivation already
+// reported, so the check worker and the job worker of one process, which
+// resolve the same identity, log it once between them.
+//
+//nolint:gochecknoglobals // process-wide on purpose: one report per process
+var loggedWorkerIdentities sync.Map
+
+// LogDerivation reports, once per process, that the worker slug was cut from
+// a hostname longer than WorkerHostnameMaxLen or had characters outside
+// [a-z0-9-] substituted. Two hosts sharing the first WorkerHostnameMaxLen
+// characters (Kubernetes pod names routinely do), or differing only by such
+// characters ("host-002.lan" and "host-002-lan"), collapse onto a single
+// upsert-by-slug `workers` row and silently fight over it.
+//
+// mayCollide (Config.WorkerSlugMayCollide) picks the level: WARN when another
+// process can register in the same database, DEBUG otherwise, where the cut
+// is harmless (a laptop hostname such as "alices-macbook-air.local" on a
+// single-node install).
+func (i WorkerIdentity) LogDerivation(ctx context.Context, logger *slog.Logger, mayCollide bool) {
+	if logger == nil || (!i.Truncated && !i.Sanitized) {
 		return
 	}
 
-	logger.WarnContext(ctx,
-		"Worker hostname contained characters outside the worker slug alphabet "+
-			"and was sanitized; hosts that only differ by such characters collapse "+
-			"onto the same workers row — set SP_NODE_NAME to pin an identity",
-		"hostname", i.Hostname,
-		"slug", i.Slug,
-	)
+	if _, logged := loggedWorkerIdentities.LoadOrStore(i.Hostname+"\x00"+i.Slug, struct{}{}); logged {
+		return
+	}
+
+	i.logDerivation(ctx, logger, mayCollide)
+}
+
+// logDerivation is LogDerivation without the once-per-process guard.
+func (i WorkerIdentity) logDerivation(ctx context.Context, logger *slog.Logger, mayCollide bool) {
+	level := slog.LevelDebug
+	if mayCollide {
+		level = slog.LevelWarn
+	}
+
+	if i.Truncated {
+		logger.Log(ctx, level,
+			"Worker hostname truncated to build the worker slug; hosts sharing this "+
+				"prefix collapse onto the same workers row — set SP_NODE_NAME to pin an identity",
+			"hostname", i.Hostname,
+			"slug", i.Slug,
+			"maxLength", WorkerHostnameMaxLen,
+		)
+	}
+
+	if i.Sanitized {
+		logger.Log(ctx, level,
+			"Worker hostname contained characters outside the worker slug alphabet "+
+				"and was sanitized; hosts that only differ by such characters collapse "+
+				"onto the same workers row — set SP_NODE_NAME to pin an identity",
+			"hostname", i.Hostname,
+			"slug", i.Slug,
+		)
+	}
 }
