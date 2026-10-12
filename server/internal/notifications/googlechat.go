@@ -251,6 +251,12 @@ func (s *GoogleChatSender) buildWidgets(payload *Payload, checkName string) []go
 		})
 	}
 
+	if title, text := RegionLabelFor(payload); text != "" {
+		widgets = append(widgets, googleChatWidget{
+			DecoratedText: &googleChatDecoratedText{TopLabel: title, Text: text},
+		})
+	}
+
 	return widgets
 }
 

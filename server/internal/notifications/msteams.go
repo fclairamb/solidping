@@ -249,7 +249,7 @@ func (s *MSTeamsSender) buildFacts(payload *Payload, checkName string) []msTeams
 			facts = append(facts, msTeamsFact{Title: mmFieldDuration, Value: formatDuration(duration)})
 		}
 
-		return facts
+		return appendMSTeamsRegionFact(facts, payload)
 	}
 
 	facts = append(facts,
@@ -257,5 +257,16 @@ func (s *MSTeamsSender) buildFacts(payload *Payload, checkName string) []msTeams
 		msTeamsFact{Title: mmFieldFailureCount, Value: strconv.Itoa(payload.Incident.FailureCount)},
 	)
 
-	return facts
+	return appendMSTeamsRegionFact(facts, payload)
+}
+
+// appendMSTeamsRegionFact adds the "Failing from" / "Failed from" fact when
+// the payload shows a region line.
+func appendMSTeamsRegionFact(facts []msTeamsFact, payload *Payload) []msTeamsFact {
+	title, text := RegionLabelFor(payload)
+	if text == "" {
+		return facts
+	}
+
+	return append(facts, msTeamsFact{Title: title, Value: text})
 }

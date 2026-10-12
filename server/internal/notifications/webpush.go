@@ -169,6 +169,15 @@ func buildWebPushURL(payload *Payload) string {
 // carry the short #N incident reference (incidentRefPrefix, same as Slack and
 // Discord) — commentTitle already includes it on the comment path.
 func buildWebPushContent(payload *Payload, checkName string) (string, string) {
+	title, body := buildWebPushEventContent(payload, checkName)
+	if line := RegionLine(payload); line != "" {
+		body += "\n" + line
+	}
+
+	return title, body
+}
+
+func buildWebPushEventContent(payload *Payload, checkName string) (string, string) {
 	ref := incidentRefPrefix(payload.Incident)
 
 	switch payload.EventType {

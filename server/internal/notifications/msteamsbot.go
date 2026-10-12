@@ -447,6 +447,10 @@ func (s *MSTeamsBotSender) buildFacts(payload *Payload, checkName string) []mste
 		)
 	}
 
+	if title, text := RegionLabelFor(payload); text != "" {
+		facts = append(facts, msteams.CardFact{Title: title, Value: text})
+	}
+
 	return facts
 }
 

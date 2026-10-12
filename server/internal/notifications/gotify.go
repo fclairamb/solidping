@@ -212,6 +212,8 @@ func (s *GotifySender) buildDownBody(payload *Payload, checkName string) string 
 	fmt.Fprintf(&builder, "Failure count: %d\n", payload.Incident.FailureCount)
 	fmt.Fprintf(&builder, "Started: %s", payload.Incident.StartedAt.Format(time.RFC3339))
 
+	writeRegionLine(&builder, payload)
+
 	return builder.String()
 }
 
@@ -229,6 +231,8 @@ func (s *GotifySender) buildResolvedBody(payload *Payload, checkName string) str
 		fmt.Fprintf(&builder, "Duration: %s", formatDuration(duration))
 	}
 
+	writeRegionLine(&builder, payload)
+
 	return builder.String()
 }
 
@@ -239,6 +243,8 @@ func (s *GotifySender) buildEscalatedBody(payload *Payload, checkName string) st
 	fmt.Fprintf(&builder, "Cause: %s\n", getFailureReason(payload.Incident))
 	fmt.Fprintf(&builder, "Failures: %d\n", payload.Incident.FailureCount)
 	fmt.Fprintf(&builder, "Duration: %s", formatDuration(time.Since(payload.Incident.StartedAt)))
+
+	writeRegionLine(&builder, payload)
 
 	return builder.String()
 }

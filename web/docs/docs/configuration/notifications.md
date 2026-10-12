@@ -924,7 +924,12 @@ specification, so receivers can verify it came from SolidPing.
       "failureCount": 3,
       "relapseCount": 0,
       "recoveryPeriodSeconds": null,
-      "resolutionType": "auto"
+      "resolutionType": "auto",
+      "regions": {
+        "failingRegions": ["eu-west", "us-east"],
+        "regionCount": 3,
+        "failQuorum": 2
+      }
     },
     "check": {
       "uid": "550e8400-e29b-41d4-a716-446655440000",
@@ -940,6 +945,12 @@ specification, so receivers can verify it came from SolidPing.
   `check_deleted`) is only present once the incident is resolved.
 - `acknowledgedAt` is only present once the incident has been acknowledged.
 - `recoveryPeriodSeconds` is `null` until the incident has relapsed at least once.
+- `regions` holds the slugs (not labels) of the regions that saw the failure,
+  how many regions the check runs from and the quorum that makes it down. It is
+  omitted when no region is known, and a single-region check gives
+  `{"failingRegions": ["eu-west"], "regionCount": 1, "failQuorum": 1}`. It is a
+  snapshot taken when the incident opens (or reopens) and refreshed on
+  escalation, not the live state.
 - `incident.comment` events add `data.comment`
   (`{"text", "authorName", "source"}`).
 - `incident.acknowledged` and `incident.unacknowledged` events add

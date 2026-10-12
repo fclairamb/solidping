@@ -672,6 +672,11 @@ func (s *EmailSender) buildIncidentViewModel(
 		applyDegradedViewModel(viewModel, payload, info)
 	}
 
+	if title, text := RegionLabelFor(payload); text != "" {
+		viewModel["RegionTitle"] = title
+		viewModel["RegionText"] = text
+	}
+
 	if payload.Comment != nil {
 		viewModel["CommentText"] = commentText(payload.Comment)
 		viewModel["CommentAuthor"] = commentAuthor(payload.Comment)

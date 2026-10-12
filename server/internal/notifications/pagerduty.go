@@ -159,6 +159,19 @@ func (s *PagerDutySender) trigger(ctx context.Context, settings *pagerdutySettin
 		summary = fmt.Sprintf("[REOPENED] %s (relapse #%d)", checkName, payload.Incident.RelapseCount)
 	}
 
+	details := map[string]any{
+		"checkUid":     payload.Check.UID,
+		"checkName":    checkName,
+		"checkType":    payload.Check.Type,
+		"incidentUid":  payload.Incident.UID,
+		"cause":        getFailureReason(payload.Incident),
+		"failureCount": payload.Incident.FailureCount,
+	}
+
+	if _, text := RegionLabelFor(payload); text != "" {
+		details["failingFrom"] = text
+	}
+
 	event := map[string]any{
 		pagerdutyFieldRoutingKey:  settings.RoutingKey,
 		pagerdutyFieldEventAction: pagerdutyEventActionTrigger,
@@ -171,14 +184,7 @@ func (s *PagerDutySender) trigger(ctx context.Context, settings *pagerdutySettin
 			"summary":  summary,
 			"source":   pagerdutySource(payload),
 			"severity": pagerdutySeverity(payload.Incident),
-			"custom_details": map[string]any{
-				"checkUid":     payload.Check.UID,
-				"checkName":    checkName,
-				"checkType":    payload.Check.Type,
-				"incidentUid":  payload.Incident.UID,
-				"cause":        getFailureReason(payload.Incident),
-				"failureCount": payload.Incident.FailureCount,
-			},
+			"custom_details": details,
 		},
 	}
 

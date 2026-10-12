@@ -267,6 +267,8 @@ func (s *PushoverSender) buildDownBody(payload *Payload, checkName string) strin
 	fmt.Fprintf(&builder, "<b>Failures:</b> %d\n", payload.Incident.FailureCount)
 	fmt.Fprintf(&builder, "<b>Started:</b> %s", payload.Incident.StartedAt.Format(time.RFC3339))
 
+	writePushoverRegionLine(&builder, payload)
+
 	return builder.String()
 }
 
@@ -284,6 +286,8 @@ func (s *PushoverSender) buildResolvedBody(payload *Payload, checkName string) s
 		fmt.Fprintf(&builder, "<b>Duration:</b> %s", formatDuration(duration))
 	}
 
+	writePushoverRegionLine(&builder, payload)
+
 	return builder.String()
 }
 
@@ -295,7 +299,23 @@ func (s *PushoverSender) buildEscalatedBody(payload *Payload, checkName string) 
 	fmt.Fprintf(&builder, "<b>Failures:</b> %d\n", payload.Incident.FailureCount)
 	fmt.Fprintf(&builder, "<b>Duration:</b> %s", formatDuration(time.Since(payload.Incident.StartedAt)))
 
+	writePushoverRegionLine(&builder, payload)
+
 	return builder.String()
+}
+
+// writePushoverRegionLine appends the region line as an HTML-formatted row.
+func writePushoverRegionLine(builder *strings.Builder, payload *Payload) {
+	title, text := RegionLabelFor(payload)
+	if text == "" {
+		return
+	}
+
+	if builder.Len() > 0 && !strings.HasSuffix(builder.String(), "\n") {
+		builder.WriteString("\n")
+	}
+
+	fmt.Fprintf(builder, "<b>%s:</b> %s", title, text)
 }
 
 // firstStringSetting returns the first non-empty string value among keys.

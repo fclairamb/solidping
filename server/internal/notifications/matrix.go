@@ -283,6 +283,10 @@ func (s *MatrixSender) titleAndLines(payload *Payload) (string, []string) {
 		lines = []string{"An incident update occurred for " + checkName}
 	}
 
+	if line := RegionLine(payload); line != "" {
+		lines = append(lines, line)
+	}
+
 	return title, lines
 }
 

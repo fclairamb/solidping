@@ -201,7 +201,19 @@ func (s *MattermostSender) eventColorAndTitle(payload *Payload, checkName string
 	}
 }
 
+// buildFields is the event's fields plus the region line. The Zulip sender
+// reuses it, so it gets the line too.
 func (s *MattermostSender) buildFields(payload *Payload, checkName string) []mattermostField {
+	fields := s.buildEventFields(payload, checkName)
+
+	if title, text := RegionLabelFor(payload); text != "" {
+		fields = append(fields, mattermostField{Short: false, Title: title, Value: text})
+	}
+
+	return fields
+}
+
+func (s *MattermostSender) buildEventFields(payload *Payload, checkName string) []mattermostField {
 	if payload.EventType == eventTypeIncidentResolved {
 		return s.buildResolvedFields(payload, checkName)
 	}

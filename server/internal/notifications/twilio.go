@@ -116,7 +116,8 @@ func (s *TwilioSender) buildBody(
 				twilio.OptOutFooter
 		}
 
-		return fmt.Sprintf("[%s] %s: %s RECOVERED.", productName, org, checkName) + twilio.OptOutFooter
+		return fmt.Sprintf("[%s] %s: %s RECOVERED.", productName, org, checkName) +
+			twilioRegionSentence(payload) + twilio.OptOutFooter
 	case eventTypeIncidentEscalated:
 		msg = fmt.Sprintf("[%s] %s: %s STILL DOWN (escalated).", productName, org, checkName)
 	case eventTypeIncidentReopened:
@@ -125,11 +126,25 @@ func (s *TwilioSender) buildBody(
 		msg = fmt.Sprintf("[%s] %s: %s is DOWN.", productName, org, checkName)
 	}
 
+	msg += twilioRegionSentence(payload)
+
 	if ackURL := s.ackURL(jctx, payload, settings); ackURL != "" {
 		msg += " Ack: " + ackURL
 	}
 
 	return msg + twilio.OptOutFooter
+}
+
+// twilioRegionSentence is the region line for an SMS: the plain region names,
+// never the emoji (one emoji forces UCS-2 and halves the SMS length). Empty
+// when the payload shows no region line.
+func twilioRegionSentence(payload *Payload) string {
+	title, text := RegionLabelPlainFor(payload)
+	if text == "" {
+		return ""
+	}
+
+	return " " + title + ": " + text + "."
 }
 
 // ackURL builds the signed magic-link ack URL for the SMS. The shared

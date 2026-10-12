@@ -560,7 +560,18 @@ func (s *SlackSender) buildIncidentFields(payload *Payload, checkName, checkURL 
 		})
 	}
 
-	return fields
+	return appendSlackRegionField(fields, payload)
+}
+
+// appendSlackRegionField adds the "Failing from" / "Failed from" field when
+// the payload shows a region line.
+func appendSlackRegionField(fields []slack.Text, payload *Payload) []slack.Text {
+	title, text := RegionLabelFor(payload)
+	if text == "" {
+		return fields
+	}
+
+	return append(fields, slack.Text{Type: slack.BlockTypeMrkdwn, Text: "*" + title + ":*\n" + text})
 }
 
 // buildIncidentCreatedBlocks builds the blocks for incident.created messages.
@@ -1064,6 +1075,8 @@ func (s *SlackSender) buildResolvedUpdateMessage(payload *Payload) *slack.Messag
 			Text: "*Checked URL:*\n" + method + " `" + url + "`",
 		})
 	}
+
+	fields = appendSlackRegionField(fields, payload)
 
 	blocks := []slack.Block{
 		// Header with resolved indicator

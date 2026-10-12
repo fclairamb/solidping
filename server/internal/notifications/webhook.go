@@ -86,6 +86,18 @@ type WebhookIncident struct {
 	// ResolutionType says how a resolved incident closed (auto | manual |
 	// expired | escalated | disabled | check_deleted). Omitted while active.
 	ResolutionType *string `json:"resolutionType,omitempty"`
+	// Regions says which regions saw the failure. A snapshot taken when the
+	// incident opened (or reopened) and refreshed on escalation. Omitted when
+	// no region is known, so existing receivers see the same payload.
+	Regions *WebhookRegions `json:"regions,omitempty"`
+}
+
+// WebhookRegions is the regions block of a webhook incident. FailingRegions
+// holds slugs, not labels: machines consume it.
+type WebhookRegions struct {
+	FailingRegions []string `json:"failingRegions"`
+	RegionCount    int      `json:"regionCount"`
+	FailQuorum     int      `json:"failQuorum"`
 }
 
 // WebhookCheck is the check projection inside a webhook payload.
@@ -417,6 +429,14 @@ func (s *WebhookSender) buildPayload(payload *Payload) WebhookPayload {
 		FailureCount:   payload.Incident.FailureCount,
 		RelapseCount:   payload.Incident.RelapseCount,
 		ResolutionType: payload.Incident.ResolutionType,
+	}
+
+	if info := payload.Regions; info != nil && len(info.Failing) > 0 {
+		incident.Regions = &WebhookRegions{
+			FailingRegions: info.Failing,
+			RegionCount:    info.RegionCount,
+			FailQuorum:     info.FailQuorum,
+		}
 	}
 
 	if payload.Incident.ResolvedAt != nil {

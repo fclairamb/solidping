@@ -628,6 +628,8 @@ func (ds *DiscordSender) buildIncidentResolvedEmbed(payload *Payload) discord.Em
 		})
 	}
 
+	fields = appendDiscordRegionField(fields, payload)
+
 	description := "The incident has been automatically resolved."
 	if ResolvedByCheckDeletion(payload.Incident) {
 		description = checkDeletedSentence
@@ -661,6 +663,8 @@ func (ds *DiscordSender) buildIncidentEscalatedEmbed(payload *Payload) discord.E
 			Value: fmt.Sprintf("%s `%s`", method, url),
 		})
 	}
+
+	fields = appendDiscordRegionField(fields, payload)
 
 	return discord.Embed{
 		Title:       incidentRefPrefix(payload.Incident) + "Incident escalated: " + checkName,
@@ -727,7 +731,18 @@ func (ds *DiscordSender) buildCommonFields(payload *Payload, checkName string) [
 		})
 	}
 
-	return fields
+	return appendDiscordRegionField(fields, payload)
+}
+
+// appendDiscordRegionField adds the "Failing from" / "Failed from" field when
+// the payload shows a region line.
+func appendDiscordRegionField(fields []discord.Field, payload *Payload) []discord.Field {
+	title, text := RegionLabelFor(payload)
+	if text == "" {
+		return fields
+	}
+
+	return append(fields, discord.Field{Name: title, Value: text})
 }
 
 // buildResolvedUpdateMessage is what the ORIGINAL incident message becomes once
@@ -756,6 +771,8 @@ func (ds *DiscordSender) buildResolvedUpdateMessage(payload *Payload) *discord.M
 			Value: fmt.Sprintf("%s `%s`", getCheckMethod(payload.Check), url),
 		})
 	}
+
+	fields = appendDiscordRegionField(fields, payload)
 
 	title := fmt.Sprintf("%sAutomatically resolved %s incident", incidentRefPrefix(payload.Incident), checkName)
 	if ResolvedByCheckDeletion(payload.Incident) {
