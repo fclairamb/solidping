@@ -7,6 +7,7 @@ import { HttpTimingCard } from "@/components/checks/http-timing-card";
 import { useAuth } from "@/contexts/AuthContext";
 import { useIsDemoSession } from "@/hooks/use-is-demo-session";
 import { canDemoEditCheck } from "@/lib/demo";
+import { buildCurlCommand, curlCommandHasPlaceholders } from "@/lib/curl-command";
 import {
   createFileRoute,
   Link,
@@ -36,6 +37,7 @@ import {
   Pencil,
   Power,
   RefreshCw,
+  Terminal,
   Timer,
   Trash2,
   X,
@@ -1122,6 +1124,22 @@ function CheckDetailPage() {
     }
   };
 
+  const handleCopyCurl = async () => {
+    if (!check) return;
+    const config = check.config ?? {};
+    const privateKeys = check.configPrivateKeys ?? [];
+    try {
+      await navigator.clipboard.writeText(buildCurlCommand(config, privateKeys));
+      toast.success(
+        curlCommandHasPlaceholders(config, privateKeys)
+          ? t("checks:detail.curlCopiedPlaceholders")
+          : t("checks:detail.curlCopied"),
+      );
+    } catch {
+      toast.error(t("checks:detail.copyCurlFailed"));
+    }
+  };
+
   const handleToggleEnabled = async () => {
     if (!check) return;
     const next = !check.enabled;
@@ -1491,6 +1509,15 @@ function CheckDetailPage() {
                   <Link2 className="mr-2 h-4 w-4" />
                   {t("checks:detail.copyLink")}
                 </DropdownMenuItem>
+                {check.type === "http" && (
+                  <DropdownMenuItem
+                    onSelect={handleCopyCurl}
+                    data-testid="check-copy-curl"
+                  >
+                    <Terminal className="mr-2 h-4 w-4" />
+                    {t("checks:detail.copyCurl")}
+                  </DropdownMenuItem>
+                )}
                 {/* Deep link into the docs section for *this* check's type. */}
                 <DropdownMenuItem asChild>
                   <a

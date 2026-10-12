@@ -857,7 +857,11 @@
       "runFailedTitle": "La captura ha fallado",
       "runFailed": "La captura ha fallado: {{reason}}"
     },
-    "uidShort": "uid: {{uid}}..."
+    "uidShort": "uid: {{uid}}...",
+    "copyCurl": "Copiar como cURL",
+    "curlCopied": "Solicitud copiada como cURL",
+    "curlCopiedPlaceholders": "Solicitud copiada como cURL. Los secretos se sustituyeron por marcadores.",
+    "copyCurlFailed": "No se pudo copiar la solicitud"
   },
   "endpoints": {
     "heartbeat": {

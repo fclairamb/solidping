@@ -901,7 +901,11 @@
       "runFailedTitle": "The capture failed",
       "runFailed": "The capture failed: {{reason}}"
     },
-    "uidShort": "uid: {{uid}}..."
+    "uidShort": "uid: {{uid}}...",
+    "copyCurl": "Copy as cURL",
+    "curlCopied": "Request copied as cURL",
+    "curlCopiedPlaceholders": "Request copied as cURL. Secrets were replaced with placeholders.",
+    "copyCurlFailed": "Could not copy the request"
   },
   "endpoints": {
     "heartbeat": {

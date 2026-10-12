@@ -85,6 +85,15 @@ url: https://www.acme.com/
 httpVersion: "2"
 ```
 
+**Copy as cURL:** the check's more-actions menu and the failure details card of
+an incident have a **Copy as cURL** action. It builds a `curl` command that
+replays the probe: method, URL, headers, body, redirects, TLS verification, HTTP
+version and timeout. Secrets are never included: Basic Auth becomes
+`$SOLIDPING_BASIC_AUTH` (export it as `user:pass`), and secret headers are
+replaced by a comment, so add them yourself with `-H`. `${param:...}` and
+`${env:...}` references stay literal and must be replaced before running. The
+default SolidPing User-Agent is not reproduced.
+
 **Basic Auth storage:** you still enter a username and a password in the form,
 but the pair is stored as a single encrypted credential (a reserved `basicAuth`
 config key) — both halves are protected, not just the password. The dashboard

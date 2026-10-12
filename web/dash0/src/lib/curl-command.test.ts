@@ -1,0 +1,96 @@
+import { describe, expect, it } from "vitest";
+import { buildCurlCommand, curlCommandHasPlaceholders } from "./curl-command";
+
+const base = { url: "https://example.com/health" };
+
+describe("buildCurlCommand", () => {
+  it("GET with no body: no -X, -i present, URL last", () => {
+    const out = buildCurlCommand(base);
+    expect(out).toContain("curl -i");
+    expect(out).not.toContain("-X");
+    expect(out.endsWith("'https://example.com/health'")).toBe(true);
+  });
+
+  it("POST body with quote and newline is escaped exactly", () => {
+    const out = buildCurlCommand({ ...base, method: "post", body: "it's\nok" });
+    expect(out).toContain("-X POST");
+    expect(out).toContain("--data-raw 'it'\\''s\nok'");
+  });
+
+  it("GET with body keeps -X GET", () => {
+    const out = buildCurlCommand({ ...base, body: "x" });
+    expect(out).toContain("-X GET");
+    expect(out).toContain("--data-raw 'x'");
+  });
+
+  it("HEAD uses --head, no -i, no -X", () => {
+    const out = buildCurlCommand({ ...base, method: "HEAD" });
+    expect(out).toContain("--head");
+    expect(out).not.toContain("-i");
+    expect(out).not.toContain("-X");
+  });
+
+  it("redirects", () => {
+    expect(buildCurlCommand(base)).toContain("-L --max-redirs 10");
+    const off = buildCurlCommand({ ...base, followRedirects: false });
+    expect(off).not.toContain("-L");
+    expect(off).not.toContain("--max-redirs");
+  });
+
+  it("verifySsl", () => {
+    expect(buildCurlCommand({ ...base, verifySsl: false })).toContain(" -k");
+    expect(buildCurlCommand(base)).not.toContain(" -k");
+  });
+
+  it("httpVersion", () => {
+    expect(buildCurlCommand({ ...base, httpVersion: "2" })).toContain("--http2 ");
+    expect(buildCurlCommand({ ...base, httpVersion: "3" })).toContain("--http3");
+    const v11 = buildCurlCommand({ ...base, httpVersion: "1.1" });
+    expect(v11).not.toContain("--http");
+    expect(
+      buildCurlCommand({ url: "http://example.com", httpVersion: "2" }),
+    ).toContain("--http2-prior-knowledge");
+  });
+
+  it("timeout", () => {
+    expect(buildCurlCommand({ ...base, timeout: "1m30s" })).toContain("--max-time 90");
+    expect(buildCurlCommand({ ...base, timeout: "500ms" })).toContain("--max-time 0.5");
+    expect(buildCurlCommand(base)).not.toContain("--max-time");
+    expect(buildCurlCommand({ ...base, timeout: "abc" })).not.toContain("--max-time");
+  });
+
+  it("sorts plain headers by name", () => {
+    const out = buildCurlCommand({ ...base, headers: { B: "2", A: "1" } });
+    expect(out.indexOf("'A: 1'")).toBeLessThan(out.indexOf("'B: 2'"));
+  });
+
+  it("basic auth placeholders", () => {
+    expect(buildCurlCommand(base, ["basicAuth"])).toContain('-u "$SOLIDPING_BASIC_AUTH"');
+    expect(buildCurlCommand({ ...base, username: "alice" }, ["password"])).toContain(
+      `-u 'alice:'"$SOLIDPING_BASIC_PASSWORD"`,
+    );
+    expect(buildCurlCommand(base)).not.toContain("-u ");
+  });
+
+  it("secret headers produce a comment, never a key", () => {
+    const out = buildCurlCommand(base, ["secretHeaders"]);
+    expect(out).toContain("# This check also sends secret headers");
+    expect(out).not.toContain("secretHeaders");
+    expect(buildCurlCommand(base)).not.toContain("# This check also");
+    expect(curlCommandHasPlaceholders(base, ["secretHeaders"])).toBe(true);
+    expect(curlCommandHasPlaceholders(base, [])).toBe(false);
+  });
+
+  it("keeps references literal and notes them", () => {
+    const out = buildCurlCommand({ ...base, headers: { Authorization: "${param:token}" } });
+    expect(out).toContain("'Authorization: ${param:token}'");
+    expect(out).toContain("references are not resolved");
+    expect(buildCurlCommand(base)).not.toContain("not resolved");
+  });
+
+  it("notes same-host redirect policy", () => {
+    expect(buildCurlCommand({ ...base, redirectHostPolicy: "same-host" })).toContain(
+      "# redirectHostPolicy: same-host",
+    );
+  });
+});

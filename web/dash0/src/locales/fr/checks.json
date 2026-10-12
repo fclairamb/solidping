@@ -901,7 +901,11 @@
       "runFailedTitle": "La capture a échoué",
       "runFailed": "La capture a échoué : {{reason}}"
     },
-    "uidShort": "uid : {{uid}}..."
+    "uidShort": "uid : {{uid}}...",
+    "copyCurl": "Copier en cURL",
+    "curlCopied": "Requête copiée en cURL",
+    "curlCopiedPlaceholders": "Requête copiée en cURL. Les secrets ont été remplacés par des variables.",
+    "copyCurlFailed": "Impossible de copier la requête"
   },
   "endpoints": {
     "heartbeat": {

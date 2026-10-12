@@ -857,7 +857,11 @@
       "runFailedTitle": "Die Aufnahme ist fehlgeschlagen",
       "runFailed": "Die Aufnahme ist fehlgeschlagen: {{reason}}"
     },
-    "uidShort": "UID: {{uid}}..."
+    "uidShort": "UID: {{uid}}...",
+    "copyCurl": "Als cURL kopieren",
+    "curlCopied": "Anfrage als cURL kopiert",
+    "curlCopiedPlaceholders": "Anfrage als cURL kopiert. Geheimnisse wurden durch Platzhalter ersetzt.",
+    "copyCurlFailed": "Anfrage konnte nicht kopiert werden"
   },
   "endpoints": {
     "heartbeat": {
