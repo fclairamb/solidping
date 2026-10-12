@@ -10,9 +10,19 @@ helm install solidping oci://ghcr.io/fclairamb/charts/solidping \
 The chart is published with each release, at the release version. From a
 checkout, use `./deploy/helm/solidping` instead of the OCI reference.
 
-SQLite on a 1 Gi volume by default (single replica, `Recreate` strategy). For
-PostgreSQL create a Secret with the connection string under `url` and set
-`database.type=postgres`, `database.existingSecret=<name>`.
+SQLite on a 1 Gi volume by default (single replica, `Recreate` strategy).
+
+For PostgreSQL, either:
+
+- set `database.cnpg.enabled=true`. The chart creates a
+  [CloudNativePG](https://cloudnative-pg.io) cluster and connects to it. The
+  CNPG operator must be installed. The cluster is kept on `helm uninstall`. On the first install the pod
+  restarts a few times until the database is up.
+- or create a Secret with the connection string under `url` and set
+  `database.type=postgres`, `database.existingSecret=<name>`.
+
+The `/data` volume stays mounted with PostgreSQL, for uploaded files. With
+`SP_FILESTORAGE_TYPE=s3` in `extraEnv` you can set `persistence.enabled=false`.
 
 The JWT signing key is generated on first install and kept across upgrades.
 Set `auth.existingSecret` (key `jwt-secret`) to manage it yourself.
