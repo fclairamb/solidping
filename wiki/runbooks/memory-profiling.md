@@ -221,7 +221,9 @@ gets recorded in §9 with its numbers so nobody re-tries it blind.
 `idle-api-checks-sqlite` · `idle-api-postgres` (local-only: embedded Postgres
 downloads its own distribution) · `checks-200/500/1000` ·
 `login-burst` (argon2id peak — a **security** parameter, measured, never
-lowered) · `docs-crawl` (every path in `/docs/sitemap.xml`) · `dash0-reload`.
+lowered) · `docs-crawl` (every path in `/docs/sitemap.xml`) · `dash0-reload` ·
+`fresh-boot` (pinned 60 s warm-up; nightly with `-assert-max
+cgroupUnreclaimableBytes=48MiB`, measured 34.8 MiB, spec 2026-10-12-04).
 
 > A **checks-only** node cannot be sampled from inside: `serveAPIOrWait` starts
 > no HTTP server for it, so there is no `/api/mgmt/memory` to read.

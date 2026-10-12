@@ -253,6 +253,7 @@ BENCH_MEM_MEMORY    ?= 1g
 BENCH_MEM_CPUS      ?= 1
 BENCH_MEM_PORT      ?= 4009
 BENCH_MEM_COMPARE   ?=
+BENCH_MEM_ASSERT    ?=
 
 build-membench: ## Build the memory bench harness
 	@echo "Building membench..."
@@ -281,7 +282,8 @@ bench-memory: build-backend build-membench ## Measure memory (see wiki/runbooks/
 		-cpus $(BENCH_MEM_CPUS) \
 		-port $(BENCH_MEM_PORT) \
 		-out-dir $(BENCH_OUT) \
-		$(if $(BENCH_MEM_COMPARE),-compare $(BENCH_MEM_COMPARE),)
+		$(if $(BENCH_MEM_COMPARE),-compare $(BENCH_MEM_COMPARE),) \
+		$(if $(BENCH_MEM_ASSERT),-assert-max $(BENCH_MEM_ASSERT),)
 
 run: build ## Build and run the application
 	@echo "Running application..."

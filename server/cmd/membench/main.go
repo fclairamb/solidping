@@ -40,6 +40,8 @@ import (
 	"syscall"
 	"time"
 
+	units "github.com/docker/go-units"
+
 	"github.com/fclairamb/solidping/server/internal/membench"
 )
 
@@ -72,6 +74,7 @@ type options struct {
 	cpus      string
 	baseURL   string
 	extraEnv  string
+	assertMax string
 	floor     bool
 	warmUp    time.Duration
 	interval  time.Duration
@@ -119,6 +122,9 @@ func parseFlags() options {
 		"sample the LIVE FLOOR (?gc=1: force a GC and return free pages before each reading) instead of the "+
 			"steady state. A different measurement, not a better one — never compare the two")
 	flag.IntVar(&opts.port, "port", defaultPort, "port the server under measurement listens on")
+	flag.StringVar(&opts.assertMax, "assert-max", "",
+		"comma-separated metric=size bounds (e.g. cgroupUnreclaimableBytes=48MiB); the run fails when a "+
+			"scenario's median is above one, after the reports are written")
 	flag.Parse()
 
 	return opts
@@ -180,7 +186,91 @@ func run(ctx context.Context, opts options) error {
 			"and no comparison against this report can be called significant.")
 	}
 
-	return writeOutputs(opts, report)
+	bounds, err := parseAssertMax(opts.assertMax)
+	if err != nil {
+		return err
+	}
+
+	if err := writeOutputs(opts, report); err != nil {
+		return err
+	}
+
+	return checkAssertMax(report, bounds)
+}
+
+// assertBound is one -assert-max entry: a metric's median must stay at or below max.
+type assertBound struct {
+	metric string
+	max    float64
+}
+
+// parseAssertMax parses "metric=size,metric=size". Sizes take human units
+// ("48MiB") or raw numbers, so a count metric (goroutines) can be bounded too.
+func parseAssertMax(spec string) ([]assertBound, error) {
+	var bounds []assertBound
+
+	for _, entry := range strings.Split(spec, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+
+		metric, value, found := strings.Cut(entry, "=")
+		if !found || metric == "" {
+			return nil, fmt.Errorf("-assert-max: %q is not metric=size", entry)
+		}
+
+		size, err := units.RAMInBytes(value)
+		if err != nil {
+			return nil, fmt.Errorf("-assert-max: %q: %w", entry, err)
+		}
+
+		bounds = append(bounds, assertBound{metric: metric, max: float64(size)})
+	}
+
+	return bounds, nil
+}
+
+// checkAssertMax fails when any scenario's median is above a bound. A bound on
+// a metric a scenario did not report is an error too: an assertion that cannot
+// be checked must not pass silently.
+func checkAssertMax(report *membench.Report, bounds []assertBound) error {
+	var failures []string
+
+	for _, sc := range report.Scenarios {
+		if len(sc.Runs) == 0 {
+			continue // skipped (local-only), already noted in the report
+		}
+
+		for _, b := range bounds {
+			agg, ok := sc.Metrics[b.metric]
+			if !ok {
+				failures = append(failures, fmt.Sprintf("%s: metric %s not reported", sc.Scenario, b.metric))
+
+				continue
+			}
+
+			if agg.Median > b.max {
+				failures = append(failures, fmt.Sprintf("%s: %s median %s is above %s", sc.Scenario, b.metric,
+					membench.FormatMetric(b.metric, agg.Median), membench.FormatMetric(b.metric, b.max)))
+			}
+		}
+	}
+
+	if len(failures) > 0 {
+		return fmt.Errorf("assertion failed: %s", strings.Join(failures, "; "))
+	}
+
+	return nil
+}
+
+// warmUpFor is the warm-up a scenario runs with: its own when it pins one.
+func warmUpFor(opts options, sc scenario) time.Duration {
+	if sc.WarmUp > 0 {
+		return sc.WarmUp
+	}
+
+	return opts.warmUp
 }
 
 // selectScenarios resolves the -scenarios flag, refusing an unknown name rather
@@ -229,6 +319,10 @@ func runScenario(ctx context.Context, opts options, sc scenario) (membench.Scena
 	result := membench.ScenarioResult{Scenario: sc.Name, Mode: opts.mode}
 	if sc.Caveat != "" {
 		result.Notes = append(result.Notes, sc.Caveat)
+	}
+
+	if sc.WarmUp > 0 && sc.WarmUp != opts.warmUp {
+		result.Notes = append(result.Notes, "warm-up pinned to "+sc.WarmUp.String()+" by the scenario")
 	}
 
 	if sc.LocalOnly && opts.mode != "local" {
@@ -297,7 +391,7 @@ func runRepetition(ctx context.Context, opts options, sc scenario, rep int) ([]m
 
 	loadDone := startLoad(loadCtx, sc, api)
 
-	if warmErr := sleepCtx(ctx, opts.warmUp); warmErr != nil {
+	if warmErr := sleepCtx(ctx, warmUpFor(opts, sc)); warmErr != nil {
 		return nil, warmErr
 	}
 
