@@ -34,7 +34,7 @@ https://api.example.com/health
 | URL | The endpoint to check | `https://api.example.com/health` |
 | Method | HTTP method, `GET` by default | `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS`, `QUERY` |
 | Timeout | Request timeout | `30s` |
-| Expected Status | Status code to expect | `200`, `2XX` (wildcard) |
+| Expected Status | Status code to expect. Any 2xx when unset (`2XX`) | `200`, `2XX` (wildcard) |
 | HTTP version | Protocol the target must answer over (`httpVersion`): `1.1` (default), `2` or `3`. See **Protocol** below | `2` |
 | Headers | Custom request headers | `Authorization: Bearer token` |
 | Body | Request body (for POST/PUT/PATCH/QUERY) | `{"key": "value"}` |
@@ -46,6 +46,7 @@ https://api.example.com/health
 **Status Code Matching:**
 - Exact match: `200`, `201`, `404`
 - Wildcard: `2XX` (any 2xx status), `5XX` (any 5xx status)
+- Unset: any 2xx response
 
 **QUERY method:** `QUERY` is sent with the request body attached, exactly like
 `POST`, and is treated like `POST` for redirects (a 307/308 re-sends the

@@ -292,11 +292,6 @@ func (c *HTTPChecker) executeRequest(
 		method = strings.ToUpper(method)
 	}
 
-	expectedStatus := cfg.ExpectedStatus
-	if expectedStatus == 0 {
-		expectedStatus = 200
-	}
-
 	start := time.Now()
 
 	// Create request with body if provided
@@ -760,14 +755,20 @@ func (c *HTTPChecker) executeRequest(
 
 	// Determine status based on expected status code(s)
 	status := checkerdef.StatusUp
-	if len(cfg.ExpectedStatusCodes) > 0 {
-		// Use new pattern-based matching
+	switch {
+	case len(cfg.ExpectedStatusCodes) > 0:
+		// Pattern-based matching.
 		if !MatchStatusCode(resp.StatusCode, cfg.ExpectedStatusCodes) {
 			status = checkerdef.StatusDown
 		}
-	} else {
-		// Fall back to legacy expectedStatus (default: 200)
-		if resp.StatusCode != expectedStatus {
+	case cfg.ExpectedStatus != 0:
+		// Legacy single exact status code.
+		if resp.StatusCode != cfg.ExpectedStatus {
+			status = checkerdef.StatusDown
+		}
+	default:
+		// Nothing set: any 2xx passes.
+		if !MatchStatusCode(resp.StatusCode, []string{DefaultExpectedStatusPattern}) {
 			status = checkerdef.StatusDown
 		}
 	}

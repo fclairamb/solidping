@@ -86,7 +86,7 @@ function fromConfig(config: CheckConfig): HealthState {
     // The health document is the only judge of the response.
     jsonPathAssertions: null,
     bodyAssertions: null,
-    expectedStatusCodes: ["200"],
+    expectedStatusCodes: ["2XX"],
     format: getConfigField(config, "format") || "auto",
     maxAge: getConfigField(config, "maxAge") || getConfigField(config, "max_age"),
     ignore: asList(config.ignore).join("\n"),
@@ -99,7 +99,7 @@ function toConfig(state: HealthState): { config: CheckConfig; errors: FieldError
     ...state,
     jsonPathAssertions: null,
     bodyAssertions: null,
-    expectedStatusCodes: ["200"],
+    expectedStatusCodes: ["2XX"],
   });
   const cfg: CheckConfig = { ...config };
   if (state.format && state.format !== "auto") cfg.format = state.format;

@@ -58,7 +58,7 @@ export interface HttpState {
   // A list of exact codes ("200") and/or NXX wildcards ("4XX"). Always
   // normalized (trimmed + uppercased) and de-duplicated — see
   // dedupeStatusPatterns. Never empty in practice: fromConfig defaults it to
-  // ["200"] when the config carries neither status key.
+  // ["2XX"] (the server default) when the config carries neither status key.
   expectedStatusCodes: string[];
   username: string;
   password: string;
@@ -122,10 +122,10 @@ const METHODS_WITHOUT_BODY = ["GET", "HEAD"];
 // seedExpectedStatusCodes implements the fromConfig precedence from spec
 // 2026-07-21-02: prefer the new expectedStatusCodes list; else fall back to
 // the legacy single expectedStatus int as one exact chip; else default to
-// the implicit ["200"].
+// the implicit ["2XX"] (any 2xx, the server default).
 // The server resolves both spellings of both keys (checkhttp's resolveKey), so
 // a check created through the API/CLI/manifest may well carry the snake_case
-// one; reading only the camelCase spelling seeded the default ["200"], which
+// one; reading only the camelCase spelling seeded the default ["2XX"], which
 // toConfig then omitted as implicit — silently widening the check's contract.
 function seedExpectedStatusCodes(config: CheckConfig): string[] {
   const rawCodes = config.expectedStatusCodes ?? config.expected_status_codes;
@@ -138,7 +138,7 @@ function seedExpectedStatusCodes(config: CheckConfig): string[] {
     const deduped = dedupeStatusPatterns([String(legacy)]);
     if (deduped.length > 0) return deduped;
   }
-  return ["200"];
+  return ["2XX"];
 }
 
 // seedJsonPathAssertions reads the assertion tree from config, preferring the
@@ -244,14 +244,15 @@ export function httpToConfig(state: HttpState): {
   const cfg: CheckConfig = {};
   if (state.url) cfg.url = state.url;
   if (state.method && state.method !== "GET") cfg.method = state.method;
-  // The default ["200"] (or an empty list) stays implicit — omit both status
-  // keys, matching today's "200 is implicit" behavior. Otherwise write the
+  // The default ["2XX"] (or an empty list) stays implicit: omit both status
+  // keys, the server then accepts any 2xx. An explicit ["200"] is written, or
+  // picking 200 would silently save 2XX. Otherwise write the
   // list and never the deprecated `expectedStatus`: toConfig rebuilds the
   // config object from state every time, so a legacy key from a previously
   // saved check drops off automatically the next time this form saves it.
   const codes = state.expectedStatusCodes;
   const isImplicitDefault =
-    codes.length === 0 || (codes.length === 1 && codes[0] === "200");
+    codes.length === 0 || (codes.length === 1 && codes[0] === "2XX");
   if (!isImplicitDefault) {
     cfg.expectedStatusCodes = codes;
   }
@@ -412,7 +413,7 @@ function Fields({ state, onChange, errors }: CheckTypeFieldsProps<HttpState>) {
           }
           validate={isValidStatusPattern}
           normalize={normalizeStatusPattern}
-          placeholder="200"
+          placeholder="2XX"
           data-testid="check-expected-status-codes"
           invalidTitle={t(
             "form.statusCodeInvalid",

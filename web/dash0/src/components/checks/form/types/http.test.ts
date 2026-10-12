@@ -16,13 +16,13 @@ import {
 } from "./common";
 import type { AssertionNode } from "@/components/checks/json-assertion-editor";
 
-// Base state for toConfig tests — a valid URL and the implicit ["200"]
+// Base state for toConfig tests — a valid URL and the implicit ["2XX"]
 // default, so each test only needs to override what it's exercising.
 function baseState(overrides: Partial<HttpState> = {}): HttpState {
   return {
     url: "https://example.com",
     method: "GET",
-    expectedStatusCodes: ["200"],
+    expectedStatusCodes: ["2XX"],
     username: "",
     password: "",
     secretHeaders: [],
@@ -61,9 +61,9 @@ function saveUntouched(stored: CheckConfig): CheckConfig {
 }
 
 describe("httpModule.fromConfig — expectedStatusCodes seeding", () => {
-  it('defaults to ["200"] when neither status key is present', () => {
+  it('defaults to ["2XX"] when neither status key is present', () => {
     const state = httpModule.fromConfig({ url: "https://example.com" });
-    expect(state.expectedStatusCodes).toEqual(["200"]);
+    expect(state.expectedStatusCodes).toEqual(["2XX"]);
   });
 
   it("seeds from expectedStatusCodes when present, normalizing entries", () => {
@@ -111,14 +111,22 @@ describe("httpModule.fromConfig — expectedStatusCodes seeding", () => {
       url: "https://example.com",
       expectedStatusCodes: [],
     });
-    expect(withoutLegacy.expectedStatusCodes).toEqual(["200"]);
+    expect(withoutLegacy.expectedStatusCodes).toEqual(["2XX"]);
   });
 });
 
 describe("httpModule.toConfig — expectedStatusCodes serialization", () => {
-  it('omits both status keys for the default ["200"]', () => {
+  it('omits both status keys for the default ["2XX"]', () => {
     const { config } = httpModule.toConfig(baseState());
     expect(config).not.toHaveProperty("expectedStatusCodes");
+    expect(config).not.toHaveProperty("expectedStatus");
+  });
+
+  it('writes expectedStatusCodes ["200"] for an explicit ["200"]', () => {
+    const { config } = httpModule.toConfig(
+      baseState({ expectedStatusCodes: ["200"] }),
+    );
+    expect(config.expectedStatusCodes).toEqual(["200"]);
     expect(config).not.toHaveProperty("expectedStatus");
   });
 
@@ -453,13 +461,9 @@ describe("unmodeled config keys survive an untouched save", () => {
     const state = httpModule.fromConfig(stored);
     expect(state.expectedStatusCodes).toEqual(["200"]);
     const submitted = saveUntouched(stored);
-    // 200 is the implicit default, so neither key needs to be written — what
-    // must never happen is a DIFFERENT effective status.
-    const effective = submitted.expectedStatusCodes ??
-      submitted.expected_status_codes ??
-      submitted.expectedStatus ??
-      submitted.expected_status ?? ["200"];
-    expect(effective).toEqual(["200"]);
+    // An explicit 200 is now written as a list (the implicit default is 2XX),
+    // so the effective status stays exactly 200.
+    expect(submitted.expectedStatusCodes).toEqual(["200"]);
   });
 
   it("preserves a non-default snake expected_status as a real chip", () => {

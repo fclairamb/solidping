@@ -16,6 +16,10 @@ var (
 )
 
 const (
+	// DefaultExpectedStatusPattern is the pattern applied when a check sets neither
+	// expectedStatusCodes nor the legacy expectedStatus: any 2xx response.
+	DefaultExpectedStatusPattern = "2XX"
+
 	// methodQuery is the IETF QUERY method (draft-ietf-httpbis-safe-method-w-body):
 	// a safe, idempotent verb that carries a request body, like a cacheable POST.
 	// net/http has no http.MethodQuery constant, so it is defined here.

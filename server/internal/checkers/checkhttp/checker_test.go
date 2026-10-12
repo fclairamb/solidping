@@ -2346,3 +2346,63 @@ func TestHTTPChecker_HTTPVersionResponseProtocolMismatch(t *testing.T) {
 	r.Equal("expected HTTP/2, got HTTP/1.1", result.Output[checkerdef.OutputKeyError])
 	r.Equal(http.StatusOK, result.Output[checkerdef.OutputKeyStatusCode])
 }
+
+func TestHTTPChecker_Execute_DefaultExpectedStatus(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		cfg          HTTPConfig
+		serverStatus int
+		wantStatus   checkerdef.Status
+	}{
+		{"default accepts 200", HTTPConfig{}, 200, checkerdef.StatusUp},
+		{"default accepts 201", HTTPConfig{}, 201, checkerdef.StatusUp},
+		{"default accepts 202", HTTPConfig{}, 202, checkerdef.StatusUp},
+		{"default accepts 204", HTTPConfig{}, 204, checkerdef.StatusUp},
+		{"default rejects 404", HTTPConfig{}, 404, checkerdef.StatusDown},
+		{"default rejects 500", HTTPConfig{}, 500, checkerdef.StatusDown},
+		{
+			"default rejects unfollowed 301",
+			HTTPConfig{FollowRedirects: boolPtr(false)},
+			301, checkerdef.StatusDown,
+		},
+		{"explicit 200 rejects 204", HTTPConfig{ExpectedStatusCodes: []string{"200"}}, 204, checkerdef.StatusDown},
+		{"explicit 201 rejects 200", HTTPConfig{ExpectedStatusCodes: []string{"201"}}, 200, checkerdef.StatusDown},
+		{"legacy 200 rejects 204", HTTPConfig{ExpectedStatus: 200}, 204, checkerdef.StatusDown},
+		{
+			"3XX accepts unfollowed 301",
+			HTTPConfig{ExpectedStatusCodes: []string{"3XX"}, FollowRedirects: boolPtr(false)},
+			301, checkerdef.StatusUp,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				if tt.serverStatus == 301 {
+					w.Header().Set("Location", "/elsewhere")
+				}
+				w.WriteHeader(tt.serverStatus)
+			}))
+			defer server.Close()
+
+			cfg := tt.cfg
+			cfg.URL = server.URL
+
+			var result *checkerdef.Result
+			var err error
+			for attempt := 0; attempt < 3; attempt++ {
+				result, err = (&HTTPChecker{}).Execute(context.Background(), &cfg)
+				if err == nil && result.Status == tt.wantStatus {
+					break
+				}
+				time.Sleep(50 * time.Millisecond)
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.wantStatus, result.Status)
+		})
+	}
+}
