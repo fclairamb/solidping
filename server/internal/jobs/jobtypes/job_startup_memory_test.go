@@ -5,8 +5,12 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"os"
+	"os/exec"
+	"runtime/metrics"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -98,4 +102,54 @@ func TestStartupBrowserSamplesDisabled(t *testing.T) {
 		r.True(found, "sample %s must exist", tt.slug)
 		r.Equal(tt.enabled, got, "sample %s enabled", tt.slug)
 	}
+}
+
+const (
+	freshBootChildEnv = "SP_TEST_FRESH_BOOT_HEAP_CHILD"
+	mib               = 1 << 20
+	// freshBootSettle covers the passwords package's 1 s release delay plus margin.
+	freshBootSettle = 2 * time.Second
+)
+
+// TestFreshBootHeapStaysSmall: running the startup job end to end on a fresh
+// database leaves neither an inflated GC goal nor a large retained heap behind,
+// without a forced GC. Before spec 2026-10-12-04 the seed admin's argon2id hash
+// left a ~150 MB goal. Runs in a child process so other tests' heaps do not
+// interfere.
+//
+//nolint:paralleltest // re-execs the test binary; the child measures process-wide memory
+func TestFreshBootHeapStaysSmall(t *testing.T) {
+	if os.Getenv(freshBootChildEnv) == "1" {
+		freshBootChild(t)
+		return
+	}
+
+	//nolint:gosec // re-exec of the test binary itself
+	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestFreshBootHeapStaysSmall$", "-test.v")
+	cmd.Env = append(os.Environ(), freshBootChildEnv+"=1")
+	out, err := cmd.CombinedOutput()
+	t.Logf("child output:\n%s", out)
+	require.NoError(t, err)
+}
+
+func freshBootChild(t *testing.T) {
+	t.Helper()
+
+	runFreshStartup(t)
+	time.Sleep(freshBootSettle)
+
+	samples := []metrics.Sample{
+		{Name: "/memory/classes/total:bytes"},
+		{Name: "/memory/classes/heap/released:bytes"},
+		{Name: "/gc/heap/goal:bytes"},
+	}
+	metrics.Read(samples)
+
+	retained := samples[0].Value.Uint64() - samples[1].Value.Uint64()
+	goal := samples[2].Value.Uint64()
+
+	t.Logf("fresh boot: retained=%d MiB goal=%d MiB", retained/mib, goal/mib)
+
+	require.LessOrEqual(t, goal, uint64(64*mib), "GC goal after a fresh boot")
+	require.LessOrEqual(t, retained, uint64(64*mib), "retained heap after a fresh boot")
 }
