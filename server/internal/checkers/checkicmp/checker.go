@@ -4,7 +4,11 @@ package checkicmp
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
+	"net"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
@@ -56,7 +60,7 @@ func (c *ICMPChecker) Validate(spec *checkerdef.CheckSpec) error {
 
 // Execute performs the ICMP ping check and returns the result.
 //
-//nolint:cyclop,funlen // Complexity necessary for comprehensive ICMP checking
+//nolint:funlen // Complexity necessary for comprehensive ICMP checking
 func (c *ICMPChecker) Execute(ctx context.Context, config checkerdef.Config) (*checkerdef.Result, error) {
 	cfg, err := checkerdef.AssertConfig[*ICMPConfig](config)
 	if err != nil {
@@ -182,6 +186,15 @@ func (c *ICMPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 		return result, nil
 	}
 
+	return summarizeBurst(cfg, ip, results, duration), nil
+}
+
+// summarizeBurst turns the raw per-packet results into the check result:
+// statistics, status and the optional loss / RTT thresholds. Pure, so the
+// thresholds are testable without raw sockets.
+func summarizeBurst(
+	cfg *ICMPConfig, ip net.IP, results []pingResult, duration time.Duration,
+) *checkerdef.Result {
 	// Calculate statistics. `results` holds exactly the packets that were
 	// actually written to the socket, so sent/received/loss describe what
 	// really happened — a truncated burst shrinks packets_sent instead of
@@ -246,53 +259,39 @@ func (c *ICMPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 		},
 	}
 
-	// Add RTT metrics if we had any successful checks
 	if successCount > 0 {
-		avgRTT := totalRTT / time.Duration(successCount)
-
-		// The response time is the average round trip, not the wall-clock
-		// time of the burst: a count > 1 burst waits `interval` between
-		// packets, so the elapsed time would report ~1s for a 10ms ping
-		// (#465). The elapsed time is kept only when no reply came back.
-		result.Duration = avgRTT
-		result.Metrics["rtt_ms_min"] = float64(minRTT.Microseconds()) / microsecondsToMillis
-		result.Metrics["rtt_ms_max"] = float64(maxRTT.Microseconds()) / microsecondsToMillis
-		result.Metrics["rtt_ms_avg"] = float64(avgRTT.Microseconds()) / microsecondsToMillis
-
-		// Jitter: population std-dev over the successful RTTs of the burst,
-		// computed in the same pass as min/max/avg (spec 2026-09-21-01). It is
-		// the figure that makes this line-quality data rather than uptime
-		// data. No aggregation suffix matches, so it rolls up by the
-		// type-based default (float64 → average), like rtt_ms_avg.
-		meanNS := float64(totalRTT) / float64(successCount)
-		variance := sumSquaresNS/float64(successCount) - meanNS*meanNS
-
-		if variance < 0 {
-			variance = 0
-		}
-
-		result.Metrics[metricRTTJitterMs] = math.Sqrt(variance) / float64(time.Millisecond)
+		applyReplyStats(&result, cfg, replyStats{
+			min: minRTT, max: maxRTT, total: totalRTT, sumSquaresNS: sumSquaresNS,
+			count: successCount, lossPct: packetLossPct,
+		})
 	} else {
-		// Include the last error if all pings failed
-		for i := len(results) - 1; i >= 0; i-- {
-			if results[i].Error != nil {
-				result.Output[checkerdef.OutputKeyError] = results[i].Error.Error()
-
-				break
-			}
-		}
-
-		if result.Output[checkerdef.OutputKeyError] == nil {
-			result.Output[checkerdef.OutputKeyError] = "no successful ping responses"
-		}
-
-		// TOTAL loss only. Partial loss is degraded reachability, not a
-		// reachability FAILURE — the target answered, and the check is up.
-		result.SetNetworkFailure(checkerdef.NewNetworkFailure(
-			icmpFailureClass(results), cfg.Host, ip.String(), 0))
+		applyTotalLoss(&result, cfg, ip, results)
 	}
 
-	return &result, nil
+	return &result
+}
+
+// thresholdBreaches lists the human messages for every configured limit that
+// the burst exceeded (strictly greater).
+func thresholdBreaches(cfg *ICMPConfig, lossPct, avgRTTMs float64) []string {
+	var out []string
+
+	if cfg.MaxPacketLossPercent != nil && lossPct > *cfg.MaxPacketLossPercent {
+		out = append(out, fmt.Sprintf("packet loss %s%% > %s%%", formatOneDecimal(lossPct),
+			formatOneDecimal(*cfg.MaxPacketLossPercent)))
+	}
+
+	if cfg.MaxAvgRTTMs != nil && avgRTTMs > *cfg.MaxAvgRTTMs {
+		out = append(out, fmt.Sprintf("avg rtt %s ms > %s ms", formatOneDecimal(avgRTTMs),
+			formatOneDecimal(*cfg.MaxAvgRTTMs)))
+	}
+
+	return out
+}
+
+// formatOneDecimal prints at most one decimal, without a trailing ".0".
+func formatOneDecimal(val float64) string {
+	return strconv.FormatFloat(math.Round(val*10)/10, 'f', -1, 64)
 }
 
 // icmpFailureClass distinguishes "nothing came back" from "something told us
@@ -338,4 +337,72 @@ type pingResult struct {
 	Success bool
 	RTT     time.Duration
 	Error   error
+}
+
+// replyStats carries the aggregates of the replies that came back.
+type replyStats struct {
+	min, max, total time.Duration
+	sumSquaresNS    float64
+	count           int
+	lossPct         float64
+}
+
+// applyReplyStats adds the RTT metrics and applies the thresholds.
+func applyReplyStats(result *checkerdef.Result, cfg *ICMPConfig, stats replyStats) {
+	totalRTT, minRTT, maxRTT, successCount := stats.total, stats.min, stats.max, stats.count
+	sumSquaresNS, packetLossPct := stats.sumSquaresNS, stats.lossPct
+
+	avgRTT := totalRTT / time.Duration(successCount)
+
+	// The response time is the average round trip, not the wall-clock
+	// time of the burst: a count > 1 burst waits `interval` between
+	// packets, so the elapsed time would report ~1s for a 10ms ping
+	// (#465). The elapsed time is kept only when no reply came back.
+	result.Duration = avgRTT
+	result.Metrics["rtt_ms_min"] = float64(minRTT.Microseconds()) / microsecondsToMillis
+	result.Metrics["rtt_ms_max"] = float64(maxRTT.Microseconds()) / microsecondsToMillis
+	avgMS := float64(avgRTT.Microseconds()) / microsecondsToMillis
+	result.Metrics["rtt_ms_avg"] = avgMS
+
+	// Jitter: population std-dev over the successful RTTs of the burst,
+	// computed in the same pass as min/max/avg (spec 2026-09-21-01). It is
+	// the figure that makes this line-quality data rather than uptime
+	// data. No aggregation suffix matches, so it rolls up by the
+	// type-based default (float64 → average), like rtt_ms_avg.
+	meanNS := float64(totalRTT) / float64(successCount)
+	variance := sumSquaresNS/float64(successCount) - meanNS*meanNS
+
+	if variance < 0 {
+		variance = 0
+	}
+
+	result.Metrics[metricRTTJitterMs] = math.Sqrt(variance) / float64(time.Millisecond)
+
+	// Thresholds only apply when something answered. The target is
+	// reachable, so no network failure is set.
+	if breaches := thresholdBreaches(cfg, packetLossPct, avgMS); len(breaches) > 0 {
+		result.Status = checkerdef.StatusDown
+		result.Output[checkerdef.OutputKeyError] = strings.Join(breaches, "; ")
+	}
+}
+
+// applyTotalLoss fills the failure of a burst where nothing answered.
+func applyTotalLoss(result *checkerdef.Result, cfg *ICMPConfig, ip net.IP, results []pingResult) {
+	// Include the last error if all pings failed
+	for i := len(results) - 1; i >= 0; i-- {
+		if results[i].Error != nil {
+			result.Output[checkerdef.OutputKeyError] = results[i].Error.Error()
+
+			break
+		}
+	}
+
+	if result.Output[checkerdef.OutputKeyError] == nil {
+		result.Output[checkerdef.OutputKeyError] = "no successful ping responses"
+	}
+
+	// TOTAL loss only. Partial loss is degraded reachability, not a
+	// reachability FAILURE — the target answered, and the check is up.
+	result.SetNetworkFailure(checkerdef.NewNetworkFailure(
+		icmpFailureClass(results), cfg.Host, ip.String(), 0))
 }

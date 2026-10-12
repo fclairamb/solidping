@@ -1257,7 +1257,10 @@
     "burstIntervalNeedsCount": "Only applies when sending more than one packet",
     "burstIntervalDenseWarning": "Below 50ms, some targets rate-limit ICMP echo — packet loss shown may be real, not a measurement artifact",
     "burstPacketSize": "Packet size (bytes)",
-    "burstTtl": "TTL (hops)"
+    "burstTtl": "TTL (hops)",
+    "burstMaxLoss": "Max packet loss (%)",
+    "burstMaxAvgRtt": "Max average round trip (ms)",
+    "burstLossCountHint": "With 1 packet, loss is either 0% or 100%. Send at least 10 packets for a useful percentage."
   },
   "prometheus": {
     "mode": "Mode",
@@ -1444,6 +1447,8 @@
     "intervalDuration": "Interval must be a duration like 100 or 100ms",
     "packetSizeWholeNumber": "Packet size must be a whole number of bytes",
     "ttlWholeNumber": "TTL must be a whole number",
+    "maxPacketLossNumber": "Max packet loss must be a number",
+    "maxAvgRttNumber": "Max average round trip must be a number",
     "invalidStatusCodes_one": "Invalid status code pattern: {{codes}} (use an exact code like 200 or a wildcard like 4XX)",
     "invalidStatusCodes_other": "Invalid status code patterns: {{codes}} (use an exact code like 200 or a wildcard like 4XX)",
     "invalidIp_one": "Not {{family}} address: {{values}}",

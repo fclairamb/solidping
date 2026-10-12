@@ -216,6 +216,8 @@ port-unreachable.
 | `interval` | duration | O | | Interval between packets |
 | `packet_size` | int | O | | Packet size in bytes |
 | `ttl` | int | O | | Time to live |
+| `max_packet_loss_percent` | float | O | | Burst is down above this loss (0-100) |
+| `max_avg_rtt_ms` | float | O | | Burst is down above this average RTT (0-30000) |
 
 Either `url` or `host` is required. Requires raw socket privileges.
 

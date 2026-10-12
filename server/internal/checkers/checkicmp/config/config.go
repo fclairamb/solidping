@@ -24,6 +24,28 @@ type ICMPConfig struct {
 	Interval   time.Duration `json:"interval,omitempty"`
 	PacketSize int           `json:"packet_size,omitempty"` //nolint:tagliatelle // API uses snake_case
 	TTL        int           `json:"ttl,omitempty"`
+
+	// MaxPacketLossPercent and MaxAvgRTTMs are optional hard limits: a burst
+	// above either is down. Pointers because 0 is meaningful for loss ("any
+	// loss is down").
+	MaxPacketLossPercent *float64 `json:"max_packet_loss_percent,omitempty"` //nolint:tagliatelle // API uses snake_case
+	MaxAvgRTTMs          *float64 `json:"max_avg_rtt_ms,omitempty"`          //nolint:tagliatelle // API uses snake_case
+}
+
+// optionalNumber reads an optional JSON number (int or float64) from the map.
+func optionalNumber(configMap map[string]any, key string) (*float64, error) {
+	switch val := configMap[key].(type) {
+	case nil:
+		return nil, nil //nolint:nilnil // absent is not an error
+	case int:
+		out := float64(val)
+
+		return &out, nil
+	case float64:
+		return &val, nil
+	default:
+		return nil, checkerdef.NewConfigError(key, "must be a number")
+	}
 }
 
 // FromMap populates the configuration from a map.
@@ -104,6 +126,16 @@ func (c *ICMPConfig) FromMap(configMap map[string]any) error {
 		return checkerdef.NewConfigError("ttl", "must be a number")
 	}
 
+	var err error
+
+	if c.MaxPacketLossPercent, err = optionalNumber(configMap, "max_packet_loss_percent"); err != nil {
+		return err
+	}
+
+	if c.MaxAvgRTTMs, err = optionalNumber(configMap, "max_avg_rtt_ms"); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -135,6 +167,14 @@ func (c *ICMPConfig) GetConfig() map[string]any {
 
 	if c.TTL != 0 {
 		cfg["ttl"] = c.TTL
+	}
+
+	if c.MaxPacketLossPercent != nil {
+		cfg["max_packet_loss_percent"] = *c.MaxPacketLossPercent
+	}
+
+	if c.MaxAvgRTTMs != nil {
+		cfg["max_avg_rtt_ms"] = *c.MaxAvgRTTMs
 	}
 
 	return cfg

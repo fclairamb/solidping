@@ -1257,7 +1257,10 @@
     "burstIntervalNeedsCount": "Ne s'applique que si plus d'un paquet est envoyé",
     "burstIntervalDenseWarning": "En dessous de 50 ms, certaines cibles limitent le débit des échos ICMP — la perte de paquets affichée peut être réelle, pas un artefact de mesure",
     "burstPacketSize": "Taille des paquets (octets)",
-    "burstTtl": "TTL (sauts)"
+    "burstTtl": "TTL (sauts)",
+    "burstMaxLoss": "Perte de paquets max (%)",
+    "burstMaxAvgRtt": "Temps de réponse moyen max (ms)",
+    "burstLossCountHint": "Avec 1 paquet, la perte vaut 0 % ou 100 %. Envoyez au moins 10 paquets pour un pourcentage utile."
   },
   "prometheus": {
     "mode": "Mode",
@@ -1444,6 +1447,8 @@
     "intervalDuration": "L'intervalle doit être une durée comme 100 ou 100ms",
     "packetSizeWholeNumber": "La taille de paquet doit être un nombre entier d'octets",
     "ttlWholeNumber": "Le TTL doit être un nombre entier",
+    "maxPacketLossNumber": "La perte de paquets max doit être un nombre",
+    "maxAvgRttNumber": "Le temps de réponse moyen max doit être un nombre",
     "invalidStatusCodes_one": "Motif de code de statut invalide : {{codes}} (utilisez un code exact comme 200 ou un joker comme 4XX)",
     "invalidStatusCodes_other": "Motifs de code de statut invalides : {{codes}} (utilisez un code exact comme 200 ou un joker comme 4XX)",
     "invalidIp_one": "Adresse {{family}} invalide : {{values}}",

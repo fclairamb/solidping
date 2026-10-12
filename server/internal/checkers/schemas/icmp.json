@@ -24,6 +24,12 @@
     },
     "ttl": {
       "type": "integer"
+    },
+    "max_packet_loss_percent": {
+      "type": "number"
+    },
+    "max_avg_rtt_ms": {
+      "type": "number"
     }
   },
   "type": "object",

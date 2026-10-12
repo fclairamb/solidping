@@ -194,4 +194,56 @@ test.describe("ICMP burst form fields", () => {
       });
     }
   });
+
+  test("loss and RTT limits persist, clear, and show the count hint", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+
+    const uid = await createIcmpCheck(page, token, {
+      host: "example.com",
+      count: 10,
+      max_packet_loss_percent: 20,
+      max_avg_rtt_ms: 150,
+    });
+
+    try {
+      await page.goto(`orgs/test/checks/${uid}/edit`);
+      await page.waitForLoadState("networkidle");
+      await expandSection(page, "check-icmp-burst-section");
+      await expect(page.getByTestId("check-icmp-max-loss-input")).toHaveValue(
+        "20",
+      );
+      await expect(page.getByTestId("check-icmp-max-avg-rtt-input")).toHaveValue(
+        "150",
+      );
+      // count 10: no hint
+      await expect(page.getByTestId("check-icmp-loss-count-hint")).toHaveCount(0);
+
+      // count 1 with a loss limit: hint shows
+      await page.getByTestId("check-icmp-count-input").fill("1");
+      await expect(page.getByTestId("check-icmp-loss-count-hint")).toBeVisible();
+
+      await page.getByTestId("check-icmp-max-loss-input").fill("");
+      const patched = page.waitForResponse(
+        (res) =>
+          res.url().includes(`/api/v1/orgs/test/checks/${uid}`) &&
+          res.request().method() === "PATCH" &&
+          res.status() < 400,
+        { timeout: 15000 },
+      );
+      await page.getByTestId("check-submit-button").click();
+      await patched;
+      await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 15000 });
+
+      const after = await getCheck(page, token, uid);
+      expect(after.config.max_packet_loss_percent).toBeUndefined();
+      expect(after.config.max_avg_rtt_ms).toBe(150);
+    } finally {
+      await page.request.delete(`${API_BASE}/api/v1/orgs/test/checks/${uid}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    }
+  });
 });

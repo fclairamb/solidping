@@ -166,6 +166,42 @@ function saveIcmpUntouched(stored: CheckConfig): CheckConfig {
   });
 }
 
+describe("icmpModule — loss and RTT limits", () => {
+  it("round-trips both keys and keeps a 0 loss limit", () => {
+    const stored: CheckConfig = {
+      host: "gw.acme.com",
+      count: 10,
+      max_packet_loss_percent: 0,
+      max_avg_rtt_ms: 150.5,
+    };
+    const state = icmpModule.fromConfig(stored);
+    expect(state.maxPacketLossPercent).toBe("0");
+    expect(state.maxAvgRttMs).toBe("150.5");
+    expect(icmpModule.toConfig(state).config).toEqual(stored);
+    expect(saveIcmpUntouched(stored)).toEqual(stored);
+  });
+
+  it("an empty input omits the key", () => {
+    const state = icmpModule.fromConfig({
+      host: "h",
+      max_packet_loss_percent: 20,
+      max_avg_rtt_ms: 100,
+    });
+    const cleared = { ...state, maxPacketLossPercent: "", maxAvgRttMs: "" };
+    expect(icmpModule.toConfig(cleared).config).toEqual({ host: "h" });
+  });
+
+  it("rejects non-numeric input", () => {
+    const state = {
+      ...icmpModule.fromConfig({ host: "h" }),
+      maxAvgRttMs: "abc",
+    };
+    expect(icmpModule.toConfig(state).errors.map((e) => e.name)).toContain(
+      "max_avg_rtt_ms",
+    );
+  });
+});
+
 describe("icmpModule — burst field round-trip", () => {
   it("declares every key toConfig can write", () => {
     const state = icmpModule.fromConfig({
@@ -223,6 +259,8 @@ describe("icmpModule — burst field round-trip", () => {
       interval: "",
       packetSize: "",
       ttl: "",
+      maxPacketLossPercent: "",
+      maxAvgRttMs: "",
     });
     expect(config).toEqual({ host: "gw.acme.com" });
     expect(errors).toEqual([]);
@@ -263,6 +301,8 @@ describe("icmpModule — burst field round-trip", () => {
       interval: "100ms",
       packetSize: "",
       ttl: "",
+      maxPacketLossPercent: "",
+      maxAvgRttMs: "",
     });
     expect(solo.config).toEqual({ host: "h" });
 
@@ -272,6 +312,8 @@ describe("icmpModule — burst field round-trip", () => {
       interval: "100ms",
       packetSize: "",
       ttl: "",
+      maxPacketLossPercent: "",
+      maxAvgRttMs: "",
     });
     expect(one.config).toEqual({ host: "h", count: 1 });
 
@@ -281,6 +323,8 @@ describe("icmpModule — burst field round-trip", () => {
       interval: "100ms",
       packetSize: "",
       ttl: "",
+      maxPacketLossPercent: "",
+      maxAvgRttMs: "",
     });
     expect(burst.config).toEqual({
       host: "h",
@@ -315,6 +359,8 @@ describe("icmpModule — burst field round-trip", () => {
       interval: "1sec",
       packetSize: "",
       ttl: "",
+      maxPacketLossPercent: "",
+      maxAvgRttMs: "",
     });
     expect(bad.errors).toEqual([
       { name: "count", message: "Count must be a whole number of packets" },
@@ -326,6 +372,8 @@ describe("icmpModule — burst field round-trip", () => {
       interval: "1sec",
       packetSize: "",
       ttl: "",
+      maxPacketLossPercent: "",
+      maxAvgRttMs: "",
     });
     expect(badInterval.errors).toEqual([
       {
@@ -344,6 +392,8 @@ describe("icmpModule — burst field round-trip", () => {
       interval: "100",
       packetSize: "",
       ttl: "",
+      maxPacketLossPercent: "",
+      maxAvgRttMs: "",
     });
     expect(bare.config).toEqual({ host: "h", count: 5, interval: "100ms" });
 
@@ -353,6 +403,8 @@ describe("icmpModule — burst field round-trip", () => {
       interval: "0.5",
       packetSize: "",
       ttl: "",
+      maxPacketLossPercent: "",
+      maxAvgRttMs: "",
     });
     expect(decimal.config).toEqual({ host: "h", count: 5, interval: "0.5ms" });
 
@@ -363,6 +415,8 @@ describe("icmpModule — burst field round-trip", () => {
       interval: "1s",
       packetSize: "",
       ttl: "",
+      maxPacketLossPercent: "",
+      maxAvgRttMs: "",
     });
     expect(suffixed.config).toEqual({ host: "h", count: 5, interval: "1s" });
   });

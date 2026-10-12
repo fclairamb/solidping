@@ -404,11 +404,15 @@ icmp://hostname
 | Option | Description | Default |
 |--------|-------------|---------|
 | Host | Target hostname or IP | - |
-| Count | Number of packets (1 to 600). The check is up when at least one reply arrives | `1` |
+| Count | Number of packets (1 to 600). The check is up when at least one reply arrives, unless a limit below is set | `1` |
 | Interval | Time between packets (10ms to 60s) | `1s` |
 | Timeout | How long to wait for each packet's reply (up to 30s) | `5s` |
 | Packet size (`packet_size`) | Echo payload in bytes (0 to 65507). `0` sends 56 bytes, like `ping` | `56` |
 | TTL (`ttl`) | Maximum hops (1 to 255). A packet that runs out of hops counts as lost, and the error names the router that dropped it (on unprivileged Linux sockets it is a plain lost packet) | OS default |
+| Max packet loss (`max_packet_loss_percent`) | Highest tolerated loss, 0 to 100. A burst losing more than this is **down**. `0` means any loss is down. Needs a `count` of 10 or more to be meaningful: with 1 packet, loss is 0% or 100% | none |
+| Max average round trip (`max_avg_rtt_ms`) | Highest tolerated average round trip in ms (above 0, up to 30000). A burst averaging more is **down** | none |
+
+Both limits are strict (a value equal to the limit is up) and only apply when at least one reply came back; total loss is always down. When a limit is breached, the failure reason says which one, for example `packet loss 40% > 20%`. For a softer, notify-only signal on latency, use `slow_threshold_ms`.
 
 :::note Permissions
 ICMP checks may require elevated permissions on some systems. Docker containers typically need `NET_RAW` capability.

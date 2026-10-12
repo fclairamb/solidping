@@ -1257,7 +1257,10 @@
     "burstIntervalNeedsCount": "Nur relevant, wenn mehr als ein Paket gesendet wird",
     "burstIntervalDenseWarning": "Unter 50 ms drosseln manche Ziele ICMP-Echos — der angezeigte Paketverlust kann echt sein, kein Messartefakt",
     "burstPacketSize": "Paketgröße (Bytes)",
-    "burstTtl": "TTL (Hops)"
+    "burstTtl": "TTL (Hops)",
+    "burstMaxLoss": "Max. Paketverlust (%)",
+    "burstMaxAvgRtt": "Max. durchschnittliche Laufzeit (ms)",
+    "burstLossCountHint": "Bei 1 Paket beträgt der Verlust entweder 0 % oder 100 %. Senden Sie mindestens 10 Pakete für einen sinnvollen Prozentwert."
   },
   "prometheus": {
     "mode": "Modus",
@@ -1444,6 +1447,8 @@
     "intervalDuration": "Das Intervall muss eine Dauer wie 100 oder 100ms sein",
     "packetSizeWholeNumber": "Die Paketgröße muss eine ganze Zahl von Bytes sein",
     "ttlWholeNumber": "TTL muss eine ganze Zahl sein",
+    "maxPacketLossNumber": "Der maximale Paketverlust muss eine Zahl sein",
+    "maxAvgRttNumber": "Die maximale durchschnittliche Laufzeit muss eine Zahl sein",
     "invalidStatusCodes_one": "Ungültiges Statuscode-Muster: {{codes}} (verwenden Sie einen exakten Code wie 200 oder einen Platzhalter wie 4XX)",
     "invalidStatusCodes_other": "Ungültige Statuscode-Muster: {{codes}} (verwenden Sie einen exakten Code wie 200 oder einen Platzhalter wie 4XX)",
     "invalidIp_one": "Keine {{family}}-Adresse: {{values}}",
