@@ -441,17 +441,17 @@ func (s *Service) injectSigningSecrets(
 	// Re-encode at read time: the same key bytes in the standard spelling the
 	// official Standard Webhooks libraries accept. Storage is not rewritten.
 	for _, key := range []string{settingsKeySigningSecret, settingsKeySigningSecretPrevious} {
-		v, ok := effective[key].(string)
-		if !ok || v == "" {
+		storedSecret, ok := effective[key].(string)
+		if !ok || storedSecret == "" {
 			continue
 		}
 
-		canonical, cErr := notifications.CanonicalWebhookSecret(v)
+		canonical, cErr := notifications.CanonicalWebhookSecret(storedSecret)
 		if cErr != nil {
 			slog.WarnContext(ctx, "webhook signing secret does not decode; returning it unchanged",
 				"channel_uid", conn.UID, "key", key)
 
-			canonical = v
+			canonical = storedSecret
 		}
 
 		resp.Settings[key] = canonical

@@ -29,7 +29,7 @@ func newWebhookTestSvc(t *testing.T) (*integrations.Service, *models.Organizatio
 
 	env := newWebhookTestEnv(t)
 
-	return env.svc, env.org, env.ctx
+	return env.svc, env.org, t.Context()
 }
 
 // webhookTestEnv exposes the storage behind the service so a test can plant a
@@ -37,7 +37,6 @@ func newWebhookTestSvc(t *testing.T) (*integrations.Service, *models.Organizatio
 type webhookTestEnv struct {
 	svc   *integrations.Service
 	org   *models.Organization
-	ctx   context.Context
 	db    *sqlite.Service
 	creds credentials.Service
 }
@@ -63,7 +62,6 @@ func newWebhookTestEnv(t *testing.T) *webhookTestEnv {
 	return &webhookTestEnv{
 		svc:   integrations.NewService(dbSvc, creds, nil, nil),
 		org:   org,
-		ctx:   ctx,
 		db:    dbSvc,
 		creds: creds,
 	}
@@ -283,21 +281,21 @@ func plantStoredSecrets(t *testing.T, env *webhookTestEnv, uid string, extra map
 
 	r := require.New(t)
 
-	conn, err := env.db.GetChannel(env.ctx, uid)
+	conn, err := env.db.GetChannel(t.Context(), uid)
 	r.NoError(err)
 
-	effective, err := credentials.OpenConnectionSettings(env.ctx, env.creds, conn)
+	effective, err := credentials.OpenConnectionSettings(t.Context(), env.creds, conn)
 	r.NoError(err)
 
 	for k, v := range extra {
 		effective[k] = v
 	}
 
-	sealed, err := credentials.SealConnectionSettings(env.ctx, env.creds, conn.Type, conn.OrganizationUID, effective)
+	sealed, err := credentials.SealConnectionSettings(t.Context(), env.creds, conn.Type, conn.OrganizationUID, effective)
 	r.NoError(err)
 
 	settings := models.JSONMap(sealed.Public)
-	r.NoError(env.db.UpdateChannel(env.ctx, uid, &models.IntegrationUpdate{
+	r.NoError(env.db.UpdateChannel(t.Context(), uid, &models.IntegrationUpdate{
 		Settings:             &settings,
 		SettingsPrivate:      sealed.Private,
 		SettingsPrivateKeys:  sealed.PrivateKeys,
@@ -312,16 +310,18 @@ func storedSettings(t *testing.T, env *webhookTestEnv, uid string) map[string]an
 
 	r := require.New(t)
 
-	conn, err := env.db.GetChannel(env.ctx, uid)
+	conn, err := env.db.GetChannel(t.Context(), uid)
 	r.NoError(err)
 
-	effective, err := credentials.OpenConnectionSettings(env.ctx, env.creds, conn)
+	effective, err := credentials.OpenConnectionSettings(t.Context(), env.creds, conn)
 	r.NoError(err)
 
 	return effective
 }
 
-func createWebhook(t *testing.T, env *webhookTestEnv, settings map[string]any) (*integrations.IntegrationResponse, error) {
+func createWebhook(
+	t *testing.T, env *webhookTestEnv, settings map[string]any,
+) (*integrations.IntegrationResponse, error) {
 	t.Helper()
 
 	base := map[string]any{"url": "https://example.com/hook"}
@@ -329,7 +329,7 @@ func createWebhook(t *testing.T, env *webhookTestEnv, settings map[string]any) (
 		base[k] = v
 	}
 
-	return env.svc.CreateIntegration(env.ctx, env.org.Slug, integrations.CreateIntegrationRequest{
+	return env.svc.CreateIntegration(t.Context(), env.org.Slug, integrations.CreateIntegrationRequest{
 		Type:     "webhook",
 		Name:     "hook",
 		Settings: base,
@@ -347,7 +347,11 @@ func TestCreateWebhookChannel_SuppliedSecret(t *testing.T) {
 	}{
 		{name: "standard padded stored as is", secret: standardSecret(legacyKey), want: standardSecret(legacyKey)},
 		{name: "url-safe unpadded stored canonical", secret: legacySecret(legacyKey), want: standardSecret(legacyKey)},
-		{name: "missing prefix stored canonical", secret: base64.RawURLEncoding.EncodeToString(legacyKey), want: standardSecret(legacyKey)},
+		{
+			name:   "missing prefix stored canonical",
+			secret: base64.RawURLEncoding.EncodeToString(legacyKey),
+			want:   standardSecret(legacyKey),
+		},
 		{name: "garbage rejected", secret: "whsec_not base64!!", wantErr: true},
 		{name: "too short rejected", secret: standardSecret(make([]byte, 16)), wantErr: true},
 		{name: "too long rejected", secret: standardSecret(make([]byte, 65)), wantErr: true},
@@ -364,7 +368,7 @@ func TestCreateWebhookChannel_SuppliedSecret(t *testing.T) {
 			if tc.wantErr {
 				r.ErrorIs(err, integrations.ErrInvalidSettings)
 
-				list, listErr := env.svc.ListIntegrations(env.ctx, env.org.Slug, nil)
+				list, listErr := env.svc.ListIntegrations(t.Context(), env.org.Slug, nil)
 				r.NoError(listErr)
 				r.Empty(list.Data, "a rejected create must not leave a channel behind")
 
@@ -389,7 +393,7 @@ func TestUpdateWebhookChannel_SigningSecret(t *testing.T) {
 		created, err := createWebhook(t, env, nil)
 		r.NoError(err)
 
-		_, err = env.svc.UpdateIntegration(env.ctx, env.org.Slug, created.UID, integrations.UpdateIntegrationRequest{
+		_, err = env.svc.UpdateIntegration(t.Context(), env.org.Slug, created.UID, integrations.UpdateIntegrationRequest{
 			Settings: map[string]any{"url": "https://example.com/hook", secretKey: legacySecret(legacyKey)},
 		})
 		r.NoError(err)
@@ -405,7 +409,7 @@ func TestUpdateWebhookChannel_SigningSecret(t *testing.T) {
 		r.NoError(err)
 		before := storedSettings(t, env, created.UID)[secretKey]
 
-		_, err = env.svc.UpdateIntegration(env.ctx, env.org.Slug, created.UID, integrations.UpdateIntegrationRequest{
+		_, err = env.svc.UpdateIntegration(t.Context(), env.org.Slug, created.UID, integrations.UpdateIntegrationRequest{
 			Settings: map[string]any{"url": "https://example.com/hook", secretKey: "whsec_not base64!!"},
 		})
 		r.ErrorIs(err, integrations.ErrInvalidSettings)
@@ -420,7 +424,7 @@ func TestUpdateWebhookChannel_SigningSecret(t *testing.T) {
 		created, err := createWebhook(t, env, nil)
 		r.NoError(err)
 
-		_, err = env.svc.UpdateIntegration(env.ctx, env.org.Slug, created.UID, integrations.UpdateIntegrationRequest{
+		_, err = env.svc.UpdateIntegration(t.Context(), env.org.Slug, created.UID, integrations.UpdateIntegrationRequest{
 			Settings: map[string]any{"url": "https://example.com/hook", secretPreviousKey: "whsec_a=bc"},
 		})
 		r.ErrorIs(err, integrations.ErrInvalidSettings)
@@ -434,7 +438,7 @@ func TestUpdateWebhookChannel_SigningSecret(t *testing.T) {
 		created, err := createWebhook(t, env, nil)
 		r.NoError(err)
 
-		_, err = env.svc.UpdateIntegration(env.ctx, env.org.Slug, created.UID, integrations.UpdateIntegrationRequest{
+		_, err = env.svc.UpdateIntegration(t.Context(), env.org.Slug, created.UID, integrations.UpdateIntegrationRequest{
 			Settings: map[string]any{"url": "https://example.com/hook", secretKey: ""},
 		})
 		r.NoError(err)
@@ -457,7 +461,7 @@ func TestUpdateWebhookChannel_SigningSecret(t *testing.T) {
 		plantStoredSecrets(t, env, created.UID, map[string]any{secretKey: short})
 
 		name := "renamed"
-		_, err = env.svc.UpdateIntegration(env.ctx, env.org.Slug, created.UID, integrations.UpdateIntegrationRequest{
+		_, err = env.svc.UpdateIntegration(t.Context(), env.org.Slug, created.UID, integrations.UpdateIntegrationRequest{
 			Name: &name,
 		})
 		r.NoError(err)
@@ -480,10 +484,10 @@ func TestUpdateWebhookChannel_SigningSecret(t *testing.T) {
 
 		// The dashboard sends back the whole settings map it was shown, in
 		// the canonical spelling GET rendered.
-		got, err := env.svc.GetIntegration(env.ctx, env.org.Slug, created.UID)
+		got, err := env.svc.GetIntegration(t.Context(), env.org.Slug, created.UID)
 		r.NoError(err)
 
-		_, err = env.svc.UpdateIntegration(env.ctx, env.org.Slug, created.UID, integrations.UpdateIntegrationRequest{
+		_, err = env.svc.UpdateIntegration(t.Context(), env.org.Slug, created.UID, integrations.UpdateIntegrationRequest{
 			Settings: got.Settings,
 		})
 		r.NoError(err, "echoing the displayed secrets back must not be rejected")
@@ -509,7 +513,7 @@ func TestWebhookChannel_LegacySecretsReturnedCanonical(t *testing.T) {
 		secretPreviousKey: legacySecret(prevKey),
 	})
 
-	got, err := env.svc.GetIntegration(env.ctx, env.org.Slug, created.UID)
+	got, err := env.svc.GetIntegration(t.Context(), env.org.Slug, created.UID)
 	r.NoError(err)
 	r.Equal(standardSecret(legacyKey), got.Settings[secretKey])
 	r.Equal(standardSecret(prevKey), got.Settings[secretPreviousKey])
@@ -518,7 +522,7 @@ func TestWebhookChannel_LegacySecretsReturnedCanonical(t *testing.T) {
 	r.Equal(legacySecret(legacyKey), stored[secretKey], "a read must not rewrite storage")
 	r.Equal(legacySecret(prevKey), stored[secretPreviousKey], "a read must not rewrite storage")
 
-	rotated, err := env.svc.RotateWebhookSecret(env.ctx, env.org.Slug, created.UID)
+	rotated, err := env.svc.RotateWebhookSecret(t.Context(), env.org.Slug, created.UID)
 	r.NoError(err)
 
 	newSecret, ok := rotated.Settings[secretKey].(string)
@@ -541,7 +545,7 @@ func TestWebhookChannel_UndecodableStoredSecretReturnedUnchanged(t *testing.T) {
 
 	plantStoredSecrets(t, env, created.UID, map[string]any{secretKey: "whsec_not base64!!"})
 
-	got, err := env.svc.GetIntegration(env.ctx, env.org.Slug, created.UID)
+	got, err := env.svc.GetIntegration(t.Context(), env.org.Slug, created.UID)
 	r.NoError(err)
 	r.Equal("whsec_not base64!!", got.Settings[secretKey])
 }
