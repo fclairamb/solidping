@@ -20,7 +20,7 @@ func listIncidentsDef() ToolDefinition {
 			"check, state, or time range. Returns {data, pagination} — total, size, and a cursor " +
 			"naming the last row of a full page; the cursor is not read back on the next call yet, " +
 			"so move forward by narrowing since/until. Use diagnose_check for one check's " +
-			"incidents plus current health in one call, and list_status_page_incidents for the " +
+			"incidents plus current health in one call, and get_status_page include=incidents for the " +
 			"customer-facing entries on a status page. Read-only: works with mcp:read tokens.",
 		InputSchema: objectSchema(map[string]any{
 			propCheckUID: stringProp(

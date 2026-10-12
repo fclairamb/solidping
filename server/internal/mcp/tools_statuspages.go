@@ -50,8 +50,8 @@ func listStatusPagesDef() ToolDefinition {
 		Name: toolListStatusPages,
 		Description: "List every status page in the organization, newest first, and " +
 			"return {data: [...]}. Use get_status_page for a single page by UID or " +
-			"slug (with=sections for its contents) and list_status_page_sections " +
-			"for one page's sections. Read-only: works with mcp:read tokens.",
+			"slug (with=sections or include=sections for its contents). Read-only: " +
+			"works with mcp:read tokens.",
 		InputSchema: objectSchema(map[string]any{}, nil),
 		OutputSchema: dataOutputSchema(
 			"Status pages in the organization.",
@@ -176,7 +176,7 @@ func createStatusPageDef() ToolDefinition {
 			"merged. Only one page can be the default: the first page always " +
 			"becomes it, and isDefault:true demotes the previous default. Every " +
 			"new page is seeded with a default \"Services\" section and starts " +
-			"enabled and public — use create_status_page_section to add more " +
+			"enabled and public — use manage_status_page_section to add more " +
 			"sections and update_status_page to edit the page later. Requires the " +
 			"mcp scope (mcp:read tokens are refused) and at least the user role in " +
 			"the organization.",
@@ -647,7 +647,7 @@ func updateStatusPageResourceDef() ToolDefinition {
 		InputSchema: objectSchema(map[string]any{
 			propPageIdentifier:    stringProp("Status page UID or URL-friendly slug, e.g. \"public\"."),
 			propSectionIdentifier: stringProp("Status page section UID or URL-friendly slug, e.g. \"api\"."),
-			propResourceUID:       stringProp("Status page resource UID (returned by list/create_status_page_resource)."),
+			propResourceUID:       stringProp("Status page resource UID (get_status_page include=resources lists them)."),
 			propPublicName:        stringProp("New display name shown on the public page."),
 			propExplanation:       stringProp("New short explanation rendered under the resource."),
 			propPosition:          intProp("New display position within the section (smaller renders earlier)."),
@@ -697,7 +697,7 @@ func deleteStatusPageResourceDef() ToolDefinition {
 		InputSchema: objectSchema(map[string]any{
 			propPageIdentifier:    stringProp("Status page UID or URL-friendly slug, e.g. \"public\"."),
 			propSectionIdentifier: stringProp("Status page section UID or URL-friendly slug, e.g. \"api\"."),
-			propResourceUID:       stringProp("Status page resource UID (returned by list/create_status_page_resource)."),
+			propResourceUID:       stringProp("Status page resource UID (get_status_page include=resources lists them)."),
 		}, []string{propPageIdentifier, propSectionIdentifier, propResourceUID}),
 		OutputSchema: objectSchema(map[string]any{
 			schemaKeyDeleted: boolProp("Always true on success."),
