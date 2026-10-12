@@ -43,6 +43,7 @@ https://api.example.com/health
 | SSH tunnel | Dial through an [SSH check's bastion](./ssh-tunnels.md) | An `ssh` check with `expected_fingerprint` set |
 | Basic Auth | Username and password — stored encrypted at rest | `user:password` |
 | Custom User-Agent | Override the default user-agent | `SolidPing/1.0` |
+| Generated values | A fresh value per run in the URL, a header or the body, to get past a CDN cache. See [Generated values](./config-as-code.md#generated-values) | `?cb=${var:timestamp}` |
 
 **Status Code Matching:**
 - Exact match: `200`, `201`, `404`

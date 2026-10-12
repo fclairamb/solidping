@@ -12129,7 +12129,8 @@ components:
         One field an update would change, rendered as strings (JSON for
         anything structured). Secret-bearing values and any value containing a
         ${env:}/${param:} reference are masked as "***" — a plan is printed in
-        CI logs and pasted into tickets.
+        CI logs and pasted into tickets. A generated ${var:} value is not a
+        secret and is shown as is.
       properties:
         field:
           type: string

@@ -47,7 +47,8 @@ An `update` entry names the fields that move:
 ```
 
 Secret values, and any value containing a `${param:…}` / `${env:…}` reference,
-are masked as `***` — a plan gets pasted into tickets and CI logs, and must
+are masked as `***` (a generated `${var:…}` value is not a secret and is shown
+as is) — a plan gets pasted into tickets and CI logs, and must
 never be the thing that publishes a credential.
 
 ### Two things a plan will tell you about
@@ -125,6 +126,36 @@ config:
 The reference is what is stored and what comes back out; the value is resolved
 when the check runs. Manage those values under **Organization → Variables** or
 with `sp params set`.
+
+### Generated values
+
+A `${var:NAME}` reference is replaced by a value SolidPing generates on every
+run. Use it to get past a CDN or a caching proxy that would otherwise answer
+with a cached 200 while the origin is down.
+
+| Name | Value | Example |
+|------|-------|---------|
+| `${var:timestamp}` | UTC time, 17 digits `YYYYMMDDhhmmssSSS` | `20261012143005123` |
+| `${var:iso8601}` | UTC time to the second | `2026-10-12T14:30:05Z` |
+| `${var:uuid}` | Random UUID (v4) | `3f6c1a2e-8b4d-4f0a-9c1e-2d7b5a9e0f13` |
+| `${var:random}` | 8 characters from `a-z0-9` | `k3x9q0az` |
+
+```yaml
+config:
+  url: https://acme.com/health?cb=${var:timestamp}
+  headers:
+    X-Request-Id: ${var:uuid}
+```
+
+- Every occurrence of a name gets the same value within one run, and a new
+  value on the next run. Each region gets its own.
+- Names are lowercase. An unknown name (`${var:UUID}`, `${var:foo}`) is refused
+  when the check is saved or validated.
+- The result stores the URL with the generated values. A `${param:…}` in the
+  same URL stays a reference there, never the secret.
+- A deported agent older than this release does not know `${var:…}`: its runs
+  report `unresolved secret reference: var:…` as an error result. Upgrade the
+  agent first.
 
 ## Validating in CI
 
