@@ -3,6 +3,7 @@ package checkicmp
 
 import (
 	"context"
+	"errors"
 	"math"
 	"time"
 
@@ -11,7 +12,8 @@ import (
 )
 
 const (
-	// Default values from spec.
+	// Default values from spec. defaultPacketSize is the echo payload when
+	// packet_size is 0 (ping's default: 64-byte ICMP message).
 	defaultPacketSize = 56
 
 	// Burst limits (spec 2026-09-21-01). The interval floor is 10ms (fping
@@ -145,7 +147,13 @@ func (c *ICMPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 
 	// Perform the ICMP burst: packets sent on schedule, replies collected
 	// asynchronously (spec 2026-09-21-01).
-	results, burstErr := performICMPPings(ctx, ip, isIPv6, count, timeout, interval)
+	results, burstErr := performICMPPings(ctx, ip, isIPv6, burstParams{
+		count:      count,
+		timeout:    timeout,
+		interval:   interval,
+		packetSize: cfg.PacketSize,
+		ttl:        cfg.TTL,
+	})
 
 	duration := time.Since(start)
 
@@ -292,11 +300,17 @@ func (c *ICMPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 //
 // It matters for reading the trace afterwards: silence usually means the trace
 // will also stop somewhere short of the target, while an explicit unreachable
-// means a router made a decision and the trace should show which one.
+// means a router made a decision and the trace should show which one. A Time
+// Exceeded (TTL too low) is such a decision: a router answered and discarded
+// the packet.
 func icmpFailureClass(results []pingResult) string {
 	for idx := range results {
 		if results[idx].Error == nil {
 			continue
+		}
+
+		if errors.Is(results[idx].Error, errTTLExceeded) {
+			return checkerdef.NetFailureICMPUnreachable
 		}
 
 		switch checkerdef.ClassifyDialError(results[idx].Error, false) {

@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
+	"golang.org/x/net/ipv6"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
@@ -45,6 +46,10 @@ type fakeICMPConn struct {
 	closeOnce    sync.Once
 	replies      chan []byte
 	onWrite      func(req []byte)
+	// openedTTL is the TTL the burst asked the socket opener for.
+	openedTTL int
+	// minReadBuf is the smallest buffer a ReadFrom was handed.
+	minReadBuf int
 }
 
 func newFakeICMPConn(onWrite func(req []byte)) *fakeICMPConn {
@@ -76,6 +81,10 @@ func (c *fakeICMPConn) ReadFrom(p []byte) (int, net.Addr, error) {
 	c.mu.Lock()
 	c.readCalls++
 	deadline := c.readDeadline
+
+	if c.minReadBuf == 0 || len(p) < c.minReadBuf {
+		c.minReadBuf = len(p)
+	}
 	c.mu.Unlock()
 
 	var timer <-chan time.Time
@@ -157,9 +166,15 @@ func (c *fakeICMPConn) readsBeforeWrite(index int) int {
 	return c.writes[index].readsBefore
 }
 
-// echoReply builds an Echo Reply datagram answering an Echo Request.
+// echoReply builds an ICMPv4 Echo Reply datagram answering an Echo Request.
 func echoReply(req []byte) []byte {
-	msg, err := icmp.ParseMessage(protocolICMP, req)
+	return echoReplyFor(protocolICMP, req)
+}
+
+// echoReplyFor builds the Echo Reply of the given ICMP protocol answering an
+// Echo Request, payload included.
+func echoReplyFor(proto int, req []byte) []byte {
+	msg, err := icmp.ParseMessage(proto, req)
 	if err != nil {
 		return nil
 	}
@@ -169,8 +184,13 @@ func echoReply(req []byte) []byte {
 		return nil
 	}
 
+	var replyType icmp.Type = ipv4.ICMPTypeEchoReply
+	if proto == protocolICMPv6 {
+		replyType = ipv6.ICMPTypeEchoReply
+	}
+
 	reply := &icmp.Message{
-		Type: ipv4.ICMPTypeEchoReply,
+		Type: replyType,
 		Code: 0,
 		Body: &icmp.Echo{ID: echo.ID, Seq: echo.Seq, Data: echo.Data},
 	}
@@ -183,9 +203,16 @@ func echoReply(req []byte) []byte {
 	return out
 }
 
-// withFakeSocket swaps openBurstSocket for a fake responder. Returns the conn
-// and a restore func (call before the test ends).
+// withFakeSocket swaps openBurstSocket for a fake ICMPv4 unprivileged
+// responder. Returns the conn and a restore func (call before the test ends).
 func withFakeSocket(onWrite func(conn *fakeICMPConn, req []byte)) (*fakeICMPConn, func()) {
+	return withFakeSocketMode(true, protocolICMP, onWrite)
+}
+
+// withFakeSocketMode is withFakeSocket for a chosen socket kind: useUDP false
+// is the raw (privileged) socket, where replies must carry the burst's ID;
+// proto picks ICMPv4 or ICMPv6. The opener records the TTL it was asked for.
+func withFakeSocketMode(useUDP bool, proto int, onWrite func(conn *fakeICMPConn, req []byte)) (*fakeICMPConn, func()) {
 	var conn *fakeICMPConn
 
 	conn = newFakeICMPConn(func(req []byte) {
@@ -194,8 +221,12 @@ func withFakeSocket(onWrite func(conn *fakeICMPConn, req []byte)) (*fakeICMPConn
 
 	previous := openBurstSocket
 
-	openBurstSocket = func(bool) (net.PacketConn, bool, int, error) {
-		return conn, true, protocolICMP, nil
+	openBurstSocket = func(_ bool, ttl int) (net.PacketConn, bool, int, error) {
+		conn.mu.Lock()
+		conn.openedTTL = ttl
+		conn.mu.Unlock()
+
+		return conn, useUDP, proto, nil
 	}
 
 	return conn, func() { openBurstSocket = previous }
@@ -232,7 +263,9 @@ func TestPerformICMPPingsAllPacketsAnsweredOnSchedule(t *testing.T) {
 
 	start := time.Now()
 
-	out, err := performICMPPings(context.Background(), net.IPv4(127, 0, 0, 1), false, count, timeout, interval)
+	out, err := performICMPPings(context.Background(), net.IPv4(127, 0, 0, 1), false, burstParams{
+		count: count, timeout: timeout, interval: interval,
+	})
 	r.NoError(err)
 
 	// All `count` packets were attempted and answered.
@@ -275,7 +308,9 @@ func TestPerformICMPPingsReaderDrainsDuringSendPhase(t *testing.T) {
 		timeout  = time.Second
 	)
 
-	out, err := performICMPPings(context.Background(), net.IPv4(127, 0, 0, 1), false, count, timeout, interval)
+	out, err := performICMPPings(context.Background(), net.IPv4(127, 0, 0, 1), false, burstParams{
+		count: count, timeout: timeout, interval: interval,
+	})
 	r.NoError(err)
 
 	// The burst ran its full schedule and every packet was answered.
@@ -335,7 +370,9 @@ func TestPerformICMPPingsLostPacketsReportedAsLoss(t *testing.T) {
 
 	start := time.Now()
 
-	out, err := performICMPPings(context.Background(), net.IPv4(127, 0, 0, 1), false, count, timeout, interval)
+	out, err := performICMPPings(context.Background(), net.IPv4(127, 0, 0, 1), false, burstParams{
+		count: count, timeout: timeout, interval: interval,
+	})
 	r.NoError(err)
 
 	// Every packet was still attempted — loss does not shorten the burst.
@@ -384,7 +421,9 @@ func TestPerformICMPPingsTruncatedBurstShrinksSent(t *testing.T) {
 		cancel()
 	}()
 
-	out, err := performICMPPings(ctx, net.IPv4(127, 0, 0, 1), false, count, timeout, interval)
+	out, err := performICMPPings(ctx, net.IPv4(127, 0, 0, 1), false, burstParams{
+		count: count, timeout: timeout, interval: interval,
+	})
 	r.NoError(err)
 
 	// The budget cut the schedule short: only what was actually written is
@@ -408,12 +447,14 @@ func TestPerformICMPPingsSocketSetupFailureIsFatal(t *testing.T) {
 	defer burstHookMu.Unlock()
 
 	previous := openBurstSocket
-	openBurstSocket = func(bool) (net.PacketConn, bool, int, error) {
+	openBurstSocket = func(bool, int) (net.PacketConn, bool, int, error) {
 		return nil, false, 0, errFakeListenDenied
 	}
 	defer func() { openBurstSocket = previous }()
 
-	out, err := performICMPPings(context.Background(), net.IPv4(127, 0, 0, 1), false, 3, time.Second, 50*time.Millisecond)
+	out, err := performICMPPings(context.Background(), net.IPv4(127, 0, 0, 1), false, burstParams{
+		count: 3, timeout: time.Second, interval: 50 * time.Millisecond,
+	})
 	r.Error(err)
 	r.Nil(out)
 }
