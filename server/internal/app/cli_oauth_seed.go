@@ -61,7 +61,7 @@ func (s *Server) SeedCLIOAuthClient(ctx context.Context) error {
 		return fmt.Errorf("seed CLI OAuth client: %w", createErr)
 	}
 
-	slog.InfoContext(ctx, "Seeded CLI OAuth client", "clientID", oauth.CLIClientID)
+	slog.DebugContext(ctx, "Seeded CLI OAuth client", "clientID", oauth.CLIClientID)
 
 	return nil
 }

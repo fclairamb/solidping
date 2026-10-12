@@ -401,7 +401,7 @@ func newCheckWorker(cfg *config.Config, workerBackend backend.WorkerBackend) *Ch
 
 // Run starts the runner loop (blocking).
 func (r *CheckWorker) Run(ctx context.Context) error {
-	r.logger.InfoContext(ctx, "Starting check worker")
+	r.logger.DebugContext(ctx, "Starting check worker")
 
 	// 1. Register worker in database
 	if err := r.registerWorker(ctx); err != nil {
@@ -409,7 +409,7 @@ func (r *CheckWorker) Run(ctx context.Context) error {
 	}
 
 	registered := r.getWorker()
-	r.logger.InfoContext(ctx, "Worker registered",
+	r.logger.DebugContext(ctx, "Worker registered",
 		"worker_uid", registered.UID,
 		"worker_slug", registered.Slug,
 		"pool_size", r.poolSize)
@@ -440,14 +440,31 @@ func (r *CheckWorker) Run(ctx context.Context) error {
 	r.wg.Add(1)
 	go r.expressLoop(ctx)
 
+	// Per-runner, per-job and stop lines are DEBUG, so a quiet node logs
+	// nothing until a check changes status (incidents.logStatusChange). On a
+	// server, the INFO "Check worker started" summary is written by
+	// app.Server.startCheckWorker, ahead of the ready line. A deported agent
+	// has no such caller, so this line is its INFO proof that it registered.
+	startedLevel := slog.LevelDebug
+	if r.config.IsAgentMode() {
+		startedLevel = slog.LevelInfo
+	}
+
+	startedAttrs := []any{"runners", r.poolSize, "worker_slug", registered.Slug}
+	if registered.Region != nil {
+		startedAttrs = append(startedAttrs, "region", *registered.Region)
+	}
+
+	r.logger.Log(ctx, startedLevel, "Check worker started", startedAttrs...)
+
 	// 7. Wait for shutdown signal
 	<-ctx.Done()
-	r.logger.InfoContext(ctx, "Check worker stopping, waiting for goroutines")
+	r.logger.DebugContext(ctx, "Check worker stopping, waiting for goroutines")
 
 	// 7. Wait for all goroutines to finish
 	// The fetcherLoop closes jobsChan on exit, which signals runners to stop
 	r.wg.Wait()
-	r.logger.InfoContext(ctx, "Check worker stopped")
+	r.logger.DebugContext(ctx, "Check worker stopped")
 
 	return ctx.Err()
 }
@@ -534,8 +551,8 @@ func (r *CheckWorker) fetcherLoop(ctx context.Context) {
 	defer close(r.jobsChan) // Signal runners to exit when fetcher stops
 
 	logger := r.logger.With("role", "fetcher")
-	logger.InfoContext(ctx, "Fetcher started")
-	defer logger.InfoContext(ctx, "Fetcher stopped")
+	logger.DebugContext(ctx, "Fetcher started")
+	defer logger.DebugContext(ctx, "Fetcher stopped")
 
 	checkCreatedChan := r.backend.Hints()
 
@@ -715,8 +732,8 @@ func (r *CheckWorker) expressLoop(ctx context.Context) {
 	defer r.wg.Done()
 
 	logger := r.logger.With("role", "express")
-	logger.InfoContext(ctx, "Express runner started")
-	defer logger.InfoContext(ctx, "Express runner stopped")
+	logger.DebugContext(ctx, "Express runner started")
+	defer logger.DebugContext(ctx, "Express runner stopped")
 
 	events := r.backend.Hints()
 
@@ -776,8 +793,8 @@ func (r *CheckWorker) runnerLoop(ctx context.Context, id int) {
 	defer r.wg.Done()
 
 	logger := r.logger.With("runner_id", id)
-	logger.InfoContext(ctx, "Runner started")
-	defer logger.InfoContext(ctx, "Runner stopped")
+	logger.DebugContext(ctx, "Runner started")
+	defer logger.DebugContext(ctx, "Runner stopped")
 
 	for {
 		// Signal: "I'm available for work"
@@ -937,7 +954,7 @@ func (r *CheckWorker) executeJob(
 	)
 	defer span.End()
 
-	logger.InfoContext(
+	logger.DebugContext(
 		ctx,
 		"Executing check job",
 		"check_type", checkJob.Type,
@@ -983,7 +1000,7 @@ func (r *CheckWorker) executeJob(
 			timer.Stop()
 			// Server is shutting down — don't save a result, let the lease expire
 			// so the job is picked up again on restart
-			logger.InfoContext(ctx, "Server shutting down during sleep, leaving job for next startup")
+			logger.DebugContext(ctx, "Server shutting down during sleep, leaving job for next startup")
 
 			return nil
 		case <-timer.C:
@@ -1278,7 +1295,7 @@ func (r *CheckWorker) executeJob(
 	// "duration_ms≈179000" for a genuinely sub-second check read as a hung
 	// checker during live incident triage (see spec 2026-07-05-08 context).
 	execDuration := time.Since(execStart)
-	logger.InfoContext(ctx, "Check job completed",
+	logger.DebugContext(ctx, "Check job completed",
 		"status", result.Status,
 		"duration_ms", execDuration.Milliseconds(),
 		"wait_ms", wait.Milliseconds(),
@@ -1961,7 +1978,7 @@ func (r *CheckWorker) executePassiveJob(ctx context.Context, logger *slog.Logger
 		return fmt.Errorf("failed to submit passive check result: %w", err)
 	}
 
-	logger.InfoContext(ctx, "Passive check completed",
+	logger.DebugContext(ctx, "Passive check completed",
 		"type", checkJob.Type,
 		"status", result.Status,
 		"check_uid", checkJob.CheckUID)
@@ -2059,7 +2076,7 @@ func (r *CheckWorker) setupSelfStats(ctx context.Context) error {
 	// Self-stats need direct DB access (internal check + result rows in the
 	// default org); agent mode has no database, so it simply skips them.
 	if r.dbService == nil {
-		r.logger.InfoContext(ctx, "Self-stats disabled (no direct database access)")
+		r.logger.DebugContext(ctx, "Self-stats disabled (no direct database access)")
 
 		return nil
 	}
@@ -2085,7 +2102,7 @@ func (r *CheckWorker) setupSelfStats(ctx context.Context) error {
 		return float64(r.parked.Load())
 	})
 
-	r.logger.InfoContext(ctx, "Self-stats reporting configured",
+	r.logger.DebugContext(ctx, "Self-stats reporting configured",
 		"internal_check_uid", r.internalCheckUID)
 
 	return nil

@@ -175,10 +175,11 @@ func TestMCPStdioCommandFreshDatabase(t *testing.T) {
 	// The services did log, all of it on stderr.
 	logs := stderr.String()
 	r.Contains(logs, "Migrations completed successfully")
-	r.Contains(logs, "Startup job completed successfully")
+	r.Contains(logs, "Created default organization", "the startup job ran and seeded the fresh database")
 	r.Contains(logs, "MCP stdio session ready")
 	r.Contains(logs, "headless=true")
 	r.NotContains(logs, "Starting HTTP server")
+	r.NotContains(logs, "SolidPing is ready", "no HTTP listener, so no ready line")
 
 	dbSvc, err := sqlite.New(t.Context(), sqlite.Config{DataDir: dataDir})
 	r.NoError(err)

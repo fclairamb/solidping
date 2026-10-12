@@ -101,7 +101,7 @@ func RunExclusive(
 	}
 
 	if _, isPostgres := database.Dialect().(*pgdialect.Dialect); !isPostgres {
-		logger.InfoContext(ctx, "advisory lock skipped on non-Postgres backend; running exclusively by construction",
+		logger.DebugContext(ctx, "advisory lock skipped on non-Postgres backend; running exclusively by construction",
 			"key", key)
 
 		return work(ctx)

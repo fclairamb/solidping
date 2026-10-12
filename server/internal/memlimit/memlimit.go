@@ -77,6 +77,12 @@ type Applied struct {
 	GCPercentSource string
 }
 
+// IsDefault reports whether both guardrails are the runtime defaults: nothing
+// was configured and no container limit was detected.
+func (a Applied) IsDefault() bool {
+	return a.MemoryLimitSource == sourceDefault && a.GCPercentSource == sourceDefault
+}
+
 // MemoryLimitHuman renders the effective cap for logs ("unlimited" when uncapped).
 func (a Applied) MemoryLimitHuman() string {
 	if a.MemoryLimitBytes >= unlimited {

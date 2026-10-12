@@ -730,6 +730,17 @@ func (c *Config) EgressPolicySource() string {
 	return "default for deployment mode " + c.Deployment.Mode
 }
 
+// EgressPolicyLogLevel is the level of the startup egress-policy lines: INFO
+// when an operator chose the policy, DEBUG when it is the derived default, so
+// a default install does not restate it on every boot.
+func (c *Config) EgressPolicyLogLevel() slog.Level {
+	if c.Egress.AllowPrivateTargets != nil {
+		return slog.LevelInfo
+	}
+
+	return slog.LevelDebug
+}
+
 // applyEgressEnv binds SP_EGRESS_ALLOW_PRIVATE. An absent or empty variable
 // leaves the configured / derived value alone ("I did not choose" must never
 // read as "deny" or "allow"); an unparseable one is ignored with a warning

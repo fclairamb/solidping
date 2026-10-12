@@ -257,6 +257,8 @@ sudo journalctl -u solidping -n 100
 sudo journalctl -u solidping --since today
 ```
 
+At the default `info` level, startup ends with a `SolidPing is ready` line that gives the URL to open, the version and the database. On a fresh install a second line gives the first login. After that, a check run is only logged when its check changes status, for example `Check down name="Local Redis" slug=redis-localhost previous=validating error="connection refused"` once the confirmation period has passed. Set `LOG_LEVEL=debug` to see every check run and job.
+
 ## Updating
 
 ```bash

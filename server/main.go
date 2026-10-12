@@ -254,20 +254,29 @@ func loadServeConfig(ctx context.Context, logOut io.Writer) (*config.Config, fun
 		Ratio:       cfg.Runtime.MemoryLimitRatio,
 		GCPercent:   cfg.Runtime.GCPercent,
 	})
-	slog.InfoContext(ctx, "Runtime memory guardrails applied",
+	// INFO only when something other than the runtime defaults applies (an
+	// operator setting or a container limit): the all-defaults line says nothing.
+	memGuardLevel := slog.LevelDebug
+	if !memGuard.IsDefault() {
+		memGuardLevel = slog.LevelInfo
+	}
+
+	slog.Log(ctx, memGuardLevel, "Runtime memory guardrails applied",
 		"memoryLimit", memGuard.MemoryLimitHuman(),
 		"memoryLimitSource", memGuard.MemoryLimitSource,
 		"gcPercent", memGuard.GCPercent,
 		"gcPercentSource", memGuard.GCPercentSource)
 
 	// Apply user-agent from config, or use default with version
+	userAgentLevel := slog.LevelDebug
 	if cfg.UserAgent != "" {
 		version.UserAgent = cfg.UserAgent
+		userAgentLevel = slog.LevelInfo
 	} else {
 		version.UserAgent = version.DefaultUserAgent()
 	}
 
-	slog.InfoContext(ctx, "User-Agent identity", "userAgent", version.UserAgent)
+	slog.Log(ctx, userAgentLevel, "User-Agent identity", "userAgent", version.UserAgent)
 
 	// Initialize OpenTelemetry
 	otelProvider := otelsetup.NewProvider(cfg.OTel)
