@@ -298,7 +298,7 @@ func TestRealHTTPCheckSendsOneFreshVarPerRun(t *testing.T) {
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		mu.Lock()
-		calls = append(calls, seen{cb: req.URL.Query().Get("cb"), requestID: req.Header.Get("X-Request-Id")})
+		calls = append(calls, seen{cb: req.URL.Query().Get("cb"), requestID: req.Header.Get("X-Request-ID")})
 		mu.Unlock()
 
 		w.WriteHeader(http.StatusOK)

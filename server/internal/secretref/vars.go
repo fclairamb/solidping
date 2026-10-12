@@ -78,7 +78,7 @@ func UnknownVarRefs(value string) []string {
 // production).
 func NewVarResolver(now time.Time, rnd io.Reader) ResolveFunc {
 	var (
-		mu     sync.Mutex
+		lock   sync.Mutex
 		values = map[string]string{}
 	)
 
@@ -87,8 +87,8 @@ func NewVarResolver(now time.Time, rnd io.Reader) ResolveFunc {
 			return "", ErrSkip
 		}
 
-		mu.Lock()
-		defer mu.Unlock()
+		lock.Lock()
+		defer lock.Unlock()
 
 		if value, ok := values[name]; ok {
 			return value, nil

@@ -3,7 +3,6 @@ package secretref_test
 import (
 	"crypto/rand"
 	"fmt"
-	"regexp"
 	"testing"
 	"time"
 
@@ -37,7 +36,7 @@ func TestVarFormats(t *testing.T) {
 			out, _, err := secretref.ResolveString(t.Context(), "${var:"+tc.name+"}",
 				secretref.NewVarResolver(now, rand.Reader))
 			r.NoError(err)
-			r.Regexp(regexp.MustCompile(tc.pattern), out)
+			r.Regexp(tc.pattern, out)
 
 			if tc.exact != "" {
 				r.Equal(tc.exact, out)

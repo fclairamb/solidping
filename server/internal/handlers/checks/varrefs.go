@@ -28,7 +28,8 @@ func validateVarRefs(config map[string]any) []error {
 	sort.SliceStable(hits, func(i, j int) bool { return hits[i].key < hits[j].key })
 
 	errs := make([]error, 0, len(hits))
-	for _, hit := range hits {
+	for i := range hits {
+		hit := &hits[i]
 		// No Parameter: the finding lands on `config`, and the message names
 		// the key itself.
 		errs = append(errs, checkerdef.NewConfigError("",
