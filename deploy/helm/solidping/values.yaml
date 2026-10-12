@@ -8,17 +8,30 @@ image:
 baseUrl: "http://localhost:4000"
 
 # SQLite on a persistent volume by default. SQLite means a single replica.
-# For PostgreSQL set database.type=postgres and point database.existingSecret
-# at a Secret holding the connection string under the key "url".
+# For PostgreSQL either:
+# - set database.type=postgres and point database.existingSecret at a Secret
+#   holding the connection string under the key "url", or
+# - set database.cnpg.enabled=true to let the chart create a CloudNativePG
+#   cluster (the CNPG operator must be installed). This implies postgres.
 database:
   type: sqlite
   existingSecret: ""
+  cnpg:
+    enabled: false
+    instances: 1
+    size: 5Gi
+    storageClass: ""
+    # PostgreSQL image, e.g. ghcr.io/cloudnative-pg/postgresql:17. Empty uses
+    # the operator default.
+    imageName: ""
 
 # Secret holding the JWT signing key under the key "jwt-secret". When empty,
 # the chart generates one and keeps it across upgrades.
 auth:
   existingSecret: ""
 
+# The /data volume: the SQLite database and uploaded files (logos, status page
+# assets, screenshots). It is mounted with PostgreSQL too, for the files.
 persistence:
   enabled: true
   size: 1Gi

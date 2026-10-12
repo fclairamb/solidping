@@ -57,6 +57,7 @@ export const SCOPE_LABELS: Record<string, string> = {
   reports: "Reports",
   onboarding: "Onboarding",
   cli: "CLI",
+  helm: "Helm chart",
   docs: "Documentation",
   i18n: "Localization",
   slack: "Slack",
