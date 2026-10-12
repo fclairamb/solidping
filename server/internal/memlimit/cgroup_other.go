@@ -8,3 +8,9 @@ package memlimit
 func detectCgroupMemoryLimitOS() (int64, bool) {
 	return 0, false
 }
+
+// detectHostMemoryOS is a no-op on non-Linux platforms: the host-derived cap is
+// meant for small Linux hosts (Raspberry Pi, small VPS).
+func detectHostMemoryOS() (int64, bool) {
+	return 0, false
+}

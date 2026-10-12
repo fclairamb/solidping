@@ -936,7 +936,8 @@ type RuntimeConfig struct {
 	MemoryLimit string `koanf:"memory_limit"`
 	// AutoMemoryLimit derives the soft cap from the container's cgroup memory
 	// limit when MemoryLimit is unset and no GOMEMLIMIT env var is present
-	// (SP_RUNTIME_AUTO_MEMORY_LIMIT). Default true: a no-op off-container.
+	// (SP_RUNTIME_AUTO_MEMORY_LIMIT). Default true. Without a cgroup limit, a
+	// Linux host with at most 2 GiB of RAM gets half of its RAM as the cap.
 	AutoMemoryLimit bool `koanf:"auto_memory_limit"`
 	// MemoryLimitRatio is the fraction of the detected cgroup limit to use as
 	// the soft cap (SP_RUNTIME_MEMORY_LIMIT_RATIO). Default 0.9.
