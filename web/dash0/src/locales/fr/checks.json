@@ -1644,5 +1644,22 @@
       "applied": "un nouveau script a été appliqué",
       "error": "la tentative a échoué"
     }
+  },
+  "timing": {
+    "title": "Détail des temps",
+    "description": "Où est passé le temps de cette sonde. Les phases non exécutées ne sont pas affichées.",
+    "chartTitle": "Détail des temps",
+    "viewResponse": "Temps de réponse",
+    "viewTiming": "Détail des temps",
+    "viewLabel": "Vue du graphique",
+    "noData": "Aucune donnée de temps sur cette période.",
+    "phase": {
+      "redirect": "Redirections",
+      "dns": "Résolution DNS",
+      "connect": "Connexion",
+      "tls": "Négociation TLS",
+      "ttfb": "Réponse du serveur (TTFB)",
+      "download": "Téléchargement"
+    }
   }
 }

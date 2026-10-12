@@ -1644,5 +1644,22 @@
       "applied": "ein neues Skript wurde übernommen",
       "error": "der Versuch ist fehlgeschlagen"
     }
+  },
+  "timing": {
+    "title": "Zeitaufschlüsselung",
+    "description": "Wohin die Zeit dieser Prüfung ging. Nicht ausgeführte Phasen werden nicht angezeigt.",
+    "chartTitle": "Zeitaufschlüsselung",
+    "viewResponse": "Antwortzeit",
+    "viewTiming": "Zeitaufschlüsselung",
+    "viewLabel": "Diagrammansicht",
+    "noData": "Keine Zeitdaten in diesem Zeitraum.",
+    "phase": {
+      "redirect": "Weiterleitungen",
+      "dns": "DNS-Auflösung",
+      "connect": "Verbindungsaufbau",
+      "tls": "TLS-Handshake",
+      "ttfb": "Serverantwort (TTFB)",
+      "download": "Datenübertragung"
+    }
   }
 }

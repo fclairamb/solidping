@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { HttpTimingCard } from "@/components/checks/http-timing-card";
 import { useTranslation } from "react-i18next";
 import { ArrowLeft, AlertTriangle, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -345,6 +346,8 @@ function ResultDetailPage() {
           </CardContent>
         </Card>
       )}
+
+      {check?.type === "http" && <HttpTimingCard metrics={data.metrics} />}
 
       {data.metrics && Object.keys(data.metrics).length > 0 && (
         <Card>

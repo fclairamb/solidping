@@ -1644,5 +1644,22 @@
       "applied": "se aplicó un script nuevo",
       "error": "el intento falló"
     }
+  },
+  "timing": {
+    "title": "Desglose de tiempos",
+    "description": "Dónde se fue el tiempo de esta sonda. Las fases que no se ejecutaron no se muestran.",
+    "chartTitle": "Desglose de tiempos",
+    "viewResponse": "Tiempo de respuesta",
+    "viewTiming": "Desglose de tiempos",
+    "viewLabel": "Vista del gráfico",
+    "noData": "Sin datos de tiempos en este período.",
+    "phase": {
+      "redirect": "Redirecciones",
+      "dns": "Resolución DNS",
+      "connect": "Conexión",
+      "tls": "Negociación TLS",
+      "ttfb": "Respuesta del servidor (TTFB)",
+      "download": "Descarga"
+    }
   }
 }

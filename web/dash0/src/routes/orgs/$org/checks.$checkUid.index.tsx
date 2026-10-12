@@ -1,4 +1,9 @@
 import { useState, useEffect, useMemo, useRef } from "react";
+import {
+  ChartViewSwitch,
+  TimingChartCard,
+} from "@/components/checks/timing-chart";
+import { HttpTimingCard } from "@/components/checks/http-timing-card";
 import { useAuth } from "@/contexts/AuthContext";
 import { useIsDemoSession } from "@/hooks/use-is-demo-session";
 import { canDemoEditCheck } from "@/lib/demo";
@@ -196,6 +201,8 @@ interface CheckDetailSearch {
   graphFrom?: number;
   graphTo?: number;
   graphSelected?: string;
+  /** Chart view of an HTTP check: absent is the response time chart. */
+  graphView?: "timing";
   /**
    * Opens the "Publish on a status page" dialog on mount. Deep-linked from the
    * post-create line on `checks/new` (spec 2026-09-16-11), so the one moment a
@@ -238,6 +245,7 @@ export const Route = createFileRoute("/orgs/$org/checks/$checkUid/")({
       typeof search.graphSelected === "string" && search.graphSelected !== ""
         ? search.graphSelected
         : undefined,
+    graphView: search.graphView === "timing" ? "timing" : undefined,
     // Same coercion story as graphFull above: the default parser has already
     // turned "true" into a boolean by the time this runs.
     publish:
@@ -706,6 +714,7 @@ function CheckDetailPage() {
     graphFrom,
     graphTo,
     graphSelected,
+    graphView,
     publish,
     created,
   } = Route.useSearch();
@@ -1603,74 +1612,114 @@ function CheckDetailPage() {
         totalIncidents={incidents?.total ?? incidents?.data?.length ?? 0}
       />
 
+      {/* Chart view switch (HTTP only): response time or phase timing. */}
+      {check.type === "http" && (
+        <div className="flex justify-end">
+          <ChartViewSwitch
+            value={graphView === "timing" ? "timing" : "response"}
+            onChange={(view) =>
+              navigate({
+                to: ".",
+                search: (prev) => ({
+                  ...prev,
+                  graphView: view === "timing" ? "timing" : undefined,
+                }),
+                replace: true,
+              })
+            }
+          />
+        </div>
+      )}
+
       {/* Response time chart */}
-      <ResponseTimeChart
-        org={org}
-        checkUid={checkUid}
-        periodMs={periodMs}
-        regionCount={check.regions?.length}
-        createdAt={check.createdAt}
-        initialPeriod={graphPeriod}
-        initialFullRange={graphFull}
-        region={region}
-        onRegionChange={setRegion}
-        // The strip is intentionally rendered below the chart (not next to the
-        // region filter in the chart header), inside the same card.
-        footer={durationStatsStrip}
-        zoomFrom={graphFrom}
-        zoomTo={graphTo}
-        selectedUid={graphSelected}
-        degradedSpans={degradedSpans}
-        onSettingsChange={(period, full) =>
-          navigate({
-            to: ".",
-            // Functional form so the region param (shared with Recent
-            // Results/stats) survives chart period/range changes instead of
-            // being wiped by this literal-object search.
-            search: (prev) => {
-              const nextPeriod = period !== "day" ? period : undefined;
-              // Changing the time range invalidates the zoom window (and its
-              // selected point), which belongs to the previous range's context.
-              const periodChanged = nextPeriod !== prev.graphPeriod;
-              return {
+      {check.type === "http" && graphView === "timing" ? (
+        <TimingChartCard
+          org={org}
+          checkUid={checkUid}
+          periodMs={periodMs}
+          timeRange={graphPeriod ?? "day"}
+          view="timing"
+          onViewChange={() => undefined}
+          onTimeRangeChange={(range) =>
+            navigate({
+              to: ".",
+              search: (prev) => ({
                 ...prev,
-                graphPeriod: nextPeriod,
-                graphFull: full ? true : undefined,
-                ...(periodChanged
-                  ? {
-                      graphFrom: undefined,
-                      graphTo: undefined,
-                      graphSelected: undefined,
-                    }
+                graphPeriod: range !== "day" ? range : undefined,
+              }),
+              replace: true,
+            })
+          }
+        />
+      ) : (
+        <ResponseTimeChart
+          org={org}
+          checkUid={checkUid}
+          periodMs={periodMs}
+          regionCount={check.regions?.length}
+          createdAt={check.createdAt}
+          initialPeriod={graphPeriod}
+          initialFullRange={graphFull}
+          region={region}
+          onRegionChange={setRegion}
+          // The strip is intentionally rendered below the chart (not next to the
+          // region filter in the chart header), inside the same card.
+          footer={durationStatsStrip}
+          zoomFrom={graphFrom}
+          zoomTo={graphTo}
+          selectedUid={graphSelected}
+          degradedSpans={degradedSpans}
+          onSettingsChange={(period, full) =>
+            navigate({
+              to: ".",
+              // Functional form so the region param (shared with Recent
+              // Results/stats) survives chart period/range changes instead of
+              // being wiped by this literal-object search.
+              search: (prev) => {
+                const nextPeriod = period !== "day" ? period : undefined;
+                // Changing the time range invalidates the zoom window (and its
+                // selected point), which belongs to the previous range's context.
+                const periodChanged = nextPeriod !== prev.graphPeriod;
+                return {
+                  ...prev,
+                  graphPeriod: nextPeriod,
+                  graphFull: full ? true : undefined,
+                  ...(periodChanged
+                    ? {
+                        graphFrom: undefined,
+                        graphTo: undefined,
+                        graphSelected: undefined,
+                      }
+                    : {}),
+                };
+              },
+              replace: true,
+            })
+          }
+          onZoomChange={(from, to) =>
+            navigate({
+              to: ".",
+              search: (prev) => ({
+                ...prev,
+                graphFrom: from,
+                graphTo: to,
+                // Reset (from/to cleared) also clears the selected point (spec §4).
+                ...(from == null || to == null
+                  ? { graphSelected: undefined }
                   : {}),
-              };
-            },
-            replace: true,
-          })
-        }
-        onZoomChange={(from, to) =>
-          navigate({
-            to: ".",
-            search: (prev) => ({
-              ...prev,
-              graphFrom: from,
-              graphTo: to,
-              // Reset (from/to cleared) also clears the selected point (spec §4).
-              ...(from == null || to == null
-                ? { graphSelected: undefined }
-                : {}),
-            }),
-            replace: true,
-          })
-        }
-        onSelectChange={(uid) =>
-          navigate({
-            to: ".",
-            search: (prev) => ({ ...prev, graphSelected: uid }),
-            replace: true,
-          })
-        }
-      />
+              }),
+              replace: true,
+            })
+          }
+          onSelectChange={(uid) =>
+            navigate({
+              to: ".",
+              search: (prev) => ({ ...prev, graphSelected: uid }),
+              replace: true,
+            })
+          }
+        />
+      )}
 
       {/* Availability table */}
       <AvailabilityTable
@@ -1809,6 +1858,9 @@ function CheckDetailPage() {
                     ? new Date(check.lastResult.timestamp).toLocaleString()
                     : t("checks:detail.unknown")}
                 </div>
+                {check.type === "http" && (
+                  <HttpTimingCard metrics={check.lastResult.metrics} bare />
+                )}
                 {check.lastResult.metrics && (
                   <div>
                     <div className="text-sm font-medium text-muted-foreground mb-2">
@@ -1957,7 +2009,9 @@ function CheckDetailPage() {
         <HealthCard
           org={org}
           checkUid={checkUid}
-          output={check.lastResult?.output as Record<string, unknown> | undefined}
+          output={
+            check.lastResult?.output as Record<string, unknown> | undefined
+          }
         />
       )}
 
@@ -1965,7 +2019,9 @@ function CheckDetailPage() {
         <CrawlCard
           org={org}
           checkUid={checkUid}
-          output={check.lastResult?.output as Record<string, unknown> | undefined}
+          output={
+            check.lastResult?.output as Record<string, unknown> | undefined
+          }
           canCancel={ownsThisCheck}
         />
       )}

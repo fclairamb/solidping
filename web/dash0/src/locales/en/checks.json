@@ -1644,5 +1644,22 @@
       "applied": "a new script was applied",
       "error": "the attempt failed"
     }
+  },
+  "timing": {
+    "title": "Timing",
+    "description": "Where the time of this probe went. Phases that did not run are not shown.",
+    "chartTitle": "Timing breakdown",
+    "viewResponse": "Response time",
+    "viewTiming": "Timing",
+    "viewLabel": "Chart view",
+    "noData": "No timing data in this period.",
+    "phase": {
+      "redirect": "Redirects",
+      "dns": "DNS lookup",
+      "connect": "Connect",
+      "tls": "TLS handshake",
+      "ttfb": "Server response (TTFB)",
+      "download": "Download"
+    }
   }
 }

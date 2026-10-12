@@ -34,6 +34,7 @@ import {
   chartRollupTier,
   chartWindowBounds,
   seamStartFrom,
+  type ChartTierFetch,
   type TimeRange,
   type ZoomWindow,
 } from "@/lib/chart-window";
@@ -2368,9 +2369,14 @@ export function useChartWindowResults(
     /** Anchor for an unzoomed window start; lets a caller slide it on a tick. */
     now?: number;
   },
-  options?: { rawRefetchInterval?: number },
+  options?: { rawRefetchInterval?: number; withMetrics?: boolean },
 ) {
   const { timeRange, periodMs, zoom, now } = window;
+  // Metrics are a blob field the default chart plan never requests (spec
+  // 2026-08-22-04 §3). Only the Timing view asks for them, with its own keys.
+  const withMetrics = options?.withMetrics ?? false;
+  const withFields = (tier: ChartTierFetch): ChartTierFetch =>
+    withMetrics ? { ...tier, with: `${tier.with},metrics` } : tier;
   const zoomFrom = zoom?.from;
   const zoomTo = zoom?.to;
 
@@ -2394,9 +2400,15 @@ export function useChartWindowResults(
   const rollupTiers = useMemo(
     () =>
       hasRollupTier
-        ? [{ checkUid, ...chartFetchParamsForWindow(bounds, rollupTier)[0] }]
+        ? [
+            {
+              checkUid,
+              ...withFields(chartFetchParamsForWindow(bounds, rollupTier)[0]),
+            },
+          ]
         : [],
-    [hasRollupTier, rollupTier, bounds, checkUid],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- withFields is derived from withMetrics
+    [hasRollupTier, rollupTier, bounds, checkUid, withMetrics],
   );
   const rollup = useResultTiers(org, rollupTiers, {
     refetchInterval: ROLLUP_REFETCH_MS,
@@ -2412,8 +2424,9 @@ export function useChartWindowResults(
   const rawTiers = useMemo(() => {
     const plan = chartFetchParamsForWindow(bounds, rollupTier, seamStart);
 
-    return [{ checkUid, ...plan[plan.length - 1] }];
-  }, [checkUid, bounds, rollupTier, seamStart]);
+    return [{ checkUid, ...withFields(plan[plan.length - 1]) }];
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- withFields is derived from withMetrics
+  }, [checkUid, bounds, rollupTier, seamStart, withMetrics]);
   const raw = useResultTiers(org, rawTiers, {
     refetchInterval: options?.rawRefetchInterval,
     enabled: !hasRollupTier || !rollup.isLoading,

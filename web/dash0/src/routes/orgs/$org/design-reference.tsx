@@ -4,6 +4,7 @@
 
 import { useMemo, useState } from "react";
 import { Chip } from "@/components/ui/chip";
+import { HttpTimingCard } from "@/components/checks/http-timing-card";
 import { PortInput, PortChips } from "@/components/checks/form/port-input";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import type { AIGenerationFailed } from "@/api/hooks";
@@ -337,6 +338,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "onboarding-checklist", label: "Onboarding checklist" },
   { id: "magic-wand", label: "Magic wand" },
   { id: "ai-generation-progress", label: "AI generation progress" },
+  { id: "http-timing-card", label: "HTTP timing card" },
 ];
 
 function DesignReferencePage() {
@@ -401,7 +403,38 @@ function DesignReferencePage() {
       <OnboardingChecklistSection />
       <MagicWandSection />
       <AIGenerationProgressSection />
+      <HttpTimingCardSection />
     </div>
+  );
+}
+
+function HttpTimingCardSection() {
+  const importLine = `import { HttpTimingCard } from "@/components/checks/http-timing-card";
+
+<HttpTimingCard metrics={result.metrics} />`;
+  return (
+    <Section
+      id="http-timing-card"
+      title="HTTP timing card"
+      description="One horizontal bar per phase of an HTTP probe (redirect, DNS, connect, TLS, server response, download). A phase the probe did not run is not drawn. Used on the result page and, with the bare prop, in the last-result block of the check page."
+    >
+      <ExampleRow
+        preview={
+          <div className="w-full max-w-xl">
+            <HttpTimingCard
+              metrics={{
+                dns_time_ms: 12.4,
+                connect_time_ms: 31.2,
+                tls_time_ms: 58.9,
+                ttfb_time_ms: 140.3,
+                download_time_ms: 22.1,
+              }}
+            />
+          </div>
+        }
+        importLine={importLine}
+      />
+    </Section>
   );
 }
 
