@@ -78,9 +78,11 @@ func TestStartupJobCreatesSampleChecks(t *testing.T) {
 	require.GreaterOrEqual(t, checksByType["icmp"], 3, "Should have at least 3 ICMP sample checks")
 	require.GreaterOrEqual(t, checksByType["tcp"], 3, "Should have at least 3 TCP sample checks")
 
-	// Verify all checks are enabled and have periods
+	// Verify all checks are enabled (except the browser samples, created
+	// disabled, spec 2026-10-12-04) and have periods
+	browserSamples := map[string]bool{"browser-example-com": true, "js-browser-login": true}
 	for _, check := range checks {
-		require.True(t, check.Enabled, "Sample check %s should be enabled", check.Slug)
+		require.Equal(t, !browserSamples[*check.Slug], check.Enabled, "Sample check %s enabled state", *check.Slug)
 		require.NotNil(t, check.Name, "Sample check %s should have a name", check.Slug)
 		require.NotEmpty(t, check.Period, "Sample check %s should have a period", check.Slug)
 	}
@@ -130,7 +132,13 @@ func TestStartupJobCreatesSampleChecks(t *testing.T) {
 		Where("organization_uid = ?", defaultOrg.UID).
 		Count(ctx)
 	require.NoError(t, err)
-	require.Equal(t, len(checks), checkJobCount, "Should have created check_jobs for all checks")
+	enabledCount := 0
+	for _, check := range checks {
+		if check.Enabled {
+			enabledCount++
+		}
+	}
+	require.Equal(t, enabledCount, checkJobCount, "Should have created check_jobs for all enabled checks")
 
 	t.Logf("Successfully verified %d check_jobs were created", checkJobCount)
 }
@@ -278,9 +286,11 @@ func TestStartupJobCreatesSampleChecksTestMode(t *testing.T) {
 	require.Equal(t, timeutils.Duration(20*time.Second), slugs["http-fake-slow"].Period)
 	require.Equal(t, timeutils.Duration(15*time.Second), slugs["http-fake-503"].Period)
 
-	// Verify all checks are enabled
+	// Verify all checks are enabled, except the browser samples (created
+	// disabled, spec 2026-10-12-04)
 	for _, check := range checks {
-		require.True(t, check.Enabled, "Check %s should be enabled", *check.Slug)
+		browser := *check.Slug == "browser-example-com" || *check.Slug == "js-browser-login"
+		require.Equal(t, !browser, check.Enabled, "Check %s enabled state", *check.Slug)
 	}
 
 	// Verify URLs use the default base URL
