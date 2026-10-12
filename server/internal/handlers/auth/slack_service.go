@@ -353,7 +353,7 @@ func (s *SlackOAuthService) HandleCallback(ctx context.Context, code string) (*S
 	}
 
 	// Find or create user
-	user, userCreated, err := s.findOrCreateUser(ctx, userInfo, oauthResp.Team.ID, orgName)
+	user, _, err := s.findOrCreateUser(ctx, userInfo, oauthResp.Team.ID, orgName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find/create user: %w", err)
 	}
@@ -369,8 +369,7 @@ func (s *SlackOAuthService) HandleCallback(ctx context.Context, code string) (*S
 	// policy still verifies, server-side, that this very org is the one
 	// linked to that workspace.
 	login, err := s.authService.CompleteOrgLogin(ctx, org, user,
-		WithSlackWorkspace(oauthResp.Team.ID), WithLoginMethod(signupMethodSlack),
-		newlyCreatedUserOption(userCreated))
+		WithSlackWorkspace(oauthResp.Team.ID), WithLoginMethod(signupMethodSlack))
 	if err != nil {
 		return nil, err
 	}
@@ -443,8 +442,7 @@ func (s *SlackOAuthService) findOrCreateOrganization(
 func (s *SlackOAuthService) findOrCreateUser(
 	ctx context.Context, userInfo *OpenIDUserInfo, teamID, teamName string,
 ) (*models.User, bool, error) {
-	// created reports whether THIS call minted the account — the fact rule 6's
-	// SaaS platform-default guard needs (WithNewlyCreatedUser, spec 2026-09-05-01).
+	// created reports whether THIS call minted the account.
 	var created bool
 
 	// Check by Slack user ID first (via user_providers)

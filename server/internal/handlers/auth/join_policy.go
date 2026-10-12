@@ -78,8 +78,7 @@ type ProviderLoginResult struct {
 	// PendingOrgSlug is the org the no-org screen should NAME as "your sign-in
 	// succeeded but this org hasn't admitted you yet". It is the org's slug
 	// whenever a membership request was actually opened, and deliberately EMPTY
-	// when rule 6 suppressed one (a brand-new SaaS account that only met the
-	// platform default org through /login's fallback): naming an org nobody
+	// when rule 6 suppressed one (the demo org, or the SaaS platform default org): naming an org nobody
 	// asked for and no admin will ever see a request from is worse than saying
 	// nothing. Meaningless unless Pending is true.
 	PendingOrgSlug string
@@ -105,12 +104,6 @@ type loginOptions struct {
 	// It never comes from a query parameter, a form field, or any other
 	// browser-supplied value.
 	slackTeamID string
-
-	// newlyCreatedUser is true when the connector's find-or-create MINTED the
-	// account during this very callback — i.e. this is the person's first ever
-	// sign-in, not a returning user. Only the SaaS platform-default guard in
-	// rule 6 reads it; see suppressDefaultOrgJoinRequest.
-	newlyCreatedUser bool
 }
 
 // WithSlackWorkspace attests that the user completing this login is a member
@@ -120,28 +113,6 @@ func WithSlackWorkspace(teamID string) LoginOption {
 	return func(o *loginOptions) {
 		o.slackTeamID = teamID
 	}
-}
-
-// WithNewlyCreatedUser attests that the account completing this login did not
-// exist before this callback — the connector's find-or-create created it. A
-// connector that cannot tell simply does not pass it, which leaves every rule
-// that reads it inert (that is what LDAP and the older test call sites do).
-func WithNewlyCreatedUser() LoginOption {
-	return func(o *loginOptions) {
-		o.newlyCreatedUser = true
-	}
-}
-
-// newlyCreatedUserOption turns a connector's "find-or-create minted this
-// account" boolean into a LoginOption, so every callback threads the fact
-// identically instead of each growing its own `if`. A returning user yields a
-// nil option, which resolveLoginOptions skips.
-func newlyCreatedUserOption(created bool) LoginOption {
-	if !created {
-		return nil
-	}
-
-	return WithNewlyCreatedUser()
 }
 
 // WithLoginMethod names the connector completing this login, for the audit
@@ -276,15 +247,14 @@ func (s *Service) JoinOrgViaLogin(
 	slog.InfoContext(ctx, "federated login did not qualify for org membership",
 		"orgUID", org.UID, "userUID", user.UID)
 
-	// ...unless this is a brand-new SaaS account that only ever saw the
-	// platform default org because /login's fallback put it there. Asking the
-	// operator's own admins to admit every trial signup is noise for them and
-	// a dead end for the newcomer, who never chose that org (spec
-	// 2026-09-05-01). Such a login still yields an org-less pending session —
-	// the dashboard offers them an organization of their own instead.
-	if s.suppressDefaultOrgJoinRequest(org, resolveLoginOptions(opts)) {
-		slog.InfoContext(ctx, "skipping the join request for a brand-new account on the platform default org",
-			"orgUID", org.UID, "userUID", user.UID, "orgSlug", org.Slug)
+	// ...unless the org can never act on a request: the public demo org, or
+	// (on SaaS) the operator's own default org. Nobody admits sign-ins there,
+	// so a request is noise for admins and a dead end for the user. Such a
+	// login still yields an org-less pending session; the dashboard offers
+	// the user an organization of their own instead.
+	if reason := s.loginJoinRequestSuppressedReason(org); reason != "" {
+		slog.InfoContext(ctx, "skipping the join request: the org does not admit sign-ins",
+			"orgUID", org.UID, "userUID", user.UID, "orgSlug", org.Slug, "carveOut", reason)
 
 		return nil, true, nil
 	}
@@ -296,21 +266,39 @@ func (s *Service) JoinOrgViaLogin(
 	return nil, true, nil
 }
 
-// suppressDefaultOrgJoinRequest reports whether rule 6 should end in a silent
-// org-less session instead of a membership request. All THREE conditions must
-// hold; each one on its own is a case that must keep today's behavior:
+// Reasons an org never accepts membership requests (see
+// loginJoinRequestSuppressedReason).
+const (
+	suppressReasonDemoOrg     = "demo-org"
+	suppressReasonSaaSDefault = "saas-default-org"
+)
+
+// loginJoinRequestSuppressedReason returns a non-empty carve-out name when
+// rule 6 must end in a silent org-less session instead of a membership
+// request, and "" when a request should be filed.
 //
-//   - SaaS deployment. On a self-hosted install `default` is typically the one
-//     real org, and a colleague's Google sign-in SHOULD reach its admins.
-//   - The org is the platform default. An org the user deliberately named in
-//     the URL is a request they meant to make.
-//   - The account was created by this very callback. A returning user who
-//     signs in on /orgs/default/login is asking for that org on purpose.
-func (s *Service) suppressDefaultOrgJoinRequest(org *models.Organization, opts loginOptions) bool {
-	return s.fullCfg != nil &&
-		s.fullCfg.Deployment.Mode == config.DeploymentModeSaaS &&
-		org.Slug == defaults.Organization &&
-		opts.newlyCreatedUser
+//   - The demo org (config demo.org_slug, any deployment mode, new or
+//     returning user, whether or not demo.enabled is set: the org and its stale
+//     requests exist in prod regardless of the flag). Nobody approves them.
+//   - The SaaS platform default org. It is the operator's own org: people
+//     join by invite. The dashboard itself sends org-less users to
+//     /orgs/default/login, so a returning user there did NOT ask on purpose.
+//     Self-hosted `default` keeps the request flow: it is usually the one real
+//     org and a colleague's sign-in should reach its admins.
+func (s *Service) loginJoinRequestSuppressedReason(org *models.Organization) string {
+	if s.fullCfg == nil {
+		return ""
+	}
+
+	if org.Slug == s.fullCfg.Demo.ResolvedOrgSlug() {
+		return suppressReasonDemoOrg
+	}
+
+	if s.fullCfg.Deployment.Mode == config.DeploymentModeSaaS && org.Slug == defaults.Organization {
+		return suppressReasonSaaSDefault
+	}
+
+	return ""
 }
 
 // CompleteOrgLogin is the shared tail of every federated callback: run the
@@ -343,7 +331,7 @@ func (s *Service) CompleteOrgLogin(
 	if pending {
 		// Name the org only when there is a request an admin can act on.
 		pendingOrgSlug := ""
-		if !s.suppressDefaultOrgJoinRequest(org, resolved) {
+		if s.loginJoinRequestSuppressedReason(org) == "" {
 			pendingOrgSlug = org.Slug
 		}
 

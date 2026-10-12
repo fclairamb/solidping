@@ -142,6 +142,9 @@ var (
 	// ErrRequestCooldownActive is returned when a user re-requests
 	// membership during the rejection cooldown window.
 	ErrRequestCooldownActive = errors.New("membership request cooldown active")
+	// ErrOrgNotAcceptingRequests is returned when the target org never admits
+	// membership requests (the demo org, or the SaaS platform default org).
+	ErrOrgNotAcceptingRequests = errors.New("this organization does not accept membership requests")
 )
 
 // Service provides authentication business logic.

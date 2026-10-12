@@ -169,7 +169,7 @@ func (s *GoogleOAuthService) HandleCallback(ctx context.Context, code, orgSlug s
 	}
 
 	// Find or create user
-	user, userCreated, err := s.findOrCreateUser(ctx, userInfo)
+	user, _, err := s.findOrCreateUser(ctx, userInfo)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find/create user: %w", err)
 	}
@@ -179,7 +179,7 @@ func (s *GoogleOAuthService) HandleCallback(ctx context.Context, code, orgSlug s
 	// login.Pending instead of a membership, with a session on an org they
 	// already belong to (login.FallbackOrgSlug) or an org-less one.
 	login, err := s.authService.CompleteOrgLogin(ctx, org, user,
-		WithLoginMethod(signupMethodGoogle), newlyCreatedUserOption(userCreated))
+		WithLoginMethod(signupMethodGoogle))
 	if err != nil {
 		return nil, err
 	}
@@ -291,8 +291,7 @@ func (s *GoogleOAuthService) fetchUserProfile(ctx context.Context, accessToken s
 func (s *GoogleOAuthService) findOrCreateUser(
 	ctx context.Context, userInfo *GoogleUserInfo,
 ) (*models.User, bool, error) {
-	// created reports whether THIS call minted the account — the fact rule 6's
-	// SaaS platform-default guard needs (WithNewlyCreatedUser, spec 2026-09-05-01).
+	// created reports whether THIS call minted the account.
 	var created bool
 
 	// Check by Google user ID first (via user_providers)
