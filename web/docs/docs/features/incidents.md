@@ -11,22 +11,23 @@ SolidPing automatically creates, tracks, and resolves incidents based on check r
 
 ```mermaid
 flowchart LR
-    Fail["Check Fails"] --> Threshold["Threshold Reached"]
-    Threshold --> Created["Incident Created"]
-    Created --> Notified["Notifications Sent"]
-    Notified --> Resolved["Incident Resolved"]
-    Resolved --> Recovers["Check Recovers"]
-    Recovers -.-> Fail
+    Fail["Check fails"] --> Confirm["Confirmation period"]
+    Confirm --> Created["Incident opens, notifies"]
+    Created --> Pass["Check passes"]
+    Pass --> Recover["Recovery period"]
+    Recover --> Resolved["Incident resolves, notifies"]
 ```
 
 ### Incident Lifecycle
 
-1. **Detection** - A check starts failing
-2. **Threshold** - Consecutive failures reach `incident_threshold`
-3. **Creation** - An incident is created and notifications are sent
-4. **Escalation** - If failures reach `escalation_threshold`, escalation notifications are sent
-5. **Recovery** - Check succeeds `recovery_threshold` consecutive times
-6. **Resolution** - Incident is resolved and resolution notifications are sent
+1. **Detection** - A result is `down`, `timeout` or `error`. The check shows **Validating**.
+2. **Confirmation** - The check keeps failing for the confirmation period (2 minutes by default). With several regions, enough regions must fail (see [Several regions](#several-regions)).
+3. **Creation** - The incident opens and `incident.created` is sent.
+4. **Escalation** - When the incident has counted 10 failing results, `incident.escalated` is sent.
+5. **Recovery** - The check passes again and keeps passing for the recovery period (2 minutes by default).
+6. **Resolution** - The incident resolves and `incident.resolved` is sent.
+
+See [Confirmation and recovery](#thresholds) for the settings and a worked timeline.
 
 ## Incident States
 
@@ -86,10 +87,11 @@ Incidents can be managed directly from the dashboard or API:
 
 | Action | Effect |
 |--------|--------|
-| **Acknowledge** | Marks the incident as being handled and cancels pending escalation/notification jobs. Records who acknowledged it and when. |
-| **Snooze** | Mutes notifications until a chosen time (`until` timestamp or a `duration`, max 7 days). Snoozing also implicitly acknowledges the incident. |
-| **Unsnooze** | Clears the snooze and restores normal notification behavior. |
-| **Resolve** | Manually closes the incident, cancels all pending notifications, and records a `manual` resolution. |
+| **Acknowledge** | Records who acknowledged it and when. Stops the [escalation policy](/features/on-call): its pending steps are canceled and nobody else is paged. Posts an "acknowledged" notice to the check's channels. The channels still receive `incident.escalated`, `incident.reopened` and `incident.resolved` later. |
+| **Unacknowledge** | Clears the acknowledgment, resumes an interrupted escalation policy where it stopped, and posts a notice to the check's channels. |
+| **Snooze** | Sets an end time (`until` timestamp or a `duration`, max 7 days) and acknowledges the incident if nobody had, without posting a notice. No escalation step pages anyone before the end time, even if the incident is unacknowledged meanwhile. Channel notifications are not muted: `incident.escalated`, `incident.reopened` and `incident.resolved` are still sent. |
+| **Unsnooze** | Clears the end time. A snooze also clears on its own within about a minute of its end time. Neither restarts the escalation policy: the incident stays acknowledged until someone unacknowledges it. |
+| **Resolve** | Closes the incident with a `manual` resolution, cancels the pending escalation steps, and sends `incident.resolved` to the check's channels. |
 
 Auto-resolution (the check recovering on its own) records a `auto` resolution instead.
 
@@ -204,70 +206,101 @@ incident on your checks.
 - `GET /api/v1/orgs/{org}/regions` reports `status` (`online` or `offline`) and
   `offlineSince` for each cloud region.
 
-## Thresholds
+## Confirmation and recovery {#thresholds}
 
-Configure thresholds per check to control when incidents are created:
+Each check sets when an incident opens and resolves with two periods of
+wall-clock time:
 
-### Incident Threshold
+- **Confirmation period**: how long the check must keep failing before the
+  incident opens. A passing result restarts it.
+- **Recovery period**: how long the check must keep passing before the
+  incident resolves. A failing result restarts it.
 
-Number of consecutive failures before creating an incident.
+The incident opens (or resolves) on the first result that arrives once the
+period has elapsed. `0` opens the incident on the first failing result, or
+resolves it on the first passing result. A `warning` result neither starts nor
+restarts either period.
 
-```yaml
-incident_threshold: 2  # Create incident after 2 consecutive failures
-```
+| Dashboard (**Incident tracking**) | API | Config as code | Default |
+|---|---|---|---|
+| Confirmation Period | `confirmationPeriodSeconds` | `confirmationPeriod` | `120` (2 minutes) |
+| Recovery Period | `recoveryPeriodSeconds` | `recoveryPeriod` | `120` (2 minutes) |
+| Regions that must fail | `failQuorum` | `failQuorum` | `default` |
 
-**Default:** `1` (incident created on first failure)
+Both periods accept 0 to 86400 seconds (one day). The API takes seconds,
+config as code a duration such as `90s` or `2m`.
 
-**Use cases:**
-- Set to `1` for critical services that need immediate alerting
-- Set to `2-3` for services with occasional transient failures
-- Set higher for non-critical checks to reduce noise
+**Escalation** is still a count. `incident.escalated` is sent once, when the
+incident has counted 10 failing results (the result that opened it is the
+first). The export carries this as `escalationThreshold`, but neither the API
+nor the dashboard can change it (see [Config as code](./config-as-code.md)).
+For paging with steps and delays, use an [escalation policy](/features/on-call).
 
-### Escalation Threshold
+### Several regions {#several-regions}
 
-Number of consecutive failures before escalating the incident.
+With several regions, **Regions that must fail** (`failQuorum`) sets how many
+regions must be failing, for the whole confirmation period, before the incident
+opens. By default that is every region for 1 or 2 regions, and a majority from
+3 regions. See
+[Confirming across regions](./region-placement.md#confirming-across-regions-failquorum).
 
-```yaml
-escalation_threshold: 5  # Escalate after 5 consecutive failures
-```
+When some regions fail but fewer than that, the check shows **Regional issue**
+(status `warning`) and names the failing regions:
 
-**Default:** `3`
+- No incident opens and nothing is sent.
+- For the incident it counts as passing: it restarts a confirmation in
+  progress, and lets an open incident's recovery period run.
+- Uptime still drops. Uptime % is the share of results that were `up` or
+  `warning`, over every region's results, and the failing region's results are
+  stored as failures. With 1 of 3 regions failing for an hour, that hour reads
+  about 67%.
 
-Escalation sends additional notifications to alert that an issue has persisted. For structured paging — rotation schedules, multi-step escalation, and "page the next person if nobody acknowledges" — see [On-Call & Escalation](/features/on-call).
+### Flap backoff
 
-### Recovery Threshold
+A check that keeps going down and coming back must stay up longer before its
+incident resolves. Each outage that starts within the flapping window of the
+previous one multiplies the recovery period by the backoff factor, up to the
+max recovery multiplier, and never beyond 30 minutes. With the defaults and
+outages less than 6 hours apart, the 2nd outage needs 4 minutes of passing
+results, the 3rd 8 minutes, the 4th and later 16 minutes.
 
-Number of consecutive successes before resolving an incident.
+A relapse shortly after a resolution can also reopen the previous incident
+(`incident.reopened`) instead of opening a new one. That window is the reopen
+cooldown multiplier × the check period, kept between 2 and 30 minutes.
 
-```yaml
-recovery_threshold: 2  # Resolve after 2 consecutive successes
-```
-
-**Default:** `1`
-
-**Use cases:**
-- Set to `1` for quick resolution notifications
-- Set to `2-3` to avoid false recoveries during flapping
+| Dashboard (**Flapping**) | API | Config as code | Default |
+|---|---|---|---|
+| Flapping Window (seconds) | `flappingWindowSeconds` | `flappingWindow` | `21600` (6 hours). `0` turns backoff off |
+| Backoff Factor | `flapBackoffFactor` | `flapBackoffFactor` | `2`. `1` turns backoff off |
+| Max Recovery Multiplier | `maxRecoveryMultiplier` | `maxRecoveryMultiplier` | `8` |
+| Reopen Cooldown Multiplier | `reopenCooldownMultiplier` | `reopenCooldownMultiplier` | `5`. `0` always opens a new incident |
 
 ## Notification Events
 
 | Event | When | Description |
 |-------|------|-------------|
-| `incident.created` | Threshold reached | Initial alert |
-| `incident.escalated` | Escalation threshold | Prolonged outage |
-| `incident.resolved` | Recovery threshold | Service recovered |
+| `incident.created` | Confirmation period elapsed | Initial alert |
+| `incident.escalated` | 10th failing result of the incident | Prolonged outage, sent once |
+| `incident.reopened` | Relapse within the reopen cooldown | Same incident, active again |
+| `incident.resolved` | Recovery period elapsed, or manual resolve | Service recovered |
 
 ### Notification Flow Example
 
-With default thresholds (1, 3, 1):
+A check pinned to one region, with a 1-minute period and the default settings:
 
-```mermaid
-flowchart LR
-    F1["Failure 1"] --> F2["Failure 2"] --> F3["Failure 3"] --> F4["Failure 4"] --> Ok["Success 1"]
-    F1 -.-> C["incident.created"]
-    F3 -.-> E["incident.escalated"]
-    Ok -.-> R["incident.resolved"]
-```
+| Time | Result | What happens |
+|---|---|---|
+| 10:00 | fails | The check shows **Validating**. The confirmation period starts. |
+| 10:01 | fails | Still validating: 1 of 2 minutes elapsed. |
+| 10:02 | fails | 2 minutes elapsed. The check is **Down**, the incident opens and `incident.created` is sent. The escalation policy, if any, starts. |
+| 10:03 to 10:10 | fail | Each failing result adds 1 to the incident's failure count. |
+| 10:11 | fails | 10th failing result of the incident: `incident.escalated` is sent. |
+| 10:20 | passes | The check shows **Up**. The incident stays open and the recovery period starts. |
+| 10:21 | passes | 1 of 2 minutes elapsed. |
+| 10:22 | passes | 2 minutes elapsed. The incident resolves and `incident.resolved` is sent. |
+
+A failing result at 10:21 would have restarted the recovery period. A passing
+result at 10:01 would have restarted the confirmation.
 
 ## Incident Details
 
@@ -278,7 +311,7 @@ Each incident includes:
 - **Status** - Current state (active/resolved)
 - **Started At** - When the incident was created
 - **Resolved At** - When the incident was resolved (if applicable)
-- **Failure Count** - Number of consecutive failures
+- **Failure Count** - Number of failing results counted since the incident opened
 - **Events** - Timeline of state changes
 
 ## Events
@@ -319,41 +352,47 @@ GET /api/v1/orgs/{org}/incidents/{uid}/events
 
 ### Reduce Alert Fatigue
 
-1. **Tune thresholds** - Set `incident_threshold: 2` for checks with occasional transient failures
-2. **Use recovery threshold** - Set `recovery_threshold: 2` to avoid alerts during flapping
+1. **Lengthen the confirmation period** - Set `confirmationPeriodSeconds` to `300` for a target with short blips
+2. **Keep flap backoff on** - A check that flaps then needs a longer recovery each time, instead of paging again and again
 3. **Group related checks** - Use tags or naming conventions to organize checks
 
 ### Effective Escalation
 
-1. **Set meaningful escalation thresholds** - 3-5 failures typically indicates a real issue
+1. **Use an escalation policy** - Its steps and delays are yours to set, unlike the fixed 10-result `incident.escalated` notification
 2. **Configure escalation notifications** - Route escalations to different channels (e.g., PagerDuty)
 3. **Review escalation frequency** - If too many escalations, investigate root causes
 
 ### Incident Response
 
-1. **Acknowledge incidents** - Mark incidents as acknowledged to prevent duplicate alerts
+1. **Acknowledge incidents** - Acknowledging stops the escalation policy from paging the next person
 2. **Document resolutions** - Add notes about what caused the incident and how it was resolved
 3. **Review incident history** - Use incident data to identify recurring issues
 
 ## Example Configuration
 
+In a [config as code](./config-as-code.md) file:
+
 ```yaml
+version: 2
+organization: default
 checks:
   - name: Production API
-    url: https://api.example.com/health
+    slug: production-api
+    type: http
     period: 30s
-    timeout: 10s
-    incident_threshold: 2      # Alert after 2 failures
-    escalation_threshold: 6    # Escalate after 3 minutes of downtime
-    recovery_threshold: 2      # Require 2 successes to resolve
+    config:
+      url: https://api.acme.com/health
+    confirmationPeriod: 1m   # Open after 1 minute of failures
+    recoveryPeriod: 5m       # Resolve after 5 minutes of passing results
 
   - name: Background Worker
-    url: tcp://worker.internal:8080
-    period: 60s
-    timeout: 30s
-    incident_threshold: 3      # More tolerance for worker
-    escalation_threshold: 10   # Escalate after 10 minutes
-    recovery_threshold: 1      # Quick resolution is fine
+    slug: background-worker
+    type: tcp
+    period: 1m
+    config:
+      url: tcp://worker.internal:8080
+    confirmationPeriod: 5m   # More tolerance for the worker
+    recoveryPeriod: 0s       # Resolve on the first passing result
 ```
 
 ## Metrics
@@ -363,4 +402,4 @@ SolidPing tracks incident metrics:
 - **MTTR** (Mean Time To Recovery) - Average time to resolve incidents
 - **MTTA** (Mean Time To Acknowledge) - Average time to acknowledge
 - **Incident Count** - Number of incidents over time
-- **Availability** - Uptime percentage based on incident duration
+- **Availability** - Share of results that were `up` or `warning`, over every region's results

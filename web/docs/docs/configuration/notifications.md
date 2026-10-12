@@ -1049,20 +1049,29 @@ another spelling (URL-safe, no padding). It keeps working, no rotation needed.
 
 ## Incident Thresholds
 
-Configure when notifications are sent per check:
+Each check sets when its notifications are sent:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `incident_threshold` | 1 | Failures before creating incident |
-| `escalation_threshold` | 3 | Failures before escalation |
-| `recovery_threshold` | 1 | Successes before resolving |
+| `confirmationPeriodSeconds` | `120` | Seconds the check must keep failing before the incident opens and `incident.created` is sent. `0` sends it on the first failure |
+| `recoveryPeriodSeconds` | `120` | Seconds the check must keep passing before the incident resolves and `incident.resolved` is sent. `0` sends it on the first success |
+| `escalationThreshold` | `10` | Failing results an incident counts before `incident.escalated` is sent (once). Not editable |
+
+Both periods accept 0 to 86400 seconds. In the dashboard they are
+**Confirmation Period** and **Recovery Period** under **Incident tracking**. In
+config as code they are `confirmationPeriod` and `recoveryPeriod`, written as
+durations (`2m`). Checks with several regions, flap backoff and a worked
+timeline: see [Incidents](/features/incidents#thresholds).
 
 ### Example
 
-```
-incident_threshold: 2    # Notify after 2 consecutive failures
-escalation_threshold: 5  # Escalate after 5 consecutive failures
-recovery_threshold: 2    # Resolve after 2 consecutive successes
+Notify after 5 minutes of failures, resolve after 10 minutes of passing results:
+
+```bash
+curl -X PATCH http://localhost:4000/api/v1/orgs/default/checks/{uid} \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"confirmationPeriodSeconds": 300, "recoveryPeriodSeconds": 600}'
 ```
 
 :::tip On-call rotations

@@ -32,7 +32,7 @@ https://api.example.com/health
 | Option | Description | Example |
 |--------|-------------|---------|
 | URL | The endpoint to check | `https://api.example.com/health` |
-| Method | HTTP method | `GET`, `POST`, `PUT`, `DELETE`, `QUERY` |
+| Method | HTTP method, `GET` by default | `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS`, `QUERY` |
 | Timeout | Request timeout | `30s` |
 | Expected Status | Status code to expect | `200`, `2XX` (wildcard) |
 | HTTP version | Protocol the target must answer over (`httpVersion`): `1.1` (default), `2` or `3`. See **Protocol** below | `2` |
@@ -330,9 +330,11 @@ icmp://hostname
 | Option | Description | Default |
 |--------|-------------|---------|
 | Host | Target hostname or IP | - |
-| Count | Number of packets | `3` |
-| Interval | Time between packets | `1s` |
-| Timeout | Total timeout | `10s` |
+| Count | Number of packets (1 to 600). The check is up when at least one reply arrives | `1` |
+| Interval | Time between packets (10ms to 60s) | `1s` |
+| Timeout | How long to wait for each packet's reply (up to 30s) | `5s` |
+| Packet size (`packet_size`) | Echo payload in bytes (0 to 65507). `0` sends 56 bytes, like `ping` | `56` |
+| TTL (`ttl`) | Maximum hops (1 to 255). A packet that runs out of hops counts as lost, and the error names the router that dropped it (on unprivileged Linux sockets it is a plain lost packet) | OS default |
 
 :::note Permissions
 ICMP checks may require elevated permissions on some systems. Docker containers typically need `NET_RAW` capability.
@@ -1812,13 +1814,15 @@ All check types support these common options:
 | `name` | Display name | - |
 | `description` | Description | - |
 | `enabled` | Enable/disable check | `true` |
-| `period` | Check interval | `60s` |
-| `timeout` | Request timeout | `30s` |
-| `regions` | Worker regions to run from | all |
-| `incident_threshold` | Failures before incident | `1` |
-| `escalation_threshold` | Failures before escalation | `3` |
-| `recovery_threshold` | Successes before recovery | `1` |
+| `period` | Check interval | `60s` for most types (for example `5m` for DNS, `6h` for SSL) |
+| `timeout` | Request timeout | Depends on the type |
+| `regions` | Worker regions to run from | Automatic placement on 2 regions, see [Region placement](./region-placement.md) |
+| `confirmationPeriodSeconds` | Seconds of failures before an incident opens (`0` = on the first failure) | `120` |
+| `recoveryPeriodSeconds` | Seconds of passing results before the incident resolves (`0` = on the first success) | `120` |
 | `ipVersion` | Address family to probe over (`auto`, `ipv4`, `ipv6`) | `auto` |
+
+Escalation, checks with several regions (`failQuorum`) and flap backoff: see
+[Incidents](./incidents.md#thresholds).
 
 ### IP version
 
