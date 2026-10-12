@@ -77,6 +77,7 @@ var toolAccessTable = map[string]toolAccess{
 	toolIncidentNotificationsList: readTool(),
 
 	// Probes: they reach the outside world but write nothing in SolidPing.
+	toolProbe:           readTool(),
 	toolRunJSScript:     readTool(),
 	toolFetchPage:       readTool(),
 	toolBrowserSnapshot: readTool(),
@@ -100,7 +101,12 @@ var toolAccessTable = map[string]toolAccess{
 	toolUpdateStatusPage: writeTool(),
 	toolDeleteStatusPage: writeTool(),
 
-	// Status page sub-resources
+	// Status page sub-resources: merged write tools...
+	toolManageStatusPageSection:  byActionTool(),
+	toolManageStatusPageResource: byActionTool(),
+	toolManageStatusPageIncident: byActionTool(),
+
+	// ...and the legacy names they replace.
 	toolListStatusPageSections:         readTool(),
 	toolCreateStatusPageSection:        writeTool(),
 	toolUpdateStatusPageSection:        writeTool(),

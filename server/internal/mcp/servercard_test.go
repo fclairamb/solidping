@@ -64,11 +64,13 @@ func TestServerCard_ToolsMatchTheRegistry(t *testing.T) {
 	}
 
 	want := map[string]bool{}
-	for i := range handler.tools {
-		want[handler.tools[i].Name] = true
+	for _, def := range handler.listTools(defaultToolsets()) {
+		want[def.Name] = true
 	}
 
-	r.Equal(want, got, "the card must list exactly the registered tools")
+	r.Equal(want, got, "the card must list exactly the default tools/list")
+	r.Len(got, 23)
+	r.False(got[toolCreateStatusPageSection], "legacy aliases are not on the card")
 	r.True(got["list_checks"], "positive control: a known tool is present")
 	r.False(got["not_a_registered_tool"], "negative control: an unregistered name is absent")
 }
@@ -84,7 +86,7 @@ func TestServerCard_EveryToolCarriesItsMetadata(t *testing.T) {
 		Tools []map[string]any `json:"tools"`
 	}
 	r.NoError(json.Unmarshal(rec.Body.Bytes(), &card))
-	r.Len(card.Tools, len(handler.tools))
+	r.Len(card.Tools, len(handler.listTools(defaultToolsets())))
 
 	registry := map[string]ToolDefinition{}
 	for i := range handler.tools {

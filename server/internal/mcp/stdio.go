@@ -215,11 +215,20 @@ var stdioNullID = json.RawMessage(schemaTypeNull) //nolint:gochecknoglobals // I
 
 // ServeStdio serves MCP to one client over input/out until input reaches EOF or ctx
 // is canceled. Messages are handled one at a time, in order. It returns an
-// error only when out is gone, since nothing more can be said to the client.
-func (h *Handler) ServeStdio(ctx context.Context, input io.Reader, out io.Writer, principal *StdioPrincipal) error {
+// error when toolsets is not a valid toolset list (see ToolsetsEnvVar) or when
+// out is gone, since nothing more can be said to the client.
+func (h *Handler) ServeStdio(
+	ctx context.Context, input io.Reader, out io.Writer, principal *StdioPrincipal, toolsets string,
+) error {
+	selection, err := parseToolsets(toolsets)
+	if err != nil {
+		return err
+	}
+
 	claims := principal.Claims()
-	// The same context RequireMCPAuth builds, once, for the whole session.
-	ctx = middleware.WithMCPPrincipal(ctx, claims, principal.User)
+	// The same context RequireMCPAuth builds, once, for the whole session,
+	// plus the toolset selection the HTTP transport reads from the URL.
+	ctx = withToolsets(middleware.WithMCPPrincipal(ctx, claims, principal.User), selection)
 
 	lines := make(chan []byte)
 

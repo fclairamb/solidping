@@ -65,6 +65,7 @@ const (
 
 	// JSON Schema type VALUES (the schemaKey* constants above are KEYS).
 	schemaTypeObject = "object"
+	schemaTypeString = "string"
 	schemaTypeArray  = "array"
 	schemaTypeNumber = "number"
 	schemaTypeNull   = "null"

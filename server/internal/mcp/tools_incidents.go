@@ -114,9 +114,11 @@ func getIncidentDef() ToolDefinition {
 		Description: "Get a single incident by UID; an unknown UID fails with an \"incident not " +
 			"found\" error. Returns the incident object — number, state, timestamps, failure " +
 			"counts — plus the check with with=check and up to 50 timeline events with " +
-			"with=events. Use list_incidents to search and filter across incidents, and " +
-			"diagnose_check for a check's full triage briefing. Read-only: works with mcp:read " +
-			"tokens.",
+			"with=events. include=[\"notifications\"] adds the incident's notification attempts " +
+			"(one row per dispatch target with its delivery status, channel and recipient, newest " +
+			"first), filtered by status and capped by limit. Use list_incidents to search and " +
+			"filter across incidents, and diagnose_check for a check's full triage briefing. " +
+			"Read-only: works with mcp:read tokens.",
 		InputSchema: objectSchema(map[string]any{
 			propUID: stringProp("Incident UID returned by list_incidents or diagnose_check."),
 			propWith: stringProp(
@@ -125,6 +127,13 @@ func getIncidentDef() ToolDefinition {
 					"(status transitions, notifications, manual notes). " +
 					"Example: \"check,events\".",
 			),
+			propInclude: includeProp("Extra lists to return with the incident. An unknown value is an error.",
+				includeNotifications),
+			propStatus: stringProp(
+				"With include=notifications: only attempts in this delivery status. " +
+					"Allowed: pending, sent, failed, cancelled, skipped.", //nolint:misspell // the API value is "cancelled"
+			),
+			propLimit: intProp("With include=notifications: max attempts (1-500, default 20)."),
 		}, []string{propUID}),
 		OutputSchema: incidentOutputSchema(),
 		Annotations:  readOnlyAnnotations("Get incident"),
@@ -216,6 +225,36 @@ func (h *Handler) toolGetIncident(ctx context.Context, orgSlug string, args map[
 		return errorResult("uid is required")
 	}
 
+	include, err := parseInclude(args, includeNotifications)
+	if err != nil {
+		return errorResult(err.Error())
+	}
+
+	result := h.getIncident(ctx, orgSlug, uid, args)
+	if result.IsError || !include[includeNotifications] {
+		return result
+	}
+
+	// The same function as the legacy incident_notifications_list, so both
+	// return the same rows.
+	notifications := h.toolIncidentNotificationsList(ctx, orgSlug, args)
+	if notifications.IsError {
+		return notifications
+	}
+
+	out, err := toObject(result.StructuredContent)
+	if err != nil {
+		return errorResult("Failed to marshal result: " + err.Error())
+	}
+
+	out[includeNotifications] = resultData(notifications)
+
+	return marshalResult(out)
+}
+
+// getIncident is get_incident without include: the incident, with its check
+// and timeline when `with` asks for them.
+func (h *Handler) getIncident(ctx context.Context, orgSlug, uid string, args map[string]any) ToolCallResult {
 	opts := &incidents.GetIncidentOptions{}
 	withEvents := false
 	if v := getStringArg(args, "with"); v != "" {
@@ -283,6 +322,11 @@ func incidentOutputSchema() map[string]any {
 		"Timeline events (status transitions, notifications, manual notes), newest first; "+
 			"present when with=events was passed.",
 		incidentTimelineEventOutputProps(),
+	)
+
+	props[includeNotifications] = arrayOfObjectsProp(
+		"Notification attempts, newest first; present when include=notifications was passed.",
+		incidentNotificationRowOutputProps(),
 	)
 
 	return objectSchema(props, []string{propUID})

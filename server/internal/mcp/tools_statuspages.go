@@ -72,15 +72,26 @@ func (h *Handler) toolListStatusPages(ctx context.Context, orgSlug string, _ map
 func getStatusPageDef() ToolDefinition {
 	return ToolDefinition{
 		Name: toolGetStatusPage,
-		Description: "Get one status page by UID or slug and return it; pass " +
-			"with=sections to embed its sections and their resources. Use " +
-			"list_status_pages to browse every page instead. Read-only: works " +
-			"with mcp:read tokens.",
+		Description: "Get one status page by UID or slug and return it. with=sections embeds its " +
+			"sections and their resources. include adds lists next to the page fields: " +
+			"\"sections\" (section metadata, display order), \"resources\" (the resources of the " +
+			"section named by sectionIdentifier) and \"incidents\" (the customer-facing incident " +
+			"publications on the page, filtered by state and active). Use list_status_pages to " +
+			"browse every page, and manage_status_page_section / _resource / _incident to change " +
+			"them. Read-only: works with mcp:read tokens.",
 		InputSchema: objectSchema(map[string]any{
 			propIdentifier: stringProp("Status page UID or URL-friendly slug, e.g. \"public\"."),
 			propWith:       stringProp("\"sections\" to include nested sections and their resources"),
+			propInclude: includeProp("Extra lists to return with the page. An unknown value is an error. "+
+				"Do not combine \"sections\" with with=sections.",
+				includeSections, includeResources, includeIncidents),
+			propSectionIdentifier: stringProp(
+				"Section UID or slug whose resources include=resources returns (required with it)."),
+			propState: stringProp("With include=incidents: only publications in this public state. " +
+				"Allowed: \"investigating\", \"identified\", \"monitoring\", \"resolved\"."),
+			propActive: boolProp("With include=incidents: when true, only publications that are not resolved."),
 		}, []string{propIdentifier}),
-		OutputSchema: statusPageWithSectionsOutputSchema(),
+		OutputSchema: statusPageGetOutputSchema(),
 		Annotations:  readOnlyAnnotations("Get status page"),
 	}
 }
@@ -90,15 +101,71 @@ func (h *Handler) toolGetStatusPage(ctx context.Context, orgSlug string, args ma
 	if identifier == "" {
 		return errorResult("identifier is required")
 	}
+	include, err := parseInclude(args, includeSections, includeResources, includeIncidents)
+	if err != nil {
+		return errorResult(err.Error())
+	}
 	opts := statuspages.GetStatusPageOptions{}
 	if v := getStringArg(args, propWith); v == "sections" {
 		opts.IncludeSections = true
+	}
+	if opts.IncludeSections && include[includeSections] {
+		return errorResult("with=sections already embeds the sections: drop include=sections or with")
+	}
+	if include[includeResources] && getStringArg(args, propSectionIdentifier) == "" {
+		return errorResult("include=resources lists one section's resources: pass sectionIdentifier " +
+			"(or with=sections for every section)")
 	}
 	page, err := h.statusPagesSvc.GetStatusPage(ctx, orgSlug, identifier, opts)
 	if err != nil {
 		return errorResult(err.Error())
 	}
-	return marshalResult(page)
+	if len(include) == 0 {
+		return marshalResult(page)
+	}
+	return h.statusPageWithIncludes(ctx, orgSlug, identifier, page, include, args)
+}
+
+// statusPageWithIncludes adds the lists include names to the page, each one
+// produced by the list tool it replaces (one code path per list).
+func (h *Handler) statusPageWithIncludes(
+	ctx context.Context, orgSlug, identifier string, page any, include map[string]bool, args map[string]any,
+) ToolCallResult {
+	out, err := toObject(page)
+	if err != nil {
+		return errorResult("Failed to marshal result: " + err.Error())
+	}
+
+	listArgs := map[string]any{
+		propPageIdentifier:    identifier,
+		propSectionIdentifier: getStringArg(args, propSectionIdentifier),
+		propState:             getStringArg(args, propState),
+	}
+	if active := getBoolArg(args, propActive); active != nil {
+		listArgs[propActive] = *active
+	}
+
+	lists := []struct {
+		include string
+		fn      toolFunc
+	}{
+		{includeSections, h.toolListStatusPageSections},
+		{includeResources, h.toolListStatusPageResources},
+		{includeIncidents, h.toolListStatusPageIncidents},
+	}
+
+	for _, list := range lists {
+		if !include[list.include] {
+			continue
+		}
+		res := list.fn(ctx, orgSlug, listArgs)
+		if res.IsError {
+			return res
+		}
+		out[list.include] = resultData(res)
+	}
+
+	return marshalResult(out)
 }
 
 func createStatusPageDef() ToolDefinition {
@@ -694,7 +761,8 @@ func statusPageWithSectionsOutputSchema() map[string]any {
 
 	props := statusPageResponseOutputProps()
 	props["sections"] = arrayOfObjectsProp(
-		"Nested sections; absent unless with=sections was passed.",
+		"Sections; absent unless with=sections (nested resources included) or "+
+			"include=sections (section metadata only) was passed.",
 		sectionProps,
 	)
 
@@ -713,6 +781,24 @@ func sectionResponseOutputProps() map[string]any {
 			"Dynamic membership rule; absent on hand-curated sections.",
 		),
 	}
+}
+
+// statusPageGetOutputSchema is get_status_page's output: the page, optionally
+// with nested sections (with=sections) and the lists include adds.
+func statusPageGetOutputSchema() map[string]any {
+	schema := statusPageWithSectionsOutputSchema()
+	props := schemaProps(schema)
+	props[includeResources] = arrayOfObjectsProp(
+		"Resources of the section named by sectionIdentifier; present with include=resources.",
+		resourceResponseOutputProps(),
+	)
+	props[includeIncidents] = arrayOfObjectsProp(
+		"Incident publications on the page; present with include=incidents.",
+		incidentPublicationOutputProps(),
+	)
+	schema[schemaKeyProperties] = props
+
+	return schema
 }
 
 func sectionOutputSchema() map[string]any {
