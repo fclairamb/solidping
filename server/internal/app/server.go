@@ -534,6 +534,10 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	localfs.Register()
 	s3fs.Register()
 
+	// The VAPID keys for Web Push are not loaded here: they live in
+	// app_settings, which does not exist before the migrations. Initialize
+	// loads them (InitializeWebPush).
+
 	server := &Server{
 		dbService:         dbService,
 		jobSvc:            jobService,
@@ -2420,15 +2424,9 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		prommetrics.Register(prometheus.DefaultRegisterer)
 		s.registerSubsystemMetrics(prometheus.DefaultRegisterer)
 
-		metricsPath := s.config.Prometheus.Path
-		if metricsPath == "" {
-			metricsPath = "/metrics"
-		}
-
-		mainGroup.GET(metricsPath, s.metricsHandler())
-
-		slog.InfoContext(ctx, "Prometheus metrics endpoint enabled", "path", metricsPath,
-			"tokenConfigured", s.config.Prometheus.ScrapeToken != "")
+		// Not logged here: whether the route answers depends on the scrape
+		// token, so logMetricsScrapeTokenState logs the one line that says so.
+		mainGroup.GET(metricsPath(s.config), s.metricsHandler())
 	}
 
 	// Test/dev fixture routes. Everything registered inside the RunMode=="test"
@@ -2555,7 +2553,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 // If no DSN is configured, Sentry is silently disabled.
 func initSentry(cfg config.SentryConfig) error {
 	if cfg.DSN == "" {
-		slog.Info("Sentry disabled (no DSN configured)")
+		slog.Debug("Sentry disabled (no DSN configured)")
 		return nil
 	}
 
@@ -2576,6 +2574,23 @@ func initSentry(cfg config.SentryConfig) error {
 	slog.Info("Sentry initialized", "environment", cfg.Environment)
 
 	return nil
+}
+
+// sentryFlushTimeout bounds how long shutdown waits for queued Sentry events.
+const sentryFlushTimeout = 2 * time.Second
+
+// flushSentry sends the queued Sentry events before shutdown. Without a DSN
+// initSentry never installs a client: the hub holds sentry-go's disabled
+// no-op client, there is nothing to send, and sentry.Flush returns false,
+// which would read as a timeout for a queue that does not exist.
+func flushSentry(ctx context.Context) {
+	if !sentry.CurrentHub().Client().IsEnabled() {
+		return
+	}
+
+	if !sentry.Flush(sentryFlushTimeout) {
+		slog.WarnContext(ctx, "Sentry flush timed out, some events may be lost")
+	}
 }
 
 // isPublicCORSPath reports whether path falls under a genuinely public,
@@ -3580,7 +3595,7 @@ func (s *Server) runStartupJob(ctx context.Context) error {
 		return fmt.Errorf("startup job failed: %w", err)
 	}
 
-	slog.InfoContext(ctx, "Startup job completed successfully")
+	slog.DebugContext(ctx, "Startup job completed successfully")
 
 	return nil
 }
@@ -3589,7 +3604,7 @@ func (s *Server) runStartupJob(ctx context.Context) error {
 // TLS listeners) until ctx is canceled or the listener fails, then drains them.
 // It is the body of Start's API-role branch, extracted so Start stays readable.
 func (s *Server) serveHTTP(ctx context.Context) error {
-	slog.InfoContext(ctx, "Starting HTTP server", "listen", s.config.Server.Listen)
+	slog.DebugContext(ctx, "Starting HTTP server", "listen", s.config.Server.Listen)
 
 	const readHeaderTimeout = 10 * time.Second
 
@@ -3607,11 +3622,27 @@ func (s *Server) serveHTTP(ctx context.Context) error {
 		return err
 	}
 
-	// Start HTTP server in a goroutine
+	// Bind first, serve second: the ready line must only be written once the
+	// port is actually ours, and a bind failure is reported right here.
+	listenAddr := srv.Addr
+	if listenAddr == "" {
+		listenAddr = ":http" // what ListenAndServe binds for an empty Addr
+	}
+
+	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", listenAddr)
+	if err != nil {
+		slog.ErrorContext(ctx, "HTTP server error", "error", err)
+
+		return err
+	}
+
+	s.logReady(ctx, slog.Default(), listener.Addr())
+
+	// Serve HTTP in a goroutine
 	serverErr := make(chan error, 1)
 
 	go func() {
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := srv.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.ErrorContext(ctx, "HTTP server error", "error", err)
 			serverErr <- err
 		}
@@ -3791,7 +3822,7 @@ func (s *Server) Start(ctx context.Context) error {
 		if err := regionSvc.ValidateWorkerRegion(ctx, workerRegion); err != nil {
 			return fmt.Errorf("region validation failed: %w", err)
 		}
-		slog.InfoContext(ctx, "Worker region validated", "region", workerRegion)
+		slog.DebugContext(ctx, "Worker region validated", "region", workerRegion)
 
 		s.startCheckWorker(runnerCtx) //nolint:contextcheck // runnerCtx is intentionally separate from request context
 	} else {
@@ -3989,8 +4020,6 @@ func (s *Server) startJobWorker(ctx context.Context) {
 		nbRunners = 2
 	}
 
-	slog.InfoContext(ctx, "Starting job worker", "nbRunners", nbRunners)
-
 	worker := jobworker.NewJobWorker(
 		s.dbService.DB(),
 		s.dbService,
@@ -4023,6 +4052,11 @@ func (s *Server) startJobWorker(ctx context.Context) {
 			slog.ErrorContext(ctx, "Job queue-depth sampler error", "error", err)
 		}
 	}()
+
+	// The job worker's one INFO line, written here rather than from its
+	// goroutine so it always precedes the "SolidPing is ready" line. Runner and
+	// per-job lines are DEBUG; failures stay WARN/ERROR.
+	slog.InfoContext(ctx, "Job worker started", "runners", nbRunners)
 }
 
 // startPassiveEvaluator starts the jobs node's passive-check evaluator, the
@@ -4047,8 +4081,6 @@ func (s *Server) startCheckWorker(ctx context.Context) {
 		return
 	}
 
-	slog.InfoContext(ctx, "Starting check worker", "nbRunners", nbRunners)
-
 	worker := checkworker.NewCheckWorker(
 		s.dbService,
 		s.config,
@@ -4064,17 +4096,20 @@ func (s *Server) startCheckWorker(ctx context.Context) {
 			slog.ErrorContext(ctx, "Check worker error", "error", err)
 		}
 	}()
+
+	// The check worker's one INFO line, written here rather than from its
+	// goroutine so it always precedes the "SolidPing is ready" line. Runner and
+	// per-run lines are DEBUG: after this, a check run is only heard of at INFO
+	// when its check changes status.
+	slog.InfoContext(ctx, "Check worker started",
+		"runners", nbRunners, "region", s.config.Server.CheckWorker.Region)
 }
 
 // Close closes the server and its database connection.
 func (s *Server) Close(ctx context.Context) error {
 	var closeErr error
 
-	// Flush pending Sentry events
-	const sentryFlushTimeout = 2 * time.Second
-	if !sentry.Flush(sentryFlushTimeout) {
-		slog.WarnContext(ctx, "Sentry flush timed out, some events may be lost")
-	}
+	flushSentry(ctx)
 
 	// Flush buffered product-analytics events. No-op (and instant) when
 	// analytics is not configured.
@@ -4193,11 +4228,11 @@ func compressionWrapper(enabled bool) func(http.Handler) http.Handler {
 	}
 }
 
-// Initialize runs the migrations, then the startup state that lives in the
-// database (the Web Push VAPID keypair).
+// Initialize runs the database migrations, then loads the startup state that
+// lives in the database (the Web Push VAPID keys).
 func (s *Server) Initialize(ctx context.Context) error {
 	if err := s.dbService.Initialize(ctx); err != nil {
-		return err //nolint:wrapcheck // dbService errors are already contextual
+		return err
 	}
 
 	s.InitializeWebPush(ctx)
@@ -4205,10 +4240,15 @@ func (s *Server) Initialize(ctx context.Context) error {
 	return nil
 }
 
-// InitializeWebPush loads or creates the VAPID keypair. It needs app_settings,
-// so it must run after the migrations. Failures disable web push for the run.
+// InitializeWebPush loads the VAPID keypair for Web Push, creating and storing
+// it on the first boot when it is not pre-provisioned through the environment.
+// It needs a migrated database (the keys live in app_settings): Initialize
+// calls it right after the migrations, and a caller that migrates the
+// database some other way calls it before SetupRoutes. A database that cannot
+// be read or written disables web push for this run, with one WARN.
 func (s *Server) InitializeWebPush(ctx context.Context) {
 	cfg := s.config
+
 	pub, priv, err := webpushpkg.GetOrCreateVAPIDKeys(ctx, webpushpkg.Config{
 		VAPIDPublicKey:  cfg.WebPush.VAPIDPublicKey,
 		VAPIDPrivateKey: cfg.WebPush.VAPIDPrivateKey,
@@ -4286,7 +4326,7 @@ func (s *Server) installEgressGuard(ctx context.Context, cfg *config.Config) {
 
 	s.services.EgressGuard = egress.New(cfg.EgressAllowsPrivateTargets())
 
-	slog.InfoContext(ctx, "Egress policy for notification sender URLs",
+	slog.Log(ctx, cfg.EgressPolicyLogLevel(), "Egress policy for notification sender URLs",
 		"allow_private_targets", s.services.EgressGuard.AllowsPrivate(),
 		"source", cfg.EgressPolicySource(),
 		"env", egress.EnvAllowPrivate,

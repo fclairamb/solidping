@@ -100,4 +100,4 @@ not a special case for the seeded admin. Test mode (`test@test.com`) is not flag
 ## Troubleshooting
 - If token expires, re-run the login command to get a fresh token
 - Check server is running: `curl -s http://localhost:4000/api/mgmt/health`
-- Enable debug logging: `LOG_LEVEL=debug ./solidping serve`
+- Enable debug logging: `SP_LOG_LEVEL=debug ./solidping serve`

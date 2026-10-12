@@ -73,12 +73,26 @@ func metricsBearerMatches(authHeader, token string) bool {
 	return subtle.ConstantTimeCompare([]byte(presented), []byte(token)) == 1
 }
 
+// defaultMetricsPath is where the scrape endpoint lives when prometheus.path
+// is unset.
+const defaultMetricsPath = "/metrics"
+
+// metricsPath is the path the scrape endpoint is registered on.
+func metricsPath(cfg *config.Config) string {
+	if cfg.Prometheus.Path == "" {
+		return defaultMetricsPath
+	}
+
+	return cfg.Prometheus.Path
+}
+
 // logMetricsScrapeTokenState logs the resolved /metrics access state at boot,
 // once InitializeSystemConfig has overlaid metrics.scrape_token onto cfg —
 // this runs whether the token came from the environment or the database, so
-// the log always reflects what a request will actually see. A no-op when
-// Prometheus is disabled outright: that state is already logged by
-// SetupRoutes not registering the route at all.
+// the log always reflects what a request will actually see. It is the only
+// boot line about the endpoint: SetupRoutes registers the route without
+// logging, since without a token the route answers 404. A no-op when
+// Prometheus is disabled outright.
 func logMetricsScrapeTokenState(ctx context.Context, cfg *config.Config) {
 	if !cfg.Prometheus.Enabled {
 		return
@@ -86,12 +100,14 @@ func logMetricsScrapeTokenState(ctx context.Context, cfg *config.Config) {
 
 	if cfg.Prometheus.ScrapeToken == "" {
 		slog.InfoContext(ctx,
-			"metrics endpoint disabled, set metrics.scrape_token to enable scraping")
+			"metrics endpoint disabled, set metrics.scrape_token to enable scraping",
+			"path", metricsPath(cfg))
 
 		return
 	}
 
-	slog.InfoContext(ctx, "metrics endpoint requires a bearer scrape token")
+	slog.InfoContext(ctx, "metrics endpoint requires a bearer scrape token",
+		"path", metricsPath(cfg))
 }
 
 // writeMetricsUnauthorized writes the generic 401 body for a missing or

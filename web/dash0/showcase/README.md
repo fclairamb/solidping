@@ -275,7 +275,7 @@ Useful knobs:
    > top of the *scrollback*, not the viewport, so it matches against the
    > opening prompt until it times out. The tape holds on a timer instead, and
    > `terminal.ts` checks the container's own log afterwards — a render where
-   > the server never reached "Starting HTTP server" fails rather than
+   > the server never reached "SolidPing is ready" fails rather than
    > publishing a segment that does not show the thing it promises.
 
    > **`SHOWCASE_DOCKER_PULL=0`.** `:latest` is published amd64-only until the

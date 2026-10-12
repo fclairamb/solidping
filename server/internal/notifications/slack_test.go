@@ -2736,15 +2736,19 @@ func (m *mockDBService) GetAppSetting(_ context.Context, _ string) (string, erro
 	panic("not implemented")
 }
 
+func (m *mockDBService) SetAppSetting(_ context.Context, _, _ string) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) GetAppSettings(_ context.Context, _ []string) (map[string]string, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) CreateAppSettingsIfAbsent(_ context.Context, _ map[string]string) error {
-	return nil
+	panic("not implemented")
 }
 
 func (m *mockDBService) SetAppSettings(_ context.Context, _ map[string]string) error {
-	return nil
-}
-
-func (m *mockDBService) SetAppSetting(_ context.Context, _, _ string) error {
 	panic("not implemented")
 }
 

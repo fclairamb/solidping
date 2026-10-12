@@ -132,7 +132,7 @@ func (e *PassiveEvaluator) Run(ctx context.Context) error {
 	}
 
 	registered := e.worker.Load()
-	e.logger.InfoContext(ctx, "Passive evaluator started",
+	e.logger.DebugContext(ctx, "Passive evaluator started",
 		"worker_uid", registered.UID, "worker_slug", registered.Slug)
 
 	e.wg.Add(1)
@@ -147,7 +147,7 @@ func (e *PassiveEvaluator) Run(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			e.logger.InfoContext(ctx, "Passive evaluator stopped")
+			e.logger.DebugContext(ctx, "Passive evaluator stopped")
 
 			return ctx.Err()
 		case <-timer.C:

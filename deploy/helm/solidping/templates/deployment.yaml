@@ -43,6 +43,11 @@ spec:
                   name: {{ required "database.existingSecret is required with database.type=postgres" .Values.database.existingSecret }}
                   key: url
             {{- end }}
+            {{- /* One JSON object per line for the cluster's log collector. extraEnv.SP_LOG_FORMAT replaces it. */}}
+            {{- if not (hasKey .Values.extraEnv "SP_LOG_FORMAT") }}
+            - name: SP_LOG_FORMAT
+              value: json
+            {{- end }}
             {{- range $k, $v := .Values.extraEnv }}
             - name: {{ $k }}
               value: {{ $v | quote }}

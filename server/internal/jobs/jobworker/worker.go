@@ -122,9 +122,7 @@ func NewJobWorker(
 
 // Run starts the worker with multiple internal runners (blocking).
 func (w *JobWorker) Run(ctx context.Context) error {
-	w.logger.InfoContext(ctx, "Starting job worker")
-
-	w.logger.InfoContext(ctx, "Starting worker pool", "pool_size", w.poolSize)
+	w.logger.DebugContext(ctx, "Starting job worker", "pool_size", w.poolSize)
 
 	// Setup self-stats reporting
 	if err := w.setupSelfStats(ctx); err != nil {
@@ -139,9 +137,9 @@ func (w *JobWorker) Run(ctx context.Context) error {
 
 	// Wait for shutdown
 	<-ctx.Done()
-	w.logger.InfoContext(ctx, "Job worker stopping, waiting for runners")
+	w.logger.DebugContext(ctx, "Job worker stopping, waiting for runners")
 	w.wg.Wait()
-	w.logger.InfoContext(ctx, "Job worker stopped")
+	w.logger.DebugContext(ctx, "Job worker stopped")
 
 	return ctx.Err()
 }
@@ -159,8 +157,8 @@ func (w *JobWorker) workerLoop(ctx context.Context, runnerID int) {
 	defer w.wg.Done()
 
 	logger := w.logger.With("runner_id", runnerID)
-	logger.InfoContext(ctx, "Job runner started")
-	defer logger.InfoContext(ctx, "Job runner stopped")
+	logger.DebugContext(ctx, "Job runner started")
+	defer logger.DebugContext(ctx, "Job runner stopped")
 
 	var (
 		backoff      time.Duration
@@ -308,7 +306,7 @@ func (w *JobWorker) processNext(ctx context.Context, logger *slog.Logger) error 
 		delay = 0
 	}
 
-	logger.InfoContext(ctx, "Processing job",
+	logger.DebugContext(ctx, "Processing job",
 		"job_uid", job.UID, "job_type", job.Type, "retry_count", job.RetryCount)
 
 	// 2. Get job definition from registry
@@ -513,7 +511,7 @@ func (w *JobWorker) handleResult(
 ) (string, error) {
 	if err == nil {
 		// Success: mark job as successful with output from job execution
-		logger.InfoContext(ctx, "Job completed successfully", "job_uid", job.UID)
+		logger.DebugContext(ctx, "Job completed successfully", "job_uid", job.UID)
 
 		var output json.RawMessage
 		if len(job.Output) > 0 {
@@ -647,7 +645,7 @@ func (w *JobWorker) setupSelfStats(ctx context.Context) error {
 		return float64(w.availableRunners.Load())
 	})
 
-	w.logger.InfoContext(ctx, "Self-stats reporting configured",
+	w.logger.DebugContext(ctx, "Self-stats reporting configured",
 		"internal_check_uid", w.internalCheckUID)
 
 	return nil
@@ -656,12 +654,12 @@ func (w *JobWorker) setupSelfStats(ctx context.Context) error {
 // resolveWorkerSlug sets this worker's identity: SP_NODE_NAME when configured,
 // otherwise the lowercased, sanitized OS hostname truncated to
 // config.WorkerHostnameMaxLen. It is the exact same resolution the check worker
-// uses (config.Config.WorkerIdentity), so both agree on who this process is,
-// and it emits the same truncation/sanitization WARNs for the same reason.
+// uses (config.Config.WorkerIdentity), so both agree on who this process is.
+// The truncation/sanitization report is logged once per process, whichever
+// worker gets there first.
 func (w *JobWorker) resolveWorkerSlug(ctx context.Context) {
 	identity := w.config.WorkerIdentity()
-	identity.WarnIfTruncated(ctx, w.logger)
-	identity.WarnIfSanitized(ctx, w.logger)
+	identity.LogDerivation(ctx, w.logger, w.config.WorkerSlugMayCollide())
 	w.workerSlug = identity.Slug
 }
 

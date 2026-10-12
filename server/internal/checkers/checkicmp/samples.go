@@ -54,6 +54,7 @@ func (c *ICMPChecker) GetSampleConfigs(opts *checkerdef.ListSampleOptions) []che
 				Count:   sampleCount,
 				Timeout: sampleTimeout,
 			}).GetConfig(),
+			SeedOnInstall: true,
 		},
 		{
 			// The reason the ipVersion option exists, as a ready-made example:

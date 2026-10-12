@@ -78,6 +78,7 @@ func (c *TCPChecker) GetSampleConfigs(opts *checkerdef.ListSampleOptions) []chec
 				Port:    samplePort,
 				Timeout: sampleTimeout,
 			}).GetConfig(),
+			SeedOnInstall: true,
 		},
 		{
 			Name:   "Cloudflare HTTPS (443)",
@@ -104,10 +105,11 @@ func (c *TCPChecker) GetSampleConfigs(opts *checkerdef.ListSampleOptions) []chec
 		{
 			// The one sample that proves the SERVICE works, not just that the
 			// port is open: it sends a request and requires a status line back.
-			Name:   "solidping.io HTTPS request (443)",
-			Slug:   "tcp-solidping-https",
-			Period: time.Minute * 5,
-			Config: speakingSolidpingSample(),
+			Name:          "solidping.io HTTPS request (443)",
+			Slug:          "tcp-solidping-https",
+			Period:        time.Minute * 5,
+			Config:        speakingSolidpingSample(),
+			SeedOnInstall: true,
 		},
 		{
 			Name:   "GitHub HTTPS (443)",

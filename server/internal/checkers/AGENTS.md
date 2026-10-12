@@ -30,6 +30,15 @@ Each protocol has its own package (e.g., `checkhttp`, `checkicmp`, `checktcp`):
   is **not a customer-facing feature**: its meta carries `ExcludedFromTally`
   (see "Adding New Checkers"), as does `private-location`.
 
+## Samples
+
+`GetSampleConfigs` (`checkerdef.CheckerSamplesProvider`) feeds the create-check sample picker and
+the seed of a fresh install. The `Default` samples all show in the picker, but a fresh install
+only seeds the ones marked `SeedOnInstall: true` (`checkerdef.SamplesToSeed`); `Test` and `Demo`
+seed everything. Mark a sample only if it works from any internet-connected host: public IPv4
+target, no local service, no extra privilege, no flaky third-party test server.
+`registry/seed_samples_test.go` enforces the type list, the 10 to 15 total and the targets.
+
 ## Adding New Checkers
 
 1. Create `check{protocol}/` package

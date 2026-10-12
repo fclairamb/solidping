@@ -393,7 +393,7 @@ func (r *CheckWorker) finishStepRun(
 		return fmt.Errorf("failed to submit multi-step result: %w", err)
 	}
 
-	logger.InfoContext(ctx, "Multi-step run completed",
+	logger.DebugContext(ctx, "Multi-step run completed",
 		"check_uid", checkJob.CheckUID, "run_uid", run.uid, "status", result.Status, "slices", run.step+1)
 
 	return nil

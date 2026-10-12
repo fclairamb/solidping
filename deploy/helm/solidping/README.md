@@ -17,4 +17,7 @@ PostgreSQL create a Secret with the connection string under `url` and set
 The JWT signing key is generated on first install and kept across upgrades.
 Set `auth.existingSecret` (key `jwt-secret`) to manage it yourself.
 
+Logs are JSON, one object per line (`SP_LOG_FORMAT=json`). Set
+`extraEnv.SP_LOG_FORMAT` to change it.
+
 First login is `admin@solidping.io` / `solidpass`. Change it immediately.

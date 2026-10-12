@@ -586,7 +586,7 @@ type Config struct {
 	AI           AIConfig           `koanf:"ai"`
 	RunMode      string             `koanf:"runmode"`   // "test" for test mode, empty for normal mode
 	UserAgent    string             `koanf:"useragent"` // Identity string for protocol checks (SP_USERAGENT)
-	LogLevel     slog.Level         `koanf:"-"`         // Logging level (parsed from LOG_LEVEL env var)
+	LogLevel     slog.Level         `koanf:"-"`         // Logging level (SP_LOG_LEVEL, LOG_LEVEL as fallback)
 	LogFormat    LogFormat          `koanf:"-"`         // Logging output format (parsed from SP_LOG_FORMAT env var)
 }
 
@@ -728,6 +728,17 @@ func (c *Config) EgressPolicySource() string {
 	}
 
 	return "default for deployment mode " + c.Deployment.Mode
+}
+
+// EgressPolicyLogLevel is the level of the startup egress-policy lines: INFO
+// when an operator chose the policy, DEBUG when it is the derived default, so
+// a default install does not restate it on every boot.
+func (c *Config) EgressPolicyLogLevel() slog.Level {
+	if c.Egress.AllowPrivateTargets != nil {
+		return slog.LevelInfo
+	}
+
+	return slog.LevelDebug
 }
 
 // applyEgressEnv binds SP_EGRESS_ALLOW_PRIVATE. An absent or empty variable
@@ -1127,6 +1138,58 @@ type AggregationConfig struct {
 	RetentionRaw  int `koanf:"retention_raw"`  // hours of raw to keep (default 24)
 	RetentionHour int `koanf:"retention_hour"` // days of hourly to keep (default 7)
 	RetentionDay  int `koanf:"retention_day"`  // months of daily to keep (default 2)
+}
+
+// deprecatedAggregationRetentionKeys are the legacy koanf aggregation
+// retention keys. Only a config file can set them: the env loader turns
+// SP_AGGREGATION_RETENTION_RAW into aggregation.retention.raw, which matches
+// no field.
+//
+//nolint:gochecknoglobals // read-only lookup table
+var deprecatedAggregationRetentionKeys = []string{
+	"aggregation.retention_raw",
+	"aggregation.retention_hour",
+	"aggregation.retention_day",
+}
+
+// loadConfigFiles merges config.yml, then config.local.yml (gitignored, for
+// credentials and dev settings), into koanfInstance when they exist. The
+// files are loaded into their own instance first, so what the operator wrote
+// can be told apart from the built-in defaults.
+func loadConfigFiles(koanfInstance *koanf.Koanf) error {
+	fileKoanf := koanf.New(".")
+
+	for _, name := range []string{"config.yml", "config.local.yml"} {
+		if _, err := os.Stat(name); err != nil {
+			continue
+		}
+
+		if err := fileKoanf.Load(file.Provider(name), yaml.Parser()); err != nil {
+			return fmt.Errorf("loading %s: %w", name, err)
+		}
+	}
+
+	warnDeprecatedFileKeys(slog.Default(), fileKoanf)
+
+	if err := koanfInstance.Merge(fileKoanf); err != nil {
+		return fmt.Errorf("merging config files: %w", err)
+	}
+
+	return nil
+}
+
+// warnDeprecatedFileKeys logs one WARN per deprecated key the operator set in
+// a config file. fileKoanf holds the config files only, never the built-in
+// defaults, so a default value (which every install has) never warns.
+func warnDeprecatedFileKeys(logger *slog.Logger, fileKoanf *koanf.Koanf) {
+	for _, key := range deprecatedAggregationRetentionKeys {
+		if !fileKoanf.Exists(key) {
+			continue
+		}
+
+		logger.Warn("Using deprecated koanf aggregation retention; set the performance.* parameter instead",
+			"key", key, "value", fileKoanf.Get(key))
+	}
 }
 
 // DemoConfig configures the shared public live demo (spec 2026-09-06-02): a
@@ -2114,18 +2177,8 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("loading defaults: %w", err)
 	}
 
-	// Load from config file if it exists
-	if _, err := os.Stat("config.yml"); err == nil {
-		if err := koanfInstance.Load(file.Provider("config.yml"), yaml.Parser()); err != nil {
-			return nil, fmt.Errorf("loading config.yml: %w", err)
-		}
-	}
-
-	// Load local overrides (gitignored, for credentials and dev settings)
-	if _, err := os.Stat("config.local.yml"); err == nil {
-		if err := koanfInstance.Load(file.Provider("config.local.yml"), yaml.Parser()); err != nil {
-			return nil, fmt.Errorf("loading config.local.yml: %w", err)
-		}
+	if err := loadConfigFiles(koanfInstance); err != nil {
+		return nil, err
 	}
 
 	// Load from environment variables with SP_ prefix (SolidPing)
@@ -2257,8 +2310,7 @@ func Load() (*Config, error) {
 	applyDBSlowQueryEnv(&cfg.Database)
 	applyMigrationGuardModeEnv(&cfg.Database)
 
-	// Parse LOG_LEVEL environment variable
-	cfg.LogLevel = ParseLogLevel(os.Getenv("SP_LOG_LEVEL"))
+	cfg.LogLevel = LogLevelFromEnv(os.Getenv)
 	cfg.LogFormat = ParseLogFormat(os.Getenv("SP_LOG_FORMAT"))
 
 	// App / GitHub: SP_APP_GITHUB_ISSUES_TOKEN takes precedence over the
@@ -3052,6 +3104,20 @@ const (
 	SentryEnvironmentProduction = "production"
 )
 
+// RunModeProduction names the default run mode, the one an unset SP_RUN_MODE
+// selects. RunMode stays empty in that case; this is only its display name.
+const RunModeProduction = "production"
+
+// RunModeName returns the effective run mode for logs: the configured mode, or
+// RunModeProduction when none is set.
+func (c *Config) RunModeName() string {
+	if c.RunMode == "" {
+		return RunModeProduction
+	}
+
+	return c.RunMode
+}
+
 // applySentryEnvironmentDefault fills sentry.environment when the operator left
 // it unset. Explicit configuration always wins: this runs after config.yml and
 // the SP_SENTRY_ENVIRONMENT env binding have both been folded in, and only
@@ -3808,27 +3874,42 @@ func ParseLogLevel(level string) slog.Level {
 	}
 }
 
+// LogLevelFromEnv reads the log level from the environment: SP_LOG_LEVEL wins,
+// LOG_LEVEL is the fallback. main (before the configuration loads) and Load
+// both go through it, so LOG_LEVEL set alone is no longer reset to info once
+// the configuration is loaded.
+func LogLevelFromEnv(getenv func(key string) string) slog.Level {
+	if level := strings.TrimSpace(getenv("SP_LOG_LEVEL")); level != "" {
+		return ParseLogLevel(level)
+	}
+
+	return ParseLogLevel(getenv("LOG_LEVEL"))
+}
+
 // LogFormat selects how log records are rendered on stdout.
 type LogFormat string
 
 const (
-	// LogFormatText is Go's key=value logfmt-style handler. The default: it
-	// stays readable with no tooling, which is what a self-hosted operator
-	// tailing a container gets without opting in to anything.
+	// LogFormatAuto is the default: the concrete format is picked from the
+	// environment when the logger is built (json on Kubernetes, pretty on a
+	// terminal or in a container, text otherwise). See internal/logsetup.
+	LogFormatAuto LogFormat = "auto"
+	// LogFormatText is Go's key=value logfmt-style handler. It stays readable
+	// with no tooling.
 	LogFormatText LogFormat = "text"
 	// LogFormatJSON emits one JSON object per record. Pick this when a log
 	// collector parses stdout — attributes become queryable fields instead of
 	// being buried in a formatted message.
 	LogFormatJSON LogFormat = "json"
-	// LogFormatPretty is the colorized, human-first handler. For interactive
-	// development; it is not machine-parseable.
+	// LogFormatPretty is the colorized, human-first handler. For terminals and
+	// `docker logs`; it is not machine-parseable.
 	LogFormatPretty LogFormat = "pretty"
 )
 
 // ParseLogFormat parses a log format string into a LogFormat.
-// Valid values: text, json, pretty (case-insensitive).
-// Returns LogFormatText if the value is empty or unrecognized — an unreadable
-// typo must not cost the operator their logs.
+// Valid values: auto, text, json, pretty (case-insensitive).
+// Returns LogFormatAuto if the value is empty or unrecognized — a typo must
+// not cost the operator their logs.
 func ParseLogFormat(format string) LogFormat {
 	switch strings.ToLower(strings.TrimSpace(format)) {
 	case "json":
@@ -3838,6 +3919,6 @@ func ParseLogFormat(format string) LogFormat {
 	case "text", "logfmt":
 		return LogFormatText
 	default:
-		return LogFormatText
+		return LogFormatAuto
 	}
 }

@@ -250,7 +250,8 @@ func NewPostgresScenario(t *testing.T) *Scenario {
 	fakeClock := clock.NewFake(time.Now())
 	server.Services().Clock = fakeClock
 
-	// Migrations were already run by TestMain. SetupRoutes only.
+	// Migrations were already run by TestMain, so Initialize is skipped. Load
+	// the VAPID keys it would have loaded, then SetupRoutes.
 	server.InitializeWebPush(ctx)
 	server.SetupRoutes(ctx)
 

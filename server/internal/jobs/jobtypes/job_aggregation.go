@@ -72,7 +72,7 @@ func (r *AggregationJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) er
 
 	orgUID := *jctx.OrganizationUID // Never nil for aggregation jobs
 
-	log.InfoContext(ctx, "Starting aggregation job", "organization_uid", orgUID)
+	log.DebugContext(ctx, "Starting aggregation job", "organization_uid", orgUID)
 
 	// Table-wide gauge refresh, throttled process-wide — see
 	// maybeSampleResultsRowCount for why this must not run on every org's job.
@@ -107,14 +107,14 @@ func (r *AggregationJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) er
 		}
 		if aggregated {
 			workDone = true
-			log.InfoContext(ctx, "Aggregated data", "source", agg.sourcePeriod, "target", agg.targetPeriod)
+			log.DebugContext(ctx, "Aggregated data", "source", agg.sourcePeriod, "target", agg.targetPeriod)
 
 			break // Process one aggregation per run
 		}
 	}
 
 	if stageErr == nil && !workDone {
-		log.InfoContext(ctx, "No aggregation work found")
+		log.DebugContext(ctx, "No aggregation work found")
 	}
 
 	// Schedule next run. Only a run that actually rolled a bucket up retries
@@ -165,7 +165,7 @@ func (r *AggregationJobRun) aggregatePeriod(
 		return false, nil // Nothing to aggregate
 	}
 
-	log.InfoContext(ctx, "Found data to aggregate",
+	log.DebugContext(ctx, "Found data to aggregate",
 		"check_uid", checkUID,
 		"region", region,
 		"period_start", periodStart,
@@ -248,7 +248,7 @@ func (r *AggregationJobRun) aggregatePeriod(
 			"source_count", outcome.Fetched)
 	}
 
-	log.InfoContext(ctx, "Aggregation complete",
+	log.DebugContext(ctx, "Aggregation complete",
 		"source_count", outcome.Fetched, "deleted_count", outcome.DeletedCount)
 
 	return true, nil
@@ -386,11 +386,13 @@ func resolveRetentionTier(
 		return n
 	}
 
-	// 3. Legacy koanf field (deprecated back-compat, removed a release from now).
+	// 3. The koanf value. No warning here: config.Load fills it with the
+	// built-in default, so it is set on every install, and its only caller
+	// left (audit.retention_days) is a documented, non-deprecated key. The
+	// deprecated aggregation.retention_* keys go through
+	// systemconfig.ResolveAggregationRetention, and config.Load warns once at
+	// boot when a config file sets them.
 	if legacy >= 1 {
-		log.WarnContext(ctx, "Using deprecated koanf aggregation retention; set the performance.* parameter instead",
-			"key", string(key), "value", legacy)
-
 		return legacy
 	}
 

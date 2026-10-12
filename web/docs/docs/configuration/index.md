@@ -153,7 +153,10 @@ Two cases where it is required rather than nice to have:
 - **Pod names that collide in the first 15 characters.** Deployment-generated
   names such as `solidping-checks-eu2-…` and `solidping-checks-us1-…` both cut
   down to `solidping-check`, and the two workers then silently share one
-  `workers` row. A truncated hostname logs a WARN naming the resulting slug.
+  `workers` row. A truncated hostname logs a WARN naming the resulting slug,
+  once per process. It is only a WARN when another node can share the
+  database (a role other than `all`, or an external Postgres). A single `all`
+  node on SQLite logs it at DEBUG, since no other worker can take its slug.
 
 An invalid effective slug (override or hostname-derived) aborts startup with a
 message naming the offending value, rather than failing later against the
@@ -184,10 +187,20 @@ used, so edits made through the API are preserved across restarts.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SP_LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, `error` |
-| `SP_LOG_FORMAT` | `text` | Output format: `text` (key=value logfmt), `json` (one object per record, for log collectors), `pretty` (colourized, for interactive use) |
-| `LOG_LEVEL` | `info` | Same, but read before the configuration system loads — use it to debug startup itself |
-| `NO_COLOR` | - | Set to any value to disable coloured terminal output ([no-color.org](https://no-color.org/)) |
-| `FORCE_COLOR` | - | Set to any value to force coloured output when the terminal is not detected as a TTY |
+| `LOG_LEVEL` | - | Fallback for `SP_LOG_LEVEL`, used when `SP_LOG_LEVEL` is not set |
+| `SP_LOG_FORMAT` | `auto` | Output format: `auto`, `text` (key=value logfmt), `json` (one object per record, for log collectors), `pretty` (colourized, for people) |
+| `NO_COLOR` | - | Set to any value to disable coloured output ([no-color.org](https://no-color.org/)) |
+| `FORCE_COLOR` | - | Set to any value to force coloured output when neither a terminal nor a container is detected |
+
+`auto` picks the format when the server starts:
+
+- `json` on Kubernetes (`KUBERNETES_SERVICE_HOST` is set). The Helm chart also sets `SP_LOG_FORMAT=json` explicitly.
+- `pretty` when the output is a terminal, or inside a Docker or Podman container (`/.dockerenv` or `/run/.containerenv` exists), so `docker logs` is readable.
+- `text` otherwise.
+
+If you ship Docker logs to a log collector, set `SP_LOG_FORMAT=json`.
+
+`pretty` is coloured on a terminal and in a container. A typo in `SP_LOG_FORMAT` falls back to `auto`.
 
 ### Authentication
 
@@ -372,7 +385,7 @@ SP_GOOGLE_CLIENT_SECRET=your-google-client-secret
 
 # Logging
 SP_LOG_LEVEL=info
-SP_LOG_FORMAT=text
+SP_LOG_FORMAT=auto
 ```
 
 ### Configuration File (config.yml)

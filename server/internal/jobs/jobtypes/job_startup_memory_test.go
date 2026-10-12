@@ -68,10 +68,11 @@ func TestStartupSeedsAdminWithBcrypt(t *testing.T) {
 // TestStartupBrowserSamplesDisabled: samples that need a browser are created
 // disabled so a native install with Chromium does not launch one every minute
 // against a site that cannot pass; ordinary samples stay enabled
-// (spec 2026-10-12-04).
-//
-//nolint:paralleltest // integration test with database
+// (spec 2026-10-12-04). The default run mode no longer seeds browser samples
+// at all (SeedOnInstall), so this runs in test mode, which seeds every sample.
 func TestStartupBrowserSamplesDisabled(t *testing.T) {
+	t.Setenv("SP_RUN_MODE", "test")
+
 	r := require.New(t)
 	ctx := context.Background()
 	dbSvc := runFreshStartup(t)
@@ -94,7 +95,7 @@ func TestStartupBrowserSamplesDisabled(t *testing.T) {
 	}{
 		{"browser-example-com", false},
 		{"js-browser-login", false},
-		{"http-test-api", true},
+		{"http-fake-stable", true},
 	}
 
 	for _, tt := range tests {

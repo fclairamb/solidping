@@ -21,7 +21,13 @@ import (
 func newEgressGuard(cfg *config.Config, logger *slog.Logger) *egress.Guard {
 	allow := cfg.EgressAllowsPrivateTargets()
 
-	logger.Info("Egress policy for check targets",
+	// INFO only when an operator chose the policy (see EgressPolicyLogLevel).
+	logPolicy := logger.Debug
+	if cfg.EgressPolicyLogLevel() >= slog.LevelInfo {
+		logPolicy = logger.Info
+	}
+
+	logPolicy("Egress policy for check targets",
 		"allow_private_targets", allow,
 		"source", cfg.EgressPolicySource(),
 		"env", egress.EnvAllowPrivate,

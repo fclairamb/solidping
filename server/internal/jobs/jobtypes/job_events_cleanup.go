@@ -119,7 +119,7 @@ func (r *EventsCleanupJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) 
 
 	before := time.Now().Add(-time.Duration(retentionDays) * 24 * time.Hour)
 
-	log.InfoContext(ctx, "Starting audit events cleanup",
+	log.DebugContext(ctx, "Starting audit events cleanup",
 		"retentionDays", retentionDays, "before", before)
 
 	deleted, err := r.deletePass(ctx, jctx, before)
@@ -129,7 +129,7 @@ func (r *EventsCleanupJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) 
 		return jobdef.NewRetryableError(err)
 	}
 
-	log.InfoContext(ctx, "Deleted expired audit events", "count", deleted)
+	log.Log(ctx, levelForCount(deleted), "Deleted expired audit events", "count", deleted)
 
 	r.rescheduleSelf(ctx, jctx)
 

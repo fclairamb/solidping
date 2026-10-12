@@ -184,7 +184,7 @@ SP_EMAIL_PASSWORD=smtp-password
 SP_EMAIL_FROM=noreply@example.com
 
 # Logging
-LOG_LEVEL=info
+SP_LOG_LEVEL=info
 ```
 
 Update the systemd service to use the environment file:
@@ -257,6 +257,8 @@ sudo journalctl -u solidping -n 100
 sudo journalctl -u solidping --since today
 ```
 
+At the default `info` level, startup ends with a `SolidPing is ready` line that gives the URL to open, the version and the database. On a fresh install a second line gives the first login. After that, a check run is only logged when its check changes status, for example `Check down name="Local Redis" slug=redis-localhost previous=validating error="connection refused"` once the confirmation period has passed. Set `LOG_LEVEL=debug` to see every check run and job.
+
 ## Updating
 
 ```bash
@@ -317,9 +319,10 @@ constraint. Existing hashes are upgraded to the new profile on the next login.
 See [Authentication](/configuration/authentication).
 :::
 
-The two browser sample checks (`browser-example-com` and `js-browser-login`)
-are created disabled. Each run starts a headless Chrome (40-120 MB), so enable
-them only once you point them at a real site.
+A fresh install seeds no browser check. Each browser check run starts a headless
+Chrome (40-120 MB). The browser samples (`browser-example-com` and
+`js-browser-login`) stay available in the create-check sample picker. Test mode
+seeds them disabled.
 
 See [Runtime memory](/configuration#runtime-memory) for every `SP_RUNTIME_*` knob.
 

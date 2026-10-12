@@ -92,7 +92,14 @@ func HashPlaintextUserTokens(ctx context.Context, bunDB *bun.DB) (int, error) {
 		return 0, fmt.Errorf("failed to hash plaintext user tokens: %w", err)
 	}
 
-	slog.InfoContext(ctx, "Hashed plaintext user tokens at rest", "rows", hashed)
+	// INFO only when the one-time migration actually rewrote rows: a fresh or
+	// already-migrated database has nothing to report.
+	level := slog.LevelDebug
+	if hashed > 0 {
+		level = slog.LevelInfo
+	}
+
+	slog.Log(ctx, level, "Hashed plaintext user tokens at rest", "rows", hashed)
 
 	return hashed, nil
 }

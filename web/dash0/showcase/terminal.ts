@@ -76,7 +76,7 @@ const FPS = 25;
  * timer (vhs's own `Wait` cannot see scrolled output — see the tape), so this
  * is checked against the container's log afterwards instead of being waited on.
  */
-const BOOT_MARKER = "Starting HTTP server";
+const BOOT_MARKER = "SolidPing is ready";
 
 class TerminalError extends Error {}
 

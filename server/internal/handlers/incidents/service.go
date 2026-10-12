@@ -826,6 +826,10 @@ func (s *Service) processCheckResult(ctx context.Context, check *models.Check, r
 
 	s.publishStatusHint(ctx, check.OrganizationUID, check.UID, statusChanged)
 
+	// The status-change line is written here, after the write landed, from the
+	// in-memory row: the one INFO line a healthy check run can produce.
+	logStatusChange(ctx, check, check.Status, newStatus, result)
+
 	if wasStale {
 		s.recordMonitoringResumed(ctx, check, activeIncident, now)
 	}
@@ -881,10 +885,12 @@ func (s *Service) freshnessAndMaintenance(
 	// otherwise a check that went quiet and came back inside a window would
 	// keep reading "No data" until the window ends.
 	if wasStale {
-		return wasStale, true, s.leaveStaleInMaintenance(ctx, check, resultStatus)
+		return wasStale, true, s.leaveStaleInMaintenance(ctx, check, result, resultStatus)
 	}
 
-	slog.InfoContext(ctx, "Skipping incident processing: check is in maintenance window",
+	// DEBUG: this fires on every result for the length of the window, which an
+	// operator scheduled on purpose.
+	slog.DebugContext(ctx, "Skipping incident processing: check is in maintenance window",
 		"checkUID", check.UID)
 
 	return wasStale, true, nil
@@ -927,7 +933,7 @@ func (s *Service) refreshLiveState(ctx context.Context, check *models.Check, res
 // `validating` otherwise, so the check never renders down with nothing behind
 // it.
 func (s *Service) leaveStaleInMaintenance(
-	ctx context.Context, check *models.Check, resultStatus models.ResultStatus,
+	ctx context.Context, check *models.Check, result *models.Result, resultStatus models.ResultStatus,
 ) error {
 	activeIncident, lookupErr := s.db.FindActiveIncidentByCheckUID(ctx, check.UID)
 	if lookupErr != nil && !errors.Is(lookupErr, sql.ErrNoRows) {
@@ -956,6 +962,7 @@ func (s *Service) leaveStaleInMaintenance(
 	}
 
 	s.publishStatusHint(ctx, check.OrganizationUID, check.UID, true)
+	logStatusChange(ctx, check, check.Status, newStatus, result)
 	s.recordMonitoringResumed(ctx, check, activeIncident, now)
 
 	check.Status = newStatus

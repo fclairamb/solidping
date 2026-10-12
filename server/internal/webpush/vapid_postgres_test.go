@@ -1,25 +1,30 @@
 package webpush_test
 
 import (
-	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/postgres"
 	"github.com/fclairamb/solidping/server/internal/testsupport"
 	"github.com/fclairamb/solidping/server/internal/webpush"
 )
 
-// Distinct from every other embedded port (157xx is taken by other packages;
-// this one and the next use 15800-15801).
-const portVAPIDPostgres = 15800
+// Distinct from every other embedded port claimed in the repo (15715 was the
+// highest in use).
+const portVAPIDPG = 15733
 
-// TestVAPIDKeysPostgres covers the unmigrated, repeat and concurrent cases on
-// a real Postgres. Self-skips under -short.
+// TestGetOrCreateVAPIDKeysPostgres pins the VAPID key lifecycle on the real
+// engine: an unmigrated database is an error (never an unstored key), a
+// restart reads the stored pair back, and concurrent first creation converges
+// on one stored pair. Concurrent goroutines draw separate pool connections, so
+// they race the way separate processes do.
 //
-//nolint:paralleltest // shares embedded-postgres resources with sibling tests
-func TestVAPIDKeysPostgres(t *testing.T) {
+// Self-skips under -short and on any embedded-startup error, like its siblings.
+//
+//nolint:paralleltest // shares dev-machine embedded-postgres resources with its siblings
+func TestGetOrCreateVAPIDKeysPostgres(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
 	}
@@ -27,73 +32,38 @@ func TestVAPIDKeysPostgres(t *testing.T) {
 	ctx := t.Context()
 	r := require.New(t)
 
-	svc, err := postgres.New(ctx, &postgres.Config{Embedded: true, Port: portVAPIDPostgres, RunMode: "test"})
+	store, err := postgres.New(ctx, &postgres.Config{Embedded: true, Port: portVAPIDPG, RunMode: "test"})
 	if err != nil {
 		testsupport.PostgresUnavailable(t, err)
 	}
-	t.Cleanup(func() { _ = svc.Close() })
+	t.Cleanup(func() { _ = store.Close() })
 
-	// Unmigrated: error, no keys.
-	pub, priv, err := webpush.GetOrCreateVAPIDKeys(ctx, webpush.Config{}, svc)
+	// Before the migrations: no app_settings table, so no key at all.
+	pub, priv, err := webpush.GetOrCreateVAPIDKeys(ctx, webpush.Config{}, store)
 	r.Error(err)
 	r.Empty(pub)
 	r.Empty(priv)
 
-	if initErr := svc.Initialize(ctx); initErr != nil {
+	if initErr := store.Initialize(ctx); initErr != nil {
 		testsupport.PostgresInitFailed(t, initErr)
 	}
 
-	// Repeat calls with fresh configs return the same pair.
-	pub1, priv1, err := webpush.GetOrCreateVAPIDKeys(ctx, webpush.Config{}, svc)
-	r.NoError(err)
-	pub2, priv2, err := webpush.GetOrCreateVAPIDKeys(ctx, webpush.Config{}, svc)
-	r.NoError(err)
-	r.Equal(pub1, pub2)
-	r.Equal(priv1, priv2)
-}
+	const processes = 8
 
-//nolint:paralleltest // see above
-func TestVAPIDKeysPostgresConcurrent(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping embedded-postgres test in -short mode")
+	stores := make([]db.Service, 0, processes)
+	for range processes {
+		stores = append(stores, store)
 	}
 
-	ctx := t.Context()
-	r := require.New(t)
+	assertConcurrentCreationConverges(t, store, stores)
 
-	svc, err := postgres.New(ctx, &postgres.Config{Embedded: true, Port: portVAPIDPostgres + 1, RunMode: "test"})
-	if err != nil {
-		testsupport.PostgresUnavailable(t, err)
-	}
-	t.Cleanup(func() { _ = svc.Close() })
-
-	if initErr := svc.Initialize(ctx); initErr != nil {
-		testsupport.PostgresInitFailed(t, initErr)
-	}
-
-	const workers = 8
-
-	pubs := make([]string, workers)
-	errs := make([]error, workers)
-
-	var wg sync.WaitGroup
-	for i := range workers {
-		wg.Add(1)
-
-		go func() {
-			defer wg.Done()
-
-			pubs[i], _, errs[i] = webpush.GetOrCreateVAPIDKeys(ctx, webpush.Config{}, svc)
-		}()
-	}
-
-	wg.Wait()
-
-	stored, err := svc.GetAppSetting(ctx, "webpush.vapid_public_key")
+	// A restart (fresh config, nothing from the environment) reads the
+	// stored pair back.
+	first, firstPriv, err := webpush.GetOrCreateVAPIDKeys(ctx, webpush.Config{}, store)
 	r.NoError(err)
 
-	for i := range workers {
-		r.NoError(errs[i])
-		r.Equal(stored, pubs[i])
-	}
+	second, secondPriv, err := webpush.GetOrCreateVAPIDKeys(ctx, webpush.Config{}, store)
+	r.NoError(err)
+	r.Equal(first, second)
+	r.Equal(firstPriv, secondPriv)
 }

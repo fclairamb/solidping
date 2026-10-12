@@ -33,6 +33,14 @@ type CheckSpec struct {
 	// Config is the actual checker configuration.
 	Config map[string]any
 
+	// SeedOnInstall marks a Default sample that a fresh install creates in its
+	// default organization (see SamplesToSeed). Set it only on a sample that
+	// works from any internet-connected host: no local service, no IPv6 route,
+	// no extra privilege, no third-party test server that is often down. The
+	// seeded checks are the first dashboard a new user sees. Unmarked samples
+	// stay available in the create-check sample picker.
+	SeedOnInstall bool
+
 	// NeedsBrowser marks a sample that drives a headless browser. Such samples
 	// are created disabled: each run launches a Chrome, and the sample targets
 	// a placeholder site the user must replace first (spec 2026-10-12-04).
@@ -93,6 +101,27 @@ func NormalizeConfigFor(cfg any, configMap map[string]any) (map[string]any, erro
 type CheckerSamplesProvider interface {
 	// GetSampleConfigs returns a slice of sample configurations with metadata.
 	GetSampleConfigs(opts *ListSampleOptions) []CheckSpec
+}
+
+// SamplesToSeed returns the samples the startup job creates on a fresh install.
+// In the Default mode (and with nil opts) that is only the ones marked
+// SeedOnInstall: the others target a local service, a privileged probe or a
+// test server, and seeding them all turned the first dashboard half red. Test
+// and Demo seed every sample they are given.
+func SamplesToSeed(opts *ListSampleOptions, samples []CheckSpec) []CheckSpec {
+	if opts != nil && opts.Type != Default {
+		return samples
+	}
+
+	seeds := make([]CheckSpec, 0, len(samples))
+
+	for i := range samples {
+		if samples[i].SeedOnInstall {
+			seeds = append(seeds, samples[i])
+		}
+	}
+
+	return seeds
 }
 
 // BurstBudgeter is an optional interface a checker config implements when the

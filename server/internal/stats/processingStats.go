@@ -121,7 +121,10 @@ func (pm *ProcessingStats) report() {
 		Parked:       parked,
 	}
 
-	pm.logger.Info(
+	// DEBUG: a once-a-minute line per worker is routine, and the same figures
+	// reach the self-stats check and Prometheus. An idle instance stays silent
+	// at INFO.
+	pm.logger.Debug(
 		"Processing stats",
 		slog.Int("totalChecks", stats.TotalChecks),
 		slog.Int("failedChecks", stats.FailedChecks),

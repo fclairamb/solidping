@@ -91,7 +91,7 @@ func (r *SupportCleanupJobRun) Run(ctx context.Context, jctx *jobdef.JobContext)
 	log := jctx.Logger
 
 	if jctx.Services == nil || jctx.Services.Support == nil {
-		log.InfoContext(ctx, "Support inbox not configured; skipping retention sweep")
+		log.DebugContext(ctx, "Support inbox not configured; skipping retention sweep")
 		r.rescheduleSelf(ctx, jctx)
 
 		return nil
@@ -125,7 +125,7 @@ func (r *SupportCleanupJobRun) Run(ctx context.Context, jctx *jobdef.JobContext)
 		}
 	}
 
-	log.InfoContext(ctx, "Purged expired support threads",
+	log.Log(ctx, levelForCount(total), "Purged expired support threads",
 		"count", total, "retentionDays", retentionDays)
 
 	r.rescheduleSelf(ctx, jctx)

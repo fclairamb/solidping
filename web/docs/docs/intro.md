@@ -101,6 +101,11 @@ screen, and the account can do nothing else until you complete it.
 Change the seeded admin email from **Account > Profile** after first login, or set
 `SP_ADMIN_EMAIL` before the first start. See [Changing an email address](/configuration/authentication#changing-an-email-address).
 
+The `default` organization starts with about ten example checks: HTTP, DNS, SSL,
+TCP and ping against public endpoints. They need no local service. They are
+seeded once, so you can delete them. More examples, for every check type, are in
+the **Load sample** picker of the new check form.
+
 ## Next Steps
 
 - [Docker Installation](/installation/docker) - Recommended for most users
