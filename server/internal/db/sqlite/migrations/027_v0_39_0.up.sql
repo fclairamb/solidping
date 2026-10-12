@@ -16,3 +16,10 @@ update incidents
       where c.uid = incidents.check_uid
         and c.deleted_at is not null
    );
+
+--bun:split
+
+-- SECTION: check-job-run-request (spec 2026-10-12-05)
+-- A "Run now" (or a check edit) that lands while a worker holds the job is
+-- parked here; every release makes the job due at it, then clears it.
+alter table check_jobs add column run_requested_at text; -- Pending run request recorded while the job was leased; NULL: none pending

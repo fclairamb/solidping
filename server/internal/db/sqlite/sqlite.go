@@ -2312,47 +2312,10 @@ func (s *Service) RequestCheckCapture(ctx context.Context, jobUID string, reques
 	return nil
 }
 
-// RequestCheckRun makes one job row due at requestedAt (spec 2026-10-04-01).
-// It leaves a leased job, and one carrying a multi-step run, alone
-// (db.ErrCheckJobBusy): the release would overwrite the due time.
+// RequestCheckRun makes one job row due at requestedAt, or parks the request
+// on a leased job for its release (db.RequestCheckRunOn).
 func (s *Service) RequestCheckRun(ctx context.Context, jobUID string, requestedAt time.Time) error {
-	res, err := s.db.NewUpdate().
-		Model((*models.CheckJob)(nil)).
-		Set("scheduled_at = ?", requestedAt).
-		Set("effective_scheduled_at = ?", requestedAt).
-		Set("updated_at = ?", requestedAt).
-		Where("uid = ?", jobUID).
-		Where("step_run_uid IS NULL").
-		WhereGroup(" AND ", func(q *bun.UpdateQuery) *bun.UpdateQuery {
-			return q.Where("lease_expires_at IS NULL").WhereOr("lease_expires_at < ?", requestedAt)
-		}).
-		Exec(ctx)
-	if err != nil {
-		return err
-	}
-
-	rows, err := res.RowsAffected()
-	if err != nil {
-		return err
-	}
-
-	if rows > 0 {
-		return nil
-	}
-
-	exists, err := s.db.NewSelect().
-		Model((*models.CheckJob)(nil)).
-		Where("uid = ?", jobUID).
-		Exists(ctx)
-	if err != nil {
-		return err
-	}
-
-	if !exists {
-		return sql.ErrNoRows
-	}
-
-	return db.ErrCheckJobBusy
+	return db.RequestCheckRunOn(ctx, s.db, jobUID, requestedAt)
 }
 
 // RecordCheckCaptureFailure records a "Capture now" request that produced no
