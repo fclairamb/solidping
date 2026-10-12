@@ -1151,9 +1151,10 @@ func TestHTTPChecker_Execute(t *testing.T) {
 
 			// HTTP results no longer duplicate duration into metrics (storage
 			// trim, spec 2026-07-24-02): the response time lives in the dedicated
-			// Duration field, so Metrics is left nil on every path.
-			if result.Status == checkerdef.StatusUp || result.Status == checkerdef.StatusDown {
-				require.Nil(t, result.Metrics, "HTTP checker must not populate metrics (duration lives in Duration)")
+			// Duration field. Metrics only carries the phase breakdown (spec
+			// 2026-10-12-08), never the total.
+			for _, key := range []string{"duration", "duration_ms", "total_time_ms", "response_time_ms"} {
+				require.NotContains(t, result.Metrics, key, "duration lives in Duration, not Metrics")
 			}
 		})
 	}

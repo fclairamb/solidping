@@ -79,6 +79,11 @@ type responseInfo struct {
 	body        []byte
 	statusCode  int
 	contentType string
+
+	// downloaded and downloadTime record the body read; set only when the
+	// probe actually read the body (assertions, failure capture, health).
+	downloaded   bool
+	downloadTime time.Duration
 	// verdictReached is set once every post-response failure branch (protocol
 	// assertion, unreadable body, header patterns) has passed, just before the
 	// status code is judged. A caller that judges the body itself acts on the
@@ -165,12 +170,16 @@ func (c *HTTPChecker) execute(
 	tracker := &connFamilyTracker{}
 	ctx = httptrace.WithClientTrace(ctx, tracker.clientTrace())
 
+	timer := newPhaseTimer(time.Now())
+	ctx = httptrace.WithClientTrace(ctx, timer.clientTrace())
+
 	result, err := c.executeRequest(ctx, config, info)
 	if err != nil || result == nil {
 		return result, err
 	}
 
 	stampResponseInfo(result, info)
+	stampTimings(result, timer, info)
 
 	if version := tracker.version(); version != checkerdef.IPVersionAuto {
 		if result.Output == nil {
@@ -308,6 +317,10 @@ func (c *HTTPChecker) executeRequest(
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
+	// A fresh connection per probe, so every result has a full DNS/connect/TLS
+	// breakdown whatever the check period (spec 2026-10-12-08).
+	req.Close = true
+
 	// Add basic auth if configured (before headers, so explicit Authorization
 	// overrides). Prefers the folded `basicAuth` credential, falling back to the
 	// legacy `username`/`password` pair.
@@ -353,6 +366,7 @@ func (c *HTTPChecker) executeRequest(
 			}
 
 			redirectChain = append(redirectChain, req.URL.String())
+			req.Close = true
 
 			// redirect_host_policy: same-host — refuse any hop whose host
 			// differs from the PREVIOUS hop's. Checked here, before the
@@ -520,6 +534,7 @@ func (c *HTTPChecker) executeRequest(
 
 		var readErr error
 
+		readStart := time.Now()
 		bodyBytes, readErr = io.ReadAll(limitedReader)
 		if readErr != nil {
 			return &checkerdef.Result{
@@ -537,6 +552,9 @@ func (c *HTTPChecker) executeRequest(
 				Diagnostics: buildFailureCapture(cfg, resp, bodyBytes),
 			}, nil
 		}
+
+		info.downloaded = true
+		info.downloadTime = time.Since(readStart)
 	}
 
 	// THE CAPTURE MUST BE OBSERVATIONALLY INERT ON THE VERDICT. respBody is the

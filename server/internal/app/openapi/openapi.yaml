@@ -11325,7 +11325,13 @@ components:
           description: Diagnostic output and error messages
         metrics:
           type: object
-          description: Performance metrics (e.g., response time, DNS time)
+          description:>
+            Performance metrics. HTTP checks record the phase timings in
+            milliseconds, each present only when that phase ran:
+            dns_time_ms, connect_time_ms, tls_time_ms, ttfb_time_ms,
+            download_time_ms (only when the body was read) and
+            redirect_time_ms (only after a redirect). Phases describe the
+            final hop of a redirect chain.
 
     LastResultListItem:
       type: object
@@ -12731,7 +12737,13 @@ components:
           description: Check name (with=checkName)
         metrics:
           type: object
-          description: Performance metrics (with=metrics)
+          description:>
+            Performance metrics (with=metrics). HTTP checks record the phase timings in
+            milliseconds, each present only when that phase ran:
+            dns_time_ms, connect_time_ms, tls_time_ms, ttfb_time_ms,
+            download_time_ms (only when the body was read) and
+            redirect_time_ms (only after a redirect). Phases describe the
+            final hop of a redirect chain.
         output:
           type: object
           description: >
