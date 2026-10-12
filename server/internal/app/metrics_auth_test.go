@@ -133,6 +133,8 @@ func TestLogMetricsScrapeTokenState(t *testing.T) {
 	cfg.Prometheus.ScrapeToken = ""
 	logMetricsScrapeTokenState(ctx, cfg)
 	r.Contains(buf.String(), "metrics endpoint disabled, set metrics.scrape_token to enable scraping")
+	r.Contains(buf.String(), "path=/metrics")
+	r.NotContains(buf.String(), "metrics endpoint enabled", "one accurate line, never a contradicting one")
 
 	buf = captureLogs(t)
 	cfg.Prometheus.ScrapeToken = "set"

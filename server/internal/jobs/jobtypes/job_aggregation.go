@@ -386,11 +386,13 @@ func resolveRetentionTier(
 		return n
 	}
 
-	// 3. Legacy koanf field (deprecated back-compat, removed a release from now).
+	// 3. The koanf value. No warning here: config.Load fills it with the
+	// built-in default, so it is set on every install, and its only caller
+	// left (audit.retention_days) is a documented, non-deprecated key. The
+	// deprecated aggregation.retention_* keys go through
+	// systemconfig.ResolveAggregationRetention, and config.Load warns once at
+	// boot when a config file sets them.
 	if legacy >= 1 {
-		log.WarnContext(ctx, "Using deprecated koanf aggregation retention; set the performance.* parameter instead",
-			"key", string(key), "value", legacy)
-
 		return legacy
 	}
 

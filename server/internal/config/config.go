@@ -1128,6 +1128,58 @@ type AggregationConfig struct {
 	RetentionDay  int `koanf:"retention_day"`  // months of daily to keep (default 2)
 }
 
+// deprecatedAggregationRetentionKeys are the legacy koanf aggregation
+// retention keys. Only a config file can set them: the env loader turns
+// SP_AGGREGATION_RETENTION_RAW into aggregation.retention.raw, which matches
+// no field.
+//
+//nolint:gochecknoglobals // read-only lookup table
+var deprecatedAggregationRetentionKeys = []string{
+	"aggregation.retention_raw",
+	"aggregation.retention_hour",
+	"aggregation.retention_day",
+}
+
+// loadConfigFiles merges config.yml, then config.local.yml (gitignored, for
+// credentials and dev settings), into koanfInstance when they exist. The
+// files are loaded into their own instance first, so what the operator wrote
+// can be told apart from the built-in defaults.
+func loadConfigFiles(koanfInstance *koanf.Koanf) error {
+	fileKoanf := koanf.New(".")
+
+	for _, name := range []string{"config.yml", "config.local.yml"} {
+		if _, err := os.Stat(name); err != nil {
+			continue
+		}
+
+		if err := fileKoanf.Load(file.Provider(name), yaml.Parser()); err != nil {
+			return fmt.Errorf("loading %s: %w", name, err)
+		}
+	}
+
+	warnDeprecatedFileKeys(slog.Default(), fileKoanf)
+
+	if err := koanfInstance.Merge(fileKoanf); err != nil {
+		return fmt.Errorf("merging config files: %w", err)
+	}
+
+	return nil
+}
+
+// warnDeprecatedFileKeys logs one WARN per deprecated key the operator set in
+// a config file. fileKoanf holds the config files only, never the built-in
+// defaults, so a default value (which every install has) never warns.
+func warnDeprecatedFileKeys(logger *slog.Logger, fileKoanf *koanf.Koanf) {
+	for _, key := range deprecatedAggregationRetentionKeys {
+		if !fileKoanf.Exists(key) {
+			continue
+		}
+
+		logger.Warn("Using deprecated koanf aggregation retention; set the performance.* parameter instead",
+			"key", key, "value", fileKoanf.Get(key))
+	}
+}
+
 // DemoConfig configures the shared public live demo (spec 2026-09-06-02): a
 // real organization and a real user on this very server, reached through the
 // ordinary login with a PUBLISHED password.
@@ -2113,18 +2165,8 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("loading defaults: %w", err)
 	}
 
-	// Load from config file if it exists
-	if _, err := os.Stat("config.yml"); err == nil {
-		if err := koanfInstance.Load(file.Provider("config.yml"), yaml.Parser()); err != nil {
-			return nil, fmt.Errorf("loading config.yml: %w", err)
-		}
-	}
-
-	// Load local overrides (gitignored, for credentials and dev settings)
-	if _, err := os.Stat("config.local.yml"); err == nil {
-		if err := koanfInstance.Load(file.Provider("config.local.yml"), yaml.Parser()); err != nil {
-			return nil, fmt.Errorf("loading config.local.yml: %w", err)
-		}
+	if err := loadConfigFiles(koanfInstance); err != nil {
+		return nil, err
 	}
 
 	// Load from environment variables with SP_ prefix (SolidPing)
@@ -3049,6 +3091,20 @@ const (
 	// SentryEnvironmentProduction is the default Sentry environment otherwise.
 	SentryEnvironmentProduction = "production"
 )
+
+// RunModeProduction names the default run mode, the one an unset SP_RUN_MODE
+// selects. RunMode stays empty in that case; this is only its display name.
+const RunModeProduction = "production"
+
+// RunModeName returns the effective run mode for logs: the configured mode, or
+// RunModeProduction when none is set.
+func (c *Config) RunModeName() string {
+	if c.RunMode == "" {
+		return RunModeProduction
+	}
+
+	return c.RunMode
+}
 
 // applySentryEnvironmentDefault fills sentry.environment when the operator left
 // it unset. Explicit configuration always wins: this runs after config.yml and

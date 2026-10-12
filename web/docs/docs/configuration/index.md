@@ -153,7 +153,10 @@ Two cases where it is required rather than nice to have:
 - **Pod names that collide in the first 15 characters.** Deployment-generated
   names such as `solidping-checks-eu2-…` and `solidping-checks-us1-…` both cut
   down to `solidping-check`, and the two workers then silently share one
-  `workers` row. A truncated hostname logs a WARN naming the resulting slug.
+  `workers` row. A truncated hostname logs a WARN naming the resulting slug,
+  once per process. It is only a WARN when another node can share the
+  database (a role other than `all`, or an external Postgres). A single `all`
+  node on SQLite logs it at DEBUG, since no other worker can take its slug.
 
 An invalid effective slug (override or hostname-derived) aborts startup with a
 message naming the offending value, rather than failing later against the
