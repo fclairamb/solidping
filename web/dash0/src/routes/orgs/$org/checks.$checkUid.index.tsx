@@ -130,6 +130,7 @@ import { docsHrefForType } from "@/components/shared/check-type-docs-anchors";
 import { SloCoverageChip } from "@/components/slos/slo-coverage-chip";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { NeedsResealAlert } from "@/components/checks/needs-reseal-alert";
+import { CheckPublicationHint } from "@/components/checks/check-publication-hint";
 import { PublishOnStatusPageDialog } from "@/components/checks/publish-on-status-page-dialog";
 import { CheckSummaryCards } from "@/components/checks/check-summary-cards";
 import { AIAuthoredDetail } from "@/components/checks/ai-authored-detail";
@@ -201,6 +202,8 @@ interface CheckDetailSearch {
    * user wonders where their new check went is one click from the answer.
    */
   publish?: boolean;
+  /** Set by `checks/new` after a create: shows the inline publication hint. */
+  created?: boolean;
 }
 
 // Rows shown in the "Recent Incidents" card; the underlying query fetches more
@@ -239,6 +242,8 @@ export const Route = createFileRoute("/orgs/$org/checks/$checkUid/")({
     // turned "true" into a boolean by the time this runs.
     publish:
       search.publish === true || search.publish === "true" ? true : undefined,
+    created:
+      search.created === true || search.created === "true" ? true : undefined,
   }),
   component: CheckDetailPage,
 });
@@ -702,6 +707,7 @@ function CheckDetailPage() {
     graphTo,
     graphSelected,
     publish,
+    created,
   } = Route.useSearch();
   const navigate = useNavigate();
   const router = useRouter();
@@ -1543,6 +1549,14 @@ function CheckDetailPage() {
           </div>
         </div>
       </div>
+
+      {created === true && (
+        <CheckPublicationHint
+          org={org}
+          check={check}
+          onPublish={() => setPublishOpen(true)}
+        />
+      )}
 
       {/* Needs-re-seal warning (spec 2026-07-16-02): this check runs in a
           private location and its sealed credentials no longer match that
