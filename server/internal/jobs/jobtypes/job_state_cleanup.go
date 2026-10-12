@@ -43,7 +43,7 @@ type StateCleanupJobRun struct {
 func (r *StateCleanupJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) error {
 	log := jctx.Logger
 
-	log.InfoContext(ctx, "Starting state cleanup job")
+	log.DebugContext(ctx, "Starting state cleanup job")
 
 	// Delete expired state entries
 	count, err := jctx.DBService.DeleteExpiredStateEntries(ctx)
@@ -52,10 +52,12 @@ func (r *StateCleanupJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) e
 		return jobdef.NewRetryableError(err)
 	}
 
+	// Expired OAuth/rate-limit state is routine churn, not an event: DEBUG
+	// either way, so an idle instance stays silent at INFO.
 	if count > 0 {
-		log.InfoContext(ctx, "Deleted expired state entries", "count", count)
+		log.DebugContext(ctx, "Deleted expired state entries", "count", count)
 	} else {
-		log.InfoContext(ctx, "No expired state entries to delete")
+		log.DebugContext(ctx, "No expired state entries to delete")
 	}
 
 	sweepExpiredAuthHandoffCodes(ctx, jctx)

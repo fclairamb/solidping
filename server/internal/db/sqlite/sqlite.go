@@ -109,6 +109,29 @@ var _ db.Service = (*Service)(nil)
 
 const dataDirPerm = 0o750
 
+// slowVacuum is the startup VACUUM duration past which its completion is worth
+// an INFO line. A fast one (every small or fresh database) is DEBUG.
+const slowVacuum = time.Second
+
+// vacuumLogLevel is the level of the "SQLite vacuum complete" line.
+func vacuumLogLevel(duration time.Duration) slog.Level {
+	if duration >= slowVacuum {
+		return slog.LevelInfo
+	}
+
+	return slog.LevelDebug
+}
+
+// DatabaseFilename is the SQLite file name inside the data directory for a run
+// mode: solidping.db, or solidping-<runMode>.db when a run mode is set.
+func DatabaseFilename(runMode string) string {
+	if runMode != "" {
+		return fmt.Sprintf("solidping-%s.db", runMode)
+	}
+
+	return "solidping.db"
+}
+
 // resolveDatabasePath determines the database path and handles reset if needed.
 func resolveDatabasePath(cfg Config) (string, error) {
 	if cfg.InMemory {
@@ -119,13 +142,7 @@ func resolveDatabasePath(cfg Config) (string, error) {
 		return "", fmt.Errorf("failed to create data directory: %w", err)
 	}
 
-	// Determine database filename based on run mode
-	dbFilename := "solidping.db"
-	if cfg.RunMode != "" {
-		dbFilename = fmt.Sprintf("solidping-%s.db", cfg.RunMode)
-	}
-
-	dbPath := filepath.Join(cfg.DataDir, dbFilename)
+	dbPath := filepath.Join(cfg.DataDir, DatabaseFilename(cfg.RunMode))
 
 	// Reset database if requested and in test/demo mode
 	if cfg.Reset && (cfg.RunMode == "test" || cfg.RunMode == "demo") {
@@ -184,13 +201,14 @@ func New(ctx context.Context, cfg Config) (*Service, error) {
 
 	// Vacuum to reclaim unused space on startup
 	if !cfg.InMemory {
-		slog.InfoContext(ctx, "Vacuuming SQLite database...")
+		slog.DebugContext(ctx, "Vacuuming SQLite database...")
 		vacuumStart := time.Now()
 
 		if _, err := sqldb.ExecContext(ctx, "VACUUM"); err != nil {
 			slog.WarnContext(ctx, "Failed to vacuum SQLite database", "error", err)
 		} else {
-			slog.InfoContext(ctx, "SQLite vacuum complete", "duration", time.Since(vacuumStart))
+			vacuumDuration := time.Since(vacuumStart)
+			slog.Log(ctx, vacuumLogLevel(vacuumDuration), "SQLite vacuum complete", "duration", vacuumDuration)
 		}
 	}
 

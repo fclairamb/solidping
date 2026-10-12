@@ -36,7 +36,7 @@ func NewQueueDepthSampler(jobSvc jobsvc.Service) *QueueDepthSampler {
 // Run samples once immediately, then on every tick until ctx is canceled.
 // It always returns ctx.Err() so callers can ignore context.Canceled.
 func (s *QueueDepthSampler) Run(ctx context.Context) error {
-	s.logger.InfoContext(ctx, "Starting job queue-depth sampler", "interval", s.interval)
+	s.logger.DebugContext(ctx, "Starting job queue-depth sampler", "interval", s.interval)
 
 	ticker := time.NewTicker(s.interval)
 	defer ticker.Stop()
@@ -47,7 +47,7 @@ func (s *QueueDepthSampler) Run(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			s.logger.InfoContext(ctx, "Job queue-depth sampler stopped")
+			s.logger.DebugContext(ctx, "Job queue-depth sampler stopped")
 
 			return ctx.Err()
 		case <-ticker.C:

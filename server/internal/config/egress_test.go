@@ -1,6 +1,7 @@
 package config
 
 import (
+	"log/slog"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -99,4 +100,21 @@ func TestEgressDefaultsByPlacement(t *testing.T) {
 			require.NotEmpty(t, cfg.EgressPolicySource())
 		})
 	}
+}
+
+// TestEgressPolicyLogLevel: the startup policy lines are INFO only when an
+// operator chose the policy, DEBUG for the derived default.
+func TestEgressPolicyLogLevel(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	cfg := &Config{}
+	cfg.Deployment.Mode = DeploymentModeSelfHosted
+	r.Equal(slog.LevelDebug, cfg.EgressPolicyLogLevel())
+
+	cfg.Egress.AllowPrivateTargets = BoolPtr(false)
+	r.Equal(slog.LevelInfo, cfg.EgressPolicyLogLevel())
+
+	cfg.Egress.AllowPrivateTargets = BoolPtr(true)
+	r.Equal(slog.LevelInfo, cfg.EgressPolicyLogLevel())
 }

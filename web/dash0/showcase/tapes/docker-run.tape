@@ -31,16 +31,16 @@ Type "docker run -p 4000:4000 -v solidping-data:/data ghcr.io/fclairamb/solidpin
 Sleep 350ms
 Enter
 
-# A fixed hold, NOT `Wait+Screen /Starting HTTP server/`.
+# A fixed hold, NOT `Wait+Screen /SolidPing is ready/`.
 #
 # vhs 0.12.0's Wait cannot see scrolled output: `Buffer()` reads
 # `term.buffer.active.getLine(0..rows)`, which after the first scroll is the top
 # of the SCROLLBACK, not the viewport — so it keeps matching against the opening
 # prompt until it times out. `Wait+Line` reads one line on the same broken
-# offset and behaves the same way. The image boots to "Starting HTTP server" in
+# offset and behaves the same way. The image boots to "SolidPing is ready" in
 # roughly four seconds while vhs is screenshotting every frame beside it, so
-# this holds past that and cuts while the line is still on screen with the check
-# workers starting up underneath it.
+# this holds past that and cuts while the line, with the URL to open, is still
+# on screen.
 #
 # terminal.ts checks the container's own log afterwards and fails the render if
 # the server never got there — if that fires on a slower machine, lengthen this

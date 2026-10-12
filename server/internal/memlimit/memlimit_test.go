@@ -231,3 +231,14 @@ func TestApplySmoke(t *testing.T) {
 	r.Equal(70, applied.GCPercent)
 	r.Equal("config", applied.GCPercentSource)
 }
+
+func TestAppliedIsDefault(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	r.True(Applied{MemoryLimitSource: sourceDefault, GCPercentSource: sourceDefault}.IsDefault())
+	r.False(Applied{MemoryLimitSource: sourceCgroup, GCPercentSource: sourceDefault}.IsDefault(),
+		"a container limit is worth an INFO line")
+	r.False(Applied{MemoryLimitSource: sourceDefault, GCPercentSource: sourceEnv}.IsDefault())
+	r.False(Applied{MemoryLimitSource: sourceConfig, GCPercentSource: sourceConfig}.IsDefault())
+}

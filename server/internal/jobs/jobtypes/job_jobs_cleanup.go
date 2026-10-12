@@ -76,7 +76,7 @@ func (r *JobsCleanupJobRun) batch() int {
 func (r *JobsCleanupJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) error {
 	log := jctx.Logger
 
-	log.InfoContext(ctx, "Starting jobs cleanup job")
+	log.DebugContext(ctx, "Starting jobs cleanup job")
 
 	// Both windows resolve at run time through the shared retention resolver
 	// (env → global DB parameter → default); no legacy koanf fallback exists for
@@ -100,7 +100,7 @@ func (r *JobsCleanupJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) er
 		return jobdef.NewRetryableError(err)
 	}
 
-	log.InfoContext(ctx, "Soft-deleted finished jobs", "count", softCount)
+	log.Log(ctx, levelForCount(softCount), "Soft-deleted finished jobs", "count", softCount)
 
 	hardCount, err := r.hardDeletePass(ctx, jctx, hardBefore)
 	if err != nil {
@@ -109,7 +109,7 @@ func (r *JobsCleanupJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) er
 		return jobdef.NewRetryableError(err)
 	}
 
-	log.InfoContext(ctx, "Deleted soft-deleted jobs", "count", hardCount)
+	log.Log(ctx, levelForCount(hardCount), "Deleted soft-deleted jobs", "count", hardCount)
 
 	r.rescheduleSelf(ctx, jctx)
 

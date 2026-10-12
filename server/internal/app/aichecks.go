@@ -26,9 +26,10 @@ func buildAIChecks(
 	client, err := ai.New(&cfg.AI, &http.Client{})
 	if err != nil {
 		if errors.Is(err, ai.ErrDisabled) {
-			// Said out loud: an existing AI-authored check silently stops
-			// being repaired when a restart loses SP_AI_*.
-			slog.Info("AI-authored checks disabled: SP_AI_PROVIDER is not set, no script is written or repaired")
+			// The default state, so DEBUG: an instance that never set SP_AI_*
+			// has nothing to hear about. The dashboard still says the service
+			// is off (the endpoints answer 404).
+			slog.Debug("AI-authored checks disabled: SP_AI_PROVIDER is not set, no script is written or repaired")
 		} else {
 			slog.Warn("AI-authored checks disabled", "error", err)
 		}
