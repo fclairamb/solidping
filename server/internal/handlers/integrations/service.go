@@ -4,6 +4,7 @@
 package integrations
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -114,7 +115,7 @@ func ensureWebhookCreateSecret(settings map[string]any) (map[string]any, error) 
 		settings = map[string]any{}
 	}
 
-	if err := canonicalizeSuppliedWebhookSecrets(settings); err != nil {
+	if err := canonicalizeSuppliedWebhookSecrets(settings, nil); err != nil {
 		return nil, err
 	}
 
@@ -137,7 +138,12 @@ func ensureWebhookCreateSecret(settings map[string]any) (map[string]any, error) 
 // canonical `whsec_` + standard padded base64 spelling. A nil or empty value is
 // left alone (on PATCH it means "clear"). Undecodable or out-of-range input
 // returns ErrInvalidSettings rather than a channel that fails at first delivery.
-func canonicalizeSuppliedWebhookSecrets(settings map[string]any) error {
+//
+// stored holds the channel's current (decrypted) settings on PATCH, nil on
+// create. A value that is the stored key echoed back (the dashboard sends the
+// whole settings map it was shown) is not re-validated: a legacy secret of any
+// length must survive an unrelated save.
+func canonicalizeSuppliedWebhookSecrets(settings, stored map[string]any) error {
 	for _, key := range []string{settingsKeySigningSecret, settingsKeySigningSecretPrevious} {
 		raw, present := settings[key]
 		if !present || raw == nil {
@@ -153,12 +159,18 @@ func canonicalizeSuppliedWebhookSecrets(settings map[string]any) error {
 			continue
 		}
 
+		storedValue, _ := stored[key].(string)
+		if storedValue != "" && value == storedValue {
+			continue
+		}
+
 		keyBytes, err := notifications.DecodeWebhookSecret(value)
 		if err != nil {
 			return fmt.Errorf("%w: %s is not a valid whsec_ base64 secret", ErrInvalidSettings, key)
 		}
 
-		if len(keyBytes) < minSuppliedWebhookSecretBytes || len(keyBytes) > maxSuppliedWebhookSecretBytes {
+		if !sameWebhookKey(storedValue, keyBytes) &&
+			(len(keyBytes) < minSuppliedWebhookSecretBytes || len(keyBytes) > maxSuppliedWebhookSecretBytes) {
 			return fmt.Errorf("%w: %s must decode to %d to %d bytes", ErrInvalidSettings, key,
 				minSuppliedWebhookSecretBytes, maxSuppliedWebhookSecretBytes)
 		}
@@ -172,6 +184,17 @@ func canonicalizeSuppliedWebhookSecrets(settings map[string]any) error {
 	}
 
 	return nil
+}
+
+// sameWebhookKey reports whether stored decodes to exactly keyBytes.
+func sameWebhookKey(stored string, keyBytes []byte) bool {
+	if stored == "" {
+		return false
+	}
+
+	storedBytes, err := notifications.DecodeWebhookSecret(stored)
+
+	return err == nil && bytes.Equal(storedBytes, keyBytes)
 }
 
 // Service provides business logic for connection management.
@@ -1054,7 +1077,7 @@ func (s *Service) applyUpdateSettings(
 	// value the request did not touch is never re-validated here.
 	if conn.Type == models.ConnectionTypeWebhook {
 		reqSettings = maps.Clone(reqSettings)
-		if vErr := canonicalizeSuppliedWebhookSecrets(reqSettings); vErr != nil {
+		if vErr := canonicalizeSuppliedWebhookSecrets(reqSettings, existing); vErr != nil {
 			return vErr
 		}
 	}
