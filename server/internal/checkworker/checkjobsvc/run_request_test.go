@@ -110,7 +110,7 @@ func exerciseRequestCheckRun(ctx context.Context, t *testing.T, dbSvc db.Service
 	r.ErrorIs(dbSvc.RequestCheckRun(ctx, uuid.New().String(), time.Now().UTC()), sql.ErrNoRows)
 }
 
-// exerciseRunRequestReleaseVariants pins that every other release honours a
+// exerciseRunRequestReleaseVariants pins that every other release honors a
 // parked request (spec 2026-10-12-05): the rate-limit deferral and the end of
 // a multi-step run make the job due at it; a multi-step slice keeps it
 // pending, since the run goes on; a fresh claim answers a leftover one.
@@ -141,13 +141,13 @@ func exerciseRunRequestReleaseVariants(ctx context.Context, t *testing.T, dbSvc 
 		t.Helper()
 
 		due := time.Now().Add(-time.Second).UTC()
-		_, err := bunDB.NewUpdate().Model((*models.CheckJob)(nil)).
+		_, updateErr := bunDB.NewUpdate().Model((*models.CheckJob)(nil)).
 			Set("scheduled_at = ?", due).Set("effective_scheduled_at = ?", due).
 			Where("uid = ?", job.UID).Exec(ctx)
-		r.NoError(err)
+		r.NoError(updateErr)
 
-		claimed, err := svc.ClaimJobsForCheck(ctx, worker.UID, job.Region, check.UID)
-		r.NoError(err)
+		claimed, claimErr := svc.ClaimJobsForCheck(ctx, worker.UID, job.Region, check.UID)
+		r.NoError(claimErr)
 		r.Len(claimed, 1)
 	}
 
@@ -160,7 +160,7 @@ func exerciseRunRequestReleaseVariants(ctx context.Context, t *testing.T, dbSvc 
 
 	stored := loadJob(ctx, t, bunDB, job.UID)
 	r.Nil(stored.RunRequestedAt)
-	r.WithinDuration(parkedAt, *stored.ScheduledAt, time.Millisecond, "a deferral honours the request")
+	r.WithinDuration(parkedAt, *stored.ScheduledAt, time.Millisecond, "a deferral honors the request")
 
 	// Multi-step run: the slice keeps the request, the end of the run spends it.
 	lease()
@@ -192,7 +192,7 @@ func exerciseRunRequestReleaseVariants(ctx context.Context, t *testing.T, dbSvc 
 
 	stored = loadJob(ctx, t, bunDB, job.UID)
 	r.Nil(stored.RunRequestedAt)
-	r.WithinDuration(parkedAt, *stored.ScheduledAt, time.Millisecond, "the end of the run honours it")
+	r.WithinDuration(parkedAt, *stored.ScheduledAt, time.Millisecond, "the end of the run honors it")
 	r.WithinDuration(parkedAt, *stored.EffectiveScheduledAt, time.Millisecond)
 
 	// A leftover from a lease that ended without a release is answered by the

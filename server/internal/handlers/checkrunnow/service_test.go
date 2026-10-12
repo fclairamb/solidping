@@ -511,5 +511,5 @@ func TestRunNowWorkerClaimsBetweenReadAndRequest(t *testing.T) {
 
 	again, err := l.jobsvc.ClaimJobsForCheck(t.Context(), l.worker.UID, &l.region, l.check.UID)
 	r.NoError(err)
-	r.Len(again, 1, "and honoured after the release")
+	r.Len(again, 1, "and honored after the release")
 }

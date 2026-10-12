@@ -9026,7 +9026,7 @@ export function useDeleteOrgParameter(org: string) {
 /** Response of POST …/run-now ("Run now"): one entry per region. */
 export interface RunCheckNowResponse {
   requestedAt: string;
-  regions: { region: string; status: "queued" | "running" }[];
+  regions: { region: string; status: "queued" }[];
 }
 
 /** Runs the check once, now, in every region (spec 2026-10-04-01). The

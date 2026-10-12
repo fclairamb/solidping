@@ -3190,7 +3190,7 @@ func mergeChecksByUID(first, second []*models.Check) []*models.Check {
 // the schedule are two separate decisions — see the scheduleChanged /
 // contentChanged split below (spec 2026-08-29-09).
 //
-//nolint:cyclop,gocognit,nestif,funlen // Reconciliation handles multiple update paths
+//nolint:cyclop,gocognit,funlen // Reconciliation handles multiple update paths
 func (s *Service) reconcileCheckJobs(ctx context.Context, check *models.Check, relevel bool) error {
 	existingJobs, err := s.db.ListCheckJobsByCheckUID(ctx, check.UID)
 	if err != nil {

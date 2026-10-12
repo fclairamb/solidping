@@ -2389,9 +2389,10 @@ paths:
       description: >-
         "Run now": runs any check once, on demand, in every region, instead of
         waiting for its next period. Each region's job is made due at once and
-        the workers are told; a region whose job is leased, or carries a
-        multi-step run in progress, is reported `running` and left alone (its
-        result answers the request). The results go through the normal path,
+        the workers are told; a region whose job is mid-run keeps the request
+        and runs again as soon as that run ends (its current run started
+        before the request, so it is not the answer). Every region is
+        reported `queued`. The results go through the normal path,
         so they can open or resolve an incident like any scheduled result. A
         result with `periodStart >= requestedAt` is this request's answer.
         This is an action path: it does not create the multi-step run resource
@@ -13198,10 +13199,10 @@ components:
                 type: string
               status:
                 type: string
-                enum: [queued, running]
+                enum: [queued]
                 description: >-
-                  `queued`: the region's job is due now. `running`: it is
-                  already running, its current result answers the request.
+                  `queued`: the region runs now, or right after the run it is
+                  in the middle of. (`running` is no longer returned.)
 
     CheckScreenshotCaptureResponse:
       type: object

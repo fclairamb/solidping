@@ -464,7 +464,7 @@ type Service interface {
 	// carries a multi-step run cannot take a due time (its release rewrites
 	// scheduled_at), so the request is parked in run_requested_at and the
 	// release makes the job due at it (spec 2026-10-12-05). Either way the
-	// request is honoured. sql.ErrNoRows when the job is gone.
+	// request is honored. sql.ErrNoRows when the job is gone.
 	RequestCheckRun(ctx context.Context, jobUID string, requestedAt time.Time) error
 	// RecordCheckCaptureFailure records that the "Capture now" request made at
 	// requestedAt produced no screenshot, and why (spec 2026-09-27-01):

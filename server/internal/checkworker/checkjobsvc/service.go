@@ -1195,7 +1195,7 @@ func (s *serviceImpl) ReleaseLease(
 		Set(pendingRequestOr("effective_scheduled_at"), nextScheduledAt).
 		// The run this lease carried is over: its request is spent.
 		Set("capture_claimed_at = NULL").
-		// A run request parked under this lease is now honoured by the due
+		// A run request parked under this lease is now honored by the due
 		// time above (spec 2026-10-12-05).
 		Set("run_requested_at = NULL").
 		Set("updated_at = ?", now).
@@ -1342,7 +1342,7 @@ func (s *serviceImpl) SubmitStep(ctx context.Context, jobUID string, workerUID s
 		Set("effective_scheduled_at = ?", upd.NextAt).
 		Set("capture_claimed_at = NULL").
 		// run_requested_at is left pending: the run goes on, and its result
-		// is written by EndStepRun, which honours the request (spec
+		// is written by EndStepRun, which honors the request (spec
 		// 2026-10-12-05).
 		Set("step_run_uid = ?", upd.RunUID).
 		Set("step_run_started_at = ?", upd.RunStartedAt).
