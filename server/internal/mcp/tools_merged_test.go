@@ -391,3 +391,176 @@ func TestProbeParity(t *testing.T) {
 	r.NoError(handler.Handle(rec, req))
 	r.Nil(decodeResponse(t, rec).Error)
 }
+
+// TestLegacyAliasResourceAndSectionParity: the resource aliases and the
+// section delete alias match manage_status_page_resource / _section.
+func TestLegacyAliasResourceAndSectionParity(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	env := newMergedEnv(t)
+	h, org, ctx := env.handler, env.org.Slug, t.Context()
+
+	r.NoError(h.dbService.CreateStatusPage(ctx, models.NewStatusPage(env.org.UID, "Public", "public")))
+	for _, slug := range []string{"one", "two"} {
+		structuredJSON(t, callByName(t, h, org, toolManageStatusPageSection, map[string]any{
+			propAction: actionCreate, propPageIdentifier: "public", "name": slug, "slug": slug,
+		}))
+	}
+
+	// create: same shape, same public name.
+	viaAlias := structuredJSON(t, callByName(t, h, org, toolCreateStatusPageResource, map[string]any{
+		propPageIdentifier: "public", propSectionIdentifier: "one",
+		propCheckUID: env.check.UID, propPublicName: "Public API",
+	}))
+	viaManage := structuredJSON(t, callByName(t, h, org, toolManageStatusPageResource, map[string]any{
+		propAction: actionCreate, propPageIdentifier: "public", propSectionIdentifier: "two",
+		propCheckUID: env.check.UID, propPublicName: "Public API",
+	}))
+	r.Equal(keysOf(viaAlias), keysOf(viaManage))
+	r.Equal(viaAlias[propPublicName], viaManage[propPublicName])
+
+	aliasUID, ok := viaAlias[propUID].(string)
+	r.True(ok)
+	manageUID, ok := viaManage[propUID].(string)
+	r.True(ok)
+
+	// update: the same edit through both names lands identically.
+	volatile := []string{schemaKeyUpdatedAt, schemaKeyCreatedAt}
+	update := map[string]any{
+		propPageIdentifier: "public", propSectionIdentifier: "one",
+		propResourceUID: aliasUID, propPublicName: "Renamed",
+	}
+	first := structuredJSON(t, callByName(t, h, org, toolUpdateStatusPageResource, update))
+	r.Equal("Renamed", first[propPublicName])
+	update[propAction] = actionUpdate
+	second := structuredJSON(t, callByName(t, h, org, toolManageStatusPageResource, update))
+	r.Equal(without(first, volatile...), without(second, volatile...))
+
+	// delete: same result shape for each resource.
+	delAlias := structuredJSON(t, callByName(t, h, org, toolDeleteStatusPageResource, map[string]any{
+		propPageIdentifier: "public", propSectionIdentifier: "one", propResourceUID: aliasUID,
+	}))
+	delManage := structuredJSON(t, callByName(t, h, org, toolManageStatusPageResource, map[string]any{
+		propAction: actionDelete, propPageIdentifier: "public", propSectionIdentifier: "two",
+		propResourceUID: manageUID,
+	}))
+	r.Equal(keysOf(delAlias), keysOf(delManage))
+	r.Equal(true, delAlias[schemaKeyDeleted])
+	r.Equal(true, delManage[schemaKeyDeleted])
+
+	// delete_status_page_section answers exactly what action=delete answers.
+	secAlias := structuredJSON(t, callByName(t, h, org, toolDeleteStatusPageSection, map[string]any{
+		propPageIdentifier: "public", propSectionIdentifier: "one",
+	}))
+	secManage := structuredJSON(t, callByName(t, h, org, toolManageStatusPageSection, map[string]any{
+		propAction: actionDelete, propPageIdentifier: "public", propSectionIdentifier: "two",
+	}))
+	r.Equal(map[string]any{schemaKeyDeleted: true, propIdentifier: "one"}, secAlias)
+	r.Equal(map[string]any{schemaKeyDeleted: true, propIdentifier: "two"}, secManage)
+
+	// Both names refuse the same missing arguments the same way.
+	for alias, action := range map[string]string{
+		toolCreateStatusPageResource: actionCreate,
+		toolUpdateStatusPageResource: actionUpdate,
+	} {
+		old := callByName(t, h, org, alias, map[string]any{})
+		merged := callByName(t, h, org, toolManageStatusPageResource, map[string]any{propAction: action})
+		r.True(old.IsError, alias)
+		r.Equal(old, merged, alias)
+	}
+}
+
+// TestLegacyAliasIncidentPublicationParity: the incident publication aliases
+// match the update, add_update, publish and unpublish actions.
+func TestLegacyAliasIncidentPublicationParity(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	env := newMergedEnv(t)
+	h, org, ctx := env.handler, env.org.Slug, t.Context()
+
+	for _, slug := range []string{"public", "second", "third"} {
+		r.NoError(h.dbService.CreateStatusPage(ctx, models.NewStatusPage(env.org.UID, slug, slug)))
+	}
+
+	pub := structuredJSON(t, callByName(t, h, org, toolManageStatusPageIncident, map[string]any{
+		propAction: actionCreate, propPageIdentifier: "public", propTitle: "Acme outage",
+	}))
+	pubUID, ok := pub[propUID].(string)
+	r.True(ok)
+
+	// update_status_page_incident: the same edit lands identically.
+	volatile := []string{schemaKeyUpdatedAt, schemaKeyCreatedAt}
+	update := map[string]any{propPageIdentifier: "public", propPublicationUID: pubUID, propState: "identified"}
+	first := structuredJSON(t, callByName(t, h, org, toolUpdateStatusPageIncident, update))
+	r.Equal("identified", first[propState])
+	update[propAction] = actionUpdate
+	second := structuredJSON(t, callByName(t, h, org, toolManageStatusPageIncident, update))
+	r.Equal(without(first, volatile...), without(second, volatile...))
+
+	// create_status_page_incident_update: same shape, same kind and body.
+	entry := map[string]any{
+		propPageIdentifier: "public", propPublicationUID: pubUID,
+		propKind: "monitoring", propBodyMarkdown: "fix deployed",
+	}
+	viaAlias := structuredJSON(t, callByName(t, h, org, toolCreateStatusPageIncidentUpdate, entry))
+	entry[propAction] = actionAddUpdate
+	viaManage := structuredJSON(t, callByName(t, h, org, toolManageStatusPageIncident, entry))
+	r.Equal(keysOf(viaAlias), keysOf(viaManage))
+	r.Equal(viaAlias[propKind], viaManage[propKind])
+	r.NotEqual(viaAlias[propUID], viaManage[propUID], "two distinct updates were added")
+
+	// create_incident_publication: same shape on two pages.
+	linkedAlias := structuredJSON(t, callByName(t, h, org, toolCreateIncidentPublication, map[string]any{
+		propIncidentUID: env.incident.UID, propPageIdentifier: "second",
+	}))
+	linkedManage := structuredJSON(t, callByName(t, h, org, toolManageStatusPageIncident, map[string]any{
+		propAction: actionPublish, propIncidentUID: env.incident.UID, propPageIdentifier: "third",
+	}))
+	r.Equal(keysOf(linkedAlias), keysOf(linkedManage))
+	r.Equal(linkedAlias[propTitle], linkedManage[propTitle])
+
+	aliasUID, ok := linkedAlias[propUID].(string)
+	r.True(ok)
+	manageUID, ok := linkedManage[propUID].(string)
+	r.True(ok)
+
+	// delete_incident_publication answers exactly what action=unpublish answers.
+	goneAlias := structuredJSON(t, callByName(t, h, org, toolDeleteIncidentPublication, map[string]any{
+		propIncidentUID: env.incident.UID, propPublicationUID: aliasUID,
+	}))
+	goneManage := structuredJSON(t, callByName(t, h, org, toolManageStatusPageIncident, map[string]any{
+		propAction: actionUnpublish, propIncidentUID: env.incident.UID, propPublicationUID: manageUID,
+	}))
+	r.Equal(map[string]any{schemaKeyUnpublished: true, propPublicationUID: aliasUID}, goneAlias)
+	r.Equal(map[string]any{schemaKeyUnpublished: true, propPublicationUID: manageUID}, goneManage)
+
+	// Both names refuse the same missing arguments the same way.
+	for alias, action := range map[string]string{
+		toolUpdateStatusPageIncident:       actionUpdate,
+		toolCreateStatusPageIncidentUpdate: actionAddUpdate,
+		toolCreateIncidentPublication:      actionPublish,
+		toolDeleteIncidentPublication:      actionUnpublish,
+	} {
+		old := callByName(t, h, org, alias, map[string]any{})
+		merged := callByName(t, h, org, toolManageStatusPageIncident, map[string]any{propAction: action})
+		r.True(old.IsError, alias)
+		r.Equal(old, merged, alias)
+	}
+}
+
+// TestBrowserSnapshotAliasParity: there is no browser fixture in unit tests,
+// so parity is checked on the path that runs without one: a missing URL is
+// refused identically by browser_snapshot and probe kind=browser.
+func TestBrowserSnapshotAliasParity(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	handler, _ := jsAuthoringHandler(t)
+
+	old := callByName(t, handler, "org", toolBrowserSnapshot, map[string]any{})
+	merged := callByName(t, handler, "org", toolProbe, map[string]any{propKind: probeKindBrowser})
+	r.True(old.IsError)
+	r.Equal(old, merged)
+}
