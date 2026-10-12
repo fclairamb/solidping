@@ -29,7 +29,8 @@ This file provides backend-specific guidance for the SolidPing monitoring system
   The measurement core (median/p95/spread and the "not significant" rule) is
   pure, unit-tested code in `internal/membench`; `internal/meminfo` holds the
   `/proc` + cgroup parsers behind `/api/mgmt/memory`.
-- **Set log level**: `LOG_LEVEL=debug ./solidping serve` (valid values: debug, info, warn, error)
+- **Set log level**: `SP_LOG_LEVEL=debug ./solidping serve` (valid values: debug, info, warn, error). `LOG_LEVEL` is still accepted as a fallback when `SP_LOG_LEVEL` is unset (`config.LogLevelFromEnv`).
+- **Log format**: `SP_LOG_FORMAT` = `auto` (default), `text`, `json` or `pretty`. `auto` is resolved once at logger setup in `internal/logsetup`: json on Kubernetes, pretty on a terminal or in a container, text otherwise. Colors follow `NO_COLOR` / `FORCE_COLOR`, then whether the writer itself is a TTY or a container.
 
 ## Architecture Overview
 

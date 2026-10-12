@@ -333,14 +333,19 @@ func TestParseLogFormat(t *testing.T) {
 			expected: LogFormatPretty,
 		},
 		{
-			name:     "empty string defaults to text",
-			input:    "",
-			expected: LogFormatText,
+			name:     "auto",
+			input:    "Auto",
+			expected: LogFormatAuto,
 		},
 		{
-			name:     "invalid value defaults to text",
+			name:     "empty string defaults to auto",
+			input:    "",
+			expected: LogFormatAuto,
+		},
+		{
+			name:     "invalid value defaults to auto",
 			input:    "yaml",
-			expected: LogFormatText,
+			expected: LogFormatAuto,
 		},
 		{
 			name:     "whitespace trimmed",
@@ -353,10 +358,57 @@ func TestParseLogFormat(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
 
-			result := ParseLogFormat(testCase.input)
-			if result != testCase.expected {
-				t.Errorf("ParseLogFormat(%q) = %v, want %v", testCase.input, result, testCase.expected)
-			}
+			require.Equal(t, testCase.expected, ParseLogFormat(testCase.input))
+		})
+	}
+}
+
+func TestLogLevelFromEnv(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		env      map[string]string
+		expected slog.Level
+	}{
+		{
+			name:     "nothing set defaults to info",
+			env:      map[string]string{},
+			expected: slog.LevelInfo,
+		},
+		{
+			name:     "SP_LOG_LEVEL alone",
+			env:      map[string]string{"SP_LOG_LEVEL": "debug"},
+			expected: slog.LevelDebug,
+		},
+		{
+			name:     "LOG_LEVEL alone is the fallback",
+			env:      map[string]string{"LOG_LEVEL": "warn"},
+			expected: slog.LevelWarn,
+		},
+		{
+			name:     "SP_LOG_LEVEL wins over LOG_LEVEL",
+			env:      map[string]string{"SP_LOG_LEVEL": "error", "LOG_LEVEL": "debug"},
+			expected: slog.LevelError,
+		},
+		{
+			name:     "blank SP_LOG_LEVEL falls back to LOG_LEVEL",
+			env:      map[string]string{"SP_LOG_LEVEL": "  ", "LOG_LEVEL": "warn"},
+			expected: slog.LevelWarn,
+		},
+		{
+			name:     "invalid SP_LOG_LEVEL is info, not LOG_LEVEL",
+			env:      map[string]string{"SP_LOG_LEVEL": "loud", "LOG_LEVEL": "warn"},
+			expected: slog.LevelInfo,
+		},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			getenv := func(key string) string { return testCase.env[key] }
+			require.Equal(t, testCase.expected, LogLevelFromEnv(getenv))
 		})
 	}
 }

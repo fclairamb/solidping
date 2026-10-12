@@ -215,7 +215,7 @@ func TestClientMCPFailureKeepsStdoutClean(t *testing.T) {
 // runClientMCPHelper is the child side: it mirrors main() (stdout logger,
 // then run) and exits with run's code.
 func runClientMCPHelper(mode string) {
-	setupLogger(config.ParseLogLevel(os.Getenv("LOG_LEVEL")), config.LogFormatText)
+	setupLogger(config.LogLevelFromEnv(os.Getenv), config.LogFormatText)
 
 	root := buildRootCommand()
 
