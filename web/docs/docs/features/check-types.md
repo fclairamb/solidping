@@ -54,8 +54,9 @@ non-`GET`/`HEAD` method).
 
 **Protocol:** by default checks speak HTTP/1.1, even when the target offers HTTP/2. A probe that times out closes its connection, so the next
 probe opens a fresh one instead of waiting on a stalled connection until the
-operating system gives up on it (up to ~15 minutes). Connections are still
-reused between probes that succeed.
+operating system gives up on it (up to ~15 minutes). Every probe opens a fresh
+connection and closes it afterwards, so each result includes DNS, connect and
+TLS time whatever the check period (see [Timing breakdown](#http-timing)).
 
 Set `httpVersion` to verify that the target still speaks a newer protocol, for
 example after a CDN, ingress or proxy change:
@@ -217,6 +218,35 @@ conditions onto, so they are not going anywhere.
 `body_expect` is a **substring** match, which is why `bodyAssertions` exists:
 `body_expect: HEALTHY` also matches a body of `UNHEALTHY`, and reports a dead
 service as up.
+
+#### Timing breakdown {#http-timing}
+
+Every HTTP result records where its time went, as float milliseconds in the
+result metrics. A phase that did not happen writes no key (never `0`).
+
+| Metric | Meaning | Absent when |
+|---|---|---|
+| `dns_time_ms` | Name lookup | The host is an IP literal, the check is tunneled, or the transport does not report it |
+| `connect_time_ms` | TCP connect (Happy Eyeballs races count as wall time) | The connection never came up |
+| `tls_time_ms` | TLS handshake | The URL is `http://` or the handshake failed |
+| `ttfb_time_ms` | Request written to first response byte, the server's time as seen by the client | No response byte arrived (timeout) |
+| `download_time_ms` | End of headers to end of the body read | The probe does not read the body (no body assertion, no failure capture) |
+| `redirect_time_ms` | Probe start to the start of the final hop | No redirect was followed |
+
+- After a redirect, DNS, connect, TLS, TTFB and download describe the **final
+  hop**. `redirect_time_ms` covers the earlier hops. The result duration stays
+  the total of all hops.
+- The result duration (response time) ends when the headers arrive, so
+  `download_time_ms` sits outside it.
+- Because each probe opens a fresh connection, a check running more often than
+  every 90 seconds now includes connect and TLS time in its response time. This
+  costs one handshake per probe on the target.
+- `httpVersion: "3"` reports only the phases the QUIC transport traces, so
+  some keys may be missing.
+- Health checks do not record these metrics.
+
+The result page shows them as a Timing card, and the check page has a Timing
+chart view with the per-bucket averages.
 
 ### TCP {#tcp}
 
