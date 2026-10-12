@@ -11,8 +11,9 @@ import (
 	"github.com/fclairamb/solidping/server/internal/webpush"
 )
 
-// Distinct from every other embedded port (highest in use at writing: 15671).
-const portVAPIDPostgres = 15700
+// Distinct from every other embedded port (157xx is taken by other packages;
+// this one and the next use 15800-15801).
+const portVAPIDPostgres = 15800
 
 // TestVAPIDKeysPostgres covers the unmigrated, repeat and concurrent cases on
 // a real Postgres. Self-skips under -short.
