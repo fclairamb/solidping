@@ -190,6 +190,11 @@ func distinctCheckUIDs(incidents []*models.Incident) []string {
 // The reference instant is the LATER of the last result and the incident
 // start: an incident opened one second ago on a check whose previous result
 // predates it is not frozen, it is new.
+//
+// The last result is the later of the newest raw row and checks.last_result_at.
+// The raw rows alone are not enough: aggregation compacts them into hourly rows
+// after about a day, so a check with a 24h period has no raw row at all between
+// that compaction and its next run, and its incident looked frozen every day.
 func collectStaleIncidents(
 	incidents []*models.Incident, checksByUID map[string]*models.Check,
 	lastResults map[string]*time.Time, cfg *Config, now time.Time,
@@ -207,6 +212,10 @@ func collectStaleIncidents(
 		reference := incident.StartedAt
 
 		lastAt := lastResults[incident.CheckUID]
+		if check.LastResultAt != nil && (lastAt == nil || check.LastResultAt.After(*lastAt)) {
+			lastAt = check.LastResultAt
+		}
+
 		if lastAt != nil && lastAt.After(reference) {
 			reference = *lastAt
 		}
