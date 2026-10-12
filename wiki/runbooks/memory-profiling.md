@@ -307,9 +307,16 @@ does exactly that).
 | heapLive | 70.9 | **7.4** |
 | goTotal | 150.0 | 150.2 |
 
-Boot (migrations, seeding, config) allocates a large heap. Then nothing else
-allocates, so no GC runs and nothing forces the pages back — until the
-scavenger gets to them, which takes minutes. `goTotal` is identical in both
+Corrected (spec 2026-10-12-04): the burst was not "migrations, seeding,
+config". It was the seeded admin's **argon2id hash** (one 64 MiB `initBlocks`
+allocation, 64 of 165 MB allocated in the first 2 min), plus membench's own
+login (`cmd/membench/client.go`), a second 64 MiB derivation. A GC that ran with
+the block live set the next goal to ~150 MB, and an idle process (~0.4 MB/s)
+took minutes to reach it, so nothing gave the pages back until the scavenger
+did. Since that spec the seed hash is bcrypt and every argon2id burst ends with
+a `debug.FreeOSMemory()` 1 s later (§9 row 8), so a re-baseline of
+`idle-all-sqlite` crosses this change and is not comparable with
+`memory-baselines/2026-09-04-docker-arm64.json`. `goTotal` is identical in both
 columns: the runtime keeps the *address space* either way; what changes is
 whether it is resident. Under load the first GC collapses it immediately, which
 is why the busy scenario looked cheaper.
@@ -465,6 +472,7 @@ resolvable by this harness".
 | 5 | Peak-signature suspects (#1 `http.Client`, #5 10 MB body) | not measured under load | **partly closed by inspection** — see §8 rows 1 and 5. Neither is the unconditional per-check cost the runbook assumed. |
 | 6 | SQLite driver and pool (mattn vs modernc) | not measured | **open, and now correctly framed.** The build runs modernc, so today's `derived.offHeapBytes` is ~0.3 MiB in an idle container — measured, and consistent with an on-heap driver. Comparing the two drivers means building with `-tags cgosqlite`; the harness can do it, this pass did not. |
 | 7 | Serve embedded assets without heap copies | **−0.1 MiB (not significant, floor 1.2)** on `docs-crawl`; **no change** on `idle-all-sqlite` | **shipped on an allocation measurement, not an RSS one — stated plainly.** The RSS harness cannot resolve it: the allocation removed is short-lived, so whether it shows in resident memory depends on whether a GC fired during the window. The Go benchmark can: on `search-index.json` (3.6 MB, fetched by the offline docs search) serving goes from **3.6 MB/op to 33 KB/op** and 460 µs to 72 µs (`BenchmarkServeEmbedded{ReadFile,Streamed}`). The `idle-all-sqlite` run alongside it is the **negative control** the spec asks for: every metric came back not-significant on the scenario the change does not touch. |
+| 8 | Return argon2id memory after a burst, bcrypt seed admin, browser samples disabled, interval regexp compiled once (spec 2026-10-12-04) | fresh boot at 60 s: RssAnon **141 → 31 MiB**, VmRSS 222 → 112, VmHWM 222 → 113; 10 s after login: RssAnon **207 → 26 MiB**; 10 s after the forced password change: 224 → 26 | **shipped.** Measured with `/proc/1/status` of a CGO-off linux/arm64 build of base vs. this change in `debian:trixie` (OrbStack, tmpfs SQLite, no limits), not the bench harness. Transient peaks stay (VmHWM 298 MiB during the password change: verify + new hash), but they are given back within a second. |
 
 ### Ship-gate evidence
 
@@ -759,8 +767,9 @@ auto-derivation only apply when the raw env var is absent.
   - `SP_RUNTIME_MEMORY_LIMIT=400MiB` (human size or bytes);
   - **auto** (default `SP_RUNTIME_AUTO_MEMORY_LIMIT=true`): on a container with a
     cgroup memory limit, derives the cap from that limit ×
-    `SP_RUNTIME_MEMORY_LIMIT_RATIO` (default `0.9`). A no-op off-container, so
-    Kubernetes pods get an OOM guardrail with zero operator action.
+    `SP_RUNTIME_MEMORY_LIMIT_RATIO` (default `0.9`). Kubernetes pods get an OOM
+    guardrail with zero operator action. With no cgroup limit, a Linux host with
+    at most 2 GiB of RAM (`/proc/meminfo` `MemTotal`) gets half of it (source `host`).
 - **`GOGC`** — the heap-growth target (default 100 = GC when heap doubles).
   Lower trims footprint at the cost of more frequent GC; higher favors throughput
   at the cost of a larger heap. Set via native `GOGC` or `SP_RUNTIME_GC_PERCENT`

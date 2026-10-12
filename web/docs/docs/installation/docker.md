@@ -72,6 +72,11 @@ The "bare-binary default" column applies only when running `solidping`
 directly, outside Docker — the published image sets the first three via
 `ENV` so a bare `docker run -v solidping-data:/data` just works.
 
+On a small host (1 GB of RAM or less), see
+[Small hosts](/installation/linux#small-hosts-1-gb-and-less) for the
+memory settings. Note that `docker stats` also counts the page cache of the
+image the container read, so read `RssAnon` instead.
+
 ## Docker Compose Example
 
 Create a `docker-compose.yml` file:

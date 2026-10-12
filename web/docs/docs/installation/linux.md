@@ -286,6 +286,43 @@ extra to mount here — this only matters for containerized deployments. See
 [File Storage](/configuration/file-storage) for the S3 backend, useful once
 you run more than one node.
 
+## Small hosts (1 GB and less)
+
+SolidPing runs on a 1 GB Raspberry Pi or a small VPS. A fresh instance idles
+with about 40 MB of its own memory. Logins are the only bursts: each password
+check allocates the argon2id memory (64 MiB by default) and gives it back about
+a second later.
+
+**Read the right number.** `ps` and `top` report RSS, which includes 70-85 MB of
+binary pages. Those pages are shared with the page cache and reclaimable. The
+number that matters is `RssAnon` in `/proc/<pid>/status`:
+
+```bash
+grep -E 'VmRSS|RssAnon|RssFile|VmHWM' /proc/$(pidof solidping)/status
+```
+
+These knobs help, with what each one was measured to do:
+
+| Setting | Effect |
+|---|---|
+| `SP_RUNTIME_MEMORY_LIMIT=128MiB` (or the native `GOMEMLIMIT=128MiB`) | Soft cap on the Go heap. At 96 MiB the first-boot peak (VmHWM) dropped from 229-245 MB to 169 MB. It is a soft cap: the runtime collects more often near it, it never refuses memory. |
+| Nothing (default) | With no cgroup limit and no cap set, a Linux host with at most 2 GiB of RAM gets half of it as the soft cap (512 MiB on a 1 GB Pi). `SP_RUNTIME_AUTO_MEMORY_LIMIT=false` turns this off. |
+| `SP_SERVER_CHECK_WORKER_NB` | Only worth lowering if the host runs many slow checks at once. Idle runners cost almost nothing (all goroutines together use about 3 MB of stack). |
+| `SP_AUTH_PASSWORD_ARGON2_MEMORY=19456`, `SP_AUTH_PASSWORD_ARGON2_TIME=2`, `SP_AUTH_PASSWORD_ARGON2_THREADS=1` | The OWASP minimum argon2id profile. Each login's transient drops from 64 MiB to 19 MiB. |
+
+:::caution Security trade-off
+The smaller argon2id profile makes each stolen password hash cheaper to brute
+force. It is still the OWASP minimum, but only use it when memory really is the
+constraint. Existing hashes are upgraded to the new profile on the next login.
+See [Authentication](/configuration/authentication).
+:::
+
+The two browser sample checks (`browser-example-com` and `js-browser-login`)
+are created disabled. Each run starts a headless Chrome (40-120 MB), so enable
+them only once you point them at a real site.
+
+See [Runtime memory](/configuration#runtime-memory) for every `SP_RUNTIME_*` knob.
+
 ## Next Steps
 
 - [Configuration Guide](/configuration) - All configuration options

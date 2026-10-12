@@ -138,7 +138,7 @@ ping, …) and the passive ones (heartbeat, email).
 
 | Env var                                  | Default | What it controls |
 |------------------------------------------|---------|------------------|
-| `SP_SERVER_CHECK_WORKER_NB`              | `3`     | Number of concurrent runner goroutines |
+| `SP_SERVER_CHECK_WORKER_NB`              | `25`    | Number of concurrent runner goroutines |
 | `SP_SERVER_CHECK_WORKER_FETCH_MAX_AHEAD` | `5m`    | How far in the future the fetcher will claim jobs that are about to be due |
 | `SP_NODE_REGION` (or `SP_REGION`)        | `default` | Region label used to match checks tagged with region constraints |
 
