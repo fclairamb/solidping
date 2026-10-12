@@ -878,6 +878,34 @@ Verify end-to-end email **delivery** rather than just server connectivity. Solid
 
 The receiving domain is configured by your administrator. Point a periodic test email (or your application's "send a heartbeat" job) at the generated address, and SolidPing reports an incident if expected mail stops arriving.
 
+The address looks like `<token>@<address domain>`. A message counts as **up** by default. To report another status, use plus-addressing (`<token>+down@…`, also `+error`, `+running`, `+up`), an `X-SolidPing-Status` header, or a `[DOWN]`-style tag at the start of the subject, in that order of priority.
+
+#### How mail reaches SolidPing (JMAP) {#email-reception-jmap}
+
+SolidPing does not run a mail server. It reads one shared mailbox over
+[JMAP](https://jmap.io/) (RFC 8620 and RFC 8621), so any mail server or
+provider that speaks JMAP can host it. Every address at the address domain must
+be delivered to that mailbox (a catch-all or wildcard alias).
+
+An administrator sets it up once per instance under **Server → Email Inbox**:
+
+| Field | Description | Default |
+|-------|-------------|---------|
+| JMAP Session URL | The server's session resource, e.g. `https://jmap.example.com/.well-known/jmap` | — |
+| Username / Password | HTTP Basic credentials; an app password or token works | — |
+| Address Domain | Domain of the generated check addresses | — |
+| Inbox Mailbox | Mailbox SolidPing reads | `Inbox` |
+| Processed Mailbox | Where handled messages are moved; created if missing | `Processed` |
+| Fallback poll interval | Seconds between syncs when push is unavailable or silent | `900` |
+| Processed / Failed Retention | Days before handled / unmatched messages move to the Trash | `30` / `7` |
+
+**Test Connection** checks the credentials and mailboxes, and
+**Sync Now** forces a sync. When the server advertises a JMAP push
+(EventSource) URL, SolidPing reacts to new mail within seconds and the status
+shows **Live**. Otherwise it polls at the fallback interval and shows
+**Polling**: set the email-reception check's period above that interval, or
+lower the interval.
+
 :::note Passive check
 Email-reception checks are receive-only — SolidPing waits for mail instead of actively probing a server. Combine it with an [SMTP check](#smtp) to also monitor outbound connectivity, or use SMTP [send mode](#smtp-send-mode) to have SolidPing generate and submit that probe email for you automatically.
 :::
