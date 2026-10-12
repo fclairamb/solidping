@@ -10,34 +10,62 @@ import { validateTarget } from "./quick-check-target";
 
 /**
  * Free webmail domains where a signup's own email domain is not a useful
- * monitoring target. Mirrors `freeMailDomains` in
- * server/internal/handlers/auth/autojoin_regex.go verbatim — that file is the
- * source of truth. Duplicating the list was chosen over an API change: this
- * is a UX heuristic where a miss costs the user one select-all, not a
- * security decision, so drift between the two lists is harmless.
+ * monitoring target. Mirrors `freeMailDomains`, `freeMailBrands` and
+ * `countrySecondLevels` in server/internal/handlers/auth/autojoin_regex.go
+ * verbatim — that file is the source of truth. Duplicating the list was chosen
+ * over an API change: this is a UX heuristic where a miss costs the user one
+ * select-all, not a security decision, so drift between the two lists is
+ * harmless.
+ *
+ * Country variants of the brands below (`yahoo.fr`, `gmx.de`,
+ * `hotmail.co.uk`) are matched by `isFreeMailDomain` and need no entry here.
  */
 const FREE_MAIL_DOMAINS = new Set([
-  "gmail.com",
-  "googlemail.com",
-  "yahoo.com",
-  "outlook.com",
-  "hotmail.com",
-  "live.com",
-  "msn.com",
-  "icloud.com",
-  "me.com",
-  "protonmail.com",
-  "proton.me",
-  "aol.com",
-  "gmx.com",
-  "mail.com",
-  "yandex.com",
-  "tutanota.com",
-  "zoho.com",
-  "qq.com",
-  "163.com",
-  "126.com",
+  "gmail.com", "googlemail.com", "yahoo.com", "outlook.com", "hotmail.com",
+  "live.com", "msn.com", "icloud.com", "me.com", "mac.com", "protonmail.com",
+  "proton.me", "pm.me", "aol.com", "gmx.com", "mail.com", "yandex.com",
+  "tutanota.com", "tuta.io", "zoho.com", "qq.com", "163.com", "126.com",
+  "yeah.net", "sina.com", "naver.com", "daum.net", "hanmail.net", "rediffmail.com",
+  "fastmail.com", "fastmail.fm", "hey.com", "mailbox.org", "posteo.de", "posteo.net",
+  // Germany, Austria, Switzerland
+  "web.de", "t-online.de", "freenet.de", "arcor.de", "bluewin.ch",
+  // France
+  "orange.fr", "wanadoo.fr", "free.fr", "laposte.net", "sfr.fr", "neuf.fr", "bbox.fr",
+  // Rest of Europe
+  "libero.it", "virgilio.it", "tiscali.it", "telenet.be", "skynet.be", "ziggo.nl",
+  "seznam.cz", "wp.pl", "o2.pl", "interia.pl", "onet.pl", "sapo.pt",
+  "inbox.ru", "list.ru", "bk.ru", "rambler.ru", "ukr.net", "abv.bg",
+  // UK, North America, Oceania, Brazil
+  "btinternet.com", "sky.com", "virginmedia.com", "comcast.net", "verizon.net",
+  "att.net", "sbcglobal.net", "shaw.ca", "rogers.com", "bigpond.com",
+  "uol.com.br", "bol.com.br",
 ]);
+
+/** Providers that run the same free service under many country domains. */
+const FREE_MAIL_BRANDS = new Set([
+  "gmail", "googlemail", "yahoo", "ymail", "rocketmail", "hotmail", "outlook",
+  "live", "msn", "gmx", "aol", "icloud", "protonmail", "proton", "yandex",
+  "mail", "tutanota", "zoho",
+]);
+
+/** Labels between a name and a ccTLD in a two-level suffix (`co.uk`, `com.br`). */
+const COUNTRY_SECOND_LEVELS = new Set(["co", "com", "net", "org", "ne", "or"]);
+
+/**
+ * True for an exact `FREE_MAIL_DOMAINS` entry, or a `FREE_MAIL_BRANDS` label
+ * followed by a single TLD (`gmx.de`) or a two-level country suffix
+ * (`yahoo.co.uk`). A brand label deeper in the name (`mail.acme.com`) does not
+ * count. Expects a lowercased domain.
+ */
+function isFreeMailDomain(domain: string): boolean {
+  if (FREE_MAIL_DOMAINS.has(domain)) return true;
+
+  const labels = domain.split(".");
+  if (!FREE_MAIL_BRANDS.has(labels[0])) return false;
+  if (labels.length === 2) return labels[1] !== "";
+  if (labels.length === 3) return COUNTRY_SECOND_LEVELS.has(labels[1]) && labels[2] !== "";
+  return false;
+}
 
 /**
  * The target to pre-fill the hero with for this user, or `null` for none.
@@ -65,7 +93,7 @@ export function suggestQuickTarget(email: string | null | undefined): string | n
   const domain = trimmedEmail.slice(at + 1).trim().toLowerCase();
   if (!domain) return null;
 
-  if (FREE_MAIL_DOMAINS.has(domain)) return null;
+  if (isFreeMailDomain(domain)) return null;
 
   // Reuse the icmp host-shape check rather than writing a second parser: it
   // rejects a domain containing "/", ":", whitespace, or a leading/trailing

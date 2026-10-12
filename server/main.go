@@ -303,7 +303,7 @@ func loadServeConfig(ctx context.Context, logOut io.Writer) (*config.Config, fun
 	}
 
 	slog.InfoContext(ctx, "Configuration loaded",
-		"runMode", cfg.RunMode,
+		"runMode", cfg.RunModeName(),
 		"dbType", cfg.Database.Type,
 		"logSQL", cfg.Database.LogSQL)
 

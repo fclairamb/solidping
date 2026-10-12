@@ -654,12 +654,12 @@ func (w *JobWorker) setupSelfStats(ctx context.Context) error {
 // resolveWorkerSlug sets this worker's identity: SP_NODE_NAME when configured,
 // otherwise the lowercased, sanitized OS hostname truncated to
 // config.WorkerHostnameMaxLen. It is the exact same resolution the check worker
-// uses (config.Config.WorkerIdentity), so both agree on who this process is,
-// and it emits the same truncation/sanitization WARNs for the same reason.
+// uses (config.Config.WorkerIdentity), so both agree on who this process is.
+// The truncation/sanitization report is logged once per process, whichever
+// worker gets there first.
 func (w *JobWorker) resolveWorkerSlug(ctx context.Context) {
 	identity := w.config.WorkerIdentity()
-	identity.WarnIfTruncated(ctx, w.logger)
-	identity.WarnIfSanitized(ctx, w.logger)
+	identity.LogDerivation(ctx, w.logger, w.config.WorkerSlugMayCollide())
 	w.workerSlug = identity.Slug
 }
 

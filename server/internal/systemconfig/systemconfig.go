@@ -1585,7 +1585,7 @@ func (s *Service) ensureJWTSecret(ctx context.Context) error {
 	}
 
 	s.config.Auth.JWTSecret = secret
-	slog.WarnContext(ctx, "JWT secret auto-generated and saved to database")
+	slog.InfoContext(ctx, "JWT secret auto-generated and saved to database")
 
 	return nil
 }
