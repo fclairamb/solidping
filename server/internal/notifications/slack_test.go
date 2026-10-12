@@ -2740,6 +2740,18 @@ func (m *mockDBService) SetAppSetting(_ context.Context, _, _ string) error {
 	panic("not implemented")
 }
 
+func (m *mockDBService) GetAppSettings(_ context.Context, _ []string) (map[string]string, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) CreateAppSettingsIfAbsent(_ context.Context, _ map[string]string) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) SetAppSettings(_ context.Context, _ map[string]string) error {
+	panic("not implemented")
+}
+
 // TLS asset storage (spec 2026-07-26-01) — never exercised by notification
 // tests; present only to satisfy db.Service.
 

@@ -1653,6 +1653,21 @@ type Service interface {
 	// SetAppSetting creates or updates a key/value pair (upsert).
 	SetAppSetting(ctx context.Context, key, value string) error
 
+	// GetAppSettings reads several keys in one statement, so the values come
+	// from one consistent snapshot even while another process writes them.
+	// Missing keys are absent from the map; that is not an error.
+	GetAppSettings(ctx context.Context, keys []string) (map[string]string, error)
+
+	// CreateAppSettingsIfAbsent inserts every pair in one statement and keeps
+	// any key that already exists (ON CONFLICT DO NOTHING). Two processes
+	// creating the same keys at once therefore end up with one stored set: the
+	// loser's insert is a no-op, and it re-reads the winner's values.
+	CreateAppSettingsIfAbsent(ctx context.Context, settings map[string]string) error
+
+	// SetAppSettings upserts every pair in one statement, so a reader never
+	// sees some of the new values next to some of the old ones.
+	SetAppSettings(ctx context.Context, settings map[string]string) error
+
 	// --- TLS asset storage (spec 2026-07-26-01) ---
 	//
 	// Backing store for the certmagic.Storage implementation in

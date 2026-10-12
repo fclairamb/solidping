@@ -534,24 +534,9 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	localfs.Register()
 	s3fs.Register()
 
-	// Initialize VAPID keys for Web Push. Auto-generates and persists to
-	// app_settings when not pre-provisioned via env vars.
-	if pub, priv, err := webpushpkg.GetOrCreateVAPIDKeys(ctx, webpushpkg.Config{
-		VAPIDPublicKey:  cfg.WebPush.VAPIDPublicKey,
-		VAPIDPrivateKey: cfg.WebPush.VAPIDPrivateKey,
-		Subject:         cfg.WebPush.Subject,
-		Enabled:         cfg.WebPush.Enabled,
-	}, dbService); err != nil {
-		slog.WarnContext(ctx, "webpush: VAPID key initialization failed — web push disabled", "err", err)
-	} else {
-		cfg.WebPush.VAPIDPublicKey = pub
-		cfg.WebPush.VAPIDPrivateKey = priv
-		svcList.WebPushOptions = webpushpkg.Options{
-			VAPIDPublicKey:  pub,
-			VAPIDPrivateKey: priv,
-			Subject:         cfg.WebPush.Subject,
-		}
-	}
+	// The VAPID keys for Web Push are not loaded here: they live in
+	// app_settings, which does not exist before the migrations. Initialize
+	// loads them (InitializeWebPush).
 
 	server := &Server{
 		dbService:         dbService,
@@ -2439,15 +2424,9 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		prommetrics.Register(prometheus.DefaultRegisterer)
 		s.registerSubsystemMetrics(prometheus.DefaultRegisterer)
 
-		metricsPath := s.config.Prometheus.Path
-		if metricsPath == "" {
-			metricsPath = "/metrics"
-		}
-
-		mainGroup.GET(metricsPath, s.metricsHandler())
-
-		slog.InfoContext(ctx, "Prometheus metrics endpoint enabled", "path", metricsPath,
-			"tokenConfigured", s.config.Prometheus.ScrapeToken != "")
+		// Not logged here: whether the route answers depends on the scrape
+		// token, so logMetricsScrapeTokenState logs the one line that says so.
+		mainGroup.GET(metricsPath(s.config), s.metricsHandler())
 	}
 
 	// Test/dev fixture routes. Everything registered inside the RunMode=="test"
@@ -2595,6 +2574,23 @@ func initSentry(cfg config.SentryConfig) error {
 	slog.Info("Sentry initialized", "environment", cfg.Environment)
 
 	return nil
+}
+
+// sentryFlushTimeout bounds how long shutdown waits for queued Sentry events.
+const sentryFlushTimeout = 2 * time.Second
+
+// flushSentry sends the queued Sentry events before shutdown. Without a DSN
+// initSentry never installs a client: the hub holds sentry-go's disabled
+// no-op client, there is nothing to send, and sentry.Flush returns false,
+// which would read as a timeout for a queue that does not exist.
+func flushSentry(ctx context.Context) {
+	if !sentry.CurrentHub().Client().IsEnabled() {
+		return
+	}
+
+	if !sentry.Flush(sentryFlushTimeout) {
+		slog.WarnContext(ctx, "Sentry flush timed out, some events may be lost")
+	}
 }
 
 // isPublicCORSPath reports whether path falls under a genuinely public,
@@ -4089,11 +4085,7 @@ func (s *Server) startCheckWorker(ctx context.Context) {
 func (s *Server) Close(ctx context.Context) error {
 	var closeErr error
 
-	// Flush pending Sentry events
-	const sentryFlushTimeout = 2 * time.Second
-	if !sentry.Flush(sentryFlushTimeout) {
-		slog.WarnContext(ctx, "Sentry flush timed out, some events may be lost")
-	}
+	flushSentry(ctx)
 
 	// Flush buffered product-analytics events. No-op (and instant) when
 	// analytics is not configured.
@@ -4212,9 +4204,46 @@ func compressionWrapper(enabled bool) func(http.Handler) http.Handler {
 	}
 }
 
-// Initialize initializes the database (runs migrations).
+// Initialize runs the database migrations, then loads the startup state that
+// lives in the database (the Web Push VAPID keys).
 func (s *Server) Initialize(ctx context.Context) error {
-	return s.dbService.Initialize(ctx)
+	if err := s.dbService.Initialize(ctx); err != nil {
+		return err
+	}
+
+	s.InitializeWebPush(ctx)
+
+	return nil
+}
+
+// InitializeWebPush loads the VAPID keypair for Web Push, creating and storing
+// it on the first boot when it is not pre-provisioned through the environment.
+// It needs a migrated database (the keys live in app_settings): Initialize
+// calls it right after the migrations, and a caller that migrates the
+// database some other way calls it before SetupRoutes. A database that cannot
+// be read or written disables web push for this run, with one WARN.
+func (s *Server) InitializeWebPush(ctx context.Context) {
+	cfg := s.config
+
+	pub, priv, err := webpushpkg.GetOrCreateVAPIDKeys(ctx, webpushpkg.Config{
+		VAPIDPublicKey:  cfg.WebPush.VAPIDPublicKey,
+		VAPIDPrivateKey: cfg.WebPush.VAPIDPrivateKey,
+		Subject:         cfg.WebPush.Subject,
+		Enabled:         cfg.WebPush.Enabled,
+	}, s.dbService)
+	if err != nil {
+		slog.WarnContext(ctx, "webpush: VAPID key initialization failed, web push disabled", "err", err)
+
+		return
+	}
+
+	cfg.WebPush.VAPIDPublicKey = pub
+	cfg.WebPush.VAPIDPrivateKey = priv
+	s.services.WebPushOptions = webpushpkg.Options{
+		VAPIDPublicKey:  pub,
+		VAPIDPrivateKey: priv,
+		Subject:         cfg.WebPush.Subject,
+	}
 }
 
 // InitializeSystemConfig loads system configuration from the database.
