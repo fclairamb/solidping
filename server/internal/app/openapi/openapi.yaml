@@ -11325,7 +11325,7 @@ components:
           description: Diagnostic output and error messages
         metrics:
           type: object
-          description:>
+          description: >
             Performance metrics. HTTP checks record the phase timings in
             milliseconds, each present only when that phase ran:
             dns_time_ms, connect_time_ms, tls_time_ms, ttfb_time_ms,
@@ -12737,7 +12737,7 @@ components:
           description: Check name (with=checkName)
         metrics:
           type: object
-          description:>
+          description: >
             Performance metrics (with=metrics). HTTP checks record the phase timings in
             milliseconds, each present only when that phase ran:
             dns_time_ms, connect_time_ms, tls_time_ms, ttfb_time_ms,
