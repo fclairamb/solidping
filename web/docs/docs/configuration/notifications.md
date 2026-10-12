@@ -904,67 +904,146 @@ Keep the private key secret.
 
 ## Webhooks
 
-Generic webhooks send HTTP POST requests to any URL.
+Generic webhooks send an HTTP `POST` with a JSON body to any URL. Every
+request is signed per the [Standard Webhooks](https://www.standardwebhooks.com/)
+specification, so receivers can verify it came from SolidPing.
 
 ### Payload Format
 
 ```json
 {
-  "event": "incident.created",
-  "timestamp": "2024-01-15T10:30:00Z",
-  "check": {
-    "uid": "550e8400-e29b-41d4-a716-446655440000",
-    "name": "API Health Check",
-    "url": "https://api.example.com/health"
-  },
-  "incident": {
-    "uid": "550e8400-e29b-41d4-a716-446655440001",
-    "status": "active",
-    "started_at": "2024-01-15T10:30:00Z"
-  },
-  "result": {
-    "status": "down",
-    "duration_ms": 5000,
-    "error": "Connection timeout"
+  "type": "incident.resolved",
+  "timestamp": "2026-01-15T10:42:00Z",
+  "data": {
+    "incident": {
+      "uid": "550e8400-e29b-41d4-a716-446655440001",
+      "startedAt": "2026-01-15T10:30:00Z",
+      "resolvedAt": "2026-01-15T10:42:00Z",
+      "durationSeconds": 720,
+      "title": "api-health is down",
+      "failureCount": 3,
+      "relapseCount": 0,
+      "recoveryPeriodSeconds": null,
+      "resolutionType": "auto"
+    },
+    "check": {
+      "uid": "550e8400-e29b-41d4-a716-446655440000",
+      "name": "API Health Check",
+      "type": "http"
+    }
   }
 }
 ```
+
+- `resolvedAt` and `durationSeconds` are `null` while the incident is active.
+- `resolutionType` (`auto`, `manual`, `expired`, `escalated`, `disabled`,
+  `check_deleted`) is only present once the incident is resolved.
+- `acknowledgedAt` is only present once the incident has been acknowledged.
+- `recoveryPeriodSeconds` is `null` until the incident has relapsed at least once.
+- `incident.comment` events add `data.comment`
+  (`{"text", "authorName", "source"}`).
+- `incident.acknowledged` and `incident.unacknowledged` events add
+  `data.acknowledgment` (`{"actorName", "via"}`).
 
 ### Event Types
 
 | Event | Description |
 |-------|-------------|
 | `incident.created` | New incident (check started failing) |
-| `incident.escalated` | Incident reached escalation threshold |
+| `incident.escalated` | Incident reached an escalation step |
+| `incident.reopened` | A resolved incident started failing again |
 | `incident.resolved` | Incident resolved (check recovered) |
+| `incident.acknowledged` | Someone took the incident |
+| `incident.unacknowledged` | The acknowledgment was withdrawn |
+| `incident.comment` | A comment was added to the incident |
 
 ### Webhook Configuration
 
 In the SolidPing dashboard:
-1. Go to Settings → Integrations
-2. Add a new Webhook connection
-3. Configure:
-   - **URL**: Your webhook endpoint
-   - **Method**: POST (default)
-   - **Headers**: Custom headers (e.g., Authorization)
-   - **Secret**: HMAC secret for signature verification
+1. Go to **Integrations** and add a **Webhook** integration
+2. Set the **Webhook URL** to your endpoint and save
+3. Open the integration again: the **Signing secret** is shown there, with
+   **Copy** and **Rotate** buttons
+
+Custom request headers (for example `Authorization`) can be set through the
+API in the integration's `settings.headers` object. They cannot override the
+three signing headers.
+
+A response with a status code of 300 or more, or no response within 30
+seconds, counts as a failed delivery.
 
 ### Signature Verification
 
-Webhooks include an `X-Signature-256` header containing an HMAC-SHA256 signature:
+Each request carries three headers:
+
+| Header | Content |
+|--------|---------|
+| `Webhook-Id` | Unique ID of this delivery (a UUID). Use it to deduplicate. |
+| `Webhook-Timestamp` | Unix timestamp, in seconds, of the delivery |
+| `Webhook-Signature` | Space-separated list of `v1,<signature>` entries |
+
+The signature is computed as follows:
+
+1. The signed content is `{Webhook-Id}.{Webhook-Timestamp}.{raw body}`,
+   joined with full stops. Use the raw request body exactly as received, not a
+   re-serialized copy.
+2. The key is the signing secret with its `whsec_` prefix removed, then
+   base64-decoded. SolidPing generates 32 random bytes encoded as **URL-safe
+   base64 without padding** (`-` and `_` instead of `+` and `/`, no trailing `=`).
+3. The signature is the HMAC-SHA256 of the signed content with that key,
+   encoded as standard base64, prefixed with `v1,`.
+
+Accept the request if any entry of `Webhook-Signature` matches. Compare in
+constant time, and reject requests whose timestamp is too far from your clock
+(the Standard Webhooks libraries allow 5 minutes) to block replays.
 
 ```python
-import hmac
+import base64
 import hashlib
+import hmac
+import time
 
-def verify_webhook(payload, signature, secret):
-    expected = hmac.new(
-        secret.encode(),
-        payload.encode(),
-        hashlib.sha256
-    ).hexdigest()
-    return hmac.compare_digest(f"sha256={expected}", signature)
+
+def decode_secret(secret: str) -> bytes:
+    key = secret.removeprefix("whsec_")
+    # Accept URL-safe or standard base64, padded or not.
+    key = key.replace("-", "+").replace("_", "/")
+    return base64.b64decode(key + "=" * (-len(key) % 4))
+
+
+def verify_webhook(body: bytes, headers: dict, secret: str, tolerance: int = 300) -> bool:
+    msg_id = headers["webhook-id"]
+    timestamp = headers["webhook-timestamp"]
+    if abs(time.time() - int(timestamp)) > tolerance:
+        return False
+
+    signed = f"{msg_id}.{timestamp}.".encode() + body
+    digest = hmac.new(decode_secret(secret), signed, hashlib.sha256).digest()
+    expected = base64.b64encode(digest).decode()
+
+    for entry in headers["webhook-signature"].split():
+        version, _, signature = entry.partition(",")
+        if version == "v1" and hmac.compare_digest(signature, expected):
+            return True
+    return False
 ```
+
+:::tip Standard Webhooks libraries
+The official [Standard Webhooks libraries](https://github.com/standard-webhooks/standard-webhooks/tree/main/libraries)
+(`standardwebhooks` on PyPI and npm, plus Go, Rust, Java, Ruby, PHP, C# and
+Elixir) verify these requests. They expect the secret in **standard** base64,
+so convert it first: replace `-` with `+` and `_` with `/`, add `=` padding to
+a multiple of 4 characters, and keep the `whsec_` prefix. The converted secret
+is the same key, only spelled differently.
+:::
+
+### Rotating the secret
+
+**Rotate** (or `POST /api/v1/orgs/{org}/integrations/{uid}/rotate-secret`)
+generates a new secret. The previous one stays valid for 24 hours: during that
+window each request carries two `v1,` signatures, one per secret, so receivers
+can switch over without dropping deliveries. Rotating again drops the older
+secret right away: the current one becomes the previous one.
 
 ## Incident Thresholds
 
@@ -1001,6 +1080,6 @@ Or use the API:
 
 ```bash
 # Send test notification (requires auth)
-curl -X POST http://localhost:4000/api/v1/orgs/default/connections/{uid}/test \
+curl -X POST http://localhost:4000/api/v1/orgs/default/integrations/{uid}/test \
   -H "Authorization: Bearer $TOKEN"
 ```
