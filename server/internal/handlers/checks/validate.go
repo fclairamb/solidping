@@ -398,6 +398,10 @@ func (s *Service) configValidationErrors(
 		errs = append(errs, err)
 	}
 
+	// Unknown generated-value names (`${var:nope}`): rejected before they can
+	// reach a worker, where they would only surface as an error result.
+	errs = append(errs, validateVarRefs(effective)...)
+
 	if orgUID == "" {
 		return errs
 	}

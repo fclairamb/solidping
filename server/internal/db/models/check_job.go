@@ -121,6 +121,12 @@ type CheckJob struct {
 	// referenced password out of the worker's logs.
 	ParamOverlay map[string]any `bun:"-"`
 
+	// DisplayURL is config["url"] rendered for the stored result: `${var:…}`
+	// replaced by this run's generated values, `${env:…}` / `${param:…}` left
+	// literal. Set by the worker's materializeConfig only when the URL holds a
+	// secret reference; empty otherwise. Transient: never persisted.
+	DisplayURL string `bun:"-"`
+
 	// Check is the check this job executes, populated at claim time by
 	// ClaimJobs / ClaimJobsForCheck so the incident hot path can skip a
 	// per-result GetCheck round-trip. Transient: never persisted (bun:"-").

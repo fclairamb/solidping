@@ -554,3 +554,42 @@ func TestProjectChecksPerMinuteReusesTheDemandFormula(t *testing.T) {
 	r.NoError(err)
 	r.InDelta(live.Demand+1, withProposal.Demand, 0.0001)
 }
+
+// TestValidateVarReferences: an unknown `${var:…}` name is an error finding on
+// `config` in validate_check and a refusal on create; a known one passes both.
+func TestValidateVarReferences(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	env := newValidateEnv(t, 0)
+	ctx := t.Context()
+	period := "00:01:00"
+
+	bad := map[string]any{"url": "https://example.com/?cb=${var:nope}"}
+	resp := env.validate(&checks.ValidateCheckRequest{Type: "http", Slug: "var-bad", Period: period, Config: bad})
+	r.False(resp.Valid)
+
+	finding := findingWithCode(resp.Fields, checks.CodeInvalidConfig)
+	r.NotNil(finding, "%+v", resp.Fields)
+	r.Equal("config", finding.Name)
+	r.Equal("config.url: unknown variable ${var:nope} (known: timestamp, iso8601, uuid, random)", finding.Message)
+
+	_, err := env.svc.CreateCheck(ctx, env.org.Slug, checks.CreateCheckRequest{
+		Type: "http", Slug: "var-bad", Period: &period, Config: bad,
+	})
+	r.Error(err, "create must reject what validate rejected")
+	r.Contains(err.Error(), "unknown variable ${var:nope}")
+
+	good := map[string]any{
+		"url":     "https://example.com/?cb=${var:uuid}",
+		"headers": map[string]any{"X-Request-Id": "${var:uuid}"},
+	}
+	resp = env.validate(&checks.ValidateCheckRequest{Type: "http", Slug: "var-good", Period: period, Config: good})
+	r.True(resp.Valid, "%+v", resp.Fields)
+	r.Empty(resp.Fields)
+
+	_, err = env.svc.CreateCheck(ctx, env.org.Slug, checks.CreateCheckRequest{
+		Type: "http", Slug: "var-good", Period: &period, Config: good,
+	})
+	r.NoError(err)
+}

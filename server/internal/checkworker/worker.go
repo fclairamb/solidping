@@ -3,6 +3,7 @@ package checkworker
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -915,6 +916,25 @@ func (r *CheckWorker) materializeConfig(checkJob *models.CheckJob) error {
 		merged[key] = value
 	}
 
+	// One var resolver for the whole run: the URL rendered for the result and
+	// the config handed to the checker carry the same generated values.
+	vars := secretref.NewVarResolver(time.Now(), rand.Reader)
+
+	// The URL as the stored result shows it: generated values in, secrets
+	// still as references. Rendered from the stored config, BEFORE the param
+	// overlay replaces the reference with its value.
+	checkJob.DisplayURL = ""
+
+	if rawURL, ok := checkJob.Config["url"].(string); ok && secretref.ContainsSecretRef(rawURL) {
+		display, _, renderErr := secretref.ResolveString(
+			context.Background(), rawURL, secretref.VarsOnlyResolver(vars))
+		if renderErr != nil {
+			return fmt.Errorf("%w (config %q)", renderErr, "url")
+		}
+
+		checkJob.DisplayURL = display
+	}
+
 	// The ${param:…} half, resolved server-side at claim time and carried here
 	// out of band so it never appeared in the job log.
 	for key, value := range checkJob.ParamOverlay {
@@ -922,7 +942,7 @@ func (r *CheckWorker) materializeConfig(checkJob *models.CheckJob) error {
 	}
 
 	resolved, _, err := secretref.ResolveConfig(
-		context.Background(), merged, secretref.ExecutionResolver())
+		context.Background(), merged, secretref.ExecutionResolverWith(vars))
 	if err != nil {
 		return err
 	}
@@ -930,6 +950,36 @@ func (r *CheckWorker) materializeConfig(checkJob *models.CheckJob) error {
 	checkJob.Config = models.JSONMap(resolved)
 
 	return nil
+}
+
+// resultOutput is the output map to store for a result. When the job's URL
+// carried a secret reference and the checker echoed the resolved URL into
+// Output["url"], the echo is replaced by the display rendering, so the stored
+// result (and the incident built from it) shows `${param:…}` and never the
+// secret. The checker's own map is left untouched.
+func resultOutput(checkJob *models.CheckJob, output map[string]any) map[string]any {
+	if checkJob.DisplayURL == "" || output == nil {
+		return output
+	}
+
+	echoed, ok := output["url"].(string)
+	if !ok {
+		return output
+	}
+
+	resolved, ok := checkJob.Config["url"].(string)
+	if !ok || echoed != resolved {
+		return output
+	}
+
+	out := make(map[string]any, len(output))
+	for key, value := range output {
+		out[key] = value
+	}
+
+	out["url"] = checkJob.DisplayURL
+
+	return out
 }
 
 // executeJob executes a single check job.
@@ -1578,7 +1628,7 @@ func (r *CheckWorker) buildSubmitRequest(
 		Status:          int(result.Status),
 		Duration:        float32(result.Duration.Seconds() * 1000),
 		Metrics:         result.Metrics,
-		Output:          result.Output,
+		Output:          resultOutput(checkJob, result.Output),
 		Diagnostics:     result.Diagnostics,
 		Region:          r.resolveResultRegion(checkJob),
 		NextScheduledAt: nextScheduledAt,

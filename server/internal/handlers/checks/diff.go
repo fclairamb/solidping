@@ -531,7 +531,7 @@ func canonicalConfigValue(value any) string {
 }
 
 // maskReferences replaces any ${env:…}/${param:…} reference inside a rendered
-// value with the mask. The reference NAME is not itself a secret, but the
+// value with the mask. A ${var:…} reference is left as is. The reference NAME is not itself a secret, but the
 // value it stands for is, and a plan that prints
 // `body: "…password=${param:sso-authtest-password}"` next to a real one is one
 // copy-paste away from a leak.
@@ -540,7 +540,15 @@ func maskReferences(rendered string) string {
 		return rendered
 	}
 
-	return secretref.Pattern.ReplaceAllString(rendered, maskedValue)
+	// Only env/param references stand for a secret. A generated `${var:…}`
+	// value is shown in clear: it is what the operator wants to read in a plan.
+	return secretref.Pattern.ReplaceAllStringFunc(rendered, func(match string) string {
+		if secretref.ContainsSecretRef(match) {
+			return maskedValue
+		}
+
+		return match
+	})
 }
 
 // diffDependsOn compares the dependency edges ADDITIVELY, which is what import
