@@ -42,6 +42,7 @@ func TestServerCard_ServedWithoutCredentials(t *testing.T) {
 	r.Equal([]any{"oauth2"}, auth["schemes"])
 
 	r.NotEmpty(card["instructions"])
+	r.Contains(card["instructions"], "?toolsets=all", "the card advertises the toolset selector")
 	r.NotEmpty(card["prompts"])
 	r.NotEmpty(card["resources"])
 }
