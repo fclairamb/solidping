@@ -10950,6 +10950,13 @@ components:
             any followed redirect hop whose host differs from the previous
             hop's, failing the check instead of following it; an unknown
             value is a VALIDATION_ERROR),
+            `expectedFinalUrl` (string — absolute http(s) URL the redirect
+            chain must end on, compared after lowercasing scheme and host,
+            dropping default ports and the fragment, and making an empty
+            path "/"; path and query are exact. A mismatch fails the check
+            with the actual URL in `final_url`. Rejected with
+            `followRedirects: false`, or with `redirectHostPolicy`
+            "same-host" and a host different from `url`),
             `httpVersion` (string, default "1.1" and omitted at default — "2"
             forces HTTP/2, h2 over TLS or h2c with prior knowledge over
             http://; "3" forces HTTP/3 over QUIC with no TCP fallback; a

@@ -1106,6 +1106,8 @@
     "redirectHostPolicyAny": "Any host",
     "redirectHostPolicySameHost": "Same host only",
     "redirectHostPolicySameHostHelp": "A redirect to a different host fails the check instead of being followed.",
+    "expectedFinalUrl": "Expected final URL",
+    "expectedFinalUrlHelp": "Where the redirect chain must end. Scheme and host are case-insensitive, default ports and the #fragment are ignored, path and query must match exactly.",
     "httpVersion": "HTTP version",
     "httpVersion11": "HTTP/1.1 (default)",
     "httpVersion2": "HTTP/2",

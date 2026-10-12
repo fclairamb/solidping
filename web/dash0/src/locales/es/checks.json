@@ -1106,6 +1106,8 @@
     "redirectHostPolicyAny": "Cualquier host",
     "redirectHostPolicySameHost": "Solo el mismo host",
     "redirectHostPolicySameHostHelp": "Una redirección a un host diferente hace fallar la comprobación en lugar de seguirla.",
+    "expectedFinalUrl": "URL final esperada",
+    "expectedFinalUrlHelp": "Dónde debe terminar la cadena de redirecciones. Esquema y host no distinguen mayúsculas, los puertos por defecto y el #fragmento se ignoran, la ruta y la consulta deben coincidir exactamente.",
     "httpVersion": "Versión HTTP",
     "httpVersion11": "HTTP/1.1 (predeterminado)",
     "httpVersion2": "HTTP/2",

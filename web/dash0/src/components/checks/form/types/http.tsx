@@ -73,6 +73,9 @@ export interface HttpState {
   // never written to config, matching the server's omit-at-default GetConfig)
   // or "same-host" (refuse a hop whose host differs from the previous one).
   redirectHostPolicy: "any" | "same-host";
+  // URL the redirect chain must end on ("" = not asserted). Only meaningful
+  // with followRedirects on; toConfig drops it otherwise.
+  expectedFinalUrl: string;
   // The HTTP version the target must speak. "1.1" is the default and is never
   // written to config (the server omits it at default too). "3" is refused on
   // a tunneled check: the SSH tunnel only carries TCP.
@@ -216,6 +219,10 @@ export function httpFromConfig(config: CheckConfig): HttpState {
     config.redirectHostPolicy ?? config.redirect_host_policy;
   const redirectHostPolicy: HttpState["redirectHostPolicy"] =
     rawRedirectHostPolicy === "same-host" ? "same-host" : "any";
+  const rawExpectedFinalUrl =
+    config.expectedFinalUrl ?? config.expected_final_url;
+  const expectedFinalUrl =
+    typeof rawExpectedFinalUrl === "string" ? rawExpectedFinalUrl : "";
   // Canonical key is snake_case (the server accepts the camelCase alias on
   // read but always re-emits the snake one), so read both and prefer the
   // canonical spelling.
@@ -232,6 +239,7 @@ export function httpFromConfig(config: CheckConfig): HttpState {
     verifySsl,
     followRedirects,
     redirectHostPolicy,
+    expectedFinalUrl,
     httpVersion: seedHttpVersion(config.httpVersion),
     captureFailureResponse,
     jsonPathAssertions: seedJsonPathAssertions(config),
@@ -295,6 +303,11 @@ export function httpToConfig(state: HttpState): {
   // server's own omit-at-default GetConfig style.
   if (state.redirectHostPolicy === "same-host") {
     cfg.redirectHostPolicy = "same-host";
+  }
+  // The server rejects expectedFinalUrl with redirects off, so the key is
+  // dropped together with the hidden field.
+  if (state.followRedirects && state.expectedFinalUrl.trim() !== "") {
+    cfg.expectedFinalUrl = state.expectedFinalUrl.trim();
   }
   if (state.httpVersion !== "1.1") cfg.httpVersion = state.httpVersion;
   // Written only when opted in, under the canonical snake_case key.
@@ -620,6 +633,7 @@ export function HttpOptionsFields(props: CheckTypeFieldsProps<HttpState>) {
 export function HttpOptionsBody({
   state,
   onChange,
+  errors,
   assertions,
 }: CheckTypeFieldsProps<HttpState> & { assertions: boolean }) {
   const { t } = useTranslation("checks");
@@ -730,6 +744,34 @@ export function HttpOptionsBody({
           {state.redirectHostPolicy === "same-host" && (
             <p className="text-xs text-muted-foreground">
               {t("http.redirectHostPolicySameHostHelp")}
+            </p>
+          )}
+          <Label htmlFor="http-expected-final-url">
+            {t("http.expectedFinalUrl")}
+          </Label>
+          <Input
+            id="http-expected-final-url"
+            type="url"
+            placeholder="https://www.example.com/"
+            value={state.expectedFinalUrl}
+            onChange={(e) =>
+              onChange({ ...state, expectedFinalUrl: e.target.value })
+            }
+            className={cn(
+              getFieldError(errors, "expectedFinalUrl") &&
+                "border-destructive",
+            )}
+            data-testid="check-expected-final-url-input"
+          />
+          <p className="text-xs text-muted-foreground">
+            {t("http.expectedFinalUrlHelp")}
+          </p>
+          {getFieldError(errors, "expectedFinalUrl") && (
+            <p
+              className="text-xs text-destructive"
+              data-testid="check-expected-final-url-error"
+            >
+              {getFieldError(errors, "expectedFinalUrl")}
             </p>
           )}
         </div>
@@ -865,6 +907,8 @@ export function httpOptionsSummary(state: HttpState): {
   if (!state.followRedirects) parts.push("redirects not followed");
   if (state.followRedirects && state.redirectHostPolicy === "same-host")
     parts.push("redirects restricted to same host");
+  if (state.followRedirects && state.expectedFinalUrl.trim() !== "")
+    parts.push("final URL asserted");
   if (state.captureFailureResponse) parts.push("failure response captured");
   if (state.jsonPathAssertions) parts.push("JSON assertions");
   if (state.headerAssertions) parts.push("header assertions");
@@ -900,6 +944,8 @@ export const httpModule: CheckTypeModule<HttpState> = {
     "follow_redirects",
     "redirectHostPolicy",
     "redirect_host_policy",
+    "expectedFinalUrl",
+    "expected_final_url",
     "httpVersion",
     "capture_failure_response",
     "captureFailureResponse",

@@ -157,6 +157,11 @@ type HTTPConfig struct {
 	// fallback to "any".
 	RedirectHostPolicy string `json:"redirectHostPolicy,omitempty"`
 
+	// ExpectedFinalURL asserts where the redirect chain ends: the URL of the
+	// last request sent must equal it after NormalizeFinalURL on both sides.
+	// Empty means no assertion. Requires followRedirects (see ValidateSpec).
+	ExpectedFinalURL string `json:"expectedFinalUrl,omitempty"`
+
 	// HTTPVersion is the HTTP version the target must speak (spec
 	// 2026-10-03-01): "1.1" (the default, never written back), "2" or "3". A
 	// response over any other version fails the check. Validated in
@@ -422,6 +427,16 @@ func (c *HTTPConfig) FromMap(configMap map[string]any) error {
 		c.RedirectHostPolicy = s
 	}
 
+	// Extract ExpectedFinalURL (optional). Shape only here; normalisation and
+	// the cross-field rules are checked in ValidateSpec.
+	if v, key, ok := resolveKey(configMap, "expectedFinalUrl", "expected_final_url"); ok {
+		s, ok := v.(string)
+		if !ok {
+			return checkerdef.NewConfigError(key, "must be a string")
+		}
+		c.ExpectedFinalURL = s
+	}
+
 	// Extract HTTPVersion (optional). A config-as-code manifest naturally
 	// writes `httpVersion: 2` (a YAML number), so numbers are accepted and
 	// spelled back as their shortest decimal form ("1.1", "2", "3"). Value
@@ -629,6 +644,10 @@ func (c *HTTPConfig) addToggleConfig(cfg map[string]any) {
 
 	if c.RedirectHostPolicy != "" && c.RedirectHostPolicy != RedirectHostPolicyAny {
 		cfg["redirectHostPolicy"] = c.RedirectHostPolicy
+	}
+
+	if c.ExpectedFinalURL != "" {
+		cfg["expectedFinalUrl"] = c.ExpectedFinalURL
 	}
 
 	if c.CaptureFailureResponse {

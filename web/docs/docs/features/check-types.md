@@ -36,6 +36,7 @@ https://api.example.com/health
 | Timeout | Request timeout | `30s` |
 | Expected Status | Status code to expect. Any 2xx when unset (`2XX`) | `200`, `2XX` (wildcard) |
 | HTTP version | Protocol the target must answer over (`httpVersion`): `1.1` (default), `2` or `3`. See **Protocol** below | `2` |
+| Expected final URL | URL the redirect chain must end on (`expectedFinalUrl`). See **Redirects** below | `https://www.acme.com/` |
 | Headers | Custom request headers | `Authorization: Bearer token` |
 | Body | Request body (for POST/PUT/PATCH/QUERY) | `{"key": "value"}` |
 | Response assertions | Assert on the response body — see [Response assertions](#response-assertions) below | `bodyAssertions`, `json_path_assertions`, `body_expect` |
@@ -58,6 +59,10 @@ probe opens a fresh one instead of waiting on a stalled connection until the
 operating system gives up on it (up to ~15 minutes). Every probe opens a fresh
 connection and closes it afterwards, so each result includes DNS, connect and
 TLS time whatever the check period (see [Timing breakdown](#http-timing)).
+
+**Redirects:** redirects are followed by default (`followRedirects`, up to 10 hops). Set it to `false` to assert on the first response instead. `redirectHostPolicy: same-host` fails the check when a hop leaves the previous hop's host. Every followed hop is listed in the `redirect_chain` output.
+
+`expectedFinalUrl` asserts where the chain ends, so `http://acme.com` redirecting to a login or parking page no longer reads as up. The match is exact after normalisation: scheme and host are lowercased, `:80` (http) and `:443` (https) are dropped, an empty path becomes `/`, and the fragment is ignored. Path and query are compared as sent (`/x` and `/x/` differ, so do `?a=1&b=2` and `?b=2&a=1`). It is checked before the body assertions. On a mismatch the error reads `expected final URL "...", got "..."` and the raw URL of the last request is in `final_url`. It cannot be combined with `followRedirects: false`, nor with `redirectHostPolicy: same-host` and a different host.
 
 Set `httpVersion` to verify that the target still speaks a newer protocol, for
 example after a CDN, ingress or proxy change:

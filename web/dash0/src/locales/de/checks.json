@@ -1106,6 +1106,8 @@
     "redirectHostPolicyAny": "Jeder Host",
     "redirectHostPolicySameHost": "Nur derselbe Host",
     "redirectHostPolicySameHostHelp": "Eine Weiterleitung zu einem anderen Host lässt die Prüfung fehlschlagen, statt ihr zu folgen.",
+    "expectedFinalUrl": "Erwartete End-URL",
+    "expectedFinalUrlHelp": "Wo die Weiterleitungskette enden muss. Schema und Host sind nicht groß-/kleinschreibungsabhängig, Standardports und #Fragment werden ignoriert, Pfad und Query müssen exakt übereinstimmen.",
     "httpVersion": "HTTP-Version",
     "httpVersion11": "HTTP/1.1 (Standard)",
     "httpVersion2": "HTTP/2",

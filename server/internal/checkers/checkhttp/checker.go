@@ -62,6 +62,10 @@ const (
 	// the request never redirected.
 	outputKeyRedirectChain = "redirect_chain"
 
+	// outputKeyFinalURL is the Output key carrying the raw URL the last
+	// request was sent to, set when an expectedFinalUrl assertion fails.
+	outputKeyFinalURL = "final_url"
+
 	// outputKeyHTTPProtocol is the Output key holding the protocol the
 	// response came over (resp.Proto: "HTTP/1.1", "HTTP/2.0", "HTTP/3.0"),
 	// on every result that got a response, up or down (spec 2026-10-03-01).
@@ -599,6 +603,15 @@ func (c *HTTPChecker) executeRequest(
 		}), nil
 	}
 
+	// Final-URL assertion: where the redirect chain ended. Before the body
+	// blocks so "landed on the login page" is the reported reason rather than
+	// a body mismatch it caused.
+	if cfg.ExpectedFinalURL != "" {
+		if out := checkFinalURL(cfg, resp, method); out != nil {
+			return failed(out), nil
+		}
+	}
+
 	// Compile regex patterns if not already compiled
 	if cfg.BodyPattern != "" && cfg.BodyPatternRegex == nil {
 		regex, err := regexp.Compile(cfg.BodyPattern)
@@ -1075,4 +1088,41 @@ func hostFromURL(raw string) string {
 	}
 
 	return parsed.Hostname()
+}
+
+// checkFinalURL compares the URL of the last request sent (resp.Request.URL)
+// with cfg.ExpectedFinalURL after normalising both. It returns nil on a match,
+// else the failure output.
+func checkFinalURL(cfg *HTTPConfig, resp *http.Response, method string) map[string]any {
+	expected, err := checkconfig.NormalizeFinalURL(cfg.ExpectedFinalURL)
+	if err != nil {
+		return map[string]any{
+			checkerdef.OutputKeyError:      fmt.Sprintf("invalid expectedFinalUrl: %v", err),
+			checkerdef.OutputKeyURL:        cfg.URL,
+			checkerdef.OutputKeyStatusCode: resp.StatusCode,
+			checkerdef.OutputKeyMethod:     method,
+		}
+	}
+
+	rawActual := cfg.URL
+	if resp.Request != nil && resp.Request.URL != nil {
+		rawActual = resp.Request.URL.String()
+	}
+
+	actual, err := checkconfig.NormalizeFinalURL(rawActual)
+	if err != nil {
+		actual = rawActual
+	}
+
+	if actual == expected {
+		return nil
+	}
+
+	return map[string]any{
+		checkerdef.OutputKeyError:      fmt.Sprintf("expected final URL %q, got %q", expected, actual),
+		checkerdef.OutputKeyURL:        cfg.URL,
+		checkerdef.OutputKeyStatusCode: resp.StatusCode,
+		checkerdef.OutputKeyMethod:     method,
+		outputKeyFinalURL:              rawActual,
+	}
 }

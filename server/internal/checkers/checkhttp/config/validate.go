@@ -142,6 +142,10 @@ func ValidateSpec(spec *checkerdef.CheckSpec) error {
 			"must be %q or %q, got %q", RedirectHostPolicyAny, RedirectHostPolicySameHost, cfg.RedirectHostPolicy)
 	}
 
+	if err := validateExpectedFinalURL(cfg); err != nil {
+		return err
+	}
+
 	if err := validateHTTPVersion(cfg, spec.Config); err != nil {
 		return err
 	}
@@ -174,6 +178,37 @@ func validateHTTPVersion(cfg *HTTPConfig, raw map[string]any) error {
 			checkerdef.HTTPVersionConfigKey,
 			"HTTP/3 runs over UDP and an SSH tunnel only carries TCP: use 1.1 or 2, or remove the tunnel",
 		)
+	}
+
+	return nil
+}
+
+// validateExpectedFinalURL checks the `expectedFinalUrl` field: it must
+// normalise, it needs followRedirects (otherwise the final URL is always the
+// check URL), and under same-host it must stay on the check URL's host.
+func validateExpectedFinalURL(cfg *HTTPConfig) error {
+	if cfg.ExpectedFinalURL == "" {
+		return nil
+	}
+
+	expected, err := NormalizeFinalURL(cfg.ExpectedFinalURL)
+	if err != nil {
+		return checkerdef.NewConfigErrorf("expectedFinalUrl", "invalid URL: %v", err)
+	}
+
+	if cfg.SkipRedirects() {
+		return checkerdef.NewConfigError("expectedFinalUrl",
+			"requires followRedirects: with redirects off the final URL is always the check URL")
+	}
+
+	if cfg.SameHostRedirectsOnly() {
+		expectedURL, perr := url.Parse(expected)
+		checkURL, cerr := url.Parse(cfg.URL)
+
+		if perr == nil && cerr == nil && !strings.EqualFold(expectedURL.Host, checkURL.Host) {
+			return checkerdef.NewConfigError("expectedFinalUrl",
+				"host differs from the check URL, which redirectHostPolicy same-host can never reach")
+		}
 	}
 
 	return nil

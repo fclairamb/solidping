@@ -29,6 +29,7 @@ function baseState(overrides: Partial<HttpState> = {}): HttpState {
     verifySsl: true,
     followRedirects: true,
     redirectHostPolicy: "any",
+    expectedFinalUrl: "",
     httpVersion: "1.1",
     captureFailureResponse: false,
     authDirty: false,
@@ -1124,5 +1125,48 @@ describe("httpModule — headerAssertions round-trip", () => {
     });
     expect(saved.headers_pattern).toEqual({ "Content-Type": "text/plain" });
     expect(saved.headerAssertions).toEqual(leaf);
+  });
+});
+
+describe("httpModule — expectedFinalUrl round-trip", () => {
+  it("seeds from the camelCase key", () => {
+    const state = httpModule.fromConfig({
+      url: "https://acme.com",
+      expectedFinalUrl: "https://www.acme.com/",
+    });
+    expect(state.expectedFinalUrl).toBe("https://www.acme.com/");
+  });
+
+  it("seeds from the snake_case alias", () => {
+    const state = httpModule.fromConfig({
+      url: "https://acme.com",
+      expected_final_url: "https://www.acme.com/",
+    });
+    expect(state.expectedFinalUrl).toBe("https://www.acme.com/");
+  });
+
+  it("defaults to empty and is not written", () => {
+    const state = httpModule.fromConfig({ url: "https://acme.com" });
+    expect(state.expectedFinalUrl).toBe("");
+    expect(httpModule.toConfig(state).config).not.toHaveProperty(
+      "expectedFinalUrl",
+    );
+  });
+
+  it("toConfig writes it when redirects are followed", () => {
+    const { config } = httpModule.toConfig(
+      baseState({ expectedFinalUrl: "https://www.acme.com/" }),
+    );
+    expect(config.expectedFinalUrl).toBe("https://www.acme.com/");
+  });
+
+  it("toConfig drops it when redirects are off", () => {
+    const { config } = httpModule.toConfig(
+      baseState({
+        followRedirects: false,
+        expectedFinalUrl: "https://www.acme.com/",
+      }),
+    );
+    expect(config).not.toHaveProperty("expectedFinalUrl");
   });
 });

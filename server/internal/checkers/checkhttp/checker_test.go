@@ -2406,3 +2406,87 @@ func TestHTTPChecker_Execute_DefaultExpectedStatus(t *testing.T) {
 		})
 	}
 }
+
+// TestHTTPChecker_Execute_ExpectedFinalURL covers the final-URL assertion.
+func TestHTTPChecker_Execute_ExpectedFinalURL(t *testing.T) {
+	t.Parallel()
+
+	if version.UserAgent == "" {
+		version.UserAgent = version.DefaultUserAgent()
+	}
+
+	t.Run("redirect lands on expected URL", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+		final, redirector, _ := newRedirectingServers(t)
+
+		result, err := (&HTTPChecker{}).Execute(context.Background(), &HTTPConfig{
+			URL: redirector.URL, ExpectedFinalURL: final.URL,
+		})
+		r.NoError(err)
+		r.Equal(checkerdef.StatusUp, result.Status, result.Output)
+	})
+
+	t.Run("redirect lands elsewhere", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+		final, redirector, _ := newRedirectingServers(t)
+
+		result, err := (&HTTPChecker{}).Execute(context.Background(), &HTTPConfig{
+			URL: redirector.URL, ExpectedFinalURL: redirector.URL,
+		})
+		r.NoError(err)
+		r.Equal(checkerdef.StatusDown, result.Status)
+		msg, _ := result.Output[checkerdef.OutputKeyError].(string)
+		r.Contains(msg, "expected final URL")
+		r.Contains(msg, redirector.URL)
+		r.Contains(msg, final.URL)
+		r.Equal(final.URL, result.Output["final_url"])
+		r.Contains(result.Output, outputKeyRedirectChain)
+	})
+
+	t.Run("no redirect, uppercase scheme matches", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}))
+		t.Cleanup(srv.Close)
+
+		result, err := (&HTTPChecker{}).Execute(context.Background(), &HTTPConfig{
+			URL: srv.URL, ExpectedFinalURL: strings.Replace(srv.URL, "http://", "HTTP://", 1) + "/",
+		})
+		r.NoError(err)
+		r.Equal(checkerdef.StatusUp, result.Status, result.Output)
+	})
+
+	t.Run("no redirect, other URL expected", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+		final, redirector, _ := newRedirectingServers(t)
+
+		result, err := (&HTTPChecker{}).Execute(context.Background(), &HTTPConfig{
+			URL: final.URL, ExpectedFinalURL: redirector.URL,
+		})
+		r.NoError(err)
+		r.Equal(checkerdef.StatusDown, result.Status)
+	})
+
+	t.Run("final URL error wins over body failure", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+		_, redirector, _ := newRedirectingServers(t)
+
+		result, err := (&HTTPChecker{}).Execute(context.Background(), &HTTPConfig{
+			URL: redirector.URL, ExpectedFinalURL: "https://acme.com/", BodyPattern: "never-there",
+		})
+		r.NoError(err)
+		r.Equal(checkerdef.StatusDown, result.Status)
+		r.Contains(result.Output[checkerdef.OutputKeyError], "expected final URL")
+	})
+}

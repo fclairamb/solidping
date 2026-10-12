@@ -114,6 +114,9 @@
     "redirectHostPolicy": {
       "type": "string"
     },
+    "expectedFinalUrl": {
+      "type": "string"
+    },
     "httpVersion": {
       "type": "string",
       "enum": [

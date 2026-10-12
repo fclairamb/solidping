@@ -1106,6 +1106,8 @@
     "redirectHostPolicyAny": "Tout hôte",
     "redirectHostPolicySameHost": "Même hôte uniquement",
     "redirectHostPolicySameHostHelp": "Une redirection vers un hôte différent fait échouer le contrôle au lieu d'être suivie.",
+    "expectedFinalUrl": "URL finale attendue",
+    "expectedFinalUrlHelp": "Où la chaîne de redirections doit aboutir. Schéma et hôte sont insensibles à la casse, les ports par défaut et le #fragment sont ignorés, le chemin et la requête doivent correspondre exactement.",
     "httpVersion": "Version HTTP",
     "httpVersion11": "HTTP/1.1 (par défaut)",
     "httpVersion2": "HTTP/2",
