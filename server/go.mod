@@ -273,6 +273,7 @@ require (
 	github.com/lib/pq v1.12.3
 	github.com/likexian/whois v1.15.7
 	github.com/likexian/whois-parser v1.24.21
+	github.com/lmittmann/tint v1.2.1
 	github.com/mattn/go-sqlite3 v1.14.52
 	github.com/microsoft/go-mssqldb v1.11.2
 	github.com/miekg/dns v1.1.73

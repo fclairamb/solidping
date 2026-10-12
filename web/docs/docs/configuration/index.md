@@ -187,10 +187,20 @@ used, so edits made through the API are preserved across restarts.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SP_LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, `error` |
-| `SP_LOG_FORMAT` | `text` | Output format: `text` (key=value logfmt), `json` (one object per record, for log collectors), `pretty` (colourized, for interactive use) |
-| `LOG_LEVEL` | `info` | Same, but read before the configuration system loads — use it to debug startup itself |
-| `NO_COLOR` | - | Set to any value to disable coloured terminal output ([no-color.org](https://no-color.org/)) |
-| `FORCE_COLOR` | - | Set to any value to force coloured output when the terminal is not detected as a TTY |
+| `LOG_LEVEL` | - | Fallback for `SP_LOG_LEVEL`, used when `SP_LOG_LEVEL` is not set |
+| `SP_LOG_FORMAT` | `auto` | Output format: `auto`, `text` (key=value logfmt), `json` (one object per record, for log collectors), `pretty` (colourized, for people) |
+| `NO_COLOR` | - | Set to any value to disable coloured output ([no-color.org](https://no-color.org/)) |
+| `FORCE_COLOR` | - | Set to any value to force coloured output when neither a terminal nor a container is detected |
+
+`auto` picks the format when the server starts:
+
+- `json` on Kubernetes (`KUBERNETES_SERVICE_HOST` is set). The Helm chart also sets `SP_LOG_FORMAT=json` explicitly.
+- `pretty` when the output is a terminal, or inside a Docker or Podman container (`/.dockerenv` or `/run/.containerenv` exists), so `docker logs` is readable.
+- `text` otherwise.
+
+If you ship Docker logs to a log collector, set `SP_LOG_FORMAT=json`.
+
+`pretty` is coloured on a terminal and in a container. A typo in `SP_LOG_FORMAT` falls back to `auto`.
 
 ### Authentication
 
@@ -359,7 +369,7 @@ SP_GOOGLE_CLIENT_SECRET=your-google-client-secret
 
 # Logging
 SP_LOG_LEVEL=info
-SP_LOG_FORMAT=text
+SP_LOG_FORMAT=auto
 ```
 
 ### Configuration File (config.yml)

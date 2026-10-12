@@ -184,7 +184,7 @@ SP_EMAIL_PASSWORD=smtp-password
 SP_EMAIL_FROM=noreply@example.com
 
 # Logging
-LOG_LEVEL=info
+SP_LOG_LEVEL=info
 ```
 
 Update the systemd service to use the environment file:

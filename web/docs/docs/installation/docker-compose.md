@@ -38,7 +38,7 @@ services:
     environment:
       SP_DB_TYPE: postgres
       SP_DB_URL: postgresql://postgres:postgres@postgres:5432/postgres?sslmode=disable
-      LOG_LEVEL: debug
+      SP_LOG_LEVEL: debug
     volumes:
       - solidping-data:/data
     depends_on:
@@ -97,7 +97,7 @@ services:
       SP_EMAIL_USERNAME: ${SMTP_USERNAME}
       SP_EMAIL_PASSWORD: ${SMTP_PASSWORD}
       SP_EMAIL_FROM: ${SMTP_FROM}
-      LOG_LEVEL: info
+      SP_LOG_LEVEL: info
     volumes:
       - solidping-data:/data
     depends_on:
@@ -125,7 +125,7 @@ SMTP_FROM=noreply@example.com
 # Start in background
 docker-compose up -d
 
-# View logs
+# View logs (coloured "pretty" format by default in a container)
 docker-compose logs -f solidping
 
 # Stop
@@ -134,6 +134,8 @@ docker-compose down
 # Stop and remove volumes (WARNING: deletes data)
 docker-compose down -v
 ```
+
+If you ship the container logs to a log collector, set `SP_LOG_FORMAT: json`. See [Logging](/configuration#logging).
 
 ## With Reverse Proxy (Traefik)
 

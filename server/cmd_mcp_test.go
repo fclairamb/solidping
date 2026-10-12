@@ -55,7 +55,7 @@ func runMCPStdioHelper(raw string) int {
 		return 2
 	}
 
-	setupLogger(config.ParseLogLevel(os.Getenv("LOG_LEVEL")), config.ParseLogFormat(os.Getenv("SP_LOG_FORMAT")))
+	setupLogger(config.LogLevelFromEnv(os.Getenv), config.ParseLogFormat(os.Getenv("SP_LOG_FORMAT")))
 
 	return run(context.Background(), buildRootCommand(), append([]string{"solidping"}, args...))
 }
