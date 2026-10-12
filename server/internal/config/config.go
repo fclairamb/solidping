@@ -1291,8 +1291,10 @@ type AuditConfig struct {
 	// ISO/SOC2 auditor asks for. 0 or negative means "keep forever" and
 	// disables the sweep entirely. SP_AUDIT_RETENTION_DAYS.
 	//
-	// Resolved at job-run time through the established precedence: env →
-	// global DB parameter (audit.retention_days) → this koanf value → default.
+	// Resolved at job-run time: env → global DB parameter (audit.retention_days)
+	// → this koanf value → default. 0 or negative means "keep forever" at every
+	// tier; only an absent or unparseable value falls through. Load defaults
+	// this field to 365, so a 0 here is always deliberate.
 	RetentionDays int `koanf:"retention_days"`
 	// FailedLoginFoldWindowMinutes is how long repeated failed logins from the
 	// same (org, email, IP) fold into a single event. Default 10.
@@ -2862,8 +2864,15 @@ func applyAuditEnv(cfg *AuditConfig) {
 		}
 	}
 
-	if n := envInt("SP_AUDIT_RETENTION_DAYS"); n != 0 {
-		cfg.RetentionDays = n
+	// 0 and negatives are meaningful ("keep forever"), so envInt (which returns
+	// 0 for unset, "0" and garbage alike) cannot be used here.
+	if v := strings.TrimSpace(os.Getenv("SP_AUDIT_RETENTION_DAYS")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.RetentionDays = n
+		} else {
+			slog.Warn("Ignoring unparseable SP_AUDIT_RETENTION_DAYS; keeping current setting",
+				"value", v, "retentionDays", cfg.RetentionDays)
+		}
 	}
 
 	if n := envInt("SP_AUDIT_FAILED_LOGIN_FOLD_WINDOW_MINUTES"); n > 0 {

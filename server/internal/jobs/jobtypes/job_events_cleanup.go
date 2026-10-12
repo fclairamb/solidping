@@ -3,6 +3,9 @@ package jobtypes
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/config"
@@ -81,27 +84,61 @@ func (r *EventsCleanupJobRun) batchLimit() int {
 	return eventsCleanupMaxBatches
 }
 
-// resolveRetentionDays returns how many days of audit history to keep.
+// resolveRetentionDays returns how many days of audit history to keep, or 0
+// when every event must be kept.
 //
-// A value <= 0 means "keep forever" and is an explicit, supported choice — an
-// operator under a legal hold must be able to turn the sweep off without
-// having to remove the job. That is why the koanf legacy tier is passed
-// through rather than being normalized to the default first: config.Load
-// already defaults it to 365, so a 0 here can only have come from someone
-// setting it deliberately.
+// Precedence: SP_AUDIT_RETENTION_DAYS, then the global audit.retention_days
+// DB parameter, then the koanf value, then the 365-day default. At every tier a
+// value <= 0 means "keep forever": an explicit, supported choice for an operator
+// under a legal hold, so it is returned as 0 rather than falling through. Only
+// an absent or unparseable value falls through to the next tier. The koanf tier
+// is deliberate when AppConfig is set, because config.Load already defaults it
+// to 365.
+//
+// This does not use resolveRetentionTier: there 0 is invalid (the performance
+// tiers need >= 1).
 func (r *EventsCleanupJobRun) resolveRetentionDays(ctx context.Context, jctx *jobdef.JobContext) int {
-	legacy := 0
-	if jctx != nil && jctx.AppConfig != nil {
-		legacy = jctx.AppConfig.Audit.RetentionDays
+	return resolveAuditRetentionDays(ctx, jctx, os.LookupEnv)
+}
+
+func resolveAuditRetentionDays(
+	ctx context.Context, jctx *jobdef.JobContext, lookupEnv func(string) (string, bool),
+) int {
+	log := aggregationLogger(jctx)
+
+	if raw, ok := lookupEnv("SP_AUDIT_RETENTION_DAYS"); ok && strings.TrimSpace(raw) != "" {
+		if n, err := strconv.Atoi(strings.TrimSpace(raw)); err == nil {
+			return keepForeverAsZero(n)
+		}
+
+		log.WarnContext(ctx, "Ignoring unparseable SP_AUDIT_RETENTION_DAYS, falling through", "value", raw)
 	}
 
-	if legacy < 0 {
+	if jctx != nil && jctx.DBService != nil {
+		param, err := jctx.DBService.GetSystemParameter(ctx, string(systemconfig.KeyAuditRetentionDays))
+		if err == nil && param != nil {
+			if n, ok := parameterInt(param); ok {
+				return keepForeverAsZero(n)
+			}
+
+			log.WarnContext(ctx, "Ignoring unparseable audit.retention_days parameter, falling through")
+		}
+	}
+
+	if jctx != nil && jctx.AppConfig != nil {
+		return keepForeverAsZero(jctx.AppConfig.Audit.RetentionDays)
+	}
+
+	return config.DefaultAuditRetentionDays
+}
+
+// keepForeverAsZero normalizes any non-positive retention to 0 (keep forever).
+func keepForeverAsZero(n int) int {
+	if n <= 0 {
 		return 0
 	}
 
-	return resolveRetentionTier(ctx, jctx,
-		systemconfig.KeyAuditRetentionDays, "SP_AUDIT_RETENTION_DAYS",
-		legacy, config.DefaultAuditRetentionDays)
+	return n
 }
 
 // Run deletes audit events older than the retention window, then reschedules

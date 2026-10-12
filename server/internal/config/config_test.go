@@ -1985,3 +1985,45 @@ func TestAIConfigValidate(t *testing.T) {
 	r.Error((&AIConfig{Provider: "gemini", Model: "m"}).Validate())
 	r.Error((&AIConfig{Provider: AIProviderOpenAI}).Validate())
 }
+
+func TestApplyAuditEnvRetention(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		value  string
+		set    bool
+		expect int
+	}{
+		{"unset", "", false, 365},
+		{"empty", "", true, 365},
+		{"zero", "0", true, 0},
+		{"negative", "-1", true, -1},
+		{"positive", "30", true, 30},
+		{"garbage", "abc", true, 365},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.set {
+				t.Setenv("SP_AUDIT_RETENTION_DAYS", tc.value)
+			} else {
+				require.NoError(t, os.Unsetenv("SP_AUDIT_RETENTION_DAYS"))
+			}
+
+			cfg := AuditConfig{RetentionDays: 365}
+			applyAuditEnv(&cfg)
+			require.Equal(t, tc.expect, cfg.RetentionDays)
+		})
+	}
+}
+
+func TestAuditRetentionYAMLZeroSurvives(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "config.yml")
+	require.NoError(t, os.WriteFile(path, []byte("audit:\n  retention_days: 0\n"), 0o600))
+
+	k := koanf.New(".")
+	require.NoError(t, k.Load(file.Provider(path), yaml.Parser()))
+
+	cfg := Config{Audit: AuditConfig{RetentionDays: DefaultAuditRetentionDays}}
+	require.NoError(t, k.Unmarshal("", &cfg))
+	require.Equal(t, 0, cfg.Audit.RetentionDays)
+}

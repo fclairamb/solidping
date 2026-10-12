@@ -124,9 +124,10 @@ const (
 	KeyPerfJobsHardDeleteHours ParameterKey = "performance.jobs_hard_delete_hours"
 
 	// KeyAuditRetentionDays is how many days the security/configuration audit
-	// trail is kept (spec 2026-08-21-09). Resolved at job-run time by the same
-	// env → global DB parameter → koanf → default precedence as the perf keys
-	// above (jobtypes.resolveRetentionTier). Default 365; 0 disables the sweep.
+	// trail is kept (spec 2026-08-21-09). Resolved at job-run time by the
+	// env → global DB parameter → koanf → default precedence, but unlike the
+	// perf keys above 0 (or negative) is valid at every tier and keeps the
+	// trail forever. Default 365.
 	KeyAuditRetentionDays ParameterKey = "audit.retention_days"
 
 	// Generic OAuth2/OIDC provider keys (spec 2026-07-08-08, part 1). Global-only,
