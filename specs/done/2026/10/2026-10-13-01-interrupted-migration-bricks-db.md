@@ -39,12 +39,22 @@ The checksum guard (`server/internal/db/migrationguard`, spec 2026-08-18-02) doe
 - `server/internal/db/postgres` tests: the same "fails half way, not recorded, retried" case against the test Postgres.
 - Manual, in the PR body: `docker run` a fresh container, `docker rm -f` it 5 seconds in, start a new one on the same volume, `/api/mgmt/health` is 200.
 
-## To verify
-- That `resolveDatabasePath` and `New` (`sqlite.go:136-240`) are the only places that open or create the file before `Initialize`, including `--reset` in test/demo mode (`sqlite.go:148`) and the `solidping migrate repair` command.
-- Whether `migrator.Init` creates `bun_migrations`/`bun_migration_locks` in the temp file correctly when the file is renamed afterwards (it should: it is just tables in the file).
-- Whether the bun migration lock (`bun_migration_locks`) is used here and could also be left held by a killed process; if so, step 1 needs a stale-lock check too.
-- Postgres: whether any existing migration would fail on a rerun of a fully applied statement in a way that matters, now that a failed migration is retried (only relevant for migrations that failed in the field).
+## To verify (findings, 2026-10-13)
+- **Other places that open or create the file.** `sqlite.New` is the only one. Callers: `main.go` (serve, `migrate`, repair via `openDBService`), `internal/app/server.go`. `--reset` (test/demo) removes the file in `resolveDatabasePath` and then `New` takes the first-boot path, so a reset database is also built atomically. `pkg/cli/kumadb` opens a foreign read-only file, unrelated. `solidping migrate repair` goes through `New` too.
+- **`migrator.Init` and the rename.** Fine: `bun_migrations`, `bun_migration_locks` and the guard's checksum table are ordinary tables inside the file. The first-boot path runs the full `migrate` (guard included) on the temp file, so the renamed file already carries the checksums. The WAL is checkpointed (`wal_checkpoint(TRUNCATE)`) and the pool closed before the rename.
+- **Migration lock.** Not used: `Migrator.Migrate` never calls `Lock`/`Unlock` (only `bun migrate lock` style callers do), and `operations-gotchas.md` already says the migrator takes no lock. No stale-lock check needed.
+- **Postgres rerun.** Not exercised against the 27 shipped files: they are applied whole on every install and none failed in the field that we know of. A rerun of a half-applied migration can answer `already exists`, which is the loud, named startup error the spec wants. Documented in `wiki/runbooks/operations-gotchas.md`.
 
-## Open questions
-- **Backup before upgrades (step 3): keep it?** It costs one extra copy of the database on disk during each upgrade. Recommended: yes, keep only the latest one, and skip it with a log line when free disk space is under twice the database size.
-- **Postgres in scope now?** Recommended: yes for step 1 (one line, same bug), no for steps 2-3 (Postgres installs are run by people who have their own backups, and a fresh Postgres DB is created by the operator, not by SolidPing).
+## Resolved open questions
+
+**Decision (coordinator, 2026-10-13): adopt the recommended answer of every question.**
+- Backup before upgrades (step 3): kept, latest only, skipped with a log line when free disk space is under twice the database size (implemented for unix; other platforms attempt the backup). A failed backup logs a warning and never blocks the upgrade.
+- Postgres: step 1 only (mark on success) plus the "fails half way, not recorded, retried" test; no first-boot or backup logic.
+
+## Implementation notes
+- Step 1: `migrate.WithMarkAppliedOnSuccess(true)` in `sqlite.go` and `postgres.go`.
+- Step 2: `server/internal/db/sqlite/firstboot.go` (`bootstrapDatabase`, `removeInitFiles`), called from `newService` (`New` delegates to it).
+- Step 3: `backupBeforeMigrating` in `firstboot.go`, `diskfree_unix.go` / `diskfree_other.go`; the migrate error names the backup.
+- Step 4: `wiki/conventions/migrations.md` (the repo keeps migration conventions there, no README in the migrations directories).
+- Step 5: `db.DescribeHalfMigrated` (`server/internal/db/halfmigrated.go`), applied to the startup data fixups in `main.go`; runbook entry in `wiki/runbooks/operations-gotchas.md`.
+- Tests: `sqlite/migrate_atomic_test.go`, `postgres/migrate_not_recorded_postgres_test.go`, `db/halfmigrated_test.go`. The manual docker check from the Tests section is left for the PR body.

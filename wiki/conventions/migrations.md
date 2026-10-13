@@ -14,6 +14,23 @@ Read when creating or modifying migration files, tables, columns or indexes.
 - **During a release cycle**: add incremental scratch migrations as usual (`002_add_foo.up.sql`, etc.). At release time, collapse them into a single `NNN_vX_Y_Z.up.sql` and delete the scratch files.
 - The `.down.sql` drops all tables in reverse dependency order (parity only; downs are never run in production).
 
+## Transactions and failure behaviour
+
+- The migrator records a migration as applied only after it succeeded. One that fails or is
+  killed half way stays pending and runs again at the next boot (spec 2026-10-13-01). Write the
+  statements so a rerun is harmless where you can (`if not exists`), since none of the existing
+  27 files runs in a transaction.
+- **New files are named `NNN_vX_Y_Z.tx.up.sql`** (and `.tx.down.sql`) so bun runs the whole
+  file in one transaction and a failure rolls back every statement. The `.tx` suffix does not
+  change the recorded name (bun keys on the numeric prefix).
+- Use the plain `.up.sql` name only when the file needs autocommit: SQLite `PRAGMA foreign_keys`
+  (a no-op inside a transaction; see 005, 009, 010) and PostgreSQL `CREATE INDEX CONCURRENTLY`.
+  Say why in the file header.
+- Never rename the existing files: they are recorded on every install.
+- SQLite builds a brand new database under `solidping.db.init` and renames it when fully
+  migrated; an existing one is copied to `solidping.db.pre-<first pending>.bak` before pending
+  migrations run (latest backup only).
+
 ## SQL conventions
 
 ### General
