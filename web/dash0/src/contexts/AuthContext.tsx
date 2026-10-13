@@ -102,6 +102,8 @@ export interface DeletedOrgSession {
     role: string;
     // See AuthResponse.user.demo.
     demo?: boolean;
+    // See AuthResponse.user.mustChangeEmail.
+    mustChangeEmail?: boolean;
   };
   organization?: { uid: string; slug: string; name?: string };
   organizations?: OrganizationSummary[];
@@ -201,7 +203,8 @@ interface AuthResponse {
     // every login-shaped response and on /auth/me so the dashboard shows the
     // demo banner and hides what the write guard refuses PROACTIVELY, instead
     // of discovering the state by tripping a 403.
-    demo?: boolean;    // Present (and true) only while mustChangePassword is set AND the account
+    demo?: boolean;
+    // Present (and true) only while mustChangePassword is set AND the account
     // still signs in with the default admin address (spec 2026-10-13-02).
     mustChangeEmail?: boolean;
   };
@@ -234,7 +237,8 @@ interface MeResponse {
     // See AuthResponse.user.demo. /auth/me is how a cold page load with a
     // stored token learns it is a demo session, so the banner survives a
     // refresh instead of only appearing right after the login call.
-    demo?: boolean;    // See AuthResponse.user.mustChangeEmail.
+    demo?: boolean;
+    // See AuthResponse.user.mustChangeEmail.
     mustChangeEmail?: boolean;
   };
   // Optional — a zero-org session (a user who belongs to no organization yet)
