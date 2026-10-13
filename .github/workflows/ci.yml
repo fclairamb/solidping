@@ -765,6 +765,14 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # docker-compose.yml publishes Postgres on 55432, which is inside the
+      # kernel's ephemeral range (32768-60999). An outgoing connection made by
+      # an earlier step (bun install, artifact or image download) can get 55432
+      # as its source port, and `docker compose up` then fails with "address
+      # already in use" (run 38346124209). Reserving it keeps it out of the pool.
+      - name: Reserve the Postgres host port
+        run: sudo sysctl -w net.ipv4.ip_local_reserved_ports=55432
+
       - uses: oven-sh/setup-bun@v2
 
       - uses: actions/setup-node@v7
