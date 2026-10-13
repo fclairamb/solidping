@@ -42,6 +42,10 @@ interface User {
   // anything it creates is deleted within the hour — so the UI says so, and
   // hides the actions the server's write guard would refuse anyway.
   isDemo: boolean;
+  // mustChangeEmail is true while the forced first-login screen should also
+  // ask for a real email: the account still signs in with the default admin
+  // address (spec 2026-10-13-02).
+  mustChangeEmail?: boolean;
   // Set only when this session is a super admin viewing the dashboard as this
   // user (spec 2026-09-29-03), as reported by /auth/me. Drives the
   // non-dismissible "viewing as" banner.
@@ -197,7 +201,9 @@ interface AuthResponse {
     // every login-shaped response and on /auth/me so the dashboard shows the
     // demo banner and hides what the write guard refuses PROACTIVELY, instead
     // of discovering the state by tripping a 403.
-    demo?: boolean;
+    demo?: boolean;    // Present (and true) only while mustChangePassword is set AND the account
+    // still signs in with the default admin address (spec 2026-10-13-02).
+    mustChangeEmail?: boolean;
   };
   organization?: {
     uid: string;
@@ -228,7 +234,8 @@ interface MeResponse {
     // See AuthResponse.user.demo. /auth/me is how a cold page load with a
     // stored token learns it is a demo session, so the banner survives a
     // refresh instead of only appearing right after the login call.
-    demo?: boolean;
+    demo?: boolean;    // See AuthResponse.user.mustChangeEmail.
+    mustChangeEmail?: boolean;
   };
   // Optional — a zero-org session (a user who belongs to no organization yet)
   // gets a 200 from /auth/me with no organization. Mirrors the sibling
@@ -336,6 +343,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isOwner: data.user.role === "owner" || data.user.role === "superadmin",
         isSuperAdmin: data.user.role === "superadmin",
         isDemo: Boolean(data.user.demo),
+        mustChangeEmail: Boolean(data.user.mustChangeEmail),
         impersonation: data.impersonation ?? null,
       });
       // Update org from server response. An org-less token clears it: a slug
@@ -434,6 +442,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isOwner: data.user.role === "owner" || data.user.role === "superadmin",
       isSuperAdmin: data.user.role === "superadmin",
       isDemo: Boolean(data.user.demo),
+      mustChangeEmail: Boolean(data.user.mustChangeEmail),
     });
 
     const orgs = data.organizations || [];
@@ -522,6 +531,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isOwner: data.user.role === "owner" || data.user.role === "superadmin",
       isSuperAdmin: data.user.role === "superadmin",
       isDemo: Boolean(data.user.demo),
+      mustChangeEmail: Boolean(data.user.mustChangeEmail),
     });
     setOrganizations(data.organizations || []);
   };
@@ -554,6 +564,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isOwner: data.user.role === "owner" || data.user.role === "superadmin",
       isSuperAdmin: data.user.role === "superadmin",
       isDemo: Boolean(data.user.demo),
+      mustChangeEmail: Boolean(data.user.mustChangeEmail),
     });
     setOrganizations(data.organizations || []);
   };
@@ -586,6 +597,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isOwner: data.user.role === "owner" || data.user.role === "superadmin",
         isSuperAdmin: data.user.role === "superadmin",
         isDemo: Boolean(data.user.demo),
+        mustChangeEmail: Boolean(data.user.mustChangeEmail),
       });
       // Re-fetch organizations from /me (consistent with login)
       try {
@@ -662,6 +674,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           session.user.role === "owner" || session.user.role === "superadmin",
         isSuperAdmin: session.user.role === "superadmin",
         isDemo: Boolean(session.user.demo),
+        mustChangeEmail: Boolean(session.user.mustChangeEmail),
       });
     }
 
@@ -688,6 +701,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isOwner: data.user.role === "owner" || data.user.role === "superadmin",
       isSuperAdmin: data.user.role === "superadmin",
       isDemo: Boolean(data.user.demo),
+      mustChangeEmail: Boolean(data.user.mustChangeEmail),
     });
     setOrganizations(data.organizations || []);
   }, []);
