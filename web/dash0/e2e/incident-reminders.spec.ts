@@ -50,13 +50,15 @@ test.describe("Incident reminders", () => {
       await page.getByTestId("reminder-interval-option-1800").click();
       await expect(select).toContainText("30 min");
 
-      const [request] = await Promise.all([
-        page.waitForRequest(
-          (req) => req.url().includes(`/api/v1/orgs/test/checks/${uid}`) && req.method() === "PATCH",
+      const [response] = await Promise.all([
+        page.waitForResponse(
+          (resp) =>
+            resp.url().includes(`/api/v1/orgs/test/checks/${uid}`) && resp.request().method() === "PATCH",
         ),
         page.getByTestId("check-submit-button").click(),
       ]);
-      expect((request.postDataJSON() as Record<string, unknown>).reminderIntervalSeconds).toBe(1800);
+      expect((response.request().postDataJSON() as Record<string, unknown>).reminderIntervalSeconds).toBe(1800);
+      expect(response.status()).toBe(200);
 
       const stored = await page.request.get(`${API_BASE}/api/v1/orgs/test/checks/${uid}`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -64,7 +66,6 @@ test.describe("Incident reminders", () => {
       expect(((await stored.json()) as Record<string, unknown>).reminderIntervalSeconds).toBe(1800);
 
       await page.goto(`orgs/test/checks/${uid}/edit`);
-      await page.reload();
       await expandSection(page, "section-incident-tracking-trigger");
       await expect(page.getByTestId("reminder-interval-select")).toContainText("30 min");
     } finally {

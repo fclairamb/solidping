@@ -2366,7 +2366,14 @@ export function CheckForm({
               <Label htmlFor="check-reminder-interval" className="text-sm">
                 {t("form.reminderInterval")}
               </Label>
-              <Select value={reminderInterval} onValueChange={setReminderInterval}>
+              <Select
+                value={reminderInterval}
+                onValueChange={(value) => {
+                  // Same Radix "" reset signal as the group select above.
+                  if (value === "") return;
+                  setReminderInterval(value);
+                }}
+              >
                 <SelectTrigger
                   id="check-reminder-interval"
                   className="sm:w-80"

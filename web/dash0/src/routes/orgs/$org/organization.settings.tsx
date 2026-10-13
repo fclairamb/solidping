@@ -633,7 +633,17 @@ function SettingsPage() {
               <Label htmlFor="reminder-interval-default">
                 {t("settings.reminders.label")}
               </Label>
-              <Select value={reminderDefault} onValueChange={setReminderDefault}>
+              <Select
+                value={reminderDefault}
+                onValueChange={(value) => {
+                  // Radix answers "" when the controlled value names an item it
+                  // has not registered yet (the frame the loaded settings land
+                  // in). Every real item is non-empty, so "" is only that reset
+                  // signal and must not overwrite the loaded value.
+                  if (value === "") return;
+                  setReminderDefault(value);
+                }}
+              >
                 <SelectTrigger
                   id="reminder-interval-default"
                   className="max-w-md"
