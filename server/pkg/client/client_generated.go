@@ -4300,6 +4300,9 @@ type ChangePasswordRequest struct {
 	// CurrentPassword The password currently on the account. Required unless the account has no password yet (SSO-only sign-up), in which case it is ignored.
 	CurrentPassword *string `json:"currentPassword,omitempty"`
 
+	// Email Optional. Accepted only while the caller's `mustChangeEmail` is true; must not be the default admin address. Omit it to change only the password.
+	Email *openapi_types.Email `json:"email,omitempty"`
+
 	// NewPassword Must differ from the current password.
 	NewPassword string `json:"newPassword"`
 }
@@ -8959,6 +8962,9 @@ type UserSummary struct {
 	AvatarUrl *string              `json:"avatarUrl,omitempty"`
 	Email     *openapi_types.Email `json:"email,omitempty"`
 
+	// MustChangeEmail True while mustChangePassword is true and the account still signs in with the published default admin address. The forced password screen then also offers to set a real email through the `email` field of POST /auth/change-password. Omitted when false.
+	MustChangeEmail *bool `json:"mustChangeEmail,omitempty"`
+
 	// MustChangePassword True when this account must rotate its password before it can do anything else. The session returned alongside this flag reaches only POST /auth/change-password, GET /auth/me and POST /auth/logout; every other endpoint answers 403 with code PASSWORD_CHANGE_REQUIRED. Omitted when false.
 	MustChangePassword *bool               `json:"mustChangePassword,omitempty"`
 	Name               *string             `json:"name,omitempty"`
@@ -10590,7 +10596,7 @@ type ClientInterface interface {
 
 	// ChangePasswordWithBody Change (or set) the authenticated user's password
 	//
-	// Rotates the caller's password without an emailed reset token. `currentPassword` is required when the account already has a password; for an SSO-only account (`hasPassword: false` on `/api/v1/auth/me`) it is ignored and this call sets the initial password. All of the caller's *other* sessions are revoked; the calling session and any personal access tokens keep working. A confirmation email is sent.
+	// Rotates the caller's password without an emailed reset token. `currentPassword` is required when the account already has a password; for an SSO-only account (`hasPassword: false` on `/api/v1/auth/me`) it is ignored and this call sets the initial password. All of the caller's *other* sessions are revoked; the calling session and any personal access tokens keep working. A confirmation email is sent. While `mustChangeEmail` is true on `/api/v1/auth/me`, the optional `email` is written in the same update as the new password (the confirmation email then goes to the new address); any other caller sending `email` gets 400.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -10599,7 +10605,7 @@ type ClientInterface interface {
 
 	// ChangePassword Change (or set) the authenticated user's password
 	//
-	// Rotates the caller's password without an emailed reset token. `currentPassword` is required when the account already has a password; for an SSO-only account (`hasPassword: false` on `/api/v1/auth/me`) it is ignored and this call sets the initial password. All of the caller's *other* sessions are revoked; the calling session and any personal access tokens keep working. A confirmation email is sent.
+	// Rotates the caller's password without an emailed reset token. `currentPassword` is required when the account already has a password; for an SSO-only account (`hasPassword: false` on `/api/v1/auth/me`) it is ignored and this call sets the initial password. All of the caller's *other* sessions are revoked; the calling session and any personal access tokens keep working. A confirmation email is sent. While `mustChangeEmail` is true on `/api/v1/auth/me`, the optional `email` is written in the same update as the new password (the confirmation email then goes to the new address); any other caller sending `email` gets 400.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -13662,7 +13668,7 @@ func (c *Client) AcceptInvite(ctx context.Context, body AcceptInviteJSONRequestB
 
 // ChangePasswordWithBody Change (or set) the authenticated user's password
 //
-// Rotates the caller's password without an emailed reset token. `currentPassword` is required when the account already has a password; for an SSO-only account (`hasPassword: false` on `/api/v1/auth/me`) it is ignored and this call sets the initial password. All of the caller's *other* sessions are revoked; the calling session and any personal access tokens keep working. A confirmation email is sent.
+// Rotates the caller's password without an emailed reset token. `currentPassword` is required when the account already has a password; for an SSO-only account (`hasPassword: false` on `/api/v1/auth/me`) it is ignored and this call sets the initial password. All of the caller's *other* sessions are revoked; the calling session and any personal access tokens keep working. A confirmation email is sent. While `mustChangeEmail` is true on `/api/v1/auth/me`, the optional `email` is written in the same update as the new password (the confirmation email then goes to the new address); any other caller sending `email` gets 400.
 //
 // Takes any type of body and a specified content type.
 //
@@ -13681,7 +13687,7 @@ func (c *Client) ChangePasswordWithBody(ctx context.Context, contentType string,
 
 // ChangePassword Change (or set) the authenticated user's password
 //
-// Rotates the caller's password without an emailed reset token. `currentPassword` is required when the account already has a password; for an SSO-only account (`hasPassword: false` on `/api/v1/auth/me`) it is ignored and this call sets the initial password. All of the caller's *other* sessions are revoked; the calling session and any personal access tokens keep working. A confirmation email is sent.
+// Rotates the caller's password without an emailed reset token. `currentPassword` is required when the account already has a password; for an SSO-only account (`hasPassword: false` on `/api/v1/auth/me`) it is ignored and this call sets the initial password. All of the caller's *other* sessions are revoked; the calling session and any personal access tokens keep working. A confirmation email is sent. While `mustChangeEmail` is true on `/api/v1/auth/me`, the optional `email` is written in the same update as the new password (the confirmation email then goes to the new address); any other caller sending `email` gets 400.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -35659,7 +35665,7 @@ type ClientWithResponsesInterface interface {
 
 	// ChangePasswordWithBodyWithResponse Change (or set) the authenticated user's password
 	//
-	// Rotates the caller's password without an emailed reset token. `currentPassword` is required when the account already has a password; for an SSO-only account (`hasPassword: false` on `/api/v1/auth/me`) it is ignored and this call sets the initial password. All of the caller's *other* sessions are revoked; the calling session and any personal access tokens keep working. A confirmation email is sent.
+	// Rotates the caller's password without an emailed reset token. `currentPassword` is required when the account already has a password; for an SSO-only account (`hasPassword: false` on `/api/v1/auth/me`) it is ignored and this call sets the initial password. All of the caller's *other* sessions are revoked; the calling session and any personal access tokens keep working. A confirmation email is sent. While `mustChangeEmail` is true on `/api/v1/auth/me`, the optional `email` is written in the same update as the new password (the confirmation email then goes to the new address); any other caller sending `email` gets 400.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -35668,7 +35674,7 @@ type ClientWithResponsesInterface interface {
 
 	// ChangePasswordWithResponse Change (or set) the authenticated user's password
 	//
-	// Rotates the caller's password without an emailed reset token. `currentPassword` is required when the account already has a password; for an SSO-only account (`hasPassword: false` on `/api/v1/auth/me`) it is ignored and this call sets the initial password. All of the caller's *other* sessions are revoked; the calling session and any personal access tokens keep working. A confirmation email is sent.
+	// Rotates the caller's password without an emailed reset token. `currentPassword` is required when the account already has a password; for an SSO-only account (`hasPassword: false` on `/api/v1/auth/me`) it is ignored and this call sets the initial password. All of the caller's *other* sessions are revoked; the calling session and any personal access tokens keep working. A confirmation email is sent. While `mustChangeEmail` is true on `/api/v1/auth/me`, the optional `email` is written in the same update as the new password (the confirmation email then goes to the new address); any other caller sending `email` gets 400.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -39308,6 +39314,8 @@ type ChangePasswordResult struct {
 	JSON401 *Error
 	// JSON404 the response for an HTTP 404 `application/json` response
 	JSON404 *NotFound
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Conflict
 	// JSON429 the response for an HTTP 429 `application/json` response
 	JSON429 *TooManyRequests
 }
@@ -39330,6 +39338,11 @@ func (r ChangePasswordResult) GetJSON401() *Error {
 // GetJSON404 returns the response for an HTTP 404 `application/json` response
 func (r ChangePasswordResult) GetJSON404() *NotFound {
 	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r ChangePasswordResult) GetJSON409() *Conflict {
+	return r.JSON409
 }
 
 // GetJSON429 returns the response for an HTTP 429 `application/json` response
@@ -56065,7 +56078,7 @@ func (c *ClientWithResponses) AcceptInviteWithResponse(ctx context.Context, body
 
 // ChangePasswordWithBodyWithResponse Change (or set) the authenticated user's password
 //
-// Rotates the caller's password without an emailed reset token. `currentPassword` is required when the account already has a password; for an SSO-only account (`hasPassword: false` on `/api/v1/auth/me`) it is ignored and this call sets the initial password. All of the caller's *other* sessions are revoked; the calling session and any personal access tokens keep working. A confirmation email is sent.
+// Rotates the caller's password without an emailed reset token. `currentPassword` is required when the account already has a password; for an SSO-only account (`hasPassword: false` on `/api/v1/auth/me`) it is ignored and this call sets the initial password. All of the caller's *other* sessions are revoked; the calling session and any personal access tokens keep working. A confirmation email is sent. While `mustChangeEmail` is true on `/api/v1/auth/me`, the optional `email` is written in the same update as the new password (the confirmation email then goes to the new address); any other caller sending `email` gets 400.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -56080,7 +56093,7 @@ func (c *ClientWithResponses) ChangePasswordWithBodyWithResponse(ctx context.Con
 
 // ChangePasswordWithResponse Change (or set) the authenticated user's password
 //
-// Rotates the caller's password without an emailed reset token. `currentPassword` is required when the account already has a password; for an SSO-only account (`hasPassword: false` on `/api/v1/auth/me`) it is ignored and this call sets the initial password. All of the caller's *other* sessions are revoked; the calling session and any personal access tokens keep working. A confirmation email is sent.
+// Rotates the caller's password without an emailed reset token. `currentPassword` is required when the account already has a password; for an SSO-only account (`hasPassword: false` on `/api/v1/auth/me`) it is ignored and this call sets the initial password. All of the caller's *other* sessions are revoked; the calling session and any personal access tokens keep working. A confirmation email is sent. While `mustChangeEmail` is true on `/api/v1/auth/me`, the optional `email` is written in the same update as the new password (the confirmation email then goes to the new address); any other caller sending `email` gets 400.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -61987,6 +62000,13 @@ func ParseChangePasswordResult(rsp *http.Response) (*ChangePasswordResult, error
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
 		var dest TooManyRequests
