@@ -86,3 +86,17 @@ describe("PageHeader docs link", () => {
     expect(html).not.toContain('data-testid="docs-link"');
   });
 });
+
+// fclairamb/solidping-business#10, #12: on a 360px phone the actions used to
+// share the row with the title, which was squeezed to one word per line.
+describe("PageHeader on a narrow screen", () => {
+  it("wraps its actions below the title block instead of squeezing it", () => {
+    const html = renderToStaticMarkup(
+      <PageHeader icon={Globe} title="SLOs" description="Track targets" actions={<button>New</button>} />,
+    );
+    const root = classesOf(html, /^<div[^>]*>/);
+    expect(root).toContain("flex-wrap");
+    const textBlock = classesOf(html, /<div class="min-w-0[^>]*>/);
+    expect(textBlock).toEqual(expect.arrayContaining(["flex-1", "basis-40"]));
+  });
+});
