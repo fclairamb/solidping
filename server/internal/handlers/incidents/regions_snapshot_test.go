@@ -80,7 +80,10 @@ func failingOf(t *testing.T, regions map[string]any) []string {
 
 	out := make([]string, 0, len(list))
 	for _, item := range list {
-		out = append(out, item.(string))
+		slug, isString := item.(string)
+		require.True(t, isString)
+
+		out = append(out, slug)
 	}
 
 	return out

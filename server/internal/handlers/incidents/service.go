@@ -1699,6 +1699,24 @@ func (s *Service) tryReopenIncident(
 	return true, s.reopenIncident(ctx, check, result, incident, eval)
 }
 
+// reopenDetails is the incident's details after a relapse: the relapse's
+// last_failure, and a regions snapshot describing the relapse (dropped when
+// the check no longer has several regions).
+func (s *Service) reopenDetails(
+	ctx context.Context, check *models.Check, result *models.Result, incident *models.Incident,
+	eval *regionquorum.Evaluation,
+) models.JSONMap {
+	details := lastFailureDetails(incident.Details, result)
+
+	if regions := s.regionsSnapshot(ctx, check, result, eval); regions != nil {
+		details[regionsDetailsKey] = regions
+	} else {
+		delete(details, regionsDetailsKey)
+	}
+
+	return details
+}
+
 // reopenIncident reopens a previously resolved incident.
 func (s *Service) reopenIncident(
 	ctx context.Context, check *models.Check, result *models.Result, incident *models.Incident,
@@ -1715,12 +1733,7 @@ func (s *Service) reopenIncident(
 	activeState := models.IncidentStateActive
 	newRelapseCount := incident.RelapseCount + 1
 	newFailureCount := incident.FailureCount + 1
-	newDetails := lastFailureDetails(incident.Details, result)
-	if regions := s.regionsSnapshot(ctx, check, result, eval); regions != nil {
-		newDetails[regionsDetailsKey] = regions
-	} else {
-		delete(newDetails, regionsDetailsKey)
-	}
+	newDetails := s.reopenDetails(ctx, check, result, incident, eval)
 	// FlapLevel snapshots the flap count recordFlap just bumped above, so a
 	// reopened incident reflects the escalated level it reopened at (spec
 	// 2026-08-24-05) — mirrors the same assignment in createIncident.

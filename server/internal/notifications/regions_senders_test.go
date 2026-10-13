@@ -321,8 +321,14 @@ func TestWebhookPayloadRegions(t *testing.T) {
 	var decoded map[string]any
 	require.NoError(t, json.Unmarshal(raw, &decoded))
 
-	incident := decoded["data"].(map[string]any)["incident"].(map[string]any)
-	regions := incident["regions"].(map[string]any)
+	data, ok := decoded["data"].(map[string]any)
+	require.True(t, ok)
+
+	incident, ok := data["incident"].(map[string]any)
+	require.True(t, ok)
+
+	regions, ok := incident["regions"].(map[string]any)
+	require.True(t, ok)
 	require.Equal(t, []any{"eu-west", "us-east"}, regions["failingRegions"], "slugs, not labels")
 	require.EqualValues(t, 3, regions["regionCount"])
 	require.EqualValues(t, 2, regions["failQuorum"])

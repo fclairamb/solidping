@@ -234,7 +234,7 @@ func (r *NotificationJobRun) buildPayload(
 		Comment: r.config.Comment,
 		// Non-nil only for `incident.acknowledged`.
 		Acknowledgment: r.config.Acknowledgment,
-		// Which regions saw the failure, labelled at send time (spec
+		// Which regions saw the failure, labeled at send time (spec
 		// 2026-10-12-15). Nil when none is known.
 		Regions: resolveRegionInfo(ctx, jctx, log, incident),
 	}
