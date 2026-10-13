@@ -390,6 +390,12 @@ func (ds *DiscordSender) postThreadReply(
 		reply.Content = dmFollowUpReference(ref)
 	}
 
+	// A reminder repeats the alert, so it carries the alert's buttons: the
+	// incident can be taken from the reminder itself (spec 2026-10-12-16).
+	if payload.EventType == eventTypeIncidentReminder {
+		reply.Components = []discord.Component{discord.IncidentActionRow(payload.Incident.UID)}
+	}
+
 	result, err := client.CreateMessage(ctx, target, reply)
 	if err != nil {
 		return fmt.Errorf("posting discord thread reply: %w", err)
@@ -454,7 +460,8 @@ func dmFollowUpReference(ref threadRef) string {
 func actionable(eventType string) bool {
 	return eventType == eventTypeIncidentCreated ||
 		eventType == eventTypeIncidentEscalated ||
-		eventType == eventTypeIncidentReopened
+		eventType == eventTypeIncidentReopened ||
+		eventType == eventTypeIncidentReminder
 }
 
 // renderDiscordMentions turns the resolved on-call targets into a Discord
@@ -508,6 +515,8 @@ func (ds *DiscordSender) buildEmbed(payload *Payload) discord.Embed {
 		return ds.buildAckEmbed(payload)
 	case eventTypeIncidentUnacknowledged:
 		return ds.buildUnackEmbed(payload)
+	case eventTypeIncidentReminder:
+		return ds.buildReminderEmbed(payload)
 	default:
 		return ds.buildDefaultEmbed(payload)
 	}
@@ -669,6 +678,28 @@ func (ds *DiscordSender) buildIncidentEscalatedEmbed(payload *Payload) discord.E
 	return discord.Embed{
 		Title:       incidentRefPrefix(payload.Incident) + "Incident escalated: " + checkName,
 		Description: "This incident has exceeded the escalation threshold.",
+		Color:       discord.ColorOrange,
+		Fields:      fields,
+		Timestamp:   time.Now().Format(time.RFC3339),
+		Footer:      &discord.Footer{Text: productMonitoring},
+	}
+}
+
+// buildReminderEmbed builds the embed of an incident.reminder: still down,
+// not acknowledged, and which reminder this is.
+func (ds *DiscordSender) buildReminderEmbed(payload *Payload) discord.Embed {
+	checkName := getCheckName(payload.Check)
+
+	fields := []discord.Field{
+		{Name: fieldLabelMonitor, Value: checkName, Inline: true},
+		{Name: mmFieldDuration, Value: formatDuration(time.Since(payload.Incident.StartedAt)), Inline: true},
+	}
+	fields = appendDiscordRegionField(fields, payload)
+
+	return discord.Embed{
+		Title:       reminderTitle(payload),
+		Description: reminderSentence(payload) + ".",
+		URL:         incidentDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Incident),
 		Color:       discord.ColorOrange,
 		Fields:      fields,
 		Timestamp:   time.Now().Format(time.RFC3339),

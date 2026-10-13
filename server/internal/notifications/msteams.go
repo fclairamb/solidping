@@ -202,6 +202,8 @@ func (s *MSTeamsSender) eventTitleAndColor(payload *Payload, checkName string) (
 	case eventTypeIncidentUnacknowledged:
 		// Attention, not accent: the incident is unowned and paging again.
 		return unackTitle(payload), msTeamsColorAttention
+	case eventTypeIncidentReminder:
+		return reminderTitle(payload), msTeamsColorAttention
 	default:
 		return "[UPDATE] " + checkName, ""
 	}
@@ -237,6 +239,12 @@ func (s *MSTeamsSender) buildFacts(payload *Payload, checkName string) []msTeams
 		}
 
 		return facts
+	}
+
+	if payload.EventType == eventTypeIncidentReminder {
+		facts = append(facts, msTeamsFact{Title: fieldLabelStatus, Value: reminderSentence(payload)})
+
+		return appendMSTeamsRegionFact(facts, payload)
 	}
 
 	if payload.EventType == eventTypeIncidentResolved {

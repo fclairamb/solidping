@@ -34,7 +34,7 @@ const unsubscribeTokenTTL = 90 * 24 * time.Hour
 func canAckEvent(eventType string) bool {
 	switch eventType {
 	case eventTypeIncidentCreated, eventTypeIncidentEscalated, eventTypeIncidentReopened,
-		eventTypeIncidentUnacknowledged:
+		eventTypeIncidentUnacknowledged, eventTypeIncidentReminder:
 		return true
 	default:
 		return false
@@ -51,7 +51,7 @@ func isModeledIncidentEvent(eventType string) bool {
 	switch eventType {
 	case eventTypeIncidentCreated, eventTypeIncidentResolved, eventTypeIncidentEscalated,
 		eventTypeIncidentReopened, eventTypeIncidentComment, eventTypeIncidentAcknowledged,
-		eventTypeIncidentUnacknowledged:
+		eventTypeIncidentUnacknowledged, eventTypeIncidentReminder:
 		return true
 	default:
 		return false
@@ -108,6 +108,9 @@ const (
 	// it the ack announcement stands forever and — worse — the incident's own
 	// alert card in Slack/Discord keeps asserting an ownership nobody has.
 	eventTypeIncidentUnacknowledged = "incident.unacknowledged"
+	// eventTypeIncidentReminder re-notifies an incident that is still open
+	// and unacknowledged (spec 2026-10-12-16).
+	eventTypeIncidentReminder = "incident.reminder"
 )
 
 // incidentTemplateForEvent maps an event type to its embedded template name.
@@ -130,6 +133,8 @@ func incidentTemplateForEvent(eventType string) (string, bool) {
 		return "incident-acknowledged.html", true
 	case eventTypeIncidentUnacknowledged:
 		return "incident-unacknowledged.html", true
+	case eventTypeIncidentReminder:
+		return "incident-reminder.html", true
 	default:
 		return "", false
 	}
@@ -690,6 +695,10 @@ func (s *EmailSender) buildIncidentViewModel(
 		payload.EventType == eventTypeIncidentUnacknowledged {
 		viewModel["AckActor"] = ackActor(payload.Acknowledgment)
 		viewModel["AckVia"] = ackViaLabel(payload.Acknowledgment)
+	}
+
+	if payload.EventType == eventTypeIncidentReminder {
+		viewModel["ReminderText"] = reminderSentence(payload)
 	}
 
 	if payload.Incident.AcknowledgedAt != nil {

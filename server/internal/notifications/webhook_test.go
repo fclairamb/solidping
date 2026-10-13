@@ -708,3 +708,26 @@ func TestWebhookSender_Send_RelapseIncludesRecoveryPeriod(t *testing.T) {
 	r.Equal(300, *env.Data.Incident.RecoveryPeriodSeconds)
 	r.Equal(2, env.Data.Incident.RelapseCount)
 }
+
+// A reminder carries its number as data.incident.reminderCount; every other
+// event omits the field, so existing receivers see the same payload.
+func TestWebhookPayloadCarriesTheReminderCount(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	sender := &WebhookSender{}
+	payload := reminderPayload(models.ConnectionTypeWebhook, nil)
+
+	out := sender.buildPayload(payload)
+	r.Equal("incident.reminder", out.Type)
+	r.Equal(3, out.Data.Incident.ReminderCount)
+
+	raw, err := json.Marshal(out)
+	r.NoError(err)
+	r.Contains(string(raw), `"reminderCount":3`)
+
+	payload.EventType = eventTypeIncidentCreated
+	raw, err = json.Marshal(sender.buildPayload(payload))
+	r.NoError(err)
+	r.NotContains(string(raw), "reminderCount")
+}

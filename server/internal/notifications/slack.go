@@ -75,6 +75,10 @@ func (s *SlackSender) Send(ctx context.Context, jctx *jobdef.JobContext, payload
 // requiresExistingThread reports whether an event may ONLY be posted as a
 // reply under an already-stored incident thread.
 //
+// A reminder (spec 2026-10-12-16) is a repeat of the alert, so it belongs
+// under it; it is broadcast to the channel too (see postNewMessage), which is
+// what keeps it from being missed in a thread nobody opens.
+//
 // Resolved/reopened have no original message to update or thread under without
 // one, so a standalone top-level "resolved" is never the right output — it
 // would be a context-free orphan. This bounds the blast radius of any
@@ -94,7 +98,8 @@ func requiresExistingThread(eventType string) bool {
 		eventType == eventTypeIncidentReopened ||
 		eventType == eventTypeIncidentComment ||
 		eventType == eventTypeIncidentAcknowledged ||
-		eventType == eventTypeIncidentUnacknowledged
+		eventType == eventTypeIncidentUnacknowledged ||
+		eventType == eventTypeIncidentReminder
 }
 
 // parseSettings extracts and validates Slack settings from the payload.
@@ -141,6 +146,9 @@ func (s *SlackSender) postNewMessage(
 			opts.ThreadTS = ts
 		}
 	}
+
+	// A thread-only reminder is easy to miss: broadcast it to the channel.
+	opts.ReplyBroadcast = payload.EventType == eventTypeIncidentReminder
 
 	result, err := client.PostMessage(ctx, opts)
 	if err != nil {
@@ -221,6 +229,8 @@ func (s *SlackSender) buildMessage(payload *Payload) *slack.MessageResponse {
 		return s.buildAckThreadReply(payload)
 	case eventTypeIncidentUnacknowledged:
 		return s.buildUnackThreadReply(payload)
+	case eventTypeIncidentReminder:
+		return s.buildReminderThreadReply(payload)
 	default:
 		return s.buildSimpleMessage(payload)
 	}
@@ -655,6 +665,34 @@ func (s *SlackSender) buildAckThreadReply(payload *Payload) *slack.MessageRespon
 	)
 
 	return &slack.MessageResponse{Text: text}
+}
+
+// buildReminderThreadReply builds the reminder posted under the incident's
+// thread (and broadcast to the channel): how long it has been down, that
+// nobody has it, and the same buttons as the alert so it can be taken from
+// right there.
+func (s *SlackSender) buildReminderThreadReply(payload *Payload) *slack.MessageResponse {
+	checkName := getCheckName(payload.Check)
+	checkURL := checkDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Check)
+	incidentURL := incidentDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Incident)
+
+	text := fmt.Sprintf(
+		":alarm_clock: %s%s — %s.",
+		incidentRefLink(payload.Incident, incidentURL), checkNameLink(checkURL, incidentURL, checkName, payload.Incident),
+		reminderSentence(payload),
+	)
+
+	if line := RegionLine(payload); line != "" {
+		text += "\n" + line
+	}
+
+	return &slack.MessageResponse{
+		Text: text,
+		Blocks: []slack.Block{
+			{Type: slack.BlockTypeSection, Text: &slack.Text{Type: slack.BlockTypeMrkdwn, Text: text}},
+			s.buildIncidentActionButtons(payload.Incident.UID),
+		},
+	}
 }
 
 // buildUnackThreadReply builds the retraction posted under the incident's

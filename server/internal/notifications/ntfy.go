@@ -165,6 +165,10 @@ func (s *NtfySender) buildContent(
 	checkName := getCheckName(payload.Check)
 	priority := s.getPriority(settings, payload.EventType)
 
+	if payload.EventType == eventTypeIncidentReminder {
+		return reminderTitle(payload), reminderPlainBody(payload), priority, "alarm_clock"
+	}
+
 	var title, body, tags string
 
 	switch payload.EventType {

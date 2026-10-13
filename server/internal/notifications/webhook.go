@@ -90,6 +90,10 @@ type WebhookIncident struct {
 	// incident opened (or reopened) and refreshed on escalation. Omitted when
 	// no region is known, so existing receivers see the same payload.
 	Regions *WebhookRegions `json:"regions,omitempty"`
+	// ReminderCount is the number of this reminder (1 for the first) on an
+	// `incident.reminder` (spec 2026-10-12-16). Omitted on every other event,
+	// so existing receivers see the same payload.
+	ReminderCount int `json:"reminderCount,omitempty"`
 }
 
 // WebhookRegions is the regions block of a webhook incident. FailingRegions
@@ -429,6 +433,10 @@ func (s *WebhookSender) buildPayload(payload *Payload) WebhookPayload {
 		FailureCount:   payload.Incident.FailureCount,
 		RelapseCount:   payload.Incident.RelapseCount,
 		ResolutionType: payload.Incident.ResolutionType,
+	}
+
+	if payload.EventType == eventTypeIncidentReminder {
+		incident.ReminderCount = payload.ReminderSeq
 	}
 
 	if info := payload.Regions; info != nil && len(info.Failing) > 0 {

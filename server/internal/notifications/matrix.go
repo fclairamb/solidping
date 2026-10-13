@@ -278,6 +278,9 @@ func (s *MatrixSender) titleAndLines(payload *Payload) (string, []string) {
 	case eventTypeIncidentUnacknowledged:
 		title = unackTitle(payload)
 		lines = []string{unackHeadline(payload) + ".", unackCallToAction}
+	case eventTypeIncidentReminder:
+		title = reminderTitle(payload)
+		lines = s.reminderLines(payload)
 	default:
 		title = "[UPDATE] " + checkName
 		lines = []string{"An incident update occurred for " + checkName}
@@ -312,6 +315,14 @@ func (s *MatrixSender) resolvedLines(payload *Payload, checkName string) []strin
 	}
 
 	return lines
+}
+
+// reminderLines is the body of an incident.reminder (spec 2026-10-12-16).
+func (s *MatrixSender) reminderLines(payload *Payload) []string {
+	return []string{
+		reminderSentence(payload) + ".",
+		"Cause: " + getFailureReason(payload.Incident),
+	}
 }
 
 func (s *MatrixSender) escalatedLines(payload *Payload, checkName string) []string {

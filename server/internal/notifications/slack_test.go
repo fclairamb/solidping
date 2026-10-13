@@ -2,6 +2,7 @@ package notifications
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"strings"
@@ -3172,4 +3173,68 @@ func TestCommentAuthor_FallsBackToNeutralLabel(t *testing.T) {
 	r.Equal("Someone", commentAuthor(&CommentInfo{Text: "x"}))
 	r.Equal("Ada", commentAuthor(&CommentInfo{AuthorName: " Ada ", Text: "x"}))
 	r.Empty(commentText(nil))
+}
+
+// reminderPayload builds a representative `incident.reminder`: open for
+// 1 h 15 min, unacknowledged, third reminder (spec 2026-10-12-16).
+func reminderPayload(connType models.ConnectionType, settings models.JSONMap) *Payload {
+	payload := ackPayload(connType, settings, nil)
+	payload.EventType = eventTypeIncidentReminder
+	payload.Incident.AcknowledgedAt = nil
+	payload.Incident.StartedAt = time.Now().Add(-75 * time.Minute)
+	payload.ReminderSeq = 3
+
+	return payload
+}
+
+// A reminder is a thread reply under the alert, broadcast to the channel so it
+// is not missed, and it carries the alert's Acknowledge button.
+func TestSlackReminderIsABroadcastThreadReplyWithTheAckButton(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	r.True(requiresExistingThread(eventTypeIncidentReminder),
+		"a reminder must never post top-level and claim the incident thread")
+
+	fake := newSlackFake(t)
+	payload := reminderPayload(models.ConnectionTypeSlack, models.JSONMap{
+		"access_token": "xoxb-test", "channel_id": "C1",
+	})
+
+	sender := &SlackSender{}
+	r.NoError(sender.postNewMessage(t.Context(), &jobdef.JobContext{}, fake.client(), payload, "C1",
+		"incidents/"+payload.Incident.UID+"/slack/thread", slackThreadEntry()))
+
+	post := fake.find("chat.postMessage")
+	r.NotNil(post)
+	r.Equal("1700000000.000100", post.Body["thread_ts"])
+	r.Equal(true, post.Body["reply_broadcast"], "a reminder is broadcast to the channel")
+
+	text, ok := post.Body["text"].(string)
+	r.True(ok)
+	r.Contains(text, "Still down after 1 h 15 min, not acknowledged (reminder 3)")
+
+	rendered, err := json.Marshal(post.Body)
+	r.NoError(err)
+	r.Contains(string(rendered), "acknowledge_incident")
+
+	// Positive control: a comment reply is not broadcast.
+	comment := newSlackFake(t)
+	commentPayload := reminderPayload(models.ConnectionTypeSlack, nil)
+	commentPayload.EventType = eventTypeIncidentComment
+	commentPayload.Comment = &CommentInfo{Text: "looking", AuthorName: "alice"}
+	r.NoError(sender.postNewMessage(t.Context(), &jobdef.JobContext{}, comment.client(), commentPayload, "C1",
+		"incidents/x/slack/thread", slackThreadEntry()))
+	r.NotContains(comment.find("chat.postMessage").Body, "reply_broadcast")
+}
+
+func TestReminderDurationWording(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	r.Equal("15 min", reminderDuration(15*time.Minute))
+	r.Equal("1 h", reminderDuration(time.Hour))
+	r.Equal("1 h 15 min", reminderDuration(75*time.Minute))
+	r.Equal("2 d", reminderDuration(48*time.Hour))
+	r.Equal("1 d 3 h", reminderDuration(27*time.Hour+10*time.Minute))
 }

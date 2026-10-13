@@ -196,6 +196,8 @@ func (s *MattermostSender) eventColorAndTitle(payload *Payload, checkName string
 		return mattermostColorBlue, ":white_check_mark: [ACKNOWLEDGED] " + checkName
 	case eventTypeIncidentUnacknowledged:
 		return mattermostColorOrange, ":warning: [UNACKNOWLEDGED] " + checkName
+	case eventTypeIncidentReminder:
+		return mattermostColorOrange, ":alarm_clock: [STILL DOWN] " + checkName
 	default:
 		return mattermostColorOrange, "[UPDATE] " + checkName
 	}
@@ -243,7 +245,7 @@ func (s *MattermostSender) buildEventFields(payload *Payload, checkName string) 
 		}
 
 		if payload.EventType == eventTypeIncidentUnacknowledged {
-			fields = append(fields, mattermostField{Short: false, Title: "Status", Value: unackCallToAction})
+			fields = append(fields, mattermostField{Short: false, Title: fieldLabelStatus, Value: unackCallToAction})
 		}
 
 		return fields
@@ -254,6 +256,10 @@ func (s *MattermostSender) buildEventFields(payload *Payload, checkName string) 
 		{Short: true, Title: "Type", Value: payload.Check.Type},
 		{Short: false, Title: mmFieldCause, Value: getFailureReason(payload.Incident)},
 		{Short: true, Title: mmFieldFailureCount, Value: strconv.Itoa(payload.Incident.FailureCount)},
+	}
+
+	if payload.EventType == eventTypeIncidentReminder {
+		fields = append(fields, mattermostField{Short: false, Title: fieldLabelStatus, Value: reminderSentence(payload)})
 	}
 
 	if payload.EventType == eventTypeIncidentReopened {

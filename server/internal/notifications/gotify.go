@@ -172,6 +172,9 @@ func (s *GotifySender) buildMessage(settings *gotifySettings, payload *Payload) 
 	case eventTypeIncidentUnacknowledged:
 		title = unackTitle(payload)
 		body = unackPlainBody(payload)
+	case eventTypeIncidentReminder:
+		title = reminderTitle(payload)
+		body = reminderPlainBody(payload)
 	default:
 		title = "[UPDATE] " + checkName
 		body = "An incident update occurred for " + checkName

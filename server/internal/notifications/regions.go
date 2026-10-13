@@ -19,10 +19,6 @@ const (
 	firstResultDetailsKey = "first_result"
 	lastFailureDetailsKey = "last_failure"
 	snapshotRegionKey     = "region"
-
-	// eventTypeIncidentReminder is the reminder event (spec 2026-10-16). Kept
-	// as a literal here so the region line is ready for it.
-	eventTypeIncidentReminder = "incident.reminder"
 )
 
 // RegionLabel is how a region is shown to a human: the dashboard's
