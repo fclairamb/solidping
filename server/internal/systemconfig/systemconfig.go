@@ -1568,7 +1568,7 @@ func (s *Service) ensureJWTSecret(ctx context.Context) error {
 	}
 
 	// Check if set to something other than the default
-	if s.config.Auth.JWTSecret != "" && s.config.Auth.JWTSecret != "change-me-in-production" {
+	if s.config.Auth.JWTSecret != "" && s.config.Auth.JWTSecret != config.DefaultJWTSecret {
 		return nil
 	}
 

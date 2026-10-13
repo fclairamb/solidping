@@ -31,7 +31,7 @@ SP_AUTH_JWT_SECRET=your-secure-random-secret-at-least-32-chars
 ```
 
 :::warning Production
-Always set `SP_AUTH_JWT_SECRET` in production. If left unset, a random secret is generated on each restart, invalidating all existing sessions.
+Always set `SP_AUTH_JWT_SECRET` in production. If left unset, a random secret is generated once and stored in the database, so it survives restarts. Setting it explicitly keeps it out of the database and lets you rotate it.
 :::
 
 ### Password Hashing

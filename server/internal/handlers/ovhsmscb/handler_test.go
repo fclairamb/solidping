@@ -2,6 +2,9 @@ package ovhsmscb
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -250,6 +253,81 @@ func TestResolveToken(t *testing.T) {
 	r.NotEqual(first, ResolveToken(rotated), "rotating the JWT secret must rotate the URL")
 
 	r.Empty(ResolveToken(&config.Config{}))
+
+	for _, secret := range []string{config.DefaultJWTSecret, "  " + config.DefaultJWTSecret + " "} {
+		public := &config.Config{}
+		public.Auth.JWTSecret = secret
+		r.Empty(ResolveToken(public), "the public default secret must never yield a token")
+	}
+}
+
+func hmacToken(secret string) string {
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte("solidping:ovhsms:dlr"))
+
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+// TestHandleDLRTokenSources checks that the token ResolveToken yields is the
+// one the handler accepts, and that no other source is.
+func TestHandleDLRTokenSources(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		explicit  string
+		jwtSecret string
+		candidate func(resolved string) string
+		wantCode  int
+		wantWrite bool
+	}{
+		{"explicit token", "explicit-tok", "", func(string) string { return "explicit-tok" }, http.StatusNoContent, true},
+		{
+			"explicit wins over jwt-derived", "explicit-tok", "jwt-secret",
+			func(string) string { return hmacToken("jwt-secret") }, http.StatusNotFound, false,
+		},
+		{
+			"derived from random secret", "", "random-secret-1",
+			func(resolved string) string { return resolved }, http.StatusNoContent, true,
+		},
+		{
+			"derived from another secret", "", "random-secret-1",
+			func(string) string { return hmacToken("random-secret-2") }, http.StatusNotFound, false,
+		},
+		{
+			"public default secret", "", config.DefaultJWTSecret,
+			func(string) string { return hmacToken(config.DefaultJWTSecret) }, http.StatusNotFound, false,
+		},
+		{
+			"explicit token with spaces", "  padded-tok  ", "",
+			func(string) string { return "padded-tok" }, http.StatusNoContent, true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := &config.Config{}
+			cfg.SMS.OVH.DLRToken = tt.explicit
+			cfg.Auth.JWTSecret = tt.jwtSecret
+
+			resolved := ResolveToken(cfg)
+			env := setupDLR(t, resolved)
+
+			rec := env.get(t, "/api/v1/integrations/ovhsms/dlr/"+tt.candidate(resolved)+"?id=424242&ptt=4")
+			require.Equal(t, tt.wantCode, rec.Code)
+
+			if tt.wantWrite {
+				require.Contains(t, env.deliveryBody(t), "delivered")
+			} else {
+				require.Empty(t, rec.Body.String())
+				require.Empty(t, env.deliveryBody(t))
+			}
+		})
+	}
+
+	require.Equal(t, "ff757c366ba6", hmacToken(config.DefaultJWTSecret)[:12])
 }
 
 func TestCallbackURL(t *testing.T) {

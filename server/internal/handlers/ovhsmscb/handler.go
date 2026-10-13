@@ -58,7 +58,7 @@ func ResolveToken(cfg *config.Config) string {
 	}
 
 	secret := strings.TrimSpace(cfg.Auth.JWTSecret)
-	if secret == "" {
+	if secret == "" || secret == config.DefaultJWTSecret {
 		return ""
 	}
 

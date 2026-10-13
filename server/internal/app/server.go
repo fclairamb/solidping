@@ -196,8 +196,11 @@ var docsFiles embed.FS
 // Server is the HTTP server for the SolidPing application.
 type Server struct {
 	dbService db.Service
-	jobSvc    jobsvc.Service
-	services  *services.Registry
+	// instanceSMSSender is the instance-level SMS sender (nil when unconfigured),
+	// kept for configureOVHDeliveryCallback.
+	instanceSMSSender smssvc.Sender
+	jobSvc            jobsvc.Service
+	services          *services.Registry
 	// aiChecks authors and repairs AI-written js checks (spec 2026-10-03-07).
 	aiChecks *aichecks.Service
 	router   *httpx.Router
@@ -515,17 +518,9 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		dbService, credSvc, instanceSMSSender, instanceVoiceCaller, cfg.SMS.Sender,
 	)
 
-	// OVH has no per-job callback field: delivery receipts only arrive if the
-	// SMS account's service-level `callBack` points back here. Register it at
-	// startup, best-effort — an operator can set the same URL in the OVH
-	// control panel, and losing receipts must never stop the process from
-	// booting and paging people.
-	if err := smssvc.ConfigureOVHDeliveryCallback(
-		ctx, instanceSMSSender, ovhsmscb.CallbackURL(cfg.Server.BaseURL, ovhsmscb.ResolveToken(cfg)),
-	); err != nil {
-		slog.WarnContext(ctx, "could not register the OVH SMS delivery callback; "+
-			"set it manually on the SMS account if you want delivery receipts", "error", err)
-	}
+	// The OVH delivery-receipt callback is NOT registered here: its URL carries
+	// the JWT secret derived token and the base URL, which the system-config
+	// overlay rewrites. See configureOVHDeliveryCallback (InitializeSystemConfig).
 
 	// Create auth service. The entitlements service gates SSO membership
 	// caps inside JoinOrgViaLogin (every OAuth/SAML/LDAP callback) and inside
@@ -551,6 +546,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		customDomainCache: newCustomDomainCache(customDomainCacheTTL),
 		embedOrigins:      newEmbedOriginsCache(embedOriginsCacheTTL),
 		dbFault:           dbfault.NewLatch(slog.Default()),
+		instanceSMSSender: instanceSMSSender,
 	}
 
 	return server, nil
@@ -2289,7 +2285,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// high-entropy path token; an unknown token 404s. The route is registered
 	// unconditionally so a token rotation needs no restart-order coordination —
 	// the handler itself refuses every request while no token is configured.
-	ovhSMSHandler := ovhsmscb.NewHandler(s.dbService, ovhsmscb.ResolveToken(s.config))
+	ovhSMSHandler := ovhsmscb.NewHandler(s.dbService, s.ovhDLRToken())
 	ovhSMSIntegration := api.NewGroup("/integrations/ovhsms")
 	ovhSMSIntegration.GET(ovhsmscb.DLRPath, ovhSMSHandler.HandleDLR)
 	ovhSMSIntegration.POST(ovhsmscb.DLRPath, ovhSMSHandler.HandleDLR)
@@ -4302,6 +4298,10 @@ func (s *Server) InitializeSystemConfig(ctx context.Context, cfg *config.Config)
 	// Log the resolved /metrics scrape-token state now that cfg carries the
 	// overlaid metrics.scrape_token system parameter (spec 2026-09-25-25).
 	logMetricsScrapeTokenState(ctx, cfg)
+
+	// Register the OVH delivery-receipt URL now that the JWT secret and base
+	// URL are final.
+	s.configureOVHDeliveryCallback(ctx)
 
 	return nil
 }
