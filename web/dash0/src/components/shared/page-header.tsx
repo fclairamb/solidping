@@ -39,7 +39,10 @@ export function PageHeader({
   docsHref,
 }: PageHeaderProps) {
   return (
-    <div className={cn("flex items-start gap-3", className)}>
+    // flex-wrap: on a phone the actions (a primary button plus extras) cannot
+    // share the row with the title block without crushing it to one word per
+    // line, so they drop below it instead.
+    <div className={cn("flex flex-wrap items-start gap-3", className)}>
       <div
         data-slot="page-header-tile"
         data-tone={tone}
@@ -51,7 +54,7 @@ export function PageHeader({
       >
         <Icon className="h-5 w-5" />
       </div>
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 basis-40">
         <h1 className="text-2xl font-bold tracking-[-0.025em]">{title}</h1>
         {description ? (
           <p className="mt-1 text-sm text-muted-foreground">{description}</p>
