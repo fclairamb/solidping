@@ -11141,6 +11141,18 @@ components:
               description: >-
                 The status that the check transitioned to. STALE means "no
                 data": no real result for max(3 × period, 5 min).
+        reminderIntervalSeconds:
+          type: integer
+          nullable: true
+          description: >-
+            Re-notify the check's channels every this many seconds while an
+            incident stays open and unacknowledged (`incident.reminder`).
+            `null` inherits the organization default, `0` turns reminders off,
+            otherwise 900 to 86400 (15 minutes to 24 hours). Any other value is
+            a `VALIDATION_ERROR`.
+            Always present; `null` means the check inherits the organization
+            default.
+          example: 3600
         tracerouteOnFailure:
           type: string
           enum: [inherit, "on", "off"]
@@ -11529,6 +11541,17 @@ components:
       type: object
       required: [config]
       properties:
+        reminderIntervalSeconds:
+          type: integer
+          nullable: true
+          description: >-
+            Re-notify the check's channels every this many seconds while an
+            incident stays open and unacknowledged (`incident.reminder`).
+            `null` inherits the organization default, `0` turns reminders off,
+            otherwise 900 to 86400 (15 minutes to 24 hours). Any other value is
+            a `VALIDATION_ERROR`.
+            Omit or send `null` to inherit the organization default.
+          example: 3600
         tracerouteOnFailure:
           type: string
           enum: [inherit, "on", "off"]
@@ -11712,6 +11735,18 @@ components:
     UpdateCheckRequest:
       type: object
       properties:
+        reminderIntervalSeconds:
+          type: integer
+          nullable: true
+          description: >-
+            Re-notify the check's channels every this many seconds while an
+            incident stays open and unacknowledged (`incident.reminder`).
+            `null` inherits the organization default, `0` turns reminders off,
+            otherwise 900 to 86400 (15 minutes to 24 hours). Any other value is
+            a `VALIDATION_ERROR`.
+            Omit to leave unchanged; `null` puts the check back on the
+            organization default.
+          example: 3600
         tracerouteOnFailure:
           type: string
           enum: [inherit, "on", "off"]
@@ -11865,6 +11900,18 @@ components:
       type: object
       required: [config]
       properties:
+        reminderIntervalSeconds:
+          type: integer
+          nullable: true
+          description: >-
+            Re-notify the check's channels every this many seconds while an
+            incident stays open and unacknowledged (`incident.reminder`).
+            `null` inherits the organization default, `0` turns reminders off,
+            otherwise 900 to 86400 (15 minutes to 24 hours). Any other value is
+            a `VALIDATION_ERROR`.
+            Sent explicitly by import/apply: `null` moves a check back to the
+            organization default; omit to leave unchanged.
+          example: 3600
         tracerouteOnFailure:
           type: string
           enum: [inherit, "on", "off"]
@@ -17496,7 +17543,7 @@ components:
 
     OrgSettingsResponse:
       type: object
-      required: [registrationEmailPattern, inheritingCheckCount, tracerouteOnFailure, statusPageAllowedEmbedOrigins]
+      required: [registrationEmailPattern, inheritingCheckCount, tracerouteOnFailure, statusPageAllowedEmbedOrigins, reminderIntervalSeconds]
       properties:
         registrationEmailPattern:
           type: string
@@ -17523,6 +17570,13 @@ components:
             Organization default for path-trace-on-failure. Applies to every
             check whose own `tracerouteOnFailure` is `inherit`. True when the
             organization has never set it.
+        reminderIntervalSeconds:
+          type: integer
+          description: >-
+            Organization default reminder interval in seconds for every check
+            whose own `reminderIntervalSeconds` is `null`. 0 (off) when the
+            organization has never set it.
+          example: 0
         statusPageAllowedEmbedOrigins:
           type: array
           items:
@@ -17553,6 +17607,13 @@ components:
           description: >-
             Sets the organization default for path-trace-on-failure. Omit to
             leave unchanged.
+        reminderIntervalSeconds:
+          type: integer
+          description: >-
+            Sets the organization default reminder interval: 0 turns reminders
+            off, otherwise 900 to 86400 seconds. Any other value is a 400
+            `VALIDATION_ERROR` naming the field. Omit to leave unchanged.
+          example: 3600
         statusPageAllowedEmbedOrigins:
           type: array
           maxItems: 20
