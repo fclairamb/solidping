@@ -319,6 +319,13 @@ type UserInfo struct {
 	// UserInfo also describes OTHER people (the membership-request admin
 	// view), where it would be noise.
 	Demo bool `json:"demo,omitempty"`
+	// MustChangeEmail asks the forced first-login screen to also collect a
+	// real email (spec 2026-10-13-02). It holds only while the account must
+	// rotate its password AND still signs in with the published seed address
+	// (defaults.Email), so a seed made with SP_ADMIN_EMAIL, an ordinary
+	// forced reset, or an account with a real address never sees it.
+	// omitempty for the same reason as MustChangePassword.
+	MustChangeEmail bool `json:"mustChangeEmail,omitempty"`
 }
 
 // newUserInfo builds the user payload every login-shaped response and /auth/me
@@ -344,6 +351,7 @@ func newUserInfo(user *models.User, role string) *UserInfo {
 		Role:               role,
 		MustChangePassword: user.MustChangePassword,
 		Demo:               user.Demo,
+		MustChangeEmail:    mustChangeEmail(user),
 	}
 }
 
@@ -3141,9 +3149,15 @@ func (s *Service) ResetPassword(ctx context.Context, req ResetPasswordRequest) (
 //
 // CurrentPassword is required when the account already has a password, and
 // ignored when it does not (the SSO-only "set a password" case).
+//
+// Email is optional. It is accepted only while the caller is in the
+// mustChangeEmail state (the seeded admin on the published default address,
+// spec 2026-10-13-02), and is then written in the same UPDATE as the new
+// password. Every other email change goes through PATCH /auth/me.
 type ChangePasswordRequest struct {
 	CurrentPassword string `json:"currentPassword"`
 	NewPassword     string `json:"newPassword"`
+	Email           string `json:"email,omitempty"`
 }
 
 // ChangePasswordResponse confirms the rotation.
@@ -3192,43 +3206,21 @@ func (s *Service) ChangePassword(
 		return nil, ErrUserNotFound
 	}
 
-	hasPassword := user.PasswordHash != nil && *user.PasswordHash != ""
-
-	if hasPassword {
-		// Always run the verify — even for an empty currentPassword — so the
-		// "field missing" and "field wrong" cases cost the same time.
-		if !passwords.Verify(req.CurrentPassword, *user.PasswordHash) {
-			return nil, ErrInvalidCurrentPassword
-		}
+	if err = checkPasswordChange(user, req); err != nil {
+		return nil, err
 	}
 
-	if len(req.NewPassword) < minPasswordLength {
-		return nil, fmt.Errorf("%w: password must be at least %d characters",
-			ErrInvalidCredentials, minPasswordLength)
-	}
-
-	// A no-op rotation that reports success is misleading: the user believes
-	// their password changed and the confirmation email says so too.
-	if hasPassword && passwords.Verify(req.NewPassword, *user.PasswordHash) {
-		return nil, fmt.Errorf("%w: new password must be different from the current one",
-			ErrInvalidCredentials)
-	}
-
-	hash, err := passwords.Hash(req.NewPassword)
+	// The optional first-login email runs only after every password rule
+	// passed, so a wrong current password never changes the address.
+	newEmail, err := s.firstLoginEmail(ctx, user, req.Email)
 	if err != nil {
-		return nil, fmt.Errorf("failed to hash password: %w", err)
+		return nil, err
 	}
 
-	// Satisfying a forced rotation is the whole point of the flag: clear it in
-	// the same UPDATE as the hash, so a crash between the two can never leave
-	// an account with a new password and a stale block on it.
-	rotationCleared := false
+	oldEmail := user.Email
 
-	if err := s.db.UpdateUser(ctx, user.UID, &models.UserUpdate{
-		PasswordHash:       &hash,
-		MustChangePassword: &rotationCleared,
-	}); err != nil {
-		return nil, fmt.Errorf("failed to update password: %w", err)
+	if err = s.persistPasswordChange(ctx, user, req.NewPassword, newEmail); err != nil {
+		return nil, err
 	}
 
 	// Best-effort: the rotation already succeeded, so a stale counter is the
@@ -3242,6 +3234,15 @@ func (s *Service) ChangePassword(
 	// caller's own grant, which must keep working.
 	s.revokeRefreshTokensForUserExcept(ctx, user.UID, currentRefreshUID)
 
+	if newEmail != "" {
+		// No "email changed" notice: the old address is the published default
+		// one, which nobody on this install controls.
+		s.recordEmailChanged(ctx, &emailChange{
+			user: user, newEmail: newEmail, changedBy: emailChangedBySelf, actorUID: user.UID,
+		}, oldEmail)
+	}
+
+	// user.Email is already the new address when one was set.
 	s.enqueueEmail(ctx, "", user.Email, "password-changed.html",
 		map[string]any{tmplKeyChangedAt: time.Now().UTC().Format(time.RFC1123)},
 	)
@@ -3249,6 +3250,78 @@ func (s *Service) ChangePassword(
 	return &ChangePasswordResponse{
 		Message: "Your password has been updated.",
 	}, nil
+}
+
+// checkPasswordChange applies the password rules of ChangePassword: the
+// current password (when the account has one), the minimum length, and "must
+// differ".
+func checkPasswordChange(user *models.User, req ChangePasswordRequest) error {
+	hasPassword := user.PasswordHash != nil && *user.PasswordHash != ""
+
+	if hasPassword {
+		// Always run the verify — even for an empty currentPassword — so the
+		// "field missing" and "field wrong" cases cost the same time.
+		if !passwords.Verify(req.CurrentPassword, *user.PasswordHash) {
+			return ErrInvalidCurrentPassword
+		}
+	}
+
+	if len(req.NewPassword) < minPasswordLength {
+		return fmt.Errorf("%w: password must be at least %d characters",
+			ErrInvalidCredentials, minPasswordLength)
+	}
+
+	// A no-op rotation that reports success is misleading: the user believes
+	// their password changed and the confirmation email says so too.
+	if hasPassword && passwords.Verify(req.NewPassword, *user.PasswordHash) {
+		return fmt.Errorf("%w: new password must be different from the current one",
+			ErrInvalidCredentials)
+	}
+
+	return nil
+}
+
+// persistPasswordChange writes the new hash, clears must_change_password and,
+// when newEmail is set, the new address, all in ONE update. On success
+// user.Email holds the address now on file.
+func (s *Service) persistPasswordChange(
+	ctx context.Context, user *models.User, newPassword, newEmail string,
+) error {
+	hash, err := passwords.Hash(newPassword)
+	if err != nil {
+		return fmt.Errorf("failed to hash password: %w", err)
+	}
+
+	// Satisfying a forced rotation is the whole point of the flag: clear it in
+	// the same UPDATE as the hash, so a crash between the two can never leave
+	// an account with a new password and a stale block on it. The first-login
+	// email rides on the same UPDATE for the same reason.
+	rotationCleared := false
+
+	update := &models.UserUpdate{
+		PasswordHash:       &hash,
+		MustChangePassword: &rotationCleared,
+	}
+	if newEmail != "" {
+		update.Email = &newEmail
+		update.ClearEmailVerifiedAt = true
+	}
+
+	if err := s.db.UpdateUser(ctx, user.UID, update); err != nil {
+		// ensureEmailAvailable loses a race against a concurrent signup or
+		// change: the unique index is the real guard.
+		if newEmail != "" && db.IsUniqueViolation(err) {
+			return ErrEmailAlreadyTaken
+		}
+
+		return fmt.Errorf("failed to update password: %w", err)
+	}
+
+	if newEmail != "" {
+		user.Email = newEmail
+	}
+
+	return nil
 }
 
 // revokeRefreshTokensForUser deletes every session refresh token attached to
