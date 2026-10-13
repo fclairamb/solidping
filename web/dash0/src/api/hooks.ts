@@ -139,6 +139,9 @@ export interface Check {
   /** Per-check path-trace policy: `inherit` (the org default), `on` or `off`.
    * Always present on read; a check that never set it reads `inherit`. */
   tracerouteOnFailure?: string;
+  /** Incident reminder interval in seconds (spec 2026-10-12-16): null inherits
+   * the org default, 0 is off, otherwise 900..86400. Always present on read. */
+  reminderIntervalSeconds?: number | null;
   escalationPolicyUid?: string | null;
   type?:
     | "http"
@@ -350,6 +353,9 @@ export interface CreateCheckRequest {
    * 2026-08-21-10). `inherit` is what puts a check back under the org default;
    * omitting the field leaves it unchanged. */
   tracerouteOnFailure?: string;
+  /** Incident reminder interval (spec 2026-10-12-16): null puts the check on
+   * the org default, 0 is off, otherwise 900..86400 s; omit leaves it. */
+  reminderIntervalSeconds?: number | null;
   /** Multi-region quorum (spec 2026-09-25-10); "default" resets it, omit leaves it unchanged. */
   failQuorum?: FailQuorum;
   name?: string;
@@ -444,6 +450,9 @@ export interface UpdateCheckRequest {
    * 2026-08-21-10). `inherit` is what puts a check back under the org default;
    * omitting the field leaves it unchanged. */
   tracerouteOnFailure?: string;
+  /** Incident reminder interval (spec 2026-10-12-16): null puts the check on
+   * the org default, 0 is off, otherwise 900..86400 s; omit leaves it. */
+  reminderIntervalSeconds?: number | null;
   /** Multi-region quorum (spec 2026-09-25-10); "default" resets it, omit leaves it unchanged. */
   failQuorum?: FailQuorum;
   name?: string;
@@ -4617,12 +4626,19 @@ export interface OrgSettings {
   // 2026-09-25-28), rendered into the page's CSP frame-ancestors. Always
   // present; empty means only the SolidPing origin itself may frame them.
   statusPageAllowedEmbedOrigins?: string[];
+  // Org default incident reminder interval in seconds (spec 2026-10-12-16),
+  // for every check whose own value is null. Always present; 0 (off) when
+  // the org never set it.
+  reminderIntervalSeconds?: number;
 }
 
-export function useOrgSettings(org: string) {
+export function useOrgSettings(org: string, options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: ["org-settings", org],
     queryFn: () => apiFetch<OrgSettings>(`/api/v1/orgs/${org}/settings`),
+    // Admin-only endpoint: callers outside the settings page pass
+    // `enabled: isAdmin` so members never fire a request that answers 403.
+    enabled: options.enabled ?? true,
   });
 }
 
@@ -4639,6 +4655,9 @@ export interface UpdateOrgSettingsRequest {
   // Replaces the status-page embed allowlist; [] clears it; omit to leave it
   // untouched. Each entry must be a scheme+host origin.
   statusPageAllowedEmbedOrigins?: string[];
+  // Org default reminder interval: 0 is off, otherwise 900..86400 seconds;
+  // omit to leave it untouched.
+  reminderIntervalSeconds?: number;
 }
 
 export function useUpdateOrgSettings(org: string) {

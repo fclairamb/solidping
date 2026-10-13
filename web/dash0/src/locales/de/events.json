@@ -34,6 +34,7 @@
     "incident.acknowledged": "Vorfall bestätigt",
     "incident.unacknowledged": "Bestätigung aufgehoben",
     "incident.reopened": "Vorfall wiedereröffnet",
+    "incident.reminder": "Erinnerung gesendet",
     "incident.snoozed": "Vorfall stummgeschaltet",
     "incident.unsnoozed": "Stummschaltung aufgehoben",
     "incident.rolled_up": "Übergeordnetem Vorfall zugeordnet",

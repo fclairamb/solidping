@@ -83,8 +83,16 @@ import {
   useIntegrations,
   useCheckConnections,
   useCheckDependencies,
+  useOrgSettings,
   canNotify,
 } from "@/api/hooks";
+import {
+  REMINDER_INHERIT,
+  reminderDurationLabel,
+  reminderOptions,
+  reminderRequestValue,
+  reminderSelectValue,
+} from "@/lib/reminder-interval";
 import { Badge } from "@/components/ui/badge";
 import { NotifyViaSection } from "@/components/checks/form/sections/notifications";
 import { EscalationSelect } from "@/components/checks/form/sections/escalation";
@@ -419,6 +427,9 @@ export interface CheckFormData {
   regionSpread?: string;
   /** `inherit` | `on` | `off` — the per-check path-trace policy. */
   tracerouteOnFailure?: string;
+  /** Incident reminder interval (spec 2026-10-12-16): null inherits the org
+   * default, 0 is off, otherwise 900..86400 seconds. */
+  reminderIntervalSeconds?: number | null;
   /** Multi-region quorum (spec 2026-09-25-10). Sent only while the field is
    * shown (2+ regions); "default" puts an edited check back on the default. */
   failQuorum?: FailQuorum;
@@ -815,6 +826,12 @@ export function CheckForm({
   );
   const [tracerouteOnFailure, setTracerouteOnFailure] = useState(
     initialData?.tracerouteOnFailure ?? "inherit",
+  );
+  // Incident reminders (spec 2026-10-12-16): "inherit" or the seconds as a
+  // string. The org default is read for the "Org default (1 h)" label; the
+  // settings endpoint is admin-only, so members see the label without it.
+  const [reminderInterval, setReminderInterval] = useState(() =>
+    reminderSelectValue(initialData?.reminderIntervalSeconds),
   );
   // Multi-region quorum (spec 2026-09-25-10): seeded from the stored value,
   // "default" for a new check, so nobody has to think about it.
@@ -1316,6 +1333,8 @@ export function CheckForm({
         // that carries an explicit on/off back under the org default, and an
         // omitted field means "leave unchanged" on PATCH.
         tracerouteOnFailure,
+        // Same idiom: always sent, null being "inherit the org default".
+        reminderIntervalSeconds: reminderRequestValue(reminderInterval),
         // Only while the field is shown (2+ regions). "default" is sent on
         // edit too: it is how a check taken off the default goes back.
         ...(showFailQuorum && failQuorumPayload !== undefined ? { failQuorum: failQuorumPayload } : {}),
@@ -1414,9 +1433,16 @@ export function CheckForm({
           .join(", ")
       : t("form.summaryNone");
 
+  const { data: orgSettings } = useOrgSettings(org, { enabled: Boolean(user?.isAdmin) });
+  const orgReminderLabel =
+    orgSettings?.reminderIntervalSeconds === undefined
+      ? null
+      : (reminderDurationLabel(orgSettings.reminderIntervalSeconds) ?? t("form.reminderIntervalOff"));
+
   const incidentCustomized =
     confirmationPeriodSeconds.trim() !== "" ||
     recoveryPeriodSeconds.trim() !== "" ||
+    reminderInterval !== REMINDER_INHERIT ||
     (showFailQuorum && failQuorumModeValue !== "default");
   const incidentSummary = t("form.summaryIncident", {
     confirm: confirmationPeriodSeconds.trim() || "120",
@@ -2336,6 +2362,37 @@ export function CheckForm({
                 <p className="text-xs text-muted-foreground">{t("form.failQuorumHelp")}</p>
               </div>
             )}
+            <div className="mt-4 space-y-1" data-testid="check-reminder-section">
+              <Label htmlFor="check-reminder-interval" className="text-sm">
+                {t("form.reminderInterval")}
+              </Label>
+              <Select value={reminderInterval} onValueChange={setReminderInterval}>
+                <SelectTrigger
+                  id="check-reminder-interval"
+                  className="sm:w-80"
+                  data-testid="reminder-interval-select"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={REMINDER_INHERIT} data-testid="reminder-interval-option-inherit">
+                    {orgReminderLabel
+                      ? t("form.reminderIntervalInheritValue", { value: orgReminderLabel })
+                      : t("form.reminderIntervalInherit")}
+                  </SelectItem>
+                  {reminderOptions(reminderRequestValue(reminderInterval)).map((seconds) => (
+                    <SelectItem
+                      key={seconds}
+                      value={String(seconds)}
+                      data-testid={`reminder-interval-option-${seconds}`}
+                    >
+                      {reminderDurationLabel(seconds) ?? t("form.reminderIntervalOff")}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">{t("form.reminderIntervalHelp")}</p>
+            </div>
           </CollapsibleSection>
 
           {/* Degraded detection (spec 2026-09-22-03). A section of its own rather
