@@ -15,8 +15,8 @@ sqlite3 test.db < ./internal/db/sqlite/migrations/20251207000001_initial.up.sql
 echo "Starting server with SP_REGION=us-east-1..."
 SP_DB_TYPE=sqlite \
 SP_DB_DIR=. \
-SP_SERVER_CHECK_RUNNERS=1 \
-SP_SERVER_JOB_RUNNERS=0 \
+SP_SERVER_CHECK_WORKER_NB=1 \
+SP_SERVER_JOB_WORKER_NB=0 \
 SP_REGION=us-east-1 \
 ./solidping serve > test_region.log 2>&1 &
 

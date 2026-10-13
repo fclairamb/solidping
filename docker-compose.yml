@@ -51,7 +51,7 @@ services:
       - SP_DB_URL=postgres://solidping:solidping@postgres:5432/solidping?sslmode=disable
       - SP_AUTH_JWT_SECRET=dev-secret-change-in-production
       - SP_SERVER_LISTEN=:4000
-      - SP_SERVER_JOB_RUNNERS=1
+      - SP_SERVER_JOB_WORKER_NB=1
       # Uncomment together with the `browser` profile above to run browser
       # checks against the sidecar instead of a local Chrome binary.
       # - SP_CHECKERS_BROWSER_CDP_URL=ws://browser:9222

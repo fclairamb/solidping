@@ -21,13 +21,13 @@ import (
 const (
 	defaultSMSRunawayPerHour  = 30
 	defaultCallRunawayPerHour = 10
-	// defaultWhatsAppRunawayPerHour matches the SMS guard: WhatsApp is the
+	// DefaultWhatsAppRunawayPerHour matches the SMS guard: WhatsApp is the
 	// cheaper channel but a runaway loop is just as unbounded.
-	defaultWhatsAppRunawayPerHour = 30
-	// defaultTelegramRunawayPerHour is double the WhatsApp default. Telegram
+	DefaultWhatsAppRunawayPerHour = 30
+	// DefaultTelegramRunawayPerHour is double the WhatsApp default. Telegram
 	// messages are free, so this guard is about sanity (a flapping check, a
 	// dispatch loop) rather than cost — hence the looser bound.
-	defaultTelegramRunawayPerHour = 60
+	DefaultTelegramRunawayPerHour = 60
 )
 
 // RunawayKindTelegram is the runaway-bucket key for the Telegram channel. It is

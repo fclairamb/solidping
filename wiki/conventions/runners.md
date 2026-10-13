@@ -154,13 +154,18 @@ whatever the in-flight check holds). There's no thundering-herd on the
 database, no extra polling, no per-runner lease churn — see the fetching
 architecture below.
 
+The default is `25`: idle runners cost about 3 MB of stack in total (spec
+2026-10-12-04), it matches the database pool (25 connections), and the fast-lane
+reservation (`SP_SCHEDULING_FAST_LANE_RESERVED`, default `5`) needs a pool
+larger than 5. A pool of 3 clamps the reservation and logs a warning at start.
+
 Pick the value based on:
 
 - **How many checks you have × their period.** With 600 checks running every
   60s and a 1s average duration, you need ~10 concurrent runners to keep up.
-- **How slow your slowest checks are.** A check has a 30s execution timeout.
+- **How slow your slowest checks are.** A check has a 15s execution timeout by default (`SP_SCHEDULING_CHECK_TIMEOUT_MS`).
   If many of your checks are slow (DNS lookups against unreachable hosts,
-  HTTP probes hitting 30s timeouts), size the pool so a wave of slow checks
+  HTTP probes hitting their timeout), size the pool so a wave of slow checks
   doesn't starve the fast ones.
 
 If runners are saturated, fresh jobs simply wait — they don't fail, they just
@@ -217,7 +222,6 @@ webhook delivery, aggregation, state cleanup, etc.
 | Env var                                | Default | What it controls |
 |----------------------------------------|---------|------------------|
 | `SP_SERVER_JOB_WORKER_NB`              | `2`     | Number of concurrent runner goroutines |
-| `SP_SERVER_JOB_WORKER_FETCH_MAX_AHEAD` | `5m`    | How far in the future the runner will pick up scheduled jobs |
 
 ### Architecture
 
@@ -281,7 +285,7 @@ operators know what to expect:
 - Fetcher error backoff (check worker): **5s**
 - Job runner error backoff: **100ms → 30s** (doubling, full jitter)
 - Fetcher periodic safety wake (check worker): **60s**
-- Per-check execution timeout: **30s**
+- Per-check execution timeout: **15s** (default)
 
 ## Self-monitoring
 

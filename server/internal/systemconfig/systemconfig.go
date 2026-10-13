@@ -329,11 +329,7 @@ func getKnownParameters() []ParameterDefinition {
 			EnvVar: "SP_SERVER_JOB_WORKER_NB",
 			Secret: false,
 			ApplyFunc: func(cfg *config.Config, value any) {
-				if v, ok := value.(float64); ok {
-					cfg.Server.JobWorker.Nb = int(v)
-				} else if v, ok := value.(int); ok {
-					cfg.Server.JobWorker.Nb = v
-				}
+				applyIntParam(&cfg.Server.JobWorker.Nb, value)
 			},
 		},
 		{
@@ -341,11 +337,7 @@ func getKnownParameters() []ParameterDefinition {
 			EnvVar: "SP_SERVER_CHECK_WORKER_NB",
 			Secret: false,
 			ApplyFunc: func(cfg *config.Config, value any) {
-				if v, ok := value.(float64); ok {
-					cfg.Server.CheckWorker.Nb = int(v)
-				} else if v, ok := value.(int); ok {
-					cfg.Server.CheckWorker.Nb = v
-				}
+				applyIntParam(&cfg.Server.CheckWorker.Nb, value)
 			},
 		},
 		{
@@ -1558,6 +1550,22 @@ func (s *Service) Initialize(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// applyIntParam stores a numeric parameter into dst. DB values arrive as
+// float64 (JSON) or int, the environment overlay passes the raw string. An
+// unparseable string leaves dst unchanged.
+func applyIntParam(dst *int, value any) {
+	switch typed := value.(type) {
+	case float64:
+		*dst = int(typed)
+	case int:
+		*dst = typed
+	case string:
+		if n, err := strconv.Atoi(strings.TrimSpace(typed)); err == nil {
+			*dst = n
+		}
+	}
 }
 
 // ensureJWTSecret checks if JWT secret is set and generates one if missing.

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 
@@ -93,6 +94,10 @@ func manualReaderEnvVars() []string {
 	out = append(out, manualReaderHeartbeatEnvVars()...)
 
 	return append(out,
+		// applyWorkerPoolEnv
+		"SP_SERVER_CHECK_WORKER_NB",
+		"SP_SERVER_JOB_WORKER_NB",
+		"SP_SERVER_CHECK_WORKER_FETCH_MAX_AHEAD",
 		// applyEgressEnv: egress.allow_private_targets is snake_case, so
 		// koanf's env loader can never reach it.
 		EnvEgressAllowPrivate,
@@ -331,6 +336,25 @@ func manualReaderPlatformEnvVars() []string {
 	out = append(out, telegramNames...)
 	out = append(out, EnvEntitlementsTelegramRunaway)
 	out = append(out, smsNames...)
+
+	return out
+}
+
+// DefaultsByEnvVar returns the loaded default of every koanf-reachable setting
+// keyed by its SP_* name, as a string (fmt %v of the leaf value). Pass the
+// config from a Load run with no SP_* variable set. Settings bound by manual
+// readers are not included: their defaults live in code the caller must read.
+func DefaultsByEnvVar(cfg *Config) map[string]string {
+	loaded := koanf.New(".")
+	_ = loaded.Load(structs.Provider(cfg, "koanf"), nil)
+
+	out := make(map[string]string)
+
+	for _, path := range loaded.Keys() {
+		if name, ok := envNameForKoanfPath(path); ok {
+			out[name] = fmt.Sprintf("%v", loaded.Get(path))
+		}
+	}
 
 	return out
 }

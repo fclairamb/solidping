@@ -2114,3 +2114,26 @@ func TestAuditRetentionYAMLZeroSurvives(t *testing.T) {
 	require.NoError(t, k.Unmarshal("", &cfg))
 	require.Equal(t, 0, cfg.Audit.RetentionDays)
 }
+
+// TestLoad_WorkerPoolFromConfigFile: the real YAML nesting is
+// server.check_worker.nb / server.job_worker.nb, and the env var wins.
+func TestLoad_WorkerPoolFromConfigFile(t *testing.T) {
+	r := require.New(t)
+
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	doc := "server:\n  check_worker:\n    nb: 8\n  job_worker:\n    nb: 4\n"
+	r.NoError(os.WriteFile(filepath.Join(dir, "config.yml"), []byte(doc), 0o600))
+
+	cfg, err := Load()
+	r.NoError(err)
+	r.Equal(8, cfg.Server.CheckWorker.Nb)
+	r.Equal(4, cfg.Server.JobWorker.Nb)
+
+	t.Setenv("SP_SERVER_CHECK_WORKER_NB", "9")
+
+	cfg, err = Load()
+	r.NoError(err)
+	r.Equal(9, cfg.Server.CheckWorker.Nb)
+}

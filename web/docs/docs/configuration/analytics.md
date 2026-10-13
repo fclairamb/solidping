@@ -47,7 +47,7 @@ dashboard.
 | Variable | Default | Secret | Description |
 |----------|---------|--------|-------------|
 | `SP_POSTHOG_PROJECT_API_KEY` | – | no | The public `phc_…` browser key. **Empty means analytics is entirely off.** Public by design: it is shipped to the dashboard, exactly like a Sentry DSN. |
-| `SP_POSTHOG_HOST` | – (first-party proxy) | no | Ingestion endpoint. Leave it empty to capture through the built-in first-party proxy (see below). Set it to point the dashboard directly at a self-hosted PostHog or your own reverse proxy. |
+| `SP_POSTHOG_HOST` | `https://eu.i.posthog.com` | no | Upstream ingestion endpoint. The browser always captures through the built-in first-party proxy (see below), which forwards to this host. Set it to point the dashboard directly at a self-hosted PostHog or your own reverse proxy. |
 | `SP_POSTHOG_PERSONAL_API_KEY` | – | **yes** | Optional server-side key. Stored as a secret, never returned by any API and never sent to the browser. When unset, the backend captures with the project key. |
 | `SP_POSTHOG_ENABLED` | `true` | no | Kill switch. Set to `false` to disable analytics even while a key is configured. |
 

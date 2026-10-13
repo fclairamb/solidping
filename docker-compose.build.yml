@@ -35,7 +35,7 @@ services:
       - SP_DB_URL=postgres://solidping:solidping@postgres:5432/solidping?sslmode=disable
       - SP_AUTH_JWT_SECRET=dev-secret-change-in-production
       - SP_SERVER_LISTEN=:4000
-      - SP_SERVER_JOB_RUNNERS=1
+      - SP_SERVER_JOB_WORKER_NB=1
     depends_on:
       postgres:
         condition: service_healthy

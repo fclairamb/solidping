@@ -598,3 +598,41 @@ func TestTelegramConfiguredVsActive(t *testing.T) {
 	// Whitespace is not a token.
 	r.False((&TelegramConfig{Enabled: BoolPtr(true), BotToken: "   "}).Configured())
 }
+
+func TestWorkerPoolEnvBinds(t *testing.T) {
+	tests := []struct {
+		name      string
+		env       map[string]string
+		wantCheck int
+		wantJob   int
+		wantAhead time.Duration
+	}{
+		{"unset", nil, 25, 2, 5 * time.Minute},
+		{"values", map[string]string{
+			"SP_SERVER_CHECK_WORKER_NB": "8", "SP_SERVER_JOB_WORKER_NB": "4",
+			"SP_SERVER_CHECK_WORKER_FETCH_MAX_AHEAD": "2m",
+		}, 8, 4, 2 * time.Minute},
+		{"zero disables", map[string]string{
+			"SP_SERVER_CHECK_WORKER_NB": "0", "SP_SERVER_JOB_WORKER_NB": "0",
+		}, 0, 0, 5 * time.Minute},
+		{"unparseable keeps defaults", map[string]string{
+			"SP_SERVER_CHECK_WORKER_NB": "abc", "SP_SERVER_JOB_WORKER_NB": "x",
+			"SP_SERVER_CHECK_WORKER_FETCH_MAX_AHEAD": "bogus",
+		}, 25, 2, 5 * time.Minute},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for k, v := range tt.env {
+				t.Setenv(k, v)
+			}
+
+			r := require.New(t)
+			cfg, err := Load()
+			r.NoError(err)
+			r.Equal(tt.wantCheck, cfg.Server.CheckWorker.Nb)
+			r.Equal(tt.wantJob, cfg.Server.JobWorker.Nb)
+			r.Equal(tt.wantAhead, cfg.Server.CheckWorker.FetchMaxAhead)
+		})
+	}
+}

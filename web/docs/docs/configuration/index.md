@@ -55,8 +55,8 @@ the right place.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SP_SERVER_LISTEN` | `:4000` | Listen address (e.g., `:4000`, `0.0.0.0:8080`) |
-| `SP_SERVER_JOB_WORKER_NB` | `2` | Number of job runner goroutines |
-| `SP_SERVER_CHECK_WORKER_NB` | `25` | Number of check runner goroutines |
+| `SP_SERVER_JOB_WORKER_NB` | `2` | Maximum number of background jobs (notifications, emails, aggregation) running at the same time. `0` disables the job runners. Can also be set from the dashboard (Server, Performance); the environment variable takes precedence |
+| `SP_SERVER_CHECK_WORKER_NB` | `25` | Maximum number of checks running at the same time. An idle runner costs a few KB, so a high value is cheap. `0` disables the check runners. Can also be set from the dashboard (Server, Performance); the environment variable takes precedence |
 | `SP_SERVER_COMPRESSION` | `true` | Gzip-compress JSON, HTML, CSS, JS, SVG and XML/Atom/YAML responses above 1 KiB. SolidPing compresses its own responses, so no reverse-proxy-side compression is needed — enabling one anyway is harmless, since a response that already carries `Content-Encoding` passes through untouched |
 | `SP_SHUTDOWN_TIMEOUT` | `30s` | Graceful shutdown timeout |
 | `SP_EXIT_WITH_PARENT` | `false` | Shut down when the process that started SolidPing disappears, instead of being reparented to PID 1. For servers spawned by a test harness or a wrapper script; leave off under a normal supervisor |
@@ -399,8 +399,10 @@ base_url: https://monitoring.example.com
 
 server:
   listen: ":4000"
-  job_worker_nb: 4
-  check_worker_nb: 8
+  job_worker:
+    nb: 4
+  check_worker:
+    nb: 8
   shutdown_timeout: 30s
 
 auth:

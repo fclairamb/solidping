@@ -2,6 +2,7 @@ package systemconfig
 
 import (
 	"context"
+	"reflect"
 	"strconv"
 	"testing"
 	"time"
@@ -966,7 +967,7 @@ func TestNodeRoleParameterApply(t *testing.T) {
 	}
 }
 
-// TestGetKnownParameters_KeysMatchParamKeyPattern is the "registry proof"
+// TestGetKnownParameters_KeysMatchParameterKeyPattern is the "registry proof"
 // spec 2026-09-12-03 asks for: every ParameterKey the platform actually
 // defines must satisfy paramkeys.KeyPattern, which is what the system-
 // parameters HTTP route (internal/handlers/system) now validates against
@@ -978,7 +979,7 @@ func TestNodeRoleParameterApply(t *testing.T) {
 // covered separately by
 // TestSystemParameterKeyValidation_AdHocKeysMatchPattern in
 // internal/handlers/system.
-func TestGetKnownParameters_KeysMatchParamKeyPattern(t *testing.T) {
+func TestGetKnownParameters_KeysMatchParameterKeyPattern(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
@@ -990,5 +991,110 @@ func TestGetKnownParameters_KeysMatchParamKeyPattern(t *testing.T) {
 		key := string(def.Key)
 		r.Truef(paramkeys.KeyPattern.MatchString(key),
 			"parameter key %q must match %s", key, paramkeys.KeyPattern.String())
+	}
+}
+
+func TestWorkerPoolApplyFuncs(t *testing.T) {
+	t.Parallel()
+
+	byKey := map[ParameterKey]ParameterDefinition{}
+	for _, d := range getKnownParameters() {
+		byKey[d.Key] = d
+	}
+
+	cases := []struct {
+		key ParameterKey
+		get func(*config.Config) int
+	}{
+		{KeyCheckWorkers, func(c *config.Config) int { return c.Server.CheckWorker.Nb }},
+		{KeyJobWorkers, func(c *config.Config) int { return c.Server.JobWorker.Nb }},
+	}
+
+	for _, tc := range cases {
+		for _, in := range []any{"8", float64(8), 8} {
+			cfg := &config.Config{}
+			byKey[tc.key].ApplyFunc(cfg, in)
+			require.Equal(t, 8, tc.get(cfg), "%s with %#v", tc.key, in)
+		}
+
+		cfg := &config.Config{}
+		cfg.Server.CheckWorker.Nb = 25
+		cfg.Server.JobWorker.Nb = 2
+		before := tc.get(cfg)
+		byKey[tc.key].ApplyFunc(cfg, "abc")
+		require.Equal(t, before, tc.get(cfg), "%s with abc", tc.key)
+	}
+}
+
+// TestWorkerPoolOverlayPrecedence: env > DB > default through Initialize.
+func TestWorkerPoolOverlayPrecedence(t *testing.T) {
+	tests := []struct {
+		name string
+		env  string
+		db   any
+		want int
+	}{
+		{"env beats db", "8", float64(10), 8},
+		{"db without env", "", float64(10), 10},
+		{"default without env or db", "", nil, 25},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := require.New(t)
+			ctx := context.Background()
+
+			t.Setenv("SP_SERVER_CHECK_WORKER_NB", tt.env)
+
+			dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+			r.NoError(err)
+			r.NoError(dbSvc.Initialize(ctx))
+			t.Cleanup(func() { _ = dbSvc.Close() })
+
+			if tt.db != nil {
+				r.NoError(dbSvc.SetSystemParameter(ctx, string(KeyCheckWorkers), tt.db, false))
+			}
+
+			cfg, err := config.Load()
+			r.NoError(err)
+			r.NoError(NewService(dbSvc, cfg).Initialize(ctx))
+			r.Equal(tt.want, cfg.Server.CheckWorker.Nb)
+		})
+	}
+}
+
+// TestEveryParameterEnvVarTakesEffect: a parameter whose env var config.Load
+// does not bind relies on the overlay alone, so its ApplyFunc must accept at
+// least one well-formed raw env string.
+func TestEveryParameterEnvVarTakesEffect(t *testing.T) {
+	t.Parallel()
+
+	recognized := map[string]bool{}
+	for _, n := range config.RecognizedEnvVars() {
+		recognized[n] = true
+	}
+
+	candidates := []string{"7", "true", "1h", "x@acme.example", "https://acme.example", "abc"}
+
+	for _, def := range getKnownParameters() {
+		if def.EnvVar == "" || recognized[def.EnvVar] {
+			continue
+		}
+
+		changed := false
+
+		for _, c := range candidates {
+			base := &config.Config{}
+			got := &config.Config{}
+			def.ApplyFunc(got, c)
+
+			if !reflect.DeepEqual(base, got) {
+				changed = true
+
+				break
+			}
+		}
+
+		require.True(t, changed, "%s (%s) ignores every string value: the env var has no effect", def.EnvVar, def.Key)
 	}
 }

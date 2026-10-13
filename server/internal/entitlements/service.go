@@ -137,8 +137,8 @@ func NewService(
 		runawayBuckets:         make(map[string]*hourlyBucket),
 		smsRunawayPerHour:      defaultSMSRunawayPerHour,
 		callRunawayPerHour:     defaultCallRunawayPerHour,
-		whatsAppRunawayPerHour: defaultWhatsAppRunawayPerHour,
-		telegramRunawayPerHour: defaultTelegramRunawayPerHour,
+		whatsAppRunawayPerHour: DefaultWhatsAppRunawayPerHour,
+		telegramRunawayPerHour: DefaultTelegramRunawayPerHour,
 	}
 
 	for _, opt := range opts {

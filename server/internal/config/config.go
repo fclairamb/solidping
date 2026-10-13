@@ -2324,6 +2324,7 @@ func Load() (*Config, error) {
 	applyJobsEnv(&cfg.Jobs)
 	applyServerEnv(&cfg.Server)
 	applySchedulingEnv(&cfg.Server.Scheduling)
+	applyWorkerPoolEnv(&cfg.Server)
 	applyACMEEnv(&cfg.ACME)
 	applyHeartbeatEnv(&cfg.Heartbeat)
 	applyEncryptionEnv(&cfg.Encryption)
@@ -2833,6 +2834,41 @@ func applyEncryptionEnv(cfg *EncryptionConfig) {
 
 	if v := os.Getenv("SP_ENCRYPTION_AUTO_MIGRATE"); v != "" {
 		cfg.AutoMigrate = v == envTrue || v == "1"
+	}
+}
+
+// applyWorkerPoolEnv reads the worker-pool knobs koanf's env loader cannot bind:
+// it collapses every underscore to a dot, so SP_SERVER_CHECK_WORKER_NB arrives
+// as "server.check.worker.nb" while the field lives at server.check_worker.nb.
+// An unparseable value is logged and ignored. 0 keeps its meaning (runners
+// disabled).
+func applyWorkerPoolEnv(cfg *ServerConfig) {
+	parseInt := func(env string, dst *int) {
+		raw := os.Getenv(env)
+		if raw == "" {
+			return
+		}
+
+		n, err := strconv.Atoi(strings.TrimSpace(raw))
+		if err != nil {
+			slog.Warn("Ignoring unparseable "+env, "value", raw, "error", err)
+
+			return
+		}
+
+		*dst = n
+	}
+
+	parseInt("SP_SERVER_CHECK_WORKER_NB", &cfg.CheckWorker.Nb)
+	parseInt("SP_SERVER_JOB_WORKER_NB", &cfg.JobWorker.Nb)
+
+	if v := os.Getenv("SP_SERVER_CHECK_WORKER_FETCH_MAX_AHEAD"); v != "" {
+		d, err := time.ParseDuration(strings.TrimSpace(v))
+		if err != nil {
+			slog.Warn("Ignoring unparseable SP_SERVER_CHECK_WORKER_FETCH_MAX_AHEAD", "value", v, "error", err)
+		} else {
+			cfg.CheckWorker.FetchMaxAhead = d
+		}
 	}
 }
 
