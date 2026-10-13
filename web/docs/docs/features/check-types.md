@@ -38,7 +38,7 @@ https://api.example.com/health
 | HTTP version | Protocol the target must answer over (`httpVersion`): `1.1` (default), `2` or `3`. See **Protocol** below | `2` |
 | Expected final URL | URL the redirect chain must end on (`expectedFinalUrl`). See **Redirects** below | `https://www.acme.com/` |
 | Headers | Custom request headers | `Authorization: Bearer token` |
-| Body | Request body (for POST/PUT/PATCH/QUERY) | `{"key": "value"}` |
+| Body | Request body, sent with any method | `{"key": "value"}` |
 | Response assertions | Assert on the response body — see [Response assertions](#response-assertions) below | `bodyAssertions`, `json_path_assertions`, `body_expect` |
 | SSH tunnel | Dial through an [SSH check's bastion](./ssh-tunnels.md) | An `ssh` check with `expected_fingerprint` set |
 | Basic Auth | Username and password — stored encrypted at rest | `user:password` |
@@ -484,7 +484,9 @@ With **username and password** set, the check goes further: it completes a **rea
 - A failed **log off** or screenshot after a successful logon is reported in the output details but never turns an `up` run down: the logon itself succeeded.
 - The check runs at most **4 RDP logons at a time** per worker; a saturated worker reports a timeout on the late check rather than queueing invisibly.
 
-:::warning Authenticated runs are real Windows logons
+#### Authenticated runs are real Windows logons {#authenticated-runs-are-real-windows-logons}
+
+:::warning
 Every authenticated run is a **real interactive Windows logon**:
 
 - it loads a user profile and runs logon scripts / GPOs;

@@ -363,11 +363,18 @@ incident's events specifically.
 GET /api/v1/orgs/{org}/incidents
 ```
 
-Query parameters:
-- `status` - Filter by status: `active`, `resolved`
-- `check_uid` - Filter by check
-- `limit` - Number of results
-- `offset` - Pagination offset
+Query parameters (all optional, camelCase):
+- `state` - Comma-separated: `active`, `resolved`, `acked` (active and acknowledged), `snoozed` (active and snoozed). Other values are ignored
+- `checkUid` - Comma-separated check UIDs or slugs
+- `checkGroupUid` - Incidents of the checks in this check group
+- `memberCheckUid` - Incidents that involve this check, either on its own or as a member of a check group
+- `kind` - Comma-separated: `check` (outage), `degraded` (intermittence or latency), `slo_burn` (SLO error-budget burn). Absent means every kind. Any other value returns `400 VALIDATION_ERROR`
+- `since` / `until` - RFC 3339 timestamps. Filter on the incident start time: `since` is inclusive, `until` is exclusive
+- `with` - Comma-separated optional fields: `check` (adds the check) and `members` (adds the check group members). Neither is included by default
+- `limit` - Results per page. Default `20`, maximum `100`. `size` is still accepted as an alias
+- `cursor` - Opaque cursor to fetch the next page. Pass the `pagination.cursor` value from the previous response. It is empty when there are no more results
+
+The response is `{ "data": [...], "pagination": { "total", "cursor", "size" } }`.
 
 ### Get Incident Details
 
@@ -432,7 +439,5 @@ checks:
 
 SolidPing tracks incident metrics:
 
-- **MTTR** (Mean Time To Recovery) - Average time to resolve incidents
-- **MTTA** (Mean Time To Acknowledge) - Average time to acknowledge
 - **Incident Count** - Number of incidents over time
 - **Availability** - Share of results that were `up` or `warning`, over every region's results
