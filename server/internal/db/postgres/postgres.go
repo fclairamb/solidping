@@ -2245,6 +2245,12 @@ func applyAdaptiveAndIncidentTrackingPg(
 		query = query.Set("traceroute_on_failure = ?", *update.TracerouteOnFailure)
 	}
 
+	if update.ClearReminderInterval {
+		query = query.Set("reminder_interval_seconds = NULL")
+	} else if update.ReminderIntervalSeconds != nil {
+		query = query.Set("reminder_interval_seconds = ?", *update.ReminderIntervalSeconds)
+	}
+
 	if update.ReopenCooldownMultiplier != nil {
 		query = query.Set("reopen_cooldown_multiplier = ?", *update.ReopenCooldownMultiplier)
 	}

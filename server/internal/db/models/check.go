@@ -826,6 +826,12 @@ type CheckUpdate struct {
 	TracerouteOnFailure      *bool
 	ClearTracerouteOnFailure bool
 
+	// ReminderIntervalSeconds sets the per-check reminder interval (spec
+	// 2026-10-12-16); ClearReminderInterval resets it to NULL (inherit the
+	// org default).
+	ReminderIntervalSeconds *int
+	ClearReminderInterval   bool
+
 	// Clear* fields set the corresponding column to NULL on update.
 	ClearEscalationPolicyUID bool
 
