@@ -648,12 +648,14 @@ function AddResourceDialog({
   sectionUid,
   existingCheckUids,
   existingGroupUids,
+  hideDemoNote = false,
 }: {
   org: string;
   statusPageUid: string;
   sectionUid: string;
   existingCheckUids: Set<string>;
   existingGroupUids: Set<string>;
+  hideDemoNote?: boolean;
 }) {
   const { t } = useTranslation(["statusPages", "common"]);
   const [open, setOpen] = useState(false);
@@ -699,8 +701,12 @@ function AddResourceDialog({
   // Same story as AddSectionDialog above: POST .../resources is outside the
   // demo write allowlist, so offering the picker would only end in a refusal
   // toast (spec 2026-09-07-02 §B.5).
+  // A section card repeats this note once per section, in a header row with no
+  // room for it, so it opts out (hideDemoNote): the page-level note says it.
   if (isDemoSession) {
-    return <DemoReadOnlyNote testId="status-page-add-resource-demo-note" />;
+    return hideDemoNote ? null : (
+      <DemoReadOnlyNote testId="status-page-add-resource-demo-note" />
+    );
   }
 
   return (
@@ -843,7 +849,7 @@ function ResourceRow({
       ref={setNodeRef}
       style={dragStyle}
       className={cn(
-        "flex items-center gap-3 py-2 px-3 rounded-md hover:bg-muted/50",
+        "flex flex-wrap items-center gap-x-3 gap-y-1 py-2 px-3 rounded-md hover:bg-muted/50",
         isDragging && "opacity-60 shadow-md bg-background relative z-10",
       )}
     >
@@ -891,7 +897,7 @@ function ResourceRow({
         </div>
       )}
       <StatusDot status={resource.check?.status} />
-      <span className="flex-1 text-sm" data-testid="resource-row-name">
+      <span className="min-w-0 flex-1 basis-32 text-sm" data-testid="resource-row-name">
         {resource.publicName ||
           resource.check?.name ||
           (resource.checkUid ?? resource.checkGroupUid ?? "").slice(0, 8)}
@@ -1095,8 +1101,8 @@ function SectionCard({
   return (
     <Card ref={setNodeRef} style={sortableStyle}>
       <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
             <button
               type="button"
               className="touch-none cursor-grab text-muted-foreground/60 hover:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded p-1"
@@ -1121,6 +1127,7 @@ function SectionCard({
               sectionUid={section.uid}
               existingCheckUids={existingCheckUids}
               existingGroupUids={existingGroupUids}
+              hideDemoNote
             />
             <Button
               variant="ghost"
@@ -1480,7 +1487,7 @@ function StatusPageDetailPage() {
 
       <StatusPageTvCard org={org} page={page} />
 
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-xl font-semibold">
           {t("statusPages:detail.sections")}
         </h2>
