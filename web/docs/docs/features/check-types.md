@@ -1897,6 +1897,7 @@ All check types support these common options:
 | `regions` | Worker regions to run from | Automatic placement on 2 regions, see [Region placement](./region-placement.md) |
 | `confirmationPeriodSeconds` | Seconds of failures before an incident opens (`0` = on the first failure) | `120` |
 | `recoveryPeriodSeconds` | Seconds of passing results before the incident resolves (`0` = on the first success) | `120` |
+| `reminderIntervalSeconds` | Re-notify the channels every this many seconds while an incident is open and unacknowledged: `0` off, or `900` to `86400`. See [Reminders](./incidents.md#reminders) | `null` (organization default, itself off) |
 | `ipVersion` | Address family to probe over (`auto`, `ipv4`, `ipv6`) | `auto` |
 
 Escalation, checks with several regions (`failQuorum`) and flap backoff: see

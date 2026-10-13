@@ -87,7 +87,7 @@ Incidents can be managed directly from the dashboard or API:
 
 | Action | Effect |
 |--------|--------|
-| **Acknowledge** | Records who acknowledged it and when. Stops the [escalation policy](/features/on-call): its pending steps are canceled and nobody else is paged. Posts an "acknowledged" notice to the check's channels. The channels still receive `incident.escalated`, `incident.reopened` and `incident.resolved` later. |
+| **Acknowledge** | Records who acknowledged it and when. Stops the [escalation policy](/features/on-call): its pending steps are canceled and nobody else is paged. Stops [reminders](#reminders). Posts an "acknowledged" notice to the check's channels. The channels still receive `incident.escalated`, `incident.reopened` and `incident.resolved` later. |
 | **Unacknowledge** | Clears the acknowledgment, resumes an interrupted escalation policy where it stopped, and posts a notice to the check's channels. |
 | **Snooze** | Sets an end time (`until` timestamp or a `duration`, max 7 days) and acknowledges the incident if nobody had, without posting a notice. No escalation step pages anyone before the end time, even if the incident is unacknowledged meanwhile. Channel notifications are not muted: `incident.escalated`, `incident.reopened` and `incident.resolved` are still sent. |
 | **Unsnooze** | Clears the end time. A snooze also clears on its own within about a minute of its end time. Neither restarts the escalation policy: the incident stays acknowledged until someone unacknowledges it. |
@@ -283,6 +283,39 @@ cooldown multiplier × the check period, kept between 2 and 30 minutes.
 | `incident.escalated` | 10th failing result of the incident | Prolonged outage, sent once |
 | `incident.reopened` | Relapse within the reopen cooldown | Same incident, active again |
 | `incident.resolved` | Recovery period elapsed, or manual resolve | Service recovered |
+| `incident.reminder` | Every reminder interval while open and unacknowledged | Still down, nobody took it. Off by default, see [Reminders](#reminders) |
+
+### Reminders {#reminders}
+
+An alert missed at 3 am stays missed until the incident resolves, unless
+reminders are on. With an interval set, an open incident that nobody has
+acknowledged is sent again to the check's channels, as `incident.reminder`:
+"Still down after 1 h 15 min, not acknowledged (reminder 3)", with the
+Acknowledge button where the alert has one. Slack posts it under the alert's
+thread and shows it in the channel too.
+
+| Dashboard | API | Default |
+|---|---|---|
+| Check form, **Incident tracking** > **Remind while unacknowledged** | `reminderIntervalSeconds` on the check | `null`: the organization default |
+| **Organization** > **Settings** > **Incident reminders** | `reminderIntervalSeconds` in the org settings | `0`: off |
+
+- Allowed values: `0` (off) or 900 to 86400 seconds (15 minutes to 24 hours).
+  A check value of `0` turns reminders off even when the organization default
+  is on.
+- There is no cap on the count. Acknowledging, snoozing or resolving the
+  incident stops them. Deleting the check does too.
+- Unacknowledging restarts them, the next one an interval after the unack.
+- Snoozing acknowledges the incident, so reminders come back after a snooze
+  only if the acknowledgment was withdrawn. They then restart an interval after
+  the snooze ends.
+- A reopened incident starts a new series: a relapse clears the
+  acknowledgment.
+- While the check is paused or in a maintenance window, reminders are skipped
+  and resume on their own afterwards.
+- SMS (Twilio) and PagerDuty channels never get reminders. Escalation policy
+  targets don't either: a policy has its own repeat settings.
+- Degraded and SLO burn incidents never send reminders.
+- Changing the interval applies from the next reminder.
 
 ### Notification Flow Example
 

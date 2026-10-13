@@ -955,6 +955,8 @@ specification, so receivers can verify it came from SolidPing.
   (`{"text", "authorName", "source"}`).
 - `incident.acknowledged` and `incident.unacknowledged` events add
   `data.acknowledgment` (`{"actorName", "via"}`).
+- `incident.reminder` events add `data.incident.reminderCount`, the number of
+  this reminder (`1` for the first). It is absent on every other event.
 
 ### Event Types
 
@@ -966,6 +968,7 @@ specification, so receivers can verify it came from SolidPing.
 | `incident.resolved` | Incident resolved (check recovered) |
 | `incident.acknowledged` | Someone took the incident |
 | `incident.unacknowledged` | The acknowledgment was withdrawn |
+| `incident.reminder` | Still open and unacknowledged after the reminder interval (off by default, see [Reminders](/features/incidents#reminders)) |
 | `incident.comment` | A comment was added to the incident |
 
 ### Webhook Configuration
