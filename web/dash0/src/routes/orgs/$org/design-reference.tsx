@@ -4,6 +4,7 @@
 
 import { useMemo, useState } from "react";
 import { Chip } from "@/components/ui/chip";
+import { HttpTimingCard } from "@/components/checks/http-timing-card";
 import { PortInput, PortChips } from "@/components/checks/form/port-input";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import type { AIGenerationFailed } from "@/api/hooks";
@@ -86,6 +87,7 @@ import {
 import {
   JsonAssertionEditor,
   BodyAssertionEditor,
+  HeaderAssertionEditor,
   type AssertionNode,
 } from "@/components/checks/json-assertion-editor";
 import {
@@ -337,6 +339,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "onboarding-checklist", label: "Onboarding checklist" },
   { id: "magic-wand", label: "Magic wand" },
   { id: "ai-generation-progress", label: "AI generation progress" },
+  { id: "http-timing-card", label: "HTTP timing card" },
 ];
 
 function DesignReferencePage() {
@@ -401,7 +404,38 @@ function DesignReferencePage() {
       <OnboardingChecklistSection />
       <MagicWandSection />
       <AIGenerationProgressSection />
+      <HttpTimingCardSection />
     </div>
+  );
+}
+
+function HttpTimingCardSection() {
+  const importLine = `import { HttpTimingCard } from "@/components/checks/http-timing-card";
+
+<HttpTimingCard metrics={result.metrics} />`;
+  return (
+    <Section
+      id="http-timing-card"
+      title="HTTP timing card"
+      description="One horizontal bar per phase of an HTTP probe (redirect, DNS, connect, TLS, server response, download). A phase the probe did not run is not drawn. Used on the result page and, with the bare prop, in the last-result block of the check page."
+    >
+      <ExampleRow
+        preview={
+          <div className="w-full max-w-xl">
+            <HttpTimingCard
+              metrics={{
+                dns_time_ms: 12.4,
+                connect_time_ms: 31.2,
+                tls_time_ms: 58.9,
+                ttfb_time_ms: 140.3,
+                download_time_ms: 22.1,
+              }}
+            />
+          </div>
+        }
+        importLine={importLine}
+      />
+    </Section>
   );
 }
 
@@ -6973,6 +7007,11 @@ function TokenChipsInputSection() {
 
 function JsonAssertionEditorSection() {
   const [empty, setEmpty] = useState<AssertionNode | null>(null);
+  const [header, setHeader] = useState<AssertionNode | null>({
+    type: "assertion",
+    path: "X-Powered-By",
+    operator: "not_exists",
+  });
   const [body, setBody] = useState<AssertionNode | null>({
     type: "assertion",
     operator: "eq",
@@ -7000,7 +7039,7 @@ function JsonAssertionEditorSection() {
       description="Recursive editor for the HTTP checker's assertion AST — a leaf tests one subject against an operator, and and/or group nodes nest arbitrarily. One component serves both editors: showPath + the full operator list gives the JSONPath editor, while BodyAssertionEditor hides the path input and narrows the operators to the five that are meaningful against a raw response body (eq/neq/contains/not_contains/regex). Every textual leaf carries an Ignore case checkbox wired to ignoreCase. testIdPrefix keeps two editors on one form from colliding. onChange(null) clears the whole tree. Used in the HTTP check form's Advanced section; JsonAssertionResults (not shown here) renders the matching evaluation result on a failed check."
     >
       <p className="text-xs text-muted-foreground">
-        import {"{ JsonAssertionEditor, BodyAssertionEditor }"} from
+        import {"{ JsonAssertionEditor, BodyAssertionEditor, HeaderAssertionEditor }"} from
         "@/components/checks/json-assertion-editor"
       </p>
       <div className="grid gap-4 max-w-2xl">
@@ -7021,6 +7060,12 @@ function JsonAssertionEditorSection() {
             Body assertion — no path input, narrowed operators, ignore case on
           </Label>
           <BodyAssertionEditor value={body} onChange={setBody} />
+        </div>
+        <div className="space-y-2">
+          <Label>
+            Header assertion: path is the header name, exists/not_exists offered
+          </Label>
+          <HeaderAssertionEditor value={header} onChange={setHeader} />
         </div>
       </div>
     </Section>

@@ -47,11 +47,11 @@ func autoPublishProps(schema map[string]any) map[string]any {
 
 func listStatusPagesDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "list_status_pages",
+		Name: toolListStatusPages,
 		Description: "List every status page in the organization, newest first, and " +
 			"return {data: [...]}. Use get_status_page for a single page by UID or " +
-			"slug (with=sections for its contents) and list_status_page_sections " +
-			"for one page's sections. Read-only: works with mcp:read tokens.",
+			"slug (with=sections or include=sections for its contents). Read-only: " +
+			"works with mcp:read tokens.",
 		InputSchema: objectSchema(map[string]any{}, nil),
 		OutputSchema: dataOutputSchema(
 			"Status pages in the organization.",
@@ -71,16 +71,27 @@ func (h *Handler) toolListStatusPages(ctx context.Context, orgSlug string, _ map
 
 func getStatusPageDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "get_status_page",
-		Description: "Get one status page by UID or slug and return it; pass " +
-			"with=sections to embed its sections and their resources. Use " +
-			"list_status_pages to browse every page instead. Read-only: works " +
-			"with mcp:read tokens.",
+		Name: toolGetStatusPage,
+		Description: "Get one status page by UID or slug and return it. with=sections embeds its " +
+			"sections and their resources. include adds lists next to the page fields: " +
+			"\"sections\" (section metadata, display order), \"resources\" (the resources of the " +
+			"section named by sectionIdentifier) and \"incidents\" (the customer-facing incident " +
+			"publications on the page, filtered by state and active). Use list_status_pages to " +
+			"browse every page, and manage_status_page_section / _resource / _incident to change " +
+			"them. Read-only: works with mcp:read tokens.",
 		InputSchema: objectSchema(map[string]any{
 			propIdentifier: stringProp("Status page UID or URL-friendly slug, e.g. \"public\"."),
 			propWith:       stringProp("\"sections\" to include nested sections and their resources"),
+			propInclude: includeProp("Extra lists to return with the page. An unknown value is an error. "+
+				"Do not combine \"sections\" with with=sections.",
+				includeSections, includeResources, includeIncidents),
+			propSectionIdentifier: stringProp(
+				"Section UID or slug whose resources include=resources returns (required with it)."),
+			propState: stringProp("With include=incidents: only publications in this public state. " +
+				"Allowed: \"investigating\", \"identified\", \"monitoring\", \"resolved\"."),
+			propActive: boolProp("With include=incidents: when true, only publications that are not resolved."),
 		}, []string{propIdentifier}),
-		OutputSchema: statusPageWithSectionsOutputSchema(),
+		OutputSchema: statusPageGetOutputSchema(),
 		Annotations:  readOnlyAnnotations("Get status page"),
 	}
 }
@@ -90,26 +101,82 @@ func (h *Handler) toolGetStatusPage(ctx context.Context, orgSlug string, args ma
 	if identifier == "" {
 		return errorResult("identifier is required")
 	}
+	include, err := parseInclude(args, includeSections, includeResources, includeIncidents)
+	if err != nil {
+		return errorResult(err.Error())
+	}
 	opts := statuspages.GetStatusPageOptions{}
 	if v := getStringArg(args, propWith); v == "sections" {
 		opts.IncludeSections = true
+	}
+	if opts.IncludeSections && include[includeSections] {
+		return errorResult("with=sections already embeds the sections: drop include=sections or with")
+	}
+	if include[includeResources] && getStringArg(args, propSectionIdentifier) == "" {
+		return errorResult("include=resources lists one section's resources: pass sectionIdentifier " +
+			"(or with=sections for every section)")
 	}
 	page, err := h.statusPagesSvc.GetStatusPage(ctx, orgSlug, identifier, opts)
 	if err != nil {
 		return errorResult(err.Error())
 	}
-	return marshalResult(page)
+	if len(include) == 0 {
+		return marshalResult(page)
+	}
+	return h.statusPageWithIncludes(ctx, orgSlug, identifier, page, include, args)
+}
+
+// statusPageWithIncludes adds the lists include names to the page, each one
+// produced by the list tool it replaces (one code path per list).
+func (h *Handler) statusPageWithIncludes(
+	ctx context.Context, orgSlug, identifier string, page any, include map[string]bool, args map[string]any,
+) ToolCallResult {
+	out, err := toObject(page)
+	if err != nil {
+		return errorResult("Failed to marshal result: " + err.Error())
+	}
+
+	listArgs := map[string]any{
+		propPageIdentifier:    identifier,
+		propSectionIdentifier: getStringArg(args, propSectionIdentifier),
+		propState:             getStringArg(args, propState),
+	}
+	if active := getBoolArg(args, propActive); active != nil {
+		listArgs[propActive] = *active
+	}
+
+	lists := []struct {
+		include string
+		fn      toolFunc
+	}{
+		{includeSections, h.toolListStatusPageSections},
+		{includeResources, h.toolListStatusPageResources},
+		{includeIncidents, h.toolListStatusPageIncidents},
+	}
+
+	for _, list := range lists {
+		if !include[list.include] {
+			continue
+		}
+		res := list.fn(ctx, orgSlug, listArgs)
+		if res.IsError {
+			return res
+		}
+		out[list.include] = resultData(res)
+	}
+
+	return marshalResult(out)
 }
 
 func createStatusPageDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "create_status_page",
+		Name: toolCreateStatusPage,
 		Description: "Create a new status page for the organization and return the " +
 			"created page. A duplicate slug is rejected with a conflict, never " +
 			"merged. Only one page can be the default: the first page always " +
 			"becomes it, and isDefault:true demotes the previous default. Every " +
 			"new page is seeded with a default \"Services\" section and starts " +
-			"enabled and public — use create_status_page_section to add more " +
+			"enabled and public — use manage_status_page_section to add more " +
 			"sections and update_status_page to edit the page later. Requires the " +
 			"mcp scope (mcp:read tokens are refused) and at least the user role in " +
 			"the organization.",
@@ -185,7 +252,7 @@ func (h *Handler) toolCreateStatusPage(ctx context.Context, orgSlug string, args
 
 func updateStatusPageDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "update_status_page",
+		Name: toolUpdateStatusPage,
 		Description: "Update an existing status page by UID or slug and return the " +
 			"updated page. PATCH semantics — only fields you pass change, omitted " +
 			"fields keep their current values; the page must already exist and a " +
@@ -270,7 +337,7 @@ func buildUpdateStatusPageRequest(args map[string]any) *statuspages.UpdateStatus
 
 func deleteStatusPageDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "delete_status_page",
+		Name: toolDeleteStatusPage,
 		Description: "Soft-delete a status page by UID or slug: the page disappears " +
 			"from the API and the public site, taking its sections and resources " +
 			"with it, and its uploaded brand assets are deleted. There is no " +
@@ -305,7 +372,7 @@ func (h *Handler) toolDeleteStatusPage(ctx context.Context, orgSlug string, args
 
 func listStatusPageSectionsDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "list_status_page_sections",
+		Name: toolListStatusPageSections,
 		Description: "List the sections of one status page (UID or slug), in display " +
 			"order, and return {data: [...]} — section metadata only, without their " +
 			"resources. Use get_status_page with with=sections for the page with " +
@@ -338,7 +405,7 @@ func (h *Handler) toolListStatusPageSections(
 
 func createStatusPageSectionDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "create_status_page_section",
+		Name: toolCreateStatusPageSection,
 		Description: "Create a section on a status page and return the created " +
 			"section; the page must already exist. A duplicate slug within the page " +
 			"is rejected with a conflict, and without position the section is " +
@@ -381,7 +448,7 @@ func (h *Handler) toolCreateStatusPageSection(
 
 func updateStatusPageSectionDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "update_status_page_section",
+		Name: toolUpdateStatusPageSection,
 		Description: "Update a section of a status page and return the updated " +
 			"section; the section must already exist. PATCH semantics — only " +
 			"fields you pass change, omitted fields keep their current values, and " +
@@ -430,7 +497,7 @@ func (h *Handler) toolUpdateStatusPageSection(
 
 func deleteStatusPageSectionDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "delete_status_page_section",
+		Name: toolDeleteStatusPageSection,
 		Description: "Delete a section from a status page: the section and the " +
 			"resources it displays disappear from the page. There is no undelete — " +
 			"use delete_status_page_resource to remove a single pinned check while " +
@@ -467,7 +534,7 @@ func (h *Handler) toolDeleteStatusPageSection(
 
 func listStatusPageResourcesDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "list_status_page_resources",
+		Name: toolListStatusPageResources,
 		Description: "List the resources (pinned checks and check groups) of one " +
 			"status page section, in display order, and return {data: [...]}. Use " +
 			"list_status_page_sections to find the section first, or get_status_page " +
@@ -502,7 +569,7 @@ func (h *Handler) toolListStatusPageResources(
 
 func createStatusPageResourceDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "create_status_page_resource",
+		Name: toolCreateStatusPageResource,
 		Description: "Pin a check or a whole check group to a status-page section as " +
 			"a publicly displayed resource, and return the created resource. The " +
 			"page and section must already exist, exactly one of checkUid/" +
@@ -567,7 +634,7 @@ func (h *Handler) toolCreateStatusPageResource(
 
 func updateStatusPageResourceDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "update_status_page_resource",
+		Name: toolUpdateStatusPageResource,
 		Description: "Update a pinned resource's display name, explanation or " +
 			"position and return the updated resource; the page, section and " +
 			"resource must already exist. PATCH semantics — only fields you pass " +
@@ -580,7 +647,7 @@ func updateStatusPageResourceDef() ToolDefinition {
 		InputSchema: objectSchema(map[string]any{
 			propPageIdentifier:    stringProp("Status page UID or URL-friendly slug, e.g. \"public\"."),
 			propSectionIdentifier: stringProp("Status page section UID or URL-friendly slug, e.g. \"api\"."),
-			propResourceUID:       stringProp("Status page resource UID (returned by list/create_status_page_resource)."),
+			propResourceUID:       stringProp("Status page resource UID (get_status_page include=resources lists them)."),
 			propPublicName:        stringProp("New display name shown on the public page."),
 			propExplanation:       stringProp("New short explanation rendered under the resource."),
 			propPosition:          intProp("New display position within the section (smaller renders earlier)."),
@@ -619,7 +686,7 @@ func (h *Handler) toolUpdateStatusPageResource(
 
 func deleteStatusPageResourceDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "delete_status_page_resource",
+		Name: toolDeleteStatusPageResource,
 		Description: "Remove a pinned resource from its section, returning " +
 			"{deleted: true, identifier}; the underlying check or group itself is " +
 			"untouched. The delete is permanent, a resource managed by a section " +
@@ -630,7 +697,7 @@ func deleteStatusPageResourceDef() ToolDefinition {
 		InputSchema: objectSchema(map[string]any{
 			propPageIdentifier:    stringProp("Status page UID or URL-friendly slug, e.g. \"public\"."),
 			propSectionIdentifier: stringProp("Status page section UID or URL-friendly slug, e.g. \"api\"."),
-			propResourceUID:       stringProp("Status page resource UID (returned by list/create_status_page_resource)."),
+			propResourceUID:       stringProp("Status page resource UID (get_status_page include=resources lists them)."),
 		}, []string{propPageIdentifier, propSectionIdentifier, propResourceUID}),
 		OutputSchema: objectSchema(map[string]any{
 			schemaKeyDeleted: boolProp("Always true on success."),
@@ -694,7 +761,8 @@ func statusPageWithSectionsOutputSchema() map[string]any {
 
 	props := statusPageResponseOutputProps()
 	props["sections"] = arrayOfObjectsProp(
-		"Nested sections; absent unless with=sections was passed.",
+		"Sections; absent unless with=sections (nested resources included) or "+
+			"include=sections (section metadata only) was passed.",
 		sectionProps,
 	)
 
@@ -713,6 +781,24 @@ func sectionResponseOutputProps() map[string]any {
 			"Dynamic membership rule; absent on hand-curated sections.",
 		),
 	}
+}
+
+// statusPageGetOutputSchema is get_status_page's output: the page, optionally
+// with nested sections (with=sections) and the lists include adds.
+func statusPageGetOutputSchema() map[string]any {
+	schema := statusPageWithSectionsOutputSchema()
+	props := schemaProps(schema)
+	props[includeResources] = arrayOfObjectsProp(
+		"Resources of the section named by sectionIdentifier; present with include=resources.",
+		resourceResponseOutputProps(),
+	)
+	props[includeIncidents] = arrayOfObjectsProp(
+		"Incident publications on the page; present with include=incidents.",
+		incidentPublicationOutputProps(),
+	)
+	schema[schemaKeyProperties] = props
+
+	return schema
 }
 
 func sectionOutputSchema() map[string]any {

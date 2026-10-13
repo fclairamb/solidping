@@ -1,7 +1,13 @@
 import { useState, useEffect, useMemo, useRef } from "react";
+import {
+  ChartViewSwitch,
+  TimingChartCard,
+} from "@/components/checks/timing-chart";
+import { HttpTimingCard } from "@/components/checks/http-timing-card";
 import { useAuth } from "@/contexts/AuthContext";
 import { useIsDemoSession } from "@/hooks/use-is-demo-session";
 import { canDemoEditCheck } from "@/lib/demo";
+import { buildCurlCommand, curlCommandHasPlaceholders } from "@/lib/curl-command";
 import {
   createFileRoute,
   Link,
@@ -31,6 +37,7 @@ import {
   Pencil,
   Power,
   RefreshCw,
+  Terminal,
   Timer,
   Trash2,
   X,
@@ -130,6 +137,7 @@ import { docsHrefForType } from "@/components/shared/check-type-docs-anchors";
 import { SloCoverageChip } from "@/components/slos/slo-coverage-chip";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { NeedsResealAlert } from "@/components/checks/needs-reseal-alert";
+import { CheckPublicationHint } from "@/components/checks/check-publication-hint";
 import { PublishOnStatusPageDialog } from "@/components/checks/publish-on-status-page-dialog";
 import { CheckSummaryCards } from "@/components/checks/check-summary-cards";
 import { AIAuthoredDetail } from "@/components/checks/ai-authored-detail";
@@ -152,6 +160,8 @@ import {
   JsonAssertionResultCard,
   JSON_ASSERTION_RESULT_OUTPUT_KEY,
   BodyAssertionResultCard,
+  HeaderAssertionResultCard,
+  HEADER_ASSERTION_RESULT_OUTPUT_KEY,
   BODY_ASSERTION_RESULT_OUTPUT_KEY,
 } from "@/components/checks/json-assertion-result-card";
 import {
@@ -195,12 +205,16 @@ interface CheckDetailSearch {
   graphFrom?: number;
   graphTo?: number;
   graphSelected?: string;
+  /** Chart view of an HTTP check: absent is the response time chart. */
+  graphView?: "timing";
   /**
    * Opens the "Publish on a status page" dialog on mount. Deep-linked from the
    * post-create line on `checks/new` (spec 2026-09-16-11), so the one moment a
    * user wonders where their new check went is one click from the answer.
    */
   publish?: boolean;
+  /** Set by `checks/new` after a create: shows the inline publication hint. */
+  created?: boolean;
 }
 
 // Rows shown in the "Recent Incidents" card; the underlying query fetches more
@@ -235,10 +249,13 @@ export const Route = createFileRoute("/orgs/$org/checks/$checkUid/")({
       typeof search.graphSelected === "string" && search.graphSelected !== ""
         ? search.graphSelected
         : undefined,
+    graphView: search.graphView === "timing" ? "timing" : undefined,
     // Same coercion story as graphFull above: the default parser has already
     // turned "true" into a boolean by the time this runs.
     publish:
       search.publish === true || search.publish === "true" ? true : undefined,
+    created:
+      search.created === true || search.created === "true" ? true : undefined,
   }),
   component: CheckDetailPage,
 });
@@ -701,7 +718,9 @@ function CheckDetailPage() {
     graphFrom,
     graphTo,
     graphSelected,
+    graphView,
     publish,
+    created,
   } = Route.useSearch();
   const navigate = useNavigate();
   const router = useRouter();
@@ -1107,6 +1126,22 @@ function CheckDetailPage() {
     }
   };
 
+  const handleCopyCurl = async () => {
+    if (!check) return;
+    const config = check.config ?? {};
+    const privateKeys = check.configPrivateKeys ?? [];
+    try {
+      await navigator.clipboard.writeText(buildCurlCommand(config, privateKeys));
+      toast.success(
+        curlCommandHasPlaceholders(config, privateKeys)
+          ? t("checks:detail.curlCopiedPlaceholders")
+          : t("checks:detail.curlCopied"),
+      );
+    } catch {
+      toast.error(t("checks:detail.copyCurlFailed"));
+    }
+  };
+
   const handleToggleEnabled = async () => {
     if (!check) return;
     const next = !check.enabled;
@@ -1476,6 +1511,15 @@ function CheckDetailPage() {
                   <Link2 className="mr-2 h-4 w-4" />
                   {t("checks:detail.copyLink")}
                 </DropdownMenuItem>
+                {check.type === "http" && (
+                  <DropdownMenuItem
+                    onSelect={handleCopyCurl}
+                    data-testid="check-copy-curl"
+                  >
+                    <Terminal className="mr-2 h-4 w-4" />
+                    {t("checks:detail.copyCurl")}
+                  </DropdownMenuItem>
+                )}
                 {/* Deep link into the docs section for *this* check's type. */}
                 <DropdownMenuItem asChild>
                   <a
@@ -1544,6 +1588,14 @@ function CheckDetailPage() {
         </div>
       </div>
 
+      {created === true && (
+        <CheckPublicationHint
+          org={org}
+          check={check}
+          onPublish={() => setPublishOpen(true)}
+        />
+      )}
+
       {/* Needs-re-seal warning (spec 2026-07-16-02): this check runs in a
           private location and its sealed credentials no longer match that
           location's active agents. Re-saving the credentials (Edit, above) is
@@ -1589,74 +1641,114 @@ function CheckDetailPage() {
         totalIncidents={incidents?.total ?? incidents?.data?.length ?? 0}
       />
 
+      {/* Chart view switch (HTTP only): response time or phase timing. */}
+      {check.type === "http" && (
+        <div className="flex justify-end">
+          <ChartViewSwitch
+            value={graphView === "timing" ? "timing" : "response"}
+            onChange={(view) =>
+              navigate({
+                to: ".",
+                search: (prev) => ({
+                  ...prev,
+                  graphView: view === "timing" ? "timing" : undefined,
+                }),
+                replace: true,
+              })
+            }
+          />
+        </div>
+      )}
+
       {/* Response time chart */}
-      <ResponseTimeChart
-        org={org}
-        checkUid={checkUid}
-        periodMs={periodMs}
-        regionCount={check.regions?.length}
-        createdAt={check.createdAt}
-        initialPeriod={graphPeriod}
-        initialFullRange={graphFull}
-        region={region}
-        onRegionChange={setRegion}
-        // The strip is intentionally rendered below the chart (not next to the
-        // region filter in the chart header), inside the same card.
-        footer={durationStatsStrip}
-        zoomFrom={graphFrom}
-        zoomTo={graphTo}
-        selectedUid={graphSelected}
-        degradedSpans={degradedSpans}
-        onSettingsChange={(period, full) =>
-          navigate({
-            to: ".",
-            // Functional form so the region param (shared with Recent
-            // Results/stats) survives chart period/range changes instead of
-            // being wiped by this literal-object search.
-            search: (prev) => {
-              const nextPeriod = period !== "day" ? period : undefined;
-              // Changing the time range invalidates the zoom window (and its
-              // selected point), which belongs to the previous range's context.
-              const periodChanged = nextPeriod !== prev.graphPeriod;
-              return {
+      {check.type === "http" && graphView === "timing" ? (
+        <TimingChartCard
+          org={org}
+          checkUid={checkUid}
+          periodMs={periodMs}
+          timeRange={graphPeriod ?? "day"}
+          view="timing"
+          onViewChange={() => undefined}
+          onTimeRangeChange={(range) =>
+            navigate({
+              to: ".",
+              search: (prev) => ({
                 ...prev,
-                graphPeriod: nextPeriod,
-                graphFull: full ? true : undefined,
-                ...(periodChanged
-                  ? {
-                      graphFrom: undefined,
-                      graphTo: undefined,
-                      graphSelected: undefined,
-                    }
+                graphPeriod: range !== "day" ? range : undefined,
+              }),
+              replace: true,
+            })
+          }
+        />
+      ) : (
+        <ResponseTimeChart
+          org={org}
+          checkUid={checkUid}
+          periodMs={periodMs}
+          regionCount={check.regions?.length}
+          createdAt={check.createdAt}
+          initialPeriod={graphPeriod}
+          initialFullRange={graphFull}
+          region={region}
+          onRegionChange={setRegion}
+          // The strip is intentionally rendered below the chart (not next to the
+          // region filter in the chart header), inside the same card.
+          footer={durationStatsStrip}
+          zoomFrom={graphFrom}
+          zoomTo={graphTo}
+          selectedUid={graphSelected}
+          degradedSpans={degradedSpans}
+          onSettingsChange={(period, full) =>
+            navigate({
+              to: ".",
+              // Functional form so the region param (shared with Recent
+              // Results/stats) survives chart period/range changes instead of
+              // being wiped by this literal-object search.
+              search: (prev) => {
+                const nextPeriod = period !== "day" ? period : undefined;
+                // Changing the time range invalidates the zoom window (and its
+                // selected point), which belongs to the previous range's context.
+                const periodChanged = nextPeriod !== prev.graphPeriod;
+                return {
+                  ...prev,
+                  graphPeriod: nextPeriod,
+                  graphFull: full ? true : undefined,
+                  ...(periodChanged
+                    ? {
+                        graphFrom: undefined,
+                        graphTo: undefined,
+                        graphSelected: undefined,
+                      }
+                    : {}),
+                };
+              },
+              replace: true,
+            })
+          }
+          onZoomChange={(from, to) =>
+            navigate({
+              to: ".",
+              search: (prev) => ({
+                ...prev,
+                graphFrom: from,
+                graphTo: to,
+                // Reset (from/to cleared) also clears the selected point (spec §4).
+                ...(from == null || to == null
+                  ? { graphSelected: undefined }
                   : {}),
-              };
-            },
-            replace: true,
-          })
-        }
-        onZoomChange={(from, to) =>
-          navigate({
-            to: ".",
-            search: (prev) => ({
-              ...prev,
-              graphFrom: from,
-              graphTo: to,
-              // Reset (from/to cleared) also clears the selected point (spec §4).
-              ...(from == null || to == null
-                ? { graphSelected: undefined }
-                : {}),
-            }),
-            replace: true,
-          })
-        }
-        onSelectChange={(uid) =>
-          navigate({
-            to: ".",
-            search: (prev) => ({ ...prev, graphSelected: uid }),
-            replace: true,
-          })
-        }
-      />
+              }),
+              replace: true,
+            })
+          }
+          onSelectChange={(uid) =>
+            navigate({
+              to: ".",
+              search: (prev) => ({ ...prev, graphSelected: uid }),
+              replace: true,
+            })
+          }
+        />
+      )}
 
       {/* Availability table */}
       <AvailabilityTable
@@ -1795,6 +1887,9 @@ function CheckDetailPage() {
                     ? new Date(check.lastResult.timestamp).toLocaleString()
                     : t("checks:detail.unknown")}
                 </div>
+                {check.type === "http" && (
+                  <HttpTimingCard metrics={check.lastResult.metrics} bare />
+                )}
                 {check.lastResult.metrics && (
                   <div>
                     <div className="text-sm font-medium text-muted-foreground mb-2">
@@ -1855,6 +1950,7 @@ function CheckDetailPage() {
                               key !== IP_VERSION_OUTPUT_KEY &&
                               key !== JSON_ASSERTION_RESULT_OUTPUT_KEY &&
                               key !== BODY_ASSERTION_RESULT_OUTPUT_KEY &&
+                              key !== HEADER_ASSERTION_RESULT_OUTPUT_KEY &&
                               // Bookkeeping a passive evaluation row stamps on
                               // itself (spec 2026-09-02-04). "evaluation: true"
                               // and a bare uid are noise here; the badge on the
@@ -1943,7 +2039,9 @@ function CheckDetailPage() {
         <HealthCard
           org={org}
           checkUid={checkUid}
-          output={check.lastResult?.output as Record<string, unknown> | undefined}
+          output={
+            check.lastResult?.output as Record<string, unknown> | undefined
+          }
         />
       )}
 
@@ -1951,13 +2049,23 @@ function CheckDetailPage() {
         <CrawlCard
           org={org}
           checkUid={checkUid}
-          output={check.lastResult?.output as Record<string, unknown> | undefined}
+          output={
+            check.lastResult?.output as Record<string, unknown> | undefined
+          }
           canCancel={ownsThisCheck}
         />
       )}
 
       {check.type === "http" && (
         <JsonAssertionResultCard
+          output={
+            check.lastResult?.output as Record<string, unknown> | undefined
+          }
+        />
+      )}
+
+      {check.type === "http" && (
+        <HeaderAssertionResultCard
           output={
             check.lastResult?.output as Record<string, unknown> | undefined
           }

@@ -146,10 +146,10 @@ func TestCheckTypeWorkflowDescriptionsChain(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	// list_check_types description must point at get_check_type_samples
-	listDesc, ok := listCheckTypesDef().Description, true
-	r.True(ok)
-	r.Contains(listDesc, "get_check_type_samples")
+	// list_check_types description must explain the type argument (samples)
+	listDesc := listCheckTypesDef().Description
+	r.Contains(listDesc, "type=")
+	r.Contains(listDesc, "samples")
 
 	// validate_check description must mention create_check
 	validateDesc := validateCheckDef().Description

@@ -520,6 +520,23 @@ func TestAggregateResults_ExcludesNonDataStatuses(t *testing.T) {
 	// is no longer stored on the row.
 }
 
+func TestAggregateMetrics_PhaseMissingFromSomeResults(t *testing.T) {
+	t.Parallel()
+
+	// HTTP results over plain http carry no tls_time_ms: the average must
+	// cover the results that have it, not count the others as 0.
+	results := []*models.Result{
+		{Metrics: models.JSONMap{"connect_time_ms": 10.0, "tls_time_ms": 20.0}},
+		{Metrics: models.JSONMap{"connect_time_ms": 30.0}},
+		{Metrics: models.JSONMap{"connect_time_ms": 20.0, "tls_time_ms": 40.0}},
+	}
+
+	compacted := aggregateMetrics(results)
+
+	assert.InDelta(t, 30.0, compacted["tls_time_ms"], 0.01)
+	assert.InDelta(t, 20.0, compacted["connect_time_ms"], 0.01)
+}
+
 func TestAggregateMetrics_Min(t *testing.T) {
 	t.Parallel()
 

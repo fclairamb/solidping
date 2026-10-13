@@ -383,3 +383,17 @@ func TestValidateDelegatesToConfig(t *testing.T) {
 	}})
 	require.Error(t, err)
 }
+
+func TestFailingHeaderAssertionIsDown(t *testing.T) {
+	t.Parallel()
+
+	server := serve(t, http.StatusOK, "application/json", `{"status":"UP"}`)
+	cfg := healthCfg(server.URL)
+	cfg.HeaderAssertions = &httpconfig.AssertionNode{
+		Type: httpconfig.NodeTypeAssertion, Path: "Content-Type", Operator: httpconfig.OpNotExists,
+	}
+
+	result := run(t, cfg)
+	require.Equal(t, checkerdef.StatusDown, result.Status, result.Output)
+	require.Equal(t, "Header assertion failed", outputError(result))
+}

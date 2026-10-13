@@ -27,26 +27,10 @@ test.describe("Run now", () => {
     const { uid } = (await created.json()) as { uid: string };
 
     try {
-      // Creating the check fires its first run (the express path). If Run now
-      // lands while that run still holds its lease, checkrunnow.RunNow reports
-      // it running and queues nothing (the allRunning branch), and that run's
-      // result predates the request, so the button can wait for a run that
-      // never comes: the likely cause of a 30 s hang in CI run 38110858942,
-      // clicked 0.8 s after the create. This test is about an idle check, so
-      // wait for that first result before pressing.
-      await expect
-        .poll(
-          async () => {
-            const resp = await page.request.get(
-              `${API_BASE}/api/v1/orgs/test/checks/${uid}?with=last_result`,
-              { headers: { Authorization: `Bearer ${token}` } },
-            );
-            return ((await resp.json()) as { lastResult?: unknown }).lastResult != null;
-          },
-          { timeout: 20_000 },
-        )
-        .toBe(true);
-
+      // Spec 2026-10-12-05 regression: Run now is pressed right after the
+      // create, while the check's first (express) run may still hold the job.
+      // The request must be parked for that run's release and run again, not
+      // dropped: no waiting for the first result here.
       await page.goto(`${DASH_BASE}/orgs/test/checks/${uid}`);
 
       const button = page.getByTestId("check-run-now");
@@ -111,26 +95,6 @@ test.describe("Run now", () => {
     const { uid } = (await created.json()) as { uid: string };
 
     try {
-      // Creating the check fires its first run (the express path). If Run now
-      // lands while that run still holds its lease, checkrunnow.RunNow reports
-      // it running and queues nothing (the allRunning branch), and that run's
-      // result predates the request, so the button can wait for a run that
-      // never comes: the likely cause of a 30 s hang in CI run 38110858942,
-      // clicked 0.8 s after the create. This test is about an idle check, so
-      // wait for that first result before pressing.
-      await expect
-        .poll(
-          async () => {
-            const resp = await page.request.get(
-              `${API_BASE}/api/v1/orgs/test/checks/${uid}?with=last_result`,
-              { headers: { Authorization: `Bearer ${token}` } },
-            );
-            return ((await resp.json()) as { lastResult?: unknown }).lastResult != null;
-          },
-          { timeout: 20_000 },
-        )
-        .toBe(true);
-
       await page.goto(`${DASH_BASE}/orgs/test/checks/${uid}`);
       await page.getByTestId("check-run-now").click();
       await expect(page.getByText(/Permission Denied/)).toBeVisible();

@@ -123,7 +123,12 @@
       "status": "Status",
       "region": "Region",
       "duration": "Duration",
-      "time": "Time"
+      "time": "Time",
+      "copyCurl": "Copy as cURL",
+      "copyCurlTooltip": "Builds the command from the check's current config, which may differ from the config at failure time.",
+      "copyCurlCopied": "Request copied as cURL",
+      "copyCurlCopiedPlaceholders": "Request copied as cURL. Secrets were replaced with placeholders.",
+      "copyCurlFailed": "Could not copy the request"
     },
     "probeResponse": {
       "title": "What the probe saw",

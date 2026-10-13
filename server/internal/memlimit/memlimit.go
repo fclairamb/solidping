@@ -27,6 +27,14 @@ const unlimited = math.MaxInt64
 // the config knob overrides it.
 const defaultGCPercent = 100
 
+// SmallHostMaxBytes is the largest memory budget treated as a "small host": it
+// gets the host-derived soft cap and the lighter argon2id hashing profile
+// (SmallHost). One threshold, so the two never disagree.
+const SmallHostMaxBytes = int64(2) << 30
+
+// hostRatioDivisor sets the host-derived soft cap to half of the host's RAM.
+const hostRatioDivisor = 2
+
 // defaultRatio is the headroom factor applied to a detected cgroup limit when
 // the configured ratio is out of range.
 const defaultRatio = 0.9
@@ -39,6 +47,7 @@ const (
 	sourceEnv     = "env"
 	sourceConfig  = "config"
 	sourceCgroup  = "cgroup"
+	sourceHost    = "host"
 	sourceDefault = "default"
 )
 
@@ -50,7 +59,9 @@ type Config struct {
 	MemoryLimit string
 
 	// Auto derives the soft cap from the cgroup memory limit × Ratio when
-	// MemoryLimit is empty and no native GOMEMLIMIT env var is set.
+	// MemoryLimit is empty and no native GOMEMLIMIT env var is set. Without a
+	// cgroup limit, on a host with at most 2 GiB of RAM, the cap is half of the
+	// host's RAM (source "host").
 	Auto bool
 
 	// Ratio is the fraction of the detected cgroup limit to use as the soft cap
@@ -69,7 +80,7 @@ type Applied struct {
 	// MemoryLimitBytes is the effective GOMEMLIMIT. math.MaxInt64 means no cap.
 	MemoryLimitBytes int64
 	// MemoryLimitSource is how the cap was decided: "env", "config", "cgroup",
-	// or "default".
+	// "host", or "default".
 	MemoryLimitSource string
 	// GCPercent is the effective GOGC.
 	GCPercent int
@@ -94,14 +105,14 @@ func (a Applied) MemoryLimitHuman() string {
 // Apply sets GOMEMLIMIT and GOGC according to cfg and the environment, returning
 // the effective values. Call once at startup.
 func Apply(cfg Config) Applied {
-	return apply(cfg, detectCgroupMemoryLimitOS)
+	return apply(cfg, detectCgroupMemoryLimitOS, detectHostMemoryOS)
 }
 
-// apply is the testable core: it takes the cgroup detector explicitly so a test
-// can inject a deterministic limit. The decision logic lives in the pure decide*
-// helpers; this wrapper performs the global runtime mutation.
-func apply(cfg Config, detect func() (int64, bool)) Applied {
-	mem := decideMemoryLimit(cfg, os.Getenv("GOMEMLIMIT"), detect)
+// apply is the testable core: it takes the cgroup and host-RAM detectors
+// explicitly so a test can inject deterministic values. The decision logic lives
+// in the pure decide* helpers; this wrapper performs the global runtime mutation.
+func apply(cfg Config, detect, detectHost func() (int64, bool)) Applied {
+	mem := decideMemoryLimit(cfg, os.Getenv("GOMEMLIMIT"), detect, detectHost)
 	if mem.set {
 		debug.SetMemoryLimit(mem.bytes)
 	}
@@ -126,13 +137,13 @@ func apply(cfg Config, detect func() (int64, bool)) Applied {
 type memDecision struct {
 	set    bool   // whether to call debug.SetMemoryLimit(bytes)
 	bytes  int64  // the cap to set (valid only when set)
-	source string // sourceEnv | sourceConfig | sourceCgroup | sourceDefault
+	source string // sourceEnv | sourceConfig | sourceCgroup | sourceHost | sourceDefault
 }
 
 // decideMemoryLimit resolves the soft cap from config, a (possibly empty) native
-// GOMEMLIMIT value, and a cgroup detector. Pure: no global mutation, no env
-// reads — fully unit-testable.
-func decideMemoryLimit(cfg Config, envGoMemLimit string, detect func() (int64, bool)) memDecision {
+// GOMEMLIMIT value, a cgroup detector and a host-RAM detector. Pure: no global
+// mutation, no env reads — fully unit-testable.
+func decideMemoryLimit(cfg Config, envGoMemLimit string, detect, detectHost func() (int64, bool)) memDecision {
 	if isEnvSet(envGoMemLimit) {
 		return memDecision{source: sourceEnv}
 	}
@@ -142,7 +153,63 @@ func decideMemoryLimit(cfg Config, envGoMemLimit string, detect func() (int64, b
 	if d, ok := memLimitFromCgroup(cfg, detect); ok {
 		return d
 	}
+	if d, ok := memLimitFromHost(cfg, detectHost); ok {
+		return d
+	}
 	return memDecision{source: sourceDefault}
+}
+
+// memLimitFromHost caps a small host (at most 2 GiB of RAM, no cgroup limit) at
+// half its RAM. On a 1 GB Raspberry Pi that is 512 MiB, far above an idle
+// instance: it only bounds login and check bursts (spec 2026-10-12-04).
+func memLimitFromHost(cfg Config, detectHost func() (int64, bool)) (memDecision, bool) {
+	if !cfg.Auto || detectHost == nil {
+		return memDecision{}, false
+	}
+	total, ok := detectHost()
+	if !ok || !isSmall(total) {
+		return memDecision{}, false
+	}
+	return memDecision{set: true, bytes: total / hostRatioDivisor, source: sourceHost}, true
+}
+
+// isSmall reports whether a memory budget in bytes counts as a small host.
+func isSmall(total int64) bool {
+	return total > 0 && total <= SmallHostMaxBytes
+}
+
+// EffectiveMemoryBytes returns the memory budget the process runs under: the
+// cgroup limit when one is set, else the host's MemTotal. ok is false when
+// neither is known (always the case off Linux).
+func EffectiveMemoryBytes() (int64, bool) {
+	return effectiveMemory(detectCgroupMemoryLimitOS, detectHostMemoryOS)
+}
+
+// SmallHost reports whether the effective memory budget (EffectiveMemoryBytes)
+// is at most SmallHostMaxBytes. Unknown budgets (non-Linux) are not small.
+func SmallHost() bool {
+	return smallHost(detectCgroupMemoryLimitOS, detectHostMemoryOS)
+}
+
+// effectiveMemory is the testable core of EffectiveMemoryBytes.
+func effectiveMemory(detect, detectHost func() (int64, bool)) (int64, bool) {
+	if detect != nil {
+		if limit, ok := detect(); ok && limit > 0 {
+			return limit, true
+		}
+	}
+	if detectHost != nil {
+		if total, ok := detectHost(); ok && total > 0 {
+			return total, true
+		}
+	}
+	return 0, false
+}
+
+// smallHost is the testable core of SmallHost.
+func smallHost(detect, detectHost func() (int64, bool)) bool {
+	total, ok := effectiveMemory(detect, detectHost)
+	return ok && isSmall(total)
 }
 
 // memLimitFromConfig parses an explicit cfg.MemoryLimit. An unparseable value

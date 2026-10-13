@@ -53,11 +53,11 @@ test.describe("Check labels", () => {
     await expect(page.getByTestId("label-chips")).toContainText("service: payments");
 
     await page.getByTestId("check-submit-button").click();
-    await page.waitForURL(/\/checks\/[0-9a-f-]{36}$/, { timeout: 10000 });
+    await page.waitForURL(/\/checks\/[0-9a-f-]{36}(\?.*)?$/, { timeout: 10000 });
 
     // Reload via the edit page and assert the chip is preserved. The section
     // auto-opens because labels are set; expand defensively regardless.
-    await page.goto(page.url() + "/edit");
+    await page.goto(page.url().split("?")[0] + "/edit");
     await page.waitForLoadState("networkidle");
     await expandSection(page, "section-organization-trigger");
     await expect(page.getByTestId("label-chips")).toContainText("service: payments");
@@ -88,9 +88,9 @@ test.describe("Check labels", () => {
     await expect(page.getByTestId("label-chips")).toContainText("env: prod");
 
     await page.getByTestId("check-submit-button").click();
-    await page.waitForURL(/\/checks\/[0-9a-f-]{36}$/, { timeout: 10000 });
+    await page.waitForURL(/\/checks\/[0-9a-f-]{36}(\?.*)?$/, { timeout: 10000 });
 
-    await page.goto(page.url() + "/edit");
+    await page.goto(page.url().split("?")[0] + "/edit");
     await page.waitForLoadState("networkidle");
     await expandSection(page, "section-organization-trigger");
     await expect(page.getByTestId("label-chips")).toContainText("env: prod");

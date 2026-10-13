@@ -224,7 +224,7 @@ func TestMCPDemoSessionRefusedOnNonCheckMutations(t *testing.T) {
 	refused := 0
 
 	for _, def := range env.handler.tools {
-		if !isMutationTool(def.Name) {
+		if !toolMutates(def.Name, map[string]any{}) {
 			continue
 		}
 
@@ -252,13 +252,13 @@ func TestMCPDemoSessionRefusedOnNonCheckMutations(t *testing.T) {
 func TestMCPDemoGateLeavesOtherSessionsAlone(t *testing.T) {
 	t.Parallel()
 
-	require.False(t, demoToolRefused(&auth.Claims{UserUID: "u"}, "create_status_page"))
-	require.False(t, demoToolRefused(nil, "create_status_page"))
-	require.True(t, demoToolRefused(&auth.Claims{UserUID: "u", Demo: true}, "create_status_page"))
-	require.True(t, demoToolRefused(&auth.Claims{UserUID: "u", Demo: true}, toolSetMaintenanceWindowCheck))
-	require.False(t, demoToolRefused(&auth.Claims{UserUID: "u", Demo: true}, toolDiagnoseCheck))
-	require.False(t, demoToolRefused(&auth.Claims{UserUID: "u", Demo: true}, toolValidateCheck))
-	require.False(t, demoToolRefused(&auth.Claims{UserUID: "u", Demo: true}, toolCreateCheck))
+	require.False(t, demoToolRefused(&auth.Claims{UserUID: "u"}, "create_status_page", nil))
+	require.False(t, demoToolRefused(nil, "create_status_page", nil))
+	require.True(t, demoToolRefused(&auth.Claims{UserUID: "u", Demo: true}, "create_status_page", nil))
+	require.True(t, demoToolRefused(&auth.Claims{UserUID: "u", Demo: true}, toolSetMaintenanceWindowCheck, nil))
+	require.False(t, demoToolRefused(&auth.Claims{UserUID: "u", Demo: true}, toolDiagnoseCheck, nil))
+	require.False(t, demoToolRefused(&auth.Claims{UserUID: "u", Demo: true}, toolValidateCheck, nil))
+	require.False(t, demoToolRefused(&auth.Claims{UserUID: "u", Demo: true}, toolCreateCheck, nil))
 }
 
 // TestMCPRunCheck covers run_check (spec 2026-10-04-01): it returns the
@@ -280,7 +280,7 @@ func TestMCPRunCheck(t *testing.T) {
 	r.True(missing.IsError)
 	r.Contains(missing.Content[0].Text, "not found")
 
-	r.True(isMutationTool(toolRunCheck))
+	r.True(toolMutates(toolRunCheck, map[string]any{}))
 
 	readOnly := &auth.Claims{UserUID: env.demo.UID, OrgSlug: env.org.Slug, Scopes: []string{scopeMCPRead}}
 	refused := env.tool(t, readOnly, toolRunCheck, map[string]any{propIdentifier: env.seeded.Slug})

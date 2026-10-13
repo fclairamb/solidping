@@ -91,6 +91,10 @@ type exportCheckV2 struct {
 	// re-derive an `off` into an `inherit` on a document where `off` happened
 	// to be the majority.
 	TracerouteOnFailure string `json:"tracerouteOnFailure,omitempty"`
+	// ReminderIntervalSeconds (spec 2026-10-12-16): absent means inherit the
+	// org default, 0 is off. Not in the defaults block, for the same reason
+	// as TracerouteOnFailure.
+	ReminderIntervalSeconds *int `json:"reminderIntervalSeconds,omitempty"`
 	// FailQuorum is the multi-region quorum (spec 2026-09-25-10): "all",
 	// "majority" or a number; absent is the default. Not part of the defaults
 	// block for the same reason as TracerouteOnFailure: it is set on the few
@@ -222,6 +226,7 @@ func buildExportDocumentV2(doc *ExportDocument) (*exportDocumentV2, error) {
 			Disabled:                 !check.Enabled,
 			Internal:                 check.Internal,
 			TracerouteOnFailure:      tracerouteWireValue(check.TracerouteOnFailure),
+			ReminderIntervalSeconds:  copyIntPtr(check.ReminderIntervalSeconds),
 			FailQuorum:               check.FailQuorum,
 			ReopenCooldownMultiplier: check.ReopenCooldownMultiplier,
 			// Raw pointer/bool copies, not modal-defaulted — see the field
@@ -346,6 +351,7 @@ func resolveCheckV2(wire *exportCheckV2, defaults *exportDefaultsV2) (ExportChec
 		Enabled:                  !wire.Disabled,
 		Internal:                 wire.Internal,
 		TracerouteOnFailure:      wire.TracerouteOnFailure,
+		ReminderIntervalSeconds:  copyIntPtr(wire.ReminderIntervalSeconds),
 		FailQuorum:               wire.FailQuorum,
 		ReopenCooldownMultiplier: wire.ReopenCooldownMultiplier,
 		// Direct pass-through, like ReopenCooldownMultiplier above — no

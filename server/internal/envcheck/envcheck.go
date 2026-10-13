@@ -180,6 +180,7 @@ func otherManualReaderEnvVars() []string {
 		"SP_SUPPORT_RETENTION_DAYS",
 		"SP_LOG_HTTP_CALLS",
 		"SP_TEST_PG_BINARIES_PATH",
+		"SP_MCP_TOOLSETS",
 	}
 }
 

@@ -2,7 +2,6 @@ package mcp
 
 import (
 	"context"
-	"strings"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
@@ -13,18 +12,6 @@ import (
 const (
 	scopeMCP     = "mcp"
 	scopeMCPRead = "mcp:read"
-)
-
-// Prefixes used by tool-name conventions for write operations. Read-only
-// tokens (mcp:read) are refused on any tool whose name begins with one of
-// these. Deny-list (rather than per-tool annotations) is the pragmatic v1
-// — every new write tool naturally falls under one of these prefixes, and
-// a stray miss is a reviewable oversight, not a silent escalation.
-const (
-	mutationPrefixCreate = "create_"
-	mutationPrefixUpdate = "update_"
-	mutationPrefixDelete = "delete_"
-	mutationPrefixSet    = "set_"
 )
 
 // hasMCPAccess decides whether a credential is allowed to use the MCP
@@ -62,16 +49,6 @@ func isMCPReadOnly(claims *auth.Claims) bool {
 		}
 	}
 	return hasRead
-}
-
-// isMutationTool returns true when the named tool performs writes and
-// should be denied to mcp:read callers.
-func isMutationTool(name string) bool {
-	return strings.HasPrefix(name, mutationPrefixCreate) ||
-		strings.HasPrefix(name, mutationPrefixUpdate) ||
-		strings.HasPrefix(name, mutationPrefixDelete) ||
-		strings.HasPrefix(name, mutationPrefixSet) ||
-		name == toolRunCheck
 }
 
 // mutationRoleDenial is the ROLE half of the mutation gate, next to the scope

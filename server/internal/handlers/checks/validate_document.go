@@ -368,6 +368,11 @@ func validateCheckType(where string, check *ExportCheck, secretsStripped bool) [
 	// Credential/status-field checks run on the caller's original config —
 	// never on configCopy, which a checker may have mutated.
 	issues = append(issues, validateNoInlinedCredentials(where, check.Type, check.Config)...)
+
+	for _, err := range validateVarRefs(check.Config) {
+		issues = append(issues, configIssue(where, err))
+	}
+
 	issues = append(issues, validateStatusFieldExclusivity(where, check.Config)...)
 
 	return issues
@@ -506,7 +511,7 @@ func validateNoInlinedCredentials(where, checkType string, config map[string]any
 			continue
 		}
 
-		if value, ok := config[key].(string); ok && secretref.Pattern.MatchString(value) {
+		if value, ok := config[key].(string); ok && secretref.ContainsSecretRef(value) {
 			continue
 		}
 

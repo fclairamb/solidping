@@ -101,7 +101,7 @@ test.describe("JS check — public env vs encrypted secrets", () => {
 
     // ── Save without touching either map ──
     await page.getByTestId("check-submit-button").click();
-    await page.waitForURL(/\/checks\/[0-9a-f-]{36}$/, { timeout: 15000 });
+    await page.waitForURL(/\/checks\/[0-9a-f-]{36}(\?.*)?$/, { timeout: 15000 });
     await page.waitForLoadState("networkidle");
 
     const saved = await getCheck(page, token, uid);

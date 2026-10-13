@@ -248,3 +248,150 @@ func TestRealHTTPCheckSendsTheResolvedBody(t *testing.T) {
 
 	assertStoredConfigHoldsTheReference(t, ctx, dbSvc, org.UID, check.UID, "body", reference, "hunter2")
 }
+
+// makeJobDue moves a check's job back to due, so a test can claim a second run.
+//
+//nolint:revive // Test helper, context parameter order matches the package convention.
+func makeJobDue(t *testing.T, ctx context.Context, dbSvc *sqlite.Service, checkUID string) {
+	t.Helper()
+
+	due := time.Now().Add(-time.Second)
+
+	_, err := dbSvc.DB().NewUpdate().
+		Model((*models.CheckJob)(nil)).
+		Set("scheduled_at = ?", due).
+		Set("effective_scheduled_at = ?", due).
+		Where("check_uid = ?", checkUID).
+		Exec(ctx)
+	require.NoError(t, err)
+}
+
+// runRealHTTPOnce claims the single due job and runs it with the real checker.
+//
+//nolint:revive // Test helper, context parameter order matches the package convention.
+func runRealHTTPOnce(t *testing.T, ctx context.Context, runner *CheckWorker) {
+	t.Helper()
+	r := require.New(t)
+
+	jobs, _, err := runner.backend.ClaimJobs(ctx, runner.getWorker().UID, nil, 10, 10, 0, time.Minute)
+	r.NoError(err)
+	r.Len(jobs, 1)
+	r.NoError(runner.executeJob(ctx, runner.logger, jobs[0]))
+}
+
+// TestRealHTTPCheckSendsOneFreshVarPerRun: `${var:uuid}` in the URL and in a
+// header carry the same value within one run, and the next run sends another.
+//
+//nolint:paralleltest // Test uses shared database state
+func TestRealHTTPCheckSendsOneFreshVarPerRun(t *testing.T) {
+	r := require.New(t)
+	runner, dbSvc, ctx := setupSecretRunner(t, nil, &configRecorder{})
+	runner.getChecker = registry.GetChecker
+	runner.parseConfig = registry.ParseConfig
+
+	type seen struct{ cb, requestID string }
+
+	var (
+		mu    sync.Mutex
+		calls []seen
+	)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		mu.Lock()
+		calls = append(calls, seen{cb: req.URL.Query().Get("cb"), requestID: req.Header.Get("X-Request-ID")})
+		mu.Unlock()
+
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	org := models.NewOrganization("var-ref-e2e", "")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	check := seedRefCheck(t, ctx, dbSvc, org.UID, "var-ref-e2e", string(checkerdef.CheckTypeHTTP),
+		models.JSONMap{
+			"url":     srv.URL + "/?cb=${var:uuid}",
+			"headers": map[string]any{"X-Request-Id": "${var:uuid}"},
+		})
+
+	runRealHTTPOnce(t, ctx, runner)
+	makeJobDue(t, ctx, dbSvc, check.UID)
+	runRealHTTPOnce(t, ctx, runner)
+
+	mu.Lock()
+	got := append([]seen(nil), calls...)
+	mu.Unlock()
+
+	r.Len(got, 2)
+
+	uuidPattern := `^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`
+	for _, call := range got {
+		r.Regexp(uuidPattern, call.cb)
+		r.Equal(call.cb, call.requestID, "URL and header share one value within a run")
+	}
+
+	r.NotEqual(got[0].cb, got[1].cb, "each run sends a new value")
+
+	stored, err := dbSvc.GetCheck(ctx, org.UID, check.UID)
+	r.NoError(err)
+	r.Equal(srv.URL+"/?cb=${var:uuid}", stored.Config["url"], "the stored config keeps the reference")
+}
+
+// TestStoredResultURLKeepsParamRefAndGeneratedVar: the URL the result stores
+// shows the generated value and `${param:…}` in place of the secret, while
+// the target really received the secret.
+//
+//nolint:paralleltest // Test uses shared database state
+func TestStoredResultURLKeepsParamRefAndGeneratedVar(t *testing.T) {
+	r := require.New(t)
+	runner, dbSvc, ctx := setupSecretRunner(t, nil, &configRecorder{})
+	runner.getChecker = registry.GetChecker
+	runner.parseConfig = registry.ParseConfig
+
+	var (
+		mu       sync.Mutex
+		gotToken string
+		gotCB    string
+	)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		mu.Lock()
+		gotToken = req.URL.Query().Get("token")
+		gotCB = req.URL.Query().Get("cb")
+		mu.Unlock()
+
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	org := models.NewOrganization("var-url-e2e", "")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+	r.NoError(dbSvc.SetOrgParameter(ctx, org.UID, paramkeys.StorageKey("tok"), "hunter2", true))
+
+	check := seedRefCheck(t, ctx, dbSvc, org.UID, "var-url-e2e", string(checkerdef.CheckTypeHTTP),
+		models.JSONMap{"url": srv.URL + "/?token=${param:tok}&cb=${var:random}"})
+
+	runRealHTTPOnce(t, ctx, runner)
+
+	mu.Lock()
+	token, cb := gotToken, gotCB
+	mu.Unlock()
+
+	// Negative control: the target did receive the secret.
+	r.Equal("hunter2", token)
+	r.Regexp(`^[a-z0-9]{8}$`, cb)
+
+	result := new(models.Result)
+	r.NoError(dbSvc.DB().NewSelect().Model(result).
+		Where("check_uid = ?", check.UID).
+		Order("created_at DESC").Limit(1).Scan(ctx))
+
+	storedURL, ok := result.Output["url"].(string)
+	r.True(ok, "output: %+v", result.Output)
+	r.Equal(srv.URL+"/?token=${param:tok}&cb="+cb, storedURL)
+	r.NotContains(storedURL, "hunter2")
+
+	blob, err := json.Marshal(result.Output)
+	r.NoError(err)
+	r.NotContains(string(blob), "hunter2", "no stored output field may carry the secret")
+}

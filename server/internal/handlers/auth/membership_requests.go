@@ -63,6 +63,10 @@ func (s *Service) CreateMembershipRequest(
 		return nil, ErrOrganizationNotFound
 	}
 
+	if s.loginJoinRequestSuppressedReason(org) != "" {
+		return nil, ErrOrgNotAcceptingRequests
+	}
+
 	if _, memberErr := s.db.GetMemberByUserAndOrg(ctx, userUID, org.UID); memberErr == nil {
 		return nil, ErrAlreadyAMember
 	}

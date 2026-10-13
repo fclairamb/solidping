@@ -177,6 +177,9 @@ func (s *GoogleChatSender) buildMessage(payload *Payload) *googleChatMessage {
 	case eventTypeIncidentUnacknowledged:
 		title = unackTitle(payload)
 		subtitle = unackSentence(payload)
+	case eventTypeIncidentReminder:
+		title = reminderTitle(payload)
+		subtitle = reminderSentence(payload)
 	default:
 		title = "[UPDATE] " + checkName
 		subtitle = "An incident update occurred"
@@ -225,7 +228,7 @@ func (s *GoogleChatSender) buildWidgets(payload *Payload, checkName string) []go
 				TopLabel: fieldLabelUnacknowledgedBy, Text: ackActor(payload.Acknowledgment),
 			},
 		}, googleChatWidget{
-			DecoratedText: &googleChatDecoratedText{TopLabel: "Status", Text: unackCallToAction},
+			DecoratedText: &googleChatDecoratedText{TopLabel: fieldLabelStatus, Text: unackCallToAction},
 		})
 
 		if via := ackViaName(payload.Acknowledgment); via != "" {
@@ -248,6 +251,12 @@ func (s *GoogleChatSender) buildWidgets(payload *Payload, checkName string) []go
 				TopLabel: mmFieldFailureCount,
 				Text:     strconv.Itoa(payload.Incident.FailureCount),
 			},
+		})
+	}
+
+	if title, text := RegionLabelFor(payload); text != "" {
+		widgets = append(widgets, googleChatWidget{
+			DecoratedText: &googleChatDecoratedText{TopLabel: title, Text: text},
 		})
 	}
 

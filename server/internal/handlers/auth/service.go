@@ -131,6 +131,10 @@ var (
 	// ErrInvalidEscalationPolicy is returned when the default-escalation-policy
 	// UID does not reference a policy that exists in this org.
 	ErrInvalidEscalationPolicy = errors.New("escalation policy not found in this organization")
+	// ErrInvalidReminderInterval is returned when the org default reminder
+	// interval is neither 0 (off) nor between 900 and 86400 seconds.
+	ErrInvalidReminderInterval = errors.New(
+		"reminderIntervalSeconds must be 0 (off) or between 900 and 86400 seconds (15 minutes to 24 hours)")
 	// ErrAlreadyAMember is returned when a user tries to request membership
 	// in an org they already belong to.
 	ErrAlreadyAMember = errors.New("already a member of this organization")
@@ -142,6 +146,9 @@ var (
 	// ErrRequestCooldownActive is returned when a user re-requests
 	// membership during the rejection cooldown window.
 	ErrRequestCooldownActive = errors.New("membership request cooldown active")
+	// ErrOrgNotAcceptingRequests is returned when the target org never admits
+	// membership requests (the demo org, or the SaaS platform default org).
+	ErrOrgNotAcceptingRequests = errors.New("this organization does not accept membership requests")
 )
 
 // Service provides authentication business logic.
@@ -4008,6 +4015,10 @@ type OrgSettingsResponse struct {
 	// rendered into the status page's `frame-ancestors`, after 'self'. ALWAYS
 	// PRESENT; empty means only the SolidPing origin itself may frame them.
 	StatusPageAllowedEmbedOrigins []string `json:"statusPageAllowedEmbedOrigins"`
+	// ReminderIntervalSeconds is the org default reminder interval for every
+	// check whose own `reminderIntervalSeconds` is null (spec 2026-10-12-16).
+	// ALWAYS PRESENT; 0 (off) when the org never set it.
+	ReminderIntervalSeconds int `json:"reminderIntervalSeconds"`
 }
 
 // GetOrgSettings returns settings for an organization.
@@ -4054,7 +4065,15 @@ func (s *Service) GetOrgSettings(ctx context.Context, orgSlug string) (*OrgSetti
 		return nil, err
 	}
 
+	reminderParam, err := s.db.GetOrgParameter(ctx, org.UID, models.ParamKeyIncidentReminderInterval)
+	if err != nil {
+		return nil, err
+	}
+
+	reminderInterval, _ := parseParamSeconds(reminderParam)
+
 	return &OrgSettingsResponse{
+		ReminderIntervalSeconds:       reminderInterval,
 		RegistrationEmailPattern:      pattern,
 		SessionMaxDurationSeconds:     sessionMaxDurationSeconds,
 		DefaultEscalationPolicyUID:    org.DefaultEscalationPolicyUID,
@@ -4121,6 +4140,10 @@ type UpdateOrgSettingsRequest struct {
 	// https://intranet.acme.com; an empty array clears it. Omit to leave it
 	// unchanged.
 	StatusPageAllowedEmbedOrigins *[]string `json:"statusPageAllowedEmbedOrigins"`
+	// ReminderIntervalSeconds sets the org default reminder interval (spec
+	// 2026-10-12-16): 0 turns reminders off, otherwise 900..86400 seconds.
+	// Omit to leave it unchanged.
+	ReminderIntervalSeconds *int `json:"reminderIntervalSeconds"`
 }
 
 // UpdateOrgSettings updates settings for an organization.
@@ -4132,8 +4155,13 @@ func (s *Service) UpdateOrgSettings(
 		return nil, ErrOrganizationNotFound
 	}
 
-	// Validated BEFORE the first write: a refused embed origin must refuse the
-	// whole PATCH, not land a 400 after the fields above it were saved.
+	// Validated BEFORE the first write: a refused embed origin or reminder
+	// interval must refuse the whole PATCH, not land a 400 after the fields
+	// above it were saved.
+	if req.ReminderIntervalSeconds != nil && !models.ValidReminderIntervalSeconds(*req.ReminderIntervalSeconds) {
+		return nil, ErrInvalidReminderInterval
+	}
+
 	var embedOrigins []string
 	if req.StatusPageAllowedEmbedOrigins != nil {
 		embedOrigins, err = securityheaders.NormalizeEmbedOrigins(*req.StatusPageAllowedEmbedOrigins)
@@ -4160,18 +4188,8 @@ func (s *Service) UpdateOrgSettings(
 		}
 	}
 
-	if req.TracerouteOnFailure != nil {
-		if updateErr := s.db.SetOrgParameter(
-			ctx, org.UID, models.ParamKeyTracerouteEnabled, *req.TracerouteOnFailure, false,
-		); updateErr != nil {
-			return nil, fmt.Errorf("set traceroute default: %w", updateErr)
-		}
-	}
-
-	if req.StatusPageAllowedEmbedOrigins != nil {
-		if updateErr := s.updateEmbedOrigins(ctx, org.UID, embedOrigins); updateErr != nil {
-			return nil, updateErr
-		}
+	if updateErr := s.updateOrgParameters(ctx, org.UID, &req, embedOrigins); updateErr != nil {
+		return nil, updateErr
 	}
 
 	if changed := orgSettingsChangedFields(req); len(changed) > 0 {
@@ -4211,7 +4229,50 @@ func orgSettingsChangedFields(req UpdateOrgSettingsRequest) []string {
 		changed = append(changed, "status_page_allowed_embed_origins")
 	}
 
+	if req.ReminderIntervalSeconds != nil {
+		changed = append(changed, "reminder_interval_seconds")
+	}
+
 	return changed
+}
+
+// updateOrgParameters writes the settings stored as org parameters: the
+// traceroute default, the embed allowlist (already normalized) and the
+// reminder interval (already range-checked).
+func (s *Service) updateOrgParameters(
+	ctx context.Context, orgUID string, req *UpdateOrgSettingsRequest, embedOrigins []string,
+) error {
+	if req.TracerouteOnFailure != nil {
+		if err := s.db.SetOrgParameter(
+			ctx, orgUID, models.ParamKeyTracerouteEnabled, *req.TracerouteOnFailure, false,
+		); err != nil {
+			return fmt.Errorf("set traceroute default: %w", err)
+		}
+	}
+
+	if req.StatusPageAllowedEmbedOrigins != nil {
+		if err := s.updateEmbedOrigins(ctx, orgUID, embedOrigins); err != nil {
+			return err
+		}
+	}
+
+	if req.ReminderIntervalSeconds != nil {
+		if err := s.updateReminderInterval(ctx, orgUID, *req.ReminderIntervalSeconds); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// updateReminderInterval stores the org default reminder interval (spec
+// 2026-10-12-16). 0 deletes the row: absent already means off.
+func (s *Service) updateReminderInterval(ctx context.Context, orgUID string, seconds int) error {
+	if seconds == 0 {
+		return s.db.DeleteOrgParameter(ctx, orgUID, models.ParamKeyIncidentReminderInterval)
+	}
+
+	return s.db.SetOrgParameter(ctx, orgUID, models.ParamKeyIncidentReminderInterval, seconds, false)
 }
 
 // updateEmbedOrigins stores the status-page embed allowlist. origins must

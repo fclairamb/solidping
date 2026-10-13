@@ -107,8 +107,10 @@ merely hidden from the UI. This is the switch for deployments where client
 addresses are personal data you would rather not hold.
 
 A daily cleanup job removes entries older than the retention window. Setting
-`SP_AUDIT_RETENTION_DAYS=0` keeps everything forever, which is what you want
-under a legal hold.
+`SP_AUDIT_RETENTION_DAYS=0` (or any negative value) keeps everything forever,
+which is what you want under a legal hold. The same works for the global
+`audit.retention_days` system parameter. A value that is not an integer is
+ignored with a warning.
 
 ## Reading it through the API
 

@@ -27,14 +27,14 @@ curl -X POST -H "Authorization: Bearer $TOKEN" \
   "requestedAt": "2026-10-04T10:15:00.123456Z",
   "regions": [
     { "region": "eu", "status": "queued" },
-    { "region": "us", "status": "running" }
+    { "region": "us", "status": "queued" }
   ]
 }
 ```
 
-- `queued`: the region's run starts now.
-- `running`: the region is already running the check (or a multi-step run is in
-  progress). That result answers your request.
+Every region is `queued`. A region that is idle runs now. A region that is in
+the middle of a run (or of a multi-step run) runs again as soon as that run
+ends: the run in progress started before your request, so it is not the answer.
 
 A result with a `periodStart` at or after `requestedAt` is the answer.
 
@@ -52,8 +52,7 @@ The next scheduled run keeps its regular period.
 | Most types | 3 per minute | 60 per hour |
 | `browser`, `js`, `rdp`, `vnc` | 1 per minute | 20 per hour |
 
-A request that queues nothing (every region is already running) answers `200`
-and spends no budget.
+A request counts once against these limits, whatever the number of regions.
 
 A refused request answers `429` with a `Retry-After` header. A disabled check
 answers `409`.

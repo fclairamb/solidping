@@ -65,7 +65,7 @@ func TestCompleteOrgLoginRefusedMemberLandsOnOwnOrg(t *testing.T) {
 	r := require.New(t)
 	svc, dbSvc, ctx := setupAuthTestService(t)
 
-	refusing := joinTestOrg(ctx, t, dbSvc, "demo", true)
+	refusing := joinTestOrg(ctx, t, dbSvc, "acmeorg", true)
 	user := joinTestUser(ctx, t, dbSvc, "alice@elsewhere.example")
 	own := fallbackMember(ctx, t, dbSvc, user, "acmetech", time.Now().Add(-time.Hour))
 
@@ -73,7 +73,7 @@ func TestCompleteOrgLoginRefusedMemberLandsOnOwnOrg(t *testing.T) {
 	r.NoError(err)
 
 	r.True(result.Pending, "org A still did not admit the user")
-	r.Equal("demo", result.PendingOrgSlug, "the org with the open request is still named")
+	r.Equal("acmeorg", result.PendingOrgSlug, "the org with the open request is still named")
 	r.Equal("acmetech", result.FallbackOrgSlug)
 	r.NotEmpty(result.RefreshToken, "a session on an org the user belongs to is a full one")
 
@@ -126,14 +126,14 @@ func TestCompleteOrgLoginRefusedNonMemberStaysOrgLess(t *testing.T) {
 	r := require.New(t)
 	svc, dbSvc, ctx := setupAuthTestService(t)
 
-	refusing := joinTestOrg(ctx, t, dbSvc, "demo", true)
+	refusing := joinTestOrg(ctx, t, dbSvc, "acmeorg", true)
 	user := joinTestUser(ctx, t, dbSvc, "outsider@elsewhere.example")
 
 	result, err := svc.CompleteOrgLogin(ctx, refusing, user, WithLoginMethod(signupMethodGoogle))
 	r.NoError(err)
 
 	r.True(result.Pending)
-	r.Equal("demo", result.PendingOrgSlug)
+	r.Equal("acmeorg", result.PendingOrgSlug)
 	r.Empty(result.FallbackOrgSlug)
 	r.Empty(result.RefreshToken, "an org-less session has no refresh token")
 
@@ -222,7 +222,7 @@ func TestFallbackMemberOrgChoice(t *testing.T) {
 			r := require.New(t)
 			svc, dbSvc, ctx := setupAuthTestService(t)
 
-			refusing := joinTestOrg(ctx, t, dbSvc, "demo", true)
+			refusing := joinTestOrg(ctx, t, dbSvc, "acmeorg", true)
 			user := joinTestUser(ctx, t, dbSvc, "multi@elsewhere.example")
 			tt.setup(ctx, t, dbSvc, user)
 
@@ -253,7 +253,7 @@ func TestCompleteOrgLoginFallbackCountsAutoJoin(t *testing.T) {
 	r := require.New(t)
 	svc, dbSvc, ctx := setupAuthTestService(t)
 
-	refusing := joinTestOrg(ctx, t, dbSvc, "demo", true)
+	refusing := joinTestOrg(ctx, t, dbSvc, "acmeorg", true)
 	autoJoin := joinTestOrg(ctx, t, dbSvc, "acmeauto", true)
 	r.NoError(dbSvc.SetOrgParameter(ctx, autoJoin.UID, registrationEmailPatternKey, `@acme\.com$`, false))
 
@@ -278,7 +278,7 @@ func TestPendingFallbackHandoff(t *testing.T) {
 	r := require.New(t)
 	svc, dbSvc, ctx := setupAuthTestService(t)
 
-	refusing := joinTestOrg(ctx, t, dbSvc, "demo", true)
+	refusing := joinTestOrg(ctx, t, dbSvc, "acmeorg", true)
 	user := joinTestUser(ctx, t, dbSvc, "alice@elsewhere.example")
 	fallbackMember(ctx, t, dbSvc, user, "acmetech", time.Now().Add(-time.Hour))
 
@@ -289,7 +289,7 @@ func TestPendingFallbackHandoff(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/auth/oidc/callback", nil)
 
-	r.NoError(finishProviderCallback(rec, req, dbSvc, "oidc", "/d/orgs/demo", &ProviderOutcome{
+	r.NoError(finishProviderCallback(rec, req, dbSvc, "oidc", "/d/orgs/acmeorg", &ProviderOutcome{
 		AccessToken:     login.AccessToken,
 		RefreshToken:    login.RefreshToken,
 		ExpiresIn:       login.ExpiresIn,
@@ -306,7 +306,7 @@ func TestPendingFallbackHandoff(t *testing.T) {
 	location, err := url.Parse(rawLocation)
 	r.NoError(err)
 	r.Equal(handoffCompletePath, location.Path)
-	r.Equal("demo", location.Query().Get(pendingMembershipParam))
+	r.Equal("acmeorg", location.Query().Get(pendingMembershipParam))
 	r.NotContains(rawLocation, login.AccessToken)
 	r.NotContains(rawLocation, login.RefreshToken)
 
@@ -324,8 +324,8 @@ func TestPendingFallbackHandoff(t *testing.T) {
 	r.NotNil(resp.Organization)
 	r.Equal("acmetech", resp.Organization.Slug)
 	r.Equal(LoginActionDefault, resp.LoginAction)
-	r.Equal("demo", resp.MembershipPending)
-	r.Equal("/d/orgs/demo", resp.ReturnTo, "returnTo is only a hint; the dashboard's same-org guard drops it")
+	r.Equal("acmeorg", resp.MembershipPending)
+	r.Equal("/d/orgs/acmeorg", resp.ReturnTo, "returnTo is only a hint; the dashboard's same-org guard drops it")
 }
 
 // TestPendingFallbackHandoffSessionShape pins handoffSession for the three
@@ -337,21 +337,21 @@ func TestPendingFallbackHandoffSessionShape(t *testing.T) {
 
 	r := require.New(t)
 
-	admitted := (&ProviderOutcome{OrgSlug: "demo", UserUID: "u"}).handoffSession("/d")
-	r.Equal("demo", admitted.OrgSlug)
+	admitted := (&ProviderOutcome{OrgSlug: "acmeorg", UserUID: "u"}).handoffSession("/d")
+	r.Equal("acmeorg", admitted.OrgSlug)
 	r.Empty(admitted.MembershipPending)
 
 	fallback := (&ProviderOutcome{
-		OrgSlug: "demo", UserUID: "u", Pending: true, FallbackOrgSlug: "acmetech", PendingOrgSlug: "demo",
+		OrgSlug: "acmeorg", UserUID: "u", Pending: true, FallbackOrgSlug: "acmetech", PendingOrgSlug: "acmeorg",
 	}).handoffSession("/d")
 	r.Equal("acmetech", fallback.OrgSlug)
-	r.Equal("demo", fallback.MembershipPending)
+	r.Equal("acmeorg", fallback.MembershipPending)
 
 	orgLess := (&ProviderOutcome{
-		OrgSlug: "demo", UserUID: "u", Pending: true, PendingOrgSlug: "demo",
+		OrgSlug: "acmeorg", UserUID: "u", Pending: true, PendingOrgSlug: "acmeorg",
 	}).handoffSession("/d")
 	r.Empty(orgLess.OrgSlug)
-	r.Equal("demo", orgLess.MembershipPending)
+	r.Equal("acmeorg", orgLess.MembershipPending)
 }
 
 // errFallbackForced is what the forced-failure wrappers below answer with.
@@ -406,7 +406,7 @@ func TestCompleteOrgLoginFallbackFailureDegradesToOrgLess(t *testing.T) {
 			r := require.New(t)
 			svc, dbSvc, ctx := setupAuthTestService(t)
 
-			refusing := joinTestOrg(ctx, t, dbSvc, "demo", true)
+			refusing := joinTestOrg(ctx, t, dbSvc, "acmeorg", true)
 			user := joinTestUser(ctx, t, dbSvc, "alice@elsewhere.example")
 			fallbackMember(ctx, t, dbSvc, user, "acmetech", time.Now().Add(-time.Hour))
 
@@ -419,7 +419,7 @@ func TestCompleteOrgLoginFallbackFailureDegradesToOrgLess(t *testing.T) {
 			r.True(result.Pending)
 			r.Empty(result.FallbackOrgSlug)
 			r.Empty(result.RefreshToken, "the degraded session is the org-less one")
-			r.Equal("demo", result.PendingOrgSlug, "the refusing org is still named")
+			r.Equal("acmeorg", result.PendingOrgSlug, "the refusing org is still named")
 
 			claims, err := svc.ValidateToken(ctx, result.AccessToken)
 			r.NoError(err)
@@ -455,7 +455,7 @@ func TestCompleteOrgLoginSuppressedRequestWithFallback(t *testing.T) {
 	user := joinTestUser(ctx, t, dbSvc, "newcomer@acme.com")
 
 	login, err := svc.CompleteOrgLogin(ctx, defaultOrg, user,
-		WithLoginMethod(signupMethodGoogle), WithNewlyCreatedUser())
+		WithLoginMethod(signupMethodGoogle))
 	r.NoError(err)
 
 	r.True(login.Pending)

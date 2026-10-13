@@ -28,6 +28,9 @@ const (
 	RedirectHostPolicySameHost = checkconfig.RedirectHostPolicySameHost
 )
 
+// DefaultExpectedStatusPattern is the pattern used when no expected status is set.
+const DefaultExpectedStatusPattern = checkconfig.DefaultExpectedStatusPattern
+
 // MatchStatusCode reports whether a status code satisfies any of the
 // `expectedStatusCodes` patterns. It forwards to the config sub-package that
 // owns the grammar.

@@ -123,7 +123,12 @@
       "status": "Status",
       "region": "Region",
       "duration": "Dauer",
-      "time": "Zeit"
+      "time": "Zeit",
+      "copyCurl": "Als cURL kopieren",
+      "copyCurlTooltip": "Erstellt den Befehl aus der aktuellen Konfiguration des Checks, die vom Zustand zum Zeitpunkt des Fehlers abweichen kann.",
+      "copyCurlCopied": "Anfrage als cURL kopiert",
+      "copyCurlCopiedPlaceholders": "Anfrage als cURL kopiert. Geheimnisse wurden durch Platzhalter ersetzt.",
+      "copyCurlFailed": "Anfrage konnte nicht kopiert werden"
     },
     "probeResponse": {
       "title": "Was die Sonde sah",

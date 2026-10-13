@@ -123,7 +123,12 @@
       "status": "Estado",
       "region": "Región",
       "duration": "Duración",
-      "time": "Hora"
+      "time": "Hora",
+      "copyCurl": "Copiar como cURL",
+      "copyCurlTooltip": "Genera el comando con la configuración actual del check, que puede diferir de la del momento del fallo.",
+      "copyCurlCopied": "Solicitud copiada como cURL",
+      "copyCurlCopiedPlaceholders": "Solicitud copiada como cURL. Los secretos se sustituyeron por marcadores.",
+      "copyCurlFailed": "No se pudo copiar la solicitud"
     },
     "probeResponse": {
       "title": "Lo que vio la sonda",

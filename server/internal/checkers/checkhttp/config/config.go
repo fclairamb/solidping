@@ -130,6 +130,11 @@ type HTTPConfig struct {
 	// carry, unlike the body_* matchers above.
 	BodyAssertions *AssertionNode `json:"bodyAssertions,omitempty"`
 
+	// HeaderAssertions validates response headers with the shared assertion
+	// tree; a leaf's Path is the header name (case-insensitive). Evaluated
+	// after HeadersPattern, before the body assertions.
+	HeaderAssertions *AssertionNode `json:"headerAssertions,omitempty"`
+
 	// VerifySsl controls TLS certificate verification. nil (the vast majority
 	// of stored configs) means "unset", which behaves like true — today's
 	// hardcoded behavior. Only an explicit false disables verification, so
@@ -151,6 +156,11 @@ type HTTPConfig struct {
 	// ValidateSpec — an unknown value is a config error, not a silent
 	// fallback to "any".
 	RedirectHostPolicy string `json:"redirectHostPolicy,omitempty"`
+
+	// ExpectedFinalURL asserts where the redirect chain ends: the URL of the
+	// last request sent must equal it after NormalizeFinalURL on both sides.
+	// Empty means no assertion. Requires followRedirects (see ValidateSpec).
+	ExpectedFinalURL string `json:"expectedFinalUrl,omitempty"`
 
 	// HTTPVersion is the HTTP version the target must speak (spec
 	// 2026-10-03-01): "1.1" (the default, never written back), "2" or "3". A
@@ -374,6 +384,16 @@ func (c *HTTPConfig) FromMap(configMap map[string]any) error {
 		c.BodyAssertions = node
 	}
 
+	// Extract HeaderAssertions (optional), same spelling rules as bodyAssertions.
+	if v, key, ok := resolveKey(configMap, "headerAssertions", "header_assertions"); ok {
+		node, err := parseAssertionNode(v)
+		if err != nil {
+			return checkerdef.NewConfigError(key, err.Error())
+		}
+
+		c.HeaderAssertions = node
+	}
+
 	// Extract VerifySsl (optional). Presence-aware: only an explicit boolean
 	// value overrides the true default, so a value must be parsed into a
 	// pointer rather than a plain bool.
@@ -405,6 +425,16 @@ func (c *HTTPConfig) FromMap(configMap map[string]any) error {
 			return checkerdef.NewConfigError(key, "must be a string")
 		}
 		c.RedirectHostPolicy = s
+	}
+
+	// Extract ExpectedFinalURL (optional). Shape only here; normalisation and
+	// the cross-field rules are checked in ValidateSpec.
+	if v, key, ok := resolveKey(configMap, "expectedFinalUrl", "expected_final_url"); ok {
+		s, ok := v.(string)
+		if !ok {
+			return checkerdef.NewConfigError(key, "must be a string")
+		}
+		c.ExpectedFinalURL = s
 	}
 
 	// Extract HTTPVersion (optional). A config-as-code manifest naturally
@@ -508,8 +538,6 @@ func assertionToMap(node *AssertionNode) (any, bool) {
 }
 
 // GetConfig implements the GetConfig interface by returning the configuration as a map.
-//
-//nolint:cyclop // HTTP config has many optional fields; branching is inherently verbose
 func (c *HTTPConfig) GetConfig() map[string]any {
 	cfg := map[string]any{
 		checkerdef.OutputKeyURL: c.URL,
@@ -571,22 +599,34 @@ func (c *HTTPConfig) GetConfig() map[string]any {
 		cfg[configKeySecretHeaders] = c.SecretHeaders
 	}
 
-	if c.JSONPathAssertions != nil {
-		// Serialize via JSON to produce map[string]any so that FromMap can parse it back.
-		if m, ok := assertionToMap(c.JSONPathAssertions); ok {
-			cfg["jsonPathAssertions"] = m
-		}
-	}
-
-	if c.BodyAssertions != nil {
-		if m, ok := assertionToMap(c.BodyAssertions); ok {
-			cfg["bodyAssertions"] = m
-		}
-	}
+	c.addAssertionConfig(cfg)
 
 	c.addToggleConfig(cfg)
 
 	return cfg
+}
+
+// addAssertionConfig writes the three assertion trees, each only when set.
+func (c *HTTPConfig) addAssertionConfig(cfg map[string]any) {
+	trees := []struct {
+		key  string
+		node *AssertionNode
+	}{
+		{"jsonPathAssertions", c.JSONPathAssertions},
+		{"bodyAssertions", c.BodyAssertions},
+		{"headerAssertions", c.HeaderAssertions},
+	}
+
+	for _, tree := range trees {
+		if tree.node == nil {
+			continue
+		}
+
+		// Serialize via JSON to produce map[string]any so that FromMap can parse it back.
+		if m, ok := assertionToMap(tree.node); ok {
+			cfg[tree.key] = m
+		}
+	}
 }
 
 // addToggleConfig writes the three boolean toggles, each omitted at its own
@@ -604,6 +644,10 @@ func (c *HTTPConfig) addToggleConfig(cfg map[string]any) {
 
 	if c.RedirectHostPolicy != "" && c.RedirectHostPolicy != RedirectHostPolicyAny {
 		cfg["redirectHostPolicy"] = c.RedirectHostPolicy
+	}
+
+	if c.ExpectedFinalURL != "" {
+		cfg["expectedFinalUrl"] = c.ExpectedFinalURL
 	}
 
 	if c.CaptureFailureResponse {

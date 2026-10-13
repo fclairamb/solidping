@@ -189,6 +189,7 @@ func manualReaderServerEnvVars() []string {
 		"SP_AUTH_PASSWORD_ARGON2_SALT_LENGTH",
 		"SP_AUTH_PASSWORD_BCRYPT_COST",
 		"SP_AUTH_PASSWORD_REHASH_ON_LOGIN",
+		"SP_AUTH_PASSWORD_ARGON2_AUTO_PROFILE",
 		// applyAuditEnv — every audit key is snake_case, so koanf's env loader
 		// cannot reach any of them (see AuditConfig).
 		"SP_AUDIT_CAPTURE_IP",

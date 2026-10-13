@@ -340,7 +340,11 @@ func (r *StartupJobRun) ensureDefaultOrganization(ctx context.Context, jctx *job
 	adminEmail := seedAdminEmail(jctx.AppConfig)
 	adminPassword := defaults.Password
 
-	passwordHash, err := passwords.Hash(adminPassword)
+	// bcrypt, not the active argon2id policy: this password is public, so a
+	// 64 MiB argon2 derivation on every first boot buys nothing and doubled the
+	// first-boot memory peak (spec 2026-10-12-04). The forced password change
+	// below mints an argon2id hash with the active policy.
+	passwordHash, err := passwords.HashBcrypt(adminPassword)
 	if err != nil {
 		return fmt.Errorf("failed to hash admin password: %w", err)
 	}
@@ -512,7 +516,9 @@ func (r *StartupJobRun) createSampleCheck(
 	check := models.NewCheck(orgUID, slug, string(checkType))
 	check.Name = &sample.Name
 	check.Config = sample.Config
-	check.Enabled = true
+	// Browser samples are created disabled: on a native install with Chromium
+	// each run starts a Chrome, against a placeholder site that cannot pass.
+	check.Enabled = !sample.NeedsBrowser
 	check.Period = timeutils.Duration(sample.Period)
 
 	// Validate the sample config

@@ -160,9 +160,10 @@ func (c *JSChecker) GetSampleConfigs(_ *checkerdef.ListSampleOptions) []checkerd
 			}).GetConfig(),
 		},
 		{
-			Name:   "JS: Browser Form Login",
-			Slug:   sampleBrowserLoginSlug,
-			Period: time.Minute,
+			Name:         "JS: Browser Form Login",
+			Slug:         sampleBrowserLoginSlug,
+			Period:       time.Minute,
+			NeedsBrowser: true,
 			Config: (&JSConfig{
 				Script: sampleBrowserLoginScript,
 				Env: map[string]string{

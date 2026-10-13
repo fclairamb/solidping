@@ -128,7 +128,10 @@ func (s *MSTeamsBotSender) Send(ctx context.Context, jctx *jobdef.JobContext, pa
 func isCardReplyEvent(eventType string) bool {
 	return eventType == eventTypeIncidentComment ||
 		eventType == eventTypeIncidentAcknowledged ||
-		eventType == eventTypeIncidentUnacknowledged
+		eventType == eventTypeIncidentUnacknowledged ||
+		// A reminder (spec 2026-10-12-16) repeats the alert under its card;
+		// the card keeps showing the live incident.
+		eventType == eventTypeIncidentReminder
 }
 
 // cardReplyText renders the one-line body of such a reply.
@@ -139,6 +142,10 @@ func cardReplyText(payload *Payload) string {
 
 	if payload.EventType == eventTypeIncidentUnacknowledged {
 		return unackEmoji + " " + unackPlainBody(payload)
+	}
+
+	if payload.EventType == eventTypeIncidentReminder {
+		return reminderTitle(payload) + ". " + reminderSentence(payload) + "."
 	}
 
 	return commentEmoji + " " + commentPlainBody(payload)
@@ -445,6 +452,10 @@ func (s *MSTeamsBotSender) buildFacts(payload *Payload, checkName string) []mste
 			msteams.CardFact{Title: mmFieldCause, Value: getFailureReason(payload.Incident)},
 			msteams.CardFact{Title: "Started", Value: payload.Incident.StartedAt.UTC().Format(time.RFC1123)},
 		)
+	}
+
+	if title, text := RegionLabelFor(payload); text != "" {
+		facts = append(facts, msteams.CardFact{Title: title, Value: text})
 	}
 
 	return facts

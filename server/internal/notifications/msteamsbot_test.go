@@ -471,3 +471,29 @@ func TestMSTeamsBotSender_CommentWithoutCardIsSkipped(t *testing.T) {
 		context.Background(), botJCtx(&mockDBService{}), payload))
 	r.Empty(fake.recorded())
 }
+
+// A reminder is a reply under the incident card, never an update of it: the
+// card keeps showing the live incident (spec 2026-10-12-16).
+func TestMSTeamsBotSender_ReminderRepliesUnderTheCard(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	r.True(isCardReplyEvent(eventTypeIncidentReminder))
+
+	fake := newBotFake(t)
+	db := fake.storedCardDB()
+
+	payload := fake.payload(t, eventTypeIncidentReminder)
+	payload.Incident.StartedAt = time.Now().Add(-75 * time.Minute)
+	payload.ReminderSeq = 3
+
+	r.NoError(fake.sender("bot-reminder").Send(context.Background(), botJCtx(db), payload))
+
+	calls := fake.recorded()
+	r.Len(calls, 1, "a reminder must produce exactly one reply, and no card update")
+	r.Equal(http.MethodPost, calls[0].Method)
+	r.Equal("existing-activity", calls[0].Activity.ReplyToID)
+	r.Contains(calls[0].Activity.Text, "Still down after 1 h 15 min, not acknowledged (reminder 3)")
+	r.Empty(db.setStateCalls)
+}

@@ -1,6 +1,7 @@
 package checkrunnow_test
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -103,7 +104,7 @@ func TestRunNowQueuesEveryRegion(t *testing.T) {
 	}
 }
 
-func TestRunNowLeavesRunningJobsAlone(t *testing.T) {
+func TestRunNowParksRequestOnRunningJobs(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
@@ -139,13 +140,16 @@ func TestRunNowLeavesRunningJobsAlone(t *testing.T) {
 			resp, err := e.svc.RunNow(t.Context(), e.org.Slug, check.UID)
 			r.NoError(err)
 			r.Equal([]checkrunnow.RegionRun{
-				{Region: "eu", Status: checkrunnow.StatusRunning},
+				{Region: "eu", Status: checkrunnow.StatusQueued},
 				{Region: "us", Status: checkrunnow.StatusQueued},
 			}, resp.Regions)
 
 			after := e.jobs(t, check.UID)
-			r.True(before["eu"].ScheduledAt.Equal(*after["eu"].ScheduledAt), "running job untouched")
+			r.True(before["eu"].ScheduledAt.Equal(*after["eu"].ScheduledAt), "running job's schedule untouched")
+			r.NotNil(after["eu"].RunRequestedAt, "the request is parked for the release")
+			r.WithinDuration(resp.RequestedAt, *after["eu"].RunRequestedAt, time.Microsecond)
 			r.WithinDuration(resp.RequestedAt, *after["us"].ScheduledAt, time.Microsecond)
+			r.Nil(after["us"].RunRequestedAt)
 		})
 	}
 }
@@ -171,7 +175,7 @@ func (e *env) lease(t *testing.T, job *models.CheckJob) {
 	require.NoError(t, err)
 }
 
-func TestRunNowAllRunningSpendsNoBudget(t *testing.T) {
+func TestRunNowAllRunningSpendsOneSlot(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 	e := newEnv(t)
@@ -185,17 +189,18 @@ func TestRunNowAllRunningSpendsNoBudget(t *testing.T) {
 	resp, err := e.svc.RunNow(t.Context(), e.org.Slug, check.UID)
 	r.NoError(err)
 	r.Equal([]checkrunnow.RegionRun{
-		{Region: "eu", Status: checkrunnow.StatusRunning},
-		{Region: "us", Status: checkrunnow.StatusRunning},
+		{Region: "eu", Status: checkrunnow.StatusQueued},
+		{Region: "us", Status: checkrunnow.StatusQueued},
 	}, resp.Regions)
 
 	after := e.jobs(t, check.UID)
 	for region, job := range before {
-		r.True(job.ScheduledAt.Equal(*after[region].ScheduledAt), "job untouched: "+region)
+		r.True(job.ScheduledAt.Equal(*after[region].ScheduledAt), "schedule untouched: "+region)
+		r.NotNil(after[region].RunRequestedAt, "request parked: "+region)
 	}
 
-	r.InDelta(0, e.orgWindowCount(t), 0, "org window unchanged")
-	r.InDelta(0, e.checkWindowCount(t, check.UID), 0, "check window unchanged")
+	r.InDelta(1, e.orgWindowCount(t), 0, "one admission, whatever the regions")
+	r.InDelta(1, e.checkWindowCount(t, check.UID), 0)
 }
 
 func TestRunNowMixedSpendsOneSlot(t *testing.T) {
@@ -208,7 +213,7 @@ func TestRunNowMixedSpendsOneSlot(t *testing.T) {
 
 	resp, err := e.svc.RunNow(t.Context(), e.org.Slug, check.UID)
 	r.NoError(err)
-	r.Equal(checkrunnow.StatusRunning, resp.Regions[0].Status)
+	r.Equal(checkrunnow.StatusQueued, resp.Regions[0].Status)
 	r.Equal(checkrunnow.StatusQueued, resp.Regions[1].Status)
 	r.InDelta(1, e.orgWindowCount(t), 0)
 	r.InDelta(1, e.checkWindowCount(t, check.UID), 0)
@@ -344,7 +349,7 @@ func TestRunNowThenWorkerClaim(t *testing.T) {
 	r.NoError(err)
 	r.Len(claimed, 1, "the run-now job is claimable at once")
 
-	// While leased, a second request reports running and leaves it alone.
+	// While leased, a second request is parked for the release.
 	_, err = e.svc.RunNow(t.Context(), e.org.Slug, check.UID)
 	r.NoError(err)
 
@@ -365,4 +370,146 @@ func TestRunNowThenWorkerClaim(t *testing.T) {
 	})
 	r.NoError(err)
 	r.Len(listed.Results, 1)
+}
+
+// liveEnv is a check with one "eu" job, a worker and the job service: what an
+// in-flight run needs.
+type liveEnv struct {
+	*env
+	check  *models.Check
+	jobsvc checkjobsvc.Service
+	worker *models.Worker
+	region string
+}
+
+func newLiveEnv(t *testing.T) *liveEnv {
+	t.Helper()
+	r := require.New(t)
+	e := newEnv(t)
+
+	check := models.NewCheck(e.org.UID, "live", "http")
+	check.Regions = []string{"eu"}
+	r.NoError(e.db.CreateCheck(t.Context(), check))
+
+	worker := models.NewWorker("w-"+uuid.New().String()[:8], "W")
+	_, err := e.db.DB().NewInsert().Model(worker).Exec(t.Context())
+	r.NoError(err)
+
+	return &liveEnv{env: e, check: check, jobsvc: checkjobsvc.NewService(e.db.DB()), worker: worker, region: "eu"}
+}
+
+// claim makes the job due and has the worker claim it: a run is in flight.
+func (l *liveEnv) claim(t *testing.T) *models.CheckJob {
+	t.Helper()
+	r := require.New(t)
+
+	due := time.Now().Add(-time.Second).UTC()
+	_, err := l.db.DB().NewUpdate().Model((*models.CheckJob)(nil)).
+		Set("scheduled_at = ?", due).Set("effective_scheduled_at = ?", due).
+		Where("check_uid = ?", l.check.UID).Exec(t.Context())
+	r.NoError(err)
+
+	claimed, err := l.jobsvc.ClaimJobsForCheck(t.Context(), l.worker.UID, &l.region, l.check.UID)
+	r.NoError(err)
+	r.Len(claimed, 1)
+
+	return claimed[0]
+}
+
+// TestRunNowDuringInFlightRun is the CI hang of spec 2026-10-12-05: Run now
+// lands while the worker holds the job. The request is recorded, the release
+// makes the job due at requestedAt, and a second run is claimed. The control:
+// a run with no request releases to its next period and nothing is due.
+func TestRunNowDuringInFlightRun(t *testing.T) {
+	t.Parallel()
+
+	t.Run("request mid-run gives a second run", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+		l := newLiveEnv(t)
+		job := l.claim(t)
+
+		resp, err := l.svc.RunNow(t.Context(), l.org.Slug, l.check.UID)
+		r.NoError(err)
+		r.Equal([]checkrunnow.RegionRun{{Region: "eu", Status: checkrunnow.StatusQueued}}, resp.Regions)
+		r.InDelta(1, l.checkWindowCount(t, l.check.UID), 0, "one admission")
+
+		next := time.Now().Add(time.Hour).UTC()
+		r.NoError(l.jobsvc.ReleaseLeaseWithSchedulingState(
+			t.Context(), job.UID, l.worker.UID, next, 10, 0, next, 0))
+
+		stored := l.jobs(t, l.check.UID)["eu"]
+		r.Nil(stored.RunRequestedAt)
+		r.WithinDuration(resp.RequestedAt, *stored.ScheduledAt, time.Microsecond, "due at requestedAt")
+
+		claimed, err := l.jobsvc.ClaimJobsForCheck(t.Context(), l.worker.UID, &l.region, l.check.UID)
+		r.NoError(err)
+		r.Len(claimed, 1, "the second run happens")
+	})
+
+	t.Run("no request keeps the normal next period", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+		l := newLiveEnv(t)
+		job := l.claim(t)
+
+		next := time.Now().Add(time.Hour).UTC()
+		r.NoError(l.jobsvc.ReleaseLeaseWithSchedulingState(
+			t.Context(), job.UID, l.worker.UID, next, 10, 0, next, 0))
+
+		stored := l.jobs(t, l.check.UID)["eu"]
+		r.WithinDuration(next, *stored.ScheduledAt, time.Second)
+
+		claimed, err := l.jobsvc.ClaimJobsForCheck(t.Context(), l.worker.UID, &l.region, l.check.UID)
+		r.NoError(err)
+		r.Empty(claimed, "nothing is due")
+	})
+}
+
+// claimingDB lets a worker claim the job right after RunNow read it: the
+// ErrCheckJobBusy race of spec 2026-10-12-05.
+type claimingDB struct {
+	*sqlite.Service
+	onList func()
+}
+
+func (c *claimingDB) ListCheckJobsByCheckUID(ctx context.Context, checkUID string) ([]*models.CheckJob, error) {
+	jobs, err := c.Service.ListCheckJobsByCheckUID(ctx, checkUID)
+	c.onList()
+
+	return jobs, err
+}
+
+func TestRunNowWorkerClaimsBetweenReadAndRequest(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	l := newLiveEnv(t)
+
+	due := time.Now().Add(-time.Second).UTC()
+	_, err := l.db.DB().NewUpdate().Model((*models.CheckJob)(nil)).
+		Set("scheduled_at = ?", due).Set("effective_scheduled_at = ?", due).
+		Where("check_uid = ?", l.check.UID).Exec(t.Context())
+	r.NoError(err)
+
+	var claimed []*models.CheckJob
+
+	racing := &claimingDB{Service: l.db, onList: func() {
+		claimed, err = l.jobsvc.ClaimJobsForCheck(t.Context(), l.worker.UID, &l.region, l.check.UID)
+		r.NoError(err)
+	}}
+
+	resp, err := checkrunnow.NewService(racing, nil, nil).RunNow(t.Context(), l.org.Slug, l.check.UID)
+	r.NoError(err)
+	r.Len(claimed, 1, "the worker won the race")
+	r.Equal([]checkrunnow.RegionRun{{Region: "eu", Status: checkrunnow.StatusQueued}}, resp.Regions)
+
+	stored := l.jobs(t, l.check.UID)["eu"]
+	r.NotNil(stored.RunRequestedAt, "the request is still recorded")
+
+	next := time.Now().Add(time.Hour).UTC()
+	r.NoError(l.jobsvc.ReleaseLease(t.Context(), claimed[0].UID, l.worker.UID, next))
+
+	again, err := l.jobsvc.ClaimJobsForCheck(t.Context(), l.worker.UID, &l.region, l.check.UID)
+	r.NoError(err)
+	r.Len(again, 1, "and honored after the release")
 }

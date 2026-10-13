@@ -219,6 +219,12 @@ func (h *Handler) writeMembershipRequestError(
 			writer, request, http.StatusConflict,
 			base.ErrorCodeRequestPending, "A request is already pending", err,
 		)
+	case errors.Is(err, ErrOrgNotAcceptingRequests):
+		return h.WriteErrorErr(
+			writer, request, http.StatusForbidden,
+			base.ErrorCodeOrgNotAcceptingRequests,
+			"This organization does not accept membership requests", err,
+		)
 	case errors.Is(err, ErrRequestNotFound):
 		return h.WriteErrorErr(
 			writer, request, http.StatusNotFound,

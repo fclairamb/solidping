@@ -9,6 +9,11 @@ import (
 )
 
 func noCgroup() (int64, bool) { return 0, false }
+func noHost() (int64, bool)   { return 0, false }
+func fixedHost(n int64) func() (int64, bool) {
+	return func() (int64, bool) { return n, true }
+}
+
 func fixedCgroup(n int64) func() (int64, bool) {
 	return func() (int64, bool) { return n, true }
 }
@@ -27,6 +32,7 @@ func TestDecideMemoryLimit(t *testing.T) {
 		cfg        Config
 		envValue   string
 		detect     func() (int64, bool)
+		host       func() (int64, bool)
 		wantSet    bool
 		wantBytes  int64
 		wantSource string
@@ -118,6 +124,68 @@ func TestDecideMemoryLimit(t *testing.T) {
 			wantSet:    false,
 			wantSource: "default",
 		},
+		// Host-RAM soft cap on small hosts (spec 2026-10-12-04).
+		{
+			name:       "1 GiB host without cgroup caps at half from host",
+			cfg:        Config{Auto: true, Ratio: 0.9},
+			detect:     noCgroup,
+			host:       fixedHost(oneGiB),
+			wantSet:    true,
+			wantBytes:  halfGiB,
+			wantSource: "host",
+		},
+		{
+			name:       "2 GiB host is still small",
+			cfg:        Config{Auto: true},
+			detect:     noCgroup,
+			host:       fixedHost(2 * oneGiB),
+			wantSet:    true,
+			wantBytes:  oneGiB,
+			wantSource: "host",
+		},
+		{
+			name:       "8 GiB host gets no cap",
+			cfg:        Config{Auto: true, Ratio: 0.9},
+			detect:     noCgroup,
+			host:       fixedHost(8 * oneGiB),
+			wantSet:    false,
+			wantSource: "default",
+		},
+		{
+			name:       "cgroup limit wins over host",
+			cfg:        Config{Auto: true, Ratio: 0.9},
+			detect:     fixedCgroup(halfGiB),
+			host:       fixedHost(oneGiB),
+			wantSet:    true,
+			wantBytes:  int64(float64(halfGiB) * 0.9),
+			wantSource: "cgroup",
+		},
+		{
+			name:       "config wins over host",
+			cfg:        Config{MemoryLimit: "100MiB", Auto: true},
+			detect:     noCgroup,
+			host:       fixedHost(oneGiB),
+			wantSet:    true,
+			wantBytes:  100 * 1024 * 1024,
+			wantSource: "config",
+		},
+		{
+			name:       "GOMEMLIMIT env wins over host",
+			cfg:        Config{Auto: true},
+			envValue:   "300MiB",
+			detect:     noCgroup,
+			host:       fixedHost(oneGiB),
+			wantSet:    false,
+			wantSource: "env",
+		},
+		{
+			name:       "auto disabled ignores host",
+			cfg:        Config{Auto: false},
+			detect:     noCgroup,
+			host:       fixedHost(oneGiB),
+			wantSet:    false,
+			wantSource: "default",
+		},
 	}
 
 	for _, tc := range tests {
@@ -125,7 +193,12 @@ func TestDecideMemoryLimit(t *testing.T) {
 			t.Parallel()
 			r := require.New(t)
 
-			got := decideMemoryLimit(tc.cfg, tc.envValue, tc.detect)
+			host := tc.host
+			if host == nil {
+				host = noHost
+			}
+
+			got := decideMemoryLimit(tc.cfg, tc.envValue, tc.detect, host)
 
 			r.Equal(tc.wantSet, got.set)
 			r.Equal(tc.wantSource, got.source)
@@ -223,7 +296,7 @@ func TestApplySmoke(t *testing.T) {
 	// runtime variable so int64(float64(oneGiB)*0.8) is a non-constant conversion.
 	oneGiB := int64(1024 * 1024 * 1024)
 
-	applied := apply(Config{Auto: true, Ratio: 0.8, GCPercent: 70}, fixedCgroup(oneGiB))
+	applied := apply(Config{Auto: true, Ratio: 0.8, GCPercent: 70}, fixedCgroup(oneGiB), noHost)
 
 	r.Equal("cgroup", applied.MemoryLimitSource)
 	r.Equal(int64(float64(oneGiB)*0.8), applied.MemoryLimitBytes)
@@ -241,4 +314,55 @@ func TestAppliedIsDefault(t *testing.T) {
 		"a container limit is worth an INFO line")
 	r.False(Applied{MemoryLimitSource: sourceDefault, GCPercentSource: sourceEnv}.IsDefault())
 	r.False(Applied{MemoryLimitSource: sourceConfig, GCPercentSource: sourceConfig}.IsDefault())
+}
+
+func TestSmallHost(t *testing.T) {
+	t.Parallel()
+
+	const (
+		mib = int64(1024 * 1024)
+		gib = 1024 * mib
+	)
+
+	tests := []struct {
+		name   string
+		detect func() (int64, bool)
+		host   func() (int64, bool)
+		want   bool
+	}{
+		{name: "1 GiB host", detect: noCgroup, host: fixedHost(gib), want: true},
+		{name: "2 GiB host is still small", detect: noCgroup, host: fixedHost(2 * gib), want: true},
+		{name: "just above 2 GiB", detect: noCgroup, host: fixedHost(2*gib + 1), want: false},
+		{name: "8 GiB host", detect: noCgroup, host: fixedHost(8 * gib), want: false},
+		{
+			name:   "8 GiB host with a 512 MiB cgroup limit",
+			detect: fixedCgroup(512 * mib), host: fixedHost(8 * gib), want: true,
+		},
+		{name: "1 GiB host with a 4 GiB cgroup limit", detect: fixedCgroup(4 * gib), host: fixedHost(gib), want: false},
+		{name: "non-Linux: nothing detected", detect: noCgroup, host: noHost, want: false},
+		{name: "nil detectors", detect: nil, host: nil, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.want, smallHost(tt.detect, tt.host))
+		})
+	}
+}
+
+func TestEffectiveMemoryPrefersCgroup(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	got, ok := effectiveMemory(fixedCgroup(100), fixedHost(200))
+	r.True(ok)
+	r.Equal(int64(100), got)
+
+	got, ok = effectiveMemory(noCgroup, fixedHost(200))
+	r.True(ok)
+	r.Equal(int64(200), got)
+
+	_, ok = effectiveMemory(noCgroup, noHost)
+	r.False(ok)
 }

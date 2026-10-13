@@ -48,6 +48,7 @@ export const ALL_EVENT_TYPES = [
   "incident.escalation_failed",
   "incident.resolved",
   "incident.reopened",
+  "incident.reminder",
   "incident.rolled_up",
   "incident.rollup_detached",
   "incident.monitoring_interrupted",

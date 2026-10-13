@@ -220,9 +220,8 @@ func TestDispatch_ToolsList(t *testing.T) {
 
 	tools, ok := result["tools"].([]any)
 	r.True(ok)
-	r.Len(tools, 46)
+	r.Len(tools, 23, "the default list is the core and statuspages toolsets")
 
-	// Verify tool names
 	names := make(map[string]bool)
 	for _, tool := range tools {
 		toolMap, mapOK := tool.(map[string]any)
@@ -233,27 +232,11 @@ func TestDispatch_ToolsList(t *testing.T) {
 		names[name] = true
 	}
 
-	expectedTools := []string{
-		"list_checks", "get_check", "create_check", "update_check", "delete_check",
-		"list_results", "list_incidents", "get_incident",
-		"list_integrations", "create_integration",
-		"list_check_groups", "list_regions",
-		"diagnose_check", "run_check",
-		"list_status_pages", "get_status_page", "create_status_page",
-		"update_status_page", "delete_status_page",
-		"list_status_page_sections", "create_status_page_section",
-		"update_status_page_section", "delete_status_page_section",
-		"list_status_page_resources", "create_status_page_resource",
-		"update_status_page_resource", "delete_status_page_resource",
-		"list_maintenance_windows", "get_maintenance_window",
-		"create_maintenance_window", "update_maintenance_window",
-		"delete_maintenance_window", "set_maintenance_window_checks",
-		"list_check_types", "get_check_type_samples", "validate_check",
-		"run_js_script", "fetch_page", "browser_snapshot",
-	}
-	for _, name := range expectedTools {
+	for _, name := range defaultToolNames() {
 		r.True(names[name], "missing tool: %s", name)
 	}
+	r.False(names[toolCreateStatusPageSection], "a legacy alias is not listed by default")
+	r.False(names[toolListIntegrations], "an admin tool is not listed by default")
 }
 
 func TestDispatch_ToolsCallUnknownTool(t *testing.T) {
@@ -820,8 +803,10 @@ func TestInitialize_ReturnsInstructionsAuthedAndAnonymous(t *testing.T) {
 			r.Contains(instructions, "list_checks")
 			r.Contains(instructions, "diagnose_check")
 			r.Contains(instructions, "validate_check")
-			r.Contains(instructions, "get_check_type_samples")
+			r.Contains(instructions, "list_check_types")
 			r.Contains(instructions, "mcp scope")
+			r.Contains(instructions, "toolsets=all", "the toolset selector is advertised")
+			r.Contains(instructions, ToolsetsEnvVar, "the stdio selector is advertised")
 		})
 	}
 }

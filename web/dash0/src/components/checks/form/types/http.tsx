@@ -24,6 +24,7 @@ import { getFieldError } from "@/hooks/use-check-validation";
 import {
   JsonAssertionEditor,
   BodyAssertionEditor,
+  HeaderAssertionEditor,
   type AssertionNode,
 } from "@/components/checks/json-assertion-editor";
 import type { CheckTypeModule } from "./index";
@@ -58,7 +59,7 @@ export interface HttpState {
   // A list of exact codes ("200") and/or NXX wildcards ("4XX"). Always
   // normalized (trimmed + uppercased) and de-duplicated — see
   // dedupeStatusPatterns. Never empty in practice: fromConfig defaults it to
-  // ["200"] when the config carries neither status key.
+  // ["2XX"] (the server default) when the config carries neither status key.
   expectedStatusCodes: string[];
   username: string;
   password: string;
@@ -72,6 +73,9 @@ export interface HttpState {
   // never written to config, matching the server's omit-at-default GetConfig)
   // or "same-host" (refuse a hop whose host differs from the previous one).
   redirectHostPolicy: "any" | "same-host";
+  // URL the redirect chain must end on ("" = not asserted). Only meaningful
+  // with followRedirects on; toConfig drops it otherwise.
+  expectedFinalUrl: string;
   // The HTTP version the target must speak. "1.1" is the default and is never
   // written to config (the server omits it at default too). "3" is refused on
   // a tunneled check: the SSH tunnel only carries TCP.
@@ -103,6 +107,7 @@ export interface HttpState {
   // difference is the subject — the raw response body rather than a JSONPath
   // query result — so leaves carry no `path`.
   bodyAssertions: AssertionNode | null;
+  headerAssertions: AssertionNode | null;
   // Request body. Public, round-trips on GET, so no dirty flag: written
   // whenever non-empty, cleared by emptying the textarea. Deliberately written
   // even when the method is GET/HEAD (where the editor is hidden) so switching
@@ -122,10 +127,10 @@ const METHODS_WITHOUT_BODY = ["GET", "HEAD"];
 // seedExpectedStatusCodes implements the fromConfig precedence from spec
 // 2026-07-21-02: prefer the new expectedStatusCodes list; else fall back to
 // the legacy single expectedStatus int as one exact chip; else default to
-// the implicit ["200"].
+// the implicit ["2XX"] (any 2xx, the server default).
 // The server resolves both spellings of both keys (checkhttp's resolveKey), so
 // a check created through the API/CLI/manifest may well carry the snake_case
-// one; reading only the camelCase spelling seeded the default ["200"], which
+// one; reading only the camelCase spelling seeded the default ["2XX"], which
 // toConfig then omitted as implicit — silently widening the check's contract.
 function seedExpectedStatusCodes(config: CheckConfig): string[] {
   const rawCodes = config.expectedStatusCodes ?? config.expected_status_codes;
@@ -138,7 +143,7 @@ function seedExpectedStatusCodes(config: CheckConfig): string[] {
     const deduped = dedupeStatusPatterns([String(legacy)]);
     if (deduped.length > 0) return deduped;
   }
-  return ["200"];
+  return ["2XX"];
 }
 
 // seedJsonPathAssertions reads the assertion tree from config, preferring the
@@ -159,6 +164,14 @@ function seedJsonPathAssertions(config: CheckConfig): AssertionNode | null {
 // its assertion the first time the form saves the check.
 function seedBodyAssertions(config: CheckConfig): AssertionNode | null {
   const raw = config.bodyAssertions ?? config.body_assertions;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  return raw as AssertionNode;
+}
+
+// seedHeaderAssertions seeds the response-header assertion tree, reading both
+// spellings like seedBodyAssertions.
+function seedHeaderAssertions(config: CheckConfig): AssertionNode | null {
+  const raw = config.headerAssertions ?? config.header_assertions;
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   return raw as AssertionNode;
 }
@@ -206,6 +219,10 @@ export function httpFromConfig(config: CheckConfig): HttpState {
     config.redirectHostPolicy ?? config.redirect_host_policy;
   const redirectHostPolicy: HttpState["redirectHostPolicy"] =
     rawRedirectHostPolicy === "same-host" ? "same-host" : "any";
+  const rawExpectedFinalUrl =
+    config.expectedFinalUrl ?? config.expected_final_url;
+  const expectedFinalUrl =
+    typeof rawExpectedFinalUrl === "string" ? rawExpectedFinalUrl : "";
   // Canonical key is snake_case (the server accepts the camelCase alias on
   // read but always re-emits the snake one), so read both and prefer the
   // canonical spelling.
@@ -222,10 +239,12 @@ export function httpFromConfig(config: CheckConfig): HttpState {
     verifySsl,
     followRedirects,
     redirectHostPolicy,
+    expectedFinalUrl,
     httpVersion: seedHttpVersion(config.httpVersion),
     captureFailureResponse,
     jsonPathAssertions: seedJsonPathAssertions(config),
     bodyAssertions: seedBodyAssertions(config),
+    headerAssertions: seedHeaderAssertions(config),
     body: getConfigField(config, "body"),
     headers: seedHeaderRows(config.headers),
     // Seeding matters three ways: a legacy row's username is public and comes
@@ -244,14 +263,15 @@ export function httpToConfig(state: HttpState): {
   const cfg: CheckConfig = {};
   if (state.url) cfg.url = state.url;
   if (state.method && state.method !== "GET") cfg.method = state.method;
-  // The default ["200"] (or an empty list) stays implicit — omit both status
-  // keys, matching today's "200 is implicit" behavior. Otherwise write the
+  // The default ["2XX"] (or an empty list) stays implicit: omit both status
+  // keys, the server then accepts any 2xx. An explicit ["200"] is written, or
+  // picking 200 would silently save 2XX. Otherwise write the
   // list and never the deprecated `expectedStatus`: toConfig rebuilds the
   // config object from state every time, so a legacy key from a previously
   // saved check drops off automatically the next time this form saves it.
   const codes = state.expectedStatusCodes;
   const isImplicitDefault =
-    codes.length === 0 || (codes.length === 1 && codes[0] === "200");
+    codes.length === 0 || (codes.length === 1 && codes[0] === "2XX");
   if (!isImplicitDefault) {
     cfg.expectedStatusCodes = codes;
   }
@@ -284,6 +304,11 @@ export function httpToConfig(state: HttpState): {
   if (state.redirectHostPolicy === "same-host") {
     cfg.redirectHostPolicy = "same-host";
   }
+  // The server rejects expectedFinalUrl with redirects off, so the key is
+  // dropped together with the hidden field.
+  if (state.followRedirects && state.expectedFinalUrl.trim() !== "") {
+    cfg.expectedFinalUrl = state.expectedFinalUrl.trim();
+  }
   if (state.httpVersion !== "1.1") cfg.httpVersion = state.httpVersion;
   // Written only when opted in, under the canonical snake_case key.
   if (state.captureFailureResponse) cfg.capture_failure_response = true;
@@ -299,6 +324,10 @@ export function httpToConfig(state: HttpState): {
   // passthrough will not resurrect a value this form just cleared.
   if (state.bodyAssertions) {
     cfg.bodyAssertions = state.bodyAssertions;
+  }
+  // Same omit-to-clear rule. `headers_pattern` stays unowned (survives a save).
+  if (state.headerAssertions) {
+    cfg.headerAssertions = state.headerAssertions;
   }
   // Same omit-to-clear rule as jsonPathAssertions: both are public keys that
   // round-trip on GET, so writing them only when non-empty is what lets the
@@ -412,7 +441,7 @@ function Fields({ state, onChange, errors }: CheckTypeFieldsProps<HttpState>) {
           }
           validate={isValidStatusPattern}
           normalize={normalizeStatusPattern}
-          placeholder="200"
+          placeholder="2XX"
           data-testid="check-expected-status-codes"
           invalidTitle={t(
             "form.statusCodeInvalid",
@@ -604,6 +633,7 @@ export function HttpOptionsFields(props: CheckTypeFieldsProps<HttpState>) {
 export function HttpOptionsBody({
   state,
   onChange,
+  errors,
   assertions,
 }: CheckTypeFieldsProps<HttpState> & { assertions: boolean }) {
   const { t } = useTranslation("checks");
@@ -716,6 +746,34 @@ export function HttpOptionsBody({
               {t("http.redirectHostPolicySameHostHelp")}
             </p>
           )}
+          <Label htmlFor="http-expected-final-url">
+            {t("http.expectedFinalUrl")}
+          </Label>
+          <Input
+            id="http-expected-final-url"
+            type="url"
+            placeholder="https://www.example.com/"
+            value={state.expectedFinalUrl}
+            onChange={(e) =>
+              onChange({ ...state, expectedFinalUrl: e.target.value })
+            }
+            className={cn(
+              getFieldError(errors, "expectedFinalUrl") &&
+                "border-destructive",
+            )}
+            data-testid="check-expected-final-url-input"
+          />
+          <p className="text-xs text-muted-foreground">
+            {t("http.expectedFinalUrlHelp")}
+          </p>
+          {getFieldError(errors, "expectedFinalUrl") && (
+            <p
+              className="text-xs text-destructive"
+              data-testid="check-expected-final-url-error"
+            >
+              {getFieldError(errors, "expectedFinalUrl")}
+            </p>
+          )}
         </div>
       )}
       <div className="flex items-center gap-2">
@@ -807,6 +865,20 @@ export function HttpOptionsBody({
       </div>
       <div className="space-y-2 border-t pt-3">
         <div>
+          <Label>{t("headerAssertions")}</Label>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {t("headerAssertionsDescription")}
+          </p>
+        </div>
+        <HeaderAssertionEditor
+          value={state.headerAssertions}
+          onChange={(headerAssertions) =>
+            onChange({ ...state, headerAssertions })
+          }
+        />
+      </div>
+      <div className="space-y-2 border-t pt-3">
+        <div>
           <Label>{t("bodyAssertions")}</Label>
           <p className="text-xs text-muted-foreground mt-0.5">
             {t("bodyAssertionsDescription")}
@@ -835,8 +907,11 @@ export function httpOptionsSummary(state: HttpState): {
   if (!state.followRedirects) parts.push("redirects not followed");
   if (state.followRedirects && state.redirectHostPolicy === "same-host")
     parts.push("redirects restricted to same host");
+  if (state.followRedirects && state.expectedFinalUrl.trim() !== "")
+    parts.push("final URL asserted");
   if (state.captureFailureResponse) parts.push("failure response captured");
   if (state.jsonPathAssertions) parts.push("JSON assertions");
+  if (state.headerAssertions) parts.push("header assertions");
   if (state.bodyAssertions) parts.push("body assertions");
   if (state.body) parts.push("request body");
   const headerCount = state.headers.filter((h) => h.key).length;
@@ -869,6 +944,8 @@ export const httpModule: CheckTypeModule<HttpState> = {
     "follow_redirects",
     "redirectHostPolicy",
     "redirect_host_policy",
+    "expectedFinalUrl",
+    "expected_final_url",
     "httpVersion",
     "capture_failure_response",
     "captureFailureResponse",
@@ -876,6 +953,8 @@ export const httpModule: CheckTypeModule<HttpState> = {
     "json_path_assertions",
     "bodyAssertions",
     "body_assertions",
+    "headerAssertions",
+    "header_assertions",
     "body",
     "headers",
   ],

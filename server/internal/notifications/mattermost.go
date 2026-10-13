@@ -196,12 +196,26 @@ func (s *MattermostSender) eventColorAndTitle(payload *Payload, checkName string
 		return mattermostColorBlue, ":white_check_mark: [ACKNOWLEDGED] " + checkName
 	case eventTypeIncidentUnacknowledged:
 		return mattermostColorOrange, ":warning: [UNACKNOWLEDGED] " + checkName
+	case eventTypeIncidentReminder:
+		return mattermostColorOrange, ":alarm_clock: [STILL DOWN] " + checkName
 	default:
 		return mattermostColorOrange, "[UPDATE] " + checkName
 	}
 }
 
+// buildFields is the event's fields plus the region line. The Zulip sender
+// reuses it, so it gets the line too.
 func (s *MattermostSender) buildFields(payload *Payload, checkName string) []mattermostField {
+	fields := s.buildEventFields(payload, checkName)
+
+	if title, text := RegionLabelFor(payload); text != "" {
+		fields = append(fields, mattermostField{Short: false, Title: title, Value: text})
+	}
+
+	return fields
+}
+
+func (s *MattermostSender) buildEventFields(payload *Payload, checkName string) []mattermostField {
 	if payload.EventType == eventTypeIncidentResolved {
 		return s.buildResolvedFields(payload, checkName)
 	}
@@ -231,7 +245,7 @@ func (s *MattermostSender) buildFields(payload *Payload, checkName string) []mat
 		}
 
 		if payload.EventType == eventTypeIncidentUnacknowledged {
-			fields = append(fields, mattermostField{Short: false, Title: "Status", Value: unackCallToAction})
+			fields = append(fields, mattermostField{Short: false, Title: fieldLabelStatus, Value: unackCallToAction})
 		}
 
 		return fields
@@ -242,6 +256,10 @@ func (s *MattermostSender) buildFields(payload *Payload, checkName string) []mat
 		{Short: true, Title: "Type", Value: payload.Check.Type},
 		{Short: false, Title: mmFieldCause, Value: getFailureReason(payload.Incident)},
 		{Short: true, Title: mmFieldFailureCount, Value: strconv.Itoa(payload.Incident.FailureCount)},
+	}
+
+	if payload.EventType == eventTypeIncidentReminder {
+		fields = append(fields, mattermostField{Short: false, Title: fieldLabelStatus, Value: reminderSentence(payload)})
 	}
 
 	if payload.EventType == eventTypeIncidentReopened {

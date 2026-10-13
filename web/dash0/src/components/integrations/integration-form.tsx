@@ -1241,7 +1241,7 @@ function WebhookSigningPanel({ settings, org, channelUid }: WebhookSigningPanelP
         <p className="text-xs text-muted-foreground">
           {t(
             "form.signingSecretHelp",
-            "Outbound webhooks are signed with this secret using the Standard Webhooks scheme (HMAC-SHA256). Verify it on the receiving end.",
+            "Outbound webhooks are signed with this secret using the Standard Webhooks scheme (HMAC-SHA256). Verify it on the receiving end. The official Standard Webhooks libraries take it as is.",
           )}
         </p>
       </div>

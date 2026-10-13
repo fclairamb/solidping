@@ -101,6 +101,49 @@ jobs:
           path: ${{ runner.temp }}/slowtests.log
           retention-days: 7
 
+  # Spec 2026-10-12-04: a fresh instance must idle small. The docker harness is
+  # too slow and noisy for a pull request (wiki/runbooks/memory-profiling.md
+  # section 10), so the bound is checked here: the median cgroup anon+kernel 60 s
+  # after a first boot must stay at or under 48 MiB. Embedded frontend assets are
+  # placeholders: they move the file-backed pages, not the anon metric.
+  membench-fresh-boot:
+    name: Fresh-boot memory bound
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.27"
+          cache-dependency-path: server/go.sum
+
+      - name: Create embed placeholders
+        working-directory: server
+        run: ../scripts/embed-placeholders.sh
+
+      - name: Build the bench image from this tree
+        run: make bench-memory-image BENCH_MEM_IMAGE=solidping-bench:nightly
+
+      - name: Measure fresh-boot memory
+        run: |
+          make bench-memory \
+            BENCH_MEM_MODE=docker \
+            BENCH_MEM_IMAGE=solidping-bench:nightly \
+            BENCH_MEM_SCENARIOS=fresh-boot \
+            BENCH_MEM_LABEL=nightly-fresh-boot \
+            BENCH_MEM_DURATION=1m \
+            BENCH_MEM_REPS=3 \
+            BENCH_MEM_ASSERT=cgroupUnreclaimableBytes=48MiB
+
+      - name: Upload the memory report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: membench-fresh-boot
+          path: bench-results/
+          retention-days: 14
+
   postgres:
     name: Postgres layer (against main)
     runs-on: ubuntu-26.04

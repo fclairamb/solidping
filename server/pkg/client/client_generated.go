@@ -18,6 +18,75 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for AICheckGenerateStreamLineTool.
+const (
+	AICheckGenerateStreamLineToolBrowserSnapshot AICheckGenerateStreamLineTool = "browser_snapshot"
+	AICheckGenerateStreamLineToolFetchPage       AICheckGenerateStreamLineTool = "fetch_page"
+	AICheckGenerateStreamLineToolRunScript       AICheckGenerateStreamLineTool = "run_script"
+)
+
+// Valid indicates whether the value is a known member of the AICheckGenerateStreamLineTool enum.
+func (e AICheckGenerateStreamLineTool) Valid() bool {
+	switch e {
+	case AICheckGenerateStreamLineToolBrowserSnapshot:
+		return true
+	case AICheckGenerateStreamLineToolFetchPage:
+		return true
+	case AICheckGenerateStreamLineToolRunScript:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AICheckGenerateStreamLineType.
+const (
+	AICheckGenerateStreamLineTypeError      AICheckGenerateStreamLineType = "error"
+	AICheckGenerateStreamLineTypeMessage    AICheckGenerateStreamLineType = "message"
+	AICheckGenerateStreamLineTypePing       AICheckGenerateStreamLineType = "ping"
+	AICheckGenerateStreamLineTypeResult     AICheckGenerateStreamLineType = "result"
+	AICheckGenerateStreamLineTypeTool       AICheckGenerateStreamLineType = "tool"
+	AICheckGenerateStreamLineTypeToolResult AICheckGenerateStreamLineType = "toolResult"
+	AICheckGenerateStreamLineTypeTurn       AICheckGenerateStreamLineType = "turn"
+)
+
+// Valid indicates whether the value is a known member of the AICheckGenerateStreamLineType enum.
+func (e AICheckGenerateStreamLineType) Valid() bool {
+	switch e {
+	case AICheckGenerateStreamLineTypeError:
+		return true
+	case AICheckGenerateStreamLineTypeMessage:
+		return true
+	case AICheckGenerateStreamLineTypePing:
+		return true
+	case AICheckGenerateStreamLineTypeResult:
+		return true
+	case AICheckGenerateStreamLineTypeTool:
+		return true
+	case AICheckGenerateStreamLineTypeToolResult:
+		return true
+	case AICheckGenerateStreamLineTypeTurn:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AICheckGenerationFailedCode.
+const (
+	AICheckGenerationFailedCodeAIGENERATIONFAILED AICheckGenerationFailedCode = "AI_GENERATION_FAILED"
+)
+
+// Valid indicates whether the value is a known member of the AICheckGenerationFailedCode enum.
+func (e AICheckGenerationFailedCode) Valid() bool {
+	switch e {
+	case AICheckGenerationFailedCodeAIGENERATIONFAILED:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AddMemberContactRequestType.
 const (
 	AddMemberContactRequestTypePhone    AddMemberContactRequestType = "phone"
@@ -237,6 +306,21 @@ func (e AvailabilityBucketStatus) Valid() bool {
 	case AvailabilityBucketStatusNoData:
 		return true
 	case AvailabilityBucketStatusUp:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ChannelTestResultCode.
+const (
+	ChannelTestResultCodeINTEGRATIONMISCONFIGURED ChannelTestResultCode = "INTEGRATION_MISCONFIGURED"
+)
+
+// Valid indicates whether the value is a known member of the ChannelTestResultCode enum.
+func (e ChannelTestResultCode) Valid() bool {
+	switch e {
+	case ChannelTestResultCodeINTEGRATIONMISCONFIGURED:
 		return true
 	default:
 		return false
@@ -837,6 +921,78 @@ func (e CheckScreenshotTrigger) Valid() bool {
 	case CheckScreenshotTriggerIncidentOpen:
 		return true
 	case CheckScreenshotTriggerIncidentReopen:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CheckVersionOrigin.
+const (
+	CheckVersionOriginAiGenerate CheckVersionOrigin = "ai_generate"
+	CheckVersionOriginAiRepair   CheckVersionOrigin = "ai_repair"
+	CheckVersionOriginApi        CheckVersionOrigin = "api"
+	CheckVersionOriginApply      CheckVersionOrigin = "apply"
+	CheckVersionOriginMcp        CheckVersionOrigin = "mcp"
+	CheckVersionOriginSystem     CheckVersionOrigin = "system"
+	CheckVersionOriginUser       CheckVersionOrigin = "user"
+)
+
+// Valid indicates whether the value is a known member of the CheckVersionOrigin enum.
+func (e CheckVersionOrigin) Valid() bool {
+	switch e {
+	case CheckVersionOriginAiGenerate:
+		return true
+	case CheckVersionOriginAiRepair:
+		return true
+	case CheckVersionOriginApi:
+		return true
+	case CheckVersionOriginApply:
+		return true
+	case CheckVersionOriginMcp:
+		return true
+	case CheckVersionOriginSystem:
+		return true
+	case CheckVersionOriginUser:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CheckVersionStatus.
+const (
+	CheckVersionStatusApplied  CheckVersionStatus = "applied"
+	CheckVersionStatusProposed CheckVersionStatus = "proposed"
+	CheckVersionStatusRejected CheckVersionStatus = "rejected"
+)
+
+// Valid indicates whether the value is a known member of the CheckVersionStatus enum.
+func (e CheckVersionStatus) Valid() bool {
+	switch e {
+	case CheckVersionStatusApplied:
+		return true
+	case CheckVersionStatusProposed:
+		return true
+	case CheckVersionStatusRejected:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CheckVersionSnapshotPlacement.
+const (
+	CheckVersionSnapshotPlacementAuto   CheckVersionSnapshotPlacement = "auto"
+	CheckVersionSnapshotPlacementPinned CheckVersionSnapshotPlacement = "pinned"
+)
+
+// Valid indicates whether the value is a known member of the CheckVersionSnapshotPlacement enum.
+func (e CheckVersionSnapshotPlacement) Valid() bool {
+	switch e {
+	case CheckVersionSnapshotPlacementAuto:
+		return true
+	case CheckVersionSnapshotPlacementPinned:
 		return true
 	default:
 		return false
@@ -2442,6 +2598,21 @@ func (e ResultFallbackInfoReason) Valid() bool {
 	}
 }
 
+// Defines values for RunNowResponseRegionsStatus.
+const (
+	RunNowResponseRegionsStatusQueued RunNowResponseRegionsStatus = "queued"
+)
+
+// Valid indicates whether the value is a known member of the RunNowResponseRegionsStatus enum.
+func (e RunNowResponseRegionsStatus) Valid() bool {
+	switch e {
+	case RunNowResponseRegionsStatusQueued:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SLOAlertPolicyKind.
 const (
 	SLOAlertPolicyKindFast SLOAlertPolicyKind = "fast"
@@ -3369,6 +3540,27 @@ func (e ListChecksParamsSort) Valid() bool {
 	}
 }
 
+// Defines values for AiCheckGenerateJSONBodyRepair.
+const (
+	AiCheckGenerateJSONBodyRepairAuto    AiCheckGenerateJSONBodyRepair = "auto"
+	AiCheckGenerateJSONBodyRepairOff     AiCheckGenerateJSONBodyRepair = "off"
+	AiCheckGenerateJSONBodyRepairPropose AiCheckGenerateJSONBodyRepair = "propose"
+)
+
+// Valid indicates whether the value is a known member of the AiCheckGenerateJSONBodyRepair enum.
+func (e AiCheckGenerateJSONBodyRepair) Valid() bool {
+	switch e {
+	case AiCheckGenerateJSONBodyRepairAuto:
+		return true
+	case AiCheckGenerateJSONBodyRepairOff:
+		return true
+	case AiCheckGenerateJSONBodyRepairPropose:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SwitchChecksToAutoPlacement200JSONResponseBodySkippedReason.
 const (
 	SwitchChecksToAutoPlacement200JSONResponseBodySkippedReasonAlreadyAuto   SwitchChecksToAutoPlacement200JSONResponseBodySkippedReason = "already_auto"
@@ -3493,6 +3685,7 @@ func (e ListStatusPageIncidentsParamsState) Valid() bool {
 const (
 	ViewDefaultStatusPageParamsIncludeAvailability ViewDefaultStatusPageParamsInclude = "availability"
 	ViewDefaultStatusPageParamsIncludeResponseTime ViewDefaultStatusPageParamsInclude = "responseTime"
+	ViewDefaultStatusPageParamsIncludeUpdates      ViewDefaultStatusPageParamsInclude = "updates"
 )
 
 // Valid indicates whether the value is a known member of the ViewDefaultStatusPageParamsInclude enum.
@@ -3501,6 +3694,8 @@ func (e ViewDefaultStatusPageParamsInclude) Valid() bool {
 	case ViewDefaultStatusPageParamsIncludeAvailability:
 		return true
 	case ViewDefaultStatusPageParamsIncludeResponseTime:
+		return true
+	case ViewDefaultStatusPageParamsIncludeUpdates:
 		return true
 	default:
 		return false
@@ -3511,6 +3706,7 @@ func (e ViewDefaultStatusPageParamsInclude) Valid() bool {
 const (
 	ViewStatusPageParamsIncludeAvailability ViewStatusPageParamsInclude = "availability"
 	ViewStatusPageParamsIncludeResponseTime ViewStatusPageParamsInclude = "responseTime"
+	ViewStatusPageParamsIncludeUpdates      ViewStatusPageParamsInclude = "updates"
 )
 
 // Valid indicates whether the value is a known member of the ViewStatusPageParamsInclude enum.
@@ -3519,6 +3715,8 @@ func (e ViewStatusPageParamsInclude) Valid() bool {
 	case ViewStatusPageParamsIncludeAvailability:
 		return true
 	case ViewStatusPageParamsIncludeResponseTime:
+		return true
+	case ViewStatusPageParamsIncludeUpdates:
 		return true
 	default:
 		return false
@@ -3592,6 +3790,93 @@ func (e ListSupportThreadsParamsChannel) Valid() bool {
 	default:
 		return false
 	}
+}
+
+// AICheckContract defines model for AICheckContract.
+type AICheckContract struct {
+	Contract []string `json:"contract"`
+	Model    string   `json:"model"`
+	Usage    *AIUsage `json:"usage,omitempty"`
+}
+
+// AICheckGenerateStreamLine One line of a generation streamed as application/x-ndjson.
+type AICheckGenerateStreamLine struct {
+	Detail     *string `json:"detail,omitempty"`
+	DurationMs *int64  `json:"durationMs,omitempty"`
+
+	// Error `toolResult`: why the tool call failed.
+	Error *string `json:"error,omitempty"`
+
+	// Final `run_script`: the finished script rather than a probe.
+	Final *bool `json:"final,omitempty"`
+
+	// HttpStatus `error` line: the HTTP status the plain call would have answered.
+	HttpStatus *int `json:"httpStatus,omitempty"`
+	MaxTurns   *int `json:"maxTurns,omitempty"`
+
+	// Response `error` line: the body the plain call would have answered.
+	Response *map[string]interface{} `json:"response,omitempty"`
+	Result   *AICheckGenerated       `json:"result,omitempty"`
+
+	// Status `toolResult`: the run status (up, down, error).
+	Status *string `json:"status,omitempty"`
+
+	// Text `message`: what the model wrote, without code blocks.
+	Text *string                        `json:"text,omitempty"`
+	Tool *AICheckGenerateStreamLineTool `json:"tool,omitempty"`
+	Turn *int                           `json:"turn,omitempty"`
+	Type AICheckGenerateStreamLineType  `json:"type"`
+	Url  *string                        `json:"url,omitempty"`
+}
+
+// AICheckGenerateStreamLineTool defines model for AICheckGenerateStreamLine.Tool.
+type AICheckGenerateStreamLineTool string
+
+// AICheckGenerateStreamLineType defines model for AICheckGenerateStreamLine.Type.
+type AICheckGenerateStreamLineType string
+
+// AICheckGenerated defines model for AICheckGenerated.
+type AICheckGenerated struct {
+	// Config The js check config to save (script, env, ai), without secrets.
+	Config      map[string]interface{} `json:"config"`
+	LastRun     AIScriptRun            `json:"lastRun"`
+	Model       string                 `json:"model"`
+	Script      string                 `json:"script"`
+	SecretNames *[]string              `json:"secretNames,omitempty"`
+	Turns       *int                   `json:"turns,omitempty"`
+	Usage       *AIUsage               `json:"usage,omitempty"`
+}
+
+// AICheckGenerationFailed defines model for AICheckGenerationFailed.
+type AICheckGenerationFailed struct {
+	Code   AICheckGenerationFailedCode `json:"code"`
+	Detail *string                     `json:"detail,omitempty"`
+
+	// Explanation The model's last message, often why it gave up.
+	Explanation *string      `json:"explanation,omitempty"`
+	LastRun     *AIScriptRun `json:"lastRun,omitempty"`
+	LastScript  *string      `json:"lastScript,omitempty"`
+	Title       string       `json:"title"`
+	Turns       *int         `json:"turns,omitempty"`
+}
+
+// AICheckGenerationFailedCode defines model for AICheckGenerationFailed.Code.
+type AICheckGenerationFailedCode string
+
+// AIScriptRun defines model for AIScriptRun.
+type AIScriptRun struct {
+	DurationMs *int                    `json:"durationMs,omitempty"`
+	Metrics    *map[string]interface{} `json:"metrics,omitempty"`
+	Output     *map[string]interface{} `json:"output,omitempty"`
+
+	// Status up, down, timeout or error.
+	Status string `json:"status"`
+}
+
+// AIUsage defines model for AIUsage.
+type AIUsage struct {
+	InputTokens  *int `json:"inputTokens,omitempty"`
+	OutputTokens *int `json:"outputTokens,omitempty"`
 }
 
 // AcceptInviteRequest defines model for AcceptInviteRequest.
@@ -4045,22 +4330,33 @@ type ChannelListResponse struct {
 
 // ChannelTestResult defines model for ChannelTestResult.
 type ChannelTestResult struct {
+	// Code Set when nothing was sent because a required setting is missing (a configuration error, not a delivery failure).
+	Code *ChannelTestResultCode `json:"code,omitempty"`
+
 	// Detail Optional human-readable success note
 	Detail     *string `json:"detail,omitempty"`
 	DurationMs int64   `json:"durationMs"`
 	Error      *string `json:"error,omitempty"`
+
+	// MissingSetting Human name of the missing setting (e.g. "API token") when code is INTEGRATION_MISCONFIGURED
+	//
+	// Example: API token
+	MissingSetting *string `json:"missingSetting,omitempty"`
 
 	// StatusCode HTTP status for HTTP-based channels; 0 otherwise
 	StatusCode int  `json:"statusCode"`
 	Success    bool `json:"success"`
 }
 
+// ChannelTestResultCode Set when nothing was sent because a required setting is missing (a configuration error, not a delivery failure).
+type ChannelTestResultCode string
+
 // Check defines model for Check.
 type Check struct {
 	// CheckGroupUid Group this check belongs to, or null.
 	CheckGroupUid *openapi_types.UUID `json:"checkGroupUid,omitempty"`
 
-	// Config Check-specific configuration; the fields accepted depend on `type`. HTTP checks additionally accept `verifySsl` (boolean, default true — set false to skip TLS certificate verification), `followRedirects` (boolean, default true — set false to stop at the first response instead of following redirects), `redirectHostPolicy` (string, default "any" — "same-host" refuses any followed redirect hop whose host differs from the previous hop's, failing the check instead of following it; an unknown value is a VALIDATION_ERROR), `httpVersion` (string, default "1.1" and omitted at default — "2" forces HTTP/2, h2 over TLS or h2c with prior knowledge over http://; "3" forces HTTP/3 over QUIC with no TCP fallback; a response over another version fails the check; any other value, and "3" on a check with `tunnelCheckUid`, is a VALIDATION_ERROR; results record the negotiated protocol as `http_protocol` and the Alt-Svc header as `alt_svc`) and `capture_failure_response` (boolean, default false — when true a FAILING execution keeps what the probe received: status line, redacted response headers and a 16 KiB-capped body, stored on the incident it opens as `details.failureResponse`. Opt-in because a response body can contain PII; never exposed on a status page). See wiki/conventions/checker-config.md for the full per-type field reference.
+	// Config Check-specific configuration; the fields accepted depend on `type`. HTTP checks additionally accept `verifySsl` (boolean, default true — set false to skip TLS certificate verification), `followRedirects` (boolean, default true — set false to stop at the first response instead of following redirects), `redirectHostPolicy` (string, default "any" — "same-host" refuses any followed redirect hop whose host differs from the previous hop's, failing the check instead of following it; an unknown value is a VALIDATION_ERROR), `expectedFinalUrl` (string — absolute http(s) URL the redirect chain must end on, compared after lowercasing scheme and host, dropping default ports and the fragment, and making an empty path "/"; path and query are exact. A mismatch fails the check with the actual URL in `final_url`. Rejected with `followRedirects: false`, or with `redirectHostPolicy` "same-host" and a host different from `url`), `httpVersion` (string, default "1.1" and omitted at default — "2" forces HTTP/2, h2 over TLS or h2c with prior knowledge over http://; "3" forces HTTP/3 over QUIC with no TCP fallback; a response over another version fails the check; any other value, and "3" on a check with `tunnelCheckUid`, is a VALIDATION_ERROR; results record the negotiated protocol as `http_protocol` and the Alt-Svc header as `alt_svc`), `headerAssertions` (assertion tree over response headers; a leaf's `path` is the header name, operators eq, neq, contains, not_contains, regex, exists, not_exists) and `capture_failure_response` (boolean, default false — when true a FAILING execution keeps what the probe received: status line, redacted response headers and a 16 KiB-capped body, stored on the incident it opens as `details.failureResponse`. Opt-in because a response body can contain PII; never exposed on a status page). See wiki/conventions/checker-config.md for the full per-type field reference.
 	Config    *map[string]interface{} `json:"config,omitempty"`
 	CreatedAt *time.Time              `json:"createdAt,omitempty"`
 
@@ -4164,6 +4460,11 @@ type Check struct {
 
 	// Regions Region slugs the check runs from. For a pinned check, the user's explicit list (never moved). For an automatically placed check, the CURRENT placement, chosen by the scheduler and rewritten when one of its regions goes dark (spec 2026-09-25-06). A private location is `@<slug>`.
 	Regions *[]string `json:"regions,omitempty"`
+
+	// ReminderIntervalSeconds Re-notify the check's channels every this many seconds while an incident stays open and unacknowledged (`incident.reminder`). `null` inherits the organization default, `0` turns reminders off, otherwise 900 to 86400 (15 minutes to 24 hours). Any other value is a `VALIDATION_ERROR`. Always present; `null` means the check inherits the organization default.
+	//
+	// Example: 3600
+	ReminderIntervalSeconds *int `json:"reminderIntervalSeconds,omitempty"`
 
 	// Scheduling Read-only scheduling telemetry, derived from the check's per-region scheduler jobs (max across regions). Present only on the check DETAIL response (GET by uid/slug) — never on list responses — and omitted until the check's first run produces a cost signal.
 	Scheduling *CheckScheduling `json:"scheduling,omitempty"`
@@ -4282,7 +4583,7 @@ type CheckConfigSchemaRef struct {
 	Ref string `json:"ref"`
 }
 
-// CheckFieldChange One field an update would change, rendered as strings (JSON for anything structured). Secret-bearing values and any value containing a ${env:}/${param:} reference are masked as "***" — a plan is printed in CI logs and pasted into tickets.
+// CheckFieldChange One field an update would change, rendered as strings (JSON for anything structured). Secret-bearing values and any value containing a ${env:}/${param:} reference are masked as "***" — a plan is printed in CI logs and pasted into tickets. A generated ${var:} value is not a secret and is shown as is.
 type CheckFieldChange struct {
 	Field string `json:"field"`
 	From  string `json:"from"`
@@ -4359,7 +4660,7 @@ type CheckListItem struct {
 	// CheckGroupUid Group this check belongs to, or null.
 	CheckGroupUid *openapi_types.UUID `json:"checkGroupUid,omitempty"`
 
-	// Config Check-specific configuration; the fields accepted depend on `type`. HTTP checks additionally accept `verifySsl` (boolean, default true — set false to skip TLS certificate verification), `followRedirects` (boolean, default true — set false to stop at the first response instead of following redirects), `redirectHostPolicy` (string, default "any" — "same-host" refuses any followed redirect hop whose host differs from the previous hop's, failing the check instead of following it; an unknown value is a VALIDATION_ERROR), `httpVersion` (string, default "1.1" and omitted at default — "2" forces HTTP/2, h2 over TLS or h2c with prior knowledge over http://; "3" forces HTTP/3 over QUIC with no TCP fallback; a response over another version fails the check; any other value, and "3" on a check with `tunnelCheckUid`, is a VALIDATION_ERROR; results record the negotiated protocol as `http_protocol` and the Alt-Svc header as `alt_svc`) and `capture_failure_response` (boolean, default false — when true a FAILING execution keeps what the probe received: status line, redacted response headers and a 16 KiB-capped body, stored on the incident it opens as `details.failureResponse`. Opt-in because a response body can contain PII; never exposed on a status page). See wiki/conventions/checker-config.md for the full per-type field reference.
+	// Config Check-specific configuration; the fields accepted depend on `type`. HTTP checks additionally accept `verifySsl` (boolean, default true — set false to skip TLS certificate verification), `followRedirects` (boolean, default true — set false to stop at the first response instead of following redirects), `redirectHostPolicy` (string, default "any" — "same-host" refuses any followed redirect hop whose host differs from the previous hop's, failing the check instead of following it; an unknown value is a VALIDATION_ERROR), `expectedFinalUrl` (string — absolute http(s) URL the redirect chain must end on, compared after lowercasing scheme and host, dropping default ports and the fragment, and making an empty path "/"; path and query are exact. A mismatch fails the check with the actual URL in `final_url`. Rejected with `followRedirects: false`, or with `redirectHostPolicy` "same-host" and a host different from `url`), `httpVersion` (string, default "1.1" and omitted at default — "2" forces HTTP/2, h2 over TLS or h2c with prior knowledge over http://; "3" forces HTTP/3 over QUIC with no TCP fallback; a response over another version fails the check; any other value, and "3" on a check with `tunnelCheckUid`, is a VALIDATION_ERROR; results record the negotiated protocol as `http_protocol` and the Alt-Svc header as `alt_svc`), `headerAssertions` (assertion tree over response headers; a leaf's `path` is the header name, operators eq, neq, contains, not_contains, regex, exists, not_exists) and `capture_failure_response` (boolean, default false — when true a FAILING execution keeps what the probe received: status line, redacted response headers and a 16 KiB-capped body, stored on the incident it opens as `details.failureResponse`. Opt-in because a response body can contain PII; never exposed on a status page). See wiki/conventions/checker-config.md for the full per-type field reference.
 	Config    *map[string]interface{} `json:"config,omitempty"`
 	CreatedAt *time.Time              `json:"createdAt,omitempty"`
 
@@ -4463,6 +4764,11 @@ type CheckListItem struct {
 
 	// Regions Region slugs the check runs from. For a pinned check, the user's explicit list (never moved). For an automatically placed check, the CURRENT placement, chosen by the scheduler and rewritten when one of its regions goes dark (spec 2026-09-25-06). A private location is `@<slug>`.
 	Regions *[]string `json:"regions,omitempty"`
+
+	// ReminderIntervalSeconds Re-notify the check's channels every this many seconds while an incident stays open and unacknowledged (`incident.reminder`). `null` inherits the organization default, `0` turns reminders off, otherwise 900 to 86400 (15 minutes to 24 hours). Any other value is a `VALIDATION_ERROR`. Always present; `null` means the check inherits the organization default.
+	//
+	// Example: 3600
+	ReminderIntervalSeconds *int `json:"reminderIntervalSeconds,omitempty"`
 
 	// Scheduling Read-only scheduling telemetry, derived from the check's per-region scheduler jobs (max across regions). Present only on the check DETAIL response (GET by uid/slug) — never on list responses — and omitted until the check's first run produces a cost signal.
 	Scheduling *CheckScheduling `json:"scheduling,omitempty"`
@@ -4638,14 +4944,17 @@ type CheckStats struct {
 // CheckTypeInfo defines model for CheckTypeInfo.
 type CheckTypeInfo struct {
 	// Advisory Message for an otherwise-enabled type whose availability still depends on something the org must satisfy — e.g. on a SaaS deployment, docker only runs when pinned to one of the org's private locations. Absent when there is nothing to say.
-	Advisory             *string  `json:"advisory,omitempty"`
-	DefaultPeriodSeconds *int     `json:"defaultPeriodSeconds,omitempty"`
-	Description          string   `json:"description"`
-	DisabledReason       *string  `json:"disabledReason,omitempty"`
-	Enabled              bool     `json:"enabled"`
-	Labels               []string `json:"labels"`
-	MaxPeriodSeconds     *int     `json:"maxPeriodSeconds,omitempty"`
-	MinPeriodSeconds     *int     `json:"minPeriodSeconds,omitempty"`
+	Advisory             *string `json:"advisory,omitempty"`
+	DefaultPeriodSeconds *int    `json:"defaultPeriodSeconds,omitempty"`
+	Description          string  `json:"description"`
+	DisabledReason       *string `json:"disabledReason,omitempty"`
+	Enabled              bool    `json:"enabled"`
+
+	// ExcludedFromTally Synthetic or system-created type, not counted in the advertised check-type total.
+	ExcludedFromTally *bool    `json:"excludedFromTally,omitempty"`
+	Labels            []string `json:"labels"`
+	MaxPeriodSeconds  *int     `json:"maxPeriodSeconds,omitempty"`
+	MinPeriodSeconds  *int     `json:"minPeriodSeconds,omitempty"`
 
 	// SecretFields Top-level config keys this type stores encrypted. Their values are never returned by a read, so a client must not echo them back when it preserves config keys its own form does not model.
 	SecretFields *[]string `json:"secretFields,omitempty"`
@@ -4681,6 +4990,75 @@ type CheckTypeSamples struct {
 type CheckTypeSamplesListResponse struct {
 	Data *[]CheckTypeSamples `json:"data,omitempty"`
 }
+
+// CheckVersion One version of a check definition (spec 2026-10-03-06).
+type CheckVersion struct {
+	// ActorName The actor's name, or email when it has no name.
+	ActorName *string `json:"actorName,omitempty"`
+
+	// ActorUserUid The user who made the change. Absent for system changes.
+	ActorUserUid *string `json:"actorUserUid,omitempty"`
+
+	// BaseVersion For a proposal, the applied version it was built on.
+	BaseVersion *int       `json:"baseVersion,omitempty"`
+	CreatedAt   time.Time  `json:"createdAt"`
+	DecidedAt   *time.Time `json:"decidedAt,omitempty"`
+
+	// DecidedByUserUid Who approved or rejected a proposal.
+	DecidedByUserUid *string `json:"decidedByUserUid,omitempty"`
+
+	// Origin Where the change came from: user (dashboard session), api (API token), apply (config-as-code apply or import), mcp, system (no caller), ai_generate, ai_repair.
+	Origin CheckVersionOrigin `json:"origin"`
+
+	// Reason Optional one-line note, e.g. `restored v3`.
+	Reason *string `json:"reason,omitempty"`
+
+	// Snapshot The versioned definition of a check. Only returned when reading a single version. Never contains secrets.
+	Snapshot *CheckVersionSnapshot `json:"snapshot,omitempty"`
+	Status   CheckVersionStatus    `json:"status"`
+
+	// Version Per-check version number, starting at 1.
+	Version int `json:"version"`
+}
+
+// CheckVersionOrigin Where the change came from: user (dashboard session), api (API token), apply (config-as-code apply or import), mcp, system (no caller), ai_generate, ai_repair.
+type CheckVersionOrigin string
+
+// CheckVersionStatus defines model for CheckVersion.Status.
+type CheckVersionStatus string
+
+// CheckVersionDiff defines model for CheckVersionDiff.
+type CheckVersionDiff struct {
+	// Against The version compared with; null for the first version.
+	Against *int               `json:"against"`
+	Changes []CheckFieldChange `json:"changes"`
+	Version int                `json:"version"`
+}
+
+// CheckVersionSnapshot The versioned definition of a check. Only returned when reading a single version. Never contains secrets.
+type CheckVersionSnapshot struct {
+	CheckGroupUid *string                 `json:"checkGroupUid,omitempty"`
+	Config        *map[string]interface{} `json:"config,omitempty"`
+	Description   *string                 `json:"description,omitempty"`
+	Enabled       *bool                   `json:"enabled,omitempty"`
+	FailQuorum    *string                 `json:"failQuorum,omitempty"`
+	Labels        *map[string]string      `json:"labels,omitempty"`
+	Name          *string                 `json:"name,omitempty"`
+
+	// Period Example: 00:01:00
+	Period      *string                        `json:"period,omitempty"`
+	Placement   *CheckVersionSnapshotPlacement `json:"placement,omitempty"`
+	RegionCount *int                           `json:"regionCount,omitempty"`
+	RegionPool  *[]string                      `json:"regionPool,omitempty"`
+
+	// Regions Pinned regions. Absent for an automatically placed check.
+	Regions *[]string `json:"regions,omitempty"`
+	Slug    *string   `json:"slug,omitempty"`
+	Type    *string   `json:"type,omitempty"`
+}
+
+// CheckVersionSnapshotPlacement defines model for CheckVersionSnapshot.Placement.
+type CheckVersionSnapshotPlacement string
 
 // CloneCheckRequest Optional overrides applied to the cloned check.
 type CloneCheckRequest struct {
@@ -4843,6 +5221,11 @@ type CreateCheckRequest struct {
 
 	// Regions Explicit region slugs. A non-empty list pins the check to exactly these regions (placement `pinned`), as before. Omit to let the check be placed automatically.
 	Regions *[]string `json:"regions,omitempty"`
+
+	// ReminderIntervalSeconds Re-notify the check's channels every this many seconds while an incident stays open and unacknowledged (`incident.reminder`). `null` inherits the organization default, `0` turns reminders off, otherwise 900 to 86400 (15 minutes to 24 hours). Any other value is a `VALIDATION_ERROR`. Omit or send `null` to inherit the organization default.
+	//
+	// Example: 3600
+	ReminderIntervalSeconds *int `json:"reminderIntervalSeconds,omitempty"`
 
 	// SlowThresholdMs Response time above which a successful probe counts as slow, in milliseconds. 0 = the slow rule is off. There is no auto-baselining; around 2x the observed p95 is the usual starting point.
 	SlowThresholdMs *int `json:"slowThresholdMs,omitempty"`
@@ -5457,6 +5840,9 @@ type EmailSuppressionListResponse struct {
 
 // EntitlementLimits Per-org numeric limits; null/absent means unlimited
 type EntitlementLimits struct {
+	// MaxAiTokensPerDay LLM tokens (input + output) per UTC day for AI-authored js checks (null = unlimited)
+	MaxAiTokensPerDay *int `json:"maxAiTokensPerDay,omitempty"`
+
 	// MaxCallsPerMonth Outbound voice calls per UTC month (null = unlimited)
 	MaxCallsPerMonth *int `json:"maxCallsPerMonth,omitempty"`
 
@@ -5739,7 +6125,7 @@ type GetOrgResultResponse struct {
 	// Fallback Present when the requested raw result UID had already been rolled up into an aggregation; describes the substitution.
 	Fallback *ResultFallbackInfo `json:"fallback,omitempty"`
 
-	// Metrics Performance metrics (with=metrics)
+	// Metrics Performance metrics (with=metrics). HTTP checks record the phase timings in milliseconds, each present only when that phase ran: dns_time_ms, connect_time_ms, tls_time_ms, ttfb_time_ms, download_time_ms (only when the body was read) and redirect_time_ms (only after a redirect). Phases describe the final hop of a redirect chain.
 	Metrics *map[string]interface{} `json:"metrics,omitempty"`
 
 	// NextUid Next-newer result in the same series. Omitted when this is the newest result in scope.
@@ -6140,7 +6526,7 @@ type LastResult struct {
 	// DurationMs Response time in milliseconds
 	DurationMs *float32 `json:"durationMs,omitempty"`
 
-	// Metrics Performance metrics (e.g., response time, DNS time)
+	// Metrics Performance metrics. HTTP checks record the phase timings in milliseconds, each present only when that phase ran: dns_time_ms, connect_time_ms, tls_time_ms, ttfb_time_ms, download_time_ms (only when the body was read) and redirect_time_ms (only after a redirect). Phases describe the final hop of a redirect chain.
 	Metrics *map[string]interface{} `json:"metrics,omitempty"`
 
 	// Output Diagnostic output and error messages
@@ -6848,7 +7234,7 @@ type OrgResult struct {
 	// DurationP95Ms 95th-percentile duration in milliseconds, from the stored aggregate (with=durationP95Ms). Populated on aggregated rollup rows (hour/day/month); absent on raw rows, which don't store it.
 	DurationP95Ms *float32 `json:"durationP95Ms,omitempty"`
 
-	// Metrics Performance metrics (with=metrics)
+	// Metrics Performance metrics (with=metrics). HTTP checks record the phase timings in milliseconds, each present only when that phase ran: dns_time_ms, connect_time_ms, tls_time_ms, ttfb_time_ms, download_time_ms (only when the body was read) and redirect_time_ms (only after a redirect). Phases describe the final hop of a redirect chain.
 	Metrics *map[string]interface{} `json:"metrics,omitempty"`
 
 	// Output Diagnostic output (with=output). Free-form and check-type specific. For passive checks (heartbeat, email), rows written by the scheduler rather than by an inbound signal carry `evaluation: true` plus `lastSignalAt` / `lastSignalResultUid`; see the "Two kinds of result rows" section of the Heartbeat documentation (/docs/features/check-types#heartbeat).
@@ -6889,6 +7275,11 @@ type OrgSettingsResponse struct {
 
 	// RegistrationEmailPattern Auto-join email regex; empty when unset
 	RegistrationEmailPattern string `json:"registrationEmailPattern"`
+
+	// ReminderIntervalSeconds Organization default reminder interval in seconds for every check whose own `reminderIntervalSeconds` is `null`. 0 (off) when the organization has never set it.
+	//
+	// Example: 0
+	ReminderIntervalSeconds int `json:"reminderIntervalSeconds"`
 
 	// SessionMaxDurationSeconds Org-level session max duration override in seconds; omitted when inherited
 	SessionMaxDurationSeconds *int `json:"sessionMaxDurationSeconds,omitempty"`
@@ -6968,6 +7359,11 @@ type PromoteChecksRequest struct {
 // future public feature flags are added as sibling properties rather than
 // as new endpoints.
 type PublicConfigResponse struct {
+	// Ai Whether AI-authored js checks are offered (an AI provider is configured, SP_AI_PROVIDER).
+	Ai *struct {
+		Enabled bool `json:"enabled"`
+	} `json:"ai,omitempty"`
+
 	// BugReport Whether the in-app bug-report button is offered (needs a GitHub issues token and repo).
 	BugReport *struct {
 		Enabled bool `json:"enabled"`
@@ -7374,6 +7770,22 @@ type ResultsWindow struct {
 	PeriodStartAfter *time.Time `json:"periodStartAfter,omitempty"`
 }
 
+// RunNowResponse defines model for RunNowResponse.
+type RunNowResponse struct {
+	Regions []struct {
+		Region string `json:"region"`
+
+		// Status `queued`: the region runs now, or right after the run it is in the middle of. (`running` is no longer returned.)
+		Status RunNowResponseRegionsStatus `json:"status"`
+	} `json:"regions"`
+
+	// RequestedAt When the request was recorded (microsecond precision). A result with a later or equal `periodStart` answers it.
+	RequestedAt time.Time `json:"requestedAt"`
+}
+
+// RunNowResponseRegionsStatus `queued`: the region runs now, or right after the run it is in the middle of. (`running` is no longer returned.)
+type RunNowResponseRegionsStatus string
+
 // SLO defines model for SLO.
 type SLO struct {
 	// Burning True while at least one burn-rate alert policy on this objective has an open incident. Derived from the incident rows, never stored.
@@ -7701,6 +8113,12 @@ type StatusPage struct {
 	// LogoUrl Public path of the page's uploaded logo, if any.
 	LogoUrl *string `json:"logoUrl,omitempty"`
 	Name    string  `json:"name"`
+
+	// OrgLogoUrl Public `/pub/assets/<file uid>` path of the organization's logo. Omitted when the org has no logo or uses an external URL logo (status0's CSP only allows first-party images). Public view endpoints only.
+	OrgLogoUrl *string `json:"orgLogoUrl,omitempty"`
+
+	// OrgName Name of the owning organization. Public view endpoints only.
+	OrgName *string `json:"orgName,omitempty"`
 
 	// OverallAvailabilityPct PAGE-level uptime over the page's own historyPeriod: the arithmetic mean of the per-resource `availability.overallAvailabilityPct` values, with resources that have no data excluded from the mean (never counted as 0 or 100). Omitted when `showAvailability` is false, when no resource has any data, and on the authenticated admin payloads. Public view paths only, like overallStatus.
 	OverallAvailabilityPct *float64 `json:"overallAvailabilityPct,omitempty"`
@@ -8212,6 +8630,11 @@ type UpdateCheckRequest struct {
 	// Regions A non-empty list pins the check to exactly these regions. An empty list puts the check back on the default placement (automatic, unless the organization's `default_regions` names a private location). Omit to leave the placement alone.
 	Regions *[]string `json:"regions,omitempty"`
 
+	// ReminderIntervalSeconds Re-notify the check's channels every this many seconds while an incident stays open and unacknowledged (`incident.reminder`). `null` inherits the organization default, `0` turns reminders off, otherwise 900 to 86400 (15 minutes to 24 hours). Any other value is a `VALIDATION_ERROR`. Omit to leave unchanged; `null` puts the check back on the organization default.
+	//
+	// Example: 3600
+	ReminderIntervalSeconds *int `json:"reminderIntervalSeconds,omitempty"`
+
 	// SlowThresholdMs Response time above which a successful probe counts as slow, in milliseconds. 0 = the slow rule is off. There is no auto-baselining; around 2x the observed p95 is the usual starting point. Omit to leave unchanged.
 	SlowThresholdMs *int    `json:"slowThresholdMs,omitempty"`
 	Slug            *string `json:"slug,omitempty"`
@@ -8313,6 +8736,11 @@ type UpdateOrgSettingsRequest struct {
 
 	// RegistrationEmailPattern Auto-join email regex; empty string clears it
 	RegistrationEmailPattern *string `json:"registrationEmailPattern,omitempty"`
+
+	// ReminderIntervalSeconds Sets the organization default reminder interval: 0 turns reminders off, otherwise 900 to 86400 seconds. Any other value is a 400 `VALIDATION_ERROR` naming the field. Omit to leave unchanged.
+	//
+	// Example: 3600
+	ReminderIntervalSeconds *int `json:"reminderIntervalSeconds,omitempty"`
 
 	// SessionMaxDurationSeconds Session max duration override in seconds; <=0 clears the override
 	SessionMaxDurationSeconds *int `json:"sessionMaxDurationSeconds,omitempty"`
@@ -8504,6 +8932,11 @@ type UpsertCheckRequest struct {
 
 	// Regions A non-empty list pins the check to exactly these regions. Omit (or leave empty) to leave an existing check's placement alone, unless `placement` says otherwise.
 	Regions *[]string `json:"regions,omitempty"`
+
+	// ReminderIntervalSeconds Re-notify the check's channels every this many seconds while an incident stays open and unacknowledged (`incident.reminder`). `null` inherits the organization default, `0` turns reminders off, otherwise 900 to 86400 (15 minutes to 24 hours). Any other value is a `VALIDATION_ERROR`. Sent explicitly by import/apply: `null` moves a check back to the organization default; omit to leave unchanged.
+	//
+	// Example: 3600
+	ReminderIntervalSeconds *int `json:"reminderIntervalSeconds,omitempty"`
 
 	// TracerouteOnFailure Per-check path-trace policy (see the Check schema). Sent explicitly by import/apply so a manifest that says `inherit` moves a check back off an explicit override rather than leaving it.
 	TracerouteOnFailure *UpsertCheckRequestTracerouteOnFailure `json:"tracerouteOnFailure,omitempty"`
@@ -8803,6 +9236,9 @@ type SubscriberUidPath = openapi_types.UUID
 // TokenUidPath defines model for TokenUidPath.
 type TokenUidPath = openapi_types.UUID
 
+// UpdatesDaysQuery defines model for UpdatesDaysQuery.
+type UpdatesDaysQuery = int
+
 // UserUidPath defines model for UserUidPath.
 type UserUidPath = string
 
@@ -8914,6 +9350,28 @@ type ListChecksParamsInternal string
 // ListChecksParamsSort defines parameters for ListChecks.
 type ListChecksParamsSort string
 
+// AiCheckContractJSONBody defines parameters for AiCheckContract.
+type AiCheckContractJSONBody struct {
+	// Prompt What to watch, in plain words.
+	Prompt string `json:"prompt"`
+}
+
+// AiCheckGenerateJSONBody defines parameters for AiCheckGenerate.
+type AiCheckGenerateJSONBody struct {
+	// CheckUid Regenerate this existing js check. Its stored secrets fill every name `secrets` does not carry (a typed value wins). Nothing is saved: send the returned config through PATCH /checks/{checkUid}.
+	CheckUid *string                        `json:"checkUid,omitempty"`
+	Contract []string                       `json:"contract"`
+	Env      *map[string]string             `json:"env,omitempty"`
+	Prompt   string                         `json:"prompt"`
+	Repair   *AiCheckGenerateJSONBodyRepair `json:"repair,omitempty"`
+
+	// Secrets Secret values used to run the script, never sent to the LLM.
+	Secrets *map[string]string `json:"secrets,omitempty"`
+}
+
+// AiCheckGenerateJSONBodyRepair defines parameters for AiCheckGenerate.
+type AiCheckGenerateJSONBodyRepair string
+
 // SwitchChecksToAutoPlacementJSONBody defines parameters for SwitchChecksToAutoPlacement.
 type SwitchChecksToAutoPlacementJSONBody struct {
 	// CheckUids Limit the switch to these checks. Omit for every eligible check.
@@ -8961,6 +9419,18 @@ type ListCheckEventsParams struct {
 type ListCheckScreenshotsParams struct {
 	// Limit How many captures to return (values above 20 are clamped).
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListCheckVersionsParams defines parameters for ListCheckVersions.
+type ListCheckVersionsParams struct {
+	// Limit Maximum number of versions to return (default and max 500).
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// DiffCheckVersionParams defines parameters for DiffCheckVersion.
+type DiffCheckVersionParams struct {
+	// Against The version to compare with. Defaults to the previous applied version.
+	Against *int `form:"against,omitempty" json:"against,omitempty"`
 }
 
 // GetCheckAvailabilityParams defines parameters for GetCheckAvailability.
@@ -9381,8 +9851,11 @@ type ViewDefaultStatusPageParams struct {
 	// Kiosk A page's kiosk (TV mode) token. A valid one grants read-only view of this one page: it bypasses the `password` unlock and makes a `private` page viewable, and the response is served `private, no-store` like an unlocked one. An invalid, revoked or absent token behaves IDENTICALLY — 401 STATUS_PAGE_LOCKED or 404 as the page's visibility dictates — so the parameter is never an oracle for whether a page or a token exists. A disabled page stays 404 regardless.
 	Kiosk *KioskTokenQuery `form:"kiosk,omitempty" json:"kiosk,omitempty"`
 
-	// Include Narrows which optional, expensive sections the response carries. Comma-separated, unordered, duplicates ignored. Absent means both `availability` and `responseTime` — today's payload, byte-for-byte. `include=` (present, empty) means neither: no resource carries an `availability` key at all, and the page has no `overallAvailabilityPct`. Case-sensitive — the tokens mirror the JSON field names. An unrecognized token is `400 VALIDATION_ERROR` naming it and the valid set. The parameter can only NARROW what the page's own `showAvailability` / `showResponseTime` settings would already produce, never widen it — those two fields keep describing the page's settings regardless of what was requested.
+	// Include Narrows which optional, expensive sections the response carries. Comma-separated, unordered, duplicates ignored. Absent means `availability`, `responseTime` and `updates` (the full `historyDays` window) — today's payload, byte-for-byte. `updates` adds `recentUpdates`; when named in an explicit `include` it covers the last 7 days unless `updatesDays` asks for more (bounded by the page's `historyDays`). Without it `recentUpdates` is omitted. Active incidents are returned whatever `include` says. `include=` (present, empty) means neither: no resource carries an `availability` key at all, and the page has no `overallAvailabilityPct`. Case-sensitive — the tokens mirror the JSON field names. An unrecognized token is `400 VALIDATION_ERROR` naming it and the valid set. The parameter can only NARROW what the page's own `showAvailability` / `showResponseTime` settings would already produce, never widen it — those two fields keep describing the page's settings regardless of what was requested.
 	Include *IncludeQuery `form:"include,omitempty" json:"include,omitempty"`
+
+	// UpdatesDays Window, in days, of `recentUpdates` when `include` contains `updates`. Defaults to 7 and is bounded by the page's `historyDays`. Ignored without `updates`. A non-positive or non-numeric value is `400 VALIDATION_ERROR`.
+	UpdatesDays *UpdatesDaysQuery `form:"updatesDays,omitempty" json:"updatesDays,omitempty"`
 }
 
 // ViewDefaultStatusPageParamsInclude defines parameters for ViewDefaultStatusPage.
@@ -9393,8 +9866,11 @@ type ViewStatusPageParams struct {
 	// Kiosk A page's kiosk (TV mode) token. A valid one grants read-only view of this one page: it bypasses the `password` unlock and makes a `private` page viewable, and the response is served `private, no-store` like an unlocked one. An invalid, revoked or absent token behaves IDENTICALLY — 401 STATUS_PAGE_LOCKED or 404 as the page's visibility dictates — so the parameter is never an oracle for whether a page or a token exists. A disabled page stays 404 regardless.
 	Kiosk *KioskTokenQuery `form:"kiosk,omitempty" json:"kiosk,omitempty"`
 
-	// Include Narrows which optional, expensive sections the response carries. Comma-separated, unordered, duplicates ignored. Absent means both `availability` and `responseTime` — today's payload, byte-for-byte. `include=` (present, empty) means neither: no resource carries an `availability` key at all, and the page has no `overallAvailabilityPct`. Case-sensitive — the tokens mirror the JSON field names. An unrecognized token is `400 VALIDATION_ERROR` naming it and the valid set. The parameter can only NARROW what the page's own `showAvailability` / `showResponseTime` settings would already produce, never widen it — those two fields keep describing the page's settings regardless of what was requested.
+	// Include Narrows which optional, expensive sections the response carries. Comma-separated, unordered, duplicates ignored. Absent means `availability`, `responseTime` and `updates` (the full `historyDays` window) — today's payload, byte-for-byte. `updates` adds `recentUpdates`; when named in an explicit `include` it covers the last 7 days unless `updatesDays` asks for more (bounded by the page's `historyDays`). Without it `recentUpdates` is omitted. Active incidents are returned whatever `include` says. `include=` (present, empty) means neither: no resource carries an `availability` key at all, and the page has no `overallAvailabilityPct`. Case-sensitive — the tokens mirror the JSON field names. An unrecognized token is `400 VALIDATION_ERROR` naming it and the valid set. The parameter can only NARROW what the page's own `showAvailability` / `showResponseTime` settings would already produce, never widen it — those two fields keep describing the page's settings regardless of what was requested.
 	Include *IncludeQuery `form:"include,omitempty" json:"include,omitempty"`
+
+	// UpdatesDays Window, in days, of `recentUpdates` when `include` contains `updates`. Defaults to 7 and is bounded by the page's `historyDays`. Ignored without `updates`. A non-positive or non-numeric value is `400 VALIDATION_ERROR`.
+	UpdatesDays *UpdatesDaysQuery `form:"updatesDays,omitempty" json:"updatesDays,omitempty"`
 }
 
 // ViewStatusPageParamsInclude defines parameters for ViewStatusPage.
@@ -9581,6 +10057,12 @@ type UpdateCheckGroupJSONRequestBody = UpdateCheckGroupRequest
 
 // CreateCheckJSONRequestBody defines body for CreateCheck for application/json ContentType.
 type CreateCheckJSONRequestBody = CreateCheckRequest
+
+// AiCheckContractJSONRequestBody defines body for AiCheckContract for application/json ContentType.
+type AiCheckContractJSONRequestBody AiCheckContractJSONBody
+
+// AiCheckGenerateJSONRequestBody defines body for AiCheckGenerate for application/json ContentType.
+type AiCheckGenerateJSONRequestBody AiCheckGenerateJSONBody
 
 // SwitchChecksToAutoPlacementJSONRequestBody defines body for SwitchChecksToAutoPlacement for application/json ContentType.
 type SwitchChecksToAutoPlacementJSONRequestBody SwitchChecksToAutoPlacementJSONBody
@@ -10682,6 +11164,42 @@ type ClientInterface interface {
 	// Corresponds with POST /api/v1/orgs/{org}/checks (the `CreateCheck` operationId).
 	CreateCheck(ctx context.Context, org OrgPath, body CreateCheckJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// AiCheckContractWithBody Turn a prompt into a contract for an AI-authored js check
+	//
+	// First step of the "Describe it" flow (spec 2026-10-03-07): the LLM turns the user's description into an ordered list of human-readable assertions, returned for the user to confirm. Nothing is saved. 404 when no AI provider is configured (SP_AI_PROVIDER empty). 429 when the organization spent its daily AI token budget (maxAiTokensPerDay).
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/checks/ai/contract (the `AiCheckContract` operationId).
+	AiCheckContractWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AiCheckContract Turn a prompt into a contract for an AI-authored js check
+	//
+	// First step of the "Describe it" flow (spec 2026-10-03-07): the LLM turns the user's description into an ordered list of human-readable assertions, returned for the user to confirm. Nothing is saved. 404 when no AI provider is configured (SP_AI_PROVIDER empty). 429 when the organization spent its daily AI token budget (maxAiTokensPerDay).
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/checks/ai/contract (the `AiCheckContract` operationId).
+	AiCheckContract(ctx context.Context, org OrgPath, body AiCheckContractJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AiCheckGenerateWithBody Write and test a js check script from a confirmed contract
+	//
+	// Runs SolidPing's agent loop: the LLM explores the target (fetch_page, browser_snapshot) and tests its script (run_script) until a run returns up or the turn cap (SP_AI_MAX_TURNS) is hit. Returns the script, its last run and the js config to save through POST /checks (without the secrets, which only the caller holds). The LLM only ever sees secret names. Nothing is saved. 422 with the last attempt when no script passed. 404 when no AI provider is configured, or when checkUid names no js check of the org. Send `Accept: application/x-ndjson` to get the progress streamed: a 200 whose body is one JSON object per line, `turn`, `message`, `tool`, `toolResult` and `ping` lines while it runs, then a last `result` line (`result` holds the 200 body) or `error` line (`httpStatus` and `response` hold what the plain call would have answered).
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/checks/ai/generate (the `AiCheckGenerate` operationId).
+	AiCheckGenerateWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AiCheckGenerate Write and test a js check script from a confirmed contract
+	//
+	// Runs SolidPing's agent loop: the LLM explores the target (fetch_page, browser_snapshot) and tests its script (run_script) until a run returns up or the turn cap (SP_AI_MAX_TURNS) is hit. Returns the script, its last run and the js config to save through POST /checks (without the secrets, which only the caller holds). The LLM only ever sees secret names. Nothing is saved. 422 with the last attempt when no script passed. 404 when no AI provider is configured, or when checkUid names no js check of the org. Send `Accept: application/x-ndjson` to get the progress streamed: a 200 whose body is one JSON object per line, `turn`, `message`, `tool`, `toolResult` and `ping` lines while it runs, then a last `result` line (`result` holds the 200 body) or `error` line (`httpStatus` and `response` hold what the plain call would have answered).
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/checks/ai/generate (the `AiCheckGenerate` operationId).
+	AiCheckGenerate(ctx context.Context, org OrgPath, body AiCheckGenerateJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// SwitchChecksToAutoPlacementWithBody Switch pinned checks to automatic placement
 	//
 	// The checks list's bulk action (spec 2026-09-25-06). Each eligible check becomes `placement: auto` with `regionCount` = its current region count and an empty pool; its regions and jobs are untouched, so neither its cost nor where it runs today changes — it only gains failover when one of its regions goes dark. Passive checks and checks naming a private (`@`) region are skipped. With no `checkUids`, every eligible pinned, non-internal check of the organization is switched.
@@ -10810,6 +11328,13 @@ type ClientInterface interface {
 	// Corresponds with GET /api/v1/orgs/{org}/checks/{checkUid}/run (the `GetCheckRun` operationId).
 	GetCheckRun(ctx context.Context, org OrgPath, checkUid CheckUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// RunCheckNow Run a check once, now
+	//
+	// "Run now": runs any check once, on demand, in every region, instead of waiting for its next period. Each region's job is made due at once and the workers are told; a region whose job is mid-run keeps the request and runs again as soon as that run ends (its current run started before the request, so it is not the answer). Every region is reported `queued`. The results go through the normal path, so they can open or resolve an incident like any scheduled result. A result with `periodStart >= requestedAt` is this request's answer. This is an action path: it does not create the multi-step run resource at `…/run`. Rate limited per check and per organization (3 per minute and 60 per hour; browser, js, rdp and vnc checks 1 per minute and 20 per hour); a refusal carries `Retry-After`. Requires write access (viewers get 403).
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/checks/{checkUid}/run-now (the `RunCheckNow` operationId).
+	RunCheckNow(ctx context.Context, org OrgPath, checkUid CheckUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListCheckScreenshots List a check's latest screenshots
 	//
 	// The check's latest page captures, newest first: the screenshots its incidents carry, the captures of failing runs that opened no incident (a validating run, a blip, a regional failure, a run of an outage whose incident already holds its onset capture), and "Capture now" captures. A check keeps at most 5 captures of its own (the oldest is retired on the sixth); incident captures live as long as their incident. Any check type answers — a type that never captures returns an empty list. Next to `data`, `captureOutcome` reports the latest "Capture now" request that produced no screenshot, and why (browser and js checks only). Captures are viewport-only, 1280x800. Operator-only: never exposed on a status page, badge or subscriber payload. Same authorization as reading the check.
@@ -10823,6 +11348,48 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /api/v1/orgs/{org}/checks/{checkUid}/screenshots/capture (the `CaptureCheckScreenshot` operationId).
 	CaptureCheckScreenshot(ctx context.Context, org OrgPath, checkUid CheckUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListCheckVersions List a check's versions
+	//
+	// The check's version history, newest first (spec 2026-10-03-06). A version is recorded on every change of the check definition (name, slug, description, type, public config, group, placement, quorum, enabled, period, labels), whoever made it. Secrets are never versioned. Proposed and rejected versions are listed too. The list items carry no snapshot. The last 100 applied versions are kept.
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/checks/{checkUid}/versions (the `ListCheckVersions` operationId).
+	ListCheckVersions(ctx context.Context, org OrgPath, checkUid CheckUidPath, params *ListCheckVersionsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetCheckVersion Get one version of a check
+	//
+	// One version with its snapshot. The snapshot is redacted like an export: secret and export-redacted config keys are never present.
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/checks/{checkUid}/versions/{version} (the `GetCheckVersion` operationId).
+	GetCheckVersion(ctx context.Context, org OrgPath, checkUid CheckUidPath, version int, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ApproveCheckVersion Approve a proposed version
+	//
+	// Applies a proposed version. The proposal becomes the applied version and the caller is recorded as the decider. 409 when the version is not a pending proposal, or when it was built on an applied version that is no longer the latest (`baseVersion`).
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/checks/{checkUid}/versions/{version}/approve (the `ApproveCheckVersion` operationId).
+	ApproveCheckVersion(ctx context.Context, org OrgPath, checkUid CheckUidPath, version int, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DiffCheckVersion Diff a version against another one
+	//
+	// The fields that differ between this version and `against` (default: the applied version before it). Config and labels diff per key (`config.url`, `labels.env`). `against` is null for the first version, which is diffed against nothing.
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/checks/{checkUid}/versions/{version}/diff (the `DiffCheckVersion` operationId).
+	DiffCheckVersion(ctx context.Context, org OrgPath, checkUid CheckUidPath, version int, params *DiffCheckVersionParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RejectCheckVersion Reject a proposed version
+	//
+	// Marks a proposed version rejected. The check is not changed. 409 when the version is not a pending proposal.
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/checks/{checkUid}/versions/{version}/reject (the `RejectCheckVersion` operationId).
+	RejectCheckVersion(ctx context.Context, org OrgPath, checkUid CheckUidPath, version int, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RestoreCheckVersion Restore a version of a check
+	//
+	// Applies an applied version's definition again, through the same path as a PATCH (validation, job reconciliation, labels). This records a new version with origin `user` (or `api`) and reason `restored vN`. Secrets are not versioned: the check keeps its current ones. 409 when the version is a proposal or was rejected.
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/checks/{checkUid}/versions/{version}/restore (the `RestoreCheckVersion` operationId).
+	RestoreCheckVersion(ctx context.Context, org OrgPath, checkUid CheckUidPath, version int, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetCheckAvailability Per-period availability statistics for a single check
 	//
@@ -12628,6 +13195,13 @@ type ClientInterface interface {
 	// Corresponds with GET /api/v1/system/check-jobs/{uid} (the `GetSystemCheckJob` operationId).
 	GetSystemCheckJob(ctx context.Context, uid CheckJobUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetDiscordSetup Discord application setup values
+	//
+	// Returns the redirect URIs and Interactions Endpoint URL to register in the Discord developer portal, derived from the server base URL. Super-admin only.
+	//
+	// Corresponds with GET /api/v1/system/discord-setup (the `GetDiscordSetup` operationId).
+	GetDiscordSetup(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetEmailInboxConfig Get the email-inbox (JMAP) configuration
 	//
 	// Returns the saved JMAP inbox configuration with the password elided. Super-admin only.
@@ -14392,6 +14966,82 @@ func (c *Client) CreateCheck(ctx context.Context, org OrgPath, body CreateCheckJ
 	return c.Client.Do(req)
 }
 
+// AiCheckContractWithBody Turn a prompt into a contract for an AI-authored js check
+//
+// First step of the "Describe it" flow (spec 2026-10-03-07): the LLM turns the user's description into an ordered list of human-readable assertions, returned for the user to confirm. Nothing is saved. 404 when no AI provider is configured (SP_AI_PROVIDER empty). 429 when the organization spent its daily AI token budget (maxAiTokensPerDay).
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/v1/orgs/{org}/checks/ai/contract (the `AiCheckContract` operationId).
+func (c *Client) AiCheckContractWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAiCheckContractRequestWithBody(c.Server, org, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// AiCheckContract Turn a prompt into a contract for an AI-authored js check
+//
+// First step of the "Describe it" flow (spec 2026-10-03-07): the LLM turns the user's description into an ordered list of human-readable assertions, returned for the user to confirm. Nothing is saved. 404 when no AI provider is configured (SP_AI_PROVIDER empty). 429 when the organization spent its daily AI token budget (maxAiTokensPerDay).
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/v1/orgs/{org}/checks/ai/contract (the `AiCheckContract` operationId).
+func (c *Client) AiCheckContract(ctx context.Context, org OrgPath, body AiCheckContractJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAiCheckContractRequest(c.Server, org, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// AiCheckGenerateWithBody Write and test a js check script from a confirmed contract
+//
+// Runs SolidPing's agent loop: the LLM explores the target (fetch_page, browser_snapshot) and tests its script (run_script) until a run returns up or the turn cap (SP_AI_MAX_TURNS) is hit. Returns the script, its last run and the js config to save through POST /checks (without the secrets, which only the caller holds). The LLM only ever sees secret names. Nothing is saved. 422 with the last attempt when no script passed. 404 when no AI provider is configured, or when checkUid names no js check of the org. Send `Accept: application/x-ndjson` to get the progress streamed: a 200 whose body is one JSON object per line, `turn`, `message`, `tool`, `toolResult` and `ping` lines while it runs, then a last `result` line (`result` holds the 200 body) or `error` line (`httpStatus` and `response` hold what the plain call would have answered).
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/v1/orgs/{org}/checks/ai/generate (the `AiCheckGenerate` operationId).
+func (c *Client) AiCheckGenerateWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAiCheckGenerateRequestWithBody(c.Server, org, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// AiCheckGenerate Write and test a js check script from a confirmed contract
+//
+// Runs SolidPing's agent loop: the LLM explores the target (fetch_page, browser_snapshot) and tests its script (run_script) until a run returns up or the turn cap (SP_AI_MAX_TURNS) is hit. Returns the script, its last run and the js config to save through POST /checks (without the secrets, which only the caller holds). The LLM only ever sees secret names. Nothing is saved. 422 with the last attempt when no script passed. 404 when no AI provider is configured, or when checkUid names no js check of the org. Send `Accept: application/x-ndjson` to get the progress streamed: a 200 whose body is one JSON object per line, `turn`, `message`, `tool`, `toolResult` and `ping` lines while it runs, then a last `result` line (`result` holds the 200 body) or `error` line (`httpStatus` and `response` hold what the plain call would have answered).
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/v1/orgs/{org}/checks/ai/generate (the `AiCheckGenerate` operationId).
+func (c *Client) AiCheckGenerate(ctx context.Context, org OrgPath, body AiCheckGenerateJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAiCheckGenerateRequest(c.Server, org, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // SwitchChecksToAutoPlacementWithBody Switch pinned checks to automatic placement
 //
 // The checks list's bulk action (spec 2026-09-25-06). Each eligible check becomes `placement: auto` with `regionCount` = its current region count and an empty pool; its regions and jobs are untouched, so neither its cost nor where it runs today changes — it only gains failover when one of its regions goes dark. Passive checks and checks naming a private (`@`) region are skipped. With no `checkUids`, every eligible pinned, non-internal check of the organization is switched.
@@ -14680,6 +15330,23 @@ func (c *Client) GetCheckRun(ctx context.Context, org OrgPath, checkUid CheckUid
 	return c.Client.Do(req)
 }
 
+// RunCheckNow Run a check once, now
+//
+// "Run now": runs any check once, on demand, in every region, instead of waiting for its next period. Each region's job is made due at once and the workers are told; a region whose job is mid-run keeps the request and runs again as soon as that run ends (its current run started before the request, so it is not the answer). Every region is reported `queued`. The results go through the normal path, so they can open or resolve an incident like any scheduled result. A result with `periodStart >= requestedAt` is this request's answer. This is an action path: it does not create the multi-step run resource at `…/run`. Rate limited per check and per organization (3 per minute and 60 per hour; browser, js, rdp and vnc checks 1 per minute and 20 per hour); a refusal carries `Retry-After`. Requires write access (viewers get 403).
+//
+// Corresponds with POST /api/v1/orgs/{org}/checks/{checkUid}/run-now (the `RunCheckNow` operationId).
+func (c *Client) RunCheckNow(ctx context.Context, org OrgPath, checkUid CheckUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRunCheckNowRequest(c.Server, org, checkUid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ListCheckScreenshots List a check's latest screenshots
 //
 // The check's latest page captures, newest first: the screenshots its incidents carry, the captures of failing runs that opened no incident (a validating run, a blip, a regional failure, a run of an outage whose incident already holds its onset capture), and "Capture now" captures. A check keeps at most 5 captures of its own (the oldest is retired on the sixth); incident captures live as long as their incident. Any check type answers — a type that never captures returns an empty list. Next to `data`, `captureOutcome` reports the latest "Capture now" request that produced no screenshot, and why (browser and js checks only). Captures are viewport-only, 1280x800. Operator-only: never exposed on a status page, badge or subscriber payload. Same authorization as reading the check.
@@ -14704,6 +15371,108 @@ func (c *Client) ListCheckScreenshots(ctx context.Context, org OrgPath, checkUid
 // Corresponds with POST /api/v1/orgs/{org}/checks/{checkUid}/screenshots/capture (the `CaptureCheckScreenshot` operationId).
 func (c *Client) CaptureCheckScreenshot(ctx context.Context, org OrgPath, checkUid CheckUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCaptureCheckScreenshotRequest(c.Server, org, checkUid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListCheckVersions List a check's versions
+//
+// The check's version history, newest first (spec 2026-10-03-06). A version is recorded on every change of the check definition (name, slug, description, type, public config, group, placement, quorum, enabled, period, labels), whoever made it. Secrets are never versioned. Proposed and rejected versions are listed too. The list items carry no snapshot. The last 100 applied versions are kept.
+//
+// Corresponds with GET /api/v1/orgs/{org}/checks/{checkUid}/versions (the `ListCheckVersions` operationId).
+func (c *Client) ListCheckVersions(ctx context.Context, org OrgPath, checkUid CheckUidPath, params *ListCheckVersionsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListCheckVersionsRequest(c.Server, org, checkUid, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetCheckVersion Get one version of a check
+//
+// One version with its snapshot. The snapshot is redacted like an export: secret and export-redacted config keys are never present.
+//
+// Corresponds with GET /api/v1/orgs/{org}/checks/{checkUid}/versions/{version} (the `GetCheckVersion` operationId).
+func (c *Client) GetCheckVersion(ctx context.Context, org OrgPath, checkUid CheckUidPath, version int, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetCheckVersionRequest(c.Server, org, checkUid, version)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ApproveCheckVersion Approve a proposed version
+//
+// Applies a proposed version. The proposal becomes the applied version and the caller is recorded as the decider. 409 when the version is not a pending proposal, or when it was built on an applied version that is no longer the latest (`baseVersion`).
+//
+// Corresponds with POST /api/v1/orgs/{org}/checks/{checkUid}/versions/{version}/approve (the `ApproveCheckVersion` operationId).
+func (c *Client) ApproveCheckVersion(ctx context.Context, org OrgPath, checkUid CheckUidPath, version int, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewApproveCheckVersionRequest(c.Server, org, checkUid, version)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DiffCheckVersion Diff a version against another one
+//
+// The fields that differ between this version and `against` (default: the applied version before it). Config and labels diff per key (`config.url`, `labels.env`). `against` is null for the first version, which is diffed against nothing.
+//
+// Corresponds with GET /api/v1/orgs/{org}/checks/{checkUid}/versions/{version}/diff (the `DiffCheckVersion` operationId).
+func (c *Client) DiffCheckVersion(ctx context.Context, org OrgPath, checkUid CheckUidPath, version int, params *DiffCheckVersionParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDiffCheckVersionRequest(c.Server, org, checkUid, version, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RejectCheckVersion Reject a proposed version
+//
+// Marks a proposed version rejected. The check is not changed. 409 when the version is not a pending proposal.
+//
+// Corresponds with POST /api/v1/orgs/{org}/checks/{checkUid}/versions/{version}/reject (the `RejectCheckVersion` operationId).
+func (c *Client) RejectCheckVersion(ctx context.Context, org OrgPath, checkUid CheckUidPath, version int, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRejectCheckVersionRequest(c.Server, org, checkUid, version)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RestoreCheckVersion Restore a version of a check
+//
+// Applies an applied version's definition again, through the same path as a PATCH (validation, job reconciliation, labels). This records a new version with origin `user` (or `api`) and reason `restored vN`. Secrets are not versioned: the check keeps its current ones. 409 when the version is a proposal or was rejected.
+//
+// Corresponds with POST /api/v1/orgs/{org}/checks/{checkUid}/versions/{version}/restore (the `RestoreCheckVersion` operationId).
+func (c *Client) RestoreCheckVersion(ctx context.Context, org OrgPath, checkUid CheckUidPath, version int, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRestoreCheckVersionRequest(c.Server, org, checkUid, version)
 	if err != nil {
 		return nil, err
 	}
@@ -19068,6 +19837,23 @@ func (c *Client) GetSystemCheckJob(ctx context.Context, uid CheckJobUidPath, req
 	return c.Client.Do(req)
 }
 
+// GetDiscordSetup Discord application setup values
+//
+// Returns the redirect URIs and Interactions Endpoint URL to register in the Discord developer portal, derived from the server base URL. Super-admin only.
+//
+// Corresponds with GET /api/v1/system/discord-setup (the `GetDiscordSetup` operationId).
+func (c *Client) GetDiscordSetup(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetDiscordSetupRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // GetEmailInboxConfig Get the email-inbox (JMAP) configuration
 //
 // Returns the saved JMAP inbox configuration with the password elided. Super-admin only.
@@ -22131,6 +22917,100 @@ func NewCreateCheckRequestWithBody(server string, org OrgPath, contentType strin
 	return req, nil
 }
 
+// NewAiCheckContractRequest calls the generic AiCheckContract builder with application/json body
+func NewAiCheckContractRequest(server string, org OrgPath, body AiCheckContractJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewAiCheckContractRequestWithBody(server, org, "application/json", bodyReader)
+}
+
+// NewAiCheckContractRequestWithBody constructs an http.Request for the AiCheckContract method, with any body, and a specified content type
+func NewAiCheckContractRequestWithBody(server string, org OrgPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/checks/ai/contract", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewAiCheckGenerateRequest calls the generic AiCheckGenerate builder with application/json body
+func NewAiCheckGenerateRequest(server string, org OrgPath, body AiCheckGenerateJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewAiCheckGenerateRequestWithBody(server, org, "application/json", bodyReader)
+}
+
+// NewAiCheckGenerateRequestWithBody constructs an http.Request for the AiCheckGenerate method, with any body, and a specified content type
+func NewAiCheckGenerateRequestWithBody(server string, org OrgPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/checks/ai/generate", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewSwitchChecksToAutoPlacementRequest calls the generic SwitchChecksToAutoPlacement builder with application/json body
 func NewSwitchChecksToAutoPlacementRequest(server string, org OrgPath, body SwitchChecksToAutoPlacementJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -22747,6 +23627,47 @@ func NewGetCheckRunRequest(server string, org OrgPath, checkUid CheckUidPath) (*
 	return req, nil
 }
 
+// NewRunCheckNowRequest constructs an http.Request for the RunCheckNow method
+func NewRunCheckNowRequest(server string, org OrgPath, checkUid CheckUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "checkUid", checkUid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/checks/%s/run-now", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListCheckScreenshotsRequest constructs an http.Request for the ListCheckScreenshots method
 func NewListCheckScreenshotsRequest(server string, org OrgPath, checkUid CheckUidPath, params *ListCheckScreenshotsParams) (*http.Request, error) {
 	var err error
@@ -22839,6 +23760,341 @@ func NewCaptureCheckScreenshotRequest(server string, org OrgPath, checkUid Check
 	}
 
 	operationPath := fmt.Sprintf("/api/v1/orgs/%s/checks/%s/screenshots/capture", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListCheckVersionsRequest constructs an http.Request for the ListCheckVersions method
+func NewListCheckVersionsRequest(server string, org OrgPath, checkUid CheckUidPath, params *ListCheckVersionsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "checkUid", checkUid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/checks/%s/versions", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetCheckVersionRequest constructs an http.Request for the GetCheckVersion method
+func NewGetCheckVersionRequest(server string, org OrgPath, checkUid CheckUidPath, version int) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "checkUid", checkUid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "version", version, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "integer", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/checks/%s/versions/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewApproveCheckVersionRequest constructs an http.Request for the ApproveCheckVersion method
+func NewApproveCheckVersionRequest(server string, org OrgPath, checkUid CheckUidPath, version int) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "checkUid", checkUid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "version", version, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "integer", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/checks/%s/versions/%s/approve", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewDiffCheckVersionRequest constructs an http.Request for the DiffCheckVersion method
+func NewDiffCheckVersionRequest(server string, org OrgPath, checkUid CheckUidPath, version int, params *DiffCheckVersionParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "checkUid", checkUid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "version", version, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "integer", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/checks/%s/versions/%s/diff", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Against != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "against", *params.Against, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewRejectCheckVersionRequest constructs an http.Request for the RejectCheckVersion method
+func NewRejectCheckVersionRequest(server string, org OrgPath, checkUid CheckUidPath, version int) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "checkUid", checkUid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "version", version, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "integer", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/checks/%s/versions/%s/reject", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewRestoreCheckVersionRequest constructs an http.Request for the RestoreCheckVersion method
+func NewRestoreCheckVersionRequest(server string, org OrgPath, checkUid CheckUidPath, version int) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "checkUid", checkUid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "version", version, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "integer", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/checks/%s/versions/%s/restore", pathParam0, pathParam1, pathParam2)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -32294,6 +33550,18 @@ func NewViewDefaultStatusPageRequest(server string, org OrgPath, params *ViewDef
 
 		}
 
+		if params.UpdatesDays != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "updatesDays", *params.UpdatesDays, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
 		if encoded := queryValues.Encode(); encoded != "" {
 			rawQueryFragments = append(rawQueryFragments, encoded)
 		}
@@ -32412,6 +33680,18 @@ func NewViewStatusPageRequest(server string, org OrgPath, slug string, params *V
 		if params.Include != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "include", *params.Include, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "array", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.UpdatesDays != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "updatesDays", *params.UpdatesDays, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {
@@ -33212,6 +34492,33 @@ func NewGetSystemCheckJobRequest(server string, uid CheckJobUidPath) (*http.Requ
 	}
 
 	operationPath := fmt.Sprintf("/api/v1/system/check-jobs/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetDiscordSetupRequest constructs an http.Request for the GetDiscordSetup method
+func NewGetDiscordSetupRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/system/discord-setup")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -34980,6 +36287,42 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /api/v1/orgs/{org}/checks (the `CreateCheck` operationId).
 	CreateCheckWithResponse(ctx context.Context, org OrgPath, body CreateCheckJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateCheckResult, error)
 
+	// AiCheckContractWithBodyWithResponse Turn a prompt into a contract for an AI-authored js check
+	//
+	// First step of the "Describe it" flow (spec 2026-10-03-07): the LLM turns the user's description into an ordered list of human-readable assertions, returned for the user to confirm. Nothing is saved. 404 when no AI provider is configured (SP_AI_PROVIDER empty). 429 when the organization spent its daily AI token budget (maxAiTokensPerDay).
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/checks/ai/contract (the `AiCheckContract` operationId).
+	AiCheckContractWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AiCheckContractResult, error)
+
+	// AiCheckContractWithResponse Turn a prompt into a contract for an AI-authored js check
+	//
+	// First step of the "Describe it" flow (spec 2026-10-03-07): the LLM turns the user's description into an ordered list of human-readable assertions, returned for the user to confirm. Nothing is saved. 404 when no AI provider is configured (SP_AI_PROVIDER empty). 429 when the organization spent its daily AI token budget (maxAiTokensPerDay).
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/checks/ai/contract (the `AiCheckContract` operationId).
+	AiCheckContractWithResponse(ctx context.Context, org OrgPath, body AiCheckContractJSONRequestBody, reqEditors ...RequestEditorFn) (*AiCheckContractResult, error)
+
+	// AiCheckGenerateWithBodyWithResponse Write and test a js check script from a confirmed contract
+	//
+	// Runs SolidPing's agent loop: the LLM explores the target (fetch_page, browser_snapshot) and tests its script (run_script) until a run returns up or the turn cap (SP_AI_MAX_TURNS) is hit. Returns the script, its last run and the js config to save through POST /checks (without the secrets, which only the caller holds). The LLM only ever sees secret names. Nothing is saved. 422 with the last attempt when no script passed. 404 when no AI provider is configured, or when checkUid names no js check of the org. Send `Accept: application/x-ndjson` to get the progress streamed: a 200 whose body is one JSON object per line, `turn`, `message`, `tool`, `toolResult` and `ping` lines while it runs, then a last `result` line (`result` holds the 200 body) or `error` line (`httpStatus` and `response` hold what the plain call would have answered).
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/checks/ai/generate (the `AiCheckGenerate` operationId).
+	AiCheckGenerateWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AiCheckGenerateResult, error)
+
+	// AiCheckGenerateWithResponse Write and test a js check script from a confirmed contract
+	//
+	// Runs SolidPing's agent loop: the LLM explores the target (fetch_page, browser_snapshot) and tests its script (run_script) until a run returns up or the turn cap (SP_AI_MAX_TURNS) is hit. Returns the script, its last run and the js config to save through POST /checks (without the secrets, which only the caller holds). The LLM only ever sees secret names. Nothing is saved. 422 with the last attempt when no script passed. 404 when no AI provider is configured, or when checkUid names no js check of the org. Send `Accept: application/x-ndjson` to get the progress streamed: a 200 whose body is one JSON object per line, `turn`, `message`, `tool`, `toolResult` and `ping` lines while it runs, then a last `result` line (`result` holds the 200 body) or `error` line (`httpStatus` and `response` hold what the plain call would have answered).
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/checks/ai/generate (the `AiCheckGenerate` operationId).
+	AiCheckGenerateWithResponse(ctx context.Context, org OrgPath, body AiCheckGenerateJSONRequestBody, reqEditors ...RequestEditorFn) (*AiCheckGenerateResult, error)
+
 	// SwitchChecksToAutoPlacementWithBodyWithResponse Switch pinned checks to automatic placement
 	//
 	// The checks list's bulk action (spec 2026-09-25-06). Each eligible check becomes `placement: auto` with `regionCount` = its current region count and an empty pool; its regions and jobs are untouched, so neither its cost nor where it runs today changes — it only gains failover when one of its regions goes dark. Passive checks and checks naming a private (`@`) region are skipped. With no `checkUids`, every eligible pinned, non-internal check of the organization is switched.
@@ -35124,6 +36467,15 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/v1/orgs/{org}/checks/{checkUid}/run (the `GetCheckRun` operationId).
 	GetCheckRunWithResponse(ctx context.Context, org OrgPath, checkUid CheckUidPath, reqEditors ...RequestEditorFn) (*GetCheckRunResult, error)
 
+	// RunCheckNowWithResponse Run a check once, now
+	//
+	// "Run now": runs any check once, on demand, in every region, instead of waiting for its next period. Each region's job is made due at once and the workers are told; a region whose job is mid-run keeps the request and runs again as soon as that run ends (its current run started before the request, so it is not the answer). Every region is reported `queued`. The results go through the normal path, so they can open or resolve an incident like any scheduled result. A result with `periodStart >= requestedAt` is this request's answer. This is an action path: it does not create the multi-step run resource at `…/run`. Rate limited per check and per organization (3 per minute and 60 per hour; browser, js, rdp and vnc checks 1 per minute and 20 per hour); a refusal carries `Retry-After`. Requires write access (viewers get 403).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/checks/{checkUid}/run-now (the `RunCheckNow` operationId).
+	RunCheckNowWithResponse(ctx context.Context, org OrgPath, checkUid CheckUidPath, reqEditors ...RequestEditorFn) (*RunCheckNowResult, error)
+
 	// ListCheckScreenshotsWithResponse List a check's latest screenshots
 	//
 	// The check's latest page captures, newest first: the screenshots its incidents carry, the captures of failing runs that opened no incident (a validating run, a blip, a regional failure, a run of an outage whose incident already holds its onset capture), and "Capture now" captures. A check keeps at most 5 captures of its own (the oldest is retired on the sixth); incident captures live as long as their incident. Any check type answers — a type that never captures returns an empty list. Next to `data`, `captureOutcome` reports the latest "Capture now" request that produced no screenshot, and why (browser and js checks only). Captures are viewport-only, 1280x800. Operator-only: never exposed on a status page, badge or subscriber payload. Same authorization as reading the check.
@@ -35141,6 +36493,60 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /api/v1/orgs/{org}/checks/{checkUid}/screenshots/capture (the `CaptureCheckScreenshot` operationId).
 	CaptureCheckScreenshotWithResponse(ctx context.Context, org OrgPath, checkUid CheckUidPath, reqEditors ...RequestEditorFn) (*CaptureCheckScreenshotResult, error)
+
+	// ListCheckVersionsWithResponse List a check's versions
+	//
+	// The check's version history, newest first (spec 2026-10-03-06). A version is recorded on every change of the check definition (name, slug, description, type, public config, group, placement, quorum, enabled, period, labels), whoever made it. Secrets are never versioned. Proposed and rejected versions are listed too. The list items carry no snapshot. The last 100 applied versions are kept.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/checks/{checkUid}/versions (the `ListCheckVersions` operationId).
+	ListCheckVersionsWithResponse(ctx context.Context, org OrgPath, checkUid CheckUidPath, params *ListCheckVersionsParams, reqEditors ...RequestEditorFn) (*ListCheckVersionsResult, error)
+
+	// GetCheckVersionWithResponse Get one version of a check
+	//
+	// One version with its snapshot. The snapshot is redacted like an export: secret and export-redacted config keys are never present.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/checks/{checkUid}/versions/{version} (the `GetCheckVersion` operationId).
+	GetCheckVersionWithResponse(ctx context.Context, org OrgPath, checkUid CheckUidPath, version int, reqEditors ...RequestEditorFn) (*GetCheckVersionResult, error)
+
+	// ApproveCheckVersionWithResponse Approve a proposed version
+	//
+	// Applies a proposed version. The proposal becomes the applied version and the caller is recorded as the decider. 409 when the version is not a pending proposal, or when it was built on an applied version that is no longer the latest (`baseVersion`).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/checks/{checkUid}/versions/{version}/approve (the `ApproveCheckVersion` operationId).
+	ApproveCheckVersionWithResponse(ctx context.Context, org OrgPath, checkUid CheckUidPath, version int, reqEditors ...RequestEditorFn) (*ApproveCheckVersionResult, error)
+
+	// DiffCheckVersionWithResponse Diff a version against another one
+	//
+	// The fields that differ between this version and `against` (default: the applied version before it). Config and labels diff per key (`config.url`, `labels.env`). `against` is null for the first version, which is diffed against nothing.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/checks/{checkUid}/versions/{version}/diff (the `DiffCheckVersion` operationId).
+	DiffCheckVersionWithResponse(ctx context.Context, org OrgPath, checkUid CheckUidPath, version int, params *DiffCheckVersionParams, reqEditors ...RequestEditorFn) (*DiffCheckVersionResult, error)
+
+	// RejectCheckVersionWithResponse Reject a proposed version
+	//
+	// Marks a proposed version rejected. The check is not changed. 409 when the version is not a pending proposal.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/checks/{checkUid}/versions/{version}/reject (the `RejectCheckVersion` operationId).
+	RejectCheckVersionWithResponse(ctx context.Context, org OrgPath, checkUid CheckUidPath, version int, reqEditors ...RequestEditorFn) (*RejectCheckVersionResult, error)
+
+	// RestoreCheckVersionWithResponse Restore a version of a check
+	//
+	// Applies an applied version's definition again, through the same path as a PATCH (validation, job reconciliation, labels). This records a new version with origin `user` (or `api`) and reason `restored vN`. Secrets are not versioned: the check keeps its current ones. 409 when the version is a proposal or was rejected.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/checks/{checkUid}/versions/{version}/restore (the `RestoreCheckVersion` operationId).
+	RestoreCheckVersionWithResponse(ctx context.Context, org OrgPath, checkUid CheckUidPath, version int, reqEditors ...RequestEditorFn) (*RestoreCheckVersionResult, error)
 
 	// GetCheckAvailabilityWithResponse Per-period availability statistics for a single check
 	//
@@ -37205,6 +38611,15 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /api/v1/system/check-jobs/{uid} (the `GetSystemCheckJob` operationId).
 	GetSystemCheckJobWithResponse(ctx context.Context, uid CheckJobUidPath, reqEditors ...RequestEditorFn) (*GetSystemCheckJobResult, error)
+
+	// GetDiscordSetupWithResponse Discord application setup values
+	//
+	// Returns the redirect URIs and Interactions Endpoint URL to register in the Discord developer portal, derived from the server base URL. Super-admin only.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/system/discord-setup (the `GetDiscordSetup` operationId).
+	GetDiscordSetupWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetDiscordSetupResult, error)
 
 	// GetEmailInboxConfigWithResponse Get the email-inbox (JMAP) configuration
 	//
@@ -40513,6 +41928,151 @@ func (r CreateCheckResult) ContentType() string {
 	return ""
 }
 
+type AiCheckContractResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AICheckContract
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ValidationError
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *TooManyRequests
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r AiCheckContractResult) GetJSON200() *AICheckContract {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r AiCheckContractResult) GetJSON400() *ValidationError {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r AiCheckContractResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r AiCheckContractResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r AiCheckContractResult) GetJSON429() *TooManyRequests {
+	return r.JSON429
+}
+
+// GetBody returns the raw response body bytes
+func (r AiCheckContractResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r AiCheckContractResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AiCheckContractResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r AiCheckContractResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type AiCheckGenerateResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AICheckGenerated
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ValidationError
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *AICheckGenerationFailed
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *TooManyRequests
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r AiCheckGenerateResult) GetJSON200() *AICheckGenerated {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r AiCheckGenerateResult) GetJSON400() *ValidationError {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r AiCheckGenerateResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r AiCheckGenerateResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r AiCheckGenerateResult) GetJSON422() *AICheckGenerationFailed {
+	return r.JSON422
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r AiCheckGenerateResult) GetJSON429() *TooManyRequests {
+	return r.JSON429
+}
+
+// GetBody returns the raw response body bytes
+func (r AiCheckGenerateResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r AiCheckGenerateResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AiCheckGenerateResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r AiCheckGenerateResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type SwitchChecksToAutoPlacementResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -41219,6 +42779,89 @@ func (r GetCheckRunResult) ContentType() string {
 	return ""
 }
 
+// RunCheckNowResult429Headers the declared response headers of an HTTP 429 response for RunCheckNow
+type RunCheckNowResult429Headers struct {
+	RetryAfter *int
+}
+
+type RunCheckNowResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *RunNowResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *Error
+	// Headers429 the parsed response headers for an HTTP 429 response
+	Headers429 *RunCheckNowResult429Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r RunCheckNowResult) GetJSON200() *RunNowResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r RunCheckNowResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r RunCheckNowResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r RunCheckNowResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r RunCheckNowResult) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r RunCheckNowResult) GetJSON429() *Error {
+	return r.JSON429
+}
+
+// GetBody returns the raw response body bytes
+func (r RunCheckNowResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RunCheckNowResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RunCheckNowResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RunCheckNowResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListCheckScreenshotsResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -41372,6 +43015,396 @@ func (r CaptureCheckScreenshotResult) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r CaptureCheckScreenshotResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListCheckVersionsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *struct {
+		Data []CheckVersion `json:"data"`
+	}
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListCheckVersionsResult) GetJSON200() *struct {
+	Data []CheckVersion `json:"data"`
+} {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListCheckVersionsResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ListCheckVersionsResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r ListCheckVersionsResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListCheckVersionsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListCheckVersionsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListCheckVersionsResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetCheckVersionResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *CheckVersion
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ValidationError
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetCheckVersionResult) GetJSON200() *CheckVersion {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetCheckVersionResult) GetJSON400() *ValidationError {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetCheckVersionResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetCheckVersionResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r GetCheckVersionResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetCheckVersionResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetCheckVersionResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetCheckVersionResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ApproveCheckVersionResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Check
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ValidationError
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Conflict
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ApproveCheckVersionResult) GetJSON200() *Check {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ApproveCheckVersionResult) GetJSON400() *ValidationError {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ApproveCheckVersionResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ApproveCheckVersionResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r ApproveCheckVersionResult) GetJSON409() *Conflict {
+	return r.JSON409
+}
+
+// GetBody returns the raw response body bytes
+func (r ApproveCheckVersionResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ApproveCheckVersionResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ApproveCheckVersionResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ApproveCheckVersionResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DiffCheckVersionResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *CheckVersionDiff
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ValidationError
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r DiffCheckVersionResult) GetJSON200() *CheckVersionDiff {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r DiffCheckVersionResult) GetJSON400() *ValidationError {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r DiffCheckVersionResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r DiffCheckVersionResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r DiffCheckVersionResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DiffCheckVersionResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DiffCheckVersionResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DiffCheckVersionResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type RejectCheckVersionResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *CheckVersion
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ValidationError
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Conflict
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r RejectCheckVersionResult) GetJSON200() *CheckVersion {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r RejectCheckVersionResult) GetJSON400() *ValidationError {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r RejectCheckVersionResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r RejectCheckVersionResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r RejectCheckVersionResult) GetJSON409() *Conflict {
+	return r.JSON409
+}
+
+// GetBody returns the raw response body bytes
+func (r RejectCheckVersionResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RejectCheckVersionResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RejectCheckVersionResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RejectCheckVersionResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type RestoreCheckVersionResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Check
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ValidationError
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Conflict
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r RestoreCheckVersionResult) GetJSON200() *Check {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r RestoreCheckVersionResult) GetJSON400() *ValidationError {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r RestoreCheckVersionResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r RestoreCheckVersionResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r RestoreCheckVersionResult) GetJSON409() *Conflict {
+	return r.JSON409
+}
+
+// GetBody returns the raw response body bytes
+func (r RestoreCheckVersionResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RestoreCheckVersionResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RestoreCheckVersionResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RestoreCheckVersionResult) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -52442,6 +54475,73 @@ func (r GetSystemCheckJobResult) ContentType() string {
 	return ""
 }
 
+type GetDiscordSetupResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *struct {
+		BaseUrl            *string `json:"baseUrl,omitempty"`
+		BaseUrlIsDefault   *bool   `json:"baseUrlIsDefault,omitempty"`
+		InstallRedirectUri *string `json:"installRedirectUri,omitempty"`
+		InteractionsUrl    *string `json:"interactionsUrl,omitempty"`
+		LoginRedirectUri   *string `json:"loginRedirectUri,omitempty"`
+	}
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetDiscordSetupResult) GetJSON200() *struct {
+	BaseUrl            *string `json:"baseUrl,omitempty"`
+	BaseUrlIsDefault   *bool   `json:"baseUrlIsDefault,omitempty"`
+	InstallRedirectUri *string `json:"installRedirectUri,omitempty"`
+	InteractionsUrl    *string `json:"interactionsUrl,omitempty"`
+	LoginRedirectUri   *string `json:"loginRedirectUri,omitempty"`
+} {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetDiscordSetupResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r GetDiscordSetupResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetBody returns the raw response body bytes
+func (r GetDiscordSetupResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetDiscordSetupResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetDiscordSetupResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetDiscordSetupResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetEmailInboxConfigResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -55031,6 +57131,66 @@ func (c *ClientWithResponses) CreateCheckWithResponse(ctx context.Context, org O
 	return ParseCreateCheckResult(rsp)
 }
 
+// AiCheckContractWithBodyWithResponse Turn a prompt into a contract for an AI-authored js check
+//
+// First step of the "Describe it" flow (spec 2026-10-03-07): the LLM turns the user's description into an ordered list of human-readable assertions, returned for the user to confirm. Nothing is saved. 404 when no AI provider is configured (SP_AI_PROVIDER empty). 429 when the organization spent its daily AI token budget (maxAiTokensPerDay).
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/orgs/{org}/checks/ai/contract (the `AiCheckContract` operationId).
+func (c *ClientWithResponses) AiCheckContractWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AiCheckContractResult, error) {
+	rsp, err := c.AiCheckContractWithBody(ctx, org, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAiCheckContractResult(rsp)
+}
+
+// AiCheckContractWithResponse Turn a prompt into a contract for an AI-authored js check
+//
+// First step of the "Describe it" flow (spec 2026-10-03-07): the LLM turns the user's description into an ordered list of human-readable assertions, returned for the user to confirm. Nothing is saved. 404 when no AI provider is configured (SP_AI_PROVIDER empty). 429 when the organization spent its daily AI token budget (maxAiTokensPerDay).
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/orgs/{org}/checks/ai/contract (the `AiCheckContract` operationId).
+func (c *ClientWithResponses) AiCheckContractWithResponse(ctx context.Context, org OrgPath, body AiCheckContractJSONRequestBody, reqEditors ...RequestEditorFn) (*AiCheckContractResult, error) {
+	rsp, err := c.AiCheckContract(ctx, org, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAiCheckContractResult(rsp)
+}
+
+// AiCheckGenerateWithBodyWithResponse Write and test a js check script from a confirmed contract
+//
+// Runs SolidPing's agent loop: the LLM explores the target (fetch_page, browser_snapshot) and tests its script (run_script) until a run returns up or the turn cap (SP_AI_MAX_TURNS) is hit. Returns the script, its last run and the js config to save through POST /checks (without the secrets, which only the caller holds). The LLM only ever sees secret names. Nothing is saved. 422 with the last attempt when no script passed. 404 when no AI provider is configured, or when checkUid names no js check of the org. Send `Accept: application/x-ndjson` to get the progress streamed: a 200 whose body is one JSON object per line, `turn`, `message`, `tool`, `toolResult` and `ping` lines while it runs, then a last `result` line (`result` holds the 200 body) or `error` line (`httpStatus` and `response` hold what the plain call would have answered).
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/orgs/{org}/checks/ai/generate (the `AiCheckGenerate` operationId).
+func (c *ClientWithResponses) AiCheckGenerateWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AiCheckGenerateResult, error) {
+	rsp, err := c.AiCheckGenerateWithBody(ctx, org, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAiCheckGenerateResult(rsp)
+}
+
+// AiCheckGenerateWithResponse Write and test a js check script from a confirmed contract
+//
+// Runs SolidPing's agent loop: the LLM explores the target (fetch_page, browser_snapshot) and tests its script (run_script) until a run returns up or the turn cap (SP_AI_MAX_TURNS) is hit. Returns the script, its last run and the js config to save through POST /checks (without the secrets, which only the caller holds). The LLM only ever sees secret names. Nothing is saved. 422 with the last attempt when no script passed. 404 when no AI provider is configured, or when checkUid names no js check of the org. Send `Accept: application/x-ndjson` to get the progress streamed: a 200 whose body is one JSON object per line, `turn`, `message`, `tool`, `toolResult` and `ping` lines while it runs, then a last `result` line (`result` holds the 200 body) or `error` line (`httpStatus` and `response` hold what the plain call would have answered).
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/orgs/{org}/checks/ai/generate (the `AiCheckGenerate` operationId).
+func (c *ClientWithResponses) AiCheckGenerateWithResponse(ctx context.Context, org OrgPath, body AiCheckGenerateJSONRequestBody, reqEditors ...RequestEditorFn) (*AiCheckGenerateResult, error) {
+	rsp, err := c.AiCheckGenerate(ctx, org, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAiCheckGenerateResult(rsp)
+}
+
 // SwitchChecksToAutoPlacementWithBodyWithResponse Switch pinned checks to automatic placement
 //
 // The checks list's bulk action (spec 2026-09-25-06). Each eligible check becomes `placement: auto` with `regionCount` = its current region count and an empty pool; its regions and jobs are untouched, so neither its cost nor where it runs today changes — it only gains failover when one of its regions goes dark. Passive checks and checks naming a private (`@`) region are skipped. With no `checkUids`, every eligible pinned, non-internal check of the organization is switched.
@@ -55271,6 +57431,21 @@ func (c *ClientWithResponses) GetCheckRunWithResponse(ctx context.Context, org O
 	return ParseGetCheckRunResult(rsp)
 }
 
+// RunCheckNowWithResponse Run a check once, now
+//
+// "Run now": runs any check once, on demand, in every region, instead of waiting for its next period. Each region's job is made due at once and the workers are told; a region whose job is mid-run keeps the request and runs again as soon as that run ends (its current run started before the request, so it is not the answer). Every region is reported `queued`. The results go through the normal path, so they can open or resolve an incident like any scheduled result. A result with `periodStart >= requestedAt` is this request's answer. This is an action path: it does not create the multi-step run resource at `…/run`. Rate limited per check and per organization (3 per minute and 60 per hour; browser, js, rdp and vnc checks 1 per minute and 20 per hour); a refusal carries `Retry-After`. Requires write access (viewers get 403).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/orgs/{org}/checks/{checkUid}/run-now (the `RunCheckNow` operationId).
+func (c *ClientWithResponses) RunCheckNowWithResponse(ctx context.Context, org OrgPath, checkUid CheckUidPath, reqEditors ...RequestEditorFn) (*RunCheckNowResult, error) {
+	rsp, err := c.RunCheckNow(ctx, org, checkUid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRunCheckNowResult(rsp)
+}
+
 // ListCheckScreenshotsWithResponse List a check's latest screenshots
 //
 // The check's latest page captures, newest first: the screenshots its incidents carry, the captures of failing runs that opened no incident (a validating run, a blip, a regional failure, a run of an outage whose incident already holds its onset capture), and "Capture now" captures. A check keeps at most 5 captures of its own (the oldest is retired on the sixth); incident captures live as long as their incident. Any check type answers — a type that never captures returns an empty list. Next to `data`, `captureOutcome` reports the latest "Capture now" request that produced no screenshot, and why (browser and js checks only). Captures are viewport-only, 1280x800. Operator-only: never exposed on a status page, badge or subscriber payload. Same authorization as reading the check.
@@ -55299,6 +57474,96 @@ func (c *ClientWithResponses) CaptureCheckScreenshotWithResponse(ctx context.Con
 		return nil, err
 	}
 	return ParseCaptureCheckScreenshotResult(rsp)
+}
+
+// ListCheckVersionsWithResponse List a check's versions
+//
+// The check's version history, newest first (spec 2026-10-03-06). A version is recorded on every change of the check definition (name, slug, description, type, public config, group, placement, quorum, enabled, period, labels), whoever made it. Secrets are never versioned. Proposed and rejected versions are listed too. The list items carry no snapshot. The last 100 applied versions are kept.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/orgs/{org}/checks/{checkUid}/versions (the `ListCheckVersions` operationId).
+func (c *ClientWithResponses) ListCheckVersionsWithResponse(ctx context.Context, org OrgPath, checkUid CheckUidPath, params *ListCheckVersionsParams, reqEditors ...RequestEditorFn) (*ListCheckVersionsResult, error) {
+	rsp, err := c.ListCheckVersions(ctx, org, checkUid, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListCheckVersionsResult(rsp)
+}
+
+// GetCheckVersionWithResponse Get one version of a check
+//
+// One version with its snapshot. The snapshot is redacted like an export: secret and export-redacted config keys are never present.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/orgs/{org}/checks/{checkUid}/versions/{version} (the `GetCheckVersion` operationId).
+func (c *ClientWithResponses) GetCheckVersionWithResponse(ctx context.Context, org OrgPath, checkUid CheckUidPath, version int, reqEditors ...RequestEditorFn) (*GetCheckVersionResult, error) {
+	rsp, err := c.GetCheckVersion(ctx, org, checkUid, version, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetCheckVersionResult(rsp)
+}
+
+// ApproveCheckVersionWithResponse Approve a proposed version
+//
+// Applies a proposed version. The proposal becomes the applied version and the caller is recorded as the decider. 409 when the version is not a pending proposal, or when it was built on an applied version that is no longer the latest (`baseVersion`).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/orgs/{org}/checks/{checkUid}/versions/{version}/approve (the `ApproveCheckVersion` operationId).
+func (c *ClientWithResponses) ApproveCheckVersionWithResponse(ctx context.Context, org OrgPath, checkUid CheckUidPath, version int, reqEditors ...RequestEditorFn) (*ApproveCheckVersionResult, error) {
+	rsp, err := c.ApproveCheckVersion(ctx, org, checkUid, version, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseApproveCheckVersionResult(rsp)
+}
+
+// DiffCheckVersionWithResponse Diff a version against another one
+//
+// The fields that differ between this version and `against` (default: the applied version before it). Config and labels diff per key (`config.url`, `labels.env`). `against` is null for the first version, which is diffed against nothing.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/orgs/{org}/checks/{checkUid}/versions/{version}/diff (the `DiffCheckVersion` operationId).
+func (c *ClientWithResponses) DiffCheckVersionWithResponse(ctx context.Context, org OrgPath, checkUid CheckUidPath, version int, params *DiffCheckVersionParams, reqEditors ...RequestEditorFn) (*DiffCheckVersionResult, error) {
+	rsp, err := c.DiffCheckVersion(ctx, org, checkUid, version, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDiffCheckVersionResult(rsp)
+}
+
+// RejectCheckVersionWithResponse Reject a proposed version
+//
+// Marks a proposed version rejected. The check is not changed. 409 when the version is not a pending proposal.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/orgs/{org}/checks/{checkUid}/versions/{version}/reject (the `RejectCheckVersion` operationId).
+func (c *ClientWithResponses) RejectCheckVersionWithResponse(ctx context.Context, org OrgPath, checkUid CheckUidPath, version int, reqEditors ...RequestEditorFn) (*RejectCheckVersionResult, error) {
+	rsp, err := c.RejectCheckVersion(ctx, org, checkUid, version, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRejectCheckVersionResult(rsp)
+}
+
+// RestoreCheckVersionWithResponse Restore a version of a check
+//
+// Applies an applied version's definition again, through the same path as a PATCH (validation, job reconciliation, labels). This records a new version with origin `user` (or `api`) and reason `restored vN`. Secrets are not versioned: the check keeps its current ones. 409 when the version is a proposal or was rejected.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/orgs/{org}/checks/{checkUid}/versions/{version}/restore (the `RestoreCheckVersion` operationId).
+func (c *ClientWithResponses) RestoreCheckVersionWithResponse(ctx context.Context, org OrgPath, checkUid CheckUidPath, version int, reqEditors ...RequestEditorFn) (*RestoreCheckVersionResult, error) {
+	rsp, err := c.RestoreCheckVersion(ctx, org, checkUid, version, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRestoreCheckVersionResult(rsp)
 }
 
 // GetCheckAvailabilityWithResponse Per-period availability statistics for a single check
@@ -58895,6 +61160,21 @@ func (c *ClientWithResponses) GetSystemCheckJobWithResponse(ctx context.Context,
 	return ParseGetSystemCheckJobResult(rsp)
 }
 
+// GetDiscordSetupWithResponse Discord application setup values
+//
+// Returns the redirect URIs and Interactions Endpoint URL to register in the Discord developer portal, derived from the server base URL. Super-admin only.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/system/discord-setup (the `GetDiscordSetup` operationId).
+func (c *ClientWithResponses) GetDiscordSetupWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetDiscordSetupResult, error) {
+	rsp, err := c.GetDiscordSetup(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetDiscordSetupResult(rsp)
+}
+
 // GetEmailInboxConfigWithResponse Get the email-inbox (JMAP) configuration
 //
 // Returns the saved JMAP inbox configuration with the password elided. Super-admin only.
@@ -61562,6 +63842,124 @@ func ParseCreateCheckResult(rsp *http.Response) (*CreateCheckResult, error) {
 	return response, nil
 }
 
+// ParseAiCheckContractResult parses an HTTP response from a AiCheckContractWithResponse call
+func ParseAiCheckContractResult(rsp *http.Response) (*AiCheckContractResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AiCheckContractResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AICheckContract
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest TooManyRequests
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseAiCheckGenerateResult parses an HTTP response from a AiCheckGenerateWithResponse call
+func ParseAiCheckGenerateResult(rsp *http.Response) (*AiCheckGenerateResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AiCheckGenerateResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AICheckGenerated
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest AICheckGenerationFailed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest TooManyRequests
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	case rsp.StatusCode == 200:
+		// Content-type (application/x-ndjson) unsupported
+
+	}
+
+	return response, nil
+}
+
 // ParseSwitchChecksToAutoPlacementResult parses an HTTP response from a SwitchChecksToAutoPlacementWithResponse call
 func ParseSwitchChecksToAutoPlacementResult(rsp *http.Response) (*SwitchChecksToAutoPlacementResult, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -62078,6 +64476,80 @@ func ParseGetCheckRunResult(rsp *http.Response) (*GetCheckRunResult, error) {
 	return response, nil
 }
 
+// ParseRunCheckNowResult parses an HTTP response from a RunCheckNowWithResponse call
+func ParseRunCheckNowResult(rsp *http.Response) (*RunCheckNowResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RunCheckNowResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest RunNowResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 429:
+		var headers RunCheckNowResult429Headers
+		if values := rsp.Header.Values("Retry-After"); len(values) > 0 {
+			var value int
+			if err := runtime.BindStyledParameterWithOptions("simple", "Retry-After", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.RetryAfter = &value
+		}
+		response.Headers429 = &headers
+	}
+
+	return response, nil
+}
+
 // ParseListCheckScreenshotsResult parses an HTTP response from a ListCheckScreenshotsWithResponse call
 func ParseListCheckScreenshotsResult(rsp *http.Response) (*ListCheckScreenshotsResult, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -62208,6 +64680,304 @@ func ParseCaptureCheckScreenshotResult(rsp *http.Response) (*CaptureCheckScreens
 			headers.RetryAfter = &value
 		}
 		response.Headers429 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseListCheckVersionsResult parses an HTTP response from a ListCheckVersionsWithResponse call
+func ParseListCheckVersionsResult(rsp *http.Response) (*ListCheckVersionsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListCheckVersionsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			Data []CheckVersion `json:"data"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetCheckVersionResult parses an HTTP response from a GetCheckVersionWithResponse call
+func ParseGetCheckVersionResult(rsp *http.Response) (*GetCheckVersionResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetCheckVersionResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CheckVersion
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseApproveCheckVersionResult parses an HTTP response from a ApproveCheckVersionWithResponse call
+func ParseApproveCheckVersionResult(rsp *http.Response) (*ApproveCheckVersionResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ApproveCheckVersionResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Check
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDiffCheckVersionResult parses an HTTP response from a DiffCheckVersionWithResponse call
+func ParseDiffCheckVersionResult(rsp *http.Response) (*DiffCheckVersionResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DiffCheckVersionResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CheckVersionDiff
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRejectCheckVersionResult parses an HTTP response from a RejectCheckVersionWithResponse call
+func ParseRejectCheckVersionResult(rsp *http.Response) (*RejectCheckVersionResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RejectCheckVersionResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CheckVersion
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRestoreCheckVersionResult parses an HTTP response from a RestoreCheckVersionWithResponse call
+func ParseRestoreCheckVersionResult(rsp *http.Response) (*RestoreCheckVersionResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RestoreCheckVersionResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Check
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
 	}
 
 	return response, nil
@@ -70506,6 +73276,52 @@ func ParseGetSystemCheckJobResult(rsp *http.Response) (*GetSystemCheckJobResult,
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetDiscordSetupResult parses an HTTP response from a GetDiscordSetupWithResponse call
+func ParseGetDiscordSetupResult(rsp *http.Response) (*GetDiscordSetupResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetDiscordSetupResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			BaseUrl            *string `json:"baseUrl,omitempty"`
+			BaseUrlIsDefault   *bool   `json:"baseUrlIsDefault,omitempty"`
+			InstallRedirectUri *string `json:"installRedirectUri,omitempty"`
+			InteractionsUrl    *string `json:"interactionsUrl,omitempty"`
+			LoginRedirectUri   *string `json:"loginRedirectUri,omitempty"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
 
 	}
 

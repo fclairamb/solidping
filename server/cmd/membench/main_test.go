@@ -354,3 +354,80 @@ func TestAttachTargetRequiresBaseURL(t *testing.T) {
 		t.Errorf("Mode() = %q, want attach", got)
 	}
 }
+
+// TestAssertMax: -assert-max fails the run when a scenario's median is above a
+// bound, passes at or under it, and refuses a malformed bound or a metric the
+// scenario did not report (spec 2026-10-12-04).
+func TestAssertMax(t *testing.T) {
+	t.Parallel()
+
+	const mib = 1024 * 1024
+
+	report := &membench.Report{Scenarios: []membench.ScenarioResult{{
+		Scenario: "fresh-boot",
+		Runs:     []membench.RunStats{{}},
+		Metrics: map[string]membench.MetricAgg{
+			membench.MetricCgroupUnreclaimable: {Median: 40 * mib},
+		},
+	}}}
+
+	tests := []struct {
+		name     string
+		spec     string
+		parseErr bool
+		failErr  bool
+	}{
+		{name: "empty", spec: ""},
+		{name: "under the bound", spec: "cgroupUnreclaimableBytes=48MiB"},
+		{name: "at the bound", spec: "cgroupUnreclaimableBytes=40MiB"},
+		{name: "above the bound", spec: "cgroupUnreclaimableBytes=32MiB", failErr: true},
+		{name: "unknown metric", spec: "nope=1MiB", failErr: true},
+		{name: "malformed", spec: "cgroupUnreclaimableBytes", parseErr: true},
+		{name: "bad size", spec: "cgroupUnreclaimableBytes=lots", parseErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			bounds, err := parseAssertMax(tt.spec)
+			if tt.parseErr {
+				if err == nil {
+					t.Fatalf("parseAssertMax(%q) accepted a bad spec", tt.spec)
+				}
+
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("parseAssertMax(%q): %v", tt.spec, err)
+			}
+
+			err = checkAssertMax(report, bounds)
+			if tt.failErr != (err != nil) {
+				t.Fatalf("checkAssertMax(%q) error = %v, want failure %v", tt.spec, err, tt.failErr)
+			}
+		})
+	}
+}
+
+// TestFreshBootScenarioPinsItsWarmUp: the fresh-boot scenario measures 60 s
+// after start whatever -warmup says; other scenarios follow the flag.
+func TestFreshBootScenarioPinsItsWarmUp(t *testing.T) {
+	t.Parallel()
+
+	selected, err := selectScenarios(options{scenarios: "fresh-boot,idle-all-sqlite"})
+	if err != nil {
+		t.Fatalf("selectScenarios: %v", err)
+	}
+
+	opts := options{warmUp: 5 * time.Minute}
+
+	if got := warmUpFor(opts, selected[0]); got != time.Minute {
+		t.Errorf("fresh-boot warm-up = %s, want 1m", got)
+	}
+
+	if got := warmUpFor(opts, selected[1]); got != 5*time.Minute {
+		t.Errorf("idle-all-sqlite warm-up = %s, want the flag's 5m", got)
+	}
+}

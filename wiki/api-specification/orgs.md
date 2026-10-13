@@ -359,13 +359,14 @@ A confirmed user with no membership in an org can ask to join by slug.
 Org admins can approve or reject. Each (org, user) pair has at most one
 row; subsequent requests update it in place per the state machine
 (pending → approved | rejected | cancelled, with re-request after
-cooldown for rejected and immediate re-request for cancelled).
+cooldown for rejected and immediate re-request for canceled).
 
 ### POST /api/v1/auth/membership-requests
 Open or re-open a request. Auth: required.
 Body: `{"orgSlug":"<slug>","message":"<optional>"}`.
 Errors: `ORGANIZATION_NOT_FOUND`, `ALREADY_A_MEMBER`,
-`REQUEST_PENDING`, `REQUEST_COOLDOWN_ACTIVE`.
+`REQUEST_PENDING`, `REQUEST_COOLDOWN_ACTIVE`,
+`ORG_NOT_ACCEPTING_REQUESTS` (403: the demo org, or the default org in SaaS mode).
 
 ### GET /api/v1/auth/membership-requests
 List the caller's own request history. Auth: required.

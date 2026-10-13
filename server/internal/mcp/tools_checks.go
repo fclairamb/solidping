@@ -176,7 +176,7 @@ func createCheckDef() ToolDefinition {
 		Name: toolCreateCheck,
 		Description: "Create a new monitoring check and return it (uid, slug, placement, " +
 			"resolved periods). If you don't know what config shape a given type " +
-			"expects, call get_check_type_samples first to fetch a working starting " +
+			"expects, call list_check_types with type first to fetch a working starting " +
 			"config, then use validate_check to dry-run before creating. An enabled " +
 			"check starts running on its next tick and opens an incident after its " +
 			"confirmation period; pass enabled:false to create it paused. A duplicate " +
@@ -198,7 +198,7 @@ func createCheckDef() ToolDefinition {
 			schemaKeyConfig: objectProp(
 				"Check-specific config. Shape depends on type. Example for http: " +
 					"{\"url\": \"https://example.com\", \"method\": \"GET\"}. " +
-					"Use get_check_type_samples to discover the shape for other types.",
+					"Use list_check_types with type to discover the shape for other types.",
 			),
 			schemaKeyRegions: arrayOfStringsProp(
 				"Region slugs to pin the check to, e.g. [\"eu-west-1\",\"us-east-1\"]. An explicit list " +

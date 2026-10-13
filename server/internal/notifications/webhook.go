@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/hmac"
-	crypto_rand "crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
@@ -28,10 +27,6 @@ import (
 
 const (
 	webhookTimeout = 30 * time.Second
-	// webhookSecretPrefix is the Svix-compatible prefix for signing secrets.
-	webhookSecretPrefix = "whsec_"
-	// webhookSecretBytes is the number of random bytes in a signing secret.
-	webhookSecretBytes = 32
 
 	// Settings keys used by the signing-secret lifecycle.
 	settingsKeySigningSecret         = "signingSecret"
@@ -91,6 +86,22 @@ type WebhookIncident struct {
 	// ResolutionType says how a resolved incident closed (auto | manual |
 	// expired | escalated | disabled | check_deleted). Omitted while active.
 	ResolutionType *string `json:"resolutionType,omitempty"`
+	// Regions says which regions saw the failure. A snapshot taken when the
+	// incident opened (or reopened) and refreshed on escalation. Omitted when
+	// no region is known, so existing receivers see the same payload.
+	Regions *WebhookRegions `json:"regions,omitempty"`
+	// ReminderCount is the number of this reminder (1 for the first) on an
+	// `incident.reminder` (spec 2026-10-12-16). Omitted on every other event,
+	// so existing receivers see the same payload.
+	ReminderCount int `json:"reminderCount,omitempty"`
+}
+
+// WebhookRegions is the regions block of a webhook incident. FailingRegions
+// holds slugs, not labels: machines consume it.
+type WebhookRegions struct {
+	FailingRegions []string `json:"failingRegions"`
+	RegionCount    int      `json:"regionCount"`
+	FailQuorum     int      `json:"failQuorum"`
 }
 
 // WebhookCheck is the check projection inside a webhook payload.
@@ -110,17 +121,6 @@ type WebhookSender struct {
 	UpdateChannel func(ctx context.Context, channel *models.Integration) error
 }
 
-// generateWebhookSecret returns a fresh `whsec_<base64url-unpadded-32-bytes>`
-// signing secret using crypto/rand.
-func generateWebhookSecret() (string, error) {
-	raw := make([]byte, webhookSecretBytes)
-	if _, err := crypto_rand.Read(raw); err != nil {
-		return "", fmt.Errorf("generating webhook secret: %w", err)
-	}
-
-	return webhookSecretPrefix + base64.RawURLEncoding.EncodeToString(raw), nil
-}
-
 // signRequest computes the Standard Webhooks signature header value over the
 // signed content `"{id}.{timestamp}.{body}"` for each secret. The returned
 // string is a space-separated list of `v1,<base64-hmac>` entries.
@@ -136,11 +136,11 @@ func signRequest(secrets []string, id, timestamp string, body []byte) (string, e
 
 	sigs := make([]string, 0, len(secrets))
 	for _, secret := range secrets {
-		trimmed := strings.TrimPrefix(secret, webhookSecretPrefix)
-
-		secretBytes, err := base64.RawURLEncoding.DecodeString(trimmed)
+		// Tolerant decode: standard or URL-safe, padded or not, so a legacy
+		// stored secret signs exactly as it always did.
+		secretBytes, err := DecodeWebhookSecret(secret)
 		if err != nil {
-			return "", fmt.Errorf("%w: %w", ErrInvalidSigningSecret, err)
+			return "", err
 		}
 
 		mac := hmac.New(sha256.New, secretBytes)
@@ -356,7 +356,7 @@ func (s *WebhookSender) ensureSecrets(
 
 	// Auto-generate on first delivery for legacy channels without a secret.
 	if active == "" {
-		generated, err := generateWebhookSecret()
+		generated, err := GenerateWebhookSecret()
 		if err != nil {
 			return nil, err
 		}
@@ -433,6 +433,18 @@ func (s *WebhookSender) buildPayload(payload *Payload) WebhookPayload {
 		FailureCount:   payload.Incident.FailureCount,
 		RelapseCount:   payload.Incident.RelapseCount,
 		ResolutionType: payload.Incident.ResolutionType,
+	}
+
+	if payload.EventType == eventTypeIncidentReminder {
+		incident.ReminderCount = payload.ReminderSeq
+	}
+
+	if info := payload.Regions; info != nil && len(info.Failing) > 0 {
+		incident.Regions = &WebhookRegions{
+			FailingRegions: info.Failing,
+			RegionCount:    info.RegionCount,
+			FailQuorum:     info.FailQuorum,
+		}
 	}
 
 	if payload.Incident.ResolvedAt != nil {

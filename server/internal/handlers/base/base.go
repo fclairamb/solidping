@@ -77,6 +77,7 @@ const (
 	ErrorCodeRequestPending            ErrorCode = "REQUEST_PENDING"
 	ErrorCodeRequestNotFound           ErrorCode = "REQUEST_NOT_FOUND"
 	ErrorCodeRequestCooldownActive     ErrorCode = "REQUEST_COOLDOWN_ACTIVE"
+	ErrorCodeOrgNotAcceptingRequests   ErrorCode = "ORG_NOT_ACCEPTING_REQUESTS"
 	ErrorCodeDependencyCycle           ErrorCode = "DEPENDENCY_CYCLE"
 	ErrorCodeDependencySelf            ErrorCode = "DEPENDENCY_SELF"
 	ErrorCodeDependencyCrossOrg        ErrorCode = "DEPENDENCY_CROSS_ORG"

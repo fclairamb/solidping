@@ -347,6 +347,66 @@ checks:
 	r.True(resp.Valid, "a reference that resolves is not an issue: %v", resp.Issues)
 }
 
+// TestValidateDocumentReportsUnknownVarPerCheck: an unknown `${var:…}` name is
+// an issue for its own check, offline and on the endpoint; a known one is not.
+func TestValidateDocumentReportsUnknownVarPerCheck(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	router, _, _, org := newValidateRouter(t)
+
+	doc := []byte(`version: 2
+organization: validate-doc
+secrets: stripped
+checks:
+  - name: Known
+    slug: known
+    type: http
+    config:
+      url: https://acme.com/health?cb=${var:timestamp}
+      headers:
+        X-Request-Id: ${var:uuid}
+  - name: Unknown
+    slug: unknown
+    type: http
+    config:
+      url: https://acme.com/health?cb=${var:nope}
+`)
+
+	offline := checks.ValidateDocument(mustParse(t, doc))
+	r.Len(offline, 1, "%+v", offline)
+	r.Equal("unknown", offline[0].Where)
+	r.Equal(checks.CodeInvalidConfig, offline[0].Code)
+	r.Contains(offline[0].Message, "unknown variable ${var:nope}")
+
+	rec := postValidateBody(t, router, org.Slug, "", "application/yaml", doc)
+	r.Equal(http.StatusOK, rec.Code, rec.Body.String())
+
+	var resp checks.ValidateDocumentResponse
+	r.NoError(json.Unmarshal(rec.Body.Bytes(), &resp))
+	r.False(resp.Valid)
+
+	for _, issue := range resp.Issues {
+		r.Equal("unknown", issue.Where, "the known var must not be reported: %+v", resp.Issues)
+	}
+
+	// Positive control: the same document without the unknown check is valid.
+	clean := []byte(`version: 2
+organization: validate-doc
+secrets: stripped
+checks:
+  - name: Known
+    slug: known
+    type: http
+    config:
+      url: https://acme.com/health?cb=${var:timestamp}
+`)
+	rec = postValidateBody(t, router, org.Slug, "", "application/yaml", clean)
+	r.Equal(http.StatusOK, rec.Code, rec.Body.String())
+	r.NoError(json.Unmarshal(rec.Body.Bytes(), &resp))
+	r.True(resp.Valid, "%+v", resp.Issues)
+}
+
 func mustParse(t *testing.T, body []byte) *checks.ExportDocument {
 	t.Helper()
 

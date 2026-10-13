@@ -169,6 +169,15 @@ func buildWebPushURL(payload *Payload) string {
 // carry the short #N incident reference (incidentRefPrefix, same as Slack and
 // Discord) — commentTitle already includes it on the comment path.
 func buildWebPushContent(payload *Payload, checkName string) (string, string) {
+	title, body := buildWebPushEventContent(payload, checkName)
+	if line := RegionLine(payload); line != "" {
+		body += "\n" + line
+	}
+
+	return title, body
+}
+
+func buildWebPushEventContent(payload *Payload, checkName string) (string, string) {
 	ref := incidentRefPrefix(payload.Incident)
 
 	switch payload.EventType {
@@ -194,6 +203,8 @@ func buildWebPushContent(payload *Payload, checkName string) (string, string) {
 		return ackTitle(payload), ackPlainBody(payload)
 	case eventTypeIncidentUnacknowledged:
 		return unackTitle(payload), unackPlainBody(payload)
+	case eventTypeIncidentReminder:
+		return reminderTitle(payload), reminderSentence(payload) + "."
 	default:
 		return ref + "[UPDATE] " + checkName,
 			"An incident update occurred for " + checkName

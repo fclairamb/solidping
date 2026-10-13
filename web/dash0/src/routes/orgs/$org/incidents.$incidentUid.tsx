@@ -15,11 +15,13 @@ import {
   Pencil,
   Plus,
   RefreshCw,
+  Terminal,
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
   useIncident,
+  useCheck,
   useIncidents,
   useAcknowledgeIncident,
   useUnacknowledgeIncident,
@@ -87,6 +89,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Trans } from "react-i18next";
 import { Button } from "@/components/ui/button";
+import { buildCurlCommand, curlCommandHasPlaceholders } from "@/lib/curl-command";
 import { Badge } from "@/components/ui/badge";
 import { FlappingBadge } from "@/components/shared/flapping-badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -1232,7 +1235,7 @@ function IncidentDetailPage() {
         </Card>
       </div>
 
-      <FailureDetailsCard incident={incident} />
+      <FailureDetailsCard org={org} incident={incident} />
 
       <ProbeResponseCard incident={incident} />
 
@@ -1457,7 +1460,50 @@ function FailureSnapshotBlock({
   );
 }
 
-function FailureDetailsCard({ incident }: { incident: IncidentDetail }) {
+function CopyCurlButton({ org, checkUid }: { org: string; checkUid: string }) {
+  const { t } = useTranslation("incidents");
+  // Built from the check endpoint, not incident.check.config: only it returns
+  // configPrivateKeys and applies the read-time secret redaction.
+  const { data: check } = useCheck(org, checkUid);
+
+  const handleCopy = async () => {
+    if (!check) return;
+    const config = check.config ?? {};
+    const privateKeys = check.configPrivateKeys ?? [];
+    try {
+      await navigator.clipboard.writeText(buildCurlCommand(config, privateKeys));
+      toast.success(
+        curlCommandHasPlaceholders(config, privateKeys)
+          ? t("detail.failureDetails.copyCurlCopiedPlaceholders")
+          : t("detail.failureDetails.copyCurlCopied"),
+      );
+    } catch {
+      toast.error(t("detail.failureDetails.copyCurlFailed"));
+    }
+  };
+
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={handleCopy}
+      disabled={!check}
+      title={t("detail.failureDetails.copyCurlTooltip")}
+      data-testid="incident-copy-curl"
+    >
+      <Terminal className="mr-2 h-4 w-4" />
+      {t("detail.failureDetails.copyCurl")}
+    </Button>
+  );
+}
+
+function FailureDetailsCard({
+  org,
+  incident,
+}: {
+  org: string;
+  incident: IncidentDetail;
+}) {
   const { t } = useTranslation("incidents");
   const details = incident.details;
   const firstResult = details?.first_result;
@@ -1466,11 +1512,16 @@ function FailureDetailsCard({ incident }: { incident: IncidentDetail }) {
 
   return (
     <Card data-testid="failure-details-card">
-      <CardHeader>
-        <CardTitle>{t("detail.failureDetails.title")}</CardTitle>
-        <CardDescription>
-          {t("detail.failureDetails.description")}
-        </CardDescription>
+      <CardHeader className="flex flex-row items-start justify-between gap-2 space-y-0">
+        <div className="space-y-1.5">
+          <CardTitle>{t("detail.failureDetails.title")}</CardTitle>
+          <CardDescription>
+            {t("detail.failureDetails.description")}
+          </CardDescription>
+        </div>
+        {incident.check?.type === "http" && incident.checkUid && (
+          <CopyCurlButton org={org} checkUid={incident.checkUid} />
+        )}
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="text-base font-semibold">

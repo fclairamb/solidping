@@ -81,7 +81,7 @@ Monitoring results are not the only thing SolidPing keeps on a clock.
 
 | Data | Default retention | Setting |
 |---|---|---|
-| Audit events | 365 days | `SP_AUDIT_RETENTION_DAYS` / `audit.retention_days` |
+| Audit events | 365 days (`0` keeps forever) | `SP_AUDIT_RETENTION_DAYS` / `audit.retention_days` |
 | Support-inbox threads and messages (closed only) | 365 days | `SP_SUPPORT_RETENTION_DAYS` / `support.retention_days` |
 
 The [support inbox](../features/support-inbox.md) is the one that stores

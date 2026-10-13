@@ -34,6 +34,7 @@
     "incident.acknowledged": "Incidente reconocido",
     "incident.unacknowledged": "Reconocimiento anulado",
     "incident.reopened": "Incidente reabierto",
+    "incident.reminder": "Recordatorio enviado",
     "incident.snoozed": "Incidente silenciado",
     "incident.unsnoozed": "Silencio anulado",
     "incident.rolled_up": "Agrupado en el incidente principal",

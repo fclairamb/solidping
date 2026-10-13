@@ -28,6 +28,7 @@ import (
 	"sync"
 
 	"github.com/go-chi/chi/v5"
+	chimw "github.com/go-chi/chi/v5/middleware"
 )
 
 // HandlerFunc is an HTTP handler that returns an error. Handlers write their
@@ -169,6 +170,10 @@ type Router struct {
 // New creates a Router backed by a fresh chi mux.
 func New() *Router {
 	mux := chi.NewRouter()
+	// RFC 9110: HEAD must work wherever GET does. GetHead has to run before
+	// routing (hence mux-level), and only rewrites when no explicit HEAD route
+	// exists, so Group.HEAD registrations keep priority.
+	mux.Use(chimw.GetHead)
 	registry := newRouteRegistry()
 	r := &Router{mux: mux, registry: registry}
 	r.Group = Group{mux: mux, registry: registry}

@@ -44,7 +44,7 @@ func integrationOutputSchema() map[string]any {
 
 func listIntegrationsDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "list_integrations",
+		Name: toolListIntegrations,
 		Description: "List integrations (Slack, webhook, email, …) configured for the " +
 			"organization, optionally filtered by type. Returns {data: [...]}. Use this " +
 			"to discover what notification channels are available before attaching them " +
@@ -81,7 +81,7 @@ func (h *Handler) toolListIntegrations(ctx context.Context, orgSlug string, args
 
 func createIntegrationDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "create_integration",
+		Name: toolCreateIntegration,
 		Description: "Create a new integration (webhook, email, msteams, …) and return it " +
 			"(uid, type, name, settings). Type and settings are validated before anything " +
 			"is stored. Slack cannot be created here — install it via the dashboard OAuth " +

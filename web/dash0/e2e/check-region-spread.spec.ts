@@ -142,7 +142,7 @@ test.describe("Check form — Region Spread", () => {
     // Clear it back to automatic and save again.
     await page.getByTestId("check-region-spread-input").fill("");
     await page.getByTestId("check-submit-button").click();
-    await page.waitForURL(/\/checks\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/, { timeout: 10000 });
+    await page.waitForURL(/\/checks\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\?.*)?$/, { timeout: 10000 });
 
     await page
       .getByTestId("check-detail-header")

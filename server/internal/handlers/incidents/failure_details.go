@@ -298,3 +298,14 @@ func truncateErrorToFit(capped models.JSONMap) {
 
 	capped[checkerdef.OutputKeyError] = best
 }
+
+// withRegions returns a copy of details with the regions snapshot replaced.
+func withRegions(details, regions models.JSONMap) models.JSONMap {
+	merged := make(models.JSONMap, len(details)+1)
+	for k, v := range details {
+		merged[k] = v
+	}
+	merged[regionsDetailsKey] = regions
+
+	return merged
+}

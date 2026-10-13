@@ -53,6 +53,7 @@ SP_AUTH_PASSWORD_ARGON2_TIME=3         # iterations (default 3)
 SP_AUTH_PASSWORD_ARGON2_THREADS=4      # parallelism (default 4)
 SP_AUTH_PASSWORD_ARGON2_KEY_LENGTH=32  # output bytes (default 32)
 SP_AUTH_PASSWORD_ARGON2_SALT_LENGTH=16 # salt bytes (default 16)
+SP_AUTH_PASSWORD_ARGON2_AUTO_PROFILE=true # small-host profile (default true)
 
 # bcrypt cost (only used when algorithm is "bcrypt")
 SP_AUTH_PASSWORD_BCRYPT_COST=12        # range 10–31 (default 12)
@@ -60,6 +61,23 @@ SP_AUTH_PASSWORD_BCRYPT_COST=12        # range 10–31 (default 12)
 # Re-hash existing passwords on next sign-in (default true)
 SP_AUTH_PASSWORD_REHASH_ON_LOGIN=true
 ```
+
+### Small hosts
+
+On a host with 2 GiB of memory or less (the cgroup limit when one is set, else
+the host RAM), a single-process install (`SP_NODE_ROLE=all`, the default) uses
+the OWASP minimum argon2id profile `m=19456, t=2, p=1` instead of
+`m=65536, t=3, p=4`. The rules:
+
+- It applies only when no argon2 cost field (`memory`, `time` or `threads`) is
+  set in `config.yml`, an `SP_AUTH_PASSWORD_ARGON2_*` variable or Server
+  Settings. An explicit value is never replaced.
+- `SP_AUTH_PASSWORD_ARGON2_AUTO_PROFILE=false` (`auth.password.argon2.auto_profile`)
+  turns it off and keeps 64 MiB.
+- Split-role deployments (`SP_NODE_ROLE` other than `all`) never use it, so
+  nodes of different sizes do not rehash a user back and forth.
+- The server logs it once at boot. Existing 64 MiB hashes are re-minted at
+  19 MiB on the next login, unless `SP_AUTH_PASSWORD_REHASH_ON_LOGIN=false`.
 
 ### Editing from the dashboard
 
@@ -321,6 +339,7 @@ auth:
       threads: 4
       key_length: 32
       salt_length: 16
+      auto_profile: true # small-host profile, see "Small hosts"
     bcrypt:
       cost: 12
 

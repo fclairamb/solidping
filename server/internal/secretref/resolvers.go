@@ -87,16 +87,23 @@ func LookupEnv(name string) (string, error) {
 	return value, nil
 }
 
-// DocumentResolver resolves BOTH schemes. It is the write-path resolver: an
+// DocumentResolver resolves every scheme. It is the write-path resolver: an
 // import or apply uses it to prove every reference in the document is
 // resolvable before storing anything — it never stores what it resolved.
+//
+// A `${var:…}` reference is accepted when its name is known (a generated
+// sample stands in for the value) and rejected otherwise.
 func DocumentResolver(store ParamStore, orgUID string) ResolveFunc {
+	vars := newRunVarResolver()
+
 	return func(ctx context.Context, scheme, name string) (string, error) {
 		switch scheme {
 		case SchemeEnv:
 			return LookupEnv(name)
 		case SchemeParam:
 			return LookupParam(ctx, store, orgUID, name)
+		case SchemeVar:
+			return vars(ctx, scheme, name)
 		default:
 			return "", Unresolvedf(scheme, name)
 		}
@@ -123,12 +130,40 @@ func APIResolver(store ParamStore, orgUID string) ResolveFunc {
 // means the API could not resolve it (a deleted parameter, or a private-region
 // agent whose sealed envelope the server cannot open), and the check must go
 // visibly red rather than send the literal `${param:…}` to the target.
+//
+// It also generates `${var:…}` values, from one var resolver per call: one
+// ExecutionResolver is one run, so every occurrence of `${var:uuid}` in it gets
+// the same value, and the next run gets a new one.
 func ExecutionResolver() ResolveFunc {
-	return func(_ context.Context, scheme, name string) (string, error) {
-		if scheme != SchemeEnv {
+	return ExecutionResolverWith(newRunVarResolver())
+}
+
+// ExecutionResolverWith is ExecutionResolver with the run's var resolver
+// supplied by the caller, so the caller can render a second string (the
+// result's URL) with the same generated values. vars must come from
+// NewVarResolver.
+func ExecutionResolverWith(vars ResolveFunc) ResolveFunc {
+	return func(ctx context.Context, scheme, name string) (string, error) {
+		switch scheme {
+		case SchemeVar:
+			return vars(ctx, scheme, name)
+		case SchemeEnv:
+			return LookupEnv(name)
+		default:
 			return "", Unresolvedf(scheme, name)
 		}
+	}
+}
 
-		return LookupEnv(name)
+// VarsOnlyResolver resolves `${var:…}` with vars and leaves every env/param
+// reference literal. It renders a string for display (a stored result URL)
+// where the generated values belong and the secrets do not.
+func VarsOnlyResolver(vars ResolveFunc) ResolveFunc {
+	return func(ctx context.Context, scheme, name string) (string, error) {
+		if scheme != SchemeVar {
+			return "", ErrSkip
+		}
+
+		return vars(ctx, scheme, name)
 	}
 }

@@ -217,6 +217,41 @@ func TestReferenceDerivedValuesAreMaskedInTheDiff(t *testing.T) {
 		"the parameter NAME must not survive the mask")
 }
 
+// TestVarReferencesAreShownInTheDiff: a generated `${var:…}` value is not a
+// secret, so a plan shows it in clear, while a `${param:…}` next to it is still
+// masked.
+func TestVarReferencesAreShownInTheDiff(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	rig := newRoundTripRig(t)
+
+	secret := true
+	_, err := orgparams.NewService(rig.dbSvc).Set(t.Context(), rig.org.Slug, "x",
+		&orgparams.SetRequest{Value: "hunter2", Secret: &secret})
+	r.NoError(err)
+
+	r.True(rig.create(t, checks.CreateCheckRequest{
+		Name: "CDN", Slug: "cdn", Type: "http",
+		Config: map[string]any{"url": "https://cdn.acme.com/health"},
+	}))
+
+	doc, err := rig.svc.ExportChecks(t.Context(), rig.org.Slug, checks.ListChecksOptions{})
+	r.NoError(err)
+	r.Len(doc.Checks, 1)
+
+	doc.Checks[0].Config["url"] = "https://cdn.acme.com/health?cb=${var:timestamp}&t=${param:x}"
+
+	result, err := rig.svc.ImportChecks(t.Context(), rig.org.Slug, doc, true)
+	r.NoError(err)
+	r.Len(result.Plan, 1)
+	r.Equal([]checks.CheckFieldChange{{
+		Field: "config.url",
+		From:  `"https://cdn.acme.com/health"`,
+		To:    `"https://cdn.acme.com/health?cb=${var:timestamp}\u0026t=***"`,
+	}}, result.Plan[0].Changes)
+}
+
 // TestEscalationThresholdIsReportedRatherThanSilentlyIgnored pins the honest
 // half of a real gap.
 //

@@ -42,6 +42,7 @@ const (
 	TemplateIncidentCreated         = "incident-created.html"
 	TemplateIncidentEscalated       = "incident-escalated.html"
 	TemplateIncidentReopened        = "incident-reopened.html"
+	TemplateIncidentReminder        = "incident-reminder.html"
 	TemplateIncidentResolved        = "incident-resolved.html"
 	TemplateInvitation              = "invitation.html"
 	TemplateMembershipReqDecision   = "membership_request_decision.html"
@@ -102,6 +103,7 @@ var supportReplyableTemplates = map[string]bool{
 	TemplateIncidentCreated:        true,
 	TemplateIncidentEscalated:      true,
 	TemplateIncidentReopened:       true,
+	TemplateIncidentReminder:       true,
 	TemplateIncidentResolved:       true,
 	TemplateMembershipReqDecision:  true,
 	TemplateMembershipReqNew:       true,

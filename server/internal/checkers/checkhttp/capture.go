@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checkhttp/config"
 )
 
 const (
@@ -31,25 +32,6 @@ const (
 // contentTypeJSON is the canonical JSON media type, spelled once.
 const contentTypeJSON = "application/json"
 
-// redactedHeaderSubstrings are matched anywhere in a lowercased header name,
-// which is what catches the long tail of vendor headers (`X-Api-Key`,
-// `X-Amz-Security-Token`, `X-Client-Secret`, …).
-func redactedHeaderSubstrings() [3]string {
-	return [3]string{"token", "key", "secret"}
-}
-
-// isAlwaysRedactedHeader lists response headers whose value is ALWAYS
-// replaced, matched case-insensitively on the whole (lowercased) name.
-func isAlwaysRedactedHeader(lower string) bool {
-	switch lower {
-	case "set-cookie", "authorization", "proxy-authenticate",
-		"proxy-authorization", "www-authenticate":
-		return true
-	default:
-		return false
-	}
-}
-
 // isTextLikeMediaType gates whether a body may be stored as text at all.
 // Anything else is treated as binary and reduced to metadata.
 func isTextLikeMediaType(mediaType string) bool {
@@ -64,21 +46,10 @@ func isTextLikeMediaType(mediaType string) bool {
 }
 
 // shouldRedactHeader reports whether this response header's value must be
-// replaced with redactedMarker.
+// replaced with redactedMarker. The rule lives in the config package so the
+// header assertions report the same redaction.
 func shouldRedactHeader(name string) bool {
-	lower := strings.ToLower(name)
-
-	if isAlwaysRedactedHeader(lower) {
-		return true
-	}
-
-	for _, needle := range redactedHeaderSubstrings() {
-		if strings.Contains(lower, needle) {
-			return true
-		}
-	}
-
-	return false
+	return checkconfig.ShouldRedactHeader(name)
 }
 
 // redactHeaders flattens the RESPONSE header map, joining multi-valued headers

@@ -133,9 +133,9 @@ Every attempt is on the check's timeline (`check.ai_repair_attempted`,
 
 ## Bring your own agent
 
-The [MCP server](/features/mcp) exposes `run_js_script`, `fetch_page` and
-`browser_snapshot` with the same behavior, so any external agent can author
-`js` checks. They need no AI provider on the server.
+The [MCP server](/features/mcp) exposes the same probes through its `probe`
+tool (`kind`: `script`, `fetch` or `browser`), so any external agent can author
+`js` checks. It needs no AI provider on the server.
 
 ## Configuration
 

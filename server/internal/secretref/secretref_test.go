@@ -111,3 +111,37 @@ func TestAPIResolverSkipsEnv(t *testing.T) {
 	r.Equal("${env:SP_TEST_SECRETREF_TOKEN}", out["a"],
 		"the API must not substitute its own environment for the agent's")
 }
+
+func TestGrammarRecognizesVar(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	r.True(secretref.Pattern.MatchString("https://acme.com/?cb=${var:uuid}"))
+
+	m := secretref.Pattern.FindStringSubmatch("${var:uuid}")
+	r.Equal([]string{"${var:uuid}", "var", "uuid"}, m)
+}
+
+func TestAPIResolverSkipsVar(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	out, replaced, err := secretref.ResolveConfig(t.Context(),
+		map[string]any{"url": "https://acme.com/?cb=${var:uuid}"},
+		secretref.APIResolver(nil, "org-1"))
+	r.NoError(err)
+	r.False(replaced)
+	r.Equal("https://acme.com/?cb=${var:uuid}", out["url"],
+		"the API leaves ${var:} for the executing process")
+}
+
+func TestContainsSecretRefIgnoresVar(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	r.False(secretref.ContainsSecretRef("https://acme.com/?cb=${var:timestamp}&id=${var:uuid}"))
+	r.True(secretref.ContainsSecretRef("https://acme.com/?cb=${var:timestamp}&t=${param:tok}"))
+	r.True(secretref.ContainsSecretRef("Bearer ${env:SP_TOKEN}"))
+	r.False(secretref.ContainsSecretRef("plain"))
+	r.True(secretref.Contains("${var:uuid}"), "Contains still sees every reference")
+}

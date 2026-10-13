@@ -245,6 +245,11 @@
     "tracerouteOn": "Immer aufzeichnen",
     "tracerouteOff": "Nie aufzeichnen",
     "tracerouteOnFailureHelp": "Wenn dieser Check ausfällt, weil das Ziel nicht ERREICHT werden konnte (Verbindungs-Timeout, Ablehnung, ICMP-Verlust, hängender TLS-Handshake), einen Traceroute im MTR-Stil aufzeichnen und an den Vorfall anhängen. Anwendungsfehler wie HTTP 5xx, ein fehlendes Schlüsselwort oder ein ablaufendes Zertifikat lösen nie einen aus — der Server hat geantwortet, der Pfad ist also in Ordnung.",
+    "reminderInterval": "Erinnern, solange unbestätigt",
+    "reminderIntervalInherit": "Organisationsstandard",
+    "reminderIntervalInheritValue": "Organisationsstandard ({{value}})",
+    "reminderIntervalOff": "Aus",
+    "reminderIntervalHelp": "Solange ein Vorfall offen ist und niemand ihn bestätigt hat, die Kanäle dieses Checks in diesem Abstand erneut benachrichtigen. Bestätigen, Stummschalten oder Beheben des Vorfalls beendet die Erinnerungen. SMS- und PagerDuty-Kanäle erhalten sie nie.",
     "customPeriod": "{{period}} (benutzerdefiniert)",
     "reviewScheduling": "Check-Planung überprüfen",
     "editCheckSubtitle": "Die Überwachungsparameter des Checks aktualisieren",
@@ -857,7 +862,11 @@
       "runFailedTitle": "Die Aufnahme ist fehlgeschlagen",
       "runFailed": "Die Aufnahme ist fehlgeschlagen: {{reason}}"
     },
-    "uidShort": "UID: {{uid}}..."
+    "uidShort": "UID: {{uid}}...",
+    "copyCurl": "Als cURL kopieren",
+    "curlCopied": "Anfrage als cURL kopiert",
+    "curlCopiedPlaceholders": "Anfrage als cURL kopiert. Geheimnisse wurden durch Platzhalter ersetzt.",
+    "copyCurlFailed": "Anfrage konnte nicht kopiert werden"
   },
   "endpoints": {
     "heartbeat": {
@@ -906,6 +915,8 @@
   },
   "jsonAssertions": "JSON-Assertions",
   "jsonAssertionsDescription": "Prüft Felder im JSON-Antwortkörper anhand eines JSONPath-Ausdrucks.",
+  "headerAssertions": "Header-Assertions",
+  "headerAssertionsDescription": "Prüft die Antwort-Header. Der Header-Name ist nicht von der Groß-/Kleinschreibung abhängig. „gleich“, „enthält“ und „passt auf Regex“ bestehen, wenn eine Header-Zeile passt, und scheitern bei fehlendem Header. „ungleich“ und „enthält nicht“ bestehen, wenn keine Zeile passt oder der Header fehlt.",
   "bodyAssertions": "Body-Assertions",
   "bodyAssertionsDescription": "Prüft den Antwortkörper als reinen Text. „gleich“ vergleicht den gesamten Körper ohne führende und nachfolgende Leerzeichen, sodass ein ASP.NET-Core-Health-Endpunkt mit „Healthy\\n“ bei aktivem Groß-/Kleinschreibung ignorieren auf gleich „Healthy“ passt. „enthält“, „enthält nicht“ und „passt auf Regex“ sehen den Körper unverändert.",
   "assertionIgnoreCase": "Groß-/Kleinschreibung ignorieren",
@@ -1100,6 +1111,8 @@
     "redirectHostPolicyAny": "Jeder Host",
     "redirectHostPolicySameHost": "Nur derselbe Host",
     "redirectHostPolicySameHostHelp": "Eine Weiterleitung zu einem anderen Host lässt die Prüfung fehlschlagen, statt ihr zu folgen.",
+    "expectedFinalUrl": "Erwartete End-URL",
+    "expectedFinalUrlHelp": "Wo die Weiterleitungskette enden muss. Schema und Host sind nicht groß-/kleinschreibungsabhängig, Standardports und #Fragment werden ignoriert, Pfad und Query müssen exakt übereinstimmen.",
     "httpVersion": "HTTP-Version",
     "httpVersion11": "HTTP/1.1 (Standard)",
     "httpVersion2": "HTTP/2",
@@ -1249,7 +1262,10 @@
     "burstIntervalNeedsCount": "Nur relevant, wenn mehr als ein Paket gesendet wird",
     "burstIntervalDenseWarning": "Unter 50 ms drosseln manche Ziele ICMP-Echos — der angezeigte Paketverlust kann echt sein, kein Messartefakt",
     "burstPacketSize": "Paketgröße (Bytes)",
-    "burstTtl": "TTL (Hops)"
+    "burstTtl": "TTL (Hops)",
+    "burstMaxLoss": "Max. Paketverlust (%)",
+    "burstMaxAvgRtt": "Max. durchschnittliche Laufzeit (ms)",
+    "burstLossCountHint": "Bei 1 Paket beträgt der Verlust entweder 0 % oder 100 %. Senden Sie mindestens 10 Pakete für einen sinnvollen Prozentwert."
   },
   "prometheus": {
     "mode": "Modus",
@@ -1436,6 +1452,8 @@
     "intervalDuration": "Das Intervall muss eine Dauer wie 100 oder 100ms sein",
     "packetSizeWholeNumber": "Die Paketgröße muss eine ganze Zahl von Bytes sein",
     "ttlWholeNumber": "TTL muss eine ganze Zahl sein",
+    "maxPacketLossNumber": "Der maximale Paketverlust muss eine Zahl sein",
+    "maxAvgRttNumber": "Die maximale durchschnittliche Laufzeit muss eine Zahl sein",
     "invalidStatusCodes_one": "Ungültiges Statuscode-Muster: {{codes}} (verwenden Sie einen exakten Code wie 200 oder einen Platzhalter wie 4XX)",
     "invalidStatusCodes_other": "Ungültige Statuscode-Muster: {{codes}} (verwenden Sie einen exakten Code wie 200 oder einen Platzhalter wie 4XX)",
     "invalidIp_one": "Keine {{family}}-Adresse: {{values}}",
@@ -1643,6 +1661,23 @@
       "proposed": "ein neues Skript wurde vorgeschlagen, siehe Verlauf",
       "applied": "ein neues Skript wurde übernommen",
       "error": "der Versuch ist fehlgeschlagen"
+    }
+  },
+  "timing": {
+    "title": "Zeitaufschlüsselung",
+    "description": "Wohin die Zeit dieser Prüfung ging. Nicht ausgeführte Phasen werden nicht angezeigt.",
+    "chartTitle": "Zeitaufschlüsselung",
+    "viewResponse": "Antwortzeit",
+    "viewTiming": "Zeitaufschlüsselung",
+    "viewLabel": "Diagrammansicht",
+    "noData": "Keine Zeitdaten in diesem Zeitraum.",
+    "phase": {
+      "redirect": "Weiterleitungen",
+      "dns": "DNS-Auflösung",
+      "connect": "Verbindungsaufbau",
+      "tls": "TLS-Handshake",
+      "ttfb": "Serverantwort (TTFB)",
+      "download": "Datenübertragung"
     }
   }
 }

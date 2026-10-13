@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -283,4 +284,50 @@ func TestDiscordWebhookRetryAfter(t *testing.T) {
 	r.Equal(2*time.Second, discordWebhookRetryAfter(http.Header{"Retry-After": []string{"2"}}, nil))
 	r.Equal(discordWebhookRetryMax, discordWebhookRetryAfter(http.Header{}, []byte(`{"retry_after":600}`)))
 	r.Equal(discordWebhookRetryFallback, discordWebhookRetryAfter(http.Header{}, []byte(`nope`)))
+}
+
+// A reminder through the webhook is one orange embed that says how long the
+// incident has been down and which reminder this is (spec 2026-10-12-16).
+func TestDiscordSender_WebhookPostsReminderEmbed(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	hook := newDiscordWebhookFake(t, nil, nil)
+
+	payload := discordWebhookPayload(t, eventTypeIncidentReminder, hook.server.URL+"/api/webhooks/1/tok")
+	payload.Incident.StartedAt = time.Now().Add(-75 * time.Minute)
+	payload.ReminderSeq = 3
+	r.NoError((&DiscordSender{}).Send(t.Context(), &jobdef.JobContext{}, payload))
+
+	reqs := hook.recorded()
+	r.Len(reqs, 1)
+
+	embed, ok := reqs[0].Body["embeds"].([]any)[0].(map[string]any)
+	r.True(ok)
+	r.Contains(embed["title"], "Still down")
+	r.Contains(embed["description"], "Still down after 1 h 15 min, not acknowledged (reminder 3)")
+	r.InDelta(float64(discord.ColorOrange), embed["color"], 0)
+}
+
+// Through the bot, a reminder is a thread reply that carries the incident's
+// buttons, so it can be taken from the reminder itself.
+func TestDiscordSender_BotReminderRepliesWithButtons(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	fake := newDiscordFake(t)
+
+	payload := discordBotPayload(t, eventTypeIncidentReminder)
+	payload.ReminderSeq = 2
+	jctx := discordJCtx(storedThreadDB(discordTestThread), discordTestBotToken)
+	r.NoError(fake.sender().Send(t.Context(), jctx, payload))
+
+	reply := fake.find(http.MethodPost, func(p string) bool { return strings.Contains(p, discordTestThread) })
+	r.NotNil(reply, "the reminder must go under the incident thread")
+
+	rendered, err := json.Marshal(reply.Body)
+	r.NoError(err)
+	r.Contains(string(rendered), "reminder 2")
+	r.Contains(string(rendered), "components")
+	r.Contains(string(rendered), payload.Incident.UID, "the buttons address this incident")
 }

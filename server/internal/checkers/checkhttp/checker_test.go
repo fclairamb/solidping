@@ -1151,9 +1151,10 @@ func TestHTTPChecker_Execute(t *testing.T) {
 
 			// HTTP results no longer duplicate duration into metrics (storage
 			// trim, spec 2026-07-24-02): the response time lives in the dedicated
-			// Duration field, so Metrics is left nil on every path.
-			if result.Status == checkerdef.StatusUp || result.Status == checkerdef.StatusDown {
-				require.Nil(t, result.Metrics, "HTTP checker must not populate metrics (duration lives in Duration)")
+			// Duration field. Metrics only carries the phase breakdown (spec
+			// 2026-10-12-08), never the total.
+			for _, key := range []string{"duration", "duration_ms", "total_time_ms", "response_time_ms"} {
+				require.NotContains(t, result.Metrics, key, "duration lives in Duration, not Metrics")
 			}
 		})
 	}
@@ -2344,4 +2345,148 @@ func TestHTTPChecker_HTTPVersionResponseProtocolMismatch(t *testing.T) {
 	r.Equal(checkerdef.StatusDown, result.Status, "output: %v", result.Output)
 	r.Equal("expected HTTP/2, got HTTP/1.1", result.Output[checkerdef.OutputKeyError])
 	r.Equal(http.StatusOK, result.Output[checkerdef.OutputKeyStatusCode])
+}
+
+func TestHTTPChecker_Execute_DefaultExpectedStatus(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		cfg          HTTPConfig
+		serverStatus int
+		wantStatus   checkerdef.Status
+	}{
+		{"default accepts 200", HTTPConfig{}, 200, checkerdef.StatusUp},
+		{"default accepts 201", HTTPConfig{}, 201, checkerdef.StatusUp},
+		{"default accepts 202", HTTPConfig{}, 202, checkerdef.StatusUp},
+		{"default accepts 204", HTTPConfig{}, 204, checkerdef.StatusUp},
+		{"default rejects 404", HTTPConfig{}, 404, checkerdef.StatusDown},
+		{"default rejects 500", HTTPConfig{}, 500, checkerdef.StatusDown},
+		{
+			"default rejects unfollowed 301",
+			HTTPConfig{FollowRedirects: boolPtr(false)},
+			301, checkerdef.StatusDown,
+		},
+		{"explicit 200 rejects 204", HTTPConfig{ExpectedStatusCodes: []string{"200"}}, 204, checkerdef.StatusDown},
+		{"explicit 201 rejects 200", HTTPConfig{ExpectedStatusCodes: []string{"201"}}, 200, checkerdef.StatusDown},
+		{"legacy 200 rejects 204", HTTPConfig{ExpectedStatus: 200}, 204, checkerdef.StatusDown},
+		{
+			"3XX accepts unfollowed 301",
+			HTTPConfig{ExpectedStatusCodes: []string{"3XX"}, FollowRedirects: boolPtr(false)},
+			301, checkerdef.StatusUp,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				if tt.serverStatus == 301 {
+					w.Header().Set("Location", "/elsewhere")
+				}
+				w.WriteHeader(tt.serverStatus)
+			}))
+			defer server.Close()
+
+			cfg := tt.cfg
+			cfg.URL = server.URL
+
+			var result *checkerdef.Result
+			var err error
+			for attempt := 0; attempt < 3; attempt++ {
+				result, err = (&HTTPChecker{}).Execute(context.Background(), &cfg)
+				if err == nil && result.Status == tt.wantStatus {
+					break
+				}
+				time.Sleep(50 * time.Millisecond)
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.wantStatus, result.Status)
+		})
+	}
+}
+
+// TestHTTPChecker_Execute_ExpectedFinalURL covers the final-URL assertion.
+func TestHTTPChecker_Execute_ExpectedFinalURL(t *testing.T) {
+	t.Parallel()
+
+	if version.UserAgent == "" {
+		version.UserAgent = version.DefaultUserAgent()
+	}
+
+	t.Run("redirect lands on expected URL", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+		final, redirector, _ := newRedirectingServers(t)
+
+		result, err := (&HTTPChecker{}).Execute(context.Background(), &HTTPConfig{
+			URL: redirector.URL, ExpectedFinalURL: final.URL,
+		})
+		r.NoError(err)
+		r.Equal(checkerdef.StatusUp, result.Status, result.Output)
+	})
+
+	t.Run("redirect lands elsewhere", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+		final, redirector, _ := newRedirectingServers(t)
+
+		result, err := (&HTTPChecker{}).Execute(context.Background(), &HTTPConfig{
+			URL: redirector.URL, ExpectedFinalURL: redirector.URL,
+		})
+		r.NoError(err)
+		r.Equal(checkerdef.StatusDown, result.Status)
+		msg, _ := result.Output[checkerdef.OutputKeyError].(string)
+		r.Contains(msg, "expected final URL")
+		r.Contains(msg, redirector.URL)
+		r.Contains(msg, final.URL)
+		r.Equal(final.URL, result.Output["final_url"])
+		r.Contains(result.Output, outputKeyRedirectChain)
+	})
+
+	t.Run("no redirect, uppercase scheme matches", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}))
+		t.Cleanup(srv.Close)
+
+		result, err := (&HTTPChecker{}).Execute(context.Background(), &HTTPConfig{
+			URL: srv.URL, ExpectedFinalURL: strings.Replace(srv.URL, "http://", "HTTP://", 1) + "/",
+		})
+		r.NoError(err)
+		r.Equal(checkerdef.StatusUp, result.Status, result.Output)
+	})
+
+	t.Run("no redirect, other URL expected", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+		final, redirector, _ := newRedirectingServers(t)
+
+		result, err := (&HTTPChecker{}).Execute(context.Background(), &HTTPConfig{
+			URL: final.URL, ExpectedFinalURL: redirector.URL,
+		})
+		r.NoError(err)
+		r.Equal(checkerdef.StatusDown, result.Status)
+	})
+
+	t.Run("final URL error wins over body failure", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+		_, redirector, _ := newRedirectingServers(t)
+
+		result, err := (&HTTPChecker{}).Execute(context.Background(), &HTTPConfig{
+			URL: redirector.URL, ExpectedFinalURL: "https://acme.com/", BodyPattern: "never-there",
+		})
+		r.NoError(err)
+		r.Equal(checkerdef.StatusDown, result.Status)
+		r.Contains(result.Output[checkerdef.OutputKeyError], "expected final URL")
+	})
 }
