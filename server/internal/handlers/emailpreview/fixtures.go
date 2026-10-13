@@ -77,6 +77,7 @@ var fixtureBuilders = map[string]func() map[string]any{
 	"uptime-report.html":               uptimeReportFixture,
 	"incident-acknowledged.html":       acknowledgedIncidentFixture,
 	"incident-unacknowledged.html":     unacknowledgedIncidentFixture,
+	"incident-reminder.html":           reminderIncidentFixture,
 	"incident-comment.html":            commentIncidentFixture,
 	"custom-domain-demoted.html":       customDomainDemotedFixture,
 	"region-offline.html":              regionOfflineFixture,
@@ -446,6 +447,15 @@ func unacknowledgedIncidentFixture() map[string]any {
 	fixture := incidentFixture()
 	fixture["AckActor"] = fixturePersonName
 	fixture["AckVia"] = "from the dashboard"
+
+	return fixture
+}
+
+// reminderIncidentFixture is the third reminder of an incident open for
+// 1 h 15 min and still unacknowledged (spec 2026-10-12-16).
+func reminderIncidentFixture() map[string]any {
+	fixture := incidentFixture()
+	fixture["ReminderText"] = "Still down after 1 h 15 min, not acknowledged (reminder 3)"
 
 	return fixture
 }
