@@ -410,6 +410,12 @@ func watchParent(ctx context.Context, cfg *config.Config) (context.Context, cont
 //
 // Both are idempotent no-ops once the database is already in the current shape.
 func runStartupDataFixups(ctx context.Context, server *app.Server) error {
+	// A "no such column" here, after migrations reported nothing pending, is the
+	// signature of a database left half-migrated by an interrupted older boot.
+	return db.DescribeHalfMigrated(runStartupDataFixupsInner(ctx, server))
+}
+
+func runStartupDataFixupsInner(ctx context.Context, server *app.Server) error {
 	if migrateErr := server.MaybeAutoMigrateEncryption(ctx); migrateErr != nil {
 		slog.ErrorContext(ctx, "Failed to auto-migrate credentials", "error", migrateErr)
 

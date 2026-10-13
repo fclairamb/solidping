@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -97,6 +98,11 @@ type Service struct {
 	inMemory  bool
 	guardMode migrationguard.Mode
 
+	// dbPath is the database file (empty for in-memory and for the temporary
+	// first-boot database); migrations overrides the embedded files in tests.
+	dbPath     string
+	migrations fs.FS
+
 	// compactFailpoint, when non-nil, is invoked inside CompactResults after the
 	// rollup upsert and before the source delete. It exists only so same-package
 	// tests can prove the transaction rolls the upsert back when a later step
@@ -155,12 +161,62 @@ func resolveDatabasePath(cfg Config) (string, error) {
 }
 
 // New creates a new SQLite service.
+//
+// A database that does not exist yet is built under a temporary name
+// (solidping.db.init), fully migrated, and only then renamed to its real name:
+// a process stopped during the first start leaves no half-migrated solidping.db
+// behind (spec 2026-10-13-01).
 func New(ctx context.Context, cfg Config) (*Service, error) {
-	dbPath, err := resolveDatabasePath(cfg)
+	return newService(ctx, &cfg, nil)
+}
+
+// newService is New with an optional override of the migration files, which
+// same-package tests use to run failing migrations. Files live under a
+// "migrations/" directory, like the embedded FS. nil means the embedded set.
+func newService(ctx context.Context, cfg *Config, migrations fs.FS) (*Service, error) {
+	dbPath, err := resolveDatabasePath(*cfg)
 	if err != nil {
 		return nil, err
 	}
 
+	if !cfg.InMemory {
+		// A leftover can only come from an interrupted first boot.
+		removeInitFiles(ctx, dbPath)
+
+		if _, statErr := os.Stat(dbPath); errors.Is(statErr, os.ErrNotExist) {
+			if bootErr := bootstrapDatabase(ctx, cfg, dbPath, migrations); bootErr != nil {
+				return nil, bootErr
+			}
+		}
+	}
+
+	bunDB, err := openPool(ctx, cfg, dbPath, !cfg.InMemory)
+	if err != nil {
+		return nil, err
+	}
+
+	// Expose connection-pool stats via /metrics. Cheap — the collector
+	// only calls sql.DB.Stats() at scrape time. Idempotent per backend
+	// label, so a test re-opening the DB after a reset is safe.
+	prommetrics.RegisterDB(bunDB.DB, backendLabel)
+
+	svc := &Service{
+		db:         bunDB,
+		dataDir:    cfg.DataDir,
+		inMemory:   cfg.InMemory,
+		guardMode:  cfg.GuardMode,
+		migrations: migrations,
+	}
+	if !cfg.InMemory {
+		svc.dbPath = dbPath
+	}
+
+	return svc, nil
+}
+
+// openPool opens the connection pool on dbPath: DSN parameters, single-writer
+// pool, foreign-key check, optional startup VACUUM, query hook.
+func openPool(ctx context.Context, cfg *Config, dbPath string, vacuum bool) (*bun.DB, error) {
 	// Build connection string with SQLite parameters. Foreign keys go into the
 	// DSN so EVERY connection — including ones database/sql re-opens after an
 	// error — enforces them; a per-pool one-shot PRAGMA is silently skipped by
@@ -191,16 +247,20 @@ func New(ctx context.Context, cfg Config) (*Service, error) {
 	// Enable foreign keys (belt-and-braces; the DSN param above is the
 	// connection-safe enforcement for file-based databases).
 	if _, err := sqldb.ExecContext(ctx, "PRAGMA foreign_keys = ON"); err != nil {
+		_ = sqldb.Close()
+
 		return nil, fmt.Errorf("failed to enable foreign keys: %w", err)
 	}
 
 	// Fail fast if foreign keys are not actually being enforced.
 	if err := verifyForeignKeysEnabled(ctx, sqldb, cfg.InMemory); err != nil {
+		_ = sqldb.Close()
+
 		return nil, err
 	}
 
 	// Vacuum to reclaim unused space on startup
-	if !cfg.InMemory {
+	if vacuum {
 		slog.DebugContext(ctx, "Vacuuming SQLite database...")
 		vacuumStart := time.Now()
 
@@ -219,17 +279,7 @@ func New(ctx context.Context, cfg Config) (*Service, error) {
 	// Verbose slog logging stays opt-in to avoid leaking secrets.
 	bunDB.AddQueryHook(sloghook.New(cfg.LogSQL, backendLabel, cfg.SlowQueryThreshold))
 
-	// Expose connection-pool stats via /metrics. Cheap — the collector
-	// only calls sql.DB.Stats() at scrape time. Idempotent per backend
-	// label, so a test re-opening the DB after a reset is safe.
-	prommetrics.RegisterDB(sqldb, backendLabel)
-
-	return &Service{
-		db:        bunDB,
-		dataDir:   cfg.DataDir,
-		inMemory:  cfg.InMemory,
-		guardMode: cfg.GuardMode,
-	}, nil
+	return bunDB, nil
 }
 
 // foreignKeysDSNParam returns the connection-string parameter that turns on
@@ -313,16 +363,19 @@ func (s *Service) Initialize(ctx context.Context) error {
 // database; an in-memory one may be restored from memTemplate instead.
 func (s *Service) migrate(ctx context.Context) error {
 	migrations := migrate.NewMigrations()
-	if err := migrations.Discover(migrationsFS); err != nil {
+	if err := migrations.Discover(s.migrationFS()); err != nil {
 		return fmt.Errorf("failed to discover migrations: %w", err)
 	}
 
-	guard, err := newMigrationGuard(s.db)
+	guard, err := newMigrationGuard(s.db, s.migrationFS())
 	if err != nil {
 		return err
 	}
 
-	migrator := migrate.NewMigrator(s.db, migrations)
+	// Mark a migration applied only once it succeeded: with bun's default (mark
+	// first, then run) a migration that fails or is interrupted half way stays
+	// recorded and is skipped forever (spec 2026-10-13-01).
+	migrator := migrate.NewMigrator(s.db, migrations, migrate.WithMarkAppliedOnSuccess(true))
 	if initErr := migrator.Init(ctx); initErr != nil {
 		return fmt.Errorf("failed to init migrator: %w", initErr)
 	}
@@ -338,7 +391,14 @@ func (s *Service) migrate(ctx context.Context) error {
 
 	migrationguard.LogMismatches(ctx, mismatches)
 
+	backupPath := s.backupBeforeMigrating(ctx, migrator)
+
 	if _, migrateErr := migrator.Migrate(ctx); migrateErr != nil {
+		if backupPath != "" {
+			return fmt.Errorf("failed to run migrations (database backed up to %s before this upgrade): %w",
+				backupPath, migrateErr)
+		}
+
 		return fmt.Errorf("failed to run migrations: %w", migrateErr)
 	}
 
@@ -365,7 +425,7 @@ func (s *Service) migrate(ctx context.Context) error {
 // the current file checksum — without running any migration. Used by the
 // `solidping migrate repair` CLI command; see internal/db/migrationguard.
 func (s *Service) RepairMigrationChecksums(ctx context.Context) ([]migrationguard.RepairResult, error) {
-	guard, err := newMigrationGuard(s.db)
+	guard, err := newMigrationGuard(s.db, s.migrationFS())
 	if err != nil {
 		return nil, err
 	}
@@ -374,13 +434,22 @@ func (s *Service) RepairMigrationChecksums(ctx context.Context) ([]migrationguar
 }
 
 // newMigrationGuard builds the checksum guard over the embedded SQL migrations.
-func newMigrationGuard(db *bun.DB) (*migrationguard.Guard, error) {
-	expected, err := migrationguard.Checksums(migrationsFS, "migrations")
+func newMigrationGuard(db *bun.DB, fsys fs.FS) (*migrationguard.Guard, error) {
+	expected, err := migrationguard.Checksums(fsys, "migrations")
 	if err != nil {
 		return nil, fmt.Errorf("failed to checksum migrations: %w", err)
 	}
 
 	return migrationguard.New(db, expected), nil
+}
+
+// migrationFS returns the migration files: the embedded ones, or a test override.
+func (s *Service) migrationFS() fs.FS {
+	if s.migrations != nil {
+		return s.migrations
+	}
+
+	return migrationsFS
 }
 
 // DB returns the underlying bun.DB instance.

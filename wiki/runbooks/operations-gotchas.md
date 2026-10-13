@@ -20,6 +20,19 @@ clusters, secrets) live in the operator's private infrastructure repo, not here.
   `SP_NODE_ROLE`, and the migrator takes no lock. Roll the API first and let it
   finish, then the checks workers. On one fleet bump the API beat a worker by 818 ms:
   luck, not design. Deported agents never migrate.
+- A migration is recorded as applied only after it succeeded (spec 2026-10-13-01). One that
+  fails or is killed half way is retried on the next boot, so statements that already ran can
+  answer `already exists`: that is a loud startup error naming the migration, fix the migration
+  or the data. SQLite also builds a new database under `solidping.db.init` and renames it once
+  fully migrated (a leftover `.init` file is deleted at the next start), and copies an existing
+  database to `solidping.db.pre-<migration>.bak` before pending migrations (latest only; skipped
+  when free disk space is under twice the database size).
+- **Half-migrated database.** Versions up to 0.38.3 recorded a migration before running it, so a
+  first start stopped early (or a failing migration) left a database that claims a schema it
+  lacks (`no such column: organization.default_escalation_policy_uid`). The startup error now
+  says so. Nothing repairs it automatically: restore a `.pre-*.bak` if there is one, or, on a
+  new install with no data, delete the database file and start again. `solidping migrate repair`
+  only re-records checksums, it does not run missing DDL.
 - Old workers break on a new schema or a new job type (`column ... does not exist`,
   `unknown job type: ...`) and crash-loop. When `git diff vA..vB -- server/internal/db/*/migrations`
   is non-empty, bump every worker right after the API. A worker must never be ahead of

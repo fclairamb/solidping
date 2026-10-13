@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"slices"
 	"strings"
@@ -170,6 +171,9 @@ type Service struct {
 	reset     bool   // Reset database before migrations
 	runMode   string // Run mode (test, demo, etc.)
 	guardMode migrationguard.Mode
+
+	// migrations overrides the embedded migration files (same-package tests only).
+	migrations fs.FS
 
 	// compactFailpoint, when non-nil, is invoked inside CompactResults after the
 	// rollup upsert and before the source delete. It exists only so same-package
@@ -333,16 +337,20 @@ func (s *Service) Initialize(ctx context.Context) error {
 	}
 
 	migrations := migrate.NewMigrations()
-	if err := migrations.Discover(migrationsFS); err != nil {
+	if err := migrations.Discover(s.migrationFS()); err != nil {
 		return fmt.Errorf("failed to discover migrations: %w", err)
 	}
 
-	guard, err := newMigrationGuard(s.db)
+	guard, err := newMigrationGuard(s.db, s.migrationFS())
 	if err != nil {
 		return err
 	}
 
-	migrator := migrate.NewMigrator(s.db, migrations)
+	// Mark a migration applied only once it succeeded (spec 2026-10-13-01). A
+	// migration that failed half way is retried on the next boot; statements
+	// that already ran may then fail with "already exists", a loud startup error
+	// naming the migration instead of a silently missing column.
+	migrator := migrate.NewMigrator(s.db, migrations, migrate.WithMarkAppliedOnSuccess(true))
 	if initErr := migrator.Init(ctx); initErr != nil {
 		return fmt.Errorf("failed to init migrator: %w", initErr)
 	}
@@ -385,8 +393,8 @@ func (s *Service) Initialize(ctx context.Context) error {
 }
 
 // newMigrationGuard builds the checksum guard over the embedded SQL migrations.
-func newMigrationGuard(db *bun.DB) (*migrationguard.Guard, error) {
-	expected, err := migrationguard.Checksums(migrationsFS, "migrations")
+func newMigrationGuard(db *bun.DB, fsys fs.FS) (*migrationguard.Guard, error) {
+	expected, err := migrationguard.Checksums(fsys, "migrations")
 	if err != nil {
 		return nil, fmt.Errorf("failed to checksum migrations: %w", err)
 	}
@@ -394,12 +402,21 @@ func newMigrationGuard(db *bun.DB) (*migrationguard.Guard, error) {
 	return migrationguard.New(db, expected), nil
 }
 
+// migrationFS returns the migration files: the embedded ones, or a test override.
+func (s *Service) migrationFS() fs.FS {
+	if s.migrations != nil {
+		return s.migrations
+	}
+
+	return migrationsFS
+}
+
 // RepairMigrationChecksums re-records checksums for every applied migration
 // this binary ships — inserting a missing row or updating a drifted one to
 // the current file checksum — without running any migration. Used by the
 // `solidping migrate repair` CLI command; see internal/db/migrationguard.
 func (s *Service) RepairMigrationChecksums(ctx context.Context) ([]migrationguard.RepairResult, error) {
-	guard, err := newMigrationGuard(s.db)
+	guard, err := newMigrationGuard(s.db, s.migrationFS())
 	if err != nil {
 		return nil, err
 	}

@@ -55,6 +55,11 @@ type mattnSerializer interface {
 // back to running the migrations: the template is an optimization and must
 // never change what Initialize produces.
 func (s *Service) initializeInMemory(ctx context.Context) error {
+	if s.migrations != nil {
+		// A test-only migration set must never feed or read the process-wide template.
+		return s.migrate(ctx)
+	}
+
 	fresh, err := s.isEmpty(ctx)
 	if err != nil || !fresh {
 		// A database that already holds tables (a test re-initializing, or
@@ -97,7 +102,7 @@ func (s *Service) initializeInMemory(ctx context.Context) error {
 
 	// Same guard pass the migration path ends with, so a mode that refuses a
 	// checksum mismatch behaves identically on a restored database.
-	guard, err := newMigrationGuard(s.db)
+	guard, err := newMigrationGuard(s.db, s.migrationFS())
 	if err != nil {
 		return err
 	}
