@@ -7,6 +7,7 @@ import {
   getEventActorName,
   getEventAgentName,
   getEventAgentRegion,
+  getEventRegionName,
   getEventChannelName,
   getEventChannelUid,
   getEventCheckName,
@@ -85,6 +86,9 @@ function getEventDetail(
     ].filter(Boolean);
     return parts.length > 0 ? parts.join(" · ") : null;
   }
+
+  const regionName = getEventRegionName(event);
+  if (regionName) return regionName;
 
   const channelName =
     event.eventType === "org.activation.first_notification_configured"
