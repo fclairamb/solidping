@@ -142,9 +142,10 @@ This applies to any fresh database, self-hosted or not. There is no setting
 that turns it off.
 :::
 
-Change the seeded admin email from **Account > Profile** after first login. To
-start with your own address instead, set `SP_ADMIN_EMAIL` before the first
-start (see [Changing an email address](/configuration/authentication#changing-an-email-address)).
+The same screen asks for your own email address while the account still uses
+`admin@solidping.io`. It is optional there, and you can change it later from
+**Account > Profile**. To start with your own address instead, set
+`SP_ADMIN_EMAIL` before the first start (see [Changing an email address](/configuration/authentication#changing-an-email-address)).
 
 ## Updating
 
