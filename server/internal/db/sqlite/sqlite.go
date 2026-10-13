@@ -4078,6 +4078,35 @@ func (s *Service) ListExpiredSnoozedIncidents(ctx context.Context, now time.Time
 	return incidents, nil
 }
 
+// ClaimIncidentReminder is the compare-and-set that lets exactly one reminder
+// job send per interval (spec 2026-10-12-16). See db.Service.
+func (s *Service) ClaimIncidentReminder(
+	ctx context.Context, incidentUID string, expectedCount int, now time.Time,
+) (bool, error) {
+	result, err := s.db.NewUpdate().
+		Model((*models.Incident)(nil)).
+		Set("reminder_count = reminder_count + 1").
+		Set("last_reminder_at = ?", now).
+		Set("updated_at = ?", now).
+		Where("uid = ?", incidentUID).
+		Where("reminder_count = ?", expectedCount).
+		Where("resolved_at IS NULL").
+		Where("acknowledged_at IS NULL").
+		Where("(snoozed_until IS NULL OR snoozed_until <= ?)", now).
+		Where("deleted_at IS NULL").
+		Exec(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to claim incident reminder: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("failed to read claimed reminder rows: %w", err)
+	}
+
+	return rows == 1, nil
+}
+
 // UpdateCheckStatusAndClocks writes the check's status, streak,
 // status_changed_at and both incident clocks in a single atomic UPDATE,
 // replacing the former separate UpdateCheckStatus + UpdateCheckIncidentClocks

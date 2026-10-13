@@ -52,6 +52,11 @@ const (
 	EventTypeIncidentResolved EventType = "incident.resolved"
 	// EventTypeIncidentReopened indicates an incident was reopened after a relapse.
 	EventTypeIncidentReopened EventType = "incident.reopened"
+	// EventTypeIncidentReminder re-notifies the check's channels about an
+	// incident that is still open and unacknowledged (spec 2026-10-12-16).
+	// Notification-only: no `events` row is written, the incident_notifications
+	// audit rows list each reminder.
+	EventTypeIncidentReminder EventType = "incident.reminder"
 	// EventTypeIncidentRolledUp indicates an already-open incident was
 	// retroactively attached to a hard parent's incident and its paging
 	// suppressed, because the parent confirmed AFTER it did (spec

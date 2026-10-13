@@ -416,6 +416,18 @@ type Check struct {
 	// the org-level default unreachable for every check that already exists.
 	TracerouteOnFailure *bool `bun:"traceroute_on_failure"`
 
+	// ReminderIntervalSeconds re-notifies the check's channels while an
+	// incident stays open and unacknowledged (spec 2026-10-12-16).
+	//
+	//	nil   inherit the org parameter `incidents.reminder_interval_seconds`
+	//	      (absent there means off)
+	//	0     off for this check, whatever the org default says
+	//	n     every n seconds, 900..86400
+	//
+	// No `default:` tag (see the EscalationThreshold note): nil must stay
+	// writable on create.
+	ReminderIntervalSeconds *int `bun:"reminder_interval_seconds"`
+
 	// Status tracking
 	Status          CheckStatus `bun:"status,notnull"`
 	StatusStreak    int         `bun:"status_streak,notnull"`

@@ -1913,13 +1913,7 @@ func (s *Service) queueLifecycleNotifications(
 			return nil
 		}
 
-		// Escalation policy fan-out: only on initial open. Resolved /
-		// reopened don't start a new paging cycle (resolved is final;
-		// reopened is a relapse and the original cycle's pending steps
-		// were either fired or canceled).
-		if eventType == models.EventTypeIncidentCreated {
-			s.scheduleEscalationPolicy(ctx, orgUID, checkUID, incident)
-		}
+		s.scheduleFollowUps(ctx, orgUID, checkUID, eventType, incident)
 	case models.EventTypeCheckCreated, models.EventTypeCheckUpdated,
 		models.EventTypeCheckDeleted,
 		// An automatic re-placement (spec 2026-09-25-06) is the platform
@@ -1960,6 +1954,10 @@ func (s *Service) queueLifecycleNotifications(
 		// facts about OUR ability to measure, not about the target: stale is
 		// neither down nor up, so it never pages in either direction.
 		models.EventTypeIncidentMonitoringInterrupted, models.EventTypeIncidentMonitoringResumed,
+		// A reminder (spec 2026-10-12-16) is sent by the incident_reminder
+		// job straight to the check's channels and writes no events row; it
+		// never reaches this switch as a lifecycle event.
+		models.EventTypeIncidentReminder,
 		models.EventTypeStatusUpdateCreated, models.EventTypeStatusUpdateUpdated,
 		models.EventTypeStatusUpdateDeleted,
 		// Publication lifecycle is the STATUS PAGE's fan-out, not the on-call
@@ -2203,6 +2201,64 @@ func (s *Service) scheduleEscalationPolicy(
 	); scheduleErr != nil {
 		slog.WarnContext(ctx, "escalation: failed to schedule cycle 0",
 			"policyUid", policyUID, "error", scheduleErr)
+	}
+}
+
+// scheduleFollowUps schedules what follows an incident's first page: the
+// escalation policy and the reminders.
+func (s *Service) scheduleFollowUps(
+	ctx context.Context, orgUID, checkUID string, eventType models.EventType, incident *models.Incident,
+) {
+	// Escalation policy fan-out: only on initial open. Resolved /
+	// reopened don't start a new paging cycle (resolved is final;
+	// reopened is a relapse and the original cycle's pending steps
+	// were either fired or canceled).
+	if eventType == models.EventTypeIncidentCreated {
+		s.scheduleEscalationPolicy(ctx, orgUID, checkUID, incident)
+	}
+
+	// Reminders re-notify the check's channels while the incident stays
+	// open and unacknowledged (spec 2026-10-12-16). A reopen starts a new
+	// chain: the relapse cleared the acknowledgment.
+	if eventType == models.EventTypeIncidentCreated || eventType == models.EventTypeIncidentReopened {
+		s.scheduleReminder(ctx, orgUID, incident.UID, s.clock.Now())
+	}
+}
+
+// scheduleReminder schedules the next reminder of an incident from `from`
+// (spec 2026-10-12-16). It re-reads the incident so the paging state it checks
+// is the one just written (a reopen clears the acknowledgment in the database,
+// not on the caller's copy). Best-effort: a failure is logged and never blocks
+// the action that triggered it.
+func (s *Service) scheduleReminder(ctx context.Context, orgUID, incidentUID string, from time.Time) {
+	incident, err := s.db.GetIncident(ctx, orgUID, incidentUID)
+	if err != nil {
+		slog.WarnContext(ctx, "reminder: failed to load incident", "incidentUid", incidentUID, "error", err)
+
+		return
+	}
+
+	check, err := s.db.GetCheck(ctx, orgUID, incident.CheckUID)
+	if err != nil {
+		slog.WarnContext(ctx, "reminder: failed to load check", "checkUid", incident.CheckUID, "error", err)
+
+		return
+	}
+
+	if err := jobtypes.ScheduleIncidentReminder(ctx, s.jobsSvc, s.db, incident, check, from); err != nil {
+		slog.WarnContext(ctx, "reminder: failed to schedule", "incidentUid", incidentUID, "error", err)
+	}
+}
+
+// cancelForSnooze cancels what a snooze silences: notifications due before
+// the snooze ends, and every pending reminder whatever its due time (unsnooze
+// schedules a fresh one, counted from then). Best-effort, like
+// cancelPendingNotifications.
+func (s *Service) cancelForSnooze(ctx context.Context, incidentUID string, until time.Time) {
+	s.cancelPendingNotifications(ctx, incidentUID, &until)
+
+	if _, err := jobtypes.CancelIncidentReminders(ctx, s.jobsSvc, incidentUID); err != nil {
+		slog.WarnContext(ctx, "reminder: failed to cancel", "incidentUid", incidentUID, "error", err)
 	}
 }
 
@@ -3618,6 +3674,8 @@ func (s *Service) unacknowledgeIncidentByOrgUID(
 	// still reading "Acknowledged by Alice".
 	s.resumeEscalationAfterUnack(ctx, incident)
 	s.queueUnackNotifications(ctx, orgUID, incident, actorUID, via)
+	// Reminders restart counted from the unack (spec 2026-10-12-16).
+	s.scheduleReminder(ctx, orgUID, incident.UID, s.clock.Now())
 
 	event := models.NewEvent(orgUID, models.EventTypeIncidentUnacknowledged, models.ActorTypeUser)
 	event.IncidentUID = &incident.UID
@@ -3743,7 +3801,7 @@ func (s *Service) snoozeIncidentByOrgUID(
 
 	s.rt.PublishImmediate(ctx, orgUID, incident.CheckUID, realtime.KindIncidents, realtime.KindEvents)
 
-	s.cancelPendingNotifications(ctx, incident.UID, &until)
+	s.cancelForSnooze(ctx, incident.UID, until)
 
 	return incident, nil
 }
@@ -3816,6 +3874,11 @@ func (s *Service) unsnoozeIncidentByOrgUID(
 	incident.SnoozedUntil = nil
 	incident.SnoozedBy = nil
 	incident.SnoozeReason = nil
+
+	// The interval restarts from the unsnooze (spec 2026-10-12-16). Snoozing
+	// acknowledged the incident, so this only schedules when the
+	// acknowledgment was withdrawn in between.
+	s.scheduleReminder(ctx, orgUID, incident.UID, s.clock.Now())
 
 	event := models.NewEvent(orgUID, models.EventTypeIncidentUnsnoozed, models.ActorTypeUser)
 	if via == "auto" {

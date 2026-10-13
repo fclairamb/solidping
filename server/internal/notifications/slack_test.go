@@ -509,6 +509,10 @@ func (m *mockDBService) ListExpiredSnoozedIncidents(_ context.Context, _ time.Ti
 	return nil, nil
 }
 
+func (m *mockDBService) ClaimIncidentReminder(_ context.Context, _ string, _ int, _ time.Time) (bool, error) {
+	return false, nil
+}
+
 func (m *mockDBService) CreateOnCallSchedule(_ context.Context, _ *models.OnCallSchedule) error {
 	return nil
 }

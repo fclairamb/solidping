@@ -9,6 +9,10 @@
 --   SECTION: check-job-run-request
 --                              check_jobs.run_requested_at, a "Run now"
 --                              request recorded while the job is leased
+--   SECTION: incident-reminders
+--                              checks.reminder_interval_seconds,
+--                              incidents.reminder_count and
+--                              incidents.last_reminder_at
 
 -- SECTION: check-deleted-incidents (spec 2026-10-08-02)
 -- Deleting a check now resolves its active incidents in the same transaction
@@ -47,3 +51,38 @@ alter table check_jobs add column if not exists run_requested_at timestamptz;
 
 comment on column check_jobs.run_requested_at is
   'Pending run request recorded while the job was leased ("Run now" or a check edit, spec 2026-10-12-05); the release makes the job due at it and clears it. NULL: none pending.';
+
+--bun:split
+
+-- ==========================================================================
+-- SECTION: incident-reminders (spec 2026-10-12-16)
+-- ==========================================================================
+-- An open, unacknowledged incident re-notifies the check's channels every
+-- interval until it is acknowledged, snoozed or resolved. The check value
+-- wins; NULL inherits the org parameter incidents.reminder_interval_seconds
+-- (absent = 0 = off). reminder_count is the compare-and-set token that lets
+-- exactly one reminder job win per interval.
+alter table checks add column if not exists reminder_interval_seconds integer;
+
+--bun:split
+
+comment on column checks.reminder_interval_seconds is
+  'Re-notify interval for an open, unacknowledged incident (spec 2026-10-12-16). NULL: inherit the org default; 0: off; else 900..86400 seconds.';
+
+--bun:split
+
+alter table incidents add column if not exists reminder_count integer not null default 0;
+
+--bun:split
+
+alter table incidents add column if not exists last_reminder_at timestamptz;
+
+--bun:split
+
+comment on column incidents.reminder_count is
+  'Reminders sent for this incident (spec 2026-10-12-16). Bumped by compare-and-set, so one reminder job wins per interval.';
+
+--bun:split
+
+comment on column incidents.last_reminder_at is
+  'When the last reminder went out (spec 2026-10-12-16). NULL: none yet.';

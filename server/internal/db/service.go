@@ -753,6 +753,12 @@ type Service interface {
 	// ListExpiredSnoozedIncidents returns active incidents whose snoozed_until <= now.
 	// Used by the auto-unsnooze sweeper.
 	ListExpiredSnoozedIncidents(ctx context.Context, now time.Time) ([]*models.Incident, error)
+	// ClaimIncidentReminder bumps reminder_count from expectedCount to
+	// expectedCount+1 and stamps last_reminder_at, but only while the incident
+	// is unresolved, unacknowledged and not snoozed past now (spec
+	// 2026-10-12-16). False means another reminder job won the race or the
+	// incident was handled: the caller must not send.
+	ClaimIncidentReminder(ctx context.Context, incidentUID string, expectedCount int, now time.Time) (bool, error)
 
 	// On-call schedule operations
 	CreateOnCallSchedule(ctx context.Context, schedule *models.OnCallSchedule) error

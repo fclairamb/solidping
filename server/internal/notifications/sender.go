@@ -65,6 +65,9 @@ type Payload struct {
 	// render it through RegionLine / RegionLabelFor, which also decide the
 	// events and incident kinds that show it.
 	Regions *RegionInfo
+	// ReminderSeq is the 1-based number of an `incident.reminder` (spec
+	// 2026-10-12-16), printed as "reminder 3". Zero for every other event.
+	ReminderSeq int
 }
 
 // MentionTarget is one human an alert should ping. ExternalID is the

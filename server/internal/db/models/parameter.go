@@ -63,6 +63,27 @@ const ParameterValueKey = "value"
 // two subtly different strings.
 const ParamKeyTracerouteEnabled = "diagnostics.traceroute.enabled"
 
+// ParamKeyIncidentReminderInterval is the ORG-scoped default reminder interval,
+// in seconds, for every check whose own `reminder_interval_seconds` is NULL
+// (spec 2026-10-12-16). Absent means 0, which is off: nobody gets new noise
+// after an upgrade. Lives here for the same import-cycle reason as
+// ParamKeyTracerouteEnabled (the org-settings handler writes it, jobtypes reads
+// it).
+const ParamKeyIncidentReminderInterval = "incidents.reminder_interval_seconds"
+
+// Reminder interval bounds (spec 2026-10-12-16): 0 is off, otherwise the
+// interval must sit between 15 minutes and 24 hours.
+const (
+	ReminderIntervalMinSeconds = 900
+	ReminderIntervalMaxSeconds = 86400
+)
+
+// ValidReminderIntervalSeconds reports whether a reminder interval is
+// storable: 0 (off) or ReminderIntervalMinSeconds..ReminderIntervalMaxSeconds.
+func ValidReminderIntervalSeconds(seconds int) bool {
+	return seconds == 0 || (seconds >= ReminderIntervalMinSeconds && seconds <= ReminderIntervalMaxSeconds)
+}
+
 // ParamKeyStatusPageAllowedEmbedOrigins is the ORG-scoped allowlist of origins
 // that may frame the org's public status pages (spec 2026-09-25-28). Stored as
 // a comma-separated string of scheme+host origins. Absent means only the

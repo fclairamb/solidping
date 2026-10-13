@@ -8,3 +8,16 @@ select 1;
 
 -- SECTION: check-job-run-request
 alter table check_jobs drop column run_requested_at;
+
+--bun:split
+
+-- SECTION: incident-reminders
+alter table incidents drop column last_reminder_at;
+
+--bun:split
+
+alter table incidents drop column reminder_count;
+
+--bun:split
+
+alter table checks drop column reminder_interval_seconds;

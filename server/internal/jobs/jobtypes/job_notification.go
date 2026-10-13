@@ -67,6 +67,11 @@ type NotificationJobConfig struct {
 	// matches the pair on the audit row, and so a future "repeat N of M" line
 	// needs no new plumbing.
 	RepeatIndex int `json:"repeatIndex,omitempty"`
+	// ReminderSeq is the 1-based number of an `incident.reminder` (spec
+	// 2026-10-12-16). Distinct per reminder, so CreateJob never folds a
+	// reminder into an earlier one still pending, and senders can say
+	// "reminder 3". Zero for every other event.
+	ReminderSeq int `json:"reminderSeq,omitempty"`
 }
 
 // NotificationJobDefinition is the factory for notification jobs.
@@ -234,6 +239,8 @@ func (r *NotificationJobRun) buildPayload(
 		Comment: r.config.Comment,
 		// Non-nil only for `incident.acknowledged`.
 		Acknowledgment: r.config.Acknowledgment,
+		// Non-zero only for `incident.reminder`.
+		ReminderSeq: r.config.ReminderSeq,
 		// Which regions saw the failure, labeled at send time (spec
 		// 2026-10-12-15). Nil when none is known.
 		Regions: resolveRegionInfo(ctx, jctx, log, incident),

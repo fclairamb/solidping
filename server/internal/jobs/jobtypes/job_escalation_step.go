@@ -434,55 +434,18 @@ func (r *EscalationStepJobRun) enqueueNotificationFor(
 	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
 	incident *models.Incident, connectionUID string,
 ) bool {
-	cfg, err := json.Marshal(NotificationJobConfig{
+	stepUID := r.config.StepUID
+	repeatIndex := r.config.RepeatIndex
+
+	return queueNotificationWithAudit(ctx, jctx, log, incident, &NotificationJobConfig{
 		ConnectionUID: connectionUID,
 		IncidentUID:   incident.UID,
 		EventType:     string(models.EventTypeIncidentEscalated),
 		// The step that is paging right now — so the channel message names the
 		// humans THIS step pages, not whoever step 1 happens to name.
-		StepUID:     r.config.StepUID,
-		RepeatIndex: r.config.RepeatIndex,
-	})
-	if err != nil {
-		log.WarnContext(ctx, "failed to marshal escalation notification config",
-			"connectionUid", connectionUID, "error", err)
-
-		return false
-	}
-
-	if jctx.Services == nil || jctx.Services.Jobs == nil {
-		return false
-	}
-
-	job, err := jctx.Services.Jobs.CreateJob(
-		ctx, incident.OrganizationUID, string(jobdef.JobTypeNotification), cfg, nil,
-	)
-	if err != nil {
-		log.WarnContext(ctx, "failed to create escalation notification job",
-			"connectionUid", connectionUID, "error", err)
-
-		return false
-	}
-
-	// Audit: record a pending row. Load the connection to get the channel type.
-	conn, connErr := jctx.DBService.GetChannel(ctx, connectionUID)
-	if connErr != nil {
-		log.WarnContext(ctx, "failed to load connection for audit row",
-			"connectionUid", connectionUID, "error", connErr)
-	} else {
-		stepUID := r.config.StepUID
-		repeatIndex := r.config.RepeatIndex
-		if auditErr := jctx.DBService.CreateIncidentNotification(ctx, models.NewIncidentNotificationForJob(
-			incident.OrganizationUID, incident.UID, string(models.EventTypeIncidentEscalated),
-			models.IncidentNotificationSourceEscalationConnection,
-			connectionUID, job.UID, string(conn.Type),
-			&stepUID, &repeatIndex,
-		)); auditErr != nil {
-			log.WarnContext(ctx, "failed to create notification audit row", "error", auditErr)
-		}
-	}
-
-	return true
+		StepUID:     stepUID,
+		RepeatIndex: repeatIndex,
+	}, nil, models.IncidentNotificationSourceEscalationConnection, &stepUID, &repeatIndex)
 }
 
 // pageUser fans out over a user's notification routes. Falls back to a direct
