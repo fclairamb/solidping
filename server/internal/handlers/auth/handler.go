@@ -1192,48 +1192,64 @@ func (h *Handler) UpdateOrgSettings(writer http.ResponseWriter, req *http.Reques
 
 	resp, err := h.svc.UpdateOrgSettings(req.Context(), orgSlug, updateReq)
 	if err != nil {
-		if errors.Is(err, ErrInvalidAutoJoinRegex) {
-			return h.WriteErrorErr(
-				writer, req, http.StatusBadRequest,
-				base.ErrorCodeInvalidAutoJoinRegex,
-				err.Error(), err,
-			)
-		}
-
-		if errors.Is(err, ErrOrganizationNotFound) {
-			return h.WriteErrorErr(
-				writer, req, http.StatusNotFound,
-				base.ErrorCodeOrganizationNotFound,
-				"Organization not found", err,
-			)
-		}
-
-		if errors.Is(err, ErrInvalidEscalationPolicy) {
-			return h.WriteErrorErr(
-				writer, req, http.StatusBadRequest,
-				base.ErrorCodeValidationError,
-				"Escalation policy not found in this organization", err,
-			)
-		}
-
-		if errors.Is(err, securityheaders.ErrInvalidEmbedOrigin) ||
-			errors.Is(err, securityheaders.ErrTooManyEmbedOrigins) {
-			// 400, like this endpoint's other refusals and its OpenAPI
-			// contract, with the field-level shape of a validation error so
-			// the dashboard can show the reason next to the field.
-			return h.WriteJSON(writer, http.StatusBadRequest, base.ValidationError{
-				Title: "Invalid status page embed origins",
-				Code:  string(base.ErrorCodeValidationError),
-				Fields: []base.ValidationErrorField{
-					{Name: "statusPageAllowedEmbedOrigins", Message: err.Error()},
-				},
-			})
-		}
-
-		return h.WriteInternalError(writer, req, err)
+		return h.writeUpdateOrgSettingsError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
+}
+
+// writeUpdateOrgSettingsError maps an UpdateOrgSettings failure to its
+// response.
+func (h *Handler) writeUpdateOrgSettingsError(writer http.ResponseWriter, req *http.Request, err error) error {
+	if errors.Is(err, ErrInvalidAutoJoinRegex) {
+		return h.WriteErrorErr(
+			writer, req, http.StatusBadRequest,
+			base.ErrorCodeInvalidAutoJoinRegex,
+			err.Error(), err,
+		)
+	}
+
+	if errors.Is(err, ErrOrganizationNotFound) {
+		return h.WriteErrorErr(
+			writer, req, http.StatusNotFound,
+			base.ErrorCodeOrganizationNotFound,
+			"Organization not found", err,
+		)
+	}
+
+	if errors.Is(err, ErrInvalidEscalationPolicy) {
+		return h.WriteErrorErr(
+			writer, req, http.StatusBadRequest,
+			base.ErrorCodeValidationError,
+			"Escalation policy not found in this organization", err,
+		)
+	}
+
+	if errors.Is(err, ErrInvalidReminderInterval) {
+		return h.WriteJSON(writer, http.StatusBadRequest, base.ValidationError{
+			Title: "Invalid reminder interval",
+			Code:  string(base.ErrorCodeValidationError),
+			Fields: []base.ValidationErrorField{
+				{Name: "reminderIntervalSeconds", Message: err.Error()},
+			},
+		})
+	}
+
+	if errors.Is(err, securityheaders.ErrInvalidEmbedOrigin) ||
+		errors.Is(err, securityheaders.ErrTooManyEmbedOrigins) {
+		// 400, like this endpoint's other refusals and its OpenAPI
+		// contract, with the field-level shape of a validation error so
+		// the dashboard can show the reason next to the field.
+		return h.WriteJSON(writer, http.StatusBadRequest, base.ValidationError{
+			Title: "Invalid status page embed origins",
+			Code:  string(base.ErrorCodeValidationError),
+			Fields: []base.ValidationErrorField{
+				{Name: "statusPageAllowedEmbedOrigins", Message: err.Error()},
+			},
+		})
+	}
+
+	return h.WriteInternalError(writer, req, err)
 }
 
 // handleRegistrationError handles errors from registration endpoints.
