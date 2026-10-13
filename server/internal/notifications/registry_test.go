@@ -117,3 +117,18 @@ func TestGetSender_SlackWebhookResolvesToItsOwnSender(t *testing.T) {
 	require.True(t, ok)
 	require.IsType(t, &SlackWebhookSender{}, sender)
 }
+
+// Reminders skip paid SMS (Twilio) and PagerDuty, which re-notifies on its own;
+// every chat channel gets them (spec 2026-10-12-16).
+func TestAcceptsEventType_ReminderOptOut(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	r.False(AcceptsEventType(models.ConnectionTypeTwilio, "incident.reminder"))
+	r.False(AcceptsEventType(models.ConnectionTypePagerduty, "incident.reminder"))
+	r.True(AcceptsEventType(models.ConnectionTypeSlack, "incident.reminder"))
+	r.True(AcceptsEventType(models.ConnectionTypeEmail, "incident.reminder"))
+
+	// Positive control: PagerDuty still gets the lifecycle events.
+	r.True(AcceptsEventType(models.ConnectionTypePagerduty, "incident.created"))
+}

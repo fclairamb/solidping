@@ -79,7 +79,7 @@ test.describe("SSH check secret in plaintext mode", () => {
     // ── Save an unrelated edit without re-entering the key ──
     await page.getByTestId("check-host-input").fill("ssh.internal.example2");
     await page.getByTestId("check-submit-button").click();
-    await page.waitForURL(/\/checks\/[0-9a-f-]{36}$/, { timeout: 10000 });
+    await page.waitForURL(/\/checks\/[0-9a-f-]{36}(\?.*)?$/, { timeout: 10000 });
     await page.waitForLoadState("networkidle");
 
     // ── The credential survived the unrelated edit, still never echoed ──

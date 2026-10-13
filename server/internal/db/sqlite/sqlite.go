@@ -2153,6 +2153,12 @@ func (s *Service) updateCheck( //nolint:funlen // PATCH builder spans many optio
 		query = query.Set("traceroute_on_failure = ?", *update.TracerouteOnFailure)
 	}
 
+	if update.ClearReminderInterval {
+		query = query.Set("reminder_interval_seconds = NULL")
+	} else if update.ReminderIntervalSeconds != nil {
+		query = query.Set("reminder_interval_seconds = ?", *update.ReminderIntervalSeconds)
+	}
+
 	if update.ReopenCooldownMultiplier != nil {
 		query = query.Set("reopen_cooldown_multiplier = ?", *update.ReopenCooldownMultiplier)
 	}
@@ -2312,47 +2318,10 @@ func (s *Service) RequestCheckCapture(ctx context.Context, jobUID string, reques
 	return nil
 }
 
-// RequestCheckRun makes one job row due at requestedAt (spec 2026-10-04-01).
-// It leaves a leased job, and one carrying a multi-step run, alone
-// (db.ErrCheckJobBusy): the release would overwrite the due time.
+// RequestCheckRun makes one job row due at requestedAt, or parks the request
+// on a leased job for its release (db.RequestCheckRunOn).
 func (s *Service) RequestCheckRun(ctx context.Context, jobUID string, requestedAt time.Time) error {
-	res, err := s.db.NewUpdate().
-		Model((*models.CheckJob)(nil)).
-		Set("scheduled_at = ?", requestedAt).
-		Set("effective_scheduled_at = ?", requestedAt).
-		Set("updated_at = ?", requestedAt).
-		Where("uid = ?", jobUID).
-		Where("step_run_uid IS NULL").
-		WhereGroup(" AND ", func(q *bun.UpdateQuery) *bun.UpdateQuery {
-			return q.Where("lease_expires_at IS NULL").WhereOr("lease_expires_at < ?", requestedAt)
-		}).
-		Exec(ctx)
-	if err != nil {
-		return err
-	}
-
-	rows, err := res.RowsAffected()
-	if err != nil {
-		return err
-	}
-
-	if rows > 0 {
-		return nil
-	}
-
-	exists, err := s.db.NewSelect().
-		Model((*models.CheckJob)(nil)).
-		Where("uid = ?", jobUID).
-		Exists(ctx)
-	if err != nil {
-		return err
-	}
-
-	if !exists {
-		return sql.ErrNoRows
-	}
-
-	return db.ErrCheckJobBusy
+	return db.RequestCheckRunOn(ctx, s.db, jobUID, requestedAt)
 }
 
 // RecordCheckCaptureFailure records a "Capture now" request that produced no
@@ -4113,6 +4082,35 @@ func (s *Service) ListExpiredSnoozedIncidents(ctx context.Context, now time.Time
 	}
 
 	return incidents, nil
+}
+
+// ClaimIncidentReminder is the compare-and-set that lets exactly one reminder
+// job send per interval (spec 2026-10-12-16). See db.Service.
+func (s *Service) ClaimIncidentReminder(
+	ctx context.Context, incidentUID string, expectedCount int, now time.Time,
+) (bool, error) {
+	result, err := s.db.NewUpdate().
+		Model((*models.Incident)(nil)).
+		Set("reminder_count = reminder_count + 1").
+		Set("last_reminder_at = ?", now).
+		Set("updated_at = ?", now).
+		Where("uid = ?", incidentUID).
+		Where("reminder_count = ?", expectedCount).
+		Where("resolved_at IS NULL").
+		Where("acknowledged_at IS NULL").
+		Where("(snoozed_until IS NULL OR snoozed_until <= ?)", now).
+		Where("deleted_at IS NULL").
+		Exec(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to claim incident reminder: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("failed to read claimed reminder rows: %w", err)
+	}
+
+	return rows == 1, nil
 }
 
 // UpdateCheckStatusAndClocks writes the check's status, streak,

@@ -30,7 +30,14 @@ type scenario struct {
 	// LocalOnly marks a scenario that cannot run in a container (embedded
 	// Postgres downloads a distribution at boot).
 	LocalOnly bool
+	// WarmUp, when non-zero, replaces -warmup for this scenario: a scenario
+	// that measures a fixed moment after boot must not move with the flag.
+	WarmUp time.Duration
 }
+
+// freshBootWarmUp is the moment the fresh-boot scenario measures: 60 s after a
+// first boot on an empty database (spec 2026-10-12-04).
+const freshBootWarmUp = 60 * time.Second
 
 // sqliteEnv is the in-container-friendly database configuration: file-backed
 // SQLite in a scratch directory, reset on every boot.
@@ -78,6 +85,14 @@ func allScenarios() []scenario {
 			Name:   "idle-all-sqlite",
 			Env:    sqliteEnv("all"),
 			Caveat: "the reference idle shape: every role in one process, no traffic",
+		},
+		{
+			Name:   "fresh-boot",
+			Env:    sqliteEnv("all"),
+			WarmUp: freshBootWarmUp,
+			Caveat: "first boot on an empty database, sampled 60 s after start whatever -warmup says: " +
+				"the startup burst itself (seed, samples, the bench's own login), which is the number " +
+				"a self-hoster sees in top right after installing",
 		},
 		{
 			Name:   "idle-api-sqlite",

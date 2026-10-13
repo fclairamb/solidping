@@ -29,7 +29,12 @@ function RootLayout() {
   return (
     <>
       <Outlet />
-      <Toaster position="top-right" />
+      {/* The offset keeps toasts below the page header actions (spec 2026-10-12-05). */}
+      <Toaster
+        position="top-right"
+        offset={{ top: 144, right: 16 }}
+        mobileOffset={{ top: 144, left: 16, right: 16 }}
+      />
       {/* Renders nothing; loads PostHog only when the server says it is
           configured (spec 2026-08-02-08). */}
       <AnalyticsProvider />

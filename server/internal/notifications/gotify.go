@@ -172,6 +172,9 @@ func (s *GotifySender) buildMessage(settings *gotifySettings, payload *Payload) 
 	case eventTypeIncidentUnacknowledged:
 		title = unackTitle(payload)
 		body = unackPlainBody(payload)
+	case eventTypeIncidentReminder:
+		title = reminderTitle(payload)
+		body = reminderPlainBody(payload)
 	default:
 		title = "[UPDATE] " + checkName
 		body = "An incident update occurred for " + checkName
@@ -212,6 +215,8 @@ func (s *GotifySender) buildDownBody(payload *Payload, checkName string) string 
 	fmt.Fprintf(&builder, "Failure count: %d\n", payload.Incident.FailureCount)
 	fmt.Fprintf(&builder, "Started: %s", payload.Incident.StartedAt.Format(time.RFC3339))
 
+	writeRegionLine(&builder, payload)
+
 	return builder.String()
 }
 
@@ -229,6 +234,8 @@ func (s *GotifySender) buildResolvedBody(payload *Payload, checkName string) str
 		fmt.Fprintf(&builder, "Duration: %s", formatDuration(duration))
 	}
 
+	writeRegionLine(&builder, payload)
+
 	return builder.String()
 }
 
@@ -239,6 +246,8 @@ func (s *GotifySender) buildEscalatedBody(payload *Payload, checkName string) st
 	fmt.Fprintf(&builder, "Cause: %s\n", getFailureReason(payload.Incident))
 	fmt.Fprintf(&builder, "Failures: %d\n", payload.Incident.FailureCount)
 	fmt.Fprintf(&builder, "Duration: %s", formatDuration(time.Since(payload.Incident.StartedAt)))
+
+	writeRegionLine(&builder, payload)
 
 	return builder.String()
 }

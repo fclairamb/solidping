@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -611,4 +612,57 @@ func TestAssertionNode_IgnoreCase_JSONPath(t *testing.T) {
 			r.NoError(tt.node.Validate())
 		})
 	}
+}
+
+func TestHeaderAssertions_Checker(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("X-Powered-By", "Acme")
+		w.Header().Set("X-Env", "prod")
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(server.Close)
+
+	leaf := func(path, op, value string) *AssertionNode {
+		return &AssertionNode{Type: NodeTypeAssertion, Path: path, Operator: op, Value: value}
+	}
+
+	t.Run("failing assertion is down with output", func(t *testing.T) {
+		t.Parallel()
+
+		result := runCheck(t, &HTTPConfig{URL: server.URL, HeaderAssertions: leaf("X-Powered-By", "not_exists", "")})
+		require.Equal(t, checkerdef.StatusDown, result.Status)
+		require.Equal(t, errHeaderAssertionFailed, result.Output[checkerdef.OutputKeyError])
+		require.Contains(t, result.Output, outputKeyHeaderAssertions)
+	})
+
+	t.Run("passing assertion is up", func(t *testing.T) {
+		t.Parallel()
+
+		result := runCheck(t, &HTTPConfig{URL: server.URL, HeaderAssertions: leaf("X-Env", "eq", "prod")})
+		require.Equal(t, checkerdef.StatusUp, result.Status, result.Output)
+	})
+
+	t.Run("headers_pattern and headerAssertions are both enforced", func(t *testing.T) {
+		t.Parallel()
+
+		build := func(pattern, powered string) *HTTPConfig {
+			return &HTTPConfig{
+				URL:                 server.URL,
+				HeadersPattern:      map[string]string{"X-Env": pattern},
+				HeadersPatternRegex: map[string]*regexp.Regexp{"X-Env": regexp.MustCompile(pattern)},
+				HeaderAssertions:    leaf("X-Powered-By", "eq", powered),
+			}
+		}
+
+		r0 := runCheck(t, build("^prod$", "Acme"))
+		require.Equal(t, checkerdef.StatusUp, r0.Status, r0.Output)
+
+		require.Equal(t, checkerdef.StatusDown, runCheck(t, build("^dev$", "Acme")).Status)
+
+		res := runCheck(t, build("^prod$", "Other"))
+		require.Equal(t, checkerdef.StatusDown, res.Status)
+		require.Equal(t, errHeaderAssertionFailed, res.Output[checkerdef.OutputKeyError])
+	})
 }

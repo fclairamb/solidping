@@ -59,6 +59,11 @@ const (
 	// ack notice and the resolution notice — and never a word of the discussion
 	// in between. Per comment, immediately, no batching (spec 2026-08-28-07).
 	JobTypeIncidentCommentNotice JobType = "incident_comment_notice"
+	// JobTypeIncidentReminder re-notifies the check's channels while an
+	// incident stays open and unacknowledged, once per interval (spec
+	// 2026-10-12-16). Its config carries incidentUid, so the incident cancel
+	// sweep (ack, unack, manual resolve, check deletion) drops it for free.
+	JobTypeIncidentReminder JobType = "incident_reminder"
 	// JobTypeNetworkDiscovery scans a set of CIDR ranges for responsive hosts and
 	// records suggested checks in the discovered_checks table (grouped by IP) for
 	// operator review and promotion.

@@ -93,6 +93,14 @@ type CheckJob struct {
 	CaptureFailedRequestAt *time.Time `bun:"capture_failed_request_at"`
 	CaptureFailureReason   *string    `bun:"capture_failure_reason"`
 
+	// RunRequestedAt is a run request that arrived while the job was leased
+	// (spec 2026-10-12-05): "Run now", or a check edit whose new config or
+	// period the in-flight run does not carry. The release cannot keep a due
+	// time written under the lease, so it reads this instead: every release
+	// makes the job due at it and clears it. A claim that starts a fresh run
+	// clears it too, since that run answers the request. Nil is the norm.
+	RunRequestedAt *time.Time `bun:"run_requested_at"`
+
 	// Multi-step run pointers (spec 2026-10-03-03). A multi-step check (the
 	// website crawl) runs as a series of slices on the bulk lane; these name
 	// the run in progress. StepRunUID nil = no run in progress. The state of
@@ -112,6 +120,12 @@ type CheckJob struct {
 	// log line prints Config, so leaving the reference there is what keeps a
 	// referenced password out of the worker's logs.
 	ParamOverlay map[string]any `bun:"-"`
+
+	// DisplayURL is config["url"] rendered for the stored result: `${var:…}`
+	// replaced by this run's generated values, `${env:…}` / `${param:…}` left
+	// literal. Set by the worker's materializeConfig only when the URL holds a
+	// secret reference; empty otherwise. Transient: never persisted.
+	DisplayURL string `bun:"-"`
 
 	// Check is the check this job executes, populated at claim time by
 	// ClaimJobs / ClaimJobsForCheck so the incident hot path can skip a

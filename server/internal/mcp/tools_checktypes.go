@@ -10,17 +10,28 @@ import (
 
 func listCheckTypesDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "list_check_types",
+		Name: toolListCheckTypes,
 		Description: "List all monitoring check types supported by this server " +
-			"(e.g. http, tcp, dns, icmp, ssl). Use this first when you don't know what " +
-			"type to use. Then call get_check_type_samples for the chosen type to get a " +
-			"starting config. Returns {data: [...]} — one entry per type with its " +
-			"description, enabled state, period bounds and secretFields. " +
-			"Read-only: works with mcp:read tokens.",
-		InputSchema: objectSchema(map[string]any{}, nil),
+			"(e.g. http, tcp, dns, icmp, ssl), or with `type`, the ready-made sample configs " +
+			"of that type. Call it without arguments first when you don't know what type to " +
+			"use: it returns {data: [...]}, one entry per type with its description, enabled " +
+			"state, period bounds and secretFields. Then call it with type=<chosen type>: it " +
+			"returns {data: [...]} with one entry per matching type carrying its samples, each " +
+			"a complete, valid config to clone and modify (much more reliable than guessing " +
+			"field names). Read-only: works with mcp:read tokens.",
+		InputSchema: objectSchema(map[string]any{
+			schemaKeyType: stringProp(
+				"Optional check type whose sample configs to return " +
+					"(e.g. \"http\", \"dns\", \"tcp\", \"icmp\", \"ssl\").",
+			),
+		}, nil),
 		OutputSchema: dataOutputSchema(
-			"Check types this server supports, with their activation status.",
-			checkTypeOutputProps(),
+			"Without type: check types this server supports, with their activation status. "+
+				"With type: one entry per matching check type, carrying its sample configs.",
+			mergedProps(
+				objectSchema(checkTypeOutputProps(), nil),
+				objectSchema(checkTypeSamplesOutputProps(), nil),
+			),
 		),
 		Annotations: readOnlyAnnotations("List check types"),
 	}
@@ -45,13 +56,17 @@ func checkTypeOutputProps() map[string]any {
 	}
 }
 
-func (h *Handler) toolListCheckTypes(_ context.Context, _ string, _ map[string]any) ToolCallResult {
+func (h *Handler) toolListCheckTypes(ctx context.Context, orgSlug string, args map[string]any) ToolCallResult {
+	if getStringArg(args, schemaKeyType) != "" {
+		return h.toolGetCheckTypeSamples(ctx, orgSlug, args)
+	}
+
 	return marshalResult(h.checkTypesSvc.ListServerCheckTypes())
 }
 
 func getCheckTypeSamplesDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "get_check_type_samples",
+		Name: toolGetCheckTypeSamples,
 		Description: "Return ready-made sample configs for the given check type. " +
 			"Each sample is a complete, valid config you can clone and modify. Use this " +
 			"to learn the config shape for a type — much more reliable than guessing " +
@@ -64,15 +79,20 @@ func getCheckTypeSamplesDef() ToolDefinition {
 		}, []string{schemaKeyType}),
 		OutputSchema: dataOutputSchema(
 			"One entry per matching check type, carrying its sample configs.",
-			map[string]any{
-				"checkType": stringProp("Check type the samples belong to, e.g. \"http\"."),
-				"samples": arrayOfObjectsProp(
-					"Ready-made configs to clone and modify.",
-					sampleConfigOutputProps(),
-				),
-			},
+			checkTypeSamplesOutputProps(),
 		),
 		Annotations: readOnlyAnnotations("Get check type samples"),
+	}
+}
+
+// checkTypeSamplesOutputProps documents one entry of the samples listing.
+func checkTypeSamplesOutputProps() map[string]any {
+	return map[string]any{
+		"checkType": stringProp("Check type the samples belong to, e.g. \"http\"."),
+		"samples": arrayOfObjectsProp(
+			"Ready-made configs to clone and modify.",
+			sampleConfigOutputProps(),
+		),
 	}
 }
 

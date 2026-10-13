@@ -13,6 +13,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/notifications"
+	"github.com/fclairamb/solidping/server/internal/regions"
 )
 
 var (
@@ -66,6 +67,11 @@ type NotificationJobConfig struct {
 	// matches the pair on the audit row, and so a future "repeat N of M" line
 	// needs no new plumbing.
 	RepeatIndex int `json:"repeatIndex,omitempty"`
+	// ReminderSeq is the 1-based number of an `incident.reminder` (spec
+	// 2026-10-12-16). Distinct per reminder, so CreateJob never folds a
+	// reminder into an earlier one still pending, and senders can say
+	// "reminder 3". Zero for every other event.
+	ReminderSeq int `json:"reminderSeq,omitempty"`
 }
 
 // NotificationJobDefinition is the factory for notification jobs.
@@ -233,7 +239,52 @@ func (r *NotificationJobRun) buildPayload(
 		Comment: r.config.Comment,
 		// Non-nil only for `incident.acknowledged`.
 		Acknowledgment: r.config.Acknowledgment,
+		// Non-zero only for `incident.reminder`.
+		ReminderSeq: r.config.ReminderSeq,
+		// Which regions saw the failure, labeled at send time (spec
+		// 2026-10-12-15). Nil when none is known.
+		Regions: resolveRegionInfo(ctx, jctx, log, incident),
 	}
+}
+
+// resolveRegionInfo reads the incident's regions and attaches the dashboard
+// labels ("{emoji} {name}") from the global and the org's private region
+// definitions. A label lookup that fails is logged and the raw slugs are
+// shown: a notification is never failed over a label.
+func resolveRegionInfo(
+	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger, incident *models.Incident,
+) *notifications.RegionInfo {
+	info := notifications.RegionInfoFor(incident)
+	if info == nil {
+		return nil
+	}
+
+	svc := regions.NewService(jctx.DBService)
+	labels := make(map[string]notifications.RegionLabel)
+
+	global, err := svc.GetGlobalRegions(ctx)
+	if err != nil {
+		log.WarnContext(ctx, "Failed to load region labels, using region slugs", "error", err)
+	}
+
+	for i := range global {
+		labels[global[i].Slug] = notifications.RegionLabel{Emoji: global[i].Emoji, Name: global[i].Name}
+	}
+
+	custom, err := svc.GetOrgCustomRegions(ctx, incident.OrganizationUID)
+	if err != nil {
+		log.WarnContext(ctx, "Failed to load org region labels, using region slugs", "error", err)
+	}
+
+	for i := range custom {
+		labels[regions.PrivateRegionSlug(custom[i].Slug)] = notifications.RegionLabel{
+			Emoji: custom[i].Emoji, Name: custom[i].Name,
+		}
+	}
+
+	info.Labels = labels
+
+	return info
 }
 
 // lookupOrgIdentity resolves the organization slug (so senders can build

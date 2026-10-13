@@ -52,7 +52,7 @@ test.describe("Standard Webhooks channel form", () => {
     const secretInput = page.getByTestId("webhook-signing-secret");
     await expect(secretInput).toBeVisible();
     const secretValue = await secretInput.inputValue();
-    expect(secretValue).toMatch(/^whsec_/);
+    expect(secretValue).toMatch(/^whsec_[A-Za-z0-9+/]{43}=$/);
 
     // Copy and read back from the clipboard.
     await page.getByTestId("webhook-copy-secret").click();
@@ -87,7 +87,7 @@ test.describe("Standard Webhooks channel form", () => {
     await expect(async () => {
       const after = await secretInput.inputValue();
       expect(after).not.toBe(before);
-      expect(after).toMatch(/^whsec_/);
+      expect(after).toMatch(/^whsec_[A-Za-z0-9+/]{43}=$/);
     }).toPass();
 
     // The rotation-in-progress banner appears (previous secret in grace window).

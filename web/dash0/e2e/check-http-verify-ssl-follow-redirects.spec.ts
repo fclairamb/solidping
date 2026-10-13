@@ -146,4 +146,58 @@ test.describe("HTTP check verifySsl / followRedirects", () => {
       headers: { Authorization: `Bearer ${token}` },
     });
   });
+
+  test("expectedFinalUrl is shown only with redirects on and saved/dropped accordingly", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+
+    await page.goto("orgs/test/checks/new?checkType=http");
+    await expect(page.getByTestId("check-name-input")).toBeVisible();
+    await page.getByTestId("section-advanced-trigger").click();
+
+    const input = page.getByTestId("check-expected-final-url-input");
+    await expect(input).toBeVisible();
+
+    await page
+      .getByTestId("check-name-input")
+      .fill(`E2E Expected Final URL ${Date.now()}`);
+    await page
+      .getByTestId("check-url-input")
+      .fill("http://example.com/expected-final-url");
+    await input.fill("https://www.example.com/");
+
+    await page.getByTestId("check-submit-button").click();
+    await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
+    const uid = page.url().match(/\/checks\/([0-9a-f-]{36})/)![1];
+
+    const created = await getCheck(page, token, uid);
+    expect(created.config.expectedFinalUrl).toBe("https://www.example.com/");
+
+    // Turning redirects off hides the field and drops the key on save.
+    await page.goto(`orgs/test/checks/${uid}/edit`);
+    await expect(page.getByTestId("check-name-input")).toBeVisible();
+    // A customized Advanced section may already be open on the edit page.
+    if (
+      !(await page.getByTestId("check-expected-final-url-input").isVisible())
+    ) {
+      await page.getByTestId("section-advanced-trigger").click();
+    }
+    await expect(page.getByTestId("check-expected-final-url-input")).toHaveValue(
+      "https://www.example.com/",
+    );
+    await page.getByTestId("check-follow-redirects-switch").click();
+    await expect(page.getByTestId("check-expected-final-url-input")).toHaveCount(
+      0,
+    );
+    await page.getByTestId("check-submit-button").click();
+    await expect
+      .poll(async () => (await getCheck(page, token, uid)).config)
+      .not.toHaveProperty("expectedFinalUrl");
+
+    await page.request.delete(`${API_BASE}/api/v1/orgs/test/checks/${uid}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  });
 });

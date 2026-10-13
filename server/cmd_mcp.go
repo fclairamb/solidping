@@ -33,6 +33,7 @@ import (
 const (
 	flagMCPStdio = "stdio"
 	flagMCPUser  = "user"
+	flagToolsets = "toolsets"
 	flagOrg      = "org"
 )
 
@@ -63,6 +64,12 @@ func mcpCommand() *cli.Command {
 			&cli.BoolFlag{
 				Name:  flagMCPStdio,
 				Usage: "Serve MCP on stdin/stdout (the only transport; required)",
+			},
+			&cli.StringFlag{
+				Name: flagToolsets,
+				Usage: "Comma-separated toolsets tools/list shows: core, statuspages, admin, legacy " +
+					"or all (default: core,statuspages). Every tool stays callable.",
+				Sources: cli.EnvVars(mcp.ToolsetsEnvVar),
 			},
 			&cli.StringFlag{
 				Name: flagMCPUser,
@@ -102,7 +109,16 @@ func mcpAction(ctx context.Context, cmd *cli.Command) error {
 
 	defer signal.Stop(sigpipe)
 
-	if err := serveMCPStdio(ctx, cmd.String(flagOrg), cmd.String(flagMCPUser), os.Stdin, protocolOut); err != nil {
+	// A bad toolset list fails before the server boots, on stderr.
+	toolsets := cmd.String(flagToolsets)
+	if err := mcp.ValidateToolsets(toolsets); err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "solidping mcp: %v\n", err)
+
+		return cli.Exit("", 1)
+	}
+
+	err := serveMCPStdio(ctx, cmd.String(flagOrg), cmd.String(flagMCPUser), toolsets, os.Stdin, protocolOut)
+	if err != nil {
 		// Logged here, on stderr, and turned into an exit code with no
 		// message: the error then never reaches main's logger.
 		slog.ErrorContext(ctx, "solidping mcp stopped", "error", err)
@@ -116,7 +132,7 @@ func mcpAction(ctx context.Context, cmd *cli.Command) error {
 // serveMCPStdio boots the headless server, resolves the principal once the
 // startup job has run, then serves MCP on input/out until input reaches EOF, a
 // signal arrives or the server stops on its own (a database fault).
-func serveMCPStdio(ctx context.Context, orgSlug, userRef string, input io.Reader, out io.Writer) error {
+func serveMCPStdio(ctx context.Context, orgSlug, userRef, toolsets string, input io.Reader, out io.Writer) error {
 	cfg, shutdownOTel, err := loadServeConfig(ctx, os.Stderr)
 	if err != nil {
 		return err
@@ -140,7 +156,7 @@ func serveMCPStdio(ctx context.Context, orgSlug, userRef string, input io.Reader
 	defer stopParentWatch()
 
 	sessionErr, startErr := runHeadless(ctx, server, func(sessionCtx context.Context) error {
-		return runMCPStdioSession(sessionCtx, server, orgSlug, userRef, input, out)
+		return runMCPStdioSession(sessionCtx, server, orgSlug, userRef, toolsets, input, out)
 	})
 
 	if closeErr := server.Close(ctx); closeErr != nil {
@@ -200,7 +216,7 @@ func runHeadless(ctx context.Context, server *app.Server, session func(context.C
 
 // runMCPStdioSession resolves who the session acts as and serves it.
 func runMCPStdioSession(
-	ctx context.Context, server *app.Server, orgSlug, userRef string, input io.Reader, out io.Writer,
+	ctx context.Context, server *app.Server, orgSlug, userRef, toolsets string, input io.Reader, out io.Writer,
 ) error {
 	handler := server.MCPHandler()
 	if handler == nil {
@@ -215,5 +231,5 @@ func runMCPStdioSession(
 	slog.InfoContext(ctx, "MCP stdio session ready",
 		"org", principal.Org.Slug, "user", principal.User.Email, "role", principal.Role)
 
-	return handler.ServeStdio(ctx, input, out, principal)
+	return handler.ServeStdio(ctx, input, out, principal, toolsets)
 }

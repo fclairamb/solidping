@@ -192,7 +192,7 @@
     "rotate": "Erneuern",
     "signingSecretMissing": "Kein Signaturschlüssel — er wird bei der nächsten Zustellung automatisch erzeugt. Erneuern Sie ihn, um jetzt einen zu erzeugen.",
     "generate": "Erzeugen",
-    "signingSecretHelp": "Ausgehende Webhooks werden mit diesem Schlüssel nach dem Standard-Webhooks-Schema (HMAC-SHA256) signiert. Prüfen Sie ihn auf der Empfängerseite.",
+    "signingSecretHelp": "Ausgehende Webhooks werden mit diesem Schlüssel nach dem Standard-Webhooks-Schema (HMAC-SHA256) signiert. Prüfen Sie ihn auf der Empfängerseite. Die offiziellen Standard-Webhooks-Bibliotheken akzeptieren ihn unverändert.",
     "rotationBanner": "Vorheriger Schlüssel aktiv bis",
     "rotationBannerHint": "Durch erneutes Erneuern früher entfernen.",
     "slackInstallFailed": "Slack-Installation konnte nicht gestartet werden",

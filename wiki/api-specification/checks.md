@@ -198,15 +198,18 @@ capture endpoint returned (both at microsecond precision).
 2026-10-04-01). Auth: required, write access (viewers 403). An action path, not a
 `POST` on `…/run` (the multi-step run resource, which this does not create).
 
-Every job row of the check that is not running gets `scheduled_at` and
-`effective_scheduled_at` set to now (`db.Service.RequestCheckRun`, no capture
-flag), then one express hint is sent. A job is running when it is leased or
-carries a multi-step run (`step_run_uid`); it is reported `running` and left
-alone, because a release would overwrite a due time written under a live lease.
-The result goes through the normal result path and the incident pipeline.
+Every idle job row of the check gets `scheduled_at` and `effective_scheduled_at`
+set to now (`db.Service.RequestCheckRun`, no capture flag), then one express hint
+is sent. A job that is leased or carries a multi-step run (`step_run_uid`) cannot
+take a due time (its release rewrites `scheduled_at`), so the request is parked in
+`check_jobs.run_requested_at` and every release makes the job due at it (spec
+2026-10-12-05). The run in progress started before the request, so it is not the
+answer. One admission per request, whatever the regions. The result goes through
+the normal result path and the incident pipeline.
 
-Response `200 { requestedAt, regions: [{ region, status }] }`, `status` being
-`queued` or `running`. A result with `periodStart >= requestedAt` answers it.
+Response `200 { requestedAt, regions: [{ region, status }] }`, `status` always
+`queued` (`running` was returned before spec 2026-10-12-05). A result with
+`periodStart >= requestedAt` answers it.
 
 | Status | When |
 |---|---|

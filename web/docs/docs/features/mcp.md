@@ -137,22 +137,67 @@ So a refusal on a mutating tool means one of two things: the token carries only 
 
 ## Capabilities
 
-The server exposes tools covering the core SolidPing surface, including:
+The tools are grouped in **toolsets**. `tools/list` returns `core` and
+`statuspages` (23 tools) unless you ask for more.
 
-- **Checks** — list, get, create, update, delete
-- **Results** — list and filter check results
-- **Incidents** — list and get
-- **Integrations** — list and create notification connections
-- **Status pages** — manage pages, sections, and resources
-- **Maintenance windows** — list, create, update, and attach checks
-- **Check groups & regions** — list
-- **Check types** — list types, fetch sample configs, and validate a config
-- **Diagnostics** — diagnose a check and inspect incident notifications
-- **js check authoring** — `run_js_script`, `fetch_page` and `browser_snapshot`
-  run a script, fetch a page or snapshot it in the server's browser, so your own
-  agent can write a [js check](/features/javascript-checks) without SolidPing
-  calling an LLM ([AI-authored checks](/features/ai-authored-checks)). They write
-  nothing and work with `mcp:read` tokens
+| Toolset | Listed by default | Tools |
+|---|---|---|
+| `core` | yes | `list_checks`, `get_check`, `create_check`, `update_check`, `delete_check`, `validate_check`, `run_check`, `diagnose_check`, `list_results`, `list_incidents`, `get_incident`, `list_check_types`, `list_regions`, `list_check_groups`, `probe` |
+| `statuspages` | yes | `list_status_pages`, `get_status_page`, `create_status_page`, `update_status_page`, `delete_status_page`, `manage_status_page_section`, `manage_status_page_resource`, `manage_status_page_incident` |
+| `admin` | no | `list_integrations`, `create_integration`, `list_maintenance_windows`, `get_maintenance_window`, `create_maintenance_window`, `update_maintenance_window`, `delete_maintenance_window`, `set_maintenance_window_checks` |
+| `legacy` | no | the 19 deprecated names listed below |
+
+Pick toolsets with the `toolsets` parameter on the endpoint URL:
+
+```
+https://monitoring.example.com/api/v1/mcp?toolsets=all
+```
+
+- `core`, `statuspages`, `admin` and `legacy` can be combined with commas.
+- `all` means `core,statuspages,admin`. `all,legacy` lists the full former surface.
+- An unknown name is refused with a JSON-RPC invalid-params error that names the valid ones.
+- `solidping mcp --stdio` takes the same list from `--toolsets` or `SP_MCP_TOOLSETS`.
+
+The selection only changes what is **listed**. Every tool, listed or not, can be
+called by name, and goes through the same scope and role checks.
+
+What the tools cover:
+
+- **Checks**: list, get, create, update, delete, validate a config, run now, diagnose.
+- **Results and incidents**: list results, list and get incidents.
+  `get_incident` with `include: ["notifications"]` adds the notification attempts.
+- **Check types**: `list_check_types` lists the types; with `type` it returns
+  ready-made sample configs for that type.
+- **js check authoring**: `probe` runs a script (`kind: "script"`), fetches a page
+  (`kind: "fetch"`) or snapshots it in the server's browser (`kind: "browser"`), so
+  your own agent can write a [js check](/features/javascript-checks) without
+  SolidPing calling an LLM ([AI-authored checks](/features/ai-authored-checks)).
+  It writes nothing and works with `mcp:read` tokens.
+- **Status pages**: pages have their own CRUD tools. `get_status_page` with
+  `include: ["sections", "resources", "incidents"]` reads the sub-resources, and
+  `manage_status_page_section`, `manage_status_page_resource` and
+  `manage_status_page_incident` change them with an `action` argument.
+- **Maintenance windows and integrations** (`admin` toolset).
+
+The `manage_status_page_*` tools carry several actions, one of which deletes, so
+they are annotated `destructiveHint: true` and `idempotentHint: false`. Your
+client may ask for confirmation even on a create. Every action needs the `mcp`
+scope.
+
+### Deprecated tool names
+
+These names still work with the same arguments and results. They are listed only
+with `toolsets=legacy` and will be removed in a later release.
+
+| Deprecated | Use |
+|---|---|
+| `run_js_script`, `fetch_page`, `browser_snapshot` | `probe` with `kind` `script`, `fetch`, `browser` |
+| `get_check_type_samples` | `list_check_types` with `type` |
+| `incident_notifications_list` | `get_incident` with `include: ["notifications"]` |
+| `list_status_page_sections`, `list_status_page_resources`, `list_status_page_incidents` | `get_status_page` with `include` |
+| `create_` / `update_` / `delete_status_page_section` | `manage_status_page_section` with `action` |
+| `create_` / `update_` / `delete_status_page_resource` | `manage_status_page_resource` with `action` |
+| `create_status_page_incident`, `update_status_page_incident`, `create_status_page_incident_update`, `create_incident_publication`, `delete_incident_publication` | `manage_status_page_incident` with `action` `create`, `update`, `add_update`, `publish`, `unpublish` |
 
 Every tool also declares MCP **tool annotations** (`readOnlyHint`,
 `destructiveHint`, `idempotentHint`, `openWorldHint`) and an

@@ -21,6 +21,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/maintenance"
 	"github.com/fclairamb/solidping/server/internal/notifications"
 	"github.com/fclairamb/solidping/server/internal/realtime"
+	"github.com/fclairamb/solidping/server/internal/regionquorum"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
 )
 
@@ -1314,7 +1315,7 @@ func (s *Service) routeCheckResultWithIncident(
 			return nil
 		}
 
-		return s.handleFailure(ctx, check, result, incident, holdConfirmation)
+		return s.handleFailure(ctx, check, result, incident, holdConfirmation, sig.eval)
 	}
 
 	return s.handleSuccess(ctx, check, result, incident)
@@ -1323,7 +1324,7 @@ func (s *Service) routeCheckResultWithIncident(
 // handleFailure handles a failed check result.
 func (s *Service) handleFailure(
 	ctx context.Context, check *models.Check, result *models.Result, incident *models.Incident,
-	holdConfirmation bool,
+	holdConfirmation bool, eval *regionquorum.Evaluation,
 ) error {
 	if incident == nil && !confirmationElapsed(check, s.clock.Now()) {
 		// Confirmation window hasn't elapsed; stay validating.
@@ -1341,7 +1342,7 @@ func (s *Service) handleFailure(
 
 	if incident == nil {
 		// Threshold met - try to reopen a recently resolved incident before creating a new one
-		return s.createOrReopenIncident(ctx, check, result)
+		return s.createOrReopenIncident(ctx, check, result, eval)
 	}
 
 	// Update existing incident
@@ -1358,6 +1359,15 @@ func (s *Service) handleFailure(
 	if incident.EscalatedAt == nil && newFailureCount >= check.EscalationThreshold {
 		now := s.clock.Now()
 		update.EscalatedAt = &now
+
+		// More regions may have failed since the incident opened: refresh the
+		// snapshot the escalation notification reads. Not refreshed on
+		// resolve, which reports the regions that had failed.
+		if regions := s.regionsSnapshot(ctx, check, result, eval); regions != nil {
+			details := withRegions(incident.Details, regions)
+			update.Details = &details
+			incident.Details = details
+		}
 		// Emit escalation event
 		if err := s.emitEvent(ctx, check.OrganizationUID, models.EventTypeIncidentEscalated, incident, models.JSONMap{
 			keyCheckUID:            check.UID,
@@ -1468,7 +1478,9 @@ func (s *Service) recordFlap(ctx context.Context, check *models.Check) {
 }
 
 // createIncident creates a new incident.
-func (s *Service) createIncident(ctx context.Context, check *models.Check, result *models.Result) error {
+func (s *Service) createIncident(
+	ctx context.Context, check *models.Check, result *models.Result, eval *regionquorum.Evaluation,
+) error {
 	// Record this outage onset against the rolling flapping window before the
 	// incident is created, so the new incident's effective recovery threshold
 	// already reflects the (possibly escalated) flap level.
@@ -1479,6 +1491,9 @@ func (s *Service) createIncident(ctx context.Context, check *models.Check, resul
 
 	incident := models.NewIncident(check.OrganizationUID, check.UID, result.PeriodStart, title)
 	incident.Details = withFailedComponents(check, result, failureDetails(result))
+	if regions := s.regionsSnapshot(ctx, check, result, eval); regions != nil {
+		incident.Details[regionsDetailsKey] = regions
+	}
 	// FlapLevel snapshots the flap count recordFlap just bumped, so the
 	// incident carries the level it actually opened at (spec 2026-08-24-05).
 	incident.FlapLevel = check.FlapCount
@@ -1570,7 +1585,7 @@ func (s *Service) resolveIncident(
 
 // createOrReopenIncident tries to reopen a recently resolved incident, or creates a new one.
 func (s *Service) createOrReopenIncident(
-	ctx context.Context, check *models.Check, result *models.Result,
+	ctx context.Context, check *models.Check, result *models.Result, eval *regionquorum.Evaluation,
 ) error {
 	// A result that was in flight when its check was deleted must not open
 	// (or reopen) an incident on it: DeleteCheck has just resolved the check's
@@ -1582,7 +1597,7 @@ func (s *Service) createOrReopenIncident(
 		return nil
 	}
 
-	reopened, err := s.tryReopenIncident(ctx, check, result)
+	reopened, err := s.tryReopenIncident(ctx, check, result, eval)
 	if err != nil {
 		return err
 	}
@@ -1590,7 +1605,7 @@ func (s *Service) createOrReopenIncident(
 		return nil
 	}
 
-	return s.createIncident(ctx, check, result)
+	return s.createIncident(ctx, check, result, eval)
 }
 
 // checkWasDeleted reports whether the check row is soft-deleted now. A lookup
@@ -1652,7 +1667,7 @@ func effectiveRecoveryPeriodSeconds(check *models.Check) int {
 // tryReopenIncident looks for a recently resolved incident and reopens it if appropriate.
 // Returns true if an incident was reopened.
 func (s *Service) tryReopenIncident(
-	ctx context.Context, check *models.Check, result *models.Result,
+	ctx context.Context, check *models.Check, result *models.Result, eval *regionquorum.Evaluation,
 ) (bool, error) {
 	cooldown := calculateCooldown(check)
 	if cooldown == 0 {
@@ -1681,12 +1696,31 @@ func (s *Service) tryReopenIncident(
 	// would need a dedicated config-modified timestamp, which does not exist yet;
 	// within the short reopen cooldown the reattach is the right behavior.
 
-	return true, s.reopenIncident(ctx, check, result, incident)
+	return true, s.reopenIncident(ctx, check, result, incident, eval)
+}
+
+// reopenDetails is the incident's details after a relapse: the relapse's
+// last_failure, and a regions snapshot describing the relapse (dropped when
+// the check no longer has several regions).
+func (s *Service) reopenDetails(
+	ctx context.Context, check *models.Check, result *models.Result, incident *models.Incident,
+	eval *regionquorum.Evaluation,
+) models.JSONMap {
+	details := lastFailureDetails(incident.Details, result)
+
+	if regions := s.regionsSnapshot(ctx, check, result, eval); regions != nil {
+		details[regionsDetailsKey] = regions
+	} else {
+		delete(details, regionsDetailsKey)
+	}
+
+	return details
 }
 
 // reopenIncident reopens a previously resolved incident.
 func (s *Service) reopenIncident(
 	ctx context.Context, check *models.Check, result *models.Result, incident *models.Incident,
+	eval *regionquorum.Evaluation,
 ) error {
 	now := s.clock.Now()
 
@@ -1699,7 +1733,7 @@ func (s *Service) reopenIncident(
 	activeState := models.IncidentStateActive
 	newRelapseCount := incident.RelapseCount + 1
 	newFailureCount := incident.FailureCount + 1
-	newDetails := lastFailureDetails(incident.Details, result)
+	newDetails := s.reopenDetails(ctx, check, result, incident, eval)
 	// FlapLevel snapshots the flap count recordFlap just bumped above, so a
 	// reopened incident reflects the escalated level it reopened at (spec
 	// 2026-08-24-05) — mirrors the same assignment in createIncident.
@@ -1879,13 +1913,7 @@ func (s *Service) queueLifecycleNotifications(
 			return nil
 		}
 
-		// Escalation policy fan-out: only on initial open. Resolved /
-		// reopened don't start a new paging cycle (resolved is final;
-		// reopened is a relapse and the original cycle's pending steps
-		// were either fired or canceled).
-		if eventType == models.EventTypeIncidentCreated {
-			s.scheduleEscalationPolicy(ctx, orgUID, checkUID, incident)
-		}
+		s.scheduleFollowUps(ctx, orgUID, checkUID, eventType, incident)
 	case models.EventTypeCheckCreated, models.EventTypeCheckUpdated,
 		models.EventTypeCheckDeleted,
 		// An automatic re-placement (spec 2026-09-25-06) is the platform
@@ -1926,6 +1954,10 @@ func (s *Service) queueLifecycleNotifications(
 		// facts about OUR ability to measure, not about the target: stale is
 		// neither down nor up, so it never pages in either direction.
 		models.EventTypeIncidentMonitoringInterrupted, models.EventTypeIncidentMonitoringResumed,
+		// A reminder (spec 2026-10-12-16) is sent by the incident_reminder
+		// job straight to the check's channels and writes no events row; it
+		// never reaches this switch as a lifecycle event.
+		models.EventTypeIncidentReminder,
 		models.EventTypeStatusUpdateCreated, models.EventTypeStatusUpdateUpdated,
 		models.EventTypeStatusUpdateDeleted,
 		// Publication lifecycle is the STATUS PAGE's fan-out, not the on-call
@@ -2169,6 +2201,64 @@ func (s *Service) scheduleEscalationPolicy(
 	); scheduleErr != nil {
 		slog.WarnContext(ctx, "escalation: failed to schedule cycle 0",
 			"policyUid", policyUID, "error", scheduleErr)
+	}
+}
+
+// scheduleFollowUps schedules what follows an incident's first page: the
+// escalation policy and the reminders.
+func (s *Service) scheduleFollowUps(
+	ctx context.Context, orgUID, checkUID string, eventType models.EventType, incident *models.Incident,
+) {
+	// Escalation policy fan-out: only on initial open. Resolved /
+	// reopened don't start a new paging cycle (resolved is final;
+	// reopened is a relapse and the original cycle's pending steps
+	// were either fired or canceled).
+	if eventType == models.EventTypeIncidentCreated {
+		s.scheduleEscalationPolicy(ctx, orgUID, checkUID, incident)
+	}
+
+	// Reminders re-notify the check's channels while the incident stays
+	// open and unacknowledged (spec 2026-10-12-16). A reopen starts a new
+	// chain: the relapse cleared the acknowledgment.
+	if eventType == models.EventTypeIncidentCreated || eventType == models.EventTypeIncidentReopened {
+		s.scheduleReminder(ctx, orgUID, incident.UID, s.clock.Now())
+	}
+}
+
+// scheduleReminder schedules the next reminder of an incident from `from`
+// (spec 2026-10-12-16). It re-reads the incident so the paging state it checks
+// is the one just written (a reopen clears the acknowledgment in the database,
+// not on the caller's copy). Best-effort: a failure is logged and never blocks
+// the action that triggered it.
+func (s *Service) scheduleReminder(ctx context.Context, orgUID, incidentUID string, from time.Time) {
+	incident, err := s.db.GetIncident(ctx, orgUID, incidentUID)
+	if err != nil {
+		slog.WarnContext(ctx, "reminder: failed to load incident", "incidentUid", incidentUID, "error", err)
+
+		return
+	}
+
+	check, err := s.db.GetCheck(ctx, orgUID, incident.CheckUID)
+	if err != nil {
+		slog.WarnContext(ctx, "reminder: failed to load check", "checkUid", incident.CheckUID, "error", err)
+
+		return
+	}
+
+	if err := jobtypes.ScheduleIncidentReminder(ctx, s.jobsSvc, s.db, incident, check, from); err != nil {
+		slog.WarnContext(ctx, "reminder: failed to schedule", "incidentUid", incidentUID, "error", err)
+	}
+}
+
+// cancelForSnooze cancels what a snooze silences: notifications due before
+// the snooze ends, and every pending reminder whatever its due time (unsnooze
+// schedules a fresh one, counted from then). Best-effort, like
+// cancelPendingNotifications.
+func (s *Service) cancelForSnooze(ctx context.Context, incidentUID string, until time.Time) {
+	s.cancelPendingNotifications(ctx, incidentUID, &until)
+
+	if _, err := jobtypes.CancelIncidentReminders(ctx, s.jobsSvc, incidentUID); err != nil {
+		slog.WarnContext(ctx, "reminder: failed to cancel", "incidentUid", incidentUID, "error", err)
 	}
 }
 
@@ -3584,6 +3674,8 @@ func (s *Service) unacknowledgeIncidentByOrgUID(
 	// still reading "Acknowledged by Alice".
 	s.resumeEscalationAfterUnack(ctx, incident)
 	s.queueUnackNotifications(ctx, orgUID, incident, actorUID, via)
+	// Reminders restart counted from the unack (spec 2026-10-12-16).
+	s.scheduleReminder(ctx, orgUID, incident.UID, s.clock.Now())
 
 	event := models.NewEvent(orgUID, models.EventTypeIncidentUnacknowledged, models.ActorTypeUser)
 	event.IncidentUID = &incident.UID
@@ -3709,7 +3801,7 @@ func (s *Service) snoozeIncidentByOrgUID(
 
 	s.rt.PublishImmediate(ctx, orgUID, incident.CheckUID, realtime.KindIncidents, realtime.KindEvents)
 
-	s.cancelPendingNotifications(ctx, incident.UID, &until)
+	s.cancelForSnooze(ctx, incident.UID, until)
 
 	return incident, nil
 }
@@ -3782,6 +3874,11 @@ func (s *Service) unsnoozeIncidentByOrgUID(
 	incident.SnoozedUntil = nil
 	incident.SnoozedBy = nil
 	incident.SnoozeReason = nil
+
+	// The interval restarts from the unsnooze (spec 2026-10-12-16). Snoozing
+	// acknowledged the incident, so this only schedules when the
+	// acknowledgment was withdrawn in between.
+	s.scheduleReminder(ctx, orgUID, incident.UID, s.clock.Now())
 
 	event := models.NewEvent(orgUID, models.EventTypeIncidentUnsnoozed, models.ActorTypeUser)
 	if via == "auto" {

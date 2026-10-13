@@ -169,7 +169,7 @@ func (s *GitLabOAuthService) HandleCallback(
 	}
 
 	// Find or create user
-	user, userCreated, err := s.findOrCreateUser(ctx, userInfo)
+	user, _, err := s.findOrCreateUser(ctx, userInfo)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find/create user: %w", err)
 	}
@@ -179,7 +179,7 @@ func (s *GitLabOAuthService) HandleCallback(
 	// login.Pending instead of a membership, with a session on an org they
 	// already belong to (login.FallbackOrgSlug) or an org-less one.
 	login, err := s.authService.CompleteOrgLogin(ctx, org, user,
-		WithLoginMethod(signupMethodGitLab), newlyCreatedUserOption(userCreated))
+		WithLoginMethod(signupMethodGitLab))
 	if err != nil {
 		return nil, err
 	}
@@ -290,8 +290,7 @@ func (s *GitLabOAuthService) fetchUserProfile(ctx context.Context, accessToken s
 func (s *GitLabOAuthService) findOrCreateUser(
 	ctx context.Context, userInfo *GitLabUserInfo,
 ) (*models.User, bool, error) {
-	// created reports whether THIS call minted the account — the fact rule 6's
-	// SaaS platform-default guard needs (WithNewlyCreatedUser, spec 2026-09-05-01).
+	// created reports whether THIS call minted the account.
 	var created bool
 
 	providerID := strconv.Itoa(userInfo.ID)

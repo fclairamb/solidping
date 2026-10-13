@@ -53,6 +53,10 @@ test.describe("HTTP check expected-status codes", () => {
       .getByTestId("check-url-input")
       .fill("https://example.com/status-codes");
 
+    // Drop the seeded implicit ["2XX"] default so the list is exactly what
+    // this test types.
+    await page.getByTestId("check-expected-status-codes-chip-remove-0").click();
+
     const codesField = page.getByTestId("check-expected-status-codes-input");
     await codesField.fill("200 4XX");
     await page.getByTestId("check-name-input").click(); // blur, commits the draft
@@ -95,7 +99,7 @@ test.describe("HTTP check expected-status codes", () => {
     await page.goto("orgs/test/checks/new?checkType=http");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
-    // A fresh form seeds the implicit ["200"] default as chip-0 — remove it
+    // A fresh form seeds the implicit ["2XX"] default as chip-0 — remove it
     // first so the only chip left is the one this test types.
     await page.getByTestId("check-expected-status-codes-chip-remove-0").click();
 
@@ -123,7 +127,7 @@ test.describe("HTTP check expected-status codes", () => {
       .getByTestId("check-url-input")
       .fill("https://example.com/status-invalid");
 
-    // Remove the seeded implicit ["200"] default so the only chip is the
+    // Remove the seeded implicit ["2XX"] default so the only chip is the
     // invalid one this test exercises.
     await page.getByTestId("check-expected-status-codes-chip-remove-0").click();
 
@@ -196,7 +200,7 @@ test.describe("HTTP check expected-status codes", () => {
 
     // Save without touching the field — the legacy key migrates automatically.
     await page.getByTestId("check-submit-button").click();
-    await page.waitForURL(/\/checks\/[0-9a-f-]{36}$/, { timeout: 10000 });
+    await page.waitForURL(/\/checks\/[0-9a-f-]{36}(\?.*)?$/, { timeout: 10000 });
 
     const saved = await getCheck(page, token, uid);
     expect(saved.config.expectedStatusCodes).toEqual(["201"]);
@@ -207,7 +211,7 @@ test.describe("HTTP check expected-status codes", () => {
     });
   });
 
-  test("a plain-200 check saves with neither status key", async ({
+  test("the default 2XX check saves with neither status key", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
@@ -222,7 +226,44 @@ test.describe("HTTP check expected-status codes", () => {
       .getByTestId("check-url-input")
       .fill("https://example.com/status-default");
 
-    // The chip list already seeds to ["200"] — leave it untouched.
+    // The chip list already seeds to ["2XX"] — leave it untouched.
+    await expect(
+      page.getByTestId("check-expected-status-codes-chip-0"),
+    ).toContainText("2XX");
+
+    await page.getByTestId("check-submit-button").click();
+    await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
+    const uid = page.url().match(/\/checks\/([0-9a-f-]{36})/)![1];
+
+    const created = await getCheck(page, token, uid);
+    expect(created.config).not.toHaveProperty("expectedStatusCodes");
+    expect(created.config).not.toHaveProperty("expectedStatus");
+
+    await page.request.delete(`${API_BASE}/api/v1/orgs/test/checks/${uid}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  });
+
+  test("replacing the default chip with 200 saves expectedStatusCodes [200]", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+
+    await page.goto("orgs/test/checks/new?checkType=http");
+    await expect(page.getByTestId("check-name-input")).toBeVisible();
+
+    await page
+      .getByTestId("check-name-input")
+      .fill(`E2E Status Exact 200 ${Date.now()}`);
+    await page
+      .getByTestId("check-url-input")
+      .fill("https://example.com/status-exact-200");
+
+    await page.getByTestId("check-expected-status-codes-chip-remove-0").click();
+    const codesField = page.getByTestId("check-expected-status-codes-input");
+    await codesField.fill("200");
+    await codesField.press("Enter");
     await expect(
       page.getByTestId("check-expected-status-codes-chip-0"),
     ).toContainText("200");
@@ -232,8 +273,7 @@ test.describe("HTTP check expected-status codes", () => {
     const uid = page.url().match(/\/checks\/([0-9a-f-]{36})/)![1];
 
     const created = await getCheck(page, token, uid);
-    expect(created.config).not.toHaveProperty("expectedStatusCodes");
-    expect(created.config).not.toHaveProperty("expectedStatus");
+    expect(created.config.expectedStatusCodes).toEqual(["200"]);
 
     await page.request.delete(`${API_BASE}/api/v1/orgs/test/checks/${uid}`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -273,7 +313,7 @@ test.describe("HTTP check expected-status codes", () => {
       .fill("https://example.com/status-mobile");
 
     // Add enough chips to force wrapping in the narrow container (the
-    // ["200"] default plus four more).
+    // ["2XX"] default plus four more).
     const codesField = page.getByTestId("check-expected-status-codes-input");
     await codesField.fill("201 4XX 500 3XX");
     await page.getByTestId("check-name-input").click(); // blur, commits the draft
@@ -296,13 +336,13 @@ test.describe("HTTP check expected-status codes", () => {
     ).toHaveCount(0);
 
     // The free-text input stays usable: type and commit one more chip. The
-    // list is now ["200","201","500","3XX"] (4 entries, indices 0-3), so the
+    // list is now ["2XX","201","500","3XX"] (4 entries, indices 0-3), so the
     // new chip lands at index 4.
-    await codesField.fill("2XX");
+    await codesField.fill("5XX");
     await codesField.press("Enter");
     await expect(
       page.getByTestId("check-expected-status-codes-chip-4"),
-    ).toContainText("2XX");
+    ).toContainText("5XX");
 
     expect(await hasHorizontalOverflow(page)).toBe(false);
 
@@ -313,7 +353,7 @@ test.describe("HTTP check expected-status codes", () => {
 
     const created = await getCheck(page, token, uid);
     expect(created.config.expectedStatusCodes).toEqual(
-      expect.arrayContaining(["201", "500", "2XX"]),
+      expect.arrayContaining(["201", "500", "5XX"]),
     );
 
     await page.request.delete(`${API_BASE}/api/v1/orgs/test/checks/${uid}`, {

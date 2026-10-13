@@ -686,7 +686,20 @@ export interface IcmpState {
   interval: string;
   packetSize: string;
   ttl: string;
+  // Hard limits (spec 2026-10-12-14): a burst above either is down. Empty
+  // means no limit; "0" is a real loss limit ("any loss is down").
+  maxPacketLossPercent: string;
+  maxAvgRttMs: string;
 }
+
+// parseNonNegativeNumber is parseNonNegativeInt for decimals. Shape only: the
+// bounds live on the server.
+const parseNonNegativeNumber = (raw: string): number | null => {
+  if (!raw.trim()) return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return n;
+};
 
 // parsePositiveInt turns a display string into a non-negative integer, or
 // null when the input is blank/not a whole number (the number input's e.g.
@@ -802,7 +815,9 @@ const burstCustomized = (state: IcmpState): boolean =>
     state.count.trim() ||
       state.interval.trim() ||
       state.packetSize.trim() ||
-      state.ttl.trim(),
+      state.ttl.trim() ||
+      state.maxPacketLossPercent.trim() ||
+      state.maxAvgRttMs.trim(),
   );
 
 export const icmpModule: CheckTypeModule<IcmpState> = {
@@ -812,13 +827,23 @@ export const icmpModule: CheckTypeModule<IcmpState> = {
   // the new inputs really deletes the stored key instead of the unmodeled
   // passthrough silently re-sending it. `timeout` and `ipVersion` stay with
   // the shared controls (SHARED_FORM_CONFIG_KEYS); `url` stays unmodeled.
-  ownedKeys: ["host", "count", "interval", "packet_size", "ttl"],
+  ownedKeys: [
+    "host",
+    "count",
+    "interval",
+    "packet_size",
+    "ttl",
+    "max_packet_loss_percent",
+    "max_avg_rtt_ms",
+  ],
   fromConfig: (config) => ({
     host: getConfigField(config, "host"),
     count: getConfigField(config, "count"),
     interval: durationToMsInput(getConfigField(config, "interval")),
     packetSize: getConfigField(config, "packet_size"),
     ttl: getConfigField(config, "ttl"),
+    maxPacketLossPercent: getConfigField(config, "max_packet_loss_percent"),
+    maxAvgRttMs: getConfigField(config, "max_avg_rtt_ms"),
   }),
   toConfig: (state) => {
     const cfg: CheckConfig = {};
@@ -893,6 +918,36 @@ export const icmpModule: CheckTypeModule<IcmpState> = {
     }
     if (ttl !== null && ttl > 0) cfg.ttl = ttl;
 
+    const maxLoss = parseNonNegativeNumber(state.maxPacketLossPercent);
+    if (state.maxPacketLossPercent.trim() && maxLoss === null) {
+      return {
+        config: cfg,
+        errors: [
+          {
+            name: "max_packet_loss_percent",
+            message: validationMessage("maxPacketLossNumber"),
+          },
+          ...hostRequired(state.host),
+        ],
+      };
+    }
+    if (maxLoss !== null) cfg.max_packet_loss_percent = maxLoss;
+
+    const maxRtt = parseNonNegativeNumber(state.maxAvgRttMs);
+    if (state.maxAvgRttMs.trim() && maxRtt === null) {
+      return {
+        config: cfg,
+        errors: [
+          {
+            name: "max_avg_rtt_ms",
+            message: validationMessage("maxAvgRttNumber"),
+          },
+          ...hostRequired(state.host),
+        ],
+      };
+    }
+    if (maxRtt !== null) cfg.max_avg_rtt_ms = maxRtt;
+
     return { config: cfg, errors: hostRequired(state.host) };
   },
   Fields: IcmpFields,
@@ -917,6 +972,7 @@ function IcmpFields({
   const count = parseNonNegativeInt(state.count) ?? 1;
   const intervalEnabled = count > 1;
   const customized = burstCustomized(state);
+  const lossHint = state.maxPacketLossPercent.trim() !== "" && count <= 1;
   const burstLine = icmpBurstSummary(t, state.count, state.interval);
   return (
     <div className="space-y-4">
@@ -1076,7 +1132,57 @@ function IcmpFields({
               </p>
             )}
           </div>
+          <div className="space-y-2">
+            <Label htmlFor="icmp-max-loss">{t("network.burstMaxLoss")}</Label>
+            <Input
+              id="icmp-max-loss"
+              type="number"
+              min={0}
+              step="any"
+              placeholder="100"
+              value={state.maxPacketLossPercent}
+              onChange={(e) => onChange({ ...state, maxPacketLossPercent: e.target.value })}
+              className={cn(
+                getFieldError(errors, "max_packet_loss_percent") && "border-destructive",
+              )}
+              data-testid="check-icmp-max-loss-input"
+            />
+            {getFieldError(errors, "max_packet_loss_percent") && (
+              <p className="text-xs text-destructive">
+                {getFieldError(errors, "max_packet_loss_percent")}
+              </p>
+            )}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="icmp-max-avg-rtt">{t("network.burstMaxAvgRtt")}</Label>
+            <Input
+              id="icmp-max-avg-rtt"
+              type="number"
+              min={0}
+              step="any"
+              placeholder="1000"
+              value={state.maxAvgRttMs}
+              onChange={(e) => onChange({ ...state, maxAvgRttMs: e.target.value })}
+              className={cn(
+                getFieldError(errors, "max_avg_rtt_ms") && "border-destructive",
+              )}
+              data-testid="check-icmp-max-avg-rtt-input"
+            />
+            {getFieldError(errors, "max_avg_rtt_ms") && (
+              <p className="text-xs text-destructive">
+                {getFieldError(errors, "max_avg_rtt_ms")}
+              </p>
+            )}
+          </div>
         </div>
+        {lossHint && (
+          <p
+            className="text-xs text-muted-foreground"
+            data-testid="check-icmp-loss-count-hint"
+          >
+            {t("network.burstLossCountHint")}
+          </p>
+        )}
         <p className="text-xs text-muted-foreground" data-testid="icmp-burst-line">
           {burstLine}
         </p>

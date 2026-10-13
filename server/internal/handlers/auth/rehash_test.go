@@ -150,6 +150,36 @@ func TestRehashOnLogin(t *testing.T) {
 		r.Equal(stored, *updated.PasswordHash, "rehash-off must leave the stale hash untouched")
 	})
 
+	t.Run("small-host policy re-mints a 64 MiB hash at 19 MiB", func(t *testing.T) {
+		r := require.New(t)
+		svc, dbSvc, ctx := setupAuthTestService(t)
+
+		// The policy the server resolves on a small single-process host.
+		cfg := config.AuthConfig{Password: config.PasswordConfig{
+			Algorithm:     config.PasswordAlgorithmArgon2id,
+			Argon2:        config.Argon2Params{Memory: 64 * 1024, Time: 3, Threads: 4, AutoProfile: true},
+			RehashOnLogin: true,
+		}}
+		smallPolicy, err := passwords.PolicyFromConfig(&cfg, passwords.WithSmallHost(true))
+		r.NoError(err)
+		r.True(smallPolicy.SmallHostProfile)
+
+		stored := hashUnderPolicy(t, argon2idDefaultPolicy())
+		r.Contains(stored, "m=65536")
+		usePolicy(t, smallPolicy)
+		user := seedLoginUser(ctx, t, dbSvc, "rehash-small", "small@example.com", stored)
+
+		resp, err := svc.Login(ctx, "rehash-small", "small@example.com", password, Context{})
+		r.NoError(err)
+		r.NotEmpty(resp.AccessToken)
+
+		updated, err := dbSvc.GetUser(ctx, user.UID)
+		r.NoError(err)
+		r.NotNil(updated.PasswordHash)
+		r.Contains(*updated.PasswordHash, "m=19456,t=2,p=1")
+		r.True(passwords.Verify(password, *updated.PasswordHash))
+	})
+
 	t.Run("plaintext escape hatch is not rehashed", func(t *testing.T) {
 		r := require.New(t)
 		svc, dbSvc, ctx := setupAuthTestService(t)

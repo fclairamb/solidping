@@ -123,7 +123,12 @@
       "status": "Statut",
       "region": "Région",
       "duration": "Durée",
-      "time": "Heure"
+      "time": "Heure",
+      "copyCurl": "Copier en cURL",
+      "copyCurlTooltip": "Construit la commande à partir de la config actuelle du check, qui peut différer de celle au moment de l'échec.",
+      "copyCurlCopied": "Requête copiée en cURL",
+      "copyCurlCopiedPlaceholders": "Requête copiée en cURL. Les secrets ont été remplacés par des variables.",
+      "copyCurlFailed": "Impossible de copier la requête"
     },
     "probeResponse": {
       "title": "Ce que la sonde a vu",

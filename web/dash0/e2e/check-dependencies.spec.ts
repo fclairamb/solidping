@@ -28,7 +28,7 @@ test.describe("Check dependencies", () => {
       .fill(`https://example.com/${encodeURIComponent(name)}`);
     await page.getByTestId("check-submit-button").click();
     await page.waitForURL(
-      /\/checks\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+      /\/checks\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\?.*)?$/,
       { timeout: 10000 },
     );
     await page.waitForLoadState("networkidle");
@@ -63,7 +63,7 @@ test.describe("Check dependencies", () => {
       .fill(confirmationPeriodSeconds);
     await page.getByTestId("check-submit-button").click();
     await page.waitForURL(
-      /\/checks\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+      /\/checks\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\?.*)?$/,
       { timeout: 10000 },
     );
     await page.waitForLoadState("networkidle");
@@ -105,7 +105,7 @@ test.describe("Check dependencies", () => {
   async function saveCheck(page: Page) {
     await page.getByTestId("check-submit-button").click();
     await page.waitForURL(
-      /\/checks\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+      /\/checks\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\?.*)?$/,
       { timeout: 15000 },
     );
     await page.waitForLoadState("networkidle");

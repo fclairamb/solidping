@@ -34,6 +34,7 @@ import {
   chartRollupTier,
   chartWindowBounds,
   seamStartFrom,
+  type ChartTierFetch,
   type TimeRange,
   type ZoomWindow,
 } from "@/lib/chart-window";
@@ -138,6 +139,9 @@ export interface Check {
   /** Per-check path-trace policy: `inherit` (the org default), `on` or `off`.
    * Always present on read; a check that never set it reads `inherit`. */
   tracerouteOnFailure?: string;
+  /** Incident reminder interval in seconds (spec 2026-10-12-16): null inherits
+   * the org default, 0 is off, otherwise 900..86400. Always present on read. */
+  reminderIntervalSeconds?: number | null;
   escalationPolicyUid?: string | null;
   type?:
     | "http"
@@ -349,6 +353,9 @@ export interface CreateCheckRequest {
    * 2026-08-21-10). `inherit` is what puts a check back under the org default;
    * omitting the field leaves it unchanged. */
   tracerouteOnFailure?: string;
+  /** Incident reminder interval (spec 2026-10-12-16): null puts the check on
+   * the org default, 0 is off, otherwise 900..86400 s; omit leaves it. */
+  reminderIntervalSeconds?: number | null;
   /** Multi-region quorum (spec 2026-09-25-10); "default" resets it, omit leaves it unchanged. */
   failQuorum?: FailQuorum;
   name?: string;
@@ -443,6 +450,9 @@ export interface UpdateCheckRequest {
    * 2026-08-21-10). `inherit` is what puts a check back under the org default;
    * omitting the field leaves it unchanged. */
   tracerouteOnFailure?: string;
+  /** Incident reminder interval (spec 2026-10-12-16): null puts the check on
+   * the org default, 0 is off, otherwise 900..86400 s; omit leaves it. */
+  reminderIntervalSeconds?: number | null;
   /** Multi-region quorum (spec 2026-09-25-10); "default" resets it, omit leaves it unchanged. */
   failQuorum?: FailQuorum;
   name?: string;
@@ -2368,9 +2378,14 @@ export function useChartWindowResults(
     /** Anchor for an unzoomed window start; lets a caller slide it on a tick. */
     now?: number;
   },
-  options?: { rawRefetchInterval?: number },
+  options?: { rawRefetchInterval?: number; withMetrics?: boolean },
 ) {
   const { timeRange, periodMs, zoom, now } = window;
+  // Metrics are a blob field the default chart plan never requests (spec
+  // 2026-08-22-04 §3). Only the Timing view asks for them, with its own keys.
+  const withMetrics = options?.withMetrics ?? false;
+  const withFields = (tier: ChartTierFetch): ChartTierFetch =>
+    withMetrics ? { ...tier, with: `${tier.with},metrics` } : tier;
   const zoomFrom = zoom?.from;
   const zoomTo = zoom?.to;
 
@@ -2394,9 +2409,15 @@ export function useChartWindowResults(
   const rollupTiers = useMemo(
     () =>
       hasRollupTier
-        ? [{ checkUid, ...chartFetchParamsForWindow(bounds, rollupTier)[0] }]
+        ? [
+            {
+              checkUid,
+              ...withFields(chartFetchParamsForWindow(bounds, rollupTier)[0]),
+            },
+          ]
         : [],
-    [hasRollupTier, rollupTier, bounds, checkUid],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- withFields is derived from withMetrics
+    [hasRollupTier, rollupTier, bounds, checkUid, withMetrics],
   );
   const rollup = useResultTiers(org, rollupTiers, {
     refetchInterval: ROLLUP_REFETCH_MS,
@@ -2412,8 +2433,9 @@ export function useChartWindowResults(
   const rawTiers = useMemo(() => {
     const plan = chartFetchParamsForWindow(bounds, rollupTier, seamStart);
 
-    return [{ checkUid, ...plan[plan.length - 1] }];
-  }, [checkUid, bounds, rollupTier, seamStart]);
+    return [{ checkUid, ...withFields(plan[plan.length - 1]) }];
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- withFields is derived from withMetrics
+  }, [checkUid, bounds, rollupTier, seamStart, withMetrics]);
   const raw = useResultTiers(org, rawTiers, {
     refetchInterval: options?.rawRefetchInterval,
     enabled: !hasRollupTier || !rollup.isLoading,
@@ -4604,12 +4626,19 @@ export interface OrgSettings {
   // 2026-09-25-28), rendered into the page's CSP frame-ancestors. Always
   // present; empty means only the SolidPing origin itself may frame them.
   statusPageAllowedEmbedOrigins?: string[];
+  // Org default incident reminder interval in seconds (spec 2026-10-12-16),
+  // for every check whose own value is null. Always present; 0 (off) when
+  // the org never set it.
+  reminderIntervalSeconds?: number;
 }
 
-export function useOrgSettings(org: string) {
+export function useOrgSettings(org: string, options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: ["org-settings", org],
     queryFn: () => apiFetch<OrgSettings>(`/api/v1/orgs/${org}/settings`),
+    // Admin-only endpoint: callers outside the settings page pass
+    // `enabled: isAdmin` so members never fire a request that answers 403.
+    enabled: options.enabled ?? true,
   });
 }
 
@@ -4626,6 +4655,9 @@ export interface UpdateOrgSettingsRequest {
   // Replaces the status-page embed allowlist; [] clears it; omit to leave it
   // untouched. Each entry must be a scheme+host origin.
   statusPageAllowedEmbedOrigins?: string[];
+  // Org default reminder interval: 0 is off, otherwise 900..86400 seconds;
+  // omit to leave it untouched.
+  reminderIntervalSeconds?: number;
 }
 
 export function useUpdateOrgSettings(org: string) {
@@ -9026,7 +9058,7 @@ export function useDeleteOrgParameter(org: string) {
 /** Response of POST …/run-now ("Run now"): one entry per region. */
 export interface RunCheckNowResponse {
   requestedAt: string;
-  regions: { region: string; status: "queued" | "running" }[];
+  regions: { region: string; status: "queued" }[];
 }
 
 /** Runs the check once, now, in every region (spec 2026-10-04-01). The

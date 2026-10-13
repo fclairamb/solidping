@@ -92,7 +92,7 @@ test.describe("gRPC check form", () => {
 
     await page.locator("#serviceName").fill("my.service.v2");
     await page.getByTestId("check-submit-button").click();
-    await page.waitForURL(/\/checks\/[0-9a-f-]{36}$/, { timeout: 10000 });
+    await page.waitForURL(/\/checks\/[0-9a-f-]{36}(\?.*)?$/, { timeout: 10000 });
     await page.waitForLoadState("networkidle");
 
     const edited = await getCheck(page, token, uid);

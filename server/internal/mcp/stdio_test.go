@@ -335,7 +335,7 @@ func runStdio(t *testing.T, env *stdioEnv, principal *StdioPrincipal, lines ...s
 	var out bytes.Buffer
 
 	input := strings.NewReader(strings.Join(lines, "\n") + "\n")
-	r.NoError(env.handler.ServeStdio(t.Context(), input, &out, principal))
+	r.NoError(env.handler.ServeStdio(t.Context(), input, &out, principal, ""))
 
 	return decodeStdioLines(t, out.String())
 }
@@ -474,7 +474,7 @@ func TestServeStdioNotificationsGetNoOutput(t *testing.T) {
 		`   `,
 	}, "\n"))
 
-	r.NoError(env.handler.ServeStdio(t.Context(), input, &out, principal))
+	r.NoError(env.handler.ServeStdio(t.Context(), input, &out, principal, ""))
 	r.Empty(out.String(), "notifications must produce no output at all")
 }
 
@@ -612,7 +612,7 @@ func TestServeStdioStopsOnCancel(t *testing.T) {
 
 	done := make(chan error, 1)
 
-	go func() { done <- env.handler.ServeStdio(ctx, blocked, &bytes.Buffer{}, principal) }()
+	go func() { done <- env.handler.ServeStdio(ctx, blocked, &bytes.Buffer{}, principal, "") }()
 
 	cancel()
 
@@ -633,4 +633,39 @@ func (b *blockingReader) Read([]byte) (int, error) {
 	<-b.release
 
 	return 0, io.EOF
+}
+
+// TestServeStdioToolsets: the stdio transport takes its toolset selection from
+// the command (SP_MCP_TOOLSETS / --toolsets): it shapes tools/list, an empty
+// value is the default, and an unknown name refuses to serve.
+func TestServeStdioToolsets(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	env := newStdioEnv(t)
+
+	principal, err := ResolveStdioPrincipal(t.Context(), env.db, "acme", "")
+	r.NoError(err)
+
+	list := func(toolsets string) []ToolDefinition {
+		var out bytes.Buffer
+
+		input := strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}` + "\n")
+		r.NoError(env.handler.ServeStdio(t.Context(), input, &out, principal, toolsets))
+
+		msgs := decodeStdioLines(t, out.String())
+		r.Len(msgs, 1)
+
+		var tools ToolsListResult
+		r.NoError(json.Unmarshal(msgs[0]["result"], &tools))
+
+		return tools.Tools
+	}
+
+	r.Len(list(""), 23)
+	r.Len(list("admin"), 8)
+	r.Len(list("all,legacy"), 50)
+
+	err = env.handler.ServeStdio(t.Context(), strings.NewReader(""), &bytes.Buffer{}, principal, "bogus")
+	r.ErrorIs(err, errUnknownToolset)
 }

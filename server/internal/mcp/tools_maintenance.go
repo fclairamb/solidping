@@ -68,7 +68,7 @@ func maintenanceWindowOutputSchema() map[string]any {
 
 func listMaintenanceWindowsDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "list_maintenance_windows",
+		Name: toolListMaintenanceWindows,
 		Description: "List maintenance windows for the organization, optionally filtered by " +
 			"lifecycle status. Returns {data: [...]}; each window carries its schedule, " +
 			"recurrence, server-computed status (active/upcoming/past) and nextOccurrences. " +
@@ -110,7 +110,7 @@ func (h *Handler) toolListMaintenanceWindows(
 
 func getMaintenanceWindowDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "get_maintenance_window",
+		Name: toolGetMaintenanceWindow,
 		Description: "Get one maintenance window by UID: title, schedule, recurrence, " +
 			"server-computed status (active/upcoming/past) and nextOccurrences. Attached " +
 			"checks are NOT part of the response — set_maintenance_window_checks fully " +
@@ -140,7 +140,7 @@ func (h *Handler) toolGetMaintenanceWindow(
 
 func createMaintenanceWindowDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "create_maintenance_window",
+		Name: toolCreateMaintenanceWindow,
 		Description: "Schedule a new maintenance window and return it (uid, schedule, " +
 			"recurrence, status, nextOccurrences). Pass checkUids/checkGroupUids to attach " +
 			"what the window suppresses in the same call; the window is created first, then " +
@@ -245,7 +245,7 @@ func buildCreateMaintenanceRequest(args map[string]any) (*maintenancewindows.Cre
 
 func updateMaintenanceWindowDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "update_maintenance_window",
+		Name: toolUpdateMaintenanceWindow,
 		Description: "Update an existing maintenance window by UID and return the updated " +
 			"window. PATCH semantics — only the fields you pass change, and the UID must " +
 			"refer to a live window (soft-deleted or unknown UIDs are not-found). Moving " +
@@ -326,7 +326,7 @@ func buildUpdateMaintenanceRequest(args map[string]any) (*maintenancewindows.Upd
 
 func deleteMaintenanceWindowDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "delete_maintenance_window",
+		Name: toolDeleteMaintenanceWindow,
 		Description: "Delete a maintenance window by UID. Soft delete: it vanishes from " +
 			"list_maintenance_windows and get_maintenance_window immediately and stops " +
 			"suppressing its checks; the row survives in the database, but no endpoint " +

@@ -119,7 +119,7 @@ func TestToolDefinitions(t *testing.T) {
 // TestEveryToolDeclaresAnnotationsAndOutputSchema gates the MCP 2025-06-18
 // surface: every tool must carry behavioral annotations, a display title and
 // an object-rooted output schema, and the read-only hint must stay in sync
-// with the scope gate (isMutationTool) so a new write tool can never ship
+// with the scope gate (toolAccessTable) so a new write tool can never ship
 // advertised as read-only. The per-hint assertions also pin the semantics of
 // each annotation class (see annotations.go).
 func TestEveryToolDeclaresAnnotationsAndOutputSchema(t *testing.T) {
@@ -145,12 +145,12 @@ func TestEveryToolDeclaresAnnotationsAndOutputSchema(t *testing.T) {
 			ann := tool.Annotations
 			// The js authoring probes reach the target the caller names
 			// (spec 2026-10-03-07): they are the only open-world tools.
-			probe := tool.Name == toolRunJSScript || tool.Name == toolFetchPage ||
-				tool.Name == toolBrowserSnapshot
+			probe := tool.Name == toolProbe || tool.Name == toolRunJSScript ||
+				tool.Name == toolFetchPage || tool.Name == toolBrowserSnapshot
 			r.Equal(probe, ann.OpenWorldHint,
 				"tool %q open-world hint: only the js authoring probes reach outside SolidPing data",
 				tool.Name)
-			r.Equal(!isMutationTool(tool.Name), ann.ReadOnlyHint,
+			r.Equal(toolIsReadOnly(tool.Name), ann.ReadOnlyHint,
 				"tool %q readOnlyHint out of sync with the scope gate", tool.Name)
 
 			// The hints must all be present in the emitted JSON: omitempty
@@ -168,7 +168,12 @@ func TestEveryToolDeclaresAnnotationsAndOutputSchema(t *testing.T) {
 			}
 
 			switch {
-			case !isMutationTool(tool.Name):
+			case strings.HasPrefix(tool.Name, "manage_"):
+				// By-action tools carry their worst action's hints.
+				r.True(ann.DestructiveHint, "manage tool %q must be flagged destructive", tool.Name)
+				r.False(ann.IdempotentHint, "manage tool %q must not claim idempotency", tool.Name)
+				r.False(ann.ReadOnlyHint, "manage tool %q must not claim read-only", tool.Name)
+			case toolIsReadOnly(tool.Name):
 				r.False(ann.DestructiveHint, "read tool %q flagged destructive", tool.Name)
 				r.True(ann.IdempotentHint, "read tool %q not flagged idempotent", tool.Name)
 			case strings.HasPrefix(tool.Name, "delete_"),
@@ -198,8 +203,10 @@ func TestRegisterTools(t *testing.T) {
 
 	handler := newTestHandler()
 
-	r.Len(handler.tools, 46)
-	r.Len(handler.toolMap, 46)
+	// 31 listed tools (core 15, statuspages 8, admin 8) + 19 legacy aliases.
+	r.Len(handler.tools, 50)
+	r.Len(handler.toolMap, 50)
+	r.Len(handler.toolsets, 50)
 
 	// Every tool definition should have a corresponding function in the map
 	for _, tool := range handler.tools {

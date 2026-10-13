@@ -7,6 +7,9 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
+// maxAvgRTTMsLimit mirrors the 30s timeout cap.
+const maxAvgRTTMsLimit = 30000
+
 // ValidateSpec validates a check spec offline: it parses the config, applies every
 // rule, and fills in the spec defaults (name, slug) the create path relies on. It
 // lives here rather than on the checker so `sp checks validate` reaches it without
@@ -48,6 +51,14 @@ func ValidateSpec(spec *checkerdef.CheckSpec) error {
 	// Validate Timeout (> 0 and <= 30s) - check the original value if set
 	if cfg.Timeout != 0 && (cfg.Timeout <= 0 || cfg.Timeout > 30*time.Second) {
 		return checkerdef.NewConfigErrorf("timeout", "must be > 0 and <= 30s, got %s", cfg.Timeout.String())
+	}
+
+	if v := cfg.MaxPacketLossPercent; v != nil && (*v < 0 || *v > 100) {
+		return checkerdef.NewConfigErrorf("max_packet_loss_percent", "must be between 0 and 100, got %v", *v)
+	}
+
+	if v := cfg.MaxAvgRTTMs; v != nil && (*v <= 0 || *v > maxAvgRTTMsLimit) {
+		return checkerdef.NewConfigErrorf("max_avg_rtt_ms", "must be > 0 and <= %d, got %v", maxAvgRTTMsLimit, *v)
 	}
 
 	if spec.Slug == "" {

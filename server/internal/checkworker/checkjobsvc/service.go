@@ -27,6 +27,12 @@ const BulkLeaseDuration = 2 * time.Minute
 // ErrJobClaimedByAnother is returned when a job has been claimed by another worker.
 var ErrJobClaimedByAnother = errors.New("job may have been claimed by another worker")
 
+// ErrJobGone is returned by a release when the job row no longer exists: the
+// check was deleted or disabled, or the region removed, while the run was in
+// flight (spec 2026-10-12-05). Its result is stored; there is nothing left to
+// reschedule, so callers treat it as the normal end of that job.
+var ErrJobGone = errors.New("job no longer exists")
+
 // Service provides check job queue operations.
 type Service interface {
 	// ClaimJobs atomically claims due check jobs for the given worker with
@@ -1122,6 +1128,15 @@ func (s *serviceImpl) updateSingleJobLease(
 		update = update.Set("capture_claimed_at = NULL")
 	}
 
+	// A claim that starts a fresh run answers any parked run request (spec
+	// 2026-10-12-05): it is left over from a lease that ended without a
+	// release (worker crash, lease expiry), and that run's release would
+	// otherwise schedule one more run for it. A slice that continues a
+	// multi-step run keeps it: the run started before the request.
+	if job.StepRunUID == nil {
+		update = update.Set("run_requested_at = NULL")
+	}
+
 	result, err := update.Exec(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to update check job %s: %w", job.UID, err)
@@ -1150,6 +1165,10 @@ func (s *serviceImpl) updateSingleJobLease(
 	// if the claim consumed one.
 	job.CaptureClaimedAt = job.CaptureRequestedAt
 
+	if job.StepRunUID == nil {
+		job.RunRequestedAt = nil
+	}
+
 	return nil
 }
 
@@ -1175,18 +1194,21 @@ func (s *serviceImpl) ReleaseLease(
 		Set("lease_worker_uid = NULL").
 		Set("lease_expires_at = NULL").
 		Set("lease_starts = 0"). // Reset since the attempt is over
-		Set(pendingCaptureOr("scheduled_at"), nextScheduledAt).
+		Set(pendingRequestOr("scheduled_at"), nextScheduledAt).
 		// Re-anchor the ordering key to the new schedule so a released job does
 		// not keep an effective deadline from a stale (earlier) schedule. The
 		// cost offset is reapplied on the next post-exec write.
-		Set(pendingCaptureOr("effective_scheduled_at"), nextScheduledAt).
+		Set(pendingRequestOr("effective_scheduled_at"), nextScheduledAt).
 		// The run this lease carried is over: its request is spent.
 		Set("capture_claimed_at = NULL").
+		// A run request parked under this lease is now honored by the due
+		// time above (spec 2026-10-12-05).
+		Set("run_requested_at = NULL").
 		Set("updated_at = ?", now).
 		Where("uid = ?", jobUID).
 		Where("lease_worker_uid = ?", workerUID) // Safety: only release if we own the lease
 
-	return s.execRelease(ctx, update)
+	return s.execRelease(ctx, jobUID, update)
 }
 
 // DeferLeaseRateLimited releases the lease of a rate-limited job WITHOUT
@@ -1219,7 +1241,10 @@ func (s *serviceImpl) DeferLeaseRateLimited(
 		Set("lease_worker_uid = NULL").
 		Set("lease_expires_at = NULL").
 		Set("lease_starts = 0"). // The probe never started; don't count it as a crash
-		Set("scheduled_at = ?", nextScheduledAt).
+		// A run request parked under this lease makes the job due at it, like
+		// every other release (spec 2026-10-12-05).
+		Set("scheduled_at = COALESCE(run_requested_at, ?)", nextScheduledAt).
+		Set("run_requested_at = NULL").
 		// The probe never ran, so a "Capture now" request this lease carried
 		// goes back to pending instead of being lost (spec 2026-09-25-34).
 		Set("capture_requested_at = COALESCE(capture_requested_at, capture_claimed_at)").
@@ -1229,7 +1254,7 @@ func (s *serviceImpl) DeferLeaseRateLimited(
 		Where("uid = ?", jobUID).
 		Where("lease_worker_uid = ?", workerUID) // Safety: only release if we own the lease
 
-	return s.execRelease(ctx, update)
+	return s.execRelease(ctx, jobUID, update)
 }
 
 // ReleaseLeaseWithSchedulingState releases the lease and folds the post-exec
@@ -1251,37 +1276,40 @@ func (s *serviceImpl) ReleaseLeaseWithSchedulingState(
 		Set("lease_worker_uid = NULL").
 		Set("lease_expires_at = NULL").
 		Set("lease_starts = 0"). // Reset since job completed
-		Set(pendingCaptureOr("scheduled_at"), nextScheduledAt).
+		Set(pendingRequestOr("scheduled_at"), nextScheduledAt).
 		Set("cost_ewma_ms = ?", costEWMAMs).
 		Set("delay_ewma_ms = ?", delayEWMAMs).
-		Set(pendingCaptureOr("effective_scheduled_at"), effectiveScheduledAt).
+		Set(pendingRequestOr("effective_scheduled_at"), effectiveScheduledAt).
 		Set("capture_claimed_at = NULL").
+		Set("run_requested_at = NULL").
 		Set("lane = ?", lane).
 		Set("updated_at = ?", now).
 		Where("uid = ?", jobUID).
 		Where("lease_worker_uid = ?", workerUID) // Safety: only release if we own the lease
 
-	return s.execRelease(ctx, update)
+	return s.execRelease(ctx, jobUID, update)
 }
 
-// pendingCaptureOr builds a release `SET` for a schedule column that keeps a
-// pending "Capture now" request due (spec 2026-09-25-34). The request may have
-// landed while this job was leased — claim-ahead parks a lease up to 30 s
-// before the tick — and without this the release would push it a whole period
-// out. A pending request schedules the job AT THE REQUEST TIME, which is in the
-// past and therefore due at once. Binds one argument, the normal value.
+// pendingRequestOr builds a release `SET` for a schedule column that keeps a
+// pending request due: a "Capture now" request (spec 2026-09-25-34) or a run
+// request parked while the job was leased (run_requested_at, spec
+// 2026-10-12-05). The request may have landed while this job was leased —
+// claim-ahead parks a lease up to 30 s before the tick, and a run can last
+// longer than that — and without this the release would push it a whole period
+// out. A pending request schedules the job AT THE REQUEST TIME, which is in
+// the past and therefore due at once. Binds one argument, the normal value.
 //
-// The ELSE branch reuses the column rather than binding "now" on purpose: two
-// bound literals would make Postgres resolve the CASE as text and refuse to
-// assign it to a timestamptz column, while the column gives the CASE its type
-// on both engines.
-func pendingCaptureOr(column string) string {
-	return column + " = CASE WHEN capture_requested_at IS NULL THEN ? ELSE capture_requested_at END"
+// The columns come first so they give the COALESCE its type on both engines:
+// a bound literal alone would make Postgres resolve it as text and refuse to
+// assign it to a timestamptz column. The SET list reads the pre-update row, so
+// clearing run_requested_at in the same statement is safe.
+func pendingRequestOr(column string) string {
+	return column + " = COALESCE(capture_requested_at, run_requested_at, ?)"
 }
 
 // execRelease runs a release UPDATE and maps the no-rows case to
-// ErrJobClaimedByAnother.
-func (s *serviceImpl) execRelease(ctx context.Context, update *bun.UpdateQuery) error {
+// ErrJobGone when the row was deleted, ErrJobClaimedByAnother otherwise.
+func (s *serviceImpl) execRelease(ctx context.Context, jobUID string, update *bun.UpdateQuery) error {
 	result, err := update.Exec(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to release lease: %w", err)
@@ -1292,11 +1320,23 @@ func (s *serviceImpl) execRelease(ctx context.Context, update *bun.UpdateQuery) 
 		return fmt.Errorf("failed to get rows affected: %w", err)
 	}
 
-	if rows == 0 {
-		return fmt.Errorf("no rows updated: %w", ErrJobClaimedByAnother)
+	if rows > 0 {
+		return nil
 	}
 
-	return nil
+	exists, err := s.db.NewSelect().
+		Model((*models.CheckJob)(nil)).
+		Where("uid = ?", jobUID).
+		Exists(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to check the released job: %w", err)
+	}
+
+	if !exists {
+		return ErrJobGone
+	}
+
+	return fmt.Errorf("no rows updated: %w", ErrJobClaimedByAnother)
 }
 
 // fenceStepRun adds the multi-step fence: the row's run must still be the one
@@ -1319,6 +1359,9 @@ func (s *serviceImpl) SubmitStep(ctx context.Context, jobUID string, workerUID s
 		Set("scheduled_at = ?", upd.NextAt).
 		Set("effective_scheduled_at = ?", upd.NextAt).
 		Set("capture_claimed_at = NULL").
+		// run_requested_at is left pending: the run goes on, and its result
+		// is written by EndStepRun, which honors the request (spec
+		// 2026-10-12-05).
 		Set("step_run_uid = ?", upd.RunUID).
 		Set("step_run_started_at = ?", upd.RunStartedAt).
 		Set("updated_at = ?", time.Now()).
@@ -1337,7 +1380,7 @@ func (s *serviceImpl) SubmitStep(ctx context.Context, jobUID string, workerUID s
 		update = update.Set("step_state_file_uid = ?", *upd.StateFileUID)
 	}
 
-	return s.execRelease(ctx, fenceStepRun(update, upd.ExpectedRunUID))
+	return s.execRelease(ctx, jobUID, fenceStepRun(update, upd.ExpectedRunUID))
 }
 
 // EndStepRun implements Service.
@@ -1349,8 +1392,11 @@ func (s *serviceImpl) EndStepRun(
 		Set("lease_worker_uid = NULL").
 		Set("lease_expires_at = NULL").
 		Set("lease_starts = 0").
-		Set("scheduled_at = ?", nextScheduledAt).
-		Set("effective_scheduled_at = ?", nextScheduledAt).
+		// A run request parked during the run makes the job due at it (spec
+		// 2026-10-12-05): the run that just ended started before it.
+		Set("scheduled_at = COALESCE(run_requested_at, ?)", nextScheduledAt).
+		Set("effective_scheduled_at = COALESCE(run_requested_at, ?)", nextScheduledAt).
+		Set("run_requested_at = NULL").
 		Set("capture_claimed_at = NULL").
 		Set("step_run_uid = NULL").
 		Set("step_run_started_at = NULL").
@@ -1361,5 +1407,5 @@ func (s *serviceImpl) EndStepRun(
 		Where("uid = ?", jobUID).
 		Where("lease_worker_uid = ?", workerUID)
 
-	return s.execRelease(ctx, fenceStepRun(update, expectedRunUID))
+	return s.execRelease(ctx, jobUID, fenceStepRun(update, expectedRunUID))
 }

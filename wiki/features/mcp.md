@@ -86,17 +86,16 @@ Two custom scopes gate access:
 | Scope | Permission |
 |---|---|
 | `mcp` | All tools (read + write). |
-| `mcp:read` | Read-only tools only. The server denies any tool name beginning with `create_`, `update_`, `delete_`, or `set_` ([`scope.go:67`](../../server/internal/mcp/scope.go)). |
+| `mcp:read` | Read-only tools only. The server denies every call `toolMutates` classifies as a write ([`access.go`](../../server/internal/mcp/access.go)). |
 
 A token with **no scopes at all** (a full dashboard JWT) is treated as
 having full access — back-compat for the dashboard's own MCP-over-PAT
-flow that pre-dates the scope split. The deny-list (rather than
-trusting per-tool annotations) stays the enforcement mechanism: every
-new write tool naturally falls under one of the four prefixes, and a
-stray miss is a reviewable oversight rather than a silent privilege
-escalation. The MCP 2025-06-18 `annotations` every tool now carries
-(`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`,
-mirrored from the same prefixes in [`annotations.go`](../../server/internal/mcp/annotations.go))
+flow that pre-dates the scope split. The explicit access table (rather
+than trusting per-tool annotations) is the enforcement mechanism, and
+it fails closed: a tool missing from it is a write. The MCP 2025-06-18
+`annotations` every tool carries (`readOnlyHint`, `destructiveHint`,
+`idempotentHint`, `openWorldHint`, in [`annotations.go`](../../server/internal/mcp/annotations.go),
+`readOnlyHint` pinned to the table by a test)
 are advisory metadata for the *client*, not an authorization input —
 the spec requires clients to treat them as untrusted, so the server
 never makes a gate decision from them.
@@ -108,50 +107,58 @@ delete anything".
 ## Available tools
 
 Tools are static, registered once at startup
-([`mcp/tools.go`](../../server/internal/mcp/tools.go)). Current
-inventory (this list goes stale; the source of truth is `registerTools()`):
+([`mcp/tools.go`](../../server/internal/mcp/tools.go), `listedTools()` and
+`legacyTools()`). Spec 2026-10-12-06 cut the default `tools/list` from 46 to 23
+(Glama scores tool count, and agent tool selection degrades past ~25).
 
-**Checks**
-- `list_checks`, `get_check`, `create_check`, `update_check`,
-  `delete_check`
-- `validate_check` — dry-run a config without persisting
-- `diagnose_check` — fetch recent results, dependencies, recent
-  incidents in one call for an LLM to reason over
-- `list_check_types`, `get_check_type_samples` — discoverability
-  surface so an LLM can pick a type and request a starter config
+**Toolsets** (`mcp/toolsets.go`). Every registered tool carries one tag:
 
-**Results**
-- `list_results` — time-bounded; the server forces a default window
-  rather than letting an LLM ask for "all results" and pull a year of
-  rows
+| Toolset | Default | Count | Tools |
+|---|---|---|---|
+| `core` | yes | 15 | checks CRUD, `validate_check`, `run_check`, `diagnose_check`, `list_results`, `list_incidents`, `get_incident`, `list_check_types`, `list_regions`, `list_check_groups`, `probe` |
+| `statuspages` | yes | 8 | status page CRUD, `manage_status_page_section`, `manage_status_page_resource`, `manage_status_page_incident` |
+| `admin` | no | 8 | integrations (`list_`, `create_`), maintenance windows (5 CRUD + `set_maintenance_window_checks`) |
+| `legacy` | no | 19 | the deprecated names the merges replaced |
 
-**Incidents**
-- `list_incidents`, `get_incident`
+- Selected with `?toolsets=core,statuspages,admin,legacy` or `all` (= the three
+  non-legacy sets) on the endpoint URL, read **per request** in `Handle` and
+  carried in the context. Nothing is stored on the handler or the session, so
+  concurrent sessions with different selections never race on `h.tools`.
+- Stdio: `solidping mcp --stdio --toolsets ...` / `SP_MCP_TOOLSETS`.
+- Unknown name: JSON-RPC `-32602` naming the valid values.
+- **Listing only.** `h.toolMap` resolves every name, listed or not, and the
+  gates below never look at the selection.
 
-**Connections (channels)**
-- `list_connections`, `create_connection`
+**Merged tools** (`mcp/tools_merged.go`), each calling the code of the tools it
+replaced:
 
-**Check groups**
-- `list_check_groups`
+- `probe(kind: script|fetch|browser)` ← `run_js_script`, `fetch_page`, `browser_snapshot`
+- `list_check_types(type?)` ← `get_check_type_samples`
+- `get_incident(include: [notifications], status, limit)` ← `incident_notifications_list`
+- `get_status_page(include: [sections, resources, incidents], sectionIdentifier, state, active)`
+  ← the three `list_status_page_*` tools. `include: []` returns the page only, an
+  unknown include value is a tool error.
+- `manage_status_page_section` / `_resource` (`action: create|update|delete`) and
+  `manage_status_page_incident` (`action: create|update|add_update|publish|unpublish`)
+  ← the 11 sub-resource write tools. Annotated for their worst action
+  (`manageAnnotations`: destructive, not idempotent).
 
-**Regions**
-- `list_regions`
+**Legacy aliases.** A write alias is `withFixedArg(manageTool, "action", ...)`; a
+read alias is the very list function the merged tool's `include` calls. Their
+descriptions start with "Deprecated: use ...". Lifetime: one release callable and
+listed under `legacy`, then dropped from the listing and kept callable for one
+more release, then deleted (follow-up spec).
 
-**Status pages** (full CRUD)
-- pages: `list_status_pages`, `get_status_page`, `create_status_page`,
-  `update_status_page`, `delete_status_page`
-- sections: `list_status_page_sections`, `create_status_page_section`,
-  `update_status_page_section`, `delete_status_page_section`
-- resources: `list_status_page_resources`,
-  `create_status_page_resource`, `update_status_page_resource`,
-  `delete_status_page_resource`
+**Write gate** (`mcp/access.go`). `toolMutates(name, args)` reads
+`toolAccessTable` (read / write / by-action) and feeds the scope, demo and role
+gates in `handleToolsCall`. It fails closed: a name with no entry, or a by-action
+tool whose `action` is missing, not a string or not a declared read action
+(exact match, so `Delete` is a write), counts as a write. Every `manage_*` call
+is a write. `TestEveryToolHasAnAccessEntry` keeps the table and the registry in
+step. Before this spec the gate was a tool-name prefix deny-list
+(`create_`/`update_`/`delete_`/`set_`), which a merged name would have escaped.
 
-**Maintenance windows**
-- `list_maintenance_windows`, `get_maintenance_window`,
-  `create_maintenance_window`, `update_maintenance_window`,
-  `delete_maintenance_window`, `set_maintenance_window_checks`
-
-Tool descriptions are LLM-facing prose — they explain *when* to pick a
+Tool descriptions are LLM-facing prose: they explain *when* to pick a
 tool, not just what it does. Pagination (`limit` / `cursor`) is
 exposed where relevant; `with` flags surface eager-load options.
 
@@ -164,10 +171,10 @@ quality score 60/100). The fix is a static server card (spec 2026-09-30-03):
 OAuth `.well-known` routes ([`mcp/servercard.go`](../../server/internal/mcp/servercard.go),
 wired next to `/mcp` in `internal/app/server.go`).
 
-- It is **generated from the live registry** (`h.tools`, `getResourceDefinitions`,
-  `listPrompts`), so it cannot drift from `tools/list`. The registry is not
-  filtered per caller, so the card lists the full set and is byte-identical for
-  every caller (no org data).
+- It is **generated from the live registry** (the default toolsets of
+  `h.tools`, `getResourceDefinitions`, `listPrompts`), so it cannot drift from
+  the default `tools/list` (23 tools). It is byte-identical for every caller
+  (no org data).
 - Keys read by Smithery (https://smithery.ai/docs/build/external): `serverInfo`,
   `authentication` (`required: true`, `oauth2`), `tools`, `resources`,
   `prompts`, and `configSchema` (empty object, no `required`: sign-in is OAuth,
@@ -410,11 +417,11 @@ here. The image already defaults to SQLite under `/data`:
    `annotations.go` matching the verb class — `readOnlyAnnotations`,
    `createAnnotations`, `updateAnnotations`, `replaceAnnotations`
    (full-replacement writes that can clear a collection),
-   `deleteAnnotations` — with a sentence-case title. The title is
-   mirrored onto the definition automatically. The
-   `TestEveryToolDeclaresAnnotationsAndOutputSchema` gate fails the
-   build if the hints drift from the name-prefix scope gate, so the
-   class you pick must match the prefix you pick in step 6.
+   `deleteAnnotations`, `manageAnnotations` (by-action tools) — with a
+   sentence-case title. The title is mirrored onto the definition
+   automatically. The `TestEveryToolDeclaresAnnotationsAndOutputSchema`
+   gate fails the build if `readOnlyHint` drifts from the access table,
+   so the class you pick must match the entry you add in step 6.
 3. **Declare an output schema**: `OutputSchema` with an object root
    (`objectSchema(...)` / `dataOutputSchema(...)`), matching what
    `marshalResult` will actually return. If the handler returns a bare
@@ -424,11 +431,14 @@ here. The image already defaults to SQLite under `/data`:
    pair an output schema with `textResult`.
 4. **Implement the handler**: a method on `*Handler` with the
    signature `func(ctx context.Context, orgSlug string, args map[string]any) ToolCallResult`.
-5. **Register it**: add a `{def, fn}` entry to the slice in
-   `registerTools()` ([`tools.go:9`](../../server/internal/mcp/tools.go)).
-6. **Pick the right name prefix** for the scope gate:
-   - `list_…` / `get_…` / read verbs → mutation prefix detection skips it; `mcp:read` allowed.
-   - `create_…` / `update_…` / `delete_…` / `set_…` → blocked from `mcp:read`.
+5. **Register it**: add a `{def, fn, toolset}` entry to `listedTools()`
+   ([`tools.go`](../../server/internal/mcp/tools.go)). Think twice before
+   growing the default `core` / `statuspages` lists (the test caps them at 25);
+   a rarely used tool belongs in `admin`.
+6. **Classify it** in `toolAccessTable` ([`access.go`](../../server/internal/mcp/access.go)):
+   `readTool()`, `writeTool()`, or `byActionTool(readActions...)` for a tool
+   with an `action` argument. Writes are refused to `mcp:read`, viewers and the
+   demo. Keep the name a verb_noun (`create_…`, `list_…`).
 7. **Use `objectProp("description")` for nested-object args** — the
    LLM will pass JSON; `stringProp` would force the model to stringify
    first.

@@ -123,6 +123,14 @@ func (s *SlackWebhookSender) buildMessage(payload *Payload) *slack.MessageRespon
 		msg.Text = ref + msg.Text
 	}
 
+	// A webhook cannot update the original card, so the resolved and reopened
+	// thread-reply text is the only place its region line can go.
+	if payload.EventType == eventTypeIncidentResolved || payload.EventType == eventTypeIncidentReopened {
+		if line := RegionLine(payload); line != "" {
+			msg.Text += "\n" + line
+		}
+	}
+
 	return msg
 }
 

@@ -52,6 +52,19 @@ export const BODY_ASSERTION_OPERATORS = [
   "regex",
 ] as const;
 
+// Header assertions test a response header by name (the leaf `path`). Text
+// operators plus exists/not_exists; the numeric comparisons are rejected by
+// the server (checkhttp ValidateHeaders).
+export const HEADER_ASSERTION_OPERATORS = [
+  "eq",
+  "neq",
+  "contains",
+  "not_contains",
+  "regex",
+  "exists",
+  "not_exists",
+] as const;
+
 const NO_VALUE_OPERATORS = new Set(["exists", "not_exists"]);
 
 // Operators whose comparison is textual, and therefore the only ones an
@@ -74,6 +87,8 @@ interface AssertionEditorProps {
   // Prefix for every data-testid in the tree, so two editors can be mounted
   // on the same form without colliding.
   testIdPrefix?: string;
+  // Placeholder (and seed) of the path input. Defaults to a JSONPath.
+  pathPlaceholder?: string;
 }
 
 // JsonAssertionEditor renders the recursive assertion AST the HTTP checker
@@ -87,12 +102,15 @@ export function JsonAssertionEditor({
   showPath = true,
   operators = JSON_ASSERTION_OPERATORS,
   testIdPrefix = "json-assertion",
+  pathPlaceholder = "$.path",
 }: AssertionEditorProps) {
   const { t } = useTranslation("checks");
 
   const newLeaf = (): AssertionNode => ({
     type: "assertion",
-    ...(showPath ? { path: "$.status" } : {}),
+    ...(showPath
+      ? { path: pathPlaceholder === "$.path" ? "$.status" : "" }
+      : {}),
     operator: operators[0] ?? "eq",
     value: "",
   });
@@ -122,8 +140,25 @@ export function JsonAssertionEditor({
         showPath={showPath}
         operators={operators}
         testIdPrefix={testIdPrefix}
+        pathPlaceholder={pathPlaceholder}
       />
     </div>
+  );
+}
+
+// HeaderAssertionEditor is JsonAssertionEditor with the path input holding a
+// response header name and the operator list the server accepts for headers.
+export function HeaderAssertionEditor(
+  props: Pick<AssertionEditorProps, "value" | "onChange">,
+) {
+  return (
+    <JsonAssertionEditor
+      {...props}
+      showPath
+      operators={HEADER_ASSERTION_OPERATORS}
+      testIdPrefix="header-assertion"
+      pathPlaceholder="Header-Name"
+    />
   );
 }
 
@@ -151,6 +186,7 @@ interface NodeEditorProps {
   showPath: boolean;
   operators: readonly string[];
   testIdPrefix: string;
+  pathPlaceholder: string;
 }
 
 function NodeEditor({
@@ -161,6 +197,7 @@ function NodeEditor({
   showPath,
   operators,
   testIdPrefix,
+  pathPlaceholder,
 }: NodeEditorProps) {
   const { t } = useTranslation("checks");
   const ignoreCaseId = useId();
@@ -180,7 +217,7 @@ function NodeEditor({
           <Input
             value={node.path ?? ""}
             onChange={(e) => onChange({ ...node, path: e.target.value })}
-            placeholder="$.path"
+            placeholder={pathPlaceholder}
             className="w-full font-mono text-sm sm:w-40"
             data-testid={`${testIdPrefix}-path`}
           />
@@ -306,6 +343,7 @@ function NodeEditor({
             showPath={showPath}
             operators={operators}
             testIdPrefix={testIdPrefix}
+            pathPlaceholder={pathPlaceholder}
           />
         ))}
         <div className="flex gap-2">

@@ -124,9 +124,10 @@ const (
 	KeyPerfJobsHardDeleteHours ParameterKey = "performance.jobs_hard_delete_hours"
 
 	// KeyAuditRetentionDays is how many days the security/configuration audit
-	// trail is kept (spec 2026-08-21-09). Resolved at job-run time by the same
-	// env → global DB parameter → koanf → default precedence as the perf keys
-	// above (jobtypes.resolveRetentionTier). Default 365; 0 disables the sweep.
+	// trail is kept (spec 2026-08-21-09). Resolved at job-run time by the
+	// env → global DB parameter → koanf → default precedence, but unlike the
+	// perf keys above 0 (or negative) is valid at every tier and keeps the
+	// trail forever. Default 365.
 	KeyAuditRetentionDays ParameterKey = "audit.retention_days"
 
 	// Generic OAuth2/OIDC provider keys (spec 2026-07-08-08, part 1). Global-only,
@@ -177,6 +178,7 @@ const (
 	KeyPasswordArgon2Threads ParameterKey = "auth.password.argon2.threads"
 	KeyPasswordArgon2KeyLen  ParameterKey = "auth.password.argon2.key_length"
 	KeyPasswordArgon2SaltLen ParameterKey = "auth.password.argon2.salt_length"
+	KeyPasswordArgon2Auto    ParameterKey = "auth.password.argon2.auto_profile"
 	KeyPasswordBcryptCost    ParameterKey = "auth.password.bcrypt.cost"
 	KeyPasswordRehashOnLogin ParameterKey = "auth.password.rehash_on_login"
 
@@ -1245,6 +1247,7 @@ func getKnownParameters() []ParameterDefinition {
 			ApplyFunc: func(cfg *config.Config, value any) {
 				if v, ok := parseUint32(value); ok {
 					cfg.Auth.Password.Argon2.Memory = v
+					cfg.Auth.Password.Argon2Explicit = true
 				}
 			},
 		},
@@ -1255,6 +1258,7 @@ func getKnownParameters() []ParameterDefinition {
 			ApplyFunc: func(cfg *config.Config, value any) {
 				if v, ok := parseUint32(value); ok {
 					cfg.Auth.Password.Argon2.Time = v
+					cfg.Auth.Password.Argon2Explicit = true
 				}
 			},
 		},
@@ -1265,6 +1269,7 @@ func getKnownParameters() []ParameterDefinition {
 			ApplyFunc: func(cfg *config.Config, value any) {
 				if v, ok := parseUint8(value); ok {
 					cfg.Auth.Password.Argon2.Threads = v
+					cfg.Auth.Password.Argon2Explicit = true
 				}
 			},
 		},
@@ -1286,6 +1291,14 @@ func getKnownParameters() []ParameterDefinition {
 				if v, ok := parseUint32(value); ok {
 					cfg.Auth.Password.Argon2.SaltLength = v
 				}
+			},
+		},
+		{
+			Key:    KeyPasswordArgon2Auto,
+			EnvVar: "SP_AUTH_PASSWORD_ARGON2_AUTO_PROFILE",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				cfg.Auth.Password.Argon2.AutoProfile = parseBool(value, cfg.Auth.Password.Argon2.AutoProfile)
 			},
 		},
 		{

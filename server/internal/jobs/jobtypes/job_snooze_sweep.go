@@ -94,7 +94,41 @@ func (r *SnoozeSweepJobRun) unsnooze(
 		return fmt.Errorf("create unsnooze event: %w", err)
 	}
 
+	r.scheduleReminder(ctx, jctx, incident)
+
 	return nil
+}
+
+// scheduleReminder restarts the incident's reminders from the unsnooze (spec
+// 2026-10-12-16), mirroring the manual unsnooze path. Best-effort.
+func (r *SnoozeSweepJobRun) scheduleReminder(
+	ctx context.Context, jctx *jobdef.JobContext, incident *models.Incident,
+) {
+	if jctx.Services == nil || jctx.Services.Jobs == nil {
+		return
+	}
+
+	fresh, err := jctx.DBService.GetIncident(ctx, incident.OrganizationUID, incident.UID)
+	if err != nil {
+		jctx.Logger.WarnContext(ctx, "Reminder: failed to reload unsnoozed incident",
+			"incident_uid", incident.UID, "error", err)
+
+		return
+	}
+
+	check, err := jctx.DBService.GetCheck(ctx, fresh.OrganizationUID, fresh.CheckUID)
+	if err != nil {
+		jctx.Logger.WarnContext(ctx, "Reminder: failed to load check",
+			"incident_uid", incident.UID, "error", err)
+
+		return
+	}
+
+	err = ScheduleIncidentReminder(ctx, jctx.Services.Jobs, jctx.DBService, fresh, check, jctx.ClockNow())
+	if err != nil {
+		jctx.Logger.WarnContext(ctx, "Reminder: failed to schedule after unsnooze",
+			"incident_uid", incident.UID, "error", err)
+	}
 }
 
 func (r *SnoozeSweepJobRun) rescheduleSelf(ctx context.Context, jctx *jobdef.JobContext) {

@@ -111,8 +111,12 @@ type Handler struct {
 	scriptRunner *aichecks.Runner
 
 	sessions sync.Map // map[string]*session
+	// tools is every registered definition, listed or legacy alias; toolMap
+	// resolves every one of those names; toolsets tags each name with the
+	// toolset that lists it. All three are written once, in registerTools.
 	tools    []ToolDefinition
 	toolMap  map[string]toolFunc
+	toolsets map[string]string
 
 	cancel context.CancelFunc
 }
@@ -327,11 +331,23 @@ func (h *Handler) Handle(writer http.ResponseWriter, req *http.Request) error {
 			errorResponse(rpcReq.ID, CodeInvalidRequest, "Invalid JSON-RPC version"))
 	}
 
+	// ?toolsets= only shapes tools/list (spec 2026-10-12-06). A client sends
+	// it on every POST since it is part of the endpoint URL, so it is read per
+	// request and never stored on the handler or the session.
+	selection, err := parseToolsets(req.URL.Query().Get(ToolsetsQueryParam))
+	if err != nil {
+		return writeJSON(writer, http.StatusOK,
+			errorResponse(rpcReq.ID, CodeInvalidParams, err.Error()))
+	}
+
+	ctx := withToolsets(req.Context(), selection)
+	req = req.WithContext(ctx)
+
 	if !authenticated {
 		return h.handleAnonymous(writer, req, &rpcReq)
 	}
 
-	resp, statusCode := h.dispatch(req.Context(), &rpcReq, claims.OrgSlug, claims, writer)
+	resp, statusCode := h.dispatch(ctx, &rpcReq, claims.OrgSlug, claims, writer)
 	if resp == nil {
 		return nil
 	}
@@ -379,7 +395,7 @@ func (h *Handler) dispatch(
 		resp := successResponse(req.ID, map[string]any{})
 		return &resp, http.StatusOK
 	case methodToolsList:
-		return h.handleToolsList(req)
+		return h.handleToolsList(ctx, req)
 	case methodToolsCall:
 		return h.handleToolsCall(ctx, req, orgSlug, claims)
 	case methodResourcesList:
@@ -449,8 +465,8 @@ func (h *Handler) handleInitialize(
 	return &resp, http.StatusOK
 }
 
-func (h *Handler) handleToolsList(req *Request) (*Response, int) {
-	resp := successResponse(req.ID, ToolsListResult{Tools: h.tools})
+func (h *Handler) handleToolsList(ctx context.Context, req *Request) (*Response, int) {
+	resp := successResponse(req.ID, ToolsListResult{Tools: h.listTools(toolsetsFromContext(ctx))})
 	return &resp, http.StatusOK
 }
 
@@ -469,7 +485,10 @@ func (h *Handler) handleToolsCall(
 		return &resp, http.StatusOK
 	}
 
-	if isMutationTool(params.Name) {
+	// One decision feeds all three gates (spec 2026-10-12-06): the access
+	// table, keyed on the tool name and, for a manage_* tool, its action.
+	// A tool merely absent from the listed toolsets is gated identically.
+	if toolMutates(params.Name, params.Arguments) {
 		// Scope gate: was this credential minted for writing at all?
 		if isMCPReadOnly(claims) {
 			resp := errorResponse(req.ID, CodeForbidden,
@@ -479,7 +498,7 @@ func (h *Handler) handleToolsCall(
 
 		// Demo gate: the shared public demo may create, edit and delete
 		// checks (ownership enforced in checks.Service) and nothing else.
-		if demoToolRefused(claims, params.Name) {
+		if demoToolRefused(claims, params.Name, params.Arguments) {
 			resp := demoRefusalResponse(req.ID)
 			return &resp, http.StatusOK
 		}

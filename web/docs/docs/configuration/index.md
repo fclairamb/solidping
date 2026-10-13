@@ -56,7 +56,7 @@ the right place.
 |----------|---------|-------------|
 | `SP_SERVER_LISTEN` | `:4000` | Listen address (e.g., `:4000`, `0.0.0.0:8080`) |
 | `SP_SERVER_JOB_WORKER_NB` | `2` | Number of job runner goroutines |
-| `SP_SERVER_CHECK_WORKER_NB` | `3` | Number of check runner goroutines |
+| `SP_SERVER_CHECK_WORKER_NB` | `25` | Number of check runner goroutines |
 | `SP_SERVER_COMPRESSION` | `true` | Gzip-compress JSON, HTML, CSS, JS, SVG and XML/Atom/YAML responses above 1 KiB. SolidPing compresses its own responses, so no reverse-proxy-side compression is needed — enabling one anyway is harmless, since a response that already carries `Content-Encoding` passes through untouched |
 | `SP_SHUTDOWN_TIMEOUT` | `30s` | Graceful shutdown timeout |
 | `SP_EXIT_WITH_PARENT` | `false` | Shut down when the process that started SolidPing disappears, instead of being reparented to PID 1. For servers spawned by a test harness or a wrapper script; leave off under a normal supervisor |
@@ -325,6 +325,22 @@ See [Product Analytics](/configuration/analytics) for exactly what is and is not
 | `SP_OTEL_ENDPOINT` | - | OTLP collector endpoint |
 
 See [Observability](/features/observability) for Sentry and OpenTelemetry details.
+
+### Runtime memory
+
+Go runtime memory guardrails. A native `GOMEMLIMIT` or `GOGC` environment
+variable always wins over these.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SP_RUNTIME_MEMORY_LIMIT` | - | Soft cap on the Go heap (`GOMEMLIMIT`), e.g. `128MiB`, `1GiB` or bytes. The runtime collects more often near it, it never refuses memory |
+| `SP_RUNTIME_AUTO_MEMORY_LIMIT` | `true` | When no cap is set: derive one from the container's cgroup memory limit × the ratio below. With no cgroup limit, a Linux host with at most 2 GiB of RAM gets half of it |
+| `SP_RUNTIME_MEMORY_LIMIT_RATIO` | `0.9` | Fraction of the cgroup limit used as the soft cap |
+| `SP_RUNTIME_GC_PERCENT` | - | Heap growth target (`GOGC`). Lower trims memory for more GC work. Empty leaves Go's default (100) |
+
+The startup log line `Runtime memory guardrails applied` shows the effective
+values and where they came from. For small hosts see
+[Small hosts](/installation/linux#small-hosts-1-gb-and-less).
 
 ### AI-authored checks
 

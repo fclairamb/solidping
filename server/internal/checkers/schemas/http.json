@@ -102,6 +102,9 @@
     "bodyAssertions": {
       "$ref": "#/$defs/AssertionNode"
     },
+    "headerAssertions": {
+      "$ref": "#/$defs/AssertionNode"
+    },
     "verifySsl": {
       "type": "boolean"
     },
@@ -109,6 +112,9 @@
       "type": "boolean"
     },
     "redirectHostPolicy": {
+      "type": "string"
+    },
+    "expectedFinalUrl": {
       "type": "string"
     },
     "httpVersion": {

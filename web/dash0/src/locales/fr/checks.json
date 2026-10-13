@@ -245,6 +245,11 @@
     "tracerouteOn": "Toujours capturer",
     "tracerouteOff": "Ne jamais capturer",
     "tracerouteOnFailureHelp": "Quand ce check tombe parce que la cible n'a pas pu être JOINTE (timeout de connexion, refus, perte ICMP, blocage du handshake TLS), capturer un traceroute façon MTR et l'attacher à l'incident. Les échecs applicatifs — HTTP 5xx, mot-clé absent, certificat qui expire — n'en déclenchent jamais : le serveur a répondu, donc le chemin est bon.",
+    "reminderInterval": "Relancer tant que non acquitté",
+    "reminderIntervalInherit": "Valeur de l'organisation",
+    "reminderIntervalInheritValue": "Valeur de l'organisation ({{value}})",
+    "reminderIntervalOff": "Désactivé",
+    "reminderIntervalHelp": "Tant qu'un incident reste ouvert sans être acquitté, notifier à nouveau les canaux de ce check à cet intervalle. Acquitter, mettre en pause ou résoudre l'incident arrête les relances. Les canaux SMS et PagerDuty n'en reçoivent jamais.",
     "customPeriod": "{{period}} (personnalisé)",
     "reviewScheduling": "Revoir la planification des checks",
     "editCheckSubtitle": "Modifier les paramètres du check de supervision",
@@ -901,7 +906,11 @@
       "runFailedTitle": "La capture a échoué",
       "runFailed": "La capture a échoué : {{reason}}"
     },
-    "uidShort": "uid : {{uid}}..."
+    "uidShort": "uid : {{uid}}...",
+    "copyCurl": "Copier en cURL",
+    "curlCopied": "Requête copiée en cURL",
+    "curlCopiedPlaceholders": "Requête copiée en cURL. Les secrets ont été remplacés par des variables.",
+    "copyCurlFailed": "Impossible de copier la requête"
   },
   "endpoints": {
     "heartbeat": {
@@ -950,6 +959,8 @@
   },
   "jsonAssertions": "Assertions JSON",
   "jsonAssertionsDescription": "Valide des champs du corps de la réponse JSON via une expression JSONPath.",
+  "headerAssertions": "Assertions sur les en-têtes",
+  "headerAssertionsDescription": "Valide les en-têtes de la réponse. Le nom de l'en-tête ne tient pas compte de la casse. « égal à », « contient » et « correspond à la regex » réussissent si une ligne de l'en-tête correspond, et échouent si l'en-tête est absent. « différent de » et « ne contient pas » réussissent si aucune ligne ne correspond, ou si l'en-tête est absent.",
   "bodyAssertions": "Assertions sur le corps",
   "bodyAssertionsDescription": "Valide le corps de la réponse en texte brut. « égal à » compare le corps entier, espaces de début et de fin supprimés : un endpoint de santé ASP.NET Core renvoyant « Healthy\\n » correspond donc à égal à « Healthy » avec Ignorer la casse. « contient », « ne contient pas » et « correspond à la regex » voient le corps tel quel.",
   "assertionIgnoreCase": "Ignorer la casse",
@@ -1100,6 +1111,8 @@
     "redirectHostPolicyAny": "Tout hôte",
     "redirectHostPolicySameHost": "Même hôte uniquement",
     "redirectHostPolicySameHostHelp": "Une redirection vers un hôte différent fait échouer le contrôle au lieu d'être suivie.",
+    "expectedFinalUrl": "URL finale attendue",
+    "expectedFinalUrlHelp": "Où la chaîne de redirections doit aboutir. Schéma et hôte sont insensibles à la casse, les ports par défaut et le #fragment sont ignorés, le chemin et la requête doivent correspondre exactement.",
     "httpVersion": "Version HTTP",
     "httpVersion11": "HTTP/1.1 (par défaut)",
     "httpVersion2": "HTTP/2",
@@ -1249,7 +1262,10 @@
     "burstIntervalNeedsCount": "Ne s'applique que si plus d'un paquet est envoyé",
     "burstIntervalDenseWarning": "En dessous de 50 ms, certaines cibles limitent le débit des échos ICMP — la perte de paquets affichée peut être réelle, pas un artefact de mesure",
     "burstPacketSize": "Taille des paquets (octets)",
-    "burstTtl": "TTL (sauts)"
+    "burstTtl": "TTL (sauts)",
+    "burstMaxLoss": "Perte de paquets max (%)",
+    "burstMaxAvgRtt": "Temps de réponse moyen max (ms)",
+    "burstLossCountHint": "Avec 1 paquet, la perte vaut 0 % ou 100 %. Envoyez au moins 10 paquets pour un pourcentage utile."
   },
   "prometheus": {
     "mode": "Mode",
@@ -1436,6 +1452,8 @@
     "intervalDuration": "L'intervalle doit être une durée comme 100 ou 100ms",
     "packetSizeWholeNumber": "La taille de paquet doit être un nombre entier d'octets",
     "ttlWholeNumber": "Le TTL doit être un nombre entier",
+    "maxPacketLossNumber": "La perte de paquets max doit être un nombre",
+    "maxAvgRttNumber": "Le temps de réponse moyen max doit être un nombre",
     "invalidStatusCodes_one": "Motif de code de statut invalide : {{codes}} (utilisez un code exact comme 200 ou un joker comme 4XX)",
     "invalidStatusCodes_other": "Motifs de code de statut invalides : {{codes}} (utilisez un code exact comme 200 ou un joker comme 4XX)",
     "invalidIp_one": "Adresse {{family}} invalide : {{values}}",
@@ -1643,6 +1661,23 @@
       "proposed": "un nouveau script a été proposé, voir l'historique",
       "applied": "un nouveau script a été appliqué",
       "error": "la tentative a échoué"
+    }
+  },
+  "timing": {
+    "title": "Détail des temps",
+    "description": "Où est passé le temps de cette sonde. Les phases non exécutées ne sont pas affichées.",
+    "chartTitle": "Détail des temps",
+    "viewResponse": "Temps de réponse",
+    "viewTiming": "Détail des temps",
+    "viewLabel": "Vue du graphique",
+    "noData": "Aucune donnée de temps sur cette période.",
+    "phase": {
+      "redirect": "Redirections",
+      "dns": "Résolution DNS",
+      "connect": "Connexion",
+      "tls": "Négociation TLS",
+      "ttfb": "Réponse du serveur (TTFB)",
+      "download": "Téléchargement"
     }
   }
 }

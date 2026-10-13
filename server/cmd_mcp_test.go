@@ -531,3 +531,31 @@ func TestMCPCommandFlags(t *testing.T) {
 		})
 	}
 }
+
+// TestMCPCommandToolsetsFlag: --toolsets is read from SP_MCP_TOOLSETS when the
+// flag is absent, and the flag wins over the variable.
+func TestMCPCommandToolsetsFlag(t *testing.T) {
+	t.Setenv("SP_MCP_TOOLSETS", "all,legacy")
+
+	for args, want := range map[string]string{
+		"mcp --stdio":                  "all,legacy",
+		"mcp --stdio --toolsets admin": "admin",
+	} {
+		r := require.New(t)
+		root := buildRootCommand()
+
+		mcpCmd := findSubcommand(root, "mcp")
+		r.NotNil(mcpCmd)
+
+		var got string
+
+		mcpCmd.Action = func(_ context.Context, c *cli.Command) error {
+			got = c.String(flagToolsets)
+
+			return nil
+		}
+
+		r.NoError(root.Run(t.Context(), append([]string{"solidping"}, strings.Fields(args)...)))
+		r.Equal(want, got, args)
+	}
+}

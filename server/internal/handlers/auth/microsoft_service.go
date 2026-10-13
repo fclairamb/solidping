@@ -185,7 +185,7 @@ func (s *MicrosoftOAuthService) HandleCallback(
 	}
 
 	// Find or create user
-	user, userCreated, err := s.findOrCreateUser(ctx, userInfo, email)
+	user, _, err := s.findOrCreateUser(ctx, userInfo, email)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find/create user: %w", err)
 	}
@@ -195,7 +195,7 @@ func (s *MicrosoftOAuthService) HandleCallback(
 	// login.Pending instead of a membership, with a session on an org they
 	// already belong to (login.FallbackOrgSlug) or an org-less one.
 	login, err := s.authService.CompleteOrgLogin(ctx, org, user,
-		WithLoginMethod(signupMethodMicrosoft), newlyCreatedUserOption(userCreated))
+		WithLoginMethod(signupMethodMicrosoft))
 	if err != nil {
 		return nil, err
 	}
@@ -310,8 +310,7 @@ func (s *MicrosoftOAuthService) fetchUserProfile(ctx context.Context, accessToke
 func (s *MicrosoftOAuthService) findOrCreateUser(
 	ctx context.Context, userInfo *MicrosoftUserInfo, email string,
 ) (*models.User, bool, error) {
-	// created reports whether THIS call minted the account — the fact rule 6's
-	// SaaS platform-default guard needs (WithNewlyCreatedUser, spec 2026-09-05-01).
+	// created reports whether THIS call minted the account.
 	var created bool
 
 	// Check by Microsoft user ID first (via user_providers)

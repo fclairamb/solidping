@@ -65,4 +65,23 @@ describe("redirectToExpiredLogin", () => {
     expect(window.location.href).toContain("/orgs/test/login");
     expect(window.location.href).toContain("session_expired=true");
   });
+
+  it("flags a real session as expired", () => {
+    localStorage.setItem("solidping_session_token", "stale");
+    setLocation(`${DASH_BASE}/orgs/test/checks`);
+
+    redirectToExpiredLogin({ hadSession: true });
+
+    expect(window.location.href).toContain("session_expired=true");
+  });
+
+  it("does not flag a visitor who never had a session", () => {
+    setLocation(`${DASH_BASE}/no-org`);
+
+    redirectToExpiredLogin({ hadSession: false });
+
+    expect(window.location.href).toContain("/orgs/default/login");
+    expect(window.location.href).toContain("session_expired=false");
+    expect(window.location.href).toContain("returnTo=");
+  });
 });

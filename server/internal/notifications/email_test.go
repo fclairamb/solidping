@@ -750,3 +750,51 @@ func TestMailDuration(t *testing.T) {
 		})
 	}
 }
+
+// The reminder ships its own template, renders the reminder sentence and keeps
+// the Acknowledge button (spec 2026-10-12-16).
+func TestEmailSender_Send_RendersReminderTemplate(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	name, ok := incidentTemplateForEvent(eventTypeIncidentReminder)
+	r.True(ok)
+	r.Equal("incident-reminder.html", name)
+	r.True(isModeledIncidentEvent(eventTypeIncidentReminder))
+	r.True(canAckEvent(eventTypeIncidentReminder))
+
+	checkName := "Production API"
+	sender := &fakeEmailSender{}
+	payload := &Payload{
+		EventType: eventTypeIncidentReminder,
+		Check:     &models.Check{UID: "check-1", Name: &checkName, Type: "http"},
+		Incident: &models.Incident{
+			UID: "inc-42", Number: 42, StartedAt: time.Now().Add(-75 * time.Minute), FailureCount: 9,
+		},
+		Integration: &models.Integration{Settings: models.JSONMap{"to": []any{"a@x.test"}}},
+		OrgSlug:     "acme",
+		AppBaseURL:  "https://solidping.example",
+		ReminderSeq: 3,
+	}
+
+	jctx := &jobdef.JobContext{
+		Services: &services.Registry{EmailSender: sender, EmailFormatter: newTestFormatter(t)},
+		AppConfig: &config.Config{
+			Auth:   config.AuthConfig{JWTSecret: "test-secret"},
+			Server: config.ServerConfig{BaseURL: "https://solidping.example"},
+		},
+		Logger: slog.Default(),
+	}
+
+	r.NoError((&EmailSender{}).Send(context.Background(), jctx, payload))
+	r.Len(sender.sent, 1)
+
+	msg := sender.sent[0]
+	r.Contains(msg.Subject, "[STILL DOWN] Production API")
+	r.Contains(msg.Subject, "#42")
+	r.Contains(msg.HTML, "Still down after 1 h 15 min, not acknowledged (reminder 3)")
+	r.Contains(msg.HTML, "Acknowledge incident")
+	r.Contains(msg.Text, "reminder 3")
+	r.NotContains(msg.HTML, "{{")
+}

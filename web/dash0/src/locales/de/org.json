@@ -54,6 +54,13 @@
       "label": "Traceroute bei Netzwerkausfall",
       "help": "Gilt für jeden Check, der auf „übernehmen“ steht. Nur Erreichbarkeitsfehler lösen eine Aufzeichnung aus: Verbindungs-Timeouts, Ablehnungen, ICMP-Verlust, hängende TLS-Handshakes. Ein HTTP 5xx, ein fehlendes Schlüsselwort oder ein ablaufendes Zertifikat nie — der Server hat geantwortet. Traces laufen, nachdem das fehlgeschlagene Ergebnis bereits gemeldet wurde, und sind pro Organisation begrenzt: Sie verzögern nie einen Vorfall und überschwemmen keinen Massenausfall."
     },
+    "reminders": {
+      "title": "Vorfall-Erinnerungen",
+      "description": "Die Kanäle eines Checks erneut benachrichtigen, solange einer seiner Vorfälle offen und unbestätigt ist.",
+      "label": "Standard-Erinnerungsintervall",
+      "help": "Gilt für jeden Check mit „Organisationsstandard“. Bestätigen, Stummschalten oder Beheben eines Vorfalls beendet seine Erinnerungen. SMS- und PagerDuty-Kanäle erhalten sie nie.",
+      "off": "Aus"
+    },
     "defaultEscalation": "Standard-Eskalationsrichtlinie",
     "defaultEscalationDescription": "Wird auf Checks angewendet, die zu keiner eigenen Richtlinie aufgelöst werden (Check → Gruppe → Organisationsstandard → keine). Nicht festlegen für keinen organisationsweiten Rückfall.",
     "defaultEscalationNone": "Keine (kein Rückfall)",

@@ -54,6 +54,11 @@ func TestICMPFailureClass(t *testing.T) {
 			checkerdef.NetFailureICMPUnreachable,
 		},
 		{
+			"a router said time to live exceeded",
+			[]pingResult{{Error: timeExceededError(0, &net.IPAddr{IP: net.IPv4(192, 0, 2, 1)}, 1)}},
+			checkerdef.NetFailureICMPUnreachable,
+		},
+		{
 			"one unreachable among timeouts still wins",
 			[]pingResult{
 				{Error: errAllPingsSilent},

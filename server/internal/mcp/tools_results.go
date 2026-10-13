@@ -30,7 +30,7 @@ const (
 
 func listResultsDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "list_results",
+		Name: toolListResults,
 		Description: "Query monitoring results (raw or aggregated) with filtering by check, " +
 			"type, status, region, period type, and time range. Use this for trend " +
 			"analysis or to inspect a specific window. For investigating a single " +

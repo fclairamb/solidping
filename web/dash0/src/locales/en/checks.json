@@ -245,6 +245,11 @@
     "tracerouteOn": "Always capture",
     "tracerouteOff": "Never capture",
     "tracerouteOnFailureHelp": "When this check goes down because the target could not be REACHED (connect timeout, refusal, ICMP loss, TLS handshake stall), capture an MTR-style path trace and attach it to the incident. Application-level failures such as HTTP 5xx, a keyword mismatch or an expiring certificate never trigger one — the server answered, so the path is fine.",
+    "reminderInterval": "Remind while unacknowledged",
+    "reminderIntervalInherit": "Org default",
+    "reminderIntervalInheritValue": "Org default ({{value}})",
+    "reminderIntervalOff": "Off",
+    "reminderIntervalHelp": "While an incident stays open and nobody has acknowledged it, notify this check's channels again at this interval. Acknowledging, snoozing or resolving the incident stops the reminders. SMS and PagerDuty channels never get them.",
     "customPeriod": "{{period}} (custom)",
     "reviewScheduling": "Review check scheduling",
     "editCheckSubtitle": "Update the monitoring check parameters",
@@ -901,7 +906,11 @@
       "runFailedTitle": "The capture failed",
       "runFailed": "The capture failed: {{reason}}"
     },
-    "uidShort": "uid: {{uid}}..."
+    "uidShort": "uid: {{uid}}...",
+    "copyCurl": "Copy as cURL",
+    "curlCopied": "Request copied as cURL",
+    "curlCopiedPlaceholders": "Request copied as cURL. Secrets were replaced with placeholders.",
+    "copyCurlFailed": "Could not copy the request"
   },
   "endpoints": {
     "heartbeat": {
@@ -950,6 +959,8 @@
   },
   "jsonAssertions": "JSON Assertions",
   "jsonAssertionsDescription": "Validate fields in the JSON response body against a JSONPath expression.",
+  "headerAssertions": "Header Assertions",
+  "headerAssertionsDescription": "Assert on response headers. The header name is case-insensitive. \"equals\", \"contains\" and \"matches regex\" pass when any header line matches and fail when the header is absent. \"does not equal\" and \"does not contain\" pass when no line matches, or when the header is absent.",
   "bodyAssertions": "Body Assertions",
   "bodyAssertionsDescription": "Assert on the response body as plain text. \"equals\" compares the whole body with leading and trailing whitespace trimmed, so an ASP.NET Core health endpoint returning \"Healthy\\n\" matches equals \"Healthy\" with Ignore case on. \"contains\", \"does not contain\" and \"matches regex\" see the body exactly as received.",
   "assertionIgnoreCase": "Ignore case",
@@ -1100,6 +1111,8 @@
     "redirectHostPolicyAny": "Any host",
     "redirectHostPolicySameHost": "Same host only",
     "redirectHostPolicySameHostHelp": "A redirect to a different host fails the check instead of being followed.",
+    "expectedFinalUrl": "Expected final URL",
+    "expectedFinalUrlHelp": "Where the redirect chain must end. Scheme and host are case-insensitive, default ports and the #fragment are ignored, path and query must match exactly.",
     "httpVersion": "HTTP version",
     "httpVersion11": "HTTP/1.1 (default)",
     "httpVersion2": "HTTP/2",
@@ -1249,7 +1262,10 @@
     "burstIntervalNeedsCount": "Only applies when sending more than one packet",
     "burstIntervalDenseWarning": "Below 50ms, some targets rate-limit ICMP echo — packet loss shown may be real, not a measurement artifact",
     "burstPacketSize": "Packet size (bytes)",
-    "burstTtl": "TTL (hops)"
+    "burstTtl": "TTL (hops)",
+    "burstMaxLoss": "Max packet loss (%)",
+    "burstMaxAvgRtt": "Max average round trip (ms)",
+    "burstLossCountHint": "With 1 packet, loss is either 0% or 100%. Send at least 10 packets for a useful percentage."
   },
   "prometheus": {
     "mode": "Mode",
@@ -1436,6 +1452,8 @@
     "intervalDuration": "Interval must be a duration like 100 or 100ms",
     "packetSizeWholeNumber": "Packet size must be a whole number of bytes",
     "ttlWholeNumber": "TTL must be a whole number",
+    "maxPacketLossNumber": "Max packet loss must be a number",
+    "maxAvgRttNumber": "Max average round trip must be a number",
     "invalidStatusCodes_one": "Invalid status code pattern: {{codes}} (use an exact code like 200 or a wildcard like 4XX)",
     "invalidStatusCodes_other": "Invalid status code patterns: {{codes}} (use an exact code like 200 or a wildcard like 4XX)",
     "invalidIp_one": "Not {{family}} address: {{values}}",
@@ -1643,6 +1661,23 @@
       "proposed": "a new script was proposed, see History",
       "applied": "a new script was applied",
       "error": "the attempt failed"
+    }
+  },
+  "timing": {
+    "title": "Timing",
+    "description": "Where the time of this probe went. Phases that did not run are not shown.",
+    "chartTitle": "Timing breakdown",
+    "viewResponse": "Response time",
+    "viewTiming": "Timing",
+    "viewLabel": "Chart view",
+    "noData": "No timing data in this period.",
+    "phase": {
+      "redirect": "Redirects",
+      "dns": "DNS lookup",
+      "connect": "Connect",
+      "tls": "TLS handshake",
+      "ttfb": "Server response (TTFB)",
+      "download": "Download"
     }
   }
 }

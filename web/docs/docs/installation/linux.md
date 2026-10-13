@@ -288,6 +288,48 @@ extra to mount here — this only matters for containerized deployments. See
 [File Storage](/configuration/file-storage) for the S3 backend, useful once
 you run more than one node.
 
+## Small hosts (1 GB and less)
+
+SolidPing runs on a 1 GB Raspberry Pi or a small VPS. A fresh instance idles
+with about 40 MB of its own memory. Logins are the only bursts: each password
+check allocates the argon2id memory and gives it back about a second later. On
+a host with 2 GiB of memory or less, that is 19 MiB per login by default (64 MiB
+on a larger host, see below).
+
+**Read the right number.** `ps` and `top` report RSS, which includes 70-85 MB of
+binary pages. Those pages are shared with the page cache and reclaimable. The
+number that matters is `RssAnon` in `/proc/<pid>/status`:
+
+```bash
+grep -E 'VmRSS|RssAnon|RssFile|VmHWM' /proc/$(pidof solidping)/status
+```
+
+These knobs help, with what each one was measured to do:
+
+| Setting | Effect |
+|---|---|
+| `SP_RUNTIME_MEMORY_LIMIT=128MiB` (or the native `GOMEMLIMIT=128MiB`) | Soft cap on the Go heap. At 96 MiB the first-boot peak (VmHWM) dropped from 229-245 MB to 169 MB. It is a soft cap: the runtime collects more often near it, it never refuses memory. |
+| Nothing (default) | With no cgroup limit and no cap set, a Linux host with at most 2 GiB of RAM gets half of it as the soft cap (512 MiB on a 1 GB Pi). `SP_RUNTIME_AUTO_MEMORY_LIMIT=false` turns this off. |
+| `SP_SERVER_CHECK_WORKER_NB` | Only worth lowering if the host runs many slow checks at once. Idle runners cost almost nothing (all goroutines together use about 3 MB of stack). |
+| Nothing (default) | On a host with 2 GiB or less (the cgroup limit when one is set, else the host RAM), a single-process install (`SP_NODE_ROLE=all`, the default) hashes passwords with the OWASP minimum argon2id profile `m=19456 t=2 p=1`. Each login's transient drops from 64 MiB to 19 MiB, and four concurrent logins peak at about 76 MiB instead of 256 MiB. The server logs `password hashing: argon2id small-host profile` once at boot when it applies. |
+| `SP_AUTH_PASSWORD_ARGON2_AUTO_PROFILE=false` | Keeps the 64 MiB profile on a small host. Setting any of `SP_AUTH_PASSWORD_ARGON2_MEMORY`, `_TIME` or `_THREADS` (or the same keys in `config.yml` or in Server Settings) also keeps your values. |
+
+:::caution Security trade-off
+The smaller argon2id profile makes each stolen password hash cheaper to brute
+force. It is still the OWASP minimum and still memory-hard. If memory is not
+the constraint on your small host, force the 64 MiB profile back with
+`SP_AUTH_PASSWORD_ARGON2_AUTO_PROFILE=false`. Existing hashes are upgraded to
+the active profile on the next login. See
+[Authentication](/configuration/authentication#password-hashing).
+:::
+
+A fresh install seeds no browser check. Each browser check run starts a headless
+Chrome (40-120 MB). The browser samples (`browser-example-com` and
+`js-browser-login`) stay available in the create-check sample picker. Test mode
+seeds them disabled.
+
+See [Runtime memory](/configuration#runtime-memory) for every `SP_RUNTIME_*` knob.
+
 ## Next Steps
 
 - [Configuration Guide](/configuration) - All configuration options

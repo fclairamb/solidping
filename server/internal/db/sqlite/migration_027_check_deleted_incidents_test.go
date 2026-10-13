@@ -3,6 +3,9 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -92,7 +95,14 @@ func TestMigration027ResolvesOrphanIncidents(t *testing.T) {
 	tomb := load("inc-tomb")
 	r.Equal(1, tomb.state, "a soft-deleted incident is not touched")
 
-	// Re-runnable: a second pass finds nothing left to resolve.
-	execMigrationFile(ctx, t, database, "027_v0_39_0.up.sql")
+	// Re-runnable: a second pass finds nothing left to resolve. Only this
+	// section is re-run: a later section adds a column, which SQLite cannot
+	// add twice.
+	content, err := os.ReadFile(filepath.Join("migrations", "027_v0_39_0.up.sql"))
+	r.NoError(err)
+
+	section, _, _ := strings.Cut(string(content), "--bun:split")
+	_, err = database.ExecContext(ctx, section)
+	r.NoError(err)
 	r.Equal(orphan, load("inc-orphan"))
 }

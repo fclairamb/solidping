@@ -309,3 +309,61 @@ func TestRegisteredRoutesReportsWhatWasAsked(t *testing.T) {
 	}))
 	r.Equal(len(registered), walked, "with no duplicates the two views must agree")
 }
+
+// TestHeadFallsBackToGet verifies HEAD is answered by the GET handler (same
+// status and headers, empty body), that explicit HEAD routes keep priority,
+// and that HEAD does not invent routes.
+func TestHeadFallsBackToGet(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	router := httpx.New()
+	router.GET("/x", func(w http.ResponseWriter, _ *http.Request) error {
+		w.Header().Set("X-Test", "yes")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("hello"))
+
+		return nil
+	})
+	router.POST("/post-only", ok)
+	router.GET("/both", func(w http.ResponseWriter, _ *http.Request) error {
+		w.Header().Set("X-Handler", "get")
+		w.WriteHeader(http.StatusOK)
+
+		return nil
+	})
+	router.HEAD("/both", func(w http.ResponseWriter, _ *http.Request) error {
+		w.Header().Set("X-Handler", "head")
+		w.WriteHeader(http.StatusOK)
+
+		return nil
+	})
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, newReq(t, http.MethodHead, "/x"))
+	r.Equal(http.StatusOK, rec.Code)
+	r.Equal("yes", rec.Header().Get("X-Test"))
+
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, newReq(t, http.MethodHead, "/missing"))
+	r.Equal(http.StatusNotFound, rec.Code)
+
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, newReq(t, http.MethodHead, "/post-only"))
+	r.Equal(http.StatusMethodNotAllowed, rec.Code)
+
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, newReq(t, http.MethodHead, "/both"))
+	r.Equal("head", rec.Header().Get("X-Handler"))
+
+	// Over a real connection net/http discards the body.
+	ts := httptest.NewServer(router)
+	defer ts.Close()
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodHead, ts.URL+"/x", http.NoBody)
+	r.NoError(err)
+	resp, err := http.DefaultClient.Do(req)
+	r.NoError(err)
+	defer func() { _ = resp.Body.Close() }()
+	r.Equal(http.StatusOK, resp.StatusCode)
+	r.Equal("yes", resp.Header.Get("X-Test"))
+}

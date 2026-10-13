@@ -284,6 +284,7 @@ an escalation step.
 | `incident.unacknowledged` | ✅ `queueUnackNotifications` | ✅ `incident_unack_notice` job |
 | `incident.comment` | ✅ `queueCommentNotifications` | ✅ `incident_comment_notice` job, one per comment |
 | `incident.resolved` | ✅ `queueNotifications` | ✅ `incident_resolution_notice` job |
+| `incident.reminder` | ✅ `incident_reminder` job, every interval while open and unacknowledged (spec `2026-10-12-16`; off by default, not Twilio or PagerDuty) | ❌ by design: a policy has its own `repeatMax` / `repeatAfterSeconds` |
 
 Everything in the unacknowledged row is spec `2026-08-28-07`; the comment row's
 right-hand column is the same spec closing what the comment fan-out shipped as

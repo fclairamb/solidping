@@ -34,6 +34,7 @@
     "incident.acknowledged": "Incident acquitté",
     "incident.unacknowledged": "Acquittement annulé",
     "incident.reopened": "Incident rouvert",
+    "incident.reminder": "Relance envoyée",
     "incident.snoozed": "Incident mis en veille",
     "incident.unsnoozed": "Mise en veille annulée",
     "incident.rolled_up": "Rattaché à l'incident parent",

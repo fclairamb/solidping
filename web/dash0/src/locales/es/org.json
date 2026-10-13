@@ -54,6 +54,13 @@
       "label": "Traceroute ante fallo de red",
       "help": "Se aplica a todos los checks configurados como «heredar». Solo los fallos de alcanzabilidad activan una captura: tiempos de conexión agotados, rechazos, pérdida ICMP, handshakes TLS colgados. Un HTTP 5xx, una palabra clave ausente o un certificado por caducar nunca lo hacen, porque el servidor respondió. Los trazados se ejecutan después de que el resultado fallido ya se haya reportado y están limitados por organización: nunca retrasan una incidencia ni inundan un apagón masivo."
     },
+    "reminders": {
+      "title": "Recordatorios de incidentes",
+      "description": "Volver a notificar a los canales de un check mientras uno de sus incidentes siga abierto y sin reconocer.",
+      "label": "Intervalo de recordatorio predeterminado",
+      "help": "Se aplica a cada check configurado como «Valor de la organización». Reconocer, posponer o resolver un incidente detiene sus recordatorios. Los canales de SMS y PagerDuty nunca los reciben.",
+      "off": "Desactivado"
+    },
     "defaultEscalation": "Política de escalada predeterminada",
     "defaultEscalationDescription": "Se aplica a los checks que no resuelven a ninguna política propia (check → grupo → predeterminado de la organización → ninguna). Déjalo sin definir para no tener respaldo a nivel de organización.",
     "defaultEscalationNone": "Ninguna (sin respaldo)",

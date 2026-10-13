@@ -15,6 +15,10 @@ export const JSON_ASSERTION_RESULT_OUTPUT_KEY = "json_path_assertions";
 // also dump the raw output strip it so it isn't shown twice.
 export const BODY_ASSERTION_RESULT_OUTPUT_KEY = "body_assertions";
 
+// The output key HeaderAssertionResultCard renders; stripped from the generic
+// output list like the two above.
+export const HEADER_ASSERTION_RESULT_OUTPUT_KEY = "header_assertions";
+
 // isAssertionResult narrows an unknown output value to the AssertionResult
 // shape the checker's Evaluate() emits (checkhttp/jsonpath.go). checker.go
 // only attaches this key to Output when the assertion FAILS — a passing
@@ -72,6 +76,26 @@ export function BodyAssertionResultCard({
     <Card data-testid="body-assertion-result-card">
       <CardContent className="pt-6">
         <JsonAssertionResults result={result} titleKey="bodyAssertions" />
+      </CardContent>
+    </Card>
+  );
+}
+
+// HeaderAssertionResultCard renders the response-header assertion evaluation
+// attached to a failed HTTP check result. Sensitive header values arrive
+// already redacted from the checker. Mounts only on a failure.
+export function HeaderAssertionResultCard({
+  output,
+}: {
+  output: Output | undefined;
+}) {
+  const result = output?.[HEADER_ASSERTION_RESULT_OUTPUT_KEY];
+  if (!isAssertionResult(result)) return null;
+
+  return (
+    <Card data-testid="header-assertion-result-card">
+      <CardContent className="pt-6">
+        <JsonAssertionResults result={result} titleKey="headerAssertions" />
       </CardContent>
     </Card>
   );

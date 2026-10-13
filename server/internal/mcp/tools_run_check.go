@@ -14,8 +14,8 @@ func runCheckDef() ToolDefinition {
 			"period (use it right after a fix, or on a freshly created check). The run goes " +
 			"through the normal result path: it can open or resolve an incident like any " +
 			"scheduled run. Rate limited per check and per organization. Returns " +
-			"{requestedAt, regions: [{region, status}]} where status is queued (due now) or " +
-			"running (its current run answers); read the outcome with diagnose_check or " +
+			"{requestedAt, regions: [{region, status}]} where status is queued (due now, or " +
+			"right after the run in progress); read the outcome with diagnose_check or " +
 			"list_results (a result with periodStart >= requestedAt). Requires the mcp scope " +
 			"(mcp:read tokens are refused) and at least the user role in the organization.",
 		InputSchema: objectSchema(map[string]any{
@@ -25,7 +25,7 @@ func runCheckDef() ToolDefinition {
 			"requestedAt": stringProp("RFC3339 time the request was recorded."),
 			"regions": arrayOfObjectsProp("One entry per region.", map[string]any{
 				"region":   stringProp("Region code."),
-				propStatus: stringProp("queued or running."),
+				propStatus: stringProp("queued."),
 			}),
 		}, []string{"requestedAt", "regions"}),
 		Annotations: createAnnotations("Run check now"),

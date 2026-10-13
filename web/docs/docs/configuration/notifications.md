@@ -924,7 +924,12 @@ specification, so receivers can verify it came from SolidPing.
       "failureCount": 3,
       "relapseCount": 0,
       "recoveryPeriodSeconds": null,
-      "resolutionType": "auto"
+      "resolutionType": "auto",
+      "regions": {
+        "failingRegions": ["eu-west", "us-east"],
+        "regionCount": 3,
+        "failQuorum": 2
+      }
     },
     "check": {
       "uid": "550e8400-e29b-41d4-a716-446655440000",
@@ -940,10 +945,18 @@ specification, so receivers can verify it came from SolidPing.
   `check_deleted`) is only present once the incident is resolved.
 - `acknowledgedAt` is only present once the incident has been acknowledged.
 - `recoveryPeriodSeconds` is `null` until the incident has relapsed at least once.
+- `regions` holds the slugs (not labels) of the regions that saw the failure,
+  how many regions the check runs from and the quorum that makes it down. It is
+  omitted when no region is known, and a single-region check gives
+  `{"failingRegions": ["eu-west"], "regionCount": 1, "failQuorum": 1}`. It is a
+  snapshot taken when the incident opens (or reopens) and refreshed on
+  escalation, not the live state.
 - `incident.comment` events add `data.comment`
   (`{"text", "authorName", "source"}`).
 - `incident.acknowledged` and `incident.unacknowledged` events add
   `data.acknowledgment` (`{"actorName", "via"}`).
+- `incident.reminder` events add `data.incident.reminderCount`, the number of
+  this reminder (`1` for the first). It is absent on every other event.
 
 ### Event Types
 
@@ -955,6 +968,7 @@ specification, so receivers can verify it came from SolidPing.
 | `incident.resolved` | Incident resolved (check recovered) |
 | `incident.acknowledged` | Someone took the incident |
 | `incident.unacknowledged` | The acknowledgment was withdrawn |
+| `incident.reminder` | Still open and unacknowledged after the reminder interval (off by default, see [Reminders](/features/incidents#reminders)) |
 | `incident.comment` | A comment was added to the incident |
 
 ### Webhook Configuration
@@ -988,8 +1002,8 @@ The signature is computed as follows:
    joined with full stops. Use the raw request body exactly as received, not a
    re-serialized copy.
 2. The key is the signing secret with its `whsec_` prefix removed, then
-   base64-decoded. SolidPing generates 32 random bytes encoded as **URL-safe
-   base64 without padding** (`-` and `_` instead of `+` and `/`, no trailing `=`).
+   base64-decoded. SolidPing generates 32 random bytes encoded as **standard
+   base64 with padding** (the secret ends with a single `=`).
 3. The signature is the HMAC-SHA256 of the signed content with that key,
    encoded as standard base64, prefixed with `v1,`.
 
@@ -1006,7 +1020,8 @@ import time
 
 def decode_secret(secret: str) -> bytes:
     key = secret.removeprefix("whsec_")
-    # Accept URL-safe or standard base64, padded or not.
+    # Older secrets were URL-safe base64 without padding; the dashboard now
+    # shows the same key in standard form. Accept both spellings.
     key = key.replace("-", "+").replace("_", "/")
     return base64.b64decode(key + "=" * (-len(key) % 4))
 
@@ -1031,10 +1046,8 @@ def verify_webhook(body: bytes, headers: dict, secret: str, tolerance: int = 300
 :::tip Standard Webhooks libraries
 The official [Standard Webhooks libraries](https://github.com/standard-webhooks/standard-webhooks/tree/main/libraries)
 (`standardwebhooks` on PyPI and npm, plus Go, Rust, Java, Ruby, PHP, C# and
-Elixir) verify these requests. They expect the secret in **standard** base64,
-so convert it first: replace `-` with `+` and `_` with `/`, add `=` padding to
-a multiple of 4 characters, and keep the `whsec_` prefix. The converted secret
-is the same key, only spelled differently.
+Elixir) verify these requests. Pass them the secret exactly as the dashboard
+shows it, `whsec_` prefix included. No conversion is needed.
 :::
 
 ### Rotating the secret
@@ -1045,22 +1058,34 @@ window each request carries two `v1,` signatures, one per secret, so receivers
 can switch over without dropping deliveries. Rotating again drops the older
 secret right away: the current one becomes the previous one.
 
+A secret copied before SolidPing switched to standard base64 is the same key in
+another spelling (URL-safe, no padding). It keeps working, no rotation needed.
+
 ## Incident Thresholds
 
-Configure when notifications are sent per check:
+Each check sets when its notifications are sent:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `incident_threshold` | 1 | Failures before creating incident |
-| `escalation_threshold` | 3 | Failures before escalation |
-| `recovery_threshold` | 1 | Successes before resolving |
+| `confirmationPeriodSeconds` | `120` | Seconds the check must keep failing before the incident opens and `incident.created` is sent. `0` sends it on the first failure |
+| `recoveryPeriodSeconds` | `120` | Seconds the check must keep passing before the incident resolves and `incident.resolved` is sent. `0` sends it on the first success |
+| `escalationThreshold` | `10` | Failing results an incident counts before `incident.escalated` is sent (once). Not editable |
+
+Both periods accept 0 to 86400 seconds. In the dashboard they are
+**Confirmation Period** and **Recovery Period** under **Incident tracking**. In
+config as code they are `confirmationPeriod` and `recoveryPeriod`, written as
+durations (`2m`). Checks with several regions, flap backoff and a worked
+timeline: see [Incidents](/features/incidents#thresholds).
 
 ### Example
 
-```
-incident_threshold: 2    # Notify after 2 consecutive failures
-escalation_threshold: 5  # Escalate after 5 consecutive failures
-recovery_threshold: 2    # Resolve after 2 consecutive successes
+Notify after 5 minutes of failures, resolve after 10 minutes of passing results:
+
+```bash
+curl -X PATCH http://localhost:4000/api/v1/orgs/default/checks/{uid} \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"confirmationPeriodSeconds": 300, "recoveryPeriodSeconds": 600}'
 ```
 
 :::tip On-call rotations

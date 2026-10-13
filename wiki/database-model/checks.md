@@ -173,6 +173,7 @@ check per region.
 | lease_worker_uid | uuid | FK to workers (assigned worker) |
 | lease_expires_at | timestamptz | Lease expiration |
 | lease_starts | smallint | Execution attempt counter |
+| run_requested_at | timestamptz | Run request parked while the job was leased ("Run now", or a check edit mid-run); every release makes the job due at it and clears it, a fresh claim clears it. NULL: none pending (spec 2026-10-12-05) |
 
 **Foreign Keys**:
 - `organization_uid` → organizations(uid)

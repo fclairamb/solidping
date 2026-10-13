@@ -1,6 +1,7 @@
 package jobtypes
 
 import (
+	"context"
 	"log/slog"
 	"testing"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/notifier"
+	"github.com/fclairamb/solidping/server/internal/systemconfig"
 )
 
 // newEventsCleanupTestContext wires an in-memory SQLite DB, a real job service
@@ -178,4 +180,79 @@ func TestEventsCleanupReschedulesItself(t *testing.T) {
 		Count(t.Context())
 	r.NoError(err)
 	r.Positive(count, "the sweeper must enqueue its own next run")
+}
+
+func TestResolveAuditRetentionDays(t *testing.T) {
+	t.Parallel()
+
+	envOf := func(v string, set bool) func(string) (string, bool) {
+		return func(string) (string, bool) { return v, set }
+	}
+	noEnv := envOf("", false)
+
+	tests := []struct {
+		name   string
+		env    func(string) (string, bool)
+		param  any
+		koanf  int
+		noCfg  bool
+		expect int
+	}{
+		{name: "env zero", env: envOf("0", true), koanf: 30, expect: 0},
+		{name: "env negative", env: envOf("-5", true), koanf: 30, expect: 0},
+		{name: "env 30", env: envOf("30", true), koanf: 365, expect: 30},
+		{name: "env garbage falls through", env: envOf("abc", true), koanf: 90, expect: 90},
+		{name: "env empty falls through", env: envOf("", true), koanf: 90, expect: 90},
+		{name: "param zero", env: noEnv, param: float64(0), koanf: 30, expect: 0},
+		{name: "param 30", env: noEnv, param: float64(30), koanf: 365, expect: 30},
+		{name: "koanf zero", env: noEnv, koanf: 0, expect: 0},
+		{name: "koanf 30", env: noEnv, koanf: 30, expect: 30},
+		{name: "nothing set", env: noEnv, noCfg: true, expect: 365},
+		{name: "env zero beats param 30", env: envOf("0", true), param: float64(30), koanf: 30, expect: 0},
+		{name: "param zero beats koanf 30", env: noEnv, param: float64(0), koanf: 30, expect: 0},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			jctx, dbSvc, _ := newEventsCleanupTestContext(t, tc.koanf)
+			if tc.noCfg {
+				jctx.AppConfig = nil
+			}
+
+			if tc.param != nil {
+				require.NoError(t, dbSvc.SetSystemParameter(t.Context(), string(systemconfig.KeyAuditRetentionDays),
+					tc.param, false))
+			}
+
+			require.Equal(t, tc.expect, resolveAuditRetentionDays(context.Background(), jctx, tc.env))
+		})
+	}
+}
+
+// Positive control: retention 30 deletes the old event that retention 0 keeps.
+func TestEventsCleanupRetentionZeroVsPositive(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		days int
+		kept bool
+	}{{0, true}, {30, false}} {
+		r := require.New(t)
+		jctx, dbSvc, orgUID := newEventsCleanupTestContext(t, tc.days)
+		old := seedEventAt(t, dbSvc, orgUID, time.Now().AddDate(0, 0, -400))
+
+		r.NoError((&EventsCleanupJobRun{}).Run(t.Context(), jctx))
+		r.Equal(tc.kept, eventUIDs(t, dbSvc, orgUID)[old], "retention %d", tc.days)
+	}
+}
+
+// 0 stays invalid for the aggregation tiers.
+func TestResolveRetentionTierEnvZeroStillFallsThrough(t *testing.T) {
+	t.Setenv("SP_TEST_RETENTION_TIER_ZERO", "0")
+
+	got := resolveRetentionTier(t.Context(), nil, systemconfig.KeyAuditRetentionDays,
+		"SP_TEST_RETENTION_TIER_ZERO", 0, 77)
+	require.Equal(t, 77, got)
 }

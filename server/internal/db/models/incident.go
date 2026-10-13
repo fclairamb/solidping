@@ -108,6 +108,12 @@ type Incident struct {
 	CausedByIncidentUID *string `bun:"caused_by_incident_uid"`
 	// PagingSuppressed gates notifications and escalation: TRUE = skip.
 	PagingSuppressed bool `bun:"paging_suppressed,notnull"`
+	// ReminderCount is how many reminders went out for this incident (spec
+	// 2026-10-12-16). It is also the compare-and-set token: a reminder job
+	// carries the count it expects and only the one that bumps it sends.
+	ReminderCount int `bun:"reminder_count,notnull"`
+	// LastReminderAt is when the last reminder went out. Nil: none yet.
+	LastReminderAt *time.Time `bun:"last_reminder_at"`
 	// Kind is IncidentKindCheck or IncidentKindSLOBurn.
 	Kind string `bun:"kind,notnull"`
 	// SLOUID / SLOAlertPolicyUID bind a burn incident to what produced it.

@@ -133,6 +133,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/jobs/jobtypes"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobworker"
 	"github.com/fclairamb/solidping/server/internal/mcp"
+	"github.com/fclairamb/solidping/server/internal/memlimit"
 	"github.com/fclairamb/solidping/server/internal/middleware"
 	"github.com/fclairamb/solidping/server/internal/notifier"
 	"github.com/fclairamb/solidping/server/internal/oauth"
@@ -275,11 +276,12 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	// Install the process-wide password-hashing policy from config. Parameters
 	// are already validated by cfg.Validate() at startup, so a failure here is a
 	// genuinely unknown algorithm and must abort (never silently fall back).
-	pwPolicy, err := passwords.PolicyFromConfig(&cfg.Auth)
+	pwPolicy, err := passwords.PolicyFromConfig(&cfg.Auth, passwordPolicyOptions(cfg)...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve password hashing policy: %w", err)
 	}
 	passwords.SetDefaultPolicy(pwPolicy)
+	logSmallHostPasswordProfile(ctx, slog.Default(), pwPolicy)
 
 	// Initialize database service based on configuration
 
@@ -4352,7 +4354,7 @@ func reResolvePasswordPolicy(ctx context.Context, cfg *config.Config) {
 		return
 	}
 
-	pol, err := passwords.PolicyFromConfig(&cfg.Auth)
+	pol, err := passwords.PolicyFromConfig(&cfg.Auth, passwordPolicyOptions(cfg)...)
 	if err != nil {
 		slog.WarnContext(ctx, "password policy from system params invalid; keeping prior policy", "error", err)
 
@@ -4360,6 +4362,35 @@ func reResolvePasswordPolicy(ctx context.Context, cfg *config.Config) {
 	}
 
 	passwords.SetDefaultPolicy(pol)
+}
+
+// passwordPolicyOptions gives PolicyFromConfig the small-host answer (spec
+// 2026-10-12-07). The lighter argon2id profile is only for a single-process
+// deployment (role "all"): in a split deployment, nodes of different sizes
+// would rehash a user back and forth on each login. Both call sites (boot and
+// after the system-parameter overlay) use this, so they always agree.
+func passwordPolicyOptions(cfg *config.Config) []passwords.PolicyOption {
+	small := cfg.NodeRoles().Has(config.NodeRoleAll) && memlimit.SmallHost()
+
+	return []passwords.PolicyOption{passwords.WithSmallHost(small)}
+}
+
+// bytesPerMiB converts bytes to MiB for the small-host log line.
+const bytesPerMiB = 1024 * 1024
+
+// logSmallHostPasswordProfile logs once at boot when the small-host argon2id
+// profile is active. Nothing is logged on a normal host.
+func logSmallHostPasswordProfile(ctx context.Context, logger *slog.Logger, pol passwords.Policy) {
+	if !pol.SmallHostProfile {
+		return
+	}
+
+	hostBytes, _ := memlimit.EffectiveMemoryBytes()
+	logger.InfoContext(ctx, fmt.Sprintf(
+		"password hashing: argon2id small-host profile m=%d t=%d p=%d "+
+			"(host memory %d MiB <= %d MiB; set SP_AUTH_PASSWORD_ARGON2_* to override)",
+		pol.Argon2.Memory, pol.Argon2.Time, pol.Argon2.Threads,
+		hostBytes/bytesPerMiB, memlimit.SmallHostMaxBytes/bytesPerMiB))
 }
 
 // MaybeAutoMigrateEncryption sweeps existing plaintext secrets into the

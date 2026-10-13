@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { readCachedDemoOrgSlug } from "@/api/public-config";
 import { parseDemoFlag } from "@/lib/demo";
+import { getRefreshToken, getToken } from "@/api/client";
 
 export const Route = createFileRoute("/")({
   // `/d/?demo=true` is a deep link into the shared live demo, not a request
@@ -30,7 +31,7 @@ function getStoredOrg(): string | null {
 
 function RootRedirect() {
   const { demo } = Route.useSearch();
-  const { org } = useAuth();
+  const { org, isLoading } = useAuth();
   const queryClient = useQueryClient();
   // The demo flag is answered BEFORE the session is consulted: a visitor who
   // already holds a session (their own org, or the demo itself) followed a link
@@ -57,6 +58,18 @@ function RootRedirect() {
   // No resolved org — the user belongs to none (or just deleted their last
   // one). Sending them to /orgs/default only produced a 404 on installs with
   // no `default` org; the empty state is the honest destination.
+  // A visitor with no session at all (no access and no refresh token) is not a
+  // zero-org user: send them to sign in, without an expired-session banner.
+  if (!org && !isLoading && !getToken() && !getRefreshToken()) {
+    return (
+      <Navigate
+        to="/orgs/$org/login"
+        params={{ org: getStoredOrg() || "default" }}
+        search={{ session_expired: false, returnTo: undefined }}
+        replace
+      />
+    );
+  }
   if (!org) {
     return <Navigate to="/no-org" search={{ membershipPending: undefined }} />;
   }

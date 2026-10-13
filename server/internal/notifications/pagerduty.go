@@ -105,7 +105,10 @@ func (s *PagerDutySender) Send(ctx context.Context, _ *jobdef.JobContext, payloa
 		// exactly. It MUST be explicit: the default branch below is `trigger`,
 		// which would re-open a resolved incident on an ack.
 		return s.acknowledge(ctx, settings, payload)
-	case eventTypeIncidentEscalated, eventTypeIncidentComment, eventTypeIncidentUnacknowledged:
+	case eventTypeIncidentEscalated, eventTypeIncidentComment, eventTypeIncidentUnacknowledged,
+		// A reminder is never fanned out to PagerDuty (NotifiesReminders is
+		// false); should one arrive anyway, re-triggering adds nothing.
+		eventTypeIncidentReminder:
 		// Events API v2 has no note/annotation concept, and a `trigger` call
 		// reusing an already-resolved incident's dedup_key would RE-OPEN it.
 		// A comment or an escalation must therefore send NOTHING at all — not
@@ -159,6 +162,19 @@ func (s *PagerDutySender) trigger(ctx context.Context, settings *pagerdutySettin
 		summary = fmt.Sprintf("[REOPENED] %s (relapse #%d)", checkName, payload.Incident.RelapseCount)
 	}
 
+	details := map[string]any{
+		"checkUid":     payload.Check.UID,
+		"checkName":    checkName,
+		"checkType":    payload.Check.Type,
+		"incidentUid":  payload.Incident.UID,
+		"cause":        getFailureReason(payload.Incident),
+		"failureCount": payload.Incident.FailureCount,
+	}
+
+	if _, text := RegionLabelFor(payload); text != "" {
+		details["failingFrom"] = text
+	}
+
 	event := map[string]any{
 		pagerdutyFieldRoutingKey:  settings.RoutingKey,
 		pagerdutyFieldEventAction: pagerdutyEventActionTrigger,
@@ -168,17 +184,10 @@ func (s *PagerDutySender) trigger(ctx context.Context, settings *pagerdutySettin
 		pagerdutyFieldDedupKey: payload.Incident.UID,
 		pagerdutyFieldClient:   productName,
 		"payload": map[string]any{
-			"summary":  summary,
-			"source":   pagerdutySource(payload),
-			"severity": pagerdutySeverity(payload.Incident),
-			"custom_details": map[string]any{
-				"checkUid":     payload.Check.UID,
-				"checkName":    checkName,
-				"checkType":    payload.Check.Type,
-				"incidentUid":  payload.Incident.UID,
-				"cause":        getFailureReason(payload.Incident),
-				"failureCount": payload.Incident.FailureCount,
-			},
+			"summary":        summary,
+			"source":         pagerdutySource(payload),
+			"severity":       pagerdutySeverity(payload.Incident),
+			"custom_details": details,
 		},
 	}
 

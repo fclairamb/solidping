@@ -73,7 +73,7 @@ test.describe("VNC check", () => {
     await page.getByTestId("check-vnc-require-auth-checkbox").click();
     await page.getByTestId("check-host-input").fill("vnc2.internal.example");
     await page.getByTestId("check-submit-button").click();
-    await page.waitForURL(/\/checks\/[0-9a-f-]{36}$/, { timeout: 10000 });
+    await page.waitForURL(/\/checks\/[0-9a-f-]{36}(\?.*)?$/, { timeout: 10000 });
     await page.waitForLoadState("networkidle");
 
     const edited = await getCheck(page, token, uid);
@@ -128,7 +128,7 @@ test.describe("VNC check", () => {
     await expect(page.getByTestId("check-vnc-username-input")).toHaveValue("alice");
     await page.getByTestId("check-vnc-tls-verify-checkbox").click();
     await page.getByTestId("check-submit-button").click();
-    await page.waitForURL(/\/checks\/[0-9a-f-]{36}$/, { timeout: 10000 });
+    await page.waitForURL(/\/checks\/[0-9a-f-]{36}(\?.*)?$/, { timeout: 10000 });
     await page.waitForLoadState("networkidle");
 
     const edited = await getCheck(page, token, uid);

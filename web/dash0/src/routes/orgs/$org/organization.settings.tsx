@@ -32,6 +32,7 @@ import {
   useUpdateOrgSettings,
 } from "@/api/hooks";
 import { useAuth } from "@/contexts/AuthContext";
+import { reminderDurationLabel, reminderOptions } from "@/lib/reminder-interval";
 import {
   ConfirmByTypingButton,
   DangerZone,
@@ -61,6 +62,7 @@ function SettingsPage() {
   const updateEscalationSettings = useUpdateOrgSettings(org);
   const updateDiagnosticsSettings = useUpdateOrgSettings(org);
   const updateEmbedSettings = useUpdateOrgSettings(org);
+  const updateReminderSettings = useUpdateOrgSettings(org);
 
   const [defaultPolicyUid, setDefaultPolicyUid] = useState<string>(NO_DEFAULT);
   const [escalationError, setEscalationError] = useState<string | null>(null);
@@ -72,6 +74,13 @@ function SettingsPage() {
   const [tracerouteOnFailure, setTracerouteOnFailure] = useState(true);
   const [diagnosticsError, setDiagnosticsError] = useState<string | null>(null);
   const [diagnosticsSaved, setDiagnosticsSaved] = useState(false);
+
+  // Org default incident reminder interval (spec 2026-10-12-16), as the
+  // select's string value. "0" (off) until the settings load, matching the
+  // server's "absent means off".
+  const [reminderDefault, setReminderDefault] = useState("0");
+  const [reminderError, setReminderError] = useState<string | null>(null);
+  const [reminderSaved, setReminderSaved] = useState(false);
 
   // Status-page embed allowlist, edited as one origin per line.
   const [embedOrigins, setEmbedOrigins] = useState("");
@@ -100,6 +109,7 @@ function SettingsPage() {
       );
       setDefaultPolicyUid(settings.defaultEscalationPolicyUid || NO_DEFAULT);
       setTracerouteOnFailure(settings.tracerouteOnFailure ?? true);
+      setReminderDefault(String(settings.reminderIntervalSeconds ?? 0));
       setEmbedOrigins((settings.statusPageAllowedEmbedOrigins ?? []).join("\n"));
     }
   }, [settings]);
@@ -172,6 +182,24 @@ function SettingsPage() {
       setTimeout(() => setEscalationSaved(false), 3000);
     } catch (err) {
       setEscalationError(
+        err instanceof ApiError ? err.message : t("settings.unexpectedError"),
+      );
+    }
+  };
+
+  const handleSaveReminderDefault = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setReminderError(null);
+    setReminderSaved(false);
+
+    try {
+      await updateReminderSettings.mutateAsync({
+        reminderIntervalSeconds: Number.parseInt(reminderDefault, 10) || 0,
+      });
+      setReminderSaved(true);
+      setTimeout(() => setReminderSaved(false), 3000);
+    } catch (err) {
+      setReminderError(
         err instanceof ApiError ? err.message : t("settings.unexpectedError"),
       );
     }
@@ -575,6 +603,86 @@ function SettingsPage() {
               data-testid="org-traceroute-toggle"
             />
           </div>
+        </CardContent>
+      </Card>
+
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle>{t("settings.reminders.title")}</CardTitle>
+          <CardDescription>
+            {t("settings.reminders.description")}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSaveReminderDefault} className="space-y-4">
+            {reminderError && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>{reminderError}</AlertDescription>
+              </Alert>
+            )}
+
+            {reminderSaved && (
+              <Alert>
+                <Check className="h-4 w-4" />
+                <AlertDescription>{t("settings.saved")}</AlertDescription>
+              </Alert>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="reminder-interval-default">
+                {t("settings.reminders.label")}
+              </Label>
+              <Select
+                value={reminderDefault}
+                onValueChange={(value) => {
+                  // Radix answers "" when the controlled value names an item it
+                  // has not registered yet (the frame the loaded settings land
+                  // in). Every real item is non-empty, so "" is only that reset
+                  // signal and must not overwrite the loaded value.
+                  if (value === "") return;
+                  setReminderDefault(value);
+                }}
+              >
+                <SelectTrigger
+                  id="reminder-interval-default"
+                  className="max-w-md"
+                  data-testid="reminder-interval-default-select"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {reminderOptions(Number.parseInt(reminderDefault, 10) || 0).map((seconds) => (
+                    <SelectItem
+                      key={seconds}
+                      value={String(seconds)}
+                      data-testid={`reminder-interval-default-option-${seconds}`}
+                    >
+                      {reminderDurationLabel(seconds) ?? t("settings.reminders.off")}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {t("settings.reminders.help")}
+              </p>
+            </div>
+
+            <Button
+              type="submit"
+              disabled={updateReminderSettings.isPending || isLoading}
+              data-testid="reminder-interval-default-save"
+            >
+              {updateReminderSettings.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  {tc("saving")}
+                </>
+              ) : (
+                tc("save")
+              )}
+            </Button>
+          </form>
         </CardContent>
       </Card>
 

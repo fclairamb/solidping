@@ -126,7 +126,10 @@ func ExchangeCode(
 type PostMessageOptions struct {
 	Channel  string
 	ThreadTS string // If set, posts as a reply in the thread
-	Message  *MessageResponse
+	// ReplyBroadcast also shows a thread reply in the channel itself
+	// ("Also send to #channel"). Ignored without ThreadTS.
+	ReplyBroadcast bool
+	Message        *MessageResponse
 }
 
 // PostMessageResult contains the result of posting a message.
@@ -149,6 +152,10 @@ func (c *Client) PostMessage(ctx context.Context, opts PostMessageOptions) (*Pos
 	}
 	if opts.ThreadTS != "" {
 		payload["thread_ts"] = opts.ThreadTS
+
+		if opts.ReplyBroadcast {
+			payload["reply_broadcast"] = true
+		}
 	}
 
 	var result PostMessageResult

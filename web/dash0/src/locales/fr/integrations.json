@@ -192,7 +192,7 @@
     "rotate": "Renouveler",
     "signingSecretMissing": "Aucun secret de signature — il sera généré automatiquement à la prochaine livraison. Renouvelez pour en générer un maintenant.",
     "generate": "Générer",
-    "signingSecretHelp": "Les webhooks sortants sont signés avec ce secret selon le schéma Standard Webhooks (HMAC-SHA256). Vérifiez-le côté réception.",
+    "signingSecretHelp": "Les webhooks sortants sont signés avec ce secret selon le schéma Standard Webhooks (HMAC-SHA256). Vérifiez-le côté réception. Les bibliothèques officielles Standard Webhooks l'acceptent tel quel.",
     "rotationBanner": "Secret précédent actif jusqu'au",
     "rotationBannerHint": "Supprimez-le plus tôt en renouvelant à nouveau.",
     "slackInstallFailed": "Échec du démarrage de l'installation Slack",

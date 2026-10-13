@@ -286,7 +286,7 @@ export function isOrgDeleted(org: string | null): boolean {
  * "Organization not found" JSON body. Land on `/no-org` instead — the same
  * empty state a zero-org login reaches.
  */
-export function redirectToExpiredLogin(): void {
+export function redirectToExpiredLogin({ hadSession = true }: { hadSession?: boolean } = {}): void {
   const currentPath = window.location.pathname;
   if (currentPath.endsWith("/login") || isOrgPublicRoute(currentPath)) return;
 
@@ -301,7 +301,7 @@ export function redirectToExpiredLogin(): void {
 
   const org = pathOrg || storedOrg || "default";
   const returnTo = currentPath + window.location.search;
-  window.location.href = `${basepath}/orgs/${org}/login?session_expired=true&returnTo=${encodeURIComponent(returnTo)}`;
+  window.location.href = `${basepath}/orgs/${org}/login?session_expired=${hadSession}&returnTo=${encodeURIComponent(returnTo)}`;
 }
 
 /** The route a session with a pending forced password rotation is confined to. */
@@ -476,9 +476,12 @@ export async function handleResponse<T>(
   }: { skipAuth: boolean; suppress401Redirect: boolean; suppress401Handling?: boolean }
 ): Promise<T> {
   if (response.status === 401 && !skipAuth && !suppress401Handling) {
+    // Read before clearing: a 401 with no token behind it is a visitor who
+    // never had a session, and must not be told theirs expired.
+    const hadSession = Boolean(getToken() || getRefreshToken());
     clearToken();
     if (!suppress401Redirect) {
-      redirectToExpiredLogin();
+      redirectToExpiredLogin({ hadSession });
     }
     throw new ApiError("Session expired", "UNAUTHORIZED", undefined, 401);
   }

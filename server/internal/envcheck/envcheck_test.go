@@ -96,6 +96,7 @@ func TestCheckEnvironManualReaderGapsSilent(t *testing.T) {
 	r.Empty(checkEnviron([]string{"SP_ENTITLEMENTS_BILLING_UPGRADE_TOKEN_SECRET=deadbeef"}))
 	r.Empty(checkEnviron([]string{"SP_SYSTEM_AGENT_ENROLLMENT_TOKENS=eu-west-1=spe_abc"}))
 	r.Empty(checkEnviron([]string{"SP_SUPPORT_RETENTION_DAYS=0"}))
+	r.Empty(checkEnviron([]string{"SP_AUDIT_RETENTION_DAYS=0"}))
 	r.Empty(checkEnviron([]string{"SP_TEST_PG_BINARIES_PATH=/data/pg-bin"}))
 }
 

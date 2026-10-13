@@ -2,6 +2,7 @@ package backend
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -328,6 +329,23 @@ func (b *DirectBackend) SubmitResult(
 // releaseAfterResult is the lease release of SubmitResult: a multi-step run's
 // end, a release folding the scheduling state, or a plain release.
 func (b *DirectBackend) releaseAfterResult(
+	ctx context.Context, job *models.CheckJob, workerUID string, req *SubmitResultRequest,
+) error {
+	err := b.release(ctx, job, workerUID, req)
+
+	// The check was deleted (or the region removed) while this run was in
+	// flight: the result is stored and there is nothing left to reschedule.
+	if errors.Is(err, checkjobsvc.ErrJobGone) {
+		slog.DebugContext(ctx, "Released a job that no longer exists",
+			"check_uid", job.CheckUID, "job_uid", job.UID)
+
+		return nil
+	}
+
+	return err
+}
+
+func (b *DirectBackend) release(
 	ctx context.Context, job *models.CheckJob, workerUID string, req *SubmitResultRequest,
 ) error {
 	switch {

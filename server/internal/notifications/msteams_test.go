@@ -242,3 +242,29 @@ func TestMSTeamsSettings_RoundTripsWebhookURLKey(t *testing.T) {
 func timePtr(t time.Time) *time.Time {
 	return &t
 }
+
+// A reminder card says the incident is still down and unowned (spec
+// 2026-10-12-16).
+func TestMSTeamsSender_Reminder(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	fake, url := newMSTeamsFake(t, http.StatusOK)
+	payload := msTeamsPayload(eventTypeIncidentReminder, url)
+	payload.Incident.StartedAt = time.Now().Add(-75 * time.Minute)
+	payload.ReminderSeq = 3
+
+	r.NoError((&MSTeamsSender{}).Send(context.Background(), &jobdef.JobContext{}, payload))
+
+	msg := fake.lastMessage(t)
+	body := msg.Attachments[0].Content.Body
+	r.Contains(body[0].Text, "Still down: API health")
+	r.Equal(msTeamsColorAttention, body[0].Color)
+
+	facts := map[string]string{}
+	for _, fact := range body[1].Facts {
+		facts[fact.Title] = fact.Value
+	}
+
+	r.Equal("Still down after 1 h 15 min, not acknowledged (reminder 3)", facts[fieldLabelStatus])
+}

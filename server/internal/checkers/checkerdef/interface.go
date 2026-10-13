@@ -40,6 +40,11 @@ type CheckSpec struct {
 	// seeded checks are the first dashboard a new user sees. Unmarked samples
 	// stay available in the create-check sample picker.
 	SeedOnInstall bool
+
+	// NeedsBrowser marks a sample that drives a headless browser. Such samples
+	// are created disabled: each run launches a Chrome, and the sample targets
+	// a placeholder site the user must replace first (spec 2026-10-12-04).
+	NeedsBrowser bool
 }
 
 // Checker is the interface that all protocol checkers must implement.

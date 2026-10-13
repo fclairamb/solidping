@@ -63,7 +63,7 @@ This is not synthetic monitoring at all — it is status-page aggregation — bu
 answers a real on-call question ("is it us or is it them?") that no amount of probe
 breadth answers. Alerts are **email-only** on this monitor type.
 
-**SolidPing has no equivalent.** The 40 check types are all active probes; nothing
+**SolidPing has no equivalent.** The 43 check types are all active probes; nothing
 consumes another vendor's status page. Worth noting that Uptime Kuma has an open
 feature request for exactly this shape of thing
 ([#7688](https://github.com/louislam/uptime-kuma/issues/7688)), so demand is
@@ -254,7 +254,7 @@ marketing angle both sides can now claim.
 
 ## Weaknesses
 
-- **Six probe families against SolidPing's 40 check types.** No DNS, SMTP, IMAP/POP3,
+- **Six probe families against SolidPing's 43 check types.** No DNS, SMTP, IMAP/POP3,
   SSH, FTP/SFTP, gRPC, WebSocket, UDP, database, queue, SNMP or game-server checks
 - **No scripted browser transactions** — screenshots are captures, not flows
 - **No self-hosting, no private locations.** Anything behind a VPN or inside a private

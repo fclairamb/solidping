@@ -165,6 +165,10 @@ func (s *NtfySender) buildContent(
 	checkName := getCheckName(payload.Check)
 	priority := s.getPriority(settings, payload.EventType)
 
+	if payload.EventType == eventTypeIncidentReminder {
+		return reminderTitle(payload), reminderPlainBody(payload), priority, "alarm_clock"
+	}
+
 	var title, body, tags string
 
 	switch payload.EventType {
@@ -213,6 +217,8 @@ func (s *NtfySender) buildDownBody(payload *Payload, checkName string) string {
 	fmt.Fprintf(&builder, "Failure count: %s\n", strconv.Itoa(payload.Incident.FailureCount))
 	fmt.Fprintf(&builder, "Started: %s", payload.Incident.StartedAt.Format(time.RFC3339))
 
+	writeRegionLine(&builder, payload)
+
 	return builder.String()
 }
 
@@ -230,6 +236,8 @@ func (s *NtfySender) buildResolvedBody(payload *Payload, checkName string) strin
 		fmt.Fprintf(&builder, "Duration: %s", formatDuration(duration))
 	}
 
+	writeRegionLine(&builder, payload)
+
 	return builder.String()
 }
 
@@ -240,6 +248,8 @@ func (s *NtfySender) buildEscalatedBody(payload *Payload, checkName string) stri
 	fmt.Fprintf(&builder, "Cause: %s\n", getFailureReason(payload.Incident))
 	fmt.Fprintf(&builder, "Failures: %d\n", payload.Incident.FailureCount)
 	fmt.Fprintf(&builder, "Duration: %s", formatDuration(time.Since(payload.Incident.StartedAt)))
+
+	writeRegionLine(&builder, payload)
 
 	return builder.String()
 }

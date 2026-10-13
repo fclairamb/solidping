@@ -90,7 +90,7 @@ test.describe("HTTP check basic auth", () => {
       .getByTestId("check-url-input")
       .fill("https://example.com/basic-auth-after");
     await page.getByTestId("check-submit-button").click();
-    await page.waitForURL(/\/checks\/[0-9a-f-]{36}$/, { timeout: 10000 });
+    await page.waitForURL(/\/checks\/[0-9a-f-]{36}(\?.*)?$/, { timeout: 10000 });
     await page.waitForLoadState("networkidle");
 
     // ── The credential and the secret headers survived the unrelated edit ──

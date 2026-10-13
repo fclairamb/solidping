@@ -322,3 +322,136 @@ func TestPolicyFromConfigZeroValueFallsBackToDefaults(t *testing.T) {
 	r.Equal(defaultArgon2Params, policy.Argon2)
 	r.Equal(defaultBcryptCost, policy.Bcrypt.Cost)
 }
+
+// TestPolicyFromConfigSmallHost covers the small-host argon2id profile (spec
+// 2026-10-12-07): it applies only on a small host, for argon2id, when the cost
+// is implicit and the auto-profile is on.
+func TestPolicyFromConfigSmallHost(t *testing.T) {
+	t.Parallel()
+
+	withAuto := func(cfg config.AuthConfig) config.AuthConfig {
+		cfg.Password.Argon2.AutoProfile = true
+		return cfg
+	}
+
+	tests := []struct {
+		name      string
+		cfg       config.AuthConfig
+		smallHost bool
+		wantAlgo  string
+		wantArgon Argon2Params
+		wantSmall bool
+	}{
+		{
+			name:      "small host, nothing explicit",
+			cfg:       withAuto(authConfigWithAlgorithm(argon2idID)),
+			smallHost: true,
+			wantAlgo:  argon2idID,
+			wantArgon: Argon2Params{Memory: 19456, Time: 2, Threads: 1, KeyLength: 32, SaltLength: 16},
+			wantSmall: true,
+		},
+		{
+			name:      "large host, nothing explicit",
+			cfg:       withAuto(authConfigWithAlgorithm(argon2idID)),
+			smallHost: false,
+			wantAlgo:  argon2idID,
+			wantArgon: defaultArgon2Params,
+		},
+		{
+			name: "small host, explicit 64 MiB is kept",
+			cfg: func() config.AuthConfig {
+				c := withAuto(authConfigWithAlgorithm(argon2idID))
+				c.Password.Argon2Explicit = true
+				return c
+			}(),
+			smallHost: true,
+			wantAlgo:  argon2idID,
+			wantArgon: defaultArgon2Params,
+		},
+		{
+			name:      "small host, auto-profile disabled",
+			cfg:       authConfigWithAlgorithm(argon2idID), // AutoProfile false
+			smallHost: true,
+			wantAlgo:  argon2idID,
+			wantArgon: defaultArgon2Params,
+		},
+		{
+			name:      "small host, bcrypt leaves argon2 untouched",
+			cfg:       withAuto(authConfigWithAlgorithm(bcryptID)),
+			smallHost: true,
+			wantAlgo:  bcryptID,
+			wantArgon: defaultArgon2Params,
+		},
+		{
+			name: "small host keeps configured key and salt lengths",
+			cfg: func() config.AuthConfig {
+				c := withAuto(authConfigWithAlgorithm(argon2idID))
+				c.Password.Argon2.KeyLength = 24
+				c.Password.Argon2.SaltLength = 20
+				return c
+			}(),
+			smallHost: true,
+			wantAlgo:  argon2idID,
+			wantArgon: Argon2Params{Memory: 19456, Time: 2, Threads: 1, KeyLength: 24, SaltLength: 20},
+			wantSmall: true,
+		},
+		{
+			name:      "small host, zero-value block defaults auto-profile on",
+			cfg:       config.AuthConfig{},
+			smallHost: true,
+			wantAlgo:  argon2idID,
+			wantArgon: SmallHostArgon2Params,
+			wantSmall: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+
+			policy, err := PolicyFromConfig(&tt.cfg, WithSmallHost(tt.smallHost))
+			r.NoError(err)
+			r.Equal(tt.wantAlgo, policy.Algorithm)
+			r.Equal(tt.wantArgon, policy.Argon2)
+			r.Equal(tt.wantSmall, policy.SmallHostProfile)
+			if tt.wantAlgo == bcryptID {
+				r.Equal(12, policy.Bcrypt.Cost)
+			}
+		})
+	}
+}
+
+// TestNeedsRehashSmallHostPolicy: under the small-host policy a 64 MiB hash
+// needs a rehash and a 19 MiB one does not; under the large-host policy the
+// reverse. Not parallel: mutates the process-wide default policy.
+//
+//nolint:paralleltest // mutates the process-wide default policy via withPolicy
+func TestNeedsRehashSmallHostPolicy(t *testing.T) {
+	r := require.New(t)
+
+	cfg := authConfigWithAlgorithm(argon2idID)
+	cfg.Password.Argon2.AutoProfile = true
+	cfg.Password.RehashOnLogin = true
+
+	small, err := PolicyFromConfig(&cfg, WithSmallHost(true))
+	r.NoError(err)
+	large, err := PolicyFromConfig(&cfg, WithSmallHost(false))
+	r.NoError(err)
+
+	withPolicy(t, large)
+	largeHash, err := Hash("small-host-pw")
+	r.NoError(err)
+
+	withPolicy(t, small)
+	smallHash, err := Hash("small-host-pw")
+	r.NoError(err)
+	r.Contains(smallHash, "m=19456,t=2,p=1")
+
+	r.True(NeedsRehash(largeHash), "a 64 MiB hash is re-minted under the small-host policy")
+	r.False(NeedsRehash(smallHash))
+
+	withPolicy(t, large)
+	r.True(NeedsRehash(smallHash), "a 19 MiB hash is re-minted under the large-host policy")
+	r.False(NeedsRehash(largeHash))
+}

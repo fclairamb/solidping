@@ -19,8 +19,9 @@ import (
 // it first.
 var ErrEnrollmentTokenInvalid = errors.New("enrollment token is invalid, expired, or already used")
 
-// ErrCheckJobBusy is returned by RequestCheckRun when the job is leased or
-// carries a multi-step run in progress: it cannot be made due on demand.
+// ErrCheckJobBusy is returned by RequestCheckRun when the job's lease state
+// kept changing under it and the request could be neither made due nor
+// parked. A caller should never see it in practice.
 var ErrCheckJobBusy = errors.New("check job is running")
 
 // ErrAgentNonceReplayed is returned by CheckAndStoreAgentNonce when a reconnect
@@ -459,11 +460,11 @@ type Service interface {
 	RequestCheckCapture(ctx context.Context, jobUID string, requestedAt time.Time) error
 	// RequestCheckRun makes one job row due at requestedAt (spec
 	// 2026-10-04-01, "Run now"): scheduled_at and effective_scheduled_at are
-	// set to it, capture_requested_at is left alone. It only touches a job
-	// that is neither leased nor carrying a multi-step run: a release
-	// overwrites scheduled_at, so a due time written under a live lease would
-	// be lost. Such a job gives ErrCheckJobBusy (its running result answers
-	// the request); sql.ErrNoRows when the job is gone.
+	// set to it, capture_requested_at is left alone. A job that is leased or
+	// carries a multi-step run cannot take a due time (its release rewrites
+	// scheduled_at), so the request is parked in run_requested_at and the
+	// release makes the job due at it (spec 2026-10-12-05). Either way the
+	// request is honored. sql.ErrNoRows when the job is gone.
 	RequestCheckRun(ctx context.Context, jobUID string, requestedAt time.Time) error
 	// RecordCheckCaptureFailure records that the "Capture now" request made at
 	// requestedAt produced no screenshot, and why (spec 2026-09-27-01):
@@ -752,6 +753,12 @@ type Service interface {
 	// ListExpiredSnoozedIncidents returns active incidents whose snoozed_until <= now.
 	// Used by the auto-unsnooze sweeper.
 	ListExpiredSnoozedIncidents(ctx context.Context, now time.Time) ([]*models.Incident, error)
+	// ClaimIncidentReminder bumps reminder_count from expectedCount to
+	// expectedCount+1 and stamps last_reminder_at, but only while the incident
+	// is unresolved, unacknowledged and not snoozed past now (spec
+	// 2026-10-12-16). False means another reminder job won the race or the
+	// incident was handled: the caller must not send.
+	ClaimIncidentReminder(ctx context.Context, incidentUID string, expectedCount int, now time.Time) (bool, error)
 
 	// On-call schedule operations
 	CreateOnCallSchedule(ctx context.Context, schedule *models.OnCallSchedule) error

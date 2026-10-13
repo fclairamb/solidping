@@ -10,9 +10,10 @@ import (
 func (c *BrowserChecker) GetSampleConfigs(_ *checkerdef.ListSampleOptions) []checkerdef.CheckSpec {
 	return []checkerdef.CheckSpec{
 		{
-			Name:   "Example.com (Browser)",
-			Slug:   "browser-example-com",
-			Period: time.Hour,
+			Name:         "Example.com (Browser)",
+			Slug:         "browser-example-com",
+			Period:       time.Hour,
+			NeedsBrowser: true,
 			Config: (&BrowserConfig{
 				URL: "https://example.com",
 			}).GetConfig(),

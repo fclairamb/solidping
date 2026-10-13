@@ -32,20 +32,23 @@ https://api.example.com/health
 | Option | Description | Example |
 |--------|-------------|---------|
 | URL | The endpoint to check | `https://api.example.com/health` |
-| Method | HTTP method | `GET`, `POST`, `PUT`, `DELETE`, `QUERY` |
+| Method | HTTP method, `GET` by default | `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS`, `QUERY` |
 | Timeout | Request timeout | `30s` |
-| Expected Status | Status code to expect | `200`, `2XX` (wildcard) |
+| Expected Status | Status code to expect. Any 2xx when unset (`2XX`) | `200`, `2XX` (wildcard) |
 | HTTP version | Protocol the target must answer over (`httpVersion`): `1.1` (default), `2` or `3`. See **Protocol** below | `2` |
+| Expected final URL | URL the redirect chain must end on (`expectedFinalUrl`). See **Redirects** below | `https://www.acme.com/` |
 | Headers | Custom request headers | `Authorization: Bearer token` |
-| Body | Request body (for POST/PUT/PATCH/QUERY) | `{"key": "value"}` |
+| Body | Request body, sent with any method | `{"key": "value"}` |
 | Response assertions | Assert on the response body — see [Response assertions](#response-assertions) below | `bodyAssertions`, `json_path_assertions`, `body_expect` |
 | SSH tunnel | Dial through an [SSH check's bastion](./ssh-tunnels.md) | An `ssh` check with `expected_fingerprint` set |
 | Basic Auth | Username and password — stored encrypted at rest | `user:password` |
 | Custom User-Agent | Override the default user-agent | `SolidPing/1.0` |
+| Generated values | A fresh value per run in the URL, a header or the body, to get past a CDN cache. See [Generated values](./config-as-code.md#generated-values) | `?cb=${var:timestamp}` |
 
 **Status Code Matching:**
 - Exact match: `200`, `201`, `404`
 - Wildcard: `2XX` (any 2xx status), `5XX` (any 5xx status)
+- Unset: any 2xx response
 
 **QUERY method:** `QUERY` is sent with the request body attached, exactly like
 `POST`, and is treated like `POST` for redirects (a 307/308 re-sends the
@@ -54,8 +57,13 @@ non-`GET`/`HEAD` method).
 
 **Protocol:** by default checks speak HTTP/1.1, even when the target offers HTTP/2. A probe that times out closes its connection, so the next
 probe opens a fresh one instead of waiting on a stalled connection until the
-operating system gives up on it (up to ~15 minutes). Connections are still
-reused between probes that succeed.
+operating system gives up on it (up to ~15 minutes). Every probe opens a fresh
+connection and closes it afterwards, so each result includes DNS, connect and
+TLS time whatever the check period (see [Timing breakdown](#http-timing)).
+
+**Redirects:** redirects are followed by default (`followRedirects`, up to 10 hops). Set it to `false` to assert on the first response instead. `redirectHostPolicy: same-host` fails the check when a hop leaves the previous hop's host. Every followed hop is listed in the `redirect_chain` output.
+
+`expectedFinalUrl` asserts where the chain ends, so `http://acme.com` redirecting to a login or parking page no longer reads as up. The match is exact after normalisation: scheme and host are lowercased, `:80` (http) and `:443` (https) are dropped, an empty path becomes `/`, and the fragment is ignored. Path and query are compared as sent (`/x` and `/x/` differ, so do `?a=1&b=2` and `?b=2&a=1`). It is checked before the body assertions. On a mismatch the error reads `expected final URL "...", got "..."` and the raw URL of the last request is in `final_url`. It cannot be combined with `followRedirects: false`, nor with `redirectHostPolicy: same-host` and a different host.
 
 Set `httpVersion` to verify that the target still speaks a newer protocol, for
 example after a CDN, ingress or proxy change:
@@ -82,6 +90,15 @@ type: http
 url: https://www.acme.com/
 httpVersion: "2"
 ```
+
+**Copy as cURL:** the check's more-actions menu and the failure details card of
+an incident have a **Copy as cURL** action. It builds a `curl` command that
+replays the probe: method, URL, headers, body, redirects, TLS verification, HTTP
+version and timeout. Secrets are never included: Basic Auth becomes
+`$SOLIDPING_BASIC_AUTH` (export it as `user:pass`), and secret headers are
+replaced by a comment, so add them yourself with `-H`. `${param:...}` and
+`${env:...}` references stay literal and must be replaced before running. The
+default SolidPing User-Agent is not reproduced.
 
 **Basic Auth storage:** you still enter a username and a password in the form,
 but the pair is stored as a single encrypted credential (a reserved `basicAuth`
@@ -201,6 +218,34 @@ json_path_assertions:
 
 A body that is not valid JSON fails the check rather than being skipped.
 
+##### Header assertions (`headerAssertions`)
+
+The same assertion tree, tested against the response headers. A leaf's `path`
+is the header name, matched case-insensitively. No body is read.
+
+| Operator | Passes when | Header absent |
+|---|---|---|
+| `eq`, `contains`, `regex` | any header line matches | fails (`header not found`) |
+| `neq`, `not_contains` | no header line matches | passes |
+| `exists` | the header is sent | fails |
+| `not_exists` | the header is not sent | passes |
+
+- `exists` and `not_exists` take no `value`. Numeric operators are rejected.
+- A repeated header (two `X-Acme` lines) is tested line by line, never split on commas.
+- `ignoreCase` applies to `eq`, `neq`, `contains`, `not_contains` and `regex`.
+- The reported actual value joins the lines with `, `. For sensitive headers (`Set-Cookie`, `Authorization`, names containing token, key or secret) it is `[redacted]`, but the comparison still uses the real value.
+- It runs after `headers_pattern`. Both can be set on one check.
+
+```yaml
+url: https://www.acme.com
+headerAssertions:
+  type: and
+  children:
+    - { type: assertion, path: X-Powered-By, operator: not_exists }
+    - { type: assertion, path: Cache-Control, operator: not_contains, value: no-store }
+    - { type: assertion, path: Content-Type, operator: eq, value: application/json, ignoreCase: true }
+```
+
 ##### The flat matchers
 
 Older, simpler and still supported. They are what the importers map foreign
@@ -212,11 +257,40 @@ conditions onto, so they are not going anywhere.
 | `body_reject` | Substring that must **not** appear |
 | `body_pattern` | [RE2](https://github.com/google/re2/wiki/Syntax) regex the body must match |
 | `body_pattern_reject` | RE2 regex the body must **not** match |
-| `headers_pattern` | Map of response header name to an RE2 regex; every one must match |
+| `headers_pattern` | Map of response header name to an RE2 regex; every one must match. For absent, not-contains or case-insensitive checks use [`headerAssertions`](#header-assertions-headerassertions) |
 
 `body_expect` is a **substring** match, which is why `bodyAssertions` exists:
 `body_expect: HEALTHY` also matches a body of `UNHEALTHY`, and reports a dead
 service as up.
+
+#### Timing breakdown {#http-timing}
+
+Every HTTP result records where its time went, as float milliseconds in the
+result metrics. A phase that did not happen writes no key (never `0`).
+
+| Metric | Meaning | Absent when |
+|---|---|---|
+| `dns_time_ms` | Name lookup | The host is an IP literal, the check is tunneled, or the transport does not report it |
+| `connect_time_ms` | TCP connect (Happy Eyeballs races count as wall time) | The connection never came up |
+| `tls_time_ms` | TLS handshake | The URL is `http://` or the handshake failed |
+| `ttfb_time_ms` | Request written to first response byte, the server's time as seen by the client | No response byte arrived (timeout) |
+| `download_time_ms` | End of headers to end of the body read | The probe does not read the body (no body assertion, no failure capture) |
+| `redirect_time_ms` | Probe start to the start of the final hop | No redirect was followed |
+
+- After a redirect, DNS, connect, TLS, TTFB and download describe the **final
+  hop**. `redirect_time_ms` covers the earlier hops. The result duration stays
+  the total of all hops.
+- The result duration (response time) ends when the headers arrive, so
+  `download_time_ms` sits outside it.
+- Because each probe opens a fresh connection, a check running more often than
+  every 90 seconds now includes connect and TLS time in its response time. This
+  costs one handshake per probe on the target.
+- `httpVersion: "3"` reports only the phases the QUIC transport traces, so
+  some keys may be missing.
+- Health checks do not record these metrics.
+
+The result page shows them as a Timing card, and the check page has a Timing
+chart view with the per-bucket averages.
 
 ### TCP {#tcp}
 
@@ -330,9 +404,15 @@ icmp://hostname
 | Option | Description | Default |
 |--------|-------------|---------|
 | Host | Target hostname or IP | - |
-| Count | Number of packets | `3` |
-| Interval | Time between packets | `1s` |
-| Timeout | Total timeout | `10s` |
+| Count | Number of packets (1 to 600). The check is up when at least one reply arrives, unless a limit below is set | `1` |
+| Interval | Time between packets (10ms to 60s) | `1s` |
+| Timeout | How long to wait for each packet's reply (up to 30s) | `5s` |
+| Packet size (`packet_size`) | Echo payload in bytes (0 to 65507). `0` sends 56 bytes, like `ping` | `56` |
+| TTL (`ttl`) | Maximum hops (1 to 255). A packet that runs out of hops counts as lost, and the error names the router that dropped it (on unprivileged Linux sockets it is a plain lost packet) | OS default |
+| Max packet loss (`max_packet_loss_percent`) | Highest tolerated loss, 0 to 100. A burst losing more than this is **down**. `0` means any loss is down. Needs a `count` of 10 or more to be meaningful: with 1 packet, loss is 0% or 100% | none |
+| Max average round trip (`max_avg_rtt_ms`) | Highest tolerated average round trip in ms (above 0, up to 30000). A burst averaging more is **down** | none |
+
+Both limits are strict (a value equal to the limit is up) and only apply when at least one reply came back; total loss is always down. When a limit is breached, the failure reason says which one, for example `packet loss 40% > 20%`. For a softer, notify-only signal on latency, use `slow_threshold_ms`.
 
 :::note Permissions
 ICMP checks may require elevated permissions on some systems. Docker containers typically need `NET_RAW` capability.
@@ -404,7 +484,9 @@ With **username and password** set, the check goes further: it completes a **rea
 - A failed **log off** or screenshot after a successful logon is reported in the output details but never turns an `up` run down: the logon itself succeeded.
 - The check runs at most **4 RDP logons at a time** per worker; a saturated worker reports a timeout on the late check rather than queueing invisibly.
 
-:::warning Authenticated runs are real Windows logons
+#### Authenticated runs are real Windows logons {#authenticated-runs-are-real-windows-logons}
+
+:::warning
 Every authenticated run is a **real interactive Windows logon**:
 
 - it loads a user profile and runs logon scripts / GPOs;
@@ -1812,13 +1894,16 @@ All check types support these common options:
 | `name` | Display name | - |
 | `description` | Description | - |
 | `enabled` | Enable/disable check | `true` |
-| `period` | Check interval | `60s` |
-| `timeout` | Request timeout | `30s` |
-| `regions` | Worker regions to run from | all |
-| `incident_threshold` | Failures before incident | `1` |
-| `escalation_threshold` | Failures before escalation | `3` |
-| `recovery_threshold` | Successes before recovery | `1` |
+| `period` | Check interval | `60s` for most types (for example `5m` for DNS, `6h` for SSL) |
+| `timeout` | Request timeout | Depends on the type |
+| `regions` | Worker regions to run from | Automatic placement on 2 regions, see [Region placement](./region-placement.md) |
+| `confirmationPeriodSeconds` | Seconds of failures before an incident opens (`0` = on the first failure) | `120` |
+| `recoveryPeriodSeconds` | Seconds of passing results before the incident resolves (`0` = on the first success) | `120` |
+| `reminderIntervalSeconds` | Re-notify the channels every this many seconds while an incident is open and unacknowledged: `0` off, or `900` to `86400`. See [Reminders](./incidents.md#reminders) | `null` (organization default, itself off) |
 | `ipVersion` | Address family to probe over (`auto`, `ipv4`, `ipv6`) | `auto` |
+
+Escalation, checks with several regions (`failQuorum`) and flap backoff: see
+[Incidents](./incidents.md#thresholds).
 
 ### IP version
 

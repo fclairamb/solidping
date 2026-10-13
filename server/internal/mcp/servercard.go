@@ -34,10 +34,15 @@ const serverInstructions = `SolidPing monitors uptime and manages incidents and 
 Start with list_checks (what is monitored) or list_incidents (what is broken now).
 Use diagnose_check for "why is X down": it explains the latest failures of one check.
 Run validate_check before create_check to catch a bad config without saving anything.
-Use get_check_type_samples to learn the config a check type expects, and list_check_types to see the types.
+Use list_check_types to see the types, then list_check_types with type to get sample configs.
+Use probe to test a js check script or explore a target before creating the check.
 Use list_results for the raw history of one check, and list_regions to pick where it runs.
+Status page sections, resources and incidents are changed with the manage_status_page_* tools.
 Status page, incident publication, maintenance window and integration writes need the mcp scope
 (mcp:read tokens are read-only).
+The default tool list is the core and statuspages toolsets. Add ?toolsets=all to the endpoint URL
+(SP_MCP_TOOLSETS=all over stdio) for maintenance windows and integrations, or toolsets=all,legacy
+for the deprecated names; every name stays callable whatever is listed.
 Every tool is scoped to the organization the token was issued for.`
 
 // serverCard is the JSON document served at ServerCardPath. Its keys follow
@@ -101,7 +106,9 @@ func (h *Handler) buildServerCard() serverCard {
 			schemaKeyProperties:    map[string]any{},
 			"additionalProperties": false,
 		},
-		Tools:     h.tools,
+		// What a client that names no toolset lists: the surface a
+		// directory scores.
+		Tools:     h.listTools(defaultToolsets()),
 		Resources: h.getResourceDefinitions(),
 		Prompts:   listPrompts(),
 	}

@@ -39,13 +39,18 @@ type SenderCapabilities struct {
 	// phone) saying "someone took it" is worse than silence, and the person
 	// who acked is usually the person the SMS would reach.
 	NotifiesAcks bool
+	// NotifiesReminders reports whether the channel receives
+	// `incident.reminder` (spec 2026-10-12-16). False for Twilio, where every
+	// reminder is a paid text, and for PagerDuty, which owns re-notification
+	// itself (a trigger reusing the dedup_key adds nothing).
+	NotifiesReminders bool
 }
 
 // defaultSenderCapabilities is what a connection type gets when it declares
 // nothing: everything on. New integrations therefore receive comments by
 // default and only an explicit table entry can take that away.
 func defaultSenderCapabilities() SenderCapabilities {
-	return SenderCapabilities{NotifiesComments: true, NotifiesAcks: true}
+	return SenderCapabilities{NotifiesComments: true, NotifiesAcks: true, NotifiesReminders: true}
 }
 
 // senderCapabilities maps a connection type to its opt-outs. Only types that
@@ -56,7 +61,10 @@ func senderCapabilities() map[models.ConnectionType]SenderCapabilities {
 	return map[models.ConnectionType]SenderCapabilities{
 		// SMS and voice: every comment or acknowledgment would be a paid text
 		// or a ringing phone.
-		models.ConnectionTypeTwilio: {NotifiesComments: false, NotifiesAcks: false},
+		models.ConnectionTypeTwilio: {NotifiesComments: false, NotifiesAcks: false, NotifiesReminders: false},
+		// PagerDuty re-notifies on its own schedule; a reminder would only
+		// re-trigger the same dedup_key.
+		models.ConnectionTypePagerduty: {NotifiesComments: true, NotifiesAcks: true, NotifiesReminders: false},
 	}
 }
 
@@ -85,6 +93,8 @@ func AcceptsEventType(connType models.ConnectionType, eventType string) bool {
 		// two drift into a state where a channel hears only one half of the
 		// pair, which is strictly worse than hearing neither.
 		return CapabilitiesForSender(connType).NotifiesAcks
+	case eventTypeIncidentReminder:
+		return CapabilitiesForSender(connType).NotifiesReminders
 	default:
 		return true
 	}

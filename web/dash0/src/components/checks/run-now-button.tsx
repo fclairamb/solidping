@@ -24,9 +24,10 @@ interface RunNowButtonProps {
 /**
  * "Run now" (spec 2026-10-04-01): runs the check once in every region. The
  * button spins until a result with `periodStart >= requestedAt` has arrived for
- * each region that was queued (counted, as a result of a region-less check carries no region name) (a region reported `running` is answered by its
- * current run, which may have started earlier, so it is not waited on), then
- * toasts the new status. The results are only polled while a run is pending.
+ * each region that was queued (counted, as a result of a region-less check
+ * carries no region name). A region mid-run is queued too: the server parks
+ * the request and runs it again once that run ends (spec 2026-10-12-05). Then
+ * it toasts the new status. The results are only polled while a run is pending.
  */
 export function RunNowButton({ org, checkUid }: RunNowButtonProps) {
   const { t } = useTranslation("checks");

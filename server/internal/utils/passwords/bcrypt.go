@@ -65,3 +65,12 @@ func bcryptNeedsRehash(hash string, target BcryptParams) bool {
 	}
 	return cost != target.Cost
 }
+
+// HashBcrypt derives a bcrypt hash of password at the active policy's bcrypt
+// cost, whatever the active algorithm is. It exists for the install-bootstrap
+// admin, whose password is public: an argon2id hash there would cost a 64 MiB
+// transient on every first boot and buy nothing (spec 2026-10-12-04). The first
+// password change mints an argon2id hash with the active policy.
+func HashBcrypt(password string) (string, error) {
+	return hashBcrypt(password, getDefaultPolicy().Bcrypt)
+}

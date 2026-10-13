@@ -30,7 +30,7 @@ func checkGroupOutputProps() map[string]any {
 
 func listCheckGroupsDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "list_check_groups",
+		Name: toolListCheckGroups,
 		Description: "List all check groups for the organization. Check groups bundle related " +
 			"checks together for shared incident handling and dashboard organization, and " +
 			"each entry carries its slug, rolled-up status and check count. Returns " +

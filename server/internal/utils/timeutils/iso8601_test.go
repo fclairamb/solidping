@@ -841,3 +841,58 @@ func TestFormatPeriod(t *testing.T) {
 		})
 	}
 }
+
+// TestDuration_ScanPostgresInterval pins the HH:MM:SS behavior of Duration.Scan
+// across the move to a compiled-once regexp (spec 2026-10-12-04).
+func TestDuration_ScanPostgresInterval(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		in      string
+		want    time.Duration
+		wantErr bool
+	}{
+		{in: "00:05:00", want: 5 * time.Minute},
+		{in: "01:00:00.5", want: time.Hour},
+		{in: "100:00:00", want: 100 * time.Hour},
+		{in: "5:00", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.in, func(t *testing.T) {
+			t.Parallel()
+
+			var d Duration
+
+			err := d.Scan(tt.in)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("Scan(%q) = %v, want an error", tt.in, time.Duration(d))
+				}
+
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("Scan(%q) error: %v", tt.in, err)
+			}
+
+			if time.Duration(d) != tt.want {
+				t.Fatalf("Scan(%q) = %v, want %v", tt.in, time.Duration(d), tt.want)
+			}
+		})
+	}
+}
+
+// BenchmarkDurationScanInterval shows the per-call regexp compile is gone.
+func BenchmarkDurationScanInterval(b *testing.B) {
+	b.ReportAllocs()
+
+	var d Duration
+
+	for b.Loop() {
+		if err := d.Scan("00:05:00"); err != nil {
+			b.Fatal(err)
+		}
+	}
+}

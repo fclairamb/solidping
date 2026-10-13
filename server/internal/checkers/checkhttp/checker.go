@@ -47,11 +47,24 @@ const (
 	// tree is attached to on failure. The dashboard renders it by this name.
 	outputKeyBodyAssertions = "body_assertions"
 
+	// errHeaderAssertionFailed is the output message for a violated
+	// `headerAssertions` tree, with the evaluated tree under
+	// outputKeyHeaderAssertions.
+	errHeaderAssertionFailed = "Header assertion failed"
+
+	// outputKeyHeaderAssertions is the Output key of the evaluated
+	// header-assertion tree. The dashboard renders it by this name.
+	outputKeyHeaderAssertions = "header_assertions"
+
 	// outputKeyRedirectChain is the Output key the URLs of every followed (or
 	// refused) redirect hop are attached under, so an operator can see where
 	// a chain went without turning on capture_failure_response. Absent when
 	// the request never redirected.
 	outputKeyRedirectChain = "redirect_chain"
+
+	// outputKeyFinalURL is the Output key carrying the raw URL the last
+	// request was sent to, set when an expectedFinalUrl assertion fails.
+	outputKeyFinalURL = "final_url"
 
 	// outputKeyHTTPProtocol is the Output key holding the protocol the
 	// response came over (resp.Proto: "HTTP/1.1", "HTTP/2.0", "HTTP/3.0"),
@@ -79,6 +92,11 @@ type responseInfo struct {
 	body        []byte
 	statusCode  int
 	contentType string
+
+	// downloaded and downloadTime record the body read; set only when the
+	// probe actually read the body (assertions, failure capture, health).
+	downloaded   bool
+	downloadTime time.Duration
 	// verdictReached is set once every post-response failure branch (protocol
 	// assertion, unreadable body, header patterns) has passed, just before the
 	// status code is judged. A caller that judges the body itself acts on the
@@ -165,12 +183,16 @@ func (c *HTTPChecker) execute(
 	tracker := &connFamilyTracker{}
 	ctx = httptrace.WithClientTrace(ctx, tracker.clientTrace())
 
+	timer := newPhaseTimer(time.Now())
+	ctx = httptrace.WithClientTrace(ctx, timer.clientTrace())
+
 	result, err := c.executeRequest(ctx, config, info)
 	if err != nil || result == nil {
 		return result, err
 	}
 
 	stampResponseInfo(result, info)
+	stampTimings(result, timer, info)
 
 	if version := tracker.version(); version != checkerdef.IPVersionAuto {
 		if result.Output == nil {
@@ -283,11 +305,6 @@ func (c *HTTPChecker) executeRequest(
 		method = strings.ToUpper(method)
 	}
 
-	expectedStatus := cfg.ExpectedStatus
-	if expectedStatus == 0 {
-		expectedStatus = 200
-	}
-
 	start := time.Now()
 
 	// Create request with body if provided
@@ -307,6 +324,10 @@ func (c *HTTPChecker) executeRequest(
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
+
+	// A fresh connection per probe, so every result has a full DNS/connect/TLS
+	// breakdown whatever the check period (spec 2026-10-12-08).
+	req.Close = true
 
 	// Add basic auth if configured (before headers, so explicit Authorization
 	// overrides). Prefers the folded `basicAuth` credential, falling back to the
@@ -353,6 +374,7 @@ func (c *HTTPChecker) executeRequest(
 			}
 
 			redirectChain = append(redirectChain, req.URL.String())
+			req.Close = true
 
 			// redirect_host_policy: same-host — refuse any hop whose host
 			// differs from the PREVIOUS hop's. Checked here, before the
@@ -520,6 +542,7 @@ func (c *HTTPChecker) executeRequest(
 
 		var readErr error
 
+		readStart := time.Now()
 		bodyBytes, readErr = io.ReadAll(limitedReader)
 		if readErr != nil {
 			return &checkerdef.Result{
@@ -537,6 +560,9 @@ func (c *HTTPChecker) executeRequest(
 				Diagnostics: buildFailureCapture(cfg, resp, bodyBytes),
 			}, nil
 		}
+
+		info.downloaded = true
+		info.downloadTime = time.Since(readStart)
 	}
 
 	// THE CAPTURE MUST BE OBSERVATIONALLY INERT ON THE VERDICT. respBody is the
@@ -575,6 +601,15 @@ func (c *HTTPChecker) executeRequest(
 			checkerdef.OutputKeyStatusCode: resp.StatusCode,
 			checkerdef.OutputKeyMethod:     method,
 		}), nil
+	}
+
+	// Final-URL assertion: where the redirect chain ended. Before the body
+	// blocks so "landed on the login page" is the reported reason rather than
+	// a body mismatch it caused.
+	if cfg.ExpectedFinalURL != "" {
+		if out := checkFinalURL(cfg, resp, method); out != nil {
+			return failed(out), nil
+		}
 	}
 
 	// Compile regex patterns if not already compiled
@@ -692,6 +727,20 @@ func (c *HTTPChecker) executeRequest(
 		}
 	}
 
+	// Apply header assertions. No body read needed.
+	if cfg.HeaderAssertions != nil {
+		assertionResult := cfg.HeaderAssertions.EvaluateHeaders(resp.Header)
+		if !assertionResult.Pass {
+			return failed(map[string]any{
+				checkerdef.OutputKeyError:      errHeaderAssertionFailed,
+				checkerdef.OutputKeyURL:        cfg.URL,
+				checkerdef.OutputKeyStatusCode: resp.StatusCode,
+				checkerdef.OutputKeyMethod:     method,
+				outputKeyHeaderAssertions:      assertionResult,
+			}), nil
+		}
+	}
+
 	// Apply body (plain text) assertions.
 	//
 	// No `respBody != ""` guard here, unlike the JSONPath block below: an
@@ -742,14 +791,20 @@ func (c *HTTPChecker) executeRequest(
 
 	// Determine status based on expected status code(s)
 	status := checkerdef.StatusUp
-	if len(cfg.ExpectedStatusCodes) > 0 {
-		// Use new pattern-based matching
+	switch {
+	case len(cfg.ExpectedStatusCodes) > 0:
+		// Pattern-based matching.
 		if !MatchStatusCode(resp.StatusCode, cfg.ExpectedStatusCodes) {
 			status = checkerdef.StatusDown
 		}
-	} else {
-		// Fall back to legacy expectedStatus (default: 200)
-		if resp.StatusCode != expectedStatus {
+	case cfg.ExpectedStatus != 0:
+		// Legacy single exact status code.
+		if resp.StatusCode != cfg.ExpectedStatus {
+			status = checkerdef.StatusDown
+		}
+	default:
+		// Nothing set: any 2xx passes.
+		if !MatchStatusCode(resp.StatusCode, []string{DefaultExpectedStatusPattern}) {
 			status = checkerdef.StatusDown
 		}
 	}
@@ -1033,4 +1088,41 @@ func hostFromURL(raw string) string {
 	}
 
 	return parsed.Hostname()
+}
+
+// checkFinalURL compares the URL of the last request sent (resp.Request.URL)
+// with cfg.ExpectedFinalURL after normalising both. It returns nil on a match,
+// else the failure output.
+func checkFinalURL(cfg *HTTPConfig, resp *http.Response, method string) map[string]any {
+	expected, err := checkconfig.NormalizeFinalURL(cfg.ExpectedFinalURL)
+	if err != nil {
+		return map[string]any{
+			checkerdef.OutputKeyError:      fmt.Sprintf("invalid expectedFinalUrl: %v", err),
+			checkerdef.OutputKeyURL:        cfg.URL,
+			checkerdef.OutputKeyStatusCode: resp.StatusCode,
+			checkerdef.OutputKeyMethod:     method,
+		}
+	}
+
+	rawActual := cfg.URL
+	if resp.Request != nil && resp.Request.URL != nil {
+		rawActual = resp.Request.URL.String()
+	}
+
+	actual, err := checkconfig.NormalizeFinalURL(rawActual)
+	if err != nil {
+		actual = rawActual
+	}
+
+	if actual == expected {
+		return nil
+	}
+
+	return map[string]any{
+		checkerdef.OutputKeyError:      fmt.Sprintf("expected final URL %q, got %q", expected, actual),
+		checkerdef.OutputKeyURL:        cfg.URL,
+		checkerdef.OutputKeyStatusCode: resp.StatusCode,
+		checkerdef.OutputKeyMethod:     method,
+		outputKeyFinalURL:              rawActual,
+	}
 }

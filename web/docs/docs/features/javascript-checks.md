@@ -410,7 +410,7 @@ a sidecar, which SolidPing forbids).
 | `session.close()` | `undefined` | Alias for `logoff()`, for parity with `browser`. |
 
 **Every authenticated session is a real interactive Windows logon** — the same
-[operational caveats](./check-types.md#warning-authenticated-runs-are-real-windows-logons)
+[operational caveats](./check-types.md#authenticated-runs-are-real-windows-logons)
 as the check apply: profile load, logon scripts/GPOs, an RDS license, a
 possible kicked user, a Security event-log entry per run. Use a dedicated
 monitoring account. Keep the interval long: **the period floor is 15 minutes**

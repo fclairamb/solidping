@@ -16,25 +16,27 @@ import {
 } from "./common";
 import type { AssertionNode } from "@/components/checks/json-assertion-editor";
 
-// Base state for toConfig tests — a valid URL and the implicit ["200"]
+// Base state for toConfig tests — a valid URL and the implicit ["2XX"]
 // default, so each test only needs to override what it's exercising.
 function baseState(overrides: Partial<HttpState> = {}): HttpState {
   return {
     url: "https://example.com",
     method: "GET",
-    expectedStatusCodes: ["200"],
+    expectedStatusCodes: ["2XX"],
     username: "",
     password: "",
     secretHeaders: [],
     verifySsl: true,
     followRedirects: true,
     redirectHostPolicy: "any",
+    expectedFinalUrl: "",
     httpVersion: "1.1",
     captureFailureResponse: false,
     authDirty: false,
     headersDirty: false,
     jsonPathAssertions: null,
     bodyAssertions: null,
+    headerAssertions: null,
     body: "",
     headers: [],
     ...overrides,
@@ -61,9 +63,9 @@ function saveUntouched(stored: CheckConfig): CheckConfig {
 }
 
 describe("httpModule.fromConfig — expectedStatusCodes seeding", () => {
-  it('defaults to ["200"] when neither status key is present', () => {
+  it('defaults to ["2XX"] when neither status key is present', () => {
     const state = httpModule.fromConfig({ url: "https://example.com" });
-    expect(state.expectedStatusCodes).toEqual(["200"]);
+    expect(state.expectedStatusCodes).toEqual(["2XX"]);
   });
 
   it("seeds from expectedStatusCodes when present, normalizing entries", () => {
@@ -111,14 +113,22 @@ describe("httpModule.fromConfig — expectedStatusCodes seeding", () => {
       url: "https://example.com",
       expectedStatusCodes: [],
     });
-    expect(withoutLegacy.expectedStatusCodes).toEqual(["200"]);
+    expect(withoutLegacy.expectedStatusCodes).toEqual(["2XX"]);
   });
 });
 
 describe("httpModule.toConfig — expectedStatusCodes serialization", () => {
-  it('omits both status keys for the default ["200"]', () => {
+  it('omits both status keys for the default ["2XX"]', () => {
     const { config } = httpModule.toConfig(baseState());
     expect(config).not.toHaveProperty("expectedStatusCodes");
+    expect(config).not.toHaveProperty("expectedStatus");
+  });
+
+  it('writes expectedStatusCodes ["200"] for an explicit ["200"]', () => {
+    const { config } = httpModule.toConfig(
+      baseState({ expectedStatusCodes: ["200"] }),
+    );
+    expect(config.expectedStatusCodes).toEqual(["200"]);
     expect(config).not.toHaveProperty("expectedStatus");
   });
 
@@ -250,9 +260,7 @@ describe("httpModule — redirectHostPolicy round-trip", () => {
     const { config } = httpModule.toConfig(
       baseState({ redirectHostPolicy: "same-host" }),
     );
-    expect(httpModule.fromConfig(config).redirectHostPolicy).toBe(
-      "same-host",
-    );
+    expect(httpModule.fromConfig(config).redirectHostPolicy).toBe("same-host");
   });
 });
 
@@ -453,13 +461,9 @@ describe("unmodeled config keys survive an untouched save", () => {
     const state = httpModule.fromConfig(stored);
     expect(state.expectedStatusCodes).toEqual(["200"]);
     const submitted = saveUntouched(stored);
-    // 200 is the implicit default, so neither key needs to be written — what
-    // must never happen is a DIFFERENT effective status.
-    const effective = submitted.expectedStatusCodes ??
-      submitted.expected_status_codes ??
-      submitted.expectedStatus ??
-      submitted.expected_status ?? ["200"];
-    expect(effective).toEqual(["200"]);
+    // An explicit 200 is now written as a list (the implicit default is 2XX),
+    // so the effective status stays exactly 200.
+    expect(submitted.expectedStatusCodes).toEqual(["200"]);
   });
 
   it("preserves a non-default snake expected_status as a real chip", () => {
@@ -1017,8 +1021,9 @@ describe("httpModule — httpVersion", () => {
     });
     expect(state.httpVersion).toBe(version);
     expect(httpModule.toConfig(state).config.httpVersion).toBe(version);
-    expect(saveUntouched({ url: "https://example.com", httpVersion: version }))
-      .toMatchObject({ httpVersion: version });
+    expect(
+      saveUntouched({ url: "https://example.com", httpVersion: version }),
+    ).toMatchObject({ httpVersion: version });
   });
 
   it("reads a YAML number", () => {
@@ -1037,7 +1042,8 @@ describe("httpModule — httpVersion", () => {
       initialConfig: { url: "https://example.com", httpVersion: "2" },
       ownedKeys: httpModule.ownedKeys,
       secretFields: HTTP_SECRET_FIELDS,
-      moduleConfig: httpModule.toConfig({ ...state, httpVersion: "1.1" }).config,
+      moduleConfig: httpModule.toConfig({ ...state, httpVersion: "1.1" })
+        .config,
     });
     expect(config).not.toHaveProperty("httpVersion");
   });
@@ -1053,5 +1059,114 @@ describe("httpModule — httpVersion", () => {
     expect(httpOptionsSummary(baseState({ httpVersion: "2" })).text).toContain(
       "HTTP/2",
     );
+  });
+});
+
+describe("httpModule — headerAssertions round-trip", () => {
+  const leaf: AssertionNode = {
+    type: "assertion",
+    path: "X-Powered-By",
+    operator: "not_exists",
+  };
+
+  it("seeds from the camelCase key and the snake_case alias", () => {
+    expect(
+      httpModule.fromConfig({ url: "https://acme.com", headerAssertions: leaf })
+        .headerAssertions,
+    ).toEqual(leaf);
+    expect(
+      httpModule.fromConfig({
+        url: "https://acme.com",
+        header_assertions: leaf,
+      }).headerAssertions,
+    ).toEqual(leaf);
+    expect(
+      httpModule.fromConfig({ url: "https://acme.com" }).headerAssertions,
+    ).toBeNull();
+  });
+
+  it("toConfig writes the key when set and omits it when null", () => {
+    expect(
+      httpModule.toConfig(baseState({ headerAssertions: leaf })).config
+        .headerAssertions,
+    ).toEqual(leaf);
+    const { config } = httpModule.toConfig(baseState());
+    expect(config).not.toHaveProperty("headerAssertions");
+    expect(config).not.toHaveProperty("header_assertions");
+  });
+
+  it("owns both spellings so clearing sticks", () => {
+    expect(httpModule.ownedKeys).toContain("headerAssertions");
+    expect(httpModule.ownedKeys).toContain("header_assertions");
+    const state = httpModule.fromConfig({
+      url: "https://acme.com",
+      header_assertions: leaf,
+    });
+    const { config } = httpModule.toConfig({
+      ...state,
+      headerAssertions: null,
+    });
+    const submitted = {
+      ...passthroughConfigFor(httpModule, {
+        url: "https://acme.com",
+        header_assertions: leaf,
+      }),
+      ...config,
+    };
+    expect(submitted).not.toHaveProperty("headerAssertions");
+    expect(submitted).not.toHaveProperty("header_assertions");
+  });
+
+  it("an API-set headers_pattern survives a save untouched", () => {
+    const saved = saveUntouched({
+      url: "https://acme.com",
+      headers_pattern: { "Content-Type": "text/plain" },
+      headerAssertions: leaf,
+    });
+    expect(saved.headers_pattern).toEqual({ "Content-Type": "text/plain" });
+    expect(saved.headerAssertions).toEqual(leaf);
+  });
+});
+
+describe("httpModule — expectedFinalUrl round-trip", () => {
+  it("seeds from the camelCase key", () => {
+    const state = httpModule.fromConfig({
+      url: "https://acme.com",
+      expectedFinalUrl: "https://www.acme.com/",
+    });
+    expect(state.expectedFinalUrl).toBe("https://www.acme.com/");
+  });
+
+  it("seeds from the snake_case alias", () => {
+    const state = httpModule.fromConfig({
+      url: "https://acme.com",
+      expected_final_url: "https://www.acme.com/",
+    });
+    expect(state.expectedFinalUrl).toBe("https://www.acme.com/");
+  });
+
+  it("defaults to empty and is not written", () => {
+    const state = httpModule.fromConfig({ url: "https://acme.com" });
+    expect(state.expectedFinalUrl).toBe("");
+    expect(httpModule.toConfig(state).config).not.toHaveProperty(
+      "expectedFinalUrl",
+    );
+  });
+
+  it("toConfig writes it when redirects are followed", () => {
+    const { config } = httpModule.toConfig(
+      baseState({ expectedFinalUrl: "https://www.acme.com/" }),
+    );
+    expect(config.expectedFinalUrl).toBe("https://www.acme.com/");
+  });
+
+  it("toConfig drops it when redirects are off", () => {
+    const { config } = httpModule.toConfig(
+      baseState({
+        followRedirects: false,
+        expectedFinalUrl: "https://www.acme.com/",
+      }),
+    );
+    expect(config).not.toHaveProperty("expectedFinalUrl");
   });
 });

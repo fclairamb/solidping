@@ -51,15 +51,22 @@ async function pinCheckTo(page: Page, uid: string, regions: string[]): Promise<v
       url.pathname === "/api/v1/orgs/test/checks",
     async (route) => {
       if (route.request().method() !== "GET") return route.continue();
-      const response = await route.fetch();
-      const body = (await response.json()) as Record<string, unknown>;
-      if (Array.isArray(body.data)) {
-        const data = (body.data as Array<Record<string, unknown>>).map((check) =>
-          check.uid === uid ? { ...check, regions } : check,
-        );
-        return route.fulfill({ response, json: { ...body, data } });
+      try {
+        const response = await route.fetch();
+        const body = (await response.json()) as Record<string, unknown>;
+        if (Array.isArray(body.data)) {
+          const data = (body.data as Array<Record<string, unknown>>).map((check) =>
+            check.uid === uid ? { ...check, regions } : check,
+          );
+          return await route.fulfill({ response, json: { ...body, data } });
+        }
+        return await route.fulfill({ response, json: { ...body, regions } });
+      } catch (error) {
+        // A request still in flight when the test ends has its context closed
+        // under it ("Response has been disposed"); that is not a failure.
+        if (page.isClosed() || /disposed|closed|Test ended/i.test(String(error))) return;
+        throw error;
       }
-      return route.fulfill({ response, json: { ...body, regions } });
     },
   );
 }

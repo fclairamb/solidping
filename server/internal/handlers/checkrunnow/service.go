@@ -37,8 +37,7 @@ const (
 
 // Region statuses of a RunNowResponse.
 const (
-	StatusQueued  = "queued"
-	StatusRunning = "running"
+	StatusQueued = "queued"
 )
 
 // ExpressHintEvent is the notifier channel the check workers' express path
@@ -229,7 +228,8 @@ func LimitsFor(checkType string) *Limits {
 // RegionRun is one region's answer to a run-now request.
 type RegionRun struct {
 	Region string `json:"region"`
-	// Status is "queued" (due now) or "running" (its current run answers).
+	// Status is "queued": the region runs now, or right after the run it is
+	// in the middle of. ("running" was returned before spec 2026-10-12-05.)
 	Status string `json:"status"`
 }
 
@@ -258,44 +258,12 @@ func NewService(dbSvc db.Service, eventNotifier notifier.EventNotifier, clk cloc
 	return &Service{db: dbSvc, notifier: eventNotifier, clock: clk}
 }
 
-// isRunning reports whether a job is mid-run: leased, or carrying a
-// multi-step run in progress (its lease expires between slices).
-func isRunning(job *models.CheckJob, now time.Time) bool {
-	if job.StepRunUID != nil {
-		return true
-	}
-
-	return job.LeaseExpiresAt != nil && !job.LeaseExpiresAt.Before(now)
-}
-
 func regionOf(job *models.CheckJob) string {
 	if job.Region == nil {
 		return ""
 	}
 
 	return *job.Region
-}
-
-func allRunning(jobs []*models.CheckJob, now time.Time) bool {
-	for _, job := range jobs {
-		if !isRunning(job, now) {
-			return false
-		}
-	}
-
-	return true
-}
-
-func runningResponse(jobs []*models.CheckJob, now time.Time) *RunNowResponse {
-	resp := &RunNowResponse{RequestedAt: now, Regions: make([]RegionRun, 0, len(jobs))}
-
-	for _, job := range SortedByRegion(jobs) {
-		region := regionOf(job)
-
-		resp.Regions = append(resp.Regions, RegionRun{Region: region, Status: StatusRunning})
-	}
-
-	return resp
 }
 
 // RunNow makes every region of the check run once, now.
@@ -325,47 +293,33 @@ func (s *Service) RunNow(ctx context.Context, orgSlug, identifier string) (*RunN
 	// handed back compares exactly with a result's periodStart.
 	now := s.clock.Now().Truncate(time.Microsecond)
 
-	// Nothing to queue: report every region running and spend no budget.
-	if allRunning(jobs, now) {
-		return runningResponse(jobs, now), nil
-	}
-
 	if err := Admit(ctx, s.db, check.OrganizationUID, check.UID, now, LimitsFor(check.Type)); err != nil {
 		return nil, err
 	}
 
 	resp := &RunNowResponse{RequestedAt: now, Regions: make([]RegionRun, 0, len(jobs))}
-	queued := false
 
+	// Every region is queued. An idle job is made due now; one a worker holds
+	// (or one mid multi-step run) keeps the request until its release, which
+	// makes it due at once (spec 2026-10-12-05). Its current run started
+	// before the request, so it cannot be the answer.
 	for _, job := range SortedByRegion(jobs) {
-		region := regionOf(job)
-
-		status := StatusRunning
-
-		if !isRunning(job, now) {
-			switch err := s.db.RequestCheckRun(ctx, job.UID, now); {
-			case err == nil:
-				status = StatusQueued
-				queued = true
-			case errors.Is(err, sql.ErrNoRows):
-				continue
-			case errors.Is(err, db.ErrCheckJobBusy):
-				// A worker claimed it between the read and the update.
-			default:
-				return nil, fmt.Errorf("request run: %w", err)
-			}
+		switch err := s.db.RequestCheckRun(ctx, job.UID, now); {
+		case err == nil:
+		case errors.Is(err, sql.ErrNoRows):
+			continue
+		default:
+			return nil, fmt.Errorf("request run: %w", err)
 		}
 
-		resp.Regions = append(resp.Regions, RegionRun{Region: region, Status: status})
+		resp.Regions = append(resp.Regions, RegionRun{Region: regionOf(job), Status: StatusQueued})
 	}
 
 	if len(resp.Regions) == 0 {
 		return nil, ErrNoScheduledJob
 	}
 
-	if queued {
-		Hint(ctx, s.notifier, check.UID)
-	}
+	Hint(ctx, s.notifier, check.UID)
 
 	return resp, nil
 }

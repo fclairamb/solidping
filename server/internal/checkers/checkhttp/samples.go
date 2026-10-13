@@ -12,7 +12,7 @@ const (
 	sampleRedirectStatus = 301 // HTTP 301 Moved Permanently, for the no-follow-redirects sample
 	defaultBaseURL       = "http://localhost:4000"
 	methodGET            = "GET"
-	statusCodePattern2XX = "2XX" // matches any 2xx response code
+	statusCodePattern2XX = DefaultExpectedStatusPattern // matches any 2xx response code
 )
 
 func baseURL(opts *checkerdef.ListSampleOptions) string {

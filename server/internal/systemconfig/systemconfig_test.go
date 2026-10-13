@@ -11,6 +11,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/paramkeys"
+	"github.com/fclairamb/solidping/server/internal/utils/passwords"
 )
 
 // Env var names reused across the password precedence cases below, hoisted to
@@ -165,6 +166,7 @@ func TestKnownPasswordKeys(t *testing.T) {
 	r.Equal("auth.password.argon2.salt_length", string(KeyPasswordArgon2SaltLen))
 	r.Equal("auth.password.bcrypt.cost", string(KeyPasswordBcryptCost))
 	r.Equal("auth.password.rehash_on_login", string(KeyPasswordRehashOnLogin))
+	r.Equal("auth.password.argon2.auto_profile", string(KeyPasswordArgon2Auto))
 
 	known := getKnownParameters()
 	byKey := make(map[ParameterKey]ParameterDefinition, len(known))
@@ -175,7 +177,7 @@ func TestKnownPasswordKeys(t *testing.T) {
 	for _, key := range []ParameterKey{
 		KeyPasswordAlgorithm, KeyPasswordArgon2Memory, KeyPasswordArgon2Time,
 		KeyPasswordArgon2Threads, KeyPasswordArgon2KeyLen, KeyPasswordArgon2SaltLen,
-		KeyPasswordBcryptCost, KeyPasswordRehashOnLogin,
+		KeyPasswordArgon2Auto, KeyPasswordBcryptCost, KeyPasswordRehashOnLogin,
 	} {
 		def, ok := byKey[key]
 		r.Truef(ok, "expected %q to be a known parameter", key)
@@ -302,6 +304,90 @@ func TestKnownSchedulingFastLaneReservedKey(t *testing.T) {
 	r.Equal(8, cfg.Server.Scheduling.FastLaneReserved)
 	def.ApplyFunc(cfg, 3)
 	r.Equal(3, cfg.Server.Scheduling.FastLaneReserved)
+}
+
+// TestInitializeArgon2ExplicitBeatsSmallHostProfile: a DB-stored argon2 cost
+// field marks the cost explicit, so the small-host profile never replaces an
+// operator choice (spec 2026-10-12-07). A DB-stored key length does not, and a
+// DB-stored auto_profile=false turns the profile off.
+func TestInitializeArgon2ExplicitBeatsSmallHostProfile(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		dbParams     map[string]any
+		wantExplicit bool
+		wantMemory   uint32
+	}{
+		{
+			name:         "db memory is explicit and wins",
+			dbParams:     map[string]any{string(KeyPasswordArgon2Memory): float64(65536)},
+			wantExplicit: true,
+			wantMemory:   65536,
+		},
+		{
+			name:         "db time is explicit",
+			dbParams:     map[string]any{string(KeyPasswordArgon2Time): float64(3)},
+			wantExplicit: true,
+			wantMemory:   65536,
+		},
+		{
+			name:         "db threads is explicit",
+			dbParams:     map[string]any{string(KeyPasswordArgon2Threads): float64(4)},
+			wantExplicit: true,
+			wantMemory:   65536,
+		},
+		{
+			name:         "db key length alone keeps the small-host profile",
+			dbParams:     map[string]any{string(KeyPasswordArgon2KeyLen): float64(32)},
+			wantExplicit: false,
+			wantMemory:   19456,
+		},
+		{
+			name:         "db auto_profile=false keeps 64 MiB",
+			dbParams:     map[string]any{string(KeyPasswordArgon2Auto): false},
+			wantExplicit: false,
+			wantMemory:   65536,
+		},
+		{
+			name:         "nothing stored keeps the small-host profile",
+			dbParams:     map[string]any{},
+			wantExplicit: false,
+			wantMemory:   19456,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+			ctx := context.Background()
+
+			dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+			r.NoError(err)
+			r.NoError(dbSvc.Initialize(ctx))
+			t.Cleanup(func() { _ = dbSvc.Close() })
+
+			for key, value := range tt.dbParams {
+				r.NoError(dbSvc.SetSystemParameter(ctx, key, value, false))
+			}
+
+			cfg := &config.Config{}
+			cfg.Auth.Password = config.PasswordConfig{
+				Algorithm: config.PasswordAlgorithmArgon2id,
+				Argon2: config.Argon2Params{
+					Memory: 65536, Time: 3, Threads: 4, KeyLength: 32, SaltLength: 16, AutoProfile: true,
+				},
+				RehashOnLogin: true,
+			}
+			r.NoError(NewService(dbSvc, cfg).Initialize(ctx))
+			r.Equal(tt.wantExplicit, cfg.Auth.Password.Argon2Explicit)
+
+			pol, err := passwords.PolicyFromConfig(&cfg.Auth, passwords.WithSmallHost(true))
+			r.NoError(err)
+			r.Equal(tt.wantMemory, pol.Argon2.Memory)
+		})
+	}
 }
 
 // TestInitializeAppliesPasswordParams verifies the full DB -> cfg apply path for

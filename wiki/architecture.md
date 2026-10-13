@@ -160,7 +160,7 @@ solidping/
       app/
         server.go              # HTTP server, routing, middleware, DI
         services/              # Service registry
-      checkers/                # 39 check type implementations
+      checkers/                # one package per check type
         checkhttp/             # HTTP/HTTPS checks
         checktcp/              # TCP connectivity
         checkicmp/             # ICMP ping

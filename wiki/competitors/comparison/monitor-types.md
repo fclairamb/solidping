@@ -33,7 +33,7 @@
 | **Real User Monitoring (RUM)** | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ (CWV + JS errors) | ❌ |
 | **Third-party status page (dependency)** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ **4,300+ providers** | ❌ |
 
-**Most Comprehensive**: SolidPing (40 check types — broadest protocol coverage of any tool surveyed)
+**Most Comprehensive**: SolidPing (43 check types — broadest protocol coverage of any tool surveyed)
 
 > **How the SolidPing number is derived (updated 2026-08-23).** Count the
 > enumerated `CheckType` constants and subtract the synthetic one:
