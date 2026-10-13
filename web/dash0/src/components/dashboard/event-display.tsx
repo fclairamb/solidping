@@ -532,6 +532,24 @@ export function getEventAgentRegion(event: {
   return typeof region === "string" && region.length > 0 ? region : undefined;
 }
 
+// getEventRegionName returns the SolidPing region a region.offline /
+// region.recovered event is about: the human name (`regionName`) the sweep
+// recorded, falling back to the region slug (`region`) for rows without it.
+// Returns undefined for every other event type.
+export function getEventRegionName(event: {
+  eventType?: string;
+  payload?: Record<string, unknown>;
+}): string | undefined {
+  if (event.eventType !== "region.offline" && event.eventType !== "region.recovered") {
+    return undefined;
+  }
+  for (const key of ["regionName", "region"]) {
+    const value = event.payload?.[key];
+    if (typeof value === "string" && value.length > 0) return value;
+  }
+  return undefined;
+}
+
 // AGENT_DISCONNECT_REASONS mirrors models.AgentDisconnectReason*
 // (server/internal/db/models/event.go) — the only reason values the backend
 // writes. Kept in sync with that list.

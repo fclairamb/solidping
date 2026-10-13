@@ -13,6 +13,7 @@ import {
   getEventEmoji,
   getEventLabel,
   getEventLucideIcon,
+  getEventRegionName,
   getEventTone,
   getCommentSource,
 } from "@/components/dashboard/event-display";
@@ -427,5 +428,26 @@ describe("agent identity getters read the payload, and nothing else", () => {
     // Plug/Unplug itself (spec 2026-09-28-02 proposal step 2).
     expect(getEventLucideIcon("agent.connected")).toBe(Plug);
     expect(getEventLucideIcon("agent.disconnected")).toBe(Unplug);
+  });
+});
+
+describe("getEventRegionName names the region of a region.* event", () => {
+  it("prefers the human name over the slug", () => {
+    expect(
+      getEventRegionName({
+        eventType: "region.offline",
+        payload: { region: "eu-fsn", regionName: "Europe (Falkenstein)" },
+      }),
+    ).toBe("Europe (Falkenstein)");
+  });
+
+  it("falls back to the slug, and is undefined on other events", () => {
+    expect(
+      getEventRegionName({ eventType: "region.recovered", payload: { region: "eu-fsn" } }),
+    ).toBe("eu-fsn");
+    expect(getEventRegionName({ eventType: "region.offline", payload: {} })).toBeUndefined();
+    expect(
+      getEventRegionName({ eventType: "agent.connected", payload: { region: "@acme-paris" } }),
+    ).toBeUndefined();
   });
 });
