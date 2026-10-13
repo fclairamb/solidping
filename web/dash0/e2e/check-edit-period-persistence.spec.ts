@@ -46,7 +46,7 @@ test.describe("Check edit — confirmation/recovery period persistence", () => {
     await page.getByTestId("check-submit-button").click();
 
     // Wait for navigation back to check detail page
-    await page.waitForURL(/\/checks\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/, { timeout: 10000 });
+    await page.waitForURL(/\/checks\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\?.*)?$/, { timeout: 10000 });
 
     // Navigate to edit page again to verify the values were persisted
     // server-side (this bug's regression: a fresh fetch would show the old

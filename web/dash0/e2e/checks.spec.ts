@@ -176,10 +176,10 @@ test.describe("Checks", () => {
     await page.getByTestId("check-submit-button").click();
 
     // Wait for navigation to check detail page (UUID format, not /new)
-    await page.waitForURL(/\/checks\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/, { timeout: 10000 });
+    await page.waitForURL(/\/checks\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\?.*)?$/, { timeout: 10000 });
 
     // Verify we're on the check detail page
-    expect(page.url()).toMatch(/\/checks\/[0-9a-f-]+$/);
+    expect(page.url()).toMatch(/\/checks\/[0-9a-f-]+(\?.*)?$/);
 
     // Verify the check name is displayed
     await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
@@ -292,7 +292,7 @@ test.describe("Checks", () => {
     await page.getByTestId("check-submit-button").click();
 
     // Wait for navigation back to check detail page
-    await page.waitForURL(/\/checks\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/, { timeout: 10000 });
+    await page.waitForURL(/\/checks\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\?.*)?$/, { timeout: 10000 });
     await page.waitForLoadState("networkidle");
 
     // Verify updated name is shown
@@ -409,7 +409,7 @@ test.describe("Checks", () => {
     await page.getByTestId("check-submit-button").click();
 
     // Wait for navigation back to check detail page
-    await page.waitForURL(/\/checks\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/, { timeout: 10000 });
+    await page.waitForURL(/\/checks\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\?.*)?$/, { timeout: 10000 });
 
     // Navigate to edit page again to verify values were persisted
     await page
@@ -475,7 +475,7 @@ test.describe("Checks", () => {
     // Clear the timeout and save — the key must be removed from config.
     await page.getByTestId("check-timeout-input").fill("");
     await page.getByTestId("check-submit-button").click();
-    await page.waitForURL(/\/checks\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/, { timeout: 10000 });
+    await page.waitForURL(/\/checks\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\?.*)?$/, { timeout: 10000 });
 
     // Back on a fresh edit page the field is empty again (key removed). With the
     // timeout cleared, Advanced is collapsed by default, so expand it first.
@@ -548,7 +548,7 @@ test.describe("Checks", () => {
     await page.getByTestId("check-submit-button").click();
 
     // Wait for navigation to check detail page (UUID format, not /new)
-    await page.waitForURL(/\/checks\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/, { timeout: 10000 });
+    await page.waitForURL(/\/checks\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\?.*)?$/, { timeout: 10000 });
 
     // Find and click the delete button (trash icon)
     await page.getByRole("button", { name: "More actions" }).click();

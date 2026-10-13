@@ -200,7 +200,7 @@ test.describe("HTTP check expected-status codes", () => {
 
     // Save without touching the field — the legacy key migrates automatically.
     await page.getByTestId("check-submit-button").click();
-    await page.waitForURL(/\/checks\/[0-9a-f-]{36}$/, { timeout: 10000 });
+    await page.waitForURL(/\/checks\/[0-9a-f-]{36}(\?.*)?$/, { timeout: 10000 });
 
     const saved = await getCheck(page, token, uid);
     expect(saved.config.expectedStatusCodes).toEqual(["201"]);

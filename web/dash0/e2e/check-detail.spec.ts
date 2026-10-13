@@ -913,7 +913,7 @@ test.describe("Check Detail Page", () => {
     // Recent Results header shows no filter row (only >1 region shows it) —
     // this test drives the strip via the URL directly instead, since a
     // single-region "select region" affordance isn't the point under test.
-    await page.goto(`${page.url()}?region=us-1&graphPeriod=week`);
+    await page.goto(`${page.url().split("?")[0]}?region=us-1&graphPeriod=week`);
     await page.waitForLoadState("networkidle");
 
     const stats = page.getByTestId("results-duration-stats");
@@ -1013,7 +1013,7 @@ test.describe("Check Detail Page", () => {
       await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
       await page.waitForLoadState("networkidle");
 
-      await page.goto(`${page.url()}?graphPeriod=week`);
+      await page.goto(`${page.url().split("?")[0]}?graphPeriod=week`);
       await page.waitForLoadState("networkidle");
 
       const trend = page.getByTestId("results-duration-trend");
@@ -1335,7 +1335,7 @@ test.describe("Check Detail Page", () => {
     // reproduces via a real URL round-trip (in-app clicks build the search
     // object directly), so navigate with page.goto rather than driving the
     // toggle through the UI.
-    await page.goto(`${page.url()}?graphFull=true`);
+    await page.goto(`${page.url().split("?")[0]}?graphFull=true`);
     await page.waitForLoadState("networkidle");
 
     await expect(
