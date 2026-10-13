@@ -878,7 +878,7 @@ func (s *SlackSender) buildIncidentEscalatedFields(payload *Payload, checkURL, c
 		})
 	}
 
-	return fields
+	return appendSlackRegionField(fields, payload)
 }
 
 // buildIncidentEscalatedBlocks builds the body blocks of an escalation message.
