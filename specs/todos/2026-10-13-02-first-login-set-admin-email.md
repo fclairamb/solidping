@@ -68,7 +68,7 @@ upgrade). Installs that already got past first login are out of scope.
 
 4. **Dashboard.** In `web/dash0/src/routes/change-password.tsx`, when `user.mustChangeEmail`, render an
    email field and a "confirm email" field above the password fields. No hint text.
-   what they sign in with from now on. Empty by default (never prefill the default address). Both are
+   Empty by default (never prefill the default address). Both are
    optional in the sense that leaving them empty submits no `email`, and the screen then behaves as
    today. Validate that the two match and that the value is not the default address before submitting;
    show the server's 400/409 inline in the existing `forced-password-error` alert. Pass it through
