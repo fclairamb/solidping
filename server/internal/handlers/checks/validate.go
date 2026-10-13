@@ -183,6 +183,7 @@ type requestFieldValues struct {
 	ConfirmationPeriodSeconds *int
 	RecoveryPeriodSeconds     *int
 	TracerouteOnFailure       *string
+	ReminderIntervalSeconds   *int
 	FlappingWindowSeconds     *int
 	FlapBackoffFactor         *int
 	MaxRecoveryMultiplier     *int
@@ -228,6 +229,7 @@ func requestFieldFindings(values *requestFieldValues) []requestFieldFinding {
 	findings = appendTracerouteFinding(findings, values)
 	findings = appendFlappingFindings(findings, values)
 	findings = appendIncidentPeriodFindings(findings, values)
+	findings = appendReminderFinding(findings, values)
 	findings = appendFailQuorumFinding(findings, values)
 
 	if values.Placement != nil {
@@ -680,6 +682,7 @@ func validateRequestFieldFindings(req *ValidateCheckRequest, period time.Duratio
 		ConfirmationPeriodSeconds: req.ConfirmationPeriodSeconds,
 		RecoveryPeriodSeconds:     req.RecoveryPeriodSeconds,
 		TracerouteOnFailure:       req.TracerouteOnFailure,
+		ReminderIntervalSeconds:   req.ReminderIntervalSeconds,
 		FlappingWindowSeconds:     req.FlappingWindowSeconds,
 		FlapBackoffFactor:         req.FlapBackoffFactor,
 		MaxRecoveryMultiplier:     req.MaxRecoveryMultiplier,

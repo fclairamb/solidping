@@ -97,6 +97,9 @@ type ValidateCheckRequest struct {
 	// TracerouteOnFailure is the per-check path-trace policy (spec
 	// 2026-08-21-10): `inherit`, `on` or `off`.
 	TracerouteOnFailure *string `json:"tracerouteOnFailure,omitempty"`
+	// ReminderIntervalSeconds is checked against 0 or 900..86400 (spec
+	// 2026-10-12-16). Null or absent: inherit the org default.
+	ReminderIntervalSeconds *int `json:"reminderIntervalSeconds,omitempty"`
 	// FailQuorum is how many of the check's regions must be failing, for the
 	// confirmation period, before it is down (spec 2026-09-25-10): "default",
 	// "all", "majority" or a whole number (a JSON number or string). Absent
@@ -957,6 +960,12 @@ type CheckResponse struct {
 	// the form back to guessing which of the three states it is looking at.
 	TracerouteOnFailure string `json:"tracerouteOnFailure"`
 
+	// ReminderIntervalSeconds re-notifies the check's channels while an
+	// incident stays open and unacknowledged (spec 2026-10-12-16): null
+	// inherits the org default, 0 is off, otherwise 900..86400 seconds.
+	// Always emitted, so null is visibly "inherit".
+	ReminderIntervalSeconds *int `json:"reminderIntervalSeconds"`
+
 	// Adaptive resolution / flapping settings.
 	ReopenCooldownMultiplier *int `json:"reopenCooldownMultiplier,omitempty"`
 	FlappingWindowSeconds    int  `json:"flappingWindowSeconds"`
@@ -1498,6 +1507,9 @@ type CreateCheckRequest struct {
 	// (create: inherit); `inherit` is what puts a check that had an explicit
 	// answer back under the org default.
 	TracerouteOnFailure *string `json:"tracerouteOnFailure,omitempty"`
+	// ReminderIntervalSeconds (spec 2026-10-12-16): null or absent inherits
+	// the org default, 0 is off, otherwise 900..86400 seconds.
+	ReminderIntervalSeconds *int `json:"reminderIntervalSeconds,omitempty"`
 	// FailQuorum is how many of the check's regions must be failing, for the
 	// confirmation period, before it is down (spec 2026-09-25-10): "default",
 	// "all", "majority" or a whole number (a JSON number or string). Absent
@@ -1662,6 +1674,9 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 		value, _ := parseTraceroutePolicy(*req.TracerouteOnFailure)
 		check.TracerouteOnFailure = value
 	}
+
+	// Range already checked by planCreateCheck.
+	check.ReminderIntervalSeconds = copyIntPtr(req.ReminderIntervalSeconds)
 
 	if req.FailQuorum != nil {
 		// Already checked above. A passive check drops it on insert
@@ -1940,6 +1955,10 @@ type UpdateCheckRequest struct {
 	// (create: inherit); `inherit` is what puts a check that had an explicit
 	// answer back under the org default.
 	TracerouteOnFailure *string `json:"tracerouteOnFailure,omitempty"`
+	// ReminderIntervalSeconds (spec 2026-10-12-16): absent leaves it
+	// unchanged, null puts the check back on the org default, 0 is off,
+	// otherwise 900..86400 seconds.
+	ReminderIntervalSeconds OptionalInt `json:"reminderIntervalSeconds,omitzero"`
 	// FailQuorum is how many of the check's regions must be failing, for the
 	// confirmation period, before it is down (spec 2026-09-25-10): "default",
 	// "all", "majority" or a whole number (a JSON number or string). Absent
@@ -1999,6 +2018,10 @@ type UpsertCheckRequest struct {
 	// TracerouteOnFailure is the per-check path-trace policy: `inherit`, `on`
 	// or `off`. nil leaves it unchanged.
 	TracerouteOnFailure *string `json:"tracerouteOnFailure,omitempty"`
+	// ReminderIntervalSeconds (spec 2026-10-12-16): absent leaves it
+	// unchanged, null inherits the org default, 0 is off, otherwise
+	// 900..86400 seconds.
+	ReminderIntervalSeconds OptionalInt `json:"reminderIntervalSeconds,omitzero"`
 	// FailQuorum is how many of the check's regions must be failing, for the
 	// confirmation period, before it is down (spec 2026-09-25-10): "default",
 	// "all", "majority" or a whole number (a JSON number or string). Absent
@@ -2226,6 +2249,10 @@ func (s *Service) UpdateCheck(
 		// explicit on/off and never moved back.
 		update.TracerouteOnFailure = value
 		update.ClearTracerouteOnFailure = value == nil
+	}
+
+	if riErr := applyReminderIntervalUpdate(&update, req.ReminderIntervalSeconds); riErr != nil {
+		return CheckResponse{}, riErr
 	}
 
 	if fqErr := applyFailQuorumUpdate(&update, check, req.FailQuorum); fqErr != nil {
@@ -2458,6 +2485,7 @@ func (s *Service) UpsertCheck(
 			ConfirmationPeriodSeconds: req.ConfirmationPeriodSeconds,
 			RecoveryPeriodSeconds:     req.RecoveryPeriodSeconds,
 			TracerouteOnFailure:       req.TracerouteOnFailure,
+			ReminderIntervalSeconds:   req.ReminderIntervalSeconds,
 			FailQuorum:                req.FailQuorum,
 			ReopenCooldownMultiplier:  req.ReopenCooldownMultiplier,
 			FlappingWindowSeconds:     req.FlappingWindowSeconds,
@@ -3608,6 +3636,7 @@ func (s *Service) convertCheckToResponse(check *models.Check) CheckResponse {
 		RecoveryPeriodSeconds:     check.RecoveryPeriodSeconds,
 		EscalationPolicyUID:       check.EscalationPolicyUID,
 		TracerouteOnFailure:       renderTraceroutePolicy(check.TracerouteOnFailure),
+		ReminderIntervalSeconds:   copyIntPtr(check.ReminderIntervalSeconds),
 		FlapState:                 buildFlapStateResponse(check, time.Now()),
 		DegradedFailures:          check.EffectiveDegradedFailures(),
 		DegradedFailuresWindow:    check.EffectiveDegradedFailuresWindow(),
@@ -3872,6 +3901,10 @@ type ExportCheck struct {
 	// explicit opt-out quietly becoming an opt-in on restore, with no diff to
 	// notice, is the worst direction this field could fail in.
 	TracerouteOnFailure string `json:"tracerouteOnFailure,omitempty"`
+	// ReminderIntervalSeconds (spec 2026-10-12-16): absent means inherit the
+	// org default, 0 is off. Like TracerouteOnFailure it must travel, and
+	// absent is imported as an explicit inherit.
+	ReminderIntervalSeconds *int `json:"reminderIntervalSeconds,omitempty"`
 	// FailQuorum is the multi-region quorum (spec 2026-09-25-10); absent is
 	// the default. Like TracerouteOnFailure, absent is imported as an explicit
 	// "default", so a re-import resets a check that was taken off it.
@@ -4139,6 +4172,7 @@ func projectChecksToExport(
 			EscalationThreshold:       intPtr(check.EscalationThreshold),
 			RecoveryPeriodSeconds:     intPtr(check.RecoveryPeriodSeconds),
 			TracerouteOnFailure:       renderTraceroutePolicy(check.TracerouteOnFailure),
+			ReminderIntervalSeconds:   copyIntPtr(check.ReminderIntervalSeconds),
 			FailQuorum:                exportedFailQuorum(check),
 			ReopenCooldownMultiplier:  check.ReopenCooldownMultiplier,
 			FlappingWindowSeconds:     intPtr(check.FlappingWindowSeconds),
@@ -4897,6 +4931,8 @@ func buildImportUpsertRequest(exportedCheck *ExportCheck, checkGroupUID *string)
 	}
 
 	upsertReq.TracerouteOnFailure = importedTraceroutePolicy(exportedCheck.TracerouteOnFailure)
+	// Absent is an explicit inherit, so a re-import resets an override.
+	upsertReq.ReminderIntervalSeconds = optionalIntOf(copyIntPtr(exportedCheck.ReminderIntervalSeconds))
 	upsertReq.FailQuorum = importedFailQuorum(exportedCheck.FailQuorum)
 
 	if exportedCheck.Placement != "" {
@@ -5110,6 +5146,7 @@ func (s *Service) cloneBuildCheck(
 	clone.EscalationThreshold = source.EscalationThreshold
 	clone.RecoveryPeriodSeconds = source.RecoveryPeriodSeconds
 	clone.TracerouteOnFailure = source.TracerouteOnFailure
+	clone.ReminderIntervalSeconds = copyIntPtr(source.ReminderIntervalSeconds)
 	clone.ReopenCooldownMultiplier = source.ReopenCooldownMultiplier
 	clone.FlappingWindowSeconds = source.FlappingWindowSeconds
 	// Degraded detection is configuration, so a clone inherits it — including

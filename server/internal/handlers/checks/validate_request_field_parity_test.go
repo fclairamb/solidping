@@ -179,6 +179,49 @@ func TestValidateCreateRequestFieldParity(t *testing.T) {
 			wantAccepted: true,
 		},
 
+		// --- reminderIntervalSeconds: 0 or 900..86400 (spec 2026-10-12-16) ---
+		{
+			name:                   "reminderIntervalSeconds -1 is refused",
+			extra:                  map[string]any{"reminderIntervalSeconds": -1},
+			wantCreateStatus:       http.StatusBadRequest,
+			wantCreateDetailPrefix: "reminderIntervalSeconds",
+			wantFieldName:          "reminderIntervalSeconds",
+		},
+		{
+			name:                   "reminderIntervalSeconds 899 is refused",
+			extra:                  map[string]any{"reminderIntervalSeconds": 899},
+			wantCreateStatus:       http.StatusBadRequest,
+			wantCreateDetailPrefix: "reminderIntervalSeconds",
+			wantFieldName:          "reminderIntervalSeconds",
+		},
+		{
+			name:                   "reminderIntervalSeconds 86401 is refused",
+			extra:                  map[string]any{"reminderIntervalSeconds": 86401},
+			wantCreateStatus:       http.StatusBadRequest,
+			wantCreateDetailPrefix: "reminderIntervalSeconds",
+			wantFieldName:          "reminderIntervalSeconds",
+		},
+		{
+			name:         "reminderIntervalSeconds null is accepted",
+			extra:        map[string]any{"reminderIntervalSeconds": nil},
+			wantAccepted: true,
+		},
+		{
+			name:         "reminderIntervalSeconds 0 is accepted",
+			extra:        map[string]any{"reminderIntervalSeconds": 0},
+			wantAccepted: true,
+		},
+		{
+			name:         "reminderIntervalSeconds 900 is accepted",
+			extra:        map[string]any{"reminderIntervalSeconds": 900},
+			wantAccepted: true,
+		},
+		{
+			name:         "reminderIntervalSeconds 86400 is accepted",
+			extra:        map[string]any{"reminderIntervalSeconds": 86400},
+			wantAccepted: true,
+		},
+
 		// --- flapping knobs ---
 		{
 			name:                   "flapBackoffFactor below 1 is refused",

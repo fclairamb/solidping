@@ -977,6 +977,7 @@ func isCheckFieldValidationError(err error) bool {
 
 	return models.IsLabelValidationError(err) ||
 		errors.Is(err, errIncidentPeriodOutOfRange) ||
+		errors.Is(err, errReminderIntervalOutOfRange) ||
 		errors.Is(err, errRegionSpreadOutOfRange) ||
 		// A legacy `@<org>/<slug>` region naming somebody ELSE's org is a
 		// caller mistake (or an attempt), not a server fault — 400, never 500.

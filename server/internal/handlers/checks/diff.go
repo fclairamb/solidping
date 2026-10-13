@@ -249,6 +249,11 @@ func (s *Service) diffCheck(
 	add("tracerouteOnFailure",
 		traceroutePolicyOrInherit(current.TracerouteOnFailure),
 		traceroutePolicyOrInherit(desired.TracerouteOnFailure))
+	// Absent is inherit, and the import sends it explicitly, so absent vs a
+	// value is a real change (spec 2026-10-12-16).
+	add(fieldReminderIntervalSeconds,
+		reminderIntervalOrInherit(current.ReminderIntervalSeconds),
+		reminderIntervalOrInherit(desired.ReminderIntervalSeconds))
 
 	// failQuorum (spec 2026-09-25-10): absent is the default, and the import
 	// sends it explicitly, so absent vs a value is a real change. A passive
@@ -359,6 +364,16 @@ func traceroutePolicyOrInherit(value string) string {
 	}
 
 	return value
+}
+
+// reminderIntervalOrInherit renders a reminder interval for a field diff: nil
+// is the org default.
+func reminderIntervalOrInherit(value *int) string {
+	if value == nil {
+		return TraceroutePolicyInherit
+	}
+
+	return strconv.Itoa(*value)
 }
 
 // intPtrString renders a nullable int for a field diff; an absent current
