@@ -3,6 +3,13 @@
 ## Unreleased
 
 
+## [0.38.5](https://github.com/fclairamb/solidping/compare/v0.38.4...v0.38.5) (2026-10-14)
+
+
+### Bug Fixes
+
+* **db:** restore the released migration 027 so upgrades from v0.38.1..v0.38.3 boot ([#558](https://github.com/fclairamb/solidping/issues/558)) ([763c9e5](https://github.com/fclairamb/solidping/commit/763c9e570405b7f0a049d7d41b130dee2e6ca1bb))
+
 ## [0.38.4](https://github.com/fclairamb/solidping/compare/v0.38.3...v0.38.4) (2026-10-14)
 
 
