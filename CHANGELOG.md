@@ -3,6 +3,31 @@
 ## Unreleased
 
 
+## [0.38.4](https://github.com/fclairamb/solidping/compare/v0.38.3...v0.38.4) (2026-10-14)
+
+
+### Bug Fixes
+
+* answer Discord button presses delivered over the Gateway ([#557](https://github.com/fclairamb/solidping/issues/557)) ([3b5937f](https://github.com/fclairamb/solidping/commit/3b5937ffaa784de33e4d7381b622e500b71e069a))
+* **checkhttp:** treat an h2c handshake cut short as a failed HTTP/2 negotiation ([#547](https://github.com/fclairamb/solidping/issues/547)) ([b74bf7c](https://github.com/fclairamb/solidping/commit/b74bf7c2807feaecd325f9431cb05ca6c96173ea))
+* **ci:** make the nightly workflow pass again ([#531](https://github.com/fclairamb/solidping/issues/531)) ([e37c204](https://github.com/fclairamb/solidping/commit/e37c20460f19d46b1d8be75b31aea4a24bd6625f))
+* **dash0:** name the region on region.offline/recovered events ([#552](https://github.com/fclairamb/solidping/issues/552)) ([f3ac93e](https://github.com/fclairamb/solidping/commit/f3ac93e2876ed0ddf1a025f5ff2078a4642a36a7))
+* **dash0:** page header wraps its actions on narrow screens ([#553](https://github.com/fclairamb/solidping/issues/553)) ([01d1c95](https://github.com/fclairamb/solidping/commit/01d1c954bf7b381f7fb0d67c1102579853d06e5c))
+* **dash0:** status page editor lays out on a phone ([#554](https://github.com/fclairamb/solidping/issues/554)) ([fb53d50](https://github.com/fclairamb/solidping/commit/fb53d502abc2b1817ef7cbcb0aec6393f34b40fc))
+* **dash0:** stop pre-filling a webmail domain as the first check target ([#532](https://github.com/fclairamb/solidping/issues/532)) ([b3e6672](https://github.com/fclairamb/solidping/commit/b3e6672906e87b46345cd37a5b1520cb940a93d1))
+* **db:** interrupted or failed migrations are no longer marked applied ([#549](https://github.com/fclairamb/solidping/issues/549)) ([c7479ed](https://github.com/fclairamb/solidping/commit/c7479ed359f003f2255740871c287a7465174c56))
+* demo-org sign-ins, webhook secrets, check type count, idle memory (batch 2026-10-12) ([9947d0b](https://github.com/fclairamb/solidping/commit/9947d0b979108f0385c4905fe1e214e625de68fb))
+* **deps:** update github.com/dop251/goja digest to 0c308c5 ([#546](https://github.com/fclairamb/solidping/issues/546)) ([cba413a](https://github.com/fclairamb/solidping/commit/cba413a9ebbfec823e00942722096890f4f1e34b))
+* **deps:** update github.com/dop251/goja digest to 245c54f ([#551](https://github.com/fclairamb/solidping/issues/551)) ([90b9c25](https://github.com/fclairamb/solidping/commit/90b9c254551e24cc790c3a185655595a90380301))
+* **deps:** update github.com/dop251/goja digest to 480b366 ([#545](https://github.com/fclairamb/solidping/issues/545)) ([b86f196](https://github.com/fclairamb/solidping/commit/b86f19673ae7195955ca2e1689438107e3f03df9))
+* **deps:** update go dependencies (non-major) ([#543](https://github.com/fclairamb/solidping/issues/543)) ([87eb548](https://github.com/fclairamb/solidping/commit/87eb548046c2fc0f2087c8939d77460341c281f0))
+* **helm:** keep uploaded files on the volume when running on PostgreSQL ([30218d5](https://github.com/fclairamb/solidping/commit/30218d5df23306f6638ea744cad959e0b091f725))
+* **log:** pick the log format from the environment ([#536](https://github.com/fclairamb/solidping/issues/536)) ([4c13730](https://github.com/fclairamb/solidping/commit/4c137308142a1b39ee612081231f9cc380325a16))
+* **log:** quieter startup and a ready line with the URL ([#538](https://github.com/fclairamb/solidping/issues/538)) ([bbe682a](https://github.com/fclairamb/solidping/commit/bbe682a33c6805691001abf9294f638d48fad7ec))
+* **samples:** seed only sample checks that work out of the box ([#537](https://github.com/fclairamb/solidping/issues/537)) ([262c2cc](https://github.com/fclairamb/solidping/commit/262c2cc6f5e81175d44c4b7640b8d52cf90be6a1))
+* stop warning about normal things on a fresh start ([#539](https://github.com/fclairamb/solidping/issues/539)) ([caf64b4](https://github.com/fclairamb/solidping/commit/caf64b49e6d88ec12abff7946946f256108b524d))
+* **watchdog:** stale-incidents counts checks.last_result_at ([#542](https://github.com/fclairamb/solidping/issues/542)) ([bd4af36](https://github.com/fclairamb/solidping/commit/bd4af36d4725da0fc80258019c19fd4f3dde28a8))
+
 ## [0.38.3](https://github.com/fclairamb/solidping/compare/v0.38.2...v0.38.3) (2026-10-11)
 
 
