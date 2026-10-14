@@ -26,6 +26,7 @@ Before calling the API of any server, `GET /api/mgmt/version`: it gives the run 
 2b. Local env: `make dev` sources `dev.priv.env` (git-ignored, shell `KEY=value` lines) when it exists, e.g. the `SP_AI_*` variables. A git worktree without one uses the main checkout's. Read secrets there with `$(gopass show -o <path>)`.
 3. Test mode: `make dev-test` (same but with `SP_RUNMODE=test`)
 4. Database changes: add migrations, then `make migrate`
+4b. A migration file is never edited once a git tag contains it, whatever its name says (`027_v0_39_0` shipped in v0.38.1). Check with `git tag --contains $(git log --diff-filter=A --format=%h -1 -- <file>)`; if any tag lists it, add the next `NNN` instead. `make lint-migrations` and CI enforce it.
 
 Dev logs live in `logs/*.log` (`backend.log`, `dash0.log`, `status0.log`), size-rotated with `.1`/`.2` suffixes (~20 MB cap); all three processes run as children of the `server/cmd/devloop` supervisor, so Ctrl-C stops everything.
 
