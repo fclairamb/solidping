@@ -8,7 +8,7 @@
 
 ### Bug Fixes
 
-* **db:** restore the released migration 027 so upgrades from v0.38.1..v0.38.3 boot ([#558](https://github.com/fclairamb/solidping/issues/558)) ([763c9e5](https://github.com/fclairamb/solidping/commit/763c9e570405b7f0a049d7d41b130dee2e6ca1bb))
+* **db:** **Servers upgraded from 0.38.1, 0.38.2 or 0.38.3 start again.** 0.38.4 changed a database migration that had already shipped, so the server refused to start on those databases with "migration 027_v0_39_0 migration content changed after it was applied". 0.38.5 starts on every database: a 0.38.1 to 0.38.3 database gets the incident reminder and "Run now" columns, and one that already ran 0.38.4 is left as is. If you are stuck on a crashing 0.38.4, upgrade to 0.38.5. There is nothing else to do. ([#558](https://github.com/fclairamb/solidping/issues/558)) ([763c9e5](https://github.com/fclairamb/solidping/commit/763c9e570405b7f0a049d7d41b130dee2e6ca1bb))
 
 ## [0.38.4](https://github.com/fclairamb/solidping/compare/v0.38.3...v0.38.4) (2026-10-14)
 
