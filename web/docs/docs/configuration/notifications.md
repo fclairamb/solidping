@@ -586,7 +586,9 @@ address.
 3. **General Information → Interactions Endpoint URL**:
    `{SP_BASE_URL}/api/v1/integrations/discord/interactions`. Save it **after**
    `SP_DISCORD_PUBLIC_KEY` is set: Discord probes the URL on save and rejects it
-   if SolidPing cannot verify signatures yet.
+   if SolidPing cannot verify signatures yet. This step is optional when the
+   Gateway is on: with no endpoint URL, Discord delivers button presses and
+   slash commands over the Gateway instead, which needs no inbound access.
 4. **Bot → Privileged Gateway Intents**: enable **Message Content Intent** if
    you turn the Gateway on.
 
@@ -613,7 +615,8 @@ Three things are worth understanding before you turn the bot on:
   interaction rather than trusting it — so buttons and slash commands do nothing
   until the key is set.
 - **The Gateway needs the privileged `MESSAGE_CONTENT` intent.** Buttons and
-  slash commands arrive over HTTPS, but Discord has no HTTP event subscription
+  slash commands arrive over HTTPS when an Interactions Endpoint URL is set, and
+  over the Gateway when it is not. Discord has no HTTP event subscription
   for ordinary messages — everything a human *types* (a thread reply that should
   become an incident comment, an `@SolidPing checks list`) only arrives over the
   Gateway. Enable the intent under **Bot → Privileged Gateway Intents** in the

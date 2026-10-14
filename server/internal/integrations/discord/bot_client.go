@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/httpclientpool"
@@ -16,6 +17,11 @@ import (
 
 // ErrBotTokenMissing is returned when a bot call is attempted with no token.
 var ErrBotTokenMissing = errors.New("discord bot token not configured")
+
+// ErrInteractionCallback is returned when answering a Gateway interaction fails.
+// The underlying error is flattened to text so the interaction token can be
+// scrubbed from it.
+var ErrInteractionCallback = errors.New("discord interaction callback failed")
 
 // ErrUnexpectedStatus is returned when an unexpected HTTP status is received.
 var ErrUnexpectedStatus = errors.New("unexpected HTTP status")
@@ -281,6 +287,26 @@ func (c *BotClient) CreateMessage(
 	}
 
 	return &result, nil
+}
+
+// CreateInteractionResponse answers an interaction that arrived over the
+// Gateway. The HTTPS interactions endpoint answers in its HTTP response body;
+// a Gateway interaction has no such response, so the answer is this callback,
+// and it must land within Discord's 3-second window.
+//
+// The interaction token sits in the path and is a bearer credential for 15
+// minutes, so it is scrubbed from any error before the error can reach a log.
+func (c *BotClient) CreateInteractionResponse(
+	ctx context.Context, interactionID, interactionToken string, response *InteractionResponse,
+) error {
+	path := "/interactions/" + interactionID + "/" + interactionToken + "/callback"
+
+	if err := c.do(ctx, http.MethodPost, path, response, nil); err != nil {
+		return fmt.Errorf("%w %s: %s", ErrInteractionCallback, interactionID,
+			strings.ReplaceAll(err.Error(), interactionToken, "[token]"))
+	}
+
+	return nil
 }
 
 // EditMessage rewrites an existing bot message in place. This is what turns

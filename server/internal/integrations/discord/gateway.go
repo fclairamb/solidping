@@ -129,7 +129,8 @@ func (w *wsConn) Close() error {
 // It is the Discord counterpart of slack.SlackSocketSupervisor, and exists for
 // the same reason: Discord has no HTTP event subscription for ordinary
 // messages. Buttons and slash commands arrive over the HTTP interactions
-// endpoint; everything a human TYPES — a thread reply that should become an
+// endpoint when the app has an Interactions Endpoint URL, and here
+// (INTERACTION_CREATE) when it does not; everything a human TYPES — a thread reply that should become an
 // incident comment, an `@SolidPing checks list` — only ever arrives here.
 type GatewaySupervisor struct {
 	svc *Service
@@ -503,6 +504,8 @@ func (g *GatewaySupervisor) handleDispatch(ctx context.Context, payload *gateway
 		g.log.InfoContext(ctx, "Discord Gateway session resumed")
 	case "MESSAGE_CREATE":
 		g.handleMessageCreate(ctx, payload.D)
+	case "INTERACTION_CREATE":
+		g.handleInteractionCreate(ctx, payload.D)
 	case "GUILD_DELETE":
 		g.handleGuildDelete(ctx, payload.D)
 	default:

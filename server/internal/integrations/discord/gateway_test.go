@@ -480,6 +480,46 @@ func TestGateway_MentionCommandIsAnswered(t *testing.T) {
 	r.Empty(h.inc.CommentIncident())
 }
 
+// TestGateway_AnswersInteraction covers an app with no Interactions Endpoint
+// URL: Discord then delivers button presses over the Gateway, and the answer
+// must go back through the interaction callback (issue #550). Before the fix
+// the event was dropped and Discord reported that the bot did not respond.
+func TestGateway_AnswersInteraction(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	h := newGatewayHarness(t, models.DiscordCommentIngestionAll)
+	h.start(t)
+
+	h.conn.push(t, "INTERACTION_CREATE", 2, Interaction{
+		ID: "I-550", Type: InteractionTypeMessageComponent, Token: "itoken-550",
+		GuildID: h.guild, ChannelID: "C-ALERTS",
+		Member: &InteractionMember{User: &User{ID: "U-ALICE", Username: "alice"}},
+		Data:   &InteractionData{CustomID: BuildCustomID(ActionUnavailable, "inc-550")},
+	})
+
+	var callback postedMessage
+
+	r.Eventually(func() bool {
+		callbacks := h.fake.interactionCallbacks()
+		if len(callbacks) == 0 {
+			return false
+		}
+
+		callback = callbacks[0]
+
+		return true
+	}, 2*time.Second, 20*time.Millisecond, "a Gateway interaction must be answered")
+
+	r.Equal("/interactions/I-550/itoken-550/callback", callback.ChannelID)
+	r.InDelta(InteractionCallbackChannelMessage, callback.Body["type"], 0)
+
+	data, ok := callback.Body["data"].(map[string]any)
+	r.True(ok, "the callback must carry a message")
+	r.Contains(data["content"], "remains unacknowledged")
+	r.InDelta(MessageFlagEphemeral, data["flags"], 0)
+}
+
 // TestGateway_MentionCommandInsideThreadCarriesContext proves the Gateway hands
 // the thread context to DispatchCommand, so `@SolidPing comment …` typed in an
 // incident thread needs no `#N`.

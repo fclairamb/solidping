@@ -266,3 +266,53 @@ func (g *GatewaySupervisor) captureDirectMessage(ctx context.Context, msg *Gatew
 		Context:     map[string]any{"channelId": msg.ChannelID},
 	})
 }
+
+// handleInteractionCreate answers a button press or slash command that Discord
+// delivered over the Gateway.
+//
+// Discord sends interactions over the Gateway whenever the application has NO
+// Interactions Endpoint URL set in the Developer Portal. That is the natural
+// setup for an instance that is not reachable from the internet, and also what
+// an operator gets by skipping that step. Without this handler every press was
+// dropped as an unhandled event and Discord told the user the application did
+// not respond (issue #550). With an endpoint URL set, Discord sends nothing
+// here and HandleInteractions answers instead, so the two never both fire.
+//
+// The Gateway connection is authenticated with the bot token, so there is no
+// signature to verify: the interaction comes from Discord itself. Both
+// transports run the same DispatchInteraction, so they cannot drift.
+func (g *GatewaySupervisor) handleInteractionCreate(ctx context.Context, data json.RawMessage) {
+	var interaction Interaction
+	if err := json.Unmarshal(data, &interaction); err != nil {
+		g.log.WarnContext(ctx, "Discord Gateway: undecodable INTERACTION_CREATE", "error", err)
+
+		return
+	}
+
+	if interaction.ID == "" || interaction.Token == "" {
+		g.log.WarnContext(ctx, "Discord Gateway: interaction without id or token",
+			"type", interaction.Type)
+
+		return
+	}
+
+	response, err := DispatchInteraction(ctx, g.svc, &interaction)
+	if err != nil {
+		g.log.ErrorContext(ctx, "Discord Gateway: failed to handle interaction",
+			"type", interaction.Type, "guild_id", interaction.GuildID, "error", err)
+
+		response = ephemeralResponse("Sorry, something went wrong handling that.")
+	}
+
+	client, err := g.svc.GetClient(ctx, interaction.GuildID)
+	if err != nil {
+		g.log.WarnContext(ctx, "Discord Gateway: no client to answer interaction", "error", err)
+
+		return
+	}
+
+	if err := client.CreateInteractionResponse(ctx, interaction.ID, interaction.Token, &response); err != nil {
+		g.log.WarnContext(ctx, "Discord Gateway: failed to answer interaction",
+			"type", interaction.Type, "guild_id", interaction.GuildID, "error", err)
+	}
+}
