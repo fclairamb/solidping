@@ -130,7 +130,7 @@ func newGuardTestDB(t *testing.T, applied []string, recorded map[string]string) 
 
 	db := bun.NewDB(sqldb, sqlitedialect.New())
 
-	_, err = db.ExecContext(ctx, "CREATE TABLE bun_migrations (name TEXT)")
+	_, err = db.ExecContext(ctx, "CREATE TABLE bun_migrations (name TEXT, group_id INTEGER)")
 	require.NoError(t, err)
 
 	for _, name := range applied {
@@ -283,4 +283,84 @@ func TestRepairFixesDriftAndIsNoOpOnCleanDB(t *testing.T) {
 	resultsAgain, err := guard.Repair(ctx)
 	r.NoError(err)
 	r.Empty(resultsAgain, "repair on an already-clean database must report nothing")
+}
+
+// TestChecksumsIncludeTransactionalMigrations covers `.tx.up.sql`: bun runs it
+// as the same migration, so the guard must hash it too.
+func TestChecksumsIncludeTransactionalMigrations(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	got, err := migrationguard.Checksums(fstest.MapFS{
+		"migrations/028_v0_38_5.tx.up.sql":   {Data: []byte("select 1;")},
+		"migrations/028_v0_38_5.tx.down.sql": {Data: []byte("select 2;")},
+	}, "migrations")
+	r.NoError(err)
+	r.Len(got, 1)
+	r.Equal("v0_38_5", got["028"].Comment)
+	r.Equal(sum("select 1;"), got["028"].Checksum)
+}
+
+// TestReconcileResolvesSupersededMigration models a database that ran a
+// released copy of 027 which also held what is now 028. Strict mode must boot
+// it, mark 028 applied (so it does not run twice) and re-record 027. Any other
+// recorded checksum stays a mismatch.
+func TestReconcileResolvesSupersededMigration(t *testing.T) {
+	t.Parallel()
+
+	expected := map[string]migrationguard.Migration{
+		"026": {Name: "026", Comment: "v0_38_0", Checksum: sum("26")},
+		"027": {Name: "027", Comment: "v0_39_0", Checksum: sum("27")},
+		"028": {Name: "028", Comment: "v0_38_5", Checksum: sum("28")},
+	}
+	superseded := migrationguard.Superseded{Name: "027", Checksum: sum("27+28"), Covers: []string{"028"}}
+
+	t.Run("released copy", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+		ctx := t.Context()
+		db := newGuardTestDB(t, []string{"026", "027"}, map[string]string{"026": sum("26"), "027": sum("27+28")})
+
+		guard := migrationguard.New(db, expected).WithSuperseded(superseded)
+		mismatches, err := guard.Reconcile(ctx, migrationguard.ModeStrict)
+		r.NoError(err)
+		r.Empty(mismatches)
+
+		got, ok := recordedChecksum(t, db, "027")
+		r.True(ok)
+		r.Equal(sum("27"), got, "027 is re-recorded at its current checksum")
+
+		var applied int
+		r.NoError(db.NewRaw("SELECT count(*) FROM bun_migrations WHERE name = '028'").Scan(ctx, &applied))
+		r.Equal(1, applied, "028 is marked applied, not run again")
+
+		// The next boot backfills 028's checksum and has nothing left to do.
+		mismatches, err = guard.Reconcile(ctx, migrationguard.ModeStrict)
+		r.NoError(err)
+		r.Empty(mismatches)
+
+		got, ok = recordedChecksum(t, db, "028")
+		r.True(ok)
+		r.Equal(sum("28"), got)
+	})
+
+	t.Run("unknown checksum", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+		ctx := t.Context()
+		db := newGuardTestDB(t, []string{"026", "027"}, map[string]string{"026": sum("26"), "027": sum("27+29")})
+
+		mismatches, err := migrationguard.New(db, expected).WithSuperseded(superseded).
+			Reconcile(ctx, migrationguard.ModeStrict)
+		r.NoError(err)
+		r.Len(mismatches, 1)
+		r.Equal("027", mismatches[0].Name)
+
+		var applied int
+		r.NoError(db.NewRaw("SELECT count(*) FROM bun_migrations WHERE name = '028'").Scan(ctx, &applied))
+		r.Zero(applied)
+	})
 }

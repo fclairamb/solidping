@@ -190,6 +190,15 @@ jobs:
           scripts/check-agent-docs_test.sh
           scripts/check-agent-docs.sh
 
+      # A migration file is frozen once a release tag carries it: bun never
+      # re-runs an edited one (v0.38.4 edited 027 and broke every upgrade from
+      # v0.38.1..v0.38.3). The check compares each file with its first tag.
+      - name: Released migrations are unchanged
+        working-directory: .
+        run: |
+          git fetch --no-tags --depth=1 origin '+refs/tags/v*:refs/tags/v*'
+          scripts/check-frozen-migrations.sh
+
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v9.3.0
         with:

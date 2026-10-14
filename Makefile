@@ -1,6 +1,6 @@
 .PHONY: docker-build build build-backend build-dash0 build-status0 build-docs copy-dash0 copy-status0 copy-docs embed-placeholders cloud-setup check-clean-clone \
 	build-cli install-cli clean clean-all run run-test dev dev-test dev-saas dev-dash0 dev-status0 dev-docs dev-backend \
-	test test-cover test-postgres test-slow test-scenario test-dash0 test-docs lint lint-agent-docs lint-back lint-dash0 lint-status0 fmt deps migrate help sync-brand-assets build-favicons \
+	test test-cover test-postgres test-slow test-scenario test-dash0 test-docs lint lint-agent-docs lint-migrations lint-back lint-dash0 lint-status0 fmt deps migrate help sync-brand-assets build-favicons \
 	showcase showcase-terminal showcase-cut \
 	build-loadgen bench-checks bench-checks-sqlite bench-checks-postgres \
 	build-scenario scenario-test
@@ -473,7 +473,10 @@ lint-agent-docs: ## Check AGENTS.md size limits and CLAUDE.md stubs
 	@scripts/check-agent-docs_test.sh
 	@scripts/check-agent-docs.sh
 
-lint: lint-agent-docs lint-back lint-dash0 lint-status0 ## Run all linters
+lint-migrations: ## Check that no migration file changed since its release tag
+	@scripts/check-frozen-migrations.sh
+
+lint: lint-agent-docs lint-migrations lint-back lint-dash0 lint-status0 ## Run all linters
 
 fmt: ## Format code
 	@echo "Formatting backend code..."

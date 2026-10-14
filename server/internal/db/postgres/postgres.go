@@ -399,7 +399,15 @@ func newMigrationGuard(db *bun.DB, fsys fs.FS) (*migrationguard.Guard, error) {
 		return nil, fmt.Errorf("failed to checksum migrations: %w", err)
 	}
 
-	return migrationguard.New(db, expected), nil
+	return migrationguard.New(db, expected).WithSuperseded(supersededMigrations()...), nil
+}
+
+// supersededMigrations lists released migration files that were edited after
+// they shipped. v0.38.4 carried a 027 with the 028 sections appended to it.
+func supersededMigrations() []migrationguard.Superseded {
+	return []migrationguard.Superseded{
+		{Name: "027", Checksum: "7e1a1bc2901cc6f1cd971bd0ac64e2724bfdcd366cad96a6b80483eb4ea0dd1a", Covers: []string{"028"}},
+	}
 }
 
 // migrationFS returns the migration files: the embedded ones, or a test override.

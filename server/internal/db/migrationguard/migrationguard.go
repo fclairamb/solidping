@@ -62,12 +62,17 @@ const DefaultTable = "bun_migrations"
 const ChecksumTable = "migration_checksums"
 
 // fnameRE mirrors bun's own migration filename regexp: the numeric prefix is
-// the identity, the rest is an informational comment.
-var fnameRE = regexp.MustCompile(`^(\d{1,14})_([0-9a-z_\-]+)\.up\.sql$`)
+// the identity, the rest is an informational comment. A `.tx.up.sql` file is
+// the same migration run in a transaction, so it is hashed too.
+var fnameRE = regexp.MustCompile(`^(\d{1,14})_([0-9a-z_\-]+)(?:\.tx)?\.up\.sql$`)
 
 // ErrChecksumMismatch is the sentinel every content-drift failure wraps, so
 // callers can distinguish "this database diverged" from an I/O error.
 var ErrChecksumMismatch = errors.New("migration content changed after it was applied")
+
+// ErrSupersededCoverMissing reports a Superseded entry naming a migration this
+// binary does not ship: a programming error in the entry.
+var ErrSupersededCoverMissing = errors.New("superseded migration covers a migration this binary does not ship")
 
 // MismatchError reports one applied migration whose file content no longer
 // matches what was recorded when it was applied.
@@ -203,12 +208,31 @@ func LogMismatches(ctx context.Context, mismatches []*MismatchError) {
 	}
 }
 
+// Superseded is a released copy of a migration that held more DDL than the
+// file holds now: the extra DDL was moved to the Covers migrations. A database
+// that recorded Checksum for Name has already run Covers, so Reconcile marks
+// them applied instead of reporting a mismatch, and re-records Name at its
+// current checksum.
+//
+// It exists to repair a release that edited a frozen migration (027 in
+// v0.38.4). It is not a way to edit migrations: a new entry needs the exact
+// checksum of a released file.
+type Superseded struct {
+	// Name is the numeric prefix of the edited migration (e.g. "027").
+	Name string
+	// Checksum is the full checksum of the released, edited `.up.sql`.
+	Checksum string
+	// Covers lists the migrations now holding the DDL the edit added.
+	Covers []string
+}
+
 // Guard verifies applied migrations against the checksums of the migration
 // sources this binary carries.
 type Guard struct {
-	db       *bun.DB
-	expected map[string]Migration
-	table    string
+	db         *bun.DB
+	expected   map[string]Migration
+	superseded []Superseded
+	table      string
 }
 
 // New builds a guard over the given expected migrations. Additional entries
@@ -225,6 +249,25 @@ func New(db *bun.DB, expected map[string]Migration, extra ...Migration) *Guard {
 	}
 
 	return &Guard{db: db, expected: merged, table: DefaultTable}
+}
+
+// WithSuperseded registers released copies of migrations whose extra DDL now
+// lives in later migrations. See Superseded.
+func (g *Guard) WithSuperseded(entries ...Superseded) *Guard {
+	g.superseded = append(g.superseded, entries...)
+
+	return g
+}
+
+// supersededBy returns the entry matching a recorded checksum for name.
+func (g *Guard) supersededBy(name, recorded string) (Superseded, bool) {
+	for i := range g.superseded {
+		if g.superseded[i].Name == name && g.superseded[i].Checksum == recorded {
+			return g.superseded[i], true
+		}
+	}
+
+	return Superseded{}, false
 }
 
 // Reconcile creates the checksum table if needed, then for every migration the
@@ -265,6 +308,7 @@ func (g *Guard) Reconcile(ctx context.Context, mode Mode) ([]*MismatchError, err
 	var (
 		mismatches []*MismatchError
 		backfilled []checksumRow
+		split      []Superseded
 	)
 
 	for _, name := range applied {
@@ -286,6 +330,12 @@ func (g *Guard) Reconcile(ctx context.Context, mode Mode) ([]*MismatchError, err
 		}
 
 		if got != want.Checksum {
+			if s, ok := g.supersededBy(name, got); ok {
+				split = append(split, s)
+
+				continue
+			}
+
 			mismatches = append(mismatches, &MismatchError{
 				Name: want.Name, Comment: want.Comment,
 				Recorded: got, Current: want.Checksum,
@@ -295,6 +345,10 @@ func (g *Guard) Reconcile(ctx context.Context, mode Mode) ([]*MismatchError, err
 
 	if len(mismatches) > 0 && mode != ModeWarn {
 		return mismatches, nil
+	}
+
+	if err := g.resolveSuperseded(ctx, applied, split); err != nil {
+		return mismatches, err
 	}
 
 	if len(backfilled) == 0 {
@@ -308,6 +362,58 @@ func (g *Guard) Reconcile(ctx context.Context, mode Mode) ([]*MismatchError, err
 	slog.DebugContext(ctx, "Recorded migration checksums", "count", len(backfilled), "mode", mode)
 
 	return mismatches, nil
+}
+
+// resolveSuperseded marks the migrations each split entry covers as applied
+// (they already ran inside the released copy) and re-records the split
+// migration at its current checksum, in one transaction.
+func (g *Guard) resolveSuperseded(ctx context.Context, applied []string, split []Superseded) error {
+	if len(split) == 0 {
+		return nil
+	}
+
+	done := make(map[string]struct{}, len(applied))
+	for _, name := range applied {
+		done[name] = struct{}{}
+	}
+
+	return g.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		for i := range split {
+			entry := &split[i]
+
+			for _, cover := range entry.Covers {
+				if _, ok := done[cover]; ok {
+					continue
+				}
+
+				if _, ok := g.expected[cover]; !ok {
+					return fmt.Errorf("%w: %s covers %s", ErrSupersededCoverMissing, entry.Name, cover)
+				}
+
+				_, err := tx.NewRaw(
+					"INSERT INTO ? (name, group_id) SELECT ?, COALESCE(MAX(group_id), 0) FROM ?",
+					bun.Ident(g.table), cover, bun.Ident(g.table),
+				).Exec(ctx)
+				if err != nil {
+					return fmt.Errorf("mark migration %s applied: %w", cover, err)
+				}
+
+				done[cover] = struct{}{}
+			}
+
+			want := g.expected[entry.Name]
+			row := checksumRow{Name: want.Name, Comment: want.Comment, Checksum: want.Checksum, RecordedAt: time.Now()}
+
+			if _, err := tx.NewUpdate().Model(&row).WherePK().Exec(ctx); err != nil {
+				return fmt.Errorf("re-record migration checksum %q: %w", entry.Name, err)
+			}
+
+			slog.InfoContext(ctx, "Migration was split after release; marked its new parts applied",
+				"migration", entry.Name, "covers", entry.Covers)
+		}
+
+		return nil
+	})
 }
 
 func joinMismatches(mismatches []*MismatchError) error {
@@ -427,6 +533,7 @@ func (g *Guard) Repair(ctx context.Context) ([]RepairResult, error) {
 	var (
 		results  []RepairResult
 		inserted []checksumRow
+		split    []Superseded
 	)
 
 	now := time.Now()
@@ -451,12 +558,23 @@ func (g *Guard) Repair(ctx context.Context) ([]RepairResult, error) {
 			continue
 		}
 
+		if s, ok := g.supersededBy(name, got); ok {
+			split = append(split, s)
+			results = append(results, RepairResult{Name: want.Name, Comment: want.Comment, Old: got, New: want.Checksum})
+
+			continue
+		}
+
 		row := checksumRow{Name: want.Name, Comment: want.Comment, Checksum: want.Checksum, RecordedAt: now}
 		if _, err := g.db.NewUpdate().Model(&row).WherePK().Exec(ctx); err != nil {
 			return results, fmt.Errorf("repair migration checksum %q: %w", want.Name, err)
 		}
 
 		results = append(results, RepairResult{Name: want.Name, Comment: want.Comment, Old: got, New: want.Checksum})
+	}
+
+	if err := g.resolveSuperseded(ctx, applied, split); err != nil {
+		return results, err
 	}
 
 	if len(inserted) > 0 {

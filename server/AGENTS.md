@@ -73,6 +73,16 @@ The Go backend follows a clean architecture pattern with strict separation of co
 - **`internal/models/`**: Bun ORM models for database entities with custom types
 - **`internal/db/postgres/migrations/`** and **`internal/db/sqlite/migrations/`**: Database migration files (one consolidated `NNN_vX_Y_Z.up.sql` per release)
 
+### Released migrations are frozen (hard rule)
+
+**A migration file is never edited once it has been part of a tag.** Not a statement, not a
+comment, not the `.down.sql`. The version in its name is a guess made before release-please
+picked the number: `027_v0_39_0` shipped in v0.38.1. Before appending to the latest file, run
+`git tag --contains $(git log --diff-filter=A --format=%h -1 -- <file>)`. If a tag shows up,
+create the next `NNN` file instead. `scripts/check-frozen-migrations.sh` (`make
+lint-migrations`, CI) fails on any change to a tagged file. v0.38.4 broke this rule and every
+upgrade from v0.38.1..v0.38.3 failed to boot.
+
 ### Migration file naming (hard rule)
 
 **A migration file is named after the version it will ship in — never after what it does.**
