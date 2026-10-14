@@ -29,7 +29,9 @@ In the [Discord Developer Portal](https://discord.com/developers/applications):
 6. **General Information → Interactions Endpoint URL** →
    `https://<your-instance>/api/v1/integrations/discord/interactions`.
    Discord validates the URL immediately by sending signed probes, so set the
-   public key in SolidPing *first* or the save will fail.
+   public key in SolidPing *first* or the save will fail. Optional when the
+   Gateway is on: with no endpoint URL, Discord sends interactions over the
+   Gateway instead (see [§5](#5-transports)).
 
 ## 2. Configure SolidPing
 
@@ -118,8 +120,8 @@ What depends on it:
 | Feature | Transport | Needs `MESSAGE_CONTENT` |
 |---|---|---|
 | Incident alerts, thread follow-ups, resolve edits | REST (outbound) | no |
-| Acknowledge / Escalate buttons | HTTPS interactions endpoint | no |
-| `/solidping …` slash commands | HTTPS interactions endpoint | no |
+| Acknowledge / Escalate buttons | HTTPS interactions endpoint, or Gateway | no |
+| `/solidping …` slash commands | HTTPS interactions endpoint, or Gateway | no |
 | `@SolidPing …` mention commands | Gateway | **yes** |
 | Thread replies → incident comments | Gateway | **yes** |
 
@@ -145,6 +147,16 @@ the other:
 
 Both funnel into the same `discord.DispatchCommand`, so the command set cannot
 drift between them.
+
+Interactions (buttons, slash commands) take whichever transport the Discord
+application selects: the HTTPS endpoint when an **Interactions Endpoint URL** is
+set in the Developer Portal, the Gateway (`INTERACTION_CREATE`) when it is not.
+Discord never sends one interaction to both. A Gateway interaction is answered
+with `POST /interactions/{id}/{token}/callback` instead of an HTTP response
+body, through the same `DispatchInteraction`. Before issue #550 the Gateway
+dropped `INTERACTION_CREATE`, so an app without an endpoint URL showed the
+buttons and Discord answered every press with "the application did not
+respond".
 
 Gateway status is exposed at `GET /api/v1/integrations/discord/gateway/status`
 and rendered on **Server → Discord**. It never contains the bot token.
