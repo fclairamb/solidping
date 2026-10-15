@@ -135,6 +135,23 @@ competitor above can claim both at once:
 distributed probing or a hosted tier — that would close SolidPing's Axis-2 gap
 against the closest same-lane project.
 
+**Status update 2026-10-15 — "inside your network" has its first open-source
+copy.** The 2026-07-27 advice above was to lead with the half of Axis 2 nobody
+could copy: probes inside the customer's own network, self-hosted. Uptimy Agent
+(github.com/uptimy/agent, Apache-2.0 Go binary, created 2026-10-01, see
+[indie-watch.md](indie-watch.md)) now says it almost word for word: its cloud
+"watches from outside, from every continent", the open-source agent "watches
+from inside your cluster or network, where outside checks can't reach". It also
+ships a Kuma importer, a Railway one-click and a signed Helm chart.
+What it does not have is the combination: its agent is one vantage point, and
+multi-region lives only in the paid cloud. SolidPing can pin a check to several
+regions or private locations the customer runs and require `failQuorum` of them
+to fail before alerting (`web/docs/docs/features/region-placement.md`), self-hosted
+or on solidping.io, with 43 check types, on-call and MCP in the same binary. So the line to lead with narrows from
+"agents inside your network" to **"several vantage points you own, voting,
+self-hosted"**. Short version for copy: *your probes, your regions, your
+quorum.*
+
 **Market-exit opportunity (2026-07-12):** Freshping (Freshworks) shut down
 2026-03-06 — a free-tier incumbent left the market, and its users need a new home.
 This is a concrete, time-boxed displacement window: lead with "self-host it and it
