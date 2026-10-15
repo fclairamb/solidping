@@ -60,7 +60,7 @@ StatusCake is a UK-based website monitoring platform that provides uptime, page 
 - Pushover
 - Pushbullet
 - Webhooks
-- Phone calls & SMS (75 free SMS credits/month on free plan)
+- Phone calls & SMS (75 SMS credits/month on Superior, 400 on Business; **none on Free**, corrected 2026-10-15)
 
 ### Status Pages
 
@@ -98,7 +98,7 @@ StatusCake is a UK-based website monitoring platform that provides uptime, page 
 - 1 domain monitor (7-day intervals)
 - 1 SSL monitor (24-hour intervals)
 - 0 server monitors
-- Email alerts + 75 free SMS credits/month
+- Email alerts (no SMS credits on Free, corrected 2026-10-15)
 - 15+ integrations included
 - Push/heartbeat monitoring included
 
@@ -162,7 +162,7 @@ POST /v1/maintenance-windows
 ### Features
 1. ✅ **Broad monitor types**: HTTP, TCP, DNS, SMTP, SSH, PING, Push, SSL, Domain, Page Speed, Server
 2. ✅ **Push/heartbeat on free tier**: Most competitors gate this behind paid plans
-3. ✅ **75 free SMS credits/month**: Unusually generous for free tier
+3. ~~**75 free SMS credits/month** on the free tier~~: wrong, the credits are on Superior (corrected 2026-10-15)
 4. ✅ **SSL + Domain monitoring**: Built-in certificate and domain expiration tracking
 5. ✅ **Page speed monitoring**: Full page load analysis
 6. ✅ **Server monitoring**: CPU/RAM/disk (paid plans)
@@ -216,7 +216,7 @@ POST /v1/maintenance-windows
 5. **SMTP/SSH protocol support**: Additional protocol coverage
 6. **Maintenance windows**: With recurrence support
 7. **Mature platform**: 15+ years, 120,000 users
-8. **75 free SMS/month**: SMS alerting on free tier
+8. ~~**75 free SMS/month**~~: not on Free; Superior only (corrected 2026-10-15)
 9. **Terraform/Pulumi providers**: IaC ecosystem
 
 ### SolidPing Advantages

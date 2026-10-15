@@ -22,6 +22,43 @@ community demand.
 
 ## Refresh log
 
+### 2026-10-15 — competition scan (52 sources since=41d, GitHub, pricing pages)
+
+First full scan since 2026-09-05. New entrants are logged above (Uptimy under
+"Tracked closely", the rest at the bottom). SaaS pricing changes are in
+[comparison/pricing.md](comparison/pricing.md). Open-source release deltas:
+
+| Project | Then → now | What matters |
+|---|---|---|
+| Uptime Kuma | 2.5.3, 90.5k★ → 2.5.6, 92.5k★ | **SFTP** monitor (2.5.4): 13 → 14 types |
+| Gatus | v5.34 → v5.37.0, 11.7k★ → 12.3k★ | DNS TXT, Zulip topics. Three releases in nine months |
+| Kuvasz | 4.2.0, 571★ → 4.5.0, 639★ | Docker monitors, outbound proxy, self-connectivity check |
+| Peekaping | 0.0.46, 1,165★ → same, 1,200★ | no commit since 2026-05-24 |
+| Checkmate | v3.10 → v3.12.0, ~10k★ → 10.9k★ | outbound proxy, domain expiry, Docker monitor with logs |
+| Kener | v4.1.6 → v4.1.7 | fixes only |
+| Tianji | → v1.33.9, 3.1k★ | 32 releases, one about monitoring; drifting to AI gateway + analytics |
+| OneUptime | 14.0.14 → 14.0.59 (45 releases in 11 days), 7.7k★ | **importers** for 6 monitoring tools + 5 on-call tools; NTP, VMware, Wi-Fi; still 1-min floor (#2937 open) |
+| OpenStatus | 8k+★ → 9.2k★ | ICMP + gRPC, OAuth MCP, **Helm chart**, incident management with a Slack agent drafting postmortems |
+| Beszel | → v0.21.0, 26.2k★ | agents run ICMP/TCP/HTTP/DNS probes (v0.20.0) |
+| Healthchecks | v4.1 → v4.4 | nothing on our axes |
+| Temps | 563★ → 845★ | rebuilt as an MCP server, Temps Cloud hosted offer |
+
+What it changes for SolidPing:
+
+- **Importers are no longer ours to claim.** OneUptime imports from six tools,
+  OpenStatus from four. Our Gatus importer is the only unique one. See
+  [comparison/features.md](comparison/features.md#migration-importers-added-2026-08-01).
+- **MCP is table stakes on both sides**: five SaaS pricing pages, plus
+  OpenStatus (OAuth, incident tools), Kuvasz and Temps. Feature list, not pitch.
+- **AI incident work is the new pricing-page item** (Better Stack, Hyperping,
+  Checkly, Pulsetic, OpenStatus's postmortem drafts). SolidPing has
+  AI-authored checks but no answer on incident analysis.
+- **The 10 s floor still holds, the gap narrowed**: UptimeRobot 15 s (Scale,
+  €77), Checkly 10 s (Team, $64). OneUptime still 1 min, OpenStatus 30 s.
+- **Every new check type this window already exists in SolidPing** (SFTP,
+  Docker, NTP, gRPC, ICMP). Breadth is 43 vs Kuma's 14.
+- **Slowing down**: Peekaping (dead), Gatus (slow), Tianji (leaving uptime).
+
 ### 2026-08-23 — routine poll (52 sources, since=11d)
 
 Thin on entrants, useful on facts. No net-new competitor: everything the scorer
@@ -133,6 +170,14 @@ still growing. The 2026-07-26 condition for acting on this was "if the gap holds
 for ~a month"; six days is not that. `track: true` retained, still not used in
 copy — a solo maintainer's quiet stretch is not a shutdown. Re-check next poll.
 
+**Re-verified 2026-10-15 — stalled five months.** Still 0.0.46, last commit
+still 2026-05-24 (a robots.txt change), not archived, 93 open issues, stars
+**1,200**. Community PRs from 2026-07-23 (#287, #288) sit unmerged. The
+"gap holds for a month" condition from 2026-07-26 is met three times over. Its
+users are a migration pool; SolidPing has no Peekaping importer, so the honest
+on-ramp is "recreate your checks", or YAML apply for anyone with more than a
+handful.
+
 ### Kuvasz — https://kuvasz-uptime.dev  ·  github.com/kuvasz-uptime/kuvasz
 Self-hosted OSS uptime **and SSL** monitor, Kotlin, AGPL-3.0, **571★** / 37 forks,
 created 2020-07 and still shipping (v4.0.1 2026-06-17, v4.1.0 2026-07-14,
@@ -185,6 +230,19 @@ Prometheus) and the Home Assistant integration.
 the MCP server leaving experimental. Surfaced 2026-07-28 via @selfhosted_bot
 Mastodon repost (bot-announced → intel, not a lead). v4.2.0 surfaced 2026-08-13
 via @KuvaszUptime's own Mastodon post on techhub.social.
+
+**2026-10-15: 4.2.0 → 4.5.0, 571★ → 639★.** 4.3.0 (08-31) Teams, Apprise and
+Pushover, testable from the UI, API and MCP server. 4.4.0 (09-15) monitor
+categories for status pages and maintenance windows. 4.5.0 (10-14) **Docker
+monitors** (7th type, remote daemons over mTLS), Slack bot, **HTTP/SOCKS5
+outbound proxy** for HTTP and TCP checks, incident timelines on status pages, and
+a **connectivity check that pauses all checks when the host loses its own
+network**: the single-node answer to false alarms, chosen instead of remote
+probes. So the structural gap above holds (still 43 types vs 7, still one
+vantage point). Kuvasz is now ahead on two small things: a per-check outbound
+proxy (SolidPing only honours a process-wide `HTTP_PROXY` via
+`http.ProxyFromEnvironment` in `checkerdef/httptransport.go`) and
+self-connectivity suppression.
 
 ### URLGuardian — https://urlguardian.app
 Native **macOS desktop app** for uptime monitoring: "Real-time uptime monitoring,
@@ -465,9 +523,16 @@ self-hosted discovery. Early — verify traction before treating as head-to-head
 Logged for awareness — server-stats tools, APM suites, cron-only niches, hackathon
 projects, content-farm SEO, and paid templates. Not head-to-head rivals.
 
-- **Beszel** (beszel.dev, OSS MIT) — lightweight server-stats (CPU/mem/net/Docker),
-  not uptime/synthetic. A *complement* to SolidPing, not a substitute — say so in
-  any thread that recommends it.
+- **Beszel** (beszel.dev, OSS MIT, 26,203★ on 2026-10-15) — lightweight
+  server-stats (CPU/mem/net/Docker). A *complement* to SolidPing, not a
+  substitute — say so in any thread that recommends it. **Overlap started
+  2026-09-19:** v0.20.0 ([#2266](https://github.com/henrygd/beszel/pull/2266))
+  lets every host agent run ICMP/TCP/HTTP/DNS "network probes" against any
+  target, collected on the hub; v0.21.0 (2026-10-02) adds TLS expiry on HTTPS
+  probes, a custom DNS server and cross-system comparison. No quorum, status
+  pages or on-call, so still not a substitute, but "no functional overlap" is no
+  longer true. Distributed probing from many hosts now costs a 26k★ project one
+  release.
 - **Komari** (github.com/komari-monitor/komari) — OSS server-stats (agent +
   dashboard), same class as Beszel/Netdata. No functional overlap. Surfaced 2026-05-08.
 - **Moneat** (moneat.io, Kotlin, 82★) — self-hosted "drop-in for Sentry + Datadog,"

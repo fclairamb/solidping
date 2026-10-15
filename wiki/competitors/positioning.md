@@ -158,7 +158,7 @@ This is a concrete, time-boxed displacement window: lead with "self-host it and 
 can't be sunset on you," plus a low-friction import path. See messaging hook #10.
 
 > **The import path is not hypothetical (verified 2026-08-01):** SolidPing ships
-> importers for Uptime Kuma, Gatus and Better Stack
+> importers for Uptime Kuma, Gatus, Better Stack and (since then) UptimeRobot
 > (`server/internal/handlers/checks/importers/`). Every displacement window in
 > this document — Freshping's shutdown, Peekaping's stall — has a concrete
 > operational answer we have so far failed to mention in copy. See
