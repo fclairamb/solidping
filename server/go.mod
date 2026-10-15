@@ -255,7 +255,7 @@ require (
 	github.com/go-webauthn/webauthn v0.18.2
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
-	github.com/gookit/color v1.6.1
+	github.com/gookit/color v1.6.2
 	github.com/gosnmp/gosnmp v1.45.0
 	github.com/invopop/jsonschema v0.14.0
 	github.com/jedib0t/go-pretty/v6 v6.8.3
