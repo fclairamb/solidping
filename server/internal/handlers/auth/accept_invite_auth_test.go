@@ -62,7 +62,7 @@ func newAcceptInviteFixture(t *testing.T, inviteEmail string) *acceptInviteFixtu
 
 // assertNothingWritten checks a refused acceptance left no trace: no
 // membership for the invitee, and the invitation still listed.
-func (f *acceptInviteFixture) assertNothingWritten(t *testing.T, ctx context.Context, inviteeUID string) {
+func (f *acceptInviteFixture) assertNothingWritten(ctx context.Context, t *testing.T, inviteeUID string) {
 	t.Helper()
 	r := require.New(t)
 
@@ -154,7 +154,7 @@ func TestAcceptInviteRequiresTheInvitedAccount(t *testing.T) {
 				r.Empty(inviteeUID, "a refused acceptance must create no account")
 			}
 
-			f.assertNothingWritten(t, ctx, inviteeUID)
+			f.assertNothingWritten(ctx, t, inviteeUID)
 		})
 	}
 }
