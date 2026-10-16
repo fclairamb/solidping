@@ -109,6 +109,7 @@ func TestCheckTypesRefuseLoopbackTargetsUnderAnEnforcingPolicy(t *testing.T) {
 		checkerdef.CheckTypeDNS:        {"host": "acme.com", "nameserver": host + ":53"},
 		checkerdef.CheckTypeDNSBL:      {"target": "8.8.8.8", "nameserver": host + ":53"},
 		checkerdef.CheckTypeWebSocket:  {"url": "ws://" + ln.Addr().String() + "/"},
+		checkerdef.CheckTypeDocker:     {"host": "tcp://" + ln.Addr().String(), "containerName": "web"},
 		checkerdef.CheckTypeJS: {"script": fmt.Sprintf(
 			`var r = solidping.check("http", { url: %q }); return { status: r.status, output: r.output };`,
 			httpServer.URL,
@@ -124,6 +125,54 @@ func TestCheckTypesRefuseLoopbackTargetsUnderAnEnforcingPolicy(t *testing.T) {
 
 			allowed, text := runRegistered(t, egress.New(true), checkType, cfgMap)
 			require.Nil(t, allowed, "%s must not be refused by a permissive guard, got %s", checkType, text)
+			require.NotContains(t, text, "denied by egress policy")
+		})
+	}
+}
+
+// A docker sub-check nested in a js script used to dial its host on the
+// docker client's own transport, ignoring the guard on the execution context
+// (spec 2026-10-16-09): a script could probe the worker's local socket or any
+// internal tcp:// endpoint. Both must now be refused with an egress denial;
+// the permissive run of the same script is the positive control.
+func TestJSDockerSubCheckIsRefusedByAnEnforcingGuard(t *testing.T) {
+	t.Parallel()
+
+	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = ln.Close() })
+
+	go func() {
+		for {
+			conn, acceptErr := ln.Accept()
+			if acceptErr != nil {
+				return
+			}
+
+			_ = conn.Close()
+		}
+	}()
+
+	hosts := map[string]string{
+		"tcp":  "tcp://" + ln.Addr().String(),
+		"unix": "unix:///should-never-be-dialed-2026-10-16-09.sock",
+	}
+
+	for name, host := range hosts {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			cfgMap := map[string]any{"script": fmt.Sprintf(
+				`var r = solidping.check("docker", { host: %q, containerName: "web" }); `+
+					`return { status: r.status, output: r.output };`,
+				host,
+			)}
+
+			denied, text := runRegistered(t, egress.New(false), checkerdef.CheckTypeJS, cfgMap)
+			require.NotNil(t, denied, "a nested docker sub-check must be refused by the guard, got %s", text)
+
+			allowed, text := runRegistered(t, egress.New(true), checkerdef.CheckTypeJS, cfgMap)
+			require.Nil(t, allowed, "a permissive guard must not refuse it, got %s", text)
 			require.NotContains(t, text, "denied by egress policy")
 		})
 	}

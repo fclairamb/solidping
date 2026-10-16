@@ -2,6 +2,7 @@ package checkworker
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -52,6 +53,35 @@ func runDockerJob(
 ) *models.Result {
 	t.Helper()
 
+	return runGateJob(t, ctx, runner, dbSvc, checkerdef.CheckTypeDocker, models.JSONMap{
+		"containerName": "web",
+		"host":          "unix:///should-never-be-dialed-2026-09-25-22.sock",
+	})
+}
+
+// runJSDockerJob is runDockerJob with the docker check nested in a js script
+// (spec 2026-10-16-09): the script returns the sub-check's status and output
+// verbatim, so the persisted result carries the sub-check's refusal or error.
+func runJSDockerJob(
+	t *testing.T, ctx context.Context, runner *CheckWorker, dbSvc db.Service, //nolint:revive
+) *models.Result {
+	t.Helper()
+
+	return runGateJob(t, ctx, runner, dbSvc, checkerdef.CheckTypeJS, models.JSONMap{
+		"script": `var r = solidping.check("docker", ` +
+			`{ host: "unix:///should-never-be-dialed-2026-10-16-09.sock", containerName: "web" }); ` +
+			`return { status: r.status, output: r.output };`,
+	})
+}
+
+// runGateJob creates a check of checkType with cfg, claims its job, runs it
+// through the real executeJob path and returns the persisted result.
+func runGateJob(
+	t *testing.T, ctx context.Context, runner *CheckWorker, dbSvc db.Service, //nolint:revive
+	checkType checkerdef.CheckType, cfg models.JSONMap,
+) *models.Result {
+	t.Helper()
+
 	r := require.New(t)
 
 	org := models.NewOrganization("docker-gate-"+uuid.New().String()[:8], "")
@@ -62,11 +92,8 @@ func runDockerJob(
 	r.NoError(err)
 	runner.setWorker(worker)
 
-	check := models.NewCheck(org.UID, "docker-gate-"+uuid.New().String()[:8], string(checkerdef.CheckTypeDocker))
-	check.Config = models.JSONMap{
-		"containerName": "web",
-		"host":          "unix:///should-never-be-dialed-2026-09-25-22.sock",
-	}
+	check := models.NewCheck(org.UID, "docker-gate-"+uuid.New().String()[:8], string(checkType))
+	check.Config = cfg
 	r.NoError(dbSvc.CreateCheck(ctx, check))
 
 	checkJob := new(models.CheckJob)
@@ -151,4 +178,75 @@ func TestExecuteJob_DockerAllowedOnSelfHostedSharedWorker(t *testing.T) {
 	r.NotNil(result.Status)
 	r.NotEqual("docker checks are not available on this deployment", result.Output[checkerdef.OutputKeyError],
 		"self-hosted must reach the checker, not the SaaS gate")
+}
+
+// TestExecuteJob_JSDockerSubCheckBlockedOnSaaSSharedWorker is the regression of
+// spec 2026-10-16-09: a js check whose script calls solidping.check("docker",
+// …) on a SaaS shared worker is refused with the same gate message as a
+// top-level docker job. The socket path is guaranteed not to exist, so getting
+// the gate message (not a dial error) proves no dial was attempted.
+//
+//nolint:paralleltest // the worker constructor installs the package-level checkjs gates
+func TestExecuteJob_JSDockerSubCheckBlockedOnSaaSSharedWorker(t *testing.T) {
+	r := require.New(t)
+	_, dbSvc, ctx := setupTestRunner(t)
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	runner := newDockerGateRunner(t, dbSvc, config.DeploymentModeSaaS, "")
+
+	result := runJSDockerJob(t, ctx, runner, dbSvc)
+	r.NotNil(result.Status)
+	r.Equal(int(checkerdef.StatusError), *result.Status, "output: %v", result.Output)
+	r.Equal("docker checks are not available on this deployment", result.Output[checkerdef.OutputKeyError])
+}
+
+// TestExecuteJob_JSDockerSubCheckAllowedOnAgentWorker is the control: an agent
+// keeps running nested docker sub-checks exactly as it runs top-level ones.
+// The nonexistent socket makes it fail, but for its OWN reason.
+//
+//nolint:paralleltest // the worker constructor installs the package-level checkjs gates
+func TestExecuteJob_JSDockerSubCheckAllowedOnAgentWorker(t *testing.T) {
+	r := require.New(t)
+	_, dbSvc, ctx := setupTestRunner(t)
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	runner := newDockerGateRunner(t, dbSvc, config.DeploymentModeSaaS, config.NodeRoleAgent)
+
+	result := runJSDockerJob(t, ctx, runner, dbSvc)
+	r.NotNil(result.Status)
+	r.NotEqual("docker checks are not available on this deployment", result.Output[checkerdef.OutputKeyError],
+		"an agent-mode worker must reach the docker checker, not the SaaS gate")
+	r.Contains(fmt.Sprint(result.Output[checkerdef.OutputKeyError]), "docker",
+		"the sub-check must have run and failed on the missing socket: %v", result.Output)
+}
+
+// NewDeploymentGate refuses docker exactly where executeJob refuses a
+// top-level docker job (SaaS, not an agent), and nothing else.
+func TestNewDeploymentGate(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		mode, role string
+		blocked    bool
+	}{
+		{config.DeploymentModeSaaS, "", true},
+		{config.DeploymentModeSaaS, config.NodeRoleAgent, false},
+		{config.DeploymentModeSelfHosted, "", false},
+		{config.DeploymentModeSelfHosted, config.NodeRoleAgent, false},
+	} {
+		cfg := &config.Config{
+			Deployment: config.DeploymentConfig{Mode: tc.mode},
+			Node:       config.NodeConfig{Role: tc.role},
+		}
+		gate := NewDeploymentGate(cfg)
+
+		want := ""
+		if tc.blocked {
+			want = ErrDockerNotAvailableInSaaS.Error()
+		}
+
+		require.Equal(t, want, gate(checkerdef.CheckTypeDocker), "mode=%s role=%s", tc.mode, tc.role)
+		require.Empty(t, gate(checkerdef.CheckTypeHTTP), "mode=%s role=%s", tc.mode, tc.role)
+		require.Equal(t, tc.blocked, cfg.DockerChecksBlocked(), "mode=%s role=%s", tc.mode, tc.role)
+	}
 }
