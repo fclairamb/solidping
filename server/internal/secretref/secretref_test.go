@@ -189,6 +189,7 @@ func TestEnvReferenceIsConfinedToTheAllowlist(t *testing.T) {
 		{name: "var reference is unaffected", ref: "${var:timestamp}", allow: nil},
 	}
 
+	//nolint:paralleltest // the parent's t.Setenv forbids t.Parallel in subtests.
 	for resolverName, build := range resolvers {
 		for _, tt := range tests {
 			t.Run(resolverName+"/"+tt.name, func(t *testing.T) {

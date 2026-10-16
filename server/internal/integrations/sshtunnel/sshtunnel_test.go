@@ -569,7 +569,8 @@ func TestLoadConfigMaterializesSecretReferences(t *testing.T) {
 	})
 
 	cfg, err := sshtunnel.LoadConfig(
-		t.Context(), &stubLoader{check: check}, &stubCreds{enabled: true}, secretref.AllowEnvNames("SP_TEST_BASTION_PASSWORD"), testOrgUID, testCheckUID)
+		t.Context(), &stubLoader{check: check}, &stubCreds{enabled: true},
+		secretref.AllowEnvNames("SP_TEST_BASTION_PASSWORD"), testOrgUID, testCheckUID)
 	r.NoError(err)
 	r.Equal("from-the-environment", cfg.Password,
 		"the reference must be resolved on the process that will dial")
