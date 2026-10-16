@@ -1424,7 +1424,7 @@ func TestAcceptInviteEnforcesMaxUsers(t *testing.T) {
 	})
 	r.NoError(err)
 
-	_, err = svc.AcceptInvite(ctx, AcceptInviteRequest{Token: resp.Token})
+	_, err = svc.AcceptInvite(ctx, AcceptInviteRequest{Token: resp.Token}, invitee.UID)
 	r.Error(err, "invite acceptance must fail when the org is at its seat cap")
 	r.ErrorIs(err, errSSOQuotaTest)
 
@@ -1469,7 +1469,7 @@ func TestAcceptInviteReturnsOrganizations(t *testing.T) {
 	})
 	r.NoError(err)
 
-	loginResp, err := svc.AcceptInvite(ctx, AcceptInviteRequest{Token: resp.Token})
+	loginResp, err := svc.AcceptInvite(ctx, AcceptInviteRequest{Token: resp.Token}, user.UID)
 	r.NoError(err)
 	r.NotNil(loginResp)
 	r.NotEmpty(loginResp.AccessToken)

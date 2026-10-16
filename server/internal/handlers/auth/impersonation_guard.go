@@ -23,6 +23,7 @@ const (
 	ImpersonationPatternPasskey         = "/api/v1/auth/passkeys/{uid}"
 	ImpersonationPathDeviceConsent      = "/api/v1/auth/device/consent"
 	ImpersonationPathOrgs               = "/api/v1/orgs"
+	ImpersonationPathAcceptInvite       = "/api/v1/auth/accept-invite"
 	ImpersonationPatternOrgTokens       = "/api/v1/orgs/{org}/tokens"
 	ImpersonationPatternEnrollmentToken = "/api/v1/orgs/{org}/agent-enrollment-tokens"
 	ImpersonationPatternImpersonate     = "/api/v1/system/users/{uid}/impersonate"
@@ -49,6 +50,9 @@ var impersonationForbiddenRoutes = []demoAllowedRoute{
 	{http.MethodPost, ImpersonationPathSwitchOrg},
 	// Org creation mints an owner session for the creator.
 	{http.MethodPost, ImpersonationPathOrgs},
+	// Accepting an invitation creates a membership for the target (the admin
+	// joining an org as them) and mints a session (spec 2026-10-16-06).
+	{http.MethodPost, ImpersonationPathAcceptInvite},
 	// Credentials.
 	{http.MethodPost, ImpersonationPathChangePassword},
 	// The profile update carries the sign-in email (spec 2026-09-30-08).

@@ -758,7 +758,10 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	rootAuth.POST("/request-password-reset", authHandler.RequestPasswordReset)
 	rootAuth.POST("/reset-password", authHandler.ResetPassword)
 	rootAuth.GET("/invite/:token", authHandler.GetInviteInfo)
-	rootAuth.POST("/accept-invite", authHandler.AcceptInvite)
+	// Optional authentication (spec 2026-10-16-06): an invitation for an
+	// existing account is accepted only by that account, so a credential, when
+	// presented, must be validated; a new invitee has none.
+	rootAuth.POST("/accept-invite", authMiddleware.AuthIfPresented(authHandler.AcceptInvite))
 	rootAuth.POST("/2fa/verify", authHandler.Verify2FA)
 	rootAuth.POST("/2fa/recovery", authHandler.Recovery2FA)
 	rootAuth.POST("/passkeys/login/begin", passkeyHandler.LoginBegin)

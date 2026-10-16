@@ -633,6 +633,26 @@ func PresentsCredentials(request *http.Request) bool {
 	return err == nil
 }
 
+// AuthIfPresented authenticates a request only when it presents a credential.
+//
+// A request with no credential at all (no Authorization header, no auth
+// cookie) goes straight to the handler, which must treat it as anonymous. A
+// request that presents ANY credential goes through RequireAuth, so a stale,
+// garbage or malformed one gets RequireAuth's 401 rather than an anonymous
+// fallback, and every RequireAuth gate (forced rotation, the demo guard,
+// impersonation) applies. Same shape as mcp.AllowAnonymousHandshake.
+func (m *AuthMiddleware) AuthIfPresented(next httpx.HandlerFunc) httpx.HandlerFunc {
+	authed := m.RequireAuth(next)
+
+	return func(writer http.ResponseWriter, req *http.Request) error {
+		if !PresentsCredentials(req) {
+			return next(writer, req)
+		}
+
+		return authed(writer, req)
+	}
+}
+
 // GetUserFromContext retrieves the authenticated user from the context.
 func GetUserFromContext(ctx context.Context) (*models.User, bool) {
 	user, userOK := ctx.Value(base.ContextKeyUser).(*models.User)

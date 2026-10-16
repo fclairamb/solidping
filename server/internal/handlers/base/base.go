@@ -57,6 +57,11 @@ const (
 	ErrorCodeRegistrationExpired       ErrorCode = "REGISTRATION_EXPIRED"
 	ErrorCodeInvitationExpired         ErrorCode = "INVITATION_EXPIRED"
 	ErrorCodeInvitationNotFound        ErrorCode = "INVITATION_NOT_FOUND"
+	// ErrorCodeInviteLoginRequired: the invitation targets an existing account,
+	// so it must be accepted by that account, signed in (spec 2026-10-16-06).
+	ErrorCodeInviteLoginRequired ErrorCode = "INVITE_LOGIN_REQUIRED"
+	// ErrorCodeInviteEmailMismatch: the signed-in caller is not the invitee.
+	ErrorCodeInviteEmailMismatch       ErrorCode = "INVITE_EMAIL_MISMATCH"
 	ErrorCodePasswordResetExpired      ErrorCode = "PASSWORD_RESET_EXPIRED"
 	ErrorCodeMaintenanceWindowNotFound ErrorCode = "MAINTENANCE_WINDOW_NOT_FOUND"
 	ErrorCodeSLONotFound               ErrorCode = "SLO_NOT_FOUND"

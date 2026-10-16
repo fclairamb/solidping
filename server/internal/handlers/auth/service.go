@@ -104,9 +104,16 @@ var (
 	ErrInvitationNotFound      = errors.New("invitation not found")
 	ErrInvitationExpired       = errors.New("invitation has expired")
 	ErrEmailMismatch           = errors.New("email does not match invitation")
-	ErrOrgSlugTaken            = errors.New("organization slug is already taken")
-	ErrInvalidOrgSlug          = errors.New("invalid organization slug")
-	ErrPasswordResetExpired    = errors.New("password reset link has expired or is invalid")
+	// ErrInviteLoginRequired refuses an anonymous acceptance of an invitation
+	// addressed to an existing account: the invite token alone is not proof of
+	// being that account, since the inviter holds it (spec 2026-10-16-06).
+	ErrInviteLoginRequired = errors.New("invitation is for an existing account: sign in as that account to accept it")
+	// ErrInviteEmailMismatch refuses an acceptance by a signed-in caller who is
+	// not the invited account.
+	ErrInviteEmailMismatch  = errors.New("invitation is addressed to another account")
+	ErrOrgSlugTaken         = errors.New("organization slug is already taken")
+	ErrInvalidOrgSlug       = errors.New("invalid organization slug")
+	ErrPasswordResetExpired = errors.New("password reset link has expired or is invalid")
 	// ErrDemoAccountNotResettable refuses a password reset aimed at the shared
 	// public-demo account (spec 2026-09-06-02). Its password is published by
 	// design; rotating it would lock every visitor out of the live demo, and
@@ -3859,8 +3866,14 @@ func (s *Service) GetInviteInfo(ctx context.Context, token string) (*InviteInfoR
 
 // AcceptInvite accepts an invitation and creates/authenticates the user.
 //
+// callerUID is the UID of the authenticated caller, or "" for an anonymous
+// request. An invitation addressed to an existing account is accepted only by
+// that account, signed in: the invite token alone proves nothing, the inviter
+// holds it (spec 2026-10-16-06). Every check runs before any write, so a
+// refused attempt creates nothing and leaves the invitation in place.
+//
 //nolint:cyclop,funlen // Invitation acceptance requires multiple steps
-func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*LoginResponse, error) {
+func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest, callerUID string) (*LoginResponse, error) {
 	// Find the invitation across orgs. matchedEntry.Key is the key that
 	// actually matched (hashed, or legacy plaintext), so the deletes below
 	// must use it rather than recompute one.
@@ -3877,6 +3890,10 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*L
 	// Check if user exists
 	user, err := s.db.GetUserByEmail(ctx, inviteEmail)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+
+	if err = checkInviteCaller(user, callerUID); err != nil {
 		return nil, err
 	}
 
@@ -3994,6 +4011,26 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*L
 		Organization:  newOrganizationInfo(matchedOrg),
 		Organizations: orgSummaries,
 	}, nil
+}
+
+// checkInviteCaller decides who may accept an invitation. invitee is the
+// account the invited email belongs to (nil when there is none); callerUID is
+// the authenticated caller ("" when anonymous). UIDs are compared, never
+// email strings.
+func checkInviteCaller(invitee *models.User, callerUID string) error {
+	switch {
+	case invitee == nil && callerUID != "":
+		// Signed in, but the invitee has no account yet: the caller is not them.
+		return ErrInviteEmailMismatch
+	case invitee == nil:
+		return nil
+	case callerUID == "":
+		return ErrInviteLoginRequired
+	case callerUID != invitee.UID:
+		return ErrInviteEmailMismatch
+	default:
+		return nil
+	}
 }
 
 // OrgSettingsResponse contains org settings.
