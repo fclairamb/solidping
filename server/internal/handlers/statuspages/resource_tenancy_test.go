@@ -19,7 +19,6 @@ import (
 // org (evilco) with its own page, section and check. Resource UIDs are public
 // on the status page, so the attacker knows the victim's resource UID.
 type tenancyFixture struct {
-	ctx           context.Context
 	svc           *Service
 	victim        *models.Organization
 	victimPage    StatusPageResponse
@@ -57,7 +56,7 @@ func setupResourceTenancy(t *testing.T) *tenancyFixture {
 	r.NoError(svc.db.CreateCheck(ctx, attackerCheck))
 
 	return &tenancyFixture{
-		ctx: ctx, svc: svc,
+		svc:    svc,
 		victim: victim, victimPage: victimPage, victimSection: victimSection,
 		victimCheck: victimCheck, victimRes: victimRes,
 		attacker: attacker, attackerPage: attackerPage, attackerSect: attackerSect,
@@ -70,9 +69,11 @@ func setupResourceTenancy(t *testing.T) *tenancyFixture {
 func (f *tenancyFixture) assertVictimUntouched(t *testing.T) {
 	t.Helper()
 
+	ctx := t.Context()
+
 	r := require.New(t)
 
-	resources, err := f.svc.ListResources(f.ctx, f.victim.Slug, f.victimPage.UID, f.victimSection.UID)
+	resources, err := f.svc.ListResources(ctx, f.victim.Slug, f.victimPage.UID, f.victimSection.UID)
 	r.NoError(err)
 	r.Len(resources, 1, "the victim's component must still be listed")
 
@@ -100,12 +101,12 @@ func TestResourceTenancy_CrossOrg(t *testing.T) {
 
 	tests := []struct {
 		name string
-		call func(f *tenancyFixture) error
+		call func(ctx context.Context, f *tenancyFixture) error
 	}{
 		{
 			name: "update",
-			call: func(f *tenancyFixture) error {
-				_, err := f.svc.UpdateResource(f.ctx, f.attacker.Slug, f.attackerPage.UID, f.attackerSect.UID,
+			call: func(ctx context.Context, f *tenancyFixture) error {
+				_, err := f.svc.UpdateResource(ctx, f.attacker.Slug, f.attackerPage.UID, f.attackerSect.UID,
 					f.victimRes.UID, hijackRequest(f.attackerCheck.UID))
 
 				return err
@@ -113,8 +114,8 @@ func TestResourceTenancy_CrossOrg(t *testing.T) {
 		},
 		{
 			name: "delete",
-			call: func(f *tenancyFixture) error {
-				return f.svc.DeleteResource(f.ctx, f.attacker.Slug, f.attackerPage.UID, f.attackerSect.UID,
+			call: func(ctx context.Context, f *tenancyFixture) error {
+				return f.svc.DeleteResource(ctx, f.attacker.Slug, f.attackerPage.UID, f.attackerSect.UID,
 					f.victimRes.UID)
 			},
 		},
@@ -125,7 +126,7 @@ func TestResourceTenancy_CrossOrg(t *testing.T) {
 			t.Parallel()
 
 			f := setupResourceTenancy(t)
-			require.ErrorIs(t, tc.call(f), ErrStatusPageResourceNotFound)
+			require.ErrorIs(t, tc.call(t.Context(), f), ErrStatusPageResourceNotFound)
 			f.assertVictimUntouched(t)
 		})
 	}
@@ -139,12 +140,12 @@ func TestResourceTenancy_WrongSectionSamePage(t *testing.T) {
 
 	tests := []struct {
 		name string
-		call func(f *tenancyFixture, sectionUID string) error
+		call func(ctx context.Context, f *tenancyFixture, sectionUID string) error
 	}{
 		{
 			name: "update",
-			call: func(f *tenancyFixture, sectionUID string) error {
-				_, err := f.svc.UpdateResource(f.ctx, f.victim.Slug, f.victimPage.UID, sectionUID,
+			call: func(ctx context.Context, f *tenancyFixture, sectionUID string) error {
+				_, err := f.svc.UpdateResource(ctx, f.victim.Slug, f.victimPage.UID, sectionUID,
 					f.victimRes.UID, hijackRequest(f.victimCheck.UID))
 
 				return err
@@ -152,8 +153,8 @@ func TestResourceTenancy_WrongSectionSamePage(t *testing.T) {
 		},
 		{
 			name: "delete",
-			call: func(f *tenancyFixture, sectionUID string) error {
-				return f.svc.DeleteResource(f.ctx, f.victim.Slug, f.victimPage.UID, sectionUID, f.victimRes.UID)
+			call: func(ctx context.Context, f *tenancyFixture, sectionUID string) error {
+				return f.svc.DeleteResource(ctx, f.victim.Slug, f.victimPage.UID, sectionUID, f.victimRes.UID)
 			},
 		},
 	}
@@ -163,11 +164,12 @@ func TestResourceTenancy_WrongSectionSamePage(t *testing.T) {
 			t.Parallel()
 
 			f := setupResourceTenancy(t)
-			other, err := f.svc.CreateSection(f.ctx, f.victim.Slug, f.victimPage.UID,
+			ctx := t.Context()
+			other, err := f.svc.CreateSection(ctx, f.victim.Slug, f.victimPage.UID,
 				CreateSectionRequest{Name: "Other", Slug: "other"})
 			require.NoError(t, err)
 
-			require.ErrorIs(t, tc.call(f, other.UID), ErrStatusPageResourceNotFound)
+			require.ErrorIs(t, tc.call(t.Context(), f, other.UID), ErrStatusPageResourceNotFound)
 			f.assertVictimUntouched(t)
 		})
 	}
@@ -180,27 +182,28 @@ func TestResourceTenancy_OwnResource(t *testing.T) {
 
 	r := require.New(t)
 	f := setupResourceTenancy(t)
+	ctx := t.Context()
 
 	name := "Renamed"
-	updated, err := f.svc.UpdateResource(f.ctx, f.victim.Slug, f.victimPage.UID, f.victimSection.UID,
+	updated, err := f.svc.UpdateResource(ctx, f.victim.Slug, f.victimPage.UID, f.victimSection.UID,
 		f.victimRes.UID, UpdateResourceRequest{PublicName: &name})
 	r.NoError(err)
 	r.NotNil(updated.PublicName)
 	r.Equal(name, *updated.PublicName)
 
-	listed, err := f.svc.ListResources(f.ctx, f.victim.Slug, f.victimPage.UID, f.victimSection.UID)
+	listed, err := f.svc.ListResources(ctx, f.victim.Slug, f.victimPage.UID, f.victimSection.UID)
 	r.NoError(err)
 	r.Len(listed, 1)
 	r.Equal(name, *listed[0].PublicName)
 
-	r.NoError(f.svc.DeleteResource(f.ctx, f.victim.Slug, f.victimPage.UID, f.victimSection.UID, f.victimRes.UID))
+	r.NoError(f.svc.DeleteResource(ctx, f.victim.Slug, f.victimPage.UID, f.victimSection.UID, f.victimRes.UID))
 
-	listed, err = f.svc.ListResources(f.ctx, f.victim.Slug, f.victimPage.UID, f.victimSection.UID)
+	listed, err = f.svc.ListResources(ctx, f.victim.Slug, f.victimPage.UID, f.victimSection.UID)
 	r.NoError(err)
 	r.Empty(listed)
 
 	// A delete of the now-gone component is a 404, not a silent success.
-	r.ErrorIs(f.svc.DeleteResource(f.ctx, f.victim.Slug, f.victimPage.UID, f.victimSection.UID, f.victimRes.UID),
+	r.ErrorIs(f.svc.DeleteResource(ctx, f.victim.Slug, f.victimPage.UID, f.victimSection.UID, f.victimRes.UID),
 		ErrStatusPageResourceNotFound)
 }
 

@@ -2147,7 +2147,6 @@ func testUserStateEntries(ctx context.Context, t *testing.T, svc db.Service) {
 // strPtr is a tiny helper to take the address of a string literal.
 func strPtr(s string) *string { return &s }
 
-//nolint:maintidx // exercises the full subscriber lifecycle against both backends
 // testStatusPageResourceSectionScope pins that a component write addressed
 // through a section it does not live in matches nothing: resource UIDs are
 // public on the status page, so the section predicate is the tenancy gate.
@@ -2209,6 +2208,7 @@ func testStatusPageResourceSectionScope(ctx context.Context, t *testing.T, svc d
 	r.ErrorIs(svc.DeleteStatusPageResource(ctx, home.UID, resource.UID), sql.ErrNoRows)
 }
 
+//nolint:maintidx // exercises the full subscriber lifecycle against both backends
 func testStatusPageSubscribers(ctx context.Context, t *testing.T, svc db.Service) {
 	t.Helper()
 
