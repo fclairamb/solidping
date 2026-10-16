@@ -96,11 +96,11 @@ func bootOVHServer(t *testing.T, cfg *config.Config, fake *fakeOVH) http.Handler
 	ctx := context.Background()
 	r := require.New(t)
 
+	before := len(fake.puts())
 	server, err := NewServer(ctx, cfg)
 	r.NoError(err)
 	t.Cleanup(func() { _ = server.dbService.Close() })
 
-	before := len(fake.puts())
 	r.Len(fake.puts(), before, "no OVH PUT may happen in NewServer")
 	r.NoError(server.Initialize(ctx))
 	r.Len(fake.puts(), before, "no OVH PUT may happen before InitializeSystemConfig")
