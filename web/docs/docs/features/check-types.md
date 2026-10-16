@@ -1369,8 +1369,8 @@ Outputs include the namespace, kind, name, container images, and workload condit
 Register a cluster once under **Integrations → Kubernetes** (it is a data source, not a notification channel). Three authentication modes:
 
 - **API server + token** — an API server URL plus a bearer token (typically a service-account token), optionally a CA certificate (or skip TLS verification).
-- **Kubeconfig** — paste a full kubeconfig that resolves to an API server and credentials.
-- **In-cluster** — when SolidPing itself runs as a pod in the target cluster, it uses the mounted service-account token; no credentials are stored.
+- **Kubeconfig** — paste a full kubeconfig that resolves to an API server and credentials. Its user entry must carry static credentials (token, client certificate, username/password): a kubeconfig whose user has an `exec` credential plugin or an `auth-provider` block is rejected on save and refused when used, because those make the server run a command. Generate a service-account token instead (`kubectl create token <sa>`).
+- **In-cluster** — when SolidPing itself runs as a pod in the target cluster, it uses the mounted service-account token; no credentials are stored. Disabled unless the operator sets `SP_K8S_ALLOW_IN_CLUSTER=true` (self-hosted only): without it, saving an in-cluster connection is rejected and an existing one fails when used.
 
 The token / kubeconfig is stored **encrypted** (AES-256-GCM) in the connection's private settings and is never returned to the dashboard. Use **Test connection** to confirm the credentials work — it calls the cluster's `/version` endpoint.
 
