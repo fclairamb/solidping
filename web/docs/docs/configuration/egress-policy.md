@@ -205,8 +205,33 @@ above) are guarded too, from the same configuration, even though they run in
 the API/jobs process rather than on a worker. A few other calls about the
 same kinds of targets still are not:
 
-- Kubernetes cluster discovery and connection validation.
 - The Freebox pairing calls made when you connect a box.
+
+### Discovery
+
+[Network discovery](../features/discovery.md) runs in the API/jobs process
+and follows the same policy:
+
+- **LAN scans are refused** whenever the policy refuses private targets
+  (SaaS by default, or `SP_EGRESS_ALLOW_PRIVATE=false`). Starting one answers
+  `403 DISCOVERY_NOT_AVAILABLE`, and the source is hidden from the scan form.
+  A public-only LAN scan would only turn the server into an internet port
+  scanner.
+- **Every probed address is checked** before any ICMP echo, TCP connect or
+  reverse-DNS lookup, and TCP connects dial through the policy. For Freebox
+  discovery this means the hosts the box reports are not probed from a
+  shared server: they are still listed from the box's own data, with a ping
+  suggestion when the box sees them as reachable.
+- **Container scans** are refused wherever docker checks are (SaaS, except on
+  an agent node). Elsewhere, when the policy refuses private targets, a
+  `unix://` socket is refused and a `tcp://` endpoint is dialed through the
+  policy.
+- **Kubernetes** discovery and the connection test dial the API server
+  through the policy, with the environment proxy (and any kubeconfig
+  `proxy-url`) switched off. A refused API server reports the policy's
+  message, naming the host but not the address it resolved to. On SaaS this
+  also refuses `inCluster` connections, whose API server is a private
+  service address.
 
 These are tracked separately.
 

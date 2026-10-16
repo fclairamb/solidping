@@ -95,9 +95,16 @@ function NewScanPage() {
   // local state from the URL once on mount (the discovery layout route otherwise
   // races a second search-validation pass that drops the param on a cold load),
   // and write the param back on every change so the URL stays the source of truth.
-  const [type, setTypeState] = useState(() =>
+  const [requestedType, setTypeState] = useState(() =>
     typeof method === "string" && KNOWN_METHODS.includes(method) ? method : "lan",
   );
+  // The server hides the sources this deployment refuses (LAN under an
+  // egress policy, containers on SaaS), so once the registry list has loaded
+  // a requested method it does not offer falls back to the first one it does.
+  const type =
+    types === undefined || availableTypes.includes(requestedType)
+      ? requestedType
+      : (availableTypes[0] ?? requestedType);
   const setType = (next: string) => {
     setTypeState(next);
     navigate({ to: ".", search: { method: next } });
@@ -232,6 +239,9 @@ function NewScanPage() {
       // scan is still running for the org (409 from the serialization guard).
       if (err instanceof ApiError && err.code === "DISCOVERY_ALREADY_RUNNING") {
         toast.error(t("scanAlreadyRunning"));
+      } else if (err instanceof ApiError && err.code === "DISCOVERY_NOT_AVAILABLE") {
+        // The source is refused on this deployment (403).
+        toast.error(t("scanNotAvailable"));
       } else {
         toast.error(t("scanFailed"));
       }

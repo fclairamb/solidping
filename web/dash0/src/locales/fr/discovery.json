@@ -7,6 +7,7 @@
   "scanStarted": "Scan de découverte lancé",
   "scanFailed": "Échec du lancement du scan",
   "scanAlreadyRunning": "Un scan de découverte est déjà en cours pour cette organisation. Arrêtez-le ou attendez qu'il se termine.",
+  "scanNotAvailable": "Cette source de découverte n'est pas disponible sur ce serveur.",
   "scanStatus": {
     "pending": "En attente",
     "running": "En cours",
