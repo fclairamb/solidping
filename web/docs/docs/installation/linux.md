@@ -31,9 +31,11 @@ gunzip -c solidping-linux-arm64.gz > solidping
 chmod +x solidping
 ```
 
+For RISC-V 64 systems, use `solidping-linux-riscv64.gz` the same way.
+
 ### Verify the checksum (recommended)
 
-Every release also publishes `solidping-checksums.txt`, covering all five
+Every release also publishes `solidping-checksums.txt`, covering all six
 published `.gz`/`.zip` archives. Verify it against the downloaded `.gz` file
 itself — `gunzip -c` above leaves that file in place, so this works whether
 you run it before or after decompressing:

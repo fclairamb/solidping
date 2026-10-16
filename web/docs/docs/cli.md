@@ -9,10 +9,10 @@ SolidPing ships a command-line client, `sp`, for managing your monitoring from t
 
 ## Installing
 
-Every release publishes a prebuilt `sp` for macOS, Linux and Windows, on both Intel and ARM, compressed only — `.gz` for macOS/Linux, `.zip` for Windows — under version-free names (the same stable URLs the server uses), plus a checksum file:
+Every release publishes a prebuilt `sp` for macOS, Linux and Windows, on Intel and ARM (plus RISC-V on Linux), compressed only — `.gz` for macOS/Linux, `.zip` for Windows — under version-free names (the same stable URLs the server uses), plus a checksum file:
 
 ```bash
-# Pick your platform: darwin-amd64, darwin-arm64, linux-amd64, linux-arm64
+# Pick your platform: darwin-amd64, darwin-arm64, linux-amd64, linux-arm64, linux-riscv64
 curl -sSL -o sp.gz \
   "https://github.com/fclairamb/solidping/releases/latest/download/sp-linux-amd64.gz"
 gunzip -c sp.gz > sp
