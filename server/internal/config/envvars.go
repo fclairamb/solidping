@@ -97,6 +97,9 @@ func manualReaderEnvVars() []string {
 		// applyEgressEnv: egress.allow_private_targets is snake_case, so
 		// koanf's env loader can never reach it.
 		EnvEgressAllowPrivate,
+		// applyKubernetesEnv — kubernetes.allow_in_cluster is snake_case and
+		// its env name does not follow the kubernetes.* path.
+		EnvK8sAllowInCluster,
 		// applyHeadersEnv: csp_extra_sources is snake_case, so koanf's env
 		// loader can never reach it.
 		EnvHeadersCSPExtraSources,

@@ -688,3 +688,29 @@ func TestCheckEnvAllowlistDefaultsToEmpty(t *testing.T) {
 	var nilCfg *Config
 	r.False(nilCfg.EnvRefAllowed("PATH"))
 }
+
+// TestK8sAllowInClusterBinds pins SP_K8S_ALLOW_IN_CLUSTER (spec 2026-10-16-05):
+// recognized, default off, bound by the manual reader, and an unparseable
+// value leaves the deny default.
+func TestK8sAllowInClusterBinds(t *testing.T) {
+	r := require.New(t)
+	r.Contains(RecognizedEnvVars(), EnvK8sAllowInCluster)
+
+	t.Setenv(EnvK8sAllowInCluster, "")
+
+	cfg, err := Load()
+	r.NoError(err)
+	r.False(cfg.Kubernetes.AllowInCluster)
+
+	t.Setenv(EnvK8sAllowInCluster, "true")
+
+	cfg, err = Load()
+	r.NoError(err)
+	r.True(cfg.Kubernetes.AllowInCluster)
+
+	t.Setenv(EnvK8sAllowInCluster, "bogus")
+
+	cfg, err = Load()
+	r.NoError(err)
+	r.False(cfg.Kubernetes.AllowInCluster)
+}

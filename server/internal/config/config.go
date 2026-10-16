@@ -612,6 +612,7 @@ type Config struct {
 	App          AppConfig          `koanf:"app"`
 	Deployment   DeploymentConfig   `koanf:"deployment"`
 	Egress       EgressConfig       `koanf:"egress"`
+	Kubernetes   KubernetesConfig   `koanf:"kubernetes"`
 	WebPush      WebPushConfig      `koanf:"webpush"`
 	PostHog      PostHogConfig      `koanf:"posthog"`
 	Entitlements EntitlementsConfig `koanf:"entitlements"`
@@ -796,6 +797,41 @@ func applyEgressEnv(cfg *EgressConfig) {
 	}
 
 	cfg.AllowPrivateTargets = &allow
+}
+
+// EnvK8sAllowInCluster is the operator opt-in letting a Kubernetes cluster
+// connection use `inCluster` mode, i.e. authenticate with the service-account
+// token mounted into SolidPing's own pod (spec 2026-10-16-05). Off by default:
+// a tenant must never reach the server's own cluster credentials.
+const EnvK8sAllowInCluster = "SP_K8S_ALLOW_IN_CLUSTER"
+
+// KubernetesConfig is the deployment-level policy for Kubernetes cluster
+// connections. AllowInCluster is snake_case and therefore unreachable by
+// koanf's env loader; SP_K8S_ALLOW_IN_CLUSTER is bound by hand in
+// applyKubernetesEnv.
+type KubernetesConfig struct {
+	// AllowInCluster permits `settings.inCluster=true` connections, at save
+	// time and when a client is built. Default false.
+	AllowInCluster bool `koanf:"allow_in_cluster"`
+}
+
+// applyKubernetesEnv binds SP_K8S_ALLOW_IN_CLUSTER. An absent or empty
+// variable leaves the YAML/default value; an unparseable one is ignored with a
+// warning (so the deny default stands).
+func applyKubernetesEnv(cfg *KubernetesConfig) {
+	raw := strings.TrimSpace(os.Getenv(EnvK8sAllowInCluster))
+	if raw == "" {
+		return
+	}
+
+	allow, err := strconv.ParseBool(raw)
+	if err != nil {
+		slog.Warn("Ignoring unparseable "+EnvK8sAllowInCluster, "value", raw, "error", err)
+
+		return
+	}
+
+	cfg.AllowInCluster = allow
 }
 
 // EntitlementsConfig tunes the per-org SMS/voice runaway guard — an in-memory
@@ -2371,6 +2407,7 @@ func Load() (*Config, error) {
 	applyRuntimeEnv(&cfg.Runtime)
 	applyRealtimeEnv(&cfg.Realtime)
 	applyEgressEnv(&cfg.Egress)
+	applyKubernetesEnv(&cfg.Kubernetes)
 	applyHeadersEnv(&cfg.Headers)
 	applyAIEnv(&cfg.AI)
 	warnIgnoredDiscordRedirectEnv()
