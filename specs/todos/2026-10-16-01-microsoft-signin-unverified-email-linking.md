@@ -97,5 +97,11 @@ All in `server/internal/handlers/auth/microsoft_service_test.go`. They drive the
 2. **Existing links that may have been made through an unverified email.** Recommended: no automatic unlinking. Publish the read-only query above in the changelog / an operations runbook so operators can review.
 3. **Visibility of sign-in links.** Users cannot see or remove linked sign-in methods, and are not emailed when one is added. Recommended: a separate spec that covers every connector (a list and unlink action on the account page, plus a notification email).
 
+## Resolved open questions
+Decided 2026-10-16 (all recommendations accepted):
+1. Fail closed: multi-tenant installs without the `xms_edov` optional claim refuse first Microsoft sign-ins. Ship the docs step and the changelog entry.
+2. No automatic unlinking of existing links. Publish the read-only review query in the changelog and an operations runbook.
+3. Sign-in link visibility (list, unlink, notification email) is out of scope: file a separate spec covering every connector.
+
 ## Related
 E1 (2026-10-15): federated sign-in never asks for TOTP, which is what makes D1 TOTP-proof.
