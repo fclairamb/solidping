@@ -27,7 +27,10 @@ const responseURLTimeout = 10 * time.Second
 // hands out response URLs under https://hooks.slack.com/commands/... and
 // https://hooks.slack.com/actions/...; GovSlack is deliberately not
 // supported (nothing else in the integration is, see client.go).
-const slackResponseURLHost = "hooks.slack.com"
+const (
+	slackResponseURLHost = "hooks.slack.com"
+	schemeHTTPS          = "https"
+)
 
 // ErrInvalidResponseURL is returned when a response_url is not a Slack hooks URL.
 var ErrInvalidResponseURL = errors.New("response_url must be a https://hooks.slack.com/ URL")
@@ -60,11 +63,32 @@ func newResponseURLClient(transport http.RoundTripper) *http.Client {
 // comes from the request body, so it is caller-supplied until the signature
 // says otherwise, and even then it must never reach anything but Slack.
 func validateResponseURL(raw string) error {
+	_, err := slackResponseURL(raw)
+
+	return err
+}
+
+// slackResponseURL returns the URL to post to, rebuilt on the fixed Slack
+// host so only the path and query come from the caller-supplied value.
+func slackResponseURL(raw string) (string, error) {
 	if !isSlackResponseURL(raw) {
-		return ErrInvalidResponseURL
+		return "", ErrInvalidResponseURL
 	}
 
-	return nil
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return "", ErrInvalidResponseURL
+	}
+
+	safe := url.URL{
+		Scheme:   schemeHTTPS,
+		Host:     slackResponseURLHost,
+		Path:     parsed.Path,
+		RawPath:  parsed.RawPath,
+		RawQuery: parsed.RawQuery,
+	}
+
+	return safe.String(), nil
 }
 
 // isSlackResponseURL is validateResponseURL as a predicate.
@@ -78,7 +102,7 @@ func isSlackResponseURL(raw string) bool {
 		return false
 	}
 
-	return parsed.Scheme == "https" && parsed.User == nil && parsed.Port() == "" &&
+	return parsed.Scheme == schemeHTTPS && parsed.User == nil && parsed.Port() == "" &&
 		strings.EqualFold(parsed.Hostname(), slackResponseURLHost)
 }
 
@@ -93,7 +117,8 @@ func postResponseURL(ctx context.Context, responseURL string, msg *MessageRespon
 // postResponseURLWith is postResponseURL with an explicit client. It sends
 // nothing when responseURL is not a Slack hooks URL.
 func postResponseURLWith(ctx context.Context, client *http.Client, responseURL string, msg *MessageResponse) error {
-	if err := validateResponseURL(responseURL); err != nil {
+	target, err := slackResponseURL(responseURL)
+	if err != nil {
 		return err
 	}
 
@@ -102,7 +127,7 @@ func postResponseURLWith(ctx context.Context, client *http.Client, responseURL s
 		return fmt.Errorf("failed to marshal response_url payload: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, responseURL, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("failed to build response_url request: %w", err)
 	}

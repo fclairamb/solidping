@@ -124,7 +124,7 @@ func (h *Handler) handleCheckCommand(ctx context.Context, cmd *Command) (*Messag
 // false when text could not be turned into a valid http(s) URL.
 func normalizeCheckURL(text string) (string, *url.URL, bool) {
 	parsedURL, parseErr := url.Parse(text)
-	if parseErr != nil || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
+	if parseErr != nil || (parsedURL.Scheme != "http" && parsedURL.Scheme != schemeHTTPS) {
 		if !strings.HasPrefix(text, "http://") && !strings.HasPrefix(text, "https://") {
 			text = "https://" + text
 			parsedURL, parseErr = url.Parse(text)
