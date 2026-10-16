@@ -711,7 +711,7 @@ jobs:
           docker build --target backend-deps -f Dockerfile .
           docker build --target deps -f Dockerfile.sp .
 
-      # Compile-only guard for the four targets server-release (tag-triggered,
+      # Compile-only guard for the five targets server-release (tag-triggered,
       # below) publishes besides linux/amd64. That job cannot run on a PR — it
       # is gated on refs/tags/ — so this is the only place a broken
       # cross-build gets caught before a real tag exists. Same CGO_ENABLED=0
@@ -725,7 +725,7 @@ jobs:
           COMMIT=$(git rev-parse --short HEAD)
           GIT_TIME=$(TZ=UTC git log -1 --format=%cd --date=format-local:%Y-%m-%dT%H:%M:%SZ)
 
-          for target in linux/arm64 windows/amd64 darwin/amd64 darwin/arm64; do
+          for target in linux/arm64 linux/riscv64 windows/amd64 darwin/amd64 darwin/arm64; do
             os="${target%/*}"
             arch="${target#*/}"
 
@@ -1208,7 +1208,7 @@ jobs:
         with:
           context: .
           push: true
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64,linux/arm64,linux/riscv64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
@@ -1314,6 +1314,7 @@ jobs:
             [darwin/arm64]=sp-darwin-arm64
             [linux/amd64]=sp-linux-amd64
             [linux/arm64]=sp-linux-arm64
+            [linux/riscv64]=sp-linux-riscv64
             [windows/amd64]=sp.exe
           )
 
@@ -1338,7 +1339,7 @@ jobs:
           # ~32 MB rather than the ~99 MB they were before that split; `.gz`
           # (`gzip -9 -n` — no `-k`, so the bare file is removed; `-n` drops
           # the embedded name/mtime so the archive is reproducible) halves
-          # that again for the four Unix targets. Windows gets a `.zip`
+          # that again for the five Unix targets. Windows gets a `.zip`
           # instead, since Windows has no built-in gunzip: the target above
           # was built straight to the bare runnable name `sp.exe`, so
           # `zip -j` (junk the source path) stores that same short name as
@@ -1346,7 +1347,7 @@ jobs:
           # with platform/arch staying in the archive's own name.
           echo "::group::compress the sp binaries"
           cd ../dist
-          for file in sp-darwin-amd64 sp-darwin-arm64 sp-linux-amd64 sp-linux-arm64; do
+          for file in sp-darwin-amd64 sp-darwin-arm64 sp-linux-amd64 sp-linux-arm64 sp-linux-riscv64; do
             gzip -9 -n "$file"
           done
           zip -9 -j sp-windows-amd64.zip sp.exe
@@ -1453,7 +1454,7 @@ jobs:
           context: .
           file: Dockerfile.sp
           push: true
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64,linux/arm64,linux/riscv64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
@@ -1546,6 +1547,7 @@ jobs:
           declare -A OUT=(
             [linux/amd64]=solidping-linux-amd64
             [linux/arm64]=solidping-linux-arm64
+            [linux/riscv64]=solidping-linux-riscv64
             [windows/amd64]=solidping.exe
             [darwin/amd64]=solidping-darwin-amd64
             [darwin/arm64]=solidping-darwin-arm64
@@ -1568,14 +1570,14 @@ jobs:
           # Compress every binary in place, never publish it bare: `.gz`
           # (`gzip -9 -n` — no `-k`, so the bare file is removed; `-n` drops
           # the embedded name/mtime so the archive is reproducible) for the
-          # four Unix targets. The Windows target above was built straight to
+          # five Unix targets. The Windows target above was built straight to
           # the bare runnable name `solidping.exe`, so `zip -j` (junk the
           # source path) stores that same short name as the archive's single
           # entry — what a user runs after extracting, with platform/arch
           # staying in the archive's own name.
           echo "::group::compress the server binaries"
           cd ../dist
-          for file in solidping-linux-amd64 solidping-linux-arm64 solidping-darwin-amd64 solidping-darwin-arm64; do
+          for file in solidping-linux-amd64 solidping-linux-arm64 solidping-linux-riscv64 solidping-darwin-amd64 solidping-darwin-arm64; do
             gzip -9 -n "$file"
           done
           zip -9 -j solidping-windows-amd64.zip solidping.exe

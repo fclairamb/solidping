@@ -99,7 +99,7 @@ owns that convention. The *format* rules do not.
 ### Getting `sp` into CI
 
 Every tag publishes compressed-only archives with version-free names
-(`sp-darwin-amd64.gz`, `sp-linux-arm64.gz`, `sp-windows-amd64.zip`, … — five
+(`sp-darwin-amd64.gz`, `sp-linux-arm64.gz`, `sp-windows-amd64.zip`, … — six
 platforms) plus a `sp-checksums.txt`, and a `ghcr.io/fclairamb/solidping/sp`
 image:
 
