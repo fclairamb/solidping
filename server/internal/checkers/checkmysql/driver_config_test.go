@@ -2,6 +2,7 @@ package checkmysql
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -15,7 +16,7 @@ import (
 // recordingDialer records the address it was asked to dial and refuses it.
 type recordingDialer struct{ network, addr string }
 
-var errRecorded = fmt.Errorf("recorded")
+var errRecorded = errors.New("recorded")
 
 func (d *recordingDialer) DialContext(_ context.Context, network, addr string) (net.Conn, error) {
 	d.network, d.addr = network, addr

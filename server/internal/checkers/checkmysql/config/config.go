@@ -143,17 +143,20 @@ func (c *MySQLConfig) Validate() error {
 		return checkerdef.NewConfigError("username", "is required")
 	}
 
-	for _, f := range []struct{ name, value string }{
+	fields := []struct{ name, value string }{
 		{"username", c.Username},
 		{"password", c.Password},
 		{"database", c.Database},
-	} {
+	}
+	for i := range fields {
+		field := &fields[i]
+
 		// A `${env:NAME}` / `${param:KEY}` reference is stored as-is and only
 		// resolved at execution, where the value reaches the driver as a
 		// structured field; its own `:` is grammar, not data.
-		if strings.ContainsAny(secretref.Pattern.ReplaceAllString(f.value, ""), connStringMetaChars) {
+		if strings.ContainsAny(secretref.Pattern.ReplaceAllString(field.value, ""), connStringMetaChars) {
 			return checkerdef.NewConfigErrorf(
-				f.name, "must not contain any of the characters %s", connStringMetaChars,
+				field.name, "must not contain any of the characters %s", connStringMetaChars,
 			)
 		}
 	}
