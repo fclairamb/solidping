@@ -455,6 +455,9 @@ Users can secure their accounts with **TOTP** two-factor authentication (compati
 - Enrollment generates a TOTP secret (shown as a QR code) that the user confirms with a one-time code.
 - On confirmation, SolidPing issues **recovery codes** to use if the authenticator device is lost.
 - At login, users with 2FA enabled provide a code from their authenticator app (or a recovery code).
+- The code is asked on every sign-in: password, LDAP, and every SSO / OAuth connector (Google, GitHub, GitLab, Microsoft, Discord, Slack, OIDC, SAML, and the Slack app install). After the identity provider sends the user back, the dashboard shows the code step, and no session exists until the code is accepted.
+- Passkeys are the only sign-in that skips it, because a passkey already is a second factor.
+- SolidPing does not rely on the identity provider's own MFA (OIDC `amr`, SAML `AuthnContextClassRef`): a user who enabled 2FA is always asked.
 
 ## Configuration File
 
