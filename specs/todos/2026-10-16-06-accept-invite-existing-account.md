@@ -121,6 +121,11 @@ Found by the security scan of 2026-10-11 (finding C3). **Critical:** takeover of
 2. **The new-user path.** Keep letting the token holder set the invitee's first password, or require an email round trip when the inviter could have accepted?
    - Recommended: out of scope here. Spec it together with N6.
 
+## Resolved open questions
+Decided 2026-10-16 (all recommendations accepted):
+1. Accept the email-existence signal of `INVITE_LOGIN_REQUIRED`; keep `GetInviteInfo` masked.
+2. The new-user first-password path is out of scope: spec it together with N6.
+
 ## Related
 - **L6 (2026-10-12):** `AddMember` adds any platform user by email, and doubles as an email-existence oracle.
 - **N6 (2026-10-12):** pending-registration overwrite, the same pre-account-takeover family as the new-user path above.
