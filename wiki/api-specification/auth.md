@@ -124,6 +124,12 @@ everywhere else" style flows). Auth: required. Registered **before** the
 `:tokenUid` param route so chi matches the literal `current` segment first —
 keep that ordering if the routes are ever reshuffled.
 
+It also accepts an MCP OAuth access token, which is otherwise refused on every
+REST route (spec 2026-10-16-12): dropping your own grant is never an
+escalation. The only other REST route an MCP credential reaches is
+`POST /api/v1/orgs/:org/tokens`, for the first-party `solidping-cli` client with
+the full `mcp` scope (legacy loopback CLI login, kept for two releases).
+
 ### DELETE /api/v1/auth/tokens/:tokenUid
 Revoke a personal access token. Auth: required
 
