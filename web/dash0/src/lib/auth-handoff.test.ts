@@ -61,6 +61,16 @@ describe("resolveHandoffLanding", () => {
     ).toEqual({ to: "/no-org", search: { membershipPending: "acme" } });
   });
 
+  it("resumes an invitation returnTo for an org-less session", () => {
+    expect(
+      resolveHandoffLanding({ returnTo: `${BASE}/invite/abc123` }, undefined, BASE),
+    ).toEqual({ href: `${BASE}/invite/abc123` });
+    // Positive control for the guard: anything else still lands on /no-org.
+    expect(
+      resolveHandoffLanding({ returnTo: `${BASE}/invite/abc123/x` }, undefined, BASE),
+    ).toEqual({ to: "/no-org", search: { membershipPending: undefined } });
+  });
+
   it("falls back to the URL's membershipPending, and names nothing without one", () => {
     expect(resolveHandoffLanding({}, "acme", BASE)).toEqual({
       to: "/no-org",

@@ -118,6 +118,106 @@ test.describe("Invitations", () => {
         .toBeTruthy();
     });
 
+    // Spec 2026-10-16-06: an invitation for an existing account is accepted
+    // only signed in as that account. The account here has left every org,
+    // the case an invitation exists to bring back, so its login takes the
+    // zero-org branch, which must still resume the invitation.
+    test("logged-out existing user is sent to login, lands back on the invite and accepts", async ({
+      authenticatedPage,
+      page,
+      playwright,
+    }) => {
+      const stamp = Date.now();
+      const email = `invite-existing-${stamp}@example.com`;
+      const password = "Existing-Pass-123!";
+
+      const invite = async () => {
+        const resp = await authenticatedPage.request.post(
+          `${API_BASE}/api/v1/orgs/test/invitations`,
+          { data: { email, role: "user", expiresIn: "24h", app: "dash0" } }
+        );
+        expect(resp.status()).toBe(201);
+        return (await resp.json()).token as string;
+      };
+
+      // Create the account through a first invitation, from a request
+      // context of its own so no session cookie reaches `page`.
+      const anon = await playwright.request.newContext();
+      try {
+        const created = await anon.post(`${API_BASE}/api/v1/auth/accept-invite`, {
+          data: { token: await invite(), name: "Existing", password },
+        });
+        expect(created.status()).toBe(200);
+      } finally {
+        await anon.dispose();
+      }
+
+      // Then make it leave the org.
+      const membersResp = await authenticatedPage.request.get(
+        `${API_BASE}/api/v1/orgs/test/members`
+      );
+      expect(membersResp.status()).toBe(200);
+      const { data: members } = (await membersResp.json()) as {
+        data: { uid: string; email: string }[];
+      };
+      const member = members.find((m) => m.email === email);
+      expect(member).toBeTruthy();
+      const removed = await authenticatedPage.request.delete(
+        `${API_BASE}/api/v1/orgs/test/members/${member!.uid}`
+      );
+      expect(removed.status()).toBe(204);
+
+      const token = await invite();
+
+      // The create-account form refuses an existing account: the visitor is
+      // sent to log in, with a notice instead of an error.
+      await page.goto(`invite/${token}`);
+      await page.locator("#password").fill("Any-Other-Pass-1!");
+      await page.getByRole("button", { name: "Create account & join" }).click();
+
+      await page.waitForURL(/\/login/, { timeout: 10000 });
+      await expect(page.getByTestId("login-invite-notice")).toBeVisible();
+      expect(decodeURIComponent(page.url())).toContain(`/invite/${token}`);
+
+      await page.locator("#email").fill(email);
+      await page.locator("#password").fill(password);
+      await page.getByTestId("login-submit").click();
+
+      // Back on the invitation, signed in.
+      await page.waitForURL(new RegExp(`/invite/${token}$`), { timeout: 10000 });
+      await expect(page.getByText("You're already signed in")).toBeVisible();
+
+      await page.getByRole("button", { name: "Accept Invitation" }).click();
+      await page.waitForURL(/\/orgs\/test/, { timeout: 10000 });
+      expect(page.url()).not.toContain("/invite/");
+    });
+
+    test("signed in as another account sees the mismatch card", async ({
+      authenticatedPage,
+    }) => {
+      const page = authenticatedPage;
+      const email = `invite-mismatch-${Date.now()}@example.com`;
+
+      const createResp = await page.request.post(
+        `${API_BASE}/api/v1/orgs/test/invitations`,
+        { data: { email, role: "user", expiresIn: "24h", app: "dash0" } }
+      );
+      expect(createResp.status()).toBe(201);
+      const { token } = await createResp.json();
+
+      await page.goto(`invite/${token}`);
+      await page.getByRole("button", { name: "Accept Invitation" }).click();
+
+      const card = page.getByTestId("invite-email-mismatch");
+      await expect(card).toBeVisible();
+      await expect(card).toContainText("you are signed in as test@test.com");
+      await expect(
+        card.getByRole("button", { name: "Sign out and continue" })
+      ).toBeVisible();
+      // Positive control: still on the invitation, nothing was accepted.
+      expect(page.url()).toContain(`/invite/${token}`);
+    });
+
     test("a bogus token shows the invalid invitation card", async ({
       page,
     }) => {

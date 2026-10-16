@@ -21,6 +21,7 @@ import {
   KeyRound,
   Loader2,
   Building2,
+  Mail,
   PlayCircle,
 } from "lucide-react";
 import { ApiError } from "@/api/client";
@@ -51,8 +52,11 @@ import { classifyPasskeyError } from "@/lib/passkey-error";
 import {
   isOAuthAuthorizeReturnTo,
   resolveDestination,
+  isInviteReturnTo,
+  parseLoginNotice,
   startOAuthLogin,
   type LoginDestination,
+  type LoginNotice,
 } from "@/lib/login-destination";
 import { OAuthProviderButtons } from "@/components/auth/oauth-provider-buttons";
 import { ProviderIcon } from "@/components/auth/provider-icon";
@@ -67,7 +71,12 @@ const BASE_PATH = import.meta.env.VITE_BASE_URL || "";
 export const Route = createFileRoute("/orgs/$org/login")({
   validateSearch: (
     search: Record<string, unknown>,
-  ): { session_expired: boolean; returnTo?: string; demo?: boolean } => ({
+  ): {
+    session_expired: boolean;
+    returnTo?: string;
+    demo?: boolean;
+    notice?: LoginNotice;
+  } => ({
     // TanStack Router's default search parser already coerces "true"/"false"
     // query-string values to native booleans before validateSearch runs, so
     // a bare `=== "true"` string comparison silently always evaluates to
@@ -88,6 +97,7 @@ export const Route = createFileRoute("/orgs/$org/login")({
     // `navigate({ to: "/orgs/$org/login", search: … })` in the app predates
     // this param and must keep compiling without naming it.
     demo: parseDemoFlag(search.demo),
+    notice: parseLoginNotice(search.notice),
   }),
   component: LoginPage,
 });
@@ -97,7 +107,7 @@ function LoginPage() {
   const { t: tc } = useTranslation("common");
   const navigate = useNavigate();
   const { org } = Route.useParams();
-  const { session_expired, returnTo, demo: demoAutoLogin } = useSearch({
+  const { session_expired, returnTo, demo: demoAutoLogin, notice } = useSearch({
     from: "/orgs/$org/login",
   });
   const auth = useAuth();
@@ -256,6 +266,12 @@ function LoginPage() {
       // No organization at all — /no-org is the screen that offers creating or
       // joining one, and is where every other org-less path already lands.
       if (accessibleOrg === null) {
+        // A user who left every org is exactly the one an invitation brings
+        // back (spec 2026-10-16-06): resume the invitation before /no-org.
+        if (isInviteReturnTo(returnTo, BASE_PATH)) {
+          goToDestination({ href: returnTo }, true);
+          return;
+        }
         navigate({ to: "/no-org", replace: true });
         return;
       }
@@ -294,7 +310,11 @@ function LoginPage() {
 
       switch (result.loginAction) {
         case "noOrg":
-          navigate({ to: "/no-org" });
+          if (isInviteReturnTo(returnTo, BASE_PATH)) {
+            goToDestination({ href: returnTo });
+          } else {
+            navigate({ to: "/no-org" });
+          }
           break;
         case "orgChoice":
           setAvailableOrgs(result.organizations);
@@ -638,6 +658,13 @@ function LoginPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
+          {notice === "invite_login_required" && (
+            <Alert className="mb-4" data-testid="login-invite-notice">
+              <Mail className="h-4 w-4" />
+              <AlertDescription>{t("invite.loginRequiredNotice")}</AlertDescription>
+            </Alert>
+          )}
+
           {session_expired && (
             <Alert className="mb-4">
               <AlertCircle className="h-4 w-4" />

@@ -13,7 +13,7 @@
 // scrubs it from every URL PostHog sees.
 
 import { apiFetch } from "@/api/client";
-import { resolveDestination } from "./login-destination";
+import { isInviteReturnTo, resolveDestination } from "./login-destination";
 
 /** The route every provider callback redirects to (see join_policy.go). */
 export const HANDOFF_COMPLETE_PATH = "/auth/complete";
@@ -59,7 +59,8 @@ export type HandoffLanding =
  *   device-verification bounce); anything else lands on the org root. This is
  *   what lets a deep link or an MCP consent flow survive the provider
  *   round-trip, and what keeps a forged `returnTo` from going anywhere.
- * - An org-less session (the org did not admit the user) lands on /no-org,
+ * - An org-less session resumes an invitation `returnTo` (the only org-less
+ *   page it may go back to), and otherwise (the org did not admit the user) lands on /no-org,
  *   naming the org that has the pending request. The exchange's answer wins
  *   over the URL's flag; the URL's is the fallback.
  */
@@ -71,6 +72,12 @@ export function resolveHandoffLanding(
   const org = response.organization?.slug;
   if (org) {
     return resolveDestination(org, response.returnTo ?? null, basepath);
+  }
+
+  // A user with no org at all is exactly the one an invitation brings back
+  // (spec 2026-10-16-06): resume the invitation page before /no-org.
+  if (isInviteReturnTo(response.returnTo, basepath)) {
+    return { href: response.returnTo };
   }
 
   const membershipPending = response.membershipPending || membershipPendingFromUrl || undefined;
