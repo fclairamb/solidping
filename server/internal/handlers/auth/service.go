@@ -195,7 +195,12 @@ type cachedPATClaims struct {
 	expiresAt time.Time
 }
 
-// Claims represents the JWT token claims.
+// Claims represents the JWT token claims of a bearer token (session access,
+// impersonation, MCP access, or a validated PAT).
+//
+// A JWT carrying a "purpose" claim is never a bearer: non-bearer tokens (2FA
+// temp token, passkey sessions) are signed with a purpose-derived key through
+// signJWT, and ValidateToken refuses any token with a purpose.
 type Claims struct {
 	UserUID string `json:"userUid"`
 	OrgSlug string `json:"orgSlug"`
@@ -1486,24 +1491,37 @@ func (s *Service) ValidateToken(ctx context.Context, tokenString string) (*Claim
 		return s.ValidatePATToken(ctx, tokenString)
 	}
 
-	// Validate JWT token
-	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("%w: %v", ErrUnexpectedSigningMethod, token.Header["alg"])
-		}
+	// Validate JWT token. Only bearer tokens are signed with the raw secret;
+	// the purpose check still refuses a non-bearer token (2FA temp token,
+	// passkey session) an older replica signed with it during a rollout.
+	var parsedClaims bearerClaims
 
-		return []byte(s.fullCfg.Auth.JWTSecret), nil
-	})
-	if err != nil {
+	token, err := jwt.ParseWithClaims(tokenString, &parsedClaims, func(_ *jwt.Token) (any, error) {
+		return s.bearerKey(), nil
+	},
+		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
+		jwt.WithIssuer(jwtIssuer),
+		jwt.WithExpirationRequired(),
+	)
+	if err != nil || !token.Valid {
 		return nil, ErrInvalidToken
 	}
 
-	claims, ok := token.Claims.(*Claims)
-	if !ok || !token.Valid {
+	if parsedClaims.Purpose != "" {
 		return nil, ErrInvalidToken
 	}
 
-	return claims, nil
+	claims := parsedClaims.Claims
+
+	return &claims, nil
+}
+
+// bearerClaims is what ValidateToken parses a JWT into: Claims plus the
+// purpose tag every non-bearer token carries, so such a token is refused
+// even when it is signed with the bearer key.
+type bearerClaims struct {
+	Claims
+	Purpose string `json:"purpose"`
 }
 
 // ValidatePATToken validates a Personal Access Token.
@@ -2241,9 +2259,7 @@ func (s *Service) generateAccessToken(userUID, orgSlug, role, refreshUID string,
 		},
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-
-	return token.SignedString([]byte(s.fullCfg.Auth.JWTSecret))
+	return s.signJWT("", claims)
 }
 
 // GenerateMCPAccessToken mints a short-lived, audience-bound JWT access token
@@ -2291,9 +2307,7 @@ func (s *Service) GenerateMCPAccessToken(
 		},
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-
-	return token.SignedString([]byte(s.fullCfg.Auth.JWTSecret))
+	return s.signJWT("", claims)
 }
 
 const refreshTokenSize = 32
@@ -4467,20 +4481,12 @@ func (s *Service) generate2FATempToken(userUID, orgSlug, role, method string) (s
 		},
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-
-	return token.SignedString([]byte(s.fullCfg.Auth.JWTSecret))
+	return s.signJWT(twoFAPurpose, claims)
 }
 
 // validate2FATempToken parses and validates a 2FA temporary token.
 func (s *Service) validate2FATempToken(tempToken string) (*TwoFAClaims, error) {
-	token, err := jwt.ParseWithClaims(tempToken, &TwoFAClaims{}, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("%w: %v", ErrUnexpectedSigningMethod, token.Header["alg"])
-		}
-
-		return []byte(s.fullCfg.Auth.JWTSecret), nil
-	})
+	token, err := s.parsePurposeJWT(tempToken, twoFAPurpose, &TwoFAClaims{})
 	if err != nil {
 		return nil, ErrInvalidToken
 	}
