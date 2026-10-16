@@ -100,5 +100,11 @@ Found by the security scan of 2026-10-15 (finding E1). **Low on its own; it ampl
 2. **Trust the IdP's own MFA instead** (OIDC `amr` containing `mfa`, SAML `AuthnContextClassRef`)? Recommended: not in this spec. Always ask when the user enabled TOTP. An org-level "trust IdP MFA" option belongs with backlog spec `2026-09-23-03-org-enforced-sso-provider`.
 3. **Admission happens before the code.** Membership requests, invitation consumption and auto-join run before the code is checked, as they already do for LDAP. Recommended: keep it so. The membership goes to the real user, and no session is issued without the code.
 
+## Resolved open questions
+Decided 2026-10-16 (all recommendations accepted):
+1. Enforce TOTP on every federated sign-in for users who enabled it.
+2. Do not trust IdP MFA (`amr` / `AuthnContextClassRef`) in this spec; that belongs with backlog spec `2026-09-23-03-org-enforced-sso-provider`.
+3. Keep admission (membership requests, invitation consumption, auto-join) before the code check, as for LDAP; no session is issued without the code.
+
 ## Related
 D1 (2026-10-14, Microsoft email linking, which this turns from TOTP-proof into TOTP-gated), H1 and C2 (2026-10-11, token-type confusion; a prerequisite).
