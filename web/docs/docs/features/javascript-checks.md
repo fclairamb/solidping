@@ -1021,6 +1021,13 @@ again, so "is it actually set?" is answered by the row existing with the
 script does not get it back. The same message appears for
 `solidping.check("browser", …)`.
 
+**`docker checks are not available on this deployment`** — a script called
+`solidping.check("docker", …)` on a hosted (SaaS) shared worker. A docker
+sub-check obeys the same rule as a top-level docker check: run it from a
+private location (an agent). Everywhere, a docker sub-check's config is
+validated like a top-level one, and under an enforcing egress policy its
+`tcp://` host is dialed through the policy (a `unix://` socket is refused).
+
 **`Chrome/Chromium not found` / `cannot reach the remote Chrome (CDP)
 endpoint`** — this worker has no browser. The check reports `error`, never
 `down`: your target was never contacted. Give the region a headless-shell

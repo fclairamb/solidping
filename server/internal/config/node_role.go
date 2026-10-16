@@ -145,3 +145,12 @@ func (c *Config) ShouldRunChecks() bool {
 func (c *Config) IsAgentMode() bool {
 	return c.NodeRoles().Runs(NodeRoleAgent)
 }
+
+// DockerChecksBlocked reports whether THIS process must refuse to run a docker
+// check (top-level or nested in a js script): a SaaS deployment's shared
+// worker, never a deported agent, which is the supported way to run docker
+// checks under SaaS (specs 2026-09-25-22, 2026-10-16-09). Reading the local
+// Docker socket from a shared worker would cross tenants.
+func (c *Config) DockerChecksBlocked() bool {
+	return !c.IsAgentMode() && c.Deployment.Mode == DeploymentModeSaaS
+}
