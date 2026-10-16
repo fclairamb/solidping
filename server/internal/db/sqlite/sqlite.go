@@ -6154,13 +6154,15 @@ func (s *Service) ListStatusPageResources(
 	return resources, err
 }
 
-// UpdateStatusPageResource updates a resource by UID.
+// UpdateStatusPageResource updates a resource by UID, scoped to its section.
+// It returns sql.ErrNoRows when no resource of that UID lives in the section.
 func (s *Service) UpdateStatusPageResource(
-	ctx context.Context, uid string, update *models.StatusPageResourceUpdate,
+	ctx context.Context, sectionUID, uid string, update *models.StatusPageResourceUpdate,
 ) error {
 	query := s.db.NewUpdate().
 		Model((*models.StatusPageResource)(nil)).
 		Where("uid = ?", uid).
+		Where("section_uid = ?", sectionUID).
 		Set("updated_at = ?", time.Now())
 
 	if update.PublicName != nil {
@@ -6189,19 +6191,45 @@ func (s *Service) UpdateStatusPageResource(
 			Set("check_group_uid = ?", update.CheckGroupUID)
 	}
 
-	_, err := query.Exec(ctx)
+	res, err := query.Exec(ctx)
+	if err != nil {
+		return err
+	}
 
-	return err
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
 }
 
-// DeleteStatusPageResource hard-deletes a resource.
-func (s *Service) DeleteStatusPageResource(ctx context.Context, uid string) error {
-	_, err := s.db.NewDelete().
+// DeleteStatusPageResource hard-deletes a resource, scoped to its section.
+// It returns sql.ErrNoRows when no resource of that UID lives in the section.
+func (s *Service) DeleteStatusPageResource(ctx context.Context, sectionUID, uid string) error {
+	res, err := s.db.NewDelete().
 		Model((*models.StatusPageResource)(nil)).
 		Where("uid = ?", uid).
+		Where("section_uid = ?", sectionUID).
 		Exec(ctx)
+	if err != nil {
+		return err
+	}
 
-	return err
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
 }
 
 // CheckGroup operations

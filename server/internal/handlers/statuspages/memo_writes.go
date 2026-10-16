@@ -183,12 +183,13 @@ func (s *Service) createStatusPageResourceRow(
 	return nil
 }
 
-// writeStatusPageResourceRow patches a component and evicts its page.
+// writeStatusPageResourceRow patches a component of a section and evicts its
+// page. It returns sql.ErrNoRows when the component is not in that section.
 func (s *Service) writeStatusPageResourceRow(
-	ctx context.Context, path PageMemoWritePath, pageUID, resourceUID string,
+	ctx context.Context, path PageMemoWritePath, pageUID, sectionUID, resourceUID string,
 	update *models.StatusPageResourceUpdate,
 ) error {
-	if err := s.db.UpdateStatusPageResource(ctx, resourceUID, update); err != nil {
+	if err := s.db.UpdateStatusPageResource(ctx, sectionUID, resourceUID, update); err != nil {
 		return err
 	}
 
@@ -197,11 +198,12 @@ func (s *Service) writeStatusPageResourceRow(
 	return nil
 }
 
-// deleteStatusPageResourceRow deletes a component and evicts its page.
+// deleteStatusPageResourceRow deletes a component of a section and evicts its
+// page. It returns sql.ErrNoRows when the component is not in that section.
 func (s *Service) deleteStatusPageResourceRow(
-	ctx context.Context, path PageMemoWritePath, pageUID, resourceUID string,
+	ctx context.Context, path PageMemoWritePath, pageUID, sectionUID, resourceUID string,
 ) error {
-	if err := s.db.DeleteStatusPageResource(ctx, resourceUID); err != nil {
+	if err := s.db.DeleteStatusPageResource(ctx, sectionUID, resourceUID); err != nil {
 		return err
 	}
 

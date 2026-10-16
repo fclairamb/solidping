@@ -1372,12 +1372,12 @@ func (m *mockDBService) ReorderStatusPageSections(_ context.Context, _ string, _
 }
 
 func (m *mockDBService) UpdateStatusPageResource(
-	_ context.Context, _ string, _ *models.StatusPageResourceUpdate,
+	_ context.Context, _, _ string, _ *models.StatusPageResourceUpdate,
 ) error {
 	panic("not implemented")
 }
 
-func (m *mockDBService) DeleteStatusPageResource(_ context.Context, _ string) error {
+func (m *mockDBService) DeleteStatusPageResource(_ context.Context, _, _ string) error {
 	panic("not implemented")
 }
 

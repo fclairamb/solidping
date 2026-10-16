@@ -1269,8 +1269,12 @@ type Service interface {
 	MaxStatusPageResourcePosition(ctx context.Context, sectionUID string) (int, error)
 	ReorderStatusPageResources(ctx context.Context, sectionUID string, orderedUIDs []string) error
 	ReorderStatusPageSections(ctx context.Context, statusPageUID string, orderedUIDs []string) error
-	UpdateStatusPageResource(ctx context.Context, uid string, update *models.StatusPageResourceUpdate) error
-	DeleteStatusPageResource(ctx context.Context, uid string) error
+	// UpdateStatusPageResource and DeleteStatusPageResource are scoped to the section
+	// and return sql.ErrNoRows when the resource does not live in it.
+	UpdateStatusPageResource(
+		ctx context.Context, sectionUID, uid string, update *models.StatusPageResourceUpdate,
+	) error
+	DeleteStatusPageResource(ctx context.Context, sectionUID, uid string) error
 
 	// ListPublicStatusUpdates returns recent status updates for a status page within the given
 	// history window. Returns an empty slice (not an error) when the status_updates table does

@@ -47,16 +47,17 @@ const (
 	// keys the unlock form off this exact code, and conflating it with a
 	// session problem would send the visitor to a login page they have no
 	// account for.
-	ErrorCodeStatusPageLocked          ErrorCode = "STATUS_PAGE_LOCKED"
-	ErrorCodeStatusPageSectionNotFound ErrorCode = "STATUS_PAGE_SECTION_NOT_FOUND"
-	ErrorCodeCheckGroupNotFound        ErrorCode = "CHECK_GROUP_NOT_FOUND"
-	ErrorCodeSeverityNotFound          ErrorCode = "SEVERITY_NOT_FOUND"
-	ErrorCodeSeverityInUse             ErrorCode = "SEVERITY_IN_USE"
-	ErrorCodeRegistrationDisabled      ErrorCode = "REGISTRATION_DISABLED"
-	ErrorCodeEmailNotAllowed           ErrorCode = "EMAIL_NOT_ALLOWED"
-	ErrorCodeRegistrationExpired       ErrorCode = "REGISTRATION_EXPIRED"
-	ErrorCodeInvitationExpired         ErrorCode = "INVITATION_EXPIRED"
-	ErrorCodeInvitationNotFound        ErrorCode = "INVITATION_NOT_FOUND"
+	ErrorCodeStatusPageLocked           ErrorCode = "STATUS_PAGE_LOCKED"
+	ErrorCodeStatusPageSectionNotFound  ErrorCode = "STATUS_PAGE_SECTION_NOT_FOUND"
+	ErrorCodeStatusPageResourceNotFound ErrorCode = "STATUS_PAGE_RESOURCE_NOT_FOUND"
+	ErrorCodeCheckGroupNotFound         ErrorCode = "CHECK_GROUP_NOT_FOUND"
+	ErrorCodeSeverityNotFound           ErrorCode = "SEVERITY_NOT_FOUND"
+	ErrorCodeSeverityInUse              ErrorCode = "SEVERITY_IN_USE"
+	ErrorCodeRegistrationDisabled       ErrorCode = "REGISTRATION_DISABLED"
+	ErrorCodeEmailNotAllowed            ErrorCode = "EMAIL_NOT_ALLOWED"
+	ErrorCodeRegistrationExpired        ErrorCode = "REGISTRATION_EXPIRED"
+	ErrorCodeInvitationExpired          ErrorCode = "INVITATION_EXPIRED"
+	ErrorCodeInvitationNotFound         ErrorCode = "INVITATION_NOT_FOUND"
 	// ErrorCodeInviteLoginRequired: the invitation targets an existing account,
 	// so it must be accepted by that account, signed in (spec 2026-10-16-06).
 	ErrorCodeInviteLoginRequired ErrorCode = "INVITE_LOGIN_REQUIRED"
