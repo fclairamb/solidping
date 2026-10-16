@@ -89,5 +89,9 @@ Concurrent requests all read the same `count` and all write `count+1`. SQLite ha
 ## Open questions
 1. **Window semantics.** Today the TTL slides: every counted attempt pushes `expires_at` to now+ttl. The alternative is a fixed window from the first attempt, as in `models.FixedWindow`. Recommended: keep the sliding window. Atomicity is the fix here; changing the lockout semantics would be a separate, visible behaviour change.
 
+## Resolved open questions
+Decided 2026-10-16 (all recommendations accepted):
+1. Keep the sliding-window TTL semantics; only make the counters atomic.
+
 ## Related
 H1 (2026-10-11, the 2FA temp token works as an access token, which bypasses TOTP outright), M10 (2026-10-11, the per-IP reset counter is keyed by a spoofable `X-Forwarded-For`, so making it atomic does not bound an attacker who picks their own key).
