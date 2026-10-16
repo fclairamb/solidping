@@ -13,6 +13,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/egress"
 )
 
 // Error codes returned by discovery-type validation. They are surfaced verbatim
@@ -33,6 +34,10 @@ const (
 	// clusterUid that does not resolve to a cluster connection in the org
 	// (unknown, wrong org, or not a kubernetes-type connection).
 	CodeKubernetesClusterNotFound = "KUBERNETES_CLUSTER_NOT_FOUND"
+	// CodeNotAvailable is returned when the discovery type is refused on this
+	// deployment: `lan` under an enforcing egress policy, `container` where
+	// docker checks are refused (SaaS, not an agent node).
+	CodeNotAvailable = "DISCOVERY_NOT_AVAILABLE"
 )
 
 // DiscoveryError is a coded validation/precondition failure from a discovery
@@ -58,6 +63,31 @@ func NewError(code, message string) *DiscoveryError {
 type Deps struct {
 	DBService db.Service
 	Creds     credentials.Service
+	// EgressGuard is the process egress guard. When it is enforcing, the
+	// discovery types that would probe private networks are refused and the
+	// remaining dials go through it. Nil means no policy (allow everything).
+	EgressGuard *egress.Guard
+	// DockerBlocked is the docker-check rule (SaaS and not an agent node): when
+	// set, container discovery is refused exactly where docker checks are.
+	DockerBlocked bool
+}
+
+// Restricted is implemented by discovery types that some deployments refuse.
+// Availability returns a coded CodeNotAvailable error when the type is refused
+// under deps, nil when it may run. Types that are always available do not
+// implement it.
+type Restricted interface {
+	Availability(deps Deps) error
+}
+
+// Available reports the availability of def under deps: nil when the type may
+// run, the coded refusal otherwise. It drives both BuildJob and the types list.
+func Available(def Definition, deps Deps) error {
+	if r, ok := def.(Restricted); ok {
+		return r.Availability(deps)
+	}
+
+	return nil
 }
 
 // Definition is one discovery source/method.

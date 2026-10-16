@@ -1232,6 +1232,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// endpoints stay on top of it unchanged.
 	discoverySvc := discovery.NewService(
 		s.dbService.DB(), s.dbService, checksService, s.jobSvc, s.services.Credentials,
+		s.services.EgressGuard, s.config.DockerChecksBlocked(),
 	)
 	discoveryHandler := discovery.NewHandler(discoverySvc, s.config)
 	orgDiscovery := orgGroup("/orgs/:org/discovery")

@@ -261,8 +261,10 @@ func buildTokenConfig(
 // The proxy is switched off too: client-go otherwise defaults to
 // http.ProxyFromEnvironment, and with HTTPS_PROXY set the only connection the
 // guard would ever see is the one to the proxy, which then reaches the API
-// server on our behalf. Callers without a guard on their context (discovery,
-// connection validation) are unchanged.
+// server on our behalf (that also overrides a kubeconfig proxy-url). Discovery
+// (scan-start probe and scan job) and the connection test put the process
+// guard on their context too (spec 2026-10-16-10). A nil or permissive guard
+// leaves the config unchanged.
 func applyEgressGuard(ctx context.Context, restCfg *rest.Config) {
 	guard := egress.FromContext(ctx)
 	if !guard.Enforcing() {

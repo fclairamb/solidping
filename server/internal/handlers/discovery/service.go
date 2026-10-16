@@ -17,6 +17,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/discovery/scantypes"
+	"github.com/fclairamb/solidping/server/internal/egress"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
@@ -71,6 +72,11 @@ type Service struct {
 	jobSvc     jobsvc.Service
 	creds      credentials.Service
 	isPostgres bool
+	// egressGuard is the process egress guard; dockerBlocked the docker-check
+	// rule (SaaS and not an agent node). Together they decide which discovery
+	// types this deployment refuses (spec 2026-10-16-10).
+	egressGuard   *egress.Guard
+	dockerBlocked bool
 }
 
 // NewService creates a new discovery service.
@@ -80,6 +86,8 @@ func NewService(
 	checksSvc *checks.Service,
 	jobSvc jobsvc.Service,
 	creds credentials.Service,
+	egressGuard *egress.Guard,
+	dockerBlocked bool,
 ) *Service {
 	_, isPostgres := bunDB.Dialect().(*pgdialect.Dialect)
 
@@ -88,9 +96,39 @@ func NewService(
 		dbSvc:      dbSvc,
 		checksSvc:  checksSvc,
 		jobSvc:     jobSvc,
-		creds:      creds,
-		isPostgres: isPostgres,
+		creds:         creds,
+		isPostgres:    isPostgres,
+		egressGuard:   egressGuard,
+		dockerBlocked: dockerBlocked,
 	}
+}
+
+// deps returns the discovery-type dependencies of this service, carrying the
+// deployment's egress policy and docker gate.
+func (s *Service) deps() scantypes.Deps {
+	return scantypes.Deps{
+		DBService:     s.dbSvc,
+		Creds:         s.creds,
+		EgressGuard:   s.egressGuard,
+		DockerBlocked: s.dockerBlocked,
+	}
+}
+
+// AvailableTypes returns the registered discovery types this deployment
+// accepts, sorted by type. Refused types (lan under an enforcing egress policy,
+// container where docker checks are refused) are left out.
+func (s *Service) AvailableTypes() []scantypes.Definition {
+	deps := s.deps()
+	all := scantypes.List()
+	out := make([]scantypes.Definition, 0, len(all))
+
+	for _, def := range all {
+		if scantypes.Available(def, deps) == nil {
+			out = append(out, def)
+		}
+	}
+
+	return out
 }
 
 // StartScan resolves the discovery type from the registry, validates its
@@ -107,7 +145,7 @@ func (s *Service) StartScan(
 		return nil, scantypes.NewError(scantypes.CodeUnknownType, fmt.Sprintf("unknown discovery type %q", typ))
 	}
 
-	deps := scantypes.Deps{DBService: s.dbSvc, Creds: s.creds}
+	deps := s.deps()
 
 	jobType, jobConfig, err := def.BuildJob(ctx, deps, orgUID, parameters)
 	if err != nil {

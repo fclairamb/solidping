@@ -96,6 +96,11 @@ type KubernetesDiscoveryJobRun struct {
 func (r *KubernetesDiscoveryJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) error {
 	log := jctx.Logger
 
+	// The API-server dial goes through the process egress guard (spec
+	// 2026-10-16-10): under an enforcing policy a private API server is
+	// refused and the environment / kubeconfig proxy is switched off.
+	ctx = egress.WithGuard(ctx, egressGuardFrom(jctx))
+
 	if jctx.OrganizationUID == nil {
 		return errNoOrganizationUID
 	}

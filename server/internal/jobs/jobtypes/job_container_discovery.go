@@ -9,6 +9,8 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	disc "github.com/fclairamb/solidping/server/internal/discovery"
+	"github.com/fclairamb/solidping/server/internal/discovery/scantypes"
+	"github.com/fclairamb/solidping/server/internal/egress"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
 
@@ -63,6 +65,18 @@ func (r *ContainerDiscoveryJobRun) Run(ctx context.Context, jctx *jobdef.JobCont
 	if jctx.OrganizationUID == nil {
 		return errNoOrganizationUID
 	}
+
+	// Refused where docker checks are refused (SaaS, not an agent node), so a
+	// job queued before the gate applied reaches no Docker endpoint.
+	if jctx.AppConfig != nil {
+		if err := scantypes.ContainerNotAvailable(jctx.AppConfig.DockerChecksBlocked()); err != nil {
+			return err
+		}
+	}
+
+	// tcp:// endpoints dial through the process egress guard and unix://
+	// sockets are refused when it is enforcing (spec 2026-10-16-10).
+	ctx = egress.WithGuard(ctx, egressGuardFrom(jctx))
 
 	orgUID := *jctx.OrganizationUID
 	jobUID := jctx.Job.UID

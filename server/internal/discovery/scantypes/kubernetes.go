@@ -6,6 +6,7 @@ import (
 	"errors"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/egress"
 	integrationk8s "github.com/fclairamb/solidping/server/internal/integrations/kubernetes"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
@@ -75,6 +76,13 @@ func (d *KubernetesDefinition) BuildJob(
 // coded KUBERNETES_CLUSTER_NOT_FOUND. ValidateConnection then performs a
 // read-only /version probe so a bad credential surfaces here, not on first run.
 func probeCluster(ctx context.Context, deps Deps, clusterUID string) error {
+	// The API-server dial goes through the process egress guard: under an
+	// enforcing policy a private API server is refused with the policy's own
+	// message (naming the host, never the IP) instead of a raw dial error.
+	if deps.EgressGuard != nil {
+		ctx = egress.WithGuard(ctx, deps.EgressGuard)
+	}
+
 	client, err := integrationk8s.ResolveClientsetByUID(ctx, deps.DBService, deps.Creds, clusterUID)
 	if err != nil {
 		if errors.Is(err, integrationk8s.ErrClusterNotFound) {

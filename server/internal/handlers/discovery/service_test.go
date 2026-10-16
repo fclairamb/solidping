@@ -15,6 +15,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	disc "github.com/fclairamb/solidping/server/internal/discovery"
 	"github.com/fclairamb/solidping/server/internal/discovery/scantypes"
+	"github.com/fclairamb/solidping/server/internal/egress"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/handlers/discovery"
 	"github.com/fclairamb/solidping/server/internal/integrations/freebox"
@@ -30,6 +31,14 @@ type discoveryFixture struct {
 }
 
 func newDiscoveryFixture(t *testing.T) *discoveryFixture {
+	t.Helper()
+
+	return newDiscoveryFixtureWith(t, nil, false)
+}
+
+// newDiscoveryFixtureWith builds the fixture with the given process egress
+// guard and docker gate (a SaaS deployment is egress.New(false) + true).
+func newDiscoveryFixtureWith(t *testing.T, guard *egress.Guard, dockerBlocked bool) *discoveryFixture {
 	t.Helper()
 
 	ctx := t.Context()
@@ -48,7 +57,7 @@ func newDiscoveryFixture(t *testing.T) *discoveryFixture {
 
 	jobSvc := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier(), nil)
 	checksSvc := checks.NewService(dbSvc, notifier.NewLocalEventNotifier(), creds, nil)
-	svc := discovery.NewService(dbSvc.DB(), dbSvc, checksSvc, jobSvc, creds)
+	svc := discovery.NewService(dbSvc.DB(), dbSvc, checksSvc, jobSvc, creds, guard, dockerBlocked)
 
 	return &discoveryFixture{svc: svc, dbSvc: dbSvc, org: org}
 }
@@ -659,4 +668,82 @@ func TestUpsertDiscoveredChecksRescanUpdatesInPlace(t *testing.T) {
 	all, err := f.svc.ListDiscoveredChecks(ctx, f.org.UID, &discovery.ListChecksOptions{})
 	r.NoError(err)
 	r.Len(all, 1, "re-scan of the same (org, source, group, slug) must update in place")
+}
+
+// countJobs counts the org's jobs (any type, any status).
+func (f *discoveryFixture) countJobs(t *testing.T) int {
+	t.Helper()
+
+	count, err := f.dbSvc.DB().NewSelect().TableExpr("jobs").
+		Where("organization_uid = ?", f.org.UID).Count(t.Context())
+	require.NoError(t, err)
+
+	return count
+}
+
+// On a SaaS-shaped service (enforcing egress guard, docker blocked) `lan` and
+// `container` scans are refused with DISCOVERY_NOT_AVAILABLE and no job is
+// created. The self-hosted service (permissive guard) is the control: it still
+// creates the plan job and the container job.
+func TestStartScanRefusedUnderEgressPolicy(t *testing.T) {
+	t.Parallel()
+
+	scans := []struct {
+		typ     string
+		params  string
+		jobType string
+	}{
+		{typ: "lan", params: `{"cidrs":["10.0.0.0/24"]}`, jobType: string(jobdef.JobTypeNetworkDiscoveryPlan)},
+		{typ: "lan", params: `{"cidrs":["169.254.169.254/32"]}`, jobType: string(jobdef.JobTypeNetworkDiscoveryPlan)},
+		{
+			typ: "container", params: `{"hosts":["unix:///var/run/docker.sock"]}`,
+			jobType: string(jobdef.JobTypeContainerDiscovery),
+		},
+		{
+			typ: "container", params: `{"hosts":["tcp://10.0.0.5:2375"]}`,
+			jobType: string(jobdef.JobTypeContainerDiscovery),
+		},
+	}
+
+	for _, sc := range scans {
+		t.Run(sc.typ+" "+sc.params, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+
+			saas := newDiscoveryFixtureWith(t, egress.New(false), true)
+			job, err := saas.svc.StartScan(t.Context(), saas.org.UID, sc.typ, json.RawMessage(sc.params))
+			r.Nil(job)
+
+			var de *scantypes.DiscoveryError
+			r.ErrorAs(err, &de)
+			r.Equal(scantypes.CodeNotAvailable, de.Code)
+			r.Zero(saas.countJobs(t), "a refused scan must create no job")
+
+			selfHosted := newDiscoveryFixtureWith(t, egress.New(true), false)
+			job, err = selfHosted.svc.StartScan(t.Context(), selfHosted.org.UID, sc.typ, json.RawMessage(sc.params))
+			r.NoError(err)
+			r.Equal(sc.jobType, job.Type)
+			r.Equal(1, selfHosted.countJobs(t))
+		})
+	}
+}
+
+// AvailableTypes hides the types the deployment refuses.
+func TestAvailableTypesHidesRefusedTypes(t *testing.T) {
+	t.Parallel()
+
+	typesOf := func(f *discoveryFixture) []string {
+		out := []string{}
+		for _, d := range f.svc.AvailableTypes() {
+			out = append(out, d.Type())
+		}
+
+		return out
+	}
+
+	r := require.New(t)
+	r.Equal([]string{"freebox", "kubernetes"}, typesOf(newDiscoveryFixtureWith(t, egress.New(false), true)))
+	r.Equal([]string{"container", "freebox", "kubernetes"}, typesOf(newDiscoveryFixtureWith(t, egress.New(false), false)))
+	r.Equal([]string{"container", "freebox", "kubernetes", "lan"}, typesOf(newDiscoveryFixture(t)))
 }

@@ -1816,6 +1816,13 @@ func (s *Service) testKubernetesConnection(
 	ctx, cancel := context.WithTimeout(ctx, kubernetesTestTimeout)
 	defer cancel()
 
+	// The API server is a user-chosen target dialed from the API process: it
+	// goes through the process egress guard (spec 2026-10-16-10), so under an
+	// enforcing policy a private API server is refused before any connection.
+	if guard := s.egressGuard(); guard != nil {
+		ctx = egress.WithGuard(ctx, guard)
+	}
+
 	start := time.Now()
 
 	clientset, err := integrationk8s.ResolveClientset(ctx, s.db, s.creds, conn.OrganizationUID, conn.UID)

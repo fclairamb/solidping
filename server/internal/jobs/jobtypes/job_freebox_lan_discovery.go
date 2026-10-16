@@ -9,6 +9,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	disc "github.com/fclairamb/solidping/server/internal/discovery"
+	"github.com/fclairamb/solidping/server/internal/egress"
 	"github.com/fclairamb/solidping/server/internal/integrations/freebox"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
@@ -58,6 +59,12 @@ type FreeboxLanDiscoveryJobRun struct {
 // flag (an ICMP suggestion when reachable) so no known device is dropped.
 func (r *FreeboxLanDiscoveryJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) error {
 	log := jctx.Logger
+
+	// The active scan of the hosts the Freebox reports goes through the
+	// process egress guard (spec 2026-10-16-10): under an enforcing policy the
+	// private hosts are not probed and fall back to the router's reachability
+	// flag in buildFreeboxRows.
+	ctx = egress.WithGuard(ctx, egressGuardFrom(jctx))
 
 	if jctx.OrganizationUID == nil {
 		return errNoOrganizationUID
