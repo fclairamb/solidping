@@ -734,8 +734,10 @@ func TestAvailableTypesHidesRefusedTypes(t *testing.T) {
 	t.Parallel()
 
 	typesOf := func(f *discoveryFixture) []string {
-		out := []string{}
-		for _, d := range f.svc.AvailableTypes() {
+		defs := f.svc.AvailableTypes()
+		out := make([]string, 0, len(defs))
+
+		for _, d := range defs {
 			out = append(out, d.Type())
 		}
 

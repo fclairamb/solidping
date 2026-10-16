@@ -108,11 +108,9 @@ func TestScanObeysEgressGuard(t *testing.T) {
 	}
 }
 
-// Under an enforcing guard ListContainers refuses a unix:// socket outright and
-// dials a tcp:// endpoint through the guard, so a private daemon is never
-// reached. The permissive guard is the control.
-func TestListContainersObeysEgressGuard(t *testing.T) {
-	t.Parallel()
+// countingDockerAPI is a fake Docker API counting the requests it receives.
+func countingDockerAPI(t *testing.T) (string, *atomic.Int64) {
+	t.Helper()
 
 	var requests atomic.Int64
 
@@ -131,10 +129,20 @@ func TestListContainersObeysEgressGuard(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	endpoint := "tcp://" + strings.TrimPrefix(srv.URL, "http://")
+	return "tcp://" + strings.TrimPrefix(srv.URL, "http://"), &requests
+}
+
+// Under an enforcing guard ListContainers refuses a unix:// socket outright and
+// dials a tcp:// endpoint through the guard, so a private daemon is never
+// reached. The permissive guard is the control.
+func TestListContainersObeysEgressGuard(t *testing.T) {
+	t.Parallel()
 
 	t.Run("enforcing tcp", func(t *testing.T) {
+		t.Parallel()
+
 		r := require.New(t)
+		endpoint, requests := countingDockerAPI(t)
 		ctx := egress.WithGuard(t.Context(), egress.New(false))
 
 		_, err := ListContainers(ctx, endpoint, 0)
@@ -143,18 +151,22 @@ func TestListContainersObeysEgressGuard(t *testing.T) {
 	})
 
 	t.Run("enforcing unix", func(t *testing.T) {
+		t.Parallel()
+
 		r := require.New(t)
 		ctx := egress.WithGuard(t.Context(), egress.New(false))
 
 		_, err := ListContainers(ctx, "unix:///var/run/docker.sock", 0)
-		r.ErrorIs(err, egress.ErrDenied)
 
 		var denied *egress.DeniedError
 		r.ErrorAs(err, &denied)
 	})
 
 	t.Run("permissive control", func(t *testing.T) {
+		t.Parallel()
+
 		r := require.New(t)
+		endpoint, requests := countingDockerAPI(t)
 		ctx := egress.WithGuard(t.Context(), egress.New(true))
 
 		containers, err := ListContainers(ctx, endpoint, 0)

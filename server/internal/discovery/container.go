@@ -89,7 +89,8 @@ func ListContainers(ctx context.Context, endpoint string, timeout time.Duration)
 // socket is not an IP dial the policy can judge, and a tcp:// endpoint is
 // dialed through the guard, pinned to the configured host.
 func containerClientOpts(ctx context.Context, endpoint string) ([]client.Opt, error) {
-	opts := []client.Opt{client.WithHost(endpoint)}
+	opts := make([]client.Opt, 0, 2) // host + the optional guarded dialer
+	opts = append(opts, client.WithHost(endpoint))
 
 	guard := egress.FromContext(ctx)
 	if !guard.Enforcing() {

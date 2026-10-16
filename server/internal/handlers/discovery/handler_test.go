@@ -460,7 +460,10 @@ func TestHandlerRefusedTypesUnderEgressPolicy(t *testing.T) {
 	r.Contains(rec.Body.String(), scantypes.CodeNotAvailable)
 	r.Contains(rec.Body.String(), egress.EnvAllowPrivate)
 
-	body = discovery.StartScanRequest{Type: "container", Parameters: json.RawMessage(`{"hosts":["unix:///var/run/docker.sock"]}`)}
+	body = discovery.StartScanRequest{
+		Type:       "container",
+		Parameters: json.RawMessage(`{"hosts":["unix:///var/run/docker.sock"]}`),
+	}
 	rec = f.doAdminRequest(t, router, http.MethodPost, f.scansPath(), body)
 	r.Equal(http.StatusForbidden, rec.Code)
 	r.Contains(rec.Body.String(), scantypes.CodeNotAvailable)
