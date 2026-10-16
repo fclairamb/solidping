@@ -942,7 +942,7 @@ func (r *CheckWorker) materializeConfig(checkJob *models.CheckJob) error {
 	}
 
 	resolved, _, err := secretref.ResolveConfig(
-		context.Background(), merged, secretref.ExecutionResolverWith(vars))
+		context.Background(), merged, secretref.ExecutionResolverWith(vars, r.config.EnvRefAllowed))
 	if err != nil {
 		return err
 	}

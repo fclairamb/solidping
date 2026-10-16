@@ -23,6 +23,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/egress"
+	"github.com/fclairamb/solidping/server/internal/secretref"
 	"github.com/fclairamb/solidping/server/internal/version"
 )
 
@@ -90,6 +91,11 @@ type WSBackend struct {
 	// consulted before a server-requested path trace. Nil allows everything.
 	egressGuard *egress.Guard
 
+	// envRefAllow is the agent's own `${env:}` allowlist (its
+	// SP_CHECK_ENV_ALLOWLIST, spec 2026-10-16-03), consulted when a bastion
+	// config is materialized. Nil denies every `${env:}` reference.
+	envRefAllow secretref.EnvAllowFunc
+
 	// dialMu serializes dialing so only one connect runs at a time regardless
 	// of which path triggers it (lazy request() vs. the reconnect supervisor).
 	dialMu sync.Mutex
@@ -151,6 +157,11 @@ func WithLogger(logger *slog.Logger) Option {
 // fast half-open detection).
 func WithPingInterval(interval time.Duration) Option {
 	return func(b *WSBackend) { b.pingInterval = interval }
+}
+
+// WithEnvRefAllow sets the agent's `${env:}` allowlist (config.Config.EnvRefAllowed).
+func WithEnvRefAllow(allow secretref.EnvAllowFunc) Option {
+	return func(b *WSBackend) { b.envRefAllow = allow }
 }
 
 // WithCaptureCache overrides the local capture cache (tests use tighter bounds
@@ -311,7 +322,7 @@ func (b *WSBackend) claim(
 		// can find it. Unseal failure is reported like a job-envelope failure —
 		// a clear error result, dropped from the batch, never run half-armed.
 		if wireJob.Tunnel != nil {
-			cfg, tunErr := buildTunnelConfig(ctx, b.identityX25519(), wireJob.Tunnel)
+			cfg, tunErr := buildTunnelConfig(ctx, b.identityX25519(), wireJob.Tunnel, b.envRefAllow)
 			if tunErr != nil {
 				b.logger.WarnContext(ctx, "ssh tunnel not available on this agent",
 					"check_uid", job.CheckUID, "tunnel_check_uid", wireJob.Tunnel.CheckUID, "error", tunErr)

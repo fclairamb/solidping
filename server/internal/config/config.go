@@ -348,6 +348,43 @@ type CheckersConfig struct {
 	// Traceroute configures the path capture taken when a check goes down on a
 	// network-reachability failure (spec 2026-08-21-10).
 	Traceroute TracerouteConfig `koanf:"traceroute"`
+	// EnvRefAllowlist names the environment variables a check config's
+	// `${env:NAME}` reference may read on THIS process (spec 2026-10-16-03).
+	// Empty — the default — means `${env:}` resolves nothing. snake_case, so
+	// koanf's env loader cannot reach it: SP_CHECK_ENV_ALLOWLIST is bound by
+	// hand in applyCheckersEnv. Read through Config.EnvRefAllowed.
+	EnvRefAllowlist []string `koanf:"env_ref_allowlist"`
+}
+
+// EnvCheckEnvAllowlist is the comma-separated list of environment variable
+// names a check's `${env:NAME}` reference may resolve on this process. Each
+// deported agent reads its own.
+const EnvCheckEnvAllowlist = "SP_CHECK_ENV_ALLOWLIST"
+
+// EnvRefAllowed reports whether a check config's `${env:name}` reference may
+// resolve name on this process. It is the single predicate both the save path
+// and the executing path consult (as a secretref.EnvAllowFunc). An empty
+// allowlist allows nothing.
+func (c *Config) EnvRefAllowed(name string) bool {
+	if c == nil || name == "" {
+		return false
+	}
+
+	return slices.Contains(c.Checkers.EnvRefAllowlist, name)
+}
+
+// parseEnvRefAllowlist splits a comma-separated SP_CHECK_ENV_ALLOWLIST value,
+// trimming blanks and dropping empty entries.
+func parseEnvRefAllowlist(raw string) []string {
+	var out []string
+
+	for _, part := range strings.Split(raw, ",") {
+		if part = strings.TrimSpace(part); part != "" {
+			out = append(out, part)
+		}
+	}
+
+	return out
 }
 
 // TracerouteConfig is the deployment-level half of the traceroute-on-failure
@@ -2430,6 +2467,10 @@ func applyCheckersEnv(cfg *CheckersConfig) {
 
 	if v := os.Getenv("SP_CHECKERS_BROWSER_CHROME_PATH"); v != "" {
 		cfg.Browser.ChromePath = v
+	}
+
+	if raw, present := os.LookupEnv(EnvCheckEnvAllowlist); present {
+		cfg.EnvRefAllowlist = parseEnvRefAllowlist(raw)
 	}
 }
 

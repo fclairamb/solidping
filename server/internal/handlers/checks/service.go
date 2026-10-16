@@ -37,6 +37,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/notifier"
 	"github.com/fclairamb/solidping/server/internal/regionquorum"
 	"github.com/fclairamb/solidping/server/internal/regions"
+	"github.com/fclairamb/solidping/server/internal/secretref"
 	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
 
@@ -616,6 +617,11 @@ type Service struct {
 	// that never construct a real config leave it unset; see
 	// SetDeploymentMode.
 	deploymentMode string
+	// envRefAllow is the operator allowlist of `${env:NAME}` names
+	// (config.Config.EnvRefAllowed, spec 2026-10-16-03). nil = deny every
+	// `${env:}` reference — the secure default for an unwired Service. See
+	// SetEnvRefAllow.
+	envRefAllow secretref.EnvAllowFunc
 }
 
 // StatusPageReconciler re-materializes the org's selector-driven status page
@@ -640,6 +646,13 @@ func (s *Service) SetStatusPageReconciler(reconciler StatusPageReconciler) {
 // Optional: an unwired Service (most unit tests) behaves like self-hosted.
 func (s *Service) SetDeploymentMode(mode string) {
 	s.deploymentMode = mode
+}
+
+// SetEnvRefAllow wires the operator allowlist of `${env:NAME}` names
+// (config.Config.EnvRefAllowed). Save paths refuse, and the document resolver
+// fails, any `${env:}` reference it does not admit. Unwired (nil) denies all.
+func (s *Service) SetEnvRefAllow(allow secretref.EnvAllowFunc) {
+	s.envRefAllow = allow
 }
 
 // reconcileStatusPageSelectors notifies the status page layer that the org's

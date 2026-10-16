@@ -38,3 +38,32 @@ func validateVarRefs(config map[string]any) []error {
 
 	return errs
 }
+
+// validateEnvRefs reports every `${env:…}` name in a config, nested maps and
+// slices included, that the operator allowlist does not admit — one error per
+// occurrence, in key order. It runs on every save path (create, update, clone,
+// PUT, MCP and the dry-run validate endpoint, through configValidationErrors),
+// so a reference that would never resolve at run time is never stored either:
+// the same secretref predicate decides both (spec 2026-10-16-03).
+func validateEnvRefs(config map[string]any, allow secretref.EnvAllowFunc) []error {
+	type found struct{ key, name string }
+
+	var hits []found
+
+	secretref.VisitStrings(config, func(key, value string) {
+		for _, name := range secretref.DisallowedEnvRefs(value, allow) {
+			hits = append(hits, found{key: key, name: name})
+		}
+	})
+
+	sort.SliceStable(hits, func(i, j int) bool { return hits[i].key < hits[j].key })
+
+	errs := make([]error, 0, len(hits))
+	for i := range hits {
+		hit := &hits[i]
+		errs = append(errs, checkerdef.NewConfigError("",
+			fmt.Sprintf("config.%s: %s", hit.key, secretref.DisallowedEnvMessage(hit.name))))
+	}
+
+	return errs
+}

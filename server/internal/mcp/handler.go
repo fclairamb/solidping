@@ -153,6 +153,7 @@ func NewHandler(
 	checksSvc := checks.NewService(dbService, eventNotifier, creds, entSvc)
 	if cfg != nil {
 		checksSvc.SetDeploymentMode(cfg.Deployment.Mode)
+		checksSvc.SetEnvRefAllow(cfg.EnvRefAllowed)
 	}
 
 	handler := &Handler{

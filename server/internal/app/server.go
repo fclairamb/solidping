@@ -455,7 +455,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	// (`tunnelCheckUid` in their config). Same indirection again: it owns the
 	// check lookup + credential decrypt so the checkers only ever consume a
 	// dialer from their context.
-	sshtunnel.ResolverFunc = sshtunnel.NewResolver(dbService, credSvc)
+	sshtunnel.ResolverFunc = sshtunnel.NewResolver(dbService, credSvc, cfg.EnvRefAllowed)
 
 	// Initialize Sentry error tracking
 	if sentryErr := initSentry(cfg.Sentry); sentryErr != nil {
@@ -492,6 +492,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	checksSvc := checks.NewService(
 		dbService, svcList.EventNotifier, credSvc, entitlementsService)
 	checksSvc.SetDeploymentMode(cfg.Deployment.Mode)
+	checksSvc.SetEnvRefAllow(cfg.EnvRefAllowed)
 	// The demo cleanup and private-location monitor deletes notify like a
 	// user's DELETE does (spec 2026-10-08-02).
 	checksSvc.SetCheckDeletedIncidentNotifier(
@@ -1151,6 +1152,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	checksService := checks.NewService(
 		s.dbService, s.services.EventNotifier, s.services.Credentials, s.services.Entitlements)
 	checksService.SetDeploymentMode(s.config.Deployment.Mode)
+	checksService.SetEnvRefAllow(s.config.EnvRefAllowed)
 	checksHandler := checks.NewHandler(checksService, s.config)
 	orgChecks := orgGroup("/orgs/:org/checks")
 	orgChecks.GET("", checksHandler.ListChecks)

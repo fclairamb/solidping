@@ -652,3 +652,39 @@ func TestWorkerPoolYAMLKeys(t *testing.T) {
 	r.Equal(8, cfg.Server.CheckWorker.Nb)
 	r.Equal(4, cfg.Server.JobWorker.Nb)
 }
+
+// TestCheckEnvAllowlistBinds pins SP_CHECK_ENV_ALLOWLIST (spec 2026-10-16-03):
+// it is a recognized name, it parses comma-separated names (blanks trimmed,
+// empties dropped), and EnvRefAllowed answers exact membership.
+func TestCheckEnvAllowlistBinds(t *testing.T) {
+	t.Setenv(EnvCheckEnvAllowlist, " SP_ACME_TOKEN, SP_ACME_PASSWORD ,,")
+
+	r := require.New(t)
+	r.Contains(RecognizedEnvVars(), EnvCheckEnvAllowlist)
+
+	cfg, err := Load()
+	r.NoError(err)
+	r.Equal([]string{"SP_ACME_TOKEN", "SP_ACME_PASSWORD"}, cfg.Checkers.EnvRefAllowlist)
+	r.True(cfg.EnvRefAllowed("SP_ACME_TOKEN"))
+	r.True(cfg.EnvRefAllowed("SP_ACME_PASSWORD"))
+	r.False(cfg.EnvRefAllowed("SP_AUTH_JWT_SECRET"))
+	r.False(cfg.EnvRefAllowed("sp_acme_token"), "names match exactly")
+	r.False(cfg.EnvRefAllowed(""))
+}
+
+// TestCheckEnvAllowlistDefaultsToEmpty: with nothing set, `${env:}` resolves
+// nothing — deny by default.
+func TestCheckEnvAllowlistDefaultsToEmpty(t *testing.T) {
+	t.Setenv(EnvCheckEnvAllowlist, "")
+
+	r := require.New(t)
+
+	cfg, err := Load()
+	r.NoError(err)
+	r.Empty(cfg.Checkers.EnvRefAllowlist)
+	r.False(cfg.EnvRefAllowed("SP_AUTH_JWT_SECRET"))
+	r.False(cfg.EnvRefAllowed("PATH"))
+
+	var nilCfg *Config
+	r.False(nilCfg.EnvRefAllowed("PATH"))
+}

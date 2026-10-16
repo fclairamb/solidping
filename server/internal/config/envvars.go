@@ -172,6 +172,9 @@ func manualReaderServerEnvVars() []string {
 		// env loader cannot reach them (see BrowserCheckerConfig).
 		"SP_CHECKERS_BROWSER_CDP_URL",
 		"SP_CHECKERS_BROWSER_CHROME_PATH",
+		// checkers.env_ref_allowlist is snake_case, and its env name does not
+		// even follow the checkers.* path (spec 2026-10-16-03).
+		EnvCheckEnvAllowlist,
 		// applyRateLimitingEnv
 		"SP_SERVER_RATE_LIMITING_REQUESTS_PER_MINUTE",
 		"SP_SERVER_RATE_LIMITING_BURST",

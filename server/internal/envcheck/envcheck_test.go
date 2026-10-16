@@ -180,3 +180,12 @@ func TestCheckEnvironWorkerPoolNamesBind(t *testing.T) {
 		"SP_SERVER_JOB_WORKER_NB=4",
 	}))
 }
+
+// TestCheckEnvironCheckEnvAllowlistRecognized: SP_CHECK_ENV_ALLOWLIST (spec
+// 2026-10-16-03) is bound by a manual reader and must not warn.
+func TestCheckEnvironCheckEnvAllowlistRecognized(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	r.Empty(checkEnviron([]string{"SP_CHECK_ENV_ALLOWLIST=SP_ACME_TOKEN,SP_ACME_PASSWORD"}))
+}
