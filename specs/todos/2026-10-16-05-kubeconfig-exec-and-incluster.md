@@ -44,3 +44,7 @@ Reject exec/auth-provider kubeconfigs and gate `inCluster`, at save time **and**
 
 ## Open questions
 1. **How to gate `inCluster`.** Options: (a) super-admin-only (resolve the caller's `user.SuperAdmin`, `middleware/auth.go:775-798`), or (b) a self-hosted deployment opt-in flag, default off. Recommended: **(b) a deployment opt-in** (`SP_K8S_ALLOW_IN_CLUSTER`, default false), because the resolve-time chokepoint (`BuildRestConfig`) has no caller identity — it runs on workers and discovery jobs with no `user` in scope — so a role check cannot be enforced there, only at the save-time handler. A deployment flag is enforceable at both layers uniformly, and in-cluster is inherently a self-hosted (SolidPing-runs-in-the-target-cluster) feature, never a SaaS one. If the operator wants it, they set one env var; SaaS leaves it off and the pod's service-account token is never reachable by a tenant.
+
+## Resolved open questions
+Decided 2026-10-16 (all recommendations accepted):
+1. Gate `inCluster` with a deployment opt-in, `SP_K8S_ALLOW_IN_CLUSTER`, default false, enforced both at save time and in `BuildRestConfig`.
