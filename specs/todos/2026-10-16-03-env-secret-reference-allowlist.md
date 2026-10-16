@@ -52,6 +52,11 @@ Introduce an operator-controlled allowlist of env-var names that `${env:}` may r
 1. **Design: allowlist vs. prefix vs. disable-for-org-authored.** Recommended: an explicit operator allowlist of names (`SP_CHECK_ENV_ALLOWLIST`), empty by default. It is the least surprising for the documented self-hosted use (operators already name the vars they export), survives the deported-agent per-region story (each agent sets its own), and is a true boundary rather than a denylist. A fixed `SP_CHECK_ENV_*` prefix was considered but would force self-hosters to rename existing vars; "disable `env:` for org-authored configs" cannot be expressed cleanly because the worker has no org identity at resolve time (`worker.go:375-377`).
 2. **Default on upgrade.** Empty allowlist means every existing `${env:}` reference stops resolving until the operator lists the names. Recommended: ship empty (secure default) and call it out prominently in the changelog + upgrade note, since the alternative (grandfather existing names) would require reading every stored config and would re-open the oracle for those names. Self-hosters relying on `env:` set one env var to restore it.
 
+## Resolved open questions
+Decided 2026-10-16 (all recommendations accepted):
+1. Use an explicit operator allowlist of names, `SP_CHECK_ENV_ALLOWLIST`, empty by default. No prefix scheme, no per-org disable.
+2. Ship the allowlist empty on upgrade (secure default). Call it out prominently in the changelog and an upgrade note; do not grandfather existing names.
+
 ## Related
 - N2 (same scan): a MySQL `database`/`password` field can read the worker's `/proc/self/environ`, i.e. the same platform secrets by a different route — spec `2026-10-16-04-mysql-dsn-injection.md`.
 - N4 (same scan): JS nested `docker` sub-check reaches the daemon — shares the "a check config reaches more than it should on the executing process" theme — spec `2026-10-16-09-js-check-nested-docker-guard.md`.
