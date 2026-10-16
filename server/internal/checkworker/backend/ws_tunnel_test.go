@@ -243,6 +243,13 @@ func TestTunnelConfigMaterializesSecretReferences(t *testing.T) {
 	_, err = buildTunnelConfig(t.Context(), "", &agents.AgentJobTunnel{CheckUID: "ssh-ref", Config: config}, nil)
 	r.ErrorIs(err, secretref.ErrUnresolved)
 	r.Contains(err.Error(), "unresolved secret reference: env:SP_TEST_TUNNEL_PASSWORD")
+
+	// Same refusal with a non-empty allowlist that lists other names: the
+	// variable is set in the environment but not listed, so it stays unresolved.
+	_, err = buildTunnelConfig(t.Context(), "", &agents.AgentJobTunnel{CheckUID: "ssh-ref", Config: config},
+		secretref.AllowEnvNames("SP_TEST_TUNNEL_OTHER"))
+	r.ErrorIs(err, secretref.ErrUnresolved)
+	r.Contains(err.Error(), "unresolved secret reference: env:SP_TEST_TUNNEL_PASSWORD")
 }
 
 // TestTunnelConfigRefusesAnUnresolvableReference is the failure half: a

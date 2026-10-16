@@ -4992,6 +4992,21 @@ type CloneCheckRequest struct {
 	Enabled       *bool   `json:"enabled,omitempty"`
 }
 
+// cloneValidate runs the save-time rules on a clone before it is inserted:
+// the demo shape rules, then the same config validation as create/PATCH. The
+// clone is a new save of the source's stored config, so a `${env:NAME}` stored
+// before the operator allowlist existed (or since removed from it) is refused
+// here rather than copied (spec 2026-10-16-03).
+func (s *Service) cloneValidate(ctx context.Context, orgUID string, clone *models.Check) error {
+	if demoErr := assertDemoCheckShape(
+		ctx, clone.Type, time.Duration(clone.Period), clone.Regions,
+	); demoErr != nil {
+		return demoErr
+	}
+
+	return s.firstConfigValidationError(ctx, orgUID, clone.Type, clone.Config, clone.Regions)
+}
+
 // CloneCheck creates a near-identical copy of an existing check, server-side.
 // Runtime state (status streak, results, incidents, scheduler row) is not
 // copied; status-page and maintenance-window references are not copied
@@ -5030,10 +5045,8 @@ func (s *Service) CloneCheck(
 	// The clone's SHAPE is still checked, so a demo session cannot use clone
 	// as a side door around the type allowlist or the period floor by copying
 	// a seeded check the catalog is allowed to have but a visitor is not.
-	if demoErr := assertDemoCheckShape(
-		ctx, clone.Type, time.Duration(clone.Period), clone.Regions,
-	); demoErr != nil {
-		return CheckResponse{}, demoErr
+	if validateErr := s.cloneValidate(ctx, org.UID, clone); validateErr != nil {
+		return CheckResponse{}, validateErr
 	}
 
 	// Clone bypasses CreateCheck (calls s.db.CreateCheck directly), so the

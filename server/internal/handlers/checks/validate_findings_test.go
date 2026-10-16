@@ -655,3 +655,39 @@ func TestValidateEnvReferences(t *testing.T) {
 	_, err = env.svc.UpdateCheck(ctx, env.org.Slug, created.UID, &checks.UpdateCheckRequest{Config: &bad})
 	r.NotNil(checkerdef.IsConfigError(err), "PATCH must reject a disallowed ${env:}: %v", err)
 }
+
+// TestCloneRefusesEnvRefOutsideTheAllowlist pins the clone half of spec
+// 2026-10-16-03: a `${env:NAME}` stored while the name was allowed (or before
+// the allowlist existed) is not copied once the name is off the list — clone
+// re-runs the same config validation as create and PATCH.
+func TestCloneRefusesEnvRefOutsideTheAllowlist(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	env := newValidateEnv(t, 0)
+	ctx := t.Context()
+	period := "00:01:00"
+
+	env.svc.SetEnvRefAllow(secretref.AllowEnvNames("SP_TEST_CLONE_TOKEN"))
+
+	source, err := env.svc.CreateCheck(ctx, env.org.Slug, checks.CreateCheckRequest{
+		Type: "http", Slug: "env-clone-src", Period: &period, Config: map[string]any{
+			"url":     "https://acme.com/collect",
+			"headers": map[string]any{"Authorization": "Bearer ${env:SP_TEST_CLONE_TOKEN}"},
+		},
+	})
+	r.NoError(err)
+
+	// Positive control: while the name is listed, the clone goes through.
+	_, err = env.svc.CloneCheck(ctx, env.org.Slug, source.UID, &checks.CloneCheckRequest{})
+	r.NoError(err)
+
+	// The operator drops the name from the allowlist: the stored reference
+	// can no longer be copied into a new check.
+	env.svc.SetEnvRefAllow(secretref.AllowEnvNames("SP_TEST_CLONE_OTHER"))
+
+	_, err = env.svc.CloneCheck(ctx, env.org.Slug, source.UID, &checks.CloneCheckRequest{})
+	configErr := checkerdef.IsConfigError(err)
+	r.NotNil(configErr, "clone must reject a disallowed ${env:}: %v", err)
+	r.Equal("config.headers: "+secretref.DisallowedEnvMessage("SP_TEST_CLONE_TOKEN"), configErr.Message)
+}
