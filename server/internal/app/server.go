@@ -527,6 +527,8 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	// caps inside JoinOrgViaLogin (every OAuth/SAML/LDAP callback) and inside
 	// autoJoinMatchingOrgs.
 	authService := auth.NewService(dbService, cfg.Auth, cfg, jobService, entitlementsService)
+	// PAT revocations are broadcast so every replica evicts its cache.
+	authService.SetEventNotifier(ctx, eventNotifier)
 
 	// Register file storage backends. Idempotent — safe to call once at startup.
 	localfs.Register()

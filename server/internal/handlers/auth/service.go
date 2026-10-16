@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -30,6 +31,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
+	"github.com/fclairamb/solidping/server/internal/notifier"
 	"github.com/fclairamb/solidping/server/internal/orgslug"
 	"github.com/fclairamb/solidping/server/internal/securityheaders"
 	"github.com/fclairamb/solidping/server/internal/support"
@@ -185,6 +187,17 @@ type Service struct {
 	// and RevokeToken can evict an entry from the row it just read.
 	patCache map[string]*cachedPATClaims
 	cacheMux sync.RWMutex
+	// patCacheGen is bumped by every eviction. ValidatePATToken reads it
+	// before its database lookup and caches its result only if it is
+	// unchanged, so a revocation racing the lookup cannot be re-cached
+	// (see pat_cache.go).
+	patCacheGen atomic.Uint64
+	// patFillHook runs between the database read and the cache insert of
+	// ValidatePATToken. Test-only: always nil in production.
+	patFillHook func()
+	// eventNotifier broadcasts PAT revocations to the other replicas. Nil
+	// means local-only eviction (unit tests, `solidping mcp --stdio`).
+	eventNotifier notifier.EventNotifier
 }
 
 // EntitlementsChecker is the slice of the entitlements service the auth
@@ -1340,7 +1353,7 @@ func (s *Service) roleForOrg(ctx context.Context, user *models.User, orgUID stri
 //
 // A per-call DB read for the org override is fine: this is only invoked at
 // refresh-token mint/slide time, which is rare compared to request volume.
-// Cache like patCacheDuration if that ever shows up in a profile.
+// Cache like patCacheTTL if that ever shows up in a profile.
 func (s *Service) resolveSessionMaxDuration(ctx context.Context, orgUID string) time.Duration {
 	if orgUID != "" {
 		param, err := s.db.GetOrgParameter(ctx, orgUID, string(systemconfig.KeySessionMaxDuration))
@@ -1543,15 +1556,13 @@ func (s *Service) ValidatePATToken(ctx context.Context, patToken string) (*Claim
 	cacheKey := models.HashUserToken(patToken)
 
 	// Check cache first
-	s.cacheMux.RLock()
-
-	if cached, exists := s.patCache[cacheKey]; exists && time.Now().Before(cached.expiresAt) {
-		s.cacheMux.RUnlock()
-
-		return cached.claims, nil
+	if claims, ok := s.cachedPAT(cacheKey); ok {
+		return claims, nil
 	}
 
-	s.cacheMux.RUnlock()
+	// Read the generation before the database: an eviction between here and
+	// the insert below makes the insert a no-op.
+	gen := s.patCacheGen.Load()
 
 	// Query database for PAT
 	token, err := s.db.GetUserTokenByToken(ctx, patToken)
@@ -1634,34 +1645,13 @@ func (s *Service) ValidatePATToken(ctx context.Context, patToken string) (*Claim
 		},
 	}
 
-	const patCacheDuration = 15 * time.Minute
-
-	// Cache the result for 15 minutes
-	s.cacheMux.Lock()
-	s.patCache[cacheKey] = &cachedPATClaims{
-		claims:    claims,
-		expiresAt: time.Now().Add(patCacheDuration),
+	if s.patFillHook != nil {
+		s.patFillHook()
 	}
-	s.cacheMux.Unlock()
 
-	// Periodically cleanup expired cache entries (1% chance on each call)
-	if time.Now().UnixNano()%100 == 0 {
-		go s.cleanupExpiredPATCache()
-	}
+	s.storePAT(cacheKey, claims, token.ExpiresAt, gen)
 
 	return claims, nil
-}
-
-func (s *Service) cleanupExpiredPATCache() {
-	s.cacheMux.Lock()
-	defer s.cacheMux.Unlock()
-
-	now := time.Now()
-	for token, cached := range s.patCache {
-		if now.After(cached.expiresAt) {
-			delete(s.patCache, token)
-		}
-	}
 }
 
 // GetUserInfo returns information about the current user.
@@ -2083,12 +2073,7 @@ func (s *Service) RevokeToken(ctx context.Context, userUID, tokenUID string) err
 		return ErrTokenNotFound
 	}
 
-	// Invalidate cache if it's a PAT
 	if token.Type == models.TokenTypePAT {
-		s.cacheMux.Lock()
-		delete(s.patCache, token.TokenHash)
-		s.cacheMux.Unlock()
-
 		// A PAT revoke should also tear down OAuth-issued MCP refresh grants for
 		// the user, matching the spec's "revocation on logout/PAT-revoke".
 		s.revokeUserTokensOfType(ctx, userUID, models.TokenTypeOAuthRefresh)
@@ -2096,6 +2081,14 @@ func (s *Service) RevokeToken(ctx context.Context, userUID, tokenUID string) err
 
 	if _, err = s.db.DeleteUserToken(ctx, tokenUID); err != nil {
 		return err
+	}
+
+	// Evict only once the row is gone: a lookup racing this revocation then
+	// either reads no row, or is refused the insert by the generation bump.
+	// The other replicas evict on the broadcast; this one never waits for it.
+	if token.Type == models.TokenTypePAT {
+		s.evictPAT(token.TokenHash)
+		s.broadcastPATRevoked(ctx, token.TokenHash)
 	}
 
 	if token.OrganizationUID != nil {
