@@ -63,7 +63,7 @@ func DispatchCommand(ctx context.Context, svc *Service, cmd *Command) (*MessageR
 // out and showing the user an error even though the check was actually
 // created. So the handler ACKs immediately (ephemeral) and finishes the real
 // work in a detached goroutine, reporting the outcome — success or failure,
-// never a silent drop — via cmd.ResponseURL (postResponseURL), Slack's
+// never a silent drop — via cmd.ResponseURL (postResponseURLWith), Slack's
 // documented mechanism for answering after the initial window.
 func (h *Handler) handleCheckCommand(ctx context.Context, cmd *Command) (*MessageResponse, error) {
 	text := strings.TrimSpace(cmd.Text)
@@ -91,6 +91,15 @@ func (h *Handler) handleCheckCommand(ctx context.Context, cmd *Command) (*Messag
 		// rather than silently dropping it. Loses the ACK-budget protection,
 		// but that only matters when the fast path above is unavailable.
 		slog.WarnContext(ctx, "/solidping check invoked with no response_url; falling back to synchronous handling",
+			"team_id", cmd.TeamID)
+
+		return h.createCheckAndReply(ctx, cmd, normalizedURL, parsedURL), nil
+	}
+
+	if !isSlackResponseURL(cmd.ResponseURL) {
+		// A response_url outside hooks.slack.com never comes from Slack: answer
+		// synchronously, like a missing one, and make no outbound call to it.
+		slog.WarnContext(ctx, "/solidping check invoked with a non-Slack response_url; answering synchronously",
 			"team_id", cmd.TeamID)
 
 		return h.createCheckAndReply(ctx, cmd, normalizedURL, parsedURL), nil
@@ -140,7 +149,7 @@ func (h *Handler) finishCheckCommandAsync(
 
 	resp := h.createCheckAndReply(ctx, cmd, normalizedURL, parsedURL)
 
-	if err := postResponseURL(ctx, cmd.ResponseURL, resp); err != nil {
+	if err := postResponseURLWith(ctx, h.responseClient(), cmd.ResponseURL, resp); err != nil {
 		slog.ErrorContext(ctx, "Failed to post /solidping check follow-up to response_url",
 			"team_id", cmd.TeamID, "channel_id", cmd.ChannelID, "error", err)
 	}

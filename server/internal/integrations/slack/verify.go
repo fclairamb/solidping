@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -22,49 +23,72 @@ const (
 	SlackTimestampHeader = "X-Slack-Request-Timestamp"
 	// SignatureVersion is the version prefix for Slack signatures.
 	SignatureVersion = "v0"
-	// MaxTimestampAge is the maximum age of a request timestamp (5 minutes).
+	// MaxTimestampAge is the maximum age of a request timestamp (5 minutes),
+	// in seconds. It bounds both directions: a timestamp that far in the
+	// past or in the future is rejected.
 	MaxTimestampAge = 5 * 60
+
+	// maxSlackBody caps how much of an inbound body is read before its
+	// signature is checked. Slack payloads are a few KB at most; the cap
+	// matches Discord's maxInteractionBody.
+	maxSlackBody = 1 << 20
 )
 
-// VerifyMiddleware creates a middleware that verifies Slack request signatures.
+// VerifyMiddleware verifies Slack's HMAC-SHA256 request signature.
+//
+// It does NOT fall through when no signing secret is configured. The three
+// HTTP endpoints it guards (events, slash commands, interactions) read and
+// change monitoring data on behalf of whichever workspace the payload names:
+// list checks and incidents, create and delete checks, acknowledge and
+// escalate incidents. A `team_id` is not a secret, so an unverified endpoint
+// lets any caller on the internet act as any linked workspace, and a slash
+// command's caller-supplied response_url turns it into an outbound request
+// primitive.
+//
+// So a missing signing secret means "reject everything", not "trust
+// everything". Socket Mode installs are unaffected: their events arrive over
+// the WebSocket opened with the xapp- token and are dispatched without going
+// through this middleware, and Slack never calls the HTTP Request URLs of an
+// app that has Socket Mode turned on.
 func (h *Handler) VerifyMiddleware(next httpx.HandlerFunc) httpx.HandlerFunc {
 	return func(writer http.ResponseWriter, req *http.Request) error {
-		// Get the signing secret from config
-		signingSecret := h.cfg.Slack.SigningSecret
-		if signingSecret == "" {
-			// If no signing secret is configured, skip verification
-			return next(writer, req)
+		signingSecret := ""
+		if h.cfg != nil {
+			signingSecret = h.cfg.Slack.SigningSecret
 		}
 
-		// Get timestamp from header
+		if signingSecret == "" {
+			return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized,
+				"Slack signature verification is not configured")
+		}
+
 		timestamp := req.Header.Get(SlackTimestampHeader)
 		if timestamp == "" {
 			return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized,
 				"Missing Slack timestamp header")
 		}
 
-		// Validate timestamp is not too old (prevent replay attacks)
-		timestampInt, err := strconv.ParseInt(timestamp, 10, 64)
-		if err != nil {
+		if !timestampFresh(timestamp, time.Now()) {
 			return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized,
-				"Invalid timestamp format")
+				"Request timestamp is invalid or too old")
 		}
 
-		if time.Now().Unix()-timestampInt > MaxTimestampAge {
-			return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized,
-				"Request timestamp too old")
-		}
-
-		// Get signature from header
 		signature := req.Header.Get(SlackSignatureHeader)
 		if signature == "" {
 			return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized,
 				"Missing Slack signature header")
 		}
 
-		// Read body
-		body, err := io.ReadAll(req.Body)
+		// Cap the body before reading it: the signature is only checked
+		// once the whole body is in memory.
+		body, err := io.ReadAll(http.MaxBytesReader(writer, req.Body, maxSlackBody))
 		if err != nil {
+			var maxBytesErr *http.MaxBytesError
+			if errors.As(err, &maxBytesErr) {
+				return h.WriteError(writer, http.StatusRequestEntityTooLarge, base.ErrorCodeValidationError,
+					"Request body too large")
+			}
+
 			return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError,
 				"Failed to read request body")
 		}
@@ -72,7 +96,6 @@ func (h *Handler) VerifyMiddleware(next httpx.HandlerFunc) httpx.HandlerFunc {
 		// Restore body for downstream handlers
 		req.Body = io.NopCloser(bytes.NewReader(body))
 
-		// Verify signature
 		if !verifySignature(signingSecret, timestamp, body, signature) {
 			return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized,
 				"Invalid Slack signature")
@@ -80,6 +103,22 @@ func (h *Handler) VerifyMiddleware(next httpx.HandlerFunc) httpx.HandlerFunc {
 
 		return next(writer, req)
 	}
+}
+
+// timestampFresh reports whether the signed timestamp is a plausible, recent
+// Unix second count. A timestamp far in the FUTURE is rejected too: it would
+// otherwise let a captured request stay replayable indefinitely.
+func timestampFresh(timestamp string, now time.Time) bool {
+	seconds, err := strconv.ParseInt(timestamp, 10, 64)
+	if err != nil {
+		return false
+	}
+
+	// Compared on both sides rather than through an absolute value: negating
+	// the most negative int64 overflows back to itself.
+	age := now.Unix() - seconds
+
+	return age >= -MaxTimestampAge && age <= MaxTimestampAge
 }
 
 // verifySignature computes and verifies the Slack request signature.

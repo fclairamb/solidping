@@ -61,6 +61,19 @@ type Handler struct {
 	// built via NewHandler (the real app_mention path) never sets this, so
 	// that transport's behavior is unchanged.
 	respond func(msg *MessageResponse) error
+
+	// responseURLClient, when set, replaces responseURLHTTPClient for the
+	// /solidping check follow-up. Tests inject a recording transport here.
+	responseURLClient *http.Client
+}
+
+// responseClient returns the client used to post to a response_url.
+func (h *Handler) responseClient() *http.Client {
+	if h.responseURLClient != nil {
+		return h.responseURLClient
+	}
+
+	return responseURLHTTPClient
 }
 
 // NewHandler creates a new Slack handler.

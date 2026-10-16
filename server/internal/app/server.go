@@ -2221,7 +2221,16 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	slackIntegration.GET("/install", slackHandler.Install)
 	slackIntegration.GET("/oauth", slackHandler.OAuthCallback)
 	slackIntegration.GET("/socket/status", slackHandler.GetSocketStatus)
-	// Apply signature verification middleware to Slack webhooks
+	// Apply signature verification middleware to Slack webhooks. It fails
+	// closed: with no signing secret every request gets a 401. Socket Mode
+	// never goes through these routes, so only an HTTP-mode install is hurt.
+	// The secret is read at boot (the system-parameter overlay runs once), so
+	// setting it later from Server settings needs a restart.
+	if s.config.Slack.Enabled && !s.config.Slack.SocketModeEnabled && s.config.Slack.SigningSecret == "" {
+		slog.WarnContext(ctx, "Slack HTTP endpoints will reject every request: no signing secret is set. "+
+			"Set SP_SLACK_SIGNING_SECRET (or slack.signing_secret) and restart, or use Socket Mode")
+	}
+
 	slackIntegration.POST("/events", slackHandler.VerifyMiddleware(slackHandler.HandleEvents))
 	slackIntegration.POST("/command", slackHandler.VerifyMiddleware(slackHandler.HandleCommand))
 	slackIntegration.POST("/interaction", slackHandler.VerifyMiddleware(slackHandler.HandleInteraction))

@@ -3,7 +3,6 @@ package slack
 import (
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -160,30 +159,31 @@ func TestSolidpingCommand_CheckWithNoResponseURLFallsBackSynchronously(t *testin
 	}
 }
 
-// responseURLRecorder starts an httptest server standing in for Slack's
-// response_url and hands back every posted MessageResponse over a channel,
-// so a test can block on the async follow-up without polling or a fixed
-// sleep. Slack's real response_url needs no auth — this fake doesn't check
-// for any, matching production.
-func responseURLRecorder(t *testing.T) (string, chan *MessageResponse) {
+// responseURLRecorder stands in for Slack's response_url: it returns a
+// hooks.slack.com URL and a client whose transport decodes every posted
+// MessageResponse and hands it back over a channel (no network), so a test
+// can block on the async follow-up without polling or a fixed sleep. Slack's
+// real response_url needs no auth — this fake doesn't check for any,
+// matching production.
+func responseURLRecorder(t *testing.T) (string, chan *MessageResponse, *http.Client) {
 	t.Helper()
 
 	received := make(chan *MessageResponse, 4)
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	transport := roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		var msg MessageResponse
-		if err := json.NewDecoder(req.Body).Decode(&msg); err != nil {
-			w.WriteHeader(http.StatusBadRequest)
 
-			return
+		status := http.StatusOK
+		if json.NewDecoder(req.Body).Decode(&msg) == nil {
+			received <- &msg
+		} else {
+			status = http.StatusBadRequest
 		}
 
-		received <- &msg
-		w.WriteHeader(http.StatusOK)
-	}))
-	t.Cleanup(server.Close)
+		return stubResponse(req, status), nil
+	})
 
-	return server.URL, received
+	return "https://hooks.slack.com/commands/T0/1/x", received, newResponseURLClient(transport)
 }
 
 // TestSolidpingCommand_CheckAsyncFollowUp is the coordinator-flagged
@@ -200,7 +200,8 @@ func TestSolidpingCommand_CheckAsyncFollowUp(t *testing.T) {
 		r := require.New(t)
 
 		h, svc, org := solidpingSetup(t)
-		responseURL, received := responseURLRecorder(t)
+		responseURL, received, client := responseURLRecorder(t)
+		h.responseURLClient = client
 
 		cmd := solidpingCmd("check https://example.com")
 		cmd.ResponseURL = responseURL
@@ -238,9 +239,8 @@ func TestSolidpingCommand_CheckAsyncFollowUp(t *testing.T) {
 		// GetConnectionByTeamID.
 		_, svc := setupSlackService(t)
 		svc.checksService = checks.NewService(svc.db, nil, nil, nil)
-		h := &Handler{svc: svc}
-
-		responseURL, received := responseURLRecorder(t)
+		responseURL, received, client := responseURLRecorder(t)
+		h := &Handler{svc: svc, responseURLClient: client}
 
 		cmd := solidpingCmd("check https://example.com")
 		cmd.ResponseURL = responseURL
