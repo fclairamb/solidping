@@ -91,6 +91,10 @@ func testService(t *testing.T, svc db.Service) {
 		testStatusPageSubscribers(ctx, t, svc)
 	})
 
+	t.Run("StatusPageResourceSectionScope", func(t *testing.T) {
+		testStatusPageResourceSectionScope(ctx, t, svc)
+	})
+
 	t.Run("EscalationPolicyByUID", func(t *testing.T) {
 		testEscalationPolicyByUID(ctx, t, svc)
 	})
@@ -2144,6 +2148,67 @@ func testUserStateEntries(ctx context.Context, t *testing.T, svc db.Service) {
 func strPtr(s string) *string { return &s }
 
 //nolint:maintidx // exercises the full subscriber lifecycle against both backends
+// testStatusPageResourceSectionScope pins that a component write addressed
+// through a section it does not live in matches nothing: resource UIDs are
+// public on the status page, so the section predicate is the tenancy gate.
+func testStatusPageResourceSectionScope(ctx context.Context, t *testing.T, svc db.Service) {
+	t.Helper()
+
+	r := require.New(t)
+
+	org := models.NewOrganization("res-scope-org", "")
+	r.NoError(svc.CreateOrganization(ctx, org))
+
+	check := models.NewCheck(org.UID, "res-scope-check", "http")
+	r.NoError(svc.CreateCheck(ctx, check))
+
+	page := models.NewStatusPage(org.UID, "Scope Page", "res-scope-page")
+	r.NoError(svc.CreateStatusPage(ctx, page))
+
+	home := models.NewStatusPageSection(page.UID, "Home", "home", 1)
+	r.NoError(svc.CreateStatusPageSection(ctx, home))
+
+	other := models.NewStatusPageSection(page.UID, "Other", "other", 2)
+	r.NoError(svc.CreateStatusPageSection(ctx, other))
+
+	resource := models.NewStatusPageResource(home.UID, check.UID, 1)
+	r.NoError(svc.CreateStatusPageResource(ctx, resource))
+
+	foreignName := "hijacked"
+	foreignPos := 9
+
+	err := svc.UpdateStatusPageResource(ctx, other.UID, resource.UID,
+		&models.StatusPageResourceUpdate{PublicName: &foreignName, Position: &foreignPos})
+	r.ErrorIs(err, sql.ErrNoRows, "update through the wrong section must match nothing")
+
+	r.ErrorIs(svc.DeleteStatusPageResource(ctx, other.UID, resource.UID), sql.ErrNoRows,
+		"delete through the wrong section must match nothing")
+
+	untouched, err := svc.GetStatusPageResource(ctx, home.UID, resource.UID)
+	r.NoError(err)
+	r.Nil(untouched.PublicName)
+	r.Equal(1, untouched.Position)
+
+	// Positive control: the right section writes.
+	name := "Public API"
+	r.NoError(svc.UpdateStatusPageResource(ctx, home.UID, resource.UID,
+		&models.StatusPageResourceUpdate{PublicName: &name}))
+
+	updated, err := svc.GetStatusPageResource(ctx, home.UID, resource.UID)
+	r.NoError(err)
+	r.NotNil(updated.PublicName)
+	r.Equal(name, *updated.PublicName)
+
+	r.NoError(svc.DeleteStatusPageResource(ctx, home.UID, resource.UID))
+
+	remaining, err := svc.ListStatusPageResources(ctx, home.UID)
+	r.NoError(err)
+	r.Empty(remaining)
+
+	// A second delete of the gone row reports it, it does not silently pass.
+	r.ErrorIs(svc.DeleteStatusPageResource(ctx, home.UID, resource.UID), sql.ErrNoRows)
+}
+
 func testStatusPageSubscribers(ctx context.Context, t *testing.T, svc db.Service) {
 	t.Helper()
 
