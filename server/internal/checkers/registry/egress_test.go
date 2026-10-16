@@ -128,3 +128,46 @@ func TestCheckTypesRefuseLoopbackTargetsUnderAnEnforcingPolicy(t *testing.T) {
 		})
 	}
 }
+
+// A MySQL password injecting its own `@tcp(<loopback>)/` used to consume the
+// one-shot DSN rewrite to the guarded network, so the real dial went out on a
+// plain net.Dialer with no refusal recorded (spec 2026-10-16-04). The guard
+// must still refuse the loopback target; the permissive run is the control.
+func TestMySQLCraftedPasswordCannotShedTheEgressGuard(t *testing.T) {
+	t.Parallel()
+
+	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = ln.Close() })
+
+	go func() {
+		for {
+			conn, acceptErr := ln.Accept()
+			if acceptErr != nil {
+				return
+			}
+
+			_ = conn.Close()
+		}
+	}()
+
+	host, portStr, err := net.SplitHostPort(ln.Addr().String())
+	require.NoError(t, err)
+	port, err := strconv.Atoi(portStr)
+	require.NoError(t, err)
+
+	cfgMap := map[string]any{
+		"host":     host,
+		"port":     port,
+		"username": "u",
+		"password": "X@tcp(" + ln.Addr().String() + ")/e",
+		"timeout":  "2s",
+	}
+
+	denied, text := runRegistered(t, egress.New(false), checkerdef.CheckTypeMySQL, cfgMap)
+	require.NotNil(t, denied, "a crafted password must not shed the guard, got %s", text)
+
+	allowed, text := runRegistered(t, egress.New(true), checkerdef.CheckTypeMySQL, cfgMap)
+	require.Nil(t, allowed, "a permissive guard must not refuse, got %s", text)
+	require.NotContains(t, text, "denied by egress policy")
+}

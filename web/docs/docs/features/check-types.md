@@ -714,6 +714,8 @@ mysql://user:password@hostname:3306/database
 | Query | Optional test query | `SELECT 1` |
 | Timeout | Connection timeout | `10s` |
 
+The username, password and database name must not contain any of `@ / ( ) ? & :` (a `${env:NAME}` or `${param:KEY}` reference is fine). Use a dedicated monitoring account whose password avoids them. The check never lets the server read local files (`LOAD DATA LOCAL INFILE` is always off).
+
 ### MongoDB {#mongodb}
 
 Monitor MongoDB connectivity using the ping command.
