@@ -261,6 +261,7 @@ import { SecretKeyValueRows } from "@/components/ui/secret-key-value-rows";
 import { UptimeStrip } from "@/components/ui/uptime-strip";
 import { AvailabilityStrip } from "@/components/ui/availability-strip";
 import { useIsDarkTheme } from "@/hooks/use-is-dark-theme";
+import { TwoFactorChallenge } from "@/components/shared/two-factor-challenge";
 import { OAuthProviderButtons } from "@/components/auth/oauth-provider-buttons";
 import { useDebounce } from "@/lib/use-debounce";
 import { cn, slugify } from "@/lib/utils";
@@ -306,6 +307,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "live-dot", label: "Live & pulse dots" },
   { id: "forms", label: "Forms" },
   { id: "oauth-provider-buttons", label: "OAuth provider buttons" },
+  { id: "two-factor-challenge", label: "Two-factor challenge" },
   { id: "data-display", label: "Data display" },
   { id: "responsive-table", label: "Responsive table" },
   { id: "list-surface", label: "List surface" },
@@ -368,6 +370,7 @@ function DesignReferencePage() {
       <LiveDotSection />
       <FormsSection />
       <OAuthProviderButtonsSection />
+      <TwoFactorChallengeSection />
       <DataDisplaySection />
       <ResponsiveTableSection />
       <ListSurfaceSection />
@@ -4011,6 +4014,38 @@ function OAuthProviderButtonsSection() {
         </div>
         <CodeSnippet
           code={`import { OAuthProviderButtons } from "@/components/auth/oauth-provider-buttons";\n\nconst { data: providersData } = useProviders();\n\n<OAuthProviderButtons\n  org={org}\n  providers={providersData?.providers}\n  disabled={register.isPending}\n  testIdPrefix="register"\n/>`}
+        />
+      </div>
+    </Section>
+  );
+}
+
+function TwoFactorChallengeSection() {
+  return (
+    <Section
+      id="two-factor-challenge"
+      title="Two-factor challenge"
+      description="The code step of a sign-in for a user with TOTP enabled: a 6-digit authenticator code, or a recovery code. Shared by the password login page and the federated-login handoff route (/auth/complete), so both ask the same way. It submits through AuthContext's verify2FA / useRecoveryCode, maps the attempt throttle's 429 to a translated message, and hands every other failure to onError. The caller renders the error and decides where to land."
+    >
+      <div className="grid gap-3 rounded-md border bg-card p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:items-start">
+        {/* Capture-phase stopPropagation keeps the catalog inert: a submit here
+            would otherwise send a fake temp token to the API. */}
+        <div
+          className="min-w-0 max-w-sm"
+          onSubmitCapture={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+        >
+          <TwoFactorChallenge
+            tempToken="design-reference"
+            onVerified={() => {}}
+            onError={() => {}}
+            onBack={() => {}}
+          />
+        </div>
+        <CodeSnippet
+          code={`import { TwoFactorChallenge } from "@/components/shared/two-factor-challenge";\n\n<TwoFactorChallenge\n  tempToken={challenge.tempToken}\n  onAttempt={() => setError(null)}\n  onVerified={(result) => land(result)}\n  onError={(err, message) => setError(message ?? describe(err))}\n  onBack={() => navigate({ to: "/login" })}\n/>`}
         />
       </div>
     </Section>

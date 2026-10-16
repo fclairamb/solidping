@@ -16,6 +16,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Logo } from "@/components/ui/logo";
 import { AuthSplitLayout } from "@/components/layout/auth-split-layout";
+import { TwoFactorChallenge } from "@/components/shared/two-factor-challenge";
 import {
   AlertCircle,
   KeyRound,
@@ -118,12 +119,8 @@ function LoginPage() {
     isAuthenticated,
     isLoading: authLoading,
     user,
-    verify2FA,
     applyLoginResponse,
   } = auth;
-  // Rename to skip the react-hooks/rules-of-hooks linter — auth.useRecoveryCode
-  // is a service method, not a React hook, but its name triggers the rule.
-  const submitRecoveryCode = auth.useRecoveryCode;
   const { data: versionData } = useVersion();
   const deploymentMode = useDeploymentMode();
   const runMode = useRunMode();
@@ -142,8 +139,6 @@ function LoginPage() {
   const [availableOrgs, setAvailableOrgs] = useState<OrganizationSummary[]>([]);
   const [showOrgPicker, setShowOrgPicker] = useState(false);
   const [twoFAState, setTwoFAState] = useState<{ tempToken: string } | null>(null);
-  const [twoFACode, setTwoFACode] = useState("");
-  const [showRecovery, setShowRecovery] = useState(false);
   // @simplewebauthn/browser owns one shared abort signal for every WebAuthn
   // ceremony. Prevent a late background conditional-UI ceremony from starting
   // after a click and aborting that user-initiated ceremony.
@@ -488,34 +483,6 @@ function LoginPage() {
     }
   };
 
-  const handle2FAVerify = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!twoFAState) return;
-    setError(null);
-    setIsLoading(true);
-    try {
-      const result = showRecovery
-        ? await submitRecoveryCode(twoFAState.tempToken, twoFACode)
-        : await verify2FA(twoFAState.tempToken, twoFACode);
-      setTwoFACode("");
-      setTwoFAState(null);
-      routeResult(result);
-    } catch (err) {
-      // The per-user attempt throttle (spec
-      // 2026-09-25-29-totp-attempt-throttle) answers with a 429 whose body is
-      // accurate but always in English. The user already proved their
-      // password at this point, so give them a translated, actionable reason
-      // to wait instead of falling through to reportError's raw API string.
-      if (err instanceof ApiError && err.status === 429) {
-        setError(t("twoFactor.tooManyAttempts"));
-      } else {
-        reportError(err);
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const handlePasskeyLogin = async () => {
     explicitPasskeyLoginStarted.current = true;
     setError(null);
@@ -686,65 +653,16 @@ function LoginPage() {
           )}
 
           {twoFAState ? (
-            <form onSubmit={handle2FAVerify} className="space-y-4">
-              <p className="text-sm text-muted-foreground text-center">
-                {showRecovery ? t("twoFactor.recoveryPrompt") : t("twoFactor.codePrompt")}
-              </p>
-              <div className="space-y-2">
-                <Label htmlFor={showRecovery ? "2fa-login-recovery-code" : "2fa-login-code"}>
-                  {showRecovery ? t("twoFactor.recoveryLabel") : t("twoFactor.codeLabel")}
-                </Label>
-                <Input
-                  id={showRecovery ? "2fa-login-recovery-code" : "2fa-login-code"}
-                  data-testid={showRecovery ? "2fa-login-recovery-code" : "2fa-login-code"}
-                  inputMode={showRecovery ? "text" : "numeric"}
-                  maxLength={showRecovery ? 32 : 6}
-                  value={twoFACode}
-                  onChange={(e) =>
-                    setTwoFACode(
-                      showRecovery ? e.target.value : e.target.value.replace(/\D/g, ""),
-                    )
-                  }
-                  required
-                  autoFocus
-                  className="font-mono"
-                />
-              </div>
-              <Button
-                type="submit"
-                className="w-full"
-                disabled={isLoading || (!showRecovery && twoFACode.length !== 6)}
-                data-testid="2fa-login-verify"
-              >
-                {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                {t("twoFactor.verify")}
-              </Button>
-              <div className="flex justify-between text-sm">
-                <button
-                  type="button"
-                  className="text-muted-foreground hover:underline"
-                  data-testid="2fa-login-back"
-                  onClick={() => {
-                    setTwoFAState(null);
-                    setTwoFACode("");
-                    setShowRecovery(false);
-                  }}
-                >
-                  {t("twoFactor.back")}
-                </button>
-                <button
-                  type="button"
-                  className="text-muted-foreground hover:underline"
-                  data-testid="2fa-login-recovery-link"
-                  onClick={() => {
-                    setShowRecovery((v) => !v);
-                    setTwoFACode("");
-                  }}
-                >
-                  {showRecovery ? t("twoFactor.useCode") : t("twoFactor.useRecovery")}
-                </button>
-              </div>
-            </form>
+            <TwoFactorChallenge
+              tempToken={twoFAState.tempToken}
+              onAttempt={() => setError(null)}
+              onVerified={(result) => {
+                setTwoFAState(null);
+                routeResult(result);
+              }}
+              onError={(err, message) => (message ? setError(message) : reportError(err))}
+              onBack={() => setTwoFAState(null)}
+            />
           ) : showOrgPicker ? (
             <div className="space-y-3" data-testid="org-picker">
               <p className="text-sm text-muted-foreground text-center">
