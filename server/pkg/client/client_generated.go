@@ -1621,6 +1621,8 @@ const (
 	ErrorCodeINVALIDCREDENTIALS      ErrorCode = "INVALID_CREDENTIALS"
 	ErrorCodeINVALIDORG              ErrorCode = "INVALID_ORG"
 	ErrorCodeINVALIDTOKEN            ErrorCode = "INVALID_TOKEN"
+	ErrorCodeINVITEEMAILMISMATCH     ErrorCode = "INVITE_EMAIL_MISMATCH"
+	ErrorCodeINVITELOGINREQUIRED     ErrorCode = "INVITE_LOGIN_REQUIRED"
 	ErrorCodeNOTFOUND                ErrorCode = "NOT_FOUND"
 	ErrorCodeNOTOKEN                 ErrorCode = "NO_TOKEN"
 	ErrorCodeORGANIZATIONNOTFOUND    ErrorCode = "ORGANIZATION_NOT_FOUND"
@@ -1648,6 +1650,10 @@ func (e ErrorCode) Valid() bool {
 	case ErrorCodeINVALIDORG:
 		return true
 	case ErrorCodeINVALIDTOKEN:
+		return true
+	case ErrorCodeINVITEEMAILMISMATCH:
+		return true
+	case ErrorCodeINVITELOGINREQUIRED:
 		return true
 	case ErrorCodeNOTFOUND:
 		return true
@@ -10576,12 +10582,28 @@ type ClientInterface interface {
 
 	// AcceptInviteWithBody Accept an invitation
 	//
+	// Optionally authenticated. An invitation for an email that has no
+	// account yet is accepted anonymously, with a `password` (at least 8
+	// characters) for the new account. An invitation for an existing account
+	// must be accepted by that account, signed in: anonymously the answer is
+	// 401 `INVITE_LOGIN_REQUIRED`, and from any other signed-in account it is
+	// 403 `INVITE_EMAIL_MISMATCH`. A credential that is presented but invalid
+	// gets 401, never an anonymous fallback. Refused under impersonation.
+	//
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with POST /api/v1/auth/accept-invite (the `AcceptInvite` operationId).
 	AcceptInviteWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// AcceptInvite Accept an invitation
+	//
+	// Optionally authenticated. An invitation for an email that has no
+	// account yet is accepted anonymously, with a `password` (at least 8
+	// characters) for the new account. An invitation for an existing account
+	// must be accepted by that account, signed in: anonymously the answer is
+	// 401 `INVITE_LOGIN_REQUIRED`, and from any other signed-in account it is
+	// 403 `INVITE_EMAIL_MISMATCH`. A credential that is presented but invalid
+	// gets 401, never an anonymous fallback. Refused under impersonation.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -13628,6 +13650,14 @@ func (c *Client) GetVersion(ctx context.Context, reqEditors ...RequestEditorFn) 
 
 // AcceptInviteWithBody Accept an invitation
 //
+// Optionally authenticated. An invitation for an email that has no
+// account yet is accepted anonymously, with a `password` (at least 8
+// characters) for the new account. An invitation for an existing account
+// must be accepted by that account, signed in: anonymously the answer is
+// 401 `INVITE_LOGIN_REQUIRED`, and from any other signed-in account it is
+// 403 `INVITE_EMAIL_MISMATCH`. A credential that is presented but invalid
+// gets 401, never an anonymous fallback. Refused under impersonation.
+//
 // Takes any type of body and a specified content type.
 //
 // Corresponds with POST /api/v1/auth/accept-invite (the `AcceptInvite` operationId).
@@ -13644,6 +13674,14 @@ func (c *Client) AcceptInviteWithBody(ctx context.Context, contentType string, b
 }
 
 // AcceptInvite Accept an invitation
+//
+// Optionally authenticated. An invitation for an email that has no
+// account yet is accepted anonymously, with a `password` (at least 8
+// characters) for the new account. An invitation for an existing account
+// must be accepted by that account, signed in: anonymously the answer is
+// 401 `INVITE_LOGIN_REQUIRED`, and from any other signed-in account it is
+// 403 `INVITE_EMAIL_MISMATCH`. A credential that is presented but invalid
+// gets 401, never an anonymous fallback. Refused under impersonation.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -35645,12 +35683,28 @@ type ClientWithResponsesInterface interface {
 
 	// AcceptInviteWithBodyWithResponse Accept an invitation
 	//
+	// Optionally authenticated. An invitation for an email that has no
+	// account yet is accepted anonymously, with a `password` (at least 8
+	// characters) for the new account. An invitation for an existing account
+	// must be accepted by that account, signed in: anonymously the answer is
+	// 401 `INVITE_LOGIN_REQUIRED`, and from any other signed-in account it is
+	// 403 `INVITE_EMAIL_MISMATCH`. A credential that is presented but invalid
+	// gets 401, never an anonymous fallback. Refused under impersonation.
+	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/auth/accept-invite (the `AcceptInvite` operationId).
 	AcceptInviteWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AcceptInviteResult, error)
 
 	// AcceptInviteWithResponse Accept an invitation
+	//
+	// Optionally authenticated. An invitation for an email that has no
+	// account yet is accepted anonymously, with a `password` (at least 8
+	// characters) for the new account. An invitation for an existing account
+	// must be accepted by that account, signed in: anonymously the answer is
+	// 401 `INVITE_LOGIN_REQUIRED`, and from any other signed-in account it is
+	// 403 `INVITE_EMAIL_MISMATCH`. A credential that is presented but invalid
+	// gets 401, never an anonymous fallback. Refused under impersonation.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -39249,6 +39303,10 @@ type AcceptInviteResult struct {
 	JSON200 *LoginResponse
 	// JSON400 the response for an HTTP 400 `application/json` response
 	JSON400 *ValidationError
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
 	// JSON404 the response for an HTTP 404 `application/json` response
 	JSON404 *NotFound
 }
@@ -39261,6 +39319,16 @@ func (r AcceptInviteResult) GetJSON200() *LoginResponse {
 // GetJSON400 returns the response for an HTTP 400 `application/json` response
 func (r AcceptInviteResult) GetJSON400() *ValidationError {
 	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r AcceptInviteResult) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r AcceptInviteResult) GetJSON403() *Error {
+	return r.JSON403
 }
 
 // GetJSON404 returns the response for an HTTP 404 `application/json` response
@@ -56039,6 +56107,14 @@ func (c *ClientWithResponses) GetVersionWithResponse(ctx context.Context, reqEdi
 
 // AcceptInviteWithBodyWithResponse Accept an invitation
 //
+// Optionally authenticated. An invitation for an email that has no
+// account yet is accepted anonymously, with a `password` (at least 8
+// characters) for the new account. An invitation for an existing account
+// must be accepted by that account, signed in: anonymously the answer is
+// 401 `INVITE_LOGIN_REQUIRED`, and from any other signed-in account it is
+// 403 `INVITE_EMAIL_MISMATCH`. A credential that is presented but invalid
+// gets 401, never an anonymous fallback. Refused under impersonation.
+//
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/v1/auth/accept-invite (the `AcceptInvite` operationId).
@@ -56051,6 +56127,14 @@ func (c *ClientWithResponses) AcceptInviteWithBodyWithResponse(ctx context.Conte
 }
 
 // AcceptInviteWithResponse Accept an invitation
+//
+// Optionally authenticated. An invitation for an email that has no
+// account yet is accepted anonymously, with a `password` (at least 8
+// characters) for the new account. An invitation for an existing account
+// must be accepted by that account, signed in: anonymously the answer is
+// 401 `INVITE_LOGIN_REQUIRED`, and from any other signed-in account it is
+// 403 `INVITE_EMAIL_MISMATCH`. A credential that is presented but invalid
+// gets 401, never an anonymous fallback. Refused under impersonation.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -61933,6 +62017,20 @@ func ParseAcceptInviteResult(rsp *http.Response) (*AcceptInviteResult, error) {
 			return nil, err
 		}
 		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
 		var dest NotFound

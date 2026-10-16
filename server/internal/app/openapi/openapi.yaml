@@ -1227,7 +1227,18 @@ paths:
     post:
       tags: [Authentication]
       summary: Accept an invitation
+      description: |
+        Optionally authenticated. An invitation for an email that has no
+        account yet is accepted anonymously, with a `password` (at least 8
+        characters) for the new account. An invitation for an existing account
+        must be accepted by that account, signed in: anonymously the answer is
+        401 `INVITE_LOGIN_REQUIRED`, and from any other signed-in account it is
+        403 `INVITE_EMAIL_MISMATCH`. A credential that is presented but invalid
+        gets 401, never an anonymous fallback. Refused under impersonation.
       operationId: acceptInvite
+      security:
+        - {}
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -1243,6 +1254,22 @@ paths:
                 $ref: "#/components/schemas/LoginResponse"
         "400":
           $ref: "#/components/responses/ValidationError"
+        "401":
+          description: >-
+            `INVITE_LOGIN_REQUIRED`: the invitation is for an existing account,
+            sign in as it to accept. Or the presented credential is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: >-
+            `INVITE_EMAIL_MISMATCH`: the signed-in account is not the invitee.
+            `IMPERSONATION_FORBIDDEN` under impersonation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -9935,6 +9962,8 @@ components:
             - INVALID_ORG
             - INVALID_CREDENTIALS
             - CHECK_HAS_ACTIVE_INCIDENTS
+            - INVITE_LOGIN_REQUIRED
+            - INVITE_EMAIL_MISMATCH
         detail:
           type: string
           description: Detailed error explanation

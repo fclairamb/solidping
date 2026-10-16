@@ -42,7 +42,10 @@ Reset password using a reset token.
 Get invitation details by token (used to pre-fill the accept-invite form).
 
 ### POST /api/v1/auth/accept-invite
-Accept an organization invitation. Creates the user if needed and returns access token.
+Accept an organization invitation and return a session. Auth: optional.
+- No account for the invited email: anonymous, with a `password` (at least 8 characters); the account is created.
+- Existing account: must be signed in as that account. Anonymous gets 401 `INVITE_LOGIN_REQUIRED`; another signed-in account gets 403 `INVITE_EMAIL_MISMATCH` (spec 2026-10-16-06).
+- A presented but invalid credential gets 401 (no anonymous fallback). Refused under impersonation (403 `IMPERSONATION_FORBIDDEN`).
 
 ### POST /api/v1/auth/2fa/verify
 Verify a 2FA code during login (when login returns a 2FA challenge).
