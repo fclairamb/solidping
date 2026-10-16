@@ -127,6 +127,12 @@ Who can trigger it:
    - Hide refused types from `GET /discovery/types`, or list them with `available: false` and a reason the UI can show?
    - Recommended: hide them. The dash0 picker and source filter are already built from that list.
 
+## Resolved open questions
+Decided 2026-10-16 (all recommendations accepted):
+1. Refuse `lan` whenever the process egress guard is enforcing; keep the per-IP check in the engine as defense in depth. Self-hosted default unchanged.
+2. Gate `container` with the docker-check rule (SaaS and not an agent node), and dial `tcp://` through the guard when it is enforcing.
+3. Hide refused types from `GET /discovery/types`.
+
 ## Related
 - **M2, cross-org half (2026-10-11).** `KubernetesDefinition.BuildJob` ignores the org (`scantypes/kubernetes.go:41`), and `ResolveClientsetByUID` takes the org from the connection row (`integrations/kubernetes/client.go:86-109`). So anyone who knows another org's cluster UID can scan that cluster.
 - **D6 (2026-10-14).** The `freebox_line` check resolves a foreign Freebox connection by its bare UID (`app/server.go:4627-4647`).
