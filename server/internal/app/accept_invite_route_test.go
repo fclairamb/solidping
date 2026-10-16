@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -71,6 +72,63 @@ func TestAcceptInviteRouteAuthentication(t *testing.T) {
 		r.Equal(http.StatusUnauthorized, status)
 		r.Equal(string(base.ErrorCodeInvalidToken), body["code"])
 		r.NotContains(body, "accessToken")
+	})
+
+	t.Run("a stale cookie alone gets 401 and is expired", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+		env := newImpersonationEnv(t, false)
+
+		token := env.inviteIntoOrgB("newcomer@acme.com")
+		body := `{"token":"` + token + `","name":"N","password":"newcomer-secret-1"}`
+
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodPost,
+			env.ts.URL+acceptInvitePath, strings.NewReader(body))
+		r.NoError(err)
+		req.Header.Set("Content-Type", "application/json")
+		req.AddCookie(&http.Cookie{Name: "access_token", Value: "stale-jwt"})
+
+		resp, err := env.ts.Client().Do(req)
+		r.NoError(err)
+		_ = resp.Body.Close()
+		r.Equal(http.StatusUnauthorized, resp.StatusCode)
+
+		var cleared bool
+		for _, c := range resp.Cookies() {
+			if c.Name == "access_token" && c.MaxAge < 0 {
+				cleared = true
+			}
+		}
+		r.True(cleared, "the stale cookie must be expired in the 401")
+
+		// The anonymous retry the dashboard then makes succeeds.
+		status, out := env.do(http.MethodPost, acceptInvitePath, "", body)
+		r.Equal(http.StatusOK, status)
+		r.NotEmpty(out["accessToken"])
+	})
+
+	t.Run("a valid cookie is not expired", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+		env := newImpersonationEnv(t, false)
+
+		token := env.inviteIntoOrgB(env.member.Email)
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodPost,
+			env.ts.URL+acceptInvitePath, strings.NewReader(`{"token":"`+token+`"}`))
+		r.NoError(err)
+		req.Header.Set("Content-Type", "application/json")
+		req.AddCookie(&http.Cookie{Name: "access_token", Value: env.memberToken})
+
+		resp, err := env.ts.Client().Do(req)
+		r.NoError(err)
+		_ = resp.Body.Close()
+		r.Equal(http.StatusOK, resp.StatusCode)
+
+		for _, c := range resp.Cookies() {
+			if c.Name == "access_token" {
+				r.Positive(c.MaxAge, "a valid session cookie must be renewed, never expired")
+			}
+		}
 	})
 
 	t.Run("anonymous on an existing account gets INVITE_LOGIN_REQUIRED", func(t *testing.T) {
