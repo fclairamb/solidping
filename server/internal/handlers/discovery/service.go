@@ -92,10 +92,10 @@ func NewService(
 	_, isPostgres := bunDB.Dialect().(*pgdialect.Dialect)
 
 	return &Service{
-		db:         bunDB,
-		dbSvc:      dbSvc,
-		checksSvc:  checksSvc,
-		jobSvc:     jobSvc,
+		db:            bunDB,
+		dbSvc:         dbSvc,
+		checksSvc:     checksSvc,
+		jobSvc:        jobSvc,
 		creds:         creds,
 		isPostgres:    isPostgres,
 		egressGuard:   egressGuard,

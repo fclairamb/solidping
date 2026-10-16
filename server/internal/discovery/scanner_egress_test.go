@@ -163,4 +163,3 @@ func TestListContainersObeysEgressGuard(t *testing.T) {
 		r.Positive(requests.Load())
 	})
 }
-

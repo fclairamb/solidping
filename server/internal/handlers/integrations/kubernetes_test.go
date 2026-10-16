@@ -1,8 +1,11 @@
 package integrations_test
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -15,9 +18,11 @@ import (
 	"k8s.io/client-go/rest"
 	k8stesting "k8s.io/client-go/testing"
 
+	"github.com/fclairamb/solidping/server/internal/app/services"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
+	"github.com/fclairamb/solidping/server/internal/egress"
 	"github.com/fclairamb/solidping/server/internal/handlers/integrations"
 	integrationk8s "github.com/fclairamb/solidping/server/internal/integrations/kubernetes"
 )
@@ -347,4 +352,62 @@ func TestTestKubernetesConnectionRejectsStoredExecKubeconfig(t *testing.T) {
 
 	_, statErr := os.Stat(marker)
 	r.ErrorIs(statErr, os.ErrNotExist, "the exec plugin must never run")
+}
+
+// The connection test dials the API server through the process egress guard:
+// with the registry guard enforcing, a loopback API server is refused with
+// the policy's own message and receives no request. A permissive registry
+// guard is the control: the real clientset reaches /version.
+//
+//nolint:paralleltest // needs the real package-level clientset factory, which other tests swap.
+func TestTestKubernetesConnectionObeysEgressGuard(t *testing.T) {
+	var requests atomic.Int64
+
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"major":"1","minor":"31","gitVersion":"v1.31.0"}`))
+	}))
+	t.Cleanup(apiServer.Close)
+
+	ctx := t.Context()
+	r := require.New(t)
+
+	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(dbSvc.Initialize(ctx))
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	creds, err := credentials.NewService(nil, nil) // plaintext fallback
+	r.NoError(err)
+
+	org := models.NewOrganization("k8s-egress", "K8s Egress Org")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	settings := &models.KubernetesSettings{APIServer: apiServer.URL}
+	m, err := settings.ToJSONMap()
+	r.NoError(err)
+	m["token"] = "tok"
+
+	conn := models.NewIntegration(org.UID, models.ConnectionTypeKubernetes, "Loopback")
+	conn.Settings = m
+	r.NoError(dbSvc.CreateChannel(ctx, conn))
+
+	enforcing := integrations.NewService(dbSvc, creds, &services.Registry{EgressGuard: egress.New(false)}, nil)
+
+	result, err := enforcing.TestIntegration(ctx, org.Slug, conn.UID)
+	r.NoError(err)
+	r.False(result.Success)
+	r.Contains(result.Error, egress.ErrDenied.Error())
+	r.Contains(result.Error, egress.EnvAllowPrivate)
+	r.NotContains(result.Error, "connection refused")
+	r.Zero(requests.Load(), "the private API server must receive no request")
+
+	permissive := integrations.NewService(dbSvc, creds, &services.Registry{EgressGuard: egress.New(true)}, nil)
+
+	result, err = permissive.TestIntegration(ctx, org.Slug, conn.UID)
+	r.NoError(err)
+	r.True(result.Success, result.Error)
+	r.Contains(result.Detail, "v1.31.0")
+	r.Positive(requests.Load())
 }
