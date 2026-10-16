@@ -4752,6 +4752,78 @@ func (s *Service) SetStateEntryIfNotExists(
 	return rowsAffected > 0, nil
 }
 
+// BumpGlobalCounter atomically counts one attempt against the global counter
+// at key (spec 2026-10-16-13).
+//
+// SQLite: the service runs on ONE connection (SetMaxOpenConns(1)), so this
+// transaction holds the only connection from its read to its commit and no
+// other statement can interleave — the same guarantee AdmitFixedWindows uses.
+func (s *Service) BumpGlobalCounter(
+	ctx context.Context, key string, limit int, ttl time.Duration,
+) (bool, error) {
+	limited := false
+
+	err := s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+
+		now := time.Now()
+
+		var live []*models.StateEntry
+		if err := tx.NewSelect().Model(&live).
+			Where("organization_uid IS NULL").
+			Where("key = ?", key).
+			Where("deleted_at IS NULL").
+			Where("(expires_at IS NULL OR expires_at > datetime('now'))").
+			Scan(ctx); err != nil {
+			return fmt.Errorf("read counter %q: %w", key, err)
+		}
+
+		count := 0
+		for _, entry := range live {
+			count = max(count, models.CounterValue(entry))
+		}
+
+		if count >= limit {
+			limited = true
+
+			return nil
+		}
+
+		value := models.NewCounterValue(count + 1)
+		expiresAt := now.Add(ttl)
+
+		res, err := tx.NewUpdate().Model((*models.StateEntry)(nil)).
+			Where("organization_uid IS NULL").
+			Where("key = ?", key).
+			Set("value = ?", value).
+			Set("expires_at = ?", expiresAt).
+			Set("updated_at = ?", now).
+			Set("deleted_at = NULL").
+			Exec(ctx)
+		if err != nil {
+			return fmt.Errorf("bump counter %q: %w", key, err)
+		}
+
+		if rows, _ := res.RowsAffected(); rows > 0 {
+			return nil
+		}
+
+		entry := models.NewStateEntry(nil, key)
+		entry.Value = value
+		entry.ExpiresAt = &expiresAt
+
+		if _, err := tx.NewInsert().Model(entry).Exec(ctx); err != nil {
+			return fmt.Errorf("seed counter %q: %w", key, err)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return false, err
+	}
+
+	return limited, nil
+}
+
 // AdmitFixedWindows atomically counts one event against every window, or
 // against none (spec 2026-09-25-34, "Capture now").
 //

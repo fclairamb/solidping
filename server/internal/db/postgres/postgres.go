@@ -26,6 +26,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
 	"github.com/fclairamb/solidping/server/internal/db"
+	"github.com/fclairamb/solidping/server/internal/db/dblock"
 	"github.com/fclairamb/solidping/server/internal/db/migrationguard"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/postgres/embeddedpg"
@@ -4787,6 +4788,84 @@ func (s *Service) SetStateEntryIfNotExists(
 	rowsAffected, _ := res.RowsAffected()
 
 	return rowsAffected > 0, nil
+}
+
+// BumpGlobalCounter atomically counts one attempt against the global counter
+// at key (spec 2026-10-16-13).
+//
+// Postgres: the global rows have a NULL organization_uid, so the
+// unique (organization_uid, key) constraint never fires for them and a
+// SELECT … FOR UPDATE cannot lock a row that does not exist yet. The
+// increment is therefore serialized per key with a transaction advisory lock
+// (two-int4 form, class dblock.ClassGlobalCounter), released at commit.
+func (s *Service) BumpGlobalCounter(
+	ctx context.Context, key string, limit int, ttl time.Duration,
+) (bool, error) {
+	limited := false
+
+	err := s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if _, err := tx.NewRaw("SELECT pg_advisory_xact_lock(?, hashtext(?))",
+			dblock.ClassGlobalCounter, key).Exec(ctx); err != nil {
+			return fmt.Errorf("lock counter %q: %w", key, err)
+		}
+
+		now := time.Now()
+
+		var live []*models.StateEntry
+		if err := tx.NewSelect().Model(&live).
+			Where("organization_uid IS NULL").
+			Where("key = ?", key).
+			Where("deleted_at IS NULL").
+			Where("(expires_at IS NULL OR expires_at > ?)", now).
+			Scan(ctx); err != nil {
+			return fmt.Errorf("read counter %q: %w", key, err)
+		}
+
+		count := 0
+		for _, entry := range live {
+			count = max(count, models.CounterValue(entry))
+		}
+
+		if count >= limit {
+			limited = true
+
+			return nil
+		}
+
+		value := models.NewCounterValue(count + 1)
+		expiresAt := now.Add(ttl)
+
+		res, err := tx.NewUpdate().Model((*models.StateEntry)(nil)).
+			Where("organization_uid IS NULL").
+			Where("key = ?", key).
+			Set("value = ?", value).
+			Set("expires_at = ?", expiresAt).
+			Set("updated_at = ?", now).
+			Set("deleted_at = NULL").
+			Exec(ctx)
+		if err != nil {
+			return fmt.Errorf("bump counter %q: %w", key, err)
+		}
+
+		if rows, _ := res.RowsAffected(); rows > 0 {
+			return nil
+		}
+
+		entry := models.NewStateEntry(nil, key)
+		entry.Value = value
+		entry.ExpiresAt = &expiresAt
+
+		if _, err := tx.NewInsert().Model(entry).Exec(ctx); err != nil {
+			return fmt.Errorf("seed counter %q: %w", key, err)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return false, err
+	}
+
+	return limited, nil
 }
 
 // AdmitFixedWindows atomically counts one event against every window, or

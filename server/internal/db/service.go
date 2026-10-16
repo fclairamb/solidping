@@ -1004,6 +1004,15 @@ type Service interface {
 	AdmitFixedWindows(
 		ctx context.Context, orgUID string, windows []models.FixedWindow, now time.Time,
 	) (refused int, retryAfter time.Duration, err error)
+	// BumpGlobalCounter ATOMICALLY counts one attempt against the global
+	// (organization_uid IS NULL) counter at key: limited=true, and no write,
+	// when the live count is already >= limit; otherwise count+1 with
+	// expires_at = now+ttl (a sliding window). Concurrent callers on the same
+	// key are serialized (Postgres: a per-key transaction advisory lock;
+	// SQLite: its single connection), so a burst never spends less than one
+	// unit per call. Duplicate rows left by older code are tolerated: the
+	// largest live count wins and every row is rewritten.
+	BumpGlobalCounter(ctx context.Context, key string, limit int, ttl time.Duration) (limited bool, err error)
 	// SetStateEntryIfNotExists creates entry only if key doesn't exist.
 	// Returns (created, error) where created is true if entry was created.
 	SetStateEntryIfNotExists(

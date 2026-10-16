@@ -42,7 +42,7 @@ import (
 // the wire format silently.
 const (
 	stateValueKeyUserUID = "userUid"
-	stateValueKeyCount   = "count"
+	stateValueKeyCount   = models.CounterValueKey
 )
 
 // emailJobConfig mirrors the JSON shape of jobtypes.EmailJobConfig. We
@@ -3016,51 +3016,15 @@ func (s *Service) providerLabelList(providers []*models.UserProvider) string {
 	}
 }
 
-// counterValue extracts the integer value from a state entry that holds
-// a {"count": N} payload. JSON marshaling promotes ints to float64 so we
-// accept both shapes; anything else is treated as zero.
-func counterValue(entry *models.StateEntry) int {
-	if entry == nil || entry.Value == nil {
-		return 0
-	}
-
-	switch raw := (*entry.Value)[stateValueKeyCount].(type) {
-	case float64:
-		return int(raw)
-	case int:
-		return raw
-	case int64:
-		return int(raw)
-	default:
-		return 0
-	}
-}
-
-// bumpCounter loads / increments / persists a counter at the given state
-// key, scoped to the supplied TTL. Reports whether the count was already
-// at or above the limit (in which case no bump happens).
+// bumpCounter atomically counts one attempt against the global counter at
+// key, on a sliding TTL. Reports whether the count was already at or above
+// the limit (in which case no bump happens). Concurrent callers on the same
+// key are serialized by the database (spec 2026-10-16-13), so a burst of N
+// parallel attempts spends N units of the budget, never one.
 func (s *Service) bumpCounter(
 	ctx context.Context, key string, limit int, ttl time.Duration,
 ) (bool, error) {
-	current, err := s.db.GetStateEntry(ctx, nil, key)
-	if err != nil {
-		return false, err
-	}
-
-	count := counterValue(current)
-
-	if count >= limit {
-		return true, nil
-	}
-
-	count++
-	value := &models.JSONMap{stateValueKeyCount: count}
-	scopedTTL := ttl
-	if err := s.db.SetStateEntry(ctx, nil, key, value, &scopedTTL); err != nil {
-		return false, err
-	}
-
-	return false, nil
+	return s.db.BumpGlobalCounter(ctx, key, limit, ttl)
 }
 
 // bumpResetUserCounter increments (or seeds) the per-user reset counter
