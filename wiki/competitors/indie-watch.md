@@ -22,6 +22,43 @@ community demand.
 
 ## Refresh log
 
+### 2026-10-15 — competition scan (52 sources since=41d, GitHub, pricing pages)
+
+First full scan since 2026-09-05. New entrants are logged above (Uptimy under
+"Tracked closely", the rest at the bottom). SaaS pricing changes are in
+[comparison/pricing.md](comparison/pricing.md). Open-source release deltas:
+
+| Project | Then → now | What matters |
+|---|---|---|
+| Uptime Kuma | 2.5.3, 90.5k★ → 2.5.6, 92.5k★ | **SFTP** monitor (2.5.4): 13 → 14 types |
+| Gatus | v5.34 → v5.37.0, 11.7k★ → 12.3k★ | DNS TXT, Zulip topics. Three releases in nine months |
+| Kuvasz | 4.2.0, 571★ → 4.5.0, 639★ | Docker monitors, outbound proxy, self-connectivity check |
+| Peekaping | 0.0.46, 1,165★ → same, 1,200★ | no commit since 2026-05-24 |
+| Checkmate | v3.10 → v3.12.0, ~10k★ → 10.9k★ | outbound proxy, domain expiry, Docker monitor with logs |
+| Kener | v4.1.6 → v4.1.7 | fixes only |
+| Tianji | → v1.33.9, 3.1k★ | 32 releases, one about monitoring; drifting to AI gateway + analytics |
+| OneUptime | 14.0.14 → 14.0.59 (45 releases in 11 days), 7.7k★ | **importers** for 6 monitoring tools + 5 on-call tools; NTP, VMware, Wi-Fi; still 1-min floor (#2937 open) |
+| OpenStatus | 8k+★ → 9.2k★ | ICMP + gRPC, OAuth MCP, **Helm chart**, incident management with a Slack agent drafting postmortems |
+| Beszel | → v0.21.0, 26.2k★ | agents run ICMP/TCP/HTTP/DNS probes (v0.20.0) |
+| Healthchecks | v4.1 → v4.4 | nothing on our axes |
+| Temps | 563★ → 845★ | rebuilt as an MCP server, Temps Cloud hosted offer |
+
+What it changes for SolidPing:
+
+- **Importers are no longer ours to claim.** OneUptime imports from six tools,
+  OpenStatus from four. Our Gatus importer is the only unique one. See
+  [comparison/features.md](comparison/features.md#migration-importers-added-2026-08-01).
+- **MCP is table stakes on both sides**: five SaaS pricing pages, plus
+  OpenStatus (OAuth, incident tools), Kuvasz and Temps. Feature list, not pitch.
+- **AI incident work is the new pricing-page item** (Better Stack, Hyperping,
+  Checkly, Pulsetic, OpenStatus's postmortem drafts). SolidPing has
+  AI-authored checks but no answer on incident analysis.
+- **The 10 s floor still holds, the gap narrowed**: UptimeRobot 15 s (Scale,
+  €77), Checkly 10 s (Team, $64). OneUptime still 1 min, OpenStatus 30 s.
+- **Every new check type this window already exists in SolidPing** (SFTP,
+  Docker, NTP, gRPC, ICMP). Breadth is 43 vs Kuma's 14.
+- **Slowing down**: Peekaping (dead), Gatus (slow), Tianji (leaving uptime).
+
 ### 2026-08-23 — routine poll (52 sources, since=11d)
 
 Thin on entrants, useful on facts. No net-new competitor: everything the scorer
@@ -133,6 +170,14 @@ still growing. The 2026-07-26 condition for acting on this was "if the gap holds
 for ~a month"; six days is not that. `track: true` retained, still not used in
 copy — a solo maintainer's quiet stretch is not a shutdown. Re-check next poll.
 
+**Re-verified 2026-10-15 — stalled five months.** Still 0.0.46, last commit
+still 2026-05-24 (a robots.txt change), not archived, 93 open issues, stars
+**1,200**. Community PRs from 2026-07-23 (#287, #288) sit unmerged. The
+"gap holds for a month" condition from 2026-07-26 is met three times over. Its
+users are a migration pool; SolidPing has no Peekaping importer, so the honest
+on-ramp is "recreate your checks", or YAML apply for anyone with more than a
+handful.
+
 ### Kuvasz — https://kuvasz-uptime.dev  ·  github.com/kuvasz-uptime/kuvasz
 Self-hosted OSS uptime **and SSL** monitor, Kotlin, AGPL-3.0, **571★** / 37 forks,
 created 2020-07 and still shipping (v4.0.1 2026-06-17, v4.1.0 2026-07-14,
@@ -185,6 +230,19 @@ Prometheus) and the Home Assistant integration.
 the MCP server leaving experimental. Surfaced 2026-07-28 via @selfhosted_bot
 Mastodon repost (bot-announced → intel, not a lead). v4.2.0 surfaced 2026-08-13
 via @KuvaszUptime's own Mastodon post on techhub.social.
+
+**2026-10-15: 4.2.0 → 4.5.0, 571★ → 639★.** 4.3.0 (08-31) Teams, Apprise and
+Pushover, testable from the UI, API and MCP server. 4.4.0 (09-15) monitor
+categories for status pages and maintenance windows. 4.5.0 (10-14) **Docker
+monitors** (7th type, remote daemons over mTLS), Slack bot, **HTTP/SOCKS5
+outbound proxy** for HTTP and TCP checks, incident timelines on status pages, and
+a **connectivity check that pauses all checks when the host loses its own
+network**: the single-node answer to false alarms, chosen instead of remote
+probes. So the structural gap above holds (still 43 types vs 7, still one
+vantage point). Kuvasz is now ahead on two small things: a per-check outbound
+proxy (SolidPing only honours a process-wide `HTTP_PROXY` via
+`http.ProxyFromEnvironment` in `checkerdef/httptransport.go`) and
+self-connectivity suppression.
 
 ### URLGuardian — https://urlguardian.app
 Native **macOS desktop app** for uptime monitoring: "Real-time uptime monitoring,
@@ -403,6 +461,45 @@ is fishing in the same Kuma migration pool. `track: true`.
 consensus, after Vigilmon (06-28), UptimeMonitoring.com (07-21) and UpWatch
 (07-27). The claim is settled commodity copy.*
 
+### Uptimy Agent — https://www.upti.my  ·  github.com/uptimy/agent  (added 2026-10-15)
+OSS agent (Apache-2.0, Go) of the Uptimy SaaS. Repo created 2026-10-01,
+**36★ / 1 fork after two weeks** (GitHub API, 2026-10-15). README tagline: "Self-hosted
+uptime monitoring in one binary [...] An Uptime Kuma alternative."
+
+**The closest architectural match to SolidPing found since Larm**, and closer on
+the self-hosted side:
+
+- One static Go binary, embedded pure-Go SQLite, distroless image (9 MB). Claims
+  8 MiB idle and 25 MiB with 350 monitors.
+- Hybrid model: Uptimy Cloud checks "from every continent", the open-source agent
+  checks "from inside your cluster or network, where outside checks can't reach".
+  That is SolidPing's "agents inside your network" pitch, nearly word for word.
+- Checks: HTTP(S) with keyword assertions, Postgres, MySQL, Redis (real logins and
+  queries), ping, TCP, DNS, TLS expiry, Kubernetes workloads (Deployment /
+  StatefulSet / DaemonSet ready replicas), heartbeats with cron expressions, and
+  Kubernetes CronJobs watched with no ping at all (the agent reads the Jobs).
+- Status page on `/status` or its own domain, incidents, maintenance windows,
+  README badges, API tokens, alerts through Shoutrrr (30+ services) plus PagerDuty.
+- **Distribution done right on day one**: one-click Railway template, Helm chart
+  signed with cosign and released with the agent, monitors as YAML (file,
+  ConfigMap or env var), "label a service and it's monitored" in Kubernetes.
+- **Uptime Kuma importer** (monitors and notifications). The SaaS site carries
+  Better Stack / UptimeRobot / Uptime Kuma / Pingdom "alternative" pages: the same
+  comparison-page SEO play as solidping.io/compare.
+
+**Where SolidPing still wins, on facts:** breadth (10 check types vs 43),
+multi-region quorum in the self-hosted product (Uptimy's multi-region is the paid
+cloud; the agent is one vantage point), on-call and escalation, browser and JS
+checks, MCP server, importers for four tools vs one.
+
+**Where Uptimy is ahead:** Kubernetes ergonomics (label-to-monitor discovery,
+CronJob monitoring without a ping, monitors in `values.yaml`), a Railway
+one-click template (SolidPing has Helm, Coolify, CasaOS and Fly, no Railway),
+and a much smaller idle footprint claim.
+
+`track: true` — same lane, same pitch, same Kuma migration pool, and a team that
+ships packaging first. Re-check stars and releases on each scan.
+
 ### New self-hosted entrants (added 2026-07-12)
 Surfaced during the 2026-07-12 refresh via "Uptime Kuma alternative" roundups and
 self-hosted discovery. Early — verify traction before treating as head-to-head.
@@ -426,9 +523,16 @@ self-hosted discovery. Early — verify traction before treating as head-to-head
 Logged for awareness — server-stats tools, APM suites, cron-only niches, hackathon
 projects, content-farm SEO, and paid templates. Not head-to-head rivals.
 
-- **Beszel** (beszel.dev, OSS MIT) — lightweight server-stats (CPU/mem/net/Docker),
-  not uptime/synthetic. A *complement* to SolidPing, not a substitute — say so in
-  any thread that recommends it.
+- **Beszel** (beszel.dev, OSS MIT, 26,203★ on 2026-10-15) — lightweight
+  server-stats (CPU/mem/net/Docker). A *complement* to SolidPing, not a
+  substitute — say so in any thread that recommends it. **Overlap started
+  2026-09-19:** v0.20.0 ([#2266](https://github.com/henrygd/beszel/pull/2266))
+  lets every host agent run ICMP/TCP/HTTP/DNS "network probes" against any
+  target, collected on the hub; v0.21.0 (2026-10-02) adds TLS expiry on HTTPS
+  probes, a custom DNS server and cross-system comparison. No quorum, status
+  pages or on-call, so still not a substitute, but "no functional overlap" is no
+  longer true. Distributed probing from many hosts now costs a 26k★ project one
+  release.
 - **Komari** (github.com/komari-monitor/komari) — OSS server-stats (agent +
   dashboard), same class as Beszel/Netdata. No functional overlap. Surfaced 2026-05-08.
 - **Moneat** (moneat.io, Kotlin, 82★) — self-hosted "drop-in for Sentry + Datadog,"
@@ -609,3 +713,47 @@ Tindra (07-28) and Larm — is analysed in `positioning.md` under *Axis 6
 candidate*, where it is **rejected as an axis for SolidPing** (any EU vendor
 writes the same sentence next week) and kept as demand signal for jurisdiction
 control, which self-hosting answers as a superset.
+
+### New entrants, 2026-10-15 scan (all `track: false`)
+Found by the 41-day listening poll (HN) and a GitHub search for repos created
+since 2026-07-15. None changes a SolidPing axis; logged so the names resolve.
+
+- **Fajita** — https://fajita.io · github.com/fajita-io/fajita, TypeScript,
+  AGPL-3.0, **81★ / 17 forks**, created 2026-07-16. Open-core: self-host or
+  Fajita Cloud. Website, API (assertions), SSL and cron/heartbeat monitoring,
+  incidents, status pages, maintenance windows, team workspaces with audit
+  history. Its headline is "verify before alert" (re-check a failure before
+  opening an incident), which is commodity by now. **Self-hosting requires a
+  Clerk application** (a third-party auth SaaS), so it is not self-contained.
+  Closest to `track: true` of this batch; revisit if it passes ~300★.
+- **FlatPing** — https://flatping.darsena.app · SaaS, Show HN-style post
+  [49828665](https://news.ycombinator.com/item?id=49828665) (2026-09-24, 1 pt).
+  **€3/month or €24/year flat**: 50 monitors at 1 min, heartbeats, unlimited
+  status pages on your own domain, 12-month history. Free: 1 monitor at 10 min
+  (the homepage says "5 sites free"; the pricing page says 1). Publishes a
+  comparison table against UptimeRobot and Statuspage. A new floor for what a
+  hosted 1-minute plan costs; relevant to pricing, not to features.
+- **Pingtastic** — https://www.pingtastic.net · SaaS for agencies, white-label
+  client portals, uptime + SSL + heartbeat. From $29/month. Show HN
+  [49710478](https://news.ycombinator.com/item?id=49710478) (2026-09-15, 1 pt).
+- **Doyouok** — https://doyouok.com · SaaS cron / dead man's switch for cron,
+  Windows Task Scheduler and n8n / Make / Zapier workflows. Free 5 checks. Site in
+  EN / ZH / JA / KO. HN [49796714](https://news.ycombinator.com/item?id=49796714)
+  (2026-09-22).
+- **Sigabrt.dev** — https://sigabrt.dev · SaaS cron heartbeat with an
+  experimental read-only SSH TUI (`ssh sigabrt.dev`). One job free. Show HN
+  [49765354](https://news.ycombinator.com/item?id=49765354) (2026-09-19, 11
+  comments, the most discussed launch of the batch).
+- **monitor-probe/monitor** — github.com/monitor-probe/monitor, Rust, 336★,
+  created 2026-08-27. Chinese-language lightweight server probe (agent + axum +
+  SQLite). The Nezha / Komari server-metrics category, not uptime monitoring.
+- One-liners, all under 65★: **Uptime Guard** (CalmRay-Solutions, uptime on
+  Cloudflare Workers), **nabiz** (status page on one Cloudflare Worker),
+  **Lantern** (homelab Docker-socket status dashboard), **gotcha** (self-hosted
+  observability with an uptime module), **Watchly** (Python, HTTP/ping/DNS),
+  **Nightbell** (Android app, checks run on the phone: the URLGuardian
+  structural non-competitor again).
+
+Pattern: four of the six HN launches in 41 days are cron/heartbeat SaaS. That is
+still the cheapest thing to build in this space (see the Didit.run note in the
+marketing registry), and nobody new shipped breadth.
