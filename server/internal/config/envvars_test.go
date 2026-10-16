@@ -612,7 +612,10 @@ func TestWorkerPoolEnvBinds(t *testing.T) {
 		{name: "unset", wantCheck: 25, wantJob: 2, wantFetch: 5 * time.Minute},
 		{name: "values", check: "8", job: "4", fetch: "2m", wantCheck: 8, wantJob: 4, wantFetch: 2 * time.Minute},
 		{name: "zero disables", check: "0", job: "0", wantCheck: 0, wantJob: 0, wantFetch: 5 * time.Minute},
-		{name: "invalid keeps default", check: "abc", job: "abc", fetch: "bogus", wantCheck: 25, wantJob: 2, wantFetch: 5 * time.Minute},
+		{
+			name: "invalid keeps default", check: "abc", job: "abc", fetch: "bogus",
+			wantCheck: 25, wantJob: 2, wantFetch: 5 * time.Minute,
+		},
 	}
 
 	for _, tt := range tests {
@@ -629,4 +632,23 @@ func TestWorkerPoolEnvBinds(t *testing.T) {
 			r.Equal(tt.wantFetch, cfg.Server.CheckWorker.FetchMaxAhead)
 		})
 	}
+}
+
+// TestWorkerPoolYAMLKeys proves the nesting documented in the configuration
+// page (server.job_worker.nb / server.check_worker.nb) loads.
+//
+//nolint:paralleltest // t.Chdir changes the process working directory
+func TestWorkerPoolYAMLKeys(t *testing.T) {
+	r := require.New(t)
+
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	yamlDoc := "server:\n  job_worker:\n    nb: 4\n  check_worker:\n    nb: 8\n"
+	r.NoError(os.WriteFile(filepath.Join(dir, "config.yml"), []byte(yamlDoc), 0o600))
+
+	cfg, err := Load()
+	r.NoError(err)
+	r.Equal(8, cfg.Server.CheckWorker.Nb)
+	r.Equal(4, cfg.Server.JobWorker.Nb)
 }

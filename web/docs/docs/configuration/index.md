@@ -307,7 +307,7 @@ nothing and the dashboard loads no analytics code whatsoever.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SP_POSTHOG_PROJECT_API_KEY` | - | Public `phc_…` PostHog browser key. Empty = analytics entirely off |
-| `SP_POSTHOG_HOST` | `https://eu.i.posthog.com` | PostHog ingestion endpoint |
+| `SP_POSTHOG_HOST` | – (first-party proxy) | PostHog ingestion endpoint. Empty: the dashboard captures through the built-in first-party proxy, which forwards to `https://eu.i.posthog.com` |
 | `SP_POSTHOG_PERSONAL_API_KEY` | - | Optional server-side key (stored as a secret, never sent to the browser) |
 | `SP_POSTHOG_ENABLED` | `true` | Kill switch — never enables anything on its own |
 

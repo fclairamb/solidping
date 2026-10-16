@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 
@@ -236,10 +237,6 @@ func manualReaderServerEnvVars() []string {
 		"SP_ENCRYPTION_MASTER_KEY",
 		"SP_ENCRYPTION_MASTER_KEY_FILE",
 		"SP_ENCRYPTION_AUTO_MIGRATE",
-		// applyWorkerPoolEnv
-		"SP_SERVER_CHECK_WORKER_NB",
-		"SP_SERVER_JOB_WORKER_NB",
-		"SP_SERVER_CHECK_WORKER_FETCH_MAX_AHEAD",
 		// applySchedulingEnv
 		"SP_SCHEDULING_SLOW_THRESHOLD_MS",
 		"SP_SCHEDULING_CHECK_TIMEOUT_MS",
@@ -252,7 +249,18 @@ func manualReaderServerEnvVars() []string {
 		"SP_SCHEDULING_FAST_LANE_RESERVED",
 		"SP_SCHEDULING_BULK_LANE_MAX",
 		"SP_SCHEDULING_BULK_SLICE_BUDGET_MS",
-	}, manualReaderACMEEnvVars()...)
+	}, append(manualReaderWorkerPoolEnvVars(), manualReaderACMEEnvVars()...)...)
+}
+
+// manualReaderWorkerPoolEnvVars lists the names applyWorkerPoolEnv reads: the
+// pool sizes have a snake_case path segment (check_worker), so koanf's env
+// loader cannot reach them.
+func manualReaderWorkerPoolEnvVars() []string {
+	return []string{
+		"SP_SERVER_CHECK_WORKER_NB",
+		"SP_SERVER_JOB_WORKER_NB",
+		"SP_SERVER_CHECK_WORKER_FETCH_MAX_AHEAD",
+	}
 }
 
 // manualReaderPlatformEnvVars covers the helpers that configure the process
@@ -335,6 +343,26 @@ func manualReaderPlatformEnvVars() []string {
 	out = append(out, telegramNames...)
 	out = append(out, EnvEntitlementsTelegramRunaway)
 	out = append(out, smsNames...)
+
+	return out
+}
+
+// DefaultsByEnvVar returns, for every koanf-reachable setting, the SP_* name
+// that binds it and the string form of its value in cfg (durations print as
+// time.Duration.String). Settings that only a manual reader binds are absent.
+// It exists so a test can compare documented defaults with the code.
+func DefaultsByEnvVar(cfg *Config) map[string]string {
+	tree := koanf.New(".")
+	// The in-memory structs provider cannot fail in practice.
+	_ = tree.Load(structs.Provider(cfg, "koanf"), nil)
+
+	out := make(map[string]string)
+
+	for path, value := range tree.All() {
+		if name, ok := envNameForKoanfPath(path); ok {
+			out[name] = fmt.Sprint(value)
+		}
+	}
 
 	return out
 }

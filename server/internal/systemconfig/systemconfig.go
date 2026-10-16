@@ -1728,13 +1728,13 @@ func EffectiveEmailConfig(
 // applyIntParam sets dst from a JSON number (float64), an int, or a numeric
 // string (the raw env value the overlay passes). Anything else leaves dst alone.
 func applyIntParam(dst *int, value any) {
-	switch v := value.(type) {
+	switch val := value.(type) {
 	case float64:
-		*dst = int(v)
+		*dst = int(val)
 	case int:
-		*dst = v
+		*dst = val
 	case string:
-		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
+		if n, err := strconv.Atoi(strings.TrimSpace(val)); err == nil {
 			*dst = n
 		}
 	}

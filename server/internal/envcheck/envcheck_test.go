@@ -167,3 +167,16 @@ func TestSuggestAgainstFullRegistry(t *testing.T) {
 		suggest("SP_RATE_LIMITING_TRUSTED_PROXIES", known))
 	r.Equal("SP_LOG_LEVEL", suggest("SP_LOG_LEVL", known))
 }
+
+// TestCheckEnvironWorkerPoolNamesBind: the worker-pool names bind since
+// applyWorkerPoolEnv, so none of them warns.
+func TestCheckEnvironWorkerPoolNamesBind(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	r.Empty(checkEnviron([]string{
+		"SP_SERVER_CHECK_WORKER_FETCH_MAX_AHEAD=2m",
+		"SP_SERVER_CHECK_WORKER_NB=8",
+		"SP_SERVER_JOB_WORKER_NB=4",
+	}))
+}
