@@ -61,7 +61,7 @@ func TestWorkerLifecycleNoGoroutineLeak(t *testing.T) {
 	cancel()
 
 	select {
-	case <-runDone:
+	case <-runDone: //nolint:errcheck // exit error irrelevant here
 		// Run returned; WaitGroup drained. goleak (deferred) now verifies no
 		// worker goroutine outlived the cancel.
 	case <-time.After(3 * time.Second):
