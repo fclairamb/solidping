@@ -9,10 +9,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
+
+	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
@@ -29,7 +33,30 @@ const (
 	microsoftOAuthStatePrefix = "oauth_state:microsoft:"
 	microsoftOAuthStateTTL    = 10 * time.Minute
 	microsoftUserURL          = "https://graph.microsoft.com/v1.0/me"
+
+	// microsoftClaimEmailVerified is Entra's "email domain owner verified"
+	// optional ID-token claim. It is emitted only once the app registration
+	// adds it (Token configuration → optional claims → ID token).
+	microsoftClaimEmailVerified = "xms_edov"
 )
+
+// microsoftMultiTenantAliases are the tenant values that admit users of any
+// Entra tenant (and/or personal accounts) rather than a single directory.
+var microsoftMultiTenantAliases = map[string]bool{
+	"common":        true,
+	"organizations": true,
+	"consumers":     true,
+}
+
+// microsoftIDTokenClaims is the subset of the Entra ID token this connector
+// reads to decide whether the sign-in email may be trusted.
+type microsoftIDTokenClaims struct {
+	OID   string
+	TID   string
+	Email string
+	// EmailVerified is true only when xms_edov is the JSON boolean true.
+	EmailVerified bool
+}
 
 // MicrosoftUserInfo represents user info from Microsoft Graph /me endpoint.
 type MicrosoftUserInfo struct {
@@ -47,6 +74,7 @@ type MicrosoftTokenResponse struct {
 	TokenType   string `json:"token_type"`
 	Scope       string `json:"scope"`
 	ExpiresIn   int    `json:"expires_in"`
+	IDToken     string `json:"id_token,omitempty"`
 	Error       string `json:"error,omitempty"`
 	ErrorDesc   string `json:"error_description,omitempty"`
 }
@@ -157,21 +185,36 @@ func (s *MicrosoftOAuthService) HandleCallback(
 		return nil, fmt.Errorf("%w: failed to fetch user info: %w", ErrMicrosoftAPI, err)
 	}
 
-	// Get email: prefer mail, fallback to userPrincipalName.
-	//
-	// KNOWN LIMITATION (tracked separately, deliberately not fixed here): when
-	// Graph returns an empty `mail`, the UPN we fall back to is often the
-	// tenant's *.onmicrosoft.com form (alice@contoso.onmicrosoft.com) rather
-	// than the address the person actually uses (alice@contoso.com). Because
-	// findOrCreateUser links accounts by email, that mints a SECOND local user
-	// instead of linking the existing one — and, being a different domain, it
-	// is also the address the org's registration.email_pattern is matched
-	// against. Fixing it means resolving the real address (e.g. Graph
-	// otherMails / proxyAddresses) before the lookup; scope for another spec.
-	email := userInfo.Mail
-	if email == "" {
-		email = userInfo.UserPrincipalName
+	idClaims, err := s.parseIDToken(tokenResp.IDToken, userInfo.ID, time.Now())
+	if err != nil {
+		return nil, err
 	}
+
+	// Trust rule for the sign-in email (spec 2026-10-16-01, "nOAuth"):
+	//
+	//   - Graph `mail` is a directory attribute any tenant admin can set to any
+	//     address without proving they own it, and Graph returns no
+	//     verification flag. Linking or creating an account from it would let
+	//     the admin of ANY Entra tenant take over (or pre-register) a local
+	//     account by email.
+	//   - Pinned tenant (TenantID set and not common/organizations/consumers):
+	//     only that directory's users can get a token, and its admins are the
+	//     operator's own. That is the same admin-established trust boundary
+	//     SAML documents, so `mail` (falling back to the UPN) is trusted.
+	//   - Multi-tenant: the email is trusted only when the ID token carries a
+	//     non-empty `email` and `xms_edov` is the JSON boolean true, and that
+	//     ID-token email is what is used, never Graph `mail`.
+	//   - Anything else is untrusted: an already-linked Microsoft ID still
+	//     signs in, but no account is linked or created by email.
+	//
+	// UPN caveat (pinned tenant): when Graph returns an empty `mail`, the UPN
+	// we fall back to is often the tenant's *.onmicrosoft.com form
+	// (alice@acme.onmicrosoft.com) rather than the address the person actually
+	// uses (alice@acme.com). That mints a SECOND local user instead of linking
+	// the existing one, and it is also the address registration.email_pattern
+	// is matched against. Resolving the real address (Graph otherMails /
+	// proxyAddresses) is scope for another spec.
+	email, trusted := s.resolveSignInEmail(userInfo, idClaims)
 
 	// Validate email
 	if email == "" {
@@ -185,8 +228,15 @@ func (s *MicrosoftOAuthService) HandleCallback(
 	}
 
 	// Find or create user
-	user, _, err := s.findOrCreateUser(ctx, userInfo, email)
+	user, _, err := s.findOrCreateUser(ctx, userInfo, email, trusted)
 	if err != nil {
+		if errors.Is(err, ErrEmailNotVerified) {
+			slog.WarnContext(ctx,
+				"microsoft sign-in refused: email not verified; a multi-tenant app registration "+
+					"must add the 'email' and 'xms_edov' optional claims to the ID token",
+				"tid", idClaims.TID, "oid", userInfo.ID, "missingClaim", microsoftClaimEmailVerified)
+		}
+
 		return nil, fmt.Errorf("failed to find/create user: %w", err)
 	}
 
@@ -210,6 +260,85 @@ func (s *MicrosoftOAuthService) HandleCallback(
 		FallbackOrgSlug: login.FallbackOrgSlug,
 		PendingOrgSlug:  login.PendingOrgSlug,
 	}, nil
+}
+
+// isPinnedTenant reports whether the configured tenant restricts sign-in to a
+// single Entra directory.
+func (s *MicrosoftOAuthService) isPinnedTenant() bool {
+	tenant := strings.ToLower(strings.TrimSpace(s.cfg.Microsoft.TenantID))
+
+	return tenant != "" && !microsoftMultiTenantAliases[tenant]
+}
+
+// resolveSignInEmail returns the email to use for this sign-in and whether it
+// may be trusted to link or create an account (see the trust rule in
+// HandleCallback).
+func (s *MicrosoftOAuthService) resolveSignInEmail(
+	userInfo *MicrosoftUserInfo, idClaims microsoftIDTokenClaims,
+) (string, bool) {
+	graphEmail := userInfo.Mail
+	if graphEmail == "" {
+		graphEmail = userInfo.UserPrincipalName
+	}
+
+	if s.isPinnedTenant() {
+		return graphEmail, graphEmail != ""
+	}
+
+	if idClaims.Email != "" && idClaims.EmailVerified {
+		return idClaims.Email, true
+	}
+
+	// Untrusted: the email is still returned so an already-linked Microsoft
+	// ID keeps signing in, but findOrCreateUser will not match or create by it.
+	return graphEmail, false
+}
+
+// parseIDToken decodes the ID token the token endpoint returned alongside the
+// access token. The signature is not checked: the token came over the back
+// channel, from the token endpoint, over TLS, in exchange for our client
+// secret, which OIDC Core §3.1.3.7 (6) accepts in place of a signature check.
+// The audience, expiry and subject binding (oid == Graph id) are still
+// enforced; a mismatch is ErrMicrosoftAPI. A missing ID token yields empty
+// claims (no verified email), not an error.
+func (s *MicrosoftOAuthService) parseIDToken(
+	rawToken, graphID string, now time.Time,
+) (microsoftIDTokenClaims, error) {
+	var out microsoftIDTokenClaims
+
+	if rawToken == "" {
+		return out, nil
+	}
+
+	claims := jwt.MapClaims{}
+	if _, _, err := jwt.NewParser().ParseUnverified(rawToken, claims); err != nil {
+		return out, fmt.Errorf("%w: invalid id_token: %w", ErrMicrosoftAPI, err)
+	}
+
+	aud, err := claims.GetAudience()
+	if err != nil || !slices.Contains([]string(aud), s.cfg.Microsoft.ClientID) {
+		return out, fmt.Errorf("%w: id_token audience mismatch", ErrMicrosoftAPI)
+	}
+
+	exp, err := claims.GetExpirationTime()
+	if err != nil || exp == nil || !now.Before(exp.Time) {
+		return out, fmt.Errorf("%w: id_token expired or without expiry", ErrMicrosoftAPI)
+	}
+
+	out.OID = claimString(claims, "oid")
+	if out.OID == "" || out.OID != graphID {
+		return out, fmt.Errorf("%w: id_token oid does not match the Graph user id", ErrMicrosoftAPI)
+	}
+
+	out.TID = claimString(claims, "tid")
+	out.Email = claimString(claims, keyEmail)
+
+	// Only a JSON boolean true counts, as for OIDC email_verified.
+	if b, ok := claims[microsoftClaimEmailVerified].(bool); ok {
+		out.EmailVerified = b
+	}
+
+	return out, nil
 }
 
 // getTokenURL returns the Microsoft token endpoint URL for the configured tenant.
@@ -306,9 +435,12 @@ func (s *MicrosoftOAuthService) fetchUserProfile(ctx context.Context, accessToke
 	return &userInfo, nil
 }
 
-// findOrCreateUser finds or creates a user by Microsoft identity.
+// findOrCreateUser finds or creates a user by Microsoft identity. An
+// already-linked Microsoft ID signs in whatever the email status; matching an
+// existing account by email, or creating one, requires emailTrusted, and
+// otherwise fails with ErrEmailNotVerified before any lookup or write.
 func (s *MicrosoftOAuthService) findOrCreateUser(
-	ctx context.Context, userInfo *MicrosoftUserInfo, email string,
+	ctx context.Context, userInfo *MicrosoftUserInfo, email string, emailTrusted bool,
 ) (*models.User, bool, error) {
 	// created reports whether THIS call minted the account.
 	var created bool
@@ -333,6 +465,13 @@ func (s *MicrosoftOAuthService) findOrCreateUser(
 		}
 
 		provider = nil
+	}
+
+	// No link: the email paths below would bind this Microsoft identity to
+	// whatever account owns the address (or mint one, consuming invitations
+	// and auto-join rules for it). Refuse unless the email is trusted.
+	if !emailTrusted {
+		return nil, false, ErrEmailNotVerified
 	}
 
 	// Check by email

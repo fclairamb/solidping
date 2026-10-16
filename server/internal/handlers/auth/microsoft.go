@@ -134,7 +134,7 @@ func (h *MicrosoftOAuthHandler) handleOAuthError(
 		description = OAuthDescInvalidState
 	case errors.Is(err, ErrEmailNotVerified):
 		code = OAuthCodeEmailNotVerified
-		description = "No email found in Microsoft profile"
+		description = "Microsoft did not confirm that you own this email address"
 	case errors.Is(err, ErrMicrosoftTokenExchange):
 		code = OAuthCodeTokenExchange
 		description = OAuthDescTokenExchange

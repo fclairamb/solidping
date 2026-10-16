@@ -244,7 +244,7 @@ func TestEveryProviderHealsStaleUserLinks(t *testing.T) {
 			name: "microsoft", providerType: models.ProviderTypeMicrosoft, providerID: "ms-user-1",
 			signIn: func(ctx context.Context, email string) (*models.User, error) {
 				return dropCreatedFlag(microsoft.findOrCreateUser(
-					ctx, &MicrosoftUserInfo{ID: "ms-user-1", DisplayName: "MS"}, email))
+					ctx, &MicrosoftUserInfo{ID: "ms-user-1", DisplayName: "MS"}, email, true))
 			},
 		},
 		{
