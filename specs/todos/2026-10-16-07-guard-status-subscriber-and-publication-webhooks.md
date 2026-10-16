@@ -115,5 +115,11 @@ Two outbound senders skip the egress guard that every other notification sender 
    - Keep following redirects, or refuse them for these two senders? If followed, the guarded dial re-checks each hop, as in `notifications.WebhookSender`.
    - Recommended: keep following them, guarded, for consistency with the other senders.
 
+## Resolved open questions
+Decided 2026-10-16 (all recommendations accepted):
+1. Follow the egress policy (no extra loopback floor). `SP_EGRESS_ALLOW_PRIVATE` stays the single operator knob.
+2. Keep the 512-byte snippet of a failing receiver's body in the stored job error.
+3. Keep following redirects, with every hop re-checked by the guarded dial, as `notifications.WebhookSender` does.
+
 ## Related
 M1 (2026-10-11): the MS Teams and Zulip senders have the same unguarded-client flaw, in separate code.
