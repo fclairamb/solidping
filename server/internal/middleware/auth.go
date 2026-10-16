@@ -74,6 +74,17 @@ func (m *AuthMiddleware) RequireAuth(next httpx.HandlerFunc) httpx.HandlerFunc {
 				writer, req, http.StatusUnauthorized, base.ErrorCodeInvalidToken, "Invalid or expired token", err)
 		}
 
+		// An MCP credential (OAuth access token, scoped PAT) only works on
+		// the MCP resource server (spec 2026-10-16-12): its consent is
+		// narrower than the user's REST role, and it must not mint a PAT or
+		// a session. 401 like RequireMCPAuth's wrong-audience answer: the
+		// credential is not valid here, whoever holds it.
+		if claims.IsMCPCredential() &&
+			!auth.IsMCPCredentialRouteAllowed(claims, req.Method, httpx.RoutePattern(req)) {
+			return m.WriteError(writer, http.StatusUnauthorized,
+				base.ErrorCodeInvalidToken, auth.MCPCredentialRESTMessage)
+		}
+
 		// Load user
 		user, err := m.dbService.GetUser(req.Context(), claims.UserUID)
 		if err != nil {

@@ -122,7 +122,10 @@ func (h *Handler) validateAuthRequest(req *http.Request, authReq *authRequest) (
 // claims when a valid session exists.
 func (h *Handler) session(req *http.Request) (*auth.Claims, bool) {
 	token := extractSessionToken(req)
-	if token == "" {
+	// Consent is a human decision, so only a dashboard session may give it
+	// (spec 2026-10-16-12). A PAT or an MCP access token would let a
+	// credential approve a grant, even a wider one, with nobody consenting.
+	if token == "" || strings.HasPrefix(token, auth.PATTokenPrefix) {
 		return nil, false
 	}
 
@@ -133,7 +136,7 @@ func (h *Handler) session(req *http.Request) (*auth.Claims, bool) {
 
 	// An impersonation token may never consent to an OAuth grant: that would
 	// mint a long-lived credential in the target's name (spec 2026-09-29-03).
-	if claims.IsImpersonation() {
+	if claims.IsImpersonation() || claims.IsMCPCredential() {
 		return nil, false
 	}
 

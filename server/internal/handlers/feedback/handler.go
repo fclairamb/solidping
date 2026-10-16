@@ -134,7 +134,9 @@ func (h *Handler) attachUserIfAuthenticated(ctx context.Context, authHeader stri
 	}
 
 	claims, err := h.auth.ValidateToken(ctx, token)
-	if err != nil {
+	// An MCP credential only works on the MCP endpoint (spec 2026-10-16-12):
+	// the report stays anonymous.
+	if err != nil || claims.IsMCPCredential() {
 		return
 	}
 

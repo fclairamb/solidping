@@ -1,5 +1,7 @@
 package oauth
 
+import "github.com/fclairamb/solidping/server/internal/handlers/auth"
+
 // Well-known identifiers for the first-party SolidPing CLI OAuth client: a
 // pre-registered public client with a loopback redirect, seeded idempotently at
 // server startup (see app.SeedCLIOAuthClient) so no dynamic registration is
@@ -12,7 +14,9 @@ package oauth
 // still drives the loopback authorization-code flow against /oauth/authorize.
 const (
 	// CLIClientID is the pre-registered public client_id used by `sp auth login`.
-	CLIClientID = "solidping-cli"
+	// It aliases auth.CLIOAuthClientID, which RequireAuth's MCP-credential
+	// allowlist keys on (spec 2026-10-16-12).
+	CLIClientID = auth.CLIOAuthClientID
 
 	// CLIClientName is the human-readable name stored for the CLI client and
 	// shown on the consent screen.

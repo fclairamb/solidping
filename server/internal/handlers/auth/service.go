@@ -243,6 +243,10 @@ type Claims struct {
 	//
 	// omitempty keeps every ordinary token byte-identical to before.
 	ImpersonatedBy string `json:"impersonatedBy,omitempty"`
+	// ClientID is the OAuth client an MCP access token was issued to (spec
+	// 2026-10-16-12). Empty on every other token. It lets RequireAuth tell the
+	// first-party CLI client from a third-party one; see IsMCPCredential.
+	ClientID string `json:"clientId,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -2290,7 +2294,7 @@ func (s *Service) generateAccessToken(userUID, orgSlug, role, refreshUID string,
 // fragility the second layer exists to cover.
 func (s *Service) GenerateMCPAccessToken(
 	ctx context.Context,
-	userUID, orgSlug string, scopes []string, audience string, ttl time.Duration, refreshUID string,
+	userUID, orgSlug string, scopes []string, audience string, ttl time.Duration, refreshUID, clientID string,
 ) (string, error) {
 	user, err := s.db.GetUser(ctx, userUID)
 	if err != nil {
@@ -2304,14 +2308,20 @@ func (s *Service) GenerateMCPAccessToken(
 		Demo:       user.Demo,
 		Scopes:     scopes,
 		RefreshUID: refreshUID,
+		ClientID:   clientID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(now.Add(ttl)),
 			IssuedAt:  jwt.NewNumericDate(now),
 			NotBefore: jwt.NewNumericDate(now),
 			Issuer:    jwtIssuer,
-			Audience:  jwt.ClaimStrings{audience},
 			ID:        uuid.New().String(),
 		},
+	}
+	// No audience means no `aud` claim at all, rather than an empty-string
+	// one: every OAuth mint passes the MCP resource, and an `aud` makes the
+	// token an MCP credential (IsMCPCredential).
+	if audience != "" {
+		claims.Audience = jwt.ClaimStrings{audience}
 	}
 
 	return s.signJWT("", claims)
