@@ -519,7 +519,9 @@ func msRunCallback(
 }
 
 // msSetupAlice creates alice@acme.com with a password, admin of org.
-func msSetupAlice(ctx context.Context, t *testing.T, svc *MicrosoftOAuthService, org *models.Organization) *models.User {
+func msSetupAlice(
+	ctx context.Context, t *testing.T, svc *MicrosoftOAuthService, org *models.Organization,
+) *models.User {
 	t.Helper()
 
 	hash, err := passwords.Hash("alice-password-1234")
@@ -654,14 +656,22 @@ func TestMicrosoftNOAuth(t *testing.T) {
 			tenant string
 			claims jwt.MapClaims
 		}{
-			{name: "foreign audience", tenant: nOAuthCommon,
-				claims: verified(func(c jwt.MapClaims) { c["aud"] = "someone-else" })},
-			{name: "oid differs from Graph id", tenant: nOAuthCommon,
-				claims: verified(func(c jwt.MapClaims) { c["oid"] = "other-oid" })},
-			{name: "expired", tenant: nOAuthCommon,
-				claims: verified(func(c jwt.MapClaims) { c["exp"] = time.Now().Add(-time.Minute).Unix() })},
-			{name: "pinned tenant, foreign audience", tenant: nOAuthPinnedGUID,
-				claims: verified(func(c jwt.MapClaims) { c["aud"] = "someone-else" })},
+			{
+				name: "foreign audience", tenant: nOAuthCommon,
+				claims: verified(func(c jwt.MapClaims) { c["aud"] = "someone-else" }),
+			},
+			{
+				name: "oid differs from Graph id", tenant: nOAuthCommon,
+				claims: verified(func(c jwt.MapClaims) { c["oid"] = "other-oid" }),
+			},
+			{
+				name: "expired", tenant: nOAuthCommon,
+				claims: verified(func(c jwt.MapClaims) { c["exp"] = time.Now().Add(-time.Minute).Unix() }),
+			},
+			{
+				name: "pinned tenant, foreign audience", tenant: nOAuthPinnedGUID,
+				claims: verified(func(c jwt.MapClaims) { c["aud"] = "someone-else" }),
+			},
 		}
 
 		for _, tt := range tests {

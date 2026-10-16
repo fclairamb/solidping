@@ -97,7 +97,7 @@ func (h *MicrosoftOAuthHandler) Callback(writer http.ResponseWriter, req *http.R
 func (h *MicrosoftOAuthHandler) buildMicrosoftAuthURL(state string) string {
 	tenant := h.cfg.Microsoft.TenantID
 	if tenant == "" {
-		tenant = "common"
+		tenant = microsoftTenantCommon
 	}
 
 	params := url.Values{}

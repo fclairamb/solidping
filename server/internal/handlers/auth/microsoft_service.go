@@ -38,15 +38,11 @@ const (
 	// optional ID-token claim. It is emitted only once the app registration
 	// adds it (Token configuration → optional claims → ID token).
 	microsoftClaimEmailVerified = "xms_edov"
-)
 
-// microsoftMultiTenantAliases are the tenant values that admit users of any
-// Entra tenant (and/or personal accounts) rather than a single directory.
-var microsoftMultiTenantAliases = map[string]bool{
-	"common":        true,
-	"organizations": true,
-	"consumers":     true,
-}
+	// microsoftTenantCommon is the default tenant: any work, school or
+	// personal Microsoft account.
+	microsoftTenantCommon = "common"
+)
 
 // microsoftIDTokenClaims is the subset of the Entra ID token this connector
 // reads to decide whether the sign-in email may be trusted.
@@ -265,9 +261,14 @@ func (s *MicrosoftOAuthService) HandleCallback(
 // isPinnedTenant reports whether the configured tenant restricts sign-in to a
 // single Entra directory.
 func (s *MicrosoftOAuthService) isPinnedTenant() bool {
-	tenant := strings.ToLower(strings.TrimSpace(s.cfg.Microsoft.TenantID))
-
-	return tenant != "" && !microsoftMultiTenantAliases[tenant]
+	// common / organizations / consumers admit users of any Entra tenant
+	// (and/or personal accounts) rather than a single directory.
+	switch strings.ToLower(strings.TrimSpace(s.cfg.Microsoft.TenantID)) {
+	case "", microsoftTenantCommon, "organizations", "consumers":
+		return false
+	default:
+		return true
+	}
 }
 
 // resolveSignInEmail returns the email to use for this sign-in and whether it
@@ -349,7 +350,7 @@ func (s *MicrosoftOAuthService) getTokenURL() string {
 
 	tenant := s.cfg.Microsoft.TenantID
 	if tenant == "" {
-		tenant = "common"
+		tenant = microsoftTenantCommon
 	}
 
 	return "https://login.microsoftonline.com/" + tenant + "/oauth2/v2.0/token"
