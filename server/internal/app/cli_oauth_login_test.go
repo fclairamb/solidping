@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -14,13 +15,14 @@ import (
 	"github.com/fclairamb/solidping/server/internal/oauth"
 )
 
-// TestCLIBrowserLoginWalkthrough drives the exact server-side sequence
-// `sp auth login` performs: authorize (GET → consent) → approve (POST → code) →
-// token exchange → mint a PAT with the OAuth access token → use the PAT.
+// TestCLIBrowserLoginWalkthrough drives the exact server-side sequence the
+// legacy loopback `sp auth login` (spec 2026-07-11-08) performs: authorize
+// (GET → consent) → approve (POST → code) → token exchange → mint a PAT with
+// the OAuth access token → use the PAT.
 //
-// It pins the load-bearing property from the spec: RequireAuth does not enforce
-// scope/audience, so the MCP-audience OAuth access token can call the PAT-minting
-// endpoint.
+// RequireAuth refuses MCP credentials on REST (spec 2026-10-16-12); the PAT
+// mint works through the CLI client exception, which only the first-party
+// `solidping-cli` client with the full `mcp` scope gets.
 func TestCLIBrowserLoginWalkthrough(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
@@ -29,6 +31,78 @@ func TestCLIBrowserLoginWalkthrough(t *testing.T) {
 	// The CLI binds an ephemeral loopback listener; the registered redirect
 	// ignores the port, so any 127.0.0.1:<port>/callback is accepted.
 	redirectURI := "http://127.0.0.1:19123" + oauth.CLICallbackPath
+	accessToken := loopbackOAuthAccessToken(t, env, oauth.CLIClientID, redirectURI)
+
+	// --- Mint a PAT with the OAuth access token: the CLI client exception.
+	res := mintPATWithBearer(t, env, accessToken)
+	r.Equal(http.StatusCreated, res.status, "mint PAT: %s", res.body)
+
+	var pat struct {
+		Token string `json:"token"`
+		Name  string `json:"name"`
+	}
+	r.NoError(json.Unmarshal(res.body, &pat))
+	r.True(strings.HasPrefix(pat.Token, "pat_"), "expected a pat_ token, got %q", pat.Token)
+	r.Equal("sp CLI on test-host", pat.Name)
+
+	// --- The saved PAT authenticates a real org-scoped call.
+	req, err := http.NewRequestWithContext(
+		t.Context(), http.MethodGet,
+		env.ts.URL+"/api/v1/orgs/"+mcpE2EOrg+"/checks", nil)
+	r.NoError(err)
+	req.Header.Set("Authorization", "Bearer "+pat.Token)
+	res = env.do(t, req)
+	r.Equal(http.StatusOK, res.status, "PAT call: %s", res.body)
+
+	// --- The OAuth access token itself still reads nothing on REST.
+	res = env.get(t, "/api/v1/orgs/"+mcpE2EOrg+"/checks",
+		map[string]string{"Authorization": "Bearer " + accessToken})
+	r.Equal(http.StatusUnauthorized, res.status, "CLI OAuth token on REST: %s", res.body)
+}
+
+// TestDynamicClientCannotMintPAT is the twin of TestCLIBrowserLoginWalkthrough
+// with a dynamically registered client (spec 2026-10-16-12): the same flow
+// ends with a 401 on the PAT mint, since the CLI exception is keyed on the
+// first-party client ID that no registration can claim.
+func TestDynamicClientCannotMintPAT(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	env := newMCPTestEnv(t)
+
+	redirectURI := "http://127.0.0.1:19124/callback"
+	regBody := fmt.Sprintf(
+		`{"client_name":"third-party","redirect_uris":[%q],`+
+			`"grant_types":["authorization_code","refresh_token"],`+
+			`"token_endpoint_auth_method":"none"}`,
+		redirectURI)
+	req, err := http.NewRequestWithContext(
+		t.Context(), http.MethodPost, env.ts.URL+"/api/v1/oauth/register", strings.NewReader(regBody))
+	r.NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+	res := env.do(t, req)
+	r.Equal(http.StatusCreated, res.status, "register: %s", res.body)
+
+	//nolint:tagliatelle // RFC 7591 wire format requires snake_case field names.
+	var reg struct {
+		ClientID string `json:"client_id"`
+	}
+	r.NoError(json.Unmarshal(res.body, &reg))
+	r.NotEmpty(reg.ClientID)
+
+	accessToken := loopbackOAuthAccessToken(t, env, reg.ClientID, redirectURI)
+
+	res = mintPATWithBearer(t, env, accessToken)
+	r.Equal(http.StatusUnauthorized, res.status, "mint PAT: %s", res.body)
+	r.Contains(string(res.body), "INVALID_TOKEN")
+}
+
+// loopbackOAuthAccessToken runs authorize (GET → consent) → approve (POST →
+// code) → PKCE token exchange for clientID, with a logged-in session, and
+// returns the OAuth access token. Scope and resource are omitted, as the CLI
+// does: the server defaults them to the full `mcp` scope.
+func loopbackOAuthAccessToken(t *testing.T, env *mcpTestEnv, clientID, redirectURI string) string {
+	t.Helper()
+	r := require.New(t)
 
 	sessionToken := env.login(t)
 
@@ -36,9 +110,8 @@ func TestCLIBrowserLoginWalkthrough(t *testing.T) {
 	sum := sha256.Sum256([]byte(verifier))
 	challenge := base64.RawURLEncoding.EncodeToString(sum[:])
 
-	// The CLI omits scope + resource; the server defaults them.
 	authQuery := url.Values{}
-	authQuery.Set("client_id", oauth.CLIClientID)
+	authQuery.Set("client_id", clientID)
 	authQuery.Set("redirect_uri", redirectURI)
 	authQuery.Set("response_type", "code")
 	authQuery.Set("state", "cli-walkthrough-state")
@@ -76,7 +149,7 @@ func TestCLIBrowserLoginWalkthrough(t *testing.T) {
 	tokenForm := url.Values{}
 	tokenForm.Set("grant_type", "authorization_code")
 	tokenForm.Set("code", code)
-	tokenForm.Set("client_id", oauth.CLIClientID)
+	tokenForm.Set("client_id", clientID)
 	tokenForm.Set("redirect_uri", redirectURI)
 	tokenForm.Set("code_verifier", verifier)
 
@@ -98,35 +171,22 @@ func TestCLIBrowserLoginWalkthrough(t *testing.T) {
 	// transited the loopback redirect.
 	r.True(strings.HasPrefix(tok.AccessToken, "eyJ"))
 
-	// --- Mint a PAT with the OAuth access token. This is the spec's load-bearing
-	// assertion: RequireAuth ignores scope/audience, so an MCP-audience token is
-	// accepted at the PAT endpoint.
-	req, err = http.NewRequestWithContext(
+	return tok.AccessToken
+}
+
+// mintPATWithBearer calls POST /orgs/{org}/tokens with the given bearer.
+func mintPATWithBearer(t *testing.T, env *mcpTestEnv, bearer string) httpResult {
+	t.Helper()
+
+	req, err := http.NewRequestWithContext(
 		t.Context(), http.MethodPost,
 		env.ts.URL+"/api/v1/orgs/"+mcpE2EOrg+"/tokens",
 		strings.NewReader(`{"name":"sp CLI on test-host"}`))
-	r.NoError(err)
+	require.NoError(t, err)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+tok.AccessToken)
-	res = env.do(t, req)
-	r.Equal(http.StatusCreated, res.status, "mint PAT: %s", res.body)
+	req.Header.Set("Authorization", "Bearer "+bearer)
 
-	var pat struct {
-		Token string `json:"token"`
-		Name  string `json:"name"`
-	}
-	r.NoError(json.Unmarshal(res.body, &pat))
-	r.True(strings.HasPrefix(pat.Token, "pat_"), "expected a pat_ token, got %q", pat.Token)
-	r.Equal("sp CLI on test-host", pat.Name)
-
-	// --- The saved PAT authenticates a real org-scoped call.
-	req, err = http.NewRequestWithContext(
-		t.Context(), http.MethodGet,
-		env.ts.URL+"/api/v1/orgs/"+mcpE2EOrg+"/checks", nil)
-	r.NoError(err)
-	req.Header.Set("Authorization", "Bearer "+pat.Token)
-	res = env.do(t, req)
-	r.Equal(http.StatusOK, res.status, "PAT call: %s", res.body)
+	return env.do(t, req)
 }
 
 // TestCLIOAuthClientSeededAtStartup confirms the seed ran in the full-server
