@@ -3,6 +3,20 @@
 ## Unreleased
 
 
+## [0.38.6](https://github.com/fclairamb/solidping/compare/v0.38.5...v0.38.6) (2026-10-16)
+
+
+### Bug Fixes
+
+* **deps:** update github.com/dop251/goja digest to 2cb8274 ([#561](https://github.com/fclairamb/solidping/issues/561)) ([085f7de](https://github.com/fclairamb/solidping/commit/085f7de4999e7deb14534fe1b6085ada98c9b55e))
+* **deps:** update go dependencies (non-major) ([#564](https://github.com/fclairamb/solidping/issues/564)) ([b91e3d7](https://github.com/fclairamb/solidping/commit/b91e3d79ed5858b03a0eb7f2cb4099a9c42bafd2))
+* **deps:** update module github.com/anthropics/anthropic-sdk-go to v1.82.0 ([#568](https://github.com/fclairamb/solidping/issues/568)) ([c157444](https://github.com/fclairamb/solidping/commit/c1574443da2fc3059a7ec81e33aa72ccbfe1e345))
+* **deps:** update module github.com/gookit/color to v1.6.2 ([#566](https://github.com/fclairamb/solidping/issues/566)) ([3bf6792](https://github.com/fclairamb/solidping/commit/3bf6792bf7d11f8c7c3c2392a63eb46dfdb0f3d3))
+* **deps:** update module github.com/gookit/color to v1.6.3 ([#567](https://github.com/fclairamb/solidping/issues/567)) ([f6a33d3](https://github.com/fclairamb/solidping/commit/f6a33d3767f9f4e5dd16de101d12ba7757966883))
+* **deps:** update module github.com/quic-go/quic-go to v0.64.0 ([#571](https://github.com/fclairamb/solidping/issues/571)) ([fd10f2d](https://github.com/fclairamb/solidping/commit/fd10f2dec790e282e4224d8634b2860b21284ce6))
+* no degraded alert right after an outage recovers ([#577](https://github.com/fclairamb/solidping/issues/577)) ([c8a2dd2](https://github.com/fclairamb/solidping/commit/c8a2dd2fe3a67c54c149490d20ee7601d8476dff))
+* security hardening of tokens, invites, secrets, egress and sign-in (batch 2026-10-16) ([#572](https://github.com/fclairamb/solidping/issues/572)) ([d67afc2](https://github.com/fclairamb/solidping/commit/d67afc28bc7343b505c5d351b155b800e59c0031))
+
 ## [0.38.5](https://github.com/fclairamb/solidping/compare/v0.38.4...v0.38.5) (2026-10-14)
 
 
