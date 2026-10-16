@@ -239,7 +239,7 @@
     "authToken": "API server + token",
     "authKubeconfig": "Kubeconfig",
     "authInCluster": "In-cluster (this cluster)",
-    "inClusterHint": "Uses the service-account token mounted in SolidPing's own pod. Only works when SolidPing runs inside the target cluster; no credentials are stored.",
+    "inClusterHint": "Uses the service-account token mounted in SolidPing's own pod. Only works when SolidPing runs inside the target cluster; no credentials are stored. The operator must enable it with SP_K8S_ALLOW_IN_CLUSTER=true.",
     "apiServer": "API server URL",
     "token": "Bearer token",
     "kubeconfig": "Kubeconfig (YAML)",

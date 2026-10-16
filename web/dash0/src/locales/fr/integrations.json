@@ -239,7 +239,7 @@
     "authToken": "Serveur API + jeton",
     "authKubeconfig": "Kubeconfig",
     "authInCluster": "Dans le cluster (ce cluster)",
-    "inClusterHint": "Utilise le jeton de compte de service monté dans le pod de SolidPing. Ne fonctionne que si SolidPing s'exécute dans le cluster cible ; aucun identifiant n'est stocké.",
+    "inClusterHint": "Utilise le jeton de compte de service monté dans le pod de SolidPing. Ne fonctionne que si SolidPing s'exécute dans le cluster cible ; aucun identifiant n'est stocké. L'opérateur doit l'activer avec SP_K8S_ALLOW_IN_CLUSTER=true.",
     "apiServer": "URL du serveur API",
     "token": "Jeton porteur",
     "kubeconfig": "Kubeconfig (YAML)",
