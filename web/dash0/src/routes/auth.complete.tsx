@@ -63,7 +63,12 @@ function AuthCompletePage() {
   // No code at all (a bookmarked or hand-typed URL) is a failure up front. So
   // is a session that was stored and then lost before the landing could be
   // followed: the page would otherwise spin forever.
-  const failed = !code || exchangeFailed || landingState === "stranded";
+  // Whether the page was opened with a code. The effect below strips the code
+  // from the address bar right away, and the router may then hand back an
+  // empty search: that must not read as "opened without a code" while the
+  // exchange, or the 2FA code step that follows it, is still on screen.
+  const [openedWithCode] = useState(() => Boolean(code));
+  const failed = !openedWithCode || exchangeFailed || landingState === "stranded";
 
   const followLanding = useCallback((resolved: HandoffLanding) => {
     if ("href" in resolved) {
