@@ -134,7 +134,12 @@ func (s *Service) evaluateCheck(ctx context.Context, check *models.Check, now ti
 		return nil
 	}
 
-	probes, err := s.probes(ctx, check, params, now)
+	since, err := s.probesSince(ctx, check.UID, now)
+	if err != nil {
+		return err
+	}
+
+	probes, err := s.probes(ctx, check, params, since)
 	if err != nil {
 		return err
 	}
@@ -212,6 +217,29 @@ func (s *Service) checkIncidentOpen(ctx context.Context, checkUID string) (bool,
 	return incident != nil, nil
 }
 
+// probesSince is where the probe window starts: lookBack ago, or when the last
+// check incident resolved if that is later. The failures of an outage that was
+// already reported as down must not open a degraded incident the moment it
+// recovers: every probe of the outage is still inside the window.
+func (s *Service) probesSince(ctx context.Context, checkUID string, now time.Time) (time.Time, error) {
+	since := now.Add(-lookBack)
+
+	incident, err := s.db.FindRecentlyResolvedIncidentByCheckUID(ctx, checkUID, since)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return since, nil
+		}
+
+		return since, fmt.Errorf("find resolved check incident: %w", err)
+	}
+
+	if incident != nil && incident.ResolvedAt != nil && incident.ResolvedAt.After(since) {
+		since = *incident.ResolvedAt
+	}
+
+	return since, nil
+}
+
 // probes reads the check's recent raw results, newest first, as the rule
 // primitive wants them.
 //
@@ -220,7 +248,7 @@ func (s *Service) checkIncidentOpen(ctx context.Context, checkUID string) (bool,
 // and trips 5-of-60 on its own. That is consistent with how outages already
 // behave; per-region degradation is an explicit non-goal.
 func (s *Service) probes(
-	ctx context.Context, check *models.Check, params degraded.Params, now time.Time,
+	ctx context.Context, check *models.Check, params degraded.Params, since time.Time,
 ) ([]degraded.Probe, error) {
 	window := params.FailuresWindow
 	if params.SlowWindow > window {
@@ -231,8 +259,6 @@ func (s *Service) probes(
 	if limit > maxProbeFetch {
 		limit = maxProbeFetch
 	}
-
-	since := now.Add(-lookBack)
 
 	response, err := s.db.ListResults(ctx, &models.ListResultsFilter{
 		OrganizationUID:  check.OrganizationUID,
@@ -354,7 +380,7 @@ func Title(check *models.Check, snapshot *incidents.DegradedSnapshot) string {
 
 	switch {
 	case snapshot.FailuresFired && snapshot.AvailabilityPct != nil:
-		return fmt.Sprintf("%s is degraded: %d failures in the last %d probes (%.1f%%)",
+		return fmt.Sprintf("%s is degraded: %d failures in the last %d probes (%.1f%% available)",
 			name, snapshot.FailureMatches, snapshot.FailureSlots, *snapshot.AvailabilityPct)
 	case snapshot.FailuresFired:
 		return fmt.Sprintf("%s is degraded: %d failures in the last %d probes",

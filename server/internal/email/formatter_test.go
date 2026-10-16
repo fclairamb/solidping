@@ -700,3 +700,29 @@ func TestSubjectAndTextAreNotHTMLEscaped(t *testing.T) {
 	r.NotContains(htmlBody, "<b>", "the HTML body must keep escaping interpolated values")
 	r.Contains(htmlBody, "&amp;")
 }
+
+// TestRegionOfflineAgreesWithCount pins the verb on the count: one blind check
+// "is not running", never "1 of your checks are not running".
+func TestRegionOfflineAgreesWithCount(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	formatter, err := NewFormatter()
+	r.NoError(err)
+
+	for count, want := range map[int][2]string{
+		1: {"1 of your checks is not running", "runs only from this region, so it is"},
+		2: {"2 of your checks are not running", "run only from this region, so they are"},
+	} {
+		subject, _, text, err := formatter.Format("region-offline.html", map[string]any{
+			"RegionName": "Tokyo (tokyo)",
+			"Since":      "2026-10-16 17:58 UTC",
+			"OrgName":    "acme",
+			"BlindCount": count,
+		})
+		r.NoError(err)
+		r.Equal("Region Tokyo (tokyo) is offline: "+want[0], subject)
+		r.Contains(text, want[1])
+	}
+}

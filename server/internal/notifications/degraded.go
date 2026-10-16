@@ -126,7 +126,7 @@ func (d *DegradedInfo) Reason() string {
 
 func (d *DegradedInfo) failureReason() string {
 	if d.AvailabilityPct != nil {
-		return fmt.Sprintf("%d failures in the last %d probes (%.1f%%)",
+		return fmt.Sprintf("%d failures in the last %d probes (%.1f%% available)",
 			d.FailureCount, d.FailureSlots, *d.AvailabilityPct)
 	}
 
