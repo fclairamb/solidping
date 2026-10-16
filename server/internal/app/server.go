@@ -447,6 +447,10 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	// resolver owns the DB lookup + credential decrypt (via the integrations
 	// kubernetes package's single chokepoint) so the checker package stays
 	// importable from unit tests without a live database or cluster.
+	// In-cluster mode reads this pod's own service-account token, so it is
+	// an operator opt-in (SP_K8S_ALLOW_IN_CLUSTER, spec 2026-10-16-05).
+	integrationk8s.SetAllowInCluster(cfg.Kubernetes.AllowInCluster)
+
 	checkkubernetes.ClientsetResolverFunc = func(ctx context.Context, clusterUID string) (k8sclient.Interface, error) {
 		return integrationk8s.ResolveClientsetByUID(ctx, dbService, credSvc, clusterUID)
 	}

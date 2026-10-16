@@ -619,6 +619,13 @@ func (s *Service) checkCreateTypeConstraints(
 		return err
 	}
 
+	// A kubeconfig that would make the server run a command or read a local
+	// file, or an in-cluster connection the deployment has not opted into,
+	// never reaches storage — see validateKubernetesSettings.
+	if err := validateKubernetesSettings(connType, settings); err != nil {
+		return err
+	}
+
 	switch connType { //nolint:exhaustive // only Slack/Teams-bot/Twilio have creation-time constraints.
 	case models.ConnectionTypeSlack:
 		// Slack channels can only be created by the OAuth install flow (which
@@ -636,6 +643,43 @@ func (s *Service) checkCreateTypeConstraints(
 	default:
 		return nil
 	}
+}
+
+// validateKubernetesSettings rejects, for a kubernetes cluster connection, a
+// kubeconfig carrying an exec / auth-provider plugin or a local file reference
+// (spec 2026-10-16-05: client-go would run the command or read the file on the
+// server), and inCluster=true unless the deployment opted in with
+// SP_K8S_ALLOW_IN_CLUSTER. BuildRestConfig enforces the same rules again when
+// a client is built. A no-op for every other type.
+func validateKubernetesSettings(connType models.ConnectionType, settings models.JSONMap) error {
+	if connType != models.ConnectionTypeKubernetes {
+		return nil
+	}
+
+	public, err := models.KubernetesSettingsFromJSONMap(settings)
+	if err != nil {
+		return fmt.Errorf("%w: invalid kubernetes settings", ErrInvalidSettings)
+	}
+
+	if public.InCluster && !integrationk8s.InClusterAllowed() {
+		return fmt.Errorf("%w: %w", ErrInvalidSettings, integrationk8s.ErrInClusterDisabled)
+	}
+
+	priv := models.KubernetesPrivateSettingsFromMap(settings)
+	if priv.Kubeconfig == "" {
+		return nil
+	}
+
+	if err := integrationk8s.ValidateKubeconfigSafe(priv.Kubeconfig); err != nil {
+		if errors.Is(err, integrationk8s.ErrUnsafeKubeconfig) {
+			return fmt.Errorf("%w: %w", ErrInvalidSettings, err)
+		}
+
+		// Never echo the parser error: it can quote the (secret) kubeconfig.
+		return fmt.Errorf("%w: kubeconfig is not valid YAML", ErrInvalidSettings)
+	}
+
+	return nil
 }
 
 // senderURLSettingsKey names, for each connection type whose sender POSTs to
@@ -1119,6 +1163,12 @@ func (s *Service) applyUpdateSettings(
 	// persisted — otherwise an already-granted connection's stored app_token
 	// could be redirected at an arbitrary host by simply PATCHing settings.
 	if vErr := s.validateFreeboxSettings(conn.Type, models.JSONMap(merged)); vErr != nil {
+		return vErr
+	}
+
+	// Same rule as creation, on the merged settings: a create-clean-then-PATCH
+	// sequence cannot smuggle an exec kubeconfig or inCluster past creation.
+	if vErr := validateKubernetesSettings(conn.Type, models.JSONMap(merged)); vErr != nil {
 		return vErr
 	}
 
