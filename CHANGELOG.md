@@ -1,7 +1,41 @@
 # Changelog
 
-## Unreleased
+## [0.38.6](https://github.com/fclairamb/solidping/compare/v0.38.5...v0.38.6) (2026-10-16)
 
+
+### ⚠ BREAKING CHANGES
+
+This release fixes security issues, and some fixes change behaviour. Check these before you upgrade ([#572](https://github.com/fclairamb/solidping/issues/572)) ([d67afc2](https://github.com/fclairamb/solidping/commit/d67afc28bc7343b505c5d351b155b800e59c0031)):
+
+* **checks:** `${env:NAME}` references stop resolving until `NAME` is listed in `SP_CHECK_ENV_ALLOWLIST`, on the server and on each private agent. The list is empty by default.
+* **slack:** An HTTP-mode Slack install needs `SP_SLACK_SIGNING_SECRET`. Socket Mode does not.
+* **auth:** A multi-tenant Microsoft app registration must add the `email` and `xms_edov` optional ID token claims.
+* **kubernetes:** Connections that use `exec`, `auth-provider` or file references stop working. `inCluster` needs `SP_K8S_ALLOW_IN_CLUSTER=true`.
+* **mysql:** The username, password and database name can no longer contain `@ / ( ) ? & :`. Use a reference instead.
+* **auth:** An existing account must sign in before accepting an invitation. MCP OAuth tokens and scoped PATs get 401 on the REST API.
+* **discovery:** Under an enforcing egress policy (SaaS by default), `lan` discovery is refused, and so is `container` discovery on SaaS shared nodes.
+
+
+### Features
+
+* **deploy:** **SolidPing can be deployed on Railway.** A new installation page covers the dashboard, the CLI and the switch to PostgreSQL. `deploy/railway/` has the same setup as Railway Infrastructure as Code: one service, a volume at `/data` and a health check. ([#576](https://github.com/fclairamb/solidping/issues/576)) ([e65fb7b](https://github.com/fclairamb/solidping/commit/e65fb7b8550e9e307e8bddc7bede018236e4559e))
+* **release:** **Builds for linux/riscv64.** The server and `sp` binaries ship as `solidping-linux-riscv64.gz` and `sp-linux-riscv64.gz`, and both Docker images are built for amd64, arm64 and riscv64. ([#573](https://github.com/fclairamb/solidping/issues/573)) ([247e388](https://github.com/fclairamb/solidping/commit/247e388a54916941dabd8522a9fa77481c0df56b))
+
+
+### Bug Fixes
+
+* **auth:** **Sign-in tokens can no longer be used as access tokens.** Each token is signed with a key for its purpose, so the passkey login session and the 2FA temporary token are refused as access tokens. ([#572](https://github.com/fclairamb/solidping/issues/572)) ([d67afc2](https://github.com/fclairamb/solidping/commit/d67afc28bc7343b505c5d351b155b800e59c0031))
+* **auth:** **Accepting an invitation for an existing account requires being signed in as that account.** The API answers 401 `INVITE_LOGIN_REQUIRED` or 403 `INVITE_EMAIL_MISMATCH`. ([#572](https://github.com/fclairamb/solidping/issues/572)) ([d67afc2](https://github.com/fclairamb/solidping/commit/d67afc28bc7343b505c5d351b155b800e59c0031))
+* **auth:** **Microsoft sign-in no longer links or creates an account from an unverified email.** On a multi-tenant app, the email is trusted only when the ID token carries `xms_edov`. ([#572](https://github.com/fclairamb/solidping/issues/572)) ([d67afc2](https://github.com/fclairamb/solidping/commit/d67afc28bc7343b505c5d351b155b800e59c0031))
+* **auth:** **The TOTP code is asked on every SSO and OAuth sign-in.** The 2FA, password reset and change password attempt counters are now atomic, and a revoked or expired PAT leaves the cache on every replica. MCP OAuth tokens and scoped PATs are refused on the REST API, the realtime WebSocket and the OAuth consent screen. ([#572](https://github.com/fclairamb/solidping/issues/572)) ([d67afc2](https://github.com/fclairamb/solidping/commit/d67afc28bc7343b505c5d351b155b800e59c0031))
+* **checks:** **Checks and connections can no longer read server secrets or files.** `${env:}` only resolves names listed in `SP_CHECK_ENV_ALLOWLIST`, both when a check is saved and when it runs. Kubernetes connections refuse `exec` and `auth-provider` kubeconfigs and file references. The MySQL check sets `AllowAllFiles=false` and dials through the egress guard. ([#572](https://github.com/fclairamb/solidping/issues/572)) ([d67afc2](https://github.com/fclairamb/solidping/commit/d67afc28bc7343b505c5d351b155b800e59c0031))
+* **egress:** **More outbound requests go through the egress guard.** This covers status page subscriber and publication webhooks, JS `docker` sub-checks (which also obey the SaaS docker gate), and LAN, container and Kubernetes discovery. Refused discovery types are hidden. Subscriber webhooks follow `SP_EGRESS_ALLOW_PRIVATE`, so self-hosted instances accept private endpoints. ([#572](https://github.com/fclairamb/solidping/issues/572)) ([d67afc2](https://github.com/fclairamb/solidping/commit/d67afc28bc7343b505c5d351b155b800e59c0031))
+* **status-pages:** **A status page component can only be changed through its own section.** Before, another org's components could be updated or deleted. ([#572](https://github.com/fclairamb/solidping/issues/572)) ([d67afc2](https://github.com/fclairamb/solidping/commit/d67afc28bc7343b505c5d351b155b800e59c0031))
+* **slack:** **Slack endpoints refuse every request when no signing secret is set.** `response_url` must be on `hooks.slack.com`, and request bodies are capped at 1 MiB. ([#572](https://github.com/fclairamb/solidping/issues/572)) ([d67afc2](https://github.com/fclairamb/solidping/commit/d67afc28bc7343b505c5d351b155b800e59c0031))
+* **incidents:** **No degraded alert right after an outage recovers.** The 60-probe window still held the outage's own failures, so a `[DEGRADED]` email followed the recovery a minute later. The window now starts when the last incident resolved. The email also says "80.0% available" instead of a bare percentage that read like a failure rate. ([#577](https://github.com/fclairamb/solidping/issues/577)) ([c8a2dd2](https://github.com/fclairamb/solidping/commit/c8a2dd2fe3a67c54c149490d20ee7601d8476dff))
+* **sms:** **OVH SMS delivery receipts are accepted.** Unless `SP_SMS_OVH_DLR_TOKEN` was set, the callback URL registered with OVH and the token the server checked never matched, so every receipt got a 404. The URL also pointed at `http://localhost:4000` unless the base URL was in the YAML file. ([#572](https://github.com/fclairamb/solidping/issues/572)) ([d67afc2](https://github.com/fclairamb/solidping/commit/d67afc28bc7343b505c5d351b155b800e59c0031))
+* **config:** **`SP_SERVER_CHECK_WORKER_NB` and `SP_SERVER_JOB_WORKER_NB` take effect.** They were ignored. ([#572](https://github.com/fclairamb/solidping/issues/572)) ([d67afc2](https://github.com/fclairamb/solidping/commit/d67afc28bc7343b505c5d351b155b800e59c0031))
+* **deps:** Go dependency updates: `kin-openapi` 0.149.0 (CVE-2026-100347), `quic-go` 0.64.0, `anthropic-sdk-go` 1.82.0, `gookit/color` 1.6.3, `goja` and other non-major updates. ([#561](https://github.com/fclairamb/solidping/issues/561)) ([#564](https://github.com/fclairamb/solidping/issues/564)) ([#566](https://github.com/fclairamb/solidping/issues/566)) ([#567](https://github.com/fclairamb/solidping/issues/567)) ([#568](https://github.com/fclairamb/solidping/issues/568)) ([#569](https://github.com/fclairamb/solidping/issues/569)) ([#571](https://github.com/fclairamb/solidping/issues/571))
 
 ## [0.38.5](https://github.com/fclairamb/solidping/compare/v0.38.4...v0.38.5) (2026-10-14)
 
