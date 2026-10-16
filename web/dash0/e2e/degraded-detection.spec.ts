@@ -176,7 +176,7 @@ async function mockCheckDetail(
                 state: "resolved",
                 startedAt: opts.startedAt ?? EPISODE_START,
                 resolvedAt: opts.resolvedAt ?? EPISODE_END,
-                title: `${check.name} is degraded: 7 failures in the last 60 probes (93.8%)`,
+                title: `${check.name} is degraded: 7 failures in the last 60 probes (93.8% available)`,
                 failureCount: 7,
                 relapseCount: 0,
               },
