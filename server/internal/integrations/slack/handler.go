@@ -244,6 +244,8 @@ func (h *Handler) OAuthCallback(writer http.ResponseWriter, req *http.Request) e
 		Pending:         result.Pending,
 		FallbackOrgSlug: result.FallbackOrgSlug,
 		PendingOrgSlug:  result.OrgSlug,
+		Requires2FA:     result.Requires2FA,
+		TempToken:       result.TempToken,
 	}
 
 	if err := auth.RedirectWithHandoff(writer, req, h.svc.db,

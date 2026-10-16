@@ -246,16 +246,7 @@ func (s *MicrosoftOAuthService) HandleCallback(
 		return nil, err
 	}
 
-	return &MicrosoftOAuthResult{
-		AccessToken:     login.AccessToken,
-		RefreshToken:    login.RefreshToken,
-		ExpiresIn:       login.ExpiresIn,
-		OrgSlug:         org.Slug,
-		UserUID:         user.UID,
-		Pending:         login.Pending,
-		FallbackOrgSlug: login.FallbackOrgSlug,
-		PendingOrgSlug:  login.PendingOrgSlug,
-	}, nil
+	return login.Outcome(org.Slug, user.UID), nil
 }
 
 // isPinnedTenant reports whether the configured tenant restricts sign-in to a

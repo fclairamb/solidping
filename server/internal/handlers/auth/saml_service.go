@@ -559,16 +559,7 @@ func (s *SAMLService) HandleACS(
 		return nil, err
 	}
 
-	return &SAMLResult{
-		AccessToken:     login.AccessToken,
-		RefreshToken:    login.RefreshToken,
-		ExpiresIn:       login.ExpiresIn,
-		OrgSlug:         org.Slug,
-		UserUID:         user.UID,
-		Pending:         login.Pending,
-		FallbackOrgSlug: login.FallbackOrgSlug,
-		PendingOrgSlug:  login.PendingOrgSlug,
-	}, nil
+	return login.Outcome(org.Slug, user.UID), nil
 }
 
 // mapAssertion extracts email/name/NameID from a validated assertion, using

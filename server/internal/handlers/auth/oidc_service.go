@@ -302,16 +302,7 @@ func (s *OIDCOAuthService) HandleCallback(ctx context.Context, code, orgSlug str
 		return nil, err
 	}
 
-	return &OIDCOAuthResult{
-		AccessToken:     login.AccessToken,
-		RefreshToken:    login.RefreshToken,
-		ExpiresIn:       login.ExpiresIn,
-		OrgSlug:         org.Slug,
-		UserUID:         user.UID,
-		Pending:         login.Pending,
-		FallbackOrgSlug: login.FallbackOrgSlug,
-		PendingOrgSlug:  login.PendingOrgSlug,
-	}, nil
+	return login.Outcome(org.Slug, user.UID), nil
 }
 
 // mapClaims extracts email/name/avatar from the validated ID token's claims,
