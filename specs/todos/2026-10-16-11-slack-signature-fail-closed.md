@@ -93,5 +93,9 @@ Found by the security scan of 2026-10-11 (finding H2). **High: an unauthenticate
 ## Open questions
 1. **GovSlack** (`hooks.slack-gov.com`) in the allow-list? Recommended: no. Nothing else in the integration supports GovSlack (`client.go:29-31` pins `slack.com`).
 
+## Resolved open questions
+Decided 2026-10-16 (all recommendations accepted):
+1. Do not add GovSlack (`hooks.slack-gov.com`) to the `response_url` allow-list.
+
 ## Related
 D5 (2026-10-14, no global body cap; this spec only caps the Slack routes), L4 (2026-10-11, unauthenticated `/integrations/slack/socket/status`), M1 / D2 / D3 (other outbound clients without the egress guard).
