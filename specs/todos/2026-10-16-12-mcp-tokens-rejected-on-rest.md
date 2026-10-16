@@ -108,6 +108,11 @@ Found by the security scan of 2026-10-11 (finding H3), plus the OAuth consent `s
 2. **Remove the CLI exception later?** The in-tree CLI no longer needs it.
    - Recommended: keep it for two releases, then delete it along with the PAT step of `TestCLIBrowserLoginWalkthrough`. Add a `TODO(remove after …)` on the allow-list entry, as `findInvite` does (`service.go:3805`).
 
+## Resolved open questions
+Decided 2026-10-16 (all recommendations accepted):
+1. Extend `IsMCPCredential` to `len(Scopes) > 0`: a scoped PAT works only where its scope applies, never on REST.
+2. Keep the CLI exception for two releases, with a `TODO(remove after …)` on the allow-list entry, as `findInvite` does.
+
 ## Related
 - **M7 (2026-10-11), not covered:** removed members keep MCP read access; `RequireMCPAuth`, consent, code exchange and refresh never re-check membership.
 - **T8 (2026-10-13), not covered:** password reset, password change and email change leave OAuth refresh grants alive.
