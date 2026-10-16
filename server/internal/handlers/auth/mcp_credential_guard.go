@@ -52,12 +52,14 @@ type mcpCredentialRoute struct {
 var mcpCredentialAllowedRoutes = []mcpCredentialRoute{
 	// Dropping your own grant is never an escalation (spec 2026-07-18-05).
 	{method: http.MethodDelete, pattern: ImpersonationPathTokenCurrent},
-	// The legacy loopback CLI login (spec 2026-07-11-08) mints its PAT with
-	// the OAuth access token right after the code exchange. The in-tree CLI
-	// uses the device flow since spec 2026-08-08-02.
-	// TODO(remove after v0.40.0): drop this entry, and the PAT step of
+	// The legacy loopback CLI login (spec 2026-07-11-08) resolves its org with
+	// GET /auth/me, then mints its PAT, both with the OAuth access token right
+	// after the code exchange (finishBrowserLogin, removed in e4c9cb79). The
+	// in-tree CLI uses the device flow since spec 2026-08-08-02.
+	// TODO(remove after v0.40.0): drop these two entries, and the PAT step of
 	// TestCLIBrowserLoginWalkthrough, once released CLIs no longer use the
 	// loopback flow.
+	{method: http.MethodGet, pattern: ImpersonationPathMe, cliOnly: true},
 	{method: http.MethodPost, pattern: ImpersonationPatternOrgTokens, cliOnly: true},
 }
 

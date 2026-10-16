@@ -104,6 +104,7 @@ func setupMCPCredFixture(t *testing.T) *mcpCredFixture {
 	authed.POST("/api/v1/orgs/:org/tokens", reached)
 	authed.POST("/api/v1/auth/switch-org", reached)
 	authed.DELETE("/api/v1/auth/tokens/current", reached)
+	authed.GET("/api/v1/auth/me", reached)
 	f.router.Use(mw.RequireMCPAuth).POST("/api/v1/mcp", reached)
 
 	return f
@@ -138,45 +139,54 @@ func TestMCPCredentialRefusedOnREST(t *testing.T) {
 		orgTokens = "/api/v1/orgs/acme/tokens"
 		switchOrg = "/api/v1/auth/switch-org"
 		current   = "/api/v1/auth/tokens/current"
+		me        = "/api/v1/auth/me"
 	)
 
-	tests := []struct {
+	type mcpCredCase struct {
 		name   string
 		token  string
 		method string
 		path   string
 		want   int
-	}{
+	}
+
+	controls := []struct{ method, path string }{
+		{http.MethodGet, checks},
+		{http.MethodPost, orgTokens},
+		{http.MethodPost, switchOrg},
+		{http.MethodDelete, current},
+		{http.MethodGet, me},
+	}
+
+	tests := make([]mcpCredCase, 0, 16+2*len(controls))
+	tests = append(tests,
 		// Regressions: each of these passed before the fix.
-		{"mcp:read dynamic client reads checks", "dyn-read", http.MethodGet, checks, http.StatusUnauthorized},
-		{"mcp dynamic client mints a PAT", "dyn-full", http.MethodPost, orgTokens, http.StatusUnauthorized},
-		{"mcp:read dynamic client switches org", "dyn-read", http.MethodPost, switchOrg, http.StatusUnauthorized},
-		{"mcp:read CLI client mints a PAT", "cli-read", http.MethodPost, orgTokens, http.StatusUnauthorized},
-		{"mcp CLI client reads checks", "cli-full", http.MethodGet, checks, http.StatusUnauthorized},
-		{"scoped PAT reads checks", "pat-scoped", http.MethodGet, checks, http.StatusUnauthorized},
-		{"scoped PAT mints a PAT", "pat-scoped", http.MethodPost, orgTokens, http.StatusUnauthorized},
-		{"scoped PAT switches org", "pat-scoped", http.MethodPost, switchOrg, http.StatusUnauthorized},
+		mcpCredCase{"mcp:read dynamic client reads checks", "dyn-read", http.MethodGet, checks, http.StatusUnauthorized},
+		mcpCredCase{"mcp dynamic client mints a PAT", "dyn-full", http.MethodPost, orgTokens, http.StatusUnauthorized},
+		mcpCredCase{"mcp:read dynamic client switches org", "dyn-read", http.MethodPost, switchOrg, http.StatusUnauthorized},
+		mcpCredCase{"mcp:read CLI client mints a PAT", "cli-read", http.MethodPost, orgTokens, http.StatusUnauthorized},
+		mcpCredCase{"mcp CLI client reads checks", "cli-full", http.MethodGet, checks, http.StatusUnauthorized},
+		mcpCredCase{"scoped PAT reads checks", "pat-scoped", http.MethodGet, checks, http.StatusUnauthorized},
+		mcpCredCase{"scoped PAT mints a PAT", "pat-scoped", http.MethodPost, orgTokens, http.StatusUnauthorized},
+		mcpCredCase{"scoped PAT switches org", "pat-scoped", http.MethodPost, switchOrg, http.StatusUnauthorized},
 
 		// Allowed.
-		{"mcp:read drops its own grant", "dyn-read", http.MethodDelete, current, http.StatusOK},
-		{"mcp drops its own grant", "dyn-full", http.MethodDelete, current, http.StatusOK},
-		{"mcp:read CLI drops its own grant", "cli-read", http.MethodDelete, current, http.StatusOK},
-		{"legacy loopback CLI mints its PAT", "cli-full", http.MethodPost, orgTokens, http.StatusOK},
-	}
+		mcpCredCase{"mcp:read drops its own grant", "dyn-read", http.MethodDelete, current, http.StatusOK},
+		mcpCredCase{"mcp drops its own grant", "dyn-full", http.MethodDelete, current, http.StatusOK},
+		mcpCredCase{"mcp:read CLI drops its own grant", "cli-read", http.MethodDelete, current, http.StatusOK},
+		mcpCredCase{"mcp:read dynamic client reads /auth/me", "dyn-read", http.MethodGet, me, http.StatusUnauthorized},
+		mcpCredCase{"mcp dynamic client reads /auth/me", "dyn-full", http.MethodGet, me, http.StatusUnauthorized},
+		mcpCredCase{"mcp:read CLI client reads /auth/me", "cli-read", http.MethodGet, me, http.StatusUnauthorized},
+		mcpCredCase{"scoped PAT reads /auth/me", "pat-scoped", http.MethodGet, me, http.StatusUnauthorized},
+		mcpCredCase{"legacy loopback CLI mints its PAT", "cli-full", http.MethodPost, orgTokens, http.StatusOK},
+		mcpCredCase{"legacy loopback CLI resolves its org", "cli-full", http.MethodGet, me, http.StatusOK},
+	)
 
 	// Positive controls: a dashboard session and an unscoped PAT pass everywhere.
 	for _, tok := range []string{"session", "pat"} {
-		for _, call := range []struct{ method, path string }{
-			{http.MethodGet, checks}, {http.MethodPost, orgTokens},
-			{http.MethodPost, switchOrg}, {http.MethodDelete, current},
-		} {
-			tests = append(tests, struct {
-				name   string
-				token  string
-				method string
-				path   string
-				want   int
-			}{tok + " " + call.method + " " + call.path, tok, call.method, call.path, http.StatusOK})
+		for _, call := range controls {
+			name := tok + " " + call.method + " " + call.path
+			tests = append(tests, mcpCredCase{name, tok, call.method, call.path, http.StatusOK})
 		}
 	}
 

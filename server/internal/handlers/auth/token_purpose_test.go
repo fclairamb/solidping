@@ -170,7 +170,8 @@ func TestValidateTokenRefusesNonBearerTokens(t *testing.T) {
 		}, true},
 		{"mcp access token", func(t *testing.T) string {
 			t.Helper()
-			tok, err := f.svc.GenerateMCPAccessToken(ctx, uid, "acme", []string{"mcp"}, "https://acme.com/mcp", time.Minute, "", "")
+			tok, err := f.svc.GenerateMCPAccessToken(
+				ctx, uid, "acme", []string{"mcp"}, "https://acme.com/mcp", time.Minute, "", "")
 			require.NoError(t, err)
 
 			return tok

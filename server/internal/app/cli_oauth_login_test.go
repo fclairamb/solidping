@@ -33,8 +33,13 @@ func TestCLIBrowserLoginWalkthrough(t *testing.T) {
 	redirectURI := "http://127.0.0.1:19123" + oauth.CLICallbackPath
 	accessToken := loopbackOAuthAccessToken(t, env, oauth.CLIClientID, redirectURI)
 
+	// --- Resolve the org with the OAuth access token, as the legacy CLI did:
+	// the CLI client exception.
+	res := env.get(t, "/api/v1/auth/me", map[string]string{"Authorization": "Bearer " + accessToken})
+	r.Equal(http.StatusOK, res.status, "auth/me: %s", res.body)
+
 	// --- Mint a PAT with the OAuth access token: the CLI client exception.
-	res := mintPATWithBearer(t, env, accessToken)
+	res = mintPATWithBearer(t, env, accessToken)
 	r.Equal(http.StatusCreated, res.status, "mint PAT: %s", res.body)
 
 	var pat struct {
@@ -90,6 +95,9 @@ func TestDynamicClientCannotMintPAT(t *testing.T) {
 	r.NotEmpty(reg.ClientID)
 
 	accessToken := loopbackOAuthAccessToken(t, env, reg.ClientID, redirectURI)
+
+	res = env.get(t, "/api/v1/auth/me", map[string]string{"Authorization": "Bearer " + accessToken})
+	r.Equal(http.StatusUnauthorized, res.status, "auth/me: %s", res.body)
 
 	res = mintPATWithBearer(t, env, accessToken)
 	r.Equal(http.StatusUnauthorized, res.status, "mint PAT: %s", res.body)
