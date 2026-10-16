@@ -93,6 +93,9 @@ func Run(ctx context.Context, cfg *config.Config) error {
 
 	wsBackend := backend.NewWSBackend(
 		cfg.Agent.ServerURL, cfg.Agent.EnrollmentToken, name, identity, persist,
+		// The agent's OWN `${env:}` allowlist: per-region secrets resolve
+		// only for names this agent's operator listed (spec 2026-10-16-03).
+		backend.WithEnvRefAllow(cfg.EnvRefAllowed),
 	)
 
 	// Wire the SSH-tunnel resolver to this agent's in-memory unsealed snapshots.

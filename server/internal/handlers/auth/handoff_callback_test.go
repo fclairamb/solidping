@@ -669,3 +669,63 @@ func TestHandoffRedirectShape(t *testing.T) {
 	r.Equal("/d/auth/complete?code=abc", handoffRedirect("abc", ""))
 	r.Equal("/d/auth/complete?code=abc&membershipPending=acme", handoffRedirect("abc", "acme"))
 }
+
+// TestTwoFACallbackHandsOverChallengeOnly: a federated login of a TOTP user
+// (spec 2026-10-16-14) redirects with a handoff code like any other, sets no
+// session cookie, and the code redeems for the 2FA challenge only: requires2Fa
+// and the temp token, no access token and no user, and still no cookie.
+func TestTwoFACallbackHandsOverChallengeOnly(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	svc, dbSvc, ctx := setupAuthTestService(t)
+
+	org := joinTestOrg(ctx, t, dbSvc, "acmetech", true)
+	user := joinTestUser(ctx, t, dbSvc, "alice@acme.com")
+	r.NoError(dbSvc.CreateOrganizationMember(
+		ctx, models.NewOrganizationMember(org.UID, user.UID, models.MemberRoleUser)))
+	enableTestTOTP(ctx, t, dbSvc, user)
+
+	login, err := svc.CompleteOrgLogin(ctx, org, user, WithLoginMethod(signupMethodOIDC))
+	r.NoError(err)
+
+	outcome := login.Outcome(org.Slug, user.UID)
+	r.True(outcome.Requires2FA, "the helper must carry the challenge")
+	r.Equal(login.TempToken, outcome.TempToken)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/auth/oidc/callback", nil)
+	r.NoError(finishProviderCallback(rec, req, dbSvc, "oidc", "/d/orgs/acmetech/checks", outcome))
+
+	r.Equal(http.StatusFound, rec.Code)
+	r.Empty(rec.Result().Cookies(), "no session cookie before the code")
+
+	rawLocation := rec.Header().Get("Location")
+	r.NotContains(rawLocation, login.TempToken, "no URL carries the temp token")
+
+	location, err := url.Parse(rawLocation)
+	r.NoError(err)
+	r.Equal(handoffCompletePath, location.Path)
+
+	code := location.Query().Get(handoffCodeParam)
+	r.NotEmpty(code)
+
+	exchange := postExchange(t, svc, codeBody(t, code))
+	r.Equal(http.StatusOK, exchange.Code, exchange.Body.String())
+	r.Empty(exchange.Result().Cookies(), "the exchange of a challenge sets no cookie")
+
+	var body map[string]any
+	r.NoError(json.Unmarshal(exchange.Body.Bytes(), &body))
+	r.Equal(true, body["requires2Fa"])
+	r.Equal(login.TempToken, body["tempToken"])
+	r.Equal("/d/orgs/acmetech/checks", body["returnTo"])
+
+	for _, absent := range []string{"accessToken", "refreshToken", "user", "organization", "organizations"} {
+		r.NotContains(body, absent, "a 2FA challenge must not disclose %q", absent)
+	}
+
+	// Positive control: the same temp token finishes the login.
+	claims, err := svc.validate2FATempToken(login.TempToken)
+	r.NoError(err)
+	r.Equal("acmetech", claims.OrgSlug)
+}

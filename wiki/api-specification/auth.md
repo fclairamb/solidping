@@ -42,7 +42,10 @@ Reset password using a reset token.
 Get invitation details by token (used to pre-fill the accept-invite form).
 
 ### POST /api/v1/auth/accept-invite
-Accept an organization invitation. Creates the user if needed and returns access token.
+Accept an organization invitation and return a session. Auth: optional.
+- No account for the invited email: anonymous, with a `password` (at least 8 characters); the account is created.
+- Existing account: must be signed in as that account. Anonymous gets 401 `INVITE_LOGIN_REQUIRED`; another signed-in account gets 403 `INVITE_EMAIL_MISMATCH` (spec 2026-10-16-06).
+- A presented but invalid credential gets 401 (no anonymous fallback). Refused under impersonation (403 `IMPERSONATION_FORBIDDEN`).
 
 ### POST /api/v1/auth/2fa/verify
 Verify a 2FA code during login (when login returns a 2FA challenge).
@@ -120,6 +123,13 @@ Revoke the token the request is authenticated with (self-revoke / "sign out
 everywhere else" style flows). Auth: required. Registered **before** the
 `:tokenUid` param route so chi matches the literal `current` segment first —
 keep that ordering if the routes are ever reshuffled.
+
+It also accepts an MCP OAuth access token, which is otherwise refused on every
+REST route (spec 2026-10-16-12): dropping your own grant is never an
+escalation. The only other REST routes an MCP credential reaches are
+`GET /api/v1/auth/me` and `POST /api/v1/orgs/:org/tokens`, for the first-party
+`solidping-cli` client with the full `mcp` scope (legacy loopback CLI login,
+kept for two releases).
 
 ### DELETE /api/v1/auth/tokens/:tokenUid
 Revoke a personal access token. Auth: required

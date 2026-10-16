@@ -154,11 +154,17 @@ whatever the in-flight check holds). There's no thundering-herd on the
 database, no extra polling, no per-runner lease churn — see the fetching
 architecture below.
 
+The default is `25` because an idle runner is almost free (25 runners plus
+the rest of the process use about 3 MB of goroutine stacks in total), it
+matches the default database pool of 25 connections, and the fast-lane
+reservation (`SP_SCHEDULING_FAST_LANE_RESERVED`, default `5`) needs a pool
+larger than 5 or it gets clamped with a warning at every start.
+
 Pick the value based on:
 
 - **How many checks you have × their period.** With 600 checks running every
   60s and a 1s average duration, you need ~10 concurrent runners to keep up.
-- **How slow your slowest checks are.** A check has a 30s execution timeout.
+- **How slow your slowest checks are.** A check has a 15s default execution timeout (`SP_SCHEDULING_CHECK_TIMEOUT_MS`).
   If many of your checks are slow (DNS lookups against unreachable hosts,
   HTTP probes hitting 30s timeouts), size the pool so a wave of slow checks
   doesn't starve the fast ones.
@@ -217,7 +223,6 @@ webhook delivery, aggregation, state cleanup, etc.
 | Env var                                | Default | What it controls |
 |----------------------------------------|---------|------------------|
 | `SP_SERVER_JOB_WORKER_NB`              | `2`     | Number of concurrent runner goroutines |
-| `SP_SERVER_JOB_WORKER_FETCH_MAX_AHEAD` | `5m`    | How far in the future the runner will pick up scheduled jobs |
 
 ### Architecture
 

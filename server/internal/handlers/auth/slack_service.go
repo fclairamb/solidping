@@ -374,16 +374,7 @@ func (s *SlackOAuthService) HandleCallback(ctx context.Context, code string) (*S
 		return nil, err
 	}
 
-	return &SlackOAuthResult{
-		AccessToken:     login.AccessToken,
-		RefreshToken:    login.RefreshToken,
-		ExpiresIn:       login.ExpiresIn,
-		OrgSlug:         org.Slug,
-		UserUID:         user.UID,
-		Pending:         login.Pending,
-		FallbackOrgSlug: login.FallbackOrgSlug,
-		PendingOrgSlug:  login.PendingOrgSlug,
-	}, nil
+	return login.Outcome(org.Slug, user.UID), nil
 }
 
 // getCallbackURL returns the OAuth callback URL for this application.

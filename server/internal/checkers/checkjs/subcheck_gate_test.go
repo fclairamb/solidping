@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	dockerconfig "github.com/fclairamb/solidping/server/internal/checkers/checkdocker/config"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
@@ -315,4 +316,123 @@ func TestSubCheckGateCountsAgainstBudget(t *testing.T) {
 
 	r.Contains(subCheckError(t, result), "sub-check limit")
 	r.Zero(browser.calls.Load())
+}
+
+// installDeploymentGate installs a deployment gate refusing exactly the given
+// types with the docker gate's message, restoring the previous gate at the end.
+func installDeploymentGate(t *testing.T, blocked ...checkerdef.CheckType) {
+	t.Helper()
+
+	previous := DeploymentGate
+
+	t.Cleanup(func() { DeploymentGate = previous })
+
+	blockedSet := make(map[checkerdef.CheckType]bool, len(blocked))
+	for _, checkType := range blocked {
+		blockedSet[checkType] = true
+	}
+
+	DeploymentGate = func(checkType checkerdef.CheckType) string {
+		if blockedSet[checkType] {
+			return "docker checks are not available on this deployment"
+		}
+
+		return ""
+	}
+}
+
+const dockerSubCheckScript = `
+	var res = solidping.check("docker", { host: "tcp://127.0.0.1:2375", containerName: "web" });
+	return { status: "up", output: res };
+`
+
+// TestSubCheckDeploymentGateRefusesDockerOnSaaSSharedWorker is the regression
+// of spec 2026-10-16-09: with the gate a SaaS shared worker installs, a nested
+// docker sub-check is refused with the deployment message and the docker
+// checker is never entered. A non-docker sub-check is unaffected.
+//
+//nolint:paralleltest // mutates the package-level gate/resolver globals
+func TestSubCheckDeploymentGateRefusesDockerOnSaaSSharedWorker(t *testing.T) {
+	r := require.New(t)
+
+	docker := &stubChecker{checkType: checkerdef.CheckTypeDocker}
+	httpStub := &stubChecker{checkType: checkerdef.CheckTypeHTTP}
+	installStubResolver(t, map[checkerdef.CheckType]*stubChecker{
+		checkerdef.CheckTypeDocker: docker,
+		checkerdef.CheckTypeHTTP:   httpStub,
+	})
+	clearGate(t)
+	installDeploymentGate(t, checkerdef.CheckTypeDocker)
+
+	result := runScript(t, dockerSubCheckScript)
+	r.Equal(logLevelError, subCheckStatus(t, result))
+	r.Equal("docker checks are not available on this deployment", subCheckError(t, result))
+	r.Zero(docker.calls.Load(), "a gated docker sub-check must never reach the docker checker")
+
+	result = runScript(t, `
+		var res = solidping.check("http", { url: "https://acme.com" });
+		return { status: "up", output: res };
+	`)
+	r.Equal(checkerdef.StatusUp.String(), subCheckStatus(t, result))
+	r.EqualValues(1, httpStub.calls.Load(), "a non-docker sub-check must be unaffected")
+}
+
+// TestSubCheckDeploymentGateAllowsDockerWhereAllowed is the positive control:
+// with an agent-mode / self-hosted gate (docker allowed) the same call reaches
+// the docker checker.
+//
+//nolint:paralleltest // mutates the package-level gate/resolver globals
+func TestSubCheckDeploymentGateAllowsDockerWhereAllowed(t *testing.T) {
+	r := require.New(t)
+
+	docker := &stubChecker{checkType: checkerdef.CheckTypeDocker}
+	installStubResolver(t, map[checkerdef.CheckType]*stubChecker{
+		checkerdef.CheckTypeDocker: docker,
+	})
+	clearGate(t)
+	installDeploymentGate(t)
+
+	result := runScript(t, dockerSubCheckScript)
+	r.Equal(checkerdef.StatusUp.String(), subCheckStatus(t, result))
+	r.EqualValues(1, docker.calls.Load(), "an allowed docker sub-check must reach the checker")
+}
+
+// TestSubCheckValidatesConfig proves a sub-check runs its config's own
+// Validate(): a docker host that is neither unix:// nor tcp:// — rejected for a
+// top-level docker check — is refused before the checker is entered.
+//
+//nolint:paralleltest // mutates the package-level gate/resolver globals
+func TestSubCheckValidatesConfig(t *testing.T) {
+	r := require.New(t)
+
+	clearGate(t)
+	installDeploymentGate(t)
+
+	docker := &stubChecker{checkType: checkerdef.CheckTypeDocker}
+	previous := ResolveChecker
+
+	t.Cleanup(func() { ResolveChecker = previous })
+
+	ResolveChecker = func(checkType checkerdef.CheckType) (checkerdef.Checker, checkerdef.Config, bool) {
+		if checkType != checkerdef.CheckTypeDocker {
+			return nil, nil, false
+		}
+
+		return docker, &dockerconfig.DockerConfig{}, true
+	}
+
+	result := runScript(t, `
+		var res = solidping.check("docker", { host: "http://127.0.0.1:2375", containerName: "web" });
+		return { status: "up", output: res };
+	`)
+	r.Equal(logLevelError, subCheckStatus(t, result))
+
+	msg := subCheckError(t, result)
+	r.Contains(msg, "invalid config")
+	r.Contains(msg, "must start with unix:// or tcp://")
+	r.Zero(docker.calls.Load(), "an invalid sub-config must never reach the checker")
+
+	result = runScript(t, dockerSubCheckScript)
+	r.Equal(checkerdef.StatusUp.String(), subCheckStatus(t, result), "a valid config still runs")
+	r.EqualValues(1, docker.calls.Load())
 }

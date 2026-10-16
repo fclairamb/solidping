@@ -507,7 +507,7 @@ func TestResourceOverrideBeatsThePage(t *testing.T) {
 		s := newPubSetup(t, setupOptions{autoPublish: false, delaySeconds: 0})
 
 		enabled := true
-		r.NoError(s.dbSvc.UpdateStatusPageResource(t.Context(), s.resource.UID,
+		r.NoError(s.dbSvc.UpdateStatusPageResource(t.Context(), s.resource.SectionUID, s.resource.UID,
 			&models.StatusPageResourceUpdate{SetAutoPublish: true, AutoPublish: &enabled}))
 
 		s.submit(models.ResultStatusDown)
@@ -521,7 +521,7 @@ func TestResourceOverrideBeatsThePage(t *testing.T) {
 		s := newPubSetup(t, setupOptions{autoPublish: true, delaySeconds: 0})
 
 		disabled := false
-		r.NoError(s.dbSvc.UpdateStatusPageResource(t.Context(), s.resource.UID,
+		r.NoError(s.dbSvc.UpdateStatusPageResource(t.Context(), s.resource.SectionUID, s.resource.UID,
 			&models.StatusPageResourceUpdate{SetAutoPublish: true, AutoPublish: &disabled}))
 
 		s.submit(models.ResultStatusDown)

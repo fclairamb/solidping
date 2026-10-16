@@ -329,11 +329,7 @@ func getKnownParameters() []ParameterDefinition {
 			EnvVar: "SP_SERVER_JOB_WORKER_NB",
 			Secret: false,
 			ApplyFunc: func(cfg *config.Config, value any) {
-				if v, ok := value.(float64); ok {
-					cfg.Server.JobWorker.Nb = int(v)
-				} else if v, ok := value.(int); ok {
-					cfg.Server.JobWorker.Nb = v
-				}
+				applyIntParam(&cfg.Server.JobWorker.Nb, value)
 			},
 		},
 		{
@@ -341,11 +337,7 @@ func getKnownParameters() []ParameterDefinition {
 			EnvVar: "SP_SERVER_CHECK_WORKER_NB",
 			Secret: false,
 			ApplyFunc: func(cfg *config.Config, value any) {
-				if v, ok := value.(float64); ok {
-					cfg.Server.CheckWorker.Nb = int(v)
-				} else if v, ok := value.(int); ok {
-					cfg.Server.CheckWorker.Nb = v
-				}
+				applyIntParam(&cfg.Server.CheckWorker.Nb, value)
 			},
 		},
 		{
@@ -1568,7 +1560,7 @@ func (s *Service) ensureJWTSecret(ctx context.Context) error {
 	}
 
 	// Check if set to something other than the default
-	if s.config.Auth.JWTSecret != "" && s.config.Auth.JWTSecret != "change-me-in-production" {
+	if s.config.Auth.JWTSecret != "" && s.config.Auth.JWTSecret != config.DefaultJWTSecret {
 		return nil
 	}
 
@@ -1731,4 +1723,19 @@ func EffectiveEmailConfig(
 	out := tmp.Email
 
 	return &out, nil
+}
+
+// applyIntParam sets dst from a JSON number (float64), an int, or a numeric
+// string (the raw env value the overlay passes). Anything else leaves dst alone.
+func applyIntParam(dst *int, value any) {
+	switch val := value.(type) {
+	case float64:
+		*dst = int(val)
+	case int:
+		*dst = val
+	case string:
+		if n, err := strconv.Atoi(strings.TrimSpace(val)); err == nil {
+			*dst = n
+		}
+	}
 }

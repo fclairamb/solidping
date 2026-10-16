@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
@@ -14,6 +15,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/notifier"
+	"github.com/fclairamb/solidping/server/internal/secretref"
 )
 
 // validateEnv is a checks service on a real sqlite DB with a real entitlements
@@ -592,4 +594,100 @@ func TestValidateVarReferences(t *testing.T) {
 		Type: "http", Slug: "var-good", Period: &period, Config: good,
 	})
 	r.NoError(err)
+}
+
+// TestValidateEnvReferences pins the save-time half of spec 2026-10-16-03: a
+// `${env:NAME}` outside the operator allowlist is a VALIDATION_ERROR (a
+// ConfigError) on validate_check, create and PATCH — all of which share
+// configValidationErrors (as do PUT-by-slug and MCP) — while an allowlisted name and a config with no
+// `${env:}` pass.
+func TestValidateEnvReferences(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	env := newValidateEnv(t, 0)
+	ctx := t.Context()
+	period := "00:01:00"
+
+	env.svc.SetEnvRefAllow(secretref.AllowEnvNames("SP_TEST_ALLOWED_TOKEN"))
+
+	bad := map[string]any{
+		"url":     "https://acme.com/collect",
+		"headers": map[string]any{"Authorization": "Bearer ${env:SP_AUTH_JWT_SECRET}"},
+	}
+	wantMsg := "config.headers: " + secretref.DisallowedEnvMessage("SP_AUTH_JWT_SECRET")
+
+	resp := env.validate(&checks.ValidateCheckRequest{Type: "http", Slug: "env-bad", Period: period, Config: bad})
+	r.False(resp.Valid)
+
+	finding := findingWithCode(resp.Fields, checks.CodeInvalidConfig)
+	r.NotNil(finding, "%+v", resp.Fields)
+	r.Equal("config", finding.Name)
+	r.Equal(wantMsg, finding.Message)
+
+	// Regression: create refuses it with a config (VALIDATION_ERROR) error.
+	_, err := env.svc.CreateCheck(ctx, env.org.Slug, checks.CreateCheckRequest{
+		Type: "http", Slug: "env-bad", Period: &period, Config: bad,
+	})
+	configErr := checkerdef.IsConfigError(err)
+	r.NotNil(configErr, "create must reject a disallowed ${env:}: %v", err)
+	r.Equal(wantMsg, configErr.Message)
+
+	// Positive control: an allowlisted name passes, and so does no reference.
+	good := map[string]any{
+		"url":     "https://acme.com/collect",
+		"headers": map[string]any{"Authorization": "Bearer ${env:SP_TEST_ALLOWED_TOKEN}"},
+	}
+	resp = env.validate(&checks.ValidateCheckRequest{Type: "http", Slug: "env-good", Period: period, Config: good})
+	r.True(resp.Valid, "%+v", resp.Fields)
+
+	created, err := env.svc.CreateCheck(ctx, env.org.Slug, checks.CreateCheckRequest{
+		Type: "http", Slug: "env-good", Period: &period, Config: good,
+	})
+	r.NoError(err)
+
+	_, err = env.svc.CreateCheck(ctx, env.org.Slug, checks.CreateCheckRequest{
+		Type: "http", Slug: "env-none", Period: &period, Config: map[string]any{"url": "https://acme.com"},
+	})
+	r.NoError(err)
+
+	// Regression: PATCH cannot introduce a disallowed reference either.
+	_, err = env.svc.UpdateCheck(ctx, env.org.Slug, created.UID, &checks.UpdateCheckRequest{Config: &bad})
+	r.NotNil(checkerdef.IsConfigError(err), "PATCH must reject a disallowed ${env:}: %v", err)
+}
+
+// TestCloneRefusesEnvRefOutsideTheAllowlist pins the clone half of spec
+// 2026-10-16-03: a `${env:NAME}` stored while the name was allowed (or before
+// the allowlist existed) is not copied once the name is off the list — clone
+// re-runs the same config validation as create and PATCH.
+func TestCloneRefusesEnvRefOutsideTheAllowlist(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	env := newValidateEnv(t, 0)
+	ctx := t.Context()
+	period := "00:01:00"
+
+	env.svc.SetEnvRefAllow(secretref.AllowEnvNames("SP_TEST_CLONE_TOKEN"))
+
+	source, err := env.svc.CreateCheck(ctx, env.org.Slug, checks.CreateCheckRequest{
+		Type: "http", Slug: "env-clone-src", Period: &period, Config: map[string]any{
+			"url":     "https://acme.com/collect",
+			"headers": map[string]any{"Authorization": "Bearer ${env:SP_TEST_CLONE_TOKEN}"},
+		},
+	})
+	r.NoError(err)
+
+	// Positive control: while the name is listed, the clone goes through.
+	_, err = env.svc.CloneCheck(ctx, env.org.Slug, source.UID, &checks.CloneCheckRequest{})
+	r.NoError(err)
+
+	// The operator drops the name from the allowlist: the stored reference
+	// can no longer be copied into a new check.
+	env.svc.SetEnvRefAllow(secretref.AllowEnvNames("SP_TEST_CLONE_OTHER"))
+
+	_, err = env.svc.CloneCheck(ctx, env.org.Slug, source.UID, &checks.CloneCheckRequest{})
+	configErr := checkerdef.IsConfigError(err)
+	r.NotNil(configErr, "clone must reject a disallowed ${env:}: %v", err)
+	r.Equal("config.headers: "+secretref.DisallowedEnvMessage("SP_TEST_CLONE_TOKEN"), configErr.Message)
 }

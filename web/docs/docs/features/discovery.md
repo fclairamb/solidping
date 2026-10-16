@@ -31,6 +31,21 @@ the first to finish.
 Freebox and Kubernetes only appear as selectable scan methods once a matching
 integration/connection exists.
 
+Under an [egress policy](../configuration/egress-policy.md#discovery) that
+refuses private targets (the SaaS default, or `SP_EGRESS_ALLOW_PRIVATE=false`
+on a self-hosted server), the server only offers the sources it can run
+safely:
+
+| Source | Self-hosted (default) | Private targets refused | SaaS |
+|---|---|---|---|
+| LAN | Available | Not offered | Not offered |
+| Containers | Available | `tcp://` only, through the policy | Not offered |
+| Freebox | Available | Hosts listed from the box, not probed | Hosts listed from the box, not probed |
+| Kubernetes | Available | Public API servers only | Public API servers only |
+
+A source that is not offered is hidden from the scan form, and starting it
+through the API answers `403 DISCOVERY_NOT_AVAILABLE`.
+
 ### LAN scan options
 
 Besides the CIDR list, an **Advanced options** section exposes ports (comma

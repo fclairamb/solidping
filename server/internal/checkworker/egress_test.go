@@ -151,7 +151,7 @@ func TestExecuteJob_EgressPolicyGuardsTheSSHBastion(t *testing.T) {
 
 	srv := sshtunneltest.Start(t)
 	ctx = sshtunnel.WithResolver(ctx, sshtunnel.NewResolver(
-		&tunnelCheckLoader{config: srv.CheckConfig()}, nil,
+		&tunnelCheckLoader{config: srv.CheckConfig()}, nil, nil,
 	))
 
 	checkJob := setupTunnelJob(t, runner, dbSvc, ctx, ttype, models.JSONMap{

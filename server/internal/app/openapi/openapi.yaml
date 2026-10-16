@@ -952,6 +952,11 @@ paths:
         it for the session the provider callback minted, in the login
         response shape. An unknown, reused, expired or forged code always
         gets the same 401 body.
+
+        A user with TOTP enabled gets no session from the callback: the
+        exchange then answers `requires2Fa` and `tempToken` (plus `returnTo`
+        and `membershipPending`), with no token and no user, and sets no
+        cookie. The sign-in finishes through `/api/v1/auth/2fa/verify`.
       operationId: exchangeHandoffCode
       requestBody:
         required: true
@@ -1227,7 +1232,18 @@ paths:
     post:
       tags: [Authentication]
       summary: Accept an invitation
+      description: |
+        Optionally authenticated. An invitation for an email that has no
+        account yet is accepted anonymously, with a `password` (at least 8
+        characters) for the new account. An invitation for an existing account
+        must be accepted by that account, signed in: anonymously the answer is
+        401 `INVITE_LOGIN_REQUIRED`, and from any other signed-in account it is
+        403 `INVITE_EMAIL_MISMATCH`. A credential that is presented but invalid
+        gets 401, never an anonymous fallback. Refused under impersonation.
       operationId: acceptInvite
+      security:
+        - {}
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -1243,6 +1259,22 @@ paths:
                 $ref: "#/components/schemas/LoginResponse"
         "400":
           $ref: "#/components/responses/ValidationError"
+        "401":
+          description: >-
+            `INVITE_LOGIN_REQUIRED`: the invitation is for an existing account,
+            sign in as it to accept. Or the presented credential is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: >-
+            `INVITE_EMAIL_MISMATCH`: the signed-in account is not the invitee.
+            `IMPERSONATION_FORBIDDEN` under impersonation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -9935,6 +9967,8 @@ components:
             - INVALID_ORG
             - INVALID_CREDENTIALS
             - CHECK_HAS_ACTIVE_INCIDENTS
+            - INVITE_LOGIN_REQUIRED
+            - INVITE_EMAIL_MISMATCH
         detail:
           type: string
           description: Detailed error explanation
@@ -10484,6 +10518,16 @@ components:
           type: string
           enum: ["", orgRedirect, orgChoice, noOrg]
           description: Indicates how the frontend should handle the login result
+        requires2Fa:
+          type: boolean
+          description: |
+            The user has TOTP enabled: no session was issued. Send the code
+            (or a recovery code) with `tempToken` to `/api/v1/auth/2fa/verify`
+            (or `/api/v1/auth/2fa/recovery`). The response then carries only
+            this flag and `tempToken`.
+        tempToken:
+          type: string
+          description: Short-lived 2FA token, only with `requires2Fa`. It is not a bearer token.
 
     HandoffExchangeRequest:
       type: object

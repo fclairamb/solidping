@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/egress"
 	"github.com/fclairamb/solidping/server/internal/handlers/statussubscribers"
 	"github.com/fclairamb/solidping/server/internal/servicesig"
 )
@@ -109,7 +110,7 @@ func deliverOnce(t *testing.T, s *subSetup, rec *receiver) {
 	t.Helper()
 
 	notifier := statussubscribers.NewNotifier(
-		s.dbSvc, nil, nil, "https://status.example.com", nil, nil)
+		s.dbSvc, nil, nil, "https://status.example.com", nil, nil, nil)
 	// The receiver's own client, so the httptest TLS certificate verifies.
 	notifier.SetHTTPClient(rec.server.Client())
 
@@ -297,12 +298,13 @@ func TestListNeverEchoesTheEndpointURL(t *testing.T) {
 	r.NotContains(*sub.EndpointKey, "SuperSecretToken")
 }
 
-// TestEndpointValidation covers the create-path rules: https only, no
-// loopback/private hosts (SSRF), and a Slack row must actually point at Slack.
+// TestEndpointValidation covers the create-path rules: https only, a host the
+// egress policy accepts (SSRF), and a Slack row must actually point at Slack.
 //
-// It builds its OWN strict service — the shared fixture opts into
-// WithAllowPrivateEndpoints so the delivery tests can reach an httptest server,
-// and a test of the guard must not run with the guard relaxed.
+// It builds its OWN service with an ENFORCING guard: the shared fixture
+// follows a permissive policy so the delivery tests can reach an httptest
+// server, and a test of the guard must not run with the guard relaxed. The
+// stub resolver keeps the test off the network.
 func TestEndpointValidation(t *testing.T) {
 	t.Parallel()
 
@@ -328,10 +330,8 @@ func TestEndpointValidation(t *testing.T) {
 			r := require.New(t)
 			s := newSubSetup(t)
 
-			// STRICT service: the shared fixture relaxes the private-host rule
-			// so the delivery tests can talk to an httptest server on
-			// 127.0.0.1, and this is precisely the test that must not.
-			strict := statussubscribers.NewService(s.dbSvc, nil)
+			strict := statussubscribers.NewService(s.dbSvc, nil,
+				statussubscribers.WithEgressGuard(egress.New(false, egress.WithLookup(stubLookup))))
 
 			_, err := strict.CreateEndpointSubscriber(t.Context(), s.org.Slug, s.page.UID,
 				&statussubscribers.CreateEndpointSubscriberRequest{Channel: tc.channel, URL: tc.url})

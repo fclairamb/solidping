@@ -827,6 +827,15 @@ SolidPing generates one and **shows it to you once, right after you add the
 delivery**. Copy it then: it is stored encrypted and is never displayed again,
 so losing it means removing the subscription and adding it back.
 
+**Public endpoints only, under an enforcing egress policy.** The delivery URL
+follows the instance's [egress policy](/configuration/egress-policy), like every
+other notification URL. Where that policy refuses private targets (the SaaS
+default), the endpoint must be public: a loopback, private, CGNAT, link-local or
+cloud-metadata address is refused when you add the subscription, including a
+hostname that resolves to one. Each delivery, and each redirect it follows, is
+checked again. A self-hosted instance allows private targets by default
+(`SP_EGRESS_ALLOW_PRIVATE`), so it accepts receivers on its own network.
+
 **Your URL stays secret.** It is stored encrypted, and the dashboard and API only
 ever show a masked form of it — enough to tell two webhooks apart, useless to
 anyone who gets hold of a response.

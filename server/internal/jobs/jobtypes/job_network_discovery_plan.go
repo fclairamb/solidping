@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	disc "github.com/fclairamb/solidping/server/internal/discovery"
+	"github.com/fclairamb/solidping/server/internal/discovery/scantypes"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
 
@@ -52,6 +53,12 @@ func (r *NetworkDiscoveryPlanJobRun) Run(ctx context.Context, jctx *jobdef.JobCo
 
 	if jctx.OrganizationUID == nil {
 		return errNoOrganizationUID
+	}
+
+	// A plan queued before the egress policy applied must not fan out: LAN
+	// discovery is refused whenever the process guard is enforcing.
+	if err := scantypes.LANNotAvailable(egressGuardFrom(jctx)); err != nil {
+		return err
 	}
 
 	if jctx.Services == nil || jctx.Services.Jobs == nil {

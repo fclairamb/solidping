@@ -9,11 +9,15 @@
 // login-shaped answer to AuthContext's applyLoginResponse, then navigates to
 // what resolveHandoffLanding picks.
 //
+// A user with TOTP enabled gets no session from the callback (spec
+// 2026-10-16-14): the exchange answers `requires2Fa` and a 2FA temp token, with
+// no user or organization, and the route asks for the code before landing.
+//
 // The code param is deliberately named `code`: lib/analytics-redaction.ts
 // scrubs it from every URL PostHog sees.
 
 import { apiFetch } from "@/api/client";
-import { resolveDestination } from "./login-destination";
+import { isInviteReturnTo, resolveDestination } from "./login-destination";
 
 /** The route every provider callback redirects to (see join_policy.go). */
 export const HANDOFF_COMPLETE_PATH = "/auth/complete";
@@ -23,10 +27,12 @@ export const HANDOFF_COMPLETE_PATH = "/auth/complete";
  * `applyLoginResponse` consumes for a password login) plus where to land.
  */
 export interface HandoffExchangeResponse {
-  accessToken: string;
+  /** Absent on a 2FA challenge: no session exists until the code is accepted. */
+  accessToken?: string;
   refreshToken?: string;
   expiresIn?: number;
-  user: {
+  /** Absent on a 2FA challenge, like a password login stopped at the code prompt. */
+  user?: {
     uid: string;
     email: string;
     name?: string;
@@ -38,6 +44,10 @@ export interface HandoffExchangeResponse {
   organization?: { uid: string; slug: string; name?: string };
   organizations?: { slug: string; name?: string; logoUrl?: string | null; role: string }[];
   loginAction?: string;
+  /** The user has TOTP enabled: finish with verify2FA / useRecoveryCode on tempToken. */
+  requires2Fa?: boolean;
+  /** The 2FA temp token, only with requires2Fa. */
+  tempToken?: string;
   /** The path the login started from. Followed only through resolveDestination's guards. */
   returnTo?: string;
   /** The org that has not admitted the user yet, for /no-org. */
@@ -59,7 +69,8 @@ export type HandoffLanding =
  *   device-verification bounce); anything else lands on the org root. This is
  *   what lets a deep link or an MCP consent flow survive the provider
  *   round-trip, and what keeps a forged `returnTo` from going anywhere.
- * - An org-less session (the org did not admit the user) lands on /no-org,
+ * - An org-less session resumes an invitation `returnTo` (the only org-less
+ *   page it may go back to), and otherwise (the org did not admit the user) lands on /no-org,
  *   naming the org that has the pending request. The exchange's answer wins
  *   over the URL's flag; the URL's is the fallback.
  */
@@ -71,6 +82,12 @@ export function resolveHandoffLanding(
   const org = response.organization?.slug;
   if (org) {
     return resolveDestination(org, response.returnTo ?? null, basepath);
+  }
+
+  // A user with no org at all is exactly the one an invitation brings back
+  // (spec 2026-10-16-06): resume the invitation page before /no-org.
+  if (isInviteReturnTo(response.returnTo, basepath)) {
+    return { href: response.returnTo };
   }
 
   const membershipPending = response.membershipPending || membershipPendingFromUrl || undefined;

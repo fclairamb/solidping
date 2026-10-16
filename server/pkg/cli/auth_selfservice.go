@@ -2,6 +2,8 @@ package cli
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"strconv"
 
@@ -9,6 +11,7 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 	"github.com/urfave/cli/v3"
 
+	"github.com/fclairamb/solidping/server/pkg/cli/apihelper"
 	"github.com/fclairamb/solidping/server/pkg/cli/output"
 	"github.com/fclairamb/solidping/server/pkg/client"
 )
@@ -18,6 +21,12 @@ const (
 	flagPassword = "password"
 
 	msgTokenArgRequired = "Error: token is required"
+)
+
+var (
+	errInviteLoginRequired = errors.New(
+		"this invitation is for an existing account: run `sp auth login` as that account, then retry")
+	errInviteEmailMismatch = errors.New("this invitation is addressed to another account")
 )
 
 // publicAPIClient builds an unauthenticated API client for the self-service
@@ -390,7 +399,7 @@ func authAcceptInviteAction(ctx context.Context, cmd *cli.Command) error {
 		body.Password = &password
 	}
 
-	apiClient, err := publicAPIClient(cliCtx)
+	apiClient, err := acceptInviteClient(ctx, cliCtx)
 	if err != nil {
 		return cliCtx.HandleError("Failed to create client", err)
 	}
@@ -401,7 +410,7 @@ func authAcceptInviteAction(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	if resp.StatusCode() != 200 || resp.JSON200 == nil {
-		return cliCtx.HandleStatusError("Failed to accept invitation", resp.StatusCode())
+		return acceptInviteFailure(ctx, cliCtx, apiClient, resp)
 	}
 
 	if saveErr := saveAuthSession(cliCtx, resp.JSON200); saveErr != nil {
@@ -418,6 +427,40 @@ func authAcceptInviteAction(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	return nil
+}
+
+// acceptInviteClient sends the stored credential when there is one: an
+// invitation for an existing account is accepted only by that account, signed
+// in (spec 2026-10-16-06). With no credential at all it falls back to the
+// public client, the new-account path.
+func acceptInviteClient(ctx context.Context, cliCtx *Context) (*client.SolidPingClient, error) {
+	apiClient, err := cliCtx.APIHelper.GetClient(ctx)
+	if errors.Is(err, apihelper.ErrNoAuthentication) {
+		return publicAPIClient(cliCtx)
+	}
+
+	return apiClient, err
+}
+
+// acceptInviteFailure explains the two refusals that need a different account.
+func acceptInviteFailure(
+	ctx context.Context, cliCtx *Context, apiClient *client.SolidPingClient, resp *client.AcceptInviteResult,
+) error {
+	switch {
+	case resp.JSON401 != nil && resp.JSON401.Code == client.ErrorCodeINVITELOGINREQUIRED:
+		return cliCtx.HandleError("Failed to accept invitation", errInviteLoginRequired)
+	case resp.JSON403 != nil && resp.JSON403.Code == client.ErrorCodeINVITEEMAILMISMATCH:
+		signedInAs := "another account"
+		if me, meErr := apiClient.Me(ctx); meErr == nil && me.User != nil && me.User.Email != nil {
+			signedInAs = string(*me.User.Email)
+		}
+
+		return cliCtx.HandleError("Failed to accept invitation",
+			fmt.Errorf("%w: the CLI is signed in as %s; run `sp auth login` as the invited account, then retry",
+				errInviteEmailMismatch, signedInAs))
+	default:
+		return cliCtx.HandleStatusError("Failed to accept invitation", resp.StatusCode())
+	}
 }
 
 // derefString returns the pointed-to string or "".

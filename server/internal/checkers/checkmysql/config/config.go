@@ -9,11 +9,11 @@
 package config
 
 import (
-	"fmt"
 	"strings"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/secretref"
 )
 
 const (
@@ -27,6 +27,13 @@ const (
 	// DefaultQuery is a default or bound this config's rules are expressed in; it is
 	// exported so the parent checker package can alias it.
 	DefaultQuery = "SELECT 1"
+
+	// connStringMetaChars are the characters that delimit a go-sql-driver DSN
+	// (user:pass@net(addr)/db?k=v&k=v). The checker builds its connection from
+	// structured fields, never a DSN string, so these are harmless there; the
+	// rule is defense in depth against any future string round-trip
+	// (spec 2026-10-16-04).
+	connStringMetaChars = "@/()?&:"
 )
 
 // MySQLConfig holds the configuration for MySQL/MariaDB database checks.
@@ -136,6 +143,24 @@ func (c *MySQLConfig) Validate() error {
 		return checkerdef.NewConfigError("username", "is required")
 	}
 
+	fields := []struct{ name, value string }{
+		{"username", c.Username},
+		{"password", c.Password},
+		{"database", c.Database},
+	}
+	for i := range fields {
+		field := &fields[i]
+
+		// A `${env:NAME}` / `${param:KEY}` reference is stored as-is and only
+		// resolved at execution, where the value reaches the driver as a
+		// structured field; its own `:` is grammar, not data.
+		if strings.ContainsAny(secretref.Pattern.ReplaceAllString(field.value, ""), connStringMetaChars) {
+			return checkerdef.NewConfigErrorf(
+				field.name, "must not contain any of the characters %s", connStringMetaChars,
+			)
+		}
+	}
+
 	if c.Port < 0 || c.Port > 65535 {
 		return checkerdef.NewConfigErrorf("port", "must be between 1 and 65535, got %d", c.Port)
 	}
@@ -151,33 +176,4 @@ func (c *MySQLConfig) Validate() error {
 	}
 
 	return nil
-}
-
-// BuildDSN builds a MySQL DSN from the configuration.
-func (c *MySQLConfig) BuildDSN() string {
-	port := c.Port
-	if port == 0 {
-		port = DefaultPort
-	}
-
-	// Format: user:password@tcp(host:port)/dbname?timeout=Xs
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/",
-		c.Username,
-		c.Password,
-		c.Host,
-		port,
-	)
-
-	if c.Database != "" {
-		dsn += c.Database
-	}
-
-	timeout := c.Timeout
-	if timeout == 0 {
-		timeout = DefaultTimeout
-	}
-
-	dsn += fmt.Sprintf("?timeout=%s", timeout)
-
-	return dsn
 }

@@ -47,7 +47,7 @@ func TestReportFiledWhileImpersonatingNamesTheAdmin(t *testing.T) {
 
 	imper, err := authSvc.Impersonate(ctx, admin.UID, target.UID, "acme", auth.Context{})
 	r.NoError(err)
-	own, err := authSvc.GenerateMCPAccessToken(ctx, target.UID, "acme", nil, "", time.Hour, "")
+	own, err := authSvc.GenerateMCPAccessToken(ctx, target.UID, "acme", nil, "", time.Hour, "", "")
 	r.NoError(err)
 
 	h := &Handler{svc: &Service{db: dbSvc}, auth: authSvc}

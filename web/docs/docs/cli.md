@@ -168,6 +168,28 @@ If a reference cannot be resolved, `sp checks import` and `sp apply` refuse the 
 
 `${env:}` resolves on whichever process executes the check — for a check pinned to a private location, that is the agent's own environment, not the server's. That is useful for per-region credentials, and worth remembering when a value seems to be missing.
 
+### `${env:}` only reads allowlisted variables {#env-allowlist}
+
+`${env:NAME}` resolves only for a name the operator listed in `SP_CHECK_ENV_ALLOWLIST` (comma-separated) on the process that runs the check. The list is empty by default, so `${env:}` resolves nothing until you set it:
+
+```bash
+SP_CHECK_ENV_ALLOWLIST=SP_ACME_API_TOKEN,SP_ACME_DB_PASSWORD
+```
+
+Without the list, anyone allowed to write a check config could make a check read the server's own secrets (its JWT secret, its database URL) and send them to a target of their choice.
+
+- Saving a check (create, update, clone, `sp checks import`, `sp apply`, including `--dry-run`) refuses a `${env:NAME}` whose name the **server** does not list, with `VALIDATION_ERROR`. Create, update and clone check the name only, so a listed name is accepted even if the server does not set it (it may be set on the agent that runs the check). `sp checks import` and `sp apply` also resolve the reference on the server, and refuse a listed but unset variable exactly like an unlisted one, so their error never tells you whether a variable exists.
+- At run time, a name the executing process does not list turns the check red with `unresolved secret reference: env:NAME`. The literal reference is never sent to the target.
+- A check pinned to a private location needs the name listed on the server (so it can be saved) **and** on that agent (so it resolves there). Each agent reads its own `SP_CHECK_ENV_ALLOWLIST`.
+- Prefer `${param:…}` for anything an organization should manage itself: parameters are scoped to the organization and need no server change.
+- For how this shows up in an `sp apply` workflow, see [Config as code](/features/config-as-code).
+
+:::warning Upgrading to a version with the allowlist
+Existing checks keep their `${env:NAME}` references, but those stop resolving until the name is listed: each such check goes red with `unresolved secret reference: env:NAME` on its next run. If you use `${env:}`, set `SP_CHECK_ENV_ALLOWLIST` on the server and on every private-location agent before or right after upgrading. No migration is needed.
+
+On a deployment where untrusted users could create checks (open signup), the server's own environment was reachable through `${env:}` before this change: consider rotating `SP_AUTH_JWT_SECRET`, the database credentials and the encryption master key.
+:::
+
 ## Output Formats
 
 The client can print human-readable tables or machine-readable output for scripting:

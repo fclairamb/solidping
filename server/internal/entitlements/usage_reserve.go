@@ -30,6 +30,13 @@ const (
 	defaultTelegramRunawayPerHour = 60
 )
 
+// Exported views of the per-org runaway defaults, so a test can compare them
+// with the documented values.
+const (
+	DefaultWhatsAppRunawayPerHour = defaultWhatsAppRunawayPerHour
+	DefaultTelegramRunawayPerHour = defaultTelegramRunawayPerHour
+)
+
 // RunawayKindTelegram is the runaway-bucket key for the Telegram channel. It is
 // deliberately NOT a models.UsageCounterKind*: Telegram is free, so it has no
 // monthly entitlement and no org_usage_counter row. Metering a free channel

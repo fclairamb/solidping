@@ -8,8 +8,10 @@ import (
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/egress"
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/handlers/statusupdates"
+	"github.com/fclairamb/solidping/server/internal/httpclientpool"
 )
 
 // Compile-time assertion that *Notifier satisfies the statusupdates fan-out hook.
@@ -89,15 +91,26 @@ type Notifier struct {
 	// creds opens the encrypted delivery endpoints. nil is legal (self-hosted
 	// with no master key); plaintext envelopes still open.
 	creds credentials.Service
+	// guard is the process's egress policy for outbound notification
+	// deliveries. Every endpoint URL is checked against it right before a
+	// delivery, and the default client dials through it, so a redirect or a
+	// DNS change cannot steer a delivery into the server's own network. nil
+	// means "no policy" (allow everything).
+	guard *egress.Guard
 	// httpClient delivers webhook/slack payloads. Injectable so tests can
 	// point it at an httptest server.
 	httpClient *http.Client
 }
 
 // NewNotifier builds a subscriber fan-out notifier.
+//
+// guard is a required parameter, not a setter, so no construction site can
+// forget the egress policy: a subscriber endpoint is a customer-supplied URL,
+// and an unguarded client following a redirect into 169.254.169.254 or a 10.x
+// service is a plain SSRF.
 func NewNotifier(
 	dbService db.Service, sender email.Sender, formatter email.Formatter, baseURL string,
-	logger *slog.Logger, creds credentials.Service,
+	logger *slog.Logger, creds credentials.Service, guard *egress.Guard,
 ) *Notifier {
 	if logger == nil {
 		logger = slog.Default()
@@ -105,8 +118,8 @@ func NewNotifier(
 
 	return &Notifier{
 		db: dbService, sender: sender, formatter: formatter, baseURL: baseURL,
-		logger: logger, creds: creds,
-		httpClient: &http.Client{Timeout: deliveryTimeout},
+		logger: logger, creds: creds, guard: guard,
+		httpClient: httpclientpool.NewGuardedClient(deliveryTimeout, guard),
 	}
 }
 

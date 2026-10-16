@@ -404,6 +404,10 @@ func (s *Service) configValidationErrors(
 	// reach a worker, where they would only surface as an error result.
 	errs = append(errs, validateVarRefs(effective)...)
 
+	// `${env:NAME}` outside the operator allowlist (spec 2026-10-16-03): it
+	// would never resolve at run time, and must not be stored either.
+	errs = append(errs, validateEnvRefs(effective, s.envRefAllow)...)
+
 	if orgUID == "" {
 		return errs
 	}

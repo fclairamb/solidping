@@ -11,13 +11,22 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/egress"
+	"github.com/fclairamb/solidping/server/internal/httpclientpool"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
+	"github.com/fclairamb/solidping/server/internal/notifications"
 	"github.com/fclairamb/solidping/server/internal/version"
 )
 
 const (
 	webhookTimeout       = 30 * time.Second
 	httpSuccessThreshold = 300
+	// webhookMaxErrorBodyBytes caps the response snippet kept in the job
+	// error, the same cap as the status-page subscriber deliveries.
+	webhookMaxErrorBodyBytes = 512
+	// webhookMaxDrainBytes bounds how much of the rest of a response body is
+	// discarded before the connection is closed.
+	webhookMaxDrainBytes = 64 << 10
 )
 
 // ErrWebhookHTTPError is returned when webhook returns an HTTP error status code.
@@ -80,6 +89,15 @@ func (r *WebhookJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) error 
 		}
 	}
 
+	// Check the URL against the egress policy before any network attempt.
+	// The integration URL was validated when it was saved, but a row can
+	// predate that check or have been saved while the policy allowed private
+	// targets. A refusal is terminal: retrying cannot make the host public.
+	guard := egressGuardFrom(jctx)
+	if err = notifications.ValidateSenderURL(ctx, guard, r.config.URL); err != nil {
+		return fmt.Errorf("webhook URL refused: %w", err)
+	}
+
 	// Create request
 	req, err := http.NewRequestWithContext(ctx, r.config.Method, r.config.URL, bytes.NewReader(bodyBytes))
 	if err != nil {
@@ -94,25 +112,36 @@ func (r *WebhookJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) error 
 		req.Header.Set(key, value)
 	}
 
-	// Send request with timeout
-	client := &http.Client{
-		Timeout: webhookTimeout,
-	}
+	// The guarded client re-checks every dial, redirect hops included, so a
+	// redirect or a DNS change cannot steer the request into a private
+	// network. A nil guard is "no policy" and uses the shared pool.
+	client := httpclientpool.NewGuardedClient(webhookTimeout, guard)
 
 	resp, err := client.Do(req)
 	if err != nil {
+		if errors.Is(err, egress.ErrDenied) {
+			// A redirect hop or a rebound name refused by the policy is as
+			// terminal as a refused URL.
+			return fmt.Errorf("sending webhook: %w", err)
+		}
+
 		// Network errors are retryable
 		return jobdef.NewRetryableError(fmt.Errorf("sending webhook: %w", err))
 	}
 
 	defer func() {
+		// Bounded drain: a receiver streaming an endless body must not keep
+		// the job reading until the timeout.
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, webhookMaxDrainBytes))
+
 		if closeErr := resp.Body.Close(); closeErr != nil {
 			slog.WarnContext(ctx, "Failed to close response body", "error", closeErr)
 		}
 	}()
 
-	// Read response body
-	respBody, err := io.ReadAll(resp.Body)
+	// Only a short snippet of the body is read: it ends up in the job error,
+	// which is stored as job output and readable by every org member.
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, webhookMaxErrorBodyBytes))
 	if err != nil {
 		slog.WarnContext(ctx, "Failed to read webhook response body", "error", err)
 	}

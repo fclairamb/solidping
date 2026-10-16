@@ -227,6 +227,8 @@ Create an API token from the dashboard or with the [CLI](/cli) (`sp tokens creat
 
 Replace the URL with your `SP_BASE_URL` and supply a token carrying the `mcp` or `mcp:read` scope. The API itself accepts a `scopes` field on token creation (`mcp:read` for read-only); the dashboard's token page does not yet expose a scope picker in its UI, so a scoped token currently needs to be created via the API or CLI.
 
+OAuth access tokens and scoped tokens (any token created with `scopes`) only work on `/api/v1/mcp`. The rest of the REST API, the live-events socket and the OAuth consent screen answer `401 INVALID_TOKEN` ("This token is only valid for the MCP endpoint") to them, so an `mcp:read` grant can never act with your full role. To script the REST API, use a token created without `scopes`.
+
 ## Clients that run a command (stdio)
 
 Some MCP clients only launch a command and talk to it over stdin/stdout. The [CLI](/cli) covers them: `sp mcp` relays each message to your instance's `/api/v1/mcp` endpoint with your credential and writes the replies back.

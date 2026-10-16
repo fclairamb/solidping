@@ -112,9 +112,9 @@ func setupImpersonationFixture(t *testing.T) *impersonationFixture {
 	r.NoError(dbService.CreateOrganizationMember(ctx,
 		models.NewOrganizationMember(org.UID, f.target.UID, models.MemberRoleAdmin)))
 
-	f.adminToken, err = authSvc.GenerateMCPAccessToken(ctx, f.admin.UID, "acme", nil, "", time.Hour, "")
+	f.adminToken, err = authSvc.GenerateMCPAccessToken(ctx, f.admin.UID, "acme", nil, "", time.Hour, "", "")
 	r.NoError(err)
-	f.targetToken, err = authSvc.GenerateMCPAccessToken(ctx, f.target.UID, "acme", nil, "", time.Hour, "")
+	f.targetToken, err = authSvc.GenerateMCPAccessToken(ctx, f.target.UID, "acme", nil, "", time.Hour, "", "")
 	r.NoError(err)
 
 	resp, err := authSvc.Impersonate(ctx, f.admin.UID, f.target.UID, "acme", auth.Context{})

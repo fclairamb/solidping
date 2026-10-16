@@ -2,6 +2,7 @@ import { createServer, type Server } from "node:http";
 import { createSign, generateKeyPairSync, type KeyObject } from "node:crypto";
 import { test, expect, type Page } from "@playwright/test";
 import { API_BASE, DASH_BASE, escapeRegExp, fetchAuthCapabilities, uniqueStamp } from "./fixtures";
+import { generateTotp } from "./totp-utils";
 
 /**
  * Spec 2026-09-25-12: a federated login never puts the session in a URL.
@@ -83,6 +84,32 @@ async function seedMemberOfOwnOrg(page: Page, stamp: string): Promise<{ email: s
   expect(org.status()).toBe(201);
 
   return { email, slug };
+}
+
+/**
+ * Enrolls TOTP for a member seeded by seedMemberOfOwnOrg, over the API (the
+ * login-2fa.spec.ts recipe). Returns the TOTP secret.
+ */
+async function enrollTotp(page: Page, email: string, slug: string): Promise<string> {
+  const login = await page.request.post(`${API_BASE}/api/v1/auth/login`, {
+    data: { org: slug, email, password: "Strong-Pass-123!" },
+  });
+  expect(login.status()).toBe(200);
+  const { accessToken } = (await login.json()) as { accessToken: string };
+
+  const setup = await page.request.post(`${API_BASE}/api/v1/auth/2fa/setup`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  expect(setup.status()).toBe(200);
+  const { secret } = (await setup.json()) as { secret: string };
+
+  const confirm = await page.request.post(`${API_BASE}/api/v1/auth/2fa/confirm`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    data: { code: generateTotp(secret) },
+  });
+  expect(confirm.status()).toBe(200);
+
+  return secret;
 }
 
 /** The seeded test-mode user, a member of org `test`. */
@@ -250,6 +277,50 @@ test.describe("Federated login handoff", () => {
       expect(urls.filter((u) => TOKEN_PARAM.test(u))).toEqual([]);
       for (const u of urls) {
         expect(u).not.toContain(stored.token as string);
+      }
+    });
+
+    // Spec 2026-10-16-14: a user who enabled TOTP is asked for the code on an
+    // SSO sign-in too. The handoff carries a 2FA challenge, not a session.
+    test("a TOTP user is asked for the code, then lands on the org", async ({ page }) => {
+      const stamp = uniqueStamp();
+      const member = await seedMemberOfOwnOrg(page, stamp);
+      const secret = await enrollTotp(page, member.email, member.slug);
+      identity = { sub: `e2e-totp-${stamp}`, email: member.email };
+
+      const urls = recordNavigations(page);
+      const returnTo = `${DASH_BASE}/orgs/${member.slug}/checks`;
+
+      await page.goto(
+        `${API_BASE}/api/v1/auth/oidc/login?org=${member.slug}&redirect_uri=${encodeURIComponent(returnTo)}`,
+      );
+
+      // The handoff route asks for the code: no session yet.
+      const codeInput = page.getByTestId("2fa-login-code");
+      await expect(codeInput).toBeVisible({ timeout: 20000 });
+      await expect(page).toHaveURL(/\/d\/auth\/complete/);
+      const before = await page.evaluate(() => localStorage.getItem("solidping_session_token"));
+      expect(before, "no session is stored before the code").toBeNull();
+
+      await codeInput.fill(generateTotp(secret));
+      await page.getByTestId("2fa-login-verify").click();
+
+      // The kept returnTo is followed once the code passes.
+      await page.waitForURL(new RegExp(`${escapeRegExp(returnTo)}$`), { timeout: 20000 });
+      await expect(page.getByTestId("app-sidebar")).toBeVisible({ timeout: 15000 });
+
+      const stored = await page.evaluate(() => ({
+        token: localStorage.getItem("solidping_session_token"),
+        refresh: localStorage.getItem("solidping_refresh_token"),
+      }));
+      expect(stored.token).toBeTruthy();
+      expect(stored.refresh).toBeTruthy();
+
+      expect(urls.some((u) => /\/d\/auth\/complete\?code=/.test(u))).toBe(true);
+      expect(urls.filter((u) => TOKEN_PARAM.test(u))).toEqual([]);
+      for (const u of urls) {
+        expect(u).not.toContain(stored.token as string);
+        expect(u).not.toMatch(/tempToken|temp_token/i);
       }
     });
 

@@ -348,6 +348,43 @@ type CheckersConfig struct {
 	// Traceroute configures the path capture taken when a check goes down on a
 	// network-reachability failure (spec 2026-08-21-10).
 	Traceroute TracerouteConfig `koanf:"traceroute"`
+	// EnvRefAllowlist names the environment variables a check config's
+	// `${env:NAME}` reference may read on THIS process (spec 2026-10-16-03).
+	// Empty — the default — means `${env:}` resolves nothing. snake_case, so
+	// koanf's env loader cannot reach it: SP_CHECK_ENV_ALLOWLIST is bound by
+	// hand in applyCheckersEnv. Read through Config.EnvRefAllowed.
+	EnvRefAllowlist []string `koanf:"env_ref_allowlist"`
+}
+
+// EnvCheckEnvAllowlist is the comma-separated list of environment variable
+// names a check's `${env:NAME}` reference may resolve on this process. Each
+// deported agent reads its own.
+const EnvCheckEnvAllowlist = "SP_CHECK_ENV_ALLOWLIST"
+
+// EnvRefAllowed reports whether a check config's `${env:name}` reference may
+// resolve name on this process. It is the single predicate both the save path
+// and the executing path consult (as a secretref.EnvAllowFunc). An empty
+// allowlist allows nothing.
+func (c *Config) EnvRefAllowed(name string) bool {
+	if c == nil || name == "" {
+		return false
+	}
+
+	return slices.Contains(c.Checkers.EnvRefAllowlist, name)
+}
+
+// parseEnvRefAllowlist splits a comma-separated SP_CHECK_ENV_ALLOWLIST value,
+// trimming blanks and dropping empty entries.
+func parseEnvRefAllowlist(raw string) []string {
+	var out []string
+
+	for _, part := range strings.Split(raw, ",") {
+		if part = strings.TrimSpace(part); part != "" {
+			out = append(out, part)
+		}
+	}
+
+	return out
 }
 
 // TracerouteConfig is the deployment-level half of the traceroute-on-failure
@@ -575,6 +612,7 @@ type Config struct {
 	App          AppConfig          `koanf:"app"`
 	Deployment   DeploymentConfig   `koanf:"deployment"`
 	Egress       EgressConfig       `koanf:"egress"`
+	Kubernetes   KubernetesConfig   `koanf:"kubernetes"`
 	WebPush      WebPushConfig      `koanf:"webpush"`
 	PostHog      PostHogConfig      `koanf:"posthog"`
 	Entitlements EntitlementsConfig `koanf:"entitlements"`
@@ -759,6 +797,41 @@ func applyEgressEnv(cfg *EgressConfig) {
 	}
 
 	cfg.AllowPrivateTargets = &allow
+}
+
+// EnvK8sAllowInCluster is the operator opt-in letting a Kubernetes cluster
+// connection use `inCluster` mode, i.e. authenticate with the service-account
+// token mounted into SolidPing's own pod (spec 2026-10-16-05). Off by default:
+// a tenant must never reach the server's own cluster credentials.
+const EnvK8sAllowInCluster = "SP_K8S_ALLOW_IN_CLUSTER"
+
+// KubernetesConfig is the deployment-level policy for Kubernetes cluster
+// connections. AllowInCluster is snake_case and therefore unreachable by
+// koanf's env loader; SP_K8S_ALLOW_IN_CLUSTER is bound by hand in
+// applyKubernetesEnv.
+type KubernetesConfig struct {
+	// AllowInCluster permits `settings.inCluster=true` connections, at save
+	// time and when a client is built. Default false.
+	AllowInCluster bool `koanf:"allow_in_cluster"`
+}
+
+// applyKubernetesEnv binds SP_K8S_ALLOW_IN_CLUSTER. An absent or empty
+// variable leaves the YAML/default value; an unparseable one is ignored with a
+// warning (so the deny default stands).
+func applyKubernetesEnv(cfg *KubernetesConfig) {
+	raw := strings.TrimSpace(os.Getenv(EnvK8sAllowInCluster))
+	if raw == "" {
+		return
+	}
+
+	allow, err := strconv.ParseBool(raw)
+	if err != nil {
+		slog.Warn("Ignoring unparseable "+EnvK8sAllowInCluster, "value", raw, "error", err)
+
+		return
+	}
+
+	cfg.AllowInCluster = allow
 }
 
 // EntitlementsConfig tunes the per-org SMS/voice runaway guard — an in-memory
@@ -2057,7 +2130,7 @@ func Load() (*Config, error) {
 			SlowQueryThreshold: 500 * time.Millisecond,
 		},
 		Auth: AuthConfig{
-			JWTSecret:          "change-me-in-production",
+			JWTSecret:          DefaultJWTSecret,
 			AccessTokenExpiry:  time.Hour,
 			RefreshTokenExpiry: 7 * 24 * time.Hour,
 			// Super-admin impersonation is on by default (spec 2026-09-29-03);
@@ -2324,6 +2397,7 @@ func Load() (*Config, error) {
 	applyJobsEnv(&cfg.Jobs)
 	applyServerEnv(&cfg.Server)
 	applySchedulingEnv(&cfg.Server.Scheduling)
+	applyWorkerPoolEnv(&cfg)
 	applyACMEEnv(&cfg.ACME)
 	applyHeartbeatEnv(&cfg.Heartbeat)
 	applyEncryptionEnv(&cfg.Encryption)
@@ -2333,6 +2407,7 @@ func Load() (*Config, error) {
 	applyRuntimeEnv(&cfg.Runtime)
 	applyRealtimeEnv(&cfg.Realtime)
 	applyEgressEnv(&cfg.Egress)
+	applyKubernetesEnv(&cfg.Kubernetes)
 	applyHeadersEnv(&cfg.Headers)
 	applyAIEnv(&cfg.AI)
 	warnIgnoredDiscordRedirectEnv()
@@ -2429,6 +2504,10 @@ func applyCheckersEnv(cfg *CheckersConfig) {
 
 	if v := os.Getenv("SP_CHECKERS_BROWSER_CHROME_PATH"); v != "" {
 		cfg.Browser.ChromePath = v
+	}
+
+	if raw, present := os.LookupEnv(EnvCheckEnvAllowlist); present {
+		cfg.EnvRefAllowlist = parseEnvRefAllowlist(raw)
 	}
 }
 
@@ -2833,6 +2912,36 @@ func applyEncryptionEnv(cfg *EncryptionConfig) {
 
 	if v := os.Getenv("SP_ENCRYPTION_AUTO_MIGRATE"); v != "" {
 		cfg.AutoMigrate = v == envTrue || v == "1"
+	}
+}
+
+// applyWorkerPoolEnv reads the worker-pool knobs koanf's env loader cannot
+// bind: SP_SERVER_CHECK_WORKER_NB would arrive as server.check.worker.nb while
+// the field lives at server.check_worker.nb. An unparseable value is logged and
+// ignored. 0 keeps its meaning (runners disabled).
+func applyWorkerPoolEnv(cfg *Config) {
+	if v := os.Getenv("SP_SERVER_CHECK_WORKER_NB"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.Server.CheckWorker.Nb = n
+		} else {
+			slog.Warn("Ignoring invalid SP_SERVER_CHECK_WORKER_NB", "value", v)
+		}
+	}
+
+	if v := os.Getenv("SP_SERVER_JOB_WORKER_NB"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.Server.JobWorker.Nb = n
+		} else {
+			slog.Warn("Ignoring invalid SP_SERVER_JOB_WORKER_NB", "value", v)
+		}
+	}
+
+	if v := os.Getenv("SP_SERVER_CHECK_WORKER_FETCH_MAX_AHEAD"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.Server.CheckWorker.FetchMaxAhead = d
+		} else {
+			slog.Warn("Ignoring invalid SP_SERVER_CHECK_WORKER_FETCH_MAX_AHEAD", "value", v)
+		}
 	}
 }
 

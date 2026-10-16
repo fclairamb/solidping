@@ -260,6 +260,30 @@ which is a feature (per-region credentials, and the value never leaves the
 region) but is easy to be surprised by. Both endpoints warn once per document
 when a manifest uses `env:`.
 
+**`${env:}` reads only the names the operator allowlisted** (spec 2026-10-16-03).
+`SP_CHECK_ENV_ALLOWLIST` (`checkers.env_ref_allowlist`, comma-separated) lists
+them, per process; empty by default, so `${env:}` resolves nothing until the
+operator opts in. Before it, `${env:SP_AUTH_JWT_SECRET}` in an HTTP check's URL
+made the in-process worker (the API server) send its own JWT secret to the
+check's target, for any member with the `user` role. One predicate,
+`config.Config.EnvRefAllowed`, handed to `secretref` as an `EnvAllowFunc`, gates
+every path, so a name allowed to save is exactly a name allowed to resolve:
+
+- **Save**: `configValidationErrors` (create, PATCH, PUT-by-slug, MCP,
+  `validate_check`) rejects a `${env:NAME}` outside the server's list with
+  `VALIDATION_ERROR`; import/apply and document validation resolve through
+  `DocumentResolver`, which refuses it like an unset variable (no existence
+  oracle).
+- **Execution**: `ExecutionResolver` in the worker, the in-process bastion
+  (`sshtunnel.LoadConfig`) and the agent bastion (`buildTunnelConfig`) refuse it
+  with `unresolved secret reference: env:NAME`.
+- A deported agent reads its **own** list, so the per-region story survives; a
+  check pinned to a private location needs the name on the server (to save) and
+  on the agent (to resolve). Clone copies a stored config without
+  re-validating it; the execution gate still applies.
+- Upgrade: stored references are kept verbatim (no migration); one outside the
+  list turns the check red on its next run until the operator lists the name.
+
 ### Failure is visible, never silent
 
 - **At write time** — an unresolvable reference fails the whole request with

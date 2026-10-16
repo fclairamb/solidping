@@ -317,3 +317,18 @@ the rules.
   when it does.
 - On SQLite there is one process by construction: `dblock` skips the lock and
   runs the work directly.
+
+### Per-key transaction locks (two-int4 classes)
+
+Some writes must be serialized per *string* key, where no row exists to lock
+yet (the global attempt counters of `BumpGlobalCounter`, spec 2026-10-16-13).
+They use `pg_advisory_xact_lock(<class>, hashtext(<key>))`:
+
+- The **two-argument int4** form. Postgres keeps its key space apart from the
+  single-bigint supervisor keys above, so a hashed key can never exclude a
+  supervisor.
+- The class id is hand-allocated from `0x5002_0000 + <sequence>` ("SP 02") and
+  listed in the same `dblock` doc comment (`0x50020001` = `ClassGlobalCounter`).
+- A transaction lock is released at commit or rollback, so it is safe to take
+  through the pool. A `hashtext` collision only serializes two unrelated keys.
+- SQLite needs no lock: its single connection serializes the transaction.

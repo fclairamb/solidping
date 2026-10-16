@@ -294,7 +294,7 @@ func newInProcessIncidentService(
 	// all, and the notifier skips only the email leg when the sender is nil.
 	publicationSvc.SetSubscriberNotifier(statussubscribers.NewNotifier(
 		dbService, svc.EmailSender, svc.EmailFormatter, cfg.Server.BaseURL,
-		slog.Default(), svc.Credentials))
+		slog.Default(), svc.Credentials, svc.EgressGuard))
 
 	incidentSvc.SetPublicationHook(publicationSvc)
 
@@ -382,6 +382,7 @@ func newCheckWorker(cfg *config.Config, workerBackend backend.WorkerBackend) *Ch
 	checkjs.TypeEnabled = func(checkType checkerdef.CheckType) bool {
 		return activation.IsTypeEnabled(checkType, nil)
 	}
+	checkjs.DeploymentGate = NewDeploymentGate(cfg)
 
 	return &CheckWorker{
 		backend:     workerBackend,
@@ -942,7 +943,7 @@ func (r *CheckWorker) materializeConfig(checkJob *models.CheckJob) error {
 	}
 
 	resolved, _, err := secretref.ResolveConfig(
-		context.Background(), merged, secretref.ExecutionResolverWith(vars))
+		context.Background(), merged, secretref.ExecutionResolverWith(vars, r.config.EnvRefAllowed))
 	if err != nil {
 		return err
 	}
@@ -1674,7 +1675,22 @@ func (r *CheckWorker) selectRegion(checkConfig checkerdef.Config, checkJob *mode
 // because executeJob shadows the `config` package identifier with a local
 // variable of the same name a few lines above the call site.
 func (r *CheckWorker) dockerBlockedOnThisWorker() bool {
-	return !r.config.IsAgentMode() && r.config.Deployment.Mode == config.DeploymentModeSaaS
+	return r.config.DockerChecksBlocked()
+}
+
+// NewDeploymentGate builds the js sub-check deployment gate for this process's
+// config: it refuses a nested docker sub-check exactly where executeJob
+// refuses a top-level docker job, with the same message (spec 2026-10-16-09).
+func NewDeploymentGate(cfg *config.Config) checkjs.DeploymentGateFunc {
+	dockerBlocked := cfg.DockerChecksBlocked()
+
+	return func(checkType checkerdef.CheckType) string {
+		if dockerBlocked && checkType == checkerdef.CheckTypeDocker {
+			return ErrDockerNotAvailableInSaaS.Error()
+		}
+
+		return ""
+	}
 }
 
 // saveErrorResult submits an error result (with a plain lease release) when

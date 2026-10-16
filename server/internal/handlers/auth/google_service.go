@@ -184,16 +184,7 @@ func (s *GoogleOAuthService) HandleCallback(ctx context.Context, code, orgSlug s
 		return nil, err
 	}
 
-	return &GoogleOAuthResult{
-		AccessToken:     login.AccessToken,
-		RefreshToken:    login.RefreshToken,
-		ExpiresIn:       login.ExpiresIn,
-		OrgSlug:         org.Slug,
-		UserUID:         user.UID,
-		Pending:         login.Pending,
-		FallbackOrgSlug: login.FallbackOrgSlug,
-		PendingOrgSlug:  login.PendingOrgSlug,
-	}, nil
+	return login.Outcome(org.Slug, user.UID), nil
 }
 
 // exchangeCode exchanges an authorization code for tokens with Google.

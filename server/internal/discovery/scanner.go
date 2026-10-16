@@ -10,6 +10,8 @@ import (
 
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
+
+	"github.com/fclairamb/solidping/server/internal/egress"
 )
 
 const (
@@ -175,8 +177,22 @@ func runProbes(ctx context.Context, targets []probeTarget, params scanParams) []
 			break
 		}
 
-		wgroup.Add(1)
 		tgt := targets[i]
+
+		// Under an enforcing egress policy a refused target is skipped before
+		// any probe: no ICMP echo, no TCP connect, no PTR lookup.
+		if guard := egress.FromContext(ctx); guard.Enforcing() {
+			ip := net.ParseIP(tgt.IP)
+			if ip == nil {
+				continue
+			}
+
+			if err := guard.CheckAddr(ctx, tgt.IP, ip); err != nil {
+				continue
+			}
+		}
+
+		wgroup.Add(1)
 
 		go func() {
 			defer wgroup.Done()
@@ -323,7 +339,8 @@ func dialTCP(ctx context.Context, ipStr string, port int, timeout time.Duration)
 	dialCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	conn, err := (&net.Dialer{}).DialContext(dialCtx, "tcp", addr)
+	// A nil or permissive guard dials exactly like a bare net.Dialer.
+	conn, err := egress.FromContext(ctx).DialContextWith(dialCtx, &net.Dialer{}, "tcp", addr)
 	if err != nil {
 		return false
 	}

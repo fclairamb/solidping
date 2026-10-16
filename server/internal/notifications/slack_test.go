@@ -1372,12 +1372,12 @@ func (m *mockDBService) ReorderStatusPageSections(_ context.Context, _ string, _
 }
 
 func (m *mockDBService) UpdateStatusPageResource(
-	_ context.Context, _ string, _ *models.StatusPageResourceUpdate,
+	_ context.Context, _, _ string, _ *models.StatusPageResourceUpdate,
 ) error {
 	panic("not implemented")
 }
 
-func (m *mockDBService) DeleteStatusPageResource(_ context.Context, _ string) error {
+func (m *mockDBService) DeleteStatusPageResource(_ context.Context, _, _ string) error {
 	panic("not implemented")
 }
 
@@ -1718,6 +1718,12 @@ func (m *mockDBService) ListOrphanAttachments(
 func (m *mockDBService) AdmitFixedWindows(
 	_ context.Context, _ string, _ []models.FixedWindow, _ time.Time,
 ) (int, time.Duration, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) BumpGlobalCounter(
+	_ context.Context, _ string, _ int, _ time.Duration,
+) (bool, error) {
 	panic("not implemented")
 }
 

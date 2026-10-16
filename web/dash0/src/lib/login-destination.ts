@@ -31,6 +31,9 @@ import { setLastAuthMethod } from "./last-auth-method";
  *   the slug the logged-out visitor happened to be bounced through, losing the
  *   pre-filled one-time code and breaking the approve-from-your-phone flow
  *   that the device grant exists for (spec 2026-08-08-02).
+ * - the invitation page (`{basepath}/invite/<token>`, see
+ *   {@link isInviteReturnTo}). An existing account signs in to accept an
+ *   invitation into an org it is not a member of yet (spec 2026-10-16-06).
  */
 export type LoginDestination =
   | { href: string }
@@ -61,6 +64,14 @@ export function resolveDestination(
   // org from the restored session. Honoring it without the org-match rule is
   // what keeps the one-time code pre-filled across the login.
   if (isDeviceVerificationReturnTo(returnTo, basepath)) {
+    return { href: returnTo };
+  }
+  // Invitation bounce (spec 2026-10-16-06): an invitation for an existing
+  // account is accepted only signed in as that account, so the org-less
+  // /invite/$token page sends the visitor to /login with itself as returnTo.
+  // The invited org is one the user is not a member of yet, so the org-match
+  // rule would always drop it.
+  if (isInviteReturnTo(returnTo, basepath)) {
     return { href: returnTo };
   }
   if (
@@ -127,6 +138,42 @@ export function deviceVerificationReturnTo(
   return userCode
     ? `${path}?user_code=${encodeURIComponent(userCode)}`
     : path;
+}
+
+/** The org-less invitation page prefix. */
+const INVITE_PATH = "/invite/";
+
+/**
+ * True when `returnTo` is exactly one invitation page under the app base path:
+ * `{basepath}/invite/<one segment>`, with no query string, no fragment and no
+ * extra path. Path-anchored like {@link isDeviceVerificationReturnTo}, so it
+ * can never carry a scheme or a protocol-relative (`//host`) form.
+ */
+export function isInviteReturnTo(
+  returnTo: string | undefined | null,
+  basepath: string,
+): returnTo is string {
+  if (!returnTo) return false;
+  const prefix = `${basepath}${INVITE_PATH}`;
+  if (!returnTo.startsWith(prefix)) return false;
+  const token = returnTo.slice(prefix.length);
+  return /^[A-Za-z0-9_-]+$/.test(token);
+}
+
+/**
+ * A short, informational notice the login page shows on arrival. Only the
+ * listed values are honoured: the notice text is ours, never the URL's.
+ */
+export type LoginNotice = "invite_login_required";
+
+/** Parses the `notice` search param of the login routes. */
+export function parseLoginNotice(raw: unknown): LoginNotice | undefined {
+  return raw === "invite_login_required" ? raw : undefined;
+}
+
+/** Builds the returnTo the invitation page hands to /login: the page itself. */
+export function inviteReturnTo(basepath: string, token: string): string {
+  return `${basepath}${INVITE_PATH}${encodeURIComponent(token)}`;
 }
 
 /**

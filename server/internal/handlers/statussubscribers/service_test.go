@@ -7,6 +7,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
+	"github.com/fclairamb/solidping/server/internal/egress"
 	"github.com/fclairamb/solidping/server/internal/handlers/statussubscribers"
 )
 
@@ -36,8 +37,9 @@ func newSubSetup(t *testing.T) *subSetup {
 
 	return &subSetup{
 		svc: statussubscribers.NewService(dbSvc, nil,
-			// The delivery tests point at an httptest server on 127.0.0.1.
-			statussubscribers.WithAllowPrivateEndpoints(true)),
+			// The delivery tests point at an httptest server on 127.0.0.1, so
+			// the fixture follows a permissive (self-hosted) egress policy.
+			statussubscribers.WithEgressGuard(egress.New(true))),
 		dbSvc: dbSvc,
 		org:   org,
 		page:  page,

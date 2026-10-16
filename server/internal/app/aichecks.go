@@ -8,6 +8,8 @@ import (
 	"github.com/fclairamb/solidping/server/internal/ai"
 	"github.com/fclairamb/solidping/server/internal/aichecks"
 	"github.com/fclairamb/solidping/server/internal/app/services"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkjs"
+	"github.com/fclairamb/solidping/server/internal/checkworker"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
@@ -36,6 +38,12 @@ func buildAIChecks(
 
 		client = nil
 	}
+
+	// The script tools run js in THIS process, which may not construct a check
+	// worker (an api-only node), so the sub-check deployment gate the worker
+	// installs must be installed here too, from the same config (spec
+	// 2026-10-16-09): a script must not read this host's Docker socket on SaaS.
+	checkjs.DeploymentGate = checkworker.NewDeploymentGate(cfg)
 
 	svc := aichecks.NewService(&aichecks.Options{
 		Client:       client,

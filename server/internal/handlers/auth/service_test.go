@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1424,7 +1425,7 @@ func TestAcceptInviteEnforcesMaxUsers(t *testing.T) {
 	})
 	r.NoError(err)
 
-	_, err = svc.AcceptInvite(ctx, AcceptInviteRequest{Token: resp.Token})
+	_, err = svc.AcceptInvite(ctx, AcceptInviteRequest{Token: resp.Token}, invitee.UID)
 	r.Error(err, "invite acceptance must fail when the org is at its seat cap")
 	r.ErrorIs(err, errSSOQuotaTest)
 
@@ -1469,7 +1470,7 @@ func TestAcceptInviteReturnsOrganizations(t *testing.T) {
 	})
 	r.NoError(err)
 
-	loginResp, err := svc.AcceptInvite(ctx, AcceptInviteRequest{Token: resp.Token})
+	loginResp, err := svc.AcceptInvite(ctx, AcceptInviteRequest{Token: resp.Token}, user.UID)
 	r.NoError(err)
 	r.NotNil(loginResp)
 	r.NotEmpty(loginResp.AccessToken)
@@ -1480,4 +1481,115 @@ func TestAcceptInviteReturnsOrganizations(t *testing.T) {
 	slugs := []string{loginResp.Organizations[0].Slug, loginResp.Organizations[1].Slug}
 	r.Contains(slugs, "orga")
 	r.Contains(slugs, "orgb")
+}
+
+// resetEntriesAndEmails counts the password_reset: token entries (not the
+// per-user counters) and the queued email jobs.
+//
+//nolint:revive // ctx-second is fine in test helpers; matches existing helpers in this file
+func resetEntriesAndEmails(t *testing.T, ctx context.Context, dbSvc db.Service) (int, int) {
+	t.Helper()
+	r := require.New(t)
+
+	entries, err := dbSvc.ListStateEntries(ctx, nil, "password_reset:")
+	r.NoError(err)
+
+	tokens := 0
+
+	for _, e := range entries {
+		if !strings.HasPrefix(e.Key, passwordResetCountKeyPrefix) {
+			tokens++
+		}
+	}
+
+	jobs, err := dbSvc.ListJobs(ctx, nil, 0)
+	r.NoError(err)
+
+	emails := 0
+
+	for _, job := range jobs {
+		if job.Type == string(jobdef.JobTypeEmail) {
+			emails++
+		}
+	}
+
+	return tokens, emails
+}
+
+// TestRequestPasswordResetConcurrentBurstRespectsPerUserCap is the race proof
+// of spec 2026-10-16-13: 10 parallel reset requests for one user (from
+// distinct IPs, so the per-IP cap stays out of the way) must not multiply the
+// per-user cap into a mail bomb.
+func TestRequestPasswordResetConcurrentBurstRespectsPerUserCap(t *testing.T) {
+	t.Parallel()
+
+	newSvc := func(t *testing.T) (*Service, db.Service, context.Context) {
+		t.Helper()
+
+		return setupAuthTestServiceWithJobs(t, &config.Config{
+			Server: config.ServerConfig{BaseURL: "https://example.com"},
+			Auth: config.AuthConfig{
+				JWTSecret:          "test-jwt-secret",
+				AccessTokenExpiry:  time.Hour,
+				RefreshTokenExpiry: 7 * 24 * time.Hour,
+			},
+		})
+	}
+
+	t.Run("a burst creates at most the per-user cap", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		svc, dbSvc, ctx := newSvc(t)
+		passwordResetUser(t, ctx, dbSvc, "reset-burst@example.com")
+
+		const burst = 10
+
+		var wg sync.WaitGroup
+
+		errs := make(chan error, burst)
+		start := make(chan struct{})
+
+		for i := range burst {
+			wg.Add(1)
+
+			go func() {
+				defer wg.Done()
+
+				<-start
+
+				_, err := svc.RequestPasswordReset(ctx,
+					RequestPasswordResetRequest{Email: "reset-burst@example.com"}, fmt.Sprintf("192.0.2.%d", 10+i))
+				errs <- err
+			}()
+		}
+
+		close(start)
+		wg.Wait()
+		close(errs)
+
+		for err := range errs {
+			r.NoError(err, "a throttled reset is silently dropped, never an error")
+		}
+
+		tokens, emails := resetEntriesAndEmails(t, ctx, dbSvc)
+		r.Equal(passwordResetMaxPerUser, tokens)
+		r.Equal(passwordResetMaxPerUser, emails)
+	})
+
+	t.Run("a single request creates one entry and one email", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		svc, dbSvc, ctx := newSvc(t)
+		passwordResetUser(t, ctx, dbSvc, "reset-single@example.com")
+
+		_, err := svc.RequestPasswordReset(ctx,
+			RequestPasswordResetRequest{Email: "reset-single@example.com"}, "192.0.2.1")
+		r.NoError(err)
+
+		tokens, emails := resetEntriesAndEmails(t, ctx, dbSvc)
+		r.Equal(1, tokens)
+		r.Equal(1, emails)
+	})
 }

@@ -3,7 +3,9 @@ package checkdocker
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net"
 	"time"
 
 	"github.com/moby/moby/api/types/container"
@@ -11,9 +13,14 @@ import (
 
 	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checkdocker/config"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/egress"
 )
 
 const microsecondsPerMilli = 1000.0
+
+// errLocalSocketNotDialable is returned when a local-socket docker host would
+// have to go through a tunnel dialer, which only carries TCP.
+var errLocalSocketNotDialable = errors.New("a local docker socket cannot be reached through this check's dialer")
 
 // DockerChecker implements the Checker interface for Docker container health checks.
 type DockerChecker struct{}
@@ -50,7 +57,7 @@ func (c *DockerChecker) Execute(
 	metrics := map[string]any{}
 	output := map[string]any{}
 
-	cli, err := createClient(cfg)
+	cli, err := createClient(ctx, cfg)
 	if err != nil {
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusError,
@@ -71,11 +78,50 @@ func (c *DockerChecker) Execute(
 	return buildResult(cfg, &inspected.Container, start, metrics, output), nil
 }
 
-func createClient(cfg *DockerConfig) (*client.Client, error) {
-	// API-version negotiation is on by default in this client, so the endpoint
-	// host is the only thing worth configuring: an older daemon (or Podman's
-	// Docker-compatible socket) is negotiated down on the first request.
-	return client.New(client.WithHost(cfg.ResolveHost()))
+// createClient builds the Docker API client for cfg's endpoint.
+//
+// API-version negotiation is on by default in this client, so the endpoint
+// host is the main thing worth configuring: an older daemon (or Podman's
+// Docker-compatible socket) is negotiated down on the first request.
+//
+// The client dials through checkerdef.OutboundDialer like every other check
+// type (spec 2026-10-16-09): under an enforcing egress guard a tcp:// host is
+// dialed by the guard, so a private target is refused with an egress denial
+// instead of becoming an internal connect oracle, and a local socket
+// (unix://, npipe://) is refused outright. With no guard or tunnel the client
+// keeps its own transport byte-for-byte.
+func createClient(ctx context.Context, cfg *DockerConfig) (*client.Client, error) {
+	host := cfg.ResolveHost()
+	opts := []client.Opt{client.WithHost(host)}
+
+	if dialer := checkerdef.OutboundDialer(ctx); dialer != nil {
+		hostURL, err := client.ParseHostURL(host)
+		if err != nil {
+			return nil, err
+		}
+
+		if hostURL.Scheme != "tcp" {
+			if egress.FromContext(ctx).Enforcing() {
+				denied := &egress.DeniedError{Host: host}
+				egress.RecordDenial(ctx, denied)
+
+				return nil, denied
+			}
+
+			return nil, fmt.Errorf("%w: %s", errLocalSocketNotDialable, host)
+		}
+
+		// Pin the dialed address to the configured host rather than trusting
+		// whatever the HTTP transport asks for.
+		addr := hostURL.Host
+		opts = append(opts, client.WithDialContext(
+			func(dialCtx context.Context, network, _ string) (net.Conn, error) {
+				return dialer.DialContext(dialCtx, network, addr)
+			},
+		))
+	}
+
+	return client.New(opts...)
 }
 
 func handleInspectError(

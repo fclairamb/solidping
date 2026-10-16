@@ -88,7 +88,7 @@ func TestAffectedResources_ManagedRemovalMirrorsManualRemoval(t *testing.T) {
 			setup.resource = resource
 		},
 		func(ctx context.Context, setup *pubSetup, _ *statuspages.Service) {
-			require.NoError(t, setup.dbSvc.DeleteStatusPageResource(ctx, setup.resource.UID))
+			require.NoError(t, setup.dbSvc.DeleteStatusPageResource(ctx, setup.section.UID, setup.resource.UID))
 		},
 	)
 

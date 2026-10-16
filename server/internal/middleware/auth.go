@@ -74,6 +74,17 @@ func (m *AuthMiddleware) RequireAuth(next httpx.HandlerFunc) httpx.HandlerFunc {
 				writer, req, http.StatusUnauthorized, base.ErrorCodeInvalidToken, "Invalid or expired token", err)
 		}
 
+		// An MCP credential (OAuth access token, scoped PAT) only works on
+		// the MCP resource server (spec 2026-10-16-12): its consent is
+		// narrower than the user's REST role, and it must not mint a PAT or
+		// a session. 401 like RequireMCPAuth's wrong-audience answer: the
+		// credential is not valid here, whoever holds it.
+		if claims.IsMCPCredential() &&
+			!auth.IsMCPCredentialRouteAllowed(claims, req.Method, httpx.RoutePattern(req)) {
+			return m.WriteError(writer, http.StatusUnauthorized,
+				base.ErrorCodeInvalidToken, auth.MCPCredentialRESTMessage)
+		}
+
 		// Load user
 		user, err := m.dbService.GetUser(req.Context(), claims.UserUID)
 		if err != nil {
@@ -631,6 +642,60 @@ func PresentsCredentials(request *http.Request) bool {
 	_, err := request.Cookie(CookieAuthToken)
 
 	return err == nil
+}
+
+// AuthIfPresented authenticates a request only when it presents a credential.
+//
+// A request with no credential at all (no Authorization header, no auth
+// cookie) goes straight to the handler, which must treat it as anonymous. A
+// request that presents ANY credential goes through RequireAuth, so a stale,
+// garbage or malformed one gets RequireAuth's 401 rather than an anonymous
+// fallback, and every RequireAuth gate (forced rotation, the demo guard,
+// impersonation) applies. Same shape as mcp.AllowAnonymousHandshake. An
+// invalid cookie presented alone is also expired in that 401, so the
+// caller's anonymous retry is anonymous.
+func (m *AuthMiddleware) AuthIfPresented(next httpx.HandlerFunc) httpx.HandlerFunc {
+	authed := m.RequireAuth(next)
+
+	return func(writer http.ResponseWriter, req *http.Request) error {
+		if !PresentsCredentials(req) {
+			return next(writer, req)
+		}
+
+		m.clearInvalidCookieOnly(writer, req)
+
+		return authed(writer, req)
+	}
+}
+
+// clearInvalidCookieOnly expires the auth cookie when it is the request's only
+// credential and does not validate. The cookie is HttpOnly, so a dashboard
+// that believes it is signed out cannot see or drop it; without this, a stale
+// cookie would make every anonymous retry of an AuthIfPresented route answer
+// 401 again. The request itself is still refused by RequireAuth.
+func (m *AuthMiddleware) clearInvalidCookieOnly(writer http.ResponseWriter, req *http.Request) {
+	if req.Header.Get("Authorization") != "" {
+		return
+	}
+
+	cookie, err := req.Cookie(CookieAuthToken)
+	if err != nil {
+		return
+	}
+
+	if _, err = m.authService.ValidateToken(req.Context(), cookie.Value); err == nil {
+		return
+	}
+
+	http.SetCookie(writer, &http.Cookie{
+		Name:     CookieAuthToken,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   httpx.IsTLS(req),
+		SameSite: http.SameSiteLaxMode,
+	})
 }
 
 // GetUserFromContext retrieves the authenticated user from the context.

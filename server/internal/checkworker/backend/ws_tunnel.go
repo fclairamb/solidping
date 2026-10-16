@@ -20,8 +20,11 @@ import (
 // It is the agent-side twin of the server's sshtunnel.LoadConfig, minus the DB
 // lookup (the server already re-asserted eligibility at claim time) — the agent
 // only ever sees the sealed blob, never config_private.
+//
+// allowEnv is this agent's own `${env:}` allowlist (its SP_CHECK_ENV_ALLOWLIST);
+// nil denies every `${env:}` reference.
 func buildTunnelConfig(
-	ctx context.Context, identity string, tunnel *agents.AgentJobTunnel,
+	ctx context.Context, identity string, tunnel *agents.AgentJobTunnel, allowEnv secretref.EnvAllowFunc,
 ) (*checkssh.SSHConfig, error) {
 	merged := tunnel.Config
 
@@ -47,7 +50,7 @@ func buildTunnelConfig(
 	// with the literal. `${param:}` is not supported in a bastion config: the
 	// tunnel block is resolved from a check row on a path that holds no
 	// parameter store.
-	resolved, _, refErr := secretref.ResolveConfig(ctx, merged, secretref.ExecutionResolver())
+	resolved, _, refErr := secretref.ResolveConfig(ctx, merged, secretref.ExecutionResolver(allowEnv))
 	if refErr != nil {
 		return nil, refErr
 	}

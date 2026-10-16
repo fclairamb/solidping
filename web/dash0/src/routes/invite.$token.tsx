@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,11 +8,26 @@ import { PasswordInput } from "@/components/ui/password-input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Logo } from "@/components/ui/logo";
-import { AlertCircle, AlertTriangle, Loader2, Mail, RotateCw } from "lucide-react";
+import {
+  AlertCircle,
+  AlertTriangle,
+  Loader2,
+  LogOut,
+  Mail,
+  RotateCw,
+} from "lucide-react";
 import { ApiError, getToken } from "@/api/client";
 import { useInviteInfo, useAcceptInvite } from "@/api/hooks";
 import { useAuth } from "@/contexts/AuthContext";
 import { isInviteInvalidError } from "@/lib/invite-error";
+import { inviteReturnTo } from "@/lib/login-destination";
+
+// App base path (build-time constant), the prefix of an invite returnTo.
+const BASE_PATH = import.meta.env.VITE_BASE_URL || "";
+
+// Server refusals of an acceptance by the wrong person (spec 2026-10-16-06).
+const INVITE_LOGIN_REQUIRED = "INVITE_LOGIN_REQUIRED";
+const INVITE_EMAIL_MISMATCH = "INVITE_EMAIL_MISMATCH";
 
 export const Route = createFileRoute("/invite/$token")({
   component: AcceptInvitePage,
@@ -30,16 +45,35 @@ function AcceptInvitePage() {
     refetch: refetchInviteInfo,
   } = useInviteInfo(token);
   const acceptInvite = useAcceptInvite();
-  const { acceptInviteSession } = useAuth();
+  const { acceptInviteSession, logout, user } = useAuth();
 
   const isAuthenticated = !!getToken();
+  const returnTo = inviteReturnTo(BASE_PATH, token);
 
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [emailMismatch, setEmailMismatch] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+
+  // An invitation for an existing account is accepted only signed in as that
+  // account: send the visitor to log in, then back here.
+  const goToLogin = () => {
+    navigate({
+      to: "/login",
+      search: { returnTo, notice: "invite_login_required" },
+    });
+  };
+
+  const handleSignOutAndContinue = async () => {
+    setSigningOut(true);
+    await logout();
+    window.location.replace(returnTo);
+  };
 
   const handleAcceptAuthenticated = async () => {
     setError(null);
+    setEmailMismatch(false);
     try {
       const result = await acceptInvite.mutateAsync({ token });
       acceptInviteSession(result);
@@ -48,7 +82,9 @@ function AcceptInvitePage() {
         params: { org: result.organization.slug },
       });
     } catch (err) {
-      if (err instanceof ApiError) {
+      if (err instanceof ApiError && err.code === INVITE_EMAIL_MISMATCH) {
+        setEmailMismatch(true);
+      } else if (err instanceof ApiError) {
         setError(err.message);
       } else {
         setError(t("auth:unexpectedError"));
@@ -65,19 +101,36 @@ function AcceptInvitePage() {
       return;
     }
 
+    const body = { token, name: name || undefined, password };
     try {
-      const result = await acceptInvite.mutateAsync({
-        token,
-        name: name || undefined,
-        password,
-      });
+      let result;
+      try {
+        result = await acceptInvite.mutateAsync(body);
+      } catch (err) {
+        // A stale HttpOnly session cookie the page cannot see makes the call
+        // authenticated: the server refuses it with a 401 and clears that
+        // cookie. Retry once, now anonymous.
+        if (
+          err instanceof ApiError &&
+          err.status === 401 &&
+          err.code !== INVITE_LOGIN_REQUIRED
+        ) {
+          result = await acceptInvite.mutateAsync(body);
+        } else {
+          throw err;
+        }
+      }
       acceptInviteSession(result);
       navigate({
         to: "/orgs/$org",
         params: { org: result.organization.slug },
       });
     } catch (err) {
-      if (err instanceof ApiError) {
+      if (err instanceof ApiError && err.code === INVITE_LOGIN_REQUIRED) {
+        goToLogin();
+      } else if (err instanceof ApiError && err.code === INVITE_EMAIL_MISMATCH) {
+        setEmailMismatch(true);
+      } else if (err instanceof ApiError) {
         setError(err.message);
       } else {
         setError(t("auth:unexpectedError"));
@@ -187,7 +240,31 @@ function AcceptInvitePage() {
             </Alert>
           )}
 
-          {isAuthenticated ? (
+          {emailMismatch ? (
+            <div className="space-y-4" data-testid="invite-email-mismatch">
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription className="break-all">
+                  {t("auth:invite.emailMismatch", {
+                    inviteEmail: inviteInfo.email,
+                    currentEmail: user?.email ?? "",
+                  })}
+                </AlertDescription>
+              </Alert>
+              <Button
+                className="w-full"
+                onClick={() => void handleSignOutAndContinue()}
+                disabled={signingOut}
+              >
+                {signingOut ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <LogOut className="mr-2 h-4 w-4" />
+                )}
+                {t("auth:invite.signOutAndContinue")}
+              </Button>
+            </div>
+          ) : isAuthenticated ? (
             <Button
               className="w-full"
               onClick={handleAcceptAuthenticated}
@@ -242,6 +319,18 @@ function AcceptInvitePage() {
                   t("auth:invite.createAndJoin")
                 )}
               </Button>
+
+              <p className="text-center text-sm text-muted-foreground">
+                {t("auth:invite.alreadyHaveAccount")}{" "}
+                <Link
+                  to="/login"
+                  search={{ returnTo }}
+                  className="font-medium text-primary underline-offset-4 hover:underline"
+                  data-testid="invite-sign-in-link"
+                >
+                  {t("auth:invite.signInToAccept")}
+                </Link>
+              </p>
             </form>
           )}
         </CardContent>

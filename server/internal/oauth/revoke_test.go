@@ -180,6 +180,8 @@ func TestMintedAccessTokenCarriesGrantUID(t *testing.T) {
 	claims, err := f.authSvc.ValidateToken(f.ctx, res.AccessToken)
 	require.NoError(t, err)
 	require.Equal(t, row.UID, claims.RefreshUID, "access token must be linked to its grant row")
+	require.Equal(t, f.client.ClientID, claims.ClientID, "access token must name its OAuth client")
+	require.True(t, claims.IsMCPCredential())
 
 	// Rotation mints a new row and re-links the new access token to it.
 	rotated, err := f.svc.ExchangeRefreshToken(f.ctx, res.RefreshToken, f.client.ClientID)
@@ -191,6 +193,7 @@ func TestMintedAccessTokenCarriesGrantUID(t *testing.T) {
 	rotatedClaims, err := f.authSvc.ValidateToken(f.ctx, rotated.AccessToken)
 	require.NoError(t, err)
 	require.Equal(t, newRow.UID, rotatedClaims.RefreshUID, "rotation must re-link to the new grant row")
+	require.Equal(t, f.client.ClientID, rotatedClaims.ClientID, "rotation keeps the client binding")
 	require.NotEqual(t, row.UID, newRow.UID, "rotation must create a distinct row")
 }
 
