@@ -63,7 +63,7 @@ func RequestTimeout(maxDuration time.Duration) func(httpx.HandlerFunc) httpx.Han
 					// a swallowed no-op, so returning is safe. Drain the
 					// handler in the background — we cannot stop it, but we
 					// have already responded to the client.
-					go func() { <-done }()
+					go func() { _ = <-done }()
 					return nil
 				}
 				// The handler committed its own response before the deadline

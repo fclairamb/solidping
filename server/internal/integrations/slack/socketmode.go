@@ -205,7 +205,7 @@ func (s *SlackSocketSupervisor) runOnce(ctx context.Context, client socketModeRu
 		select {
 		case <-ctx.Done():
 			cancel()
-			<-runDone
+			_ = <-runDone
 
 			return
 		case err := <-runDone:
@@ -218,7 +218,7 @@ func (s *SlackSocketSupervisor) runOnce(ctx context.Context, client socketModeRu
 		case evt, ok := <-events:
 			if !ok {
 				cancel()
-				<-runDone
+				_ = <-runDone
 
 				return
 			}

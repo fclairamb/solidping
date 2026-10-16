@@ -176,7 +176,7 @@ func (c *GatusConverter) convertEndpoint(
 	// depends on enum facts golangci-lint may serve from its cache, which
 	// failed CI on an unrelated change.
 	//
-	//exhaustive:ignore // the default arm rejects unmapped types
+	//exhaustive:ignore
 	switch checkType {
 	case checkerdef.CheckTypeHTTP:
 		base.Config = gatusHTTPConfig(endpoint, timeout)
