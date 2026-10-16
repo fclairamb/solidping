@@ -808,3 +808,46 @@ func TestLogin_LDAPLldapStyleSettings(t *testing.T) {
 		})
 	}
 }
+
+// TestLogin_LDAPTOTPUserIsChallenged is the control for spec 2026-10-16-14:
+// LDAP already went through Login's TOTP gate. A second login of a user who
+// then enabled TOTP gets requires2Fa and no session, the first factor
+// (ldap) travels on the temp token.
+func TestLogin_LDAPTOTPUserIsChallenged(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	dir := startFakeLDAPDirectory(t)
+	dir.setServiceAccount()
+	dir.setEntries(newFakeLDAPEntry(
+		"cn=totp,ou=people,dc=example,dc=org", "correct-password",
+		map[string][]string{"mail": {"totp@example.com"}, "cn": {"TOTP User"}},
+	))
+
+	svc, dbSvc, ctx := setupLDAPLoginTestService(t, newFakeLDAPConfig(dir, ""), nil)
+
+	org := models.NewOrganization("ldap-totp-org", "LDAP TOTP Org")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	// Positive control: before TOTP, the LDAP login yields a session.
+	first, err := svc.Login(ctx, org.Slug, "totp@example.com", "correct-password", Context{})
+	r.NoError(err)
+	r.NotEmpty(first.AccessToken)
+	r.False(first.Requires2FA)
+
+	user, err := dbSvc.GetUserByEmail(ctx, "totp@example.com")
+	r.NoError(err)
+	enableTestTOTP(ctx, t, dbSvc, user)
+
+	resp, err := svc.Login(ctx, org.Slug, "totp@example.com", "correct-password", Context{})
+	r.NoError(err)
+	r.True(resp.Requires2FA)
+	r.NotEmpty(resp.TempToken)
+	r.Empty(resp.AccessToken)
+	r.Nil(resp.User)
+
+	claims, err := svc.validate2FATempToken(resp.TempToken)
+	r.NoError(err)
+	r.Equal(org.Slug, claims.OrgSlug)
+	r.Equal(AuthMethodLDAP, claims.Method)
+}
