@@ -49,6 +49,10 @@ Stop round-tripping a DSN string. Build a `*mysql.Config` with structured fields
 ## Open questions
 1. **Fold MongoDB's URI interpolation into this spec or a separate one?** Recommended: separate (or a `## Related` follow-up). It is not an egress bypass (its dialer is always guarded) and has no file-read primitive, so it is lower severity and this spec stays focused on the MySQL critical. Note it so it is not lost.
 
+## Resolved open questions
+Decided 2026-10-16 (all recommendations accepted):
+1. Keep MongoDB URI interpolation out of this spec. Add a `## Related` follow-up note (or a backlog spec) so it is not lost.
+
 ## Related
 - N1 (same scan): `${env:}` leaks the same platform secrets by a different route; the MySQL file-read reaches `/proc/self/environ` — spec `2026-10-16-03-env-secret-reference-allowlist.md`.
 - MongoDB unescaped URI interpolation (`checkmongodb/config/config.go:146`) — same interpolation class, not covered here (see Open questions).
