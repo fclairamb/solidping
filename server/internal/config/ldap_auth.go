@@ -59,3 +59,10 @@ type LDAPConfig struct {
 	EmailAttribute string `koanf:"email_attribute"`
 	NameAttribute  string `koanf:"name_attribute"`
 }
+
+// Defaults applied by the LDAP sign-in when the matching field is blank.
+const (
+	LDAPDefaultUserFilter     = "(mail=%s)"
+	LDAPDefaultEmailAttribute = "mail"
+	LDAPDefaultNameAttribute  = "cn"
+)

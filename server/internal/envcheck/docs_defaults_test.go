@@ -134,7 +134,14 @@ var docsDefaultAccessors = map[string]func(*config.Config) string{
 	}),
 	"SP_ENTITLEMENTS_TELEGRAM_RUNAWAY_PER_HOUR": fixed(strconv.Itoa(entitlements.DefaultTelegramRunawayPerHour)),
 	"SP_ENTITLEMENTS_WHATSAPP_RUNAWAY_PER_HOUR": fixed(strconv.Itoa(entitlements.DefaultWhatsAppRunawayPerHour)),
-	"SP_NODE_REGION": func(c *config.Config) string { return c.Server.CheckWorker.Region },
+	"SP_NODE_REGION":               func(c *config.Config) string { return c.Server.CheckWorker.Region },
+	"SP_SLACK_SOCKET_MODE_ENABLED": boolOf(func(c *config.Config) bool { return c.Slack.SocketModeEnabled }),
+	"SP_LDAP_START_TLS":            boolOf(func(c *config.Config) bool { return c.LDAP.StartTLS }),
+	"SP_LDAP_INSECURE_SKIP_VERIFY": boolOf(func(c *config.Config) bool { return c.LDAP.InsecureSkipVerify }),
+	// Blank in the struct, resolved at sign-in time.
+	"SP_LDAP_USER_FILTER":     fixed(config.LDAPDefaultUserFilter),
+	"SP_LDAP_EMAIL_ATTRIBUTE": fixed(config.LDAPDefaultEmailAttribute),
+	"SP_LDAP_NAME_ATTRIBUTE":  fixed(config.LDAPDefaultNameAttribute),
 }
 
 func fixed(v string) func(*config.Config) string { return func(*config.Config) string { return v } }

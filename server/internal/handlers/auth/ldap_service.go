@@ -34,9 +34,9 @@ var (
 )
 
 const (
-	ldapDefaultUserFilter     = "(mail=%s)"
-	ldapDefaultEmailAttribute = "mail"
-	ldapDefaultNameAttribute  = "cn"
+	ldapDefaultUserFilter     = config.LDAPDefaultUserFilter
+	ldapDefaultEmailAttribute = config.LDAPDefaultEmailAttribute
+	ldapDefaultNameAttribute  = config.LDAPDefaultNameAttribute
 	ldapDialTimeout           = 10 * time.Second
 )
 
