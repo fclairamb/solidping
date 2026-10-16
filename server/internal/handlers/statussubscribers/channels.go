@@ -13,6 +13,8 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/egress"
+	"github.com/fclairamb/solidping/server/internal/notifications"
 )
 
 // Channel errors.
@@ -53,10 +55,13 @@ const signingSecretBytes = 32
 //
 // https is REQUIRED: the payload names which of the customer's services is
 // down and carries an HMAC signature, and neither should cross the network in
-// clear. Local/loopback hosts are refused because a status-page subscriber is
-// a customer-supplied URL — treating it as a way to make the SolidPing server
-// issue requests into its own network would be a plain SSRF.
-func normalizeEndpointURL(raw string, allowPrivate bool) (string, error) {
+// clear. The host must then pass the egress policy: a status-page subscriber
+// is a customer-supplied URL, and treating it as a way to make the SolidPing
+// server issue requests into its own network would be a plain SSRF. The
+// shared validator resolves hostnames and reads every numeric host form, so it
+// catches what a literal prefix list cannot (172.16/12, 100.64/10, IPv6 ULA,
+// [::ffff:10.0.0.1], 2130706433, a name resolving to 10.x).
+func normalizeEndpointURL(ctx context.Context, raw string, guard *egress.Guard) (string, error) {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
 		return "", ErrEndpointRequired
@@ -71,39 +76,25 @@ func normalizeEndpointURL(raw string, allowPrivate bool) (string, error) {
 		return "", ErrInvalidEndpointURL
 	}
 
-	host := strings.ToLower(parsed.Hostname())
-	if !allowPrivate && isLocalHost(host) {
-		return "", ErrInvalidEndpointURL
-	}
-
 	parsed.Host = strings.ToLower(parsed.Host)
 	parsed.Fragment = ""
+	normalized := parsed.String()
 
-	return parsed.String(), nil
-}
-
-// isLocalHost reports whether a hostname obviously points back at the server or
-// its private network. It is a coarse first line — the HTTP client still
-// resolves the name at delivery time — but it stops the trivial cases at the
-// point where a human could be told why.
-func isLocalHost(host string) bool {
-	switch host {
-	case "localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]":
-		return true
+	if err := notifications.ValidateSenderURL(ctx, guard, normalized); err != nil {
+		// Both sentinels match: callers of this package test for
+		// ErrInvalidEndpointURL, and the shared one keeps the cause readable.
+		return "", fmt.Errorf("%w: %w", ErrInvalidEndpointURL, err)
 	}
 
-	return strings.HasSuffix(host, ".localhost") ||
-		strings.HasPrefix(host, "10.") ||
-		strings.HasPrefix(host, "192.168.") ||
-		strings.HasPrefix(host, "169.254.")
+	return normalized, nil
 }
 
 // validateChannelEndpoint applies the per-channel URL rules on top of the
 // generic ones.
 func validateChannelEndpoint(
-	channel models.SubscriberChannel, raw string, allowPrivate bool,
+	ctx context.Context, channel models.SubscriberChannel, raw string, guard *egress.Guard,
 ) (string, error) {
-	normalized, err := normalizeEndpointURL(raw, allowPrivate)
+	normalized, err := normalizeEndpointURL(ctx, raw, guard)
 	if err != nil {
 		return "", err
 	}
@@ -263,7 +254,7 @@ func (s *Service) CreateEndpointSubscriber(
 		return nil, err
 	}
 
-	normalized, err := validateChannelEndpoint(channel, req.URL, s.allowPrivateEndpoints)
+	normalized, err := validateChannelEndpoint(ctx, channel, req.URL, s.guard)
 	if err != nil {
 		return nil, err
 	}

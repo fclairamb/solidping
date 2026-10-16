@@ -100,7 +100,7 @@ func (r *IncidentPublishJobRun) Run(ctx context.Context, jctx *jobdef.JobContext
 
 		svc.SetSubscriberNotifier(statussubscribers.NewNotifier(
 			jctx.DBService, jctx.Services.EmailSender, jctx.Services.EmailFormatter,
-			baseURL, jctx.Logger, jctx.Services.Credentials,
+			baseURL, jctx.Logger, jctx.Services.Credentials, egressGuardFrom(jctx),
 		))
 	}
 

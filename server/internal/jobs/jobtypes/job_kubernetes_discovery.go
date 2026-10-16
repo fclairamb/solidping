@@ -13,6 +13,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	disc "github.com/fclairamb/solidping/server/internal/discovery"
+	"github.com/fclairamb/solidping/server/internal/egress"
 	integrationk8s "github.com/fclairamb/solidping/server/internal/integrations/kubernetes"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
@@ -160,6 +161,16 @@ func credsFrom(jctx *jobdef.JobContext) credentials.Service {
 	}
 
 	return jctx.Services.Credentials
+}
+
+// egressGuardFrom returns the process's outbound-connection policy from the
+// job context, or nil ("no policy") when jctx or its services are not wired.
+func egressGuardFrom(jctx *jobdef.JobContext) *egress.Guard {
+	if jctx == nil || jctx.Services == nil {
+		return nil
+	}
+
+	return jctx.Services.EgressGuard
 }
 
 // buildKubernetesRows turns one discovered workload into its group of

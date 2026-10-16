@@ -294,7 +294,7 @@ func newInProcessIncidentService(
 	// all, and the notifier skips only the email leg when the sender is nil.
 	publicationSvc.SetSubscriberNotifier(statussubscribers.NewNotifier(
 		dbService, svc.EmailSender, svc.EmailFormatter, cfg.Server.BaseURL,
-		slog.Default(), svc.Credentials))
+		slog.Default(), svc.Credentials, svc.EgressGuard))
 
 	incidentSvc.SetPublicationHook(publicationSvc)
 

@@ -77,7 +77,7 @@ func TestSubscriberMailWearsStatusPageBrandingNotTheOrgs(t *testing.T) {
 
 	sender := &fakeSender{}
 	notifier := statussubscribers.NewNotifier(
-		setup.dbSvc, sender, brandingFormatter(t), brandingBaseURL, nil, nil)
+		setup.dbSvc, sender, brandingFormatter(t), brandingBaseURL, nil, nil, nil)
 
 	notifier.NotifyStatusUpdate(t.Context(), brandedEvent(setup))
 
@@ -109,7 +109,7 @@ func TestSubscriberMailHonorsHideBranding(t *testing.T) {
 
 	sender := &fakeSender{}
 	notifier := statussubscribers.NewNotifier(
-		setup.dbSvc, sender, brandingFormatter(t), brandingBaseURL, nil, nil)
+		setup.dbSvc, sender, brandingFormatter(t), brandingBaseURL, nil, nil, nil)
 
 	notifier.NotifyStatusUpdate(t.Context(), brandedEvent(setup))
 
@@ -137,7 +137,7 @@ func TestSubscriberMailFallsBackToTheSolidPingLogo(t *testing.T) {
 
 	sender := &fakeSender{}
 	notifier := statussubscribers.NewNotifier(
-		setup.dbSvc, sender, brandingFormatter(t), brandingBaseURL, nil, nil)
+		setup.dbSvc, sender, brandingFormatter(t), brandingBaseURL, nil, nil, nil)
 
 	notifier.NotifyStatusUpdate(t.Context(), brandedEvent(setup))
 

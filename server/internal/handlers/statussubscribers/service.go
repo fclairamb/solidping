@@ -17,6 +17,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/egress"
 	"github.com/fclairamb/solidping/server/internal/handlers/statuspageassets"
 	"github.com/fclairamb/solidping/server/internal/statuspagelock"
 )
@@ -58,23 +59,23 @@ type Service struct {
 	// rest. nil is legal (self-hosted with no master key) and falls back to the
 	// documented plaintext envelope — see sealEndpoint.
 	creds credentials.Service
-	// allowPrivateEndpoints relaxes the loopback/private-range refusal on
-	// delivery URLs. OFF by default: on a multi-tenant instance a
-	// customer-supplied URL pointing at 169.254.169.254 is a plain SSRF lever.
-	// A self-hosted operator posting to a receiver on their own LAN is a
-	// legitimate case though, which is why this is an option rather than a
-	// hard-coded rule.
-	allowPrivateEndpoints bool
+	// guard is the process's egress policy. A delivery URL is checked against
+	// it at save time, so a non-public endpoint is refused with a 400 rather
+	// than failing at every delivery. nil means "no policy": every https URL
+	// is accepted (tests that do not exercise the policy).
+	guard *egress.Guard
 }
 
 // Option configures the subscribers service.
 type Option func(*Service)
 
-// WithAllowPrivateEndpoints permits webhook/Slack deliveries to loopback and
-// private-range hosts. Intended for a single-tenant self-hosted instance whose
-// receivers live on the same network, and for tests.
-func WithAllowPrivateEndpoints(allow bool) Option {
-	return func(s *Service) { s.allowPrivateEndpoints = allow }
+// WithEgressGuard installs the egress policy webhook/Slack delivery URLs are
+// validated against when a subscription is created. It is the same policy
+// every other notification sender follows (SP_EGRESS_ALLOW_PRIVATE): an
+// enforcing guard refuses loopback, private, CGNAT, link-local and metadata
+// targets, including hostnames that resolve to them.
+func WithEgressGuard(guard *egress.Guard) Option {
+	return func(s *Service) { s.guard = guard }
 }
 
 // NewService creates a new status subscribers service.

@@ -1310,7 +1310,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// of them, is the only arrangement where that cannot happen by omission.
 	statusSubscriberNotifier := statussubscribers.NewNotifier(
 		s.dbService, s.services.EmailSender, s.services.EmailFormatter,
-		s.config.Server.BaseURL, slog.Default(), s.services.Credentials)
+		s.config.Server.BaseURL, slog.Default(), s.services.Credentials, s.services.EgressGuard)
 
 	incidentPublicationsService := incidentpublications.NewService(
 		s.dbService, s.services.Clock, s.services.Realtime)
@@ -2034,7 +2034,8 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Status page subscribers (public email/RSS subscriptions). The handler is
 	// shared by the authed admin routes (below) and the public routes (further
 	// down, outside RequireAuth).
-	statusSubscribersService := statussubscribers.NewService(s.dbService, s.services.Credentials)
+	statusSubscribersService := statussubscribers.NewService(s.dbService, s.services.Credentials,
+		statussubscribers.WithEgressGuard(s.services.EgressGuard))
 	statusSubscribersHandler := statussubscribers.NewHandler(
 		statusSubscribersService, s.dbService, s.services.EmailSender, s.services.EmailFormatter, s.config)
 	// Authed admin: list (count + redactable addresses) and remove.
