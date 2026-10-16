@@ -84,7 +84,7 @@ func newExecParams(cfg *IMAPConfig) execParams {
 
 // Execute performs the IMAP check and returns the result.
 //
-//nolint:funlen,cyclop // IMAP protocol flow requires comprehensive logic
+//nolint:funlen,cyclop,gocognit // IMAP protocol flow requires comprehensive logic
 func (c *IMAPChecker) Execute(
 	ctx context.Context, config checkerdef.Config,
 ) (*checkerdef.Result, error) {
