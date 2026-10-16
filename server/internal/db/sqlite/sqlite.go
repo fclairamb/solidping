@@ -4758,6 +4758,10 @@ func (s *Service) SetStateEntryIfNotExists(
 // SQLite: the service runs on ONE connection (SetMaxOpenConns(1)), so this
 // transaction holds the only connection from its read to its commit and no
 // other statement can interleave — the same guarantee AdmitFixedWindows uses.
+// Two processes sharing one file (split node roles) are not serialized by
+// that, but WAL still forbids the lost update: the transaction that read a
+// stale snapshot gets SQLITE_BUSY on its write, so the counter fails closed
+// (an error) and never admits past the limit.
 func (s *Service) BumpGlobalCounter(
 	ctx context.Context, key string, limit int, ttl time.Duration,
 ) (bool, error) {
