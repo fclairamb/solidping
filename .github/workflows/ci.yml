@@ -587,6 +587,16 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: docker compose -f deploy/coolify/solidping.yaml config
 
+      # deploy/railway/.railway/railway.ts is Railway Infrastructure as Code,
+      # linked from installation/railway.md. Type-check it against the SDK so
+      # an API change in `railway/iac` fails here, not on a user's apply.
+      - name: Type-check Railway config
+        working-directory: ${{ github.workspace }}/deploy/railway
+        run: |
+          npm install --no-save --no-package-lock railway typescript@5
+          npx tsc --noEmit --strict --module nodenext --moduleResolution nodenext \
+            --target es2022 --skipLibCheck .railway/railway.ts
+
   build:
     name: Build Binary
     runs-on: ubuntu-26.04
