@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/url"
 	"strings"
@@ -380,6 +381,11 @@ func (s *Service) authenticateViaLDAP(ctx context.Context, orgSlug, identifier, 
 		// that the directory is unreachable/misconfigured) and it lets the
 		// existing 401 mapping in handler.go's handleAuthError apply
 		// uniformly across every credential path, local or LDAP.
+		//
+		// The cause is only logged at debug level (never the identifier or
+		// password) so an operator can diagnose a misconfigured directory.
+		slog.DebugContext(ctx, "LDAP authentication failed", "error", err)
+
 		return nil, ErrInvalidCredentials
 	}
 
