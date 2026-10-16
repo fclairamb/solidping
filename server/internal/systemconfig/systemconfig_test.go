@@ -2,6 +2,7 @@ package systemconfig
 
 import (
 	"context"
+	"reflect"
 	"strconv"
 	"testing"
 	"time"
@@ -990,5 +991,118 @@ func TestGetKnownParameters_KeysMatchParamKeyPattern(t *testing.T) {
 		key := string(def.Key)
 		r.Truef(paramkeys.KeyPattern.MatchString(key),
 			"parameter key %q must match %s", key, paramkeys.KeyPattern.String())
+	}
+}
+
+func TestWorkerPoolApplyFuncs(t *testing.T) {
+	t.Parallel()
+
+	for _, key := range []ParameterKey{KeyCheckWorkers, KeyJobWorkers} {
+		var def *ParameterDefinition
+
+		for _, p := range getKnownParameters() {
+			if p.Key == key {
+				def = &p
+
+				break
+			}
+		}
+
+		require.NotNil(t, def)
+
+		get := func(c *config.Config) int {
+			if key == KeyCheckWorkers {
+				return c.Server.CheckWorker.Nb
+			}
+
+			return c.Server.JobWorker.Nb
+		}
+
+		for _, v := range []any{"8", float64(8), int(8)} {
+			cfg := &config.Config{}
+			def.ApplyFunc(cfg, v)
+			require.Equal(t, 8, get(cfg), "key %s value %#v", key, v)
+		}
+
+		cfg := &config.Config{}
+		cfg.Server.CheckWorker.Nb = 5
+		cfg.Server.JobWorker.Nb = 5
+		def.ApplyFunc(cfg, "abc")
+		require.Equal(t, 5, get(cfg))
+	}
+}
+
+func TestWorkerPoolOverlayPrecedence(t *testing.T) {
+	tests := []struct {
+		name string
+		env  string
+		db   any
+		want int
+	}{
+		{name: "env beats db", env: "8", db: float64(10), want: 8},
+		{name: "db without env", db: float64(10), want: 10},
+		{name: "default", want: 25},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := require.New(t)
+			ctx := context.Background()
+
+			t.Setenv("SP_SERVER_CHECK_WORKER_NB", tt.env)
+
+			dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+			r.NoError(err)
+			r.NoError(dbSvc.Initialize(ctx))
+			t.Cleanup(func() { _ = dbSvc.Close() })
+
+			if tt.db != nil {
+				r.NoError(dbSvc.SetSystemParameter(ctx, string(KeyCheckWorkers), tt.db, false))
+			}
+
+			cfg, err := config.Load()
+			r.NoError(err)
+			r.NoError(NewService(dbSvc, cfg).Initialize(ctx))
+			r.Equal(tt.want, cfg.Server.CheckWorker.Nb)
+		})
+	}
+}
+
+// TestEveryParameterEnvVarTakesEffect: a parameter whose env var config.Load
+// does not bind is bound only by the overlay, so applying a well-formed string
+// must change the config.
+func TestEveryParameterEnvVarTakesEffect(t *testing.T) {
+	t.Parallel()
+
+	recognized := make(map[string]struct{})
+	for _, n := range config.RecognizedEnvVars() {
+		recognized[n] = struct{}{}
+	}
+
+	candidates := []string{"7", "true", "1h", "x@acme.example", "https://acme.example", "abc"}
+
+	for _, def := range getKnownParameters() {
+		if def.EnvVar == "" {
+			continue
+		}
+
+		if _, ok := recognized[def.EnvVar]; ok {
+			continue
+		}
+
+		changed := false
+
+		for _, c := range candidates {
+			cfg := &config.Config{}
+			def.ApplyFunc(cfg, c)
+
+			if !reflect.DeepEqual(cfg, &config.Config{}) {
+				changed = true
+
+				break
+			}
+		}
+
+		require.Truef(t, changed, "%s (%s) ignores every string value: the env var has no effect", def.EnvVar, def.Key)
 	}
 }
