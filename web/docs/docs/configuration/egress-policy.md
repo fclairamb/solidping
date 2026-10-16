@@ -120,6 +120,8 @@ there instead.
 | matrix | `homeserverUrl` |
 | Google Chat | `webhook_url` |
 | Mattermost | `webhook_url` |
+| Status page webhook / Slack subscriber | the delivery URL |
+| webhook (status-page publication fan-out) | `url`, on every publication change |
 
 Two checks, for the same reason redirects get a second check on a browser
 check (see limits below):
@@ -137,6 +139,14 @@ check (see limits below):
    checks above cannot slip through. This also catches a row saved before
    this validation existed, or while the policy allowed private targets and
    was tightened afterwards.
+
+Redirects are followed, and every hop is dialed through the same guarded
+transport, so a public receiver answering `307` to an internal address gets
+no further than the first hop.
+
+A refused status-page subscriber delivery counts as a failed delivery: after
+five in a row the subscription is disabled and the audit event names the
+refusal. A refused publication webhook job fails at once, without retries.
 
 A refused delivery fails with the same `egress_denied` marker and operator
 message as a refused check, and — for a manual
