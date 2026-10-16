@@ -292,3 +292,10 @@ func ConfigureOVHDeliveryCallback(ctx context.Context, sender Sender, callbackUR
 
 	return nil
 }
+
+// IsOVHSender reports whether sender is the OVH-backed instance sender.
+func IsOVHSender(sender Sender) bool {
+	_, ok := sender.(*ovhSender)
+
+	return ok
+}

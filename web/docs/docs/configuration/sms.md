@@ -105,7 +105,7 @@ with `GET`/`POST`/`PUT` rights on `/sms/*`.
 | `SP_SMS_OVH_CONSUMER_KEY` | **Secret.** |
 | `SP_SMS_OVH_SERVICE_NAME` | The SMS account, `sms-xxxxx-1`. |
 | `SP_SMS_OVH_BASE_URL` | Overrides the endpoint-derived API base (proxy / tests). |
-| `SP_SMS_OVH_DLR_TOKEN` | The delivery-receipt path secret. Optional — one is derived from the JWT secret when unset. |
+| `SP_SMS_OVH_DLR_TOKEN` | The delivery-receipt path secret. Optional — one is derived from the JWT secret when unset, with no configuration needed. At each boot SolidPing registers `{SP_BASE_URL}/api/v1/integrations/ovhsms/dlr/{token}` as the account's `callBack`, which needs a public `SP_BASE_URL` (nothing is registered while it is the `localhost` default). To set `callBack` by hand in the OVH panel instead, set this variable so you know the token. |
 
 Two OVH specifics worth knowing before you debug the wrong thing:
 

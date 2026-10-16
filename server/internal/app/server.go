@@ -205,8 +205,11 @@ type Server struct {
 	// SetupRoutes). It is the outermost handler: Server.Handler() and
 	// handlerWithDocsHost's fallthrough both serve this, never s.router
 	// directly, so every caller gets compression on the same terms.
-	handler                  http.Handler
-	config                   *config.Config
+	handler http.Handler
+	config  *config.Config
+	// instanceSMSSender is the instance-level SMS sender; kept so the OVH
+	// delivery callback can be registered once the config overlay is final.
+	instanceSMSSender        smssvc.Sender
 	authService              *auth.Service
 	mcpHandler               *mcp.Handler
 	profilerSrv              *profiler.Server
@@ -515,18 +518,6 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		dbService, credSvc, instanceSMSSender, instanceVoiceCaller, cfg.SMS.Sender,
 	)
 
-	// OVH has no per-job callback field: delivery receipts only arrive if the
-	// SMS account's service-level `callBack` points back here. Register it at
-	// startup, best-effort — an operator can set the same URL in the OVH
-	// control panel, and losing receipts must never stop the process from
-	// booting and paging people.
-	if err := smssvc.ConfigureOVHDeliveryCallback(
-		ctx, instanceSMSSender, ovhsmscb.CallbackURL(cfg.Server.BaseURL, ovhsmscb.ResolveToken(cfg)),
-	); err != nil {
-		slog.WarnContext(ctx, "could not register the OVH SMS delivery callback; "+
-			"set it manually on the SMS account if you want delivery receipts", "error", err)
-	}
-
 	// Create auth service. The entitlements service gates SSO membership
 	// caps inside JoinOrgViaLogin (every OAuth/SAML/LDAP callback) and inside
 	// autoJoinMatchingOrgs.
@@ -546,6 +537,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		services:          svcList,
 		aiChecks:          aiChecksSvc,
 		config:            cfg,
+		instanceSMSSender: instanceSMSSender,
 		authService:       authService,
 		profilerSrv:       profiler.New(&cfg.Profiler),
 		customDomainCache: newCustomDomainCache(customDomainCacheTTL),
@@ -2289,7 +2281,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// high-entropy path token; an unknown token 404s. The route is registered
 	// unconditionally so a token rotation needs no restart-order coordination —
 	// the handler itself refuses every request while no token is configured.
-	ovhSMSHandler := ovhsmscb.NewHandler(s.dbService, ovhsmscb.ResolveToken(s.config))
+	ovhSMSHandler := ovhsmscb.NewHandler(s.dbService, s.ovhDLRToken())
 	ovhSMSIntegration := api.NewGroup("/integrations/ovhsms")
 	ovhSMSIntegration.GET(ovhsmscb.DLRPath, ovhSMSHandler.HandleDLR)
 	ovhSMSIntegration.POST(ovhsmscb.DLRPath, ovhSMSHandler.HandleDLR)
@@ -4302,6 +4294,10 @@ func (s *Server) InitializeSystemConfig(ctx context.Context, cfg *config.Config)
 	// Log the resolved /metrics scrape-token state now that cfg carries the
 	// overlaid metrics.scrape_token system parameter (spec 2026-09-25-25).
 	logMetricsScrapeTokenState(ctx, cfg)
+
+	// Register the OVH delivery-receipt callback now that the JWT secret and
+	// base URL are final (spec 2026-10-12-06).
+	s.configureOVHDeliveryCallback(ctx)
 
 	return nil
 }

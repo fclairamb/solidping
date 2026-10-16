@@ -2057,7 +2057,7 @@ func Load() (*Config, error) {
 			SlowQueryThreshold: 500 * time.Millisecond,
 		},
 		Auth: AuthConfig{
-			JWTSecret:          "change-me-in-production",
+			JWTSecret:          DefaultJWTSecret,
 			AccessTokenExpiry:  time.Hour,
 			RefreshTokenExpiry: 7 * 24 * time.Hour,
 			// Super-admin impersonation is on by default (spec 2026-09-29-03);
