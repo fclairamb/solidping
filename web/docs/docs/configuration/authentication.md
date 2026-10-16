@@ -198,6 +198,24 @@ and takes effect after a server restart.
 3. Add redirect URI: `{SP_BASE_URL}/api/v1/auth/microsoft/callback`
 4. Create a client secret under "Certificates & secrets"
 5. For a single-tenant app, set `SP_MICROSOFT_TENANT_ID` to your directory (tenant) ID
+6. For a multi-tenant app (`common` / `organizations` / `consumers`), open
+   **Token configuration → Add optional claim → ID** and add the `email` and
+   `xms_edov` claims.
+
+**Which email SolidPing trusts.** Signing in with Microsoft links to an existing
+account with the same email, or creates one, only when SolidPing can trust the
+address:
+
+- **Pinned tenant** (`SP_MICROSOFT_TENANT_ID` set to a GUID or domain): the
+  Microsoft Graph `mail` (or the user principal name) is trusted. Only your own
+  directory's users can sign in, and its admins are yours. Nothing else to configure.
+- **Multi-tenant** (`common`, `organizations`, `consumers`, or unset): Graph `mail`
+  is a directory attribute any tenant admin can set to any address, so it is never
+  used. The email comes from the ID token, and only when its `xms_edov` claim
+  (email domain owner verified) is `true`. Without the step 6 optional claims, users
+  whose Microsoft account is already linked still sign in, but every first sign-in
+  is refused with `EMAIL_NOT_VERIFIED`. The server logs a warning with the tenant
+  (`tid`) and object (`oid`) IDs.
 
 ### Slack
 
