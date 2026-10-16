@@ -1,5 +1,14 @@
 # UptimeRobot — Pricing Model
 
+> **Stale below this note (2026-10-15).** UptimeRobot restructured its plans:
+> Free (50 monitors, 5 min, no heartbeat / SSL / DNS / UDP / API monitoring, no
+> multi-location), Solo from €10 (60 s), Team €41 (100 monitors, 30 s), a new
+> **Scale** tier from €77 (200 or 500 monitors, **15 s**), Enterprise custom
+> (15 s standard). Prices seen in EUR from a French IP. Source:
+> https://uptimerobot.com/pricing.md. Summary in
+> [../comparison/pricing.md](../comparison/pricing.md). The tier detail below
+> is the 2026-06 snapshot.
+
 UptimeRobot offers four pricing tiers with different monitor limits and check intervals:
 
 ## Free Plan
