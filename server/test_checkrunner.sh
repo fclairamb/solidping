@@ -57,7 +57,7 @@ EOF
 # Start server with check runners enabled (no job runners to avoid DB locking)
 echo ""
 echo "Starting server with 1 check runner (job runners disabled)..."
-SP_DB_TYPE=sqlite SP_DB_DIR=. SP_SERVER_CHECK_RUNNERS=1 SP_SERVER_JOB_RUNNERS=0 ./solidping serve > test.log 2>&1 &
+SP_DB_TYPE=sqlite SP_DB_DIR=. SP_SERVER_CHECK_WORKER_NB=1 SP_SERVER_JOB_WORKER_NB=0 ./solidping serve > test.log 2>&1 &
 SERVER_PID=$!
 
 echo "Server PID: $SERVER_PID"
