@@ -4768,7 +4768,6 @@ func (s *Service) BumpGlobalCounter(
 	limited := false
 
 	err := s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
-
 		now := time.Now()
 
 		var live []*models.StateEntry

@@ -137,8 +137,6 @@ func liveCounterRows(ctx context.Context, t *testing.T, svc db.Service, key stri
 }
 
 // testBumpGlobalCounter is the engine-agnostic contract.
-//
-//nolint:funlen // one table of cases sharing the same helpers
 func testBumpGlobalCounter(t *testing.T, svc db.Service) {
 	t.Helper()
 
@@ -152,6 +150,8 @@ func testBumpGlobalCounter(t *testing.T, svc db.Service) {
 		{
 			name: "burst on a fresh key admits exactly limit",
 			run: func(t *testing.T, key string) {
+				t.Helper()
+
 				admitted, refused := burstGlobalCounter(ctx, t, svc, key, 5, globalCounterBurst)
 				require.Equal(t, 5, admitted)
 				require.Equal(t, globalCounterBurst-5, refused)
@@ -164,6 +164,8 @@ func testBumpGlobalCounter(t *testing.T, svc db.Service) {
 		{
 			name: "burst on an existing row admits only the remaining budget",
 			run: func(t *testing.T, key string) {
+				t.Helper()
+
 				ttl := time.Minute
 				require.NoError(t, svc.SetStateEntry(ctx, nil, key, models.NewCounterValue(2), &ttl))
 
@@ -179,6 +181,8 @@ func testBumpGlobalCounter(t *testing.T, svc db.Service) {
 		{
 			name: "expired row counts as zero",
 			run: func(t *testing.T, key string) {
+				t.Helper()
+
 				require.NoError(t, svc.SetStateEntry(ctx, nil, key, models.NewCounterValue(5), &expired))
 
 				limited, err := svc.BumpGlobalCounter(ctx, key, 5, time.Minute)
@@ -193,6 +197,8 @@ func testBumpGlobalCounter(t *testing.T, svc db.Service) {
 		{
 			name: "soft-deleted row counts as zero",
 			run: func(t *testing.T, key string) {
+				t.Helper()
+
 				ttl := time.Minute
 				require.NoError(t, svc.SetStateEntry(ctx, nil, key, models.NewCounterValue(5), &ttl))
 
@@ -212,6 +218,8 @@ func testBumpGlobalCounter(t *testing.T, svc db.Service) {
 		{
 			name: "legacy duplicate rows: the largest count wins and all are rewritten",
 			run: func(t *testing.T, key string) {
+				t.Helper()
+
 				// SetStateEntry upserts, so duplicates are planted the way the
 				// old read-modify-write left them: two plain inserts.
 				for _, n := range []int{3, 4} {
@@ -241,6 +249,8 @@ func testBumpGlobalCounter(t *testing.T, svc db.Service) {
 		{
 			name: "sequential bumps admit exactly limit then refuse",
 			run: func(t *testing.T, key string) {
+				t.Helper()
+
 				for i := range 3 {
 					limited, err := svc.BumpGlobalCounter(ctx, key, 3, time.Minute)
 					require.NoError(t, err)
@@ -260,6 +270,7 @@ func testBumpGlobalCounter(t *testing.T, svc db.Service) {
 
 	for i, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			tt.run(t, "global-counter-test:"+string(rune('a'+i)))
 		})
 	}
