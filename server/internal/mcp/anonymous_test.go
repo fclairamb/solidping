@@ -202,6 +202,27 @@ func TestAllowAnonymousHandshake_CredentialsAlwaysGoThroughAuth(t *testing.T) {
 	}
 }
 
+func TestAllowAnonymousHandshake_AuthRequiredGoesThroughAuth(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	var reached bool
+
+	handler := AllowAnonymousHandshake(denyAll)(func(_ http.ResponseWriter, _ *http.Request) error {
+		reached = true
+
+		return nil
+	})
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/mcp?auth=required",
+		bytes.NewBufferString(`{"jsonrpc":"2.0","id":1,"method":"initialize"}`))
+	rec := httptest.NewRecorder()
+
+	r.NoError(handler(rec, req))
+	r.False(reached)
+	r.Equal(http.StatusUnauthorized, rec.Code)
+}
+
 func TestAllowAnonymousHandshake_NonPostGoesThroughAuth(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)

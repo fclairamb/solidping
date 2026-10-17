@@ -104,6 +104,14 @@ capability flags, and the server name and version — and mints no session.
 Everything else, `tools/list` and `resources/list` included, answers
 `401 NO_TOKEN` without a token.
 
+Some clients only start the OAuth sign-in when the handshake itself is refused.
+For those, add `auth=required` to the endpoint URL and `initialize` gets the
+401 challenge too:
+
+```
+https://monitoring.example.com/api/v1/mcp?auth=required
+```
+
 Whichever path a token arrives by — OAuth consent or a manual PAT (below) — it must carry one of:
 
 | Scope | Access |
