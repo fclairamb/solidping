@@ -28,7 +28,7 @@ func ValidateSpec(spec *checkerdef.CheckSpec) error {
 
 	database := cfg.Database
 	if database == "" {
-		database = defaultDatabase
+		database = DefaultDatabase
 	}
 
 	if spec.Name == "" {
