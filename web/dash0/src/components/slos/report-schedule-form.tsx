@@ -81,7 +81,7 @@ export function ReportScheduleForm({
       />
 
       <Card>
-        <CardContent className="space-y-5 pt-6">
+        <CardContent className="space-y-5 pt-[var(--card-pad,1.5rem)]">
           <div className="space-y-2">
             <Label htmlFor="report-name">{t("reports.form.name")}</Label>
             <Input
@@ -93,7 +93,7 @@ export function ReportScheduleForm({
             />
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label>{t("reports.form.frequency")}</Label>
               <SegmentedControl

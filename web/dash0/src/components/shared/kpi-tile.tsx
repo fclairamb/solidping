@@ -1,44 +1,25 @@
 import type { ReactNode } from "react";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
 export interface KpiTileProps {
   label: string;
   value: number | string;
+  /** A bare lucide icon; the tile mutes it. */
   icon: ReactNode;
   sub?: string;
-  /** Sits to the right of the value. On the hero, pass a solid bg-white chip
-   * (see AVAILABILITY_TIER_HERO_BADGE): a pale translucent status badge loses
-   * its meaning on the gradient. */
+  /** Sits to the right of the value, e.g. a status Badge. */
   badge?: ReactNode;
+  /** Colors the value, e.g. text-destructive when it needs attention. */
   valueClassName?: string;
   className?: string;
-  /**
-   * "hero" is the page's headline number: the hero gradient, white text, a
-   * tinted shadow. ONE hero tile per page (spec 2026-09-24-02); every other
-   * tile is "default".
-   */
-  variant?: "default" | "hero";
 }
 
-// The hover lift, on every tile. Behind motion-safe: so a reduced-motion
-// user gets the shadow change without the movement.
-const LIFT = "transition motion-safe:hover:-translate-y-0.5";
-
-// The hero surface. It paints --hero-gradient (bg-hero-gradient, the token is
-// untouched) but CROPPED: bg-size 180% anchored bottom-right shows only the
-// gradient's darker end, t in [1 - 1/1.8, 1] = [0.444, 1]. The design
-// reference's rule is that white small text only sits where the gradient is
-// dark, and this tile puts its small label top-left (the gradient's light
-// start) and its sub line bottom-left, wrapping across the whole width on a
-// 172px tile, so no placement could keep them off the light end. At 90% white
-// (text-gradient-foreground/90) the lightest visible point still reads
-// >= 4.69:1; kpi-tile.test.tsx computes it from these very classes.
-const HERO_SURFACE =
-  "relative overflow-hidden rounded-xl bg-primary bg-hero-gradient bg-size-[180%_180%] bg-bottom-right text-gradient-foreground shadow-hero hover:shadow-hero";
-const HERO_SMALL_TEXT = "text-gradient-foreground/90";
-
+// One flat look for every tile: a sentence-case label, a muted icon, a
+// semibold tabular value and an optional sub line. Color is spent on the
+// value only, and only when it means something (a down count, a low
+// availability). Hover deepens the shadow; the tile itself never moves.
 export function KpiTile({
   label,
   value,
@@ -47,40 +28,32 @@ export function KpiTile({
   badge,
   valueClassName,
   className,
-  variant = "default",
 }: KpiTileProps) {
-  const hero = variant === "hero";
-  const body = (
-    <>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle
-          data-slot="kpi-tile-label"
-          className={cn(
-            "text-xs font-semibold tracking-wider uppercase",
-            hero ? HERO_SMALL_TEXT : "text-muted-foreground",
-          )}
-        >
-          {label}
-        </CardTitle>
-        <div
-          data-slot="kpi-tile-icon"
-          className={cn(
-            "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg",
-            hero
-              ? "bg-white/15 text-gradient-foreground"
-              : "bg-muted/60 text-muted-foreground",
-          )}
-        >
-          {icon}
+  return (
+    <Card
+      data-slot="kpi-tile"
+      className={cn("h-full transition-shadow hover:shadow-card-hover", className)}
+    >
+      <div className="flex h-full flex-col gap-2 p-4 sm:p-5">
+        <div className="flex items-start justify-between gap-2">
+          <p
+            data-slot="kpi-tile-label"
+            className="text-sm font-medium leading-snug text-muted-foreground"
+          >
+            {label}
+          </p>
+          <span
+            data-slot="kpi-tile-icon"
+            className="shrink-0 text-muted-foreground [&_svg]:h-4 [&_svg]:w-4"
+          >
+            {icon}
+          </span>
         </div>
-      </CardHeader>
-      <CardContent className="space-y-1">
-        <div className="flex items-baseline justify-between gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
           <div
             data-slot="kpi-tile-value"
             className={cn(
-              "text-2xl sm:text-3xl font-bold tracking-tight tabular-nums",
-              hero ? "text-gradient-foreground" : "text-foreground",
+              "text-2xl font-semibold tracking-tight tabular-nums text-foreground sm:text-3xl",
               valueClassName,
             )}
           >
@@ -89,38 +62,11 @@ export function KpiTile({
           {badge}
         </div>
         {sub ? (
-          <p
-            data-slot="kpi-tile-sub"
-            className={cn("text-xs mt-1", hero ? HERO_SMALL_TEXT : "text-muted-foreground")}
-          >
+          <p data-slot="kpi-tile-sub" className="truncate text-xs text-muted-foreground">
             {sub}
           </p>
         ) : null}
-      </CardContent>
-    </>
-  );
-
-  if (hero) {
-    // Not a <Card>: no border, and none of Card's dark-mode inset shadow,
-    // which would replace the tinted hero shadow in dark mode.
-    return (
-      <div
-        data-slot="kpi-tile"
-        data-variant="hero"
-        className={cn(HERO_SURFACE, LIFT, className)}
-      >
-        {body}
       </div>
-    );
-  }
-
-  return (
-    <Card
-      data-slot="kpi-tile"
-      data-variant="default"
-      className={cn(LIFT, "hover:shadow-card-hover", className)}
-    >
-      {body}
     </Card>
   );
 }

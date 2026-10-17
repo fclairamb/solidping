@@ -106,7 +106,7 @@ function EscalationPolicyDetailPage() {
             <ArrowLeft className="h-4 w-4" />
           </a>
         </Button>
-        <h1 className="text-3xl font-bold tracking-tight flex-1">{policy.name}</h1>
+        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl flex-1">{policy.name}</h1>
         <Button variant="destructive" size="sm" onClick={handleDelete}>
           <Trash2 className="h-4 w-4 mr-1" />
           {t("common:delete")}

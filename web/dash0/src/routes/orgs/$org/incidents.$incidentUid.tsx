@@ -897,7 +897,7 @@ function IncidentDetailPage() {
             ) : (
               <CheckCircle className="h-6 w-6 text-green-500" />
             )}
-            <h1 className="text-3xl font-bold tracking-tight">
+            <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
               {incident.number ? (
                 <span className="text-muted-foreground tabular-nums mr-2">
                   #{incident.number}
@@ -1053,7 +1053,7 @@ function IncidentDetailPage() {
         </div>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle>{t("detail.incidentDetails")}</CardTitle>
