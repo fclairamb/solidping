@@ -31,7 +31,7 @@
 | **External script** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ⚠️ (via JS check) |
 | **Cron exit codes** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
 | **Real User Monitoring (RUM)** | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ (CWV + JS errors) | ❌ |
-| **Third-party status page (dependency)** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ **4,300+ providers** | ❌ |
+| **Third-party status page (dependency)** | ⚠️ ~40 + custom | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ **4,300+ providers** | ❌ |
 
 **Most Comprehensive**: SolidPing (43 check types — broadest protocol coverage of any tool surveyed)
 
@@ -57,7 +57,7 @@
 
 **Enterprise Features**: Pingdom (Transaction monitoring, RUM)
 
-**The one column SolidPing loses**: dependency monitoring — [Pulsetic](../pulsetic.md)
+**The column SolidPing only half covers**: dependency monitoring (`vendor-status`: ~40 providers or a custom Statuspage v2 URL) — [Pulsetic](../pulsetic.md)
 subscribes to 4,300+ third-party providers' own status pages and raises an alert when
 *they* declare an incident. It is not a probe, which is exactly why no amount of protocol
 breadth covers it: it answers "is it us or is it them?" before anyone opens a terminal.

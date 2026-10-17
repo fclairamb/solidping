@@ -63,8 +63,10 @@ This is not synthetic monitoring at all — it is status-page aggregation — bu
 answers a real on-call question ("is it us or is it them?") that no amount of probe
 breadth answers. Alerts are **email-only** on this monitor type.
 
-**SolidPing has no equivalent.** The 43 check types are all active probes; nothing
-consumes another vendor's status page. Worth noting that Uptime Kuma has an open
+**SolidPing now has a narrower equivalent**: the `vendor-status` check type reads a
+vendor's Statuspage v2 summary (about 40 catalog providers or a custom URL, per-component
+selection, any notification channel). No 4,300-provider catalog and no RSS/Atom
+parsing. Worth noting that Uptime Kuma has an open
 feature request for exactly this shape of thing
 ([#7688](https://github.com/louislam/uptime-kuma/issues/7688)), so demand is
 expressed against the OSS market leader too.
@@ -285,7 +287,7 @@ marketing angle both sides can now claim.
 
 | Capability | Pulsetic | SolidPing |
 |---|---|---|
-| Dependency monitoring (3rd-party status pages) | ✅ 4,300+ services | ❌ |
+| Dependency monitoring (3rd-party status pages) | ✅ 4,300+ services | ⚠️ `vendor-status`, ~40 providers + custom Statuspage v2 URL |
 | Real User Monitoring | ✅ CWV + JS errors | ❌ |
 | Monitor screenshots | ✅ | ❌ |
 | SIGNL4 alerting | ✅ | ❌ |
