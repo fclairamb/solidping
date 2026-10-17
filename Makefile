@@ -1,4 +1,4 @@
-.PHONY: docker-build build build-backend build-dash0 build-status0 build-docs copy-dash0 copy-status0 copy-docs embed-placeholders cloud-setup check-clean-clone \
+.PHONY: test-upgrade docker-build build build-backend build-dash0 build-status0 build-docs copy-dash0 copy-status0 copy-docs embed-placeholders cloud-setup check-clean-clone \
 	build-cli install-cli clean clean-all run run-test dev dev-test dev-saas dev-dash0 dev-status0 dev-docs dev-backend \
 	test test-cover test-postgres test-slow test-scenario test-dash0 test-docs lint lint-agent-docs lint-migrations lint-back lint-dash0 lint-status0 fmt deps migrate help sync-brand-assets build-favicons \
 	showcase showcase-terminal showcase-cut \
@@ -475,6 +475,14 @@ lint-agent-docs: ## Check AGENTS.md size limits and CLAUDE.md stubs
 
 lint-migrations: ## Check that no migration file changed since its release tag
 	@scripts/check-frozen-migrations.sh
+
+test-upgrade: build-backend ## Boot each released version, then HEAD on the database it left (docker, jq, sqlite3)
+	@failures=$$(mktemp); \
+	scripts/upgrade-test.sh --matrix | while read -r engine tag; do \
+		HEAD_BIN=$(CURDIR)/$(APP_NAME) scripts/upgrade-test.sh "$$engine" "$$tag" || echo "$$engine $$tag" >> "$$failures"; \
+	done; \
+	if [ -s "$$failures" ]; then echo "Failed legs:"; cat "$$failures"; rm -f "$$failures"; exit 1; fi; \
+	rm -f "$$failures"
 
 lint: lint-agent-docs lint-migrations lint-back lint-dash0 lint-status0 ## Run all linters
 

@@ -9,6 +9,7 @@ are about to trust it, read the next two sections and stop.
 |---|---|---|---|
 | **Short** | `make test` (`go test ./... -short`) | Yes — `backend-lint` job | Everything that needs no database beyond SQLite. ~1 min. |
 | **Postgres** | `make test-postgres` | Yes — `backend-postgres` job | Every `*_postgres_test.go` + every other `testing.Short()`-guarded suite. Embedded PostgreSQL, ~12 min. |
+| **Upgrade** | `make test-upgrade` | Yes, `upgrade` jobs | Boots a released image, then HEAD on the database it left. See below. |
 | **Slow** | `make test-slow` (`-tags slowtests`) | **No** — nightly only | Live WHOIS/RDAP, a live TLS dial, and the Pebble ACME suite (Docker). |
 | **E2E** | `cd web/dash0 && bun run test:e2e` | Yes — `e2e-tests` job | Playwright against a built binary + a Postgres service container. See [e2e-ci.md](e2e-ci.md). |
 
@@ -127,6 +128,27 @@ Postgres job parse the `-v` output and fail if:
 If you add or remove Postgres suites in bulk, that floor is the number to
 revisit — raise it when the count grows; lower it only alongside a real
 deletion, never to make a red job green.
+
+## The upgrade layer
+
+`scripts/upgrade-test.sh <sqlite|postgres> <from-tag>` runs one leg: the released
+image `ghcr.io/fclairamb/solidping:<tag>` fills a database in test mode (30 s of
+checks), HEAD starts on it, and the script asserts:
+
+- health answers `ok` within 60 s, and the log has no "half-migrated" or "migration content changed";
+- every HEAD migration is listed in `bun_migrations`;
+- the counts of checks, incidents, status pages, integrations and members are unchanged;
+- a check gets a result newer than the old version's last one (the scheduler runs on upgraded data);
+- SQLite only: the `solidping.db.pre-<migration>.bak` exists when HEAD has a newer migration.
+
+`scripts/upgrade-test.sh --matrix` prints the legs, one `<engine> <tag>` per line: the 3 most
+recent `v*` tags plus the newest tag of the previous minor, each on both engines, minus
+`SKIP_TAGS` (top of the script, starts with `v0.38.4`, whose 027 edit is covered by
+`migration_028_split_027_test.go`). CI builds the legs from it (`upgrade-matrix` then `upgrade`
+in `ci.yml`, both gating the `ci` job). Locally, `make test-upgrade` runs the whole matrix and
+needs docker, jq and sqlite3. A single leg: `HEAD_BIN=./solidping scripts/upgrade-test.sh sqlite v0.38.6`.
+
+It complements `scripts/check-frozen-migrations.sh` (static) and does not replace it.
 
 ## The `slowtests` layer
 
