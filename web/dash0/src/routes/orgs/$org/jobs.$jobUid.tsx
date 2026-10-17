@@ -93,7 +93,7 @@ function BackgroundJobDetailPage() {
           <Workflow className="h-5 w-5" />
         </div>
         <div className="min-w-0 flex-1">
-          <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
+          <h1 className="text-xl font-semibold tracking-tight sm:text-2xl flex items-center gap-2">
             <span className="truncate">{job.type}</span>
             <Badge variant={jobStatusVariant(job.status)}>
               {t(`status.${job.status}`, job.status)}

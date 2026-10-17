@@ -89,7 +89,7 @@ function EditOnCallSchedulePage() {
   return (
     <div className="space-y-6 max-w-2xl">
       <div className="flex items-start justify-between gap-4">
-        <h1 className="text-3xl font-bold tracking-tight">
+        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
           {t("oncall:form.edit")}
         </h1>
         <Button

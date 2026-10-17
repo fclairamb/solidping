@@ -340,7 +340,7 @@ function NotificationDetailPage() {
         <Button variant="ghost" size="icon" onClick={goBack} aria-label={backLabel}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
-        <h1 className="text-2xl font-semibold">{tInt("notificationDetail.title")}</h1>
+        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{tInt("notificationDetail.title")}</h1>
         <Badge
           variant={notificationStatusVariant(data.status)}
           className="capitalize"

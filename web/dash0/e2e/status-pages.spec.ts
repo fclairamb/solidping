@@ -141,10 +141,10 @@ test.describe("Status pages list toolbar", () => {
     const newLink = page.getByRole("link", { name: "New Status Page" });
     await expect(newLink.first()).toBeVisible();
 
-    // The PageHeader action cluster (`ml-auto flex shrink-0 items-center
-    // gap-2`) carries only the primary "New Status Page" action now —
-    // Refresh is a toolbar control, not a page-level action, so it moved out.
-    const headerCluster = page.locator("div.ml-auto.flex.shrink-0.items-center.gap-2");
+    // The PageHeader action cluster carries only the primary "New Status
+    // Page" action now — Refresh is a toolbar control, not a page-level
+    // action, so it moved out.
+    const headerCluster = page.locator('[data-slot="page-header-actions"]');
     await expect(headerCluster.getByRole("button", { name: "Refresh" })).toHaveCount(0);
     await expect(headerCluster.getByRole("link", { name: "New Status Page" })).toBeVisible();
 
