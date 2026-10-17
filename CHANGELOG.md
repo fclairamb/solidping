@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.38.7](https://github.com/fclairamb/solidping/compare/v0.38.6...v0.38.7) (2026-10-17)
+
+
+### Bug Fixes
+
+* **checks:** build the postgres check connection from an explicit pq.Config ([#584](https://github.com/fclairamb/solidping/issues/584)) ([a4b394a](https://github.com/fclairamb/solidping/commit/a4b394ae7541f703783337e5dd87bdb2f354346c))
+* **deps:** update github.com/dop251/goja digest to 313b6b6 ([#578](https://github.com/fclairamb/solidping/issues/578)) ([d068c02](https://github.com/fclairamb/solidping/commit/d068c024cece64414ee7ffc7e9555bad58a4b692))
+* **deps:** update module github.com/knadh/koanf/v2 to v2.4.0 ([#586](https://github.com/fclairamb/solidping/issues/586)) ([c02a042](https://github.com/fclairamb/solidping/commit/c02a04206ac54a1fdcc86c2139f4eef8e5f2793a))
+* **deps:** update module github.com/posthog/posthog-go to v1.35.1 ([#583](https://github.com/fclairamb/solidping/issues/583)) ([efb4819](https://github.com/fclairamb/solidping/commit/efb4819b51619f3e48969422d0e15f7c451c04b7))
+
 ## [0.38.6](https://github.com/fclairamb/solidping/compare/v0.38.5...v0.38.6) (2026-10-16)
 
 
