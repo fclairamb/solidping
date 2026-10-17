@@ -646,7 +646,7 @@ With several components selected the worst status wins.
 
 - The default period is `5m`.
 - Unreachable is an error, never down: if the status page cannot be fetched, answers something other than HTTP 200, does not return a v2 summary, or a selected component no longer exists (the error names its id), the result is an error. A vendor whose status page is down says nothing about the vendor, and it never opens an incident.
-- The output `error` line names the active incident: `GitHub: "Incident with Actions" (major) https://stspg.io/xxxx`. The output also carries `components` (`id`, `name`, `status` of every component of the page) and `incidents` (`name`, `impact`, `status`, `shortlink`, `updatedAt`), shown on the check page.
+- The output `error` line names the active incident: `GitHub: "Incident with Actions" (major) https://stspg.io/xxxx`. The output also carries `components` (`id`, `name`, `status` of every component of the page) and `incidents` (`name`, `impact`, `status`, `shortlink`, `updatedAt`), shown on the check page. The `error` line is set for Warning results too, not only Down.
 - The fetch goes through the same egress guard, tunnels and timeouts as an HTTP check.
 - Region placement: the check can run from any region, and results do not depend on where it runs. Pick one region to avoid several identical requests per period.
 

@@ -1172,9 +1172,11 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// segment is never captured as a check UID.
 	orgChecks.GET("/stats", checksHandler.GetCheckStats)
 	orgChecks.POST("", checksHandler.CreateCheck)
+	// Components of a vendor status page, for the check form. Behind the same
+	// global rate limiter as /checks/validate (neither has a dedicated one).
+	orgChecks.POST("/vendor-status/components", checkTypesHandler.ListVendorStatusComponents)
 	// Bulk "Switch to automatic placement" (spec 2026-09-25-06). A literal
 	// segment, registered ahead of the "/:checkUid" routes.
-	orgChecks.POST("/vendor-status/components", checkTypesHandler.ListVendorStatusComponents)
 	orgChecks.POST("/auto-placement", checksHandler.SwitchToAutoPlacement)
 
 	// Config-as-code surface (export/import/apply) is admin-only: import and
