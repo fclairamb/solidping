@@ -1,15 +1,18 @@
 package tools
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/fclairamb/solidping/server/internal/analytics"
 	"github.com/fclairamb/solidping/server/internal/config"
 )
 
@@ -109,6 +112,47 @@ func TestBusyAnswers503WithRetryAfter(t *testing.T) {
 	r.Equal(http.StatusServiceUnavailable, recorder.Code)
 	r.Equal("5", recorder.Header().Get("Retry-After"))
 	r.Contains(recorder.Body.String(), `"code":"SERVICE_BUSY"`)
+}
+
+type recordingAnalytics struct {
+	mu     sync.Mutex
+	events []analytics.Event
+}
+
+func (c *recordingAnalytics) Capture(_ context.Context, event analytics.Event) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.events = append(c.events, event)
+}
+
+func (c *recordingAnalytics) Enabled() bool               { return true }
+func (c *recordingAnalytics) Close(context.Context) error { return nil }
+
+// The tool_run event carries type, status and cached, never the target.
+//
+//nolint:paralleltest // swaps the process-wide analytics client
+func TestRunEmitsAnAnonymousAnalyticsEvent(t *testing.T) {
+	r := require.New(t)
+
+	recorder := &recordingAnalytics{}
+	analytics.SetDefault(recorder)
+	t.Cleanup(func() { analytics.SetDefault(nil) })
+
+	cfg := &config.Config{Tools: config.ToolsConfig{Enabled: true}}
+	handler := NewHandler(cfg, newTestService(fakeDNS(nil)), func(*http.Request) string { return "198.51.100.3" })
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/tools/run",
+		strings.NewReader(`{"type":"dns","target":"localhost"}`))
+	r.NoError(handler.Run(httptest.NewRecorder(), req))
+
+	recorder.mu.Lock()
+	defer recorder.mu.Unlock()
+
+	r.Len(recorder.events, 1)
+	r.Equal(EventToolRun, recorder.events[0].Name)
+	r.Equal(map[string]any{"type": "dns", "status": "up", "cached": false}, recorder.events[0].Properties)
+	r.Empty(recorder.events[0].OrgUID)
 }
 
 func TestIPHashNeverCarriesTheRawIP(t *testing.T) {
