@@ -267,6 +267,9 @@ const (
 	// CheckTypeHealth reads an application's health endpoint (Spring, ASP.NET,
 	// Laravel spatie, IETF, MicroProfile) and reports per component.
 	CheckTypeHealth CheckType = "health"
+	// CheckTypeVendorStatus watches a vendor's public status page (Atlassian
+	// Statuspage v2 summary): the whole page or selected components.
+	CheckTypeVendorStatus CheckType = "vendor-status"
 )
 
 // IsPassive reports whether the check type is passive — driven by an inbound
@@ -465,6 +468,7 @@ var checkTypesRegistry = []CheckTypeMeta{
 	{Type: CheckTypePrometheus, Labels: []string{labelSafe, labelStandalone, labelCatInfrastructure}, Description: "Alert on Prometheus metric thresholds", DefaultPeriod: time.Minute, SupportsTunnel: true, SupportsIPVersion: true},
 	{Type: CheckTypePrivateLocation, Labels: []string{labelSafe, labelStandalone, labelCatInfrastructure}, Description: "Alert when a private location's agents go offline (system-created)", DefaultPeriod: time.Minute, ExcludedFromTally: true},
 	{Type: CheckTypeHealth, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Read an application's health endpoint and report per component", DefaultPeriod: time.Minute, SupportsTunnel: true, SupportsIPVersion: true},
+	{Type: CheckTypeVendorStatus, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Alert when a vendor's status page (GitHub, Cloudflare, OpenAI...) reports an outage", DefaultPeriod: 5 * time.Minute},
 	{Type: CheckTypeCrawl, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Crawl a website for broken links, mixed content and sitemap errors", MinPeriod: time.Hour, DefaultPeriod: 24 * time.Hour, MultiStep: true},
 	{Type: CheckTypeSleep, Labels: []string{labelSafe, labelStandalone, labelCatOther}, Description: "Sleep for a fixed duration (synthetic/testing)", DefaultPeriod: 1 * time.Minute, ExcludedFromTally: true},
 }
@@ -585,6 +589,7 @@ func ListCheckTypes(_ *ListSampleOptions) []CheckType {
 		CheckTypePrivateLocation,
 		CheckTypeCrawl,
 		CheckTypeHealth,
+		CheckTypeVendorStatus,
 		CheckTypeSleep,
 	}
 }
