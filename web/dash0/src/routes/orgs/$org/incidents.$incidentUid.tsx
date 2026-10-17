@@ -889,15 +889,18 @@ function IncidentDetailPage() {
   return (
     <div className="space-y-6">
       <CausedByBanner org={org} incident={incident} />
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-3">
+      <div
+        className="flex flex-wrap items-start justify-between gap-3"
+        data-testid="incident-detail-header"
+      >
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-3">
             {isActive ? (
               <AlertTriangle className="h-6 w-6 text-yellow-500" />
             ) : (
               <CheckCircle className="h-6 w-6 text-green-500" />
             )}
-            <h1 className="text-3xl font-bold tracking-tight">
+            <h1 className="min-w-0 break-words text-3xl font-bold tracking-tight">
               {incident.number ? (
                 <span className="text-muted-foreground tabular-nums mr-2">
                   #{incident.number}
@@ -946,10 +949,11 @@ function IncidentDetailPage() {
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="ghost"
             size="icon"
+            data-testid="incident-back-button"
             aria-label={t("actions.back")}
             onClick={() =>
               navigate({
@@ -963,6 +967,7 @@ function IncidentDetailPage() {
           </Button>
           <Button
             variant="outline"
+            data-testid="incident-refresh-button"
             aria-label={t("actions.refresh")}
             onClick={() => refetch()}
             disabled={isRefetching}
@@ -975,6 +980,7 @@ function IncidentDetailPage() {
           {isActive && !incident.acknowledgedAt && !isSnoozed && (
             <Button
               variant="outline"
+              data-testid="incident-acknowledge-button"
               aria-label={t("actions.acknowledge")}
               onClick={handleAcknowledge}
               disabled={acknowledgeIncident.isPending}
@@ -992,6 +998,7 @@ function IncidentDetailPage() {
           {isActive && incident.acknowledgedAt && !isSnoozed && (
             <Button
               variant="outline"
+              data-testid="incident-unacknowledge-button"
               aria-label={t("actions.unacknowledge")}
               onClick={handleUnacknowledge}
               disabled={unacknowledgeIncident.isPending}
@@ -1009,6 +1016,7 @@ function IncidentDetailPage() {
           {isActive && !isSnoozed && (
             <Button
               variant="outline"
+              data-testid="incident-snooze-button"
               aria-label={t("actions.snooze")}
               onClick={() => setSnoozeOpen(true)}
               disabled={snoozeIncident.isPending}
@@ -1024,6 +1032,7 @@ function IncidentDetailPage() {
           {isActive && isSnoozed && (
             <Button
               variant="outline"
+              data-testid="incident-wake-up-button"
               aria-label={t("actions.wakeUp")}
               onClick={handleUnsnooze}
               disabled={unsnoozeIncident.isPending}
@@ -1038,6 +1047,7 @@ function IncidentDetailPage() {
           )}
           {isActive && (
             <Button
+              data-testid="incident-resolve-button"
               aria-label={t("actions.resolve")}
               onClick={handleResolve}
               disabled={resolveIncident.isPending}
