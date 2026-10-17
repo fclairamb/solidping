@@ -13,6 +13,8 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	disc "github.com/fclairamb/solidping/server/internal/discovery"
+	"github.com/fclairamb/solidping/server/internal/discovery/scantypes"
+	"github.com/fclairamb/solidping/server/internal/egress"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobtypes"
@@ -26,6 +28,7 @@ type planFixture struct {
 	jobSvc jobsvc.Service
 	org    *models.Organization
 	plan   *models.Job
+	guard  *egress.Guard
 }
 
 func newPlanFixture(t *testing.T) *planFixture {
@@ -67,7 +70,7 @@ func (f *planFixture) runPlan(t *testing.T, cfg disc.Config) error {
 		Job:             f.plan,
 		DB:              f.dbSvc.DB(),
 		DBService:       f.dbSvc,
-		Services:        &services.Registry{Jobs: f.jobSvc},
+		Services:        &services.Registry{Jobs: f.jobSvc, EgressGuard: f.guard},
 		Logger:          slog.Default(),
 	}
 
@@ -158,4 +161,27 @@ func toInt(v any) int {
 	default:
 		return -1
 	}
+}
+
+// A plan queued before the egress policy applied does not fan out once the
+// process guard is enforcing: the run fails with DISCOVERY_NOT_AVAILABLE and
+// schedules no child. The permissive guard is the control.
+func TestNetworkDiscoveryPlanRefusedUnderEgressPolicy(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	f := newPlanFixture(t)
+	f.guard = egress.New(false)
+	err := f.runPlan(t, disc.Config{CIDRs: []string{"10.0.0.0/24"}})
+
+	var de *scantypes.DiscoveryError
+	r.ErrorAs(err, &de)
+	r.Equal(scantypes.CodeNotAvailable, de.Code)
+	r.Empty(f.childJobs(t))
+
+	control := newPlanFixture(t)
+	control.guard = egress.New(true)
+	r.NoError(control.runPlan(t, disc.Config{CIDRs: []string{"10.0.0.0/24"}}))
+	r.Len(control.childJobs(t), 1)
 }

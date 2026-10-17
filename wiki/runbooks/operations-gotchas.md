@@ -81,6 +81,29 @@ with a valid and an invalid signed ping and deactivates it if verification fails
 unsigned `POST` there answering 401 is correct. Mention commands and thread-reply
 ingestion also need `SP_DISCORD_GATEWAY_ENABLED` (off by default).
 
+## Microsoft sign-in on a multi-tenant registration
+
+With `SP_MICROSOFT_TENANT_ID` unset or `common` / `organizations` / `consumers`,
+first Microsoft sign-ins need the `email` and `xms_edov` optional ID-token claims
+(spec 2026-10-16-01, "nOAuth"). Without them they fail with `EMAIL_NOT_VERIFIED` and
+a `microsoft sign-in refused: email not verified` WARN. Already-linked users are not
+affected. Before that fix, an unverified Graph `mail` could link a foreign Microsoft
+identity to an existing account. Links are never removed automatically. Review the
+links made to accounts that already existed (read-only, Postgres):
+
+```sql
+select u.email, u.created_at as user_created, up.provider_id as ms_oid,
+       up.created_at as linked_at
+from user_providers up
+join users u on u.uid = up.user_uid
+where up.provider_type = 'microsoft'
+  and u.created_at < up.created_at
+order by up.created_at desc;
+```
+
+An unexpected row means a foreign identity may be bound to the account: delete that
+`user_providers` row and revoke the user's sessions.
+
 ## Signed service calls and renamed orgs
 
 `X-SP-Signature` covers the request path. A call addressed to an org's previous slug

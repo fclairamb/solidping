@@ -220,7 +220,7 @@
     "authToken": "Servidor API + token",
     "authKubeconfig": "Kubeconfig",
     "authInCluster": "En el clúster (este clúster)",
-    "inClusterHint": "Usa el token de la cuenta de servicio montado en el pod de SolidPing. Solo funciona cuando SolidPing se ejecuta dentro del clúster de destino; no se almacenan credenciales.",
+    "inClusterHint": "Usa el token de la cuenta de servicio montado en el pod de SolidPing. Solo funciona cuando SolidPing se ejecuta dentro del clúster de destino; no se almacenan credenciales. El operador debe habilitarlo con SP_K8S_ALLOW_IN_CLUSTER=true.",
     "apiServer": "URL del servidor API",
     "token": "Token portador",
     "kubeconfig": "Kubeconfig (YAML)",

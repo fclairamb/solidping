@@ -38,6 +38,9 @@ func handoffCases() []handoffCase {
 		{"tampered or foreign payload", testForgedPayload},
 		{"row holds the hash, never the code or a token", testStoredRowIsOpaque},
 		{"org-less session", testOrgLessSession},
+		{"2FA challenge session round-trips", testTwoFAChallengeSession},
+		{"session with neither token is rejected", testNeitherToken},
+		{"session with both tokens is rejected", testBothTokens},
 		{"concurrent redeem has exactly one winner", testConcurrentRedeem},
 		{"sweep removes only expired codes", testSweep},
 	}
@@ -407,6 +410,93 @@ func insertRowWith(
 		UserUID:   session.UserUID,
 		Payload:   mutate(sealed),
 		ExpiresAt: expiresAt,
+		CreatedAt: time.Now(),
+	}))
+
+	return code
+}
+
+// testTwoFAChallengeSession: a federated login of a TOTP user hands over a
+// 2FA temp token and no session (spec 2026-10-16-14).
+func testTwoFAChallengeSession(t *testing.T, dbService db.Service) {
+	t.Helper()
+
+	r := require.New(t)
+	ctx := t.Context()
+	session := seedSession(t, dbService)
+	session.AccessToken = ""
+	session.RefreshToken = ""
+	session.ExpiresIn = 0
+	session.Requires2FA = true
+	session.TempToken = "temp-" + session.OrgSlug
+
+	code, err := Issue(ctx, dbService, session)
+	r.NoError(err)
+
+	got, err := Redeem(ctx, dbService, code)
+	r.NoError(err)
+	r.Equal(session, got)
+}
+
+func testNeitherToken(t *testing.T, dbService db.Service) {
+	t.Helper()
+
+	r := require.New(t)
+	ctx := t.Context()
+	session := seedSession(t, dbService)
+	session.AccessToken = ""
+	session.RefreshToken = ""
+
+	_, err := Issue(ctx, dbService, session)
+	r.ErrorIs(err, errBadTokens)
+
+	// A stored payload of that shape is refused on redeem too.
+	code := insertSealedJSON(ctx, t, dbService, session.UserUID,
+		`{"expiresIn":3600,"userUid":"`+session.UserUID+`"}`)
+
+	_, err = Redeem(ctx, dbService, code)
+	r.ErrorIs(err, ErrInvalidCode)
+}
+
+func testBothTokens(t *testing.T, dbService db.Service) {
+	t.Helper()
+
+	r := require.New(t)
+	ctx := t.Context()
+	session := seedSession(t, dbService)
+	session.Requires2FA = true
+	session.TempToken = "temp-" + session.OrgSlug
+
+	_, err := Issue(ctx, dbService, session)
+	r.ErrorIs(err, errBadTokens)
+
+	code := insertSealedJSON(ctx, t, dbService, session.UserUID,
+		`{"accessToken":"a","requires2Fa":true,"tempToken":"t","userUid":"`+session.UserUID+`"}`)
+
+	_, err = Redeem(ctx, dbService, code)
+	r.ErrorIs(err, ErrInvalidCode)
+}
+
+// insertSealedJSON stores a well-sealed row whose plaintext is payload, so
+// Redeem's own checks on the decoded session can be exercised.
+func insertSealedJSON(
+	ctx context.Context, t *testing.T, dbService db.Service, userUID, payload string,
+) string {
+	t.Helper()
+
+	r := require.New(t)
+
+	code, err := newCode()
+	r.NoError(err)
+
+	sealed, err := seal(code, HashCode(code), []byte(payload))
+	r.NoError(err)
+
+	r.NoError(dbService.CreateAuthHandoffCode(ctx, &models.AuthHandoffCode{
+		CodeHash:  HashCode(code),
+		UserUID:   userUID,
+		Payload:   sealed,
+		ExpiresAt: time.Now().Add(TTL),
 		CreatedAt: time.Now(),
 	}))
 

@@ -97,7 +97,7 @@ func (h *MicrosoftOAuthHandler) Callback(writer http.ResponseWriter, req *http.R
 func (h *MicrosoftOAuthHandler) buildMicrosoftAuthURL(state string) string {
 	tenant := h.cfg.Microsoft.TenantID
 	if tenant == "" {
-		tenant = "common"
+		tenant = microsoftTenantCommon
 	}
 
 	params := url.Values{}
@@ -134,7 +134,7 @@ func (h *MicrosoftOAuthHandler) handleOAuthError(
 		description = OAuthDescInvalidState
 	case errors.Is(err, ErrEmailNotVerified):
 		code = OAuthCodeEmailNotVerified
-		description = "No email found in Microsoft profile"
+		description = "Microsoft did not confirm that you own this email address"
 	case errors.Is(err, ErrMicrosoftTokenExchange):
 		code = OAuthCodeTokenExchange
 		description = OAuthDescTokenExchange

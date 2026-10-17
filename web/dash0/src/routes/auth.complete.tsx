@@ -1,12 +1,14 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import { AlertCircle, Loader2 } from "lucide-react";
+import { AlertCircle, Loader2, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AuthSplitLayout } from "@/components/layout/auth-split-layout";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth, type LoginResult } from "@/contexts/AuthContext";
+import { TwoFactorChallenge } from "@/components/shared/two-factor-challenge";
+import { ApiError } from "@/api/client";
 import { DASH_BASE } from "@/lib/base-path";
 import {
   exchangeHandoffCode,
@@ -38,6 +40,7 @@ export const Route = createFileRoute("/auth/complete")({
 
 function AuthCompletePage() {
   const { t } = useTranslation("auth");
+  const { t: tc } = useTranslation("common");
   const { code, membershipPending } = Route.useSearch();
   const navigate = useNavigate();
   const { applyLoginResponse, isAuthenticated, isLoading } = useAuth();
@@ -47,12 +50,36 @@ function AuthCompletePage() {
   const [landing, setLanding] = useState<
     Exclude<HandoffLanding, { href: string }> | null
   >(null);
+  // A user with TOTP enabled: the exchange handed over a 2FA challenge, not a
+  // session (spec 2026-10-16-14). Where to land is kept until the code passes.
+  const [challenge, setChallenge] = useState<{
+    tempToken: string;
+    returnTo?: string;
+    membershipPending?: string;
+  } | null>(null);
+  const [challengeError, setChallengeError] = useState<string | null>(null);
   const firedCodeRef = useRef<string | null>(null);
   const landingState = handoffLandingState(landing !== null, { isAuthenticated, isLoading });
   // No code at all (a bookmarked or hand-typed URL) is a failure up front. So
   // is a session that was stored and then lost before the landing could be
   // followed: the page would otherwise spin forever.
-  const failed = !code || exchangeFailed || landingState === "stranded";
+  // Whether the page was opened with a code. The effect below strips the code
+  // from the address bar right away, and the router may then hand back an
+  // empty search: that must not read as "opened without a code" while the
+  // exchange, or the 2FA code step that follows it, is still on screen.
+  const [openedWithCode] = useState(() => Boolean(code));
+  const failed = !openedWithCode || exchangeFailed || landingState === "stranded";
+
+  const followLanding = useCallback((resolved: HandoffLanding) => {
+    if ("href" in resolved) {
+      // An in-app deep path (or the MCP consent bounce through the login
+      // page) outside this router's param shapes: a full navigation, as the
+      // login page does.
+      window.location.replace(resolved.href);
+    } else {
+      setLanding(resolved);
+    }
+  }, []);
 
   useEffect(() => {
     if (!code || firedCodeRef.current === code) return;
@@ -73,9 +100,25 @@ function AuthCompletePage() {
     void (async () => {
       try {
         const data = await exchangeHandoffCode(code);
+
+        // TOTP user: no session yet. Ask for the code, then land through the
+        // same resolver with what the exchange said.
+        if (data.requires2Fa && data.tempToken) {
+          setChallenge({
+            tempToken: data.tempToken,
+            returnTo: data.returnTo,
+            membershipPending: data.membershipPending || membershipPending,
+          });
+          return;
+        }
+
+        if (!data.user || !data.accessToken) {
+          throw new Error("handoff exchange returned no session");
+        }
+
         // Same funnel as a password login: stores the session, and sends a
         // flagged account straight to the forced password rotation.
-        await applyLoginResponse(data);
+        await applyLoginResponse({ ...data, user: data.user, accessToken: data.accessToken });
         if (data.user.mustChangePassword) return;
 
         // Refused by the org the login started from, but landed on one the
@@ -88,20 +131,39 @@ function AuthCompletePage() {
           toast.info(t("authComplete.membershipPendingToast", notice), { duration: 10_000 });
         }
 
-        const resolved = resolveHandoffLanding(data, membershipPending, DASH_BASE);
-        if ("href" in resolved) {
-          // An in-app deep path (or the MCP consent bounce through the login
-          // page) outside this router's param shapes: a full navigation, as
-          // the login page does.
-          window.location.replace(resolved.href);
-        } else {
-          setLanding(resolved);
-        }
+        followLanding(resolveHandoffLanding(data, membershipPending, DASH_BASE));
       } catch {
         setExchangeFailed(true);
       }
     })();
-  }, [code, membershipPending, applyLoginResponse, t]);
+  }, [code, membershipPending, applyLoginResponse, followLanding, t]);
+
+  // The second factor passed: verify2FA / useRecoveryCode already fed the
+  // response to applyLoginResponse, so land like a session exchanged directly.
+  const onChallengeVerified = (result: LoginResult) => {
+    if (!challenge || result.mustChangePassword) return;
+    const notice = membershipPendingNotice(
+      {
+        organization: result.resolvedOrg ? { uid: "", slug: result.resolvedOrg } : undefined,
+        membershipPending: challenge.membershipPending,
+      },
+      membershipPending,
+    );
+    if (notice) {
+      toast.info(t("authComplete.membershipPendingToast", notice), { duration: 10_000 });
+    }
+    followLanding(
+      resolveHandoffLanding(
+        {
+          organization: result.resolvedOrg ? { uid: "", slug: result.resolvedOrg } : undefined,
+          returnTo: challenge.returnTo,
+          membershipPending: challenge.membershipPending,
+        },
+        membershipPending,
+        DASH_BASE,
+      ),
+    );
+  };
 
   // An in-app landing waits until the stored session has been rendered. The
   // router reads auth from its context, which only catches up when the app
@@ -118,6 +180,9 @@ function AuthCompletePage() {
     }
   }, [landing, landingState, navigate]);
 
+  // The code step shows until the session it mints has a landing to follow.
+  const showChallenge = !failed && challenge !== null && landing === null;
+
   return (
     <AuthSplitLayout>
       <Card className="w-full max-w-md border-t-4 border-t-brand">
@@ -125,15 +190,42 @@ function AuthCompletePage() {
           <div className="flex justify-center mb-4">
             {failed ? (
               <AlertCircle className="h-12 w-12 text-destructive" />
+            ) : showChallenge ? (
+              <ShieldCheck className="h-12 w-12 text-primary" />
             ) : (
               <Loader2 className="h-12 w-12 animate-spin text-primary" />
             )}
           </div>
           <CardTitle className="text-2xl">
-            {failed ? t("authComplete.failedTitle") : t("authComplete.finishing")}
+            {failed
+              ? t("authComplete.failedTitle")
+              : showChallenge
+                ? t("authComplete.twoFactorTitle")
+                : t("authComplete.finishing")}
           </CardTitle>
         </CardHeader>
-        <CardContent className="text-center">
+        <CardContent className={showChallenge ? undefined : "text-center"}>
+          {showChallenge && (
+            <div className="space-y-4">
+              {challengeError && (
+                <Alert variant="destructive" data-testid="login-error">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>{challengeError}</AlertDescription>
+                </Alert>
+              )}
+              <TwoFactorChallenge
+                tempToken={challenge.tempToken}
+                onAttempt={() => setChallengeError(null)}
+                onVerified={onChallengeVerified}
+                onError={(err, message) =>
+                  setChallengeError(
+                    message ?? (err instanceof ApiError ? err.message : tc("unexpectedError")),
+                  )
+                }
+                onBack={() => navigate({ to: "/login", search: { returnTo: undefined } })}
+              />
+            </div>
+          )}
           {failed && (
             <div className="space-y-4">
               <Alert variant="destructive">

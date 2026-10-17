@@ -36,6 +36,10 @@ const (
 
 	// DefaultBaseURL is the SP_BASE_URL a fresh install starts with.
 	DefaultBaseURL = "http://localhost:4000"
+
+	// DefaultJWTSecret is the public placeholder auth.jwt_secret starts with. It
+	// is never a real secret: nothing may be derived from it.
+	DefaultJWTSecret = "change-me-in-production"
 )
 
 // DiscordLoginRedirectURI is the redirect URI for "Sign in with Discord".

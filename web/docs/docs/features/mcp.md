@@ -104,6 +104,14 @@ capability flags, and the server name and version — and mints no session.
 Everything else, `tools/list` and `resources/list` included, answers
 `401 NO_TOKEN` without a token.
 
+Some clients only start the OAuth sign-in when the handshake itself is refused.
+For those, add `auth=required` to the endpoint URL and `initialize` gets the
+401 challenge too:
+
+```
+https://monitoring.example.com/api/v1/mcp?auth=required
+```
+
 Whichever path a token arrives by — OAuth consent or a manual PAT (below) — it must carry one of:
 
 | Scope | Access |
@@ -226,6 +234,8 @@ Create an API token from the dashboard or with the [CLI](/cli) (`sp tokens creat
 ```
 
 Replace the URL with your `SP_BASE_URL` and supply a token carrying the `mcp` or `mcp:read` scope. The API itself accepts a `scopes` field on token creation (`mcp:read` for read-only); the dashboard's token page does not yet expose a scope picker in its UI, so a scoped token currently needs to be created via the API or CLI.
+
+OAuth access tokens and scoped tokens (any token created with `scopes`) only work on `/api/v1/mcp`. The rest of the REST API, the live-events socket and the OAuth consent screen answer `401 INVALID_TOKEN` ("This token is only valid for the MCP endpoint") to them, so an `mcp:read` grant can never act with your full role. To script the REST API, use a token created without `scopes`.
 
 ## Clients that run a command (stdio)
 

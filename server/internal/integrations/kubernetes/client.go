@@ -172,8 +172,10 @@ func resolvePrivateSettings(
 // BuildRestConfig turns a cluster connection's public + secret settings into a
 // *rest.Config. Three mutually exclusive auth shapes, in precedence order:
 //
-//  1. in-cluster (rest.InClusterConfig) when settings.InCluster is set;
-//  2. a pasted kubeconfig when priv.Kubeconfig is set;
+//  1. in-cluster (rest.InClusterConfig) when settings.InCluster is set, and
+//     only if the deployment opted in (ErrInClusterDisabled otherwise);
+//  2. a pasted kubeconfig when priv.Kubeconfig is set, after
+//     ValidateKubeconfigSafe (no exec / auth-provider / file references);
 //  3. apiServer URL + bearer token (+ CA cert / insecureSkipTLSVerify).
 func BuildRestConfig(
 	settings *models.KubernetesSettings, priv *models.KubernetesPrivateSettings,
@@ -187,6 +189,12 @@ func BuildRestConfig(
 	}
 
 	if settings.InCluster {
+		// The pod's own service-account token is reachable only when the
+		// operator opted in (SP_K8S_ALLOW_IN_CLUSTER); never on SaaS.
+		if !InClusterAllowed() {
+			return nil, ErrInClusterDisabled
+		}
+
 		cfg, err := inClusterConfig()
 		if err != nil {
 			return nil, fmt.Errorf("load in-cluster config: %w", err)
@@ -196,10 +204,21 @@ func BuildRestConfig(
 	}
 
 	if priv.Kubeconfig != "" {
+		// Reject exec / auth-provider / file references before client-go
+		// sees the kubeconfig: RESTConfigFromKubeConfig would carry an exec
+		// plugin onto the rest.Config and run its command on the first call.
+		if err := ValidateKubeconfigSafe(priv.Kubeconfig); err != nil {
+			return nil, err
+		}
+
 		cfg, err := clientcmd.RESTConfigFromKubeConfig([]byte(priv.Kubeconfig))
 		if err != nil {
 			return nil, fmt.Errorf("parse kubeconfig: %w", err)
 		}
+
+		// Belt and braces: never hand a plugin to the transport.
+		cfg.ExecProvider = nil
+		cfg.AuthProvider = nil
 
 		return cfg, nil
 	}
@@ -242,8 +261,10 @@ func buildTokenConfig(
 // The proxy is switched off too: client-go otherwise defaults to
 // http.ProxyFromEnvironment, and with HTTPS_PROXY set the only connection the
 // guard would ever see is the one to the proxy, which then reaches the API
-// server on our behalf. Callers without a guard on their context (discovery,
-// connection validation) are unchanged.
+// server on our behalf (that also overrides a kubeconfig proxy-url). Discovery
+// (scan-start probe and scan job) and the connection test put the process
+// guard on their context too (spec 2026-10-16-10). A nil or permissive guard
+// leaves the config unchanged.
 func applyEgressGuard(ctx context.Context, restCfg *rest.Config) {
 	guard := egress.FromContext(ctx)
 	if !guard.Enforcing() {

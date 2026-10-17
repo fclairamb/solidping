@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   buildOAuthLoginUrl,
   deviceVerificationReturnTo,
+  inviteReturnTo,
   isDeviceVerificationReturnTo,
+  isInviteReturnTo,
   isOAuthAuthorizeReturnTo,
   isSafeReturnTo,
   resolveDestination,
@@ -103,7 +105,50 @@ describe("deviceVerificationReturnTo", () => {
   });
 });
 
+describe("isInviteReturnTo", () => {
+  it("accepts exactly one invitation page under the base path", () => {
+    expect(isInviteReturnTo("/d/invite/abc", "/d")).toBe(true);
+    expect(isInviteReturnTo(`${BASE}/invite/0123abcdef`, BASE)).toBe(true);
+  });
+
+  it.each([
+    ["/d/invite/abc/x"],
+    ["/d/invite/"],
+    ["/d/invite/abc?x=1"],
+    ["/d/invite/abc#x"],
+    ["//evil.example/d/invite/abc"],
+    ["https://acme.com/d/invite/abc"],
+    ["/invite/abc"],
+    ["/d/inviteabc"],
+  ])("rejects %s", (returnTo) => {
+    expect(isInviteReturnTo(returnTo, "/d")).toBe(false);
+  });
+
+  it("rejects an empty value", () => {
+    expect(isInviteReturnTo(undefined, "/d")).toBe(false);
+    expect(isInviteReturnTo(null, "/d")).toBe(false);
+    expect(isInviteReturnTo("", "/d")).toBe(false);
+  });
+
+  it("round-trips through its builder", () => {
+    expect(inviteReturnTo("/d", "abc123")).toBe("/d/invite/abc123");
+    expect(isInviteReturnTo(inviteReturnTo(BASE, "abc123"), BASE)).toBe(true);
+  });
+});
+
 describe("resolveDestination", () => {
+  it("honors an invitation returnTo whatever the resolved org", () => {
+    const invite = `${BASE}/invite/abc123`;
+    expect(resolveDestination("test", invite, BASE)).toEqual({ href: invite });
+    expect(resolveDestination("other-org", invite, BASE)).toEqual({ href: invite });
+  });
+
+  it("drops an invitation lookalike with extra path", () => {
+    expect(
+      resolveDestination("test", `${BASE}/invite/abc/x`, BASE),
+    ).toEqual({ to: "/orgs/$org", params: { org: "test" } });
+  });
+
   it("honors a returnTo whose org matches the resolved org", () => {
     expect(
       resolveDestination("test", `${BASE}/orgs/test/checks?q=1`, BASE),

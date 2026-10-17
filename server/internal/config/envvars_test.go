@@ -598,3 +598,117 @@ func TestTelegramConfiguredVsActive(t *testing.T) {
 	// Whitespace is not a token.
 	r.False((&TelegramConfig{Enabled: BoolPtr(true), BotToken: "   "}).Configured())
 }
+
+func TestWorkerPoolEnvBinds(t *testing.T) {
+	tests := []struct {
+		name      string
+		check     string
+		job       string
+		fetch     string
+		wantCheck int
+		wantJob   int
+		wantFetch time.Duration
+	}{
+		{name: "unset", wantCheck: 25, wantJob: 2, wantFetch: 5 * time.Minute},
+		{name: "values", check: "8", job: "4", fetch: "2m", wantCheck: 8, wantJob: 4, wantFetch: 2 * time.Minute},
+		{name: "zero disables", check: "0", job: "0", wantCheck: 0, wantJob: 0, wantFetch: 5 * time.Minute},
+		{
+			name: "invalid keeps default", check: "abc", job: "abc", fetch: "bogus",
+			wantCheck: 25, wantJob: 2, wantFetch: 5 * time.Minute,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("SP_SERVER_CHECK_WORKER_NB", tt.check)
+			t.Setenv("SP_SERVER_JOB_WORKER_NB", tt.job)
+			t.Setenv("SP_SERVER_CHECK_WORKER_FETCH_MAX_AHEAD", tt.fetch)
+
+			r := require.New(t)
+			cfg, err := Load()
+			r.NoError(err)
+			r.Equal(tt.wantCheck, cfg.Server.CheckWorker.Nb)
+			r.Equal(tt.wantJob, cfg.Server.JobWorker.Nb)
+			r.Equal(tt.wantFetch, cfg.Server.CheckWorker.FetchMaxAhead)
+		})
+	}
+}
+
+// TestWorkerPoolYAMLKeys proves the nesting documented in the configuration
+// page (server.job_worker.nb / server.check_worker.nb) loads.
+func TestWorkerPoolYAMLKeys(t *testing.T) {
+	r := require.New(t)
+
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	yamlDoc := "server:\n  job_worker:\n    nb: 4\n  check_worker:\n    nb: 8\n"
+	r.NoError(os.WriteFile(filepath.Join(dir, "config.yml"), []byte(yamlDoc), 0o600))
+
+	cfg, err := Load()
+	r.NoError(err)
+	r.Equal(8, cfg.Server.CheckWorker.Nb)
+	r.Equal(4, cfg.Server.JobWorker.Nb)
+}
+
+// TestCheckEnvAllowlistBinds pins SP_CHECK_ENV_ALLOWLIST (spec 2026-10-16-03):
+// it is a recognized name, it parses comma-separated names (blanks trimmed,
+// empties dropped), and EnvRefAllowed answers exact membership.
+func TestCheckEnvAllowlistBinds(t *testing.T) {
+	t.Setenv(EnvCheckEnvAllowlist, " SP_ACME_TOKEN, SP_ACME_PASSWORD ,,")
+
+	r := require.New(t)
+	r.Contains(RecognizedEnvVars(), EnvCheckEnvAllowlist)
+
+	cfg, err := Load()
+	r.NoError(err)
+	r.Equal([]string{"SP_ACME_TOKEN", "SP_ACME_PASSWORD"}, cfg.Checkers.EnvRefAllowlist)
+	r.True(cfg.EnvRefAllowed("SP_ACME_TOKEN"))
+	r.True(cfg.EnvRefAllowed("SP_ACME_PASSWORD"))
+	r.False(cfg.EnvRefAllowed("SP_AUTH_JWT_SECRET"))
+	r.False(cfg.EnvRefAllowed("sp_acme_token"), "names match exactly")
+	r.False(cfg.EnvRefAllowed(""))
+}
+
+// TestCheckEnvAllowlistDefaultsToEmpty: with nothing set, `${env:}` resolves
+// nothing — deny by default.
+func TestCheckEnvAllowlistDefaultsToEmpty(t *testing.T) {
+	t.Setenv(EnvCheckEnvAllowlist, "")
+
+	r := require.New(t)
+
+	cfg, err := Load()
+	r.NoError(err)
+	r.Empty(cfg.Checkers.EnvRefAllowlist)
+	r.False(cfg.EnvRefAllowed("SP_AUTH_JWT_SECRET"))
+	r.False(cfg.EnvRefAllowed("PATH"))
+
+	var nilCfg *Config
+	r.False(nilCfg.EnvRefAllowed("PATH"))
+}
+
+// TestK8sAllowInClusterBinds pins SP_K8S_ALLOW_IN_CLUSTER (spec 2026-10-16-05):
+// recognized, default off, bound by the manual reader, and an unparseable
+// value leaves the deny default.
+func TestK8sAllowInClusterBinds(t *testing.T) {
+	r := require.New(t)
+	r.Contains(RecognizedEnvVars(), EnvK8sAllowInCluster)
+
+	t.Setenv(EnvK8sAllowInCluster, "")
+
+	cfg, err := Load()
+	r.NoError(err)
+	r.False(cfg.Kubernetes.AllowInCluster)
+
+	t.Setenv(EnvK8sAllowInCluster, "true")
+
+	cfg, err = Load()
+	r.NoError(err)
+	r.True(cfg.Kubernetes.AllowInCluster)
+
+	t.Setenv(EnvK8sAllowInCluster, "bogus")
+
+	cfg, err = Load()
+	r.NoError(err)
+	r.False(cfg.Kubernetes.AllowInCluster)
+}

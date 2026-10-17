@@ -46,3 +46,8 @@ Found while preparing an lldap example config for promotion (lldap keeps per-app
 ## Open questions
 1. **OIDC and SAML have the same gap.** Generic OIDC and SAML are also only mentioned in passing in `authentication.md`. Fold them into this spec, or one spec each? Recommended: a separate spec each, so this one stays small and lands first.
 2. **Scope of the drift test.** Only `auth.ldap.*`, or every system parameter with an `EnvVar`? Recommended: start with `auth.*` (LDAP, OIDC, SAML, password), which are the ones a self-hoster sets by env.
+
+## Resolved open questions
+Decided 2026-10-16 (all recommendations accepted):
+1. OIDC and SAML documentation gaps are out of scope: file a separate spec for each. Keep this spec LDAP-only so it lands first.
+2. Scope the drift test to every `auth.*` system parameter with an `EnvVar` (LDAP, OIDC, SAML, password), not only `auth.ldap.*`.

@@ -50,14 +50,27 @@ statement is the *combination* — sub-minute **and** self-hosted **and** unlimi
 
 ### Migration importers (added 2026-08-01)
 
-SolidPing ships config importers for three competitors, in
-`server/internal/handlers/checks/importers/`:
+SolidPing ships config importers for four competitors, in
+`server/internal/handlers/checks/importers/` (UptimeRobot added since this
+section was written; table updated 2026-10-15):
 
 | Source tool | Importer | Notes |
 |---|---|---|
 | Uptime Kuma | `uptimekuma.go` | maps `interval` → check period; converts Kuma's `maxretries × retryInterval` retry model into a confirmation period |
 | Gatus | `gatus.go` | parses YAML endpoints; defaults to `60s` when interval is unset |
 | Better Stack | `betterstack.go` | — |
+| UptimeRobot | `uptimerobot.go` | — |
+
+> **Importers stopped being a differentiator (2026-10-15).** OneUptime 14.0.27
+> ([#4591](https://github.com/OneUptime/oneuptime/pull/4591), merged
+> 2026-10-09) imports monitors *and status pages* from UptimeRobot, Pingdom,
+> Better Stack, StatusCake, Uptime Kuma (JSON backup) and Atlassian Statuspage,
+> subscribers included; 14.0.25–26 import on-call teams from PagerDuty, Splunk
+> On-Call, Grafana OnCall, Opsgenie and incident.io. OpenStatus imports from
+> Better Stack, Instatus, Atlassian Statuspage and (since 2026-07-24) Checkly;
+> Uptimy Agent from Uptime Kuma. SolidPing's Gatus importer is still the only
+> one anywhere. Missing on our side, by size of the pool: Pingdom, StatusCake,
+> Atlassian Statuspage (status pages), Checkly.
 
 This covers the #1 and #2 self-hosted incumbents by stars (Uptime Kuma ~89.9k★,
 Gatus ~11.7k★) plus one major SaaS, and is the operational answer whenever a

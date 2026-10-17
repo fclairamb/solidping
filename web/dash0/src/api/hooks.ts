@@ -4596,11 +4596,15 @@ export interface AcceptInviteResponse {
 
 export function useAcceptInvite() {
   return useMutation({
+    // Signed in, the bearer must go out: an invitation for an existing account
+    // is accepted only by that account (spec 2026-10-16-06), and the normal
+    // 401 refresh applies. Signed out (the create-account form) stays
+    // anonymous.
     mutationFn: (data: { token: string; name?: string; password?: string }) =>
       apiFetch<AcceptInviteResponse>("/api/v1/auth/accept-invite", {
         method: "POST",
         body: JSON.stringify(data),
-        skipAuth: true,
+        skipAuth: !getToken(),
       }),
   });
 }

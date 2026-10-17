@@ -7,7 +7,7 @@ title: CasaOS / ZimaOS
 
 [CasaOS](https://www.casaos.io/) and [ZimaOS](https://www.zimaspace.com/zimaos) are
 home-server operating systems built around a one-click app store. SolidPing publishes
-`linux/amd64` and `linux/arm64` images, so it runs on the Raspberry Pi and ARM NAS
+`linux/amd64`, `linux/arm64` and `linux/riscv64` images, so it runs on the Raspberry Pi and ARM NAS
 hardware most CasaOS/ZimaOS boxes use, as well as x86.
 
 ## From the store

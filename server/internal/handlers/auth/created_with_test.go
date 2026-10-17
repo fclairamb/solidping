@@ -93,7 +93,7 @@ func TestSessionMintingPathsCaptureRequestProvenance(t *testing.T) {
 
 				_, err = f.svc.AcceptInvite(ctx, AcceptInviteRequest{
 					Token: resp.Token, Name: "Invitee", Password: "supersecret123",
-				})
+				}, "")
 				r.NoError(err)
 
 				user, err := f.db.GetUserByEmail(ctx, "invitee@acme.com")

@@ -77,8 +77,14 @@ func LookupParam(ctx context.Context, store ParamStore, orgUID, key string) (str
 }
 
 // LookupEnv resolves an `${env:NAME}` reference against this process's
-// environment.
-func LookupEnv(name string) (string, error) {
+// environment, and only for a name allow admits (see EnvAllowFunc). A refused
+// name fails exactly like an unset one, so the error never tells the caller
+// whether the variable exists.
+func LookupEnv(name string, allow EnvAllowFunc) (string, error) {
+	if !EnvAllowed(allow, name) {
+		return "", Unresolvedf(SchemeEnv, name)
+	}
+
 	value, ok := os.LookupEnv(name)
 	if !ok {
 		return "", Unresolvedf(SchemeEnv, name)
@@ -93,13 +99,16 @@ func LookupEnv(name string) (string, error) {
 //
 // A `${var:…}` reference is accepted when its name is known (a generated
 // sample stands in for the value) and rejected otherwise.
-func DocumentResolver(store ParamStore, orgUID string) ResolveFunc {
+//
+// An `${env:…}` reference resolves only when allowEnv admits its name, so the
+// write path cannot be used as an oracle for which server variables exist.
+func DocumentResolver(store ParamStore, orgUID string, allowEnv EnvAllowFunc) ResolveFunc {
 	vars := newRunVarResolver()
 
 	return func(ctx context.Context, scheme, name string) (string, error) {
 		switch scheme {
 		case SchemeEnv:
-			return LookupEnv(name)
+			return LookupEnv(name, allowEnv)
 		case SchemeParam:
 			return LookupParam(ctx, store, orgUID, name)
 		case SchemeVar:
@@ -134,21 +143,24 @@ func APIResolver(store ParamStore, orgUID string) ResolveFunc {
 // It also generates `${var:…}` values, from one var resolver per call: one
 // ExecutionResolver is one run, so every occurrence of `${var:uuid}` in it gets
 // the same value, and the next run gets a new one.
-func ExecutionResolver() ResolveFunc {
-	return ExecutionResolverWith(newRunVarResolver())
+//
+// `${env:…}` resolves only for a name allowEnv admits; any other name fails
+// with ErrUnresolved, exactly like an unset variable.
+func ExecutionResolver(allowEnv EnvAllowFunc) ResolveFunc {
+	return ExecutionResolverWith(newRunVarResolver(), allowEnv)
 }
 
 // ExecutionResolverWith is ExecutionResolver with the run's var resolver
 // supplied by the caller, so the caller can render a second string (the
 // result's URL) with the same generated values. vars must come from
 // NewVarResolver.
-func ExecutionResolverWith(vars ResolveFunc) ResolveFunc {
+func ExecutionResolverWith(vars ResolveFunc, allowEnv EnvAllowFunc) ResolveFunc {
 	return func(ctx context.Context, scheme, name string) (string, error) {
 		switch scheme {
 		case SchemeVar:
 			return vars(ctx, scheme, name)
 		case SchemeEnv:
-			return LookupEnv(name)
+			return LookupEnv(name, allowEnv)
 		default:
 			return "", Unresolvedf(scheme, name)
 		}

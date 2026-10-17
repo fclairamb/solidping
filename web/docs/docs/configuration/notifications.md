@@ -151,6 +151,25 @@ slack:
   signing_secret: your-signing-secret
 ```
 
+### Signing secret
+
+How Slack reaches SolidPing decides whether the signing secret is needed:
+
+- **HTTP delivery** (the Request URLs of Event Subscriptions, Interactivity and
+  Slash Commands point at `/api/v1/integrations/slack/...`): the signing secret
+  is **required**. SolidPing checks the signature of every request and rejects
+  every request with `401` while `SP_SLACK_SIGNING_SECRET` is unset. The server
+  logs a warning at startup when Slack is enabled in HTTP mode without one.
+- **Socket Mode** (`SP_SLACK_SOCKET_MODE_ENABLED=true` with
+  `SP_SLACK_APP_TOKEN`): the signing secret is not needed. Slack delivers over
+  the WebSocket opened with the app token and never calls the HTTP endpoints.
+
+The secret is read when the server starts: after setting it from **Server
+settings**, restart the server.
+
+Inbound Slack requests are capped at 1 MiB. A slash command follow-up is only
+ever posted to a `https://hooks.slack.com/` response URL.
+
 ### Setting Up a Slack App
 
 1. Go to https://api.slack.com/apps
@@ -586,7 +605,9 @@ address.
 3. **General Information → Interactions Endpoint URL**:
    `{SP_BASE_URL}/api/v1/integrations/discord/interactions`. Save it **after**
    `SP_DISCORD_PUBLIC_KEY` is set: Discord probes the URL on save and rejects it
-   if SolidPing cannot verify signatures yet.
+   if SolidPing cannot verify signatures yet. This step is optional when the
+   Gateway is on: with no endpoint URL, Discord delivers button presses and
+   slash commands over the Gateway instead, which needs no inbound access.
 4. **Bot → Privileged Gateway Intents**: enable **Message Content Intent** if
    you turn the Gateway on.
 
@@ -613,7 +634,8 @@ Three things are worth understanding before you turn the bot on:
   interaction rather than trusting it — so buttons and slash commands do nothing
   until the key is set.
 - **The Gateway needs the privileged `MESSAGE_CONTENT` intent.** Buttons and
-  slash commands arrive over HTTPS, but Discord has no HTTP event subscription
+  slash commands arrive over HTTPS when an Interactions Endpoint URL is set, and
+  over the Gateway when it is not. Discord has no HTTP event subscription
   for ordinary messages — everything a human *types* (a thread reply that should
   become an incident comment, an `@SolidPing checks list`) only arrives over the
   Gateway. Enable the intent under **Bot → Privileged Gateway Intents** in the

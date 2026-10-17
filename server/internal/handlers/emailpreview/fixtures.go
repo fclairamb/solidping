@@ -163,12 +163,12 @@ func burnIncidentFixture() map[string]any {
 // 93.8% availability, and a target that is up at this very moment.
 func degradedIncidentFixture() map[string]any {
 	fixture := incidentFixture()
-	fixture["DegradedReason"] = "7 failures in the last 60 probes (93.8%)"
+	fixture["DegradedReason"] = "7 failures in the last 60 probes (93.8% available)"
 	fixture["DegradedStatus"] = "Currently up."
 	fixture["DegradedWindow"] = "14:35 – 15:28 UTC"
 	fixture["DegradedWindowURL"] = "https://solidping.example/d/orgs/acme/checks/acme-api" +
 		"?graphFrom=1790778900000&graphTo=1790782080000"
-	fixture["DegradedFailureLine"] = "7 failures in the last 60 probes (93.8%) (rule: 5 of 60 probes)"
+	fixture["DegradedFailureLine"] = "7 failures in the last 60 probes (93.8% available) (rule: 5 of 60 probes)"
 	fixture["DegradedSlowLine"] = "3 of the last 6 probes were slower than 1000ms (rule: 3 of 6 probes over 1000ms)"
 
 	return fixture

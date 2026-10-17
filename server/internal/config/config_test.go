@@ -1405,8 +1405,6 @@ func TestApplyPasswordHashingEnvIsIdempotent(t *testing.T) {
 // TestLoad_Argon2ExplicitDefaultsFalse pins that a plain Load (no file, no
 // SP_AUTH_PASSWORD_ARGON2_* variable) leaves the argon2 cost implicit, so the
 // small-host profile may apply, and that the auto-profile defaults to on.
-//
-//nolint:paralleltest // t.Chdir changes the process working directory
 func TestLoad_Argon2ExplicitDefaultsFalse(t *testing.T) {
 	r := require.New(t)
 
@@ -1450,8 +1448,6 @@ func TestLoad_Argon2ExplicitFromEnv(t *testing.T) {
 
 // TestLoad_Argon2ExplicitFromConfigFile: a config.yml argon2 cost key makes the
 // cost explicit, while an unrelated password key does not.
-//
-//nolint:paralleltest // t.Chdir changes the process working directory
 func TestLoad_Argon2ExplicitFromConfigFile(t *testing.T) {
 	r := require.New(t)
 

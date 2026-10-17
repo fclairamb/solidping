@@ -73,6 +73,12 @@ export const SCOPE_LABELS: Record<string, string> = {
   sms: "SMS",
   docker: "Docker image",
   badges: "Status badges",
+  http: "HTTP checks",
+  webhooks: "Webhooks",
+  db: "Database",
+  logs: "Logs",
+  server: "Server",
+  config: "Configuration",
 };
 
 /** The distinct sub-slug of a `#279` / `#282` PR reference found in a bullet. */

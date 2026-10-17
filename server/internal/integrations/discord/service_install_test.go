@@ -81,6 +81,8 @@ type fakeDiscord struct {
 	installerID string
 	// dmOpened records each recipient POST /users/@me/channels was called for.
 	dmOpened []string
+	// callbacks records each interaction callback, keyed by the request path.
+	callbacks []postedMessage
 }
 
 func newFakeDiscord(t *testing.T) *fakeDiscord {
@@ -152,6 +154,20 @@ func newFakeDiscord(t *testing.T) *fakeDiscord {
 		_ = json.NewEncoder(w).Encode(ChannelInfo{ID: "DM-" + recipient, Type: ChannelTypeDM})
 	})
 
+	mux.HandleFunc("/interactions/", func(w http.ResponseWriter, r *http.Request) {
+		body := map[string]any{}
+
+		if raw, _ := io.ReadAll(r.Body); len(raw) > 0 {
+			_ = json.Unmarshal(raw, &body)
+		}
+
+		fake.mu.Lock()
+		fake.callbacks = append(fake.callbacks, postedMessage{ChannelID: r.URL.Path, Body: body})
+		fake.mu.Unlock()
+
+		w.WriteHeader(http.StatusNoContent)
+	})
+
 	mux.HandleFunc("/guilds/", func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/channels") {
 			w.Header().Set("Content-Type", "application/json")
@@ -176,6 +192,15 @@ func (f *fakeDiscord) dmRecipients() []string {
 	defer f.mu.Unlock()
 
 	return append([]string(nil), f.dmOpened...)
+}
+
+// interactionCallbacks returns the interaction callbacks received so far. The
+// ChannelID field carries the request path.
+func (f *fakeDiscord) interactionCallbacks() []postedMessage {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return append([]postedMessage(nil), f.callbacks...)
 }
 
 // messages returns the messages posted to the fake so far.

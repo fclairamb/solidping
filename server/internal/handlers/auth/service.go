@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -30,6 +31,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
+	"github.com/fclairamb/solidping/server/internal/notifier"
 	"github.com/fclairamb/solidping/server/internal/orgslug"
 	"github.com/fclairamb/solidping/server/internal/securityheaders"
 	"github.com/fclairamb/solidping/server/internal/support"
@@ -42,7 +44,7 @@ import (
 // the wire format silently.
 const (
 	stateValueKeyUserUID = "userUid"
-	stateValueKeyCount   = "count"
+	stateValueKeyCount   = models.CounterValueKey
 )
 
 // emailJobConfig mirrors the JSON shape of jobtypes.EmailJobConfig. We
@@ -104,9 +106,16 @@ var (
 	ErrInvitationNotFound      = errors.New("invitation not found")
 	ErrInvitationExpired       = errors.New("invitation has expired")
 	ErrEmailMismatch           = errors.New("email does not match invitation")
-	ErrOrgSlugTaken            = errors.New("organization slug is already taken")
-	ErrInvalidOrgSlug          = errors.New("invalid organization slug")
-	ErrPasswordResetExpired    = errors.New("password reset link has expired or is invalid")
+	// ErrInviteLoginRequired refuses an anonymous acceptance of an invitation
+	// addressed to an existing account: the invite token alone is not proof of
+	// being that account, since the inviter holds it (spec 2026-10-16-06).
+	ErrInviteLoginRequired = errors.New("invitation is for an existing account: sign in as that account to accept it")
+	// ErrInviteEmailMismatch refuses an acceptance by a signed-in caller who is
+	// not the invited account.
+	ErrInviteEmailMismatch  = errors.New("invitation is addressed to another account")
+	ErrOrgSlugTaken         = errors.New("organization slug is already taken")
+	ErrInvalidOrgSlug       = errors.New("invalid organization slug")
+	ErrPasswordResetExpired = errors.New("password reset link has expired or is invalid")
 	// ErrDemoAccountNotResettable refuses a password reset aimed at the shared
 	// public-demo account (spec 2026-09-06-02). Its password is published by
 	// design; rotating it would lock every visitor out of the live demo, and
@@ -178,6 +187,17 @@ type Service struct {
 	// and RevokeToken can evict an entry from the row it just read.
 	patCache map[string]*cachedPATClaims
 	cacheMux sync.RWMutex
+	// patCacheGen is bumped by every eviction. ValidatePATToken reads it
+	// before its database lookup and caches its result only if it is
+	// unchanged, so a revocation racing the lookup cannot be re-cached
+	// (see pat_cache.go).
+	patCacheGen atomic.Uint64
+	// patFillHook runs between the database read and the cache insert of
+	// ValidatePATToken. Test-only: always nil in production.
+	patFillHook func()
+	// eventNotifier broadcasts PAT revocations to the other replicas. Nil
+	// means local-only eviction (unit tests, `solidping mcp --stdio`).
+	eventNotifier notifier.EventNotifier
 }
 
 // EntitlementsChecker is the slice of the entitlements service the auth
@@ -195,7 +215,12 @@ type cachedPATClaims struct {
 	expiresAt time.Time
 }
 
-// Claims represents the JWT token claims.
+// Claims represents the JWT token claims of a bearer token (session access,
+// impersonation, MCP access, or a validated PAT).
+//
+// A JWT carrying a "purpose" claim is never a bearer: non-bearer tokens (2FA
+// temp token, passkey sessions) are signed with a purpose-derived key through
+// signJWT, and ValidateToken refuses any token with a purpose.
 type Claims struct {
 	UserUID string `json:"userUid"`
 	OrgSlug string `json:"orgSlug"`
@@ -231,6 +256,10 @@ type Claims struct {
 	//
 	// omitempty keeps every ordinary token byte-identical to before.
 	ImpersonatedBy string `json:"impersonatedBy,omitempty"`
+	// ClientID is the OAuth client an MCP access token was issued to (spec
+	// 2026-10-16-12). Empty on every other token. It lets RequireAuth tell the
+	// first-party CLI client from a third-party one; see IsMCPCredential.
+	ClientID string `json:"clientId,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -1324,7 +1353,7 @@ func (s *Service) roleForOrg(ctx context.Context, user *models.User, orgUID stri
 //
 // A per-call DB read for the org override is fine: this is only invoked at
 // refresh-token mint/slide time, which is rare compared to request volume.
-// Cache like patCacheDuration if that ever shows up in a profile.
+// Cache like patCacheTTL if that ever shows up in a profile.
 func (s *Service) resolveSessionMaxDuration(ctx context.Context, orgUID string) time.Duration {
 	if orgUID != "" {
 		param, err := s.db.GetOrgParameter(ctx, orgUID, string(systemconfig.KeySessionMaxDuration))
@@ -1486,24 +1515,37 @@ func (s *Service) ValidateToken(ctx context.Context, tokenString string) (*Claim
 		return s.ValidatePATToken(ctx, tokenString)
 	}
 
-	// Validate JWT token
-	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("%w: %v", ErrUnexpectedSigningMethod, token.Header["alg"])
-		}
+	// Validate JWT token. Only bearer tokens are signed with the raw secret;
+	// the purpose check still refuses a non-bearer token (2FA temp token,
+	// passkey session) an older replica signed with it during a rollout.
+	var parsedClaims bearerClaims
 
-		return []byte(s.fullCfg.Auth.JWTSecret), nil
-	})
-	if err != nil {
+	token, err := jwt.ParseWithClaims(tokenString, &parsedClaims, func(_ *jwt.Token) (any, error) {
+		return s.bearerKey(), nil
+	},
+		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
+		jwt.WithIssuer(jwtIssuer),
+		jwt.WithExpirationRequired(),
+	)
+	if err != nil || !token.Valid {
 		return nil, ErrInvalidToken
 	}
 
-	claims, ok := token.Claims.(*Claims)
-	if !ok || !token.Valid {
+	if parsedClaims.Purpose != "" {
 		return nil, ErrInvalidToken
 	}
 
-	return claims, nil
+	claims := parsedClaims.Claims
+
+	return &claims, nil
+}
+
+// bearerClaims is what ValidateToken parses a JWT into: Claims plus the
+// purpose tag every non-bearer token carries, so such a token is refused
+// even when it is signed with the bearer key.
+type bearerClaims struct {
+	Claims
+	Purpose string `json:"purpose"`
 }
 
 // ValidatePATToken validates a Personal Access Token.
@@ -1514,15 +1556,13 @@ func (s *Service) ValidatePATToken(ctx context.Context, patToken string) (*Claim
 	cacheKey := models.HashUserToken(patToken)
 
 	// Check cache first
-	s.cacheMux.RLock()
-
-	if cached, exists := s.patCache[cacheKey]; exists && time.Now().Before(cached.expiresAt) {
-		s.cacheMux.RUnlock()
-
-		return cached.claims, nil
+	if claims, ok := s.cachedPAT(cacheKey); ok {
+		return claims, nil
 	}
 
-	s.cacheMux.RUnlock()
+	// Read the generation before the database: an eviction between here and
+	// the insert below makes the insert a no-op.
+	gen := s.patCacheGen.Load()
 
 	// Query database for PAT
 	token, err := s.db.GetUserTokenByToken(ctx, patToken)
@@ -1605,34 +1645,13 @@ func (s *Service) ValidatePATToken(ctx context.Context, patToken string) (*Claim
 		},
 	}
 
-	const patCacheDuration = 15 * time.Minute
-
-	// Cache the result for 15 minutes
-	s.cacheMux.Lock()
-	s.patCache[cacheKey] = &cachedPATClaims{
-		claims:    claims,
-		expiresAt: time.Now().Add(patCacheDuration),
+	if s.patFillHook != nil {
+		s.patFillHook()
 	}
-	s.cacheMux.Unlock()
 
-	// Periodically cleanup expired cache entries (1% chance on each call)
-	if time.Now().UnixNano()%100 == 0 {
-		go s.cleanupExpiredPATCache()
-	}
+	s.storePAT(cacheKey, claims, token.ExpiresAt, gen)
 
 	return claims, nil
-}
-
-func (s *Service) cleanupExpiredPATCache() {
-	s.cacheMux.Lock()
-	defer s.cacheMux.Unlock()
-
-	now := time.Now()
-	for token, cached := range s.patCache {
-		if now.After(cached.expiresAt) {
-			delete(s.patCache, token)
-		}
-	}
 }
 
 // GetUserInfo returns information about the current user.
@@ -2054,12 +2073,7 @@ func (s *Service) RevokeToken(ctx context.Context, userUID, tokenUID string) err
 		return ErrTokenNotFound
 	}
 
-	// Invalidate cache if it's a PAT
 	if token.Type == models.TokenTypePAT {
-		s.cacheMux.Lock()
-		delete(s.patCache, token.TokenHash)
-		s.cacheMux.Unlock()
-
 		// A PAT revoke should also tear down OAuth-issued MCP refresh grants for
 		// the user, matching the spec's "revocation on logout/PAT-revoke".
 		s.revokeUserTokensOfType(ctx, userUID, models.TokenTypeOAuthRefresh)
@@ -2067,6 +2081,14 @@ func (s *Service) RevokeToken(ctx context.Context, userUID, tokenUID string) err
 
 	if _, err = s.db.DeleteUserToken(ctx, tokenUID); err != nil {
 		return err
+	}
+
+	// Evict only once the row is gone: a lookup racing this revocation then
+	// either reads no row, or is refused the insert by the generation bump.
+	// The other replicas evict on the broadcast; this one never waits for it.
+	if token.Type == models.TokenTypePAT {
+		s.evictPAT(token.TokenHash)
+		s.broadcastPATRevoked(ctx, token.TokenHash)
 	}
 
 	if token.OrganizationUID != nil {
@@ -2241,9 +2263,7 @@ func (s *Service) generateAccessToken(userUID, orgSlug, role, refreshUID string,
 		},
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-
-	return token.SignedString([]byte(s.fullCfg.Auth.JWTSecret))
+	return s.signJWT("", claims)
 }
 
 // GenerateMCPAccessToken mints a short-lived, audience-bound JWT access token
@@ -2267,7 +2287,7 @@ func (s *Service) generateAccessToken(userUID, orgSlug, role, refreshUID string,
 // fragility the second layer exists to cover.
 func (s *Service) GenerateMCPAccessToken(
 	ctx context.Context,
-	userUID, orgSlug string, scopes []string, audience string, ttl time.Duration, refreshUID string,
+	userUID, orgSlug string, scopes []string, audience string, ttl time.Duration, refreshUID, clientID string,
 ) (string, error) {
 	user, err := s.db.GetUser(ctx, userUID)
 	if err != nil {
@@ -2281,19 +2301,23 @@ func (s *Service) GenerateMCPAccessToken(
 		Demo:       user.Demo,
 		Scopes:     scopes,
 		RefreshUID: refreshUID,
+		ClientID:   clientID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(now.Add(ttl)),
 			IssuedAt:  jwt.NewNumericDate(now),
 			NotBefore: jwt.NewNumericDate(now),
 			Issuer:    jwtIssuer,
-			Audience:  jwt.ClaimStrings{audience},
 			ID:        uuid.New().String(),
 		},
 	}
+	// No audience means no `aud` claim at all, rather than an empty-string
+	// one: every OAuth mint passes the MCP resource, and an `aud` makes the
+	// token an MCP credential (IsMCPCredential).
+	if audience != "" {
+		claims.Audience = jwt.ClaimStrings{audience}
+	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-
-	return token.SignedString([]byte(s.fullCfg.Auth.JWTSecret))
+	return s.signJWT("", claims)
 }
 
 const refreshTokenSize = 32
@@ -2985,51 +3009,15 @@ func (s *Service) providerLabelList(providers []*models.UserProvider) string {
 	}
 }
 
-// counterValue extracts the integer value from a state entry that holds
-// a {"count": N} payload. JSON marshaling promotes ints to float64 so we
-// accept both shapes; anything else is treated as zero.
-func counterValue(entry *models.StateEntry) int {
-	if entry == nil || entry.Value == nil {
-		return 0
-	}
-
-	switch raw := (*entry.Value)[stateValueKeyCount].(type) {
-	case float64:
-		return int(raw)
-	case int:
-		return raw
-	case int64:
-		return int(raw)
-	default:
-		return 0
-	}
-}
-
-// bumpCounter loads / increments / persists a counter at the given state
-// key, scoped to the supplied TTL. Reports whether the count was already
-// at or above the limit (in which case no bump happens).
+// bumpCounter atomically counts one attempt against the global counter at
+// key, on a sliding TTL. Reports whether the count was already at or above
+// the limit (in which case no bump happens). Concurrent callers on the same
+// key are serialized by the database (spec 2026-10-16-13), so a burst of N
+// parallel attempts spends N units of the budget, never one.
 func (s *Service) bumpCounter(
 	ctx context.Context, key string, limit int, ttl time.Duration,
 ) (bool, error) {
-	current, err := s.db.GetStateEntry(ctx, nil, key)
-	if err != nil {
-		return false, err
-	}
-
-	count := counterValue(current)
-
-	if count >= limit {
-		return true, nil
-	}
-
-	count++
-	value := &models.JSONMap{stateValueKeyCount: count}
-	scopedTTL := ttl
-	if err := s.db.SetStateEntry(ctx, nil, key, value, &scopedTTL); err != nil {
-		return false, err
-	}
-
-	return false, nil
+	return s.db.BumpGlobalCounter(ctx, key, limit, ttl)
 }
 
 // bumpResetUserCounter increments (or seeds) the per-user reset counter
@@ -3845,8 +3833,14 @@ func (s *Service) GetInviteInfo(ctx context.Context, token string) (*InviteInfoR
 
 // AcceptInvite accepts an invitation and creates/authenticates the user.
 //
+// callerUID is the UID of the authenticated caller, or "" for an anonymous
+// request. An invitation addressed to an existing account is accepted only by
+// that account, signed in: the invite token alone proves nothing, the inviter
+// holds it (spec 2026-10-16-06). Every check runs before any write, so a
+// refused attempt creates nothing and leaves the invitation in place.
+//
 //nolint:cyclop,funlen // Invitation acceptance requires multiple steps
-func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*LoginResponse, error) {
+func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest, callerUID string) (*LoginResponse, error) {
 	// Find the invitation across orgs. matchedEntry.Key is the key that
 	// actually matched (hashed, or legacy plaintext), so the deletes below
 	// must use it rather than recompute one.
@@ -3863,6 +3857,10 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*L
 	// Check if user exists
 	user, err := s.db.GetUserByEmail(ctx, inviteEmail)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+
+	if err = checkInviteCaller(user, callerUID); err != nil {
 		return nil, err
 	}
 
@@ -3980,6 +3978,26 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*L
 		Organization:  newOrganizationInfo(matchedOrg),
 		Organizations: orgSummaries,
 	}, nil
+}
+
+// checkInviteCaller decides who may accept an invitation. invitee is the
+// account the invited email belongs to (nil when there is none); callerUID is
+// the authenticated caller ("" when anonymous). UIDs are compared, never
+// email strings.
+func checkInviteCaller(invitee *models.User, callerUID string) error {
+	switch {
+	case invitee == nil && callerUID != "":
+		// Signed in, but the invitee has no account yet: the caller is not them.
+		return ErrInviteEmailMismatch
+	case invitee == nil:
+		return nil
+	case callerUID == "":
+		return ErrInviteLoginRequired
+	case callerUID != invitee.UID:
+		return ErrInviteEmailMismatch
+	default:
+		return nil
+	}
 }
 
 // OrgSettingsResponse contains org settings.
@@ -4467,20 +4485,12 @@ func (s *Service) generate2FATempToken(userUID, orgSlug, role, method string) (s
 		},
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-
-	return token.SignedString([]byte(s.fullCfg.Auth.JWTSecret))
+	return s.signJWT(twoFAPurpose, claims)
 }
 
 // validate2FATempToken parses and validates a 2FA temporary token.
 func (s *Service) validate2FATempToken(tempToken string) (*TwoFAClaims, error) {
-	token, err := jwt.ParseWithClaims(tempToken, &TwoFAClaims{}, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("%w: %v", ErrUnexpectedSigningMethod, token.Header["alg"])
-		}
-
-		return []byte(s.fullCfg.Auth.JWTSecret), nil
-	})
+	token, err := s.parsePurposeJWT(tempToken, twoFAPurpose, &TwoFAClaims{})
 	if err != nil {
 		return nil, ErrInvalidToken
 	}

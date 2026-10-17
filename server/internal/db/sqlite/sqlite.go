@@ -440,7 +440,15 @@ func newMigrationGuard(db *bun.DB, fsys fs.FS) (*migrationguard.Guard, error) {
 		return nil, fmt.Errorf("failed to checksum migrations: %w", err)
 	}
 
-	return migrationguard.New(db, expected), nil
+	return migrationguard.New(db, expected).WithSuperseded(supersededMigrations()...), nil
+}
+
+// supersededMigrations lists released migration files that were edited after
+// they shipped. v0.38.4 carried a 027 with the 028 sections appended to it.
+func supersededMigrations() []migrationguard.Superseded {
+	return []migrationguard.Superseded{
+		{Name: "027", Checksum: "aaca5b1dcc1e940e27a34471f37d49c2c001e25296e26cfdbeca0f5902aa3b9e", Covers: []string{"028"}},
+	}
 }
 
 // migrationFS returns the migration files: the embedded ones, or a test override.
@@ -4744,6 +4752,81 @@ func (s *Service) SetStateEntryIfNotExists(
 	return rowsAffected > 0, nil
 }
 
+// BumpGlobalCounter atomically counts one attempt against the global counter
+// at key (spec 2026-10-16-13).
+//
+// SQLite: the service runs on ONE connection (SetMaxOpenConns(1)), so this
+// transaction holds the only connection from its read to its commit and no
+// other statement can interleave — the same guarantee AdmitFixedWindows uses.
+// Two processes sharing one file (split node roles) are not serialized by
+// that, but WAL still forbids the lost update: the transaction that read a
+// stale snapshot gets SQLITE_BUSY on its write, so the counter fails closed
+// (an error) and never admits past the limit.
+func (s *Service) BumpGlobalCounter(
+	ctx context.Context, key string, limit int, ttl time.Duration,
+) (bool, error) {
+	limited := false
+
+	err := s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		now := time.Now()
+
+		var live []*models.StateEntry
+		if err := tx.NewSelect().Model(&live).
+			Where("organization_uid IS NULL").
+			Where("key = ?", key).
+			Where("deleted_at IS NULL").
+			Where("(expires_at IS NULL OR expires_at > datetime('now'))").
+			Scan(ctx); err != nil {
+			return fmt.Errorf("read counter %q: %w", key, err)
+		}
+
+		count := 0
+		for _, entry := range live {
+			count = max(count, models.CounterValue(entry))
+		}
+
+		if count >= limit {
+			limited = true
+
+			return nil
+		}
+
+		value := models.NewCounterValue(count + 1)
+		expiresAt := now.Add(ttl)
+
+		res, err := tx.NewUpdate().Model((*models.StateEntry)(nil)).
+			Where("organization_uid IS NULL").
+			Where("key = ?", key).
+			Set("value = ?", value).
+			Set("expires_at = ?", expiresAt).
+			Set("updated_at = ?", now).
+			Set("deleted_at = NULL").
+			Exec(ctx)
+		if err != nil {
+			return fmt.Errorf("bump counter %q: %w", key, err)
+		}
+
+		if rows, _ := res.RowsAffected(); rows > 0 {
+			return nil
+		}
+
+		entry := models.NewStateEntry(nil, key)
+		entry.Value = value
+		entry.ExpiresAt = &expiresAt
+
+		if _, err := tx.NewInsert().Model(entry).Exec(ctx); err != nil {
+			return fmt.Errorf("seed counter %q: %w", key, err)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return false, err
+	}
+
+	return limited, nil
+}
+
 // AdmitFixedWindows atomically counts one event against every window, or
 // against none (spec 2026-09-25-34, "Capture now").
 //
@@ -6146,13 +6229,15 @@ func (s *Service) ListStatusPageResources(
 	return resources, err
 }
 
-// UpdateStatusPageResource updates a resource by UID.
+// UpdateStatusPageResource updates a resource by UID, scoped to its section.
+// It returns sql.ErrNoRows when no resource of that UID lives in the section.
 func (s *Service) UpdateStatusPageResource(
-	ctx context.Context, uid string, update *models.StatusPageResourceUpdate,
+	ctx context.Context, sectionUID, uid string, update *models.StatusPageResourceUpdate,
 ) error {
 	query := s.db.NewUpdate().
 		Model((*models.StatusPageResource)(nil)).
 		Where("uid = ?", uid).
+		Where("section_uid = ?", sectionUID).
 		Set("updated_at = ?", time.Now())
 
 	if update.PublicName != nil {
@@ -6181,19 +6266,45 @@ func (s *Service) UpdateStatusPageResource(
 			Set("check_group_uid = ?", update.CheckGroupUID)
 	}
 
-	_, err := query.Exec(ctx)
+	res, err := query.Exec(ctx)
+	if err != nil {
+		return err
+	}
 
-	return err
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
 }
 
-// DeleteStatusPageResource hard-deletes a resource.
-func (s *Service) DeleteStatusPageResource(ctx context.Context, uid string) error {
-	_, err := s.db.NewDelete().
+// DeleteStatusPageResource hard-deletes a resource, scoped to its section.
+// It returns sql.ErrNoRows when no resource of that UID lives in the section.
+func (s *Service) DeleteStatusPageResource(ctx context.Context, sectionUID, uid string) error {
+	res, err := s.db.NewDelete().
 		Model((*models.StatusPageResource)(nil)).
 		Where("uid = ?", uid).
+		Where("section_uid = ?", sectionUID).
 		Exec(ctx)
+	if err != nil {
+		return err
+	}
 
-	return err
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
 }
 
 // CheckGroup operations

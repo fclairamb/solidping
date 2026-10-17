@@ -55,7 +55,7 @@ func TestDegradedWordingIsNotAnOutage(t *testing.T) {
 
 	headline := info.Headline("acme.com")
 
-	r.Equal("acme.com is degraded: 7 failures in the last 60 probes (93.8%)", headline)
+	r.Equal("acme.com is degraded: 7 failures in the last 60 probes (93.8% available)", headline)
 	r.NotContains(strings.ToLower(headline), "is down")
 	r.NotContains(strings.ToLower(headline), "incident")
 	r.Equal("Currently up.", info.StatusText())

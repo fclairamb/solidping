@@ -72,6 +72,10 @@ export interface LoginResult {
   // useRecoveryCode with the temp token to complete the sign-in.
   requires2FA?: boolean;
   tempToken?: string;
+  // Set when the session was stored but the account must rotate its password
+  // first: applyLoginResponse already sent the browser to that screen, so the
+  // caller must not navigate anywhere else.
+  mustChangePassword?: boolean;
 }
 
 // RenamedOrgSession is the session half of the PATCH /orgs/:org response.
@@ -412,7 +416,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // so no sign-in path can slip past it.
     if (data.user.mustChangePassword) {
       redirectToPasswordChange();
-      return { loginAction: "", organizations: [], resolvedOrg };
+      return { loginAction: "", organizations: [], resolvedOrg, mustChangePassword: true };
     }
 
     // An org-less session (no membership yet, or a federated login the org

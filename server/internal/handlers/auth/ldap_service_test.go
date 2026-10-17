@@ -754,3 +754,100 @@ func TestLogin_LDAP_NonMatchingEmailGetsMembershipRequest(t *testing.T) {
 		require.True(t, reqErr != nil || request == nil, "an admitted user opens no request")
 	})
 }
+
+// TestLogin_LDAPLldapStyleSettings exercises the settings documented for an
+// lldap-style directory (service bind DN, base DN, and both the "(mail=%s)"
+// and "(uid=%s)" user filters): a good login auto-provisions the user, and a
+// wrong password and an unknown user surface the very same error (the 401).
+func TestLogin_LDAPLldapStyleSettings(t *testing.T) {
+	t.Parallel()
+
+	for _, filter := range []string{"(mail=%s)", "(uid=%s)"} {
+		t.Run(filter, func(t *testing.T) {
+			t.Parallel()
+
+			dir := startFakeLDAPDirectory(t)
+			dir.setServiceAccount()
+
+			entryDN := "uid=alice,ou=people,dc=example,dc=org"
+			dir.setEntries(newFakeLDAPEntry(
+				entryDN, "alice-password",
+				map[string][]string{
+					"uid": {"alice"}, "mail": {"alice@example.com"}, "cn": {"Alice Example"},
+				},
+			))
+
+			identifier := "alice@example.com"
+			unknown := "nobody@example.com"
+			if filter == "(uid=%s)" {
+				identifier, unknown = "alice", "nobody"
+			}
+
+			svc, dbSvc, ctx := setupLDAPLoginTestService(t, newFakeLDAPConfig(dir, filter), nil)
+
+			org := models.NewOrganization("lldap-org", "lldap Org")
+			require.NoError(t, dbSvc.CreateOrganization(ctx, org))
+
+			_, wrongErr := svc.Login(ctx, org.Slug, identifier, "bad-password", Context{})
+			require.ErrorIs(t, wrongErr, ErrInvalidCredentials)
+
+			_, unknownErr := svc.Login(ctx, org.Slug, unknown, "whatever", Context{})
+			require.ErrorIs(t, unknownErr, ErrInvalidCredentials)
+			require.Equal(t, wrongErr.Error(), unknownErr.Error())
+
+			resp, err := svc.Login(ctx, org.Slug, identifier, "alice-password", Context{})
+			require.NoError(t, err)
+			require.NotEmpty(t, resp.AccessToken)
+
+			user, err := dbSvc.GetUserByEmail(ctx, "alice@example.com")
+			require.NoError(t, err)
+			require.Equal(t, "Alice Example", user.Name)
+			provider, err := dbSvc.GetUserProviderByProviderID(ctx, models.ProviderTypeLDAP, entryDN)
+			require.NoError(t, err)
+			require.Equal(t, user.UID, provider.UserUID)
+		})
+	}
+}
+
+// TestLogin_LDAPTOTPUserIsChallenged is the control for spec 2026-10-16-14:
+// LDAP already went through Login's TOTP gate. A second login of a user who
+// then enabled TOTP gets requires2Fa and no session, the first factor
+// (ldap) travels on the temp token.
+func TestLogin_LDAPTOTPUserIsChallenged(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	dir := startFakeLDAPDirectory(t)
+	dir.setServiceAccount()
+	dir.setEntries(newFakeLDAPEntry(
+		"cn=totp,ou=people,dc=example,dc=org", "correct-password",
+		map[string][]string{"mail": {"totp@example.com"}, "cn": {"TOTP User"}},
+	))
+
+	svc, dbSvc, ctx := setupLDAPLoginTestService(t, newFakeLDAPConfig(dir, ""), nil)
+
+	org := models.NewOrganization("ldap-totp-org", "LDAP TOTP Org")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	// Positive control: before TOTP, the LDAP login yields a session.
+	first, err := svc.Login(ctx, org.Slug, "totp@example.com", "correct-password", Context{})
+	r.NoError(err)
+	r.NotEmpty(first.AccessToken)
+	r.False(first.Requires2FA)
+
+	user, err := dbSvc.GetUserByEmail(ctx, "totp@example.com")
+	r.NoError(err)
+	enableTestTOTP(ctx, t, dbSvc, user)
+
+	resp, err := svc.Login(ctx, org.Slug, "totp@example.com", "correct-password", Context{})
+	r.NoError(err)
+	r.True(resp.Requires2FA)
+	r.NotEmpty(resp.TempToken)
+	r.Empty(resp.AccessToken)
+	r.Nil(resp.User)
+
+	claims, err := svc.validate2FATempToken(resp.TempToken)
+	r.NoError(err)
+	r.Equal(org.Slug, claims.OrgSlug)
+	r.Equal(AuthMethodLDAP, claims.Method)
+}

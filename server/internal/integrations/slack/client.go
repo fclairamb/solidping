@@ -625,31 +625,3 @@ func (c *Client) do(req *http.Request, result any) error {
 
 	return nil
 }
-
-// RespondToWebhook sends a response to a Slack response URL.
-func RespondToWebhook(ctx context.Context, responseURL string, msg *MessageResponse) error {
-	body, err := json.Marshal(msg)
-	if err != nil {
-		return fmt.Errorf("failed to marshal response: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, responseURL, bytes.NewReader(body))
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-
-	client := httpclientpool.NewClient(DefaultTimeout)
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to send response: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("%w: %d", ErrUnexpectedStatus, resp.StatusCode)
-	}
-
-	return nil
-}

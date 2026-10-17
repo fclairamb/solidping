@@ -68,10 +68,11 @@ type discoveryTypeDescriptor struct {
 	Source string `json:"source"`
 }
 
-// ListTypes returns the registered discovery types so the frontend can build its
-// type picker without hard-coding the set.
+// ListTypes returns the discovery types this deployment accepts so the frontend
+// can build its type picker without hard-coding the set. Types the deployment
+// refuses (DISCOVERY_NOT_AVAILABLE) are hidden.
 func (h *Handler) ListTypes(writer http.ResponseWriter, _ *http.Request) error {
-	defs := scantypes.List()
+	defs := h.svc.AvailableTypes()
 	out := make([]discoveryTypeDescriptor, 0, len(defs))
 
 	for _, d := range defs {
@@ -154,6 +155,8 @@ func statusForDiscoveryCode(code string) int {
 		return http.StatusConflict
 	case scantypes.CodeKubernetesClusterNotFound:
 		return http.StatusNotFound
+	case scantypes.CodeNotAvailable:
+		return http.StatusForbidden
 	default: // CodeInvalidParameters, DISCOVERY_RANGE_TOO_LARGE
 		return http.StatusUnprocessableEntity
 	}

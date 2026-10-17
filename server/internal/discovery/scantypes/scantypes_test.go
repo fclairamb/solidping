@@ -14,6 +14,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/discovery/scantypes"
+	"github.com/fclairamb/solidping/server/internal/egress"
 	"github.com/fclairamb/solidping/server/internal/integrations/freebox"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobtypes"
@@ -264,4 +265,77 @@ func TestEveryScanTypeHasJobDefinition(t *testing.T) {
 		_, defOK := jobtypes.GetJobDefinition(jt)
 		r.True(defOK, "scan type %q enqueues job type %q with no JobDefinition", def.Type(), jt)
 	}
+}
+
+// Under an enforcing egress guard `lan` is refused whatever the CIDR (private,
+// cloud metadata or public) with DISCOVERY_NOT_AVAILABLE; a permissive guard or
+// no guard still returns the plan job (spec 2026-10-16-10).
+func TestLANBuildJobEgressPolicy(t *testing.T) {
+	t.Parallel()
+
+	def := &scantypes.LANDefinition{}
+
+	for _, cidr := range []string{"10.0.0.0/24", "169.254.169.254/32", "8.8.8.0/24"} {
+		t.Run("enforcing "+cidr, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+			deps := scantypes.Deps{EgressGuard: egress.New(false)}
+
+			_, _, err := def.BuildJob(t.Context(), deps, "org-1", json.RawMessage(`{"cidrs":["`+cidr+`"]}`))
+			r.Error(err)
+			r.Equal(scantypes.CodeNotAvailable, codeOf(err))
+			r.Contains(err.Error(), egress.EnvAllowPrivate)
+			r.Error(scantypes.Available(def, deps))
+		})
+	}
+
+	for name, guard := range map[string]*egress.Guard{"permissive": egress.New(true), "nil": nil} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+			deps := scantypes.Deps{EgressGuard: guard}
+
+			jobType, _, err := def.BuildJob(t.Context(), deps, "org-1", json.RawMessage(`{"cidrs":["10.0.0.0/24"]}`))
+			r.NoError(err)
+			r.Equal(string(jobdef.JobTypeNetworkDiscoveryPlan), jobType)
+			r.NoError(scantypes.Available(def, deps))
+		})
+	}
+}
+
+// `container` is refused exactly where docker checks are refused.
+func TestContainerBuildJobDockerGate(t *testing.T) {
+	t.Parallel()
+
+	def := &scantypes.ContainerDefinition{}
+
+	for _, endpoint := range []string{"unix:///var/run/docker.sock", "tcp://10.0.0.5:2375"} {
+		t.Run(endpoint, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+			params := json.RawMessage(`{"hosts":["` + endpoint + `"]}`)
+
+			_, _, err := def.BuildJob(t.Context(), scantypes.Deps{DockerBlocked: true}, "org-1", params)
+			r.Error(err)
+			r.Equal(scantypes.CodeNotAvailable, codeOf(err))
+
+			jobType, _, err := def.BuildJob(t.Context(), scantypes.Deps{DockerBlocked: false}, "org-1", params)
+			r.NoError(err)
+			r.Equal(string(jobdef.JobTypeContainerDiscovery), jobType)
+		})
+	}
+}
+
+// Types without a deployment restriction are always available.
+func TestUnrestrictedTypesAlwaysAvailable(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	deps := scantypes.Deps{EgressGuard: egress.New(false), DockerBlocked: true}
+
+	r.NoError(scantypes.Available(&scantypes.FreeboxDefinition{}, deps))
+	r.NoError(scantypes.Available(&scantypes.KubernetesDefinition{}, deps))
 }

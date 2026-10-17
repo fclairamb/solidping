@@ -118,6 +118,36 @@ func TestPgEventNotifier(t *testing.T) {
 		}
 	})
 
+	// auth.EventPATRevoked (spec 2026-10-16-15) must round-trip: the channel
+	// mapping turns '.' into '_' and back, so the event name must hold no '_'.
+	// Spelled out here because the auth package imports this one.
+	t.Run("pat_revoked_round_trip", func(t *testing.T) { //nolint:paralleltest // Test uses shared database connection
+		logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+		notifier, err := NewPgEventNotifier(db, connString, logger)
+		require.NoError(t, err)
+
+		defer func() {
+			_ = notifier.Close()
+		}()
+
+		const eventPATRevoked = "auth.patrevoked"
+
+		ch := notifier.Listen(eventPATRevoked)
+
+		// Give listener time to establish connection
+		time.Sleep(100 * time.Millisecond)
+
+		tokenHash := "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+		require.NoError(t, notifier.Notify(ctx, eventPATRevoked, tokenHash))
+
+		select {
+		case payload := <-ch:
+			assert.Equal(t, tokenHash, payload)
+		case <-time.After(2 * time.Second):
+			t.Fatal("Expected auth.patrevoked notification")
+		}
+	})
+
 	//nolint:paralleltest // Test uses shared database connection
 	t.Run("multiple_notifications_coalesce", func(t *testing.T) {
 		logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))

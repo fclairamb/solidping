@@ -28,9 +28,9 @@ incidents and on-call escalation — in a single Go binary.
 
 ### From `docker run` to the first result
 
-https://github.com/user-attachments/assets/471694b0-b136-4764-86c1-5f85615c45f4
+https://github.com/user-attachments/assets/3bdaf8eb-7d20-45ab-ae15-e0ac5835c3a2
 
-<sub>The whole thing, start to finish: <code>docker run</code>, the first sign-in and its forced password change, an HTTP check created against <code>https://solidping.io/api/mgmt/health</code>, and its first response times plotted from two regions. Regenerated from the live dashboard with <code>make showcase</code> — nothing here is a mock-up. <a href="https://solidping.io/docs/tour">The same cut plays on the Tour page</a> if the player above does not load.</sub>
+<sub>Start to finish in 34 seconds: <code>docker run</code> in a terminal, the first sign-in, an HTTP check created by pasting a URL, and its first response times from two regions. Recorded from a real SolidPing server, nothing here is a mock-up. <a href="https://solidping.io/docs/tour">The Tour page</a> has a longer cut if the player above does not load.</sub>
 
 </div>
 
@@ -47,7 +47,7 @@ https://github.com/user-attachments/assets/471694b0-b136-4764-86c1-5f85615c45f4
 | **Hosted** | [www.solidping.io](https://www.solidping.io) — sign up, no card needed |
 | **Live status page** | [status.solidping.io](https://status.solidping.io) — a real SolidPing instance watching the production one, from another provider in another country |
 | **Documentation** | [docs.solidping.io](https://docs.solidping.io) |
-| **Self-host** | `docker run -p 4000:4000 --hostname solidping ghcr.io/fclairamb/solidping` (also on Docker Hub as [`fclairamb/solidping`](https://hub.docker.com/r/fclairamb/solidping)) — SQLite by default, no other service needed. First login is `admin@solidping.io` / `solidpass`, and you must change it (see [Default Credentials](#default-credentials)). Prefer a bare binary? Every release also publishes one for Linux, macOS and Windows — see the [installation guides](https://docs.solidping.io/installation/linux). Also: `brew install fclairamb/tap/solidping` ([tap](https://github.com/fclairamb/homebrew-tap)), `scoop bucket add fclairamb https://github.com/fclairamb/scoop-bucket` then `scoop install solidping`, and a [Helm chart](deploy/helm/solidping). |
+| **Self-host** | `docker run -p 4000:4000 --hostname solidping ghcr.io/fclairamb/solidping` (also on Docker Hub as [`fclairamb/solidping`](https://hub.docker.com/r/fclairamb/solidping)) — SQLite by default, no other service needed. First login is `admin@solidping.io` / `solidpass`, and you must change it (see [Default Credentials](#default-credentials)). Prefer a bare binary? Every release also publishes one for Linux, macOS and Windows — see the [installation guides](https://docs.solidping.io/installation/linux). Also: `brew install fclairamb/tap/solidping` ([tap](https://github.com/fclairamb/homebrew-tap)), `scoop bucket add fclairamb https://github.com/fclairamb/scoop-bucket` then `scoop install solidping`, a [Helm chart](deploy/helm/solidping), and a [Railway](https://docs.solidping.io/installation/railway) setup. |
 
 ## Overview
 

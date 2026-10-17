@@ -266,9 +266,7 @@ func (s *Service) generateImpersonationToken(
 		},
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-
-	return token.SignedString([]byte(s.fullCfg.Auth.JWTSecret))
+	return s.signJWT("", claims)
 }
 
 // recordImpersonationStarted writes auth.impersonation_started in the target's

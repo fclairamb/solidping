@@ -67,7 +67,7 @@ Marketing claim: replaces ~$673/mo of PagerDuty + Pingdom + Statuspage.io. The "
 - **Time-bounded snooze** as a first-class operation (BetterStack only has ack-forever or AI silencing).
 - **Maintenance with explicit start/end timestamps** alongside weekday-time recurrence.
 - **Encryption at rest with envelope encryption + per-org DEKs**.
-- **MCP server** for AI/LLM tool integration — no SaaS competitor has this.
+- **MCP server** for AI/LLM tool integration. *No longer unique (2026-10-15): Better Stack, UptimeRobot, Hyperping, Checkly and Pulsetic all list one.*
 - **No vendor lock-in, no SaaS dependency** for regulated/air-gapped users.
 
 ## SolidPing gaps that BetterStack closes (worth borrowing)

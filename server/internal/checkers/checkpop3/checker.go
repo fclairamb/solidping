@@ -85,7 +85,7 @@ func newExecParams(cfg *POP3Config) execParams {
 
 // Execute performs the POP3 check and returns the result.
 //
-//nolint:funlen,cyclop // POP3 protocol flow requires comprehensive logic
+//nolint:funlen,cyclop,gocognit // POP3 protocol flow requires comprehensive logic
 func (c *POP3Checker) Execute(
 	ctx context.Context, config checkerdef.Config,
 ) (*checkerdef.Result, error) {

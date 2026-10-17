@@ -2,6 +2,8 @@ package auth
 
 import (
 	"context"
+	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -103,6 +105,12 @@ func runTwoFAAttemptThrottleSuite(t *testing.T, dbSvc db.Service) {
 	})
 	t.Run("the counter clears once its window has elapsed", func(t *testing.T) {
 		testTwoFAWindowExpiryClearsThrottle(t, dbSvc)
+	})
+	t.Run("a concurrent burst is counted per attempt", func(t *testing.T) {
+		testTwoFAConcurrentBurstCountedPerAttempt(t, dbSvc)
+	})
+	t.Run("a burst below the budget leaves room for the correct code", func(t *testing.T) {
+		testTwoFABurstBelowBudgetThenCorrectCode(t, dbSvc)
 	})
 }
 
@@ -373,4 +381,97 @@ func testTwoFAWindowExpiryClearsThrottle(t *testing.T, dbSvc db.Service) {
 
 	_, err = svc.Verify2FA(ctx, tempToken2, validCode, Context{})
 	r.NoError(err, "once the window has passed, the counter is gone and a correct code succeeds again")
+}
+
+// twoFABurst fires n concurrent Verify2FA calls with code on one temp token
+// and returns how many got ErrInvalid2FACode and how many ErrRateLimited.
+// Any other outcome fails the test.
+func twoFABurst(t *testing.T, svc *Service, tempToken, code string, n int) (int, int) {
+	t.Helper()
+
+	ctx := t.Context()
+
+	var (
+		wg      sync.WaitGroup
+		mu      sync.Mutex
+		invalid int
+		limited int
+		others  []error
+	)
+
+	start := make(chan struct{})
+
+	for range n {
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+
+			<-start
+
+			_, err := svc.Verify2FA(ctx, tempToken, code, Context{})
+
+			mu.Lock()
+			defer mu.Unlock()
+
+			switch {
+			case errors.Is(err, ErrInvalid2FACode):
+				invalid++
+			case errors.Is(err, ErrRateLimited):
+				limited++
+			default:
+				others = append(others, err)
+			}
+		}()
+	}
+
+	close(start)
+	wg.Wait()
+
+	require.Empty(t, others, "every concurrent attempt must be a wrong-code or throttled answer")
+
+	return invalid, limited
+}
+
+// testTwoFAConcurrentBurstCountedPerAttempt is the race proof of spec
+// 2026-10-16-13: 20 parallel wrong codes on one temp token must spend 20
+// units of the budget, so exactly 5 reach the code check. Before the counter
+// was atomic, the parallel calls all read the same count and most of them
+// got a guess in.
+func testTwoFAConcurrentBurstCountedPerAttempt(t *testing.T, dbSvc db.Service) {
+	t.Helper()
+
+	r := require.New(t)
+
+	svc, org, user, secret := newTwoFAThrottleFixture(t, dbSvc, t.Context(), "burst")
+	tempToken := mintTwoFATempToken(t, svc, org, user)
+
+	const burst = 20
+
+	invalid, limited := twoFABurst(t, svc, tempToken, wrongTOTPCode(t, secret), burst)
+	r.Equal(twoFAAttemptMaxPerUser, invalid, "exactly the budget may reach the code check")
+	r.Equal(burst-twoFAAttemptMaxPerUser, limited)
+}
+
+// testTwoFABurstBelowBudgetThenCorrectCode is the positive control: a
+// concurrent burst smaller than the budget is never throttled, and the
+// correct code still succeeds afterwards.
+func testTwoFABurstBelowBudgetThenCorrectCode(t *testing.T, dbSvc db.Service) {
+	t.Helper()
+
+	ctx := t.Context()
+	r := require.New(t)
+
+	svc, org, user, secret := newTwoFAThrottleFixture(t, dbSvc, ctx, "burstok")
+	tempToken := mintTwoFATempToken(t, svc, org, user)
+
+	invalid, limited := twoFABurst(t, svc, tempToken, wrongTOTPCode(t, secret), twoFAAttemptMaxPerUser-1)
+	r.Equal(twoFAAttemptMaxPerUser-1, invalid)
+	r.Zero(limited)
+
+	validCode, err := totp.GenerateCode(secret, time.Now())
+	r.NoError(err)
+
+	_, err = svc.Verify2FA(ctx, tempToken, validCode, Context{})
+	r.NoError(err)
 }

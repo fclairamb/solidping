@@ -425,6 +425,13 @@ func TestMCPClientWalkthroughOAuth(t *testing.T) {
 	r.True(ok, "tools/call result: %v", rpc)
 	r.NotEqual(true, result["isError"], "tools/call errored: %v", result)
 
+	// --- The same OAuth access token is refused on REST (spec 2026-10-16-12):
+	// it only works on the MCP endpoint.
+	res = env.get(t, "/api/v1/orgs/"+mcpE2EOrg+"/checks",
+		map[string]string{"Authorization": "Bearer " + tok.AccessToken})
+	r.Equal(http.StatusUnauthorized, res.status, "MCP token on REST: %s", res.body)
+	r.Contains(string(res.body), "INVALID_TOKEN")
+
 	// --- explicit session termination.
 	req, err = http.NewRequestWithContext(
 		t.Context(), http.MethodDelete, env.ts.URL+"/api/v1/mcp", nil)

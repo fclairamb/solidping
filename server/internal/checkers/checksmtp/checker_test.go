@@ -393,8 +393,8 @@ func writeEHLOResponse(conn net.Conn, opts fakeSMTPOpts) {
 		caps = append(caps, authLine)
 	}
 
-	for _, cap := range caps[:len(caps)-1] {
-		_, _ = fmt.Fprintf(conn, "250-%s\r\n", cap)
+	for _, capLine := range caps[:len(caps)-1] {
+		_, _ = fmt.Fprintf(conn, "250-%s\r\n", capLine)
 	}
 
 	_, _ = fmt.Fprintf(conn, "250 %s\r\n", caps[len(caps)-1])

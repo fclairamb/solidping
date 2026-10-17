@@ -3,11 +3,13 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
+	"github.com/pquerna/otp/totp"
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/db"
@@ -690,4 +692,175 @@ func TestGoogleCallbackRefusesNonMatchingEmail(t *testing.T) {
 	request, reqErr := svc.db.GetMembershipRequestByOrgAndUser(ctx, org.UID, user.UID)
 	require.NoError(t, reqErr)
 	require.Equal(t, models.MembershipRequestStatusPending, request.Status)
+}
+
+// enableTestTOTP turns TOTP on for user, in the database and on the struct the
+// callback would hand CompleteOrgLogin, and returns the secret.
+func enableTestTOTP(ctx context.Context, t *testing.T, dbSvc db.Service, user *models.User) string {
+	t.Helper()
+
+	key, err := totp.Generate(totp.GenerateOpts{Issuer: totpTestIssuer, AccountName: user.Email})
+	require.NoError(t, err)
+
+	secret := key.Secret()
+	enabled := true
+	codes := []string{"recovery-one", "recovery-two"}
+	require.NoError(t, dbSvc.UpdateUser(ctx, user.UID, &models.UserUpdate{
+		TOTPSecret:        &secret,
+		TOTPEnabled:       &enabled,
+		TOTPRecoveryCodes: &codes,
+	}))
+
+	user.TOTPEnabled = true
+	user.TOTPSecret = &secret
+	user.TOTPRecoveryCodes = codes
+
+	return secret
+}
+
+// TestCompleteOrgLoginAsksForTOTP is spec 2026-10-16-14: a federated login of
+// a user who enabled TOTP mints no session, on any outcome shape, and hands
+// out a 2FA temp token naming the session the login would have had. The same
+// table without TOTP is the positive control: today's sessions.
+func TestCompleteOrgLoginAsksForTOTP(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// setup returns the org the login targets and the user completing it.
+		setup        func(ctx context.Context, t *testing.T, dbSvc db.Service) (*models.Organization, *models.User)
+		wantSlug     string
+		wantRole     string
+		wantPending  bool
+		wantFallback string
+		// wantRefresh is whether the session (without TOTP) has a refresh token.
+		wantRefresh bool
+	}{
+		{
+			name: "admitted member",
+			setup: func(ctx context.Context, t *testing.T, dbSvc db.Service) (*models.Organization, *models.User) {
+				t.Helper()
+
+				org := joinTestOrg(ctx, t, dbSvc, "acmetech", true)
+				user := joinTestUser(ctx, t, dbSvc, "alice@acme.com")
+				require.NoError(t, dbSvc.CreateOrganizationMember(
+					ctx, models.NewOrganizationMember(org.UID, user.UID, models.MemberRoleUser)))
+
+				return org, user
+			},
+			wantSlug:    "acmetech",
+			wantRole:    string(models.MemberRoleUser),
+			wantRefresh: true,
+		},
+		{
+			name: "super admin",
+			setup: func(ctx context.Context, t *testing.T, dbSvc db.Service) (*models.Organization, *models.User) {
+				t.Helper()
+
+				org := joinTestOrg(ctx, t, dbSvc, "acmetech", true)
+				user := models.NewUser("root@acme.com")
+				user.SuperAdmin = true
+				require.NoError(t, dbSvc.CreateUser(ctx, user))
+
+				return org, user
+			},
+			wantSlug:    "acmetech",
+			wantRole:    RoleSuperAdmin,
+			wantRefresh: true,
+		},
+		{
+			name: "pending with a fallback org",
+			setup: func(ctx context.Context, t *testing.T, dbSvc db.Service) (*models.Organization, *models.User) {
+				t.Helper()
+
+				refusing := joinTestOrg(ctx, t, dbSvc, "acmeorg", true)
+				user := joinTestUser(ctx, t, dbSvc, "bob@elsewhere.example")
+				fallbackMember(ctx, t, dbSvc, user, "acmetech", time.Now().Add(-time.Hour))
+
+				return refusing, user
+			},
+			wantSlug:     "acmetech",
+			wantRole:     string(models.MemberRoleUser),
+			wantPending:  true,
+			wantFallback: "acmetech",
+			wantRefresh:  true,
+		},
+		{
+			name: "pending with no org",
+			setup: func(ctx context.Context, t *testing.T, dbSvc db.Service) (*models.Organization, *models.User) {
+				t.Helper()
+
+				refusing := joinTestOrg(ctx, t, dbSvc, "acmeorg", true)
+
+				return refusing, joinTestUser(ctx, t, dbSvc, "carol@elsewhere.example")
+			},
+			wantPending: true,
+		},
+	}
+
+	for _, tc := range tests {
+		for _, withTOTP := range []bool{true, false} {
+			t.Run(fmt.Sprintf("%s/totp=%v", tc.name, withTOTP), func(t *testing.T) {
+				t.Parallel()
+
+				r := require.New(t)
+				svc, dbSvc, ctx := setupAuthTestService(t)
+				org, user := tc.setup(ctx, t, dbSvc)
+
+				if withTOTP {
+					enableTestTOTP(ctx, t, dbSvc, user)
+				}
+
+				result, err := svc.CompleteOrgLogin(ctx, org, user, WithLoginMethod(signupMethodGoogle))
+				r.NoError(err)
+
+				r.Equal(tc.wantPending, result.Pending)
+				r.Equal(tc.wantFallback, result.FallbackOrgSlug)
+
+				if tc.wantPending {
+					r.Equal("acmeorg", result.PendingOrgSlug, "the refusing org is still named")
+				}
+
+				refreshRows, err := dbSvc.ListUserTokensByType(ctx, user.UID, models.TokenTypeRefresh)
+				r.NoError(err)
+
+				if withTOTP {
+					r.True(result.Requires2FA)
+					r.Empty(result.AccessToken, "no session before the code")
+					r.Empty(result.RefreshToken, "no session before the code")
+					r.Empty(refreshRows, "no refresh row before the code")
+
+					claims, claimErr := svc.validate2FATempToken(result.TempToken)
+					r.NoError(claimErr)
+					r.Equal(user.UID, claims.UserUID)
+					r.Equal(tc.wantSlug, claims.OrgSlug)
+					r.Equal(tc.wantRole, claims.Role)
+					r.Equal(signupMethodGoogle, claims.Method)
+
+					// The temp token is no bearer token (H1, spec 2026-10-16-02).
+					_, bearerErr := svc.ValidateToken(ctx, result.TempToken)
+					r.Error(bearerErr)
+
+					return
+				}
+
+				// Positive control: today's session, same org and role.
+				r.False(result.Requires2FA)
+				r.Empty(result.TempToken)
+
+				claims, err := svc.ValidateToken(ctx, result.AccessToken)
+				r.NoError(err)
+				r.Equal(tc.wantSlug, claims.OrgSlug)
+				r.Equal(tc.wantRole, claims.Role)
+
+				if tc.wantRefresh {
+					r.NotEmpty(result.RefreshToken)
+					r.Len(refreshRows, 1)
+				} else {
+					r.Empty(result.RefreshToken)
+					r.Empty(refreshRows)
+				}
+			})
+		}
+	}
 }

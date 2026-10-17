@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -17,6 +18,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
+	"github.com/fclairamb/solidping/server/internal/egress"
 	"github.com/fclairamb/solidping/server/internal/integrations/freebox"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobtypes"
@@ -45,6 +47,41 @@ func listenOnDefaultPort(t *testing.T) int {
 	t.Skip("no default scanner port free to listen on")
 
 	return 0
+}
+
+// countingListener listens on addr and counts the connections it accepts. It
+// returns the bound port, or ok=false when addr cannot be bound.
+func countingListener(t *testing.T, addr string) (int, *atomic.Int64, bool) {
+	t.Helper()
+
+	var lc net.ListenConfig
+
+	listener, err := lc.Listen(t.Context(), "tcp", addr)
+	if err != nil {
+		return 0, nil, false
+	}
+
+	t.Cleanup(func() { _ = listener.Close() })
+
+	var accepted atomic.Int64
+
+	go func() {
+		for {
+			conn, acceptErr := listener.Accept()
+			if acceptErr != nil {
+				return
+			}
+
+			accepted.Add(1)
+
+			_ = conn.Close()
+		}
+	}()
+
+	tcpAddr, ok := listener.Addr().(*net.TCPAddr)
+	require.True(t, ok)
+
+	return tcpAddr.Port, &accepted, true
 }
 
 // fbDiscoveryFixture stands up an in-memory db + disabled credentials + a fake
@@ -354,4 +391,71 @@ func TestFreeboxLanDiscoveryRequiresChannelUID(t *testing.T) {
 	def := &jobtypes.FreeboxLanDiscoveryJobDefinition{}
 	_, err := def.CreateJobRun(json.RawMessage(`{}`))
 	r.Error(err)
+}
+
+// Under an enforcing process guard the private hosts the Freebox reports are
+// not probed (the listener accepts no connection), yet rows are still built
+// from the router's own list: a reachable host falls back to a ping
+// suggestion. The permissive guard is the control: the open port is found.
+func TestFreeboxLanDiscoveryObeysEgressGuard(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name       string
+		guard      *egress.Guard
+		wantProbed bool
+	}{
+		{name: "enforcing", guard: egress.New(false), wantProbed: false},
+		{name: "permissive", guard: egress.New(true), wantProbed: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+
+			// The default port list is shared with the other parallel scans of
+			// 127.0.0.1, so this test observes the rows, not connection counts
+			// (scanner_egress_test.go pins "no dial" on an isolated port).
+			openPort := listenOnDefaultPort(t)
+
+			srv := startFakeFreeboxLAN(t, []freebox.RawLanHost{{
+				ID:          "nas-id",
+				PrimaryName: "nas",
+				HostType:    "nas",
+				Active:      true,
+				Reachable:   true,
+				L3Connectivities: []freebox.RawLanL3Conn{
+					{Addr: "127.0.0.1", Af: freebox.LanAfIPv4, Active: true, Reachable: true, LastActivity: 100},
+				},
+			}})
+
+			f := newFbDiscoveryFixture(t, srv.URL, models.FreeboxStatusGranted)
+
+			jctx := f.jctx(t)
+			jctx.Services.EgressGuard = tc.guard
+
+			runner, err := (&jobtypes.FreeboxLanDiscoveryJobDefinition{}).CreateJobRun(
+				json.RawMessage(`{"channelUid":"` + f.channelUID + `"}`))
+			r.NoError(err)
+			r.NoError(runner.Run(t.Context(), jctx))
+
+			checks := f.listChecks(t)
+			r.NotEmpty(checks, "rows are built from the router's list either way")
+
+			for _, c := range checks {
+				r.Equal("127.0.0.1", c.GroupKey)
+				r.Equal("nas", c.GroupLabel)
+			}
+
+			if !tc.wantProbed {
+				r.Len(checks, 1)
+				r.Equal("ping", checks[0].Type,
+					"the open port must not be found: an unprobed reachable host falls back to ping")
+
+				return
+			}
+
+			r.Contains(string(checks[0].Metadata), strconv.Itoa(openPort), "the active scan found the open port")
+		})
+	}
 }

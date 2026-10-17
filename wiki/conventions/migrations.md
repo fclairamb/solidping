@@ -10,7 +10,10 @@ Read when creating or modifying migration files, tables, columns or indexes.
   Example: `001_v0_1_0.up.sql`, `002_v0_2_0.up.sql`
 - `NNN` is a 3-digit zero-padded sequence. Each new release increments it by 1 and re-syncs both engines to the same number.
 - **No dots in filenames** — Bun's discovery regex (`migrate/migrations.go`) allows only `[0-9a-z_\-]`; dots silently truncate the name.
-- **Freeze-released-migrations**: migrations already shipped in a released version (`vX.Y.Z` git tag) are **frozen and never rewritten**. Only add new migration files for new releases.
+- **Freeze-released-migrations**: a migration file that is part of a `vX.Y.Z` git tag is **frozen and never edited**, not even a comment or the `.down.sql`. Add the next `NNN` file instead.
+  - The name does not tell you whether it shipped: release-please picks the version. `027_v0_39_0` was meant for v0.39.0 and shipped in v0.38.1. Check with `git tag --contains $(git log --diff-filter=A --format=%h -1 -- <file>)`.
+  - `scripts/check-frozen-migrations.sh` (`make lint-migrations`, and the backend lint job in CI) compares every migration with its copy in the first tag that carried it, from v0.38.0 on.
+  - Why: v0.38.4 appended two sections to 027 after v0.38.1 had shipped it. The guard refused to boot every database upgraded from v0.38.1..v0.38.3. v0.38.5 put 027 back, moved the sections to 028, and `migrationguard.Superseded` marks 028 applied on databases that ran the v0.38.4 copy.
 - **During a release cycle**: add incremental scratch migrations as usual (`002_add_foo.up.sql`, etc.). At release time, collapse them into a single `NNN_vX_Y_Z.up.sql` and delete the scratch files.
 - The `.down.sql` drops all tables in reverse dependency order (parity only; downs are never run in production).
 

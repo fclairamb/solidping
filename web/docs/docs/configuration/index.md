@@ -55,8 +55,8 @@ the right place.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SP_SERVER_LISTEN` | `:4000` | Listen address (e.g., `:4000`, `0.0.0.0:8080`) |
-| `SP_SERVER_JOB_WORKER_NB` | `2` | Number of job runner goroutines |
-| `SP_SERVER_CHECK_WORKER_NB` | `25` | Number of check runner goroutines |
+| `SP_SERVER_JOB_WORKER_NB` | `2` | Maximum concurrent background jobs (notifications, emails, aggregation). Can also be set from the dashboard (Server, Performance); the env var takes precedence. `0` disables the job runners |
+| `SP_SERVER_CHECK_WORKER_NB` | `25` | Maximum concurrent checks. Idle runners cost a few KB each, so a higher value is cheap. Can also be set from the dashboard (Server, Performance); the env var takes precedence. `0` disables the check runners |
 | `SP_SERVER_COMPRESSION` | `true` | Gzip-compress JSON, HTML, CSS, JS, SVG and XML/Atom/YAML responses above 1 KiB. SolidPing compresses its own responses, so no reverse-proxy-side compression is needed — enabling one anyway is harmless, since a response that already carries `Content-Encoding` passes through untouched |
 | `SP_SHUTDOWN_TIMEOUT` | `30s` | Graceful shutdown timeout |
 | `SP_EXIT_WITH_PARENT` | `false` | Shut down when the process that started SolidPing disappears, instead of being reparented to PID 1. For servers spawned by a test harness or a wrapper script; leave off under a normal supervisor |
@@ -180,6 +180,8 @@ used, so edits made through the API are preserved across restarts.
 |----------|---------|-------------|
 | `SP_CHECKERS_BROWSER_CDP_URL` | - | Remote headless Chrome (CDP) endpoint for [browser checks](/features/check-types#browser), e.g. `ws://browser:9222`. Required in containers — the image ships no browser |
 | `SP_CHECKERS_BROWSER_CHROME_PATH` | - | Local Chrome/Chromium binary used when no CDP URL is set. Empty means "probe the usual names"; nothing is ever downloaded |
+| `SP_CHECK_ENV_ALLOWLIST` | - | Comma-separated environment variable names a check's `${env:NAME}` reference may read on this process, e.g. `SP_ACME_API_TOKEN,SP_ACME_DB_PASSWORD`. Empty (the default) means `${env:}` resolves nothing. Each private-location agent reads its own. See [Secrets: parameters and references](/cli#secrets-parameters-and-references) |
+| `SP_K8S_ALLOW_IN_CLUSTER` | `false` | Let a Kubernetes cluster connection use in-cluster mode, i.e. authenticate with the service-account token mounted into SolidPing's own pod. Off by default: a member could otherwise point a connection at the server's own cluster. Self-hosted only. See [Cluster connection](/features/check-types#cluster-connection) |
 | `SP_EGRESS_ALLOW_PRIVATE` | derived | Let this process's checks reach non-public addresses (loopback, RFC 1918, link-local, cloud metadata…). Unset: allowed on self-hosted and on agents, denied on SaaS shared workers. See [Egress policy](/configuration/egress-policy) |
 
 ### Logging
@@ -307,7 +309,7 @@ nothing and the dashboard loads no analytics code whatsoever.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SP_POSTHOG_PROJECT_API_KEY` | - | Public `phc_…` PostHog browser key. Empty = analytics entirely off |
-| `SP_POSTHOG_HOST` | `https://eu.i.posthog.com` | PostHog ingestion endpoint |
+| `SP_POSTHOG_HOST` | – (first-party proxy) | PostHog ingestion endpoint. Empty: the dashboard captures through the built-in first-party proxy, which forwards to `https://eu.i.posthog.com` |
 | `SP_POSTHOG_PERSONAL_API_KEY` | - | Optional server-side key (stored as a secret, never sent to the browser) |
 | `SP_POSTHOG_ENABLED` | `true` | Kill switch — never enables anything on its own |
 
@@ -399,8 +401,10 @@ base_url: https://monitoring.example.com
 
 server:
   listen: ":4000"
-  job_worker_nb: 4
-  check_worker_nb: 8
+  job_worker:
+    nb: 4
+  check_worker:
+    nb: 8
   shutdown_timeout: 30s
 
 auth:

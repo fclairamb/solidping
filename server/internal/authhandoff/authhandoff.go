@@ -68,8 +68,12 @@ var errEmptyUser = errors.New("authhandoff: session has no user")
 
 // Session is what a code hands over: the tokens the callback minted plus the
 // routing facts the dashboard needs to finish the login.
+//
+// A session carries exactly one of AccessToken (a minted session) and
+// TempToken (a 2FA challenge: the user has TOTP enabled, so the callback
+// minted nothing and the dashboard asks for the code first, spec 2026-10-16-14).
 type Session struct {
-	AccessToken  string `json:"accessToken"`
+	AccessToken  string `json:"accessToken,omitempty"`
 	RefreshToken string `json:"refreshToken,omitempty"`
 	ExpiresIn    int    `json:"expiresIn"`
 	UserUID      string `json:"userUid"`
@@ -83,6 +87,27 @@ type Session struct {
 	// redirect_uri), or a server-chosen landing page. It is a HINT: the
 	// dashboard only follows it through its own same-origin / same-org guards.
 	ReturnTo string `json:"returnTo,omitempty"`
+	// Requires2FA marks a 2FA challenge; TempToken is then the 2FA temp
+	// token, and there is no access or refresh token.
+	Requires2FA bool   `json:"requires2Fa,omitempty"`
+	TempToken   string `json:"tempToken,omitempty"`
+}
+
+// errBadTokens guards Issue against a session that carries neither or both of
+// an access token and a 2FA temp token.
+var errBadTokens = errors.New("authhandoff: session must carry exactly one of an access token and a 2FA temp token")
+
+// validTokens reports whether session carries exactly one of a minted session
+// (AccessToken) and a 2FA challenge (Requires2FA with TempToken).
+func (session *Session) validTokens() bool {
+	hasAccess := session.AccessToken != ""
+	hasChallenge := session.TempToken != "" || session.Requires2FA
+
+	if hasChallenge {
+		return !hasAccess && session.Requires2FA && session.TempToken != "" && session.RefreshToken == ""
+	}
+
+	return hasAccess
 }
 
 // Issue stores session under a new code and returns the code. The row is bound
@@ -91,6 +116,10 @@ type Session struct {
 func Issue(ctx context.Context, dbService db.Service, session *Session) (string, error) {
 	if session == nil || session.UserUID == "" {
 		return "", errEmptyUser
+	}
+
+	if !session.validTokens() {
+		return "", errBadTokens
 	}
 
 	code, err := newCode()
@@ -168,7 +197,7 @@ func Redeem(ctx context.Context, dbService db.Service, code string) (*Session, e
 		return nil, ErrInvalidCode
 	}
 
-	if session.UserUID == "" || session.UserUID != row.UserUID || session.AccessToken == "" {
+	if session.UserUID == "" || session.UserUID != row.UserUID || !session.validTokens() {
 		return nil, ErrInvalidCode
 	}
 

@@ -647,6 +647,11 @@ type FreeboxPrivateSettings struct {
 // (InCluster=true) stores no secret and is resolved via the mounted service
 // account at connect time.
 //
+// Security (spec 2026-10-16-05): a kubeconfig whose user carries an `exec`
+// credential plugin or an `auth-provider` block is rejected at save time and
+// when a client is built (integrations/kubernetes.ValidateKubeconfigSafe), and
+// InCluster is refused unless the deployment sets SP_K8S_ALLOW_IN_CLUSTER.
+//
 //nolint:tagliatelle // keep the TLS acronym uppercase (matches spec + kubeconfig).
 type KubernetesSettings struct {
 	// APIServer is the cluster API server URL (e.g. "https://10.0.0.1:6443").
@@ -660,7 +665,8 @@ type KubernetesSettings struct {
 	InsecureSkipTLSVerify bool `json:"insecureSkipTLSVerify,omitempty"`
 	// InCluster resolves the connection from the pod's mounted service-account
 	// token (rest.InClusterConfig). Only works when solidping runs inside the
-	// target cluster; needs no stored secret.
+	// target cluster; needs no stored secret. Gated by the operator opt-in
+	// SP_K8S_ALLOW_IN_CLUSTER (default off).
 	InCluster bool `json:"inCluster,omitempty"`
 }
 

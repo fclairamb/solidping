@@ -5,6 +5,9 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/handlers/statuspages"
 )
 
 type statusPageToolCase struct {
@@ -249,4 +252,85 @@ func TestBuildUpdateStatusPageRequest_OmittedFieldsStayNil(t *testing.T) {
 	r.Nil(req.ShowResponseTime)
 	r.Nil(req.HistoryDays)
 	r.Nil(req.Language)
+}
+
+// TestStatusPageResourceToolsCrossOrg pins finding N3 (security scan
+// 2026-10-12) on the MCP surface: a member of evilco addressing acme's
+// component through evilco's own page and section gets an error from
+// update_status_page_resource and delete_status_page_resource, and the
+// component is left as it was.
+func TestStatusPageResourceToolsCrossOrg(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		tool func(h *Handler) toolFunc
+		args map[string]any
+	}{
+		{
+			name: "update",
+			tool: func(h *Handler) toolFunc { return h.toolUpdateStatusPageResource },
+			args: map[string]any{propPublicName: "pwned", propExplanation: "attacker text"},
+		},
+		{
+			name: "delete",
+			tool: func(h *Handler) toolFunc { return h.toolDeleteStatusPageResource },
+			args: map[string]any{},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+			env := newCoverEnv(t)
+			ctx := t.Context()
+			svc := env.handler.statusPagesSvc
+
+			victimPage, err := svc.CreateStatusPage(ctx, env.org.Slug,
+				&statuspages.CreateStatusPageRequest{Name: "Acme", Slug: "acme"})
+			r.NoError(err)
+
+			victimSection, err := svc.CreateSection(ctx, env.org.Slug, victimPage.UID,
+				statuspages.CreateSectionRequest{Name: "Core", Slug: "core"})
+			r.NoError(err)
+
+			victimName := "Victim API"
+			victimRes, err := svc.CreateResource(ctx, env.org.Slug, victimPage.UID, victimSection.UID,
+				statuspages.CreateResourceRequest{CheckUID: env.check.UID, PublicName: &victimName})
+			r.NoError(err)
+
+			attacker := models.NewOrganization("evilco", "Evilco")
+			r.NoError(env.handler.dbService.CreateOrganization(ctx, attacker))
+
+			attackerPage, err := svc.CreateStatusPage(ctx, attacker.Slug,
+				&statuspages.CreateStatusPageRequest{Name: "Evil", Slug: "evil"})
+			r.NoError(err)
+
+			attackerSection, err := svc.CreateSection(ctx, attacker.Slug, attackerPage.UID,
+				statuspages.CreateSectionRequest{Name: "Core", Slug: "core"})
+			r.NoError(err)
+
+			args := map[string]any{
+				propPageIdentifier:    attackerPage.UID,
+				propSectionIdentifier: attackerSection.UID,
+				propResourceUID:       victimRes.UID,
+			}
+			for k, v := range tc.args {
+				args[k] = v
+			}
+
+			res := tc.tool(env.handler)(ctx, attacker.Slug, args)
+			r.True(res.IsError, "a foreign resource must be refused: %v", res.Content)
+			r.Contains(res.Content[0].Text, statuspages.ErrStatusPageResourceNotFound.Error())
+
+			resources, err := svc.ListResources(ctx, env.org.Slug, victimPage.UID, victimSection.UID)
+			r.NoError(err)
+			r.Len(resources, 1, "the victim's component must still be listed")
+			r.NotNil(resources[0].PublicName)
+			r.Equal(victimName, *resources[0].PublicName)
+			r.Nil(resources[0].Explanation)
+		})
+	}
 }

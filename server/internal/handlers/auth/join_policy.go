@@ -82,6 +82,30 @@ type ProviderLoginResult struct {
 	// asked for and no admin will ever see a request from is worse than saying
 	// nothing. Meaningless unless Pending is true.
 	PendingOrgSlug string
+	// Requires2FA is true when the user has TOTP enabled: no session was
+	// minted (the token fields are empty) and TempToken is the 2FA challenge
+	// that Verify2FA / Recovery2FA trade for the session described by the
+	// other fields (spec 2026-10-16-14).
+	Requires2FA bool
+	TempToken   string
+}
+
+// Outcome is the ProviderOutcome of this login, completed against the org
+// orgSlug for the user userUID. Every federated connector builds its result
+// through it, so none can drop a field (the 2FA challenge in particular).
+func (r *ProviderLoginResult) Outcome(orgSlug, userUID string) *ProviderOutcome {
+	return &ProviderOutcome{
+		AccessToken:     r.AccessToken,
+		RefreshToken:    r.RefreshToken,
+		ExpiresIn:       r.ExpiresIn,
+		OrgSlug:         orgSlug,
+		UserUID:         userUID,
+		Pending:         r.Pending,
+		FallbackOrgSlug: r.FallbackOrgSlug,
+		PendingOrgSlug:  r.PendingOrgSlug,
+		Requires2FA:     r.Requires2FA,
+		TempToken:       r.TempToken,
+	}
 }
 
 // LoginOption carries a provider-verified fact about the login being
@@ -313,6 +337,15 @@ func (s *Service) loginJoinRequestSuppressedReason(org *models.Organization) str
 // 2026-09-25-15). A user with no membership at all gets the org-less access
 // token (no refresh token) that lets the dashboard show the request-access
 // surface without any org-scoped API access.
+//
+// A user with TOTP enabled gets no session at all here: the result carries
+// Requires2FA and a 2FA temp token naming the org and role the session would
+// have had, and Verify2FA / Recovery2FA mint it once the code is accepted
+// (spec 2026-10-16-14). Admission (membership requests, invitations,
+// auto-join) still runs before the code, as for an LDAP login: it only ever
+// benefits the real account, and nothing usable is issued without the code.
+// Passkeys are the only sign-in that skips TOTP, because a passkey already is
+// a second factor (passkey_service.go FinishLogin, which never comes here).
 func (s *Service) CompleteOrgLogin(
 	ctx context.Context, org *models.Organization, user *models.User, opts ...LoginOption,
 ) (*ProviderLoginResult, error) {
@@ -329,31 +362,16 @@ func (s *Service) CompleteOrgLogin(
 	s.autoJoinMatchingOrgs(ctx, user.UID, user.Email)
 
 	if pending {
-		// Name the org only when there is a request an admin can act on.
-		pendingOrgSlug := ""
-		if s.loginJoinRequestSuppressedReason(org) == "" {
-			pendingOrgSlug = org.Slug
-		}
-
-		if result := s.fallbackMemberSession(ctx, user, resolved.method); result != nil {
-			result.PendingOrgSlug = pendingOrgSlug
-
-			return result, nil
-		}
-
-		result, sessionErr := s.pendingSession(ctx, user)
-		if sessionErr != nil {
-			return nil, sessionErr
-		}
-
-		result.PendingOrgSlug = pendingOrgSlug
-
-		return result, nil
+		return s.completePendingLogin(ctx, org, user, resolved.method)
 	}
 
 	role := RoleSuperAdmin
 	if member != nil {
 		role = string(member.Role)
+	}
+
+	if user.TOTPEnabled {
+		return s.twoFAChallenge(user, org.Slug, role, resolved.method)
 	}
 
 	// No explicit Context to thread here — GenerateTokensForOAuth falls back
@@ -372,19 +390,80 @@ func (s *Service) CompleteOrgLogin(
 	}, nil
 }
 
-// fallbackMemberSession mints, for a login the target org refused, a normal
-// org-scoped session on an org the user IS an admitted member of. It returns
-// nil when there is no such org, or when anything goes wrong on the way: the
-// caller then falls back to the org-less session, today's behavior, and the
-// login never fails because of this.
-func (s *Service) fallbackMemberSession(
-	ctx context.Context, user *models.User, method string,
-) *ProviderLoginResult {
-	member := s.fallbackMemberOrg(ctx, user.UID)
-	if member == nil {
-		return nil
+// completePendingLogin is CompleteOrgLogin's tail for a login the target org
+// did not admit: choose the session (an org the user already belongs to, else
+// org-less), then either mint it or, for a TOTP user, challenge for the code.
+func (s *Service) completePendingLogin(
+	ctx context.Context, org *models.Organization, user *models.User, method string,
+) (*ProviderLoginResult, error) {
+	// Name the org only when there is a request an admin can act on.
+	pendingOrgSlug := ""
+	if s.loginJoinRequestSuppressedReason(org) == "" {
+		pendingOrgSlug = org.Slug
 	}
 
+	fallback := s.fallbackMemberOrg(ctx, user.UID)
+
+	var (
+		result *ProviderLoginResult
+		err    error
+	)
+
+	switch {
+	case user.TOTPEnabled:
+		// The same choice the minting below makes, carried in the temp token:
+		// completeLoginAfter2FA mints on the fallback org, or (empty slug) the
+		// same org-less token pendingSession hands out.
+		slug, role := "", ""
+		if fallback != nil {
+			slug, role = fallback.Organization.Slug, string(fallback.Role)
+		}
+
+		result, err = s.twoFAChallenge(user, slug, role, method)
+		if err != nil {
+			return nil, err
+		}
+
+		result.FallbackOrgSlug = slug
+	default:
+		if fallback != nil {
+			result = s.fallbackMemberSession(ctx, user, fallback, method)
+		}
+
+		if result == nil {
+			result, err = s.pendingSession(ctx, user)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	result.Pending = true
+	result.PendingOrgSlug = pendingOrgSlug
+
+	return result, nil
+}
+
+// twoFAChallenge is the result handed out instead of a session when the user
+// has TOTP enabled: no token, only a 2FA temp token naming the org and role
+// the session will be minted on once the code is accepted.
+func (s *Service) twoFAChallenge(user *models.User, orgSlug, role, method string) (*ProviderLoginResult, error) {
+	tempToken, err := s.generate2FATempToken(user.UID, orgSlug, role, method)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate 2FA token: %w", err)
+	}
+
+	return &ProviderLoginResult{Requires2FA: true, TempToken: tempToken}, nil
+}
+
+// fallbackMemberSession mints, for a login the target org refused, a normal
+// org-scoped session on member's org, an org the user IS an admitted member of
+// (chosen by fallbackMemberOrg). It returns nil when anything goes wrong on the
+// way: the caller then falls back to the org-less session, and the login never
+// fails because of this.
+func (s *Service) fallbackMemberSession(
+	ctx context.Context, user *models.User, member *models.OrganizationMember, method string,
+) *ProviderLoginResult {
 	tokens, err := s.GenerateTokensForOAuth(ctx, user, member.Organization, string(member.Role), method, Context{})
 	if err != nil {
 		slog.WarnContext(ctx, "could not mint a session on the user's own org after a refused login",
@@ -397,7 +476,6 @@ func (s *Service) fallbackMemberSession(
 		AccessToken:     tokens.AccessToken,
 		RefreshToken:    tokens.RefreshToken,
 		ExpiresIn:       tokens.ExpiresIn,
-		Pending:         true,
 		FallbackOrgSlug: member.Organization.Slug,
 	}
 }
@@ -825,6 +903,10 @@ type ProviderOutcome struct {
 	// PendingOrgSlug is the org to NAME on the no-org screen — see
 	// ProviderLoginResult.PendingOrgSlug. Meaningless unless Pending is true.
 	PendingOrgSlug string
+	// Requires2FA / TempToken: see ProviderLoginResult. When set, the token
+	// fields are empty and the handoff carries the challenge instead.
+	Requires2FA bool
+	TempToken   string
 }
 
 // handoffSession is the session a handoff code carries for this outcome. A
@@ -838,6 +920,15 @@ func (o *ProviderOutcome) handoffSession(returnTo string) *authhandoff.Session {
 		ExpiresIn:    o.ExpiresIn,
 		UserUID:      o.UserUID,
 		ReturnTo:     returnTo,
+	}
+
+	if o.Requires2FA {
+		// No session exists yet: the code carries the challenge only.
+		session.AccessToken = ""
+		session.RefreshToken = ""
+		session.ExpiresIn = 0
+		session.Requires2FA = true
+		session.TempToken = o.TempToken
 	}
 
 	if o.Pending {
@@ -878,7 +969,12 @@ func RedirectWithHandoff(
 		return fmt.Errorf("issue handoff code: %w", err)
 	}
 
-	setAccessTokenCookie(writer, req, outcome.AccessToken, outcome.ExpiresIn)
+	// A 2FA challenge has no session yet: the /2fa/verify handler sets the
+	// cookie once the code is accepted.
+	if session.AccessToken != "" {
+		setAccessTokenCookie(writer, req, session.AccessToken, session.ExpiresIn)
+	}
+
 	http.Redirect(writer, req, baseURL+handoffRedirect(code, session.MembershipPending), http.StatusFound)
 
 	return nil

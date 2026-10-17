@@ -178,6 +178,10 @@ var (
 	ErrStatusPageNotFound = errors.New("status page not found")
 	// ErrStatusPageSectionNotFound is returned when a section is not found.
 	ErrStatusPageSectionNotFound = errors.New("status page section not found")
+	// ErrStatusPageResourceNotFound is returned when a resource (component) is
+	// not found in the addressed section. A resource of another section, page
+	// or org answers this too: resource UIDs are public on the status page.
+	ErrStatusPageResourceNotFound = errors.New("status page resource not found")
 	// ErrCheckNotFound is returned when a check is not found.
 	ErrCheckNotFound = errors.New("check not found")
 	// ErrCheckUIDInvalid is returned when an entry in a create-status-page
@@ -2179,23 +2183,49 @@ func (s *Service) CreateResource(
 // reverted. The cosmetic fields (publicName, explanation, autoPublish) are
 // deliberately still writable: the reconciler never touches them, so an
 // operator's edit there has nothing to fight with.
-func (s *Service) assertResourceEditable(
-	ctx context.Context, sectionUID, resourceUID string, req UpdateResourceRequest,
-) error {
+func assertResourceEditable(existing *models.StatusPageResource, req UpdateResourceRequest) error {
 	if req.CheckUID == nil && req.CheckGroupUID == nil && req.Position == nil {
 		return nil
 	}
 
-	// A lookup failure is deliberately NOT reported here: this function only
-	// decides whether the row is off-limits, and the update path below
-	// produces the proper not-found answer for a row that isn't there. Failing
-	// closed instead would turn "resource not found" into a confusing 409.
-	existing, errGet := s.db.GetStatusPageResource(ctx, sectionUID, resourceUID)
-	if errGet == nil && existing != nil && existing.ManagedBySelector {
+	if existing.ManagedBySelector {
 		return ErrResourceManagedBySelector
 	}
 
 	return nil
+}
+
+// loadSectionResource loads a resource of the section, answering
+// ErrStatusPageResourceNotFound when that UID does not live in it. It is the
+// tenancy gate of the resource writes: the page and section were resolved in
+// the caller's org, so a resource found here belongs to that org.
+func (s *Service) loadSectionResource(
+	ctx context.Context, sectionUID, resourceUID string,
+) (*models.StatusPageResource, error) {
+	resource, err := s.db.GetStatusPageResource(ctx, sectionUID, resourceUID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrStatusPageResourceNotFound
+		}
+
+		return nil, err
+	}
+
+	if resource == nil {
+		return nil, ErrStatusPageResourceNotFound
+	}
+
+	return resource, nil
+}
+
+// resourceWriteError maps a section-scoped write that affected no row (the
+// resource vanished after loadSectionResource) to not-found.
+func resourceWriteError(err error) error {
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrStatusPageResourceNotFound
+	}
+
+	return err
 }
 
 // UpdateResource updates a resource. Supplying checkUid or checkGroupUid
@@ -2220,6 +2250,11 @@ func (s *Service) UpdateResource(
 		return StatusPageResourceResponse{}, err
 	}
 
+	existing, err := s.loadSectionResource(ctx, section.UID, resourceUID)
+	if err != nil {
+		return StatusPageResourceResponse{}, err
+	}
+
 	update := models.StatusPageResourceUpdate{
 		PublicName:     req.PublicName,
 		SetAutoPublish: req.AutoPublishSet,
@@ -2228,7 +2263,7 @@ func (s *Service) UpdateResource(
 		Position:       req.Position,
 	}
 
-	if errManaged := s.assertResourceEditable(ctx, section.UID, resourceUID, req); errManaged != nil {
+	if errManaged := assertResourceEditable(existing, req); errManaged != nil {
 		return StatusPageResourceResponse{}, errManaged
 	}
 
@@ -2246,12 +2281,12 @@ func (s *Service) UpdateResource(
 	}
 
 	if errUpdate := s.writeStatusPageResourceRow(
-		ctx, WritePathUpdateResource, page.UID, resourceUID, &update,
+		ctx, WritePathUpdateResource, page.UID, section.UID, existing.UID, &update,
 	); errUpdate != nil {
-		return StatusPageResourceResponse{}, errUpdate
+		return StatusPageResourceResponse{}, resourceWriteError(errUpdate)
 	}
 
-	updated, err := s.db.GetStatusPageResource(ctx, section.UID, resourceUID)
+	updated, err := s.loadSectionResource(ctx, section.UID, existing.UID)
 	if err != nil {
 		return StatusPageResourceResponse{}, err
 	}
@@ -2421,15 +2456,19 @@ func (s *Service) DeleteResource(
 		return err
 	}
 
-	resource, err := s.db.GetStatusPageResource(ctx, section.UID, resourceUID)
-	if err == nil && resource != nil && resource.ManagedBySelector {
+	resource, err := s.loadSectionResource(ctx, section.UID, resourceUID)
+	if err != nil {
+		return err
+	}
+
+	if resource.ManagedBySelector {
 		return ErrResourceManagedBySelector
 	}
 
 	if err := s.deleteStatusPageResourceRow(
-		ctx, WritePathDeleteResource, page.UID, resourceUID,
+		ctx, WritePathDeleteResource, page.UID, section.UID, resource.UID,
 	); err != nil {
-		return err
+		return resourceWriteError(err)
 	}
 
 	// Removing the MANUAL row releases the check back to the selectors: if one

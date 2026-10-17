@@ -27,6 +27,18 @@
 // feature is removed — reusing a retired key risks two unrelated features
 // silently excluding each other during a rolling deploy.
 //
+// # Two-int4 lock classes
+//
+// Per-key transaction locks hash a string key, so they cannot be
+// hand-allocated. They use the TWO-ARGUMENT int4 form,
+// pg_advisory_xact_lock(class, hashtext(key)), whose key space Postgres keeps
+// apart from the single-bigint keys above (pg_locks.objsubid 2 versus 1), so
+// they can never exclude a supervisor. The class id is hand-allocated, from
+// 0x5002_0000 + sequence ("SP 02"). A hash collision inside a class only
+// serializes two unrelated keys; it never breaks correctness:
+//
+//	0x50020001  ClassGlobalCounter  per-key BumpGlobalCounter serialization
+//
 // This convention is also written down in wiki/conventions/database.md.
 package dblock
 
@@ -44,6 +56,11 @@ import (
 // KeyJMAPInbox is the advisory-lock key for the JMAP inbox consumer: only one
 // replica should hold a JMAP session against the shared mailbox at a time.
 const KeyJMAPInbox int64 = 0x5001_0001
+
+// ClassGlobalCounter is the two-int4 advisory-lock class under which
+// db.Service.BumpGlobalCounter serializes increments of one global counter key
+// (spec 2026-10-16-13): pg_advisory_xact_lock(ClassGlobalCounter, hashtext(key)).
+const ClassGlobalCounter int32 = 0x5002_0001
 
 // DefaultRetryInterval is how often a non-holder re-contends for the lock. It
 // doubles as the failover delay when a holder dies, so it is short enough that

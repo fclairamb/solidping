@@ -205,8 +205,11 @@ type Server struct {
 	// SetupRoutes). It is the outermost handler: Server.Handler() and
 	// handlerWithDocsHost's fallthrough both serve this, never s.router
 	// directly, so every caller gets compression on the same terms.
-	handler                  http.Handler
-	config                   *config.Config
+	handler http.Handler
+	config  *config.Config
+	// instanceSMSSender is the instance-level SMS sender; kept so the OVH
+	// delivery callback can be registered once the config overlay is final.
+	instanceSMSSender        smssvc.Sender
 	authService              *auth.Service
 	mcpHandler               *mcp.Handler
 	profilerSrv              *profiler.Server
@@ -444,6 +447,10 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	// resolver owns the DB lookup + credential decrypt (via the integrations
 	// kubernetes package's single chokepoint) so the checker package stays
 	// importable from unit tests without a live database or cluster.
+	// In-cluster mode reads this pod's own service-account token, so it is
+	// an operator opt-in (SP_K8S_ALLOW_IN_CLUSTER, spec 2026-10-16-05).
+	integrationk8s.SetAllowInCluster(cfg.Kubernetes.AllowInCluster)
+
 	checkkubernetes.ClientsetResolverFunc = func(ctx context.Context, clusterUID string) (k8sclient.Interface, error) {
 		return integrationk8s.ResolveClientsetByUID(ctx, dbService, credSvc, clusterUID)
 	}
@@ -452,7 +459,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	// (`tunnelCheckUid` in their config). Same indirection again: it owns the
 	// check lookup + credential decrypt so the checkers only ever consume a
 	// dialer from their context.
-	sshtunnel.ResolverFunc = sshtunnel.NewResolver(dbService, credSvc)
+	sshtunnel.ResolverFunc = sshtunnel.NewResolver(dbService, credSvc, cfg.EnvRefAllowed)
 
 	// Initialize Sentry error tracking
 	if sentryErr := initSentry(cfg.Sentry); sentryErr != nil {
@@ -489,6 +496,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	checksSvc := checks.NewService(
 		dbService, svcList.EventNotifier, credSvc, entitlementsService)
 	checksSvc.SetDeploymentMode(cfg.Deployment.Mode)
+	checksSvc.SetEnvRefAllow(cfg.EnvRefAllowed)
 	// The demo cleanup and private-location monitor deletes notify like a
 	// user's DELETE does (spec 2026-10-08-02).
 	checksSvc.SetCheckDeletedIncidentNotifier(
@@ -515,22 +523,12 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		dbService, credSvc, instanceSMSSender, instanceVoiceCaller, cfg.SMS.Sender,
 	)
 
-	// OVH has no per-job callback field: delivery receipts only arrive if the
-	// SMS account's service-level `callBack` points back here. Register it at
-	// startup, best-effort — an operator can set the same URL in the OVH
-	// control panel, and losing receipts must never stop the process from
-	// booting and paging people.
-	if err := smssvc.ConfigureOVHDeliveryCallback(
-		ctx, instanceSMSSender, ovhsmscb.CallbackURL(cfg.Server.BaseURL, ovhsmscb.ResolveToken(cfg)),
-	); err != nil {
-		slog.WarnContext(ctx, "could not register the OVH SMS delivery callback; "+
-			"set it manually on the SMS account if you want delivery receipts", "error", err)
-	}
-
 	// Create auth service. The entitlements service gates SSO membership
 	// caps inside JoinOrgViaLogin (every OAuth/SAML/LDAP callback) and inside
 	// autoJoinMatchingOrgs.
 	authService := auth.NewService(dbService, cfg.Auth, cfg, jobService, entitlementsService)
+	// PAT revocations are broadcast so every replica evicts its cache.
+	authService.SetEventNotifier(ctx, eventNotifier)
 
 	// Register file storage backends. Idempotent — safe to call once at startup.
 	localfs.Register()
@@ -546,6 +544,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		services:          svcList,
 		aiChecks:          aiChecksSvc,
 		config:            cfg,
+		instanceSMSSender: instanceSMSSender,
 		authService:       authService,
 		profilerSrv:       profiler.New(&cfg.Profiler),
 		customDomainCache: newCustomDomainCache(customDomainCacheTTL),
@@ -761,7 +760,10 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	rootAuth.POST("/request-password-reset", authHandler.RequestPasswordReset)
 	rootAuth.POST("/reset-password", authHandler.ResetPassword)
 	rootAuth.GET("/invite/:token", authHandler.GetInviteInfo)
-	rootAuth.POST("/accept-invite", authHandler.AcceptInvite)
+	// Optional authentication (spec 2026-10-16-06): an invitation for an
+	// existing account is accepted only by that account, so a credential, when
+	// presented, must be validated; a new invitee has none.
+	rootAuth.POST("/accept-invite", authMiddleware.AuthIfPresented(authHandler.AcceptInvite))
 	rootAuth.POST("/2fa/verify", authHandler.Verify2FA)
 	rootAuth.POST("/2fa/recovery", authHandler.Recovery2FA)
 	rootAuth.POST("/passkeys/login/begin", passkeyHandler.LoginBegin)
@@ -1159,6 +1161,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	checksService := checks.NewService(
 		s.dbService, s.services.EventNotifier, s.services.Credentials, s.services.Entitlements)
 	checksService.SetDeploymentMode(s.config.Deployment.Mode)
+	checksService.SetEnvRefAllow(s.config.EnvRefAllowed)
 	checksHandler := checks.NewHandler(checksService, s.config)
 	orgChecks := orgGroup("/orgs/:org/checks")
 	orgChecks.GET("", checksHandler.ListChecks)
@@ -1231,6 +1234,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// endpoints stay on top of it unchanged.
 	discoverySvc := discovery.NewService(
 		s.dbService.DB(), s.dbService, checksService, s.jobSvc, s.services.Credentials,
+		s.services.EgressGuard, s.config.DockerChecksBlocked(),
 	)
 	discoveryHandler := discovery.NewHandler(discoverySvc, s.config)
 	orgDiscovery := orgGroup("/orgs/:org/discovery")
@@ -1309,7 +1313,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// of them, is the only arrangement where that cannot happen by omission.
 	statusSubscriberNotifier := statussubscribers.NewNotifier(
 		s.dbService, s.services.EmailSender, s.services.EmailFormatter,
-		s.config.Server.BaseURL, slog.Default(), s.services.Credentials)
+		s.config.Server.BaseURL, slog.Default(), s.services.Credentials, s.services.EgressGuard)
 
 	incidentPublicationsService := incidentpublications.NewService(
 		s.dbService, s.services.Clock, s.services.Realtime)
@@ -2033,7 +2037,8 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Status page subscribers (public email/RSS subscriptions). The handler is
 	// shared by the authed admin routes (below) and the public routes (further
 	// down, outside RequireAuth).
-	statusSubscribersService := statussubscribers.NewService(s.dbService, s.services.Credentials)
+	statusSubscribersService := statussubscribers.NewService(s.dbService, s.services.Credentials,
+		statussubscribers.WithEgressGuard(s.services.EgressGuard))
 	statusSubscribersHandler := statussubscribers.NewHandler(
 		statusSubscribersService, s.dbService, s.services.EmailSender, s.services.EmailFormatter, s.config)
 	// Authed admin: list (count + redactable addresses) and remove.
@@ -2218,7 +2223,16 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	slackIntegration.GET("/install", slackHandler.Install)
 	slackIntegration.GET("/oauth", slackHandler.OAuthCallback)
 	slackIntegration.GET("/socket/status", slackHandler.GetSocketStatus)
-	// Apply signature verification middleware to Slack webhooks
+	// Apply signature verification middleware to Slack webhooks. It fails
+	// closed: with no signing secret every request gets a 401. Socket Mode
+	// never goes through these routes, so only an HTTP-mode install is hurt.
+	// The secret is read at boot (the system-parameter overlay runs once), so
+	// setting it later from Server settings needs a restart.
+	if s.config.Slack.Enabled && !s.config.Slack.SocketModeEnabled && s.config.Slack.SigningSecret == "" {
+		slog.WarnContext(ctx, "Slack HTTP endpoints will reject every request: no signing secret is set. "+
+			"Set SP_SLACK_SIGNING_SECRET (or slack.signing_secret) and restart, or use Socket Mode")
+	}
+
 	slackIntegration.POST("/events", slackHandler.VerifyMiddleware(slackHandler.HandleEvents))
 	slackIntegration.POST("/command", slackHandler.VerifyMiddleware(slackHandler.HandleCommand))
 	slackIntegration.POST("/interaction", slackHandler.VerifyMiddleware(slackHandler.HandleInteraction))
@@ -2289,7 +2303,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// high-entropy path token; an unknown token 404s. The route is registered
 	// unconditionally so a token rotation needs no restart-order coordination —
 	// the handler itself refuses every request while no token is configured.
-	ovhSMSHandler := ovhsmscb.NewHandler(s.dbService, ovhsmscb.ResolveToken(s.config))
+	ovhSMSHandler := ovhsmscb.NewHandler(s.dbService, s.ovhDLRToken())
 	ovhSMSIntegration := api.NewGroup("/integrations/ovhsms")
 	ovhSMSIntegration.GET(ovhsmscb.DLRPath, ovhSMSHandler.HandleDLR)
 	ovhSMSIntegration.POST(ovhsmscb.DLRPath, ovhSMSHandler.HandleDLR)
@@ -4302,6 +4316,10 @@ func (s *Server) InitializeSystemConfig(ctx context.Context, cfg *config.Config)
 	// Log the resolved /metrics scrape-token state now that cfg carries the
 	// overlaid metrics.scrape_token system parameter (spec 2026-09-25-25).
 	logMetricsScrapeTokenState(ctx, cfg)
+
+	// Register the OVH delivery-receipt callback now that the JWT secret and
+	// base URL are final (spec 2026-10-12-06).
+	s.configureOVHDeliveryCallback(ctx)
 
 	return nil
 }

@@ -2,6 +2,9 @@ package ovhsmscb
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -250,6 +253,73 @@ func TestResolveToken(t *testing.T) {
 	r.NotEqual(first, ResolveToken(rotated), "rotating the JWT secret must rotate the URL")
 
 	r.Empty(ResolveToken(&config.Config{}))
+
+	for _, secret := range []string{config.DefaultJWTSecret, "  " + config.DefaultJWTSecret + " "} {
+		def := &config.Config{}
+		def.Auth.JWTSecret = secret
+		r.Empty(ResolveToken(def), "the public default secret must never derive a token")
+	}
+}
+
+func hmacToken(secret string) string {
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte("solidping:ovhsms:dlr"))
+
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+func TestHandleDLRTokenSources(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		explicit  string
+		jwtSecret string
+		candidate func(resolved string) string
+		wantCode  int
+	}{
+		{"explicit token", testToken, "", func(string) string { return testToken }, http.StatusNoContent},
+		{
+			"explicit wins over derived", testToken, "jwt-1",
+			func(string) string { return hmacToken("jwt-1") }, http.StatusNotFound,
+		},
+		{"derived token", "", "random-jwt", func(r string) string { return r }, http.StatusNoContent},
+		{
+			"derived from another secret", "", "random-jwt",
+			func(string) string { return hmacToken("other") }, http.StatusNotFound,
+		},
+		{
+			"default secret never accepted", "", config.DefaultJWTSecret,
+			func(string) string { return hmacToken(config.DefaultJWTSecret) }, http.StatusNotFound,
+		},
+		{
+			"explicit token trimmed", "  " + testToken + " ", "",
+			func(string) string { return testToken }, http.StatusNoContent,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := &config.Config{}
+			cfg.SMS.OVH.DLRToken = tt.explicit
+			cfg.Auth.JWTSecret = tt.jwtSecret
+
+			resolved := ResolveToken(cfg)
+			env := setupDLR(t, resolved)
+
+			rec := env.get(t, "/api/v1/integrations/ovhsms/dlr/"+tt.candidate(resolved)+"?id=424242&ptt=4")
+			require.Equal(t, tt.wantCode, rec.Code)
+
+			if tt.wantCode == http.StatusNotFound {
+				require.Empty(t, rec.Body.String())
+				require.Empty(t, env.deliveryBody(t))
+			} else {
+				require.Contains(t, env.deliveryBody(t), "delivered")
+			}
+		})
+	}
 }
 
 func TestCallbackURL(t *testing.T) {

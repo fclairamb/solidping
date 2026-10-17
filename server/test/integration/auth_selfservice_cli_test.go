@@ -275,3 +275,48 @@ func TestCLICoverage_InviteAcceptInvite(t *testing.T) {
 	_, err = loginClient.Login(ctx, TestOrgSlug, inviteEmail, inviteePass)
 	r.NoError(err)
 }
+
+// TestCLICoverage_AcceptInviteExistingAccount: an invitation for an existing
+// account is never accepted on the token alone (spec 2026-10-16-06). The
+// public client is told to sign in, and a signed-in account that is not the
+// invitee is refused.
+func TestCLICoverage_AcceptInviteExistingAccount(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ts := NewTestServer(t)
+	ctx := t.Context()
+
+	const existingEmail = "cli-existing@acme.com"
+	r.NoError(ts.Server.DBService().CreateUser(ctx, models.NewUser(existingEmail)))
+
+	adminClient := cliCovAuthedClient(ctx, t, ts)
+	createResp, err := adminClient.CreateInvitationWithResponse(ctx, TestOrgSlug,
+		client.CreateInvitationJSONRequestBody{Email: openapi_types.Email(existingEmail)})
+	r.NoError(err)
+	r.Equal(201, createResp.StatusCode())
+	inviteToken := createResp.JSON201.Token
+
+	password := "whatever-password-1"
+	publicResp, err := ts.NewClient().AcceptInviteWithResponse(ctx, client.AcceptInviteJSONRequestBody{
+		Token: inviteToken, Password: &password,
+	})
+	r.NoError(err)
+	r.Equal(401, publicResp.StatusCode())
+	r.NotNil(publicResp.JSON401)
+	r.Equal(client.ErrorCodeINVITELOGINREQUIRED, publicResp.JSON401.Code)
+	r.Nil(publicResp.JSON200)
+
+	adminResp, err := adminClient.AcceptInviteWithResponse(ctx, client.AcceptInviteJSONRequestBody{
+		Token: inviteToken,
+	})
+	r.NoError(err)
+	r.Equal(403, adminResp.StatusCode())
+	r.NotNil(adminResp.JSON403)
+	r.Equal(client.ErrorCodeINVITEEMAILMISMATCH, adminResp.JSON403.Code)
+
+	// Neither refusal consumed the invitation.
+	infoResp, err := ts.NewClient().GetInviteWithResponse(ctx, inviteToken)
+	r.NoError(err)
+	r.Equal(200, infoResp.StatusCode())
+}

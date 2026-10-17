@@ -229,7 +229,7 @@ could not open on Postgres at all.
 ## Reporting
 
 - **Notification wording** must not resemble an outage: "acme.com is degraded: 7
-  failures in the last 60 probes (93.8%). Currently up." plus a `graphFrom` /
+  failures in the last 60 probes (93.8% available). Currently up." plus a `graphFrom` /
   `graphTo` deep link into the window. `internal/notifications/degraded.go`,
   wired into the Slack sender (amber, not red) and two dedicated email templates.
 - **Chart**: an amber `ReferenceArea` over the episode's span. Isolated red dots

@@ -51,6 +51,27 @@ are masked as `***` (a generated `${var:…}` value is not a secret and is shown
 as is) — a plan gets pasted into tickets and CI logs, and must
 never be the thing that publishes a credential.
 
+### `${env:}` references need the operator allowlist
+
+A `${env:NAME}` reference only resolves for a name listed in
+`SP_CHECK_ENV_ALLOWLIST` (comma-separated, empty by default) on the process that
+runs the check — the server, and each private-location agent for its own checks.
+`sp checks import` and `sp apply`, `--dry-run` included, refuse a file whose
+`${env:NAME}` the server does not list, or lists but does not set, with
+`VALIDATION_ERROR`; the two cases fail identically, so a plan never reveals
+whether a server variable exists. Prefer `${param:…}` for anything the
+organization should manage itself. Details:
+[`${env:}` only reads allowlisted variables](/cli#env-allowlist).
+
+:::warning Upgrading to a version with the allowlist
+Existing `${env:NAME}` references are kept, but stop resolving until the name is
+listed: those checks go red with `unresolved secret reference: env:NAME` on
+their next run, and re-applying a file that carries them is refused. Set
+`SP_CHECK_ENV_ALLOWLIST` on the server and on every private-location agent
+before or right after upgrading. No migration is needed. See the
+[upgrade note](/cli#env-allowlist) for the secret-rotation advice.
+:::
+
 ### Two things a plan will tell you about
 
 **`unmanaged` is drift, not agreement.** It means the check exists but no

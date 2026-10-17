@@ -63,7 +63,7 @@ func DispatchCommand(ctx context.Context, svc *Service, cmd *Command) (*MessageR
 // out and showing the user an error even though the check was actually
 // created. So the handler ACKs immediately (ephemeral) and finishes the real
 // work in a detached goroutine, reporting the outcome — success or failure,
-// never a silent drop — via cmd.ResponseURL (postResponseURL), Slack's
+// never a silent drop — via cmd.ResponseURL (postResponseURLWith), Slack's
 // documented mechanism for answering after the initial window.
 func (h *Handler) handleCheckCommand(ctx context.Context, cmd *Command) (*MessageResponse, error) {
 	text := strings.TrimSpace(cmd.Text)
@@ -96,6 +96,15 @@ func (h *Handler) handleCheckCommand(ctx context.Context, cmd *Command) (*Messag
 		return h.createCheckAndReply(ctx, cmd, normalizedURL, parsedURL), nil
 	}
 
+	if !isSlackResponseURL(cmd.ResponseURL) {
+		// A response_url outside hooks.slack.com never comes from Slack: answer
+		// synchronously, like a missing one, and make no outbound call to it.
+		slog.WarnContext(ctx, "/solidping check invoked with a non-Slack response_url; answering synchronously",
+			"team_id", cmd.TeamID)
+
+		return h.createCheckAndReply(ctx, cmd, normalizedURL, parsedURL), nil
+	}
+
 	// Detach from the request context: it is normally canceled once this
 	// handler returns and the HTTP response is written, which would abort
 	// the goroutine's work before it gets to report anything. A fresh,
@@ -115,7 +124,7 @@ func (h *Handler) handleCheckCommand(ctx context.Context, cmd *Command) (*Messag
 // false when text could not be turned into a valid http(s) URL.
 func normalizeCheckURL(text string) (string, *url.URL, bool) {
 	parsedURL, parseErr := url.Parse(text)
-	if parseErr != nil || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
+	if parseErr != nil || (parsedURL.Scheme != "http" && parsedURL.Scheme != schemeHTTPS) {
 		if !strings.HasPrefix(text, "http://") && !strings.HasPrefix(text, "https://") {
 			text = "https://" + text
 			parsedURL, parseErr = url.Parse(text)
@@ -140,7 +149,7 @@ func (h *Handler) finishCheckCommandAsync(
 
 	resp := h.createCheckAndReply(ctx, cmd, normalizedURL, parsedURL)
 
-	if err := postResponseURL(ctx, cmd.ResponseURL, resp); err != nil {
+	if err := postResponseURLWith(ctx, h.responseClient(), cmd.ResponseURL, resp); err != nil {
 		slog.ErrorContext(ctx, "Failed to post /solidping check follow-up to response_url",
 			"team_id", cmd.TeamID, "channel_id", cmd.ChannelID, "error", err)
 	}

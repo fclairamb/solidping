@@ -102,12 +102,16 @@ POST https://hc-ping.com/{uuid} (with body)
 
 ### SaaS Plans
 
-| Plan | Price/Month | Checks | Team Members | Ping Rate | Log Retention |
-|------|-------------|--------|--------------|-----------|---------------|
-| **Free** | $0 | 20 | - | 100/check/day | Limited |
-| **Hobbyist** | $5 | 20 | 3 | 1000/check/day | 1 year |
-| **Business** | $20 | 100 | 10 | 1000/check/day | 1 year |
-| **Business Plus** | $80 | 1,000 | Unlimited | 1000/check/day | 1 year |
+| Plan | Price/Month | Checks | Log entries per check | Alert credits |
+|------|-------------|--------|-----------------------|---------------|
+| **Hobbyist** | $0 | 20 | 100 | — |
+| **Supporter** | $5 | 20 | 100 | — (same limits as Hobbyist: "But what's the point?") |
+| **Business** | $20 ($16 annual) | 100 | 1,000 | 50 SMS/WhatsApp, 20 calls |
+| **Business Plus** | $80 ($64 annual) | 1,000 | 1,000 | 500 SMS/WhatsApp, 100 calls |
+
+*Corrected 2026-10-15 from healthchecks.io/pricing: the $5 plan is "Supporter",
+not "Hobbyist" (Hobbyist is the free plan), and the page lists no team-member
+counts or ping rates. The previous table carried both.*
 
 ### Self-Hosted
 

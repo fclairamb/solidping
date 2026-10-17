@@ -41,8 +41,9 @@ Uptime Kuma is a fancy, self-hosted monitoring tool created by Louis Lam in 2021
 11. **Database** - Direct database connection monitoring
 12. **Domain Expiration** - WHOIS-based domain expiry monitoring (v2.1+)
 13. **NTP** - Network Time Protocol monitoring (v2.5.0+, PR #7214)
+14. **SFTP** - password or private-key auth (v2.5.4, 2026-09-11, PR #7034)
 
-**Notable**: 13 monitor types covering web, network, protocol, and specialized monitoring
+**Notable**: 14 monitor types (13 until 2.5.4) covering web, network, protocol, and specialized monitoring
 
 ### Recent Additions (v2.0-v2.5)
 - **v2.0** (Oct 2025): MariaDB support, rootless Docker images, refreshed UI
@@ -56,7 +57,12 @@ Uptime Kuma is a fancy, self-hosted monitoring tool created by Louis Lam in 2021
   ClickUp, TurboSMTP among them) plus bug fixes. **Broke the non-Docker
   install.**
 - **v2.5.2** (2026-08-20): fixes the bare-metal installation that 2.5.1 broke
-- **v2.5.3** (2026-08-22, current): version-numbering fix
+- **v2.5.3** (2026-08-22): version-numbering fix
+- **v2.5.4** (2026-09-11): **SFTP monitor type** (#7034), notification providers
+  (Signalgrid, Notify!, Amoot SMS), two security fixes (jsonata CVE, a DoS advisory)
+- **v2.5.5**: TCP monitor memory leak fix. **v2.5.6** (2026-10-09, current): badge
+  fix, dependency updates. 92,481★ on 2026-10-15 (90,490 on 2026-08-23).
+  Count is now **14**; the ratio is 43:14.
 
 > **Cadence note (2026-08-05, extended 2026-08-23):** the monitor-type count
 > moved 12 → 13 on 2026-08-01. Any comparison asset that hard-codes this number

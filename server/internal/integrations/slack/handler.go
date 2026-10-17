@@ -61,6 +61,19 @@ type Handler struct {
 	// built via NewHandler (the real app_mention path) never sets this, so
 	// that transport's behavior is unchanged.
 	respond func(msg *MessageResponse) error
+
+	// responseURLClient, when set, replaces responseURLHTTPClient for the
+	// /solidping check follow-up. Tests inject a recording transport here.
+	responseURLClient *http.Client
+}
+
+// responseClient returns the client used to post to a response_url.
+func (h *Handler) responseClient() *http.Client {
+	if h.responseURLClient != nil {
+		return h.responseURLClient
+	}
+
+	return responseURLHTTPClient
 }
 
 // NewHandler creates a new Slack handler.
@@ -231,6 +244,8 @@ func (h *Handler) OAuthCallback(writer http.ResponseWriter, req *http.Request) e
 		Pending:         result.Pending,
 		FallbackOrgSlug: result.FallbackOrgSlug,
 		PendingOrgSlug:  result.OrgSlug,
+		Requires2FA:     result.Requires2FA,
+		TempToken:       result.TempToken,
 	}
 
 	if err := auth.RedirectWithHandoff(writer, req, h.svc.db,

@@ -154,7 +154,7 @@ func TestLoadConfigRejections(t *testing.T) {
 				creds = &stubCreds{}
 			}
 
-			_, err := sshtunnel.LoadConfig(t.Context(), tt.loader, creds, testOrgUID, testCheckUID)
+			_, err := sshtunnel.LoadConfig(t.Context(), tt.loader, creds, nil, testOrgUID, testCheckUID)
 			r.Error(err)
 			r.ErrorIs(err, tt.wantErr)
 			// Every rejection must be classifiable as a tunnel failure, which is
@@ -180,7 +180,7 @@ func TestLoadConfigDecryptsPrivateConfig(t *testing.T) {
 		t.Context(),
 		&stubLoader{check: check},
 		&stubCreds{enabled: true, private: map[string]any{"password": "from-vault"}},
-		testOrgUID, testCheckUID,
+		nil, testOrgUID, testCheckUID,
 	)
 	r.NoError(err)
 	r.Equal("from-vault", cfg.Password)
@@ -215,7 +215,7 @@ func TestLoadConfigDecryptFailures(t *testing.T) {
 			check.ConfigPrivate = &envelope
 
 			_, err := sshtunnel.LoadConfig(
-				t.Context(), &stubLoader{check: check}, tt.creds, testOrgUID, testCheckUID,
+				t.Context(), &stubLoader{check: check}, tt.creds, nil, testOrgUID, testCheckUID,
 			)
 			r.ErrorIs(err, sshtunnel.ErrSecretsUnavailable)
 		})
@@ -236,7 +236,7 @@ func TestLoadConfigPlaintextFallback(t *testing.T) {
 			"host": "h", "username": "u", "password": "plain", "expected_fingerprint": "SHA256:abc",
 		})},
 		&stubCreds{enabled: false},
-		testOrgUID, testCheckUID,
+		nil, testOrgUID, testCheckUID,
 	)
 	r.NoError(err)
 	r.Equal("plain", cfg.Password)
@@ -265,7 +265,7 @@ func TestLoadConfigOpensPlaintextEnvelopeWithoutKey(t *testing.T) {
 		t.Context(),
 		&stubLoader{check: check},
 		&stubCreds{enabled: false},
-		testOrgUID, testCheckUID,
+		nil, testOrgUID, testCheckUID,
 	)
 	r.NoError(err)
 	r.Equal("from-plaintext-envelope", cfg.Password)
@@ -287,7 +287,7 @@ func TestLoadConfigOpensPlaintextEnvelopeWithNilCreds(t *testing.T) {
 	})
 	check.ConfigPrivate = &envelope
 
-	cfg, err := sshtunnel.LoadConfig(t.Context(), &stubLoader{check: check}, nil, testOrgUID, testCheckUID)
+	cfg, err := sshtunnel.LoadConfig(t.Context(), &stubLoader{check: check}, nil, nil, testOrgUID, testCheckUID)
 	r.NoError(err)
 	r.Equal("from-plaintext-envelope", cfg.Password)
 }
@@ -299,7 +299,7 @@ func TestResolveDialsWithPassword(t *testing.T) {
 	srv := sshtunneltest.Start(t)
 	target := newEchoTarget(t, srv, "private.invalid:9000")
 
-	resolver := sshtunnel.NewResolver(&stubLoader{check: sshCheck(baseConfig(srv))}, &stubCreds{})
+	resolver := sshtunnel.NewResolver(&stubLoader{check: sshCheck(baseConfig(srv))}, &stubCreds{}, nil)
 
 	dialer, closer, err := resolver(t.Context(), testOrgUID, testCheckUID)
 	r.NoError(err)
@@ -328,7 +328,7 @@ func TestResolveDialsWithKeyboardInteractiveOnlyServer(t *testing.T) {
 	srv := sshtunneltest.StartKeyboardInteractiveOnly(t)
 	target := newEchoTarget(t, srv, "private.invalid:9000")
 
-	resolver := sshtunnel.NewResolver(&stubLoader{check: sshCheck(baseConfig(srv))}, &stubCreds{})
+	resolver := sshtunnel.NewResolver(&stubLoader{check: sshCheck(baseConfig(srv))}, &stubCreds{}, nil)
 
 	dialer, closer, err := resolver(t.Context(), testOrgUID, testCheckUID)
 	r.NoError(err)
@@ -354,7 +354,7 @@ func TestResolveRejectsBadPasswordKeyboardInteractiveOnlyServer(t *testing.T) {
 	config := baseConfig(srv)
 	config["password"] = "wrong"
 
-	resolver := sshtunnel.NewResolver(&stubLoader{check: sshCheck(config)}, &stubCreds{})
+	resolver := sshtunnel.NewResolver(&stubLoader{check: sshCheck(config)}, &stubCreds{}, nil)
 
 	_, _, err := resolver(t.Context(), testOrgUID, testCheckUID)
 	r.Error(err)
@@ -372,7 +372,7 @@ func TestResolveDialsWithPrivateKey(t *testing.T) {
 	delete(config, "password")
 	config["private_key"] = srv.ClientKeyPEM
 
-	resolver := sshtunnel.NewResolver(&stubLoader{check: sshCheck(config)}, &stubCreds{})
+	resolver := sshtunnel.NewResolver(&stubLoader{check: sshCheck(config)}, &stubCreds{}, nil)
 
 	dialer, closer, err := resolver(t.Context(), testOrgUID, testCheckUID)
 	r.NoError(err)
@@ -403,7 +403,7 @@ func TestResolveRejectsFingerprintMismatch(t *testing.T) {
 	config := baseConfig(srv)
 	config["expected_fingerprint"] = "SHA256:" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 
-	resolver := sshtunnel.NewResolver(&stubLoader{check: sshCheck(config)}, &stubCreds{})
+	resolver := sshtunnel.NewResolver(&stubLoader{check: sshCheck(config)}, &stubCreds{}, nil)
 
 	_, _, err := resolver(t.Context(), testOrgUID, testCheckUID)
 	r.Error(err)
@@ -420,7 +420,7 @@ func TestResolveRejectsBadPassword(t *testing.T) {
 	config := baseConfig(srv)
 	config["password"] = "wrong"
 
-	resolver := sshtunnel.NewResolver(&stubLoader{check: sshCheck(config)}, &stubCreds{})
+	resolver := sshtunnel.NewResolver(&stubLoader{check: sshCheck(config)}, &stubCreds{}, nil)
 
 	_, _, err := resolver(t.Context(), testOrgUID, testCheckUID)
 	r.Error(err)
@@ -462,7 +462,7 @@ func TestDialerClassifiesForwardFailures(t *testing.T) {
 			srv := sshtunneltest.Start(t)
 			srv.Reject("private.invalid:9000", tt.rejection)
 
-			resolver := sshtunnel.NewResolver(&stubLoader{check: sshCheck(baseConfig(srv))}, &stubCreds{})
+			resolver := sshtunnel.NewResolver(&stubLoader{check: sshCheck(baseConfig(srv))}, &stubCreds{}, nil)
 
 			dialer, closer, err := resolver(t.Context(), testOrgUID, testCheckUID)
 			r.NoError(err)
@@ -569,10 +569,19 @@ func TestLoadConfigMaterializesSecretReferences(t *testing.T) {
 	})
 
 	cfg, err := sshtunnel.LoadConfig(
-		t.Context(), &stubLoader{check: check}, &stubCreds{enabled: true}, testOrgUID, testCheckUID)
+		t.Context(), &stubLoader{check: check}, &stubCreds{enabled: true},
+		secretref.AllowEnvNames("SP_TEST_BASTION_PASSWORD"), testOrgUID, testCheckUID)
 	r.NoError(err)
 	r.Equal("from-the-environment", cfg.Password,
 		"the reference must be resolved on the process that will dial")
+
+	// Regression (spec 2026-10-16-03): the same variable, set on the process
+	// but NOT on the operator allowlist, must not resolve.
+	_, err = sshtunnel.LoadConfig(
+		t.Context(), &stubLoader{check: check}, &stubCreds{enabled: true}, nil, testOrgUID, testCheckUID)
+	r.ErrorIs(err, secretref.ErrUnresolved)
+	r.Contains(err.Error(), "unresolved secret reference: env:SP_TEST_BASTION_PASSWORD")
+	r.NotContains(err.Error(), "from-the-environment")
 }
 
 // TestLoadConfigRefusesAnUnresolvableReference is the failure half: a reference
@@ -593,7 +602,7 @@ func TestLoadConfigRefusesAnUnresolvableReference(t *testing.T) {
 		})
 
 		_, err := sshtunnel.LoadConfig(
-			t.Context(), &stubLoader{check: check}, &stubCreds{enabled: true}, testOrgUID, testCheckUID)
+			t.Context(), &stubLoader{check: check}, &stubCreds{enabled: true}, nil, testOrgUID, testCheckUID)
 		r.ErrorIsf(err, secretref.ErrUnresolved, "%s must fail loudly", ref)
 
 		// Classified as a tunnel error, which is what earns the distinct
@@ -609,6 +618,6 @@ func TestLoadConfigRefusesAnUnresolvableReference(t *testing.T) {
 	})
 
 	_, err := sshtunnel.LoadConfig(
-		t.Context(), &stubLoader{check: check}, &stubCreds{enabled: true}, testOrgUID, testCheckUID)
+		t.Context(), &stubLoader{check: check}, &stubCreds{enabled: true}, nil, testOrgUID, testCheckUID)
 	r.Contains(err.Error(), "unresolved secret reference: param:bastion-password")
 }

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/notifications"
 	"github.com/fclairamb/solidping/server/internal/servicesig"
 )
 
@@ -35,6 +36,10 @@ const (
 	// read for the log line. A misconfigured endpoint answering with a 5 MB
 	// HTML error page must not end up in the server log.
 	maxErrorBodyBytes = 512
+	// maxDrainBytes bounds how much of a response body is discarded before the
+	// connection is closed, so it can be reused without reading an unbounded
+	// stream.
+	maxDrainBytes = 64 << 10
 	// slackMarkdownType is Slack's block-kit text type.
 	slackMarkdownType = "mrkdwn"
 	// deliveryContentType is the body type for every channel — both the
@@ -179,7 +184,17 @@ func slackPayloadFor(event *UpdateEvent) slackPayload {
 // a receiver that already verifies SolidPing's billing calls needs no second
 // implementation. Slack deliveries carry them too — Slack ignores unknown
 // headers, and sending them unconditionally keeps one code path.
+//
+// The URL is checked against the egress policy first. A refusal is returned
+// like a non-2xx answer, so it counts against the circuit breaker: an endpoint
+// the policy refuses is a bad endpoint, not a local configuration fault, and
+// after maxFailuresBeforeDisable refusals the subscription is disabled with
+// the reason in the event.
 func (n *Notifier) post(ctx context.Context, secrets endpointSecrets, body []byte) error {
+	if err := notifications.ValidateSenderURL(ctx, n.guard, secrets.URL); err != nil {
+		return fmt.Errorf("deliver: %w", err)
+	}
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, secrets.URL, bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("build delivery request: %w", err)
@@ -202,7 +217,12 @@ func (n *Notifier) post(ctx context.Context, secrets endpointSecrets, body []byt
 		return fmt.Errorf("deliver: %w", err)
 	}
 
-	defer func() { _, _ = io.Copy(io.Discard, resp.Body); _ = resp.Body.Close() }()
+	// The drain is bounded: a receiver streaming an endless body must not keep
+	// this goroutine reading until the client timeout.
+	defer func() {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxDrainBytes))
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices {
 		return nil

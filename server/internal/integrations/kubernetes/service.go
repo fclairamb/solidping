@@ -2,9 +2,12 @@ package kubernetes
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"k8s.io/client-go/kubernetes"
+
+	"github.com/fclairamb/solidping/server/internal/egress"
 )
 
 // ServerVersionResult is the outcome of a successful connection probe — the
@@ -21,7 +24,8 @@ type ServerVersionResult struct {
 // monitored resources surface later at check time; this probe proves the
 // connection itself is wired up.
 //
-// Returns the server version on success, or a wrapped transport/auth error.
+// Returns the server version on success, the *egress.DeniedError when the
+// guard on ctx refused the API server, or a wrapped transport/auth error.
 func ValidateConnection(ctx context.Context, clientset kubernetes.Interface) (*ServerVersionResult, error) {
 	if clientset == nil {
 		return nil, fmt.Errorf("%w: nil clientset", ErrMissingCredentials)
@@ -37,6 +41,14 @@ func ValidateConnection(ctx context.Context, clientset kubernetes.Interface) (*S
 
 	version, err := clientset.Discovery().ServerVersion()
 	if err != nil {
+		// An egress refusal reads as the policy's own message, which names the
+		// host and never the address: the raw client-go error would echo the
+		// dialed URL and become an internal-network oracle.
+		var denied *egress.DeniedError
+		if errors.As(err, &denied) {
+			return nil, denied
+		}
+
 		return nil, fmt.Errorf("kubernetes: validate connection: %w", err)
 	}
 
