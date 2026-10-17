@@ -45,7 +45,8 @@
   --color-secondary-foreground: var(--secondary-foreground);
   --color-secondary: var(--secondary);
   --color-primary-foreground: var(--primary-foreground);
-  --color-gradient-foreground: var(--gradient-foreground);
+  --color-primary-fill: var(--primary-fill);
+  --color-primary-fill-foreground: var(--primary-fill-foreground);
   --color-primary: var(--primary);
   --color-brand: var(--brand);
   --color-brand-foreground: var(--brand-foreground);
@@ -60,33 +61,16 @@
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
 
-  /* Tinted elevation — shadows carry subtle slate depth,
-     which reads as "premium" without visual clutter. */
-  --shadow-primary: 0 8px 16px -4px color-mix(in oklab, var(--primary) 15%, transparent),
-    0 4px 8px -4px color-mix(in oklab, var(--primary) 11%, transparent);
-  --shadow-primary-hover: 0 12px 24px -6px color-mix(in oklab, var(--primary) 22%, transparent),
-    0 6px 12px -6px color-mix(in oklab, var(--primary) 14%, transparent);
-  --shadow-destructive: 0 8px 16px -4px color-mix(in oklab, var(--destructive) 15%, transparent),
-    0 4px 8px -4px color-mix(in oklab, var(--destructive) 11%, transparent);
-  --shadow-destructive-hover: 0 12px 24px -6px color-mix(in oklab, var(--destructive) 22%, transparent),
-    0 6px 12px -6px color-mix(in oklab, var(--destructive) 14%, transparent);
-  /* The 1px inner top highlight of the gradient default Button: it reads as
-     a lit top edge on the saturated fill. Consumed as inset-shadow-highlight,
-     which composes with shadow-primary (Tailwind keeps them in separate
-     box-shadow layers). */
-  --inset-shadow-highlight: inset 0 1px 0 rgb(255 255 255 / 0.22);
-  /* The page-header icon tile (shadow-tile) and the hero KPI tile
-     (shadow-hero): a single soft drop tinted with --primary, tighter than
-     shadow-primary so it reads as the tile's own glow, not elevation. */
-  --shadow-tile: 0 8px 18px -8px color-mix(in oklab, var(--primary) 70%, transparent);
-  --shadow-hero: 0 14px 28px -12px color-mix(in oklab, var(--primary) 60%, transparent);
-  --shadow-card: 0 1px 3px 0 rgba(15, 23, 42, 0.04), 0 4px 12px -2px rgba(15, 23, 42, 0.05);
-  --shadow-card-hover: 0 4px 6px -1px rgba(15, 23, 42, 0.06), 0 12px 24px -4px rgba(15, 23, 42, 0.08);
+  /* Elevation is neutral and shallow: a surface reads from its hairline
+     border first, the drop only separates it from the page. Hover deepens
+     the shadow and never moves the element. */
+  --shadow-card: 0 1px 2px 0 rgba(15, 23, 42, 0.05);
+  --shadow-card-hover: 0 1px 2px 0 rgba(15, 23, 42, 0.05), 0 6px 16px -6px rgba(15, 23, 42, 0.12);
 }
 
 :root {
-  /* Primary: electric blue. The flat fill underneath every gradient, the
-     link / active-tab text color, the focus ring and chart-1. */
+  /* Primary: electric blue. The link / active-tab text color, the focus
+     ring and chart-1. Solid fills use --primary-fill. */
   --primary: oklch(0.55 0.22 262);
   --primary-foreground: oklch(0.99 0 0);
 
@@ -192,27 +176,18 @@
   /* Degraded spans on the response-time chart: the status-warning amber. */
   --chart-degraded: oklch(0.75 0.18 85);
 
-  /* Gradients (electric identity). Rationed: primary actions, the "on" state
-     of a few controls, the page-header icon tile, one hero tile per page and
-     the page glow. Cards, tables, forms, popovers, dialogs and segmented
-     controls stay flat. Identical in both themes.
-     --primary-gradient carries TEXT (default button, default badge): its
-     stops are dark enough for white labels (>= 4.4:1 at every stop).
-     --accent-gradient is brighter and DECORATIVE only (switch, checkbox,
-     progress, stepper, header tile): white text on its cyan start is ~2.5:1,
-     so never put a label on it.
-     --hero-gradient (the hero KPI tile): white is ~3.4:1 on its cyan start,
-     enough for LARGE text only (>= 24px, or >= 18.66px bold); small labels
-     go over its darker half, which is >= 4.5:1 from ~30% of the way on. */
-  --primary-gradient: linear-gradient(135deg, oklch(0.56 0.17 242) 0%, oklch(0.53 0.22 262) 50%, oklch(0.48 0.23 276) 100%);
-  --accent-gradient: linear-gradient(135deg, oklch(0.7 0.15 225) 0%, oklch(0.57 0.22 258) 50%, oklch(0.5 0.23 275) 100%);
-  --hero-gradient: linear-gradient(135deg, oklch(0.62 0.17 232), oklch(0.5 0.23 265) 60%, oklch(0.38 0.19 280));
+  /* Primary fill: the solid blue of the primary button, the default badge
+     and the "on" state of switches, checkboxes, progress bars and steppers.
+     A token of its own because dark mode's --primary is a LIGHT blue meant
+     for text; fills stay saturated in both themes so a white label clears
+     4.5:1 at rest and on hover (src/theme-tokens.test.ts). */
+  --primary-fill: oklch(0.53 0.2 262);
+  --primary-fill-foreground: oklch(1 0 0);
+
+  /* The page glow behind the auth screens' form column (and /no-org). The
+     operator app itself stays flat. */
   --page-glow: radial-gradient(45% 200px at 12% 0, oklch(0.7 0.15 225 / 0.13), transparent 70%),
     radial-gradient(40% 180px at 65% 0, oklch(0.5 0.23 275 / 0.09), transparent 70%);
-  /* Text and icons on any of the gradients. Pure white rather than 0.99:
-     the primary-gradient start stop clips to #007bce, where 0.99 gives
-     4.31:1 and pure white 4.44:1. */
-  --gradient-foreground: oklch(1 0 0);
 
   --radius: 0.625rem;
 }
@@ -221,7 +196,7 @@
 .dark {
   /* A LIGHT electric blue: text-primary (links, the active tab, the link
      button) is far more common than a solid bg-primary fill, and this reads
-     ~8:1 on the dark page. The gradients carry the saturated blue on
+     ~8:1 on the dark page. --primary-fill carries the saturated blue on
      buttons; a solid bg-primary fill keeps dark text (--primary-foreground). */
   --primary: oklch(0.72 0.15 252);
   --primary-foreground: oklch(0.16 0.03 262);
@@ -281,13 +256,12 @@
   --chart-5: oklch(0.65 0.17 285);
   --chart-degraded: oklch(0.8 0.16 85);
 
-  /* Same gradients as light; the page glow is stronger on the dark page. */
-  --primary-gradient: linear-gradient(135deg, oklch(0.56 0.17 242) 0%, oklch(0.53 0.22 262) 50%, oklch(0.48 0.23 276) 100%);
-  --accent-gradient: linear-gradient(135deg, oklch(0.7 0.15 225) 0%, oklch(0.57 0.22 258) 50%, oklch(0.5 0.23 275) 100%);
-  --hero-gradient: linear-gradient(135deg, oklch(0.62 0.17 232), oklch(0.5 0.23 265) 60%, oklch(0.38 0.19 280));
+  /* Same fill as light, a touch brighter so it separates from the dark
+     page; white still clears 4.5:1. The glow is stronger on the dark page. */
+  --primary-fill: oklch(0.55 0.2 262);
+  --primary-fill-foreground: oklch(1 0 0);
   --page-glow: radial-gradient(45% 220px at 12% 0, oklch(0.7 0.15 225 / 0.2), transparent 70%),
     radial-gradient(40% 200px at 65% 0, oklch(0.5 0.23 275 / 0.15), transparent 70%);
-  --gradient-foreground: oklch(1 0 0);
 }
 
 /* Dark mode, sidebar only. Matches <html class="dark"> and nothing else, so
@@ -311,33 +285,9 @@
   backdrop-filter: blur(12px);
 }
 
-/* Gradient fills. They set background-IMAGE only: pair them with the flat
-   bg-primary underneath (so the element still reads blue if the gradient
-   fails to paint). Gotcha: bg-transparent / bg-muted / bg-destructive only
-   set background-COLOR, so an element carrying one of these keeps the
-   gradient on top unless the override also sets bg-none. cn() resolves that
-   for you (see extendTailwindMerge in lib/utils.ts); raw class strings don't.
-   background-origin: border-box sizes the image to the border box, so a
-   transparent border (switch, badge, checkbox) shows the gradient's own edge
-   instead of a repeated sliver of its opposite end. */
-@utility bg-primary-gradient {
-  background-image: var(--primary-gradient);
-  background-origin: border-box;
-}
-
-@utility bg-accent-gradient {
-  background-image: var(--accent-gradient);
-  background-origin: border-box;
-}
-
-@utility bg-hero-gradient {
-  background-image: var(--hero-gradient);
-  background-origin: border-box;
-}
-
 /* The always-dark sidebar surface (paired with bg-sidebar underneath) and
-   its active item's wash (paired with the flat hover wash). Same contract as
-   the gradients above: background-IMAGE only. */
+   its active item's wash (paired with the flat hover wash). Both set
+   background-IMAGE only, over a flat background-color. */
 @utility bg-sidebar-gradient {
   background-image: var(--sidebar-gradient);
 }
@@ -346,7 +296,7 @@
   background-image: var(--sidebar-active);
 }
 
-/* The page glow: one decorative layer at the top of the org content area. */
+/* The page glow: one decorative layer behind the auth screens' form. */
 @utility bg-page-glow {
   background-image: var(--page-glow);
 }
@@ -373,6 +323,6 @@
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
   }
 }
