@@ -18,6 +18,16 @@ import (
 // gate do unbounded work, and keeps it from being a way past the gate.
 const maxHandshakeProbeBytes = 64 * 1024
 
+// AuthQueryParam is the MCP endpoint URL parameter that turns the anonymous
+// handshake off. With `?auth=required`, `initialize` gets the same 401 +
+// `WWW-Authenticate` challenge as every other method. Some clients (McpMux)
+// only start OAuth when the handshake itself is refused; without this they
+// connect anonymously, list 0 tools and never prompt for sign-in.
+const AuthQueryParam = "auth"
+
+// authRequired is the AuthQueryParam value that disables the anonymous path.
+const authRequired = "required"
+
 // isAnonymousMethod reports whether a JSON-RPC method may be served without a
 // token. The two handshake methods are the exhaustive list.
 //
@@ -74,6 +84,10 @@ func isAnonymousHandshakeRequest(req *http.Request) bool {
 	}
 
 	if middleware.PresentsCredentials(req) {
+		return false
+	}
+
+	if req.URL.Query().Get(AuthQueryParam) == authRequired {
 		return false
 	}
 
