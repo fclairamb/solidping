@@ -11,4 +11,6 @@ const (
 	defaultPort    = checkconfig.DefaultPort
 	defaultQuery   = checkconfig.DefaultQuery
 	defaultTimeout = checkconfig.DefaultTimeout
+	defaultDB      = checkconfig.DefaultDatabase
+	defaultSSLMode = checkconfig.DefaultSSLMode
 )

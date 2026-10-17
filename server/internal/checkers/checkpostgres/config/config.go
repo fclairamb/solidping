@@ -9,7 +9,6 @@
 package config
 
 import (
-	"fmt"
 	"strings"
 	"time"
 
@@ -22,10 +21,12 @@ const (
 	DefaultPort = 5432
 	// DefaultTimeout is a default or bound this config's rules are expressed in; it is
 	// exported so the parent checker package can alias it.
-	DefaultTimeout  = 10 * time.Second
-	maxTimeout      = 30 * time.Second
-	defaultDatabase = "postgres"
-	defaultSSLMode  = "prefer"
+	DefaultTimeout = 10 * time.Second
+	maxTimeout     = 30 * time.Second
+	// DefaultDatabase is the database a check connects to when it names none.
+	DefaultDatabase = "postgres"
+	// DefaultSSLMode is the ssl_mode a check uses when it sets none.
+	DefaultSSLMode = "prefer"
 	// DefaultQuery is a default or bound this config's rules are expressed in; it is
 	// exported so the parent checker package can alias it.
 	DefaultQuery = "SELECT 1"
@@ -129,11 +130,11 @@ func (c *PostgreSQLConfig) GetConfig() map[string]any {
 		cfg["password"] = c.Password
 	}
 
-	if c.Database != "" && c.Database != defaultDatabase {
+	if c.Database != "" && c.Database != DefaultDatabase {
 		cfg["database"] = c.Database
 	}
 
-	if c.SSLMode != "" && c.SSLMode != defaultSSLMode {
+	if c.SSLMode != "" && c.SSLMode != DefaultSSLMode {
 		cfg["ssl_mode"] = c.SSLMode
 	}
 
@@ -181,55 +182,4 @@ func (c *PostgreSQLConfig) Validate() error {
 	}
 
 	return nil
-}
-
-// BuildConnStr builds a PostgreSQL connection string from the configuration.
-func (c *PostgreSQLConfig) BuildConnStr() string {
-	port := c.Port
-	if port == 0 {
-		port = DefaultPort
-	}
-
-	database := c.Database
-	if database == "" {
-		database = defaultDatabase
-	}
-
-	sslMode := c.SSLMode
-	if sslMode == "" {
-		sslMode = defaultSSLMode
-	}
-
-	connStr := fmt.Sprintf(
-		"host=%s port=%d user=%s dbname=%s sslmode=%s",
-		escapePQParam(c.Host),
-		port,
-		escapePQParam(c.Username),
-		escapePQParam(database),
-		escapePQParam(sslMode),
-	)
-
-	if c.Password != "" {
-		connStr += " password=" + escapePQParam(c.Password)
-	}
-
-	return connStr
-}
-
-// escapePQParam escapes a value for use in a PostgreSQL connection string.
-// Single quotes are escaped by doubling them, and the value is wrapped in quotes
-// if it contains spaces or special characters.
-func escapePQParam(value string) string {
-	if value == "" {
-		return "''"
-	}
-
-	needsQuoting := strings.ContainsAny(value, " '\\")
-	if !needsQuoting {
-		return value
-	}
-
-	escaped := strings.ReplaceAll(value, "'", "\\'")
-
-	return "'" + escaped + "'"
 }
