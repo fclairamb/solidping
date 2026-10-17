@@ -64,6 +64,8 @@ tags:
     description: Available monitoring regions
   - name: Check Types
     description: Check type catalog and sample configurations
+  - name: Tools
+    description: Public, anonymous one-off checks (website down, SSL, DNS lookup, port checker)
   - name: On-Call Schedules
     description: On-call schedules, overrides, rotation preview, and iCal feeds
   - name: Escalation Policies
@@ -7555,6 +7557,77 @@ paths:
               schema:
                 $ref: "#/components/schemas/CheckTypeListResponse"
 
+  /api/v1/tools/run:
+    post:
+      tags: [Tools]
+      summary: Run one check once, anonymously
+      description: >-
+        Runs an `http` (GET), `ssl`, `dns` or `tcp` check once against a
+        public target and returns the normalised result. Nothing is stored.
+        Disabled (404) unless `SP_TOOLS_ENABLED=true` (system parameter
+        `tools.enabled`). Every run goes through an egress guard that refuses
+        private, loopback, link-local and reserved addresses, whatever
+        `SP_EGRESS_ALLOW_PRIVATE` says, as well as the instance's own hosts.
+        Limits: 10 runs a minute and 100 a day per client IP, 16 runs in
+        flight server-wide, 10 s per run, 5 redirects for `http`. A result is
+        cached 60 s per (type, target, options). Error codes:
+        `INVALID_TARGET` (400), `TARGET_NOT_ALLOWED` (403), `RESOLVE_FAILED`
+        (422), `RATE_LIMITED` (429), `SERVICE_BUSY` (503, with
+        `Retry-After`), `TIMEOUT` (504).
+      operationId: runTool
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ToolRunRequest"
+      responses:
+        "200":
+          description: The run's result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ToolRunResult"
+        "400":
+          description: Invalid JSON body or target (`VALIDATION_ERROR`, `INVALID_TARGET`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: The target is not allowed (`TARGET_NOT_ALLOWED`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          description: The target name could not be resolved (`RESOLVE_FAILED`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Per-IP limit reached (`RATE_LIMITED`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Too many runs in flight (`SERVICE_BUSY`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "504":
+          description: The target did not answer in time (`TIMEOUT`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /api/v1/check-types/samples:
     get:
       tags: [Check Types]
@@ -10010,6 +10083,75 @@ components:
       properties:
         body:
           type: string
+
+    ToolRunRequest:
+      type: object
+      required: [type, target]
+      properties:
+        type:
+          type: string
+          enum: [http, ssl, dns, tcp]
+        target:
+          type: string
+          description: >-
+            `http`: a URL (`https://` is assumed without a scheme). `ssl`:
+            `host`, `host:port` or a URL (port 443 by default). `tcp`:
+            `host:port`, port 1 to 65535. `dns`: a domain name.
+          example: https://example.com
+        options:
+          type: object
+          properties:
+            record:
+              type: string
+              description: DNS record type (dns only)
+              enum: [A, AAAA, CNAME, MX, TXT, NS, CAA]
+              default: A
+
+    ToolRunResult:
+      type: object
+      required: [type, target, status, durationMs, checkedAt, cached, details, monitor]
+      properties:
+        type:
+          type: string
+          enum: [http, ssl, dns, tcp]
+        target:
+          type: string
+          description: The normalised target (a URL for http, host:port for ssl and tcp, the name for dns)
+        status:
+          type: string
+          description: The check status (up, down, warning, error)
+        durationMs:
+          type: integer
+          format: int64
+        checkedAt:
+          type: string
+          format: date-time
+        region:
+          type: string
+          description: Region of the node that ran the check
+        cached:
+          type: boolean
+          description: True when the result was served from the 60 s cache
+        details:
+          type: object
+          additionalProperties: true
+          description: >-
+            Per type. `http`: statusCode, finalUrl, redirects, responseTimeMs,
+            httpProtocol, certNotAfter and certDaysLeft over HTTPS. `ssl`:
+            issuer, subject, notBefore, notAfter, daysLeft, sans, chainValid,
+            tlsVersion. `dns`: record, records. `tcp`: connected,
+            connectTimeMs. `error` carries the failure reason when there is
+            one.
+        monitor:
+          type: object
+          required: [checkType, query]
+          properties:
+            checkType:
+              type: string
+            query:
+              type: string
+              description: Query string for the dashboard's /checks/new form, to monitor this target
+              example: checkName=example.com&checkType=http&httpUrl=https%3A%2F%2Fexample.com
 
     Error:
       type: object

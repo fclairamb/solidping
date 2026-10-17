@@ -207,6 +207,11 @@ same kinds of targets still are not:
 
 - The Freebox pairing calls made when you connect a box.
 
+The public tools endpoint (`POST /api/v1/tools/run`, off unless
+`SP_TOOLS_ENABLED=true`) does not follow this policy: it always refuses
+non-public targets, even with `SP_EGRESS_ALLOW_PRIVATE=true`, and also refuses
+a name when any of its addresses is non-public.
+
 ### Discovery
 
 [Network discovery](../features/discovery.md) runs in the API/jobs process

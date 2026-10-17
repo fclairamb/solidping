@@ -28,6 +28,7 @@
   - [api-specification/mcp-oauth.md](api-specification/mcp-oauth.md) — MCP endpoint and the embedded OAuth 2.1 authorization server
   - [api-specification/system.md](api-specification/system.md) — Regions, system parameters, email inbox, activation, scheduling lane load
   - [api-specification/test-and-static.md](api-specification/test-and-static.md) — Test-mode endpoints, SPA/docs/static routes, metrics, CORS preflight
+  - [api-specification/tools.md](api-specification/tools.md) — Public check tools: anonymous, guarded, rate-limited `POST /api/v1/tools/run`
   - [api-specification/errors.md](api-specification/errors.md) — Error envelope and standard error codes
 - [database-model/README.md](database-model/README.md) — Database schema index: all 50 tables grouped by domain, plus the entity-relationship overview
   - [database-model/core.md](database-model/core.md) — Tenancy root and configuration: organizations, parameters, app_settings, files
