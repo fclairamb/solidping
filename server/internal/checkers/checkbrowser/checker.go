@@ -501,6 +501,7 @@ func allocator(ctx context.Context, current Settings, pin *hostPin) (context.Con
 // It is chromedp's own default, made explicit because that timeout is separate
 // from every context deadline and so is invisible from the caller's budget.
 // A package variable only so the live tests can widen it on a starved machine.
+//
 //nolint:gochecknoglobals // tunable by the live tests only; production never writes it
 var chromeStartTimeout = 20 * time.Second
 
