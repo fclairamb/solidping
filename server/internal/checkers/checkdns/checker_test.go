@@ -220,7 +220,7 @@ func TestDNSChecker_Validate(t *testing.T) {
 				RecordType: "INVALID",
 			},
 			wantErr: true,
-			errMsg:  "record_type: must be one of A, AAAA, CNAME, MX, NS, TXT, SOA, got INVALID",
+			errMsg:  "record_type: must be one of A, AAAA, CNAME, MX, NS, TXT, SOA, CAA, got INVALID",
 		},
 		{
 			name: "invalid nameserver format",

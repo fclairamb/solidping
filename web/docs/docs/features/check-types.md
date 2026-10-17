@@ -432,7 +432,7 @@ dns://8.8.8.8/example.com?type=MX
 |--------|-------------|---------|
 | Resolver | DNS server to query | `8.8.8.8`, `1.1.1.1` |
 | Domain | Domain to resolve | `example.com` |
-| Type | Record type | `A`, `AAAA`, `MX`, `TXT`, `CNAME`, `NS`, `SOA` |
+| Type | Record type | `A`, `AAAA`, `MX`, `TXT`, `CNAME`, `NS`, `SOA`, `CAA` |
 | Expected | Expected values | `93.184.216.34` |
 | Detect changes (`detect_changes`) | Report any record added or removed since a captured baseline | `true` |
 | On change (`on_change`) | Status when the records changed: `down` (default) or `warning` | `warning` |
