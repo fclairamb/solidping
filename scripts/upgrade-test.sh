@@ -78,6 +78,8 @@ if [[ "$engine" == "sqlite" ]]; then
 fi
 
 pg_image="${PG_IMAGE:-$(sed -n 's/^ *image: *\(postgres:[^ ]*\).*/\1/p' "$root/docker-compose.yml" | head -n 1)}"
+# 18.6 is what docker-compose.yml and docker-compose.build.yml run (no Helm chart
+# in this repo); the fallback only matters if the sed finds nothing.
 pg_image="${pg_image:-postgres:18.6}"
 
 suffix="$$-$RANDOM"
@@ -239,7 +241,16 @@ step "starting HEAD on :$new_port"
 ) &
 new_pid=$!
 
-wait_health "$new_port" "$HEALTH_TIMEOUT" || fail "HEAD did not become healthy within ${HEALTH_TIMEOUT}s"
+wait_health "$new_port" "$HEALTH_TIMEOUT" || {
+    # A migration that failed must not be recorded as applied: show the tail.
+    echo "--- bun_migrations (last 5) after the failed HEAD boot ---" >&2
+    if [[ "$engine" == "sqlite" ]]; then
+        sqlite3 "$(find "$datadir" -maxdepth 1 -name '*.db' | head -n 1)" "select name, group_id from bun_migrations order by id desc limit 5" >&2 || true
+    else
+        docker exec "$pg_name" psql -U solidping -d solidping -Atc "select name, group_id from bun_migrations order by id desc limit 5" >&2 || true
+    fi
+    fail "HEAD did not become healthy within ${HEALTH_TIMEOUT}s"
+}
 
 for needle in "half-migrated" "migration content changed"; do
     if grep -qi "$needle" "$new_log"; then

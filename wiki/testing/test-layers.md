@@ -150,6 +150,24 @@ needs docker, jq and sqlite3. A single leg: `HEAD_BIN=./solidping scripts/upgrad
 
 It complements `scripts/check-frozen-migrations.sh` (static) and does not replace it.
 
+CI builds its own Go-only binary for the `upgrade` job (no frontends), so the layer also runs on
+release-please PRs, where `build` is skipped. The `ci` gate only fails on `failure`/`cancelled`,
+so a skipped upgrade job (wiki-only change, tag push) still passes.
+
+### Positive control: proving the layer can go red
+
+Run on a throwaway branch, never committed. Each sabotage must turn a leg red on the named
+assertion (`HEAD_BIN=./solidping scripts/upgrade-test.sh sqlite v0.38.6` is enough for one):
+
+| Sabotage | How | Expected failure |
+|---|---|---|
+| (a) edit a released migration | change the SQL of `027_*.up.sql` in both engines' `migrations/` | the HEAD log contains "migration content changed", or the health timeout |
+| (b) migration failing on seeded data | add `NNN_x.up.sql`: `ALTER TABLE status_pages ADD COLUMN x TEXT NOT NULL;` | "HEAD did not become healthy"; the `bun_migrations` tail printed before the failure must not list `NNN` |
+| (c) HEAD loses data | at startup run `DELETE FROM status_pages` | "the counts changed across the upgrade" |
+
+`SKIP_TAGS` check (no docker needed): `SKIP_TAGS="v0.38.4 v0.38.6" scripts/upgrade-test.sh --matrix`
+must print the next tag (`v0.38.2`, then `v0.38.3`, `v0.38.5`, `v0.37.0`) in place of `v0.38.6`.
+
 ## The `slowtests` layer
 
 Four suites, all excluded from `make test`, `make test-postgres` and every

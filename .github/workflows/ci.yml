@@ -1154,7 +1154,7 @@ jobs:
     name: Upgrade Matrix
     runs-on: ubuntu-26.04
     needs: [changes]
-    if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) && needs.changes.outputs.code == 'true' }}
+    if: ${{ !startsWith(github.ref, 'refs/tags/') && needs.changes.outputs.code == 'true' }}
     outputs:
       legs: ${{ steps.matrix.outputs.legs }}
     steps:
@@ -1173,8 +1173,8 @@ jobs:
   upgrade:
     name: Upgrade ${{ matrix.engine }} from ${{ matrix.tag }}
     runs-on: ubuntu-26.04
-    needs: [changes, build, upgrade-matrix]
-    if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) && needs.changes.outputs.code == 'true' }}
+    needs: [changes, upgrade-matrix]
+    if: ${{ !startsWith(github.ref, 'refs/tags/') && needs.changes.outputs.code == 'true' }}
     timeout-minutes: 10
     strategy:
       fail-fast: false
@@ -1185,11 +1185,17 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Download binary
-        uses: actions/download-artifact@v8
+      - uses: actions/setup-go@v7
         with:
-          name: solidping-linux-amd64
-          path: .
+          go-version: "1.27"
+          cache-dependency-path: server/go.sum
+
+      # Own Go-only build, not the `build` job's artifact: `build` (and the
+      # frontends it needs) skips on release-please PRs, which must still run
+      # this job. The upgrade path needs no embedded UI.
+      - name: Build binary
+        working-directory: server
+        run: go build -o ../solidping .
 
       - name: Upgrade ${{ matrix.tag }} to HEAD
         run: |
