@@ -172,7 +172,7 @@ export function EmptyStateOnboarding({ org }: EmptyStateOnboardingProps) {
 
   return (
     <Card className="border-2 border-primary/30 bg-primary/5">
-      <CardContent className="pt-6 pb-8 flex flex-col items-center text-center gap-6">
+      <CardContent className="pt-[var(--card-pad,1.5rem)] pb-8 flex flex-col items-center text-center gap-6">
         <div className="rounded-full bg-primary/10 p-4">
           <Plus className="h-8 w-8 text-primary" />
         </div>

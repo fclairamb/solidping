@@ -215,7 +215,7 @@ function StatusPageAppearancePage() {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <h1 className="text-2xl font-bold flex items-center gap-2">
+          <h1 className="text-xl font-semibold tracking-tight sm:text-2xl flex items-center gap-2">
             <Palette className="h-5 w-5 shrink-0" />
             <span className="truncate">{t("appearance.title")}</span>
           </h1>
@@ -250,7 +250,7 @@ function StatusPageAppearancePage() {
       </div>
 
       {/* Editor + preview: side by side from lg up, stacked on mobile. */}
-      <div className="grid gap-6 lg:grid-cols-2 items-start">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 items-start">
         <Card>
           <CardHeader>
             <CardTitle>{t("appearance.editorTitle")}</CardTitle>

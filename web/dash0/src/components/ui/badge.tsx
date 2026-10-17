@@ -4,14 +4,13 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const badgeVariants = cva(
-  "inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+  "inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
   {
     variants: {
       variant: {
-        // Gradient, like the default Button: white text on --primary-gradient
-        // (the text-safe one). Status variants below stay flat soft tints.
-        default:
-          "border-transparent bg-primary bg-primary-gradient text-gradient-foreground shadow hover:brightness-105",
+        // A soft tint with colored text, like the status variants below, so a
+        // badge never competes with the primary button for attention.
+        default: "border-primary/25 bg-primary/10 text-primary",
         secondary:
           "border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80",
         destructive:

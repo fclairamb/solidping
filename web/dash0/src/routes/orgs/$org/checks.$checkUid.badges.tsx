@@ -499,7 +499,7 @@ function CheckBadgesPage() {
         className="flex-wrap"
       />
 
-      <div className="grid gap-6 lg:grid-cols-[400px_1fr]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[400px_1fr]">
         <Card>
           <CardHeader>
             <CardTitle className="text-base">{t("configuration")}</CardTitle>

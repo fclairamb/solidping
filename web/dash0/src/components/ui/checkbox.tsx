@@ -10,12 +10,10 @@ const Checkbox = React.forwardRef<
   <CheckboxPrimitive.Root
     ref={ref}
     className={cn(
-      // Checked: the decorative --accent-gradient over bg-primary, with a white
-      // glyph (--gradient-foreground, 4.6:1 on the gradient's middle stop, which
-      // is where the check sits). The border goes transparent so the gradient
-      // reaches the edge. The gradient is the same in both themes, hence one
-      // glyph color for both.
-      "peer h-4 w-4 shrink-0 rounded-sm border border-primary shadow focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:border-transparent data-[state=checked]:bg-primary data-[state=checked]:bg-accent-gradient data-[state=checked]:text-gradient-foreground",
+      // Checked: the solid --primary-fill with a white glyph, the same in
+      // both themes. The border takes the fill color so the box reads as one
+      // shape.
+      "peer h-4 w-4 shrink-0 rounded-sm border border-primary shadow focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:border-primary-fill data-[state=checked]:bg-primary-fill data-[state=checked]:text-primary-fill-foreground",
       className
     )}
     {...props}

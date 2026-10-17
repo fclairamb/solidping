@@ -1342,7 +1342,7 @@ function StatusPageDetailPage() {
       <div className="flex items-start gap-3 justify-between">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight truncate">
+            <h1 className="text-xl font-semibold tracking-tight sm:text-2xl truncate">
               {page.name}
             </h1>
             {page.isDefault && (

@@ -167,7 +167,7 @@ function MaintenanceWindowDetailPage() {
       <div className="flex items-start gap-3 justify-between">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight truncate">
+            <h1 className="text-xl font-semibold tracking-tight sm:text-2xl truncate">
               {window.title}
             </h1>
             <Badge variant={maintenanceStatusBadgeVariant(status)}>
@@ -289,7 +289,7 @@ function MaintenanceWindowDetailPage() {
           </div>
 
           {/* Raw fields kept below the summary as detail. */}
-          <div className="grid gap-4 sm:grid-cols-2 border-t pt-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 border-t pt-4">
             <div>
               <p className="text-sm text-muted-foreground">
                 {t("maintenanceWindows:detail.start")}

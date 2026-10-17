@@ -56,7 +56,7 @@ export function NotifyViaSection({
   return (
     <div className="space-y-2">
       <Label>{t("form.notifyVia")}</Label>
-      <div className="grid gap-2 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {visible.map((c) => {
           const checked = selected.includes(c.uid);
           const cbId = `notify-via-${c.uid}`;

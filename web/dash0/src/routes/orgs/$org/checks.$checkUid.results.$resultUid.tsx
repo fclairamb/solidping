@@ -211,7 +211,7 @@ function ResultDetailPage() {
         >
           <ArrowLeft className="h-4 w-4" />
         </Button>
-        <h1 className="text-2xl font-semibold">
+        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
           {t("checks:resultDetail.title")} {data.uid?.slice(0, 8) ?? ""}
         </h1>
         {data.status && (
