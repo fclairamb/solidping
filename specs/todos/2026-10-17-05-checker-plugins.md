@@ -28,7 +28,7 @@ A plugin is a check type whose schema and code come from outside the binary.
   without QEMU; `plugin.Open` needs cgo. A `.so` must be built with the exact Go version and
   dependency versions of the host, so every release breaks every plugin. No Windows, no
   unload, no isolation (a panic or leak takes down API and scheduler).
-- **HTTP service: separate spec, `2026-10-17-05-http-plugins.md`.** The check runs from
+- **HTTP service: separate spec, `2026-10-17-06-http-plugins.md`.** The check runs from
   wherever the service is deployed, not from the worker's region, which makes regions, quorum
   and regional outage detection wrong unless the service is a `localhost` sidecar of each
   worker. It also bypasses the egress guard, SSH tunnels and `ipVersion`. It carries the same
@@ -134,7 +134,7 @@ A plugin is a check type whose schema and code come from outside the binary.
     The executable path comes only from the manifest, resolved inside the plugin folder; a
     check config can never name a command. The `execute` and `validate` message bodies are Go
     types in `server/internal/plugins/protocol`, inside the JSON-RPC envelope; the HTTP
-    transport (spec 2026-10-17-05) reuses them unchanged.
+    transport (spec 2026-10-17-06) reuses them unchanged.
 16. `"protocol": "nagios"`: fork per run with `args` built from the config through a template
     in the manifest. Exit code 0 → `Up`, 1 → `Warning`, 2 → `Down`, 3 or other → `Error`.
     First stdout line → `Output.message`; perfdata after `|`

@@ -7,13 +7,13 @@ effort: medium
 
 ## Problem
 
-Spec `2026-10-17-04-checker-plugins.md` adds check-type plugins written in JS or shipped as
+Spec `2026-10-17-05-checker-plugins.md` adds check-type plugins written in JS or shipped as
 local executables. Some plugins fit better as a service: a heavy runtime (JVM, Python with
 native libraries), a connection pool kept open to the target between runs, or a probe service
 a team already operates. Today such a service can only be watched through a `js` or `http`
 check that parses its answer by hand, with no type, schema or form.
 
-Three constraints come from the analysis in spec 04:
+Three constraints come from the analysis in spec 05:
 - the probe runs from wherever the service is deployed, so regional results stay true only if
   the service sits next to the worker that calls it (a sidecar on loopback);
 - requests carry decrypted secrets, so the plugin must authenticate the caller and traffic
@@ -22,21 +22,21 @@ Three constraints come from the analysis in spec 04:
 
 ## Depends on
 
-Spec `2026-10-17-04-checker-plugins.md`, all phases: dynamic registry, manifest loader, schema
+Spec `2026-10-17-05-checker-plugins.md`, all phases: dynamic registry, manifest loader, schema
 validation, generic config with `SecretFielder`, result caps, dash0 JSON editor, capability
 routing (step 17) and stored manifests (step 18). Implement it first.
 
 ## Decisions (2026-10-17)
 
-1. The contract is the plugin protocol of spec 04, carried over HTTP with three endpoints:
+1. The contract is the plugin protocol of spec 05, carried over HTTP with three endpoints:
    `GET /checkers`, `POST /validate`, `POST /execute`. Request and response bodies are the
-   message types the exec transport uses (spec 04 step 15), so the protocol is documented once.
+   message types the exec transport uses (spec 05 step 15), so the protocol is documented once.
 2. The reference plugin is a new check type, `x-finger` (Finger, RFC 1288), picked as a
-   little-used, dated network protocol, like `x-gopher` in spec 04.
+   little-used, dated network protocol, like `x-gopher` in spec 05.
 
 ## Proposal
 
-1. Shared protocol types in `server/internal/plugins/protocol` (created by spec 04 step 15):
+1. Shared protocol types in `server/internal/plugins/protocol` (created by spec 05 step 15):
    - `TypeDescriptor`: `type`, `description`, `labels`, `schema` (inline JSON Schema),
      `minPeriod`, `defaultPeriod`, `validate` (bool). Same fields as a manifest type entry,
      with the schema inlined.
@@ -46,7 +46,7 @@ routing (step 17) and stored manifests (step 18). Implement it first.
      `ExecuteResponse{status, metrics, output}`, status one of `up`, `down`, `warning`,
      `timeout`, `error`.
    - `ProtocolVersion = 1`.
-2. Manifest for an HTTP plugin, in the plugin directory and read by the spec 04 loader:
+2. Manifest for an HTTP plugin, in the plugin directory and read by the spec 05 loader:
    ```json
    {
      "name": "finger",
@@ -65,15 +65,15 @@ routing (step 17) and stored manifests (step 18). Implement it first.
    not from the worker's region.
 3. Describe: the node calls `GET /checkers` at load time, then every 60 s. Response:
    `{"protocolVersion": 1, "version": "1.2.0", "data": [TypeDescriptor, …]}`.
-   - Each descriptor is checked like a manifest type in spec 04 step 5 (`x-` prefix, unique
+   - Each descriptor is checked like a manifest type in spec 05 step 5 (`x-` prefix, unique
      across all plugins, schema compiles). An invalid descriptor is skipped; an unknown
      `protocolVersion` refuses the whole plugin.
-   - On success the node registers or updates the types, advertises them (spec 04 step 17)
-     and sends the descriptors to the server like an agent's manifests (spec 04 step 18).
+   - On success the node registers or updates the types, advertises them (spec 05 step 17)
+     and sends the descriptors to the server like an agent's manifests (spec 05 step 18).
      The API can then validate and render the form even when it does not host the plugin, and
      while the service is down.
    - A type that disappears from the response is unregistered on that node. Its checks show
-     "no capable worker" (spec 04 step 17) and are never deleted.
+     "no capable worker" (spec 05 step 17) and are never deleted.
    - On failure the node keeps the last good descriptors. After 3 consecutive failed refreshes
      it stops advertising the types, so jobs go to nodes whose service is up. The next success
      resumes advertising.
@@ -81,13 +81,13 @@ routing (step 17) and stored manifests (step 18). Implement it first.
    decrypted secrets (merged at dispatch by `checkjobsvc.MergeJobSecrets`) and the deadline is
    the job's execution deadline, also set on the request context. The worker measures
    `Duration` itself. Mapping:
-   - 200 with a valid body → that result, through the spec 04 step 10 caps;
+   - 200 with a valid body → that result, through the spec 05 step 10 caps;
    - deadline exceeded → `timeout`;
    - connection refused, non-200 status, body over 1 MiB (stop reading at the cap), invalid
      JSON, unknown status → `error`, with `Output.message` naming the plugin failure. Never
      `down`: a broken plugin is not a down target.
 5. Validate: `POST /validate` is called only when the descriptor has `"validate": true` and the
-   node handling the save hosts the plugin. It runs after the schema validation of spec 04
+   node handling the save hosts the plugin. It runs after the schema validation of spec 05
    step 7. A non-empty `errors` list returns `VALIDATION_ERROR` (400) with the field messages.
    Unreachable service, non-200 or no answer within 2 s: logged as a warning, and the save
    goes through on the schema alone.
@@ -100,7 +100,7 @@ routing (step 17) and stored manifests (step 18). Implement it first.
    `X-SP-Key-Id`, canonical string `<timestamp>.<METHOD>.<path>.<hex sha256(body)>`,
    `servicesig.go:144`). The plugin verifies it and rejects a timestamp outside
    `servicesig.MaxSkew` (300 s). Keeping several keys in the set allows rotation.
-8. HTTP plugin types are forced to the `unsafe` label, like exec and nagios types (spec 04
+8. HTTP plugin types are forced to the `unsafe` label, like exec and nagios types (spec 05
    step 19): disabled by default in SaaS mode on cloud workers, allowed on private-location
    agents.
 9. Reference plugin `x-finger`:
@@ -118,7 +118,7 @@ routing (step 17) and stored manifests (step 18). Implement it first.
      `timeout` when the deadline expires. `up` otherwise. Metrics: `bytes`, `lines`. Output
      `message`: the first response line, trimmed.
    - Example host in docs and fixtures: `finger.acme.com`, never a real server.
-10. Docs: an "HTTP plugins" section in `web/docs/docs/features/plugins.md` (created by spec 04):
+10. Docs: an "HTTP plugins" section in `web/docs/docs/features/plugins.md` (created by spec 05):
     the three endpoints with request and response examples, how to verify the signature in any
     language, why the service must sit next to the worker, the failure mapping, and the finger
     example with the commands to run it.
@@ -151,7 +151,7 @@ routing (step 17) and stored manifests (step 18). Implement it first.
 
 ## To verify
 
-- How a cloud worker sends descriptors to the server: spec 04 step 18 covers agents; check
+- How a cloud worker sends descriptors to the server: spec 05 step 18 covers agents; check
   that cloud workers can use the same path.
 - How the save path knows whether its own node hosts a plugin, in a single-binary deployment
   and when `SP_NODE_ROLE` splits API and workers.
