@@ -177,9 +177,15 @@ func TestHandlerCloseRecordsServerShutdown(t *testing.T) {
 
 	// A closed handler takes no new connection: the socket is ended before any
 	// connect event is written.
+	// Fresh budget: the enrollment above is not bounded by ctx and, on a loaded
+	// runner, can eat most of it before the shutdown assertions even start.
 	late, _, _ := e.enrollOrClosed(e.mintToken(), "office-2")
-	r.Error(wsjson.Read(ctx, late, &frame))
-	r.NoError(e.handler.WaitForEvents(ctx))
+
+	lateCtx, lateCancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer lateCancel()
+
+	r.Error(wsjson.Read(lateCtx, late, &frame))
+	r.NoError(e.handler.WaitForEvents(lateCtx))
 	r.Len(e.agentEvents(models.EventTypeAgentConnected), 1, "no connect event after Close")
 }
 
