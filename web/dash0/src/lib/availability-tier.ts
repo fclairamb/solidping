@@ -24,20 +24,16 @@ export function availabilityTier(pct: number | null): AvailabilityTier {
 }
 
 /**
- * The tier badge on the dashboard's hero availability tile (spec
- * 2026-09-24-02): a SOLID white chip, identical in both themes, carrying the
- * tier's light-theme text color. A pale translucent status badge would lose
- * its meaning on the gradient. Each text color reads >= 4.5:1 on white at the
- * badge's 11px (kpi-tile.test.tsx checks it): emerald-700, amber-700, and
- * red-700 for "down" — a plain Tailwind color matching the other three
- * tiers' own fixed palette, kept separate from --destructive (a different
- * token, tuned for the destructive button/text elsewhere in the app; spec
- * 2026-09-24-07 darkened it enough to also clear 4.5:1 on white, but the two
- * were never coupled).
+ * How each tier reads on the dashboard's availability tile: the Badge variant
+ * carrying the tier's label, and the color of the percentage itself. No data
+ * stays neutral rather than borrowing a status color.
  */
-export const AVAILABILITY_TIER_HERO_BADGE: Record<AvailabilityTier, string> = {
-  noData: "bg-white text-slate-600",
-  operational: "bg-white text-emerald-700",
-  degraded: "bg-white text-amber-700",
-  down: "bg-white text-red-700",
+export const AVAILABILITY_TIER_STYLE: Record<
+  AvailabilityTier,
+  { badge: "secondary" | "success" | "warning" | "destructive"; value: string }
+> = {
+  noData: { badge: "secondary", value: "text-muted-foreground" },
+  operational: { badge: "success", value: "text-foreground" },
+  degraded: { badge: "warning", value: "text-status-warning-foreground" },
+  down: { badge: "destructive", value: "text-status-error-foreground" },
 };

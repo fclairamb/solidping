@@ -107,7 +107,7 @@ function McpPage() {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">{t("ai.title")}</h1>
+          <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{t("ai.title")}</h1>
           <p className="text-muted-foreground">{t("ai.description")}</p>
         </div>
         <DocsLink href="/docs/features/mcp" />
@@ -135,7 +135,7 @@ function McpPage() {
             <CopyableCode code={mcpUrl} />
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {/* Claude (claude.ai / desktop): no public deep link exists today —
                 copy-URL + paste-into-Settings instructions. */}
             <Card>

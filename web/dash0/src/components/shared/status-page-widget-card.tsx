@@ -233,7 +233,7 @@ export function StatusPageWidgetCard({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="space-y-2">
             <Label htmlFor="status-page-widget-mode">
               {tStatusPages("widget.mode")}
@@ -340,7 +340,7 @@ export function StatusPageWidgetCard({
           customized={hasCustomLabels}
           data-testid="status-page-widget-customize-labels"
         >
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {LABEL_STATUSES.map((status) => (
               <div key={status} className="space-y-2">
                 <Label htmlFor={`status-page-widget-label-${status}`}>

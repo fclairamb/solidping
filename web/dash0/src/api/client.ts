@@ -401,7 +401,12 @@ async function fetchWithAuth(
   options: FetchOptions
 ): Promise<{
   response: Response;
-  flags: { skipAuth: boolean; suppress401Redirect: boolean; suppress401Handling: boolean };
+  flags: {
+    skipAuth: boolean;
+    suppress401Redirect: boolean;
+    suppress401Handling: boolean;
+    hadSession: boolean;
+  };
 }> {
   const {
     skipAuth = false,
@@ -411,6 +416,9 @@ async function fetchWithAuth(
   } = options;
 
   const headers = new Headers(fetchOptions.headers);
+  // Read before any refresh attempt: a failed refresh clears the tokens, and
+  // handleResponse would then mistake an expired session for a first visit.
+  const hadSession = Boolean(getToken() || getRefreshToken());
 
   if (!skipAuth) {
     const token = getToken();
@@ -454,7 +462,7 @@ async function fetchWithAuth(
     }
   }
 
-  return { response, flags: { skipAuth, suppress401Redirect, suppress401Handling } };
+  return { response, flags: { skipAuth, suppress401Redirect, suppress401Handling, hadSession } };
 }
 
 /** True when a JSON `Content-Type` header value denotes a JSON media type
@@ -473,12 +481,18 @@ export async function handleResponse<T>(
     skipAuth,
     suppress401Redirect,
     suppress401Handling = false,
-  }: { skipAuth: boolean; suppress401Redirect: boolean; suppress401Handling?: boolean }
+    hadSession: hadSessionBeforeRequest,
+  }: {
+    skipAuth: boolean;
+    suppress401Redirect: boolean;
+    suppress401Handling?: boolean;
+    hadSession?: boolean;
+  }
 ): Promise<T> {
   if (response.status === 401 && !skipAuth && !suppress401Handling) {
     // Read before clearing: a 401 with no token behind it is a visitor who
     // never had a session, and must not be told theirs expired.
-    const hadSession = Boolean(getToken() || getRefreshToken());
+    const hadSession = hadSessionBeforeRequest ?? Boolean(getToken() || getRefreshToken());
     clearToken();
     if (!suppress401Redirect) {
       redirectToExpiredLogin({ hadSession });

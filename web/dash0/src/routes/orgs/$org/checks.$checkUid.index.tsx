@@ -1227,7 +1227,7 @@ function CheckDetailPage() {
         <div className="flex flex-wrap items-start gap-3">
           <div className="min-w-0 flex-1 basis-64">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-              <h1 className="min-w-0 max-w-full truncate text-2xl font-bold tracking-tight sm:text-3xl">
+              <h1 className="text-xl font-semibold tracking-tight sm:text-2xl min-w-0 max-w-full truncate">
                 {checkDisplayName}
               </h1>
               {check.enabled === false ? (
@@ -1757,7 +1757,7 @@ function CheckDetailPage() {
         refetchInterval={refetchInterval}
       />
 
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle>{t("checks:detail.configuration")}</CardTitle>
@@ -1788,7 +1788,13 @@ function CheckDetailPage() {
                 <div className="text-sm font-medium text-muted-foreground">
                   {t("checks:detail.checkInterval")}
                 </div>
-                <div>{check.period}</div>
+                {/* Same wording as the header ("Every 10s"), never the raw
+                    HH:MM:SS wire format. */}
+                <div>
+                  {headerPeriodMs != null
+                    ? t("checks:detail.every", { period: formatDurationCoarse(headerPeriodMs) })
+                    : check.period}
+                </div>
               </div>
             )}
             {/* Placement + regions + per-region last result + the automatic

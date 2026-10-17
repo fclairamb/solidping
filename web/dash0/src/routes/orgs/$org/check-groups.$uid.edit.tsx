@@ -239,7 +239,7 @@ function CheckGroupEditForm({
         >
           <ArrowLeft className="h-4 w-4" />
         </Button>
-        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
+        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
           {t("groupForm.title")}
         </h1>
         <div className="ml-auto flex items-center gap-2">

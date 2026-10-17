@@ -550,6 +550,11 @@ function CheckRow({
             </Tooltip>
           )}
         </div>
+        {/* Below md the Target column is hidden: the target moves under the
+            name, so a phone still tells two similarly named checks apart. */}
+        <div className="mt-0.5 truncate pl-[18px] font-mono text-xs text-muted-foreground md:hidden">
+          {renderTarget()}
+        </div>
       </TableCell>
       <TableCell className="hidden sm:table-cell">
         <div className="flex items-center gap-1.5">
@@ -568,21 +573,11 @@ function CheckRow({
         <StatusBadge status={check.status ?? check.lastResult?.status} />
       </TableCell>
       <TableCell>
-        {durationMs != null ? (
-          <span
-            className={`inline-flex items-center text-xs font-mono tabular-nums px-2 py-0.5 rounded-md font-medium ${
-              durationMs < 50
-                ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20"
-                : durationMs < 250
-                ? "bg-primary/10 text-primary border border-primary/20"
-                : "bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20"
-            }`}
-          >
-            {Math.round(durationMs)}ms
-          </span>
-        ) : (
-          <span className="text-muted-foreground text-xs font-mono">—</span>
-        )}
+        {/* Plain tabular text: the status column already carries the color,
+            and a colored chip per row turned the column into noise. */}
+        <span className="font-mono text-xs tabular-nums text-muted-foreground">
+          {durationMs != null ? `${Math.round(durationMs)}ms` : "—"}
+        </span>
       </TableCell>
       <TableCell>
         <DropdownMenu>
@@ -672,12 +667,12 @@ function ChecksTable({
     <Table>
       <TableHeader className="bg-muted/30">
         <TableRow>
-          <TableHead className="w-[40%]">{t("table.name")}</TableHead>
+          <TableHead className="md:w-[40%]">{t("table.name")}</TableHead>
           <TableHead className="hidden sm:table-cell">{t("table.type")}</TableHead>
           <TableHead className="hidden md:table-cell w-[25%]">{t("table.target")}</TableHead>
           <TableHead className="hidden md:table-cell">{t("table.status")}</TableHead>
-          <TableHead>{t("table.response")}</TableHead>
-          <TableHead className="w-[50px]" />
+          <TableHead className="w-20">{t("table.response")}</TableHead>
+          <TableHead className="w-12" />
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -1576,9 +1571,11 @@ function ChecksIndexPage() {
               <span className="hidden sm:inline">{t("newGroup")}</span>
             </Button>
             <Link to="/orgs/$org/checks/new" params={{ org }} search={{ checkType: undefined, checkPeriod: undefined, checkName: undefined, checkSlug: undefined, httpUrl: undefined, httpMethod: undefined, host: undefined, port: undefined, url: undefined, domain: undefined, username: undefined, database: undefined, expectedStatus: undefined, timeout: undefined, label: undefined, region: undefined, group: undefined, confirmationPeriod: undefined, recoveryPeriod: undefined, section: undefined }}>
-              <Button data-testid="new-check-button" aria-label={t("newCheck")}>
-                <Plus className="sm:mr-2 h-4 w-4" />
-                <span className="hidden sm:inline">{t("newCheck")}</span>
+              {/* The page's primary action keeps its label on a phone: the
+                  actions have their own row there, so there is room. */}
+              <Button data-testid="new-check-button">
+                <Plus className="h-4 w-4" />
+                {t("newCheck")}
               </Button>
             </Link>
             {/* "Describe it" (spec 2026-10-03-07): only when the server has an AI provider. */}
@@ -1679,7 +1676,9 @@ function ChecksIndexPage() {
       <ChecksRegionOutageBanner org={org} checks={loadedChecks} regions={regionsData?.regions} />
 
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative w-full min-w-[200px] flex-1 sm:w-auto sm:max-w-sm">
+        {/* basis-full, not w-full: flex-1's zero basis would override a width
+            and squeeze the search next to the filters on a phone. */}
+        <div className="relative min-w-[200px] grow basis-full sm:basis-0 sm:max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder={t("searchChecks")}
@@ -1842,31 +1841,6 @@ function ChecksIndexPage() {
                 />
               ))}
 
-            {/* An organization with checks but no groups never meets the
-                feature otherwise: the sections above render nothing, and the
-                only trace of groups is a toolbar button (spec 2026-09-16-13).
-                Follows the design reference's empty-state pattern — no CTA
-                here, the create action already lives once in the page header. */}
-            {(groups?.length ?? 0) === 0 &&
-              !isFiltering &&
-              !checksStreaming &&
-              ungroupedChecks.length > 0 && (
-                <div
-                  className="space-y-3 rounded-xl border bg-card p-8 text-center shadow-card"
-                  data-testid="no-groups-empty-state"
-                >
-                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">
-                    <FolderPlus className="h-6 w-6 text-muted-foreground" />
-                  </div>
-                  <p className="text-sm font-medium text-foreground">
-                    {t("noGroupsYet.title")}
-                  </p>
-                  <p className="mx-auto max-w-sm text-xs text-muted-foreground">
-                    {t("noGroupsYet.description")}
-                  </p>
-                </div>
-              )}
-
             <UngroupedChecksSection
               org={org}
               checks={ungroupedChecks}
@@ -1877,6 +1851,28 @@ function ChecksIndexPage() {
               groups={groups || []}
               checksByUid={checksByUid}
             />
+
+            {/* An organization with checks but no groups never meets the
+                feature otherwise: the sections above render nothing, and the
+                only trace of groups is a toolbar button (spec 2026-09-16-13).
+                A one-line hint under the list, not a card above it: the
+                checks themselves come first. No CTA here, the create action
+                already lives once in the page header. */}
+            {(groups?.length ?? 0) === 0 &&
+              !isFiltering &&
+              !checksStreaming &&
+              ungroupedChecks.length > 0 && (
+                <div
+                  className="flex items-start gap-3 rounded-lg border border-dashed px-4 py-3"
+                  data-testid="no-groups-empty-state"
+                >
+                  <FolderPlus className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                  <div className="min-w-0 text-sm">
+                    <p className="font-medium text-foreground">{t("noGroupsYet.title")}</p>
+                    <p className="text-muted-foreground">{t("noGroupsYet.description")}</p>
+                  </div>
+                </div>
+              )}
 
             {/* One page-level infinite-scroll sentinel for the whole list. */}
             <div ref={sentinelRef} className="flex justify-center py-4">

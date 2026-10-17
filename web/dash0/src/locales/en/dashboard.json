@@ -123,12 +123,8 @@
     "availabilityNoDataSub": "No data yet",
     "availability": "24h Availability",
     "availabilitySub": "Fleet uptime health",
-    "activeCount": "{{count}} Active",
     "totalEndpoints": "{{count}} total endpoints",
-    "badgeNeedsAction": "Needs Action",
-    "badgeAllUp": "All Up",
-    "badgeActive": "Active",
-    "badgeClean": "Clean"
+    "badgeNeedsAction": "Needs action"
   },
   "glance": {
     "title": "Checks at a glance",
@@ -136,8 +132,7 @@
     "footer_other": "View all {{count}} checks →",
     "since": "since {{time}}",
     "description": "Fleet health preview and live response telemetry",
-    "viewAll": "View all ({{count}})",
-    "telemetryPending": "24h telemetry active"
+    "viewAll": "View all ({{count}})"
   },
   "activeIncidents": {
     "title": "Active incidents",

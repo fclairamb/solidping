@@ -250,7 +250,7 @@ export function CrawlAdvancedFields({ state, onChange, errors }: CheckTypeFields
 
   return (
     <>
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="space-y-2">
           <Label htmlFor="crawlInclude">{t("crawl.include")}</Label>
           <Textarea
@@ -275,7 +275,7 @@ export function CrawlAdvancedFields({ state, onChange, errors }: CheckTypeFields
         </div>
       </div>
       <p className="text-xs text-muted-foreground">{t("crawl.patternsHelp")}</p>
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div className="space-y-2">
           <Label htmlFor="crawlConcurrency">{t("crawl.concurrency")}</Label>
           <Input
@@ -321,7 +321,7 @@ export function CrawlAdvancedFields({ state, onChange, errors }: CheckTypeFields
       <FieldError errors={errors} name="maxRunDuration" />
       <div className="space-y-2">
         <Label>{t("crawl.failOn")}</Label>
-        <div className="grid gap-1 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
           {CRAWL_FINDING_TYPES.map((type) => (
             <label key={type} className="flex min-h-9 items-center gap-2">
               <Checkbox

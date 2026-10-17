@@ -57,9 +57,11 @@ function declarations(css: string, selector: string): Map<string, string> {
   return out;
 }
 
-// Spec 01 §1 (neutrals, --primary, --ring, --chart-1, --chart-5) and §2
-// (--primary-gradient, --gradient-foreground). --control is left out on
-// purpose: nothing in status0 reads it.
+// Spec 01 §1 (neutrals, --primary, --ring, --chart-1, --chart-5).
+// --control is left out on purpose: nothing in status0 reads it. The
+// gradient tokens (--primary-gradient, --gradient-foreground) are no longer
+// mirrored: dash0 went flat (--primary-fill) while status0 keeps its
+// documented gradient, which customers re-theme (see DOCUMENTED below).
 const MIRRORED = [
   "--background",
   "--foreground",
@@ -80,8 +82,6 @@ const MIRRORED = [
   "--ring",
   "--chart-1",
   "--chart-5",
-  "--primary-gradient",
-  "--gradient-foreground",
 ];
 
 // Every variable documented in web/docs/docs/features/status-pages.md.

@@ -119,7 +119,7 @@ function NewEscalationPolicyPage() {
         </Button>
       </div>
 
-      <h1 className="text-3xl font-bold tracking-tight">
+      <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
         {t("escalation:new.title")}
       </h1>
 
