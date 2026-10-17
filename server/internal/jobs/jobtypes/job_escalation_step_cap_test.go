@@ -109,7 +109,7 @@ func TestCap_BringYourOwnIgnoresMonthlyCap(t *testing.T) {
 	r.Equal(0, monthlyCount(t, env, models.UsageCounterKindVoice))
 }
 
-// TestCap_InstanceCredentialsRefusedAtZero is today's behaviour, kept: the same
+// TestCap_InstanceCredentialsRefusedAtZero is today's behavior, kept: the same
 // org on instance credentials is refused on both channels.
 func TestCap_InstanceCredentialsRefusedAtZero(t *testing.T) {
 	t.Parallel()

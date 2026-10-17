@@ -66,6 +66,21 @@ func notifyMonthlyCapReached(
 		return
 	}
 
+	data := capNoticeData(ctx, jctx, org, kind, refusal)
+
+	for _, member := range members {
+		if !member.Role.AtLeast(models.MemberRoleAdmin) || member.User == nil || member.User.Email == "" {
+			continue
+		}
+
+		enqueueCapNotice(ctx, jctx, log, orgUID, member.User.Email, data)
+	}
+}
+
+// capNoticeData builds the email view model.
+func capNoticeData(
+	ctx context.Context, jctx *jobdef.JobContext, org *models.Organization, kind string, refusal error,
+) map[string]any {
 	limit := 0
 
 	var quotaErr *entitlements.QuotaError
@@ -86,25 +101,26 @@ func notifyMonthlyCapReached(
 	}
 	email.ApplyOrgBranding(data, org.Name, org.Slug, org.LogoURL)
 
-	for _, member := range members {
-		if !member.Role.AtLeast(models.MemberRoleAdmin) || member.User == nil || member.User.Email == "" {
-			continue
-		}
+	return data
+}
 
-		// One job per recipient: a shared To: would disclose the admin list.
-		raw, marshalErr := json.Marshal(EmailJobConfig{
-			To:           []string{member.User.Email},
-			Template:     email.TemplateUsageCapReached,
-			TemplateData: data,
-		})
-		if marshalErr != nil {
-			log.ErrorContext(ctx, "monthly cap notice: cannot marshal the email", "error", marshalErr)
+// enqueueCapNotice queues one email job. One job per recipient: a shared To:
+// would disclose the admin list.
+func enqueueCapNotice(
+	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger, orgUID, recipient string, data map[string]any,
+) {
+	raw, err := json.Marshal(EmailJobConfig{
+		To:           []string{recipient},
+		Template:     email.TemplateUsageCapReached,
+		TemplateData: data,
+	})
+	if err != nil {
+		log.ErrorContext(ctx, "monthly cap notice: cannot marshal the email", "error", err)
 
-			return
-		}
+		return
+	}
 
-		if _, jobErr := jctx.Services.Jobs.CreateJob(ctx, orgUID, string(jobdef.JobTypeEmail), raw, nil); jobErr != nil {
-			log.ErrorContext(ctx, "monthly cap notice: cannot enqueue the email", "orgUID", orgUID, "error", jobErr)
-		}
+	if _, err := jctx.Services.Jobs.CreateJob(ctx, orgUID, string(jobdef.JobTypeEmail), raw, nil); err != nil {
+		log.ErrorContext(ctx, "monthly cap notice: cannot enqueue the email", "orgUID", orgUID, "error", err)
 	}
 }
