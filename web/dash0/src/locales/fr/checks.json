@@ -489,7 +489,9 @@
     "js": "JavaScript",
     "jsDescription": "Exécuter des scripts de surveillance JavaScript personnalisés",
     "prometheus": "Prometheus",
-    "prometheusDescription": "Alerter sur des seuils de métriques Prometheus"
+    "prometheusDescription": "Alerter sur des seuils de métriques Prometheus",
+    "vendor-status": "Page de statut fournisseur",
+    "vendor-statusDescription": "Alerter quand la page de statut d'un fournisseur (GitHub, Cloudflare, OpenAI...) signale une panne"
   },
   "freebox": {
     "discover": "Découvrir depuis la Freebox",
@@ -1465,7 +1467,9 @@
     "crawlMaxPagesRange": "Le nombre de pages doit être compris entre 1 et {{max}}",
     "crawlMaxRunRange": "La durée maximale doit être comprise entre {{min}} et {{max}} minutes",
     "healthMaxAge": "L'âge maximal doit être une durée comme 10m (0 désactive)",
-    "aiContractRequired": "Le contrat doit avoir au moins une ligne quand il y a une description"
+    "aiContractRequired": "Le contrat doit avoir au moins une ligne quand il y a une description",
+    "vendorStatusUrl": "L'URL de la page de statut est requise",
+    "vendorStatusHttps": "L'URL de la page de statut doit commencer par https://"
   },
   "health": {
     "format": "Format de santé",
@@ -1678,6 +1682,21 @@
       "tls": "Négociation TLS",
       "ttfb": "Réponse du serveur (TTFB)",
       "download": "Téléchargement"
+    }
+  },
+  "vendorStatus": {
+    "vendor": "Fournisseur",
+    "search": "Chercher un fournisseur",
+    "custom": "URL personnalisée",
+    "url": "URL de la page de statut",
+    "urlHelp": "Racine d'une page de statut Statuspage v2 (https uniquement), par exemple https://status.acme.com.",
+    "components": "Composants",
+    "componentsHelp": "Ne rien cocher pour surveiller toute la page.",
+    "loading": "Chargement des composants...",
+    "componentsError": "Impossible de lire cette page de statut (est-ce une page Statuspage v2 ?).",
+    "detail": {
+      "title": "Incidents du fournisseur",
+      "noIncidents": "Aucun incident actif signalé par le fournisseur."
     }
   }
 }

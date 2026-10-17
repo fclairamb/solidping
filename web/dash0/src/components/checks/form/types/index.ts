@@ -101,6 +101,7 @@ import {
   privateLocationModule,
 } from "./misc";
 
+import { vendorStatusModule } from "./vendor-status";
 import { healthModule, HealthAdvancedFields, healthAdvancedSummary } from "./health";
 import type { HealthState } from "./health";
 import { crawlModule, CrawlAdvancedFields, crawlAdvancedSummary } from "./crawl";
@@ -147,6 +148,7 @@ const modules: CheckTypeModule[] = [
   entry(vncModule),
   entry(crawlModule),
   entry(healthModule),
+  entry(vendorStatusModule),
   entry(sipModule),
   entry(jsModule),
   entry(sleepModule),

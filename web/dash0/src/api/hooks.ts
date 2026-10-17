@@ -187,6 +187,7 @@ export interface Check {
     | "prometheus"
     | "crawl"
     | "health"
+    | "vendor-status"
     | "sleep";
   config?: Record<string, unknown>;
   /**
@@ -408,6 +409,7 @@ export interface CreateCheckRequest {
     | "prometheus"
     | "crawl"
     | "health"
+    | "vendor-status"
     | "sleep";
   config: Record<string, unknown>;
   /** An explicit list pins the check. Omit to let it be placed automatically. */

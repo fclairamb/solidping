@@ -489,7 +489,9 @@
     "js": "JavaScript",
     "jsDescription": "Ejecuta scripts de monitorización JavaScript personalizados",
     "prometheus": "Prometheus",
-    "prometheusDescription": "Alerta según umbrales de métricas de Prometheus"
+    "prometheusDescription": "Alerta según umbrales de métricas de Prometheus",
+    "vendor-status": "Página de estado del proveedor",
+    "vendor-statusDescription": "Alerta cuando la página de estado de un proveedor (GitHub, Cloudflare, OpenAI...) informa de una caída"
   },
   "dnsChanges": {
     "detect": "Detectar cambios",
@@ -1465,7 +1467,9 @@
     "crawlMaxPagesRange": "El número de páginas debe estar entre 1 y {{max}}",
     "crawlMaxRunRange": "La duración máxima debe estar entre {{min}} y {{max}} minutos",
     "healthMaxAge": "La antigüedad máxima debe ser una duración como 10m (0 la desactiva)",
-    "aiContractRequired": "El contrato necesita al menos una línea cuando hay un prompt"
+    "aiContractRequired": "El contrato necesita al menos una línea cuando hay un prompt",
+    "vendorStatusUrl": "La URL de la página de estado es obligatoria",
+    "vendorStatusHttps": "La URL de la página de estado debe empezar por https://"
   },
   "health": {
     "format": "Formato de salud",
@@ -1678,6 +1682,21 @@
       "tls": "Negociación TLS",
       "ttfb": "Respuesta del servidor (TTFB)",
       "download": "Descarga"
+    }
+  },
+  "vendorStatus": {
+    "vendor": "Proveedor",
+    "search": "Buscar un proveedor",
+    "custom": "URL personalizada",
+    "url": "URL de la página de estado",
+    "urlHelp": "Raíz de una página de estado Statuspage v2 (solo https), por ejemplo https://status.acme.com.",
+    "components": "Componentes",
+    "componentsHelp": "Deja todo sin marcar para vigilar la página entera.",
+    "loading": "Cargando componentes...",
+    "componentsError": "No se pudo leer esta página de estado (¿es una página Statuspage v2?).",
+    "detail": {
+      "title": "Incidentes del proveedor",
+      "noIncidents": "El proveedor no informa de ningún incidente activo."
     }
   }
 }

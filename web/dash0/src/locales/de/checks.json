@@ -489,7 +489,9 @@
     "js": "JavaScript",
     "jsDescription": "Eigene JavaScript-Überwachungsskripte ausführen",
     "prometheus": "Prometheus",
-    "prometheusDescription": "Bei Prometheus-Metrikschwellen alarmieren"
+    "prometheusDescription": "Bei Prometheus-Metrikschwellen alarmieren",
+    "vendor-status": "Anbieter-Statusseite",
+    "vendor-statusDescription": "Alarm, wenn die Statusseite eines Anbieters (GitHub, Cloudflare, OpenAI...) einen Ausfall meldet"
   },
   "dnsChanges": {
     "detect": "Änderungen erkennen",
@@ -1465,7 +1467,9 @@
     "crawlMaxPagesRange": "Die Seitenzahl muss zwischen 1 und {{max}} liegen",
     "crawlMaxRunRange": "Die maximale Laufzeit muss zwischen {{min}} und {{max}} Minuten liegen",
     "healthMaxAge": "Das Höchstalter muss eine Dauer wie 10m sein (0 deaktiviert)",
-    "aiContractRequired": "Der Vertrag braucht mindestens eine Zeile, wenn ein Prompt gesetzt ist"
+    "aiContractRequired": "Der Vertrag braucht mindestens eine Zeile, wenn ein Prompt gesetzt ist",
+    "vendorStatusUrl": "Die URL der Statusseite ist erforderlich",
+    "vendorStatusHttps": "Die URL der Statusseite muss mit https:// beginnen"
   },
   "health": {
     "format": "Health-Format",
@@ -1678,6 +1682,21 @@
       "tls": "TLS-Handshake",
       "ttfb": "Serverantwort (TTFB)",
       "download": "Datenübertragung"
+    }
+  },
+  "vendorStatus": {
+    "vendor": "Anbieter",
+    "search": "Anbieter suchen",
+    "custom": "Eigene URL",
+    "url": "URL der Statusseite",
+    "urlHelp": "Wurzel einer Statuspage-v2-Statusseite (nur https), zum Beispiel https://status.acme.com.",
+    "components": "Komponenten",
+    "componentsHelp": "Nichts auswählen, um die ganze Seite zu überwachen.",
+    "loading": "Komponenten werden geladen...",
+    "componentsError": "Diese Statusseite konnte nicht gelesen werden (ist es eine Statuspage-v2-Seite?).",
+    "detail": {
+      "title": "Störungen des Anbieters",
+      "noIncidents": "Der Anbieter meldet keine aktive Störung."
     }
   }
 }

@@ -154,6 +154,7 @@ import { DnsblCard, DNSBL_OUTPUT_KEYS } from "@/components/checks/dnsbl-card";
 import { DnsChangesCard } from "@/components/checks/dns-changes-card";
 import { CrawlCard } from "@/components/checks/crawl-card";
 import { HealthCard } from "@/components/checks/health-card";
+import { VendorStatusCard } from "@/components/checks/vendor-status-card";
 import { isEvaluationOutput } from "@/components/checks/evaluation-card";
 import { isPassiveCheckType } from "@/lib/check-scheduling";
 import {
@@ -2039,6 +2040,14 @@ function CheckDetailPage() {
         <HealthCard
           org={org}
           checkUid={checkUid}
+          output={
+            check.lastResult?.output as Record<string, unknown> | undefined
+          }
+        />
+      )}
+
+      {check.type === "vendor-status" && (
+        <VendorStatusCard
           output={
             check.lastResult?.output as Record<string, unknown> | undefined
           }

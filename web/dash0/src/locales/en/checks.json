@@ -489,7 +489,9 @@
     "js": "JavaScript",
     "jsDescription": "Run custom JavaScript monitoring scripts",
     "prometheus": "Prometheus",
-    "prometheusDescription": "Alert on Prometheus metric thresholds"
+    "prometheusDescription": "Alert on Prometheus metric thresholds",
+    "vendor-status": "Vendor status page",
+    "vendor-statusDescription": "Alert when a vendor's status page (GitHub, Cloudflare, OpenAI...) reports an outage"
   },
   "freebox": {
     "discover": "Discover from Freebox",
@@ -1465,7 +1467,9 @@
     "crawlMaxPagesRange": "Max pages must be between 1 and {{max}}",
     "crawlMaxRunRange": "Max run duration must be between {{min}} and {{max}} minutes",
     "healthMaxAge": "Max age must be a duration such as 10m (0 disables)",
-    "aiContractRequired": "The contract needs at least one line when there is a prompt"
+    "aiContractRequired": "The contract needs at least one line when there is a prompt",
+    "vendorStatusUrl": "Status page URL is required",
+    "vendorStatusHttps": "Status page URL must start with https://"
   },
   "health": {
     "format": "Health format",
@@ -1678,6 +1682,21 @@
       "tls": "TLS handshake",
       "ttfb": "Server response (TTFB)",
       "download": "Download"
+    }
+  },
+  "vendorStatus": {
+    "vendor": "Vendor",
+    "search": "Search a vendor",
+    "custom": "Custom URL",
+    "url": "Status page URL",
+    "urlHelp": "Root of a Statuspage v2 status page (https only), for example https://status.acme.com.",
+    "components": "Components",
+    "componentsHelp": "Leave all unticked to watch the whole page.",
+    "loading": "Loading components...",
+    "componentsError": "Could not read this status page (is it a Statuspage v2 page?).",
+    "detail": {
+      "title": "Vendor incidents",
+      "noIncidents": "No active incident reported by the vendor."
     }
   }
 }

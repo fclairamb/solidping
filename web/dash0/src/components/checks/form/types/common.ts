@@ -61,6 +61,7 @@ export type CheckType =
   | "vnc"
   | "crawl"
   | "health"
+  | "vendor-status"
   | "private-location"
   | "sleep";
 
