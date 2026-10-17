@@ -97,7 +97,7 @@ function CheckJobDetailPage() {
           <Activity className="h-5 w-5" />
         </div>
         <div className="min-w-0 flex-1">
-          <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
+          <h1 className="text-xl font-semibold tracking-tight sm:text-2xl flex items-center gap-2">
             <span className="truncate">{row.checkName ?? row.checkUid}</span>
             <Badge variant={checkStateVariant(row.state)}>
               {t(`state.${row.state}`, row.state)}

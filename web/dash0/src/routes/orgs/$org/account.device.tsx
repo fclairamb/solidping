@@ -187,7 +187,7 @@ function DeviceConsentPage() {
 
       {decision === null && submitted !== "" && consent.isLoading && (
         <Card>
-          <CardContent className="flex flex-col gap-3 pt-6">
+          <CardContent className="flex flex-col gap-3 pt-[var(--card-pad,1.5rem)]">
             <Skeleton className="h-5 w-2/3" />
             <Skeleton className="h-5 w-1/2" />
           </CardContent>

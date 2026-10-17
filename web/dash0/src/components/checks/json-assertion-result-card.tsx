@@ -49,7 +49,7 @@ export function JsonAssertionResultCard({
 
   return (
     <Card data-testid="json-assertion-result-card">
-      <CardContent className="pt-6">
+      <CardContent className="pt-[var(--card-pad,1.5rem)]">
         <JsonAssertionResults result={result} />
       </CardContent>
     </Card>
@@ -74,7 +74,7 @@ export function BodyAssertionResultCard({
 
   return (
     <Card data-testid="body-assertion-result-card">
-      <CardContent className="pt-6">
+      <CardContent className="pt-[var(--card-pad,1.5rem)]">
         <JsonAssertionResults result={result} titleKey="bodyAssertions" />
       </CardContent>
     </Card>
@@ -94,7 +94,7 @@ export function HeaderAssertionResultCard({
 
   return (
     <Card data-testid="header-assertion-result-card">
-      <CardContent className="pt-6">
+      <CardContent className="pt-[var(--card-pad,1.5rem)]">
         <JsonAssertionResults result={result} titleKey="headerAssertions" />
       </CardContent>
     </Card>

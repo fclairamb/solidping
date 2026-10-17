@@ -144,7 +144,7 @@ function RegisterAgentPage() {
     <div className="mx-auto max-w-2xl space-y-6">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-2xl font-bold tracking-tight sm:text-3xl">
+          <h1 className="text-xl font-semibold tracking-tight sm:text-2xl truncate">
             {t("privateLocations.wizard.title", "Register an agent")}
           </h1>
           <p className="mt-1 text-muted-foreground">

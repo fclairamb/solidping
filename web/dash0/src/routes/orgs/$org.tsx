@@ -1217,23 +1217,11 @@ function OrgLayout() {
       <AppSidebar />
       <CommandMenu open={commandMenuOpen} onOpenChange={setCommandMenuOpen} />
       <SidebarInset className="md:ml-0">
-        {/* The page glow (spec 2026-09-24-02): one decorative layer tying the
-            top of every org page to the brand. Absolutely positioned inside
-            the relative SidebarInset, so it takes no layout space (no shift,
-            no scroll); pointer-events-none so it never covers a click target;
-            print:hidden. It is painted first and the header and content below
-            are `relative`, so they paint over it in tree order without
-            opening a new stacking context against the fixed sidebar. */}
-        <div
-          aria-hidden="true"
-          data-testid="page-glow"
-          className="pointer-events-none absolute inset-x-0 top-0 z-0 h-[260px] bg-page-glow print:hidden"
-        />
         {/* h-12 (48px), not h-16: this bar holds a sidebar toggle, a breadcrumb
             and two icon buttons, and every page repeats the breadcrumb leaf as
             its own <h1> immediately below — 64px of chrome bought nothing but
-            lost content height. Translucent so the glow shows through; the
-            blur only softens the glow behind it, never the breadcrumbs. */}
+            lost content height. Translucent with a blur so content scrolling
+            under it stays legible behind the breadcrumbs. */}
         <header className="relative flex h-12 shrink-0 items-center gap-2 border-b bg-background/60 px-4 backdrop-blur">
           <SidebarTrigger className="-ml-1" data-testid="sidebar-trigger" />
           <Separator orientation="vertical" className="mr-2 h-4" />
@@ -1254,15 +1242,19 @@ function OrgLayout() {
             onSubmit={feedback.submit}
           />
         )}
-        <div className="relative flex-1 overflow-auto p-3 sm:p-4">
-          {/* Above the content on EVERY page of the org, not just the
-              dashboard: a visitor who deep-links into a check detail must
-              learn the sandbox rules there too. */}
-          <DemoBanner org={org} />
-          {/* Super-admin impersonation (spec 2026-09-29-03): on every org
-              page, never dismissible. */}
-          <ImpersonationBanner />
-          <Outlet />
+        {/* A 16px gutter on a phone, more air from sm up, and a max width so
+            lines and tables stay readable on a very wide monitor. */}
+        <div className="relative flex-1 overflow-auto px-4 py-4 sm:px-6 sm:py-6">
+          <div className="mx-auto w-full max-w-[1400px]">
+            {/* Above the content on EVERY page of the org, not just the
+                dashboard: a visitor who deep-links into a check detail must
+                learn the sandbox rules there too. */}
+            <DemoBanner org={org} />
+            {/* Super-admin impersonation (spec 2026-09-29-03): on every org
+                page, never dismissible. */}
+            <ImpersonationBanner />
+            <Outlet />
+          </div>
         </div>
       </SidebarInset>
     </SidebarProvider>
