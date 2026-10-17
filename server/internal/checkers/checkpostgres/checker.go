@@ -40,27 +40,6 @@ func (d pqTunnelDialer) DialContext(ctx context.Context, network, address string
 	return d.dialer.DialContext(ctx, network, address)
 }
 
-// openDB opens the PostgreSQL handle. Tunneled, it builds a pq connector wired to
-// dial through the bastion; untunneled, it is the byte-for-byte `sql.Open`.
-func openDB(ctx context.Context, connStr string) (*sql.DB, error) {
-	// The tunnel dialer, or the egress guard under an enforcing policy (spec
-	// 2026-09-25-19); nil keeps the driver's own dial byte-for-byte. The
-	// driver negotiates TLS above this dialer either way.
-	dialer := checkerdef.OutboundDialer(ctx)
-	if dialer == nil {
-		return sql.Open("postgres", connStr)
-	}
-
-	connector, err := pq.NewConnector(connStr)
-	if err != nil {
-		return nil, err
-	}
-
-	connector.Dialer(pqTunnelDialer{ctx: ctx, dialer: dialer})
-
-	return sql.OpenDB(connector), nil
-}
-
 // PostgreSQLChecker implements the Checker interface for PostgreSQL database checks.
 type PostgreSQLChecker struct{}
 
@@ -81,7 +60,7 @@ type execParams struct {
 	timeout time.Duration
 	query   string
 	port    int
-	connStr string
+	pqCfg   pq.Config
 }
 
 func newExecParams(cfg *PostgreSQLConfig) execParams {
@@ -89,12 +68,13 @@ func newExecParams(cfg *PostgreSQLConfig) execParams {
 		timeout: cfg.Timeout,
 		query:   cfg.Query,
 		port:    cfg.Port,
-		connStr: cfg.BuildConnStr(),
 	}
 
 	if params.timeout == 0 {
 		params.timeout = defaultTimeout
 	}
+
+	params.pqCfg = buildPQConfig(cfg, params.timeout)
 
 	if params.query == "" {
 		params.query = defaultQuery
@@ -134,7 +114,7 @@ func (c *PostgreSQLChecker) Execute(
 		output["tunneled"] = true
 	}
 
-	conn, err := openDB(ctx, params.connStr)
+	conn, err := openDB(ctx, &params.pqCfg)
 	if err != nil {
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusError,
