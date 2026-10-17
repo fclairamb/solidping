@@ -97,12 +97,12 @@ test.describe("Incident notifications", () => {
 
     await expect(page.getByTestId("my-notifications-page")).toBeVisible();
 
-    // The header uses the canonical boxed PageHeader: a level-1 heading with
-    // the text-2xl font-bold treatment (bold since spec 2026-09-24-02).
+    // The header uses the canonical PageHeader: a level-1 heading with the
+    // shared semibold title treatment.
     const h1 = page.getByRole("heading", { level: 1, name: "My alerts" });
     await expect(h1).toBeVisible();
-    await expect(h1).toHaveClass(/text-2xl/);
-    await expect(h1).toHaveClass(/font-bold/);
+    await expect(h1).toHaveClass(/sm:text-2xl/);
+    await expect(h1).toHaveClass(/font-semibold/);
     await expect(
       page.getByText("Incidents you were paged for, in reverse chronological order.")
     ).toBeVisible();

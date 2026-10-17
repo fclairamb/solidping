@@ -375,7 +375,7 @@ export function MaintenanceWindowForm({
         <Button type="button" variant="ghost" size="icon" onClick={onCancel}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
-        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
+        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
           {mode === "create" ? t("form.createTitle") : t("form.editTitle")}
         </h1>
       </div>
@@ -458,7 +458,7 @@ export function MaintenanceWindowForm({
 
           {recurrence === "none" ? (
             // One-time: full start/end datetimes are correct here.
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="mw-start">{t("form.start")}</Label>
                 <Input
@@ -538,7 +538,7 @@ export function MaintenanceWindowForm({
                 </div>
               )}
 
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="mw-start-time">{t("form.startTime")}</Label>
                   <Input
@@ -590,7 +590,7 @@ export function MaintenanceWindowForm({
                 </div>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="mw-first-day">{t("form.firstDay")}</Label>
                   <Input

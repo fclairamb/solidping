@@ -1,9 +1,11 @@
 import { test, expect, type Page } from "./fixtures";
 
-// Spec 2026-09-24-02 (electric identity, app chrome). The unit tests pin the
-// class contract; these check what the browser actually paints: the navy
-// sidebar in BOTH themes (desktop, icon rail, mobile sheet), the active
-// marker, the page-header tile tones, the page glow and the hero KPI tile.
+// App chrome as the browser actually paints it. The unit tests pin the class
+// contract. Spec 2026-09-24-02 made the sidebar always-dark navy (desktop,
+// icon rail, mobile sheet) with a cyan active marker, and that is unchanged.
+// The flat redesign removed the rest of the gradients from the operator UI:
+// the page-header tile is a soft tint, every KPI tile is the same flat card,
+// and the page glow is gone from the org app shell.
 
 const NAVY_LIGHT = "oklch(0.18 0.05 263)";
 const NAVY_DARK = "oklch(0.125 0.035 263)";
@@ -195,11 +197,11 @@ test.describe("always-dark sidebar", () => {
   });
 });
 
-// --- dashboard hero tile ------------------------------------------------------
+// --- dashboard KPI tiles --------------------------------------------------------
 
 async function mockDashboardStats(page: Page, availability24h: number) {
   const checks = [
-    { uid: "71111111-1111-1111-1111-111111111111", name: "Hero Check", type: "http", enabled: true, status: "up", lastResult: { status: "up", durationMs: 120 } },
+    { uid: "71111111-1111-1111-1111-111111111111", name: "Tile Check", type: "http", enabled: true, status: "up", lastResult: { status: "up", durationMs: 120 } },
   ];
   await page.route("**/api/v1/orgs/*/checks/stats*", (route) =>
     route.fulfill({
@@ -235,9 +237,30 @@ async function mockDashboardStats(page: Page, availability24h: number) {
   }
 }
 
-test.describe("hero KPI tile", () => {
+/** Computed style of a throwaway element carrying `className`. */
+async function probe(
+  page: Page,
+  className: string,
+  prop: "backgroundColor" | "color" | "borderTopColor" = "backgroundColor",
+): Promise<string> {
+  return page.evaluate(
+    ([cls, p]) => {
+      const el = document.createElement("div");
+      el.className = cls;
+      document.body.appendChild(el);
+      const value = getComputedStyle(el)[p as "backgroundColor"];
+      el.remove();
+      return value;
+    },
+    [className, prop] as const,
+  );
+}
+
+const TRANSPARENT = "rgba(0, 0, 0, 0)";
+
+test.describe("dashboard KPI tiles", () => {
   for (const theme of ["light", "dark"] as const) {
-    test(`the availability tile is the page's one hero, with a solid white tier chip (${theme})`, async ({
+    test(`every tile is the same flat card and the availability tier is a Badge (${theme})`, async ({
       authenticatedPage,
     }) => {
       const page = authenticatedPage;
@@ -245,36 +268,114 @@ test.describe("hero KPI tile", () => {
       await mockDashboardStats(page, 92);
       await page.goto("orgs/test");
 
-      const hero = page.getByTestId("kpi-tile-availability").locator('[data-slot="kpi-tile"]');
-      await expect(hero).toBeVisible({ timeout: 10000 });
-      await expect(hero).toHaveAttribute("data-variant", "hero");
-      await expect(page.locator('[data-slot="kpi-tile"][data-variant="hero"]')).toHaveCount(1);
+      const tiles = page.locator('[data-slot="kpi-tile"]');
+      await expect(tiles).toHaveCount(4, { timeout: 10000 });
+      // No hero: no tile carries a variant any more.
+      await expect(page.locator('[data-slot="kpi-tile"][data-variant]')).toHaveCount(0);
+
+      const looks = await tiles.evaluateAll((els) =>
+        els.map((el) => {
+          const cs = getComputedStyle(el);
+          const label = getComputedStyle(el.querySelector('[data-slot="kpi-tile-label"]')!);
+          const icon = getComputedStyle(el.querySelector('[data-slot="kpi-tile-icon"]')!);
+          const value = getComputedStyle(el.querySelector('[data-slot="kpi-tile-value"]')!);
+          return {
+            surface: {
+              background: cs.backgroundColor,
+              image: cs.backgroundImage,
+              borderWidth: cs.borderTopWidth,
+              borderColor: cs.borderTopColor,
+              shadow: cs.boxShadow,
+              radius: cs.borderTopLeftRadius,
+              translate: cs.translate,
+            },
+            label: {
+              color: label.color,
+              size: label.fontSize,
+              weight: label.fontWeight,
+              transform: label.textTransform,
+            },
+            icon: { color: icon.color, background: icon.backgroundColor },
+            valueWeight: value.fontWeight,
+          };
+        }),
+      );
+      // Same surface, label, icon and value weight on all four tiles.
+      for (const look of looks.slice(1)) expect(look).toEqual(looks[0]);
+
+      const [first] = looks;
+      expect(first.surface.background).toBe(await probe(page, "bg-card"));
+      expect(first.surface.borderWidth).toBe("1px");
+      expect(first.surface.radius).toBe("14px");
+      expect(first.surface.translate).toBe("none");
+      // Light: no background image at all. Dark: only Card's own faint
+      // top-lit wash, shared by every card (checked equal above).
+      if (theme === "light") expect(first.surface.image).toBe("none");
+      expect(first.label).toEqual({
+        color: await probe(page, "text-muted-foreground", "color"),
+        size: "14px",
+        weight: "500",
+        transform: "none",
+      });
+      // The icon is bare (no chip) and muted.
+      expect(first.icon).toEqual({
+        color: await probe(page, "text-muted-foreground", "color"),
+        background: TRANSPARENT,
+      });
+      expect(first.valueWeight).toBe("600");
+
+      // Color goes on the value only: a 92% availability is the "down" tier.
+      const availability = page.getByTestId("kpi-tile-availability");
+      await expect(availability.locator('[data-slot="kpi-tile-value"]')).toHaveCSS(
+        "color",
+        await probe(page, "text-status-error-foreground", "color"),
+      );
       await expect(
-        page.getByTestId("kpi-tile-monitored").locator('[data-slot="kpi-tile"]'),
-      ).toHaveAttribute("data-variant", "default");
+        page.getByTestId("kpi-tile-monitored").locator('[data-slot="kpi-tile-value"]'),
+      ).toHaveCSS("color", await probe(page, "text-foreground", "color"));
 
-      await expect(hero).toHaveCSS("background-image", /linear-gradient\(135deg/);
-      await expect(hero).toHaveCSS("background-size", "180% 180%");
-      await expect(hero).toHaveCSS("background-position", "100% 100%");
-      await expect(hero).toHaveCSS("border-top-width", "0px");
-      await expect(hero).toHaveCSS("box-shadow", /0px 14px 28px -12px/);
-      await expect(hero.locator('[data-slot="kpi-tile-value"]')).toHaveCSS("color", "oklch(1 0 0)");
-      // 90% white (the unit test proves >= 4.5:1 over the cropped gradient).
-      await expect(hero.locator('[data-slot="kpi-tile-label"]')).toHaveCSS("color", /\/ 0\.9\)$/);
-      await expect(hero.locator('[data-slot="kpi-tile-sub"]')).toHaveCSS("color", /\/ 0\.9\)$/);
-
-      // "Down" tier: a solid white chip with red-700 text, in BOTH themes.
+      // The tier word is a destructive status Badge, not a solid white chip.
       const badge = page.getByTestId("kpi-availability-badge");
       await expect(badge).toHaveAttribute("data-tier", "down");
       await expect(badge).toContainText("Down");
-      await expect(badge).toHaveCSS("background-color", "rgb(255, 255, 255)");
-      await expect(badge).toHaveCSS("color", "oklch(0.505 0.213 27.518)");
+      await expect(badge).toHaveCSS("background-image", "none");
+      await expect(badge).toHaveCSS("background-color", await probe(page, "bg-status-error/15"));
+      await expect(badge).toHaveCSS("color", await probe(page, "text-status-error-foreground", "color"));
+      await expect(badge).not.toHaveCSS("background-color", "rgb(255, 255, 255)");
 
       await useTheme(page, "light");
     });
   }
 
-  test("at 375px the hero stacks with the other tiles and the sheet sidebar is navy", async ({
+  test("hover deepens a tile's shadow and never moves it", async ({ authenticatedPage }) => {
+    const page = authenticatedPage;
+    await useTheme(page, "light");
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await mockDashboardStats(page, 99.95);
+    await page.goto("orgs/test");
+
+    const tile = page.getByTestId("kpi-tile-monitored").locator('[data-slot="kpi-tile"]');
+    await expect(tile).toBeVisible({ timeout: 10000 });
+    await tile.scrollIntoViewIfNeeded();
+    await page.mouse.move(0, 0);
+    const shadow = () => tile.evaluate((el) => getComputedStyle(el).boxShadow);
+    const rest = await shadow();
+    const restBox = (await tile.boundingBox())!;
+
+    await tile.hover();
+    // transition-shadow animates it in: poll for the settled shadow-card-hover
+    // (its hairline plus a deeper neutral drop).
+    await expect
+      .poll(shadow, { timeout: 3000 })
+      .toContain("rgba(15, 23, 42, 0.12) 0px 6px 16px -6px");
+    expect(await shadow()).not.toBe(rest);
+    expect(await shadow()).toContain("rgba(15, 23, 42, 0.05) 0px 1px 2px 0px");
+    await expect(tile).toHaveCSS("translate", "none");
+    await expect(tile).toHaveCSS("transform", "none");
+    expect((await tile.boundingBox())!.y).toBe(restBox.y);
+  });
+
+  test("at 375px the tiles sit two per row inside a 16px gutter and the sheet sidebar is navy", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
@@ -285,19 +386,28 @@ test.describe("hero KPI tile", () => {
     await page.waitForLoadState("networkidle");
 
     const monitored = page.getByTestId("kpi-tile-monitored");
-    const hero = page.getByTestId("kpi-tile-availability");
-    await expect(hero).toBeVisible({ timeout: 10000 });
+    const availability = page.getByTestId("kpi-tile-availability");
+    const down = page.getByTestId("kpi-tile-down");
+    await expect(availability).toBeVisible({ timeout: 10000 });
     const a = (await monitored.boundingBox())!;
-    const b = (await hero.boundingBox())!;
-    // One column: same x and width, the hero below the first tile.
-    expect(Math.abs(a.x - b.x)).toBeLessThanOrEqual(1);
+    const b = (await availability.boundingBox())!;
+    const c = (await down.boundingBox())!;
+    // Two columns: the first two tiles share a row and a width …
+    expect(Math.abs(a.y - b.y)).toBeLessThanOrEqual(1);
     expect(Math.abs(a.width - b.width)).toBeLessThanOrEqual(1);
-    expect(b.y).toBeGreaterThanOrEqual(a.y + a.height);
-    expect(b.x + b.width).toBeLessThanOrEqual(375);
+    expect(b.x).toBeGreaterThanOrEqual(a.x + a.width);
+    // … and the third wraps under the first.
+    expect(Math.abs(c.x - a.x)).toBeLessThanOrEqual(1);
+    expect(c.y).toBeGreaterThanOrEqual(a.y + a.height);
+    // A 16px gutter on each side.
+    expect(Math.abs(a.x - 16)).toBeLessThanOrEqual(1);
+    expect(Math.abs(b.x + b.width - (375 - 16))).toBeLessThanOrEqual(1);
     // No horizontal page scroll.
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth),
     ).toBeLessThanOrEqual(375);
+    // The page title steps down to text-xl on a phone.
+    await expect(page.getByRole("heading", { level: 1 })).toHaveCSS("font-size", "20px");
 
     // The mobile sheet: portaled to <body>, so it carries its own dark scope.
     await page.getByTestId("sidebar-trigger").click();
@@ -334,7 +444,7 @@ test.describe("hero KPI tile", () => {
 // --- page header ----------------------------------------------------------------
 
 test.describe("page header tile", () => {
-  test("brand tone by default: accent gradient, white icon, bold title", async ({
+  test("brand tone by default: a soft primary tint, primary icon, semibold title", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
@@ -343,12 +453,20 @@ test.describe("page header tile", () => {
 
     const tile = page.locator('[data-slot="page-header-tile"]').first();
     await expect(tile).toHaveAttribute("data-tone", "brand");
-    await expect(tile).toHaveCSS("background-image", /linear-gradient/);
-    await expect(tile).toHaveCSS("color", "oklch(1 0 0)");
+    await expect(tile).toHaveCSS("background-image", "none");
+    await expect(tile).toHaveCSS("background-color", await probe(page, "bg-primary/10"));
+    await expect(tile).toHaveCSS("color", await probe(page, "text-primary", "color"));
+    await expect(tile).toHaveCSS("border-top-width", "1px");
+    await expect(tile).toHaveCSS(
+      "border-top-color",
+      await probe(page, "border border-primary/15", "borderTopColor"),
+    );
+    await expect(tile).toHaveCSS("box-shadow", "none");
     await expect(tile).toHaveCSS("border-top-left-radius", "10px");
-    await expect(tile).toHaveCSS("box-shadow", /0px 8px 18px -8px/);
+    await expect(tile).toHaveCSS("width", "36px");
+    await expect(tile).toHaveCSS("height", "36px");
     const h1 = page.getByRole("heading", { level: 1 });
-    await expect(h1).toHaveCSS("font-weight", "700");
+    await expect(h1).toHaveCSS("font-weight", "600");
     await expect(h1).toHaveCSS("font-size", "24px");
   });
 
@@ -387,60 +505,41 @@ test.describe("page header tile", () => {
 
 // --- page glow ------------------------------------------------------------------
 
-test.describe("page glow", () => {
-  test("shows on every org route, is not clickable, not printed, and shifts nothing", async ({
+test.describe("org app shell", () => {
+  test("paints no page glow and no gradient in the content area, on every org route", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
     await useTheme(page, "light");
 
+    // Every element of the content column (the sidebar is a sibling, outside
+    // it) whose computed background-image is a gradient.
+    const gradients = () =>
+      page.evaluate(() => {
+        const main = document.querySelector('[data-slot="sidebar-inset"]');
+        if (!main) throw new Error("no sidebar-inset");
+        return [main, ...main.querySelectorAll("*")]
+          .filter((el) => getComputedStyle(el).backgroundImage.includes("gradient"))
+          .map((el) => el.outerHTML.slice(0, 160));
+      });
+
     for (const route of ["orgs/test", "orgs/test/checks", "orgs/test/incidents"]) {
       await page.goto(route);
       await page.waitForLoadState("networkidle");
-      const glow = page.getByTestId("page-glow");
-      await expect(glow, route).toHaveCount(1);
-      await expect(glow).toHaveAttribute("aria-hidden", "true");
-      await expect(glow).toHaveCSS("pointer-events", "none");
-      await expect(glow).toHaveCSS("position", "absolute");
-      await expect(glow).toHaveCSS("height", "260px");
-      await expect(glow).toHaveCSS("background-image", /radial-gradient/);
+      await expect(page.getByRole("heading", { level: 1 }), route).toBeVisible();
+      await expect(page.getByTestId("page-glow"), route).toHaveCount(0);
+      expect(await gradients(), route).toEqual([]);
     }
 
-    // Not clickable: the top-most element under a point inside the glow is
-    // real content (the header's trigger), never the glow.
-    const trigger = page.getByTestId("sidebar-trigger");
-    const box = (await trigger.boundingBox())!;
-    const hit = await page.evaluate(
-      ([x, y]) => document.elementFromPoint(x, y)?.closest('[data-testid]')?.getAttribute("data-testid"),
-      [box.x + box.width / 2, box.y + box.height / 2],
-    );
-    expect(hit).toBe("sidebar-trigger");
-    const sidebarGroup = page.locator('[data-slot="sidebar"].group');
-    await trigger.click();
-    await expect(sidebarGroup).toHaveAttribute("data-state", "collapsed");
-    await trigger.click();
-    await expect(sidebarGroup).toHaveAttribute("data-state", "expanded");
-
-    // No layout shift and no extra scroll: removing the glow moves nothing.
-    const measure = () =>
-      page.evaluate(() => ({
-        h1: document.querySelector("h1")!.getBoundingClientRect().top,
-        scroll: document.documentElement.scrollHeight,
-      }));
-    const withGlow = await measure();
-    await page.getByTestId("page-glow").evaluate((el) => ((el as HTMLElement).style.display = "none"));
-    const withoutGlow = await measure();
-    expect(withGlow).toEqual(withoutGlow);
-    await page.getByTestId("page-glow").evaluate((el) => ((el as HTMLElement).style.display = ""));
-
-    // The glow paints BEHIND the header and content: they are positioned too
-    // and come later in tree order.
-    await expect(page.locator("main > header")).toHaveCSS("position", "relative");
-
-    // Not printed.
-    await page.emulateMedia({ media: "print" });
-    await expect(page.getByTestId("page-glow")).toHaveCSS("display", "none");
-    await page.emulateMedia({ media: "screen" });
-    await expect(page.getByTestId("page-glow")).toHaveCSS("display", "block");
+    // Positive control: the same scan does see the glow utility when it is
+    // there (it still exists, for the auth screens and /no-org).
+    await page.evaluate(() => {
+      const el = document.createElement("div");
+      el.className = "bg-page-glow";
+      document.querySelector('[data-slot="sidebar-inset"]')!.appendChild(el);
+    });
+    const found = await gradients();
+    expect(found).toHaveLength(1);
+    expect(found[0]).toContain("bg-page-glow");
   });
 });

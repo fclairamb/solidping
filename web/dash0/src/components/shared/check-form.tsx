@@ -1563,7 +1563,7 @@ export function CheckForm({
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div className="min-w-0 flex-1">
-            <h1 className="text-3xl font-bold tracking-tight">{title}</h1>
+            <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{title}</h1>
             <p className="text-muted-foreground">{subtitle}</p>
           </div>
           <DocsLink href={docsHrefForType(type)} className="ml-auto" />

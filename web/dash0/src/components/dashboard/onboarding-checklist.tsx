@@ -259,31 +259,12 @@ export function OnboardingChecklistCard({
   const progressLabel = t("onboarding.progress", { done, total: steps.length });
 
   return (
-    <Card
-      data-testid="onboarding-checklist"
-      className="relative overflow-hidden border-primary/30 shadow-primary"
-    >
-      {/* Decoration only. Every layer here is `pointer-events-none` so it can
-          never intercept a click meant for a row's stretched link, and the
-          whole thing is `aria-hidden` so it adds nothing to the a11y tree.
-          Blobs use alpha tints (primary + chart-5 violet) so they read on
-          both the light and the dark card surface without a `dark:` variant;
-          no green/amber/red in the chrome, which mean up/degraded/down
-          everywhere else on this dashboard. */}
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 overflow-hidden rounded-xl"
-      >
-        <span className="absolute inset-x-0 top-0 block h-1 bg-gradient-to-r from-primary via-chart-5 to-primary/30" />
-        <span className="absolute -right-16 -top-24 block h-56 w-56 rounded-full bg-primary/10 blur-3xl" />
-        <span className="absolute -bottom-24 -left-12 block h-52 w-52 rounded-full bg-chart-5/10 blur-3xl" />
-      </div>
-
+    <Card data-testid="onboarding-checklist">
       <CardHeader className="relative flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
         <div className="flex min-w-0 flex-1 items-start gap-3">
           <span
             aria-hidden="true"
-            className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-chart-5 text-primary-foreground shadow-primary sm:flex"
+            className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-primary/15 bg-primary/10 text-primary sm:flex"
           >
             <Rocket className="h-4 w-4" />
           </span>
@@ -294,18 +275,14 @@ export function OnboardingChecklistCard({
             </CardDescription>
             {/* Progress defaults to `destructiveWhenFull`, which would paint a
                 finished checklist RED — the one colour that means "down" on
-                this dashboard. Finishing is an achievement: emerald. */}
+                this dashboard. Finishing is an achievement: the "up" green. */}
             <Progress
               value={done}
               max={steps.length}
               destructiveWhenFull={false}
               aria-label={progressLabel}
-              className="h-1.5 max-w-xs bg-primary/10"
-              indicatorClassName={
-                allSet
-                  ? "bg-emerald-500"
-                  : "bg-gradient-to-r from-primary to-chart-5"
-              }
+              className="h-1.5 max-w-xs"
+              indicatorClassName={allSet ? "bg-status-ok" : undefined}
             />
           </div>
         </div>
@@ -325,18 +302,18 @@ export function OnboardingChecklistCard({
       <CardContent className="relative space-y-3">
         {allSet ? (
           <div
-            className="rounded-lg border border-emerald-500/30 bg-gradient-to-r from-emerald-500/15 via-emerald-500/10 to-primary/10 p-3 motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:duration-300"
+            className="rounded-lg border border-status-ok/25 bg-status-ok/10 p-3 motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:duration-300"
             data-testid="onboarding-all-set"
           >
             <div className="flex items-start gap-3">
               <span
                 aria-hidden="true"
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-status-ok/15 text-status-ok-foreground"
               >
                 <Sparkles className="h-4 w-4" />
               </span>
               <div className="min-w-0">
-                <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">
+                <p className="text-sm font-semibold text-status-ok-foreground">
                   {t("onboarding.allSet.title")}
                 </p>
                 <p className="mt-0.5 text-xs text-muted-foreground">
@@ -390,19 +367,18 @@ function OnboardingStepRow({
   const { t } = useTranslation("dashboard");
   const Icon = STEP_ICONS[step.id];
 
-  // Three tones, not two: done rows recede into a faint emerald wash, the
-  // next-up row is ringed and lifted so the eye lands on it first, and the
-  // remaining pending rows sit quietly in between. All three use alpha tints
-  // over the card surface so neither theme needs a `dark:` variant.
+  // Three tones, not two: done rows recede onto the muted surface, the
+  // next-up row is ringed so the eye lands on it first, and the remaining
+  // pending rows sit quietly in between. Hover only changes the surface.
   const rowTone = step.done
-    ? "border-emerald-500/25 bg-emerald-500/[0.07] hover:border-emerald-500/40 hover:shadow-card-hover"
+    ? "border-border/70 bg-muted/40 hover:bg-muted/60"
     : isNext
-      ? "border-primary/45 bg-card shadow-primary ring-1 ring-primary/15 hover:border-primary/60 hover:shadow-primary-hover"
-      : "border-border/70 bg-card/60 hover:border-primary/30 hover:bg-card hover:shadow-card-hover";
+      ? "border-primary/40 bg-card ring-1 ring-primary/10 hover:border-primary/60"
+      : "border-border bg-card hover:bg-muted/40";
 
   return (
     <div
-      className={`relative flex cursor-pointer flex-col gap-2 rounded-lg border p-3 transition-all duration-200 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:fill-mode-both motion-safe:hover:-translate-y-px sm:flex-row sm:items-center sm:gap-3 ${rowTone}`}
+      className={`relative flex cursor-pointer flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border p-3 transition-colors duration-200 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:fill-mode-both ${rowTone}`}
       // Short, one-shot stagger on mount (≤240ms of delay, 200ms each) so the
       // list assembles instead of appearing. The delay is inert without an
       // animation, which is exactly what `prefers-reduced-motion` produces:
@@ -427,7 +403,7 @@ function OnboardingStepRow({
         {step.done ? (
           <span
             key="done"
-            className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500 text-white shadow-sm motion-safe:animate-in motion-safe:zoom-in-50 motion-safe:duration-300"
+            className="flex h-6 w-6 items-center justify-center rounded-full bg-status-ok text-white motion-safe:animate-in motion-safe:zoom-in-50 motion-safe:duration-300"
           >
             <Check className="h-3.5 w-3.5" strokeWidth={3} aria-hidden="true" />
           </span>
@@ -445,16 +421,19 @@ function OnboardingStepRow({
         )}
       </span>
 
-      <div className="min-w-0 flex-1">
+      {/* On a phone a done row (title only) keeps its button on the same
+          line; a pending row's description (basis-48) pushes the button to a
+          line of its own instead of squeezing the text. */}
+      <div className={`min-w-0 flex-1 ${step.done ? "basis-0" : "basis-48"}`}>
         <p
-          className={`flex flex-wrap items-center gap-1.5 text-sm font-medium ${
+          className={`flex items-center gap-1.5 text-sm font-medium ${
             step.done ? "text-muted-foreground" : ""
           }`}
         >
           <Icon
             className={`h-3.5 w-3.5 shrink-0 ${
               step.done
-                ? "text-emerald-600/70 dark:text-emerald-400/70"
+                ? "text-muted-foreground"
                 : isNext
                   ? "text-primary"
                   : "text-muted-foreground"
@@ -465,7 +444,7 @@ function OnboardingStepRow({
             {t(`onboarding.steps.${step.id}.title`)}
           </span>
           {isNext ? (
-            <span className="shrink-0 rounded-full bg-primary px-1.5 py-px text-[10px] font-semibold uppercase leading-4 tracking-wide text-primary-foreground">
+            <span className="shrink-0 rounded-md border border-primary/25 bg-primary/10 px-1.5 py-px text-[10px] font-semibold uppercase leading-4 tracking-wide text-primary">
               {t("onboarding.nextUp")}
             </span>
           ) : null}
@@ -477,7 +456,7 @@ function OnboardingStepRow({
         )}
       </div>
 
-      <div className="flex shrink-0 flex-wrap gap-2">
+      <div className="ml-auto flex shrink-0 flex-wrap gap-2">
         {step.id === "alerts" && onTestAlert ? (
           <Button
             size="sm"

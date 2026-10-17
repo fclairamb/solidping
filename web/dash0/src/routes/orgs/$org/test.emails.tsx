@@ -228,7 +228,7 @@ function EmailTemplatesTab() {
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,260px)_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,260px)_minmax(0,1fr)]">
         <Card className="lg:sticky lg:top-4 lg:self-start">
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-base">

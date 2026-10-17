@@ -32,7 +32,7 @@ import {
   type OrgResult,
 } from "@/api/hooks";
 import {
-  AVAILABILITY_TIER_HERO_BADGE,
+  AVAILABILITY_TIER_STYLE,
   availabilityTier,
 } from "@/lib/availability-tier";
 import {
@@ -67,6 +67,8 @@ import { KpiTile } from "@/components/shared/kpi-tile";
 import { PageHeader } from "@/components/shared/page-header";
 import { statusStyle } from "@/lib/status-style";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
 const CHECK_POLL_MS = 30_000;
 const INCIDENT_POLL_MS = 30_000;
@@ -399,7 +401,6 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
         <EmptyStateOnboarding org={org} />
       ) : (
         <>
-          <OnboardingChecklist org={org} totalChecks={totalChecksCount} />
           <OverallStatusBanner
             org={org}
             allGreen={downCount === 0 && incidentsCount === 0}
@@ -410,7 +411,9 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
             availabilityPct={availabilityPct}
           />
 
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {/* Two columns on a phone: four full-width tiles pushed everything
+              else three screens down. */}
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
             <Link
               to="/orgs/$org/checks"
               params={{ org }}
@@ -420,12 +423,7 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
               <KpiTile
                 label={t("kpi.monitored")}
                 value={enabledCount}
-                icon={<ListChecks className="h-4 w-4 text-primary" />}
-                badge={
-                  <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
-                    {t("kpi.activeCount", { count: enabledCount })}
-                  </span>
-                }
+                icon={<ListChecks />}
                 sub={
                   disabledCount > 0
                     ? t("kpi.monitoredDisabled", { count: disabledCount })
@@ -433,28 +431,25 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
                 }
               />
             </Link>
-            {/* The page's ONE hero tile (spec 2026-09-24-02): the 24h
-                availability is the headline number. */}
             <div className="block" data-testid="kpi-tile-availability">
               <KpiTile
-                variant="hero"
                 label={t("kpi.availability")}
                 value={
                   availabilityPct === null
                     ? "—"
                     : `${availabilityPct.toFixed(2)}%`
                 }
-                // White on the hero's icon chip: the tier color moved to the
-                // solid white badge, where it stays readable.
-                icon={<TrendingUp className="h-4 w-4" />}
+                valueClassName={AVAILABILITY_TIER_STYLE[availabilityTierValue].value}
+                icon={<TrendingUp />}
                 badge={
-                  <span
+                  <Badge
+                    variant={AVAILABILITY_TIER_STYLE[availabilityTierValue].badge}
                     data-testid="kpi-availability-badge"
                     data-tier={availabilityTierValue}
-                    className={`shrink-0 text-[11px] font-semibold px-2 py-0.5 rounded-full ${AVAILABILITY_TIER_HERO_BADGE[availabilityTierValue]}`}
+                    className="shrink-0"
                   >
                     {t(`kpi.availabilityBadge.${availabilityTierValue}`)}
-                  </span>
+                  </Badge>
                 }
                 sub={
                   availabilityPct === null
@@ -473,24 +468,9 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
               <KpiTile
                 label={t("kpi.down")}
                 value={downCount}
-                icon={
-                  <AlertTriangle
-                    className={`h-4 w-4 ${downCount > 0 ? "text-destructive" : "text-muted-foreground"}`}
-                  />
-                }
-                badge={
-                  downCount > 0 ? (
-                    <span className="text-[11px] font-medium text-destructive bg-destructive/10 px-2 py-0.5 rounded-full animate-pulse">
-                      {t("kpi.badgeNeedsAction")}
-                    </span>
-                  ) : (
-                    <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
-                      {t("kpi.badgeAllUp")}
-                    </span>
-                  )
-                }
-                valueClassName={downCount > 0 ? "text-destructive" : undefined}
-                sub={downCount === 0 ? t("kpi.downSubNone") : undefined}
+                icon={<AlertTriangle />}
+                valueClassName={downCount > 0 ? "text-status-error-foreground" : undefined}
+                sub={downCount > 0 ? t("kpi.badgeNeedsAction") : t("kpi.downSubNone")}
               />
             </Link>
             <Link
@@ -507,26 +487,9 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
               <KpiTile
                 label={t("kpi.incidents")}
                 value={incidentsCount}
-                icon={
-                  <Activity
-                    className={`h-4 w-4 ${incidentsCount > 0 ? "text-amber-500" : "text-muted-foreground"}`}
-                  />
-                }
-                badge={
-                  incidentsCount > 0 ? (
-                    <span className="text-[11px] font-medium text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full">
-                      {t("kpi.badgeActive")}
-                    </span>
-                  ) : (
-                    <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
-                      {t("kpi.badgeClean")}
-                    </span>
-                  )
-                }
+                icon={<Activity />}
                 valueClassName={
-                  incidentsCount > 0
-                    ? "text-amber-600 dark:text-amber-500"
-                    : undefined
+                  incidentsCount > 0 ? "text-status-warning-foreground" : undefined
                 }
                 sub={
                   incidentsCount === 0 ? t("kpi.incidentsSubNone") : undefined
@@ -534,6 +497,10 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
               />
             </Link>
           </div>
+
+          {/* Below the live status: the checklist is a one-time setup aid and
+              must not push what is broken right now off the first screen. */}
+          <OnboardingChecklist org={org} totalChecks={totalChecksCount} />
 
           {incidentsCount > 0 ? (
             <ActiveIncidentsList
@@ -574,7 +541,7 @@ function DashboardSkeleton() {
   return (
     <div className="space-y-6">
       <Skeleton className="h-12 rounded-xl" />
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         {[...Array(4)].map((_, i) => (
           <Skeleton key={i} className="h-28 rounded-xl" />
         ))}
@@ -657,16 +624,13 @@ function OverallStatusBanner({
     return (
       <div
         data-testid="overall-status-banner"
-        className="relative overflow-hidden rounded-xl border border-emerald-500/20 bg-gradient-to-r from-emerald-500/[0.08] via-green-500/[0.03] to-transparent p-3.5 sm:p-4 shadow-sm"
+        className={cn(BANNER_SURFACE, "border-l-status-ok")}
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <span className="relative flex h-3 w-3 shrink-0">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500" />
-            </span>
-            <div className="flex flex-wrap items-baseline gap-2">
-              <h2 className="text-sm sm:text-base font-semibold text-foreground">
+            <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-status-ok" />
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+              <h2 className="text-sm font-semibold text-foreground">
                 {t("banner.allGreen")}
               </h2>
               <span className="text-xs text-muted-foreground">
@@ -683,10 +647,10 @@ function OverallStatusBanner({
               no data yet there is nothing honest to claim, so it is
               suppressed rather than shown against a fabricated number. */}
           {availabilityPct !== null ? (
-            <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
+            <Badge variant="success" className="gap-1.5">
               <CheckCircle className="h-3.5 w-3.5" />
-              <span>{t("banner.slaOperational")}</span>
-            </div>
+              {t("banner.slaOperational")}
+            </Badge>
           ) : null}
         </div>
       </div>
@@ -700,15 +664,15 @@ function OverallStatusBanner({
         target={incidentsCount > 0 ? "incidents-active" : "checks-down"}
         className="block"
       >
-        <div className="relative overflow-hidden rounded-xl border border-destructive/30 bg-destructive/10 p-3.5 sm:p-4 shadow-sm cursor-pointer transition hover:border-destructive/50 hover:bg-destructive/15">
+        <div className={cn(BANNER_SURFACE, BANNER_LINK, "border-l-status-error")}>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <span className="relative flex h-3 w-3 shrink-0">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" />
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-destructive" />
+              <span className="relative flex h-2.5 w-2.5 shrink-0">
+                <span className="absolute inline-flex h-full w-full rounded-full bg-status-error opacity-60 motion-safe:animate-ping" />
+                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-status-error" />
               </span>
-              <div className="flex flex-wrap items-baseline gap-2">
-                <h2 className="text-sm sm:text-base font-semibold text-destructive">
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                <h2 className="text-sm font-semibold text-foreground">
                   {t("banner.issues")}
                 </h2>
                 <span className="text-xs text-muted-foreground">
@@ -716,10 +680,10 @@ function OverallStatusBanner({
                 </span>
               </div>
             </div>
-            <div className="flex items-center gap-1.5 text-xs font-medium text-destructive bg-destructive/15 px-2.5 py-1 rounded-full border border-destructive/30">
+            <Badge variant="destructive" className="gap-1.5">
               <AlertTriangle className="h-3.5 w-3.5" />
-              <span>{t("banner.activeOutage")}</span>
-            </div>
+              {t("banner.activeOutage")}
+            </Badge>
           </div>
         </div>
       </BannerLink>
@@ -729,27 +693,31 @@ function OverallStatusBanner({
   // Only timeouts (degraded but not hard-down).
   return (
     <BannerLink org={org} target="checks-warning" className="block">
-      <div className="relative overflow-hidden rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 sm:p-4 shadow-sm cursor-pointer transition hover:border-amber-500/50 hover:bg-amber-500/15">
+      <div className={cn(BANNER_SURFACE, BANNER_LINK, "border-l-status-warning")}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-500 shrink-0" />
-            <div className="flex flex-wrap items-baseline gap-2">
-              <h2 className="text-sm sm:text-base font-semibold text-amber-900 dark:text-amber-100">
+            <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-status-warning" />
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+              <h2 className="text-sm font-semibold text-foreground">
                 {t("banner.warning")}
               </h2>
-              <span className="text-xs text-amber-800/80 dark:text-amber-300/80">
+              <span className="text-xs text-muted-foreground">
                 {t("banner.warningSub", { count: timeoutOnlyCount })}
               </span>
             </div>
           </div>
-          <div className="flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 bg-amber-500/15 px-2.5 py-1 rounded-full border border-amber-500/30">
-            <span>{t("banner.degradedPerformance")}</span>
-          </div>
+          <Badge variant="warning">{t("banner.degradedPerformance")}</Badge>
         </div>
       </div>
     </BannerLink>
   );
 }
+
+// The overall status banner is a plain card whose thick left edge carries the
+// status color: the state reads at a glance without tinting the whole strip.
+const BANNER_SURFACE =
+  "rounded-xl border border-l-4 bg-card px-4 py-3 shadow-card";
+const BANNER_LINK = "cursor-pointer transition-shadow hover:shadow-card-hover";
 
 interface SectionErrorProps {
   onRetry: () => void;
@@ -836,82 +804,46 @@ function ChecksGlanceList({
                       graphFull: undefined,
                       region: undefined,
                     }}
-                    className={`flex items-center gap-3 px-4 sm:px-6 py-3 hover:bg-accent/40 transition-colors ${
+                    className={`flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/50 sm:px-6 ${
                       isDisabled ? "opacity-60" : ""
                     }`}
                   >
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="relative flex h-2 w-2">
-                        {!isDisabled && status === "up" && (
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
-                        )}
-                        <span
-                          className={`relative inline-flex rounded-full h-2 w-2 ${
-                            isDisabled
-                              ? "bg-muted-foreground/50"
-                              : status === "up"
-                                ? "bg-emerald-500"
-                                : status === "warning"
-                                  ? "bg-amber-500"
-                                  : status === "stale"
-                                    ? statusStyle(status).color
-                                    : "bg-destructive"
-                          }`}
-                        />
-                      </span>
-                      <StatusBadge
-                        status={status}
-                        className="text-[10px] font-semibold uppercase px-1.5 py-0.5 tracking-wide shrink-0"
-                      />
-                    </div>
+                    {/* One dot carries the status for the eye; the badge on
+                        the right carries it in words. */}
+                    <span
+                      aria-hidden="true"
+                      className={`h-2 w-2 shrink-0 rounded-full ${
+                        isDisabled ? "bg-muted-foreground/50" : statusStyle(status).color
+                      }`}
+                    />
 
                     <div className="min-w-0 flex-1 sm:max-w-[34%]">
                       <div className="flex items-center gap-2">
-                        <span className="font-medium text-sm text-foreground truncate group-hover:text-primary transition-colors">
+                        <span className="truncate text-sm font-medium text-foreground">
                           {check.name || check.slug || check.uid}
                         </span>
-                        <span className="hidden md:inline-flex text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-muted text-muted-foreground shrink-0">
+                        <span className="hidden shrink-0 rounded border px-1.5 py-px font-mono text-[10px] uppercase text-muted-foreground md:inline-flex">
                           {checkType}
                         </span>
                       </div>
                     </div>
 
-                    <div className="hidden sm:flex flex-1 items-center px-2 min-w-0">
+                    <div className="hidden min-w-0 flex-1 items-center px-2 sm:flex">
                       {uptime?.buckets && uptime.buckets.length > 0 ? (
                         <UptimeStrip
                           buckets={uptime.buckets}
                           className="w-full"
                         />
                       ) : (
-                        <div className="h-4 w-full rounded bg-muted/40 flex items-center justify-center">
-                          <span className="text-[10px] text-muted-foreground/60 font-mono">
-                            {t("glance.telemetryPending")}
-                          </span>
-                        </div>
+                        // No 24h buckets yet: an empty track, so the column
+                        // keeps its shape until the first results land.
+                        <div className="h-4 w-full rounded-sm bg-muted/60" />
                       )}
                     </div>
 
-                    <div className="flex items-center gap-2.5 shrink-0 ml-auto sm:ml-0">
-                      {latencyMs !== undefined ? (
-                        <span
-                          className={`text-xs font-mono tabular-nums px-2 py-0.5 rounded-md font-medium ${
-                            latencyMs < 50
-                              ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20"
-                              : latencyMs < 250
-                                ? "bg-primary/10 text-primary border border-primary/20"
-                                : "bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20"
-                          }`}
-                        >
-                          {Math.round(latencyMs)}ms
-                        </span>
-                      ) : (
-                        <span className="text-xs font-mono text-muted-foreground">
-                          —
-                        </span>
-                      )}
-
+                    <div className="ml-auto flex shrink-0 items-center gap-3 sm:ml-0">
                       {needsAttention && check.lastStatusChange?.time ? (
-                        <span className="text-xs text-muted-foreground shrink-0">
+                        <span className="hidden text-xs text-muted-foreground sm:inline">
                           {t("glance.since", {
                             time: formatRelative(
                               new Date(check.lastStatusChange.time),
@@ -920,6 +852,10 @@ function ChecksGlanceList({
                           })}
                         </span>
                       ) : null}
+                      <span className="w-14 text-right font-mono text-xs tabular-nums text-muted-foreground">
+                        {latencyMs !== undefined ? `${Math.round(latencyMs)}ms` : "—"}
+                      </span>
+                      <StatusBadge status={status} className="shrink-0" />
                     </div>
                   </Link>
                 </div>
@@ -991,24 +927,39 @@ function ActiveIncidentsList({
 
   return (
     <Card data-testid="active-incidents">
-      <CardHeader>
-        <CardTitle>{t("activeIncidents.title")}</CardTitle>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 py-4">
+        <CardTitle className="text-base">{t("activeIncidents.title")}</CardTitle>
+        <Button asChild variant="ghost" size="sm" className="gap-1 text-xs font-medium text-primary">
+          <Link
+            to="/orgs/$org/incidents"
+            params={{ org }}
+            search={{
+              state: "active" as const,
+              showSuppressed: undefined,
+              checkUid: undefined,
+            }}
+          >
+            {t("activeIncidents.footer")}
+          </Link>
+        </Button>
       </CardHeader>
-      <CardContent>
+      <CardContent className="p-0">
         {isError ? (
-          <SectionError onRetry={onRetry} />
+          <div className="p-6">
+            <SectionError onRetry={onRetry} />
+          </div>
         ) : incidents.length === 0 ? (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground py-6 justify-center">
-            <CheckCircle className="h-5 w-5 text-green-500" />
+          <div className="flex items-center justify-center gap-2 border-t py-6 text-sm text-muted-foreground">
+            <CheckCircle className="h-5 w-5 text-status-ok" />
             <span>{t("activeIncidents.empty")}</span>
           </div>
         ) : (
-          <ul className="divide-y">
+          <ul className="divide-y border-t">
             {rows.map((row) => (
               <Fragment key={row.key}>
                 {row.group ? (
                   <li
-                    className="flex items-center gap-2 pt-3 pb-1 text-xs font-semibold text-muted-foreground"
+                    className="flex items-center gap-2 bg-muted/30 px-4 py-1.5 text-xs font-medium text-muted-foreground sm:px-6"
                     data-testid="incident-group-header"
                     data-check-group-uid={row.group.uid}
                   >
@@ -1021,23 +972,23 @@ function ActiveIncidentsList({
                     <Link
                       to="/orgs/$org/incidents/$incidentUid"
                       params={{ org, incidentUid: incident.uid! }}
-                      className="flex items-center justify-between gap-3 py-3 hover:bg-accent/50 -mx-2 px-2 rounded transition-colors"
+                      className="flex items-center justify-between gap-3 px-4 py-2.5 transition-colors hover:bg-muted/50 sm:px-6"
                     >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <AlertTriangle className="h-4 w-4 text-red-500 shrink-0" />
+                      <div className="flex min-w-0 items-center gap-3">
+                        <AlertTriangle className="h-4 w-4 shrink-0 text-status-error" />
                         <div className="min-w-0">
-                          <div className="font-medium truncate">
+                          <div className="truncate text-sm font-medium">
                             {incident.title || t("activeIncidents.untitled")}
                           </div>
                           {incident.checkName ? (
-                            <div className="text-xs text-muted-foreground truncate">
+                            <div className="truncate text-xs text-muted-foreground">
                               {incident.checkName}
                             </div>
                           ) : null}
                         </div>
                       </div>
                       {incident.startedAt ? (
-                        <span className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
+                        <span className="flex shrink-0 items-center gap-1 text-xs tabular-nums text-muted-foreground">
                           <Clock className="h-3 w-3" />
                           {formatRelative(
                             new Date(incident.startedAt),
@@ -1053,20 +1004,6 @@ function ActiveIncidentsList({
           </ul>
         )}
       </CardContent>
-      <CardFooter>
-        <Link
-          to="/orgs/$org/incidents"
-          params={{ org }}
-          search={{
-            state: "active" as const,
-            showSuppressed: undefined,
-            checkUid: undefined,
-          }}
-          className="text-sm text-primary hover:underline ml-auto inline-flex items-center gap-1"
-        >
-          {t("activeIncidents.footer")}
-        </Link>
-      </CardFooter>
     </Card>
   );
 }
@@ -1097,8 +1034,8 @@ function RecentActivityList({
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>{t("recentActivity.title")}</CardTitle>
+      <CardHeader className="py-4">
+        <CardTitle className="text-base">{t("recentActivity.title")}</CardTitle>
       </CardHeader>
       <CardContent>
         {isError ? (

@@ -92,7 +92,7 @@ export function SloForm({ org, mode, initial, isPending, onSubmit, onCancel }: S
       />
 
       <Card>
-        <CardContent className="space-y-5 pt-6">
+        <CardContent className="space-y-5 pt-[var(--card-pad,1.5rem)]">
           <div className="space-y-2">
             <Label htmlFor="slo-name">{t("slos:form.name")}</Label>
             <Input
@@ -156,7 +156,7 @@ export function SloForm({ org, mode, initial, isPending, onSubmit, onCancel }: S
             <p className="text-xs text-muted-foreground">{t("slos:form.scopeHelp")}</p>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="slo-target">{t("slos:form.target")}</Label>
               <Input
