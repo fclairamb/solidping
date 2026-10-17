@@ -89,6 +89,8 @@
     "upgrade": "Upgrade",
     "loadError": "Could not load usage.",
     "whatsappThisMonth": "WhatsApp messages this month",
+    "smsThisMonth": "SMS this month",
+    "callsThisMonth": "Voice calls this month",
     "smsGuard": {
       "title": "Some SMS alerts were not sent",
       "runaway": "{{count}} message(s) were refused because this instance's SMS cap of {{limit}}/hour was reached. Alerts are being dropped instance-wide — tell your operator.",

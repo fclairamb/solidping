@@ -48,7 +48,7 @@ test.describe("Entitlements usage", () => {
     await resetEntitlements(authenticatedPage, token);
   });
 
-  test("usage page renders seven limit/usage rows", async ({
+  test("usage page renders nine limit/usage rows", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
@@ -58,11 +58,11 @@ test.describe("Entitlements usage", () => {
 
     await page.goto("orgs/test/organization/usage");
 
-    // Heading + the seven rows (Checks, Checks per minute, Users, Private
+    // Heading + the nine rows (Checks, Checks per minute, Users, Private
     // location agents, Service level objectives, Custom domains, WhatsApp
-    // messages this month).
+    // messages, SMS and voice calls this month).
     await expect(page.getByRole("heading", { name: /usage/i })).toBeVisible();
-    await expect(page.getByTestId(/^usage-row-/)).toHaveCount(7);
+    await expect(page.getByTestId(/^usage-row-/)).toHaveCount(9);
     await expect(
       page.getByTestId("usage-row-Private location agents"),
     ).toBeVisible();
@@ -76,6 +76,32 @@ test.describe("Entitlements usage", () => {
 
     // With null limits, each row shows the "Unlimited" label.
     await expect(page.getByText(/unlimited/i).first()).toBeVisible();
+  });
+
+  test("usage page shows SMS and voice call counters against their caps", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    const token = await getAuthToken(page);
+    const resp = await page.request.patch(
+      `${API_BASE}/api/v1/orgs/test/entitlements`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { limits: { maxSmsPerMonth: 20, maxCallsPerMonth: 5 } },
+      },
+    );
+    expect(resp.ok()).toBeTruthy();
+
+    await page.goto("orgs/test/organization/usage");
+
+    // A fresh test org has sent nothing: used / cap.
+    await expect(page.getByTestId("usage-row-SMS this month")).toContainText(
+      "0 / 20",
+    );
+    await expect(
+      page.getByTestId("usage-row-Voice calls this month"),
+    ).toContainText("0 / 5");
   });
 
   test("a maxCustomDomains cap of 0 renders as 0 / 0, not Unlimited", async ({

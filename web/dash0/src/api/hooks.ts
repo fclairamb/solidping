@@ -7189,6 +7189,12 @@ export interface EntitlementsUsage {
    * persistent counter, not a live count — sent messages cannot be un-sent.
    */
   whatsappThisMonth: number;
+  /**
+   * SMS / voice calls sent on the instance's credentials in the current UTC
+   * month (bring-your-own Twilio sends are not counted).
+   */
+  smsThisMonth: number;
+  callsThisMonth: number;
   /** Count of live service-level objectives. */
   slos: number;
   /**
