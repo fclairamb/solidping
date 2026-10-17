@@ -111,6 +111,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/system"
 	"github.com/fclairamb/solidping/server/internal/handlers/telegramcb"
 	"github.com/fclairamb/solidping/server/internal/handlers/testapi"
+	"github.com/fclairamb/solidping/server/internal/handlers/tools"
 	"github.com/fclairamb/solidping/server/internal/handlers/tracediag"
 	"github.com/fclairamb/solidping/server/internal/handlers/twiliocb"
 	"github.com/fclairamb/solidping/server/internal/handlers/uistate"
@@ -596,6 +597,33 @@ func deviceConsentRateLimitConfig(base config.RateLimitConfig) config.RateLimitC
 		TrustedProxies:    base.TrustedProxies,
 		TokenBucketsPerIP: base.TokenBucketsPerIP,
 	}
+}
+
+// toolsRunsPerMinute is the per-IP allowance for POST /api/v1/tools/run (spec
+// 2026-10-14-02). Each run makes a request to a third party on a visitor's
+// behalf, so the budget is small: it keeps port scanning through us slow.
+const toolsRunsPerMinute = 10
+
+// toolsRateLimitConfig derives the tools limiter from the server's own,
+// keeping the trusted proxy hops. Burst equals the minute's allowance, so the
+// 11th run inside a minute is refused. TokenBucketsPerIP stays 0: the route
+// is anonymous, so a made-up bearer must not buy a fresh bucket.
+func toolsRateLimitConfig(base config.RateLimitConfig) config.RateLimitConfig {
+	return config.RateLimitConfig{
+		RequestsPerMinute: toolsRunsPerMinute,
+		Burst:             toolsRunsPerMinute,
+		TrustedProxies:    base.TrustedProxies,
+	}
+}
+
+// toolsRegion is the region reported on tool runs: the node's, else the
+// check worker's.
+func (s *Server) toolsRegion() string {
+	if s.config.Node.Region != "" {
+		return s.config.Node.Region
+	}
+
+	return s.config.Server.CheckWorker.Region
 }
 
 // reportRequestsPerMinute is the per-IP allowance for POST /api/mgmt/report
@@ -1143,6 +1171,18 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	systemJobsGroup.GET("/jobs/:uid/chain", jobsAdminHandler.GetSystemJobChain)
 	systemJobsGroup.GET("/check-jobs", checkJobsHandler.ListSystemCheckJobs)
 	systemJobsGroup.GET("/check-jobs/:uid", checkJobsHandler.GetSystemCheckJob)
+
+	// Public check tools (spec 2026-10-14-02): anonymous "run a check once"
+	// for www.solidping.io/tools. 404 unless tools.enabled. Its own strict
+	// per-IP limiter (10/min) on top of the global one; the handler adds the
+	// daily cap, and the service the egress guard (always enforcing), the
+	// concurrency cap and the per-target cache.
+	toolsLimiter := middleware.NewRateLimiter(toolsRateLimitConfig(s.config.Server.RateLimiting), ctx)
+	toolsHandler := tools.NewHandler(s.config, tools.NewService(tools.Params{
+		DeniedHosts: s.config.ToolsDeniedHosts(),
+		Region:      s.toolsRegion(),
+	}), toolsLimiter.ExtractIP)
+	api.NewGroup("/tools").Use(toolsLimiter.RateLimitRoute).POST("/run", toolsHandler.Run)
 
 	// Check types routes
 	checkTypesHandler := checktypes.NewHandler(checkTypesService, s.config)
@@ -2630,6 +2670,9 @@ func isPublicCORSPath(path string) bool {
 		"/embed/",
 		statuspageassets.PublicPathPrefix,
 		"/api/v1/status-pages/",
+		// Public check tools, called from www.solidping.io in the browser
+		// (spec 2026-10-14-02).
+		"/api/v1/tools/",
 	}
 
 	for _, prefix := range prefixes {

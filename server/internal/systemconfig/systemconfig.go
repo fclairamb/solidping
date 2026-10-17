@@ -210,6 +210,11 @@ const (
 	// database and only ever read SP_EGRESS_ALLOW_PRIVATE.
 	KeyEgressAllowPrivateTargets ParameterKey = "egress.allow_private_targets"
 
+	// KeyToolsEnabled turns on the anonymous POST /api/v1/tools/run endpoint
+	// behind the public tools of www.solidping.io (spec 2026-10-14-02). Off by
+	// default.
+	KeyToolsEnabled ParameterKey = "tools.enabled"
+
 	// KeyMetricsScrapeToken is the bearer token gating GET /metrics (spec
 	// 2026-09-25-25). Unset means the endpoint answers 404 to every request —
 	// the same "feature disabled" convention as Prometheus.Enabled=false —
@@ -807,6 +812,14 @@ func getKnownParameters() []ParameterDefinition {
 			Secret: false,
 			ApplyFunc: func(cfg *config.Config, value any) {
 				applyEgressAllowPrivate(cfg, value)
+			},
+		},
+		{
+			Key:    KeyToolsEnabled,
+			EnvVar: "SP_TOOLS_ENABLED",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				cfg.Tools.Enabled = parseBool(value, cfg.Tools.Enabled)
 			},
 		},
 		{

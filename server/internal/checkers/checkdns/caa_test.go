@@ -16,7 +16,7 @@ import (
 func caaServer(t *testing.T) string {
 	t.Helper()
 
-	conn, err := net.ListenPacket("udp", "127.0.0.1:0")
+	conn, err := (&net.ListenConfig{}).ListenPacket(t.Context(), "udp", "127.0.0.1:0")
 	require.NoError(t, err)
 
 	mux := dns.NewServeMux()

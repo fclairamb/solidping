@@ -612,6 +612,7 @@ type Config struct {
 	App          AppConfig          `koanf:"app"`
 	Deployment   DeploymentConfig   `koanf:"deployment"`
 	Egress       EgressConfig       `koanf:"egress"`
+	Tools        ToolsConfig        `koanf:"tools"`
 	Kubernetes   KubernetesConfig   `koanf:"kubernetes"`
 	WebPush      WebPushConfig      `koanf:"webpush"`
 	PostHog      PostHogConfig      `koanf:"posthog"`
@@ -735,6 +736,56 @@ type EgressConfig struct {
 	//
 	// Resolve through Config.EgressAllowsPrivateTargets, never this field.
 	AllowPrivateTargets *bool `koanf:"allow_private_targets"`
+}
+
+// EnvToolsDeniedHosts is the env override of tools.denied_hosts, read by hand
+// in applyToolsEnv: the key is snake_case, which koanf's env loader turns into
+// tools.denied.hosts.
+const EnvToolsDeniedHosts = "SP_TOOLS_DENIED_HOSTS"
+
+// ToolsConfig configures the anonymous "run a check once" endpoint behind the
+// public tools on www.solidping.io (POST /api/v1/tools/run).
+type ToolsConfig struct {
+	// Enabled turns the endpoint on (SP_TOOLS_ENABLED, system parameter
+	// tools.enabled). Off by default: a self-hosted instance never exposes an
+	// anonymous probe by accident.
+	Enabled bool `koanf:"enabled"`
+
+	// DeniedHosts lists extra host names the endpoint refuses to probe, on top
+	// of the instance's own base URL host and docs host. A name also denies its
+	// subdomains. Comma-separated in SP_TOOLS_DENIED_HOSTS.
+	DeniedHosts []string `koanf:"denied_hosts"`
+}
+
+// ToolsDeniedHosts returns the lowercase host names the tools endpoint refuses
+// to probe: the instance's own public hosts plus Tools.DeniedHosts.
+func (c *Config) ToolsDeniedHosts() []string {
+	hosts := make([]string, 0, len(c.Tools.DeniedHosts)+2)
+
+	if parsed, err := url.Parse(strings.TrimSpace(c.Server.BaseURL)); err == nil && parsed.Hostname() != "" {
+		hosts = append(hosts, strings.ToLower(parsed.Hostname()))
+	}
+
+	if docs := strings.TrimSpace(c.Server.DocsHost); docs != "" {
+		hosts = append(hosts, strings.ToLower(docs))
+	}
+
+	for _, host := range c.Tools.DeniedHosts {
+		if host = strings.ToLower(strings.TrimSpace(host)); host != "" {
+			hosts = append(hosts, host)
+		}
+	}
+
+	return hosts
+}
+
+func applyToolsEnv(cfg *ToolsConfig) {
+	raw := strings.TrimSpace(os.Getenv(EnvToolsDeniedHosts))
+	if raw == "" {
+		return
+	}
+
+	cfg.DeniedHosts = strings.Split(raw, ",")
 }
 
 // EgressAllowsPrivateTargets is the effective egress policy of the check
@@ -2407,6 +2458,7 @@ func Load() (*Config, error) {
 	applyRuntimeEnv(&cfg.Runtime)
 	applyRealtimeEnv(&cfg.Realtime)
 	applyEgressEnv(&cfg.Egress)
+	applyToolsEnv(&cfg.Tools)
 	applyKubernetesEnv(&cfg.Kubernetes)
 	applyHeadersEnv(&cfg.Headers)
 	applyAIEnv(&cfg.AI)

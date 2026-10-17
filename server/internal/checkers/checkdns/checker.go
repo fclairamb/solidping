@@ -28,6 +28,7 @@ const resolvConfPath = "/etc/resolv.conf"
 var (
 	errSOANotSupported = errors.New("SOA record type not yet supported")
 	errNoNameserver    = errors.New("no nameserver available")
+	errCAALookup       = errors.New("CAA lookup failed")
 )
 
 // lookupFunc resolves host for recordType, returning addresses (A/AAAA) or
@@ -383,7 +384,7 @@ func lookupCAA(ctx context.Context, nameserver, hostname string, timeout time.Du
 		case dns.RcodeNameError:
 			return nil, &net.DNSError{Err: "no such host", Name: hostname, IsNotFound: true}
 		default:
-			lastErr = fmt.Errorf("CAA lookup of %s: %s", hostname, dns.RcodeToString[resp.Rcode])
+			lastErr = fmt.Errorf("%w: %s answered %s", errCAALookup, server, dns.RcodeToString[resp.Rcode])
 
 			continue
 		}
