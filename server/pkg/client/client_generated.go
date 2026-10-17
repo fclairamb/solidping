@@ -483,6 +483,7 @@ const (
 	CheckTypeSsl             CheckType = "ssl"
 	CheckTypeTcp             CheckType = "tcp"
 	CheckTypeUdp             CheckType = "udp"
+	CheckTypeVendorStatus    CheckType = "vendor-status"
 	CheckTypeVnc             CheckType = "vnc"
 	CheckTypeWebsocket       CheckType = "websocket"
 )
@@ -575,6 +576,8 @@ func (e CheckType) Valid() bool {
 	case CheckTypeTcp:
 		return true
 	case CheckTypeUdp:
+		return true
+	case CheckTypeVendorStatus:
 		return true
 	case CheckTypeVnc:
 		return true
@@ -798,6 +801,7 @@ const (
 	CheckListItemTypeSsl             CheckListItemType = "ssl"
 	CheckListItemTypeTcp             CheckListItemType = "tcp"
 	CheckListItemTypeUdp             CheckListItemType = "udp"
+	CheckListItemTypeVendorStatus    CheckListItemType = "vendor-status"
 	CheckListItemTypeVnc             CheckListItemType = "vnc"
 	CheckListItemTypeWebsocket       CheckListItemType = "websocket"
 )
@@ -890,6 +894,8 @@ func (e CheckListItemType) Valid() bool {
 	case CheckListItemTypeTcp:
 		return true
 	case CheckListItemTypeUdp:
+		return true
+	case CheckListItemTypeVendorStatus:
 		return true
 	case CheckListItemTypeVnc:
 		return true
@@ -1098,6 +1104,7 @@ const (
 	CreateCheckRequestTypeSsl             CreateCheckRequestType = "ssl"
 	CreateCheckRequestTypeTcp             CreateCheckRequestType = "tcp"
 	CreateCheckRequestTypeUdp             CreateCheckRequestType = "udp"
+	CreateCheckRequestTypeVendorStatus    CreateCheckRequestType = "vendor-status"
 	CreateCheckRequestTypeVnc             CreateCheckRequestType = "vnc"
 	CreateCheckRequestTypeWebsocket       CreateCheckRequestType = "websocket"
 )
@@ -1190,6 +1197,8 @@ func (e CreateCheckRequestType) Valid() bool {
 	case CreateCheckRequestTypeTcp:
 		return true
 	case CreateCheckRequestTypeUdp:
+		return true
+	case CreateCheckRequestTypeVendorStatus:
 		return true
 	case CreateCheckRequestTypeVnc:
 		return true
@@ -3291,6 +3300,7 @@ const (
 	UpsertCheckRequestTypeSsl             UpsertCheckRequestType = "ssl"
 	UpsertCheckRequestTypeTcp             UpsertCheckRequestType = "tcp"
 	UpsertCheckRequestTypeUdp             UpsertCheckRequestType = "udp"
+	UpsertCheckRequestTypeVendorStatus    UpsertCheckRequestType = "vendor-status"
 	UpsertCheckRequestTypeVnc             UpsertCheckRequestType = "vnc"
 	UpsertCheckRequestTypeWebsocket       UpsertCheckRequestType = "websocket"
 )
@@ -3383,6 +3393,8 @@ func (e UpsertCheckRequestType) Valid() bool {
 	case UpsertCheckRequestTypeTcp:
 		return true
 	case UpsertCheckRequestTypeUdp:
+		return true
+	case UpsertCheckRequestTypeVendorStatus:
 		return true
 	case UpsertCheckRequestTypeVnc:
 		return true
@@ -6179,9 +6191,18 @@ type HandoffExchangeResponse struct {
 	Organizations *[]OrganizationMemberSummary `json:"organizations,omitempty"`
 	RefreshToken  *string                      `json:"refreshToken,omitempty"`
 
+	// Requires2Fa The user has TOTP enabled: no session was issued. Send the code
+	// (or a recovery code) with `tempToken` to `/api/v1/auth/2fa/verify`
+	// (or `/api/v1/auth/2fa/recovery`). The response then carries only
+	// this flag and `tempToken`.
+	Requires2Fa *bool `json:"requires2Fa,omitempty"`
+
 	// ReturnTo Where the login was started from. A hint; the dashboard only follows a same-origin path in the session's org.
-	ReturnTo *string      `json:"returnTo,omitempty"`
-	User     *UserSummary `json:"user,omitempty"`
+	ReturnTo *string `json:"returnTo,omitempty"`
+
+	// TempToken Short-lived 2FA token, only with `requires2Fa`. It is not a bearer token.
+	TempToken *string      `json:"tempToken,omitempty"`
+	User      *UserSummary `json:"user,omitempty"`
 }
 
 // HandoffExchangeResponseLoginAction Indicates how the frontend should handle the login result
@@ -6619,7 +6640,16 @@ type LoginResponse struct {
 	// Organizations Available organizations for the user
 	Organizations *[]OrganizationMemberSummary `json:"organizations,omitempty"`
 	RefreshToken  *string                      `json:"refreshToken,omitempty"`
-	User          *UserSummary                 `json:"user,omitempty"`
+
+	// Requires2Fa The user has TOTP enabled: no session was issued. Send the code
+	// (or a recovery code) with `tempToken` to `/api/v1/auth/2fa/verify`
+	// (or `/api/v1/auth/2fa/recovery`). The response then carries only
+	// this flag and `tempToken`.
+	Requires2Fa *bool `json:"requires2Fa,omitempty"`
+
+	// TempToken Short-lived 2FA token, only with `requires2Fa`. It is not a bearer token.
+	TempToken *string      `json:"tempToken,omitempty"`
+	User      *UserSummary `json:"user,omitempty"`
 }
 
 // LoginResponseLoginAction Indicates how the frontend should handle the login result
@@ -9406,6 +9436,11 @@ type ValidateCheck200JSONResponseBody struct {
 	union json.RawMessage
 }
 
+// ListVendorStatusComponentsJSONBody defines parameters for ListVendorStatusComponents.
+type ListVendorStatusComponentsJSONBody struct {
+	Url string `json:"url"`
+}
+
 // GetCheckParams defines parameters for GetCheck.
 type GetCheckParams struct {
 	// With Comma-separated list of additional data to include: "last_result" (the check's newest raw result), "last_status_change" (when the derived check status last changed — served from the check row itself, so it costs no extra query and is omitted for checks that have never transitioned) and "region_freshness" (the newest real result per region, so a silent region shows up even while others keep the check fresh).
@@ -10076,6 +10111,9 @@ type SwitchChecksToAutoPlacementJSONRequestBody SwitchChecksToAutoPlacementJSONB
 // ValidateCheckJSONRequestBody defines body for ValidateCheck for application/json ContentType.
 type ValidateCheckJSONRequestBody ValidateCheckJSONBody
 
+// ListVendorStatusComponentsJSONRequestBody defines body for ListVendorStatusComponents for application/json ContentType.
+type ListVendorStatusComponentsJSONRequestBody ListVendorStatusComponentsJSONBody
+
 // UpdateCheckJSONRequestBody defines body for UpdateCheck for application/json ContentType.
 type UpdateCheckJSONRequestBody = UpdateCheckRequest
 
@@ -10698,6 +10736,11 @@ type ClientInterface interface {
 	// response shape. An unknown, reused, expired or forged code always
 	// gets the same 401 body.
 	//
+	// A user with TOTP enabled gets no session from the callback: the
+	// exchange then answers `requires2Fa` and `tempToken` (plus `returnTo`
+	// and `membershipPending`), with no token and no user, and sets no
+	// cookie. The sign-in finishes through `/api/v1/auth/2fa/verify`.
+	//
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with POST /api/v1/auth/handoff/exchange (the `ExchangeHandoffCode` operationId).
@@ -10711,6 +10754,11 @@ type ClientInterface interface {
 	// it for the session the provider callback minted, in the login
 	// response shape. An unknown, reused, expired or forged code always
 	// gets the same 401 body.
+	//
+	// A user with TOTP enabled gets no session from the callback: the
+	// exchange then answers `requires2Fa` and `tempToken` (plus `returnTo`
+	// and `membershipPending`), with no token and no user, and sets no
+	// cookie. The sign-in finishes through `/api/v1/auth/2fa/verify`.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -10917,6 +10965,13 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /api/v1/check-types/samples (the `ListCheckTypeSamples` operationId).
 	ListCheckTypeSamples(ctx context.Context, params *ListCheckTypeSamplesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListVendorStatusCatalog List the vendor status pages the vendor-status check offers
+	//
+	// Public catalog of well-known Statuspage v2 providers (slug, name, url, category).
+	//
+	// Corresponds with GET /api/v1/check-types/vendor-status/catalog (the `ListVendorStatusCatalog` operationId).
+	ListVendorStatusCatalog(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListCheckConfigSchemas List the published config JSON Schemas
 	//
@@ -11274,6 +11329,24 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /api/v1/orgs/{org}/checks/validate (the `ValidateCheck` operationId).
 	ValidateCheck(ctx context.Context, org OrgPath, params *ValidateCheckParams, body ValidateCheckJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListVendorStatusComponentsWithBody List the components of a vendor status page
+	//
+	// Fetches `<url>/api/v2/summary.json` through the egress guard and returns its components (group headers left out). Used by the vendor-status check form.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/checks/vendor-status/components (the `ListVendorStatusComponents` operationId).
+	ListVendorStatusComponentsWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListVendorStatusComponents List the components of a vendor status page
+	//
+	// Fetches `<url>/api/v2/summary.json` through the egress guard and returns its components (group headers left out). Used by the vendor-status check form.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/checks/vendor-status/components (the `ListVendorStatusComponents` operationId).
+	ListVendorStatusComponents(ctx context.Context, org OrgPath, body ListVendorStatusComponentsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// DeleteCheck Soft delete check
 	//
@@ -13896,6 +13969,11 @@ func (c *Client) PollDeviceToken(ctx context.Context, body PollDeviceTokenJSONRe
 // response shape. An unknown, reused, expired or forged code always
 // gets the same 401 body.
 //
+// A user with TOTP enabled gets no session from the callback: the
+// exchange then answers `requires2Fa` and `tempToken` (plus `returnTo`
+// and `membershipPending`), with no token and no user, and sets no
+// cookie. The sign-in finishes through `/api/v1/auth/2fa/verify`.
+//
 // Takes any type of body and a specified content type.
 //
 // Corresponds with POST /api/v1/auth/handoff/exchange (the `ExchangeHandoffCode` operationId).
@@ -13919,6 +13997,11 @@ func (c *Client) ExchangeHandoffCodeWithBody(ctx context.Context, contentType st
 // it for the session the provider callback minted, in the login
 // response shape. An unknown, reused, expired or forged code always
 // gets the same 401 body.
+//
+// A user with TOTP enabled gets no session from the callback: the
+// exchange then answers `requires2Fa` and `tempToken` (plus `returnTo`
+// and `membershipPending`), with no token and no user, and sets no
+// cookie. The sign-in finishes through `/api/v1/auth/2fa/verify`.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -14396,6 +14479,23 @@ func (c *Client) ListCheckTypes(ctx context.Context, reqEditors ...RequestEditor
 // Corresponds with GET /api/v1/check-types/samples (the `ListCheckTypeSamples` operationId).
 func (c *Client) ListCheckTypeSamples(ctx context.Context, params *ListCheckTypeSamplesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListCheckTypeSamplesRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListVendorStatusCatalog List the vendor status pages the vendor-status check offers
+//
+// Public catalog of well-known Statuspage v2 providers (slug, name, url, category).
+//
+// Corresponds with GET /api/v1/check-types/vendor-status/catalog (the `ListVendorStatusCatalog` operationId).
+func (c *Client) ListVendorStatusCatalog(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListVendorStatusCatalogRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -15173,6 +15273,44 @@ func (c *Client) ValidateCheckWithBody(ctx context.Context, org OrgPath, params 
 // Corresponds with POST /api/v1/orgs/{org}/checks/validate (the `ValidateCheck` operationId).
 func (c *Client) ValidateCheck(ctx context.Context, org OrgPath, params *ValidateCheckParams, body ValidateCheckJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewValidateCheckRequest(c.Server, org, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListVendorStatusComponentsWithBody List the components of a vendor status page
+//
+// Fetches `<url>/api/v2/summary.json` through the egress guard and returns its components (group headers left out). Used by the vendor-status check form.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/v1/orgs/{org}/checks/vendor-status/components (the `ListVendorStatusComponents` operationId).
+func (c *Client) ListVendorStatusComponentsWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListVendorStatusComponentsRequestWithBody(c.Server, org, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListVendorStatusComponents List the components of a vendor status page
+//
+// Fetches `<url>/api/v2/summary.json` through the egress guard and returns its components (group headers left out). Used by the vendor-status check form.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/v1/orgs/{org}/checks/vendor-status/components (the `ListVendorStatusComponents` operationId).
+func (c *Client) ListVendorStatusComponents(ctx context.Context, org OrgPath, body ListVendorStatusComponentsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListVendorStatusComponentsRequest(c.Server, org, body)
 	if err != nil {
 		return nil, err
 	}
@@ -21741,6 +21879,33 @@ func NewListCheckTypeSamplesRequest(server string, params *ListCheckTypeSamplesP
 	return req, nil
 }
 
+// NewListVendorStatusCatalogRequest constructs an http.Request for the ListVendorStatusCatalog method
+func NewListVendorStatusCatalogRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/check-types/vendor-status/catalog")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListCheckConfigSchemasRequest constructs an http.Request for the ListCheckConfigSchemas method
 func NewListCheckConfigSchemasRequest(server string) (*http.Request, error) {
 	var err error
@@ -23192,6 +23357,53 @@ func NewValidateCheckRequestWithBody(server string, org OrgPath, params *Validat
 			rawQueryFragments = append(rawQueryFragments, encoded)
 		}
 		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListVendorStatusComponentsRequest calls the generic ListVendorStatusComponents builder with application/json body
+func NewListVendorStatusComponentsRequest(server string, org OrgPath, body ListVendorStatusComponentsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewListVendorStatusComponentsRequestWithBody(server, org, "application/json", bodyReader)
+}
+
+// NewListVendorStatusComponentsRequestWithBody constructs an http.Request for the ListVendorStatusComponents method, with any body, and a specified content type
+func NewListVendorStatusComponentsRequestWithBody(server string, org OrgPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/checks/vendor-status/components", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
 	}
 
 	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
@@ -35801,6 +36013,11 @@ type ClientWithResponsesInterface interface {
 	// response shape. An unknown, reused, expired or forged code always
 	// gets the same 401 body.
 	//
+	// A user with TOTP enabled gets no session from the callback: the
+	// exchange then answers `requires2Fa` and `tempToken` (plus `returnTo`
+	// and `membershipPending`), with no token and no user, and sets no
+	// cookie. The sign-in finishes through `/api/v1/auth/2fa/verify`.
+	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/auth/handoff/exchange (the `ExchangeHandoffCode` operationId).
@@ -35814,6 +36031,11 @@ type ClientWithResponsesInterface interface {
 	// it for the session the provider callback minted, in the login
 	// response shape. An unknown, reused, expired or forged code always
 	// gets the same 401 body.
+	//
+	// A user with TOTP enabled gets no session from the callback: the
+	// exchange then answers `requires2Fa` and `tempToken` (plus `returnTo`
+	// and `membershipPending`), with no token and no user, and sets no
+	// cookie. The sign-in finishes through `/api/v1/auth/2fa/verify`.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -36038,6 +36260,15 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /api/v1/check-types/samples (the `ListCheckTypeSamples` operationId).
 	ListCheckTypeSamplesWithResponse(ctx context.Context, params *ListCheckTypeSamplesParams, reqEditors ...RequestEditorFn) (*ListCheckTypeSamplesResult, error)
+
+	// ListVendorStatusCatalogWithResponse List the vendor status pages the vendor-status check offers
+	//
+	// Public catalog of well-known Statuspage v2 providers (slug, name, url, category).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/check-types/vendor-status/catalog (the `ListVendorStatusCatalog` operationId).
+	ListVendorStatusCatalogWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListVendorStatusCatalogResult, error)
 
 	// ListCheckConfigSchemasWithResponse List the published config JSON Schemas
 	//
@@ -36431,6 +36662,24 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /api/v1/orgs/{org}/checks/validate (the `ValidateCheck` operationId).
 	ValidateCheckWithResponse(ctx context.Context, org OrgPath, params *ValidateCheckParams, body ValidateCheckJSONRequestBody, reqEditors ...RequestEditorFn) (*ValidateCheckResult, error)
+
+	// ListVendorStatusComponentsWithBodyWithResponse List the components of a vendor status page
+	//
+	// Fetches `<url>/api/v2/summary.json` through the egress guard and returns its components (group headers left out). Used by the vendor-status check form.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/checks/vendor-status/components (the `ListVendorStatusComponents` operationId).
+	ListVendorStatusComponentsWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ListVendorStatusComponentsResult, error)
+
+	// ListVendorStatusComponentsWithResponse List the components of a vendor status page
+	//
+	// Fetches `<url>/api/v2/summary.json` through the egress guard and returns its components (group headers left out). Used by the vendor-status check form.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/checks/vendor-status/components (the `ListVendorStatusComponents` operationId).
+	ListVendorStatusComponentsWithResponse(ctx context.Context, org OrgPath, body ListVendorStatusComponentsJSONRequestBody, reqEditors ...RequestEditorFn) (*ListVendorStatusComponentsResult, error)
 
 	// DeleteCheckWithResponse Soft delete check
 	//
@@ -40600,6 +40849,61 @@ func (r ListCheckTypeSamplesResult) ContentType() string {
 	return ""
 }
 
+type ListVendorStatusCatalogResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *struct {
+		Data []struct {
+			Category string `json:"category"`
+			Name     string `json:"name"`
+			Slug     string `json:"slug"`
+			Url      string `json:"url"`
+		} `json:"data"`
+	}
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListVendorStatusCatalogResult) GetJSON200() *struct {
+	Data []struct {
+		Category string `json:"category"`
+		Name     string `json:"name"`
+		Slug     string `json:"slug"`
+		Url      string `json:"url"`
+	} `json:"data"`
+} {
+	return r.JSON200
+}
+
+// GetBody returns the raw response body bytes
+func (r ListVendorStatusCatalogResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListVendorStatusCatalogResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListVendorStatusCatalogResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListVendorStatusCatalogResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListCheckConfigSchemasResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -42325,6 +42629,59 @@ func (r ValidateCheckResult) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ValidateCheckResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListVendorStatusComponentsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *struct {
+		Data []struct {
+			Group *string `json:"group,omitempty"`
+			Id    string  `json:"id"`
+			Name  string  `json:"name"`
+		} `json:"data"`
+	}
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListVendorStatusComponentsResult) GetJSON200() *struct {
+	Data []struct {
+		Group *string `json:"group,omitempty"`
+		Id    string  `json:"id"`
+		Name  string  `json:"name"`
+	} `json:"data"`
+} {
+	return r.JSON200
+}
+
+// GetBody returns the raw response body bytes
+func (r ListVendorStatusComponentsResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListVendorStatusComponentsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListVendorStatusComponentsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListVendorStatusComponentsResult) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -56303,6 +56660,11 @@ func (c *ClientWithResponses) PollDeviceTokenWithResponse(ctx context.Context, b
 // response shape. An unknown, reused, expired or forged code always
 // gets the same 401 body.
 //
+// A user with TOTP enabled gets no session from the callback: the
+// exchange then answers `requires2Fa` and `tempToken` (plus `returnTo`
+// and `membershipPending`), with no token and no user, and sets no
+// cookie. The sign-in finishes through `/api/v1/auth/2fa/verify`.
+//
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/v1/auth/handoff/exchange (the `ExchangeHandoffCode` operationId).
@@ -56322,6 +56684,11 @@ func (c *ClientWithResponses) ExchangeHandoffCodeWithBodyWithResponse(ctx contex
 // it for the session the provider callback minted, in the login
 // response shape. An unknown, reused, expired or forged code always
 // gets the same 401 body.
+//
+// A user with TOTP enabled gets no session from the callback: the
+// exchange then answers `requires2Fa` and `tempToken` (plus `returnTo`
+// and `membershipPending`), with no token and no user, and sets no
+// cookie. The sign-in finishes through `/api/v1/auth/2fa/verify`.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -56713,6 +57080,21 @@ func (c *ClientWithResponses) ListCheckTypeSamplesWithResponse(ctx context.Conte
 		return nil, err
 	}
 	return ParseListCheckTypeSamplesResult(rsp)
+}
+
+// ListVendorStatusCatalogWithResponse List the vendor status pages the vendor-status check offers
+//
+// Public catalog of well-known Statuspage v2 providers (slug, name, url, category).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/check-types/vendor-status/catalog (the `ListVendorStatusCatalog` operationId).
+func (c *ClientWithResponses) ListVendorStatusCatalogWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListVendorStatusCatalogResult, error) {
+	rsp, err := c.ListVendorStatusCatalog(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListVendorStatusCatalogResult(rsp)
 }
 
 // ListCheckConfigSchemasWithResponse List the published config JSON Schemas
@@ -57358,6 +57740,36 @@ func (c *ClientWithResponses) ValidateCheckWithResponse(ctx context.Context, org
 		return nil, err
 	}
 	return ParseValidateCheckResult(rsp)
+}
+
+// ListVendorStatusComponentsWithBodyWithResponse List the components of a vendor status page
+//
+// Fetches `<url>/api/v2/summary.json` through the egress guard and returns its components (group headers left out). Used by the vendor-status check form.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/orgs/{org}/checks/vendor-status/components (the `ListVendorStatusComponents` operationId).
+func (c *ClientWithResponses) ListVendorStatusComponentsWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ListVendorStatusComponentsResult, error) {
+	rsp, err := c.ListVendorStatusComponentsWithBody(ctx, org, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListVendorStatusComponentsResult(rsp)
+}
+
+// ListVendorStatusComponentsWithResponse List the components of a vendor status page
+//
+// Fetches `<url>/api/v2/summary.json` through the egress guard and returns its components (group headers left out). Used by the vendor-status check form.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/orgs/{org}/checks/vendor-status/components (the `ListVendorStatusComponents` operationId).
+func (c *ClientWithResponses) ListVendorStatusComponentsWithResponse(ctx context.Context, org OrgPath, body ListVendorStatusComponentsJSONRequestBody, reqEditors ...RequestEditorFn) (*ListVendorStatusComponentsResult, error) {
+	rsp, err := c.ListVendorStatusComponents(ctx, org, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListVendorStatusComponentsResult(rsp)
 }
 
 // DeleteCheckWithResponse Soft delete check
@@ -62913,6 +63325,39 @@ func ParseListCheckTypeSamplesResult(rsp *http.Response) (*ListCheckTypeSamplesR
 	return response, nil
 }
 
+// ParseListVendorStatusCatalogResult parses an HTTP response from a ListVendorStatusCatalogWithResponse call
+func ParseListVendorStatusCatalogResult(rsp *http.Response) (*ListVendorStatusCatalogResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListVendorStatusCatalogResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			Data []struct {
+				Category string `json:"category"`
+				Name     string `json:"name"`
+				Slug     string `json:"slug"`
+				Url      string `json:"url"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListCheckConfigSchemasResult parses an HTTP response from a ListCheckConfigSchemasWithResponse call
 func ParseListCheckConfigSchemasResult(rsp *http.Response) (*ListCheckConfigSchemasResult, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -64181,6 +64626,44 @@ func ParseValidateCheckResult(rsp *http.Response) (*ValidateCheckResult, error) 
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListVendorStatusComponentsResult parses an HTTP response from a ListVendorStatusComponentsWithResponse call
+func ParseListVendorStatusComponentsResult(rsp *http.Response) (*ListVendorStatusComponentsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListVendorStatusComponentsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			Data []struct {
+				Group *string `json:"group,omitempty"`
+				Id    string  `json:"id"`
+				Name  string  `json:"name"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case rsp.StatusCode == 400:
+		break // No content-type
+
+	case rsp.StatusCode == 502:
+		break // No content-type
 
 	}
 

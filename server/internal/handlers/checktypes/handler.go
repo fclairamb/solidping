@@ -1,9 +1,17 @@
 package checktypes
 
 import (
+	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
+	"net/url"
+	"strings"
 
+	"github.com/fclairamb/solidping/server/internal/checkers/checkvendorstatus"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkvendorstatus/catalog"
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/egress"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/httpx"
 )
@@ -12,7 +20,13 @@ import (
 type Handler struct {
 	base.HandlerBase
 	svc *Service
+	// guard is read at call time: the egress guard is installed after the
+	// server is built.
+	guard func() *egress.Guard
 }
+
+// SetEgressGuard wires the SSRF guard used by the vendor-status components lookup.
+func (h *Handler) SetEgressGuard(guard func() *egress.Guard) { h.guard = guard }
 
 // NewHandler creates a new check types handler.
 func NewHandler(service *Service, cfg *config.Config) *Handler {
@@ -47,4 +61,47 @@ func (h *Handler) ListSampleConfigs(writer http.ResponseWriter, req *http.Reques
 	response := h.svc.ListSampleConfigs(filterType)
 
 	return h.WriteJSON(writer, http.StatusOK, response)
+}
+
+// ListVendorStatusCatalog handles GET /api/v1/check-types/vendor-status/catalog (public, no auth).
+func (h *Handler) ListVendorStatusCatalog(writer http.ResponseWriter, _ *http.Request) error {
+	return h.WriteJSON(writer, http.StatusOK, map[string]any{"data": catalog.All()})
+}
+
+// vendorComponentsRequest is the body of the components lookup.
+type vendorComponentsRequest struct {
+	URL string `json:"url"`
+}
+
+// ListVendorStatusComponents handles POST /api/v1/orgs/:org/checks/vendor-status/components.
+// The browser cannot fetch a vendor page itself (CSP), so the server does it
+// through the egress guard.
+func (h *Handler) ListVendorStatusComponents(writer http.ResponseWriter, req *http.Request) error {
+	var body vendorComponentsRequest
+
+	raw, err := io.ReadAll(io.LimitReader(req.Body, 4096))
+	if err != nil || json.Unmarshal(raw, &body) != nil {
+		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid JSON body")
+	}
+
+	root := strings.TrimSpace(body.URL)
+	if parsed, parseErr := url.Parse(root); parseErr != nil || (parsed.Scheme != "https" && parsed.Scheme != "http") || parsed.Host == "" {
+		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, "url must be an http(s) URL")
+	}
+
+	ctx := req.Context()
+	if h.guard != nil {
+		ctx = egress.WithGuard(ctx, h.guard())
+	}
+
+	components, err := checkvendorstatus.ListComponents(ctx, root)
+	if err != nil {
+		if errors.Is(err, checkvendorstatus.ErrFetch) {
+			return h.WriteError(writer, http.StatusBadGateway, base.ErrorCodeValidationError, err.Error())
+		}
+
+		return err
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, map[string]any{"data": components})
 }

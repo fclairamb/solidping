@@ -1146,8 +1146,10 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 
 	// Check types routes
 	checkTypesHandler := checktypes.NewHandler(checkTypesService, s.config)
-	api.GET("/check-types", checkTypesHandler.ListServerCheckTypes)      // Public, no auth
-	api.GET("/check-types/samples", checkTypesHandler.ListSampleConfigs) // Public, no auth
+	api.GET("/check-types", checkTypesHandler.ListServerCheckTypes)                          // Public, no auth
+	api.GET("/check-types/samples", checkTypesHandler.ListSampleConfigs)                     // Public, no auth
+	api.GET("/check-types/vendor-status/catalog", checkTypesHandler.ListVendorStatusCatalog) // Public, no auth
+	checkTypesHandler.SetEgressGuard(func() *egress.Guard { return s.services.EgressGuard })
 	// Generated JSON Schemas for each check type's `config` object — public and
 	// auth-free like /check-types, because they describe this build rather than
 	// any organization's data. Read-only, and DESCRIPTIVE ONLY: validation stays
@@ -1172,6 +1174,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgChecks.POST("", checksHandler.CreateCheck)
 	// Bulk "Switch to automatic placement" (spec 2026-09-25-06). A literal
 	// segment, registered ahead of the "/:checkUid" routes.
+	orgChecks.POST("/vendor-status/components", checkTypesHandler.ListVendorStatusComponents)
 	orgChecks.POST("/auto-placement", checksHandler.SwitchToAutoPlacement)
 
 	// Config-as-code surface (export/import/apply) is admin-only: import and
