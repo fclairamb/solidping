@@ -151,7 +151,8 @@ func ListComponents(ctx context.Context, root string) ([]Component, error) {
 
 	groups := make(map[string]string)
 
-	for _, component := range outcome.summary.Components {
+	for i := range outcome.summary.Components {
+		component := &outcome.summary.Components[i]
 		if component.Group {
 			groups[component.ID] = component.Name
 		}
@@ -159,7 +160,8 @@ func ListComponents(ctx context.Context, root string) ([]Component, error) {
 
 	components := make([]Component, 0, len(outcome.summary.Components))
 
-	for _, component := range outcome.summary.Components {
+	for i := range outcome.summary.Components {
+		component := &outcome.summary.Components[i]
 		if component.Group {
 			continue
 		}

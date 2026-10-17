@@ -85,7 +85,8 @@ func (h *Handler) ListVendorStatusComponents(writer http.ResponseWriter, req *ht
 	}
 
 	root := strings.TrimSpace(body.URL)
-	if parsed, parseErr := url.Parse(root); parseErr != nil || (parsed.Scheme != "https" && parsed.Scheme != "http") || parsed.Host == "" {
+	parsed, parseErr := url.Parse(root)
+	if parseErr != nil || (parsed.Scheme != "https" && parsed.Scheme != "http") || parsed.Host == "" {
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, "url must be an http(s) URL")
 	}
 

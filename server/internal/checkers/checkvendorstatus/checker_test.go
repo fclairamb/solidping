@@ -160,14 +160,30 @@ func TestSelectedComponents(t *testing.T) {
 	}{
 		{"all operational", nil, []string{idActions, idGit, idIssues}, checkerdef.StatusUp},
 		{"maintenance is up", map[string]string{idActions: "under_maintenance"}, []string{idActions}, checkerdef.StatusUp},
-		{"degraded alone is a warning", map[string]string{idGit: "degraded_performance"},
-			[]string{idActions, idGit, idIssues}, checkerdef.StatusWarning},
-		{"partial outage is down", map[string]string{idGit: "partial_outage"},
-			[]string{idActions, idGit}, checkerdef.StatusDown},
-		{"worst of three wins", map[string]string{idActions: "degraded_performance", idIssues: "major_outage"},
-			[]string{idActions, idGit, idIssues}, checkerdef.StatusDown},
-		{"unselected major outage stays up", map[string]string{idWebhooks: "major_outage"},
-			[]string{idActions, idGit}, checkerdef.StatusUp},
+		{
+			"degraded alone is a warning",
+			map[string]string{idGit: "degraded_performance"},
+			[]string{idActions, idGit, idIssues},
+			checkerdef.StatusWarning,
+		},
+		{
+			"partial outage is down",
+			map[string]string{idGit: "partial_outage"},
+			[]string{idActions, idGit},
+			checkerdef.StatusDown,
+		},
+		{
+			"worst of three wins",
+			map[string]string{idActions: "degraded_performance", idIssues: "major_outage"},
+			[]string{idActions, idGit, idIssues},
+			checkerdef.StatusDown,
+		},
+		{
+			"unselected major outage stays up",
+			map[string]string{idWebhooks: "major_outage"},
+			[]string{idActions, idGit},
+			checkerdef.StatusUp,
+		},
 	}
 
 	for _, tt := range tests {
@@ -290,7 +306,8 @@ func TestOutputListsEveryComponentOfThePage(t *testing.T) {
 	components, ok := result.Output["components"].([]map[string]any)
 	require.True(t, ok)
 	require.Len(t, components, 12, "not only the selected ones")
-	require.Equal(t, map[string]any{"id": "8l4ygp009s5s", "name": "Git Operations", "status": "operational"}, components[0])
+	require.Equal(t,
+		map[string]any{"id": "8l4ygp009s5s", "name": "Git Operations", "status": "operational"}, components[0])
 }
 
 func TestFallbackMessageWithoutIncident(t *testing.T) {

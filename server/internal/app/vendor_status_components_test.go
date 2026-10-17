@@ -53,6 +53,7 @@ func vendorPost(t *testing.T, env *viewerEnv, org, token, target string) (int, s
 	return resp.StatusCode, out.String()
 }
 
+//nolint:paralleltest // subtests share one env and swap its egress guard
 func TestVendorStatusComponentsEndpoint(t *testing.T) {
 	env := newViewerEnv(t)
 	vendor := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -102,7 +103,11 @@ func TestVendorStatusComponentsEndpoint(t *testing.T) {
 		require.Equal(t, http.StatusOK, status, body)
 
 		var out struct {
-			Data []struct{ ID, Name, Group string } `json:"data"`
+			Data []struct {
+				ID    string `json:"id"`
+				Name  string `json:"name"`
+				Group string `json:"group"`
+			} `json:"data"`
 		}
 		require.NoError(t, json.Unmarshal([]byte(body), &out))
 		require.Len(t, out.Data, 1)
@@ -112,9 +117,15 @@ func TestVendorStatusComponentsEndpoint(t *testing.T) {
 }
 
 func TestVendorStatusCatalogEndpointIsPublic(t *testing.T) {
+	t.Parallel()
+
 	env := newViewerEnv(t)
 
-	resp, err := env.ts.Client().Get(env.ts.URL + "/api/v1/check-types/vendor-status/catalog")
+	req, err := http.NewRequestWithContext(
+		context.Background(), http.MethodGet, env.ts.URL+"/api/v1/check-types/vendor-status/catalog", nil)
+	require.NoError(t, err)
+
+	resp, err := env.ts.Client().Do(req)
 	require.NoError(t, err)
 
 	defer func() { _ = resp.Body.Close() }()

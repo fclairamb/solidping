@@ -168,29 +168,38 @@ func componentStatus(status string) (checkerdef.Status, bool) {
 	}
 }
 
+const (
+	severityWarning = 1
+	severityDown    = 2
+)
+
 // severity orders the statuses a component can map to: the worst one wins.
 func severity(status checkerdef.Status) int {
-	switch status {
-	case checkerdef.StatusDown:
-		return 2 //nolint:mnd // ordering
-	case checkerdef.StatusWarning:
-		return 1
-	default:
-		return 0
+	if status == checkerdef.StatusDown {
+		return severityDown
 	}
+
+	if status == checkerdef.StatusWarning {
+		return severityWarning
+	}
+
+	return 0
 }
 
 // componentsStatus judges the selected components, worst one wins. It returns
 // the ids missing from the summary, and a problem for an unknown status.
 func componentsStatus(
 	selected []string, sum *summary,
-) (status checkerdef.Status, describe string, missing []string, problem string) {
+) (checkerdef.Status, string, []string, string) {
 	byID := make(map[string]summaryComponent, len(sum.Components))
-	for _, component := range sum.Components {
-		byID[component.ID] = component
+	for i := range sum.Components {
+		byID[sum.Components[i].ID] = sum.Components[i]
 	}
 
-	status = checkerdef.StatusUp
+	status := checkerdef.StatusUp
+	describe := ""
+
+	var missing []string
 
 	for _, id := range selected {
 		component, found := byID[id]
@@ -219,7 +228,8 @@ func componentsStatus(
 func relevantIncidents(selected []string, sum *summary) []summaryIncident {
 	var out []summaryIncident
 
-	for _, incident := range sum.Incidents {
+	for i := range sum.Incidents {
+		incident := &sum.Incidents[i]
 		if incident.Status == incidentResolved || incident.Status == incidentPostmortem {
 			continue
 		}
@@ -228,13 +238,13 @@ func relevantIncidents(selected []string, sum *summary) []summaryIncident {
 			continue
 		}
 
-		out = append(out, incident)
+		out = append(out, *incident)
 	}
 
 	return out
 }
 
-func touches(incident summaryIncident, selected []string) bool {
+func touches(incident *summaryIncident, selected []string) bool {
 	for _, affected := range incident.Components {
 		for _, id := range selected {
 			if affected.ID == id {
@@ -249,7 +259,8 @@ func touches(incident summaryIncident, selected []string) bool {
 func outputComponents(sum *summary) []map[string]any {
 	out := make([]map[string]any, 0, len(sum.Components))
 
-	for _, component := range sum.Components {
+	for i := range sum.Components {
+		component := &sum.Components[i]
 		if component.Group {
 			continue
 		}
@@ -267,7 +278,8 @@ func outputComponents(sum *summary) []map[string]any {
 func outputIncidents(incidents []summaryIncident) []map[string]any {
 	out := make([]map[string]any, 0, min(len(incidents), maxOutputIncidents))
 
-	for _, incident := range incidents {
+	for i := range incidents {
+		incident := &incidents[i]
 		if len(out) >= maxOutputIncidents {
 			break
 		}

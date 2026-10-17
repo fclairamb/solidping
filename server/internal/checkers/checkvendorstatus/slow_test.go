@@ -15,8 +15,12 @@ import (
 // Every catalog URL must still answer the Statuspage v2 summary. A vendor that
 // changes format breaks this nightly, not a customer.
 func TestCatalogURLsServeAV2Summary(t *testing.T) {
+	t.Parallel()
+
 	for _, entry := range catalog.All() {
 		t.Run(entry.Slug, func(t *testing.T) {
+			t.Parallel()
+
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 

@@ -39,9 +39,10 @@ func All() []Entry {
 
 // Find returns the entry with the given slug.
 func Find(slug string) (Entry, bool) {
-	for _, entry := range All() {
-		if entry.Slug == slug {
-			return entry, true
+	entries := All()
+	for i := range entries {
+		if entries[i].Slug == slug {
+			return entries[i], true
 		}
 	}
 
