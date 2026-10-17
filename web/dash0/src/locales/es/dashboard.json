@@ -123,12 +123,8 @@
     "availabilityNoDataSub": "Sin datos aún",
     "availability": "Disponibilidad 24 h",
     "availabilitySub": "Estado de disponibilidad de la flota",
-    "activeCount": "{{count}} activos",
     "totalEndpoints": "{{count}} endpoints en total",
-    "badgeNeedsAction": "Requiere acción",
-    "badgeAllUp": "Todo activo",
-    "badgeActive": "Activos",
-    "badgeClean": "Ninguno"
+    "badgeNeedsAction": "Requiere acción"
   },
   "glance": {
     "title": "Comprobaciones de un vistazo",
@@ -136,8 +132,7 @@
     "footer_other": "Ver las {{count}} comprobaciones →",
     "since": "desde hace {{time}}",
     "description": "Vista previa del estado de la flota y telemetría de respuesta en directo",
-    "viewAll": "Ver todo ({{count}})",
-    "telemetryPending": "Telemetría de 24 h activa"
+    "viewAll": "Ver todo ({{count}})"
   },
   "activeIncidents": {
     "title": "Incidentes activos",
