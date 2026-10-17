@@ -105,14 +105,12 @@ func (h *Handler) validateAuthRequest(req *http.Request, authReq *authRequest) (
 	}
 
 	// resource (RFC 8707) must match the MCP resource when supplied; default it.
-	if authReq.Resource == "" {
-		authReq.Resource = meta.ResourceURL()
-	}
-
-	if authReq.Resource != meta.ResourceURL() {
+	if authReq.Resource != "" && !meta.IsResource(authReq.Resource) {
 		return nil, newRedirectError(ErrInvalidRequest,
 			"resource does not match the MCP resource", authReq.RedirectURI, authReq.State)
 	}
+
+	authReq.Resource = meta.ResourceURL()
 
 	return authReq, nil
 }

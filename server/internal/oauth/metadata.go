@@ -66,6 +66,15 @@ func (m Metadata) ResourceURL() string {
 	return m.Issuer + PathMCP
 }
 
+// IsResource reports whether resource names the MCP resource. The query is
+// ignored: a client may derive the RFC 8707 resource from its server URL, and
+// that URL can carry endpoint options such as ?toolsets= or ?auth=required.
+func (m Metadata) IsResource(resource string) bool {
+	base, _, _ := strings.Cut(resource, "?")
+
+	return base == m.ResourceURL()
+}
+
 // AuthorizationEndpoint returns the absolute /authorize URL.
 func (m Metadata) AuthorizationEndpoint() string {
 	return m.Issuer + PathAuthorize
