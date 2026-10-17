@@ -84,3 +84,7 @@ One normalised shape for every type:
 ## Open questions
 1. Run inline on the API node or dispatch to a worker? Recommended: inline with the semaphore for v1 (simple, 10 s budget), then move to workers when `regions: all` lands.
 2. Should `tcp` be limited to a port allowlist (80, 443, 22, 25, 3306, 5432, 6379, 8080…)? Recommended: no allowlist, per-IP limits instead. "Is my port X open" with an arbitrary port is the query people search for.
+
+## Resolved open questions
+1. Run inline on the API node, guarded by the semaphore, for v1; move to workers when `regions: all` lands. (autopilot: recommended answer)
+2. No port allowlist for `tcp`; rely on per-IP rate limits. (autopilot: recommended answer)
