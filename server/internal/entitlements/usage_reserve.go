@@ -2,7 +2,9 @@ package entitlements
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -14,10 +16,13 @@ import (
 // orgs so a bug can't run up an unbounded provider bill. They are the defaults;
 // deployments override them via config (WithRunawayCaps).
 //
-// They are PER ORG and apply to every send whoever pays for it. The
-// instance-wide cap and country allow-list that guard the SERVER's own spend
-// live in instance_sms_guard.go and deliberately do not apply to a
-// bring-your-own send.
+// They are PER ORG and apply to every send whoever pays for it. Everything else
+// is scoped to sends made on the SERVER's own credentials: the monthly
+// entitlement cap (ReserveSMS / ReserveCall), and the instance-wide cap and
+// country allow-list in instance_sms_guard.go. A bring-your-own send bills the
+// customer's own provider account, so it goes through
+// ReserveSMSOwnCredentials / ReserveCallOwnCredentials, which keep the runaway
+// guard only and write no monthly counter.
 const (
 	defaultSMSRunawayPerHour  = 30
 	defaultCallRunawayPerHour = 10
@@ -43,17 +48,71 @@ const (
 // would be metering for its own sake.
 const RunawayKindTelegram = "telegram"
 
-// ReserveSMS reserves one SMS send for the org: first the per-org hourly
-// runaway guard, then the monthly entitlement cap (persistent counter). Returns
-// a *QuotaError when either denies, nil when reserved.
+// ReserveSMS reserves one SMS send made on the instance's credentials: first
+// the per-org hourly runaway guard, then the monthly entitlement cap
+// (persistent counter). Returns a *QuotaError when either denies, nil when
+// reserved.
 func (s *Service) ReserveSMS(ctx context.Context, orgUID string) error {
 	return s.reserveUsage(ctx, orgUID, models.UsageCounterKindSMS)
 }
 
-// ReserveCall reserves one voice call for the org (runaway guard + monthly cap).
+// ReserveCall reserves one voice call made on the instance's credentials
+// (runaway guard + monthly cap).
 func (s *Service) ReserveCall(ctx context.Context, orgUID string) error {
 	return s.reserveUsage(ctx, orgUID, models.UsageCounterKindVoice)
 }
+
+// ReserveSMSOwnCredentials reserves one SMS sent through the org's own
+// (bring-your-own) provider account. The org pays for it, so the monthly
+// entitlement cap does not apply and no counter row is written: only the
+// per-org hourly runaway guard, which bounds a broken escalation loop whoever
+// pays. It shares the bucket of ReserveSMS, so mixing modes cannot double the
+// hourly allowance.
+func (s *Service) ReserveSMSOwnCredentials(_ context.Context, orgUID string) error {
+	return s.reserveRunaway(orgUID, models.UsageCounterKindSMS)
+}
+
+// ReserveCallOwnCredentials is ReserveSMSOwnCredentials for a voice call.
+func (s *Service) ReserveCallOwnCredentials(_ context.Context, orgUID string) error {
+	return s.reserveRunaway(orgUID, models.UsageCounterKindVoice)
+}
+
+// IsMonthlyCapRefusal reports whether err is a refusal by a monthly
+// entitlement cap (MaxSmsPerMonth, MaxCallsPerMonth, MaxWhatsappPerMonth), as
+// opposed to the hourly runaway guard. Only the former means the org ran out
+// of its plan's allowance.
+func IsMonthlyCapRefusal(err error) bool {
+	var quotaErr *QuotaError
+	if !errors.As(err, &quotaErr) {
+		return false
+	}
+
+	switch quotaErr.LimitName {
+	case monthlyLimitName(models.UsageCounterKindSMS),
+		monthlyLimitName(models.UsageCounterKindVoice),
+		monthlyLimitName(models.UsageCounterKindWhatsApp):
+		return true
+	default:
+		return false
+	}
+}
+
+// ClaimMonthlyCapNotice returns true exactly once per org, per kind, per UTC
+// month: the first caller that sees the monthly cap refuse a send gets to tell
+// the org's admins. The claim is the atomic upsert of org_usage_counters with a
+// limit of one, so two concurrent refusals (or two replicas) cannot both win.
+func (s *Service) ClaimMonthlyCapNotice(ctx context.Context, orgUID, kind string) (bool, error) {
+	claimed, err := s.db.ReserveMonthlyUsage(ctx, orgUID, capNoticeKind(kind), monthStart(s.now()), 1)
+	if err != nil {
+		return false, fmt.Errorf("claim monthly cap notice: %w", err)
+	}
+
+	return claimed, nil
+}
+
+// capNoticeKind is the org_usage_counters kind that records "the admins were
+// told this month that <kind> ran out".
+func capNoticeKind(kind string) string { return kind + "_cap_notice" }
 
 // ReserveWhatsApp reserves one outbound WhatsApp template message for the org
 // (runaway guard + monthly cap).
@@ -78,12 +137,21 @@ func (s *Service) ReserveTelegram(_ context.Context, orgUID string) error {
 	return nil
 }
 
-func (s *Service) reserveUsage(ctx context.Context, orgUID, kind string) error {
-	// 1. Runaway guard first (in-memory, no persistence) so a denial here never
-	//    increments the durable monthly counter.
+// reserveRunaway applies the per-org hourly runaway guard alone.
+func (s *Service) reserveRunaway(orgUID, kind string) error {
 	capacity := s.runawayCapFor(kind)
 	if !s.runawayBucketFor(orgUID, kind, capacity).allow(s.now()) {
 		return &QuotaError{LimitName: kind + "_runaway_per_hour", Limit: capacity, CurrentUsage: capacity}
+	}
+
+	return nil
+}
+
+func (s *Service) reserveUsage(ctx context.Context, orgUID, kind string) error {
+	// 1. Runaway guard first (in-memory, no persistence) so a denial here never
+	//    increments the durable monthly counter.
+	if err := s.reserveRunaway(orgUID, kind); err != nil {
+		return err
 	}
 
 	// 2. Monthly entitlement cap.
@@ -202,4 +270,26 @@ func (b *hourlyBucket) allow(now time.Time) bool {
 	}
 
 	return false
+}
+
+// ParamUpgradeURLTemplate is the system parameter holding the billing
+// service's upgrade URL, with `{org}` standing for the org slug.
+const ParamUpgradeURLTemplate = "entitlements.upgrade_url_template"
+
+// UpgradeURL returns the plain upgrade URL for an org (no signed billing
+// token), or "" when the deployment configures none (self-hosted). It is what
+// an email may carry: the token-bearing variant is minted per viewer by the
+// entitlements handler and must never sit in a mailbox.
+func (s *Service) UpgradeURL(ctx context.Context, orgSlug string) string {
+	param, err := s.db.GetSystemParameter(ctx, ParamUpgradeURLTemplate)
+	if err != nil || param == nil {
+		return ""
+	}
+
+	template, ok := param.Value["value"].(string)
+	if !ok || template == "" {
+		return ""
+	}
+
+	return strings.ReplaceAll(template, "{org}", orgSlug)
 }

@@ -5948,9 +5948,14 @@ type EntitlementsResponseSource string
 
 // EntitlementsUsage defines model for EntitlementsUsage.
 type EntitlementsUsage struct {
+	// CallsThisMonth Voice calls placed on the instance's credentials in the current UTC month, counted against maxCallsPerMonth. Bring-your-own Twilio calls are not counted. A persistent counter, not a live count.
+	CallsThisMonth  *int    `json:"callsThisMonth,omitempty"`
 	Checks          int     `json:"checks"`
 	ChecksPerMinute float64 `json:"checksPerMinute"`
-	SsoUsers        int     `json:"ssoUsers"`
+
+	// SmsThisMonth SMS sent on the instance's credentials in the current UTC month, counted against maxSmsPerMonth. Bring-your-own Twilio sends are not counted. A persistent counter, not a live count.
+	SmsThisMonth *int `json:"smsThisMonth,omitempty"`
+	SsoUsers     int  `json:"ssoUsers"`
 
 	// WhatsappThisMonth Outbound WhatsApp template messages sent in the current UTC month. A persistent counter, not a live count.
 	WhatsappThisMonth *int `json:"whatsappThisMonth,omitempty"`

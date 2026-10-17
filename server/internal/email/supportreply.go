@@ -58,6 +58,7 @@ const (
 	TemplateStatusSubscriberUpdate  = "status-subscriber-update.html"
 	TemplateTestEmail               = "test-email.html"
 	TemplateUptimeReport            = "uptime-report.html"
+	TemplateUsageCapReached         = "usage-cap-reached.html"
 	TemplateWelcome                 = "welcome.html"
 	// TemplateBase is the shared wrapper. It is never rendered on its own and
 	// therefore carries no classification.
@@ -86,7 +87,10 @@ const (
 //nolint:gochecknoglobals // package-level classification table
 var supportReplyableTemplates = map[string]bool{
 	// Alerts and notifications — a human replying to these is the whole point.
-	TemplateCustomDomainDemoted:  true,
+	TemplateCustomDomainDemoted: true,
+	// An admin told their plan ran out of SMS/voice/WhatsApp alerts may well
+	// want to ask about it.
+	TemplateUsageCapReached:      true,
 	TemplateEscalation:           true,
 	TemplateIncidentBurnCreated:  true,
 	TemplateIncidentBurnResolved: true,

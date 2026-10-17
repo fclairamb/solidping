@@ -118,6 +118,16 @@ func WithTelegramRunawayCap(perHour int) Option {
 	}
 }
 
+// WithClock overrides the service's clock, which decides the month a counter
+// or a cap notice belongs to. For tests outside this package; nil is ignored.
+func WithClock(now func() time.Time) Option {
+	return func(s *Service) {
+		if now != nil {
+			s.now = now
+		}
+	}
+}
+
 // NewService builds an entitlements service with the given defaults.
 // staleAfter of zero disables stale fallback (self-hosted default).
 //

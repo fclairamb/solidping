@@ -18142,6 +18142,18 @@ components:
           description: >-
             Outbound WhatsApp template messages sent in the current UTC month.
             A persistent counter, not a live count.
+        smsThisMonth:
+          type: integer
+          description: >-
+            SMS sent on the instance's credentials in the current UTC month,
+            counted against maxSmsPerMonth. Bring-your-own Twilio sends are not
+            counted. A persistent counter, not a live count.
+        callsThisMonth:
+          type: integer
+          description: >-
+            Voice calls placed on the instance's credentials in the current UTC
+            month, counted against maxCallsPerMonth. Bring-your-own Twilio calls
+            are not counted. A persistent counter, not a live count.
 
     EntitlementsChecksPerMinute:
       type: object

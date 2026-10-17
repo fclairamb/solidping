@@ -754,12 +754,14 @@ func (r *EscalationStepJobRun) pagePhone(
 	// reserving first and refusing second would charge the org monthly quota
 	// for a message that was never sent. Silently, and on a metered plan.
 	if wantSMS && r.reserveInstanceSMSSpend(ctx, jctx, log, incident, resolution, contact.Value) &&
-		r.reservePhoneChannel(ctx, jctx, log, incident, contact.Value, models.UsageCounterKindSMS) &&
+		r.reservePhoneChannel(ctx, jctx, log, incident, contact.Value, models.UsageCounterKindSMS,
+			!resolution.InstanceCredentialsForSMS()) &&
 		r.sendPhoneSMS(ctx, jctx, log, incident, route, resolution, baseURL, orgSlug, ackToken) {
 		sent++
 	}
 
-	if wantVoice && r.reservePhoneChannel(ctx, jctx, log, incident, contact.Value, models.UsageCounterKindVoice) &&
+	if wantVoice && r.reservePhoneChannel(ctx, jctx, log, incident, contact.Value, models.UsageCounterKindVoice,
+		!resolution.InstanceCredentialsForVoice()) &&
 		r.placePhoneCall(ctx, jctx, log, incident, route, resolution, baseURL, ackToken) {
 		sent++
 	}
@@ -821,8 +823,9 @@ func resolvePhoneProviders(
 //
 // It applies to server-credential sends ONLY. A bring-your-own send bills the
 // customer's own account, so it neither consumes the shared cap nor is gated
-// by an allow-list chosen for this instance's bill; the per-org runaway guard
-// in reservePhoneChannel still applies to it, as today's safety belt.
+// by an allow-list chosen for this instance's bill. Nor does it consume the
+// plan's monthly SMS/voice cap: reservePhoneChannel applies only the per-org
+// hourly runaway guard to it, as the safety belt against a broken loop.
 //
 // A breach logs loudly and records a skipped audit row: it must never fail
 // silently, because what it silently drops is an alert.
@@ -855,12 +858,19 @@ func (r *EscalationStepJobRun) reserveInstanceSMSSpend(
 	return false
 }
 
-// reservePhoneChannel enforces per-run dedup and the SMS/voice quota + runaway
-// guard before a send. Returns true when the send may proceed. A quota denial
-// records a skipped audit row but never fails the step.
+// reservePhoneChannel enforces per-run dedup and the per-org reservation
+// before a send. Returns true when the send may proceed. A refusal records a
+// skipped audit row but never fails the step.
+//
+// ownCredentials says the send goes through the org's own (bring-your-own)
+// provider account: the org pays, so only the hourly runaway guard applies and
+// the plan's monthly cap is neither checked nor consumed. Otherwise (instance
+// credentials, and WhatsApp always) it is the runaway guard then the monthly
+// cap. The first monthly-cap refusal of a kind in a month emails the org's
+// admins.
 func (r *EscalationStepJobRun) reservePhoneChannel(
 	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
-	incident *models.Incident, phone, kind string,
+	incident *models.Incident, phone, kind string, ownCredentials bool,
 ) bool {
 	key := kind + ":" + phone
 	if r.sentPhones[key] {
@@ -870,21 +880,15 @@ func (r *EscalationStepJobRun) reservePhoneChannel(
 	}
 
 	if jctx.Services != nil && jctx.Services.Entitlements != nil {
-		var err error
-
-		switch kind {
-		case models.UsageCounterKindVoice:
-			err = jctx.Services.Entitlements.ReserveCall(ctx, incident.OrganizationUID)
-		case models.UsageCounterKindWhatsApp:
-			err = jctx.Services.Entitlements.ReserveWhatsApp(ctx, incident.OrganizationUID)
-		default:
-			err = jctx.Services.Entitlements.ReserveSMS(ctx, incident.OrganizationUID)
-		}
-
-		if err != nil {
+		if err := reservePhoneUsage(ctx, jctx.Services.Entitlements, incident.OrganizationUID, kind,
+			ownCredentials); err != nil {
 			log.InfoContext(ctx, "phone channel quota reached; skipping send",
-				"kind", kind, "orgUID", incident.OrganizationUID, "error", err)
+				"kind", kind, "orgUID", incident.OrganizationUID, "ownCredentials", ownCredentials, "error", err)
 			r.auditPhoneSkip(ctx, jctx, log, incident, kind+"_quota_exhausted")
+
+			if entitlements.IsMonthlyCapRefusal(err) {
+				notifyMonthlyCapReached(ctx, jctx, log, incident.OrganizationUID, kind, err)
+			}
 
 			return false
 		}
@@ -896,6 +900,30 @@ func (r *EscalationStepJobRun) reservePhoneChannel(
 	r.sentPhones[key] = true
 
 	return true
+}
+
+// reservePhoneUsage picks the reservation path for one send.
+func reservePhoneUsage(
+	ctx context.Context, ent *entitlements.Service, orgUID, kind string, ownCredentials bool,
+) error {
+	switch kind {
+	case models.UsageCounterKindVoice:
+		if ownCredentials {
+			return ent.ReserveCallOwnCredentials(ctx, orgUID)
+		}
+
+		return ent.ReserveCall(ctx, orgUID)
+	case models.UsageCounterKindWhatsApp:
+		// Instance-only channel (Meta Cloud through the server's WABA): always
+		// the plan's cap.
+		return ent.ReserveWhatsApp(ctx, orgUID)
+	default:
+		if ownCredentials {
+			return ent.ReserveSMSOwnCredentials(ctx, orgUID)
+		}
+
+		return ent.ReserveSMS(ctx, orgUID)
+	}
 }
 
 // auditPhoneSkip records a skipped incident_notifications row for a quota-denied
