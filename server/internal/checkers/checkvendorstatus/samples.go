@@ -14,7 +14,7 @@ func (c *VendorStatusChecker) GetSampleConfigs(_ *checkerdef.ListSampleOptions) 
 			Slug:   "vendor-github",
 			Period: 5 * time.Minute,
 			Config: (&VendorStatusConfig{
-				URL:      "https://www.githubstatus.com",
+				URL:      "https://www\\.githubstatus\\.com",
 				Provider: "github",
 			}).GetConfig(),
 		},
