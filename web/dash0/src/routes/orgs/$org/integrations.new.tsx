@@ -119,7 +119,7 @@ function NewIntegrationPage() {
 
     const renderGroup = (groupTypes: ConnectionType[], testid: string) => (
       <div
-        className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
+        className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
         data-testid={testid}
       >
         {groupTypes.map((c) => (
@@ -146,7 +146,7 @@ function NewIntegrationPage() {
       <div className="space-y-6">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">
+            <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
               {t("newTitle", "Add an integration")}
             </h1>
             <p className="text-sm text-muted-foreground">

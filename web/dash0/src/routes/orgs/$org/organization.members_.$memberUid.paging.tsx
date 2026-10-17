@@ -129,7 +129,7 @@ function MemberPagingPage() {
             </Alert>
 
             <form onSubmit={submit} className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-[160px_1fr]">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-[160px_1fr]">
                 <div className="space-y-2">
                   <Label htmlFor="paging-type">
                     {t("members.paging.type")}
