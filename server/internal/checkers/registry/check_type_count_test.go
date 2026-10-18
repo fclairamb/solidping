@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/plugins"
 )
 
 var checkTypeCountRe = regexp.MustCompile(`(?i)\b(\d{2})\+?\s+check[- ]types?\b`)
@@ -90,6 +91,23 @@ func TestAdvertisedCheckTypeCountInDocs(t *testing.T) {
 
 	require.Empty(t, scanFiles(t, root, files, checkerdef.AdvertisedCheckTypeCount()),
 		"bump the number in these docs (or set ExcludedFromTally on the new type)")
+}
+
+// Loading a plugin never changes the advertised count (spec 2026-10-17-05):
+// plugin metas are always ExcludedFromTally.
+func TestPluginsLeaveTheAdvertisedCountUnchanged(t *testing.T) {
+	t.Parallel()
+
+	before := checkerdef.AdvertisedCheckTypeCount()
+
+	set := plugins.Load(filepath.Join(repoRoot(t), "plugins"), nil)
+	t.Cleanup(set.Close)
+
+	require.Empty(t, set.Errors)
+	require.Contains(t, set.Types, checkerdef.CheckType("x-gopher"))
+	require.NotNil(t, checkerdef.GetCheckTypeMeta("x-gopher"), "positive control: the plugin is loaded")
+	require.Equal(t, before, checkerdef.AdvertisedCheckTypeCount())
+	require.NotContains(t, checkerdef.AdvertisedCheckTypes(), checkerdef.CheckType("x-gopher"))
 }
 
 func TestCheckTypeCountMatcher(t *testing.T) {

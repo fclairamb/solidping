@@ -114,6 +114,26 @@ func (s Status) String() string {
 	}
 }
 
+// ParseStatus maps the string a check result may report (up, down, timeout,
+// error, warning) to its Status. Lifecycle and rollup statuses (running,
+// degraded) are not results a checker may return, so they are refused.
+func ParseStatus(value string) (Status, bool) {
+	switch value {
+	case statusStrUp:
+		return StatusUp, true
+	case statusStrDown:
+		return StatusDown, true
+	case statusStrTimeout:
+		return StatusTimeout, true
+	case statusStrError:
+		return StatusError, true
+	case statusStrWarning:
+		return StatusWarning, true
+	default:
+		return 0, false
+	}
+}
+
 // Severity ranks statuses so the aggregation job can resolve a dominant
 // status by gravity rather than by raw numeric value (the numbers do not
 // encode severity once Degraded=7 / Warning=8 exist). Higher = more severe.
@@ -530,14 +550,15 @@ var (
 
 // RegisterCheckTypeMeta adds a runtime (plugin) check type. It is always
 // ExcludedFromTally: loading plugins never changes the advertised count.
-func RegisterCheckTypeMeta(meta CheckTypeMeta) error {
+func RegisterCheckTypeMeta(source *CheckTypeMeta) error {
 	registeredMu.Lock()
 	defer registeredMu.Unlock()
 
-	if builtinMeta(meta.Type) != nil || registeredIndex(meta.Type) >= 0 {
-		return fmt.Errorf("%w: %s", ErrCheckTypeRegistered, meta.Type)
+	if builtinMeta(source.Type) != nil || registeredIndex(source.Type) >= 0 {
+		return fmt.Errorf("%w: %s", ErrCheckTypeRegistered, source.Type)
 	}
 
+	meta := *source
 	meta.ExcludedFromTally = true
 	meta.Labels = slices.Clone(meta.Labels)
 	registeredMetas = append(registeredMetas, meta)
@@ -576,15 +597,15 @@ func builtinMeta(ct CheckType) *CheckTypeMeta {
 }
 
 // GetCheckTypeMeta returns the metadata for a given check type, or nil if not found.
-func GetCheckTypeMeta(ct CheckType) *CheckTypeMeta {
-	if meta := builtinMeta(ct); meta != nil {
+func GetCheckTypeMeta(checkType CheckType) *CheckTypeMeta {
+	if meta := builtinMeta(checkType); meta != nil {
 		return meta
 	}
 
 	registeredMu.RLock()
 	defer registeredMu.RUnlock()
 
-	if idx := registeredIndex(ct); idx >= 0 {
+	if idx := registeredIndex(checkType); idx >= 0 {
 		meta := registeredMetas[idx]
 
 		return &meta

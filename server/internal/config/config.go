@@ -613,6 +613,7 @@ type Config struct {
 	Deployment   DeploymentConfig   `koanf:"deployment"`
 	Egress       EgressConfig       `koanf:"egress"`
 	Tools        ToolsConfig        `koanf:"tools"`
+	Plugins      PluginsConfig      `koanf:"plugins"`
 	Kubernetes   KubernetesConfig   `koanf:"kubernetes"`
 	WebPush      WebPushConfig      `koanf:"webpush"`
 	PostHog      PostHogConfig      `koanf:"posthog"`
@@ -742,6 +743,13 @@ type EgressConfig struct {
 // in applyToolsEnv: the key is snake_case, which koanf's env loader turns into
 // tools.denied.hosts.
 const EnvToolsDeniedHosts = "SP_TOOLS_DENIED_HOSTS"
+
+// PluginsConfig configures check plugins (spec 2026-10-17-05).
+type PluginsConfig struct {
+	// Dir is the operator's plugin directory (SP_PLUGINS_DIR): one folder per
+	// plugin, each with a manifest.json. Empty turns plugins off.
+	Dir string `koanf:"dir"`
+}
 
 // ToolsConfig configures the anonymous "run a check once" endpoint behind the
 // public tools on www.solidping.io (POST /api/v1/tools/run).

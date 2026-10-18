@@ -44,7 +44,7 @@ func TestEveryBuiltinTypeResolves(t *testing.T) {
 func TestRegisterDuplicateTypePanics(t *testing.T) {
 	t.Parallel()
 
-	meta := *checkerdef.GetCheckTypeMeta(checkerdef.CheckTypeSleep)
+	meta := checkerdef.GetCheckTypeMeta(checkerdef.CheckTypeSleep)
 
 	require.Panics(t, func() {
 		Register(meta,
@@ -56,7 +56,7 @@ func TestRegisterDuplicateTypePanics(t *testing.T) {
 func TestRegisterPluginRefusesABuiltinType(t *testing.T) {
 	t.Parallel()
 
-	meta := *checkerdef.GetCheckTypeMeta(checkerdef.CheckTypeSleep)
+	meta := checkerdef.GetCheckTypeMeta(checkerdef.CheckTypeSleep)
 
 	err := RegisterPlugin(meta,
 		func() checkerdef.Checker { return &checksleep.SleepChecker{} },

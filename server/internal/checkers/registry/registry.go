@@ -65,8 +65,8 @@ type entry struct {
 
 //nolint:gochecknoglobals // process-wide registry, written at init and at boot
 var (
-	mu      sync.RWMutex
-	entries = map[checkerdef.CheckType]entry{}
+	entriesMu sync.RWMutex
+	entries   = map[checkerdef.CheckType]entry{}
 )
 
 // builtinCheckers lists every check type compiled into the binary.
@@ -82,7 +82,9 @@ var builtinCheckers = []struct {
 	{checkerdef.CheckTypeTCP, func() checkerdef.Checker { return &checktcp.TCPChecker{} }},
 	{checkerdef.CheckTypeHeartbeat, func() checkerdef.Checker { return &checkheartbeat.HeartbeatChecker{} }},
 	{checkerdef.CheckTypeEmail, func() checkerdef.Checker { return &checkemail.EmailChecker{} }},
-	{checkerdef.CheckTypePrivateLocation, func() checkerdef.Checker { return &checkprivatelocation.PrivateLocationChecker{} }},
+	{checkerdef.CheckTypePrivateLocation, func() checkerdef.Checker {
+		return &checkprivatelocation.PrivateLocationChecker{}
+	}},
 	{checkerdef.CheckTypeDomain, func() checkerdef.Checker { return &checkdomain.DomainChecker{} }},
 	{checkerdef.CheckTypeSSL, func() checkerdef.Checker { return &checkssl.SSLChecker{} }},
 	{checkerdef.CheckTypeSMTP, func() checkerdef.Checker { return &checksmtp.SMTPChecker{} }},
@@ -133,7 +135,7 @@ func init() {
 		}
 
 		checkType := builtin.checkType
-		Register(*meta, builtin.newChecker, func() checkerdef.Config {
+		Register(meta, builtin.newChecker, func() checkerdef.Config {
 			cfg, _ := configregistry.ParseConfig(checkType)
 
 			return cfg
@@ -162,7 +164,7 @@ var ErrDuplicateType = errors.New("check type already registered")
 // factory. A built-in registers through here at init; registering a type
 // twice is a programming error and panics.
 func Register(
-	meta checkerdef.CheckTypeMeta,
+	meta *checkerdef.CheckTypeMeta,
 	newChecker func() checkerdef.Checker,
 	newConfig func() checkerdef.Config,
 ) {
@@ -177,7 +179,7 @@ func Register(
 // ExcludedFromTally), the config factory and validator in configregistry, and
 // the checker factory here.
 func RegisterPlugin(
-	meta checkerdef.CheckTypeMeta,
+	meta *checkerdef.CheckTypeMeta,
 	newChecker func() checkerdef.Checker,
 	newConfig func() checkerdef.Config,
 	validate func(spec *checkerdef.CheckSpec) error,
@@ -217,8 +219,8 @@ func UnregisterPlugin(checkType checkerdef.CheckType) {
 // PluginTypes returns the plugin check types this process loaded, sorted. A
 // worker advertises them at claim time (spec 2026-10-17-05 §17).
 func PluginTypes() []string {
-	mu.RLock()
-	defer mu.RUnlock()
+	entriesMu.RLock()
+	defer entriesMu.RUnlock()
 
 	out := make([]string, 0)
 
@@ -238,8 +240,8 @@ func register(
 	newChecker func() checkerdef.Checker,
 	newConfig func() checkerdef.Config,
 ) error {
-	mu.Lock()
-	defer mu.Unlock()
+	entriesMu.Lock()
+	defer entriesMu.Unlock()
 
 	if _, dup := entries[checkType]; dup {
 		return fmt.Errorf("%w: %s", ErrDuplicateType, checkType)
@@ -251,15 +253,15 @@ func register(
 }
 
 func unregister(checkType checkerdef.CheckType) {
-	mu.Lock()
-	defer mu.Unlock()
+	entriesMu.Lock()
+	defer entriesMu.Unlock()
 
 	delete(entries, checkType)
 }
 
 func lookup(checkType checkerdef.CheckType) (entry, bool) {
-	mu.RLock()
-	defer mu.RUnlock()
+	entriesMu.RLock()
+	defer entriesMu.RUnlock()
 
 	found, ok := entries[checkType]
 
