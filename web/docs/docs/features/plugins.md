@@ -302,6 +302,12 @@ worker that calls it (a sidecar on loopback), or regional results stop being
 true. Its own network calls also bypass what SolidPing applies to built-in
 checks: the egress guard, SSH tunnels and `ipVersion`.
 
+Only agents report HTTP plugin types to the server. A cloud worker does not.
+When `SP_NODE_ROLE` splits the API node from the workers, load the same plugin
+folder on the API node too, or it does not know the types and refuses to save
+their checks. The API node must also reach the service, since it calls
+`/validate` when a check is saved.
+
 ## Safety and limits
 
 - `exec`, `nagios` and `http` types are always `unsafe`, whatever the manifest

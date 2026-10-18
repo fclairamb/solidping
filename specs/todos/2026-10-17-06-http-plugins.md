@@ -155,3 +155,8 @@ routing (step 17) and stored manifests (step 18). Implement it first.
   that cloud workers can use the same path.
 - How the save path knows whether its own node hosts a plugin, in a single-binary deployment
   and when `SP_NODE_ROLE` splits API and workers.
+- Resolved (2026-10-18): cloud workers do not report HTTP plugin descriptors, only agents do.
+  No global store is added. A single-binary deployment loads the plugin dir in the same process,
+  so the save path sees the types. With a split `SP_NODE_ROLE`, the API node must load the same
+  plugin dir and reach the service for `/validate`. Documented in
+  `web/docs/docs/features/plugins.md` (HTTP plugins, "Where the service runs").
