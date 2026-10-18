@@ -504,8 +504,11 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	checksSvc.SetEnvRefAllow(cfg.EnvRefAllowed)
 	// The demo cleanup and private-location monitor deletes notify like a
 	// user's DELETE does (spec 2026-10-08-02).
-	checksSvc.SetCheckDeletedIncidentNotifier(
-		incidents.NewService(dbService, jobService, svcList.Clock, svcList.Realtime))
+	backgroundIncidents := incidents.NewService(dbService, jobService, svcList.Clock, svcList.Realtime)
+	checksSvc.SetCheckDeletedIncidentNotifier(backgroundIncidents)
+	// The A2A sender and the a2a_task_poll job record the AI agent's replies
+	// on the incident timeline (spec 2026-10-18-02).
+	svcList.A2AComments = backgroundIncidents
 	svcList.Checks = checksSvc
 	svcList.PrivateLocationMonitors = checksSvc
 	aiChecksSvc := buildAIChecks(cfg, dbService, checksSvc, entitlementsService, credSvc, svcList)
@@ -1955,6 +1958,10 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// they wrap the multi-step LCD-approval handshake. POST creates the
 	// integration in `pairing` status and asks the Freebox for an
 	// app_token; GET polls until the user approves the prompt.
+	// AI agent (A2A): resolve an Agent Card before saving, so the form can
+	// show the agent name, skills and protocol version (spec 2026-10-18-02).
+	orgGroup("/orgs/:org/integrations/a2a").POST("/resolve-card", integrationsHandler.ResolveA2ACard)
+
 	orgFreebox := orgGroup("/orgs/:org/integrations/freebox")
 	orgFreebox.POST("/pair", integrationsHandler.StartFreeboxPairing)
 	orgFreebox.GET("/pair/:uid/status", integrationsHandler.GetFreeboxPairingStatus)

@@ -4365,6 +4365,79 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/orgs/{org}/integrations/a2a/resolve-card:
+    post:
+      tags: [Channels]
+      summary: Resolve an AI agent (A2A) Agent Card
+      description: >-
+        Fetches the Agent Card for the given AI agent (A2A) settings, which may
+        not be saved yet, and describes the agent SolidPing would talk to: its
+        name, skills and the protocol version of the JSONRPC interface it would
+        use. Both the card URL and the interface URL the card advertises go
+        through the egress policy. With `integrationUid`, stored secrets fill in
+        the ones the request leaves empty. Always returns 200; inspect `success`.
+      operationId: resolveA2AAgentCard
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                settings:
+                  type: object
+                  additionalProperties: true
+                  description: >-
+                    `agent_card_url`, `auth` (none, bearer, api_key), `token`,
+                    `api_key_header`, `api_key_value`, `instructions`.
+                integrationUid:
+                  type: string
+      responses:
+        "200":
+          description: Resolution outcome
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success]
+                properties:
+                  success:
+                    type: boolean
+                  error:
+                    type: string
+                  agent:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      description:
+                        type: string
+                      protocolVersion:
+                        type: string
+                      interfaceUrl:
+                        type: string
+                      skills:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                            name:
+                              type: string
+                            description:
+                              type: string
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/v1/orgs/{org}/integrations/{uid}/identities:
     get:
       tags: [Channels]

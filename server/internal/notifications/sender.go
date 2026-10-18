@@ -68,6 +68,12 @@ type Payload struct {
 	// ReminderSeq is the 1-based number of an `incident.reminder` (spec
 	// 2026-10-12-16), printed as "reminder 3". Zero for every other event.
 	ReminderSeq int
+	// EventKey identifies the incident event this delivery is for, and stays
+	// the same when the notification job is retried (it is the UID of the
+	// first job of the retry chain). Two events of one incident have two
+	// keys. The A2A sender derives its idempotent messageId from it. Empty
+	// for a payload built outside the notification job (the test button).
+	EventKey string
 }
 
 // MentionTarget is one human an alert should ping. ExternalID is the

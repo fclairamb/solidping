@@ -576,6 +576,7 @@ var validConnectionTypes = map[models.ConnectionType]bool{
 	models.ConnectionTypeWebPush:      true,
 	models.ConnectionTypeKubernetes:   true,
 	models.ConnectionTypeTwilio:       true,
+	models.ConnectionTypeA2A:          true,
 }
 
 // validateConnectionType checks the type is known and, for types with per-type
@@ -703,6 +704,9 @@ var senderURLSettingsKey = map[models.ConnectionType]string{
 	// Discord's bot mode posts to a fixed host, but its webhook mode POSTs to
 	// the stored webhook_url, which must also be a Discord webhook URL.
 	models.ConnectionTypeDiscord: senderKeyWebhookURL,
+	// The AI agent's Agent Card URL. The interface URL the card advertises is
+	// untrusted and validated again by the sender on every send.
+	models.ConnectionTypeA2A: notifications.A2ASettingAgentCardURL,
 }
 
 // slackIncomingWebhookHost is the only host a slack-webhook connection may
@@ -1753,6 +1757,13 @@ func (s *Service) TestIntegration(
 	}
 
 	conn.Settings = models.JSONMap(effective)
+
+	// An AI agent (A2A) is tested by resolving its Agent Card, not by sending
+	// a fake incident: the agent would start investigating an incident that
+	// does not exist, and could not record its findings on it.
+	if conn.Type == models.ConnectionTypeA2A {
+		return s.testA2AConnection(ctx, conn.Settings), nil
+	}
 
 	// Web Push is special: WebPushSender.Send swallows per-subscription errors
 	// as non-fatal (production behavior — keep trying remaining subs). For a
