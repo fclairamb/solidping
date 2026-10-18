@@ -57,6 +57,10 @@ Errors (standard shape, see [errors.md](errors.md)):
 Guard: the run uses an egress guard hardwired to deny private targets. It ignores
 `SP_EGRESS_ALLOW_PRIVATE`. `ssl` and `tcp` dial the address that was vetted; `http` dials
 through the guarded transport, which re-resolves and re-checks every hop (5 redirects at most).
+`http` never reads the response body. `dns` asks 1.1.1.1 (then 8.8.8.8), never the system
+resolver. It refuses single-label names and internal zones (`.local`, `.internal`,
+`.cluster.local`, `.localhost`, `.localdomain`, `.home.arpa`, `.lan`) before the query, and any
+answer holding a non-public address or such a name after it (`TARGET_NOT_ALLOWED`).
 The instance's own hosts are the base URL host, the docs host and `SP_TOOLS_DENIED_HOSTS`
 (subdomains included).
 

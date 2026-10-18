@@ -12,8 +12,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/handlers/tools"
 )
 
 // newToolsTestServer boots a real server (NewServer + SetupRoutes) with the
@@ -40,6 +42,18 @@ func newToolsTestServer(t *testing.T, mutate func(cfg *config.Config)) (*Server,
 
 	r.NoError(server.Initialize(ctx))
 	r.NoError(server.InitializeSystemConfig(ctx, cfg))
+
+	// The DNS tool asks public resolvers; the tests answer for them offline.
+	server.toolsOptions = []tools.Option{tools.WithDNSResolver(
+		func(_ context.Context, _, host, _ string) (*checkerdef.Result, error) {
+			if host != "acme.com" {
+				return &checkerdef.Result{Status: checkerdef.StatusDown, Output: map[string]any{}}, nil
+			}
+
+			return &checkerdef.Result{Status: checkerdef.StatusUp, Output: map[string]any{
+				"resolved_ips": []string{"8.8.4.4"},
+			}}, nil
+		})}
 	server.SetupRoutes(ctx)
 
 	ts := httptest.NewServer(server.Handler())
@@ -111,7 +125,7 @@ func TestToolsRunAnswersCORSForAnyOrigin(t *testing.T) {
 	r.Equal("*", resp.Header.Get("Access-Control-Allow-Origin"))
 	r.Empty(resp.Header.Get("Access-Control-Allow-Credentials"))
 
-	run, _ := postToolRun(t, ts.Client(), ts.URL, `{"type":"dns","target":"localhost"}`)
+	run, _ := postToolRun(t, ts.Client(), ts.URL, `{"type":"dns","target":"acme.com"}`)
 	r.Equal(http.StatusOK, run.StatusCode)
 	r.Equal("*", run.Header.Get("Access-Control-Allow-Origin"))
 }
@@ -206,7 +220,7 @@ func TestToolsRunWritesNoRows(t *testing.T) {
 	before := count()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ts.URL+"/api/v1/tools/run",
-		strings.NewReader(`{"type":"dns","target":"localhost","options":{"record":"A"}}`))
+		strings.NewReader(`{"type":"dns","target":"acme.com","options":{"record":"A"}}`))
 	r.NoError(err)
 
 	resp, err := ts.Client().Do(req)
@@ -229,7 +243,7 @@ func TestToolsRunWritesNoRows(t *testing.T) {
 	}
 	r.NoError(json.NewDecoder(resp.Body).Decode(&result))
 	r.Equal("dns", result.Type)
-	r.Equal("localhost", result.Target)
+	r.Equal("acme.com", result.Target)
 	r.Equal("up", result.Status)
 	r.Equal("dns", result.Monitor.CheckType)
 

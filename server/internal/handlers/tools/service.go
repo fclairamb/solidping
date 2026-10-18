@@ -126,6 +126,14 @@ func WithLookup(lookup egress.LookupFunc) Option {
 	return func(s *Service) { s.lookup = lookup }
 }
 
+// DNSResolveFunc answers one DNS tool query through nameserver ("ip:port").
+type DNSResolveFunc func(ctx context.Context, nameserver, host, record string) (*checkerdef.Result, error)
+
+// WithDNSResolver replaces the DNS tool's resolver (tests only).
+func WithDNSResolver(resolve DNSResolveFunc) Option {
+	return func(s *Service) { s.dnsResolve = resolve }
+}
+
 // WithGuardOptions adds options to the egress guard (tests only).
 func WithGuardOptions(opts ...egress.Option) Option {
 	return func(s *Service) { s.guardOpts = append(s.guardOpts, opts...) }
@@ -148,6 +156,7 @@ type Service struct {
 	region      string
 	timeout     time.Duration
 	lookup      egress.LookupFunc
+	dnsResolve  DNSResolveFunc
 	guardOpts   []egress.Option
 	guard       *egress.Guard
 	slots       chan struct{}
@@ -165,6 +174,7 @@ func NewService(params Params, opts ...Option) *Service {
 		region:      params.Region,
 		timeout:     RunTimeout,
 		lookup:      checkerdef.LookupIPAddr,
+		dnsResolve:  checkerDNSResolve,
 		slots:       make(chan struct{}, MaxConcurrentRuns),
 		now:         time.Now,
 		cache:       make(map[string]outcome),
@@ -319,11 +329,9 @@ func (s *Service) run(ctx context.Context, tgt *target) (*Result, error) {
 		})
 		details = tcpDetails(res)
 	case TypeDNS:
-		res, err = (&checkdns.DNSChecker{}).Execute(ctx, &checkdns.DNSConfig{
-			Host: tgt.host, RecordType: tgt.record, Timeout: s.timeout,
-		})
+		res, err = s.resolveDNS(ctx, tgt)
 		if err != nil {
-			return nil, ErrResolveFailed
+			return nil, err
 		}
 
 		details = dnsDetails(res, tgt.record)
@@ -435,6 +443,9 @@ func (s *Service) runHTTP(ctx context.Context, tgt *target, ip net.IP) (*checker
 		},
 	}
 
+	// The body is never read: Execute reads it only for body assertions or a
+	// failure capture, and this config sets neither. The spec's 1 MiB body
+	// cap holds by reading 0 bytes.
 	res, err := checker.Execute(ctx, &checkhttp.HTTPConfig{URL: probe.String(), Method: http.MethodGet})
 
 	lock.Lock()
@@ -449,6 +460,98 @@ func (s *Service) runHTTP(ctx context.Context, tgt *target, ip net.IP) (*checker
 	}
 
 	return res, httpDetails(res, probe.String(), leafState, time.Now()), nil
+}
+
+// dnsNameservers are the public resolvers the DNS tool asks, in order. Never
+// the system resolver: it can know cluster-internal names and addresses.
+//
+//nolint:gochecknoglobals // constant list
+var dnsNameservers = []string{"1.1.1.1:53", "8.8.8.8:53"}
+
+// internalDNSSuffixes are zones only an internal resolver answers.
+//
+//nolint:gochecknoglobals // constant list
+var internalDNSSuffixes = []string{
+	".local", ".internal", ".cluster.local", ".localhost", ".localdomain", ".home.arpa", ".lan",
+}
+
+func checkerDNSResolve(ctx context.Context, nameserver, host, record string) (*checkerdef.Result, error) {
+	res, err := (&checkdns.DNSChecker{}).Execute(ctx, &checkdns.DNSConfig{
+		Host: host, RecordType: record, Nameserver: nameserver, Timeout: RunTimeout,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("dns check: %w", err)
+	}
+
+	return res, nil
+}
+
+// resolveDNS asks the public nameservers in turn, and refuses an answer that
+// holds a non-public address or an internal name.
+func (s *Service) resolveDNS(ctx context.Context, tgt *target) (*checkerdef.Result, error) {
+	var (
+		res *checkerdef.Result
+		err error
+	)
+
+	for _, nameserver := range dnsNameservers {
+		res, err = s.dnsResolve(ctx, nameserver, tgt.host, tgt.record)
+		if err == nil && res != nil && res.Status == checkerdef.StatusUp {
+			break
+		}
+	}
+
+	if err != nil || res == nil {
+		return nil, ErrResolveFailed
+	}
+
+	if !publicDNSAnswer(res, tgt.record) {
+		return nil, ErrTargetNotAllowed
+	}
+
+	return res, nil
+}
+
+// publicDNSAnswer reports an answer free of non-public addresses and of
+// internal names.
+func publicDNSAnswer(res *checkerdef.Result, record string) bool {
+	ips, _ := res.Output["resolved_ips"].([]string)
+	for _, raw := range ips {
+		if ip := net.ParseIP(raw); ip == nil || egress.IsNonPublic(ip) {
+			return false
+		}
+	}
+
+	// CNAME, NS and MX ("<pref> <host>") answers name hosts.
+	if record != "CNAME" && record != "NS" && record != "MX" {
+		return true
+	}
+
+	values, _ := res.Output["resolved_values"].([]string)
+	for _, value := range values {
+		fields := strings.Fields(strings.ToLower(value))
+		if len(fields) > 0 && isInternalName(fields[len(fields)-1]) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// isInternalName reports a single-label name or a name in an internal zone.
+func isInternalName(host string) bool {
+	host = strings.TrimSuffix(host, ".")
+	if !strings.Contains(host, ".") {
+		return true
+	}
+
+	for _, suffix := range internalDNSSuffixes {
+		if strings.HasSuffix(host, suffix) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func parseTarget(req *Request) (*target, error) {
@@ -553,6 +656,10 @@ func parseDNSTarget(raw, record string) (*target, error) {
 
 	if !dnsRecordTypes[record] {
 		return nil, ErrInvalidTarget
+	}
+
+	if isInternalName(host) {
+		return nil, ErrTargetNotAllowed
 	}
 
 	return &target{typ: TypeDNS, host: host, record: record, label: host}, nil

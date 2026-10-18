@@ -55,7 +55,7 @@ func TestHandlerRefusesThe101stRunOfTheDay(t *testing.T) {
 
 	recorder := httptest.NewRecorder()
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/tools/run",
-		strings.NewReader(`{"type":"dns","target":"localhost"}`))
+		strings.NewReader(`{"type":"dns","target":"acme.com"}`))
 	r.NoError(handler.Run(recorder, req))
 
 	r.Equal(http.StatusTooManyRequests, recorder.Code)
@@ -82,6 +82,8 @@ func TestHandlerMapsRunErrorsToCodes(t *testing.T) {
 		`not json`:                                 {http.StatusBadRequest, "VALIDATION_ERROR"},
 		`{"type":"tcp","target":"acme.com:0"}`:     {http.StatusBadRequest, "INVALID_TARGET"},
 		`{"type":"tcp","target":"private.test:5"}`: {http.StatusForbidden, "TARGET_NOT_ALLOWED"},
+		`{"type":"dns","target":"private.test"}`:   {http.StatusForbidden, "TARGET_NOT_ALLOWED"},
+		`{"type":"dns","target":"localhost"}`:      {http.StatusForbidden, "TARGET_NOT_ALLOWED"},
 		`{"type":"tcp","target":"nowhere.test:5"}`: {http.StatusUnprocessableEntity, "RESOLVE_FAILED"},
 	} {
 		recorder := httptest.NewRecorder()
@@ -106,7 +108,7 @@ func TestBusyAnswers503WithRetryAfter(t *testing.T) {
 	handler := NewHandler(cfg, svc, func(*http.Request) string { return "198.51.100.2" })
 	recorder := httptest.NewRecorder()
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/tools/run",
-		strings.NewReader(`{"type":"dns","target":"localhost"}`))
+		strings.NewReader(`{"type":"dns","target":"acme.com"}`))
 	r.NoError(handler.Run(recorder, req))
 
 	r.Equal(http.StatusServiceUnavailable, recorder.Code)
@@ -140,10 +142,11 @@ func TestRunEmitsAnAnonymousAnalyticsEvent(t *testing.T) {
 	t.Cleanup(func() { analytics.SetDefault(nil) })
 
 	cfg := &config.Config{Tools: config.ToolsConfig{Enabled: true}}
-	handler := NewHandler(cfg, newTestService(fakeDNS(nil)), func(*http.Request) string { return "198.51.100.3" })
+	svc := newTestService(fakeDNS(map[string][]string{"acme.com": {"8.8.4.4"}}))
+	handler := NewHandler(cfg, svc, func(*http.Request) string { return "198.51.100.3" })
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/tools/run",
-		strings.NewReader(`{"type":"dns","target":"localhost"}`))
+		strings.NewReader(`{"type":"dns","target":"acme.com"}`))
 	r.NoError(handler.Run(httptest.NewRecorder(), req))
 
 	recorder.mu.Lock()

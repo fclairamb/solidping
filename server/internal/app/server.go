@@ -208,6 +208,8 @@ type Server struct {
 	// directly, so every caller gets compression on the same terms.
 	handler http.Handler
 	config  *config.Config
+	// toolsOptions tune the public tools service (tests only: a fake DNS).
+	toolsOptions []tools.Option
 	// instanceSMSSender is the instance-level SMS sender; kept so the OVH
 	// delivery callback can be registered once the config overlay is final.
 	instanceSMSSender        smssvc.Sender
@@ -1181,7 +1183,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	toolsHandler := tools.NewHandler(s.config, tools.NewService(tools.Params{
 		DeniedHosts: s.config.ToolsDeniedHosts(),
 		Region:      s.toolsRegion(),
-	}), toolsLimiter.ExtractIP)
+	}, s.toolsOptions...), toolsLimiter.ExtractIP)
 	api.NewGroup("/tools").Use(toolsLimiter.RateLimitRoute).POST("/run", toolsHandler.Run)
 
 	// Check types routes

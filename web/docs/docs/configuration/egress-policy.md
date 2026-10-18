@@ -210,7 +210,9 @@ same kinds of targets still are not:
 The public tools endpoint (`POST /api/v1/tools/run`, off unless
 `SP_TOOLS_ENABLED=true`) does not follow this policy: it always refuses
 non-public targets, even with `SP_EGRESS_ALLOW_PRIVATE=true`, and also refuses
-a name when any of its addresses is non-public.
+a name when any of its addresses is non-public. Its DNS lookup asks a public
+resolver (1.1.1.1, then 8.8.8.8), never the system one, and refuses internal
+names (`.local`, `.internal`, `.cluster.local`, single labels...).
 
 ### Discovery
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -77,9 +78,36 @@ func rebindingDNS(calls *atomic.Int32) egress.LookupFunc {
 	}
 }
 
+// fakeDNSTool answers the DNS tool from the same table as lookup, without
+// network: a name lookup does not know is a DOWN result (NXDOMAIN).
+func fakeDNSTool(lookup egress.LookupFunc) DNSResolveFunc {
+	return func(ctx context.Context, _, host, record string) (*checkerdef.Result, error) {
+		addrs, err := lookup(ctx, host)
+		if err != nil {
+			//nolint:nilerr // NXDOMAIN is a DOWN result, as checkdns reports it
+			return &checkerdef.Result{Status: checkerdef.StatusDown, Output: map[string]any{
+				checkerdef.OutputKeyError: err.Error(),
+			}}, nil
+		}
+
+		ips := make([]string, 0, len(addrs))
+		for _, addr := range addrs {
+			ips = append(ips, addr.IP.String())
+		}
+
+		key := "resolved_ips"
+		if record != "A" && record != "AAAA" {
+			key = "resolved_values"
+		}
+
+		return &checkerdef.Result{Status: checkerdef.StatusUp, Output: map[string]any{key: ips}}, nil
+	}
+}
+
 func newTestService(lookup egress.LookupFunc, opts ...Option) *Service {
 	opts = append([]Option{
 		WithLookup(lookup),
+		WithDNSResolver(fakeDNSTool(lookup)),
 		WithGuardOptions(egress.WithPublicOverride(publicIP)),
 		WithTimeout(3 * time.Second),
 	}, opts...)
@@ -423,15 +451,76 @@ func TestDNSRun(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
-	svc := newTestService(fakeDNS(nil))
 
-	// localhost resolves from the hosts file, without network.
-	result, _, err := svc.Run(t.Context(), &Request{Type: TypeDNS, Target: "localhost"})
+	var nameservers []string
+
+	lookup := fakeDNS(map[string][]string{"acme.com": {"8.8.4.4"}})
+	resolve := fakeDNSTool(lookup)
+	svc := newTestService(lookup, WithDNSResolver(
+		func(ctx context.Context, nameserver, host, record string) (*checkerdef.Result, error) {
+			nameservers = append(nameservers, nameserver)
+			if nameserver == "1.1.1.1:53" {
+				return nil, errFakeTimeout
+			}
+
+			return resolve(ctx, nameserver, host, record)
+		}))
+
+	result, _, err := svc.Run(t.Context(), &Request{Type: TypeDNS, Target: "acme.com"})
 	r.NoError(err)
 	r.Equal("up", result.Status)
 	r.Equal("A", result.Details["record"])
-	r.Contains(result.Details["records"], "127.0.0.1")
-	r.Equal("checkName=localhost&checkType=dns&host=localhost", result.Monitor.Query)
+	r.Equal([]string{"8.8.4.4"}, result.Details["records"])
+	r.Equal("checkName=acme.com&checkType=dns&host=acme.com", result.Monitor.Query)
+	r.Equal([]string{"1.1.1.1:53", "8.8.8.8:53"}, nameservers, "public resolvers, never the system one")
+}
+
+var errFakeTimeout = errors.New("i/o timeout")
+
+// The DNS tool must not reveal what an internal resolver knows: internal
+// names are refused before any query, private answers after it.
+func TestDNSRefusesInternalNamesAndPrivateAnswers(t *testing.T) {
+	t.Parallel()
+
+	lookup := fakeDNS(map[string][]string{
+		"private.acme.com":   {"10.1.2.3"},
+		"loopback.acme.com":  {"::1"},
+		"linklocal.acme.com": {"169.254.169.254"},
+		"mixed.acme.com":     {"8.8.4.4", "192.168.1.10"},
+	})
+	resolve := fakeDNSTool(lookup)
+	svc := newTestService(lookup, WithDNSResolver(
+		func(ctx context.Context, nameserver, host, record string) (*checkerdef.Result, error) {
+			if host == "alias.acme.com" {
+				return &checkerdef.Result{Status: checkerdef.StatusUp, Output: map[string]any{
+					"resolved_values": []string{"db.svc.cluster.local"},
+				}}, nil
+			}
+
+			return resolve(ctx, nameserver, host, record)
+		}))
+
+	for _, req := range []Request{
+		{Type: TypeDNS, Target: "localhost"},
+		{Type: TypeDNS, Target: "intranet"},
+		{Type: TypeDNS, Target: "printer.local"},
+		{Type: TypeDNS, Target: "vault.internal"},
+		{Type: TypeDNS, Target: "db.default.svc.cluster.local"},
+		{Type: TypeDNS, Target: "app.localhost"},
+		{Type: TypeDNS, Target: "private.acme.com"},
+		{Type: TypeDNS, Target: "loopback.acme.com", Options: Options{Record: "AAAA"}},
+		{Type: TypeDNS, Target: "linklocal.acme.com"},
+		{Type: TypeDNS, Target: "mixed.acme.com"},
+		{Type: TypeDNS, Target: "alias.acme.com", Options: Options{Record: "CNAME"}},
+	} {
+		_, _, err := svc.Run(t.Context(), &req)
+		require.ErrorIs(t, err, ErrTargetNotAllowed, "%+v", req)
+	}
+
+	// Positive control: a public answer goes through.
+	public := newTestService(fakeDNS(map[string][]string{"public.acme.com": {"8.8.4.4"}}))
+	_, _, err := public.Run(t.Context(), &Request{Type: TypeDNS, Target: "public.acme.com"})
+	require.NoError(t, err)
 }
 
 func TestInvalidTargets(t *testing.T) {
