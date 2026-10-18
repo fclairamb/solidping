@@ -66,6 +66,9 @@ const config: Config = {
       .filter((host) => host !== ""),
   },
 
+  // Tells the cloud's docs from a self-hosted copy, for the navbar CTA.
+  clientModules: ["./src/clientModules/deployment.ts"],
+
   // Enable Mermaid so ```mermaid fences render as themed diagrams.
   markdown: {
     mermaid: true,
@@ -185,6 +188,7 @@ const config: Config = {
       { property: "og:site_name", content: "SolidPing" },
       { property: "og:image:width", content: "1200" },
       { property: "og:image:height", content: "630" },
+      { name: "theme-color", content: "#0a1731" },
     ],
     colorMode: {
       defaultMode: "light",
@@ -194,43 +198,72 @@ const config: Config = {
     mermaid: {
       theme: { light: "neutral", dark: "dark" },
     },
+    // The www.solidping.io navbar (styles copied into src/css/custom.css,
+    // which also tags the brand "Docs"), with the docs' own sections on the
+    // left. "Start free" only shows on the cloud's own docs, not on the copy
+    // inside every self-hosted binary: src/clientModules/deployment.ts.
     navbar: {
       title: "SolidPing",
       logo: {
-        alt: "SolidPing Logo",
+        alt: "SolidPing",
         src: "img/logo.png",
+        width: 26,
+        height: 26,
       },
       items: [
         {
-          href: "https://www.solidping.io",
-          label: "Home",
+          to: "/intro",
+          label: "Guides",
           position: "left",
+          // Every doc page except the API reference and the changelog, which
+          // have their own entries. Matched against the full path, baseUrl
+          // included; the landing page (/docs/) matches none of the three.
+          activeBaseRegex: "^/docs/(?!api(/|$)|changelog$|search$).",
+        },
+        { to: "/api", label: "API", position: "left", activeBasePath: "api" },
+        { to: "/changelog", label: "Changelog", position: "left" },
+        { type: "search", position: "right" },
+        {
+          href: "https://www.solidping.io",
+          label: "solidping.io",
+          className: "navbar-site-link",
+          position: "right",
         },
         {
           href: "https://github.com/fclairamb/solidping",
           label: "GitHub",
+          "aria-label": "SolidPing on GitHub",
+          className: "navbar-github-link",
+          position: "right",
+        },
+        {
+          href: "https://solidping.io/",
+          label: "Start free",
+          className: "navbar-cta",
           position: "right",
         },
       ],
     },
+    // Laid out by src/theme/Footer/Layout (brand column + these columns).
     footer: {
       style: "dark",
+      logo: {
+        alt: "SolidPing",
+        src: "img/logo.png",
+        href: "https://www.solidping.io",
+        width: 28,
+        height: 28,
+      },
       links: [
         {
           title: "Documentation",
           items: [
-            {
-              label: "Getting Started",
-              to: "/",
-            },
-            {
-              label: "Installation",
-              to: "/installation/docker",
-            },
-            {
-              label: "Configuration",
-              to: "/configuration",
-            },
+            { label: "Introduction", to: "/intro" },
+            { label: "Installation", to: "/category/installation" },
+            { label: "Configuration", to: "/configuration" },
+            { label: "Features", to: "/category/features" },
+            { label: "API reference", to: "/api" },
+            { label: "Changelog", to: "/changelog" },
           ],
         },
         {
@@ -244,28 +277,35 @@ const config: Config = {
               label: "GitHub Issues",
               href: "https://github.com/fclairamb/solidping/issues",
             },
+            { label: "Source code", href: "https://github.com/fclairamb/solidping" },
           ],
         },
         {
           title: "SolidPing",
           items: [
-            {
-              label: "Home",
-              href: "https://www.solidping.io",
-            },
-            {
-              label: "Terms of Service",
-              href: "https://www.solidping.io/terms",
-            },
+            { label: "Website", href: "https://www.solidping.io" },
+            { label: "Pricing", href: "https://www.solidping.io/pricing" },
+            { label: "Live demo", href: "https://solidping.io/demo" },
+            { label: "System status", href: "https://status.solidping.io/" },
+            { label: "Terms of service", href: "https://www.solidping.io/terms" },
           ],
         },
       ],
-      copyright: `Copyright © ${new Date().getFullYear()} SolidPing.`,
+      copyright: `© ${new Date().getFullYear()} SolidPing.`,
     },
+    // Code samples on the API reference pages: curl first (the default tab),
+    // then the raw HTTP request. The theme's default is every language its
+    // generator knows, eighteen of them.
+    languageTabs: [
+      { highlight: "bash", language: "curl", logoClass: "curl" },
+      { highlight: "http", language: "http", logoClass: "http" },
+    ],
     prism: {
       theme: prismThemes.github,
-      darkTheme: prismThemes.dracula,
-      additionalLanguages: ["bash", "yaml", "docker", "json"],
+      // Night Owl's navy sits on the navy dark page; Dracula's purple-grey
+      // did not.
+      darkTheme: prismThemes.nightOwl,
+      additionalLanguages: ["bash", "yaml", "docker", "json", "http"],
     },
   } satisfies Preset.ThemeConfig,
 };
