@@ -2,6 +2,9 @@ package plugintypes_test
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -103,6 +106,32 @@ func TestReportReplacesTheType(t *testing.T) {
 
 // A type that does not compile is skipped; the valid ones of the same report
 // are still stored.
+// A type whose schema references a file is refused, not stored, even when the
+// file exists and is valid JSON (spec 2026-10-18-01).
+func TestReportRefusesFileRefSchemas(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	store, orgA, _ := newStore(t)
+
+	target := filepath.Join(t.TempDir(), "creds.json")
+	r.NoError(os.WriteFile(target, []byte(`{"type": "string"}`), 0o600))
+
+	fileRef := reported("x-file-ref", "file ref")
+	fileRef.Schema = json.RawMessage(
+		`{"type":"object","properties":{"host":{"$ref":` + strconv.Quote("file://"+target) + `}}}`)
+
+	stored, err := store.Report(ctx, orgA, []protocol.TypeManifest{fileRef, reported("x-good", "good")})
+	r.NoError(err)
+	r.Equal(1, stored)
+
+	list, err := store.List(ctx, orgA)
+	r.NoError(err)
+	r.Len(list, 1)
+	r.Equal("x-good", string(list[0].Meta().Type))
+}
+
 func TestReportSkipsInvalidTypes(t *testing.T) {
 	t.Parallel()
 

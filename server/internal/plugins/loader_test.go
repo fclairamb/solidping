@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -193,6 +194,29 @@ func TestLoadSkipsBrokenPlugins(t *testing.T) {
 	}
 
 	r.True(shadowRefused, set.Errors)
+}
+
+// An operator plugin cannot reference a file from its schema either
+// (spec 2026-10-18-01): the load error names the plugin.
+func TestLoadRefusesFileRefSchema(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	root := t.TempDir()
+
+	target := filepath.Join(t.TempDir(), "target.json")
+	r.NoError(os.WriteFile(target, []byte(`{"type": "string"}`), 0o600))
+
+	schema := `{"type":"object","properties":{"host":{"$ref":` + strconv.Quote("file://"+target) + `}}}`
+	writePlugin(t, root, "fileref", jsManifest("fileref", typeDecl(uniqueType("fileref"))),
+		map[string]string{"check.js": testScript, "schema.json": schema})
+
+	set := loadForTest(t, root)
+	r.Empty(set.Types)
+	r.Len(set.Errors, 1)
+	r.ErrorIs(set.Errors[0], ErrBadSchema)
+	r.ErrorContains(set.Errors[0], errExternalRef.Error())
+	r.ErrorContains(set.Errors[0], "fileref")
 }
 
 func TestExecPluginsAreAlwaysUnsafe(t *testing.T) {
