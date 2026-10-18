@@ -2,6 +2,9 @@ package plugins
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -126,4 +129,62 @@ func TestCompileRemoteForcesUnsafeOutsideJS(t *testing.T) {
 	r.NoError(err)
 	r.Contains(remote.Meta().Labels, "unsafe")
 	r.NotContains(remote.Meta().Labels, "safe")
+}
+
+// A reported schema must never make the server open a file it references
+// (spec 2026-10-18-01): every external ref is refused the same way, whether
+// or not the target exists.
+func TestCompileRemoteRefusesExternalRefs(t *testing.T) {
+	t.Parallel()
+
+	target := filepath.Join(t.TempDir(), "target.json")
+	require.NoError(t, os.WriteFile(target, []byte(`{"inner": {"type": "string"}}`), 0o600))
+
+	missing := filepath.Join(t.TempDir(), "missing.json")
+
+	tests := []struct {
+		name string
+		ref  string
+	}{
+		{"whole file", "file://" + target},
+		{"pointer into file", "file://" + target + "#/inner"},
+		{"missing file", "file://" + missing},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			schema := `{"type":"object","properties":{"host":{"$ref":` + strconv.Quote(tc.ref) + `}}}`
+
+			_, err := CompileRemote(&protocol.TypeManifest{
+				Type: "x-remote-ref", Plugin: "acme", Version: "1.0.0", Protocol: ProtocolJS,
+				Schema: json.RawMessage(schema),
+			})
+			require.ErrorIs(t, err, ErrBadSchema)
+			require.ErrorContains(t, err, errExternalRef.Error())
+			require.NotContains(t, err.Error(), "no such file")
+		})
+	}
+}
+
+// Positive control: the metaschema and in-document refs keep working.
+func TestCompileRemoteKeepsLocalRefsAndMetaschema(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	remote, err := CompileRemote(&protocol.TypeManifest{
+		Type: "x-remote-local-ref", Plugin: "acme", Version: "1.0.0", Protocol: ProtocolJS,
+		Schema: json.RawMessage(`{
+			"$schema": "https://json-schema.org/draft/2020-12/schema",
+			"type": "object",
+			"required": ["host"],
+			"$defs": {"host": {"type": "string", "minLength": 1}},
+			"properties": {"host": {"$ref": "#/$defs/host"}}
+		}`),
+	})
+	r.NoError(err)
+	r.NoError(remote.schema.validate(map[string]any{"host": "gopher.acme.com"}))
+	r.Error(remote.schema.validate(map[string]any{"host": ""}))
+	r.Error(remote.schema.validate(map[string]any{"host": 42}))
 }

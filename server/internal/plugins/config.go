@@ -81,6 +81,14 @@ type compiledSchema struct {
 	published []byte
 }
 
+// errExternalRef is what a schema referencing another document gets.
+var errExternalRef = errors.New("plugin schemas cannot reference external documents")
+
+// noExternalRefs is a jsonschema URL loader that refuses every URL.
+type noExternalRefs struct{}
+
+func (noExternalRefs) Load(string) (any, error) { return nil, errExternalRef }
+
 // compileSchema compiles a plugin schema and builds the published document,
 // which adds the plugin's identity and says this schema IS the validator.
 func compileSchema(checkType string, raw []byte, manifest *Manifest) (*compiledSchema, error) {
@@ -92,6 +100,11 @@ func compileSchema(checkType string, raw []byte, manifest *Manifest) (*compiledS
 	url := "https://solidping.io/schemas/plugins/" + checkType + ".json"
 
 	compiler := jsv.NewCompiler()
+	// The library's default loader opens file:// refs: an agent-reported
+	// schema could then probe the API node's disk (spec 2026-10-18-01).
+	// Draft metaschemas are resolved before the loader and in-document refs
+	// never reach it, so refusing every load keeps both working.
+	compiler.UseLoader(noExternalRefs{})
 	compiler.DefaultDraft(jsv.Draft2020)
 
 	if err = compiler.AddResource(url, doc); err != nil {
