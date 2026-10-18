@@ -25,6 +25,7 @@ SolidPing supports multiple notification channels to alert you when incidents oc
 | Matrix | Available | Client-Server API |
 | Zulip | Available | Bot API |
 | PagerDuty | Available | Events API v2 |
+| AI agent (A2A) | Available | [Agent2Agent protocol](../features/ai-agent-a2a.md) |
 | Pushover | Available | API integration |
 | Web Push | Available | Browser push (VAPID) |
 | SMS / Voice | Available | [SMS & Voice](./sms.md) (server-provided by default, per-organization Twilio as an override) |

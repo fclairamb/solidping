@@ -322,7 +322,7 @@ func TestA2ASender_OpenedIncidentSendsMessage(t *testing.T) {
 	r.Equal("acme", data["orgSlug"])
 	r.Equal(eventTypeIncidentCreated, data["eventType"])
 	r.Equal("active", data["status"])
-	r.Equal("https://solidping.acme.com/api/mcp", data["mcpUrl"])
+	r.Equal("https://solidping.acme.com/api/v1/mcp", data["mcpUrl"])
 	for _, key := range []string{"failureReason", "startedAt", "resolvedAt", "dashboardUrl"} {
 		r.Contains(data, key)
 	}

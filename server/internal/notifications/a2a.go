@@ -576,7 +576,7 @@ func a2aMCPURL(baseURL string) string {
 		return ""
 	}
 
-	return strings.TrimRight(baseURL, "/") + "/api/mcp"
+	return strings.TrimRight(baseURL, "/") + "/api/v1/mcp"
 }
 
 func a2aTime(t *time.Time) string {
