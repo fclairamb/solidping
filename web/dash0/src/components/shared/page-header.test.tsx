@@ -3,8 +3,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { Globe } from "lucide-react";
 import { PageHeader } from "./page-header";
 
-// The page-header icon tile is a soft primary tint by default, and a flat
-// neutral tile for third-party logos.
+// The page-header icon tile is the primary gradient by default (white icon,
+// no glow), and a flat neutral tile for third-party logos.
 
 function classesOf(html: string, tagPattern: RegExp): string[] {
   const tag = tagPattern.exec(html)?.[0] ?? "";
@@ -16,14 +16,22 @@ const tile = (html: string) => classesOf(html, /<div[^>]*data-slot="page-header-
 const h1 = (html: string) => classesOf(html, /<h1[^>]*>/);
 
 describe("PageHeader", () => {
-  it("renders the soft-tint brand tile by default", () => {
+  it("renders the gradient brand tile by default, with a white icon and no glow", () => {
     const html = renderToStaticMarkup(<PageHeader icon={Globe} title="Checks" />);
     const c = tile(html);
     expect(html).toContain('data-tone="brand"');
     expect(c).toEqual(
-      expect.arrayContaining(["bg-primary/10", "text-primary", "rounded-lg", "h-9", "w-9"]),
+      expect.arrayContaining([
+        "bg-primary-fill",
+        "bg-primary-gradient",
+        "text-primary-fill-foreground",
+        "rounded-lg",
+        "h-9",
+        "w-9",
+      ]),
     );
-    expect(c.filter((cls) => cls.includes("gradient") || cls.startsWith("shadow"))).toEqual([]);
+    // The hairline shadow-xs at most: never a tinted glow.
+    expect(c.filter((cls) => cls.startsWith("shadow") && cls !== "shadow-xs")).toEqual([]);
     expect(c).not.toContain("bg-muted");
   });
 
@@ -34,7 +42,7 @@ describe("PageHeader", () => {
     const c = tile(html);
     expect(html).toContain('data-tone="neutral"');
     expect(c).toEqual(expect.arrayContaining(["bg-muted", "text-foreground", "rounded-lg"]));
-    expect(c).not.toContain("bg-primary/10");
+    expect(c.filter((cls) => cls.includes("gradient") || cls.includes("primary"))).toEqual([]);
   });
 
   it("titles the page with a semibold h1, smaller on a phone", () => {
@@ -42,13 +50,14 @@ describe("PageHeader", () => {
     expect(h1(html)).toEqual(["text-xl", "font-semibold", "tracking-tight", "sm:text-2xl"]);
   });
 
-  it("an iconClassName background override replaces the tint (cn)", () => {
+  it("an iconClassName background override replaces the fill and drops the gradient (cn)", () => {
     const html = renderToStaticMarkup(
       <PageHeader icon={Globe} title="Checks" iconClassName="bg-transparent" />,
     );
     const c = tile(html);
     expect(c).toContain("bg-transparent");
-    expect(c).not.toContain("bg-primary/10");
+    expect(c).not.toContain("bg-primary-fill");
+    expect(c).not.toContain("bg-primary-gradient");
   });
 });
 

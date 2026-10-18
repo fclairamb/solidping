@@ -8,7 +8,8 @@ import { join } from "node:path";
 // browser paints it on an sRGB screen (out-of-gamut channels clipped), and
 // computes the WCAG ratio. Change a token so a label becomes unreadable and
 // this goes red. Spec 2026-09-24-01 set the base palette; the flat redesign
-// replaced its gradients with the solid --primary-fill.
+// replaced its gradients with the solid --primary-fill, and the tonal pass
+// brought back one gradient, --primary-gradient, painted over that fill.
 
 const css = readFileSync(join(__dirname, "index.css"), "utf8");
 
@@ -189,8 +190,27 @@ describe("theme tokens", () => {
     expect(lightH).toBe(parseOklch(light.primary)[2]);
   });
 
-  it("no longer defines the gradient tokens, in either theme", () => {
-    for (const name of ["primary-gradient", "accent-gradient", "hero-gradient", "gradient-foreground"]) {
+  it("defines --primary-gradient: three stops of one blue family, identical in both themes", () => {
+    expect(light["primary-gradient"]).toBe(
+      "linear-gradient(135deg, oklch(0.55 0.17 245) 0%, oklch(0.53 0.21 266) 50%, oklch(0.47 0.2 270) 100%)",
+    );
+    expect(dark["primary-gradient"]).toBe(light["primary-gradient"]);
+    const stops = gradientStops(light["primary-gradient"]);
+    expect(stops).toHaveLength(3);
+    // Tonal: cyan-blue to electric blue, never into violet (the old
+    // gradients ended at hue 275-280).
+    for (const [, , H] of stops) {
+      expect(H).toBeGreaterThanOrEqual(240);
+      expect(H).toBeLessThanOrEqual(270);
+    }
+    // Lighter to darker, so the hover half (50-100%) is the darker one.
+    const Ls = stops.map(([L]) => L);
+    expect([...Ls].sort((a, b) => b - a)).toEqual(Ls);
+    expect(Ls[2]).toBeLessThan(Ls[0]);
+  });
+
+  it("no longer defines the retired gradient tokens, in either theme", () => {
+    for (const name of ["accent-gradient", "hero-gradient", "gradient-foreground"]) {
       expect(light[name], `light --${name}`).toBeUndefined();
       expect(dark[name], `dark --${name}`).toBeUndefined();
       expect(css, `--${name} anywhere in index.css`).not.toMatch(new RegExp(`--${name}\\b`));
@@ -246,11 +266,15 @@ describe("theme tokens", () => {
     expect(dark["chart-degraded"]).toBe(dark["status-warning"]);
   });
 
-  it("maps --primary-fill in @theme inline and drops the gradient utilities", () => {
+  it("maps --primary-fill in @theme inline and declares the one primary-gradient utility", () => {
     expect(css).toContain("--color-primary-fill: var(--primary-fill);");
     expect(css).toContain("--color-primary-fill-foreground: var(--primary-fill-foreground);");
     expect(css).not.toContain("--color-gradient-foreground");
-    for (const name of ["primary", "accent", "hero"]) {
+    // background-IMAGE only, sized 200% so an element shows the lighter half.
+    expect(css).toMatch(
+      /@utility bg-primary-gradient \{\s*background-image: var\(--primary-gradient\);\s*background-origin: border-box;\s*background-size: 200% 200%;\s*\}/,
+    );
+    for (const name of ["accent", "hero"]) {
       expect(css).not.toContain(`@utility bg-${name}-gradient`);
     }
     // Positive control: the same matcher finds the utilities that remain.
@@ -293,9 +317,10 @@ describe("theme tokens", () => {
 });
 
 describe("contrast (acceptance criteria)", () => {
-  // The primary button and the "on" state of switches, checkboxes, progress
-  // bars and steppers sit on --primary-fill. The button label and the check
-  // glyph are white.
+  // The "on" state of switches, checkboxes and steppers sits on the flat
+  // --primary-fill; the default button, the page-header tile and the progress
+  // fill paint --primary-gradient over it. The button label and the glyphs
+  // are white.
   it.each([
     ["light", light],
     ["dark", dark],
@@ -308,13 +333,32 @@ describe("contrast (acceptance criteria)", () => {
     ["light", light],
     ["dark", dark],
   ] as const)(
-    "%s: the white label stays >= 4.5:1 on hover (bg-primary-fill/90 over --card)",
+    "%s: the white label is >= 4.5:1 on every stop of --primary-gradient, at rest and on hover",
     (_theme, tokens) => {
+      // Rest shows stops 0-1, a hovered button stops 1-2: checking all three
+      // covers both halves. Linear interpolation between two stops that both
+      // clear 4.5:1 against white stays above it.
       const white = parseOklch(tokens["primary-fill-foreground"]);
-      const hover = blendOverSrgb(parseOklch(tokens["primary-fill"]), 0.9, parseOklch(tokens.card));
-      expect(contrastRgb(white, hover)).toBeGreaterThanOrEqual(4.5);
-      // The hover is a visible change, not a no-op blend.
-      expect(hover).not.toEqual(toSrgb255(parseOklch(tokens["primary-fill"])));
+      for (const stop of gradientStops(tokens["primary-gradient"])) {
+        expect(contrast(white, stop), `stop ${stop.join(" ")}`).toBeGreaterThanOrEqual(4.5);
+      }
+    },
+  );
+
+  it.each([
+    ["light", light],
+    ["dark", dark],
+  ] as const)(
+    "%s: the resting half of the gradient separates from the page, the card and the progress track by >= 3:1",
+    (_theme, tokens) => {
+      // WCAG 1.4.11 non-text contrast, for the progress fill above all: its
+      // track is bg-secondary. Only the first two stops ever show at rest.
+      const [first, middle] = gradientStops(tokens["primary-gradient"]);
+      for (const stop of [first, middle]) {
+        for (const surface of ["background", "card", "secondary"] as const) {
+          expect(contrast(stop, parseOklch(tokens[surface])), `${surface} vs ${stop.join(" ")}`).toBeGreaterThanOrEqual(3);
+        }
+      }
     },
   );
 

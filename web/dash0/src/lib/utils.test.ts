@@ -12,11 +12,13 @@ describe("cn() and the background-image utilities", () => {
       "bg-sidebar bg-sidebar-gradient",
     );
     expect(cn("bg-background bg-page-glow")).toBe("bg-background bg-page-glow");
+    expect(cn("bg-primary-fill bg-primary-gradient")).toBe("bg-primary-fill bg-primary-gradient");
   });
 
   it("drops the image when a later class sets a flat color, bg-none or another image", () => {
     expect(cn("bg-sidebar bg-sidebar-gradient", "bg-muted")).toBe("bg-muted");
     expect(cn("bg-page-glow", "bg-none")).toBe("bg-none");
+    expect(cn("bg-primary-fill bg-primary-gradient", "bg-destructive")).toBe("bg-destructive");
     expect(cn("bg-sidebar bg-sidebar-gradient", "bg-linear-to-r")).toBe(
       "bg-sidebar bg-linear-to-r",
     );

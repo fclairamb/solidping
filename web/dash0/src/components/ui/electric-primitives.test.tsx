@@ -10,10 +10,12 @@ import { Input } from "./input";
 import { Textarea } from "./textarea";
 import { Select, SelectTrigger, SelectValue } from "./select";
 
-// The flat primitives: one solid --primary-fill for the primary action and
-// the "on" states, no gradient, no tinted shadow, no hover movement. These
-// pin the class contract the design reference documents; the e2e suite
-// (electric-identity-primitives.spec.ts) checks what the browser paints.
+// The primitives: the default Button and the Progress fill paint the one
+// tonal --primary-gradient over the solid --primary-fill; the "on" states
+// (switch, checkbox, stepper) and every other variant stay flat. No tinted
+// shadow, no hover movement. These pin the class contract the design
+// reference documents; the e2e suite (electric-identity-primitives.spec.ts)
+// checks what the browser paints.
 
 function classesOf(html: string): string[] {
   const m = /class="([^"]*)"/.exec(html);
@@ -30,19 +32,25 @@ const BUTTON_VARIANTS = ["default", "brand", "destructive", "outline", "secondar
 describe("Button, default variant", () => {
   const cls = buttonVariants().split(/\s+/);
 
-  it("is a solid --primary-fill with its white label and a hairline shadow", () => {
+  it("paints the primary gradient over the solid --primary-fill, with its white label and a hairline shadow", () => {
     expect(cls).toEqual(
       expect.arrayContaining([
         "bg-primary-fill",
+        "bg-primary-gradient",
         "text-primary-fill-foreground",
         "shadow-xs",
-        "hover:bg-primary-fill/90",
         "rounded-md",
       ]),
     );
-    // Not the old text-blue fill underneath a gradient.
+    // Not the text-blue --primary (too light in dark mode for a white label).
     expect(cls).not.toContain("bg-primary");
     expect(cls).not.toContain("rounded-lg");
+  });
+
+  it("hover slides the gradient to its darker half, animated, and never moves the button", () => {
+    expect(cls).toContain("hover:bg-bottom-right");
+    expect(cls).toContain("transition-[color,background-position]");
+    expect(cls.filter((c) => /translate|brightness|scale/.test(c))).toEqual([]);
   });
 
   it("offsets its focus ring from the fill", () => {
@@ -51,41 +59,55 @@ describe("Button, default variant", () => {
     expect(cls).toContain("focus-visible:ring-offset-background");
   });
 
-  it("animates colors only, and cancels a leading icon's legacy mr-2", () => {
-    expect(cls).toContain("transition-colors");
-    expect(cls).not.toContain("transition");
+  it("cancels a leading icon's legacy mr-2", () => {
     expect(cls).toContain("gap-2");
     expect(cls).toContain("[&>svg]:mr-0");
   });
 
-  it("survives cn(): the rendered button carries the fill and its label color", () => {
-    const html = renderToStaticMarkup(<Button>Save</Button>);
-    expect(classesOf(html)).toEqual(
-      expect.arrayContaining(["bg-primary-fill", "text-primary-fill-foreground", "hover:bg-primary-fill/90"]),
+  it("survives cn(): the rendered button keeps the fill, the gradient, the label color and one transition", () => {
+    const c = classesOf(renderToStaticMarkup(<Button>Save</Button>));
+    expect(c).toEqual(
+      expect.arrayContaining([
+        "bg-primary-fill",
+        "bg-primary-gradient",
+        "text-primary-fill-foreground",
+        "hover:bg-bottom-right",
+        "transition-[color,background-position]",
+      ]),
     );
+    // tailwind-merge keeps the variant's transition over the base one.
+    expect(c).not.toContain("transition-colors");
   });
 
-  it("a caller recolor via className replaces the fill (cn)", () => {
+  it("a caller recolor via className replaces the fill and drops the gradient (cn)", () => {
     const html = renderToStaticMarkup(
       <Button className="bg-destructive text-white hover:bg-destructive/90">Delete</Button>,
     );
     const c = classesOf(html);
     expect(c).toEqual(expect.arrayContaining(["bg-destructive", "text-white", "hover:bg-destructive/90"]));
     expect(c).not.toContain("bg-primary-fill");
+    expect(c).not.toContain("bg-primary-gradient");
     expect(c).not.toContain("text-primary-fill-foreground");
-    expect(c).not.toContain("hover:bg-primary-fill/90");
   });
 });
 
-describe("Button, every variant is flat", () => {
-  it.each(BUTTON_VARIANTS)("%s: no gradient, no tinted or inset shadow, no translate, no brightness", (variant) => {
+describe("Button, every other variant is flat", () => {
+  const FLAT_VARIANTS = BUTTON_VARIANTS.filter((v) => v !== "default");
+
+  it.each(FLAT_VARIANTS)("%s: no gradient, and it animates colors only", (variant) => {
     const cls = buttonVariants({ variant }).split(/\s+/);
-    expect(cls.filter((c) => /gradient|translate|brightness|inset-shadow/.test(c))).toEqual([]);
+    expect(cls.filter((c) => c.includes("gradient"))).toEqual([]);
+    expect(cls).toContain("transition-colors");
+  });
+
+  it.each(BUTTON_VARIANTS)("%s: no tinted or inset shadow, no translate, no brightness", (variant) => {
+    const cls = buttonVariants({ variant }).split(/\s+/);
+    expect(cls.filter((c) => /translate|brightness|inset-shadow/.test(c))).toEqual([]);
     // At most the hairline shadow-xs; never a colored elevation.
     expect(cls.filter((c) => /(^|:)shadow/.test(c) && c !== "shadow-xs")).toEqual([]);
   });
 
-  it.each(BUTTON_VARIANTS)("%s: hover changes the color only", (variant) => {
+  it.each(BUTTON_VARIANTS)("%s: hover changes the color (or the gradient's position) only", (variant) => {
     const hover = buttonVariants({ variant })
       .split(/\s+/)
       .filter((c) => c.includes("hover:"));
@@ -152,23 +174,25 @@ function indicatorClasses(html: string): string[] {
 }
 
 describe("Progress", () => {
-  it("fills with the solid --primary-fill", () => {
+  it("fills with the primary gradient over the solid --primary-fill", () => {
     const c = indicatorClasses(renderToStaticMarkup(<Progress value={3} max={10} />));
     expect(c).toContain("bg-primary-fill");
+    expect(c).toContain("bg-primary-gradient");
     expect(c).not.toContain("bg-primary");
-    expect(c.filter((cls) => cls.includes("gradient"))).toEqual([]);
   });
 
-  it("a full destructive bar is solid red", () => {
+  it("a full destructive bar is solid red, no gradient", () => {
     const c = indicatorClasses(renderToStaticMarkup(<Progress value={10} max={10} />));
     expect(c).toContain("bg-destructive");
     expect(c).not.toContain("bg-primary-fill");
+    expect(c).not.toContain("bg-primary-gradient");
   });
 
   it("an overflowing value is still red", () => {
     const c = indicatorClasses(renderToStaticMarkup(<Progress value={12} max={10} />));
     expect(c).toContain("bg-destructive");
     expect(c).not.toContain("bg-primary-fill");
+    expect(c).not.toContain("bg-primary-gradient");
   });
 
   it("a full bar stays blue when destructiveWhenFull is off", () => {
@@ -176,10 +200,11 @@ describe("Progress", () => {
       renderToStaticMarkup(<Progress value={10} max={10} destructiveWhenFull={false} />),
     );
     expect(c).toContain("bg-primary-fill");
+    expect(c).toContain("bg-primary-gradient");
     expect(c).not.toContain("bg-destructive");
   });
 
-  it("an indicatorClassName override replaces the fill through cn()", () => {
+  it("an indicatorClassName override replaces the fill and drops the gradient through cn()", () => {
     const c = indicatorClasses(
       renderToStaticMarkup(
         <Progress value={10} max={10} destructiveWhenFull={false} indicatorClassName="bg-status-warning" />,
@@ -187,6 +212,7 @@ describe("Progress", () => {
     );
     expect(c).toContain("bg-status-warning");
     expect(c).not.toContain("bg-primary-fill");
+    expect(c).not.toContain("bg-primary-gradient");
   });
 });
 
