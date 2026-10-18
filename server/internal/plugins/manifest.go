@@ -3,12 +3,15 @@
 // declares `x-` prefixed check types, their JSON Schema and how they run.
 //
 // The manifest schema is the validator of a plugin type. Execution goes
-// through one of three transports:
+// through one of four transports:
 //
 //   - "js": the entry script runs in the checkjs runtime (sandboxed, same
 //     helpers, egress guard and tunnels as a js check);
 //   - "exec": one long-lived process per plugin, JSON-RPC 2.0 over stdio;
-//   - "nagios": one process per run, Nagios plugin exit codes and perfdata.
+//   - "nagios": one process per run, Nagios plugin exit codes and perfdata;
+//   - "http": a service the operator runs, signed requests to GET /checkers,
+//     POST /validate and POST /execute (spec 2026-10-17-06). Its types come
+//     from the service, not from the manifest.
 //
 // Every result goes through LimitResult whatever the transport.
 package plugins

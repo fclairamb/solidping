@@ -176,9 +176,136 @@ The first line of stdout becomes `output.message`. Perfdata after `|`
 (`label=value[UOM];warn;crit;min;max`) becomes metrics; a malformed item is
 ignored. When the check times out, the whole process group is killed.
 
+## HTTP plugins (`protocol: http`)
+
+The plugin is a service the operator runs, reached over HTTP. It fits a heavy
+runtime (JVM, Python with native libraries), a connection pool kept open
+between runs, or a probe service a team already operates. The manifest holds
+no types and no version: they come from the service.
+
+```json
+{
+  "name": "finger",
+  "protocol": "http",
+  "url": "http://127.0.0.1:7979",
+  "secretEnv": "SP_PLUGIN_FINGER_KEYS"
+}
+```
+
+`secretEnv` names the environment variable holding the signing key set, newest
+key first:
+
+```bash
+SP_PLUGIN_FINGER_KEYS='[{"id":"2026-10","secret":"<random>"}]'
+```
+
+The plugin is skipped (logged, the boot goes on) when the URL is not `http` or
+`https`, when it is `http://` to a host other than loopback (requests carry
+decrypted secrets), or when the variable is unset, empty or not a valid key
+set. An `https://` URL to another host loads with a warning.
+
+### Endpoints
+
+The bodies are the messages of the exec protocol, without the JSON-RPC
+envelope.
+
+`GET /checkers` lists the types. The node calls it at load, then every 60 s:
+
+```json
+{
+  "protocolVersion": 1,
+  "version": "1.2.0",
+  "data": [{
+    "type": "x-finger",
+    "description": "Check a Finger server (RFC 1288)",
+    "labels": ["category:network"],
+    "schema": {"type": "object", "properties": {"host": {"type": "string"}}, "required": ["host"]},
+    "minPeriod": "1m",
+    "defaultPeriod": "5m",
+    "validate": true
+  }]
+}
+```
+
+- Each type is checked like a manifest type (`x-` prefix, unique across
+  plugins, schema that compiles). An invalid one is skipped, the others load.
+  An unknown `protocolVersion` refuses the whole plugin.
+- A type that disappears from the list is unregistered on that node. Its
+  checks are kept and wait for a worker that has it.
+- When the call fails, the node keeps the last good list. After 3 failures in
+  a row it stops advertising the types, so jobs go to nodes whose service is
+  up. The next success advertises them again.
+- An agent sends the list to the server like any plugin manifest, again when
+  it changes.
+
+`POST /execute` runs one check:
+
+```json
+{"type": "x-finger", "config": {"host": "finger.acme.com", "port": 79}, "deadline": "2026-10-17T12:00:05Z"}
+```
+
+```json
+{"status": "up", "metrics": {"bytes": 312, "lines": 6}, "output": {"message": "Login: alice"}}
+```
+
+`POST /validate` is called only for a type with `"validate": true`, after the
+schema accepted the config, on a node that hosts the plugin:
+
+```json
+{"type": "x-finger", "config": {"host": "finger.acme.com", "user": "alice"}}
+```
+
+```json
+{"errors": [{"field": "user", "message": "must be a single line"}]}
+```
+
+An empty list means valid. Errors are answered as `VALIDATION_ERROR`. A
+service that is down, answers non-200 or takes over 2 s is logged, and the save
+goes through on the schema alone.
+
+### Failure mapping
+
+| What happened | Status |
+|---|---|
+| 200 with a valid body | the plugin's status, through the result caps |
+| No answer before the check deadline | `timeout` |
+| Connection refused, non-200, a redirect, a body over 1 MiB, invalid JSON, unknown status | `error`, `output.message` names the failure |
+
+A broken plugin is never `down`: that status is for the target. Redirects are
+not followed, since they could send the secrets elsewhere. The client verifies
+TLS, ignores proxy variables, and does not go through the egress guard: the URL
+is operator configuration.
+
+### Verifying the signature
+
+Every request carries three headers:
+
+| Header | Value |
+|---|---|
+| `X-SP-Timestamp` | Unix seconds |
+| `X-SP-Key-Id` | id of the key that signed |
+| `X-SP-Signature` | `v1,` then base64 HMAC-SHA256 |
+
+The signed string is
+`<timestamp>.<METHOD>.<path>.<hex sha256 of the body>`, where `path` is the
+request path (with the URL's own prefix, if any) and the body is empty for
+`GET /checkers`. To verify, in any language: find the key by its id, rebuild
+the string, compute the HMAC with that key's secret, compare in constant time,
+and reject a timestamp more than 300 s away from your clock. Answer 401
+otherwise. Keeping two keys in the set (new first) lets you rotate without
+downtime: SolidPing signs with the first one.
+
+### Where the service runs
+
+The check runs from wherever the service is deployed. Run it next to the
+worker that calls it (a sidecar on loopback), or regional results stop being
+true. Its own network calls also bypass what SolidPing applies to built-in
+checks: the egress guard, SSH tunnels and `ipVersion`.
+
 ## Safety and limits
 
-- `exec` and `nagios` types are always `unsafe`, whatever the manifest says.
+- `exec`, `nagios` and `http` types are always `unsafe`, whatever the manifest
+  says.
   On a SaaS deployment they are off on the cloud nodes unless the operator
   lists them in `SP_CHECKERS_ENABLED`; private-location agents run them.
 - A plugin-type job only goes to a worker that loaded the plugin: workers add
@@ -213,3 +340,36 @@ connection fails, the response is empty, the first line is a Gopher error item
 (type `3`), or `contains` is missing; `timeout` when the deadline expires; `up`
 otherwise. Metrics: `bytes` (response size) and `items` (menu lines). The
 message is the first response line.
+
+## Worked example: the Finger plugin
+
+`x-finger` is the reference HTTP plugin, for Finger (RFC 1288). Its handler is
+in `server/internal/plugins/examples/finger` and `server/cmd/plugin-finger`
+serves it. Its manifest sits next to the handler, not in the repository's
+`plugins/` folder, so `make dev` never tries to reach a service it does not
+start.
+
+| Config key | Default | Meaning |
+|---|---|---|
+| `host` | required | Server, e.g. `finger.acme.com` |
+| `port` | `79` | TCP port |
+| `user` | `""` (logged-in users) | User to query |
+| `contains` | - | Text the response must contain |
+
+It connects, sends `user + "\r\n"` and reads until the server closes the
+connection (at most 64 KiB). The check is `down` when the connection fails,
+the response is empty or `contains` is missing; `timeout` when the deadline
+expires; `up` otherwise. Metrics: `bytes` and `lines`. The message is the first
+response line. Its `validate` refuses a `user` spanning several lines.
+
+To run it next to a worker:
+
+```bash
+export SP_PLUGIN_FINGER_KEYS='[{"id":"2026-10","secret":"'"$(openssl rand -hex 32)"'"}]'
+cd server && go run ./cmd/plugin-finger -listen 127.0.0.1:7979 &
+mkdir -p /etc/solidping/plugins/finger
+cp internal/plugins/examples/finger/manifest.json /etc/solidping/plugins/finger/
+SP_PLUGINS_DIR=/etc/solidping/plugins solidping serve
+```
+
+The service and SolidPing read the same `SP_PLUGIN_FINGER_KEYS`.
