@@ -1,7 +1,8 @@
 // Package protocol holds the message bodies a SolidPing server exchanges with
 // an executable plugin (spec 2026-10-17-05 §15). The exec transport carries
 // them inside a JSON-RPC 2.0 envelope over stdin/stdout; the HTTP transport
-// (spec 2026-10-17-06) reuses them unchanged.
+// (spec 2026-10-17-06) reuses them unchanged, as request and response bodies
+// of GET /checkers, POST /validate and POST /execute.
 package protocol
 
 import (
@@ -93,4 +94,48 @@ type TypeManifest struct {
 	DefaultPeriod string          `json:"defaultPeriod,omitempty"`
 	MaxPeriod     string          `json:"maxPeriod,omitempty"`
 	Schema        json.RawMessage `json:"schema"`
+}
+
+// HTTP transport (spec 2026-10-17-06): the same messages, one endpoint each.
+const (
+	// ProtocolVersion is the only HTTP plugin protocol version spoken.
+	ProtocolVersion = 1
+
+	PathCheckers = "/checkers"
+	PathValidate = "/validate"
+	PathExecute  = "/execute"
+)
+
+// ExecuteRequest is the body of POST /execute.
+type ExecuteRequest = ExecuteParams
+
+// ExecuteResponse is the answer to POST /execute.
+type ExecuteResponse = ExecuteResult
+
+// ValidateRequest is the body of POST /validate.
+type ValidateRequest = ValidateParams
+
+// ValidateResponse is the answer to POST /validate.
+type ValidateResponse = ValidateResult
+
+// TypeDescriptor is one check type an HTTP plugin serves: the fields of a
+// manifest type entry, with the schema inlined.
+type TypeDescriptor struct {
+	Type          string          `json:"type"`
+	Description   string          `json:"description,omitempty"`
+	Labels        []string        `json:"labels,omitempty"`
+	Schema        json.RawMessage `json:"schema"`
+	MinPeriod     string          `json:"minPeriod,omitempty"`
+	DefaultPeriod string          `json:"defaultPeriod,omitempty"`
+	MaxPeriod     string          `json:"maxPeriod,omitempty"`
+	// Validate asks the server to call POST /validate after the schema
+	// accepted a config.
+	Validate bool `json:"validate,omitempty"`
+}
+
+// DescribeResponse is the answer to GET /checkers.
+type DescribeResponse struct {
+	ProtocolVersion int              `json:"protocolVersion"`
+	Version         string           `json:"version"`
+	Data            []TypeDescriptor `json:"data"`
 }

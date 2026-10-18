@@ -34,6 +34,7 @@ const (
 	ProtocolJS     = "js"
 	ProtocolExec   = "exec"
 	ProtocolNagios = "nagios"
+	ProtocolHTTP   = "http"
 )
 
 // Labels a manifest may not decide on its own.
@@ -75,6 +76,12 @@ type Manifest struct {
 	// dropped. Ignored by the other protocols.
 	Args  []string   `json:"args,omitempty"`
 	Types []TypeDecl `json:"types"`
+	// URL is the base URL of an http plugin service (spec 2026-10-17-06). Its
+	// types and version come from GET /checkers, not from the manifest.
+	URL string `json:"url,omitempty"`
+	// SecretEnv names the environment variable holding the http plugin's
+	// signing key set (servicesig.ParseKeySet form).
+	SecretEnv string `json:"secretEnv,omitempty"`
 }
 
 // TypeDecl declares one check type of a plugin.
@@ -101,6 +108,14 @@ func readManifest(dir string) (*Manifest, error) {
 	var manifest Manifest
 	if err := json.Unmarshal(raw, &manifest); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrInvalidManifest, err)
+	}
+
+	if manifest.Protocol == ProtocolHTTP {
+		if manifest.Name == "" {
+			return nil, fmt.Errorf("%w: name is required", ErrInvalidManifest)
+		}
+
+		return &manifest, nil
 	}
 
 	switch {
@@ -208,8 +223,8 @@ func (d *TypeDecl) meta(manifest *Manifest) (checkerdef.CheckTypeMeta, error) {
 }
 
 // pluginLabels normalizes a declaration's labels: exactly one of safe/unsafe,
-// at least one category. exec and nagios plugins run arbitrary code outside
-// the sandbox, so they are always unsafe whatever the manifest says.
+// at least one category. exec, nagios and http plugins run arbitrary code
+// outside the sandbox, so they are always unsafe whatever the manifest says.
 func pluginLabels(protocol string, declared []string) []string {
 	out := make([]string, 0, len(declared)+2)
 	hasCategory := false

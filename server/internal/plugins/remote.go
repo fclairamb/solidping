@@ -29,11 +29,24 @@ const (
 var (
 	loadedMu sync.RWMutex
 	loaded   = map[checkerdef.CheckType]protocol.TypeManifest{}
+	// loadedGen changes whenever loaded does, so an agent reports again
+	// when an http plugin's types change (spec 2026-10-17-06).
+	loadedGen uint64
 )
+
+// LoadedGeneration changes whenever the set of loaded type manifests does.
+func LoadedGeneration() uint64 {
+	loadedMu.RLock()
+	defer loadedMu.RUnlock()
+
+	return loadedGen
+}
 
 func recordLoaded(manifest *Manifest, decl *TypeDecl, schema []byte) {
 	loadedMu.Lock()
 	defer loadedMu.Unlock()
+
+	loadedGen++
 
 	loaded[checkerdef.CheckType(decl.Type)] = protocol.TypeManifest{
 		Type:          decl.Type,
@@ -52,6 +65,10 @@ func recordLoaded(manifest *Manifest, decl *TypeDecl, schema []byte) {
 func forgetLoaded(checkType checkerdef.CheckType) {
 	loadedMu.Lock()
 	defer loadedMu.Unlock()
+
+	if _, ok := loaded[checkType]; ok {
+		loadedGen++
+	}
 
 	delete(loaded, checkType)
 }
@@ -92,7 +109,7 @@ func CompileRemote(reported *protocol.TypeManifest) (*RemoteType, error) {
 	}
 
 	switch reported.Protocol {
-	case ProtocolJS, ProtocolExec, ProtocolNagios:
+	case ProtocolJS, ProtocolExec, ProtocolNagios, ProtocolHTTP:
 	default:
 		return nil, fmt.Errorf("%w: unknown protocol %q", ErrInvalidManifest, reported.Protocol)
 	}

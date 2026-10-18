@@ -35,22 +35,35 @@ func Capabilities(ctx context.Context, pluginTypes []string) []string {
 // and the connection they are for (spec 2026-10-17-05 §18). The manifests go
 // once per connection, not on every claim: a schema is kilobytes and the
 // claim frame is the agent's heartbeat. Nil when this connection already got
-// them or when no plugin is loaded.
-func (b *WSBackend) pluginReport() ([]protocol.TypeManifest, time.Time) {
+// them or when no plugin is loaded. A change in the loaded types (an http
+// plugin's refresh, spec 2026-10-17-06) sends them again on the same
+// connection.
+func (b *WSBackend) pluginReport() ([]protocol.TypeManifest, pluginReportKey) {
+	generation := plugins.LoadedGeneration()
+
 	manifests := plugins.LoadedTypeManifests()
 	if manifests == nil {
-		return nil, time.Time{}
+		return nil, pluginReportKey{}
 	}
 
 	b.mu.Lock()
-	connectedAt, reportedFor := b.connectedAt, b.pluginsReportedFor
+	key := pluginReportKey{connectedAt: b.connectedAt, generation: generation}
+	reportedFor := b.pluginsReportedFor
 	b.mu.Unlock()
 
-	if !connectedAt.IsZero() && connectedAt.Equal(reportedFor) {
-		return nil, connectedAt
+	if !key.connectedAt.IsZero() && key.connectedAt.Equal(reportedFor.connectedAt) &&
+		key.generation == reportedFor.generation {
+		return nil, key
 	}
 
-	return fitPluginReport(manifests), connectedAt
+	return fitPluginReport(manifests), key
+}
+
+// pluginReportKey is what one plugin report was for: a connection and a
+// generation of the loaded types.
+type pluginReportKey struct {
+	connectedAt time.Time
+	generation  uint64
 }
 
 // maxPluginReportBytes keeps the manifests well under the server's inbound

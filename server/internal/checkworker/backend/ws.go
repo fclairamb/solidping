@@ -104,9 +104,10 @@ type WSBackend struct {
 	identity    *Identity
 	conn        *websocket.Conn
 	connectedAt time.Time
-	// pluginsReportedFor is the connectedAt of the connection that already
-	// received this agent's plugin manifests (spec 2026-10-17-05 §18).
-	pluginsReportedFor time.Time
+	// pluginsReportedFor is the connection (and loaded-types generation)
+	// that already received this agent's plugin manifests (spec 2026-10-17-05
+	// §18).
+	pluginsReportedFor pluginReportKey
 	workerUID          string
 	pending            map[string]chan agents.ServerFrame
 	hints              []chan string
@@ -300,7 +301,7 @@ func (b *WSBackend) claim(
 		return nil, 0, err
 	}
 
-	if manifests != nil && !reportFor.IsZero() {
+	if manifests != nil && !reportFor.connectedAt.IsZero() {
 		b.mu.Lock()
 		b.pluginsReportedFor = reportFor
 		b.mu.Unlock()

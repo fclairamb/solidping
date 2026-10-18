@@ -52,9 +52,7 @@ func (s *Set) Close() {
 
 	s.closeOnce.Do(func() {
 		for _, checkType := range s.Types {
-			registry.UnregisterPlugin(checkType)
-			schemas.UnregisterExternal(string(checkType))
-			forgetLoaded(checkType)
+			unregisterType(checkType)
 		}
 
 		for _, plugin := range s.Plugins {
@@ -113,6 +111,10 @@ func (s *Set) loadPlugin(dir string, logger *slog.Logger) error {
 	manifest, err := readManifest(dir)
 	if err != nil {
 		return err
+	}
+
+	if manifest.Protocol == ProtocolHTTP {
+		return s.loadHTTPPlugin(manifest, dir, logger)
 	}
 
 	entryPath, err := resolveInside(dir, manifest.Entry)
@@ -198,14 +200,30 @@ func (s *Set) registerType(plugin *Plugin, decl *TypeDecl, dir string) error {
 		return fmt.Errorf("%w: %w", ErrBadSchema, err)
 	}
 
-	schema, err := compileSchema(decl.Type, raw, &plugin.Manifest)
+	if err := registerCompiled(plugin, &plugin.Manifest, decl, &meta, raw); err != nil {
+		return err
+	}
+
+	s.Types = append(s.Types, meta.Type)
+
+	return nil
+}
+
+// registerCompiled compiles a type's schema and registers the type: checker,
+// config, validator, published schema and the manifest reported to the
+// server. manifest is the identity the type is published under (an http
+// plugin's version comes from its service, not from plugin.Manifest).
+func registerCompiled(
+	plugin *Plugin, manifest *Manifest, decl *TypeDecl, meta *checkerdef.CheckTypeMeta, raw []byte,
+) error {
+	schema, err := compileSchema(decl.Type, raw, manifest)
 	if err != nil {
 		return err
 	}
 
 	checker := &Checker{checkType: meta.Type, plugin: plugin, schema: schema, validateWithPlugin: decl.Validate}
 
-	err = registry.RegisterPlugin(&meta,
+	err = registry.RegisterPlugin(meta,
 		func() checkerdef.Checker { return checker },
 		checker.newConfig,
 		checker.Validate,
@@ -219,10 +237,17 @@ func (s *Set) registerType(plugin *Plugin, decl *TypeDecl, dir string) error {
 	}
 
 	schemas.RegisterExternal(decl.Type, schema.published)
-	recordLoaded(&plugin.Manifest, decl, raw)
-	s.Types = append(s.Types, meta.Type)
+	recordLoaded(manifest, decl, raw)
 
 	return nil
+}
+
+// unregisterType undoes registerCompiled.
+func unregisterType(checkType checkerdef.CheckType) {
+	registry.UnregisterPlugin(checkType)
+	schemas.UnregisterExternal(string(checkType))
+	forgetLoaded(checkType)
+	setSuspended(checkType, false)
 }
 
 // Checker runs one plugin check type. It implements checkerdef.Checker.

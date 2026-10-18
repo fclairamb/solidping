@@ -67,7 +67,7 @@ func TestPluginReportOncePerConnection(t *testing.T) {
 
 	manifests, reportFor := backend.pluginReport()
 	r.NotEmpty(manifests)
-	r.Equal(backend.connectedAt, reportFor)
+	r.Equal(backend.connectedAt, reportFor.connectedAt)
 
 	// claim marks the connection as reported after a successful request.
 	backend.pluginsReportedFor = reportFor
@@ -77,6 +77,26 @@ func TestPluginReportOncePerConnection(t *testing.T) {
 
 	backend.connectedAt = time.Now().Add(time.Second)
 
-	manifests, _ = backend.pluginReport()
+	manifests, reportFor = backend.pluginReport()
 	r.NotEmpty(manifests, "a new connection gets them again")
+
+	backend.pluginsReportedFor = reportFor
+
+	// A change in the loaded types (an http plugin refresh) reports again on
+	// the same connection.
+	other := filepath.Join(t.TempDir(), "other")
+	r.NoError(os.MkdirAll(other, 0o750))
+	r.NoError(os.WriteFile(filepath.Join(other, "manifest.json"), []byte(`{
+  "name": "report2", "version": "1.0.0", "protocol": "js", "entry": "check.js",
+  "types": [{"type": "x-backend-report-two", "description": "t", "labels": ["safe"], "schema": "schema.json"}]
+}`), 0o600))
+	r.NoError(os.WriteFile(filepath.Join(other, "check.js"), []byte(`return {status: "up"};`), 0o600))
+	r.NoError(os.WriteFile(filepath.Join(other, "schema.json"), []byte(`{"type":"object"}`), 0o600))
+
+	otherSet := plugins.Load(filepath.Dir(other), nil)
+	t.Cleanup(otherSet.Close)
+	r.Empty(otherSet.Errors)
+
+	manifests, _ = backend.pluginReport()
+	r.Len(manifests, 2, "the types changed: reported again on the same connection")
 }

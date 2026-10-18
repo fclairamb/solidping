@@ -44,6 +44,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/tracediag"
 	"github.com/fclairamb/solidping/server/internal/integrations/sshtunnel"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobtypes"
+	"github.com/fclairamb/solidping/server/internal/plugins"
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
 	"github.com/fclairamb/solidping/server/internal/secretref"
 	"github.com/fclairamb/solidping/server/internal/stats"
@@ -634,9 +635,11 @@ func nextPollDelay(nextEligibleIn time.Duration) time.Duration {
 // gate enables: what it claims and reports. An unsafe type left off on a SaaS
 // cloud node is not advertised, so its jobs never land here (spec
 // 2026-10-17-05 §19). An agent enforces its own host's config, which enables
-// every type by default.
+// every type by default. An http plugin whose service is down is not
+// advertised either (spec 2026-10-17-06), so its jobs go to nodes whose
+// service is up.
 func (r *CheckWorker) advertisedPluginTypes() []string {
-	loaded := registry.PluginTypes()
+	loaded := plugins.Advertised(registry.PluginTypes())
 	if r.activation == nil {
 		return loaded
 	}
