@@ -5156,6 +5156,23 @@ export interface CheckTypeInfo {
    * (spec 2026-09-11-01).
    */
   secretFields?: string[];
+  /** Set on a type loaded from a server plugin (spec 2026-10-17-05). */
+  plugin?: { name: string; version: string };
+}
+
+/** A check type's config JSON Schema (GET /api/v1/checks/schema/:type). */
+export type CheckConfigSchema = Record<string, unknown>;
+
+export function useCheckConfigSchema(checkType: string, enabled = true) {
+  return useQuery({
+    queryKey: ["check-types", "schema", checkType],
+    queryFn: () =>
+      apiFetch<CheckConfigSchema>(
+        `/api/v1/checks/schema/${encodeURIComponent(checkType)}`,
+      ),
+    staleTime: 5 * 60 * 1000,
+    enabled: enabled && !!checkType,
+  });
 }
 
 export function useCheckTypes(org: string) {

@@ -1469,7 +1469,9 @@
     "healthMaxAge": "L'âge maximal doit être une durée comme 10m (0 désactive)",
     "aiContractRequired": "Le contrat doit avoir au moins une ligne quand il y a une description",
     "vendorStatusUrl": "L'URL de la page de statut est requise",
-    "vendorStatusHttps": "L'URL de la page de statut doit commencer par https://"
+    "vendorStatusHttps": "L'URL de la page de statut doit commencer par https://",
+    "pluginInvalidJson": "La configuration n'est pas du JSON valide : {{detail}}",
+    "pluginNotAnObject": "La configuration doit être un objet JSON."
   },
   "health": {
     "format": "Format de santé",
@@ -1698,5 +1700,9 @@
       "title": "Incidents du fournisseur",
       "noIncidents": "Aucun incident actif signalé par le fournisseur."
     }
+  },
+  "plugin": {
+    "configLabel": "Paramétrage (JSON)",
+    "configHelp": "Ce type de vérification vient d'un plugin du serveur. Modifiez sa configuration en JSON ; elle est contrôlée avec le schéma du plugin."
   }
 }

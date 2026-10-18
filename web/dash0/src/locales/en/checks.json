@@ -1469,7 +1469,9 @@
     "healthMaxAge": "Max age must be a duration such as 10m (0 disables)",
     "aiContractRequired": "The contract needs at least one line when there is a prompt",
     "vendorStatusUrl": "Status page URL is required",
-    "vendorStatusHttps": "Status page URL must start with https://"
+    "vendorStatusHttps": "Status page URL must start with https://",
+    "pluginInvalidJson": "The config is not valid JSON: {{detail}}",
+    "pluginNotAnObject": "The config must be a JSON object."
   },
   "health": {
     "format": "Health format",
@@ -1698,5 +1700,9 @@
       "title": "Vendor incidents",
       "noIncidents": "No active incident reported by the vendor."
     }
+  },
+  "plugin": {
+    "configLabel": "Configuration (JSON)",
+    "configHelp": "This check type comes from a server plugin. Edit its configuration as JSON; it is checked against the plugin's schema."
   }
 }

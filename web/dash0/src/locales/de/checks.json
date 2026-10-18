@@ -1469,7 +1469,9 @@
     "healthMaxAge": "Das Höchstalter muss eine Dauer wie 10m sein (0 deaktiviert)",
     "aiContractRequired": "Der Vertrag braucht mindestens eine Zeile, wenn ein Prompt gesetzt ist",
     "vendorStatusUrl": "Die URL der Statusseite ist erforderlich",
-    "vendorStatusHttps": "Die URL der Statusseite muss mit https:// beginnen"
+    "vendorStatusHttps": "Die URL der Statusseite muss mit https:// beginnen",
+    "pluginInvalidJson": "Die Konfiguration ist kein gültiges JSON: {{detail}}",
+    "pluginNotAnObject": "Die Konfiguration muss ein JSON-Objekt sein."
   },
   "health": {
     "format": "Health-Format",
@@ -1698,5 +1700,9 @@
       "title": "Störungen des Anbieters",
       "noIncidents": "Der Anbieter meldet keine aktive Störung."
     }
+  },
+  "plugin": {
+    "configLabel": "Konfiguration (JSON)",
+    "configHelp": "Dieser Prüfungstyp stammt aus einem Server-Plugin. Bearbeiten Sie die Konfiguration als JSON; sie wird gegen das Schema des Plugins geprüft."
   }
 }

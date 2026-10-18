@@ -885,6 +885,8 @@ jobs:
           # bound by koanf's env loader (which collapses every underscore to a
           # dot); it works because systemconfig declares this exact EnvVar.
           SP_AUTH_REGISTRATION_EMAIL_PATTERN: ".*"
+          # The reference plugin (x-gopher), for checker-plugins.spec.ts.
+          SP_PLUGINS_DIR: ${{ github.workspace }}/plugins
 
       # A second server on its own database, for the shard's second Playwright
       # worker (E2E_BASE_URLS below, web/dash0/e2e/base-url.ts). Each worker
@@ -909,6 +911,7 @@ jobs:
           SP_SERVER_RATE_LIMITING_REQUESTS_PER_MINUTE: "0"
           SP_SERVER_RATE_LIMITING_MAX_CONCURRENT: "0"
           SP_AUTH_REGISTRATION_EMAIL_PATTERN: ".*"
+          SP_PLUGINS_DIR: ${{ github.workspace }}/plugins
 
       - name: Wait for servers
         run: |

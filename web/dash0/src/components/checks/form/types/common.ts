@@ -18,7 +18,7 @@ export function validationMessage(key: string, options?: Record<string, unknown>
   return i18n.t(`checks:validation.${key}`, options ?? {});
 }
 
-export type CheckType =
+export type BuiltinCheckType =
   | "http"
   | "tcp"
   | "icmp"
@@ -64,6 +64,16 @@ export type CheckType =
   | "vendor-status"
   | "private-location"
   | "sleep";
+
+// A check type is a built-in one or a plugin type the server loaded (spec
+// 2026-10-17-05, always `x-` prefixed). `string & {}` keeps the built-in
+// names offered by completion while accepting any string.
+export type CheckType = BuiltinCheckType | (string & {});
+
+/** Reports whether a check type is a plugin type. */
+export function isPluginCheckType(type: string): boolean {
+  return type.startsWith("x-");
+}
 
 export type CheckConfig = Record<string, unknown>;
 export type FieldErrors = FieldError[];
@@ -144,13 +154,16 @@ export function assembleSubmittedConfig(params: {
     params;
   const out: CheckConfig = {};
   if (initialConfig) {
+    // A module owning "*" models every key (the plugin JSON editor), so
+    // nothing is carried through: a key deleted in the editor stays deleted.
+    const ownsAll = ownedKeys.includes("*");
     const excluded = new Set<string>([
       ...ownedKeys,
       ...SHARED_FORM_CONFIG_KEYS,
       ...(secretFields ?? []),
     ]);
     for (const [key, value] of Object.entries(initialConfig)) {
-      if (excluded.has(key)) continue;
+      if (ownsAll || excluded.has(key)) continue;
       out[key] = value;
     }
   }

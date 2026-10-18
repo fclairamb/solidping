@@ -327,6 +327,7 @@ dev: kill ## Run backend, dash0 and status0 in development mode (demo on; DEMO=f
 		cd $(BACK_DIR) && SP_REDIRECTS="/d:localhost:5174/d,/s:localhost:5175/s" SP_PROFILER_ENABLED=true \
 		SP_DB_MIGRATION_GUARD_MODE=warn \
 		SP_DEMO_ENABLED=$(DEMO) \
+		SP_PLUGINS_DIR="$${SP_PLUGINS_DIR:-$(CURDIR)/plugins}" \
 		go run ./cmd/devloop $(DEVLOOP_LOG_FLAGS) $(DEVLOOP_PROCS)
 
 dev-test: kill ## Run backend, dash0 and status0 in development test mode
@@ -336,6 +337,7 @@ dev-test: kill ## Run backend, dash0 and status0 in development test mode
 		SP_SERVER_RATE_LIMITING_REQUESTS_PER_MINUTE=0 \
 		SP_SERVER_RATE_LIMITING_MAX_CONCURRENT=0 \
 		SP_AUTH_REGISTRATION_EMAIL_PATTERN='.*' \
+		SP_PLUGINS_DIR=$(CURDIR)/plugins \
 		go run ./cmd/devloop $(DEVLOOP_LOG_FLAGS) $(DEVLOOP_PROCS)
 
 dev-saas: kill ## Run backend (SaaS mode) + dash0 + status0 — pairs with ../solidping-billing `make dev`
