@@ -253,7 +253,8 @@
     "webpush": "Recibir alertas como notificaciones del navegador en tus dispositivos suscritos",
     "kubernetes": "Monitorizar la salud de réplicas de cargas Kubernetes (Deployments, ReplicaSets)",
     "msteams-bot": "Bot de Teams bidireccional: alertas, comandos con @mención y actualizaciones agrupadas",
-    "freebox": "Supervisar una Freebox de Free (calidad de línea, velocidad de sincronización, estado de red)"
+    "freebox": "Supervisar una Freebox de Free (calidad de línea, velocidad de sincronización, estado de red)",
+    "a2a": "Pasar los incidentes a un agente de IA que los investiga"
   },
   "sms": {
     "title": "SMS y llamadas",
@@ -381,5 +382,25 @@
     "resubscribeAria": "Volver a suscribir a {{email}}"
   },
   "deleteConfirmTitle": "¿Eliminar la integración?",
-  "deleteConfirmBody": "Esto eliminará permanentemente «{{name}}»."
+  "deleteConfirmBody": "Esto eliminará permanentemente «{{name}}».",
+  "a2a": {
+    "cardUrl": "URL de la Agent Card",
+    "cardUrlHint": "La URL completa de la Agent Card, o el origen del agente: entonces se añade /.well-known/agent-card.json.",
+    "auth": "Autenticación",
+    "authNone": "Ninguna",
+    "authBearer": "Token Bearer",
+    "authApiKey": "Cabecera de clave de API",
+    "token": "Token Bearer",
+    "apiKeyHeader": "Nombre de la cabecera",
+    "apiKeyValue": "Clave de API",
+    "instructions": "Instrucciones (opcional)",
+    "instructionsPlaceholder": "Investiga e informa de tus conclusiones, no reinicies nada",
+    "instructionsHint": "Se añaden a cada mensaje. El agente puede investigar con las herramientas MCP de SolidPing: dale un token MCP.",
+    "testTitle": "Probar el agente",
+    "testHelp": "Obtiene la Agent Card con los valores de arriba. No se envía nada al agente.",
+    "testButton": "Probar",
+    "testFailed": "Error",
+    "protocolVersion": "A2A {{version}}",
+    "noSkills": "La tarjeta no lista ninguna habilidad."
+  }
 }

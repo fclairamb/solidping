@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/db"
@@ -57,7 +58,13 @@ const (
 	// Telegram) the author usually has no SolidPing user, so attribution lives
 	// on the payload and ActorUID stays empty.
 	CommentSourceDiscord = "discord"
+	// CommentSourceA2A marks a reply of an AI agent reached over A2A (spec
+	// 2026-10-18-02). The author is the integration, never a user.
+	CommentSourceA2A = "a2a"
 )
+
+// a2aAuthorPrefix labels a comment authored by an AI agent integration.
+const a2aAuthorPrefix = "AI agent (A2A): "
 
 // Comment event payload keys. camelCase to match the wire shape the dashboard
 // reads straight off the event payload (unlike the snake_case lifecycle keys
@@ -75,6 +82,7 @@ const (
 	payloadKeyDiscordUser   = "discordUserName"
 	payloadKeyDiscordGuild  = "discordGuildId"
 	payloadKeyDiscordMsgID  = "discordMessageId"
+	payloadKeyIntegration   = "integrationUid"
 )
 
 // MaxSnoozeDuration caps how long an operator can silence an incident in a
@@ -3208,6 +3216,9 @@ type AddCommentRequest struct {
 	// ingest path, never by the `comment` command, for the same reason as
 	// EchoOriginTeamID above.
 	EchoOriginGuildID string
+	// A2A attribution (a2a source): the AI agent integration that replied.
+	IntegrationUID  string
+	IntegrationName string
 }
 
 // AddComment appends a user-authored comment to an incident's timeline as an
@@ -3334,6 +3345,42 @@ func (s *Service) AddCommentFromTelegram(
 	})
 }
 
+// AddCommentFromA2A records the reply of an AI agent (A2A) integration on the
+// incident timeline, authored by the integration. The text is untrusted
+// external content: it is stored as is, exactly like a user comment, so the
+// dashboard and every channel the comment fans out to escape it the same way.
+// Longer text is truncated to MaxCommentLength instead of being refused: an
+// agent's report is worth keeping even when it runs long. Satisfies
+// services.A2ACommenter.
+func (s *Service) AddCommentFromA2A(
+	ctx context.Context, orgUID, incidentUID, integrationUID, integrationName, text string,
+) (*models.Event, error) {
+	return s.addCommentByOrgUID(ctx, orgUID, &AddCommentRequest{
+		IncidentUID:     incidentUID,
+		Text:            truncateComment(strings.TrimSpace(text)),
+		Source:          CommentSourceA2A,
+		IntegrationUID:  integrationUID,
+		IntegrationName: integrationName,
+	})
+}
+
+// truncateComment cuts text to MaxCommentLength bytes on a rune boundary,
+// ending with an ellipsis when it had to cut.
+func truncateComment(text string) string {
+	if len(text) <= MaxCommentLength {
+		return text
+	}
+
+	const ellipsis = "…"
+
+	limit := MaxCommentLength - len(ellipsis)
+	for limit > 0 && !utf8.RuneStart(text[limit]) {
+		limit--
+	}
+
+	return text[:limit] + ellipsis
+}
+
 // addCommentByOrgUID is the shared core for both comment sources. It validates
 // the body, confirms the incident exists in the org, writes the append-only
 // event, and publishes a live `events` hint so watching dashboards refresh.
@@ -3427,6 +3474,9 @@ func applyCommentAttribution(event *models.Event, payload models.JSONMap, req *A
 		payload[payloadKeyDiscordUser] = req.DiscordUserName
 		payload[payloadKeyDiscordGuild] = req.DiscordGuildID
 		payload[payloadKeyDiscordMsgID] = req.DiscordMessageID
+	case CommentSourceA2A:
+		event.ActorType = models.ActorTypeService
+		payload[payloadKeyIntegration] = req.IntegrationUID
 	}
 }
 
@@ -3445,6 +3495,8 @@ func (s *Service) commentAuthorName(ctx context.Context, req *AddCommentRequest)
 		}
 	case CommentSourceDiscord:
 		return strings.TrimSpace(req.DiscordUserName)
+	case CommentSourceA2A:
+		return a2aAuthorPrefix + strings.TrimSpace(req.IntegrationName)
 	}
 
 	if req.ActorUID == "" {
