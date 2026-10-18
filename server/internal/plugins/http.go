@@ -483,6 +483,14 @@ func (t *httpTransport) execute(ctx context.Context, checkType string, cfg *Conf
 		}, nil
 	}
 
+	if _, known := checkerdef.ParseStatus(res.Status); !known {
+		if res.Output == nil {
+			res.Output = map[string]any{}
+		}
+
+		res.Output["message"] = fmt.Sprintf("plugin %s returned an unknown status %q", t.name, res.Status)
+	}
+
 	return resultFromProtocol(&res, duration), nil
 }
 
