@@ -86,3 +86,43 @@ func TestPluginCheckInRegionWithoutThePluginWarns(t *testing.T) {
 	r.NoError(err)
 	r.Empty(detail.RegionWarnings)
 }
+
+// The warning also covers a type only the org's agents reported: the server
+// never loaded that plugin (spec 2026-10-17-05 §17).
+func TestAgentPluginCheckInRegionWithoutThePluginWarns(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+
+	const checkType = "x-agent-region"
+
+	env := newWarnEnv(t)
+	reportAgentType(t, env.dbSvc.DB(), env.org.UID, checkType, nil)
+	env.setRegions([]regions.RegionDefinition{
+		{Slug: "eu", Emoji: "🇪🇺", Name: "Europe"},
+		{Slug: "us", Emoji: "🇺🇸", Name: "United States"},
+	})
+	env.liveWorker("wrk-eu", "eu-west-1", []string{"ipv4"})
+	env.liveWorker("wrk-us", "us-east-1", []string{"ipv4", checkType})
+
+	resp, err := env.svc.CreateCheck(ctx, env.org.Slug, checks.CreateCheckRequest{
+		Name: "No plugin", Slug: "agent-no-plugin", Type: checkType,
+		Config: map[string]any{"host": "gopher.acme.com"}, Regions: []string{"eu"},
+	})
+	r.NoError(err)
+	r.Len(resp.Warnings, 1)
+	r.Equal(checks.CodeRegionNoPlugin, resp.Warnings[0].Code)
+
+	detail, err := env.svc.GetCheck(ctx, env.org.Slug, "agent-no-plugin", checks.GetCheckOptions{})
+	r.NoError(err)
+	r.Len(detail.RegionWarnings, 1)
+
+	// Positive control: the region whose worker has the type does not warn.
+	resp, err = env.svc.CreateCheck(ctx, env.org.Slug, checks.CreateCheckRequest{
+		Name: "With plugin", Slug: "agent-with-plugin", Type: checkType,
+		Config: map[string]any{"host": "gopher.acme.com"}, Regions: []string{"us"},
+	})
+	r.NoError(err)
+	r.Empty(resp.Warnings)
+}

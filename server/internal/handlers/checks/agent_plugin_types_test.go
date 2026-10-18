@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/uptrace/bun"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -89,4 +90,29 @@ func TestAgentReportedPluginTypeIsScopedToItsOrg(t *testing.T) {
 	r.NoError(err)
 	r.False(validated.Valid)
 	r.Equal(checks.CodeUnsupportedType, validated.Fields[0].Code)
+}
+
+// agentTypeSchema is the reported schema: host required, token a secret.
+const agentTypeSchema = `{
+  "type": "object",
+  "properties": {"host": {"type": "string", "minLength": 1}, "token": {"type": "string"}},
+  "required": ["host"],
+  "x-solidping-secret-fields": ["token"]
+}`
+
+// reportAgentType stores checkType as reported by one of orgUID's agents.
+func reportAgentType(t *testing.T, db bun.IDB, orgUID, checkType string, edit func(*protocol.TypeManifest)) {
+	t.Helper()
+
+	manifest := protocol.TypeManifest{
+		Type: checkType, Plugin: "acme", Version: "1.0.0", Protocol: "exec",
+		Schema: json.RawMessage(agentTypeSchema),
+	}
+	if edit != nil {
+		edit(&manifest)
+	}
+
+	stored, err := plugintypes.New(db).Report(t.Context(), orgUID, []protocol.TypeManifest{manifest})
+	require.NoError(t, err)
+	require.Equal(t, 1, stored)
 }

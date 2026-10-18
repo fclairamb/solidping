@@ -62,7 +62,14 @@ func (s *Service) pluginRegionWarnings(
 		return nil
 	}
 
-	index, err := s.regions.CapabilityIndex(ctx, orgUID)
+	// An agent-reported type is not among the server's own plugin types, so
+	// the index only aggregates it when asked.
+	var extra []string
+	if s.orgPluginType(ctx, orgUID, checkType) != nil {
+		extra = []string{checkType}
+	}
+
+	index, err := s.regions.CapabilityIndex(ctx, orgUID, extra...)
 	if err != nil {
 		return nil
 	}
