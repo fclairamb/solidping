@@ -184,8 +184,19 @@
   --primary-fill: oklch(0.53 0.2 262);
   --primary-fill-foreground: oklch(1 0 0);
 
+  /* Primary gradient: the one gradient of the operator UI, painted over
+     --primary-fill on the default button, the page-header tile and the
+     progress fill. Tonal on purpose: a single blue family, cyan-blue to deep
+     electric blue, never blue to violet. Three stops over a 200% background
+     (bg-primary-gradient): at rest an element shows the 0-50% half, a hovered
+     button slides to the darker 50-100% half. White clears 4.5:1 on every
+     stop, and the resting half clears 3:1 against the page, the card and the
+     progress track in both themes (src/theme-tokens.test.ts). Identical in
+     both themes. */
+  --primary-gradient: linear-gradient(135deg, oklch(0.55 0.17 245) 0%, oklch(0.53 0.21 266) 50%, oklch(0.47 0.2 270) 100%);
+
   /* The page glow behind the auth screens' form column (and /no-org). The
-     operator app itself stays flat. */
+     operator app itself has no glow. */
   --page-glow: radial-gradient(45% 200px at 12% 0, oklch(0.7 0.15 225 / 0.13), transparent 70%),
     radial-gradient(40% 180px at 65% 0, oklch(0.5 0.23 275 / 0.09), transparent 70%);
 
@@ -260,6 +271,7 @@
      page; white still clears 4.5:1. The glow is stronger on the dark page. */
   --primary-fill: oklch(0.55 0.2 262);
   --primary-fill-foreground: oklch(1 0 0);
+  --primary-gradient: linear-gradient(135deg, oklch(0.55 0.17 245) 0%, oklch(0.53 0.21 266) 50%, oklch(0.47 0.2 270) 100%);
   --page-glow: radial-gradient(45% 220px at 12% 0, oklch(0.7 0.15 225 / 0.2), transparent 70%),
     radial-gradient(40% 200px at 65% 0, oklch(0.5 0.23 275 / 0.15), transparent 70%);
 }
@@ -294,6 +306,17 @@
 
 @utility bg-sidebar-active {
   background-image: var(--sidebar-active);
+}
+
+/* The primary gradient over a flat bg-primary-fill (which shows if the image
+   fails to paint). background-IMAGE only, like the sidebar utilities: a later
+   bg-<color> or bg-none clears it when it goes through cn() (lib/utils.ts).
+   200% size: the element shows the lighter half; hover:bg-bottom-right
+   slides to the darker one (background-position transitions smoothly). */
+@utility bg-primary-gradient {
+  background-image: var(--primary-gradient);
+  background-origin: border-box;
+  background-size: 200% 200%;
 }
 
 /* The page glow: one decorative layer behind the auth screens' form. */

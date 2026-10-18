@@ -1,8 +1,9 @@
 import { test, expect } from "./fixtures";
 
 /**
- * The destructive (delete) button is flat like every other variant: a solid
- * red with a hairline shadow-xs, and a hover that only changes the fill
+ * The destructive (delete) button is flat, like every variant but the
+ * default one (the only gradient button): a solid red with a hairline
+ * shadow-xs, and a hover that only changes the fill
  * (bg-destructive/90, wired in components/ui/button.tsx). The old red-tinted
  * elevation that grew on hover is gone.
  */

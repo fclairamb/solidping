@@ -424,6 +424,7 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
                 label={t("kpi.monitored")}
                 value={enabledCount}
                 icon={<ListChecks />}
+                tone="primary"
                 sub={
                   disabledCount > 0
                     ? t("kpi.monitoredDisabled", { count: disabledCount })
@@ -441,6 +442,7 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
                 }
                 valueClassName={AVAILABILITY_TIER_STYLE[availabilityTierValue].value}
                 icon={<TrendingUp />}
+                tone={AVAILABILITY_TIER_STYLE[availabilityTierValue].tone}
                 badge={
                   <Badge
                     variant={AVAILABILITY_TIER_STYLE[availabilityTierValue].badge}
@@ -469,6 +471,7 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
                 label={t("kpi.down")}
                 value={downCount}
                 icon={<AlertTriangle />}
+                tone={downCount > 0 ? "error" : "neutral"}
                 valueClassName={downCount > 0 ? "text-status-error-foreground" : undefined}
                 sub={downCount > 0 ? t("kpi.badgeNeedsAction") : t("kpi.downSubNone")}
               />
@@ -488,6 +491,7 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
                 label={t("kpi.incidents")}
                 value={incidentsCount}
                 icon={<Activity />}
+                tone={incidentsCount > 0 ? "warning" : "neutral"}
                 valueClassName={
                   incidentsCount > 0 ? "text-status-warning-foreground" : undefined
                 }
@@ -624,7 +628,7 @@ function OverallStatusBanner({
     return (
       <div
         data-testid="overall-status-banner"
-        className={cn(BANNER_SURFACE, "border-l-status-ok")}
+        className={cn(BANNER_SURFACE, BANNER_TONE.ok)}
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -664,7 +668,7 @@ function OverallStatusBanner({
         target={incidentsCount > 0 ? "incidents-active" : "checks-down"}
         className="block"
       >
-        <div className={cn(BANNER_SURFACE, BANNER_LINK, "border-l-status-error")}>
+        <div className={cn(BANNER_SURFACE, BANNER_LINK, BANNER_TONE.error)}>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <span className="relative flex h-2.5 w-2.5 shrink-0">
@@ -693,7 +697,7 @@ function OverallStatusBanner({
   // Only timeouts (degraded but not hard-down).
   return (
     <BannerLink org={org} target="checks-warning" className="block">
-      <div className={cn(BANNER_SURFACE, BANNER_LINK, "border-l-status-warning")}>
+      <div className={cn(BANNER_SURFACE, BANNER_LINK, BANNER_TONE.warning)}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-status-warning" />
@@ -713,10 +717,16 @@ function OverallStatusBanner({
   );
 }
 
-// The overall status banner is a plain card whose thick left edge carries the
-// status color: the state reads at a glance without tinting the whole strip.
+// The overall status banner is a card washed with the status color from its
+// left edge, fading out by 70% of the width: the state reads at a glance and
+// the text sits on the plain card. Same alpha tints in both themes.
 const BANNER_SURFACE =
-  "rounded-xl border border-l-4 bg-card px-4 py-3 shadow-card";
+  "rounded-xl border bg-card bg-linear-to-r to-transparent to-70% px-4 py-3 shadow-card";
+const BANNER_TONE = {
+  ok: "border-status-ok/25 from-status-ok/12",
+  error: "border-status-error/30 from-status-error/15",
+  warning: "border-status-warning/30 from-status-warning/15",
+} as const;
 const BANNER_LINK = "cursor-pointer transition-shadow hover:shadow-card-hover";
 
 interface SectionErrorProps {

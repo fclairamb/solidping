@@ -11,9 +11,11 @@ import { cn } from "@/lib/utils";
 // own mr-2 (the old pattern); [&>svg]:mr-0 cancels it so the gap is not
 // doubled.
 //
-// Every variant is flat: a solid fill (or none), a hairline shadow at most,
-// and hover changes the color only, never the position. The default variant
-// sits on --primary-fill, saturated in both themes with a white label.
+// A hairline shadow at most, and hover changes the color only, never the
+// position. The default variant is the one gradient button: the tonal
+// --primary-gradient over the solid --primary-fill, with a white label; hover
+// slides the gradient to its darker half (a background-position transition,
+// the button itself does not move). Every other variant is flat.
 //
 // Brand variant: the solid crimson of the logo, for the primary action of the
 // auth pages (login, register…), whose card already carries the crimson top
@@ -24,7 +26,7 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "bg-primary-fill text-primary-fill-foreground shadow-xs hover:bg-primary-fill/90",
+          "bg-primary-fill bg-primary-gradient text-primary-fill-foreground shadow-xs transition-[color,background-position] duration-300 hover:bg-bottom-right",
         brand:
           "bg-brand text-brand-foreground shadow-xs hover:bg-brand/90",
         destructive:

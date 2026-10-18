@@ -12,9 +12,9 @@ type PageHeaderProps = {
   className?: string;
   iconClassName?: string;
   /**
-   * The icon tile's look. "brand" (default) is a soft primary tint with a
-   * primary icon. "neutral" is the flat bg-muted tile, for third-party logos
-   * (an integration's provider mark) that must keep their own colors.
+   * The icon tile's look. "brand" (default) is the primary gradient with a
+   * white icon, no glow. "neutral" is the flat bg-muted tile, for third-party
+   * logos (an integration's provider mark) that must keep their own colors.
    */
   tone?: "brand" | "neutral";
   /** Same-origin relative docs path (e.g. "/docs/features/check-types"). Renders a small DocsLink next to actions. Only pass this when a genuinely relevant docs page exists. */
@@ -22,7 +22,7 @@ type PageHeaderProps = {
 };
 
 const TILE_TONE: Record<NonNullable<PageHeaderProps["tone"]>, string> = {
-  brand: "border border-primary/15 bg-primary/10 text-primary",
+  brand: "bg-primary-fill bg-primary-gradient text-primary-fill-foreground shadow-xs",
   neutral: "bg-muted text-foreground",
 };
 

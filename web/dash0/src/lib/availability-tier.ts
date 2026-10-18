@@ -25,15 +25,20 @@ export function availabilityTier(pct: number | null): AvailabilityTier {
 
 /**
  * How each tier reads on the dashboard's availability tile: the Badge variant
- * carrying the tier's label, and the color of the percentage itself. No data
- * stays neutral rather than borrowing a status color.
+ * carrying the tier's label, the color of the percentage itself and the
+ * tile's tone (icon chip and wash). No data stays neutral rather than
+ * borrowing a status color.
  */
 export const AVAILABILITY_TIER_STYLE: Record<
   AvailabilityTier,
-  { badge: "secondary" | "success" | "warning" | "destructive"; value: string }
+  {
+    badge: "secondary" | "success" | "warning" | "destructive";
+    value: string;
+    tone: "neutral" | "ok" | "warning" | "error";
+  }
 > = {
-  noData: { badge: "secondary", value: "text-muted-foreground" },
-  operational: { badge: "success", value: "text-foreground" },
-  degraded: { badge: "warning", value: "text-status-warning-foreground" },
-  down: { badge: "destructive", value: "text-status-error-foreground" },
+  noData: { badge: "secondary", value: "text-muted-foreground", tone: "neutral" },
+  operational: { badge: "success", value: "text-foreground", tone: "ok" },
+  degraded: { badge: "warning", value: "text-status-warning-foreground", tone: "warning" },
+  down: { badge: "destructive", value: "text-status-error-foreground", tone: "error" },
 };

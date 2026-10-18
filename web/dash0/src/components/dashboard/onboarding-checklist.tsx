@@ -253,18 +253,24 @@ export function OnboardingChecklistCard({
   const { t } = useTranslation("dashboard");
   const done = completedStepCount(steps);
   // The first still-open step is the card's focal point: it is the one thing
-  // the user is being asked to do next, so it gets the ring, the glow and the
+  // the user is being asked to do next, so it gets the border, the wash and the
   // only `default`-variant CTA. -1 (nothing pending) simply matches no row.
   const nextUpIndex = steps.findIndex((step) => !step.done);
   const progressLabel = t("onboarding.progress", { done, total: steps.length });
 
   return (
-    <Card data-testid="onboarding-checklist">
+    <Card data-testid="onboarding-checklist" className="relative overflow-hidden">
+      {/* Decoration only: a 2px primary line along the top edge, fading out
+          to the right. No blobs, no glow. */}
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-linear-to-r from-primary via-primary/40 to-transparent"
+      />
       <CardHeader className="relative flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
         <div className="flex min-w-0 flex-1 items-start gap-3">
           <span
             aria-hidden="true"
-            className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-primary/15 bg-primary/10 text-primary sm:flex"
+            className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-fill bg-primary-gradient text-primary-fill-foreground shadow-xs sm:flex"
           >
             <Rocket className="h-4 w-4" />
           </span>
@@ -368,12 +374,13 @@ function OnboardingStepRow({
   const Icon = STEP_ICONS[step.id];
 
   // Three tones, not two: done rows recede onto the muted surface, the
-  // next-up row is ringed so the eye lands on it first, and the remaining
-  // pending rows sit quietly in between. Hover only changes the surface.
+  // next-up row carries a primary border and a wash fading from its left edge
+  // so the eye lands on it first, and the remaining pending rows sit quietly
+  // in between. Hover only changes the surface.
   const rowTone = step.done
     ? "border-border/70 bg-muted/40 hover:bg-muted/60"
     : isNext
-      ? "border-primary/40 bg-card ring-1 ring-primary/10 hover:border-primary/60"
+      ? "border-primary/40 bg-card bg-linear-to-r from-primary/10 to-transparent to-60% hover:border-primary/60"
       : "border-border bg-card hover:bg-muted/40";
 
   return (
