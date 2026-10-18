@@ -2,15 +2,20 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-// Spec 2026-09-24-06: the docs site carries the "electric" identity. These
+// Spec 2026-09-24-06: the docs site carries the "electric" identity, in the
+// form www.solidping.io wears it (solidping-website src/css/custom.css). These
 // tests pin custom.css at the source level: no pink left, the Infima shades
-// generated (not hand-picked) from the two bases, readable links, and the
-// hero / footer / announcement / navbar-border gradients.
+// generated (not hand-picked) from the two bases, readable text and links on
+// the page of each theme, and the brand tokens shared with the website.
 
 const repo = join(import.meta.dir, "..", "..", "..", "..");
 const css = readFileSync(join(import.meta.dir, "custom.css"), "utf8");
 const emailHtml = readFileSync(
   join(repo, "server", "internal", "email", "templates", "base.html"),
+  "utf8",
+);
+const footerCss = readFileSync(
+  join(import.meta.dir, "..", "theme", "Footer", "Layout", "styles.module.css"),
   "utf8",
 );
 
@@ -29,7 +34,9 @@ function declarations(selector: string): Map<string, string> {
 }
 
 const light = declarations(":root");
-const dark = declarations("[data-theme='dark']");
+// html[...] like Infima's own dark block, which a bare [data-theme='dark']
+// loses to on specificity.
+const dark = declarations("html[data-theme='dark']");
 
 // --- colour maths ---------------------------------------------------------
 
@@ -182,67 +189,80 @@ describe("docs custom.css electric identity", () => {
     });
   }
 
-  test("links and hovers meet 4.5:1 against the page in both themes", () => {
-    // Infima's light page is white; Docusaurus' dark page is #1b1b1d.
-    const pages = { light: "#ffffff", dark: "#1b1b1d" } as const;
+  test("text and links meet 4.5:1 against the page in both themes", () => {
+    const failures: string[] = [];
     for (const [theme, decls] of [
       ["light", light],
       ["dark", dark],
     ] as const) {
       const merged = new Map([...light, ...decls]);
-      for (const prop of ["--ifm-link-color", "--ifm-navbar-link-hover-color"]) {
-        const color = resolve(merged, merged.get(prop)!);
-        expect(contrast(color, pages[theme])).toBeGreaterThanOrEqual(4.5);
+      const page = resolve(merged, merged.get("--ifm-background-color")!);
+      for (const prop of [
+        "--ifm-link-color",
+        "--ifm-navbar-link-hover-color",
+        // Active navbar and TOC links.
+        "--ifm-color-primary",
+        // Body copy, headings, the muted TOC and card text, the active
+        // sidebar link.
+        "--sp-text",
+        "--sp-heading",
+        "--sp-muted",
+        "--sp-accent-text",
+      ]) {
+        const ratio = contrast(resolve(merged, merged.get(prop)!), page);
+        if (ratio < 4.5) failures.push(`${theme} ${prop}: ${ratio.toFixed(2)}:1`);
       }
-      // TOC active link and secondary button text use the primary itself.
-      expect(
-        contrast(resolve(merged, "var(--ifm-color-primary)"), pages[theme]),
-      ).toBeGreaterThanOrEqual(4.5);
-      // Secondary button hover: text on a solid primary fill.
-      expect(
-        contrast(
-          resolve(merged, merged.get("--sp-on-primary")!),
-          resolve(merged, "var(--ifm-color-primary)"),
-        ),
-      ).toBeGreaterThanOrEqual(4.5);
     }
+    expect(failures).toEqual([]);
   });
 
-  test("highlighted code line is the primary at 10% / 20%", () => {
+  test("highlighted code line is the primary at 10% / 16%", () => {
     expect(light.get("--docusaurus-highlighted-code-line-bg")).toBe(
       "rgba(30, 100, 239, 0.1)",
     );
     expect(dark.get("--docusaurus-highlighted-code-line-bg")).toBe(
-      "rgba(87, 168, 255, 0.2)",
+      "rgba(87, 168, 255, 0.16)",
     );
   });
 
-  test("hero, footer, announcement bar and navbar border use the palette", () => {
-    expect(light.get("--sp-hero-gradient")).toBe(
-      "linear-gradient(135deg, #0094d9 0%, #204ee3 60%, #3823a2 100%)",
-    );
-    expect(light.get("--sp-sidebar-navy")).toBe(
-      "linear-gradient(180deg, #0a1731 0%, #04091b 100%)",
-    );
-    expect(light.get("--sp-accent-gradient")).toBe(
-      "linear-gradient(90deg, #00b0e4 0%, #175ee8 50%, #453cdb 100%)",
-    );
-    // White on the accent gradient's cyan start is below 4.5:1, so the
-    // announcement bar falls back to the --primary-gradient stops.
-    expect(contrast("#ffffff", "#00b0e4")).toBeLessThan(4.5);
-    expect(light.get("--sp-announcement-gradient")).toBe(
-      "linear-gradient(90deg, #007bce 0%, #175ee8 50%, #453cdb 100%)",
-    );
+  test("pages and brand tokens are the website's", () => {
+    // White, not Infima's transparent light page, and the website's navy-black.
+    expect(light.get("--ifm-background-color")).toBe("#ffffff");
+    expect(dark.get("--ifm-background-color")).toBe("#0b1120");
 
-    expect(code).toMatch(/\.hero \{\s*background: var\(--sp-hero-gradient\);/);
-    expect(code).toMatch(/\.footer--dark \{\s*background: var\(--sp-sidebar-navy\);/);
-    expect(code).toMatch(
-      /\.announcementBar \{\s*background: var\(--sp-announcement-gradient\);/,
+    expect(light.get("--sp-navy-top")).toBe("#0a1731");
+    expect(light.get("--sp-navy-bottom")).toBe("#04091b");
+    expect(light.get("--sp-grad-button")).toBe(
+      "linear-gradient(135deg, #007bce 0%, #175ee8 50%, #453cdb 100%)",
     );
-    const after = code.slice(code.indexOf(".navbar::after {"));
-    expect(after).toMatch(/height: 2px;/);
-    expect(after).toMatch(/background: var\(--sp-accent-gradient\);/);
-    // Declared on :root only, so the border shows in both themes.
-    expect(dark.has("--sp-accent-gradient")).toBe(false);
+    expect(light.get("--sp-grad-accent")).toBe(
+      "linear-gradient(135deg, #00b0e4 0%, #175ee8 50%, #453cdb 100%)",
+    );
+    // Brand constants are declared once, for both themes.
+    for (const token of ["--sp-navy", "--sp-grad-button", "--sp-grad-accent"]) {
+      expect(dark.has(token)).toBe(false);
+    }
+  });
+
+  test("dark tokens are not declared on a bare [data-theme='dark']", () => {
+    // Infima's html[data-theme='dark'] would outrank it and keep its grey
+    // #1b1b1d page. The html[...] block exists: declarations() found it.
+    expect(dark.size).toBeGreaterThan(0);
+    expect(code).not.toMatch(/(^|\n)\[data-theme='dark'\] \{/);
+  });
+
+  test("Start free is hidden unless the page is flagged as the cloud's", () => {
+    // The flag is set by src/clientModules/deployment.ts; without this rule a
+    // self-hosted copy of the docs would advertise the cloud.
+    expect(code).toMatch(
+      /html:not\(\[data-deployment='saas'\]\) \.navbar-cta \{\s*display: none;\s*\}/,
+    );
+  });
+
+  test("buttons, the navbar CTA, the hero and the footer use the brand surfaces", () => {
+    expect(code).toMatch(/\.button--primary \{[^}]*background: var\(--sp-grad-button\);/);
+    expect(code).toMatch(/\.navbar-cta \{[^}]*background: var\(--sp-grad-button\);/);
+    expect(code).toMatch(/\.sp-aurora \{[^}]*background: var\(--sp-navy\);/);
+    expect(footerCss).toMatch(/\.footer \{[^}]*background: var\(--sp-navy\);/);
   });
 });
