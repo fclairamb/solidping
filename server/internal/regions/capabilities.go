@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/agents"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
@@ -93,11 +94,19 @@ var aggregatedCapabilities = []string{ //nolint:gochecknoglobals // the publishe
 	CapabilityBrowser,
 }
 
-// capabilitiesFor renders the capability map for a worker set.
+// capabilitiesFor renders the capability map for a worker set: the published
+// capabilities, plus one entry per plugin check type this server loaded (a
+// worker advertises the plugin types it can run, spec 2026-10-17-05 §17).
 func capabilitiesFor(workers []*models.Worker) map[string]string {
 	out := make(map[string]string, len(aggregatedCapabilities))
 	for _, name := range aggregatedCapabilities {
 		out[name] = aggregate(workers, name)
+	}
+
+	for _, meta := range checkerdef.ListCheckTypeMetas() {
+		if meta.Plugin != nil {
+			out[string(meta.Type)] = aggregate(workers, string(meta.Type))
+		}
 	}
 
 	return out

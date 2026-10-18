@@ -997,8 +997,13 @@ func (h *Handler) handleClaim(
 		maxJobs = maxClaimJobs
 	}
 
+	// A plugin-type job only goes to an agent that reports the type among
+	// its capabilities (spec 2026-10-17-05 §17).
+	scope := agentClaimScope(state.agent)
+	scope.PluginTypes = checkjobsvc.PluginTypesFromCapabilities(frame.Capabilities)
+
 	jobs, nextIn, err := h.checkJobSvc.ClaimJobsForAgent(
-		ctx, state.workerUID, agentClaimScope(state.agent),
+		ctx, state.workerUID, scope,
 		frame.CheckUID, maxJobs, claimMaxAhead,
 	)
 	if err != nil {

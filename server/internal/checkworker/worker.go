@@ -27,7 +27,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/registry"
 	"github.com/fclairamb/solidping/server/internal/checkworker/backend"
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
-	"github.com/fclairamb/solidping/server/internal/checkworker/egressreport"
 	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
@@ -491,7 +490,7 @@ func (r *CheckWorker) registerWorker(ctx context.Context) error {
 		Slug:         identity.Slug,
 		Name:         identity.Name,
 		Region:       &region,
-		Capabilities: egressreport.Current(ctx),
+		Capabilities: backend.Capabilities(ctx),
 		Version:      &agentVersion,
 	}
 
@@ -540,7 +539,7 @@ func (r *CheckWorker) heartbeatLoop(ctx context.Context) {
 // process, so re-sending it every beat is just a cheap package-level read.
 func (r *CheckWorker) updateHeartbeat(ctx context.Context) {
 	if err := r.backend.Heartbeat(
-		ctx, r.getWorker().UID, egressreport.Current(ctx), version.Get().Version,
+		ctx, r.getWorker().UID, backend.Capabilities(ctx), version.Get().Version,
 	); err != nil {
 		r.logger.ErrorContext(ctx, "Failed to update heartbeat", "error", err)
 	}
@@ -649,8 +648,10 @@ func (r *CheckWorker) fetchAndDistributeJobs(
 	cfg := r.config.Server.CheckWorker
 	fetchStart := time.Now()
 	worker := r.getWorker()
+	// Advertise the plugin types this process loaded: a plugin-type job is
+	// only claimed by a worker that can run it (spec 2026-10-17-05 §17).
 	jobs, nextIn, err := r.backend.ClaimJobs(
-		ctx,
+		checkjobsvc.WithPluginTypes(ctx, registry.PluginTypes()),
 		worker.UID,
 		worker.Region,
 		limits.Fast,
@@ -769,7 +770,8 @@ func (r *CheckWorker) handleExpressEvent(ctx context.Context, logger *slog.Logge
 	}
 
 	worker := r.getWorker()
-	jobs, err := r.backend.ClaimJobsForCheck(ctx, worker.UID, worker.Region, msg.CheckUID)
+	jobs, err := r.backend.ClaimJobsForCheck(
+		checkjobsvc.WithPluginTypes(ctx, registry.PluginTypes()), worker.UID, worker.Region, msg.CheckUID)
 	if err != nil {
 		if !errors.Is(err, context.Canceled) {
 			logger.WarnContext(ctx, "express claim failed",

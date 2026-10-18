@@ -26,6 +26,9 @@ const (
 	// CodeRegionNoBrowser marks a browser check in a region whose live workers
 	// advertise no headless Chrome.
 	CodeRegionNoBrowser = "REGION_NO_BROWSER"
+	// CodeRegionNoPlugin marks a plugin-type check in a region whose live
+	// workers do not advertise the plugin.
+	CodeRegionNoPlugin = "REGION_NO_PLUGIN"
 )
 
 // regionCapabilityWarnings is the single advisory entry point the write paths
@@ -38,7 +41,51 @@ func (s *Service) regionCapabilityWarnings(
 ) []base.ValidationErrorField {
 	warnings := s.ipVersionRegionWarnings(ctx, orgUID, checkType, config, checkRegions)
 
-	return append(warnings, s.browserRegionWarnings(ctx, orgUID, checkType, checkRegions)...)
+	warnings = append(warnings, s.browserRegionWarnings(ctx, orgUID, checkType, checkRegions)...)
+
+	return append(warnings, s.pluginRegionWarnings(ctx, orgUID, checkType, checkRegions)...)
+}
+
+// pluginRegionWarnings reports, as a warning, that a plugin-type check targets
+// a region whose live workers do not advertise that plugin: its jobs would sit
+// unclaimed there (spec 2026-10-17-05 §17). Like the browser warning, only an
+// explicit "no" warns.
+func (s *Service) pluginRegionWarnings(
+	ctx context.Context, orgUID, checkType string, checkRegions []string,
+) []base.ValidationErrorField {
+	if !checkerdef.CheckType(checkType).IsPlugin() {
+		return nil
+	}
+
+	effective, err := s.regions.ResolveRegionsForCheck(ctx, checkRegions, orgUID)
+	if err != nil || len(effective) == 0 {
+		return nil
+	}
+
+	index, err := s.regions.CapabilityIndex(ctx, orgUID)
+	if err != nil {
+		return nil
+	}
+
+	var lacking []string
+
+	for _, slug := range effective {
+		if def, known := index[slug]; known && def.CapabilityFor(checkType) == regions.CapabilityNo {
+			lacking = append(lacking, regionLabel(def))
+		}
+	}
+
+	if len(lacking) == 0 {
+		return nil
+	}
+
+	return []base.ValidationErrorField{{
+		Name: browserWarningField,
+		Message: "no live worker in " + strings.Join(lacking, ", ") + " has the " + checkType +
+			" plugin, so this check will not run there until one does.",
+		Severity: base.SeverityWarning,
+		Code:     CodeRegionNoPlugin,
+	}}
 }
 
 // browserRegionWarnings reports — as a WARNING, never a rejection — that a

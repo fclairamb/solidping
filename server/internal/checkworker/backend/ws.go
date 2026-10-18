@@ -19,7 +19,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/agents/capturecache"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkssh"
-	"github.com/fclairamb/solidping/server/internal/checkworker/egressreport"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/egress"
@@ -286,7 +285,7 @@ func (b *WSBackend) claim(
 		Type:         agents.MsgTypeClaim,
 		MaxJobs:      maxJobs,
 		CheckUID:     checkUID,
-		Capabilities: egressreport.Current(ctx),
+		Capabilities: Capabilities(ctx),
 		Version:      version.Get().Version,
 	})
 	if err != nil {
