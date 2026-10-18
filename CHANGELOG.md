@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.40.0](https://github.com/fclairamb/solidping/compare/v0.39.0...v0.40.0) (2026-10-18)
+
+
+### Features
+
+* **dash0:** tonal gradients between the flat and the shiny look ([#603](https://github.com/fclairamb/solidping/issues/603)) ([741d8d7](https://github.com/fclairamb/solidping/commit/741d8d7e4b5c0b8272839994ed0988c126306c39))
+* **docs:** redesign the docs site after www.solidping.io ([#599](https://github.com/fclairamb/solidping/issues/599)) ([660deb7](https://github.com/fclairamb/solidping/commit/660deb7bdb67ea4827290df92db141d7f248516e))
+
+
+### Bug Fixes
+
+* **dash0:** put the invite button in the organization header ([#601](https://github.com/fclairamb/solidping/issues/601)) ([fb0e5bf](https://github.com/fclairamb/solidping/commit/fb0e5bf2483b84d56d8b41c9e6c9638398aa7775))
+* **dash0:** wait for the dismissal PUT before reloading in the checklist e2e ([#604](https://github.com/fclairamb/solidping/issues/604)) ([10e8b4e](https://github.com/fclairamb/solidping/commit/10e8b4eab8a63fddd26c7bf46c6ddffe3b74de4c))
+
 ## [0.39.0](https://github.com/fclairamb/solidping/compare/v0.38.6...v0.39.0) (2026-10-18)
 
 
