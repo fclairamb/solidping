@@ -11,6 +11,7 @@ import { ApiError, setSession } from "@/api/client";
 import { useCreateOrg } from "@/api/hooks";
 import { useAuth } from "@/contexts/AuthContext";
 import { orgSlugify } from "@/lib/org-slug";
+import { landingForOrg } from "@/lib/pending-check";
 
 interface CreateOrgCardProps {
   /**
@@ -120,7 +121,7 @@ export function CreateOrgCard({
       // proceeds even if this fails — the new token is already good enough
       // for the dashboard.
       await refreshUser().catch(() => {});
-      navigate({ to: "/orgs/$org", params: { org: result.slug } });
+      navigate(landingForOrg(result.slug));
     } catch (err) {
       // 422 VALIDATION_ERROR / 409 CONFLICT already carry a usable message
       // from the server (handlers/auth/handler.go CreateOrg) — surface it

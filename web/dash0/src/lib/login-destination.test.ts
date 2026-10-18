@@ -105,6 +105,14 @@ describe("deviceVerificationReturnTo", () => {
   });
 });
 
+describe("resolveDestination: monitor deep link", () => {
+  it("honors the org-less /monitor returnTo whatever the resolved org", () => {
+    expect(
+      resolveDestination("acme", `${BASE}/monitor?checkType=http`, BASE),
+    ).toEqual({ href: `${BASE}/monitor?checkType=http` });
+  });
+});
+
 describe("isInviteReturnTo", () => {
   it("accepts exactly one invitation page under the base path", () => {
     expect(isInviteReturnTo("/d/invite/abc", "/d")).toBe(true);
