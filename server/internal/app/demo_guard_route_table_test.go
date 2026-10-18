@@ -225,6 +225,7 @@ var demoUnauthenticatedRoutes = map[string]string{
 	"POST /api/v1/orgs/{org}/status-pages/{statusPageUid}/subscribers": "public status-page subscribe",
 	"POST /api/v1/status-pages/{org}/unlock":                           "public status-page password unlock",
 	"POST /api/v1/status-pages/{org}/{slug}/unlock":                    "public status-page password unlock",
+	"POST /api/v1/tools/run":                                           "public check tools, writes nothing",
 }
 
 // demoHandlerGuardedRoutes is the NAMED list of non-GET routes that are

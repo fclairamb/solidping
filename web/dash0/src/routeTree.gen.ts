@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as NoOrgRouteImport } from './routes/no-org'
+import { Route as MonitorRouteImport } from './routes/monitor'
 import { Route as McpRouteImport } from './routes/mcp'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
@@ -165,6 +166,11 @@ import { Route as OrgsOrgChecksCheckUidResultsResultUidRouteImport } from './rou
 const NoOrgRoute = NoOrgRouteImport.update({
   id: '/no-org',
   path: '/no-org',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MonitorRoute = MonitorRouteImport.update({
+  id: '/monitor',
+  path: '/monitor',
   getParentRoute: () => rootRouteImport,
 } as any)
 const McpRoute = McpRouteImport.update({
@@ -993,6 +999,7 @@ export interface FileRoutesByFullPath {
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/mcp': typeof McpRoute
+  '/monitor': typeof MonitorRoute
   '/no-org': typeof NoOrgRoute
   '/auth/complete': typeof AuthCompleteRoute
   '/confirm-registration/$token': typeof ConfirmRegistrationTokenRoute
@@ -1147,6 +1154,7 @@ export interface FileRoutesByTo {
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/mcp': typeof McpRoute
+  '/monitor': typeof MonitorRoute
   '/no-org': typeof NoOrgRoute
   '/auth/complete': typeof AuthCompleteRoute
   '/confirm-registration/$token': typeof ConfirmRegistrationTokenRoute
@@ -1275,6 +1283,7 @@ export interface FileRoutesById {
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/mcp': typeof McpRoute
+  '/monitor': typeof MonitorRoute
   '/no-org': typeof NoOrgRoute
   '/auth/complete': typeof AuthCompleteRoute
   '/confirm-registration/$token': typeof ConfirmRegistrationTokenRoute
@@ -1431,6 +1440,7 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/login'
     | '/mcp'
+    | '/monitor'
     | '/no-org'
     | '/auth/complete'
     | '/confirm-registration/$token'
@@ -1585,6 +1595,7 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/login'
     | '/mcp'
+    | '/monitor'
     | '/no-org'
     | '/auth/complete'
     | '/confirm-registration/$token'
@@ -1712,6 +1723,7 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/login'
     | '/mcp'
+    | '/monitor'
     | '/no-org'
     | '/auth/complete'
     | '/confirm-registration/$token'
@@ -1867,6 +1879,7 @@ export interface RootRouteChildren {
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   LoginRoute: typeof LoginRoute
   McpRoute: typeof McpRoute
+  MonitorRoute: typeof MonitorRoute
   NoOrgRoute: typeof NoOrgRoute
   AuthCompleteRoute: typeof AuthCompleteRoute
   ConfirmRegistrationTokenRoute: typeof ConfirmRegistrationTokenRoute
@@ -1885,6 +1898,13 @@ declare module '@tanstack/react-router' {
       path: '/no-org'
       fullPath: '/no-org'
       preLoaderRoute: typeof NoOrgRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/monitor': {
+      id: '/monitor'
+      path: '/monitor'
+      fullPath: '/monitor'
+      preLoaderRoute: typeof MonitorRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/mcp': {
@@ -3563,6 +3583,7 @@ const rootRouteChildren: RootRouteChildren = {
   ForgotPasswordRoute: ForgotPasswordRoute,
   LoginRoute: LoginRoute,
   McpRoute: McpRoute,
+  MonitorRoute: MonitorRoute,
   NoOrgRoute: NoOrgRoute,
   AuthCompleteRoute: AuthCompleteRoute,
   ConfirmRegistrationTokenRoute: ConfirmRegistrationTokenRoute,

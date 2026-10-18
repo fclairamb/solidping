@@ -27,7 +27,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/registry"
 	"github.com/fclairamb/solidping/server/internal/checkworker/backend"
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
-	"github.com/fclairamb/solidping/server/internal/checkworker/egressreport"
 	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
@@ -45,6 +44,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/tracediag"
 	"github.com/fclairamb/solidping/server/internal/integrations/sshtunnel"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobtypes"
+	"github.com/fclairamb/solidping/server/internal/plugins"
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
 	"github.com/fclairamb/solidping/server/internal/secretref"
 	"github.com/fclairamb/solidping/server/internal/stats"
@@ -168,6 +168,11 @@ type CheckWorker struct {
 	// this field existed.
 	getChecker  func(checkerdef.CheckType) (checkerdef.Checker, bool)
 	parseConfig func(checkerdef.CheckType) (checkerdef.Config, bool)
+
+	// activation is this process's server-level check-type gate. It filters
+	// the plugin types the worker advertises, so a SaaS cloud worker never
+	// claims an unsafe (exec, nagios) plugin type (spec 2026-10-17-05 §19).
+	activation *checkerdef.ActivationResolver
 
 	// Channel-based architecture fields
 	poolSize         int                   // Number of runner goroutines
@@ -392,6 +397,7 @@ func newCheckWorker(cfg *config.Config, workerBackend backend.WorkerBackend) *Ch
 		stats:       stats.NewProcessingStats(time.Minute, time.Minute, logger),
 		getChecker:  registry.GetChecker,
 		parseConfig: registry.ParseConfig,
+		activation:  activation,
 		// Channel-based architecture
 		poolSize:         poolSize,
 		fastLaneReserved: fastLaneReserved,
@@ -491,7 +497,7 @@ func (r *CheckWorker) registerWorker(ctx context.Context) error {
 		Slug:         identity.Slug,
 		Name:         identity.Name,
 		Region:       &region,
-		Capabilities: egressreport.Current(ctx),
+		Capabilities: backend.Capabilities(ctx, r.advertisedPluginTypes()),
 		Version:      &agentVersion,
 	}
 
@@ -540,7 +546,7 @@ func (r *CheckWorker) heartbeatLoop(ctx context.Context) {
 // process, so re-sending it every beat is just a cheap package-level read.
 func (r *CheckWorker) updateHeartbeat(ctx context.Context) {
 	if err := r.backend.Heartbeat(
-		ctx, r.getWorker().UID, egressreport.Current(ctx), version.Get().Version,
+		ctx, r.getWorker().UID, backend.Capabilities(ctx, r.advertisedPluginTypes()), version.Get().Version,
 	); err != nil {
 		r.logger.ErrorContext(ctx, "Failed to update heartbeat", "error", err)
 	}
@@ -625,6 +631,30 @@ func nextPollDelay(nextEligibleIn time.Duration) time.Duration {
 	return nextEligibleIn
 }
 
+// advertisedPluginTypes is the loaded plugin types this worker's activation
+// gate enables: what it claims and reports. An unsafe type left off on a SaaS
+// cloud node is not advertised, so its jobs never land here (spec
+// 2026-10-17-05 §19). An agent enforces its own host's config, which enables
+// every type by default. An http plugin whose service is down is not
+// advertised either (spec 2026-10-17-06), so its jobs go to nodes whose
+// service is up.
+func (r *CheckWorker) advertisedPluginTypes() []string {
+	loaded := plugins.Advertised(registry.PluginTypes())
+	if r.activation == nil {
+		return loaded
+	}
+
+	out := make([]string, 0, len(loaded))
+
+	for _, checkType := range loaded {
+		if r.activation.IsTypeEnabled(checkerdef.CheckType(checkType), nil) {
+			out = append(out, checkType)
+		}
+	}
+
+	return out
+}
+
 // fetchAndDistributeJobs claims jobs from the database and sends them to
 // runners. Returns the claim's next-eligible hint (0 when none, or when the
 // claim was skipped because no runner was free — a completion wakes the
@@ -649,8 +679,10 @@ func (r *CheckWorker) fetchAndDistributeJobs(
 	cfg := r.config.Server.CheckWorker
 	fetchStart := time.Now()
 	worker := r.getWorker()
+	// Advertise the plugin types this process loaded: a plugin-type job is
+	// only claimed by a worker that can run it (spec 2026-10-17-05 §17).
 	jobs, nextIn, err := r.backend.ClaimJobs(
-		ctx,
+		checkjobsvc.WithPluginTypes(ctx, r.advertisedPluginTypes()),
 		worker.UID,
 		worker.Region,
 		limits.Fast,
@@ -769,7 +801,8 @@ func (r *CheckWorker) handleExpressEvent(ctx context.Context, logger *slog.Logge
 	}
 
 	worker := r.getWorker()
-	jobs, err := r.backend.ClaimJobsForCheck(ctx, worker.UID, worker.Region, msg.CheckUID)
+	jobs, err := r.backend.ClaimJobsForCheck(
+		checkjobsvc.WithPluginTypes(ctx, r.advertisedPluginTypes()), worker.UID, worker.Region, msg.CheckUID)
 	if err != nil {
 		if !errors.Is(err, context.Canceled) {
 			logger.WarnContext(ctx, "express claim failed",

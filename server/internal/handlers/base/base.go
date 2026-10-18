@@ -100,6 +100,12 @@ const (
 	ErrorCodePasskeyLastAuthMethod     ErrorCode = "PASSKEY_LAST_AUTH_METHOD"
 	ErrorCodeWebAuthnNotConfigured     ErrorCode = "WEBAUTHN_NOT_CONFIGURED"
 	ErrorCodeChannelNotConnected       ErrorCode = "CHANNEL_NOT_CONNECTED"
+	// Public check tools (POST /api/v1/tools/run, spec 2026-10-14-02).
+	ErrorCodeTargetNotAllowed ErrorCode = "TARGET_NOT_ALLOWED"
+	ErrorCodeInvalidTarget    ErrorCode = "INVALID_TARGET"
+	ErrorCodeResolveFailed    ErrorCode = "RESOLVE_FAILED"
+	ErrorCodeTimeout          ErrorCode = "TIMEOUT"
+	ErrorCodeServiceBusy      ErrorCode = "SERVICE_BUSY"
 	// ErrorCodeInvalidCurrentPassword is returned by POST /api/v1/auth/change-password
 	// when the supplied currentPassword does not match the stored hash. It is
 	// deliberately distinct from INVALID_CREDENTIALS so the dashboard can point

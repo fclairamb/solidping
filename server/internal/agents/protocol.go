@@ -5,6 +5,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/plugins/protocol"
 	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
 
@@ -96,6 +97,12 @@ type ClientFrame struct {
 	// ignores it. Detection only: this never gates execution, throttles, or
 	// disconnects an agent on a stale version.
 	Version string `json:"version,omitempty"`
+	// Plugins are the plugin check types the agent loaded, with their schema
+	// (spec 2026-10-17-05 §18). Sent on the first claim of each connection
+	// only; the server stores them per org so the form and the validation of
+	// those types work while the agent is offline. Optional on both sides: an
+	// older agent omits it, an older server ignores it.
+	Plugins []protocol.TypeManifest `json:"plugins,omitempty"`
 
 	// result
 	JobUID   string         `json:"jobUid,omitempty"`

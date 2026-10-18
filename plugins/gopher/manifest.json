@@ -1,0 +1,16 @@
+{
+  "name": "gopher",
+  "version": "1.0.0",
+  "protocol": "js",
+  "entry": "check.js",
+  "types": [
+    {
+      "type": "x-gopher",
+      "description": "Check a Gopher server (RFC 1436)",
+      "labels": ["safe", "category:network"],
+      "schema": "schema.json",
+      "minPeriod": "1m",
+      "defaultPeriod": "5m"
+    }
+  ]
+}

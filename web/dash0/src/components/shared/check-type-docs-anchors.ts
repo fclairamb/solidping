@@ -34,6 +34,7 @@ export const checkTypeDocsAnchors: Partial<Record<string, string>> = {
   vnc: "vnc",
   crawl: "website-crawl",
   health: "application-health",
+  "vendor-status": "vendor-status",
   ssl: "ssltls-certificate",
   domain: "domain-expiration",
   dnsbl: "dnsbl-dns-blocklist",

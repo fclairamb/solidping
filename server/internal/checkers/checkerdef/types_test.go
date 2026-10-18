@@ -44,6 +44,7 @@ func TestAdvertisedCheckTypes(t *testing.T) {
 		{"email is counted", CheckTypeEmail, true},
 		{"crawl is counted", CheckTypeCrawl, true},
 		{"health is counted", CheckTypeHealth, true},
+		{"vendor-status is counted", CheckTypeVendorStatus, true},
 	}
 
 	for _, tt := range tests {

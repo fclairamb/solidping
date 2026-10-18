@@ -182,6 +182,7 @@ func otherManualReaderEnvVars() []string {
 		"SP_LOG_HTTP_CALLS",
 		"SP_TEST_PG_BINARIES_PATH",
 		"SP_MCP_TOOLSETS",
+		"SP_PLUGIN_FINGER_KEYS",
 	}
 }
 

@@ -137,6 +137,7 @@ import { docsHrefForType } from "@/components/shared/check-type-docs-anchors";
 import { SloCoverageChip } from "@/components/slos/slo-coverage-chip";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { NeedsResealAlert } from "@/components/checks/needs-reseal-alert";
+import { RegionWarningsAlert } from "@/components/checks/region-warnings-alert";
 import { CheckPublicationHint } from "@/components/checks/check-publication-hint";
 import { PublishOnStatusPageDialog } from "@/components/checks/publish-on-status-page-dialog";
 import { CheckSummaryCards } from "@/components/checks/check-summary-cards";
@@ -154,6 +155,7 @@ import { DnsblCard, DNSBL_OUTPUT_KEYS } from "@/components/checks/dnsbl-card";
 import { DnsChangesCard } from "@/components/checks/dns-changes-card";
 import { CrawlCard } from "@/components/checks/crawl-card";
 import { HealthCard } from "@/components/checks/health-card";
+import { VendorStatusCard } from "@/components/checks/vendor-status-card";
 import { isEvaluationOutput } from "@/components/checks/evaluation-card";
 import { isPassiveCheckType } from "@/lib/check-scheduling";
 import {
@@ -1601,6 +1603,7 @@ function CheckDetailPage() {
           location's active agents. Re-saving the credentials (Edit, above) is
           the only fix — the server cannot re-seal what it cannot read. */}
       <NeedsResealAlert needsReseal={check.needsReseal} />
+      <RegionWarningsAlert warnings={check.regionWarnings} />
 
       {/* Region outage (spec 2026-09-25-03): a region this check runs from is
           offline. Blind (every region down) means the check is not running at
@@ -2045,6 +2048,14 @@ function CheckDetailPage() {
         <HealthCard
           org={org}
           checkUid={checkUid}
+          output={
+            check.lastResult?.output as Record<string, unknown> | undefined
+          }
+        />
+      )}
+
+      {check.type === "vendor-status" && (
+        <VendorStatusCard
           output={
             check.lastResult?.output as Record<string, unknown> | undefined
           }

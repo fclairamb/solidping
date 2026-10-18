@@ -8,6 +8,7 @@
 // parallel `switch (type)` blocks kept in sync by hand.
 import type { FC } from "react";
 import type {
+  BuiltinCheckType,
   CheckConfig,
   CheckType,
   CheckTypeFieldsProps,
@@ -101,10 +102,12 @@ import {
   privateLocationModule,
 } from "./misc";
 
+import { vendorStatusModule } from "./vendor-status";
 import { healthModule, HealthAdvancedFields, healthAdvancedSummary } from "./health";
 import type { HealthState } from "./health";
 import { crawlModule, CrawlAdvancedFields, crawlAdvancedSummary } from "./crawl";
 import type { CrawlState } from "./crawl";
+import { pluginModule } from "./plugin";
 
 // Widen a concrete `CheckTypeModule<S>` to the registry's `unknown` state type.
 // The form only ever pairs a module with the `configState` it produced, so the
@@ -147,6 +150,7 @@ const modules: CheckTypeModule[] = [
   entry(vncModule),
   entry(crawlModule),
   entry(healthModule),
+  entry(vendorStatusModule),
   entry(sipModule),
   entry(jsModule),
   entry(sleepModule),
@@ -155,15 +159,32 @@ const modules: CheckTypeModule[] = [
   entry(privateLocationModule),
 ];
 
-export const checkTypeRegistry: Record<CheckType, CheckTypeModule> = (() => {
-  const reg = {} as Record<CheckType, CheckTypeModule>;
+export const checkTypeRegistry: Record<BuiltinCheckType, CheckTypeModule> = (() => {
+  const reg = {} as Record<BuiltinCheckType, CheckTypeModule>;
   for (const m of modules) {
     for (const t of m.types) {
-      reg[t] = m;
+      reg[t as BuiltinCheckType] = m;
     }
   }
   return reg;
 })();
+
+const pluginModules = new Map<string, CheckTypeModule>();
+
+/**
+ * The module of a check type: its built-in form, or for a type the dashboard
+ * does not know (a server plugin, spec 2026-10-17-05) the JSON editor.
+ */
+export function moduleFor(type: CheckType): CheckTypeModule {
+  const builtin = (checkTypeRegistry as Record<string, CheckTypeModule | undefined>)[type];
+  if (builtin) return builtin;
+  let fallback = pluginModules.get(type);
+  if (!fallback) {
+    fallback = entry(pluginModule(type));
+    pluginModules.set(type, fallback);
+  }
+  return fallback;
+}
 
 // "Authentication & secrets" (spec §1) is a collapsible section separate from
 // the always-visible protocol config. It is kept out of `CheckTypeModule` so

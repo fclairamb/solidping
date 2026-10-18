@@ -111,6 +111,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/system"
 	"github.com/fclairamb/solidping/server/internal/handlers/telegramcb"
 	"github.com/fclairamb/solidping/server/internal/handlers/testapi"
+	"github.com/fclairamb/solidping/server/internal/handlers/tools"
 	"github.com/fclairamb/solidping/server/internal/handlers/tracediag"
 	"github.com/fclairamb/solidping/server/internal/handlers/twiliocb"
 	"github.com/fclairamb/solidping/server/internal/handlers/uistate"
@@ -137,6 +138,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/middleware"
 	"github.com/fclairamb/solidping/server/internal/notifier"
 	"github.com/fclairamb/solidping/server/internal/oauth"
+	"github.com/fclairamb/solidping/server/internal/plugintypes"
 	"github.com/fclairamb/solidping/server/internal/profiler"
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
 	"github.com/fclairamb/solidping/server/internal/realtime"
@@ -207,6 +209,8 @@ type Server struct {
 	// directly, so every caller gets compression on the same terms.
 	handler http.Handler
 	config  *config.Config
+	// toolsOptions tune the public tools service (tests only: a fake DNS).
+	toolsOptions []tools.Option
 	// instanceSMSSender is the instance-level SMS sender; kept so the OVH
 	// delivery callback can be registered once the config overlay is final.
 	instanceSMSSender        smssvc.Sender
@@ -496,6 +500,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	checksSvc := checks.NewService(
 		dbService, svcList.EventNotifier, credSvc, entitlementsService)
 	checksSvc.SetDeploymentMode(cfg.Deployment.Mode)
+	checksSvc.SetActivationResolver(checkerdef.NewActivationResolver(&cfg.Checkers, cfg.Deployment.Mode))
 	checksSvc.SetEnvRefAllow(cfg.EnvRefAllowed)
 	// The demo cleanup and private-location monitor deletes notify like a
 	// user's DELETE does (spec 2026-10-08-02).
@@ -596,6 +601,33 @@ func deviceConsentRateLimitConfig(base config.RateLimitConfig) config.RateLimitC
 		TrustedProxies:    base.TrustedProxies,
 		TokenBucketsPerIP: base.TokenBucketsPerIP,
 	}
+}
+
+// toolsRunsPerMinute is the per-IP allowance for POST /api/v1/tools/run (spec
+// 2026-10-14-02). Each run makes a request to a third party on a visitor's
+// behalf, so the budget is small: it keeps port scanning through us slow.
+const toolsRunsPerMinute = 10
+
+// toolsRateLimitConfig derives the tools limiter from the server's own,
+// keeping the trusted proxy hops. Burst equals the minute's allowance, so the
+// 11th run inside a minute is refused. TokenBucketsPerIP stays 0: the route
+// is anonymous, so a made-up bearer must not buy a fresh bucket.
+func toolsRateLimitConfig(base config.RateLimitConfig) config.RateLimitConfig {
+	return config.RateLimitConfig{
+		RequestsPerMinute: toolsRunsPerMinute,
+		Burst:             toolsRunsPerMinute,
+		TrustedProxies:    base.TrustedProxies,
+	}
+}
+
+// toolsRegion is the region reported on tool runs: the node's, else the
+// check worker's.
+func (s *Server) toolsRegion() string {
+	if s.config.Node.Region != "" {
+		return s.config.Node.Region
+	}
+
+	return s.config.Server.CheckWorker.Region
 }
 
 // reportRequestsPerMinute is the per-IP allowance for POST /api/mgmt/report
@@ -1144,10 +1176,24 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	systemJobsGroup.GET("/check-jobs", checkJobsHandler.ListSystemCheckJobs)
 	systemJobsGroup.GET("/check-jobs/:uid", checkJobsHandler.GetSystemCheckJob)
 
+	// Public check tools (spec 2026-10-14-02): anonymous "run a check once"
+	// for www.solidping.io/tools. 404 unless tools.enabled. Its own strict
+	// per-IP limiter (10/min) on top of the global one; the handler adds the
+	// daily cap, and the service the egress guard (always enforcing), the
+	// concurrency cap and the per-target cache.
+	toolsLimiter := middleware.NewRateLimiter(toolsRateLimitConfig(s.config.Server.RateLimiting), ctx)
+	toolsHandler := tools.NewHandler(s.config, tools.NewService(tools.Params{
+		DeniedHosts: s.config.ToolsDeniedHosts(),
+		Region:      s.toolsRegion(),
+	}, s.toolsOptions...), toolsLimiter.ExtractIP)
+	api.NewGroup("/tools").Use(toolsLimiter.RateLimitRoute).POST("/run", toolsHandler.Run)
+
 	// Check types routes
 	checkTypesHandler := checktypes.NewHandler(checkTypesService, s.config)
-	api.GET("/check-types", checkTypesHandler.ListServerCheckTypes)      // Public, no auth
-	api.GET("/check-types/samples", checkTypesHandler.ListSampleConfigs) // Public, no auth
+	api.GET("/check-types", checkTypesHandler.ListServerCheckTypes)                          // Public, no auth
+	api.GET("/check-types/samples", checkTypesHandler.ListSampleConfigs)                     // Public, no auth
+	api.GET("/check-types/vendor-status/catalog", checkTypesHandler.ListVendorStatusCatalog) // Public, no auth
+	checkTypesHandler.SetEgressGuard(func() *egress.Guard { return s.services.EgressGuard })
 	// Generated JSON Schemas for each check type's `config` object — public and
 	// auth-free like /check-types, because they describe this build rather than
 	// any organization's data. Read-only, and DESCRIPTIVE ONLY: validation stays
@@ -1156,11 +1202,16 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	api.GET("/checks/schema/:type", checkTypesHandler.GetConfigSchema)
 	orgCheckTypes := orgGroup("/orgs/:org/check-types")
 	orgCheckTypes.GET("", checkTypesHandler.ListOrgCheckTypes)
+	// The schema of a server type, or of a plugin type this org's agents
+	// reported (spec 2026-10-17-05 §18). Org-scoped, unlike /checks/schema.
+	orgCheckTypes.GET("/:type/schema", checkTypesHandler.GetOrgConfigSchema)
+	checkTypesHandler.SetOrgPluginTypes(plugintypes.New(s.dbService.DB()))
 
 	// Check routes (authentication required)
 	checksService := checks.NewService(
 		s.dbService, s.services.EventNotifier, s.services.Credentials, s.services.Entitlements)
 	checksService.SetDeploymentMode(s.config.Deployment.Mode)
+	checksService.SetActivationResolver(activationResolver)
 	checksService.SetEnvRefAllow(s.config.EnvRefAllowed)
 	checksHandler := checks.NewHandler(checksService, s.config)
 	orgChecks := orgGroup("/orgs/:org/checks")
@@ -1170,6 +1221,9 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// segment is never captured as a check UID.
 	orgChecks.GET("/stats", checksHandler.GetCheckStats)
 	orgChecks.POST("", checksHandler.CreateCheck)
+	// Components of a vendor status page, for the check form. Behind the same
+	// global rate limiter as /checks/validate (neither has a dedicated one).
+	orgChecks.POST("/vendor-status/components", checkTypesHandler.ListVendorStatusComponents)
 	// Bulk "Switch to automatic placement" (spec 2026-09-25-06). A literal
 	// segment, registered ahead of the "/:checkUid" routes.
 	orgChecks.POST("/auto-placement", checksHandler.SwitchToAutoPlacement)
@@ -2625,6 +2679,9 @@ func isPublicCORSPath(path string) bool {
 		"/embed/",
 		statuspageassets.PublicPathPrefix,
 		"/api/v1/status-pages/",
+		// Public check tools, called from www.solidping.io in the browser
+		// (spec 2026-10-14-02).
+		"/api/v1/tools/",
 	}
 
 	for _, prefix := range prefixes {

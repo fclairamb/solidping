@@ -187,6 +187,7 @@ export interface Check {
     | "prometheus"
     | "crawl"
     | "health"
+    | "vendor-status"
     | "sleep";
   config?: Record<string, unknown>;
   /**
@@ -206,6 +207,13 @@ export interface Check {
    * Undefined when the check targets no private location.
    */
   needsReseal?: boolean;
+  /**
+   * Detail responses only, recomputed on every read: why the check does not
+   * run in some of its regions right now. Today REGION_NO_PLUGIN, a plugin
+   * check in a region whose live workers did not load the plugin (spec
+   * 2026-10-17-05 §17). Undefined when there is none.
+   */
+  regionWarnings?: { name: string; message: string; code?: string }[];
   /**
    * Where the check runs. For a pinned check, the user's explicit list; for an
    * automatically placed one, the CURRENT placement, chosen by the scheduler
@@ -408,6 +416,7 @@ export interface CreateCheckRequest {
     | "prometheus"
     | "crawl"
     | "health"
+    | "vendor-status"
     | "sleep";
   config: Record<string, unknown>;
   /** An explicit list pins the check. Omit to let it be placed automatically. */
@@ -5154,6 +5163,27 @@ export interface CheckTypeInfo {
    * (spec 2026-09-11-01).
    */
   secretFields?: string[];
+  /** Set on a type loaded from a server plugin (spec 2026-10-17-05). */
+  plugin?: { name: string; version: string };
+}
+
+/** A check type's config JSON Schema (GET /api/v1/orgs/:org/check-types/:type/schema). */
+export type CheckConfigSchema = Record<string, unknown>;
+
+/**
+ * Reads the schema through the org route, which also serves the plugin types
+ * the org's private-location agents reported (spec 2026-10-17-05 §18).
+ */
+export function useCheckConfigSchema(org: string, checkType: string, enabled = true) {
+  return useQuery({
+    queryKey: ["check-types", org, "schema", checkType],
+    queryFn: () =>
+      apiFetch<CheckConfigSchema>(
+        `/api/v1/orgs/${encodeURIComponent(org)}/check-types/${encodeURIComponent(checkType)}/schema`,
+      ),
+    staleTime: 5 * 60 * 1000,
+    enabled: enabled && !!org && !!checkType,
+  });
 }
 
 export function useCheckTypes(org: string) {
@@ -7187,6 +7217,12 @@ export interface EntitlementsUsage {
    * persistent counter, not a live count — sent messages cannot be un-sent.
    */
   whatsappThisMonth: number;
+  /**
+   * SMS / voice calls sent on the instance's credentials in the current UTC
+   * month (bring-your-own Twilio sends are not counted).
+   */
+  smsThisMonth: number;
+  callsThisMonth: number;
   /** Count of live service-level objectives. */
   slos: number;
   /**

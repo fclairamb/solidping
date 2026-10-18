@@ -11,6 +11,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/configregistry"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/plugins"
 	"github.com/fclairamb/solidping/server/internal/secretref"
 	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
@@ -165,7 +166,47 @@ func ValidateDocument(doc *ExportDocument) []DocumentIssue {
 	// is assumed to already exist — which is the assumption that lets a
 	// `secrets: stripped` export validate at all. ValidateDocumentForOrg knows
 	// better and passes the real predicate.
-	return validateDocumentAgainst(doc, func(string) bool { return true })
+	return validateDocumentAgainst(doc, func(string) bool { return true }, docTypes{})
+}
+
+// docTypes resolves a document's check types: the server's own, plus the
+// agent-reported types of the target org when remote is set (spec
+// 2026-10-17-05 §18). Offline, remote is nil and only server types resolve.
+type docTypes struct {
+	remote func(checkType string) *plugins.RemoteType
+}
+
+func (d docTypes) agentType(checkType string) *plugins.RemoteType {
+	if d.remote == nil || configregistry.IsKnownType(checkerdef.CheckType(checkType)) {
+		return nil
+	}
+
+	return d.remote(checkType)
+}
+
+func (d docTypes) known(checkType string) bool {
+	return configregistry.IsKnownType(checkerdef.CheckType(checkType)) || d.agentType(checkType) != nil
+}
+
+func (d docTypes) validateSpec(checkType string, spec *checkerdef.CheckSpec) error {
+	if remote := d.agentType(checkType); remote != nil {
+		return remote.ValidateSpec(spec) //nolint:wrapcheck // a ConfigError the caller renders as is
+	}
+
+	return configregistry.ValidateSpec(checkerdef.CheckType(checkType), spec) //nolint:wrapcheck // same
+}
+
+//nolint:ireturn // config factory
+func (d docTypes) parseConfig(checkType string) (checkerdef.Config, bool) {
+	if cfg, ok := configregistry.ParseConfig(checkerdef.CheckType(checkType)); ok {
+		return cfg, true
+	}
+
+	if remote := d.agentType(checkType); remote != nil {
+		return remote.NewConfig(), true
+	}
+
+	return nil, false
 }
 
 // validateDocumentAgainst is ValidateDocument with one piece of knowledge it
@@ -179,7 +220,7 @@ func ValidateDocument(doc *ExportDocument) []DocumentIssue {
 // the secret really is absent, and /import really will refuse it. Suppressing
 // the complaint there would make this endpoint promise something the write path
 // does not honor, which is worse than no validator at all.
-func validateDocumentAgainst(doc *ExportDocument, exists func(slug string) bool) []DocumentIssue {
+func validateDocumentAgainst(doc *ExportDocument, exists func(slug string) bool, types docTypes) []DocumentIssue {
 	issues := validateDocumentShape(doc)
 	if len(doc.Checks) == 0 {
 		return issues
@@ -199,7 +240,7 @@ func validateDocumentAgainst(doc *ExportDocument, exists func(slug string) bool)
 		// The suppression applies only where the merge it stands in for will
 		// actually happen: on a check that already exists.
 		mergeable := stripped && exists(doc.Checks[i].Slug)
-		issues = append(issues, validateSingleCheck(&doc.Checks[i], i, seenSlugs, mergeable)...)
+		issues = append(issues, validateSingleCheck(&doc.Checks[i], i, seenSlugs, mergeable, types)...)
 	}
 
 	issues = append(issues, validateDependencyGraph(doc.Checks, knownSlugs)...)
@@ -249,7 +290,7 @@ func validateDocumentShape(doc *ExportDocument) []DocumentIssue {
 // uniqueness, type, config, formats) — everything except the dependency
 // graph, which needs the whole document at once.
 func validateSingleCheck(
-	check *ExportCheck, index int, seenSlugs map[string]struct{}, secretsStripped bool,
+	check *ExportCheck, index int, seenSlugs map[string]struct{}, secretsStripped bool, types docTypes,
 ) []DocumentIssue {
 	var issues []DocumentIssue
 
@@ -296,7 +337,7 @@ func validateSingleCheck(
 		})
 	}
 
-	issues = append(issues, validateCheckType(where, check, secretsStripped)...)
+	issues = append(issues, validateCheckType(where, check, secretsStripped, types)...)
 	issues = append(issues, validateCheckFormats(where, check)...)
 
 	return issues
@@ -305,7 +346,7 @@ func validateSingleCheck(
 // validateCheckType validates the check's type and, via the registered
 // checker's own offline Validate, its per-type config keys — reusing the
 // exact code path the live create/update/live-validate handlers use.
-func validateCheckType(where string, check *ExportCheck, secretsStripped bool) []DocumentIssue {
+func validateCheckType(where string, check *ExportCheck, secretsStripped bool, types docTypes) []DocumentIssue {
 	var issues []DocumentIssue
 
 	if check.Type == "" {
@@ -317,7 +358,7 @@ func validateCheckType(where string, check *ExportCheck, secretsStripped bool) [
 		return issues
 	}
 
-	if !configregistry.IsKnownType(checkerdef.CheckType(check.Type)) {
+	if !types.known(check.Type) {
 		issues = append(issues, DocumentIssue{
 			Where: where, Field: fieldType, Code: CodeUnknownType,
 			Message: fmt.Sprintf("unsupported check type %q", check.Type),
@@ -352,10 +393,8 @@ func validateCheckType(where string, check *ExportCheck, secretsStripped bool) [
 		return issues
 	}
 
-	if err := configregistry.ValidateSpec(
-		checkerdef.CheckType(check.Type), &checkerdef.CheckSpec{Config: configCopy},
-	); err != nil {
-		if !strippedSecretComplaint(err, check, secretsStripped) {
+	if err := types.validateSpec(check.Type, &checkerdef.CheckSpec{Config: configCopy}); err != nil {
+		if !strippedSecretComplaint(err, check, secretsStripped, types) {
 			issues = append(issues, configIssue(where, err))
 		}
 	}
@@ -367,7 +406,7 @@ func validateCheckType(where string, check *ExportCheck, secretsStripped bool) [
 
 	// Credential/status-field checks run on the caller's original config —
 	// never on configCopy, which a checker may have mutated.
-	issues = append(issues, validateNoInlinedCredentials(where, check.Type, check.Config)...)
+	issues = append(issues, validateNoInlinedCredentials(where, check.Type, check.Config, types)...)
 
 	for _, err := range validateVarRefs(check.Config) {
 		issues = append(issues, configIssue(where, err))
@@ -396,7 +435,7 @@ func validateCheckType(where string, check *ExportCheck, secretsStripped bool) [
 // genuinely absent from the document. A document that DOES carry the key keeps
 // every error about it — including an explicit empty value, which clears the
 // secret and really does make the config incomplete.
-func strippedSecretComplaint(err error, check *ExportCheck, secretsStripped bool) bool {
+func strippedSecretComplaint(err error, check *ExportCheck, secretsStripped bool, types docTypes) bool {
 	if !secretsStripped {
 		return false
 	}
@@ -410,7 +449,7 @@ func strippedSecretComplaint(err error, check *ExportCheck, secretsStripped bool
 		return false
 	}
 
-	for _, key := range exportStrippedKeys(check.Type) {
+	for _, key := range exportStrippedKeys(check.Type, types) {
 		if key == configErr.Parameter {
 			return true
 		}
@@ -459,8 +498,8 @@ func deepCopyConfig(config map[string]any) (map[string]any, error) {
 // check type, by TYPE alone (no row): the declared secrets plus the
 // export-redacted fields. hiddenExportConfigKeys is the row-aware version the
 // differ uses; this one is what an offline validator can know.
-func exportStrippedKeys(checkType string) []string {
-	cfg, ok := configregistry.ParseConfig(checkerdef.CheckType(checkType))
+func exportStrippedKeys(checkType string, types docTypes) []string {
+	cfg, ok := types.parseConfig(checkType)
 	if !ok {
 		return nil
 	}
@@ -490,13 +529,13 @@ func exportStrippedKeys(checkType string) []string {
 //
 // A value that is a ${env:}/${param:} reference is never flagged: that is the
 // exact thing the message asks the operator to do.
-func validateNoInlinedCredentials(where, checkType string, config map[string]any) []DocumentIssue {
+func validateNoInlinedCredentials(where, checkType string, config map[string]any, types docTypes) []DocumentIssue {
 	var issues []DocumentIssue
 
 	declared := map[string]struct{}{}
-	knownType := configregistry.IsKnownType(checkerdef.CheckType(checkType))
+	knownType := types.known(checkType)
 
-	for _, key := range exportStrippedKeys(checkType) {
+	for _, key := range exportStrippedKeys(checkType, types) {
 		declared[key] = struct{}{}
 	}
 

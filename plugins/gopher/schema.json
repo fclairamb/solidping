@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Gopher check",
+  "description": "Connects to a Gopher server, sends a selector and reads the menu or document it returns.",
+  "type": "object",
+  "properties": {
+    "host": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Gopher server host name or IP address, e.g. gopher.acme.com"
+    },
+    "port": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535,
+      "default": 70,
+      "description": "TCP port"
+    },
+    "selector": {
+      "type": "string",
+      "default": "",
+      "description": "Selector to request. Empty asks for the root menu."
+    },
+    "contains": {
+      "type": "string",
+      "description": "Text the response must contain."
+    },
+    "timeout": {
+      "type": "string",
+      "description": "Run budget as a duration, e.g. 10s (at most 30s)."
+    }
+  },
+  "required": ["host"],
+  "additionalProperties": false
+}

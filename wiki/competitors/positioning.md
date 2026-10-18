@@ -54,11 +54,9 @@ Objections competitors or skeptics raise in comparisons — pre-think the answer
   region — strictly more flexible than a single-region SaaS. Make this explicit in
   EU copy.
 - **"Pulsetic tells me when Stripe or GitHub is down — SolidPing doesn't."** —
-  True, and it is the one capability gap that runs the wrong way. Dependency
-  monitoring (4,300+ third-party status pages) is not a probe, so protocol breadth
-  doesn't answer it. Two honest replies: it is email-only and read-only on their
-  side, and it is a small enough feature that it belongs on our roadmap rather than
-  in a rebuttal. See [pulsetic.md](pulsetic.md).
+  Partly true. The `vendor-status` check type covers about 40 popular providers and any
+  Statuspage v2 URL with any notification channel, but Pulsetic's catalog is 4,300+
+  services. Their monitor is email-only and read-only. See [pulsetic.md](pulsetic.md).
 - **"Pulsetic has 13 monitoring types too."** — Thirteen marketing names over six
   probe families (HTTP, ICMP, TCP, SSL, domain, heartbeat). No DNS, SMTP, IMAP, SSH,
   FTP, gRPC, WebSocket, UDP, database, queue or SNMP. Our 40 is derivable from the

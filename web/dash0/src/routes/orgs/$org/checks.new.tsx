@@ -71,10 +71,7 @@ export const Route = createFileRoute("/orgs/$org/checks/new")({
   validateSearch: (search: Record<string, unknown>) => ({
     checkType:
       typeof search.checkType === "string" ? search.checkType : undefined,
-    checkPeriod:
-      typeof search.checkPeriod === "string"
-        ? parseInt(search.checkPeriod)
-        : undefined,
+    checkPeriod: toInt(search.checkPeriod),
     checkName:
       typeof search.checkName === "string" ? search.checkName : undefined,
     checkSlug:
@@ -83,7 +80,7 @@ export const Route = createFileRoute("/orgs/$org/checks/new")({
     httpMethod:
       typeof search.httpMethod === "string" ? search.httpMethod : undefined,
     host: typeof search.host === "string" ? search.host : undefined,
-    port: typeof search.port === "string" ? parseInt(search.port) : undefined,
+    port: toInt(search.port),
     url: typeof search.url === "string" ? search.url : undefined,
     domain: typeof search.domain === "string" ? search.domain : undefined,
     username: typeof search.username === "string" ? search.username : undefined,

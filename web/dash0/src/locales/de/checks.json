@@ -489,7 +489,9 @@
     "js": "JavaScript",
     "jsDescription": "Eigene JavaScript-Überwachungsskripte ausführen",
     "prometheus": "Prometheus",
-    "prometheusDescription": "Bei Prometheus-Metrikschwellen alarmieren"
+    "prometheusDescription": "Bei Prometheus-Metrikschwellen alarmieren",
+    "vendor-status": "Anbieter-Statusseite",
+    "vendor-statusDescription": "Alarm, wenn die Statusseite eines Anbieters (GitHub, Cloudflare, OpenAI...) einen Ausfall meldet"
   },
   "dnsChanges": {
     "detect": "Änderungen erkennen",
@@ -683,6 +685,9 @@
       "title": "Zugangsdaten müssen für diesen privaten Standort neu versiegelt werden",
       "description": "Diese Prüfung läuft an einem privaten Standort und ihre gespeicherten Zugangsdaten sind für andere Agenten versiegelt als die derzeit aktiven — seit dem Speichern wurde ein Agent hinzugefügt oder widerrufen. Die Agenten können sie daher nicht entschlüsseln und die Prüfung schlägt fehl. SolidPing kann sie nicht selbst neu versiegeln (es kann sie ebenfalls nicht lesen): Geben Sie die Zugangsdaten erneut ein und speichern Sie sie.",
       "action": "Zugangsdaten neu speichern"
+    },
+    "regionWarnings": {
+      "title": "Dieser Check läuft nicht in allen Regionen"
     },
     "configuration": "Konfiguration",
     "configurationDescription": "Einstellungen und Parameter der Prüfung",
@@ -1465,7 +1470,11 @@
     "crawlMaxPagesRange": "Die Seitenzahl muss zwischen 1 und {{max}} liegen",
     "crawlMaxRunRange": "Die maximale Laufzeit muss zwischen {{min}} und {{max}} Minuten liegen",
     "healthMaxAge": "Das Höchstalter muss eine Dauer wie 10m sein (0 deaktiviert)",
-    "aiContractRequired": "Der Vertrag braucht mindestens eine Zeile, wenn ein Prompt gesetzt ist"
+    "aiContractRequired": "Der Vertrag braucht mindestens eine Zeile, wenn ein Prompt gesetzt ist",
+    "vendorStatusUrl": "Die URL der Statusseite ist erforderlich",
+    "vendorStatusHttps": "Die URL der Statusseite muss mit https:// beginnen",
+    "pluginInvalidJson": "Die Konfiguration ist kein gültiges JSON: {{detail}}",
+    "pluginNotAnObject": "Die Konfiguration muss ein JSON-Objekt sein."
   },
   "health": {
     "format": "Health-Format",
@@ -1679,5 +1688,24 @@
       "ttfb": "Serverantwort (TTFB)",
       "download": "Datenübertragung"
     }
+  },
+  "vendorStatus": {
+    "vendor": "Anbieter",
+    "search": "Anbieter suchen",
+    "custom": "Eigene URL",
+    "url": "URL der Statusseite",
+    "urlHelp": "Wurzel einer Statuspage-v2-Statusseite (nur https), zum Beispiel https://status.acme.com.",
+    "components": "Komponenten",
+    "componentsHelp": "Nichts auswählen, um die ganze Seite zu überwachen.",
+    "loading": "Komponenten werden geladen...",
+    "componentsError": "Diese Statusseite konnte nicht gelesen werden (ist es eine Statuspage-v2-Seite?).",
+    "detail": {
+      "title": "Störungen des Anbieters",
+      "noIncidents": "Der Anbieter meldet keine aktive Störung."
+    }
+  },
+  "plugin": {
+    "configLabel": "Konfiguration (JSON)",
+    "configHelp": "Dieser Prüfungstyp stammt aus einem Server-Plugin. Bearbeiten Sie die Konfiguration als JSON; sie wird gegen das Schema des Plugins geprüft."
   }
 }

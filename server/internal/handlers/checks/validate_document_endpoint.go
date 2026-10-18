@@ -79,7 +79,7 @@ func (s *Service) ValidateDocumentForOrg(
 	// to assume the former; here we can tell.
 	exists := s.existingSlugPredicate(ctx, org.UID)
 
-	issues := validateDocumentAgainst(doc, exists)
+	issues := validateDocumentAgainst(doc, exists, s.documentTypes(ctx, org.UID))
 
 	issues = append(issues, s.secretRefIssues(ctx, org.UID, doc)...)
 

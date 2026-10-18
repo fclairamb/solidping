@@ -64,6 +64,8 @@ tags:
     description: Available monitoring regions
   - name: Check Types
     description: Check type catalog and sample configurations
+  - name: Tools
+    description: Public, anonymous one-off checks (website down, SSL, DNS lookup, port checker)
   - name: On-Call Schedules
     description: On-call schedules, overrides, rotation preview, and iCal feeds
   - name: Escalation Policies
@@ -7555,6 +7557,77 @@ paths:
               schema:
                 $ref: "#/components/schemas/CheckTypeListResponse"
 
+  /api/v1/tools/run:
+    post:
+      tags: [Tools]
+      summary: Run one check once, anonymously
+      description: >-
+        Runs an `http` (GET), `ssl`, `dns` or `tcp` check once against a
+        public target and returns the normalised result. Nothing is stored.
+        Disabled (404) unless `SP_TOOLS_ENABLED=true` (system parameter
+        `tools.enabled`). Every run goes through an egress guard that refuses
+        private, loopback, link-local and reserved addresses, whatever
+        `SP_EGRESS_ALLOW_PRIVATE` says, as well as the instance's own hosts.
+        Limits: 10 runs a minute and 100 a day per client IP, 16 runs in
+        flight server-wide, 10 s per run, 5 redirects for `http`. A result is
+        cached 60 s per (type, target, options). Error codes:
+        `INVALID_TARGET` (400), `TARGET_NOT_ALLOWED` (403), `RESOLVE_FAILED`
+        (422), `RATE_LIMITED` (429), `SERVICE_BUSY` (503, with
+        `Retry-After`), `TIMEOUT` (504).
+      operationId: runTool
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ToolRunRequest"
+      responses:
+        "200":
+          description: The run's result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ToolRunResult"
+        "400":
+          description: Invalid JSON body or target (`VALIDATION_ERROR`, `INVALID_TARGET`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: The target is not allowed (`TARGET_NOT_ALLOWED`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          description: The target name could not be resolved (`RESOLVE_FAILED`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Per-IP limit reached (`RATE_LIMITED`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Too many runs in flight (`SERVICE_BUSY`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "504":
+          description: The target did not answer in time (`TIMEOUT`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /api/v1/check-types/samples:
     get:
       tags: [Check Types]
@@ -7573,6 +7646,76 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CheckTypeSamplesListResponse"
+
+  /api/v1/check-types/vendor-status/catalog:
+    get:
+      tags: [Check Types]
+      summary: List the vendor status pages the vendor-status check offers
+      description: Public catalog of well-known Statuspage v2 providers (slug, name, url, category).
+      operationId: listVendorStatusCatalog
+      responses:
+        "200":
+          description: The catalog
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required: [slug, name, url, category]
+                      properties:
+                        slug: {type: string}
+                        name: {type: string}
+                        url: {type: string}
+                        category: {type: string}
+
+  /api/v1/orgs/{org}/checks/vendor-status/components:
+    post:
+      tags: [Checks]
+      summary: List the components of a vendor status page
+      description: >-
+        Fetches `<url>/api/v2/summary.json` through the egress guard and returns
+        its components (group headers left out). Used by the vendor-status check form.
+      operationId: listVendorStatusComponents
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              properties:
+                url: {type: string}
+      responses:
+        "200":
+          description: The components
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, name]
+                      properties:
+                        id: {type: string}
+                        name: {type: string}
+                        group: {type: string}
+        "400":
+          description: Invalid URL
+        "502":
+          description: The status page could not be read as a Statuspage v2 summary
 
   /api/v1/checks/schema:
     get:
@@ -7630,6 +7773,42 @@ paths:
                 type: object
                 description: A JSON Schema document (draft 2020-12)
                 additionalProperties: true
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/check-types/{type}/schema:
+    get:
+      tags: [Check Types]
+      summary: Get a check type's config JSON Schema, org plugin types included
+      description: |
+        Same document as `GET /api/v1/checks/schema/{type}`, plus the plugin
+        check types (`x-` prefix) this organization's private-location agents
+        reported. Those are stored per organization, so their schema is served
+        while the agent is offline, and never to another organization. A plugin
+        schema is the validator of its type.
+      operationId: getOrgCheckConfigSchema
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: type
+          in: path
+          required: true
+          description: Check type, built-in or `x-` plugin type
+          schema:
+            type: string
+          example: x-gopher
+      responses:
+        "200":
+          description: The check type's config schema
+          content:
+            application/schema+json:
+              schema:
+                type: object
+                description: A JSON Schema document (draft 2020-12)
+                additionalProperties: true
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -9941,6 +10120,75 @@ components:
         body:
           type: string
 
+    ToolRunRequest:
+      type: object
+      required: [type, target]
+      properties:
+        type:
+          type: string
+          enum: [http, ssl, dns, tcp]
+        target:
+          type: string
+          description: >-
+            `http`: a URL (`https://` is assumed without a scheme). `ssl`:
+            `host`, `host:port` or a URL (port 443 by default). `tcp`:
+            `host:port`, port 1 to 65535. `dns`: a domain name.
+          example: https://example.com
+        options:
+          type: object
+          properties:
+            record:
+              type: string
+              description: DNS record type (dns only)
+              enum: [A, AAAA, CNAME, MX, TXT, NS, CAA]
+              default: A
+
+    ToolRunResult:
+      type: object
+      required: [type, target, status, durationMs, checkedAt, cached, details, monitor]
+      properties:
+        type:
+          type: string
+          enum: [http, ssl, dns, tcp]
+        target:
+          type: string
+          description: The normalised target (a URL for http, host:port for ssl and tcp, the name for dns)
+        status:
+          type: string
+          description: The check status (up, down, warning, error)
+        durationMs:
+          type: integer
+          format: int64
+        checkedAt:
+          type: string
+          format: date-time
+        region:
+          type: string
+          description: Region of the node that ran the check
+        cached:
+          type: boolean
+          description: True when the result was served from the 60 s cache
+        details:
+          type: object
+          additionalProperties: true
+          description: >-
+            Per type. `http`: statusCode, finalUrl, redirects, responseTimeMs,
+            httpProtocol, certNotAfter and certDaysLeft over HTTPS. `ssl`:
+            issuer, subject, notBefore, notAfter, daysLeft, sans, chainValid,
+            tlsVersion. `dns`: record, records. `tcp`: connected,
+            connectTimeMs. `error` carries the failure reason when there is
+            one.
+        monitor:
+          type: object
+          required: [checkType, query]
+          properties:
+            checkType:
+              type: string
+            query:
+              type: string
+              description: Query string for the dashboard's /checks/new form, to monitor this target
+              example: checkName=example.com&checkType=http&httpUrl=https%3A%2F%2Fexample.com
+
     Error:
       type: object
       required: [title, code]
@@ -10981,7 +11229,9 @@ components:
           type: string
           # Every registered check type (checkerdef.ListCheckTypes), pinned by
           # TestCheckTypeEnumsMatchTheRegistry.
-          enum: [http, tcp, icmp, dns, heartbeat, email, domain, ssl, smtp, udp, ssh, pop3, imap, websocket, postgresql, ftp, sftp, js, mysql, redis, mongodb, mssql, oracle, clickhouse, grpc, kafka, mqtt, a2s, minecraft, rabbitmq, snmp, docker, browser, freebox_line, dnsbl, sip, kubernetes, ntp, rdp, vnc, prometheus, private-location, crawl, health, sleep]
+          enum: [http, tcp, icmp, dns, heartbeat, email, domain, ssl, smtp, udp, ssh, pop3, imap, websocket, postgresql, ftp, sftp, js, mysql, redis, mongodb, mssql, oracle, clickhouse, grpc, kafka, mqtt, a2s, minecraft, rabbitmq, snmp, docker, browser, freebox_line, dnsbl, sip, kubernetes, ntp, rdp, vnc, prometheus, private-location, crawl, health, vendor-status, sleep]
+          description: >-
+            Check type. Built-in check types are enumerated. A deployment may also accept and return plugin check types, always `x-` prefixed (e.g. `x-gopher`, spec 2026-10-17-05): they are not listed because they depend on the server's plugin directory and on the organization's agents, so a client must accept an unlisted `x-` value.
         config:
           type: object
           description: >-
@@ -11037,6 +11287,16 @@ components:
             was written and will run. Today the only one is "you pinned
             `ipVersion: ipv6` in a region whose live workers report no IPv6
             egress". Absent on read paths.
+          items:
+            $ref: "#/components/schemas/ValidationErrorField"
+        regionWarnings:
+          type: array
+          readOnly: true
+          description: >-
+            Detail responses only (GET of one check), recomputed on every read:
+            why the check does not run in some of its regions right now. Today
+            `REGION_NO_PLUGIN`, a plugin-type check in a region whose live
+            workers did not load the plugin. Absent when there is none.
           items:
             $ref: "#/components/schemas/ValidationErrorField"
         enabled:
@@ -11619,8 +11879,9 @@ components:
           type: string
           # Every registered check type (checkerdef.ListCheckTypes), pinned by
           # TestCheckTypeEnumsMatchTheRegistry.
-          enum: [http, tcp, icmp, dns, heartbeat, email, domain, ssl, smtp, udp, ssh, pop3, imap, websocket, postgresql, ftp, sftp, js, mysql, redis, mongodb, mssql, oracle, clickhouse, grpc, kafka, mqtt, a2s, minecraft, rabbitmq, snmp, docker, browser, freebox_line, dnsbl, sip, kubernetes, ntp, rdp, vnc, prometheus, private-location, crawl, health, sleep]
-          description: Check type (auto-inferred from URL if not provided)
+          enum: [http, tcp, icmp, dns, heartbeat, email, domain, ssl, smtp, udp, ssh, pop3, imap, websocket, postgresql, ftp, sftp, js, mysql, redis, mongodb, mssql, oracle, clickhouse, grpc, kafka, mqtt, a2s, minecraft, rabbitmq, snmp, docker, browser, freebox_line, dnsbl, sip, kubernetes, ntp, rdp, vnc, prometheus, private-location, crawl, health, vendor-status, sleep]
+          description: >-
+            Check type (auto-inferred from URL if not provided). Built-in check types are enumerated. A deployment may also accept and return plugin check types, always `x-` prefixed (e.g. `x-gopher`, spec 2026-10-17-05): they are not listed because they depend on the server's plugin directory and on the organization's agents, so a client must accept an unlisted `x-` value.
         config:
           type: object
           description: >-
@@ -11975,8 +12236,9 @@ components:
           type: string
           # Every registered check type (checkerdef.ListCheckTypes), pinned by
           # TestCheckTypeEnumsMatchTheRegistry.
-          enum: [http, tcp, icmp, dns, heartbeat, email, domain, ssl, smtp, udp, ssh, pop3, imap, websocket, postgresql, ftp, sftp, js, mysql, redis, mongodb, mssql, oracle, clickhouse, grpc, kafka, mqtt, a2s, minecraft, rabbitmq, snmp, docker, browser, freebox_line, dnsbl, sip, kubernetes, ntp, rdp, vnc, prometheus, private-location, crawl, health, sleep]
-          description: Check type (auto-inferred from URL if not provided)
+          enum: [http, tcp, icmp, dns, heartbeat, email, domain, ssl, smtp, udp, ssh, pop3, imap, websocket, postgresql, ftp, sftp, js, mysql, redis, mongodb, mssql, oracle, clickhouse, grpc, kafka, mqtt, a2s, minecraft, rabbitmq, snmp, docker, browser, freebox_line, dnsbl, sip, kubernetes, ntp, rdp, vnc, prometheus, private-location, crawl, health, vendor-status, sleep]
+          description: >-
+            Check type (auto-inferred from URL if not provided). Built-in check types are enumerated. A deployment may also accept and return plugin check types, always `x-` prefixed (e.g. `x-gopher`, spec 2026-10-17-05): they are not listed because they depend on the server's plugin directory and on the organization's agents, so a client must accept an unlisted `x-` value.
         config:
           type: object
           description: >-
@@ -18072,6 +18334,18 @@ components:
           description: >-
             Outbound WhatsApp template messages sent in the current UTC month.
             A persistent counter, not a live count.
+        smsThisMonth:
+          type: integer
+          description: >-
+            SMS sent on the instance's credentials in the current UTC month,
+            counted against maxSmsPerMonth. Bring-your-own Twilio sends are not
+            counted. A persistent counter, not a live count.
+        callsThisMonth:
+          type: integer
+          description: >-
+            Voice calls placed on the instance's credentials in the current UTC
+            month, counted against maxCallsPerMonth. Bring-your-own Twilio calls
+            are not counted. A persistent counter, not a live count.
 
     EntitlementsChecksPerMinute:
       type: object

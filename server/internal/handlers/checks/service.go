@@ -442,6 +442,17 @@ func formatPeriodBound(bound time.Duration) string {
 func validatePeriodForType(
 	checkType string, period time.Duration, internal bool, config checkerdef.Config,
 ) error {
+	meta := checkerdef.GetCheckTypeMeta(checkerdef.CheckType(checkType))
+
+	return validatePeriodBounds(checkType, period, internal, config, meta)
+}
+
+// validatePeriodBounds is validatePeriodForType with the type's metadata
+// given: an agent-reported type's bounds come from its manifest, not from
+// the server's registry (spec 2026-10-17-05 §18).
+func validatePeriodBounds(
+	checkType string, period time.Duration, internal bool, config checkerdef.Config, meta *checkerdef.CheckTypeMeta,
+) error {
 	if period == 0 || internal || checkerdef.CheckType(checkType) == checkerdef.CheckTypeSleep {
 		return nil
 	}
@@ -450,7 +461,7 @@ func validatePeriodForType(
 
 	var maxPeriod time.Duration
 
-	if meta := checkerdef.GetCheckTypeMeta(checkerdef.CheckType(checkType)); meta != nil {
+	if meta != nil {
 		if meta.MinPeriod > 0 {
 			minPeriod = meta.MinPeriod
 		}
@@ -622,6 +633,10 @@ type Service struct {
 	// `${env:}` reference — the secure default for an unwired Service. See
 	// SetEnvRefAllow.
 	envRefAllow secretref.EnvAllowFunc
+	// activation is the server-level check-type gate. Writes of a plugin type
+	// it disables are refused on cloud regions (spec 2026-10-17-05 §19). nil
+	// = not wired: no plugin type is refused. See SetActivationResolver.
+	activation *checkerdef.ActivationResolver
 }
 
 // StatusPageReconciler re-materializes the org's selector-driven status page
@@ -646,6 +661,12 @@ func (s *Service) SetStatusPageReconciler(reconciler StatusPageReconciler) {
 // Optional: an unwired Service (most unit tests) behaves like self-hosted.
 func (s *Service) SetDeploymentMode(mode string) {
 	s.deploymentMode = mode
+}
+
+// SetActivationResolver wires the server-level check-type gate, so
+// create/update/import refuse a plugin type it disables on cloud regions.
+func (s *Service) SetActivationResolver(resolver *checkerdef.ActivationResolver) {
+	s.activation = resolver
 }
 
 // SetEnvRefAllow wires the operator allowlist of `${env:NAME}` names
@@ -903,6 +924,11 @@ type CheckResponse struct {
 	// a region whose live workers report no IPv6 egress" (spec 2026-08-15-11).
 	// Never populated on read paths, and never a reason to reject a write.
 	Warnings []base.ValidationErrorField `json:"warnings,omitempty"`
+	// RegionWarnings (detail responses only) says why the check does not run
+	// in some of its regions right now. Today: a plugin-type check in a region
+	// whose live workers did not load the plugin (spec 2026-10-17-05 §17,
+	// code REGION_NO_PLUGIN). Recomputed on every read, unlike Warnings.
+	RegionWarnings []base.ValidationErrorField `json:"regionWarnings,omitempty"`
 	// Regions is where the check runs: the user's list for a pinned check,
 	// the current placement for an automatic one.
 	Regions []string `json:"regions,omitempty"`
@@ -1822,6 +1848,11 @@ func (s *Service) GetCheck(
 	// Detail-only: it costs an agent lookup per private region.
 	response.NeedsReseal = s.computeNeedsReseal(ctx, check)
 
+	// A plugin-type check whose regions have no worker that loaded the
+	// plugin never runs there (spec 2026-10-17-05 §17). Detail-only, and a
+	// no-op for every other type.
+	response.RegionWarnings = s.pluginRegionWarnings(ctx, org.UID, check.Type, check.Regions)
+
 	// Fetch and attach labels
 	labels, err := s.db.GetLabelsForCheck(ctx, check.UID)
 	if err != nil {
@@ -2179,7 +2210,7 @@ func (s *Service) UpdateCheck(
 		// scheduled run, but a hard reject belongs here, at the PATCH that
 		// causes it.
 		if req.Config == nil {
-			if cfgErr := s.validateDockerDeploymentConfig(check.Type, check.Regions); cfgErr != nil {
+			if cfgErr := s.validateRegionGates(check.Type, check.Regions); cfgErr != nil {
 				return CheckResponse{}, cfgErr
 			}
 		}
@@ -2233,8 +2264,8 @@ func (s *Service) UpdateCheck(
 		// it (applyConfigUpdate ran above), and the stored one otherwise — so
 		// a period-only PATCH is held to the stored script's floor, and a
 		// script+period PATCH to the new script's.
-		if periodErr := validatePeriodForType(
-			check.Type, time.Duration(duration), check.Internal,
+		if periodErr := s.validatePeriodFor(
+			ctx, check.OrganizationUID, check.Type, time.Duration(duration), check.Internal,
 			parsedConfigForType(check.Type, check.Config),
 		); periodErr != nil {
 			return CheckResponse{}, periodErr
@@ -4698,7 +4729,7 @@ func (s *Service) assertEdgeNoCycle(ctx context.Context, orgUID, parentUID, chil
 // check at all: missing required fields, an unknown type, or a client reaching
 // for the server-owned `internal` flag. Split out of importSingleCheck so the
 // per-entry contract lives in one readable place.
-func validateImportedCheck(exportedCheck *ExportCheck, index int) *ImportError {
+func validateImportedCheck(exportedCheck *ExportCheck, index int, types docTypes) *ImportError {
 	// Validate required fields
 	if exportedCheck.Slug == "" {
 		return &ImportError{Index: index, Slug: exportedCheck.Slug, Error: "slug is required"}
@@ -4722,7 +4753,7 @@ func validateImportedCheck(exportedCheck *ExportCheck, index int) *ImportError {
 	}
 
 	// Validate check type
-	if !configregistry.IsKnownType(checkerdef.CheckType(exportedCheck.Type)) {
+	if !types.known(exportedCheck.Type) {
 		return &ImportError{
 			Index: index, Slug: exportedCheck.Slug, Error: "invalid check type: " + exportedCheck.Type,
 		}
@@ -4751,7 +4782,7 @@ func (s *Service) importSingleCheck(
 	exportedCheck, index := item.entry, item.index
 	org, orgSlug, dryRun := item.org, item.orgSlug, item.dryRun
 
-	if validationErr := validateImportedCheck(exportedCheck, index); validationErr != nil {
+	if validationErr := validateImportedCheck(exportedCheck, index, s.documentTypes(ctx, org.UID)); validationErr != nil {
 		return "", nil, validationErr
 	}
 
@@ -5323,7 +5354,7 @@ func normalizeCheckConfig(checkType string, effective map[string]any) (map[strin
 // plaintext envelope keeps secrets out of the public column and out of API
 // responses even though it does not encrypt them at rest.
 func (s *Service) applyEncryption(ctx context.Context, check *models.Check, effective map[string]any) error {
-	cfg, ok := configregistry.ParseConfig(checkerdef.CheckType(check.Type))
+	cfg, ok := s.parseConfigFor(ctx, check.OrganizationUID, check.Type)
 	if !ok {
 		// Unknown checker — keep the existing behavior: store the map as
 		// plaintext and let validation fail elsewhere. Don't silently lose
@@ -5413,7 +5444,7 @@ func (s *Service) applyConfigUpdate(
 		return mergeErr
 	}
 
-	preserveAbsentRedactedFields(check, merged)
+	s.preserveAbsentRedactedFields(ctx, check, merged)
 
 	if immutableErr := assertPrivateLocationRegionUnchanged(check, merged); immutableErr != nil {
 		return immutableErr
@@ -5428,7 +5459,7 @@ func (s *Service) applyConfigUpdate(
 	// Normalize the EFFECTIVE config, after the merge and before encryption —
 	// never the raw patch, whose folded output would replace the stored map
 	// wholesale and wipe unrelated keys.
-	merged, normErr := normalizeCheckConfig(check.Type, merged)
+	merged, normErr := s.normalizeConfigFor(ctx, check.OrganizationUID, check.Type, merged)
 	if normErr != nil {
 		return normErr
 	}
@@ -5438,7 +5469,9 @@ func (s *Service) applyConfigUpdate(
 	// expectedStatusCodes must be strings, method must be a known verb).
 	// Runs first so a malformed type never reaches the shared validators
 	// below. See validatePatchedConfig for the sealed-only handling.
-	if cfgErr := s.validatePatchedConfig(check.Type, merged, wasSealedOnly, oldPrivateKeys); cfgErr != nil {
+	if cfgErr := s.validatePatchedConfig(
+		ctx, check.OrganizationUID, check.Type, merged, wasSealedOnly, oldPrivateKeys,
+	); cfgErr != nil {
 		return cfgErr
 	}
 
@@ -5528,9 +5561,9 @@ const placeholderPrivateKeyPEM = "-----BEGIN PLACEHOLDER-----\n" +
 // rejection is the correct outcome — injecting a placeholder there would
 // silently mask it.
 func (s *Service) validatePatchedConfig(
-	checkType string, merged map[string]any, wasSealedOnly bool, oldPrivateKeys *string,
+	ctx context.Context, orgUID, checkType string, merged map[string]any, wasSealedOnly bool, oldPrivateKeys *string,
 ) error {
-	if !configregistry.IsKnownType(checkerdef.CheckType(checkType)) {
+	if !s.isKnownTypeFor(ctx, orgUID, checkType) {
 		return nil
 	}
 
@@ -5543,7 +5576,7 @@ func (s *Service) validatePatchedConfig(
 		injectSecretPlaceholders(checkType, configCopy, parseConfigPrivateKeys(oldPrivateKeys))
 	}
 
-	return configregistry.ValidateSpec(checkerdef.CheckType(checkType), &checkerdef.CheckSpec{Config: configCopy})
+	return s.validateSpecFor(ctx, orgUID, checkType, &checkerdef.CheckSpec{Config: configCopy})
 }
 
 // parseConfigPrivateKeys decodes the ConfigPrivateKeys JSON-array-of-strings
@@ -5913,7 +5946,7 @@ func (s *Service) applyConfigPatch(
 		return nil, err
 	}
 
-	cfg, ok := configregistry.ParseConfig(checkerdef.CheckType(check.Type))
+	cfg, ok := s.parseConfigFor(ctx, check.OrganizationUID, check.Type)
 	if !ok {
 		// Unknown checker — fall back to plain replace.
 		return patch, nil
@@ -5986,8 +6019,8 @@ func (s *Service) makeCheckJobsDue(ctx context.Context, checkUID string) error {
 // exporter omits these fields: a document that does not carry the value is
 // never a request to destroy it. Rotation is an explicit, separate operation
 // (RotateHeartbeatToken), which is the ONE supported way to change one.
-func preserveAbsentRedactedFields(check *models.Check, merged map[string]any) {
-	cfg, ok := configregistry.ParseConfig(checkerdef.CheckType(check.Type))
+func (s *Service) preserveAbsentRedactedFields(ctx context.Context, check *models.Check, merged map[string]any) {
+	cfg, ok := s.parseConfigFor(ctx, check.OrganizationUID, check.Type)
 	if !ok {
 		return
 	}

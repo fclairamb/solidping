@@ -28,6 +28,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/logsetup"
 	"github.com/fclairamb/solidping/server/internal/memlimit"
 	"github.com/fclairamb/solidping/server/internal/otelsetup"
+	"github.com/fclairamb/solidping/server/internal/plugins"
 	"github.com/fclairamb/solidping/server/internal/procwatch"
 	slogutil "github.com/fclairamb/solidping/server/internal/utils/slog"
 	"github.com/fclairamb/solidping/server/internal/version"
@@ -222,6 +223,11 @@ func loadServeConfig(ctx context.Context, logOut io.Writer) (*config.Config, fun
 		slog.ErrorContext(ctx, "Invalid configuration", "error", validationErr)
 		return nil, nil, cli.Exit(validationErr.Error(), 1)
 	}
+
+	// Check plugins (spec 2026-10-17-05) register their types before anything
+	// builds an activation resolver or a worker. A broken plugin is logged and
+	// skipped; it never stops the boot. Loaded once per process, for its life.
+	plugins.Load(ctx, cfg.Plugins.Dir, slog.Default())
 
 	// Apply Go runtime memory guardrails (GOMEMLIMIT soft cap, GOGC) as early as
 	// possible so the GC honors them for the whole process lifetime. On a

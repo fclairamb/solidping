@@ -91,6 +91,15 @@ func TestRefreshTokenExpiryCapsSlidingWindow(t *testing.T) {
 	})
 }
 
+// requireWithin asserts got was stamped between before and after (with a
+// second of slack for the database's timestamp precision).
+func requireWithin(t *testing.T, before, after, got time.Time) {
+	t.Helper()
+
+	require.False(t, got.Before(before.Add(-time.Second)), "created_at %v precedes the login call at %v", got, before)
+	require.False(t, got.After(after.Add(time.Second)), "created_at %v follows the login call's end at %v", got, after)
+}
+
 // TestLoginWithOrgSessionCapNeverExceedsIt is the end-to-end acceptance test
 // for B.3: an org with a short session_max_duration override mints a refresh
 // row that never extends (even after sliding refreshes) past
@@ -117,13 +126,22 @@ func TestLoginWithOrgSessionCapNeverExceedsIt(t *testing.T) {
 	r.NoError(dbSvc.CreateOrganizationMember(ctx,
 		models.NewOrganizationMember(org.UID, user.UID, models.MemberRoleAdmin)))
 
-	loginTime := time.Now()
+	// Login hashes the password (bcrypt), which can take seconds on a starved
+	// CPU. The service stamps the row's created_at after that, so the expected
+	// expiry is derived from the row's own created_at, which must itself fall
+	// inside the [before, after] window of the call.
+	before := time.Now()
 	loginResp, err := svc.Login(ctx, "capped-org", "capped@example.com", "testpass1234", Context{})
 	r.NoError(err)
 
+	after := time.Now()
+
 	refreshRow, err := dbSvc.GetUserTokenByToken(ctx, loginResp.RefreshToken)
 	r.NoError(err)
-	r.WithinDuration(loginTime.Add(2*time.Hour), *refreshRow.ExpiresAt, 5*time.Second,
+	requireWithin(t, before, after, refreshRow.CreatedAt)
+
+	loginTime := refreshRow.CreatedAt
+	r.WithinDuration(loginTime.Add(2*time.Hour), *refreshRow.ExpiresAt, time.Second,
 		"mint must cap expires_at at login_time + session_max_duration, not login_time + 7 days")
 
 	// Force the row's last_active_at far enough in the past that the
@@ -137,7 +155,7 @@ func TestLoginWithOrgSessionCapNeverExceedsIt(t *testing.T) {
 
 	afterRefresh, err := dbSvc.GetUserToken(ctx, refreshRow.UID)
 	r.NoError(err)
-	r.WithinDuration(loginTime.Add(2*time.Hour), *afterRefresh.ExpiresAt, 5*time.Second,
+	r.WithinDuration(loginTime.Add(2*time.Hour), *afterRefresh.ExpiresAt, time.Second,
 		"sliding must never extend expires_at past login_time + session_max_duration")
 }
 
@@ -162,13 +180,16 @@ func TestOrgWithoutSessionCapFollowsSystemParameter(t *testing.T) {
 	r.NoError(dbSvc.CreateOrganizationMember(ctx,
 		models.NewOrganizationMember(org.UID, user.UID, models.MemberRoleAdmin)))
 
-	loginTime := time.Now()
+	before := time.Now()
 	loginResp, err := svc.Login(ctx, "uncapped-org", "uncapped@example.com", "testpass1234", Context{})
 	r.NoError(err)
 
+	after := time.Now()
+
 	refreshRow, err := dbSvc.GetUserTokenByToken(ctx, loginResp.RefreshToken)
 	r.NoError(err)
-	r.WithinDuration(loginTime.Add(3*time.Hour), *refreshRow.ExpiresAt, 5*time.Second,
+	requireWithin(t, before, after, refreshRow.CreatedAt)
+	r.WithinDuration(refreshRow.CreatedAt.Add(3*time.Hour), *refreshRow.ExpiresAt, time.Second,
 		"an org with no override must follow the system-wide session_max_duration")
 }
 

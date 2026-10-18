@@ -62,6 +62,12 @@ func (r *Resolution) VoiceAvailable() bool { return r.Voice != nil }
 // rather than comparing modes, so the scoping rule lives in one place.
 func (r *Resolution) InstanceCredentialsForSMS() bool { return r.SMSMode == ModeServer }
 
+// InstanceCredentialsForVoice is InstanceCredentialsForSMS for calls. Voice is
+// resolved on its own: an org whose integration has no voice_from_number
+// places calls on the instance's credentials even though its SMS are its own,
+// and those calls consume the plan's monthly cap.
+func (r *Resolution) InstanceCredentialsForVoice() bool { return r.VoiceMode == ModeServer }
+
 // Resolver picks, per org and per capability, between the org's own Twilio
 // integration and the instance-level provider.
 type Resolver struct {

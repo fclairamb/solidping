@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/require"
@@ -162,6 +163,33 @@ func TestGetWithUsageIncludesUsage(t *testing.T) {
 	}
 	r.NoError(json.Unmarshal(rec.Body.Bytes(), &body))
 	r.NotNil(body.Usage, "usage must be present with ?with=usage")
+}
+
+// TestGetWithUsageReportsSMSAndCallCounters: smsThisMonth and callsThisMonth
+// are on the wire and read the org_usage_counters rows of the current month.
+func TestGetWithUsageReportsSMSAndCallCounters(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	h := newEntHandlerSetup(t)
+	ctx := t.Context()
+
+	now := time.Now().UTC()
+	period := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC).Format("2006-01-02")
+
+	for range 3 {
+		r.NoError(h.dbSvc.IncrementUsageCounter(ctx, h.org.UID, models.UsageCounterKindSMS, period))
+	}
+	r.NoError(h.dbSvc.IncrementUsageCounter(ctx, h.org.UID, models.UsageCounterKindVoice, period))
+
+	rec := h.do(t, http.MethodGet, h.path()+"?with=usage", nil)
+	r.Equal(http.StatusOK, rec.Code)
+
+	var body struct {
+		Usage map[string]any `json:"usage"`
+	}
+	r.NoError(json.Unmarshal(rec.Body.Bytes(), &body))
+	r.InDelta(3, body.Usage["smsThisMonth"], 0)
+	r.InDelta(1, body.Usage["callsThisMonth"], 0)
 }
 
 func TestPatchAcceptsMaxChecks(t *testing.T) {

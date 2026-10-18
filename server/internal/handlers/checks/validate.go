@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -22,6 +23,13 @@ import (
 // updated or imported in SaaS mode without being pinned exclusively to
 // private (agent-hosted) regions.
 var ErrDockerNotAvailableInSaaS = errors.New("docker checks are not available on this deployment")
+
+// ErrPluginTypeDisabled is returned when a check of a plugin type this
+// deployment disables (spec 2026-10-17-05 §19) is created or updated on a
+// cloud region.
+var ErrPluginTypeDisabled = errors.New(
+	"this plugin check type is disabled on this deployment's cloud regions: " +
+		"pin the check to one of your private locations to run it on your own agent")
 
 // Multi-step placement errors (spec 2026-10-03-03).
 var (
@@ -408,6 +416,13 @@ func (s *Service) configValidationErrors(
 	// would never resolve at run time, and must not be stored either.
 	errs = append(errs, validateEnvRefs(effective, s.envRefAllow)...)
 
+	// A plugin type this deployment's activation gate turns off (an unsafe
+	// exec/nagios type on a SaaS cloud node, spec 2026-10-17-05 §19) has no
+	// cloud worker to run it.
+	if err := s.validatePluginActivation(checkType, checkRegions); err != nil {
+		errs = append(errs, err)
+	}
+
 	if orgUID == "" {
 		return errs
 	}
@@ -497,6 +512,36 @@ func (s *Service) validateDockerDeploymentConfig(checkType string, checkRegions 
 	return nil
 }
 
+// validateRegionGates runs the type gates that depend only on where a check
+// runs: docker in SaaS and disabled plugin types. A region-only PATCH runs
+// them on its own, since it skips the config validators.
+func (s *Service) validateRegionGates(checkType string, checkRegions []string) error {
+	if err := s.validateDockerDeploymentConfig(checkType, checkRegions); err != nil {
+		return err
+	}
+
+	return s.validatePluginActivation(checkType, checkRegions)
+}
+
+// validatePluginActivation rejects a check of a server-loaded plugin type the
+// activation gate disables, unless every resolved region is a private
+// location: the org's own agent runs it there under its own host's config.
+// An agent-reported type is not a server type, so it never reaches the gate.
+func (s *Service) validatePluginActivation(checkType string, checkRegions []string) error {
+	ct := checkerdef.CheckType(checkType)
+	if s.activation == nil || !ct.IsPlugin() || !configregistry.IsKnownType(ct) || s.activation.IsTypeEnabled(ct, nil) {
+		return nil
+	}
+
+	if len(checkRegions) > 0 && !slices.ContainsFunc(checkRegions, func(region string) bool {
+		return !regions.IsPrivateRegion(region)
+	}) {
+		return nil
+	}
+
+	return checkerdef.NewConfigError("type", ErrPluginTypeDisabled.Error())
+}
+
 // firstConfigValidationError is the write paths' view of
 // configValidationErrors: one error, or nil.
 func (s *Service) firstConfigValidationError(
@@ -526,19 +571,19 @@ func (s *Service) ValidateCheck(
 ) (ValidateCheckResponse, error) {
 	findings := &validateFindings{}
 
-	if !configregistry.IsKnownType(checkerdef.CheckType(req.Type)) {
-		findings.addError(fieldType, CodeUnsupportedType, "unsupported check type")
-
-		return findings.response(), nil
-	}
-
 	orgUID := ""
 	if org := s.lookupOrgForValidate(ctx, orgSlug); org != nil {
 		orgUID = org.UID
 	}
 
+	if !s.isKnownTypeFor(ctx, orgUID, req.Type) {
+		findings.addError(fieldType, CodeUnsupportedType, "unsupported check type")
+
+		return findings.response(), nil
+	}
+
 	effective := s.validateConfigFindings(ctx, orgUID, req, findings)
-	period := s.validatePeriodFindings(req, effective, findings)
+	period := s.validatePeriodFindings(ctx, orgUID, req, effective, findings)
 	s.validateSlugFindings(ctx, orgUID, req, findings)
 	validateRequestFieldFindings(req, period, findings)
 
@@ -576,13 +621,13 @@ func (s *Service) validateConfigFindings(
 ) map[string]any {
 	effective := req.Config
 
-	cfgErr := configregistry.ValidateSpec(checkerdef.CheckType(req.Type), &checkerdef.CheckSpec{Config: req.Config})
+	cfgErr := s.validateSpecFor(ctx, orgUID, req.Type, &checkerdef.CheckSpec{Config: req.Config})
 	if cfgErr != nil {
 		findings.addErrorFrom(cfgErr, configFieldName, CodeInvalidConfig)
 	}
 
 	if req.Config != nil {
-		normalized, normErr := normalizeCheckConfig(req.Type, req.Config)
+		normalized, normErr := s.normalizeConfigFor(ctx, orgUID, req.Type, req.Config)
 		if normErr != nil {
 			findings.addErrorFrom(normErr, configFieldName, CodeInvalidConfig)
 		} else {
@@ -601,7 +646,7 @@ func (s *Service) validateConfigFindings(
 // bounds the write paths enforce. Returns the parsed period (0 when absent or
 // unparseable) for the rate projection to reason about.
 func (s *Service) validatePeriodFindings(
-	req *ValidateCheckRequest, effective map[string]any, findings *validateFindings,
+	ctx context.Context, orgUID string, req *ValidateCheckRequest, effective map[string]any, findings *validateFindings,
 ) time.Duration {
 	if req.Period == "" {
 		return 0
@@ -618,8 +663,8 @@ func (s *Service) validatePeriodFindings(
 
 	// Nothing validated here can be internal — the flag is not writable
 	// (spec 2026-08-27-01) — hence the constant false.
-	if err := validatePeriodForType(
-		req.Type, period, false, parsedConfigForType(req.Type, effective),
+	if err := s.validatePeriodFor(
+		ctx, orgUID, req.Type, period, false, parsedConfigForType(req.Type, effective),
 	); err != nil {
 		findings.addErrorFrom(err, fieldPeriod, CodeInvalidPeriod)
 	}
