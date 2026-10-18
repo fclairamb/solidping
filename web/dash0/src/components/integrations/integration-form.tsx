@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useParams } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import {
   Check,
@@ -2748,7 +2749,9 @@ function A2APanel({
   channelUid?: string;
 }) {
   const { t } = useTranslation("integrations");
-  const resolve = useResolveA2ACard(org ?? "");
+  // The create page does not pass org down; read it from the route then.
+  const routeOrg = (useParams({ strict: false }) as { org?: string }).org;
+  const resolve = useResolveA2ACard(org ?? routeOrg ?? "");
   const [result, setResult] = useState<A2ACardResult | null>(null);
   const auth = (settings.auth as string) || "none";
 
