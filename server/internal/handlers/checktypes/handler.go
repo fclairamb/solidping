@@ -23,6 +23,9 @@ type Handler struct {
 	// guard is read at call time: the egress guard is installed after the
 	// server is built.
 	guard func() *egress.Guard
+	// orgTypes serves the plugin types an org's agents reported. Nil serves
+	// none.
+	orgTypes OrgPluginTypes
 }
 
 // SetEgressGuard wires the SSRF guard used by the vendor-status components lookup.
@@ -50,6 +53,17 @@ func (h *Handler) ListOrgCheckTypes(writer http.ResponseWriter, req *http.Reques
 	_ = httpx.Param(req, "org")
 
 	response := h.svc.ListOrgCheckTypes(nil)
+
+	// The plugin types this org's agents reported (spec 2026-10-17-05 §18),
+	// read under the org the middleware resolved, never another one.
+	if orgUID := orgUIDOf(req); h.orgTypes != nil && orgUID != "" {
+		remotes, err := h.orgTypes.List(req.Context(), orgUID)
+		if err != nil {
+			return h.WriteInternalError(writer, req, err)
+		}
+
+		response = withOrgPluginTypes(response, remotes)
+	}
 
 	return h.WriteJSON(writer, http.StatusOK, response)
 }

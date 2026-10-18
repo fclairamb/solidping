@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
-	"github.com/fclairamb/solidping/server/internal/checkers/configregistry"
 	"github.com/fclairamb/solidping/server/internal/config"
 	entcore "github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
@@ -526,15 +525,15 @@ func (s *Service) ValidateCheck(
 ) (ValidateCheckResponse, error) {
 	findings := &validateFindings{}
 
-	if !configregistry.IsKnownType(checkerdef.CheckType(req.Type)) {
-		findings.addError(fieldType, CodeUnsupportedType, "unsupported check type")
-
-		return findings.response(), nil
-	}
-
 	orgUID := ""
 	if org := s.lookupOrgForValidate(ctx, orgSlug); org != nil {
 		orgUID = org.UID
+	}
+
+	if !s.isKnownTypeFor(ctx, orgUID, req.Type) {
+		findings.addError(fieldType, CodeUnsupportedType, "unsupported check type")
+
+		return findings.response(), nil
 	}
 
 	effective := s.validateConfigFindings(ctx, orgUID, req, findings)
@@ -576,7 +575,7 @@ func (s *Service) validateConfigFindings(
 ) map[string]any {
 	effective := req.Config
 
-	cfgErr := configregistry.ValidateSpec(checkerdef.CheckType(req.Type), &checkerdef.CheckSpec{Config: req.Config})
+	cfgErr := s.validateSpecFor(ctx, orgUID, req.Type, &checkerdef.CheckSpec{Config: req.Config})
 	if cfgErr != nil {
 		findings.addErrorFrom(cfgErr, configFieldName, CodeInvalidConfig)
 	}

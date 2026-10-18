@@ -138,6 +138,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/middleware"
 	"github.com/fclairamb/solidping/server/internal/notifier"
 	"github.com/fclairamb/solidping/server/internal/oauth"
+	"github.com/fclairamb/solidping/server/internal/plugintypes"
 	"github.com/fclairamb/solidping/server/internal/profiler"
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
 	"github.com/fclairamb/solidping/server/internal/realtime"
@@ -1200,6 +1201,10 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	api.GET("/checks/schema/:type", checkTypesHandler.GetConfigSchema)
 	orgCheckTypes := orgGroup("/orgs/:org/check-types")
 	orgCheckTypes.GET("", checkTypesHandler.ListOrgCheckTypes)
+	// The schema of a server type, or of a plugin type this org's agents
+	// reported (spec 2026-10-17-05 §18). Org-scoped, unlike /checks/schema.
+	orgCheckTypes.GET("/:type/schema", checkTypesHandler.GetOrgConfigSchema)
+	checkTypesHandler.SetOrgPluginTypes(plugintypes.New(s.dbService.DB()))
 
 	// Check routes (authentication required)
 	checksService := checks.NewService(

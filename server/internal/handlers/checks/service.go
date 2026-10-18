@@ -903,6 +903,11 @@ type CheckResponse struct {
 	// a region whose live workers report no IPv6 egress" (spec 2026-08-15-11).
 	// Never populated on read paths, and never a reason to reject a write.
 	Warnings []base.ValidationErrorField `json:"warnings,omitempty"`
+	// RegionWarnings (detail responses only) says why the check does not run
+	// in some of its regions right now. Today: a plugin-type check in a region
+	// whose live workers did not load the plugin (spec 2026-10-17-05 §17,
+	// code REGION_NO_PLUGIN). Recomputed on every read, unlike Warnings.
+	RegionWarnings []base.ValidationErrorField `json:"regionWarnings,omitempty"`
 	// Regions is where the check runs: the user's list for a pinned check,
 	// the current placement for an automatic one.
 	Regions []string `json:"regions,omitempty"`
@@ -1821,6 +1826,11 @@ func (s *Service) GetCheck(
 	// Needs-re-seal flag for private-region checks (spec 2026-07-16-02).
 	// Detail-only: it costs an agent lookup per private region.
 	response.NeedsReseal = s.computeNeedsReseal(ctx, check)
+
+	// A plugin-type check whose regions have no worker that loaded the
+	// plugin never runs there (spec 2026-10-17-05 §17). Detail-only, and a
+	// no-op for every other type.
+	response.RegionWarnings = s.pluginRegionWarnings(ctx, org.UID, check.Type, check.Regions)
 
 	// Fetch and attach labels
 	labels, err := s.db.GetLabelsForCheck(ctx, check.UID)
@@ -5323,7 +5333,7 @@ func normalizeCheckConfig(checkType string, effective map[string]any) (map[strin
 // plaintext envelope keeps secrets out of the public column and out of API
 // responses even though it does not encrypt them at rest.
 func (s *Service) applyEncryption(ctx context.Context, check *models.Check, effective map[string]any) error {
-	cfg, ok := configregistry.ParseConfig(checkerdef.CheckType(check.Type))
+	cfg, ok := s.parseConfigFor(ctx, check.OrganizationUID, check.Type)
 	if !ok {
 		// Unknown checker — keep the existing behavior: store the map as
 		// plaintext and let validation fail elsewhere. Don't silently lose
@@ -5438,7 +5448,9 @@ func (s *Service) applyConfigUpdate(
 	// expectedStatusCodes must be strings, method must be a known verb).
 	// Runs first so a malformed type never reaches the shared validators
 	// below. See validatePatchedConfig for the sealed-only handling.
-	if cfgErr := s.validatePatchedConfig(check.Type, merged, wasSealedOnly, oldPrivateKeys); cfgErr != nil {
+	if cfgErr := s.validatePatchedConfig(
+		ctx, check.OrganizationUID, check.Type, merged, wasSealedOnly, oldPrivateKeys,
+	); cfgErr != nil {
 		return cfgErr
 	}
 
@@ -5528,9 +5540,9 @@ const placeholderPrivateKeyPEM = "-----BEGIN PLACEHOLDER-----\n" +
 // rejection is the correct outcome — injecting a placeholder there would
 // silently mask it.
 func (s *Service) validatePatchedConfig(
-	checkType string, merged map[string]any, wasSealedOnly bool, oldPrivateKeys *string,
+	ctx context.Context, orgUID, checkType string, merged map[string]any, wasSealedOnly bool, oldPrivateKeys *string,
 ) error {
-	if !configregistry.IsKnownType(checkerdef.CheckType(checkType)) {
+	if !s.isKnownTypeFor(ctx, orgUID, checkType) {
 		return nil
 	}
 
@@ -5543,7 +5555,7 @@ func (s *Service) validatePatchedConfig(
 		injectSecretPlaceholders(checkType, configCopy, parseConfigPrivateKeys(oldPrivateKeys))
 	}
 
-	return configregistry.ValidateSpec(checkerdef.CheckType(checkType), &checkerdef.CheckSpec{Config: configCopy})
+	return s.validateSpecFor(ctx, orgUID, checkType, &checkerdef.CheckSpec{Config: configCopy})
 }
 
 // parseConfigPrivateKeys decodes the ConfigPrivateKeys JSON-array-of-strings

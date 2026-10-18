@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
-	"github.com/fclairamb/solidping/server/internal/checkers/configregistry"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
@@ -136,7 +135,7 @@ func (s *Service) planCreateCheck(
 		return nil, labelErr
 	}
 
-	if !configregistry.IsKnownType(checkerdef.CheckType(req.Type)) {
+	if !s.isKnownTypeFor(ctx, org.UID, req.Type) {
 		return nil, ErrInvalidCheckType
 	}
 
@@ -247,7 +246,7 @@ func (s *Service) planCreateCheck(
 		Config: withInjectedConfig(req.Config, derivedConfig),
 	}
 
-	if validateErr := configregistry.ValidateSpec(checkerdef.CheckType(req.Type), spec); validateErr != nil {
+	if validateErr := s.validateSpecFor(ctx, org.UID, req.Type, spec); validateErr != nil {
 		return nil, validateErr
 	}
 
@@ -534,7 +533,7 @@ func (s *Service) planUpdateConfig(
 	injectSecretPlaceholders(existing.Type, planned, parseConfigPrivateKeys(existing.ConfigPrivateKeys))
 
 	if cfgErr := s.validatePatchedConfig(
-		existing.Type, planned, existing.ConfigSealed != nil && existing.ConfigPrivate == nil,
+		ctx, existing.OrganizationUID, existing.Type, planned, existing.ConfigSealed != nil && existing.ConfigPrivate == nil,
 		existing.ConfigPrivateKeys,
 	); cfgErr != nil {
 		return cfgErr

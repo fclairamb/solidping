@@ -99,15 +99,18 @@ type WSBackend struct {
 	// of which path triggers it (lazy request() vs. the reconnect supervisor).
 	dialMu sync.Mutex
 
-	mu                sync.Mutex
-	identity          *Identity
-	conn              *websocket.Conn
-	connectedAt       time.Time
-	workerUID         string
-	pending           map[string]chan agents.ServerFrame
-	hints             []chan string
-	lastDial          time.Time
-	supervisorStarted bool
+	mu          sync.Mutex
+	identity    *Identity
+	conn        *websocket.Conn
+	connectedAt time.Time
+	// pluginsReportedFor is the connectedAt of the connection that already
+	// received this agent's plugin manifests (spec 2026-10-17-05 §18).
+	pluginsReportedFor time.Time
+	workerUID          string
+	pending            map[string]chan agents.ServerFrame
+	hints              []chan string
+	lastDial           time.Time
+	supervisorStarted  bool
 	// reconnectSignal wakes the reconnect supervisor after a drop (buffered so a
 	// drop that races an in-progress reconnect is coalesced, never lost).
 	reconnectSignal chan struct{}
@@ -281,15 +284,24 @@ func (b *WSBackend) claim(
 	// a no-op. The probe behind Current() is cached for well under a heartbeat,
 	// so a claim-per-second costs nothing while a host that gains or loses IPv6
 	// still converges without a restart.
+	manifests, reportFor := b.pluginReport()
+
 	resp, err := b.request(ctx, &agents.ClientFrame{
 		Type:         agents.MsgTypeClaim,
 		MaxJobs:      maxJobs,
 		CheckUID:     checkUID,
 		Capabilities: Capabilities(ctx),
 		Version:      version.Get().Version,
+		Plugins:      manifests,
 	})
 	if err != nil {
 		return nil, 0, err
+	}
+
+	if manifests != nil && !reportFor.IsZero() {
+		b.mu.Lock()
+		b.pluginsReportedFor = reportFor
+		b.mu.Unlock()
 	}
 
 	jobs := make([]*models.CheckJob, 0, len(resp.Jobs))

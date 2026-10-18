@@ -77,3 +77,20 @@ type Error struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
 }
+
+// TypeManifest is one plugin check type as a private-location agent reports
+// it on connect (spec 2026-10-17-05 §18). The server stores it per org, so
+// the form and the validation of that type work while the agent is offline.
+// Schema is the raw schema file of the type, not the published document.
+type TypeManifest struct {
+	Type          string          `json:"type"`
+	Plugin        string          `json:"plugin"`
+	Version       string          `json:"version"`
+	Protocol      string          `json:"protocol"`
+	Description   string          `json:"description,omitempty"`
+	Labels        []string        `json:"labels,omitempty"`
+	MinPeriod     string          `json:"minPeriod,omitempty"`
+	DefaultPeriod string          `json:"defaultPeriod,omitempty"`
+	MaxPeriod     string          `json:"maxPeriod,omitempty"`
+	Schema        json.RawMessage `json:"schema"`
+}

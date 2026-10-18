@@ -54,6 +54,7 @@ func (s *Set) Close() {
 		for _, checkType := range s.Types {
 			registry.UnregisterPlugin(checkType)
 			schemas.UnregisterExternal(string(checkType))
+			forgetLoaded(checkType)
 		}
 
 		for _, plugin := range s.Plugins {
@@ -218,6 +219,7 @@ func (s *Set) registerType(plugin *Plugin, decl *TypeDecl, dir string) error {
 	}
 
 	schemas.RegisterExternal(decl.Type, schema.published)
+	recordLoaded(&plugin.Manifest, decl, raw)
 	s.Types = append(s.Types, meta.Type)
 
 	return nil
