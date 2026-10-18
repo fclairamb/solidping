@@ -622,6 +622,10 @@ type Service struct {
 	// `${env:}` reference — the secure default for an unwired Service. See
 	// SetEnvRefAllow.
 	envRefAllow secretref.EnvAllowFunc
+	// activation is the server-level check-type gate. Writes of a plugin type
+	// it disables are refused on cloud regions (spec 2026-10-17-05 §19). nil
+	// = not wired: no plugin type is refused. See SetActivationResolver.
+	activation *checkerdef.ActivationResolver
 }
 
 // StatusPageReconciler re-materializes the org's selector-driven status page
@@ -646,6 +650,12 @@ func (s *Service) SetStatusPageReconciler(reconciler StatusPageReconciler) {
 // Optional: an unwired Service (most unit tests) behaves like self-hosted.
 func (s *Service) SetDeploymentMode(mode string) {
 	s.deploymentMode = mode
+}
+
+// SetActivationResolver wires the server-level check-type gate, so
+// create/update/import refuse a plugin type it disables on cloud regions.
+func (s *Service) SetActivationResolver(resolver *checkerdef.ActivationResolver) {
+	s.activation = resolver
 }
 
 // SetEnvRefAllow wires the operator allowlist of `${env:NAME}` names
@@ -2190,6 +2200,10 @@ func (s *Service) UpdateCheck(
 		// causes it.
 		if req.Config == nil {
 			if cfgErr := s.validateDockerDeploymentConfig(check.Type, check.Regions); cfgErr != nil {
+				return CheckResponse{}, cfgErr
+			}
+
+			if cfgErr := s.validatePluginActivation(check.Type, check.Regions); cfgErr != nil {
 				return CheckResponse{}, cfgErr
 			}
 		}

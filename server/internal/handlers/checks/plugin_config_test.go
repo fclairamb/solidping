@@ -20,6 +20,12 @@ const pluginSecretNeedle = "plugin-fixture-token"
 // secret field (spec 2026-10-17-05 §6).
 func loadTestPlugin(t *testing.T, checkType string) {
 	t.Helper()
+	loadTestPluginLabelled(t, checkType, []string{"safe"})
+}
+
+// loadTestPluginLabelled is loadTestPlugin with the type's labels.
+func loadTestPluginLabelled(t *testing.T, checkType string, labels []string) {
+	t.Helper()
 	r := require.New(t)
 
 	dir := filepath.Join(t.TempDir(), "plugin")
@@ -28,7 +34,7 @@ func loadTestPlugin(t *testing.T, checkType string) {
 	manifest := map[string]any{
 		"name": "secrets", "version": "0.1.0", "protocol": "js", "entry": "check.js",
 		"types": []any{map[string]any{
-			"type": checkType, "description": "test", "labels": []string{"safe"}, "schema": "schema.json",
+			"type": checkType, "description": "test", "labels": labels, "schema": "schema.json",
 		}},
 	}
 

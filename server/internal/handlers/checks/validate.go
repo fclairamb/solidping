@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/checkers/configregistry"
 	"github.com/fclairamb/solidping/server/internal/config"
 	entcore "github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
@@ -21,6 +23,13 @@ import (
 // updated or imported in SaaS mode without being pinned exclusively to
 // private (agent-hosted) regions.
 var ErrDockerNotAvailableInSaaS = errors.New("docker checks are not available on this deployment")
+
+// ErrPluginTypeDisabled is returned when a check of a plugin type this
+// deployment disables (spec 2026-10-17-05 §19) is created or updated on a
+// cloud region.
+var ErrPluginTypeDisabled = errors.New(
+	"this plugin check type is disabled on this deployment's cloud regions: " +
+		"pin the check to one of your private locations to run it on your own agent")
 
 // Multi-step placement errors (spec 2026-10-03-03).
 var (
@@ -407,6 +416,13 @@ func (s *Service) configValidationErrors(
 	// would never resolve at run time, and must not be stored either.
 	errs = append(errs, validateEnvRefs(effective, s.envRefAllow)...)
 
+	// A plugin type this deployment's activation gate turns off (an unsafe
+	// exec/nagios type on a SaaS cloud node, spec 2026-10-17-05 §19) has no
+	// cloud worker to run it.
+	if err := s.validatePluginActivation(checkType, checkRegions); err != nil {
+		errs = append(errs, err)
+	}
+
 	if orgUID == "" {
 		return errs
 	}
@@ -494,6 +510,25 @@ func (s *Service) validateDockerDeploymentConfig(checkType string, checkRegions 
 	}
 
 	return nil
+}
+
+// validatePluginActivation rejects a check of a server-loaded plugin type the
+// activation gate disables, unless every resolved region is a private
+// location: the org's own agent runs it there under its own host's config.
+// An agent-reported type is not a server type, so it never reaches the gate.
+func (s *Service) validatePluginActivation(checkType string, checkRegions []string) error {
+	ct := checkerdef.CheckType(checkType)
+	if s.activation == nil || !ct.IsPlugin() || !configregistry.IsKnownType(ct) || s.activation.IsTypeEnabled(ct, nil) {
+		return nil
+	}
+
+	if len(checkRegions) > 0 && !slices.ContainsFunc(checkRegions, func(region string) bool {
+		return !regions.IsPrivateRegion(region)
+	}) {
+		return nil
+	}
+
+	return checkerdef.NewConfigError("type", ErrPluginTypeDisabled.Error())
 }
 
 // firstConfigValidationError is the write paths' view of

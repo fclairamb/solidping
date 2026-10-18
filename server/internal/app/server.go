@@ -500,6 +500,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	checksSvc := checks.NewService(
 		dbService, svcList.EventNotifier, credSvc, entitlementsService)
 	checksSvc.SetDeploymentMode(cfg.Deployment.Mode)
+	checksSvc.SetActivationResolver(checkerdef.NewActivationResolver(&cfg.Checkers, cfg.Deployment.Mode))
 	checksSvc.SetEnvRefAllow(cfg.EnvRefAllowed)
 	// The demo cleanup and private-location monitor deletes notify like a
 	// user's DELETE does (spec 2026-10-08-02).
@@ -1210,6 +1211,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	checksService := checks.NewService(
 		s.dbService, s.services.EventNotifier, s.services.Credentials, s.services.Entitlements)
 	checksService.SetDeploymentMode(s.config.Deployment.Mode)
+	checksService.SetActivationResolver(activationResolver)
 	checksService.SetEnvRefAllow(s.config.EnvRefAllowed)
 	checksHandler := checks.NewHandler(checksService, s.config)
 	orgChecks := orgGroup("/orgs/:org/checks")

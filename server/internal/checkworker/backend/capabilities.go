@@ -6,18 +6,17 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/fclairamb/solidping/server/internal/checkers/registry"
 	"github.com/fclairamb/solidping/server/internal/checkworker/egressreport"
 	"github.com/fclairamb/solidping/server/internal/plugins"
 	"github.com/fclairamb/solidping/server/internal/plugins/protocol"
 )
 
 // Capabilities is what a worker reports about itself: the egress families it
-// self-probed, then the plugin check types it loaded (spec 2026-10-17-05
-// §17). A plugin type is an `x-` slug, so it is a valid capability name.
-func Capabilities(ctx context.Context) []string {
+// self-probed, then the plugin check types it can run (spec 2026-10-17-05
+// §17): the ones it loaded and its activation gate enables (§19). A plugin
+// type is an `x-` slug, so it is a valid capability name.
+func Capabilities(ctx context.Context, pluginTypes []string) []string {
 	egressCaps := egressreport.Current(ctx)
-	pluginTypes := registry.PluginTypes()
 
 	// Without plugins the set is exactly egressreport's, nil ("unknown")
 	// included. With plugins it is always non-nil: the claim needs the types

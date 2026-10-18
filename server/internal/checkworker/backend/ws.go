@@ -19,6 +19,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/agents/capturecache"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkssh"
+	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/egress"
@@ -290,7 +291,8 @@ func (b *WSBackend) claim(
 		Type:         agents.MsgTypeClaim,
 		MaxJobs:      maxJobs,
 		CheckUID:     checkUID,
-		Capabilities: Capabilities(ctx),
+		// The worker put the plugin types its activation gate enables on ctx.
+		Capabilities: Capabilities(ctx, checkjobsvc.PluginTypesFromContext(ctx)),
 		Version:      version.Get().Version,
 		Plugins:      manifests,
 	})
