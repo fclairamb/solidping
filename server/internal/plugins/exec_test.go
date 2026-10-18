@@ -93,6 +93,24 @@ func TestExecDeadlineIsATimeout(t *testing.T) {
 	r.Less(time.Since(start), 5*time.Second)
 }
 
+// A plugin that stops reading its stdin cannot block a call past the check
+// deadline: the request is bigger than the pipe buffer, so the write itself
+// would block until the process exits.
+func TestExecPluginNotReadingStdinIsATimeout(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	tr := newHelperExec(t, "sleep")
+
+	start := time.Now()
+	res, err := tr.execute(t.Context(), "x-test", testConfig(map[string]any{
+		"timeout": "300ms", "blob": strings.Repeat("x", 4*1024*1024),
+	}))
+	r.NoError(err)
+	r.Equal(checkerdef.StatusTimeout, res.Status, res.Output)
+	r.Less(time.Since(start), 5*time.Second)
+}
+
 func TestNagiosExitCodes(t *testing.T) {
 	t.Parallel()
 

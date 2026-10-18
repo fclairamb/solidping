@@ -66,9 +66,14 @@ type execTransport struct {
 }
 
 type execProcess struct {
-	cmd     *exec.Cmd
-	stdin   io.WriteCloser
-	writeMu sync.Mutex
+	cmd *exec.Cmd
+	// stdin is our own pipe (not cmd.StdinPipe) so a write can carry the
+	// request's deadline: a plugin that stops reading must not block a call
+	// past it.
+	stdin *os.File
+	// writeSlot serializes writes; a channel so waiting for it honors the
+	// request's context.
+	writeSlot chan struct{}
 
 	pendingMu sync.Mutex
 	pending   map[int64]chan protocol.Response
@@ -134,11 +139,28 @@ func (t *execTransport) start() (*execProcess, error) {
 	cmd.Env = t.env
 	setProcessGroup(cmd)
 
-	stdin, err := cmd.StdinPipe()
+	stdinRead, stdin, err := os.Pipe()
 	if err != nil {
 		return nil, fmt.Errorf("plugin stdin: %w", err)
 	}
 
+	cmd.Stdin = stdinRead
+
+	proc, err := t.startWith(cmd, stdin)
+
+	// The child holds its own copy of the read end.
+	_ = stdinRead.Close()
+
+	if err != nil {
+		_ = stdin.Close()
+
+		return nil, err
+	}
+
+	return proc, nil
+}
+
+func (t *execTransport) startWith(cmd *exec.Cmd, stdin *os.File) (*execProcess, error) {
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, fmt.Errorf("plugin stdout: %w", err)
@@ -154,10 +176,11 @@ func (t *execTransport) start() (*execProcess, error) {
 	}
 
 	proc := &execProcess{
-		cmd:     cmd,
-		stdin:   stdin,
-		pending: map[int64]chan protocol.Response{},
-		done:    make(chan struct{}),
+		cmd:       cmd,
+		stdin:     stdin,
+		writeSlot: make(chan struct{}, 1),
+		pending:   map[int64]chan protocol.Response{},
+		done:      make(chan struct{}),
 	}
 
 	go t.logStderr(stderr)
@@ -234,12 +257,8 @@ func (t *execTransport) call(ctx context.Context, method string, params, out any
 		return fmt.Errorf("encoding plugin request: %w", err)
 	}
 
-	proc.writeMu.Lock()
-	_, err = proc.stdin.Write(append(line, '\n'))
-	proc.writeMu.Unlock()
-
-	if err != nil {
-		return fmt.Errorf("%w: %w", ErrPluginExited, err)
+	if err := proc.write(ctx, append(line, '\n')); err != nil {
+		return err
 	}
 
 	select {
@@ -261,6 +280,40 @@ func (t *execTransport) call(ctx context.Context, method string, params, out any
 		return ErrPluginExited
 	case <-ctx.Done():
 		return ctx.Err() //nolint:wrapcheck // the caller tests for DeadlineExceeded
+	}
+}
+
+// write sends one request line, bounded by ctx: waiting for the write slot
+// and the write itself both stop at its deadline. A write cut short leaves a
+// partial line on the pipe, so the process is killed and restarts on the
+// next call.
+func (proc *execProcess) write(ctx context.Context, line []byte) error {
+	select {
+	case proc.writeSlot <- struct{}{}:
+	case <-proc.done:
+		return ErrPluginExited
+	case <-ctx.Done():
+		return ctx.Err() //nolint:wrapcheck // the caller tests for DeadlineExceeded
+	}
+
+	deadline, _ := ctx.Deadline()
+	// Zero clears it. A pipe without deadline support (Windows) writes
+	// unbounded, as before.
+	_ = proc.stdin.SetWriteDeadline(deadline)
+
+	_, err := proc.stdin.Write(line)
+
+	<-proc.writeSlot
+
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, os.ErrDeadlineExceeded):
+		_ = killProcessGroup(proc.cmd)
+
+		return fmt.Errorf("plugin stopped reading its requests: %w", context.DeadlineExceeded)
+	default:
+		return fmt.Errorf("%w: %w", ErrPluginExited, err)
 	}
 }
 
