@@ -18,7 +18,6 @@ import {
 } from "@/components/ui/table";
 import { Loader2, Trash2 } from "lucide-react";
 import { useInvitations, useRevokeInvitation } from "@/api/hooks";
-import { CreateInvitationDialog } from "@/components/shared/create-invitation-dialog";
 
 export const Route = createFileRoute("/orgs/$org/organization/invitations")({
   component: InvitationsPage,
@@ -43,10 +42,6 @@ function InvitationsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-end">
-        <CreateInvitationDialog org={org} />
-      </div>
-
       <Card>
         <CardHeader>
           <CardTitle>{t("invitations.pendingTitle")}</CardTitle>
