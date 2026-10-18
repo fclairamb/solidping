@@ -82,6 +82,7 @@ var fixtureBuilders = map[string]func() map[string]any{
 	"custom-domain-demoted.html":       customDomainDemotedFixture,
 	"region-offline.html":              regionOfflineFixture,
 	"region-recovered.html":            regionRecoveredFixture,
+	"usage-cap-reached.html":           usageCapReachedFixture,
 }
 
 // FixtureTemplateNames returns, sorted, every template name this package can
@@ -482,6 +483,18 @@ func customDomainDemotedFixture() map[string]any {
 		"Diagnostic":     "CNAME lookup for status.acme.com returned NXDOMAIN",
 		"SettingsURL": fixtureDashboardURL + "/orgs/acme/status-pages/" +
 			"3f1c9a2e-77b1-4f0a-9a1e-6c2f0b8d4e51",
+	}
+}
+
+// usageCapReachedFixture covers the once-a-month notice that a paging channel
+// ran out of its plan allowance (spec 2026-10-17-03). Operator mail.
+func usageCapReachedFixture() map[string]any {
+	return map[string]any{
+		keyOrgName:   fixtureOrgName,
+		"Channel":    "SMS",
+		"Limit":      20,
+		"UsageURL":   fixtureDashboardURL + "/orgs/acme/organization/usage",
+		"UpgradeURL": "https://billing.acme.com/acme/plans",
 	}
 }
 

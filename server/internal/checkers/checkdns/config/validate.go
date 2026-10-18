@@ -36,7 +36,7 @@ func ValidateSpec(spec *checkerdef.CheckSpec) error {
 	recordType = strings.ToUpper(recordType)
 	if !IsValidRecordType(recordType) {
 		return checkerdef.NewConfigErrorf(
-			"record_type", "must be one of A, AAAA, CNAME, MX, NS, TXT, SOA, got %s", cfg.RecordType,
+			"record_type", "must be one of A, AAAA, CNAME, MX, NS, TXT, SOA, CAA, got %s", cfg.RecordType,
 		)
 	}
 

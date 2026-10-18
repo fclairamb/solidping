@@ -202,6 +202,22 @@ function UsagePage() {
                 unlimitedLabel={t("usage.unlimited")}
               />
               {/*
+                SMS and calls count only sends made on the instance's
+                credentials: an org's own Twilio account pays for its own.
+              */}
+              <UsageRow
+                label={t("usage.smsThisMonth")}
+                current={data.usage?.smsThisMonth ?? 0}
+                limit={data.limits.maxSmsPerMonth}
+                unlimitedLabel={t("usage.unlimited")}
+              />
+              <UsageRow
+                label={t("usage.callsThisMonth")}
+                current={data.usage?.callsThisMonth ?? 0}
+                limit={data.limits.maxCallsPerMonth}
+                unlimitedLabel={t("usage.unlimited")}
+              />
+              {/*
                 White labelling is the one entitlement with no number attached,
                 so it renders as an on/off statement rather than a usage bar.
               */}

@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -319,6 +320,9 @@ type jsRuntime struct {
 	// payloadUsed is the shared byte pool socket reads draw from. See
 	// remainingPayload.
 	payloadUsed atomic.Int64
+
+	// invalidStatus is the unknown status string a plugin script returned.
+	invalidStatus string
 }
 
 // remainingPayload is what is left of the execution's single maxHTTPBody-byte
@@ -367,6 +371,7 @@ func newJSRuntime(ctx context.Context, cfg *JSConfig) *jsRuntime {
 func (r *jsRuntime) registerGlobals() {
 	r.registerEnv()
 	r.registerSecrets()
+	r.registerPluginConfig()
 	r.registerConsole()
 	r.registerSleep()
 	r.registerSolidping()
@@ -407,6 +412,48 @@ func (r *jsRuntime) registerSecrets() {
 	}
 
 	_ = r.vm.Set("secrets", secretsObj)
+}
+
+// registerPluginConfig exposes a JS plugin's validated check config as the
+// deep-frozen `config` global (spec 2026-10-17-05). A plain js check has no
+// such global.
+func (r *jsRuntime) registerPluginConfig() {
+	if r.config.PluginConfig == nil {
+		return
+	}
+
+	raw, err := json.Marshal(r.config.PluginConfig)
+	if err != nil {
+		raw = []byte("{}")
+	}
+
+	const freeze = `(function (raw) {
+  var deepFreeze = function (o) {
+    Object.getOwnPropertyNames(o).forEach(function (k) {
+      var v = o[k];
+      if (v && typeof v === "object") { deepFreeze(v); }
+    });
+    return Object.freeze(o);
+  };
+  return deepFreeze(JSON.parse(raw));
+})`
+
+	fn, err := r.vm.RunString(freeze)
+	if err != nil {
+		return
+	}
+
+	call, ok := goja.AssertFunction(fn)
+	if !ok {
+		return
+	}
+
+	value, err := call(goja.Undefined(), r.vm.ToValue(string(raw)))
+	if err != nil {
+		return
+	}
+
+	_ = r.vm.Set("config", value)
 }
 
 // registerConsole exposes console.log/warn/error/info.
@@ -1099,6 +1146,10 @@ func (r *jsRuntime) parseResult(val goja.Value, duration time.Duration) *checker
 
 	output := r.buildOutputFromObj(obj)
 
+	if r.invalidStatus != "" {
+		output[logLevelError] = fmt.Sprintf("plugin returned an unknown status %q", r.invalidStatus)
+	}
+
 	return &checkerdef.Result{
 		Status:   status,
 		Duration: duration,
@@ -1154,6 +1205,16 @@ func (r *jsRuntime) parseStatus(obj *goja.Object) checkerdef.Status {
 	case "timeout":
 		return checkerdef.StatusTimeout
 	default:
+		if r.config.PluginConfig != nil {
+			// A plugin may also report warning or error; anything else is
+			// flagged rather than silently mapped (spec 2026-10-17-05 §10).
+			if status, ok := checkerdef.ParseStatus(statusVal.String()); ok {
+				return status
+			}
+
+			r.invalidStatus = statusVal.String()
+		}
+
 		return checkerdef.StatusError
 	}
 }

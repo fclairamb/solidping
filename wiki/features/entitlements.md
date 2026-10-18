@@ -159,6 +159,12 @@ paid plan. The plan ladder itself (which paid plan gets how many custom
 domains, SMS, or calls) is owned by `solidping-billing`, not this repo — see
 its `plans` package for the authoritative numbers.
 
+These caps only meter sends on the instance's credentials. A bring-your-own
+Twilio send keeps the hourly runaway guard but skips the monthly cap and writes
+no `org_usage_counters` row. The first monthly-cap refusal of a kind in a month
+emails the org's owners and admins once; the claim is a `<kind>_cap_notice` row
+in `org_usage_counters` (spec 2026-10-17-03).
+
 The SaaS numbers implement the Free tier of the 2026-07-12 pricing decision and
 **must stay in sync** with `solidping-billing`'s Free SKU — they are the
 "billing service has not reconciled us yet" fallback for a fresh org, and must
@@ -216,6 +222,7 @@ it by default.
 | `agents` | Active (non-revoked, non-deleted) deported agents across all private regions. Enforced against `maxDeportedAgents`. |
 | `customDomains` | Live status pages with a custom domain set. Enforced against `maxCustomDomains` (soft, one-directional — see [Limits](#limits)). |
 | `whatsappThisMonth` | Outbound WhatsApp template messages in the current UTC month. A persistent counter, not a live count. |
+| `smsThisMonth` / `callsThisMonth` | SMS / voice calls sent on the instance's credentials in the current UTC month. Bring-your-own Twilio sends are not counted (spec 2026-10-17-03). |
 | `slos` | Live service-level objectives. Enforced against `maxSlos`. |
 
 ## The over-limit banner (`checksPerMinute`)

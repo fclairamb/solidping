@@ -132,3 +132,24 @@ func TestAcceptsEventType_ReminderOptOut(t *testing.T) {
 	// Positive control: PagerDuty still gets the lifecycle events.
 	r.True(AcceptsEventType(models.ConnectionTypePagerduty, "incident.created"))
 }
+
+// TestGetSender_A2A covers the AI agent (A2A) channel: its own sender, acks on,
+// comments and reminders off (spec 2026-10-18-02).
+func TestGetSender_A2A(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	sender, ok := GetSender(models.ConnectionTypeA2A)
+	r.True(ok)
+	r.IsType(&A2ASender{}, sender)
+
+	caps := CapabilitiesForSender(models.ConnectionTypeA2A)
+	r.False(caps.NotifiesComments, "the agent's own comments must never loop back to it")
+	r.False(caps.NotifiesReminders)
+	r.True(caps.NotifiesAcks)
+
+	r.False(AcceptsEventType(models.ConnectionTypeA2A, "incident.comment"))
+	r.False(AcceptsEventType(models.ConnectionTypeA2A, "incident.reminder"))
+	r.True(AcceptsEventType(models.ConnectionTypeA2A, "incident.acknowledged"))
+	r.True(AcceptsEventType(models.ConnectionTypeA2A, "incident.created"))
+}

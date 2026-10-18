@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/agents"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
@@ -93,10 +94,25 @@ var aggregatedCapabilities = []string{ //nolint:gochecknoglobals // the publishe
 	CapabilityBrowser,
 }
 
-// capabilitiesFor renders the capability map for a worker set.
-func capabilitiesFor(workers []*models.Worker) map[string]string {
+// capabilitiesFor renders the capability map for a worker set: the published
+// capabilities, plus one entry per plugin check type this server loaded (a
+// worker advertises the plugin types it can run, spec 2026-10-17-05 §17), plus
+// the extra capability names the caller asks about (an org's agent-reported
+// plugin types, which only that org may see).
+func capabilitiesFor(workers []*models.Worker, extra []string) map[string]string {
 	out := make(map[string]string, len(aggregatedCapabilities))
 	for _, name := range aggregatedCapabilities {
+		out[name] = aggregate(workers, name)
+	}
+
+	metas := checkerdef.ListCheckTypeMetas()
+	for i := range metas {
+		if metas[i].Plugin != nil {
+			out[string(metas[i].Type)] = aggregate(workers, string(metas[i].Type))
+		}
+	}
+
+	for _, name := range extra {
 		out[name] = aggregate(workers, name)
 	}
 
@@ -125,6 +141,10 @@ func (s *Service) liveWorkers(ctx context.Context) ([]*models.Worker, error) {
 // (ValidateWorkerRegion already forbids such a worker, so this is belt and
 // braces).
 func (s *Service) AnnotateGlobalCapabilities(ctx context.Context, defs []RegionDefinition) error {
+	return s.annotateGlobal(ctx, defs, nil)
+}
+
+func (s *Service) annotateGlobal(ctx context.Context, defs []RegionDefinition, extra []string) error {
 	if len(defs) == 0 {
 		return nil
 	}
@@ -147,7 +167,7 @@ func (s *Service) AnnotateGlobalCapabilities(ctx context.Context, defs []RegionD
 			}
 		}
 
-		defs[i].Capabilities = capabilitiesFor(matched)
+		defs[i].Capabilities = capabilitiesFor(matched, extra)
 	}
 
 	return nil
@@ -166,6 +186,12 @@ func (s *Service) AnnotateGlobalCapabilities(ctx context.Context, defs []RegionD
 // silently pool two organizations' identically-named locations.
 func (s *Service) AnnotatePrivateCapabilities(
 	ctx context.Context, orgUID string, defs []RegionDefinition,
+) error {
+	return s.annotatePrivate(ctx, orgUID, defs, nil)
+}
+
+func (s *Service) annotatePrivate(
+	ctx context.Context, orgUID string, defs []RegionDefinition, extra []string,
 ) error {
 	if len(defs) == 0 {
 		return nil
@@ -197,7 +223,7 @@ func (s *Service) AnnotatePrivateCapabilities(
 			}
 		}
 
-		defs[i].Capabilities = capabilitiesFor(matched)
+		defs[i].Capabilities = capabilitiesFor(matched, extra)
 	}
 
 	return nil
@@ -211,13 +237,19 @@ func (s *Service) AnnotatePrivateCapabilities(
 // An org with no access to another org's private locations simply never sees
 // them here: the private half comes from this org's `custom_regions` and is
 // resolved through this org's agents.
-func (s *Service) CapabilityIndex(ctx context.Context, orgUID string) (map[string]RegionDefinition, error) {
+//
+// extra names further capabilities to aggregate, such as a plugin type one of
+// the org's agents reported (spec 2026-10-17-05 §17): the server did not load
+// it, so the published set does not cover it.
+func (s *Service) CapabilityIndex(
+	ctx context.Context, orgUID string, extra ...string,
+) (map[string]RegionDefinition, error) {
 	globalDefs, err := s.GetGlobalRegions(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	if capErr := s.AnnotateGlobalCapabilities(ctx, globalDefs); capErr != nil {
+	if capErr := s.annotateGlobal(ctx, globalDefs, extra); capErr != nil {
 		return nil, capErr
 	}
 
@@ -226,7 +258,7 @@ func (s *Service) CapabilityIndex(ctx context.Context, orgUID string) (map[strin
 		return nil, err
 	}
 
-	if capErr := s.AnnotatePrivateCapabilities(ctx, orgUID, privateDefs); capErr != nil {
+	if capErr := s.annotatePrivate(ctx, orgUID, privateDefs, extra); capErr != nil {
 		return nil, capErr
 	}
 

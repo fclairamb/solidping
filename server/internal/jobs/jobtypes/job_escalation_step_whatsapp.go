@@ -77,7 +77,7 @@ func (r *EscalationStepJobRun) pageWhatsApp(
 		return 0
 	}
 
-	if !r.reservePhoneChannel(ctx, jctx, log, incident, contact.Value, models.UsageCounterKindWhatsApp) {
+	if !r.reservePhoneChannel(ctx, jctx, log, incident, contact.Value, models.UsageCounterKindWhatsApp, false) {
 		return 0
 	}
 

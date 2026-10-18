@@ -74,6 +74,11 @@ type JSConfig struct {
 	// It is plain data: the script stays a normal js script, and the provider
 	// and key never reach a worker.
 	AI *AIConfig `json:"ai,omitempty"`
+	// PluginConfig is set only when the script is a JS plugin's entry file
+	// (spec 2026-10-17-05): the check's validated config, exposed to the
+	// script as the read-only `config` global. Never read from or written to
+	// a config map: a check config cannot turn a js check into a plugin.
+	PluginConfig map[string]any `json:"-"`
 }
 
 // stringMapFromConfig reads an optional map[string]string config key,

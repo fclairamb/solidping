@@ -101,7 +101,7 @@ import {
   type DependencyParentDraft,
 } from "@/components/checks/form/sections/dependencies";
 import type { DependencyDraft } from "@/lib/dependency-diff";
-import { checkTypeRegistry, authFieldsRegistry, advancedFieldsRegistry } from "@/components/checks/form/types";
+import { moduleFor, authFieldsRegistry, advancedFieldsRegistry } from "@/components/checks/form/types";
 import { isFieldTouched, touchIdentifiers } from "@/hooks/touched-fields";
 import { portForTypeSwitch, withDefaultPort } from "@/components/checks/form/types/ports";
 import { CheckFormFieldsProvider } from "@/components/checks/form/types/context";
@@ -189,6 +189,7 @@ export const checkTypes: {
   { value: "vnc", label: "VNC", description: "Monitor VNC (RFB) servers" },
   { value: "crawl", label: "Crawl", description: "Crawl a website for broken links, mixed content and sitemap errors" },
   { value: "health", label: "Health", description: "Read an application's health endpoint and report per component" },
+  { value: "vendor-status", label: "Vendor status page", description: "Alert when a vendor's status page (GitHub, Cloudflare, OpenAI...) reports an outage" },
   { value: "private-location", label: "Private location", description: "Alert when a private location's agents go offline", systemCreated: true },
   { value: "sleep", label: "Sleep", description: "Sleep for a fixed duration (synthetic/testing, no network I/O)", synthetic: true },
 ];
@@ -520,9 +521,16 @@ export function CheckForm({
       !apiCheckTypes || apiCheckTypes.length === 0
         ? creatable
         : // Build list from API data, matching against local entries for labels
-          creatable.filter((ct) =>
-            new Set(apiCheckTypes.filter((t) => t.enabled).map((t) => t.type)).has(ct.value),
-          );
+          [
+            ...creatable.filter((ct) =>
+              new Set(apiCheckTypes.filter((t) => t.enabled).map((t) => t.type)).has(ct.value),
+            ),
+            // Plugin types (spec 2026-10-17-05) have no local entry: the
+            // server's name and description are all there is.
+            ...apiCheckTypes
+              .filter((t) => t.enabled && t.plugin)
+              .map((t) => ({ value: t.type, label: t.type, description: t.description, synthetic: false })),
+          ];
 
     // A demo session may only create side-effect-free, credential-free probes
     // (spec 2026-09-06-02). The server refuses the rest with a VALIDATION_ERROR
@@ -749,7 +757,7 @@ export function CheckForm({
     canonicalPeriodHMS(initialData?.period) ||
       getDefaultPeriodHMS(
         initialType,
-        checkTypeRegistry[initialType].fromConfig(initialData?.config ?? {}),
+        moduleFor(initialType).fromConfig(initialData?.config ?? {}),
       ),
   );
   const initialPeriod = parsePeriod(initialData?.period || "00:05:00");
@@ -781,7 +789,7 @@ export function CheckForm({
   // A NEW check starts with the type's real default port (443, 22, …); a stored
   // check's port is never overwritten.
   const [configState, setConfigState] = useState<unknown>(() => {
-    const seeded = checkTypeRegistry[initialType].fromConfig(
+    const seeded = moduleFor(initialType).fromConfig(
       initialData?.config ?? {},
     );
     return mode === "create" ? withDefaultPort(initialType, seeded) : seeded;
@@ -1066,7 +1074,7 @@ export function CheckForm({
     );
   }, [availableRegions, pinnedIpv6]);
 
-  const activeModule = checkTypeRegistry[type];
+  const activeModule = moduleFor(type);
   const ActiveFields = activeModule.Fields;
   const authSection = authFieldsRegistry[type];
   const AuthFields = authSection?.Fields;
@@ -1196,7 +1204,7 @@ export function CheckForm({
     setName(sample.name);
     setSlug(sample.slug);
     setPeriod(secondsToHMS(sample.periodSeconds));
-    const typeModule = checkTypeRegistry[type];
+    const typeModule = moduleFor(type);
     setConfigState((typeModule.fromSample ?? typeModule.fromConfig)(sample.config));
     setPassthroughSource({ type, config: sample.config });
     setTimeoutSeconds(durationStringToSeconds(getConfigField(sample.config, "timeout")));
@@ -1666,7 +1674,7 @@ export function CheckForm({
                                     newType,
                                     withDefaultPort(
                                       newType,
-                                      checkTypeRegistry[newType].fromConfig(
+                                      moduleFor(newType).fromConfig(
                                         currentConfig,
                                       ),
                                     ),

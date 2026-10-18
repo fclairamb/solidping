@@ -64,3 +64,25 @@ consumed atomically at enrollment, so a token is single-use under concurrency.
 **Indexes**:
 - Unique on (token_hash) where not deleted
 - Index on (organization_uid) where not deleted
+
+---
+
+### org_plugin_types
+Plugin check types (`x-` prefix) an org's private-location agents reported on
+connect (spec 2026-10-17-05 §18). Kept so the check form, the schema endpoint
+and validation of those types work while the agent is offline. Read and written
+only under the reporting agent's org; a system agent's report is not stored.
+One row per (org, type): the latest report wins. Rows are never pruned.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| uid | uuid PK | Primary key |
+| organization_uid | uuid | FK to organizations |
+| check_type | text | Plugin check type, `^x-[a-z0-9]+(-[a-z0-9]+)*$` |
+| manifest | jsonb | Plugin name, version, protocol, description, labels, periods, raw JSON Schema |
+| created_at / updated_at | timestamptz | |
+
+**Foreign Keys**: `organization_uid` → organizations(uid) on delete cascade
+
+**Indexes**:
+- Unique on (organization_uid, check_type)

@@ -725,22 +725,15 @@ function publishStill(src: string, dst: string): string {
     `${humanSize(src)} at source resolution`;
 }
 
-/**
- * The captions, in order.
- *
- * The last one is written from what the take actually contains: a cut filmed
- * against a single-node server has no `regions` cue, and claiming "two regions"
- * over footage that shows one picker-less form would be a lie burned into a
- * published asset.
- */
-function labelSpecs(hasRegions: boolean): LabelSpec[] {
+/** The captions, in order. */
+function labelSpecs(): LabelSpec[] {
   return [
     { atCue: null, text: "Run it", holdS: LABEL_HOLD_S },
     { atCue: "login", text: "First login", holdS: LABEL_HOLD_S },
     { atCue: "checks-list", text: "First check", holdS: LABEL_HOLD_S },
     {
       atCue: "detail-page",
-      text: hasRegions ? "Results from two regions" : "First results",
+      text: "First results",
       holdS: LABEL_HOLD_S,
     },
   ];
@@ -818,20 +811,10 @@ async function main(): Promise<void> {
 
   const offsetS = Math.max(0, terminalInfo.duration - XFADE_S);
   const outputDuration = offsetS + plan.outputDuration;
-  const hasRegions = planCues.some((cue) => cue.label === "regions");
-  if (!hasRegions) {
-    console.warn(
-      "showcase: WARNING   this take has no `regions` cue, so it was filmed " +
-        "against a server offering a single region and the multi-region beat " +
-        "is missing. The results caption says so rather than claiming two. See " +
-        "the two-node side-car recipe in showcase/README.md.",
-    );
-  }
-
   const lowerThirds: LabelWindow[] = buildLabelWindows({
     plan,
     cues: planCues,
-    labels: labelSpecs(hasRegions),
+    labels: labelSpecs(),
     offsetS,
     outputDuration,
   });

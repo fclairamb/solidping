@@ -64,6 +64,10 @@ var connectionSecretFields = map[models.ConnectionType][]string{
 	// service URL and conversation references stay public — the dashboard
 	// renders them on the setup page.
 	models.ConnectionTypeMSTeamsBot: {"app_secret"},
+	// A2A (AI agent): the bearer token or the API key value. The Agent Card
+	// URL, the auth mode, the API key header name and the instructions stay
+	// public so the dashboard can render them on the edit form.
+	models.ConnectionTypeA2A: {"token", "api_key_value"},
 }
 
 // ConnectionSecretFields returns the secret keys for a connection type.

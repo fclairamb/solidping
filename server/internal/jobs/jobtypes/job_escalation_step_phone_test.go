@@ -449,16 +449,18 @@ func TestDispatch_MissingProviderDegradesToSkip(t *testing.T) {
 }
 
 // TestDispatch_SMSQuotaExhaustedSkips proves an exhausted monthly SMS cap skips
-// the send and records a quota-skip audit row, without failing the step.
+// an instance-credential send and records a quota-skip audit row, without
+// failing the step. (A bring-your-own send ignores the monthly cap: see
+// job_escalation_step_cap_test.go.)
 func TestDispatch_SMSQuotaExhaustedSkips(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
 	ctx := context.Background()
 
-	env := setupPhoneEnv(t, true, "")
+	env := setupPhoneEnv(t, false, "")
 	fake, srv := newFakeTwilio(t)
-	env.useFakeTwilio(srv)
+	env.useInstanceSender(instanceTwilioSender(t, srv.URL), nil, "+15550001111")
 
 	// Wire an entitlements service capped at 0 SMS/month.
 	entSvc := entitlements.NewService(env.db, entitlements.DefaultsFor(config.DeploymentModeSelfHosted), 0)

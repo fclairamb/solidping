@@ -251,7 +251,7 @@ func (s *serviceImpl) ClaimJobs(
 	_, isPostgres := s.db.Dialect().(*pgdialect.Dialect)
 
 	cloudScope := func(query *bun.SelectQuery) *bun.SelectQuery {
-		return applyCloudRegionScope(query, region)
+		return applyCloudRegionScope(ctx, query, region)
 	}
 
 	err := s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
@@ -405,6 +405,10 @@ type AgentScope struct {
 	// (the same scope the in-cluster DirectBackend claims with). Tenant-private
 	// agents leave it false.
 	System bool
+	// PluginTypes are the plugin check types the agent loaded (from its
+	// capability report). A plugin-type job is only handed to an agent that
+	// advertises its type (spec 2026-10-17-05 §17).
+	PluginTypes []string
 }
 
 // ErrInvalidAgentScope is returned when a claim scope is not a scope any agent
@@ -446,7 +450,7 @@ func (s AgentScope) apply(query *bun.SelectQuery) *bun.SelectQuery {
 		query = query.Where("organization_uid = ?", s.OrgUID)
 	}
 
-	return excludePassiveTypes(query.Where("region = ?", s.Region))
+	return pluginTypeScope(excludePassiveTypes(query.Where("region = ?", s.Region)), s.PluginTypes)
 }
 
 // excludePassiveTypes keeps passive (heartbeat, email) jobs out of every check
@@ -496,7 +500,9 @@ const privateRegionPrefix = "@"
 //     to drop the region predicate entirely and claim everything.
 //   - within what remains, a NULL region means "any region" and a non-NULL one
 //     prefix-matches the worker (SP_REGION=eu-fr-paris claims region=eu-fr).
-func applyCloudRegionScope(query *bun.SelectQuery, region *string) *bun.SelectQuery {
+func applyCloudRegionScope(ctx context.Context, query *bun.SelectQuery, region *string) *bun.SelectQuery {
+	query = pluginTypeScope(query, PluginTypesFromContext(ctx))
+
 	// Passive jobs belong to the jobs node, never to a region's workers.
 	query = excludePassiveTypes(query)
 
@@ -787,7 +793,7 @@ func (s *serviceImpl) selectAvailableJobsForCheck(
 		Order("scheduled_at ASC").
 		Limit(expressClaimLimit)
 
-	query = applyCloudRegionScope(query, region)
+	query = applyCloudRegionScope(ctx, query, region)
 
 	if isPostgres {
 		query = query.For("UPDATE SKIP LOCKED")
@@ -977,7 +983,7 @@ func (s *serviceImpl) selectAvailableJobs(
 		OrderExpr("effective_scheduled_at ASC").
 		Limit(limit)
 
-	query = applyCloudRegionScope(query, region)
+	query = applyCloudRegionScope(ctx, query, region)
 
 	// PostgreSQL: Use FOR UPDATE SKIP LOCKED for efficient row-level locking
 	if isPostgres {
@@ -1038,7 +1044,7 @@ func (s *serviceImpl) selectDueBulkJobs(
 		OrderExpr("effective_scheduled_at ASC").
 		Limit(limit)
 
-	query = applyCloudRegionScope(query, region)
+	query = applyCloudRegionScope(ctx, query, region)
 
 	if isPostgres {
 		query = query.For("UPDATE SKIP LOCKED")

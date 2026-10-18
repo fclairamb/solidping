@@ -885,6 +885,8 @@ jobs:
           # bound by koanf's env loader (which collapses every underscore to a
           # dot); it works because systemconfig declares this exact EnvVar.
           SP_AUTH_REGISTRATION_EMAIL_PATTERN: ".*"
+          # The reference plugin (x-gopher), for checker-plugins.spec.ts.
+          SP_PLUGINS_DIR: ${{ github.workspace }}/plugins
 
       # A second server on its own database, for the shard's second Playwright
       # worker (E2E_BASE_URLS below, web/dash0/e2e/base-url.ts). Each worker
@@ -909,6 +911,7 @@ jobs:
           SP_SERVER_RATE_LIMITING_REQUESTS_PER_MINUTE: "0"
           SP_SERVER_RATE_LIMITING_MAX_CONCURRENT: "0"
           SP_AUTH_REGISTRATION_EMAIL_PATTERN: ".*"
+          SP_PLUGINS_DIR: ${{ github.workspace }}/plugins
 
       - name: Wait for servers
         run: |
@@ -1145,11 +1148,70 @@ jobs:
           path: web/dash0/playwright-report/
           retention-days: 7
 
+  # Spec 2026-10-17-01: nothing else boots a released version and then HEAD on the
+  # database it left behind (v0.38.4 broke every upgrade from v0.38.1..v0.38.3
+  # that way). The legs come from `scripts/upgrade-test.sh --matrix`, so the
+  # versions are never listed by hand here. Release-please PRs run it too: a
+  # release is exactly when an upgrade must be proven.
+  upgrade-matrix:
+    name: Upgrade Matrix
+    runs-on: ubuntu-26.04
+    needs: [changes]
+    if: ${{ !startsWith(github.ref, 'refs/tags/') && needs.changes.outputs.code == 'true' }}
+    outputs:
+      legs: ${{ steps.matrix.outputs.legs }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: List the upgrade legs
+        id: matrix
+        run: |
+          set -euo pipefail
+          legs=$(scripts/upgrade-test.sh --matrix | jq -R -s -c 'split("\n") | map(select(length > 0) | split(" ") | {engine: .[0], tag: .[1]})')
+          echo "$legs"
+          echo "legs=$legs" >> "$GITHUB_OUTPUT"
+
+  upgrade:
+    name: Upgrade ${{ matrix.engine }} from ${{ matrix.tag }}
+    runs-on: ubuntu-26.04
+    needs: [changes, upgrade-matrix]
+    if: ${{ !startsWith(github.ref, 'refs/tags/') && needs.changes.outputs.code == 'true' }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.upgrade-matrix.outputs.legs) }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.27"
+          cache-dependency-path: server/go.sum
+
+      # Own Go-only build, not the `build` job's artifact: `build` (and the
+      # frontends it needs) skips on release-please PRs, which must still run
+      # this job. The upgrade path needs no embedded UI.
+      - name: Build binary
+        working-directory: server
+        run: go build -o ../solidping .
+
+      - name: Upgrade ${{ matrix.tag }} to HEAD
+        run: |
+          set -euo pipefail
+          command -v sqlite3 >/dev/null || sudo apt-get install -y sqlite3
+          chmod +x solidping
+          HEAD_BIN="$PWD/solidping" scripts/upgrade-test.sh "${{ matrix.engine }}" "${{ matrix.tag }}"
+
 
   ci:
     name: CI
     runs-on: ubuntu-26.04
-    needs: [changes, backend-lint, backend-postgres, dash0, status0, docs, build, release-guards, e2e-tests]
+    needs: [changes, backend-lint, backend-postgres, dash0, status0, docs, build, release-guards, e2e-tests, upgrade-matrix, upgrade]
     if: ${{ always() && !startsWith(github.ref, 'refs/tags/') }}
     steps:
       - name: Verify no failures

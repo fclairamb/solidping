@@ -1,7 +1,11 @@
 package checkerdef
 
 import (
+	"errors"
+	"fmt"
 	"slices"
+	"strings"
+	"sync"
 	"time"
 )
 
@@ -107,6 +111,26 @@ func (s Status) String() string {
 		return statusStrDegraded
 	default:
 		return statusStrUnknown
+	}
+}
+
+// ParseStatus maps the string a check result may report (up, down, timeout,
+// error, warning) to its Status. Lifecycle and rollup statuses (running,
+// degraded) are not results a checker may return, so they are refused.
+func ParseStatus(value string) (Status, bool) {
+	switch value {
+	case statusStrUp:
+		return StatusUp, true
+	case statusStrDown:
+		return StatusDown, true
+	case statusStrTimeout:
+		return StatusTimeout, true
+	case statusStrError:
+		return StatusError, true
+	case statusStrWarning:
+		return StatusWarning, true
+	default:
+		return 0, false
 	}
 }
 
@@ -267,6 +291,9 @@ const (
 	// CheckTypeHealth reads an application's health endpoint (Spring, ASP.NET,
 	// Laravel spatie, IETF, MicroProfile) and reports per component.
 	CheckTypeHealth CheckType = "health"
+	// CheckTypeVendorStatus watches a vendor's public status page (Atlassian
+	// Statuspage v2 summary): the whole page or selected components.
+	CheckTypeVendorStatus CheckType = "vendor-status"
 )
 
 // IsPassive reports whether the check type is passive — driven by an inbound
@@ -416,6 +443,25 @@ type CheckTypeMeta struct {
 	// advertised check-type count (AdvertisedCheckTypeCount). Not called
 	// "Internal": that word already means internal checks elsewhere.
 	ExcludedFromTally bool `json:"excludedFromTally"`
+
+	// Plugin is set on a type loaded from the operator's plugin directory
+	// (spec 2026-10-17-05): which plugin declared it. Nil on built-in types.
+	Plugin *PluginRef `json:"plugin,omitempty"`
+}
+
+// PluginRef names the plugin a check type comes from.
+type PluginRef struct {
+	Name    string `json:"name"`
+	Version string `json:"version"`
+}
+
+// PluginTypePrefix starts every plugin check type, so a plugin can never
+// collide with a future built-in type.
+const PluginTypePrefix = "x-"
+
+// IsPlugin reports whether a check type name is in the plugin namespace.
+func (t CheckType) IsPlugin() bool {
+	return strings.HasPrefix(string(t), PluginTypePrefix)
 }
 
 // checkTypesRegistry is the authoritative registry of all check types with metadata.
@@ -465,6 +511,7 @@ var checkTypesRegistry = []CheckTypeMeta{
 	{Type: CheckTypePrometheus, Labels: []string{labelSafe, labelStandalone, labelCatInfrastructure}, Description: "Alert on Prometheus metric thresholds", DefaultPeriod: time.Minute, SupportsTunnel: true, SupportsIPVersion: true},
 	{Type: CheckTypePrivateLocation, Labels: []string{labelSafe, labelStandalone, labelCatInfrastructure}, Description: "Alert when a private location's agents go offline (system-created)", DefaultPeriod: time.Minute, ExcludedFromTally: true},
 	{Type: CheckTypeHealth, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Read an application's health endpoint and report per component", DefaultPeriod: time.Minute, SupportsTunnel: true, SupportsIPVersion: true},
+	{Type: CheckTypeVendorStatus, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Alert when a vendor's status page (GitHub, Cloudflare, OpenAI...) reports an outage", DefaultPeriod: 5 * time.Minute},
 	{Type: CheckTypeCrawl, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Crawl a website for broken links, mixed content and sitemap errors", MinPeriod: time.Hour, DefaultPeriod: 24 * time.Hour, MultiStep: true},
 	{Type: CheckTypeSleep, Labels: []string{labelSafe, labelStandalone, labelCatOther}, Description: "Sleep for a fixed duration (synthetic/testing)", DefaultPeriod: 1 * time.Minute, ExcludedFromTally: true},
 }
@@ -489,8 +536,57 @@ func AdvertisedCheckTypeCount() int {
 	return len(AdvertisedCheckTypes())
 }
 
-// GetCheckTypeMeta returns the metadata for a given check type, or nil if not found.
-func GetCheckTypeMeta(ct CheckType) *CheckTypeMeta {
+// ErrCheckTypeRegistered is returned when a check type is registered twice.
+var ErrCheckTypeRegistered = errors.New("check type already registered")
+
+// registeredMetas holds the metas registered at runtime (plugin types), served
+// after the built-in checkTypesRegistry. Written at boot, read everywhere.
+//
+//nolint:gochecknoglobals // process-wide registry, like checkTypesRegistry
+var (
+	registeredMu    sync.RWMutex
+	registeredMetas []CheckTypeMeta
+)
+
+// RegisterCheckTypeMeta adds a runtime (plugin) check type. It is always
+// ExcludedFromTally: loading plugins never changes the advertised count.
+func RegisterCheckTypeMeta(source *CheckTypeMeta) error {
+	registeredMu.Lock()
+	defer registeredMu.Unlock()
+
+	if builtinMeta(source.Type) != nil || registeredIndex(source.Type) >= 0 {
+		return fmt.Errorf("%w: %s", ErrCheckTypeRegistered, source.Type)
+	}
+
+	meta := *source
+	meta.ExcludedFromTally = true
+	meta.Labels = slices.Clone(meta.Labels)
+	registeredMetas = append(registeredMetas, meta)
+
+	return nil
+}
+
+// UnregisterCheckTypeMeta removes a runtime check type. Built-ins stay.
+func UnregisterCheckTypeMeta(ct CheckType) {
+	registeredMu.Lock()
+	defer registeredMu.Unlock()
+
+	if idx := registeredIndex(ct); idx >= 0 {
+		registeredMetas = slices.Delete(registeredMetas, idx, idx+1)
+	}
+}
+
+func registeredIndex(ct CheckType) int {
+	for i := range registeredMetas {
+		if registeredMetas[i].Type == ct {
+			return i
+		}
+	}
+
+	return -1
+}
+
+func builtinMeta(ct CheckType) *CheckTypeMeta {
 	for i := range checkTypesRegistry {
 		if checkTypesRegistry[i].Type == ct {
 			return &checkTypesRegistry[i]
@@ -500,10 +596,33 @@ func GetCheckTypeMeta(ct CheckType) *CheckTypeMeta {
 	return nil
 }
 
-// ListCheckTypeMetas returns all registered check type metadata.
+// GetCheckTypeMeta returns the metadata for a given check type, or nil if not found.
+func GetCheckTypeMeta(checkType CheckType) *CheckTypeMeta {
+	if meta := builtinMeta(checkType); meta != nil {
+		return meta
+	}
+
+	registeredMu.RLock()
+	defer registeredMu.RUnlock()
+
+	if idx := registeredIndex(checkType); idx >= 0 {
+		meta := registeredMetas[idx]
+
+		return &meta
+	}
+
+	return nil
+}
+
+// ListCheckTypeMetas returns every registered check type's metadata: the
+// built-ins, then the runtime (plugin) types.
 func ListCheckTypeMetas() []CheckTypeMeta {
-	result := make([]CheckTypeMeta, len(checkTypesRegistry))
-	copy(result, checkTypesRegistry)
+	registeredMu.RLock()
+	defer registeredMu.RUnlock()
+
+	result := make([]CheckTypeMeta, 0, len(checkTypesRegistry)+len(registeredMetas))
+	result = append(result, checkTypesRegistry...)
+	result = append(result, registeredMetas...)
 
 	return result
 }
@@ -585,6 +704,7 @@ func ListCheckTypes(_ *ListSampleOptions) []CheckType {
 		CheckTypePrivateLocation,
 		CheckTypeCrawl,
 		CheckTypeHealth,
+		CheckTypeVendorStatus,
 		CheckTypeSleep,
 	}
 }

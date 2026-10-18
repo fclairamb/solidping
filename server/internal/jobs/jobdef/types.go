@@ -23,6 +23,11 @@ const (
 	JobTypeStateCleanup JobType = "state_cleanup"
 	// JobTypeNotification sends incident notifications via connections.
 	JobTypeNotification JobType = "notification"
+	// JobTypeA2ATaskPoll makes ONE GetTask call on an AI agent (A2A) task
+	// SolidPing started for an incident, then records the result on the
+	// incident timeline or schedules its successor. The whole polling state
+	// lives in the job config, so a restart mid-investigation loses nothing.
+	JobTypeA2ATaskPoll JobType = "a2a_task_poll"
 	// JobTypeSnoozeSweep auto-unsnoozes incidents whose snooze window has passed.
 	JobTypeSnoozeSweep JobType = "snooze_sweep"
 	// JobTypeEscalationStep fires one step of an escalation policy for an incident.

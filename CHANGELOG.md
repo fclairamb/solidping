@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.39.0](https://github.com/fclairamb/solidping/compare/v0.38.6...v0.39.0) (2026-10-18)
+
+
+### Features
+
+* A2A notification channel so AI agents can receive alerts ([#596](https://github.com/fclairamb/solidping/issues/596)) ([2f55dc3](https://github.com/fclairamb/solidping/commit/2f55dc322bacf7ffa1a1010eed1828c9b6facad4))
+* **dash0:** calmer, flatter and phone-friendly dashboard UI ([#582](https://github.com/fclairamb/solidping/issues/582)) ([ce933cc](https://github.com/fclairamb/solidping/commit/ce933cc2812be4980373e272f3c758303997f4ec))
+* vendor status check, SMS/voice quotas, upgrade-path CI and flaky test fixes ([#591](https://github.com/fclairamb/solidping/issues/591)) ([1a392ec](https://github.com/fclairamb/solidping/commit/1a392ec733ed9ee288005832c05811a9e799851e))
+
+
+### Bug Fixes
+
+* **checks:** build the postgres check connection from an explicit pq.Config ([#584](https://github.com/fclairamb/solidping/issues/584)) ([a4b394a](https://github.com/fclairamb/solidping/commit/a4b394ae7541f703783337e5dd87bdb2f354346c))
+* **showcase:** film a single region, as a plain docker run shows ([#595](https://github.com/fclairamb/solidping/issues/595)) ([a443442](https://github.com/fclairamb/solidping/commit/a44344284c6595455cda9363e1227e2b890d0e85))
+* **deps:** update goja, koanf to v2.4.1, posthog-go to v1.35.1 and golang.org/x/mod to v0.42.0 ([#578](https://github.com/fclairamb/solidping/issues/578), [#583](https://github.com/fclairamb/solidping/issues/583), [#586](https://github.com/fclairamb/solidping/issues/586), [#590](https://github.com/fclairamb/solidping/issues/590), [#594](https://github.com/fclairamb/solidping/issues/594), [#597](https://github.com/fclairamb/solidping/issues/597), [#598](https://github.com/fclairamb/solidping/issues/598))
+
 ## [0.38.6](https://github.com/fclairamb/solidping/compare/v0.38.5...v0.38.6) (2026-10-16)
 
 

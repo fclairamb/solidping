@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Finger check",
+  "description": "Connects to a Finger server, sends a user name and reads the answer.",
+  "type": "object",
+  "properties": {
+    "host": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Finger server host name or IP address, e.g. finger.acme.com"
+    },
+    "port": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535,
+      "default": 79,
+      "description": "TCP port"
+    },
+    "user": {
+      "type": "string",
+      "default": "",
+      "description": "User to query. Empty lists the logged-in users."
+    },
+    "contains": {
+      "type": "string",
+      "description": "Text the response must contain."
+    },
+    "timeout": {
+      "type": "string",
+      "description": "Run budget as a duration, e.g. 10s (at most 30s)."
+    }
+  },
+  "required": ["host"],
+  "additionalProperties": false
+}

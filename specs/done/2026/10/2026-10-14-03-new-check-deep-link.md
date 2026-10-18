@@ -31,3 +31,6 @@ Manual on staging: register a fresh account from a `/d/monitor` link, confirm fr
 
 ## Open questions
 1. Should the pending prefill also go into the registration request, server side, instead of localStorage? Recommended: localStorage. It is not sensitive, and it keeps the server out of it. The cost is that a visitor who confirms on another device loses the prefill, which is acceptable.
+
+## Resolved open questions
+1. Keep the pending prefill in localStorage, not in the server-side registration request. (autopilot: recommended answer)

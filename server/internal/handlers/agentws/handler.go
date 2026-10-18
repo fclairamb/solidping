@@ -45,6 +45,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/handlers/workers"
 	"github.com/fclairamb/solidping/server/internal/notifier"
+	"github.com/fclairamb/solidping/server/internal/plugintypes"
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
 	"github.com/fclairamb/solidping/server/internal/regions"
 	"github.com/fclairamb/solidping/server/internal/version"
@@ -530,6 +531,9 @@ type connState struct {
 	// egressWrittenAt throttles the workers-row refresh driven by claim frames
 	// (see recordAgentEgress). Zero means "never written on this connection".
 	egressWrittenAt time.Time
+	// pluginsRecorded is set once this connection's plugin report is stored:
+	// one report per connection, whatever the agent sends after it.
+	pluginsRecorded bool
 	// versionChecked guards warnOnVersionDrift so it logs AT MOST ONCE per
 	// connection, independent of the egress throttle above — a chatty agent
 	// must not spam the log once per claim.
@@ -558,6 +562,31 @@ const agentEgressReportInterval = 50 * time.Second
 // is nullable, and it is what makes the agent/server rollout order irrelevant.
 // An agent sending `[]` is a DIFFERENT statement — "I have none" — and is
 // written as such.
+// recordAgentPlugins stores the plugin types an org agent reported on this
+// connection (spec 2026-10-17-05 §18), under the agent's own org: the frame
+// cannot name another one. A system agent serves every org, so its plugin
+// types are not stored for any. Best effort: a failure is logged and the
+// claim goes on.
+func (h *Handler) recordAgentPlugins(
+	ctx context.Context, state *connState, frame *agentcrypto.ClientFrame,
+) {
+	if len(frame.Plugins) == 0 || state.pluginsRecorded || state.agent.IsSystem() {
+		return
+	}
+
+	state.pluginsRecorded = true
+
+	stored, err := plugintypes.New(h.dbService.DB()).Report(ctx, state.agent.OrgUID(), frame.Plugins)
+	if err != nil {
+		h.logger.WarnContext(ctx, "could not store the agent's plugin types",
+			"error", err, "agent", state.agent.UID)
+
+		return
+	}
+
+	h.logger.DebugContext(ctx, "stored the agent's plugin types", "agent", state.agent.UID, "count", stored)
+}
+
 func (h *Handler) recordAgentEgress(
 	ctx context.Context, state *connState, frame *agentcrypto.ClientFrame,
 ) {
@@ -987,6 +1016,7 @@ func (h *Handler) handleClaim(
 	ctx context.Context, conn *websocket.Conn, state *connState, frame *agentcrypto.ClientFrame,
 ) {
 	h.recordAgentEgress(ctx, state, frame)
+	h.recordAgentPlugins(ctx, state, frame)
 
 	maxJobs := frame.MaxJobs
 	if maxJobs <= 0 {
@@ -997,8 +1027,13 @@ func (h *Handler) handleClaim(
 		maxJobs = maxClaimJobs
 	}
 
+	// A plugin-type job only goes to an agent that reports the type among
+	// its capabilities (spec 2026-10-17-05 §17).
+	scope := agentClaimScope(state.agent)
+	scope.PluginTypes = checkjobsvc.PluginTypesFromCapabilities(frame.Capabilities)
+
 	jobs, nextIn, err := h.checkJobSvc.ClaimJobsForAgent(
-		ctx, state.workerUID, agentClaimScope(state.agent),
+		ctx, state.workerUID, scope,
 		frame.CheckUID, maxJobs, claimMaxAhead,
 	)
 	if err != nil {

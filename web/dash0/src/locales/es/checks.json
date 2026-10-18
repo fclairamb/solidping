@@ -489,7 +489,9 @@
     "js": "JavaScript",
     "jsDescription": "Ejecuta scripts de monitorización JavaScript personalizados",
     "prometheus": "Prometheus",
-    "prometheusDescription": "Alerta según umbrales de métricas de Prometheus"
+    "prometheusDescription": "Alerta según umbrales de métricas de Prometheus",
+    "vendor-status": "Página de estado del proveedor",
+    "vendor-statusDescription": "Alerta cuando la página de estado de un proveedor (GitHub, Cloudflare, OpenAI...) informa de una caída"
   },
   "dnsChanges": {
     "detect": "Detectar cambios",
@@ -683,6 +685,9 @@
       "title": "Las credenciales deben volver a sellarse para esta ubicación privada",
       "description": "Esta comprobación se ejecuta en una ubicación privada y sus credenciales almacenadas están selladas para un conjunto de agentes distinto de los activos actualmente: se ha inscrito o revocado un agente desde que se guardaron, por lo que los agentes no pueden descifrarlas y la comprobación fallará. SolidPing no puede volver a sellarlas por sí mismo (tampoco puede leerlas): vuelve a introducir y guardar las credenciales para solucionarlo.",
       "action": "Volver a guardar las credenciales"
+    },
+    "regionWarnings": {
+      "title": "Este check no se ejecuta en todas las regiones"
     },
     "configuration": "Configuración",
     "configurationDescription": "Ajustes y parámetros de la comprobación",
@@ -1465,7 +1470,11 @@
     "crawlMaxPagesRange": "El número de páginas debe estar entre 1 y {{max}}",
     "crawlMaxRunRange": "La duración máxima debe estar entre {{min}} y {{max}} minutos",
     "healthMaxAge": "La antigüedad máxima debe ser una duración como 10m (0 la desactiva)",
-    "aiContractRequired": "El contrato necesita al menos una línea cuando hay un prompt"
+    "aiContractRequired": "El contrato necesita al menos una línea cuando hay un prompt",
+    "vendorStatusUrl": "La URL de la página de estado es obligatoria",
+    "vendorStatusHttps": "La URL de la página de estado debe empezar por https://",
+    "pluginInvalidJson": "La configuración no es JSON válido: {{detail}}",
+    "pluginNotAnObject": "La configuración debe ser un objeto JSON."
   },
   "health": {
     "format": "Formato de salud",
@@ -1679,5 +1688,24 @@
       "ttfb": "Respuesta del servidor (TTFB)",
       "download": "Descarga"
     }
+  },
+  "vendorStatus": {
+    "vendor": "Proveedor",
+    "search": "Buscar un proveedor",
+    "custom": "URL personalizada",
+    "url": "URL de la página de estado",
+    "urlHelp": "Raíz de una página de estado Statuspage v2 (solo https), por ejemplo https://status.acme.com.",
+    "components": "Componentes",
+    "componentsHelp": "Deja todo sin marcar para vigilar la página entera.",
+    "loading": "Cargando componentes...",
+    "componentsError": "No se pudo leer esta página de estado (¿es una página Statuspage v2?).",
+    "detail": {
+      "title": "Incidentes del proveedor",
+      "noIncidents": "El proveedor no informa de ningún incidente activo."
+    }
+  },
+  "plugin": {
+    "configLabel": "Configuración (JSON)",
+    "configHelp": "Este tipo de comprobación viene de un plugin del servidor. Edite su configuración en JSON; se valida con el esquema del plugin."
   }
 }

@@ -1,0 +1,45 @@
+{{define "subject"}}{{.OrgName}} used all its {{.Channel}} alerts for this month{{end}}
+{{define "preheader"}}{{.Channel}} alerts are paused until next month: the plan includes {{.Limit}} per month.{{end}}
+{{template "base.html" .}}
+{{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "escalated" "Label" "Monthly allowance used"}}{{end}}
+{{define "content"}}
+    <h1>{{.Channel}} alerts are paused until next month</h1>
+    <p>Hi,</p>
+    <p>
+      <strong>{{.OrgName}}</strong> has used its {{.Limit}} {{.Channel}} alerts
+      included this month. SolidPing just dropped a {{.Channel}} alert because of
+      that, and will drop the next ones until the 1st of next month (UTC).
+      Other channels (email, Slack, push...) keep working.
+    </p>
+    <p>
+      To keep receiving {{.Channel}} alerts, move to a plan with a higher
+      allowance{{if ne .Channel "WhatsApp"}}, or connect your own Twilio account
+      in the integrations: messages sent through it are billed by Twilio and do
+      not count against the plan{{end}}.
+    </p>
+    <p>This is the only email about it this month.</p>
+    {{if .UpgradeURL}}
+    <div class="cta-wrap">{{template "button" dict "URL" .UpgradeURL "Label" "See plans" "Variant" "primary"}}</div>
+    {{else if .UsageURL}}
+    <div class="cta-wrap">{{template "button" dict "URL" .UsageURL "Label" "Open usage" "Variant" "primary"}}</div>
+    {{end}}
+{{end}}
+{{define "text"}}{{.Channel}} alerts are paused until next month
+
+Hi,
+
+{{.OrgName}} has used its {{.Limit}} {{.Channel}} alerts included this month.
+SolidPing just dropped a {{.Channel}} alert because of that, and will drop the
+next ones until the 1st of next month (UTC). Other channels (email, Slack,
+push...) keep working.
+
+To keep receiving {{.Channel}} alerts, move to a plan with a higher allowance{{if ne .Channel "WhatsApp"}},
+or connect your own Twilio account in the integrations: messages sent through it
+are billed by Twilio and do not count against the plan{{end}}.
+
+This is the only email about it this month.
+{{if .UpgradeURL}}
+See plans: {{.UpgradeURL}}
+{{else if .UsageURL}}
+Usage: {{.UsageURL}}
+{{end}}{{end}}

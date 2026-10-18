@@ -46,4 +46,5 @@ provider signature in the request).
 | [mcp-oauth.md](mcp-oauth.md) | MCP endpoint and the embedded OAuth 2.1 authorization server |
 | [system.md](system.md) | System parameters, email inbox, activation, scheduling lane load, regions |
 | [test-and-static.md](test-and-static.md) | Test-mode endpoints, SPA/static routes, metrics, docs |
+| [tools.md](tools.md) | Public check tools: the anonymous, guarded "run a check once" endpoint |
 | [errors.md](errors.md) | Error envelope and standard error codes |

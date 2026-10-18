@@ -65,6 +65,11 @@ func senderCapabilities() map[models.ConnectionType]SenderCapabilities {
 		// PagerDuty re-notifies on its own schedule; a reminder would only
 		// re-trigger the same dedup_key.
 		models.ConnectionTypePagerduty: {NotifiesComments: true, NotifiesAcks: true, NotifiesReminders: false},
+		// An AI agent gets the lifecycle (open, resolve, ack, unack) and
+		// nothing else. Comments are off so the agent's own findings, recorded
+		// as comments, never loop back to it; reminders would start a fresh
+		// investigation of an incident it is already working on.
+		models.ConnectionTypeA2A: {NotifiesComments: false, NotifiesAcks: true, NotifiesReminders: false},
 	}
 }
 
@@ -124,5 +129,6 @@ func senderFactories() map[models.ConnectionType]func() Sender {
 		models.ConnectionTypePushover:     func() Sender { return &PushoverSender{} },
 		models.ConnectionTypeWebPush:      func() Sender { return &WebPushSender{} },
 		models.ConnectionTypeTwilio:       func() Sender { return &TwilioSender{} },
+		models.ConnectionTypeA2A:          func() Sender { return &A2ASender{} },
 	}
 }
