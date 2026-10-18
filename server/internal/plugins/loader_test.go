@@ -14,7 +14,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/configregistry"
-	"github.com/fclairamb/solidping/server/internal/checkers/registry"
+	"github.com/fclairamb/solidping/server/internal/checkers/registrycore"
 	"github.com/fclairamb/solidping/server/internal/checkers/schemas"
 )
 
@@ -77,7 +77,7 @@ func typeDecl(checkType string) map[string]any {
 func loadForTest(t *testing.T, root string) *Set {
 	t.Helper()
 
-	set := Load(root, nil)
+	set := Load(t.Context(), root, nil)
 	t.Cleanup(set.Close)
 
 	return set
@@ -108,7 +108,7 @@ func TestLoadValidPlugin(t *testing.T) {
 	r.Equal("1m0s", meta.MinPeriod.String())
 	r.Equal("5m0s", meta.DefaultPeriod.String())
 
-	r.Contains(registry.PluginTypes(), checkType)
+	r.Contains(registrycore.PluginTypes(), checkType)
 	r.True(configregistry.IsKnownType(checkerdef.CheckType(checkType)))
 
 	raw, err := schemas.Get(checkType)
@@ -116,10 +116,10 @@ func TestLoadValidPlugin(t *testing.T) {
 	r.Contains(string(raw), `"x-solidping-plugin"`)
 	r.Contains(schemas.Types(), checkType)
 
-	checker, ok := registry.GetChecker(checkerdef.CheckType(checkType))
+	checker, ok := registrycore.GetChecker(checkerdef.CheckType(checkType))
 	r.True(ok)
 
-	cfg, ok := registry.ParseConfig(checkerdef.CheckType(checkType))
+	cfg, ok := registrycore.ParseConfig(checkerdef.CheckType(checkType))
 	r.True(ok)
 	r.NoError(cfg.FromMap(map[string]any{"host": "gopher.acme.com"}))
 
@@ -131,7 +131,7 @@ func TestLoadValidPlugin(t *testing.T) {
 	// Close unregisters everything.
 	set.Close()
 	r.Nil(checkerdef.GetCheckTypeMeta(checkerdef.CheckType(checkType)))
-	_, ok = registry.GetChecker(checkerdef.CheckType(checkType))
+	_, ok = registrycore.GetChecker(checkerdef.CheckType(checkType))
 	r.False(ok)
 	_, err = schemas.Get(checkType)
 	r.ErrorIs(err, schemas.ErrNotFound)
@@ -209,7 +209,7 @@ func TestExecPluginsAreAlwaysUnsafe(t *testing.T) {
 func TestLoadEmptyDirIsOff(t *testing.T) {
 	t.Parallel()
 
-	set := Load("", nil)
+	set := Load(t.Context(), "", nil)
 	require.Empty(t, set.Types)
 	require.Empty(t, set.Errors)
 }

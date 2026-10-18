@@ -2,10 +2,8 @@
 package registry
 
 import (
-	"errors"
-	"fmt"
-	"sort"
-	"sync"
+	"context"
+	"time"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checka2s"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkbrowser"
@@ -55,18 +53,8 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkvnc"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkwebsocket"
 	"github.com/fclairamb/solidping/server/internal/checkers/configregistry"
-)
-
-// entry is one registered check type: how to build its checker and config.
-type entry struct {
-	newChecker func() checkerdef.Checker
-	newConfig  func() checkerdef.Config
-}
-
-//nolint:gochecknoglobals // process-wide registry, written at init and at boot
-var (
-	entriesMu sync.RWMutex
-	entries   = map[checkerdef.CheckType]entry{}
+	"github.com/fclairamb/solidping/server/internal/checkers/registrycore"
+	"github.com/fclairamb/solidping/server/internal/plugins"
 )
 
 // builtinCheckers lists every check type compiled into the binary.
@@ -142,6 +130,16 @@ func init() {
 		})
 	}
 
+	plugins.RunJS = func(
+		ctx context.Context, script string, timeout time.Duration, pluginConfig map[string]any,
+	) (*checkerdef.Result, error) {
+		return (&checkjs.JSChecker{}).Execute(ctx, &checkjs.JSConfig{
+			Script:       script,
+			Timeout:      timeout,
+			PluginConfig: pluginConfig,
+		})
+	}
+
 	checkjs.ResolveChecker = func(checkType checkerdef.CheckType) (checkerdef.Checker, checkerdef.Config, bool) {
 		checker, ok := GetChecker(checkType)
 		if !ok {
@@ -158,7 +156,7 @@ func init() {
 }
 
 // ErrDuplicateType is returned when a check type is registered twice.
-var ErrDuplicateType = errors.New("check type already registered")
+var ErrDuplicateType = registrycore.ErrDuplicateType
 
 // Register adds a check type: its meta, a checker factory and a config
 // factory. A built-in registers through here at init; registering a type
@@ -168,104 +166,28 @@ func Register(
 	newChecker func() checkerdef.Checker,
 	newConfig func() checkerdef.Config,
 ) {
-	if err := register(meta.Type, newChecker, newConfig); err != nil {
-		panic("registry: " + err.Error())
-	}
+	registrycore.Register(meta, newChecker, newConfig)
 }
 
-// RegisterPlugin adds a check type loaded at runtime from a plugin manifest
-// (spec 2026-10-17-05). Unlike Register it returns an error, so a bad plugin
-// is skipped rather than crashing the boot. It registers the meta (always
-// ExcludedFromTally), the config factory and validator in configregistry, and
-// the checker factory here.
+// RegisterPlugin adds a check type loaded at runtime from a plugin manifest.
+// See registrycore.RegisterPlugin.
 func RegisterPlugin(
 	meta *checkerdef.CheckTypeMeta,
 	newChecker func() checkerdef.Checker,
 	newConfig func() checkerdef.Config,
 	validate func(spec *checkerdef.CheckSpec) error,
 ) error {
-	if err := register(meta.Type, newChecker, newConfig); err != nil {
-		return err
-	}
-
-	if err := configregistry.RegisterExternal(meta.Type, newConfig, validate); err != nil {
-		unregister(meta.Type)
-
-		return fmt.Errorf("registering %s config: %w", meta.Type, err)
-	}
-
-	if err := checkerdef.RegisterCheckTypeMeta(meta); err != nil {
-		configregistry.UnregisterExternal(meta.Type)
-		unregister(meta.Type)
-
-		return fmt.Errorf("registering %s meta: %w", meta.Type, err)
-	}
-
-	return nil
+	return registrycore.RegisterPlugin(meta, newChecker, newConfig, validate)
 }
 
-// UnregisterPlugin removes a type added by RegisterPlugin. Built-ins are never
-// unregistered.
+// UnregisterPlugin removes a type added by RegisterPlugin.
 func UnregisterPlugin(checkType checkerdef.CheckType) {
-	if !checkType.IsPlugin() {
-		return
-	}
-
-	checkerdef.UnregisterCheckTypeMeta(checkType)
-	configregistry.UnregisterExternal(checkType)
-	unregister(checkType)
+	registrycore.UnregisterPlugin(checkType)
 }
 
-// PluginTypes returns the plugin check types this process loaded, sorted. A
-// worker advertises them at claim time (spec 2026-10-17-05 §17).
+// PluginTypes returns the plugin check types this process loaded, sorted.
 func PluginTypes() []string {
-	entriesMu.RLock()
-	defer entriesMu.RUnlock()
-
-	out := make([]string, 0)
-
-	for checkType := range entries {
-		if checkType.IsPlugin() {
-			out = append(out, string(checkType))
-		}
-	}
-
-	sort.Strings(out)
-
-	return out
-}
-
-func register(
-	checkType checkerdef.CheckType,
-	newChecker func() checkerdef.Checker,
-	newConfig func() checkerdef.Config,
-) error {
-	entriesMu.Lock()
-	defer entriesMu.Unlock()
-
-	if _, dup := entries[checkType]; dup {
-		return fmt.Errorf("%w: %s", ErrDuplicateType, checkType)
-	}
-
-	entries[checkType] = entry{newChecker: newChecker, newConfig: newConfig}
-
-	return nil
-}
-
-func unregister(checkType checkerdef.CheckType) {
-	entriesMu.Lock()
-	defer entriesMu.Unlock()
-
-	delete(entries, checkType)
-}
-
-func lookup(checkType checkerdef.CheckType) (entry, bool) {
-	entriesMu.RLock()
-	defer entriesMu.RUnlock()
-
-	found, ok := entries[checkType]
-
-	return found, ok
+	return registrycore.PluginTypes()
 }
 
 // GetChecker retrieves a checker by type.
@@ -273,12 +195,7 @@ func lookup(checkType checkerdef.CheckType) (entry, bool) {
 //
 //nolint:ireturn // Registry pattern requires interface return
 func GetChecker(checkType checkerdef.CheckType) (checkerdef.Checker, bool) {
-	found, ok := lookup(checkType)
-	if !ok {
-		return nil, false
-	}
-
-	return found.newChecker(), true
+	return registrycore.GetChecker(checkType)
 }
 
 // ParseConfig creates the appropriate config struct for a given check type.
@@ -290,12 +207,7 @@ func GetChecker(checkType checkerdef.CheckType) (checkerdef.Checker, bool) {
 //
 //nolint:ireturn // Registry pattern requires interface return
 func ParseConfig(checkType checkerdef.CheckType) (checkerdef.Config, bool) {
-	found, ok := lookup(checkType)
-	if !ok {
-		return nil, false
-	}
-
-	return found.newConfig(), true
+	return registrycore.ParseConfig(checkType)
 }
 
 // GetAllSampleConfigs collects sample configurations from all checker types that implement CheckerSamplesProvider.

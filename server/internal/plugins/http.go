@@ -159,7 +159,7 @@ func isLoopbackHost(host string) bool {
 // the background. A service that does not answer yet is kept (a sidecar may
 // start after the node) and registers its types on the first good refresh;
 // one that speaks an unknown protocol version is refused.
-func (s *Set) loadHTTPPlugin(manifest *Manifest, dir string, logger *slog.Logger) error {
+func (s *Set) loadHTTPPlugin(ctx context.Context, manifest *Manifest, dir string, logger *slog.Logger) error {
 	runner, err := newHTTPTransport(manifest, logger)
 	if err != nil {
 		return err
@@ -168,8 +168,8 @@ func (s *Set) loadHTTPPlugin(manifest *Manifest, dir string, logger *slog.Logger
 	plugin := &Plugin{Manifest: *manifest, Dir: dir, transport: runner}
 	runner.plugin = plugin
 
-	ctx, cancel := context.WithTimeout(context.Background(), httpDescribeTimeout)
-	desc, err := runner.describe(ctx)
+	describeCtx, cancel := context.WithTimeout(ctx, httpDescribeTimeout)
+	desc, err := runner.describe(describeCtx)
 
 	cancel()
 
@@ -177,7 +177,7 @@ func (s *Set) loadHTTPPlugin(manifest *Manifest, dir string, logger *slog.Logger
 	case errors.Is(err, ErrHTTPPluginVersion):
 		return err
 	case err != nil:
-		logger.Warn("HTTP check plugin did not describe its types, retrying in the background",
+		logger.WarnContext(ctx, "HTTP check plugin did not describe its types, retrying in the background",
 			"plugin", manifest.Name, "error", err)
 
 		runner.mu.Lock()
@@ -192,7 +192,7 @@ func (s *Set) loadHTTPPlugin(manifest *Manifest, dir string, logger *slog.Logger
 	s.Types = append(s.Types, runner.currentTypes()...)
 	s.Plugins = append(s.Plugins, plugin)
 
-	go runner.refreshLoop()
+	go runner.refreshLoop(ctx)
 
 	return nil
 }
@@ -210,7 +210,7 @@ func (t *httpTransport) currentTypes() []checkerdef.CheckType {
 	return out
 }
 
-func (t *httpTransport) refreshLoop() {
+func (t *httpTransport) refreshLoop(ctx context.Context) {
 	defer close(t.done)
 
 	ticker := time.NewTicker(httpRefreshInterval)
@@ -220,8 +220,10 @@ func (t *httpTransport) refreshLoop() {
 		select {
 		case <-t.stop:
 			return
+		case <-ctx.Done():
+			return
 		case <-ticker.C:
-			t.refresh()
+			t.refresh(ctx)
 		}
 	}
 }
@@ -229,14 +231,14 @@ func (t *httpTransport) refreshLoop() {
 // refresh calls GET /checkers once and applies the answer. On failure the
 // last good descriptors stay registered; after httpSuspendAfter failures in
 // a row they stop being advertised, until the next success.
-func (t *httpTransport) refresh() {
-	ctx, cancel := context.WithTimeout(context.Background(), httpDescribeTimeout)
+func (t *httpTransport) refresh(ctx context.Context) {
+	ctx, cancel := context.WithTimeout(ctx, httpDescribeTimeout)
 	defer cancel()
 
 	desc, err := t.describe(ctx)
 	if err == nil {
 		for _, skipped := range t.apply(desc) {
-			t.logger.Error("Skipping check plugin type", "plugin", t.name, "error", skipped)
+			t.logger.ErrorContext(ctx, "Skipping check plugin type", "plugin", t.name, "error", skipped)
 		}
 
 		return
@@ -247,10 +249,10 @@ func (t *httpTransport) refresh() {
 	failures := t.failures
 	t.mu.Unlock()
 
-	t.logger.Warn("HTTP check plugin refresh failed", "plugin", t.name, "failures", failures, "error", err)
+	t.logger.WarnContext(ctx, "HTTP check plugin refresh failed", "plugin", t.name, "failures", failures, "error", err)
 
 	if failures == httpSuspendAfter {
-		t.logger.Error("HTTP check plugin is down, its types are no longer advertised",
+		t.logger.ErrorContext(ctx, "HTTP check plugin is down, its types are no longer advertised",
 			"plugin", t.name, "types", t.currentTypes())
 	}
 

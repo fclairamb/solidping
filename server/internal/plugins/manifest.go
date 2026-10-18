@@ -57,13 +57,14 @@ var typeNameRE = regexp.MustCompile(`^x-[a-z0-9]+(-[a-z0-9]+)*$`)
 
 // Loading errors. Each one skips the plugin (or the type), never the boot.
 var (
-	ErrInvalidManifest = errors.New("invalid plugin manifest")
-	ErrTypePrefix      = errors.New("plugin check type must match x-[a-z0-9-]+")
-	ErrDuplicateType   = errors.New("plugin check type declared twice")
-	ErrEntryOutside    = errors.New("plugin file is outside the plugin folder")
-	ErrEntryMissing    = errors.New("plugin entry file not found")
-	ErrBadSchema       = errors.New("plugin schema does not compile")
-	ErrTooLarge        = errors.New("plugin file too large")
+	ErrInvalidManifest  = errors.New("invalid plugin manifest")
+	ErrTypePrefix       = errors.New("plugin check type must match x-[a-z0-9-]+")
+	ErrDuplicateType    = errors.New("plugin check type declared twice")
+	ErrEntryOutside     = errors.New("plugin file is outside the plugin folder")
+	ErrEntryMissing     = errors.New("plugin entry file not found")
+	ErrJSRuntimeMissing = errors.New("js plugin runtime is not linked into this binary")
+	ErrBadSchema        = errors.New("plugin schema does not compile")
+	ErrTooLarge         = errors.New("plugin file too large")
 )
 
 // Manifest is a plugin's manifest.json.

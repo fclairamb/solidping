@@ -11,7 +11,7 @@ import (
 	"sync"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
-	"github.com/fclairamb/solidping/server/internal/checkers/registry"
+	"github.com/fclairamb/solidping/server/internal/checkers/registrycore"
 	"github.com/fclairamb/solidping/server/internal/checkers/schemas"
 )
 
@@ -64,7 +64,7 @@ func (s *Set) Close() {
 // Load reads every plugin folder under dir and registers its check types. An
 // empty dir is the feature switched off. A broken plugin or type is logged
 // and skipped: it never stops the boot or the other plugins.
-func Load(dir string, logger *slog.Logger) *Set {
+func Load(ctx context.Context, dir string, logger *slog.Logger) *Set {
 	set := &Set{}
 	if dir == "" {
 		return set
@@ -90,13 +90,13 @@ func Load(dir string, logger *slog.Logger) *Set {
 
 		pluginDir := filepath.Join(dir, entry.Name())
 
-		if err := set.loadPlugin(pluginDir, logger); err != nil {
+		if err := set.loadPlugin(ctx, pluginDir, logger); err != nil {
 			set.fail(logger, fmt.Errorf("plugin %s: %w", entry.Name(), err))
 		}
 	}
 
 	if len(set.Types) > 0 {
-		logger.Info("Check plugins loaded", "dir", dir, "types", set.Types)
+		logger.InfoContext(ctx, "Check plugins loaded", "dir", dir, "types", set.Types)
 	}
 
 	return set
@@ -107,14 +107,14 @@ func (s *Set) fail(logger *slog.Logger, err error) {
 	s.Errors = append(s.Errors, err)
 }
 
-func (s *Set) loadPlugin(dir string, logger *slog.Logger) error {
+func (s *Set) loadPlugin(ctx context.Context, dir string, logger *slog.Logger) error {
 	manifest, err := readManifest(dir)
 	if err != nil {
 		return err
 	}
 
 	if manifest.Protocol == ProtocolHTTP {
-		return s.loadHTTPPlugin(manifest, dir, logger)
+		return s.loadHTTPPlugin(ctx, manifest, dir, logger)
 	}
 
 	entryPath, err := resolveInside(dir, manifest.Entry)
@@ -223,13 +223,13 @@ func registerCompiled(
 
 	checker := &Checker{checkType: meta.Type, plugin: plugin, schema: schema, validateWithPlugin: decl.Validate}
 
-	err = registry.RegisterPlugin(meta,
+	err = registrycore.RegisterPlugin(meta,
 		func() checkerdef.Checker { return checker },
 		checker.newConfig,
 		checker.Validate,
 	)
 	if err != nil {
-		if errors.Is(err, registry.ErrDuplicateType) {
+		if errors.Is(err, registrycore.ErrDuplicateType) {
 			return fmt.Errorf("%w: %w", ErrDuplicateType, err)
 		}
 
@@ -244,7 +244,7 @@ func registerCompiled(
 
 // unregisterType undoes registerCompiled.
 func unregisterType(checkType checkerdef.CheckType) {
-	registry.UnregisterPlugin(checkType)
+	registrycore.UnregisterPlugin(checkType)
 	schemas.UnregisterExternal(string(checkType))
 	forgetLoaded(checkType)
 	setSuspended(checkType, false)

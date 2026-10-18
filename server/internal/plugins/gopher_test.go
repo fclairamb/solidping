@@ -15,7 +15,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/configregistry"
-	"github.com/fclairamb/solidping/server/internal/checkers/registry"
+	"github.com/fclairamb/solidping/server/internal/checkers/registrycore"
 	"github.com/fclairamb/solidping/server/internal/egress"
 )
 
@@ -35,7 +35,7 @@ func loadGopher(t *testing.T) {
 	t.Helper()
 
 	gopherOnce.Do(func() {
-		gopherSet = Load(repoPluginsDir, nil)
+		gopherSet = Load(t.Context(), repoPluginsDir, nil)
 	})
 
 	require.Empty(t, gopherSet.Errors)
@@ -76,10 +76,10 @@ func fakeGopher(t *testing.T, handle func(conn net.Conn, selector string)) (stri
 func runGopher(ctx context.Context, t *testing.T, config map[string]any) *checkerdef.Result {
 	t.Helper()
 
-	checker, ok := registry.GetChecker(gopherType)
+	checker, ok := registrycore.GetChecker(gopherType)
 	require.True(t, ok)
 
-	cfg, ok := registry.ParseConfig(gopherType)
+	cfg, ok := registrycore.ParseConfig(gopherType)
 	require.True(t, ok)
 	require.NoError(t, cfg.FromMap(config))
 

@@ -51,7 +51,7 @@ func loadTestPluginLabelled(t *testing.T, checkType string, labels []string) {
   "x-solidping-secret-fields": ["token"]
 }`), 0o600))
 
-	set := plugins.Load(filepath.Dir(dir), nil)
+	set := plugins.Load(t.Context(), filepath.Dir(dir), nil)
 	t.Cleanup(set.Close)
 	r.Empty(set.Errors)
 	r.Equal([]checkerdef.CheckType{checkerdef.CheckType(checkType)}, set.Types)

@@ -100,7 +100,7 @@ func TestPluginsLeaveTheAdvertisedCountUnchanged(t *testing.T) {
 
 	before := checkerdef.AdvertisedCheckTypeCount()
 
-	set := plugins.Load(filepath.Join(repoRoot(t), "plugins"), nil)
+	set := plugins.Load(t.Context(), filepath.Join(repoRoot(t), "plugins"), nil)
 	t.Cleanup(set.Close)
 
 	require.Empty(t, set.Errors)

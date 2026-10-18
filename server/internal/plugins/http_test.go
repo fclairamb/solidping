@@ -18,7 +18,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/configregistry"
-	"github.com/fclairamb/solidping/server/internal/checkers/registry"
+	"github.com/fclairamb/solidping/server/internal/checkers/registrycore"
 	"github.com/fclairamb/solidping/server/internal/plugins/protocol"
 	"github.com/fclairamb/solidping/server/internal/servicesig"
 )
@@ -198,7 +198,7 @@ func loadHTTPForTest(t *testing.T, manifest map[string]any) (*Set, *httpTranspor
 	writePlugin(t, root, "plugin", manifest, nil)
 
 	logs := &syncBuffer{}
-	set := Load(root, slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	set := Load(t.Context(), root, slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
 	t.Cleanup(set.Close)
 
 	var runner *httpTransport
@@ -212,10 +212,10 @@ func loadHTTPForTest(t *testing.T, manifest map[string]any) (*Set, *httpTranspor
 func runPluginType(t *testing.T, checkType string, config map[string]any) *checkerdef.Result {
 	t.Helper()
 
-	checker, ok := registry.GetChecker(checkerdef.CheckType(checkType))
+	checker, ok := registrycore.GetChecker(checkerdef.CheckType(checkType))
 	require.True(t, ok)
 
-	cfg, ok := registry.ParseConfig(checkerdef.CheckType(checkType))
+	cfg, ok := registrycore.ParseConfig(checkerdef.CheckType(checkType))
 	require.True(t, ok)
 	require.NoError(t, cfg.FromMap(config))
 
@@ -369,20 +369,20 @@ func TestHTTPPluginRefreshAddsAndRemovesTypes(t *testing.T) {
 
 	_, runner, _ := loadHTTPForTest(t, httpManifest("refresh", fake.server.URL, env))
 	r.NotNil(runner)
-	r.Contains(registry.PluginTypes(), first)
+	r.Contains(registrycore.PluginTypes(), first)
 
 	fake.set(func(f *fakeHTTPPlugin) { f.descriptors = []protocol.TypeDescriptor{descriptor(second)} })
-	runner.refresh()
+	runner.refresh(t.Context())
 
-	r.Contains(registry.PluginTypes(), second)
-	r.NotContains(registry.PluginTypes(), first, "a type gone from GET /checkers is unregistered")
+	r.Contains(registrycore.PluginTypes(), second)
+	r.NotContains(registrycore.PluginTypes(), first, "a type gone from GET /checkers is unregistered")
 	r.Nil(checkerdef.GetCheckTypeMeta(checkerdef.CheckType(first)))
 
 	// A changed descriptor is re-registered.
 	changed := descriptor(second)
 	changed.Description = "changed"
 	fake.set(func(f *fakeHTTPPlugin) { f.descriptors = []protocol.TypeDescriptor{changed} })
-	runner.refresh()
+	runner.refresh(t.Context())
 	r.Equal("changed", checkerdef.GetCheckTypeMeta(checkerdef.CheckType(second)).Description)
 }
 
@@ -398,7 +398,7 @@ func TestHTTPPluginStopsAdvertisingAfterThreeFailures(t *testing.T) {
 	r.NotNil(runner)
 
 	advertised := func() bool {
-		for _, advertisedType := range Advertised(registry.PluginTypes()) {
+		for _, advertisedType := range Advertised(registrycore.PluginTypes()) {
 			if advertisedType == checkType {
 				return true
 			}
@@ -411,16 +411,16 @@ func TestHTTPPluginStopsAdvertisingAfterThreeFailures(t *testing.T) {
 
 	fake.set(func(f *fakeHTTPPlugin) { f.failDescr = true })
 
-	runner.refresh()
-	runner.refresh()
+	runner.refresh(t.Context())
+	runner.refresh(t.Context())
 	r.True(advertised(), "two failures keep the last good descriptors advertised")
 
-	runner.refresh()
+	runner.refresh(t.Context())
 	r.False(advertised(), "three failures stop advertising")
-	r.Contains(registry.PluginTypes(), checkType, "the type stays registered")
+	r.Contains(registrycore.PluginTypes(), checkType, "the type stays registered")
 
 	fake.set(func(f *fakeHTTPPlugin) { f.failDescr = false })
-	runner.refresh()
+	runner.refresh(t.Context())
 	r.True(advertised(), "the next success resumes advertising")
 }
 

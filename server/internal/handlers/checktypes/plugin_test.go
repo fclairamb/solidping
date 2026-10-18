@@ -18,7 +18,7 @@ func TestPluginTypeIsServed(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	set := plugins.Load("../../../../plugins", nil)
+	set := plugins.Load(t.Context(), "../../../../plugins", nil)
 	t.Cleanup(set.Close)
 	r.Empty(set.Errors)
 

@@ -55,7 +55,7 @@ func TestClosedSetIsNotReported(t *testing.T) {
 	writePlugin(t, root, "reported", jsManifest("reported", typeDecl(checkType)),
 		map[string]string{"check.js": testScript, "schema.json": testSchema})
 
-	set := Load(root, nil)
+	set := Load(t.Context(), root, nil)
 	r.Empty(set.Errors)
 
 	reported := reportedType(checkType)

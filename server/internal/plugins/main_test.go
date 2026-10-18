@@ -2,6 +2,7 @@ package plugins
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -11,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkjs"
 	"github.com/fclairamb/solidping/server/internal/plugins/protocol"
 )
 
@@ -22,6 +25,16 @@ const helperEnv = "SP_PLUGIN_TEST_HELPER"
 func TestMain(m *testing.M) {
 	if mode := os.Getenv(helperEnv); mode != "" {
 		os.Exit(runHelper(mode))
+	}
+
+	// The js runtime is wired by package registry in a binary; the tests of
+	// this package cannot import registry (cycle), so they wire it directly.
+	RunJS = func(ctx context.Context, script string, timeout time.Duration, pluginConfig map[string]any) (
+		*checkerdef.Result, error,
+	) {
+		return (&checkjs.JSChecker{}).Execute(ctx, &checkjs.JSConfig{
+			Script: script, Timeout: timeout, PluginConfig: pluginConfig,
+		})
 	}
 
 	os.Exit(m.Run())

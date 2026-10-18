@@ -227,7 +227,7 @@ func loadServeConfig(ctx context.Context, logOut io.Writer) (*config.Config, fun
 	// Check plugins (spec 2026-10-17-05) register their types before anything
 	// builds an activation resolver or a worker. A broken plugin is logged and
 	// skipped; it never stops the boot. Loaded once per process, for its life.
-	plugins.Load(cfg.Plugins.Dir, slog.Default())
+	plugins.Load(ctx, cfg.Plugins.Dir, slog.Default())
 
 	// Apply Go runtime memory guardrails (GOMEMLIMIT soft cap, GOGC) as early as
 	// possible so the GC honors them for the whole process lifetime. On a

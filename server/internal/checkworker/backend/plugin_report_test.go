@@ -59,7 +59,7 @@ func TestPluginReportOncePerConnection(t *testing.T) {
 	r.NoError(os.WriteFile(filepath.Join(dir, "check.js"), []byte(`return {status: "up"};`), 0o600))
 	r.NoError(os.WriteFile(filepath.Join(dir, "schema.json"), []byte(`{"type":"object"}`), 0o600))
 
-	set := plugins.Load(filepath.Dir(dir), nil)
+	set := plugins.Load(t.Context(), filepath.Dir(dir), nil)
 	t.Cleanup(set.Close)
 	r.Empty(set.Errors)
 
@@ -93,7 +93,7 @@ func TestPluginReportOncePerConnection(t *testing.T) {
 	r.NoError(os.WriteFile(filepath.Join(other, "check.js"), []byte(`return {status: "up"};`), 0o600))
 	r.NoError(os.WriteFile(filepath.Join(other, "schema.json"), []byte(`{"type":"object"}`), 0o600))
 
-	otherSet := plugins.Load(filepath.Dir(other), nil)
+	otherSet := plugins.Load(t.Context(), filepath.Dir(other), nil)
 	t.Cleanup(otherSet.Close)
 	r.Empty(otherSet.Errors)
 
