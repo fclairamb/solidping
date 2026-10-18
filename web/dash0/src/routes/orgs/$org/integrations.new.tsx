@@ -55,6 +55,7 @@ const ALL_TYPES: ConnectionType[] = [
   "matrix",
   "zulip",
   "pagerduty",
+  "a2a",
   "pushover",
   "twilio",
   "freebox",

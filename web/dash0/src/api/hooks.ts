@@ -5722,7 +5722,8 @@ export type ConnectionType =
   | "freebox"
   | "webpush"
   | "kubernetes"
-  | "twilio";
+  | "twilio"
+  | "a2a";
 
 // Capabilities mirror the backend capability registry
 // (server/internal/db/models/integration.go `CapabilitiesFor`). The two flags
@@ -5757,6 +5758,7 @@ export const CAPABILITIES: Record<ConnectionType, IntegrationCapabilities> = {
   webpush: NOTIFY,
   kubernetes: SOURCE,
   twilio: NOTIFY,
+  a2a: NOTIFY,
 };
 
 /** Whether an integration type can receive notifications (act as a channel). */
@@ -5907,6 +5909,34 @@ export function useTestIntegration(org: string) {
         `/api/v1/orgs/${org}/integrations/${integrationUid}/test`,
         { method: "POST" },
       ),
+  });
+}
+
+// AI agent (A2A): resolve the Agent Card for possibly unsaved settings, so
+// the form can show the agent name, skills and protocol version before
+// saving. integrationUid lets the server fill in stored secrets the form
+// does not echo back.
+export interface A2AAgentInfo {
+  name: string;
+  description?: string;
+  protocolVersion: string;
+  interfaceUrl: string;
+  skills: { id: string; name: string; description?: string }[];
+}
+
+export interface A2ACardResult {
+  success: boolean;
+  agent?: A2AAgentInfo;
+  error?: string;
+}
+
+export function useResolveA2ACard(org: string) {
+  return useMutation({
+    mutationFn: (body: { settings: Record<string, unknown>; integrationUid?: string }) =>
+      apiFetch<A2ACardResult>(`/api/v1/orgs/${org}/integrations/a2a/resolve-card`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
   });
 }
 

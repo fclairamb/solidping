@@ -81,7 +81,8 @@
     "slack": "Slack",
     "discord": "Discord",
     "webhook": "Webhook",
-    "telegram": "Telegram"
+    "telegram": "Telegram",
+    "a2a": "Agent IA (A2A)"
   },
   "myNotifications": {
     "empty": {
