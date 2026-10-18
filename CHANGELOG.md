@@ -5,7 +5,7 @@
 
 ### Features
 
-* A2A notification channel for AI agents ([#596](https://github.com/fclairamb/solidping/issues/596)) ([2f55dc3](https://github.com/fclairamb/solidping/commit/2f55dc322bacf7ffa1a1010eed1828c9b6facad4))
+* A2A notification channel so AI agents can receive alerts ([#596](https://github.com/fclairamb/solidping/issues/596)) ([2f55dc3](https://github.com/fclairamb/solidping/commit/2f55dc322bacf7ffa1a1010eed1828c9b6facad4))
 * **dash0:** calmer, flatter and phone-friendly dashboard UI ([#582](https://github.com/fclairamb/solidping/issues/582)) ([ce933cc](https://github.com/fclairamb/solidping/commit/ce933cc2812be4980373e272f3c758303997f4ec))
 * vendor status check, SMS/voice quotas, upgrade-path CI and flaky test fixes ([#591](https://github.com/fclairamb/solidping/issues/591)) ([1a392ec](https://github.com/fclairamb/solidping/commit/1a392ec733ed9ee288005832c05811a9e799851e))
 
@@ -13,14 +13,8 @@
 ### Bug Fixes
 
 * **checks:** build the postgres check connection from an explicit pq.Config ([#584](https://github.com/fclairamb/solidping/issues/584)) ([a4b394a](https://github.com/fclairamb/solidping/commit/a4b394ae7541f703783337e5dd87bdb2f354346c))
-* **deps:** update github.com/dop251/goja digest to 313b6b6 ([#578](https://github.com/fclairamb/solidping/issues/578)) ([d068c02](https://github.com/fclairamb/solidping/commit/d068c024cece64414ee7ffc7e9555bad58a4b692))
-* **deps:** update github.com/dop251/goja digest to d42f16b ([#597](https://github.com/fclairamb/solidping/issues/597)) ([3f501a1](https://github.com/fclairamb/solidping/commit/3f501a179506ef82392d1bbaffea492766199e4f))
-* **deps:** update github.com/dop251/goja digest to e686264 ([#590](https://github.com/fclairamb/solidping/issues/590)) ([380ed48](https://github.com/fclairamb/solidping/commit/380ed48dc103efb5fa4e8fd38614c707a93e7b51))
-* **deps:** update module github.com/knadh/koanf/v2 to v2.4.0 ([#586](https://github.com/fclairamb/solidping/issues/586)) ([c02a042](https://github.com/fclairamb/solidping/commit/c02a04206ac54a1fdcc86c2139f4eef8e5f2793a))
-* **deps:** update module github.com/knadh/koanf/v2 to v2.4.1 ([#594](https://github.com/fclairamb/solidping/issues/594)) ([95e8ec3](https://github.com/fclairamb/solidping/commit/95e8ec32457825f68af97158807d1b4ca3c2c8d3))
-* **deps:** update module github.com/posthog/posthog-go to v1.35.1 ([#583](https://github.com/fclairamb/solidping/issues/583)) ([efb4819](https://github.com/fclairamb/solidping/commit/efb4819b51619f3e48969422d0e15f7c451c04b7))
-* **deps:** update module golang.org/x/mod to v0.42.0 ([#598](https://github.com/fclairamb/solidping/issues/598)) ([62e913d](https://github.com/fclairamb/solidping/commit/62e913da9456b0f91f88b569c2718cd1ac555c42))
 * **showcase:** film a single region, as a plain docker run shows ([#595](https://github.com/fclairamb/solidping/issues/595)) ([a443442](https://github.com/fclairamb/solidping/commit/a44344284c6595455cda9363e1227e2b890d0e85))
+* **deps:** update goja, koanf to v2.4.1, posthog-go to v1.35.1 and golang.org/x/mod to v0.42.0 ([#578](https://github.com/fclairamb/solidping/issues/578), [#583](https://github.com/fclairamb/solidping/issues/583), [#586](https://github.com/fclairamb/solidping/issues/586), [#590](https://github.com/fclairamb/solidping/issues/590), [#594](https://github.com/fclairamb/solidping/issues/594), [#597](https://github.com/fclairamb/solidping/issues/597), [#598](https://github.com/fclairamb/solidping/issues/598))
 
 ## [0.38.6](https://github.com/fclairamb/solidping/compare/v0.38.5...v0.38.6) (2026-10-16)
 
