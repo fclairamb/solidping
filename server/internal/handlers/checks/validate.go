@@ -512,6 +512,17 @@ func (s *Service) validateDockerDeploymentConfig(checkType string, checkRegions 
 	return nil
 }
 
+// validateRegionGates runs the type gates that depend only on where a check
+// runs: docker in SaaS and disabled plugin types. A region-only PATCH runs
+// them on its own, since it skips the config validators.
+func (s *Service) validateRegionGates(checkType string, checkRegions []string) error {
+	if err := s.validateDockerDeploymentConfig(checkType, checkRegions); err != nil {
+		return err
+	}
+
+	return s.validatePluginActivation(checkType, checkRegions)
+}
+
 // validatePluginActivation rejects a check of a server-loaded plugin type the
 // activation gate disables, unless every resolved region is a private
 // location: the org's own agent runs it there under its own host's config.

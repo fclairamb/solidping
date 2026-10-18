@@ -442,7 +442,9 @@ func formatPeriodBound(bound time.Duration) string {
 func validatePeriodForType(
 	checkType string, period time.Duration, internal bool, config checkerdef.Config,
 ) error {
-	return validatePeriodBounds(checkType, period, internal, config, checkerdef.GetCheckTypeMeta(checkerdef.CheckType(checkType)))
+	meta := checkerdef.GetCheckTypeMeta(checkerdef.CheckType(checkType))
+
+	return validatePeriodBounds(checkType, period, internal, config, meta)
 }
 
 // validatePeriodBounds is validatePeriodForType with the type's metadata
@@ -2208,11 +2210,7 @@ func (s *Service) UpdateCheck(
 		// scheduled run, but a hard reject belongs here, at the PATCH that
 		// causes it.
 		if req.Config == nil {
-			if cfgErr := s.validateDockerDeploymentConfig(check.Type, check.Regions); cfgErr != nil {
-				return CheckResponse{}, cfgErr
-			}
-
-			if cfgErr := s.validatePluginActivation(check.Type, check.Regions); cfgErr != nil {
+			if cfgErr := s.validateRegionGates(check.Type, check.Regions); cfgErr != nil {
 				return CheckResponse{}, cfgErr
 			}
 		}
