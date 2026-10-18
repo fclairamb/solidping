@@ -474,8 +474,11 @@ func (t *httpTransport) execute(ctx context.Context, checkType string, cfg *Conf
 			Output: map[string]any{checkerdef.OutputKeyError: "plugin " + t.name + " did not answer before the deadline"},
 		}, nil
 	case err != nil:
-		// Never down: a broken plugin is not a down target.
-		message := "plugin " + t.name + " failed: " + err.Error()
+		// Never down: a broken plugin is not a down target. The full error
+		// names the plugin's internal URL: it goes to the worker log only.
+		t.logger.WarnContext(ctx, "HTTP check plugin execute failed", "plugin", t.name, "error", err)
+
+		message := "plugin " + t.name + " failed: " + storedReason(err)
 
 		return &checkerdef.Result{
 			Status: checkerdef.StatusError, Duration: duration,
@@ -492,6 +495,19 @@ func (t *httpTransport) execute(ctx context.Context, checkType string, cfg *Conf
 	}
 
 	return resultFromProtocol(&res, duration), nil
+}
+
+// storedReason is the part of an execute error safe to store in a result
+// that org users read: never the plugin's URL or address.
+func storedReason(err error) string {
+	switch {
+	case errors.Is(err, ErrHTTPPluginStatus), errors.Is(err, ErrHTTPPluginBody), errors.Is(err, ErrHTTPPluginTooLarge):
+		return err.Error()
+	case errors.Is(err, ErrHTTPPluginNoAnswer):
+		return ErrHTTPPluginNoAnswer.Error()
+	default:
+		return "the request could not be sent"
+	}
 }
 
 // validate asks the service to validate a config the schema accepted. A

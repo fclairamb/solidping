@@ -604,28 +604,71 @@ func TestHTTPPluginSecretsReachThePluginOnly(t *testing.T) {
 	keys, env := testKeys(t)
 	checkType := uniqueType("secret")
 	fake := newFakeHTTPPlugin(t, keys, descriptor(checkType))
-	fake.set(func(f *fakeHTTPPlugin) {
-		f.execute = func(writer http.ResponseWriter, _ *http.Request) {
-			writer.WriteHeader(http.StatusInternalServerError)
-		}
-	})
 
 	_, runner, logs := loadHTTPForTest(t, httpManifest("secret", fake.server.URL, env))
 	r.NotNil(runner)
 
 	const secret = "s3cr3t-acme-token"
 
-	res := runPluginType(t, checkType, map[string]any{"host": "plugin.acme.com", "token": secret})
+	cases := []struct {
+		name    string
+		handler http.HandlerFunc
+		want    checkerdef.Status
+	}{
+		{"500", func(writer http.ResponseWriter, _ *http.Request) {
+			writer.WriteHeader(http.StatusInternalServerError)
+		}, checkerdef.StatusError},
+		{"200 with a result", func(writer http.ResponseWriter, _ *http.Request) {
+			_, _ = io.WriteString(writer,
+				`{"status":"up","metrics":{"lines":2},"output":{"message":"finger answered","lines":"alice"}}`)
+		}, checkerdef.StatusUp},
+	}
+
+	// The cases share one fake: run them in order.
+	for _, tc := range cases {
+		fake.set(func(f *fakeHTTPPlugin) { f.execute = tc.handler })
+
+		res := runPluginType(t, checkType, map[string]any{"host": "plugin.acme.com", "token": secret})
+		r.Equal(tc.want, res.Status, "%s: %v", tc.name, res.Output)
+
+		fake.mu.Lock()
+		r.Contains(strings.Join(fake.bodies, "\n"), secret, "%s: the secret reaches /execute", tc.name)
+		fake.mu.Unlock()
+
+		stored, err := json.Marshal(map[string]any{"output": res.Output, "metrics": res.Metrics})
+		r.NoError(err)
+		// Positive control: the stored result holds what the plugin returned.
+		if tc.want == checkerdef.StatusUp {
+			r.Contains(string(stored), "finger answered", tc.name)
+		}
+
+		r.NotContains(string(stored), secret, "%s: not in the stored result", tc.name)
+		r.NotContains(logs.String(), secret, "%s: not in the logs", tc.name)
+	}
+}
+
+func TestHTTPPluginUnreachableResultHidesTheURL(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	keys, env := testKeys(t)
+	checkType := uniqueType("gone")
+	fake := newFakeHTTPPlugin(t, keys, descriptor(checkType))
+
+	_, runner, logs := loadHTTPForTest(t, httpManifest("gone", fake.server.URL, env))
+	r.NotNil(runner)
+
+	address := strings.TrimPrefix(fake.server.URL, "http://")
+	fake.server.Close()
+
+	res := runPluginType(t, checkType, map[string]any{"host": "plugin.acme.com"})
 	r.Equal(checkerdef.StatusError, res.Status)
 
-	fake.mu.Lock()
-	r.Contains(strings.Join(fake.bodies, "\n"), secret, "the secret reaches /execute")
-	fake.mu.Unlock()
-
-	stored, err := json.Marshal(map[string]any{"output": res.Output, "metrics": res.Metrics})
+	stored, err := json.Marshal(res.Output)
 	r.NoError(err)
-	r.NotContains(string(stored), secret, "not in the stored result")
-	r.NotContains(logs.String(), secret, "not in the logs")
+	r.Contains(string(stored), ErrHTTPPluginNoAnswer.Error())
+	r.NotContains(string(stored), address, "the plugin address is not in the stored result")
+	r.Contains(logs.String(), address, "the worker log keeps the full error")
 }
 
 func TestHTTPPluginValidate(t *testing.T) {
