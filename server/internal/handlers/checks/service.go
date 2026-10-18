@@ -442,6 +442,15 @@ func formatPeriodBound(bound time.Duration) string {
 func validatePeriodForType(
 	checkType string, period time.Duration, internal bool, config checkerdef.Config,
 ) error {
+	return validatePeriodBounds(checkType, period, internal, config, checkerdef.GetCheckTypeMeta(checkerdef.CheckType(checkType)))
+}
+
+// validatePeriodBounds is validatePeriodForType with the type's metadata
+// given: an agent-reported type's bounds come from its manifest, not from
+// the server's registry (spec 2026-10-17-05 §18).
+func validatePeriodBounds(
+	checkType string, period time.Duration, internal bool, config checkerdef.Config, meta *checkerdef.CheckTypeMeta,
+) error {
 	if period == 0 || internal || checkerdef.CheckType(checkType) == checkerdef.CheckTypeSleep {
 		return nil
 	}
@@ -450,7 +459,7 @@ func validatePeriodForType(
 
 	var maxPeriod time.Duration
 
-	if meta := checkerdef.GetCheckTypeMeta(checkerdef.CheckType(checkType)); meta != nil {
+	if meta != nil {
 		if meta.MinPeriod > 0 {
 			minPeriod = meta.MinPeriod
 		}
@@ -2257,8 +2266,8 @@ func (s *Service) UpdateCheck(
 		// it (applyConfigUpdate ran above), and the stored one otherwise — so
 		// a period-only PATCH is held to the stored script's floor, and a
 		// script+period PATCH to the new script's.
-		if periodErr := validatePeriodForType(
-			check.Type, time.Duration(duration), check.Internal,
+		if periodErr := s.validatePeriodFor(
+			ctx, check.OrganizationUID, check.Type, time.Duration(duration), check.Internal,
 			parsedConfigForType(check.Type, check.Config),
 		); periodErr != nil {
 			return CheckResponse{}, periodErr
@@ -4722,7 +4731,7 @@ func (s *Service) assertEdgeNoCycle(ctx context.Context, orgUID, parentUID, chil
 // check at all: missing required fields, an unknown type, or a client reaching
 // for the server-owned `internal` flag. Split out of importSingleCheck so the
 // per-entry contract lives in one readable place.
-func validateImportedCheck(exportedCheck *ExportCheck, index int) *ImportError {
+func validateImportedCheck(exportedCheck *ExportCheck, index int, types docTypes) *ImportError {
 	// Validate required fields
 	if exportedCheck.Slug == "" {
 		return &ImportError{Index: index, Slug: exportedCheck.Slug, Error: "slug is required"}
@@ -4746,7 +4755,7 @@ func validateImportedCheck(exportedCheck *ExportCheck, index int) *ImportError {
 	}
 
 	// Validate check type
-	if !configregistry.IsKnownType(checkerdef.CheckType(exportedCheck.Type)) {
+	if !types.known(exportedCheck.Type) {
 		return &ImportError{
 			Index: index, Slug: exportedCheck.Slug, Error: "invalid check type: " + exportedCheck.Type,
 		}
@@ -4775,7 +4784,7 @@ func (s *Service) importSingleCheck(
 	exportedCheck, index := item.entry, item.index
 	org, orgSlug, dryRun := item.org, item.orgSlug, item.dryRun
 
-	if validationErr := validateImportedCheck(exportedCheck, index); validationErr != nil {
+	if validationErr := validateImportedCheck(exportedCheck, index, s.documentTypes(ctx, org.UID)); validationErr != nil {
 		return "", nil, validationErr
 	}
 
@@ -5437,7 +5446,7 @@ func (s *Service) applyConfigUpdate(
 		return mergeErr
 	}
 
-	preserveAbsentRedactedFields(check, merged)
+	s.preserveAbsentRedactedFields(ctx, check, merged)
 
 	if immutableErr := assertPrivateLocationRegionUnchanged(check, merged); immutableErr != nil {
 		return immutableErr
@@ -5452,7 +5461,7 @@ func (s *Service) applyConfigUpdate(
 	// Normalize the EFFECTIVE config, after the merge and before encryption —
 	// never the raw patch, whose folded output would replace the stored map
 	// wholesale and wipe unrelated keys.
-	merged, normErr := normalizeCheckConfig(check.Type, merged)
+	merged, normErr := s.normalizeConfigFor(ctx, check.OrganizationUID, check.Type, merged)
 	if normErr != nil {
 		return normErr
 	}
@@ -5939,7 +5948,7 @@ func (s *Service) applyConfigPatch(
 		return nil, err
 	}
 
-	cfg, ok := configregistry.ParseConfig(checkerdef.CheckType(check.Type))
+	cfg, ok := s.parseConfigFor(ctx, check.OrganizationUID, check.Type)
 	if !ok {
 		// Unknown checker — fall back to plain replace.
 		return patch, nil
@@ -6012,8 +6021,8 @@ func (s *Service) makeCheckJobsDue(ctx context.Context, checkUID string) error {
 // exporter omits these fields: a document that does not carry the value is
 // never a request to destroy it. Rotation is an explicit, separate operation
 // (RotateHeartbeatToken), which is the ONE supported way to change one.
-func preserveAbsentRedactedFields(check *models.Check, merged map[string]any) {
-	cfg, ok := configregistry.ParseConfig(checkerdef.CheckType(check.Type))
+func (s *Service) preserveAbsentRedactedFields(ctx context.Context, check *models.Check, merged map[string]any) {
+	cfg, ok := s.parseConfigFor(ctx, check.OrganizationUID, check.Type)
 	if !ok {
 		return
 	}

@@ -572,7 +572,7 @@ func (s *Service) ValidateCheck(
 	}
 
 	effective := s.validateConfigFindings(ctx, orgUID, req, findings)
-	period := s.validatePeriodFindings(req, effective, findings)
+	period := s.validatePeriodFindings(ctx, orgUID, req, effective, findings)
 	s.validateSlugFindings(ctx, orgUID, req, findings)
 	validateRequestFieldFindings(req, period, findings)
 
@@ -616,7 +616,7 @@ func (s *Service) validateConfigFindings(
 	}
 
 	if req.Config != nil {
-		normalized, normErr := normalizeCheckConfig(req.Type, req.Config)
+		normalized, normErr := s.normalizeConfigFor(ctx, orgUID, req.Type, req.Config)
 		if normErr != nil {
 			findings.addErrorFrom(normErr, configFieldName, CodeInvalidConfig)
 		} else {
@@ -635,7 +635,7 @@ func (s *Service) validateConfigFindings(
 // bounds the write paths enforce. Returns the parsed period (0 when absent or
 // unparseable) for the rate projection to reason about.
 func (s *Service) validatePeriodFindings(
-	req *ValidateCheckRequest, effective map[string]any, findings *validateFindings,
+	ctx context.Context, orgUID string, req *ValidateCheckRequest, effective map[string]any, findings *validateFindings,
 ) time.Duration {
 	if req.Period == "" {
 		return 0
@@ -652,8 +652,8 @@ func (s *Service) validatePeriodFindings(
 
 	// Nothing validated here can be internal — the flag is not writable
 	// (spec 2026-08-27-01) — hence the constant false.
-	if err := validatePeriodForType(
-		req.Type, period, false, parsedConfigForType(req.Type, effective),
+	if err := s.validatePeriodFor(
+		ctx, orgUID, req.Type, period, false, parsedConfigForType(req.Type, effective),
 	); err != nil {
 		findings.addErrorFrom(err, fieldPeriod, CodeInvalidPeriod)
 	}

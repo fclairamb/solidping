@@ -3,6 +3,7 @@ package checks
 import (
 	"context"
 	"log/slog"
+	"time"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/configregistry"
@@ -51,6 +52,40 @@ func (s *Service) validateSpecFor(
 	}
 
 	return configregistry.ValidateSpec(checkerdef.CheckType(checkType), spec)
+}
+
+// normalizeConfigFor is normalizeCheckConfig plus the org's agent types.
+func (s *Service) normalizeConfigFor(
+	ctx context.Context, orgUID, checkType string, effective map[string]any,
+) (map[string]any, error) {
+	cfg, ok := s.parseConfigFor(ctx, orgUID, checkType)
+	if !ok {
+		return effective, nil
+	}
+
+	return checkerdef.NormalizeConfigFor(cfg, effective) //nolint:wrapcheck // same contract as normalizeCheckConfig
+}
+
+// validatePeriodFor is validatePeriodForType plus the org's agent types,
+// held to the min/max period their agent reported.
+func (s *Service) validatePeriodFor(
+	ctx context.Context, orgUID, checkType string, period time.Duration, internal bool, config checkerdef.Config,
+) error {
+	if remote := s.orgPluginType(ctx, orgUID, checkType); remote != nil {
+		meta := remote.Meta()
+
+		return validatePeriodBounds(checkType, period, internal, config, &meta)
+	}
+
+	return validatePeriodForType(checkType, period, internal, config)
+}
+
+// documentTypes is the org's agent-type lookup for the config-as-code
+// validator and importer.
+func (s *Service) documentTypes(ctx context.Context, orgUID string) docTypes {
+	return docTypes{remote: func(checkType string) *plugins.RemoteType {
+		return s.orgPluginType(ctx, orgUID, checkType)
+	}}
 }
 
 // parseConfigFor is configregistry.ParseConfig plus the org's agent types, so
