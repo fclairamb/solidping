@@ -1,15 +1,19 @@
 /**
- * SolidPing docs styles: the "electric" identity shared with dash0, status0
- * and the emails (specs 2026-09-24-01 and -06).
+ * SolidPing docs theme: the "electric blue" identity of www.solidping.io, so
+ * the docs read as the same site. Tokens, navbar, buttons, the navy "aurora"
+ * surface and the footer come from the website's src/css/custom.css
+ * (solidping-website repo): change them there and here together.
  *
  * Primary is #1e64ef (light) / #57a8ff (dark), the hex twins of dash0's
  * --primary. The six shades of each are generated with Docusaurus' palette
  * rule (HSL lightness -10/-15/-30% and +10/+15/+30%), not hand-picked.
- * Hero, footer and the navbar border reuse dash0's hero gradient, sidebar
- * navy and accent gradient.
+ * The logo stays crimson: it is the one warm accent, never recolor it.
  */
 
-/* Light mode */
+@import '@fontsource-variable/inter/index.css';
+
+/* ------------------------------------------------------------------ tokens */
+
 :root {
   --ifm-color-primary: #1e64ef;
   --ifm-color-primary-dark: #1056e2;
@@ -18,28 +22,67 @@
   --ifm-color-primary-light: #3775f1;
   --ifm-color-primary-lighter: #447ef2;
   --ifm-color-primary-lightest: #6998f4;
-  --ifm-code-font-size: 95%;
-  --docusaurus-highlighted-code-line-bg: rgba(30, 100, 239, 0.1);
   /* 5.09:1 on white */
   --ifm-link-color: var(--ifm-color-primary);
-  --ifm-navbar-link-hover-color: var(--ifm-color-primary-darker);
+  --ifm-navbar-link-hover-color: var(--ifm-color-primary);
+  --docusaurus-highlighted-code-line-bg: rgba(30, 100, 239, 0.1);
 
-  /* Tints of the primary, same alphas as the previous theme. */
-  --sp-primary-tint: rgba(30, 100, 239, 0.1);
-  --sp-primary-shadow: rgba(30, 100, 239, 0.15);
-  /* Text on a solid primary fill (secondary button hover). */
-  --sp-on-primary: #ffffff;
+  --ifm-font-family-base: 'Inter Variable', Inter, system-ui, -apple-system, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+  --ifm-heading-font-weight: 700;
+  --ifm-code-font-size: 88%;
+  --ifm-global-radius: 10px;
+  --ifm-button-border-radius: 10px;
+  --ifm-navbar-height: 4rem;
+  /* Infima leaves the light page transparent; say white so the page never
+     shows the browser canvas behind it. */
+  --ifm-background-color: #ffffff;
 
-  /* Electric identity gradients (dash0 spec 01 §2, spec 02 §1). */
-  --sp-hero-gradient: linear-gradient(135deg, #0094d9 0%, #204ee3 60%, #3823a2 100%);
-  --sp-accent-gradient: linear-gradient(90deg, #00b0e4 0%, #175ee8 50%, #453cdb 100%);
-  /* White on #00b0e4 is 2.5:1, so text sits on the --primary-gradient stops. */
-  --sp-announcement-gradient: linear-gradient(90deg, #007bce 0%, #175ee8 50%, #453cdb 100%);
-  --sp-sidebar-navy: linear-gradient(180deg, #0a1731 0%, #04091b 100%);
+  /* Brand constants, identical in both themes. */
+  --sp-navy-top: #0a1731;
+  --sp-navy-bottom: #04091b;
+  --sp-navy: linear-gradient(180deg, var(--sp-navy-top) 0%, var(--sp-navy-bottom) 100%);
+  --sp-grad-button: linear-gradient(135deg, #007bce 0%, #175ee8 50%, #453cdb 100%);
+  --sp-grad-accent: linear-gradient(135deg, #00b0e4 0%, #175ee8 50%, #453cdb 100%);
+  --sp-luminous: oklch(0.85 0.12 220);
+
+  /* Surfaces and text, themed. */
+  --sp-heading: #0b1220;
+  --sp-text: #3b4456;
+  --sp-muted: #5b6474;
+  --sp-accent-text: #0a41ad;
+  --sp-surface: #ffffff;
+  --sp-surface-alt: #f5f7fb;
+  --sp-border: #e2e7f0;
+  --sp-border-strong: #cfd7e4;
+  --sp-tint: rgba(30, 100, 239, 0.08);
+  --sp-shadow-sm: 0 1px 2px rgba(11, 18, 32, 0.06);
+  --sp-shadow-md: 0 1px 2px rgba(11, 18, 32, 0.04), 0 8px 24px -8px rgba(11, 18, 32, 0.12);
+
+  --ifm-color-content: var(--sp-text);
+  --ifm-heading-color: var(--sp-heading);
+  --ifm-toc-border-color: var(--sp-border);
+  --ifm-table-border-color: var(--sp-border);
+  --ifm-hr-background-color: var(--sp-border);
+  --ifm-code-background: var(--sp-surface-alt);
+  --ifm-menu-color: var(--sp-text);
+  --ifm-menu-color-active: var(--sp-accent-text);
+  --ifm-menu-color-background-active: var(--sp-tint);
+  --ifm-menu-color-background-hover: var(--ifm-color-emphasis-100);
+
+  /* Infima's neutral greys, tinted toward the navy like the website's. */
+  --ifm-color-emphasis-100: #f3f5f9;
+  --ifm-color-emphasis-200: #e2e7f0;
+  --ifm-color-emphasis-300: #cfd7e4;
+  --ifm-color-emphasis-600: #5b6474;
+  --ifm-color-emphasis-700: #3b4456;
+  --ifm-color-emphasis-800: #232b3a;
 }
 
-/* Dark mode */
-[data-theme='dark'] {
+/* html[...], not [data-theme='dark'] as on the website: Infima declares its
+   dark tokens on html[data-theme='dark'], and without the website's v4 CSS
+   cascade layers the more specific selector would win. */
+html[data-theme='dark'] {
   --ifm-color-primary: #57a8ff;
   --ifm-color-primary-dark: #3596ff;
   --ifm-color-primary-darker: #248dff;
@@ -47,101 +90,828 @@
   --ifm-color-primary-light: #79baff;
   --ifm-color-primary-lighter: #8ac3ff;
   --ifm-color-primary-lightest: #beddff;
-  --docusaurus-highlighted-code-line-bg: rgba(87, 168, 255, 0.2);
-  /* 6.92:1 on #1b1b1d */
+  /* 7.9:1 on #0b1120 */
   --ifm-link-color: var(--ifm-color-primary);
   --ifm-navbar-link-hover-color: var(--ifm-color-primary-light);
+  --docusaurus-highlighted-code-line-bg: rgba(87, 168, 255, 0.16);
 
-  --sp-primary-tint: rgba(87, 168, 255, 0.1);
-  --sp-primary-shadow: rgba(87, 168, 255, 0.15);
-  /* White on #57a8ff is 2.5:1; the page background reads 6.9:1. */
-  --sp-on-primary: #1b1b1d;
+  --ifm-background-color: #0b1120;
+  --ifm-background-surface-color: #0d1527;
+
+  --sp-heading: #f1f5fb;
+  --sp-text: #c3cbd9;
+  --sp-muted: #94a0b6;
+  --sp-accent-text: #57a8ff;
+  --sp-surface: #111a2c;
+  --sp-surface-alt: #0d1527;
+  --sp-border: #1e2a42;
+  --sp-border-strong: #2b3a57;
+  --sp-tint: rgba(87, 168, 255, 0.12);
+  --sp-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --sp-shadow-md: 0 1px 2px rgba(0, 0, 0, 0.3), 0 12px 28px -12px rgba(0, 0, 0, 0.6);
+
+  --ifm-code-background: rgba(255, 255, 255, 0.06);
+
+  --ifm-color-emphasis-100: #121b2e;
+  --ifm-color-emphasis-200: #1e2a42;
+  --ifm-color-emphasis-300: #2b3a57;
+  --ifm-color-emphasis-600: #94a0b6;
+  --ifm-color-emphasis-700: #b5bfd0;
+  --ifm-color-emphasis-800: #d5dce8;
 }
 
-/* Hero section styling */
-.hero {
-  background: var(--sp-hero-gradient);
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'cv11', 'ss01';
 }
 
-.hero--primary {
-  --ifm-hero-background-color: transparent;
-  --ifm-hero-text-color: #fff;
+h1,
+h2,
+h3 {
+  letter-spacing: -0.02em;
 }
 
-.hero__title {
-  font-size: 3.5rem;
-  font-weight: 800;
+::selection {
+  background: rgba(30, 100, 239, 0.18);
 }
 
-.hero__subtitle {
-  font-size: 1.5rem;
-  opacity: 0.95;
-}
+/* ------------------------------------------------------------------ navbar */
 
-/* Button styling */
-.button--secondary {
-  color: var(--ifm-color-primary);
-  border-color: var(--ifm-color-primary);
-}
-
-.button--secondary:hover {
-  color: var(--sp-on-primary);
-  background-color: var(--ifm-color-primary);
-  border-color: var(--ifm-color-primary);
-}
-
-/* Feature cards */
-.feature-card {
-  border-radius: 12px;
-  padding: 2rem;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-
-.feature-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 12px 24px var(--sp-primary-shadow);
-}
-
-/* Code blocks */
-.prism-code {
-  border-radius: 8px;
-}
-
-/* Footer: the dashboard sidebar navy */
-.footer--dark {
-  background: var(--sp-sidebar-navy);
-}
-
-/* Navbar: theme-following, signed with a 2px accent-gradient border
-   in place of the plain shadow. The navbar is sticky, so it anchors ::after. */
 .navbar {
+  height: var(--ifm-navbar-height);
+  padding-top: 0;
+  padding-bottom: 0;
   box-shadow: none;
+  border-bottom: 1px solid var(--sp-border);
+  background-color: color-mix(in srgb, var(--ifm-background-color) 82%, transparent);
+  backdrop-filter: saturate(180%) blur(12px);
+  -webkit-backdrop-filter: saturate(180%) blur(12px);
 }
 
-.navbar::after {
+/* A backdrop-filter makes the navbar the containing block of the fixed
+   mobile menu, which would then be cut to the bar's height. */
+.navbar.navbar-sidebar--show {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.navbar__inner {
+  height: 100%;
+  align-items: center;
+}
+
+.navbar__brand {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  height: 100%;
+  margin-right: 1.75rem;
+}
+
+.navbar__logo {
+  display: flex;
+  align-items: center;
+  margin: 0;
+  line-height: 0;
+}
+
+.navbar__logo img {
+  display: block;
+  height: 26px;
+  width: auto;
+}
+
+.navbar__title {
+  display: flex;
+  align-items: center;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--sp-heading);
+  line-height: 1;
+}
+
+/* The site's brand, tagged as its docs. */
+.navbar__title::after {
+  content: 'Docs';
+  margin-left: 0.5rem;
+  padding: 0.2rem 0.45rem;
+  border-radius: 6px;
+  background: var(--sp-tint);
+  color: var(--sp-accent-text);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.navbar__item {
+  font-size: 0.9rem;
+}
+
+.navbar__link {
+  font-weight: 500;
+  color: var(--sp-text);
+}
+
+.navbar__link--active {
+  color: var(--ifm-color-primary);
+}
+
+/* External-link arrows: noise in a product navbar. */
+.navbar__items .navbar__link svg[class*='iconExternalLink'] {
+  display: none;
+}
+
+/* GitHub as an icon, the usual product-site convention. */
+.navbar-github-link {
+  display: flex;
+  align-items: center;
+  padding: 0.35rem 0.5rem;
+}
+
+.navbar-github-link::before {
+  --sp-github-icon: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12'/%3E%3C/svg%3E");
+  content: '';
+  width: 20px;
+  height: 20px;
+  background-color: currentColor;
+  -webkit-mask: var(--sp-github-icon) no-repeat center / contain;
+  mask: var(--sp-github-icon) no-repeat center / contain;
+}
+
+/* In the mobile sidebar the icon alone means nothing: show the label. */
+.navbar-sidebar .navbar-github-link::before {
+  margin-right: 0.5rem;
+}
+
+.navbar__items--right .navbar-github-link {
+  font-size: 0;
+}
+
+/* Primary call to action in the navbar. */
+.navbar-cta {
+  margin-left: 0.5rem;
+  padding: 0.45rem 0.95rem;
+  border-radius: 9px;
+  background: var(--sp-grad-button);
+  color: #fff !important;
+  font-weight: 600;
+  box-shadow: 0 6px 16px -6px rgba(30, 100, 239, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  transition: filter 0.15s ease;
+}
+
+.navbar-cta:hover {
+  filter: brightness(1.08);
+  text-decoration: none;
+}
+
+.navbar-sidebar .navbar-cta {
+  justify-content: center;
+  margin: 0.5rem 0 0;
+}
+
+.navbar-cta svg[class*='iconExternalLink'] {
+  display: none;
+}
+
+/* "Start free" belongs to the cloud's own docs: src/clientModules/deployment.ts
+   flags <html data-deployment="saas"> there. Every self-hosted copy keeps it
+   hidden, in the navbar and in the mobile menu. */
+html:not([data-deployment='saas']) .navbar-cta {
+  display: none;
+}
+
+/* Search: a quiet field that matches the surfaces. */
+.navbar__search-input {
+  height: 2.25rem;
+  border: 1px solid var(--sp-border);
+  border-radius: 9px;
+  background-color: var(--sp-surface-alt);
+  color: var(--sp-heading);
+  font-size: 0.875rem;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.navbar__search-input:focus {
+  border-color: var(--ifm-color-primary);
+  box-shadow: 0 0 0 3px var(--sp-tint);
+  outline: none;
+}
+
+/* On a phone the theme hides every navbar item behind the menu. Keep the one
+   call to action visible; the site and GitHub links stay in the menu. */
+@media (max-width: 996px) {
+  /* The theme pins the search to the right edge with position: absolute, on
+     top of whatever follows it. Keep it in the flow, left of the CTA. */
+  .navbar__items--right > [class*='navbarSearchContainer'] {
+    position: static;
+  }
+
+  .navbar__items--right .navbar-github-link,
+  .navbar__items--right .navbar-site-link {
+    display: none;
+  }
+
+  .navbar__items--right .navbar-cta {
+    display: inline-flex;
+    padding: 0.4rem 0.8rem;
+    font-size: 0.85rem;
+  }
+}
+
+/* A phone has room for the brand, the search button and the menu, not the
+   call to action too: it moves into the menu. */
+@media (max-width: 576px) {
+  .navbar__items--right .navbar-cta {
+    display: none;
+  }
+}
+
+/* ----------------------------------------------------------------- buttons */
+
+.button {
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  transition: filter 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease,
+    background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.button--lg {
+  padding: 0.8rem 1.4rem;
+  font-size: 1rem;
+}
+
+.button--primary {
+  background: var(--sp-grad-button);
+  border: 0;
+  color: #fff;
+  box-shadow: 0 8px 22px -10px rgba(30, 100, 239, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.button--primary:hover {
+  color: #fff;
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+
+/* Outlined white button, for navy surfaces only. */
+.button--onNavy {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.32);
+  color: #fff;
+}
+
+.button--onNavy:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.6);
+  color: #fff;
+}
+
+/* ------------------------------------------------- navy "aurora" surface */
+
+/* The app's login panel: navy base, three large blurred blobs, a faint grid.
+   The blobs stay at or under 40% so white text keeps 4.5:1 everywhere. */
+.sp-aurora {
+  --ifm-heading-color: #fff;
+  --ifm-color-content: rgba(226, 232, 244, 0.85);
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background: var(--sp-navy);
+  color: #fff;
+}
+
+.sp-aurora::before {
   content: '';
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 2px;
-  background: var(--sp-accent-gradient);
+  inset: -25% -10% -10%;
+  z-index: -1;
   pointer-events: none;
+  background:
+    radial-gradient(38% 45% at 12% 18%, rgba(0, 176, 228, 0.38), transparent 70%),
+    radial-gradient(42% 48% at 55% -5%, rgba(30, 100, 239, 0.4), transparent 70%),
+    radial-gradient(34% 42% at 92% 38%, rgba(107, 85, 223, 0.3), transparent 70%);
+  filter: blur(40px);
 }
 
-/* Sidebar active link */
+.sp-aurora::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.045) 1px, transparent 1px);
+  background-size: 56px 56px;
+  -webkit-mask-image: radial-gradient(ellipse 75% 65% at 50% 0%, #000 30%, transparent 100%);
+  mask-image: radial-gradient(ellipse 75% 65% at 50% 0%, #000 30%, transparent 100%);
+}
+
+/* ----------------------------------------------------------------- sidebar */
+
+.theme-doc-sidebar-menu {
+  font-size: 0.9rem;
+}
+
+.theme-doc-sidebar-container .menu {
+  padding: 1.25rem 0.75rem 2rem;
+}
+
+.menu__link {
+  border-radius: 8px;
+  padding: 0.38rem 0.75rem;
+  line-height: 1.35;
+  color: var(--sp-text);
+}
+
+.menu__link:hover {
+  color: var(--sp-heading);
+}
+
 .menu__link--active:not(.menu__link--sublist) {
-  background-color: var(--sp-primary-tint);
+  color: var(--sp-accent-text);
+  font-weight: 600;
 }
 
-/* Table of contents */
+/* The category that holds the current page. */
+.menu__link--sublist.menu__link--active,
+.menu__link--sublist.menu__link--active:hover {
+  color: var(--sp-heading);
+  font-weight: 600;
+  background: none;
+}
+
+/* Nested levels hang off a hairline guide, like the TOC. */
+.menu__list .menu__list {
+  margin-left: 0.95rem;
+  padding-left: 0.5rem;
+  border-left: 1px solid var(--sp-border);
+}
+
+.menu__caret::before,
+.menu__link--sublist-caret::after {
+  opacity: 0.55;
+}
+
+/* ------------------------------------------------------------- breadcrumbs */
+
+.theme-doc-breadcrumbs {
+  margin-bottom: 1rem;
+}
+
+.breadcrumbs__item:not(:last-child)::after {
+  opacity: 0.5;
+}
+
+.breadcrumbs__link {
+  padding: 0;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--sp-muted);
+}
+
+.breadcrumbs__item--active .breadcrumbs__link {
+  background: none;
+  color: var(--sp-accent-text);
+}
+
+/* --------------------------------------------------------------- headings */
+
+/* Infima sets each size on the heading itself (.markdown > h2 and co.), so
+   the overrides go on the same selectors, which load after it. */
+.markdown h1:first-child {
+  --ifm-h1-font-size: clamp(2rem, 3.6vw, 2.6rem);
+  font-weight: 750;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+}
+
+.markdown > h2 {
+  --ifm-h2-font-size: 1.6rem;
+  margin-top: 2.75rem;
+}
+
+.markdown > h3 {
+  --ifm-h3-font-size: 1.22rem;
+  margin-top: 2rem;
+}
+
+.markdown p,
+.markdown li {
+  line-height: 1.7;
+}
+
+/* The paragraph under the page title (which the theme wraps in a header)
+   reads as its lead. */
+.markdown > header + p {
+  font-size: 1.1rem;
+  line-height: 1.65;
+}
+
+/* Anchored headings (TOC links, #fragments) must not land under the sticky
+   navbar. */
+[id] {
+  scroll-margin-top: calc(var(--ifm-navbar-height) + 1rem);
+}
+
+/* ------------------------------------------------------- table of contents */
+
+.theme-doc-toc-desktop::before {
+  content: 'On this page';
+  display: block;
+  margin-bottom: 0.6rem;
+  padding-left: var(--ifm-toc-padding-horizontal);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--sp-heading);
+}
+
+.table-of-contents {
+  font-size: 0.82rem;
+}
+
+.table-of-contents__link {
+  color: var(--sp-muted);
+}
+
+.table-of-contents__link:hover,
 .table-of-contents__link--active {
   color: var(--ifm-color-primary);
 }
 
-/* Announcement bar (theme-announcement-bar is the stable class; the other is
-   the CSS-module name it used to target). */
-.theme-announcement-bar,
-.announcementBar {
-  background: var(--sp-announcement-gradient);
+.table-of-contents__link--active {
+  font-weight: 500;
+}
+
+/* ------------------------------------------------------------------- code */
+
+.markdown :not(pre) > code {
+  padding: 0.1em 0.35em;
+  border: 1px solid var(--sp-border);
+  border-radius: 6px;
+  vertical-align: baseline;
+}
+
+/* div. outranks the theme's own container class, which sets the shadow. */
+div.theme-code-block {
+  border: 1px solid var(--sp-border);
+  border-radius: 10px;
+  box-shadow: none;
+}
+
+.prism-code {
+  border-radius: 10px;
+}
+
+/* ------------------------------------------------------------------ tables */
+
+/* Rows split by hairlines, no zebra, for every table: the Markdown ones and
+   the few the OpenAPI theme renders itself. */
+.markdown table {
+  font-size: 0.9rem;
+}
+
+.markdown tr,
+.markdown thead tr {
+  border: 0;
+}
+
+.markdown tr:nth-child(2n) {
+  background-color: transparent;
+}
+
+.markdown th,
+.markdown td {
+  padding: 0.6rem 0.85rem;
+  vertical-align: top;
+  border: 0;
+  border-bottom: 1px solid var(--sp-border);
+}
+
+.markdown th {
+  background: var(--sp-surface-alt);
+  font-weight: 600;
+  text-align: left;
+  color: var(--sp-heading);
+}
+
+.markdown thead th {
+  font-size: 0.82rem;
+}
+
+.markdown tbody tr:last-child > * {
+  border-bottom: 0;
+}
+
+/* MDXComponents wraps every Markdown table in .sp-table: the wrapper scrolls
+   sideways and carries the frame, so the table can span the full column. */
+.sp-table {
+  margin-bottom: var(--ifm-spacing-vertical);
+  overflow-x: auto;
+  border: 1px solid var(--sp-border);
+  border-radius: 10px;
+}
+
+.sp-table table {
+  display: table;
+  width: 100%;
+  margin: 0;
+}
+
+/* ------------------------------------------------------- prose components */
+
+.markdown blockquote {
+  border-left-color: var(--ifm-color-primary);
+  background: var(--sp-tint);
+  border-radius: 0 8px 8px 0;
+  padding: 0.75rem 1rem;
+  color: var(--sp-text);
+}
+
+/* Admonitions: a hairline frame and a soft tint instead of Infima's thick
+   left bar and shadow. Each keeps its own hue through the --ifm-alert-* set
+   by its .alert--* class. */
+.theme-admonition {
+  border: 1px solid color-mix(in srgb, var(--ifm-alert-border-color) 35%, transparent);
+  border-radius: 10px;
+  box-shadow: none;
+  padding: 1rem 1.15rem;
+}
+
+.theme-admonition.alert--secondary {
+  --ifm-alert-background-color: var(--sp-surface-alt);
+  --ifm-alert-border-color: var(--sp-border-strong);
+}
+
+.theme-admonition.alert--info {
+  --ifm-alert-background-color: var(--sp-tint);
+  --ifm-alert-border-color: var(--ifm-color-primary);
+}
+
+/* Infima's dark fills (#4d3800 for a warning) are heavy on the navy: tint
+   the page with each admonition's own hue instead. */
+html[data-theme='dark'] .theme-admonition {
+  --ifm-alert-background-color: color-mix(
+    in srgb,
+    var(--ifm-alert-border-color) 10%,
+    var(--ifm-background-color)
+  );
+}
+
+.theme-admonition [class*='admonitionHeading'] {
+  font-size: 0.78rem;
+  letter-spacing: 0.05em;
+}
+
+/* Mermaid's dark theme paints grey-black nodes and grey edge labels, which
+   read as another product on the navy page. Its styles sit inside the SVG
+   behind an id selector, hence !important. */
+html[data-theme='dark'] .docusaurus-mermaid-container .node :is(rect, circle, ellipse, polygon, path) {
+  fill: var(--sp-surface) !important;
+  stroke: var(--sp-border-strong) !important;
+}
+
+html[data-theme='dark'] .docusaurus-mermaid-container :is(.edgeLabel, .labelBkg) {
+  background-color: var(--ifm-background-color) !important;
+}
+
+/* --------------------------------------------------------------- doc cards */
+
+/* Generated-index and API tag cards: flat like the website's cards, with an
+   arrow in place of the theme's folder and page emoji. a. outranks the
+   theme's own card classes; the padding beats Infima's !important one. */
+a.theme-doc-card-container {
+  --ifm-link-hover-decoration: none;
+  padding: 1.25rem 1.4rem !important;
+  border: 1px solid var(--sp-border);
+  border-radius: 12px;
+  background: var(--sp-surface);
+  box-shadow: var(--sp-shadow-sm);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+a.theme-doc-card-container:hover {
+  border-color: var(--ifm-color-primary);
+  box-shadow: var(--sp-shadow-md);
+  transform: translateY(-1px);
+}
+
+.theme-doc-card-icon {
+  display: none;
+}
+
+.theme-doc-card-heading {
+  max-width: 100%;
+  margin-bottom: 0.35rem;
+  font-size: 1.05rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--sp-heading);
+}
+
+.theme-doc-card-heading::after {
+  content: '→';
+  margin-left: 0.4rem;
+  color: var(--ifm-color-primary);
+  transition: transform 0.15s ease;
+}
+
+.theme-doc-card-container:hover .theme-doc-card-heading::after {
+  transform: translateX(3px);
+}
+
+.theme-doc-card-description {
+  font-size: 0.85rem;
+  color: var(--sp-muted);
+}
+
+/* -------------------------------------------------------------- doc footer */
+
+.theme-doc-footer {
+  font-size: 0.85rem;
+  color: var(--sp-muted);
+}
+
+.theme-edit-this-page {
+  color: var(--sp-muted);
+}
+
+.theme-edit-this-page:hover {
+  color: var(--ifm-color-primary);
+}
+
+.pagination-nav__link {
+  border: 1px solid var(--sp-border);
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.pagination-nav__link:hover {
+  border-color: var(--ifm-color-primary);
+  box-shadow: var(--sp-shadow-md);
+}
+
+.pagination-nav__sublabel {
+  margin-bottom: 0.2rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--sp-muted);
+}
+
+.pagination-nav__label {
+  font-weight: 600;
+  color: var(--sp-heading);
+}
+
+/* ------------------------------------------------------------ API methods */
+
+/* The OpenAPI plugin tags each operation in the sidebar with "api-method"
+   and its verb, and leaves the styling to the site. */
+.api-method > .menu__link {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.api-method > .menu__link::before {
+  flex: 0 0 2.75rem;
+  padding: 0.12rem 0;
+  border-radius: 5px;
+  background: var(--sp-method-bg);
+  color: var(--sp-method-fg);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.4;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.api-method.get > .menu__link::before {
+  content: 'get';
+  --sp-method-fg: #0a41ad;
+  --sp-method-bg: rgba(30, 100, 239, 0.1);
+}
+
+.api-method.post > .menu__link::before {
+  content: 'post';
+  --sp-method-fg: #11733f;
+  --sp-method-bg: rgba(34, 197, 94, 0.14);
+}
+
+.api-method.put > .menu__link::before,
+.api-method.patch > .menu__link::before {
+  --sp-method-fg: #8a4b00;
+  --sp-method-bg: rgba(245, 158, 11, 0.16);
+}
+
+.api-method.put > .menu__link::before {
+  content: 'put';
+}
+
+.api-method.patch > .menu__link::before {
+  content: 'patch';
+}
+
+.api-method.delete > .menu__link::before {
+  content: 'del';
+  --sp-method-fg: #b42318;
+  --sp-method-bg: rgba(240, 68, 56, 0.12);
+}
+
+[data-theme='dark'] .api-method.get > .menu__link::before {
+  --sp-method-fg: #79baff;
+  --sp-method-bg: rgba(87, 168, 255, 0.14);
+}
+
+[data-theme='dark'] .api-method.post > .menu__link::before {
+  --sp-method-fg: #4ade80;
+  --sp-method-bg: rgba(34, 197, 94, 0.14);
+}
+
+[data-theme='dark'] .api-method.put > .menu__link::before,
+[data-theme='dark'] .api-method.patch > .menu__link::before {
+  --sp-method-fg: #fbbf24;
+  --sp-method-bg: rgba(245, 158, 11, 0.14);
+}
+
+[data-theme='dark'] .api-method.delete > .menu__link::before {
+  --sp-method-fg: #f97066;
+  --sp-method-bg: rgba(240, 68, 56, 0.14);
+}
+
+/* The code-sample tabs (curl and http, languageTabs in docusaurus.config.ts):
+   the active one takes the primary rather than its language's colour, red
+   for curl. */
+.openapi-tabs__code-list-container :is(.openapi-tabs__code-item--curl, .openapi-tabs__code-item--http) {
+  color: var(--sp-muted);
+}
+
+.openapi-tabs__code-list-container .openapi-tabs__code-item.active {
+  border-color: var(--ifm-color-primary);
+  box-shadow: 0 0 0 3px var(--sp-tint);
+  color: var(--ifm-color-primary);
+}
+
+/* Their logos, as masks over the tab's colour: the theme hotlinks curl's from
+   raw.githubusercontent.com and draws http's in black, unreadable on the navy.
+   Feather icons (MIT). */
+.openapi-tabs__code-list-container :is(.openapi-tabs__code-item--curl, .openapi-tabs__code-item--http)::after {
+  width: 24px;
+  height: 24px;
+  background: currentColor;
+  border-radius: 0;
+  -webkit-mask: var(--sp-tab-icon) no-repeat center / contain;
+  mask: var(--sp-tab-icon) no-repeat center / contain;
+}
+
+.openapi-tabs__code-item--curl::after {
+  --sp-tab-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='4 17 10 11 4 5'/%3E%3Cline x1='12' y1='19' x2='20' y2='19'/%3E%3C/svg%3E");
+}
+
+.openapi-tabs__code-item--http::after {
+  --sp-tab-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='16 18 22 12 16 6'/%3E%3Cpolyline points='8 6 2 12 8 18'/%3E%3C/svg%3E");
+}
+
+/* Both languages have a single variant, whose tab row only repeats the name. */
+.openapi-tabs__code-container-inner:has(> .openapi-tabs__code-item--variant:only-child) {
+  display: none;
+}
+
+/* ------------------------------------------------------------------ footer */
+
+/* The navy shell is drawn by src/theme/Footer/Layout, so the footer itself
+   is transparent. */
+.footer--dark {
+  --ifm-footer-background-color: transparent;
+  --ifm-footer-link-color: rgba(226, 232, 244, 0.72);
+  --ifm-footer-link-hover-color: #fff;
+  --ifm-footer-title-color: #fff;
+  background: transparent;
+}
+
+/* ---------------------------------------------------------------- motion */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
+
+/* Phones: no horizontal overflow from long unbroken strings (URLs, docker
+   images) in prose. */
+@media screen and (max-width: 600px) {
+  .markdown {
+    overflow-wrap: anywhere;
+  }
 }
