@@ -163,6 +163,10 @@ func ParseConfig(checkType checkerdef.CheckType) (checkerdef.Config, bool) {
 	case checkerdef.CheckTypeSleep:
 		return &sleepconfig.SleepConfig{}, true
 	default:
+		if ext, ok := lookupExternal(checkType); ok {
+			return ext.newConfig(), true
+		}
+
 		return nil, false
 	}
 }
@@ -281,6 +285,10 @@ func ValidateSpec(checkType checkerdef.CheckType, spec *checkerdef.CheckSpec) er
 	case checkerdef.CheckTypeSleep:
 		return sleepconfig.ValidateSpec(spec)
 	default:
+		if ext, ok := lookupExternal(checkType); ok {
+			return ext.validate(spec)
+		}
+
 		return ErrUnknownType
 	}
 }

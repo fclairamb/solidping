@@ -1,7 +1,11 @@
 package checkerdef
 
 import (
+	"errors"
+	"fmt"
 	"slices"
+	"strings"
+	"sync"
 	"time"
 )
 
@@ -419,6 +423,25 @@ type CheckTypeMeta struct {
 	// advertised check-type count (AdvertisedCheckTypeCount). Not called
 	// "Internal": that word already means internal checks elsewhere.
 	ExcludedFromTally bool `json:"excludedFromTally"`
+
+	// Plugin is set on a type loaded from the operator's plugin directory
+	// (spec 2026-10-17-05): which plugin declared it. Nil on built-in types.
+	Plugin *PluginRef `json:"plugin,omitempty"`
+}
+
+// PluginRef names the plugin a check type comes from.
+type PluginRef struct {
+	Name    string `json:"name"`
+	Version string `json:"version"`
+}
+
+// PluginTypePrefix starts every plugin check type, so a plugin can never
+// collide with a future built-in type.
+const PluginTypePrefix = "x-"
+
+// IsPlugin reports whether a check type name is in the plugin namespace.
+func (t CheckType) IsPlugin() bool {
+	return strings.HasPrefix(string(t), PluginTypePrefix)
 }
 
 // checkTypesRegistry is the authoritative registry of all check types with metadata.
@@ -493,8 +516,56 @@ func AdvertisedCheckTypeCount() int {
 	return len(AdvertisedCheckTypes())
 }
 
-// GetCheckTypeMeta returns the metadata for a given check type, or nil if not found.
-func GetCheckTypeMeta(ct CheckType) *CheckTypeMeta {
+// ErrCheckTypeRegistered is returned when a check type is registered twice.
+var ErrCheckTypeRegistered = errors.New("check type already registered")
+
+// registeredMetas holds the metas registered at runtime (plugin types), served
+// after the built-in checkTypesRegistry. Written at boot, read everywhere.
+//
+//nolint:gochecknoglobals // process-wide registry, like checkTypesRegistry
+var (
+	registeredMu    sync.RWMutex
+	registeredMetas []CheckTypeMeta
+)
+
+// RegisterCheckTypeMeta adds a runtime (plugin) check type. It is always
+// ExcludedFromTally: loading plugins never changes the advertised count.
+func RegisterCheckTypeMeta(meta CheckTypeMeta) error {
+	registeredMu.Lock()
+	defer registeredMu.Unlock()
+
+	if builtinMeta(meta.Type) != nil || registeredIndex(meta.Type) >= 0 {
+		return fmt.Errorf("%w: %s", ErrCheckTypeRegistered, meta.Type)
+	}
+
+	meta.ExcludedFromTally = true
+	meta.Labels = slices.Clone(meta.Labels)
+	registeredMetas = append(registeredMetas, meta)
+
+	return nil
+}
+
+// UnregisterCheckTypeMeta removes a runtime check type. Built-ins stay.
+func UnregisterCheckTypeMeta(ct CheckType) {
+	registeredMu.Lock()
+	defer registeredMu.Unlock()
+
+	if idx := registeredIndex(ct); idx >= 0 {
+		registeredMetas = slices.Delete(registeredMetas, idx, idx+1)
+	}
+}
+
+func registeredIndex(ct CheckType) int {
+	for i := range registeredMetas {
+		if registeredMetas[i].Type == ct {
+			return i
+		}
+	}
+
+	return -1
+}
+
+func builtinMeta(ct CheckType) *CheckTypeMeta {
 	for i := range checkTypesRegistry {
 		if checkTypesRegistry[i].Type == ct {
 			return &checkTypesRegistry[i]
@@ -504,10 +575,33 @@ func GetCheckTypeMeta(ct CheckType) *CheckTypeMeta {
 	return nil
 }
 
-// ListCheckTypeMetas returns all registered check type metadata.
+// GetCheckTypeMeta returns the metadata for a given check type, or nil if not found.
+func GetCheckTypeMeta(ct CheckType) *CheckTypeMeta {
+	if meta := builtinMeta(ct); meta != nil {
+		return meta
+	}
+
+	registeredMu.RLock()
+	defer registeredMu.RUnlock()
+
+	if idx := registeredIndex(ct); idx >= 0 {
+		meta := registeredMetas[idx]
+
+		return &meta
+	}
+
+	return nil
+}
+
+// ListCheckTypeMetas returns every registered check type's metadata: the
+// built-ins, then the runtime (plugin) types.
 func ListCheckTypeMetas() []CheckTypeMeta {
-	result := make([]CheckTypeMeta, len(checkTypesRegistry))
-	copy(result, checkTypesRegistry)
+	registeredMu.RLock()
+	defer registeredMu.RUnlock()
+
+	result := make([]CheckTypeMeta, 0, len(checkTypesRegistry)+len(registeredMetas))
+	result = append(result, checkTypesRegistry...)
+	result = append(result, registeredMetas...)
 
 	return result
 }

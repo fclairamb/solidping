@@ -17,8 +17,11 @@ Each protocol has its own package (e.g., `checkhttp`, `checkicmp`, `checktcp`):
 - **Execution**: Protocol-specific check execution
 
 ### `registry/` - Factory pattern
-- **`GetChecker(checkType)`**: Returns checker implementation for a type
-- **`ParseConfig(checkType)`**: Returns appropriate config struct for a type
+- **`Register(meta, checkerFactory, configFactory)`**: fills the type map. Built-ins register at
+  init from the `builtinCheckers` table; a duplicate panics.
+- **`RegisterPlugin(...)`**: same for a plugin type loaded at boot (`internal/plugins`), returns an
+  error instead of panicking and also registers the meta and the config in `configregistry`.
+- **`GetChecker(checkType)`** / **`ParseConfig(checkType)`**: map lookups.
 
 ## Synthetic checkers
 
@@ -44,10 +47,14 @@ target, no local service, no extra privilege, no flaky third-party test server.
 1. Create `check{protocol}/` package
 2. Define `{Protocol}Config` struct implementing `checkerdef.Config`
 3. Implement `{Protocol}Checker` struct implementing `checkerdef.Checker`
-4. Register in `registry/registry.go`:
-   - Add to `GetChecker()` switch
-   - Add to `ParseConfig()` switch
+4. Register it:
+   - Add a row to `builtinCheckers` in `registry/registry.go`
+   - Add the config to the `configregistry.ParseConfig()` and `ValidateSpec()` switches
+   - Add its `CheckTypeMeta` to `checkTypesRegistry` in `checkerdef/types.go`
 5. Add constant to `checkerdef.CheckType`
+
+A check type that should not live in the core is a plugin instead (`x-` prefix, manifest in the
+operator's `plugins.dir`): see `internal/plugins` and `web/docs/docs/features/plugins.md`.
 6. Regenerate the config JSON Schemas: `go generate ./internal/checkers/schemas/...`, and commit
    `internal/checkers/schemas/<type>.json` (CI fails when they are stale). Never hand-edit one —
    a rule reflection cannot see goes on the config via `checkerdef.SchemaNoter` /
