@@ -288,9 +288,9 @@ func (b *WSBackend) claim(
 	manifests, reportFor := b.pluginReport()
 
 	resp, err := b.request(ctx, &agents.ClientFrame{
-		Type:         agents.MsgTypeClaim,
-		MaxJobs:      maxJobs,
-		CheckUID:     checkUID,
+		Type:     agents.MsgTypeClaim,
+		MaxJobs:  maxJobs,
+		CheckUID: checkUID,
 		// The worker put the plugin types its activation gate enables on ctx.
 		Capabilities: Capabilities(ctx, checkjobsvc.PluginTypesFromContext(ctx)),
 		Version:      version.Get().Version,
