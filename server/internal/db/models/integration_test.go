@@ -29,6 +29,7 @@ func TestCapabilitiesFor(t *testing.T) {
 		{name: "pushover", connType: ConnectionTypePushover, canNotify: true, canSource: false},
 		{name: "matrix", connType: ConnectionTypeMatrix, canNotify: true, canSource: false},
 		{name: "freebox", connType: ConnectionTypeFreebox, canNotify: false, canSource: true},
+		{name: "a2a", connType: ConnectionTypeA2A, canNotify: true, canSource: false},
 	}
 
 	for _, tt := range tests {

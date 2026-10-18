@@ -79,12 +79,12 @@ func (r *A2ATaskPollJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) er
 		return nil
 	}
 
-	if _, err := jctx.DBService.GetIncident(ctx, integration.OrganizationUID, cfg.A2AIncidentUID); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+	if _, incErr := jctx.DBService.GetIncident(ctx, integration.OrganizationUID, cfg.A2AIncidentUID); incErr != nil {
+		if errors.Is(incErr, sql.ErrNoRows) {
 			return nil
 		}
 
-		return jobdef.NewRetryableError(fmt.Errorf("load incident: %w", err))
+		return jobdef.NewRetryableError(fmt.Errorf("load incident: %w", incErr))
 	}
 
 	if integration.SettingsPrivate != nil && *integration.SettingsPrivate != "" {

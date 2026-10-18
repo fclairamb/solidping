@@ -139,7 +139,7 @@ func parseA2ASettings(settings models.JSONMap) (*a2aSettings, error) {
 func (s *a2aSettings) headers() (map[string]string, error) {
 	switch s.Auth {
 	case "", A2AAuthNone:
-		return nil, nil
+		return map[string]string{}, nil
 	case A2AAuthBearer:
 		if s.Token == "" {
 			return nil, fmt.Errorf("%w: bearer token is empty", ErrA2AInvalidSettings)
@@ -550,28 +550,20 @@ func a2aMessageID(payload *Payload) string {
 	return uuid.NewSHA1(uuid.NameSpaceURL, []byte("solidping:a2a:"+payload.Incident.UID+":"+key)).String()
 }
 
-// a2aEventLabel names the event in the message the agent reads.
+// a2aEventLabel names the event in the message the agent reads:
+// "incident.created" reads "opened", the others drop their prefix.
 func a2aEventLabel(eventType string) string {
-	switch eventType {
-	case eventTypeIncidentCreated:
+	if eventType == eventTypeIncidentCreated {
 		return "opened"
-	case eventTypeIncidentReopened:
-		return "reopened"
-	case eventTypeIncidentResolved:
-		return "resolved"
-	case eventTypeIncidentAcknowledged:
-		return "acknowledged"
-	case eventTypeIncidentUnacknowledged:
-		return "unacknowledged"
-	default:
-		return eventType
 	}
+
+	return strings.TrimPrefix(eventType, "incident.")
 }
 
 func a2aIncidentStatus(incident *models.Incident) string {
 	switch {
 	case incident.State == models.IncidentStateResolved:
-		return "resolved"
+		return a2aEventLabel(eventTypeIncidentResolved)
 	case incident.AcknowledgedAt != nil:
 		return "acknowledged"
 	default:
@@ -706,7 +698,7 @@ func A2ATaskSettled(state a2a.TaskState) bool {
 func A2ATaskComment(task *a2a.Task) string {
 	statusText := a2aMessageText(task.Status.Message)
 
-	switch task.Status.State {
+	switch task.Status.State { //nolint:exhaustive // the default branch renders every other settled state.
 	case a2a.TaskStateCompleted:
 		texts := make([]string, 0, len(task.Artifacts)+1)
 
@@ -753,7 +745,7 @@ func A2ATaskComment(task *a2a.Task) string {
 }
 
 func a2aStateWord(state a2a.TaskState) string {
-	switch state {
+	switch state { //nolint:exhaustive // the default branch spells any other state.
 	case a2a.TaskStateFailed:
 		return "failed"
 	case a2a.TaskStateCanceled:
@@ -899,7 +891,8 @@ func ResolveA2AAgent(ctx context.Context, guard *egress.Guard, settings models.J
 		Skills:          make([]A2AAgentSkill, 0, len(resolved.card.Skills)),
 	}
 
-	for _, skill := range resolved.card.Skills {
+	for i := range resolved.card.Skills {
+		skill := &resolved.card.Skills[i]
 		info.Skills = append(info.Skills, A2AAgentSkill{ID: skill.ID, Name: skill.Name, Description: skill.Description})
 	}
 

@@ -36,29 +36,8 @@ type A2ACardResult struct {
 
 // ResolveA2ACard resolves the Agent Card for possibly unsaved settings.
 func (s *Service) ResolveA2ACard(ctx context.Context, orgSlug string, req *A2ACardRequest) (*A2ACardResult, error) {
-	settings := map[string]any{}
-
-	if req.IntegrationUID != "" {
-		conn, err := s.loadChannel(ctx, orgSlug, req.IntegrationUID)
-		if err != nil {
-			return nil, err
-		}
-
-		if conn.Type != models.ConnectionTypeA2A {
-			return nil, ErrInvalidConnectionType
-		}
-
-		stored, err := s.loadDecryptedSettings(ctx, conn)
-		if err != nil {
-			return nil, err
-		}
-
-		settings = stored
-	} else if _, err := s.db.GetOrganizationBySlug(ctx, orgSlug); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ErrOrganizationNotFound
-		}
-
+	settings, err := s.a2aBaseSettings(ctx, orgSlug, req.IntegrationUID)
+	if err != nil {
 		return nil, err
 	}
 
@@ -78,6 +57,33 @@ func (s *Service) ResolveA2ACard(ctx context.Context, orgSlug string, req *A2ACa
 	}
 
 	return &A2ACardResult{Success: true, Agent: agent}, nil
+}
+
+// a2aBaseSettings returns the stored settings of a saved A2A integration,
+// secrets decrypted, or an empty map after checking the org exists.
+func (s *Service) a2aBaseSettings(ctx context.Context, orgSlug, integrationUID string) (map[string]any, error) {
+	if integrationUID == "" {
+		if _, err := s.db.GetOrganizationBySlug(ctx, orgSlug); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, ErrOrganizationNotFound
+			}
+
+			return nil, err
+		}
+
+		return map[string]any{}, nil
+	}
+
+	conn, err := s.loadChannel(ctx, orgSlug, integrationUID)
+	if err != nil {
+		return nil, err
+	}
+
+	if conn.Type != models.ConnectionTypeA2A {
+		return nil, ErrInvalidConnectionType
+	}
+
+	return s.loadDecryptedSettings(ctx, conn)
 }
 
 // testA2AConnection is TestIntegration for a saved A2A integration.
