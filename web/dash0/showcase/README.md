@@ -124,63 +124,15 @@ PORT=4321 SP_DB_TYPE=sqlite SP_DB_DIR=/tmp/showcase-db ./solidping serve &
 E2E_BASE_URL=http://localhost:4321/d/ make showcase
 ```
 
-**This single-node recipe is the fallback, not the one the committed cut uses.**
-A single node offers one region, the check form hides its region picker below
-two (`availableRegions.length > 1` in `check-form.tsx`), and the multi-region
-beat — the headline difference from Uptime Kuma — never reaches the camera. Use
-the two-node recipe below unless you only need a quick re-cut.
+A plain `docker run` starts one node in one region, so that is what the cut
+films: the check form has no region picker (it only renders when
+`availableRegions.length > 1`, in `check-form.tsx`) and the detail page plots a
+single series. Do not stand up extra nodes or `SP_REGIONS` for this recording.
 
 Note the **`rm -rf`**: the take now films the forced password rotation, which a
 fresh default-mode database imposes and an already-used one does not. Recording
 against a database this pipeline has run against before fails with an
 actionable error rather than quietly filming a plain login.
-
-### The two-node recipe — the one that puts regions on camera
-
-Two nodes sharing one Postgres database, in two regions, both declared through
-`SP_REGIONS` (the JSON seed for the `regions` system parameter,
-`server/internal/app/regions_seed.go` — a worker's own `SP_NODE_REGION` does not
-create a region definition, it only picks one). Postgres because two processes
-must share a database, on the dev instance from `docker-compose.yml` (port
-`55432`) but in a **throwaway database of its own**:
-
-```bash
-# A database this pipeline owns and can drop. NOT the dev `solidping` one.
-PGPASSWORD=postgres psql -h localhost -p 55432 -U postgres \
-  -c "DROP DATABASE IF EXISTS solidping_showcase" \
-  -c "CREATE DATABASE solidping_showcase"
-
-export SP_DB_TYPE=postgres
-export SP_DB_URL='postgres://postgres:postgres@localhost:55432/solidping_showcase?sslmode=disable'
-
-# Node A: the API, the jobs, and a check worker in eu-west. It is the one that
-# seeds the region definitions, so start it first.
-PORT=4321 SP_NODE_NAME=showcase-eu SP_NODE_REGION=eu-west \
-  SP_REGIONS='[{"slug":"eu-west","emoji":"🇪🇺","name":"EU West"},{"slug":"us-east","emoji":"🇺🇸","name":"US East"}]' \
-  ./solidping serve &
-
-# Node B: a check worker only, in us-east.
-PORT=4322 SP_NODE_NAME=showcase-us SP_NODE_ROLE=checks SP_NODE_REGION=us-east \
-  ./solidping serve &
-
-curl -s localhost:4321/api/v1/regions   # expect two entries before recording
-
-E2E_BASE_URL=http://localhost:4321/d/ make showcase
-```
-
-`SP_NODE_NAME` is not optional here: a worker's identity is derived from the
-hostname, and two nodes on one machine would otherwise register as the same
-worker. `SP_NODE_REGION` **is** required for the `checks` role
-(`ErrRegionRequiredForChecks`), and every worker's region must exist in
-`SP_REGIONS` or the node refuses to start.
-
-Afterwards, stop both nodes and drop the database — it is throwaway by design:
-
-```bash
-pkill -f "solidping serve"
-PGPASSWORD=postgres psql -h localhost -p 55432 -U postgres \
-  -c "DROP DATABASE IF EXISTS solidping_showcase"
-```
 
 `SP_DB_DIR` is the knob that actually isolates the database — the SQLite file
 is written to `$SP_DB_DIR/solidping.db` and `SP_DB_DIR` defaults to `.`, so
@@ -293,7 +245,7 @@ Useful knobs:
    and only *then* bootstraps over the API (that ordering is the point — the
    rotation used to be satisfied before any frame was recorded, which is why it
    had never been on camera). Then: checks list → **New check** → name + target
-   URL → interval → regions → save → check detail page, with named still frames
+   URL → interval → save → check detail page, with named still frames
    written along the way. The org is emptied afterwards.
 
    > **There is deliberately no check-type step.** The form defaults to HTTP
@@ -301,16 +253,6 @@ Useful knobs:
    > opening the combobox to choose the value already selected filmed "HTTP" →
    > "HTTP" — dead time. The spec asserts the default instead, so a change to
    > it fails the run rather than quietly filming the wrong type.
-
-   > **The regions beat only fires against a server that offers more than one
-   > region.** The form renders the region picker only when
-   > `availableRegions.length > 1`
-   > (`web/dash0/src/components/shared/check-form.tsx`), and the spec gates the
-   > whole beat — cue included — on `regionCount > 0`. A single-node side-car
-   > offers one region and silently records no regions step; `postprocess.ts`
-   > notices, warns, and writes "First results" instead of "Results from two
-   > regions" so the caption cannot claim something the footage does not show.
-   > Use the two-node recipe above.
 
 3. **`postprocess.ts` cuts it together** (`make showcase-cut`): trims the take
    at the clapper, applies the camera move, applies the **segment plan**
@@ -341,7 +283,7 @@ unit-tested) built from the recording's own cue labels:
 
 ### The four lower thirds
 
-"Run it", "First login", "First check" and "Results from two regions" are PNGs
+"Run it", "First login", "First check" and "First results" are PNGs
 rasterised in Chromium (`labels.ts`) and composited with `overlay`, each faded
 in and out through its alpha channel. Two guarantees are pinned by the unit
 tests: every caption appears **exactly once**, and never two at a time. A

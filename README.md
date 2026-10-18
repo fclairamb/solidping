@@ -30,7 +30,7 @@ incidents and on-call escalation — in a single Go binary.
 
 https://github.com/user-attachments/assets/3bdaf8eb-7d20-45ab-ae15-e0ac5835c3a2
 
-<sub>Start to finish in 34 seconds: <code>docker run</code> in a terminal, the first sign-in, an HTTP check created by pasting a URL, and its first response times from two regions. Recorded from a real SolidPing server, nothing here is a mock-up. <a href="https://solidping.io/docs/tour">The Tour page</a> has a longer cut if the player above does not load.</sub>
+<sub>Start to finish in 34 seconds: <code>docker run</code> in a terminal, the first sign-in, an HTTP check created by pasting a URL, and its first response times. Recorded from a real SolidPing server, nothing here is a mock-up. <a href="https://solidping.io/docs/tour">The Tour page</a> has a longer cut if the player above does not load.</sub>
 
 </div>
 
