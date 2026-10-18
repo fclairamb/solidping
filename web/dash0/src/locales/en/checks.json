@@ -730,6 +730,9 @@
       "description": "This check runs in a private location and its stored credentials are sealed to a different set of agents than the ones currently active — an agent was enrolled or revoked since they were saved, so agents can't decrypt them and the check will fail. SolidPing can't re-seal them itself (it can't read them either): re-enter and save the credentials to fix this.",
       "action": "Re-save credentials"
     },
+    "regionWarnings": {
+      "title": "This check does not run in every region"
+    },
     "configuration": "Configuration",
     "configurationDescription": "Check settings and parameters",
     "results": {

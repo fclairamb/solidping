@@ -37,6 +37,21 @@ test.describe("Checker plugins", () => {
     const schema = await page.request.get(`${API_BASE}/api/v1/checks/schema/x-gopher`);
     expect(schema.status()).toBe(200);
     expect((await schema.json()).required).toEqual(["host"]);
+
+    // The org route the form reads (spec §18) serves the same document, and
+    // 404s on a type nobody reported.
+    const orgSchema = await page.request.get(
+      `${API_BASE}/api/v1/orgs/test/check-types/x-gopher/schema`,
+      { headers },
+    );
+    expect(orgSchema.status()).toBe(200);
+    expect((await orgSchema.json()).required).toEqual(["host"]);
+
+    const unknown = await page.request.get(
+      `${API_BASE}/api/v1/orgs/test/check-types/x-nobody-reported/schema`,
+      { headers },
+    );
+    expect(unknown.status()).toBe(404);
   });
 
   test("creates an x-gopher check through the JSON editor", async ({ authenticatedPage }) => {

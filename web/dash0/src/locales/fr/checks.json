@@ -730,6 +730,9 @@
       "description": "Cette vérification s'exécute dans un emplacement privé et ses identifiants sont scellés pour un ensemble d'agents différent de ceux actuellement actifs — un agent a été enrôlé ou révoqué depuis leur enregistrement, les agents ne peuvent donc pas les déchiffrer et la vérification échouera. SolidPing ne peut pas les re-sceller lui-même (il ne peut pas les lire non plus) : ressaisissez et enregistrez les identifiants pour corriger cela.",
       "action": "Ré-enregistrer les identifiants"
     },
+    "regionWarnings": {
+      "title": "Ce check ne tourne pas dans toutes les régions"
+    },
     "configuration": "Configuration",
     "configurationDescription": "Paramètres et options du contrôle",
     "results": {

@@ -1,7 +1,8 @@
 // Fallback module for check types the dashboard has no form for: plugin types
 // loaded by the server (spec 2026-10-17-05). The config is edited as JSON with
 // CodeMirror and checked against the type's JSON Schema, which the server
-// serves at /api/v1/checks/schema/:type and also validates with on save.
+// serves at /api/v1/orgs/:org/check-types/:type/schema (agent-reported types
+// included, spec 2026-10-17-05 §18) and also validates with on save.
 import { useEffect } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { json } from "@codemirror/lang-json";
@@ -11,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { useCheckConfigSchema, type CheckConfigSchema } from "@/api/hooks";
 import { lintAgainstSchema } from "@/lib/json-schema-lint";
 import type { CheckTypeModule } from "./index";
+import { useCheckFormFields } from "./context";
 import {
   SHARED_FORM_CONFIG_KEYS,
   validationMessage,
@@ -75,7 +77,8 @@ export function pluginModule(type: string): CheckTypeModule<PluginState> {
 
 function PluginFields({ state, onChange, errors }: CheckTypeFieldsProps<PluginState>) {
   const { t } = useTranslation("checks");
-  const { data: schema } = useCheckConfigSchema(state.type);
+  const { org } = useCheckFormFields();
+  const { data: schema } = useCheckConfigSchema(org, state.type);
 
   // Keep the schema in the state so toConfig (pure) can lint against it.
   useEffect(() => {

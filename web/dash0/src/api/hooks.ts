@@ -208,6 +208,13 @@ export interface Check {
    */
   needsReseal?: boolean;
   /**
+   * Detail responses only, recomputed on every read: why the check does not
+   * run in some of its regions right now. Today REGION_NO_PLUGIN, a plugin
+   * check in a region whose live workers did not load the plugin (spec
+   * 2026-10-17-05 §17). Undefined when there is none.
+   */
+  regionWarnings?: { name: string; message: string; code?: string }[];
+  /**
    * Where the check runs. For a pinned check, the user's explicit list; for an
    * automatically placed one, the CURRENT placement, chosen by the scheduler
    * and rewritten when one of its regions goes dark (spec 2026-09-25-06).
@@ -5160,18 +5167,22 @@ export interface CheckTypeInfo {
   plugin?: { name: string; version: string };
 }
 
-/** A check type's config JSON Schema (GET /api/v1/checks/schema/:type). */
+/** A check type's config JSON Schema (GET /api/v1/orgs/:org/check-types/:type/schema). */
 export type CheckConfigSchema = Record<string, unknown>;
 
-export function useCheckConfigSchema(checkType: string, enabled = true) {
+/**
+ * Reads the schema through the org route, which also serves the plugin types
+ * the org's private-location agents reported (spec 2026-10-17-05 §18).
+ */
+export function useCheckConfigSchema(org: string, checkType: string, enabled = true) {
   return useQuery({
-    queryKey: ["check-types", "schema", checkType],
+    queryKey: ["check-types", org, "schema", checkType],
     queryFn: () =>
       apiFetch<CheckConfigSchema>(
-        `/api/v1/checks/schema/${encodeURIComponent(checkType)}`,
+        `/api/v1/orgs/${encodeURIComponent(org)}/check-types/${encodeURIComponent(checkType)}/schema`,
       ),
     staleTime: 5 * 60 * 1000,
-    enabled: enabled && !!checkType,
+    enabled: enabled && !!org && !!checkType,
   });
 }
 

@@ -21,6 +21,13 @@ SP_PLUGINS_DIR=/etc/solidping/plugins solidping serve
 plugins off. A private-location agent reads its own `SP_PLUGINS_DIR`, so an
 agent can run plugins the cloud workers do not have.
 
+When an agent connects, it sends the manifest and schema of each plugin type it
+loaded. The server keeps them for the agent's organization only, so the check
+form and validation of those types keep working while the agent is offline.
+Another organization never sees them. A platform (system) agent's plugin types
+are not kept: install those plugins on the server too. A report holds at most
+32 types and 64 KiB of schema per type.
+
 ## The plugin folder
 
 One folder per plugin, each with a `manifest.json`:
@@ -92,7 +99,9 @@ exports, exactly like a built-in password field:
 ```
 
 The schema is served at `GET /api/v1/checks/schema/x-gopher`, with an
-`x-solidping-plugin` key naming the plugin. The dashboard has no form for a
+`x-solidping-plugin` key naming the plugin.
+`GET /api/v1/orgs/{org}/check-types/x-gopher/schema` serves the same document,
+plus the types the organization's agents reported. The dashboard has no form for a
 plugin type: it edits the config as JSON and checks it against this schema as
 you type.
 
@@ -174,7 +183,12 @@ ignored. When the check times out, the whole process group is killed.
   lists them in `SP_CHECKERS_ENABLED`; private-location agents run them.
 - A plugin-type job only goes to a worker that loaded the plugin: workers add
   their plugin types to their capability report. Saving a plugin check in a
-  region where no live worker has the plugin returns a warning.
+  region where no live worker has the plugin returns a warning, and the check
+  page shows the same reason (`regionWarnings`, code `REGION_NO_PLUGIN`) until
+  a worker with the plugin is live there.
+- The check-type enums of the OpenAPI spec list the built-in types only. A
+  client must accept an unlisted `x-` type: the generated Go client and the
+  `sp` CLI do.
 - Every result is capped, whatever the protocol: an unknown status becomes
   `error`, `output` is cut to 16 KiB and at most 32 numeric metrics are kept.
   What was cut is listed in `output.truncated`.

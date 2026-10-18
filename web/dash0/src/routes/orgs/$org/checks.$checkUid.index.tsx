@@ -137,6 +137,7 @@ import { docsHrefForType } from "@/components/shared/check-type-docs-anchors";
 import { SloCoverageChip } from "@/components/slos/slo-coverage-chip";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { NeedsResealAlert } from "@/components/checks/needs-reseal-alert";
+import { RegionWarningsAlert } from "@/components/checks/region-warnings-alert";
 import { CheckPublicationHint } from "@/components/checks/check-publication-hint";
 import { PublishOnStatusPageDialog } from "@/components/checks/publish-on-status-page-dialog";
 import { CheckSummaryCards } from "@/components/checks/check-summary-cards";
@@ -1602,6 +1603,7 @@ function CheckDetailPage() {
           location's active agents. Re-saving the credentials (Edit, above) is
           the only fix — the server cannot re-seal what it cannot read. */}
       <NeedsResealAlert needsReseal={check.needsReseal} />
+      <RegionWarningsAlert warnings={check.regionWarnings} />
 
       {/* Region outage (spec 2026-09-25-03): a region this check runs from is
           offline. Blind (every region down) means the check is not running at

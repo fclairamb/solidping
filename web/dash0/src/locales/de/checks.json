@@ -686,6 +686,9 @@
       "description": "Diese Prüfung läuft an einem privaten Standort und ihre gespeicherten Zugangsdaten sind für andere Agenten versiegelt als die derzeit aktiven — seit dem Speichern wurde ein Agent hinzugefügt oder widerrufen. Die Agenten können sie daher nicht entschlüsseln und die Prüfung schlägt fehl. SolidPing kann sie nicht selbst neu versiegeln (es kann sie ebenfalls nicht lesen): Geben Sie die Zugangsdaten erneut ein und speichern Sie sie.",
       "action": "Zugangsdaten neu speichern"
     },
+    "regionWarnings": {
+      "title": "Dieser Check läuft nicht in allen Regionen"
+    },
     "configuration": "Konfiguration",
     "configurationDescription": "Einstellungen und Parameter der Prüfung",
     "results": {

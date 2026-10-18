@@ -686,6 +686,9 @@
       "description": "Esta comprobación se ejecuta en una ubicación privada y sus credenciales almacenadas están selladas para un conjunto de agentes distinto de los activos actualmente: se ha inscrito o revocado un agente desde que se guardaron, por lo que los agentes no pueden descifrarlas y la comprobación fallará. SolidPing no puede volver a sellarlas por sí mismo (tampoco puede leerlas): vuelve a introducir y guardar las credenciales para solucionarlo.",
       "action": "Volver a guardar las credenciales"
     },
+    "regionWarnings": {
+      "title": "Este check no se ejecuta en todas las regiones"
+    },
     "configuration": "Configuración",
     "configurationDescription": "Ajustes y parámetros de la comprobación",
     "results": {
