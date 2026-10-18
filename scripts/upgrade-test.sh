@@ -198,11 +198,13 @@ else
     docker run -d --name "$pg_name" --network "$network" -p 127.0.0.1::5432 \
         -e POSTGRES_USER=solidping -e POSTGRES_PASSWORD=solidping -e POSTGRES_DB=solidping \
         "$pg_image" >/dev/null
+    # Probe over TCP: the image's init phase runs a temporary server that listens
+    # on the unix socket only, so a socket probe succeeds just before it restarts.
     for _ in $(seq 60); do
-        docker exec "$pg_name" pg_isready -U solidping -d solidping >/dev/null 2>&1 && break
+        docker exec "$pg_name" pg_isready -h 127.0.0.1 -U solidping -d solidping >/dev/null 2>&1 && break
         sleep 1
     done
-    docker exec "$pg_name" pg_isready -U solidping -d solidping >/dev/null || fail "postgres did not start"
+    docker exec "$pg_name" pg_isready -h 127.0.0.1 -U solidping -d solidping >/dev/null || fail "postgres did not start"
     pg_port=$(docker port "$pg_name" 5432/tcp | head -n 1 | sed 's/.*://')
     old_args+=(--network "$network" -e "SP_DB_URL=postgres://solidping:solidping@$pg_name:5432/solidping?sslmode=disable")
     new_env+=("SP_DB_URL=postgres://solidping:solidping@127.0.0.1:$pg_port/solidping?sslmode=disable")
