@@ -20,8 +20,8 @@ instead of quietly going stale.
 One take, four beats: the published `docker run` one-liner booting the shipped
 image; the **first sign-in**, including the forced password change every new
 install starts with; creating an HTTP check — checks list → **New check** →
-target URL and a name → how often it runs → which regions it runs from → save;
-and the first response times arriving from **two regions**. The form opens on
+target URL and a name → how often it runs → save; and the first response times
+arriving. The form opens on
 the HTTP check type, so there is nothing to pick for the commonest case.
 
 Two things in the cut are editing rather than product. Stretches where nothing
@@ -73,26 +73,28 @@ grouped, filtered, and organised by host.
 
 One form for every protocol. Pick the check type and the form reshapes itself
 around it — method, URL and expected status codes for HTTP, host and port for
-TCP, and so on. Scheduling — how often the check runs — sits just below. Once
-your install has more than one region, the region picker appears alongside it,
-as it does here: every selected region runs the check at the **full** interval,
-and the spread staggers them so they do not all fire at the same instant.
+TCP, and so on. Scheduling — how often the check runs — sits just below. A fresh install
+has a single region, so there is no region picker yet. Once you add more, it
+appears alongside the interval: every selected region runs the check at the
+**full** interval, and the spread staggers them so they do not all fire at the
+same instant.
 
 <img
   src={useBaseUrl('/showcase/02-check-form-filled.png')}
-  alt="The scheduling half of the new-check form: the name Production API, a check interval of ten seconds, both EU West and US East regions selected, and an automatic five-second region spread"
+  alt="The scheduling half of the new-check form: the name Production API and a check interval of ten seconds"
   style={{ width: '100%', maxWidth: '1280px', borderRadius: '8px' }}
 />
 
 ## The check detail page
 
 Once saved, the check starts running immediately. Its detail page shows the
-live status, response times over time — one series per region, with a selector
-to look at any of them on its own — and the raw result history.
+live status, response times over time — one series per region once you run from
+several, with a selector to look at any of them on its own — and the raw result
+history.
 
 <img
   src={useBaseUrl('/showcase/03-check-detail.png')}
-  alt="The Production API check's detail page moments after creation: uptime, last-checked and open-incident tiles above a response-time chart plotting EU West and US East separately"
+  alt="The Production API check's detail page moments after creation: uptime, last-checked and open-incident tiles above a response-time chart with the first results plotted"
   style={{ width: '100%', maxWidth: '1280px', borderRadius: '8px' }}
 />
 

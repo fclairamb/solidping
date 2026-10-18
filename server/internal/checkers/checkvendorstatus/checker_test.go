@@ -243,12 +243,22 @@ func TestUnreadablePagesAreErrorsNeverDown(t *testing.T) {
 func TestUnreachableVendorIsNeverDown(t *testing.T) {
 	t.Parallel()
 
-	server := serve(t, 200, "application/json", "{}")
-	url := server.URL
+	// A server that drops every connection is unreachable for good. Closing a
+	// server and dialing its old address is not: a parallel test can be handed
+	// the freed port and answer with a healthy summary.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hijacker, ok := w.(http.Hijacker)
+		if !ok {
+			return
+		}
 
-	server.Close()
+		if conn, _, err := hijacker.Hijack(); err == nil {
+			_ = conn.Close()
+		}
+	}))
+	t.Cleanup(server.Close)
 
-	result := run(t, &VendorStatusConfig{URL: url})
+	result := run(t, &VendorStatusConfig{URL: server.URL})
 
 	require.NotEqual(t, checkerdef.StatusDown, result.Status)
 	require.Equal(t, checkerdef.StatusError, result.Status)
