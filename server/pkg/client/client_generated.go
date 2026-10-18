@@ -3030,6 +3030,87 @@ func (e SupportThreadStatus) Valid() bool {
 	}
 }
 
+// Defines values for ToolRunRequestOptionsRecord.
+const (
+	ToolRunRequestOptionsRecordA     ToolRunRequestOptionsRecord = "A"
+	ToolRunRequestOptionsRecordAAAA  ToolRunRequestOptionsRecord = "AAAA"
+	ToolRunRequestOptionsRecordCAA   ToolRunRequestOptionsRecord = "CAA"
+	ToolRunRequestOptionsRecordCNAME ToolRunRequestOptionsRecord = "CNAME"
+	ToolRunRequestOptionsRecordMX    ToolRunRequestOptionsRecord = "MX"
+	ToolRunRequestOptionsRecordNS    ToolRunRequestOptionsRecord = "NS"
+	ToolRunRequestOptionsRecordTXT   ToolRunRequestOptionsRecord = "TXT"
+)
+
+// Valid indicates whether the value is a known member of the ToolRunRequestOptionsRecord enum.
+func (e ToolRunRequestOptionsRecord) Valid() bool {
+	switch e {
+	case ToolRunRequestOptionsRecordA:
+		return true
+	case ToolRunRequestOptionsRecordAAAA:
+		return true
+	case ToolRunRequestOptionsRecordCAA:
+		return true
+	case ToolRunRequestOptionsRecordCNAME:
+		return true
+	case ToolRunRequestOptionsRecordMX:
+		return true
+	case ToolRunRequestOptionsRecordNS:
+		return true
+	case ToolRunRequestOptionsRecordTXT:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ToolRunRequestType.
+const (
+	ToolRunRequestTypeDns  ToolRunRequestType = "dns"
+	ToolRunRequestTypeHttp ToolRunRequestType = "http"
+	ToolRunRequestTypeSsl  ToolRunRequestType = "ssl"
+	ToolRunRequestTypeTcp  ToolRunRequestType = "tcp"
+)
+
+// Valid indicates whether the value is a known member of the ToolRunRequestType enum.
+func (e ToolRunRequestType) Valid() bool {
+	switch e {
+	case ToolRunRequestTypeDns:
+		return true
+	case ToolRunRequestTypeHttp:
+		return true
+	case ToolRunRequestTypeSsl:
+		return true
+	case ToolRunRequestTypeTcp:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ToolRunResultType.
+const (
+	ToolRunResultTypeDns  ToolRunResultType = "dns"
+	ToolRunResultTypeHttp ToolRunResultType = "http"
+	ToolRunResultTypeSsl  ToolRunResultType = "ssl"
+	ToolRunResultTypeTcp  ToolRunResultType = "tcp"
+)
+
+// Valid indicates whether the value is a known member of the ToolRunResultType enum.
+func (e ToolRunResultType) Valid() bool {
+	switch e {
+	case ToolRunResultTypeDns:
+		return true
+	case ToolRunResultTypeHttp:
+		return true
+	case ToolRunResultTypeSsl:
+		return true
+	case ToolRunResultTypeTcp:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for UpdateCheckRequestPlacement.
 const (
 	UpdateCheckRequestPlacementAuto   UpdateCheckRequestPlacement = "auto"
@@ -4473,6 +4554,9 @@ type Check struct {
 	// RegionSpread Optional inter-region scheduling offset (e.g., "00:00:20"). Every selected region runs the check at the full period; this staggers their phases. Null uses the default of period ÷ region count. Must satisfy 0 <= regionSpread < period.
 	RegionSpread *string `json:"regionSpread,omitempty"`
 
+	// RegionWarnings Detail responses only (GET of one check), recomputed on every read: why the check does not run in some of its regions right now. Today `REGION_NO_PLUGIN`, a plugin-type check in a region whose live workers did not load the plugin. Absent when there is none.
+	RegionWarnings *[]ValidationErrorField `json:"regionWarnings,omitempty"`
+
 	// RegionalIssue Present (check detail, `with=region_freshness`) while some, but fewer than the quorum, of the check's current regions are failing. The check is `warning` and no incident opens. Regions the check no longer runs in never count.
 	RegionalIssue *RegionalIssue `json:"regionalIssue,omitempty"`
 
@@ -4505,9 +4589,11 @@ type Check struct {
 
 	// TracerouteOnFailure Per-check path-trace policy. When a network-reachability failure (connect timeout, refusal, ICMP loss, TLS handshake stall) opens or reopens an incident for this check, an MTR-style traceroute is captured and attached. `inherit` defers to the organization default (itself on unless an admin turned it off); `on` and `off` decide for this check. Application-level failures (HTTP 5xx, keyword mismatch, certificate expiry) never trigger a trace, whatever this is set to.
 	TracerouteOnFailure *CheckTracerouteOnFailure `json:"tracerouteOnFailure,omitempty"`
-	Type                *CheckType                `json:"type,omitempty"`
-	Uid                 *openapi_types.UUID       `json:"uid,omitempty"`
-	UpdatedAt           *time.Time                `json:"updatedAt,omitempty"`
+
+	// Type Check type. Built-in check types are enumerated. A deployment may also accept and return plugin check types, always `x-` prefixed (e.g. `x-gopher`, spec 2026-10-17-05): they are not listed because they depend on the server's plugin directory and on the organization's agents, so a client must accept an unlisted `x-` value.
+	Type      *CheckType          `json:"type,omitempty"`
+	Uid       *openapi_types.UUID `json:"uid,omitempty"`
+	UpdatedAt *time.Time          `json:"updatedAt,omitempty"`
 
 	// Warnings Advisory notes attached to a SUCCESSFUL create or update — the check was written and will run. Today the only one is "you pinned `ipVersion: ipv6` in a region whose live workers report no IPv6 egress". Absent on read paths.
 	Warnings *[]ValidationErrorField `json:"warnings,omitempty"`
@@ -4525,7 +4611,7 @@ type CheckStatus string
 // CheckTracerouteOnFailure Per-check path-trace policy. When a network-reachability failure (connect timeout, refusal, ICMP loss, TLS handshake stall) opens or reopens an incident for this check, an MTR-style traceroute is captured and attached. `inherit` defers to the organization default (itself on unless an admin turned it off); `on` and `off` decide for this check. Application-level failures (HTTP 5xx, keyword mismatch, certificate expiry) never trigger a trace, whatever this is set to.
 type CheckTracerouteOnFailure string
 
-// CheckType defines model for Check.Type.
+// CheckType Check type. Built-in check types are enumerated. A deployment may also accept and return plugin check types, always `x-` prefixed (e.g. `x-gopher`, spec 2026-10-17-05): they are not listed because they depend on the server's plugin directory and on the organization's agents, so a client must accept an unlisted `x-` value.
 type CheckType string
 
 // CheckAvailabilityBucketsResponse defines model for CheckAvailabilityBucketsResponse.
@@ -4777,6 +4863,9 @@ type CheckListItem struct {
 	// RegionSpread Optional inter-region scheduling offset (e.g., "00:00:20"). Every selected region runs the check at the full period; this staggers their phases. Null uses the default of period ÷ region count. Must satisfy 0 <= regionSpread < period.
 	RegionSpread *string `json:"regionSpread,omitempty"`
 
+	// RegionWarnings Detail responses only (GET of one check), recomputed on every read: why the check does not run in some of its regions right now. Today `REGION_NO_PLUGIN`, a plugin-type check in a region whose live workers did not load the plugin. Absent when there is none.
+	RegionWarnings *[]ValidationErrorField `json:"regionWarnings,omitempty"`
+
 	// RegionalIssue Present (check detail, `with=region_freshness`) while some, but fewer than the quorum, of the check's current regions are failing. The check is `warning` and no incident opens. Regions the check no longer runs in never count.
 	RegionalIssue *RegionalIssue `json:"regionalIssue,omitempty"`
 
@@ -4809,9 +4898,11 @@ type CheckListItem struct {
 
 	// TracerouteOnFailure Per-check path-trace policy. When a network-reachability failure (connect timeout, refusal, ICMP loss, TLS handshake stall) opens or reopens an incident for this check, an MTR-style traceroute is captured and attached. `inherit` defers to the organization default (itself on unless an admin turned it off); `on` and `off` decide for this check. Application-level failures (HTTP 5xx, keyword mismatch, certificate expiry) never trigger a trace, whatever this is set to.
 	TracerouteOnFailure *CheckListItemTracerouteOnFailure `json:"tracerouteOnFailure,omitempty"`
-	Type                *CheckListItemType                `json:"type,omitempty"`
-	Uid                 *openapi_types.UUID               `json:"uid,omitempty"`
-	UpdatedAt           *time.Time                        `json:"updatedAt,omitempty"`
+
+	// Type Check type. Built-in check types are enumerated. A deployment may also accept and return plugin check types, always `x-` prefixed (e.g. `x-gopher`, spec 2026-10-17-05): they are not listed because they depend on the server's plugin directory and on the organization's agents, so a client must accept an unlisted `x-` value.
+	Type      *CheckListItemType  `json:"type,omitempty"`
+	Uid       *openapi_types.UUID `json:"uid,omitempty"`
+	UpdatedAt *time.Time          `json:"updatedAt,omitempty"`
 
 	// Warnings Advisory notes attached to a SUCCESSFUL create or update — the check was written and will run. Today the only one is "you pinned `ipVersion: ipv6` in a region whose live workers report no IPv6 egress". Absent on read paths.
 	Warnings *[]ValidationErrorField `json:"warnings,omitempty"`
@@ -4829,7 +4920,7 @@ type CheckListItemStatus string
 // CheckListItemTracerouteOnFailure Per-check path-trace policy. When a network-reachability failure (connect timeout, refusal, ICMP loss, TLS handshake stall) opens or reopens an incident for this check, an MTR-style traceroute is captured and attached. `inherit` defers to the organization default (itself on unless an admin turned it off); `on` and `off` decide for this check. Application-level failures (HTTP 5xx, keyword mismatch, certificate expiry) never trigger a trace, whatever this is set to.
 type CheckListItemTracerouteOnFailure string
 
-// CheckListItemType defines model for CheckListItem.Type.
+// CheckListItemType Check type. Built-in check types are enumerated. A deployment may also accept and return plugin check types, always `x-` prefixed (e.g. `x-gopher`, spec 2026-10-17-05): they are not listed because they depend on the server's plugin directory and on the organization's agents, so a client must accept an unlisted `x-` value.
 type CheckListItemType string
 
 // CheckListResponse defines model for CheckListResponse.
@@ -5254,7 +5345,7 @@ type CreateCheckRequest struct {
 	// TracerouteOnFailure Per-check path-trace policy (see the Check schema). `inherit` puts the check back under the organization default. Omit to leave unchanged.
 	TracerouteOnFailure *CreateCheckRequestTracerouteOnFailure `json:"tracerouteOnFailure,omitempty"`
 
-	// Type Check type (auto-inferred from URL if not provided)
+	// Type Check type (auto-inferred from URL if not provided). Built-in check types are enumerated. A deployment may also accept and return plugin check types, always `x-` prefixed (e.g. `x-gopher`, spec 2026-10-17-05): they are not listed because they depend on the server's plugin directory and on the organization's agents, so a client must accept an unlisted `x-` value.
 	Type *CreateCheckRequestType `json:"type,omitempty"`
 }
 
@@ -5264,7 +5355,7 @@ type CreateCheckRequestPlacement string
 // CreateCheckRequestTracerouteOnFailure Per-check path-trace policy (see the Check schema). `inherit` puts the check back under the organization default. Omit to leave unchanged.
 type CreateCheckRequestTracerouteOnFailure string
 
-// CreateCheckRequestType Check type (auto-inferred from URL if not provided)
+// CreateCheckRequestType Check type (auto-inferred from URL if not provided). Built-in check types are enumerated. A deployment may also accept and return plugin check types, always `x-` prefixed (e.g. `x-gopher`, spec 2026-10-17-05): they are not listed because they depend on the server's plugin directory and on the organization's agents, so a client must accept an unlisted `x-` value.
 type CreateCheckRequestType string
 
 // CreateDependencyRequest defines model for CreateDependencyRequest.
@@ -8590,6 +8681,58 @@ type TokenListResponse struct {
 	Data *[]Token `json:"data,omitempty"`
 }
 
+// ToolRunRequest defines model for ToolRunRequest.
+type ToolRunRequest struct {
+	Options *struct {
+		// Record DNS record type (dns only)
+		Record *ToolRunRequestOptionsRecord `json:"record,omitempty"`
+	} `json:"options,omitempty"`
+
+	// Target `http`: a URL (`https://` is assumed without a scheme). `ssl`: `host`, `host:port` or a URL (port 443 by default). `tcp`: `host:port`, port 1 to 65535. `dns`: a domain name.
+	//
+	// Example: https://example.com
+	Target string             `json:"target"`
+	Type   ToolRunRequestType `json:"type"`
+}
+
+// ToolRunRequestOptionsRecord DNS record type (dns only)
+type ToolRunRequestOptionsRecord string
+
+// ToolRunRequestType defines model for ToolRunRequest.Type.
+type ToolRunRequestType string
+
+// ToolRunResult defines model for ToolRunResult.
+type ToolRunResult struct {
+	// Cached True when the result was served from the 60 s cache
+	Cached    bool      `json:"cached"`
+	CheckedAt time.Time `json:"checkedAt"`
+
+	// Details Per type. `http`: statusCode, finalUrl, redirects, responseTimeMs, httpProtocol, certNotAfter and certDaysLeft over HTTPS. `ssl`: issuer, subject, notBefore, notAfter, daysLeft, sans, chainValid, tlsVersion. `dns`: record, records. `tcp`: connected, connectTimeMs. `error` carries the failure reason when there is one.
+	Details    map[string]interface{} `json:"details"`
+	DurationMs int64                  `json:"durationMs"`
+	Monitor    struct {
+		CheckType string `json:"checkType"`
+
+		// Query Query string for the dashboard's /checks/new form, to monitor this target
+		//
+		// Example: checkName=example.com&checkType=http&httpUrl=https%3A%2F%2Fexample.com
+		Query string `json:"query"`
+	} `json:"monitor"`
+
+	// Region Region of the node that ran the check
+	Region *string `json:"region,omitempty"`
+
+	// Status The check status (up, down, warning, error)
+	Status string `json:"status"`
+
+	// Target The normalised target (a URL for http, host:port for ssl and tcp, the name for dns)
+	Target string            `json:"target"`
+	Type   ToolRunResultType `json:"type"`
+}
+
+// ToolRunResultType defines model for ToolRunResult.Type.
+type ToolRunResultType string
+
 // UpdateChannelRequest defines model for UpdateChannelRequest.
 type UpdateChannelRequest struct {
 	Enabled   *bool                   `json:"enabled,omitempty"`
@@ -8982,7 +9125,7 @@ type UpsertCheckRequest struct {
 	// TracerouteOnFailure Per-check path-trace policy (see the Check schema). Sent explicitly by import/apply so a manifest that says `inherit` moves a check back off an explicit override rather than leaving it.
 	TracerouteOnFailure *UpsertCheckRequestTracerouteOnFailure `json:"tracerouteOnFailure,omitempty"`
 
-	// Type Check type (auto-inferred from URL if not provided)
+	// Type Check type (auto-inferred from URL if not provided). Built-in check types are enumerated. A deployment may also accept and return plugin check types, always `x-` prefixed (e.g. `x-gopher`, spec 2026-10-17-05): they are not listed because they depend on the server's plugin directory and on the organization's agents, so a client must accept an unlisted `x-` value.
 	Type *UpsertCheckRequestType `json:"type,omitempty"`
 }
 
@@ -8992,7 +9135,7 @@ type UpsertCheckRequestPlacement string
 // UpsertCheckRequestTracerouteOnFailure Per-check path-trace policy (see the Check schema). Sent explicitly by import/apply so a manifest that says `inherit` moves a check back off an explicit override rather than leaving it.
 type UpsertCheckRequestTracerouteOnFailure string
 
-// UpsertCheckRequestType Check type (auto-inferred from URL if not provided)
+// UpsertCheckRequestType Check type (auto-inferred from URL if not provided). Built-in check types are enumerated. A deployment may also accept and return plugin check types, always `x-` prefixed (e.g. `x-gopher`, spec 2026-10-17-05): they are not listed because they depend on the server's plugin directory and on the organization's agents, so a client must accept an unlisted `x-` value.
 type UpsertCheckRequestType string
 
 // UserSummary defines model for UserSummary.
@@ -10332,6 +10475,9 @@ type UpdateAdminUserJSONRequestBody = AdminUpdateUserRequest
 // ImpersonateUserJSONRequestBody defines body for ImpersonateUser for application/json ContentType.
 type ImpersonateUserJSONRequestBody ImpersonateUserJSONBody
 
+// RunToolJSONRequestBody defines body for RunTool for application/json ContentType.
+type RunToolJSONRequestBody = ToolRunRequest
+
 // AsFailQuorum0 returns the union data inside the FailQuorum as a FailQuorum0
 func (t FailQuorum) AsFailQuorum0() (FailQuorum0, error) {
 	var body FailQuorum0
@@ -11226,6 +11372,17 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /api/v1/orgs/{org}/check-jobs/{uid} (the `GetCheckJob` operationId).
 	GetCheckJob(ctx context.Context, org OrgPath, uid CheckJobUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetOrgCheckConfigSchema Get a check type's config JSON Schema, org plugin types included
+	//
+	// Same document as `GET /api/v1/checks/schema/{type}`, plus the plugin
+	// check types (`x-` prefix) this organization's private-location agents
+	// reported. Those are stored per organization, so their schema is served
+	// while the agent is offline, and never to another organization. A plugin
+	// schema is the validator of its type.
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/check-types/{type}/schema (the `GetOrgCheckConfigSchema` operationId).
+	GetOrgCheckConfigSchema(ctx context.Context, org OrgPath, pType string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListChecks List monitoring checks
 	//
@@ -13637,6 +13794,24 @@ type ClientInterface interface {
 	// Corresponds with POST /api/v1/system/users/{uid}/impersonate (the `ImpersonateUser` operationId).
 	ImpersonateUser(ctx context.Context, uid openapi_types.UUID, body ImpersonateUserJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// RunToolWithBody Run one check once, anonymously
+	//
+	// Runs an `http` (GET), `ssl`, `dns` or `tcp` check once against a public target and returns the normalised result. Nothing is stored. Disabled (404) unless `SP_TOOLS_ENABLED=true` (system parameter `tools.enabled`). Every run goes through an egress guard that refuses private, loopback, link-local and reserved addresses, whatever `SP_EGRESS_ALLOW_PRIVATE` says, as well as the instance's own hosts. Limits: 10 runs a minute and 100 a day per client IP, 16 runs in flight server-wide, 10 s per run, 5 redirects for `http`. A result is cached 60 s per (type, target, options). Error codes: `INVALID_TARGET` (400), `TARGET_NOT_ALLOWED` (403), `RESOLVE_FAILED` (422), `RATE_LIMITED` (429), `SERVICE_BUSY` (503, with `Retry-After`), `TIMEOUT` (504).
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/v1/tools/run (the `RunTool` operationId).
+	RunToolWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RunTool Run one check once, anonymously
+	//
+	// Runs an `http` (GET), `ssl`, `dns` or `tcp` check once against a public target and returns the normalised result. Nothing is stored. Disabled (404) unless `SP_TOOLS_ENABLED=true` (system parameter `tools.enabled`). Every run goes through an egress guard that refuses private, loopback, link-local and reserved addresses, whatever `SP_EGRESS_ALLOW_PRIVATE` says, as well as the instance's own hosts. Limits: 10 runs a minute and 100 a day per client IP, 16 runs in flight server-wide, 10 s per run, 5 redirects for `http`. A result is cached 60 s per (type, target, options). Error codes: `INVALID_TARGET` (400), `TARGET_NOT_ALLOWED` (403), `RESOLVE_FAILED` (422), `RATE_LIMITED` (429), `SERVICE_BUSY` (503, with `Retry-After`), `TIMEOUT` (504).
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/v1/tools/run (the `RunTool` operationId).
+	RunTool(ctx context.Context, body RunToolJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetEmbedWidgetV1 Embeddable live status widget script
 	//
 	// Self-contained JavaScript (IIFE) that renders a live status pill on a third-party site. It is loaded by an async script tag carrying data-page="org/slug", and configured entirely through data-attributes: data-mode (inline|floating), data-position (bottom-right|bottom-left), data-theme (light|dark|auto), data-size (sm|md|lg), per-state label overrides data-label-operational|degraded|down|maintenance|unknown, and data-force-status (operational|degraded|down|maintenance|unknown) to render a status statically without polling. The widget polls the status page summary endpoint every 60 s with an uncredentialed request and renders into a shadow root; a failed request or an unknown page renders nothing. Everything under /embed/v1/ is a frozen public contract — behavior changes ship under /embed/v2/, but additive, backward-compatible data-attributes may land within v1. Response carries Cache-Control: public, max-age=3600. No authentication required.
@@ -15050,6 +15225,27 @@ func (c *Client) ListCheckJobs(ctx context.Context, org OrgPath, params *ListChe
 // Corresponds with GET /api/v1/orgs/{org}/check-jobs/{uid} (the `GetCheckJob` operationId).
 func (c *Client) GetCheckJob(ctx context.Context, org OrgPath, uid CheckJobUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetCheckJobRequest(c.Server, org, uid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetOrgCheckConfigSchema Get a check type's config JSON Schema, org plugin types included
+//
+// Same document as `GET /api/v1/checks/schema/{type}`, plus the plugin
+// check types (`x-` prefix) this organization's private-location agents
+// reported. Those are stored per organization, so their schema is served
+// while the agent is offline, and never to another organization. A plugin
+// schema is the validator of its type.
+//
+// Corresponds with GET /api/v1/orgs/{org}/check-types/{type}/schema (the `GetOrgCheckConfigSchema` operationId).
+func (c *Client) GetOrgCheckConfigSchema(ctx context.Context, org OrgPath, pType string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetOrgCheckConfigSchemaRequest(c.Server, org, pType)
 	if err != nil {
 		return nil, err
 	}
@@ -20670,6 +20866,44 @@ func (c *Client) ImpersonateUser(ctx context.Context, uid openapi_types.UUID, bo
 	return c.Client.Do(req)
 }
 
+// RunToolWithBody Run one check once, anonymously
+//
+// Runs an `http` (GET), `ssl`, `dns` or `tcp` check once against a public target and returns the normalised result. Nothing is stored. Disabled (404) unless `SP_TOOLS_ENABLED=true` (system parameter `tools.enabled`). Every run goes through an egress guard that refuses private, loopback, link-local and reserved addresses, whatever `SP_EGRESS_ALLOW_PRIVATE` says, as well as the instance's own hosts. Limits: 10 runs a minute and 100 a day per client IP, 16 runs in flight server-wide, 10 s per run, 5 redirects for `http`. A result is cached 60 s per (type, target, options). Error codes: `INVALID_TARGET` (400), `TARGET_NOT_ALLOWED` (403), `RESOLVE_FAILED` (422), `RATE_LIMITED` (429), `SERVICE_BUSY` (503, with `Retry-After`), `TIMEOUT` (504).
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/v1/tools/run (the `RunTool` operationId).
+func (c *Client) RunToolWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRunToolRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RunTool Run one check once, anonymously
+//
+// Runs an `http` (GET), `ssl`, `dns` or `tcp` check once against a public target and returns the normalised result. Nothing is stored. Disabled (404) unless `SP_TOOLS_ENABLED=true` (system parameter `tools.enabled`). Every run goes through an egress guard that refuses private, loopback, link-local and reserved addresses, whatever `SP_EGRESS_ALLOW_PRIVATE` says, as well as the instance's own hosts. Limits: 10 runs a minute and 100 a day per client IP, 16 runs in flight server-wide, 10 s per run, 5 redirects for `http`. A result is cached 60 s per (type, target, options). Error codes: `INVALID_TARGET` (400), `TARGET_NOT_ALLOWED` (403), `RESOLVE_FAILED` (422), `RATE_LIMITED` (429), `SERVICE_BUSY` (503, with `Retry-After`), `TIMEOUT` (504).
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/v1/tools/run (the `RunTool` operationId).
+func (c *Client) RunTool(ctx context.Context, body RunToolJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRunToolRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // GetEmbedWidgetV1 Embeddable live status widget script
 //
 // Self-contained JavaScript (IIFE) that renders a live status pill on a third-party site. It is loaded by an async script tag carrying data-page="org/slug", and configured entirely through data-attributes: data-mode (inline|floating), data-position (bottom-right|bottom-left), data-theme (light|dark|auto), data-size (sm|md|lg), per-state label overrides data-label-operational|degraded|down|maintenance|unknown, and data-force-status (operational|degraded|down|maintenance|unknown) to render a status statically without polling. The widget polls the status page summary endpoint every 60 s with an uncredentialed request and renders into a shadow root; a failed request or an unknown page renders nothing. Everything under /embed/v1/ is a frozen public contract — behavior changes ship under /embed/v2/, but additive, backward-compatible data-attributes may land within v1. Response carries Cache-Control: public, max-age=3600. No authentication required.
@@ -22952,6 +23186,47 @@ func NewGetCheckJobRequest(server string, org OrgPath, uid CheckJobUidPath) (*ht
 	}
 
 	operationPath := fmt.Sprintf("/api/v1/orgs/%s/check-jobs/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetOrgCheckConfigSchemaRequest constructs an http.Request for the GetOrgCheckConfigSchema method
+func NewGetOrgCheckConfigSchemaRequest(server string, org OrgPath, pType string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "type", pType, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/check-types/%s/schema", pathParam0, pathParam1)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -35786,6 +36061,46 @@ func NewImpersonateUserRequestWithBody(server string, uid openapi_types.UUID, co
 	return req, nil
 }
 
+// NewRunToolRequest calls the generic RunTool builder with application/json body
+func NewRunToolRequest(server string, body RunToolJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewRunToolRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewRunToolRequestWithBody constructs an http.Request for the RunTool method, with any body, and a specified content type
+func NewRunToolRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tools/run")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewGetEmbedWidgetV1Request constructs an http.Request for the GetEmbedWidgetV1 method
 func NewGetEmbedWidgetV1Request(server string) (*http.Request, error) {
 	var err error
@@ -36555,6 +36870,19 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /api/v1/orgs/{org}/check-jobs/{uid} (the `GetCheckJob` operationId).
 	GetCheckJobWithResponse(ctx context.Context, org OrgPath, uid CheckJobUidPath, reqEditors ...RequestEditorFn) (*GetCheckJobResult, error)
+
+	// GetOrgCheckConfigSchemaWithResponse Get a check type's config JSON Schema, org plugin types included
+	//
+	// Same document as `GET /api/v1/checks/schema/{type}`, plus the plugin
+	// check types (`x-` prefix) this organization's private-location agents
+	// reported. Those are stored per organization, so their schema is served
+	// while the agent is offline, and never to another organization. A plugin
+	// schema is the validator of its type.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/check-types/{type}/schema (the `GetOrgCheckConfigSchema` operationId).
+	GetOrgCheckConfigSchemaWithResponse(ctx context.Context, org OrgPath, pType string, reqEditors ...RequestEditorFn) (*GetOrgCheckConfigSchemaResult, error)
 
 	// ListChecksWithResponse List monitoring checks
 	//
@@ -39299,6 +39627,24 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /api/v1/system/users/{uid}/impersonate (the `ImpersonateUser` operationId).
 	ImpersonateUserWithResponse(ctx context.Context, uid openapi_types.UUID, body ImpersonateUserJSONRequestBody, reqEditors ...RequestEditorFn) (*ImpersonateUserResult, error)
+
+	// RunToolWithBodyWithResponse Run one check once, anonymously
+	//
+	// Runs an `http` (GET), `ssl`, `dns` or `tcp` check once against a public target and returns the normalised result. Nothing is stored. Disabled (404) unless `SP_TOOLS_ENABLED=true` (system parameter `tools.enabled`). Every run goes through an egress guard that refuses private, loopback, link-local and reserved addresses, whatever `SP_EGRESS_ALLOW_PRIVATE` says, as well as the instance's own hosts. Limits: 10 runs a minute and 100 a day per client IP, 16 runs in flight server-wide, 10 s per run, 5 redirects for `http`. A result is cached 60 s per (type, target, options). Error codes: `INVALID_TARGET` (400), `TARGET_NOT_ALLOWED` (403), `RESOLVE_FAILED` (422), `RATE_LIMITED` (429), `SERVICE_BUSY` (503, with `Retry-After`), `TIMEOUT` (504).
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/tools/run (the `RunTool` operationId).
+	RunToolWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RunToolResult, error)
+
+	// RunToolWithResponse Run one check once, anonymously
+	//
+	// Runs an `http` (GET), `ssl`, `dns` or `tcp` check once against a public target and returns the normalised result. Nothing is stored. Disabled (404) unless `SP_TOOLS_ENABLED=true` (system parameter `tools.enabled`). Every run goes through an egress guard that refuses private, loopback, link-local and reserved addresses, whatever `SP_EGRESS_ALLOW_PRIVATE` says, as well as the instance's own hosts. Limits: 10 runs a minute and 100 a day per client IP, 16 runs in flight server-wide, 10 s per run, 5 redirects for `http`. A result is cached 60 s per (type, target, options). Error codes: `INVALID_TARGET` (400), `TARGET_NOT_ALLOWED` (403), `RESOLVE_FAILED` (422), `RATE_LIMITED` (429), `SERVICE_BUSY` (503, with `Retry-After`), `TIMEOUT` (504).
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/tools/run (the `RunTool` operationId).
+	RunToolWithResponse(ctx context.Context, body RunToolJSONRequestBody, reqEditors ...RequestEditorFn) (*RunToolResult, error)
 
 	// GetEmbedWidgetV1WithResponse Embeddable live status widget script
 	//
@@ -42203,6 +42549,61 @@ func (r GetCheckJobResult) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetCheckJobResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetOrgCheckConfigSchemaResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationschemaJSON200 the response for an HTTP 200 `application/schema+json` response
+	ApplicationschemaJSON200 *map[string]interface{}
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetApplicationschemaJSON200 returns the response for an HTTP 200 `application/schema+json` response
+func (r GetOrgCheckConfigSchemaResult) GetApplicationschemaJSON200() *map[string]interface{} {
+	return r.ApplicationschemaJSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetOrgCheckConfigSchemaResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetOrgCheckConfigSchemaResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r GetOrgCheckConfigSchemaResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetOrgCheckConfigSchemaResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetOrgCheckConfigSchemaResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetOrgCheckConfigSchemaResult) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -56355,6 +56756,96 @@ func (r ImpersonateUserResult) ContentType() string {
 	return ""
 }
 
+type RunToolResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ToolRunResult
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+	// JSON504 the response for an HTTP 504 `application/json` response
+	JSON504 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r RunToolResult) GetJSON200() *ToolRunResult {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r RunToolResult) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r RunToolResult) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r RunToolResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r RunToolResult) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r RunToolResult) GetJSON429() *Error {
+	return r.JSON429
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r RunToolResult) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetJSON504 returns the response for an HTTP 504 `application/json` response
+func (r RunToolResult) GetJSON504() *Error {
+	return r.JSON504
+}
+
+// GetBody returns the raw response body bytes
+func (r RunToolResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RunToolResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RunToolResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RunToolResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetEmbedWidgetV1Result struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -57561,6 +58052,25 @@ func (c *ClientWithResponses) GetCheckJobWithResponse(ctx context.Context, org O
 		return nil, err
 	}
 	return ParseGetCheckJobResult(rsp)
+}
+
+// GetOrgCheckConfigSchemaWithResponse Get a check type's config JSON Schema, org plugin types included
+//
+// Same document as `GET /api/v1/checks/schema/{type}`, plus the plugin
+// check types (`x-` prefix) this organization's private-location agents
+// reported. Those are stored per organization, so their schema is served
+// while the agent is offline, and never to another organization. A plugin
+// schema is the validator of its type.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/orgs/{org}/check-types/{type}/schema (the `GetOrgCheckConfigSchema` operationId).
+func (c *ClientWithResponses) GetOrgCheckConfigSchemaWithResponse(ctx context.Context, org OrgPath, pType string, reqEditors ...RequestEditorFn) (*GetOrgCheckConfigSchemaResult, error) {
+	rsp, err := c.GetOrgCheckConfigSchema(ctx, org, pType, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetOrgCheckConfigSchemaResult(rsp)
 }
 
 // ListChecksWithResponse List monitoring checks
@@ -62227,6 +62737,36 @@ func (c *ClientWithResponses) ImpersonateUserWithResponse(ctx context.Context, u
 	return ParseImpersonateUserResult(rsp)
 }
 
+// RunToolWithBodyWithResponse Run one check once, anonymously
+//
+// Runs an `http` (GET), `ssl`, `dns` or `tcp` check once against a public target and returns the normalised result. Nothing is stored. Disabled (404) unless `SP_TOOLS_ENABLED=true` (system parameter `tools.enabled`). Every run goes through an egress guard that refuses private, loopback, link-local and reserved addresses, whatever `SP_EGRESS_ALLOW_PRIVATE` says, as well as the instance's own hosts. Limits: 10 runs a minute and 100 a day per client IP, 16 runs in flight server-wide, 10 s per run, 5 redirects for `http`. A result is cached 60 s per (type, target, options). Error codes: `INVALID_TARGET` (400), `TARGET_NOT_ALLOWED` (403), `RESOLVE_FAILED` (422), `RATE_LIMITED` (429), `SERVICE_BUSY` (503, with `Retry-After`), `TIMEOUT` (504).
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/tools/run (the `RunTool` operationId).
+func (c *ClientWithResponses) RunToolWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RunToolResult, error) {
+	rsp, err := c.RunToolWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRunToolResult(rsp)
+}
+
+// RunToolWithResponse Run one check once, anonymously
+//
+// Runs an `http` (GET), `ssl`, `dns` or `tcp` check once against a public target and returns the normalised result. Nothing is stored. Disabled (404) unless `SP_TOOLS_ENABLED=true` (system parameter `tools.enabled`). Every run goes through an egress guard that refuses private, loopback, link-local and reserved addresses, whatever `SP_EGRESS_ALLOW_PRIVATE` says, as well as the instance's own hosts. Limits: 10 runs a minute and 100 a day per client IP, 16 runs in flight server-wide, 10 s per run, 5 redirects for `http`. A result is cached 60 s per (type, target, options). Error codes: `INVALID_TARGET` (400), `TARGET_NOT_ALLOWED` (403), `RESOLVE_FAILED` (422), `RATE_LIMITED` (429), `SERVICE_BUSY` (503, with `Retry-After`), `TIMEOUT` (504).
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/tools/run (the `RunTool` operationId).
+func (c *ClientWithResponses) RunToolWithResponse(ctx context.Context, body RunToolJSONRequestBody, reqEditors ...RequestEditorFn) (*RunToolResult, error) {
+	rsp, err := c.RunTool(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRunToolResult(rsp)
+}
+
 // GetEmbedWidgetV1WithResponse Embeddable live status widget script
 //
 // Self-contained JavaScript (IIFE) that renders a live status pill on a third-party site. It is loaded by an async script tag carrying data-page="org/slug", and configured entirely through data-attributes: data-mode (inline|floating), data-position (bottom-right|bottom-left), data-theme (light|dark|auto), data-size (sm|md|lg), per-state label overrides data-label-operational|degraded|down|maintenance|unknown, and data-force-status (operational|degraded|down|maintenance|unknown) to render a status statically without polling. The widget polls the status page summary endpoint every 60 s with an uncredentialed request and renders into a shadow root; a failed request or an unknown page renders nothing. Everything under /embed/v1/ is a frozen public contract — behavior changes ship under /embed/v2/, but additive, backward-compatible data-attributes may land within v1. Response carries Cache-Control: public, max-age=3600. No authentication required.
@@ -64311,6 +64851,46 @@ func ParseGetCheckJobResult(rsp *http.Response) (*GetCheckJobResult, error) {
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetOrgCheckConfigSchemaResult parses an HTTP response from a GetOrgCheckConfigSchemaWithResponse call
+func ParseGetOrgCheckConfigSchemaResult(rsp *http.Response) (*GetOrgCheckConfigSchemaResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetOrgCheckConfigSchemaResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest map[string]interface{}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationschemaJSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
 		var dest NotFound
@@ -74934,6 +75514,81 @@ func ParseImpersonateUserResult(rsp *http.Response) (*ImpersonateUserResult, err
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRunToolResult parses an HTTP response from a RunToolWithResponse call
+func ParseRunToolResult(rsp *http.Response) (*RunToolResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RunToolResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ToolRunResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 504:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON504 = &dest
 
 	}
 

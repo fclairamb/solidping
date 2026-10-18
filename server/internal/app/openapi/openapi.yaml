@@ -7776,6 +7776,42 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/orgs/{org}/check-types/{type}/schema:
+    get:
+      tags: [Check Types]
+      summary: Get a check type's config JSON Schema, org plugin types included
+      description: |
+        Same document as `GET /api/v1/checks/schema/{type}`, plus the plugin
+        check types (`x-` prefix) this organization's private-location agents
+        reported. Those are stored per organization, so their schema is served
+        while the agent is offline, and never to another organization. A plugin
+        schema is the validator of its type.
+      operationId: getOrgCheckConfigSchema
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: type
+          in: path
+          required: true
+          description: Check type, built-in or `x-` plugin type
+          schema:
+            type: string
+          example: x-gopher
+      responses:
+        "200":
+          description: The check type's config schema
+          content:
+            application/schema+json:
+              schema:
+                type: object
+                description: A JSON Schema document (draft 2020-12)
+                additionalProperties: true
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/v1/orgs/{org}/on-call-schedules:
     get:
       tags: [On-Call Schedules]
@@ -11194,6 +11230,8 @@ components:
           # Every registered check type (checkerdef.ListCheckTypes), pinned by
           # TestCheckTypeEnumsMatchTheRegistry.
           enum: [http, tcp, icmp, dns, heartbeat, email, domain, ssl, smtp, udp, ssh, pop3, imap, websocket, postgresql, ftp, sftp, js, mysql, redis, mongodb, mssql, oracle, clickhouse, grpc, kafka, mqtt, a2s, minecraft, rabbitmq, snmp, docker, browser, freebox_line, dnsbl, sip, kubernetes, ntp, rdp, vnc, prometheus, private-location, crawl, health, vendor-status, sleep]
+          description: >-
+            Check type. Built-in check types are enumerated. A deployment may also accept and return plugin check types, always `x-` prefixed (e.g. `x-gopher`, spec 2026-10-17-05): they are not listed because they depend on the server's plugin directory and on the organization's agents, so a client must accept an unlisted `x-` value.
         config:
           type: object
           description: >-
@@ -11249,6 +11287,16 @@ components:
             was written and will run. Today the only one is "you pinned
             `ipVersion: ipv6` in a region whose live workers report no IPv6
             egress". Absent on read paths.
+          items:
+            $ref: "#/components/schemas/ValidationErrorField"
+        regionWarnings:
+          type: array
+          readOnly: true
+          description: >-
+            Detail responses only (GET of one check), recomputed on every read:
+            why the check does not run in some of its regions right now. Today
+            `REGION_NO_PLUGIN`, a plugin-type check in a region whose live
+            workers did not load the plugin. Absent when there is none.
           items:
             $ref: "#/components/schemas/ValidationErrorField"
         enabled:
@@ -11832,7 +11880,8 @@ components:
           # Every registered check type (checkerdef.ListCheckTypes), pinned by
           # TestCheckTypeEnumsMatchTheRegistry.
           enum: [http, tcp, icmp, dns, heartbeat, email, domain, ssl, smtp, udp, ssh, pop3, imap, websocket, postgresql, ftp, sftp, js, mysql, redis, mongodb, mssql, oracle, clickhouse, grpc, kafka, mqtt, a2s, minecraft, rabbitmq, snmp, docker, browser, freebox_line, dnsbl, sip, kubernetes, ntp, rdp, vnc, prometheus, private-location, crawl, health, vendor-status, sleep]
-          description: Check type (auto-inferred from URL if not provided)
+          description: >-
+            Check type (auto-inferred from URL if not provided). Built-in check types are enumerated. A deployment may also accept and return plugin check types, always `x-` prefixed (e.g. `x-gopher`, spec 2026-10-17-05): they are not listed because they depend on the server's plugin directory and on the organization's agents, so a client must accept an unlisted `x-` value.
         config:
           type: object
           description: >-
@@ -12188,7 +12237,8 @@ components:
           # Every registered check type (checkerdef.ListCheckTypes), pinned by
           # TestCheckTypeEnumsMatchTheRegistry.
           enum: [http, tcp, icmp, dns, heartbeat, email, domain, ssl, smtp, udp, ssh, pop3, imap, websocket, postgresql, ftp, sftp, js, mysql, redis, mongodb, mssql, oracle, clickhouse, grpc, kafka, mqtt, a2s, minecraft, rabbitmq, snmp, docker, browser, freebox_line, dnsbl, sip, kubernetes, ntp, rdp, vnc, prometheus, private-location, crawl, health, vendor-status, sleep]
-          description: Check type (auto-inferred from URL if not provided)
+          description: >-
+            Check type (auto-inferred from URL if not provided). Built-in check types are enumerated. A deployment may also accept and return plugin check types, always `x-` prefixed (e.g. `x-gopher`, spec 2026-10-17-05): they are not listed because they depend on the server's plugin directory and on the organization's agents, so a client must accept an unlisted `x-` value.
         config:
           type: object
           description: >-

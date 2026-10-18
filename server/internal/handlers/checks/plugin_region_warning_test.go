@@ -67,4 +67,22 @@ func TestPluginCheckInRegionWithoutThePluginWarns(t *testing.T) {
 	})
 	r.NoError(err)
 	r.Empty(resp.Warnings)
+
+	// The check page keeps showing the reason: GetCheck recomputes it on
+	// every read, not only at save time.
+	detail, err := env.svc.GetCheck(ctx, env.org.Slug, "no-plugin", checks.GetCheckOptions{})
+	r.NoError(err)
+	r.Len(detail.RegionWarnings, 1)
+	r.Equal(checks.CodeRegionNoPlugin, detail.RegionWarnings[0].Code)
+
+	detail, err = env.svc.GetCheck(ctx, env.org.Slug, "with-plugin", checks.GetCheckOptions{})
+	r.NoError(err)
+	r.Empty(detail.RegionWarnings, "positive control: a capable region has no reason to show")
+
+	// Once a worker in eu loads the plugin, the reason goes away.
+	env.liveWorker("wrk-eu-2", "eu-west-1", []string{"ipv4", checkType})
+
+	detail, err = env.svc.GetCheck(ctx, env.org.Slug, "no-plugin", checks.GetCheckOptions{})
+	r.NoError(err)
+	r.Empty(detail.RegionWarnings)
 }
