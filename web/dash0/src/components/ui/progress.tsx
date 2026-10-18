@@ -49,8 +49,10 @@ function Progress({
       <div
         className={cn(
           "h-full rounded-full transition-all",
-          // A full destructive bar is red; otherwise the solid primary fill.
-          destructiveWhenFull && isFull ? "bg-destructive" : "bg-primary-fill",
+          // A full destructive bar is red; otherwise the primary gradient.
+          destructiveWhenFull && isFull
+            ? "bg-destructive"
+            : "bg-primary-fill bg-primary-gradient",
           indicatorClassName,
         )}
         style={{ width: `${pct}%` }}

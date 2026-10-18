@@ -2,9 +2,9 @@ import { type ClassValue, clsx } from "clsx";
 import { extendTailwindMerge } from "tailwind-merge";
 
 /**
- * tailwind-merge taught about the chrome's background-IMAGE utilities declared
- * with `@utility` in index.css (bg-sidebar-gradient, bg-sidebar-active and
- * bg-page-glow).
+ * tailwind-merge taught about the background-IMAGE utilities declared with
+ * `@utility` in index.css (bg-primary-gradient, bg-sidebar-gradient,
+ * bg-sidebar-active and bg-page-glow).
  *
  * Stock tailwind-merge reads any unknown `bg-<word>` as a background COLOR, so
  * `cn("bg-sidebar bg-sidebar-gradient")` would silently drop `bg-sidebar` —
@@ -20,7 +20,7 @@ const twMerge = extendTailwindMerge<"bg-gradient-token">({
   extend: {
     classGroups: {
       "bg-gradient-token": [
-        { bg: ["sidebar-gradient", "sidebar-active", "page-glow"] },
+        { bg: ["primary-gradient", "sidebar-gradient", "sidebar-active", "page-glow"] },
       ],
     },
     conflictingClassGroups: {

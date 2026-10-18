@@ -114,7 +114,7 @@ client are:
 ### Org dashboard (`/orgs/$org`)
 - Operator-facing welcome page composed from list endpoints
 - Overall status banner (green / yellow / red) keyed off check + incident counts
-- 4 KPI tiles (`KpiTile`): monitored checks, 24h availability (the page's hero tile), currently down, active incidents
+- 4 KPI tiles (`KpiTile`): monitored checks, 24h availability, currently down, active incidents, each with a `tone` from its state
 - Two-column body: Needs attention + Active incidents
 - Recent activity feed (last 8 events)
 - Per-card error boundaries — one failed query does not blank the page
@@ -127,9 +127,9 @@ renders the operator UI — when working on subscriber-facing UX, switch repos.
 ### Theming
 - Light/dark mode support via CSS variables
 - Electric-blue identity (spec 2026-09-24-01): `--primary` is the product color, crimson `--brand` is the logo only
-- Gradients are rationed: `bg-primary-gradient` (anything with a label), `bg-accent-gradient` (decorative "on" states, no text), `bg-hero-gradient` (one hero tile). They set `background-image` only, so a flat `bg-*` override needs `bg-none` unless it goes through `cn()` (which is taught about them in `lib/utils.ts`). Rules: design reference → Buttons & badges → Gradients
+- Gradients are tonal, rationed, and never glow: one token, `--primary-gradient` (`bg-primary-gradient`, cyan-blue to deep electric blue, never violet), over `bg-primary-fill` on the default Button, the `PageHeader` tile and the Progress fill. Status washes fade a status color to transparent (`bg-linear-to-r from-status-error/15 to-transparent to-70%`): the dashboard status banner, `KpiTile`'s tone, the onboarding "next up" row. No tinted shadow, blurred blob or hover lift. `bg-primary-gradient` sets `background-image` only, so a flat `bg-*` override needs `bg-none` unless it goes through `cn()` (taught about it in `lib/utils.ts`). Rules: design reference → Buttons & badges → Gradients
 - Always-dark navy sidebar (spec 2026-09-24-02): the `Sidebar` primitive puts `class="dark"` on its root (desktop, icon rail, mobile sheet), so anything nested reads the dark tokens in both themes. The `--sidebar-*` tokens live ONLY in `:root` / `:root.dark` in `index.css` — never in the generic `.dark` block, or the sidebar element would pin them to their dark-mode values in light mode
-- Chrome pieces: `PageHeader` has `tone="brand"` (gradient tile, default) / `"neutral"` (flat tile for third-party logos); the org layout owns the page glow (`bg-page-glow`); `KpiTile` (`components/shared/kpi-tile.tsx`) has one `variant="hero"` per page, which crops `--hero-gradient` to its darker end so its 90% white small text stays >= 4.5:1
+- Chrome pieces: `PageHeader` has `tone="brand"` (gradient tile, default) / `"neutral"` (flat tile for third-party logos); the page glow (`bg-page-glow`) is for the auth screens only; `KpiTile` (`components/shared/kpi-tile.tsx`) takes a `tone` (`primary`, `ok`, `warning`, `error`, or `neutral` with no wash) that colors its icon chip and the wash from its corner
 - Status colors: green (ok), yellow (warning), red (error)
 
 ## Design Reference

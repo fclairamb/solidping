@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { TrendingUp } from "lucide-react";
 
-import { KpiTile } from "./kpi-tile";
+import { KpiTile, type KpiTileTone } from "./kpi-tile";
 import { badgeVariants } from "@/components/ui/badge";
 import {
   AVAILABILITY_TIER_STYLE,
@@ -12,9 +12,10 @@ import {
 } from "@/lib/availability-tier";
 import { contrastRatio, oklchToSrgb, parseOklch } from "@/lib/color-contrast";
 
-// KpiTile has ONE flat look: every tile on a page is the same Card, with a
-// sentence-case muted label, a bare muted icon and a semibold tabular value.
-// Color goes on the value only, through valueClassName. The e2e suite
+// KpiTile is one Card for every tile on a page: a sentence-case muted label,
+// an icon on a small chip and a semibold tabular value. Its `tone` colors the
+// chip and adds a faint wash fading from the chip's corner (none for the
+// default "neutral"); valueClassName colors the value. The e2e suite
 // (electric-identity-app-chrome.spec.ts) checks what the browser paints.
 
 const css = readFileSync(join(__dirname, "../../index.css"), "utf8");
@@ -41,7 +42,7 @@ function classesAt(html: string, marker: string): string[] {
   return m ? m[1].replace(/&amp;/g, "&").split(/\s+/) : [];
 }
 
-function render(extra: { valueClassName?: string } = {}) {
+function render(extra: { valueClassName?: string; tone?: KpiTileTone } = {}) {
   return renderToStaticMarkup(
     <KpiTile
       label="24h Availability"
@@ -62,6 +63,8 @@ describe("KpiTile", () => {
     expect(root).toEqual(
       expect.arrayContaining(["rounded-xl", "border", "bg-card", "shadow-card", "h-full"]),
     );
+    // The wash is a positioned child clipped to the rounded card.
+    expect(root).toEqual(expect.arrayContaining(["relative", "overflow-hidden"]));
     expect(root).toContain("transition-shadow");
     expect(root).toContain("hover:shadow-card-hover");
     expect(root.filter((c) => c.includes("translate"))).toEqual([]);
@@ -94,11 +97,41 @@ describe("KpiTile", () => {
     expect(label.filter((c) => c.startsWith("tracking-"))).toEqual([]);
   });
 
-  it("shows the icon bare and muted, sized by the tile", () => {
+  it("puts the icon on a small muted chip by default, with no wash", () => {
+    expect(html).toContain('data-tone="neutral"');
     const icon = classesAt(html, 'data-slot="kpi-tile-icon"');
-    expect(icon).toEqual(expect.arrayContaining(["text-muted-foreground", "[&_svg]:h-4", "[&_svg]:w-4"]));
-    // No chip behind it.
-    expect(icon.filter((c) => c.startsWith("bg-") || c.startsWith("rounded"))).toEqual([]);
+    expect(icon).toEqual(
+      expect.arrayContaining(["h-7", "w-7", "rounded-md", "bg-muted", "text-muted-foreground", "[&_svg]:h-4", "[&_svg]:w-4"]),
+    );
+    expect(html).not.toContain('data-slot="kpi-tile-wash"');
+  });
+
+  const TONES: [KpiTileTone, string, string][] = [
+    ["primary", "bg-primary/10 text-primary", "from-primary/10"],
+    ["ok", "bg-status-ok/15 text-status-ok-foreground", "from-status-ok/10"],
+    ["warning", "bg-status-warning/15 text-status-warning-foreground", "from-status-warning/10"],
+    ["error", "bg-status-error/15 text-status-error-foreground", "from-status-error/12"],
+  ];
+
+  it.each(TONES)("%s: colors the chip and washes the tile from the chip's corner", (tone, chip, from) => {
+    const toned = render({ tone });
+    expect(toned).toContain(`data-tone="${tone}"`);
+    expect(classesAt(toned, 'data-slot="kpi-tile-icon"')).toEqual(expect.arrayContaining(chip.split(" ")));
+    const wash = classesAt(toned, 'data-slot="kpi-tile-wash"');
+    expect(wash).toEqual(
+      expect.arrayContaining([
+        "pointer-events-none",
+        "absolute",
+        "inset-0",
+        "bg-linear-to-bl",
+        from,
+        "to-transparent",
+        "to-60%",
+      ]),
+    );
+    // A faint alpha tint fading out: no glow, no blur, no saturated fill.
+    expect(wash.filter((c) => /shadow|blur|gradient$/.test(c))).toEqual([]);
+    expect(toned).toMatch(/<div aria-hidden="true" data-slot="kpi-tile-wash"/);
   });
 
   it("sets the value semibold and tabular, larger from sm up", () => {
@@ -129,14 +162,14 @@ describe("KpiTile", () => {
 });
 
 describe("availability tier style (dashboard availability tile)", () => {
-  const EXPECTED: Record<AvailabilityTier, { badge: string; value: string }> = {
-    noData: { badge: "secondary", value: "text-muted-foreground" },
-    operational: { badge: "success", value: "text-foreground" },
-    degraded: { badge: "warning", value: "text-status-warning-foreground" },
-    down: { badge: "destructive", value: "text-status-error-foreground" },
+  const EXPECTED: Record<AvailabilityTier, { badge: string; value: string; tone: KpiTileTone }> = {
+    noData: { badge: "secondary", value: "text-muted-foreground", tone: "neutral" },
+    operational: { badge: "success", value: "text-foreground", tone: "ok" },
+    degraded: { badge: "warning", value: "text-status-warning-foreground", tone: "warning" },
+    down: { badge: "destructive", value: "text-status-error-foreground", tone: "error" },
   };
 
-  it("maps every tier to a Badge variant and a value color, no data staying neutral", () => {
+  it("maps every tier to a Badge variant, a value color and a tile tone, no data staying neutral", () => {
     expect(AVAILABILITY_TIER_STYLE).toEqual(EXPECTED);
   });
 

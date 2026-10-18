@@ -1,18 +1,20 @@
 import type { Locator } from "@playwright/test";
 import { test, expect, type Page } from "./fixtures";
 
-// The flat primitives, as the browser PAINTS them on the design reference
-// page. A class-name test cannot see the failure modes that matter here:
+// The primitives, as the browser PAINTS them on the design reference page:
+// the one tonal --primary-gradient on the default button and the progress
+// fill, everything else flat. A class-name test cannot see the failure modes
+// that matter here:
 //   - a utility that generates no CSS (an unmapped token) leaving the button
-//     transparent, or tailwind-merge dropping the fill;
-//   - a gradient or a hover lift creeping back in through a variant;
+//     transparent, or tailwind-merge dropping the fill or the gradient;
+//   - another gradient or a hover lift creeping back in through a variant;
 //   - a focus ring drawn flush against the solid blue, where it vanishes.
 
 /** Computed style of a throwaway element carrying `className`. */
 async function probe(
   page: Page,
   className: string,
-  prop: "backgroundColor" | "color" | "borderTopColor" = "backgroundColor",
+  prop: "backgroundColor" | "backgroundImage" | "color" | "borderTopColor" = "backgroundColor",
 ): Promise<string> {
   return page.evaluate(
     ([cls, p]) => {
@@ -32,6 +34,8 @@ async function paint(locator: Locator) {
     const cs = getComputedStyle(el);
     return {
       image: cs.backgroundImage,
+      position: cs.backgroundPosition,
+      size: cs.backgroundSize,
       color: cs.backgroundColor,
       text: cs.color,
       border: cs.borderTopColor,
@@ -71,9 +75,12 @@ async function openDesignReference(page: Page, theme: "light" | "dark" = "light"
   await applyTheme(page, theme);
 }
 
-test.describe("flat primitives", () => {
+/** The painted --primary-gradient, as a bg-primary-gradient element shows it. */
+const gradientImage = (page: Page) => probe(page, "bg-primary-gradient", "backgroundImage");
+
+test.describe("tonal primitives", () => {
   for (const theme of ["light", "dark"] as const) {
-    test(`the default button is a solid primary fill with a white label; its siblings stay flat (${theme})`, async ({
+    test(`the default button paints the primary gradient over the fill with a white label; its siblings stay flat (${theme})`, async ({
       authenticatedPage,
     }) => {
       const page = authenticatedPage;
@@ -81,7 +88,13 @@ test.describe("flat primitives", () => {
       const group = page.getByTestId("primary-button-group");
 
       const primary = await paint(group.getByRole("button", { name: "Create check" }));
-      expect(primary.image).toBe("none");
+      const gradient = await gradientImage(page);
+      expect(gradient).toContain("linear-gradient");
+      expect(primary.image).toBe(gradient);
+      // 200%: at rest the button shows the lighter half.
+      expect(primary.size).toBe("200% 200%");
+      expect(primary.position).toBe("0% 0%");
+      // The flat fill stays underneath (tailwind-merge kept both).
       expect(primary.color).toBe(await probe(page, "bg-primary-fill"));
       // Positive control: the probe tells the fill from the text blue.
       expect(primary.color).not.toBe(await probe(page, "bg-primary"));
@@ -133,43 +146,67 @@ test.describe("flat primitives", () => {
     expect(focused.shadow).not.toContain("inset");
   });
 
-  test("hover changes the color only, never the position", async ({ authenticatedPage }) => {
+  test("hover changes the color (or slides the gradient), never the position", async ({
+    authenticatedPage,
+  }) => {
     const page = authenticatedPage;
     await openDesignReference(page);
     // Motion allowed: the old lift was gated on motion-safe, so this is the
     // case where it would show.
     await page.emulateMedia({ reducedMotion: "no-preference" });
     const group = page.getByTestId("primary-button-group");
+    const gradient = await gradientImage(page);
 
-    for (const [name, hoverClass] of [
-      ["Create check", "bg-primary-fill/90"],
-      ["Remove", "bg-destructive/90"],
-    ] as const) {
+    const hoverAndCheck = async (name: string) => {
       const button = group.getByRole("button", { name });
       // Scrolled into place first, so hover() itself moves nothing.
       await button.scrollIntoViewIfNeeded();
       await page.mouse.move(0, 0);
       const rest = await paint(button);
       const restBox = (await button.boundingBox())!;
-
       await button.hover();
-      const hoverColor = await probe(page, hoverClass);
-      expect(hoverColor, `${name}: the hover color differs from rest`).not.toBe(rest.color);
-      await expect.poll(async () => (await paint(button)).color, { timeout: 3000 }).toBe(hoverColor);
-
+      return { button, rest, restBox };
+    };
+    const expectStill = async (
+      name: string,
+      button: Locator,
+      rest: Awaited<ReturnType<typeof paint>>,
+      restBox: { x: number; y: number },
+    ) => {
       const hovered = await paint(button);
       expect(hovered.translate, name).toBe("none");
       expect(hovered.transform, name).toBe("none");
       expect(hovered.shadow, `${name}: the shadow does not grow`).toBe(rest.shadow);
-      expect(hovered.image, name).toBe("none");
       expect(hovered.text, name).toMatch(WHITE);
       const box = (await button.boundingBox())!;
       expect(box.y, name).toBe(restBox.y);
       expect(box.x, name).toBe(restBox.x);
+      return hovered;
+    };
+
+    // The default button slides its gradient to the darker half.
+    {
+      const { button, rest, restBox } = await hoverAndCheck("Create check");
+      expect(rest.position).toBe("0% 0%");
+      await expect
+        .poll(async () => (await paint(button)).position, { timeout: 3000 })
+        .toBe("100% 100%");
+      const hovered = await expectStill("Create check", button, rest, restBox);
+      expect(hovered.image).toBe(gradient);
+    }
+
+    // A flat variant changes its color.
+    {
+      const { button, rest, restBox } = await hoverAndCheck("Remove");
+      const hoverColor = await probe(page, "bg-destructive/90");
+      expect(hoverColor, "Remove: the hover color differs from rest").not.toBe(rest.color);
+      await expect.poll(async () => (await paint(button)).color, { timeout: 3000 }).toBe(hoverColor);
+      const hovered = await expectStill("Remove", button, rest, restBox);
+      expect(hovered.image).toBe("none");
     }
   });
 
-  test("control on-states paint the solid primary fill and a full destructive progress bar is red", async ({
+  test("control on-states paint the solid primary fill, the progress fill adds the gradient, a full destructive bar is red", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
@@ -195,7 +232,7 @@ test.describe("flat primitives", () => {
     expect(boxOff.color).not.toBe(fill);
 
     const partial = await paint(page.getByTestId("progress-partial").locator(":scope > div"));
-    expect(partial.image).toBe("none");
+    expect(partial.image).toBe(await gradientImage(page));
     expect(partial.color).toBe(fill);
 
     const full = await paint(
@@ -205,42 +242,64 @@ test.describe("flat primitives", () => {
     expect(full.color).toBe(await probe(page, "bg-destructive"));
   });
 
-  test("nothing in the buttons and controls section paints a gradient", async ({
+  test("the buttons and controls section paints no gradient but the primary one, and only where it belongs", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
     await openDesignReference(page);
+    const gradient = await gradientImage(page);
     const scan = () =>
       page.evaluate(() => {
         const section = document.querySelector("section#buttons-badges");
         if (!section) throw new Error("no #buttons-badges section");
         return [section, ...section.querySelectorAll("*")]
           .filter((el) => getComputedStyle(el).backgroundImage.includes("gradient"))
-          .map((el) => el.outerHTML.slice(0, 120));
+          .map((el) => ({
+            image: getComputedStyle(el).backgroundImage,
+            tag: el.tagName.toLowerCase(),
+            role: el.getAttribute("role"),
+            html: el.outerHTML.slice(0, 120),
+          }));
       });
-    expect(await scan()).toEqual([]);
+    const painted = await scan();
+    // Positive control: the default buttons and the progress fill are there.
+    expect(painted.filter((p) => p.tag === "button").length).toBeGreaterThan(0);
+    for (const p of painted) {
+      expect(p.image, p.html).toBe(gradient);
+      // Never on a switch or a checkbox.
+      expect(p.role ?? "", p.html).not.toMatch(/^(switch|checkbox)$/);
+    }
+    for (const role of ["switch", "checkbox"] as const) {
+      for (const el of await page.locator("section#buttons-badges").getByRole(role).all()) {
+        expect((await paint(el)).image, role).toBe("none");
+      }
+    }
 
-    // Positive control: the same scan does see a gradient when one is there.
+    // Positive control: the same scan sees a foreign gradient when one is there.
     await page.evaluate(() => {
       const el = document.createElement("div");
       el.className = "bg-page-glow";
       el.dataset.probe = "glow";
       document.querySelector("section#buttons-badges")!.appendChild(el);
     });
-    expect(await scan()).toHaveLength(1);
+    const foreign = (await scan()).filter((p) => p.image !== gradient);
+    expect(foreign).toHaveLength(1);
+    expect(foreign[0].image).toContain("radial-gradient");
   });
 
-  test("the design reference documents the flat rules, the primary fill and the auth-only glow", async ({
+  test("the design reference documents the gradient rules, the primary fill and the auth-only glow", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
     await openDesignReference(page);
 
     for (const id of [
-      "flat-rules",
+      "gradient-rules",
       "primary-fill-rule",
       "primary-fill-example",
+      "primary-gradient-example",
       "brand-color-rule",
+      "primary-gradient-swatch",
       "page-glow-swatch",
     ]) {
       await expect(page.getByTestId(id), id).toBeVisible();
@@ -250,16 +309,25 @@ test.describe("flat primitives", () => {
     const example = page.getByTestId("primary-fill-example").getByText("bg-primary-fill", { exact: true });
     const solid = await paint(example);
     expect(solid.color).toBe(await probe(page, "bg-primary-fill"));
+    expect(solid.image).toBe("none");
     expect(solid.text).toMatch(WHITE);
+    // The gradient example paints it over the same fill.
+    const gradient = await gradientImage(page);
+    const graded = await paint(page.getByTestId("primary-gradient-example"));
+    expect(graded.image).toBe(gradient);
+    expect(graded.color).toBe(await probe(page, "bg-primary-fill"));
+    expect(graded.text).toMatch(WHITE);
 
     const tokens = page.locator("section#color-tokens");
     const swatchBox = (text: string) =>
       tokens.getByText(text, { exact: true }).locator("xpath=../preceding-sibling::div[1]");
-    // The removed gradient tokens have no swatch any more.
-    for (const token of ["--primary-gradient", "--accent-gradient", "--hero-gradient"]) {
+    // The retired gradient tokens have no swatch any more.
+    for (const token of ["--accent-gradient", "--hero-gradient"]) {
       await expect(tokens.getByText(token, { exact: true }), token).toHaveCount(0);
     }
-    // The glow swatch survives (auth screens only) and is a real gradient.
+    // The primary gradient swatch paints the token; the glow swatch survives
+    // (auth screens only) and is a real gradient.
+    expect((await paint(page.getByTestId("primary-gradient-swatch"))).image).toBe(gradient);
     expect((await paint(page.getByTestId("page-glow-swatch"))).image).toContain("radial-gradient");
 
     // --primary-fill and --chart-degraded swatches paint their token, which
@@ -280,6 +348,6 @@ test.describe("flat primitives", () => {
     await expect.poll(async () => (await paint(fillSwatch)).color).not.toBe(lightFill);
     expect((await paint(degraded)).color).toBe(await probe(page, "bg-status-warning"));
     expect((await paint(fillSwatch)).color).toBe(await probe(page, "bg-primary-fill"));
-    await expect(page.getByTestId("flat-rules")).toBeVisible();
+    await expect(page.getByTestId("gradient-rules")).toBeVisible();
   });
 });

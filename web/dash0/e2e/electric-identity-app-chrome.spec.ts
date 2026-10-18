@@ -3,9 +3,10 @@ import { test, expect, type Page } from "./fixtures";
 // App chrome as the browser actually paints it. The unit tests pin the class
 // contract. Spec 2026-09-24-02 made the sidebar always-dark navy (desktop,
 // icon rail, mobile sheet) with a cyan active marker, and that is unchanged.
-// The flat redesign removed the rest of the gradients from the operator UI:
-// the page-header tile is a soft tint, every KPI tile is the same flat card,
-// and the page glow is gone from the org app shell.
+// The flat redesign removed the glows and the blue-to-violet gradients; the
+// tonal pass brought back one gradient, --primary-gradient (page-header tile,
+// default button, progress fill), and status washes that fade to transparent
+// (KPI tile tones, the status banner). The page glow stays out of the org app.
 
 const NAVY_LIGHT = "oklch(0.18 0.05 263)";
 const NAVY_DARK = "oklch(0.125 0.035 263)";
@@ -241,7 +242,7 @@ async function mockDashboardStats(page: Page, availability24h: number) {
 async function probe(
   page: Page,
   className: string,
-  prop: "backgroundColor" | "color" | "borderTopColor" = "backgroundColor",
+  prop: "backgroundColor" | "backgroundImage" | "color" | "borderTopColor" = "backgroundColor",
 ): Promise<string> {
   return page.evaluate(
     ([cls, p]) => {
@@ -256,11 +257,20 @@ async function probe(
   );
 }
 
-const TRANSPARENT = "rgba(0, 0, 0, 0)";
+// Tailwind always composes five box-shadow layers (inset, inset ring, ring
+// offset, ring, shadow); the unused ones are fully transparent.
+function visibleLayers(shadow: string): string[] {
+  return shadow
+    .split(/,(?![^(]*\))/)
+    .map((layer) => layer.trim())
+    .filter((layer) => !layer.startsWith("rgba(0, 0, 0, 0) "));
+}
+
+const SHADOW_XS = "rgba(0, 0, 0, 0.05) 0px 1px 2px 0px";
 
 test.describe("dashboard KPI tiles", () => {
   for (const theme of ["light", "dark"] as const) {
-    test(`every tile is the same flat card and the availability tier is a Badge (${theme})`, async ({
+    test(`every tile shares one card, the tone colors the chip and the wash, the tier is a Badge (${theme})`, async ({
       authenticatedPage,
     }) => {
       const page = authenticatedPage;
@@ -277,7 +287,6 @@ test.describe("dashboard KPI tiles", () => {
         els.map((el) => {
           const cs = getComputedStyle(el);
           const label = getComputedStyle(el.querySelector('[data-slot="kpi-tile-label"]')!);
-          const icon = getComputedStyle(el.querySelector('[data-slot="kpi-tile-icon"]')!);
           const value = getComputedStyle(el.querySelector('[data-slot="kpi-tile-value"]')!);
           return {
             surface: {
@@ -295,12 +304,12 @@ test.describe("dashboard KPI tiles", () => {
               weight: label.fontWeight,
               transform: label.textTransform,
             },
-            icon: { color: icon.color, background: icon.backgroundColor },
             valueWeight: value.fontWeight,
           };
         }),
       );
-      // Same surface, label, icon and value weight on all four tiles.
+      // Same surface, label and value weight on all four tiles: the tone lives
+      // on the chip and the wash, never on the card itself.
       for (const look of looks.slice(1)) expect(look).toEqual(looks[0]);
 
       const [first] = looks;
@@ -317,12 +326,37 @@ test.describe("dashboard KPI tiles", () => {
         weight: "500",
         transform: "none",
       });
-      // The icon is bare (no chip) and muted.
-      expect(first.icon).toEqual({
-        color: await probe(page, "text-muted-foreground", "color"),
-        background: TRANSPARENT,
-      });
       expect(first.valueWeight).toBe("600");
+
+      // The tone: a plain count is primary, the 92% availability is the
+      // "down" tier (error), zero down and zero incidents stay neutral.
+      const TONES = [
+        ["kpi-tile-monitored", "primary", "bg-primary/10", "text-primary", "from-primary/10"],
+        ["kpi-tile-availability", "error", "bg-status-error/15", "text-status-error-foreground", "from-status-error/12"],
+        ["kpi-tile-down", "neutral", "bg-muted", "text-muted-foreground", null],
+        ["kpi-tile-incidents", "neutral", "bg-muted", "text-muted-foreground", null],
+      ] as const;
+      for (const [testId, tone, chipBg, chipText, washFrom] of TONES) {
+        const tile = page.getByTestId(testId).locator('[data-slot="kpi-tile"]');
+        await expect(tile, testId).toHaveAttribute("data-tone", tone);
+        const chip = tile.locator('[data-slot="kpi-tile-icon"]');
+        await expect(chip, testId).toHaveCSS("background-color", await probe(page, chipBg));
+        await expect(chip, testId).toHaveCSS("color", await probe(page, chipText, "color"));
+        const wash = tile.locator('[data-slot="kpi-tile-wash"]');
+        if (washFrom === null) {
+          await expect(wash, testId).toHaveCount(0);
+          continue;
+        }
+        // A faint tint fading to transparent from the chip's corner, behind
+        // the content and never in the way of the tile's link.
+        await expect(wash, testId).toHaveCSS(
+          "background-image",
+          await probe(page, `bg-linear-to-bl ${washFrom} to-transparent to-60%`, "backgroundImage"),
+        );
+        await expect(wash, testId).toHaveCSS("background-image", /^linear-gradient\(.*rgba\(0, 0, 0, 0\) 60%\)$/);
+        await expect(wash, testId).toHaveCSS("pointer-events", "none");
+        await expect(wash, testId).toHaveCSS("position", "absolute");
+      }
 
       // Color goes on the value only: a 92% availability is the "down" tier.
       const availability = page.getByTestId("kpi-tile-availability");
@@ -444,7 +478,7 @@ test.describe("dashboard KPI tiles", () => {
 // --- page header ----------------------------------------------------------------
 
 test.describe("page header tile", () => {
-  test("brand tone by default: a soft primary tint, primary icon, semibold title", async ({
+  test("brand tone by default: the primary gradient, a white icon, no glow, semibold title", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
@@ -453,15 +487,16 @@ test.describe("page header tile", () => {
 
     const tile = page.locator('[data-slot="page-header-tile"]').first();
     await expect(tile).toHaveAttribute("data-tone", "brand");
-    await expect(tile).toHaveCSS("background-image", "none");
-    await expect(tile).toHaveCSS("background-color", await probe(page, "bg-primary/10"));
-    await expect(tile).toHaveCSS("color", await probe(page, "text-primary", "color"));
-    await expect(tile).toHaveCSS("border-top-width", "1px");
-    await expect(tile).toHaveCSS(
-      "border-top-color",
-      await probe(page, "border border-primary/15", "borderTopColor"),
-    );
-    await expect(tile).toHaveCSS("box-shadow", "none");
+    const gradient = await probe(page, "bg-primary-gradient", "backgroundImage");
+    expect(gradient).toContain("linear-gradient");
+    await expect(tile).toHaveCSS("background-image", gradient);
+    await expect(tile).toHaveCSS("background-color", await probe(page, "bg-primary-fill"));
+    await expect(tile).toHaveCSS("color", await probe(page, "text-primary-fill-foreground", "color"));
+    await expect(tile).toHaveCSS("border-top-width", "0px");
+    // The hairline drop only: no tinted glow under the tile.
+    expect(visibleLayers(await tile.evaluate((el) => getComputedStyle(el).boxShadow))).toEqual([
+      SHADOW_XS,
+    ]);
     await expect(tile).toHaveCSS("border-top-left-radius", "10px");
     await expect(tile).toHaveCSS("width", "36px");
     await expect(tile).toHaveCSS("height", "36px");
@@ -506,40 +541,65 @@ test.describe("page header tile", () => {
 // --- page glow ------------------------------------------------------------------
 
 test.describe("org app shell", () => {
-  test("paints no page glow and no gradient in the content area, on every org route", async ({
+  test("paints no glow in the content area, and only the primary gradient or washes that fade out, on every org route", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
     await useTheme(page, "light");
+    const primaryGradient = await probe(page, "bg-primary-gradient", "backgroundImage");
 
     // Every element of the content column (the sidebar is a sibling, outside
-    // it) whose computed background-image is a gradient.
-    const gradients = () =>
-      page.evaluate(() => {
+    // it) whose computed background-image is a gradient, minus the allowed
+    // ones: the primary gradient itself, and a LINEAR wash whose last stop is
+    // transparent (a tint fading out). A radial glow, or a gradient that ends
+    // on a color (the old blue-to-violet strips), is a violation.
+    const scan = () =>
+      page.evaluate((allowed) => {
         const main = document.querySelector('[data-slot="sidebar-inset"]');
         if (!main) throw new Error("no sidebar-inset");
-        return [main, ...main.querySelectorAll("*")]
-          .filter((el) => getComputedStyle(el).backgroundImage.includes("gradient"))
-          .map((el) => el.outerHTML.slice(0, 160));
-      });
+        const painted = [main, ...main.querySelectorAll("*")]
+          .map((el) => ({ el, image: getComputedStyle(el).backgroundImage }))
+          .filter(({ image }) => image.includes("gradient"));
+        const isWash = (image: string) =>
+          /^linear-gradient\(.*rgba\(0, 0, 0, 0\)( \d+%)?\)$/.test(image);
+        return {
+          primary: painted.filter(({ image }) => image === allowed).length,
+          violations: painted
+            .filter(({ image }) => image !== allowed && !isWash(image))
+            .map(({ el, image }) => `${image} :: ${el.outerHTML.slice(0, 120)}`),
+        };
+      }, primaryGradient);
 
     for (const route of ["orgs/test", "orgs/test/checks", "orgs/test/incidents"]) {
       await page.goto(route);
       await page.waitForLoadState("networkidle");
       await expect(page.getByRole("heading", { level: 1 }), route).toBeVisible();
       await expect(page.getByTestId("page-glow"), route).toHaveCount(0);
-      expect(await gradients(), route).toEqual([]);
+      const { primary, violations } = await scan();
+      expect(violations, route).toEqual([]);
+      // Positive control: the page-header tile paints the primary gradient.
+      expect(primary, route).toBeGreaterThan(0);
     }
 
-    // Positive control: the same scan does see the glow utility when it is
-    // there (it still exists, for the auth screens and /no-org).
+    // Positive controls: the same scan flags the glow utility (it still
+    // exists, for the auth screens and /no-org) and a gradient that ends on
+    // a color, but not a wash that fades out.
     await page.evaluate(() => {
-      const el = document.createElement("div");
-      el.className = "bg-page-glow";
-      document.querySelector('[data-slot="sidebar-inset"]')!.appendChild(el);
+      const host = document.querySelector('[data-slot="sidebar-inset"]')!;
+      // Classes the app itself ships, so the build is sure to generate them.
+      for (const cls of [
+        "bg-page-glow",
+        "bg-sidebar bg-sidebar-gradient",
+        "bg-card bg-linear-to-r from-status-error/15 to-transparent to-70%",
+      ]) {
+        const el = document.createElement("div");
+        el.className = cls;
+        host.appendChild(el);
+      }
     });
-    const found = await gradients();
-    expect(found).toHaveLength(1);
-    expect(found[0]).toContain("bg-page-glow");
+    const { violations } = await scan();
+    expect(violations).toHaveLength(2);
+    expect(violations.join("\n")).toContain("bg-page-glow");
+    expect(violations.join("\n")).toContain("bg-sidebar-gradient");
   });
 });
