@@ -43,13 +43,13 @@ func PluginTypesFromCapabilities(capabilities []string) []string {
 // that plugin: only the advertised `x-` types are claimable. Built-in types
 // are unaffected. A NULL type stays claimable, like excludePassiveTypes.
 func pluginTypeScope(query *bun.SelectQuery, types []string) *bun.SelectQuery {
-	return query.WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
-		q = q.WhereOr("type IS NULL").WhereOr("type NOT LIKE ?", checkerdef.PluginTypePrefix+"%")
+	return query.WhereGroup(" AND ", func(group *bun.SelectQuery) *bun.SelectQuery {
+		group = group.WhereOr("type IS NULL").WhereOr("type NOT LIKE ?", checkerdef.PluginTypePrefix+"%")
 
 		if len(types) > 0 {
-			q = q.WhereOr("type IN (?)", bun.List(types))
+			group = group.WhereOr("type IN (?)", bun.List(types))
 		}
 
-		return q
+		return group
 	})
 }

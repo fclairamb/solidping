@@ -103,9 +103,10 @@ func capabilitiesFor(workers []*models.Worker) map[string]string {
 		out[name] = aggregate(workers, name)
 	}
 
-	for _, meta := range checkerdef.ListCheckTypeMetas() {
-		if meta.Plugin != nil {
-			out[string(meta.Type)] = aggregate(workers, string(meta.Type))
+	metas := checkerdef.ListCheckTypeMetas()
+	for i := range metas {
+		if metas[i].Plugin != nil {
+			out[string(metas[i].Type)] = aggregate(workers, string(metas[i].Type))
 		}
 	}
 
