@@ -171,7 +171,7 @@ describe("buildLabelWindows", () => {
     { atCue: null, text: "Run it", holdS: 3 },
     { atCue: "login", text: "First login", holdS: 3 },
     { atCue: "checks-list", text: "First check", holdS: 3 },
-    { atCue: "detail-page", text: "Results from two regions", holdS: 3 },
+    { atCue: "detail-page", text: "First results", holdS: 3 },
   ];
 
   const windows = buildLabelWindows({
@@ -187,7 +187,7 @@ describe("buildLabelWindows", () => {
       "Run it",
       "First login",
       "First check",
-      "Results from two regions",
+      "First results",
     ]);
     expect(new Set(windows.map((w) => w.text)).size).toBe(windows.length);
   });
