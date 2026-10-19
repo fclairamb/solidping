@@ -1063,7 +1063,7 @@ func (h *Handler) handleClaim(
 		// MaxChecks slot and are absent from its demand figure, so they must
 		// not spend its per-minute budget or tick its skipped-today counter.
 		if h.entitlements != nil && !job.IsInternal() {
-			if rateErr := h.entitlements.ReserveCheckExecution(ctx, job.OrganizationUID); rateErr != nil {
+			if rateErr := h.entitlements.ReserveJobExecution(ctx, job); rateErr != nil {
 				var quotaErr *entitlements.QuotaError
 				if errors.As(rateErr, &quotaErr) {
 					// Same daily per-org tally as the in-process worker gate:

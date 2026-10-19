@@ -190,6 +190,18 @@ func (j *CheckJob) IsInternal() bool {
 	return j.Check != nil && j.Check.Internal
 }
 
+// RateLimitDeferred reports whether the per-org rate limiter turned this job
+// away at its previous tick. A deferral advances scheduled_at by a period but
+// keeps effective_scheduled_at (spec 2026-08-26-02), so the two end up about a
+// period apart. A normal job has them within the scheduling offsets (seconds).
+func (j *CheckJob) RateLimitDeferred() bool {
+	if j.ScheduledAt == nil || j.EffectiveScheduledAt == nil || j.Period <= 0 {
+		return false
+	}
+
+	return j.ScheduledAt.Sub(*j.EffectiveScheduledAt) >= time.Duration(j.Period)/2
+}
+
 // CheckJobUpdate represents fields that can be updated.
 type CheckJobUpdate struct {
 	Region            *string
