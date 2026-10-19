@@ -1333,6 +1333,44 @@ func TestLongDownSiblingDoesNotHoldAnotherMembersEntryOpen(t *testing.T) {
 		"a sibling that was down before the entry started must not keep it open")
 }
 
+// TestSiblingWithItsOwnEntryDoesNotHoldTheGroupEntryOpen: a member that has
+// its own entry on the page is not covered by the group's entry, so the group
+// entry closes without it. Its own entry stays open while it is still down.
+func TestSiblingWithItsOwnEntryDoesNotHoldTheGroupEntryOpen(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+
+	probe, _, members := groupProbe(t, "Payments worker")
+
+	first := openIncident(t, probe, probe.check, "payments-api is down")
+
+	probe.clk.Advance(time.Minute)
+
+	second := openIncident(t, probe, members[0], "payments-member-a is down")
+	r.Len(probe.publications(), 1, "the second member consolidates")
+
+	// An operator gives the second member an entry of its own.
+	own, err := probe.pubs.PublishIncident(ctx, probe.org.Slug, second.UID, probe.userUID,
+		&incidentpublications.PublishIncidentRequest{StatusPageUID: probe.page.UID})
+	r.NoError(err)
+
+	probe.clk.Advance(time.Minute)
+	resolveIncident(t, probe, first)
+
+	pubs := probe.publications()
+	r.Len(pubs, 2)
+
+	for _, pub := range pubs {
+		if pub.UID == own.UID {
+			r.False(pub.IsResolved(), "the entry of a member still down stays open")
+		} else {
+			r.True(pub.IsResolved(), "a member with its own entry does not hold the group entry open")
+		}
+	}
+}
+
 // TestDeletingTheLastMemberClosesTheConsolidatedEntry: deleting a check
 // resolves its incident after the soft delete, so the group must still be
 // found through the deleted check, or the entry waiting on it stays open.
