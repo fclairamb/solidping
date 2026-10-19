@@ -1775,6 +1775,11 @@ func (r *CheckWorker) saveErrorResult(ctx context.Context, checkJob *models.Chec
 // figure, so charging them a per-minute token would let server plumbing eat a
 // customer's execution budget and tick their skipped-today counter.
 //
+// A job this gate already deferred may borrow from the bucket
+// (ReserveJobExecution): claim priority alone cannot save a
+// long-period check whose single attempt per period always lands just after
+// its siblings drained the bucket.
+//
 // Returns deferred=true when the job was turned away (the caller must stop and
 // return err); false means the check may run.
 func (r *CheckWorker) applyRateLimitGate(
@@ -1789,7 +1794,7 @@ func (r *CheckWorker) applyRateLimitGate(
 		return false, nil
 	}
 
-	rateErr := entSvc.ReserveCheckExecution(ctx, checkJob.OrganizationUID)
+	rateErr := entSvc.ReserveJobExecution(ctx, checkJob)
 	if rateErr == nil {
 		return false, nil
 	}
