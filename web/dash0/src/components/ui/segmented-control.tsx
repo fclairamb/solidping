@@ -31,13 +31,13 @@ export type SegmentedControlProps<T extends string> = {
 };
 
 /**
- * Two-or-more-way view switch rendered as a raised pill on a recessed track.
+ * Two-or-more-way view switch: one recessed track, the selected segment in the
+ * primary color (a `default` Button, like a selected chart range), the others
+ * `ghost`. A neutral raised pill was too close to its track to tell apart in
+ * dark mode.
  *
- * The selected segment must always be *lighter* than the track it sits on, in
- * both themes. In light that is `bg-card` (white) on `bg-muted`. In dark the
- * track has to flip to `bg-background` (0.14) because dark `--muted` (0.22) is
- * lighter than dark `--card` (0.18) — reusing `bg-muted` there would invert
- * the pill and make the *inactive* segments look selected.
+ * The track is `bg-muted`, flipped to `bg-background` in dark where `--muted`
+ * is lighter than `--card`.
  *
  * `aria-pressed` and `data-testid` are rendered on each segment button.
  */
@@ -64,11 +64,8 @@ export function SegmentedControl<T extends string>({
         const button = (
           <Button
             size="sm"
-            variant="ghost"
-            className={cn(
-              size === "md" && "h-[1.875rem]",
-              selected && "bg-card shadow-sm hover:bg-card"
-            )}
+            variant={selected ? "default" : "ghost"}
+            className={cn(size === "md" && "h-[1.875rem]")}
             aria-label={option.ariaLabel}
             onClick={() => onValueChange(option.value)}
             aria-pressed={selected}

@@ -4,6 +4,7 @@ import {
   Area,
   AreaChart,
   CartesianGrid,
+  Legend,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -16,6 +17,7 @@ import type { TimeRange } from "@/lib/chart-window";
 import { HTTP_TIMING_PHASES } from "@/lib/http-timing";
 import { buildTimingSeries } from "@/lib/http-timing-series";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ChartRangeControl } from "@/components/checks/chart-range-control";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -27,6 +29,9 @@ const PHASE_COLORS: Record<string, string> = {
   ttfb: "var(--chart-4, #ef4444)",
   download: "var(--chart-6, #64748b)",
 };
+
+// Legend and tooltip follow the request order, not Recharts' alphabetical sort.
+const PHASE_ORDER: string[] = HTTP_TIMING_PHASES.map(({ id }) => id);
 
 interface TimingChartProps {
   org: string;
@@ -80,27 +85,53 @@ export function TimingChart({
     <div className="h-64 w-full" data-testid="timing-chart">
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={series}>
-          <CartesianGrid strokeDasharray="3 3" vertical={false} />
+          <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
           <XAxis
             dataKey="ts"
             type="number"
             domain={["dataMin", "dataMax"]}
             tickFormatter={(v: number) => format(new Date(v), fmt)}
-            tick={{ fontSize: 12 }}
+            className="text-xs"
+            tick={{ fill: "var(--muted-foreground)" }}
           />
-          <YAxis tick={{ fontSize: 12 }} unit=" ms" width={64} />
+          <YAxis
+            unit=" ms"
+            width={64}
+            className="text-xs"
+            tick={{ fill: "var(--muted-foreground)" }}
+          />
           <Tooltip
+            contentStyle={{
+              background: "var(--popover)",
+              color: "var(--popover-foreground)",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius-md)",
+              fontSize: "0.875rem",
+            }}
+            labelStyle={{ color: "var(--muted-foreground)" }}
+            itemStyle={{ color: "var(--popover-foreground)" }}
+            itemSorter={(item) => PHASE_ORDER.indexOf(String(item.dataKey))}
             labelFormatter={(v) => format(new Date(Number(v)), "PPpp")}
             formatter={(value, name) => [
               `${Math.round(Number(value) * 100) / 100} ms`,
               t(`timing.phase.${String(name)}`),
             ]}
           />
+          <Legend
+            iconType="square"
+            itemSorter={null}
+            formatter={(value) => (
+              <span className="text-xs text-muted-foreground">
+                {t(`timing.phase.${String(value)}`)}
+              </span>
+            )}
+          />
           {HTTP_TIMING_PHASES.map(({ id }) => (
             <Area
               key={id}
               type="monotone"
               dataKey={id}
+              name={id}
               stackId="timing"
               stroke={PHASE_COLORS[id]}
               fill={PHASE_COLORS[id]}
@@ -146,18 +177,15 @@ export function ChartViewSwitch({ value, onChange }: ChartViewSwitchProps) {
   );
 }
 
-const RANGES: TimeRange[] = ["hour", "day", "week", "month"];
-
 interface TimingChartCardProps extends TimingChartProps {
-  view: ChartView;
-  onViewChange: (view: ChartView) => void;
   onTimeRangeChange: (range: TimeRange) => void;
 }
 
-/** The Timing view: replaces the response time chart while selected. */
+/**
+ * The Timing view: replaces the response time chart while selected. The
+ * "Response time | Timing" switch stays the page-level one above the card.
+ */
 export function TimingChartCard({
-  view,
-  onViewChange,
   onTimeRangeChange,
   ...chart
 }: TimingChartCardProps) {
@@ -166,19 +194,11 @@ export function TimingChartCard({
     <Card data-testid="timing-chart-card">
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
         <CardTitle>{t("timing.chartTitle")}</CardTitle>
-        <div className="flex flex-wrap items-center gap-2">
-          <SegmentedControl<TimeRange>
-            value={chart.timeRange}
-            onValueChange={onTimeRangeChange}
-            aria-label={t("timing.chartTitle")}
-            options={RANGES.map((r) => ({
-              value: r,
-              label: t(`detail.chart.range${r[0].toUpperCase()}${r.slice(1)}`),
-              testId: `timing-range-${r}`,
-            }))}
-          />
-          <ChartViewSwitch value={view} onChange={onViewChange} />
-        </div>
+        <ChartRangeControl
+          value={chart.timeRange}
+          onChange={onTimeRangeChange}
+          testIdPrefix="timing-range"
+        />
       </CardHeader>
       <CardContent>
         <TimingChart {...chart} />

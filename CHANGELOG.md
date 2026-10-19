@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.40.1](https://github.com/fclairamb/solidping/compare/v0.40.0...v0.40.1) (2026-10-19)
+
+
+### Bug Fixes
+
+* **checkworker:** checks with a long period are no longer starved by the rate limiter and run on schedule again ([#609](https://github.com/fclairamb/solidping/issues/609)) ([3295a20](https://github.com/fclairamb/solidping/commit/3295a20e7e7849184bda776191b1fe890be087a3))
+* **dash0:** the HTTP timing chart now has a legend, a dark tooltip in dark mode and a single Response time | Timing switch, and every chart toggle is one segmented control with the selected option in blue ([#611](https://github.com/fclairamb/solidping/issues/611)) ([c5264d2](https://github.com/fclairamb/solidping/commit/c5264d2cb0f2865c60d78e3cddca3e694adc4067))
+* **notifications:** an AI agent (A2A) whose card or reply is larger than 1 MiB is now refused instead of being read into memory ([#608](https://github.com/fclairamb/solidping/issues/608)) ([a0cbe75](https://github.com/fclairamb/solidping/commit/a0cbe75a8064c8572b17bb3769eb17e624dc49a8))
+* **deps:** dependency updates: @hookform/resolvers v6 ([#610](https://github.com/fclairamb/solidping/issues/610)), embedded-postgres v2 ([#613](https://github.com/fclairamb/solidping/issues/613)), golang-ical v0.3.8 ([#605](https://github.com/fclairamb/solidping/issues/605)) and non-major Go modules ([#612](https://github.com/fclairamb/solidping/issues/612))
+
 ## [0.40.0](https://github.com/fclairamb/solidping/compare/v0.39.0...v0.40.0) (2026-10-18)
 
 

@@ -7133,27 +7133,19 @@ function JobsPrimitivesSection() {
           "@/components/ui/segmented-control"
         </p>
         <p className="text-xs text-muted-foreground">
-          The pattern used for the jobs page's org-scope toggle and the checks
-          index's &ldquo;Group by&rdquo; view switch. Always render it through
-          the <code>SegmentedControl</code> primitive rather than hand-rolling
-          Buttons — the elevation is easy to get backwards.
+          The pattern used for the jobs page's org-scope toggle, the checks
+          index's &ldquo;Group by&rdquo; view switch, and the check charts'
+          Hour / Day / Week / Month range and Response time / Timing switch.
+          Always render it through the <code>SegmentedControl</code> primitive
+          rather than a row of separate Buttons.
         </p>
         <p className="text-xs text-muted-foreground">
-          <strong>Selected = raised pill on a recessed track.</strong> The track
-          is <code>bg-muted</code> and the selected segment is a{" "}
-          <code>ghost</code> Button with{" "}
-          <code>bg-card shadow-sm hover:bg-card</code>; unselected segments stay
-          plain <code>ghost</code>. Never make the selected segment the darker
-          one (the old <code>variant=&quot;secondary&quot;</code> pattern did
-          exactly that, and read as recessed).
-        </p>
-        <p className="text-xs text-muted-foreground">
-          <strong>The track flips token in dark:</strong>{" "}
-          <code>dark:bg-background</code>. Dark <code>--muted</code> is{" "}
-          <code>0.22</code>, <em>lighter</em> than dark <code>--card</code> at{" "}
-          <code>0.18</code>, so reusing <code>bg-muted</code> in dark would put
-          the pill below its own track and re-invert the control. The invariant
-          to hold in both themes is <em>pill lighter than its track</em>.
+          <strong>Selected = primary segment on a recessed track.</strong> The
+          track is <code>bg-muted</code> (<code>dark:bg-background</code>, since
+          dark <code>--muted</code> is lighter than <code>--card</code>), the
+          selected segment is a <code>default</code> Button and the others are{" "}
+          <code>ghost</code>. A neutral raised pill (<code>bg-card</code>) was
+          too close to the track to tell apart in dark mode.
         </p>
         <p className="text-xs text-muted-foreground">
           When the toggle is a page's primary navigation (like a view mode),
