@@ -55,11 +55,11 @@ export function StalePublicationsBanner({
               })}
             </span>
             {/*
-              Straight to the entry when there is exactly one — that is the
-              click that fixes it. With several, the page's own incident list
-              is the honest destination.
+              Straight to the entry when there is exactly one: that is the
+              click that fixes it. With several, each entry gets its own link,
+              because dash0 has no list of a page's entries to send them to.
             */}
-            {group.publications.length === 1 ? (
+            {group.publications.length === 1 && (
               <Button asChild variant="outline" size="sm">
                 <Link
                   to="/orgs/$org/status-pages/$statusPageUid/incidents/$uid"
@@ -73,16 +73,26 @@ export function StalePublicationsBanner({
                   {t("statusPages:stalePublications.review")}
                 </Link>
               </Button>
-            ) : (
-              <Button asChild variant="outline" size="sm">
-                <Link
-                  to="/orgs/$org/status-pages/$statusPageUid"
-                  params={{ org, statusPageUid: group.pageUid }}
-                  data-testid="stale-publication-link"
-                >
-                  {t("statusPages:stalePublications.review")}
-                </Link>
-              </Button>
+            )}
+            {group.publications.length > 1 && (
+              <ul className="w-full list-disc space-y-1 pl-5">
+                {group.publications.map((publication) => (
+                  <li key={publication.uid}>
+                    <Link
+                      to="/orgs/$org/status-pages/$statusPageUid/incidents/$uid"
+                      params={{
+                        org,
+                        statusPageUid: group.pageUid,
+                        uid: publication.uid,
+                      }}
+                      className="underline underline-offset-2 hover:opacity-80"
+                      data-testid="stale-publication-link"
+                    >
+                      {publication.title}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
         ))}

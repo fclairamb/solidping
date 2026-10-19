@@ -328,17 +328,6 @@ func (s *Service) OnIncidentResolved(ctx context.Context, incident *models.Incid
 
 	groupUID := s.incidentGroupUID(ctx, incident)
 
-	// A consolidated public entry closes when the LAST member recovers. Closing
-	// it on the first recovery would announce "resolved" while five sibling
-	// checks are still down — the public page would be actively wrong, which is
-	// worse than being late (spec 2026-08-24-14).
-	if groupUID != nil && s.groupHasOtherActiveIncident(ctx, incident, *groupUID) {
-		s.logger.DebugContext(ctx, "auto-resolve: group still has active members, publication stays open",
-			"incidentUid", incident.UID, "checkGroupUid", *groupUID)
-
-		return
-	}
-
 	pubs, err := s.db.ListIncidentPublications(ctx, &models.ListIncidentPublicationsFilter{
 		OrganizationUID: incident.OrganizationUID,
 		IncidentUID:     incident.UID,
@@ -355,12 +344,25 @@ func (s *Service) OnIncidentResolved(ctx context.Context, incident *models.Incid
 	// to whichever member published first, and that one may well have recovered
 	// before this one. Without this the last member to recover would find no
 	// publication of its own and the public entry would never close.
+	var activeSiblings []*models.Incident
+
 	if groupUID != nil {
 		pubs = append(pubs, s.groupSiblingPublications(ctx, incident, *groupUID)...)
+		activeSiblings = s.groupSiblingIncidents(ctx, incident, *groupUID, true)
 	}
 
 	for _, pub := range pubs {
 		if pub.IncidentUID == nil || pub.IsResolved() {
+			continue
+		}
+
+		// A consolidated public entry closes when the LAST member it covers
+		// recovers. Closing it on the first recovery would announce "resolved"
+		// while five sibling checks are still down (spec 2026-08-24-14).
+		if s.publicationCoversActiveSibling(ctx, incident, pub, activeSiblings) {
+			s.logger.DebugContext(ctx, "auto-resolve: a covered group member is still down, publication stays open",
+				"incidentUid", incident.UID, "publicationUid", pub.UID)
+
 			continue
 		}
 

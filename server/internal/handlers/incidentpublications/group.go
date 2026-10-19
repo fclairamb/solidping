@@ -59,7 +59,10 @@ func (s *Service) incidentGroupUID(ctx context.Context, incident *models.Inciden
 		return nil
 	}
 
-	check, err := s.db.GetCheck(ctx, incident.OrganizationUID, incident.CheckUID)
+	// Including deleted: deleting a check resolves its incidents AFTER the soft
+	// delete, and that resolve must still find the group, or the entries its
+	// siblings were waiting on never get a second look.
+	check, err := s.db.GetCheckIncludingDeleted(ctx, incident.OrganizationUID, incident.CheckUID)
 	if err != nil || check == nil {
 		return nil
 	}
@@ -140,14 +143,57 @@ func (s *Service) groupSiblingIncidents(
 	return out
 }
 
-// groupHasOtherActiveIncident reports whether a sibling member of the same
-// group is still down. It is what keeps a consolidated public entry open until
-// the LAST member recovers: closing it when the first one does would tell
-// readers the outage is over while five checks are still failing.
-func (s *Service) groupHasOtherActiveIncident(
-	ctx context.Context, incident *models.Incident, groupUID string,
+// publicationCoversActiveSibling reports whether an open publication must stay
+// open because a group member it speaks for is still down.
+//
+// A member counts only when the entry actually covers it: the entry hangs off
+// its own incident, or it failed after the entry's incident did and has no
+// entry of its own on the page. That is the shape consolidateIntoSibling
+// leaves behind. A member that was already down
+// before the entry's incident started was never folded into it. Counting it
+// anyway is how one check that stayed down for six weeks kept every other
+// member's entry open on a status page: none of them could close until it
+// recovered, and it never did.
+//
+// A failed lookup keeps the entry open: amber for a while is better than
+// green during an outage.
+func (s *Service) publicationCoversActiveSibling(
+	ctx context.Context, resolving *models.Incident, pub *models.IncidentPublication, active []*models.Incident,
 ) bool {
-	return len(s.groupSiblingIncidents(ctx, incident, groupUID, true)) > 0
+	if len(active) == 0 || pub.IncidentUID == nil {
+		return false
+	}
+
+	owner := resolving
+	if *pub.IncidentUID != resolving.UID {
+		var err error
+
+		owner, err = s.db.GetIncident(ctx, pub.OrganizationUID, *pub.IncidentUID)
+		if err != nil || owner == nil {
+			return true
+		}
+	}
+
+	for _, sibling := range active {
+		if sibling.UID == owner.UID {
+			return true
+		}
+
+		if sibling.StartedAt.Before(owner.StartedAt) {
+			continue
+		}
+
+		own, err := s.db.FindIncidentPublication(ctx, sibling.UID, pub.StatusPageUID)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return true
+		}
+
+		if own == nil || err != nil {
+			return true
+		}
+	}
+
+	return false
 }
 
 // consolidateIntoSibling is the AutoPublish branch that keeps one group to one
