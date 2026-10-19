@@ -5,12 +5,10 @@
 
 ### Bug Fixes
 
-* **checkworker:** stop the rate limiter starving long-period checks ([#609](https://github.com/fclairamb/solidping/issues/609)) ([3295a20](https://github.com/fclairamb/solidping/commit/3295a20e7e7849184bda776191b1fe890be087a3))
-* **dash0:** style the HTTP timing chart like the response time chart ([#611](https://github.com/fclairamb/solidping/issues/611)) ([c5264d2](https://github.com/fclairamb/solidping/commit/c5264d2cb0f2865c60d78e3cddca3e694adc4067))
-* **deps:** update dependency @hookform/resolvers to v6 ([#610](https://github.com/fclairamb/solidping/issues/610)) ([8474852](https://github.com/fclairamb/solidping/commit/8474852af5fefa00f274be8cb46c3f361550fd84))
-* **deps:** update go dependencies (non-major) ([#612](https://github.com/fclairamb/solidping/issues/612)) ([45512d4](https://github.com/fclairamb/solidping/commit/45512d425ac45452e78a27c65a378983de3cc902))
-* **deps:** update module github.com/arran4/golang-ical to v0.3.8 ([#605](https://github.com/fclairamb/solidping/issues/605)) ([8c5ef41](https://github.com/fclairamb/solidping/commit/8c5ef41f3cb2eecdb0bcf88eac1c4f7e52420f5c))
-* **deps:** update module github.com/fergusstrange/embedded-postgres to v2 ([#613](https://github.com/fclairamb/solidping/issues/613)) ([0f1b50c](https://github.com/fclairamb/solidping/commit/0f1b50c0d70ddab4f27ee2ea9cdc89a2349ef003))
+* **checkworker:** checks with a long period are no longer starved by the rate limiter and run on schedule again ([#609](https://github.com/fclairamb/solidping/issues/609)) ([3295a20](https://github.com/fclairamb/solidping/commit/3295a20e7e7849184bda776191b1fe890be087a3))
+* **dash0:** the HTTP timing chart now has a legend, a dark tooltip in dark mode and a single Response time | Timing switch, and every chart toggle is one segmented control with the selected option in blue ([#611](https://github.com/fclairamb/solidping/issues/611)) ([c5264d2](https://github.com/fclairamb/solidping/commit/c5264d2cb0f2865c60d78e3cddca3e694adc4067))
+* **notifications:** an AI agent (A2A) whose card or reply is larger than 1 MiB is now refused instead of being read into memory ([#608](https://github.com/fclairamb/solidping/issues/608)) ([a0cbe75](https://github.com/fclairamb/solidping/commit/a0cbe75a8064c8572b17bb3769eb17e624dc49a8))
+* **deps:** dependency updates: @hookform/resolvers v6 ([#610](https://github.com/fclairamb/solidping/issues/610)), embedded-postgres v2 ([#613](https://github.com/fclairamb/solidping/issues/613)), golang-ical v0.3.8 ([#605](https://github.com/fclairamb/solidping/issues/605)) and non-major Go modules ([#612](https://github.com/fclairamb/solidping/issues/612))
 
 ## [0.40.0](https://github.com/fclairamb/solidping/compare/v0.39.0...v0.40.0) (2026-10-18)
 
