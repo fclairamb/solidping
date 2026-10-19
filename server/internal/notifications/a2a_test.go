@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -712,4 +713,116 @@ func TestA2ATaskComment(t *testing.T) {
 		a2a.NewTextPart("root cause: expired cert"), a2a.NewDataPart(map[string]any{"ignored": true}),
 	}}}
 	r.Equal("root cause: expired cert", A2ATaskComment(done))
+}
+
+// streamOversized answers with a JSON prefix and then padding inside a string,
+// far past a2aMaxResponseBody, and records how many bytes it managed to write.
+func streamOversized(prefix string, written *atomic.Int64) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+
+		n, err := io.WriteString(w, prefix)
+		written.Add(int64(n))
+
+		if err != nil {
+			return
+		}
+
+		chunk := []byte(strings.Repeat("a", 32<<10))
+		for range (64 << 20) / len(chunk) {
+			n, err := w.Write(chunk)
+			written.Add(int64(n))
+
+			if err != nil {
+				return
+			}
+		}
+	}
+}
+
+// a2aOversizeMargin is how far past the cap the server may get: what sits in
+// the loopback socket buffers when the client stops reading.
+const a2aOversizeMargin = 8 << 20
+
+func TestA2A_CardTooLarge(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	var written atomic.Int64
+
+	srv := httptest.NewServer(streamOversized(`{"name":"`, &written))
+	t.Cleanup(srv.Close)
+
+	_, err := ResolveA2AAgent(t.Context(), nil, models.JSONMap{A2ASettingAgentCardURL: srv.URL})
+	r.ErrorIs(err, ErrA2AResponseTooLarge)
+	r.Contains(err.Error(), "exceeds 1 MiB")
+	requirePermanentA2A(r, classifyA2AError(err))
+
+	srv.Close() // waits for the handler, so the count is final
+	t.Logf("server wrote %d bytes", written.Load())
+	r.Less(written.Load(), int64(a2aMaxResponseBody+a2aOversizeMargin))
+}
+
+func TestA2ASender_SendResultTooLarge(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	var written atomic.Int64
+
+	oversized := streamOversized(`{"jsonrpc":"2.0","id":1,"result":{"message":{"messageId":"m","role":"ROLE_AGENT",`+
+		`"parts":[{"text":"`, &written)
+	mux := http.NewServeMux()
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	mux.HandleFunc("GET "+a2aWellKnownCardPath, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, a2aCardV1(srv.URL))
+	})
+	mux.HandleFunc("POST /rpc", oversized)
+
+	h := newA2AHarness(nil)
+	payload := a2aTestPayload(models.JSONMap{A2ASettingAgentCardURL: srv.URL}, eventTypeIncidentCreated)
+
+	err := (&A2ASender{}).Send(t.Context(), h.jctx, payload)
+	requirePermanentA2A(r, err)
+	r.ErrorIs(err, ErrA2AResponseTooLarge)
+	r.Empty(h.comments.all())
+
+	srv.Close()
+	t.Logf("server wrote %d bytes", written.Load())
+	r.Less(written.Load(), int64(a2aMaxResponseBody+a2aOversizeMargin))
+}
+
+// Positive control for the two tests above: a card and an answer just under
+// the cap still go through.
+func TestA2ASender_ResponseJustUnderTheCap(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	text := strings.Repeat("x", a2aMaxResponseBody-1024)
+	agent := newFakeA2AAgent(t, func(agent *fakeA2AAgent) {
+		agent.card = func(base string) string {
+			card := a2aCardV1(base)
+
+			return strings.Replace(card, `"Investigates incidents"`,
+				`"`+strings.Repeat("d", a2aMaxResponseBody-len(card)-64)+`"`, 1)
+		}
+		agent.result = func(fakeA2ACall) any {
+			return map[string]any{"message": map[string]any{
+				"messageId": "agent-reply-big", "role": "ROLE_AGENT",
+				"parts": []any{map[string]any{"text": text}},
+			}}
+		}
+	})
+
+	info, err := ResolveA2AAgent(t.Context(), nil, models.JSONMap{A2ASettingAgentCardURL: agent.base()})
+	r.NoError(err)
+	r.Equal("acme investigator", info.Name)
+
+	h := newA2AHarness(nil)
+	payload := a2aTestPayload(models.JSONMap{A2ASettingAgentCardURL: agent.base()}, eventTypeIncidentCreated)
+	r.NoError((&A2ASender{}).Send(t.Context(), h.jctx, payload))
+	r.Equal([]string{text}, h.comments.all())
 }
