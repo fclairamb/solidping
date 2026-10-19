@@ -56,6 +56,9 @@ const (
 	// a2aMaxErrorBody caps how much of an error response is kept in the
 	// error message.
 	a2aMaxErrorBody = 512
+	// a2aMaxResponseBody caps every successful A2A response body (card,
+	// SendMessage, GetTask). Plenty for a card or a task with artifacts.
+	a2aMaxResponseBody = 1 << 20
 	// a2aLegacyMajor is the semver major of A2A 0.x (0.3), served through
 	// the SDK's a2av0 compat codec.
 	a2aLegacyMajor  = "v0"
@@ -98,6 +101,9 @@ var (
 	ErrA2AServerError = errors.New("a2a server error")
 	// ErrA2ARequestFailed flags a 4xx or a JSON-RPC error. Permanent.
 	ErrA2ARequestFailed = errors.New("a2a request failed")
+	// ErrA2AResponseTooLarge flags a response body over a2aMaxResponseBody.
+	// Permanent: the same agent will answer the same way.
+	ErrA2AResponseTooLarge = errors.New("a2a agent response exceeds 1 MiB")
 )
 
 // A2ASender sends incident events to an AI agent over A2A.
@@ -196,8 +202,10 @@ func (t *a2aStatusTransport) RoundTrip(req *http.Request) (*http.Response, error
 	}
 
 	// 3xx goes back to the client, which follows it through the same
-	// guarded transport.
+	// guarded transport. The SDK reads the body whole, so it is capped here.
 	if resp.StatusCode < http.StatusBadRequest {
+		resp.Body = &a2aCappedBody{ReadCloser: resp.Body, remaining: a2aMaxResponseBody}
+
 		return resp, nil
 	}
 
@@ -205,6 +213,38 @@ func (t *a2aStatusTransport) RoundTrip(req *http.Request) (*http.Response, error
 	_ = resp.Body.Close()
 
 	return nil, &a2aHTTPStatusError{StatusCode: resp.StatusCode, Body: strings.TrimSpace(string(body))}
+}
+
+// a2aCappedBody returns ErrA2AResponseTooLarge, never EOF, once the body goes
+// past its cap, so a truncated card or JSON-RPC response fails instead of
+// parsing.
+type a2aCappedBody struct {
+	io.ReadCloser
+
+	remaining int64
+}
+
+func (b *a2aCappedBody) Read(buf []byte) (int, error) {
+	if b.remaining <= 0 {
+		// At the cap: one more byte means the body is too large.
+		var probe [1]byte
+
+		n, err := b.ReadCloser.Read(probe[:])
+		if n > 0 {
+			return 0, ErrA2AResponseTooLarge
+		}
+
+		return 0, err
+	}
+
+	if int64(len(buf)) > b.remaining {
+		buf = buf[:b.remaining]
+	}
+
+	n, err := b.ReadCloser.Read(buf)
+	b.remaining -= int64(n)
+
+	return n, err
 }
 
 // a2aHTTPClient is the guarded client every A2A request goes through: card
@@ -241,6 +281,10 @@ func classifyA2AError(err error) error {
 	var denied *egress.DeniedError
 	if errors.As(err, &denied) {
 		return fmt.Errorf("%w: %s", ErrSenderURLInvalid, denied.Error())
+	}
+
+	if errors.Is(err, ErrA2AResponseTooLarge) {
+		return ErrA2AResponseTooLarge
 	}
 
 	var rpcErr *a2a.Error
@@ -347,7 +391,8 @@ func fetchA2ACard(
 		}
 
 		var statusErr *a2aHTTPStatusError
-		if errors.As(err, &statusErr) || IsNetworkError(err) || errors.Is(err, context.DeadlineExceeded) {
+		if errors.As(err, &statusErr) || IsNetworkError(err) || errors.Is(err, context.DeadlineExceeded) ||
+			errors.Is(err, ErrA2AResponseTooLarge) {
 			return nil, classifyA2AError(err)
 		}
 
