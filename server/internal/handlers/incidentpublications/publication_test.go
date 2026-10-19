@@ -1299,6 +1299,77 @@ func TestConsolidatedPublicationClosesOnlyWithTheLastMember(t *testing.T) {
 		"the public entry closes when the LAST member recovers, whoever owns it")
 }
 
+// TestLongDownSiblingDoesNotHoldAnotherMembersEntryOpen pins the case that left
+// twelve entries open on a status page with every check up. One group member
+// had been down for weeks with no public entry of its own. Every other member's
+// entry then waited for it to recover, and it never did. An entry waits only
+// for the members it covers, and a member already down before the entry's own
+// incident started was never folded into it.
+func TestLongDownSiblingDoesNotHoldAnotherMembersEntryOpen(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	probe, _, members := groupProbe(t, "Legacy billing")
+
+	// Down long before, and never published (it predates the page).
+	longDown := models.NewIncident(probe.org.UID, members[0].UID, probe.clk.Now(), "legacy-billing is down")
+	r.NoError(probe.dbSvc.CreateIncident(t.Context(), longDown))
+
+	probe.clk.Advance(6 * 7 * 24 * time.Hour)
+
+	incident := openIncident(t, probe, probe.check, "payments-api is down")
+
+	pubs := probe.publications()
+	r.Len(pubs, 1)
+	r.Equal(incident.UID, *pubs[0].IncidentUID)
+
+	probe.clk.Advance(5 * time.Minute)
+	resolveIncident(t, probe, incident)
+
+	pubs = probe.publications()
+	r.Len(pubs, 1)
+	r.True(pubs[0].IsResolved(),
+		"a sibling that was down before the entry started must not keep it open")
+}
+
+// TestDeletingTheLastMemberClosesTheConsolidatedEntry: deleting a check
+// resolves its incident after the soft delete, so the group must still be
+// found through the deleted check, or the entry waiting on it stays open.
+func TestDeletingTheLastMemberClosesTheConsolidatedEntry(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+
+	probe, _, members := groupProbe(t, "Payments worker")
+
+	first := openIncident(t, probe, probe.check, "payments-api is down")
+
+	probe.clk.Advance(time.Minute)
+
+	second := openIncident(t, probe, members[0], "payments-member-a is down")
+
+	probe.clk.Advance(time.Minute)
+	resolveIncident(t, probe, first)
+
+	pubs := probe.publications()
+	r.Len(pubs, 1)
+	r.False(pubs[0].IsResolved(), "the covered member is still down")
+
+	r.NoError(probe.dbSvc.DeleteCheck(ctx, members[0].UID))
+
+	reloaded, err := probe.dbSvc.GetIncident(ctx, probe.org.UID, second.UID)
+	r.NoError(err)
+	r.Equal(models.IncidentStateResolved, reloaded.State)
+
+	probe.pubs.OnIncidentResolved(ctx, reloaded)
+
+	pubs = probe.publications()
+	r.Len(pubs, 1)
+	r.True(pubs[0].IsResolved(), "deleting the last covered member closes the entry")
+}
+
 // TestZeroPublishDelaySurvivesTheWrite is a regression pin for a bug that made
 // the documented "publish immediately" setting unreachable through the API.
 //

@@ -505,6 +505,12 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	// The demo cleanup and private-location monitor deletes notify like a
 	// user's DELETE does (spec 2026-10-08-02).
 	backgroundIncidents := incidents.NewService(dbService, jobService, svcList.Clock, svcList.Realtime)
+	// Those deletes resolve incidents, so they must also close the status-page
+	// entries hanging off them. No subscriber notifier: the egress guard it
+	// needs is only built later, in InitializeSystemConfig.
+	backgroundPublications := incidentpublications.NewService(dbService, svcList.Clock, svcList.Realtime)
+	backgroundPublications.SetJobsService(jobService)
+	backgroundIncidents.SetPublicationHook(backgroundPublications)
 	checksSvc.SetCheckDeletedIncidentNotifier(backgroundIncidents)
 	// The A2A sender and the a2a_task_poll job record the AI agent's replies
 	// on the incident timeline (spec 2026-10-18-02).
