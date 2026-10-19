@@ -1,8 +1,8 @@
 import { test, expect, type Page } from "./fixtures";
 
 // Coverage for spec 2026-08-16-01: form controls must not be the same color as
-// the page, and the segmented control's *selected* segment must be the raised
-// (lighter) one.
+// the page, and the segmented control's *selected* segment (the primary fill)
+// must stand out from its track.
 //
 // This asserts on computed background colors rather than class names, because
 // the failure mode this guards against is a token inversion — dark --muted
@@ -87,26 +87,26 @@ async function assertOrdering(page: Page, theme: "light" | "dark") {
     `${theme}: the search input should use bg-control`,
   ).toBe(control);
 
-  // Segmented control: the selected pill must be lighter than its track, in
-  // both themes. In dark the track flips to bg-background precisely because
-  // bg-muted would be lighter than the bg-card pill.
+  // Segmented control: the selected segment is the primary fill, clearly apart
+  // from its recessed track in both themes (a neutral bg-card pill was too
+  // close to the dark track to read as selected).
+  const primary = await probe(page, "bg-primary-fill");
   await expect
     .poll(() => bgOf(page, "group-by-groups"), { timeout: 5000 })
-    .toBe(card);
-  const pill = await bgOf(page, "group-by-groups");
+    .toBe(primary);
+  const segment = await bgOf(page, "group-by-groups");
   const track = await page
     .getByTestId("group-by-groups")
     .evaluate((el) => getComputedStyle(el.parentElement!).backgroundColor);
 
-  expect(pill, `${theme}: selected segment should use bg-card`).toBe(card);
   expect(
-    lightnessOf(pill),
-    `${theme}: selected pill must be lighter than its track (${pill} vs ${track})`,
-  ).toBeGreaterThan(lightnessOf(track));
+    Math.abs(lightnessOf(segment) - lightnessOf(track)),
+    `${theme}: selected segment must stand out from its track (${segment} vs ${track})`,
+  ).toBeGreaterThan(0.2);
 
   if (theme === "dark") {
-    // Positive control for the inversion this test exists to catch: if the
-    // track had stayed bg-muted in dark, the pill would have been darker.
+    // The track flips to bg-background in dark, where bg-muted is lighter
+    // than the card the control sits on.
     expect(lightnessOf(muted)).toBeGreaterThan(lightnessOf(card));
     expect(track).toBe(background);
   } else {
@@ -115,7 +115,7 @@ async function assertOrdering(page: Page, theme: "light" | "dark") {
 }
 
 test.describe("control surface elevation", () => {
-  test("page < control <= card, and the selected segment is the raised pill, in both themes", async ({
+  test("page < control <= card, and the selected segment is the primary fill, in both themes", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;

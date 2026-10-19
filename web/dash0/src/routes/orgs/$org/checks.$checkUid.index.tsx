@@ -1670,8 +1670,6 @@ function CheckDetailPage() {
           checkUid={checkUid}
           periodMs={periodMs}
           timeRange={graphPeriod ?? "day"}
-          view="timing"
-          onViewChange={() => undefined}
           onTimeRangeChange={(range) =>
             navigate({
               to: ".",

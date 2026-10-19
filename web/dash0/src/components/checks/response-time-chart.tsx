@@ -40,6 +40,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { ChartRangeControl } from "@/components/checks/chart-range-control";
 import { PinnedResultBox } from "@/components/checks/pinned-result-box";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { statusStyle } from "@/lib/status-style";
@@ -993,28 +994,11 @@ export function ResponseTimeChart({
               {t("detail.chart.fullRange")}
             </span>
           </label>
-          <div className="flex items-center gap-1">
-            {(["hour", "day", "week", "month"] as TimeRange[]).map((range) => (
-              <Button
-                key={range}
-                variant={timeRange === range ? "default" : "outline"}
-                size="sm"
-                onClick={() => updateTimeRange(range)}
-                className="px-2 text-xs sm:px-3 sm:text-sm"
-              >
-                <span className="sm:hidden">
-                  {t(
-                    `detail.chart.range${range.charAt(0).toUpperCase() + range.slice(1)}Short`,
-                  )}
-                </span>
-                <span className="hidden sm:inline">
-                  {t(
-                    `detail.chart.range${range.charAt(0).toUpperCase() + range.slice(1)}`,
-                  )}
-                </span>
-              </Button>
-            ))}
-          </div>
+          <ChartRangeControl
+            value={timeRange}
+            onChange={updateTimeRange}
+            testIdPrefix="response-time-range"
+          />
         </div>
       </CardHeader>
       <CardContent>

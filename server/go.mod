@@ -245,6 +245,7 @@ require (
 	github.com/eclipse/paho.mqtt.golang v1.5.1
 	github.com/fclairamb/solidping/server/third_party/grdp v0.0.0
 	github.com/fergusstrange/embedded-postgres v1.34.0
+	github.com/fergusstrange/embedded-postgres/v2 v2.0.1
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/getsentry/sentry-go v0.50.0
 	github.com/go-asn1-ber/asn1-ber v1.5.8
@@ -289,8 +290,8 @@ require (
 	github.com/prometheus/client_golang v1.25.0
 	github.com/prometheus/client_model v0.6.3
 	github.com/prometheus/common v0.72.1
-	github.com/quic-go/quic-go v0.64.0
-	github.com/rabbitmq/amqp091-go v1.15.0
+	github.com/quic-go/quic-go v0.64.1
+	github.com/rabbitmq/amqp091-go v1.16.0
 	github.com/redis/go-redis/v9 v9.23.0
 	github.com/rumblefrog/go-a2s v1.0.3
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3

@@ -676,6 +676,7 @@
       "rangeDayShort": "J",
       "rangeWeekShort": "S",
       "rangeMonthShort": "M",
+      "rangeLabel": "Période",
       "noDataAvailable": "Aucune donnée disponible",
       "noData": "Aucune donnée",
       "showingAllRegions": "Toutes les régions affichées ({{regions}})",
