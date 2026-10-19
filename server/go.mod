@@ -244,7 +244,7 @@ require (
 	github.com/dustin/go-humanize v1.1.0
 	github.com/eclipse/paho.mqtt.golang v1.5.1
 	github.com/fclairamb/solidping/server/third_party/grdp v0.0.0
-	github.com/fergusstrange/embedded-postgres v1.34.0
+	github.com/fergusstrange/embedded-postgres/v2 v2.0.1
 	github.com/fergusstrange/embedded-postgres/v2 v2.0.1
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/getsentry/sentry-go v0.50.0
