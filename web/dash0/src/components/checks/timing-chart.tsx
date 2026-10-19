@@ -17,7 +17,7 @@ import type { TimeRange } from "@/lib/chart-window";
 import { HTTP_TIMING_PHASES } from "@/lib/http-timing";
 import { buildTimingSeries } from "@/lib/http-timing-series";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { SegmentedControl } from "@/components/ui/segmented-control";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const PHASE_COLORS: Record<string, string> = {
@@ -28,6 +28,9 @@ const PHASE_COLORS: Record<string, string> = {
   ttfb: "var(--chart-4, #ef4444)",
   download: "var(--chart-6, #64748b)",
 };
+
+// Legend and tooltip follow the request order, not Recharts' alphabetical sort.
+const PHASE_ORDER: string[] = HTTP_TIMING_PHASES.map(({ id }) => id);
 
 interface TimingChartProps {
   org: string;
@@ -106,6 +109,7 @@ export function TimingChart({
             }}
             labelStyle={{ color: "var(--muted-foreground)" }}
             itemStyle={{ color: "var(--popover-foreground)" }}
+            itemSorter={(item) => PHASE_ORDER.indexOf(String(item.dataKey))}
             labelFormatter={(v) => format(new Date(Number(v)), "PPpp")}
             formatter={(value, name) => [
               `${Math.round(Number(value) * 100) / 100} ms`,
@@ -114,6 +118,7 @@ export function TimingChart({
           />
           <Legend
             iconType="square"
+            itemSorter={null}
             formatter={(value) => (
               <span className="text-xs text-muted-foreground">
                 {t(`timing.phase.${String(value)}`)}
@@ -147,31 +152,44 @@ interface ChartViewSwitchProps {
   onChange: (view: ChartView) => void;
 }
 
-/** The "Response time | Timing" switch shown above the chart of an HTTP check. */
+/**
+ * The "Response time | Timing" switch shown above the chart of an HTTP check.
+ * Same default/outline buttons as the charts' Hour / Day / Week / Month range.
+ */
 export function ChartViewSwitch({ value, onChange }: ChartViewSwitchProps) {
   const { t } = useTranslation("checks");
+  const views: { view: ChartView; label: string }[] = [
+    { view: "response", label: t("timing.viewResponse") },
+    { view: "timing", label: t("timing.viewTiming") },
+  ];
   return (
-    <SegmentedControl<ChartView>
-      value={value}
-      onValueChange={onChange}
+    <div
+      role="group"
       aria-label={t("timing.viewLabel")}
-      options={[
-        {
-          value: "response",
-          label: t("timing.viewResponse"),
-          testId: "chart-view-response",
-        },
-        {
-          value: "timing",
-          label: t("timing.viewTiming"),
-          testId: "chart-view-timing",
-        },
-      ]}
-    />
+      className="flex items-center gap-1"
+    >
+      {views.map(({ view, label }) => (
+        <Button
+          key={view}
+          variant={value === view ? "default" : "outline"}
+          size="sm"
+          aria-pressed={value === view}
+          onClick={() => onChange(view)}
+          className="px-2 text-xs sm:px-3 sm:text-sm"
+          data-testid={`chart-view-${view}`}
+        >
+          {label}
+        </Button>
+      ))}
+    </div>
   );
 }
 
 const RANGES: TimeRange[] = ["hour", "day", "week", "month"];
+
+function rangeKey(range: TimeRange): string {
+  return `detail.chart.range${range[0].toUpperCase()}${range.slice(1)}`;
+}
 
 interface TimingChartCardProps extends TimingChartProps {
   onTimeRangeChange: (range: TimeRange) => void;
@@ -190,16 +208,22 @@ export function TimingChartCard({
     <Card data-testid="timing-chart-card">
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
         <CardTitle>{t("timing.chartTitle")}</CardTitle>
-        <SegmentedControl<TimeRange>
-          value={chart.timeRange}
-          onValueChange={onTimeRangeChange}
-          aria-label={t("timing.chartTitle")}
-          options={RANGES.map((r) => ({
-            value: r,
-            label: t(`detail.chart.range${r[0].toUpperCase()}${r.slice(1)}`),
-            testId: `timing-range-${r}`,
-          }))}
-        />
+        <div className="flex items-center gap-1">
+          {RANGES.map((range) => (
+            <Button
+              key={range}
+              variant={chart.timeRange === range ? "default" : "outline"}
+              size="sm"
+              aria-pressed={chart.timeRange === range}
+              onClick={() => onTimeRangeChange(range)}
+              className="px-2 text-xs sm:px-3 sm:text-sm"
+              data-testid={`timing-range-${range}`}
+            >
+              <span className="sm:hidden">{t(`${rangeKey(range)}Short`)}</span>
+              <span className="hidden sm:inline">{t(rangeKey(range))}</span>
+            </Button>
+          ))}
+        </div>
       </CardHeader>
       <CardContent>
         <TimingChart {...chart} />

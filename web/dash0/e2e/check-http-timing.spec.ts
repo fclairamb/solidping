@@ -107,6 +107,9 @@ test.describe("HTTP timing breakdown", () => {
     await expect(page.getByTestId("timing-chart")).toBeVisible();
     // One view switch (the page-level one), not a second one inside the card.
     await expect(page.getByTestId("chart-view-timing")).toHaveCount(1);
+    await expect(page.getByTestId("chart-view-timing")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("chart-view-response")).toHaveAttribute("aria-pressed", "false");
+    await expect(page.getByTestId("timing-range-day")).toHaveAttribute("aria-pressed", "true");
     // The phases are named in a legend.
     await expect(
       page.getByTestId("timing-chart").locator(".recharts-legend-item"),
