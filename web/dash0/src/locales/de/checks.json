@@ -632,6 +632,7 @@
       "rangeDayShort": "T",
       "rangeWeekShort": "W",
       "rangeMonthShort": "M",
+      "rangeLabel": "Zeitraum",
       "noDataAvailable": "Keine Daten verfügbar",
       "noData": "Keine Daten",
       "showingAllRegions": "Alle Regionen werden angezeigt ({{regions}})",

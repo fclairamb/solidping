@@ -17,7 +17,8 @@ import type { TimeRange } from "@/lib/chart-window";
 import { HTTP_TIMING_PHASES } from "@/lib/http-timing";
 import { buildTimingSeries } from "@/lib/http-timing-series";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { ChartRangeControl } from "@/components/checks/chart-range-control";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const PHASE_COLORS: Record<string, string> = {
@@ -152,43 +153,28 @@ interface ChartViewSwitchProps {
   onChange: (view: ChartView) => void;
 }
 
-/**
- * The "Response time | Timing" switch shown above the chart of an HTTP check.
- * Same default/outline buttons as the charts' Hour / Day / Week / Month range.
- */
+/** The "Response time | Timing" switch shown above the chart of an HTTP check. */
 export function ChartViewSwitch({ value, onChange }: ChartViewSwitchProps) {
   const { t } = useTranslation("checks");
-  const views: { view: ChartView; label: string }[] = [
-    { view: "response", label: t("timing.viewResponse") },
-    { view: "timing", label: t("timing.viewTiming") },
-  ];
   return (
-    <div
-      role="group"
+    <SegmentedControl<ChartView>
+      value={value}
+      onValueChange={onChange}
       aria-label={t("timing.viewLabel")}
-      className="flex items-center gap-1"
-    >
-      {views.map(({ view, label }) => (
-        <Button
-          key={view}
-          variant={value === view ? "default" : "outline"}
-          size="sm"
-          aria-pressed={value === view}
-          onClick={() => onChange(view)}
-          className="px-2 text-xs sm:px-3 sm:text-sm"
-          data-testid={`chart-view-${view}`}
-        >
-          {label}
-        </Button>
-      ))}
-    </div>
+      options={[
+        {
+          value: "response",
+          label: t("timing.viewResponse"),
+          testId: "chart-view-response",
+        },
+        {
+          value: "timing",
+          label: t("timing.viewTiming"),
+          testId: "chart-view-timing",
+        },
+      ]}
+    />
   );
-}
-
-const RANGES: TimeRange[] = ["hour", "day", "week", "month"];
-
-function rangeKey(range: TimeRange): string {
-  return `detail.chart.range${range[0].toUpperCase()}${range.slice(1)}`;
 }
 
 interface TimingChartCardProps extends TimingChartProps {
@@ -208,22 +194,11 @@ export function TimingChartCard({
     <Card data-testid="timing-chart-card">
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
         <CardTitle>{t("timing.chartTitle")}</CardTitle>
-        <div className="flex items-center gap-1">
-          {RANGES.map((range) => (
-            <Button
-              key={range}
-              variant={chart.timeRange === range ? "default" : "outline"}
-              size="sm"
-              aria-pressed={chart.timeRange === range}
-              onClick={() => onTimeRangeChange(range)}
-              className="px-2 text-xs sm:px-3 sm:text-sm"
-              data-testid={`timing-range-${range}`}
-            >
-              <span className="sm:hidden">{t(`${rangeKey(range)}Short`)}</span>
-              <span className="hidden sm:inline">{t(rangeKey(range))}</span>
-            </Button>
-          ))}
-        </div>
+        <ChartRangeControl
+          value={chart.timeRange}
+          onChange={onTimeRangeChange}
+          testIdPrefix="timing-range"
+        />
       </CardHeader>
       <CardContent>
         <TimingChart {...chart} />
