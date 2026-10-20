@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -83,9 +82,9 @@ func (s *MSTeamsSender) Send(ctx context.Context, _ *jobdef.JobContext, payload 
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 300 {
-		respBody, _ := io.ReadAll(resp.Body)
+		respBody, _ := readCappedBody(resp.Body, senderMaxResponseBody)
 
-		return fmt.Errorf("%w: status %d: %s", errMSTeamsWebhookFailed, resp.StatusCode, string(respBody))
+		return fmt.Errorf("%w: status %d: %s", errMSTeamsWebhookFailed, resp.StatusCode, bodySnippet(respBody))
 	}
 
 	return nil
