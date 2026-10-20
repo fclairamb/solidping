@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"time"
 
@@ -319,7 +318,7 @@ func (s *PagerDutySender) doRequest(ctx context.Context, event map[string]any) e
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	respBody, _ := io.ReadAll(resp.Body)
+	respBody, _ := readCappedBody(resp.Body, senderMaxResponseBody)
 
 	return classifyPagerdutyResponse(resp.StatusCode, respBody)
 }
@@ -334,9 +333,9 @@ func classifyPagerdutyResponse(statusCode int, body []byte) error {
 
 	if statusCode == http.StatusTooManyRequests || statusCode >= http.StatusInternalServerError {
 		return jobdef.NewRetryableError(
-			fmt.Errorf("%w: status %d: %s", ErrPagerdutyServerError, statusCode, string(body)),
+			fmt.Errorf("%w: status %d: %s", ErrPagerdutyServerError, statusCode, bodySnippet(body)),
 		)
 	}
 
-	return fmt.Errorf("%w: status %d: %s", errPagerdutyRequestFailed, statusCode, string(body))
+	return fmt.Errorf("%w: status %d: %s", errPagerdutyRequestFailed, statusCode, bodySnippet(body))
 }

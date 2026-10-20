@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -98,11 +97,15 @@ func (s *PushoverSender) doRequest(ctx context.Context, data url.Values) error {
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	respBody, _ := io.ReadAll(resp.Body)
+	respBody, truncated := readCappedBody(resp.Body, senderMaxResponseBody)
 
 	// Pushover can return errors even with HTTP 200
 	if resp.StatusCode >= 300 {
-		return fmt.Errorf("%w: status %d: %s", errPushoverRequestFailed, resp.StatusCode, string(respBody))
+		return fmt.Errorf("%w: status %d: %s", errPushoverRequestFailed, resp.StatusCode, bodySnippet(respBody))
+	}
+
+	if truncated {
+		return fmt.Errorf("%w: %w", errPushoverRequestFailed, ErrSenderResponseTooLarge)
 	}
 
 	var result pushoverResponse

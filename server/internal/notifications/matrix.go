@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"html"
-	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -103,9 +102,17 @@ func (s *MatrixSender) Send(ctx context.Context, jctx *jobdef.JobContext, payloa
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	respBody, _ := io.ReadAll(resp.Body)
+	respBody, truncated := readCappedBody(resp.Body, senderMaxResponseBody)
 
-	return classifyMatrixResponse(resp.StatusCode, respBody)
+	if err := classifyMatrixResponse(resp.StatusCode, respBody); err != nil {
+		return err
+	}
+
+	if truncated {
+		return fmt.Errorf("%w: %w", errMatrixRequestFailed, ErrSenderResponseTooLarge)
+	}
+
+	return nil
 }
 
 type matrixSettings struct {
@@ -181,10 +188,14 @@ func (s *MatrixSender) resolveRoomID(
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	respBody, _ := io.ReadAll(resp.Body)
+	respBody, truncated := readCappedBody(resp.Body, senderMaxResponseBody)
 
 	if err := classifyMatrixResponse(resp.StatusCode, respBody); err != nil {
 		return "", fmt.Errorf("resolving matrix room alias %s: %w", settings.RoomID, err)
+	}
+
+	if truncated {
+		return "", fmt.Errorf("resolving matrix room alias %s: %w", settings.RoomID, ErrSenderResponseTooLarge)
 	}
 
 	var directory matrixRoomDirectoryResponse
@@ -356,22 +367,22 @@ func classifyMatrixResponse(statusCode int, body []byte) error {
 
 	switch statusCode {
 	case http.StatusUnauthorized:
-		return fmt.Errorf("%w: %s", ErrMatrixUnauthorized, string(body))
+		return fmt.Errorf("%w: %s", ErrMatrixUnauthorized, bodySnippet(body))
 	case http.StatusForbidden:
-		return fmt.Errorf("%w: %s", ErrMatrixForbidden, string(body))
+		return fmt.Errorf("%w: %s", ErrMatrixForbidden, bodySnippet(body))
 	case http.StatusNotFound:
-		return fmt.Errorf("%w: %s", ErrMatrixRoomNotFound, string(body))
+		return fmt.Errorf("%w: %s", ErrMatrixRoomNotFound, bodySnippet(body))
 	case http.StatusTooManyRequests:
 		return jobdef.NewRetryableError(matrixRateLimitError(body))
 	}
 
 	if statusCode >= http.StatusInternalServerError {
 		return jobdef.NewRetryableError(
-			fmt.Errorf("%w: status %d: %s", ErrMatrixServerError, statusCode, string(body)),
+			fmt.Errorf("%w: status %d: %s", ErrMatrixServerError, statusCode, bodySnippet(body)),
 		)
 	}
 
-	return fmt.Errorf("%w: status %d: %s", errMatrixRequestFailed, statusCode, string(body))
+	return fmt.Errorf("%w: status %d: %s", errMatrixRequestFailed, statusCode, bodySnippet(body))
 }
 
 // matrixRateLimitError builds the 429 error, honoring retry_after_ms from the
@@ -382,8 +393,8 @@ func matrixRateLimitError(body []byte) error {
 	_ = json.Unmarshal(body, &errBody)
 
 	if errBody.RetryAfterMs > 0 {
-		return fmt.Errorf("%w: retry after %dms: %s", ErrMatrixRateLimited, errBody.RetryAfterMs, string(body))
+		return fmt.Errorf("%w: retry after %dms: %s", ErrMatrixRateLimited, errBody.RetryAfterMs, bodySnippet(body))
 	}
 
-	return fmt.Errorf("%w: %s", ErrMatrixRateLimited, string(body))
+	return fmt.Errorf("%w: %s", ErrMatrixRateLimited, bodySnippet(body))
 }
