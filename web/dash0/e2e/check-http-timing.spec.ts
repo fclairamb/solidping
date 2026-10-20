@@ -116,4 +116,69 @@ test.describe("HTTP timing breakdown", () => {
     ).toHaveCount(6);
     expect(requestedWith.some((w) => w.includes("metrics"))).toBe(true);
   });
+
+  test("dragging a range on the Timing chart zooms like the response time chart", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const checkUid = await createHttpCheck(page);
+    await mockSloCoverage(page);
+
+    const resultsUrls: string[] = [];
+    await page.route("**/api/v1/orgs/*/results*", (route) => {
+      resultsUrls.push(route.request().url());
+      const now = Date.now();
+      // A day of points so the drag spans a wide, resolvable x range.
+      const data = Array.from({ length: 120 }, (_, i) => ({
+        uid: `eeeeeeee-0000-7000-8000-${String(i).padStart(12, "0")}`,
+        status: "up",
+        durationMs: 250,
+        periodStart: new Date(now - (120 - i) * 12 * 60_000).toISOString(),
+        periodType: "raw",
+        metrics: METRICS,
+      }));
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data, pagination: { total: data.length, size: data.length } }),
+      });
+    });
+
+    await page.goto(`orgs/test/checks/${checkUid}?graphView=timing`);
+    const surface = page.getByTestId("timing-chart").locator(".recharts-wrapper");
+    await expect(surface).toBeVisible();
+    const resetBtn = page.getByTestId("timing-chart-reset-zoom");
+    await expect(resetBtn).toHaveCount(0);
+
+    const box = await surface.boundingBox();
+    if (!box) throw new Error("timing chart has no bounding box");
+    const y = box.y + box.height / 3;
+    const startX = box.x + box.width * 0.3;
+    const endX = box.x + box.width * 0.7;
+    const beforeCount = resultsUrls.length;
+    await page.mouse.move(startX, y);
+    await page.mouse.down();
+    for (let i = 1; i <= 6; i++) {
+      await page.mouse.move(startX + ((endX - startX) * i) / 6, y);
+    }
+    await page.mouse.up();
+
+    await expect(page).toHaveURL(/graphFrom=\d+/);
+    expect(page.url()).toMatch(/graphTo=\d+/);
+    expect(page.url()).toMatch(/graphView=timing/);
+    await expect(resetBtn).toBeVisible();
+    // The Timing fetch narrows to the selected window, with the metrics.
+    await expect
+      .poll(() =>
+        resultsUrls
+          .slice(beforeCount)
+          .some((u) => u.includes("periodEndBefore") && u.includes("metrics")),
+      )
+      .toBe(true);
+
+    await resetBtn.click();
+    await expect(resetBtn).toHaveCount(0);
+    expect(page.url()).not.toMatch(/graphFrom=/);
+    expect(page.url()).toMatch(/graphView=timing/);
+  });
 });

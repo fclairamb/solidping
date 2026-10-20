@@ -1670,12 +1670,39 @@ function CheckDetailPage() {
           checkUid={checkUid}
           periodMs={periodMs}
           timeRange={graphPeriod ?? "day"}
+          zoomFrom={graphFrom}
+          zoomTo={graphTo}
           onTimeRangeChange={(range) =>
+            navigate({
+              to: ".",
+              search: (prev) => {
+                const nextPeriod = range !== "day" ? range : undefined;
+                // As on the response time chart, a new range drops the zoom.
+                return {
+                  ...prev,
+                  graphPeriod: nextPeriod,
+                  ...(nextPeriod !== prev.graphPeriod
+                    ? {
+                        graphFrom: undefined,
+                        graphTo: undefined,
+                        graphSelected: undefined,
+                      }
+                    : {}),
+                };
+              },
+              replace: true,
+            })
+          }
+          onZoomChange={(from, to) =>
             navigate({
               to: ".",
               search: (prev) => ({
                 ...prev,
-                graphPeriod: range !== "day" ? range : undefined,
+                graphFrom: from,
+                graphTo: to,
+                ...(from == null || to == null
+                  ? { graphSelected: undefined }
+                  : {}),
               }),
               replace: true,
             })
