@@ -183,7 +183,6 @@ require (
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
 	github.com/xdg-go/stringprep v1.0.4 // indirect
-	github.com/xi2/xz v0.0.0-20171230120015-48954b6210f8 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
@@ -244,7 +243,6 @@ require (
 	github.com/dustin/go-humanize v1.1.0
 	github.com/eclipse/paho.mqtt.golang v1.5.1
 	github.com/fclairamb/solidping/server/third_party/grdp v0.0.0
-	github.com/fergusstrange/embedded-postgres/v2 v2.0.1
 	github.com/fergusstrange/embedded-postgres/v2 v2.0.1
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/getsentry/sentry-go v0.50.0
