@@ -4,6 +4,7 @@ import (
 	"sort"
 
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/email"
 )
 
 // Fixture constants shared across multiple templates below — pulled out
@@ -38,7 +39,7 @@ const (
 	keyHasData      = "HasData"
 	// fixtureResolvedAt is the one resolution timestamp every resolved-incident
 	// fixture shows, so the previews of the resolved templates line up.
-	fixtureResolvedAt = "2026-07-05 10:15:00 UTC"
+	fixtureResolvedAt = "Jul 5, 10:15 UTC"
 	keyAvailability   = "AvailabilityPct"
 )
 
@@ -123,13 +124,15 @@ func incidentFixture() map[string]any {
 		"CheckName":            fixtureCheckName,
 		"CheckType":            "http",
 		"CheckURL":             fixtureCheckURL,
-		"StartedAt":            "2026-07-05 10:00:00 UTC",
+		"StartedAt":            "Jul 5, 10:00 UTC",
 		"IncidentUID":          fixtureIncidentUID,
 		"IncidentNumber":       fixtureIncidentNumber,
 		"IncidentURL":          incidentURL,
 		"AckURL":               ackURL,
 		"FailureCount":         3,
 		"RelapseCount":         1,
+		"FailureReason":        "HTTP 503 Service Unavailable (expected 200)",
+		"CheckTarget":          "https://api.acme.com/health",
 		keyDashboardURL:        fixtureDashboardURL,
 		"DocsURL":              "https://solidping.example/docs",
 		"UnsubscribeURL":       "https://solidping.example/unsubscribe?token=preview-unsub-token",
@@ -153,7 +156,7 @@ func burnIncidentFixture() map[string]any {
 	fixture["BurnLongWindow"] = "1h"
 	fixture["BurnShortWindow"] = "5m"
 	fixture["BurnBudgetRemaining"] = "1h30m"
-	fixture["BurnProjectedExhaustion"] = "2026-07-05 14:30:00 UTC"
+	fixture["BurnProjectedExhaustion"] = "Jul 5, 14:30 UTC"
 	fixture["BurnTarget"] = "99.9%"
 
 	return fixture
@@ -222,10 +225,14 @@ func escalationFixture() map[string]any {
 		"CheckURL":       fixtureCheckURL,
 		"IncidentNumber": fixtureIncidentNumber,
 		"IncidentURL":    incidentURL,
-		"StartedAt":      "2026-07-05 10:00:00 UTC",
+		"StartedAt":      "Jul 5, 10:00 UTC",
 		"FailureCount":   3,
-		keyDashboardURL:  fixtureDashboardURL,
-		"DocsURL":        "https://solidping.example/docs",
+		"FailureReason":  "HTTP 503 Service Unavailable (expected 200)",
+		"CheckTarget":    "https://api.acme.com/health",
+		"AckURL": "https://solidping.example/api/v1/orgs/acme/incidents/" +
+			fixtureIncidentUID + "/ack?token=preview-token",
+		keyDashboardURL: fixtureDashboardURL,
+		"DocsURL":       "https://solidping.example/docs",
 	}
 }
 
@@ -252,19 +259,22 @@ func pagingNudgeFixture() map[string]any {
 // statusSubscriberConfirmFixture covers the double opt-in confirmation email
 // (statussubscribers.Handler.sendConfirmMail).
 func statusSubscriberConfirmFixture() map[string]any {
-	return map[string]any{
+	fixture := map[string]any{
 		keySubject:   "Confirm your subscription to " + fixtureStatusPageName,
 		"PageName":   fixtureStatusPageName,
 		"ConfirmURL": "https://solidping.example/api/v1/public/status-subscribers/confirm?token=preview-token",
 	}
+	email.ApplyStatusPageBranding(fixture, fixtureStatusPageName, nil, false)
+
+	return fixture
 }
 
 // statusSubscriberUpdateFixture covers the incident-opened/update/resolved
 // fan-out email (statussubscribers.Notifier.sendOne) — one template for all
 // three kinds, distinguished by Label/Title/Subject.
 func statusSubscriberUpdateFixture() map[string]any {
-	return map[string]any{
-		keySubject:     "[" + fixtureStatusPageName + "] New incident: Elevated error rates",
+	fixture := map[string]any{
+		keySubject:     fixtureStatusPageName + ": Elevated error rates",
 		"Label":        "New incident",
 		"Title":        "Elevated error rates",
 		"BodyMarkdown": "We are investigating elevated error rates on the API.",
@@ -273,6 +283,9 @@ func statusSubscriberUpdateFixture() map[string]any {
 		"SubscriberUnsubscribeURL": "https://solidping.example/api/v1/public/status-subscribers/" +
 			"unsubscribe?token=preview-token",
 	}
+	email.ApplyStatusPageBranding(fixture, fixtureStatusPageName, nil, false)
+
+	return fixture
 }
 
 func registrationFixture() map[string]any {
@@ -436,7 +449,7 @@ func acknowledgedIncidentFixture() map[string]any {
 	fixture["AckURL"] = ""
 	fixture["AckActor"] = fixturePersonName
 	fixture["AckVia"] = "from the dashboard"
-	fixture["AcknowledgedAt"] = "2026-07-05 10:04:00 UTC"
+	fixture["AcknowledgedAt"] = "Jul 5, 10:04 UTC"
 
 	return fixture
 }
@@ -504,7 +517,7 @@ func regionOfflineFixture() map[string]any {
 	return map[string]any{
 		keyOrgName:     fixtureOrgName,
 		"RegionName":   "Lauterbourg (lauterbourg)",
-		"Since":        "2026-09-24 13:41 UTC",
+		"Since":        "Sep 24, 13:41 UTC",
 		"BlindCount":   2,
 		"ReducedCount": 3,
 		"MoreCount":    0,
@@ -521,8 +534,8 @@ func regionRecoveredFixture() map[string]any {
 	return map[string]any{
 		keyOrgName:    fixtureOrgName,
 		"RegionName":  "Lauterbourg (lauterbourg)",
-		"Since":       "2026-09-24 13:41 UTC",
-		"RecoveredAt": "2026-09-24 21:33 UTC",
+		"Since":       "Sep 24, 13:41 UTC",
+		"RecoveredAt": "Sep 24, 21:33 UTC",
 		"Duration":    "7h52m",
 		"Moved":       false,
 		"ChecksURL":   fixtureDashboardURL + "/orgs/acme/checks",

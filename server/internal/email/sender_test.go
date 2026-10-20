@@ -373,3 +373,74 @@ func TestDynamicSender_UsesProviderConfig(t *testing.T) {
 	r.NoError(err)
 	r.False(res.Sent)
 }
+
+// TestBuildMessage_ThreadHeaders pins incident threading: every mail about one
+// incident points at the same <ThreadID@from-domain> root, and a mail without
+// a ThreadID carries neither header.
+func TestBuildMessage_ThreadHeaders(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name     string
+		from     string
+		threadID string
+		want     string
+	}{
+		{"from domain", "noreply@acme.com", "incident.inc-123", "<incident.inc-123@acme.com>"},
+		{"no domain in from", "noreply", "incident.inc-123", "<incident.inc-123@solidping.invalid>"},
+		{"no thread id", "noreply@acme.com", "", ""},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+			sender := NewSender(&config.EmailConfig{
+				Enabled: true, Host: "localhost", Port: 587, From: tc.from,
+			}, slog.Default())
+
+			// setThreadHeaders is called directly for the domain-less case:
+			// buildMessage would reject a From without a domain first.
+			mailMsg := mail.NewMsg()
+			sender.setThreadHeaders(mailMsg, &Message{ThreadID: tc.threadID})
+
+			if tc.want == "" {
+				r.Empty(mailMsg.GetGenHeader(mail.HeaderInReplyTo))
+				r.Empty(mailMsg.GetGenHeader(mail.HeaderReferences))
+
+				return
+			}
+
+			r.Equal([]string{tc.want}, mailMsg.GetGenHeader(mail.HeaderInReplyTo))
+			r.Equal([]string{tc.want}, mailMsg.GetGenHeader(mail.HeaderReferences))
+		})
+	}
+}
+
+// TestBuildMessage_ThreadHeadersReachTheWire is the end-to-end half: the
+// headers survive buildMessage and serialization.
+func TestBuildMessage_ThreadHeadersReachTheWire(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	sender := NewSender(&config.EmailConfig{
+		Enabled: true, Host: "localhost", Port: 587, From: "noreply@acme.com",
+	}, slog.Default())
+
+	mailMsg, err := sender.buildMessage(&Message{
+		Recipients: Recipients{To: []string{"to@example.com"}},
+		Subject:    "Hello",
+		HTML:       "<p>Hi there</p>",
+		ThreadID:   IncidentThreadID("inc-123"),
+	})
+	r.NoError(err)
+
+	var buf bytes.Buffer
+	_, err = mailMsg.WriteTo(&buf)
+	r.NoError(err)
+
+	wire := buf.String()
+	r.Contains(wire, "In-Reply-To: <incident.inc-123@acme.com>")
+	r.Contains(wire, "References: <incident.inc-123@acme.com>")
+}

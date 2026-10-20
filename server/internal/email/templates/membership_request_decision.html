@@ -3,13 +3,11 @@
 {{template "base.html" .}}
 {{define "content"}}
     <h1>Membership request {{.Decision}}</h1>
-    <p>Hi,</p>
     {{if eq .Decision "approved"}}
     <p>Your request to join <strong>{{.OrgName}}</strong> on SolidPing has been approved. You're now a member with role <strong>{{.Role}}</strong>.</p>
     {{if .DashboardURL}}
     <div class="cta-wrap">{{template "button" dict "URL" .DashboardURL "Label" (printf "Open %s" .OrgName) "Variant" "success"}}</div>
-    <p>Or paste this link into your browser:</p>
-    <p class="fallback">{{link .DashboardURL ""}}</p>
+    <p class="fallback">Button not working? Paste this link into your browser:<br>{{link .DashboardURL ""}}</p>
     {{end}}
     {{else}}
     <p>Your request to join <strong>{{.OrgName}}</strong> on SolidPing was rejected.</p>
@@ -21,8 +19,6 @@
     {{end}}
 {{end}}
 {{define "text"}}Membership request {{.Decision}}
-
-Hi,
 
 {{if eq .Decision "approved"}}Your request to join {{.OrgName}} on SolidPing has been approved. You're now a member with role {{.Role}}.
 {{if .DashboardURL}}

@@ -315,7 +315,7 @@ func TestUptimeReportRendersAsAStructDirectly(t *testing.T) {
 	// Branding really landed, so a passing test cannot mean "the header was
 	// skipped entirely".
 	r.Contains(html, "https://solidping.example/pub/assets/org-logo-uid")
-	r.Contains(html, "acme — sent by SolidPing")
+	r.Regexp(`acme · sent by <a href="https://solidping\.io"[^>]*>SolidPing</a>`, html)
 	r.NotContains(html, "<no value>")
 	r.NotContains(text, "<no value>")
 }
@@ -528,9 +528,10 @@ func TestUptimeReportOmitsTrendWithoutABaseline(t *testing.T) {
 		r.Contains(body, "Production API")
 	}
 
-	// Neither a green nor a gray delta span was emitted.
+	// Neither a green nor a gray delta span was emitted. (#6b7280 alone is no
+	// longer a signal: base.html now uses that gray for labels and meta text.)
 	r.NotContains(html, `; font-weight: 600">no change</span>`)
-	r.NotContains(html, "#6b7280")
+	r.NotContains(html, "color: #6b7280; font-weight: 600")
 }
 
 // TestUptimeReportDownAllPeriodStatesTheFactAndDropsLatency is the competitor

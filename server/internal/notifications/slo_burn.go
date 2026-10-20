@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/email"
 )
 
 // Detail keys written by the burn evaluator (handlers/incidents/slo_burn.go).
@@ -123,7 +124,7 @@ func (b *BurnInfo) ProjectedExhaustionText() string {
 		return "not within this window"
 	}
 
-	return b.ProjectedExhaustion.UTC().Format("2006-01-02 15:04:05 UTC")
+	return email.Timestamp(b.ProjectedExhaustion)
 }
 
 // WindowText names the two windows the rates cover.

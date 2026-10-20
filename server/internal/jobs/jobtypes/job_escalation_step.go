@@ -1386,7 +1386,7 @@ func (r *EscalationStepJobRun) sendEscalationEmail(
 		log.WarnContext(ctx, "failed to create notification audit row", "error", auditErr)
 	}
 
-	viewModel := r.buildEscalationEmailViewModel(ctx, jctx, incident)
+	viewModel := r.buildEscalationEmailViewModel(ctx, jctx, incident, recipient)
 
 	subject, htmlBody, textBody, err := jctx.Services.EmailFormatter.Format("escalation.html", viewModel)
 	if err != nil {
@@ -1402,6 +1402,7 @@ func (r *EscalationStepJobRun) sendEscalationEmail(
 		HTML:             htmlBody,
 		Text:             textBody,
 		SupportReplyable: email.SupportReplyable("escalation.html"),
+		ThreadID:         email.IncidentThreadID(incident.UID),
 	}
 
 	result, err := jctx.Services.EmailSender.Send(ctx, msg)
@@ -1427,7 +1428,7 @@ func (r *EscalationStepJobRun) sendEscalationEmail(
 // deleted since the incident opened must not block the page, it just loses
 // its name/link.
 func (r *EscalationStepJobRun) buildEscalationEmailViewModel(
-	ctx context.Context, jctx *jobdef.JobContext, incident *models.Incident,
+	ctx context.Context, jctx *jobdef.JobContext, incident *models.Incident, recipient string,
 ) map[string]any {
 	baseURL := appBaseURL(jctx)
 
@@ -1443,12 +1444,22 @@ func (r *EscalationStepJobRun) buildEscalationEmailViewModel(
 	}
 
 	checkName := escalationUnknownCheckName
-	var checkURL string
+
+	var checkURL, checkTarget string
 
 	check, checkErr := jctx.DBService.GetCheck(ctx, incident.OrganizationUID, incident.CheckUID)
 	if checkErr == nil && check != nil {
 		checkName = escalationCheckName(check)
 		checkURL = escalationCheckURL(baseURL, orgSlug, check)
+		checkTarget = check.TargetURL()
+	}
+
+	// The person this escalation wakes up is the one who most needs to say
+	// "I'm on it" without opening the dashboard first.
+	var ackURL string
+	if jctx.AppConfig != nil {
+		ackURL = incidentlinks.AckURL(baseURL, orgSlug, incident.UID, recipient,
+			[]byte(jctx.AppConfig.Auth.JWTSecret), incident.StartedAt.Add(incidentlinks.AckTokenTTL))
 	}
 
 	viewModel := map[string]any{
@@ -1456,8 +1467,11 @@ func (r *EscalationStepJobRun) buildEscalationEmailViewModel(
 		"CheckURL":            checkURL,
 		"IncidentNumber":      incident.Number,
 		"IncidentURL":         escalationIncidentURL(baseURL, orgSlug, incident),
-		"StartedAt":           incident.StartedAt.UTC().Format("2006-01-02 15:04:05 UTC"),
+		"StartedAt":           email.Timestamp(incident.StartedAt),
 		"FailureCount":        incident.FailureCount,
+		"FailureReason":       incident.FailureReason(),
+		"CheckTarget":         checkTarget,
+		"AckURL":              ackURL,
 		"DashboardURL":        escalationDashboardRootURL(baseURL),
 		"DocsURL":             escalationDocsURL(baseURL),
 	}

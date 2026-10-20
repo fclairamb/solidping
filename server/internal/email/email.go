@@ -1,7 +1,10 @@
 // Package email provides email formatting and sending capabilities.
 package email
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // Recipients holds email recipient addresses.
 type Recipients struct {
@@ -55,6 +58,30 @@ type Message struct {
 	// it, is what makes that later feature safe — retrofitting it means the
 	// loop ships first.
 	SupportMirror bool
+	// ThreadID groups related messages into one conversation. When set, the
+	// message gets In-Reply-To and References pointing at
+	// <ThreadID@sender-domain>, so every mail about one incident (down,
+	// escalated, recovered) threads together in clients that thread on those
+	// headers (Apple Mail, Thunderbird, Outlook). Gmail also requires an
+	// identical subject, so it keeps them apart.
+	ThreadID string
+}
+
+// Timestamp renders an instant for a mail body: "Jul 5, 10:00 UTC". Seconds
+// and the year add nothing a reader acts on. UTC, because a mail has no idea
+// where its reader is.
+func Timestamp(when time.Time) string {
+	return when.UTC().Format("Jan 2, 15:04 UTC")
+}
+
+// IncidentThreadID is the Message.ThreadID shared by every mail about one
+// incident.
+func IncidentThreadID(incidentUID string) string {
+	if incidentUID == "" {
+		return ""
+	}
+
+	return "incident." + incidentUID
 }
 
 // Sender handles email delivery.

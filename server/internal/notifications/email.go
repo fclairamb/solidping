@@ -16,7 +16,7 @@ import (
 
 // ackTokenTTL mirrors the spec for magic-link tokens — valid for 7 days from
 // incident start. Kept short enough to limit the impact of a leaked email.
-const ackTokenTTL = 7 * 24 * time.Hour
+const ackTokenTTL = incidentlinks.AckTokenTTL
 
 // unsubscribeTokenTTL is the spec's 90-day TTL for unsubscribe links —
 // longer than ack's 7 days because these get clicked long after delivery
@@ -62,15 +62,7 @@ func isModeledIncidentEvent(eventType string) bool {
 // any of the inputs needed to make a usable URL are missing — the caller
 // then falls back to the unpersonalized email body.
 func buildAckURL(baseURL, orgSlug, incidentUID, recipientEmail string, secret []byte, exp time.Time) string {
-	baseURL = strings.TrimRight(baseURL, "/")
-	if baseURL == "" || orgSlug == "" || incidentUID == "" || recipientEmail == "" || len(secret) == 0 {
-		return ""
-	}
-
-	token := incidentlinks.Sign(secret, incidentUID, recipientEmail, exp)
-
-	return fmt.Sprintf("%s/api/v1/orgs/%s/incidents/%s/ack?token=%s",
-		baseURL, orgSlug, incidentUID, token)
+	return incidentlinks.AckURL(baseURL, orgSlug, incidentUID, recipientEmail, secret, exp)
 }
 
 // buildUnsubscribeURL composes the per-recipient unsubscribe URL (D4).
@@ -389,6 +381,10 @@ func (s *EmailSender) Send(ctx context.Context, jctx *jobdef.JobContext, payload
 		SupportReplyable: email.SupportReplyable(content.template),
 	}
 
+	if payload.Incident != nil {
+		msg.ThreadID = email.IncidentThreadID(payload.Incident.UID)
+	}
+
 	res, sendErr := jctx.Services.EmailSender.Send(ctx, msg)
 	del.record(emailAddresses, res)
 
@@ -458,6 +454,7 @@ func (s *EmailSender) sendPerRecipient(
 			ListUnsubscribeURL:          unsubURL,
 			ListUnsubscribePostOneClick: unsubURL != "",
 			SupportReplyable:            email.SupportReplyable(content.template),
+			ThreadID:                    email.IncidentThreadID(payload.Incident.UID),
 		}
 
 		res, sendErr := jctx.Services.EmailSender.Send(ctx, msg)
@@ -589,7 +586,7 @@ func (s *EmailSender) buildEmailContent(
 // and an on-call reader correlating with logs cannot afford the guess. Matches
 // the format slo_burn.go already uses for projected exhaustion.
 func mailTimestamp(when time.Time) string {
-	return when.UTC().Format("2006-01-02 15:04:05 UTC")
+	return email.Timestamp(when)
 }
 
 // mailDuration renders an outage length for a human. time.Duration.String()
@@ -662,6 +659,16 @@ func (s *EmailSender) buildIncidentViewModel(
 		"DashboardURL":   dashboardRootURL(payload.AppBaseURL),
 		"DocsURL":        docsURL(payload.AppBaseURL),
 		"CheckDeleted":   ResolvedByCheckDeletion(payload.Incident),
+	}
+
+	// The cause and the probed target are what an on-call reader needs to
+	// triage from the lock screen; chat senders already show both.
+	if reason := payload.Incident.FailureReason(); reason != "" {
+		viewModel["FailureReason"] = reason
+	}
+
+	if target := payload.Check.TargetURL(); target != "" {
+		viewModel["CheckTarget"] = target
 	}
 
 	if payload.Incident.ResolvedAt != nil {

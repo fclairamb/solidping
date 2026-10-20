@@ -341,7 +341,7 @@ func (r *sweepRun) sendOffline(ctx context.Context, region, name string, since t
 
 	data := map[string]any{
 		"RegionName":   name,
-		"Since":        since.UTC().Format(noticeTimeLayout),
+		"Since":        email.Timestamp(since),
 		"BlindCount":   len(impact.blind),
 		"ReducedCount": impact.reduced,
 		"MoreCount":    len(impact.blind) - len(listed),
@@ -387,8 +387,8 @@ func (r *sweepRun) orgRecoveredNotices(
 
 		r.mailAdmins(ctx, org, email.TemplateRegionRecovered, map[string]any{
 			"RegionName":  name,
-			"Since":       marker.Since.UTC().Format(noticeTimeLayout),
-			"RecoveredAt": r.now.UTC().Format(noticeTimeLayout),
+			"Since":       email.Timestamp(marker.Since),
+			"RecoveredAt": email.Timestamp(r.now),
 			"Duration":    humanDuration(duration),
 			"Moved":       moved,
 			"ChecksURL":   r.dashboardURL(org.Slug, "checks"),

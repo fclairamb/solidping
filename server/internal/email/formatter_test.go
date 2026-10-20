@@ -2,6 +2,7 @@ package email
 
 import (
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -42,6 +43,17 @@ func incidentViewModel() map[string]any {
 	}
 }
 
+// checkNameHeadlinePattern matches the headline linking the check name to
+// CheckURL. A bare hostname-shaped name would get auto-linkified by mail
+// clients straight to the down target instead of the check page.
+const checkNameHeadlinePattern = `<h1[^>]*><a href="https://example\.com/d/orgs/acme/checks/` +
+	`9f8e7d6c-5b4a-4c2d-9e0f-abcdef012345"[^>]*>Production API</a> `
+
+// ackButtonPattern matches the primary "I'm on it" button pointing at the ack
+// magic link.
+const ackButtonPattern = `<a [^>]*href="https://example\.com/api/v1/orgs/acme/incidents/inc-123/ack\?token=abc"` +
+	`[^>]*>I&#39;m on it</a>`
+
 func TestFormatter_FormatIncidentCreated(t *testing.T) {
 	t.Parallel()
 
@@ -53,33 +65,67 @@ func TestFormatter_FormatIncidentCreated(t *testing.T) {
 	subject, html, text, err := formatter.Format("incident-created.html", incidentViewModel())
 	r.NoError(err)
 
-	r.Equal("[DOWN] Production API is down (#42)", subject)
+	r.Equal("🔴 Production API is down (#42)", subject)
 
 	r.Contains(html, "Production API")
 	r.Contains(html, "is down")
-	r.Contains(html, "http")
 	r.Contains(html, "https://example.com/d/orgs/acme/checks/9f8e7d6c-5b4a-4c2d-9e0f-abcdef012345")
 	r.Contains(html, "https://example.com/d/orgs/acme/incidents/inc-123")
-	r.Contains(html, "View incident")
-	r.Contains(html, "Acknowledge incident")
 	r.Contains(html, "SolidPing")
 	r.Contains(html, "style=") // CSS inlined onto elements
 	r.Contains(html, "#42")
+	r.Contains(html, ">Since</td>")
+	r.Contains(html, `class="stripe stripe-down"`)
+	r.Contains(html, `class="pill pill-down"`)
 
-	// The details-table "Check" row must link the check name rather than
-	// render it bare — a bare hostname-shaped name gets auto-linkified by
-	// mail clients straight to the down target instead of the check page.
-	r.Regexp(
-		`<td[^>]*class="value"[^>]*><a href="https://example\.com/d/orgs/acme/checks/`+
-			`9f8e7d6c-5b4a-4c2d-9e0f-abcdef012345"[^>]*>Production API</a></td>`,
-		html,
-		"the Check row must wrap the check name in an <a href> to CheckURL",
-	)
+	// The redundant rows and the old ack label are gone.
+	r.NotContains(html, ">Type</td>")
+	r.NotContains(html, ">Check</td>")
+	r.NotContains(html, ">Started at</td>")
+	r.NotContains(html, "Acknowledge incident")
+	r.NotContains(html, "Incident reference")
+	r.NotContains(html, `class="cause"`, "no failure reason, no cause box")
+
+	r.Regexp(checkNameHeadlinePattern+`is down</h1>`, html,
+		"the headline must wrap the check name in an <a href> to CheckURL")
+
+	// "I'm on it" is the primary action, before the secondary "View incident".
+	r.Regexp(`btn-primary[^>]*>\s*<tbody><tr>\s*<td[^>]*>`+ackButtonPattern, html)
+	r.Regexp(`btn-secondary[^>]*>\s*<tbody><tr>\s*<td[^>]*><a [^>]*href="https://example\.com/d/orgs/acme/`+
+		`incidents/inc-123"[^>]*>View incident</a>`, html)
+	r.Less(strings.Index(html, "I&#39;m on it"), strings.Index(html, "View incident"))
 
 	r.Contains(text, "Production API is down")
 	r.Contains(text, "https://example.com/d/orgs/acme/incidents/inc-123")
 	r.Contains(text, "Acknowledge this incident")
 	r.Contains(text, "Incident: #42")
+	r.Contains(text, "Incident ID: inc-123", "the plaintext keeps the incident id")
+}
+
+// TestFormatter_FormatIncidentCreatedShowsCauseAndTarget pins the triage facts
+// an on-call reader needs from the lock screen: the cause in the subject (cut
+// to its first line) and in a cause box, and the probed target.
+func TestFormatter_FormatIncidentCreatedShowsCauseAndTarget(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	formatter, err := NewFormatter()
+	r.NoError(err)
+
+	data := incidentViewModel()
+	data["FailureReason"] = "HTTP 503 Service Unavailable (expected 200)\nbody: upstream connect error"
+	data["CheckTarget"] = "https://api.acme.com/health"
+
+	subject, html, text, err := formatter.Format("incident-created.html", data)
+	r.NoError(err)
+
+	r.Equal("🔴 Production API is down: HTTP 503 Service Unavailable (expected 200) (#42)", subject)
+	r.Regexp(`<div class="cause"[^>]*><span class="cause-text"[^>]*>HTTP 503 Service Unavailable \(expected 200\)`, html)
+	// The target goes through nolink: plain text, never an auto-linked URL.
+	r.Regexp(`>Target</td><td class="value"[^>]*>https:[^<]*acme[^<]*health</td>`, html)
+	r.Contains(text, "HTTP 503 Service Unavailable (expected 200)")
+	r.Contains(text, "Target: https://api.acme.com/health")
 }
 
 // TestFormatter_IncidentNumberOmittedWhenZero pins the legacy-incident
@@ -123,7 +169,9 @@ func TestFormatter_FormatIncidentCreatedWithoutAckURL(t *testing.T) {
 
 	_, html, text, err := formatter.Format("incident-created.html", data)
 	r.NoError(err)
-	r.NotContains(html, "Acknowledge incident")
+	r.NotContains(html, "I&#39;m on it")
+	r.NotContains(html, "stops escalation", "no ack link, no explanation of it")
+	r.Contains(html, "View incident")
 	r.NotContains(text, "Acknowledge this incident")
 }
 
@@ -140,7 +188,7 @@ func TestFormatter_FormatIncidentCreatedWithSubjectPrefix(t *testing.T) {
 
 	subject, _, _, err := formatter.Format("incident-created.html", data)
 	r.NoError(err)
-	r.Equal("[Acme] [DOWN] Production API is down (#42)", subject)
+	r.Equal("[Acme] 🔴 Production API is down (#42)", subject)
 }
 
 func TestFormatter_FormatIncidentResolved(t *testing.T) {
@@ -154,11 +202,13 @@ func TestFormatter_FormatIncidentResolved(t *testing.T) {
 	subject, html, text, err := formatter.Format("incident-resolved.html", incidentViewModel())
 	r.NoError(err)
 
-	r.Equal("[RECOVERED] Production API is back up (#42)", subject)
-	r.Contains(html, "recovered")
+	r.Equal("🟢 Production API is back up after 15m0s (#42)", subject)
+	r.Regexp(checkNameHeadlinePattern+`is back up</h1>`, html)
+	r.Contains(html, `class="pill pill-recovered"`)
 	r.Contains(html, "15m0s")
 	r.Contains(html, "#42")
-	r.NotContains(html, "Acknowledge incident", "resolved events have nothing to ack")
+	r.Contains(html, "View incident")
+	r.NotContains(html, "I&#39;m on it", "resolved events have nothing to ack")
 	r.Contains(text, "recovered")
 	r.Contains(text, "15m0s")
 	r.Contains(text, "Incident: #42")
@@ -175,10 +225,11 @@ func TestFormatter_FormatIncidentEscalated(t *testing.T) {
 	subject, html, text, err := formatter.Format("incident-escalated.html", incidentViewModel())
 	r.NoError(err)
 
-	r.Equal("[ESCALATED] Production API incident escalated (#42)", subject)
+	r.Equal("🟠 Production API is still down, escalated (#42)", subject)
+	r.Regexp(checkNameHeadlinePattern+`is still down</h1>`, html)
 	r.Contains(html, "escalated")
-	r.Contains(html, "Failure count")
-	r.Contains(html, "3")
+	r.Regexp(`>Failed checks</td><td class="value"[^>]*>3</td>`, html)
+	r.Regexp(ackButtonPattern, html)
 	r.Contains(html, "#42")
 	r.Contains(text, "escalated")
 	r.Contains(text, "Failure count: 3")
@@ -196,9 +247,11 @@ func TestFormatter_FormatIncidentReopened(t *testing.T) {
 	subject, html, text, err := formatter.Format("incident-reopened.html", incidentViewModel())
 	r.NoError(err)
 
-	r.Equal("[REOPENED] Production API incident reopened (relapse #2) (#42)", subject)
-	r.Contains(html, "reopened")
-	r.Contains(html, "Relapse count")
+	r.Equal("🔴 Production API is down again (#42)", subject)
+	r.Regexp(checkNameHeadlinePattern+`is down again</h1>`, html)
+	r.Contains(html, `class="pill pill-reopened"`)
+	r.Contains(html, "(2 relapses so far)")
+	r.Regexp(ackButtonPattern, html)
 	r.Contains(html, "#42")
 	r.Contains(text, "reopened")
 	r.Contains(text, "Relapse count: 2")
@@ -222,8 +275,11 @@ func TestFormatter_FormatEscalation(t *testing.T) {
 		"CheckURL":       "https://example.com/d/orgs/acme/checks/9f8e7d6c-5b4a-4c2d-9e0f-abcdef012345",
 		"IncidentNumber": int64(42),
 		"IncidentURL":    "https://example.com/d/orgs/acme/incidents/inc-123",
-		"StartedAt":      "2026-07-05 10:00:00",
+		"StartedAt":      "Jul 5, 10:00 UTC",
 		"FailureCount":   3,
+		"FailureReason":  "HTTP 503 Service Unavailable (expected 200)",
+		"CheckTarget":    "https://api.acme.com/health",
+		"AckURL":         "https://example.com/api/v1/orgs/acme/incidents/inc-123/ack?token=abc",
 		"DashboardURL":   "https://example.com/d",
 		"DocsURL":        "https://example.com/docs",
 	}
@@ -231,21 +287,23 @@ func TestFormatter_FormatEscalation(t *testing.T) {
 	subject, html, text, err := formatter.Format("escalation.html", data)
 	r.NoError(err)
 
-	r.Contains(subject, "#42")
+	r.Equal("🟠 Production API is still down, escalated to you (#42)", subject)
 	r.NotEmpty(html, "escalation email must have an HTML part")
 	r.Contains(html, "#42")
 	r.Contains(html, "style=") // CSS inlined
+	r.Contains(html, "escalated to you")
+	r.Contains(html, `class="cause"`)
+	r.Contains(html, ">Target</td>")
+	r.Regexp(ackButtonPattern, html, "the person this wakes up can ack from the mail")
 	r.NotEmpty(text)
 	r.Contains(text, "Incident: #42")
+	r.Contains(text, "HTTP 503 Service Unavailable (expected 200)")
+	r.Contains(text, "Target: https://api.acme.com/health")
+	r.Contains(text, "I'm on it (acknowledge, stops escalation): "+
+		"https://example.com/api/v1/orgs/acme/incidents/inc-123/ack?token=abc")
 
-	// The details-table "Check" row must link the check name rather than
-	// render it bare (same requirement as incident-created.html).
-	r.Regexp(
-		`<td[^>]*class="value"[^>]*><a href="https://example\.com/d/orgs/acme/checks/`+
-			`9f8e7d6c-5b4a-4c2d-9e0f-abcdef012345"[^>]*>Production API</a></td>`,
-		html,
-		"the Check row must wrap the check name in an <a href> to CheckURL",
-	)
+	r.Regexp(checkNameHeadlinePattern+`is still down</h1>`, html,
+		"the headline must wrap the check name in an <a href> to CheckURL")
 	r.Contains(text, "Check URL: https://example.com/d/orgs/acme/checks/9f8e7d6c-5b4a-4c2d-9e0f-abcdef012345",
 		"the text part must carry the check URL explicitly since it cannot use an anchor")
 }
@@ -264,8 +322,7 @@ func TestFormatter_UnsubscribeFooterLink(t *testing.T) {
 
 	_, html, text, err := formatter.Format("incident-created.html", data)
 	r.NoError(err)
-	r.Contains(html, "Unsubscribe from alerts for Production API")
-	r.Contains(html, "https://example.com/unsubscribe?token=xyz")
+	r.Regexp(`<a href="https://example\.com/unsubscribe\?token=xyz"[^>]*>Stop alerts for Production API</a>`, html)
 	r.Contains(text, "Unsubscribe from alerts for Production API")
 }
 
@@ -532,6 +589,40 @@ func TestFormatter_TransactionalTemplates(t *testing.T) {
 	}
 }
 
+// TestFormatter_AccountMailFallbackLink pins the copy around the account-mail
+// buttons: no "Hi," greeting, and a fallback paragraph that carries the raw
+// link for when the button does not work.
+func TestFormatter_AccountMailFallbackLink(t *testing.T) {
+	t.Parallel()
+
+	formatter, err := NewFormatter()
+	require.NoError(t, err)
+
+	cases := []struct {
+		template string
+		data     map[string]any
+		url      string
+	}{
+		{"registration.html", map[string]any{"ConfirmURL": "https://x.test/c"}, "https://x.test/c"},
+		{"password-reset.html", map[string]any{"ResetURL": "https://x.test/r"}, "https://x.test/r"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.template, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+
+			_, html, _, err := formatter.Format(tc.template, tc.data)
+			r.NoError(err)
+			r.Regexp(`<p class="fallback"[^>]*>Button not working\? Paste this link into your browser:<br/?>`+
+				`<a href="`+regexp.QuoteMeta(tc.url)+`"`, html)
+			r.NotContains(html, "Or paste this link")
+			r.NotContains(html, "Hi,")
+		})
+	}
+}
+
 // TestFormatter_InvitationExpiryIsDynamic pins the fix for the invitation
 // template hardcoding "This invitation expires in 7 days" regardless of the
 // actual TTL (default 24h, range 1h-1w). Renders with a 1-hour ExpiresIn —
@@ -647,6 +738,34 @@ func TestFormatter_AllShippedTemplatesRenderCleanly(t *testing.T) {
 	}
 }
 
+func TestShorten(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		max  int
+		in   any
+		want string
+	}{
+		{"short value kept", 60, "HTTP 503", "HTTP 503"},
+		{"trimmed", 60, "  HTTP 503  ", "HTTP 503"},
+		{"first line only", 60, "HTTP 503\nbody: upstream error", "HTTP 503"},
+		{"exactly at the cap", 5, "abcde", "abcde"},
+		{"cut with ellipsis", 5, "abcdef", "abcd…"},
+		{"counts runes, not bytes", 4, "ééééé", "ééé…"},
+		{"no trailing space before the ellipsis", 6, "abcd efgh", "abcd…"},
+		{"nil", 60, nil, ""},
+		{"non-string", 60, 42, ""},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, shorten(tc.max, tc.in))
+		})
+	}
+}
+
 func TestDict(t *testing.T) {
 	t.Parallel()
 
@@ -722,7 +841,7 @@ func TestRegionOfflineAgreesWithCount(t *testing.T) {
 			"BlindCount": count,
 		})
 		r.NoError(err)
-		r.Equal("Region Tokyo (tokyo) is offline: "+want[0], subject)
+		r.Equal("🔴 Region Tokyo (tokyo) is offline: "+want[0], subject)
 		r.Contains(text, want[1])
 	}
 }

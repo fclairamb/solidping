@@ -1,12 +1,10 @@
-{{define "subject"}}{{if .SubjectPrefix}}{{.SubjectPrefix}} {{end}}[BURN CLEARED] {{.SLOName}} back under {{.BurnThreshold}}{{if gt .IncidentNumber 0}} (#{{.IncidentNumber}}){{end}}{{end}}
-{{define "preheader"}}Burn rate back under {{.BurnThreshold}} — {{.BurnBudgetRemaining}} of budget left.{{end}}
+{{define "subject"}}{{if .SubjectPrefix}}{{.SubjectPrefix}} {{end}}🟢 {{.SLOName}} is back under {{.BurnThreshold}}{{if gt .IncidentNumber 0}} (#{{.IncidentNumber}}){{end}}{{end}}
+{{define "preheader"}}Burn rate back under {{.BurnThreshold}}. {{.BurnBudgetRemaining}} of budget left.{{end}}
 {{template "base.html" .}}
 {{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "recovered" "Label" "Burn cleared"}}{{end}}
 {{define "content"}}
     <h1>{{.SLOName}} stopped burning</h1>
-    <p>Both windows of the <strong>{{.BurnPolicyLabel}}</strong> policy have stayed below {{.BurnThreshold}} for a full {{.BurnShortWindow}}, so the alert has resolved.</p>
-    {{/* The two numbers an on-call reader acts on, promoted out of a
-         nine-row grid where every fact carried the same weight. */}}
+    <p class="lead">The burn rate stayed under {{.BurnThreshold}} for {{.BurnShortWindow}}. The budget already spent does not come back.</p>
     <table class="metric" role="presentation" width="100%" cellpadding="0" cellspacing="0">
         <tr>
             <td align="center" width="50%">
@@ -15,25 +13,18 @@
             </td>
             <td align="center" width="50%">
                 <span class="metric-value">{{.BurnBudgetRemaining}}</span>
-                <span class="metric-label">Budget remaining</span>
+                <span class="metric-label">Budget left</span>
             </td>
         </tr>
     </table>
-
     <table class="details-table" role="presentation" cellpadding="0" cellspacing="0">
         <tr><td class="label">Objective</td><td class="value">{{.SLOName}} ({{.BurnTarget}})</td></tr>
-        <tr><td class="label">Policy</td><td class="value">{{.BurnPolicyLabel}} &middot; {{.BurnSeverity}}</td></tr>
         <tr><td class="label">Burn rate now</td><td class="value">{{.BurnRate}} over {{.BurnLongWindow}}</td></tr>
-        <tr><td class="label">Started at</td><td class="value">{{.StartedAt}}</td></tr>
-        <tr><td class="label">Resolved at</td><td class="value">{{.ResolvedAt}}</td></tr>
-        {{if .Duration}}<tr><td class="label">Duration</td><td class="value">{{.Duration}}</td></tr>{{end}}
-        {{if gt .IncidentNumber 0}}<tr><td class="label">Incident</td><td class="value">{{if .IncidentURL}}<a href="{{.IncidentURL}}">#{{.IncidentNumber}}</a>{{else}}#{{.IncidentNumber}}{{end}}</td></tr>{{end}}
+        <tr><td class="label">From</td><td class="value">{{.StartedAt}}</td></tr>
+        <tr><td class="label">Until</td><td class="value">{{.ResolvedAt}}{{if .Duration}} ({{.Duration}}){{end}}</td></tr>
+        {{if gt .IncidentNumber 0}}<tr><td class="label">Incident</td><td class="value">#{{.IncidentNumber}}</td></tr>{{end}}
     </table>
-    <p class="meta">The budget that was spent is not returned — only the burn rate came back down.</p>
-    {{if .IncidentURL}}
-    <div class="cta-wrap">{{template "button" dict "URL" .IncidentURL "Label" "View incident" "Variant" "primary"}}</div>
-    {{end}}
-    <p class="footnote">Incident reference <span class="mono">{{.IncidentUID}}</span> — quote it if you contact support.</p>
+    {{if .IncidentURL}}<div class="cta-wrap">{{template "button" dict "URL" .IncidentURL "Label" "View incident" "Variant" "secondary"}}</div>{{end}}
 {{end}}
 {{define "text"}}{{.SLOName}} stopped burning
 

@@ -3,16 +3,12 @@
 {{template "base.html" .}}
 {{define "content"}}
     <h1>You're invited to {{.OrgName}}</h1>
-    <p>Hi,</p>
     <p>{{if .InviterName}}{{.InviterName}} has invited you{{else}}You've been invited{{end}} to join <strong>{{.OrgName}}</strong> on SolidPing as <strong>{{.Role}}</strong>.</p>
     <div class="cta-wrap">{{template "button" dict "URL" .InviteURL "Label" "Accept invitation" "Variant" "success"}}</div>
-    <p>Or paste this link into your browser:</p>
-    <p class="fallback">{{link .InviteURL ""}}</p>
+    <p class="fallback">Button not working? Paste this link into your browser:<br>{{link .InviteURL ""}}</p>
     <p class="meta">This invitation expires in {{.ExpiresIn}}. If you weren't expecting this, you can safely ignore this email.</p>
 {{end}}
 {{define "text"}}You're invited to {{.OrgName}}
-
-Hi,
 
 {{if .InviterName}}{{.InviterName}} has invited you{{else}}You've been invited{{end}} to join {{.OrgName}} on SolidPing as {{.Role}}.
 

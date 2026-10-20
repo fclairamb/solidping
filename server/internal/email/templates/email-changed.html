@@ -3,14 +3,11 @@
 {{template "base.html" .}}
 {{define "content"}}
     <h1>Your email address was changed</h1>
-    <p>Hi,</p>
     <p>The email address of your SolidPing account was changed from {{.OldEmail}} to {{.NewEmail}} on {{.ChangedAt}}.</p>
     <p>You now sign in with {{.NewEmail}}. This address will no longer receive account emails.</p>
     <p class="meta">If this wasn't you, contact your administrator immediately. Your account may be compromised.</p>
 {{end}}
 {{define "text"}}Your email address was changed
-
-Hi,
 
 The email address of your SolidPing account was changed from {{.OldEmail}} to {{.NewEmail}} on {{.ChangedAt}}.
 

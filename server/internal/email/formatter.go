@@ -90,6 +90,7 @@ func NewFormatter(opts ...Option) (*TemplateFormatter, error) {
 		"link":   linkHTML,
 		"mailto": mailtoHTML,
 		"nolink": noLinkHTML,
+		"short":  shorten,
 		// absURL and productLogoURL close over the formatter so templates never
 		// have to know the base URL — no view model carries it.
 		"absURL":         formatter.absoluteURL,
@@ -97,6 +98,23 @@ func NewFormatter(opts ...Option) (*TemplateFormatter, error) {
 	}
 
 	return formatter, nil
+}
+
+// shorten keeps the first line of a value and caps it at maxRunes, with an
+// ellipsis when cut. A failure cause can be a multi-line probe output; a
+// subject line or preheader only has room for its first words.
+func shorten(maxRunes int, value any) string {
+	text := strings.TrimSpace(stringify(value))
+	if line, _, found := strings.Cut(text, "\n"); found {
+		text = strings.TrimSpace(line)
+	}
+
+	runes := []rune(text)
+	if len(runes) <= maxRunes {
+		return text
+	}
+
+	return strings.TrimSpace(string(runes[:maxRunes-1])) + "…"
 }
 
 // linkColorStyle is the inline style on every author-owned link. Gmail's

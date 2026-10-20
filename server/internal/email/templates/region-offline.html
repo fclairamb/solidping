@@ -1,10 +1,9 @@
-{{define "subject"}}Region {{.RegionName}} is offline: {{.BlindCount}} of your checks {{if eq .BlindCount 1}}is{{else}}are{{end}} not running{{end}}
+{{define "subject"}}🔴 Region {{.RegionName}} is offline: {{.BlindCount}} of your checks {{if eq .BlindCount 1}}is{{else}}are{{end}} not running{{end}}
 {{define "preheader"}}Since {{.Since}}, checks that run only from {{.RegionName}} are not being checked.{{end}}
 {{template "base.html" .}}
 {{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "down" "Label" "Region offline"}}{{end}}
 {{define "content"}}
     <h1>Region {{nolink .RegionName}} is offline</h1>
-    <p>Hi,</p>
     <p>
       The SolidPing region <strong>{{nolink .RegionName}}</strong> has been offline since
       <strong>{{.Since}}</strong>. {{.BlindCount}} of your checks in {{.OrgName}} {{if eq .BlindCount 1}}runs
@@ -27,8 +26,6 @@
     {{end}}
 {{end}}
 {{define "text"}}Region {{.RegionName}} is offline
-
-Hi,
 
 The SolidPing region {{.RegionName}} has been offline since {{.Since}}.
 {{.BlindCount}} of your checks in {{.OrgName}} {{if eq .BlindCount 1}}runs only from this region, so it is{{else}}run only from this region, so they are{{end}}

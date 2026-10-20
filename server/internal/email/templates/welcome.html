@@ -1,24 +1,24 @@
 {{define "subject"}}Welcome to SolidPing{{end}}
-{{define "preheader"}}Your account is ready — open the dashboard and add your first check.{{end}}
+{{define "preheader"}}Your account is ready. Add your first check in a minute.{{end}}
 {{template "base.html" .}}
 {{define "content"}}
     <h1>Welcome to SolidPing</h1>
-    <p>Hi,</p>
     {{if .message}}
     <p>{{.message}}</p>
     {{else}}
-    <p>Thanks for joining SolidPing. We'll help you keep your services healthy and let you know the moment something goes wrong.</p>
+    <p class="lead">Your account is ready. Three things take five minutes and make it useful:</p>
+    <table class="details-table" role="presentation" cellpadding="0" cellspacing="0">
+        <tr><td class="label">1. Add a check</td><td class="value">A website, an API, a DNS record, a cron job...</td></tr>
+        <tr><td class="label">2. Get alerted</td><td class="value">Email works now. Add Slack, SMS or a phone call if you want to be woken up.</td></tr>
+        <tr><td class="label">3. Share status</td><td class="value">A status page tells your users what is going on before they ask.</td></tr>
+    </table>
     {{end}}
     {{if .DashboardURL}}
-    <div class="cta-wrap">{{template "button" dict "URL" .DashboardURL "Label" "Open your dashboard" "Variant" "success"}}</div>
-    <p>Or paste this link into your browser:</p>
-    <p class="fallback">{{link .DashboardURL ""}}</p>
+    <div class="cta-wrap">{{template "button" dict "URL" .DashboardURL "Label" "Open your dashboard" "Variant" "primary"}}</div>
     {{end}}
-    <p class="meta">Need help getting started? Just reply to this email.</p>
+    <p class="meta">Questions? Reply to this email. A human reads it.</p>
 {{end}}
 {{define "text"}}Welcome to SolidPing
-
-Hi,
 
 {{if .message}}{{.message}}{{else}}Thanks for joining SolidPing. We'll help you keep your services healthy and let you know the moment something goes wrong.{{end}}
 {{if .DashboardURL}}

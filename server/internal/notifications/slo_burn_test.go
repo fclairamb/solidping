@@ -84,7 +84,7 @@ func TestBurnSummaryCarriesTheThreeDecidingNumbers(t *testing.T) {
 	r.Contains(lines[0], "31.0x")
 	r.Contains(lines[0], "14.4x")
 	r.Contains(lines[1], "1h30m")
-	r.Contains(lines[2], "2026-08-23 04:30:00 UTC")
+	r.Contains(lines[2], "Aug 23, 04:30 UTC")
 }
 
 // TestExhaustedBudgetNeverRendersANegativeDuration: "-3h12m remaining" is not a

@@ -9,23 +9,26 @@ path, so what it shows is what the mailer produces.
 ## Anatomy of a template
 
 ```gotemplate
-{{define "subject"}}[DOWN] {{.CheckName}} is down{{end}}
-{{define "preheader"}}The {{.CheckType}} check has been failing since {{.StartedAt}}.{{end}}
+{{define "subject"}}🔴 {{.CheckName}} is down{{end}}
+{{define "preheader"}}{{.FailureReason}}. Down since {{.StartedAt}}.{{end}}
 {{template "base.html" .}}
 {{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "down" "Label" "Down"}}{{end}}
 {{define "content"}}…{{end}}
 {{define "text"}}…{{end}}
 ```
 
-- **`subject`** — the mail header.
+- **`subject`** — the mail header. Incident and alert mail start with one state
+  emoji (🔴 down, 🟢 recovered, 🟠 escalated / unowned, 🟡 degraded, 🔵 acknowledged,
+  💬 comment, 🔥 SLO burn, ⚪ closed without recovery), then plain words: no
+  `[TAG]` brackets. A free-text cause goes through `short 60` (first line, capped).
 - **`preheader`** — *required*. The grey line the inbox shows next to the subject.
   Skipping it does not fail anything: `base.html` renders an empty hidden div and
   the client scrapes the first visible text instead, which is the "SolidPing"
   wordmark for an alert and a raw URL for a CTA mail. Pinned by
   `TestPreview_EveryTemplateShipsAPreheader`.
-- **`statusbanner`** — optional; incident mail overrides it with a full-width
-  colored bar (`down` / `recovered` / `escalated` / `reopened` / `comment` /
-  `acknowledged`). Templates that don't get the thin accent rule instead.
+- **`statusbanner`** — optional; incident mail overrides it with a 4px colored
+  stripe on top of the card and a tinted state pill above the headline (`down` /
+  `recovered` / `escalated` / `reopened` / `comment` / `acknowledged`).
 - **`content`** — the body, dropped into the card.
 - **`text`** — *required*. The plaintext alternative. It is also the only place a
   missing view-model key can be detected (see below).
@@ -38,14 +41,25 @@ path, so what it shows is what the mailer produces.
   `base.html` also styles `<th>` as a safety net, and
   `TestPreview_DetailRowsUseStyledCells` asserts the convention on top of it.
 - **Buttons go through the `button` partial** (`dict "URL" … "Label" … "Variant"
-  "primary|success|secondary"`), which emits a bulletproof table-based CTA. On
-  mobile, stacked action cells go full-width.
-- **Opaque identifiers are footnotes, not facts.** The incident UUID lives in a
-  `p.footnote` under the actions; the table carries what a woken-up human acts on.
+  "primary|secondary"`), which emits a bulletproof table-based CTA. On mobile,
+  stacked action cells go full-width. One primary button per mail.
+- **Actionable incident mail uses the `incident-actions` partial**: "I'm on it"
+  (the per-recipient ack link) as the primary button, "View incident" secondary.
+  The `cause` partial renders the recorded failure cause.
+- **Say each fact once.** The headline names the check, so the fact table does not
+  repeat it. No opaque identifiers in the HTML: the incident UUID stays in the
+  plaintext part only.
+- **The footer is for "why did I get this"**, which differs per mail: alerts have
+  the unsubscribe link, account mail says "if you didn't ask for this, ignore it"
+  in its own body. The shared footer never claims "someone used your address".
 - **Quoted human text uses `.quote`**, never `.fallback` — the latter is
   monospace with `word-break: break-all`, meant for URLs, and mangles prose.
-- **Timestamps carry their zone.** `notifications.mailTimestamp` renders UTC with
-  the suffix; a bare `2026-07-05 10:00:00` in an alert is unreadable on call.
+- **Timestamps go through `email.Timestamp`**: `Jul 5, 10:00 UTC`. Always the
+  zone, never seconds or the year.
+- **Incident mail threads.** `email.Message.ThreadID` (`email.IncidentThreadID`)
+  sets `In-Reply-To` / `References`, so Apple Mail and Thunderbird group every mail
+  of one incident. Gmail also requires an identical subject, so it keeps per-state
+  subjects apart (checked on a real inbox, 2026-10-21).
 - **No real company names** anywhere, fixtures included — see the root `AGENTS.md`.
 
 ## Rendering, and the traps in it
@@ -72,10 +86,11 @@ path, so what it shows is what the mailer produces.
   nothing — white text on white for the header and the status banner.
   `TestPreview_EveryGradientKeepsASolidFallback` scans every inlined style for
   the pair.
-- **The design is light-only, and says so.** `color-scheme: light only` plus the
-  matching meta tags stop Apple Mail / Outlook.com / Gmail-Android from
-  auto-inverting the palette — which recolors the status banner that carries the
-  whole meaning of an incident alert. "No dark styles" is not "renders in light".
+- **The light design is pinned, the dark one is designed.** `color-scheme: light
+  only` plus the matching meta tags stop Outlook.com / Gmail-Android from
+  auto-inverting the palette; the `prefers-color-scheme: dark` block in `base.html`
+  serves Apple Mail, Outlook Mac/iOS and Thunderbird. Every class that sets a color
+  needs its dark twin there. See [email-dark-mode](../features/email-dark-mode.md).
 - **`base.html` reads branding keys through the nil-tolerant `field` helper.**
   `html/template` *errors* on a missing struct field (a missing map key is merely
   nil), and the view models are a mix of maps and structs, so a direct

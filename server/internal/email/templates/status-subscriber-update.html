@@ -1,11 +1,11 @@
 {{define "subject"}}{{.Subject}}{{end}}
-{{define "preheader"}}{{.PageName}} — {{.Label}}.{{end}}
+{{define "preheader"}}{{.Label}}. {{short 120 .BodyMarkdown}}{{end}}
 {{template "base.html" .}}
 {{define "content"}}
     <p class="eyebrow">{{.Label}}</p>
     <h1>{{.Title}}</h1>
     {{if .BodyMarkdown}}<div class="prose">{{.BodyMarkdown}}</div>{{end}}
-    {{if .LinkURL}}<p class="cta-wrap"><a href="{{.LinkURL}}">More information</a></p>{{end}}
+    {{if .LinkURL}}<div class="cta-wrap">{{template "button" dict "URL" .LinkURL "Label" "View status page" "Variant" "primary"}}</div>{{end}}
     <p class="meta">You're receiving this because you subscribed to {{.PageName}}. <a href="{{.SubscriberUnsubscribeURL}}">Unsubscribe</a>.</p>
 {{end}}
 {{define "text"}}{{.Label}}

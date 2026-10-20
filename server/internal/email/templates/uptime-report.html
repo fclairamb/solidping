@@ -1,4 +1,4 @@
-{{define "subject"}}{{.OrgName}} uptime report — {{.PeriodLabel}}{{end}}
+{{define "subject"}}{{if .HasData}}{{.OrgName}}, {{.PeriodLabel}}: {{.AvailabilityPct}}% uptime{{else}}{{.OrgName}} uptime report, {{.PeriodLabel}}{{end}}{{end}}
 {{define "preheader"}}{{if .HasData}}{{.AvailabilityPct}}% availability{{else}}No availability data{{end}} · {{.IncidentCount}} incident(s) · {{.PeriodLabel}}.{{end}}
 {{template "base.html" .}}
 {{define "content"}}

@@ -175,6 +175,23 @@ func Sign(secret []byte, incidentUID, recipientEmail string, exp time.Time) stri
 	return sign(secret, payload)
 }
 
+// AckTokenTTL is how long an emailed acknowledge link works, counted from the
+// incident start. Short enough to limit the impact of a leaked email.
+const AckTokenTTL = 7 * 24 * time.Hour
+
+// AckURL composes the magic-link acknowledge URL for one recipient. Returns ""
+// when any input needed for a usable URL is missing, so the caller renders the
+// email without the button.
+func AckURL(baseURL, orgSlug, incidentUID, recipientEmail string, secret []byte, exp time.Time) string {
+	baseURL = strings.TrimRight(baseURL, "/")
+	if baseURL == "" || orgSlug == "" || incidentUID == "" || recipientEmail == "" || len(secret) == 0 {
+		return ""
+	}
+
+	return baseURL + "/api/v1/orgs/" + orgSlug + "/incidents/" + incidentUID +
+		"/ack?token=" + Sign(secret, incidentUID, recipientEmail, exp)
+}
+
 // Verify parses and validates an ack token issued by Sign. expectedIncidentUID
 // is the URL's incident UID — verifying it inside the payload defends against
 // re-using a token across incidents. Returns ErrPurposeMismatch (not
