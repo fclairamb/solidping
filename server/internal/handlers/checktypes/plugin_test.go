@@ -3,6 +3,7 @@ package checktypes
 import (
 	"encoding/json"
 	"net/http"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -12,14 +13,25 @@ import (
 	"github.com/fclairamb/solidping/server/internal/plugins"
 )
 
+// registryMu serializes tests that load plugins (writers) against tests whose
+// assertions need the set of registered types to stay put (readers).
+var registryMu sync.RWMutex //nolint:gochecknoglobals // test-wide lock around a process-wide registry
+
 // The schema endpoint and the check-types listing serve a plugin type with
 // its schema and the plugin's identity (spec 2026-10-17-05 §8).
+//
+// plugins.Load registers x-gopher in a process-wide registry and Close removes
+// it again, so the test holds registryMu for writing while it is loaded.
 func TestPluginTypeIsServed(t *testing.T) {
 	t.Parallel()
+	registryMu.Lock()
+	defer registryMu.Unlock()
+
 	r := require.New(t)
 
 	set := plugins.Load(t.Context(), "../../../../plugins", nil)
-	t.Cleanup(set.Close)
+	// Not t.Cleanup: that would run after the deferred unlock above.
+	defer set.Close()
 	r.Empty(set.Errors)
 
 	rec := get(t, schemaRouter(t), "/api/v1/checks/schema/x-gopher")
