@@ -19,7 +19,40 @@ var (
 	ErrNoSession        = errors.New("jmap: no session discovered")
 	ErrNoMailAccount    = errors.New("jmap: no account with mail capability")
 	ErrUnexpectedStatus = errors.New("jmap: unexpected HTTP status")
+	ErrResponseTooLarge = errors.New("jmap: response too large")
 )
+
+// maxResponseBody caps how much of a session or method answer the client
+// reads. The session URL comes from the integration, so an uncapped read lets
+// that host fill the server's memory (spec 2026-10-20-01). Email/get asks for
+// metadata only, so a real answer stays far below this.
+const maxResponseBody = 16 << 20
+
+// maxErrorSnippet caps how much of an error body goes into an error string.
+const maxErrorSnippet = 512
+
+// readBody reads at most maxResponseBody bytes of r.
+func readBody(r io.Reader) ([]byte, error) {
+	body, err := io.ReadAll(io.LimitReader(r, maxResponseBody+1))
+	if err != nil {
+		return nil, err
+	}
+
+	if len(body) > maxResponseBody {
+		return nil, ErrResponseTooLarge
+	}
+
+	return body, nil
+}
+
+// errorSnippet returns body short enough for an error message.
+func errorSnippet(body []byte) string {
+	if len(body) <= maxErrorSnippet {
+		return string(body)
+	}
+
+	return string(body[:maxErrorSnippet]) + "…[truncated]"
+}
 
 // DefaultClientTimeout is used by the underlying HTTP client for non-streaming
 // calls (session discovery, Call). EventSource uses its own no-timeout client.
@@ -113,13 +146,13 @@ func (c *Client) DiscoverSession(ctx context.Context) (*Session, error) {
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := readBody(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("read session body: %w", err)
 	}
 
 	if resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("%w: %d: %s", ErrUnexpectedStatus, resp.StatusCode, string(body))
+		return nil, fmt.Errorf("%w: %d: %s", ErrUnexpectedStatus, resp.StatusCode, errorSnippet(body))
 	}
 
 	var session Session
@@ -180,13 +213,13 @@ func (c *Client) Call(ctx context.Context, calls []MethodCall) (*Response, error
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := readBody(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("read response: %w", err)
 	}
 
 	if resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("%w: %d: %s", ErrUnexpectedStatus, resp.StatusCode, string(body))
+		return nil, fmt.Errorf("%w: %d: %s", ErrUnexpectedStatus, resp.StatusCode, errorSnippet(body))
 	}
 
 	var out Response

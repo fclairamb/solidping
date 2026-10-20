@@ -263,9 +263,13 @@ func (c *Client) doOnce(
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBody+1))
 	if err != nil {
 		return nil, fmt.Errorf("read response from %s: %w", path, err)
+	}
+
+	if len(respBody) > maxResponseBody {
+		return nil, fmt.Errorf("%w: %s %s", ErrResponseTooLarge, method, path)
 	}
 
 	if resp.StatusCode >= http.StatusInternalServerError {
@@ -306,6 +310,15 @@ func classifyError(env *APIResponse) error {
 		return fmt.Errorf("%w: %s (%s)", ErrAPI, env.Msg, env.ErrorCode)
 	}
 }
+
+// maxResponseBody caps how much of a Freebox API answer the client reads.
+// The base URL comes from the integration, so an uncapped read lets that
+// host fill the server's memory (spec 2026-10-20-01). Real answers are a few
+// KiB.
+const maxResponseBody = 1 << 20
+
+// ErrResponseTooLarge is returned when an answer goes over maxResponseBody.
+var ErrResponseTooLarge = errors.New("freebox: response too large")
 
 func truncate(b []byte, limit int) string {
 	if len(b) <= limit {
