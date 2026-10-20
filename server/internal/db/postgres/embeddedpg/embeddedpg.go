@@ -19,7 +19,7 @@ import (
 	"sync"
 	"time"
 
-	embeddedpostgres "github.com/fergusstrange/embedded-postgres"
+	embeddedpostgres "github.com/fergusstrange/embedded-postgres/v2"
 )
 
 // unifiedPrefix is the directory-name prefix used by every new instance
@@ -117,21 +117,15 @@ func (i *Instance) Stop() error {
 	return nil
 }
 
-// sharedBinariesPath is the ONE directory every instance extracts the
-// PostgreSQL binaries into and then reuses.
-//
-// It deliberately matches embedded-postgres's own default location
-// (~/.embedded-postgres-go/extracted) so an existing cache — including CI's
-// actions/cache of ~/.embedded-postgres-go — keeps working untouched. Sharing
-// it is safe and cheap: the library skips both download and extraction when
-// <binariesPath>/bin/pg_ctl already exists, under a package-level mutex
-// (embedded_postgres.go:150-167). What was never safe was sharing the RUNTIME
-// path, which Start() unconditionally deletes; see the comment at the
-// NewDatabase call.
+// sharedCachePath is the ONE directory every instance downloads and extracts
+// the PostgreSQL binaries into and then reuses (embedded-postgres v2 keeps one
+// subdirectory per distribution digest and takes care of concurrent access).
+// It sits under ~/.embedded-postgres-go so CI's actions/cache of that directory
+// keeps working.
 //
 // SP_TEST_PG_BINARIES_PATH overrides it for an environment where the home
 // directory is not writable.
-func sharedBinariesPath() string {
+func sharedCachePath() string {
 	if custom := os.Getenv("SP_TEST_PG_BINARIES_PATH"); custom != "" {
 		return custom
 	}
@@ -141,7 +135,7 @@ func sharedBinariesPath() string {
 		return filepath.Join(os.TempDir(), unifiedPrefix+"-binaries")
 	}
 
-	return filepath.Join(home, ".embedded-postgres-go", "extracted")
+	return filepath.Join(home, ".embedded-postgres-go", "v2")
 }
 
 // resolved holds an Options with every zero value replaced by its default, so
@@ -193,7 +187,7 @@ func resolveOptions(opts *Options) resolved {
 }
 
 // embeddedConfig builds the embedded-postgres config for one instance. See the
-// Start comment for why RuntimePath is private per instance while BinariesPath
+// Start comment for why RuntimePath is private per instance while CachePath
 // is shared.
 func embeddedConfig(opts *Options, dataDir, runtimeDir string) embeddedpostgres.Config {
 	res := resolveOptions(opts)
@@ -205,7 +199,7 @@ func embeddedConfig(opts *Options, dataDir, runtimeDir string) embeddedpostgres.
 		Password(res.password).
 		DataPath(dataDir).
 		RuntimePath(runtimeDir).
-		BinariesPath(sharedBinariesPath()).
+		CachePath(sharedCachePath()).
 		StartParameters(res.startParams)
 }
 
@@ -226,44 +220,20 @@ func Start(opts *Options) (*Instance, error) {
 		return nil, fmt.Errorf("failed to create embedded-postgres data dir: %w", err)
 	}
 
-	if markErr := writeOwnerMarker(dataDir, suite); markErr != nil {
-		_ = os.RemoveAll(dataDir)
-
-		return nil, fmt.Errorf("failed to write owner marker: %w", markErr)
-	}
-
 	// Each instance gets its OWN runtime directory, and they all share ONE
-	// binaries directory. Both halves matter.
-	//
-	// embedded-postgres opens Start() with an unconditional
-	// `os.RemoveAll(runtimePath)` (embedded_postgres.go:95), and when
-	// runtimePath is unset it defaults to the shared
-	// ~/.embedded-postgres-go/extracted — which is also where it puts the
-	// extracted binaries and the pwfile. So every instance was deleting the
-	// directory every other instance depends on. That is the shared-pwfile
-	// trap spec 2026-09-12-05 documented, and it is what made CI's new
-	// backend-postgres job fail wholesale with
-	//
-	//	unable to clean up runtime directory /home/runner/...
-	//
-	// once SP_TEST_REQUIRE_POSTGRES stopped letting it pass as a silent skip.
-	// A private runtimePath makes that RemoveAll touch only this instance.
-	//
-	// BinariesPath must then be set explicitly, because the library otherwise
-	// points it AT runtimePath (embedded_postgres.go:99-101) — which would
-	// re-extract (and on a cold cache re-download) PostgreSQL for every single
-	// instance, and would defeat the CI cache of ~/.embedded-postgres-go.
-	// A SIBLING of dataDir, never a child: embedded-postgres wipes the whole
-	// data path during init (cleanDataDirectoryAndInit ->
-	// os.RemoveAll(dataPath), embedded_postgres.go:171), which would take a
-	// nested runtime directory with it and leave the pwfile write failing with
-	// "unable to write password file".
-	//
-	// The name deliberately does NOT start with unifiedPrefix+"-", so the
-	// orphan sweep (sweep.go isCandidateDir) does not mistake this for an
+	// binaries cache (CachePath), so PostgreSQL is downloaded and extracted
+	// once, not once per instance, and CI's cache of ~/.embedded-postgres-go
+	// keeps paying off. embedded-postgres creates a uniquely named workspace
+	// inside the runtime path and never erases the path itself, so Stop
+	// removes it. The name deliberately does NOT start with unifiedPrefix+"-",
+	// so the orphan sweep (sweep.go isCandidateDir) does not mistake it for an
 	// instance directory missing its owner marker and delete it out from under
-	// a live instance. Stop removes it; a hard-killed process leaks only a
-	// directory holding a pwfile.
+	// a live instance. A hard-killed process leaks only that workspace.
+	//
+	// The data directory must be EMPTY when embedded-postgres initializes it
+	// (it refuses a non-empty directory without a PG_VERSION), so the owner
+	// marker is written only once the server is up. The window before that is
+	// covered by unmarkedGraceAge.
 	runtimeDir, err := os.MkdirTemp(os.TempDir(), "solidping-pgruntime-"+suite+"-*")
 	if err != nil {
 		_ = os.RemoveAll(dataDir)
@@ -280,16 +250,14 @@ func Start(opts *Options) (*Instance, error) {
 		return nil, fmt.Errorf("failed to start embedded postgres: %w", startErr)
 	}
 
-	// embedded-postgres wiped dataDir before initdb, owner marker included.
-	// Write it again now that the server is up, so a concurrent process's
-	// startup sweep keeps recognizing this instance as live (see
-	// unmarkedGraceAge for the window before this point).
+	// Now that the server is up, mark the instance as owned so a concurrent
+	// process's startup sweep recognizes it as live.
 	if markErr := writeOwnerMarker(dataDir, suite); markErr != nil {
 		_ = embeddedPG.Stop()
 		_ = os.RemoveAll(dataDir)
 		_ = os.RemoveAll(runtimeDir)
 
-		return nil, fmt.Errorf("failed to rewrite owner marker: %w", markErr)
+		return nil, fmt.Errorf("failed to write owner marker: %w", markErr)
 	}
 
 	res := resolveOptions(opts)

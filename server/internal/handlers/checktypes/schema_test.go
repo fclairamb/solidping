@@ -96,6 +96,11 @@ func TestGetConfigSchemaUnknownTypeIs404(t *testing.T) {
 // reminder that keeps a reader from mistaking these for the validator.
 func TestListConfigSchemasIsACatalog(t *testing.T) {
 	t.Parallel()
+	// A plugin type listed by the catalog must still be registered when its ref
+	// is fetched, so no plugin may load or unload in between.
+	registryMu.RLock()
+	defer registryMu.RUnlock()
+
 	r := require.New(t)
 
 	rec := get(t, schemaRouter(t), "/api/v1/checks/schema")
