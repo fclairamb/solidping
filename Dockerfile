@@ -90,7 +90,7 @@ RUN bun run build
 # (`docker build --target backend-deps .`); the image itself is only built on
 # tags. Every local `replace` target in server/go.mod needs its go.mod/go.sum
 # copied here, or `go mod download` fails before the source is copied in.
-FROM --platform=$BUILDPLATFORM golang:1.27.2-trixie AS backend-deps
+FROM --platform=$BUILDPLATFORM golang:1.27.3-trixie AS backend-deps
 
 WORKDIR /build
 
