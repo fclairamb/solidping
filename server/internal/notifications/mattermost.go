@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -82,9 +81,9 @@ func (s *MattermostSender) Send(ctx context.Context, jctx *jobdef.JobContext, pa
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 300 {
-		respBody, _ := io.ReadAll(resp.Body)
+		respBody, _ := readCappedBody(resp.Body, senderMaxResponseBody)
 
-		return fmt.Errorf("%w: status %d: %s", errMattermostWebhookFailed, resp.StatusCode, string(respBody))
+		return fmt.Errorf("%w: status %d: %s", errMattermostWebhookFailed, resp.StatusCode, bodySnippet(respBody))
 	}
 
 	return nil

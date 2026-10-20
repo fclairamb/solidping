@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -104,10 +103,14 @@ func (s *ZulipSender) Send(ctx context.Context, _ *jobdef.JobContext, payload *P
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	respBody, _ := io.ReadAll(resp.Body)
+	respBody, truncated := readCappedBody(resp.Body, senderMaxResponseBody)
 
 	if resp.StatusCode >= 300 {
-		return fmt.Errorf("%w: status %d: %s", errZulipRequestFailed, resp.StatusCode, string(respBody))
+		return fmt.Errorf("%w: status %d: %s", errZulipRequestFailed, resp.StatusCode, bodySnippet(respBody))
+	}
+
+	if truncated {
+		return fmt.Errorf("%w: %w", errZulipRequestFailed, ErrSenderResponseTooLarge)
 	}
 
 	var apiResp zulipAPIResponse

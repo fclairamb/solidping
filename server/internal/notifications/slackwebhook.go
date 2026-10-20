@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -71,9 +70,9 @@ func (s *SlackWebhookSender) Send(ctx context.Context, jctx *jobdef.JobContext, 
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 300 {
-		respBody, _ := io.ReadAll(resp.Body)
+		respBody, _ := readCappedBody(resp.Body, senderMaxResponseBody)
 
-		return fmt.Errorf("%w: status %d: %s", errSlackWebhookFailed, resp.StatusCode, string(respBody))
+		return fmt.Errorf("%w: status %d: %s", errSlackWebhookFailed, resp.StatusCode, bodySnippet(respBody))
 	}
 
 	return nil
