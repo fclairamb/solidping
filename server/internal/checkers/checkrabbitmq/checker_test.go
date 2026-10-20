@@ -1,12 +1,14 @@
 package checkrabbitmq_test
 
 import (
+	"bytes"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -23,6 +25,26 @@ type managementServer struct {
 	alarmsBody   string
 	nodesStatus  int
 	nodesBody    string
+	// alarmsStream / nodesStream, when set, replace the body with that many
+	// bytes streamed until the client stops reading; written counts them.
+	alarmsStream int
+	nodesStream  int
+	written      *atomic.Int64
+}
+
+// stream writes up to size bytes, stopping as soon as the client hangs up.
+func (s managementServer) stream(w http.ResponseWriter, size int) {
+	chunk := bytes.Repeat([]byte("x"), 32<<10)
+
+	for sent := 0; sent < size; {
+		n, err := w.Write(chunk)
+		sent += n
+		s.written.Add(int64(n))
+
+		if err != nil {
+			return
+		}
+	}
 }
 
 func (s managementServer) start(t *testing.T) *httptest.Server {
@@ -38,6 +60,12 @@ func (s managementServer) start(t *testing.T) *httptest.Server {
 
 			w.WriteHeader(status)
 
+			if s.alarmsStream > 0 {
+				s.stream(w, s.alarmsStream)
+
+				return
+			}
+
 			body := s.alarmsBody
 			if body == "" {
 				body = `{"status":"ok"}`
@@ -51,6 +79,13 @@ func (s managementServer) start(t *testing.T) *httptest.Server {
 			}
 
 			w.WriteHeader(status)
+
+			if s.nodesStream > 0 {
+				s.stream(w, s.nodesStream)
+
+				return
+			}
+
 			_, _ = w.Write([]byte(s.nodesBody))
 		default:
 			w.WriteHeader(http.StatusNotFound)
@@ -262,4 +297,44 @@ func TestExecuteManagement_ZeroMemLimitWithPercentThresholdDoesNotPanic(t *testi
 		// overall status stayed Up (nothing to put in the error field).
 		r.NotEmpty(result.Output["notes"])
 	})
+}
+
+// oversizedManagementBody is far over the checker's 1 MiB cap; the margin
+// covers kernel socket buffers filled before the client hangs up.
+const (
+	oversizedManagementBody = 64 << 20
+	managementReadMargin    = 9 << 20
+)
+
+// TestExecuteManagement_OversizedAlarmsAnswerFails: a management endpoint
+// streaming an endless 200 body fails the check with a "too large" error and
+// is not read whole (spec 2026-10-20-01).
+func TestExecuteManagement_OversizedAlarmsAnswerFails(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	written := &atomic.Int64{}
+	srv := managementServer{
+		alarmsStream: oversizedManagementBody, nodesBody: oneNodeUnderThreshold, written: written,
+	}.start(t)
+	result := runManagementCheck(t, srv, nil)
+
+	r.Equal(checkerdef.StatusDown, result.Status)
+	r.Contains(result.Output[checkerdef.OutputKeyError], "management API response too large")
+	r.Less(written.Load(), int64(managementReadMargin))
+}
+
+// TestExecuteManagement_OversizedNodesAnswerFails: same for /api/nodes, which
+// fails the nodes fetch instead of parsing a truncated body.
+func TestExecuteManagement_OversizedNodesAnswerFails(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	written := &atomic.Int64{}
+	srv := managementServer{nodesStream: oversizedManagementBody, written: written}.start(t)
+	result := runManagementCheck(t, srv, map[string]any{"memoryUsedCritical": "90%"})
+
+	r.Equal(checkerdef.StatusDown, result.Status)
+	r.Contains(result.Output["nodes_error"], "management API response too large")
+	r.Less(written.Load(), int64(managementReadMargin))
 }
