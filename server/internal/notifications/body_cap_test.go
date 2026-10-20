@@ -75,7 +75,8 @@ func bodyCapCases() []bodyCapCase {
 
 	return []bodyCapCase{
 		{name: "googlechat", oversizeStatus: http.StatusInternalServerError, send: func(url string) error {
-			return (&GoogleChatSender{}).Send(ctx, newJobCtx(), googleChatPayload(models.JSONMap{"webhook_url": url + "/v1/spaces/A/messages?key=k"}))
+			return (&GoogleChatSender{}).Send(ctx, newJobCtx(),
+				googleChatPayload(models.JSONMap{"webhook_url": url + "/v1/spaces/A/messages?key=k"}))
 		}},
 		{name: "gotify", oversizeStatus: http.StatusInternalServerError, send: func(url string) error {
 			return (&GotifySender{}).Send(ctx, newJobCtx(), gotifyPayload(eventTypeIncidentCreated,

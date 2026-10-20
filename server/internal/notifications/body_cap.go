@@ -22,10 +22,10 @@ const senderErrorSnippet = 512
 // response that goes over senderMaxResponseBody.
 var ErrSenderResponseTooLarge = errors.New("response body too large")
 
-// readCappedBody reads at most limit bytes of body. truncated reports that
-// the body had more than limit bytes; the rest is never read.
-func readCappedBody(body io.Reader, limit int64) (data []byte, truncated bool) {
-	data, _ = io.ReadAll(io.LimitReader(body, limit+1))
+// readCappedBody reads at most limit bytes of body. The bool reports that the
+// body had more than limit bytes; the rest is never read.
+func readCappedBody(body io.Reader, limit int64) ([]byte, bool) {
+	data, _ := io.ReadAll(io.LimitReader(body, limit+1))
 	if int64(len(data)) > limit {
 		return data[:limit], true
 	}
