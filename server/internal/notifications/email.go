@@ -659,6 +659,7 @@ func buildIncidentViewModel(
 		"AckURL":         ackURL,
 		"FailureCount":   payload.Incident.FailureCount,
 		"RelapseCount":   payload.Incident.RelapseCount,
+		"HasRelapses":    payload.Incident.RelapseCount > 1, // a bool: the email job decodes numbers as float64
 		"DashboardURL":   dashboardRootURL(payload.AppBaseURL),
 		"DocsURL":        docsURL(payload.AppBaseURL),
 		"CheckDeleted":   ResolvedByCheckDeletion(payload.Incident),
@@ -695,7 +696,7 @@ func buildIncidentViewModel(
 	if payload.Comment != nil {
 		viewModel["CommentText"] = commentText(payload.Comment)
 		viewModel["CommentAuthor"] = commentAuthorIn(loc, payload.Comment)
-		viewModel["CommentChannel"] = commentChannelIn(loc, payload.Comment)
+		viewModel["CommentVia"] = commentViaIn(loc, payload.Comment)
 	}
 
 	// Both halves of the acknowledgment pair render the same attribution: the
@@ -705,6 +706,7 @@ func buildIncidentViewModel(
 		payload.EventType == eventTypeIncidentUnacknowledged {
 		viewModel["AckActor"] = ackActorIn(loc, payload.Acknowledgment)
 		viewModel["AckChannel"] = ackChannelIn(loc, payload.Acknowledgment)
+		viewModel["AckVia"] = ackViaIn(loc, payload.Acknowledgment)
 	}
 
 	if payload.EventType == eventTypeIncidentReminder {

@@ -9,6 +9,13 @@
     "email": "email",
     "phone": "phone"
   },
+  "via": {
+    "slack": "via Slack",
+    "discord": "via Discord",
+    "telegram": "via Telegram",
+    "email": "via email",
+    "phone": "via phone"
+  },
   "pill": {
     "down": "Down",
     "recovered": "Recovered",
@@ -37,6 +44,7 @@
     "cause": "Cause",
     "downFrom": "Down from",
     "backAt": "Back at",
+    "closedAt": "Back at",
     "via": "Via",
     "ackAt": "At",
     "acknowledgedBy": "Acknowledged by",
@@ -111,10 +119,10 @@
     "subject": "{author} on {check}",
     "preheader": "{author} left a note on the {check} incident.",
     "title": "{author} commented on {check}",
-    "posted": "Posted via {channel}.",
+    "posted": "Posted {via}.",
     "textTitle": "New comment on {check}",
     "textBody": "{author} commented on the incident for {check}:",
-    "textBodyVia": "{author} commented via {channel} on the incident for {check}:"
+    "textBodyVia": "{author} commented {via} on the incident for {check}:"
   },
   "acknowledged": {
     "title": "{actor} is on {check}",
@@ -122,17 +130,17 @@
     "lead": "Escalation stopped. The incident stays open until checks pass again.",
     "textTitle": "{check} was acknowledged",
     "textBody": "{actor} acknowledged the incident for {check}. Escalation has stopped: nobody else needs to pick this up.",
-    "textBodyVia": "{actor} acknowledged via {channel} the incident for {check}. Escalation has stopped: nobody else needs to pick this up.",
+    "textBodyVia": "{actor} acknowledged {via} the incident for {check}. Escalation has stopped: nobody else needs to pick this up.",
     "textStillOpen": "The incident is still open: acknowledging says someone is on it, not that it is fixed."
   },
   "unacknowledged": {
     "title": "Nobody is on {check} anymore",
     "preheader": "{actor} withdrew the acknowledgment. The incident is unowned again and escalation resumes.",
     "lead": "<strong>{actor}</strong> withdrew the acknowledgment. Escalation resumes where it stopped. Pages already sent are not repeated.",
-    "leadVia": "<strong>{actor}</strong> withdrew the acknowledgment via {channel}. Escalation resumes where it stopped. Pages already sent are not repeated.",
+    "leadVia": "<strong>{actor}</strong> withdrew the acknowledgment {via}. Escalation resumes where it stopped. Pages already sent are not repeated.",
     "textTitle": "{check} is unowned again",
     "textBody": "{actor} withdrew the acknowledgment on the incident for {check}. Nobody is on it.",
-    "textBodyVia": "{actor} withdrew the acknowledgment via {channel} on the incident for {check}. Nobody is on it.",
+    "textBodyVia": "{actor} withdrew the acknowledgment {via} on the incident for {check}. Nobody is on it.",
     "textResume": "Escalation resumes from the step the acknowledgment interrupted, so the pages that already went out are not repeated."
   },
   "reminder": {

@@ -75,6 +75,7 @@ func TestSharedProducersKeepTheirEnglish(t *testing.T) {
 		r.Equal(want, ackViaLabel(ack), via)
 		r.Equal(strings.TrimPrefix(want, "via "), ackViaName(ack), via)
 		r.Equal(ackViaName(ack), ackChannelIn(i18n.English, ack), via)
+		r.Equal(ackViaLabel(ack), ackViaIn(i18n.English, ack), via)
 	}
 
 	for source, want := range map[string]string{
@@ -83,6 +84,7 @@ func TestSharedProducersKeepTheirEnglish(t *testing.T) {
 		comment := &CommentInfo{Source: source}
 		r.Equal(want, commentSourceLabel(comment), source)
 		r.Equal(strings.TrimPrefix(want, "via "), commentChannelIn(i18n.English, comment), source)
+		r.Equal(commentSourceLabel(comment), commentViaIn(i18n.English, comment), source)
 	}
 
 	reminder := &Payload{
@@ -182,14 +184,19 @@ func TestProducersInFrench(t *testing.T) {
 	r.Equal("téléphone", ackChannelIn(langFR(), &AckInfo{Via: "phone"}))
 	r.Empty(ackChannelIn(langFR(), &AckInfo{Via: "web"}))
 	r.Equal("Telegram", commentChannelIn(langFR(), &CommentInfo{Source: "telegram"}))
+	r.Equal("par téléphone", ackViaIn(langFR(), &AckInfo{Via: "phone"}))
+	r.Equal("par e-mail", ackViaIn(langFR(), &AckInfo{Via: "email"}))
+	r.Equal("via Slack", commentViaIn(langFR(), &CommentInfo{Source: "slack"}))
+	r.Empty(commentViaIn(langFR(), &CommentInfo{Source: "web"}))
+	r.Empty(ackViaIn(langFR(), nil))
 
 	now := time.Date(2026, time.July, 5, 11, 15, 0, 0, time.UTC)
 	reminder := &Payload{Incident: &models.Incident{StartedAt: now.Add(-75 * time.Minute)}, ReminderSeq: 3}
-	r.Equal("Toujours en panne depuis 1"+nbsp+"h 15"+nbsp+"min, non acquitté (relance 3)",
+	r.Equal("Toujours en panne depuis 1"+nbsp+"h 15"+nbsp+"min, incident non acquitté (relance n°"+nbsp+"3)",
 		reminderSentenceIn(langFR(), reminder, now))
 
 	reminder.ReminderSeq = 0
-	r.Equal("Toujours en panne depuis 1"+nbsp+"h 15"+nbsp+"min, non acquitté",
+	r.Equal("Toujours en panne depuis 1"+nbsp+"h 15"+nbsp+"min, incident non acquitté",
 		reminderSentenceIn(langFR(), reminder, now))
 
 	title, text := regionLabelForIn(langFR(), localeRegionPayload(string(models.EventTypeIncidentCreated)))
@@ -205,7 +212,7 @@ func TestProducersInFrench(t *testing.T) {
 	info := localeDegradedInfo()
 	r.Equal("7 échecs sur les 60 dernières sondes (93,8"+nbsp+"% de disponibilité) "+
 		"et 3 des 6 dernières sondes ont dépassé 1000"+nbsp+"ms", info.reasonIn(langFR()))
-	r.Equal("Actuellement en ligne.", info.statusTextIn(langFR()))
+	r.Equal("Actuellement opérationnel.", info.statusTextIn(langFR()))
 	r.Equal("16:02 – 16:47 CEST", info.windowTextIn(langFR()), "the reader's zone")
 	r.Equal("7 échecs sur les 60 dernières sondes (93,8"+nbsp+"% de disponibilité) (règle : 5 sur 60 sondes)",
 		info.failureLineIn(langFR()))
@@ -225,8 +232,8 @@ func TestProducersInFrench(t *testing.T) {
 	r.Equal("épuisé", burn.budgetRemainingTextIn(langFR()))
 
 	burn.ProjectedExhaustion = time.Time{}
-	r.Equal("pas prévu dans cette fenêtre", burn.projectedExhaustionTextIn(langFR()))
-	r.Equal("Vérification inconnue", emailCheckName(langFR(), &models.Check{}))
+	r.Equal("au-delà de cette fenêtre", burn.projectedExhaustionTextIn(langFR()))
+	r.Equal("Contrôle inconnu", emailCheckName(langFR(), &models.Check{}))
 }
 
 func TestProducersInGermanAndSpanish(t *testing.T) {
@@ -237,6 +244,12 @@ func TestProducersInGermanAndSpanish(t *testing.T) {
 	r.Equal("E-Mail", ackChannelIn(langDE(), &AckInfo{Via: "email"}))
 	r.Equal("Alguien", commentAuthorIn(langES(), nil))
 	r.Equal("correo", ackChannelIn(langES(), &AckInfo{Via: "email"}))
+	r.Equal("telefonisch", ackViaIn(langDE(), &AckInfo{Via: "phone"}))
+	r.Equal("per E-Mail", ackViaIn(langDE(), &AckInfo{Via: "email"}))
+	r.Equal("über Slack", commentViaIn(langDE(), &CommentInfo{Source: "slack"}))
+	r.Equal("por correo", ackViaIn(langES(), &AckInfo{Via: "email"}))
+	r.Equal("vía Telegram", commentViaIn(langES(), &CommentInfo{Source: "telegram"}))
+	r.Equal("Check desconocido", emailCheckName(langES(), &models.Check{}))
 
 	now := time.Date(2026, time.July, 5, 11, 15, 0, 0, time.UTC)
 	reminder := &Payload{Incident: &models.Incident{StartedAt: now.Add(-51 * time.Hour)}, ReminderSeq: 2}
@@ -250,6 +263,7 @@ func TestProducersInGermanAndSpanish(t *testing.T) {
 	r.Equal("1 de las últimas 6 sondas tardó más de 1000"+nbsp+"ms", slowOne.reasonIn(langES()))
 	r.Equal("ein intermittierendes Muster wurde erkannt", (&DegradedInfo{}).reasonIn(langDE()))
 	r.Equal("Ahora mismo no funciona.", (&DegradedInfo{}).statusTextIn(langES()))
+	r.Equal("Derzeit nicht verfügbar.", (&DegradedInfo{}).statusTextIn(langDE()))
 
 	_, text := regionLabelForIn(langES(), localeRegionPayload(eventTypeIncidentReminder))
 	r.Equal("🇪🇺 Europe West, 🇺🇸 US East (2 de 3 regiones)", text) //nolint:misspell // Spanish copy

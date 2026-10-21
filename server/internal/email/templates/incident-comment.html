@@ -5,7 +5,7 @@
 {{define "content"}}
     {{$check := nolink .CheckName}}{{if .CheckURL}}{{$check = tHTML "incident.checkLink" "url" .CheckURL "check" $check}}{{end}}
     <h1>{{tHTML "incident.comment.title" "author" .CommentAuthor "check" $check}}</h1>
-    {{if .CommentChannel}}<p class="meta">{{t "incident.comment.posted" "channel" .CommentChannel}}</p>{{end}}
+    {{if .CommentVia}}<p class="meta">{{t "incident.comment.posted" "via" .CommentVia}}</p>{{end}}
     <blockquote class="quote">{{.CommentText}}</blockquote>
     <table class="details-table" role="presentation" cellpadding="0" cellspacing="0">
         <tr><td class="label">{{t "common.labels.since"}}</td><td class="value">{{date .StartedAt}}</td></tr>
@@ -15,7 +15,7 @@
 {{end}}
 {{define "text"}}{{t "incident.comment.textTitle" "check" .CheckName}}
 
-{{if .CommentChannel}}{{t "incident.comment.textBodyVia" "author" .CommentAuthor "channel" .CommentChannel "check" .CheckName}}{{else}}{{t "incident.comment.textBody" "author" .CommentAuthor "check" .CheckName}}{{end}}
+{{if .CommentVia}}{{t "incident.comment.textBodyVia" "author" .CommentAuthor "via" .CommentVia "check" .CheckName}}{{else}}{{t "incident.comment.textBody" "author" .CommentAuthor "check" .CheckName}}{{end}}
 
 {{.CommentText}}
 

@@ -109,11 +109,17 @@ func commentPlainBody(payload *Payload) string {
 // for surfaces that have room for it. Empty for the dashboard, which is the
 // unremarkable case.
 func commentSourceLabel(comment *CommentInfo) string {
-	if name := commentChannelIn(i18n.English, comment); name != "" {
-		return "via " + name
+	return commentViaIn(i18n.English, comment)
+}
+
+// commentViaIn says where a comment was typed ("via Slack"), in the reader's
+// language, or "" for the sources commentChannelIn does not name.
+func commentViaIn(loc i18n.Locale, comment *CommentInfo) string {
+	if commentChannelIn(loc, comment) == "" {
+		return ""
 	}
 
-	return ""
+	return viaPhraseIn(loc, comment.Source)
 }
 
 // commentChannelIn names the channel a comment was typed in ("Slack",

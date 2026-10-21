@@ -16,7 +16,7 @@
 {{end}}
 {{define "text"}}{{t "incident.acknowledged.textTitle" "check" .CheckName}}
 
-{{if .AckChannel}}{{t "incident.acknowledged.textBodyVia" "actor" .AckActor "channel" .AckChannel "check" .CheckName}}{{else}}{{t "incident.acknowledged.textBody" "actor" .AckActor "check" .CheckName}}{{end}}
+{{if .AckVia}}{{t "incident.acknowledged.textBodyVia" "actor" .AckActor "via" .AckVia "check" .CheckName}}{{else}}{{t "incident.acknowledged.textBody" "actor" .AckActor "check" .CheckName}}{{end}}
 
 {{t "incident.acknowledged.textStillOpen"}}
 

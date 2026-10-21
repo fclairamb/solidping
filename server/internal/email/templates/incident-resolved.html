@@ -15,7 +15,7 @@
     <table class="details-table" role="presentation" cellpadding="0" cellspacing="0">
         {{if .FailureReason}}<tr><td class="label">{{t "incident.labels.cause"}}</td><td class="value">{{.FailureReason}}</td></tr>{{end}}
         <tr><td class="label">{{t "incident.labels.downFrom"}}</td><td class="value">{{date .StartedAt}}</td></tr>
-        <tr><td class="label">{{t "incident.labels.backAt"}}</td><td class="value">{{date .ResolvedAt}}</td></tr>
+        <tr><td class="label">{{if .CheckDeleted}}{{t "incident.labels.closedAt"}}{{else}}{{t "incident.labels.backAt"}}{{end}}</td><td class="value">{{date .ResolvedAt}}</td></tr>
         {{if .RegionText}}<tr><td class="label">{{.RegionTitle}}</td><td class="value">{{.RegionText}}</td></tr>{{end}}
         {{if .IncidentNumber}}<tr><td class="label">{{t "common.labels.incident"}}</td><td class="value">#{{.IncidentNumber}}</td></tr>{{end}}
     </table>

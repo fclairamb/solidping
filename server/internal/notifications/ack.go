@@ -59,12 +59,34 @@ func ackActorIn(loc i18n.Locale, ack *AckInfo) string {
 // ("Slack", "email"), in the reader's language. Empty when the channel is
 // unknown or is the dashboard: "via web" is noise nobody needs.
 func channelNameIn(loc i18n.Locale, channel string) string {
+	if key := channelKey(channel); key != "" {
+		return loc.T("incident.channel." + key)
+	}
+
+	return ""
+}
+
+// channelKey is the catalog key of a channel a mail names, or "" for the
+// dashboard and for unknown channels.
+func channelKey(channel string) string {
 	switch key := strings.ToLower(strings.TrimSpace(channel)); key {
 	case "slack", "discord", "telegram", "email", "phone":
-		return loc.T("incident.channel." + key)
+		return key
 	default:
 		return ""
 	}
+}
+
+// viaPhraseIn is how a sentence says where something came from ("via Slack"),
+// in the reader's language. The preposition depends on the channel (French
+// says "via Slack" but "par e-mail"), so the whole phrase is one catalog
+// entry. Empty exactly when channelNameIn is.
+func viaPhraseIn(loc i18n.Locale, channel string) string {
+	if key := channelKey(channel); key != "" {
+		return loc.T("incident.via." + key)
+	}
+
+	return ""
 }
 
 // ackChannelIn names the channel an acknowledgment came from, or "".
@@ -76,15 +98,21 @@ func ackChannelIn(loc i18n.Locale, ack *AckInfo) string {
 	return channelNameIn(loc, ack.Via)
 }
 
+// ackViaIn says where an acknowledgment came from ("via Slack"), in the
+// reader's language, or "".
+func ackViaIn(loc i18n.Locale, ack *AckInfo) string {
+	if ack == nil {
+		return ""
+	}
+
+	return viaPhraseIn(loc, ack.Via)
+}
+
 // ackViaLabel renders where the acknowledgment came from, e.g. "via Slack".
 // Empty when the channel is unknown or is the dashboard, exactly like an
 // unremarkable comment source.
 func ackViaLabel(ack *AckInfo) string {
-	if name := ackViaName(ack); name != "" {
-		return "via " + name
-	}
-
-	return ""
+	return ackViaIn(i18n.English, ack)
 }
 
 // ackViaName is ackViaLabel without the leading "via", for the surfaces that

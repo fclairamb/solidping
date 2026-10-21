@@ -39,6 +39,7 @@ func incidentViewModel() map[string]any {
 		"DocsURL":        "https://example.com/docs",
 		"FailureCount":   3,
 		"RelapseCount":   2,
+		"HasRelapses":    true,
 		"ResolvedAt":     "2026-07-05 10:15:00",
 		"Duration":       "15m0s",
 		"SubjectPrefix":  "",

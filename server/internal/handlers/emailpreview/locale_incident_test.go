@@ -4,11 +4,14 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/i18n"
+	"github.com/fclairamb/solidping/server/internal/notifications"
 )
 
 // nb is the no-break space fr, de and es put between a number and its unit.
@@ -43,7 +46,7 @@ func incidentLocaleCases() []incidentLocaleCase {
 			template: "incident-escalated.html",
 			subject: map[string]string{
 				"fr": "🟠 Production API est toujours en panne, incident escaladé (#42)",
-				"de": "🟠 Production API ist weiterhin ausgefallen, eskaliert (#42)",
+				"de": "🟠 Production API ist weiterhin ausgefallen, Vorfall eskaliert (#42)",
 				"es": "🟠 Production API sigue caído, incidente escalado (#42)",
 			},
 			text: map[string]string{
@@ -110,14 +113,14 @@ func incidentLocaleCases() []incidentLocaleCase {
 		{
 			template: "incident-comment.html",
 			subject: map[string]string{
-				"fr": "💬 Commentaire de Bob Builder sur Production API (#42)",
-				"de": "💬 Kommentar von Bob Builder zu Production API (#42)",
-				"es": "💬 Comentario de Bob Builder en Production API (#42)",
+				"fr": "💬 Bob Builder a commenté l'incident de Production API (#42)",
+				"de": "💬 Bob Builder hat den Vorfall von Production API kommentiert (#42)",
+				"es": "💬 Bob Builder comentó en el incidente de Production API (#42)",
 			},
 			text: map[string]string{
 				"fr": "Bob Builder a commenté l'incident de Production API via Slack :",
 				"de": "Bob Builder hat den Vorfall von Production API über Slack kommentiert:",
-				"es": "Bob Builder comentó el incidente de Production API vía Slack:",
+				"es": "Bob Builder comentó en el incidente de Production API vía Slack:",
 			},
 		},
 		{
@@ -128,7 +131,7 @@ func incidentLocaleCases() []incidentLocaleCase {
 				"es": "🔴 Production API sigue caído y nadie se encarga (#42)",
 			},
 			text: map[string]string{
-				"fr": "Toujours en panne depuis 1" + nb + "h 15" + nb + "min, non acquitté (relance 3).",
+				"fr": "Toujours en panne depuis 1" + nb + "h 15" + nb + "min, incident non acquitté (relance n°" + nb + "3).",
 				"de": "Seit 1" + nb + "Std. 15" + nb + "Min. ausgefallen, nicht bestätigt (Erinnerung 3).",
 				"es": "Sigue caído tras 1" + nb + "h 15" + nb + "min, sin reconocer (recordatorio 3).",
 			},
@@ -290,7 +293,8 @@ func TestIncidentTextBlocksUseTheSharedPartials(t *testing.T) {
 // through the email job (the test API's "incident" mail), which decodes the
 // view model as JSON: numbers arrive as float64, dates as RFC 3339 strings,
 // durations as nanoseconds. The mail must still render, in the reader's
-// language and zone.
+// language and zone. The reopened mail with relapses is the one that used to
+// compare a number in its template.
 func TestIncidentTemplatesSurviveTheEmailJob(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
@@ -299,24 +303,180 @@ func TestIncidentTemplatesSurviveTheEmailJob(t *testing.T) {
 
 	loc := i18n.New(i18n.LangFrench, "Europe/Paris")
 
-	for name, want := range map[string]string{
-		"incident-created.html":  "🔴 Production API est en panne : HTTP 503 Service Unavailable (expected 200) (#42)",
-		"incident-resolved.html": "🟢 Production API fonctionne à nouveau après 15" + nb + "min de panne (#42)",
-	} {
-		data, ok := fixtureFor(name, loc)
-		r.True(ok, name)
+	relapsed := fixturePayload(eventCreated)
+	relapsed.Incident.RelapseCount = 2
 
-		raw, err := json.Marshal(data)
-		r.NoError(err, name)
+	for _, tc := range []struct {
+		name, subject, html string
+		data                map[string]any
+	}{
+		{
+			name:    "incident-created.html",
+			subject: "🔴 Production API est en panne : HTTP 503 Service Unavailable (expected 200) (#42)",
+			data:    incidentFixture(loc),
+		},
+		{
+			name:    "incident-resolved.html",
+			subject: "🟢 Production API fonctionne à nouveau après 15" + nb + "min de panne (#42)",
+			data:    resolvedIncidentFixture(loc),
+		},
+		{
+			name:    "incident-reopened.html",
+			subject: "🔴 Production API est de nouveau en panne (#42)",
+			html:    "le contrôle échoue de nouveau (2 rechutes jusqu&#39;ici)",
+			data:    render(loc, relapsed, fixtureAckURL),
+		},
+	} {
+		raw, err := json.Marshal(tc.data)
+		r.NoError(err, tc.name)
 
 		var decoded map[string]any
-		r.NoError(json.Unmarshal(raw, &decoded), name)
+		r.NoError(json.Unmarshal(raw, &decoded), tc.name)
 
-		subject, html, text, err := formatter.Format(name, loc, decoded)
-		r.NoError(err, name)
-		r.Equal(want, subject, name)
-		r.Contains(html, "5 juil., 12:00 CEST", name)
-		r.Contains(text, "Incident : #42", name)
+		subject, html, text, err := formatter.Format(tc.name, loc, decoded)
+		r.NoError(err, tc.name)
+		r.Equal(tc.subject, subject, tc.name)
+		r.Contains(html, "5 juil., 12:00 CEST", tc.name)
+		r.Contains(html, tc.html, tc.name)
+		r.Contains(text, "Incident : #42", tc.name)
+	}
+}
+
+// TestIncidentViaPhrases: where an acknowledgment came from is one phrase per
+// channel, because the preposition changes with it ("via Slack" but "par
+// téléphone"). The "Via" detail line keeps the bare name.
+func TestIncidentViaPhrases(t *testing.T) {
+	t.Parallel()
+
+	formatter := incidentFormatter(t)
+
+	const ack, unack = "incident-acknowledged.html", "incident-unacknowledged.html"
+
+	cases := []struct {
+		lang, via, template, want string
+	}{
+		{
+			i18n.LangEnglish, "phone", ack,
+			"Alice Admin acknowledged via phone the incident for Production API.",
+		},
+		{
+			i18n.LangFrench, "phone", ack,
+			"Alice Admin a acquitté l'incident de Production API par téléphone.",
+		},
+		{
+			i18n.LangFrench, "email", unack,
+			"Alice Admin a annulé l'acquittement de l'incident de Production API par e-mail.",
+		},
+		{
+			i18n.LangGerman, "phone", ack,
+			"Alice Admin hat den Vorfall für Production API telefonisch bestätigt.",
+		},
+		{
+			i18n.LangGerman, "email", unack,
+			"Alice Admin hat die Bestätigung für den Vorfall von Production API per E-Mail aufgehoben.",
+		},
+		{
+			i18n.LangSpanish, "phone", ack,
+			"Alice Admin reconoció el incidente de Production API por teléfono.",
+		},
+		{
+			i18n.LangSpanish, "email", unack,
+			"Alice Admin anuló el reconocimiento del incidente de Production API por correo.",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.lang+"/"+tc.via+"/"+tc.template, func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+
+			loc := i18n.New(tc.lang, "")
+			event := "incident.acknowledged"
+			if tc.template == unack {
+				event = "incident.unacknowledged"
+			}
+
+			payload := fixturePayload(event)
+			payload.Acknowledgment = &notifications.AckInfo{ActorName: fixturePersonName, Via: tc.via}
+
+			_, html, text, err := formatter.Format(tc.template, loc, render(loc, payload, fixtureAckURL))
+			r.NoError(err)
+			r.Contains(text, tc.want)
+			r.Contains(text, " "+loc.T("incident.channel."+tc.via)+"\n", "the Via line names the channel")
+
+			if tc.template == unack {
+				r.Contains(html, loc.T("incident.via."+tc.via), "the lead says it too")
+			}
+		})
+	}
+}
+
+// TestAnonymousCommentSubject: an author nobody could resolve opens the
+// subject, so the capitalized fallback ("Quelqu'un") reads as a sentence start.
+func TestAnonymousCommentSubject(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	formatter := incidentFormatter(t)
+
+	for lang, want := range map[string]string{
+		i18n.LangEnglish: "💬 Someone on Production API (#42)",
+		i18n.LangFrench:  "💬 Quelqu'un a commenté l'incident de Production API (#42)",
+		i18n.LangGerman:  "💬 Jemand hat den Vorfall von Production API kommentiert (#42)",
+		i18n.LangSpanish: "💬 Alguien comentó en el incidente de Production API (#42)",
+	} {
+		loc := i18n.New(lang, "")
+		payload := fixturePayload("incident.comment")
+		payload.Comment = &notifications.CommentInfo{Text: "Looking into it.", Source: "web"}
+
+		subject, html, _, err := formatter.Format("incident-comment.html", loc, render(loc, payload, ""))
+		r.NoError(err, lang)
+		r.Equal(want, subject, lang)
+		r.NotContains(html, `class="meta"`, "a dashboard comment names no channel")
+	}
+}
+
+// TestCheckDeletedMailSaysClosed: a check that was deleted did not recover, so
+// its mail labels the end of the incident as a closing, not a return, in
+// every translation. English keeps its wording until the owner changes it.
+func TestCheckDeletedMailSaysClosed(t *testing.T) {
+	t.Parallel()
+
+	formatter := incidentFormatter(t)
+
+	cases := map[string]struct{ closed, notBack string }{
+		i18n.LangEnglish: {"Back at", ""},
+		i18n.LangFrench:  {"Clos le", "Rétabli le"},
+		i18n.LangGerman:  {"Geschlossen am", "Wieder verfügbar am"},
+		i18n.LangSpanish: {"Cerrado el", "Restablecido el"},
+	}
+
+	for lang, tc := range cases {
+		t.Run(lang, func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+
+			loc := i18n.New(lang, "")
+			payload := fixturePayload(eventCreated)
+			resolve(payload, 15*time.Minute)
+			deleted := models.ResolutionTypeCheckDeleted
+			payload.Incident.ResolutionType = &deleted
+
+			_, html, _, err := formatter.Format("incident-resolved.html", loc, render(loc, payload, ""))
+			r.NoError(err)
+			r.Contains(html, ">"+tc.closed+"</td>")
+
+			if tc.notBack != "" {
+				r.NotContains(html, tc.notBack)
+
+				// Positive control: a recovery does say it came back.
+				recovered := fixturePayload(eventCreated)
+				resolve(recovered, 15*time.Minute)
+				_, html, _, err = formatter.Format("incident-resolved.html", loc, render(loc, recovered, ""))
+				r.NoError(err)
+				r.Contains(html, ">"+tc.notBack+"</td>")
+			}
+		})
 	}
 }
 

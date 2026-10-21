@@ -5,7 +5,7 @@
 {{define "content"}}
     {{$check := nolink .CheckName}}{{if .CheckURL}}{{$check = tHTML "incident.checkLink" "url" .CheckURL "check" $check}}{{end}}
     <h1>{{tHTML "incident.unacknowledged.title" "check" $check}}</h1>
-    <p class="lead">{{if .AckChannel}}{{tHTML "incident.unacknowledged.leadVia" "actor" .AckActor "channel" .AckChannel}}{{else}}{{tHTML "incident.unacknowledged.lead" "actor" .AckActor}}{{end}}</p>
+    <p class="lead">{{if .AckVia}}{{tHTML "incident.unacknowledged.leadVia" "actor" .AckActor "via" .AckVia}}{{else}}{{tHTML "incident.unacknowledged.lead" "actor" .AckActor}}{{end}}</p>
     <table class="details-table" role="presentation" cellpadding="0" cellspacing="0">
         <tr><td class="label">{{t "common.labels.since"}}</td><td class="value">{{date .StartedAt}}</td></tr>
         {{if .IncidentNumber}}<tr><td class="label">{{t "common.labels.incident"}}</td><td class="value">#{{.IncidentNumber}}</td></tr>{{end}}
@@ -14,7 +14,7 @@
 {{end}}
 {{define "text"}}{{t "incident.unacknowledged.textTitle" "check" .CheckName}}
 
-{{if .AckChannel}}{{t "incident.unacknowledged.textBodyVia" "actor" .AckActor "channel" .AckChannel "check" .CheckName}}{{else}}{{t "incident.unacknowledged.textBody" "actor" .AckActor "check" .CheckName}}{{end}}
+{{if .AckVia}}{{t "incident.unacknowledged.textBodyVia" "actor" .AckActor "via" .AckVia "check" .CheckName}}{{else}}{{t "incident.unacknowledged.textBody" "actor" .AckActor "check" .CheckName}}{{end}}
 
 {{t "incident.unacknowledged.textResume"}}
 

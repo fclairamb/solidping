@@ -1,5 +1,5 @@
 {
-  "unknownCheck": "Comprobación desconocida",
+  "unknownCheck": "Check desconocido",
   "someone": "Alguien",
   "checkLink": "<a href=\"{url}\">{check}</a>",
   "channel": {
@@ -8,6 +8,13 @@
     "telegram": "Telegram",
     "email": "correo",
     "phone": "teléfono"
+  },
+  "via": {
+    "slack": "vía Slack",
+    "discord": "vía Discord",
+    "telegram": "vía Telegram",
+    "email": "por correo",
+    "phone": "por teléfono"
   },
   "pill": {
     "down": "Caído",
@@ -37,6 +44,7 @@
     "cause": "Causa",
     "downFrom": "Caído desde",
     "backAt": "Restablecido el",
+    "closedAt": "Cerrado el",
     "via": "Canal",
     "ackAt": "Reconocido el",
     "acknowledgedBy": "Reconocido por",
@@ -85,7 +93,7 @@
     "deletedSubject": "Se eliminó {check}, incidente cerrado",
     "deletedTitle": "Se eliminó {check}",
     "deletedPreheader": "Se eliminó {check}, así que su incidente se cerró.",
-    "deletedBody": "Se eliminó la comprobación, así que este incidente se cerró. No tiene por qué haberse recuperado.",
+    "deletedBody": "Se eliminó la comprobación, así que este incidente se cerró. Eso no significa que el servicio se haya recuperado.",
     "textTitle": "{check} se ha recuperado",
     "textBody": "El incidente de {check} se ha resuelto."
   },
@@ -108,31 +116,31 @@
     "textBody": "El incidente de {check} se ha reabierto tras una breve recuperación."
   },
   "comment": {
-    "subject": "Comentario de {author} en {check}",
+    "subject": "{author} comentó en el incidente de {check}",
     "preheader": "{author} dejó una nota en el incidente de {check}.",
-    "title": "{author} comentó el incidente de {check}",
-    "posted": "Publicado vía {channel}.",
+    "title": "{author} comentó en el incidente de {check}",
+    "posted": "Publicado {via}.",
     "textTitle": "Nuevo comentario en {check}",
-    "textBody": "{author} comentó el incidente de {check}:",
-    "textBodyVia": "{author} comentó el incidente de {check} vía {channel}:"
+    "textBody": "{author} comentó en el incidente de {check}:",
+    "textBodyVia": "{author} comentó en el incidente de {check} {via}:"
   },
   "acknowledged": {
     "title": "{actor} se encarga de {check}",
-    "preheader": "{actor} lo ha asumido. El escalado se ha detenido, el incidente sigue abierto.",
+    "preheader": "{actor} se ha hecho cargo del incidente. El escalado se ha detenido y el incidente sigue abierto.",
     "lead": "El escalado se ha detenido. El incidente sigue abierto hasta que las comprobaciones vuelvan a pasar.",
     "textTitle": "Incidente de {check} reconocido",
     "textBody": "{actor} reconoció el incidente de {check}. El escalado se ha detenido: nadie más tiene que encargarse.",
-    "textBodyVia": "{actor} reconoció el incidente de {check} vía {channel}. El escalado se ha detenido: nadie más tiene que encargarse.",
+    "textBodyVia": "{actor} reconoció el incidente de {check} {via}. El escalado se ha detenido: nadie más tiene que encargarse.",
     "textStillOpen": "El incidente sigue abierto: reconocerlo indica que alguien se encarga, no que esté solucionado."
   },
   "unacknowledged": {
     "title": "Ya nadie se encarga de {check}",
-    "preheader": "{actor} anuló el reconocimiento. El incidente vuelve a no tener responsable y el escalado se reanuda.",
+    "preheader": "{actor} anuló el reconocimiento. El incidente se queda otra vez sin responsable y el escalado se reanuda.",
     "lead": "<strong>{actor}</strong> anuló el reconocimiento. El escalado se reanuda donde se detuvo. Los avisos ya enviados no se repiten.",
-    "leadVia": "<strong>{actor}</strong> anuló el reconocimiento vía {channel}. El escalado se reanuda donde se detuvo. Los avisos ya enviados no se repiten.",
-    "textTitle": "{check} vuelve a no tener responsable",
-    "textBody": "{actor} anuló el reconocimiento del incidente de {check}. Nadie se encarga de él.",
-    "textBodyVia": "{actor} anuló el reconocimiento del incidente de {check} vía {channel}. Nadie se encarga de él.",
+    "leadVia": "<strong>{actor}</strong> anuló el reconocimiento {via}. El escalado se reanuda donde se detuvo. Los avisos ya enviados no se repiten.",
+    "textTitle": "{check} se queda otra vez sin responsable",
+    "textBody": "{actor} anuló el reconocimiento del incidente de {check}. Ya nadie se encarga.",
+    "textBodyVia": "{actor} anuló el reconocimiento del incidente de {check} {via}. Ya nadie se encarga.",
     "textResume": "El escalado se reanuda desde el paso que interrumpió el reconocimiento, así que los avisos ya enviados no se repiten."
   },
   "reminder": {
@@ -161,7 +169,7 @@
       "warning": "advertencia"
     },
     "exhausted": "agotado",
-    "notWithinWindow": "no se prevé en esta ventana",
+    "notWithinWindow": "fuera de esta ventana",
     "duration": {
       "minutes": "{n} min",
       "hours": "{n} h",
@@ -210,7 +218,7 @@
   "degradedCreated": {
     "subject": "{check} está degradado: {reason}",
     "title": "{check} está degradado",
-    "lead": "Sigue fallando o ralentizándose, sin estar caído el tiempo suficiente para contar como una caída.",
+    "lead": "Sigue fallando o ralentizándose, pero nunca el tiempo suficiente para contar como una caída.",
     "openChart": "Abrir el gráfico",
     "notOutage": "No es una caída: cada fallo fue seguido de un éxito antes de que terminara el periodo de confirmación."
   },
@@ -220,10 +228,10 @@
     "turnedOffPreheader": "Se desactivó la detección de degradación en {check}, así que su episodio de degradación se cerró.",
     "preheader": "{check} lleva estable el tiempo suficiente para cerrar el episodio de degradación.",
     "turnedOffTitle": "Detección de degradación desactivada para {check}",
-    "turnedOffLead": "El episodio de degradación abierto se cerró. La comprobación no tiene por qué haberse recuperado.",
+    "turnedOffLead": "El episodio de degradación abierto se cerró. Eso no significa que el servicio esté estable.",
     "leadDuration": "Estuvo inestable durante <strong>{duration}</strong>. No hay nada más que hacer.",
     "lead": "No hay nada más que hacer.",
-    "turnedOffText": "Se desactivó la detección de degradación en esta comprobación, así que el episodio de degradación abierto se cerró. La comprobación no tiene por qué haberse recuperado.",
+    "turnedOffText": "Se desactivó la detección de degradación en esta comprobación, así que el episodio de degradación abierto se cerró. Eso no significa que el servicio esté estable.",
     "textBody": "La condición de degradación lleva el tiempo suficiente sin cumplirse para cerrar el episodio.",
     "historyKept": "Los fallos y las respuestas lentas registrados se quedan en el historial de la comprobación: solo se detuvo el patrón."
   }
