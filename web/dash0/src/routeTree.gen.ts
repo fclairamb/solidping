@@ -25,6 +25,7 @@ import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as ConfirmRegistrationTokenRouteImport } from './routes/confirm-registration.$token'
 import { Route as AuthCompleteRouteImport } from './routes/auth.complete'
 import { Route as OrgsOrgIndexRouteImport } from './routes/orgs/$org/index'
+import { Route as OrgsOrgUpgradeRouteImport } from './routes/orgs/$org/upgrade'
 import { Route as OrgsOrgTestRouteImport } from './routes/orgs/$org/test'
 import { Route as OrgsOrgStatusUpdatesRouteImport } from './routes/orgs/$org/status-updates'
 import { Route as OrgsOrgStatusPagesRouteImport } from './routes/orgs/$org/status-pages'
@@ -242,6 +243,11 @@ const AuthCompleteRoute = AuthCompleteRouteImport.update({
 const OrgsOrgIndexRoute = OrgsOrgIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => OrgsOrgRoute,
+} as any)
+const OrgsOrgUpgradeRoute = OrgsOrgUpgradeRouteImport.update({
+  id: '/upgrade',
+  path: '/upgrade',
   getParentRoute: () => OrgsOrgRoute,
 } as any)
 const OrgsOrgTestRoute = OrgsOrgTestRouteImport.update({
@@ -1031,6 +1037,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/status-pages': typeof OrgsOrgStatusPagesRouteWithChildren
   '/orgs/$org/status-updates': typeof OrgsOrgStatusUpdatesRouteWithChildren
   '/orgs/$org/test': typeof OrgsOrgTestRouteWithChildren
+  '/orgs/$org/upgrade': typeof OrgsOrgUpgradeRoute
   '/orgs/$org/': typeof OrgsOrgIndexRoute
   '/orgs/$org/account/device': typeof OrgsOrgAccountDeviceRoute
   '/orgs/$org/account/mcp': typeof OrgsOrgAccountMcpRoute
@@ -1170,6 +1177,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/mcp': typeof OrgsOrgMcpRoute
   '/orgs/$org/me': typeof OrgsOrgMeRouteWithChildren
   '/orgs/$org/register': typeof OrgsOrgRegisterRoute
+  '/orgs/$org/upgrade': typeof OrgsOrgUpgradeRoute
   '/orgs/$org': typeof OrgsOrgIndexRoute
   '/orgs/$org/account/device': typeof OrgsOrgAccountDeviceRoute
   '/orgs/$org/account/mcp': typeof OrgsOrgAccountMcpRoute
@@ -1315,6 +1323,7 @@ export interface FileRoutesById {
   '/orgs/$org/status-pages': typeof OrgsOrgStatusPagesRouteWithChildren
   '/orgs/$org/status-updates': typeof OrgsOrgStatusUpdatesRouteWithChildren
   '/orgs/$org/test': typeof OrgsOrgTestRouteWithChildren
+  '/orgs/$org/upgrade': typeof OrgsOrgUpgradeRoute
   '/orgs/$org/': typeof OrgsOrgIndexRoute
   '/orgs/$org/account/device': typeof OrgsOrgAccountDeviceRoute
   '/orgs/$org/account/mcp': typeof OrgsOrgAccountMcpRoute
@@ -1472,6 +1481,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/status-pages'
     | '/orgs/$org/status-updates'
     | '/orgs/$org/test'
+    | '/orgs/$org/upgrade'
     | '/orgs/$org/'
     | '/orgs/$org/account/device'
     | '/orgs/$org/account/mcp'
@@ -1611,6 +1621,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/mcp'
     | '/orgs/$org/me'
     | '/orgs/$org/register'
+    | '/orgs/$org/upgrade'
     | '/orgs/$org'
     | '/orgs/$org/account/device'
     | '/orgs/$org/account/mcp'
@@ -1755,6 +1766,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/status-pages'
     | '/orgs/$org/status-updates'
     | '/orgs/$org/test'
+    | '/orgs/$org/upgrade'
     | '/orgs/$org/'
     | '/orgs/$org/account/device'
     | '/orgs/$org/account/mcp'
@@ -2003,6 +2015,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/orgs/$org/'
       preLoaderRoute: typeof OrgsOrgIndexRouteImport
+      parentRoute: typeof OrgsOrgRoute
+    }
+    '/orgs/$org/upgrade': {
+      id: '/orgs/$org/upgrade'
+      path: '/upgrade'
+      fullPath: '/orgs/$org/upgrade'
+      preLoaderRoute: typeof OrgsOrgUpgradeRouteImport
       parentRoute: typeof OrgsOrgRoute
     }
     '/orgs/$org/test': {
@@ -3537,6 +3556,7 @@ interface OrgsOrgRouteChildren {
   OrgsOrgStatusPagesRoute: typeof OrgsOrgStatusPagesRouteWithChildren
   OrgsOrgStatusUpdatesRoute: typeof OrgsOrgStatusUpdatesRouteWithChildren
   OrgsOrgTestRoute: typeof OrgsOrgTestRouteWithChildren
+  OrgsOrgUpgradeRoute: typeof OrgsOrgUpgradeRoute
   OrgsOrgIndexRoute: typeof OrgsOrgIndexRoute
   OrgsOrgNotificationsNotificationUidRoute: typeof OrgsOrgNotificationsNotificationUidRoute
   OrgsOrgOauthConsentRoute: typeof OrgsOrgOauthConsentRoute
@@ -3566,6 +3586,7 @@ const OrgsOrgRouteChildren: OrgsOrgRouteChildren = {
   OrgsOrgStatusPagesRoute: OrgsOrgStatusPagesRouteWithChildren,
   OrgsOrgStatusUpdatesRoute: OrgsOrgStatusUpdatesRouteWithChildren,
   OrgsOrgTestRoute: OrgsOrgTestRouteWithChildren,
+  OrgsOrgUpgradeRoute: OrgsOrgUpgradeRoute,
   OrgsOrgIndexRoute: OrgsOrgIndexRoute,
   OrgsOrgNotificationsNotificationUidRoute:
     OrgsOrgNotificationsNotificationUidRoute,
