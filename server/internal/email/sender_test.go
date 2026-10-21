@@ -445,3 +445,41 @@ func TestBuildMessage_ThreadHeadersReachTheWire(t *testing.T) {
 	r.Contains(wire, "In-Reply-To: <incident.inc-123@acme.com>")
 	r.Contains(wire, "References: <incident.inc-123@acme.com>")
 }
+
+func TestGetAuthType(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]mail.SMTPAuthType{
+		"plain":    mail.SMTPAuthPlain,
+		"cram-md5": mail.SMTPAuthCramMD5,
+		"noauth":   mail.SMTPAuthNoAuth,
+		"login":    mail.SMTPAuthLogin,
+		"":         mail.SMTPAuthLogin,
+		"unknown":  mail.SMTPAuthLogin,
+	}
+
+	for authType, want := range cases {
+		sender := NewSender(&config.EmailConfig{Enabled: true, AuthType: authType}, slog.Default())
+		require.Equal(t, want, sender.getAuthType(), authType)
+	}
+}
+
+func TestSetRecipients_CCBCCAndReplyTo(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	sender := NewSender(&config.EmailConfig{Enabled: true}, slog.Default())
+	msg := mail.NewMsg()
+
+	r.NoError(sender.setRecipients(msg, &Recipients{
+		To:      []string{"to@example.com"},
+		CC:      []string{"cc@example.com"},
+		BCC:     []string{"bcc@example.com"},
+		ReplyTo: "reply@example.com",
+	}))
+	r.Len(msg.GetToString(), 1)
+	r.Len(msg.GetAddrHeader(mail.HeaderCc), 1)
+	r.Len(msg.GetAddrHeader(mail.HeaderReplyTo), 1)
+
+	r.Error(sender.setRecipients(mail.NewMsg(), &Recipients{To: []string{"not an address"}}))
+}
