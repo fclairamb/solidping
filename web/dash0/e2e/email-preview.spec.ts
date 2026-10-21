@@ -36,8 +36,9 @@ test.describe("Email template preview", () => {
     // A template that ships only because this spec added its fixture.
     await page.getByTestId("email-preview-item-incident-comment").click();
 
+    // The comment subject leads with its state emoji, then the author.
     await expect(page.getByTestId("email-preview-subject")).toContainText(
-      "COMMENT",
+      "💬 Bob Builder on Production API",
     );
 
     const frame = page.getByTestId("email-preview-frame");
@@ -45,7 +46,7 @@ test.describe("Email template preview", () => {
 
     // The iframe really rendered the branded wrapper, not an error page.
     const framed = page.frameLocator('[data-testid="email-preview-frame"]');
-    await expect(framed.locator("body")).toContainText("New comment on");
+    await expect(framed.locator("body")).toContainText("commented on");
   });
 
   test("switches to the plaintext part", async ({
@@ -87,7 +88,7 @@ test.describe("Email template preview", () => {
     await expect(card).toBeVisible();
     await expect
       .poll(() => card.evaluate((el) => getComputedStyle(el).backgroundColor))
-      .toBe("rgb(20, 30, 40)");
+      .toBe("rgb(22, 30, 39)");
 
     // Going back to Light drops the param entirely, so the light URL stays the
     // untouched one the mailer sends.
