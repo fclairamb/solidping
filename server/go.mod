@@ -223,7 +223,7 @@ require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.49.0
 	github.com/IBM/sarama v1.61.1
 	github.com/SherClockHolmes/webpush-go v1.4.0
-	github.com/a2aproject/a2a-go/v2 v2.6.0
+	github.com/a2aproject/a2a-go/v2 v2.7.0
 	github.com/anthropics/anthropic-sdk-go v1.84.0
 	github.com/arran4/golang-ical v0.3.8
 	github.com/aws/aws-sdk-go-v2 v1.47.3
