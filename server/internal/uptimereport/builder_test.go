@@ -176,7 +176,7 @@ func TestBuilderComparesAgainstThePreviousPeriod(t *testing.T) {
 	r.NoError(err)
 
 	r.True(data.HasPreviousData)
-	r.Equal(formatPct(99), data.PreviousAvailabilityPct)
+	r.Equal("99.000%", data.PreviousAvailabilityPct)
 
 	r.True(data.ShowAvailabilityDelta)
 	r.Equal("+1.000 pts", data.AvailabilityDeltaText)
@@ -187,7 +187,7 @@ func TestBuilderComparesAgainstThePreviousPeriod(t *testing.T) {
 	r.Equal(deltaBadColor, data.ResponseDeltaColor, "getting slower is a regression, never green")
 
 	r.True(data.ShowIncidentDelta)
-	r.Equal(noChangeText, data.IncidentDeltaText)
+	r.Equal(noChange, data.IncidentDeltaText)
 	r.Equal(deltaNeutralColor, data.IncidentDeltaColor)
 }
 
@@ -209,9 +209,9 @@ func TestBuilderZeroDeltaIsNeutralNeverGreen(t *testing.T) {
 	data, err := env.builder.Build(env.ctx, env.org, monthlySchedule(env.org.UID), window, now)
 	r.NoError(err)
 
-	r.Equal(noChangeText, data.AvailabilityDeltaText)
+	r.Equal(noChange, data.AvailabilityDeltaText)
 	r.Equal(deltaNeutralColor, data.AvailabilityDeltaColor)
-	r.Equal(noChangeText, data.ResponseDeltaText)
+	r.Equal(noChange, data.ResponseDeltaText)
 	r.Equal(deltaNeutralColor, data.ResponseDeltaColor)
 	r.NotEqual(deltaGoodColor, data.AvailabilityDeltaColor)
 	r.NotEqual(deltaGoodColor, data.ResponseDeltaColor)
@@ -243,9 +243,9 @@ func TestBuilderDownAllPeriodSuppressesLatency(t *testing.T) {
 	r.NoError(err)
 
 	r.True(data.HasData)
-	r.Equal(formatPct(0), data.AvailabilityPct)
+	r.Equal("0.000%", data.AvailabilityPct)
 	r.True(data.DownAllPeriod)
-	r.Equal("api", data.DownAllPeriodLabel, "a single-check scope names the check itself")
+	r.Equal("api", data.DownAllPeriodCheck, "a single-check scope names the check itself")
 
 	r.False(data.HasLatency, "no response-time block for a period of pure errors")
 	r.Empty(data.AvgResponseTime)
