@@ -6,7 +6,7 @@
     "intro": "Sie haben Status-Updates zu <strong>{page}</strong> angefordert. Bitte bestätigen Sie Ihre E-Mail-Adresse, um Benachrichtigungen zu erhalten.",
     "button": "Abonnement bestätigen",
     "ignore": "Falls Sie das nicht angefordert haben, können Sie diese E-Mail einfach ignorieren.",
-    "textIntro": "Sie haben Status-Updates zu dieser Statusseite angefordert. Bestätigen Sie Ihre E-Mail-Adresse:"
+    "textIntro": "Sie haben Updates zu dieser Statusseite angefordert. Bestätigen Sie Ihre E-Mail-Adresse:"
   },
   "update": {
     "subject": "{page}: {title}",

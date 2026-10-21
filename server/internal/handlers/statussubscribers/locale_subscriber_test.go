@@ -2,6 +2,7 @@ package statussubscribers_test
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -289,10 +290,73 @@ func TestSubscriberLandingPagesFollowThePageLanguage(t *testing.T) {
 	}
 }
 
-// TestSubscriberLandingPageWithoutAPageIsEnglish: a token that resolves to no
-// subscriber says nothing about the page, so the page is English, and says so.
-// The French page next to it is the positive control.
-func TestSubscriberLandingPageWithoutAPageIsEnglish(t *testing.T) {
+// getLanding requests a landing page with the given Accept-Language header
+// ("" sends none).
+func getLanding(t *testing.T, h *handlerSetup, path, acceptLanguage string) *httptest.ResponseRecorder {
+	t.Helper()
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil)
+	if acceptLanguage != "" {
+		req.Header.Set("Accept-Language", acceptLanguage)
+	}
+
+	rec := httptest.NewRecorder()
+	h.router.ServeHTTP(rec, req)
+
+	return rec
+}
+
+const (
+	confirmPath     = "/api/v1/public/status-subscribers/confirm?token="
+	unsubscribePath = "/api/v1/public/status-subscribers/unsubscribe?token="
+)
+
+// TestSubscriberLandingPageWithAnUnsupportedOrUnsetPageLanguageIsEnglish: the
+// page's language decides, normalized, and the browser's Accept-Language
+// (German here) does not override a page that is known. The regional tag is
+// the positive control.
+func TestSubscriberLandingPageWithAnUnsupportedOrUnsetPageLanguageIsEnglish(t *testing.T) {
+	t.Parallel()
+
+	italian, regional, empty := "it", "fr-FR", ""
+
+	cases := []struct {
+		name                    string
+		language                *string
+		lang, confirmed, unsubd string
+	}{
+		{"null", nil, "en", "Subscription confirmed", "Unsubscribed"},
+		{"empty", &empty, "en", "Subscription confirmed", "Unsubscribed"},
+		{"unsupported", &italian, "en", "Subscription confirmed", "Unsubscribed"},
+		{"a regional tag is its language", &regional, "fr", "Abonnement confirmé", "Désabonnement confirmé"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+
+			h := newHandlerSetup(t)
+			setPageLanguage(t, h.subSetup, tc.language)
+			res := h.subscribe(t, "land@example.com")
+
+			confirmed := getLanding(t, h, confirmPath+res.Subscriber.ConfirmToken, "de")
+			r.Equal(http.StatusOK, confirmed.Code)
+			r.Contains(confirmed.Body.String(), `<html lang="`+tc.lang+`">`)
+			r.Contains(confirmed.Body.String(), ">"+tc.confirmed+"</h1>")
+
+			unsubscribed := getLanding(t, h, unsubscribePath+res.Subscriber.UnsubscribeToken, "de")
+			r.Equal(http.StatusOK, unsubscribed.Code)
+			r.Contains(unsubscribed.Body.String(), `<html lang="`+tc.lang+`">`)
+			r.Contains(unsubscribed.Body.String(), ">"+tc.unsubd+"</h1>")
+		})
+	}
+}
+
+// TestSubscriberLandingPagesPreferTheReadersAccount: the links of a mail land
+// on a page in the mail's language, so an account's own language wins over the
+// page's there too. The stranger on the same page is the positive control.
+func TestSubscriberLandingPagesPreferTheReadersAccount(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
@@ -300,18 +364,96 @@ func TestSubscriberLandingPageWithoutAPageIsEnglish(t *testing.T) {
 	french := "fr"
 	setPageLanguage(t, h.subSetup, &french)
 
-	expired := h.do(t, http.MethodGet, "/api/v1/public/status-subscribers/confirm?token=bogus", nil)
-	r.Equal(http.StatusBadRequest, expired.Code)
-	r.Contains(expired.Body.String(), `<html lang="en">`)
-	r.Contains(expired.Body.String(), "<title>Link expired</title>")
+	user := models.NewUser("member@example.com")
+	user.Preferences = &models.UserPreferences{Locale: "de", Timezone: "Europe/Berlin"}
+	r.NoError(h.dbSvc.CreateUser(t.Context(), user))
 
+	rec := h.do(t, http.MethodPost,
+		"/api/v1/orgs/"+h.org.Slug+"/status-pages/"+h.page.UID+"/subscribers",
+		map[string]any{"email": "member@example.com"})
+	r.Equal(http.StatusAccepted, rec.Code)
+	r.Len(h.sender.sent(), 1)
+	r.Equal("de", h.sender.sent()[0].Locale, "the confirm mail is German")
+
+	member := h.subscribe(t, "member@example.com")
+	stranger := h.subscribe(t, "stranger@example.com")
+
+	confirmed := getLanding(t, h, confirmPath+member.Subscriber.ConfirmToken, "")
+	r.Contains(confirmed.Body.String(), `<html lang="de">`)
+	r.Contains(confirmed.Body.String(), "Abonnement bestätigt</h1>")
+
+	unsubscribed := getLanding(t, h, unsubscribePath+member.Subscriber.UnsubscribeToken, "")
+	r.Contains(unsubscribed.Body.String(), `<html lang="de">`)
+	r.Contains(unsubscribed.Body.String(), "Abmeldung bestätigt</h1>")
+
+	control := getLanding(t, h, confirmPath+stranger.Subscriber.ConfirmToken, "")
+	r.Contains(control.Body.String(), `<html lang="fr">`)
+	r.Contains(control.Body.String(), "Abonnement confirmé</h1>")
+}
+
+// TestSubscriberLandingPageOfAnUnknownLinkFollowsTheBrowser: a used, unknown or
+// failed link names no page, so the browser's preferred supported language
+// stands in, and English when it prefers none.
+func TestSubscriberLandingPageOfAnUnknownLinkFollowsTheBrowser(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name, acceptLanguage, lang, title string
+	}{
+		{"no header", "", "en", "Link expired"},
+		{"unsupported", "it-IT, it;q=0.9", "en", "Link expired"},
+		{"malformed", "fr;q=x", "en", "Link expired"},
+		{"regional", "fr-CH, fr;q=0.9, en;q=0.8", "fr", "Lien expiré"},
+		{"first supported by weight", "it, en;q=0.3, de;q=0.5", "de", "Link abgelaufen"},
+		{"a zero weight is a refusal", "fr;q=0, es;q=0.2", "es", "Enlace caducado"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+
+			h := newHandlerSetup(t)
+			rec := getLanding(t, h, confirmPath+"bogus", tc.acceptLanguage)
+			r.Equal(http.StatusBadRequest, rec.Code)
+			r.Contains(rec.Body.String(), `<html lang="`+tc.lang+`">`)
+			r.Contains(rec.Body.String(), "<title>"+tc.title+"</title>")
+			r.Contains(rec.Header().Values("Vary"), "Accept-Language")
+		})
+	}
+}
+
+// TestSubscriberLandingPageOfAUsedLinkFollowsTheBrowser: a second click on a
+// confirm or unsubscribe link finds no subscriber any more, so its page no
+// longer knows the status page's language: the browser's stands in, and
+// without one the page is English. The first clicks are the positive control.
+func TestSubscriberLandingPageOfAUsedLinkFollowsTheBrowser(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	h := newHandlerSetup(t)
+	french := "fr"
+	setPageLanguage(t, h.subSetup, &french)
 	res := h.subscribe(t, "land@example.com")
-	confirmed := h.do(t, http.MethodGet,
-		"/api/v1/public/status-subscribers/confirm?token="+res.Subscriber.ConfirmToken, nil)
+
+	confirmed := getLanding(t, h, confirmPath+res.Subscriber.ConfirmToken, "")
 	r.Contains(confirmed.Body.String(), `<html lang="fr">`)
 
-	again := h.do(t, http.MethodGet,
-		"/api/v1/public/status-subscribers/confirm?token="+res.Subscriber.ConfirmToken, nil)
+	again := getLanding(t, h, confirmPath+res.Subscriber.ConfirmToken, "")
 	r.Equal(http.StatusBadRequest, again.Code, "a used confirm link has no page any more")
+	r.Contains(again.Body.String(), `<html lang="en">`)
 	r.Contains(again.Body.String(), "<title>Link expired</title>")
+
+	again = getLanding(t, h, confirmPath+res.Subscriber.ConfirmToken, "fr-FR,fr;q=0.9")
+	r.Equal(http.StatusBadRequest, again.Code)
+	r.Contains(again.Body.String(), `<html lang="fr">`)
+	r.Contains(again.Body.String(), "<title>Lien expiré</title>")
+
+	unsubscribed := getLanding(t, h, unsubscribePath+res.Subscriber.UnsubscribeToken, "")
+	r.Contains(unsubscribed.Body.String(), "Désabonnement confirmé</h1>")
+
+	again = getLanding(t, h, unsubscribePath+res.Subscriber.UnsubscribeToken, "es")
+	r.Equal(http.StatusBadRequest, again.Code)
+	r.Contains(again.Body.String(), `<html lang="es">`)
+	r.Contains(again.Body.String(), "<title>Enlace caducado</title>")
 }

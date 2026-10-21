@@ -3,7 +3,7 @@
     "subject": "Confirma tu suscripción a {page}",
     "preheader": "Confirma tu dirección para empezar a recibir las actualizaciones de {page}.",
     "heading": "Confirma tu suscripción",
-    "intro": "Has pedido recibir las actualizaciones de <strong>{page}</strong>. Confirma tu dirección de correo para empezar a recibir notificaciones.",
+    "intro": "Has pedido recibir las actualizaciones de <strong>{page}</strong>. Confirma tu dirección de correo para activar las notificaciones.",
     "button": "Confirmar suscripción",
     "ignore": "Si no lo has pedido tú, puedes ignorar este correo.",
     "textIntro": "Has pedido recibir las actualizaciones de esta página de estado. Confirma tu dirección de correo:"

@@ -2,6 +2,7 @@ package statussubscribers
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
@@ -11,8 +12,11 @@ import (
 	"net/http"
 	"time"
 
+	"golang.org/x/text/language"
+
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
+	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/httpx"
@@ -142,13 +146,13 @@ func (h *Handler) sendConfirmMail(ctx context.Context, result *SubscribeResult) 
 // Confirm handles GET /api/v1/public/status-subscribers/confirm?token=… .
 func (h *Handler) Confirm(writer http.ResponseWriter, req *http.Request) error {
 	token := req.URL.Query().Get("token")
+	// Read before Confirm consumes the token: nothing finds the row by it afterwards.
+	loc := h.landingLocale(req, h.tokenSubscriber(req.Context(), token, false))
 
 	result, err := h.svc.Confirm(req.Context(), token)
 	if err != nil {
-		return h.writeLandingError(writer, err)
+		return h.writeLandingError(writer, loc, err)
 	}
-
-	loc := h.landingLocale(req.Context(), result)
 
 	return h.writeLanding(writer, loc,
 		loc.T("subscriber.landing.confirmed.title"),
@@ -159,13 +163,13 @@ func (h *Handler) Confirm(writer http.ResponseWriter, req *http.Request) error {
 // Unsubscribe handles GET /api/v1/public/status-subscribers/unsubscribe?token=… .
 func (h *Handler) Unsubscribe(writer http.ResponseWriter, req *http.Request) error {
 	token := req.URL.Query().Get("token")
+	// Read before Unsubscribe deletes the row: nothing finds it by token afterwards.
+	loc := h.landingLocale(req, h.tokenSubscriber(req.Context(), token, true))
 
 	result, err := h.svc.Unsubscribe(req.Context(), token)
 	if err != nil {
-		return h.writeLandingError(writer, err)
+		return h.writeLandingError(writer, loc, err)
 	}
-
-	loc := h.landingLocale(req.Context(), result)
 
 	return h.writeLanding(writer, loc,
 		loc.T("subscriber.landing.unsubscribed.title"),
@@ -173,25 +177,58 @@ func (h *Handler) Unsubscribe(writer http.ResponseWriter, req *http.Request) err
 		h.statusPageURL(result.OrgSlug, result.PageSlug))
 }
 
-// landingLocale is the language of a landing page about one status page: the
-// page's own (spec 2026-10-21-01, decision 11), English when the page cannot
-// be read. The result carries no address, so no account preference applies.
-func (h *Handler) landingLocale(ctx context.Context, result *ConfirmResult) i18n.Locale {
-	if h.dbService == nil || result.OrgSlug == "" || result.PageSlug == "" {
-		return i18n.Default
+// tokenSubscriber is the live subscriber a confirm (or, with unsubscribe, an
+// unsubscribe) token points at, nil when none does.
+func (h *Handler) tokenSubscriber(ctx context.Context, token string, unsubscribe bool) *models.StatusPageSubscriber {
+	if h.dbService == nil || token == "" {
+		return nil
 	}
 
-	org, err := h.dbService.GetOrganizationBySlug(ctx, result.OrgSlug)
-	if err != nil || org == nil {
-		return i18n.Default
+	lookup := h.dbService.GetSubscriberByConfirmToken
+	if unsubscribe {
+		lookup = h.dbService.GetSubscriberByUnsubToken
 	}
 
-	page, err := h.dbService.GetStatusPageBySlug(ctx, org.UID, result.PageSlug)
-	if err != nil || page == nil || page.Language == nil {
-		return i18n.Default
+	sub, err := lookup(ctx, token)
+	if err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			h.logger.DebugContext(ctx, "status subscriber landing: token lookup failed", "error", err)
+		}
+
+		return nil
 	}
 
-	return i18n.New(*page.Language, "")
+	return sub
+}
+
+// landingLocale is the language of a landing page. For a subscriber, the one
+// their mails are in (their account's, else the page's, else English), so a
+// link lands on a page in the language of the mail it came from. A token that
+// points at no subscriber, typically a link already used, names no page: the
+// browser's Accept-Language stands in, else English.
+func (h *Handler) landingLocale(req *http.Request, sub *models.StatusPageSubscriber) i18n.Locale {
+	if sub != nil {
+		return subscriberLocales(req.Context(), h.dbService)(sub)
+	}
+
+	return i18n.New(acceptLanguage(req.Header.Get("Accept-Language")), "")
+}
+
+// acceptLanguage is the most preferred language of an Accept-Language header
+// that has a catalog, "" when none has one.
+func acceptLanguage(header string) string {
+	tags, _, err := language.ParseAcceptLanguage(header)
+	if err != nil {
+		return ""
+	}
+
+	for _, tag := range tags {
+		if lang := i18n.Normalize(tag.String()); lang != "" {
+			return lang
+		}
+	}
+
+	return ""
 }
 
 func (h *Handler) statusPageURL(orgSlug, pageSlug string) string {
@@ -318,11 +355,8 @@ func (h *Handler) handleError(writer http.ResponseWriter, request *http.Request,
 	}
 }
 
-// writeLandingError renders an HTML landing page for token failures. The
-// token resolved to no subscriber, so no page language is known: English.
-func (h *Handler) writeLandingError(writer http.ResponseWriter, err error) error {
-	loc := i18n.Default
-
+// writeLandingError renders an HTML landing page for token failures.
+func (h *Handler) writeLandingError(writer http.ResponseWriter, loc i18n.Locale, err error) error {
 	if errors.Is(err, ErrInvalidToken) {
 		return h.writeLandingStatus(writer, loc, http.StatusBadRequest,
 			loc.T("subscriber.landing.expired.title"),
@@ -344,6 +378,8 @@ func (h *Handler) writeLandingStatus(
 	writer http.ResponseWriter, loc i18n.Locale, status int, title, body, pageURL string,
 ) error {
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+	// An expired link's page is in the browser's language (landingLocale).
+	writer.Header().Add("Vary", "Accept-Language")
 	securityheaders.ApplyBaseline(writer.Header())
 	writer.WriteHeader(status)
 
