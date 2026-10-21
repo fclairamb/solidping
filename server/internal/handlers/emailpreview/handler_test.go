@@ -138,10 +138,10 @@ func TestPreview_ColorSchemeDarkActivatesTheDarkBlock(t *testing.T) {
 }
 
 // TestPreview_DefaultsToTheUntouchedTemplate is the positive control for the
-// test above: without the param — and with an explicit colorScheme=light — the
-// endpoint must serve byte-identical bytes to what the mailer sends, media
-// query and all. Without this, a rewrite that fired unconditionally would still
-// pass the dark test.
+// test above: without the param the endpoint must serve byte-identical bytes
+// to what the mailer sends, media query and all. An explicit colorScheme=light
+// switches the dark block off, because an iframe follows the viewer's OS
+// scheme and would otherwise show the dark palette under the "light" choice.
 func TestPreview_DefaultsToTheUntouchedTemplate(t *testing.T) {
 	t.Parallel()
 
@@ -155,7 +155,8 @@ func TestPreview_DefaultsToTheUntouchedTemplate(t *testing.T) {
 
 	light := doGet(t, router, "/api/mgmt/email-preview/incident-created.html?colorScheme=light")
 	r.Equal(http.StatusOK, light.Code)
-	r.Equal(plain.Body.String(), light.Body.String())
+	r.NotContains(light.Body.String(), "@media (prefers-color-scheme: dark)")
+	r.Contains(light.Body.String(), "@media not all")
 }
 
 // TestPreview_ColorSchemeDoesNotTouchThePlaintextPart — the plaintext

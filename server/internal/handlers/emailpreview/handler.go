@@ -38,6 +38,14 @@ func forceDarkScheme(html string) string {
 	return darkMediaQueryRE.ReplaceAllLiteralString(html, "@media all")
 }
 
+// forceLightScheme switches the dark block off. The iframe follows the
+// viewer's OS scheme, so without this a dark-OS viewer sees the dark rendering
+// under the "light" choice. Only an explicit colorScheme=light does it; the
+// bare URL keeps serving the shipped template.
+func forceLightScheme(html string) string {
+	return darkMediaQueryRE.ReplaceAllLiteralString(html, "@media not all")
+}
+
 // localeParam is the query parameter that picks the preview language.
 const localeParam = "locale"
 
@@ -124,6 +132,8 @@ func (h *Handler) Preview(writer http.ResponseWriter, req *http.Request) error {
 	case "html":
 		if colorScheme == "dark" {
 			html = forceDarkScheme(html)
+		} else if req.URL.Query().Get("colorScheme") == "light" {
+			html = forceLightScheme(html)
 		}
 
 		writer.Header().Set("Content-Type", "text/html; charset=utf-8")

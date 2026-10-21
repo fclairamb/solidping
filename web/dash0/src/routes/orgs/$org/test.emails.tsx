@@ -76,11 +76,10 @@ function previewUrl(
 ): string {
   let url = `/api/mgmt/email-preview/${template}?format=${format}`;
 
-  // Only appended for dark: the light URL stays the one the endpoint serves
-  // untouched, so "no param" remains the exact bytes the mailer sends.
-  if (scheme === "dark") {
-    url += "&colorScheme=dark";
-  }
+  // Always explicit: an iframe follows the viewer's OS scheme, so the endpoint
+  // has to switch the template's dark block off for "light" too. The bare URL
+  // remains the exact bytes the mailer sends.
+  url += `&colorScheme=${scheme}`;
   // Same for the language: English is the endpoint's default.
   if (locale !== "en") {
     url += `&locale=${locale}`;

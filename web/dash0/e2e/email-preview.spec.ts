@@ -72,7 +72,7 @@ test.describe("Email template preview", () => {
 
     const frame = page.getByTestId("email-preview-frame");
     await expect(frame).toHaveAttribute("data-scheme", "light");
-    await expect(frame).not.toHaveAttribute("src", /colorScheme/);
+    await expect(frame).toHaveAttribute("src", /colorScheme=light/);
 
     await page.getByTestId("email-preview-scheme-dark").click();
 
@@ -93,7 +93,7 @@ test.describe("Email template preview", () => {
     // Going back to Light drops the param entirely, so the light URL stays the
     // untouched one the mailer sends.
     await page.getByTestId("email-preview-scheme-light").click();
-    await expect(frame).not.toHaveAttribute("src", /colorScheme/);
+    await expect(frame).toHaveAttribute("src", /colorScheme=light/);
     await expect(page).not.toHaveURL(/colorScheme/);
   });
 
