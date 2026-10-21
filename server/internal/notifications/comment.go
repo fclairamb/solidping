@@ -1,6 +1,10 @@
 package notifications
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/fclairamb/solidping/server/internal/i18n"
+)
 
 // commentEmoji is the product-wide identity of `incident.comment`, shared with
 // the dash0 event registry (web/dash0/src/components/dashboard/event-display.tsx).
@@ -34,19 +38,23 @@ type CommentInfo struct {
 	Source string `json:"source,omitempty"`
 }
 
-// commentAuthor returns the author label, or a neutral fallback when the
-// author could not be resolved. Never empty, so no sender has to special-case
-// an anonymous comment.
+// commentAuthor returns the author label, or a neutral fallback ("Someone")
+// when the author could not be resolved. Never empty, so no sender has to
+// special-case an anonymous comment.
 func commentAuthor(comment *CommentInfo) string {
-	if comment == nil {
-		return "Someone"
+	return commentAuthorIn(i18n.English, comment)
+}
+
+// commentAuthorIn is commentAuthor in the reader's language (only the
+// fallback changes).
+func commentAuthorIn(loc i18n.Locale, comment *CommentInfo) string {
+	if comment != nil {
+		if name := strings.TrimSpace(comment.AuthorName); name != "" {
+			return name
+		}
 	}
 
-	if name := strings.TrimSpace(comment.AuthorName); name != "" {
-		return name
-	}
-
-	return "Someone"
+	return loc.T("incident.someone")
 }
 
 // commentText returns the comment body, or "" when the payload carries none
@@ -97,18 +105,28 @@ func commentPlainBody(payload *Payload) string {
 	return author + ": " + text
 }
 
-// commentSourceLabel renders where the comment came from, for surfaces that
-// have room for it. Empty for the dashboard, which is the unremarkable case.
+// commentSourceLabel renders where the comment came from, e.g. "via Slack",
+// for surfaces that have room for it. Empty for the dashboard, which is the
+// unremarkable case.
 func commentSourceLabel(comment *CommentInfo) string {
+	if name := commentChannelIn(i18n.English, comment); name != "" {
+		return "via " + name
+	}
+
+	return ""
+}
+
+// commentChannelIn names the channel a comment was typed in ("Slack",
+// "Telegram"), in the reader's language, or "" for the dashboard and for the
+// sources no sender names.
+func commentChannelIn(loc i18n.Locale, comment *CommentInfo) string {
 	if comment == nil {
 		return ""
 	}
 
 	switch comment.Source {
-	case "slack":
-		return "via Slack"
-	case "telegram":
-		return "via Telegram"
+	case "slack", "telegram":
+		return channelNameIn(loc, comment.Source)
 	default:
 		return ""
 	}

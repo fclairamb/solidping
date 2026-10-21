@@ -99,7 +99,7 @@ func TestFormatter_FormatIncidentCreated(t *testing.T) {
 
 	r.Contains(text, "Production API is down")
 	r.Contains(text, "https://example.com/d/orgs/acme/incidents/inc-123")
-	r.Contains(text, "Acknowledge this incident")
+	r.Contains(text, "I'm on it: https://example.com/api/v1/orgs/acme/incidents/inc-123/ack?token=abc")
 	r.Contains(text, "Incident: #42")
 	r.Contains(text, "Incident ID: inc-123", "the plaintext keeps the incident id")
 }
@@ -174,7 +174,7 @@ func TestFormatter_FormatIncidentCreatedWithoutAckURL(t *testing.T) {
 	r.NotContains(html, "I&#39;m on it")
 	r.NotContains(html, "stops escalation", "no ack link, no explanation of it")
 	r.Contains(html, "View incident")
-	r.NotContains(text, "Acknowledge this incident")
+	r.NotContains(text, "I'm on it")
 }
 
 func TestFormatter_FormatIncidentCreatedWithSubjectPrefix(t *testing.T) {
@@ -204,15 +204,15 @@ func TestFormatter_FormatIncidentResolved(t *testing.T) {
 	subject, html, text, err := formatter.Format("incident-resolved.html", i18n.English, incidentViewModel())
 	r.NoError(err)
 
-	r.Equal("🟢 Production API is back up after 15m0s (#42)", subject)
+	r.Equal("🟢 Production API is back up after 15m (#42)", subject)
 	r.Regexp(checkNameHeadlinePattern+`is back up</h1>`, html)
 	r.Contains(html, `class="pill pill-recovered"`)
-	r.Contains(html, "15m0s")
+	r.Contains(html, "15m</strong>")
 	r.Contains(html, "#42")
 	r.Contains(html, "View incident")
 	r.NotContains(html, "I&#39;m on it", "resolved events have nothing to ack")
 	r.Contains(text, "recovered")
-	r.Contains(text, "15m0s")
+	r.Contains(text, "Duration: 15m\n")
 	r.Contains(text, "Incident: #42")
 }
 
@@ -325,7 +325,7 @@ func TestFormatter_UnsubscribeFooterLink(t *testing.T) {
 	_, html, text, err := formatter.Format("incident-created.html", i18n.English, data)
 	r.NoError(err)
 	r.Regexp(`<a href="https://example\.com/unsubscribe\?token=xyz"[^>]*>Stop alerts for Production API</a>`, html)
-	r.Contains(text, "Unsubscribe from alerts for Production API")
+	r.Contains(text, "Stop alerts for Production API: https://example.com/unsubscribe?token=xyz")
 }
 
 func TestFormatter_InvalidTemplate(t *testing.T) {
@@ -429,7 +429,7 @@ func TestFormatter_TextBlockRendering(t *testing.T) {
 				},
 				[]string{"Acme", "approved", "viewer", "https://x.test/dash"},
 			},
-			{"incident-created.html", incidentViewModel(), []string{"is down", "Acknowledge this incident"}},
+			{"incident-created.html", incidentViewModel(), []string{"is down", "I'm on it: "}},
 			{"incident-resolved.html", incidentViewModel(), []string{"recovered"}},
 			{"incident-escalated.html", incidentViewModel(), []string{"escalated"}},
 			{"incident-reopened.html", incidentViewModel(), []string{"reopened"}},

@@ -1,12 +1,14 @@
 package notifications
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/i18n"
 )
 
 // burnIncident builds a burn incident the way the evaluator writes one, with
@@ -29,8 +31,9 @@ func burnIncident(t *testing.T) *models.Incident {
 		"long_window_seconds":      3600.0,
 		"short_window_seconds":     300.0,
 		"budget_remaining_seconds": 5400.0,
-		"projected_exhaustion_at":  "2026-08-23T04:30:00Z",
-		"target_pct":               99.9,
+		// This year's: a date of another year prints its year.
+		"projected_exhaustion_at": fmt.Sprintf("%d-08-23T04:30:00Z", time.Now().Year()),
+		"target_pct":              99.9,
 	}
 
 	return incident
@@ -67,7 +70,7 @@ func TestBurnInfoReadsJSONRoundTrippedDetails(t *testing.T) {
 	r.Equal(time.Hour, burn.LongWindow)
 	r.Equal(5*time.Minute, burn.ShortWindow)
 	r.Equal(90*time.Minute, burn.BudgetRemaining)
-	r.Equal(2026, burn.ProjectedExhaustion.Year())
+	r.Equal(time.Now().Year(), burn.ProjectedExhaustion.Year())
 }
 
 // TestBurnSummaryCarriesTheThreeDecidingNumbers: a page that omits any of them
@@ -141,7 +144,7 @@ func TestBurnViewModelExposesTheTemplateKeys(t *testing.T) {
 	t.Parallel()
 
 	viewModel := map[string]any{}
-	applyBurnViewModel(viewModel, BurnInfoFor(burnIncident(t)))
+	applyBurnViewModel(viewModel, i18n.English, BurnInfoFor(burnIncident(t)))
 
 	for _, key := range []string{
 		"SLOName", "BurnPolicyLabel", "BurnSeverity", "BurnRate", "BurnShortRate",

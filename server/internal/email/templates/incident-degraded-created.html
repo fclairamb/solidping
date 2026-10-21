@@ -1,43 +1,38 @@
-{{define "subject"}}{{if .SubjectPrefix}}{{.SubjectPrefix}} {{end}}🟡 {{.CheckName}} is degraded: {{.DegradedReason}}{{if gt .IncidentNumber 0}} (#{{.IncidentNumber}}){{end}}{{end}}
+{{define "subject"}}{{if .SubjectPrefix}}{{.SubjectPrefix}} {{end}}🟡 {{t "incident.degradedCreated.subject" "check" .CheckName "reason" .DegradedReason}}{{if .IncidentNumber}} (#{{.IncidentNumber}}){{end}}{{end}}
 {{define "preheader"}}{{.DegradedReason}}. {{.DegradedStatus}}{{end}}
 {{template "base.html" .}}
 {{/* Deliberately the WARN banner, not "down": the target is usually up at this
      very moment, and a degraded notice that wears the outage colours is one an
      operator learns to mute — along with the real outages. */}}
-{{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "escalated" "Label" "Degraded"}}{{end}}
+{{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "escalated" "Label" (t "incident.pill.degraded")}}{{end}}
 {{define "content"}}
-    <h1>{{nolink .CheckName}} is degraded</h1>
-    <p class="lead">It keeps failing or slowing down, without staying down long enough to count as an outage. {{.DegradedStatus}}</p>
+    <h1>{{tHTML "incident.degradedCreated.title" "check" (nolink .CheckName)}}</h1>
+    <p class="lead">{{t "incident.degradedCreated.lead"}} {{.DegradedStatus}}</p>
     <table class="details-table" role="presentation" cellpadding="0" cellspacing="0">
-        {{if .DegradedFailureLine}}<tr><td class="label">Failures</td><td class="value">{{.DegradedFailureLine}}</td></tr>{{end}}
-        {{if .DegradedSlowLine}}<tr><td class="label">Slow probes</td><td class="value">{{.DegradedSlowLine}}</td></tr>{{end}}
-        <tr><td class="label">Window</td><td class="value">{{.DegradedWindow}}</td></tr>
-        {{if gt .IncidentNumber 0}}<tr><td class="label">Incident</td><td class="value">#{{.IncidentNumber}}</td></tr>{{end}}
+        {{if .DegradedFailureLine}}<tr><td class="label">{{t "incident.labels.failures"}}</td><td class="value">{{.DegradedFailureLine}}</td></tr>{{end}}
+        {{if .DegradedSlowLine}}<tr><td class="label">{{t "incident.labels.slowProbes"}}</td><td class="value">{{.DegradedSlowLine}}</td></tr>{{end}}
+        <tr><td class="label">{{t "incident.labels.window"}}</td><td class="value">{{.DegradedWindow}}</td></tr>
+        {{if .IncidentNumber}}<tr><td class="label">{{t "common.labels.incident"}}</td><td class="value">#{{.IncidentNumber}}</td></tr>{{end}}
     </table>
     {{if .DegradedWindowURL}}
-    <div class="cta-wrap">{{template "button" dict "URL" .DegradedWindowURL "Label" "Open the chart" "Variant" "primary"}}</div>
+    <div class="cta-wrap">{{template "button" dict "URL" .DegradedWindowURL "Label" (t "incident.degradedCreated.openChart") "Variant" "primary"}}</div>
     {{end}}
 {{end}}
-{{define "text"}}{{.CheckName}} is degraded
+{{define "text"}}{{t "incident.degradedCreated.title" "check" .CheckName}}
 
 {{.DegradedReason}}. {{.DegradedStatus}}
 
-This is not an outage: each failure was followed by a success before the confirmation period elapsed.
+{{t "incident.degradedCreated.notOutage"}}
 
-{{if .DegradedFailureLine}}Failures: {{.DegradedFailureLine}}
-{{end}}{{if .DegradedSlowLine}}Slow probes: {{.DegradedSlowLine}}
-{{end}}Window: {{.DegradedWindow}}
-Current status: {{.DegradedStatus}}
-Monitor: {{.CheckName}}
-{{if .DegradedWindowURL}}Chart on this window: {{.DegradedWindowURL}}
-{{end}}Started at: {{.StartedAt}}
-{{if gt .IncidentNumber 0}}Incident: #{{.IncidentNumber}}
-{{end}}Incident ID: {{.IncidentUID}}
-{{if .IncidentURL}}
-View incident: {{.IncidentURL}}
-{{end}}
-This is an automated notification from SolidPing.
-{{if .DashboardURL}}Dashboard: {{.DashboardURL}}{{end}}{{if .DocsURL}}
-Docs: {{.DocsURL}}{{end}}{{if .UnsubscribeURL}}
-Unsubscribe from alerts{{if .UnsubscribeCheckName}} for {{.UnsubscribeCheckName}}{{end}}: {{.UnsubscribeURL}}{{end}}
-{{end}}
+{{if .DegradedFailureLine}}{{t "common.textField" "label" (t "incident.labels.failures") "value" .DegradedFailureLine}}
+{{end}}{{if .DegradedSlowLine}}{{t "common.textField" "label" (t "incident.labels.slowProbes") "value" .DegradedSlowLine}}
+{{end}}{{t "common.textField" "label" (t "incident.labels.window") "value" .DegradedWindow}}
+{{t "common.textField" "label" (t "incident.labels.currentStatus") "value" .DegradedStatus}}
+{{t "common.textField" "label" (t "incident.labels.monitor") "value" .CheckName}}
+{{if .DegradedWindowURL}}{{t "common.textField" "label" (t "incident.labels.chartWindow") "value" .DegradedWindowURL}}
+{{end}}{{t "common.textField" "label" (t "incident.labels.startedAt") "value" (date .StartedAt)}}
+{{if .IncidentNumber}}{{t "common.textField" "label" (t "common.labels.incident") "value" (printf "#%v" .IncidentNumber)}}
+{{end}}{{t "common.textField" "label" (t "incident.labels.incidentId") "value" .IncidentUID}}
+{{template "incident-actions-text" (dict "IncidentURL" .IncidentURL)}}
+{{t "common.footer.automated"}}
+{{template "footer-text" .}}{{end}}

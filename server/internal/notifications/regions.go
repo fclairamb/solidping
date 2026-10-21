@@ -1,10 +1,10 @@
 package notifications
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/i18n"
 )
 
 // Keys of incident.Details["regions"], written by handlers/incidents
@@ -117,16 +117,16 @@ func detailsObject(raw any) map[string]any {
 // Text renders `🇪🇺 Europe West, 🇺🇸 US East (2 of 3 regions)`. With one region
 // of one it renders the label alone, with no "1 of 1".
 func (r *RegionInfo) Text() string {
-	return r.render(true)
+	return r.render(i18n.English, true)
 }
 
 // PlainText is Text without the emoji, for channels where an emoji costs
 // something (an SMS turns UCS-2 with one, halving its length).
 func (r *RegionInfo) PlainText() string {
-	return r.render(false)
+	return r.render(i18n.English, false)
 }
 
-func (r *RegionInfo) render(withEmoji bool) string {
+func (r *RegionInfo) render(loc i18n.Locale, withEmoji bool) string {
 	if r == nil || len(r.Failing) == 0 {
 		return ""
 	}
@@ -138,7 +138,7 @@ func (r *RegionInfo) render(withEmoji bool) string {
 
 	text := strings.Join(names, ", ")
 	if r.RegionCount > 1 {
-		text += fmt.Sprintf(" (%d of %d regions)", len(r.Failing), r.RegionCount)
+		text += " " + loc.Tn("incident.regions.count", len(r.Failing), "total", r.RegionCount)
 	}
 
 	return text
@@ -157,18 +157,18 @@ func (r *RegionInfo) label(slug string, withEmoji bool) string {
 	return label.Name
 }
 
-// regionLinePrefix is the wording by event: "Failing from" while the incident
-// is open, "Failed from" once resolved. Empty for events that carry no region
-// line (comment, ack, unack, anything else).
-func regionLinePrefix(eventType string) string {
+// regionLinePrefixIn is the wording by event: "Failing from" while the
+// incident is open, "Failed from" once resolved. Empty for events that carry
+// no region line (comment, ack, unack, anything else).
+func regionLinePrefixIn(loc i18n.Locale, eventType string) string {
 	switch eventType {
 	case string(models.EventTypeIncidentCreated),
 		string(models.EventTypeIncidentReopened),
 		string(models.EventTypeIncidentEscalated),
 		eventTypeIncidentReminder:
-		return "Failing from"
+		return loc.T("incident.regions.failingFrom")
 	case string(models.EventTypeIncidentResolved):
-		return "Failed from"
+		return loc.T("incident.regions.failedFrom")
 	default:
 		return ""
 	}
@@ -178,20 +178,23 @@ func regionLinePrefix(eventType string) string {
 // from") and its value for a payload, or two empty strings when this payload
 // shows no region line. Every sender calls this so the rule lives once.
 func RegionLabelFor(payload *Payload) (string, string) {
-	title, text := regionLine(payload, true)
+	return regionLabelForIn(i18n.English, payload)
+}
 
-	return title, text
+// regionLabelForIn is RegionLabelFor in the reader's language (email).
+func regionLabelForIn(loc i18n.Locale, payload *Payload) (string, string) {
+	return regionLine(loc, payload, true)
 }
 
 // RegionLabelPlainFor is RegionLabelFor without emoji (Twilio).
 func RegionLabelPlainFor(payload *Payload) (string, string) {
-	return regionLine(payload, false)
+	return regionLine(i18n.English, payload, false)
 }
 
 // RegionLine is the whole line, `Failing from: <regions>`, or "" when the
 // payload shows none. For senders that render plain lines.
 func RegionLine(payload *Payload) string {
-	title, text := regionLine(payload, true)
+	title, text := regionLine(i18n.English, payload, true)
 	if text == "" {
 		return ""
 	}
@@ -199,12 +202,12 @@ func RegionLine(payload *Payload) string {
 	return title + ": " + text
 }
 
-func regionLine(payload *Payload, withEmoji bool) (string, string) {
+func regionLine(loc i18n.Locale, payload *Payload, withEmoji bool) (string, string) {
 	if payload == nil || payload.Regions == nil {
 		return "", ""
 	}
 
-	title := regionLinePrefix(payload.EventType)
+	title := regionLinePrefixIn(loc, payload.EventType)
 	if title == "" {
 		return "", ""
 	}
@@ -214,11 +217,7 @@ func regionLine(payload *Payload, withEmoji bool) (string, string) {
 		return "", ""
 	}
 
-	text := payload.Regions.PlainText()
-	if withEmoji {
-		text = payload.Regions.Text()
-	}
-
+	text := payload.Regions.render(loc, withEmoji)
 	if text == "" {
 		return "", ""
 	}

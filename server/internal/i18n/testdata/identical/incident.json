@@ -1,0 +1,8 @@
+{
+  "incident.checkLink": {"fr": "markup only, no words", "de": "markup only, no words", "es": "markup only, no words"},
+  "incident.channel.slack": {"fr": "brand name", "de": "brand name", "es": "brand name"},
+  "incident.channel.discord": {"fr": "brand name", "de": "brand name", "es": "brand name"},
+  "incident.channel.telegram": {"fr": "brand name", "de": "brand name", "es": "brand name"},
+  "incident.labels.type": {"fr": "same word"},
+  "incident.labels.cause": {"fr": "same word"}
+}

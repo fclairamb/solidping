@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/i18n"
+	"github.com/fclairamb/solidping/server/internal/i18n/recipient"
 	"github.com/fclairamb/solidping/server/internal/incidentlinks"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
@@ -175,42 +177,58 @@ func degradedTemplateForEvent(incident *models.Incident, eventType string) (stri
 }
 
 // applyDegradedViewModel adds the degraded-specific keys those templates render.
-func applyDegradedViewModel(viewModel map[string]any, payload *Payload, info *DegradedInfo) {
+func applyDegradedViewModel(viewModel map[string]any, loc i18n.Locale, payload *Payload, info *DegradedInfo) {
 	viewModel["DegradedTurnedOff"] = info.TurnedOff
-	viewModel["DegradedReason"] = info.Reason()
-	viewModel["DegradedStatus"] = info.StatusText()
-	viewModel["DegradedWindow"] = info.WindowText()
+	viewModel["DegradedReason"] = info.reasonIn(loc)
+	viewModel["DegradedStatus"] = info.statusTextIn(loc)
+	viewModel["DegradedWindow"] = info.windowTextIn(loc)
 	viewModel["DegradedWindowURL"] = DegradedCheckWindowURL(
 		payload.AppBaseURL, payload.OrgSlug, payload.Check, info,
 	)
 
 	if info.FailuresFired {
-		viewModel["DegradedFailureLine"] = fmt.Sprintf("%s (rule: %d of %d probes)",
-			info.failureReason(), info.FailureThreshold, info.FailureWindow)
+		viewModel["DegradedFailureLine"] = info.failureLineIn(loc)
 	}
 
 	if info.SlowFired {
-		viewModel["DegradedSlowLine"] = fmt.Sprintf("%s (rule: %d of %d probes over %dms)",
-			info.slowReason(), info.SlowThreshold, info.SlowWindow, info.SlowMs)
+		viewModel["DegradedSlowLine"] = info.slowLineIn(loc)
 	}
 }
 
 // applyBurnViewModel adds the burn-specific keys the burn templates render.
 // The three that matter — rate, budget remaining, projected exhaustion — are
 // the ones that let a reader decide without opening the dashboard.
-func applyBurnViewModel(viewModel map[string]any, burn *BurnInfo) {
+func applyBurnViewModel(viewModel map[string]any, loc i18n.Locale, burn *BurnInfo) {
 	viewModel["SLOName"] = burn.SLOName
-	viewModel["BurnPolicyLabel"] = burn.PolicyLabel
-	viewModel["BurnSeverity"] = burn.Severity
-	viewModel["BurnRate"] = burn.RateText()
-	viewModel["BurnShortRate"] = burn.ShortRateText()
-	viewModel["BurnPeakRate"] = fmt.Sprintf("%.1fx", burn.PeakRate)
-	viewModel["BurnThreshold"] = burn.ThresholdText()
-	viewModel["BurnLongWindow"] = humanDuration(burn.LongWindow)
-	viewModel["BurnShortWindow"] = humanDuration(burn.ShortWindow)
-	viewModel["BurnBudgetRemaining"] = burn.BudgetRemainingText()
-	viewModel["BurnProjectedExhaustion"] = burn.ProjectedExhaustionText()
-	viewModel["BurnTarget"] = fmt.Sprintf("%.3g%%", burn.TargetPct)
+	viewModel["BurnPolicyLabel"] = burn.policyLabelIn(loc)
+	viewModel["BurnSeverity"] = burn.severityLabelIn(loc)
+	viewModel["BurnRate"] = multiplierIn(loc, burn.LongRate)
+	viewModel["BurnShortRate"] = multiplierIn(loc, burn.ShortRate)
+	viewModel["BurnPeakRate"] = multiplierIn(loc, burn.PeakRate)
+	viewModel["BurnThreshold"] = multiplierIn(loc, burn.Threshold)
+	viewModel["BurnLongWindow"] = humanDurationIn(loc, burn.LongWindow)
+	viewModel["BurnShortWindow"] = humanDurationIn(loc, burn.ShortWindow)
+	viewModel["BurnBudgetRemaining"] = burn.budgetRemainingTextIn(loc)
+	viewModel["BurnBudgetExhausted"] = burn.BudgetRemaining <= 0
+	viewModel["BurnProjectedExhaustion"] = burn.projectedExhaustionTextIn(loc)
+	viewModel["BurnTarget"] = loc.Pct(burn.TargetPct, targetDecimals(burn.TargetPct))
+}
+
+// targetDecimals is how many decimals an objective needs, up to three: 99 is
+// "99%", 99.9 is "99.9%", 99.95 is "99.95%".
+func targetDecimals(pct float64) int {
+	const maxDecimals = 3
+
+	scale := 1.0
+	for decimals := range maxDecimals {
+		if math.Abs(pct*scale-math.Round(pct*scale)) < 1e-9 {
+			return decimals
+		}
+
+		scale *= 10
+	}
+
+	return maxDecimals
 }
 
 var (
@@ -365,7 +383,9 @@ func (s *EmailSender) Send(ctx context.Context, jctx *jobdef.JobContext, payload
 		return s.sendPerRecipient(ctx, jctx, payload, emailAddresses, prefix, del)
 	}
 
-	content, err := s.buildEmailContent(jctx, payload, "", "")
+	// One message for every address, so no single reader's language applies.
+	// Unreachable for the modeled events (see isModeledIncidentEvent).
+	content, err := s.buildEmailContent(jctx, i18n.Default, payload, "", "")
 	if err != nil {
 		return fmt.Errorf("building email content: %w", err)
 	}
@@ -419,28 +439,35 @@ func (s *EmailSender) sendPerRecipient(
 	secret := []byte(jctx.AppConfig.Auth.JWTSecret)
 	baseURL := jctx.AppConfig.Server.BaseURL
 
-	for _, recipient := range recipients {
-		suppressed, err := s.isRecipientSuppressed(ctx, jctx, payload, recipient)
+	// Each mail is written in its reader's language and timezone: the account
+	// of the address, else (an address with no account, such as a team list)
+	// the organization owner's preferences, else English/UTC.
+	locales := recipient.NewResolver(jctx.DBService)
+
+	for _, address := range recipients {
+		suppressed, err := s.isRecipientSuppressed(ctx, jctx, payload, address)
 		if err != nil {
-			return fmt.Errorf("checking suppression for %s: %w", recipient, err)
+			return fmt.Errorf("checking suppression for %s: %w", address, err)
 		}
 
 		if suppressed {
-			s.recordSkippedForSuppression(ctx, jctx, payload, recipient)
+			s.recordSkippedForSuppression(ctx, jctx, payload, address)
 
 			continue
 		}
 
+		loc := locales.ForAddress(ctx, payload.Integration.OrganizationUID, address, recipient.Hint{})
+
 		var ackURL string
 		if canAckEvent(payload.EventType) {
-			ackURL = buildAckURL(baseURL, payload.OrgSlug, payload.Incident.UID, recipient, secret, ackExp)
+			ackURL = buildAckURL(baseURL, payload.OrgSlug, payload.Incident.UID, address, secret, ackExp)
 		}
 
-		unsubURL := buildUnsubscribeURL(baseURL, payload.OrgSlug, recipient, payload.Check.UID, secret, unsubExp)
+		unsubURL := buildUnsubscribeURL(baseURL, payload.OrgSlug, address, payload.Check.UID, secret, unsubExp)
 
-		content, err := s.buildEmailContent(jctx, payload, ackURL, unsubURL)
+		content, err := s.buildEmailContent(jctx, loc, payload, ackURL, unsubURL)
 		if err != nil {
-			return fmt.Errorf("building email content for %s: %w", recipient, err)
+			return fmt.Errorf("building email content for %s: %w", address, err)
 		}
 
 		if prefix != "" {
@@ -448,7 +475,7 @@ func (s *EmailSender) sendPerRecipient(
 		}
 
 		msg := &email.Message{
-			Recipients:                  email.Recipients{To: []string{recipient}},
+			Recipients:                  email.Recipients{To: []string{address}},
 			Subject:                     content.subject,
 			HTML:                        content.htmlBody,
 			Text:                        content.textBody,
@@ -456,10 +483,12 @@ func (s *EmailSender) sendPerRecipient(
 			ListUnsubscribePostOneClick: unsubURL != "",
 			SupportReplyable:            email.SupportReplyable(content.template),
 			ThreadID:                    email.IncidentThreadID(payload.Incident.UID),
+			Locale:                      loc.Lang(),
+			Timezone:                    loc.Timezone(),
 		}
 
 		res, sendErr := jctx.Services.EmailSender.Send(ctx, msg)
-		del.record([]string{recipient}, res)
+		del.record([]string{address}, res)
 
 		if sendErr != nil {
 			return sendErr
@@ -469,20 +498,20 @@ func (s *EmailSender) sendPerRecipient(
 	return nil
 }
 
-// isRecipientSuppressed reports whether recipient has unsubscribed from
+// isRecipientSuppressed reports whether address has unsubscribed from
 // alerts for this check (either a check-specific or an org-wide
 // suppression). Returns false, nil when jctx.DBService is nil (test doubles
 // that don't wire a DB service) so existing tests without suppression
 // fixtures keep sending — production always has a DBService.
 func (s *EmailSender) isRecipientSuppressed(
-	ctx context.Context, jctx *jobdef.JobContext, payload *Payload, recipient string,
+	ctx context.Context, jctx *jobdef.JobContext, payload *Payload, address string,
 ) (bool, error) {
 	if jctx.DBService == nil {
 		return false, nil
 	}
 
 	suppressed, err := jctx.DBService.IsEmailSuppressed(
-		ctx, payload.Integration.OrganizationUID, recipient, payload.Check.UID)
+		ctx, payload.Integration.OrganizationUID, address, payload.Check.UID)
 	if err != nil {
 		return false, fmt.Errorf("is email suppressed: %w", err)
 	}
@@ -498,13 +527,13 @@ func (s *EmailSender) isRecipientSuppressed(
 // either way, and an audit-row write failure shouldn't block delivery to
 // the remaining recipients.
 func (s *EmailSender) recordSkippedForSuppression(
-	ctx context.Context, jctx *jobdef.JobContext, payload *Payload, recipient string,
+	ctx context.Context, jctx *jobdef.JobContext, payload *Payload, address string,
 ) {
 	if jctx.DBService == nil {
 		return
 	}
 
-	skipReason := fmt.Sprintf("suppressed: %s unsubscribed from alerts for this check", recipient)
+	skipReason := fmt.Sprintf("suppressed: %s unsubscribed from alerts for this check", address)
 	row := models.NewSkippedIncidentNotification(
 		payload.Integration.OrganizationUID,
 		payload.Incident.UID,
@@ -516,7 +545,7 @@ func (s *EmailSender) recordSkippedForSuppression(
 
 	if err := jctx.DBService.CreateIncidentNotification(ctx, row); err != nil {
 		jctx.Logger.WarnContext(ctx, "failed to record skipped-for-suppression audit row",
-			"recipient", recipient, "incidentUid", payload.Incident.UID, "error", err)
+			"recipient", address, "incidentUid", payload.Incident.UID, "error", err)
 	}
 }
 
@@ -532,17 +561,12 @@ type emailContent struct {
 
 // buildEmailContent assembles the view-model for one recipient and renders it
 // through the shared formatter — the one rendering pipeline for every email
-// (D1). unsubURL is "" for the broadcast (non-modeled-event) path, which has
-// no per-recipient token to offer.
+// (D1) — in the recipient's language and timezone. unsubURL is "" for the
+// broadcast (non-modeled-event) path, which has no per-recipient token to offer.
 func (s *EmailSender) buildEmailContent(
-	jctx *jobdef.JobContext, payload *Payload, ackURL, unsubURL string,
+	jctx *jobdef.JobContext, loc i18n.Locale, payload *Payload, ackURL, unsubURL string,
 ) (emailContent, error) {
-	checkName := "Unknown check"
-	if payload.Check.Name != nil {
-		checkName = *payload.Check.Name
-	} else if payload.Check.Slug != nil {
-		checkName = *payload.Check.Slug
-	}
+	checkName := emailCheckName(loc, payload.Check)
 
 	templateName, ok := incidentTemplateForEvent(payload.EventType)
 
@@ -571,10 +595,9 @@ func (s *EmailSender) buildEmailContent(
 		}, nil
 	}
 
-	viewModel := s.buildIncidentViewModel(checkName, payload, ackURL, unsubURL)
+	viewModel := buildIncidentViewModel(loc, checkName, payload, ackURL, unsubURL, time.Now())
 
-	subject, html, text, err := jctx.Services.EmailFormatter.Format(
-		templateName, i18n.Default, viewModel) // i18n-phase-b: resolve the recipient locale
+	subject, html, text, err := jctx.Services.EmailFormatter.Format(templateName, loc, viewModel)
 	if err != nil {
 		return emailContent{}, fmt.Errorf("formatting template %s: %w", templateName, err)
 	}
@@ -582,54 +605,28 @@ func (s *EmailSender) buildEmailContent(
 	return emailContent{subject: subject, htmlBody: html, textBody: text, template: templateName}, nil
 }
 
-// mailTimestamp renders a timestamp for an email body. Always in UTC and
-// always carrying the zone: a bare "2026-07-05 10:00:00" in an alert leaves the
-// reader guessing whether the outage started in their morning or the server's,
-// and an on-call reader correlating with logs cannot afford the guess. Matches
-// the format slo_burn.go already uses for projected exhaustion.
-func mailTimestamp(when time.Time) string {
-	return email.Timestamp(when)
+// emailCheckName is how an incident mail names its check: its name, else its
+// slug, else "Unknown check" in the reader's language.
+func emailCheckName(loc i18n.Locale, check *models.Check) string {
+	switch {
+	case check.Name != nil:
+		return *check.Name
+	case check.Slug != nil:
+		return *check.Slug
+	default:
+		return loc.T("incident.unknownCheck")
+	}
 }
 
-// mailDuration renders an outage length for a human. time.Duration.String()
-// gives "15m0s" and "2h0m0s" — machine-exact, and now the headline figure of
-// the recovered mail, where a trailing zero unit just reads as noise.
-//
-// Seconds are kept below the hour (a 45-second blip and a 45-minute outage are
-// different incidents, and rounding the first up to "1m" hides what happened);
-// above it they are dropped, since nobody reads "2h13m7s" as anything but 2h13m.
-func mailDuration(span time.Duration) string {
-	if span < time.Second {
-		return "0s"
-	}
-
-	span = span.Round(time.Second)
-
-	switch {
-	case span < time.Minute:
-		return fmt.Sprintf("%ds", int(span.Seconds()))
-	case span < time.Hour:
-		minutes, seconds := int(span.Minutes()), int(span.Seconds())%60
-		if seconds == 0 {
-			return fmt.Sprintf("%dm", minutes)
-		}
-
-		return fmt.Sprintf("%dm %ds", minutes, seconds)
-	case span < 24*time.Hour:
-		hours, minutes := int(span.Hours()), int(span.Minutes())%60
-		if minutes == 0 {
-			return fmt.Sprintf("%dh", hours)
-		}
-
-		return fmt.Sprintf("%dh %dm", hours, minutes)
-	default:
-		days, hours := int(span.Hours())/24, int(span.Hours())%24
-		if hours == 0 {
-			return fmt.Sprintf("%dd", days)
-		}
-
-		return fmt.Sprintf("%dd %dh", days, hours)
-	}
+// IncidentEmailViewModel is the data an incident-*.html template renders for
+// one reader, built exactly as Send builds it. It exists for the email
+// preview, whose fixtures must come from the production code rather than a
+// hand-written copy that drifts (spec 2026-10-21-01, decision 12). now is when
+// the mail is written: a reminder says how long the incident has been open.
+func IncidentEmailViewModel(
+	loc i18n.Locale, payload *Payload, ackURL, unsubURL string, now time.Time,
+) map[string]any {
+	return buildIncidentViewModel(loc, emailCheckName(loc, payload.Check), payload, ackURL, unsubURL, now)
 }
 
 // buildIncidentViewModel builds the data map passed to the incident-*.html
@@ -638,8 +635,12 @@ func mailDuration(span time.Duration) string {
 // unsubURL is "" for the broadcast (non-modeled-event) path — the templates
 // render their unsubscribe footer line conditionally on UnsubscribeURL being
 // non-empty, so an empty string simply omits that line.
-func (s *EmailSender) buildIncidentViewModel(
-	checkName string, payload *Payload, ackURL, unsubURL string,
+//
+// Instants and lengths stay time.Time / time.Duration: the templates format
+// them with date / duration, in the reader's language and timezone. Phrases
+// built in Go take loc.
+func buildIncidentViewModel(
+	loc i18n.Locale, checkName string, payload *Payload, ackURL, unsubURL string, now time.Time,
 ) map[string]any {
 	viewModel := map[string]any{
 		// Branding: the org's name and logo, when the job runner could resolve
@@ -651,7 +652,7 @@ func (s *EmailSender) buildIncidentViewModel(
 		"CheckName":      checkName,
 		"CheckType":      payload.Check.Type,
 		"CheckURL":       checkDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Check),
-		"StartedAt":      mailTimestamp(payload.Incident.StartedAt),
+		"StartedAt":      payload.Incident.StartedAt,
 		"IncidentUID":    payload.Incident.UID,
 		"IncidentNumber": payload.Incident.Number,
 		"IncidentURL":    incidentDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Incident),
@@ -674,27 +675,27 @@ func (s *EmailSender) buildIncidentViewModel(
 	}
 
 	if payload.Incident.ResolvedAt != nil {
-		viewModel["ResolvedAt"] = mailTimestamp(*payload.Incident.ResolvedAt)
-		viewModel["Duration"] = mailDuration(payload.Incident.ResolvedAt.Sub(payload.Incident.StartedAt))
+		viewModel["ResolvedAt"] = *payload.Incident.ResolvedAt
+		viewModel["Duration"] = payload.Incident.ResolvedAt.Sub(payload.Incident.StartedAt)
 	}
 
 	if burn := BurnInfoFor(payload.Incident); burn != nil {
-		applyBurnViewModel(viewModel, burn)
+		applyBurnViewModel(viewModel, loc, burn)
 	}
 
 	if info := DegradedInfoFor(payload.Incident); info != nil {
-		applyDegradedViewModel(viewModel, payload, info)
+		applyDegradedViewModel(viewModel, loc, payload, info)
 	}
 
-	if title, text := RegionLabelFor(payload); text != "" {
+	if title, text := regionLabelForIn(loc, payload); text != "" {
 		viewModel["RegionTitle"] = title
 		viewModel["RegionText"] = text
 	}
 
 	if payload.Comment != nil {
 		viewModel["CommentText"] = commentText(payload.Comment)
-		viewModel["CommentAuthor"] = commentAuthor(payload.Comment)
-		viewModel["CommentSource"] = commentSourceLabel(payload.Comment)
+		viewModel["CommentAuthor"] = commentAuthorIn(loc, payload.Comment)
+		viewModel["CommentChannel"] = commentChannelIn(loc, payload.Comment)
 	}
 
 	// Both halves of the acknowledgment pair render the same attribution: the
@@ -702,16 +703,16 @@ func (s *EmailSender) buildIncidentViewModel(
 	// "Acknowledged by", but the value comes from the same resolver.
 	if payload.EventType == eventTypeIncidentAcknowledged ||
 		payload.EventType == eventTypeIncidentUnacknowledged {
-		viewModel["AckActor"] = ackActor(payload.Acknowledgment)
-		viewModel["AckVia"] = ackViaLabel(payload.Acknowledgment)
+		viewModel["AckActor"] = ackActorIn(loc, payload.Acknowledgment)
+		viewModel["AckChannel"] = ackChannelIn(loc, payload.Acknowledgment)
 	}
 
 	if payload.EventType == eventTypeIncidentReminder {
-		viewModel["ReminderText"] = reminderSentence(payload)
+		viewModel["ReminderText"] = reminderSentenceIn(loc, payload, now)
 	}
 
 	if payload.Incident.AcknowledgedAt != nil {
-		viewModel["AcknowledgedAt"] = mailTimestamp(*payload.Incident.AcknowledgedAt)
+		viewModel["AcknowledgedAt"] = *payload.Incident.AcknowledgedAt
 	}
 
 	if unsubURL != "" {

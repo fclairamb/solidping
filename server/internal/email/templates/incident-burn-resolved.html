@@ -1,52 +1,47 @@
-{{define "subject"}}{{if .SubjectPrefix}}{{.SubjectPrefix}} {{end}}🟢 {{.SLOName}} is back under {{.BurnThreshold}}{{if gt .IncidentNumber 0}} (#{{.IncidentNumber}}){{end}}{{end}}
-{{define "preheader"}}Burn rate back under {{.BurnThreshold}}. {{.BurnBudgetRemaining}} of budget left.{{end}}
+{{define "subject"}}{{if .SubjectPrefix}}{{.SubjectPrefix}} {{end}}🟢 {{t "incident.burnResolved.subject" "slo" .SLOName "threshold" .BurnThreshold}}{{if .IncidentNumber}} (#{{.IncidentNumber}}){{end}}{{end}}
+{{define "preheader"}}{{if .BurnBudgetExhausted}}{{t "incident.burnResolved.preheaderExhausted" "threshold" .BurnThreshold}}{{else}}{{t "incident.burnResolved.preheader" "threshold" .BurnThreshold "budget" .BurnBudgetRemaining}}{{end}}{{end}}
 {{template "base.html" .}}
-{{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "recovered" "Label" "Burn cleared"}}{{end}}
+{{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "recovered" "Label" (t "incident.pill.burnCleared")}}{{end}}
 {{define "content"}}
-    <h1>{{.SLOName}} stopped burning</h1>
-    <p class="lead">The burn rate stayed under {{.BurnThreshold}} for {{.BurnShortWindow}}. The budget already spent does not come back.</p>
+    <h1>{{t "incident.burnResolved.title" "slo" .SLOName}}</h1>
+    <p class="lead">{{t "incident.burnResolved.lead" "threshold" .BurnThreshold "short" .BurnShortWindow}}</p>
     <table class="metric" role="presentation" width="100%" cellpadding="0" cellspacing="0">
         <tr>
             <td align="center" width="50%">
                 <span class="metric-value is-warn">{{.BurnPeakRate}}</span>
-                <span class="metric-label">Peak burn rate</span>
+                <span class="metric-label">{{t "incident.labels.peakBurnRate"}}</span>
             </td>
             <td align="center" width="50%">
                 <span class="metric-value">{{.BurnBudgetRemaining}}</span>
-                <span class="metric-label">Budget left</span>
+                <span class="metric-label">{{t "incident.labels.budgetLeft"}}</span>
             </td>
         </tr>
     </table>
     <table class="details-table" role="presentation" cellpadding="0" cellspacing="0">
-        <tr><td class="label">Objective</td><td class="value">{{.SLOName}} ({{.BurnTarget}})</td></tr>
-        <tr><td class="label">Burn rate now</td><td class="value">{{.BurnRate}} over {{.BurnLongWindow}}</td></tr>
-        <tr><td class="label">From</td><td class="value">{{.StartedAt}}</td></tr>
-        <tr><td class="label">Until</td><td class="value">{{.ResolvedAt}}{{if .Duration}} ({{.Duration}}){{end}}</td></tr>
-        {{if gt .IncidentNumber 0}}<tr><td class="label">Incident</td><td class="value">#{{.IncidentNumber}}</td></tr>{{end}}
+        <tr><td class="label">{{t "incident.labels.objective"}}</td><td class="value">{{.SLOName}} ({{.BurnTarget}})</td></tr>
+        <tr><td class="label">{{t "incident.labels.burnRateNow"}}</td><td class="value">{{t "incident.burnResolved.rateOver" "rate" .BurnRate "long" .BurnLongWindow}}</td></tr>
+        <tr><td class="label">{{t "incident.labels.from"}}</td><td class="value">{{date .StartedAt}}</td></tr>
+        <tr><td class="label">{{t "incident.labels.until"}}</td><td class="value">{{date .ResolvedAt}}{{if .Duration}} ({{duration .Duration}}){{end}}</td></tr>
+        {{if .IncidentNumber}}<tr><td class="label">{{t "common.labels.incident"}}</td><td class="value">#{{.IncidentNumber}}</td></tr>{{end}}
     </table>
-    {{if .IncidentURL}}<div class="cta-wrap">{{template "button" dict "URL" .IncidentURL "Label" "View incident" "Variant" "secondary"}}</div>{{end}}
+    {{if .IncidentURL}}<div class="cta-wrap">{{template "button" dict "URL" .IncidentURL "Label" (t "common.incidentActions.viewIncident") "Variant" "secondary"}}</div>{{end}}
 {{end}}
-{{define "text"}}{{.SLOName}} stopped burning
+{{define "text"}}{{t "incident.burnResolved.title" "slo" .SLOName}}
 
-Both windows of the {{.BurnPolicyLabel}} policy have stayed below {{.BurnThreshold}} for a full {{.BurnShortWindow}}, so the alert has resolved.
+{{t "incident.burnResolved.textBody" "policy" .BurnPolicyLabel "threshold" .BurnThreshold "short" .BurnShortWindow}}
 
-Objective: {{.SLOName}} ({{.BurnTarget}})
-Policy: {{.BurnPolicyLabel}} - {{.BurnSeverity}}
-Peak burn rate: {{.BurnPeakRate}}
-Burn rate now: {{.BurnRate}} over {{.BurnLongWindow}}
-Budget remaining: {{.BurnBudgetRemaining}}
-Started at: {{.StartedAt}}
-Resolved at: {{.ResolvedAt}}
-{{if .Duration}}Duration: {{.Duration}}
-{{end}}{{if gt .IncidentNumber 0}}Incident: #{{.IncidentNumber}}
-{{end}}Incident ID: {{.IncidentUID}}
-{{if .IncidentURL}}
-View incident: {{.IncidentURL}}
-{{end}}
-The budget that was spent is not returned - only the burn rate came back down.
+{{t "common.textField" "label" (t "incident.labels.objective") "value" (printf "%v (%v)" .SLOName .BurnTarget)}}
+{{t "common.textField" "label" (t "incident.labels.policy") "value" (t "incident.burnCreated.policyText" "policy" .BurnPolicyLabel "severity" .BurnSeverity)}}
+{{t "common.textField" "label" (t "incident.labels.peakBurnRate") "value" .BurnPeakRate}}
+{{t "common.textField" "label" (t "incident.labels.burnRateNow") "value" (t "incident.burnResolved.rateOver" "rate" .BurnRate "long" .BurnLongWindow)}}
+{{t "common.textField" "label" (t "incident.labels.budgetRemaining") "value" .BurnBudgetRemaining}}
+{{t "common.textField" "label" (t "incident.labels.startedAt") "value" (date .StartedAt)}}
+{{t "common.textField" "label" (t "incident.labels.resolvedAt") "value" (date .ResolvedAt)}}
+{{if .Duration}}{{t "common.textField" "label" (t "incident.labels.duration") "value" (duration .Duration)}}
+{{end}}{{if .IncidentNumber}}{{t "common.textField" "label" (t "common.labels.incident") "value" (printf "#%v" .IncidentNumber)}}
+{{end}}{{t "common.textField" "label" (t "incident.labels.incidentId") "value" .IncidentUID}}
+{{template "incident-actions-text" .}}
+{{t "incident.burnResolved.notReturned"}}
 
-This is an automated notification from SolidPing.
-{{if .DashboardURL}}Dashboard: {{.DashboardURL}}{{end}}{{if .DocsURL}}
-Docs: {{.DocsURL}}{{end}}{{if .UnsubscribeURL}}
-Unsubscribe from alerts{{if .UnsubscribeCheckName}} for {{.UnsubscribeCheckName}}{{end}}: {{.UnsubscribeURL}}{{end}}
-{{end}}
+{{t "common.footer.automated"}}
+{{template "footer-text" .}}{{end}}

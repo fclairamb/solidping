@@ -1,0 +1,230 @@
+{
+  "unknownCheck": "Comprobación desconocida",
+  "someone": "Alguien",
+  "checkLink": "<a href=\"{url}\">{check}</a>",
+  "channel": {
+    "slack": "Slack",
+    "discord": "Discord",
+    "telegram": "Telegram",
+    "email": "correo",
+    "phone": "teléfono"
+  },
+  "pill": {
+    "down": "Caído",
+    "recovered": "Recuperado",
+    "checkDeleted": "Comprobación eliminada",
+    "escalated": "Escalado",
+    "reopened": "Reabierto",
+    "comment": "Comentario",
+    "acknowledged": "Reconocido",
+    "unacknowledged": "Reconocimiento anulado",
+    "stillDown": "Sigue caído",
+    "budgetBurning": "Consumiendo presupuesto",
+    "burnCleared": "Consumo normalizado",
+    "degraded": "Degradado",
+    "degradedClosed": "Degradación cerrada",
+    "degradedCleared": "Degradación resuelta"
+  },
+  "labels": {
+    "type": "Tipo",
+    "startedAt": "Iniciado el",
+    "resolvedAt": "Resuelto el",
+    "duration": "Duración",
+    "incidentId": "ID del incidente",
+    "failureCount": "Número de fallos",
+    "relapseCount": "Número de recaídas",
+    "failedChecks": "Comprobaciones fallidas",
+    "cause": "Causa",
+    "downFrom": "Caído desde",
+    "backAt": "Restablecido el",
+    "via": "Canal",
+    "ackAt": "Reconocido el",
+    "acknowledgedBy": "Reconocido por",
+    "acknowledgedAt": "Reconocido el",
+    "withdrawnBy": "Anulado por",
+    "from": "Desde",
+    "until": "Hasta",
+    "objective": "Objetivo",
+    "policy": "Política",
+    "lastWindow": "Ventana de {window}",
+    "budgetGoneBy": "Agotamiento previsto",
+    "burnRate": "Tasa de consumo",
+    "burnRateLast": "Tasa de consumo, ventana de {window}",
+    "budgetLeft": "Presupuesto restante",
+    "threshold": "Umbral",
+    "budgetRemaining": "Presupuesto restante",
+    "projectedExhaustion": "Agotamiento previsto",
+    "detectedOn": "Detectado en",
+    "peakBurnRate": "Tasa de consumo máxima",
+    "burnRateNow": "Tasa de consumo actual",
+    "failures": "Fallos",
+    "slowProbes": "Sondas lentas",
+    "window": "Ventana",
+    "currentStatus": "Estado actual",
+    "monitor": "Comprobación",
+    "chartWindow": "Gráfico de esta ventana"
+  },
+  "regions": {
+    "failingFrom": "Regiones con fallos",
+    "failedFrom": "Regiones afectadas",
+    "count_one": "({count} de {total} regiones)",
+    "count_other": "({count} de {total} regiones)"
+  },
+  "created": {
+    "title": "{check} está caído",
+    "titleCause": "{check} está caído: {cause}",
+    "preheader": "Caído desde el {since}.",
+    "preheaderRegions": "Caído desde el {since}. Regiones con fallos: {regions}."
+  },
+  "resolved": {
+    "title": "{check} vuelve a funcionar",
+    "titleAfter": "{check} vuelve a funcionar tras {duration} de caída",
+    "downFor": "Caído durante {duration}.",
+    "passing": "Las comprobaciones vuelven a pasar. No hay nada más que hacer.",
+    "leadDuration": "Estuvo caído durante <strong>{duration}</strong>. No hay nada más que hacer.",
+    "deletedSubject": "Se eliminó {check}, incidente cerrado",
+    "deletedTitle": "Se eliminó {check}",
+    "deletedPreheader": "Se eliminó {check}, así que su incidente se cerró.",
+    "deletedBody": "Se eliminó la comprobación, así que este incidente se cerró. No tiene por qué haberse recuperado.",
+    "textTitle": "{check} se ha recuperado",
+    "textBody": "El incidente de {check} se ha resuelto."
+  },
+  "escalated": {
+    "subject": "{check} sigue caído, incidente escalado",
+    "preheader_one": "Sigue caído tras {count} comprobación fallida, así que se ha escalado.",
+    "preheader_other": "Sigue caído tras {count} comprobaciones fallidas, así que se ha escalado.",
+    "title": "{check} sigue caído",
+    "lead": "Nadie lo reconoció a tiempo, así que se ha escalado.",
+    "textTitle": "Incidente de {check} escalado",
+    "textBody": "El incidente de {check} se ha escalado."
+  },
+  "reopened": {
+    "title": "{check} vuelve a estar caído",
+    "preheader": "{check} ha vuelto a caer tras una breve recuperación.",
+    "lead": "Se recuperó brevemente y volvió a fallar.",
+    "leadRelapses_one": "Se recuperó brevemente y volvió a fallar ({count} recaída hasta ahora).",
+    "leadRelapses_other": "Se recuperó brevemente y volvió a fallar ({count} recaídas hasta ahora).",
+    "textTitle": "Incidente de {check} reabierto (recaída n.º {relapse})",
+    "textBody": "El incidente de {check} se ha reabierto tras una breve recuperación."
+  },
+  "comment": {
+    "subject": "Comentario de {author} en {check}",
+    "preheader": "{author} dejó una nota en el incidente de {check}.",
+    "title": "{author} comentó el incidente de {check}",
+    "posted": "Publicado vía {channel}.",
+    "textTitle": "Nuevo comentario en {check}",
+    "textBody": "{author} comentó el incidente de {check}:",
+    "textBodyVia": "{author} comentó el incidente de {check} vía {channel}:"
+  },
+  "acknowledged": {
+    "title": "{actor} se encarga de {check}",
+    "preheader": "{actor} lo ha asumido. El escalado se ha detenido, el incidente sigue abierto.",
+    "lead": "El escalado se ha detenido. El incidente sigue abierto hasta que las comprobaciones vuelvan a pasar.",
+    "textTitle": "Incidente de {check} reconocido",
+    "textBody": "{actor} reconoció el incidente de {check}. El escalado se ha detenido: nadie más tiene que encargarse.",
+    "textBodyVia": "{actor} reconoció el incidente de {check} vía {channel}. El escalado se ha detenido: nadie más tiene que encargarse.",
+    "textStillOpen": "El incidente sigue abierto: reconocerlo indica que alguien se encarga, no que esté solucionado."
+  },
+  "unacknowledged": {
+    "title": "Ya nadie se encarga de {check}",
+    "preheader": "{actor} anuló el reconocimiento. El incidente vuelve a no tener responsable y el escalado se reanuda.",
+    "lead": "<strong>{actor}</strong> anuló el reconocimiento. El escalado se reanuda donde se detuvo. Los avisos ya enviados no se repiten.",
+    "leadVia": "<strong>{actor}</strong> anuló el reconocimiento vía {channel}. El escalado se reanuda donde se detuvo. Los avisos ya enviados no se repiten.",
+    "textTitle": "{check} vuelve a no tener responsable",
+    "textBody": "{actor} anuló el reconocimiento del incidente de {check}. Nadie se encarga de él.",
+    "textBodyVia": "{actor} anuló el reconocimiento del incidente de {check} vía {channel}. Nadie se encarga de él.",
+    "textResume": "El escalado se reanuda desde el paso que interrumpió el reconocimiento, así que los avisos ya enviados no se repiten."
+  },
+  "reminder": {
+    "subject": "{check} sigue caído y nadie se encarga",
+    "title": "{check} sigue caído",
+    "lead": "{reminder}. Nadie lo ha asumido todavía.",
+    "textBody": "{reminder}. Nadie ha asumido este incidente todavía.",
+    "ackStopsReminders": "«Me encargo» también detiene estos recordatorios.",
+    "sentence": "Sigue caído tras {duration}, sin reconocer",
+    "sentenceSeq": "Sigue caído tras {duration}, sin reconocer (recordatorio {seq})",
+    "duration": {
+      "minutes": "{n} min",
+      "hours": "{n} h",
+      "days": "{n} d",
+      "hoursMinutes": "{hours} h {minutes} min",
+      "daysHours": "{days} d {hours} h"
+    }
+  },
+  "burn": {
+    "policy": {
+      "fast": "Consumo rápido",
+      "slow": "Consumo lento"
+    },
+    "severity": {
+      "critical": "crítico",
+      "warning": "advertencia"
+    },
+    "exhausted": "agotado",
+    "notWithinWindow": "no se prevé en esta ventana",
+    "duration": {
+      "minutes": "{n} min",
+      "hours": "{n} h",
+      "days": "{n} d",
+      "hoursMinutes": "{hours} h {minutes} min",
+      "daysHours": "{days} d {hours} h"
+    }
+  },
+  "burnCreated": {
+    "subject": "{policy}: {slo} a {rate}",
+    "preheader": "Se activó la política «{policy}» a {rate}. Presupuesto restante: {budget}.",
+    "preheaderExhausted": "Se activó la política «{policy}» a {rate}. El presupuesto de error está agotado.",
+    "title": "{slo} está consumiendo su presupuesto de error demasiado rápido",
+    "lead": "Está consumiendo el presupuesto <strong>{rate}</strong> más rápido que el ritmo sostenible. No tiene por qué estar caído ahora mismo, pero no puede mantener este ritmo.",
+    "policyValue": "{policy}, {severity}, por encima de {threshold}",
+    "textTitle": "{slo} está consumiendo su presupuesto de error demasiado rápido",
+    "textBody": "Se activó la política «{policy}»: el objetivo consume su presupuesto de error a {rate} en {long}, y lo sigue haciendo en {short}.",
+    "policyText": "{policy}, {severity}",
+    "burnRateText": "{rate} en {long}, {shortRate} en {short}"
+  },
+  "burnResolved": {
+    "subject": "{slo} vuelve a estar por debajo de {threshold}",
+    "preheader": "Tasa de consumo de nuevo por debajo de {threshold}. Presupuesto restante: {budget}.",
+    "preheaderExhausted": "Tasa de consumo de nuevo por debajo de {threshold}. El presupuesto de error está agotado.",
+    "title": "{slo}: consumo normalizado",
+    "lead": "La tasa de consumo se mantuvo por debajo de {threshold} durante {short}. El presupuesto ya consumido no se recupera.",
+    "rateOver": "{rate} en {long}",
+    "textBody": "Las dos ventanas de la política «{policy}» se han mantenido por debajo de {threshold} durante {short}, así que la alerta se ha resuelto.",
+    "notReturned": "El presupuesto consumido no se devuelve: solo ha bajado la tasa de consumo."
+  },
+  "degraded": {
+    "failures_one": "{count} fallo en las últimas {slots} sondas ({availability} % de disponibilidad)",
+    "failures_other": "{count} fallos en las últimas {slots} sondas ({availability} % de disponibilidad)",
+    "failuresNoAvailability_one": "{count} fallo en las últimas {slots} sondas",
+    "failuresNoAvailability_other": "{count} fallos en las últimas {slots} sondas",
+    "slow_one": "{count} de las últimas {slots} sondas tardó más de {ms} ms",
+    "slow_other": "{count} de las últimas {slots} sondas tardaron más de {ms} ms",
+    "both": "{failures} y {slow}",
+    "pattern": "se detectó un patrón intermitente",
+    "currentlyUp": "Ahora mismo funciona.",
+    "currentlyNotUp": "Ahora mismo no funciona.",
+    "recentProbes": "sondas recientes",
+    "failureLine": "{reason} (regla: {threshold} de {window} sondas)",
+    "slowLine": "{reason} (regla: {threshold} de {window} sondas por encima de {ms} ms)"
+  },
+  "degradedCreated": {
+    "subject": "{check} está degradado: {reason}",
+    "title": "{check} está degradado",
+    "lead": "Sigue fallando o ralentizándose, sin estar caído el tiempo suficiente para contar como una caída.",
+    "openChart": "Abrir el gráfico",
+    "notOutage": "No es una caída: cada fallo fue seguido de un éxito antes de que terminara el periodo de confirmación."
+  },
+  "degradedResolved": {
+    "title": "{check} vuelve a estar estable",
+    "turnedOffSubject": "{check}: detección de degradación desactivada",
+    "turnedOffPreheader": "Se desactivó la detección de degradación en {check}, así que su episodio de degradación se cerró.",
+    "preheader": "{check} lleva estable el tiempo suficiente para cerrar el episodio de degradación.",
+    "turnedOffTitle": "Detección de degradación desactivada para {check}",
+    "turnedOffLead": "El episodio de degradación abierto se cerró. La comprobación no tiene por qué haberse recuperado.",
+    "leadDuration": "Estuvo inestable durante <strong>{duration}</strong>. No hay nada más que hacer.",
+    "lead": "No hay nada más que hacer.",
+    "turnedOffText": "Se desactivó la detección de degradación en esta comprobación, así que el episodio de degradación abierto se cerró. La comprobación no tiene por qué haberse recuperado.",
+    "textBody": "La condición de degradación lleva el tiempo suficiente sin cumplirse para cerrar el episodio.",
+    "historyKept": "Los fallos y las respuestas lentas registrados se quedan en el historial de la comprobación: solo se detuvo el patrón."
+  }
+}
