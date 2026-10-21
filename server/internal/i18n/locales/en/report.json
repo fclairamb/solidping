@@ -1,0 +1,92 @@
+{
+  "subject": "{org}, {period}: {pct} uptime",
+  "heading": "{org} uptime report, {period}",
+  "preheader": {
+    "withData": "{pct} availability · {incidents} · {period}.",
+    "noData": "No availability data · {incidents} · {period}."
+  },
+  "incidents_one": "{count} incident",
+  "incidents_other": "{count} incidents",
+  "title": "Uptime report",
+  "noData": "No data",
+  "metricLabel": "Availability · {period}",
+  "versus": "vs {period} ({previous})",
+  "period": {
+    "range": "{start} – {end}"
+  },
+  "scope": {
+    "all": "All checks ({count})",
+    "named_one": "{name} ({count} check)",
+    "named_other": "{name} ({count} checks)"
+  },
+  "downAll": {
+    "check": "{check} was down for the entire period.",
+    "every": "Every monitored check was down for the entire period."
+  },
+  "labels": {
+    "checksMonitored": "Checks monitored",
+    "incidents": "Incidents",
+    "totalDowntime": "Total downtime"
+  },
+  "incidentStats": {
+    "longest": "longest {duration}",
+    "average": "average {duration}"
+  },
+  "delta": {
+    "points": "{value} pts",
+    "percent": "{value}%",
+    "noChange": "no change"
+  },
+  "latency": {
+    "title": "Response time",
+    "average": "Average",
+    "range": "Fastest / slowest",
+    "slowProbes": "Slow probes"
+  },
+  "units": {
+    "ms": "{value} ms",
+    "s": "{value} s"
+  },
+  "slow": {
+    "samples_one": "{count} sample",
+    "samples_other": "{count} samples",
+    "peaks_one": "{count} peak",
+    "peaks_other": "{count} peaks",
+    "both": "{samples} and {peaks} above {threshold}",
+    "some": "{counted} above {threshold}",
+    "none": "none above {threshold}",
+    "peakNote": "A peak is a rolled-up period whose slowest sample exceeded {threshold}; older data is stored as rollups, which cannot report an exact sample count.",
+    "includesFailures": "Response times include failed samples."
+  },
+  "checks": {
+    "title": "Per check · worst first",
+    "truncated": "Showing the {shown} lowest-uptime checks of {total}.",
+    "downAllPeriod": "down all period"
+  },
+  "strip": {
+    "label": "Daily availability, {start} – {end} (UTC)",
+    "legend": "{label}: green ≥ {good}, amber ≥ {warn}, orange ≥ {poor}, red below. Gray means nothing was recorded that day, so a check created mid-period reads gray, not red.",
+    "budgetNote_one": "Daily strips are shown for {count} check only, the one with the lowest uptime; the rest were left out to keep this email under the size mail clients truncate at.",
+    "budgetNote_other": "Daily strips are shown for the {count} lowest-uptime checks; the rest were left out to keep this email under the size mail clients truncate at."
+  },
+  "slo": {
+    "title": "Objectives",
+    "vsTarget": "{value} / target {target}",
+    "budgetRemaining": "Budget remaining: {budget}",
+    "state": {
+      "healthy": "Healthy",
+      "atRisk": "At risk",
+      "breached": "Breached"
+    }
+  },
+  "cta": "Open dashboard",
+  "text": {
+    "overall": "Overall availability",
+    "versus": "vs {period}: {previous}",
+    "latencyHeading": "Response time:",
+    "perCheck": "Per check, worst first:",
+    "perCheckTruncated": "Per check, worst first (showing the {shown} lowest-uptime checks of {total}):",
+    "objectivesHeading": "Objectives:",
+    "budgetRemaining": "budget remaining {budget}"
+  }
+}

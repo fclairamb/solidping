@@ -7,60 +7,59 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/i18n"
+	"github.com/fclairamb/solidping/server/internal/slo"
 	"github.com/fclairamb/solidping/server/internal/uptimereport"
 )
 
+// sampleClock pins "now" to the month after the sample's period, so its day
+// labels never carry a year, whatever year the test runs in.
+func sampleClock() time.Time {
+	return time.Date(2026, time.August, 1, 9, 0, 0, 0, time.UTC)
+}
+
+// sampleData is a July 2026 report for Paris, written in English by the
+// production writer (Data.In) from its figures.
 func sampleData() *uptimereport.Data {
-	return &uptimereport.Data{
+	paris, err := time.LoadLocation("Europe/Paris")
+	if err != nil {
+		panic(err)
+	}
+
+	july := time.Date(2026, time.July, 1, 0, 0, 0, 0, paris)
+	attainment := 99.95
+
+	report := &uptimereport.Data{
 		OrgName:           "acme",
-		PeriodLabel:       "July 2026",
-		ScopeLabel:        "All checks (2)",
 		Timezone:          "Europe/Paris",
 		HasData:           true,
-		AvailabilityPct:   "99.950",
 		AvailabilityColor: "#15803d",
 		CheckCount:        2,
 		IncidentCount:     3,
-		LongestIncident:   "42m",
-		AverageIncident:   "21m 40s",
-		TotalDowntime:     "1h 5m",
 
-		PreviousPeriodLabel:     "June 2026",
-		HasPreviousData:         true,
-		PreviousAvailabilityPct: "99.870",
-		PreviousIncidentCount:   5,
-		PreviousAvgResponseTime: "158 ms",
+		HasPreviousData:       true,
+		PreviousIncidentCount: 5,
 
 		ShowAvailabilityDelta:  true,
-		AvailabilityDeltaText:  "+0.080 pts",
 		AvailabilityDeltaColor: "#15803d",
 
 		ShowIncidentDelta:  true,
-		IncidentDeltaText:  "-2",
 		IncidentDeltaColor: "#15803d",
 
 		ShowResponseDelta:  true,
-		ResponseDeltaText:  "+8.4%",
 		ResponseDeltaColor: "#b91c1c",
 
-		HasLatency:      true,
-		AvgResponseTime: "171 ms",
-		MinResponseTime: "42 ms",
-		MaxResponseTime: "3.20 s",
-		SlowLine:        "4 samples and 2 peaks above 1 s",
-		SlowNote:        "A peak is a rolled-up period whose slowest sample exceeded 1 s.",
-		LatencyNote:     "Response times include failed samples.",
-
-		DayStripLabel: "Daily availability, 1 Jul – 31 Jul (UTC)",
+		HasLatency:  true,
+		StripsShown: 2,
 
 		Checks: []uptimereport.CheckRow{
 			{
-				Name: "Production API", HasData: true, AvailabilityPct: "99.980",
+				Name: "Production API", HasData: true, Availability: 99.98,
 				AvailabilityColor: "#15803d",
 				URL:               "https://solidping.example/d/orgs/acme/checks/chk-prod-api",
 				Days: []uptimereport.DayCell{
@@ -76,17 +75,42 @@ func sampleData() *uptimereport.Data {
 			},
 		},
 		SLOs: []uptimereport.SLORow{{
-			Name:            "API availability",
-			HasData:         true,
-			AttainmentPct:   "99.950",
-			TargetPct:       "99.900",
-			StateLabel:      "Healthy",
-			BudgetRemaining: "21m 30s",
-			URL:             "https://solidping.example/d/orgs/acme/slos/slo-api-availability",
+			Name:       "API availability",
+			HasData:    true,
+			State:      slo.StateHealthy,
+			Attainment: &attainment,
+			Target:     99.9,
+			Budget:     21*time.Minute + 30*time.Second,
+			URL:        "https://solidping.example/d/orgs/acme/slos/slo-api-availability",
 		}},
 		DashboardURL:   "https://solidping.example/d",
 		UnsubscribeURL: "https://solidping.example/unsubscribe?token=abc",
+
+		Figures: uptimereport.Figures{
+			Period:               slo.Window{Start: july, End: july.AddDate(0, 1, 0)},
+			Previous:             slo.Window{Start: july.AddDate(0, -1, 0), End: july},
+			OrgWide:              true,
+			Availability:         99.95,
+			PreviousAvailability: 99.87,
+			AvailabilityDelta:    0.08,
+			IncidentDelta:        -2,
+			ResponseDelta:        8.4,
+			LongestIncident:      42 * time.Minute,
+			AverageIncident:      21*time.Minute + 40*time.Second,
+			TotalDowntime:        time.Hour + 5*time.Minute,
+			AvgResponse:          171,
+			MinResponse:          42,
+			MaxResponse:          3200,
+			HasResponseRange:     true,
+			PreviousAvgResponse:  158,
+			SlowSamples:          4,
+			SlowPeaks:            2,
+			StripStart:           time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC),
+			StripDays:            31,
+		},
 	}
+
+	return report.In(i18n.English.WithClock(sampleClock))
 }
 
 // roundTrip reproduces what actually happens to the view model in production:
@@ -364,7 +388,7 @@ func fullyPopulatedData() *uptimereport.Data {
 	data.OrgLogoURL = "/pub/assets/org-logo-uid"
 	data.DocsURL = "https://solidping.example/docs"
 	data.DownAllPeriod = true
-	data.DownAllPeriodLabel = "Every monitored check"
+	data.DownAllPeriodCheck = "api.example.com"
 	data.Truncated = true
 	data.TruncatedShown = 50
 	data.TruncatedTotal = 137
@@ -374,7 +398,7 @@ func fullyPopulatedData() *uptimereport.Data {
 
 	for i := range data.Checks {
 		data.Checks[i].HasData = true
-		data.Checks[i].AvailabilityPct = "99.980"
+		data.Checks[i].AvailabilityPct = "99.980%"
 		data.Checks[i].AvailabilityColor = "#15803d"
 		data.Checks[i].DownAllPeriod = true
 	}
@@ -384,7 +408,8 @@ func fullyPopulatedData() *uptimereport.Data {
 
 // requireEveryFieldIsKeyed is the structural half of the view-model contract
 // (see the tag note on uptimereport.Data). It asserts, for every exported field
-// of a view-model struct:
+// of a view-model struct that is marshaled (figures tagged `json:"-"` are what
+// the text is written from, never sent to the template):
 //
 //   - the JSON tag name is exactly the Go field name (PascalCase). A camelCase
 //     tag makes the template render "<no value>" SILENTLY.
@@ -404,6 +429,10 @@ func requireEveryFieldIsKeyed(t *testing.T, value any) {
 	for i := range typ.NumField() {
 		field := typ.Field(i)
 		key, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+
+		if !field.IsExported() || key == "-" {
+			continue
+		}
 
 		require.Equalf(t, field.Name, key,
 			"%s.%s must carry a PascalCase JSON tag matching its field name — "+
@@ -485,7 +514,7 @@ func TestUptimeReportRendersTrendAndLatency(t *testing.T) {
 	// The strip rendered as bgcolor cells with no per-cell class.
 	r.Contains(html, `bgcolor="#15803d"`)
 	r.Contains(html, `colspan="20"`)
-	r.Contains(html, "1 Jul – 31 Jul (UTC)")
+	r.Contains(html, "Jul 1 – Jul 31 (UTC)")
 }
 
 // TestUptimeReportOmitsTrendWithoutABaseline is the negative: a first-ever
@@ -548,10 +577,10 @@ func TestUptimeReportDownAllPeriodStatesTheFactAndDropsLatency(t *testing.T) {
 
 	data := sampleData()
 	data.HasData = true
-	data.AvailabilityPct = "0.000"
+	data.AvailabilityPct = "0.000%"
 	data.AvailabilityColor = "#b91c1c"
 	data.DownAllPeriod = true
-	data.DownAllPeriodLabel = "api.example.com"
+	data.DownAllPeriodCheck = "api.example.com"
 	data.HasLatency = false
 	data.AvgResponseTime = ""
 	data.MinResponseTime = ""
@@ -571,7 +600,7 @@ func TestUptimeReportDownAllPeriodStatesTheFactAndDropsLatency(t *testing.T) {
 	// A coherent fixture: the scope was down end to end, so the rows are too.
 	for i := range data.Checks {
 		data.Checks[i].HasData = true
-		data.Checks[i].AvailabilityPct = "0.000"
+		data.Checks[i].AvailabilityPct = "0.000%"
 		data.Checks[i].AvailabilityColor = "#b91c1c"
 		data.Checks[i].DownAllPeriod = true
 		data.Checks[i].Days = []uptimereport.DayCell{{Color: "#b91c1c", Span: 31, Wide: true}}

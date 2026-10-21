@@ -32,15 +32,20 @@ func EnqueueUptimeReportEmail(
 		return errJobsUnavailable
 	}
 
-	// Copy so one address's unsubscribe URL can never end up in another's
-	// email — the view model is shared across the whole fan-out.
-	payload := *data
+	// Written in the recipient's language (their account's, else the org
+	// owner's for an address with no account), and a copy, so one address's
+	// unsubscribe URL can never end up in another's email: the view model is
+	// shared across the whole fan-out. The test send goes to the caller's own
+	// address by default, so it reads in the caller's language.
+	payload, loc := data.ForReader(ctx, orgUID, recipient)
 	payload.UnsubscribeURL = unsubscribeURL
 
-	cfg := EmailJobConfig{ // i18n-phase-b: resolve the recipient locale
+	cfg := EmailJobConfig{
 		To:           []string{recipient},
 		Template:     uptimereport.TemplateName,
 		TemplateData: payload,
+		Locale:       loc.Lang(),
+		Timezone:     loc.Timezone(),
 		// A digest is bulk mail: RFC 2369 / RFC 8058 headers are mandatory,
 		// not decorative. The in-body link alone leaves a recipient whose
 		// client only offers the header-level control with no way out.
