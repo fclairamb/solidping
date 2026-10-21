@@ -65,7 +65,7 @@ Shared files, and who touches what:
 | `i18n/testdata/identical/<namespace>.json` | One file per namespace, created by its group. |
 | `emailpreview/fixtures.go` | Read only (`fixtureAckExpiresAt`, the template -> fixture map). |
 | `emailpreview/locale_test.go` | Read only. Put your group's render tests in `emailpreview/locale_<namespace>_test.go`. |
-| `email/email.go` (`Timestamp`) | Read only. Stop calling `Timestamp` and pass the `time.Time`; leave the function for phase C to delete. |
+| `email/email.go` (`Timestamp`) | Deleted at the phase B merge, once no producer called it. Pass the `time.Time` and format it with `date`. |
 
 ## Catalog layout
 
@@ -93,7 +93,7 @@ that only exists on someone else's unmerged branch is not. Phase C merges duplic
 - Plurals are two leaves, `x_one` and `x_other`, and are read with `tn "x" .Count`.
   French uses `_one` for 0 and 1; English, German and Spanish for 1 only. Every
   `_one` needs its `_other`, and every `_one` prints `{count}` ("1 check", never "One
-  check": French would print "Une vérification" for 0). Both are tested.
+  check": French would print "Un contrôle" for 0). Both are tested.
 - `{count}` is filled with the localized count without a thousands separator
   ("1234", "1,5" in French), so a producer shared with other channels keeps its old
   `%d` output. Pass `"count"` yourself to print something else.
@@ -245,15 +245,17 @@ recipient's locale is not at hand, with this exact comment on the line:
 
 `grep -rn "i18n-phase-b" server/` lists them; each is in a file of the ownership
 table. Remove the marker when you resolve the site; phase C checks that none is left.
+None was left after the phase B merge.
 
 ## Resolving a recipient's locale
 
 | Call site | How |
 |---|---|
 | A `*models.User` is in scope | `recipient.ForUser(user)` |
-| An address, maybe an account (integration "to" lists, uptime report recipients, test sends) | `res := recipient.NewResolver(db)` once per job run, then `res.ForAddress(ctx, orgUID, address, recipient.Hint{})` per recipient. An address with an account gets its own preferences, then the hint, then English/UTC: never the owner's. Only an address with no account falls back to the org owner's preferences (when `orgUID` is set). |
+| An address, maybe an account (integration "to" lists, uptime report recipients, test sends) | `res := recipient.NewResolver(db)` once per job run, then `res.ForAddress(ctx, orgUID, address, recipient.Hint{})` per recipient. A test send started by a user (SMTP test, a test report to another address) passes `recipient.HintFromUser(actor)`. An address with an account gets its own preferences, then the hint, then English/UTC: never the owner's. Only an address with no account falls back to the org owner's preferences (when `orgUID` is set). |
 | An invitation to a new address | `res.ForAddress(ctx, "", invitee, recipient.HintFromUser(inviter))` |
-| A status page subscriber (mail and landing pages) | `res.ForAddress(ctx, "", address, recipient.Hint{Locale: deref(page.Language)})` (no owner fallback: the page language is the hint). A landing page with no address at hand uses `i18n.New(deref(page.Language), "")`. |
+| A status page subscriber (mail and landing pages) | `res.ForAddress(ctx, "", address, recipient.Hint{Locale: deref(page.Language)})` (no owner fallback: the page language is the hint). The landing pages find the subscriber by its token first; a token that matches none (used or unknown) follows the browser's `Accept-Language`, else English. |
+| A page opened from a mail link (unsubscribe, "I'm on it") | the account of the address the token was sent to, else the browser's `Accept-Language`, else English. A token that does not verify names no address. The page sets `<html lang>` and `Vary: Accept-Language`. |
 | Registration (no account yet) | `i18n.New(req.Locale, req.Timezone)` from the request |
 | A deferred email job | resolve at enqueue time and set `EmailJobConfig.Locale = loc.Lang()`, `Timezone = loc.Timezone()`. The job renders with `i18n.New(cfg.Locale, cfg.Timezone)`. The local mirrors of that struct in `auth`, `regionsweep` and `customdomain` already have the fields; `aichecks` builds a raw map (see Raw-text mails). |
 | An email sent directly | pass the Locale to `Format` and set `email.Message.Locale` / `Timezone`, which the support-reply notice reads |
@@ -274,7 +276,8 @@ The product voice is plain and short. Match dash0's register for each language:
 
 - **French**: *vous*. Natural product French, not a calque: "Je m'en occupe" for
   "I'm on it", "Voir l'incident". A regular space before `?`, `:`, `;`, `!` (as in
-  dash0), French guillemets `« … »` for quoted UI labels, "e-mail".
+  dash0), French guillemets `« … »` for quoted UI labels, "e-mail", "contrôle" for a
+  check (dash0's navigation word; "vérification" is kept for DNS verification).
 - **German**: *Sie*. "Vorfall" for incident, "Benachrichtigungen" for alerts,
   "E-Mail". Quotes `„…“`.
 - **Spanish**: *tú*, the register dash0 uses ("Revisa tu correo"). "incidente",

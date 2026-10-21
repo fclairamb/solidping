@@ -58,22 +58,12 @@ func TestAckPage_EveryKindInEveryLocale(t *testing.T) {
 	}
 }
 
-// TestAckPage_EnglishUnchanged pins the English pages: writeAckHTML is the
-// English writeAckPage, and the copy is today's (em dashes aside).
+// TestAckPage_EnglishUnchanged pins the English copy: today's (em dashes
+// aside).
 func TestAckPage_EnglishUnchanged(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
-
-	for kind := range ackPageKeys() {
-		legacy := httptest.NewRecorder()
-		writeAckHTML(legacy, http.StatusOK, kind, "acme", "abc-123")
-
-		english := httptest.NewRecorder()
-		writeAckPage(english, i18n.English, http.StatusOK, kind, "acme", "abc-123")
-
-		r.Equal(english.Body.String(), legacy.Body.String())
-	}
 
 	_, body := successRedirectFragment(i18n.English, "/d/orgs/acme/incidents/abc-123")
 	r.Contains(body, `<p>Thanks, the incident has been acknowledged.</p>`+

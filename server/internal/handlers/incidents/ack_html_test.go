@@ -157,16 +157,16 @@ func TestPageContent_IconPerKind(t *testing.T) {
 	}
 }
 
-// TestWriteAckHTML_RendersCardWithDarkMode is an integration-style check on
+// TestWriteAckPage_RendersCardWithDarkMode is an integration-style check on
 // the full page: card layout, wordmark, and the prefers-color-scheme dark
 // variant must all be present in the served bytes.
-func TestWriteAckHTML_RendersCardWithDarkMode(t *testing.T) {
+func TestWriteAckPage_RendersCardWithDarkMode(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
 
 	rec := httptest.NewRecorder()
-	writeAckHTML(rec, http.StatusOK, ackHTMLSuccess, "acme", "abc-123")
+	writeAckPage(rec, i18n.English, http.StatusOK, ackHTMLSuccess, "acme", "abc-123")
 
 	body := rec.Body.String()
 	r.Equal("text/html; charset=utf-8", rec.Header().Get("Content-Type"))
@@ -178,16 +178,16 @@ func TestWriteAckHTML_RendersCardWithDarkMode(t *testing.T) {
 	r.Contains(body, "/d/orgs/acme/incidents/abc-123")
 }
 
-// TestWriteAckHTML_ErrorKindsOmitRedirect confirms the redirect is absent at
-// the writeAckHTML entry point too, not just in pageContent — guards against
+// TestWriteAckPage_ErrorKindsOmitRedirect confirms the redirect is absent at
+// the writeAckPage entry point too, not just in pageContent — guards against
 // a future refactor accidentally wiring the countdown into every kind.
-func TestWriteAckHTML_ErrorKindsOmitRedirect(t *testing.T) {
+func TestWriteAckPage_ErrorKindsOmitRedirect(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
 
 	rec := httptest.NewRecorder()
-	writeAckHTML(rec, http.StatusGone, ackHTMLExpired, "acme", "abc-123")
+	writeAckPage(rec, i18n.English, http.StatusGone, ackHTMLExpired, "acme", "abc-123")
 
 	body := rec.Body.String()
 	r.NotContains(body, "<script>")

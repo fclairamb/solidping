@@ -258,6 +258,11 @@ func TestDate(t *testing.T) {
 		{LangFrench, "Europe/Paris", lastYear, "5 juil. 2025, 12:00 CEST"},
 		{LangGerman, "Europe/Paris", lastYear, "5. Juli 2025, 12:00 CEST"},
 		{LangSpanish, "Europe/Paris", lastYear, "5 jul 2025, 12:00 CEST"},
+		// French writes the first of the month as an ordinal, the others not.
+		{LangFrench, "Europe/Paris", time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC), "1er nov., 10:00 CET"},
+		{LangEnglish, "Europe/Paris", time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC), "Nov 1, 10:00 CET"},
+		{LangGerman, "Europe/Paris", time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC), "1. Nov., 10:00 CET"},
+		{LangSpanish, "Europe/Paris", time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC), "1 nov, 10:00 CET"},
 		// Winter time, and a zone the tz database names by offset only.
 		{LangFrench, "Europe/Paris", time.Date(2026, 1, 15, 9, 30, 0, 0, time.UTC), "15 janv., 10:30 CET"},
 		{LangEnglish, "Europe/Istanbul", when, "Jul 5, 13:00 UTC+03"},
@@ -304,6 +309,14 @@ func TestDay(t *testing.T) {
 			r.Equal(want[1], loc.Day(when.AddDate(1, 0, 0)))
 		})
 	}
+
+	t.Run("French first of the month", func(t *testing.T) {
+		t.Parallel()
+
+		first := time.Date(2026, 7, 1, 10, 0, 0, 0, time.UTC)
+		require.Equal(t, "1er juil.", New(LangFrench, "Europe/Paris").WithClock(fixedClock()).Day(first))
+		require.Equal(t, "2 juil.", New(LangFrench, "Europe/Paris").WithClock(fixedClock()).Day(first.AddDate(0, 0, 1)))
+	})
 
 	t.Run("the reader's zone picks the day", func(t *testing.T) {
 		t.Parallel()

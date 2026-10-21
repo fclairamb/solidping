@@ -62,8 +62,7 @@ translate a string, resolve a recipient's locale and test it:
   monospace with `word-break: break-all`, meant for URLs, and mangles prose.
 - **Timestamps go through the `date` template func** (`Jul 5, 10:00 UTC`, in the
   reader's zone and language): pass the `time.Time` in the view model. Always the
-  zone, never seconds; the year only when it is not the current one. Producers not
-  migrated yet still pre-format with `email.Timestamp` (English, UTC).
+  zone, never seconds; the year only when it is not the current one.
 - **Shared sentences are partials.** `fallback-link` renders the "Button not
   working? Paste this link…" line under a CTA (`{{template "fallback-link" .URL}}`);
   `incident-actions` states the ack link's real expiry from the view model's

@@ -61,9 +61,9 @@
     "ackExpires": "Le lien est valable jusqu'au {date}."
   },
   "labels": {
-    "check": "Vérification",
+    "check": "Contrôle",
     "target": "Cible",
-    "checkURL": "URL de la vérification",
+    "checkURL": "URL du contrôle",
     "since": "Depuis",
     "incident": "Incident",
     "docs": "Documentation"

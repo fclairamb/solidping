@@ -68,8 +68,8 @@ func TestAppliedRepairIsMailedInTheOwnersLanguage(t *testing.T) {
 	r.Equal([]string{fx.user.Email}, mail.to)
 	r.Equal("fr", mail.lang)
 	r.Equal("Europe/Paris", mail.timezone)
-	r.Equal("Vérification réparée : acme projects", mail.subject)
-	r.Contains(mail.text, "SolidPing a réparé le script de la vérification « acme projects »")
+	r.Equal("Contrôle réparé : acme projects", mail.subject)
+	r.Contains(mail.text, "SolidPing a réparé le script du contrôle « acme projects »")
 	r.Contains(mail.text, "\n\nRéparation par IA : le script a dérivé à l'étape parse\n\n")
 	r.Contains(mail.text, "+ if (!data.items)")
 	r.Contains(mail.text, "Pour relire ou annuler cette réparation : https://solidping.acme.com/d/orgs/acme/checks/"+

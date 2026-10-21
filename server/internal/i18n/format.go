@@ -57,7 +57,7 @@ func (l Locale) Date(value any) string {
 
 	return l.T(key,
 		"month", l.monthName(local.Month(), "short"),
-		"day", local.Day(),
+		"day", l.dayOfMonth(local.Day()),
 		"year", local.Year(),
 		"time", local.Format(clockLayout),
 		"zone", zoneLabel(local),
@@ -81,7 +81,17 @@ func (l Locale) Day(value any) string {
 		key = "common.date.dayYear"
 	}
 
-	return l.T(key, "month", l.monthName(local.Month(), "short"), "day", local.Day(), "year", local.Year())
+	return l.T(key, "month", l.monthName(local.Month(), "short"), "day", l.dayOfMonth(local.Day()), "year", local.Year())
+}
+
+// dayOfMonth is the day number as a date prints it. French writes the first
+// of the month as an ordinal: "1er juil.", then "2 juil.".
+func (l Locale) dayOfMonth(day int) any {
+	if day == 1 && l.Lang() == LangFrench {
+		return "1er"
+	}
+
+	return day
 }
 
 // Month renders the month of an instant, in the locale's timezone, with its

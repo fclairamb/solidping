@@ -29,7 +29,8 @@ timezone. Today every email is English and every date is UTC.
 6. **Locale per recipient** (`emaillocale` resolution, cached per job run):
    1. the recipient's user row (`GetUserByEmail`, case-insensitive) -> its preferences;
    2. a context hint: inviter (invitation to a new address), `status_pages.language`
-      (subscriber mail), the request's `locale` (registration);
+      (subscriber mail), the request's `locale` (registration), the acting user (a test send to
+      another address);
    3. for org-scoped mail to a non-user address (email integration lists, uptime report lists):
       the org owner's preferences;
    4. `en` / `UTC`.
@@ -50,17 +51,18 @@ timezone. Today every email is English and every date is UTC.
    objects flattened to dotted keys `<namespace>.<path>`. Named placeholders `{name}`. Plurals as
    `_one` / `_other` leaves (fr: 0 and 1 are `one`). Month names, duration units and number formats
    live in `common`. A missing key renders the `en` value and logs once; tests fail on it.
-10. **Dates**: 24-hour everywhere. en `Jul 5, 12:00 CEST`, fr `5 juil., 12:00 CEST`,
-    de `5. Juli, 12:00 CEST`, es `5 jul, 12:00 CEST`. Zone abbreviations come from the tz database
+10. **Dates**: 24-hour everywhere. en `Jul 5, 12:00 CEST`, fr `5 juil., 12:00 CEST` (the first of
+    the month reads `1er juil.`), de `5. Juli, 12:00 CEST`, es `5 jul, 12:00 CEST`. Zone abbreviations come from the tz database
     as is (a numeric one like `+03` is shown as `UTC+03`). Year shown only when it differs from the
     current year. The ack link wording states its real
     expiry ("works until Jul 12") from `incidentlinks.AckTokenTTL` and the incident start, instead
     of a literal "7 days".
 11. **Also localized**: the support-reply notice (idempotency check no longer matches an English
     substring), the AI auto-repair notice (raw-text email), and the pages reached from email links:
-    the unsubscribe page, the "I'm on it" ack result page (locale from the token's email address ->
-    user, else `en`; `lang` attribute set) and the status-subscriber landing pages (the page's
-    language). Instance operator notices (`opsnotify`: support message, new user, watchdog digest,
+    the unsubscribe page and the "I'm on it" ack result page (locale from the token's email
+    address -> user, else the browser's `Accept-Language`, else `en`; `lang` attribute set) and the
+    status-subscriber landing pages (the subscriber's account, else the page's language; a link
+    that matches no subscriber follows `Accept-Language`). Instance operator notices (`opsnotify`: support message, new user, watchdog digest,
     watchdog region, test) are localized for the email medium only: the email copy is written in
     the recipient super admin's locale (`recipient.ForUser`) at delivery time, from a structured
     form the notice carries alongside its English text. Every other medium keeps the exact English

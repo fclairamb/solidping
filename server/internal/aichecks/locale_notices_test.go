@@ -108,8 +108,8 @@ func TestAppliedRepairMailIsWrittenInTheOwnersLanguage(t *testing.T) {
 	expected := map[string]want{
 		"fr": {
 			lines: []string{
-				"Vérification réparée : Pricing page",
-				"SolidPing a réparé le script de la vérification « Pricing page » (version 4).",
+				"Contrôle réparé : Pricing page",
+				"SolidPing a réparé le script du contrôle « Pricing page » (version 4).",
 				"\nModifications :\n",
 				"Pour relire ou annuler cette réparation : " + repairLinkFixture + "\n",
 			},
@@ -188,7 +188,7 @@ func TestJobsMailerCarriesTheReadersLocale(t *testing.T) {
 
 	mailer := &JobsMailer{Jobs: jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier(), nil)}
 	r.NoError(mailer.Mail(ctx, org.UID, []string{"alice@acme.com"}, i18n.New("fr", "Europe/Paris"),
-		"Vérification réparée : x", "text"))
+		"Contrôle réparé : x", "text"))
 
 	var jobs []*models.Job
 
@@ -203,6 +203,6 @@ func TestJobsMailerCarriesTheReadersLocale(t *testing.T) {
 	r.NoError(json.Unmarshal(raw, &payload))
 	r.Equal("fr", payload["locale"])
 	r.Equal("Europe/Paris", payload["timezone"])
-	r.Equal("Vérification réparée : x", payload["subject"])
+	r.Equal("Contrôle réparé : x", payload["subject"])
 	r.Equal("text", payload["text"])
 }

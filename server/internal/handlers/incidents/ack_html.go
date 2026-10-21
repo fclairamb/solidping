@@ -264,12 +264,6 @@ func pageContent(
 	}
 }
 
-// writeAckHTML is writeAckPage in English, for a caller with no reader at
-// hand (output identical to writeAckPage with i18n.English).
-func writeAckHTML(writer http.ResponseWriter, status int, kind ackPageKind, orgSlug, incidentUID string) {
-	writeAckPage(writer, i18n.English, status, kind, orgSlug, incidentUID)
-}
-
 // writeAckPage renders the page for the given outcome in loc's language
 // (see ackPageLocale) and writes it with the given status.
 // orgSlug/incidentUID are only consumed for ackHTMLSuccess (to build the

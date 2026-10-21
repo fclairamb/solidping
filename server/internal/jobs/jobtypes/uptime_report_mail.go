@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/fclairamb/solidping/server/internal/app/services"
+	"github.com/fclairamb/solidping/server/internal/i18n/recipient"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/uptimereport"
 )
@@ -25,23 +26,23 @@ var errJobsUnavailable = errors.New("jobs service unavailable")
 // recipients are PII, and a shared To: header would disclose the whole
 // distribution list to each of them.
 func EnqueueUptimeReportEmail(
-	ctx context.Context, registry *services.Registry, orgUID, recipient string,
+	ctx context.Context, registry *services.Registry, orgUID, address string, hint recipient.Hint,
 	data *uptimereport.Data, unsubscribeURL string,
 ) error {
 	if registry == nil || registry.Jobs == nil {
 		return errJobsUnavailable
 	}
 
-	// Written in the recipient's language (their account's, else the org
-	// owner's for an address with no account), and a copy, so one address's
-	// unsubscribe URL can never end up in another's email: the view model is
-	// shared across the whole fan-out. The test send goes to the caller's own
-	// address by default, so it reads in the caller's language.
-	payload, loc := data.ForReader(ctx, orgUID, recipient)
+	// Written in the recipient's language (their account's, else hint's, else
+	// the org owner's for an address with no account), and a copy, so one
+	// address's unsubscribe URL can never end up in another's email: the view
+	// model is shared across the whole fan-out. A test send passes the caller
+	// as hint, so an address with no account reads the caller's language.
+	payload, loc := data.ForReader(ctx, orgUID, address, hint)
 	payload.UnsubscribeURL = unsubscribeURL
 
 	cfg := EmailJobConfig{
-		To:           []string{recipient},
+		To:           []string{address},
 		Template:     uptimereport.TemplateName,
 		TemplateData: payload,
 		Locale:       loc.Lang(),

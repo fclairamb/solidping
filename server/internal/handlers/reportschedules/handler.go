@@ -9,6 +9,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/httpx"
+	"github.com/fclairamb/solidping/server/internal/i18n/recipient"
 	"github.com/fclairamb/solidping/server/internal/middleware"
 )
 
@@ -113,15 +114,22 @@ func (h *Handler) TestSend(writer http.ResponseWriter, req *http.Request) error 
 		_ = json.NewDecoder(req.Body).Decode(&testReq)
 	}
 
-	recipient := testReq.Recipient
-	if recipient == "" {
-		if user, ok := middleware.GetUserFromContext(req.Context()); ok && user != nil {
-			recipient = user.Email
+	// The caller's own language is the hint for an override address with no
+	// account; an address with an account still reads its own.
+	var hint recipient.Hint
+
+	address := testReq.Recipient
+
+	if user, ok := middleware.GetUserFromContext(req.Context()); ok && user != nil {
+		hint = recipient.HintFromUser(user)
+
+		if address == "" {
+			address = user.Email
 		}
 	}
 
 	err := h.svc.TestSend(
-		req.Context(), httpx.Param(req, "org"), httpx.Param(req, "uid"), recipient, time.Now(),
+		req.Context(), httpx.Param(req, "org"), httpx.Param(req, "uid"), address, hint, time.Now(),
 	)
 	if err != nil {
 		return h.handleError(writer, req, err)

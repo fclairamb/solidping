@@ -36,10 +36,10 @@
     "darkHeadline_other": "La région « {region} » est HORS LIGNE (aucun worker actif) depuis le {since} : {count} tâches assignées, dont {overdue} en retard",
     "organizations_one": "{count} organisation",
     "organizations_other": "{count} organisations",
-    "darkChecks_one": "{count} vérification de {orgs} ne s'exécute que depuis cette région et est à l'arrêt ; chaque organisation concernée a été prévenue par e-mail.",
-    "darkChecks_other": "{count} vérifications de {orgs} ne s'exécutent que depuis cette région et sont à l'arrêt ; chaque organisation concernée a été prévenue par e-mail.",
-    "moved_one": "{count} vérification en placement automatique a été déplacée vers une autre région.",
-    "moved_other": "{count} vérifications en placement automatique ont été déplacées vers une autre région.",
+    "darkChecks_one": "{count} contrôle de {orgs} ne s'exécute que depuis cette région et est à l'arrêt ; chaque organisation concernée a été prévenue par e-mail.",
+    "darkChecks_other": "{count} contrôles de {orgs} ne s'exécutent que depuis cette région et sont à l'arrêt ; chaque organisation concernée a été prévenue par e-mail.",
+    "moved_one": "{count} contrôle en placement automatique a été déplacé vers une autre région.",
+    "moved_other": "{count} contrôles en placement automatique ont été déplacés vers une autre région.",
     "darkRemediation": "Correctif : relancez un worker pour « {region} », ou appelez {command}.",
     "liveWorkers_one": "{count} worker actif",
     "liveWorkers_other": "{count} workers actifs",
@@ -78,8 +78,8 @@
     "failuresTitle": "ÉCHECS DES DÉTECTEURS (ces anomalies n'ont PAS pu être évaluées lors de cette exécution)"
   },
   "aiRepair": {
-    "subject": "Vérification réparée : {check}",
-    "intro": "SolidPing a réparé le script de la vérification « {check} » (version {version}).",
+    "subject": "Contrôle réparé : {check}",
+    "intro": "SolidPing a réparé le script du contrôle « {check} » (version {version}).",
     "reason": {
       "drifted": "Réparation par IA : le script a dérivé",
       "error": "Réparation par IA : le script a dérivé (erreur : {error})",

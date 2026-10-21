@@ -91,7 +91,7 @@ func localeWants() map[string]localeWant {
 			title:     "Rapport de disponibilité",
 			overall: "Disponibilité globale : 99,950" + nbsp + "% (+0,080" + nbsp + "pt par rapport à juin 2026 : 99,870" +
 				nbsp + "%)",
-			legend: "Disponibilité quotidienne, 1 juil. – 31 juil. (UTC) : vert ≥ 99,9" + nbsp + "%, ambre ≥ 99" + nbsp +
+			legend: "Disponibilité quotidienne, 1er juil. – 31 juil. (UTC) : vert ≥ 99,9" + nbsp + "%, ambre ≥ 99" + nbsp +
 				"%, orange ≥ 95" + nbsp + "%, rouge en dessous.",
 			badge:      "Sain",
 			translated: true,

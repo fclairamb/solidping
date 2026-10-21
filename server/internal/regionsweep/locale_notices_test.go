@@ -86,8 +86,8 @@ func TestRegionNoticesAreWrittenInTheReadersLanguage(t *testing.T) {
 				"[SolidPing watchdog] La région eu-west est hors ligne",
 				"La région « eu-west » est HORS LIGNE (aucun worker actif) depuis le 5 juil., 12:00 CEST : " +
 					"419 tâches assignées, dont 345 en retard.",
-				"57 vérifications de 3 organisations ne s'exécutent que depuis cette région", //nolint:misspell // French
-				"2 vérifications en placement automatique ont été déplacées vers une autre région.",
+				"57 contrôles de 3 organisations ne s'exécutent que depuis cette région", //nolint:misspell // French
+				"2 contrôles en placement automatique ont été déplacés vers une autre région.",
 				`Correctif : relancez un worker pour « eu-west », ou appelez POST /api/v1/system/regions/migrate {"from":"eu-west"`,
 			},
 			noticeStalled: {
@@ -179,8 +179,8 @@ func TestRegionNoticeSingularForms(t *testing.T) {
 	}).Localize(loc)
 	r.Contains(dark, ": 1 tâche assignée, dont 1 en retard.")
 	r.Contains(dark,
-		"1 vérification de 1 organisation ne s'exécute que depuis cette région et est à l'arrêt") //nolint:misspell // French
-	r.Contains(dark, "0 vérification en placement automatique a été déplacée")
+		"1 contrôle de 1 organisation ne s'exécute que depuis cette région et est à l'arrêt") //nolint:misspell // French
+	r.Contains(dark, "0 contrôle en placement automatique a été déplacé")
 
 	_, stalled := (&regionCopy{kind: noticeStalled, region: "eu-west", since: localeSince, live: 1, overdue: 1}).
 		Localize(loc)

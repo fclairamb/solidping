@@ -21,16 +21,17 @@ const millisPerSecond = 1000.0
 
 // ForReader returns the report written for one recipient address, and the
 // locale its mail is rendered in. The language comes from the address's
-// account, else (an address with no account) from the organization owner,
-// else English (recipient.Resolver.ForAddress).
+// account, else hint (the caller of a test send), else (an address with no
+// account) from the organization owner, else English
+// (recipient.Resolver.ForAddress). The scheduled sweep passes no hint.
 //
 // Recipients who resolve to the same language and timezone share one written
 // copy. The returned value is a copy of it, so the caller can set its own
 // UnsubscribeURL. Not safe for concurrent use.
-func (d *Data) ForReader(ctx context.Context, orgUID, address string) (Data, i18n.Locale) {
+func (d *Data) ForReader(ctx context.Context, orgUID, address string, hint recipient.Hint) (Data, i18n.Locale) {
 	loc := i18n.Default
 	if d.readers != nil {
-		loc = d.readers.ForAddress(ctx, orgUID, address, recipient.Hint{})
+		loc = d.readers.ForAddress(ctx, orgUID, address, hint)
 	}
 
 	key := loc.Lang() + " " + loc.Timezone()

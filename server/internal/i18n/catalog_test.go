@@ -403,7 +403,7 @@ func TestIdenticalAllowlist_RejectsBrokenFiles(t *testing.T) {
 }
 
 // pluralOneWithoutCount lists every x_one leaf that does not print {count}.
-// French reads _one for 0 too, so "One check" would say "Une vérification"
+// French reads _one for 0 too, so "One check" would say "Un contrôle"
 // for zero checks.
 func pluralOneWithoutCount(keys map[string]string) []string {
 	var out []string

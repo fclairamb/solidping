@@ -98,7 +98,7 @@ func writtenWants() map[string]writtenWant {
 			"3,20" + nbsp + "s", "+8,4" + nbsp + "%",
 			"42" + nbsp + "min", "21" + nbsp + "min 40" + nbsp + "s", "-12" + nbsp + "min 30" + nbsp + "s", "À risque",
 			"1 mesure et 2 pics au-dessus de 1" + nbsp + "s",
-			"Disponibilité quotidienne, 1 juil. – 31 juil. (UTC)", "ne sont affichées que pour 1 contrôle",
+			"Disponibilité quotidienne, 1er juil. – 31 juil. (UTC)", "ne sont affichées que pour 1 contrôle",
 		},
 		i18n.LangGerman: {
 			"Juli 2026", "Juni 2026", "Production (1 Prüfung)", "99,950" + nbsp + "%", "+0,080" + nbsp + "Prozentpunkte",
@@ -286,7 +286,7 @@ func TestForReaderGroupsRecipientsByLocale(t *testing.T) {
 		// A list address with no account reads the owner's language.
 		{"ops-list@acme.com", "es", "America/Lima", "julio de 2026"},
 	} {
-		written, loc := report.ForReader(ctx, "org-1", tc.address)
+		written, loc := report.ForReader(ctx, "org-1", tc.address, recipient.Hint{})
 
 		r.Equal(tc.lang, loc.Lang(), tc.address)
 		r.Equal(tc.timezone, loc.Timezone(), tc.address)
@@ -298,10 +298,10 @@ func TestForReaderGroupsRecipientsByLocale(t *testing.T) {
 
 	// The returned value is the caller's own: setting one recipient's link
 	// does not reach the next one of the same language.
-	first, _ := report.ForReader(ctx, "org-1", "lea@acme.com")
+	first, _ := report.ForReader(ctx, "org-1", "lea@acme.com", recipient.Hint{})
 	first.UnsubscribeURL = "https://acme.example/unsubscribe?token=lea"
 
-	second, _ := report.ForReader(ctx, "org-1", "marc@acme.com")
+	second, _ := report.ForReader(ctx, "org-1", "marc@acme.com", recipient.Hint{})
 	r.Empty(second.UnsubscribeURL)
 
 	// The resolver caches each address: no second lookup for Lea or Marc.
@@ -311,12 +311,44 @@ func TestForReaderGroupsRecipientsByLocale(t *testing.T) {
 	r.Equal("July 2026", report.PeriodLabel)
 }
 
+// TestForReaderHintIsTheTestSendCaller: a test send to an address with no
+// account reads the caller's language (the hint) rather than the owner's; an
+// address with an account keeps its own.
+func TestForReaderHintIsTheTestSendCaller(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+
+	report := measuredReport(t)
+	report.readers = recipient.NewResolver(&readerLookup{
+		users: map[string]*models.User{"jonas@acme.com": reader("jonas@acme.com", "de", "Europe/Berlin")},
+		owner: reader("owner@acme.com", "es", "America/Lima"),
+	})
+	report.write(i18n.English)
+
+	caller := recipient.Hint{Locale: "fr", Timezone: "Europe/Paris"}
+
+	written, loc := report.ForReader(ctx, "org-1", "ops-list@acme.com", caller)
+	r.Equal("fr", loc.Lang())
+	r.Equal("Europe/Paris", loc.Timezone())
+	r.Equal("juillet 2026", written.PeriodLabel)
+
+	// Positive control: without the hint the same address reads the owner's.
+	_, loc = report.ForReader(ctx, "org-1", "ops-list@acme.com", recipient.Hint{})
+	r.Equal("es", loc.Lang())
+
+	// An account's own preferences beat the hint.
+	_, loc = report.ForReader(ctx, "org-1", "jonas@acme.com", caller)
+	r.Equal("de", loc.Lang())
+}
+
 // TestForReaderWithoutAResolverIsEnglish: a report not made by Build (no
 // resolver) still goes out, in English.
 func TestForReaderWithoutAResolverIsEnglish(t *testing.T) {
 	t.Parallel()
 
-	written, loc := measuredReport(t).ForReader(t.Context(), "org-1", "lea@acme.com")
+	written, loc := measuredReport(t).ForReader(t.Context(), "org-1", "lea@acme.com", recipient.Hint{})
 
 	require.Equal(t, i18n.LangEnglish, loc.Lang())
 	require.Equal(t, "July 2026", written.PeriodLabel)

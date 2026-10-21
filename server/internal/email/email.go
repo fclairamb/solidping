@@ -3,7 +3,6 @@ package email
 
 import (
 	"context"
-	"time"
 
 	"github.com/fclairamb/solidping/server/internal/i18n"
 )
@@ -73,13 +72,6 @@ type Message struct {
 	// UTC.
 	Locale   string
 	Timezone string
-}
-
-// Timestamp renders an instant for a mail body: "Jul 5, 10:00 UTC". Seconds
-// and the year add nothing a reader acts on. UTC, because a mail has no idea
-// where its reader is.
-func Timestamp(when time.Time) string {
-	return when.UTC().Format("Jan 2, 15:04 UTC")
 }
 
 // IncidentThreadID is the Message.ThreadID shared by every mail about one

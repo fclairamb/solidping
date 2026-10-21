@@ -11,7 +11,7 @@
       "title": "Désabonnement confirmé",
       "org": "<strong>{email}</strong> ne recevra plus aucun e-mail d'alerte de cette organisation.",
       "check": "<strong>{email}</strong> ne recevra plus les alertes concernant {check}.",
-      "thisCheck": "<strong>{email}</strong> ne recevra plus les alertes concernant cette vérification.",
+      "thisCheck": "<strong>{email}</strong> ne recevra plus les alertes concernant ce contrôle.",
       "othersUnaffected": "Les autres destinataires de ces alertes ne sont pas concernés.",
       "changedMind": "Vous avez changé d'avis ?",
       "undo": "Annuler le désabonnement"

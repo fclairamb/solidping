@@ -210,3 +210,48 @@ func TestHandler_AcknowledgeIncidentByLink_ExpiredTokenNoRedirect(t *testing.T) 
 	r.NoError(err)
 	r.Nil(got.AcknowledgedAt, "an expired token must not acknowledge the incident as a side effect")
 }
+
+// TestHandler_AcknowledgeIncidentByLink_PageLanguage drives the real route:
+// a token that does not verify follows the browser's Accept-Language, and a
+// verified token follows the recipient's account over the browser.
+func TestHandler_AcknowledgeIncidentByLink_PageLanguage(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newAckHandlerFixture(t)
+	router := newAckTestRouter(f)
+
+	hans := models.NewUser("hans@example.com")
+	hans.Preferences = &models.UserPreferences{Locale: "de", Timezone: "Europe/Berlin"}
+	r.NoError(f.dbSvc.CreateUser(t.Context(), hans))
+
+	base := "/orgs/" + f.org.Slug + "/incidents/" + f.incident.UID + "/ack"
+
+	get := func(path, acceptLanguage string) *httptest.ResponseRecorder {
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil)
+		req.Header.Set("Accept-Language", acceptLanguage)
+
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+
+		return rec
+	}
+
+	// No token: the browser decides.
+	rec := get(base, "fr-FR,fr;q=0.9")
+	r.Equal(http.StatusBadRequest, rec.Code)
+	r.Contains(rec.Body.String(), `<html lang="fr">`)
+	r.Contains(rec.Header().Values("Vary"), "Accept-Language")
+
+	// Positive control: an English browser gets the English page.
+	rec = get(base, "en-US")
+	r.Contains(rec.Body.String(), `<html lang="en">`)
+
+	// A verified token: the account's German beats the French browser.
+	ackToken := incidentlinks.Sign(
+		[]byte(ackHandlerTestSecret), f.incident.UID, "hans@example.com", time.Now().Add(time.Hour))
+
+	rec = get(base+"?token="+ackToken, "fr-FR,fr;q=0.9")
+	r.Equal(http.StatusOK, rec.Code)
+	r.Contains(rec.Body.String(), `<html lang="de">`)
+}
