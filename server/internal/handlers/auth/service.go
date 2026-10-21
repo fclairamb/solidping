@@ -29,6 +29,8 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/email"
+	"github.com/fclairamb/solidping/server/internal/i18n"
+	"github.com/fclairamb/solidping/server/internal/i18n/recipient"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/notifier"
@@ -646,17 +648,22 @@ func (s *Service) CheckMembershipSlot(ctx context.Context, orgUID string) error 
 // check whether email sending is enabled instance-wide
 // (s.fullCfg.Email.Enabled): a queued job for a disabled sender is a no-op
 // at send time.
+//
+// loc is the reader's language and timezone, resolved here at enqueue time
+// (spec 2026-10-21-01): the job renders with it as is.
 func (s *Service) enqueueEmail(
-	ctx context.Context, orgUID, recipient, template string, data any,
+	ctx context.Context, orgUID, address, template string, loc i18n.Locale, data any,
 ) bool {
-	if s.jobsSvc == nil || recipient == "" {
+	if s.jobsSvc == nil || address == "" {
 		return false
 	}
 
-	cfg := emailJobConfig{ // i18n-phase-b: resolve the recipient locale
-		To:           []string{recipient},
+	cfg := emailJobConfig{
+		To:           []string{address},
 		Template:     template,
 		TemplateData: data,
+		Locale:       loc.Lang(),
+		Timezone:     loc.Timezone(),
 	}
 
 	raw, err := json.Marshal(cfg)
@@ -2616,7 +2623,9 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*RegisterR
 	// Send confirmation email asynchronously via the email job
 	confirmURL := fmt.Sprintf("%s%s/confirm-registration/%s",
 		s.fullCfg.Server.BaseURL, config.DashboardBasePath, token)
-	s.enqueueEmail(ctx, "", req.Email, "registration.html",
+	// No account yet: the mail is written in the language and zone the
+	// signup form sent, the ones the account will start with.
+	s.enqueueEmail(ctx, "", req.Email, "registration.html", i18n.New(req.Locale, req.Timezone),
 		map[string]any{"ConfirmURL": confirmURL},
 	)
 
@@ -2893,6 +2902,7 @@ func (s *Service) RequestPasswordReset(
 	}
 
 	hasPassword := user.PasswordHash != nil && *user.PasswordHash != ""
+	loc := recipient.ForUser(user)
 
 	// An SSO-only user (no password hash) still has a recoverable account
 	// as long as they have at least one linked provider — the reset link
@@ -2914,7 +2924,7 @@ func (s *Service) RequestPasswordReset(
 			return successMsg, nil
 		}
 
-		ssoProviderLabel = s.providerLabelList(providers)
+		ssoProviderLabel = loc.ListOr(s.providerLabels(providers))
 	}
 
 	// Per-user cap: drop silently above the limit. Returning success keeps
@@ -2962,7 +2972,7 @@ func (s *Service) RequestPasswordReset(
 		templateData["Providers"] = ssoProviderLabel
 	}
 
-	s.enqueueEmail(ctx, "", req.Email, emailTemplate, templateData)
+	s.enqueueEmail(ctx, "", req.Email, emailTemplate, loc, templateData)
 
 	return successMsg, nil
 }
@@ -3018,13 +3028,13 @@ func (s *Service) providerLabel(providerType models.ProviderType) string {
 	}
 }
 
-// providerLabelList turns a user's linked providers into a deduplicated,
-// human-joined list ("Google", or "Google or GitHub" for two, or
-// "Google, GitHub or Microsoft" for three or more). Labels are sorted
-// alphabetically first so the email is deterministic regardless of the
-// order ListUserProvidersByUser happens to return (created_at DESC, which
-// ties when two providers are linked in the same request).
-func (s *Service) providerLabelList(providers []*models.UserProvider) string {
+// providerLabels turns a user's linked providers into the deduplicated
+// labels the email joins with i18n.Locale.ListOr ("Google, GitHub or
+// Microsoft", "Google, GitHub ou Microsoft"). Labels are sorted
+// alphabetically so the email is deterministic regardless of the order
+// ListUserProvidersByUser happens to return (created_at DESC, which ties when
+// two providers are linked in the same request).
+func (s *Service) providerLabels(providers []*models.UserProvider) []string {
 	seen := make(map[string]bool, len(providers))
 	labels := make([]string, 0, len(providers))
 
@@ -3040,14 +3050,7 @@ func (s *Service) providerLabelList(providers []*models.UserProvider) string {
 
 	sort.Strings(labels)
 
-	switch len(labels) {
-	case 0:
-		return ""
-	case 1:
-		return labels[0]
-	default:
-		return strings.Join(labels[:len(labels)-1], ", ") + " or " + labels[len(labels)-1]
-	}
+	return labels
 }
 
 // bumpCounter atomically counts one attempt against the global counter at
@@ -3157,8 +3160,8 @@ func (s *Service) ResetPassword(ctx context.Context, req ResetPasswordRequest) (
 
 	// Confirmation email so the legitimate user sees a record of the
 	// change even if the attacker controls the password-reset link.
-	s.enqueueEmail(ctx, "", user.Email, "password-changed.html",
-		map[string]any{tmplKeyChangedAt: time.Now().UTC().Format(time.RFC1123)},
+	s.enqueueEmail(ctx, "", user.Email, "password-changed.html", recipient.ForUser(user),
+		map[string]any{tmplKeyChangedAt: time.Now().UTC()},
 	)
 
 	return &ResetPasswordResponse{
@@ -3271,8 +3274,8 @@ func (s *Service) ChangePassword(
 	// caller's own grant, which must keep working.
 	s.revokeRefreshTokensForUserExcept(ctx, user.UID, currentRefreshUID)
 
-	s.enqueueEmail(ctx, "", user.Email, "password-changed.html",
-		map[string]any{tmplKeyChangedAt: time.Now().UTC().Format(time.RFC1123)},
+	s.enqueueEmail(ctx, "", user.Email, "password-changed.html", recipient.ForUser(user),
+		map[string]any{tmplKeyChangedAt: time.Now().UTC()},
 	)
 
 	return &ChangePasswordResponse{
@@ -3570,30 +3573,38 @@ func getAllowedInviteExpirations() map[string]time.Duration {
 // ErrInvalidExpiresIn is returned when an invalid expiresIn value is provided.
 var ErrInvalidExpiresIn = errors.New("invalid expiresIn: must be one of 1h, 6h, 12h, 24h, 48h, 1w")
 
-// inviteExpirationLabels maps each accepted expiresIn code to the
-// human-readable phrase shown in the invitation email ("This invitation
-// expires in ..."). Kept as a literal map (rather than deriving from
-// time.Duration.String(), which renders machine-ish output like "168h0m0s")
-// so the email always reads naturally. Keys mirror
-// getAllowedInviteExpirations exactly.
-func inviteExpirationLabels() map[string]string {
-	return map[string]string{
-		"1h":            "1 hour",
-		"6h":            "6 hours",
-		"12h":           "12 hours",
-		durationLabel24: "24 hours",
-		"48h":           "48 hours",
-		"1w":            "7 days",
+// inviteLifetime is how the invitation email words an expiresIn code: a count
+// of account.duration.hours or account.duration.days.
+type inviteLifetime struct {
+	count int
+	unit  string
+}
+
+// inviteLifetimes maps each accepted expiresIn code to the phrase shown in
+// the invitation email ("This invitation expires in ..."). Kept as a literal
+// map (rather than deriving from the time.Duration, which would read "168
+// hours" or need a rounding rule) so the email always reads naturally. Keys
+// mirror getAllowedInviteExpirations exactly.
+func inviteLifetimes() map[string]inviteLifetime {
+	const hours, days = "account.duration.hours", "account.duration.days"
+
+	return map[string]inviteLifetime{
+		"1h":            {1, hours},
+		"6h":            {6, hours},
+		"12h":           {12, hours},
+		durationLabel24: {24, hours},
+		"48h":           {48, hours},
+		"1w":            {7, days},
 	}
 }
 
-// humanizeInviteExpiresIn converts an expiresIn code (e.g. "24h") into the
-// human-readable phrase used in the invitation email. Falls back to the raw
-// code for any value outside getAllowedInviteExpirations — defensive only,
-// CreateInvitation already validates the code before this is ever called.
-func humanizeInviteExpiresIn(expiresIn string) string {
-	if label, ok := inviteExpirationLabels()[expiresIn]; ok {
-		return label
+// InviteExpiresIn words an expiresIn code (e.g. "24h") in loc for the
+// invitation email: "24 hours", "24 heures", "24 Stunden". Falls back to the
+// raw code for any value outside getAllowedInviteExpirations (defensive only:
+// CreateInvitation validates the code first). Exported for the email preview.
+func InviteExpiresIn(loc i18n.Locale, expiresIn string) string {
+	if lifetime, ok := inviteLifetimes()[expiresIn]; ok {
+		return loc.Tn(lifetime.unit, lifetime.count)
 	}
 
 	return expiresIn
@@ -4466,24 +4477,32 @@ func (s *Service) sendInvitationEmail(
 		return false
 	}
 
-	inviterName := s.getInviterName(ctx, inviterUID)
+	inviter, err := s.db.GetUser(ctx, inviterUID)
+	if err != nil {
+		inviter = nil
+	}
+
+	// An invitee who already has an account reads its own language; a new
+	// address reads the inviter's, the best guess at hand.
+	loc := recipient.NewResolver(s.db).ForAddress(ctx, "", recipientEmail, recipient.HintFromUser(inviter))
 
 	viewModel := map[string]any{
 		"Role":        role,
-		"InviterName": inviterName,
+		"InviterName": inviterName(inviter),
 		"InviteURL":   inviteURL,
-		"ExpiresIn":   humanizeInviteExpiresIn(expiresIn),
+		"ExpiresIn":   InviteExpiresIn(loc, expiresIn),
 	}
 	email.ApplyOrgBranding(viewModel, org.Name, org.Slug, org.LogoURL)
 
-	queued := s.enqueueEmail(ctx, org.UID, recipientEmail, "invitation.html", viewModel)
+	queued := s.enqueueEmail(ctx, org.UID, recipientEmail, "invitation.html", loc, viewModel)
 
 	return s.fullCfg.Email.Enabled && queued
 }
 
-func (s *Service) getInviterName(ctx context.Context, inviterUID string) string {
-	inviter, err := s.db.GetUser(ctx, inviterUID)
-	if err != nil || inviter == nil {
+// inviterName is how the invitation names its sender: the name, else the
+// address, else "" (the email then words the invitation without a sender).
+func inviterName(inviter *models.User) string {
+	if inviter == nil {
 		return ""
 	}
 
