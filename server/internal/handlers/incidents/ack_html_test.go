@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/fclairamb/solidping/server/internal/i18n"
 )
 
 // TestBuildIncidentURL_HappyPath asserts the plain, expected-shape
@@ -71,7 +73,7 @@ func TestSuccessRedirectFragment_EscapesPerContext(t *testing.T) {
 	r := require.New(t)
 
 	hostile := `/d/orgs/x"><script>alert(1)</script>/incidents/y&z`
-	headExtra, body := successRedirectFragment(hostile)
+	headExtra, body := successRedirectFragment(i18n.English, hostile)
 
 	// Neither fragment should contain the raw payload unescaped.
 	r.NotContains(headExtra, `"><script>`)
@@ -98,7 +100,7 @@ func TestPageContent_SuccessCarriesRedirect(t *testing.T) {
 
 	r := require.New(t)
 
-	title, h1, icon, body, headExtra := pageContent(ackHTMLSuccess, "acme", "abc-123")
+	title, h1, icon, body, headExtra := pageContent(i18n.English, ackHTMLSuccess, "acme", "abc-123")
 
 	r.Equal("Incident acknowledged", title)
 	r.Equal("Incident acknowledged", h1)
@@ -121,7 +123,7 @@ func TestPageContent_NonSuccessKindsHaveNoRedirect(t *testing.T) {
 	nonSuccessKinds := []ackPageKind{ackHTMLExpired, ackHTMLInvalid, ackHTMLMissingToken, ackHTMLError}
 
 	for _, kind := range nonSuccessKinds {
-		_, _, _, body, headExtra := pageContent(kind, "acme", "abc-123")
+		_, _, _, body, headExtra := pageContent(i18n.English, kind, "acme", "abc-123")
 
 		r.Empty(headExtra, "only the success page should set a meta-refresh")
 		r.NotContains(body, "<script>", "only the success page should carry the redirect script")
@@ -150,7 +152,7 @@ func TestPageContent_IconPerKind(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		_, _, icon, _, _ := pageContent(tc.kind, "acme", "abc-123")
+		_, _, icon, _, _ := pageContent(i18n.English, tc.kind, "acme", "abc-123")
 		r.Contains(icon, tc.wantClass)
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/i18n"
 )
 
 // Handler serves the public (unauthenticated) unsubscribe surface:
@@ -74,8 +75,10 @@ func (h *Handler) OneClickUnsubscribe(writer http.ResponseWriter, req *http.Requ
 // is chosen, and choosing IS the confirmation).
 func (h *Handler) ConfirmationPage(writer http.ResponseWriter, req *http.Request) error {
 	token := req.URL.Query().Get("token")
+	loc := h.pageLocale(req, token)
+
 	if token == "" {
-		writePage(writer, http.StatusBadRequest, "Missing token", missingTokenBody())
+		writePage(writer, loc, http.StatusBadRequest, loc.T("pages.unsubscribe.missing.title"), missingTokenBody(loc))
 
 		return nil
 	}
@@ -83,15 +86,15 @@ func (h *Handler) ConfirmationPage(writer http.ResponseWriter, req *http.Request
 	scope := Scope(req.URL.Query().Get("scope"))
 
 	if scope == ScopeFromToken {
-		return h.renderChoicePage(writer, req, token)
+		return h.renderChoicePage(writer, req, loc, token)
 	}
 
 	result, err := h.svc.Unsubscribe(req.Context(), token, scope, models.EmailSuppressionSourceLink)
 	if err != nil {
-		return h.renderErrorPage(writer, req, err)
+		return h.renderErrorPage(writer, req, loc, err)
 	}
 
-	writePage(writer, http.StatusOK, "Unsubscribed", successBody(token, result))
+	writePage(writer, loc, http.StatusOK, loc.T("pages.unsubscribe.success.title"), successBody(loc, token, result))
 
 	return nil
 }
@@ -99,10 +102,10 @@ func (h *Handler) ConfirmationPage(writer http.ResponseWriter, req *http.Request
 // renderChoicePage shows the two scope buttons without unsubscribing yet.
 // It still needs to verify the token (to show the check name and reject a
 // bad token up front) but performs no write.
-func (h *Handler) renderChoicePage(writer http.ResponseWriter, req *http.Request, token string) error {
+func (h *Handler) renderChoicePage(writer http.ResponseWriter, req *http.Request, loc i18n.Locale, token string) error {
 	org, email, checkUID, err := h.svc.resolve(req.Context(), token, ScopeFromToken)
 	if err != nil {
-		return h.renderErrorPage(writer, req, err)
+		return h.renderErrorPage(writer, req, loc, err)
 	}
 
 	checkName := ""
@@ -116,7 +119,8 @@ func (h *Handler) renderChoicePage(writer http.ResponseWriter, req *http.Request
 		}
 	}
 
-	writePage(writer, http.StatusOK, "Unsubscribe from SolidPing alerts", choiceBody(token, email, checkUID, checkName))
+	writePage(writer, loc, http.StatusOK, loc.T("pages.unsubscribe.choice.title"),
+		choiceBody(loc, token, email, checkUID, checkName))
 
 	return nil
 }
@@ -128,29 +132,30 @@ func (h *Handler) renderChoicePage(writer http.ResponseWriter, req *http.Request
 func (h *Handler) Undo(writer http.ResponseWriter, req *http.Request) error {
 	token := req.URL.Query().Get("token")
 	uid := req.URL.Query().Get("uid")
+	loc := h.pageLocale(req, token)
 
 	if token == "" || uid == "" {
-		writePage(writer, http.StatusBadRequest, "Missing parameters", missingTokenBody())
+		writePage(writer, loc, http.StatusBadRequest, loc.T("pages.unsubscribe.missing.undoTitle"), missingTokenBody(loc))
 
 		return nil
 	}
 
 	if err := h.svc.ResubscribeByUID(req.Context(), token, uid); err != nil {
-		return h.renderErrorPage(writer, req, err)
+		return h.renderErrorPage(writer, req, loc, err)
 	}
 
-	writePage(writer, http.StatusOK, "Re-subscribed", resubscribedBody())
+	writePage(writer, loc, http.StatusOK, loc.T("pages.unsubscribe.resubscribed.title"), resubscribedBody(loc))
 
 	return nil
 }
 
 // renderErrorPage maps a Service error to the right status/page.
-func (h *Handler) renderErrorPage(writer http.ResponseWriter, request *http.Request, err error) error {
+func (h *Handler) renderErrorPage(writer http.ResponseWriter, request *http.Request, loc i18n.Locale, err error) error {
 	switch {
 	case errors.Is(err, ErrTokenInvalid):
-		writePage(writer, http.StatusBadRequest, "Invalid or expired link", invalidTokenBody())
+		writePage(writer, loc, http.StatusBadRequest, loc.T("pages.unsubscribe.invalid.title"), invalidTokenBody(loc))
 	case errors.Is(err, ErrOrgNotFound):
-		writePage(writer, http.StatusNotFound, "Organization not found", orgNotFoundBody())
+		writePage(writer, loc, http.StatusNotFound, loc.T("pages.unsubscribe.orgNotFound.title"), orgNotFoundBody(loc))
 	default:
 		return h.WriteInternalError(writer, request, err)
 	}
