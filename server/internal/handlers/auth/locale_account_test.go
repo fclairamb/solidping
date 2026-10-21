@@ -316,7 +316,7 @@ func TestAccountMail_MembershipRequestUsesEachAdmin(t *testing.T) {
 
 	for _, admin := range admins {
 		job := onlyEmailJobTo(t, ctx, dbSvc, admin.address)
-		r.Equal("membership_request_new.html", job["template"])
+		r.Equal("membership-request-new.html", job["template"])
 		requireJobLocale(t, job, admin.wantLang, admin.wantZone)
 	}
 
@@ -328,7 +328,7 @@ func TestAccountMail_MembershipRequestUsesEachAdmin(t *testing.T) {
 	r.Len(decisions, 2)
 
 	for _, job := range decisions {
-		r.Equal("membership_request_decision.html", job["template"])
+		r.Equal("membership-request-decision.html", job["template"])
 		requireJobLocale(t, job, i18n.LangSpanish, zoneMexico)
 	}
 }

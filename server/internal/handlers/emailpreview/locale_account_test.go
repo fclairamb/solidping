@@ -21,7 +21,7 @@ import (
 var accountTemplates = []string{
 	"registration.html", "welcome.html", "password-reset.html", "password-reset-sso.html",
 	"password-changed.html", "email-changed.html", "invitation.html",
-	"membership_request_new.html", "membership_request_decision.html",
+	"membership-request-new.html", "membership-request-decision.html",
 }
 
 const nbsp = " "
@@ -166,7 +166,7 @@ func TestAccountMail_EveryLocale(t *testing.T) {
 				"Alice Admin te ha invitado a unirte a Acme Corp en SolidPing como administrador.",
 			},
 		},
-		"membership_request_new.html": {
+		"membership-request-new.html": {
 			i18n.LangEnglish: {
 				"New membership request from Bob Builder on Acme Corp",
 				"\"I'd like to help monitor our new services.\"",
@@ -184,7 +184,7 @@ func TestAccountMail_EveryLocale(t *testing.T) {
 				"«I'd like to help monitor our new services.»",
 			},
 		},
-		"membership_request_decision.html": {
+		"membership-request-decision.html": {
 			i18n.LangEnglish: {"Your request to join Acme Corp was approved", "You're now a member with role viewer."},
 			i18n.LangFrench: {
 				"Votre demande d'adhésion à Acme Corp a été approuvée",
@@ -294,14 +294,14 @@ func TestAccountMail_EveryRoleAndDecision(t *testing.T) {
 				r.NotContains(anonymous, fixturePersonName)
 				r.Contains(anonymous, words[lang].invited)
 
-				decision := accountFixture(t, "membership_request_decision.html", loc)
+				decision := accountFixture(t, "membership-request-decision.html", loc)
 				decision["Role"] = role
-				approvedSubject, _, approvedText := renderAccount(t, "membership_request_decision.html", loc, decision)
+				approvedSubject, _, approvedText := renderAccount(t, "membership-request-decision.html", loc, decision)
 				r.Contains(approvedText, words[lang].approved)
 
 				decision["Decision"] = "rejected"
 				decision["Reason"] = "Not this quarter"
-				rejectedSubject, _, rejectedText := renderAccount(t, "membership_request_decision.html", loc, decision)
+				rejectedSubject, _, rejectedText := renderAccount(t, "membership-request-decision.html", loc, decision)
 				r.Equal(rejectedSubjects[lang], rejectedSubject)
 				r.NotEqual(approvedSubject, rejectedSubject)
 				r.Contains(rejectedText, "Not this quarter")

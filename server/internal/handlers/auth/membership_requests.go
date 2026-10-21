@@ -405,7 +405,7 @@ func (s *Service) notifyAdminsOfMembershipRequest(
 		email.ApplyOrgBranding(viewModel, org.Name, org.Slug, org.LogoURL)
 
 		// Each admin reads the mail in their own language and zone.
-		s.enqueueEmail(ctx, org.UID, member.User.Email, "membership_request_new.html",
+		s.enqueueEmail(ctx, org.UID, member.User.Email, "membership-request-new.html",
 			recipient.ForUser(member.User), viewModel)
 	}
 }
@@ -436,7 +436,7 @@ func (s *Service) notifyRequesterOfDecision(
 	}
 	email.ApplyOrgBranding(viewModel, org.Name, org.Slug, org.LogoURL)
 
-	s.enqueueEmail(ctx, org.UID, requester.Email, "membership_request_decision.html",
+	s.enqueueEmail(ctx, org.UID, requester.Email, "membership-request-decision.html",
 		recipient.ForUser(requester), viewModel)
 }
 

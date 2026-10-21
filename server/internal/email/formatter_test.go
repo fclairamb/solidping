@@ -415,7 +415,7 @@ func TestFormatter_TextBlockRendering(t *testing.T) {
 				[]string{"Sun, 05 Jul 2026 10:00:00 UTC", "alice@acme.com", "alice@acme.org"},
 			},
 			{
-				"membership_request_new.html",
+				"membership-request-new.html",
 				map[string]any{
 					"OrgName": "Acme", "RequesterName": "Bob", "RequesterEmail": "bob@x.test",
 					"RequestsURL": "https://x.test/requests",
@@ -423,7 +423,7 @@ func TestFormatter_TextBlockRendering(t *testing.T) {
 				[]string{"Bob", "bob@x.test", "Acme", "https://x.test/requests"},
 			},
 			{
-				"membership_request_decision.html",
+				"membership-request-decision.html",
 				map[string]any{
 					"OrgName": "Acme", "Decision": "approved", "Role": "viewer", "DashboardURL": "https://x.test/dash",
 				},
@@ -537,7 +537,7 @@ func TestFormatter_TransactionalTemplates(t *testing.T) {
 		},
 		{
 			name:     "membership request new",
-			template: "membership_request_new.html",
+			template: "membership-request-new.html",
 			data: map[string]any{
 				"OrgName":        "Acme",
 				"RequesterName":  "Bob",
@@ -554,7 +554,7 @@ func TestFormatter_TransactionalTemplates(t *testing.T) {
 		},
 		{
 			name:     "membership request decision approved",
-			template: "membership_request_decision.html",
+			template: "membership-request-decision.html",
 			data: map[string]any{
 				"OrgName":      "Acme",
 				"Decision":     "approved",
@@ -703,11 +703,11 @@ func TestFormatter_AllShippedTemplatesRenderCleanly(t *testing.T) {
 		{"email-changed.html", map[string]any{
 			"ChangedAt": "Sun, 05 Jul 2026 10:00:00 UTC", "OldEmail": "alice@acme.com", "NewEmail": "alice@acme.org",
 		}},
-		{"membership_request_new.html", map[string]any{
+		{"membership-request-new.html", map[string]any{
 			"OrgName": "Acme", "RequesterName": "Bob", "RequesterEmail": "bob@x.test",
 			"RequestsURL": "https://x.test/requests",
 		}},
-		{"membership_request_decision.html", map[string]any{
+		{"membership-request-decision.html", map[string]any{
 			"OrgName": "Acme", "Decision": "approved", "Role": "viewer", "DashboardURL": "https://x.test/dash",
 		}},
 	}

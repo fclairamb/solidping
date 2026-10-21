@@ -523,7 +523,7 @@ func TestApplyOrgBrandingFallsBackToSlugWhenNameIsBlank(t *testing.T) {
 }
 
 // TestApplyOrgBrandingBlankNameNeverRendersAHole is the end-to-end half,
-// rendered through the actual membership_request_new.html template — the
+// rendered through the actual membership-request-new.html template — the
 // exact defect from the screenshot that motivated this fix: "has asked to
 // join **on** SolidPing" and "you're an admin of **.**" with a blank
 // OrgName. Both the positive assertion (the slug fills the hole) and the
@@ -544,7 +544,7 @@ func TestApplyOrgBrandingBlankNameNeverRendersAHole(t *testing.T) {
 	}
 	ApplyOrgBranding(viewModel, "", "default", nil)
 
-	subject, html, text, err := formatter.Format("membership_request_new.html", i18n.English, viewModel)
+	subject, html, text, err := formatter.Format("membership-request-new.html", i18n.English, viewModel)
 	r.NoError(err)
 
 	r.Contains(subject, "on default")

@@ -479,9 +479,9 @@ func TestPreview_ValuesGmailWouldAutoLinkAreOwnedLinks(t *testing.T) {
 
 	// welcome has a button and no fallback link, so it has no owned link to
 	// find; it still must not leave a bare URL behind.
-	withFallback := map[string]bool{"membership_request_new": true, "invitation": true, "password-reset": true}
+	withFallback := map[string]bool{"membership-request-new": true, "invitation": true, "password-reset": true}
 
-	for _, tmpl := range []string{"membership_request_new", "invitation", "password-reset", "welcome"} {
+	for _, tmpl := range []string{"membership-request-new", "invitation", "password-reset", "welcome"} {
 		t.Run(tmpl, func(t *testing.T) {
 			t.Parallel()
 
@@ -505,7 +505,7 @@ func TestPreview_ValuesGmailWouldAutoLinkAreOwnedLinks(t *testing.T) {
 		})
 	}
 
-	rec := doGet(t, router, "/api/mgmt/email-preview/membership_request_new.html")
+	rec := doGet(t, router, "/api/mgmt/email-preview/membership-request-new.html")
 	require.Contains(t, rec.Body.String(), `href="mailto:`)
 }
 
