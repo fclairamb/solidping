@@ -60,10 +60,13 @@ timezone. Today every email is English and every date is UTC.
     substring), the AI auto-repair notice (raw-text email), and the pages reached from email links:
     the unsubscribe page, the "I'm on it" ack result page (locale from the token's email address ->
     user, else `en`; `lang` attribute set) and the status-subscriber landing pages (the page's
-    language). Instance operator notices (`opsnotify`: support message, new user, watchdog, test)
-    stay English on every channel, email included: one `Notice` is fanned out to every medium
-    (the others stay English, decision 13), it is queued as finished text before its recipient is
-    resolved, and it goes to the instance's super admins, not to customers.
+    language). Instance operator notices (`opsnotify`: support message, new user, watchdog digest,
+    watchdog region, test) are localized for the email medium only: the email copy is written in
+    the recipient super admin's locale (`recipient.ForUser`) at delivery time, from a structured
+    form the notice carries alongside its English text. Every other medium keeps the exact English
+    text (decision 13). A notice queued before the upgrade has no structured form and is mailed in
+    English. The digest's anomaly lines (headline, detail, remediation) are detector diagnostics
+    and stay English.
 12. **Preview**: `?locale=en|fr|de|es` on `/api/mgmt/email-preview` (index and template), validated
     before rendering, `en` default keeps today's bytes. Fixtures are produced by the production
     helpers with the requested locale (fixes the drift: AckVia, CommentSource, custom-domain
@@ -90,7 +93,7 @@ timezone. Today every email is English and every date is UTC.
 - **B. Per group** (disjoint files, ownership table in `wiki/conventions/email-i18n.md`): incident
   templates + notifications producers; escalation / paging / test / region / usage-cap /
   custom-domain; account + membership + invitation; uptime report; status subscriber (with its
-  landing pages); AI auto-repair notice (the support notice was done in phase A); unsubscribe and
-  ack pages; dash0.
+  landing pages); raw-text notices: AI auto-repair and the operator notices' email (the support
+  notice was done in phase A); unsubscribe and ack pages; dash0.
 - **C. Review**: translation quality per language, missed strings, other channels unchanged,
   renders in every locale, real test emails.

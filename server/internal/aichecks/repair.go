@@ -18,6 +18,8 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/dbctx"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
+	"github.com/fclairamb/solidping/server/internal/i18n"
+	"github.com/fclairamb/solidping/server/internal/i18n/recipient"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 )
 
@@ -49,9 +51,10 @@ type RepairOutcome struct {
 }
 
 // Mailer queues an email. The jobs service satisfies it through
-// JobsMailer.
+// JobsMailer. subject and text are already written in loc, the reader's
+// language.
 type Mailer interface {
-	Mail(ctx context.Context, orgUID string, to []string, subject, text string) error
+	Mail(ctx context.Context, orgUID string, to []string, loc i18n.Locale, subject, text string) error
 }
 
 // JobsMailer sends mail through the email job.
@@ -59,11 +62,18 @@ type JobsMailer struct {
 	Jobs jobsvc.Service
 }
 
-// Mail implements Mailer.
-//
-// i18n-phase-b: resolve the recipient locale (raw text: the body is built in Go)
-func (m *JobsMailer) Mail(ctx context.Context, orgUID string, to []string, subject, text string) error {
-	raw, err := json.Marshal(map[string]any{"to": to, "subject": subject, "text": text})
+// Mail implements Mailer. The job carries the reader's locale like every
+// email job (spec 2026-10-21-01); the raw text is sent as is.
+func (m *JobsMailer) Mail(
+	ctx context.Context, orgUID string, to []string, loc i18n.Locale, subject, text string,
+) error {
+	raw, err := json.Marshal(map[string]any{
+		"to":       to,
+		"subject":  subject,
+		"text":     text,
+		"locale":   loc.Lang(),
+		"timezone": loc.Timezone(),
+	})
 	if err != nil {
 		return err
 	}
@@ -651,13 +661,24 @@ func (s *Service) notifyApplied(
 	}
 
 	link := fmt.Sprintf("%s/d/orgs/%s/checks/%s/history", s.baseURL, target.org.Slug, checkUID)
-	text := fmt.Sprintf("SolidPing repaired the script of the check %q (version %d).\n\n%s\n\n"+
-		"Diff:\n%s\nReview or undo it: %s\n", name, applied.Version, deref(applied.Reason), diff, link)
+	loc := recipient.ForUser(owner)
+	subject, text := appliedRepairMail(loc, name, applied.Version, deref(applied.Reason), diff, link)
 
-	if err := s.mailer.Mail(ctx, target.check.OrganizationUID, []string{owner.Email},
-		"Check repaired: "+name, text); err != nil {
+	if err := s.mailer.Mail(ctx, target.check.OrganizationUID, []string{owner.Email}, loc, subject, text); err != nil {
 		s.logger.WarnContext(ctx, "Failed to mail the applied repair", "error", err, "check_uid", checkUID)
 	}
+}
+
+// appliedRepairMail is the notice of an applied repair, in the owner's
+// language. The reason and the diff are quoted as they are: the model and the
+// script wrote them, not us.
+func appliedRepairMail(loc i18n.Locale, check string, version int, reason, diff, link string) (string, string) {
+	text := loc.T("notices.aiRepair.intro", "check", check, "version", version) + "\n\n" +
+		reason + "\n\n" +
+		loc.T("notices.aiRepair.diff") + "\n" + diff + "\n" +
+		loc.T("notices.aiRepair.review", "link", link) + "\n"
+
+	return loc.T("notices.aiRepair.subject", "check", check), text
 }
 
 func deref(value *string) string {

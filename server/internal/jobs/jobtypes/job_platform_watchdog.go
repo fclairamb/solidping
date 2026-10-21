@@ -116,7 +116,9 @@ func (r *PlatformWatchdogJobRun) Run(ctx context.Context, jctx *jobdef.JobContex
 
 	digest := watchdog.BuildDigest(transitions, report, report.GeneratedAt)
 	if !digest.Empty() {
-		deliverWatchdogDigest(ctx, jctx, log, cfg, digest)
+		deliverWatchdogDigest(ctx, jctx, log, cfg, digest, &digestCopy{
+			transitions: transitions, report: report, generatedAt: report.GeneratedAt,
+		})
 	}
 
 	return nil

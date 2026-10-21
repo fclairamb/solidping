@@ -354,29 +354,139 @@ func TestOperatorNoticeIsNotPubliclyCreatable(t *testing.T) {
 func TestOperatorNoticeJobConfigCarriesEveryNoticeField(t *testing.T) {
 	t.Parallel()
 
-	r := require.New(t)
+	// Every queued kind of structured form (the Localized field) must travel
+	// too: it is what the email is written from in the recipient's language.
+	for _, localized := range []opsnotify.Localizer{
+		nil,
+		&opsnotify.SupportMessage{NewThread: true, Channel: "sms", From: "+33600000000", Preview: "hi", Folded: 2},
+		&opsnotify.UserRegistered{Email: "carol@acme.com", Name: "Carol", Method: "password"},
+	} {
+		r := require.New(t)
 
-	// Populate every field of Notice with a distinct non-zero value, whatever
-	// the struct grows to.
-	original := &opsnotify.Notice{}
-	value := reflect.ValueOf(original).Elem()
+		// Populate every field of Notice with a distinct non-zero value,
+		// whatever the struct grows to.
+		original := &opsnotify.Notice{}
+		value := reflect.ValueOf(original).Elem()
 
-	for i := range value.NumField() {
-		field := value.Field(i)
-		r.Equal(reflect.String, field.Kind(),
-			"this walk only knows how to fill string fields; teach it %s",
-			value.Type().Field(i).Name)
-		field.SetString("value-of-" + value.Type().Field(i).Name)
+		for i := range value.NumField() {
+			field := value.Field(i)
+			if value.Type().Field(i).Name == "Localized" {
+				continue
+			}
+
+			r.Equal(reflect.String, field.Kind(),
+				"this walk only knows how to fill string fields; teach it %s",
+				value.Type().Field(i).Name)
+			field.SetString("value-of-" + value.Type().Field(i).Name)
+		}
+
+		original.Localized = localized
+
+		// Through the real conversion, out through JSON (the job row is
+		// JSON), and back into a Notice: the exact path a queued notice takes.
+		encoded, err := json.Marshal(jobtypes.NewOperatorNoticeJobConfig(original))
+		r.NoError(err)
+
+		decoded := jobtypes.OperatorNoticeJobConfig{}
+		r.NoError(json.Unmarshal(encoded, &decoded))
+
+		r.Equal(original, decoded.Notice(),
+			"every Notice field must survive the round trip through the job payload")
 	}
+}
 
-	// Through the real conversion, out through JSON (the job row is JSON), and
-	// back into a Notice — the exact path a queued notice takes.
-	encoded, err := json.Marshal(jobtypes.NewOperatorNoticeJobConfig(original))
+// preferFrench gives a user French and the Paris timezone.
+func (e *noticeEnv) preferFrench(t *testing.T, userUID string) {
+	t.Helper()
+
+	require.NoError(t, e.db.UpdateUser(t.Context(), userUID, &models.UserUpdate{
+		Preferences: &models.UserPreferences{Locale: "fr", Timezone: "Europe/Paris"},
+	}))
+}
+
+// emailPayload decodes a queued email job.
+func emailPayload(t *testing.T, job *models.Job) jobtypes.EmailJobConfig {
+	t.Helper()
+
+	raw, err := json.Marshal(job.Config)
+	require.NoError(t, err)
+
+	var cfg jobtypes.EmailJobConfig
+	require.NoError(t, json.Unmarshal(raw, &cfg))
+
+	return cfg
+}
+
+// TestOperatorNoticeEmailFollowsTheRecipientsLanguage is the whole queued
+// path: raised in structured form, through the job row, written in the super
+// admin's language, the landing organization included.
+func TestOperatorNoticeEmailFollowsTheRecipientsLanguage(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	env := newNoticeEnv(t)
+
+	admin := env.recipient(t, "alice@acme.com", true, true)
+	env.preferFrench(t, admin)
+
+	newcomer := env.recipient(t, "carol@acme.com", false, false)
+
+	env.configure(t, map[string]any{
+		"enabled": true,
+		"recipients": []map[string]any{
+			{"userUid": admin, "events": []string{opsnotify.EventUserRegistered}},
+		},
+	})
+
+	r.NoError(env.run(t, jobtypes.NewOperatorNoticeJobConfig(opsnotify.NewUserRegisteredNotice(
+		&opsnotify.UserRegistered{Email: "carol@acme.com", Method: "password"}, newcomer))))
+
+	emails := env.emailJobs(t)
+	r.Len(emails, 1)
+
+	payload := emailPayload(t, emails[0])
+	r.Equal("fr", payload.Locale)
+	r.Equal("Europe/Paris", payload.Timezone)
+	r.Equal("[SolidPing] Nouvelle inscription : carol@acme.com (password)", payload.Subject)
+	r.Contains(payload.Text, "Un nouvel utilisateur vient de s'inscrire sur cette instance SolidPing.")
+	r.True(strings.HasSuffix(payload.Text, "\nMéthode : password\nOrganisation : acme"), //nolint:misspell // French
+		payload.Text)
+}
+
+// TestOperatorNoticeQueuedBeforeTheUpgradeStillDelivers: a job row written by
+// the previous version has no structured form. It is delivered as it always
+// was, in English, to a French reader too.
+func TestOperatorNoticeQueuedBeforeTheUpgradeStillDelivers(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	env := newNoticeEnv(t)
+
+	admin := env.recipient(t, "alice@acme.com", true, true)
+	env.preferFrench(t, admin)
+
+	env.configure(t, map[string]any{
+		"enabled": true,
+		"recipients": []map[string]any{
+			{"userUid": admin, "events": []string{opsnotify.EventSupportMessage}},
+		},
+	})
+
+	// The exact payload the previous version queued.
+	runner, err := (&jobtypes.OperatorNoticeJobDefinition{}).CreateJobRun(json.RawMessage(`{
+		"event": "support.message",
+		"subject": "[SolidPing support] New support thread on sms from +33600000000",
+		"body": "Channel: sms\nFrom:    +33600000000\n\nis the api down?",
+		"url": "https://solidping.example/d/support/thread-1"
+	}`))
 	r.NoError(err)
+	r.NoError(runner.Run(t.Context(), env.jctx))
 
-	decoded := jobtypes.OperatorNoticeJobConfig{}
-	r.NoError(json.Unmarshal(encoded, &decoded))
+	emails := env.emailJobs(t)
+	r.Len(emails, 1)
 
-	r.Equal(original, decoded.Notice(),
-		"every Notice field must survive the round trip through the job payload")
+	payload := emailPayload(t, emails[0])
+	r.Equal("[SolidPing support] New support thread on sms from +33600000000", payload.Subject)
+	r.Equal("Channel: sms\nFrom:    +33600000000\n\nis the api down?\n\n"+
+		"https://solidping.example/d/support/thread-1", payload.Text)
 }

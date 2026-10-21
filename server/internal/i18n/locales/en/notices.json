@@ -1,0 +1,81 @@
+{
+  "supportMessage": {
+    "subjectNewMessage": "New message on {channel} from {from}",
+    "subjectNewThread": "New support thread on {channel} from {from}",
+    "channel": "Channel: {channel}",
+    "from": "From:    {from}",
+    "folded_one": "…and {count} more message(s) in this thread since the last notification.",
+    "folded_other": "…and {count} more message(s) in this thread since the last notification.",
+    "replyWarning": "Replying to this notification does NOT reach the sender — open the thread to answer them."
+  },
+  "userRegistered": {
+    "subject": "New signup: {email} ({method})",
+    "intro": "A new user just signed up on this SolidPing instance.",
+    "email": "Email:  {email}",
+    "name": "Name:   {name}",
+    "method": "Method: {method}",
+    "org": "Org:    {orgs}",
+    "noOrg": "Org:    no organization"
+  },
+  "test": {
+    "subject": "Operator notification test",
+    "intro": "This is a test of the operator notifications on this SolidPing instance.",
+    "works": "If you are reading it, the route it arrived on works.",
+    "requestedBy": "Requested by {email}."
+  },
+  "watchdogRegion": {
+    "subjectDark": "Region {region} is dark",
+    "subjectStalled": "Region {region} is stalled",
+    "subjectRecovered": "Region {region} recovered after {duration}",
+    "darkHeadline_one": "region \"{region}\" is DARK (no live worker) since {since}: {count} job(s) assigned, {overdue} overdue",
+    "darkHeadline_other": "region \"{region}\" is DARK (no live worker) since {since}: {count} job(s) assigned, {overdue} overdue",
+    "organizations_one": "{count} organization(s)",
+    "organizations_other": "{count} organization(s)",
+    "darkChecks_one": "{count} check(s) in {orgs} run only from this region and are not running; each of those organizations was notified by email.",
+    "darkChecks_other": "{count} check(s) in {orgs} run only from this region and are not running; each of those organizations was notified by email.",
+    "moved_one": "{count} automatically placed check(s) were moved to another region.",
+    "moved_other": "{count} automatically placed check(s) were moved to another region.",
+    "darkRemediation": "Remediation: bring a worker for \"{region}\" back, or {command}.",
+    "liveWorkers_one": "{count} live worker(s)",
+    "liveWorkers_other": "{count} live worker(s)",
+    "stalledHeadline_one": "region \"{region}\" is stalled: {workers} but {count} job(s) overdue, oldest since {since}",
+    "stalledHeadline_other": "region \"{region}\" is stalled: {workers} but {count} job(s) overdue, oldest since {since}",
+    "stalledCause": "The workers beat but do not claim. Organizations were not notified.",
+    "stalledInspect": "Inspect: GET /api/v1/system/regions/health, then the workers' logs.",
+    "recovered_one": "Region \"{region}\" is healthy again after {duration} ({phase} since {since}). {count} organization(s) were told.",
+    "recovered_other": "Region \"{region}\" is healthy again after {duration} ({phase} since {since}). {count} organization(s) were told.",
+    "phase": {
+      "dark": "dark",
+      "stalled": "stalled"
+    }
+  },
+  "watchdogDigest": {
+    "allClear_one": "All clear — {count} anomaly(ies) recovered",
+    "allClear_other": "All clear — {count} anomaly(ies) recovered",
+    "anomalies_one": "{count} platform anomaly(ies)",
+    "anomalies_other": "{count} platform anomaly(ies)",
+    "critical_one": ", {count} critical",
+    "critical_other": ", {count} critical",
+    "recovered_one": " (+{count} recovered)",
+    "recovered_other": " (+{count} recovered)",
+    "generatedAt": "Generated at {date}",
+    "anomaliesTitle": "ANOMALIES",
+    "severity": {
+      "info": "INFO",
+      "warning": "WARNING",
+      "critical": "CRITICAL"
+    },
+    "new": "NEW",
+    "stillBroken": "STILL BROKEN since {date}",
+    "fix": "fix: {remediation}",
+    "recoveredTitle": "RECOVERED",
+    "clearAgain": "{fingerprint} — clear again (first seen {date})",
+    "failuresTitle": "DETECTOR FAILURES (these anomalies could NOT be evaluated this run)"
+  },
+  "aiRepair": {
+    "subject": "Check repaired: {check}",
+    "intro": "SolidPing repaired the script of the check \"{check}\" (version {version}).",
+    "diff": "Diff:",
+    "review": "Review or undo it: {link}"
+  }
+}
