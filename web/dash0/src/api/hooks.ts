@@ -4099,6 +4099,11 @@ export function useRegister() {
       password: string;
       // Campaign context from the landing URL; see lib/attribution.ts.
       attribution?: SignupAttribution;
+      // The browser's language and timezone, the preferences the account
+      // starts with (spec 2026-10-21-01): its first emails, the confirmation
+      // included, are written in them.
+      locale?: string;
+      timezone?: string;
     }) =>
       apiFetch<{ message: string }>("/api/v1/auth/register", {
         method: "POST",
@@ -4609,7 +4614,15 @@ export function useAcceptInvite() {
     // is accepted only by that account (spec 2026-10-16-06), and the normal
     // 401 refresh applies. Signed out (the create-account form) stays
     // anonymous.
-    mutationFn: (data: { token: string; name?: string; password?: string }) =>
+    // locale/timezone seed the preferences of an account the acceptance
+    // creates (spec 2026-10-21-01); an existing account keeps its own.
+    mutationFn: (data: {
+      token: string;
+      name?: string;
+      password?: string;
+      locale?: string;
+      timezone?: string;
+    }) =>
       apiFetch<AcceptInviteResponse>("/api/v1/auth/accept-invite", {
         method: "POST",
         body: JSON.stringify(data),
@@ -4729,11 +4742,17 @@ export interface EmailTemplateSummary {
  * server runs with SP_RUNMODE=test — outside it the query 404s and the page
  * shows its "not available" state rather than an error toast.
  */
-export function useEmailPreviewIndex() {
+// locale is the preview language (en when omitted); the subjects come back in
+// it.
+export function useEmailPreviewIndex(locale: string = "en") {
   return useQuery({
-    queryKey: ["email-preview-index"],
+    queryKey: ["email-preview-index", locale],
     queryFn: () =>
-      apiFetch<{ data: EmailTemplateSummary[] }>("/api/mgmt/email-preview"),
+      apiFetch<{ data: EmailTemplateSummary[] }>(
+        locale === "en"
+          ? "/api/mgmt/email-preview"
+          : `/api/mgmt/email-preview?locale=${encodeURIComponent(locale)}`,
+      ),
     staleTime: 30000,
     retry: false,
   });

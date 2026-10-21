@@ -1,33 +1,34 @@
-{{define "subject"}}[escalation] {{.CheckName}} incident escalated{{if gt .IncidentNumber 0}} (#{{.IncidentNumber}}){{end}}{{end}}
-{{define "preheader"}}Nobody acknowledged in time — {{.CheckName}} has been escalated to you.{{end}}
+{{define "subject"}}🟠 {{t "alerts.escalation.subject" "check" .CheckName}}{{if .IncidentNumber}} (#{{.IncidentNumber}}){{end}}{{end}}
+{{define "preheader"}}{{t "alerts.escalation.lead"}}{{if .FailureReason}} {{short 80 .FailureReason}}.{{end}}{{end}}
 {{template "base.html" .}}
-{{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "escalated" "Label" "Escalated"}}{{end}}
+{{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "escalated" "Label" (t "alerts.escalation.pill")}}{{end}}
 {{define "content"}}
-    <h1>Escalation policy fired</h1>
-    <p>The incident for <strong>{{if .CheckURL}}<a href="{{.CheckURL}}">{{nolink .CheckName}}</a>{{else}}{{nolink .CheckName}}{{end}}</strong> was not acknowledged in time and has been escalated to you.</p>
+    {{- $check := nolink .CheckName}}
+    {{- /* tHTML only escapes the href: absURL keeps html/template's scheme
+         filter (http, https or site-relative, else no link). */}}
+    {{- $checkURL := absURL .CheckURL}}
+    <h1>{{if $checkURL}}{{tHTML "alerts.escalation.heading" "check" (tHTML "alerts.link" "url" $checkURL "text" $check)}}{{else}}{{tHTML "alerts.escalation.heading" "check" $check}}{{end}}</h1>
+    <p class="lead">{{t "alerts.escalation.lead"}}</p>
+    {{template "cause" .}}
     <table class="details-table" role="presentation" cellpadding="0" cellspacing="0">
-        <tr><td class="label">Check</td><td class="value">{{if .CheckURL}}<a href="{{.CheckURL}}">{{nolink .CheckName}}</a>{{else}}{{nolink .CheckName}}{{end}}</td></tr>
-        <tr><td class="label">Started at</td><td class="value">{{.StartedAt}}</td></tr>
-        <tr><td class="label">Failure count</td><td class="value">{{.FailureCount}}</td></tr>
-        {{if gt .IncidentNumber 0}}<tr><td class="label">Incident</td><td class="value">{{if .IncidentURL}}<a href="{{.IncidentURL}}">#{{.IncidentNumber}}</a>{{else}}#{{.IncidentNumber}}{{end}}</td></tr>{{end}}
+        {{if .CheckTarget}}<tr><td class="label">{{t "common.labels.target"}}</td><td class="value">{{nolink .CheckTarget}}</td></tr>{{end}}
+        <tr><td class="label">{{t "common.labels.since"}}</td><td class="value">{{date .StartedAt}}</td></tr>
+        <tr><td class="label">{{t "alerts.escalation.failedChecks"}}</td><td class="value">{{.FailureCount}}</td></tr>
+        {{if .IncidentNumber}}<tr><td class="label">{{t "common.labels.incident"}}</td><td class="value">#{{.IncidentNumber}}</td></tr>{{end}}
     </table>
-    {{if .IncidentURL}}
-    <div class="cta-wrap">{{template "button" dict "URL" .IncidentURL "Label" "Open incident" "Variant" "primary"}}</div>
-    {{end}}
-    <p class="meta">Open the dashboard to acknowledge or resolve.</p>
+    {{template "incident-actions" .}}
 {{end}}
-{{define "text"}}Escalation policy fired
+{{define "text"}}{{t "alerts.escalation.heading" "check" .CheckName}}
 
-The incident for {{.CheckName}} was not acknowledged in time and has been escalated to you.
-
-Check: {{.CheckName}}
-{{if .CheckURL}}Check URL: {{.CheckURL}}
-{{end}}Started at: {{.StartedAt}}
-Failure count: {{.FailureCount}}
-{{if gt .IncidentNumber 0}}Incident: #{{.IncidentNumber}}
-{{end}}{{if .IncidentURL}}Open incident: {{.IncidentURL}}
+{{t "alerts.escalation.lead"}}
+{{if .FailureReason}}
+{{.FailureReason}}
 {{end}}
-Open the dashboard to acknowledge or resolve.
-{{if .DashboardURL}}Dashboard: {{.DashboardURL}}{{end}}{{if .DocsURL}}
-Docs: {{.DocsURL}}{{end}}
-{{end}}
+{{t "common.textField" "label" (t "common.labels.check") "value" .CheckName}}
+{{if .CheckTarget}}{{t "common.textField" "label" (t "common.labels.target") "value" .CheckTarget}}
+{{end}}{{if .CheckURL}}{{t "common.textField" "label" (t "common.labels.checkURL") "value" .CheckURL}}
+{{end}}{{t "common.textField" "label" (t "common.labels.since") "value" (date .StartedAt)}}
+{{t "common.textField" "label" (t "alerts.escalation.failedChecks") "value" .FailureCount}}
+{{if .IncidentNumber}}{{t "common.textField" "label" (t "common.labels.incident") "value" (printf "#%v" .IncidentNumber)}}
+{{end}}{{template "incident-actions-text" .}}
+{{template "footer-text" .}}{{end}}

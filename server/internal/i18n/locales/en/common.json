@@ -1,0 +1,82 @@
+{
+  "months": {
+    "short": {
+      "jan": "Jan",
+      "feb": "Feb",
+      "mar": "Mar",
+      "apr": "Apr",
+      "may": "May",
+      "jun": "Jun",
+      "jul": "Jul",
+      "aug": "Aug",
+      "sep": "Sep",
+      "oct": "Oct",
+      "nov": "Nov",
+      "dec": "Dec"
+    },
+    "long": {
+      "jan": "January",
+      "feb": "February",
+      "mar": "March",
+      "apr": "April",
+      "may": "May",
+      "jun": "June",
+      "jul": "July",
+      "aug": "August",
+      "sep": "September",
+      "oct": "October",
+      "nov": "November",
+      "dec": "December"
+    }
+  },
+  "date": {
+    "dateTime": "{month} {day}, {time} {zone}",
+    "dateTimeYear": "{month} {day}, {year}, {time} {zone}",
+    "day": "{month} {day}",
+    "dayYear": "{month} {day}, {year}",
+    "month": "{month} {year}"
+  },
+  "duration": {
+    "days": "{n}d",
+    "hours": "{n}h",
+    "minutes": "{n}m",
+    "seconds": "{n}s"
+  },
+  "header": {
+    "sentBy": "sent by SolidPing",
+    "logoAlt": "Logo"
+  },
+  "footer": {
+    "orgSentBy": "{org} · sent by",
+    "sentBy": "Sent by",
+    "dashboard": "Dashboard",
+    "stopAlerts": "Stop alerts for {check}",
+    "unsubscribe": "Unsubscribe",
+    "automated": "This is an automated notification from SolidPing."
+  },
+  "incidentActions": {
+    "ack": "I'm on it",
+    "viewIncident": "View incident",
+    "ackExplain": "\"I'm on it\" tells your team you are handling it and stops escalation.",
+    "ackExpires": "The link works until {date}."
+  },
+  "labels": {
+    "check": "Check",
+    "target": "Target",
+    "checkURL": "Check URL",
+    "since": "Since",
+    "incident": "Incident",
+    "docs": "Docs"
+  },
+  "textField": "{label}: {value}",
+  "fallbackLink": "Button not working? Paste this link into your browser:",
+  "supportReply": {
+    "notice": "You can reply directly to this email to reach a human — we read every reply."
+  },
+  "list": {
+    "and": "{head} and {last}",
+    "andBeforeVowel": "{head} and {last}",
+    "or": "{head} or {last}",
+    "orBeforeVowel": "{head} or {last}"
+  }
+}

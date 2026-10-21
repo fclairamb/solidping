@@ -1,0 +1,93 @@
+{
+  "subject": "{org}, {period}: {pct} Verfügbarkeit",
+  "heading": "{org}: Verfügbarkeitsbericht, {period}",
+  "preheader": {
+    "withData": "{pct} Verfügbarkeit · {incidents} · {period}",
+    "noData": "Keine Verfügbarkeitsdaten · {incidents} · {period}"
+  },
+  "incidents_one": "{count} Vorfall",
+  "incidents_other": "{count} Vorfälle",
+  "title": "Verfügbarkeitsbericht",
+  "noData": "Keine Daten",
+  "metricLabel": "Verfügbarkeit · {period}",
+  "versus": "gegenüber {period} ({previous})",
+  "period": {
+    "range": "{start} – {end}",
+    "versusWeek": "der Woche vom {start} bis {end}"
+  },
+  "scope": {
+    "all": "Alle Prüfungen ({count})",
+    "named_one": "{name} ({count} Prüfung)",
+    "named_other": "{name} ({count} Prüfungen)"
+  },
+  "downAll": {
+    "check": "{check} war während des gesamten Zeitraums ausgefallen.",
+    "every": "Alle überwachten Prüfungen waren während des gesamten Zeitraums ausgefallen."
+  },
+  "labels": {
+    "checksMonitored": "Überwachte Prüfungen",
+    "incidents": "Vorfälle",
+    "totalDowntime": "Gesamtausfallzeit"
+  },
+  "incidentStats": {
+    "longest": "maximal {duration}",
+    "average": "im Durchschnitt {duration}"
+  },
+  "delta": {
+    "points": "{value} Prozentpunkte",
+    "percent": "{value} %",
+    "noChange": "unverändert"
+  },
+  "latency": {
+    "title": "Antwortzeit",
+    "average": "Durchschnitt",
+    "range": "Schnellste / Langsamste",
+    "slowProbes": "Langsame Probes"
+  },
+  "units": {
+    "ms": "{value} ms",
+    "s": "{value} s"
+  },
+  "slow": {
+    "samples_one": "{count} Messung",
+    "samples_other": "{count} Messungen",
+    "peaks_one": "{count} Spitze",
+    "peaks_other": "{count} Spitzen",
+    "both": "{samples} und {peaks} über {threshold}",
+    "some": "{counted} über {threshold}",
+    "none": "keine über {threshold}",
+    "peakNote": "Eine Spitze ist ein zusammengefasster Zeitraum, dessen langsamste Messung {threshold} überschritten hat; ältere Daten werden nur zusammengefasst gespeichert und erlauben keine exakte Zählung der Messungen.",
+    "includesFailures": "Die Antwortzeiten enthalten auch fehlgeschlagene Messungen."
+  },
+  "checks": {
+    "title": "Pro Prüfung · schlechteste zuerst",
+    "truncated": "Angezeigt werden die {shown} Prüfungen mit der niedrigsten Verfügbarkeit von insgesamt {total}.",
+    "downAllPeriod": "den ganzen Zeitraum ausgefallen"
+  },
+  "strip": {
+    "label": "Tägliche Verfügbarkeit, {start} – {end} (UTC)",
+    "legend": "{label}: grün ≥ {good}, bernsteinfarben ≥ {warn}, orange ≥ {poor}, darunter rot. Grau bedeutet, dass an diesem Tag nichts aufgezeichnet wurde. Eine mitten im Zeitraum angelegte Prüfung erscheint daher grau, nicht rot.",
+    "budgetNote_one": "Tagesleisten werden nur für {count} Prüfung angezeigt, die mit der niedrigsten Verfügbarkeit; die übrigen wurden weggelassen, damit diese E-Mail unter der Größe bleibt, ab der E-Mail-Programme sie kürzen.",
+    "budgetNote_other": "Tagesleisten werden nur für die {count} Prüfungen mit der niedrigsten Verfügbarkeit angezeigt; die übrigen wurden weggelassen, damit diese E-Mail unter der Größe bleibt, ab der E-Mail-Programme sie kürzen."
+  },
+  "slo": {
+    "title": "Ziele",
+    "vsTarget": "{value} / Zielwert {target}",
+    "budgetRemaining": "Verbleibendes Budget: {budget}",
+    "state": {
+      "healthy": "Gesund",
+      "atRisk": "Gefährdet",
+      "breached": "Überschritten"
+    }
+  },
+  "cta": "Dashboard öffnen",
+  "text": {
+    "overall": "Gesamtverfügbarkeit",
+    "versus": "gegenüber {period}: {previous}",
+    "latencyHeading": "Antwortzeit:",
+    "perCheck": "Pro Prüfung, schlechteste zuerst:",
+    "perCheckTruncated": "Pro Prüfung, schlechteste zuerst (angezeigt werden die {shown} Prüfungen mit der niedrigsten Verfügbarkeit von insgesamt {total}):",
+    "objectivesHeading": "Ziele:",
+    "budgetRemaining": "verbleibendes Budget {budget}"
+  }
+}

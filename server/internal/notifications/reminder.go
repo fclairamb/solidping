@@ -1,9 +1,10 @@
 package notifications
 
 import (
-	"fmt"
 	"strings"
 	"time"
+
+	"github.com/fclairamb/solidping/server/internal/i18n"
 )
 
 // reminderEmoji is the identity of `incident.reminder` (spec 2026-10-12-16): an
@@ -32,52 +33,59 @@ func reminderTitle(payload *Payload) string {
 // reminderSentence is the body of a reminder: "Still down after 1 h 15 min,
 // not acknowledged (reminder 3)".
 func reminderSentence(payload *Payload) string {
-	text := "Still down after " + reminderDuration(reminderElapsed(payload)) + ", not acknowledged"
-
-	if payload.ReminderSeq > 0 {
-		text += fmt.Sprintf(" (reminder %d)", payload.ReminderSeq)
-	}
-
-	return text
+	return reminderSentenceIn(i18n.English, payload, time.Now())
 }
 
-// reminderElapsed is how long the incident has been open.
-func reminderElapsed(payload *Payload) time.Duration {
+// reminderSentenceIn is reminderSentence in the reader's language, for a
+// reminder written at now.
+func reminderSentenceIn(loc i18n.Locale, payload *Payload, now time.Time) string {
+	elapsed := reminderDurationIn(loc, reminderElapsed(payload, now))
+
+	if payload.ReminderSeq > 0 {
+		return loc.T("incident.reminder.sentenceSeq", "duration", elapsed, "seq", payload.ReminderSeq)
+	}
+
+	return loc.T("incident.reminder.sentence", "duration", elapsed)
+}
+
+// reminderElapsed is how long the incident has been open at now.
+func reminderElapsed(payload *Payload, now time.Time) time.Duration {
 	if payload.Incident == nil || payload.Incident.StartedAt.IsZero() {
 		return 0
 	}
 
-	return time.Since(payload.Incident.StartedAt)
+	return now.Sub(payload.Incident.StartedAt)
 }
 
-// reminderDuration renders an outage length the way a reminder says it:
-// "45 min", "1 h", "1 h 15 min", "2 d 3 h". Reminders are at least 15 minutes
-// apart, so seconds are noise.
-func reminderDuration(span time.Duration) string {
+// reminderDurationIn renders an outage length the way a reminder says it:
+// "45 min", "1 h", "1 h 15 min", "2 d 3 h" in English. Reminders are at least
+// 15 minutes apart, so seconds are noise.
+func reminderDurationIn(loc i18n.Locale, span time.Duration) string {
 	minutes := int(span.Round(time.Minute) / time.Minute)
 
 	const (
 		minutesPerHour = 60
 		minutesPerDay  = 24 * minutesPerHour
+		key            = "incident.reminder.duration."
 	)
 
 	switch {
 	case minutes < minutesPerHour:
-		return fmt.Sprintf("%d min", minutes)
+		return loc.T(key+"minutes", "n", minutes)
 	case minutes < minutesPerDay:
 		hours, rest := minutes/minutesPerHour, minutes%minutesPerHour
 		if rest == 0 {
-			return fmt.Sprintf("%d h", hours)
+			return loc.T(key+"hours", "n", hours)
 		}
 
-		return fmt.Sprintf("%d h %d min", hours, rest)
+		return loc.T(key+"hoursMinutes", "hours", hours, "minutes", rest)
 	default:
 		days, hours := minutes/minutesPerDay, (minutes%minutesPerDay)/minutesPerHour
 		if hours == 0 {
-			return fmt.Sprintf("%d d", days)
+			return loc.T(key+"days", "n", days)
 		}
 
-		return fmt.Sprintf("%d d %d h", days, hours)
+		return loc.T(key+"daysHours", "days", days, "hours", hours)
 	}
 }
 

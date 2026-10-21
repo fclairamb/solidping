@@ -12,7 +12,6 @@ import (
 	"log/slog"
 	"math"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -21,6 +20,8 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/availability"
 	"github.com/fclairamb/solidping/server/internal/handlers/slos"
+	"github.com/fclairamb/solidping/server/internal/i18n"
+	"github.com/fclairamb/solidping/server/internal/i18n/recipient"
 	"github.com/fclairamb/solidping/server/internal/slo"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
 	"github.com/fclairamb/solidping/server/internal/uptimebar"
@@ -61,9 +62,11 @@ type CheckRow struct {
 	HasData bool   `json:"HasData"`
 	// URL is the check's dash0 detail page, empty when the server has no
 	// configured base URL — the template falls back to plain text.
-	URL             string `json:"URL,omitempty"`
+	URL string `json:"URL,omitempty"`
+	// AvailabilityPct is Availability written for the reader ("99.950%",
+	// "99,950 %"), filled only when HasData.
 	AvailabilityPct string `json:"AvailabilityPct"`
-	// AvailabilityColor is a hex color interpolated from AvailabilityPct
+	// AvailabilityColor is a hex color interpolated from the availability
 	// (see availabilityTextColor), filled only when HasData.
 	AvailabilityColor string `json:"AvailabilityColor,omitempty"`
 	// DownAllPeriod is set when the check measured data and EVERY probe
@@ -73,6 +76,10 @@ type CheckRow struct {
 	// Days is the per-day availability strip, run-length encoded (see
 	// DayCell). Empty when the strip could not be built.
 	Days []DayCell `json:"Days,omitempty"`
+
+	// Availability is the percentage AvailabilityPct is written from, rounded
+	// to what is printed so the worst-first order agrees with the figures.
+	Availability float64 `json:"-"`
 }
 
 // DayCell is one run of consecutive same-colored days in a check's strip.
@@ -108,9 +115,22 @@ type SLORow struct {
 	TargetPct       string `json:"TargetPct"`
 	StateLabel      string `json:"StateLabel"`
 	BudgetRemaining string `json:"BudgetRemaining"`
+	// State is the objective's slo.State* code. The template picks the badge
+	// color from it, never from StateLabel, which is written in the reader's
+	// language.
+	State string `json:"State"`
+
+	// The figures the strings above are written from.
+	Attainment *float64      `json:"-"`
+	Target     float64       `json:"-"`
+	Budget     time.Duration `json:"-"` // negative when overspent
 }
 
 // Data is the template view model. Field names match uptime-report.html.
+//
+// Its text fields are written for one reader's language from Figures (and
+// the rows' own figures): Build writes English, In rewrites a copy for
+// another language, and ForReader picks a recipient's language.
 //
 // It carries no recipient-specific value except UnsubscribeURL, which the
 // caller fills per recipient — recipients are PII and must never leak into
@@ -191,8 +211,10 @@ type Data struct {
 	LatencyNote string `json:"LatencyNote,omitempty"`
 
 	// --- Degenerate-period statement ------------------------------------
-	DownAllPeriod      bool   `json:"DownAllPeriod"`
-	DownAllPeriodLabel string `json:"DownAllPeriodLabel,omitempty"`
+	DownAllPeriod bool `json:"DownAllPeriod"`
+	// DownAllPeriodCheck names the check when the scope is that single check.
+	// Empty, the template says every monitored check was down.
+	DownAllPeriodCheck string `json:"DownAllPeriodCheck,omitempty"`
 
 	Checks []CheckRow `json:"Checks,omitempty"`
 	// DayStripLabel names the span and the timezone the strip is bucketed in.
@@ -216,6 +238,56 @@ type Data struct {
 	DashboardURL   string `json:"DashboardURL,omitempty"`
 	DocsURL        string `json:"DocsURL,omitempty"`
 	UnsubscribeURL string `json:"UnsubscribeURL,omitempty"`
+
+	// Figures is what the text fields above are written from. Never
+	// marshaled: the email job renders the written text.
+	Figures Figures `json:"-"`
+
+	// readers resolves recipients' languages, once per Build (one schedule
+	// run). written keeps one copy of the report per language and timezone,
+	// so a hundred French recipients share one French copy.
+	readers *recipient.Resolver
+	written map[string]*Data
+}
+
+// Figures are the measured numbers and dates behind Data's text. The Show* /
+// Has* flags on Data say which of them are meaningful.
+type Figures struct {
+	// Weekly periods read as a day range, monthly ones as a month.
+	Weekly bool
+	// Period is the reported window and Previous the one before it (zero when
+	// the scope has no checks). Both are calendar dates in Data.Timezone, the
+	// schedule's zone, whoever reads the report.
+	Period   slo.Window
+	Previous slo.Window
+	// OrgWide reports read "All checks"; a scoped one is named ScheduleName.
+	OrgWide      bool
+	ScheduleName string
+
+	Availability         float64 // HasData
+	PreviousAvailability float64 // HasPreviousData
+	AvailabilityDelta    float64 // ShowAvailabilityDelta, in points, rounded
+	IncidentDelta        int     // ShowIncidentDelta
+	ResponseDelta        float64 // ShowResponseDelta, in percent, rounded
+
+	// Zero when there is nothing to show (no incident).
+	LongestIncident time.Duration
+	AverageIncident time.Duration
+	TotalDowntime   time.Duration
+
+	// Response times in milliseconds (HasLatency, the range when
+	// HasResponseRange, the previous average when ShowResponseDelta).
+	AvgResponse         float64
+	MinResponse         float64
+	MaxResponse         float64
+	HasResponseRange    bool
+	PreviousAvgResponse float64
+	SlowSamples         int32
+	SlowPeaks           int32
+
+	// StripStart and StripDays are the UTC days the day strips cover.
+	StripStart time.Time
+	StripDays  int
 }
 
 // Builder renders reports.
@@ -241,8 +313,25 @@ func Window(schedule *models.ReportSchedule, now time.Time) (slo.Window, *time.L
 	return slo.PreviousWindow(loc, now, schedule.Frequency == models.ReportFrequencyWeekly), loc
 }
 
-// Build assembles the report for one schedule over one window.
+// Build assembles the report for one schedule over one window, written in
+// English. ForReader rewrites it in each recipient's language.
 func (b *Builder) Build(
+	ctx context.Context, org *models.Organization, schedule *models.ReportSchedule,
+	window slo.Window, now time.Time,
+) (*Data, error) {
+	data, err := b.measure(ctx, org, schedule, window, now)
+	if err != nil {
+		return nil, err
+	}
+
+	data.readers = recipient.NewResolver(b.db)
+	data.write(i18n.English)
+
+	return data, nil
+}
+
+// measure fills the report's flags and figures, no text yet.
+func (b *Builder) measure(
 	ctx context.Context, org *models.Organization, schedule *models.ReportSchedule,
 	window slo.Window, now time.Time,
 ) (*Data, error) {
@@ -252,13 +341,17 @@ func (b *Builder) Build(
 	}
 
 	data := &Data{
-		OrgName:     org.Name,
-		BrandName:   org.Name,
-		OrgLogoURL:  orgLogoURL(org),
-		PeriodLabel: periodLabel(schedule, window),
-		ScopeLabel:  scopeLabel(schedule, len(checks)),
-		Timezone:    schedule.Timezone,
-		CheckCount:  len(checks),
+		OrgName:    org.Name,
+		BrandName:  org.Name,
+		OrgLogoURL: orgLogoURL(org),
+		Timezone:   schedule.Timezone,
+		CheckCount: len(checks),
+		Figures: Figures{
+			Weekly:       schedule.Frequency == models.ReportFrequencyWeekly,
+			Period:       window,
+			OrgWide:      schedule.IsOrgWide(),
+			ScheduleName: schedule.Name,
+		},
 	}
 
 	baseURL := ""
@@ -344,17 +437,15 @@ func (b *Builder) applyCheckTable(
 	data.StripsShown = stripsShown
 
 	if stripsShown > 0 {
-		data.DayStripLabel = plan.label()
+		data.Figures.StripStart = plan.start
+		data.Figures.StripDays = plan.days
 	}
 
 	// Say it when the strip budget bit, for the same reason the row cap says
 	// "showing the 50 lowest-uptime checks of N": a row rendered without the
 	// strip its neighbors have reads as a broken email, not as a deliberate
 	// limit.
-	if stripsWanted > stripsShown {
-		data.ShowStripBudgetNote = true
-		data.StripBudgetNote = stripBudgetNote(stripsShown)
-	}
+	data.ShowStripBudgetNote = stripsWanted > stripsShown
 
 	return overall
 }
@@ -364,13 +455,13 @@ func (b *Builder) applyCheckTable(
 func applyOverall(data *Data, overall uptimebar.BucketStats, checks []*models.Check) {
 	if pct, ok := overall.AvailabilityPct(); ok {
 		data.HasData = true
-		data.AvailabilityPct = formatPct(pct)
+		data.Figures.Availability = pct
 		data.AvailabilityColor = availabilityTextColor(pct)
 	}
 
 	if isDownAllPeriod(overall) {
 		data.DownAllPeriod = true
-		data.DownAllPeriodLabel = downAllPeriodLabel(checks)
+		data.DownAllPeriodCheck = downAllPeriodCheck(checks)
 	}
 
 	applyLatency(data, overall)
@@ -380,18 +471,9 @@ func applyOverall(data *Data, overall uptimebar.BucketStats, checks []*models.Ch
 // when it exists: an average of "0s" over zero incidents is not a fact.
 func applyIncidents(data *Data, incidents availability.PeriodIncidents) {
 	data.IncidentCount = incidents.Count
-
-	if incidents.LongestSeconds > 0 {
-		data.LongestIncident = formatDuration(incidents.LongestSeconds)
-	}
-
-	if incidents.AverageSeconds > 0 {
-		data.AverageIncident = formatDuration(incidents.AverageSeconds)
-	}
-
-	if incidents.TotalDowntimeSeconds > 0 {
-		data.TotalDowntime = formatDuration(incidents.TotalDowntimeSeconds)
-	}
+	data.Figures.LongestIncident = time.Duration(incidents.LongestSeconds) * time.Second
+	data.Figures.AverageIncident = time.Duration(incidents.AverageSeconds) * time.Second
+	data.Figures.TotalDowntime = time.Duration(incidents.TotalDowntimeSeconds) * time.Second
 }
 
 // buildCheckRows folds the per-check window stats into rows and, at the same
@@ -417,7 +499,7 @@ func buildCheckRows(
 
 		if pct, ok := stats.AvailabilityPct(); ok {
 			row.HasData = true
-			row.AvailabilityPct = formatPct(pct)
+			row.Availability = roundTo(pct, pctDecimals)
 			row.AvailabilityColor = availabilityTextColor(pct)
 			row.DownAllPeriod = pct == 0
 		}
@@ -443,38 +525,25 @@ func sortWorstFirst(rows []CheckRow) {
 			return left.HasData
 		}
 
-		if left.HasData && left.AvailabilityPct != right.AvailabilityPct {
-			// AvailabilityPct is formatPct's fixed-width 3-decimal rendering
-			// of a percentage in [0, 100], so a numeric compare is needed:
-			// "9.000" sorts after "10.000" as a string.
-			return parsePct(left.AvailabilityPct) < parsePct(right.AvailabilityPct)
+		// Availability is rounded to the printed precision, so two rows that
+		// read the same figure tie and fall back to the name.
+		if left.HasData && left.Availability != right.Availability {
+			return left.Availability < right.Availability
 		}
 
 		return left.Name < right.Name
 	})
 }
 
-// parsePct reads back what formatPct wrote. A value that cannot be parsed
-// sorts as the worst possible, so a formatting bug surfaces at the TOP of the
-// table rather than hiding at the bottom.
-func parsePct(formatted string) float64 {
-	pct, err := strconv.ParseFloat(formatted, 64)
-	if err != nil {
-		return -1
-	}
-
-	return pct
-}
-
-// downAllPeriodLabel names the subject of the "was down for the entire period"
-// statement: the check itself when the scope is a single check, and a plain
-// collective phrase otherwise.
-func downAllPeriodLabel(checks []*models.Check) string {
+// downAllPeriodCheck names the subject of the "was down for the entire
+// period" statement: the check itself when the scope is a single check, ""
+// (every monitored check) otherwise.
+func downAllPeriodCheck(checks []*models.Check) string {
 	if len(checks) == 1 {
 		return checkDisplayName(checks[0])
 	}
 
-	return "Every monitored check"
+	return ""
 }
 
 // applyPreviousPeriod runs the same aggregation over the CALENDAR period before
@@ -495,7 +564,7 @@ func (b *Builder) applyPreviousPeriod(
 	}
 
 	previous := slo.PrecedingWindow(loc, window, schedule.Frequency == models.ReportFrequencyWeekly)
-	data.PreviousPeriodLabel = periodLabel(schedule, previous)
+	data.Figures.Previous = previous
 
 	byCheck, err := uptimebar.WindowAvailability(
 		ctx, b.db, orgUID, checkUIDs, previous.Start, previous.End, hints)
@@ -664,23 +733,15 @@ func (b *Builder) sloRows(
 			return nil, evalErr
 		}
 
-		row := SLORow{
+		rows = append(rows, SLORow{
 			Name:       objective.Name,
 			HasData:    status.HasData,
 			URL:        sloReportURL(baseURL, org.Slug, objective),
-			TargetPct:  formatPct(status.TargetPct),
-			StateLabel: stateLabel(status.State),
-		}
-
-		if status.AttainmentPct != nil {
-			row.AttainmentPct = formatPct(*status.AttainmentPct)
-		}
-
-		if status.HasData {
-			row.BudgetRemaining = formatSignedDuration(status.BudgetRemainingSeconds)
-		}
-
-		rows = append(rows, row)
+			State:      status.State,
+			Attainment: status.AttainmentPct,
+			Target:     status.TargetPct,
+			Budget:     time.Duration(status.BudgetRemainingSeconds) * time.Second,
+		})
 	}
 
 	return rows, nil
@@ -832,86 +893,6 @@ func hexRGB(hex string) (byte, byte, byte) {
 // lerpByte interpolates one byte channel at amount in [0, 1].
 func lerpByte(from, to byte, amount float64) byte {
 	return byte(math.Round(float64(from) + (float64(to)-float64(from))*amount))
-}
-
-func periodLabel(schedule *models.ReportSchedule, window slo.Window) string {
-	if schedule.Frequency == models.ReportFrequencyWeekly {
-		return fmt.Sprintf(
-			"%s – %s",
-			window.Start.Format("2 Jan 2006"),
-			window.End.Add(-time.Second).Format("2 Jan 2006"),
-		)
-	}
-
-	return window.Start.Format("January 2006")
-}
-
-func scopeLabel(schedule *models.ReportSchedule, checkCount int) string {
-	if schedule.IsOrgWide() {
-		return fmt.Sprintf("All checks (%d)", checkCount)
-	}
-
-	return fmt.Sprintf("%s (%d checks)", schedule.Name, checkCount)
-}
-
-func stateLabel(state string) string {
-	switch state {
-	case slo.StateHealthy:
-		return "Healthy"
-	case slo.StateAtRisk:
-		return "At risk"
-	case slo.StateBreached:
-		return "Breached"
-	default:
-		return "No data"
-	}
-}
-
-func formatPct(pct float64) string {
-	return fmt.Sprintf("%.3f", math.Round(pct*1000)/1000)
-}
-
-// formatDuration renders a span for the report. A unit that lands on zero is
-// dropped rather than printed: "42m 0s" and "1h 0m" are noise next to the
-// figures they sit beside, and the digest is read, not parsed.
-func formatDuration(seconds int64) string {
-	span := time.Duration(seconds) * time.Second
-
-	switch {
-	case span >= 24*time.Hour:
-		days, hours := int(span.Hours())/24, int(span.Hours())%24
-		if hours == 0 {
-			return fmt.Sprintf("%dd", days)
-		}
-
-		return fmt.Sprintf("%dd %dh", days, hours)
-	case span >= time.Hour:
-		hours, minutes := int(span.Hours()), int(span.Minutes())%60
-		if minutes == 0 {
-			return fmt.Sprintf("%dh", hours)
-		}
-
-		return fmt.Sprintf("%dh %dm", hours, minutes)
-	case span >= time.Minute:
-		minutes, remainder := int(span.Minutes()), int(span.Seconds())%60
-		if remainder == 0 {
-			return fmt.Sprintf("%dm", minutes)
-		}
-
-		return fmt.Sprintf("%dm %ds", minutes, remainder)
-	default:
-		return fmt.Sprintf("%ds", seconds)
-	}
-}
-
-// formatSignedDuration renders a possibly-negative budget. A breached budget
-// must read as an overspend ("-12m 30s"), never silently clamp to zero.
-func formatSignedDuration(seconds int64) string {
-	if seconds < 0 {
-		return "-" + formatDuration(-seconds)
-	}
-
-	return formatDuration(seconds)
 }
 
 // orgLogoURL reads the org's logo, "" when it has none. base.html treats an

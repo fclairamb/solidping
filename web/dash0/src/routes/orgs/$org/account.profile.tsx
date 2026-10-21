@@ -13,6 +13,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { AlertCircle, Check, ListChecks, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { ApiError, apiFetch } from "@/api/client";
@@ -23,6 +30,14 @@ import {
   useUpdateProfile,
 } from "@/api/hooks";
 import { useAuth } from "@/contexts/AuthContext";
+import { getImpersonation } from "@/lib/impersonation";
+import {
+  LANGUAGES,
+  browserTimezone,
+  resolveLang,
+  supportedLanguage,
+  type LanguageCode,
+} from "@/lib/languages";
 
 export const Route = createFileRoute("/orgs/$org/account/profile")({
   component: ProfilePage,
@@ -33,6 +48,7 @@ function ProfilePage() {
     <div className="space-y-6">
       <ProfileCard />
       <EmailCard />
+      <EmailLanguageCard />
       <OnboardingChecklistPreference />
     </div>
   );
@@ -48,11 +64,15 @@ function ProfileCard() {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
+  // Keyed on the saved name, not the user object: saving the email language
+  // or the timezone replaces the user too, and must not wipe a name being
+  // typed.
+  const savedName = user ? user.name || "" : null;
   useEffect(() => {
-    if (user) {
-      setName(user.name || "");
+    if (savedName !== null) {
+      setName(savedName);
     }
-  }, [user]);
+  }, [savedName]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -266,6 +286,126 @@ function EmailCard() {
             </Button>
           </form>
         )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * The language the server writes this user's emails in (spec 2026-10-21-01).
+ * It is the dashboard language too: picking one here switches both, exactly
+ * like the sidebar's language menu. Dates in emails follow the browser's
+ * timezone, which AuthProvider keeps saved; it is shown, not chosen.
+ *
+ * Demo and impersonation sessions neither adopt nor write these (see
+ * preferencesSyncMode): the card shows the account's saved values as the
+ * server uses them (an empty field is English, in UTC), read-only, and says
+ * so instead of tying them to this dashboard and browser.
+ */
+function EmailLanguageCard() {
+  const { t, i18n } = useTranslation("account");
+  const { t: tc } = useTranslation("common");
+  const { user, changeLanguage } = useAuth();
+
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState(false);
+
+  const impersonating = Boolean(user?.impersonation) || getImpersonation() !== null;
+  const readOnly = impersonating || Boolean(user?.isDemo);
+  const current: LanguageCode =
+    supportedLanguage(user?.preferences?.locale) ??
+    (readOnly ? "en" : resolveLang(i18n.resolvedLanguage));
+  const timezone =
+    user?.preferences?.timezone || (readOnly ? undefined : browserTimezone()) || "UTC";
+  let subtitle = t("emailLanguage.subtitle");
+  if (impersonating) {
+    subtitle = t("emailLanguage.impersonating");
+  } else if (readOnly) {
+    subtitle = t("emailLanguage.demo");
+  }
+
+  const handleChange = async (value: string) => {
+    const code = supportedLanguage(value);
+    if (!code || code === current) {
+      return;
+    }
+    setSaving(true);
+    setSaved(false);
+    setError(false);
+    try {
+      await changeLanguage(code);
+      setSaved(true);
+    } catch {
+      setError(true);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Card data-testid="profile-email-language-card">
+      <CardHeader>
+        <CardTitle data-testid="profile-email-language-title">
+          {t("emailLanguage.title")}
+        </CardTitle>
+        <CardDescription data-testid="profile-email-language-subtitle">
+          {subtitle}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {saved && (
+          <Alert data-testid="profile-email-language-saved-alert">
+            <Check className="h-4 w-4" />
+            <AlertDescription data-testid="profile-email-language-saved">
+              {t("emailLanguage.saved")}
+            </AlertDescription>
+          </Alert>
+        )}
+        {error && (
+          <Alert variant="destructive" data-testid="profile-email-language-error-alert">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription data-testid="profile-email-language-error">
+              {t("emailLanguage.failed")}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        <div className="space-y-2">
+          <Label htmlFor="email-language" data-testid="profile-email-language-label">
+            {tc("language")}
+          </Label>
+          <Select
+            value={current}
+            onValueChange={(value) => void handleChange(value)}
+            disabled={readOnly || saving}
+          >
+            <SelectTrigger
+              id="email-language"
+              className="w-full sm:max-w-xs"
+              data-testid="profile-email-language-select"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {LANGUAGES.map(({ code, flag, label }) => (
+                <SelectItem
+                  key={code}
+                  value={code}
+                  data-testid={`profile-email-language-option-${code}`}
+                >
+                  <span className="text-base">{flag}</span> {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <p className="text-sm text-muted-foreground" data-testid="profile-email-timezone">
+          {readOnly
+            ? t("emailLanguage.timezoneSaved", { timezone })
+            : t("emailLanguage.timezone", { timezone })}
+        </p>
       </CardContent>
     </Card>
   );

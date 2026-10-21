@@ -177,11 +177,16 @@ func TestEmailCheckDeletedWording(t *testing.T) {
 		name        string
 		deleted     bool
 		wantSubject string
-		wantBody    string
+		wantHTML    string
+		wantText    string
 		notInBody   string
 	}{
-		{"deleted", true, "[CHECK DELETED]", "The check was deleted, so this incident was closed", "recovered"},
-		{"recovered", false, "[RECOVERED]", "has been resolved", "was deleted"},
+		{
+			"deleted", true, "⚪ acme api was deleted, incident closed",
+			"The check was deleted, so this incident was closed",
+			"The check was deleted, so this incident was closed", "recovered",
+		},
+		{"recovered", false, "🟢 acme api is back up", "Nothing left to do", "has been resolved", "was deleted"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -202,8 +207,8 @@ func TestEmailCheckDeletedWording(t *testing.T) {
 
 			msg := sender.sent[0]
 			r.Contains(msg.Subject, tc.wantSubject)
-			r.Contains(msg.HTML, tc.wantBody)
-			r.Contains(msg.Text, tc.wantBody)
+			r.Contains(msg.HTML, tc.wantHTML)
+			r.Contains(msg.Text, tc.wantText)
 			r.NotContains(msg.Text, tc.notInBody)
 			r.NotContains(msg.HTML, "{{")
 		})

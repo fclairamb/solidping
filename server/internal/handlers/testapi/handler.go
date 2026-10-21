@@ -16,6 +16,8 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/httpx"
+	"github.com/fclairamb/solidping/server/internal/i18n"
+	"github.com/fclairamb/solidping/server/internal/i18n/recipient"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobtypes"
@@ -135,10 +137,14 @@ func (h *Handler) ListJobs(writer http.ResponseWriter, req *http.Request) error 
 }
 
 // EmailJobRequest represents the request body for triggering an email job.
+// Locale and Timezone are optional: they are the hint of the recipient chain
+// (an account behind To keeps its own preferences), like an invitation's.
 type EmailJobRequest struct {
-	To     string         `json:"to"`
-	Type   string         `json:"type"`
-	Params map[string]any `json:"params"`
+	To       string         `json:"to"`
+	Type     string         `json:"type"`
+	Params   map[string]any `json:"params"`
+	Locale   string         `json:"locale"`
+	Timezone string         `json:"timezone"`
 }
 
 // getTemplateForType returns the template file for an email type. "incident"
@@ -182,12 +188,17 @@ func (h *Handler) CreateEmailJob(writer http.ResponseWriter, req *http.Request) 
 			"Unknown email type '"+body.Type+"'. Supported types: welcome, incident")
 	}
 
+	loc := recipient.NewResolver(h.dbService).ForAddress(req.Context(), "", body.To,
+		recipient.Hint{Locale: body.Locale, Timezone: body.Timezone})
+
 	// Build email job config
 	emailConfig := jobtypes.EmailJobConfig{
 		To:           []string{body.To},
-		Subject:      h.getSubjectForType(body.Type, body.Params),
+		Subject:      subjectForType(loc, body.Type, body.Params),
 		Template:     template,
 		TemplateData: body.Params,
+		Locale:       loc.Lang(),
+		Timezone:     loc.Timezone(),
 	}
 
 	configBytes, err := json.Marshal(emailConfig)
@@ -207,20 +218,18 @@ func (h *Handler) CreateEmailJob(writer http.ResponseWriter, req *http.Request) 
 	})
 }
 
-// getSubjectForType returns a subject line based on email type.
-func (h *Handler) getSubjectForType(emailType string, params map[string]any) string {
-	switch emailType {
-	case "welcome":
-		return "[SolidPing] Welcome!"
-	case "incident":
-		if checkName, ok := params["CheckName"].(string); ok {
-			return "[SolidPing] Alert: " + checkName
-		}
-
-		return "[SolidPing] Alert"
-	default:
-		return "[SolidPing] Notification"
+// subjectForType returns the subject line of a test send, in loc. emailType
+// was validated by getTemplateForType: "welcome" or "incident".
+func subjectForType(loc i18n.Locale, emailType string, params map[string]any) string {
+	if emailType == "welcome" {
+		return loc.T("alerts.testSend.welcomeSubject")
 	}
+
+	if checkName, ok := params["CheckName"].(string); ok {
+		return loc.T("alerts.testSend.alertSubject", "check", checkName)
+	}
+
+	return loc.T("alerts.testSend.alertSubjectNoCheck")
 }
 
 // writeJSON writes a JSON response.

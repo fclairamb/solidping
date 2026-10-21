@@ -11,6 +11,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/email"
+	"github.com/fclairamb/solidping/server/internal/i18n/recipient"
 )
 
 const defaultMembershipRequestCooldownDays = 7
@@ -403,12 +404,16 @@ func (s *Service) notifyAdminsOfMembershipRequest(
 		}
 		email.ApplyOrgBranding(viewModel, org.Name, org.Slug, org.LogoURL)
 
-		s.enqueueEmail(ctx, org.UID, member.User.Email, "membership_request_new.html", viewModel)
+		// Each admin reads the mail in their own language and zone.
+		s.enqueueEmail(ctx, org.UID, member.User.Email, "membership-request-new.html",
+			recipient.ForUser(member.User), viewModel)
 	}
 }
 
 // notifyRequesterOfDecision emails the requester after an admin approves or
-// rejects their request. Decision is "approved" or "rejected".
+// rejects their request, in the requester's language. Decision is "approved"
+// or "rejected": the template picks whole translated sentences from it (and
+// from the role), it never prints the raw value.
 func (s *Service) notifyRequesterOfDecision(
 	ctx context.Context, org *models.Organization,
 	requesterUID, decision, role, reason string,
@@ -431,7 +436,8 @@ func (s *Service) notifyRequesterOfDecision(
 	}
 	email.ApplyOrgBranding(viewModel, org.Name, org.Slug, org.LogoURL)
 
-	s.enqueueEmail(ctx, org.UID, requester.Email, "membership_request_decision.html", viewModel)
+	s.enqueueEmail(ctx, org.UID, requester.Email, "membership-request-decision.html",
+		recipient.ForUser(requester), viewModel)
 }
 
 func buildMembershipSummary(

@@ -22,6 +22,8 @@
 // `internal/opsnotifywire` builds those closures from the service registry.
 package opsnotify
 
+import "github.com/fclairamb/solidping/server/internal/i18n"
+
 // Event vocabulary. These strings are persisted inside the
 // `operator_notifications` system parameter and are the `event` metric label,
 // so they are part of the contract: renaming one silently unsubscribes every
@@ -99,14 +101,38 @@ type Notice struct {
 	//
 	// Optional: empty means "this notice is not about a user".
 	AboutUserUID string
+	// Localized is the notice in structured form, from which the email is
+	// written in the recipient's language and timezone (spec 2026-10-21-01,
+	// decision 11). Every other medium sends Subject and Body, the English
+	// text, unchanged. Nil (a notice queued before the upgrade): the email is
+	// Subject and Body too.
+	Localized Localizer
 }
 
-// noticeText is the plain-text rendering shared by email, Slack and Telegram:
-// the body, then the deep link when there is one.
+// noticeText is the plain-text rendering shared by Slack and Discord: the
+// body, then the deep link when there is one.
 func (n *Notice) noticeText() string {
-	if n.URL == "" {
-		return n.Body
+	return withURL(n.Body, n.URL)
+}
+
+// emailCopy is the subject and text of the email to one reader (loc), and the
+// locale they are written in: the reader's when the notice has a structured
+// form, English otherwise (its Subject and Body, as before the upgrade).
+func (n *Notice) emailCopy(loc i18n.Locale) (string, string, i18n.Locale) {
+	if n.Localized == nil {
+		return n.Subject, withURL(n.Body, n.URL), i18n.English
 	}
 
-	return n.Body + "\n\n" + n.URL
+	subject, body := n.Localized.Localize(loc)
+
+	return subject, withURL(body, n.URL), loc
+}
+
+// withURL appends the deep link, when there is one, to a plain-text body.
+func withURL(body, url string) string {
+	if url == "" {
+		return body
+	}
+
+	return body + "\n\n" + url
 }

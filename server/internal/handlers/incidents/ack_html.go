@@ -7,10 +7,17 @@ package incidents
 import (
 	"encoding/json"
 	"html"
+	"html/template"
 	"net/http"
 	"net/url"
+	"time"
+
+	"golang.org/x/text/language"
 
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/i18n"
+	"github.com/fclairamb/solidping/server/internal/i18n/recipient"
+	"github.com/fclairamb/solidping/server/internal/incidentlinks"
 	"github.com/fclairamb/solidping/server/internal/securityheaders"
 )
 
@@ -115,18 +122,55 @@ func jsStringLiteral(s string) string {
 }
 
 // renderAckPage builds a complete HTML document for one of the magic-link
-// outcomes. title/heading/icon/body/headExtra are either compile-time
-// constants or values that have already been through
-// html.EscapeString/jsStringLiteral by the caller — no further escaping
-// happens here.
-func renderAckPage(title, heading, icon, body, headExtra string) string {
+// outcomes, in loc's language. title and heading are plain text, escaped
+// here; icon/body/headExtra are either compile-time constants, catalog HTML
+// or values that have already been through html.EscapeString/jsStringLiteral
+// by the caller: no further escaping happens for them.
+func renderAckPage(loc i18n.Locale, title, heading, icon, body, headExtra string) string {
 	return `<!doctype html>` +
-		`<html lang="en"><head><meta charset="utf-8"><title>` + title + `</title>` +
+		`<html lang="` + loc.Lang() + `"><head><meta charset="utf-8"><title>` + html.EscapeString(title) + `</title>` +
 		`<meta name="viewport" content="width=device-width,initial-scale=1">` +
 		headExtra +
 		ackPageStyle +
 		`</head><body><div class="card"><div class="wordmark">SolidPing</div>` +
-		icon + `<h1>` + heading + `</h1>` + body + `</div></body></html>`
+		icon + `<h1>` + html.EscapeString(heading) + `</h1>` + body + `</div></body></html>`
+}
+
+// ackPageLocale is the language of a magic-link result page (spec
+// 2026-10-21-01, decision 11): the preferences of the account the token was
+// sent to, else the browser's Accept-Language, else English. email is ""
+// when the token did not verify, so the browser decides.
+func (h *Handler) ackPageLocale(req *http.Request, email string) i18n.Locale {
+	hint := recipient.Hint{Locale: acceptedLanguage(req.Header.Get("Accept-Language"))}
+
+	return recipient.NewResolver(h.svc.db).ForAddress(req.Context(), "", email, hint)
+}
+
+// acceptedLanguage is the supported language the browser prefers most
+// ("de-CH, fr;q=0.8" gives "de"), or "" when its Accept-Language names none.
+// Same as unsubscribe.acceptedLanguage.
+func acceptedLanguage(header string) string {
+	tags, _, err := language.ParseAcceptLanguage(header)
+	if err != nil {
+		return ""
+	}
+
+	for _, tag := range tags {
+		// Exact only: "*" has no language, and Base would guess one.
+		if base, confidence := tag.Base(); confidence == language.Exact {
+			if lang := i18n.Normalize(base.String()); lang != "" {
+				return lang
+			}
+		}
+	}
+
+	return ""
+}
+
+// ackParagraph is a catalog string as a body paragraph: the catalog's own
+// markup is kept and every value is HTML-escaped.
+func ackParagraph(loc i18n.Locale, key string, kv ...any) string {
+	return `<p>` + string(loc.THTML(key, kv...)) + `</p>`
 }
 
 // ackPageKind enumerates the magic-link outcomes — kept as constants
@@ -149,16 +193,18 @@ const (
 // redirectURL must already be a validated path (see buildIncidentURL) — it
 // is escaped here for each of its two distinct contexts (an HTML attribute
 // and a JS string literal) rather than trusted as pre-escaped.
-func successRedirectFragment(redirectURL string) (string, string) {
+func successRedirectFragment(loc i18n.Locale, redirectURL string) (string, string) {
 	htmlURL := html.EscapeString(redirectURL)
 	jsURL := jsStringLiteral(redirectURL)
 
 	headExtra := `<meta http-equiv="refresh" content="3;url=` + htmlURL + `">`
 
-	body := `<p>Thanks — the incident has been acknowledged.</p>` +
-		`<p>Redirecting to the incident in ` +
-		`<span id="ack-countdown" class="ack-countdown">3</span>…</p>` +
-		`<p><a id="ack-now" class="ack-now" href="` + htmlURL + `">Go to the incident now</a></p>` +
+	countdown := template.HTML(`<span id="ack-countdown" class="ack-countdown">3</span>`)
+
+	body := ackParagraph(loc, "pages.ack.success.thanks") +
+		ackParagraph(loc, "pages.ack.success.redirecting", "countdown", countdown) +
+		`<p><a id="ack-now" class="ack-now" href="` + htmlURL + `">` +
+		string(loc.THTML("pages.ack.success.goNow")) + `</a></p>` +
 		`<script>(function(){` +
 		`var url=` + jsURL + `;` +
 		`var el=document.getElementById("ack-countdown");` +
@@ -177,64 +223,64 @@ func successRedirectFragment(redirectURL string) (string, string) {
 }
 
 // pageContent returns the (title, heading, icon, body, headExtra) for each
-// outcome. Centralized so the writer doesn't need a switch and the
-// renderAckPage helper stays content-agnostic. orgSlug/incidentUID are only
-// used (and only meaningful) for ackHTMLSuccess — the other kinds ignore
-// them, so callers can pass them through unconditionally.
-func pageContent(kind ackPageKind, orgSlug, incidentUID string) (string, string, string, string, string) {
+// outcome, in loc's language. Centralized so the writer doesn't need a switch
+// and the renderAckPage helper stays content-agnostic. orgSlug/incidentUID
+// are only used (and only meaningful) for ackHTMLSuccess; the other kinds
+// ignore them, so callers can pass them through unconditionally.
+func pageContent(
+	loc i18n.Locale, kind ackPageKind, orgSlug, incidentUID string,
+) (string, string, string, string, string) {
 	icon := ackIcon(kind)
 
 	switch kind {
 	case ackHTMLSuccess:
-		headExtra, body := successRedirectFragment(buildIncidentURL(orgSlug, incidentUID))
+		headExtra, body := successRedirectFragment(loc, buildIncidentURL(orgSlug, incidentUID))
+		title := loc.T("pages.ack.success.title")
 
-		return "Incident acknowledged", "Incident acknowledged", icon, body, headExtra
+		return title, title, icon, body, headExtra
 	case ackHTMLExpired:
-		return "Link expired",
-			"This link has expired",
+		// The catalog text holds no markup and the count is a number.
+		return loc.T("pages.ack.expired.title"),
+			loc.T("pages.ack.expired.heading"),
 			icon,
-			`<p>Magic-link ack tokens are valid for 7 days. ` +
-				`Open the dashboard to acknowledge this incident manually.</p>`,
+			`<p>` + loc.Tn("pages.ack.expired.body", int(incidentlinks.AckTokenTTL/(24*time.Hour))) + `</p>`,
 			""
 	case ackHTMLInvalid:
-		return "Invalid link",
-			"This link is invalid",
+		return loc.T("pages.ack.invalid.title"),
+			loc.T("pages.ack.invalid.heading"),
 			icon,
-			`<p>The acknowledgment link could not be verified. If you have a valid ` +
-				`email notification, try the link from that message — or open the ` +
-				`dashboard to acknowledge manually.</p>`,
+			ackParagraph(loc, "pages.ack.invalid.body"),
 			""
 	case ackHTMLMissingToken:
-		return "Missing token",
-			"Missing token",
-			icon,
-			`<p>This URL is missing the <code>token</code> query parameter. ` +
-				`Please use the full link from the original email.</p>`,
-			""
+		title := loc.T("pages.ack.missingToken.title")
+
+		return title, title, icon, ackParagraph(loc, "pages.ack.missingToken.body"), ""
 	case ackHTMLError:
 		fallthrough
 	default:
-		return "Something went wrong",
-			"Something went wrong",
-			icon,
-			`<p>We couldn't acknowledge the incident. Please try again, or open ` +
-				`the dashboard to acknowledge manually.</p>`,
-			""
+		title := loc.T("pages.ack.error.title")
+
+		return title, title, icon, ackParagraph(loc, "pages.ack.error.body"), ""
 	}
 }
 
-// writeAckHTML renders the page for the given outcome and writes it with
-// the given status. orgSlug/incidentUID are only consumed for ackHTMLSuccess
-// (to build the post-ack redirect); pass them through regardless of kind,
-// callers already have both in hand. Errors writing to the client are
-// ignored — the connection is likely already gone in that case, and there's
-// nothing useful to do beyond log.
-func writeAckHTML(writer http.ResponseWriter, status int, kind ackPageKind, orgSlug, incidentUID string) {
-	title, heading, icon, body, headExtra := pageContent(kind, orgSlug, incidentUID)
-	page := renderAckPage(title, heading, icon, body, headExtra)
+// writeAckPage renders the page for the given outcome in loc's language
+// (see ackPageLocale) and writes it with the given status.
+// orgSlug/incidentUID are only consumed for ackHTMLSuccess (to build the
+// post-ack redirect); pass them through regardless of kind, callers already
+// have both in hand. Errors writing to the client are ignored: the
+// connection is likely already gone in that case, and there's nothing useful
+// to do beyond log.
+func writeAckPage(
+	writer http.ResponseWriter, loc i18n.Locale, status int, kind ackPageKind, orgSlug, incidentUID string,
+) {
+	title, heading, icon, body, headExtra := pageContent(loc, kind, orgSlug, incidentUID)
+	page := renderAckPage(loc, title, heading, icon, body, headExtra)
 
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 	writer.Header().Set("Cache-Control", "no-store")
+	// The language follows Accept-Language when the token names no account.
+	writer.Header().Add("Vary", "Accept-Language")
 	securityheaders.ApplyBaseline(writer.Header())
 	writer.WriteHeader(status)
 	_, _ = writer.Write([]byte(page))

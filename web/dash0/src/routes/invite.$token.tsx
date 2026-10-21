@@ -21,6 +21,7 @@ import { useInviteInfo, useAcceptInvite } from "@/api/hooks";
 import { useAuth } from "@/contexts/AuthContext";
 import { isInviteInvalidError } from "@/lib/invite-error";
 import { inviteReturnTo } from "@/lib/login-destination";
+import { browserTimezone } from "@/lib/languages";
 
 // App base path (build-time constant), the prefix of an invite returnTo.
 const BASE_PATH = import.meta.env.VITE_BASE_URL || "";
@@ -34,7 +35,7 @@ export const Route = createFileRoute("/invite/$token")({
 });
 
 function AcceptInvitePage() {
-  const { t } = useTranslation(["auth", "common"]);
+  const { t, i18n } = useTranslation(["auth", "common"]);
   const { token } = Route.useParams();
   const navigate = useNavigate();
   const {
@@ -101,7 +102,15 @@ function AcceptInvitePage() {
       return;
     }
 
-    const body = { token, name: name || undefined, password };
+    // A new account starts with this page's language and the browser's
+    // timezone (spec 2026-10-21-01).
+    const body = {
+      token,
+      name: name || undefined,
+      password,
+      locale: i18n.resolvedLanguage,
+      timezone: browserTimezone(),
+    };
     try {
       let result;
       try {

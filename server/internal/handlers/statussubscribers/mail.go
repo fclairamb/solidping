@@ -45,20 +45,16 @@ func unsubscribeURL(baseURL, token string) string {
 		strings.TrimRight(baseURL, "/"), url.QueryEscape(token))
 }
 
-// subject returns the email subject line for a message kind.
+// subject returns the email subject line for a message kind. Every update
+// about one incident shares the same subject so mail clients keep the whole
+// story in one conversation; the state (new, update, resolved) is in the
+// preheader and the body.
 func (k MailKind) subject(data *MailData) string {
-	switch k {
-	case MailKindConfirm:
+	if k == MailKindConfirm {
 		return "Confirm your subscription to " + data.PageName
-	case MailKindIncidentOpened:
-		return fmt.Sprintf("[%s] New incident: %s", data.PageName, data.Title)
-	case MailKindResolved:
-		return fmt.Sprintf("[%s] Resolved: %s", data.PageName, data.Title)
-	case MailKindUpdate:
-		return fmt.Sprintf("[%s] Update: %s", data.PageName, data.Title)
-	default:
-		return fmt.Sprintf("[%s] %s", data.PageName, data.Title)
 	}
+
+	return fmt.Sprintf("%s: %s", data.PageName, data.Title)
 }
 
 // label returns a human-readable banner for non-confirm messages.

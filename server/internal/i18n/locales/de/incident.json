@@ -1,0 +1,238 @@
+{
+  "unknownCheck": "Unbekannte Prüfung",
+  "someone": "Jemand",
+  "checkLink": "<a href=\"{url}\">{check}</a>",
+  "channel": {
+    "slack": "Slack",
+    "discord": "Discord",
+    "telegram": "Telegram",
+    "email": "E-Mail",
+    "phone": "Telefon"
+  },
+  "via": {
+    "slack": "über Slack",
+    "discord": "über Discord",
+    "telegram": "über Telegram",
+    "email": "per E-Mail",
+    "phone": "telefonisch"
+  },
+  "pill": {
+    "down": "Ausgefallen",
+    "recovered": "Wiederhergestellt",
+    "checkDeleted": "Prüfung gelöscht",
+    "escalated": "Eskaliert",
+    "reopened": "Wiedereröffnet",
+    "comment": "Kommentar",
+    "acknowledged": "Bestätigt",
+    "unacknowledged": "Bestätigung aufgehoben",
+    "stillDown": "Weiterhin ausgefallen",
+    "budgetBurning": "Budget wird verbraucht",
+    "burnCleared": "Verbrauch normalisiert",
+    "degraded": "Beeinträchtigt",
+    "degradedClosed": "Beeinträchtigung geschlossen",
+    "degradedCleared": "Beeinträchtigung behoben"
+  },
+  "labels": {
+    "type": "Typ",
+    "startedAt": "Begonnen am",
+    "resolvedAt": "Aufgelöst am",
+    "duration": "Dauer",
+    "incidentId": "Vorfall-ID",
+    "failureCount": "Anzahl Fehler",
+    "relapseCount": "Anzahl Rückfälle",
+    "failedChecks": "Fehlgeschlagene Prüfungen",
+    "cause": "Ursache",
+    "downFrom": "Ausgefallen seit",
+    "backAt": "Wieder verfügbar am",
+    "closedAt": "Geschlossen am",
+    "via": "Kanal",
+    "ackAt": "Bestätigt am",
+    "acknowledgedBy": "Bestätigt von",
+    "acknowledgedAt": "Bestätigt am",
+    "withdrawnBy": "Aufgehoben von",
+    "from": "Von",
+    "until": "Bis",
+    "objective": "Ziel",
+    "policy": "Richtlinie",
+    "lastWindow": "Letzte {window}",
+    "budgetGoneBy": "Voraussichtlich aufgebraucht",
+    "burnRate": "Verbrauchsrate",
+    "burnRateLast": "Verbrauchsrate, letzte {window}",
+    "budgetLeft": "Verbleibendes Budget",
+    "threshold": "Schwellwert",
+    "budgetRemaining": "Verbleibendes Budget",
+    "projectedExhaustion": "Voraussichtliche Erschöpfung",
+    "detectedOn": "Erkannt bei",
+    "peakBurnRate": "Höchste Verbrauchsrate",
+    "burnRateNow": "Aktuelle Verbrauchsrate",
+    "failures": "Fehler",
+    "slowProbes": "Langsame Probes",
+    "window": "Fenster",
+    "currentStatus": "Aktueller Status",
+    "monitor": "Prüfung",
+    "chartWindow": "Diagramm für dieses Fenster"
+  },
+  "regions": {
+    "failingFrom": "Betroffene Regionen",
+    "failedFrom": "Betroffene Regionen",
+    "count_one": "({count} von {total} Regionen)",
+    "count_other": "({count} von {total} Regionen)"
+  },
+  "created": {
+    "title": "{check} ist ausgefallen",
+    "titleCause": "{check} ist ausgefallen: {cause}",
+    "preheader": "Ausgefallen seit dem {since}.",
+    "preheaderRegions": "Ausgefallen seit dem {since}. Betroffene Regionen: {regions}."
+  },
+  "resolved": {
+    "title": "{check} läuft wieder",
+    "titleAfter": "{check} läuft nach {duration} Ausfall wieder",
+    "downFor": "{duration} lang ausgefallen.",
+    "passing": "Die Prüfungen sind wieder erfolgreich. Es ist nichts mehr zu tun.",
+    "leadDuration": "Der Ausfall hat <strong>{duration}</strong> gedauert. Es ist nichts mehr zu tun.",
+    "deletedSubject": "{check} wurde gelöscht, Vorfall geschlossen",
+    "deletedTitle": "{check} wurde gelöscht",
+    "deletedPreheader": "{check} wurde gelöscht, daher wurde der Vorfall geschlossen.",
+    "deletedBody": "Die Prüfung wurde gelöscht, daher wurde dieser Vorfall geschlossen. Das heißt nicht, dass der Dienst wieder läuft.",
+    "textTitle": "{check} wiederhergestellt",
+    "textBody": "Der Vorfall für {check} wurde gelöst."
+  },
+  "escalated": {
+    "subject": "{check} ist weiterhin ausgefallen, Vorfall eskaliert",
+    "preheader_one": "Nach {count} fehlgeschlagenen Prüfung weiterhin ausgefallen, daher wurde der Vorfall eskaliert.",
+    "preheader_other": "Nach {count} fehlgeschlagenen Prüfungen weiterhin ausgefallen, daher wurde der Vorfall eskaliert.",
+    "title": "{check} ist weiterhin ausgefallen",
+    "lead": "Niemand hat den Vorfall rechtzeitig bestätigt, daher wurde er eskaliert.",
+    "textTitle": "Vorfall für {check} eskaliert",
+    "textBody": "Der Vorfall für {check} wurde eskaliert."
+  },
+  "reopened": {
+    "title": "{check} ist erneut ausgefallen",
+    "preheader": "{check} ist nach einer kurzen Erholung erneut ausgefallen.",
+    "lead": "Nach einer kurzen Erholung schlagen die Prüfungen erneut fehl.",
+    "leadRelapses_one": "Nach einer kurzen Erholung schlagen die Prüfungen erneut fehl ({count} Rückfall bisher).",
+    "leadRelapses_other": "Nach einer kurzen Erholung schlagen die Prüfungen erneut fehl ({count} Rückfälle bisher).",
+    "textTitle": "Vorfall für {check} wiedereröffnet (Rückfall Nr. {relapse})",
+    "textBody": "Der Vorfall für {check} wurde nach einer kurzen Erholung wiedereröffnet."
+  },
+  "comment": {
+    "subject": "{author} hat den Vorfall von {check} kommentiert",
+    "preheader": "{author} hat eine Notiz zum Vorfall von {check} hinterlassen.",
+    "title": "{author} hat den Vorfall von {check} kommentiert",
+    "posted": "Gepostet {via}.",
+    "textTitle": "Neuer Kommentar zu {check}",
+    "textBody": "{author} hat den Vorfall von {check} kommentiert:",
+    "textBodyVia": "{author} hat den Vorfall von {check} {via} kommentiert:"
+  },
+  "acknowledged": {
+    "title": "{actor} kümmert sich um {check}",
+    "preheader": "{actor} hat den Vorfall übernommen. Die Eskalation ist gestoppt, der Vorfall bleibt offen.",
+    "lead": "Die Eskalation ist gestoppt. Der Vorfall bleibt offen, bis die Prüfungen wieder erfolgreich sind.",
+    "textTitle": "Vorfall für {check} bestätigt",
+    "textBody": "{actor} hat den Vorfall für {check} bestätigt. Die Eskalation ist gestoppt: Niemand sonst muss ihn übernehmen.",
+    "textBodyVia": "{actor} hat den Vorfall für {check} {via} bestätigt. Die Eskalation ist gestoppt: Niemand sonst muss ihn übernehmen.",
+    "textStillOpen": "Der Vorfall ist noch offen: Eine Bestätigung bedeutet, dass sich jemand darum kümmert, nicht, dass er behoben ist."
+  },
+  "unacknowledged": {
+    "title": "Niemand kümmert sich mehr um {check}",
+    "preheader": "{actor} hat die Bestätigung aufgehoben. Der Vorfall ist wieder ohne Verantwortlichen und die Eskalation wird fortgesetzt.",
+    "lead": "<strong>{actor}</strong> hat die Bestätigung aufgehoben. Die Eskalation wird dort fortgesetzt, wo sie gestoppt wurde. Bereits gesendete Benachrichtigungen werden nicht wiederholt.",
+    "leadVia": "<strong>{actor}</strong> hat die Bestätigung {via} aufgehoben. Die Eskalation wird dort fortgesetzt, wo sie gestoppt wurde. Bereits gesendete Benachrichtigungen werden nicht wiederholt.",
+    "textTitle": "{check} ist wieder ohne Verantwortlichen",
+    "textBody": "{actor} hat die Bestätigung für den Vorfall von {check} aufgehoben. Niemand kümmert sich mehr darum.",
+    "textBodyVia": "{actor} hat die Bestätigung für den Vorfall von {check} {via} aufgehoben. Niemand kümmert sich mehr darum.",
+    "textResume": "Die Eskalation wird ab der Stufe fortgesetzt, die die Bestätigung unterbrochen hat, daher werden bereits gesendete Benachrichtigungen nicht wiederholt."
+  },
+  "reminder": {
+    "subject": "{check} ist weiterhin ausgefallen, niemand kümmert sich darum",
+    "title": "{check} ist weiterhin ausgefallen",
+    "lead": "{reminder}. Bisher hat niemand den Vorfall übernommen.",
+    "textBody": "{reminder}. Bisher hat niemand diesen Vorfall übernommen.",
+    "ackStopsReminders": "„Ich kümmere mich darum“ stoppt auch diese Erinnerungen.",
+    "sentence": "Seit {duration} ausgefallen, nicht bestätigt",
+    "sentenceSeq": "Seit {duration} ausgefallen, nicht bestätigt (Erinnerung {seq})",
+    "duration": {
+      "minutes": "{n} Min.",
+      "hours": "{n} Std.",
+      "days": "{n} Tg.",
+      "hoursMinutes": "{hours} Std. {minutes} Min.",
+      "daysHours": "{days} Tg. {hours} Std."
+    }
+  },
+  "burn": {
+    "policy": {
+      "fast": "Schneller Verbrauch",
+      "slow": "Langsamer Verbrauch"
+    },
+    "severity": {
+      "critical": "kritisch",
+      "warning": "Warnung"
+    },
+    "exhausted": "aufgebraucht",
+    "notWithinWindow": "außerhalb dieses Fensters",
+    "duration": {
+      "minutes": "{n} Min.",
+      "hours": "{n} Std.",
+      "days": "{n} Tg.",
+      "hoursMinutes": "{hours} Std. {minutes} Min.",
+      "daysHours": "{days} Tg. {hours} Std."
+    }
+  },
+  "burnCreated": {
+    "subject": "{policy}: {slo} bei {rate}",
+    "preheader": "Richtlinie „{policy}“ bei {rate} ausgelöst, noch {budget} Budget übrig.",
+    "preheaderExhausted": "Richtlinie „{policy}“ bei {rate} ausgelöst. Das Fehlerbudget ist aufgebraucht.",
+    "title": "{slo} verbraucht sein Fehlerbudget zu schnell",
+    "lead": "Das Budget wird <strong>{rate}</strong> schneller verbraucht als nachhaltig möglich. Das ist nicht unbedingt ein aktueller Ausfall, aber dieses Tempo ist nicht haltbar.",
+    "policyValue": "{policy}, {severity}, über {threshold}",
+    "textTitle": "{slo} verbraucht sein Fehlerbudget zu schnell",
+    "textBody": "Die Richtlinie „{policy}“ wurde ausgelöst: Gemessen über {long} und bestätigt über {short} verbraucht das Ziel sein Fehlerbudget mit {rate}.",
+    "policyText": "{policy}, {severity}",
+    "burnRateText": "{rate} über {long}, {shortRate} über {short}"
+  },
+  "burnResolved": {
+    "subject": "{slo} wieder unter {threshold}",
+    "preheader": "Verbrauchsrate wieder unter {threshold}, noch {budget} Budget übrig.",
+    "preheaderExhausted": "Verbrauchsrate wieder unter {threshold}. Das Fehlerbudget ist aufgebraucht.",
+    "title": "{slo}: Verbrauch normalisiert",
+    "lead": "Die Verbrauchsrate blieb {short} lang unter {threshold}. Das bereits verbrauchte Budget kommt nicht zurück.",
+    "rateOver": "{rate} über {long}",
+    "textBody": "Beide Fenster der Richtlinie „{policy}“ sind {short} lang unter {threshold} geblieben, daher wurde der Alarm aufgelöst.",
+    "notReturned": "Das verbrauchte Budget wird nicht zurückerstattet: Nur die Verbrauchsrate ist wieder gesunken."
+  },
+  "degraded": {
+    "failures_one": "{count} Fehler in den letzten {slots} Probes ({availability} % verfügbar)",
+    "failures_other": "{count} Fehler in den letzten {slots} Probes ({availability} % verfügbar)",
+    "failuresNoAvailability_one": "{count} Fehler in den letzten {slots} Probes",
+    "failuresNoAvailability_other": "{count} Fehler in den letzten {slots} Probes",
+    "slow_one": "{count} der letzten {slots} Probes war langsamer als {ms} ms",
+    "slow_other": "{count} der letzten {slots} Probes waren langsamer als {ms} ms",
+    "both": "{failures} und {slow}",
+    "pattern": "ein intermittierendes Muster wurde erkannt",
+    "currentlyUp": "Derzeit verfügbar.",
+    "currentlyNotUp": "Derzeit nicht verfügbar.",
+    "recentProbes": "letzte Probes",
+    "failureLine": "{reason} (Regel: {threshold} von {window} Probes)",
+    "slowLine": "{reason} (Regel: {threshold} von {window} Probes über {ms} ms)"
+  },
+  "degradedCreated": {
+    "subject": "{check} ist beeinträchtigt: {reason}",
+    "title": "{check} ist beeinträchtigt",
+    "lead": "Die Prüfungen schlagen immer wieder fehl oder werden langsam, aber nie lange genug, um als Ausfall zu gelten.",
+    "openChart": "Diagramm öffnen",
+    "notOutage": "Dies ist kein Ausfall: Auf jeden Fehler folgte ein Erfolg, bevor die Bestätigungsfrist abgelaufen war."
+  },
+  "degradedResolved": {
+    "title": "{check} ist wieder stabil",
+    "turnedOffSubject": "{check}: Beeinträchtigungserkennung deaktiviert",
+    "turnedOffPreheader": "Die Beeinträchtigungserkennung wurde für {check} deaktiviert, daher wurde die Beeinträchtigungsphase geschlossen.",
+    "preheader": "{check} ist lange genug stabil, um die Beeinträchtigungsphase zu schließen.",
+    "turnedOffTitle": "Beeinträchtigungserkennung für {check} deaktiviert",
+    "turnedOffLead": "Die offene Beeinträchtigungsphase wurde geschlossen. Das heißt nicht, dass der Dienst wieder stabil ist.",
+    "leadDuration": "Die Instabilität hat <strong>{duration}</strong> gedauert. Es ist nichts mehr zu tun.",
+    "lead": "Es ist nichts mehr zu tun.",
+    "turnedOffText": "Die Beeinträchtigungserkennung wurde für diese Prüfung deaktiviert, daher wurde die offene Beeinträchtigungsphase geschlossen. Das heißt nicht, dass der Dienst wieder stabil ist.",
+    "textBody": "Die Beeinträchtigungsbedingung ist lange genug nicht mehr erfüllt, um die Phase zu schließen.",
+    "historyKept": "Die erfassten Fehler und langsamen Antworten bleiben im Verlauf der Prüfung erhalten: Nur das Muster hat aufgehört."
+  }
+}

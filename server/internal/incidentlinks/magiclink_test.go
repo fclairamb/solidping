@@ -204,3 +204,45 @@ func TestPurposeSeparation_BothTokensStillVerifyForTheirOwnPurpose(t *testing.T)
 	_, err = incidentlinks.VerifyUnsubscribe(secret, unsubToken)
 	r.NoError(err)
 }
+
+func TestAckURL(t *testing.T) {
+	t.Parallel()
+
+	secret := []byte("top-secret-key")
+	exp := time.Now().Add(incidentlinks.AckTokenTTL)
+
+	t.Run("composes a verifiable link", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+
+		link := incidentlinks.AckURL("https://solidping.example/", "acme", "inc-123", "alice@acme.com", secret, exp)
+
+		const prefix = "https://solidping.example/api/v1/orgs/acme/incidents/inc-123/ack?token="
+		r.True(strings.HasPrefix(link, prefix), link)
+
+		payload, err := incidentlinks.Verify(secret, "inc-123", strings.TrimPrefix(link, prefix))
+		r.NoError(err)
+		r.Equal("alice@acme.com", payload.RecipientEmail)
+	})
+
+	cases := []struct {
+		name                                     string
+		baseURL, orgSlug, incidentUID, recipient string
+		secret                                   []byte
+	}{
+		{"no base URL", "", "acme", "inc-123", "alice@acme.com", secret},
+		{"base URL is only a slash", "/", "acme", "inc-123", "alice@acme.com", secret},
+		{"no org slug", "https://solidping.example", "", "inc-123", "alice@acme.com", secret},
+		{"no incident", "https://solidping.example", "acme", "", "alice@acme.com", secret},
+		{"no recipient", "https://solidping.example", "acme", "inc-123", "", secret},
+		{"no secret", "https://solidping.example", "acme", "inc-123", "alice@acme.com", nil},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Empty(t, incidentlinks.AckURL(tc.baseURL, tc.orgSlug, tc.incidentUID, tc.recipient, tc.secret, exp))
+		})
+	}
+}

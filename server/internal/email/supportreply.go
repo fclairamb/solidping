@@ -1,28 +1,43 @@
 package email
 
 import (
+	"html/template"
 	"io/fs"
 	"sort"
 	"strings"
+
+	"github.com/fclairamb/solidping/server/internal/i18n"
 )
 
-// SupportReplyNoticeText is the plain-text form of the "you can reply to this
-// email" notice (spec 2026-08-22-02). It must appear in the TEXT body as well
-// as the HTML one, or it vanishes for text-only clients.
+// supportReplyNoticeKey is the catalog key of the "you can reply to this
+// email" notice (spec 2026-08-22-02), in the reader's language (spec
+// 2026-10-21-01). It must appear in the TEXT body as well as the HTML one, or
+// it vanishes for text-only clients.
 //
 // The address itself is deliberately NOT in the body: the Reply-To header
 // carries it, and a literal address in the copy drifts the moment the config
 // changes.
-const SupportReplyNoticeText = "You can reply directly to this email to reach a human — we read every reply."
+const supportReplyNoticeKey = "common.supportReply.notice"
+
+// supportReplyNoticeMarker tags the HTML notice so a second pass recognizes it
+// whatever language it was written in.
+const supportReplyNoticeMarker = `data-solidping-notice="support-reply"`
+
+// SupportReplyNoticeText is the plain-text notice in loc's language.
+func SupportReplyNoticeText(loc i18n.Locale) string {
+	return loc.T(supportReplyNoticeKey)
+}
 
 // supportReplyNoticeHTML is the HTML form of the same notice. Inline styles
 // only: the formatter has already run its CSS inliner by the time this is
 // spliced in, so a class would render unstyled.
-const supportReplyNoticeHTML = `<div style="margin:16px auto 0;max-width:600px;padding:0 24px;` +
-	`font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;` +
-	`font-size:13px;line-height:1.5;color:#6b7280;text-align:center;">` +
-	`&#8505;&#65039; You can reply directly to this email to reach a human — we read every reply.` +
-	`</div>`
+func supportReplyNoticeHTML(loc i18n.Locale) string {
+	return `<div ` + supportReplyNoticeMarker + ` style="margin:16px auto 0;max-width:600px;padding:0 24px;` +
+		`font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;` +
+		`font-size:13px;line-height:1.5;color:#6b7280;text-align:center;">` +
+		`&#8505;&#65039; ` + template.HTMLEscapeString(SupportReplyNoticeText(loc)) +
+		`</div>`
+}
 
 // Template file names. Constants because several of them are referenced from
 // more than one call site, and a typo in a classification key would silently
@@ -45,8 +60,8 @@ const (
 	TemplateIncidentReminder        = "incident-reminder.html"
 	TemplateIncidentResolved        = "incident-resolved.html"
 	TemplateInvitation              = "invitation.html"
-	TemplateMembershipReqDecision   = "membership_request_decision.html"
-	TemplateMembershipReqNew        = "membership_request_new.html"
+	TemplateMembershipReqDecision   = "membership-request-decision.html"
+	TemplateMembershipReqNew        = "membership-request-new.html"
 	TemplatePagingNudge             = "paging-nudge.html"
 	TemplatePasswordChanged         = "password-changed.html"
 	TemplatePasswordReset           = "password-reset.html"
@@ -208,30 +223,41 @@ func applySupportReply(msg *Message, defaultReplyTo string) {
 		msg.Recipients.ReplyTo = defaultReplyTo
 	}
 
-	msg.Text = appendTextNotice(msg.Text)
-	msg.HTML = injectHTMLNotice(msg.HTML)
+	loc := i18n.New(msg.Locale, msg.Timezone)
+	msg.Text = appendTextNotice(msg.Text, loc)
+	msg.HTML = injectHTMLNotice(msg.HTML, loc)
 }
 
-// appendTextNotice adds the notice to the plain-text body, idempotently.
-func appendTextNotice(text string) string {
-	if text == "" || strings.Contains(text, SupportReplyNoticeText) {
+// appendTextNotice adds the notice to the plain-text body, idempotently: a
+// body that already carries it, in any language, is left alone.
+func appendTextNotice(text string, loc i18n.Locale) string {
+	if text == "" {
 		return text
 	}
 
-	return strings.TrimRight(text, "\n") + "\n\n" + SupportReplyNoticeText + "\n"
+	for _, lang := range i18n.Supported() {
+		if strings.Contains(text, SupportReplyNoticeText(i18n.New(lang, ""))) {
+			return text
+		}
+	}
+
+	return strings.TrimRight(text, "\n") + "\n\n" + SupportReplyNoticeText(loc) + "\n"
 }
 
 // injectHTMLNotice splices the notice into the HTML body just before the
 // closing </body>, falling back to an append when the body is a fragment rather
-// than a document.
-func injectHTMLNotice(html string) string {
-	if html == "" || strings.Contains(html, "You can reply directly to this email") {
+// than a document. Idempotent through the marker attribute, which no language
+// changes.
+func injectHTMLNotice(html string, loc i18n.Locale) string {
+	if html == "" || strings.Contains(html, supportReplyNoticeMarker) {
 		return html
 	}
 
+	notice := supportReplyNoticeHTML(loc)
+
 	if idx := strings.LastIndex(strings.ToLower(html), "</body>"); idx >= 0 {
-		return html[:idx] + supportReplyNoticeHTML + html[idx:]
+		return html[:idx] + notice + html[idx:]
 	}
 
-	return html + supportReplyNoticeHTML
+	return html + notice
 }

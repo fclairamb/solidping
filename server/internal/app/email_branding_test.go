@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/i18n"
 )
 
 // TestEmailFormatterUsesThePostOverlayBaseURL pins the WIRING at
@@ -51,7 +52,7 @@ func TestEmailFormatterUsesThePostOverlayBaseURL(t *testing.T) {
 
 	r.NoError(server.Initialize(ctx))
 
-	_, before, _, err := server.services.EmailFormatter.Format("welcome.html", map[string]any{})
+	_, before, _, err := server.services.EmailFormatter.Format("welcome.html", i18n.English, map[string]any{})
 	r.NoError(err)
 	r.Contains(before, preOverlayBaseURL+"/d/logo.png",
 		"the formatter must render the configured base URL before the overlay")
@@ -62,7 +63,7 @@ func TestEmailFormatterUsesThePostOverlayBaseURL(t *testing.T) {
 	r.NoError(server.InitializeSystemConfig(ctx, cfg))
 	r.Equal(postOverlayBaseURL, cfg.Server.BaseURL, "the overlay must have moved the base URL")
 
-	_, after, _, err := server.services.EmailFormatter.Format("welcome.html", map[string]any{})
+	_, after, _, err := server.services.EmailFormatter.Format("welcome.html", i18n.English, map[string]any{})
 	r.NoError(err)
 	r.Contains(after, postOverlayBaseURL+"/d/logo.png",
 		"emails must use the post-overlay base URL; a captured (non-late-bound) base URL fails here")

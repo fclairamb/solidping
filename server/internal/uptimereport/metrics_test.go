@@ -6,8 +6,12 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/fclairamb/solidping/server/internal/i18n"
 	"github.com/fclairamb/solidping/server/internal/uptimebar"
 )
+
+// noChange is the English "no change" wording of a zero delta.
+const noChange = "no change"
 
 // bucketProbes is the probe count every fixture bucket below is built from.
 const bucketProbes = 1000
@@ -45,34 +49,36 @@ func TestDeltaColorIsNeverGreenAtZero(t *testing.T) {
 	r.Equal(deltaBadColor, deltaColor(-0.001))
 }
 
-// TestFormatSignedFloatSaysNoChangeAtZero pins the wording: a movement that
+// TestSignedDeltaSaysNoChangeAtZero pins the wording: a movement that
 // rounds away at the precision we print reads as words, not as a signed zero
 // that a skimming reader turns into "we improved".
-func TestFormatSignedFloatSaysNoChangeAtZero(t *testing.T) {
+func TestSignedDeltaSaysNoChangeAtZero(t *testing.T) {
 	t.Parallel()
+
+	const points, percent = "report.delta.points", "report.delta.percent"
 
 	for _, tc := range []struct {
 		name     string
 		value    float64
 		decimals int
-		suffix   string
+		key      string
 		want     string
 	}{
-		{"exact zero", 0, 3, " pts", noChangeText},
-		{"rounds to zero", 0.0004, 3, " pts", noChangeText},
-		{"negative rounds to zero", -0.0004, 1, "%", noChangeText},
-		{"positive keeps its sign", 0.08, 3, " pts", "+0.080 pts"},
-		{"negative keeps its sign", -8.44, 1, "%", "-8.4%"},
+		{"exact zero", 0, 3, points, noChange},
+		{"rounds to zero", 0.0004, 3, points, noChange},
+		{"negative rounds to zero", -0.0004, 1, percent, noChange},
+		{"positive keeps its sign", 0.08, 3, points, "+0.080 pts"},
+		{"negative keeps its sign", -8.44, 1, percent, "-8.4%"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			require.Equal(t, tc.want, formatSignedFloat(tc.value, tc.decimals, tc.suffix))
+			require.Equal(t, tc.want, signedDelta(i18n.English, tc.value, tc.decimals, tc.key))
 		})
 	}
 
-	require.Equal(t, noChangeText, formatSignedCount(0))
-	require.Equal(t, "+2", formatSignedCount(2))
-	require.Equal(t, "-1", formatSignedCount(-1))
+	require.Equal(t, noChange, signedCount(i18n.English, 0))
+	require.Equal(t, "+2", signedCount(i18n.English, 2))
+	require.Equal(t, "-1", signedCount(i18n.English, -1))
 }
 
 // TestApplyTrendOmitsEverythingWithoutABaseline is the "new org / first run"
@@ -91,15 +97,17 @@ func TestApplyTrendOmitsEverythingWithoutABaseline(t *testing.T) {
 		currentIncidents: 2,
 	})
 
+	written := data.In(i18n.English)
+
 	r.False(data.HasPreviousData)
 	r.False(data.ShowAvailabilityDelta)
 	r.False(data.ShowIncidentDelta)
 	r.False(data.ShowResponseDelta)
-	r.Empty(data.AvailabilityDeltaText)
+	r.Empty(written.AvailabilityDeltaText)
 	r.Empty(data.AvailabilityDeltaColor)
-	r.Empty(data.IncidentDeltaText)
-	r.Empty(data.ResponseDeltaText)
-	r.Empty(data.PreviousAvailabilityPct)
+	r.Empty(written.IncidentDeltaText)
+	r.Empty(written.ResponseDeltaText)
+	r.Empty(written.PreviousAvailabilityPct)
 
 	// Positive control: the SAME call with a real baseline fills all three.
 	var withBaseline Data
@@ -115,11 +123,13 @@ func TestApplyTrendOmitsEverythingWithoutABaseline(t *testing.T) {
 	r.True(withBaseline.ShowAvailabilityDelta)
 	r.True(withBaseline.ShowIncidentDelta)
 	r.True(withBaseline.ShowResponseDelta)
-	r.Equal("+1.000 pts", withBaseline.AvailabilityDeltaText)
+
+	baselineText := withBaseline.In(i18n.English)
+	r.Equal("+1.000 pts", baselineText.AvailabilityDeltaText)
 	r.Equal(deltaGoodColor, withBaseline.AvailabilityDeltaColor)
-	r.Equal("-3", withBaseline.IncidentDeltaText)
+	r.Equal("-3", baselineText.IncidentDeltaText)
 	r.Equal(deltaGoodColor, withBaseline.IncidentDeltaColor)
-	r.Equal("-25.0%", withBaseline.ResponseDeltaText)
+	r.Equal("-25.0%", baselineText.ResponseDeltaText)
 	r.Equal(deltaGoodColor, withBaseline.ResponseDeltaColor)
 }
 
@@ -141,16 +151,18 @@ func TestApplyTrendZeroDeltasAreNeutral(t *testing.T) {
 		previousIncidents: 0,
 	})
 
+	written := data.In(i18n.English)
+
 	r.True(data.ShowAvailabilityDelta)
-	r.Equal(noChangeText, data.AvailabilityDeltaText)
+	r.Equal(noChange, written.AvailabilityDeltaText)
 	r.Equal(deltaNeutralColor, data.AvailabilityDeltaColor)
 
 	r.True(data.ShowIncidentDelta)
-	r.Equal(noChangeText, data.IncidentDeltaText)
+	r.Equal(noChange, written.IncidentDeltaText)
 	r.Equal(deltaNeutralColor, data.IncidentDeltaColor)
 
 	r.True(data.ShowResponseDelta)
-	r.Equal(noChangeText, data.ResponseDeltaText)
+	r.Equal(noChange, written.ResponseDeltaText)
 	r.Equal(deltaNeutralColor, data.ResponseDeltaColor)
 
 	// No green anywhere in this report's trend block.
@@ -193,7 +205,7 @@ func TestApplyResponseDeltaSuppressedForDegeneratePeriods(t *testing.T) {
 
 			r.Equal(tc.wantShownAtAll, data.ShowResponseDelta)
 			if !tc.wantShownAtAll {
-				r.Empty(data.ResponseDeltaText)
+				r.Empty(data.In(i18n.English).ResponseDeltaText)
 				r.Empty(data.ResponseDeltaColor)
 			}
 		})
@@ -212,16 +224,18 @@ func TestApplyLatencySuppressedWhenDownAllPeriod(t *testing.T) {
 
 	applyLatency(&downData, upBucket(0, 20))
 	r.False(downData.HasLatency)
-	r.Empty(downData.AvgResponseTime)
-	r.Empty(downData.MinResponseTime)
-	r.Empty(downData.MaxResponseTime)
-	r.Empty(downData.SlowLine)
+
+	downText := downData.In(i18n.English)
+	r.Empty(downText.AvgResponseTime)
+	r.Empty(downText.MinResponseTime)
+	r.Empty(downText.MaxResponseTime)
+	r.Empty(downText.SlowLine)
 
 	var noDurationData Data
 
 	applyLatency(&noDurationData, uptimebar.BucketStats{Up: 10, Total: 10})
 	r.False(noDurationData.HasLatency)
-	r.Empty(noDurationData.AvgResponseTime)
+	r.Empty(noDurationData.In(i18n.English).AvgResponseTime)
 
 	// Positive control.
 	var healthy Data
@@ -231,12 +245,14 @@ func TestApplyLatencySuppressedWhenDownAllPeriod(t *testing.T) {
 
 	applyLatency(&healthy, stats)
 	r.True(healthy.HasLatency)
-	r.Equal("150 ms", healthy.AvgResponseTime)
-	r.Equal("75 ms", healthy.MinResponseTime)
-	r.Equal("300 ms", healthy.MaxResponseTime)
-	r.Equal("3 samples above 1 s", healthy.SlowLine)
-	r.Empty(healthy.SlowNote, "no rollup peaks contributed, so there is nothing to explain")
-	r.Contains(healthy.LatencyNote, "failed samples")
+
+	healthyText := healthy.In(i18n.English)
+	r.Equal("150 ms", healthyText.AvgResponseTime)
+	r.Equal("75 ms", healthyText.MinResponseTime)
+	r.Equal("300 ms", healthyText.MaxResponseTime)
+	r.Equal("3 samples above 1 s", healthyText.SlowLine)
+	r.Empty(healthyText.SlowNote, "no rollup peaks contributed, so there is nothing to explain")
+	r.Contains(healthyText.LatencyNote, "failed samples")
 }
 
 // TestSlowLinePhrasesTiersHonestly: raw yields exact samples, rollups yield
@@ -259,7 +275,7 @@ func TestSlowLinePhrasesTiersHonestly(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := slowLine(tc.samples, tc.peaks)
+			got := slowLine(i18n.English, tc.samples, tc.peaks)
 			require.Equal(t, tc.want, got)
 
 			if tc.samples > 0 && tc.peaks > 0 {
@@ -275,11 +291,16 @@ func TestFormatMillisReadsAtAGlance(t *testing.T) {
 
 	r := require.New(t)
 
-	r.Equal("0 ms", formatMillis(0))
-	r.Equal("42 ms", formatMillis(42))
-	r.Equal("999 ms", formatMillis(999.4))
-	r.Equal("1.00 s", formatMillis(1000))
-	r.Equal("3.20 s", formatMillis(3200))
+	en := i18n.English
+
+	r.Equal("0 ms", formatMillis(en, 0))
+	r.Equal("42 ms", formatMillis(en, 42))
+	r.Equal("999 ms", formatMillis(en, 999.4))
+	// Rounding to a whole millisecond lands on a second: never "1,000 ms".
+	r.Equal("1.00 s", formatMillis(en, 999.6))
+	r.Equal("1.00 s", formatMillis(en, 1000))
+	r.Equal("3.20 s", formatMillis(en, 3200))
+	r.Equal("1,483.00 s", formatMillis(en, 1_483_000))
 }
 
 // TestDayStripColorNoDataIsGrayNotRed is the mid-period-creation guard: a day
@@ -308,13 +329,13 @@ func TestSortWorstFirst(t *testing.T) {
 	r := require.New(t)
 
 	rows := []CheckRow{
-		{Name: "alpha", HasData: true, AvailabilityPct: formatPct(100)},
+		{Name: "alpha", HasData: true, Availability: 100},
 		{Name: "zulu", HasData: false},
-		{Name: "bravo", HasData: true, AvailabilityPct: formatPct(9)},
-		{Name: "charlie", HasData: true, AvailabilityPct: formatPct(10)},
-		{Name: "delta", HasData: true, AvailabilityPct: formatPct(0)},
+		{Name: "bravo", HasData: true, Availability: 9},
+		{Name: "charlie", HasData: true, Availability: 10},
+		{Name: "delta", HasData: true, Availability: 0},
 		{Name: "alpha-two", HasData: false},
-		{Name: "echo", HasData: true, AvailabilityPct: formatPct(100)},
+		{Name: "echo", HasData: true, Availability: 100},
 	}
 
 	sortWorstFirst(rows)
@@ -326,7 +347,7 @@ func TestSortWorstFirst(t *testing.T) {
 
 	r.Equal([]string{
 		"delta",     // 0%
-		"bravo",     // 9% — numeric, not string, ordering
+		"bravo",     // 9%: numeric, not string, ordering
 		"charlie",   // 10%
 		"alpha",     // 100%, tie broken by name
 		"echo",      // 100%
@@ -345,13 +366,12 @@ func TestSortWorstFirstKeepsTheWorstUnderTruncation(t *testing.T) {
 	rows := make([]CheckRow, 0, maxCheckRows+10)
 	for i := range maxCheckRows + 9 {
 		rows = append(rows, CheckRow{
-			Name: "aaa-healthy-" + strings.Repeat("x", i%3), HasData: true,
-			AvailabilityPct: formatPct(100),
+			Name: "aaa-healthy-" + strings.Repeat("x", i%3), HasData: true, Availability: 100,
 		})
 	}
 
 	// Alphabetically last, and the only broken one.
-	rows = append(rows, CheckRow{Name: "zzz-broken", HasData: true, AvailabilityPct: formatPct(12.5)})
+	rows = append(rows, CheckRow{Name: "zzz-broken", HasData: true, Availability: 12.5})
 
 	sortWorstFirst(rows)
 	r.Equal("zzz-broken", rows[0].Name)

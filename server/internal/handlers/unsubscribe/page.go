@@ -4,6 +4,11 @@ import (
 	"fmt"
 	"net/http"
 
+	"golang.org/x/text/language"
+
+	"github.com/fclairamb/solidping/server/internal/i18n"
+	"github.com/fclairamb/solidping/server/internal/i18n/recipient"
+	"github.com/fclairamb/solidping/server/internal/incidentlinks"
 	"github.com/fclairamb/solidping/server/internal/securityheaders"
 )
 
@@ -18,12 +23,56 @@ const pageStyle = `<style>body{font-family:system-ui,-apple-system,` +
 	`color:#fff!important}.btn-secondary{background:#64748b;color:#fff!important}` +
 	`.meta{font-size:0.85rem;color:#94a3b8;margin-top:1.5rem}</style>`
 
-// renderPage builds a complete HTML document. title/h1 are trusted static
-// strings from this package; body is pre-escaped HTML built by the *Body
-// functions below.
-func renderPage(title, body string) string {
+// pageLocale is the language a page is written in (spec 2026-10-21-01,
+// decision 11): the preferences of the account the token was sent to, else
+// the browser's Accept-Language, else English. A token that does not verify
+// names no address, so the browser decides.
+func (h *Handler) pageLocale(req *http.Request, token string) i18n.Locale {
+	email := ""
+
+	if token != "" {
+		if payload, err := incidentlinks.VerifyUnsubscribe(h.svc.secret, token); err == nil {
+			email = payload.Email
+		}
+	}
+
+	hint := recipient.Hint{Locale: acceptedLanguage(req.Header.Get("Accept-Language"))}
+
+	return recipient.NewResolver(h.svc.dbService).ForAddress(req.Context(), "", email, hint)
+}
+
+// acceptedLanguage is the supported language the browser prefers most
+// ("de-CH, fr;q=0.8" gives "de"), or "" when its Accept-Language names none.
+// Same as incidents.acceptedLanguage.
+func acceptedLanguage(header string) string {
+	tags, _, err := language.ParseAcceptLanguage(header)
+	if err != nil {
+		return ""
+	}
+
+	for _, tag := range tags {
+		// Exact only: "*" has no language, and Base would guess one.
+		if base, confidence := tag.Base(); confidence == language.Exact {
+			if lang := i18n.Normalize(base.String()); lang != "" {
+				return lang
+			}
+		}
+	}
+
+	return ""
+}
+
+// markup is a catalog string for the page body: the catalog's own markup is
+// kept and every value is HTML-escaped.
+func markup(loc i18n.Locale, key string, kv ...any) string {
+	return string(loc.THTML(key, kv...))
+}
+
+// renderPage builds a complete HTML document in loc's language. title is
+// plain text; body is HTML built by the *Body functions below.
+func renderPage(loc i18n.Locale, title, body string) string {
 	return `<!doctype html>` +
-		`<html lang="en"><head><meta charset="utf-8"><title>` + title + `</title>` +
+		`<html lang="` + loc.Lang() + `"><head><meta charset="utf-8"><title>` + escapeHTML(title) + `</title>` +
 		`<meta name="viewport" content="width=device-width,initial-scale=1">` +
 		pageStyle +
 		`</head><body>` + body + `</body></html>`
@@ -33,11 +82,13 @@ func renderPage(title, body string) string {
 // Errors writing to the client are ignored — the connection is likely
 // already gone in that case, and there's nothing useful to do beyond log
 // (mirrors handlers/incidents/ack_html.go's writeAckHTML).
-func writePage(writer http.ResponseWriter, status int, title, body string) {
-	page := renderPage(title, body)
+func writePage(writer http.ResponseWriter, loc i18n.Locale, status int, title, body string) {
+	page := renderPage(loc, title, body)
 
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 	writer.Header().Set("Cache-Control", "no-store")
+	// The language follows Accept-Language when the token names no account.
+	writer.Header().Add("Vary", "Accept-Language")
 	securityheaders.ApplyBaseline(writer.Header())
 	writer.WriteHeader(status)
 	_, _ = writer.Write([]byte(page))
@@ -50,9 +101,9 @@ func writePage(writer http.ResponseWriter, status int, title, body string) {
 // link is actually followed, and following one link is itself the user's
 // confirmation (no separate "are you sure" step, matching the spec's
 // framing of unsubscribe as low-risk and reversible).
-func choiceBody(token, email, checkUID, checkName string) string {
-	body := `<h1>Unsubscribe from SolidPing alerts</h1>` +
-		`<p>You are unsubscribing <strong>` + escapeHTML(email) + `</strong> from incident alert emails.</p>`
+func choiceBody(loc i18n.Locale, token, email, checkUID, checkName string) string {
+	body := `<h1>` + markup(loc, "pages.unsubscribe.choice.title") + `</h1>` +
+		`<p>` + markup(loc, "pages.unsubscribe.choice.intro", "email", email) + `</p>`
 
 	if checkUID != "" {
 		label := checkName
@@ -61,20 +112,17 @@ func choiceBody(token, email, checkUID, checkName string) string {
 		}
 
 		body += fmt.Sprintf(
-			`<p><a class="btn btn-primary" href="/unsubscribe?token=%s&scope=check">`+
-				`Unsubscribe from %s only</a></p>`,
-			escapeHTML(token), escapeHTML(label),
+			`<p><a class="btn btn-primary" href="/unsubscribe?token=%s&scope=check">%s</a></p>`,
+			escapeHTML(token), markup(loc, "pages.unsubscribe.choice.checkOnly", "check", label),
 		)
 	}
 
 	body += fmt.Sprintf(
-		`<p><a class="btn btn-secondary" href="/unsubscribe?token=%s&scope=org">`+
-			`Unsubscribe from all alert emails for this organization</a></p>`,
-		escapeHTML(token),
+		`<p><a class="btn btn-secondary" href="/unsubscribe?token=%s&scope=org">%s</a></p>`,
+		escapeHTML(token), markup(loc, "pages.unsubscribe.choice.wholeOrg"),
 	)
 
-	body += `<p class="meta">You can undo this at any time from the confirmation page shown after you unsubscribe, ` +
-		`as long as this link hasn't expired.</p>`
+	body += `<p class="meta">` + markup(loc, "pages.unsubscribe.choice.undoHint") + `</p>`
 
 	return body
 }
@@ -84,49 +132,51 @@ func choiceBody(token, email, checkUID, checkName string) string {
 // the undo link re-presents it so Service.ResubscribeByUID can re-verify
 // org+email ownership of the row before deleting it, rather than trusting
 // the embedded UID alone.
-func successBody(token string, res *Result) string {
-	scopeLabel := "all alert emails for this organization"
+func successBody(loc i18n.Locale, token string, res *Result) string {
+	outcome := markup(loc, "pages.unsubscribe.success.org", "email", res.Email)
+
 	if res.CheckUID != "" {
 		if res.CheckName != "" {
-			scopeLabel = "alerts for " + escapeHTML(res.CheckName)
+			outcome = markup(loc, "pages.unsubscribe.success.check", "email", res.Email, "check", res.CheckName)
 		} else {
-			scopeLabel = "alerts for this check"
+			outcome = markup(loc, "pages.unsubscribe.success.thisCheck", "email", res.Email)
 		}
 	}
 
-	body := `<h1>Unsubscribed</h1>` +
-		`<p><strong>` + escapeHTML(res.Email) + `</strong> will no longer receive ` + scopeLabel + `.</p>` +
-		`<p>Other recipients of these alerts are not affected.</p>`
+	body := `<h1>` + markup(loc, "pages.unsubscribe.success.title") + `</h1>` +
+		`<p>` + outcome + `</p>` +
+		`<p>` + markup(loc, "pages.unsubscribe.success.othersUnaffected") + `</p>`
 
 	body += fmt.Sprintf(
-		`<p class="meta">Changed your mind? <a href="/unsubscribe/undo?token=%s&uid=%s">Undo and re-subscribe</a></p>`,
+		`<p class="meta">%s <a href="/unsubscribe/undo?token=%s&uid=%s">%s</a></p>`,
+		markup(loc, "pages.unsubscribe.success.changedMind"),
 		escapeHTML(token), escapeHTML(res.SuppressionUID),
+		markup(loc, "pages.unsubscribe.success.undo"),
 	)
 
 	return body
 }
 
 // resubscribedBody renders the undo confirmation page.
-func resubscribedBody() string {
-	return `<h1>Re-subscribed</h1>` +
-		`<p>You will receive alert emails again for this scope.</p>`
+func resubscribedBody(loc i18n.Locale) string {
+	return `<h1>` + markup(loc, "pages.unsubscribe.resubscribed.title") + `</h1>` +
+		`<p>` + markup(loc, "pages.unsubscribe.resubscribed.body") + `</p>`
 }
 
 // missingTokenBody renders the missing-token/uid error page.
-func missingTokenBody() string {
-	return `<h1>Missing link parameters</h1>` +
-		`<p>This URL is missing required parameters. Please use the full link from the original email.</p>`
+func missingTokenBody(loc i18n.Locale) string {
+	return `<h1>` + markup(loc, "pages.unsubscribe.missing.heading") + `</h1>` +
+		`<p>` + markup(loc, "pages.unsubscribe.missing.body") + `</p>`
 }
 
 // invalidTokenBody renders the invalid/expired-token error page.
-func invalidTokenBody() string {
-	return `<h1>This link is invalid or has expired</h1>` +
-		`<p>The unsubscribe link could not be verified, or it has expired. ` +
-		`If you have a more recent alert email, try the link from that message instead.</p>`
+func invalidTokenBody(loc i18n.Locale) string {
+	return `<h1>` + markup(loc, "pages.unsubscribe.invalid.heading") + `</h1>` +
+		`<p>` + markup(loc, "pages.unsubscribe.invalid.body") + `</p>`
 }
 
 // orgNotFoundBody renders the organization-not-found error page.
-func orgNotFoundBody() string {
-	return `<h1>Organization not found</h1>` +
-		`<p>The organization this link refers to no longer exists.</p>`
+func orgNotFoundBody(loc i18n.Locale) string {
+	return `<h1>` + markup(loc, "pages.unsubscribe.orgNotFound.title") + `</h1>` +
+		`<p>` + markup(loc, "pages.unsubscribe.orgNotFound.body") + `</p>`
 }

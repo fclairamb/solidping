@@ -1,0 +1,118 @@
+{
+  "emphasis": "<strong>{text}</strong>",
+  "link": "<a href=\"{url}\">{text}</a>",
+  "openChecks": "Open your checks",
+  "escalation": {
+    "subject": "{check} is still down, escalated to you",
+    "pill": "Escalated",
+    "heading": "{check} is still down",
+    "lead": "Nobody acknowledged it in time, so it was escalated to you.",
+    "failedChecks": "Failed checks",
+    "unknownCheck": "Unknown check"
+  },
+  "pagingNudge": {
+    "subject": "Set up your alert notifications for {org}",
+    "preheader": "Add a contact so SolidPing can reach you the moment something breaks.",
+    "heading": "Choose how SolidPing reaches you",
+    "asked": "An administrator of {org} asked you to set up how SolidPing should reach you when something breaks.",
+    "cta": "Add and verify a contact",
+    "ctaText": "Add and verify a phone or messaging contact here:",
+    "emailOnly": "Until you verify a contact, alerts can only reach you by email.",
+    "greeting": "Hi,"
+  },
+  "testEmail": {
+    "smtp": {
+      "title": "SolidPing Test Email",
+      "body": "This is a test email from SolidPing. If you received this, your email configuration is working correctly."
+    },
+    "route": {
+      "title": "Test notification from SolidPing",
+      "body": "This is a test notification from SolidPing. Your email delivery is working correctly."
+    }
+  },
+  "testSend": {
+    "welcomeSubject": "[SolidPing] Welcome!",
+    "alertSubject": "[SolidPing] Alert: {check}",
+    "alertSubjectNoCheck": "[SolidPing] Alert"
+  },
+  "regionOffline": {
+    "subject_one": "Region {region} is offline: {count} of your checks is not running",
+    "subject_other": "Region {region} is offline: {count} of your checks are not running",
+    "preheader": "Since {since}, checks that run only from {region} are not being checked.",
+    "pill": "Region offline",
+    "heading": "Region {region} is offline",
+    "since": "The SolidPing region {region} has been offline since {since}.",
+    "blind_one": "{count} of your checks in {org} runs only from this region, so it is not being checked right now:",
+    "blind_other": "{count} of your checks in {org} run only from this region, so they are not being checked right now:",
+    "more_one": "…and {count} more.",
+    "more_other": "…and {count} more.",
+    "reduced_one": "{count} other check keeps running from its other regions.",
+    "reduced_other": "{count} other checks keep running from their other regions.",
+    "nothingToDo": "There is nothing to do on your side. The SolidPing team has been alerted, and you will get a second email when the region is back. Until then these checks will show no data rather than a status.",
+    "nothingToDoOneCheck": "There is nothing to do on your side. The SolidPing team has been alerted, and you will get a second email when the region is back. Until then this check will show no data rather than a status."
+  },
+  "regionRecovered": {
+    "subject": "Region {region} is back, your checks resumed",
+    "preheader": "The region was offline for {duration}. Your checks are running again.",
+    "pill": "Region back online",
+    "heading": "Region {region} is back",
+    "moved": "The checks of {org} that ran only from {region} no longer depend on it and are being checked again.",
+    "back": "The SolidPing region {region} is back online, and the checks of {org} that ran only from it resumed.",
+    "offline": "Offline",
+    "offlineFor": "Offline for",
+    "offlineSince": "Offline since",
+    "backAt": "Back at"
+  },
+  "usageCap": {
+    "pill": "Monthly allowance used",
+    "otherChannels": "Other channels (email, Slack, push...) keep working.",
+    "onlyOnce": "This is the only email about it this month.",
+    "seePlans": "See plans",
+    "openUsage": "Open usage",
+    "usage": "Usage",
+    "sms": {
+      "subject": "{org} used all its SMS alerts for this month",
+      "preheader_one": "SMS alerts are paused until next month: the plan includes {count} per month.",
+      "preheader_other": "SMS alerts are paused until next month: the plan includes {count} per month.",
+      "heading": "SMS alerts are paused until next month",
+      "used_one": "{org} has used its {count} SMS alert included this month.",
+      "used_other": "{org} has used its {count} SMS alerts included this month.",
+      "dropped": "SolidPing just dropped an SMS alert because of that, and will drop the next ones until {date}.",
+      "droppedNextMonth": "SolidPing just dropped an SMS alert because of that, and will drop the next ones until the 1st of next month (UTC).",
+      "keep": "To keep receiving SMS alerts, move to a plan with a higher allowance, or connect your own Twilio account in the integrations: messages sent through it are billed by Twilio and do not count against the plan."
+    },
+    "voice": {
+      "subject": "{org} used all its voice call alerts for this month",
+      "preheader_one": "Voice call alerts are paused until next month: the plan includes {count} per month.",
+      "preheader_other": "Voice call alerts are paused until next month: the plan includes {count} per month.",
+      "heading": "Voice call alerts are paused until next month",
+      "used_one": "{org} has used its {count} voice call alert included this month.",
+      "used_other": "{org} has used its {count} voice call alerts included this month.",
+      "dropped": "SolidPing just dropped a voice call alert because of that, and will drop the next ones until {date}.",
+      "droppedNextMonth": "SolidPing just dropped a voice call alert because of that, and will drop the next ones until the 1st of next month (UTC).",
+      "keep": "To keep receiving voice call alerts, move to a plan with a higher allowance, or connect your own Twilio account in the integrations: calls placed through it are billed by Twilio and do not count against the plan."
+    },
+    "whatsapp": {
+      "subject": "{org} used all its WhatsApp alerts for this month",
+      "preheader_one": "WhatsApp alerts are paused until next month: the plan includes {count} per month.",
+      "preheader_other": "WhatsApp alerts are paused until next month: the plan includes {count} per month.",
+      "heading": "WhatsApp alerts are paused until next month",
+      "used_one": "{org} has used its {count} WhatsApp alert included this month.",
+      "used_other": "{org} has used its {count} WhatsApp alerts included this month.",
+      "dropped": "SolidPing just dropped a WhatsApp alert because of that, and will drop the next ones until {date}.",
+      "droppedNextMonth": "SolidPing just dropped a WhatsApp alert because of that, and will drop the next ones until the 1st of next month (UTC).",
+      "keep": "To keep receiving WhatsApp alerts, move to a plan with a higher allowance."
+    }
+  },
+  "customDomain": {
+    "subject": "Your status page stopped serving on {domain}",
+    "preheader": "DNS re-verification kept failing, so {domain} no longer serves your status page.",
+    "pill": "Custom domain disabled",
+    "heading": "{domain} is no longer serving your status page",
+    "stopped": "The custom domain {domain} on the status page {page} ({org}) failed its DNS re-verification for several days in a row, so SolidPing has stopped serving the page on it. Visitors now get an error page instead of your status page.",
+    "lastCheck": "The last check reported:",
+    "fix": "To fix it: confirm the domain's CNAME record still points at the target shown on the status page's settings, then click {verify}. If DNS starts resolving correctly again on its own, SolidPing will also restore the domain by itself after several consecutive successful checks.",
+    "verify": "Verify",
+    "openSettings": "Open status page settings"
+  }
+}

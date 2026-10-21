@@ -1,13 +1,22 @@
 package email
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/fclairamb/solidping/server/internal/i18n"
 )
 
 const brandingTestBaseURL = "https://solidping.example"
+
+// orgFooterPattern is the footer attribution of an org-branded mail.
+const orgFooterPattern = `Acme Corp · sent by <a href="https://solidping\.io"[^>]*>SolidPing</a>`
+
+// sectionTitleStylePattern captures the inlined style of a section subhead.
+var sectionTitleStylePattern = regexp.MustCompile(`<h2 class="section-title" style="([^"]*)"`)
 
 // brandingViewModel is the minimal incident view model the branding tests
 // render — incident-created.html is used because it exercises the full
@@ -28,7 +37,7 @@ func renderBranded(t *testing.T, baseURL string, data any) string {
 	formatter, err := NewFormatter(WithBaseURL(baseURL))
 	require.NoError(t, err)
 
-	_, html, _, err := formatter.Format("incident-created.html", data)
+	_, html, _, err := formatter.Format("incident-created.html", i18n.English, data)
 	require.NoError(t, err)
 
 	return html
@@ -89,8 +98,9 @@ func TestBranding_OrgLogoReplacesTheProductLogo(t *testing.T) {
 	r.Contains(html, "sent by SolidPing")
 	// The product logo is not shown alongside it — one primary mark only.
 	r.NotContains(html, "/d/logo.png")
-	// The footer attribution (the existing wording) still names the org.
-	r.Contains(html, "Acme Corp — sent by SolidPing")
+	// The footer attribution still names the org.
+	r.Regexp(orgFooterPattern, html)
+	r.NotContains(html, "Acme Corp — sent by", "the em-dash footer wording is gone")
 }
 
 // TestBranding_ExternalOrgLogoPassesThrough — an org may store a full external
@@ -187,7 +197,7 @@ func renderBrandedStruct(t *testing.T, data any) string {
 	formatter, err := NewFormatter(WithBaseURL(brandingTestBaseURL))
 	require.NoError(t, err)
 
-	_, html, _, err := formatter.Format("test-email.html", data)
+	_, html, _, err := formatter.Format("test-email.html", i18n.English, data)
 	require.NoError(t, err)
 
 	return html
@@ -238,7 +248,7 @@ func TestBranding_StructViewModelWithBrandingFields(t *testing.T) {
 	})
 
 	r.Contains(html, "https://solidping.example/pub/assets/struct-logo")
-	r.Contains(html, "Acme Corp — sent by SolidPing")
+	r.Regexp(orgFooterPattern, html)
 }
 
 // TestBranding_EveryTemplateRendersWithAndWithoutBranding renders every shipped
@@ -270,7 +280,7 @@ func TestBranding_EveryTemplateRendersWithAndWithoutBranding(t *testing.T) {
 				"bare":    map[string]any{"IncidentNumber": 0},
 				"branded": branded,
 			} {
-				_, html, _, formatErr := formatter.Format(name, data)
+				_, html, _, formatErr := formatter.Format(name, i18n.English, data)
 				r.NoError(formatErr, "%s (%s)", name, label)
 				r.NotContains(html, "{{", "unresolved template syntax in %s (%s)", name, label)
 			}
@@ -353,14 +363,14 @@ func TestBranding_BaseURLIsResolvedLate(t *testing.T) {
 	formatter, err := NewFormatter(WithBaseURLFunc(func() string { return current }))
 	r.NoError(err)
 
-	_, before, _, err := formatter.Format("welcome.html", map[string]any{})
+	_, before, _, err := formatter.Format("welcome.html", i18n.English, map[string]any{})
 	r.NoError(err)
 	r.Contains(before, "http://localhost:4000/d/logo.png")
 
 	// The overlay lands after construction.
 	current = "https://monitoring.acme.com/"
 
-	_, after, _, err := formatter.Format("welcome.html", map[string]any{})
+	_, after, _, err := formatter.Format("welcome.html", i18n.English, map[string]any{})
 	r.NoError(err)
 	r.Contains(after, "https://monitoring.acme.com/d/logo.png")
 	r.NotContains(after, "localhost:4000")
@@ -380,19 +390,22 @@ func TestBranding_HelperClassesWinOverTheGenericContentRules(t *testing.T) {
 	formatter, err := NewFormatter(WithBaseURL(brandingTestBaseURL))
 	r.NoError(err)
 
-	_, report, _, err := formatter.Format("uptime-report.html", map[string]any{
+	_, report, _, err := formatter.Format("uptime-report.html", i18n.English, map[string]any{
 		"HasData": true, "OrgName": "Acme Corp", "PeriodLabel": "July 2026",
 		"Checks": []map[string]any{{"Name": "API", "HasData": true, "AvailabilityPct": "99.9"}},
 	})
 	r.NoError(err)
-	// The section subhead keeps its own size and spacing, not the generic
-	// .content h2 ones, and its accent rule survives the inlining.
-	r.Contains(report, "font-size:16px")
-	r.Contains(report, "margin:26px 0 10px")
-	r.Contains(report, "border-left:3px solid #1e64ef")
-	r.NotContains(report, "margin:0 0 16px;font-size:16px")
+	// The section subhead keeps its own size, spacing and uppercase
+	// treatment, not the generic .content h2 ones (17px, margin 0 0 14px).
+	match := sectionTitleStylePattern.FindStringSubmatch(report)
+	r.Len(match, 2, "the uptime report must render a styled section title")
+	r.Contains(match[1], "font-size:13px")
+	r.Contains(match[1], "margin:28px 0 8px")
+	r.Contains(match[1], "text-transform:uppercase")
+	r.NotContains(match[1], "font-size:17px")
+	r.NotContains(match[1], "margin:0 0 14px")
 
-	_, update, _, err := formatter.Format("status-subscriber-update.html", map[string]any{
+	_, update, _, err := formatter.Format("status-subscriber-update.html", i18n.English, map[string]any{
 		"Subject": "s", "Label": "New incident", "Title": "T", "BodyMarkdown": "B",
 		"PageName": "Acme Status",
 	})
@@ -460,22 +473,22 @@ func TestApplyOrgBrandingRendersThroughTheWrapper(t *testing.T) {
 	branded := map[string]any{"Subject": "s", "Heading": "h", "Body": "b"}
 	ApplyOrgBranding(branded, "Acme Corp", "acme", &logo)
 
-	_, html, _, err := formatter.Format("test-email.html", branded)
+	_, html, _, err := formatter.Format("test-email.html", i18n.English, branded)
 	r.NoError(err)
 	r.Contains(html, brandingTestBaseURL+"/pub/assets/org-logo-uid")
 	r.Contains(html, `alt="Acme Corp"`)
-	r.Contains(html, "Acme Corp — sent by SolidPing")
+	r.Regexp(orgFooterPattern, html)
 	r.NotContains(html, "/d/logo.png")
 
 	logoless := map[string]any{"Subject": "s", "Heading": "h", "Body": "b"}
 	ApplyOrgBranding(logoless, "Acme Corp", "acme", nil)
 
-	_, plain, _, err := formatter.Format("test-email.html", logoless)
+	_, plain, _, err := formatter.Format("test-email.html", i18n.English, logoless)
 	r.NoError(err)
 	r.NotContains(plain, "/pub/assets/org-logo-uid")
 	r.Contains(plain, brandingTestBaseURL+"/d/logo.png")
 	// The org is still named in the footer even without a logo.
-	r.Contains(plain, "Acme Corp — sent by SolidPing")
+	r.Regexp(orgFooterPattern, plain)
 }
 
 // TestApplyOrgBrandingFallsBackToSlugWhenNameIsBlank is table-driven per the
@@ -510,7 +523,7 @@ func TestApplyOrgBrandingFallsBackToSlugWhenNameIsBlank(t *testing.T) {
 }
 
 // TestApplyOrgBrandingBlankNameNeverRendersAHole is the end-to-end half,
-// rendered through the actual membership_request_new.html template — the
+// rendered through the actual membership-request-new.html template — the
 // exact defect from the screenshot that motivated this fix: "has asked to
 // join **on** SolidPing" and "you're an admin of **.**" with a blank
 // OrgName. Both the positive assertion (the slug fills the hole) and the
@@ -531,7 +544,7 @@ func TestApplyOrgBrandingBlankNameNeverRendersAHole(t *testing.T) {
 	}
 	ApplyOrgBranding(viewModel, "", "default", nil)
 
-	subject, html, text, err := formatter.Format("membership_request_new.html", viewModel)
+	subject, html, text, err := formatter.Format("membership-request-new.html", i18n.English, viewModel)
 	r.NoError(err)
 
 	r.Contains(subject, "on default")
@@ -557,7 +570,9 @@ func TestBranding_DarkModeFallbackStaysLightOnDark(t *testing.T) {
 	src := string(raw)
 	start := strings.Index(src, "@media (prefers-color-scheme: dark)")
 	r.GreaterOrEqual(start, 0)
-	r.Contains(src[start:], ".fallback { font-size: 13px; color: #cbd5e1;")
+	// The "Button not working? Paste this link" fallback is a muted grey in
+	// light mode; the dark block must repaint it light enough to read.
+	r.Regexp(`\.fallback[^{]*\{ color: #8f9bab !important; \}`, src[start:])
 }
 
 func TestNoLinkHTML_BreaksAutoLinkPatterns(t *testing.T) {
@@ -583,7 +598,7 @@ func TestBranding_CustomDomainDemotedBreaksDomainAutoLink(t *testing.T) {
 	formatter, err := NewFormatter(WithBaseURL(brandingTestBaseURL))
 	r.NoError(err)
 
-	_, html, _, err := formatter.Format("custom-domain-demoted.html", map[string]any{
+	_, html, _, err := formatter.Format("custom-domain-demoted.html", i18n.English, map[string]any{
 		"Domain": "status.acme.com", "StatusPageName": "Acme", "OrgName": "Acme Corp",
 		"Diagnostic": "CNAME for status.acme.com points at 10.0.0.1",
 	})
@@ -592,4 +607,96 @@ func TestBranding_CustomDomainDemotedBreaksDomainAutoLink(t *testing.T) {
 	r.NotContains(html, "<strong>status.acme.com</strong>")
 	r.NotContains(html, "10.0.0.1")
 	r.Contains(html, "no longer serving your status page")
+}
+
+// TestBranding_FooterSaysWhoSentItAndNothingElse pins the redesigned footer:
+// one attribution line, an unsubscribe link named after the check, and none of
+// the removed lines (Docs link, "You received this email because...").
+func TestBranding_FooterSaysWhoSentItAndNothingElse(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	data := brandingViewModel()
+	data["OrgName"] = "Acme Corp"
+	data["DashboardURL"] = "https://solidping.example/d"
+	data["DocsURL"] = "https://solidping.example/docs"
+	data["UnsubscribeURL"] = "https://solidping.example/unsubscribe?token=xyz"
+	data["UnsubscribeCheckName"] = "Production API"
+
+	html := renderBranded(t, brandingTestBaseURL, data)
+
+	r.Regexp(orgFooterPattern+` · <a href="https://solidping\.example/d"[^>]*>Dashboard</a>`, html)
+	r.Contains(html, ">Stop alerts for Production API</a>")
+	r.NotContains(html, ">Docs</a>")
+	r.NotContains(html, "You received this email because")
+
+	// Without an org or a check name: the generic wording.
+	delete(data, "OrgName")
+	delete(data, "UnsubscribeCheckName")
+
+	generic := renderBranded(t, brandingTestBaseURL, data)
+	r.Regexp(`Sent by <a href="https://solidping\.io"[^>]*>SolidPing</a>`, generic)
+	r.Contains(generic, ">Unsubscribe</a>")
+	r.NotContains(generic, "Stop alerts for")
+
+	// White label: no attribution, but the unsubscribe link stays.
+	data["HideBranding"] = true
+
+	hidden := renderBranded(t, brandingTestBaseURL, data)
+	r.NotContains(hidden, "SolidPing</a>")
+	r.NotContains(hidden, "Sent by")
+	r.Contains(hidden, ">Unsubscribe</a>")
+}
+
+// TestBranding_StateIsAStripeAndAPill pins the incident state rendering: a
+// colored stripe row and a tinted pill, never the old full-width banner. Mail
+// without a state gets a plain top spacer instead.
+func TestBranding_StateIsAStripeAndAPill(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	incident := renderBranded(t, brandingTestBaseURL, brandingViewModel())
+	r.Regexp(`<td class="stripe stripe-down"`, incident)
+	r.Regexp(`<td class="pill-row"[^>]*><span class="pill pill-down"[^>]*>`, incident)
+	r.NotContains(incident, `class="top-space"`)
+	r.NotContains(incident, "status-banner")
+	r.NotContains(incident, "accent-bar")
+
+	formatter, err := NewFormatter(WithBaseURL(brandingTestBaseURL))
+	r.NoError(err)
+
+	_, welcome, _, err := formatter.Format("welcome.html", i18n.English, map[string]any{})
+	r.NoError(err)
+	r.Contains(welcome, `<td class="top-space"`)
+	r.NotContains(welcome, `class="stripe`)
+	r.NotContains(welcome, `class="pill`)
+}
+
+// TestBranding_StatusPageSenderNamesThePage pins subscriber mail without a
+// logo: the header names the status page (the sender, as far as the reader
+// knows) with a "sent by SolidPing" attribution, instead of the SolidPing logo.
+// Org mail without a logo is the control: it keeps the product logo.
+func TestBranding_StatusPageSenderNamesThePage(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	page := brandingViewModel()
+	ApplyStatusPageBranding(page, "Acme Status", nil, false)
+	r.Equal(true, page["BrandIsSender"])
+
+	html := renderBranded(t, brandingTestBaseURL, page)
+	r.Regexp(`<span class="header-logo"[^>]*>Acme Status</span>`, html)
+	r.Contains(html, "sent by SolidPing")
+	r.NotContains(html, "/d/logo.png")
+
+	org := brandingViewModel()
+	ApplyOrgBranding(org, "Acme Corp", "acme", nil)
+	r.Nil(org["BrandIsSender"], "org mail speaks for SolidPing")
+
+	orgHTML := renderBranded(t, brandingTestBaseURL, org)
+	r.Contains(orgHTML, "/d/logo.png")
+	r.NotContains(orgHTML, `>Acme Corp</span>`)
 }
