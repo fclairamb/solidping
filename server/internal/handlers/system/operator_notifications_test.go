@@ -9,6 +9,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
+	"github.com/fclairamb/solidping/server/internal/i18n"
 	"github.com/fclairamb/solidping/server/internal/opsnotify"
 )
 
@@ -243,7 +244,7 @@ func TestSendOperatorNoticeTestReportsWhatHappened(t *testing.T) {
 
 	env.svc.SetOperatorNoticeDeps(opsnotify.Deps{
 		DB: env.db,
-		EnqueueEmail: func(_ context.Context, _, to, _, _ string) error {
+		EnqueueEmail: func(_ context.Context, _, to string, _ i18n.Locale, _, _ string) error {
 			sentTo = append(sentTo, to)
 
 			return nil

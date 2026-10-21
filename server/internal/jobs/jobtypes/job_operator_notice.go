@@ -35,6 +35,13 @@ type OperatorNoticeJobConfig struct {
 	// they landed in is resolved HERE rather than by the raiser, because on
 	// every signup path the `users` row is inserted before the membership.
 	AboutUserUID string `json:"aboutUserUid,omitempty"`
+	// SupportMessage and UserRegistered carry the notice in structured form,
+	// one of them by event: the email is written from it in the recipient's
+	// language (spec 2026-10-21-01, decision 11), every other medium sends
+	// Subject and Body. A job queued before they existed has neither, and its
+	// email is Subject and Body too.
+	SupportMessage *opsnotify.SupportMessage `json:"supportMessage,omitempty"`
+	UserRegistered *opsnotify.UserRegistered `json:"userRegistered,omitempty"`
 }
 
 // NewOperatorNoticeJobConfig is the ONLY place a Notice becomes a queued job
@@ -46,25 +53,48 @@ type OperatorNoticeJobConfig struct {
 // job config by hand on one side and asserted at the Notify boundary on the
 // other — stayed green. One conversion, next to the struct, with a round-trip
 // test that fails if a field stops traveling.
+//
+// Only the two queued kinds have a structured form that travels: the other
+// notices (watchdog, region, test) are delivered in process and never queued.
 func NewOperatorNoticeJobConfig(notice *opsnotify.Notice) OperatorNoticeJobConfig {
-	return OperatorNoticeJobConfig{
+	cfg := OperatorNoticeJobConfig{
 		Event:        notice.Event,
 		Subject:      notice.Subject,
 		Body:         notice.Body,
 		URL:          notice.URL,
 		AboutUserUID: notice.AboutUserUID,
 	}
+
+	switch localized := notice.Localized.(type) {
+	case *opsnotify.SupportMessage:
+		cfg.SupportMessage = localized
+	case *opsnotify.UserRegistered:
+		cfg.UserRegistered = localized
+	}
+
+	return cfg
 }
 
 // Notice converts the persisted config back into a deliverable notice.
 func (c *OperatorNoticeJobConfig) Notice() *opsnotify.Notice {
-	return &opsnotify.Notice{
+	notice := &opsnotify.Notice{
 		Event:        c.Event,
 		Subject:      c.Subject,
 		Body:         c.Body,
 		URL:          c.URL,
 		AboutUserUID: c.AboutUserUID,
 	}
+
+	// Never a typed nil in the interface: a nil *SupportMessage there would
+	// read as "structured" and panic when the email is written.
+	switch {
+	case c.SupportMessage != nil:
+		notice.Localized = c.SupportMessage
+	case c.UserRegistered != nil:
+		notice.Localized = c.UserRegistered
+	}
+
+	return notice
 }
 
 // CreateJobRun builds an executable instance.
@@ -168,7 +198,7 @@ func enrichWithOrganization(
 	}
 
 	if len(members) == 0 {
-		notice.Body += "\nOrg:    no organization"
+		notice.SetLandingOrgs(nil)
 
 		return notice
 	}
@@ -188,7 +218,7 @@ func enrichWithOrganization(
 		return notice
 	}
 
-	notice.Body += "\nOrg:    " + strings.Join(slugs, ", ")
+	notice.SetLandingOrgs(slugs)
 
 	if notice.URL == "" && jctx.AppConfig != nil {
 		notice.URL = strings.TrimRight(jctx.AppConfig.Server.BaseURL, "/") +

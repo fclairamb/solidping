@@ -1,0 +1,91 @@
+{
+  "supportMessage": {
+    "subjectNewMessage": "Neue Nachricht von {from} via {channel}",
+    "subjectNewThread": "Neue Support-Konversation von {from} via {channel}",
+    "channel": "Kanal: {channel}",
+    "from": "Von: {from}",
+    "folded_one": "…und {count} weitere Nachricht in dieser Konversation seit der letzten Benachrichtigung.",
+    "folded_other": "…und {count} weitere Nachrichten in dieser Konversation seit der letzten Benachrichtigung.",
+    "replyWarning": "Eine Antwort auf diese Benachrichtigung erreicht den Absender NICHT. Öffnen Sie die Konversation, um ihm zu antworten."
+  },
+  "userRegistered": {
+    "subject": "Neue Registrierung: {email} ({method})",
+    "intro": "Ein neuer Benutzer hat sich gerade auf dieser SolidPing-Instanz registriert.",
+    "email": "E-Mail: {email}",
+    "name": "Name: {name}",
+    "method": "Methode: {method}",
+    "methods": {
+      "password": "Passwort",
+      "invite": "Einladung"
+    },
+    "org": "Organisation: {orgs}",
+    "orgs": "Organisationen: {orgs}",
+    "noOrg": "Organisation: keine"
+  },
+  "test": {
+    "subject": "Test der Betreiber-Benachrichtigungen",
+    "intro": "Dies ist ein Test der Betreiber-Benachrichtigungen dieser SolidPing-Instanz.",
+    "works": "Wenn Sie diese Nachricht lesen, funktioniert der Benachrichtigungsweg, über den sie zugestellt wurde.",
+    "requestedBy": "Angefordert von {email}."
+  },
+  "watchdogRegion": {
+    "subjectDark": "Region {region} ist offline",
+    "subjectStalled": "Region {region} hängt",
+    "subjectRecovered": "Region {region} nach {duration} wiederhergestellt",
+    "darkHeadline_one": "Die Region „{region}“ ist OFFLINE (seit dem {since} kein aktiver Worker): {count} Auftrag zugewiesen, davon {overdue} überfällig",
+    "darkHeadline_other": "Die Region „{region}“ ist OFFLINE (seit dem {since} kein aktiver Worker): {count} Aufträge zugewiesen, davon {overdue} überfällig",
+    "organizations_one": "{count} Organisation",
+    "organizations_other": "{count} Organisationen",
+    "darkChecks_one": "{count} Prüfung aus {orgs} läuft nur in dieser Region und wird derzeit nicht ausgeführt. Jede betroffene Organisation wurde per E-Mail benachrichtigt.",
+    "darkChecks_other": "{count} Prüfungen aus {orgs} laufen nur in dieser Region und werden derzeit nicht ausgeführt. Jede betroffene Organisation wurde per E-Mail benachrichtigt.",
+    "moved_one": "{count} automatisch platzierte Prüfung wurde in eine andere Region verschoben.",
+    "moved_other": "{count} automatisch platzierte Prüfungen wurden in eine andere Region verschoben.",
+    "darkRemediation": "Abhilfe: Nehmen Sie einen Worker für „{region}“ wieder in Betrieb oder verschieben Sie die Prüfungen mit {command}.",
+    "liveWorkers_one": "{count} aktiver Worker",
+    "liveWorkers_other": "{count} aktive Worker",
+    "stalledHeadline_one": "Die Region „{region}“ hängt: {workers}, aber {count} Auftrag seit dem {since} überfällig",
+    "stalledHeadline_other": "Die Region „{region}“ hängt: {workers}, aber {count} Aufträge überfällig, der älteste seit dem {since}",
+    "stalledCause": "Die Worker senden Lebenszeichen, übernehmen aber keine Aufträge. Die Organisationen wurden nicht benachrichtigt.",
+    "stalledInspect": "Prüfen Sie GET /api/v1/system/regions/health und danach die Logs der Worker.",
+    "recovered_one": "Die Region „{region}“ ist nach {duration} wieder in Ordnung (ab dem {since} {phase}). {count} Organisation wurde benachrichtigt.",
+    "recovered_other": "Die Region „{region}“ ist nach {duration} wieder in Ordnung (ab dem {since} {phase}). {count} Organisationen wurden benachrichtigt.",
+    "phase": {
+      "dark": "offline",
+      "stalled": "hängend"
+    }
+  },
+  "watchdogDigest": {
+    "allClear_one": "Alles in Ordnung: {count} Anomalie behoben",
+    "allClear_other": "Alles in Ordnung: {count} Anomalien behoben",
+    "anomalies_one": "{count} Plattform-Anomalie",
+    "anomalies_other": "{count} Plattform-Anomalien",
+    "critical_one": ", davon {count} kritisch",
+    "critical_other": ", davon {count} kritisch",
+    "recovered_one": " (+{count} behoben)",
+    "recovered_other": " (+{count} behoben)",
+    "generatedAt": "Erstellt am {date}",
+    "anomaliesTitle": "ANOMALIEN",
+    "severity": {
+      "info": "INFO",
+      "warning": "WARNUNG",
+      "critical": "KRITISCH"
+    },
+    "new": "NEU",
+    "stillBroken": "BESTEHT WEITERHIN seit dem {date}",
+    "fix": "Abhilfe: {remediation}",
+    "recoveredTitle": "BEHOBEN",
+    "clearAgain": "{fingerprint}: wieder in Ordnung (erstmals erkannt am {date})",
+    "failuresTitle": "DETEKTORFEHLER (diese Anomalien konnten bei diesem Lauf NICHT geprüft werden)"
+  },
+  "aiRepair": {
+    "subject": "Prüfung repariert: {check}",
+    "intro": "SolidPing hat das Skript der Prüfung „{check}“ repariert (Version {version}).",
+    "reason": {
+      "drifted": "KI-Reparatur: Das Skript ist abgewichen",
+      "error": "KI-Reparatur: Das Skript ist abgewichen (Fehler: {error})",
+      "step": "KI-Reparatur: Das Skript ist im Schritt {step} abgewichen"
+    },
+    "diff": "Änderungen:",
+    "review": "Reparatur ansehen oder rückgängig machen: {link}"
+  }
+}

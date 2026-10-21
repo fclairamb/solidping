@@ -16,6 +16,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
+	"github.com/fclairamb/solidping/server/internal/i18n"
 	"github.com/fclairamb/solidping/server/internal/opsnotify"
 )
 
@@ -117,7 +118,7 @@ func (e *env) deps() opsnotify.Deps {
 	deps := opsnotify.Deps{DB: e.db}
 
 	if !e.missing["email"] {
-		deps.EnqueueEmail = func(_ context.Context, orgUID, to, subject, text string) error {
+		deps.EnqueueEmail = func(_ context.Context, orgUID, to string, _ i18n.Locale, subject, text string) error {
 			return e.record("email", orgUID, to, subject, text)
 		}
 	}

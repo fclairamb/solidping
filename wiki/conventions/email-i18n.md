@@ -53,7 +53,7 @@ you think you need one, stop and say so.
 | 3 | Account | `account` | `registration`, `welcome`, `password-*`, `email-changed`, `invitation`, `membership_*` templates; `handlers/auth/service.go`, `handlers/auth/membership_requests.go`, `handlers/auth/email_change.go`; `emailpreview/fixtures_account.go` |
 | 4 | Report | `report` | `uptime-report.html`; `uptimereport/*`; `jobs/jobtypes/uptime_report_mail.go`; `emailpreview/fixtures_report.go` |
 | 5 | Subscriber | `subscriber` | `status-subscriber-*.html`; `handlers/statussubscribers/handler.go` (confirm mail AND the landing pages: "Subscription confirmed", "Unsubscribed", "Link expired"), `handlers/statussubscribers/notifier.go`; `emailpreview/fixtures_subscriber.go` |
-| 6 | Raw text | `notices` | `aichecks/repair.go` (AI auto-repair notice). Operator notices (`opsnotify`) stay English (spec decision 11). The support-reply notice was done in phase A. |
+| 6 | Raw text | `notices` | `aichecks/repair.go` (AI auto-repair notice); the operator notices' email: `opsnotify/**`, `opsnotifywire/**`, `support/operator_notice.go`, `handlers/auth/signup_analytics.go` (the notice), `handlers/system/operator_notifications.go` (test notice), `regionsweep/operator.go`, `jobs/jobtypes/job_operator_notice.go`, `job_platform_watchdog.go`, `job_platform_watchdog_delivery.go`. The support-reply notice was done in phase A. |
 | 7 | Pages | `pages` | `handlers/unsubscribe/page.go`, `handlers/incidents/ack_html.go` |
 | 8 | dash0 | (dash0 catalogs) | `web/dash0` |
 
@@ -210,16 +210,29 @@ count that used `%d` goes through `tn` or `"n" .Count`, never `number`.
 Some mails have no template: the job sends `Text` as is and never calls `Format`, so
 `EmailJobConfig.Locale` there only picks the language of the support-reply notice.
 
-- The AI auto-repair notice (`aichecks/repair.go`) is the one raw-text mail localized
-  in phase B. Resolve with `recipient.ForUser(owner)`, build subject and body with
-  `loc.T("notices.aiRepair.…")`, and add `"locale"` / `"timezone"` to the job payload
-  (`JobsMailer.Mail` builds a raw map today; give it the two keys). The diff and the
-  reason stay as they are (not text we wrote).
-- Operator notices (`opsnotify`: support message, new user, watchdog, test) stay
-  English on every medium, email included (spec decision 11). Do not edit
-  `opsnotify`, `opsnotifywire`, `support/operator_notice.go`,
-  `handlers/auth/signup_analytics.go`, `regionsweep/operator.go` or the operator
-  notice jobs.
+- The AI auto-repair notice (`aichecks/repair.go`) is email only. Resolve with
+  `recipient.ForUser(owner)`, build subject and body with `loc.T("notices.aiRepair.…")`,
+  and add `"locale"` / `"timezone"` to the job payload (`JobsMailer.Mail` builds a
+  raw map; it carries the two keys). The reason line is ours too
+  (`notices.aiRepair.reason.*`): the stored reason is the same producer in
+  `i18n.English` (`repairReason`), so only the failed run's error or step and the
+  diff stay as the script and the model wrote them.
+- Operator notices (`opsnotify`: support message, new user, watchdog digest,
+  watchdog region, test) are localized for the email medium only (spec decision
+  11). The email copy is in the recipient super admin's locale
+  (`recipient.ForUser`, resolved in `opsnotify.DeliverToUser`, which loads the
+  user row); Slack, Telegram, Discord, push and SMS keep the exact English text.
+  A `Notice` carries its English `Subject`/`Body` and, in `Localized`, an
+  `opsnotify.Localizer` that writes it again for one reader. The two queued kinds
+  (`opsnotify.SupportMessage`, `opsnotify.UserRegistered`) travel the job row as
+  typed fields of `OperatorNoticeJobConfig`; a job queued before the upgrade has
+  none and is mailed in English. The digest's anomaly lines (headline, detail,
+  remediation) come from the detectors and stay English. Dates in the email use
+  the reader's zone; the English text keeps its old formats. The `en` values
+  reproduce that text byte for byte, em dashes included (the other media send
+  it); fr, de and es have none. The signup method is a token: the two plain
+  words (`password`, `invite`) have labels in `notices.userRegistered.methods`,
+  the provider names (google, saml, ldap...) are printed as they are.
 
 ## The `i18n-phase-b` marker
 

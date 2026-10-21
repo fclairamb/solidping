@@ -232,16 +232,9 @@ func (s *Service) SendOperatorNoticeTest(
 		return nil, ErrOperatorNoticeUnavailable
 	}
 
-	notice := opsnotify.Notice{
-		Event:   opsnotify.EventTest,
-		Subject: "[SolidPing] Operator notification test",
-		Body: "This is a test of the operator notifications on this SolidPing instance.\n" +
-			"If you are reading it, the route it arrived on works.\n\n" +
-			"Requested by " + user.Email + ".",
-		URL: strings.TrimRight(baseURL, "/") + config.DashboardBasePath + "/",
-	}
+	notice := opsnotify.NewTestNotice(user.Email, strings.TrimRight(baseURL, "/")+config.DashboardBasePath+"/")
 
-	report := opsnotify.DeliverToUser(ctx, *s.opsNotice, slog.Default(), user.UID, &notice)
+	report := opsnotify.DeliverToUser(ctx, *s.opsNotice, slog.Default(), user.UID, notice)
 
 	return &OperatorNoticeTestResponse{
 		Delivered: report.Delivered,
