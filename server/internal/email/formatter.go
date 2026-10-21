@@ -298,9 +298,10 @@ func dict(args ...any) (map[string]any, error) {
 }
 
 // funcsFor returns the template functions of one render: the static ones plus
-// the locale-bound ones (t, tn, tHTML, date, day, month, duration, number, pct,
-// lang). Format parses its templates on every call, so binding them before the
-// parse shares no mutable state between concurrent renders. If parsed
+// the locale-bound ones (t, tn, tHTML, date, day, month, dayIn, monthIn,
+// duration, number, signed, pct, listAnd, listOr, lang). Format parses its
+// templates on every call, so binding them before the parse shares no
+// mutable state between concurrent renders. If parsed
 // templates are ever cached, Clone a never-executed master and call Funcs on
 // the clone; calling Funcs on a shared tree would switch the language of every
 // render in flight.
@@ -312,9 +313,16 @@ func (f *TemplateFormatter) funcsFor(loc i18n.Locale) template.FuncMap {
 	funcs["date"] = loc.Date
 	funcs["day"] = loc.Day
 	funcs["month"] = loc.Month
+	// dayIn / monthIn take an IANA zone first: a calendar date anchored to a
+	// zone (a report period, a UTC day strip), not to the reader's.
+	funcs["dayIn"] = func(zone string, value any) string { return loc.InZone(zone).Day(value) }
+	funcs["monthIn"] = func(zone string, value any) string { return loc.InZone(zone).Month(value) }
 	funcs["duration"] = loc.Duration
 	funcs["number"] = loc.Number
+	funcs["signed"] = loc.Signed
 	funcs["pct"] = loc.Pct
+	funcs["listAnd"] = loc.ListAnd
+	funcs["listOr"] = loc.ListOr
 	funcs["lang"] = loc.Lang
 
 	return funcs

@@ -1,6 +1,11 @@
 package i18n
 
 import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io/fs"
+	"os"
 	"regexp"
 	"sort"
 	"strings"
@@ -17,19 +22,76 @@ import (
 // function run against the real catalogs, then against a fixture that must
 // fail it (the positive control): a guard that cannot fail proves nothing.
 
-// identicalAllowlist names the "<key>" whose value is deliberately the same as
-// English in the listed languages. Only for a brand, a technical term the
+// The identical allowlist names the keys whose value is deliberately the same
+// as English in some languages. Only for a brand, a technical term the
 // language uses as is, or a word spelled the same. Never to silence a string
 // nobody translated. Same rules as dash0's identical-allowlist.ts.
 //
-//nolint:gochecknoglobals // test table.
-var identicalAllowlist = map[string][]string{
-	"common.header.logoAlt":   {LangFrench, LangGerman}, // "Logo"
-	"common.footer.dashboard": {LangGerman},             // "Dashboard"
-	"common.months.long.apr":  {LangGerman},             // "April"
-	"common.months.long.aug":  {LangGerman},             // "August"
-	"common.months.long.sep":  {LangGerman},             // "September"
-	"common.months.long.nov":  {LangGerman},             // "November"
+// It lives in testdata/identical/<namespace>.json, one file per namespace, so
+// two phase B groups never edit the same file:
+//
+//	{"<namespace>.<key>": {"<lang>": "<why>"}}
+var (
+	errAllowlistForeignKey = errors.New("allowlist key outside its file's namespace")
+	errAllowlistLang       = errors.New("allowlist language must be fr, de or es")
+	errAllowlistNoReason   = errors.New("allowlist entry without a reason")
+)
+
+// loadIdenticalAllowlist reads every <namespace>.json of fsys into
+// key -> languages.
+func loadIdenticalAllowlist(fsys fs.FS) (map[string][]string, error) {
+	entries, err := fs.ReadDir(fsys, ".")
+	if err != nil {
+		return nil, err
+	}
+
+	out := map[string][]string{}
+
+	for _, entry := range entries {
+		namespace, isJSON := strings.CutSuffix(entry.Name(), ".json")
+		if entry.IsDir() || !isJSON {
+			continue
+		}
+
+		raw, readErr := fs.ReadFile(fsys, entry.Name())
+		if readErr != nil {
+			return nil, readErr
+		}
+
+		var file map[string]map[string]string
+		if err := json.Unmarshal(raw, &file); err != nil {
+			return nil, fmt.Errorf("%s: %w", entry.Name(), err)
+		}
+
+		for key, langs := range file {
+			if !strings.HasPrefix(key, namespace+".") {
+				return nil, fmt.Errorf("%w: %s in %s", errAllowlistForeignKey, key, entry.Name())
+			}
+
+			for lang, why := range langs {
+				if !containsString(otherLangs(), lang) {
+					return nil, fmt.Errorf("%w: %s %q", errAllowlistLang, key, lang)
+				}
+
+				if strings.TrimSpace(why) == "" {
+					return nil, fmt.Errorf("%w: %s %s", errAllowlistNoReason, key, lang)
+				}
+
+				out[key] = append(out[key], lang)
+			}
+		}
+	}
+
+	return out, nil
+}
+
+func identicalAllowlist(t *testing.T) map[string][]string {
+	t.Helper()
+
+	allowlist, err := loadIdenticalAllowlist(os.DirFS("testdata/identical"))
+	require.NoError(t, err)
+
+	return allowlist
 }
 
 func otherLangs() []string {
@@ -190,6 +252,11 @@ func TestCatalogs_EveryLanguageIsLoaded(t *testing.T) {
 	for _, lang := range Supported() {
 		r.NotEmpty(catalogs[lang], lang)
 		r.Contains(catalogs[lang], "common.footer.unsubscribe", lang)
+
+		for key := range catalogs[lang] {
+			// Reserved for the emailpreview positive control (locale_test.go).
+			r.False(strings.HasPrefix(key, "control."), "%s: the control namespace is reserved", key)
+		}
 	}
 }
 
@@ -258,15 +325,17 @@ func TestCatalogs_PlaceholderParity(t *testing.T) {
 func TestCatalogs_NothingLeftUntranslated(t *testing.T) {
 	t.Parallel()
 
+	allowlist := identicalAllowlist(t)
+
 	for _, lang := range otherLangs() {
 		t.Run(lang, func(t *testing.T) {
 			t.Parallel()
 			r := require.New(t)
 
-			r.Empty(untranslated(catalogs[LangEnglish], catalogs[lang], lang, identicalAllowlist),
-				"identical to en and not in identicalAllowlist")
-			r.Empty(staleAllowlistEntries(catalogs, lang, identicalAllowlist),
-				"identicalAllowlist entries that are no longer identical (or gone)")
+			r.Empty(untranslated(catalogs[LangEnglish], catalogs[lang], lang, allowlist),
+				"identical to en and not in testdata/identical/<namespace>.json")
+			r.Empty(staleAllowlistEntries(catalogs, lang, allowlist),
+				"testdata/identical entries that are no longer identical (or gone)")
 		})
 	}
 
@@ -289,6 +358,84 @@ func TestCatalogs_NothingLeftUntranslated(t *testing.T) {
 		r.Equal([]string{"common.copied"}, untranslated(en, fr, LangFrench, allowlist))
 		r.Equal([]string{"common.gone"}, staleAllowlistEntries(
 			map[string]map[string]string{LangEnglish: en, LangFrench: fr}, LangFrench, allowlist))
+	})
+}
+
+func TestIdenticalAllowlist_RejectsBrokenFiles(t *testing.T) {
+	t.Parallel()
+
+	file := func(content string) fstest.MapFS {
+		return fstest.MapFS{"common.json": &fstest.MapFile{Data: []byte(content)}}
+	}
+
+	t.Run("valid", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		got, err := loadIdenticalAllowlist(file(`{"common.logo": {"fr": "same word"}}`))
+		r.NoError(err)
+		r.Equal(map[string][]string{"common.logo": {LangFrench}}, got)
+	})
+
+	for name, tc := range map[string]struct {
+		content string
+		want    error
+	}{
+		"a key of another namespace": {`{"incident.logo": {"fr": "same word"}}`, errAllowlistForeignKey},
+		"english":                    {`{"common.logo": {"en": "same word"}}`, errAllowlistLang},
+		"an unknown language":        {`{"common.logo": {"it": "same word"}}`, errAllowlistLang},
+		"no reason":                  {`{"common.logo": {"de": " "}}`, errAllowlistNoReason},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := loadIdenticalAllowlist(file(tc.content))
+			require.ErrorIs(t, err, tc.want)
+		})
+	}
+
+	t.Run("malformed JSON", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := loadIdenticalAllowlist(file(`{"common.logo": ["fr"]}`))
+		require.Error(t, err)
+	})
+}
+
+// pluralOneWithoutCount lists every x_one leaf that does not print {count}.
+// French reads _one for 0 too, so "One check" would say "Une vérification"
+// for zero checks.
+func pluralOneWithoutCount(keys map[string]string) []string {
+	var out []string
+
+	for key, value := range keys {
+		if strings.HasSuffix(key, pluralOne) && !strings.Contains(value, "{"+countParam+"}") {
+			out = append(out, key)
+		}
+	}
+
+	sort.Strings(out)
+
+	return out
+}
+
+func TestCatalogs_PluralOneShowsTheCount(t *testing.T) {
+	t.Parallel()
+
+	for _, lang := range Supported() {
+		t.Run(lang, func(t *testing.T) {
+			t.Parallel()
+			require.Empty(t, pluralOneWithoutCount(catalogs[lang]))
+		})
+	}
+
+	t.Run("positive control", func(t *testing.T) {
+		t.Parallel()
+		require.Equal(t, []string{"common.blind_one"}, pluralOneWithoutCount(map[string]string{
+			"common.blind_one":   "One check is blind",
+			"common.blind_other": "{count} checks are blind",
+			"common.ok_one":      "{count} check",
+		}))
 	})
 }
 

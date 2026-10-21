@@ -51,7 +51,8 @@
     "sentBy": "Sent by",
     "dashboard": "Dashboard",
     "stopAlerts": "Stop alerts for {check}",
-    "unsubscribe": "Unsubscribe"
+    "unsubscribe": "Unsubscribe",
+    "automated": "This is an automated notification from SolidPing."
   },
   "incidentActions": {
     "ack": "I'm on it",
@@ -59,8 +60,23 @@
     "ackExplain": "\"I'm on it\" tells your team you are handling it and stops escalation.",
     "ackExpires": "The link works until {date}."
   },
+  "labels": {
+    "check": "Check",
+    "target": "Target",
+    "checkURL": "Check URL",
+    "since": "Since",
+    "incident": "Incident",
+    "docs": "Docs"
+  },
+  "textField": "{label}: {value}",
   "fallbackLink": "Button not working? Paste this link into your browser:",
   "supportReply": {
     "notice": "You can reply directly to this email to reach a human — we read every reply."
+  },
+  "list": {
+    "and": "{head} and {last}",
+    "andBeforeVowel": "{head} and {last}",
+    "or": "{head} or {last}",
+    "orBeforeVowel": "{head} or {last}"
   }
 }

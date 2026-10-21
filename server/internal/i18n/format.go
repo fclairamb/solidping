@@ -1,6 +1,7 @@
 package i18n
 
 import (
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -65,7 +66,8 @@ func (l Locale) Date(value any) string {
 
 // Day renders the calendar date of an instant in the locale's timezone,
 // without the time: "Jul 12", "12 juil.", "12. Juli", "12 jul". The year is
-// added only when it is not the current one. Same inputs as Date.
+// added only when it is not the current one. Same inputs as Date. For a day
+// anchored to another zone (a UTC day strip), see In.
 func (l Locale) Day(value any) string {
 	when, raw, ok := toTime(value)
 	if !ok {
@@ -84,7 +86,8 @@ func (l Locale) Day(value any) string {
 
 // Month renders the month of an instant, in the locale's timezone, with its
 // year: "July 2026", "juillet 2026", "Juli 2026", "julio de 2026". Same
-// inputs as Date.
+// inputs as Date. For a month anchored to another zone (a report period),
+// see In.
 func (l Locale) Month(value any) string {
 	when, raw, ok := toTime(value)
 	if !ok {
@@ -176,12 +179,120 @@ func (l Locale) Pct(value any, decimals int) string {
 		number.MinFractionDigits(decimals), number.MaxFractionDigits(decimals)))
 }
 
+// Signed renders a number with an explicit sign, for a change between two
+// periods: "+1.5", "-0.25", "+1,5" in French. A value that rounds to zero at
+// decimals reads "+0". Same inputs as Number.
+func (l Locale) Signed(value any, decimals int) string {
+	n, ok := toFloat(value)
+	if !ok {
+		text, _ := value.(string)
+
+		return text
+	}
+
+	factor := math.Pow(10, float64(decimals))
+	rounded := math.Round(n*factor) / factor
+
+	if rounded < 0 {
+		return l.Number(rounded, decimals)
+	}
+
+	return "+" + l.Number(math.Abs(rounded), decimals)
+}
+
+// ListAnd joins items as "a, b and c" ("a, b y c", "a e Ibiza" in Spanish).
+func (l Locale) ListAnd(items any) string {
+	return l.list(items, "common.list.and", isSpanishISound)
+}
+
+// ListOr joins items as "a, b or c" ("a, b o c", "a u Okta" in Spanish).
+func (l Locale) ListOr(items any) string {
+	return l.list(items, "common.list.or", isSpanishOSound)
+}
+
+// list joins items with ", " and puts the conjunction of key before the last
+// one. Spanish swaps y/o for e/u before a word starting with that vowel sound;
+// key+"BeforeVowel" holds that form (the plain one in other languages).
+// items may be a []string or the []any a job's JSON round trip produces.
+func (l Locale) list(items any, key string, vowelSound func(string) bool) string {
+	words := toStrings(items)
+
+	switch len(words) {
+	case 0:
+		return ""
+	case 1:
+		return words[0]
+	}
+
+	last := words[len(words)-1]
+	if l.Lang() == LangSpanish && vowelSound(last) {
+		key += "BeforeVowel"
+	}
+
+	return l.T(key, "head", strings.Join(words[:len(words)-1], ", "), "last", last)
+}
+
+// isSpanishISound: "y" becomes "e" before /i/ ("i", "hi"), but not before a
+// diphthong ("hie", "hia": "agua y hielo").
+func isSpanishISound(word string) bool {
+	lower := strings.ToLower(strings.TrimSpace(word))
+	for _, prefix := range []string{"i", "í", "hi", "hí"} {
+		rest, ok := strings.CutPrefix(lower, prefix)
+		if !ok {
+			continue
+		}
+
+		return !strings.HasPrefix(prefix, "h") || !strings.ContainsAny(firstRune(rest), "aeiouáéó")
+	}
+
+	return false
+}
+
+// isSpanishOSound: "o" becomes "u" before /o/ ("o", "ho").
+func isSpanishOSound(word string) bool {
+	lower := strings.ToLower(strings.TrimSpace(word))
+	for _, prefix := range []string{"o", "ó", "ho", "hó"} {
+		if strings.HasPrefix(lower, prefix) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func firstRune(text string) string {
+	for _, char := range text {
+		return string(char)
+	}
+
+	return ""
+}
+
+// toStrings accepts the shapes a list reaches a template in.
+func toStrings(items any) []string {
+	switch typed := items.(type) {
+	case []string:
+		return typed
+	case []any:
+		out := make([]string, 0, len(typed))
+		for _, item := range typed {
+			if text, ok := item.(string); ok {
+				out = append(out, text)
+			}
+		}
+
+		return out
+	default:
+		return nil
+	}
+}
+
 // formatCount renders a Tn count: no fraction digits for a whole number, up to
-// two otherwise.
+// two otherwise, and no thousands separator (see Tn).
 func (l Locale) formatCount(n float64) string {
 	const maxDecimals = 2
 
-	return l.printer().Sprint(number.Decimal(n, number.MaxFractionDigits(maxDecimals)))
+	return l.printer().Sprint(number.Decimal(n, number.MaxFractionDigits(maxDecimals), number.NoSeparator()))
 }
 
 func (l Locale) printer() *message.Printer {

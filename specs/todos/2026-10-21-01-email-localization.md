@@ -57,9 +57,13 @@ timezone. Today every email is English and every date is UTC.
     expiry ("works until Jul 12") from `incidentlinks.AckTokenTTL` and the incident start, instead
     of a literal "7 days".
 11. **Also localized**: the support-reply notice (idempotency check no longer matches an English
-    substring), the AI auto-repair notice and operator notices (raw-text emails), and the two pages
-    reached from email links: the unsubscribe page and the "I'm on it" ack result page (locale from
-    the token's email address -> user, else `en`; `lang` attribute set).
+    substring), the AI auto-repair notice (raw-text email), and the pages reached from email links:
+    the unsubscribe page, the "I'm on it" ack result page (locale from the token's email address ->
+    user, else `en`; `lang` attribute set) and the status-subscriber landing pages (the page's
+    language). Instance operator notices (`opsnotify`: support message, new user, watchdog, test)
+    stay English on every channel, email included: one `Notice` is fanned out to every medium
+    (the others stay English, decision 13), it is queued as finished text before its recipient is
+    resolved, and it goes to the instance's super admins, not to customers.
 12. **Preview**: `?locale=en|fr|de|es` on `/api/mgmt/email-preview` (index and template), validated
     before rendering, `en` default keeps today's bytes. Fixtures are produced by the production
     helpers with the requested locale (fixes the drift: AckVia, CommentSource, custom-domain
@@ -83,8 +87,10 @@ timezone. Today every email is English and every date is UTC.
 - **A. Foundation**: i18n package, catalogs loader + `common` namespace, migration + model + API +
   validation, `Format` signature + funcs, job/message locale fields, resolver, base.html and shared
   partials localized, preview `?locale`, catalog tests. Fixtures split into per-group files.
-- **B. Per group** (disjoint files): incident templates + notifications producers; escalation /
-  paging / test / region / usage-cap / custom-domain; account + membership + invitation; uptime
-  report; status subscriber; raw-text emails + support notice; landing pages; dash0.
+- **B. Per group** (disjoint files, ownership table in `wiki/conventions/email-i18n.md`): incident
+  templates + notifications producers; escalation / paging / test / region / usage-cap /
+  custom-domain; account + membership + invitation; uptime report; status subscriber (with its
+  landing pages); AI auto-repair notice (the support notice was done in phase A); unsubscribe and
+  ack pages; dash0.
 - **C. Review**: translation quality per language, missed strings, other channels unchanged,
   renders in every locale, real test emails.

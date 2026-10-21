@@ -79,7 +79,10 @@ func ParseTimezone(name string) (*time.Location, error) {
 		return nil, errors.Join(ErrUnknownTimezone, err)
 	}
 
-	locationCache.Store(name, loc)
+	// LoadOrStore, not Store: two renders racing on a cold zone must end up
+	// with the same *time.Location, the one the cache keeps.
+	stored, _ := locationCache.LoadOrStore(name, loc)
+	loc, _ = stored.(*time.Location)
 
 	return loc, nil
 }
@@ -145,6 +148,28 @@ func (l Locale) Location() *time.Location {
 // config stores.
 func (l Locale) Timezone() string {
 	return l.Location().String()
+}
+
+// In returns a copy that shows dates in location (UTC when nil) instead of
+// the reader's zone. Only for a calendar date anchored to a zone: an uptime
+// report's month is the schedule's month, its day strip counts UTC days.
+// Printing such a date in the reader's zone moves "Oct 1 00:00 Paris" to
+// "September" in New York. An instant (when something happened) stays in the
+// reader's zone.
+func (l Locale) In(location *time.Location) Locale {
+	l.location = location
+
+	return l
+}
+
+// InZone is In for an IANA name. An unknown or empty name gives UTC, as in New.
+func (l Locale) InZone(name string) Locale {
+	location, err := ParseTimezone(name)
+	if err != nil {
+		location = nil
+	}
+
+	return l.In(location)
 }
 
 // WithClock returns a copy whose "current year" comes from now. Tests only.

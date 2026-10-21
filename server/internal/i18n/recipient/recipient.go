@@ -3,10 +3,12 @@
 //
 // The chain, for the language and the timezone independently:
 //  1. the recipient's own account (matched by address, case-insensitive);
-//  2. a hint from the call site, for a recipient with no account: the
-//     inviter's preferences, the status page's language, the signup form's;
-//  3. for organization mail to an address with no account (email integration
-//     lists, uptime report lists), the organization owner's preferences;
+//  2. a hint from the call site, for what the account does not set (or a
+//     recipient with no account): the inviter's preferences, the status
+//     page's language, the signup form's;
+//  3. only for organization mail to an address with NO account (email
+//     integration lists, uptime report lists), the organization owner's
+//     preferences. A member without preferences never reads the owner's;
 //  4. English, UTC.
 package recipient
 
@@ -78,12 +80,16 @@ func NewResolver(lookup Lookup) *Resolver {
 
 // ForAddress resolves the locale of one recipient address. orgUID is the
 // organization the mail is about, "" for mail that is not (registration,
-// password reset): only then is the owner consulted. Lookup failures are
-// logged and skipped, never returned: a lookup must not cost a mail.
+// password reset). The org owner is consulted only for an address with no
+// account: a member who has not set a preference reads English/UTC (as
+// ForUser gives them), never the owner's. Lookup failures are logged and
+// skipped, never returned: a lookup must not cost a mail.
 func (r *Resolver) ForAddress(ctx context.Context, orgUID, address string, hint Hint) i18n.Locale {
 	var chain chooser
 
-	if chain.consider(prefsOf(r.user(ctx, address))) {
+	account := r.user(ctx, address)
+
+	if chain.consider(prefsOf(account)) {
 		return chain.locale()
 	}
 
@@ -91,7 +97,7 @@ func (r *Resolver) ForAddress(ctx context.Context, orgUID, address string, hint 
 		return chain.locale()
 	}
 
-	if orgUID != "" {
+	if orgUID != "" && account == nil {
 		chain.consider(prefsOf(r.owner(ctx, orgUID)))
 	}
 

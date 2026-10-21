@@ -24,7 +24,9 @@ func (l Locale) T(key string, kv ...any) string {
 
 // Tn is T for a count-dependent string, stored as two leaves, key_one and
 // key_other. French uses _one for 0 and 1, English, German and Spanish for 1
-// only. {count} is filled with the localized count unless kv names it.
+// only. {count} is filled with the localized count unless kv names it: the
+// language's decimal separator, but no thousands separator, so a producer
+// shared with other channels keeps printing "1234" like its old %d.
 // count may be any integer or float type (a JSON round trip turns ints into
 // float64); anything else picks _other.
 func (l Locale) Tn(key string, count any, kv ...any) string {

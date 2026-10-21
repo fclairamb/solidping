@@ -307,6 +307,40 @@
      button. Param: the URL. Usage: {{template "fallback-link" .ConfirmURL}}.
      Trimmed so it adds no blank line to the rendered document. */ -}}
 {{define "fallback-link"}}<p class="fallback">{{t "common.fallbackLink"}}<br>{{link . ""}}</p>{{end}}
+{{- /* incident-actions-text is the plaintext twin of incident-actions, for
+     a "text" block: the "I'm on it" link with what it does and until when,
+     then "View incident". Same fields (AckURL, IncidentURL, AckExpiresAt).
+     Each part starts with a newline, so a blank line separates it from what
+     precedes. Usage: {{template "incident-actions-text" .}}. */ -}}
+{{define "incident-actions-text"}}
+{{- $ack := field . "AckURL" -}}
+{{- $incident := field . "IncidentURL" -}}
+{{- $ackExpires := date (field . "AckExpiresAt") -}}
+{{- if $ack}}
+{{t "common.textField" "label" (t "common.incidentActions.ack") "value" $ack}}
+{{t "common.incidentActions.ackExplain"}}{{if $ackExpires}} {{t "common.incidentActions.ackExpires" "date" $ackExpires}}{{end}}
+{{end}}
+{{- if $incident}}
+{{t "common.textField" "label" (t "common.incidentActions.viewIncident") "value" $incident}}
+{{end}}
+{{- end}}
+{{- /* footer-text is the plaintext twin of the footer, for a "text" block:
+     Dashboard, Docs and the unsubscribe link, one line each when set.
+     Reads DashboardURL, DocsURL, UnsubscribeURL, UnsubscribeCheckName.
+     Incident mails print {{t "common.footer.automated"}} on the line above.
+     Usage: {{template "footer-text" .}}. */ -}}
+{{define "footer-text"}}
+{{- $dashboardURL := field . "DashboardURL" -}}
+{{- $docsURL := field . "DocsURL" -}}
+{{- $unsubscribeURL := field . "UnsubscribeURL" -}}
+{{- $unsubscribeCheckName := field . "UnsubscribeCheckName" -}}
+{{- if $dashboardURL}}{{t "common.textField" "label" (t "common.footer.dashboard") "value" $dashboardURL}}
+{{end}}
+{{- if $docsURL}}{{t "common.textField" "label" (t "common.labels.docs") "value" $docsURL}}
+{{end}}
+{{- if $unsubscribeURL}}{{if $unsubscribeCheckName}}{{t "common.textField" "label" (t "common.footer.stopAlerts" "check" $unsubscribeCheckName) "value" $unsubscribeURL}}{{else}}{{t "common.textField" "label" (t "common.footer.unsubscribe") "value" $unsubscribeURL}}{{end}}
+{{end}}
+{{- end}}
 {{/* statusbanner-render draws the state of an incident mail: a 4px colored
      stripe across the top of the card and a tinted pill above the headline.
      Params: Variant ("down" | "recovered" | "escalated" | "reopened" |

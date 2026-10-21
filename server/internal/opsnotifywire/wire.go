@@ -123,7 +123,8 @@ func Build(dbSvc db.Service, registry *services.Registry, cfg *config.Config, op
 // enqueueEmail hands the notice to the normal email job chain, so it inherits
 // the retry policy and SMTP configuration every other mail uses.
 //
-// i18n-phase-b: resolve the recipient locale (raw text: the body is built in Go)
+// Operator notices stay English, email included (spec 2026-10-21-01, decision
+// 11): one Notice goes to every medium, and the others stay English.
 func enqueueEmail(registry *services.Registry) opsnotify.EnqueueEmailFunc {
 	return func(ctx context.Context, orgUID, to, subject, text string) error {
 		if registry == nil || registry.Jobs == nil {

@@ -110,9 +110,9 @@ func TestForAddress_Chain(t *testing.T) {
 			"es", "Asia/Tokyo",
 		},
 		{
-			"the owner fills what the account and hint lack", "org-1", "tz-only@acme.com",
+			"an account never takes the owner's preferences", "org-1", "tz-only@acme.com",
 			recipient.Hint{},
-			"de", "Asia/Tokyo",
+			"en", "Asia/Tokyo",
 		},
 		{
 			"invalid stored values are skipped", "", "bogus@acme.com",
@@ -137,9 +137,14 @@ func TestForAddress_Chain(t *testing.T) {
 		{"not org mail: no owner", "", "stranger@acme.com", recipient.Hint{}, "en", "UTC"},
 		{"an org without an owner", "org-empty", "stranger@acme.com", recipient.Hint{}, "en", "UTC"},
 		{
-			"an account without preferences falls through", "org-1", "bare@acme.com",
+			"an account without preferences reads English/UTC, not the owner's", "org-1", "bare@acme.com",
 			recipient.Hint{},
-			"de", "Europe/Berlin",
+			"en", "UTC",
+		},
+		{
+			"an account without preferences still takes the hint", "org-1", "bare@acme.com",
+			recipient.Hint{Locale: "es"},
+			"es", "UTC",
 		},
 	}
 

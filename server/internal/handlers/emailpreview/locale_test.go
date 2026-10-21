@@ -12,17 +12,19 @@ import (
 	"github.com/fclairamb/solidping/server/internal/i18n"
 )
 
-// commonNamespace is the catalog namespace phase A localizes everywhere
-// (base.html and the shared partials). The other namespaces arrive with phase
-// B; until then a template may still render English text of its own, which
-// is not a failure yet (spec 2026-10-21-01, phase C tightens this).
-const commonNamespace = "common."
+// controlNamespace is reserved for positive controls: its keys are looked up
+// on purpose and never exist. No catalog may be named control.json.
+const controlNamespace = "control."
+
+// minPreheaderRunes is the shortest preheader worth an inbox preview line.
+const minPreheaderRunes = 20
 
 // TestPreview_EveryTemplateRendersInEveryLocale renders every shipped template
 // in every supported language, through the same route the dashboard uses:
 // HTML, plaintext and the index subject. None may carry template syntax or a
-// missing value, and no key of the common namespace may be missing from any
-// catalog.
+// missing value, every preheader must be 20+ characters, and no catalog key
+// of any namespace may be missing while rendering (a typo, or a key another
+// phase B group owns and has not merged, renders the raw key otherwise).
 func TestPreview_EveryTemplateRendersInEveryLocale(t *testing.T) {
 	t.Parallel()
 
@@ -59,6 +61,10 @@ func TestPreview_EveryTemplateRendersInEveryLocale(t *testing.T) {
 				r.NotContains(html.Body.String(), "{{", "%s/%s html", lang, tmpl)
 				r.Contains(html.Body.String(), `<html lang="`+lang+`">`, "%s/%s html", lang, tmpl)
 
+				preheader := preheaderText(html.Body.String())
+				r.GreaterOrEqual(len([]rune(preheader)), minPreheaderRunes,
+					"%s/%s preheader too short: %q", lang, tmpl, preheader)
+
 				text := doGet(t, router, base+"&format=text")
 				r.Equal(http.StatusOK, text.Code, "%s/%s text", lang, tmpl)
 				r.NotContains(text.Body.String(), "{{", "%s/%s text", lang, tmpl)
@@ -70,18 +76,19 @@ func TestPreview_EveryTemplateRendersInEveryLocale(t *testing.T) {
 	// Runs after the parallel renders above (t.Cleanup of the parent waits for
 	// its subtests), so every render's lookups are recorded by then.
 	t.Cleanup(func() {
-		for _, missing := range missingCommonKeys(i18n.MissingKeys()) {
+		for _, missing := range unexpectedMissingKeys(i18n.MissingKeys()) {
 			t.Errorf("catalog key missing while rendering: %s", missing)
 		}
 	})
 }
 
-// missingCommonKeys keeps the "<lang>:<key>" entries of the common namespace.
-func missingCommonKeys(all []string) []string {
+// unexpectedMissingKeys drops the "<lang>:<key>" entries of the control
+// namespace from all.
+func unexpectedMissingKeys(all []string) []string {
 	var out []string
 
 	for _, missing := range all {
-		if _, key, _ := strings.Cut(missing, ":"); strings.HasPrefix(key, commonNamespace) {
+		if _, key, _ := strings.Cut(missing, ":"); !strings.HasPrefix(key, controlNamespace) {
 			out = append(out, missing)
 		}
 	}
@@ -89,16 +96,19 @@ func missingCommonKeys(all []string) []string {
 	return out
 }
 
-// TestMissingCommonKeys_PositiveControl proves the absence check above can
-// fail: a missing lookup is recorded, and the filter keeps common keys only.
-func TestMissingCommonKeys_PositiveControl(t *testing.T) {
+// TestMissingKeys_PositiveControl proves the absence check above can fail: a
+// missing lookup is recorded, and the filter keeps every namespace but the
+// control one.
+func TestMissingKeys_PositiveControl(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	i18n.New(i18n.LangGerman, "").T("emailpreview.control.key")
-	r.Contains(i18n.MissingKeys(), "de:emailpreview.control.key")
+	i18n.New(i18n.LangGerman, "").T(controlNamespace + "emailpreview")
+	r.Contains(i18n.MissingKeys(), "de:"+controlNamespace+"emailpreview")
 
-	r.Equal([]string{"fr:common.gone"}, missingCommonKeys([]string{"fr:common.gone", "de:emailpreview.control.key"}))
+	r.Equal([]string{"fr:incident.created.gone", "de:common.gone"}, unexpectedMissingKeys([]string{
+		"fr:incident.created.gone", "de:" + controlNamespace + "emailpreview", "de:common.gone",
+	}))
 }
 
 // TestPreview_LocaleDefaultsToEnglish is the positive control of the locale

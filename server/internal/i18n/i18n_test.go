@@ -159,12 +159,14 @@ func TestTn_PluralRules(t *testing.T) {
 		{LangEnglish, 0, "0 checks"},
 		{LangEnglish, 1, "1 check"},
 		{LangEnglish, 2, "2 checks"},
-		{LangEnglish, 1234, "1,234 checks"},
+		// No thousands separator: a producer shared with other channels keeps
+		// its old %d output.
+		{LangEnglish, 1234, "1234 checks"},
 		{LangFrench, 0, "0 contrôle"},
 		{LangFrench, 1, "1 contrôle"},
 		{LangFrench, 1.5, "1,5 contrôle"},
 		{LangFrench, 2, "2 contrôles"},
-		{LangFrench, 1234, "1 234 contrôles"},
+		{LangFrench, 1234, "1234 contrôles"},
 		{LangGerman, 0, "0 Checks"},
 		{LangGerman, 1, "1 Check"},
 		{LangGerman, 3, "3 Checks"},
@@ -440,6 +442,91 @@ func TestNumberAndPct(t *testing.T) {
 		r.Equal("100%", Default.Pct(100, 0))
 		r.Equal("n/a", Default.Number("n/a", 1))
 		r.Empty(Default.Pct(nil, 1))
+	})
+}
+
+func TestIn_AnchorsCalendarDatesToAZone(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	paris, err := ParseTimezone("Europe/Paris")
+	r.NoError(err)
+
+	// The first instant of October in Paris is still September in New York.
+	october := time.Date(2026, 10, 1, 0, 0, 0, 0, paris)
+	reader := New(LangEnglish, "America/New_York").WithClock(fixedClock())
+
+	r.Equal("September 2026", reader.Month(october), "the reader's zone")
+	r.Equal("October 2026", reader.In(paris).Month(october))
+	r.Equal("October 2026", reader.InZone("Europe/Paris").Month(october))
+	r.Equal("Oct 1", reader.In(paris).Day(october))
+	r.Equal("Sep 30", reader.In(time.UTC).Day(october), "a UTC day strip")
+	r.Equal("Sep 30", reader.InZone("Mars/Olympus").Day(october), "an unknown zone gives UTC")
+	r.Equal("Sep 30", reader.In(nil).Day(october), "nil gives UTC")
+	r.Equal(LangEnglish, reader.In(paris).Lang(), "the language is kept")
+	r.Equal("Sep 30", reader.Day(october), "In returns a copy")
+}
+
+func TestSigned(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	r.Equal("+1.50", Default.Signed(1.5, 2))
+	r.Equal("-0.25", Default.Signed(-0.25, 2))
+	r.Equal("+3", Default.Signed(3, 0))
+	r.Equal("-1,234", Default.Signed(-1234, 0))
+	r.Equal("+0.000", Default.Signed(-0.0004, 3), "a value that rounds to zero")
+	r.Equal("+1,5", New(LangFrench, "").Signed(1.5, 1))
+	r.Equal("-1,5", New(LangGerman, "").Signed(-1.5, 1))
+	r.Equal("+2", Default.Signed(float64(2), 0), "a JSON round trip")
+	r.Equal("n/a", Default.Signed("n/a", 1))
+	r.Empty(Default.Signed(nil, 1))
+}
+
+func TestLists(t *testing.T) {
+	t.Parallel()
+
+	three := []string{"Google", "GitHub", "Microsoft"}
+
+	cases := map[string][2]string{
+		LangEnglish: {"Google, GitHub or Microsoft", "Google, GitHub and Microsoft"},
+		LangFrench:  {"Google, GitHub ou Microsoft", "Google, GitHub et Microsoft"},
+		LangGerman:  {"Google, GitHub oder Microsoft", "Google, GitHub und Microsoft"},
+		LangSpanish: {"Google, GitHub o Microsoft", "Google, GitHub y Microsoft"},
+	}
+
+	for lang, want := range cases {
+		t.Run(lang, func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+
+			loc := New(lang, "")
+			r.Equal(want[0], loc.ListOr(three))
+			r.Equal(want[1], loc.ListAnd(three))
+		})
+	}
+
+	t.Run("spanish euphony", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		es := New(LangSpanish, "")
+		r.Equal("Google u Okta", es.ListOr([]string{"Google", "Okta"}))
+		r.Equal("GitHub u Horizon", es.ListOr([]string{"GitHub", "Horizon"}))
+		r.Equal("París e Ibiza", es.ListAnd([]string{"París", "Ibiza"}))
+		r.Equal("Madrid e Hiroshima", es.ListAnd([]string{"Madrid", "Hiroshima"}))
+		r.Equal("agua y hielo", es.ListAnd([]string{"agua", "hielo"}), "not before a diphthong")
+		r.Equal("Google or Okta", Default.ListOr([]string{"Google", "Okta"}), "Spanish only")
+	})
+
+	t.Run("shapes", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		r.Empty(Default.ListOr(nil))
+		r.Empty(Default.ListOr([]string{}))
+		r.Equal("Google", Default.ListOr([]string{"Google"}))
+		r.Equal("a or b", Default.ListOr([]any{"a", "b"}), "a JSON round trip")
 	})
 }
 
