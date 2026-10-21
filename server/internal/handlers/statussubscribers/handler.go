@@ -2,6 +2,7 @@ package statussubscribers
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
@@ -11,8 +12,11 @@ import (
 	"net/http"
 	"time"
 
+	"golang.org/x/text/language"
+
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
+	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/httpx"
@@ -104,15 +108,15 @@ func (h *Handler) sendConfirmMail(ctx context.Context, result *SubscribeResult) 
 	}
 
 	viewModel := map[string]any{
-		"Subject":    MailKindConfirm.subject(data),
 		"PageName":   data.PageName,
 		"ConfirmURL": data.ConfirmURL,
 	}
 	// Status page branding, honoring hide_branding — never the org's.
 	email.ApplyStatusPageBranding(viewModel, data.PageName, result.PageLogoURL, result.PageHideBranding)
 
-	subject, htmlBody, textBody, err := h.formatter.Format(
-		"status-subscriber-confirm.html", i18n.Default, viewModel) // i18n-phase-b: resolve the recipient locale
+	loc := subscriberLocales(ctx, h.dbService)(result.Subscriber)
+
+	subject, htmlBody, textBody, err := h.formatter.Format("status-subscriber-confirm.html", loc, viewModel)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "status subscriber confirm mail formatting failed",
 			"subscriberUid", result.Subscriber.UID, "error", err)
@@ -128,6 +132,8 @@ func (h *Handler) sendConfirmMail(ctx context.Context, result *SubscribeResult) 
 		HTML:             htmlBody,
 		Text:             textBody,
 		SupportReplyable: email.SupportReplyable("status-subscriber-confirm.html"),
+		Locale:           loc.Lang(),
+		Timezone:         loc.Timezone(),
 	}
 
 	if _, err := h.sender.Send(ctx, msg); err != nil {
@@ -140,31 +146,89 @@ func (h *Handler) sendConfirmMail(ctx context.Context, result *SubscribeResult) 
 // Confirm handles GET /api/v1/public/status-subscribers/confirm?token=… .
 func (h *Handler) Confirm(writer http.ResponseWriter, req *http.Request) error {
 	token := req.URL.Query().Get("token")
+	// Read before Confirm consumes the token: nothing finds the row by it afterwards.
+	loc := h.landingLocale(req, h.tokenSubscriber(req.Context(), token, false))
 
 	result, err := h.svc.Confirm(req.Context(), token)
 	if err != nil {
-		return h.writeLandingError(writer, err)
+		return h.writeLandingError(writer, loc, err)
 	}
 
-	return h.writeLanding(writer,
-		"Subscription confirmed",
-		fmt.Sprintf("You're now subscribed to updates for %s.", result.PageName),
+	return h.writeLanding(writer, loc,
+		loc.T("subscriber.landing.confirmed.title"),
+		loc.T("subscriber.landing.confirmed.body", "page", result.PageName),
 		h.statusPageURL(result.OrgSlug, result.PageSlug))
 }
 
 // Unsubscribe handles GET /api/v1/public/status-subscribers/unsubscribe?token=… .
 func (h *Handler) Unsubscribe(writer http.ResponseWriter, req *http.Request) error {
 	token := req.URL.Query().Get("token")
+	// Read before Unsubscribe deletes the row: nothing finds it by token afterwards.
+	loc := h.landingLocale(req, h.tokenSubscriber(req.Context(), token, true))
 
 	result, err := h.svc.Unsubscribe(req.Context(), token)
 	if err != nil {
-		return h.writeLandingError(writer, err)
+		return h.writeLandingError(writer, loc, err)
 	}
 
-	return h.writeLanding(writer,
-		"Unsubscribed",
-		fmt.Sprintf("You will no longer receive updates for %s.", result.PageName),
+	return h.writeLanding(writer, loc,
+		loc.T("subscriber.landing.unsubscribed.title"),
+		loc.T("subscriber.landing.unsubscribed.body", "page", result.PageName),
 		h.statusPageURL(result.OrgSlug, result.PageSlug))
+}
+
+// tokenSubscriber is the live subscriber a confirm (or, with unsubscribe, an
+// unsubscribe) token points at, nil when none does.
+func (h *Handler) tokenSubscriber(ctx context.Context, token string, unsubscribe bool) *models.StatusPageSubscriber {
+	if h.dbService == nil || token == "" {
+		return nil
+	}
+
+	lookup := h.dbService.GetSubscriberByConfirmToken
+	if unsubscribe {
+		lookup = h.dbService.GetSubscriberByUnsubToken
+	}
+
+	sub, err := lookup(ctx, token)
+	if err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			h.logger.DebugContext(ctx, "status subscriber landing: token lookup failed", "error", err)
+		}
+
+		return nil
+	}
+
+	return sub
+}
+
+// landingLocale is the language of a landing page. For a subscriber, the one
+// their mails are in (their account's, else the page's, else English), so a
+// link lands on a page in the language of the mail it came from. A token that
+// points at no subscriber, typically a link already used, names no page: the
+// browser's Accept-Language stands in, else English.
+func (h *Handler) landingLocale(req *http.Request, sub *models.StatusPageSubscriber) i18n.Locale {
+	if sub != nil {
+		return subscriberLocales(req.Context(), h.dbService)(sub)
+	}
+
+	return i18n.New(acceptLanguage(req.Header.Get("Accept-Language")), "")
+}
+
+// acceptLanguage is the most preferred language of an Accept-Language header
+// that has a catalog, "" when none has one.
+func acceptLanguage(header string) string {
+	tags, _, err := language.ParseAcceptLanguage(header)
+	if err != nil {
+		return ""
+	}
+
+	for _, tag := range tags {
+		if lang := i18n.Normalize(tag.String()); lang != "" {
+			return lang
+		}
+	}
+
+	return ""
 }
 
 func (h *Handler) statusPageURL(orgSlug, pageSlug string) string {
@@ -292,44 +356,47 @@ func (h *Handler) handleError(writer http.ResponseWriter, request *http.Request,
 }
 
 // writeLandingError renders an HTML landing page for token failures.
-func (h *Handler) writeLandingError(writer http.ResponseWriter, err error) error {
+func (h *Handler) writeLandingError(writer http.ResponseWriter, loc i18n.Locale, err error) error {
 	if errors.Is(err, ErrInvalidToken) {
-		return h.writeLandingStatus(writer, http.StatusBadRequest,
-			"Link expired",
-			"This link is no longer valid. It may have already been used.", "")
+		return h.writeLandingStatus(writer, loc, http.StatusBadRequest,
+			loc.T("subscriber.landing.expired.title"),
+			loc.T("subscriber.landing.expired.body"), "")
 	}
 
-	return h.writeLandingStatus(writer, http.StatusInternalServerError,
-		"Something went wrong",
-		"Please try again later.", "")
+	return h.writeLandingStatus(writer, loc, http.StatusInternalServerError,
+		loc.T("subscriber.landing.failed.title"),
+		loc.T("subscriber.landing.failed.body"), "")
 }
 
-func (h *Handler) writeLanding(writer http.ResponseWriter, title, body, pageURL string) error {
-	return h.writeLandingStatus(writer, http.StatusOK, title, body, pageURL)
+func (h *Handler) writeLanding(writer http.ResponseWriter, loc i18n.Locale, title, body, pageURL string) error {
+	return h.writeLandingStatus(writer, loc, http.StatusOK, title, body, pageURL)
 }
 
-// writeLandingStatus renders a minimal, mobile-friendly HTML confirmation page.
+// writeLandingStatus renders a minimal, mobile-friendly HTML confirmation
+// page in loc's language.
 func (h *Handler) writeLandingStatus(
-	writer http.ResponseWriter, status int, title, body, pageURL string,
+	writer http.ResponseWriter, loc i18n.Locale, status int, title, body, pageURL string,
 ) error {
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+	// An expired link's page is in the browser's language (landingLocale).
+	writer.Header().Add("Vary", "Accept-Language")
 	securityheaders.ApplyBaseline(writer.Header())
 	writer.WriteHeader(status)
 
 	link := ""
 	if pageURL != "" {
 		link = fmt.Sprintf(
-			`<p><a href="%s" style="color:#2563eb;">Back to the status page</a></p>`,
-			html.EscapeString(pageURL))
+			`<p><a href="%s" style="color:#2563eb;">%s</a></p>`,
+			html.EscapeString(pageURL), html.EscapeString(loc.T("subscriber.landing.back")))
 	}
 
-	page := fmt.Sprintf(`<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">`+
+	page := fmt.Sprintf(`<!DOCTYPE html><html lang="%s"><head><meta charset="utf-8">`+
 		`<meta name="viewport" content="width=device-width, initial-scale=1.0"><title>%s</title></head>`+
 		`<body style="font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#f5f6f8;`+
 		`margin:0;padding:48px 16px;color:#2d3748;text-align:center;">`+
 		`<div style="max-width:480px;margin:0 auto;background:#fff;border-radius:8px;padding:32px;">`+
 		`<h1 style="font-size:22px;color:#1a1a2e;">%s</h1><p>%s</p>%s</div></body></html>`,
-		html.EscapeString(title), html.EscapeString(title), html.EscapeString(body), link)
+		loc.Lang(), html.EscapeString(title), html.EscapeString(title), html.EscapeString(body), link)
 
 	_, err := writer.Write([]byte(page))
 

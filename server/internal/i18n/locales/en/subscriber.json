@@ -1,0 +1,41 @@
+{
+  "confirm": {
+    "subject": "Confirm your subscription to {page}",
+    "preheader": "Confirm your address to start receiving {page} updates.",
+    "heading": "Confirm your subscription",
+    "intro": "You asked to receive status updates for <strong>{page}</strong>. Please confirm your email address to start receiving notifications.",
+    "button": "Confirm subscription",
+    "ignore": "If you didn't request this, you can safely ignore this email.",
+    "textIntro": "You asked to receive status updates. Confirm your email address:"
+  },
+  "update": {
+    "subject": "{page}: {title}",
+    "kind": {
+      "incidentOpened": "New incident",
+      "update": "Status update",
+      "resolved": "Resolved"
+    },
+    "viewStatusPage": "View status page",
+    "moreInfo": "More information",
+    "reason": "You're receiving this because you subscribed to {page}."
+  },
+  "landing": {
+    "confirmed": {
+      "title": "Subscription confirmed",
+      "body": "You're now subscribed to updates for {page}."
+    },
+    "unsubscribed": {
+      "title": "Unsubscribed",
+      "body": "You will no longer receive updates for {page}."
+    },
+    "expired": {
+      "title": "Link expired",
+      "body": "This link is no longer valid. It may have already been used."
+    },
+    "failed": {
+      "title": "Something went wrong",
+      "body": "Please try again later."
+    },
+    "back": "Back to the status page"
+  }
+}
