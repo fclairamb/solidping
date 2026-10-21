@@ -1,0 +1,41 @@
+{
+  "confirm": {
+    "subject": "Bestätigen Sie Ihr Abonnement für {page}",
+    "preheader": "Bestätigen Sie Ihre Adresse, um Updates zu {page} zu erhalten.",
+    "heading": "Bestätigen Sie Ihr Abonnement",
+    "intro": "Sie haben Status-Updates zu <strong>{page}</strong> angefordert. Bitte bestätigen Sie Ihre E-Mail-Adresse, um Benachrichtigungen zu erhalten.",
+    "button": "Abonnement bestätigen",
+    "ignore": "Falls Sie das nicht angefordert haben, können Sie diese E-Mail einfach ignorieren.",
+    "textIntro": "Sie haben Status-Updates zu dieser Statusseite angefordert. Bestätigen Sie Ihre E-Mail-Adresse:"
+  },
+  "update": {
+    "subject": "{page}: {title}",
+    "kind": {
+      "incidentOpened": "Neue Störung",
+      "update": "Status-Update",
+      "resolved": "Behoben"
+    },
+    "viewStatusPage": "Statusseite anzeigen",
+    "moreInfo": "Weitere Informationen",
+    "reason": "Sie erhalten diese E-Mail, weil Sie {page} abonniert haben."
+  },
+  "landing": {
+    "confirmed": {
+      "title": "Abonnement bestätigt",
+      "body": "Ab sofort erhalten Sie Updates zu {page}."
+    },
+    "unsubscribed": {
+      "title": "Abmeldung bestätigt",
+      "body": "Sie erhalten keine Updates mehr zu {page}."
+    },
+    "expired": {
+      "title": "Link abgelaufen",
+      "body": "Dieser Link ist nicht mehr gültig. Möglicherweise wurde er bereits verwendet."
+    },
+    "failed": {
+      "title": "Etwas ist schiefgelaufen",
+      "body": "Bitte versuchen Sie es später erneut."
+    },
+    "back": "Zurück zur Statusseite"
+  }
+}

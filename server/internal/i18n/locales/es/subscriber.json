@@ -1,0 +1,41 @@
+{
+  "confirm": {
+    "subject": "Confirma tu suscripción a {page}",
+    "preheader": "Confirma tu dirección para empezar a recibir las actualizaciones de {page}.",
+    "heading": "Confirma tu suscripción",
+    "intro": "Has pedido recibir las actualizaciones de <strong>{page}</strong>. Confirma tu dirección de correo para empezar a recibir notificaciones.",
+    "button": "Confirmar suscripción",
+    "ignore": "Si no lo has pedido tú, puedes ignorar este correo.",
+    "textIntro": "Has pedido recibir las actualizaciones de esta página de estado. Confirma tu dirección de correo:"
+  },
+  "update": {
+    "subject": "{page}: {title}",
+    "kind": {
+      "incidentOpened": "Nueva incidencia",
+      "update": "Actualización de estado",
+      "resolved": "Resuelto"
+    },
+    "viewStatusPage": "Ver la página de estado",
+    "moreInfo": "Más información",
+    "reason": "Recibes este correo porque te suscribiste a {page}."
+  },
+  "landing": {
+    "confirmed": {
+      "title": "Suscripción confirmada",
+      "body": "A partir de ahora recibirás las actualizaciones de {page}."
+    },
+    "unsubscribed": {
+      "title": "Suscripción cancelada",
+      "body": "Ya no recibirás actualizaciones de {page}."
+    },
+    "expired": {
+      "title": "Enlace caducado",
+      "body": "Este enlace ya no es válido. Puede que ya se haya usado."
+    },
+    "failed": {
+      "title": "Algo salió mal",
+      "body": "Inténtalo de nuevo más tarde."
+    },
+    "back": "Volver a la página de estado"
+  }
+}
