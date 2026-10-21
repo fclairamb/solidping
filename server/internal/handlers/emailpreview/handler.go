@@ -46,6 +46,9 @@ func forceLightScheme(html string) string {
 	return darkMediaQueryRE.ReplaceAllLiteralString(html, "@media not all")
 }
 
+// schemeLight is the explicit light value of ?colorScheme.
+const schemeLight = "light"
+
 // localeParam is the query parameter that picks the preview language.
 const localeParam = "locale"
 
@@ -120,10 +123,10 @@ func (h *Handler) Preview(writer http.ResponseWriter, req *http.Request) error {
 
 	colorScheme := req.URL.Query().Get("colorScheme")
 	if colorScheme == "" {
-		colorScheme = "light"
+		colorScheme = schemeLight
 	}
 
-	if colorScheme != "light" && colorScheme != "dark" {
+	if colorScheme != schemeLight && colorScheme != "dark" {
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError,
 			"colorScheme must be 'light' or 'dark'")
 	}
@@ -132,7 +135,7 @@ func (h *Handler) Preview(writer http.ResponseWriter, req *http.Request) error {
 	case "html":
 		if colorScheme == "dark" {
 			html = forceDarkScheme(html)
-		} else if req.URL.Query().Get("colorScheme") == "light" {
+		} else if req.URL.Query().Get("colorScheme") == schemeLight {
 			html = forceLightScheme(html)
 		}
 
