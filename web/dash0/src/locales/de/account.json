@@ -334,7 +334,10 @@
   "emailLanguage": {
     "title": "E-Mail-Sprache",
     "subtitle": "Die Sprache der E-Mails, die SolidPing Ihnen sendet. Auch dieses Dashboard wird in dieser Sprache angezeigt.",
-    "timezone": "Datumsangaben in Ihren E-Mails folgen der Zeitzone Ihres Browsers: {{timezone}}.",
+    "timezone": "Zeitangaben in Ihren E-Mails richten sich nach der Zeitzone Ihres Browsers: {{timezone}}.",
+    "timezoneSaved": "Zeitzone: {{timezone}}.",
+    "impersonating": "Sprache und Zeitzone der E-Mails dieses Kontos. Sie können nicht geändert werden, während Sie das Dashboard als anderer Benutzer ansehen.",
+    "demo": "Sprache und Zeitzone der E-Mails dieses Kontos. Sie können in der Demo nicht geändert werden.",
     "saved": "E-Mail-Sprache gespeichert.",
     "failed": "Ihre E-Mail-Sprache konnte nicht gespeichert werden."
   }

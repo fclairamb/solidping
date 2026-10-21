@@ -30,6 +30,7 @@ import {
   useUpdateProfile,
 } from "@/api/hooks";
 import { useAuth } from "@/contexts/AuthContext";
+import { getImpersonation } from "@/lib/impersonation";
 import {
   LANGUAGES,
   browserTimezone,
@@ -295,6 +296,11 @@ function EmailCard() {
  * It is the dashboard language too: picking one here switches both, exactly
  * like the sidebar's language menu. Dates in emails follow the browser's
  * timezone, which AuthProvider keeps saved; it is shown, not chosen.
+ *
+ * Demo and impersonation sessions neither adopt nor write these (see
+ * preferencesSyncMode): the card shows the account's saved values as the
+ * server uses them (an empty field is English, in UTC), read-only, and says
+ * so instead of tying them to this dashboard and browser.
  */
 function EmailLanguageCard() {
   const { t, i18n } = useTranslation("account");
@@ -305,10 +311,19 @@ function EmailLanguageCard() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState(false);
 
-  const readOnly = Boolean(user?.isDemo || user?.impersonation);
+  const impersonating = Boolean(user?.impersonation) || getImpersonation() !== null;
+  const readOnly = impersonating || Boolean(user?.isDemo);
   const current: LanguageCode =
-    supportedLanguage(user?.preferences?.locale) ?? resolveLang(i18n.resolvedLanguage);
-  const timezone = user?.preferences?.timezone || browserTimezone() || "UTC";
+    supportedLanguage(user?.preferences?.locale) ??
+    (readOnly ? "en" : resolveLang(i18n.resolvedLanguage));
+  const timezone =
+    user?.preferences?.timezone || (readOnly ? undefined : browserTimezone()) || "UTC";
+  let subtitle = t("emailLanguage.subtitle");
+  if (impersonating) {
+    subtitle = t("emailLanguage.impersonating");
+  } else if (readOnly) {
+    subtitle = t("emailLanguage.demo");
+  }
 
   const handleChange = async (value: string) => {
     const code = supportedLanguage(value);
@@ -335,7 +350,7 @@ function EmailLanguageCard() {
           {t("emailLanguage.title")}
         </CardTitle>
         <CardDescription data-testid="profile-email-language-subtitle">
-          {t("emailLanguage.subtitle")}
+          {subtitle}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -387,7 +402,9 @@ function EmailLanguageCard() {
         </div>
 
         <p className="text-sm text-muted-foreground" data-testid="profile-email-timezone">
-          {t("emailLanguage.timezone", { timezone })}
+          {readOnly
+            ? t("emailLanguage.timezoneSaved", { timezone })
+            : t("emailLanguage.timezone", { timezone })}
         </p>
       </CardContent>
     </Card>

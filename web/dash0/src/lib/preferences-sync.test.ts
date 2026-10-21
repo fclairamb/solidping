@@ -28,13 +28,13 @@ describe("planPreferencesSync", () => {
   it("saves the dashboard language when none is saved", () => {
     expect(
       planPreferencesSync({ ...base, server: { timezone: "Europe/Paris" }, uiLanguage: "de" }),
-    ).toEqual({ patch: { locale: "de" } });
+    ).toEqual({ patches: [{ locale: "de" }] });
   });
 
   it("saves the primary subtag of a regional UI language", () => {
     expect(
       planPreferencesSync({ ...base, server: { timezone: "Europe/Paris" }, uiLanguage: "es-MX" }),
-    ).toEqual({ patch: { locale: "es" } });
+    ).toEqual({ patches: [{ locale: "es" }] });
   });
 
   it("never saves a language the server does not support", () => {
@@ -48,20 +48,21 @@ describe("planPreferencesSync", () => {
 
   it("saves the browser timezone whenever it differs, even with a saved one", () => {
     expect(planPreferencesSync({ ...base, browserTimezone: "America/New_York" })).toEqual({
-      patch: { timezone: "America/New_York" },
+      patches: [{ timezone: "America/New_York" }],
     });
   });
 
-  it("sends a first sync as one PATCH with both fields", () => {
-    expect(planPreferencesSync({ ...base, server: {} })).toEqual({
-      patch: { locale: "en", timezone: "Europe/Paris" },
+  it("saves a first sync's language and timezone apart, the language first", () => {
+    // A timezone the server refuses must not take the language down with it.
+    expect(planPreferencesSync({ ...base, server: {}, browserTimezone: "Etc/Unknown" })).toEqual({
+      patches: [{ locale: "en" }, { timezone: "Etc/Unknown" }],
     });
   });
 
   it("adopts the saved language and saves the timezone in the same pass", () => {
     expect(
       planPreferencesSync({ ...base, server: { locale: "fr" }, browserTimezone: "Asia/Tokyo" }),
-    ).toEqual({ changeLanguage: "fr", patch: { timezone: "Asia/Tokyo" } });
+    ).toEqual({ changeLanguage: "fr", patches: [{ timezone: "Asia/Tokyo" }] });
   });
 
   it("leaves the timezone alone when the browser reports none", () => {

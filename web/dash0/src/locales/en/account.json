@@ -335,6 +335,9 @@
     "title": "Email language",
     "subtitle": "The language of the emails SolidPing sends you. It is also the language of this dashboard.",
     "timezone": "Dates in your emails use your browser's timezone: {{timezone}}.",
+    "timezoneSaved": "Timezone: {{timezone}}.",
+    "impersonating": "The language and timezone of this account's emails. They cannot be changed while viewing the dashboard as another user.",
+    "demo": "The language and timezone of this account's emails. They cannot be changed in the demo.",
     "saved": "Email language saved.",
     "failed": "Could not save your email language."
   }

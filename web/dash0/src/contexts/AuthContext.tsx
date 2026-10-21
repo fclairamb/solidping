@@ -356,7 +356,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // this browser (spec 2026-10-21-01, decision 5): a saved language switches
   // the dashboard to it, a missing one is saved from the dashboard's, and the
   // timezone follows the browser. planPreferencesSync holds the rules.
-  const lastPreferencesPatch = useRef<string | null>(null);
+  const sentPreferencePatches = useRef(new Set<string>());
   const uid = user?.uid;
   const hasPreferences = user?.preferences !== undefined;
   const savedLocale = user?.preferences?.locale;
@@ -381,20 +381,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (plan.changeLanguage) {
       void i18n.changeLanguage(plan.changeLanguage);
     }
-    if (!plan.patch) {
-      return;
-    }
     // Each distinct write goes out once per page load: a refused or failed
     // PATCH (an odd browser zone the server does not know) is not retried in
     // a loop, and a re-render cannot send it twice.
-    const key = JSON.stringify([uid, plan.patch]);
-    if (lastPreferencesPatch.current === key) {
+    const pending = (plan.patches ?? []).filter((patch) => {
+      const key = JSON.stringify([uid, patch]);
+      if (sentPreferencePatches.current.has(key)) {
+        return false;
+      }
+      sentPreferencePatches.current.add(key);
+      return true;
+    });
+    if (pending.length === 0) {
       return;
     }
-    lastPreferencesPatch.current = key;
-    savePreferences(uid, plan.patch).catch(() => {
-      // Best effort: the next page load tries again.
-    });
+    // One at a time, in the planned order: a refused timezone leaves the
+    // language saved before it.
+    void (async () => {
+      for (const patch of pending) {
+        try {
+          await savePreferences(uid, patch);
+        } catch {
+          // Best effort: the next page load tries again.
+        }
+      }
+    })();
   }, [
     uid,
     hasPreferences,

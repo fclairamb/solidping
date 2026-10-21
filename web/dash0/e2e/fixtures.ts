@@ -280,12 +280,13 @@ export interface SavedPreferences {
  * after it. So in this page only, /auth/me answers report `saved()` over the
  * real preferences, and a PATCH /auth/me is answered here and never reaches
  * the server: its body goes to `onPatch`, which updates what `saved()`
- * returns next.
+ * returns next. When `onPatch` returns false, the write is refused with the
+ * 400 the server gives a timezone it does not know.
  */
 export async function stubSavedPreferences(
   page: Page,
   saved: () => SavedPreferences,
-  onPatch?: (body: { preferences?: SavedPreferences }) => void,
+  onPatch?: (body: { preferences?: SavedPreferences }) => boolean | void,
 ): Promise<void> {
   // The last real answer: a PATCH is answered in the same shape.
   let last: { user?: { preferences?: SavedPreferences } } | null = null;
@@ -300,7 +301,14 @@ export async function stubSavedPreferences(
   await page.route("**/api/v1/auth/me", async (route) => {
     const request = route.request();
     if (request.method() === "PATCH") {
-      onPatch?.(request.postDataJSON() as { preferences?: SavedPreferences });
+      const accepted = onPatch?.(request.postDataJSON() as { preferences?: SavedPreferences });
+      if (accepted === false) {
+        await route.fulfill({
+          status: 400,
+          json: { title: "Invalid timezone", code: "VALIDATION_ERROR" },
+        });
+        return;
+      }
       await route.fulfill({ status: 200, json: withSaved() });
       return;
     }

@@ -54,8 +54,13 @@ export interface PreferencesSyncInput {
 export interface PreferencesSyncPlan {
   /** Switch the dashboard to the user's saved language. */
   changeLanguage?: string;
-  /** Write these fields to the server. */
-  patch?: PreferencesPatch;
+  /**
+   * Writes to send, in order, one field each. The server validates a PATCH
+   * as a whole, so a timezone it does not know (ICU's "Etc/Unknown", a zone
+   * missing from its tzdata) sent along with the language would lose the
+   * language too. Apart, the language goes first and is saved either way.
+   */
+  patches?: PreferencesPatch[];
 }
 
 /**
@@ -71,6 +76,7 @@ export function planPreferencesSync(input: PreferencesSyncInput): PreferencesSyn
     return plan;
   }
 
+  const patches: PreferencesPatch[] = [];
   const saved = supportedLanguage(input.server.locale);
   const current = supportedLanguage(input.uiLanguage);
   if (saved) {
@@ -78,7 +84,7 @@ export function planPreferencesSync(input: PreferencesSyncInput): PreferencesSyn
       plan.changeLanguage = saved;
     }
   } else if (input.mode === "full" && current) {
-    plan.patch = { locale: current };
+    patches.push({ locale: current });
   }
 
   if (
@@ -86,7 +92,11 @@ export function planPreferencesSync(input: PreferencesSyncInput): PreferencesSyn
     input.browserTimezone &&
     input.browserTimezone !== input.server.timezone
   ) {
-    plan.patch = { ...plan.patch, timezone: input.browserTimezone };
+    patches.push({ timezone: input.browserTimezone });
+  }
+
+  if (patches.length > 0) {
+    plan.patches = patches;
   }
 
   return plan;
