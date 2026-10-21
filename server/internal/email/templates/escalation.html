@@ -4,7 +4,10 @@
 {{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "escalated" "Label" (t "alerts.escalation.pill")}}{{end}}
 {{define "content"}}
     {{- $check := nolink .CheckName}}
-    <h1>{{if .CheckURL}}{{tHTML "alerts.escalation.heading" "check" (tHTML "alerts.link" "url" .CheckURL "text" $check)}}{{else}}{{tHTML "alerts.escalation.heading" "check" $check}}{{end}}</h1>
+    {{- /* tHTML only escapes the href: absURL keeps html/template's scheme
+         filter (http, https or site-relative, else no link). */}}
+    {{- $checkURL := absURL .CheckURL}}
+    <h1>{{if $checkURL}}{{tHTML "alerts.escalation.heading" "check" (tHTML "alerts.link" "url" $checkURL "text" $check)}}{{else}}{{tHTML "alerts.escalation.heading" "check" $check}}{{end}}</h1>
     <p class="lead">{{t "alerts.escalation.lead"}}</p>
     {{template "cause" .}}
     <table class="details-table" role="presentation" cellpadding="0" cellspacing="0">

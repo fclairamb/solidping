@@ -48,7 +48,8 @@
     "more_other": "…and {count} more.",
     "reduced_one": "{count} other check keeps running from its other regions.",
     "reduced_other": "{count} other checks keep running from their other regions.",
-    "nothingToDo": "There is nothing to do on your side. The SolidPing team has been alerted, and you will get a second email when the region is back. Until then these checks will show no data rather than a status."
+    "nothingToDo": "There is nothing to do on your side. The SolidPing team has been alerted, and you will get a second email when the region is back. Until then these checks will show no data rather than a status.",
+    "nothingToDoOneCheck": "There is nothing to do on your side. The SolidPing team has been alerted, and you will get a second email when the region is back. Until then this check will show no data rather than a status."
   },
   "regionRecovered": {
     "subject": "Region {region} is back, your checks resumed",
@@ -77,6 +78,7 @@
       "used_one": "{org} has used its {count} SMS alert included this month.",
       "used_other": "{org} has used its {count} SMS alerts included this month.",
       "dropped": "SolidPing just dropped an SMS alert because of that, and will drop the next ones until {date}.",
+      "droppedNextMonth": "SolidPing just dropped an SMS alert because of that, and will drop the next ones until the 1st of next month (UTC).",
       "keep": "To keep receiving SMS alerts, move to a plan with a higher allowance, or connect your own Twilio account in the integrations: messages sent through it are billed by Twilio and do not count against the plan."
     },
     "voice": {
@@ -87,6 +89,7 @@
       "used_one": "{org} has used its {count} voice call alert included this month.",
       "used_other": "{org} has used its {count} voice call alerts included this month.",
       "dropped": "SolidPing just dropped a voice call alert because of that, and will drop the next ones until {date}.",
+      "droppedNextMonth": "SolidPing just dropped a voice call alert because of that, and will drop the next ones until the 1st of next month (UTC).",
       "keep": "To keep receiving voice call alerts, move to a plan with a higher allowance, or connect your own Twilio account in the integrations: calls placed through it are billed by Twilio and do not count against the plan."
     },
     "whatsapp": {
@@ -97,6 +100,7 @@
       "used_one": "{org} has used its {count} WhatsApp alert included this month.",
       "used_other": "{org} has used its {count} WhatsApp alerts included this month.",
       "dropped": "SolidPing just dropped a WhatsApp alert because of that, and will drop the next ones until {date}.",
+      "droppedNextMonth": "SolidPing just dropped a WhatsApp alert because of that, and will drop the next ones until the 1st of next month (UTC).",
       "keep": "To keep receiving WhatsApp alerts, move to a plan with a higher allowance."
     }
   },

@@ -15,7 +15,7 @@
     </ul>
     {{if .MoreCount}}<p>{{tn "alerts.regionOffline.more" .MoreCount}}</p>{{end}}
     {{if .ReducedCount}}<p>{{tn "alerts.regionOffline.reduced" .ReducedCount}}</p>{{end}}
-    <p>{{t "alerts.regionOffline.nothingToDo"}}</p>
+    <p>{{if .SingleBlind}}{{t "alerts.regionOffline.nothingToDoOneCheck"}}{{else}}{{t "alerts.regionOffline.nothingToDo"}}{{end}}</p>
     {{if .ChecksURL}}
     <div class="cta-wrap">{{template "button" dict "URL" .ChecksURL "Label" (t "alerts.openChecks") "Variant" "primary"}}</div>
     {{end}}
@@ -30,7 +30,7 @@
 {{end}}{{if .ReducedCount}}
 {{tn "alerts.regionOffline.reduced" .ReducedCount}}
 {{end}}
-{{t "alerts.regionOffline.nothingToDo"}}
+{{if .SingleBlind}}{{t "alerts.regionOffline.nothingToDoOneCheck"}}{{else}}{{t "alerts.regionOffline.nothingToDo"}}{{end}}
 {{if .ChecksURL}}
 {{.ChecksURL}}
 {{end}}{{end}}

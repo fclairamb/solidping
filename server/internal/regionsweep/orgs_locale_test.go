@@ -84,13 +84,15 @@ func TestRegionNotices_SpeakEachAdminsLanguage(t *testing.T) {
 	r.Equal("UTC", queued.Timezone)
 	r.Equal("🔴 Region Lauterbourg (lauterbourg) is offline: 1 of your checks is not running", subject)
 	r.Contains(text, "1 of your checks in Acme runs only from this region, so it is not being checked right now:")
+	r.Contains(text, "Until then this check will show no data rather than a status.")
 
 	queued, subject, text = env.renderQueued(t, "lea@acme.com", email.TemplateRegionOffline)
 	r.Equal("fr", queued.Locale)
 	r.Equal("Europe/Paris", queued.Timezone)
 	r.Equal("🔴 La région Lauterbourg (lauterbourg) est hors ligne : 1 de vos contrôles ne s'exécute plus", subject)
-	r.Contains(text, "1 de vos contrôles dans Acme s'exécute uniquement depuis cette région")
+	r.Contains(text, "1 de vos contrôles dans l'organisation Acme s'exécute uniquement depuis cette région")
 	r.Contains(text, "- Pinned API : https://solidping.acme.com/")
+	r.Contains(text, "D'ici là, ce contrôle n'affichera pas de statut, faute de données.")
 
 	since := env.marker(t, darkRegion).Since
 	r.Contains(text, "est hors ligne depuis le "+i18n.New("fr", "Europe/Paris").Date(since)+".")
@@ -104,7 +106,7 @@ func TestRegionNotices_SpeakEachAdminsLanguage(t *testing.T) {
 	r.Equal("fr", queued.Locale)
 	r.Equal("🟢 La région Lauterbourg (lauterbourg) est rétablie, vos contrôles ont repris", subject)
 	r.Contains(text, "Hors ligne pendant : 10 min")
-	r.Contains(text, "Hors ligne depuis : "+i18n.New("fr", "Europe/Paris").Date(since))
+	r.Contains(text, "Passée hors ligne : "+i18n.New("fr", "Europe/Paris").Date(since))
 
 	_, subject, text = env.renderQueued(t, "alice@acme.com", email.TemplateRegionRecovered)
 	r.Equal("🟢 Region Lauterbourg (lauterbourg) is back, your checks resumed", subject)
@@ -135,8 +137,8 @@ func TestOfflineEmailData_CountsWhatItDoesNotList(t *testing.T) {
 
 	want := map[string][2]string{
 		"en": {"…and 20 more.", "1 other check keeps running from its other regions."},
-		"fr": {"…et 20 autres.", "1 autre contrôle continue de s'exécuter depuis ses autres régions."},
-		"de": {"…und 20 weitere.", "1 weitere Prüfung läuft weiterhin von ihren anderen Regionen aus."},
+		"fr": {"…et 20 autres.", "1 autre contrôle continue de s'exécuter depuis ses régions restantes."},
+		"de": {"…und 20 weitere.", "1 weitere Prüfung läuft in ihren übrigen Regionen weiter."},
 		"es": {"…y 20 más.", "1 comprobación más sigue ejecutándose desde sus otras"},
 	}
 
@@ -149,6 +151,9 @@ func TestOfflineEmailData_CountsWhatItDoesNotList(t *testing.T) {
 		}
 
 		r.Contains(html, "<li>API</li>", "a check without a URL is listed unlinked")
+		if lang == i18n.LangEnglish {
+			r.Contains(text, "Until then these checks will show no data", "22 blind checks read in the plural")
+		}
 		r.Contains(text, "22:41 JST", "%s: the outage start is in the reader's zone", lang)
 	}
 }

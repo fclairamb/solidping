@@ -3,10 +3,10 @@
   "link": "<a href=\"{url}\">{text}</a>",
   "openChecks": "Abrir tus comprobaciones",
   "escalation": {
-    "subject": "{check} sigue caído, escalado a ti",
+    "subject": "{check} sigue fallando, se te ha escalado el incidente",
     "pill": "Escalado",
-    "heading": "{check} sigue caído",
-    "lead": "Nadie reconoció el incidente a tiempo, así que se te ha escalado.",
+    "heading": "{check} sigue fallando",
+    "lead": "Nadie ha reconocido el incidente a tiempo, así que se te ha escalado.",
     "failedChecks": "Número de fallos",
     "unknownCheck": "Comprobación desconocida"
   },
@@ -36,8 +36,8 @@
     "alertSubjectNoCheck": "[SolidPing] Alerta"
   },
   "regionOffline": {
-    "subject_one": "La región {region} está fuera de línea: {count} de tus comprobaciones no se está ejecutando",
-    "subject_other": "La región {region} está fuera de línea: {count} de tus comprobaciones no se están ejecutando",
+    "subject_one": "La región {region} está fuera de línea: {count} de tus comprobaciones no se ejecuta",
+    "subject_other": "La región {region} está fuera de línea: {count} de tus comprobaciones no se ejecutan",
     "preheader": "Desde el {since}, las comprobaciones que solo se ejecutan desde {region} no se están realizando.",
     "pill": "Región fuera de línea",
     "heading": "La región {region} está fuera de línea",
@@ -48,7 +48,8 @@
     "more_other": "…y {count} más.",
     "reduced_one": "{count} comprobación más sigue ejecutándose desde sus otras regiones.",
     "reduced_other": "{count} comprobaciones más siguen ejecutándose desde sus otras regiones.",
-    "nothingToDo": "No tienes que hacer nada. El equipo de SolidPing ya está avisado y recibirás un segundo correo cuando la región vuelva. Hasta entonces, estas comprobaciones aparecerán sin datos en lugar de mostrar un estado."
+    "nothingToDo": "No tienes que hacer nada. El equipo de SolidPing ya está avisado y recibirás un segundo correo cuando la región vuelva a estar en línea. Hasta entonces, estas comprobaciones aparecerán sin datos en lugar de mostrar un estado.",
+    "nothingToDoOneCheck": "No tienes que hacer nada. El equipo de SolidPing ya está avisado y recibirás un segundo correo cuando la región vuelva a estar en línea. Hasta entonces, esta comprobación aparecerá sin datos en lugar de mostrar un estado."
   },
   "regionRecovered": {
     "subject": "La región {region} ha vuelto, tus comprobaciones se han reanudado",
@@ -64,8 +65,8 @@
   },
   "usageCap": {
     "pill": "Cuota mensual agotada",
-    "otherChannels": "Los demás canales (correo, Slack, push...) siguen funcionando.",
-    "onlyOnce": "Este es el único correo sobre esto este mes.",
+    "otherChannels": "Los demás canales (correo, Slack, push, etc.) siguen funcionando.",
+    "onlyOnce": "No te enviaremos otro correo sobre esto hasta el mes que viene.",
     "seePlans": "Ver planes",
     "openUsage": "Ver el uso",
     "usage": "Uso",
@@ -77,6 +78,7 @@
       "used_one": "{org} ha agotado su cuota de {count} alerta por SMS de este mes.",
       "used_other": "{org} ha agotado su cuota de {count} alertas por SMS de este mes.",
       "dropped": "Por eso SolidPing acaba de descartar una alerta por SMS y descartará las siguientes hasta el {date}.",
+      "droppedNextMonth": "Por eso SolidPing acaba de descartar una alerta por SMS y descartará las siguientes hasta el día 1 del mes que viene (UTC).",
       "keep": "Para seguir recibiendo alertas por SMS, cámbiate a un plan con una cuota mayor o conecta tu propia cuenta de Twilio en las integraciones: Twilio factura los mensajes enviados a través de ella y no cuentan para el plan."
     },
     "voice": {
@@ -87,6 +89,7 @@
       "used_one": "{org} ha agotado su cuota de {count} llamada de voz de este mes.",
       "used_other": "{org} ha agotado su cuota de {count} llamadas de voz de este mes.",
       "dropped": "Por eso SolidPing acaba de descartar una alerta por llamada de voz y descartará las siguientes hasta el {date}.",
+      "droppedNextMonth": "Por eso SolidPing acaba de descartar una alerta por llamada de voz y descartará las siguientes hasta el día 1 del mes que viene (UTC).",
       "keep": "Para seguir recibiendo alertas por llamada de voz, cámbiate a un plan con una cuota mayor o conecta tu propia cuenta de Twilio en las integraciones: Twilio factura las llamadas realizadas a través de ella y no cuentan para el plan."
     },
     "whatsapp": {
@@ -97,6 +100,7 @@
       "used_one": "{org} ha agotado su cuota de {count} alerta por WhatsApp de este mes.",
       "used_other": "{org} ha agotado su cuota de {count} alertas por WhatsApp de este mes.",
       "dropped": "Por eso SolidPing acaba de descartar una alerta por WhatsApp y descartará las siguientes hasta el {date}.",
+      "droppedNextMonth": "Por eso SolidPing acaba de descartar una alerta por WhatsApp y descartará las siguientes hasta el día 1 del mes que viene (UTC).",
       "keep": "Para seguir recibiendo alertas por WhatsApp, cámbiate a un plan con una cuota mayor."
     }
   },
@@ -106,8 +110,8 @@
     "pill": "Dominio personalizado desactivado",
     "heading": "{domain} ya no sirve tu página de estado",
     "stopped": "El dominio personalizado {domain} de la página de estado {page} ({org}) no superó la reverificación DNS durante varios días seguidos, así que SolidPing ha dejado de servir la página en él. Ahora los visitantes ven una página de error en lugar de tu página de estado.",
-    "lastCheck": "La última comprobación indicó:",
-    "fix": "Para solucionarlo: confirma que el registro CNAME del dominio sigue apuntando al destino que aparece en los ajustes de la página de estado y luego haz clic en {verify}. Si el DNS vuelve a resolver correctamente por sí solo, SolidPing también restablecerá el dominio automáticamente tras varias comprobaciones correctas seguidas.",
+    "lastCheck": "La última comprobación DNS indicó:",
+    "fix": "Para solucionarlo: confirma que el registro CNAME del dominio sigue apuntando al destino que aparece en los ajustes de la página de estado y luego haz clic en {verify}. Si el DNS vuelve a resolver correctamente por sí solo, SolidPing también restablecerá el dominio automáticamente tras varias comprobaciones DNS correctas seguidas.",
     "verify": "Verificar",
     "openSettings": "Abrir los ajustes de la página de estado"
   }

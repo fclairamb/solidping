@@ -1,18 +1,22 @@
-{{define "subject"}}🟠 {{t (printf "alerts.usageCap.%s.subject" (or .Channel "sms")) "org" .OrgName}}{{end}}
-{{define "preheader"}}{{tn (printf "alerts.usageCap.%s.preheader" (or .Channel "sms")) .Limit}}{{end}}
-{{template "base.html" .}}
-{{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "escalated" "Label" (t "alerts.usageCap.pill")}}{{end}}
 {{- /* Channel is "sms", "voice" or "whatsapp" (jobtypes.UsageCapEmailData):
      every sentence that names the channel is its own key per channel
-     (alerts.usageCap.<channel>.*), so each language words it whole. */ -}}
+     (alerts.usageCap.<channel>.*), so each language words it whole. Each block
+     maps it onto that allow-list first: a job queued before the channel became
+     a key segment carries the old label ("SMS", "voice call", "WhatsApp") and
+     no ResetsAt, and an unknown value must never build a key. */ -}}
+{{define "subject"}}{{$ch := "sms"}}{{if eq .Channel "voice" "voice call"}}{{$ch = "voice"}}{{else if eq .Channel "whatsapp" "WhatsApp"}}{{$ch = "whatsapp"}}{{end}}🟠 {{t (printf "alerts.usageCap.%s.subject" $ch) "org" .OrgName}}{{end}}
+{{define "preheader"}}{{$ch := "sms"}}{{if eq .Channel "voice" "voice call"}}{{$ch = "voice"}}{{else if eq .Channel "whatsapp" "WhatsApp"}}{{$ch = "whatsapp"}}{{end}}{{tn (printf "alerts.usageCap.%s.preheader" $ch) .Limit}}{{end}}
+{{template "base.html" .}}
+{{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "escalated" "Label" (t "alerts.usageCap.pill")}}{{end}}
 {{define "content"}}
-    <h1>{{t (printf "alerts.usageCap.%s.heading" (or .Channel "sms"))}}</h1>
+    {{- $ch := "sms"}}{{if eq .Channel "voice" "voice call"}}{{$ch = "voice"}}{{else if eq .Channel "whatsapp" "WhatsApp"}}{{$ch = "whatsapp"}}{{end}}
+    <h1>{{t (printf "alerts.usageCap.%s.heading" $ch)}}</h1>
     <p>
-      {{tn (printf "alerts.usageCap.%s.used" (or .Channel "sms")) .Limit "org" .OrgName}}
-      {{t (printf "alerts.usageCap.%s.dropped" (or .Channel "sms")) "date" (date .ResetsAt)}}
+      {{tn (printf "alerts.usageCap.%s.used" $ch) .Limit "org" .OrgName}}
+      {{if .ResetsAt}}{{t (printf "alerts.usageCap.%s.dropped" $ch) "date" (date .ResetsAt)}}{{else}}{{t (printf "alerts.usageCap.%s.droppedNextMonth" $ch)}}{{end}}
       {{t "alerts.usageCap.otherChannels"}}
     </p>
-    <p>{{t (printf "alerts.usageCap.%s.keep" (or .Channel "sms"))}}</p>
+    <p>{{t (printf "alerts.usageCap.%s.keep" $ch)}}</p>
     <p>{{t "alerts.usageCap.onlyOnce"}}</p>
     {{if .UpgradeURL}}
     <div class="cta-wrap">{{template "button" dict "URL" .UpgradeURL "Label" (t "alerts.usageCap.seePlans") "Variant" "primary"}}</div>
@@ -20,11 +24,11 @@
     <div class="cta-wrap">{{template "button" dict "URL" .UsageURL "Label" (t "alerts.usageCap.openUsage") "Variant" "primary"}}</div>
     {{end}}
 {{end}}
-{{define "text"}}{{t (printf "alerts.usageCap.%s.heading" (or .Channel "sms"))}}
+{{define "text"}}{{$ch := "sms"}}{{if eq .Channel "voice" "voice call"}}{{$ch = "voice"}}{{else if eq .Channel "whatsapp" "WhatsApp"}}{{$ch = "whatsapp"}}{{end}}{{t (printf "alerts.usageCap.%s.heading" $ch)}}
 
-{{tn (printf "alerts.usageCap.%s.used" (or .Channel "sms")) .Limit "org" .OrgName}} {{t (printf "alerts.usageCap.%s.dropped" (or .Channel "sms")) "date" (date .ResetsAt)}} {{t "alerts.usageCap.otherChannels"}}
+{{tn (printf "alerts.usageCap.%s.used" $ch) .Limit "org" .OrgName}} {{if .ResetsAt}}{{t (printf "alerts.usageCap.%s.dropped" $ch) "date" (date .ResetsAt)}}{{else}}{{t (printf "alerts.usageCap.%s.droppedNextMonth" $ch)}}{{end}} {{t "alerts.usageCap.otherChannels"}}
 
-{{t (printf "alerts.usageCap.%s.keep" (or .Channel "sms"))}}
+{{t (printf "alerts.usageCap.%s.keep" $ch)}}
 
 {{t "alerts.usageCap.onlyOnce"}}
 {{if .UpgradeURL}}

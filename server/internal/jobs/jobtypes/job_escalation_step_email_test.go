@@ -158,10 +158,10 @@ func TestEscalationEmail_UserTargetSpeaksTheirLanguage(t *testing.T) {
 
 	msg := env.emails.lastMessage()
 	r.Equal([]string{"ana@acme.com"}, msg.Recipients.To)
-	r.Equal("🟠 API health sigue caído, escalado a ti (#1)", msg.Subject)
+	r.Equal("🟠 API health sigue fallando, se te ha escalado el incidente (#1)", msg.Subject)
 	r.Equal("es", msg.Locale)
 	r.Equal("Europe/Madrid", msg.Timezone)
-	r.Contains(msg.HTML, "Nadie reconoci")
+	r.Contains(msg.HTML, "Nadie ha reconocido")
 }
 
 // TestEscalationEmail_UnknownCheckIsLocalized: a check deleted since the
@@ -182,4 +182,81 @@ func TestEscalationEmail_UnknownCheckIsLocalized(t *testing.T) {
 	en := newRun().buildEscalationEmailViewModel(t.Context(), env.jctx, &incident, "a@acme.com", i18n.English)
 	r.Equal(escalationUnknownCheckName, en["CheckName"])
 	r.Equal(escalationUnknownCheckName, escalationCheckName(nil))
+}
+
+// disabledPhoneRoute gives user a phone route that is switched off, so a page
+// walks its routes, delivers nothing and falls back to the direct email.
+func disabledPhoneRoute(t *testing.T, env *phoneTestEnv, user *models.User) {
+	t.Helper()
+
+	contact := models.NewUserContact(user.UID, env.org.UID, models.UserContactTypePhone, "+33600000000", "mobile")
+	require.NoError(t, env.db.UpsertUserContact(t.Context(), contact))
+
+	route := models.NewUserNotificationRoute(user.UID, env.org.UID, contact.UID, 0)
+	route.Enabled = false
+	_, err := env.db.DB().NewInsert().Model(route).Exec(t.Context())
+	require.NoError(t, err)
+}
+
+// TestEscalationEmail_OnCallUserSpeaksTheirLanguage: the on-call user of a
+// schedule target is emailed in their own language and zone, both when they
+// have no route and when none of their routes delivered.
+func TestEscalationEmail_OnCallUserSpeaksTheirLanguage(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	env := setupPhoneEnv(t, false, "")
+
+	noRoute := seedEscalationUser(t, env, "jonas@acme.com", "de", "Europe/Berlin")
+	noRouteSchedule := "schedule-email-locale-no-route"
+	registerOnCall(t, noRouteSchedule, noRoute)
+
+	r.Equal(1, newRun().pageSchedule(t.Context(), env.jctx, slog.Default(), env.incident, &noRouteSchedule, nil))
+
+	msg := env.emails.lastMessage()
+	r.Equal([]string{"jonas@acme.com"}, msg.Recipients.To)
+	r.Equal("🟠 API health ist weiterhin ausgefallen, an Sie eskaliert (#1)", msg.Subject)
+	r.Equal("de", msg.Locale)
+	r.Equal("Europe/Berlin", msg.Timezone)
+
+	routedOff := seedEscalationUser(t, env, "lea@acme.com", "fr", "Europe/Paris")
+	disabledPhoneRoute(t, env, routedOff)
+
+	routedOffSchedule := "schedule-email-locale-routes-off"
+	registerOnCall(t, routedOffSchedule, routedOff)
+
+	r.Equal(1, newRun().pageSchedule(t.Context(), env.jctx, slog.Default(), env.incident, &routedOffSchedule, nil))
+
+	msg = env.emails.lastMessage()
+	r.Equal([]string{"lea@acme.com"}, msg.Recipients.To)
+	r.Equal("🟠 API health est toujours en panne, incident escaladé vers vous (#1)", msg.Subject)
+	r.Equal("fr", msg.Locale)
+	r.Equal("Europe/Paris", msg.Timezone)
+}
+
+// TestEscalationEmail_AdminFallbackSpeaksTheirLanguage: an all-admins target
+// emails each admin with no delivering route in that admin's language and
+// zone.
+func TestEscalationEmail_AdminFallbackSpeaksTheirLanguage(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	env := setupPhoneEnv(t, false, "")
+
+	admin := seedEscalationUser(t, env, "ana@acme.com", "es", "Europe/Madrid")
+	r.NoError(env.db.CreateOrganizationMember(t.Context(),
+		models.NewOrganizationMember(env.org.UID, admin.UID, models.MemberRoleAdmin)))
+
+	r.Equal(1, newRun().pageAllAdmins(t.Context(), env.jctx, slog.Default(), env.incident, nil))
+
+	msg := env.emails.lastMessage()
+	r.Equal([]string{"ana@acme.com"}, msg.Recipients.To)
+	r.Equal("🟠 API health sigue fallando, se te ha escalado el incidente (#1)", msg.Subject)
+	r.Equal("es", msg.Locale)
+	r.Equal("Europe/Madrid", msg.Timezone)
+
+	// Same admin, a route that is switched off: still the fallback, still Spanish.
+	disabledPhoneRoute(t, env, admin)
+	r.Equal(1, newRun().pageAllAdmins(t.Context(), env.jctx, slog.Default(), env.incident, nil))
+	r.Equal("es", env.emails.lastMessage().Locale)
 }

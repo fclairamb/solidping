@@ -23,7 +23,7 @@
   "testEmail": {
     "smtp": {
       "title": "E-mail de test SolidPing",
-      "body": "Ceci est un e-mail de test envoyé par SolidPing. Si vous le recevez, votre configuration e-mail fonctionne correctement."
+      "body": "Ceci est un e-mail de test envoyé par SolidPing. Si vous l'avez reçu, votre configuration e-mail fonctionne correctement."
     },
     "route": {
       "title": "Notification de test de SolidPing",
@@ -41,14 +41,15 @@
     "preheader": "Depuis le {since}, les contrôles qui s'exécutent uniquement depuis {region} ne sont plus effectués.",
     "pill": "Région hors ligne",
     "heading": "La région {region} est hors ligne",
-    "since": "La région SolidPing {region} est hors ligne depuis le {since}.",
-    "blind_one": "{count} de vos contrôles dans {org} s'exécute uniquement depuis cette région et n'est donc plus effectué pour l'instant :",
-    "blind_other": "{count} de vos contrôles dans {org} s'exécutent uniquement depuis cette région et ne sont donc plus effectués pour l'instant :",
+    "since": "La région {region} de SolidPing est hors ligne depuis le {since}.",
+    "blind_one": "{count} de vos contrôles dans l'organisation {org} s'exécute uniquement depuis cette région et n'est donc plus effectué pour l'instant :",
+    "blind_other": "{count} de vos contrôles dans l'organisation {org} s'exécutent uniquement depuis cette région et ne sont donc plus effectués pour l'instant :",
     "more_one": "…et {count} autre.",
     "more_other": "…et {count} autres.",
-    "reduced_one": "{count} autre contrôle continue de s'exécuter depuis ses autres régions.",
-    "reduced_other": "{count} autres contrôles continuent de s'exécuter depuis leurs autres régions.",
-    "nothingToDo": "Vous n'avez rien à faire. L'équipe SolidPing a été alertée et vous recevrez un second e-mail quand la région sera rétablie. D'ici là, ces contrôles n'afficheront pas de statut, faute de données."
+    "reduced_one": "{count} autre contrôle continue de s'exécuter depuis ses régions restantes.",
+    "reduced_other": "{count} autres contrôles continuent de s'exécuter depuis leurs régions restantes.",
+    "nothingToDo": "Vous n'avez rien à faire. L'équipe SolidPing a été alertée et vous recevrez un second e-mail quand la région sera rétablie. D'ici là, ces contrôles n'afficheront pas de statut, faute de données.",
+    "nothingToDoOneCheck": "Vous n'avez rien à faire. L'équipe SolidPing a été alertée et vous recevrez un second e-mail quand la région sera rétablie. D'ici là, ce contrôle n'affichera pas de statut, faute de données."
   },
   "regionRecovered": {
     "subject": "La région {region} est rétablie, vos contrôles ont repris",
@@ -56,15 +57,15 @@
     "pill": "Région de nouveau en ligne",
     "heading": "La région {region} est rétablie",
     "moved": "Les contrôles de l'organisation {org} qui s'exécutaient uniquement depuis {region} n'en dépendent plus et sont de nouveau effectués.",
-    "back": "La région SolidPing {region} est de nouveau en ligne et les contrôles de l'organisation {org} qui s'exécutaient uniquement depuis celle-ci ont repris.",
+    "back": "La région {region} de SolidPing est de nouveau en ligne et les contrôles de l'organisation {org} qui s'exécutaient uniquement depuis celle-ci ont repris.",
     "offline": "Hors ligne",
     "offlineFor": "Hors ligne pendant",
-    "offlineSince": "Hors ligne depuis",
+    "offlineSince": "Passée hors ligne",
     "backAt": "Retour en ligne"
   },
   "usageCap": {
     "pill": "Quota mensuel épuisé",
-    "otherChannels": "Les autres canaux (e-mail, Slack, push...) continuent de fonctionner.",
+    "otherChannels": "Les autres canaux (e-mail, Slack, push, etc.) continuent de fonctionner.",
     "onlyOnce": "C'est le seul e-mail à ce sujet ce mois-ci.",
     "seePlans": "Voir les offres",
     "openUsage": "Voir l'utilisation",
@@ -77,6 +78,7 @@
       "used_one": "{org} a épuisé son quota de {count} alerte SMS ce mois-ci.",
       "used_other": "{org} a épuisé son quota de {count} alertes SMS ce mois-ci.",
       "dropped": "SolidPing vient donc de bloquer une alerte SMS et bloquera les suivantes jusqu'au {date}.",
+      "droppedNextMonth": "SolidPing vient donc de bloquer une alerte SMS et bloquera les suivantes jusqu'au 1er du mois prochain (UTC).",
       "keep": "Pour continuer à recevoir les alertes SMS, passez à une offre avec un quota plus élevé, ou connectez votre propre compte Twilio dans les intégrations : les messages envoyés par ce compte sont facturés par Twilio et ne sont pas décomptés de votre offre."
     },
     "voice": {
@@ -87,6 +89,7 @@
       "used_one": "{org} a épuisé son quota de {count} appel vocal ce mois-ci.",
       "used_other": "{org} a épuisé son quota de {count} appels vocaux ce mois-ci.",
       "dropped": "SolidPing vient donc de bloquer une alerte par appel vocal et bloquera les suivantes jusqu'au {date}.",
+      "droppedNextMonth": "SolidPing vient donc de bloquer une alerte par appel vocal et bloquera les suivantes jusqu'au 1er du mois prochain (UTC).",
       "keep": "Pour continuer à recevoir les alertes par appel vocal, passez à une offre avec un quota plus élevé, ou connectez votre propre compte Twilio dans les intégrations : les appels passés par ce compte sont facturés par Twilio et ne sont pas décomptés de votre offre."
     },
     "whatsapp": {
@@ -97,6 +100,7 @@
       "used_one": "{org} a épuisé son quota de {count} alerte WhatsApp ce mois-ci.",
       "used_other": "{org} a épuisé son quota de {count} alertes WhatsApp ce mois-ci.",
       "dropped": "SolidPing vient donc de bloquer une alerte WhatsApp et bloquera les suivantes jusqu'au {date}.",
+      "droppedNextMonth": "SolidPing vient donc de bloquer une alerte WhatsApp et bloquera les suivantes jusqu'au 1er du mois prochain (UTC).",
       "keep": "Pour continuer à recevoir les alertes WhatsApp, passez à une offre avec un quota plus élevé."
     }
   },

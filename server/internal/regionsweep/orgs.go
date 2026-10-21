@@ -355,8 +355,10 @@ type NoticeCheck struct {
 // OfflineEmailData is the region-offline.html view model, without the org
 // branding mailAdmins adds. checks are the listed ones (at most
 // maxListedChecks); blindCount counts them all. Times and counts stay raw: the
-// template words them in each reader's language and zone. The email preview
-// builds its fixture through it too.
+// template words them in each reader's language and zone. SingleBlind picks the
+// "this check" sentence that has no count to pluralize on (the template must not
+// compare the JSON-decoded count). The email preview builds its fixture through
+// it too.
 func OfflineEmailData(
 	regionName string, since time.Time, blindCount, reducedCount int, checks []NoticeCheck, checksURL string,
 ) map[string]any {
@@ -369,6 +371,7 @@ func OfflineEmailData(
 		"RegionName":   regionName,
 		"Since":        since,
 		"BlindCount":   blindCount,
+		"SingleBlind":  blindCount == 1,
 		"ReducedCount": reducedCount,
 		"MoreCount":    blindCount - len(checks),
 		"Checks":       items,
