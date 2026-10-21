@@ -302,8 +302,7 @@ func TestFormatter_FormatEscalation(t *testing.T) {
 	r.Contains(text, "Incident: #42")
 	r.Contains(text, "HTTP 503 Service Unavailable (expected 200)")
 	r.Contains(text, "Target: https://api.acme.com/health")
-	r.Contains(text, "I'm on it (acknowledge, stops escalation): "+
-		"https://example.com/api/v1/orgs/acme/incidents/inc-123/ack?token=abc")
+	r.Contains(text, "I'm on it: https://example.com/api/v1/orgs/acme/incidents/inc-123/ack?token=abc")
 
 	r.Regexp(checkNameHeadlinePattern+`is still down</h1>`, html,
 		"the headline must wrap the check name in an <a href> to CheckURL")

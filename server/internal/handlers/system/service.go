@@ -19,7 +19,9 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/i18n"
+	"github.com/fclairamb/solidping/server/internal/i18n/recipient"
 	"github.com/fclairamb/solidping/server/internal/jmap"
+	"github.com/fclairamb/solidping/server/internal/middleware"
 	"github.com/fclairamb/solidping/server/internal/opsnotify"
 	"github.com/fclairamb/solidping/server/internal/paramkeys"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
@@ -419,8 +421,10 @@ type TestEmailResponse struct {
 	Message string `json:"message"`
 }
 
-// TestEmail sends a test email using the currently saved SMTP parameters.
-func (s *Service) TestEmail(ctx context.Context, recipient string) (*TestEmailResponse, error) {
+// TestEmail sends a test email using the currently saved SMTP parameters. It
+// is written in the language of the account behind the address, else in the
+// acting super admin's (the user the auth middleware put on ctx).
+func (s *Service) TestEmail(ctx context.Context, address string) (*TestEmailResponse, error) {
 	// Build email config from current DB parameters
 	var emailCfg *config.EmailConfig
 
@@ -450,25 +454,22 @@ func (s *Service) TestEmail(ctx context.Context, recipient string) (*TestEmailRe
 	// Create a temporary sender with current settings
 	sender := newEmailSender(emailCfg, slog.Default())
 
-	viewModel := map[string]any{
-		"Subject": "SolidPing Test Email",
-		"Heading": "SolidPing Test Email",
-		"Body": "This is a test email from SolidPing. " +
-			"If you received this, your email configuration is working correctly.",
-	}
+	actor, _ := middleware.GetUserFromContext(ctx)
+	loc := recipient.NewResolver(s.db).ForAddress(ctx, "", address, recipient.HintFromUser(actor))
 
-	subject, htmlBody, textBody, err := s.formatter.Format(
-		"test-email.html", i18n.Default, viewModel) // i18n-phase-b: resolve the recipient locale
+	subject, htmlBody, textBody, err := s.formatter.Format("test-email.html", loc, TestEmailData(loc))
 	if err != nil {
 		return nil, fmt.Errorf("failed to format test email: %w", err)
 	}
 
 	msg := &email.Message{
-		Recipients:       email.Recipients{To: []string{recipient}},
+		Recipients:       email.Recipients{To: []string{address}},
 		Subject:          subject,
 		Text:             textBody,
 		HTML:             htmlBody,
 		SupportReplyable: email.SupportReplyable("test-email.html"),
+		Locale:           loc.Lang(),
+		Timezone:         loc.Timezone(),
 	}
 
 	result, err := sender.Send(ctx, msg)
@@ -481,6 +482,18 @@ func (s *Service) TestEmail(ctx context.Context, recipient string) (*TestEmailRe
 	}
 
 	return &TestEmailResponse{Sent: result.Sent, Message: result.Message}, nil
+}
+
+// TestEmailData is the test-email.html view model of the SMTP test, in loc.
+// The email preview builds its fixture through it too.
+func TestEmailData(loc i18n.Locale) map[string]any {
+	title := loc.T("alerts.testEmail.smtp.title")
+
+	return map[string]any{
+		"Subject": title,
+		"Heading": title,
+		"Body":    loc.T("alerts.testEmail.smtp.body"),
+	}
 }
 
 // buildEmailConfig reads email parameters from the database and builds an EmailConfig.

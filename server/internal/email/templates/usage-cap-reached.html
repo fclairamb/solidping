@@ -1,42 +1,38 @@
-{{define "subject"}}🟠 {{.OrgName}} used all its {{.Channel}} alerts for this month{{end}}
-{{define "preheader"}}{{.Channel}} alerts are paused until next month: the plan includes {{.Limit}} per month.{{end}}
+{{- /* Channel is "sms", "voice" or "whatsapp" (jobtypes.UsageCapEmailData):
+     every sentence that names the channel is its own key per channel
+     (alerts.usageCap.<channel>.*), so each language words it whole. Each block
+     maps it onto that allow-list first: a job queued before the channel became
+     a key segment carries the old label ("SMS", "voice call", "WhatsApp") and
+     no ResetsAt, and an unknown value must never build a key. */ -}}
+{{define "subject"}}{{$ch := "sms"}}{{if eq .Channel "voice" "voice call"}}{{$ch = "voice"}}{{else if eq .Channel "whatsapp" "WhatsApp"}}{{$ch = "whatsapp"}}{{end}}🟠 {{t (printf "alerts.usageCap.%s.subject" $ch) "org" .OrgName}}{{end}}
+{{define "preheader"}}{{$ch := "sms"}}{{if eq .Channel "voice" "voice call"}}{{$ch = "voice"}}{{else if eq .Channel "whatsapp" "WhatsApp"}}{{$ch = "whatsapp"}}{{end}}{{tn (printf "alerts.usageCap.%s.preheader" $ch) .Limit}}{{end}}
 {{template "base.html" .}}
-{{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "escalated" "Label" "Monthly allowance used"}}{{end}}
+{{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "escalated" "Label" (t "alerts.usageCap.pill")}}{{end}}
 {{define "content"}}
-    <h1>{{.Channel}} alerts are paused until next month</h1>
+    {{- $ch := "sms"}}{{if eq .Channel "voice" "voice call"}}{{$ch = "voice"}}{{else if eq .Channel "whatsapp" "WhatsApp"}}{{$ch = "whatsapp"}}{{end}}
+    <h1>{{t (printf "alerts.usageCap.%s.heading" $ch)}}</h1>
     <p>
-      <strong>{{.OrgName}}</strong> has used its {{.Limit}} {{.Channel}} alerts
-      included this month. SolidPing just dropped a {{.Channel}} alert because of
-      that, and will drop the next ones until the 1st of next month (UTC).
-      Other channels (email, Slack, push...) keep working.
+      {{tn (printf "alerts.usageCap.%s.used" $ch) .Limit "org" .OrgName}}
+      {{if .ResetsAt}}{{t (printf "alerts.usageCap.%s.dropped" $ch) "date" (date .ResetsAt)}}{{else}}{{t (printf "alerts.usageCap.%s.droppedNextMonth" $ch)}}{{end}}
+      {{t "alerts.usageCap.otherChannels"}}
     </p>
-    <p>
-      To keep receiving {{.Channel}} alerts, move to a plan with a higher
-      allowance{{if ne .Channel "WhatsApp"}}, or connect your own Twilio account
-      in the integrations: messages sent through it are billed by Twilio and do
-      not count against the plan{{end}}.
-    </p>
-    <p>This is the only email about it this month.</p>
+    <p>{{t (printf "alerts.usageCap.%s.keep" $ch)}}</p>
+    <p>{{t "alerts.usageCap.onlyOnce"}}</p>
     {{if .UpgradeURL}}
-    <div class="cta-wrap">{{template "button" dict "URL" .UpgradeURL "Label" "See plans" "Variant" "primary"}}</div>
+    <div class="cta-wrap">{{template "button" dict "URL" .UpgradeURL "Label" (t "alerts.usageCap.seePlans") "Variant" "primary"}}</div>
     {{else if .UsageURL}}
-    <div class="cta-wrap">{{template "button" dict "URL" .UsageURL "Label" "Open usage" "Variant" "primary"}}</div>
+    <div class="cta-wrap">{{template "button" dict "URL" .UsageURL "Label" (t "alerts.usageCap.openUsage") "Variant" "primary"}}</div>
     {{end}}
 {{end}}
-{{define "text"}}{{.Channel}} alerts are paused until next month
+{{define "text"}}{{$ch := "sms"}}{{if eq .Channel "voice" "voice call"}}{{$ch = "voice"}}{{else if eq .Channel "whatsapp" "WhatsApp"}}{{$ch = "whatsapp"}}{{end}}{{t (printf "alerts.usageCap.%s.heading" $ch)}}
 
-{{.OrgName}} has used its {{.Limit}} {{.Channel}} alerts included this month.
-SolidPing just dropped a {{.Channel}} alert because of that, and will drop the
-next ones until the 1st of next month (UTC). Other channels (email, Slack,
-push...) keep working.
+{{tn (printf "alerts.usageCap.%s.used" $ch) .Limit "org" .OrgName}} {{if .ResetsAt}}{{t (printf "alerts.usageCap.%s.dropped" $ch) "date" (date .ResetsAt)}}{{else}}{{t (printf "alerts.usageCap.%s.droppedNextMonth" $ch)}}{{end}} {{t "alerts.usageCap.otherChannels"}}
 
-To keep receiving {{.Channel}} alerts, move to a plan with a higher allowance{{if ne .Channel "WhatsApp"}},
-or connect your own Twilio account in the integrations: messages sent through it
-are billed by Twilio and do not count against the plan{{end}}.
+{{t (printf "alerts.usageCap.%s.keep" $ch)}}
 
-This is the only email about it this month.
+{{t "alerts.usageCap.onlyOnce"}}
 {{if .UpgradeURL}}
-See plans: {{.UpgradeURL}}
+{{t "common.textField" "label" (t "alerts.usageCap.seePlans") "value" .UpgradeURL}}
 {{else if .UsageURL}}
-Usage: {{.UsageURL}}
+{{t "common.textField" "label" (t "alerts.usageCap.usage") "value" .UsageURL}}
 {{end}}{{end}}

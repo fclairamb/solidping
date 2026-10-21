@@ -15,6 +15,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/i18n"
+	"github.com/fclairamb/solidping/server/internal/i18n/recipient"
 	"github.com/fclairamb/solidping/server/internal/incidentlinks"
 	"github.com/fclairamb/solidping/server/internal/integrations/discord"
 	slackclient "github.com/fclairamb/solidping/server/internal/integrations/slack"
@@ -481,7 +482,7 @@ func (r *EscalationStepJobRun) pageUser(
 
 		return r.sendEscalationEmail(
 			ctx, jctx, log, incident, user.Email, *userUID,
-			models.IncidentNotificationSourceEscalationUser,
+			models.IncidentNotificationSourceEscalationUser, recipient.ForUser(user),
 		)
 	}
 
@@ -519,7 +520,7 @@ func (r *EscalationStepJobRun) dispatchRoute(
 		return r.sendEscalationEmail(
 			ctx, jctx, log, incident,
 			route.Contact.Value, route.UserUID,
-			models.IncidentNotificationSourceEscalationUser,
+			models.IncidentNotificationSourceEscalationUser, emailContactLocale(ctx, jctx, route),
 		)
 	case models.UserContactTypeSlackUser:
 		return r.sendEscalationSlackDM(ctx, jctx, log, incident, route, filter)
@@ -1259,6 +1260,7 @@ func (r *EscalationStepJobRun) pageSchedule(
 
 		return r.sendEscalationEmail(
 			ctx, jctx, log, incident, user.Email, user.UID, models.IncidentNotificationSourceEscalationSchedule,
+			recipient.ForUser(user),
 		)
 	}
 
@@ -1276,6 +1278,7 @@ func (r *EscalationStepJobRun) pageSchedule(
 		// email, but only when the severity permits it.
 		sent = r.sendEscalationEmail(
 			ctx, jctx, log, incident, user.Email, user.UID, models.IncidentNotificationSourceEscalationSchedule,
+			recipient.ForUser(user),
 		)
 	}
 
@@ -1358,7 +1361,7 @@ func (r *EscalationStepJobRun) adminFallbackEmail(
 
 	return r.sendEscalationEmail(
 		ctx, jctx, log, incident, member.User.Email, member.UserUID,
-		models.IncidentNotificationSourceEscalationAllAdmins,
+		models.IncidentNotificationSourceEscalationAllAdmins, recipient.ForUser(member.User),
 	)
 }
 
@@ -1366,13 +1369,14 @@ func (r *EscalationStepJobRun) adminFallbackEmail(
 // email service, rendered through the shared formatter (escalation.html) so
 // it gets the same branding/HTML part as every other transactional email and
 // addresses the incident by its human-facing #N reference instead of the raw
-// UUID. Returns 1 on success, 0 otherwise.
+// UUID. loc is the reader's language and timezone, resolved by the caller
+// (which knows whose address this is). Returns 1 on success, 0 otherwise.
 func (r *EscalationStepJobRun) sendEscalationEmail(
 	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
-	incident *models.Incident, recipient, userUID, source string,
+	incident *models.Incident, address, userUID, source string, loc i18n.Locale,
 ) int {
 	if jctx.Services == nil || jctx.Services.EmailSender == nil ||
-		jctx.Services.EmailFormatter == nil || recipient == "" {
+		jctx.Services.EmailFormatter == nil || address == "" {
 		return 0
 	}
 
@@ -1387,10 +1391,9 @@ func (r *EscalationStepJobRun) sendEscalationEmail(
 		log.WarnContext(ctx, "failed to create notification audit row", "error", auditErr)
 	}
 
-	viewModel := r.buildEscalationEmailViewModel(ctx, jctx, incident, recipient)
+	viewModel := r.buildEscalationEmailViewModel(ctx, jctx, incident, address, loc)
 
-	subject, htmlBody, textBody, err := jctx.Services.EmailFormatter.Format(
-		"escalation.html", i18n.Default, viewModel) // i18n-phase-b: resolve the recipient locale
+	subject, htmlBody, textBody, err := jctx.Services.EmailFormatter.Format("escalation.html", loc, viewModel)
 	if err != nil {
 		log.WarnContext(ctx, "failed to format escalation email", "error", err)
 		_ = jctx.DBService.MarkIncidentNotificationFailedByUID(ctx, n.UID, time.Now(), err.Error())
@@ -1399,18 +1402,20 @@ func (r *EscalationStepJobRun) sendEscalationEmail(
 	}
 
 	msg := &email.Message{
-		Recipients:       email.Recipients{To: []string{recipient}},
+		Recipients:       email.Recipients{To: []string{address}},
 		Subject:          subject,
 		HTML:             htmlBody,
 		Text:             textBody,
 		SupportReplyable: email.SupportReplyable("escalation.html"),
 		ThreadID:         email.IncidentThreadID(incident.UID),
+		Locale:           loc.Lang(),
+		Timezone:         loc.Timezone(),
 	}
 
 	result, err := jctx.Services.EmailSender.Send(ctx, msg)
 	if err != nil {
 		log.WarnContext(ctx, "failed to send escalation email",
-			"recipient", recipient, "error", err)
+			"recipient", address, "error", err)
 		_ = jctx.DBService.MarkIncidentNotificationFailedByUID(ctx, n.UID, time.Now(), err.Error())
 
 		return 0
@@ -1425,12 +1430,12 @@ func (r *EscalationStepJobRun) sendEscalationEmail(
 	return 1
 }
 
-// buildEscalationEmailViewModel assembles the escalation.html view-model.
-// Check/org lookups are best-effort (mirrors emitEscalationFailed): a check
-// deleted since the incident opened must not block the page, it just loses
-// its name/link.
+// buildEscalationEmailViewModel assembles the escalation.html view-model for
+// the reader in loc. Check/org lookups are best-effort (mirrors
+// emitEscalationFailed): a check deleted since the incident opened must not
+// block the page, it just loses its name/link.
 func (r *EscalationStepJobRun) buildEscalationEmailViewModel(
-	ctx context.Context, jctx *jobdef.JobContext, incident *models.Incident, recipient string,
+	ctx context.Context, jctx *jobdef.JobContext, incident *models.Incident, address string, loc i18n.Locale,
 ) map[string]any {
 	baseURL := appBaseURL(jctx)
 
@@ -1445,45 +1450,93 @@ func (r *EscalationStepJobRun) buildEscalationEmailViewModel(
 		orgLogoURL = org.LogoURL
 	}
 
-	checkName := escalationUnknownCheckName
-
-	var checkURL, checkTarget string
+	view := EscalationEmail{
+		// The Slack DM and web push keep escalationUnknownCheckName (English);
+		// the mail speaks its reader's language.
+		CheckName:      loc.T("alerts.escalation.unknownCheck"),
+		IncidentNumber: incident.Number,
+		IncidentURL:    escalationIncidentURL(baseURL, orgSlug, incident),
+		StartedAt:      incident.StartedAt,
+		FailureCount:   incident.FailureCount,
+		FailureReason:  incident.FailureReason(),
+		AckExpiresAt:   incident.StartedAt.Add(incidentlinks.AckTokenTTL),
+		DashboardURL:   escalationDashboardRootURL(baseURL),
+		DocsURL:        escalationDocsURL(baseURL),
+	}
 
 	check, checkErr := jctx.DBService.GetCheck(ctx, incident.OrganizationUID, incident.CheckUID)
 	if checkErr == nil && check != nil {
-		checkName = escalationCheckName(check)
-		checkURL = escalationCheckURL(baseURL, orgSlug, check)
-		checkTarget = check.TargetURL()
+		if name := escalationCheckName(check); name != escalationUnknownCheckName {
+			view.CheckName = name
+		}
+
+		view.CheckURL = escalationCheckURL(baseURL, orgSlug, check)
+		view.CheckTarget = check.TargetURL()
 	}
 
 	// The person this escalation wakes up is the one who most needs to say
 	// "I'm on it" without opening the dashboard first.
-	var ackURL string
-
-	ackExpiresAt := incident.StartedAt.Add(incidentlinks.AckTokenTTL)
 	if jctx.AppConfig != nil {
-		ackURL = incidentlinks.AckURL(baseURL, orgSlug, incident.UID, recipient,
-			[]byte(jctx.AppConfig.Auth.JWTSecret), ackExpiresAt)
+		view.AckURL = incidentlinks.AckURL(baseURL, orgSlug, incident.UID, address,
+			[]byte(jctx.AppConfig.Auth.JWTSecret), view.AckExpiresAt)
 	}
 
-	viewModel := map[string]any{
-		viewModelKeyCheckName: checkName,
-		"CheckURL":            checkURL,
-		"IncidentNumber":      incident.Number,
-		"IncidentURL":         escalationIncidentURL(baseURL, orgSlug, incident),
-		"StartedAt":           email.Timestamp(incident.StartedAt),
-		"FailureCount":        incident.FailureCount,
-		"FailureReason":       incident.FailureReason(),
-		"CheckTarget":         checkTarget,
-		"AckURL":              ackURL,
-		"AckExpiresAt":        ackExpiresAt,
-		"DashboardURL":        escalationDashboardRootURL(baseURL),
-		"DocsURL":             escalationDocsURL(baseURL),
-	}
+	viewModel := view.Data()
 	// The org row was loaded for the slug anyway, so branding is free here.
 	email.ApplyOrgBranding(viewModel, orgName, orgSlug, orgLogoURL)
 
 	return viewModel
+}
+
+// emailContactLocale is the reader of an escalation mail sent to one of a
+// user's email contacts: the account behind that address when there is one,
+// else the user who owns the contact.
+func emailContactLocale(ctx context.Context, jctx *jobdef.JobContext, route *models.UserNotificationRoute) i18n.Locale {
+	var owner *models.User
+	if user, err := jctx.DBService.GetUser(ctx, route.UserUID); err == nil {
+		owner = user
+	}
+
+	return recipient.NewResolver(jctx.DBService).
+		ForAddress(ctx, "", route.Contact.Value, recipient.HintFromUser(owner))
+}
+
+// EscalationEmail is what escalation.html shows. The email preview builds its
+// fixture through Data too, so the two cannot drift apart.
+type EscalationEmail struct {
+	CheckName      string
+	CheckURL       string
+	CheckTarget    string
+	IncidentNumber int64
+	IncidentURL    string
+	StartedAt      time.Time
+	FailureCount   int
+	FailureReason  string
+	// AckURL is the reader's own "I'm on it" magic link, valid until
+	// AckExpiresAt.
+	AckURL       string
+	AckExpiresAt time.Time
+	DashboardURL string
+	DocsURL      string
+}
+
+// Data is the escalation.html view model. Times stay time.Time: the template
+// formats them in the reader's language and zone.
+func (e *EscalationEmail) Data() map[string]any {
+	return map[string]any{
+		viewModelKeyCheckName: e.CheckName,
+		"CheckURL":            e.CheckURL,
+		"IncidentNumber":      e.IncidentNumber,
+		"IncidentURL":         e.IncidentURL,
+		"StartedAt":           e.StartedAt,
+		"FailureCount":        e.FailureCount,
+		"FailureReason":       e.FailureReason,
+		"CheckTarget":         e.CheckTarget,
+		"AckURL":              e.AckURL,
+		"AckExpiresAt":        e.AckExpiresAt,
+		"DashboardURL":        e.DashboardURL,
+		"DocsURL":             e.DocsURL,
+	}
 }
 
 // escalationUnknownCheckName is the fallback check name when the check has

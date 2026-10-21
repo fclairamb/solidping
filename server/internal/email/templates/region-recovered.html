@@ -1,40 +1,36 @@
-{{define "subject"}}🟢 Region {{.RegionName}} is back, your checks resumed{{end}}
-{{define "preheader"}}The region was offline for {{.Duration}}. Your checks are running again.{{end}}
+{{define "subject"}}🟢 {{t "alerts.regionRecovered.subject" "region" .RegionName}}{{end}}
+{{define "preheader"}}{{t "alerts.regionRecovered.preheader" "duration" (duration .Duration)}}{{end}}
 {{template "base.html" .}}
-{{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "recovered" "Label" "Region back online"}}{{end}}
+{{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "recovered" "Label" (t "alerts.regionRecovered.pill")}}{{end}}
 {{define "content"}}
-    <h1>Region {{nolink .RegionName}} is back</h1>
+    {{- $region := nolink .RegionName}}
+    <h1>{{tHTML "alerts.regionRecovered.heading" "region" $region}}</h1>
     <p>
-      {{if .Moved}}The checks of {{.OrgName}} that ran only from <strong>{{nolink .RegionName}}</strong>
-      no longer depend on it and are being checked again.{{else}}The SolidPing region
-      <strong>{{nolink .RegionName}}</strong> is back online, and the checks of {{.OrgName}} that
-      ran only from it resumed.{{end}}
+      {{if .Moved}}{{tHTML "alerts.regionRecovered.moved" "org" .OrgName "region" (tHTML "alerts.emphasis" "text" $region)}}{{else}}{{tHTML "alerts.regionRecovered.back" "org" .OrgName "region" (tHTML "alerts.emphasis" "text" $region)}}{{end}}
     </p>
     <table class="metric" role="presentation" width="100%" cellpadding="0" cellspacing="0">
         <tr>
             <td align="center">
-                <span class="metric-value">{{.Duration}}</span>
-                <span class="metric-label">Offline</span>
+                <span class="metric-value">{{duration .Duration}}</span>
+                <span class="metric-label">{{t "alerts.regionRecovered.offline"}}</span>
             </td>
         </tr>
     </table>
     <table class="details-table" role="presentation" cellpadding="0" cellspacing="0">
-        <tr><td class="label">Offline since</td><td class="value">{{.Since}}</td></tr>
-        <tr><td class="label">Back at</td><td class="value">{{.RecoveredAt}}</td></tr>
+        <tr><td class="label">{{t "alerts.regionRecovered.offlineSince"}}</td><td class="value">{{date .Since}}</td></tr>
+        <tr><td class="label">{{t "alerts.regionRecovered.backAt"}}</td><td class="value">{{date .RecoveredAt}}</td></tr>
     </table>
     {{if .ChecksURL}}
-    <div class="cta-wrap">{{template "button" dict "URL" .ChecksURL "Label" "Open your checks" "Variant" "primary"}}</div>
+    <div class="cta-wrap">{{template "button" dict "URL" .ChecksURL "Label" (t "alerts.openChecks") "Variant" "primary"}}</div>
     {{end}}
 {{end}}
-{{define "text"}}Region {{.RegionName}} is back
+{{define "text"}}{{t "alerts.regionRecovered.heading" "region" .RegionName}}
 
-{{if .Moved}}The checks of {{.OrgName}} that ran only from {{.RegionName}} no longer
-depend on it and are being checked again.{{else}}The SolidPing region {{.RegionName}} is back online, and the checks of
-{{.OrgName}} that ran only from it resumed.{{end}}
+{{if .Moved}}{{t "alerts.regionRecovered.moved" "org" .OrgName "region" .RegionName}}{{else}}{{t "alerts.regionRecovered.back" "org" .OrgName "region" .RegionName}}{{end}}
 
-Offline for: {{.Duration}}
-Offline since: {{.Since}}
-Back at: {{.RecoveredAt}}
+{{t "common.textField" "label" (t "alerts.regionRecovered.offlineFor") "value" (duration .Duration)}}
+{{t "common.textField" "label" (t "alerts.regionRecovered.offlineSince") "value" (date .Since)}}
+{{t "common.textField" "label" (t "alerts.regionRecovered.backAt") "value" (date .RecoveredAt)}}
 {{if .ChecksURL}}
 {{.ChecksURL}}
 {{end}}{{end}}
