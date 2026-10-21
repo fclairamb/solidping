@@ -166,6 +166,8 @@ func objectSchema(props map[string]any, required []string) map[string]any {
 	schema := map[string]any{
 		schemaKeyType:       schemaTypeObject,
 		schemaKeyProperties: props,
+		// Advertised only: handlers decode leniently and ignore unknown keys.
+		"additionalProperties": false,
 	}
 	if len(required) > 0 {
 		schema["required"] = required

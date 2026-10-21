@@ -11,6 +11,15 @@ header so standard MCP clients can discover the authorization server and start t
 OAuth-issued tokens are audience-bound (RFC 8707) to the MCP resource and rejected here if their
 `aud` does not include `<issuer>/api/v1/mcp`.
 
+### Tool contract
+Every registered tool (all toolsets, legacy aliases included) declares an `outputSchema`,
+`annotations` with a non-empty `title` and the four hints, and an `inputSchema` with
+`additionalProperties: false`. `objectSchema` in `server/internal/mcp/tools.go` sets the last one.
+The flag is advertised only: handlers decode leniently and ignore unknown arguments.
+`TestToolContract_EveryRegisteredTool` enforces all three, so a tool added without them fails CI.
+Third-party scorer reports (issue 587) are answered with a link to that test. `smithery.yaml` and
+`mcp-lock.json` are deliberately absent: Smithery reads `/.well-known/mcp/server-card.json`.
+
 ### GET /api/v1/mcp
 Probe route. Public — a GET on the MCP endpoint redirects or answers `405` rather than
 looking like a missing route, so clients that probe with GET before POSTing get a
