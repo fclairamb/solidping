@@ -1,12 +1,12 @@
 {
   "supportMessage": {
-    "subjectNewMessage": "Nouveau message sur {channel} de {from}",
-    "subjectNewThread": "Nouveau fil de support sur {channel} de {from}",
+    "subjectNewMessage": "Nouveau message de {from} sur {channel}",
+    "subjectNewThread": "Nouveau fil de support de {from} sur {channel}",
     "channel": "Canal : {channel}",
     "from": "Expéditeur : {from}",
     "folded_one": "…et {count} autre message dans ce fil depuis la dernière notification.",
     "folded_other": "…et {count} autres messages dans ce fil depuis la dernière notification.",
-    "replyWarning": "Répondre à cette notification ne joint PAS l'expéditeur : ouvrez le fil pour lui répondre."
+    "replyWarning": "Une réponse à cette notification ne parvient PAS à l'expéditeur : ouvrez le fil pour lui répondre."
   },
   "userRegistered": {
     "subject": "Nouvelle inscription : {email} ({method})",
@@ -20,13 +20,13 @@
   "test": {
     "subject": "Test des notifications opérateur",
     "intro": "Ceci est un test des notifications opérateur de cette instance SolidPing.",
-    "works": "Si vous le lisez, le canal par lequel il est arrivé fonctionne.",
+    "works": "Si vous lisez ce message, le canal par lequel il est arrivé fonctionne.",
     "requestedBy": "Demandé par {email}."
   },
   "watchdogRegion": {
     "subjectDark": "La région {region} est hors ligne",
     "subjectStalled": "La région {region} est bloquée",
-    "subjectRecovered": "La région {region} est rétablie après {duration}",
+    "subjectRecovered": "La région {region} est rétablie au bout de {duration}",
     "darkHeadline_one": "La région « {region} » est HORS LIGNE (aucun worker actif) depuis le {since} : {count} tâche assignée, dont {overdue} en retard",
     "darkHeadline_other": "La région « {region} » est HORS LIGNE (aucun worker actif) depuis le {since} : {count} tâches assignées, dont {overdue} en retard",
     "organizations_one": "{count} organisation",
@@ -42,8 +42,8 @@
     "stalledHeadline_other": "La région « {region} » est bloquée : {workers}, mais {count} tâches en retard, la plus ancienne depuis le {since}",
     "stalledCause": "Les workers envoient leur signal de vie mais ne prennent aucune tâche. Les organisations n'ont pas été prévenues.",
     "stalledInspect": "À examiner : GET /api/v1/system/regions/health, puis les journaux des workers.",
-    "recovered_one": "La région « {region} » fonctionne de nouveau après {duration} ({phase} depuis le {since}). {count} organisation avait été prévenue.",
-    "recovered_other": "La région « {region} » fonctionne de nouveau après {duration} ({phase} depuis le {since}). {count} organisations avaient été prévenues.",
+    "recovered_one": "La région « {region} » fonctionne de nouveau au bout de {duration} ({phase} depuis le {since}). {count} organisation avait été prévenue.",
+    "recovered_other": "La région « {region} » fonctionne de nouveau au bout de {duration} ({phase} depuis le {since}). {count} organisations avaient été prévenues.",
     "phase": {
       "dark": "hors ligne",
       "stalled": "bloquée"

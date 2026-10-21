@@ -111,7 +111,7 @@ func classifySend(
 type (
 	// EnqueueEmailFunc hands the notice to the normal email job chain, so it
 	// inherits the retry policy and SMTP configuration every other mail uses.
-	// loc is the reader's: the subject and text are already written in it.
+	// loc is the language the subject and text are already written in.
 	EnqueueEmailFunc func(ctx context.Context, orgUID, to string, loc i18n.Locale, subject, text string) error
 	// SendTelegramFunc DMs pre-rendered (already escaped) HTML to a chat id.
 	SendTelegramFunc func(ctx context.Context, chatID, html string) error
@@ -355,10 +355,10 @@ func sendEmail(
 		return skipUnavailable(ctx, log, label, models.UserContactTypeEmail, route)
 	}
 
-	subject, text := notice.emailCopy(loc)
+	subject, text, written := notice.emailCopy(loc)
 
 	return classifySend(ctx, log, label, models.UserContactTypeEmail, route,
-		deps.EnqueueEmail(ctx, route.OrgUID, route.Contact.Value, loc, subject, text))
+		deps.EnqueueEmail(ctx, route.OrgUID, route.Contact.Value, written, subject, text))
 }
 
 // sendTelegram DMs the notice through the instance bot.

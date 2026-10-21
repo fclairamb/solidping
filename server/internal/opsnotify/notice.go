@@ -115,16 +115,17 @@ func (n *Notice) noticeText() string {
 	return withURL(n.Body, n.URL)
 }
 
-// emailCopy is the subject and text of the email to one reader: the notice
-// written in their language when it has a structured form, its English text
-// otherwise.
-func (n *Notice) emailCopy(loc i18n.Locale) (string, string) {
-	subject, body := n.Subject, n.Body
-	if n.Localized != nil {
-		subject, body = n.Localized.Localize(loc)
+// emailCopy is the subject and text of the email to one reader (loc), and the
+// locale they are written in: the reader's when the notice has a structured
+// form, English otherwise (its Subject and Body, as before the upgrade).
+func (n *Notice) emailCopy(loc i18n.Locale) (string, string, i18n.Locale) {
+	if n.Localized == nil {
+		return n.Subject, withURL(n.Body, n.URL), i18n.English
 	}
 
-	return subject, withURL(body, n.URL)
+	subject, body := n.Localized.Localize(loc)
+
+	return subject, withURL(body, n.URL), loc
 }
 
 // withURL appends the deep link, when there is one, to a plain-text body.

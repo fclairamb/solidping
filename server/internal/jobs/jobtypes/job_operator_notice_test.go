@@ -489,4 +489,5 @@ func TestOperatorNoticeQueuedBeforeTheUpgradeStillDelivers(t *testing.T) {
 	r.Equal("[SolidPing support] New support thread on sms from +33600000000", payload.Subject)
 	r.Equal("Channel: sms\nFrom:    +33600000000\n\nis the api down?\n\n"+
 		"https://solidping.example/d/support/thread-1", payload.Text)
+	r.Equal("en", payload.Locale, "the job says the text is English")
 }

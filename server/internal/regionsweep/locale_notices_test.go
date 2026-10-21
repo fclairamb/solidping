@@ -93,15 +93,15 @@ func TestRegionNoticesAreWrittenInTheReadersLanguage(t *testing.T) {
 					"la plus ancienne depuis le 5 juil., 12:00 CEST.",
 			},
 			noticeRecovered: {
-				"[SolidPing watchdog] La région eu-west est rétablie après 7\u00a0h 52\u00a0min",
-				"La région « eu-west » fonctionne de nouveau après 7\u00a0h 52\u00a0min " +
+				"[SolidPing watchdog] La région eu-west est rétablie au bout de 7\u00a0h 52\u00a0min",
+				"La région « eu-west » fonctionne de nouveau au bout de 7\u00a0h 52\u00a0min " +
 					"(hors ligne depuis le 5 juil., 12:00 CEST). 3 organisations avaient été prévenues.", //nolint:misspell // French
 			},
 		},
 		"de": {
 			noticeDark: {
 				"[SolidPing watchdog] Region eu-west ist offline",
-				"Die Region „eu-west“ ist OFFLINE (kein aktiver Worker) seit dem 5. Juli, 12:00 CEST",
+				"Die Region „eu-west“ ist seit dem 5. Juli, 12:00 CEST OFFLINE (kein aktiver Worker)",
 				"57 Prüfungen aus 3 Organisationen laufen nur in dieser Region",
 			},
 			noticeStalled:   {"Die Region „eu-west“ hängt: 2 aktive Worker, aber 41 Aufträge überfällig"},
@@ -113,7 +113,7 @@ func TestRegionNoticesAreWrittenInTheReadersLanguage(t *testing.T) {
 				"La región «eu-west» está FUERA DE LÍNEA (ningún worker activo) desde el 5 jul, 12:00 CEST",
 				"57 comprobaciones de 3 organizaciones solo se ejecutan desde esta región",
 			},
-			noticeStalled:   {"La región «eu-west» está bloqueada: 2 workers activos, pero 41 tareas con retraso"},
+			noticeStalled:   {"La región «eu-west» está atascada: 2 workers activos, pero 41 tareas con retraso"},
 			noticeRecovered: {"(fuera de línea desde el 5 jul, 12:00 CEST). Se avisó a 3 organizaciones."},
 		},
 	}

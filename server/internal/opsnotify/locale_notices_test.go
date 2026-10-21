@@ -96,10 +96,12 @@ func TestNoticesAreWrittenInEveryLanguage(t *testing.T) {
 	expected := map[string]map[string][]string{
 		"fr": {
 			"support": {
-				"[SolidPing support] Nouveau fil de support sur sms de +33600000000",
+				"[SolidPing support] Nouveau fil de support de +33600000000 sur sms",
 				"Expéditeur : +33600000000", "…et 1 autre message dans ce fil", "ouvrez le fil",
 			},
-			"supportFolded": {"[SolidPing support] Nouveau message sur sms", "…et 3 autres messages dans ce fil"},
+			"supportFolded": {
+				"[SolidPing support] Nouveau message de +33600000000 sur sms", "…et 3 autres messages dans ce fil",
+			},
 			"signup": {
 				"[SolidPing] Nouvelle inscription : carol@acme.com (password)", "Nom : Carol",
 				"Organisation : acme", //nolint:misspell // French
@@ -207,7 +209,7 @@ func TestDeliverWritesTheEmailInTheRecipientsLanguage(t *testing.T) {
 
 	r.Equal("fr", capture.lang)
 	r.Equal("Europe/Paris", capture.timezone)
-	r.Equal("[SolidPing support] Nouveau fil de support sur sms de +33600000000", capture.subject)
+	r.Equal("[SolidPing support] Nouveau fil de support de +33600000000 sur sms", capture.subject)
 	r.Contains(capture.text, "Canal : sms")
 	r.True(strings.HasSuffix(capture.text, "\n\nhttps://solidping.example/d/support/thread-1"), capture.text)
 
@@ -258,7 +260,7 @@ func TestDeliverEmailsAnUnstructuredNoticeAsIs(t *testing.T) {
 	r.Equal(1, report.Delivered)
 	r.Equal(notice.Subject, capture.subject)
 	r.Equal(notice.Body+"\n\n"+notice.URL, capture.text)
-	r.Equal("fr", capture.lang, "the job still carries the reader's locale")
+	r.Equal("en", capture.lang, "the job carries the language the text is written in")
 }
 
 // TestDeliverEmailsAnEnglishReaderTheSameText: with no preference, the email

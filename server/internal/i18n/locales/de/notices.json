@@ -20,15 +20,15 @@
   "test": {
     "subject": "Test der Betreiber-Benachrichtigungen",
     "intro": "Dies ist ein Test der Betreiber-Benachrichtigungen dieser SolidPing-Instanz.",
-    "works": "Wenn Sie ihn lesen, funktioniert der Benachrichtigungsweg, über den er gekommen ist.",
+    "works": "Wenn Sie diese Nachricht lesen, funktioniert der Benachrichtigungsweg, über den sie gekommen ist.",
     "requestedBy": "Angefordert von {email}."
   },
   "watchdogRegion": {
     "subjectDark": "Region {region} ist offline",
     "subjectStalled": "Region {region} hängt",
     "subjectRecovered": "Region {region} nach {duration} wiederhergestellt",
-    "darkHeadline_one": "Die Region „{region}“ ist OFFLINE (kein aktiver Worker) seit dem {since}: {count} Auftrag zugewiesen, davon {overdue} überfällig",
-    "darkHeadline_other": "Die Region „{region}“ ist OFFLINE (kein aktiver Worker) seit dem {since}: {count} Aufträge zugewiesen, davon {overdue} überfällig",
+    "darkHeadline_one": "Die Region „{region}“ ist seit dem {since} OFFLINE (kein aktiver Worker): {count} Auftrag zugewiesen, davon {overdue} überfällig",
+    "darkHeadline_other": "Die Region „{region}“ ist seit dem {since} OFFLINE (kein aktiver Worker): {count} Aufträge zugewiesen, davon {overdue} überfällig",
     "organizations_one": "{count} Organisation",
     "organizations_other": "{count} Organisationen",
     "darkChecks_one": "{count} Prüfung aus {orgs} läuft nur in dieser Region und wird derzeit nicht ausgeführt. Jede betroffene Organisation wurde per E-Mail benachrichtigt.",
@@ -38,7 +38,7 @@
     "darkRemediation": "Abhilfe: Bringen Sie einen Worker für „{region}“ zurück oder rufen Sie {command} auf.",
     "liveWorkers_one": "{count} aktiver Worker",
     "liveWorkers_other": "{count} aktive Worker",
-    "stalledHeadline_one": "Die Region „{region}“ hängt: {workers}, aber {count} Auftrag überfällig seit dem {since}",
+    "stalledHeadline_one": "Die Region „{region}“ hängt: {workers}, aber {count} Auftrag seit dem {since} überfällig",
     "stalledHeadline_other": "Die Region „{region}“ hängt: {workers}, aber {count} Aufträge überfällig, der älteste seit dem {since}",
     "stalledCause": "Die Worker senden Lebenszeichen, übernehmen aber keine Aufträge. Die Organisationen wurden nicht benachrichtigt.",
     "stalledInspect": "Prüfen Sie GET /api/v1/system/regions/health und danach die Logs der Worker.",

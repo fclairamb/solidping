@@ -6,7 +6,7 @@
     "from": "De: {from}",
     "folded_one": "…y {count} mensaje más en este hilo desde la última notificación.",
     "folded_other": "…y {count} mensajes más en este hilo desde la última notificación.",
-    "replyWarning": "Responder a esta notificación NO llega al remitente: abre el hilo para responderle."
+    "replyWarning": "Tu respuesta a esta notificación NO le llegará al remitente: abre el hilo para responderle."
   },
   "userRegistered": {
     "subject": "Nuevo registro: {email} ({method})",
@@ -25,7 +25,7 @@
   },
   "watchdogRegion": {
     "subjectDark": "La región {region} está fuera de línea",
-    "subjectStalled": "La región {region} está bloqueada",
+    "subjectStalled": "La región {region} está atascada",
     "subjectRecovered": "La región {region} se recuperó tras {duration}",
     "darkHeadline_one": "La región «{region}» está FUERA DE LÍNEA (ningún worker activo) desde el {since}: {count} tarea asignada, {overdue} con retraso",
     "darkHeadline_other": "La región «{region}» está FUERA DE LÍNEA (ningún worker activo) desde el {since}: {count} tareas asignadas, {overdue} con retraso",
@@ -38,15 +38,15 @@
     "darkRemediation": "Solución: vuelve a poner en marcha un worker para «{region}», o llama a {command}.",
     "liveWorkers_one": "{count} worker activo",
     "liveWorkers_other": "{count} workers activos",
-    "stalledHeadline_one": "La región «{region}» está bloqueada: {workers}, pero {count} tarea con retraso desde el {since}",
-    "stalledHeadline_other": "La región «{region}» está bloqueada: {workers}, pero {count} tareas con retraso, la más antigua desde el {since}",
+    "stalledHeadline_one": "La región «{region}» está atascada: {workers}, pero {count} tarea con retraso desde el {since}",
+    "stalledHeadline_other": "La región «{region}» está atascada: {workers}, pero {count} tareas con retraso, la más antigua desde el {since}",
     "stalledCause": "Los workers envían señales de vida pero no toman tareas. No se avisó a las organizaciones.",
     "stalledInspect": "Revisa GET /api/v1/system/regions/health y luego los registros de los workers.",
     "recovered_one": "La región «{region}» vuelve a funcionar tras {duration} ({phase} desde el {since}). Se avisó a {count} organización.",
     "recovered_other": "La región «{region}» vuelve a funcionar tras {duration} ({phase} desde el {since}). Se avisó a {count} organizaciones.",
     "phase": {
       "dark": "fuera de línea",
-      "stalled": "bloqueada"
+      "stalled": "atascada"
     }
   },
   "watchdogDigest": {

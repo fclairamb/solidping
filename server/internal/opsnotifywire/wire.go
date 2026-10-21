@@ -126,9 +126,10 @@ func Build(dbSvc db.Service, registry *services.Registry, cfg *config.Config, op
 // enqueueEmail hands the notice to the normal email job chain, so it inherits
 // the retry policy and SMTP configuration every other mail uses.
 //
-// The subject and text arrive written in the recipient super admin's language
-// (spec 2026-10-21-01, decision 11); the job carries the locale too, as every
-// email job does. Every other medium keeps the English text.
+// The subject and text arrive written in loc, the recipient super admin's
+// language (spec 2026-10-21-01, decision 11), or English for a notice queued
+// before the upgrade; the job carries it, as every email job does. Every
+// other medium keeps the English text.
 func enqueueEmail(registry *services.Registry) opsnotify.EnqueueEmailFunc {
 	return func(ctx context.Context, orgUID, address string, loc i18n.Locale, subject, text string) error {
 		if registry == nil || registry.Jobs == nil {
