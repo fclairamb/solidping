@@ -17,7 +17,7 @@
   "welcome": {
     "title": "Willkommen bei SolidPing",
     "preheader": "Ihr Konto ist bereit. Fügen Sie in einer Minute Ihre erste Prüfung hinzu.",
-    "lead": "Ihr Konto ist bereit. Diese drei Schritte dauern fünf Minuten und machen es nützlich:",
+    "lead": "Ihr Konto ist bereit. Mit diesen drei Schritten (zusammen fünf Minuten) holen Sie das Beste heraus:",
     "addCheck": {
       "label": "1. Prüfung hinzufügen",
       "detail": "Eine Website, eine API, ein DNS-Eintrag, ein Cron-Job..."
@@ -61,13 +61,13 @@
     "body": "Hiermit bestätigen wir, dass Ihr SolidPing-Passwort am {date} geändert wurde."
   },
   "emailChanged": {
-    "subject": "Die E-Mail-Adresse Ihres SolidPing-Kontos wurde geändert",
+    "subject": "Ihre SolidPing-E-Mail-Adresse wurde geändert",
     "title": "Ihre E-Mail-Adresse wurde geändert",
     "body": "Die E-Mail-Adresse Ihres SolidPing-Kontos wurde am {date} von {oldEmail} in {newEmail} geändert.",
     "newAddress": "Sie melden sich jetzt mit {newEmail} an. Diese Adresse erhält keine E-Mails mehr zu Ihrem Konto."
   },
   "invitation": {
-    "subject": "Sie sind eingeladen, {org} bei SolidPing beizutreten",
+    "subject": "Einladung zu {org} bei SolidPing",
     "preheader": {
       "admin": "Treten Sie {org} als Admin bei. Die Einladung läuft in {expiresIn} ab.",
       "user": "Treten Sie {org} als Benutzer bei. Die Einladung läuft in {expiresIn} ab.",

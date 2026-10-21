@@ -84,7 +84,7 @@ func TestAccountMail_EveryLocale(t *testing.T) {
 		},
 		"welcome.html": {
 			i18n.LangEnglish: {"Welcome to SolidPing", "Open your dashboard: " + fixtureDashboardURL},
-			i18n.LangFrench:  {"Bienvenue sur SolidPing", "Ouvrir votre tableau de bord : " + fixtureDashboardURL},
+			i18n.LangFrench:  {"Bienvenue sur SolidPing", "Ouvrir mon tableau de bord : " + fixtureDashboardURL},
 			i18n.LangGerman:  {"Willkommen bei SolidPing", "Dashboard öffnen: " + fixtureDashboardURL},
 			i18n.LangSpanish: {"Bienvenido a SolidPing", "Abrir tu panel: " + fixtureDashboardURL},
 		},
@@ -136,15 +136,15 @@ func TestAccountMail_EveryLocale(t *testing.T) {
 				"changed from alice@acme.com to alice@acme.org on Jul 5, 10:00 UTC.",
 			},
 			i18n.LangFrench: {
-				"L'adresse e-mail de votre compte SolidPing a été modifiée",
+				"Votre adresse e-mail SolidPing a été modifiée",
 				"remplacée par alice@acme.org le 5 juil., 10:00 UTC. L'ancienne adresse était alice@acme.com.",
 			},
 			i18n.LangGerman: {
-				"Die E-Mail-Adresse Ihres SolidPing-Kontos wurde geändert",
+				"Ihre SolidPing-E-Mail-Adresse wurde geändert",
 				"am 5. Juli, 10:00 UTC von alice@acme.com in alice@acme.org geändert.",
 			},
 			i18n.LangSpanish: {
-				"Se ha cambiado la dirección de correo de tu cuenta de SolidPing",
+				"Se ha cambiado tu correo de SolidPing",
 				"se cambió de alice@acme.com a alice@acme.org el 5 jul, 10:00 UTC.",
 			},
 		},
@@ -158,7 +158,7 @@ func TestAccountMail_EveryLocale(t *testing.T) {
 				"Alice Admin vous invite à rejoindre Acme Corp sur SolidPing en tant qu'administrateur.",
 			},
 			i18n.LangGerman: {
-				"Sie sind eingeladen, Acme Corp bei SolidPing beizutreten",
+				"Einladung zu Acme Corp bei SolidPing",
 				"Alice Admin hat Sie eingeladen, Acme Corp bei SolidPing als Admin beizutreten.",
 			},
 			i18n.LangSpanish: {
@@ -195,7 +195,7 @@ func TestAccountMail_EveryLocale(t *testing.T) {
 				"Sie sind jetzt Mitglied mit der Rolle Betrachter.",
 			},
 			i18n.LangSpanish: {
-				"Tu solicitud para unirte a Acme Corp ha sido aprobada",
+				"Se ha aprobado tu solicitud para unirte a Acme Corp",
 				"Ahora eres miembro con el rol lector.",
 			},
 		},
@@ -243,19 +243,36 @@ func TestAccountMail_DatesInTheReaderZone(t *testing.T) {
 func TestAccountMail_EveryRoleAndDecision(t *testing.T) {
 	t.Parallel()
 
-	roles := map[string]map[string]string{
+	// invited is how the invitation names the role, approved how the approval
+	// does.
+	type roleWords struct{ invited, approved string }
+
+	roles := map[string]map[string]roleWords{
 		"admin": {
-			i18n.LangEnglish: "as admin", i18n.LangFrench: "qu'administrateur",
-			i18n.LangGerman: "als Admin", i18n.LangSpanish: "como administrador",
+			i18n.LangEnglish: {"as admin", "with role admin."},
+			i18n.LangFrench:  {"qu'administrateur", "avec le rôle administrateur."},
+			i18n.LangGerman:  {"als Admin", "mit der Rolle Admin."},
+			i18n.LangSpanish: {"como administrador", "con el rol administrador."},
 		},
 		"user": {
-			i18n.LangEnglish: "as user", i18n.LangFrench: "qu'utilisateur",
-			i18n.LangGerman: "als Benutzer", i18n.LangSpanish: "como usuario",
+			i18n.LangEnglish: {"as user", "with role user."},
+			i18n.LangFrench:  {"qu'utilisateur", "avec le rôle utilisateur."},
+			i18n.LangGerman:  {"als Benutzer", "mit der Rolle Benutzer."},
+			i18n.LangSpanish: {"como usuario", "con el rol usuario."},
 		},
 		"viewer": {
-			i18n.LangEnglish: "as viewer", i18n.LangFrench: "que lecteur",
-			i18n.LangGerman: "als Betrachter", i18n.LangSpanish: "como lector",
+			i18n.LangEnglish: {"as viewer", "with role viewer."},
+			i18n.LangFrench:  {"que lecteur", "avec le rôle lecteur."},
+			i18n.LangGerman:  {"als Betrachter", "mit der Rolle Betrachter."},
+			i18n.LangSpanish: {"como lector", "con el rol lector."},
 		},
+	}
+
+	rejectedSubjects := map[string]string{
+		i18n.LangEnglish: "Your request to join " + fixtureOrgName + " was rejected",
+		i18n.LangFrench:  "Votre demande d'adhésion à " + fixtureOrgName + " a été rejetée",
+		i18n.LangGerman:  "Ihre Anfrage zum Beitritt zu " + fixtureOrgName + " wurde abgelehnt",
+		i18n.LangSpanish: "Se ha rechazado tu solicitud para unirte a " + fixtureOrgName,
 	}
 
 	for role, words := range roles {
@@ -270,23 +287,25 @@ func TestAccountMail_EveryRoleAndDecision(t *testing.T) {
 				invite["Role"] = role
 				_, _, withInviter := renderAccount(t, "invitation.html", loc, invite)
 				r.Contains(withInviter, fixturePersonName)
-				r.Contains(withInviter, words[lang])
+				r.Contains(withInviter, words[lang].invited)
 
 				invite["InviterName"] = ""
 				_, _, anonymous := renderAccount(t, "invitation.html", loc, invite)
 				r.NotContains(anonymous, fixturePersonName)
-				r.Contains(anonymous, words[lang])
+				r.Contains(anonymous, words[lang].invited)
 
 				decision := accountFixture(t, "membership_request_decision.html", loc)
 				decision["Role"] = role
-				_, approvedHTML, _ := renderAccount(t, "membership_request_decision.html", loc, decision)
+				approvedSubject, _, approvedText := renderAccount(t, "membership_request_decision.html", loc, decision)
+				r.Contains(approvedText, words[lang].approved)
 
 				decision["Decision"] = "rejected"
 				decision["Reason"] = "Not this quarter"
-				rejectedSubject, rejectedHTML, rejectedText := renderAccount(t, "membership_request_decision.html", loc, decision)
-				r.NotEqual(approvedHTML, rejectedHTML)
+				rejectedSubject, _, rejectedText := renderAccount(t, "membership_request_decision.html", loc, decision)
+				r.Equal(rejectedSubjects[lang], rejectedSubject)
+				r.NotEqual(approvedSubject, rejectedSubject)
 				r.Contains(rejectedText, "Not this quarter")
-				r.NotContains(rejectedSubject, "approved")
+				r.NotContains(rejectedText, words[lang].approved, "a rejection names no role")
 
 				requireNoMissingAccountKeys(t)
 			})

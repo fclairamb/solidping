@@ -16,21 +16,21 @@
   },
   "welcome": {
     "title": "Bienvenue sur SolidPing",
-    "preheader": "Votre compte est prêt. Ajoutez votre première vérification en une minute.",
-    "lead": "Votre compte est prêt. Ces trois étapes prennent cinq minutes et le rendent utile :",
+    "preheader": "Votre compte est prêt. Ajoutez votre premier contrôle en une minute.",
+    "lead": "Votre compte est prêt. Pour en tirer parti, trois étapes suffisent (cinq minutes en tout) :",
     "addCheck": {
-      "label": "1. Ajoutez une vérification",
+      "label": "1. Ajoutez un contrôle",
       "detail": "Un site web, une API, un enregistrement DNS, une tâche cron..."
     },
     "getAlerted": {
-      "label": "2. Recevez les alertes",
+      "label": "2. Soyez alerté",
       "detail": "L'e-mail fonctionne déjà. Ajoutez Slack, les SMS ou un appel téléphonique si vous voulez qu'on vous réveille."
     },
     "shareStatus": {
       "label": "3. Partagez l'état de vos services",
       "detail": "Une page de statut informe vos utilisateurs de ce qui se passe avant qu'ils ne posent la question."
     },
-    "cta": "Ouvrir votre tableau de bord",
+    "cta": "Ouvrir mon tableau de bord",
     "help": "Des questions ? Répondez à cet e-mail : un humain le lira.",
     "introText": "Merci d'avoir rejoint SolidPing. Nous vous aidons à garder vos services en bonne santé et vous prévenons dès que quelque chose ne va pas.",
     "helpText": "Besoin d'aide pour démarrer ? Répondez simplement à cet e-mail."
@@ -61,7 +61,7 @@
     "body": "Nous vous confirmons que votre mot de passe SolidPing a été modifié le {date}."
   },
   "emailChanged": {
-    "subject": "L'adresse e-mail de votre compte SolidPing a été modifiée",
+    "subject": "Votre adresse e-mail SolidPing a été modifiée",
     "title": "Votre adresse e-mail a été modifiée",
     "body": "L'adresse e-mail de votre compte SolidPing a été remplacée par {newEmail} le {date}. L'ancienne adresse était {oldEmail}.",
     "newAddress": "Vous vous connectez désormais avec {newEmail}. Cette adresse ne recevra plus les e-mails liés à votre compte."

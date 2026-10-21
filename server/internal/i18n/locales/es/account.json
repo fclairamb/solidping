@@ -17,7 +17,7 @@
   "welcome": {
     "title": "Bienvenido a SolidPing",
     "preheader": "Tu cuenta está lista. Añade tu primera comprobación en un minuto.",
-    "lead": "Tu cuenta está lista. Estos tres pasos llevan cinco minutos y la hacen útil:",
+    "lead": "Tu cuenta está lista. Para sacarle partido, bastan tres pasos (cinco minutos en total):",
     "addCheck": {
       "label": "1. Añade una comprobación",
       "detail": "Un sitio web, una API, un registro DNS, una tarea cron..."
@@ -61,7 +61,7 @@
     "body": "Te confirmamos que tu contraseña de SolidPing se cambió el {date}."
   },
   "emailChanged": {
-    "subject": "Se ha cambiado la dirección de correo de tu cuenta de SolidPing",
+    "subject": "Se ha cambiado tu correo de SolidPing",
     "title": "Se ha cambiado tu dirección de correo",
     "body": "La dirección de correo de tu cuenta de SolidPing se cambió de {oldEmail} a {newEmail} el {date}.",
     "newAddress": "Ahora inicias sesión con {newEmail}. Esta dirección ya no recibirá los correos de tu cuenta."
@@ -114,27 +114,27 @@
   },
   "membershipDecision": {
     "approved": {
-      "subject": "Tu solicitud para unirte a {org} ha sido aprobada",
-      "preheader": "Tu solicitud para unirte a {org} ha sido aprobada.",
+      "subject": "Se ha aprobado tu solicitud para unirte a {org}",
+      "preheader": "Se ha aprobado tu solicitud para unirte a {org}.",
       "title": "Solicitud de adhesión aprobada",
       "body": {
-        "admin": "Tu solicitud para unirte a <strong>{org}</strong> en SolidPing ha sido aprobada. Ahora eres miembro con el rol <strong>administrador</strong>.",
-        "user": "Tu solicitud para unirte a <strong>{org}</strong> en SolidPing ha sido aprobada. Ahora eres miembro con el rol <strong>usuario</strong>.",
-        "viewer": "Tu solicitud para unirte a <strong>{org}</strong> en SolidPing ha sido aprobada. Ahora eres miembro con el rol <strong>lector</strong>."
+        "admin": "Se ha aprobado tu solicitud para unirte a <strong>{org}</strong> en SolidPing. Ahora eres miembro con el rol <strong>administrador</strong>.",
+        "user": "Se ha aprobado tu solicitud para unirte a <strong>{org}</strong> en SolidPing. Ahora eres miembro con el rol <strong>usuario</strong>.",
+        "viewer": "Se ha aprobado tu solicitud para unirte a <strong>{org}</strong> en SolidPing. Ahora eres miembro con el rol <strong>lector</strong>."
       },
       "bodyText": {
-        "admin": "Tu solicitud para unirte a {org} en SolidPing ha sido aprobada. Ahora eres miembro con el rol administrador.",
-        "user": "Tu solicitud para unirte a {org} en SolidPing ha sido aprobada. Ahora eres miembro con el rol usuario.",
-        "viewer": "Tu solicitud para unirte a {org} en SolidPing ha sido aprobada. Ahora eres miembro con el rol lector."
+        "admin": "Se ha aprobado tu solicitud para unirte a {org} en SolidPing. Ahora eres miembro con el rol administrador.",
+        "user": "Se ha aprobado tu solicitud para unirte a {org} en SolidPing. Ahora eres miembro con el rol usuario.",
+        "viewer": "Se ha aprobado tu solicitud para unirte a {org} en SolidPing. Ahora eres miembro con el rol lector."
       },
       "cta": "Abrir {org}"
     },
     "rejected": {
-      "subject": "Tu solicitud para unirte a {org} ha sido rechazada",
-      "preheader": "Tu solicitud para unirte a {org} ha sido rechazada.",
+      "subject": "Se ha rechazado tu solicitud para unirte a {org}",
+      "preheader": "Se ha rechazado tu solicitud para unirte a {org}.",
       "title": "Solicitud de adhesión rechazada",
-      "body": "Tu solicitud para unirte a <strong>{org}</strong> en SolidPing ha sido rechazada.",
-      "bodyText": "Tu solicitud para unirte a {org} en SolidPing ha sido rechazada.",
+      "body": "Se ha rechazado tu solicitud para unirte a <strong>{org}</strong> en SolidPing.",
+      "bodyText": "Se ha rechazado tu solicitud para unirte a {org} en SolidPing.",
       "reasonIntro": "Motivo indicado por el administrador:",
       "retry": "Podrás enviar una nueva solicitud cuando termine el periodo de espera."
     }
