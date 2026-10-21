@@ -1,4 +1,4 @@
-import { apiFetch } from "@/api/client";
+import { ApiError, apiFetch } from "@/api/client";
 import type {
   Check,
   StatusPage,
@@ -112,21 +112,31 @@ export function findCheckPublications(
   return found;
 }
 
-/** Loads every status page of the org with its sections and resources. */
+/**
+ * Loads every status page of the org with its sections and resources.
+ *
+ * A page deleted between the list and its own GET answers 404: it is skipped,
+ * it no longer publishes anything. Failing the whole lookup on it hid the
+ * post-create hint whenever another operator (or a parallel E2E worker)
+ * deleted a status page at that moment (batch gate 2026-10-22).
+ */
 export async function fetchStatusPagesWithSections(
   org: string,
 ): Promise<StatusPage[]> {
   const list = await apiFetch<{ data?: StatusPage[] }>(
     `/api/v1/orgs/${org}/status-pages`,
   );
-  const pages = list.data ?? [];
-  return Promise.all(
-    pages.map((page) =>
+  const pages = await Promise.all(
+    (list.data ?? []).map((page) =>
       apiFetch<StatusPage>(
         `/api/v1/orgs/${org}/status-pages/${page.uid}?with=sections`,
-      ),
+      ).catch((err: unknown) => {
+        if (err instanceof ApiError && err.status === 404) return undefined;
+        throw err;
+      }),
     ),
   );
+  return pages.filter((page): page is StatusPage => page !== undefined);
 }
 
 /**

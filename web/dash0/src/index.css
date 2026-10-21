@@ -349,3 +349,15 @@
     @apply bg-background text-foreground antialiased;
   }
 }
+
+/*
+ * Toasts sit below the page header actions (Toaster offset in __root.tsx), but
+ * sonner's top-position toast enters from translateY(-100%) and leaves back up
+ * the same way: for the first frames of either animation it slid over the
+ * header's Edit and more-actions buttons (batch gate 2026-10-22, flaky
+ * check-publication-hint.spec.ts). Fade in and out in place instead.
+ */
+[data-sonner-toast][data-y-position="top"][data-mounted="false"],
+[data-sonner-toast][data-y-position="top"][data-removed="true"][data-front="true"][data-swipe-out="false"] {
+  --y: translateY(0);
+}
