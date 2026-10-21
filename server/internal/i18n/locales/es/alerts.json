@@ -1,0 +1,114 @@
+{
+  "emphasis": "<strong>{text}</strong>",
+  "link": "<a href=\"{url}\">{text}</a>",
+  "openChecks": "Abrir tus comprobaciones",
+  "escalation": {
+    "subject": "{check} sigue caído, escalado a ti",
+    "pill": "Escalado",
+    "heading": "{check} sigue caído",
+    "lead": "Nadie reconoció el incidente a tiempo, así que se te ha escalado.",
+    "failedChecks": "Número de fallos",
+    "unknownCheck": "Comprobación desconocida"
+  },
+  "pagingNudge": {
+    "subject": "Configura tus notificaciones de alerta para {org}",
+    "preheader": "Añade un contacto para que SolidPing pueda avisarte en cuanto algo falle.",
+    "heading": "Elige cómo te avisa SolidPing",
+    "asked": "Un administrador de {org} te ha pedido que configures cómo debe avisarte SolidPing cuando algo falle.",
+    "cta": "Añadir y verificar un contacto",
+    "ctaText": "Añade y verifica aquí un contacto de teléfono o de mensajería:",
+    "emailOnly": "Hasta que verifiques un contacto, las alertas solo podrán llegarte por correo.",
+    "greeting": "Hola:"
+  },
+  "testEmail": {
+    "smtp": {
+      "title": "Correo de prueba de SolidPing",
+      "body": "Este es un correo de prueba de SolidPing. Si lo has recibido, tu configuración de correo funciona correctamente."
+    },
+    "route": {
+      "title": "Notificación de prueba de SolidPing",
+      "body": "Esta es una notificación de prueba de SolidPing. El envío de tus correos funciona correctamente."
+    }
+  },
+  "testSend": {
+    "welcomeSubject": "[SolidPing] ¡Bienvenido!",
+    "alertSubject": "[SolidPing] Alerta: {check}",
+    "alertSubjectNoCheck": "[SolidPing] Alerta"
+  },
+  "regionOffline": {
+    "subject_one": "La región {region} está fuera de línea: {count} de tus comprobaciones no se está ejecutando",
+    "subject_other": "La región {region} está fuera de línea: {count} de tus comprobaciones no se están ejecutando",
+    "preheader": "Desde el {since}, las comprobaciones que solo se ejecutan desde {region} no se están realizando.",
+    "pill": "Región fuera de línea",
+    "heading": "La región {region} está fuera de línea",
+    "since": "La región {region} de SolidPing está fuera de línea desde el {since}.",
+    "blind_one": "{count} de tus comprobaciones en {org} se ejecuta solo desde esta región, así que ahora mismo no se está realizando:",
+    "blind_other": "{count} de tus comprobaciones en {org} se ejecutan solo desde esta región, así que ahora mismo no se están realizando:",
+    "more_one": "…y {count} más.",
+    "more_other": "…y {count} más.",
+    "reduced_one": "{count} comprobación más sigue ejecutándose desde sus otras regiones.",
+    "reduced_other": "{count} comprobaciones más siguen ejecutándose desde sus otras regiones.",
+    "nothingToDo": "No tienes que hacer nada. El equipo de SolidPing ya está avisado y recibirás un segundo correo cuando la región vuelva. Hasta entonces, estas comprobaciones aparecerán sin datos en lugar de mostrar un estado."
+  },
+  "regionRecovered": {
+    "subject": "La región {region} ha vuelto, tus comprobaciones se han reanudado",
+    "preheader": "La región estuvo fuera de línea durante {duration}. Tus comprobaciones vuelven a ejecutarse.",
+    "pill": "Región de nuevo en línea",
+    "heading": "La región {region} ha vuelto",
+    "moved": "Las comprobaciones de {org} que solo se ejecutaban desde {region} ya no dependen de ella y vuelven a realizarse.",
+    "back": "La región {region} de SolidPing vuelve a estar en línea y las comprobaciones de {org} que solo se ejecutaban desde ella se han reanudado.",
+    "offline": "Fuera de línea",
+    "offlineFor": "Tiempo fuera de línea",
+    "offlineSince": "Fuera de línea desde",
+    "backAt": "De nuevo en línea"
+  },
+  "usageCap": {
+    "pill": "Cuota mensual agotada",
+    "otherChannels": "Los demás canales (correo, Slack, push...) siguen funcionando.",
+    "onlyOnce": "Este es el único correo sobre esto este mes.",
+    "seePlans": "Ver planes",
+    "openUsage": "Ver el uso",
+    "usage": "Uso",
+    "sms": {
+      "subject": "{org} ha agotado sus alertas por SMS de este mes",
+      "preheader_one": "Las alertas por SMS están en pausa hasta el mes que viene: el plan incluye {count} al mes.",
+      "preheader_other": "Las alertas por SMS están en pausa hasta el mes que viene: el plan incluye {count} al mes.",
+      "heading": "Las alertas por SMS están en pausa hasta el mes que viene",
+      "used_one": "{org} ha agotado su cuota de {count} alerta por SMS de este mes.",
+      "used_other": "{org} ha agotado su cuota de {count} alertas por SMS de este mes.",
+      "dropped": "Por eso SolidPing acaba de descartar una alerta por SMS y descartará las siguientes hasta el {date}.",
+      "keep": "Para seguir recibiendo alertas por SMS, cámbiate a un plan con una cuota mayor o conecta tu propia cuenta de Twilio en las integraciones: Twilio factura los mensajes enviados a través de ella y no cuentan para el plan."
+    },
+    "voice": {
+      "subject": "{org} ha agotado sus alertas por llamada de voz de este mes",
+      "preheader_one": "Las alertas por llamada de voz están en pausa hasta el mes que viene: el plan incluye {count} al mes.",
+      "preheader_other": "Las alertas por llamada de voz están en pausa hasta el mes que viene: el plan incluye {count} al mes.",
+      "heading": "Las alertas por llamada de voz están en pausa hasta el mes que viene",
+      "used_one": "{org} ha agotado su cuota de {count} llamada de voz de este mes.",
+      "used_other": "{org} ha agotado su cuota de {count} llamadas de voz de este mes.",
+      "dropped": "Por eso SolidPing acaba de descartar una alerta por llamada de voz y descartará las siguientes hasta el {date}.",
+      "keep": "Para seguir recibiendo alertas por llamada de voz, cámbiate a un plan con una cuota mayor o conecta tu propia cuenta de Twilio en las integraciones: Twilio factura las llamadas realizadas a través de ella y no cuentan para el plan."
+    },
+    "whatsapp": {
+      "subject": "{org} ha agotado sus alertas por WhatsApp de este mes",
+      "preheader_one": "Las alertas por WhatsApp están en pausa hasta el mes que viene: el plan incluye {count} al mes.",
+      "preheader_other": "Las alertas por WhatsApp están en pausa hasta el mes que viene: el plan incluye {count} al mes.",
+      "heading": "Las alertas por WhatsApp están en pausa hasta el mes que viene",
+      "used_one": "{org} ha agotado su cuota de {count} alerta por WhatsApp de este mes.",
+      "used_other": "{org} ha agotado su cuota de {count} alertas por WhatsApp de este mes.",
+      "dropped": "Por eso SolidPing acaba de descartar una alerta por WhatsApp y descartará las siguientes hasta el {date}.",
+      "keep": "Para seguir recibiendo alertas por WhatsApp, cámbiate a un plan con una cuota mayor."
+    }
+  },
+  "customDomain": {
+    "subject": "Tu página de estado ya no se sirve en {domain}",
+    "preheader": "La reverificación DNS ha fallado repetidamente, así que {domain} ya no sirve tu página de estado.",
+    "pill": "Dominio personalizado desactivado",
+    "heading": "{domain} ya no sirve tu página de estado",
+    "stopped": "El dominio personalizado {domain} de la página de estado {page} ({org}) no superó la reverificación DNS durante varios días seguidos, así que SolidPing ha dejado de servir la página en él. Ahora los visitantes ven una página de error en lugar de tu página de estado.",
+    "lastCheck": "La última comprobación indicó:",
+    "fix": "Para solucionarlo: confirma que el registro CNAME del dominio sigue apuntando al destino que aparece en los ajustes de la página de estado y luego haz clic en {verify}. Si el DNS vuelve a resolver correctamente por sí solo, SolidPing también restablecerá el dominio automáticamente tras varias comprobaciones correctas seguidas.",
+    "verify": "Verificar",
+    "openSettings": "Abrir los ajustes de la página de estado"
+  }
+}

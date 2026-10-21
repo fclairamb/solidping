@@ -1,37 +1,31 @@
-{{define "subject"}}🟠 {{.CheckName}} is still down, escalated to you{{if gt .IncidentNumber 0}} (#{{.IncidentNumber}}){{end}}{{end}}
-{{define "preheader"}}Nobody acknowledged it in time, so it was escalated to you.{{if .FailureReason}} {{short 80 .FailureReason}}.{{end}}{{end}}
+{{define "subject"}}🟠 {{t "alerts.escalation.subject" "check" .CheckName}}{{if .IncidentNumber}} (#{{.IncidentNumber}}){{end}}{{end}}
+{{define "preheader"}}{{t "alerts.escalation.lead"}}{{if .FailureReason}} {{short 80 .FailureReason}}.{{end}}{{end}}
 {{template "base.html" .}}
-{{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "escalated" "Label" "Escalated"}}{{end}}
+{{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "escalated" "Label" (t "alerts.escalation.pill")}}{{end}}
 {{define "content"}}
-    <h1>{{if .CheckURL}}<a href="{{.CheckURL}}">{{nolink .CheckName}}</a>{{else}}{{nolink .CheckName}}{{end}} is still down</h1>
-    <p class="lead">Nobody acknowledged it in time, so it was escalated to you.</p>
+    {{- $check := nolink .CheckName}}
+    <h1>{{if .CheckURL}}{{tHTML "alerts.escalation.heading" "check" (tHTML "alerts.link" "url" .CheckURL "text" $check)}}{{else}}{{tHTML "alerts.escalation.heading" "check" $check}}{{end}}</h1>
+    <p class="lead">{{t "alerts.escalation.lead"}}</p>
     {{template "cause" .}}
     <table class="details-table" role="presentation" cellpadding="0" cellspacing="0">
-        {{if .CheckTarget}}<tr><td class="label">Target</td><td class="value">{{nolink .CheckTarget}}</td></tr>{{end}}
-        <tr><td class="label">Since</td><td class="value">{{.StartedAt}}</td></tr>
-        <tr><td class="label">Failed checks</td><td class="value">{{.FailureCount}}</td></tr>
-        {{if gt .IncidentNumber 0}}<tr><td class="label">Incident</td><td class="value">#{{.IncidentNumber}}</td></tr>{{end}}
+        {{if .CheckTarget}}<tr><td class="label">{{t "common.labels.target"}}</td><td class="value">{{nolink .CheckTarget}}</td></tr>{{end}}
+        <tr><td class="label">{{t "common.labels.since"}}</td><td class="value">{{date .StartedAt}}</td></tr>
+        <tr><td class="label">{{t "alerts.escalation.failedChecks"}}</td><td class="value">{{.FailureCount}}</td></tr>
+        {{if .IncidentNumber}}<tr><td class="label">{{t "common.labels.incident"}}</td><td class="value">#{{.IncidentNumber}}</td></tr>{{end}}
     </table>
     {{template "incident-actions" .}}
 {{end}}
-{{define "text"}}{{.CheckName}} is still down
+{{define "text"}}{{t "alerts.escalation.heading" "check" .CheckName}}
 
-Nobody acknowledged it in time, so it was escalated to you.
+{{t "alerts.escalation.lead"}}
 {{if .FailureReason}}
 {{.FailureReason}}
 {{end}}
-Check: {{.CheckName}}
-{{if .CheckTarget}}Target: {{.CheckTarget}}
-{{end}}{{if .CheckURL}}Check URL: {{.CheckURL}}
-{{end}}Since: {{.StartedAt}}
-Failed checks: {{.FailureCount}}
-{{if gt .IncidentNumber 0}}Incident: #{{.IncidentNumber}}
-{{end}}{{if .AckURL}}
-I'm on it (acknowledge, stops escalation): {{.AckURL}}
-(link valid for 7 days)
-{{end}}{{if .IncidentURL}}
-View incident: {{.IncidentURL}}
-{{end}}
-{{if .DashboardURL}}Dashboard: {{.DashboardURL}}{{end}}{{if .DocsURL}}
-Docs: {{.DocsURL}}{{end}}
-{{end}}
+{{t "common.textField" "label" (t "common.labels.check") "value" .CheckName}}
+{{if .CheckTarget}}{{t "common.textField" "label" (t "common.labels.target") "value" .CheckTarget}}
+{{end}}{{if .CheckURL}}{{t "common.textField" "label" (t "common.labels.checkURL") "value" .CheckURL}}
+{{end}}{{t "common.textField" "label" (t "common.labels.since") "value" (date .StartedAt)}}
+{{t "common.textField" "label" (t "alerts.escalation.failedChecks") "value" .FailureCount}}
+{{if .IncidentNumber}}{{t "common.textField" "label" (t "common.labels.incident") "value" (printf "#%v" .IncidentNumber)}}
+{{end}}{{template "incident-actions-text" .}}
+{{template "footer-text" .}}{{end}}

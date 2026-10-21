@@ -1,0 +1,114 @@
+{
+  "emphasis": "<strong>{text}</strong>",
+  "link": "<a href=\"{url}\">{text}</a>",
+  "openChecks": "Ihre Prüfungen öffnen",
+  "escalation": {
+    "subject": "{check} ist weiterhin ausgefallen, an Sie eskaliert",
+    "pill": "Eskaliert",
+    "heading": "{check} ist weiterhin ausgefallen",
+    "lead": "Niemand hat den Vorfall rechtzeitig bestätigt, daher wurde er an Sie eskaliert.",
+    "failedChecks": "Anzahl Fehler",
+    "unknownCheck": "Unbekannte Prüfung"
+  },
+  "pagingNudge": {
+    "subject": "Richten Sie Ihre Benachrichtigungen für {org} ein",
+    "preheader": "Fügen Sie einen Kontakt hinzu, damit SolidPing Sie erreicht, sobald etwas ausfällt.",
+    "heading": "Legen Sie fest, wie SolidPing Sie erreicht",
+    "asked": "Ein Administrator von {org} bittet Sie, festzulegen, wie SolidPing Sie erreichen soll, wenn etwas ausfällt.",
+    "cta": "Kontakt hinzufügen und verifizieren",
+    "ctaText": "Fügen Sie hier einen Telefon- oder Messaging-Kontakt hinzu und verifizieren Sie ihn:",
+    "emailOnly": "Solange Sie keinen Kontakt verifiziert haben, erreichen Benachrichtigungen Sie nur per E-Mail.",
+    "greeting": "Hallo,"
+  },
+  "testEmail": {
+    "smtp": {
+      "title": "SolidPing-Test-E-Mail",
+      "body": "Dies ist eine Test-E-Mail von SolidPing. Wenn Sie sie erhalten, funktioniert Ihre E-Mail-Konfiguration korrekt."
+    },
+    "route": {
+      "title": "Testbenachrichtigung von SolidPing",
+      "body": "Dies ist eine Testbenachrichtigung von SolidPing. Die Zustellung Ihrer E-Mails funktioniert korrekt."
+    }
+  },
+  "testSend": {
+    "welcomeSubject": "[SolidPing] Willkommen!",
+    "alertSubject": "[SolidPing] Alarm: {check}",
+    "alertSubjectNoCheck": "[SolidPing] Alarm"
+  },
+  "regionOffline": {
+    "subject_one": "Region {region} ist offline: {count} Ihrer Prüfungen läuft nicht",
+    "subject_other": "Region {region} ist offline: {count} Ihrer Prüfungen laufen nicht",
+    "preheader": "Seit dem {since} werden Prüfungen, die nur von {region} aus laufen, nicht ausgeführt.",
+    "pill": "Region offline",
+    "heading": "Region {region} ist offline",
+    "since": "Die SolidPing-Region {region} ist seit dem {since} offline.",
+    "blind_one": "{count} Ihrer Prüfungen in {org} läuft nur von dieser Region aus und wird daher gerade nicht ausgeführt:",
+    "blind_other": "{count} Ihrer Prüfungen in {org} laufen nur von dieser Region aus und werden daher gerade nicht ausgeführt:",
+    "more_one": "…und {count} weitere.",
+    "more_other": "…und {count} weitere.",
+    "reduced_one": "{count} weitere Prüfung läuft weiterhin von ihren anderen Regionen aus.",
+    "reduced_other": "{count} weitere Prüfungen laufen weiterhin von ihren anderen Regionen aus.",
+    "nothingToDo": "Sie müssen nichts tun. Das SolidPing-Team wurde benachrichtigt, und Sie erhalten eine zweite E-Mail, sobald die Region wieder verfügbar ist. Bis dahin zeigen diese Prüfungen statt eines Status „keine Daten“ an."
+  },
+  "regionRecovered": {
+    "subject": "Region {region} ist wieder da, Ihre Prüfungen laufen wieder",
+    "preheader": "Die Region war {duration} offline. Ihre Prüfungen laufen wieder.",
+    "pill": "Region wieder online",
+    "heading": "Region {region} ist wieder da",
+    "moved": "Die Prüfungen von {org}, die nur von {region} aus liefen, hängen nicht mehr davon ab und werden wieder ausgeführt.",
+    "back": "Die SolidPing-Region {region} ist wieder online, und die Prüfungen von {org}, die nur von dort aus liefen, laufen wieder.",
+    "offline": "Offline",
+    "offlineFor": "Offline-Dauer",
+    "offlineSince": "Offline seit",
+    "backAt": "Wieder online"
+  },
+  "usageCap": {
+    "pill": "Monatskontingent aufgebraucht",
+    "otherChannels": "Andere Kanäle (E-Mail, Slack, Push...) funktionieren weiterhin.",
+    "onlyOnce": "Dies ist die einzige E-Mail dazu in diesem Monat.",
+    "seePlans": "Tarife ansehen",
+    "openUsage": "Nutzung öffnen",
+    "usage": "Nutzung",
+    "sms": {
+      "subject": "{org} hat alle SMS-Benachrichtigungen dieses Monats aufgebraucht",
+      "preheader_one": "SMS-Benachrichtigungen sind bis nächsten Monat pausiert: Der Tarif enthält {count} pro Monat.",
+      "preheader_other": "SMS-Benachrichtigungen sind bis nächsten Monat pausiert: Der Tarif enthält {count} pro Monat.",
+      "heading": "SMS-Benachrichtigungen sind bis nächsten Monat pausiert",
+      "used_one": "{org} hat die {count} in diesem Monat enthaltene SMS-Benachrichtigung aufgebraucht.",
+      "used_other": "{org} hat die {count} in diesem Monat enthaltenen SMS-Benachrichtigungen aufgebraucht.",
+      "dropped": "Deshalb hat SolidPing gerade eine SMS-Benachrichtigung verworfen und verwirft auch die nächsten bis zum {date}.",
+      "keep": "Um weiterhin SMS-Benachrichtigungen zu erhalten, wechseln Sie zu einem Tarif mit höherem Kontingent oder verbinden Sie Ihr eigenes Twilio-Konto in den Integrationen: Darüber gesendete Nachrichten werden von Twilio abgerechnet und nicht auf den Tarif angerechnet."
+    },
+    "voice": {
+      "subject": "{org} hat alle Sprachanruf-Benachrichtigungen dieses Monats aufgebraucht",
+      "preheader_one": "Sprachanruf-Benachrichtigungen sind bis nächsten Monat pausiert: Der Tarif enthält {count} pro Monat.",
+      "preheader_other": "Sprachanruf-Benachrichtigungen sind bis nächsten Monat pausiert: Der Tarif enthält {count} pro Monat.",
+      "heading": "Sprachanruf-Benachrichtigungen sind bis nächsten Monat pausiert",
+      "used_one": "{org} hat den {count} in diesem Monat enthaltenen Sprachanruf aufgebraucht.",
+      "used_other": "{org} hat die {count} in diesem Monat enthaltenen Sprachanrufe aufgebraucht.",
+      "dropped": "Deshalb hat SolidPing gerade eine Sprachanruf-Benachrichtigung verworfen und verwirft auch die nächsten bis zum {date}.",
+      "keep": "Um weiterhin Sprachanruf-Benachrichtigungen zu erhalten, wechseln Sie zu einem Tarif mit höherem Kontingent oder verbinden Sie Ihr eigenes Twilio-Konto in den Integrationen: Darüber getätigte Anrufe werden von Twilio abgerechnet und nicht auf den Tarif angerechnet."
+    },
+    "whatsapp": {
+      "subject": "{org} hat alle WhatsApp-Benachrichtigungen dieses Monats aufgebraucht",
+      "preheader_one": "WhatsApp-Benachrichtigungen sind bis nächsten Monat pausiert: Der Tarif enthält {count} pro Monat.",
+      "preheader_other": "WhatsApp-Benachrichtigungen sind bis nächsten Monat pausiert: Der Tarif enthält {count} pro Monat.",
+      "heading": "WhatsApp-Benachrichtigungen sind bis nächsten Monat pausiert",
+      "used_one": "{org} hat die {count} in diesem Monat enthaltene WhatsApp-Benachrichtigung aufgebraucht.",
+      "used_other": "{org} hat die {count} in diesem Monat enthaltenen WhatsApp-Benachrichtigungen aufgebraucht.",
+      "dropped": "Deshalb hat SolidPing gerade eine WhatsApp-Benachrichtigung verworfen und verwirft auch die nächsten bis zum {date}.",
+      "keep": "Um weiterhin WhatsApp-Benachrichtigungen zu erhalten, wechseln Sie zu einem Tarif mit höherem Kontingent."
+    }
+  },
+  "customDomain": {
+    "subject": "Ihre Statusseite wird nicht mehr über {domain} ausgeliefert",
+    "preheader": "Die erneute DNS-Prüfung ist wiederholt fehlgeschlagen, daher liefert {domain} Ihre Statusseite nicht mehr aus.",
+    "pill": "Eigene Domain deaktiviert",
+    "heading": "{domain} liefert Ihre Statusseite nicht mehr aus",
+    "stopped": "Die eigene Domain {domain} der Statusseite {page} ({org}) hat die erneute DNS-Prüfung mehrere Tage in Folge nicht bestanden, daher liefert SolidPing die Seite dort nicht mehr aus. Besucher sehen jetzt eine Fehlerseite statt Ihrer Statusseite.",
+    "lastCheck": "Die letzte Prüfung meldete:",
+    "fix": "So beheben Sie das Problem: Prüfen Sie, ob der CNAME-Eintrag der Domain noch auf das Ziel zeigt, das in den Einstellungen der Statusseite angegeben ist, und klicken Sie dann auf {verify}. Wenn das DNS von selbst wieder korrekt auflöst, stellt SolidPing die Domain nach mehreren erfolgreichen Prüfungen in Folge auch automatisch wieder her.",
+    "verify": "Überprüfen",
+    "openSettings": "Einstellungen der Statusseite öffnen"
+  }
+}

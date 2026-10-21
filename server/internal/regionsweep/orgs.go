@@ -14,6 +14,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/email"
+	"github.com/fclairamb/solidping/server/internal/i18n/recipient"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/regionoutage"
 	"github.com/fclairamb/solidping/server/internal/regions"
@@ -331,25 +332,62 @@ func (r *sweepRun) sendOffline(ctx context.Context, region, name string, since t
 		listed = listed[:maxListedChecks]
 	}
 
-	items := make([]map[string]any, 0, len(listed))
+	items := make([]NoticeCheck, 0, len(listed))
 	for i := range listed {
-		items = append(items, map[string]any{
-			"Name": checkName(&listed[i]),
-			"URL":  r.dashboardURL(org.Slug, "checks/"+listed[i].UID),
+		items = append(items, NoticeCheck{
+			Name: checkName(&listed[i]),
+			URL:  r.dashboardURL(org.Slug, "checks/"+listed[i].UID),
 		})
 	}
 
-	data := map[string]any{
-		"RegionName":   name,
-		"Since":        email.Timestamp(since),
-		"BlindCount":   len(impact.blind),
-		"ReducedCount": impact.reduced,
-		"MoreCount":    len(impact.blind) - len(listed),
-		"Checks":       items,
-		"ChecksURL":    r.dashboardURL(org.Slug, "checks"),
-	}
+	data := OfflineEmailData(name, since, len(impact.blind), impact.reduced, items,
+		r.dashboardURL(org.Slug, "checks"))
 
 	r.mailAdmins(ctx, org, email.TemplateRegionOffline, data)
+}
+
+// NoticeCheck is one check named in a region-offline email.
+type NoticeCheck struct {
+	Name string
+	URL  string
+}
+
+// OfflineEmailData is the region-offline.html view model, without the org
+// branding mailAdmins adds. checks are the listed ones (at most
+// maxListedChecks); blindCount counts them all. Times and counts stay raw: the
+// template words them in each reader's language and zone. The email preview
+// builds its fixture through it too.
+func OfflineEmailData(
+	regionName string, since time.Time, blindCount, reducedCount int, checks []NoticeCheck, checksURL string,
+) map[string]any {
+	items := make([]map[string]any, 0, len(checks))
+	for i := range checks {
+		items = append(items, map[string]any{"Name": checks[i].Name, "URL": checks[i].URL})
+	}
+
+	return map[string]any{
+		"RegionName":   regionName,
+		"Since":        since,
+		"BlindCount":   blindCount,
+		"ReducedCount": reducedCount,
+		"MoreCount":    blindCount - len(checks),
+		"Checks":       items,
+		"ChecksURL":    checksURL,
+	}
+}
+
+// RecoveredEmailData is the region-recovered.html view model, without the org
+// branding. moved is true when the region "recovered" because its checks were
+// moved away rather than because it came back.
+func RecoveredEmailData(regionName string, since, recoveredAt time.Time, moved bool, checksURL string) map[string]any {
+	return map[string]any{
+		"RegionName":  regionName,
+		"Since":       since,
+		"RecoveredAt": recoveredAt,
+		"Duration":    recoveredAt.Sub(since),
+		"Moved":       moved,
+		"ChecksURL":   checksURL,
+	}
 }
 
 // orgRecoveredNotices tells exactly the orgs on record that the outage is
@@ -385,14 +423,8 @@ func (r *sweepRun) orgRecoveredNotices(
 			continue
 		}
 
-		r.mailAdmins(ctx, org, email.TemplateRegionRecovered, map[string]any{
-			"RegionName":  name,
-			"Since":       email.Timestamp(marker.Since),
-			"RecoveredAt": email.Timestamp(r.now),
-			"Duration":    humanDuration(duration),
-			"Moved":       moved,
-			"ChecksURL":   r.dashboardURL(org.Slug, "checks"),
-		})
+		r.mailAdmins(ctx, org, email.TemplateRegionRecovered,
+			RecoveredEmailData(name, marker.Since, r.now, moved, r.dashboardURL(org.Slug, "checks")))
 	}
 
 	return told
@@ -433,8 +465,9 @@ type emailJobConfig struct {
 	Timezone string `json:"timezone,omitempty"`
 }
 
-// mailAdmins queues one email per owner/admin of the org — the
-// custom-domain demotion pattern (customdomain.mailDemoted).
+// mailAdmins queues one email per owner/admin of the org, each in its
+// reader's language and zone — the custom-domain demotion pattern
+// (customdomain.mailDemoted).
 func (r *sweepRun) mailAdmins(ctx context.Context, org *models.Organization, template string, data map[string]any) {
 	if r.deps.Jobs == nil {
 		return
@@ -455,12 +488,16 @@ func (r *sweepRun) mailAdmins(ctx context.Context, org *models.Organization, tem
 			continue
 		}
 
-		raw, marshalErr := json.Marshal(emailJobConfig{ // i18n-phase-b: resolve the recipient locale
+		loc := recipient.ForUser(member.User)
+
+		raw, marshalErr := json.Marshal(emailJobConfig{
 			To:       []string{member.User.Email},
 			Template: template,
 			// Transactional operator mail: an admin cannot opt out of being
 			// told their checks stopped running.
 			TemplateData: data,
+			Locale:       loc.Lang(),
+			Timezone:     loc.Timezone(),
 		})
 		if marshalErr != nil {
 			r.deps.Logger.ErrorContext(ctx, "Failed to marshal a region outage email", "error", marshalErr)
@@ -515,7 +552,9 @@ func checkName(check *sweptCheck) string {
 	return check.UID
 }
 
-// humanDuration renders an outage length at a glance: "7h52m", "12m".
+// humanDuration renders an outage length at a glance: "7h52m", "12m". Operator
+// notices only (English on every medium); org mail formats the raw duration in
+// its reader's language.
 func humanDuration(duration time.Duration) string {
 	if duration < time.Minute {
 		return duration.Round(time.Second).String()
