@@ -15,13 +15,14 @@ import { ApiError } from "@/api/client";
 import { useProviders, useRegister } from "@/api/hooks";
 import { OAuthProviderButtons } from "@/components/auth/oauth-provider-buttons";
 import { clearSignupAttribution, readSignupAttribution } from "@/lib/attribution";
+import { browserTimezone } from "@/lib/languages";
 
 export const Route = createFileRoute("/orgs/$org/register")({
   component: RegisterPage,
 });
 
 function RegisterPage() {
-  const { t } = useTranslation(["auth", "common"]);
+  const { t, i18n } = useTranslation(["auth", "common"]);
   const { org } = Route.useParams();
   const register = useRegister();
   const { data: providersData } = useProviders();
@@ -50,6 +51,10 @@ function RegisterPage() {
         // here. The server keeps it on the pending registration and stores
         // it on the account at confirmation (spec 2026-09-07-03).
         attribution: readSignupAttribution(),
+        // The account starts with this page's language and the browser's
+        // timezone, so the confirmation email is already in them.
+        locale: i18n.resolvedLanguage,
+        timezone: browserTimezone(),
       });
       // Handed over; a second account from this tab must not inherit it.
       clearSignupAttribution();

@@ -140,6 +140,7 @@
       "schemeLight": "Light",
       "schemeDark": "Dark",
       "schemeDarkHint": "Activates the template's own prefers-color-scheme block — what Apple Mail and Thunderbird show in dark mode. Gmail does not support it and stays light.",
+      "localeLabel": "Preview language",
       "refresh": "Refresh",
       "retry": "Retry",
       "loading": "Loading…",

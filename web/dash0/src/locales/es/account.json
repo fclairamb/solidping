@@ -330,5 +330,15 @@
       "wrongPassword": "La contraseña actual es incorrecta.",
       "invalid": "Introduce una dirección de correo válida."
     }
+  },
+  "emailLanguage": {
+    "title": "Idioma de los correos",
+    "subtitle": "El idioma de los correos que te envía SolidPing. También es el idioma de este panel.",
+    "timezone": "Las fechas de tus correos se muestran en la zona horaria de tu navegador: {{timezone}}.",
+    "timezoneSaved": "Zona horaria: {{timezone}}.",
+    "impersonating": "El idioma y la zona horaria de los correos de esta cuenta. No se pueden cambiar mientras ves el panel como otro usuario.",
+    "demo": "El idioma y la zona horaria de los correos de esta cuenta. No se pueden cambiar en la demo.",
+    "saved": "Idioma de los correos guardado.",
+    "failed": "No se pudo guardar el idioma de tus correos."
   }
 }
