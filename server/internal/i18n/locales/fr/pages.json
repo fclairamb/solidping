@@ -1,0 +1,66 @@
+{
+  "unsubscribe": {
+    "choice": {
+      "title": "Se désabonner des alertes SolidPing",
+      "intro": "Vous êtes sur le point de désabonner <strong>{email}</strong> des alertes d'incident par e-mail.",
+      "checkOnly": "Se désabonner uniquement de {check}",
+      "wholeOrg": "Se désabonner de tous les e-mails d'alerte de cette organisation",
+      "undoHint": "Vous pourrez annuler à tout moment depuis la page de confirmation affichée après le désabonnement, tant que ce lien n'a pas expiré."
+    },
+    "success": {
+      "title": "Désabonnement confirmé",
+      "org": "<strong>{email}</strong> ne recevra plus aucun e-mail d'alerte de cette organisation.",
+      "check": "<strong>{email}</strong> ne recevra plus les alertes concernant {check}.",
+      "thisCheck": "<strong>{email}</strong> ne recevra plus les alertes concernant ce check.",
+      "othersUnaffected": "Les autres destinataires de ces alertes ne sont pas concernés.",
+      "changedMind": "Vous avez changé d'avis ?",
+      "undo": "Annuler le désabonnement"
+    },
+    "resubscribed": {
+      "title": "Réabonnement confirmé",
+      "body": "Vous recevrez de nouveau ces e-mails d'alerte."
+    },
+    "missing": {
+      "title": "Jeton manquant",
+      "undoTitle": "Paramètres manquants",
+      "heading": "Lien incomplet",
+      "body": "Il manque des paramètres obligatoires dans cette URL. Utilisez le lien complet de l'e-mail d'origine."
+    },
+    "invalid": {
+      "title": "Lien invalide ou expiré",
+      "heading": "Ce lien est invalide ou a expiré",
+      "body": "Le lien de désabonnement n'a pas pu être vérifié ou a expiré. Si vous avez reçu un e-mail d'alerte plus récent, utilisez plutôt le lien de ce message."
+    },
+    "orgNotFound": {
+      "title": "Organisation introuvable",
+      "body": "L'organisation à laquelle renvoie ce lien n'existe plus."
+    }
+  },
+  "ack": {
+    "success": {
+      "title": "Incident acquitté",
+      "thanks": "Merci, l'incident a bien été acquitté.",
+      "redirecting": "Redirection vers l'incident dans {countdown}…",
+      "goNow": "Accéder à l'incident sans attendre"
+    },
+    "expired": {
+      "title": "Lien expiré",
+      "heading": "Ce lien a expiré",
+      "body_one": "Les liens d'acquittement envoyés par e-mail sont valables {count} jour. Ouvrez le tableau de bord pour acquitter cet incident manuellement.",
+      "body_other": "Les liens d'acquittement envoyés par e-mail sont valables {count} jours. Ouvrez le tableau de bord pour acquitter cet incident manuellement."
+    },
+    "invalid": {
+      "title": "Lien invalide",
+      "heading": "Ce lien est invalide",
+      "body": "Le lien d'acquittement n'a pas pu être vérifié. Si vous avez reçu une notification valide par e-mail, utilisez le lien de ce message ou ouvrez le tableau de bord pour acquitter l'incident manuellement."
+    },
+    "missingToken": {
+      "title": "Jeton manquant",
+      "body": "Il manque le paramètre <code>token</code> dans cette URL. Utilisez le lien complet de l'e-mail d'origine."
+    },
+    "error": {
+      "title": "Une erreur est survenue",
+      "body": "Nous n'avons pas pu acquitter l'incident. Réessayez ou ouvrez le tableau de bord pour l'acquitter manuellement."
+    }
+  }
+}

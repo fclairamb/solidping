@@ -1,0 +1,66 @@
+{
+  "unsubscribe": {
+    "choice": {
+      "title": "Unsubscribe from SolidPing alerts",
+      "intro": "You are unsubscribing <strong>{email}</strong> from incident alert emails.",
+      "checkOnly": "Unsubscribe from {check} only",
+      "wholeOrg": "Unsubscribe from all alert emails for this organization",
+      "undoHint": "You can undo this at any time from the confirmation page shown after you unsubscribe, as long as this link hasn't expired."
+    },
+    "success": {
+      "title": "Unsubscribed",
+      "org": "<strong>{email}</strong> will no longer receive all alert emails for this organization.",
+      "check": "<strong>{email}</strong> will no longer receive alerts for {check}.",
+      "thisCheck": "<strong>{email}</strong> will no longer receive alerts for this check.",
+      "othersUnaffected": "Other recipients of these alerts are not affected.",
+      "changedMind": "Changed your mind?",
+      "undo": "Undo and re-subscribe"
+    },
+    "resubscribed": {
+      "title": "Re-subscribed",
+      "body": "You will receive alert emails again for this scope."
+    },
+    "missing": {
+      "title": "Missing token",
+      "undoTitle": "Missing parameters",
+      "heading": "Missing link parameters",
+      "body": "This URL is missing required parameters. Please use the full link from the original email."
+    },
+    "invalid": {
+      "title": "Invalid or expired link",
+      "heading": "This link is invalid or has expired",
+      "body": "The unsubscribe link could not be verified, or it has expired. If you have a more recent alert email, try the link from that message instead."
+    },
+    "orgNotFound": {
+      "title": "Organization not found",
+      "body": "The organization this link refers to no longer exists."
+    }
+  },
+  "ack": {
+    "success": {
+      "title": "Incident acknowledged",
+      "thanks": "Thanks, the incident has been acknowledged.",
+      "redirecting": "Redirecting to the incident in {countdown}…",
+      "goNow": "Go to the incident now"
+    },
+    "expired": {
+      "title": "Link expired",
+      "heading": "This link has expired",
+      "body_one": "Magic-link ack tokens are valid for {count} day. Open the dashboard to acknowledge this incident manually.",
+      "body_other": "Magic-link ack tokens are valid for {count} days. Open the dashboard to acknowledge this incident manually."
+    },
+    "invalid": {
+      "title": "Invalid link",
+      "heading": "This link is invalid",
+      "body": "The acknowledgment link could not be verified. If you have a valid email notification, try the link from that message, or open the dashboard to acknowledge manually."
+    },
+    "missingToken": {
+      "title": "Missing token",
+      "body": "This URL is missing the <code>token</code> query parameter. Please use the full link from the original email."
+    },
+    "error": {
+      "title": "Something went wrong",
+      "body": "We couldn't acknowledge the incident. Please try again, or open the dashboard to acknowledge manually."
+    }
+  }
+}
