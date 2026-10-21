@@ -457,22 +457,62 @@ func (s *Service) storeCandidate(ctx context.Context, target *repairTarget, cand
 	return s.proposeRepair(ctx, target, candidate, reason)
 }
 
+// repairReason is the reason stored on a repair version and its events. It
+// stays English: the check history shows it as recorded.
 func repairReason(latest *models.Result) string {
-	msg := "the script drifted"
+	return causeOf(latest).text(i18n.English)
+}
 
-	if latest != nil {
-		if errMsg, ok := latest.Output[outputKeyError].(string); ok && errMsg != "" {
-			msg += ": " + errMsg
-		} else if step, ok := latest.Output["step"].(string); ok && step != "" {
-			msg += " at step " + step
-		}
+// repairCause is what the last failed run said: its error, else the step it
+// stopped at, else nothing. Both are the script's own words, never translated.
+type repairCause struct {
+	err, step string
+}
+
+// Clip lengths keep the English reason at its historical 200-byte cap on
+// "the script drifted…" (the "AI repair: " prefix aside): 20 bytes precede
+// the error, 27 the step.
+const (
+	causeErrorMax = 180
+	causeStepMax  = 173
+)
+
+func causeOf(latest *models.Result) repairCause {
+	if latest == nil {
+		return repairCause{}
 	}
 
-	if len(msg) > 200 {
-		msg = msg[:200] + "..."
+	if errMsg, ok := latest.Output[outputKeyError].(string); ok && errMsg != "" {
+		return repairCause{err: clipCause(errMsg, causeErrorMax)}
 	}
 
-	return "AI repair: " + msg
+	if step, ok := latest.Output["step"].(string); ok && step != "" {
+		return repairCause{step: clipCause(step, causeStepMax)}
+	}
+
+	return repairCause{}
+}
+
+// text is the one-line reason in loc.
+func (c repairCause) text(loc i18n.Locale) string {
+	switch {
+	case c.err != "":
+		return loc.T("notices.aiRepair.reason.error", "error", c.err)
+	case c.step != "":
+		return loc.T("notices.aiRepair.reason.step", "step", c.step)
+	default:
+		return loc.T("notices.aiRepair.reason.drifted")
+	}
+}
+
+// clipCause cuts at a byte count, as the reason always was, so the English
+// reason reads exactly like the ones already stored.
+func clipCause(text string, maxLen int) string {
+	if len(text) > maxLen {
+		return text[:maxLen] + "..."
+	}
+
+	return text
 }
 
 // appliedRepairWithin reports an applied ai_repair version newer than window.
@@ -662,7 +702,7 @@ func (s *Service) notifyApplied(
 
 	link := fmt.Sprintf("%s/d/orgs/%s/checks/%s/history", s.baseURL, target.org.Slug, checkUID)
 	loc := recipient.ForUser(owner)
-	subject, text := appliedRepairMail(loc, name, applied.Version, deref(applied.Reason), diff, link)
+	subject, text := appliedRepairMail(loc, name, applied.Version, causeOf(target.latest), diff, link)
 
 	if err := s.mailer.Mail(ctx, target.check.OrganizationUID, []string{owner.Email}, loc, subject, text); err != nil {
 		s.logger.WarnContext(ctx, "Failed to mail the applied repair", "error", err, "check_uid", checkUID)
@@ -670,23 +710,18 @@ func (s *Service) notifyApplied(
 }
 
 // appliedRepairMail is the notice of an applied repair, in the owner's
-// language. The reason and the diff are quoted as they are: the model and the
-// script wrote them, not us.
-func appliedRepairMail(loc i18n.Locale, check string, version int, reason, diff, link string) (string, string) {
+// language. Its reason line is the applied version's (repairReason), written
+// again in loc: only the failed run's error or step stays as the script
+// printed it. The diff is quoted as the model wrote it.
+func appliedRepairMail(
+	loc i18n.Locale, check string, version int, cause repairCause, diff, link string,
+) (string, string) {
 	text := loc.T("notices.aiRepair.intro", "check", check, "version", version) + "\n\n" +
-		reason + "\n\n" +
+		cause.text(loc) + "\n\n" +
 		loc.T("notices.aiRepair.diff") + "\n" + diff + "\n" +
 		loc.T("notices.aiRepair.review", "link", link) + "\n"
 
 	return loc.T("notices.aiRepair.subject", "check", check), text
-}
-
-func deref(value *string) string {
-	if value == nil {
-		return ""
-	}
-
-	return *value
 }
 
 // repairBrief is the repair loop's first message: the contract, the old

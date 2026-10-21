@@ -135,7 +135,7 @@ func TestDigestCopyIsWrittenInEveryLanguage(t *testing.T) {
 			"anomalies": {
 				"[SolidPing watchdog] 3 anomalías de la plataforma, 1 crítica (+1 resuelta)\n",
 				"Generado el 5 jul, 12:00 CEST\n",
-				"[CRÍTICO] dark-region:eu2 (NUEVA)",
+				"[CRÍTICA] dark-region:eu2 (NUEVA)",
 				"[ADVERTENCIA] stale-incidents:active (SIGUE ACTIVA desde el 5 jul, 11:30 CEST)",
 				"\nRESUELTAS\n",
 			},

@@ -14,7 +14,12 @@
     "email": "E-mail : {email}",
     "name": "Nom : {name}",
     "method": "Méthode : {method}",
+    "methods": {
+      "password": "mot de passe",
+      "invite": "invitation"
+    },
     "org": "Organisation : {orgs}",
+    "orgs": "Organisations : {orgs}",
     "noOrg": "Organisation : aucune"
   },
   "test": {
@@ -33,8 +38,8 @@
     "organizations_other": "{count} organisations",
     "darkChecks_one": "{count} vérification de {orgs} ne s'exécute que depuis cette région et est à l'arrêt ; chaque organisation concernée a été prévenue par e-mail.",
     "darkChecks_other": "{count} vérifications de {orgs} ne s'exécutent que depuis cette région et sont à l'arrêt ; chaque organisation concernée a été prévenue par e-mail.",
-    "moved_one": "{count} vérification placée automatiquement a été déplacée vers une autre région.",
-    "moved_other": "{count} vérifications placées automatiquement ont été déplacées vers une autre région.",
+    "moved_one": "{count} vérification en placement automatique a été déplacée vers une autre région.",
+    "moved_other": "{count} vérifications en placement automatique ont été déplacées vers une autre région.",
     "darkRemediation": "Correctif : relancez un worker pour « {region} », ou appelez {command}.",
     "liveWorkers_one": "{count} worker actif",
     "liveWorkers_other": "{count} workers actifs",
@@ -42,8 +47,8 @@
     "stalledHeadline_other": "La région « {region} » est bloquée : {workers}, mais {count} tâches en retard, la plus ancienne depuis le {since}",
     "stalledCause": "Les workers envoient leur signal de vie mais ne prennent aucune tâche. Les organisations n'ont pas été prévenues.",
     "stalledInspect": "À examiner : GET /api/v1/system/regions/health, puis les journaux des workers.",
-    "recovered_one": "La région « {region} » fonctionne de nouveau au bout de {duration} ({phase} depuis le {since}). {count} organisation avait été prévenue.",
-    "recovered_other": "La région « {region} » fonctionne de nouveau au bout de {duration} ({phase} depuis le {since}). {count} organisations avaient été prévenues.",
+    "recovered_one": "La région « {region} » fonctionne de nouveau au bout de {duration} ({phase} à partir du {since}). {count} organisation avait été prévenue.",
+    "recovered_other": "La région « {region} » fonctionne de nouveau au bout de {duration} ({phase} à partir du {since}). {count} organisations avaient été prévenues.",
     "phase": {
       "dark": "hors ligne",
       "stalled": "bloquée"
@@ -75,6 +80,11 @@
   "aiRepair": {
     "subject": "Vérification réparée : {check}",
     "intro": "SolidPing a réparé le script de la vérification « {check} » (version {version}).",
+    "reason": {
+      "drifted": "Réparation par IA : le script a dérivé",
+      "error": "Réparation par IA : le script a dérivé (erreur : {error})",
+      "step": "Réparation par IA : le script a dérivé à l'étape {step}"
+    },
     "diff": "Modifications :",
     "review": "Pour relire ou annuler cette réparation : {link}"
   }

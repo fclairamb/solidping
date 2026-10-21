@@ -14,7 +14,12 @@
     "email": "Email:  {email}",
     "name": "Name:   {name}",
     "method": "Method: {method}",
+    "methods": {
+      "password": "password",
+      "invite": "invite"
+    },
     "org": "Org:    {orgs}",
+    "orgs": "Org:    {orgs}",
     "noOrg": "Org:    no organization"
   },
   "test": {
@@ -75,6 +80,11 @@
   "aiRepair": {
     "subject": "Check repaired: {check}",
     "intro": "SolidPing repaired the script of the check \"{check}\" (version {version}).",
+    "reason": {
+      "drifted": "AI repair: the script drifted",
+      "error": "AI repair: the script drifted: {error}",
+      "step": "AI repair: the script drifted at step {step}"
+    },
     "diff": "Diff:",
     "review": "Review or undo it: {link}"
   }

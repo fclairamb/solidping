@@ -46,6 +46,7 @@ func TestRegionNoticesEnglishTextIsUnchanged(t *testing.T) {
 
 	dark := fixtures[noticeDark].notice()
 	r.Equal(opsnotify.EventWatchdogRegion, dark.Event)
+	r.Same(fixtures[noticeDark], dark.Localized, "the email is written from the structured form")
 	r.Equal("[SolidPing watchdog] Region eu-west is dark", dark.Subject)
 	r.Equal(strings.Join([]string{
 		darkHeadline + ".",
@@ -59,6 +60,7 @@ func TestRegionNoticesEnglishTextIsUnchanged(t *testing.T) {
 	stalledHeadline := fmt.Sprintf("region %q is stalled: %d live worker(s) but %d job(s) overdue, oldest since %s",
 		"eu-west", 2, 41, since)
 	stalled := fixtures[noticeStalled].notice()
+	r.Same(fixtures[noticeStalled], stalled.Localized, "the email is written from the structured form")
 	r.Equal("[SolidPing watchdog] Region eu-west is stalled", stalled.Subject)
 	r.Equal(strings.Join([]string{
 		stalledHeadline + ".",
@@ -67,6 +69,7 @@ func TestRegionNoticesEnglishTextIsUnchanged(t *testing.T) {
 	}, "\n\n"), stalled.Body)
 
 	recovered := fixtures[noticeRecovered].notice()
+	r.Same(fixtures[noticeRecovered], recovered.Localized, "the email is written from the structured form")
 	r.Equal("[SolidPing watchdog] Region eu-west recovered after 7h52m", recovered.Subject)
 	r.Equal(fmt.Sprintf("Region %q is healthy again after %s (%s since %s). %d organization(s) were told.",
 		"eu-west", "7h52m", regionoutage.PhaseDark, localeSince.Format(time.RFC3339), 3), recovered.Body)
@@ -84,7 +87,7 @@ func TestRegionNoticesAreWrittenInTheReadersLanguage(t *testing.T) {
 				"La région « eu-west » est HORS LIGNE (aucun worker actif) depuis le 5 juil., 12:00 CEST : " +
 					"419 tâches assignées, dont 345 en retard.",
 				"57 vérifications de 3 organisations ne s'exécutent que depuis cette région", //nolint:misspell // French
-				"2 vérifications placées automatiquement ont été déplacées vers une autre région.",
+				"2 vérifications en placement automatique ont été déplacées vers une autre région.",
 				`Correctif : relancez un worker pour « eu-west », ou appelez POST /api/v1/system/regions/migrate {"from":"eu-west"`,
 			},
 			noticeStalled: {
@@ -95,23 +98,31 @@ func TestRegionNoticesAreWrittenInTheReadersLanguage(t *testing.T) {
 			noticeRecovered: {
 				"[SolidPing watchdog] La région eu-west est rétablie au bout de 7\u00a0h 52\u00a0min",
 				"La région « eu-west » fonctionne de nouveau au bout de 7\u00a0h 52\u00a0min " +
-					"(hors ligne depuis le 5 juil., 12:00 CEST). 3 organisations avaient été prévenues.", //nolint:misspell // French
+					"(hors ligne à partir du 5 juil., 12:00 CEST). 3 organisations avaient été prévenues.", //nolint:misspell // French
 			},
 		},
 		"de": {
 			noticeDark: {
 				"[SolidPing watchdog] Region eu-west ist offline",
-				"Die Region „eu-west“ ist seit dem 5. Juli, 12:00 CEST OFFLINE (kein aktiver Worker)",
+				"Die Region „eu-west“ ist OFFLINE (seit dem 5. Juli, 12:00 CEST kein aktiver Worker): " +
+					"419 Aufträge zugewiesen, davon 345 überfällig.",
 				"57 Prüfungen aus 3 Organisationen laufen nur in dieser Region",
+				"Abhilfe: Nehmen Sie einen Worker für „eu-west“ wieder in Betrieb oder verschieben Sie die Prüfungen mit " +
+					`POST /api/v1/system/regions/migrate {"from":"eu-west","to":"<live-region>"}.`,
 			},
-			noticeStalled:   {"Die Region „eu-west“ hängt: 2 aktive Worker, aber 41 Aufträge überfällig"},
-			noticeRecovered: {"Die Region „eu-west“ ist nach", "3 Organisationen wurden benachrichtigt."},
+			noticeStalled: {"Die Region „eu-west“ hängt: 2 aktive Worker, aber 41 Aufträge überfällig"},
+			noticeRecovered: {
+				"Die Region „eu-west“ ist nach 7\u00a0Std. 52\u00a0Min. wieder in Ordnung (ab dem 5. Juli, 12:00 CEST offline). " +
+					"3 Organisationen wurden benachrichtigt.",
+			},
 		},
 		"es": {
 			noticeDark: {
 				"[SolidPing watchdog] La región eu-west está fuera de línea",
 				"La región «eu-west» está FUERA DE LÍNEA (ningún worker activo) desde el 5 jul, 12:00 CEST",
 				"57 comprobaciones de 3 organizaciones solo se ejecutan desde esta región",
+				"2 comprobaciones con ubicación automática se movieron a otra región.",
+				`Solución: vuelve a poner en marcha un worker para «eu-west» o llama a POST /api/v1/system/regions/migrate`,
 			},
 			noticeStalled:   {"La región «eu-west» está atascada: 2 workers activos, pero 41 tareas con retraso"},
 			noticeRecovered: {"(fuera de línea desde el 5 jul, 12:00 CEST). Se avisó a 3 organizaciones."},
@@ -136,6 +147,25 @@ func TestRegionNoticesAreWrittenInTheReadersLanguage(t *testing.T) {
 	}
 }
 
+// TestStalledRecoveryUsesTheSubjectsWord: the recovery names the stalled
+// phase with the word the stalled notice used.
+func TestStalledRecoveryUsesTheSubjectsWord(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	recovered := &regionCopy{
+		kind: noticeRecovered, region: "eu-west", since: localeSince,
+		phase: regionoutage.PhaseStalled, duration: 45 * time.Minute, told: 0,
+	}
+
+	_, de := recovered.Localize(i18n.New("de", "Europe/Paris").WithClock(func() time.Time { return localeSince }))
+	r.Contains(de, "(ab dem 5. Juli, 12:00 CEST hängend). 0 Organisationen wurden benachrichtigt.")
+
+	_, fr := recovered.Localize(i18n.New("fr", "Europe/Paris").WithClock(func() time.Time { return localeSince }))
+	r.Contains(fr,
+		"(bloquée à partir du 5 juil., 12:00 CEST). 0 organisation avait été prévenue.") //nolint:misspell // French
+}
+
 // TestRegionNoticeSingularForms covers the _one forms (French also uses them
 // for zero).
 func TestRegionNoticeSingularForms(t *testing.T) {
@@ -150,7 +180,7 @@ func TestRegionNoticeSingularForms(t *testing.T) {
 	r.Contains(dark, ": 1 tâche assignée, dont 1 en retard.")
 	r.Contains(dark,
 		"1 vérification de 1 organisation ne s'exécute que depuis cette région et est à l'arrêt") //nolint:misspell // French
-	r.Contains(dark, "0 vérification placée automatiquement a été déplacée")
+	r.Contains(dark, "0 vérification en placement automatique a été déplacée")
 
 	_, stalled := (&regionCopy{kind: noticeStalled, region: "eu-west", since: localeSince, live: 1, overdue: 1}).
 		Localize(loc)

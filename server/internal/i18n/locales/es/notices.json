@@ -1,7 +1,7 @@
 {
   "supportMessage": {
-    "subjectNewMessage": "Nuevo mensaje en {channel} de {from}",
-    "subjectNewThread": "Nuevo hilo de soporte en {channel} de {from}",
+    "subjectNewMessage": "Nuevo mensaje de {from} en {channel}",
+    "subjectNewThread": "Nuevo hilo de soporte de {from} en {channel}",
     "channel": "Canal: {channel}",
     "from": "De: {from}",
     "folded_one": "…y {count} mensaje más en este hilo desde la última notificación.",
@@ -14,7 +14,12 @@
     "email": "Correo: {email}",
     "name": "Nombre: {name}",
     "method": "Método: {method}",
+    "methods": {
+      "password": "contraseña",
+      "invite": "invitación"
+    },
     "org": "Organización: {orgs}",
+    "orgs": "Organizaciones: {orgs}",
     "noOrg": "Organización: ninguna"
   },
   "test": {
@@ -33,9 +38,9 @@
     "organizations_other": "{count} organizaciones",
     "darkChecks_one": "{count} comprobación de {orgs} solo se ejecuta desde esta región y está detenida; se avisó por correo a cada organización afectada.",
     "darkChecks_other": "{count} comprobaciones de {orgs} solo se ejecutan desde esta región y están detenidas; se avisó por correo a cada organización afectada.",
-    "moved_one": "{count} comprobación colocada automáticamente se movió a otra región.",
-    "moved_other": "{count} comprobaciones colocadas automáticamente se movieron a otra región.",
-    "darkRemediation": "Solución: vuelve a poner en marcha un worker para «{region}», o llama a {command}.",
+    "moved_one": "{count} comprobación con ubicación automática se movió a otra región.",
+    "moved_other": "{count} comprobaciones con ubicación automática se movieron a otra región.",
+    "darkRemediation": "Solución: vuelve a poner en marcha un worker para «{region}» o llama a {command}.",
     "liveWorkers_one": "{count} worker activo",
     "liveWorkers_other": "{count} workers activos",
     "stalledHeadline_one": "La región «{region}» está atascada: {workers}, pero {count} tarea con retraso desde el {since}",
@@ -63,7 +68,7 @@
     "severity": {
       "info": "INFO",
       "warning": "ADVERTENCIA",
-      "critical": "CRÍTICO"
+      "critical": "CRÍTICA"
     },
     "new": "NUEVA",
     "stillBroken": "SIGUE ACTIVA desde el {date}",
@@ -75,6 +80,11 @@
   "aiRepair": {
     "subject": "Comprobación reparada: {check}",
     "intro": "SolidPing reparó el script de la comprobación «{check}» (versión {version}).",
+    "reason": {
+      "drifted": "Reparación por IA: el script derivó",
+      "error": "Reparación por IA: el script derivó (error: {error})",
+      "step": "Reparación por IA: el script derivó en el paso {step}"
+    },
     "diff": "Cambios:",
     "review": "Revisa o deshaz la reparación: {link}"
   }

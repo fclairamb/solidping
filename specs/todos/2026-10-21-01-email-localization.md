@@ -66,7 +66,10 @@ timezone. Today every email is English and every date is UTC.
     form the notice carries alongside its English text. Every other medium keeps the exact English
     text (decision 13). A notice queued before the upgrade has no structured form and is mailed in
     English. The digest's anomaly lines (headline, detail, remediation) are detector diagnostics
-    and stay English.
+    and stay English. The AI auto-repair mail rewrites its reason line in the owner's language
+    (only the failed run's error or step stays raw; the reason stored on the version stays
+    English), and its English intro now quotes the check name with plain quotes instead of Go's
+    `%q` (a name holding `"`, `\` or a control character is no longer backslash-escaped).
 12. **Preview**: `?locale=en|fr|de|es` on `/api/mgmt/email-preview` (index and template), validated
     before rendering, `en` default keeps today's bytes. Fixtures are produced by the production
     helpers with the requested locale (fixes the drift: AckVia, CommentSource, custom-domain

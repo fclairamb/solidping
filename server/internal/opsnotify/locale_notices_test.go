@@ -48,6 +48,14 @@ func TestNoticesEnglishTextIsUnchanged(t *testing.T) {
 	signup.SetLandingOrgs([]string{"acme", "beta"})
 	r.True(strings.HasSuffix(signup.Body, "\nMethod: password\nOrg:    acme, beta"), signup.Body)
 
+	invited := opsnotify.NewUserRegisteredNotice(&opsnotify.UserRegistered{
+		Email: "erin@acme.com", Method: "invite",
+	}, "user-3")
+	invited.SetLandingOrgs([]string{"acme"})
+	r.Equal("[SolidPing] New signup: erin@acme.com (invite)", invited.Subject)
+	r.Equal("A new user just signed up on this SolidPing instance.\n\n"+
+		"Email:  erin@acme.com\nMethod: invite\nOrg:    acme", invited.Body)
+
 	nameless := opsnotify.NewUserRegisteredNotice(&opsnotify.UserRegistered{
 		Email: "dave@acme.com", Method: "google",
 	}, "user-2")
@@ -75,6 +83,11 @@ func localizedNotices() map[string]*opsnotify.Notice {
 	}, "user-2")
 	orphan.SetLandingOrgs(nil)
 
+	invited := opsnotify.NewUserRegisteredNotice(&opsnotify.UserRegistered{
+		Email: "erin@acme.com", Method: "invite",
+	}, "user-3")
+	invited.SetLandingOrgs([]string{"acme", "beta"})
+
 	return map[string]*opsnotify.Notice{
 		"support": opsnotify.NewSupportMessageNotice(&opsnotify.SupportMessage{
 			NewThread: true, Channel: "sms", From: "+33600000000", Preview: "is the api down?", Folded: 1,
@@ -82,9 +95,10 @@ func localizedNotices() map[string]*opsnotify.Notice {
 		"supportFolded": opsnotify.NewSupportMessageNotice(&opsnotify.SupportMessage{
 			Channel: "sms", From: "+33600000000", Preview: "still down", Folded: 3,
 		}, ""),
-		"signup": signup,
-		"orphan": orphan,
-		"test":   opsnotify.NewTestNotice("alice@acme.com", "https://solidping.example/d/"),
+		"signup":  signup,
+		"orphan":  orphan,
+		"invited": invited,
+		"test":    opsnotify.NewTestNotice("alice@acme.com", "https://solidping.example/d/"),
 	}
 }
 
@@ -103,34 +117,50 @@ func TestNoticesAreWrittenInEveryLanguage(t *testing.T) {
 				"[SolidPing support] Nouveau message de +33600000000 sur sms", "…et 3 autres messages dans ce fil",
 			},
 			"signup": {
-				"[SolidPing] Nouvelle inscription : carol@acme.com (password)", "Nom : Carol",
-				"Organisation : acme", //nolint:misspell // French
+				"[SolidPing] Nouvelle inscription : carol@acme.com (mot de passe)", "Nom : Carol",
+				"Méthode : mot de passe", "Organisation : acme", //nolint:misspell // French
 			},
 			"orphan": {"Organisation : aucune", "Méthode : google"}, //nolint:misspell // French
-			"test":   {"[SolidPing] Test des notifications opérateur", "Demandé par alice@acme.com."},
+			"invited": {
+				"[SolidPing] Nouvelle inscription : erin@acme.com (invitation)", "Méthode : invitation",
+				"Organisations : acme, beta", //nolint:misspell // French
+			},
+			"test": {"[SolidPing] Test des notifications opérateur", "Demandé par alice@acme.com."},
 		},
 		"de": {
 			"support": {
-				"[SolidPing support] Neue Support-Konversation über sms von +33600000000", //nolint:misspell // German
+				"[SolidPing support] Neue Support-Konversation von +33600000000 via sms", //nolint:misspell // German
 				"…und 1 weitere Nachricht",
 			},
-			"supportFolded": {"Neue Nachricht über sms", "…und 3 weitere Nachrichten"},
+			"supportFolded": {"Neue Nachricht von +33600000000 via sms", "…und 3 weitere Nachrichten"},
 			"signup": {
-				"[SolidPing] Neue Registrierung: carol@acme.com (password)",
+				"[SolidPing] Neue Registrierung: carol@acme.com (Passwort)", "Methode: Passwort",
 				"Organisation: acme", //nolint:misspell // German
 			},
 			"orphan": {"Organisation: keine"}, //nolint:misspell // German
-			"test":   {"Test der Betreiber-Benachrichtigungen", "Angefordert von alice@acme.com."},
+			"invited": {
+				"[SolidPing] Neue Registrierung: erin@acme.com (Einladung)",
+				"Organisationen: acme, beta",
+			},
+			"test": {
+				"Test der Betreiber-Benachrichtigungen", "Angefordert von alice@acme.com.",
+				"über den sie zugestellt wurde.",
+			},
 		},
 		"es": {
 			"support": {
-				"[SolidPing support] Nuevo hilo de soporte en sms de +33600000000",
+				"[SolidPing support] Nuevo hilo de soporte de +33600000000 en sms",
 				"…y 1 mensaje más en este hilo",
 			},
-			"supportFolded": {"Nuevo mensaje en sms", "…y 3 mensajes más"},
-			"signup":        {"[SolidPing] Nuevo registro: carol@acme.com (password)", "Organización: acme"},
-			"orphan":        {"Organización: ninguna"},
-			"test":          {"Prueba de las notificaciones para el operador", "Solicitada por alice@acme.com."},
+			"supportFolded": {"Nuevo mensaje de +33600000000 en sms", "…y 3 mensajes más"},
+			"signup": {
+				"[SolidPing] Nuevo registro: carol@acme.com (contraseña)", "Método: contraseña", "Organización: acme",
+			},
+			"orphan": {"Organización: ninguna"},
+			"invited": {
+				"[SolidPing] Nuevo registro: erin@acme.com (invitación)", "Organizaciones: acme, beta",
+			},
+			"test": {"Prueba de las notificaciones para el operador", "Solicitada por alice@acme.com."},
 		},
 	}
 

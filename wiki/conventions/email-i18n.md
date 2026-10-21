@@ -213,8 +213,10 @@ Some mails have no template: the job sends `Text` as is and never calls `Format`
 - The AI auto-repair notice (`aichecks/repair.go`) is email only. Resolve with
   `recipient.ForUser(owner)`, build subject and body with `loc.T("notices.aiRepair.…")`,
   and add `"locale"` / `"timezone"` to the job payload (`JobsMailer.Mail` builds a
-  raw map; it carries the two keys). The diff and the reason stay as they are (not
-  text we wrote).
+  raw map; it carries the two keys). The reason line is ours too
+  (`notices.aiRepair.reason.*`): the stored reason is the same producer in
+  `i18n.English` (`repairReason`), so only the failed run's error or step and the
+  diff stay as the script and the model wrote them.
 - Operator notices (`opsnotify`: support message, new user, watchdog digest,
   watchdog region, test) are localized for the email medium only (spec decision
   11). The email copy is in the recipient super admin's locale
@@ -228,7 +230,9 @@ Some mails have no template: the job sends `Text` as is and never calls `Format`
   remediation) come from the detectors and stay English. Dates in the email use
   the reader's zone; the English text keeps its old formats. The `en` values
   reproduce that text byte for byte, em dashes included (the other media send
-  it); fr, de and es have none.
+  it); fr, de and es have none. The signup method is a token: the two plain
+  words (`password`, `invite`) have labels in `notices.userRegistered.methods`,
+  the provider names (google, saml, ldap...) are printed as they are.
 
 ## The `i18n-phase-b` marker
 

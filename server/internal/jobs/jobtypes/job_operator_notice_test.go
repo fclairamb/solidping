@@ -447,9 +447,9 @@ func TestOperatorNoticeEmailFollowsTheRecipientsLanguage(t *testing.T) {
 	payload := emailPayload(t, emails[0])
 	r.Equal("fr", payload.Locale)
 	r.Equal("Europe/Paris", payload.Timezone)
-	r.Equal("[SolidPing] Nouvelle inscription : carol@acme.com (password)", payload.Subject)
+	r.Equal("[SolidPing] Nouvelle inscription : carol@acme.com (mot de passe)", payload.Subject)
 	r.Contains(payload.Text, "Un nouvel utilisateur vient de s'inscrire sur cette instance SolidPing.")
-	r.True(strings.HasSuffix(payload.Text, "\nMéthode : password\nOrganisation : acme"), //nolint:misspell // French
+	r.True(strings.HasSuffix(payload.Text, "\nMéthode : mot de passe\nOrganisation : acme"), //nolint:misspell // French
 		payload.Text)
 }
 

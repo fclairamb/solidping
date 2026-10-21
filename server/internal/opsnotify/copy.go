@@ -109,13 +109,28 @@ func (u *UserRegistered) Localize(loc i18n.Locale) (string, string) {
 		body += loc.T("notices.userRegistered.name", "name", u.Name) + "\n"
 	}
 
-	body += loc.T("notices.userRegistered.method", "method", u.Method)
+	method := methodLabel(loc, u.Method)
+	body += loc.T("notices.userRegistered.method", "method", method)
 
 	if len(u.Orgs) > 0 || u.NoOrg {
 		body += "\n" + orgLine(loc, u.Orgs)
 	}
 
-	return tagInstance + loc.T("notices.userRegistered.subject", "email", u.Email, "method", u.Method), body
+	return tagInstance + loc.T("notices.userRegistered.subject", "email", u.Email, "method", method), body
+}
+
+// methodLabel names a signup method. The two plain words (password, invite)
+// are translated; the provider names (google, saml, ldap...) read the same in
+// every language. The English labels are the method values themselves.
+func methodLabel(loc i18n.Locale, method string) string {
+	switch method {
+	case "password":
+		return loc.T("notices.userRegistered.methods.password")
+	case "invite":
+		return loc.T("notices.userRegistered.methods.invite")
+	default:
+		return method
+	}
 }
 
 // SetLandingOrgs records the organizations the new user of a user.registered
@@ -131,12 +146,18 @@ func (n *Notice) SetLandingOrgs(slugs []string) {
 	}
 }
 
+// orgLine lists the landing organizations. The label agrees with the list
+// (one organization or several), which is not a count-based plural: the line
+// shows names, never a number.
 func orgLine(loc i18n.Locale, slugs []string) string {
-	if len(slugs) == 0 {
+	switch len(slugs) {
+	case 0:
 		return loc.T("notices.userRegistered.noOrg")
+	case 1:
+		return loc.T("notices.userRegistered.org", "orgs", slugs[0])
+	default:
+		return loc.T("notices.userRegistered.orgs", "orgs", strings.Join(slugs, ", "))
 	}
-
-	return loc.T("notices.userRegistered.org", "orgs", strings.Join(slugs, ", "))
 }
 
 // operatorTest is the "Send me a test" notice in structured form.
