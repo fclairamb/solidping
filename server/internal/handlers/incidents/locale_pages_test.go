@@ -112,7 +112,26 @@ func TestAckPage_FrenchCopy(t *testing.T) {
 
 	expired := httptest.NewRecorder()
 	writeAckPage(expired, i18n.New("fr", ""), http.StatusGone, ackHTMLExpired, "acme", "abc-123")
-	r.Contains(expired.Body.String(), "<p>Les liens d'acquittement envoyés par e-mail sont valables 7 jours. ")
+	r.Contains(expired.Body.String(),
+		"<p>Les liens d'acquittement expirent 7\u00a0jours après le début de l'incident. ")
+	// SMS and voice links open this page too.
+	r.NotContains(expired.Body.String(), "e-mail")
+}
+
+// TestAckPage_ExpiredNamesNoChannel: SMS and voice ack links open the same
+// expired page, so it must not say the links came by email.
+func TestAckPage_ExpiredNamesNoChannel(t *testing.T) {
+	t.Parallel()
+
+	for lang, word := range map[string]string{"fr": "e-mail", "de": "E-Mail", "es": "correo"} {
+		loc := i18n.New(lang, "")
+		_, _, _, expired, _ := pageContent(loc, ackHTMLExpired, "", "")
+		require.NotContains(t, expired, word, lang)
+
+		// Positive control: the invalid page does point to the email.
+		_, _, _, invalid, _ := pageContent(loc, ackHTMLInvalid, "", "")
+		require.Contains(t, invalid, word, lang)
+	}
 }
 
 // TestAckPageLocale_Chain: the account the token was sent to, then the

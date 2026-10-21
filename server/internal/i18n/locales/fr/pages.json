@@ -3,7 +3,7 @@
     "choice": {
       "title": "Se désabonner des alertes SolidPing",
       "intro": "Vous êtes sur le point de désabonner <strong>{email}</strong> des alertes d'incident par e-mail.",
-      "checkOnly": "Se désabonner uniquement de {check}",
+      "checkOnly": "Se désabonner uniquement des alertes pour {check}",
       "wholeOrg": "Se désabonner de tous les e-mails d'alerte de cette organisation",
       "undoHint": "Vous pourrez annuler à tout moment depuis la page de confirmation affichée après le désabonnement, tant que ce lien n'a pas expiré."
     },
@@ -11,7 +11,7 @@
       "title": "Désabonnement confirmé",
       "org": "<strong>{email}</strong> ne recevra plus aucun e-mail d'alerte de cette organisation.",
       "check": "<strong>{email}</strong> ne recevra plus les alertes concernant {check}.",
-      "thisCheck": "<strong>{email}</strong> ne recevra plus les alertes concernant ce check.",
+      "thisCheck": "<strong>{email}</strong> ne recevra plus les alertes concernant cette vérification.",
       "othersUnaffected": "Les autres destinataires de ces alertes ne sont pas concernés.",
       "changedMind": "Vous avez changé d'avis ?",
       "undo": "Annuler le désabonnement"
@@ -46,8 +46,8 @@
     "expired": {
       "title": "Lien expiré",
       "heading": "Ce lien a expiré",
-      "body_one": "Les liens d'acquittement envoyés par e-mail sont valables {count} jour. Ouvrez le tableau de bord pour acquitter cet incident manuellement.",
-      "body_other": "Les liens d'acquittement envoyés par e-mail sont valables {count} jours. Ouvrez le tableau de bord pour acquitter cet incident manuellement."
+      "body_one": "Les liens d'acquittement expirent {count} jour après le début de l'incident. Ouvrez le tableau de bord pour acquitter cet incident manuellement.",
+      "body_other": "Les liens d'acquittement expirent {count} jours après le début de l'incident. Ouvrez le tableau de bord pour acquitter cet incident manuellement."
     },
     "invalid": {
       "title": "Lien invalide",

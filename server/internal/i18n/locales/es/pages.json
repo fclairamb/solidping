@@ -14,7 +14,7 @@
       "thisCheck": "<strong>{email}</strong> ya no recibirá alertas de esta comprobación.",
       "othersUnaffected": "Los demás destinatarios de estas alertas no se ven afectados.",
       "changedMind": "¿Has cambiado de opinión?",
-      "undo": "Deshacer y volver a suscribirme"
+      "undo": "Deshacer la baja"
     },
     "resubscribed": {
       "title": "Suscripción reactivada",
@@ -33,7 +33,7 @@
     },
     "orgNotFound": {
       "title": "Organización no encontrada",
-      "body": "La organización a la que remite este enlace ya no existe."
+      "body": "La organización a la que apunta este enlace ya no existe."
     }
   },
   "ack": {
@@ -46,8 +46,8 @@
     "expired": {
       "title": "Enlace caducado",
       "heading": "Este enlace ha caducado",
-      "body_one": "Los enlaces de reconocimiento enviados por correo son válidos durante {count} día. Abre el panel para reconocer este incidente manualmente.",
-      "body_other": "Los enlaces de reconocimiento enviados por correo son válidos durante {count} días. Abre el panel para reconocer este incidente manualmente."
+      "body_one": "Los enlaces de reconocimiento caducan {count} día después del inicio del incidente. Abre el panel para reconocer este incidente manualmente.",
+      "body_other": "Los enlaces de reconocimiento caducan {count} días después del inicio del incidente. Abre el panel para reconocer este incidente manualmente."
     },
     "invalid": {
       "title": "Enlace no válido",

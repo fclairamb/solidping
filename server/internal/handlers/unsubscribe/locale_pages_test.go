@@ -142,7 +142,7 @@ func TestPages_FrenchCopy(t *testing.T) {
 
 	rec := doLocalizedRequest(t, router, "/unsubscribe?token="+token, "fr-FR,fr;q=0.9")
 	r.Contains(rec.Body.String(), "<title>Se désabonner des alertes SolidPing</title>")
-	r.Contains(rec.Body.String(), "Se désabonner uniquement de unsub-test-check</a>")
+	r.Contains(rec.Body.String(), "Se désabonner uniquement des alertes pour unsub-test-check</a>")
 
 	rec = doLocalizedRequest(t, router, "/unsubscribe?token="+token+"&scope=check", "fr-FR,fr;q=0.9")
 	r.Contains(rec.Body.String(), "<h1>Désabonnement confirmé</h1>")
@@ -150,6 +150,27 @@ func TestPages_FrenchCopy(t *testing.T) {
 		"<strong>alice@example.com</strong> ne recevra plus les alertes concernant unsub-test-check.")
 	r.Contains(rec.Body.String(), "Vous avez changé d'avis ? <a href=\"/unsubscribe/undo?token=")
 	r.Contains(rec.Body.String(), ">Annuler le désabonnement</a>")
+}
+
+// TestPages_GermanAndSpanishUndo pins the outcome page's wording in German
+// and Spanish: "abmelden" alone also means "sign out" in German.
+func TestPages_GermanAndSpanishUndo(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newTestFixture(t)
+	router := newTestRouter(t, f)
+
+	token := f.checkToken("alice@example.com", time.Now().Add(time.Hour))
+
+	rec := doLocalizedRequest(t, router, "/unsubscribe?token="+token+"&scope=org", "de-DE")
+	r.Contains(rec.Body.String(), "<h1>Abmeldung bestätigt</h1>")
+	r.Contains(rec.Body.String(), "Haben Sie es sich anders überlegt? <a href=\"/unsubscribe/undo?token=")
+	r.Contains(rec.Body.String(), ">Abmeldung rückgängig machen</a>")
+
+	rec = doLocalizedRequest(t, router, "/unsubscribe?token="+token+"&scope=org", "es-ES")
+	r.Contains(rec.Body.String(), "<h1>Baja confirmada</h1>")
+	r.Contains(rec.Body.String(), ">Deshacer la baja</a>")
 }
 
 // TestPages_AccountLocaleBeatsAcceptLanguage: the token's address belongs to

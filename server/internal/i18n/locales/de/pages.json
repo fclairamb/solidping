@@ -4,21 +4,21 @@
       "title": "Von SolidPing-Benachrichtigungen abmelden",
       "intro": "Sie sind dabei, <strong>{email}</strong> von den E-Mail-Benachrichtigungen zu Vorfällen abzumelden.",
       "checkOnly": "Nur von Benachrichtigungen für {check} abmelden",
-      "wholeOrg": "Von allen Alarm-E-Mails dieser Organisation abmelden",
+      "wholeOrg": "Von allen E-Mail-Benachrichtigungen dieser Organisation abmelden",
       "undoHint": "Sie können dies jederzeit auf der Bestätigungsseite rückgängig machen, die nach dem Abmelden angezeigt wird, solange dieser Link nicht abgelaufen ist."
     },
     "success": {
-      "title": "Abgemeldet",
-      "org": "<strong>{email}</strong> erhält keine Alarm-E-Mails dieser Organisation mehr.",
+      "title": "Abmeldung bestätigt",
+      "org": "<strong>{email}</strong> erhält keine E-Mail-Benachrichtigungen dieser Organisation mehr.",
       "check": "<strong>{email}</strong> erhält keine Benachrichtigungen für {check} mehr.",
       "thisCheck": "<strong>{email}</strong> erhält keine Benachrichtigungen für diese Prüfung mehr.",
       "othersUnaffected": "Andere Empfänger dieser Benachrichtigungen sind nicht betroffen.",
-      "changedMind": "Sie haben es sich anders überlegt?",
-      "undo": "Rückgängig machen und wieder anmelden"
+      "changedMind": "Haben Sie es sich anders überlegt?",
+      "undo": "Abmeldung rückgängig machen"
     },
     "resubscribed": {
-      "title": "Wieder angemeldet",
-      "body": "Sie erhalten diese Alarm-E-Mails wieder."
+      "title": "Abmeldung aufgehoben",
+      "body": "Sie erhalten diese E-Mail-Benachrichtigungen wieder."
     },
     "missing": {
       "title": "Token fehlt",
@@ -29,7 +29,7 @@
     "invalid": {
       "title": "Ungültiger oder abgelaufener Link",
       "heading": "Dieser Link ist ungültig oder abgelaufen",
-      "body": "Der Abmeldelink konnte nicht überprüft werden oder ist abgelaufen. Wenn Sie eine neuere Alarm-E-Mail erhalten haben, verwenden Sie stattdessen den Link aus dieser Nachricht."
+      "body": "Der Abmeldelink konnte nicht überprüft werden oder ist abgelaufen. Wenn Sie eine neuere E-Mail-Benachrichtigung erhalten haben, verwenden Sie stattdessen den Link aus dieser Nachricht."
     },
     "orgNotFound": {
       "title": "Organisation nicht gefunden",
@@ -46,8 +46,8 @@
     "expired": {
       "title": "Link abgelaufen",
       "heading": "Dieser Link ist abgelaufen",
-      "body_one": "Bestätigungslinks aus E-Mails sind {count} Tag gültig. Öffnen Sie das Dashboard, um diesen Vorfall manuell zu bestätigen.",
-      "body_other": "Bestätigungslinks aus E-Mails sind {count} Tage gültig. Öffnen Sie das Dashboard, um diesen Vorfall manuell zu bestätigen."
+      "body_one": "Bestätigungslinks laufen {count} Tag nach Beginn des Vorfalls ab. Öffnen Sie das Dashboard, um diesen Vorfall manuell zu bestätigen.",
+      "body_other": "Bestätigungslinks laufen {count} Tage nach Beginn des Vorfalls ab. Öffnen Sie das Dashboard, um diesen Vorfall manuell zu bestätigen."
     },
     "invalid": {
       "title": "Ungültiger Link",
