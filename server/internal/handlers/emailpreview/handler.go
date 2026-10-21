@@ -9,11 +9,13 @@ package emailpreview
 import (
 	"net/http"
 	"regexp"
+	"slices"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/httpx"
+	"github.com/fclairamb/solidping/server/internal/i18n"
 )
 
 // previewPathPrefix is the route prefix the index echoes back so the dashboard
@@ -36,6 +38,29 @@ func forceDarkScheme(html string) string {
 	return darkMediaQueryRE.ReplaceAllLiteralString(html, "@media all")
 }
 
+// localeParam is the query parameter that picks the preview language.
+const localeParam = "locale"
+
+// errLocaleMessage is the 400 body of an unsupported ?locale.
+const errLocaleMessage = "locale must be 'en', 'fr', 'de' or 'es'"
+
+// localeFromQuery reads ?locale=en|fr|de|es. Absent means English, the
+// rendering the mailer produces for a reader it knows nothing about; any other
+// value (including a full tag like fr-FR) is refused, so a typo is a 400
+// rather than a silent English preview.
+func localeFromQuery(req *http.Request) (i18n.Locale, bool) {
+	raw := req.URL.Query().Get(localeParam)
+	if raw == "" {
+		return i18n.Default, true
+	}
+
+	if !slices.Contains(i18n.Supported(), raw) {
+		return i18n.Default, false
+	}
+
+	return i18n.New(raw, ""), true
+}
+
 // Handler serves GET /api/mgmt/email-preview and
 // GET /api/mgmt/email-preview/{template}.
 type Handler struct {
@@ -55,7 +80,7 @@ func NewHandler(formatter email.Formatter, cfg *config.Config) *Handler {
 
 // Preview renders a template with fixture data.
 // GET /api/mgmt/email-preview/{template}?format=html|text (default html)
-// &colorScheme=light|dark (default light).
+// &colorScheme=light|dark (default light)&locale=en|fr|de|es (default en).
 //
 // colorScheme only affects the HTML format: `dark` activates the template's
 // own prefers-color-scheme block (see forceDarkScheme) so the dashboard can
@@ -64,13 +89,18 @@ func NewHandler(formatter email.Formatter, cfg *config.Config) *Handler {
 func (h *Handler) Preview(writer http.ResponseWriter, req *http.Request) error {
 	templateName := httpx.Param(req, "template")
 
-	data, ok := fixtureFor(templateName)
+	loc, ok := localeFromQuery(req)
+	if !ok {
+		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, errLocaleMessage)
+	}
+
+	data, ok := fixtureFor(templateName, loc)
 	if !ok {
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound,
 			"Unknown template '"+templateName+"'. See emailpreview.fixtures for the supported list.")
 	}
 
-	subject, html, text, err := h.formatter.Format(templateName, data)
+	subject, html, text, err := h.formatter.Format(templateName, loc, data)
 	if err != nil {
 		return h.WriteInternalError(writer, req, err)
 	}
@@ -144,13 +174,19 @@ type TemplateSummary struct {
 }
 
 // Index lists every previewable template with its rendered subject.
-// GET /api/mgmt/email-preview.
-func (h *Handler) Index(writer http.ResponseWriter, _ *http.Request) error {
+// GET /api/mgmt/email-preview?locale=en|fr|de|es (default en): the subjects
+// are rendered in that language.
+func (h *Handler) Index(writer http.ResponseWriter, req *http.Request) error {
+	loc, ok := localeFromQuery(req)
+	if !ok {
+		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, errLocaleMessage)
+	}
+
 	names := FixtureTemplateNames()
 	summaries := make([]TemplateSummary, 0, len(names))
 
 	for _, name := range names {
-		summaries = append(summaries, h.summarize(name))
+		summaries = append(summaries, h.summarize(name, loc))
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]any{"data": summaries})
@@ -158,20 +194,20 @@ func (h *Handler) Index(writer http.ResponseWriter, _ *http.Request) error {
 
 // summarize renders one template with its fixture to extract the subject line
 // and whether a plaintext part exists.
-func (h *Handler) summarize(name string) TemplateSummary {
+func (h *Handler) summarize(name string, loc i18n.Locale) TemplateSummary {
 	summary := TemplateSummary{
 		Template:   name,
 		PreviewURL: previewPathPrefix + name,
 	}
 
-	data, ok := fixtureFor(name)
+	data, ok := fixtureFor(name, loc)
 	if !ok {
 		summary.Error = "no fixture"
 
 		return summary
 	}
 
-	subject, _, text, err := h.formatter.Format(name, data)
+	subject, _, text, err := h.formatter.Format(name, loc, data)
 	if err != nil {
 		summary.Error = err.Error()
 

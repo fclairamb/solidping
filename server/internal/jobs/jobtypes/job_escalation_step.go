@@ -14,6 +14,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
+	"github.com/fclairamb/solidping/server/internal/i18n"
 	"github.com/fclairamb/solidping/server/internal/incidentlinks"
 	"github.com/fclairamb/solidping/server/internal/integrations/discord"
 	slackclient "github.com/fclairamb/solidping/server/internal/integrations/slack"
@@ -1388,7 +1389,8 @@ func (r *EscalationStepJobRun) sendEscalationEmail(
 
 	viewModel := r.buildEscalationEmailViewModel(ctx, jctx, incident, recipient)
 
-	subject, htmlBody, textBody, err := jctx.Services.EmailFormatter.Format("escalation.html", viewModel)
+	subject, htmlBody, textBody, err := jctx.Services.EmailFormatter.Format(
+		"escalation.html", i18n.Default, viewModel) // i18n-phase-b: resolve the recipient locale
 	if err != nil {
 		log.WarnContext(ctx, "failed to format escalation email", "error", err)
 		_ = jctx.DBService.MarkIncidentNotificationFailedByUID(ctx, n.UID, time.Now(), err.Error())
@@ -1457,9 +1459,11 @@ func (r *EscalationStepJobRun) buildEscalationEmailViewModel(
 	// The person this escalation wakes up is the one who most needs to say
 	// "I'm on it" without opening the dashboard first.
 	var ackURL string
+
+	ackExpiresAt := incident.StartedAt.Add(incidentlinks.AckTokenTTL)
 	if jctx.AppConfig != nil {
 		ackURL = incidentlinks.AckURL(baseURL, orgSlug, incident.UID, recipient,
-			[]byte(jctx.AppConfig.Auth.JWTSecret), incident.StartedAt.Add(incidentlinks.AckTokenTTL))
+			[]byte(jctx.AppConfig.Auth.JWTSecret), ackExpiresAt)
 	}
 
 	viewModel := map[string]any{
@@ -1472,6 +1476,7 @@ func (r *EscalationStepJobRun) buildEscalationEmailViewModel(
 		"FailureReason":       incident.FailureReason(),
 		"CheckTarget":         checkTarget,
 		"AckURL":              ackURL,
+		"AckExpiresAt":        ackExpiresAt,
 		"DashboardURL":        escalationDashboardRootURL(baseURL),
 		"DocsURL":             escalationDocsURL(baseURL),
 	}

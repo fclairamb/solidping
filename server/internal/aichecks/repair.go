@@ -60,6 +60,8 @@ type JobsMailer struct {
 }
 
 // Mail implements Mailer.
+//
+// i18n-phase-b: resolve the recipient locale (raw text: the body is built in Go)
 func (m *JobsMailer) Mail(ctx context.Context, orgUID string, to []string, subject, text string) error {
 	raw, err := json.Marshal(map[string]any{"to": to, "subject": subject, "text": text})
 	if err != nil {

@@ -2,9 +2,10 @@ package emailpreview
 
 import (
 	"sort"
+	"time"
 
 	"github.com/fclairamb/solidping/server/internal/config"
-	"github.com/fclairamb/solidping/server/internal/email"
+	"github.com/fclairamb/solidping/server/internal/i18n"
 )
 
 // Fixture constants shared across multiple templates below — pulled out
@@ -43,6 +44,13 @@ const (
 	keyAvailability   = "AvailabilityPct"
 )
 
+// fixtureAckExpiresAt is when the fixtures' ack link stops working: the
+// incident started Jul 5, 10:00 UTC and the link lives 7 days
+// (incidentlinks.AckTokenTTL). This year's, so the preview never shows a year.
+func fixtureAckExpiresAt() time.Time {
+	return time.Date(time.Now().Year(), time.July, 12, 10, 0, 0, 0, time.UTC)
+}
+
 // fixtureBuilders maps a shipped template name to the function that returns
 // its preview fixture data. Kept as one table (a map, not a switch — the
 // switch form tripped cyclop once enough templates existed) so the supported
@@ -52,7 +60,7 @@ const (
 // package's handler_test.go, which enumerates the shipped template list).
 //
 //nolint:gochecknoglobals // read-only dispatch table, not mutable state.
-var fixtureBuilders = map[string]func() map[string]any{
+var fixtureBuilders = map[string]func(i18n.Locale) map[string]any{
 	"incident-created.html":            incidentFixture,
 	"incident-escalated.html":          incidentFixture,
 	"incident-reopened.html":           incidentFixture,
@@ -101,443 +109,15 @@ func FixtureTemplateNames() []string {
 	return names
 }
 
-// fixtureFor returns the preview fixture data for a shipped template, and
-// whether the name was recognized.
-func fixtureFor(templateName string) (map[string]any, bool) {
+// fixtureFor returns the preview fixture data for a shipped template in loc,
+// and whether the name was recognized. A builder takes the locale because the
+// production helpers it should call to produce Go-built phrases (an ack
+// attribution, a reminder sentence) take one (spec 2026-10-21-01).
+func fixtureFor(templateName string, loc i18n.Locale) (map[string]any, bool) {
 	builder, ok := fixtureBuilders[templateName]
 	if !ok {
 		return nil, false
 	}
 
-	return builder(), true
-}
-
-// incidentFixture is shared by created/escalated/reopened — they read the
-// same field set (ResolvedAt/Duration are simply ignored by templates that
-// don't reference them).
-func incidentFixture() map[string]any {
-	incidentURL := fixtureDashboardURL + "/orgs/acme/incidents/" + fixtureIncidentUID
-	ackURL := "https://solidping.example/api/v1/orgs/acme/incidents/" +
-		fixtureIncidentUID + "/ack?token=preview-token"
-
-	return map[string]any{
-		"CheckName":            fixtureCheckName,
-		"CheckType":            "http",
-		"CheckURL":             fixtureCheckURL,
-		"StartedAt":            "Jul 5, 10:00 UTC",
-		"IncidentUID":          fixtureIncidentUID,
-		"IncidentNumber":       fixtureIncidentNumber,
-		"IncidentURL":          incidentURL,
-		"AckURL":               ackURL,
-		"FailureCount":         3,
-		"RelapseCount":         1,
-		"FailureReason":        "HTTP 503 Service Unavailable (expected 200)",
-		"CheckTarget":          "https://api.acme.com/health",
-		keyDashboardURL:        fixtureDashboardURL,
-		"DocsURL":              "https://solidping.example/docs",
-		"UnsubscribeURL":       "https://solidping.example/unsubscribe?token=preview-unsub-token",
-		"UnsubscribeCheckName": fixtureCheckName,
-	}
-}
-
-// burnIncidentFixture is the SLO burn-rate alert view-model. It extends the
-// incident fixture rather than replacing it because a burn incident IS an
-// incident — same ack link, same deep links — with the three deciding numbers
-// added: burn rate, budget remaining, projected exhaustion.
-func burnIncidentFixture() map[string]any {
-	fixture := incidentFixture()
-	fixture["SLOName"] = "Acme API availability"
-	fixture["BurnPolicyLabel"] = "Fast burn"
-	fixture["BurnSeverity"] = "critical"
-	fixture["BurnRate"] = "31.0x"
-	fixture["BurnShortRate"] = "44.5x"
-	fixture["BurnPeakRate"] = "52.0x"
-	fixture["BurnThreshold"] = "14.4x"
-	fixture["BurnLongWindow"] = "1h"
-	fixture["BurnShortWindow"] = "5m"
-	fixture["BurnBudgetRemaining"] = "1h30m"
-	fixture["BurnProjectedExhaustion"] = "Jul 5, 14:30 UTC"
-	fixture["BurnTarget"] = "99.9%"
-
-	return fixture
-}
-
-// degradedIncidentFixture is the degraded-detection notice (spec 2026-09-22-03),
-// carrying the motivating episode's own numbers: 7 failures in 60 probes,
-// 93.8% availability, and a target that is up at this very moment.
-func degradedIncidentFixture() map[string]any {
-	fixture := incidentFixture()
-	fixture["DegradedReason"] = "7 failures in the last 60 probes (93.8% available)"
-	fixture["DegradedStatus"] = "Currently up."
-	fixture["DegradedWindow"] = "14:35 – 15:28 UTC"
-	fixture["DegradedWindowURL"] = "https://solidping.example/d/orgs/acme/checks/acme-api" +
-		"?graphFrom=1790778900000&graphTo=1790782080000"
-	fixture["DegradedFailureLine"] = "7 failures in the last 60 probes (93.8% available) (rule: 5 of 60 probes)"
-	fixture["DegradedSlowLine"] = "3 of the last 6 probes were slower than 1000ms (rule: 3 of 6 probes over 1000ms)"
-
-	return fixture
-}
-
-// resolvedDegradedIncidentFixture is the cleared half: the pattern stopped, so
-// there is nothing left to acknowledge.
-func resolvedDegradedIncidentFixture() map[string]any {
-	fixture := degradedIncidentFixture()
-	fixture["AckURL"] = ""
-	fixture["ResolvedAt"] = fixtureResolvedAt
-	fixture["Duration"] = "53m"
-
-	return fixture
-}
-
-// resolvedBurnIncidentFixture is the cleared-alert half: no ack (there is
-// nothing left to acknowledge) and a rate back under the threshold.
-func resolvedBurnIncidentFixture() map[string]any {
-	fixture := burnIncidentFixture()
-	fixture["AckURL"] = ""
-	fixture["ResolvedAt"] = fixtureResolvedAt
-	fixture["Duration"] = "15m"
-	fixture["BurnRate"] = "1.2x"
-
-	return fixture
-}
-
-// resolvedIncidentFixture extends incidentFixture with the resolved-only
-// fields (ResolvedAt, Duration) and has no AckURL — resolved has nothing to
-// ack.
-func resolvedIncidentFixture() map[string]any {
-	fx := incidentFixture()
-	fx["AckURL"] = ""
-	fx["ResolvedAt"] = fixtureResolvedAt
-	fx["Duration"] = "15m"
-
-	return fx
-}
-
-// escalationFixture is the fixture for the escalation-policy email
-// (job_escalation_step.go's sendEscalationEmail) — a smaller view-model than
-// the four incident-lifecycle templates: no ack/unsubscribe (it's an internal
-// paging email, not a per-recipient incident notification).
-func escalationFixture() map[string]any {
-	incidentURL := fixtureDashboardURL + "/orgs/acme/incidents/" + fixtureIncidentUID
-
-	return map[string]any{
-		"CheckName":      fixtureCheckName,
-		"CheckURL":       fixtureCheckURL,
-		"IncidentNumber": fixtureIncidentNumber,
-		"IncidentURL":    incidentURL,
-		"StartedAt":      "Jul 5, 10:00 UTC",
-		"FailureCount":   3,
-		"FailureReason":  "HTTP 503 Service Unavailable (expected 200)",
-		"CheckTarget":    "https://api.acme.com/health",
-		"AckURL": "https://solidping.example/api/v1/orgs/acme/incidents/" +
-			fixtureIncidentUID + "/ack?token=preview-token",
-		keyDashboardURL: fixtureDashboardURL,
-		"DocsURL":       "https://solidping.example/docs",
-	}
-}
-
-// testEmailFixture covers the admin and user-notification test-send emails
-// (system.Service.TestEmail, usernotifications.EmailSenderAdapter.SendTestEmail),
-// which share test-email.html.
-func testEmailFixture() map[string]any {
-	return map[string]any{
-		keySubject: "SolidPing Test Email",
-		"Heading":  "SolidPing Test Email",
-		"Body": "This is a test email from SolidPing. " +
-			"If you received this, your email configuration is working correctly.",
-	}
-}
-
-// pagingNudgeFixture covers members.Service.SendPagingNudge's paging-nudge.html.
-func pagingNudgeFixture() map[string]any {
-	return map[string]any{
-		keyOrgName:         fixtureOrgName,
-		"NotificationsURL": fixtureDashboardURL + "/orgs/acme/account/notifications",
-	}
-}
-
-// statusSubscriberConfirmFixture covers the double opt-in confirmation email
-// (statussubscribers.Handler.sendConfirmMail).
-func statusSubscriberConfirmFixture() map[string]any {
-	fixture := map[string]any{
-		keySubject:   "Confirm your subscription to " + fixtureStatusPageName,
-		"PageName":   fixtureStatusPageName,
-		"ConfirmURL": "https://solidping.example/api/v1/public/status-subscribers/confirm?token=preview-token",
-	}
-	email.ApplyStatusPageBranding(fixture, fixtureStatusPageName, nil, false)
-
-	return fixture
-}
-
-// statusSubscriberUpdateFixture covers the incident-opened/update/resolved
-// fan-out email (statussubscribers.Notifier.sendOne) — one template for all
-// three kinds, distinguished by Label/Title/Subject.
-func statusSubscriberUpdateFixture() map[string]any {
-	fixture := map[string]any{
-		keySubject:     fixtureStatusPageName + ": Elevated error rates",
-		"Label":        "New incident",
-		"Title":        "Elevated error rates",
-		"BodyMarkdown": "We are investigating elevated error rates on the API.",
-		"LinkURL":      "https://solidping.example" + config.StatusBasePath + "/acme/acme-status",
-		"PageName":     fixtureStatusPageName,
-		"SubscriberUnsubscribeURL": "https://solidping.example/api/v1/public/status-subscribers/" +
-			"unsubscribe?token=preview-token",
-	}
-	email.ApplyStatusPageBranding(fixture, fixtureStatusPageName, nil, false)
-
-	return fixture
-}
-
-func registrationFixture() map[string]any {
-	return map[string]any{
-		"ConfirmURL": "https://solidping.example/api/v1/auth/confirm?token=preview-token",
-	}
-}
-
-func passwordResetFixture() map[string]any {
-	return map[string]any{
-		"ResetURL": fixtureDashboardURL + "/reset-password?token=preview-token",
-	}
-}
-
-// passwordResetSSOFixture previews the reset email sent to a user with no
-// password who signed up through SSO (spec 2026-09-23-02). Two providers on
-// purpose, so the preview also shows the "or"-joined label list.
-func passwordResetSSOFixture() map[string]any {
-	return map[string]any{
-		"ResetURL":  fixtureDashboardURL + "/reset-password?token=preview-token",
-		"Providers": "GitHub or Google",
-	}
-}
-
-func invitationFixture() map[string]any {
-	return map[string]any{
-		keyOrgName:    fixtureOrgName,
-		"Role":        "admin",
-		"InviterName": fixturePersonName,
-		"InviteURL":   fixtureDashboardURL + "/invitations/preview-token",
-		// Dynamic on purpose: the template used to hardcode "7 days" here
-		// regardless of the actual invite TTL. This fixture value is
-		// deliberately NOT "7 days" so the preview harness would catch a
-		// regression back to the hardcoded string.
-		"ExpiresIn": "24 hours",
-	}
-}
-
-func welcomeFixture() map[string]any {
-	return map[string]any{
-		keyDashboardURL: fixtureDashboardURL,
-	}
-}
-
-func passwordChangedFixture() map[string]any {
-	return map[string]any{
-		"ChangedAt": "Sunday, July 5, 2026 at 10:00 UTC",
-	}
-}
-
-func emailChangedFixture() map[string]any {
-	return map[string]any{
-		"ChangedAt": "Sunday, July 5, 2026 at 10:00 UTC",
-		"OldEmail":  "alice@acme.com",
-		"NewEmail":  "alice@acme.org",
-	}
-}
-
-func membershipRequestNewFixture() map[string]any {
-	return map[string]any{
-		keyOrgName:       fixtureOrgName,
-		"RequesterName":  "Bob Builder",
-		"RequesterEmail": "bob@example.com",
-		"Message":        "I'd like to help monitor our new services.",
-		"RequestsURL":    fixtureDashboardURL + "/orgs/acme/organization/requests",
-	}
-}
-
-func membershipRequestDecisionFixture() map[string]any {
-	return map[string]any{
-		keyOrgName:      fixtureOrgName,
-		"Decision":      "approved",
-		"Role":          "viewer",
-		keyDashboardURL: fixtureDashboardURL + "/orgs/acme",
-	}
-}
-
-// uptimeReportFixture is the fixture for the scheduled uptime-report digest
-// (spec 2026-08-20-01). The keys are PascalCase because that is what the
-// template reads and what uptimereport.Data marshals to — see the tag comment
-// on that struct for why the two must agree.
-//
-// It deliberately carries a per-check row, a per-objective row and an
-// unsubscribe link, so TestPreview_AllShippedTemplatesRender exercises the
-// range blocks and the bulk-mail footer rather than only the header.
-func uptimeReportFixture() map[string]any {
-	return map[string]any{
-		keyOrgName:        fixtureOrgName,
-		"PeriodLabel":     "July 2026",
-		"ScopeLabel":      "All checks (2)",
-		"Timezone":        "Europe/Paris",
-		keyHasData:        true,
-		keyAvailability:   "99.950",
-		"CheckCount":      2,
-		"IncidentCount":   3,
-		"LongestIncident": "42m",
-		"AverageIncident": "21m 40s",
-		"TotalDowntime":   "1h 5m",
-
-		// Period-over-period trend. Present in the fixture so the preview
-		// exercises the delta spans rather than only their absence.
-		"PreviousPeriodLabel":     "June 2026",
-		"HasPreviousData":         true,
-		"PreviousAvailabilityPct": "99.870",
-		"PreviousIncidentCount":   5,
-		"PreviousAvgResponseTime": "158 ms",
-		"ShowAvailabilityDelta":   true,
-		"AvailabilityDeltaText":   "+0.080 pts",
-		"AvailabilityDeltaColor":  colorReportGood,
-		"ShowIncidentDelta":       true,
-		"IncidentDeltaText":       "-2",
-		"IncidentDeltaColor":      colorReportGood,
-		"ShowResponseDelta":       true,
-		"ResponseDeltaText":       "+8.4%",
-		"ResponseDeltaColor":      "#b91c1c",
-
-		// Response-time block.
-		"HasLatency":      true,
-		"AvgResponseTime": "171 ms",
-		"MinResponseTime": "42 ms",
-		"MaxResponseTime": "3.20 s",
-		"SlowLine":        "4 samples and 2 peaks above 1 s",
-		"SlowNote":        "A peak is a rolled-up period whose slowest sample exceeded 1 s.",
-		"LatencyNote":     "Response times include failed samples.",
-
-		"DayStripLabel": "Daily availability, 1 Jul – 31 Jul (UTC)",
-		"Checks": []map[string]any{
-			{
-				keyName: fixtureCheckName, keyHasData: true, keyAvailability: "99.980",
-				"Days": []map[string]any{
-					{keyColor: colorReportGood, keySpan: 20, keyWide: true},
-					{keyColor: "#b45309", keySpan: 1},
-					{keyColor: colorReportGood, keySpan: 10, keyWide: true},
-				},
-			},
-			{
-				keyName: "Marketing site", keyHasData: false, keyAvailability: "",
-				"Days": []map[string]any{{keyColor: "#d1d5db", keySpan: 31, keyWide: true}},
-			},
-		},
-		"SLOs": []map[string]any{
-			{
-				keyName:           "API availability",
-				keyHasData:        true,
-				"AttainmentPct":   "99.950",
-				"TargetPct":       "99.900",
-				"StateLabel":      "Healthy",
-				"BudgetRemaining": "21m 30s",
-			},
-		},
-		keyDashboardURL:  fixtureDashboardURL,
-		"UnsubscribeURL": "https://solidping.example/unsubscribe?token=preview-unsub-token",
-	}
-}
-
-// acknowledgedIncidentFixture is the "somebody took it" half of the incident
-// lifecycle: the incident is still open, so the ack fields are set but there is
-// no AckURL left to click.
-func acknowledgedIncidentFixture() map[string]any {
-	fixture := incidentFixture()
-	fixture["AckURL"] = ""
-	fixture["AckActor"] = fixturePersonName
-	fixture["AckVia"] = "from the dashboard"
-	fixture["AcknowledgedAt"] = "Jul 5, 10:04 UTC"
-
-	return fixture
-}
-
-// unacknowledgedIncidentFixture is the retraction: the incident is open and
-// unowned again, so — unlike the acknowledged fixture — the ack magic link IS
-// present. Taking the incident from this very email is the call to action.
-func unacknowledgedIncidentFixture() map[string]any {
-	fixture := incidentFixture()
-	fixture["AckActor"] = fixturePersonName
-	fixture["AckVia"] = "from the dashboard"
-
-	return fixture
-}
-
-// reminderIncidentFixture is the third reminder of an incident open for
-// 1 h 15 min and still unacknowledged (spec 2026-10-12-16).
-func reminderIncidentFixture() map[string]any {
-	fixture := incidentFixture()
-	fixture["ReminderText"] = "Still down after 1 h 15 min, not acknowledged (reminder 3)"
-
-	return fixture
-}
-
-// commentIncidentFixture carries a deliberately multi-line comment body so the
-// preview exercises the quote block's wrapping rather than a single short line.
-func commentIncidentFixture() map[string]any {
-	fixture := incidentFixture()
-	fixture["CommentAuthor"] = "Bob Builder"
-	fixture["CommentSource"] = "from Slack"
-	fixture["CommentText"] = "Upstream provider confirms a regional outage.\n" +
-		"Failing over to the secondary region now — next update in 15 minutes."
-
-	return fixture
-}
-
-// customDomainDemotedFixture covers the status-page custom-domain demotion
-// alert (customdomain.mailDemoted). Operator mail: no unsubscribe, no ack.
-func customDomainDemotedFixture() map[string]any {
-	return map[string]any{
-		keyOrgName:       fixtureOrgName,
-		"StatusPageName": fixtureStatusPageName,
-		"Domain":         "status.acme.com",
-		"Diagnostic":     "CNAME lookup for status.acme.com returned NXDOMAIN",
-		"SettingsURL": fixtureDashboardURL + "/orgs/acme/status-pages/" +
-			"3f1c9a2e-77b1-4f0a-9a1e-6c2f0b8d4e51",
-	}
-}
-
-// usageCapReachedFixture covers the once-a-month notice that a paging channel
-// ran out of its plan allowance (spec 2026-10-17-03). Operator mail.
-func usageCapReachedFixture() map[string]any {
-	return map[string]any{
-		keyOrgName:   fixtureOrgName,
-		"Channel":    "SMS",
-		"Limit":      20,
-		"UsageURL":   fixtureDashboardURL + "/orgs/acme/organization/usage",
-		"UpgradeURL": "https://billing.acme.com/acme/plans",
-	}
-}
-
-// regionOfflineFixture covers the org-facing region outage notice
-// (regionsweep, spec 2026-09-25-03). Operator mail: no unsubscribe, no ack.
-func regionOfflineFixture() map[string]any {
-	return map[string]any{
-		keyOrgName:     fixtureOrgName,
-		"RegionName":   "Lauterbourg (lauterbourg)",
-		"Since":        "Sep 24, 13:41 UTC",
-		"BlindCount":   2,
-		"ReducedCount": 3,
-		"MoreCount":    0,
-		"Checks": []map[string]any{
-			{"Name": "API", "URL": fixtureDashboardURL + "/orgs/acme/checks/api"},
-			{"Name": "Website", "URL": fixtureDashboardURL + "/orgs/acme/checks/website"},
-		},
-		"ChecksURL": fixtureDashboardURL + "/orgs/acme/checks",
-	}
-}
-
-// regionRecoveredFixture covers the matching recovery notice.
-func regionRecoveredFixture() map[string]any {
-	return map[string]any{
-		keyOrgName:    fixtureOrgName,
-		"RegionName":  "Lauterbourg (lauterbourg)",
-		"Since":       "Sep 24, 13:41 UTC",
-		"RecoveredAt": "Sep 24, 21:33 UTC",
-		"Duration":    "7h52m",
-		"Moved":       false,
-		"ChecksURL":   fixtureDashboardURL + "/orgs/acme/checks",
-	}
+	return builder(loc), true
 }

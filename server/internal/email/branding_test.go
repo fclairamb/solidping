@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/fclairamb/solidping/server/internal/i18n"
 )
 
 const brandingTestBaseURL = "https://solidping.example"
@@ -35,7 +37,7 @@ func renderBranded(t *testing.T, baseURL string, data any) string {
 	formatter, err := NewFormatter(WithBaseURL(baseURL))
 	require.NoError(t, err)
 
-	_, html, _, err := formatter.Format("incident-created.html", data)
+	_, html, _, err := formatter.Format("incident-created.html", i18n.English, data)
 	require.NoError(t, err)
 
 	return html
@@ -195,7 +197,7 @@ func renderBrandedStruct(t *testing.T, data any) string {
 	formatter, err := NewFormatter(WithBaseURL(brandingTestBaseURL))
 	require.NoError(t, err)
 
-	_, html, _, err := formatter.Format("test-email.html", data)
+	_, html, _, err := formatter.Format("test-email.html", i18n.English, data)
 	require.NoError(t, err)
 
 	return html
@@ -278,7 +280,7 @@ func TestBranding_EveryTemplateRendersWithAndWithoutBranding(t *testing.T) {
 				"bare":    map[string]any{"IncidentNumber": 0},
 				"branded": branded,
 			} {
-				_, html, _, formatErr := formatter.Format(name, data)
+				_, html, _, formatErr := formatter.Format(name, i18n.English, data)
 				r.NoError(formatErr, "%s (%s)", name, label)
 				r.NotContains(html, "{{", "unresolved template syntax in %s (%s)", name, label)
 			}
@@ -361,14 +363,14 @@ func TestBranding_BaseURLIsResolvedLate(t *testing.T) {
 	formatter, err := NewFormatter(WithBaseURLFunc(func() string { return current }))
 	r.NoError(err)
 
-	_, before, _, err := formatter.Format("welcome.html", map[string]any{})
+	_, before, _, err := formatter.Format("welcome.html", i18n.English, map[string]any{})
 	r.NoError(err)
 	r.Contains(before, "http://localhost:4000/d/logo.png")
 
 	// The overlay lands after construction.
 	current = "https://monitoring.acme.com/"
 
-	_, after, _, err := formatter.Format("welcome.html", map[string]any{})
+	_, after, _, err := formatter.Format("welcome.html", i18n.English, map[string]any{})
 	r.NoError(err)
 	r.Contains(after, "https://monitoring.acme.com/d/logo.png")
 	r.NotContains(after, "localhost:4000")
@@ -388,7 +390,7 @@ func TestBranding_HelperClassesWinOverTheGenericContentRules(t *testing.T) {
 	formatter, err := NewFormatter(WithBaseURL(brandingTestBaseURL))
 	r.NoError(err)
 
-	_, report, _, err := formatter.Format("uptime-report.html", map[string]any{
+	_, report, _, err := formatter.Format("uptime-report.html", i18n.English, map[string]any{
 		"HasData": true, "OrgName": "Acme Corp", "PeriodLabel": "July 2026",
 		"Checks": []map[string]any{{"Name": "API", "HasData": true, "AvailabilityPct": "99.9"}},
 	})
@@ -403,7 +405,7 @@ func TestBranding_HelperClassesWinOverTheGenericContentRules(t *testing.T) {
 	r.NotContains(match[1], "font-size:17px")
 	r.NotContains(match[1], "margin:0 0 14px")
 
-	_, update, _, err := formatter.Format("status-subscriber-update.html", map[string]any{
+	_, update, _, err := formatter.Format("status-subscriber-update.html", i18n.English, map[string]any{
 		"Subject": "s", "Label": "New incident", "Title": "T", "BodyMarkdown": "B",
 		"PageName": "Acme Status",
 	})
@@ -471,7 +473,7 @@ func TestApplyOrgBrandingRendersThroughTheWrapper(t *testing.T) {
 	branded := map[string]any{"Subject": "s", "Heading": "h", "Body": "b"}
 	ApplyOrgBranding(branded, "Acme Corp", "acme", &logo)
 
-	_, html, _, err := formatter.Format("test-email.html", branded)
+	_, html, _, err := formatter.Format("test-email.html", i18n.English, branded)
 	r.NoError(err)
 	r.Contains(html, brandingTestBaseURL+"/pub/assets/org-logo-uid")
 	r.Contains(html, `alt="Acme Corp"`)
@@ -481,7 +483,7 @@ func TestApplyOrgBrandingRendersThroughTheWrapper(t *testing.T) {
 	logoless := map[string]any{"Subject": "s", "Heading": "h", "Body": "b"}
 	ApplyOrgBranding(logoless, "Acme Corp", "acme", nil)
 
-	_, plain, _, err := formatter.Format("test-email.html", logoless)
+	_, plain, _, err := formatter.Format("test-email.html", i18n.English, logoless)
 	r.NoError(err)
 	r.NotContains(plain, "/pub/assets/org-logo-uid")
 	r.Contains(plain, brandingTestBaseURL+"/d/logo.png")
@@ -542,7 +544,7 @@ func TestApplyOrgBrandingBlankNameNeverRendersAHole(t *testing.T) {
 	}
 	ApplyOrgBranding(viewModel, "", "default", nil)
 
-	subject, html, text, err := formatter.Format("membership_request_new.html", viewModel)
+	subject, html, text, err := formatter.Format("membership_request_new.html", i18n.English, viewModel)
 	r.NoError(err)
 
 	r.Contains(subject, "on default")
@@ -596,7 +598,7 @@ func TestBranding_CustomDomainDemotedBreaksDomainAutoLink(t *testing.T) {
 	formatter, err := NewFormatter(WithBaseURL(brandingTestBaseURL))
 	r.NoError(err)
 
-	_, html, _, err := formatter.Format("custom-domain-demoted.html", map[string]any{
+	_, html, _, err := formatter.Format("custom-domain-demoted.html", i18n.English, map[string]any{
 		"Domain": "status.acme.com", "StatusPageName": "Acme", "OrgName": "Acme Corp",
 		"Diagnostic": "CNAME for status.acme.com points at 10.0.0.1",
 	})
@@ -665,7 +667,7 @@ func TestBranding_StateIsAStripeAndAPill(t *testing.T) {
 	formatter, err := NewFormatter(WithBaseURL(brandingTestBaseURL))
 	r.NoError(err)
 
-	_, welcome, _, err := formatter.Format("welcome.html", map[string]any{})
+	_, welcome, _, err := formatter.Format("welcome.html", i18n.English, map[string]any{})
 	r.NoError(err)
 	r.Contains(welcome, `<td class="top-space"`)
 	r.NotContains(welcome, `class="stripe`)

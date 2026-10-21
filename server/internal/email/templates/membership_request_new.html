@@ -9,7 +9,7 @@
     {{end}}
     {{if .RequestsURL}}
     <div class="cta-wrap">{{template "button" dict "URL" .RequestsURL "Label" "Review pending requests" "Variant" "primary"}}</div>
-    <p class="fallback">Button not working? Paste this link into your browser:<br>{{link .RequestsURL ""}}</p>
+    {{template "fallback-link" .RequestsURL}}
     {{end}}
     <p class="meta">You're receiving this because you're an admin of {{.OrgName}}.</p>
 {{end}}

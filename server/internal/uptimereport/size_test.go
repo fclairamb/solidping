@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/email"
+	"github.com/fclairamb/solidping/server/internal/i18n"
 )
 
 // gmailClipBytes is the size at which Gmail truncates a message body and hides
@@ -155,7 +156,7 @@ func renderReport(t *testing.T, data *Data) (string, string) {
 
 	require.NoError(t, json.Unmarshal(raw, &asMap))
 
-	_, html, text, err := formatter.Format(TemplateName, asMap)
+	_, html, text, err := formatter.Format(TemplateName, i18n.English, asMap)
 	require.NoError(t, err)
 
 	return html, text

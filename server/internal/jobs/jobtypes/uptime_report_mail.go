@@ -37,7 +37,7 @@ func EnqueueUptimeReportEmail(
 	payload := *data
 	payload.UnsubscribeURL = unsubscribeURL
 
-	cfg := EmailJobConfig{
+	cfg := EmailJobConfig{ // i18n-phase-b: resolve the recipient locale
 		To:           []string{recipient},
 		Template:     uptimereport.TemplateName,
 		TemplateData: payload,

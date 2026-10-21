@@ -10,6 +10,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/email"
+	"github.com/fclairamb/solidping/server/internal/i18n"
 	"github.com/fclairamb/solidping/server/internal/incidentlinks"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
@@ -572,7 +573,8 @@ func (s *EmailSender) buildEmailContent(
 
 	viewModel := s.buildIncidentViewModel(checkName, payload, ackURL, unsubURL)
 
-	subject, html, text, err := jctx.Services.EmailFormatter.Format(templateName, viewModel)
+	subject, html, text, err := jctx.Services.EmailFormatter.Format(
+		templateName, i18n.Default, viewModel) // i18n-phase-b: resolve the recipient locale
 	if err != nil {
 		return emailContent{}, fmt.Errorf("formatting template %s: %w", templateName, err)
 	}
@@ -715,6 +717,12 @@ func (s *EmailSender) buildIncidentViewModel(
 	if unsubURL != "" {
 		viewModel["UnsubscribeURL"] = unsubURL
 		viewModel["UnsubscribeCheckName"] = checkName
+	}
+
+	// The ack link's real expiry: its token is minted for StartedAt + TTL
+	// (see sendPerRecipient), so a late mail (a reminder) states less time.
+	if ackURL != "" {
+		viewModel["AckExpiresAt"] = payload.Incident.StartedAt.Add(ackTokenTTL)
 	}
 
 	return viewModel

@@ -6,6 +6,12 @@ and previewed (test mode only) at `/api/mgmt/email-preview` — the dashboard li
 them under **Test → Emails**. The preview uses the *same* formatter as the send
 path, so what it shows is what the mailer produces.
 
+Every mail is rendered in its reader's language and timezone. Text goes through the
+`t` / `tn` / `tHTML` template funcs and the catalogs of `server/internal/i18n`; dates,
+durations and numbers through `date` / `duration` / `number` / `pct`. How to add or
+translate a string, resolve a recipient's locale and test it:
+[email-i18n.md](email-i18n.md). The preview takes `?locale=en|fr|de|es`.
+
 ## Anatomy of a template
 
 ```gotemplate
@@ -54,8 +60,14 @@ path, so what it shows is what the mailer produces.
   in its own body. The shared footer never claims "someone used your address".
 - **Quoted human text uses `.quote`**, never `.fallback` — the latter is
   monospace with `word-break: break-all`, meant for URLs, and mangles prose.
-- **Timestamps go through `email.Timestamp`**: `Jul 5, 10:00 UTC`. Always the
-  zone, never seconds or the year.
+- **Timestamps go through the `date` template func** (`Jul 5, 10:00 UTC`, in the
+  reader's zone and language): pass the `time.Time` in the view model. Always the
+  zone, never seconds; the year only when it is not the current one. Producers not
+  migrated yet still pre-format with `email.Timestamp` (English, UTC).
+- **Shared sentences are partials.** `fallback-link` renders the "Button not
+  working? Paste this link…" line under a CTA (`{{template "fallback-link" .URL}}`);
+  `incident-actions` states the ack link's real expiry from the view model's
+  `AckExpiresAt`.
 - **Incident mail threads.** `email.Message.ThreadID` (`email.IncidentThreadID`)
   sets `In-Reply-To` / `References`, so Apple Mail and Thunderbird group every mail
   of one incident. Gmail also requires an identical subject, so it keeps per-state

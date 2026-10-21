@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/fclairamb/solidping/server/internal/i18n"
 )
 
 func TestNewFormatter(t *testing.T) {
@@ -62,7 +64,7 @@ func TestFormatter_FormatIncidentCreated(t *testing.T) {
 	formatter, err := NewFormatter()
 	r.NoError(err)
 
-	subject, html, text, err := formatter.Format("incident-created.html", incidentViewModel())
+	subject, html, text, err := formatter.Format("incident-created.html", i18n.English, incidentViewModel())
 	r.NoError(err)
 
 	r.Equal("🔴 Production API is down (#42)", subject)
@@ -117,7 +119,7 @@ func TestFormatter_FormatIncidentCreatedShowsCauseAndTarget(t *testing.T) {
 	data["FailureReason"] = "HTTP 503 Service Unavailable (expected 200)\nbody: upstream connect error"
 	data["CheckTarget"] = "https://api.acme.com/health"
 
-	subject, html, text, err := formatter.Format("incident-created.html", data)
+	subject, html, text, err := formatter.Format("incident-created.html", i18n.English, data)
 	r.NoError(err)
 
 	r.Equal("🔴 Production API is down: HTTP 503 Service Unavailable (expected 200) (#42)", subject)
@@ -143,7 +145,7 @@ func TestFormatter_IncidentNumberOmittedWhenZero(t *testing.T) {
 	data := incidentViewModel()
 	data["IncidentNumber"] = int64(0)
 
-	subject, html, text, err := formatter.Format("incident-created.html", data)
+	subject, html, text, err := formatter.Format("incident-created.html", i18n.English, data)
 	r.NoError(err)
 	r.NotContains(subject, "#0")
 	r.NotContains(subject, "#")
@@ -167,7 +169,7 @@ func TestFormatter_FormatIncidentCreatedWithoutAckURL(t *testing.T) {
 	data := incidentViewModel()
 	data["AckURL"] = ""
 
-	_, html, text, err := formatter.Format("incident-created.html", data)
+	_, html, text, err := formatter.Format("incident-created.html", i18n.English, data)
 	r.NoError(err)
 	r.NotContains(html, "I&#39;m on it")
 	r.NotContains(html, "stops escalation", "no ack link, no explanation of it")
@@ -186,7 +188,7 @@ func TestFormatter_FormatIncidentCreatedWithSubjectPrefix(t *testing.T) {
 	data := incidentViewModel()
 	data["SubjectPrefix"] = "[Acme]"
 
-	subject, _, _, err := formatter.Format("incident-created.html", data)
+	subject, _, _, err := formatter.Format("incident-created.html", i18n.English, data)
 	r.NoError(err)
 	r.Equal("[Acme] 🔴 Production API is down (#42)", subject)
 }
@@ -199,7 +201,7 @@ func TestFormatter_FormatIncidentResolved(t *testing.T) {
 	formatter, err := NewFormatter()
 	r.NoError(err)
 
-	subject, html, text, err := formatter.Format("incident-resolved.html", incidentViewModel())
+	subject, html, text, err := formatter.Format("incident-resolved.html", i18n.English, incidentViewModel())
 	r.NoError(err)
 
 	r.Equal("🟢 Production API is back up after 15m0s (#42)", subject)
@@ -222,7 +224,7 @@ func TestFormatter_FormatIncidentEscalated(t *testing.T) {
 	formatter, err := NewFormatter()
 	r.NoError(err)
 
-	subject, html, text, err := formatter.Format("incident-escalated.html", incidentViewModel())
+	subject, html, text, err := formatter.Format("incident-escalated.html", i18n.English, incidentViewModel())
 	r.NoError(err)
 
 	r.Equal("🟠 Production API is still down, escalated (#42)", subject)
@@ -244,7 +246,7 @@ func TestFormatter_FormatIncidentReopened(t *testing.T) {
 	formatter, err := NewFormatter()
 	r.NoError(err)
 
-	subject, html, text, err := formatter.Format("incident-reopened.html", incidentViewModel())
+	subject, html, text, err := formatter.Format("incident-reopened.html", i18n.English, incidentViewModel())
 	r.NoError(err)
 
 	r.Equal("🔴 Production API is down again (#42)", subject)
@@ -284,7 +286,7 @@ func TestFormatter_FormatEscalation(t *testing.T) {
 		"DocsURL":        "https://example.com/docs",
 	}
 
-	subject, html, text, err := formatter.Format("escalation.html", data)
+	subject, html, text, err := formatter.Format("escalation.html", i18n.English, data)
 	r.NoError(err)
 
 	r.Equal("🟠 Production API is still down, escalated to you (#42)", subject)
@@ -320,7 +322,7 @@ func TestFormatter_UnsubscribeFooterLink(t *testing.T) {
 	data["UnsubscribeURL"] = "https://example.com/unsubscribe?token=xyz"
 	data["UnsubscribeCheckName"] = "Production API"
 
-	_, html, text, err := formatter.Format("incident-created.html", data)
+	_, html, text, err := formatter.Format("incident-created.html", i18n.English, data)
 	r.NoError(err)
 	r.Regexp(`<a href="https://example\.com/unsubscribe\?token=xyz"[^>]*>Stop alerts for Production API</a>`, html)
 	r.Contains(text, "Unsubscribe from alerts for Production API")
@@ -334,7 +336,7 @@ func TestFormatter_InvalidTemplate(t *testing.T) {
 	formatter, err := NewFormatter()
 	r.NoError(err)
 
-	_, html, _, err := formatter.Format("nonexistent.html", nil)
+	_, html, _, err := formatter.Format("nonexistent.html", i18n.English, nil)
 	r.Error(err)
 	r.Empty(html)
 	r.Contains(err.Error(), "parsing template")
@@ -348,7 +350,7 @@ func TestFormatter_CSSInlining(t *testing.T) {
 	formatter, err := NewFormatter()
 	r.NoError(err)
 
-	_, html, _, err := formatter.Format("incident-created.html", incidentViewModel())
+	_, html, _, err := formatter.Format("incident-created.html", i18n.English, incidentViewModel())
 	r.NoError(err)
 
 	// CSS should be inlined into a style attribute on at least one element.
@@ -439,7 +441,7 @@ func TestFormatter_TextBlockRendering(t *testing.T) {
 
 				r := require.New(t)
 
-				_, _, text, err := formatter.Format(tc.template, tc.data)
+				_, _, text, err := formatter.Format(tc.template, i18n.English, tc.data)
 				r.NoError(err)
 				r.NotEmpty(text, "template %s must produce a non-empty text alternative", tc.template)
 
@@ -578,7 +580,7 @@ func TestFormatter_TransactionalTemplates(t *testing.T) {
 			formatter, err := NewFormatter()
 			r.NoError(err)
 
-			subject, html, _, err := formatter.Format(tc.template, tc.data)
+			subject, html, _, err := formatter.Format(tc.template, i18n.English, tc.data)
 			r.NoError(err)
 			r.Equal(tc.wantSubject, subject)
 
@@ -613,7 +615,7 @@ func TestFormatter_AccountMailFallbackLink(t *testing.T) {
 
 			r := require.New(t)
 
-			_, html, _, err := formatter.Format(tc.template, tc.data)
+			_, html, _, err := formatter.Format(tc.template, i18n.English, tc.data)
 			r.NoError(err)
 			r.Regexp(`<p class="fallback"[^>]*>Button not working\? Paste this link into your browser:<br/?>`+
 				`<a href="`+regexp.QuoteMeta(tc.url)+`"`, html)
@@ -646,7 +648,7 @@ func TestFormatter_InvitationExpiryIsDynamic(t *testing.T) {
 		"ExpiresIn":   "1 hour",
 	}
 
-	_, html, text, err := formatter.Format("invitation.html", data)
+	_, html, text, err := formatter.Format("invitation.html", i18n.English, data)
 	r.NoError(err)
 
 	r.Contains(html, "expires in 1 hour")
@@ -719,7 +721,7 @@ func TestFormatter_AllShippedTemplatesRenderCleanly(t *testing.T) {
 
 			r := require.New(t)
 
-			subject, html, text, err := formatter.Format(tc.template, tc.data)
+			subject, html, text, err := formatter.Format(tc.template, i18n.English, tc.data)
 			r.NoError(err, "template %s must render without error", tc.template)
 			r.NotEmpty(html, "template %s must produce non-empty HTML", tc.template)
 
@@ -808,7 +810,7 @@ func TestSubjectAndTextAreNotHTMLEscaped(t *testing.T) {
 	viewModel := incidentViewModel()
 	viewModel["CheckName"] = hostile
 
-	subject, htmlBody, text, err := formatter.Format("incident-created.html", viewModel)
+	subject, htmlBody, text, err := formatter.Format("incident-created.html", i18n.English, viewModel)
 	r.NoError(err)
 
 	r.Contains(subject, hostile, "the subject line is a mail header, not HTML")
@@ -834,7 +836,7 @@ func TestRegionOfflineAgreesWithCount(t *testing.T) {
 		1: {"1 of your checks is not running", "runs only from this region, so it is"},
 		2: {"2 of your checks are not running", "run only from this region, so they are"},
 	} {
-		subject, _, text, err := formatter.Format("region-offline.html", map[string]any{
+		subject, _, text, err := formatter.Format("region-offline.html", i18n.English, map[string]any{
 			"RegionName": "Tokyo (tokyo)",
 			"Since":      "2026-10-16 17:58 UTC",
 			"OrgName":    "acme",

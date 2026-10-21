@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/fclairamb/solidping/server/internal/email"
+	"github.com/fclairamb/solidping/server/internal/i18n"
 	slackclient "github.com/fclairamb/solidping/server/internal/integrations/slack"
 )
 
@@ -31,11 +32,14 @@ func (a *EmailSenderAdapter) SendTestEmail(ctx context.Context, recipient string
 		return ErrEmailFormatterNotConfigured
 	}
 
-	subject, htmlBody, textBody, err := a.formatter.Format("test-email.html", map[string]any{
+	viewModel := map[string]any{
 		"Subject": "Test notification from SolidPing",
 		"Heading": "Test notification from SolidPing",
 		"Body":    "This is a test notification from SolidPing. Your email delivery is working correctly.",
-	})
+	}
+
+	subject, htmlBody, textBody, err := a.formatter.Format(
+		"test-email.html", i18n.Default, viewModel) // i18n-phase-b: resolve the recipient locale
 	if err != nil {
 		return fmt.Errorf("format test email: %w", err)
 	}

@@ -18,6 +18,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/email"
+	"github.com/fclairamb/solidping/server/internal/i18n"
 	"github.com/fclairamb/solidping/server/internal/jmap"
 	"github.com/fclairamb/solidping/server/internal/opsnotify"
 	"github.com/fclairamb/solidping/server/internal/paramkeys"
@@ -449,12 +450,15 @@ func (s *Service) TestEmail(ctx context.Context, recipient string) (*TestEmailRe
 	// Create a temporary sender with current settings
 	sender := newEmailSender(emailCfg, slog.Default())
 
-	subject, htmlBody, textBody, err := s.formatter.Format("test-email.html", map[string]any{
+	viewModel := map[string]any{
 		"Subject": "SolidPing Test Email",
 		"Heading": "SolidPing Test Email",
 		"Body": "This is a test email from SolidPing. " +
 			"If you received this, your email configuration is working correctly.",
-	})
+	}
+
+	subject, htmlBody, textBody, err := s.formatter.Format(
+		"test-email.html", i18n.Default, viewModel) // i18n-phase-b: resolve the recipient locale
 	if err != nil {
 		return nil, fmt.Errorf("failed to format test email: %w", err)
 	}

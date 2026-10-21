@@ -56,6 +56,9 @@ type emailJobConfig struct {
 	Subject      string   `json:"subject"`
 	Template     string   `json:"template,omitempty"`
 	TemplateData any      `json:"templateData,omitempty"`
+	// Locale and Timezone: the recipient's, see jobtypes.EmailJobConfig.
+	Locale   string `json:"locale,omitempty"`
+	Timezone string `json:"timezone,omitempty"`
 }
 
 // Internal property/key constants used in JSONMap fields and OAuth flows.
@@ -348,6 +351,11 @@ type UserInfo struct {
 	// UserInfo also describes OTHER people (the membership-request admin
 	// view), where it would be noise.
 	Demo bool `json:"demo,omitempty"`
+	// Preferences is the language and timezone the server writes to this user
+	// in (spec 2026-10-21-01). newUserInfo always sets it, {} when nothing is
+	// stored, so the dashboard knows to report the browser's values. omitempty
+	// keeps it out of the descriptions of OTHER people.
+	Preferences *models.UserPreferences `json:"preferences,omitempty"`
 }
 
 // newUserInfo builds the user payload every login-shaped response and /auth/me
@@ -373,6 +381,7 @@ func newUserInfo(user *models.User, role string) *UserInfo {
 		Role:               role,
 		MustChangePassword: user.MustChangePassword,
 		Demo:               user.Demo,
+		Preferences:        preferencesInfo(user),
 	}
 }
 
@@ -521,6 +530,9 @@ type UpdateProfileRequest struct {
 	// impersonation sessions.
 	Email           *string `json:"email,omitempty"`
 	CurrentPassword *string `json:"currentPassword,omitempty"`
+	// Preferences updates the language and timezone of the user's emails,
+	// field by field (spec 2026-10-21-01).
+	Preferences *PreferencesRequest `json:"preferences,omitempty"`
 }
 
 // LogoutResponse contains the response data for a logout operation.
@@ -641,7 +653,7 @@ func (s *Service) enqueueEmail(
 		return false
 	}
 
-	cfg := emailJobConfig{
+	cfg := emailJobConfig{ // i18n-phase-b: resolve the recipient locale
 		To:           []string{recipient},
 		Template:     template,
 		TemplateData: data,
@@ -1779,8 +1791,24 @@ func (s *Service) getUserInfoNoOrg(ctx context.Context, claims *Claims) (*MeResp
 	}, nil
 }
 
-// UpdateProfile updates the current user's profile fields.
+// UpdateProfile updates the current user's profile fields. Every field is
+// optional: a preferences-only PATCH is as valid as a name-only one.
 func (s *Service) UpdateProfile(ctx context.Context, claims *Claims, req UpdateProfileRequest) (*MeResponse, error) {
+	// Preferences are validated before anything is written, so a bad locale
+	// never leaves a half-applied email change behind.
+	var prefs *models.UserPreferences
+
+	if req.Preferences != nil {
+		user, err := s.db.GetUser(ctx, claims.UserUID)
+		if err != nil || user == nil {
+			return nil, ErrUserNotFound
+		}
+
+		if prefs, err = mergePreferences(user.Preferences, req.Preferences); err != nil {
+			return nil, err
+		}
+	}
+
 	if req.Email != nil {
 		// A changed email is applied together with the name, in one UPDATE.
 		changed, err := s.changeOwnEmail(ctx, claims, req)
@@ -1789,16 +1817,17 @@ func (s *Service) UpdateProfile(ctx context.Context, claims *Claims, req UpdateP
 		}
 
 		if changed {
-			return s.GetUserInfo(ctx, claims)
+			req.Name = nil
 		}
 	}
 
-	if req.Name == nil {
+	if req.Name == nil && prefs == nil {
 		return s.GetUserInfo(ctx, claims)
 	}
 
 	update := models.UserUpdate{
-		Name: req.Name,
+		Name:        req.Name,
+		Preferences: prefs,
 	}
 
 	if err := s.db.UpdateUser(ctx, claims.UserUID, &update); err != nil {
@@ -2424,6 +2453,11 @@ type RegisterRequest struct {
 	// normalizeSignupAttribution before it is stored, so a client cannot use
 	// it to park arbitrary data on a user row.
 	Attribution *models.SignupAttribution `json:"attribution,omitempty"`
+	// Locale and Timezone are the browser's language and IANA zone, the
+	// preferences the account starts with (spec 2026-10-21-01). Optional and
+	// lenient: an unsupported value is dropped, never refused.
+	Locale   string `json:"locale,omitempty"`
+	Timezone string `json:"timezone,omitempty"`
 }
 
 // RegisterResponse contains the response after registration.
@@ -2489,6 +2523,8 @@ const registerAntiEnumFiller = "solidping-registration-timing-filler-0000"
 // path for the race where an account was created by some OTHER path between
 // Register and confirmation — that caller already proved mailbox ownership by
 // holding the token, so it isn't an enumeration surface.
+//
+//nolint:gocritic // req is the decoded wire shape, passed by value like every request of this service
 func (s *Service) Register(ctx context.Context, req RegisterRequest) (*RegisterResponse, error) {
 	// Check if registration is enabled. Read the LIVE value: the
 	// registration_email_pattern is applied by the systemconfig overlay AFTER
@@ -2565,6 +2601,10 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*RegisterR
 	// is something to keep: the common untagged signup stores nothing extra.
 	if attribution := normalizeSignupAttribution(req.Attribution); attribution != nil {
 		(*stateValue)[keyAttribution] = attribution
+	}
+
+	if prefs := signupPreferences(req.Locale, req.Timezone); prefs != nil {
+		(*stateValue)[keyPreferences] = prefs
 	}
 
 	ttl := registrationTTL
@@ -2651,6 +2691,7 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 	user.Name = regName
 	user.PasswordHash = &regHash
 	user.SignupAttribution = signupAttributionFromState(val[keyAttribution])
+	user.Preferences = signupPreferencesFromState(val[keyPreferences])
 
 	now := time.Now()
 	user.EmailVerifiedAt = &now
@@ -3607,6 +3648,11 @@ type AcceptInviteRequest struct {
 	Token    string `json:"token"`
 	Name     string `json:"name"`
 	Password string `json:"password"`
+	// Locale and Timezone seed the preferences of an account created by the
+	// acceptance (an existing account keeps its own). Optional and lenient,
+	// like RegisterRequest's.
+	Locale   string `json:"locale,omitempty"`
+	Timezone string `json:"timezone,omitempty"`
 }
 
 // CreateInvitation creates an invitation for a user to join an organization.
@@ -3839,7 +3885,7 @@ func (s *Service) GetInviteInfo(ctx context.Context, token string) (*InviteInfoR
 // holds it (spec 2026-10-16-06). Every check runs before any write, so a
 // refused attempt creates nothing and leaves the invitation in place.
 //
-//nolint:cyclop,funlen // Invitation acceptance requires multiple steps
+//nolint:cyclop,funlen,gocritic // multiple steps; req is the decoded wire shape, passed by value
 func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest, callerUID string) (*LoginResponse, error) {
 	// Find the invitation across orgs. matchedEntry.Key is the key that
 	// actually matched (hashed, or legacy plaintext), so the deletes below
@@ -3881,6 +3927,7 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest, cal
 		user.Name = req.Name
 		user.PasswordHash = &hash
 		user.EmailVerifiedAt = &now
+		user.Preferences = signupPreferences(req.Locale, req.Timezone)
 
 		if createErr := createUserAndCapture(ctx, s.db, user, signupMethodInvite); createErr != nil {
 			return nil, fmt.Errorf("failed to create user: %w", createErr)

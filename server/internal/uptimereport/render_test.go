@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/email"
+	"github.com/fclairamb/solidping/server/internal/i18n"
 	"github.com/fclairamb/solidping/server/internal/uptimereport"
 )
 
@@ -118,7 +119,7 @@ func TestUptimeReportRendersRealContent(t *testing.T) {
 	formatter, err := email.NewFormatter()
 	r.NoError(err)
 
-	subject, html, text, err := formatter.Format(uptimereport.TemplateName, roundTrip(t, sampleData()))
+	subject, html, text, err := formatter.Format(uptimereport.TemplateName, i18n.English, roundTrip(t, sampleData()))
 	r.NoError(err)
 
 	// A key mismatch renders as the literal "<no value>" rather than failing,
@@ -167,7 +168,7 @@ func TestUptimeReportChecksAndObjectivesLinkToTheirDash0Pages(t *testing.T) {
 	formatter, err := email.NewFormatter()
 	r.NoError(err)
 
-	_, html, text, err := formatter.Format(uptimereport.TemplateName, roundTrip(t, sampleData()))
+	_, html, text, err := formatter.Format(uptimereport.TemplateName, i18n.English, roundTrip(t, sampleData()))
 	r.NoError(err)
 
 	// The formatter's CSS inliner rewrites `.content a` into an inline
@@ -202,7 +203,7 @@ func TestUptimeReportRendersPlainNamesWithoutBaseURL(t *testing.T) {
 		data.SLOs[i].URL = ""
 	}
 
-	_, html, text, err := formatter.Format(uptimereport.TemplateName, roundTrip(t, data))
+	_, html, text, err := formatter.Format(uptimereport.TemplateName, i18n.English, roundTrip(t, data))
 	r.NoError(err)
 
 	r.NotContains(html, `href=""`)
@@ -226,7 +227,7 @@ func TestUptimeReportColorsAvailabilityByValue(t *testing.T) {
 	formatter, err := email.NewFormatter()
 	r.NoError(err)
 
-	_, html, text, err := formatter.Format(uptimereport.TemplateName, roundTrip(t, sampleData()))
+	_, html, text, err := formatter.Format(uptimereport.TemplateName, i18n.English, roundTrip(t, sampleData()))
 	r.NoError(err)
 
 	r.Contains(html, `style="color: #15803d; font-weight: 600">99.980%</span>`)
@@ -275,7 +276,7 @@ func TestUptimeReportRendersNoDataHonestly(t *testing.T) {
 	data.Checks = nil
 	data.SLOs = nil
 
-	_, html, text, err := formatter.Format(uptimereport.TemplateName, roundTrip(t, data))
+	_, html, text, err := formatter.Format(uptimereport.TemplateName, i18n.English, roundTrip(t, data))
 	r.NoError(err)
 
 	for _, body := range []string{html, text} {
@@ -309,7 +310,7 @@ func TestUptimeReportRendersAsAStructDirectly(t *testing.T) {
 	data.BrandName = data.OrgName
 	data.OrgLogoURL = "/pub/assets/org-logo-uid"
 
-	_, html, text, err := formatter.Format(uptimereport.TemplateName, data)
+	_, html, text, err := formatter.Format(uptimereport.TemplateName, i18n.English, data)
 	r.NoError(err)
 
 	// Branding really landed, so a passing test cannot mean "the header was
@@ -337,7 +338,7 @@ func TestUptimeReportBrandingSurvivesTheJSONRoundTrip(t *testing.T) {
 	data.BrandName = data.OrgName
 	data.OrgLogoURL = "/pub/assets/org-logo-uid"
 
-	_, html, _, err := formatter.Format(uptimereport.TemplateName, roundTrip(t, data))
+	_, html, _, err := formatter.Format(uptimereport.TemplateName, i18n.English, roundTrip(t, data))
 	r.NoError(err)
 
 	r.Contains(html, "https://solidping.example/pub/assets/org-logo-uid")
@@ -432,7 +433,7 @@ func TestUptimeReportEveryViewModelFieldSurvivesTheRoundTrip(t *testing.T) {
 	formatter, err := email.NewFormatter()
 	require.NoError(t, err)
 
-	subject, html, text, err := formatter.Format(uptimereport.TemplateName, roundTrip(t, data))
+	subject, html, text, err := formatter.Format(uptimereport.TemplateName, i18n.English, roundTrip(t, data))
 	require.NoError(t, err)
 
 	for _, body := range []string{subject, html, text} {
@@ -452,7 +453,7 @@ func TestUptimeReportRendersTrendAndLatency(t *testing.T) {
 	formatter, err := email.NewFormatter()
 	r.NoError(err)
 
-	_, html, text, err := formatter.Format(uptimereport.TemplateName, roundTrip(t, sampleData()))
+	_, html, text, err := formatter.Format(uptimereport.TemplateName, i18n.English, roundTrip(t, sampleData()))
 	r.NoError(err)
 
 	for _, body := range []string{html, text} {
@@ -513,7 +514,7 @@ func TestUptimeReportOmitsTrendWithoutABaseline(t *testing.T) {
 	data.ResponseDeltaText = ""
 	data.ResponseDeltaColor = ""
 
-	_, html, text, err := formatter.Format(uptimereport.TemplateName, roundTrip(t, data))
+	_, html, text, err := formatter.Format(uptimereport.TemplateName, i18n.English, roundTrip(t, data))
 	r.NoError(err)
 
 	for _, body := range []string{html, text} {
@@ -576,7 +577,7 @@ func TestUptimeReportDownAllPeriodStatesTheFactAndDropsLatency(t *testing.T) {
 		data.Checks[i].Days = []uptimereport.DayCell{{Color: "#b91c1c", Span: 31, Wide: true}}
 	}
 
-	_, html, text, err := formatter.Format(uptimereport.TemplateName, roundTrip(t, data))
+	_, html, text, err := formatter.Format(uptimereport.TemplateName, i18n.English, roundTrip(t, data))
 	r.NoError(err)
 
 	for _, body := range []string{html, text} {

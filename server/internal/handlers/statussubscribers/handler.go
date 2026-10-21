@@ -16,6 +16,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/httpx"
+	"github.com/fclairamb/solidping/server/internal/i18n"
 	"github.com/fclairamb/solidping/server/internal/securityheaders"
 	"github.com/fclairamb/solidping/server/internal/statuspagecache"
 	"github.com/fclairamb/solidping/server/internal/statuspagelock"
@@ -110,7 +111,8 @@ func (h *Handler) sendConfirmMail(ctx context.Context, result *SubscribeResult) 
 	// Status page branding, honoring hide_branding — never the org's.
 	email.ApplyStatusPageBranding(viewModel, data.PageName, result.PageLogoURL, result.PageHideBranding)
 
-	subject, htmlBody, textBody, err := h.formatter.Format("status-subscriber-confirm.html", viewModel)
+	subject, htmlBody, textBody, err := h.formatter.Format(
+		"status-subscriber-confirm.html", i18n.Default, viewModel) // i18n-phase-b: resolve the recipient locale
 	if err != nil {
 		h.logger.ErrorContext(ctx, "status subscriber confirm mail formatting failed",
 			"subscriberUid", result.Subscriber.UID, "error", err)

@@ -12,6 +12,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/handlers/statusupdates"
 	"github.com/fclairamb/solidping/server/internal/httpclientpool"
+	"github.com/fclairamb/solidping/server/internal/i18n"
 )
 
 // Compile-time assertion that *Notifier satisfies the statusupdates fan-out hook.
@@ -210,7 +211,8 @@ func (n *Notifier) sendOne(
 	// SolidPing" footer line can reach a subscriber.
 	email.ApplyStatusPageBranding(viewModel, event.PageName, event.PageLogoURL, event.PageHideBranding)
 
-	subject, htmlBody, textBody, err := n.formatter.Format("status-subscriber-update.html", viewModel)
+	subject, htmlBody, textBody, err := n.formatter.Format(
+		"status-subscriber-update.html", i18n.Default, viewModel) // i18n-phase-b: resolve the recipient locale
 	if err != nil {
 		n.logger.ErrorContext(ctx, "status subscriber fan-out: failed to format mail",
 			"subscriberUid", sub.UID, "statusPageUid", event.StatusPageUID, "error", err)

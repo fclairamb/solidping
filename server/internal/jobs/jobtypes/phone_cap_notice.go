@@ -109,7 +109,7 @@ func capNoticeData(
 func enqueueCapNotice(
 	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger, orgUID, recipient string, data map[string]any,
 ) {
-	raw, err := json.Marshal(EmailJobConfig{
+	raw, err := json.Marshal(EmailJobConfig{ // i18n-phase-b: resolve the recipient locale
 		To:           []string{recipient},
 		Template:     email.TemplateUsageCapReached,
 		TemplateData: data,

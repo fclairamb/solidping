@@ -14,6 +14,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
+	"github.com/fclairamb/solidping/server/internal/i18n"
 )
 
 // Spec 2026-10-17-03: a bring-your-own send skips the plan's monthly cap; an
@@ -243,7 +244,7 @@ func TestCap_AdminNoticeOncePerMonth(t *testing.T) {
 	formatter, err := email.NewFormatter()
 	r.NoError(err)
 
-	subject, _, text, err := formatter.Format(cfg.Template, cfg.TemplateData)
+	subject, _, text, err := formatter.Format(cfg.Template, i18n.English, cfg.TemplateData)
 	r.NoError(err)
 	r.Contains(subject, "SMS")
 	r.Contains(text, "https://billing.acme.com/test-org/plans")

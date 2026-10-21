@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{lang}}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -217,15 +217,15 @@
                             {{else if $orgLogo}}
                             <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
                                 <tr>
-                                    <td align="left"><img class="header-org-logo" src="{{$orgLogo}}" alt="{{if $brandName}}{{$brandName}}{{else}}Logo{{end}}" height="32"></td>
-                                    <td class="header-attribution" align="right"><span class="header-wordmark">sent by SolidPing</span></td>
+                                    <td align="left"><img class="header-org-logo" src="{{$orgLogo}}" alt="{{if $brandName}}{{$brandName}}{{else}}{{t "common.header.logoAlt"}}{{end}}" height="32"></td>
+                                    <td class="header-attribution" align="right"><span class="header-wordmark">{{t "common.header.sentBy"}}</span></td>
                                 </tr>
                             </table>
                             {{else if and (field . "BrandIsSender") $brandName}}
                             <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
                                 <tr>
                                     <td align="left"><span class="header-logo">{{$brandName}}</span></td>
-                                    <td class="header-attribution" align="right"><span class="header-wordmark">sent by SolidPing</span></td>
+                                    <td class="header-attribution" align="right"><span class="header-wordmark">{{t "common.header.sentBy"}}</span></td>
                                 </tr>
                             </table>
                             {{else if $productLogo}}
@@ -260,8 +260,8 @@
                             {{- $dashboardURL := field . "DashboardURL" -}}
                             {{- $unsubscribeURL := field . "UnsubscribeURL" -}}
                             {{- $unsubscribeCheckName := field . "UnsubscribeCheckName" -}}
-                            {{if not (field . "HideBranding")}}<p>{{if $footerOrgName}}{{$footerOrgName}} · sent by{{else}}Sent by{{end}} <a href="https://solidping.io">SolidPing</a>{{if $dashboardURL}} · <a href="{{$dashboardURL}}">Dashboard</a>{{end}}</p>{{end}}
-                            {{if $unsubscribeURL}}<p><a href="{{$unsubscribeURL}}">{{if $unsubscribeCheckName}}Stop alerts for {{$unsubscribeCheckName}}{{else}}Unsubscribe{{end}}</a></p>{{end}}
+                            {{if not (field . "HideBranding")}}<p>{{if $footerOrgName}}{{t "common.footer.orgSentBy" "org" $footerOrgName}}{{else}}{{t "common.footer.sentBy"}}{{end}} <a href="https://solidping.io">SolidPing</a>{{if $dashboardURL}} · <a href="{{$dashboardURL}}">{{t "common.footer.dashboard"}}</a>{{end}}</p>{{end}}
+                            {{if $unsubscribeURL}}<p><a href="{{$unsubscribeURL}}">{{if $unsubscribeCheckName}}{{t "common.footer.stopAlerts" "check" $unsubscribeCheckName}}{{else}}{{t "common.footer.unsubscribe"}}{{end}}</a></p>{{end}}
                             {{block "footernote" .}}{{end}}
                         </td>
                     </tr>
@@ -287,20 +287,26 @@
 {{define "cause"}}{{with field . "FailureReason"}}<div class="cause"><span class="cause-text">{{.}}</span></div>{{end}}{{end}}
 {{/* incident-actions renders the buttons of an actionable incident mail:
      "I'm on it" (the per-recipient ack magic link) first when there is one,
-     then "View incident". */}}
+     then "View incident". AckExpiresAt (a time) is when the ack link stops
+     working; without it the sentence just leaves the date out. */}}
 {{define "incident-actions"}}
 {{- $ack := field . "AckURL" -}}
 {{- $incident := field . "IncidentURL" -}}
+{{- $ackExpires := date (field . "AckExpiresAt") -}}
 {{if or $ack $incident}}
 <table class="actions-table" role="presentation" cellpadding="0" cellspacing="0" border="0">
     <tr>
-        {{if $ack}}<td class="action-cell">{{template "button" dict "URL" $ack "Label" "I'm on it" "Variant" "primary"}}</td>{{end}}
-        {{if $incident}}<td class="action-cell">{{template "button" dict "URL" $incident "Label" "View incident" "Variant" "secondary"}}</td>{{end}}
+        {{if $ack}}<td class="action-cell">{{template "button" dict "URL" $ack "Label" (t "common.incidentActions.ack") "Variant" "primary"}}</td>{{end}}
+        {{if $incident}}<td class="action-cell">{{template "button" dict "URL" $incident "Label" (t "common.incidentActions.viewIncident") "Variant" "secondary"}}</td>{{end}}
     </tr>
 </table>
 {{end}}
-{{if $ack}}<p class="meta">"I'm on it" tells your team you are handling it and stops escalation. The link works for 7 days.</p>{{end}}
+{{if $ack}}<p class="meta">{{t "common.incidentActions.ackExplain"}}{{if $ackExpires}} {{t "common.incidentActions.ackExpires" "date" $ackExpires}}{{end}}</p>{{end}}
 {{end}}
+{{- /* fallback-link renders the "button not working?" line under a CTA
+     button. Param: the URL. Usage: {{template "fallback-link" .ConfirmURL}}.
+     Trimmed so it adds no blank line to the rendered document. */ -}}
+{{define "fallback-link"}}<p class="fallback">{{t "common.fallbackLink"}}<br>{{link . ""}}</p>{{end}}
 {{/* statusbanner-render draws the state of an incident mail: a 4px colored
      stripe across the top of the card and a tinted pill above the headline.
      Params: Variant ("down" | "recovered" | "escalated" | "reopened" |

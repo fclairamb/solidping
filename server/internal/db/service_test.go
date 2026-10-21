@@ -747,6 +747,39 @@ func testUsersWithOrg(ctx context.Context, t *testing.T, svc db.Service) {
 		assert.Equal(t, &newPasswordHash, updated.PasswordHash)
 	})
 
+	t.Run("Preferences", func(t *testing.T) {
+		r := require.New(t)
+
+		user := models.NewUser("preferences@example.com")
+		user.Preferences = &models.UserPreferences{Locale: "fr"}
+		r.NoError(svc.CreateUser(ctx, user))
+
+		created, err := svc.GetUser(ctx, user.UID)
+		r.NoError(err)
+		r.Equal(&models.UserPreferences{Locale: "fr"}, created.Preferences)
+
+		// A name-only update leaves the preferences alone.
+		name := "Prefs"
+		r.NoError(svc.UpdateUser(ctx, user.UID, &models.UserUpdate{Name: &name}))
+
+		unchanged, err := svc.GetUser(ctx, user.UID)
+		r.NoError(err)
+		r.Equal(&models.UserPreferences{Locale: "fr"}, unchanged.Preferences)
+
+		both := &models.UserPreferences{Locale: "de", Timezone: "Europe/Berlin"}
+		r.NoError(svc.UpdateUser(ctx, user.UID, &models.UserUpdate{Preferences: both}))
+
+		updated, err := svc.GetUserByEmail(ctx, "preferences@example.com")
+		r.NoError(err)
+		r.Equal(both, updated.Preferences)
+
+		r.NoError(svc.UpdateUser(ctx, user.UID, &models.UserUpdate{Preferences: &models.UserPreferences{}}))
+
+		cleared, err := svc.GetUser(ctx, user.UID)
+		r.NoError(err)
+		r.Nil(cleared.Preferences)
+	})
+
 	t.Run("UpdateEmailClearsVerification", func(t *testing.T) {
 		user := models.NewUser("verified@example.com")
 		now := time.Now()

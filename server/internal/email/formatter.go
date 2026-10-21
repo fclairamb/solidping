@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"maps"
 	"reflect"
 	"strings"
 	texttemplate "text/template"
@@ -13,6 +14,7 @@ import (
 	"github.com/vanng822/go-premailer/premailer"
 
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/i18n"
 )
 
 //go:embed templates/*
@@ -295,8 +297,31 @@ func dict(args ...any) (map[string]any, error) {
 	return result, nil
 }
 
+// funcsFor returns the template functions of one render: the static ones plus
+// the locale-bound ones (t, tn, tHTML, date, day, month, duration, number, pct,
+// lang). Format parses its templates on every call, so binding them before the
+// parse shares no mutable state between concurrent renders. If parsed
+// templates are ever cached, Clone a never-executed master and call Funcs on
+// the clone; calling Funcs on a shared tree would switch the language of every
+// render in flight.
+func (f *TemplateFormatter) funcsFor(loc i18n.Locale) template.FuncMap {
+	funcs := maps.Clone(f.funcMap)
+	funcs["t"] = loc.T
+	funcs["tn"] = loc.Tn
+	funcs["tHTML"] = loc.THTML
+	funcs["date"] = loc.Date
+	funcs["day"] = loc.Day
+	funcs["month"] = loc.Month
+	funcs["duration"] = loc.Duration
+	funcs["number"] = loc.Number
+	funcs["pct"] = loc.Pct
+	funcs["lang"] = loc.Lang
+
+	return funcs
+}
+
 // parseTemplate parses a specific template with the base template.
-func (f *TemplateFormatter) parseTemplate(templateName string) (*template.Template, error) {
+func (f *TemplateFormatter) parseTemplate(templateName string, funcs template.FuncMap) (*template.Template, error) {
 	// Read base template
 	baseContent, err := templateFS.ReadFile("templates/base.html")
 	if err != nil {
@@ -310,7 +335,7 @@ func (f *TemplateFormatter) parseTemplate(templateName string) (*template.Templa
 	}
 
 	// Parse base template first
-	tmpl, err := template.New("base.html").Funcs(f.funcMap).Parse(string(baseContent))
+	tmpl, err := template.New("base.html").Funcs(funcs).Parse(string(baseContent))
 	if err != nil {
 		return nil, fmt.Errorf("parsing base template: %w", err)
 	}
@@ -334,7 +359,9 @@ func (f *TemplateFormatter) parseTemplate(templateName string) (*template.Templa
 // plaintext part that text-only clients and screen readers display. Literal
 // template text is untouched by the escaper, which is why this went unnoticed:
 // it only corrupts values, and only those carrying & < > " or '.
-func (f *TemplateFormatter) parseTextTemplate(templateName string) (*texttemplate.Template, error) {
+func (f *TemplateFormatter) parseTextTemplate(
+	templateName string, funcs template.FuncMap,
+) (*texttemplate.Template, error) {
 	baseContent, err := templateFS.ReadFile("templates/base.html")
 	if err != nil {
 		return nil, fmt.Errorf("reading base template: %w", err)
@@ -345,7 +372,7 @@ func (f *TemplateFormatter) parseTextTemplate(templateName string) (*texttemplat
 		return nil, fmt.Errorf("reading template %s: %w", templateName, err)
 	}
 
-	tmpl, err := texttemplate.New("base.html").Funcs(f.funcMap).Parse(string(baseContent))
+	tmpl, err := texttemplate.New("base.html").Funcs(funcs).Parse(string(baseContent))
 	if err != nil {
 		return nil, fmt.Errorf("parsing base template: %w", err)
 	}
@@ -363,13 +390,18 @@ func (f *TemplateFormatter) parseTextTemplate(templateName string) (*texttemplat
 // none), the HTML body with inlined CSS, and a plaintext alternative (from a
 // {{define "text"}} block, or "" when the template has none). See the
 // Formatter interface for why there is no automatic HTML-to-text fallback.
-func (f *TemplateFormatter) Format(templateName string, data any) (string, string, string, error) {
-	tmpl, err := f.parseTemplate(templateName)
+//
+// loc is the reader's language and timezone: it binds the t / date / ...
+// template functions and the <html lang> of base.html.
+func (f *TemplateFormatter) Format(templateName string, loc i18n.Locale, data any) (string, string, string, error) {
+	funcs := f.funcsFor(loc)
+
+	tmpl, err := f.parseTemplate(templateName, funcs)
 	if err != nil {
 		return "", "", "", fmt.Errorf("parsing template %s: %w", templateName, err)
 	}
 
-	textTmpl, err := f.parseTextTemplate(templateName)
+	textTmpl, err := f.parseTextTemplate(templateName, funcs)
 	if err != nil {
 		return "", "", "", fmt.Errorf("parsing template %s: %w", templateName, err)
 	}

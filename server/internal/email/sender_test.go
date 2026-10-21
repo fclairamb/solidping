@@ -14,6 +14,7 @@ import (
 	"github.com/wneessen/go-mail"
 
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/i18n"
 )
 
 func TestSender_DisabledNoOp(t *testing.T) {
@@ -165,7 +166,7 @@ func TestSendEmail_Integration(t *testing.T) {
 		"IncidentURL": "https://solidping.com/d/orgs/default/incidents/inc-integration-test",
 	}
 
-	_, html, _, err := formatter.Format("incident-created.html", data)
+	_, html, _, err := formatter.Format("incident-created.html", i18n.English, data)
 	r.NoError(err)
 
 	result, err := sender.Send(context.Background(), &Message{

@@ -41,6 +41,9 @@ type emailJobConfig struct {
 	To           []string       `json:"to"`
 	Template     string         `json:"template,omitempty"`
 	TemplateData map[string]any `json:"templateData,omitempty"`
+	// Locale and Timezone: the recipient's, see jobtypes.EmailJobConfig.
+	Locale   string `json:"locale,omitempty"`
+	Timezone string `json:"timezone,omitempty"`
 }
 
 // AlertDemoted tells the organization that one of its status pages has stopped
@@ -161,7 +164,7 @@ func mailDemoted(
 func enqueueDemotedEmail(
 	ctx context.Context, deps AlertDeps, orgUID, recipient string, data map[string]any,
 ) {
-	raw, err := json.Marshal(emailJobConfig{
+	raw, err := json.Marshal(emailJobConfig{ // i18n-phase-b: resolve the recipient locale
 		To:       []string{recipient},
 		Template: email.TemplateCustomDomainDemoted,
 		// Transactional operator mail: no List-Unsubscribe. An admin cannot opt

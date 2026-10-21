@@ -7,7 +7,7 @@
     <p>Your request to join <strong>{{.OrgName}}</strong> on SolidPing has been approved. You're now a member with role <strong>{{.Role}}</strong>.</p>
     {{if .DashboardURL}}
     <div class="cta-wrap">{{template "button" dict "URL" .DashboardURL "Label" (printf "Open %s" .OrgName) "Variant" "success"}}</div>
-    <p class="fallback">Button not working? Paste this link into your browser:<br>{{link .DashboardURL ""}}</p>
+    {{template "fallback-link" .DashboardURL}}
     {{end}}
     {{else}}
     <p>Your request to join <strong>{{.OrgName}}</strong> on SolidPing was rejected.</p>

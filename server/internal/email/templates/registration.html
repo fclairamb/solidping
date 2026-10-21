@@ -5,7 +5,7 @@
     <h1>Confirm your account</h1>
     <p>You're almost there. Click below to confirm your SolidPing account and finish setting things up.</p>
     <div class="cta-wrap">{{template "button" dict "URL" .ConfirmURL "Label" "Confirm account" "Variant" "success"}}</div>
-    <p class="fallback">Button not working? Paste this link into your browser:<br>{{link .ConfirmURL ""}}</p>
+    {{template "fallback-link" .ConfirmURL}}
     <p class="meta">This confirmation link expires in 3 days. If you didn't sign up for SolidPing, you can safely ignore this email.</p>
 {{end}}
 {{define "text"}}Confirm your account

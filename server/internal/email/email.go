@@ -4,6 +4,8 @@ package email
 import (
 	"context"
 	"time"
+
+	"github.com/fclairamb/solidping/server/internal/i18n"
 )
 
 // Recipients holds email recipient addresses.
@@ -65,6 +67,12 @@ type Message struct {
 	// headers (Apple Mail, Thunderbird, Outlook). Gmail also requires an
 	// identical subject, so it keeps them apart.
 	ThreadID string
+	// Locale and Timezone are the reader's language and IANA zone, the ones
+	// the body was rendered in (spec 2026-10-21-01). The sender reads them for
+	// the text it adds itself (the support-reply notice). Empty means English,
+	// UTC.
+	Locale   string
+	Timezone string
 }
 
 // Timestamp renders an instant for a mail body: "Jul 5, 10:00 UTC". Seconds
@@ -106,5 +114,9 @@ type Formatter interface {
 	// unreadable in real clients, so an explicit template-authored "text"
 	// block is required to get a plaintext part; there is no automatic
 	// HTML-to-text fallback.
-	Format(templateName string, data any) (subject string, html string, text string, err error)
+	//
+	// loc is the reader's language and timezone (i18n.Default when unknown).
+	// It is a parameter, not a view-model key, on purpose: every call site has
+	// to decide whose language the mail speaks.
+	Format(templateName string, loc i18n.Locale, data any) (subject string, html string, text string, err error)
 }

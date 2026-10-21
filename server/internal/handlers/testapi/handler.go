@@ -183,7 +183,7 @@ func (h *Handler) CreateEmailJob(writer http.ResponseWriter, req *http.Request) 
 	}
 
 	// Build email job config
-	emailConfig := jobtypes.EmailJobConfig{
+	emailConfig := jobtypes.EmailJobConfig{ // i18n-phase-b: resolve the recipient locale
 		To:           []string{body.To},
 		Subject:      h.getSubjectForType(body.Type, body.Params),
 		Template:     template,

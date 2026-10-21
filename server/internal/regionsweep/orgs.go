@@ -428,6 +428,9 @@ type emailJobConfig struct {
 	To           []string       `json:"to"`
 	Template     string         `json:"template,omitempty"`
 	TemplateData map[string]any `json:"templateData,omitempty"`
+	// Locale and Timezone: the recipient's, see jobtypes.EmailJobConfig.
+	Locale   string `json:"locale,omitempty"`
+	Timezone string `json:"timezone,omitempty"`
 }
 
 // mailAdmins queues one email per owner/admin of the org — the
@@ -452,7 +455,7 @@ func (r *sweepRun) mailAdmins(ctx context.Context, org *models.Organization, tem
 			continue
 		}
 
-		raw, marshalErr := json.Marshal(emailJobConfig{
+		raw, marshalErr := json.Marshal(emailJobConfig{ // i18n-phase-b: resolve the recipient locale
 			To:       []string{member.User.Email},
 			Template: template,
 			// Transactional operator mail: an admin cannot opt out of being
