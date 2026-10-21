@@ -1,0 +1,142 @@
+{
+  "duration": {
+    "hours_one": "{count} hour",
+    "hours_other": "{count} hours",
+    "days_one": "{count} day",
+    "days_other": "{count} days"
+  },
+  "registration": {
+    "subject": "Confirm your SolidPing account",
+    "preheader": "One click to confirm your address and finish setting up SolidPing.",
+    "title": "Confirm your account",
+    "intro": "You're almost there. Click below to confirm your SolidPing account and finish setting things up.",
+    "introText": "You're almost there. Confirm your SolidPing account to finish setting things up:",
+    "cta": "Confirm account",
+    "expiry": "This confirmation link expires in {expiresIn}. If you didn't sign up for SolidPing, you can safely ignore this email."
+  },
+  "welcome": {
+    "title": "Welcome to SolidPing",
+    "preheader": "Your account is ready. Add your first check in a minute.",
+    "lead": "Your account is ready. Three things take five minutes and make it useful:",
+    "addCheck": {
+      "label": "1. Add a check",
+      "detail": "A website, an API, a DNS record, a cron job..."
+    },
+    "getAlerted": {
+      "label": "2. Get alerted",
+      "detail": "Email works now. Add Slack, SMS or a phone call if you want to be woken up."
+    },
+    "shareStatus": {
+      "label": "3. Share status",
+      "detail": "A status page tells your users what is going on before they ask."
+    },
+    "cta": "Open your dashboard",
+    "help": "Questions? Reply to this email. A human reads it.",
+    "introText": "Thanks for joining SolidPing. We'll help you keep your services healthy and let you know the moment something goes wrong.",
+    "helpText": "Need help getting started? Just reply to this email."
+  },
+  "passwordReset": {
+    "subject": "Reset your SolidPing password",
+    "preheader": "Set a new password. The link expires in {expiresIn}.",
+    "title": "Reset your password",
+    "intro": "We received a request to reset your SolidPing password. Click below to set a new one.",
+    "introText": "We received a request to reset your SolidPing password. Reset it here:",
+    "cta": "Reset password",
+    "expiry": "This reset link expires in {expiresIn}. If you didn't request a password reset, you can safely ignore this email. Your password will not change."
+  },
+  "passwordResetSSO": {
+    "preheader": "You sign in with {providers}. Set a password below.",
+    "intro": "We received a request to reset your SolidPing password. You usually sign in to SolidPing with <strong>{providers}</strong>. You can keep doing that, or set a password with the link below.",
+    "introText": "We received a request to reset your SolidPing password. You usually sign in to SolidPing with {providers}. You can keep doing that, or set a password here:",
+    "cta": "Set password",
+    "expiry": "This reset link expires in {expiresIn}. If you didn't request this, you can safely ignore this email. Nothing will change, and you can keep signing in with {providers}."
+  },
+  "securityNotice": {
+    "preheader": "Changed on {date}. If that wasn't you, act now.",
+    "warning": "If this wasn't you, contact your administrator immediately. Your account may be compromised."
+  },
+  "passwordChanged": {
+    "subject": "Your SolidPing password was changed",
+    "title": "Your password was changed",
+    "body": "This is a confirmation that your SolidPing password was changed on {date}."
+  },
+  "emailChanged": {
+    "subject": "Your SolidPing email address was changed",
+    "title": "Your email address was changed",
+    "body": "The email address of your SolidPing account was changed from {oldEmail} to {newEmail} on {date}.",
+    "newAddress": "You now sign in with {newEmail}. This address will no longer receive account emails."
+  },
+  "invitation": {
+    "subject": "You're invited to join {org} on SolidPing",
+    "preheader": {
+      "admin": "Join {org} as admin. The invitation expires in {expiresIn}.",
+      "user": "Join {org} as user. The invitation expires in {expiresIn}.",
+      "viewer": "Join {org} as viewer. The invitation expires in {expiresIn}."
+    },
+    "title": "You're invited to {org}",
+    "body": {
+      "byInviter": {
+        "admin": "{inviter} has invited you to join <strong>{org}</strong> on SolidPing as <strong>admin</strong>.",
+        "user": "{inviter} has invited you to join <strong>{org}</strong> on SolidPing as <strong>user</strong>.",
+        "viewer": "{inviter} has invited you to join <strong>{org}</strong> on SolidPing as <strong>viewer</strong>."
+      },
+      "anonymous": {
+        "admin": "You've been invited to join <strong>{org}</strong> on SolidPing as <strong>admin</strong>.",
+        "user": "You've been invited to join <strong>{org}</strong> on SolidPing as <strong>user</strong>.",
+        "viewer": "You've been invited to join <strong>{org}</strong> on SolidPing as <strong>viewer</strong>."
+      }
+    },
+    "bodyText": {
+      "byInviter": {
+        "admin": "{inviter} has invited you to join {org} on SolidPing as admin.",
+        "user": "{inviter} has invited you to join {org} on SolidPing as user.",
+        "viewer": "{inviter} has invited you to join {org} on SolidPing as viewer."
+      },
+      "anonymous": {
+        "admin": "You've been invited to join {org} on SolidPing as admin.",
+        "user": "You've been invited to join {org} on SolidPing as user.",
+        "viewer": "You've been invited to join {org} on SolidPing as viewer."
+      }
+    },
+    "cta": "Accept invitation",
+    "acceptText": "Accept your invitation:",
+    "expiry": "This invitation expires in {expiresIn}. If you weren't expecting this, you can safely ignore this email."
+  },
+  "membershipRequest": {
+    "subject": "New membership request from {requester} on {org}",
+    "preheader": "{requester} is waiting for an admin to approve their access.",
+    "title": "New membership request",
+    "body": "<strong>{requester}</strong> ({email}) has asked to join <strong>{org}</strong> on SolidPing.",
+    "bodyText": "{requester} ({email}) has asked to join {org} on SolidPing.",
+    "quotedMessage": "\"{message}\"",
+    "cta": "Review pending requests",
+    "why": "You're receiving this because you're an admin of {org}."
+  },
+  "membershipDecision": {
+    "approved": {
+      "subject": "Your request to join {org} was approved",
+      "preheader": "Your request to join {org} was approved.",
+      "title": "Membership request approved",
+      "body": {
+        "admin": "Your request to join <strong>{org}</strong> on SolidPing has been approved. You're now a member with role <strong>admin</strong>.",
+        "user": "Your request to join <strong>{org}</strong> on SolidPing has been approved. You're now a member with role <strong>user</strong>.",
+        "viewer": "Your request to join <strong>{org}</strong> on SolidPing has been approved. You're now a member with role <strong>viewer</strong>."
+      },
+      "bodyText": {
+        "admin": "Your request to join {org} on SolidPing has been approved. You're now a member with role admin.",
+        "user": "Your request to join {org} on SolidPing has been approved. You're now a member with role user.",
+        "viewer": "Your request to join {org} on SolidPing has been approved. You're now a member with role viewer."
+      },
+      "cta": "Open {org}"
+    },
+    "rejected": {
+      "subject": "Your request to join {org} was rejected",
+      "preheader": "Your request to join {org} was rejected.",
+      "title": "Membership request rejected",
+      "body": "Your request to join <strong>{org}</strong> on SolidPing was rejected.",
+      "bodyText": "Your request to join {org} on SolidPing was rejected.",
+      "reasonIntro": "Reason from the admin:",
+      "retry": "You can submit a new request after the cooldown period."
+    }
+  }
+}

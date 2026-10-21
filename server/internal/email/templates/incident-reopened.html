@@ -1,57 +1,33 @@
-{{define "subject"}}{{if .SubjectPrefix}}{{.SubjectPrefix}} {{end}}[REOPENED] {{.CheckName}} incident reopened (relapse #{{.RelapseCount}}){{if gt .IncidentNumber 0}} (#{{.IncidentNumber}}){{end}}{{end}}
-{{define "preheader"}}{{.CheckName}} went down again after a brief recovery (relapse #{{.RelapseCount}}).{{end}}
+{{define "subject"}}{{if .SubjectPrefix}}{{.SubjectPrefix}} {{end}}🔴 {{t "incident.reopened.title" "check" .CheckName}}{{if .IncidentNumber}} (#{{.IncidentNumber}}){{end}}{{end}}
+{{define "preheader"}}{{t "incident.reopened.preheader" "check" .CheckName}}{{if .FailureReason}} {{short 80 .FailureReason}}.{{end}}{{end}}
 {{template "base.html" .}}
-{{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "reopened" "Label" "Reopened"}}{{end}}
+{{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "reopened" "Label" (t "incident.pill.reopened")}}{{end}}
 {{define "content"}}
-    <h1>{{if .CheckURL}}<a href="{{.CheckURL}}">{{nolink .CheckName}}</a>{{else}}{{nolink .CheckName}}{{end}} incident reopened (relapse #{{.RelapseCount}})</h1>
-    <p>The incident for <strong>{{if .CheckURL}}<a href="{{.CheckURL}}">{{nolink .CheckName}}</a>{{else}}{{nolink .CheckName}}{{end}}</strong> has been reopened after a brief recovery.</p>
+    {{$check := nolink .CheckName}}{{if .CheckURL}}{{$check = tHTML "incident.checkLink" "url" .CheckURL "check" $check}}{{end}}
+    <h1>{{tHTML "incident.reopened.title" "check" $check}}</h1>
+    <p class="lead">{{if .HasRelapses}}{{tn "incident.reopened.leadRelapses" .RelapseCount}}{{else}}{{t "incident.reopened.lead"}}{{end}}</p>
+    {{template "cause" .}}
     <table class="details-table" role="presentation" cellpadding="0" cellspacing="0">
-        <tr><td class="label">Check</td><td class="value">{{if .CheckURL}}<a href="{{.CheckURL}}">{{nolink .CheckName}}</a>{{else}}{{nolink .CheckName}}{{end}}</td></tr>
-        <tr><td class="label">Type</td><td class="value">{{.CheckType}}</td></tr>
+        {{if .CheckTarget}}<tr><td class="label">{{t "common.labels.target"}}</td><td class="value">{{nolink .CheckTarget}}</td></tr>{{end}}
+        <tr><td class="label">{{t "common.labels.since"}}</td><td class="value">{{date .StartedAt}}</td></tr>
         {{if .RegionText}}<tr><td class="label">{{.RegionTitle}}</td><td class="value">{{.RegionText}}</td></tr>{{end}}
-        <tr><td class="label">Started at</td><td class="value">{{.StartedAt}}</td></tr>
-        <tr><td class="label">Relapse count</td><td class="value">{{.RelapseCount}}</td></tr>
-        <tr><td class="label">Failure count</td><td class="value">{{.FailureCount}}</td></tr>
-        {{if gt .IncidentNumber 0}}<tr><td class="label">Incident</td><td class="value">{{if .IncidentURL}}<a href="{{.IncidentURL}}">#{{.IncidentNumber}}</a>{{else}}#{{.IncidentNumber}}{{end}}</td></tr>{{end}}
+        {{if .IncidentNumber}}<tr><td class="label">{{t "common.labels.incident"}}</td><td class="value">#{{.IncidentNumber}}</td></tr>{{end}}
     </table>
-    {{if or .IncidentURL .AckURL}}
-    <table class="actions-table" role="presentation" cellpadding="0" cellspacing="0" border="0">
-        <tr>
-            {{if .IncidentURL}}
-            <td class="action-cell">{{template "button" dict "URL" .IncidentURL "Label" "View incident" "Variant" "primary"}}</td>
-            {{end}}
-            {{if .AckURL}}
-            <td class="action-cell">{{template "button" dict "URL" .AckURL "Label" "Acknowledge incident" "Variant" "secondary"}}</td>
-            {{end}}
-        </tr>
-    </table>
-    {{end}}
-    {{if .AckURL}}
-    <p class="meta">This link is valid for 7 days. Following it confirms you have seen the incident.</p>
-    {{end}}
-    <p class="footnote">Incident reference <span class="mono">{{.IncidentUID}}</span> — quote it if you contact support.</p>
+    {{template "incident-actions" .}}
 {{end}}
-{{define "text"}}{{.CheckName}} incident reopened (relapse #{{.RelapseCount}})
+{{define "text"}}{{t "incident.reopened.textTitle" "check" .CheckName "relapse" .RelapseCount}}
 
-The incident for {{.CheckName}} has been reopened after a brief recovery.
+{{t "incident.reopened.textBody" "check" .CheckName}}
 
-Check: {{.CheckName}}
-{{if .CheckURL}}Check URL: {{.CheckURL}}
-{{end}}Type: {{.CheckType}}
-{{if .RegionText}}{{.RegionTitle}}: {{.RegionText}}
-{{end}}Started at: {{.StartedAt}}
-Relapse count: {{.RelapseCount}}
-Failure count: {{.FailureCount}}
-{{if gt .IncidentNumber 0}}Incident: #{{.IncidentNumber}}
-{{end}}Incident ID: {{.IncidentUID}}
-{{if .IncidentURL}}
-View incident: {{.IncidentURL}}
-{{end}}{{if .AckURL}}
-Acknowledge this incident: {{.AckURL}}
-(link valid for 7 days)
-{{end}}
-This is an automated notification from SolidPing.
-{{if .DashboardURL}}Dashboard: {{.DashboardURL}}{{end}}{{if .DocsURL}}
-Docs: {{.DocsURL}}{{end}}{{if .UnsubscribeURL}}
-Unsubscribe from alerts{{if .UnsubscribeCheckName}} for {{.UnsubscribeCheckName}}{{end}}: {{.UnsubscribeURL}}{{end}}
-{{end}}
+{{t "common.textField" "label" (t "common.labels.check") "value" .CheckName}}
+{{if .CheckURL}}{{t "common.textField" "label" (t "common.labels.checkURL") "value" .CheckURL}}
+{{end}}{{t "common.textField" "label" (t "incident.labels.type") "value" .CheckType}}
+{{if .RegionText}}{{t "common.textField" "label" .RegionTitle "value" .RegionText}}
+{{end}}{{t "common.textField" "label" (t "incident.labels.startedAt") "value" (date .StartedAt)}}
+{{t "common.textField" "label" (t "incident.labels.relapseCount") "value" .RelapseCount}}
+{{t "common.textField" "label" (t "incident.labels.failureCount") "value" .FailureCount}}
+{{if .IncidentNumber}}{{t "common.textField" "label" (t "common.labels.incident") "value" (printf "#%v" .IncidentNumber)}}
+{{end}}{{t "common.textField" "label" (t "incident.labels.incidentId") "value" .IncidentUID}}
+{{template "incident-actions-text" .}}
+{{t "common.footer.automated"}}
+{{template "footer-text" .}}{{end}}

@@ -8,6 +8,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/slos"
+	"github.com/fclairamb/solidping/server/internal/i18n/recipient"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/uptimereport"
@@ -174,11 +175,11 @@ func (r *UptimeReportJobRun) runSchedule(
 
 	sent := 0
 
-	for _, recipient := range schedule.Recipients {
+	for _, address := range schedule.Recipients {
 		// The suppression list is authoritative for every outbound address.
 		// The "" check scope matters: a digest is org-wide mail, so only an
 		// org-wide suppression (or a matching check-scoped one) blocks it.
-		suppressed, supErr := jctx.DBService.IsEmailSuppressed(ctx, org.UID, recipient, "")
+		suppressed, supErr := jctx.DBService.IsEmailSuppressed(ctx, org.UID, address, "")
 		if supErr != nil {
 			return sent, fmt.Errorf("check suppression: %w", supErr)
 		}
@@ -187,10 +188,10 @@ func (r *UptimeReportJobRun) runSchedule(
 			continue
 		}
 
-		unsubscribeURL := uptimereport.UnsubscribeURL(jctx.AppConfig, org.Slug, recipient, now)
+		unsubscribeURL := uptimereport.UnsubscribeURL(jctx.AppConfig, org.Slug, address, now)
 
 		enqueueErr := EnqueueUptimeReportEmail(
-			ctx, jctx.Services, org.UID, recipient, data, unsubscribeURL,
+			ctx, jctx.Services, org.UID, address, recipient.Hint{}, data, unsubscribeURL,
 		)
 		if enqueueErr != nil {
 			return sent, enqueueErr

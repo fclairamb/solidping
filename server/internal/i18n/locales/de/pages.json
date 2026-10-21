@@ -1,0 +1,66 @@
+{
+  "unsubscribe": {
+    "choice": {
+      "title": "Von SolidPing-Benachrichtigungen abmelden",
+      "intro": "Sie sind dabei, <strong>{email}</strong> von den E-Mail-Benachrichtigungen zu Vorfällen abzumelden.",
+      "checkOnly": "Nur von Benachrichtigungen für {check} abmelden",
+      "wholeOrg": "Von allen E-Mail-Benachrichtigungen dieser Organisation abmelden",
+      "undoHint": "Sie können dies jederzeit auf der Bestätigungsseite rückgängig machen, die nach dem Abmelden angezeigt wird, solange dieser Link nicht abgelaufen ist."
+    },
+    "success": {
+      "title": "Abmeldung bestätigt",
+      "org": "<strong>{email}</strong> erhält keine E-Mail-Benachrichtigungen dieser Organisation mehr.",
+      "check": "<strong>{email}</strong> erhält keine Benachrichtigungen für {check} mehr.",
+      "thisCheck": "<strong>{email}</strong> erhält keine Benachrichtigungen für diese Prüfung mehr.",
+      "othersUnaffected": "Andere Empfänger dieser Benachrichtigungen sind nicht betroffen.",
+      "changedMind": "Haben Sie es sich anders überlegt?",
+      "undo": "Abmeldung rückgängig machen"
+    },
+    "resubscribed": {
+      "title": "Abmeldung aufgehoben",
+      "body": "Sie erhalten diese E-Mail-Benachrichtigungen wieder."
+    },
+    "missing": {
+      "title": "Token fehlt",
+      "undoTitle": "Parameter fehlen",
+      "heading": "Unvollständiger Link",
+      "body": "In dieser URL fehlen erforderliche Parameter. Bitte verwenden Sie den vollständigen Link aus der ursprünglichen E-Mail."
+    },
+    "invalid": {
+      "title": "Ungültiger oder abgelaufener Link",
+      "heading": "Dieser Link ist ungültig oder abgelaufen",
+      "body": "Der Abmeldelink konnte nicht überprüft werden oder ist abgelaufen. Wenn Sie eine neuere E-Mail-Benachrichtigung erhalten haben, verwenden Sie stattdessen den Link aus dieser Nachricht."
+    },
+    "orgNotFound": {
+      "title": "Organisation nicht gefunden",
+      "body": "Die Organisation, auf die dieser Link verweist, existiert nicht mehr."
+    }
+  },
+  "ack": {
+    "success": {
+      "title": "Vorfall bestätigt",
+      "thanks": "Danke, der Vorfall wurde bestätigt.",
+      "redirecting": "Weiterleitung zum Vorfall in {countdown}…",
+      "goNow": "Jetzt zum Vorfall"
+    },
+    "expired": {
+      "title": "Link abgelaufen",
+      "heading": "Dieser Link ist abgelaufen",
+      "body_one": "Bestätigungslinks laufen {count} Tag nach Beginn des Vorfalls ab. Öffnen Sie das Dashboard, um diesen Vorfall manuell zu bestätigen.",
+      "body_other": "Bestätigungslinks laufen {count} Tage nach Beginn des Vorfalls ab. Öffnen Sie das Dashboard, um diesen Vorfall manuell zu bestätigen."
+    },
+    "invalid": {
+      "title": "Ungültiger Link",
+      "heading": "Dieser Link ist ungültig",
+      "body": "Der Bestätigungslink konnte nicht überprüft werden. Wenn Sie eine gültige E-Mail-Benachrichtigung haben, verwenden Sie den Link aus dieser Nachricht oder öffnen Sie das Dashboard, um den Vorfall manuell zu bestätigen."
+    },
+    "missingToken": {
+      "title": "Token fehlt",
+      "body": "In dieser URL fehlt der Parameter <code>token</code>. Bitte verwenden Sie den vollständigen Link aus der ursprünglichen E-Mail."
+    },
+    "error": {
+      "title": "Etwas ist schiefgelaufen",
+      "body": "Der Vorfall konnte nicht bestätigt werden. Bitte versuchen Sie es erneut oder öffnen Sie das Dashboard, um ihn manuell zu bestätigen."
+    }
+  }
+}

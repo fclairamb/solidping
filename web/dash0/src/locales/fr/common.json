@@ -21,6 +21,7 @@
   "switchOrganization": "Changer d'organisation",
   "logOut": "Déconnexion",
   "language": "Langue",
+  "languageSaveFailed": "Impossible d'enregistrer votre choix de langue.",
   "save": "Enregistrer",
   "saving": "Enregistrement...",
   "cancel": "Annuler",

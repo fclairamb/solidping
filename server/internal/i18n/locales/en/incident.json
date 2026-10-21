@@ -1,0 +1,238 @@
+{
+  "unknownCheck": "Unknown check",
+  "someone": "Someone",
+  "checkLink": "<a href=\"{url}\">{check}</a>",
+  "channel": {
+    "slack": "Slack",
+    "discord": "Discord",
+    "telegram": "Telegram",
+    "email": "email",
+    "phone": "phone"
+  },
+  "via": {
+    "slack": "via Slack",
+    "discord": "via Discord",
+    "telegram": "via Telegram",
+    "email": "via email",
+    "phone": "via phone"
+  },
+  "pill": {
+    "down": "Down",
+    "recovered": "Recovered",
+    "checkDeleted": "Check deleted",
+    "escalated": "Escalated",
+    "reopened": "Reopened",
+    "comment": "Comment",
+    "acknowledged": "Acknowledged",
+    "unacknowledged": "Unacknowledged",
+    "stillDown": "Still down",
+    "budgetBurning": "Budget burning",
+    "burnCleared": "Burn cleared",
+    "degraded": "Degraded",
+    "degradedClosed": "Degraded closed",
+    "degradedCleared": "Degraded cleared"
+  },
+  "labels": {
+    "type": "Type",
+    "startedAt": "Started at",
+    "resolvedAt": "Resolved at",
+    "duration": "Duration",
+    "incidentId": "Incident ID",
+    "failureCount": "Failure count",
+    "relapseCount": "Relapse count",
+    "failedChecks": "Failed checks",
+    "cause": "Cause",
+    "downFrom": "Down from",
+    "backAt": "Back at",
+    "closedAt": "Back at",
+    "via": "Via",
+    "ackAt": "At",
+    "acknowledgedBy": "Acknowledged by",
+    "acknowledgedAt": "Acknowledged at",
+    "withdrawnBy": "Withdrawn by",
+    "from": "From",
+    "until": "Until",
+    "objective": "Objective",
+    "policy": "Policy",
+    "lastWindow": "Last {window}",
+    "budgetGoneBy": "Budget gone by",
+    "burnRate": "Burn rate",
+    "burnRateLast": "Burn rate, last {window}",
+    "budgetLeft": "Budget left",
+    "threshold": "Threshold",
+    "budgetRemaining": "Budget remaining",
+    "projectedExhaustion": "Projected exhaustion",
+    "detectedOn": "Detected on",
+    "peakBurnRate": "Peak burn rate",
+    "burnRateNow": "Burn rate now",
+    "failures": "Failures",
+    "slowProbes": "Slow probes",
+    "window": "Window",
+    "currentStatus": "Current status",
+    "monitor": "Monitor",
+    "chartWindow": "Chart on this window"
+  },
+  "regions": {
+    "failingFrom": "Failing from",
+    "failedFrom": "Failed from",
+    "count_one": "({count} of {total} regions)",
+    "count_other": "({count} of {total} regions)"
+  },
+  "created": {
+    "title": "{check} is down",
+    "titleCause": "{check} is down: {cause}",
+    "preheader": "Down since {since}.",
+    "preheaderRegions": "Down since {since}, seen from {regions}."
+  },
+  "resolved": {
+    "title": "{check} is back up",
+    "titleAfter": "{check} is back up after {duration}",
+    "downFor": "Down for {duration}.",
+    "passing": "Checks are passing again. Nothing left to do.",
+    "leadDuration": "It was down for <strong>{duration}</strong>. Nothing left to do.",
+    "deletedSubject": "{check} was deleted, incident closed",
+    "deletedTitle": "{check} was deleted",
+    "deletedPreheader": "{check} was deleted, so its incident was closed.",
+    "deletedBody": "The check was deleted, so this incident was closed. It did not necessarily recover.",
+    "textTitle": "{check} recovered",
+    "textBody": "The incident for {check} has been resolved."
+  },
+  "escalated": {
+    "subject": "{check} is still down, escalated",
+    "preheader_one": "Still down after {count} failed check, so it was escalated.",
+    "preheader_other": "Still down after {count} failed checks, so it was escalated.",
+    "title": "{check} is still down",
+    "lead": "Nobody acknowledged it in time, so it was escalated.",
+    "textTitle": "{check} incident escalated",
+    "textBody": "The incident for {check} has been escalated."
+  },
+  "reopened": {
+    "title": "{check} is down again",
+    "preheader": "{check} went down again after a brief recovery.",
+    "lead": "It recovered briefly, then failed again.",
+    "leadRelapses_one": "It recovered briefly, then failed again ({count} relapse so far).",
+    "leadRelapses_other": "It recovered briefly, then failed again ({count} relapses so far).",
+    "textTitle": "{check} incident reopened (relapse #{relapse})",
+    "textBody": "The incident for {check} has been reopened after a brief recovery."
+  },
+  "comment": {
+    "subject": "{author} on {check}",
+    "preheader": "{author} left a note on the {check} incident.",
+    "title": "{author} commented on {check}",
+    "posted": "Posted {via}.",
+    "textTitle": "New comment on {check}",
+    "textBody": "{author} commented on the incident for {check}:",
+    "textBodyVia": "{author} commented {via} on the incident for {check}:"
+  },
+  "acknowledged": {
+    "title": "{actor} is on {check}",
+    "preheader": "{actor} picked it up. Escalation stopped, the incident is still open.",
+    "lead": "Escalation stopped. The incident stays open until checks pass again.",
+    "textTitle": "{check} was acknowledged",
+    "textBody": "{actor} acknowledged the incident for {check}. Escalation has stopped: nobody else needs to pick this up.",
+    "textBodyVia": "{actor} acknowledged {via} the incident for {check}. Escalation has stopped: nobody else needs to pick this up.",
+    "textStillOpen": "The incident is still open: acknowledging says someone is on it, not that it is fixed."
+  },
+  "unacknowledged": {
+    "title": "Nobody is on {check} anymore",
+    "preheader": "{actor} withdrew the acknowledgment. The incident is unowned again and escalation resumes.",
+    "lead": "<strong>{actor}</strong> withdrew the acknowledgment. Escalation resumes where it stopped. Pages already sent are not repeated.",
+    "leadVia": "<strong>{actor}</strong> withdrew the acknowledgment {via}. Escalation resumes where it stopped. Pages already sent are not repeated.",
+    "textTitle": "{check} is unowned again",
+    "textBody": "{actor} withdrew the acknowledgment on the incident for {check}. Nobody is on it.",
+    "textBodyVia": "{actor} withdrew the acknowledgment {via} on the incident for {check}. Nobody is on it.",
+    "textResume": "Escalation resumes from the step the acknowledgment interrupted, so the pages that already went out are not repeated."
+  },
+  "reminder": {
+    "subject": "{check} is still down, nobody is on it",
+    "title": "{check} is still down",
+    "lead": "{reminder}. Nobody has taken it yet.",
+    "textBody": "{reminder}. Nobody has taken this incident yet.",
+    "ackStopsReminders": "\"I'm on it\" also stops these reminders.",
+    "sentence": "Still down after {duration}, not acknowledged",
+    "sentenceSeq": "Still down after {duration}, not acknowledged (reminder {seq})",
+    "duration": {
+      "minutes": "{n} min",
+      "hours": "{n} h",
+      "days": "{n} d",
+      "hoursMinutes": "{hours} h {minutes} min",
+      "daysHours": "{days} d {hours} h"
+    }
+  },
+  "burn": {
+    "policy": {
+      "fast": "Fast burn",
+      "slow": "Slow burn"
+    },
+    "severity": {
+      "critical": "critical",
+      "warning": "warning"
+    },
+    "exhausted": "exhausted",
+    "notWithinWindow": "not within this window",
+    "duration": {
+      "minutes": "{n}m",
+      "hours": "{n}h",
+      "days": "{n}d",
+      "hoursMinutes": "{hours}h{minutes}m",
+      "daysHours": "{days}d{hours}h"
+    }
+  },
+  "burnCreated": {
+    "subject": "{policy}: {slo} at {rate}",
+    "preheader": "{policy} policy fired at {rate}. {budget} of budget left.",
+    "preheaderExhausted": "{policy} policy fired at {rate}. The error budget is exhausted.",
+    "title": "{slo} is burning its error budget",
+    "lead": "It is spending budget at <strong>{rate}</strong> the sustainable rate. Not necessarily down right now, but it cannot keep this up.",
+    "policyValue": "{policy}, {severity}, over {threshold}",
+    "textTitle": "{slo} is burning error budget",
+    "textBody": "The {policy} policy fired: the objective has been spending its error budget at {rate} over the last {long}, and still is over the last {short}.",
+    "policyText": "{policy} - {severity}",
+    "burnRateText": "{rate} over {long}, {shortRate} over {short}"
+  },
+  "burnResolved": {
+    "subject": "{slo} is back under {threshold}",
+    "preheader": "Burn rate back under {threshold}. {budget} of budget left.",
+    "preheaderExhausted": "Burn rate back under {threshold}. The error budget is exhausted.",
+    "title": "{slo} stopped burning",
+    "lead": "The burn rate stayed under {threshold} for {short}. The budget already spent does not come back.",
+    "rateOver": "{rate} over {long}",
+    "textBody": "Both windows of the {policy} policy have stayed below {threshold} for a full {short}, so the alert has resolved.",
+    "notReturned": "The budget that was spent is not returned - only the burn rate came back down."
+  },
+  "degraded": {
+    "failures_one": "{count} failure in the last {slots} probes ({availability}% available)",
+    "failures_other": "{count} failures in the last {slots} probes ({availability}% available)",
+    "failuresNoAvailability_one": "{count} failure in the last {slots} probes",
+    "failuresNoAvailability_other": "{count} failures in the last {slots} probes",
+    "slow_one": "{count} of the last {slots} probes was slower than {ms}ms",
+    "slow_other": "{count} of the last {slots} probes were slower than {ms}ms",
+    "both": "{failures}, and {slow}",
+    "pattern": "an intermittence pattern was detected",
+    "currentlyUp": "Currently up.",
+    "currentlyNotUp": "Currently not up.",
+    "recentProbes": "recent probes",
+    "failureLine": "{reason} (rule: {threshold} of {window} probes)",
+    "slowLine": "{reason} (rule: {threshold} of {window} probes over {ms}ms)"
+  },
+  "degradedCreated": {
+    "subject": "{check} is degraded: {reason}",
+    "title": "{check} is degraded",
+    "lead": "It keeps failing or slowing down, without staying down long enough to count as an outage.",
+    "openChart": "Open the chart",
+    "notOutage": "This is not an outage: each failure was followed by a success before the confirmation period elapsed."
+  },
+  "degradedResolved": {
+    "title": "{check} is steady again",
+    "turnedOffSubject": "{check}: degraded detection turned off",
+    "turnedOffPreheader": "Degraded detection was turned off on {check}, so its degraded episode was closed.",
+    "preheader": "{check} has been clean for long enough to close the degraded episode.",
+    "turnedOffTitle": "Degraded detection turned off for {check}",
+    "turnedOffLead": "The open degraded episode was closed. The check did not necessarily recover.",
+    "leadDuration": "It was unstable for <strong>{duration}</strong>. Nothing left to do.",
+    "lead": "Nothing left to do.",
+    "turnedOffText": "Degraded detection was turned off on this check, so the open degraded episode was closed. The check did not necessarily recover.",
+    "textBody": "The degraded condition has been false for long enough to close the episode.",
+    "historyKept": "The failures and slow responses that were recorded stay in the check's history - only the pattern stopped."
+  }
+}

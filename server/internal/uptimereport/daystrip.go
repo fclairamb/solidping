@@ -2,10 +2,10 @@ package uptimereport
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/i18n"
 	"github.com/fclairamb/solidping/server/internal/slo"
 	"github.com/fclairamb/solidping/server/internal/uptimebar"
 )
@@ -61,19 +61,20 @@ func planDayStrip(window slo.Window) dayStripPlan {
 	return dayStripPlan{start: start, days: days}
 }
 
-// label names the strip's span and its bucketing timezone.
-func (p dayStripPlan) label() string {
+// label names the strip's span and its bucketing timezone. The cells are UTC
+// days, so the dates are UTC dates whatever the reader's zone.
+func (p dayStripPlan) label(loc i18n.Locale) string {
 	if p.days == 0 {
 		return ""
 	}
 
+	utc := loc.In(time.UTC)
 	last := p.start.AddDate(0, 0, p.days-1)
 
 	// Plain text, no HTML entities: this string lands in the view model, and
 	// html/template escapes a "&middot;" into a visible "&amp;middot;". The
 	// plain-text part of the mail reads it too.
-	return fmt.Sprintf("Daily availability, %s – %s (UTC)",
-		p.start.Format("2 Jan"), last.Format("2 Jan"))
+	return loc.T("report.strip.label", "start", utc.Day(p.start), "end", utc.Day(last))
 }
 
 // dayStrips returns the per-check day strip, run-length encoded.
@@ -185,19 +186,4 @@ func applyStripBudget(rows []CheckRow) (int, int) {
 	}
 
 	return shown, wanted
-}
-
-// stripBudgetNote is the one-line statement rendered when the budget dropped at
-// least one strip. Deliberately factual and colorless: it explains a layout
-// limit, not a state of the monitored service.
-func stripBudgetNote(shown int) string {
-	if shown == 1 {
-		return "Daily strips are shown for the lowest-uptime check only; " +
-			"the rest were left out to keep this email under the size mail clients truncate at."
-	}
-
-	return fmt.Sprintf(
-		"Daily strips are shown for the %d lowest-uptime checks; "+
-			"the rest were left out to keep this email under the size mail clients truncate at.",
-		shown)
 }

@@ -1,19 +1,18 @@
-{{define "subject"}}{{.Subject}}{{end}}
-{{define "preheader"}}Confirm your address to start receiving {{.PageName}} updates.{{end}}
+{{define "subject"}}{{t "subscriber.confirm.subject" "page" .PageName}}{{end}}
+{{define "preheader"}}{{t "subscriber.confirm.preheader" "page" .PageName}}{{end}}
 {{template "base.html" .}}
 {{define "content"}}
-    <h1>Confirm your subscription</h1>
-    <p>You asked to receive status updates for <strong>{{.PageName}}</strong>. Please confirm your email address to start receiving notifications.</p>
-    <div class="cta-wrap">{{template "button" dict "URL" .ConfirmURL "Label" "Confirm subscription" "Variant" "success"}}</div>
-    <p>Or paste this link into your browser:</p>
-    <p class="fallback">{{link .ConfirmURL ""}}</p>
-    <p class="meta">If you didn't request this, you can safely ignore this email.</p>
+    <h1>{{t "subscriber.confirm.heading"}}</h1>
+    <p>{{tHTML "subscriber.confirm.intro" "page" .PageName}}</p>
+    <div class="cta-wrap">{{template "button" dict "URL" .ConfirmURL "Label" (t "subscriber.confirm.button") "Variant" "success"}}</div>
+    {{template "fallback-link" .ConfirmURL}}
+    <p class="meta">{{t "subscriber.confirm.ignore"}}</p>
 {{end}}
-{{define "text"}}Confirm your subscription to {{.PageName}}
+{{define "text"}}{{t "subscriber.confirm.subject" "page" .PageName}}
 
-You asked to receive status updates. Confirm your email address:
+{{t "subscriber.confirm.textIntro"}}
 
 {{.ConfirmURL}}
 
-If you didn't request this, you can safely ignore this email.
+{{t "subscriber.confirm.ignore"}}
 {{end}}

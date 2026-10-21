@@ -85,6 +85,7 @@ Project-wide standards and naming rules.
 - [conventions/agent-commands.md](conventions/agent-commands.md) — Agent-neutral bodies of the `/idea` and `/sync-pg-to-sqlite` slash commands.
 - [conventions/dash0-translations.md](conventions/dash0-translations.md) — dash0 i18n rules: locale parity tests, the untranslated-JSX lint rule, per-locale terminology.
 - [conventions/email-templates.md](conventions/email-templates.md) — Transactional email templates: required blocks (preheader, text), the label/value fact grid, and why the subject and plaintext parts render through text/template
+- [conventions/email-i18n.md](conventions/email-i18n.md) — Localized emails (en, fr, de, es): catalogs and namespace ownership, template funcs (`t`, `tn`, `date`...), resolving a recipient's locale, tone per language, tests
 - [conventions/event-colors.md](conventions/event-colors.md) — Event color scheme: per-type color assignments for check and incident events
 - [conventions/frontend-errors.md](conventions/frontend-errors.md) — Frontend error handling by HTTP status code
 - [conventions/files.md](conventions/files.md) — File storage seam: backends (local FS, S3), signed URLs, group conventions

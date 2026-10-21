@@ -1,0 +1,82 @@
+{
+  "months": {
+    "short": {
+      "jan": "janv.",
+      "feb": "févr.",
+      "mar": "mars",
+      "apr": "avr.",
+      "may": "mai",
+      "jun": "juin",
+      "jul": "juil.",
+      "aug": "août",
+      "sep": "sept.",
+      "oct": "oct.",
+      "nov": "nov.",
+      "dec": "déc."
+    },
+    "long": {
+      "jan": "janvier",
+      "feb": "février",
+      "mar": "mars",
+      "apr": "avril",
+      "may": "mai",
+      "jun": "juin",
+      "jul": "juillet",
+      "aug": "août",
+      "sep": "septembre",
+      "oct": "octobre",
+      "nov": "novembre",
+      "dec": "décembre"
+    }
+  },
+  "date": {
+    "dateTime": "{day} {month}, {time} {zone}",
+    "dateTimeYear": "{day} {month} {year}, {time} {zone}",
+    "day": "{day} {month}",
+    "dayYear": "{day} {month} {year}",
+    "month": "{month} {year}"
+  },
+  "duration": {
+    "days": "{n} j",
+    "hours": "{n} h",
+    "minutes": "{n} min",
+    "seconds": "{n} s"
+  },
+  "header": {
+    "sentBy": "envoyé par SolidPing",
+    "logoAlt": "Logo"
+  },
+  "footer": {
+    "orgSentBy": "{org} · envoyé par",
+    "sentBy": "Envoyé par",
+    "dashboard": "Tableau de bord",
+    "stopAlerts": "Ne plus recevoir les alertes pour {check}",
+    "unsubscribe": "Se désabonner",
+    "automated": "Ceci est une notification automatique de SolidPing."
+  },
+  "incidentActions": {
+    "ack": "Je m'en occupe",
+    "viewIncident": "Voir l'incident",
+    "ackExplain": "« Je m'en occupe » prévient votre équipe que vous prenez l'incident en charge et arrête l'escalade.",
+    "ackExpires": "Le lien est valable jusqu'au {date}."
+  },
+  "labels": {
+    "check": "Contrôle",
+    "target": "Cible",
+    "checkURL": "URL du contrôle",
+    "since": "Depuis",
+    "incident": "Incident",
+    "docs": "Documentation"
+  },
+  "textField": "{label} : {value}",
+  "fallbackLink": "Le bouton ne fonctionne pas ? Copiez-collez ce lien dans votre navigateur :",
+  "supportReply": {
+    "notice": "Vous pouvez répondre directement à cet e-mail pour joindre un humain : nous lisons toutes les réponses."
+  },
+  "list": {
+    "and": "{head} et {last}",
+    "andBeforeVowel": "{head} et {last}",
+    "or": "{head} ou {last}",
+    "orBeforeVowel": "{head} ou {last}"
+  }
+}

@@ -1,12 +1,12 @@
-{{define "subject"}}{{.Subject}}{{end}}
-{{define "preheader"}}{{.PageName}} — {{.Label}}.{{end}}
+{{define "subject"}}{{t "subscriber.update.subject" "page" .PageName "title" .Title}}{{end}}
+{{define "preheader"}}{{.Label}}. {{short 120 .BodyMarkdown}}{{end}}
 {{template "base.html" .}}
 {{define "content"}}
     <p class="eyebrow">{{.Label}}</p>
     <h1>{{.Title}}</h1>
     {{if .BodyMarkdown}}<div class="prose">{{.BodyMarkdown}}</div>{{end}}
-    {{if .LinkURL}}<p class="cta-wrap"><a href="{{.LinkURL}}">More information</a></p>{{end}}
-    <p class="meta">You're receiving this because you subscribed to {{.PageName}}. <a href="{{.SubscriberUnsubscribeURL}}">Unsubscribe</a>.</p>
+    {{if .LinkURL}}<div class="cta-wrap">{{template "button" dict "URL" .LinkURL "Label" (t "subscriber.update.viewStatusPage") "Variant" "primary"}}</div>{{end}}
+    <p class="meta">{{t "subscriber.update.reason" "page" .PageName}} <a href="{{.SubscriberUnsubscribeURL}}">{{t "common.footer.unsubscribe"}}</a>.</p>
 {{end}}
 {{define "text"}}{{.Label}}
 
@@ -14,8 +14,8 @@
 {{if .BodyMarkdown}}
 {{.BodyMarkdown}}
 {{end}}{{if .LinkURL}}
-More information: {{.LinkURL}}
+{{t "common.textField" "label" (t "subscriber.update.moreInfo") "value" .LinkURL}}
 {{end}}
-You're receiving this because you subscribed to {{.PageName}}.
-Unsubscribe: {{.SubscriberUnsubscribeURL}}
+{{t "subscriber.update.reason" "page" .PageName}}
+{{t "common.textField" "label" (t "common.footer.unsubscribe") "value" .SubscriberUnsubscribeURL}}
 {{end}}

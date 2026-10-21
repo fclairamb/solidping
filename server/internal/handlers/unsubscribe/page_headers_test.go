@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/fclairamb/solidping/server/internal/i18n"
 )
 
 // TestWritePageIsFramingProtected pins spec 2026-09-25-28 on the one-click
@@ -16,7 +18,7 @@ func TestWritePageIsFramingProtected(t *testing.T) {
 	r := require.New(t)
 
 	rec := httptest.NewRecorder()
-	writePage(rec, http.StatusOK, "Unsubscribe", "<p>hi</p>")
+	writePage(rec, i18n.English, http.StatusOK, "Unsubscribe", "<p>hi</p>")
 
 	r.Equal("SAMEORIGIN", rec.Header().Get("X-Frame-Options"))
 	r.Contains(rec.Header().Get("Content-Security-Policy"), "frame-ancestors 'self'")

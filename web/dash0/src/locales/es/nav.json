@@ -137,6 +137,7 @@
       "schemeLight": "Claro",
       "schemeDark": "Oscuro",
       "schemeDarkHint": "Activa el bloque prefers-color-scheme de la plantilla — lo que muestran Apple Mail y Thunderbird en modo oscuro. Gmail no lo admite y se queda en claro.",
+      "localeLabel": "Idioma de vista previa",
       "refresh": "Actualizar",
       "retry": "Reintentar",
       "loading": "Cargando…",

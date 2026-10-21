@@ -111,8 +111,12 @@ func TestNotifierResolvedTemplate(t *testing.T) {
 
 	msgs := sender.sent()
 	r.Len(msgs, 1)
-	r.Contains(msgs[0].Subject, "Resolved")
+	// Every mail about one incident shares "<Page>: <Title>" so clients keep
+	// the story in one conversation; the state is in the body.
+	r.Equal("Acme Status: All clear", msgs[0].Subject)
+	r.NotContains(msgs[0].Subject, "[")
 	r.Contains(msgs[0].Text, "Resolved")
+	r.Contains(msgs[0].HTML, "Resolved")
 }
 
 func TestNotifierIncidentOpenedTemplate(t *testing.T) {
@@ -136,7 +140,9 @@ func TestNotifierIncidentOpenedTemplate(t *testing.T) {
 
 	msgs := sender.sent()
 	r.Len(msgs, 1)
-	r.Contains(msgs[0].Subject, "New incident")
+	r.Equal("Acme Status: Outage", msgs[0].Subject)
+	r.Contains(msgs[0].Text, "New incident")
+	r.Contains(msgs[0].HTML, "New incident")
 }
 
 func TestNotifierMailFailureDoesNotPanic(t *testing.T) {

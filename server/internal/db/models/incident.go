@@ -234,3 +234,19 @@ type ListIncidentsFilter struct {
 
 	Limit int // Optional: pagination limit
 }
+
+// FailureReason is the human-readable cause the incident recorded when it
+// opened (an HTTP status, a timeout...), or "" when it recorded none.
+func (i *Incident) FailureReason() string {
+	if i == nil || i.Details == nil {
+		return ""
+	}
+
+	for _, key := range []string{"failure_reason", "output"} {
+		if reason, ok := i.Details[key].(string); ok && reason != "" {
+			return reason
+		}
+	}
+
+	return ""
+}

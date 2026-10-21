@@ -15,6 +15,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/app/services"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/email"
+	"github.com/fclairamb/solidping/server/internal/i18n"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
 
@@ -152,6 +153,29 @@ func TestEmailJobDefinition_CreateJobRun(t *testing.T) {
 	}
 }
 
+// TestEmailJobDefinition_CarriesTheLocale: the locale and timezone survive
+// the job's JSON round trip, under the names the enqueuers write.
+func TestEmailJobDefinition_CarriesTheLocale(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	raw, err := json.Marshal(EmailJobConfig{
+		To: []string{"lea@example.com"}, Subject: "s", Template: "registration.html",
+		Locale: "fr", Timezone: "Europe/Paris",
+	})
+	r.NoError(err)
+	r.Contains(string(raw), `"locale":"fr"`)
+	r.Contains(string(raw), `"timezone":"Europe/Paris"`)
+
+	runner, err := (&EmailJobDefinition{}).CreateJobRun(raw)
+	r.NoError(err)
+
+	run, ok := runner.(*EmailJobRun)
+	r.True(ok)
+	r.Equal("fr", run.config.Locale)
+	r.Equal("Europe/Paris", run.config.Timezone)
+}
+
 func TestEmailJobDefinition_CreateJobRun_InvalidJSON(t *testing.T) {
 	t.Parallel()
 
@@ -249,12 +273,12 @@ func (m *mockSender) Send(ctx context.Context, msg *email.Message) (*email.SendR
 
 // mockFormatter is a test double for email.Formatter.
 type mockFormatter struct {
-	formatFunc func(templateName string, data any) (string, string, string, error)
+	formatFunc func(templateName string, loc i18n.Locale, data any) (string, string, string, error)
 }
 
-func (m *mockFormatter) Format(templateName string, data any) (string, string, string, error) {
+func (m *mockFormatter) Format(templateName string, loc i18n.Locale, data any) (string, string, string, error) {
 	if m.formatFunc != nil {
-		return m.formatFunc(templateName, data)
+		return m.formatFunc(templateName, loc, data)
 	}
 
 	return "", "<html>formatted</html>", "formatted text", nil
@@ -317,6 +341,32 @@ func TestEmailJobRun_Run(t *testing.T) {
 			},
 		},
 		{
+			name: "template rendered in the recipient's locale",
+			config: EmailJobConfig{
+				To:       []string{"lea@example.com"},
+				Template: "incident-created.html",
+				Locale:   "fr",
+				Timezone: "Europe/Paris",
+			},
+			sender: &mockSender{},
+			formatter: &mockFormatter{
+				formatFunc: func(_ string, loc i18n.Locale, _ any) (string, string, string, error) {
+					return "subject " + loc.Lang(), "<html>" + loc.Timezone() + "</html>", "text", nil
+				},
+			},
+			wantErr: false,
+			checkCalls: func(t *testing.T, sender *mockSender) {
+				t.Helper()
+				require.Len(t, sender.calls, 1)
+				msg := sender.calls[0]
+				assert.Equal(t, "subject fr", msg.Subject)
+				assert.Equal(t, "<html>Europe/Paris</html>", msg.HTML)
+				// The sender localizes the text it adds itself from these.
+				assert.Equal(t, "fr", msg.Locale)
+				assert.Equal(t, "Europe/Paris", msg.Timezone)
+			},
+		},
+		{
 			name: "network error is retryable",
 			config: EmailJobConfig{
 				To:      []string{"test@example.com"},
@@ -357,7 +407,7 @@ func TestEmailJobRun_Run(t *testing.T) {
 			},
 			sender: &mockSender{},
 			formatter: &mockFormatter{
-				formatFunc: func(_ string, _ any) (string, string, string, error) {
+				formatFunc: func(_ string, _ i18n.Locale, _ any) (string, string, string, error) {
 					return "", "", "", errTemplateNotFound
 				},
 			},

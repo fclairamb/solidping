@@ -3,8 +3,11 @@ package uptimereport
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/fclairamb/solidping/server/internal/i18n"
 )
 
 // TestFormatDurationDropsZeroUnits pins the report's span formatting at the
@@ -16,22 +19,27 @@ func TestFormatDurationDropsZeroUnits(t *testing.T) {
 
 	for _, tc := range []struct {
 		name string
-		in   int64
+		in   time.Duration
 		want string
 	}{
-		{"seconds", 45, "45s"},
-		{"whole minutes", 42 * 60, "42m"},
-		{"minutes and seconds", 42*60 + 30, "42m 30s"},
-		{"whole hours", 2 * 3600, "2h"},
-		{"hours and minutes", 3600 + 5*60, "1h 5m"},
-		{"whole days", 2 * 86400, "2d"},
-		{"days and hours", 86400 + 2*3600, "1d 2h"},
+		{"seconds", 45 * time.Second, "45s"},
+		{"whole minutes", 42 * time.Minute, "42m"},
+		{"minutes and seconds", 42*time.Minute + 30*time.Second, "42m 30s"},
+		{"whole hours", 2 * time.Hour, "2h"},
+		{"hours and minutes", time.Hour + 5*time.Minute, "1h 5m"},
+		{"whole days", 48 * time.Hour, "2d"},
+		{"days and hours", 26 * time.Hour, "1d 2h"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			require.Equal(t, tc.want, formatDuration(tc.in))
+			require.Equal(t, tc.want, spanIfAny(i18n.English, tc.in))
 		})
 	}
+
+	// Nothing to show is nothing, and an overspent budget keeps its sign.
+	require.Empty(t, spanIfAny(i18n.English, 0))
+	require.Equal(t, "0s", formatSignedSpan(i18n.English, 0))
+	require.Equal(t, "-12m 30s", formatSignedSpan(i18n.English, -(12*time.Minute+30*time.Second)))
 }
 
 // TestAvailabilityTextColorAnchors pins the exact colors at the product's

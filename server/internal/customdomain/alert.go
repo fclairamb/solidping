@@ -10,6 +10,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/email"
+	"github.com/fclairamb/solidping/server/internal/i18n/recipient"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 )
@@ -41,6 +42,9 @@ type emailJobConfig struct {
 	To           []string       `json:"to"`
 	Template     string         `json:"template,omitempty"`
 	TemplateData map[string]any `json:"templateData,omitempty"`
+	// Locale and Timezone: the recipient's, see jobtypes.EmailJobConfig.
+	Locale   string `json:"locale,omitempty"`
+	Timezone string `json:"timezone,omitempty"`
 }
 
 // AlertDemoted tells the organization that one of its status pages has stopped
@@ -138,12 +142,7 @@ func mailDemoted(
 			deps.BaseURL, config.DashboardBasePath, org.Slug, page.UID)
 	}
 
-	data := map[string]any{
-		"StatusPageName": page.Name,
-		"Domain":         domain,
-		"Diagnostic":     diagnostic,
-		"SettingsURL":    settingsURL,
-	}
+	data := DemotedEmailData(page.Name, domain, diagnostic, settingsURL)
 	// Operator mail about a status page, addressed to the org's admins: it
 	// wears the ORG's branding, not the page's.
 	email.ApplyOrgBranding(data, org.Name, org.Slug, org.LogoURL)
@@ -153,20 +152,37 @@ func mailDemoted(
 			continue
 		}
 
-		enqueueDemotedEmail(ctx, deps, page.OrganizationUID, member.User.Email, data)
+		enqueueDemotedEmail(ctx, deps, page.OrganizationUID, member.User, data)
 	}
 }
 
-// enqueueDemotedEmail queues one templated email job.
+// DemotedEmailData is the custom-domain-demoted.html view model, without the
+// org branding. diagnostic is domainverify.Diagnosis.String(): technical, shown
+// as is in every language. The email preview builds its fixture through it too.
+func DemotedEmailData(statusPageName, domain, diagnostic, settingsURL string) map[string]any {
+	return map[string]any{
+		"StatusPageName": statusPageName,
+		"Domain":         domain,
+		"Diagnostic":     diagnostic,
+		"SettingsURL":    settingsURL,
+	}
+}
+
+// enqueueDemotedEmail queues one templated email job, in the admin's language
+// and zone.
 func enqueueDemotedEmail(
-	ctx context.Context, deps AlertDeps, orgUID, recipient string, data map[string]any,
+	ctx context.Context, deps AlertDeps, orgUID string, admin *models.User, data map[string]any,
 ) {
+	loc := recipient.ForUser(admin)
+
 	raw, err := json.Marshal(emailJobConfig{
-		To:       []string{recipient},
+		To:       []string{admin.Email},
 		Template: email.TemplateCustomDomainDemoted,
 		// Transactional operator mail: no List-Unsubscribe. An admin cannot opt
 		// out of being told their status page went dark.
 		TemplateData: data,
+		Locale:       loc.Lang(),
+		Timezone:     loc.Timezone(),
 	})
 	if err != nil {
 		deps.Logger.ErrorContext(ctx, "Failed to marshal the custom-domain demotion email", "error", err)

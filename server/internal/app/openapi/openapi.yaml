@@ -1013,6 +1013,13 @@ paths:
         account, `403 IMPERSONATION_FORBIDDEN` for an impersonation token, and
         `409 CONFLICT` when another account already uses the address. Records
         `auth.email_changed` in each of the user's organizations.
+
+        `preferences` sets the language and timezone the server writes this
+        user's emails in. Every field is optional (a preferences-only body is
+        valid); an empty string clears one. `400 VALIDATION_ERROR` for a
+        locale outside en, fr, de, es (a full tag such as `fr-FR` is accepted
+        and stored as `fr`) or a timezone the IANA database does not know.
+        Nothing is written when any field is refused.
       security:
         - bearerAuth: []
       requestBody:
@@ -10973,6 +10980,37 @@ components:
             POST /auth/change-password, GET /auth/me and POST /auth/logout;
             every other endpoint answers 403 with code PASSWORD_CHANGE_REQUIRED.
             Omitted when false.
+        preferences:
+          $ref: "#/components/schemas/UserPreferences"
+
+    UserPreferences:
+      type: object
+      description: >
+        What the server follows when it writes to the user: the language and
+        timezone of their emails. Present on /auth/me and every login response,
+        `{}` when nothing is set (emails then use English and UTC).
+      properties:
+        locale:
+          type: string
+          enum: [en, fr, de, es]
+          description: Language of the user's emails. Omitted when not set.
+        timezone:
+          type: string
+          description: IANA zone name (e.g. Europe/Paris) dates are shown in. Omitted when not set.
+          example: Europe/Paris
+
+    UpdatePreferencesRequest:
+      type: object
+      description: Partial update. An absent field is left alone; an empty string clears it.
+      properties:
+        locale:
+          type: string
+          description: en, fr, de or es. A full BCP 47 tag (fr-FR) is stored as its language.
+          example: fr
+        timezone:
+          type: string
+          description: IANA zone name.
+          example: Europe/Paris
 
     CreateTokenRequest:
       type: object
@@ -11046,6 +11084,8 @@ components:
         currentPassword:
           type: string
           description: The account's current password, required to change the email.
+        preferences:
+          $ref: "#/components/schemas/UpdatePreferencesRequest"
 
     AdminUpdateUserRequest:
       type: object
@@ -11081,6 +11121,17 @@ components:
         password:
           type: string
           minLength: 8
+        locale:
+          type: string
+          description: >
+            The browser's language, the account's starting email language.
+            Optional and lenient: a full tag is reduced to its language, an
+            unsupported one is ignored.
+          example: fr
+        timezone:
+          type: string
+          description: The browser's IANA zone. Optional; an unknown zone is ignored.
+          example: Europe/Paris
 
     ConfirmRegistrationRequest:
       type: object
@@ -11137,6 +11188,16 @@ components:
           type: string
           minLength: 8
           description: Password for a newly created user (ignored if the user already exists)
+        locale:
+          type: string
+          description: >
+            Starting email language of a newly created user (ignored if the
+            user already exists). Lenient, like RegisterRequest.locale.
+          example: es
+        timezone:
+          type: string
+          description: IANA zone of a newly created user (ignored if the user already exists).
+          example: Europe/Madrid
 
     InviteInfoResponse:
       type: object

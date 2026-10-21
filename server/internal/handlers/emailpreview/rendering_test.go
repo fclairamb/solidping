@@ -176,7 +176,7 @@ func TestPreview_ShipsADarkPalette(t *testing.T) {
 			body := rec.Body.String()
 			r.Contains(body, "prefers-color-scheme: dark",
 				"%s renders without the dark block — it will glare white in a dark inbox", tmpl)
-			r.Contains(body, "#141e28",
+			r.Contains(body, "#161e27",
 				"%s carries the media query but not the dark card surface", tmpl)
 		})
 	}
@@ -223,12 +223,13 @@ func TestDarkPalette_EveryGradientKeepsASolidFallback(t *testing.T) {
 
 // TestDarkPalette_LeavesTheSaturatedChromeAlone pins the deliberate omissions.
 //
-// The header is already dark navy and the status banners are saturated
-// mid-tones that read correctly on a dark card — recoloring the banner is
+// The state stripes are saturated mid-tones that read correctly on a dark
+// card, and the primary/success buttons keep their blue: recoloring them is
 // precisely the damage the light pin exists to prevent, so the dark block must
-// not touch either. Same for the primary/success buttons. This is a real
-// tripwire rather than a restatement: the natural instinct when extending the
-// block is to "finish the job" and give every surface a dark value.
+// not touch them. (The tinted pills are the opposite case: a light tint glares
+// on a dark card, so they get dark tints on purpose.) This is a real tripwire
+// rather than a restatement: the natural instinct when extending the block is
+// to "finish the job" and give every surface a dark value.
 func TestDarkPalette_LeavesTheSaturatedChromeAlone(t *testing.T) {
 	t.Parallel()
 
@@ -241,8 +242,8 @@ func TestDarkPalette_LeavesTheSaturatedChromeAlone(t *testing.T) {
 	r.NotEmpty(block)
 
 	for _, selector := range []string{
-		".header", ".accent-bar", ".status-banner", ".status-down", ".status-recovered",
-		".status-escalated", ".status-reopened", ".status-comment", ".status-acknowledged",
+		".header", ".stripe", ".stripe-down", ".stripe-recovered", ".stripe-escalated",
+		".stripe-reopened", ".stripe-comment", ".stripe-acknowledged",
 		".btn-primary", ".btn-success", ".cta",
 	} {
 		r.NotContains(block, selector+" ",
@@ -276,10 +277,10 @@ func TestPreview_DetailRowsUseStyledCells(t *testing.T) {
 	}
 }
 
-// TestPreview_IncidentUIDIsAReferenceNotAFact keeps the opaque UUID out of the
-// facts a woken-up human reads first. It stays in the mail (support asks for
-// it) but as a footnote under the actions, not as a table row competing with
-// "which check" and "since when".
+// TestPreview_IncidentUIDIsAReferenceNotAFact keeps the opaque UUID out of what
+// a woken-up human reads. The HTML part shows no UUID at all (no table row, no
+// "Incident reference" footnote); the plaintext part keeps it as "Incident ID"
+// for support.
 func TestPreview_IncidentUIDIsAReferenceNotAFact(t *testing.T) {
 	t.Parallel()
 
@@ -302,11 +303,27 @@ func TestPreview_IncidentUIDIsAReferenceNotAFact(t *testing.T) {
 			r.Equal(http.StatusOK, rec.Code)
 
 			body := rec.Body.String()
-			r.Contains(body, "Incident reference", "%s dropped the support reference", tmpl)
+			r.NotContains(body, "Incident reference", "%s still carries the removed footnote", tmpl)
 			r.NotContains(body, ">Incident ID<", "%s still lists the UUID as a table fact", tmpl)
+
+			// The UUID may sit in a link target, never in visible text.
+			if idx := strings.Index(body, "<body"); idx >= 0 {
+				body = body[idx:]
+			}
+
+			r.NotContains(tagRE.ReplaceAllString(body, " "), incidentUID,
+				"%s shows the incident UUID to the reader", tmpl)
+
+			text := doGet(t, router, "/api/mgmt/email-preview/"+tmpl+"?format=text")
+			r.Equal(http.StatusOK, text.Code)
+			r.Contains(text.Body.String(), "Incident ID: "+incidentUID,
+				"%s plaintext dropped the support reference", tmpl)
 		})
 	}
 }
+
+// incidentUID is the incident UUID every incident preview fixture carries.
+const incidentUID = "8f14e45f-ceea-467e-adde-3f4edd1a5b22"
 
 // styleAttrRE captures every inlined style attribute in a rendered mail.
 var styleAttrRE = regexp.MustCompile(`style="([^"]*)"`)
@@ -399,29 +416,33 @@ func relativeLuminance(t *testing.T, hex string) float64 {
 }
 
 // TestPalette_PrimaryButtonKeepsWhiteTextReadable checks the white label on the
-// primary button against its solid fallback (what Outlook renders) and against
-// every gradient stop (what everyone else renders). The spec's floor is 4.4:1:
-// the lightest stop, #007bce, sits at 4.44:1 by design, the same trade dash0
-// makes on its primary gradient.
+// primary and success buttons. Both are the flat dashboard primary (#1e64ef,
+// 5.1:1 under white): a flat fill is what Outlook renders anyway, so there is
+// no gradient left to fall back from.
 func TestPalette_PrimaryButtonKeepsWhiteTextReadable(t *testing.T) {
 	t.Parallel()
 
-	r := require.New(t)
-
-	match := ruleRE(".btn-primary td").FindStringSubmatch(readBaseHTML(t))
-	r.NotNil(match, "base.html has no single-line .btn-primary td rule")
-
-	body := match[1]
-	r.Contains(body, "background-color: #1e64ef", "the Outlook fallback must be the solid primary")
-	r.Contains(body, "background-image: linear-gradient", "the button lost its gradient")
-
-	colors := hexColorRE.FindAllString(body, -1)
-	r.GreaterOrEqual(len(colors), 4, "expected a fallback plus three gradient stops: %v", colors)
-
+	source := readBaseHTML(t)
 	white := relativeLuminance(t, "#ffffff")
-	for _, color := range colors {
-		ratio := (white + 0.05) / (relativeLuminance(t, color) + 0.05)
-		r.GreaterOrEqual(ratio, 4.4, "white on %s is only %.2f:1", color, ratio)
+
+	for _, selector := range []string{".btn-primary td", ".btn-success td"} {
+		t.Run(selector, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+
+			match := ruleRE(selector).FindStringSubmatch(source)
+			r.NotNil(match, "base.html has no single-line %s rule", selector)
+
+			body := match[1]
+			r.Contains(body, "background-color: #1e64ef", "%s must be the solid primary", selector)
+			r.NotContains(body, "linear-gradient", "%s is flat by design", selector)
+
+			for _, color := range hexColorRE.FindAllString(body, -1) {
+				ratio := (white + 0.05) / (relativeLuminance(t, color) + 0.05)
+				r.GreaterOrEqual(ratio, 4.5, "white on %s is only %.2f:1", color, ratio)
+			}
+		})
 	}
 }
 
@@ -456,7 +477,11 @@ func TestPreview_ValuesGmailWouldAutoLinkAreOwnedLinks(t *testing.T) {
 	urlRE := regexp.MustCompile(`https?://[^\s<>"']+`)
 	emailRE := regexp.MustCompile(`[\w.+-]+@[\w-]+\.[\w.-]+`)
 
-	for _, tmpl := range []string{"membership_request_new", "invitation", "password-reset", "welcome"} {
+	// welcome has a button and no fallback link, so it has no owned link to
+	// find; it still must not leave a bare URL behind.
+	withFallback := map[string]bool{"membership-request-new": true, "invitation": true, "password-reset": true}
+
+	for _, tmpl := range []string{"membership-request-new", "invitation", "password-reset", "welcome"} {
 		t.Run(tmpl, func(t *testing.T) {
 			t.Parallel()
 
@@ -469,7 +494,9 @@ func TestPreview_ValuesGmailWouldAutoLinkAreOwnedLinks(t *testing.T) {
 			if idx := strings.Index(body, "<body"); idx >= 0 {
 				body = body[idx:]
 			}
-			require.Regexp(t, ownedLinkRE, body, "%s has no owned link", tmpl)
+			if withFallback[tmpl] {
+				require.Regexp(t, ownedLinkRE, body, "%s has no owned link", tmpl)
+			}
 			stripped := ownedLinkRE.ReplaceAllString(body, "")
 			stripped = tagRE.ReplaceAllString(stripped, " ")
 
@@ -478,7 +505,7 @@ func TestPreview_ValuesGmailWouldAutoLinkAreOwnedLinks(t *testing.T) {
 		})
 	}
 
-	rec := doGet(t, router, "/api/mgmt/email-preview/membership_request_new.html")
+	rec := doGet(t, router, "/api/mgmt/email-preview/membership-request-new.html")
 	require.Contains(t, rec.Body.String(), `href="mailto:`)
 }
 
@@ -495,29 +522,37 @@ func TestPreview_FallbackIsPlainWrappableText(t *testing.T) {
 	require.Contains(t, rule[1], "overflow-wrap: anywhere")
 }
 
-// TestPreview_PhoneWidthIsFullBleed: under 480px the card loses its wrapper
-// padding, border, radius and shadow.
-func TestPreview_PhoneWidthIsFullBleed(t *testing.T) {
+// TestPreview_PhoneWidthKeepsACardWithTightGutters: under 480px the card stays
+// a card (logo above, footer below) but the outer gutter and the card padding
+// shrink, and the action buttons stack full-width so each is a large target.
+func TestPreview_PhoneWidthKeepsACardWithTightGutters(t *testing.T) {
 	t.Parallel()
+
+	r := require.New(t)
 
 	src := readBaseHTML(t)
 	idx := strings.Index(src, "@media (max-width: 480px)")
-	require.GreaterOrEqual(t, idx, 0)
+	r.GreaterOrEqual(idx, 0)
 	block := src[idx:]
 
-	wrapper := ruleRE(".wrapper").FindStringSubmatch(block)
-	require.NotNil(t, wrapper)
-	require.Contains(t, wrapper[1], "padding: 0")
+	wrapper := ruleRE(".wrapper-cell").FindStringSubmatch(block)
+	r.NotNil(wrapper)
+	r.Contains(wrapper[1], "padding: 16px 8px 28px")
 
-	container := ruleRE(".container").FindStringSubmatch(block)
-	require.NotNil(t, container)
-	for _, want := range []string{"border: 0", "border-radius: 0", "box-shadow: none"} {
-		require.Contains(t, container[1], want)
-	}
+	content := ruleRE(".content").FindStringSubmatch(block)
+	r.NotNil(content)
+	r.Contains(content[1], "padding: 14px 22px 26px")
+
+	action := ruleRE(".action-cell").FindStringSubmatch(block)
+	r.NotNil(action)
+	r.Contains(action[1], "display: block")
+	r.Contains(action[1], "width: 100%")
+
+	r.Nil(ruleRE(".container").FindStringSubmatch(block), "the card keeps its border and radius on a phone")
 }
 
 // TestPreview_LightSurfacesAreFlat: no shadow on the light design's container
-// and cards, and the container radius is 8px.
+// and cards, and the container radius is 12px.
 func TestPreview_LightSurfacesAreFlat(t *testing.T) {
 	t.Parallel()
 
@@ -527,5 +562,31 @@ func TestPreview_LightSurfacesAreFlat(t *testing.T) {
 	}
 
 	require.NotContains(t, src, "box-shadow")
-	require.Contains(t, ruleRE(".container").FindStringSubmatch(src)[1], "border-radius: 8px")
+	require.Contains(t, ruleRE(".container").FindStringSubmatch(src)[1], "border-radius: 12px")
+}
+
+// TestPreview_RemovedChromeStaysGone pins the classes the redesign dropped: the
+// navy header with its accent bar, the full-width status banner (now a stripe
+// and a pill), and the footer brand and footnote lines. A class left in a
+// template with no rule behind it would render unstyled.
+func TestPreview_RemovedChromeStaysGone(t *testing.T) {
+	t.Parallel()
+
+	router := newTestRouter(t)
+	removed := regexp.MustCompile(
+		`class="[^"]*\b(accent-bar|status-banner|status-dot|status-(down|recovered|escalated|reopened|comment|` +
+			`acknowledged)|footer-brand|footnote)\b`)
+
+	r := require.New(t)
+	r.NotRegexp(removed, readBaseHTML(t))
+
+	for _, tmpl := range shippedTemplates(t) {
+		t.Run(tmpl, func(t *testing.T) {
+			t.Parallel()
+
+			rec := doGet(t, router, "/api/mgmt/email-preview/"+tmpl)
+			require.Equal(t, http.StatusOK, rec.Code)
+			require.NotRegexp(t, removed, rec.Body.String(), "%s still uses a removed class", tmpl)
+		})
+	}
 }

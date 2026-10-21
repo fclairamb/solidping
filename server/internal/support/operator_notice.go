@@ -2,8 +2,6 @@ package support
 
 import (
 	"context"
-	"fmt"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -116,45 +114,13 @@ func (s *Service) raiseOperatorNotice(
 		return
 	}
 
-	opsnotify.Notify(ctx, &opsnotify.Notice{
-		Event:   opsnotify.EventSupportMessage,
-		Subject: supportNoticeSubject(thread, isNewThread),
-		Body:    supportNoticeBody(thread, msg, folded),
-		URL:     s.ThreadURL(thread.UID),
-	})
-}
-
-// supportNoticeSubject is the one line a push title or an SMS lead gets.
-func supportNoticeSubject(thread *models.SupportThread, isNewThread bool) string {
-	verb := "New message"
-	if isNewThread {
-		verb = "New support thread"
-	}
-
-	return fmt.Sprintf("[SolidPing support] %s on %s from %s",
-		verb, thread.Channel, thread.ChannelIdentity)
-}
-
-// supportNoticeBody renders the notice. Plain text only: the body is typed by
-// a stranger, and every renderer downstream escapes it, so nothing here may
-// look like markup.
-func supportNoticeBody(thread *models.SupportThread, msg *models.SupportMessage, folded int) string {
-	lines := []string{
-		"Channel: " + thread.Channel,
-		"From:    " + thread.ChannelIdentity,
-		"",
-		previewBody(msg.Body),
-	}
-
-	if folded > 0 {
-		lines = append(lines, "",
-			"…and "+strconv.Itoa(folded)+" more message(s) in this thread since the last notification.")
-	}
-
-	lines = append(lines, "",
-		"Replying to this notification does NOT reach the sender — open the thread to answer them.")
-
-	return strings.Join(lines, "\n")
+	opsnotify.Notify(ctx, opsnotify.NewSupportMessageNotice(&opsnotify.SupportMessage{
+		NewThread: isNewThread,
+		Channel:   thread.Channel,
+		From:      thread.ChannelIdentity,
+		Preview:   previewBody(msg.Body),
+		Folded:    folded,
+	}, s.ThreadURL(thread.UID)))
 }
 
 // previewBody caps the quoted message. The full text is one link away.

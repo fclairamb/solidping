@@ -1,0 +1,91 @@
+{
+  "supportMessage": {
+    "subjectNewMessage": "Nouveau message de {from} sur {channel}",
+    "subjectNewThread": "Nouveau fil de support de {from} sur {channel}",
+    "channel": "Canal : {channel}",
+    "from": "Expéditeur : {from}",
+    "folded_one": "…et {count} autre message dans ce fil depuis la dernière notification.",
+    "folded_other": "…et {count} autres messages dans ce fil depuis la dernière notification.",
+    "replyWarning": "Une réponse à cette notification ne parvient PAS à l'expéditeur : ouvrez le fil pour lui répondre."
+  },
+  "userRegistered": {
+    "subject": "Nouvelle inscription : {email} ({method})",
+    "intro": "Un nouvel utilisateur vient de s'inscrire sur cette instance SolidPing.",
+    "email": "E-mail : {email}",
+    "name": "Nom : {name}",
+    "method": "Méthode : {method}",
+    "methods": {
+      "password": "mot de passe",
+      "invite": "invitation"
+    },
+    "org": "Organisation : {orgs}",
+    "orgs": "Organisations : {orgs}",
+    "noOrg": "Organisation : aucune"
+  },
+  "test": {
+    "subject": "Test des notifications opérateur",
+    "intro": "Ceci est un test des notifications opérateur de cette instance SolidPing.",
+    "works": "Si vous lisez ce message, le canal par lequel il est arrivé fonctionne.",
+    "requestedBy": "Demandé par {email}."
+  },
+  "watchdogRegion": {
+    "subjectDark": "La région {region} est hors ligne",
+    "subjectStalled": "La région {region} est bloquée",
+    "subjectRecovered": "La région {region} est rétablie au bout de {duration}",
+    "darkHeadline_one": "La région « {region} » est HORS LIGNE (aucun worker actif) depuis le {since} : {count} tâche assignée, dont {overdue} en retard",
+    "darkHeadline_other": "La région « {region} » est HORS LIGNE (aucun worker actif) depuis le {since} : {count} tâches assignées, dont {overdue} en retard",
+    "organizations_one": "{count} organisation",
+    "organizations_other": "{count} organisations",
+    "darkChecks_one": "{count} contrôle de {orgs} ne s'exécute que depuis cette région et est à l'arrêt ; chaque organisation concernée a été prévenue par e-mail.",
+    "darkChecks_other": "{count} contrôles de {orgs} ne s'exécutent que depuis cette région et sont à l'arrêt ; chaque organisation concernée a été prévenue par e-mail.",
+    "moved_one": "{count} contrôle en placement automatique a été déplacé vers une autre région.",
+    "moved_other": "{count} contrôles en placement automatique ont été déplacés vers une autre région.",
+    "darkRemediation": "Correctif : relancez un worker pour « {region} », ou appelez {command}.",
+    "liveWorkers_one": "{count} worker actif",
+    "liveWorkers_other": "{count} workers actifs",
+    "stalledHeadline_one": "La région « {region} » est bloquée : {workers}, mais {count} tâche en retard depuis le {since}",
+    "stalledHeadline_other": "La région « {region} » est bloquée : {workers}, mais {count} tâches en retard, la plus ancienne depuis le {since}",
+    "stalledCause": "Les workers envoient leur signal de vie mais ne prennent aucune tâche. Les organisations n'ont pas été prévenues.",
+    "stalledInspect": "À examiner : GET /api/v1/system/regions/health, puis les journaux des workers.",
+    "recovered_one": "La région « {region} » fonctionne de nouveau au bout de {duration} ({phase} à partir du {since}). {count} organisation avait été prévenue.",
+    "recovered_other": "La région « {region} » fonctionne de nouveau au bout de {duration} ({phase} à partir du {since}). {count} organisations avaient été prévenues.",
+    "phase": {
+      "dark": "hors ligne",
+      "stalled": "bloquée"
+    }
+  },
+  "watchdogDigest": {
+    "allClear_one": "Tout est rentré dans l'ordre : {count} anomalie résolue",
+    "allClear_other": "Tout est rentré dans l'ordre : {count} anomalies résolues",
+    "anomalies_one": "{count} anomalie de la plateforme",
+    "anomalies_other": "{count} anomalies de la plateforme",
+    "critical_one": ", dont {count} critique",
+    "critical_other": ", dont {count} critiques",
+    "recovered_one": " (+{count} résolue)",
+    "recovered_other": " (+{count} résolues)",
+    "generatedAt": "Généré le {date}",
+    "anomaliesTitle": "ANOMALIES",
+    "severity": {
+      "info": "INFO",
+      "warning": "AVERTISSEMENT",
+      "critical": "CRITIQUE"
+    },
+    "new": "NOUVELLE",
+    "stillBroken": "TOUJOURS EN COURS depuis le {date}",
+    "fix": "correctif : {remediation}",
+    "recoveredTitle": "RÉSOLUES",
+    "clearAgain": "{fingerprint} : résolue (détectée pour la première fois le {date})",
+    "failuresTitle": "ÉCHECS DES DÉTECTEURS (ces anomalies n'ont PAS pu être évaluées lors de cette exécution)"
+  },
+  "aiRepair": {
+    "subject": "Contrôle réparé : {check}",
+    "intro": "SolidPing a réparé le script du contrôle « {check} » (version {version}).",
+    "reason": {
+      "drifted": "Réparation par IA : le script a dérivé",
+      "error": "Réparation par IA : le script a dérivé (erreur : {error})",
+      "step": "Réparation par IA : le script a dérivé à l'étape {step}"
+    },
+    "diff": "Modifications :",
+    "review": "Pour relire ou annuler cette réparation : {link}"
+  }
+}

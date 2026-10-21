@@ -1,7 +1,11 @@
 // Package email provides email formatting and sending capabilities.
 package email
 
-import "context"
+import (
+	"context"
+
+	"github.com/fclairamb/solidping/server/internal/i18n"
+)
 
 // Recipients holds email recipient addresses.
 type Recipients struct {
@@ -55,6 +59,29 @@ type Message struct {
 	// it, is what makes that later feature safe — retrofitting it means the
 	// loop ships first.
 	SupportMirror bool
+	// ThreadID groups related messages into one conversation. When set, the
+	// message gets In-Reply-To and References pointing at
+	// <ThreadID@sender-domain>, so every mail about one incident (down,
+	// escalated, recovered) threads together in clients that thread on those
+	// headers (Apple Mail, Thunderbird, Outlook). Gmail also requires an
+	// identical subject, so it keeps them apart.
+	ThreadID string
+	// Locale and Timezone are the reader's language and IANA zone, the ones
+	// the body was rendered in (spec 2026-10-21-01). The sender reads them for
+	// the text it adds itself (the support-reply notice). Empty means English,
+	// UTC.
+	Locale   string
+	Timezone string
+}
+
+// IncidentThreadID is the Message.ThreadID shared by every mail about one
+// incident.
+func IncidentThreadID(incidentUID string) string {
+	if incidentUID == "" {
+		return ""
+	}
+
+	return "incident." + incidentUID
 }
 
 // Sender handles email delivery.
@@ -79,5 +106,9 @@ type Formatter interface {
 	// unreadable in real clients, so an explicit template-authored "text"
 	// block is required to get a plaintext part; there is no automatic
 	// HTML-to-text fallback.
-	Format(templateName string, data any) (subject string, html string, text string, err error)
+	//
+	// loc is the reader's language and timezone (i18n.Default when unknown).
+	// It is a parameter, not a view-model key, on purpose: every call site has
+	// to decide whose language the mail speaks.
+	Format(templateName string, loc i18n.Locale, data any) (subject string, html string, text string, err error)
 }

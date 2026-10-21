@@ -1,4 +1,10 @@
-import { test, expect, DASH_BASE, mockSloCoverage } from "./fixtures";
+import {
+  test,
+  expect,
+  DASH_BASE,
+  mockSloCoverage,
+  stubSavedPreferences,
+} from "./fixtures";
 import type { Page } from "@playwright/test";
 
 const CHECK_UID = "00000000-0000-0000-0000-000000000012";
@@ -86,6 +92,8 @@ test.describe("Check detail — Recent Incidents card limit", () => {
     await page.addInitScript(() => {
       localStorage.setItem("solidping_language", "fr");
     });
+    // A signed-in dashboard takes its language from the account.
+    await stubSavedPreferences(page, () => ({ locale: "fr" }));
     await mockIncidents(page, 1);
     await page.goto(`${DASH_BASE}/orgs/test/checks/${CHECK_UID}`);
 

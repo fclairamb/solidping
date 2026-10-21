@@ -65,9 +65,10 @@ List every previewable email template, wrapped as `{ "data": [...] }`. Each row
 carries `template` (the file name, which is the `:template` path segment
 below), `subject` (rendered through the real formatter), `hasText` (whether the
 template ships a plaintext part), `previewUrl`, and `error` when that template
-failed to render with its fixture. Backs the dashboard's email catalog at
-`/d/orgs/:org/test/emails`. Registered only when `SP_RUNMODE=test`.
-Auth: public (test mode only)
+failed to render with its fixture. `?locale=en|fr|de|es` (default `en`) renders
+the subjects in that language; any other value is a 400. Backs the dashboard's
+email catalog at `/d/orgs/:org/test/emails`. Registered only when
+`SP_RUNMODE=test`. Auth: public (test mode only)
 
 ### GET /api/mgmt/email-preview/:template
 Render an email template with sample data so it can be reviewed in a browser
@@ -79,6 +80,9 @@ the HTML format and rewrites the template's own
 dark-mode client applies. Without the param the response is the untouched
 template. Any other value is a 400. See
 [features/email-dark-mode.md](../features/email-dark-mode.md).
+`?locale=en|fr|de|es` (default `en`, which is the same bytes as no param)
+renders the mail in that language (spec 2026-10-21-01). It is validated before
+rendering: a full tag (`fr-FR`) or an unsupported language is a 400.
 Registered only when `SP_RUNMODE=test`. Auth: public (test mode only)
 
 ### POST /api/mgmt/report

@@ -65,7 +65,7 @@ func TestIncidentEmailCarriesOrgBranding(t *testing.T) {
 	html := sender.sent[0].HTML
 	r.Contains(html, brandingIncidentBaseURL+"/pub/assets/org-logo-uid")
 	r.Contains(html, `alt="Acme Corp"`)
-	r.Contains(html, "Acme Corp — sent by SolidPing")
+	r.Regexp(`Acme Corp · sent by <a href="https://solidping\.io"[^>]*>SolidPing</a>`, html)
 	// The org logo is the primary mark, so the product logo is not also shown.
 	r.NotContains(html, "/d/logo.png")
 }
@@ -101,5 +101,5 @@ func TestIncidentEmailFallsBackToTheProductLogo(t *testing.T) {
 	html := sender.sent[0].HTML
 	r.Contains(html, brandingIncidentBaseURL+"/d/logo.png")
 	r.Contains(html, `alt="SolidPing"`)
-	r.Contains(html, "Acme Corp — sent by SolidPing")
+	r.Regexp(`Acme Corp · sent by <a href="https://solidping\.io"[^>]*>SolidPing</a>`, html)
 }
