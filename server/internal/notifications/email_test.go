@@ -733,35 +733,6 @@ func TestEmailSender_Send_ListUnsubscribeHeadersOnlyOnModeledEvents(t *testing.T
 	r.Contains(msg.ListUnsubscribeURL, "/unsubscribe?token=")
 }
 
-// TestMailDuration pins the outage-length formatting that headlines the
-// recovered mail. The interesting cases are the boundaries where a unit falls
-// to zero — "15m0s" and "2h0m0s" are what time.Duration.String() produces and
-// what this exists to avoid — and the sub-minute range, which must keep its
-// seconds: rounding a 45-second blip up to "1m" describes a different incident.
-func TestMailDuration(t *testing.T) {
-	t.Parallel()
-
-	for _, tc := range []struct {
-		name string
-		in   time.Duration
-		want string
-	}{
-		{"sub-second", 400 * time.Millisecond, "0s"},
-		{"seconds", 45 * time.Second, "45s"},
-		{"whole minutes", 15 * time.Minute, "15m"},
-		{"minutes and seconds", 15*time.Minute + 20*time.Second, "15m 20s"},
-		{"whole hours", 2 * time.Hour, "2h"},
-		{"hours drop seconds", 2*time.Hour + 13*time.Minute + 7*time.Second, "2h 13m"},
-		{"whole days", 48 * time.Hour, "2d"},
-		{"days and hours", 26 * time.Hour, "1d 2h"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			require.Equal(t, tc.want, mailDuration(tc.in))
-		})
-	}
-}
-
 // The reminder ships its own template, renders the reminder sentence and keeps
 // the Acknowledge button (spec 2026-10-12-16).
 func TestEmailSender_Send_RendersReminderTemplate(t *testing.T) {

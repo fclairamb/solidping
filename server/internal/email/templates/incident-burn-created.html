@@ -1,55 +1,47 @@
-{{define "subject"}}{{if .SubjectPrefix}}{{.SubjectPrefix}} {{end}}🔥 {{.BurnPolicyLabel}}: {{.SLOName}} at {{.BurnRate}}{{if gt .IncidentNumber 0}} (#{{.IncidentNumber}}){{end}}{{end}}
-{{define "preheader"}}{{.BurnPolicyLabel}} policy fired at {{.BurnRate}}. {{.BurnBudgetRemaining}} of budget left.{{end}}
+{{define "subject"}}{{if .SubjectPrefix}}{{.SubjectPrefix}} {{end}}🔥 {{t "incident.burnCreated.subject" "policy" .BurnPolicyLabel "slo" .SLOName "rate" .BurnRate}}{{if .IncidentNumber}} (#{{.IncidentNumber}}){{end}}{{end}}
+{{define "preheader"}}{{if .BurnBudgetExhausted}}{{t "incident.burnCreated.preheaderExhausted" "policy" .BurnPolicyLabel "rate" .BurnRate}}{{else}}{{t "incident.burnCreated.preheader" "policy" .BurnPolicyLabel "rate" .BurnRate "budget" .BurnBudgetRemaining}}{{end}}{{end}}
 {{template "base.html" .}}
-{{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "down" "Label" "Budget burning"}}{{end}}
+{{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "down" "Label" (t "incident.pill.budgetBurning")}}{{end}}
 {{define "content"}}
-    <h1>{{.SLOName}} is burning its error budget</h1>
-    <p class="lead">It is spending budget at <strong>{{.BurnRate}}</strong> the sustainable rate. Not necessarily down right now, but it cannot keep this up.</p>
+    <h1>{{t "incident.burnCreated.title" "slo" .SLOName}}</h1>
+    <p class="lead">{{tHTML "incident.burnCreated.lead" "rate" .BurnRate}}</p>
     <table class="metric" role="presentation" width="100%" cellpadding="0" cellspacing="0">
         <tr>
             <td align="center" width="50%">
                 <span class="metric-value is-bad">{{.BurnRate}}</span>
-                <span class="metric-label">Burn rate, last {{.BurnLongWindow}}</span>
+                <span class="metric-label">{{t "incident.labels.burnRateLast" "window" .BurnLongWindow}}</span>
             </td>
             <td align="center" width="50%">
                 <span class="metric-value is-warn">{{.BurnBudgetRemaining}}</span>
-                <span class="metric-label">Budget left</span>
+                <span class="metric-label">{{t "incident.labels.budgetLeft"}}</span>
             </td>
         </tr>
     </table>
     <table class="details-table" role="presentation" cellpadding="0" cellspacing="0">
-        <tr><td class="label">Objective</td><td class="value">{{.SLOName}} ({{.BurnTarget}})</td></tr>
-        <tr><td class="label">Policy</td><td class="value">{{.BurnPolicyLabel}}, {{.BurnSeverity}}, over {{.BurnThreshold}}</td></tr>
-        <tr><td class="label">Last {{.BurnShortWindow}}</td><td class="value">{{.BurnShortRate}}</td></tr>
-        <tr><td class="label">Budget gone by</td><td class="value">{{.BurnProjectedExhaustion}}</td></tr>
-        <tr><td class="label">Check</td><td class="value">{{if .CheckURL}}<a href="{{.CheckURL}}">{{nolink .CheckName}}</a>{{else}}{{nolink .CheckName}}{{end}}</td></tr>
-        {{if gt .IncidentNumber 0}}<tr><td class="label">Incident</td><td class="value">#{{.IncidentNumber}}</td></tr>{{end}}
+        <tr><td class="label">{{t "incident.labels.objective"}}</td><td class="value">{{.SLOName}} ({{.BurnTarget}})</td></tr>
+        <tr><td class="label">{{t "incident.labels.policy"}}</td><td class="value">{{t "incident.burnCreated.policyValue" "policy" .BurnPolicyLabel "severity" .BurnSeverity "threshold" .BurnThreshold}}</td></tr>
+        <tr><td class="label">{{t "incident.labels.lastWindow" "window" .BurnShortWindow}}</td><td class="value">{{.BurnShortRate}}</td></tr>
+        <tr><td class="label">{{t "incident.labels.budgetGoneBy"}}</td><td class="value">{{.BurnProjectedExhaustion}}</td></tr>
+        <tr><td class="label">{{t "common.labels.check"}}</td><td class="value">{{if .CheckURL}}<a href="{{.CheckURL}}">{{nolink .CheckName}}</a>{{else}}{{nolink .CheckName}}{{end}}</td></tr>
+        {{if .IncidentNumber}}<tr><td class="label">{{t "common.labels.incident"}}</td><td class="value">#{{.IncidentNumber}}</td></tr>{{end}}
     </table>
     {{template "incident-actions" .}}
 {{end}}
-{{define "text"}}{{.SLOName}} is burning error budget
+{{define "text"}}{{t "incident.burnCreated.textTitle" "slo" .SLOName}}
 
-The {{.BurnPolicyLabel}} policy fired: the objective has been spending its error budget at {{.BurnRate}} over the last {{.BurnLongWindow}}, and still is over the last {{.BurnShortWindow}}.
+{{t "incident.burnCreated.textBody" "policy" .BurnPolicyLabel "rate" .BurnRate "long" .BurnLongWindow "short" .BurnShortWindow}}
 
-Objective: {{.SLOName}} ({{.BurnTarget}})
-Policy: {{.BurnPolicyLabel}} - {{.BurnSeverity}}
-Burn rate: {{.BurnRate}} over {{.BurnLongWindow}}, {{.BurnShortRate}} over {{.BurnShortWindow}}
-Threshold: {{.BurnThreshold}}
-Budget remaining: {{.BurnBudgetRemaining}}
-Projected exhaustion: {{.BurnProjectedExhaustion}}
-Detected on: {{.CheckName}}
-{{if .CheckURL}}Check URL: {{.CheckURL}}
-{{end}}Started at: {{.StartedAt}}
-{{if gt .IncidentNumber 0}}Incident: #{{.IncidentNumber}}
-{{end}}Incident ID: {{.IncidentUID}}
-{{if .IncidentURL}}
-View incident: {{.IncidentURL}}
-{{end}}{{if .AckURL}}
-Acknowledge this incident: {{.AckURL}}
-(link valid for 7 days)
-{{end}}
-This is an automated notification from SolidPing.
-{{if .DashboardURL}}Dashboard: {{.DashboardURL}}{{end}}{{if .DocsURL}}
-Docs: {{.DocsURL}}{{end}}{{if .UnsubscribeURL}}
-Unsubscribe from alerts{{if .UnsubscribeCheckName}} for {{.UnsubscribeCheckName}}{{end}}: {{.UnsubscribeURL}}{{end}}
-{{end}}
+{{t "common.textField" "label" (t "incident.labels.objective") "value" (printf "%v (%v)" .SLOName .BurnTarget)}}
+{{t "common.textField" "label" (t "incident.labels.policy") "value" (t "incident.burnCreated.policyText" "policy" .BurnPolicyLabel "severity" .BurnSeverity)}}
+{{t "common.textField" "label" (t "incident.labels.burnRate") "value" (t "incident.burnCreated.burnRateText" "rate" .BurnRate "long" .BurnLongWindow "shortRate" .BurnShortRate "short" .BurnShortWindow)}}
+{{t "common.textField" "label" (t "incident.labels.threshold") "value" .BurnThreshold}}
+{{t "common.textField" "label" (t "incident.labels.budgetRemaining") "value" .BurnBudgetRemaining}}
+{{t "common.textField" "label" (t "incident.labels.projectedExhaustion") "value" .BurnProjectedExhaustion}}
+{{t "common.textField" "label" (t "incident.labels.detectedOn") "value" .CheckName}}
+{{if .CheckURL}}{{t "common.textField" "label" (t "common.labels.checkURL") "value" .CheckURL}}
+{{end}}{{t "common.textField" "label" (t "incident.labels.startedAt") "value" (date .StartedAt)}}
+{{if .IncidentNumber}}{{t "common.textField" "label" (t "common.labels.incident") "value" (printf "#%v" .IncidentNumber)}}
+{{end}}{{t "common.textField" "label" (t "incident.labels.incidentId") "value" .IncidentUID}}
+{{template "incident-actions-text" .}}
+{{t "common.footer.automated"}}
+{{template "footer-text" .}}{{end}}

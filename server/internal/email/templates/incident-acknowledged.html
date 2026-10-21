@@ -1,38 +1,34 @@
-{{define "subject"}}{{if .SubjectPrefix}}{{.SubjectPrefix}} {{end}}🔵 {{.AckActor}} is on {{.CheckName}}{{if gt .IncidentNumber 0}} (#{{.IncidentNumber}}){{end}}{{end}}
-{{define "preheader"}}{{.AckActor}} picked it up. Escalation stopped, the incident is still open.{{end}}
+{{define "subject"}}{{if .SubjectPrefix}}{{.SubjectPrefix}} {{end}}🔵 {{t "incident.acknowledged.title" "actor" .AckActor "check" .CheckName}}{{if .IncidentNumber}} (#{{.IncidentNumber}}){{end}}{{end}}
+{{define "preheader"}}{{t "incident.acknowledged.preheader" "actor" .AckActor}}{{end}}
 {{template "base.html" .}}
-{{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "acknowledged" "Label" "Acknowledged"}}{{end}}
+{{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "acknowledged" "Label" (t "incident.pill.acknowledged")}}{{end}}
 {{define "content"}}
-    <h1>{{.AckActor}} is on {{if .CheckURL}}<a href="{{.CheckURL}}">{{nolink .CheckName}}</a>{{else}}{{nolink .CheckName}}{{end}}</h1>
-    <p class="lead">Escalation stopped. The incident stays open until checks pass again.</p>
+    {{$check := nolink .CheckName}}{{if .CheckURL}}{{$check = tHTML "incident.checkLink" "url" .CheckURL "check" $check}}{{end}}
+    <h1>{{tHTML "incident.acknowledged.title" "actor" .AckActor "check" $check}}</h1>
+    <p class="lead">{{t "incident.acknowledged.lead"}}</p>
     <table class="details-table" role="presentation" cellpadding="0" cellspacing="0">
-        {{if .AckVia}}<tr><td class="label">Via</td><td class="value">{{.AckVia}}</td></tr>{{end}}
-        {{if .AcknowledgedAt}}<tr><td class="label">At</td><td class="value">{{.AcknowledgedAt}}</td></tr>{{end}}
-        <tr><td class="label">Since</td><td class="value">{{.StartedAt}}</td></tr>
-        {{if gt .IncidentNumber 0}}<tr><td class="label">Incident</td><td class="value">#{{.IncidentNumber}}</td></tr>{{end}}
+        {{if .AckChannel}}<tr><td class="label">{{t "incident.labels.via"}}</td><td class="value">{{.AckChannel}}</td></tr>{{end}}
+        {{if .AcknowledgedAt}}<tr><td class="label">{{t "incident.labels.ackAt"}}</td><td class="value">{{date .AcknowledgedAt}}</td></tr>{{end}}
+        <tr><td class="label">{{t "common.labels.since"}}</td><td class="value">{{date .StartedAt}}</td></tr>
+        {{if .IncidentNumber}}<tr><td class="label">{{t "common.labels.incident"}}</td><td class="value">#{{.IncidentNumber}}</td></tr>{{end}}
     </table>
-    {{if .IncidentURL}}<div class="cta-wrap">{{template "button" dict "URL" .IncidentURL "Label" "View incident" "Variant" "secondary"}}</div>{{end}}
+    {{if .IncidentURL}}<div class="cta-wrap">{{template "button" dict "URL" .IncidentURL "Label" (t "common.incidentActions.viewIncident") "Variant" "secondary"}}</div>{{end}}
 {{end}}
-{{define "text"}}{{.CheckName}} was acknowledged
+{{define "text"}}{{t "incident.acknowledged.textTitle" "check" .CheckName}}
 
-{{.AckActor}} acknowledged{{if .AckVia}} {{.AckVia}}{{end}} the incident for {{.CheckName}}. Escalation has stopped — nobody else needs to pick this up.
+{{if .AckVia}}{{t "incident.acknowledged.textBodyVia" "actor" .AckActor "via" .AckVia "check" .CheckName}}{{else}}{{t "incident.acknowledged.textBody" "actor" .AckActor "check" .CheckName}}{{end}}
 
-The incident is still open: acknowledging says someone is on it, not that it is fixed.
+{{t "incident.acknowledged.textStillOpen"}}
 
-Acknowledged by: {{.AckActor}}
-{{if .AckVia}}Via: {{.AckVia}}
-{{end}}{{if .AcknowledgedAt}}Acknowledged at: {{.AcknowledgedAt}}
-{{end}}Check: {{.CheckName}}
-{{if .CheckURL}}Check URL: {{.CheckURL}}
-{{end}}Type: {{.CheckType}}
-Started at: {{.StartedAt}}
-{{if gt .IncidentNumber 0}}Incident: #{{.IncidentNumber}}
-{{end}}Incident ID: {{.IncidentUID}}
-{{if .IncidentURL}}
-View incident: {{.IncidentURL}}
-{{end}}
-This is an automated notification from SolidPing.
-{{if .DashboardURL}}Dashboard: {{.DashboardURL}}{{end}}{{if .DocsURL}}
-Docs: {{.DocsURL}}{{end}}{{if .UnsubscribeURL}}
-Unsubscribe from alerts{{if .UnsubscribeCheckName}} for {{.UnsubscribeCheckName}}{{end}}: {{.UnsubscribeURL}}{{end}}
-{{end}}
+{{t "common.textField" "label" (t "incident.labels.acknowledgedBy") "value" .AckActor}}
+{{if .AckChannel}}{{t "common.textField" "label" (t "incident.labels.via") "value" .AckChannel}}
+{{end}}{{if .AcknowledgedAt}}{{t "common.textField" "label" (t "incident.labels.acknowledgedAt") "value" (date .AcknowledgedAt)}}
+{{end}}{{t "common.textField" "label" (t "common.labels.check") "value" .CheckName}}
+{{if .CheckURL}}{{t "common.textField" "label" (t "common.labels.checkURL") "value" .CheckURL}}
+{{end}}{{t "common.textField" "label" (t "incident.labels.type") "value" .CheckType}}
+{{t "common.textField" "label" (t "incident.labels.startedAt") "value" (date .StartedAt)}}
+{{if .IncidentNumber}}{{t "common.textField" "label" (t "common.labels.incident") "value" (printf "#%v" .IncidentNumber)}}
+{{end}}{{t "common.textField" "label" (t "incident.labels.incidentId") "value" .IncidentUID}}
+{{template "incident-actions-text" .}}
+{{t "common.footer.automated"}}
+{{template "footer-text" .}}{{end}}

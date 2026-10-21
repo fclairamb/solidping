@@ -1,48 +1,44 @@
-{{define "subject"}}{{if .SubjectPrefix}}{{.SubjectPrefix}} {{end}}{{if .CheckDeleted}}⚪ {{.CheckName}} was deleted, incident closed{{else}}🟢 {{.CheckName}} is back up{{if .Duration}} after {{.Duration}}{{end}}{{end}}{{if gt .IncidentNumber 0}} (#{{.IncidentNumber}}){{end}}{{end}}
-{{define "preheader"}}{{if .CheckDeleted}}{{.CheckName}} was deleted, so its incident was closed.{{else}}{{if .Duration}}Down for {{.Duration}}. {{end}}Checks are passing again. Nothing left to do.{{end}}{{end}}
+{{define "subject"}}{{if .SubjectPrefix}}{{.SubjectPrefix}} {{end}}{{if .CheckDeleted}}⚪ {{t "incident.resolved.deletedSubject" "check" .CheckName}}{{else}}🟢 {{if .Duration}}{{t "incident.resolved.titleAfter" "check" .CheckName "duration" (duration .Duration)}}{{else}}{{t "incident.resolved.title" "check" .CheckName}}{{end}}{{end}}{{if .IncidentNumber}} (#{{.IncidentNumber}}){{end}}{{end}}
+{{define "preheader"}}{{if .CheckDeleted}}{{t "incident.resolved.deletedPreheader" "check" .CheckName}}{{else}}{{if .Duration}}{{t "incident.resolved.downFor" "duration" (duration .Duration)}} {{end}}{{t "incident.resolved.passing"}}{{end}}{{end}}
 {{template "base.html" .}}
-{{define "statusbanner"}}{{if .CheckDeleted}}{{template "statusbanner-render" dict "Variant" "comment" "Label" "Check deleted"}}{{else}}{{template "statusbanner-render" dict "Variant" "recovered" "Label" "Recovered"}}{{end}}{{end}}
+{{define "statusbanner"}}{{if .CheckDeleted}}{{template "statusbanner-render" dict "Variant" "comment" "Label" (t "incident.pill.checkDeleted")}}{{else}}{{template "statusbanner-render" dict "Variant" "recovered" "Label" (t "incident.pill.recovered")}}{{end}}{{end}}
 {{define "content"}}
-    <h1>{{if .CheckURL}}<a href="{{.CheckURL}}">{{nolink .CheckName}}</a>{{else}}{{nolink .CheckName}}{{end}} {{if .CheckDeleted}}was deleted{{else}}is back up{{end}}</h1>
+    {{$check := nolink .CheckName}}{{if .CheckURL}}{{$check = tHTML "incident.checkLink" "url" .CheckURL "check" $check}}{{end}}
+    <h1>{{if .CheckDeleted}}{{tHTML "incident.resolved.deletedTitle" "check" $check}}{{else}}{{tHTML "incident.resolved.title" "check" $check}}{{end}}</h1>
     {{if .CheckDeleted}}
-    <p>The check was deleted, so this incident was closed. It did not necessarily recover.</p>
+    <p>{{t "incident.resolved.deletedBody"}}</p>
     {{else if .Duration}}
-    <p class="lead">It was down for <strong>{{.Duration}}</strong>. Nothing left to do.</p>
+    <p class="lead">{{tHTML "incident.resolved.leadDuration" "duration" (duration .Duration)}}</p>
     {{else}}
-    <p class="lead">Checks are passing again. Nothing left to do.</p>
+    <p class="lead">{{t "incident.resolved.passing"}}</p>
     {{end}}
     <table class="details-table" role="presentation" cellpadding="0" cellspacing="0">
-        {{if .FailureReason}}<tr><td class="label">Cause</td><td class="value">{{.FailureReason}}</td></tr>{{end}}
-        <tr><td class="label">Down from</td><td class="value">{{.StartedAt}}</td></tr>
-        <tr><td class="label">Back at</td><td class="value">{{.ResolvedAt}}</td></tr>
+        {{if .FailureReason}}<tr><td class="label">{{t "incident.labels.cause"}}</td><td class="value">{{.FailureReason}}</td></tr>{{end}}
+        <tr><td class="label">{{t "incident.labels.downFrom"}}</td><td class="value">{{date .StartedAt}}</td></tr>
+        <tr><td class="label">{{if .CheckDeleted}}{{t "incident.labels.closedAt"}}{{else}}{{t "incident.labels.backAt"}}{{end}}</td><td class="value">{{date .ResolvedAt}}</td></tr>
         {{if .RegionText}}<tr><td class="label">{{.RegionTitle}}</td><td class="value">{{.RegionText}}</td></tr>{{end}}
-        {{if gt .IncidentNumber 0}}<tr><td class="label">Incident</td><td class="value">#{{.IncidentNumber}}</td></tr>{{end}}
+        {{if .IncidentNumber}}<tr><td class="label">{{t "common.labels.incident"}}</td><td class="value">#{{.IncidentNumber}}</td></tr>{{end}}
     </table>
     {{if .IncidentURL}}
-    <div class="cta-wrap">{{template "button" dict "URL" .IncidentURL "Label" "View incident" "Variant" "secondary"}}</div>
+    <div class="cta-wrap">{{template "button" dict "URL" .IncidentURL "Label" (t "common.incidentActions.viewIncident") "Variant" "secondary"}}</div>
     {{end}}
 {{end}}
-{{define "text"}}{{if .CheckDeleted}}{{.CheckName}} was deleted
+{{define "text"}}{{if .CheckDeleted}}{{t "incident.resolved.deletedTitle" "check" .CheckName}}
 
-The check was deleted, so this incident was closed. It did not necessarily recover.
-{{else}}{{.CheckName}} recovered
+{{t "incident.resolved.deletedBody"}}
+{{else}}{{t "incident.resolved.textTitle" "check" .CheckName}}
 
-The incident for {{.CheckName}} has been resolved.
+{{t "incident.resolved.textBody" "check" .CheckName}}
 {{end}}
-Check: {{.CheckName}}
-{{if .CheckURL}}Check URL: {{.CheckURL}}
-{{end}}Type: {{.CheckType}}
-{{if .RegionText}}{{.RegionTitle}}: {{.RegionText}}
-{{end}}Started at: {{.StartedAt}}
-Resolved at: {{.ResolvedAt}}
-{{if .Duration}}Duration: {{.Duration}}
-{{end}}{{if gt .IncidentNumber 0}}Incident: #{{.IncidentNumber}}
-{{end}}Incident ID: {{.IncidentUID}}
-{{if .IncidentURL}}
-View incident: {{.IncidentURL}}
-{{end}}
-This is an automated notification from SolidPing.
-{{if .DashboardURL}}Dashboard: {{.DashboardURL}}{{end}}{{if .DocsURL}}
-Docs: {{.DocsURL}}{{end}}{{if .UnsubscribeURL}}
-Unsubscribe from alerts{{if .UnsubscribeCheckName}} for {{.UnsubscribeCheckName}}{{end}}: {{.UnsubscribeURL}}{{end}}
-{{end}}
+{{t "common.textField" "label" (t "common.labels.check") "value" .CheckName}}
+{{if .CheckURL}}{{t "common.textField" "label" (t "common.labels.checkURL") "value" .CheckURL}}
+{{end}}{{t "common.textField" "label" (t "incident.labels.type") "value" .CheckType}}
+{{if .RegionText}}{{t "common.textField" "label" .RegionTitle "value" .RegionText}}
+{{end}}{{t "common.textField" "label" (t "incident.labels.startedAt") "value" (date .StartedAt)}}
+{{t "common.textField" "label" (t "incident.labels.resolvedAt") "value" (date .ResolvedAt)}}
+{{if .Duration}}{{t "common.textField" "label" (t "incident.labels.duration") "value" (duration .Duration)}}
+{{end}}{{if .IncidentNumber}}{{t "common.textField" "label" (t "common.labels.incident") "value" (printf "#%v" .IncidentNumber)}}
+{{end}}{{t "common.textField" "label" (t "incident.labels.incidentId") "value" .IncidentUID}}
+{{template "incident-actions-text" .}}
+{{t "common.footer.automated"}}
+{{template "footer-text" .}}{{end}}

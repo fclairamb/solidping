@@ -1,0 +1,238 @@
+{
+  "unknownCheck": "Contrôle inconnu",
+  "someone": "Quelqu'un",
+  "checkLink": "<a href=\"{url}\">{check}</a>",
+  "channel": {
+    "slack": "Slack",
+    "discord": "Discord",
+    "telegram": "Telegram",
+    "email": "e-mail",
+    "phone": "téléphone"
+  },
+  "via": {
+    "slack": "via Slack",
+    "discord": "via Discord",
+    "telegram": "via Telegram",
+    "email": "par e-mail",
+    "phone": "par téléphone"
+  },
+  "pill": {
+    "down": "En panne",
+    "recovered": "Rétabli",
+    "checkDeleted": "Contrôle supprimé",
+    "escalated": "Escaladé",
+    "reopened": "Rouvert",
+    "comment": "Commentaire",
+    "acknowledged": "Acquitté",
+    "unacknowledged": "Acquittement annulé",
+    "stillDown": "Toujours en panne",
+    "budgetBurning": "Budget en combustion",
+    "burnCleared": "Combustion terminée",
+    "degraded": "Dégradé",
+    "degradedClosed": "Dégradation close",
+    "degradedCleared": "Dégradation terminée"
+  },
+  "labels": {
+    "type": "Type",
+    "startedAt": "Début",
+    "resolvedAt": "Résolu le",
+    "duration": "Durée",
+    "incidentId": "ID de l'incident",
+    "failureCount": "Nombre d'échecs",
+    "relapseCount": "Nombre de rechutes",
+    "failedChecks": "Nombre d'échecs",
+    "cause": "Cause",
+    "downFrom": "En panne depuis",
+    "backAt": "Rétabli le",
+    "closedAt": "Clos le",
+    "via": "Canal",
+    "ackAt": "Acquitté le",
+    "acknowledgedBy": "Acquitté par",
+    "acknowledgedAt": "Acquitté le",
+    "withdrawnBy": "Annulé par",
+    "from": "Début",
+    "until": "Fin",
+    "objective": "Objectif",
+    "policy": "Politique",
+    "lastWindow": "Sur {window}",
+    "budgetGoneBy": "Épuisement prévu",
+    "burnRate": "Vitesse de consommation",
+    "burnRateLast": "Vitesse de consommation sur {window}",
+    "budgetLeft": "Budget restant",
+    "threshold": "Seuil",
+    "budgetRemaining": "Budget restant",
+    "projectedExhaustion": "Épuisement prévu",
+    "detectedOn": "Détecté sur",
+    "peakBurnRate": "Vitesse de consommation maximale",
+    "burnRateNow": "Vitesse de consommation actuelle",
+    "failures": "Échecs",
+    "slowProbes": "Sondes lentes",
+    "window": "Fenêtre",
+    "currentStatus": "État actuel",
+    "monitor": "Contrôle",
+    "chartWindow": "Graphique de cette fenêtre"
+  },
+  "regions": {
+    "failingFrom": "Régions en échec",
+    "failedFrom": "Régions touchées",
+    "count_one": "({count} région sur {total})",
+    "count_other": "({count} régions sur {total})"
+  },
+  "created": {
+    "title": "{check} est en panne",
+    "titleCause": "{check} est en panne : {cause}",
+    "preheader": "En panne depuis le {since}.",
+    "preheaderRegions": "En panne depuis le {since}. Régions en échec : {regions}."
+  },
+  "resolved": {
+    "title": "{check} fonctionne à nouveau",
+    "titleAfter": "{check} fonctionne à nouveau après {duration} de panne",
+    "downFor": "En panne pendant {duration}.",
+    "passing": "Le contrôle réussit à nouveau. Plus rien à faire.",
+    "leadDuration": "La panne a duré <strong>{duration}</strong>. Plus rien à faire.",
+    "deletedSubject": "Le contrôle {check} a été supprimé, incident clos",
+    "deletedTitle": "Le contrôle {check} a été supprimé",
+    "deletedPreheader": "Le contrôle {check} a été supprimé, son incident a donc été clos.",
+    "deletedBody": "Le contrôle a été supprimé, cet incident a donc été clos. Cela ne veut pas dire que le service est rétabli.",
+    "textTitle": "Rétablissement de {check}",
+    "textBody": "L'incident de {check} est résolu."
+  },
+  "escalated": {
+    "subject": "{check} est toujours en panne, incident escaladé",
+    "preheader_one": "Toujours en panne après {count} échec, l'incident a donc été escaladé.",
+    "preheader_other": "Toujours en panne après {count} échecs, l'incident a donc été escaladé.",
+    "title": "{check} est toujours en panne",
+    "lead": "Personne n'a acquitté l'incident à temps, il a donc été escaladé.",
+    "textTitle": "Incident escaladé sur {check}",
+    "textBody": "L'incident de {check} a été escaladé."
+  },
+  "reopened": {
+    "title": "{check} est de nouveau en panne",
+    "preheader": "{check} est de nouveau en panne après un bref rétablissement.",
+    "lead": "Après un bref rétablissement, le contrôle échoue de nouveau.",
+    "leadRelapses_one": "Après un bref rétablissement, le contrôle échoue de nouveau ({count} rechute jusqu'ici).",
+    "leadRelapses_other": "Après un bref rétablissement, le contrôle échoue de nouveau ({count} rechutes jusqu'ici).",
+    "textTitle": "Incident rouvert sur {check} (rechute n° {relapse})",
+    "textBody": "L'incident de {check} a été rouvert après un bref rétablissement."
+  },
+  "comment": {
+    "subject": "{author} a commenté l'incident de {check}",
+    "preheader": "{author} a laissé une note sur l'incident de {check}.",
+    "title": "{author} a commenté l'incident de {check}",
+    "posted": "Publié {via}.",
+    "textTitle": "Nouveau commentaire sur {check}",
+    "textBody": "{author} a commenté l'incident de {check} :",
+    "textBodyVia": "{author} a commenté l'incident de {check} {via} :"
+  },
+  "acknowledged": {
+    "title": "{actor} s'occupe de {check}",
+    "preheader": "{actor} a pris l'incident en charge. L'escalade est arrêtée, l'incident reste ouvert.",
+    "lead": "L'escalade est arrêtée. L'incident reste ouvert jusqu'à ce que le contrôle réussisse à nouveau.",
+    "textTitle": "Incident acquitté sur {check}",
+    "textBody": "{actor} a acquitté l'incident de {check}. L'escalade est arrêtée : personne d'autre n'a besoin de s'en charger.",
+    "textBodyVia": "{actor} a acquitté l'incident de {check} {via}. L'escalade est arrêtée : personne d'autre n'a besoin de s'en charger.",
+    "textStillOpen": "L'incident reste ouvert : l'acquitter signifie que quelqu'un s'en occupe, pas qu'il est résolu."
+  },
+  "unacknowledged": {
+    "title": "Plus personne ne s'occupe de {check}",
+    "preheader": "{actor} a annulé l'acquittement. L'incident n'a plus de responsable et l'escalade reprend.",
+    "lead": "<strong>{actor}</strong> a annulé l'acquittement. L'escalade reprend là où elle s'était arrêtée. Les alertes déjà envoyées ne sont pas renvoyées.",
+    "leadVia": "<strong>{actor}</strong> a annulé l'acquittement {via}. L'escalade reprend là où elle s'était arrêtée. Les alertes déjà envoyées ne sont pas renvoyées.",
+    "textTitle": "{check} n'a plus de responsable",
+    "textBody": "{actor} a annulé l'acquittement de l'incident de {check}. Plus personne ne s'en occupe.",
+    "textBodyVia": "{actor} a annulé l'acquittement de l'incident de {check} {via}. Plus personne ne s'en occupe.",
+    "textResume": "L'escalade reprend à l'étape que l'acquittement avait interrompue : les alertes déjà envoyées ne sont pas renvoyées."
+  },
+  "reminder": {
+    "subject": "{check} est toujours en panne, personne ne s'en occupe",
+    "title": "{check} est toujours en panne",
+    "lead": "{reminder}. Personne ne l'a encore pris en charge.",
+    "textBody": "{reminder}. Personne n'a encore pris cet incident en charge.",
+    "ackStopsReminders": "« Je m'en occupe » arrête aussi ces relances.",
+    "sentence": "Toujours en panne depuis {duration}, incident non acquitté",
+    "sentenceSeq": "Toujours en panne depuis {duration}, incident non acquitté (relance n° {seq})",
+    "duration": {
+      "minutes": "{n} min",
+      "hours": "{n} h",
+      "days": "{n} j",
+      "hoursMinutes": "{hours} h {minutes} min",
+      "daysHours": "{days} j {hours} h"
+    }
+  },
+  "burn": {
+    "policy": {
+      "fast": "Combustion rapide",
+      "slow": "Combustion lente"
+    },
+    "severity": {
+      "critical": "critique",
+      "warning": "avertissement"
+    },
+    "exhausted": "épuisé",
+    "notWithinWindow": "au-delà de cette fenêtre",
+    "duration": {
+      "minutes": "{n} min",
+      "hours": "{n} h",
+      "days": "{n} j",
+      "hoursMinutes": "{hours} h {minutes} min",
+      "daysHours": "{days} j {hours} h"
+    }
+  },
+  "burnCreated": {
+    "subject": "{policy} : {slo} à {rate}",
+    "preheader": "Politique « {policy} » déclenchée à {rate}. Budget restant : {budget}.",
+    "preheaderExhausted": "Politique « {policy} » déclenchée à {rate}. Le budget d'erreur est épuisé.",
+    "title": "{slo} consomme trop vite son budget d'erreur",
+    "lead": "Le budget est consommé <strong>{rate}</strong> plus vite que le rythme soutenable. Ce n'est pas forcément une panne en ce moment, mais ce rythme ne peut pas durer.",
+    "policyValue": "{policy}, {severity}, au-delà de {threshold}",
+    "textTitle": "{slo} consomme trop vite son budget d'erreur",
+    "textBody": "La politique « {policy} » s'est déclenchée : l'objectif consomme son budget d'erreur à {rate} sur {long}, et c'est toujours le cas sur {short}.",
+    "policyText": "{policy}, {severity}",
+    "burnRateText": "{rate} sur {long}, {shortRate} sur {short}"
+  },
+  "burnResolved": {
+    "subject": "{slo} : de nouveau sous {threshold}",
+    "preheader": "Vitesse de consommation de nouveau sous {threshold}. Budget restant : {budget}.",
+    "preheaderExhausted": "Vitesse de consommation de nouveau sous {threshold}. Le budget d'erreur est épuisé.",
+    "title": "{slo} : la combustion s'est arrêtée",
+    "lead": "La vitesse de consommation est restée sous {threshold} pendant {short}. Le budget déjà consommé ne revient pas.",
+    "rateOver": "{rate} sur {long}",
+    "textBody": "Les deux fenêtres de la politique « {policy} » sont restées sous {threshold} pendant {short}, l'alerte est donc résolue.",
+    "notReturned": "Le budget consommé n'est pas restitué : seule la vitesse de consommation est redescendue."
+  },
+  "degraded": {
+    "failures_one": "{count} échec sur les {slots} dernières sondes ({availability} % de disponibilité)",
+    "failures_other": "{count} échecs sur les {slots} dernières sondes ({availability} % de disponibilité)",
+    "failuresNoAvailability_one": "{count} échec sur les {slots} dernières sondes",
+    "failuresNoAvailability_other": "{count} échecs sur les {slots} dernières sondes",
+    "slow_one": "{count} des {slots} dernières sondes a dépassé {ms} ms",
+    "slow_other": "{count} des {slots} dernières sondes ont dépassé {ms} ms",
+    "both": "{failures} et {slow}",
+    "pattern": "un comportement intermittent a été détecté",
+    "currentlyUp": "Actuellement opérationnel.",
+    "currentlyNotUp": "Actuellement non opérationnel.",
+    "recentProbes": "sondes récentes",
+    "failureLine": "{reason} (règle : {threshold} sur {window} sondes)",
+    "slowLine": "{reason} (règle : {threshold} sur {window} sondes au-delà de {ms} ms)"
+  },
+  "degradedCreated": {
+    "subject": "{check} fonctionne en mode dégradé : {reason}",
+    "title": "{check} fonctionne en mode dégradé",
+    "lead": "Le contrôle échoue ou ralentit par intermittence, sans que cela dure assez longtemps pour compter comme une panne.",
+    "openChart": "Ouvrir le graphique",
+    "notOutage": "Il ne s'agit pas d'une panne : chaque échec a été suivi d'un succès avant la fin de la période de confirmation."
+  },
+  "degradedResolved": {
+    "title": "{check} est de nouveau stable",
+    "turnedOffSubject": "{check} : détection de dégradation désactivée",
+    "turnedOffPreheader": "La détection de dégradation a été désactivée sur {check}, son épisode de dégradation a donc été clos.",
+    "preheader": "{check} est stable depuis assez longtemps pour clore l'épisode de dégradation.",
+    "turnedOffTitle": "Détection de dégradation désactivée pour {check}",
+    "turnedOffLead": "L'épisode de dégradation en cours a été clos. Cela ne veut pas dire que le service est stable.",
+    "leadDuration": "L'instabilité a duré <strong>{duration}</strong>. Plus rien à faire.",
+    "lead": "Plus rien à faire.",
+    "turnedOffText": "La détection de dégradation a été désactivée sur ce contrôle, l'épisode de dégradation en cours a donc été clos. Cela ne veut pas dire que le service est stable.",
+    "textBody": "La condition de dégradation n'est plus remplie depuis assez longtemps pour clore l'épisode.",
+    "historyKept": "Les échecs et les réponses lentes enregistrés restent dans l'historique du contrôle : seul le comportement intermittent a cessé."
+  }
+}

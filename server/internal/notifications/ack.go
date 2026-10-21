@@ -1,6 +1,10 @@
 package notifications
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/fclairamb/solidping/server/internal/i18n"
+)
 
 // ackEmoji is the product-wide identity of `incident.acknowledged`, shared
 // with the dash0 event registry
@@ -15,12 +19,6 @@ const (
 	fieldLabelAcknowledgedBy = "Acknowledged by"
 	fieldLabelVia            = "Via"
 )
-
-// ackActorUnknown is what an acknowledgment with no recoverable identity
-// renders as on a channel. Kept in sync with the API's own fallback
-// (incidents.ackActorUnknownName) so an operator reading Slack and an operator
-// reading the dashboard see the same word.
-const ackActorUnknown = "Someone"
 
 // AckInfo is the attribution of an `incident.acknowledged` event, carried on
 // the notification payload so senders render who took the incident without a
@@ -40,48 +38,87 @@ type AckInfo struct {
 	Via string `json:"via,omitempty"`
 }
 
-// ackActor returns the actor label, or a neutral fallback. Never empty, so no
-// sender has to special-case an unattributed acknowledgment.
+// ackActor returns the actor label, or a neutral fallback ("Someone"). Never
+// empty, so no sender has to special-case an unattributed acknowledgment.
 func ackActor(ack *AckInfo) string {
-	if ack == nil {
-		return ackActorUnknown
-	}
-
-	if name := strings.TrimSpace(ack.ActorName); name != "" {
-		return name
-	}
-
-	return ackActorUnknown
+	return ackActorIn(i18n.English, ack)
 }
 
-// ackViaLabel renders where the acknowledgment came from, e.g. "via Slack".
-// Empty when the channel is unknown or is the dashboard — "via web" is noise
-// nobody needs, exactly like an unremarkable comment source.
-func ackViaLabel(ack *AckInfo) string {
-	if ack == nil {
-		return ""
+// ackActorIn is ackActor in the reader's language (only the fallback changes).
+func ackActorIn(loc i18n.Locale, ack *AckInfo) string {
+	if ack != nil {
+		if name := strings.TrimSpace(ack.ActorName); name != "" {
+			return name
+		}
 	}
 
-	switch strings.ToLower(strings.TrimSpace(ack.Via)) {
-	case "slack":
-		return "via Slack"
-	case "discord":
-		return "via Discord"
-	case "telegram":
-		return "via Telegram"
-	case "email":
-		return "via email"
-	case "phone":
-		return "via phone"
+	return loc.T("incident.someone")
+}
+
+// channelNameIn names the channel an acknowledgment or a comment came from
+// ("Slack", "email"), in the reader's language. Empty when the channel is
+// unknown or is the dashboard: "via web" is noise nobody needs.
+func channelNameIn(loc i18n.Locale, channel string) string {
+	if key := channelKey(channel); key != "" {
+		return loc.T("incident.channel." + key)
+	}
+
+	return ""
+}
+
+// channelKey is the catalog key of a channel a mail names, or "" for the
+// dashboard and for unknown channels.
+func channelKey(channel string) string {
+	switch key := strings.ToLower(strings.TrimSpace(channel)); key {
+	case "slack", "discord", "telegram", "email", "phone":
+		return key
 	default:
 		return ""
 	}
 }
 
+// viaPhraseIn is how a sentence says where something came from ("via Slack"),
+// in the reader's language. The preposition depends on the channel (French
+// says "via Slack" but "par e-mail"), so the whole phrase is one catalog
+// entry. Empty exactly when channelNameIn is.
+func viaPhraseIn(loc i18n.Locale, channel string) string {
+	if key := channelKey(channel); key != "" {
+		return loc.T("incident.via." + key)
+	}
+
+	return ""
+}
+
+// ackChannelIn names the channel an acknowledgment came from, or "".
+func ackChannelIn(loc i18n.Locale, ack *AckInfo) string {
+	if ack == nil {
+		return ""
+	}
+
+	return channelNameIn(loc, ack.Via)
+}
+
+// ackViaIn says where an acknowledgment came from ("via Slack"), in the
+// reader's language, or "".
+func ackViaIn(loc i18n.Locale, ack *AckInfo) string {
+	if ack == nil {
+		return ""
+	}
+
+	return viaPhraseIn(loc, ack.Via)
+}
+
+// ackViaLabel renders where the acknowledgment came from, e.g. "via Slack".
+// Empty when the channel is unknown or is the dashboard, exactly like an
+// unremarkable comment source.
+func ackViaLabel(ack *AckInfo) string {
+	return ackViaIn(i18n.English, ack)
+}
+
 // ackViaName is ackViaLabel without the leading "via", for the surfaces that
 // render it as a labeled field rather than in a sentence.
 func ackViaName(ack *AckInfo) string {
-	return strings.TrimPrefix(ackViaLabel(ack), "via ")
+	return ackChannelIn(i18n.English, ack)
 }
 
 // ackTitle is the one-line header an acknowledgment notice carries, e.g.

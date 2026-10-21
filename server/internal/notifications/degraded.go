@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/i18n"
 )
 
 // Detail keys written by the degraded evaluator
@@ -112,39 +114,61 @@ func (d *DegradedInfo) Headline(checkName string) string {
 
 // Reason states which rule fired, in probe counts rather than adjectives.
 func (d *DegradedInfo) Reason() string {
+	return d.reasonIn(i18n.English)
+}
+
+// reasonIn is Reason in the reader's language.
+func (d *DegradedInfo) reasonIn(loc i18n.Locale) string {
 	switch {
 	case d.FailuresFired && d.SlowFired:
-		return fmt.Sprintf("%s, and %s", d.failureReason(), d.slowReason())
+		return loc.T("incident.degraded.both", "failures", d.failureReasonIn(loc), "slow", d.slowReasonIn(loc))
 	case d.FailuresFired:
-		return d.failureReason()
+		return d.failureReasonIn(loc)
 	case d.SlowFired:
-		return d.slowReason()
+		return d.slowReasonIn(loc)
 	default:
-		return "an intermittence pattern was detected"
+		return loc.T("incident.degraded.pattern")
 	}
 }
 
-func (d *DegradedInfo) failureReason() string {
+func (d *DegradedInfo) failureReasonIn(loc i18n.Locale) string {
 	if d.AvailabilityPct != nil {
-		return fmt.Sprintf("%d failures in the last %d probes (%.1f%% available)",
-			d.FailureCount, d.FailureSlots, *d.AvailabilityPct)
+		return loc.Tn("incident.degraded.failures", d.FailureCount,
+			"slots", d.FailureSlots, "availability", oneDecimalIn(loc, *d.AvailabilityPct))
 	}
 
-	return fmt.Sprintf("%d failures in the last %d probes", d.FailureCount, d.FailureSlots)
+	return loc.Tn("incident.degraded.failuresNoAvailability", d.FailureCount, "slots", d.FailureSlots)
 }
 
-func (d *DegradedInfo) slowReason() string {
-	return fmt.Sprintf("%d of the last %d probes were slower than %dms",
-		d.SlowCount, d.SlowSlots, d.SlowMs)
+func (d *DegradedInfo) slowReasonIn(loc i18n.Locale) string {
+	return loc.Tn("incident.degraded.slow", d.SlowCount, "slots", d.SlowSlots, "ms", d.SlowMs)
+}
+
+// failureLineIn is the failure rule's line of the degraded mail: the reason
+// and the rule it broke.
+func (d *DegradedInfo) failureLineIn(loc i18n.Locale) string {
+	return loc.T("incident.degraded.failureLine", "reason", d.failureReasonIn(loc),
+		"threshold", d.FailureThreshold, "window", d.FailureWindow)
+}
+
+// slowLineIn is the slow rule's line of the degraded mail.
+func (d *DegradedInfo) slowLineIn(loc i18n.Locale) string {
+	return loc.T("incident.degraded.slowLine", "reason", d.slowReasonIn(loc),
+		"threshold", d.SlowThreshold, "window", d.SlowWindow, "ms", d.SlowMs)
 }
 
 // StatusText is the sentence that stops the message reading like an outage.
 func (d *DegradedInfo) StatusText() string {
+	return d.statusTextIn(i18n.English)
+}
+
+// statusTextIn is StatusText in the reader's language.
+func (d *DegradedInfo) statusTextIn(loc i18n.Locale) string {
 	if d.CurrentlyUp {
-		return "Currently up."
+		return loc.T("incident.degraded.currentlyUp")
 	}
 
-	return "Currently not up."
+	return loc.T("incident.degraded.currentlyNotUp")
 }
 
 // SummaryLines is the shared body every non-templated channel appends, so a
@@ -155,12 +179,12 @@ func (d *DegradedInfo) SummaryLines() []string {
 
 	if d.FailuresFired {
 		out = append(out, fmt.Sprintf("Failures: %s (rule: %d of %d probes)",
-			d.failureReason(), d.FailureThreshold, d.FailureWindow))
+			d.failureReasonIn(i18n.English), d.FailureThreshold, d.FailureWindow))
 	}
 
 	if d.SlowFired {
 		out = append(out, fmt.Sprintf("Slow: %s (rule: %d of %d probes over %dms)",
-			d.slowReason(), d.SlowThreshold, d.SlowWindow, d.SlowMs))
+			d.slowReasonIn(i18n.English), d.SlowThreshold, d.SlowWindow, d.SlowMs))
 	}
 
 	return append(out, d.StatusText())
@@ -168,11 +192,31 @@ func (d *DegradedInfo) SummaryLines() []string {
 
 // WindowText names the span the numbers describe.
 func (d *DegradedInfo) WindowText() string {
+	return d.windowTextIn(i18n.English)
+}
+
+// windowTextIn is WindowText in the reader's language and timezone:
+// "14:02 – 14:47 UTC", "16:02 – 16:47 CEST".
+func (d *DegradedInfo) windowTextIn(loc i18n.Locale) string {
 	if d.WindowFrom.IsZero() || d.WindowTo.IsZero() {
-		return "recent probes"
+		return loc.T("incident.degraded.recentProbes")
 	}
 
-	return d.WindowFrom.UTC().Format("15:04") + " – " + d.WindowTo.UTC().Format("15:04 MST")
+	from := d.WindowFrom.In(loc.Location())
+	to := d.WindowTo.In(loc.Location())
+
+	return from.Format("15:04") + " – " + to.Format("15:04") + " " + zoneLabel(to)
+}
+
+// zoneLabel is a time's zone abbreviation, "UTC+03" for the zones the tz
+// database names by offset only (the same rule as the date template func).
+func zoneLabel(when time.Time) string {
+	abbr := when.Format("MST")
+	if strings.HasPrefix(abbr, "+") || strings.HasPrefix(abbr, "-") {
+		return "UTC" + abbr
+	}
+
+	return abbr
 }
 
 // DegradedCheckWindowURL is the deep link a degraded notification carries: the
