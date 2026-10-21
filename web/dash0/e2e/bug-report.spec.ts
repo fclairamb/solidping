@@ -17,6 +17,23 @@ async function stubBugReport(page: Page, enabled: boolean) {
   });
 }
 
+// The `feedback:open` listener is registered by an effect that only runs once
+// /api/v1/config said bugReport.enabled, and `networkidle` does not guarantee
+// React applied it: a one-shot event dispatched too early is lost. The bug icon
+// renders in the same render as the listener's registration, so wait for it.
+//
+// The dialog also opens only once the screenshot is taken (html-to-image clones
+// and serializes the whole page). Measured with 16 workers on 10 cores that
+// takes 1.5 to 6.5 s, past the default 5 s expect timeout, so the wait for the
+// dialog is bound to the capture, not to a UI transition.
+const CAPTURE_TIMEOUT = 30_000;
+
+async function openFeedback(page: Page) {
+  await expect(page.getByTestId("feedback-button")).toBeVisible();
+  await page.evaluate(() => window.dispatchEvent(new Event("feedback:open")));
+  await expect(page.getByTestId("feedback-comment")).toBeVisible({ timeout: CAPTURE_TIMEOUT });
+}
+
 test.describe("Bug report", () => {
   test("desktop happy path: opens dialog, captures, submits payload", async ({
     authenticatedPage,
@@ -41,7 +58,7 @@ test.describe("Bug report", () => {
     await page.getByTestId("feedback-button").click();
 
     const comment = page.getByTestId("feedback-comment");
-    await comment.waitFor({ state: "visible" });
+    await comment.waitFor({ state: "visible", timeout: CAPTURE_TIMEOUT });
     await comment.fill("Found a bug on the dashboard");
 
     await page.getByTestId("feedback-submit").click();
@@ -63,7 +80,7 @@ test.describe("Bug report", () => {
     const modifier = isMac ? "Meta" : "Control";
     await page.keyboard.press(`${modifier}+Shift+B`);
 
-    await expect(page.getByTestId("feedback-comment")).toBeVisible();
+    await expect(page.getByTestId("feedback-comment")).toBeVisible({ timeout: CAPTURE_TIMEOUT });
   });
 
   test("mobile layout (event-triggered): textarea and annotation toolbar visible", async ({
@@ -76,9 +93,7 @@ test.describe("Bug report", () => {
     await page.reload();
     await page.waitForLoadState("networkidle");
 
-    await page.evaluate(() => {
-      window.dispatchEvent(new Event("feedback:open"));
-    });
+    await openFeedback(page);
 
     await expect(page.getByTestId("feedback-comment")).toBeVisible();
     await expect(page.getByTestId("annotation-toolbar")).toBeVisible();
@@ -110,7 +125,7 @@ async function openDialog(page: Page) {
   await stubBugReport(page, true);
   await page.reload();
   await page.waitForLoadState("networkidle");
-  await page.evaluate(() => window.dispatchEvent(new Event("feedback:open")));
+  await openFeedback(page);
   await expect(page.getByTestId("annotation-canvas")).toBeVisible();
   // Wait for the screenshot to be painted on the overlay.
   await page.waitForTimeout(300);
@@ -189,7 +204,7 @@ test.describe("Bug report annotations", () => {
 
     const annotated = await submitAndGetPNG(page);
     const plain = await (async () => {
-      await page.evaluate(() => window.dispatchEvent(new Event("feedback:open")));
+      await openFeedback(page);
       await expect(page.getByTestId("annotation-canvas")).toBeVisible();
       await page.waitForTimeout(300);
       return submitAndGetPNG(page);
@@ -359,11 +374,11 @@ test.describe("Bug report annotations", () => {
         throw new DOMException("tainted", "SecurityError");
       };
       document.body.appendChild(tainted);
-
-      window.dispatchEvent(new Event("feedback:open"));
     });
 
-    await expect(page.getByTestId("feedback-comment")).toBeVisible();
+    await openFeedback(page);
+
+    await expect(page.getByTestId("feedback-comment")).toBeVisible({ timeout: CAPTURE_TIMEOUT });
     await expect(page.getByTestId("annotation-container")).toBeVisible();
 
     const pixel = await page.evaluate(async () => {
@@ -417,7 +432,7 @@ async function injectViewportFixture(page: Page) {
 }
 
 async function captureAndSample(page: Page, points: Record<string, [number, number]>) {
-  await page.evaluate(() => window.dispatchEvent(new Event("feedback:open")));
+  await openFeedback(page);
   const img = page.getByTestId("annotation-container").locator("img");
   await expect(img).toBeVisible();
   await expect.poll(() => img.evaluate((el: HTMLImageElement) => el.naturalWidth)).toBeGreaterThan(0);
