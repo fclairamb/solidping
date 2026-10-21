@@ -1,14 +1,14 @@
 {
   "unsubscribe": {
     "choice": {
-      "title": "SolidPing-Benachrichtigungen abbestellen",
-      "intro": "Sie sind dabei, die E-Mail-Benachrichtigungen zu Vorfällen für <strong>{email}</strong> abzubestellen.",
-      "checkOnly": "Nur Benachrichtigungen für {check} abbestellen",
-      "wholeOrg": "Alle Alarm-E-Mails dieser Organisation abbestellen",
-      "undoHint": "Sie können dies jederzeit auf der Bestätigungsseite rückgängig machen, die nach dem Abbestellen angezeigt wird, solange dieser Link nicht abgelaufen ist."
+      "title": "Von SolidPing-Benachrichtigungen abmelden",
+      "intro": "Sie sind dabei, <strong>{email}</strong> von den E-Mail-Benachrichtigungen zu Vorfällen abzumelden.",
+      "checkOnly": "Nur von Benachrichtigungen für {check} abmelden",
+      "wholeOrg": "Von allen Alarm-E-Mails dieser Organisation abmelden",
+      "undoHint": "Sie können dies jederzeit auf der Bestätigungsseite rückgängig machen, die nach dem Abmelden angezeigt wird, solange dieser Link nicht abgelaufen ist."
     },
     "success": {
-      "title": "Abbestellung bestätigt",
+      "title": "Abgemeldet",
       "org": "<strong>{email}</strong> erhält keine Alarm-E-Mails dieser Organisation mehr.",
       "check": "<strong>{email}</strong> erhält keine Benachrichtigungen für {check} mehr.",
       "thisCheck": "<strong>{email}</strong> erhält keine Benachrichtigungen für diese Prüfung mehr.",
@@ -29,7 +29,7 @@
     "invalid": {
       "title": "Ungültiger oder abgelaufener Link",
       "heading": "Dieser Link ist ungültig oder abgelaufen",
-      "body": "Der Abbestell-Link konnte nicht überprüft werden oder ist abgelaufen. Wenn Sie eine neuere Alarm-E-Mail erhalten haben, verwenden Sie stattdessen den Link aus dieser Nachricht."
+      "body": "Der Abmeldelink konnte nicht überprüft werden oder ist abgelaufen. Wenn Sie eine neuere Alarm-E-Mail erhalten haben, verwenden Sie stattdessen den Link aus dieser Nachricht."
     },
     "orgNotFound": {
       "title": "Organisation nicht gefunden",

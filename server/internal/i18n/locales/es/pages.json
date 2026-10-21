@@ -1,14 +1,14 @@
 {
   "unsubscribe": {
     "choice": {
-      "title": "Cancelar la suscripción a las alertas de SolidPing",
-      "intro": "Vas a cancelar la suscripción de <strong>{email}</strong> a los correos de alerta de incidentes.",
-      "checkOnly": "Cancelar la suscripción solo a {check}",
-      "wholeOrg": "Cancelar la suscripción a todos los correos de alerta de esta organización",
-      "undoHint": "Puedes deshacerlo en cualquier momento desde la página de confirmación que verás tras cancelar la suscripción, mientras este enlace no haya caducado."
+      "title": "Darse de baja de las alertas de SolidPing",
+      "intro": "Vas a dar de baja <strong>{email}</strong> de los correos de alerta de incidentes.",
+      "checkOnly": "Darse de baja solo de {check}",
+      "wholeOrg": "Darse de baja de todos los correos de alerta de esta organización",
+      "undoHint": "Puedes deshacerlo en cualquier momento desde la página de confirmación que verás después de darte de baja, mientras este enlace no haya caducado."
     },
     "success": {
-      "title": "Suscripción cancelada",
+      "title": "Baja confirmada",
       "org": "<strong>{email}</strong> ya no recibirá ningún correo de alerta de esta organización.",
       "check": "<strong>{email}</strong> ya no recibirá alertas de {check}.",
       "thisCheck": "<strong>{email}</strong> ya no recibirá alertas de esta comprobación.",
@@ -29,7 +29,7 @@
     "invalid": {
       "title": "Enlace no válido o caducado",
       "heading": "Este enlace no es válido o ha caducado",
-      "body": "El enlace para cancelar la suscripción no se ha podido verificar o ha caducado. Si tienes un correo de alerta más reciente, usa el enlace de ese mensaje."
+      "body": "El enlace para darse de baja no se ha podido verificar o ha caducado. Si tienes un correo de alerta más reciente, usa el enlace de ese mensaje."
     },
     "orgNotFound": {
       "title": "Organización no encontrada",
