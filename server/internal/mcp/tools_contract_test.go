@@ -1,7 +1,6 @@
 package mcp
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -38,7 +37,7 @@ func TestToolContract_EveryRegisteredTool(t *testing.T) {
 	// tools/list differs only by toolset; h.tools holds every one of them.
 	for i := range handler.tools {
 		def := &handler.tools[i]
-		r.Empty(toolContractGaps(def), fmt.Sprintf("tool %q", def.Name))
+		r.Empty(toolContractGaps(def), "tool %q", def.Name)
 	}
 }
 
