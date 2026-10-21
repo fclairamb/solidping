@@ -1,31 +1,31 @@
-{{define "subject"}}Your request to join {{.OrgName}} was {{.Decision}}{{end}}
-{{define "preheader"}}Your request to join {{.OrgName}} was {{.Decision}}.{{end}}
+{{define "subject"}}{{if eq .Decision "approved"}}{{t "account.membershipDecision.approved.subject" "org" .OrgName}}{{else}}{{t "account.membershipDecision.rejected.subject" "org" .OrgName}}{{end}}{{end}}
+{{define "preheader"}}{{if eq .Decision "approved"}}{{t "account.membershipDecision.approved.preheader" "org" .OrgName}}{{else}}{{t "account.membershipDecision.rejected.preheader" "org" .OrgName}}{{end}}{{end}}
 {{template "base.html" .}}
 {{define "content"}}
-    <h1>Membership request {{.Decision}}</h1>
+    <h1>{{template "membership-decision-title" .}}</h1>
     {{if eq .Decision "approved"}}
-    <p>Your request to join <strong>{{.OrgName}}</strong> on SolidPing has been approved. You're now a member with role <strong>{{.Role}}</strong>.</p>
+    <p>{{tHTML (printf "account.membershipDecision.approved.body.%s" .Role) "org" .OrgName}}</p>
     {{if .DashboardURL}}
-    <div class="cta-wrap">{{template "button" dict "URL" .DashboardURL "Label" (printf "Open %s" .OrgName) "Variant" "success"}}</div>
+    <div class="cta-wrap">{{template "button" dict "URL" .DashboardURL "Label" (t "account.membershipDecision.approved.cta" "org" .OrgName) "Variant" "success"}}</div>
     {{template "fallback-link" .DashboardURL}}
     {{end}}
     {{else}}
-    <p>Your request to join <strong>{{.OrgName}}</strong> on SolidPing was rejected.</p>
+    <p>{{tHTML "account.membershipDecision.rejected.body" "org" .OrgName}}</p>
     {{if .Reason}}
-    <p>Reason from the admin:</p>
+    <p>{{t "account.membershipDecision.rejected.reasonIntro"}}</p>
     <blockquote class="quote">{{.Reason}}</blockquote>
     {{end}}
-    <p class="meta">You can submit a new request after the cooldown period.</p>
+    <p class="meta">{{t "account.membershipDecision.rejected.retry"}}</p>
     {{end}}
 {{end}}
-{{define "text"}}Membership request {{.Decision}}
+{{define "text"}}{{template "membership-decision-title" .}}
 
-{{if eq .Decision "approved"}}Your request to join {{.OrgName}} on SolidPing has been approved. You're now a member with role {{.Role}}.
+{{if eq .Decision "approved"}}{{t (printf "account.membershipDecision.approved.bodyText.%s" .Role) "org" .OrgName}}
 {{if .DashboardURL}}
-Open {{.OrgName}}: {{.DashboardURL}}
-{{end}}{{else}}Your request to join {{.OrgName}} on SolidPing was rejected.
+{{t "common.textField" "label" (t "account.membershipDecision.approved.cta" "org" .OrgName) "value" .DashboardURL}}
+{{end}}{{else}}{{t "account.membershipDecision.rejected.bodyText" "org" .OrgName}}
 {{if .Reason}}
-Reason from the admin: {{.Reason}}
+{{t "account.membershipDecision.rejected.reasonIntro"}} {{.Reason}}
 {{end}}
-You can submit a new request after the cooldown period.
-{{end}}{{end}}
+{{t "account.membershipDecision.rejected.retry"}}
+{{end}}{{end}}{{define "membership-decision-title"}}{{if eq .Decision "approved"}}{{t "account.membershipDecision.approved.title"}}{{else}}{{t "account.membershipDecision.rejected.title"}}{{end}}{{end}}

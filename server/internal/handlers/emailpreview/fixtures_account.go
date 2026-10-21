@@ -4,8 +4,18 @@ package emailpreview
 // email-changed, invitation and membership_*.
 
 import (
+	"time"
+
+	"github.com/fclairamb/solidping/server/internal/handlers/auth"
 	"github.com/fclairamb/solidping/server/internal/i18n"
 )
+
+// fixtureChangedAt is when the security notices say the password or address
+// changed: a time, like the one production passes, so the preview shows the
+// reader's date format. This year's, so the preview never shows a year.
+func fixtureChangedAt() time.Time {
+	return time.Date(time.Now().Year(), time.July, 5, 10, 0, 0, 0, time.UTC)
+}
 
 func registrationFixture(_ i18n.Locale) map[string]any {
 	return map[string]any{
@@ -27,29 +37,30 @@ func passwordResetFixture(_ i18n.Locale) map[string]any {
 
 // passwordResetSSOFixture previews the reset email sent to a user with no
 // password who signed up through SSO (spec 2026-09-23-02). Two providers on
-// purpose, so the preview also shows the "or"-joined label list.
-func passwordResetSSOFixture(_ i18n.Locale) map[string]any {
+// purpose, so the preview also shows the "or"-joined label list, joined in
+// the reader's language like production does.
+func passwordResetSSOFixture(loc i18n.Locale) map[string]any {
 	return map[string]any{
 		"ResetURL":  fixtureDashboardURL + "/reset-password?token=preview-token",
-		"Providers": "GitHub or Google",
+		"Providers": loc.ListOr([]string{"GitHub", "Google"}),
 	}
 }
 
 func passwordChangedFixture(_ i18n.Locale) map[string]any {
 	return map[string]any{
-		"ChangedAt": "Sunday, July 5, 2026 at 10:00 UTC",
+		"ChangedAt": fixtureChangedAt(),
 	}
 }
 
 func emailChangedFixture(_ i18n.Locale) map[string]any {
 	return map[string]any{
-		"ChangedAt": "Sunday, July 5, 2026 at 10:00 UTC",
+		"ChangedAt": fixtureChangedAt(),
 		"OldEmail":  "alice@acme.com",
 		"NewEmail":  "alice@acme.org",
 	}
 }
 
-func invitationFixture(_ i18n.Locale) map[string]any {
+func invitationFixture(loc i18n.Locale) map[string]any {
 	return map[string]any{
 		keyOrgName:    fixtureOrgName,
 		"Role":        "admin",
@@ -59,7 +70,7 @@ func invitationFixture(_ i18n.Locale) map[string]any {
 		// regardless of the actual invite TTL. This fixture value is
 		// deliberately NOT "7 days" so the preview harness would catch a
 		// regression back to the hardcoded string.
-		"ExpiresIn": "24 hours",
+		"ExpiresIn": auth.InviteExpiresIn(loc, "24h"),
 	}
 }
 

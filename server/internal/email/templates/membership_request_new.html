@@ -1,25 +1,25 @@
-{{define "subject"}}New membership request from {{.RequesterName}} on {{.OrgName}}{{end}}
-{{define "preheader"}}{{.RequesterName}} is waiting for an admin to approve their access.{{end}}
+{{define "subject"}}{{t "account.membershipRequest.subject" "requester" .RequesterName "org" .OrgName}}{{end}}
+{{define "preheader"}}{{t "account.membershipRequest.preheader" "requester" .RequesterName}}{{end}}
 {{template "base.html" .}}
 {{define "content"}}
-    <h1>New membership request</h1>
-    <p><strong>{{.RequesterName}}</strong> ({{mailto .RequesterEmail}}) has asked to join <strong>{{.OrgName}}</strong> on SolidPing.</p>
+    <h1>{{t "account.membershipRequest.title"}}</h1>
+    <p>{{tHTML "account.membershipRequest.body" "requester" .RequesterName "email" (mailto .RequesterEmail) "org" .OrgName}}</p>
     {{if .Message}}
     <blockquote class="quote">{{.Message}}</blockquote>
     {{end}}
     {{if .RequestsURL}}
-    <div class="cta-wrap">{{template "button" dict "URL" .RequestsURL "Label" "Review pending requests" "Variant" "primary"}}</div>
+    <div class="cta-wrap">{{template "button" dict "URL" .RequestsURL "Label" (t "account.membershipRequest.cta") "Variant" "primary"}}</div>
     {{template "fallback-link" .RequestsURL}}
     {{end}}
-    <p class="meta">You're receiving this because you're an admin of {{.OrgName}}.</p>
+    <p class="meta">{{t "account.membershipRequest.why" "org" .OrgName}}</p>
 {{end}}
-{{define "text"}}New membership request
+{{define "text"}}{{t "account.membershipRequest.title"}}
 
-{{.RequesterName}} ({{.RequesterEmail}}) has asked to join {{.OrgName}} on SolidPing.
+{{t "account.membershipRequest.bodyText" "requester" .RequesterName "email" .RequesterEmail "org" .OrgName}}
 {{if .Message}}
-"{{.Message}}"
+{{t "account.membershipRequest.quotedMessage" "message" .Message}}
 {{end}}{{if .RequestsURL}}
-Review pending requests: {{.RequestsURL}}
+{{t "common.textField" "label" (t "account.membershipRequest.cta") "value" .RequestsURL}}
 {{end}}
-You're receiving this because you're an admin of {{.OrgName}}.
+{{t "account.membershipRequest.why" "org" .OrgName}}
 {{end}}
