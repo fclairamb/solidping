@@ -2,8 +2,8 @@
   "subject": "{org}, {period} : {pct} de disponibilité",
   "heading": "{org} : rapport de disponibilité, {period}",
   "preheader": {
-    "withData": "{pct} de disponibilité · {incidents} · {period}.",
-    "noData": "Aucune donnée de disponibilité · {incidents} · {period}."
+    "withData": "{pct} de disponibilité · {incidents} · {period}",
+    "noData": "Aucune donnée de disponibilité · {incidents} · {period}"
   },
   "incidents_one": "{count} incident",
   "incidents_other": "{count} incidents",
@@ -12,7 +12,8 @@
   "metricLabel": "Disponibilité · {period}",
   "versus": "par rapport à {period} ({previous})",
   "period": {
-    "range": "{start} – {end}"
+    "range": "{start} – {end}",
+    "versusWeek": "la semaine du {start} au {end}"
   },
   "scope": {
     "all": "Tous les contrôles ({count})",
@@ -60,14 +61,14 @@
   },
   "checks": {
     "title": "Par contrôle · les moins bons en premier",
-    "truncated": "Affichage des {shown} contrôles à la plus faible disponibilité, sur {total}.",
+    "truncated": "Seuls les {shown} contrôles (sur {total}) à la plus faible disponibilité sont affichés.",
     "downAllPeriod": "en panne toute la période"
   },
   "strip": {
     "label": "Disponibilité quotidienne, {start} – {end} (UTC)",
     "legend": "{label} : vert ≥ {good}, ambre ≥ {warn}, orange ≥ {poor}, rouge en dessous. Le gris signifie que rien n'a été enregistré ce jour-là : un contrôle créé en cours de période apparaît en gris, pas en rouge.",
-    "budgetNote_one": "Les barres quotidiennes ne sont affichées que pour {count} contrôle, celui à la plus faible disponibilité ; les autres ont été omises pour que cet e-mail reste sous la taille à partir de laquelle les messageries le tronquent.",
-    "budgetNote_other": "Les barres quotidiennes ne sont affichées que pour les {count} contrôles à la plus faible disponibilité ; les autres ont été omises pour que cet e-mail reste sous la taille à partir de laquelle les messageries le tronquent."
+    "budgetNote_one": "Les barres quotidiennes ne sont affichées que pour {count} contrôle, celui à la plus faible disponibilité ; celles des autres contrôles ont été omises pour que cet e-mail ne dépasse pas la taille au-delà de laquelle les messageries le tronquent.",
+    "budgetNote_other": "Les barres quotidiennes ne sont affichées que pour les {count} contrôles à la plus faible disponibilité ; celles des autres contrôles ont été omises pour que cet e-mail ne dépasse pas la taille au-delà de laquelle les messageries le tronquent."
   },
   "slo": {
     "title": "Objectifs",
@@ -85,7 +86,7 @@
     "versus": "par rapport à {period} : {previous}",
     "latencyHeading": "Temps de réponse :",
     "perCheck": "Par contrôle, les moins bons en premier :",
-    "perCheckTruncated": "Par contrôle, les moins bons en premier (affichage des {shown} contrôles à la plus faible disponibilité, sur {total}) :",
+    "perCheckTruncated": "Par contrôle, les moins bons en premier (les {shown} contrôles sur {total} à la plus faible disponibilité) :",
     "objectivesHeading": "Objectifs :",
     "budgetRemaining": "budget restant {budget}"
   }

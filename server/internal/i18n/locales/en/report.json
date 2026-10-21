@@ -12,7 +12,8 @@
   "metricLabel": "Availability · {period}",
   "versus": "vs {period} ({previous})",
   "period": {
-    "range": "{start} – {end}"
+    "range": "{start} – {end}",
+    "versusWeek": "{start} – {end}"
   },
   "scope": {
     "all": "All checks ({count})",

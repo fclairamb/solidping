@@ -71,8 +71,11 @@ func (d *Data) write(loc i18n.Locale) {
 	// for Paris must not read "June" to a reader in New York.
 	calendar := loc.InZone(d.Timezone)
 
-	d.PeriodLabel = periodLabel(calendar, fig.Weekly, fig.Period)
-	d.PreviousPeriodLabel = periodLabel(calendar, fig.Weekly, fig.Previous)
+	d.PeriodLabel = periodLabel(calendar, fig.Weekly, fig.Period, "report.period.range")
+	// Only ever read after "vs" (report.versus), so a week is phrased for that
+	// slot: "par rapport à la semaine du 29 juin au 5 juil.", where a bare
+	// range after "à" is not French.
+	d.PreviousPeriodLabel = periodLabel(calendar, fig.Weekly, fig.Previous, "report.period.versusWeek")
 	d.ScopeLabel = scopeLabel(loc, fig.OrgWide, fig.ScheduleName, d.CheckCount)
 	d.AvailabilityPct = pctIf(loc, d.HasData, fig.Availability)
 
@@ -169,9 +172,10 @@ func (row *SLORow) write(loc i18n.Locale) {
 }
 
 // periodLabel names a report period: its month ("July 2026"), or for a
-// weekly report its first and last day ("Jul 6 – Jul 12"). calendar is in the
-// schedule's zone. A zero window (no previous period) gives "".
-func periodLabel(calendar i18n.Locale, weekly bool, window slo.Window) string {
+// weekly report its first and last day through weekKey ("Jul 6 – Jul 12").
+// calendar is in the schedule's zone. A zero window (no previous period)
+// gives "".
+func periodLabel(calendar i18n.Locale, weekly bool, window slo.Window, weekKey string) string {
 	if window.Start.IsZero() {
 		return ""
 	}
@@ -180,7 +184,7 @@ func periodLabel(calendar i18n.Locale, weekly bool, window slo.Window) string {
 		return calendar.Month(window.Start)
 	}
 
-	return calendar.T("report.period.range",
+	return calendar.T(weekKey,
 		"start", calendar.Day(window.Start),
 		"end", calendar.Day(window.End.Add(-time.Second)))
 }

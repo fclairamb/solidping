@@ -2,8 +2,8 @@
   "subject": "{org}, {period}: {pct} de disponibilidad",
   "heading": "Informe de disponibilidad de {org}, {period}",
   "preheader": {
-    "withData": "{pct} de disponibilidad · {incidents} · {period}.",
-    "noData": "Sin datos de disponibilidad · {incidents} · {period}."
+    "withData": "{pct} de disponibilidad · {incidents} · {period}",
+    "noData": "Sin datos de disponibilidad · {incidents} · {period}"
   },
   "incidents_one": "{count} incidente",
   "incidents_other": "{count} incidentes",
@@ -12,7 +12,8 @@
   "metricLabel": "Disponibilidad · {period}",
   "versus": "frente a {period} ({previous})",
   "period": {
-    "range": "{start} – {end}"
+    "range": "{start} – {end}",
+    "versusWeek": "la semana del {start} al {end}"
   },
   "scope": {
     "all": "Todas las comprobaciones ({count})",
@@ -26,7 +27,7 @@
   "labels": {
     "checksMonitored": "Comprobaciones monitorizadas",
     "incidents": "Incidentes",
-    "totalDowntime": "Tiempo de caída total"
+    "totalDowntime": "Tiempo de inactividad total"
   },
   "incidentStats": {
     "longest": "{duration} como máximo",
@@ -39,7 +40,7 @@
   },
   "latency": {
     "title": "Tiempo de respuesta",
-    "average": "Promedio",
+    "average": "Media",
     "range": "Más rápido / más lento",
     "slowProbes": "Sondas lentas"
   },

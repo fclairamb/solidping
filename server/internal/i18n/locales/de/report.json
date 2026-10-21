@@ -2,8 +2,8 @@
   "subject": "{org}, {period}: {pct} Verfügbarkeit",
   "heading": "{org}: Verfügbarkeitsbericht, {period}",
   "preheader": {
-    "withData": "{pct} Verfügbarkeit · {incidents} · {period}.",
-    "noData": "Keine Verfügbarkeitsdaten · {incidents} · {period}."
+    "withData": "{pct} Verfügbarkeit · {incidents} · {period}",
+    "noData": "Keine Verfügbarkeitsdaten · {incidents} · {period}"
   },
   "incidents_one": "{count} Vorfall",
   "incidents_other": "{count} Vorfälle",
@@ -12,7 +12,8 @@
   "metricLabel": "Verfügbarkeit · {period}",
   "versus": "gegenüber {period} ({previous})",
   "period": {
-    "range": "{start} – {end}"
+    "range": "{start} – {end}",
+    "versusWeek": "der Woche vom {start} bis {end}"
   },
   "scope": {
     "all": "Alle Prüfungen ({count})",
