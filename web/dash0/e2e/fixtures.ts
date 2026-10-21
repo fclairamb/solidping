@@ -263,6 +263,59 @@ export async function mockSloCoverage(page: Page): Promise<void> {
   );
 }
 
+/** The language and timezone saved on an account (`user.preferences`). */
+export interface SavedPreferences {
+  locale?: string;
+  timezone?: string;
+}
+
+/**
+ * Stands in for the signed-in user's saved language and timezone (spec
+ * 2026-10-21-01) without touching the account.
+ *
+ * A signed-in dashboard adopts the language saved on the account, so seeding
+ * `solidping_language` in localStorage alone no longer picks the UI language
+ * of an authenticated page. And every worker shares test@test.com: a test
+ * that saved a language on it would switch the tests running alongside and
+ * after it. So in this page only, /auth/me answers report `saved()` over the
+ * real preferences, and a PATCH /auth/me is answered here and never reaches
+ * the server: its body goes to `onPatch`, which updates what `saved()`
+ * returns next.
+ */
+export async function stubSavedPreferences(
+  page: Page,
+  saved: () => SavedPreferences,
+  onPatch?: (body: { preferences?: SavedPreferences }) => void,
+): Promise<void> {
+  // The last real answer: a PATCH is answered in the same shape.
+  let last: { user?: { preferences?: SavedPreferences } } | null = null;
+  const withSaved = () => ({
+    ...last,
+    user: {
+      ...last?.user,
+      preferences: { ...last?.user?.preferences, ...saved() },
+    },
+  });
+
+  await page.route("**/api/v1/auth/me", async (route) => {
+    const request = route.request();
+    if (request.method() === "PATCH") {
+      onPatch?.(request.postDataJSON() as { preferences?: SavedPreferences });
+      await route.fulfill({ status: 200, json: withSaved() });
+      return;
+    }
+
+    const response = await route.fetch();
+    const body = (await response.json().catch(() => null)) as typeof last;
+    if (!response.ok() || !body?.user) {
+      await route.fulfill({ response });
+      return;
+    }
+    last = body;
+    await route.fulfill({ response, json: withSaved() });
+  });
+}
+
 /**
  * Turns the browser HTTP cache OFF for `page`. Call it before the first
  * navigation.

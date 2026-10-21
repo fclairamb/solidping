@@ -330,5 +330,12 @@
       "wrongPassword": "Das aktuelle Passwort ist falsch.",
       "invalid": "Geben Sie eine gültige E-Mail-Adresse ein."
     }
+  },
+  "emailLanguage": {
+    "title": "E-Mail-Sprache",
+    "subtitle": "Die Sprache der E-Mails, die SolidPing Ihnen sendet. Auch dieses Dashboard wird in dieser Sprache angezeigt.",
+    "timezone": "Datumsangaben in Ihren E-Mails folgen der Zeitzone Ihres Browsers: {{timezone}}.",
+    "saved": "E-Mail-Sprache gespeichert.",
+    "failed": "Ihre E-Mail-Sprache konnte nicht gespeichert werden."
   }
 }

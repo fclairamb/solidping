@@ -21,6 +21,7 @@
   "switchOrganization": "Switch Organization",
   "logOut": "Log out",
   "language": "Language",
+  "languageSaveFailed": "Could not save your language.",
   "save": "Save",
   "saving": "Saving...",
   "cancel": "Cancel",

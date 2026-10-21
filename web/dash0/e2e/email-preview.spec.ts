@@ -36,16 +36,17 @@ test.describe("Email template preview", () => {
     // A template that ships only because this spec added its fixture.
     await page.getByTestId("email-preview-item-incident-comment").click();
 
+    // The fixture's comment author, in the subject the index reports.
     await expect(page.getByTestId("email-preview-subject")).toContainText(
-      "COMMENT",
+      "Bob Builder on",
     );
 
     const frame = page.getByTestId("email-preview-frame");
     await expect(frame).toBeVisible();
 
-    // The iframe really rendered the branded wrapper, not an error page.
+    // The iframe really rendered the template, not an error page.
     const framed = page.frameLocator('[data-testid="email-preview-frame"]');
-    await expect(framed.locator("body")).toContainText("New comment on");
+    await expect(framed.locator("h1")).toContainText("Bob Builder commented on");
   });
 
   test("switches to the plaintext part", async ({
@@ -87,7 +88,7 @@ test.describe("Email template preview", () => {
     await expect(card).toBeVisible();
     await expect
       .poll(() => card.evaluate((el) => getComputedStyle(el).backgroundColor))
-      .toBe("rgb(20, 30, 40)");
+      .toBe("rgb(22, 30, 39)"); // base.html's dark .container, #161e27
 
     // Going back to Light drops the param entirely, so the light URL stays the
     // untouched one the mailer sends.
@@ -110,5 +111,78 @@ test.describe("Email template preview", () => {
       "aria-pressed",
       "true",
     );
+  });
+
+  test("previews another language and keeps it in the URL", async ({
+    authenticatedPage: page,
+  }) => {
+    // The endpoint validates the language before rendering anything.
+    const refused = await page.request.get(
+      `${API_BASE}/api/mgmt/email-preview?locale=xx`,
+    );
+    expect(refused.status()).toBe(400);
+    const frIndex = await page.request.get(
+      `${API_BASE}/api/mgmt/email-preview?locale=fr`,
+    );
+    expect(frIndex.status()).toBe(200);
+    for (const row of (await frIndex.json()).data) {
+      expect(row.error ?? "").toBe("");
+    }
+
+    await page.goto("orgs/test/test/emails?template=incident-created.html");
+
+    const frame = page.getByTestId("email-preview-frame");
+    const framed = page.frameLocator('[data-testid="email-preview-frame"]');
+    await expect(page.getByTestId("email-preview-locale-en")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    // English is the endpoint's default: no param, the bytes the mailer sends.
+    await expect(frame).not.toHaveAttribute("src", /locale=/);
+    await expect(framed.locator("html")).toHaveAttribute("lang", "en");
+
+    // The subjects are re-read in the picked language too.
+    const frIndexRequest = page.waitForRequest((request) =>
+      request.url().includes("/api/mgmt/email-preview?locale=fr"),
+    );
+    await page.getByTestId("email-preview-locale-fr").click();
+    await frIndexRequest;
+
+    await expect(frame).toHaveAttribute("src", /locale=fr/);
+    await expect(page).toHaveURL(/locale=fr/);
+    await expect(framed.locator("html")).toHaveAttribute("lang", "fr");
+
+    // The plaintext part follows the same language.
+    const frTextRequest = page.waitForRequest(
+      (request) =>
+        request.url().includes("/api/mgmt/email-preview/incident-created.html") &&
+        request.url().includes("format=text") &&
+        request.url().includes("locale=fr"),
+    );
+    await page.getByTestId("email-preview-format-text").click();
+    await frTextRequest;
+    await expect(page.getByTestId("email-preview-text")).not.toContainText("{{");
+    await page.getByTestId("email-preview-format-html").click();
+
+    // Back to English drops the param entirely.
+    await page.getByTestId("email-preview-locale-en").click();
+    await expect(frame).not.toHaveAttribute("src", /locale=/);
+    await expect(page).not.toHaveURL(/locale=/);
+    await expect(framed.locator("html")).toHaveAttribute("lang", "en");
+  });
+
+  test("deep-links straight into a language", async ({
+    authenticatedPage: page,
+  }) => {
+    await page.goto("orgs/test/test/emails?template=welcome.html&locale=de");
+
+    await expect(page.getByTestId("email-preview-locale-de")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    const frame = page.getByTestId("email-preview-frame");
+    await expect(frame).toHaveAttribute("src", /locale=de/);
+    const framed = page.frameLocator('[data-testid="email-preview-frame"]');
+    await expect(framed.locator("html")).toHaveAttribute("lang", "de");
   });
 });
