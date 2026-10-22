@@ -685,16 +685,20 @@ func (s *Service) SetTaskCanceler(tasks TaskCanceler) {
 	s.tasks = tasks
 }
 
-// cancelRuns cancels the check's run in progress, if any. Best-effort: an
-// uncanceled run is canceled at its next claim anyway.
-func (s *Service) cancelRuns(ctx context.Context, checkUID string) {
+// cancelRuns cancels the check's run in progress, if any, and reports
+// whether one was. Best-effort: an uncanceled run is canceled at its next
+// claim anyway.
+func (s *Service) cancelRuns(ctx context.Context, checkUID string) bool {
 	if s.tasks == nil {
-		return
+		return false
 	}
 
-	if _, err := s.tasks.Cancel(ctx, workertasks.CancelFilter{CheckUID: checkUID}); err != nil {
+	canceled, err := s.tasks.Cancel(ctx, workertasks.CancelFilter{CheckUID: checkUID})
+	if err != nil {
 		slog.WarnContext(ctx, "Failed to cancel the check's run in progress", "check_uid", checkUID, "error", err)
 	}
+
+	return canceled > 0
 }
 
 // SetEnvRefAllow wires the operator allowlist of `${env:NAME}` names
@@ -3541,11 +3545,12 @@ func (s *Service) syncExistingJob(
 		Where("uid = ?", existing.UID)
 
 	// A crawl run in progress was started against the old config: cancel
-	// it, the next one starts fresh (specs 2026-10-03-03, 2026-10-22-03).
-	if checkerdef.CheckType(existing.Type).IsMultiStep() &&
-		(existing.Type != check.Type || !configEqual(existing.Config, check.Config)) {
+	// it, and the next one starts fresh right away rather than a full period
+	// later (specs 2026-10-03-03, 2026-10-22-03). The cancel's end hook has
+	// already released the job; this update sets it due after that.
+	rerunNow := checkerdef.CheckType(existing.Type).IsMultiStep() &&
+		(existing.Type != check.Type || !configEqual(existing.Config, check.Config)) &&
 		s.cancelRuns(ctx, existing.CheckUID)
-	}
 
 	// A type change crossing the multi-step boundary moves the job between
 	// the bulk lane and the fast lane (spec 2026-10-03-03): the cost
@@ -3555,7 +3560,13 @@ func (s *Service) syncExistingJob(
 		query = query.Set("lane = ?", models.InitialLaneForType(check.Type))
 	}
 
-	if scheduleChanged {
+	switch {
+	case rerunNow:
+		now := time.Now()
+		query = query.
+			Set("scheduled_at = ?", now).
+			Set("effective_scheduled_at = ?", now)
+	case scheduleChanged:
 		scheduledAt := nextScheduledAt()
 		query = query.
 			Set("scheduled_at = ?", scheduledAt).

@@ -4,11 +4,15 @@ import (
 	"context"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
+	"github.com/fclairamb/solidping/server/internal/notifier"
 	"github.com/fclairamb/solidping/server/internal/workertasks"
 )
 
@@ -72,9 +76,11 @@ func TestCreateCrawlCheckValidation(t *testing.T) {
 }
 
 // recordingCanceler records the checks whose worker tasks were canceled.
+// idle makes it report that no run was in progress.
 type recordingCanceler struct {
 	mu       sync.Mutex
 	canceled []string
+	idle     bool
 }
 
 func (c *recordingCanceler) Cancel(_ context.Context, filter workertasks.CancelFilter) (int, error) {
@@ -82,6 +88,10 @@ func (c *recordingCanceler) Cancel(_ context.Context, filter workertasks.CancelF
 	defer c.mu.Unlock()
 
 	c.canceled = append(c.canceled, filter.CheckUID)
+
+	if c.idle {
+		return 0, nil
+	}
 
 	return 1, nil
 }
@@ -94,29 +104,72 @@ func (c *recordingCanceler) calls() []string {
 }
 
 // Re-configuring, pausing or deleting a crawl cancels its run in progress
-// (spec 2026-10-22-03). An edit that changes nothing a run sees does not.
+// (spec 2026-10-22-03). An edit that changes nothing a run sees does not. A
+// config edit that canceled a run makes the job due now, not a period later.
 func TestCrawlEditsCancelTheRunInProgress(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
 	ctx := t.Context()
 
-	svc, org := setupDockerGateService(t, config.DeploymentModeSelfHosted)
+	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(dbSvc.Initialize(ctx))
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	org := models.NewOrganization("crawl-cancel-org", "Acme")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	svc := checks.NewService(dbSvc, notifier.NewLocalEventNotifier(), disabledCreds(t), nil)
+	svc.SetDeploymentMode(config.DeploymentModeSelfHosted)
+
 	canceler := &recordingCanceler{}
 	svc.SetTaskCanceler(canceler)
 
 	created, err := svc.CreateCheck(ctx, org.Slug, crawlReq("24:00:00", []string{"eu-west"}, nil))
 	r.NoError(err)
 
+	// The job waits for its next period, as after a run ended.
+	later := time.Now().Add(20 * time.Hour).UTC()
+	scheduledAt := func() time.Time {
+		job := new(models.CheckJob)
+		r.NoError(dbSvc.DB().NewSelect().Model(job).Where("check_uid = ?", created.UID).Scan(ctx))
+
+		return *job.ScheduledAt
+	}
+	postpone := func() {
+		_, err := dbSvc.DB().NewUpdate().Model((*models.CheckJob)(nil)).
+			Set("scheduled_at = ?", later).Set("effective_scheduled_at = ?", later).
+			Where("check_uid = ?", created.UID).Exec(ctx)
+		r.NoError(err)
+	}
+	postpone()
+
 	name := "renamed"
 	_, err = svc.UpdateCheck(ctx, org.Slug, created.UID, &checks.UpdateCheckRequest{Name: &name})
 	r.NoError(err)
 	r.Empty(canceler.calls(), "a rename leaves the run alone")
+	r.WithinDuration(later, scheduledAt(), time.Second, "a rename leaves the schedule alone")
 
 	cfg := map[string]any{"url": "https://www.acme.com/blog/"}
 	_, err = svc.UpdateCheck(ctx, org.Slug, created.UID, &checks.UpdateCheckRequest{Config: &cfg})
 	r.NoError(err)
 	r.Equal([]string{created.UID}, canceler.calls(), "a new config cancels the run")
+	r.False(scheduledAt().After(time.Now()), "the edited crawl is due now")
+
+	// With no run in progress, a config edit keeps the schedule.
+	postpone()
+
+	canceler.mu.Lock()
+	canceler.idle = true
+	canceler.canceled = nil
+	canceler.mu.Unlock()
+
+	cfg = map[string]any{"url": "https://www.acme.com/docs/"}
+	_, err = svc.UpdateCheck(ctx, org.Slug, created.UID, &checks.UpdateCheckRequest{Config: &cfg})
+	r.NoError(err)
+	r.Len(canceler.calls(), 1)
+	r.WithinDuration(later, scheduledAt(), time.Second, "nothing was canceled, the schedule stays")
 
 	disabled := false
 	_, err = svc.UpdateCheck(ctx, org.Slug, created.UID, &checks.UpdateCheckRequest{Enabled: &disabled})
