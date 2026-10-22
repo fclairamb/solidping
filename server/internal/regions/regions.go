@@ -161,11 +161,14 @@ func DefaultRegions() []RegionDefinition {
 // Service provides region management operations.
 type Service struct {
 	db db.Service
+	// taskCaps are the worker-task capabilities aggregated next to the
+	// published ones (taskCapabilities; a field so tests can name one).
+	taskCaps []string
 }
 
 // NewService creates a new regions service.
 func NewService(dbService db.Service) *Service {
-	return &Service{db: dbService}
+	return &Service{db: dbService, taskCaps: taskCapabilities}
 }
 
 // GetGlobalRegions returns the list of all defined regions from the system parameter.

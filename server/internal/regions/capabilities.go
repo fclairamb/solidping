@@ -3,6 +3,7 @@ package regions
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/agents"
@@ -94,14 +95,47 @@ var aggregatedCapabilities = []string{ //nolint:gochecknoglobals // the publishe
 	CapabilityBrowser,
 }
 
+// taskCapabilities are the worker-task executor capabilities (spec
+// 2026-10-22-02), aggregated like the names above. Specs 2026-10-22-03 and -04
+// add crawl and discovery. A system agent never runs worker tasks (the task
+// routes refuse it), so its report never counts for them: the agent socket
+// strips them before storing it (StripTaskCapabilities).
+var taskCapabilities = []string{} //nolint:gochecknoglobals // the published task capability registry
+
+// StripTaskCapabilities removes the worker-task capabilities from a reported
+// set. A nil ("unknown") set stays nil.
+func StripTaskCapabilities(capabilities []string) []string {
+	return stripCapabilities(capabilities, taskCapabilities)
+}
+
+func stripCapabilities(capabilities, names []string) []string {
+	if capabilities == nil || len(names) == 0 {
+		return capabilities
+	}
+
+	out := make([]string, 0, len(capabilities))
+
+	for _, name := range capabilities {
+		if !slices.Contains(names, name) {
+			out = append(out, name)
+		}
+	}
+
+	return out
+}
+
 // capabilitiesFor renders the capability map for a worker set: the published
 // capabilities, plus one entry per plugin check type this server loaded (a
 // worker advertises the plugin types it can run, spec 2026-10-17-05 §17), plus
 // the extra capability names the caller asks about (an org's agent-reported
 // plugin types, which only that org may see).
-func capabilitiesFor(workers []*models.Worker, extra []string) map[string]string {
-	out := make(map[string]string, len(aggregatedCapabilities))
+func (s *Service) capabilitiesFor(workers []*models.Worker, extra []string) map[string]string {
+	out := make(map[string]string, len(aggregatedCapabilities)+len(s.taskCaps))
 	for _, name := range aggregatedCapabilities {
+		out[name] = aggregate(workers, name)
+	}
+
+	for _, name := range s.taskCaps {
 		out[name] = aggregate(workers, name)
 	}
 
@@ -167,7 +201,7 @@ func (s *Service) annotateGlobal(ctx context.Context, defs []RegionDefinition, e
 			}
 		}
 
-		defs[i].Capabilities = capabilitiesFor(matched, extra)
+		defs[i].Capabilities = s.capabilitiesFor(matched, extra)
 	}
 
 	return nil
@@ -223,7 +257,7 @@ func (s *Service) annotatePrivate(
 			}
 		}
 
-		defs[i].Capabilities = capabilitiesFor(matched, extra)
+		defs[i].Capabilities = s.capabilitiesFor(matched, extra)
 	}
 
 	return nil
