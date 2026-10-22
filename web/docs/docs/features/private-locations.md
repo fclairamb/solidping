@@ -16,10 +16,10 @@ Key properties:
 - **One-shot enrollment** — the agent enrolls with a single-use `spe_` token,
   generates its own keypairs locally, and sends only the public halves to the
   server. The server never stores a usable agent credential.
-- **Checks-only by construction** — the agent's protocol is exactly
-  *claim jobs / submit results*. It cannot read configuration, list checks, or
-  touch any other org data, and the server enforces this — it does not trust
-  the agent.
+- **No access to org data** — the agent's protocol is exactly *claim work /
+  submit results*: check jobs, and, when its operator opts in, discovery scans
+  and crawls. It cannot read configuration, list checks, or touch any other org
+  data, and the server enforces this — it does not trust the agent.
 - **Region-sealed credentials** — secrets for checks that target *only* your
   private location are encrypted (with [age](https://age-encryption.org)
   X25519) to your agents' public keys **at write time**. The server cannot
@@ -142,6 +142,8 @@ drain.
 | `SP_AGENT_NAME` | hostname | Display name shown in the dashboard |
 | `SP_NODE_NAME` | hostname | Pins the worker identity. Without it the worker slug is derived from the (truncated) hostname, so a pod that gets a new name on every restart lands on a new `workers` row each time |
 | `SP_EGRESS_ALLOW_PRIVATE` | `true` on an agent | Whether checks may reach non-public addresses. An agent exists to reach your private network, so it allows them unless you set `false`. See [Egress policy](/configuration/egress-policy) |
+| `SP_AGENT_DISCOVERY_ENABLED` | `false` | Lets this agent run [network discovery](#scan-the-locations-network) scans. Never set it on a system agent |
+| `SP_AGENT_DISCOVERY_CIDRS` | — | Comma-separated IPv4 prefixes discovery may probe, e.g. `10.0.0.0/8,192.168.0.0/16`. Required when discovery is enabled |
 | `SP_AGENT_PRINT_KEYS` | `false` | Prints the agent's **private key material** to stdout — opt-in bootstrap only (honoured on every start); unset it again afterwards |
 
 **Version reporting needs no configuration.** Every agent automatically
@@ -331,6 +333,40 @@ run crawls: the region picker disables a location whose agents report no crawl
 support, with a hint to upgrade them. Each fetched URL counts against your
 checks-per-minute limit, as from a cloud region.
 
+### Scan the location's network
+
+A location's agent can run [network discovery](./discovery.md) from inside your
+network, so SolidPing finds the hosts there and suggests checks for them. It
+is off by default: the operator of the agent decides what may be scanned.
+
+1. On the agent, set `SP_AGENT_DISCOVERY_ENABLED=true` and
+   `SP_AGENT_DISCOVERY_CIDRS` to the prefixes it may probe:
+
+   ```bash
+   SP_AGENT_DISCOVERY_ENABLED=true
+   SP_AGENT_DISCOVERY_CIDRS=10.0.0.0/8,192.168.0.0/16
+   ```
+
+   The list holds masked IPv4 prefixes. Loopback, `0.0.0.0`, link-local and
+   multicast ranges are refused, and an invalid list stops the agent at
+   startup. Restart the agent: the location's row in **Private locations** then
+   shows a **Discovery** badge.
+2. Open **Organization → Discovery → New scan**, pick **LAN**, and choose the
+   location in **Run from**. Enter the CIDRs (they must sit inside the agent's
+   list) and confirm.
+3. Review the findings as for any scan. Checks promoted from it run from the
+   location.
+
+The agent bounds every chunk it runs: at most 64 concurrent probes, 1 second
+per probe, 32 ports and 10 minutes per chunk. The ranges outside
+`SP_AGENT_DISCOVERY_CIDRS` are refused whatever the server asks for. Cancelling
+a scan stops the agent at its next heartbeat, 30 seconds at most.
+
+Starting a scan from a location needs an admin membership of the organization
+(a super admin without one is refused) and is not available while
+impersonating. See [Discovery](./discovery.md#running-a-lan-scan-from-a-private-location)
+for the limits and the SaaS daily address quota.
+
 ### Updating a sealed check's configuration
 
 Sealed-only credentials are invisible to the server, which shapes how `PATCH`
@@ -370,7 +406,7 @@ membership changes matter:
 
 | Property | Mechanism |
 |---|---|
-| Agent can't read org data | WS protocol is claim/result only; enforced server-side |
+| Agent can't read org data | The protocol is claim/result only (checks, and opt-in discovery and crawl tasks); enforced server-side |
 | Agent can't claim foreign work | Claims are hard-scoped to the agent's org **and** exact region |
 | No stealable agent credential | Ed25519 signature auth; DB stores public keys only |
 | Enrollment can't be replayed | Single-use token, atomic consume, hash-only at rest |
@@ -402,3 +438,17 @@ marketing:
 - **Revocation is not retroactive.** See the rotation caveat above — revoking an
   agent stops it from receiving *new* work and *future* credentials, but
   anything it already decrypted is already known to it.
+- **Scans and crawls use the generic agent task routes.** A discovery scan (and
+  a crawl) is claimed through `/api/v1/agent/tasks/*`, with the same
+  org-and-exact-region scoping as check claims.
+- **The allow-list bounds discovery only.** `SP_AGENT_DISCOVERY_CIDRS` limits
+  what a scan may probe. Checks and trace requests can already reach any host
+  the agent routes to, so network filtering of the agent host is the real
+  boundary.
+- **Reverse DNS goes to the agent's resolver.** The names of live hosts are
+  looked up by the agent, not by the server.
+- **ICMP needs a privilege.** Liveness probes need `NET_RAW` or the
+  `net.ipv4.ping_group_range` sysctl. Without them the scan falls back to
+  TCP-only liveness, and hosts that answer only ICMP are missed.
+- **Task claims share the handshake replay window.** The per-replica replay
+  window described above applies to task claims as well.

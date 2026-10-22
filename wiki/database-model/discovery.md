@@ -37,3 +37,5 @@ Suggested checks produced by discovery scans, grouped for display by
 Migration `002_v0_2_0` dropped it outright (results are regenerable by re-scan)
 and replaced it with this check-centric model. `discovered_hosts` is not part of
 the current schema.
+
+Scans run from a private region's agent hand their chunks over as `worker_tasks` rows of kind `discovery`: see [worker-tasks.md](worker-tasks.md).

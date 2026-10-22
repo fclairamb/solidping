@@ -77,6 +77,7 @@ Not in `openapi.yaml`, like `/agent/attachments`.
 - Bodies are capped at 1 MiB (`413`). An agent holds 1 task at a time.
 - `410`: the task is not held by this agent (another holder, lease expired, cancelled, ended). The agent stops `Run`.
 - An old server answers `404`: the agent sleeps 15 s and claims again.
+- Task kinds are `discovery` (a LAN scan chunk, spec 2026-10-22-04) and `crawl` (spec 2026-10-22-03). An agent reports them as capabilities (`discovery` only when `SP_AGENT_DISCOVERY_ENABLED=true`) and `GET /orgs/:org/regions` surfaces them in the region's `capabilities` map (`yes`/`no`/`unknown`, hint only). A system agent's report never counts: the server strips the task capabilities.
 - The claim carries the server-held state of the previous slice; `step` sends the next one. Lease 2 min, heartbeat every 30 s. Mechanism: `server/internal/workertasks`.
 
 **What triggers an upload.** An agent does not POST here spontaneously. It is

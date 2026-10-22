@@ -88,7 +88,10 @@
     "auth.impersonation_started": "Impersonation Started",
     "auth.email_changed": "Email Changed",
     "agent.connected": "Agent Connected",
-    "agent.disconnected": "Agent Disconnected"
+    "agent.disconnected": "Agent Disconnected",
+    "discovery.scan_started": "Discovery Scan Started",
+    "discovery.scan_canceled": "Discovery Scan Canceled",
+    "discovery.chunk_refused": "Discovery Chunk Refused"
   },
   "descriptions": {
     "org.activation.signup_completed": "Your organization is set up and ready to go.",
@@ -148,6 +151,7 @@
       "status_page": "Status pages",
       "maintenance_window": "Maintenance windows",
       "config": "Config as code",
+      "discovery": "Discovery",
       "check": "Checks",
       "incident": "Incidents",
       "org": "Organization",

@@ -353,6 +353,7 @@
       "region": "Région",
       "agents": "Agents",
       "ipv6": "IPv6",
+      "discoveryBadge": "Découverte",
       "actions": "Actions",
       "mint": "Nouveau jeton d'inscription",
       "delete": "Supprimer l'emplacement",

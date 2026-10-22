@@ -6745,6 +6745,10 @@ export interface DiscoveryScanProgress {
   derivedStatus: "pending" | "running" | "success" | "failed";
   groupCount: number;
   checkCount: number;
+  /** Private region (@slug) an agent-run scan runs from; absent for the server. */
+  region?: string;
+  /** Error code of an agent-run scan's latest failed chunk. */
+  lastErrorCode?: string;
 }
 
 export type DiscoverySource = "lan" | "freebox" | "container" | "kubernetes";
@@ -6754,6 +6758,9 @@ export type DiscoverySource = "lan" | "freebox" | "container" | "kubernetes";
 export interface DiscoveryType {
   type: string;
   source: DiscoverySource;
+  /** False when the server may not run this type (lan under an enforcing
+   * egress policy): the scan then needs a private region. Absent = available. */
+  serverAvailable?: boolean;
 }
 
 // DiscoveredCheck is one suggested check produced by a scan. Rows are grouped for
@@ -6763,6 +6770,8 @@ export interface DiscoveredCheck {
   organizationUid: string;
   jobUid: string;
   source: DiscoverySource;
+  /** Private region (@slug) of the scan that found the row; absent for the server. */
+  region?: string;
   groupKey: string;
   groupLabel: string;
   name: string;
@@ -6779,6 +6788,8 @@ export interface DiscoveredCheck {
 export interface StartDiscoveryScanRequest {
   type: string;
   parameters: Record<string, unknown>;
+  /** Private region (@slug) to run a lan scan from; omitted = the server. */
+  region?: string;
 }
 
 // PromoteChecksRequest promotes one or more discovered checks into real checks.
