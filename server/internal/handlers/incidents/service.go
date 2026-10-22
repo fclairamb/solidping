@@ -2017,7 +2017,9 @@ func (s *Service) queueLifecycleNotifications(
 		models.EventTypeStatusPageDeleted,
 		models.EventTypeMaintenanceWindowCreated, models.EventTypeMaintenanceWindowUpdated,
 		models.EventTypeMaintenanceWindowDeleted,
-		models.EventTypeConfigApplied, models.EventTypeOrgSettingsUpdated:
+		models.EventTypeConfigApplied, models.EventTypeOrgSettingsUpdated,
+		models.EventTypeDiscoveryScanStarted, models.EventTypeDiscoveryScanCanceled,
+		models.EventTypeDiscoveryChunkRefused:
 		// No notifications for these event types — operator actions, soft
 		// escalation failures, status updates, activation milestones, or
 		// audit-trail entries.
