@@ -13,15 +13,21 @@ import (
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/pgdialect"
 
+	"github.com/fclairamb/solidping/server/internal/audit"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	disc "github.com/fclairamb/solidping/server/internal/discovery"
 	"github.com/fclairamb/solidping/server/internal/discovery/scantypes"
+	"github.com/fclairamb/solidping/server/internal/discoverytask"
 	"github.com/fclairamb/solidping/server/internal/egress"
+	"github.com/fclairamb/solidping/server/internal/entitlements"
+	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/regions"
+	"github.com/fclairamb/solidping/server/internal/workertasks"
 )
 
 // staleScanThreshold is how old a child network_discovery job's updated_at may be
@@ -29,6 +35,23 @@ import (
 // pragmatic stand-in for a real lease/reaper: a single child stuck in `running`
 // (e.g. a crashed worker) stops blocking new scans after this window.
 const staleScanThreshold = 30 * time.Minute
+
+// lanType is the discovery type a region-bound scan must be.
+const lanType = "lan"
+
+// Audit payload keys and bounds of discovery.scan_started (spec 2026-10-22-04).
+// No key may contain private, key, token or auth: redaction drops those.
+const (
+	payloadScanType     = "scan_type"
+	payloadRegion       = "region"
+	payloadCIDRCount    = "cidr_count"
+	payloadCIDRs        = "cidrs"
+	payloadAddressCount = "address_count"
+	payloadPortCount    = "port_count"
+	auditTargetScan     = "discovery_scan"
+	maxAuditCIDRs       = 32
+	maxQuotaEvents      = 10000
+)
 
 var (
 	// ErrCheckNotFound is returned when a discovered check is not found.
@@ -81,6 +104,10 @@ type Service struct {
 	// types this deployment refuses (spec 2026-10-16-10).
 	egressGuard   *egress.Guard
 	dockerBlocked bool
+	// tasks holds the chunks of agent-run scans (spec 2026-10-22-04);
+	// entitlements their daily address quota. Nil entitlements is unlimited.
+	tasks        *workertasks.Service
+	entitlements *entitlements.Service
 }
 
 // NewService creates a new discovery service.
@@ -108,6 +135,18 @@ func NewService(
 	}
 }
 
+// SetWorkerTasks installs the worker-task service agent-run scans cancel their
+// chunks through. Set once at startup.
+func (s *Service) SetWorkerTasks(tasks *workertasks.Service) {
+	s.tasks = tasks
+}
+
+// SetEntitlements installs the entitlements service behind the daily
+// agent-discovery address quota. Set once at startup.
+func (s *Service) SetEntitlements(ent *entitlements.Service) {
+	s.entitlements = ent
+}
+
 // deps returns the discovery-type dependencies of this service, carrying the
 // deployment's egress policy and docker gate.
 func (s *Service) deps() scantypes.Deps {
@@ -116,6 +155,7 @@ func (s *Service) deps() scantypes.Deps {
 		Creds:         s.creds,
 		EgressGuard:   s.egressGuard,
 		DockerBlocked: s.dockerBlocked,
+		Regions:       s.regionsSvc,
 	}
 }
 
@@ -136,30 +176,75 @@ func (s *Service) AvailableTypes() []scantypes.Definition {
 	return out
 }
 
+// TypeAvailability is a discovery type the org may start, and whether the
+// server itself may run it (otherwise only a private region's agents can).
+type TypeAvailability struct {
+	Definition      scantypes.Definition
+	ServerAvailable bool
+}
+
+// TypesFor returns the discovery types the org may start. `lan`, refused on
+// the server under an enforcing egress policy, stays listed (ServerAvailable
+// false) when the org has a private region its agents could scan from.
+func (s *Service) TypesFor(ctx context.Context, orgUID string) ([]TypeAvailability, error) {
+	deps := s.deps()
+	all := scantypes.List()
+	out := make([]TypeAvailability, 0, len(all))
+
+	for _, def := range all {
+		if scantypes.Available(def, deps) == nil {
+			out = append(out, TypeAvailability{Definition: def, ServerAvailable: true})
+
+			continue
+		}
+
+		if def.Type() != lanType {
+			continue
+		}
+
+		privateRegions, err := s.regionsSvc.GetOrgCustomRegions(ctx, orgUID)
+		if err != nil {
+			return nil, fmt.Errorf("list private regions: %w", err)
+		}
+
+		if len(privateRegions) > 0 {
+			out = append(out, TypeAvailability{Definition: def})
+		}
+	}
+
+	return out, nil
+}
+
 // StartScan resolves the discovery type from the registry, validates its
 // parameters (which yields the job type + config to enqueue), guards against an
 // already-running scan of that resolved job type, then creates the scan job. The
-// returned job's UID is the scan UID. A coded *scantypes.DiscoveryError is
-// returned for an unknown type, invalid parameters, or a precondition failure;
-// ErrAlreadyRunning when a scan of the same type is already in flight.
+// returned job's UID is the scan UID. region is the private region the scan
+// runs from ("" = the server; only `lan` takes one). A coded
+// *scantypes.DiscoveryError is returned for an unknown type, invalid
+// parameters, or a precondition failure; ErrAlreadyRunning when a scan of the
+// same type is already in flight.
 func (s *Service) StartScan(
-	ctx context.Context, orgUID, typ string, parameters json.RawMessage,
+	ctx context.Context, orgUID, typ, region string, parameters json.RawMessage,
 ) (*models.Job, error) {
 	def, ok := scantypes.Get(typ)
 	if !ok {
 		return nil, scantypes.NewError(scantypes.CodeUnknownType, fmt.Sprintf("unknown discovery type %q", typ))
 	}
 
+	if region != "" && def.Type() != lanType {
+		return nil, scantypes.NewError(string(base.ErrorCodeValidationError), "region is only supported by lan scans")
+	}
+
 	deps := s.deps()
 
-	jobType, jobConfig, err := def.BuildJob(ctx, deps, orgUID, parameters)
+	jobType, jobConfig, err := def.BuildJob(ctx, deps, orgUID, region, parameters)
 	if err != nil {
 		return nil, err
 	}
 
 	// Guard against a concurrent scan of the same resolved job type. Fan-out scans
-	// (network_discovery_plan) also guard on non-stale child chunks.
-	if jobType == string(jobdef.JobTypeNetworkDiscoveryPlan) {
+	// (both plan types) also guard on their live chunks, per org.
+	if isPlanType(jobType) {
 		if guardErr := s.checkScanAlreadyRunning(ctx, orgUID); guardErr != nil {
 			return nil, guardErr
 		}
@@ -167,12 +252,111 @@ func (s *Service) StartScan(
 		return nil, guardErr
 	}
 
+	summary := summarize(jobConfig)
+
+	if jobType == string(jobdef.JobTypeNetworkDiscoveryAgentPlan) {
+		if quotaErr := s.checkAgentQuota(ctx, orgUID, summary.addresses); quotaErr != nil {
+			return nil, quotaErr
+		}
+	}
+
 	job, err := s.jobSvc.CreateJob(ctx, orgUID, jobType, jobConfig, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create discovery scan job: %w", err)
 	}
 
+	audit.Record(ctx, s.dbSvc, orgUID, models.EventTypeDiscoveryScanStarted, scanTarget(job), models.JSONMap{
+		payloadScanType:     typ,
+		payloadRegion:       region,
+		payloadCIDRCount:    len(summary.cidrs),
+		payloadCIDRs:        summary.cidrs[:min(len(summary.cidrs), maxAuditCIDRs)],
+		payloadAddressCount: summary.addresses,
+		payloadPortCount:    len(summary.ports),
+	})
+
 	return job, nil
+}
+
+// scanSummary is what the audit trail and the quota read off a scan config.
+type scanSummary struct {
+	cidrs     []string
+	ports     []int
+	addresses int
+}
+
+func summarize(jobConfig json.RawMessage) scanSummary {
+	var cfg struct {
+		CIDRs []string `json:"cidrs"`
+		Ports []int    `json:"ports"`
+	}
+
+	_ = json.Unmarshal(jobConfig, &cfg)
+
+	addresses, _ := disc.AddressCount(cfg.CIDRs)
+
+	if cfg.CIDRs == nil {
+		cfg.CIDRs = []string{}
+	}
+
+	return scanSummary{cidrs: cfg.CIDRs, ports: cfg.Ports, addresses: addresses}
+}
+
+func scanTarget(job *models.Job) audit.Target {
+	return audit.Target{Type: auditTargetScan, UID: job.UID, Name: job.Type}
+}
+
+func isPlanType(jobType string) bool {
+	return jobType == string(jobdef.JobTypeNetworkDiscoveryPlan) ||
+		jobType == string(jobdef.JobTypeNetworkDiscoveryAgentPlan)
+}
+
+// checkAgentQuota refuses a region-bound scan that would take the org's agents
+// over their daily address quota (discovery_agent_addresses_per_day), counted
+// from today's region-bound discovery.scan_started events. A nil cap
+// (self-hosted) is unlimited.
+func (s *Service) checkAgentQuota(ctx context.Context, orgUID string, addresses int) error {
+	if s.entitlements == nil {
+		return nil
+	}
+
+	resolved, err := s.entitlements.Resolve(ctx, orgUID)
+	if err != nil {
+		return fmt.Errorf("resolve entitlements: %w", err)
+	}
+
+	limit := resolved.Limits.MaxDiscoveryAgentAddressesPerDay
+	if limit == nil {
+		return nil
+	}
+
+	now := time.Now().UTC()
+	since := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+
+	events, err := s.dbSvc.ListEvents(ctx, &models.ListEventsFilter{
+		OrganizationUID: orgUID,
+		EventTypes:      []models.EventType{models.EventTypeDiscoveryScanStarted},
+		Since:           &since,
+		Limit:           maxQuotaEvents,
+	})
+	if err != nil {
+		return fmt.Errorf("read discovery usage: %w", err)
+	}
+
+	used := 0
+
+	for _, event := range events {
+		if region, _ := event.Payload[payloadRegion].(string); region != "" {
+			used += toInt(event.Payload[payloadAddressCount])
+		}
+	}
+
+	if used+addresses > *limit {
+		return scantypes.NewError(scantypes.CodeQuotaExceeded, fmt.Sprintf(
+			"agent discovery is limited to %d addresses a day: %d used today, this scan needs %d",
+			*limit, used, addresses))
+	}
+
+	return nil
 }
 
 // scanJobTypes returns the job types that constitute discovery scans, for the
@@ -183,6 +367,7 @@ func (s *Service) StartScan(
 func scanJobTypes() []string {
 	return []string{
 		string(jobdef.JobTypeNetworkDiscoveryPlan),
+		string(jobdef.JobTypeNetworkDiscoveryAgentPlan),
 		string(jobdef.JobTypeNetworkDiscovery),
 		string(jobdef.JobTypeFreeboxLanDiscovery),
 		string(jobdef.JobTypeContainerDiscovery),
@@ -231,7 +416,9 @@ func (s *Service) checkScanAlreadyRunning(ctx context.Context, orgUID string) er
 	// Active plan jobs.
 	planCount, err := s.db.NewSelect().
 		TableExpr("jobs").
-		Where("type = ?", string(jobdef.JobTypeNetworkDiscoveryPlan)).
+		Where("type IN (?)", bun.List([]string{
+			string(jobdef.JobTypeNetworkDiscoveryPlan), string(jobdef.JobTypeNetworkDiscoveryAgentPlan),
+		})).
 		Where("organization_uid = ?", orgUID).
 		Where("status IN (?)", bun.List([]models.JobStatus{models.JobStatusPending, models.JobStatusRunning})).
 		Where("deleted_at IS NULL").
@@ -263,6 +450,29 @@ func (s *Service) checkScanAlreadyRunning(ctx context.Context, orgUID string) er
 		return ErrAlreadyRunning
 	}
 
+	// Live chunks of agent plans: a pending task not yet expired, or a claimed
+	// one under a live lease.
+	now := time.Now()
+
+	taskCount, err := s.db.NewSelect().
+		TableExpr("worker_tasks").
+		Where("kind = ?", discoverytask.Kind).
+		Where("organization_uid = ?", orgUID).
+		WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
+			return q.
+				Where("(status = ? AND updated_at >= ?)", models.WorkerTaskStatusPending,
+					now.Add(-models.WorkerTaskStaleAfter)).
+				WhereOr("(status = ? AND lease_until >= ?)", models.WorkerTaskStatusClaimed, now)
+		}).
+		Count(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to check live discovery tasks: %w", err)
+	}
+
+	if taskCount > 0 {
+		return ErrAlreadyRunning
+	}
+
 	return nil
 }
 
@@ -279,6 +489,10 @@ type ScanProgress struct {
 	DerivedStatus   string `json:"derivedStatus"`
 	GroupCount      int    `json:"groupCount"`
 	CheckCount      int    `json:"checkCount"`
+	// Region is the private region an agent-run scan runs from; LastErrorCode
+	// the code of its latest failed chunk (spec 2026-10-22-04).
+	Region        string `json:"region,omitempty"`
+	LastErrorCode string `json:"lastErrorCode,omitempty"`
 }
 
 // GetScanProgress returns a uniform progress view for any scan job. A fan-out
@@ -292,9 +506,14 @@ func (s *Service) GetScanProgress(ctx context.Context, orgUID, scanUID string) (
 
 	progress := &ScanProgress{}
 
-	if job.Type == string(jobdef.JobTypeNetworkDiscoveryPlan) {
+	switch job.Type {
+	case string(jobdef.JobTypeNetworkDiscoveryPlan):
 		s.fillPlanProgress(ctx, job, orgUID, scanUID, progress)
-	} else {
+	case string(jobdef.JobTypeNetworkDiscoveryAgentPlan):
+		if err = s.fillAgentPlanProgress(ctx, job, orgUID, progress); err != nil {
+			return nil, err
+		}
+	default:
 		fillSingleJobProgress(job, progress)
 	}
 
@@ -358,6 +577,68 @@ func (s *Service) fillPlanProgress(
 	}
 
 	progress.DerivedStatus = derivePlanStatus(plan, progress)
+}
+
+// fillAgentPlanProgress rolls an agent plan's discovery tasks up: done is
+// completed; failed, or pending past models.WorkerTaskStaleAfter, is failed;
+// claimed under a live lease is running; the rest still waits.
+func (s *Service) fillAgentPlanProgress(
+	ctx context.Context, plan *models.Job, orgUID string, progress *ScanProgress,
+) error {
+	if plan.Output != nil {
+		progress.TotalChunks = toInt(plan.Output["totalChunks"])
+	}
+
+	if region, ok := plan.Config["region"].(string); ok {
+		progress.Region = region
+	}
+
+	var tasks []*models.WorkerTask
+
+	err := s.db.NewSelect().
+		Model(&tasks).
+		Column("status", "lease_until", "error_code", "updated_at").
+		Where("job_uid = ?", plan.UID).
+		Where("organization_uid = ?", orgUID).
+		Where("kind = ?", discoverytask.Kind).
+		Scan(ctx)
+	if err != nil {
+		return fmt.Errorf("read discovery tasks: %w", err)
+	}
+
+	now := time.Now()
+
+	var lastFailed time.Time
+
+	for _, task := range tasks {
+		stale := now.Sub(task.UpdatedAt) > models.WorkerTaskStaleAfter
+
+		switch {
+		case task.Status == models.WorkerTaskStatusDone:
+			progress.CompletedChunks++
+		case task.Status == models.WorkerTaskStatusFailed:
+			progress.FailedChunks++
+
+			if task.ErrorCode != nil && !task.UpdatedAt.Before(lastFailed) {
+				lastFailed = task.UpdatedAt
+				progress.LastErrorCode = *task.ErrorCode
+			}
+		case task.IsActive() && stale:
+			progress.FailedChunks++
+		case task.Status == models.WorkerTaskStatusClaimed && task.LeaseUntil != nil && !task.LeaseUntil.Before(now):
+			progress.RunningChunks++
+		case task.IsActive():
+			progress.PendingChunks++
+		}
+	}
+
+	if progress.TotalChunks == 0 {
+		progress.TotalChunks = len(tasks)
+	}
+
+	progress.DerivedStatus = derivePlanStatus(plan, progress)
+
+	return nil
 }
 
 // fillSingleJobProgress reports a non-chunked scan as a single chunk whose state
@@ -493,6 +774,16 @@ func (s *Service) CancelScan(ctx context.Context, orgUID, planUID string) error 
 	if err != nil {
 		return fmt.Errorf("cancel live child jobs: %w", err)
 	}
+
+	// An agent plan's chunks are worker tasks: an agent running one gets 410
+	// on its next heartbeat and its late result is discarded.
+	if plan.Type == string(jobdef.JobTypeNetworkDiscoveryAgentPlan) && s.tasks != nil {
+		if _, err = s.tasks.Cancel(ctx, workertasks.CancelFilter{JobUID: planUID}); err != nil {
+			return fmt.Errorf("cancel discovery tasks: %w", err)
+		}
+	}
+
+	audit.Record(ctx, s.dbSvc, orgUID, models.EventTypeDiscoveryScanCanceled, scanTarget(plan), nil)
 
 	return nil
 }

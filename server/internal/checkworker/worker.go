@@ -31,6 +31,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkworker/tasks"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/crawltask"
+	"github.com/fclairamb/solidping/server/internal/discoverytask"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/dbfault"
@@ -369,6 +370,24 @@ func newInProcessIncidentService(
 	return incidentSvc, attachmentSvc
 }
 
+// discoveryExecutor returns the discovery executor of an agent whose operator
+// set SP_AGENT_DISCOVERY_ENABLED, over its allow-list; nil otherwise. The
+// allow-list was validated at startup.
+func discoveryExecutor(cfg *config.Config) *discoverytask.Executor {
+	if !cfg.IsAgentMode() || !cfg.Agent.DiscoveryEnabled {
+		return nil
+	}
+
+	prefixes, err := cfg.Agent.DiscoveryPrefixes()
+	if err != nil {
+		slog.Error("Agent discovery disabled: invalid allow-list", "error", err)
+
+		return nil
+	}
+
+	return discoverytask.NewExecutor(prefixes)
+}
+
 // NewAgentCheckWorker creates a check runner for agent mode: no database, no
 // services registry — everything flows through the given (remote) backend.
 // Self-stats and the entitlements gate are in-process concerns and are
@@ -385,6 +404,12 @@ func newCheckWorker(cfg *config.Config, workerBackend backend.WorkerBackend) *Ch
 	// Every worker, cloud or agent, runs website crawls as worker tasks
 	// (spec 2026-10-22-03). Registering is idempotent.
 	tasks.Register(crawltask.NewExecutor(cfg.EnvRefAllowed))
+
+	// LAN discovery runs only on an agent whose operator enabled it (spec
+	// 2026-10-22-04): no executor, no "discovery" capability, no chunk claimed.
+	if executor := discoveryExecutor(cfg); executor != nil {
+		tasks.Register(executor)
+	}
 
 	poolSize := cfg.Server.CheckWorker.Nb
 	if poolSize <= 0 {

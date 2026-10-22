@@ -140,7 +140,7 @@ func TestStartScanUnknownType(t *testing.T) {
 	r := require.New(t)
 	f := newDiscoveryFixture(t)
 
-	_, err := f.svc.StartScan(t.Context(), f.org.UID, "nope", json.RawMessage(`{}`))
+	_, err := f.svc.StartScan(t.Context(), f.org.UID, "nope", "", json.RawMessage(`{}`))
 	r.Error(err)
 
 	var de *scantypes.DiscoveryError
@@ -154,7 +154,7 @@ func TestStartScanLANCreatesPlanJob(t *testing.T) {
 	r := require.New(t)
 	f := newDiscoveryFixture(t)
 
-	job, err := f.svc.StartScan(t.Context(), f.org.UID, "lan", json.RawMessage(`{"cidrs":["10.0.0.0/18"]}`))
+	job, err := f.svc.StartScan(t.Context(), f.org.UID, "lan", "", json.RawMessage(`{"cidrs":["10.0.0.0/18"]}`))
 	r.NoError(err)
 	r.NotNil(job)
 	r.Equal(string(jobdef.JobTypeNetworkDiscoveryPlan), job.Type, "LAN scan must create a plan job")
@@ -166,7 +166,7 @@ func TestStartScanLANBadParams(t *testing.T) {
 	r := require.New(t)
 	f := newDiscoveryFixture(t)
 
-	_, err := f.svc.StartScan(t.Context(), f.org.UID, "lan", json.RawMessage(`{}`))
+	_, err := f.svc.StartScan(t.Context(), f.org.UID, "lan", "", json.RawMessage(`{}`))
 	r.Error(err)
 
 	var de *scantypes.DiscoveryError
@@ -180,7 +180,7 @@ func TestStartScanLANRejectsRangeOverCeiling(t *testing.T) {
 	r := require.New(t)
 	f := newDiscoveryFixture(t)
 
-	_, err := f.svc.StartScan(t.Context(), f.org.UID, "lan", json.RawMessage(`{"cidrs":["0.0.0.0/7"]}`))
+	_, err := f.svc.StartScan(t.Context(), f.org.UID, "lan", "", json.RawMessage(`{"cidrs":["0.0.0.0/7"]}`))
 	r.Error(err)
 
 	var de *scantypes.DiscoveryError
@@ -197,7 +197,7 @@ func TestStartScanFreeboxGranted(t *testing.T) {
 	conn := f.newFreeboxChannel(t, srv.URL, models.FreeboxStatusGranted)
 
 	params := json.RawMessage(`{"channelUid":"` + conn.UID + `"}`)
-	job, err := f.svc.StartScan(t.Context(), f.org.UID, "freebox", params)
+	job, err := f.svc.StartScan(t.Context(), f.org.UID, "freebox", "", params)
 	r.NoError(err)
 	r.NotNil(job)
 	r.Equal(string(jobdef.JobTypeFreeboxLanDiscovery), job.Type)
@@ -212,7 +212,7 @@ func TestStartScanFreeboxNotGranted(t *testing.T) {
 	conn := f.newFreeboxChannel(t, srv.URL, models.FreeboxStatusPairing)
 
 	params := json.RawMessage(`{"channelUid":"` + conn.UID + `"}`)
-	_, err := f.svc.StartScan(t.Context(), f.org.UID, "freebox", params)
+	_, err := f.svc.StartScan(t.Context(), f.org.UID, "freebox", "", params)
 	r.Error(err)
 
 	var de *scantypes.DiscoveryError
@@ -234,7 +234,7 @@ func TestStartScanFreeboxGuardsDuplicate(t *testing.T) {
 	r.NoError(f.dbSvc.CreateJob(t.Context(), running))
 
 	params := json.RawMessage(`{"channelUid":"` + conn.UID + `"}`)
-	_, err := f.svc.StartScan(t.Context(), f.org.UID, "freebox", params)
+	_, err := f.svc.StartScan(t.Context(), f.org.UID, "freebox", "", params)
 	r.ErrorIs(err, discovery.ErrAlreadyRunning)
 }
 
@@ -245,7 +245,7 @@ func TestStartScanContainerCreatesJob(t *testing.T) {
 	f := newDiscoveryFixture(t)
 
 	params := json.RawMessage(`{"hosts":["unix:///var/run/docker.sock"]}`)
-	job, err := f.svc.StartScan(t.Context(), f.org.UID, "container", params)
+	job, err := f.svc.StartScan(t.Context(), f.org.UID, "container", "", params)
 	r.NoError(err)
 	r.NotNil(job)
 	r.Equal(string(jobdef.JobTypeContainerDiscovery), job.Type, "container scan must create a container_discovery job")
@@ -257,7 +257,7 @@ func TestStartScanContainerBadEndpoint(t *testing.T) {
 	r := require.New(t)
 	f := newDiscoveryFixture(t)
 
-	_, err := f.svc.StartScan(t.Context(), f.org.UID, "container", json.RawMessage(`{"hosts":["http://10.0.0.5:2375"]}`))
+	_, err := f.svc.StartScan(t.Context(), f.org.UID, "container", "", json.RawMessage(`{"hosts":["http://10.0.0.5:2375"]}`))
 	r.Error(err)
 
 	var de *scantypes.DiscoveryError
@@ -277,7 +277,7 @@ func TestStartScanContainerGuardsDuplicate(t *testing.T) {
 	r.NoError(f.dbSvc.CreateJob(t.Context(), running))
 
 	params := json.RawMessage(`{"hosts":["unix:///var/run/docker.sock"]}`)
-	_, err := f.svc.StartScan(t.Context(), f.org.UID, "container", params)
+	_, err := f.svc.StartScan(t.Context(), f.org.UID, "container", "", params)
 	r.ErrorIs(err, discovery.ErrAlreadyRunning)
 }
 
@@ -505,7 +505,7 @@ func TestStartScanGuardsOnPendingChild(t *testing.T) {
 	r.NoError(f.dbSvc.CreateJob(ctx, plan))
 	f.newChildJob(t, plan.UID, models.JobStatusPending)
 
-	_, err := f.svc.StartScan(ctx, f.org.UID, "lan", json.RawMessage(`{"cidrs":["192.168.1.0/24"]}`))
+	_, err := f.svc.StartScan(ctx, f.org.UID, "lan", "", json.RawMessage(`{"cidrs":["192.168.1.0/24"]}`))
 	r.ErrorIs(err, discovery.ErrAlreadyRunning)
 }
 
@@ -529,7 +529,7 @@ func TestStartScanIgnoresStaleRunningChild(t *testing.T) {
 		Exec(ctx)
 	r.NoError(err)
 
-	job, err := f.svc.StartScan(ctx, f.org.UID, "lan", json.RawMessage(`{"cidrs":["192.168.1.0/24"]}`))
+	job, err := f.svc.StartScan(ctx, f.org.UID, "lan", "", json.RawMessage(`{"cidrs":["192.168.1.0/24"]}`))
 	r.NoError(err, "a stale running child must not block a new scan")
 	r.NotNil(job)
 }
@@ -556,7 +556,7 @@ func TestCancelScanDropsLiveChildren(t *testing.T) {
 	running := f.newChildJob(t, plan.UID, models.JobStatusRunning)
 
 	// The live children block a new scan before the cancel…
-	_, err := f.svc.StartScan(ctx, f.org.UID, "lan", json.RawMessage(`{"cidrs":["192.168.1.0/24"]}`))
+	_, err := f.svc.StartScan(ctx, f.org.UID, "lan", "", json.RawMessage(`{"cidrs":["192.168.1.0/24"]}`))
 	r.ErrorIs(err, discovery.ErrAlreadyRunning)
 
 	r.NoError(f.svc.CancelScan(ctx, f.org.UID, plan.UID))
@@ -572,7 +572,7 @@ func TestCancelScanDropsLiveChildren(t *testing.T) {
 	r.NotNil(runningJob.DeletedAt, "running child must be soft-deleted so the guard clears and the watcher aborts it")
 
 	// …and immediately after the cancel a new scan is accepted.
-	job, err := f.svc.StartScan(ctx, f.org.UID, "lan", json.RawMessage(`{"cidrs":["192.168.1.0/24"]}`))
+	job, err := f.svc.StartScan(ctx, f.org.UID, "lan", "", json.RawMessage(`{"cidrs":["192.168.1.0/24"]}`))
 	r.NoError(err, "a new scan must start immediately after cancel")
 	r.NotNil(job)
 }
@@ -714,7 +714,7 @@ func TestStartScanRefusedUnderEgressPolicy(t *testing.T) {
 			r := require.New(t)
 
 			saas := newDiscoveryFixtureWith(t, egress.New(false), true)
-			job, err := saas.svc.StartScan(t.Context(), saas.org.UID, sc.typ, json.RawMessage(sc.params))
+			job, err := saas.svc.StartScan(t.Context(), saas.org.UID, sc.typ, "", json.RawMessage(sc.params))
 			r.Nil(job)
 
 			var de *scantypes.DiscoveryError
@@ -723,7 +723,7 @@ func TestStartScanRefusedUnderEgressPolicy(t *testing.T) {
 			r.Zero(saas.countJobs(t), "a refused scan must create no job")
 
 			selfHosted := newDiscoveryFixtureWith(t, egress.New(true), false)
-			job, err = selfHosted.svc.StartScan(t.Context(), selfHosted.org.UID, sc.typ, json.RawMessage(sc.params))
+			job, err = selfHosted.svc.StartScan(t.Context(), selfHosted.org.UID, sc.typ, "", json.RawMessage(sc.params))
 			r.NoError(err)
 			r.Equal(sc.jobType, job.Type)
 			r.Equal(1, selfHosted.countJobs(t))

@@ -35,6 +35,22 @@ func isAdmin(req *http.Request) bool {
 	return claims.HasOrgRole(models.MemberRoleAdmin)
 }
 
+// isAdminMember reports whether the caller holds an admin (or owner)
+// membership row in the org, read from the database rather than the token.
+func (h *Handler) isAdminMember(req *http.Request, orgUID string) bool {
+	claims, ok := mw.GetClaimsFromContext(req.Context())
+	if !ok || claims == nil || claims.UserUID == "" {
+		return false
+	}
+
+	member, err := h.svc.dbSvc.GetMemberByUserAndOrg(req.Context(), claims.UserUID, orgUID)
+	if err != nil || member == nil {
+		return false
+	}
+
+	return member.Role.AtLeast(models.MemberRoleAdmin)
+}
+
 // Handler provides HTTP handlers for network discovery endpoints.
 type Handler struct {
 	base.HandlerBase
@@ -64,29 +80,46 @@ func (h *Handler) RegisterRoutes(group *httpx.Group) {
 }
 
 // discoveryTypeDescriptor is the public capability descriptor for one registered
-// discovery type, driving the frontend type picker.
+// discovery type, driving the frontend type picker. ServerAvailable false means
+// only a private region's agents may run it: the scan needs a region.
 type discoveryTypeDescriptor struct {
-	Type   string `json:"type"`
-	Source string `json:"source"`
+	Type            string `json:"type"`
+	Source          string `json:"source"`
+	ServerAvailable bool   `json:"serverAvailable"`
 }
 
-// ListTypes returns the discovery types this deployment accepts so the frontend
-// can build its type picker without hard-coding the set. Types the deployment
-// refuses (DISCOVERY_NOT_AVAILABLE) are hidden.
-func (h *Handler) ListTypes(writer http.ResponseWriter, _ *http.Request) error {
-	defs := h.svc.AvailableTypes()
-	out := make([]discoveryTypeDescriptor, 0, len(defs))
+// ListTypes returns the discovery types the org may start so the frontend can
+// build its type picker without hard-coding the set. Types the deployment
+// refuses (DISCOVERY_NOT_AVAILABLE) are hidden, except `lan` for an org with a
+// private region (flagged serverAvailable: false).
+func (h *Handler) ListTypes(writer http.ResponseWriter, req *http.Request) error {
+	org, _ := mw.GetOrganizationFromContext(req.Context())
+	if org == nil {
+		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "organization not found")
+	}
 
-	for _, d := range defs {
-		out = append(out, discoveryTypeDescriptor{Type: d.Type(), Source: string(d.Source())})
+	types, err := h.svc.TypesFor(req.Context(), org.UID)
+	if err != nil {
+		return h.WriteInternalError(writer, req, err)
+	}
+
+	out := make([]discoveryTypeDescriptor, 0, len(types))
+
+	for _, t := range types {
+		out = append(out, discoveryTypeDescriptor{
+			Type: t.Definition.Type(), Source: string(t.Definition.Source()), ServerAvailable: t.ServerAvailable,
+		})
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]any{keyData: out})
 }
 
-// StartScanRequest is the generic body for POST /discovery/scans.
+// StartScanRequest is the generic body for POST /discovery/scans. Region, only
+// for `lan`, runs the scan from that private region's agents (spec
+// 2026-10-22-04).
 type StartScanRequest struct {
 	Type       string          `json:"type"`
+	Region     string          `json:"region,omitempty"`
 	Parameters json.RawMessage `json:"parameters"`
 }
 
@@ -113,7 +146,20 @@ func (h *Handler) StartScan(writer http.ResponseWriter, req *http.Request) error
 		return h.WriteError(writer, http.StatusUnprocessableEntity, base.ErrorCodeValidationError, "type is required")
 	}
 
-	job, err := h.svc.StartScan(req.Context(), org.UID, body.Type, body.Parameters)
+	if body.Region != "" && body.Type != lanType {
+		return h.WriteError(writer, http.StatusUnprocessableEntity, base.ErrorCodeValidationError,
+			"region is only supported by lan scans")
+	}
+
+	// A scan from a customer's agent needs an admin MEMBERSHIP ROW: claims.Role
+	// outlives a demotion until the token expires, and a super admin without a
+	// membership gets no bypass (spec 2026-10-22-04).
+	if body.Region != "" && !h.isAdminMember(req, org.UID) {
+		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden,
+			"an admin membership of the organization is required to scan from a private region")
+	}
+
+	job, err := h.svc.StartScan(req.Context(), org.UID, body.Type, body.Region, body.Parameters)
 	if err != nil {
 		return h.writeScanError(writer, req, err)
 	}
@@ -159,6 +205,8 @@ func statusForDiscoveryCode(code string) int {
 		return http.StatusNotFound
 	case scantypes.CodeNotAvailable:
 		return http.StatusForbidden
+	case scantypes.CodeRegionUnavailable, scantypes.CodeQuotaExceeded:
+		return http.StatusUnprocessableEntity
 	default: // CodeInvalidParameters, DISCOVERY_RANGE_TOO_LARGE
 		return http.StatusUnprocessableEntity
 	}

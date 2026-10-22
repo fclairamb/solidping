@@ -39,6 +39,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/crawltask"
+	"github.com/fclairamb/solidping/server/internal/discoverytask"
 	"github.com/fclairamb/solidping/server/internal/credmigrate"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
@@ -1305,6 +1306,12 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		s.dbService.DB(), s.dbService, checksService, s.jobSvc, s.services.Credentials,
 		s.services.EgressGuard, s.config.DockerChecksBlocked(),
 	)
+	// Region-bound LAN scans run on the private region's agents as worker
+	// tasks (spec 2026-10-22-04), bounded by a daily address entitlement.
+	discoverySvc.SetWorkerTasks(s.services.WorkerTasks)
+	discoverySvc.SetEntitlements(s.services.Entitlements)
+	discoverytask.Register(discoverytask.Deps{DB: s.dbService, Tasks: s.services.WorkerTasks})
+
 	discoveryHandler := discovery.NewHandler(discoverySvc, s.config)
 	orgDiscovery := orgGroup("/orgs/:org/discovery")
 	discoveryHandler.RegisterRoutes(orgDiscovery)
