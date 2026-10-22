@@ -379,7 +379,7 @@ func TestToolListIncidentsOrderAndCursor(t *testing.T) {
 		want = append(want, inc.UID)
 	}
 
-	page := func(args map[string]any) (uids []string, cursor string) {
+	page := func(args map[string]any) ([]string, string) {
 		result := handler.toolListIncidents(ctx, org.Slug, args)
 		r.False(result.IsError)
 
@@ -396,6 +396,7 @@ func TestToolListIncidentsOrderAndCursor(t *testing.T) {
 		}
 		r.NoError(json.Unmarshal(raw, &decoded))
 
+		uids := make([]string, 0, len(decoded.Data))
 		for _, row := range decoded.Data {
 			uids = append(uids, row.UID)
 		}
