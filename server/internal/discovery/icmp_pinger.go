@@ -120,7 +120,7 @@ func (p *icmpPinger) deliver(data []byte, from net.Addr) {
 		return
 	}
 
-	key := replyKey{ip: srcIP.String(), seq: uint16(echo.Seq)} //nolint:gosec // seq is generated as uint16
+	key := replyKey{ip: srcIP.String(), seq: uint16(echo.Seq)}
 
 	p.mu.Lock()
 	replyCh, found := p.pending[key]
@@ -139,7 +139,7 @@ func (p *icmpPinger) ping(ipStr string, timeout time.Duration) bool {
 		return false
 	}
 
-	seq := uint16(p.seq.Add(1)) //nolint:gosec // wrapping is fine, the key also holds the IP
+	seq := uint16(p.seq.Add(1))
 	key := replyKey{ip: ip.String(), seq: seq}
 	replyCh := make(chan struct{})
 

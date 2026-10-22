@@ -13,6 +13,8 @@ import (
 	"golang.org/x/net/ipv4"
 )
 
+var errNotPermitted = errors.New("operation not permitted")
+
 type fakeDatagram struct {
 	data []byte
 	from net.Addr
@@ -109,7 +111,7 @@ func fakeListen(conn *fakeConn, failNetworks ...string) listenFunc {
 	return func(network, _ string) (packetConn, error) {
 		for _, n := range failNetworks {
 			if n == network {
-				return nil, errors.New("operation not permitted")
+				return nil, errNotPermitted
 			}
 		}
 
