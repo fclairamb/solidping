@@ -72,7 +72,7 @@ Design choices from the code review of 2026-10-21:
    - Add it to `aggregatedCapabilities` (`regions/capabilities.go:91`) so `GET /regions` and
      `GET /private-regions` expose `capabilities.discovery`. A system agent's report must never
      count.
-3. **Migration** (next free `NNN` after spec 01's, both engines, `.tx`). Table `discovery_chunks`:
+3. **Migration** (both engines, `.tx`). Same rule as spec 01: append to the same untagged migration file (`030_v0_41_0` on 2026-10-22), no new file. Table `discovery_chunks`:
    - columns: `uid`; `organization_uid` (fk, cascade); `plan_job_uid` (fk `jobs(uid)` on delete
      cascade, so it is cleaned with the plan by `job_jobs_cleanup.go`); `region text not null`;
      `cidrs` and `ports` (JSON text); `status` (`pending|claimed|done|failed|cancelled`, checked);

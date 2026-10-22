@@ -25,9 +25,12 @@ scan would run from the cloud and fail. Decision (2026-10-21): a promoted discov
 inherits the region of the scan that found it.
 
 ## Proposal
-1. Migration, next free `NNN` (030 on 2026-10-21; check `git tag --contains` per
-   `wiki/conventions/migrations.md`), transactional `.tx.up.sql` / `.tx.down.sql`, in both
-   `server/internal/db/postgres/migrations/` and `server/internal/db/sqlite/migrations/`:
+1. Migration, in both `server/internal/db/postgres/migrations/` and
+   `server/internal/db/sqlite/migrations/`. Decision (2026-10-22): while the latest migration is
+   not in any git tag, add to it instead of creating a new file. On 2026-10-22 that is
+   `030_v0_41_0.tx.up.sql` / `.tx.down.sql` (latest tag v0.40.1). Re-check with
+   `git tag --contains` per `wiki/conventions/migrations.md`; if a tag contains it by then, add
+   the next `NNN`. Append to the up file, and prepend the inverse statements to the down file:
    - `alter table discovered_checks add column region text not null default '';`
      (`''` = found by the server itself; Postgres gets a `comment on column`, SQLite an inline `--`).
    - Drop and recreate `idx_discovered_checks_identity_active` on
