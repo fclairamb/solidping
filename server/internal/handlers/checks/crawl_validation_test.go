@@ -138,10 +138,10 @@ func TestCrawlEditsCancelTheRunInProgress(t *testing.T) {
 		return *job.ScheduledAt
 	}
 	postpone := func() {
-		_, err := dbSvc.DB().NewUpdate().Model((*models.CheckJob)(nil)).
+		_, updateErr := dbSvc.DB().NewUpdate().Model((*models.CheckJob)(nil)).
 			Set("scheduled_at = ?", later).Set("effective_scheduled_at = ?", later).
 			Where("check_uid = ?", created.UID).Exec(ctx)
-		r.NoError(err)
+		r.NoError(updateErr)
 	}
 	postpone()
 

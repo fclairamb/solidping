@@ -76,8 +76,6 @@ func TestMissingParamRefIsAnErrorResult(t *testing.T) {
 
 // `${env:}` resolves in the executor, against the worker's own environment
 // and allowlist; one it may not read is an error result, nothing fetched.
-//
-//nolint:paralleltest // t.Setenv
 func TestEnvRefResolvedByTheExecutor(t *testing.T) {
 	r := require.New(t)
 	h := newHarness(t, newSQLite(t), nil)

@@ -97,7 +97,7 @@ func (e *Executor) Run(ctx context.Context, claim *workertasks.Claim, rep tasks.
 		}}, "")
 	}
 
-	if err := config.FromMap(effective); err != nil {
+	if err = config.FromMap(effective); err != nil {
 		e.logger.WarnContext(ctx, "Crawl config rejected", "task", claim.UID, "error", err)
 
 		return rep.Fail(ctx, codeInvalidConfig)
