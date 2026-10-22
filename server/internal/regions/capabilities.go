@@ -29,6 +29,9 @@ const (
 	// this region — i.e. whether its live workers have a Chrome to drive
 	// (spec 2026-08-19-03).
 	CapabilityBrowser = models.CapabilityBrowser
+	// CapabilityDiscovery reports whether an agent of this private region runs
+	// LAN discovery chunks (spec 2026-10-22-04).
+	CapabilityDiscovery = models.CapabilityDiscovery
 )
 
 // Capability values. THREE states, deliberately — not a boolean.
@@ -100,11 +103,10 @@ var aggregatedCapabilities = []string{ //nolint:gochecknoglobals // the publishe
 const CapabilityCrawl = "crawl"
 
 // taskCapabilities are the worker-task executor capabilities (spec
-// 2026-10-22-02), aggregated like the names above. Spec 2026-10-22-04 adds
-// discovery. A system agent never runs worker tasks (the task routes refuse
+// 2026-10-22-02), aggregated like the names above. A system agent never runs worker tasks (the task routes refuse
 // it), so its report never counts for them: the agent socket strips them
 // before storing it (StripTaskCapabilities).
-var taskCapabilities = []string{CapabilityCrawl} //nolint:gochecknoglobals // the published task capability registry
+var taskCapabilities = []string{CapabilityCrawl, CapabilityDiscovery} //nolint:gochecknoglobals // the published task capability registry
 
 // StripTaskCapabilities removes the worker-task capabilities from a reported
 // set. A nil ("unknown") set stays nil.
@@ -345,4 +347,44 @@ func (d RegionDefinition) IPv6Capability() string {
 // BrowserCapability reads the headless-Chrome verdict off a definition.
 func (d RegionDefinition) BrowserCapability() string {
 	return d.CapabilityFor(CapabilityBrowser)
+}
+
+// HasLiveAgentWith reports whether the org's private region has a live,
+// non-system agent whose worker reports capability (spec 2026-10-22-04: a
+// region-bound discovery scan needs one reporting CapabilityDiscovery). It is
+// a hint taken at request time: the agent may still leave afterwards.
+func (s *Service) HasLiveAgentWith(ctx context.Context, orgUID, region, capability string) (bool, error) {
+	orgAgents, err := s.db.ListActiveAgentsByRegion(ctx, orgUID, region)
+	if err != nil {
+		return false, fmt.Errorf("failed to list agents for %q: %w", region, err)
+	}
+
+	if len(orgAgents) == 0 {
+		return false, nil
+	}
+
+	workers, err := s.liveWorkers(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	bySlug := make(map[string]*models.Worker, len(workers))
+	for _, worker := range workers {
+		bySlug[worker.Slug] = worker
+	}
+
+	cutoff := LivenessCutoff(time.Now())
+
+	for _, agent := range orgAgents {
+		if agent.IsSystem() || !IsAgentLive(agent.Status, agent.LastSeenAt, cutoff) {
+			continue
+		}
+
+		if worker, ok := bySlug[agents.WorkerSlug(agent.UID)]; ok &&
+			worker.Capability(capability) == models.CapabilityStatePresent {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }

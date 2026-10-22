@@ -33,6 +33,10 @@ type Config struct {
 	// the parent so the scan-detail page sees them all under one UID. The
 	// synchronous Scan ignores it.
 	ParentJobUID string `json:"parentJobUid,omitempty"`
+	// SkipSuggestions leaves DiscoveredHost.SuggestedChecks empty: an agent
+	// reports raw facts only, the server builds the suggestions itself (spec
+	// 2026-10-22-04). Never part of a stored config.
+	SkipSuggestions bool `json:"-"`
 }
 
 // DiscoveredHost is a host discovered during a scan.
@@ -62,22 +66,24 @@ type probeTarget struct {
 
 // scanParams holds the normalized scan tuning resolved from a Config.
 type scanParams struct {
-	ports       []int
-	concurrency int
-	timeout     time.Duration
+	ports           []int
+	concurrency     int
+	timeout         time.Duration
+	skipSuggestions bool
 }
 
 // resolveScanParams normalizes the ports / concurrency / timeout from a Config,
 // applying defaults. Shared by Scan and ScanHosts.
 func resolveScanParams(cfg *Config) (scanParams, error) {
 	params := scanParams{
-		ports:       cfg.Ports,
-		concurrency: cfg.Concurrency,
-		timeout:     defaultTimeout,
+		ports:           cfg.Ports,
+		concurrency:     cfg.Concurrency,
+		timeout:         defaultTimeout,
+		skipSuggestions: cfg.SkipSuggestions,
 	}
 
 	if len(params.ports) == 0 {
-		params.ports = defaultPortList()
+		params.ports = DefaultPortList()
 	}
 
 	if params.concurrency <= 0 {
@@ -133,7 +139,7 @@ func Scan(ctx context.Context, cfg *Config) (*ScanResult, error) {
 }
 
 // ScanHosts probes a fixed list of IPs through the same engine as Scan.
-// cfg.Ports defaults to defaultPortList(); cfg.CIDRs is ignored. Each result's
+// cfg.Ports defaults to DefaultPortList(); cfg.CIDRs is ignored. Each result's
 // Hostname comes from the matching HostInput.HostnameHint when non-empty, else
 // from reverse DNS. Only responsive hosts are returned (same semantics as Scan).
 func ScanHosts(ctx context.Context, hosts []HostInput, cfg *Config) (*ScanResult, error) {
@@ -205,7 +211,7 @@ func runProbes(
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			host := probeHost(ctx, tgt, params.ports, pinger, params.timeout)
+			host := probeHost(ctx, tgt, params, pinger)
 			if host == nil {
 				return
 			}
@@ -227,11 +233,12 @@ func runProbes(
 func probeHost(
 	ctx context.Context,
 	target probeTarget,
-	ports []int,
+	params scanParams,
 	pinger *icmpPinger,
-	timeout time.Duration,
 ) *DiscoveredHost {
 	ipStr := target.IP
+	ports := params.ports
+	timeout := params.timeout
 
 	var (
 		icmpReachable bool
@@ -282,13 +289,18 @@ func probeHost(
 	// Sort open ports for consistent output.
 	sortPorts(openPorts)
 
-	return &DiscoveredHost{
-		IP:              ipStr,
-		Hostname:        hostname,
-		ICMPReachable:   icmpReachable,
-		OpenPorts:       openPorts,
-		SuggestedChecks: SuggestChecks(ipStr, hostname, icmpReachable, openPorts),
+	host := &DiscoveredHost{
+		IP:            ipStr,
+		Hostname:      hostname,
+		ICMPReachable: icmpReachable,
+		OpenPorts:     openPorts,
 	}
+
+	if !params.skipSuggestions {
+		host.SuggestedChecks = SuggestChecks(ipStr, hostname, icmpReachable, openPorts)
+	}
+
+	return host
 }
 
 // dialTCP attempts a TCP connection to the given host:port within the timeout.

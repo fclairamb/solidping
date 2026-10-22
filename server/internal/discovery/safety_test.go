@@ -230,3 +230,38 @@ func TestExpandCIDR(t *testing.T) {
 	r.NoError(err)
 	r.Len(ips, 4)
 }
+
+func TestAddressCount(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	n, err := AddressCount([]string{"10.0.0.0/24", "10.0.0.0/25", "192.168.1.1/32"})
+	r.NoError(err)
+	r.Equal(256+128+1, n)
+
+	_, err = AddressCount([]string{"fd00::/120"})
+	r.Error(err)
+
+	_, err = AddressCount([]string{"nope"})
+	r.Error(err)
+}
+
+// SkipSuggestions keeps the raw facts and builds no suggested check.
+func TestScanSkipSuggestions(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	port, _ := countingListener(t)
+
+	res, err := Scan(t.Context(), &Config{CIDRs: []string{"127.0.0.1/32"}, Ports: []int{port}, SkipSuggestions: true})
+	r.NoError(err)
+	r.Len(res.Hosts, 1)
+	r.Equal([]int{port}, res.Hosts[0].OpenPorts)
+	r.Empty(res.Hosts[0].SuggestedChecks)
+
+	res, err = Scan(t.Context(), &Config{CIDRs: []string{"127.0.0.1/32"}, Ports: []int{port}})
+	r.NoError(err)
+	r.Len(res.Hosts, 1)
+	r.NotEmpty(res.Hosts[0].SuggestedChecks, "control: suggestions are built by default")
+}
