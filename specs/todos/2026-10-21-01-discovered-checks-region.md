@@ -5,8 +5,9 @@ effort: medium
 
 # Discovered checks have no region: same IP in two networks collides, and promotion ignores where it was found
 
-First of four specs for agent-run network discovery (01 region on discovered checks, 02 scanner
-ICMP fix, 03 agent-executed chunks, 04 dashboard and docs). Implement in that order.
+First of the agent-run work series: 2026-10-21-01 (this, region on discovered checks),
+2026-10-21-02 (scanner ICMP), 2026-10-22-02 (worker tasks), 2026-10-22-03 (crawl on worker tasks),
+2026-10-22-04 (discovery from an agent), 2026-10-22-05 (dashboard and docs). Implement in that order.
 
 ## Problem
 `discovered_checks` has no region. Its identity is the partial unique index
@@ -14,7 +15,7 @@ ICMP fix, 03 agent-executed chunks, 04 dashboard and docs). Implement in that or
 (`server/internal/db/postgres/migrations/002_v0_2_0.up.sql:71-73`, sqlite `:91-93`), used as the
 `ON CONFLICT` target in `server/internal/discovery/persist.go:56-76`.
 
-Once spec 03 lets a private region's agent scan its own network, `10.0.0.5` found from `@dc1`
+Once spec 2026-10-22-04 lets a private region's agent scan its own network, `10.0.0.5` found from `@dc1`
 and `10.0.0.5` found from `@dc2` (or from the server) are different machines, but they upsert
 into the same row: the last write wins and overwrites `job_uid`, name, config and group label.
 
@@ -50,7 +51,7 @@ inherits the region of the scan that found it.
 4. Add `(*regions.Service).OwnsPrivateRegion(ctx, orgUID, region string) (bool, error)` in
    `server/internal/regions/`, built on `ParsePrivateRegion` (`regions.go:112-123`, canonical
    `@slug` only, legacy `@org/slug` refused) and `GetOrgCustomRegions` (`regions.go:351-372`).
-   Spec 03 reuses it. Do not refactor `checks.privateLocationDefinition` here.
+   Spec 2026-10-22-04 reuses it. Do not refactor `checks.privateLocationDefinition` here.
 5. Promote (`server/internal/handlers/discovery/service.go:607-644`): when `row.Region != ""`,
    check `OwnsPrivateRegion`. If the org no longer owns it, refuse with
    `422 DISCOVERY_REGION_UNAVAILABLE` and create nothing (`NormalizeRegionsForOrg` does not check

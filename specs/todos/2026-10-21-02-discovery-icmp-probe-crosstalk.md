@@ -5,8 +5,8 @@ effort: medium
 
 # Discovery ICMP probes read each other's replies, and never try the unprivileged socket
 
-Second of four specs for agent-run network discovery. Independent of the others, but spec 03
-relies on it: on an agent, the raw socket also sees replies to the agent's own `icmp` checks.
+Part of the agent-run work series (see 2026-10-21-01). Independent of the others, but
+2026-10-22-04 relies on it: on an agent, the raw socket also sees replies to the agent's own `icmp` checks.
 
 ## Problem
 `runProbes` (`server/internal/discovery/scanner.go:159-167`) opens one raw `ip4:icmp` socket
@@ -35,8 +35,8 @@ try the unprivileged `udp4` datagram socket first (`server/internal/checkers/che
    is `*net.UDPAddr` for `udp4` and `*net.IPAddr` for raw. Reuse checkicmp's helper if it is
    exported or trivially extractable; otherwise copy the 20 lines with a comment pointing at it.
 3. Surface whether ICMP was used: add `ICMPAvailable bool` to the scan result (a new return value
-   or a small result struct from `Scan` / `ScanHosts`, `scanner.go:105-135`). Spec 03 reports it to
-   the dashboard. Keep the WARN log.
+   or a small result struct from `Scan` / `ScanHosts`, `scanner.go:105-135`). Spec 2026-10-22-04 reports it
+   to the dashboard. Keep the WARN log.
 4. Put the reader behind a minimal interface (`ReadFrom` / `WriteTo` / deadlines) so tests can
    inject a fake connection.
 

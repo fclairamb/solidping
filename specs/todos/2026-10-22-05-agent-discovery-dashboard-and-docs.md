@@ -5,11 +5,11 @@ effort: medium
 
 # Dashboard and docs do not know discovery can run from a private location
 
-Last of four specs for agent-run network discovery. Needs spec 03 (API `region`,
+Last of the agent-run work series (see 2026-10-22-02). Needs 2026-10-22-04 (API `region`,
 `serverAvailable`, `capabilities.discovery`, progress fields, audit events).
 
 ## Problem
-Once spec 03 ships, the API can run a LAN scan from a private region, but:
+Once 2026-10-22-04 ships, the API can run a LAN scan from a private region, but:
 - the scan form has no way to pick one (`web/dash0/src/routes/orgs/$org/organization.discovery.new.tsx`);
 - in SaaS, `lan` only appears with `serverAvailable: false`, so it needs a region to be usable;
 - scan details, discovered rows and promotion do not say where a scan ran or where promoted
@@ -32,7 +32,7 @@ Once spec 03 ships, the API can run a LAN scan from a private region, but:
      single-checkbox selectors in `e2e/discovery.spec.ts:91, 124`.
    - `data-testid`s: `discovery-region-select`, `discovery-region-option-<slug>`.
    - Add the pattern to `design-reference.tsx`.
-2. **Errors.** Map `DISCOVERY_REGION_UNAVAILABLE` (and `DISCOVERY_QUOTA_EXCEEDED` if spec 03
+2. **Errors.** Map `DISCOVERY_REGION_UNAVAILABLE` (and `DISCOVERY_QUOTA_EXCEEDED` if 2026-10-22-04
    open question 2 is accepted) in the form's error handling (`:238-248`).
 3. **Scan detail** (`organization.discovery.$jobUid.index.tsx`):
    - a "Runs from @dc1" line;
@@ -59,23 +59,25 @@ Once spec 03 ships, the API can run a LAN scan from a private region, but:
        (`:133-145`);
      - add a new "Scan the location's network" section between `:300` and `:359`;
      - fix the Security model row "claim/result only" (`:363`);
-     - add Known limitations: the allow-list bounds discovery only, while checks and trace
+     - add Known limitations: a scan (and a crawl, 2026-10-22-03) is claimed through the generic
+       agent task routes; the allow-list bounds discovery only, while checks and trace
        requests can already reach any host the agent routes to (network filtering of the agent
        host is the real boundary); reverse DNS of live hosts goes to the agent's resolver; ICMP
        needs `NET_RAW` or `net.ipv4.ping_group_range`, otherwise liveness is TCP-only; the
-       per-replica handshake replay window (`:375-389`) also applies to discovery claims.
+       per-replica handshake replay window (`:375-389`) also applies to task claims.
    - `features/events.md`: the three new event types.
 8. **Wiki**:
-   - `wiki/features/deported-agents.md` (`:175-180, 212-232`): the HTTP discovery endpoints,
-     agent pull, and system agents must never set `SP_AGENT_DISCOVERY_ENABLED` (`:415-422`).
-   - `wiki/conventions/regions.md` audit table (`:76-88`): a row for the discovery claim predicate
-     (org + exact region, system agents excluded).
+   - `wiki/features/deported-agents.md` (`:175-180, 212-232`): the generic agent task routes
+     (`/api/v1/agent/tasks/*`, 2026-10-22-02), agent pull, the `discovery` and `crawl` kinds, and system agents must never set `SP_AGENT_DISCOVERY_ENABLED` (`:415-422`).
+   - `wiki/conventions/regions.md` audit table (`:76-88`): a row for the task claim predicate
+     (agents: org + exact region; cloud workers: exact region; system agents excluded).
    - `wiki/api-specification/discovery.md`: document the `{type, parameters, region?}` body and
      `serverAvailable`. Fix the existing errors: the progress block returns `groupCount` /
      `checkCount`, not `hostCount` (`:23, :29`), and cancel interrupts running chunks (`:32`).
-   - `wiki/api-specification/agents.md`: the `discovery` capability and the agent discovery
-     endpoints.
-   - `wiki/database-model/discovery.md`: the `discovery_chunks` table.
+   - `wiki/api-specification/agents.md`: the `discovery` and `crawl` capabilities and the agent
+     task routes.
+   - `wiki/database-model/`: the `worker_tasks` table (new page or the jobs page), linked from
+     `discovery.md`.
 
 ## Tests
 - `web/dash0/e2e/discovery-region.spec.ts`, mocking `/regions` and `/discovery/types` with
