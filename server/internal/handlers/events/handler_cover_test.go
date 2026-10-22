@@ -45,12 +45,15 @@ func TestEventsHandler(t *testing.T) { //nolint:tparallel // subtests share one 
 		{"list bad since", h.ListEvents, f.orgSlug, "since=yesterday", f.admin, http.StatusBadRequest},
 		{"list bad until", h.ListEvents, f.orgSlug, "until=tomorrow", f.admin, http.StatusBadRequest},
 		{"list bad limit", h.ListEvents, f.orgSlug, "limit=abc", f.admin, http.StatusBadRequest},
+		{"list bad order", h.ListEvents, f.orgSlug, "order=bogus", f.admin, http.StatusBadRequest},
 		{"list ghost org", h.ListEvents, "ghost", "", f.admin, http.StatusNotFound},
 		{"incident events ok", h.ListIncidentEvents, f.orgSlug, "cursor=x&limit=3", f.admin, http.StatusOK},
 		{"incident events bad limit", h.ListIncidentEvents, f.orgSlug, "limit=-1", f.admin, http.StatusBadRequest},
+		{"incident events bad order", h.ListIncidentEvents, f.orgSlug, "order=bogus", f.admin, http.StatusBadRequest},
 		{"incident events ghost", h.ListIncidentEvents, "ghost", "", f.admin, http.StatusNotFound},
 		{"check events ok", h.ListCheckEvents, f.orgSlug, "cursor=x&limit=3", f.admin, http.StatusOK},
 		{"check events bad limit", h.ListCheckEvents, f.orgSlug, "limit=zzz", f.admin, http.StatusBadRequest},
+		{"check events bad order", h.ListCheckEvents, f.orgSlug, "order=bogus", f.admin, http.StatusBadRequest},
 		{"check events ghost", h.ListCheckEvents, "ghost", "", f.admin, http.StatusNotFound},
 	}
 

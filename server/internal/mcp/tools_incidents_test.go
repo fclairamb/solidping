@@ -357,3 +357,61 @@ func incidentRowJSONType(value any) string {
 		return schemaTypeObject
 	}
 }
+
+// TestToolListIncidentsOrderAndCursor walks list_incidents oldest first with
+// the returned cursor, and checks that a bad order is an error result.
+func TestToolListIncidentsOrderAndCursor(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+
+	handler, org := newIncidentToolsEnv(t)
+	handler.incidentsSvc = newIncidentsServiceForTest(handler)
+
+	check := models.NewCheck(org.UID, "acme-api", "http")
+	r.NoError(handler.dbService.CreateCheck(ctx, check))
+
+	base := time.Date(2026, time.October, 1, 9, 0, 0, 0, time.UTC)
+	want := make([]string, 0, 3)
+	for i := range 3 {
+		inc := models.NewIncident(org.UID, check.UID, base.Add(time.Duration(i)*time.Hour), "outage")
+		r.NoError(handler.dbService.CreateIncident(ctx, inc))
+		want = append(want, inc.UID)
+	}
+
+	page := func(args map[string]any) (uids []string, cursor string) {
+		result := handler.toolListIncidents(ctx, org.Slug, args)
+		r.False(result.IsError)
+
+		raw, err := json.Marshal(result.StructuredContent)
+		r.NoError(err)
+
+		var decoded struct {
+			Data []struct {
+				UID string `json:"uid"`
+			} `json:"data"`
+			Pagination struct {
+				Cursor string `json:"cursor"`
+			} `json:"pagination"`
+		}
+		r.NoError(json.Unmarshal(raw, &decoded))
+
+		for _, row := range decoded.Data {
+			uids = append(uids, row.UID)
+		}
+
+		return uids, decoded.Pagination.Cursor
+	}
+
+	first, cursor := page(map[string]any{"order": "asc", "size": 2})
+	r.Equal(want[:2], first)
+	r.NotEmpty(cursor)
+
+	second, cursor := page(map[string]any{"order": "asc", "size": 2, propCursor: cursor})
+	r.Equal(want[2:], second)
+	r.NotEmpty(cursor, "asc always returns a cursor, even on the last page")
+
+	bad := handler.toolListIncidents(ctx, org.Slug, map[string]any{"order": "bogus"})
+	r.True(bad.IsError)
+	r.Contains(bad.Content[0].Text, "invalid order")
+}
