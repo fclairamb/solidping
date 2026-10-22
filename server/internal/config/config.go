@@ -2032,9 +2032,9 @@ type SchedulingConfig struct {
 	// with a startup warning when out of range. Default 5; 0 disables the
 	// reservation (slow may fill the pool, pre-lane behavior).
 	FastLaneReserved int `koanf:"fast_lane_reserved"`
-	// BulkLaneMax caps the multi-step slices (bulk lane, spec 2026-10-03-03)
-	// in flight per worker. Bulk shares the non-reserved part of the pool
-	// with the slow lane, slow first. Default 4; <= 0 falls back to 4.
+	// BulkLaneMax caps the worker tasks (website crawl slices, spec
+	// 2026-10-22-03) a cloud worker runs at once, outside its runner pool.
+	// Default 4; <= 0 falls back to 4.
 	BulkLaneMax int `koanf:"bulk_lane_max"`
 	// BulkSliceBudgetMs is the wall-clock budget of one multi-step slice in
 	// ms. Default 10000; <= 0 falls back to it; clamped to 60000.

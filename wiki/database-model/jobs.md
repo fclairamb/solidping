@@ -47,7 +47,8 @@ slices, the state between slices held by the server (spec 2026-10-22-02).
 | attempts | integer | Claims of the current slice (4th fails: `max_attempts`) |
 | slice_count, slice_failures | integer | Slices done, failed slices in a row (3 fail) |
 | state_file_uid | text | File `tasks/<uid>/step-state` for the next slice |
-| not_before, run_started_at | timestamptz | Earliest claim, first claim |
+| units_granted | integer | Units reserved for the slice in progress, refunded server-side (spec 2026-10-22-03) |
+| not_before, run_started_at | timestamptz | Earliest claim, first claim that ran (cleared by a deferral before the first slice) |
 | error_code | text | Code of a failed task |
 
 **Indexes**: claim (region, kind, status, not_before); (organization_uid, region,

@@ -321,6 +321,16 @@ needs the server-side envelope, so it saves normally and is flagged
 *needs re-seal* until an agent exists.)
 :::
 
+### Crawl from a private location
+
+A [website crawl](./check-types.md#website-crawl) can target one private
+location: its agents fetch the pages, so an intranet, a staging site behind a
+VPN or a site only reachable from your network can be crawled. The location
+needs no live agent when you create the check. Agents older than v0.41 cannot
+run crawls: the region picker disables a location whose agents report no crawl
+support, with a hint to upgrade them. Each fetched URL counts against your
+checks-per-minute limit, as from a cloud region.
+
 ### Updating a sealed check's configuration
 
 Sealed-only credentials are invisible to the server, which shapes how `PATCH`
