@@ -99,11 +99,12 @@ func (r *FreeboxLanDiscoveryJobRun) Run(ctx context.Context, jctx *jobdef.JobCon
 		inputs = append(inputs, disc.HostInput{IP: ip, HostnameHint: lanHosts[i].Name})
 	}
 
-	scanned, err := disc.ScanHosts(ctx, inputs, &disc.Config{})
+	scanResult, err := disc.ScanHosts(ctx, inputs, &disc.Config{})
 	if err != nil {
 		return fmt.Errorf("scan freebox hosts: %w", err)
 	}
 
+	scanned := scanResult.Hosts
 	rows := buildFreeboxRows(lanHosts, scanned)
 
 	log.InfoContext(ctx, "Freebox LAN discovery complete",

@@ -21,8 +21,9 @@ func TestScanLocalhost(t *testing.T) {
 		Ports: []int{80, 443},
 	}
 
-	hosts, err := Scan(ctx, &cfg)
+	result, err := Scan(ctx, &cfg)
 	r.NoError(err)
+	hosts := result.Hosts
 	// The scan may return zero hosts if nothing is listening, but it must not error.
 	r.NotNil(hosts)
 }
@@ -74,8 +75,9 @@ func TestScanHostsHostnameHintPrecedence(t *testing.T) {
 		{IP: net.ParseIP("127.0.0.1"), HostnameHint: "my-device"},
 	}
 
-	results, err := ScanHosts(ctx, hosts, &Config{Ports: []int{port}})
+	scan, err := ScanHosts(ctx, hosts, &Config{Ports: []int{port}})
 	r.NoError(err)
+	results := scan.Hosts
 	r.Len(results, 1, "the listening host must be reported")
 
 	got := results[0]
@@ -96,9 +98,9 @@ func TestScanHostsUnresponsiveOmitted(t *testing.T) {
 		{IP: net.ParseIP("192.0.2.1"), HostnameHint: "test-net-host"}, // TEST-NET-1
 	}
 
-	results, err := ScanHosts(ctx, hosts, &Config{Ports: []int{9}, Timeout: "200ms"})
+	scan, err := ScanHosts(ctx, hosts, &Config{Ports: []int{9}, Timeout: "200ms"})
 	r.NoError(err)
-	r.NotNil(results)
+	r.NotNil(scan.Hosts)
 }
 
 func TestScanHostsDefaultsAndIgnoresCIDRs(t *testing.T) {
@@ -108,10 +110,10 @@ func TestScanHostsDefaultsAndIgnoresCIDRs(t *testing.T) {
 	ctx := context.Background()
 
 	// cfg.CIDRs is ignored by ScanHosts; nil port list falls back to defaults.
-	results, err := ScanHosts(ctx, nil, &Config{CIDRs: []string{"invalid-cidr-ignored"}})
+	scan, err := ScanHosts(ctx, nil, &Config{CIDRs: []string{"invalid-cidr-ignored"}})
 	r.NoError(err)
-	r.NotNil(results)
-	r.Empty(results)
+	r.NotNil(scan.Hosts)
+	r.Empty(scan.Hosts)
 }
 
 func TestScanHostsInvalidTimeout(t *testing.T) {
