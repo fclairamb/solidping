@@ -29,7 +29,10 @@ var (
 	envRefRE  = regexp.MustCompile(`\benv\s*(?:\.\s*([A-Za-z_$][\w$]*)|\[\s*["']([^"']+)["']\s*\])`)
 	secretRE  = regexp.MustCompile(`\bsecrets\s*(?:\.\s*([A-Za-z_$][\w$]*)|\[\s*["']([^"']+)["']\s*\])`)
 	tryRE     = regexp.MustCompile(`\btry\s*\{`)
-	downRE    = regexp.MustCompile(`["']down["']`)
+	// hostTokenRE catches a bare host name or IPv4 address in prose
+	// ("monitor acme.com", "the API on 10.0.0.5").
+	hostTokenRE = regexp.MustCompile(`(?i)\b(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\b|\blocalhost\b`)
+	downRE      = regexp.MustCompile(`["']down["']`)
 )
 
 // ScriptHosts lists the hosts a script contacts: URL literals in the script,
@@ -197,8 +200,10 @@ func stringEnd(runes []rune, start int) int {
 }
 
 // CheckHosts refuses a candidate contacting a host the previous version did
-// not. This is what keeps a prompt injection in page content from sending
-// `secrets` somewhere new.
+// not. It only reads the script text, so a URL built at runtime escapes it:
+// it is an early refusal with a clear message, not the security boundary.
+// What keeps a prompt injection in page content from sending `secrets`
+// somewhere new is the runtime host allowlist of Runner.Run (repairHosts).
 func CheckHosts(previous, candidate string, env map[string]string) error {
 	allowed := ScriptHosts(previous, env)
 
@@ -268,7 +273,9 @@ func CheckCandidate(previous, candidate string, env map[string]string) error {
 
 // hostsDeclared reports whether every host the script contacts appears in the
 // user's own words (prompt, contract, env values). A generated script only
-// gets the real secret values when it does.
+// gets the real secret values when it does. Like CheckHosts it reads the
+// text only and is an early refusal: the run itself is held to
+// declaredHosts at runtime.
 func hostsDeclared(script string, env map[string]string, declared ...string) bool {
 	parts := append([]string(nil), declared...)
 	for _, value := range env {
@@ -284,4 +291,59 @@ func hostsDeclared(script string, env map[string]string, declared ...string) boo
 	}
 
 	return true
+}
+
+// repairHosts is the host allowlist of a repair run holding the check's real
+// secrets: the hosts the previous version contacts, its URL literals and the
+// env values it reads. An env value the previous version never read is not
+// in it, so a candidate cannot reach one through a dynamic key.
+func repairHosts(previous string, env map[string]string) []string {
+	return ScriptHosts(previous, env)
+}
+
+// declaredHosts is the host allowlist of a generation run holding real
+// secrets: every URL host and bare host name the user wrote (prompt,
+// contract, env values).
+func declaredHosts(env map[string]string, declared ...string) []string {
+	texts := append([]string(nil), declared...)
+	for _, value := range env {
+		texts = append(texts, value)
+	}
+
+	var hosts []string
+
+	for _, text := range texts {
+		hosts = append(hosts, urlHosts(text)...)
+
+		for _, token := range hostTokenRE.FindAllString(text, -1) {
+			hosts = append(hosts, strings.ToLower(token))
+		}
+	}
+
+	return dedupHosts(hosts)
+}
+
+// urlHosts lists the hosts of the URL literals in text.
+func urlHosts(text string) []string {
+	var hosts []string
+
+	for _, match := range urlLiteralRE.FindAllString(text, -1) {
+		if parsed, err := url.Parse(match); err == nil && parsed.Hostname() != "" {
+			hosts = append(hosts, strings.ToLower(parsed.Hostname()))
+		}
+	}
+
+	return hosts
+}
+
+func dedupHosts(hosts []string) []string {
+	sort.Strings(hosts)
+
+	return slices.Compact(hosts)
+}
+
+// hostsHidden reports a candidate whose text shows no host while the previous
+// version's did: its connections are built at runtime.
+func hostsHidden(previous, candidate string, env map[string]string) bool {
+	return len(ScriptHosts(candidate, env)) == 0 && len(ScriptHosts(previous, env)) > 0
 }

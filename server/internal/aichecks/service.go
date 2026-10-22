@@ -492,6 +492,7 @@ func (s *Service) Generate(ctx context.Context, orgUID string, req *GenerateRequ
 	ctx = ai.WithCallMeta(ctx, ai.CallMeta{OrgUID: orgUID, CheckUID: req.CheckUID, Purpose: ai.PurposeGenerate})
 
 	declared := append([]string{req.Prompt}, req.Contract...)
+	allowed := declaredHosts(req.Env, declared...)
 	progress := req.OnProgress
 	if progress == nil {
 		progress = func(Progress) {}
@@ -501,16 +502,19 @@ func (s *Service) Generate(ctx context.Context, orgUID string, req *GenerateRequ
 		runner:   s.runner,
 		env:      req.Env,
 		progress: progress,
-		prepare: func(script string) (map[string]string, string, error) {
+		prepare: func(script string) (*runGrant, error) {
 			// The real values only run a script whose every host the user
-			// named: page content cannot talk the model into sending them
-			// elsewhere.
+			// named. The text check is an early answer; the boundary is the
+			// runtime allowlist of those hosts, which a URL built at
+			// runtime cannot get around.
 			if hostsDeclared(script, req.Env, declared...) {
-				return req.Secrets, "", nil
+				return &runGrant{secrets: req.Secrets, hosts: allowed}, nil
 			}
 
-			return blankSecrets(req.Secrets), "secrets were blank for this run: the script contacts a host " +
-				"the user did not name", nil
+			return &runGrant{
+				secrets: blankSecrets(req.Secrets),
+				note:    "secrets were blank for this run: the script contacts a host the user did not name",
+			}, nil
 		},
 	}
 

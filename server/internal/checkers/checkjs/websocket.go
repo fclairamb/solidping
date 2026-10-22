@@ -13,6 +13,7 @@ import (
 	"github.com/dop251/goja"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/egress"
 )
 
 // WebSocket frame type names, as a script sees them.
@@ -153,7 +154,16 @@ func (h *wsHandle) dialOptions(opts map[string]any) (*websocket.DialOptions, boo
 		needClient = true
 	}
 
-	if needClient {
+	// An allowlisted run checks the handshake request, and any redirect it
+	// follows, before it is sent.
+	if list := egress.HostAllowlistFrom(h.runtime.execCtx); list != nil {
+		var base http.RoundTripper = http.DefaultTransport
+		if needClient {
+			base = transport
+		}
+
+		dialOpts.HTTPClient = &http.Client{Transport: list.RoundTripper(base)}
+	} else if needClient {
 		dialOpts.HTTPClient = &http.Client{Transport: transport}
 	}
 

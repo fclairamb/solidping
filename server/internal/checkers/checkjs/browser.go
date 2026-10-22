@@ -10,6 +10,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkbrowser"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/egress"
 )
 
 // maxBrowserActions caps the page methods one execution may call.
@@ -130,6 +131,12 @@ func (r *jsRuntime) openPage() (*goja.Object, error) {
 	// session (and its slot/allocation cost) is touched at all.
 	if checkerdef.TunnelDialerFrom(r.execCtx) != nil {
 		return nil, errBrowserUnderTunnel
+	}
+
+	// Chrome has its own network stack: the page (and the content it loads)
+	// can reach any host, so a run held to a host allowlist cannot open one.
+	if err := egress.HostAllowlistFrom(r.execCtx).Refuse("browser"); err != nil {
+		return nil, err
 	}
 
 	session, err := OpenBrowser(r.execCtx)
