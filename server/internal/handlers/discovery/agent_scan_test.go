@@ -101,6 +101,14 @@ func (f *agentScanFixture) do(t *testing.T, userUID, method, path string, body a
 		require.NoError(t, err)
 	}
 
+	return f.send(t, userUID, method, path, raw)
+}
+
+// send is do with an encoded body. It asserts nothing, so a test may call it
+// from another goroutine.
+func (f *agentScanFixture) send(t *testing.T, userUID, method, path string, raw []byte) *httptest.ResponseRecorder {
+	t.Helper()
+
 	ctx := context.WithValue(t.Context(), base.ContextKeyClaims, &auth.Claims{
 		UserUID: userUID, OrgSlug: f.org.Slug, Role: "admin",
 	})
@@ -391,15 +399,15 @@ func TestAgentScanAlreadyRunningGuard(t *testing.T) {
 	r.Equal(http.StatusCreated, rec.Code, "expired chunks do not guard: %s", rec.Body.String())
 }
 
-// usedAgentPlan records an agent plan of the org charged with addresses,
+// usedAgentPlan records an agent plan of the org from @dc1 charged with addresses,
 // created at createdAt; retryOf makes it a retry clone of that plan.
 func (f *agentScanFixture) usedAgentPlan(
-	t *testing.T, orgUID, region string, addresses int, createdAt time.Time, retryOf *string,
+	t *testing.T, orgUID string, addresses int, createdAt time.Time, retryOf *string,
 ) *models.Job {
 	t.Helper()
 
 	job := models.NewJob(&orgUID, string(jobdef.JobTypeNetworkDiscoveryAgentPlan))
-	job.Config = models.JSONMap{"cidrs": []string{"10.9.0.0/16"}, "region": region, "addressCount": addresses}
+	job.Config = models.JSONMap{"cidrs": []string{"10.9.0.0/16"}, "region": "@dc1", "addressCount": addresses}
 	job.Status = models.JobStatusSuccess
 	job.CreatedAt = createdAt
 	job.PreviousJobUID = retryOf
@@ -424,17 +432,17 @@ func TestAgentScanQuota(t *testing.T) {
 		f := newAgentScanFixture(t, config.DeploymentModeSaaS)
 		now := time.Now()
 
-		canceled := f.usedAgentPlan(t, f.org.UID, "@dc1", 65_000, now, nil)
+		canceled := f.usedAgentPlan(t, f.org.UID, 65_000, now, nil)
 		_, err := f.dbSvc.DB().NewUpdate().Model((*models.Job)(nil)).
 			Set("deleted_at = ?", now).Where("uid = ?", canceled.UID).Exec(t.Context())
 		r.NoError(err)
-		f.usedAgentPlan(t, f.org.UID, "@dc1", 400, now, nil)
-		f.usedAgentPlan(t, f.org.UID, "@dc1", 1_000_000, now, &canceled.UID)
-		f.usedAgentPlan(t, f.org.UID, "@dc1", 1_000_000, now.Add(-25*time.Hour), nil)
+		f.usedAgentPlan(t, f.org.UID, 400, now, nil)
+		f.usedAgentPlan(t, f.org.UID, 1_000_000, now, &canceled.UID)
+		f.usedAgentPlan(t, f.org.UID, 1_000_000, now.Add(-25*time.Hour), nil)
 
 		other := models.NewOrganization("other", "Other Org")
 		r.NoError(f.dbSvc.CreateOrganization(t.Context(), other))
-		f.usedAgentPlan(t, other.UID, "@dc1", 1_000_000, now, nil)
+		f.usedAgentPlan(t, other.UID, 1_000_000, now, nil)
 
 		// The audit trail no longer feeds the quota.
 		event := models.NewEvent(f.org.UID, models.EventTypeDiscoveryScanStarted, models.ActorTypeUser)
@@ -461,7 +469,7 @@ func TestAgentScanQuota(t *testing.T) {
 
 		r := require.New(t)
 		f := newAgentScanFixture(t, config.DeploymentModeSelfHosted)
-		f.usedAgentPlan(t, f.org.UID, "@dc1", 10_000_000, time.Now(), nil)
+		f.usedAgentPlan(t, f.org.UID, 10_000_000, time.Now(), nil)
 
 		rec := f.do(t, f.admin.UID, http.MethodPost, f.scansPath(), lanScan("@dc1", "10.0.0.0/16"))
 		r.Equal(http.StatusCreated, rec.Code, rec.Body.String())
@@ -481,9 +489,18 @@ func runConcurrentStarts(t *testing.T, f *agentScanFixture) {
 	t.Helper()
 
 	r := require.New(t)
-	f.usedAgentPlan(t, f.org.UID, "@dc1", 1_000, time.Now().Add(-time.Minute), nil)
+	f.usedAgentPlan(t, f.org.UID, 1_000, time.Now().Add(-time.Minute), nil)
 
 	const starts = 8
+
+	bodies := make([][]byte, starts)
+
+	for i := range starts {
+		raw, err := json.Marshal(lanScan("@dc1", fmt.Sprintf("10.%d.0.0/17", i)))
+		r.NoError(err)
+
+		bodies[i] = raw
+	}
 
 	codes := make(chan int, starts)
 	ready := make(chan struct{})
@@ -498,8 +515,7 @@ func runConcurrentStarts(t *testing.T, f *agentScanFixture) {
 
 			<-ready
 
-			cidr := fmt.Sprintf("10.%d.0.0/17", i)
-			codes <- f.do(t, f.admin.UID, http.MethodPost, f.scansPath(), lanScan("@dc1", cidr)).Code
+			codes <- f.send(t, f.admin.UID, http.MethodPost, f.scansPath(), bodies[i]).Code
 		}()
 	}
 
