@@ -353,6 +353,7 @@
       "region": "Region",
       "agents": "Agents",
       "ipv6": "IPv6",
+      "discoveryBadge": "Discovery",
       "actions": "Actions",
       "mint": "New enrollment token",
       "delete": "Delete location",
@@ -444,5 +445,10 @@
       "deleted": "Variable deleted",
       "failed": "Could not delete the variable"
     }
+  },
+  "upgradePage": {
+    "title": "Upgrade your plan",
+    "redirecting": "Redirecting you to the plan page...",
+    "unavailable": "Only organization admins can change the plan, or this deployment has no billing. Ask an admin of your organization."
   }
 }

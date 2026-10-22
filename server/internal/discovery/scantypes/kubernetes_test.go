@@ -88,7 +88,7 @@ func TestKubernetesBuildJobValid(t *testing.T) {
 	r.Equal(models.DiscoverySourceKubernetes, def.Source())
 
 	params := json.RawMessage(`{"clusterUid":"` + clusterUID + `","namespaces":["prod"],"timeout":"15s"}`)
-	jobType, cfg, err := def.BuildJob(t.Context(), deps, orgUID, params)
+	jobType, cfg, err := def.BuildJob(t.Context(), deps, orgUID, "", params)
 	r.NoError(err)
 	r.Equal(string(jobdef.JobTypeKubernetesDiscovery), jobType)
 	r.Contains(string(cfg), clusterUID)
@@ -114,7 +114,7 @@ func TestKubernetesBuildJobUnknownCluster(t *testing.T) {
 
 	def := &scantypes.KubernetesDefinition{}
 	params := json.RawMessage(`{"clusterUid":"00000000-0000-0000-0000-000000000000"}`)
-	_, _, err := def.BuildJob(t.Context(), deps, orgUID, params)
+	_, _, err := def.BuildJob(t.Context(), deps, orgUID, "", params)
 	r.Error(err)
 	r.Equal(scantypes.CodeKubernetesClusterNotFound, codeOf(err))
 }
@@ -124,7 +124,7 @@ func TestKubernetesBuildJobMissingParam(t *testing.T) {
 
 	r := require.New(t)
 	def := &scantypes.KubernetesDefinition{}
-	_, _, err := def.BuildJob(t.Context(), scantypes.Deps{}, "org-1", json.RawMessage(`{}`))
+	_, _, err := def.BuildJob(t.Context(), scantypes.Deps{}, "org-1", "", json.RawMessage(`{}`))
 	r.Error(err)
 	r.Equal(scantypes.CodeInvalidParameters, codeOf(err))
 }
@@ -134,7 +134,7 @@ func TestKubernetesBuildJobMalformedJSON(t *testing.T) {
 
 	r := require.New(t)
 	def := &scantypes.KubernetesDefinition{}
-	_, _, err := def.BuildJob(t.Context(), scantypes.Deps{}, "org-1", json.RawMessage(`{nope`))
+	_, _, err := def.BuildJob(t.Context(), scantypes.Deps{}, "org-1", "", json.RawMessage(`{nope`))
 	r.Error(err)
 	r.Equal(scantypes.CodeInvalidParameters, codeOf(err))
 }
@@ -145,7 +145,7 @@ func TestKubernetesBuildJobNoDBService(t *testing.T) {
 	r := require.New(t)
 	def := &scantypes.KubernetesDefinition{}
 	params := json.RawMessage(`{"clusterUid":"some-uid"}`)
-	_, _, err := def.BuildJob(t.Context(), scantypes.Deps{}, "org-1", params)
+	_, _, err := def.BuildJob(t.Context(), scantypes.Deps{}, "org-1", "", params)
 	r.Error(err)
 	r.Equal(scantypes.CodeInvalidParameters, codeOf(err))
 }
@@ -182,13 +182,13 @@ func TestKubernetesBuildJobEgressGuard(t *testing.T) {
 	params := json.RawMessage(`{"clusterUid":"` + conn.UID + `"}`)
 
 	deps.EgressGuard = egress.New(false)
-	_, _, err = def.BuildJob(t.Context(), deps, orgUID, params)
+	_, _, err = def.BuildJob(t.Context(), deps, orgUID, "", params)
 	r.ErrorContains(err, egress.ErrDenied.Error())
 	r.NotContains(err.Error(), "connection refused")
 	r.Zero(requests.Load(), "the private API server must receive no request")
 
 	deps.EgressGuard = egress.New(true)
-	jobType, _, err := def.BuildJob(t.Context(), deps, orgUID, params)
+	jobType, _, err := def.BuildJob(t.Context(), deps, orgUID, "", params)
 	r.NoError(err)
 	r.Equal(string(jobdef.JobTypeKubernetesDiscovery), jobType)
 	r.Positive(requests.Load())

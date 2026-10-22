@@ -1,10 +1,18 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ApiError } from "@/api/client";
 import type { StatusPage } from "@/api/hooks";
 import {
+  fetchStatusPagesWithSections,
   findCheckPublications,
   selectorMatchesCheck,
 } from "./check-publication";
+
+const apiFetchMock = vi.hoisted(() => vi.fn());
+vi.mock("@/api/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/client")>()),
+  apiFetch: apiFetchMock,
+}));
 
 /**
  * Spec 2026-09-16-11. The value of this module is entirely in the NEGATIVE
@@ -53,7 +61,11 @@ describe("selectorMatchesCheck", () => {
 });
 
 describe("findCheckPublications", () => {
-  const check = { uid: "chk-1", checkGroupUid: "grp-1", labels: { env: "prod" } };
+  const check = {
+    uid: "chk-1",
+    checkGroupUid: "grp-1",
+    labels: { env: "prod" },
+  };
 
   it("reports nothing for an unpublished check", () => {
     const pages = [
@@ -168,9 +180,9 @@ describe("findCheckPublications", () => {
         },
       ]),
     ];
-    expect(
-      findCheckPublications({ uid: "chk-1", labels: {} }, pages),
-    ).toEqual([]);
+    expect(findCheckPublications({ uid: "chk-1", labels: {} }, pages)).toEqual(
+      [],
+    );
   });
 
   it("prefers the direct row over a group row in the same section", () => {
@@ -244,8 +256,52 @@ describe("findCheckPublications", () => {
         ],
       } as StatusPage,
     ];
-    expect(findCheckPublications(check, pages).map((p) => p.sectionUid)).toEqual(
-      ["sec-1", "sec-3"],
-    );
+    expect(
+      findCheckPublications(check, pages).map((p) => p.sectionUid),
+    ).toEqual(["sec-1", "sec-3"]);
+  });
+});
+
+describe("fetchStatusPagesWithSections", () => {
+  // A block body: vitest runs a function returned by beforeEach as teardown.
+  beforeEach(() => {
+    apiFetchMock.mockReset();
+  });
+
+  const routes = (byPath: Record<string, () => unknown>) =>
+    apiFetchMock.mockImplementation(async (path: string) => {
+      const route = byPath[path];
+      if (!route) throw new Error(`unexpected ${path}`);
+      return route();
+    });
+
+  it("skips a page deleted between the list and its own GET", async () => {
+    routes({
+      "/api/v1/orgs/acme/status-pages": () => ({
+        data: [{ uid: "gone" }, { uid: "kept" }],
+      }),
+      "/api/v1/orgs/acme/status-pages/gone?with=sections": () => {
+        throw new ApiError("Not found", "NOT_FOUND", undefined, 404);
+      },
+      "/api/v1/orgs/acme/status-pages/kept?with=sections": () => ({
+        uid: "kept",
+        name: "Kept",
+      }),
+    });
+
+    await expect(fetchStatusPagesWithSections("acme")).resolves.toEqual([
+      { uid: "kept", name: "Kept" },
+    ]);
+  });
+
+  it("still fails on any other error", async () => {
+    routes({
+      "/api/v1/orgs/acme/status-pages": () => ({ data: [{ uid: "p" }] }),
+      "/api/v1/orgs/acme/status-pages/p?with=sections": () => {
+        throw new ApiError("Boom", "INTERNAL_ERROR", undefined, 500);
+      },
+    });
+
+    await expect(fetchStatusPagesWithSections("acme")).rejects.toThrow("Boom");
   });
 });

@@ -133,57 +133,9 @@ func (s *Service) SubmitResult(
 		return nil, fmt.Errorf("%w: %w", ErrJobNotFound, err)
 	}
 
-	// An agent's OnDemand marker is honored only when this job's lease really
-	// carried a "Capture now" request (spec 2026-09-25-34).
-	job.HonorOnDemand(req.Diagnostics)
-
-	s.recordCaptureFailure(ctx, &job, req)
-
-	// 2. Build the result.
-	resultUID, err := uuid.NewV7()
-	if err != nil {
-		return nil, fmt.Errorf(
-			"failed to generate result UID: %w", err,
-		)
+	if err := s.RecordResult(ctx, &job, req); err != nil {
+		return nil, err
 	}
-
-	result := &models.Result{
-		UID:             resultUID.String(),
-		OrganizationUID: job.OrganizationUID,
-		CheckUID:        job.CheckUID,
-		PeriodType:      "raw",
-		PeriodStart:     time.Now(),
-		WorkerUID:       &req.WorkerUID,
-		Region:          job.Region,
-		Status:          &req.Status,
-		Duration:        &req.Duration,
-		Metrics:         models.JSONMap(req.Metrics),
-		Output:          models.JSONMap(req.Output),
-		CreatedAt:       time.Now(),
-		// Transient (`bun:"-"`) — for the incident pipeline only, never a column.
-		Diagnostics: req.Diagnostics,
-	}
-
-	// 3. Tag the row as maintenance BEFORE the insert (spec 2026-08-20-01),
-	// then save with status tracking. Best-effort: a failed maintenance lookup
-	// records the probe as production traffic rather than dropping it.
-	if inMaintenance, mwErr := s.incidentSvc.IsCheckInActiveMaintenance(ctx, job.CheckUID); mwErr != nil {
-		slog.WarnContext(ctx, "Failed to resolve maintenance window for result tagging",
-			"error", mwErr, "check_uid", job.CheckUID)
-	} else {
-		result.Maintenance = inMaintenance
-	}
-
-	if saveErr := s.db.SaveResultWithStatusTracking(ctx, result); saveErr != nil {
-		return nil, fmt.Errorf("failed to save result: %w", saveErr)
-	}
-
-	activation.Emit(ctx, s.db, job.OrganizationUID,
-		models.EventTypeOrgActivationFirstResultReceived,
-		activation.SourceSystem, "")
-
-	// 4. Baseline capture and incidents (best-effort).
-	s.afterSave(ctx, &job, result, req)
 
 	// 5. Release lease, folding in the post-exec scheduling state.
 	//
@@ -205,6 +157,70 @@ func (s *Service) SubmitResult(
 	return &SubmitResultResponse{
 		NextScheduledAt: nextScheduledAt,
 	}, nil
+}
+
+// RecordResult saves the result of job and runs what follows a saved result
+// (activation, baseline capture, incidents). It never touches the lease: the
+// worker-task kinds (spec 2026-10-22-03) release the job their own way. An
+// empty req.WorkerUID stores no worker.
+func (s *Service) RecordResult(ctx context.Context, job *models.CheckJob, req *SubmitResultRequest) error {
+	// An agent's OnDemand marker is honored only when this job's lease really
+	// carried a "Capture now" request (spec 2026-09-25-34).
+	job.HonorOnDemand(req.Diagnostics)
+
+	s.recordCaptureFailure(ctx, job, req)
+
+	// A result written for a worker task may have no worker row behind it.
+	var workerUID *string
+	if req.WorkerUID != "" {
+		workerUID = &req.WorkerUID
+	}
+
+	// 2. Build the result.
+	resultUID, err := uuid.NewV7()
+	if err != nil {
+		return fmt.Errorf("failed to generate result UID: %w", err)
+	}
+
+	result := &models.Result{
+		UID:             resultUID.String(),
+		OrganizationUID: job.OrganizationUID,
+		CheckUID:        job.CheckUID,
+		PeriodType:      "raw",
+		PeriodStart:     time.Now(),
+		WorkerUID:       workerUID,
+		Region:          job.Region,
+		Status:          &req.Status,
+		Duration:        &req.Duration,
+		Metrics:         models.JSONMap(req.Metrics),
+		Output:          models.JSONMap(req.Output),
+		CreatedAt:       time.Now(),
+		// Transient (`bun:"-"`) — for the incident pipeline only, never a column.
+		Diagnostics: req.Diagnostics,
+	}
+
+	// 3. Tag the row as maintenance BEFORE the insert (spec 2026-08-20-01),
+	// then save with status tracking. Best-effort: a failed maintenance lookup
+	// records the probe as production traffic rather than dropping it.
+	if inMaintenance, mwErr := s.incidentSvc.IsCheckInActiveMaintenance(ctx, job.CheckUID); mwErr != nil {
+		slog.WarnContext(ctx, "Failed to resolve maintenance window for result tagging",
+			"error", mwErr, "check_uid", job.CheckUID)
+	} else {
+		result.Maintenance = inMaintenance
+	}
+
+	if saveErr := s.db.SaveResultWithStatusTracking(ctx, result); saveErr != nil {
+		return fmt.Errorf("failed to save result: %w", saveErr)
+	}
+
+	activation.Emit(ctx, s.db, job.OrganizationUID,
+		models.EventTypeOrgActivationFirstResultReceived,
+		activation.SourceSystem, "")
+
+	// 4. Baseline capture and incidents (best-effort).
+	s.afterSave(ctx, job, result, req)
+
+	return nil
 }
 
 // afterSave runs the best-effort steps that follow a saved result: the dns

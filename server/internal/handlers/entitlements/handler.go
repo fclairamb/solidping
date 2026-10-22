@@ -470,6 +470,9 @@ func overlayLimits(dst *entcore.Limits, src *entcore.Limits) {
 	if src.MaxSlos != nil {
 		dst.MaxSlos = src.MaxSlos
 	}
+	if src.MaxDiscoveryAgentAddressesPerDay != nil {
+		dst.MaxDiscoveryAgentAddressesPerDay = src.MaxDiscoveryAgentAddressesPerDay
+	}
 	if src.WhiteLabel != nil {
 		dst.WhiteLabel = src.WhiteLabel
 	}

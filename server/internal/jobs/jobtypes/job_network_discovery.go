@@ -74,10 +74,12 @@ func (r *NetworkDiscoveryJobRun) Run(ctx context.Context, jctx *jobdef.JobContex
 		"parent_job_uid", r.config.ParentJobUID,
 	)
 
-	hosts, err := disc.Scan(ctx, &r.config)
+	result, err := disc.Scan(ctx, &r.config)
 	if err != nil {
 		return fmt.Errorf("scan failed: %w", err)
 	}
+
+	hosts := result.Hosts
 
 	// Flatten every host's grouped suggested checks into a single row set.
 	rows := make([]disc.SuggestedCheck, 0, len(hosts))
@@ -92,5 +94,5 @@ func (r *NetworkDiscoveryJobRun) Run(ctx context.Context, jctx *jobdef.JobContex
 		"job_uid", jobUID,
 	)
 
-	return disc.UpsertDiscoveredChecks(ctx, jctx.DB, orgUID, jobUID, models.DiscoverySourceLAN, rows, log)
+	return disc.UpsertDiscoveredChecks(ctx, jctx.DB, orgUID, jobUID, "", models.DiscoverySourceLAN, rows, log)
 }

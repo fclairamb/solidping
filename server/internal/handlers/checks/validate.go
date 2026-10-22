@@ -33,8 +33,6 @@ var ErrPluginTypeDisabled = errors.New(
 
 // Multi-step placement errors (spec 2026-10-03-03).
 var (
-	// ErrMultiStepPrivateLocation refuses a crawl on a private location.
-	ErrMultiStepPrivateLocation = errors.New("website crawls run on cloud regions only, not on a private location")
 	// ErrMultiStepSingleRegion refuses a crawl pinned to several regions.
 	ErrMultiStepSingleRegion = errors.New("a website crawl runs from a single region")
 )
@@ -460,18 +458,12 @@ func (s *Service) configValidationErrors(
 }
 
 // validateMultiStepPlacement holds a multi-step check (spec 2026-10-03-03) to
-// one cloud region: its state is stored and read by the server's own workers
-// only, so it can never run on a private location, and a crawl from several
-// regions costs that many times more for the same findings.
+// one region: a run has one region, and a crawl from several regions costs
+// that many times more for the same findings. A private location is fine: the
+// run is a worker task its agent claims (spec 2026-10-22-03).
 func validateMultiStepPlacement(checkType string, checkRegions []string) error {
 	if !checkerdef.CheckType(checkType).IsMultiStep() {
 		return nil
-	}
-
-	for _, region := range checkRegions {
-		if regions.IsPrivateRegion(region) {
-			return checkerdef.NewConfigError("regions", ErrMultiStepPrivateLocation.Error())
-		}
 	}
 
 	if len(checkRegions) > 1 {

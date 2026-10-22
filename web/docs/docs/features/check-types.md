@@ -579,7 +579,7 @@ Findings:
 - The result output carries the count per type, the first 50 findings, `newFindings` (findings absent from the previous run) and `pagesCrawled`. Incident notifications name the new findings first.
 - The full findings list of the last 5 runs is downloadable from the check page (or `GET /api/v1/orgs/{org}/checks/{check}/crawl-reports`). `GET .../checks/{check}/run` shows the run in progress and `DELETE` on it cancels it.
 - Each fetched URL counts as one execution against your organization's checks-per-minute limit: a daily 500-page crawl counts as 500 executions per day.
-- A crawl runs from one region only, and never on a private location. Its minimum period is `1h`, default `24h`.
+- A crawl runs from one region only. It can be a [private location](./private-locations.md#crawl-from-a-private-location): the location's agents crawl an intranet or a staging site the cloud cannot reach. Its minimum period is `1h`, default `24h`.
 - The crawler identifies itself as `SolidPing-Crawler/<version> (+https://solidping.io/bot)` and only parses server-rendered HTML (no JavaScript).
 
 ### Application health {#application-health}

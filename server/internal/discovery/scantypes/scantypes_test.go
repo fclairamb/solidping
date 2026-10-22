@@ -76,7 +76,7 @@ func TestLANBuildJob(t *testing.T) {
 			t.Parallel()
 
 			r := require.New(t)
-			jobType, cfg, err := def.BuildJob(t.Context(), scantypes.Deps{}, "org-1", json.RawMessage(tc.params))
+			jobType, cfg, err := def.BuildJob(t.Context(), scantypes.Deps{}, "org-1", "", json.RawMessage(tc.params))
 
 			if tc.wantCode != "" {
 				r.Error(err)
@@ -167,7 +167,7 @@ func TestFreeboxBuildJobGranted(t *testing.T) {
 	r.Equal(models.DiscoverySourceFreebox, def.Source())
 
 	params := json.RawMessage(`{"channelUid":"` + channelUID + `"}`)
-	jobType, cfg, err := def.BuildJob(t.Context(), deps, orgUID, params)
+	jobType, cfg, err := def.BuildJob(t.Context(), deps, orgUID, "", params)
 	r.NoError(err)
 	r.Equal(string(jobdef.JobTypeFreeboxLanDiscovery), jobType)
 	r.Contains(string(cfg), channelUID)
@@ -181,7 +181,7 @@ func TestFreeboxBuildJobNotGranted(t *testing.T) {
 
 	def := &scantypes.FreeboxDefinition{}
 	params := json.RawMessage(`{"channelUid":"` + channelUID + `"}`)
-	_, _, err := def.BuildJob(t.Context(), deps, orgUID, params)
+	_, _, err := def.BuildJob(t.Context(), deps, orgUID, "", params)
 	r.Error(err)
 	r.Equal(scantypes.CodeFreeboxNotGranted, codeOf(err))
 }
@@ -193,7 +193,7 @@ func TestFreeboxBuildJobMissingChannel(t *testing.T) {
 	deps, orgUID, _ := freeboxFixture(t, models.FreeboxStatusGranted)
 
 	def := &scantypes.FreeboxDefinition{}
-	_, _, err := def.BuildJob(t.Context(), deps, orgUID, json.RawMessage(`{"channelUid":"missing"}`))
+	_, _, err := def.BuildJob(t.Context(), deps, orgUID, "", json.RawMessage(`{"channelUid":"missing"}`))
 	r.Error(err)
 	r.Equal(scantypes.CodeInvalidParameters, codeOf(err))
 }
@@ -203,7 +203,7 @@ func TestFreeboxBuildJobMissingParam(t *testing.T) {
 
 	r := require.New(t)
 	def := &scantypes.FreeboxDefinition{}
-	_, _, err := def.BuildJob(t.Context(), scantypes.Deps{}, "org-1", json.RawMessage(`{}`))
+	_, _, err := def.BuildJob(t.Context(), scantypes.Deps{}, "org-1", "", json.RawMessage(`{}`))
 	r.Error(err)
 	r.Equal(scantypes.CodeInvalidParameters, codeOf(err))
 }
@@ -282,7 +282,7 @@ func TestLANBuildJobEgressPolicy(t *testing.T) {
 			r := require.New(t)
 			deps := scantypes.Deps{EgressGuard: egress.New(false)}
 
-			_, _, err := def.BuildJob(t.Context(), deps, "org-1", json.RawMessage(`{"cidrs":["`+cidr+`"]}`))
+			_, _, err := def.BuildJob(t.Context(), deps, "org-1", "", json.RawMessage(`{"cidrs":["`+cidr+`"]}`))
 			r.Error(err)
 			r.Equal(scantypes.CodeNotAvailable, codeOf(err))
 			r.Contains(err.Error(), egress.EnvAllowPrivate)
@@ -297,7 +297,7 @@ func TestLANBuildJobEgressPolicy(t *testing.T) {
 			r := require.New(t)
 			deps := scantypes.Deps{EgressGuard: guard}
 
-			jobType, _, err := def.BuildJob(t.Context(), deps, "org-1", json.RawMessage(`{"cidrs":["10.0.0.0/24"]}`))
+			jobType, _, err := def.BuildJob(t.Context(), deps, "org-1", "", json.RawMessage(`{"cidrs":["10.0.0.0/24"]}`))
 			r.NoError(err)
 			r.Equal(string(jobdef.JobTypeNetworkDiscoveryPlan), jobType)
 			r.NoError(scantypes.Available(def, deps))
@@ -318,11 +318,11 @@ func TestContainerBuildJobDockerGate(t *testing.T) {
 			r := require.New(t)
 			params := json.RawMessage(`{"hosts":["` + endpoint + `"]}`)
 
-			_, _, err := def.BuildJob(t.Context(), scantypes.Deps{DockerBlocked: true}, "org-1", params)
+			_, _, err := def.BuildJob(t.Context(), scantypes.Deps{DockerBlocked: true}, "org-1", "", params)
 			r.Error(err)
 			r.Equal(scantypes.CodeNotAvailable, codeOf(err))
 
-			jobType, _, err := def.BuildJob(t.Context(), scantypes.Deps{DockerBlocked: false}, "org-1", params)
+			jobType, _, err := def.BuildJob(t.Context(), scantypes.Deps{DockerBlocked: false}, "org-1", "", params)
 			r.NoError(err)
 			r.Equal(string(jobdef.JobTypeContainerDiscovery), jobType)
 		})

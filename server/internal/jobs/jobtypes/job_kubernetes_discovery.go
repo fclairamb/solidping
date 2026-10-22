@@ -139,7 +139,7 @@ func (r *KubernetesDiscoveryJobRun) Run(ctx context.Context, jctx *jobdef.JobCon
 		"job_uid", jobUID,
 	)
 
-	return disc.UpsertDiscoveredChecks(ctx, jctx.DB, orgUID, jobUID, models.DiscoverySourceKubernetes, rows, log)
+	return disc.UpsertDiscoveredChecks(ctx, jctx.DB, orgUID, jobUID, "", models.DiscoverySourceKubernetes, rows, log)
 }
 
 // resolveTimeout parses the configured overall timeout, falling back to 0 (which

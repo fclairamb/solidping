@@ -1,6 +1,7 @@
 package discovery
 
 import (
+	"net"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -229,4 +230,48 @@ func TestExpandCIDR(t *testing.T) {
 	ips, err = expandCIDR("192.168.1.0/30")
 	r.NoError(err)
 	r.Len(ips, 4)
+}
+
+func TestAddressCount(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	n, err := AddressCount([]string{"10.0.0.0/24", "10.0.0.0/25", "192.168.1.1/32"})
+	r.NoError(err)
+	r.Equal(256+128+1, n)
+
+	_, err = AddressCount([]string{"fd00::/120"})
+	r.Error(err)
+
+	_, err = AddressCount([]string{"nope"})
+	r.Error(err)
+}
+
+// SkipSuggestions keeps the raw facts and builds no suggested check. ICMP is
+// faked so the host always earns a ping suggestion: CI runners cannot open an
+// ICMP socket, and the random test port matches no default port.
+func TestScanSkipSuggestions(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	port, _ := countingListener(t)
+
+	scan := func(skip bool) *DiscoveredHost {
+		params, err := resolveScanParams(&Config{CIDRs: []string{"127.0.0.1/32"}, Ports: []int{port}, SkipSuggestions: skip})
+		r.NoError(err)
+
+		conn := newFakeConn()
+		conn.onSend = func(_ net.Addr, seq int) { conn.inject(t, "127.0.0.1", conn.lastWrite(t).id, seq, false) }
+
+		res := runProbes(t.Context(), []probeTarget{{IP: "127.0.0.1"}}, params, fakeListen(conn, "udp4"))
+		r.Len(res.Hosts, 1)
+		r.True(res.Hosts[0].ICMPReachable)
+		r.Equal([]int{port}, res.Hosts[0].OpenPorts)
+
+		return &res.Hosts[0]
+	}
+
+	r.Empty(scan(true).SuggestedChecks)
+	r.NotEmpty(scan(false).SuggestedChecks, "control: suggestions are built by default")
 }

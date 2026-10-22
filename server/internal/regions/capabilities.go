@@ -3,6 +3,7 @@ package regions
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/agents"
@@ -28,6 +29,9 @@ const (
 	// this region — i.e. whether its live workers have a Chrome to drive
 	// (spec 2026-08-19-03).
 	CapabilityBrowser = models.CapabilityBrowser
+	// CapabilityDiscovery reports whether an agent of this private region runs
+	// LAN discovery chunks (spec 2026-10-22-04).
+	CapabilityDiscovery = models.CapabilityDiscovery
 )
 
 // Capability values. THREE states, deliberately — not a boolean.
@@ -94,14 +98,52 @@ var aggregatedCapabilities = []string{ //nolint:gochecknoglobals // the publishe
 	CapabilityBrowser,
 }
 
+// CapabilityCrawl is reported by a worker running the website crawl executor
+// (crawltask.Capability, spec 2026-10-22-03).
+const CapabilityCrawl = "crawl"
+
+// taskCapabilities are the worker-task executor capabilities (spec
+// 2026-10-22-02), aggregated like the names above. A system agent never runs
+// worker tasks (the task routes refuse it), so its report never counts for them: the agent socket strips them
+// before storing it (StripTaskCapabilities).
+//
+//nolint:gochecknoglobals // the published task capability registry
+var taskCapabilities = []string{CapabilityCrawl, CapabilityDiscovery}
+
+// StripTaskCapabilities removes the worker-task capabilities from a reported
+// set. A nil ("unknown") set stays nil.
+func StripTaskCapabilities(capabilities []string) []string {
+	return stripCapabilities(capabilities, taskCapabilities)
+}
+
+func stripCapabilities(capabilities, names []string) []string {
+	if capabilities == nil || len(names) == 0 {
+		return capabilities
+	}
+
+	out := make([]string, 0, len(capabilities))
+
+	for _, name := range capabilities {
+		if !slices.Contains(names, name) {
+			out = append(out, name)
+		}
+	}
+
+	return out
+}
+
 // capabilitiesFor renders the capability map for a worker set: the published
 // capabilities, plus one entry per plugin check type this server loaded (a
 // worker advertises the plugin types it can run, spec 2026-10-17-05 §17), plus
 // the extra capability names the caller asks about (an org's agent-reported
 // plugin types, which only that org may see).
-func capabilitiesFor(workers []*models.Worker, extra []string) map[string]string {
-	out := make(map[string]string, len(aggregatedCapabilities))
+func (s *Service) capabilitiesFor(workers []*models.Worker, extra []string) map[string]string {
+	out := make(map[string]string, len(aggregatedCapabilities)+len(s.taskCaps))
 	for _, name := range aggregatedCapabilities {
+		out[name] = aggregate(workers, name)
+	}
+
+	for _, name := range s.taskCaps {
 		out[name] = aggregate(workers, name)
 	}
 
@@ -167,7 +209,7 @@ func (s *Service) annotateGlobal(ctx context.Context, defs []RegionDefinition, e
 			}
 		}
 
-		defs[i].Capabilities = capabilitiesFor(matched, extra)
+		defs[i].Capabilities = s.capabilitiesFor(matched, extra)
 	}
 
 	return nil
@@ -223,7 +265,7 @@ func (s *Service) annotatePrivate(
 			}
 		}
 
-		defs[i].Capabilities = capabilitiesFor(matched, extra)
+		defs[i].Capabilities = s.capabilitiesFor(matched, extra)
 	}
 
 	return nil
@@ -307,4 +349,44 @@ func (d RegionDefinition) IPv6Capability() string {
 // BrowserCapability reads the headless-Chrome verdict off a definition.
 func (d RegionDefinition) BrowserCapability() string {
 	return d.CapabilityFor(CapabilityBrowser)
+}
+
+// HasLiveAgentWith reports whether the org's private region has a live,
+// non-system agent whose worker reports capability (spec 2026-10-22-04: a
+// region-bound discovery scan needs one reporting CapabilityDiscovery). It is
+// a hint taken at request time: the agent may still leave afterwards.
+func (s *Service) HasLiveAgentWith(ctx context.Context, orgUID, region, capability string) (bool, error) {
+	orgAgents, err := s.db.ListActiveAgentsByRegion(ctx, orgUID, region)
+	if err != nil {
+		return false, fmt.Errorf("failed to list agents for %q: %w", region, err)
+	}
+
+	if len(orgAgents) == 0 {
+		return false, nil
+	}
+
+	workers, err := s.liveWorkers(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	bySlug := make(map[string]*models.Worker, len(workers))
+	for _, worker := range workers {
+		bySlug[worker.Slug] = worker
+	}
+
+	cutoff := LivenessCutoff(time.Now())
+
+	for _, agent := range orgAgents {
+		if agent.IsSystem() || !IsAgentLive(agent.Status, agent.LastSeenAt, cutoff) {
+			continue
+		}
+
+		if worker, ok := bySlug[agents.WorkerSlug(agent.UID)]; ok &&
+			worker.Capability(capability) == models.CapabilityStatePresent {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }

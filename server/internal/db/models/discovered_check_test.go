@@ -17,7 +17,7 @@ func TestNewDiscoveredCheck(t *testing.T) {
 	dc := NewDiscoveredCheck(
 		"org-1", "job-1", DiscoverySourceLAN,
 		"192.168.1.10", "router", "router · HTTP", "192-168-1-10-http", "http",
-		cfg, meta,
+		cfg, meta, "",
 	)
 
 	r.NotEmpty(dc.UID)
@@ -45,7 +45,7 @@ func TestNewDiscoveredCheckDefaultsConfig(t *testing.T) {
 	dc := NewDiscoveredCheck(
 		"org-1", "job-2", DiscoverySourceFreebox,
 		"10.0.0.5", "nas", "nas · ICMP", "10-0-0-5-icmp", "icmp",
-		nil, nil,
+		nil, nil, "",
 	)
 	r.Equal(DiscoverySourceFreebox, dc.Source)
 	r.Equal(DiscoverySource("freebox"), dc.Source)

@@ -224,6 +224,8 @@ func TestCap_AdminNoticeOncePerMonth(t *testing.T) {
 	r.NoError(env.db.SetSystemParameter(ctx, entitlements.ParamUpgradeURLTemplate,
 		"https://billing.acme.com/{org}/plans", false))
 
+	env.jctx.AppConfig.Server.BaseURL = "https://app.acme.com"
+
 	jobs := &capturingJobService{}
 	env.jctx.Services.Jobs = jobs
 
@@ -244,10 +246,17 @@ func TestCap_AdminNoticeOncePerMonth(t *testing.T) {
 	formatter, err := email.NewFormatter()
 	r.NoError(err)
 
-	subject, _, text, err := formatter.Format(cfg.Template, i18n.English, cfg.TemplateData)
+	subject, html, text, err := formatter.Format(cfg.Template, i18n.English, cfg.TemplateData)
 	r.NoError(err)
 	r.Contains(subject, "SMS")
-	r.Contains(text, "https://billing.acme.com/test-org/plans")
+
+	platformURL := "https://app.acme.com/d/orgs/test-org/upgrade"
+	for name, body := range map[string]string{"html": html, "text": text} {
+		r.Contains(body, platformURL, name)
+		r.NotContains(body, "billing.acme.com", name)
+		r.NotContains(body, "#bt=", name)
+	}
+
 	r.Contains(text, "0 SMS alerts")
 
 	now = now.AddDate(0, 1, 0)

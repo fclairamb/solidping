@@ -244,7 +244,9 @@ func applyActivationEvent(row *ActivationFunnelRow, event *models.Event) {
 		models.EventTypeStatusPageDeleted,
 		models.EventTypeMaintenanceWindowCreated, models.EventTypeMaintenanceWindowUpdated,
 		models.EventTypeMaintenanceWindowDeleted,
-		models.EventTypeConfigApplied, models.EventTypeOrgSettingsUpdated:
+		models.EventTypeConfigApplied, models.EventTypeOrgSettingsUpdated,
+		models.EventTypeDiscoveryScanStarted, models.EventTypeDiscoveryScanCanceled,
+		models.EventTypeDiscoveryChunkRefused:
 		// Filter only requested activation events; these branches
 		// are unreachable but exhaustive lint requires them.
 	}

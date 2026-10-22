@@ -27,6 +27,7 @@ export const EVENT_TYPE_FAMILIES = [
   "status_page",
   "maintenance_window",
   "config",
+  "discovery",
 ] as const;
 
 export type EventTypeFamily = (typeof EVENT_TYPE_FAMILIES)[number];
@@ -75,6 +76,10 @@ export const ALL_EVENT_TYPES = [
 
   "agent.connected",
   "agent.disconnected",
+
+  "discovery.scan_started",
+  "discovery.scan_canceled",
+  "discovery.chunk_refused",
 
   "org.activation.signup_completed",
   "org.activation.first_check_created",

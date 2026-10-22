@@ -37,7 +37,8 @@
 // 0x5002_0000 + sequence ("SP 02"). A hash collision inside a class only
 // serializes two unrelated keys; it never breaks correctness:
 //
-//	0x50020001  ClassGlobalCounter  per-key BumpGlobalCounter serialization
+//	0x50020001  ClassGlobalCounter      per-key BumpGlobalCounter serialization
+//	0x50020002  ClassDiscoveryScanStart per-org discovery scan start (guard + quota + job)
 //
 // This convention is also written down in wiki/conventions/database.md.
 package dblock
@@ -61,6 +62,12 @@ const KeyJMAPInbox int64 = 0x5001_0001
 // db.Service.BumpGlobalCounter serializes increments of one global counter key
 // (spec 2026-10-16-13): pg_advisory_xact_lock(ClassGlobalCounter, hashtext(key)).
 const ClassGlobalCounter int32 = 0x5002_0001
+
+// ClassDiscoveryScanStart is the two-int4 advisory-lock class under which a
+// discovery scan start re-checks the already-running guard and the daily agent
+// quota, then creates its job (spec 2026-10-22-04):
+// pg_advisory_xact_lock(ClassDiscoveryScanStart, hashtext(orgUID)).
+const ClassDiscoveryScanStart int32 = 0x5002_0002
 
 // DefaultRetryInterval is how often a non-holder re-contends for the lock. It
 // doubles as the failover delay when a holder dies, so it is short enough that

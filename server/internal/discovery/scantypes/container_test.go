@@ -81,7 +81,7 @@ func TestContainerBuildJob(t *testing.T) {
 			t.Parallel()
 
 			r := require.New(t)
-			jobType, cfg, err := def.BuildJob(t.Context(), scantypes.Deps{}, "org-1", json.RawMessage(tc.params))
+			jobType, cfg, err := def.BuildJob(t.Context(), scantypes.Deps{}, "org-1", "", json.RawMessage(tc.params))
 
 			if tc.wantCode != "" {
 				r.Error(err)

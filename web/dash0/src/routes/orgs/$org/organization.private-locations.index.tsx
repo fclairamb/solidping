@@ -302,6 +302,17 @@ function RegionsCard({ org }: { org: string }) {
                           capability={browserCapability(region.capabilities)}
                           data-testid={`private-region-browser-${region.slug}`}
                         />
+                        {region.capabilities?.discovery === "yes" && (
+                          <Badge
+                            variant="success"
+                            data-testid={`private-region-discovery-${region.slug}`}
+                          >
+                            {t(
+                              "privateLocations.regions.discoveryBadge",
+                              "Discovery",
+                            )}
+                          </Badge>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell className="text-right">

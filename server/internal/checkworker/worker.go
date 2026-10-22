@@ -28,11 +28,14 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkworker/backend"
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
 	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
+	"github.com/fclairamb/solidping/server/internal/checkworker/tasks"
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/crawltask"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/dbfault"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/discoverytask"
 	"github.com/fclairamb/solidping/server/internal/egress"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/errorreport"
@@ -50,6 +53,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/stats"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
 	"github.com/fclairamb/solidping/server/internal/version"
+	"github.com/fclairamb/solidping/server/internal/workertasks"
 )
 
 // Errors returned by the check runner.
@@ -204,10 +208,6 @@ type CheckWorker struct {
 	busySlow         atomic.Int32
 	fastLaneReserved int // reserved fast-only slots, clamped to [0, poolSize−1]
 
-	// busyBulk counts in-flight multi-step slices (bulk lane, spec
-	// 2026-10-03-03), with the same claim-time accounting as busySlow.
-	busyBulk atomic.Int32
-
 	// Cost-aware, plan-weighted scheduling (spec 2026-06-30-09): schedParams is
 	// the pure math config that deprioritizes slow checks (and credits paid
 	// tiers) by pushing each job's effective scheduled_at on reschedule. It only
@@ -228,6 +228,58 @@ type CheckWorker struct {
 	// is what agent mode and tests rely on: an agent has no database of its
 	// own, so it never installs a latch.
 	faults *dbfault.Latch
+
+	// taskClient, when set, runs the worker-task loop (spec 2026-10-22-02)
+	// for every registered executor, taskSlots tasks per executor at once.
+	taskClient tasks.Client
+	taskSlots  int
+}
+
+// EnableTasks turns on the worker-task loop: the in-process client on a
+// cloud worker, the signed HTTP client on an agent. It only starts in Run
+// when an executor is registered.
+func (r *CheckWorker) EnableTasks(client tasks.Client, slots int) {
+	r.taskClient = client
+	r.taskSlots = slots
+}
+
+// taskIdentity is the cloud worker's identity for the in-process task client.
+func (r *CheckWorker) taskIdentity() workertasks.WorkerIdentity {
+	identity := workertasks.WorkerIdentity{Slots: r.taskSlots}
+
+	if worker := r.getWorker(); worker != nil {
+		identity.UID = worker.UID
+
+		if worker.Region != nil {
+			identity.Region = *worker.Region
+		}
+	}
+
+	return identity
+}
+
+// startTasks runs the worker-task loop under the worker's egress guard.
+func (r *CheckWorker) startTasks(ctx context.Context) {
+	executors := tasks.Registered()
+	if r.taskClient == nil || len(executors) == 0 {
+		return
+	}
+
+	loop := &tasks.Loop{
+		Client:    r.taskClient,
+		Executors: executors,
+		Slots:     r.taskSlots,
+		Guard:     r.egressGuard,
+		Logger:    slog.Default().With("component", "worker_tasks"),
+		InfoLogs:  r.config.IsAgentMode(),
+	}
+
+	r.wg.Add(1)
+
+	go func() {
+		defer r.wg.Done()
+		loop.Run(ctx)
+	}()
 }
 
 // SetFaultLatch installs the process-wide structural-fault latch. Set by the
@@ -262,13 +314,18 @@ func NewCheckWorker(
 	directBackend := backend.NewDirectBackend(
 		dbService, checkJobSvc, incidentSvc, svc.EventNotifier, svc.Credentials,
 	)
-	// Multi-step checks (spec 2026-10-03-03) keep their state and reports on
-	// the attachment rail, written by this process only.
-	directBackend.SetStepStore(attachmentSvc)
-
 	worker := newCheckWorker(cfg, directBackend)
 	worker.dbService = dbService
 	worker.services = svc
+
+	// Worker tasks (website crawls) run in-process through the same service
+	// the agents reach over HTTP, BulkLaneMax of them at once.
+	if svc.WorkerTasks != nil {
+		worker.EnableTasks(
+			backend.NewDirectTaskClient(svc.WorkerTasks, worker.taskIdentity),
+			worker.schedParams.EffectiveBulkLaneMax(),
+		)
+	}
 
 	// A local trace runs from this process, so it answers to this process's
 	// egress policy: never trace towards an address a check was refused.
@@ -313,6 +370,24 @@ func newInProcessIncidentService(
 	return incidentSvc, attachmentSvc
 }
 
+// discoveryExecutor returns the discovery executor of an agent whose operator
+// set SP_AGENT_DISCOVERY_ENABLED, over its allow-list; nil otherwise. The
+// allow-list was validated at startup.
+func discoveryExecutor(cfg *config.Config) *discoverytask.Executor {
+	if !cfg.IsAgentMode() || !cfg.Agent.DiscoveryEnabled {
+		return nil
+	}
+
+	prefixes, err := cfg.Agent.DiscoveryPrefixes()
+	if err != nil {
+		slog.Error("Agent discovery disabled: invalid allow-list", "error", err)
+
+		return nil
+	}
+
+	return discoverytask.NewExecutor(prefixes)
+}
+
 // NewAgentCheckWorker creates a check runner for agent mode: no database, no
 // services registry — everything flows through the given (remote) backend.
 // Self-stats and the entitlements gate are in-process concerns and are
@@ -325,6 +400,16 @@ func NewAgentCheckWorker(cfg *config.Config, workerBackend backend.WorkerBackend
 // conveniences (dbService/services), which the in-process wrapper fills in.
 func newCheckWorker(cfg *config.Config, workerBackend backend.WorkerBackend) *CheckWorker {
 	logger := slog.Default().With("component", "check_worker")
+
+	// Every worker, cloud or agent, runs website crawls as worker tasks
+	// (spec 2026-10-22-03). Registering is idempotent.
+	tasks.Register(crawltask.NewExecutor(cfg.EnvRefAllowed))
+
+	// LAN discovery runs only on an agent whose operator enabled it (spec
+	// 2026-10-22-04): no executor, no "discovery" capability, no chunk claimed.
+	if executor := discoveryExecutor(cfg); executor != nil {
+		tasks.Register(executor)
+	}
 
 	poolSize := cfg.Server.CheckWorker.Nb
 	if poolSize <= 0 {
@@ -447,6 +532,9 @@ func (r *CheckWorker) Run(ctx context.Context) error {
 	// 6. Start express runner (handles check.created events directly)
 	r.wg.Add(1)
 	go r.expressLoop(ctx)
+
+	// 6b. Worker tasks (spec 2026-10-22-02), when enabled and an executor runs.
+	r.startTasks(ctx)
 
 	// Per-runner, per-job and stop lines are DEBUG, so a quiet node logs
 	// nothing until a check changes status (incidents.logStatusChange). On a
@@ -670,11 +758,8 @@ func (r *CheckWorker) fetchAndDistributeJobs(
 	}
 
 	// Per-lane reservation (spec 2026-07-01-03 D3): fast may fill every free
-	// slot; slow and bulk share the budget left above the fast floor.
-	limits := scheduling.LaneLimits(
-		available, r.poolSize, r.fastLaneReserved,
-		int(r.busySlow.Load()), int(r.busyBulk.Load()), r.schedParams.EffectiveBulkLaneMax(),
-	)
+	// slot; slow gets the budget left above the fast floor.
+	limits := scheduling.LaneLimits(available, r.poolSize, r.fastLaneReserved, int(r.busySlow.Load()))
 
 	cfg := r.config.Server.CheckWorker
 	fetchStart := time.Now()
@@ -687,7 +772,6 @@ func (r *CheckWorker) fetchAndDistributeJobs(
 		worker.Region,
 		limits.Fast,
 		limits.Slow,
-		limits.Bulk,
 		cfg.FetchMaxAhead,
 	)
 	prommetrics.RecordCheckStage("fetch", time.Since(fetchStart).Seconds())
@@ -734,25 +818,20 @@ func (r *CheckWorker) fetchAndDistributeJobs(
 	return nextIn, nil
 }
 
-// accountClaimedLanes counts freshly claimed slow and bulk jobs as in flight
+// accountClaimedLanes counts freshly claimed slow jobs as in flight
 // (claim-time accounting, D4) and records the per-lane claim metrics.
 func (r *CheckWorker) accountClaimedLanes(jobs []*models.CheckJob) {
-	slowClaimed, bulkClaimed := 0, 0
+	slowClaimed := 0
 
 	for _, job := range jobs {
-		switch job.Lane {
-		case scheduling.LaneSlow:
+		if job.Lane == scheduling.LaneSlow {
 			r.busySlow.Add(1)
 			slowClaimed++
-		case scheduling.LaneBulk:
-			r.busyBulk.Add(1)
-			bulkClaimed++
 		}
 	}
 
-	prommetrics.RecordLaneClaims(prommetrics.LaneLabelFast, len(jobs)-slowClaimed-bulkClaimed)
+	prommetrics.RecordLaneClaims(prommetrics.LaneLabelFast, len(jobs)-slowClaimed)
 	prommetrics.RecordLaneClaims(prommetrics.LaneLabelSlow, slowClaimed)
-	prommetrics.RecordLaneClaims(prommetrics.LaneLabelBulk, bulkClaimed)
 }
 
 // expressLoop subscribes to check.created and runs the freshly-created
@@ -863,11 +942,8 @@ func (r *CheckWorker) runnerLoop(ctx context.Context, id int) {
 
 		// A finished slow-lane job frees its reserved-budget slot (the
 		// matching increment happened in the fetcher at claim time).
-		switch job.Lane {
-		case scheduling.LaneSlow:
+		if job.Lane == scheduling.LaneSlow {
 			r.busySlow.Add(-1)
-		case scheduling.LaneBulk:
-			r.busyBulk.Add(-1)
 		}
 
 		// Signal completion to wake fetcher (non-blocking)
@@ -1111,12 +1187,6 @@ func (r *CheckWorker) executeJob(
 	// would look green.
 	if refErr := r.materializeConfig(checkJob); refErr != nil {
 		return r.saveErrorResult(ctx, checkJob, refErr)
-	}
-
-	// Multi-step checks (spec 2026-10-03-03) run one bounded slice per claim
-	// instead of one Execute: their own budget, units and state.
-	if stepChecker, isStep := r.stepCheckerFor(checkerdef.CheckType(checkType)); isStep {
-		return r.executeStepJob(ctx, logger, checkJob, stepChecker)
 	}
 
 	// 2. Parse check configuration

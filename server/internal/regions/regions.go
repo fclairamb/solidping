@@ -161,11 +161,14 @@ func DefaultRegions() []RegionDefinition {
 // Service provides region management operations.
 type Service struct {
 	db db.Service
+	// taskCaps are the worker-task capabilities aggregated next to the
+	// published ones (taskCapabilities; a field so tests can name one).
+	taskCaps []string
 }
 
 // NewService creates a new regions service.
 func NewService(dbService db.Service) *Service {
-	return &Service{db: dbService}
+	return &Service{db: dbService, taskCaps: taskCapabilities}
 }
 
 // GetGlobalRegions returns the list of all defined regions from the system parameter.
@@ -369,6 +372,29 @@ func (s *Service) GetOrgCustomRegions(ctx context.Context, orgUID string) ([]Reg
 	}
 
 	return defs, nil
+}
+
+// OwnsPrivateRegion reports whether region is a canonical `@slug` private
+// region currently defined by the org. Cloud slugs and the legacy `@org/slug`
+// spelling are not owned.
+func (s *Service) OwnsPrivateRegion(ctx context.Context, orgUID, region string) (bool, error) {
+	slug, ok := ParsePrivateRegion(region)
+	if !ok {
+		return false, nil
+	}
+
+	defs, err := s.GetOrgCustomRegions(ctx, orgUID)
+	if err != nil {
+		return false, err
+	}
+
+	for i := range defs {
+		if defs[i].Slug == slug {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 // SetOrgCustomRegions persists an org's private-location region definitions. Each

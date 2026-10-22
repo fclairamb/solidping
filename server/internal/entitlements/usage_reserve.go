@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
@@ -276,20 +276,25 @@ func (b *hourlyBucket) allow(now time.Time) bool {
 // service's upgrade URL, with `{org}` standing for the org slug.
 const ParamUpgradeURLTemplate = "entitlements.upgrade_url_template"
 
-// UpgradeURL returns the plain upgrade URL for an org (no signed billing
-// token), or "" when the deployment configures none (self-hosted). It is what
-// an email may carry: the token-bearing variant is minted per viewer by the
-// entitlements handler and must never sit in a mailbox.
-func (s *Service) UpgradeURL(ctx context.Context, orgSlug string) string {
+// UpgradeURL returns the URL an email may carry to reach the upgrade flow: the
+// platform's own `<baseURL>/d/orgs/<slug>/upgrade` page, never the billing
+// service. That page forwards a logged-in admin to the billing URL with a
+// signed token minted at click time, a token that must never sit in a mailbox.
+// It returns "" when the deployment configures no upgrade template
+// (self-hosted) or when baseURL is empty.
+func (s *Service) UpgradeURL(ctx context.Context, baseURL, orgSlug string) string {
+	if baseURL == "" {
+		return ""
+	}
+
 	param, err := s.db.GetSystemParameter(ctx, ParamUpgradeURLTemplate)
 	if err != nil || param == nil {
 		return ""
 	}
 
-	template, ok := param.Value["value"].(string)
-	if !ok || template == "" {
+	if template, ok := param.Value["value"].(string); !ok || template == "" {
 		return ""
 	}
 
-	return strings.ReplaceAll(template, "{org}", orgSlug)
+	return fmt.Sprintf("%s%s/orgs/%s/upgrade", baseURL, config.DashboardBasePath, orgSlug)
 }

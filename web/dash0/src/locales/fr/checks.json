@@ -300,6 +300,7 @@
     "heartbeatIntervalHint": "Le contrôle sera marqué en panne si aucun signal n'est reçu dans cet intervalle",
     "emailIntervalHint": "Le contrôle sera marqué en panne si aucun e-mail n'est reçu dans cet intervalle",
     "privateRegionTitle": "S'exécute sur vos propres agents déportés",
+    "crawlAgentUpgradeHint": "Les agents de cet emplacement ne savent pas encore lancer de crawl. Mettez l'agent à jour pour le choisir.",
     "privateRegionBadge": "Privé",
     "selectRegionsHint": "Sélectionnez les régions où ce contrôle doit s'exécuter",
     "authenticationAndSecrets": "Authentification et secrets",

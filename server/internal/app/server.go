@@ -38,6 +38,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
 	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/crawltask"
 	"github.com/fclairamb/solidping/server/internal/credmigrate"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
@@ -47,10 +48,12 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/postgres"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
+	"github.com/fclairamb/solidping/server/internal/discoverytask"
 	"github.com/fclairamb/solidping/server/internal/egress"
 	"github.com/fclairamb/solidping/server/internal/email"
 	entitlementsapi "github.com/fclairamb/solidping/server/internal/entitlements"
 	agentsadmin "github.com/fclairamb/solidping/server/internal/handlers/agents"
+	"github.com/fclairamb/solidping/server/internal/handlers/agenttasks"
 	"github.com/fclairamb/solidping/server/internal/handlers/agentws"
 	aichecksapi "github.com/fclairamb/solidping/server/internal/handlers/aichecks"
 	"github.com/fclairamb/solidping/server/internal/handlers/attachments"
@@ -155,6 +158,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/utils/passwords"
 	"github.com/fclairamb/solidping/server/internal/version"
 	webpushpkg "github.com/fclairamb/solidping/server/internal/webpush"
+	"github.com/fclairamb/solidping/server/internal/workertasks"
 	"github.com/fclairamb/solidping/server/test/testdata"
 )
 
@@ -400,6 +404,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 
 	checkJobService := checkjobsvc.NewService(dbService.DB())
 	svcList.CheckJobs = checkJobService
+	svcList.WorkerTasks = workertasks.NewService(dbService.DB())
 
 	// Create email services
 	// The sender resolves the effective email config (env over DB) on every
@@ -502,6 +507,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	checksSvc.SetDeploymentMode(cfg.Deployment.Mode)
 	checksSvc.SetActivationResolver(checkerdef.NewActivationResolver(&cfg.Checkers, cfg.Deployment.Mode))
 	checksSvc.SetEnvRefAllow(cfg.EnvRefAllowed)
+	checksSvc.SetTaskCanceler(svcList.WorkerTasks)
 	// The demo cleanup and private-location monitor deletes notify like a
 	// user's DELETE does (spec 2026-10-08-02).
 	backgroundIncidents := incidents.NewService(dbService, jobService, svcList.Clock, svcList.Realtime)
@@ -1222,6 +1228,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	checksService.SetDeploymentMode(s.config.Deployment.Mode)
 	checksService.SetActivationResolver(activationResolver)
 	checksService.SetEnvRefAllow(s.config.EnvRefAllowed)
+	checksService.SetTaskCanceler(s.services.WorkerTasks)
 	checksHandler := checks.NewHandler(checksService, s.config)
 	orgChecks := orgGroup("/orgs/:org/checks")
 	orgChecks.GET("", checksHandler.ListChecks)
@@ -1299,6 +1306,12 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		s.dbService.DB(), s.dbService, checksService, s.jobSvc, s.services.Credentials,
 		s.services.EgressGuard, s.config.DockerChecksBlocked(),
 	)
+	// Region-bound LAN scans run on the private region's agents as worker
+	// tasks (spec 2026-10-22-04), bounded by a daily address entitlement.
+	discoverySvc.SetWorkerTasks(s.services.WorkerTasks)
+	discoverySvc.SetEntitlements(s.services.Entitlements)
+	discoverytask.Register(discoverytask.Deps{DB: s.dbService, Tasks: s.services.WorkerTasks})
+
 	discoveryHandler := discovery.NewHandler(discoverySvc, s.config)
 	orgDiscovery := orgGroup("/orgs/:org/discovery")
 	discoveryHandler.RegisterRoutes(orgDiscovery)
@@ -1478,6 +1491,24 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	agentAttachmentsHandler := attachments.NewHandler(attachmentsService, s.dbService, s.config)
 	api.POST("/agent/attachments", agentAttachmentsHandler.Upload)
 
+	// Worker tasks (spec 2026-10-22-02): the agent pulls multi-slice work over
+	// signed HTTP, never the WebSocket. Same inline auth as the upload above.
+	// The task state lives on the attachment rail, written by the server only.
+	s.services.WorkerTasks.SetStateStore(attachmentsService)
+	agenttasks.NewHandler(s.services.WorkerTasks, s.dbService, s.config).Register(api)
+
+	// The website crawl runs on worker tasks (spec 2026-10-22-03), for cloud
+	// workers and agents alike: its result goes through the agents' submit
+	// path, its report to the attachment rail.
+	crawltask.Register(crawltask.Deps{
+		DB:           s.dbService,
+		Tasks:        s.services.WorkerTasks,
+		Results:      agentWorkersSvc,
+		Reports:      attachmentsService,
+		Entitlements: s.services.Entitlements,
+		SliceBudget:  scheduling.ParamsFromConfig(&s.config.Server.Scheduling).EffectiveBulkSliceBudget(),
+	})
+
 	agentWorkerIncidents.SetAttachmentStore(attachmentsService)
 
 	// A check's screenshots on the check page (spec 2026-09-25-34): the listing
@@ -1494,7 +1525,8 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 
 	// Multi-step runs (spec 2026-10-03-03): the run in progress (read), its
 	// cancellation (write: orgGroup refuses viewers) and the crawl reports.
-	checkRunsHandler := checkruns.NewHandler(checkruns.NewService(s.dbService, attachmentsService), s.config)
+	checkRunsHandler := checkruns.NewHandler(
+		checkruns.NewService(s.dbService, attachmentsService, s.services.WorkerTasks), s.config)
 	orgCheckRuns := orgGroup("/orgs/:org/checks/:checkUid")
 	orgCheckRuns.GET("/run", checkRunsHandler.GetRun)
 	orgCheckRuns.DELETE("/run", checkRunsHandler.CancelRun)

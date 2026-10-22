@@ -13,8 +13,9 @@ import (
 
 // UpsertDiscoveredChecks inserts or updates the given suggested-check rows for a
 // scan, one DiscoveredCheck per SuggestedCheck. It upserts on
-// (organization_uid, source, group_key, slug) so a re-scan updates rows in place
-// rather than duplicating them.
+// (organization_uid, source, group_key, slug, region) so a re-scan updates rows in place
+// rather than duplicating them. region is the scan's private region ("@slug"),
+// or "" when the server itself scanned: the same IP in two networks stays two rows.
 //
 // It preserves the per-item log-and-continue resilience contract: a single bad
 // row is logged and skipped, never aborting the whole run. It returns an error
@@ -22,7 +23,7 @@ import (
 func UpsertDiscoveredChecks(
 	ctx context.Context,
 	db *bun.DB,
-	orgUID, jobUID string,
+	orgUID, jobUID, region string,
 	source models.DiscoverySource,
 	rows []SuggestedCheck,
 	log *slog.Logger,
@@ -39,7 +40,7 @@ func UpsertDiscoveredChecks(
 		check := models.NewDiscoveredCheck(
 			orgUID, jobUID, source,
 			row.GroupKey, row.GroupLabel, row.Name, row.Slug, row.Type,
-			row.Config, row.Metadata,
+			row.Config, row.Metadata, region,
 		)
 
 		if err := upsertOne(ctx, db, check, isPostgres); err != nil {
@@ -54,7 +55,7 @@ func UpsertDiscoveredChecks(
 
 // upsertOne upserts a single DiscoveredCheck on the group identity key.
 func upsertOne(ctx context.Context, db *bun.DB, check *models.DiscoveredCheck, isPostgres bool) error {
-	conflict := "CONFLICT (organization_uid, source, group_key, slug) " +
+	conflict := "CONFLICT (organization_uid, source, group_key, slug, region) " +
 		"WHERE deleted_at IS NULL AND promoted_to_check_uid IS NULL DO UPDATE"
 
 	excluded := "EXCLUDED"

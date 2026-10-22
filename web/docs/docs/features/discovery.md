@@ -38,13 +38,14 @@ safely:
 
 | Source | Self-hosted (default) | Private targets refused | SaaS |
 |---|---|---|---|
-| LAN | Available | Not offered | Not offered |
+| LAN | Available | Only from a [private location](./private-locations.md#scan-the-locations-network) | Only from a [private location](./private-locations.md#scan-the-locations-network) |
 | Containers | Available | `tcp://` only, through the policy | Not offered |
 | Freebox | Available | Hosts listed from the box, not probed | Hosts listed from the box, not probed |
 | Kubernetes | Available | Public API servers only | Public API servers only |
 
 A source that is not offered is hidden from the scan form, and starting it
-through the API answers `403 DISCOVERY_NOT_AVAILABLE`.
+through the API answers `403 DISCOVERY_NOT_AVAILABLE`. LAN is the exception:
+it stays in the form, and the scan then needs a private location (below).
 
 ### LAN scan options
 
@@ -62,9 +63,35 @@ Pick a cluster connection and, optionally, a comma-separated list of
 namespaces — leave it empty to scan every namespace the connection can see.
 
 Every scan requires confirming *"I confirm I own or have permission to scan
-the listed network(s)"* before it can start. Scans run on the in-process
-worker; on a multi-site deployment, discovery always runs from the server
-host, not from a remote agent.
+the listed network(s)"* before it can start.
+
+### Running a LAN scan from a private location
+
+A LAN scan runs on the in-process worker (the server host) by default. To scan
+a network the server cannot reach, or one it is not allowed to scan, pick a
+[private location](./private-locations.md#scan-the-locations-network) in the
+**Run from** field of the scan form. The location's agent then does the
+probing, inside its own network, and only the ranges its operator allowed.
+
+- Only LAN scans can run from a location. Containers, Freebox and Kubernetes
+  always run on the server.
+- The picker lists private locations only. A location whose agent does not
+  report discovery is disabled until its operator sets
+  `SP_AGENT_DISCOVERY_ENABLED=true` on the agent.
+- Where the server cannot scan the LAN itself (see the table above), **Server**
+  is not offered and a location is required.
+- Starting a scan from a location needs an admin membership of the
+  organization, and is refused while impersonating a user.
+- A server LAN scan and a location scan cannot run at the same time in one
+  organization.
+- Under SaaS, the addresses scanned from locations count against a daily limit
+  (`maxDiscoveryAgentAddressesPerDay`, 65 536 per UTC day). Self-hosted servers
+  have no limit.
+- The scan page says **Runs from @dc1**, and checks promoted from it run from
+  that location.
+- If the agent refuses a chunk (range not allowed, discovery disabled), the
+  progress card shows the failed chunks with the reason, and a
+  `discovery.chunk_refused` event is recorded.
 
 ## Lifecycle
 
@@ -73,7 +100,8 @@ LAN scan (the chunked kind) is running, a progress card shows completed vs.
 total chunks, plus running counts of groups and checks found so far, and it
 can be stopped — queued chunks are dropped before they start, and chunks
 already running are actively cancelled (the worker notices within its poll
-interval), not left to run to completion.
+interval), not left to run to completion. For a scan run from a private
+location, the agent stops at its next heartbeat, 30 seconds at most.
 
 ## Findings and promoting checks
 

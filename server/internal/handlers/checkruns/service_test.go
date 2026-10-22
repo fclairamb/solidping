@@ -13,6 +13,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/checkruns"
 	"github.com/fclairamb/solidping/server/internal/handlers/files"
 	"github.com/fclairamb/solidping/server/internal/handlers/filestorage/localfs"
+	"github.com/fclairamb/solidping/server/internal/workertasks"
 )
 
 func TestCheckRunEndpoints(t *testing.T) {
@@ -34,7 +35,9 @@ func TestCheckRunEndpoints(t *testing.T) {
 	cfg.FileStorage.LocalRoot = t.TempDir()
 
 	store := attachments.NewService(files.NewService(dbSvc, cfg), dbSvc, cfg)
-	svc := checkruns.NewService(dbSvc, store)
+	tasks := workertasks.NewService(dbSvc.DB())
+	tasks.SetStateStore(store)
+	svc := checkruns.NewService(dbSvc, store, tasks)
 
 	org := models.NewOrganization("runs", "Runs")
 	r.NoError(dbSvc.CreateOrganization(ctx, org))
@@ -48,41 +51,37 @@ func TestCheckRunEndpoints(t *testing.T) {
 	r.NoError(err)
 	r.False(run.Running)
 
-	// A run in progress, with progress in its state file's details.
-	envelope, err := attachments.EncodeStepState("run-1", "crawl", []byte(`{"queue":[]}`))
-	r.NoError(err)
+	// A run in progress is the check's active worker task (spec 2026-10-22-03).
+	task := models.NewWorkerTask(org.UID, "crawl", "eu-west")
+	task.CheckUID = &check.UID
+	r.NoError(tasks.Create(ctx, task))
 
-	fileUID, err := store.PutStepState(ctx, org.UID, check.UID, envelope,
-		attachments.StepStateDetails("run-1", 3, map[string]any{"pagesDone": 42, "maxPages": 200}))
-	r.NoError(err)
-
-	started := time.Now().Add(-time.Minute)
-	_, err = dbSvc.DB().NewUpdate().Model((*models.CheckJob)(nil)).
-		Set("step_run_uid = ?", "run-1").
-		Set("step_run_started_at = ?", started).
-		Set("step_count = ?", 3).
-		Set("step_state_file_uid = ?", fileUID).
-		Where("check_uid = ?", check.UID).Exec(ctx)
+	started := time.Now().Add(-time.Minute).UTC()
+	_, err = dbSvc.DB().NewUpdate().Model((*models.WorkerTask)(nil)).
+		Set("run_started_at = ?", started).
+		Set("slice_count = ?", 3).
+		Set("progress = ?", models.JSONMap{"pagesDone": 42, "maxPages": 200}).
+		Where("uid = ?", task.UID).Exec(ctx)
 	r.NoError(err)
 
 	run, err = svc.GetRun(ctx, org.Slug, check.UID)
 	r.NoError(err)
 	r.True(run.Running)
-	r.Equal("run-1", run.RunUID)
+	r.Equal(task.UID, run.RunUID)
 	r.Equal(3, run.Steps)
+	r.WithinDuration(started, *run.StartedAt, time.Second)
 	r.InDelta(42, run.Progress["pagesDone"], 0)
 
-	// Cancel: columns cleared, state purged, next run scheduled.
+	// Cancel: the task is canceled, no run in progress any more.
 	r.NoError(svc.CancelRun(ctx, org.Slug, check.UID))
 
 	run, err = svc.GetRun(ctx, org.Slug, check.UID)
 	r.NoError(err)
 	r.False(run.Running)
 
-	stateTopic := models.ListFilesFilter{Topic: attachments.CheckStepStateTopic(check.UID)}
-	states, _, err := dbSvc.ListFiles(ctx, org.UID, stateTopic)
+	canceled, err := tasks.Get(ctx, task.UID)
 	r.NoError(err)
-	r.Empty(states)
+	r.Equal(models.WorkerTaskStatusCancelled, canceled.Status)
 
 	// Reports.
 	_, err = store.PutCrawlReport(ctx, org.UID, check.UID, []byte(`{"findings":[]}`), nil)

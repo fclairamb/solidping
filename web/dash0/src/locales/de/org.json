@@ -353,6 +353,7 @@
       "region": "Region",
       "agents": "Agenten",
       "ipv6": "IPv6",
+      "discoveryBadge": "Erkennung",
       "actions": "Aktionen",
       "mint": "Neues Registrierungstoken",
       "delete": "Standort löschen",
@@ -444,5 +445,10 @@
       "deleted": "Variable gelöscht",
       "failed": "Variable konnte nicht gelöscht werden"
     }
+  },
+  "upgradePage": {
+    "title": "Tarif ändern",
+    "redirecting": "Weiterleitung zur Tarifseite...",
+    "unavailable": "Nur Organisationsadmins können den Tarif ändern, oder diese Installation hat keine Abrechnung. Fragen Sie einen Admin Ihrer Organisation."
   }
 }

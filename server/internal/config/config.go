@@ -105,6 +105,9 @@ var (
 	ErrExclusiveNodeRole = errors.New("node role cannot be combined with other roles")
 	// ErrAgentServerURLRequired is returned when role is "agent" but no server URL is set.
 	ErrAgentServerURLRequired = errors.New("SP_AGENT_SERVER_URL is required when SP_NODE_ROLE is set to 'agent'")
+	// ErrInvalidDiscoveryCIDRs is returned when SP_AGENT_DISCOVERY_ENABLED is
+	// set without a valid SP_AGENT_DISCOVERY_CIDRS allow-list.
+	ErrInvalidDiscoveryCIDRs = errors.New("invalid SP_AGENT_DISCOVERY_CIDRS")
 	// ErrRegionRequiredForChecks is returned when role is "checks" but region is not set.
 	ErrRegionRequiredForChecks = errors.New("SP_NODE_REGION is required when SP_NODE_ROLE is set to 'checks'")
 	// ErrInvalidAggregationRetention is returned when an aggregation retention value is < 1.
@@ -224,6 +227,14 @@ type AgentConfig struct {
 	// only to bootstrap an env-only (SP_AGENT_KEYS) deployment that has no
 	// writable volume to read the keys file from, then unset it.
 	PrintKeys bool `koanf:"print_keys"`
+	// DiscoveryEnabled lets this agent run LAN discovery chunks of its private
+	// region (spec 2026-10-22-04) — SP_AGENT_DISCOVERY_ENABLED. Off by default:
+	// only the agent's operator can authorize discovery, never the server.
+	DiscoveryEnabled bool `koanf:"discovery_enabled"`
+	// DiscoveryCIDRs is the IPv4 allow-list a discovery chunk must fall inside
+	// — SP_AGENT_DISCOVERY_CIDRS, comma-separated. Required when discovery is
+	// enabled.
+	DiscoveryCIDRs []string `koanf:"discovery_cidrs"`
 }
 
 // OTelConfig contains OpenTelemetry configuration.
@@ -2032,9 +2043,9 @@ type SchedulingConfig struct {
 	// with a startup warning when out of range. Default 5; 0 disables the
 	// reservation (slow may fill the pool, pre-lane behavior).
 	FastLaneReserved int `koanf:"fast_lane_reserved"`
-	// BulkLaneMax caps the multi-step slices (bulk lane, spec 2026-10-03-03)
-	// in flight per worker. Bulk shares the non-reserved part of the pool
-	// with the slow lane, slow first. Default 4; <= 0 falls back to 4.
+	// BulkLaneMax caps the worker tasks (website crawl slices, spec
+	// 2026-10-22-03) a cloud worker runs at once, outside its runner pool.
+	// Default 4; <= 0 falls back to 4.
 	BulkLaneMax int `koanf:"bulk_lane_max"`
 	// BulkSliceBudgetMs is the wall-clock budget of one multi-step slice in
 	// ms. Default 10000; <= 0 falls back to it; clamped to 60000.
@@ -2761,6 +2772,22 @@ func applyAgentEnv(cfg *AgentConfig) {
 	if v := os.Getenv("SP_AGENT_PRINT_KEYS"); v != "" {
 		if b, err := strconv.ParseBool(v); err == nil {
 			cfg.PrintKeys = b
+		}
+	}
+
+	if v := os.Getenv("SP_AGENT_DISCOVERY_ENABLED"); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			cfg.DiscoveryEnabled = b
+		}
+	}
+
+	if v := os.Getenv("SP_AGENT_DISCOVERY_CIDRS"); v != "" {
+		cfg.DiscoveryCIDRs = nil
+
+		for _, part := range strings.Split(v, ",") {
+			if part = strings.TrimSpace(part); part != "" {
+				cfg.DiscoveryCIDRs = append(cfg.DiscoveryCIDRs, part)
+			}
 		}
 	}
 }
@@ -3644,6 +3671,12 @@ func (c *Config) validateNodeConfig() error {
 	// the very first run — a persisted identity replaces it).
 	if roles.Has(NodeRoleAgent) && c.Agent.ServerURL == "" {
 		return ErrAgentServerURLRequired
+	}
+
+	if c.Agent.DiscoveryEnabled || len(c.Agent.DiscoveryCIDRs) > 0 {
+		if _, err := c.Agent.DiscoveryPrefixes(); err != nil {
+			return err
+		}
 	}
 
 	// Any node that registers a `workers` row (check worker and/or job worker)

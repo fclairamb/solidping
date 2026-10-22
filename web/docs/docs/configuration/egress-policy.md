@@ -223,7 +223,11 @@ and follows the same policy:
   (SaaS by default, or `SP_EGRESS_ALLOW_PRIVATE=false`). Starting one answers
   `403 DISCOVERY_NOT_AVAILABLE`, and the source is hidden from the scan form.
   A public-only LAN scan would only turn the server into an internet port
-  scanner.
+  scanner. A LAN scan can still run through a
+  [private location](../features/private-locations.md#scan-the-locations-network):
+  its agent scans its own network, bounded by the agent's own allow-list.
+  Under an enforcing policy, a private location is the only way to run LAN
+  discovery.
 - **Every probed address is checked** before any ICMP echo, TCP connect or
   reverse-DNS lookup, and TCP connects dial through the policy. For Freebox
   discovery this means the hosts the box reports are not probed from a

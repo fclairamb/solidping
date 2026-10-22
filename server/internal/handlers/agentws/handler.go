@@ -617,6 +617,12 @@ func (h *Handler) recordAgentEgress(
 		capabilities = nil
 	}
 
+	// A system agent never runs worker tasks (the task routes refuse it), so
+	// its report must not make a cloud region look able to (spec 2026-10-22-02).
+	if state.agent.IsSystem() {
+		capabilities = regions.StripTaskCapabilities(capabilities)
+	}
+
 	if err := h.dbService.UpdateWorkerHeartbeat(ctx, state.workerUID, capabilities, frame.Version); err != nil {
 		h.logger.WarnContext(ctx, "failed to refresh agent worker row",
 			"error", err, "agent", state.agent.UID)

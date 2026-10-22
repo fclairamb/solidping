@@ -5450,6 +5450,13 @@ paths:
         `{clusterUid, namespaces?, timeout?}` where `clusterUid` references a
         stored Kubernetes cluster connection (empty `namespaces` scans every
         visible namespace).
+
+        A `lan` scan may carry a top-level `region` (one of the organization's
+        private regions, `@slug`): the region's agents run it, never the
+        server. It needs an admin membership of the organization (no super
+        admin bypass, refused under impersonation), a live agent of that
+        region whose operator enabled discovery, at most 32 ports, and room in
+        the organization's daily agent address quota.
       operationId: startDiscoveryScan
       security:
         - bearerAuth: []
@@ -5494,7 +5501,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "422":
-          description: Invalid parameters (DISCOVERY_INVALID_PARAMETERS) or range too large (DISCOVERY_RANGE_TOO_LARGE)
+          description: >-
+            Invalid parameters (DISCOVERY_INVALID_PARAMETERS), range too large
+            (DISCOVERY_RANGE_TOO_LARGE), a region on a non-lan type
+            (VALIDATION_ERROR), no live agent of the region runs discovery
+            (DISCOVERY_REGION_UNAVAILABLE), or the daily agent address quota
+            is spent (DISCOVERY_QUOTA_EXCEEDED)
           content:
             application/json:
               schema:
@@ -5600,6 +5612,11 @@ paths:
           in: query
           required: true
           description: The group (groupKey) to dismiss
+          schema:
+            type: string
+        - name: region
+          in: query
+          description: Region the group was found from; empty (default) means the server itself
           schema:
             type: string
         - name: jobUid
@@ -16398,6 +16415,11 @@ components:
           type: string
           description: The discovery source rows from this type carry
           example: lan
+        serverAvailable:
+          type: boolean
+          description: >-
+            False when the server itself may not run this type (lan under an
+            enforcing egress policy): a scan then needs a private region.
 
     StartDiscoveryScanRequest:
       type: object
@@ -16407,6 +16429,12 @@ components:
           type: string
           description: A registered discovery type (see /discovery/types)
           example: lan
+        region:
+          type: string
+          description: >-
+            lan only. A private region of the organization (@slug) whose agents
+            run the scan instead of the server.
+          example: "@dc1"
         parameters:
           type: object
           description: |
@@ -16464,6 +16492,12 @@ components:
         checkCount:
           type: integer
           description: Total suggested-check count rolled up under the scan
+        region:
+          type: string
+          description: Private region an agent-run scan runs from
+        lastErrorCode:
+          type: string
+          description: Error code of the agent-run scan's latest failed chunk
 
     DiscoveredCheck:
       type: object
@@ -16479,6 +16513,9 @@ components:
         source:
           type: string
           example: lan
+        region:
+          type: string
+          description: Private region (@slug) of the scan that found the row; omitted when the server found it. Promotion pins the created check to it.
         groupKey:
           type: string
           description: Stable grouping identity (IP, container ID, workload uid)
@@ -18319,6 +18356,12 @@ components:
           description: >-
             LLM tokens (input + output) per UTC day for AI-authored js checks
             (null = unlimited)
+        maxDiscoveryAgentAddressesPerDay:
+          type: integer
+          nullable: true
+          description: >-
+            Addresses the organization's agents may be asked to scan per UTC
+            day, counted at scan start (null = unlimited)
         whiteLabel:
           type: boolean
           nullable: true

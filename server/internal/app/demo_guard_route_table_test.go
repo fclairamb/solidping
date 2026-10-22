@@ -182,7 +182,12 @@ var demoUnauthenticatedRoutes = map[string]string{
 	// Credential schemes that are not the user JWT. A demo session presenting
 	// its bearer here is rejected as an unknown agent key, exactly as an
 	// anonymous caller is.
-	"POST /api/v1/agent/attachments": "deported-agent key, not a user session",
+	"POST /api/v1/agent/attachments":           "deported-agent key, not a user session",
+	"POST /api/v1/agent/tasks/claim":           "deported-agent key, not a user session",
+	"POST /api/v1/agent/tasks/{uid}/heartbeat": "deported-agent key, not a user session",
+	"POST /api/v1/agent/tasks/{uid}/step":      "deported-agent key, not a user session",
+	"POST /api/v1/agent/tasks/{uid}/finish":    "deported-agent key, not a user session",
+	"POST /api/v1/agent/tasks/{uid}/fail":      "deported-agent key, not a user session",
 
 	// The login funnel. Every one of these is how a caller BECOMES
 	// authenticated, so requiring authentication would be circular.

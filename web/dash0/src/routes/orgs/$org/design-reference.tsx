@@ -2321,6 +2321,38 @@ function ButtonsBadgesSection() {
           importLine={`import {\n  Ipv6CapabilityBadge,\n  ipv6Capability,\n} from "@/components/shared/ipv6-capability";\n\n<Ipv6CapabilityBadge\n  capability={ipv6Capability(region.capabilities)}\n  hideUnknown={!pinnedIpv6}\n/>`}
         />
 
+        <h3 className="text-sm font-medium">Single-region select (discovery)</h3>
+        <p className="text-sm text-muted-foreground">
+          Where a scan runs (spec 2026-10-22-05). A plain single-select, not the
+          check-form checkbox grid. The first option is the server itself and is
+          dropped when the server cannot run the scan; a private region whose{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            capabilities.discovery
+          </code>{" "}
+          is not{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">yes</code>{" "}
+          is disabled with a hint. The value sent is the region slug (
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">@dc1</code>
+          ).
+        </p>
+        <ExampleRow
+          preview={
+            <Select defaultValue="@dc1">
+              <SelectTrigger className="w-64" aria-label="Run from">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__server__">Server (default)</SelectItem>
+                <SelectItem value="@dc1">@dc1</SelectItem>
+                <SelectItem value="@dc2" disabled>
+                  @dc2 · discovery not enabled
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          }
+          importLine={`import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";\n\n<SelectItem value={r.slug} disabled={r.capabilities?.discovery !== "yes"}>\n  {r.name}\n</SelectItem>`}
+        />
+
         <h3 className="text-sm font-medium">Browser capability icon</h3>
         <p className="text-sm text-muted-foreground">
           What a region's <strong>live</strong> workers report about having a
