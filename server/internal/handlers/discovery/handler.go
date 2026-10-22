@@ -19,6 +19,8 @@ import (
 const (
 	// ErrorCodeDiscoveryAlreadyRunning is returned when a scan is already in progress for the org.
 	ErrorCodeDiscoveryAlreadyRunning base.ErrorCode = "DISCOVERY_ALREADY_RUNNING"
+	// ErrorCodeDiscoveryRegionUnavailable is returned when a row was found from a private region the org no longer has.
+	ErrorCodeDiscoveryRegionUnavailable base.ErrorCode = "DISCOVERY_REGION_UNAVAILABLE"
 	// keyData is the standard JSON response wrapper key.
 	keyData = "data"
 )
@@ -316,6 +318,10 @@ func (h *Handler) PromoteChecks(writer http.ResponseWriter, req *http.Request) e
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "discovered check not found")
 	case errors.Is(err, ErrAlreadyPromoted):
 		return h.WriteError(writer, http.StatusConflict, base.ErrorCodeConflict, "discovered check already promoted")
+	case errors.Is(err, ErrRegionUnavailable):
+		return h.WriteError(
+			writer, http.StatusUnprocessableEntity, ErrorCodeDiscoveryRegionUnavailable, err.Error(),
+		)
 	case err != nil:
 		return h.WriteInternalError(writer, req, err)
 	}
@@ -367,7 +373,7 @@ func (h *Handler) DismissGroup(writer http.ResponseWriter, req *http.Request) er
 		return h.WriteError(writer, http.StatusUnprocessableEntity, base.ErrorCodeValidationError, "group is required")
 	}
 
-	_, err := h.svc.SoftDeleteGroup(req.Context(), org.UID, queryParams.Get("jobUid"), group)
+	_, err := h.svc.SoftDeleteGroup(req.Context(), org.UID, queryParams.Get("jobUid"), group, queryParams.Get("region"))
 	if errors.Is(err, ErrCheckNotFound) {
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "no checks found for group")
 	} else if err != nil {

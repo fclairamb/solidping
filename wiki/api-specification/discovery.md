@@ -36,15 +36,19 @@ Stop a running fan-out scan. Auth: admin. Cancels the plan job if still pending,
 ### GET /api/v1/orgs/:org/discovery/checks
 List the discovered checks for the org. Auth: required. Returns
 `{ "data": [<discoveredCheck>, ...] }`. Each row carries a `source`
-discriminator identifying which discovery type produced it.
+discriminator identifying which discovery type produced it, and a `region`
+(omitted when the server itself found it, `@slug` when a private region did).
 
 ### POST /api/v1/orgs/:org/discovery/checks/promote
 Promote discovered checks into real checks. Auth: admin. **Bulk and
 body-driven** — the selection and the per-item options are in the request body,
-not the path; there is no per-uid promote route.
+not the path; there is no per-uid promote route. A row with a `region` creates a
+check pinned to that region (`regions: ["@slug"]`). If the org no longer owns the
+region the whole call is refused with `422 DISCOVERY_REGION_UNAVAILABLE` and
+nothing is created. Rows without a region keep the default placement.
 
 ### DELETE /api/v1/orgs/:org/discovery/checks/:uid
 Dismiss (soft-delete) a single discovered check. Auth: admin.
 
 ### DELETE /api/v1/orgs/:org/discovery/checks
-Dismiss a whole group of discovered checks in one call. Auth: admin.
+Dismiss a whole group of discovered checks in one call. Auth: admin. Query: `group` (required), `jobUid` (optional), `region` (optional, default `""` = found by the server itself): only rows of that region are dismissed.

@@ -114,7 +114,7 @@ func (r *FreeboxLanDiscoveryJobRun) Run(ctx context.Context, jctx *jobdef.JobCon
 		"job_uid", jobUID,
 	)
 
-	return disc.UpsertDiscoveredChecks(ctx, jctx.DB, orgUID, jobUID, models.DiscoverySourceFreebox, rows, log)
+	return disc.UpsertDiscoveredChecks(ctx, jctx.DB, orgUID, jobUID, "", models.DiscoverySourceFreebox, rows, log)
 }
 
 // buildFreeboxRows turns each Freebox device into suggested-check rows. A host

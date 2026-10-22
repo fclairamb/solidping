@@ -113,7 +113,7 @@ func (r *ContainerDiscoveryJobRun) Run(ctx context.Context, jctx *jobdef.JobCont
 		"job_uid", jobUID,
 	)
 
-	return disc.UpsertDiscoveredChecks(ctx, jctx.DB, orgUID, jobUID, models.DiscoverySourceContainer, rows, log)
+	return disc.UpsertDiscoveredChecks(ctx, jctx.DB, orgUID, jobUID, "", models.DiscoverySourceContainer, rows, log)
 }
 
 // resolveTimeout parses the configured per-endpoint timeout, falling back to 0

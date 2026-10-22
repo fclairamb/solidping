@@ -21,6 +21,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
+	"github.com/fclairamb/solidping/server/internal/regions"
 )
 
 // staleScanThreshold is how old a child network_discovery job's updated_at may be
@@ -38,6 +39,8 @@ var (
 	ErrAlreadyRunning = errors.New("a discovery scan is already running for this organization")
 	// ErrAlreadyPromoted is returned when a check has already been promoted.
 	ErrAlreadyPromoted = errors.New("discovered check already promoted")
+	// ErrRegionUnavailable means the private region a row was found from no longer exists.
+	ErrRegionUnavailable = errors.New("discovery region no longer available")
 )
 
 // ListChecksOptions configures which discovered checks to return.
@@ -69,6 +72,7 @@ type Service struct {
 	db         *bun.DB
 	dbSvc      db.Service
 	checksSvc  *checks.Service
+	regionsSvc *regions.Service
 	jobSvc     jobsvc.Service
 	creds      credentials.Service
 	isPostgres bool
@@ -95,6 +99,7 @@ func NewService(
 		db:            bunDB,
 		dbSvc:         dbSvc,
 		checksSvc:     checksSvc,
+		regionsSvc:    regions.NewService(dbSvc),
 		jobSvc:        jobSvc,
 		creds:         creds,
 		isPostgres:    isPostgres,
@@ -587,6 +592,11 @@ func (s *Service) PromoteChecks(
 		return nil, err
 	}
 
+	// Validate every region first so a refusal creates nothing.
+	if err = s.checkRegionsOwned(ctx, orgUID, rows); err != nil {
+		return nil, err
+	}
+
 	created := make([]checks.CheckResponse, 0, len(rows))
 
 	for _, row := range rows {
@@ -601,6 +611,26 @@ func (s *Service) PromoteChecks(
 	}
 
 	return created, nil
+}
+
+// checkRegionsOwned refuses rows found from a private region the org no longer has.
+func (s *Service) checkRegionsOwned(ctx context.Context, orgUID string, rows []*models.DiscoveredCheck) error {
+	for _, row := range rows {
+		if row.Region == "" {
+			continue
+		}
+
+		owned, err := s.regionsSvc.OwnsPrivateRegion(ctx, orgUID, row.Region)
+		if err != nil {
+			return fmt.Errorf("check discovery region: %w", err)
+		}
+
+		if !owned {
+			return fmt.Errorf("%w: %s", ErrRegionUnavailable, row.Region)
+		}
+	}
+
+	return nil
 }
 
 // promoteOne creates a single real check from a discovered-check row.
@@ -633,6 +663,11 @@ func (s *Service) promoteOne(
 			"auto-discovery": "true",
 			"discovery-job":  row.JobUID,
 		},
+	}
+
+	// A check found from a private region always runs from that region.
+	if row.Region != "" {
+		createReq.Regions = []string{row.Region}
 	}
 
 	checkResp, err := s.checksSvc.CreateCheck(ctx, orgSlug, createReq)
@@ -689,8 +724,9 @@ func (s *Service) SoftDeleteCheck(ctx context.Context, orgUID, uid string) error
 }
 
 // SoftDeleteGroup soft-deletes every active discovered check in a group for a
-// scan (dismiss a whole group). It returns the number of rows dismissed.
-func (s *Service) SoftDeleteGroup(ctx context.Context, orgUID, jobUID, group string) (int, error) {
+// scan (dismiss a whole group) found from region ("" = the server itself). It
+// returns the number of rows dismissed.
+func (s *Service) SoftDeleteGroup(ctx context.Context, orgUID, jobUID, group, region string) (int, error) {
 	now := time.Now()
 
 	query := s.db.NewUpdate().
@@ -699,6 +735,7 @@ func (s *Service) SoftDeleteGroup(ctx context.Context, orgUID, jobUID, group str
 		Set("updated_at = ?", now).
 		Where("organization_uid = ?", orgUID).
 		Where("group_key = ?", group).
+		Where("region = ?", region).
 		Where("deleted_at IS NULL")
 
 	if jobUID != "" {

@@ -371,6 +371,29 @@ func (s *Service) GetOrgCustomRegions(ctx context.Context, orgUID string) ([]Reg
 	return defs, nil
 }
 
+// OwnsPrivateRegion reports whether region is a canonical `@slug` private
+// region currently defined by the org. Cloud slugs and the legacy `@org/slug`
+// spelling are not owned.
+func (s *Service) OwnsPrivateRegion(ctx context.Context, orgUID, region string) (bool, error) {
+	slug, ok := ParsePrivateRegion(region)
+	if !ok {
+		return false, nil
+	}
+
+	defs, err := s.GetOrgCustomRegions(ctx, orgUID)
+	if err != nil {
+		return false, err
+	}
+
+	for i := range defs {
+		if defs[i].Slug == slug {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
 // SetOrgCustomRegions persists an org's private-location region definitions. Each
 // slug is validated; slugs must be unique within the org.
 func (s *Service) SetOrgCustomRegions(ctx context.Context, orgUID string, defs []RegionDefinition) error {

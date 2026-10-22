@@ -22,6 +22,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/notifier"
+	"github.com/fclairamb/solidping/server/internal/regions"
 )
 
 type discoveryFixture struct {
@@ -113,7 +114,7 @@ func (f *discoveryFixture) insertCheck(
 	ctx := t.Context()
 
 	dc := models.NewDiscoveredCheck(
-		f.org.UID, jobUID, source, group, group, group+" · "+slug, slug, checkType, cfg, nil,
+		f.org.UID, jobUID, source, group, group, group+" · "+slug, slug, checkType, cfg, nil, "",
 	)
 	_, err := f.dbSvc.DB().NewInsert().Model(dc).Exec(ctx)
 	r.NoError(err)
@@ -461,7 +462,7 @@ func TestDismissGroup(t *testing.T) {
 	f.insertCheck(t, jobUID, "192.168.1.41", "h-tcp", "tcp",
 		models.DiscoverySourceLAN, json.RawMessage(`{"host":"192.168.1.41","port":22}`))
 
-	n, err := f.svc.SoftDeleteGroup(t.Context(), f.org.UID, jobUID, "192.168.1.40")
+	n, err := f.svc.SoftDeleteGroup(t.Context(), f.org.UID, jobUID, "192.168.1.40", "")
 	r.NoError(err)
 	r.Equal(2, n)
 
@@ -662,8 +663,9 @@ func TestUpsertDiscoveredChecksRescanUpdatesInPlace(t *testing.T) {
 		},
 	}
 
-	r.NoError(disc.UpsertDiscoveredChecks(ctx, f.dbSvc.DB(), f.org.UID, jobUID, models.DiscoverySourceLAN, rows, nil))
-	r.NoError(disc.UpsertDiscoveredChecks(ctx, f.dbSvc.DB(), f.org.UID, jobUID, models.DiscoverySourceLAN, rows, nil))
+	db := f.dbSvc.DB()
+	r.NoError(disc.UpsertDiscoveredChecks(ctx, db, f.org.UID, jobUID, "", models.DiscoverySourceLAN, rows, nil))
+	r.NoError(disc.UpsertDiscoveredChecks(ctx, db, f.org.UID, jobUID, "", models.DiscoverySourceLAN, rows, nil))
 
 	all, err := f.svc.ListDiscoveredChecks(ctx, f.org.UID, &discovery.ListChecksOptions{})
 	r.NoError(err)
@@ -748,4 +750,140 @@ func TestAvailableTypesHidesRefusedTypes(t *testing.T) {
 	r.Equal([]string{"freebox", "kubernetes"}, typesOf(newDiscoveryFixtureWith(t, egress.New(false), true)))
 	r.Equal([]string{"container", "freebox", "kubernetes"}, typesOf(newDiscoveryFixtureWith(t, egress.New(false), false)))
 	r.Equal([]string{"container", "freebox", "kubernetes", "lan"}, typesOf(newDiscoveryFixture(t)))
+}
+
+// insertRegionCheck inserts a discovered check found from the given region.
+func (f *discoveryFixture) insertRegionCheck(t *testing.T, jobUID, group, slug, region string) string {
+	t.Helper()
+
+	dc := models.NewDiscoveredCheck(
+		f.org.UID, jobUID, models.DiscoverySourceLAN, group, group, group+" · "+slug, slug, "tcp",
+		json.RawMessage(`{"host":"`+group+`","port":22}`), nil, region,
+	)
+	_, err := f.dbSvc.DB().NewInsert().Model(dc).Exec(t.Context())
+	require.NoError(t, err)
+
+	return dc.UID
+}
+
+func (f *discoveryFixture) setRegions(t *testing.T, slugs ...string) {
+	t.Helper()
+
+	defs := make([]regions.RegionDefinition, 0, len(slugs))
+	for _, s := range slugs {
+		defs = append(defs, regions.RegionDefinition{Slug: s, Name: s})
+	}
+
+	require.NoError(t, regions.NewService(f.dbSvc).SetOrgCustomRegions(t.Context(), f.org.UID, defs))
+}
+
+func TestUpsertDiscoveredChecksRegionIdentity(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newDiscoveryFixture(t)
+	ctx := t.Context()
+	db := f.dbSvc.DB()
+	jobUID := f.newScanJob(t)
+
+	rows := []disc.SuggestedCheck{{
+		GroupKey: "10.0.0.5", GroupLabel: "10.0.0.5", Name: "10.0.0.5 · TCP/22", Slug: "tcp-10-0-0-5-22",
+		Type: "tcp", Config: json.RawMessage(`{"host":"10.0.0.5","port":22}`),
+	}}
+
+	for _, region := range []string{"", "@dc1", "", "@dc1"} {
+		r.NoError(disc.UpsertDiscoveredChecks(ctx, db, f.org.UID, jobUID, region, models.DiscoverySourceLAN, rows, nil))
+	}
+
+	all, err := f.svc.ListDiscoveredChecks(ctx, f.org.UID, &discovery.ListChecksOptions{})
+	r.NoError(err)
+	r.Len(all, 2, "same IP from the server and from @dc1 is two rows, re-scans update in place")
+
+	got := map[string]bool{}
+	for _, row := range all {
+		got[row.Region] = true
+	}
+
+	r.True(got[""])
+	r.True(got["@dc1"])
+}
+
+func TestPromoteChecksRegion(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newDiscoveryFixture(t)
+	ctx := t.Context()
+	jobUID := f.newScanJob(t)
+	f.setRegions(t, "dc1")
+
+	uid := f.insertRegionCheck(t, jobUID, "10.0.0.5", "tcp-10-0-0-5-22", "@dc1")
+
+	resp, err := f.svc.PromoteChecks(ctx, f.org.UID, f.org.Slug, discovery.PromoteRequest{UIDs: []string{uid}})
+	r.NoError(err)
+	r.Len(resp, 1)
+	r.Equal([]string{"@dc1"}, resp[0].Regions)
+	r.Equal(models.PlacementPinned, resp[0].Placement)
+}
+
+func TestPromoteChecksRegionUnavailable(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newDiscoveryFixture(t)
+	ctx := t.Context()
+	jobUID := f.newScanJob(t)
+	f.setRegions(t, "dc2")
+
+	serverUID := f.insertRegionCheck(t, jobUID, "10.0.0.6", "tcp-10-0-0-6-22", "")
+	goneUID := f.insertRegionCheck(t, jobUID, "10.0.0.5", "tcp-10-0-0-5-22", "@dc1")
+
+	_, err := f.svc.PromoteChecks(ctx, f.org.UID, f.org.Slug, discovery.PromoteRequest{
+		UIDs: []string{serverUID, goneUID},
+	})
+	r.ErrorIs(err, discovery.ErrRegionUnavailable)
+
+	// Nothing was created: the server-side row stays unpromoted too.
+	row, err := f.svc.GetCheck(ctx, f.org.UID, serverUID)
+	r.NoError(err)
+	r.Nil(row.PromotedToCheckUID)
+
+	n, err := f.dbSvc.DB().NewSelect().TableExpr("checks").Where("organization_uid = ?", f.org.UID).Count(ctx)
+	r.NoError(err)
+	r.Zero(n)
+}
+
+func TestPromoteChecksNoRegionKeepsDefaultPlacement(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newDiscoveryFixture(t)
+	uid := f.insertRegionCheck(t, f.newScanJob(t), "10.0.0.7", "tcp-10-0-0-7-22", "")
+
+	resp, err := f.svc.PromoteChecks(t.Context(), f.org.UID, f.org.Slug, discovery.PromoteRequest{UIDs: []string{uid}})
+	r.NoError(err)
+	r.Len(resp, 1)
+	r.NotContains(resp[0].Regions, "")
+	r.NotContains(resp[0].Regions, "@dc1")
+}
+
+func TestDismissGroupScopedByRegion(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newDiscoveryFixture(t)
+	ctx := t.Context()
+	jobUID := f.newScanJob(t)
+
+	f.insertRegionCheck(t, jobUID, "10.0.0.5", "tcp-10-0-0-5-22", "")
+	f.insertRegionCheck(t, jobUID, "10.0.0.5", "tcp-10-0-0-5-80", "@dc1")
+
+	n, err := f.svc.SoftDeleteGroup(ctx, f.org.UID, "", "10.0.0.5", "@dc1")
+	r.NoError(err)
+	r.Equal(1, n)
+
+	remaining, err := f.svc.ListDiscoveredChecks(ctx, f.org.UID, &discovery.ListChecksOptions{})
+	r.NoError(err)
+	r.Len(remaining, 1)
+	r.Empty(remaining[0].Region, "the server-side row with the same IP is untouched")
 }

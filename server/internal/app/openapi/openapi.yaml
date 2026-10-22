@@ -5602,6 +5602,11 @@ paths:
           description: The group (groupKey) to dismiss
           schema:
             type: string
+        - name: region
+          in: query
+          description: Region the group was found from; empty (default) means the server itself
+          schema:
+            type: string
         - name: jobUid
           in: query
           description: Restrict the dismissal to one scan
@@ -16478,6 +16483,9 @@ components:
           description: The scan UID (plan UID for chunked scans)
         source:
           type: string
+        region:
+          type: string
+          description: Private region (@slug) of the scan that found the row; omitted when the server found it. Promotion pins the created check to it.
           example: lan
         groupKey:
           type: string

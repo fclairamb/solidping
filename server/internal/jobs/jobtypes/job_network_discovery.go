@@ -92,5 +92,5 @@ func (r *NetworkDiscoveryJobRun) Run(ctx context.Context, jctx *jobdef.JobContex
 		"job_uid", jobUID,
 	)
 
-	return disc.UpsertDiscoveredChecks(ctx, jctx.DB, orgUID, jobUID, models.DiscoverySourceLAN, rows, log)
+	return disc.UpsertDiscoveredChecks(ctx, jctx.DB, orgUID, jobUID, "", models.DiscoverySourceLAN, rows, log)
 }
