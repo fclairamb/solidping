@@ -51,6 +51,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/email"
 	entitlementsapi "github.com/fclairamb/solidping/server/internal/entitlements"
 	agentsadmin "github.com/fclairamb/solidping/server/internal/handlers/agents"
+	"github.com/fclairamb/solidping/server/internal/handlers/agenttasks"
 	"github.com/fclairamb/solidping/server/internal/handlers/agentws"
 	aichecksapi "github.com/fclairamb/solidping/server/internal/handlers/aichecks"
 	"github.com/fclairamb/solidping/server/internal/handlers/attachments"
@@ -155,6 +156,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/utils/passwords"
 	"github.com/fclairamb/solidping/server/internal/version"
 	webpushpkg "github.com/fclairamb/solidping/server/internal/webpush"
+	"github.com/fclairamb/solidping/server/internal/workertasks"
 	"github.com/fclairamb/solidping/server/test/testdata"
 )
 
@@ -400,6 +402,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 
 	checkJobService := checkjobsvc.NewService(dbService.DB())
 	svcList.CheckJobs = checkJobService
+	svcList.WorkerTasks = workertasks.NewService(dbService.DB())
 
 	// Create email services
 	// The sender resolves the effective email config (env over DB) on every
@@ -1477,6 +1480,12 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// authenticated group.
 	agentAttachmentsHandler := attachments.NewHandler(attachmentsService, s.dbService, s.config)
 	api.POST("/agent/attachments", agentAttachmentsHandler.Upload)
+
+	// Worker tasks (spec 2026-10-22-02): the agent pulls multi-slice work over
+	// signed HTTP, never the WebSocket. Same inline auth as the upload above.
+	// The task state lives on the attachment rail, written by the server only.
+	s.services.WorkerTasks.SetStateStore(attachmentsService)
+	agenttasks.NewHandler(s.services.WorkerTasks, s.dbService, s.config).Register(api)
 
 	agentWorkerIncidents.SetAttachmentStore(attachmentsService)
 
