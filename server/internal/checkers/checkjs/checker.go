@@ -22,6 +22,7 @@ import (
 	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checkjs/config"
 	checkrdp "github.com/fclairamb/solidping/server/internal/checkers/checkrdp"
 	checkvnc "github.com/fclairamb/solidping/server/internal/checkers/checkvnc"
+	"github.com/fclairamb/solidping/server/internal/egress"
 )
 
 // JS result map keys.
@@ -690,6 +691,12 @@ func (r *jsRuntime) check(typeStr string, configMap map[string]any) map[string]a
 		return jsCheckError(fmt.Sprintf("sub-check limit of %d exceeded", maxSubChecks))
 	}
 
+	// A sub-check dials through its own checker, outside the allowlist's
+	// reach, so it cannot run while one is active.
+	if err := egress.HostAllowlistFrom(r.execCtx).Refuse("solidping." + typeStr); err != nil {
+		return jsCheckError(err.Error())
+	}
+
 	checkType := checkerdef.CheckType(typeStr)
 
 	// Server-level activation gate. Without it, solidping.check() would run any
@@ -1007,7 +1014,11 @@ func (r *jsRuntime) httpRequest(
 		// Under an enforcing egress policy (spec 2026-09-25-19) the transport
 		// dials through the guard instead: a script cannot reach a non-public
 		// address, and the refusal comes back as the request's error.
-		Transport: checkerdef.HTTPTransportFor(r.execCtx, false),
+		//
+		// An AI authoring run holding real secrets also carries a host
+		// allowlist: every request, redirects included, is checked against
+		// it before it is sent.
+		Transport: egress.HostAllowlistFrom(r.execCtx).RoundTripper(checkerdef.HTTPTransportFor(r.execCtx, false)),
 	}
 
 	if jar != nil {

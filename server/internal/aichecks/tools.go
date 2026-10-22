@@ -10,6 +10,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/ai"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/egress"
 )
 
 // Tool names, shared with the MCP server.
@@ -109,9 +110,10 @@ type scriptRun struct {
 // remembers the last run and the last passing one.
 type runRecorder struct {
 	runner *Runner
-	// prepare decides how a script runs: the secrets it gets, a note for the
-	// model, or a refusal (an error the model sees instead of a run).
-	prepare func(script string) (map[string]string, string, error)
+	// prepare decides how a script runs: the secrets it gets, the hosts it
+	// may reach while they are real, a note for the model, or a refusal (an
+	// error the model sees instead of a run).
+	prepare func(script string) (*runGrant, error)
 	env     map[string]string
 	// progress receives every run, for the dashboard. Nil drops them.
 	progress func(Progress)
@@ -126,6 +128,18 @@ type runRecorder struct {
 	lastUp *scriptRun
 	// ups are the passing runs by script, final or not, for passing().
 	ups map[string]*scriptRun
+	// refused is the last run the host allowlist refused, for the attempt
+	// event.
+	refused error
+}
+
+// runGrant is how prepare lets a script run.
+type runGrant struct {
+	secrets map[string]string
+	// hosts are the only hosts the run may reach when secrets holds a real
+	// value (see Runner.Run).
+	hosts []string
+	note  string
 }
 
 func (rec *runRecorder) tool() ai.Tool {
@@ -185,12 +199,19 @@ func (rec *runRecorder) run(ctx context.Context, script string, final bool) (str
 }
 
 func (rec *runRecorder) runScript(ctx context.Context, script string, final bool) (string, error) {
-	secrets, note, err := rec.prepare(script)
+	grant, err := rec.prepare(script)
 	if err != nil {
 		return "", err
 	}
 
-	res, err := rec.runner.Run(ctx, script, rec.env, secrets, 0)
+	secrets, note := grant.secrets, grant.note
+
+	res, err := rec.runner.Run(ctx, script, rec.env, secrets, grant.hosts, 0)
+	if errors.Is(err, egress.ErrHostNotAllowed) {
+		err = fmt.Errorf("refused: %w", err)
+		rec.refused = err
+	}
+
 	if err != nil {
 		// A script that cannot run (a syntax error) is still an attempt the
 		// user should see when nothing passes.

@@ -52,8 +52,16 @@ type Runner struct {
 
 // Run executes a script. secrets carries the values the script may use; they
 // are scrubbed from the returned result.
+//
+// When a secret has a real value, the run may only connect to the hosts in
+// allowed (an empty list allows none), checked at runtime on every request,
+// redirect and socket the script opens. That is the boundary that keeps a
+// prompt injection from sending the values to a host the script assembles at
+// runtime; the static ScriptHosts guards only refuse early. A run the
+// allowlist refused returns an error matching egress.ErrHostNotAllowed,
+// whatever status the script reported.
 func (r *Runner) Run(
-	ctx context.Context, script string, env, secrets map[string]string, timeout time.Duration,
+	ctx context.Context, script string, env, secrets map[string]string, allowed []string, timeout time.Duration,
 ) (*RunResult, error) {
 	if timeout <= 0 || timeout > toolScriptTimeout {
 		timeout = toolScriptTimeout
@@ -70,9 +78,20 @@ func (r *Runner) Run(
 		}
 	}
 
+	var allowlist *egress.HostAllowlist
+	if hasSecretValues(secrets) {
+		allowlist = egress.NewHostAllowlist(allowed)
+		ctx = egress.WithHostAllowlist(ctx, allowlist)
+	}
+
 	result, err := (&checkjs.JSChecker{}).Execute(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("running the script: %w", err)
+	}
+
+	if refused := allowlist.Refused(); refused != nil {
+		// The refused host may itself carry a secret (secret.example.com).
+		return nil, &egress.HostNotAllowedError{Target: scrubString(refused.Target, secrets)}
 	}
 
 	out := &RunResult{
@@ -85,6 +104,17 @@ func (r *Runner) Run(
 	scrubResult(out, secrets)
 
 	return out, nil
+}
+
+// hasSecretValues reports a secrets map holding at least one real value.
+func hasSecretValues(secrets map[string]string) bool {
+	for _, value := range secrets {
+		if value != "" {
+			return true
+		}
+	}
+
+	return false
 }
 
 // fetchScript fetches env.URL and reports status, headers and a truncated body.
@@ -103,7 +133,7 @@ func (r *Runner) FetchPage(ctx context.Context, rawURL string) (*RunResult, erro
 
 	return r.Run(ctx, fetchScript, map[string]string{
 		"URL": rawURL, "LIMIT": strconv.Itoa(fetchBodyLimit),
-	}, nil, 0)
+	}, nil, nil, 0)
 }
 
 // snapshotExpression walks the DOM and renders the interactive and
@@ -162,21 +192,47 @@ func (r *Runner) BrowserSnapshot(ctx context.Context, rawURL string) (*RunResult
 
 	return r.Run(ctx, snapshotScript, map[string]string{
 		"URL": rawURL, "EXPR": snapshotExpression, "LIMIT": strconv.Itoa(snapshotLimit),
-	}, nil, 0)
+	}, nil, nil, 0)
 }
 
 // scrubResult replaces every secret value in the result's strings.
 func scrubResult(result *RunResult, secrets map[string]string) {
-	if len(secrets) == 0 {
+	replacer := secretReplacer(secrets)
+	if replacer == nil {
 		return
 	}
 
+	if scrubbed, ok := scrubValue(result.Output, replacer).(map[string]any); ok {
+		result.Output = scrubbed
+	}
+
+	if scrubbed, ok := scrubValue(result.Metrics, replacer).(map[string]any); ok {
+		result.Metrics = scrubbed
+	}
+}
+
+// scrubString replaces every secret value in text.
+func scrubString(text string, secrets map[string]string) string {
+	if replacer := secretReplacer(secrets); replacer != nil {
+		return replacer.Replace(text)
+	}
+
+	return text
+}
+
+// secretReplacer replaces each secret value by its placeholder, or is nil
+// when there is no value to replace.
+func secretReplacer(secrets map[string]string) *strings.Replacer {
 	// Longest first, so a secret containing another is replaced whole.
 	names := make([]string, 0, len(secrets))
 	for name, value := range secrets {
 		if value != "" {
 			names = append(names, name)
 		}
+	}
+
+	if len(names) == 0 {
+		return nil
 	}
 
 	sort.Slice(names, func(i, j int) bool { return len(secrets[names[i]]) > len(secrets[names[j]]) })
@@ -186,19 +242,7 @@ func scrubResult(result *RunResult, secrets map[string]string) {
 		pairs = append(pairs, secrets[name], fmt.Sprintf(scrubPlaceholder, name))
 	}
 
-	if len(pairs) == 0 {
-		return
-	}
-
-	replacer := strings.NewReplacer(pairs...)
-
-	if scrubbed, ok := scrubValue(result.Output, replacer).(map[string]any); ok {
-		result.Output = scrubbed
-	}
-
-	if scrubbed, ok := scrubValue(result.Metrics, replacer).(map[string]any); ok {
-		result.Metrics = scrubbed
-	}
+	return strings.NewReplacer(pairs...)
 }
 
 func scrubValue(value any, replacer *strings.Replacer) any {

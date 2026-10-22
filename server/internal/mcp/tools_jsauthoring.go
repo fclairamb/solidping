@@ -135,7 +135,7 @@ func (h *Handler) toolRunJSScript(ctx context.Context, _ string, args map[string
 		secrets[name] = ""
 	}
 
-	result, err := h.runner().Run(ctx, script, stringMapArg(args, propEnv), secrets, timeout)
+	result, err := h.runner().Run(ctx, script, stringMapArg(args, propEnv), secrets, nil, timeout)
 	if err != nil {
 		return errorResult(err.Error())
 	}

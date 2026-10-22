@@ -373,18 +373,21 @@ func (s *Service) recordAttempt(
 func (s *Service) attemptRepair(ctx context.Context, target *repairTarget) (*RepairOutcome, ai.Usage, error) {
 	previous := target.cfg.Script
 	env := target.cfg.Env
+	allowed := repairHosts(previous, env)
 
 	rec := &runRecorder{
 		runner: s.runner,
 		env:    env,
-		prepare: func(script string) (map[string]string, string, error) {
-			// No candidate ever runs with the secrets against a host the
-			// previous version did not contact.
+		prepare: func(script string) (*runGrant, error) {
+			// An early refusal of a host the script text names. The
+			// boundary is the runtime allowlist: the run may only reach the
+			// hosts the previous version contacts, however the candidate
+			// builds its URLs.
 			if err := CheckHosts(previous, script, env); err != nil {
-				return nil, "", fmt.Errorf("refused: %w", err)
+				return nil, fmt.Errorf("refused: %w", err)
 			}
 
-			return target.secrets, "", nil
+			return &runGrant{secrets: target.secrets, hosts: allowed}, nil
 		},
 	}
 
@@ -408,6 +411,10 @@ func (s *Service) attemptRepair(ctx context.Context, target *repairTarget) (*Rep
 			reason += ": " + loopErr.Error()
 		}
 
+		if rec.refused != nil {
+			reason += " (last refusal: " + rec.refused.Error() + ")"
+		}
+
 		return &RepairOutcome{Outcome: OutcomeNoCandidate, Reason: reason}, usage, nil
 	}
 
@@ -424,7 +431,7 @@ func (s *Service) storeCandidate(ctx context.Context, target *repairTarget, cand
 
 	guardErr := CheckCandidate(cfg.Script, candidate, cfg.Env)
 	if guardErr == nil {
-		verify, err := s.runner.Run(ctx, candidate, cfg.Env, target.secrets, cfg.Timeout)
+		verify, err := s.runner.Run(ctx, candidate, cfg.Env, target.secrets, repairHosts(cfg.Script, cfg.Env), cfg.Timeout)
 		if err != nil {
 			guardErr = err
 		} else if !verify.Up() {
@@ -439,6 +446,15 @@ func (s *Service) storeCandidate(ctx context.Context, target *repairTarget, cand
 	reason := repairReason(target.latest)
 	if guardErr != nil {
 		reason += " (not applied: " + guardErr.Error() + ")"
+	}
+
+	// The allowlist only holds the AI-loop runs. A candidate whose hosts the
+	// text no longer shows (built at runtime) would run on schedule with the
+	// secrets and no allowlist, so it is proposed, never applied.
+	if guardErr == nil && mode == jsconfig.RepairAuto && hostsHidden(cfg.Script, candidate, cfg.Env) {
+		reason += " (not applied: the candidate's hosts cannot be read from its text)"
+
+		return s.proposeRepair(ctx, target, candidate, reason)
 	}
 
 	if guardErr == nil && mode == jsconfig.RepairAuto {
