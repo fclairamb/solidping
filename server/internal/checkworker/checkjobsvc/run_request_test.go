@@ -162,39 +162,6 @@ func exerciseRunRequestReleaseVariants(ctx context.Context, t *testing.T, dbSvc 
 	r.Nil(stored.RunRequestedAt)
 	r.WithinDuration(parkedAt, *stored.ScheduledAt, time.Millisecond, "a deferral honors the request")
 
-	// Multi-step run: the slice keeps the request, the end of the run spends it.
-	lease()
-
-	runUID := uuid.New().String()
-	r.NoError(svc.SubmitStep(ctx, job.UID, worker.UID, &checkjobsvc.StepUpdate{
-		RunUID: runUID, RunStartedAt: time.Now().UTC(), NextAt: time.Now().Add(-time.Second).UTC(),
-	}))
-
-	parkedAt = time.Now().UTC().Truncate(time.Millisecond)
-	r.NoError(dbSvc.RequestCheckRun(ctx, job.UID, parkedAt), "a run between slices parks the request")
-	r.NotNil(loadJob(ctx, t, bunDB, job.UID).RunRequestedAt)
-
-	claimed, err := svc.ClaimJobsForCheck(ctx, worker.UID, job.Region, check.UID)
-	r.NoError(err)
-	r.Len(claimed, 1)
-	r.NotNil(loadJob(ctx, t, bunDB, job.UID).RunRequestedAt, "the next slice's claim keeps it")
-
-	r.NoError(svc.SubmitStep(ctx, job.UID, worker.UID, &checkjobsvc.StepUpdate{
-		RunUID: runUID, ExpectedRunUID: &runUID, RunStartedAt: time.Now().UTC(),
-		NextAt: time.Now().Add(-time.Second).UTC(),
-	}))
-	r.NotNil(loadJob(ctx, t, bunDB, job.UID).RunRequestedAt, "a slice keeps it pending")
-
-	claimed, err = svc.ClaimJobsForCheck(ctx, worker.UID, job.Region, check.UID)
-	r.NoError(err)
-	r.Len(claimed, 1)
-	r.NoError(svc.EndStepRun(ctx, job.UID, worker.UID, &runUID, next))
-
-	stored = loadJob(ctx, t, bunDB, job.UID)
-	r.Nil(stored.RunRequestedAt)
-	r.WithinDuration(parkedAt, *stored.ScheduledAt, time.Millisecond, "the end of the run honors it")
-	r.WithinDuration(parkedAt, *stored.EffectiveScheduledAt, time.Millisecond)
-
 	// A leftover from a lease that ended without a release is answered by the
 	// next fresh claim.
 	_, err = bunDB.NewUpdate().Model((*models.CheckJob)(nil)).

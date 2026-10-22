@@ -38,6 +38,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
 	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/crawltask"
 	"github.com/fclairamb/solidping/server/internal/credmigrate"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
@@ -505,6 +506,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	checksSvc.SetDeploymentMode(cfg.Deployment.Mode)
 	checksSvc.SetActivationResolver(checkerdef.NewActivationResolver(&cfg.Checkers, cfg.Deployment.Mode))
 	checksSvc.SetEnvRefAllow(cfg.EnvRefAllowed)
+	checksSvc.SetTaskCanceler(svcList.WorkerTasks)
 	// The demo cleanup and private-location monitor deletes notify like a
 	// user's DELETE does (spec 2026-10-08-02).
 	backgroundIncidents := incidents.NewService(dbService, jobService, svcList.Clock, svcList.Realtime)
@@ -1225,6 +1227,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	checksService.SetDeploymentMode(s.config.Deployment.Mode)
 	checksService.SetActivationResolver(activationResolver)
 	checksService.SetEnvRefAllow(s.config.EnvRefAllowed)
+	checksService.SetTaskCanceler(s.services.WorkerTasks)
 	checksHandler := checks.NewHandler(checksService, s.config)
 	orgChecks := orgGroup("/orgs/:org/checks")
 	orgChecks.GET("", checksHandler.ListChecks)
@@ -1487,6 +1490,18 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	s.services.WorkerTasks.SetStateStore(attachmentsService)
 	agenttasks.NewHandler(s.services.WorkerTasks, s.dbService, s.config).Register(api)
 
+	// The website crawl runs on worker tasks (spec 2026-10-22-03), for cloud
+	// workers and agents alike: its result goes through the agents' submit
+	// path, its report to the attachment rail.
+	crawltask.Register(crawltask.Deps{
+		DB:           s.dbService,
+		Tasks:        s.services.WorkerTasks,
+		Results:      agentWorkersSvc,
+		Reports:      attachmentsService,
+		Entitlements: s.services.Entitlements,
+		SliceBudget:  scheduling.ParamsFromConfig(&s.config.Server.Scheduling).EffectiveBulkSliceBudget(),
+	})
+
 	agentWorkerIncidents.SetAttachmentStore(attachmentsService)
 
 	// A check's screenshots on the check page (spec 2026-09-25-34): the listing
@@ -1503,7 +1518,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 
 	// Multi-step runs (spec 2026-10-03-03): the run in progress (read), its
 	// cancellation (write: orgGroup refuses viewers) and the crawl reports.
-	checkRunsHandler := checkruns.NewHandler(checkruns.NewService(s.dbService, attachmentsService), s.config)
+	checkRunsHandler := checkruns.NewHandler(checkruns.NewService(s.dbService, attachmentsService, s.services.WorkerTasks), s.config)
 	orgCheckRuns := orgGroup("/orgs/:org/checks/:checkUid")
 	orgCheckRuns.GET("/run", checkRunsHandler.GetRun)
 	orgCheckRuns.DELETE("/run", checkRunsHandler.CancelRun)

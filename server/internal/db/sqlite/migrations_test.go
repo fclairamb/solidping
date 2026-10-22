@@ -714,7 +714,8 @@ func regionSection(t *testing.T, name string) string {
 
 	_, after, _ = strings.Cut(after, "\n") // the rest of the marker line
 
-	if end := strings.Index(after, "-- SECTION: user-preferences"); end >= 0 {
+	// The section ends at the next one, whichever it is.
+	if end := strings.Index(after, "-- SECTION:"); end >= 0 {
 		after = after[:end]
 	}
 

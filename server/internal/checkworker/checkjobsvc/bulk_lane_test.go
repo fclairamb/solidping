@@ -2,7 +2,6 @@ package checkjobsvc_test
 
 import (
 	"context"
-	"sync"
 	"testing"
 	"time"
 
@@ -91,18 +90,20 @@ func lanesOf(jobs []*models.CheckJob) map[uint8]int {
 	return out
 }
 
-// runBulkLaneSuite is the dialect-agnostic bulk lane contract (spec
-// 2026-10-03-03).
+// runBulkLaneSuite pins that no check_jobs claim hands out a bulk-lane job
+// (a website crawl) any more: a crawl run is a worker task (spec
+// 2026-10-22-03). A due fast job claimed by the same calls is the positive
+// control.
 func runBulkLaneSuite(t *testing.T, dbSvc bulkTestDB) {
 	t.Helper()
 
-	t.Run("no claim-ahead for bulk", func(t *testing.T) {
+	t.Run("cloud claims skip bulk jobs", func(t *testing.T) {
 		f := newBulkFixture(t, dbSvc)
-		soon := time.Now().Add(time.Second)
-		bulk := f.job("crawl", scheduling.LaneBulk, soon)
-		fast := f.job("sleep", scheduling.LaneFast, soon)
+		due := time.Now().Add(-time.Minute)
+		bulk := f.job("crawl", scheduling.LaneBulk, due)
+		fast := f.job("sleep", scheduling.LaneFast, due)
 
-		claimed, _, err := f.svc.ClaimJobs(t.Context(), f.worker(), nil, 10, 10, 10, 5*time.Minute)
+		claimed, _, err := f.svc.ClaimJobs(t.Context(), f.worker(), nil, 10, 10, 5*time.Minute)
 		require.NoError(t, err)
 
 		uids := map[string]bool{}
@@ -110,182 +111,26 @@ func runBulkLaneSuite(t *testing.T, dbSvc bulkTestDB) {
 			uids[job.UID] = true
 		}
 
-		require.True(t, uids[fast.UID], "a fast job due in 1s is claimed ahead")
-		require.False(t, uids[bulk.UID], "a bulk job due in 1s is not")
+		require.True(t, uids[fast.UID], "positive control: the due fast job is claimed")
+		require.False(t, uids[bulk.UID], "a due bulk job is never claimed by a runner")
+		require.Zero(t, lanesOf(claimed)[scheduling.LaneBulk])
 
 		releaseAll(t, f.svc, claimed)
-	})
 
-	t.Run("slow then bulk then fast, bulk budget shared with slow", func(t *testing.T) {
-		f := newBulkFixture(t, dbSvc)
-		past := time.Now().Add(-time.Minute)
-
-		for range 2 {
-			f.job("sleep", scheduling.LaneSlow, past)
-			f.job("crawl", scheduling.LaneBulk, past)
-		}
-
-		for range 3 {
-			f.job("sleep", scheduling.LaneFast, past)
-		}
-
-		// Capacity 3, slow budget 1, bulk budget 2 (before slow is deducted).
-		claimed, _, err := f.svc.ClaimJobs(t.Context(), f.worker(), nil, 3, 1, 2, 5*time.Minute)
+		express, err := f.svc.ClaimJobsForCheck(t.Context(), f.worker(), nil, bulk.CheckUID)
 		require.NoError(t, err)
-
-		lanes := lanesOf(claimed)
-		require.Equal(t, 1, lanes[scheduling.LaneSlow], "slow is served first")
-		require.Equal(t, 1, lanes[scheduling.LaneBulk], "bulk gets its budget minus the slow claims")
-		require.Equal(t, 1, lanes[scheduling.LaneFast], "fast fills what is left")
-
-		for _, job := range claimed {
-			if job.Lane == scheduling.LaneBulk {
-				require.WithinDuration(t, time.Now().Add(checkjobsvc.BulkLeaseDuration), *job.LeaseExpiresAt,
-					5*time.Second, "a slice leases for one slice, not one period")
-			}
-		}
-
-		releaseAll(t, f.svc, claimed)
+		require.Empty(t, express, "the express path never claims a crawl")
 	})
 
-	t.Run("bulk limit respected under concurrent claims", func(t *testing.T) {
+	t.Run("a bulk job never feeds the next-eligible hint", func(t *testing.T) {
 		f := newBulkFixture(t, dbSvc)
-		past := time.Now().Add(-time.Minute)
+		f.job("crawl", scheduling.LaneBulk, time.Now().Add(30*time.Second))
 
-		for range 10 {
-			f.job("crawl", scheduling.LaneBulk, past)
-		}
-
-		var (
-			mu      sync.Mutex
-			batches [][]*models.CheckJob
-			wg      sync.WaitGroup
-		)
-
-		for range 4 {
-			workerUID := f.worker()
-
-			wg.Go(func() {
-				claimed, _, err := f.svc.ClaimJobs(context.Background(), workerUID, nil, 10, 0, 2, 5*time.Minute)
-				if err != nil {
-					return // SQLite optimistic lock: a lost race claims nothing
-				}
-
-				mu.Lock()
-				defer mu.Unlock()
-
-				batches = append(batches, claimed)
-			})
-		}
-
-		wg.Wait()
-
-		seen := map[string]int{}
-
-		for _, claimed := range batches {
-			require.LessOrEqual(t, lanesOf(claimed)[scheduling.LaneBulk], 2, "bulk limit per claim")
-
-			for _, job := range claimed {
-				seen[job.UID]++
-			}
-
-			releaseAll(t, f.svc, claimed)
-		}
-
-		for uid, count := range seen {
-			require.Equal(t, 1, count, "job %s claimed twice", uid)
-		}
-	})
-
-	t.Run("agents never claim bulk jobs", func(t *testing.T) {
-		f := newBulkFixture(t, dbSvc)
-		region := "eu-" + uuid.NewString()[:6]
-		past := time.Now().Add(-time.Minute)
-
-		bulk := f.job("crawl", scheduling.LaneBulk, past)
-		_, err := f.db.DB().NewUpdate().Model((*models.CheckJob)(nil)).
-			Set("region = ?", region).Where("uid = ?", bulk.UID).Exec(t.Context())
+		_, nextIn, err := f.svc.ClaimJobs(t.Context(), f.worker(), nil, 10, 10, 0)
 		require.NoError(t, err)
-
-		claimed, _, err := f.svc.ClaimJobsForAgent(t.Context(), f.worker(),
-			checkjobsvc.AgentScope{Region: region, System: true}, "", 10, 5*time.Minute)
-		require.NoError(t, err)
-		require.Empty(t, claimed)
+		require.True(t, nextIn == 0 || nextIn > 30*time.Second,
+			"the only upcoming job is a crawl, so no hint points at it (got %s)", nextIn)
 	})
-
-	t.Run("step writes are fenced on the lease and the run", func(t *testing.T) {
-		runStepFencingCase(t, newBulkFixture(t, dbSvc))
-	})
-}
-
-func runStepFencingCase(t *testing.T, f *bulkFixture) {
-	t.Helper()
-
-	ctx := t.Context()
-	f.job("crawl", scheduling.LaneBulk, time.Now().Add(-time.Minute))
-
-	workerA := f.worker()
-	claimed, _, err := f.svc.ClaimJobs(ctx, workerA, nil, 1, 0, 1, time.Minute)
-	require.NoError(t, err)
-	require.Len(t, claimed, 1)
-
-	job := claimed[0]
-	started := time.Now().Add(-time.Second).UTC().Truncate(time.Second)
-	stateA := "state-a"
-
-	// Slice 1 (worker A) starts the run.
-	require.NoError(t, f.svc.SubmitStep(ctx, job.UID, workerA, &checkjobsvc.StepUpdate{
-		RunUID: "run-1", RunStartedAt: started, StateFileUID: &stateA, NextAt: time.Now(),
-	}))
-
-	// Worker B claims slice 2 and advances the run.
-	workerB := f.worker()
-	claimed, _, err = f.svc.ClaimJobs(ctx, workerB, nil, 1, 0, 1, time.Minute)
-	require.NoError(t, err)
-	require.Len(t, claimed, 1)
-	require.Equal(t, "run-1", *claimed[0].StepRunUID)
-	require.Equal(t, 1, claimed[0].StepCount)
-
-	stateB := "state-b"
-	run := "run-1"
-	require.NoError(t, f.svc.SubmitStep(ctx, job.UID, workerB, &checkjobsvc.StepUpdate{
-		ExpectedRunUID: &run, RunUID: run, RunStartedAt: started, StateFileUID: &stateB, NextAt: time.Now(),
-	}))
-
-	// A stale worker A, whose lease is long gone, changes nothing.
-	stale := "state-stale"
-	err = f.svc.SubmitStep(ctx, job.UID, workerA, &checkjobsvc.StepUpdate{
-		RunUID: "run-1", RunStartedAt: started, StateFileUID: &stale, NextAt: time.Now(),
-	})
-	require.ErrorIs(t, err, checkjobsvc.ErrJobClaimedByAnother)
-
-	stored := new(models.CheckJob)
-	require.NoError(t, f.db.DB().NewSelect().Model(stored).Where("uid = ?", job.UID).Scan(ctx))
-	require.Equal(t, "state-b", *stored.StepStateFileUID)
-	require.Equal(t, 2, stored.StepCount)
-
-	// A claim under another run fence cannot end the run either.
-	workerC := f.worker()
-	claimed, _, err = f.svc.ClaimJobs(ctx, workerC, nil, 1, 0, 1, time.Minute)
-	require.NoError(t, err)
-	require.Len(t, claimed, 1)
-
-	other := "run-other"
-	require.ErrorIs(t, f.svc.EndStepRun(ctx, job.UID, workerC, &other, time.Now().Add(time.Hour)),
-		checkjobsvc.ErrJobClaimedByAnother)
-
-	next := time.Now().Add(time.Hour)
-	require.NoError(t, f.svc.EndStepRun(ctx, job.UID, workerC, &run, next))
-
-	stored = new(models.CheckJob)
-	require.NoError(t, f.db.DB().NewSelect().Model(stored).Where("uid = ?", job.UID).Scan(ctx))
-	require.Nil(t, stored.StepRunUID)
-	require.Nil(t, stored.StepStateFileUID)
-	require.Nil(t, stored.StepRunStartedAt)
-	require.Zero(t, stored.StepCount)
-	require.Nil(t, stored.LeaseWorkerUID)
-	require.WithinDuration(t, next, *stored.ScheduledAt, time.Second)
-	require.Equal(t, scheduling.LaneBulk, stored.Lane, "the run end keeps the job on the bulk lane")
 }
 
 func releaseAll(t *testing.T, svc checkjobsvc.Service, jobs []*models.CheckJob) {

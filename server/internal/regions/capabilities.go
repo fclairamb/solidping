@@ -95,12 +95,16 @@ var aggregatedCapabilities = []string{ //nolint:gochecknoglobals // the publishe
 	CapabilityBrowser,
 }
 
+// CapabilityCrawl is reported by a worker running the website crawl executor
+// (crawltask.Capability, spec 2026-10-22-03).
+const CapabilityCrawl = "crawl"
+
 // taskCapabilities are the worker-task executor capabilities (spec
-// 2026-10-22-02), aggregated like the names above. Specs 2026-10-22-03 and -04
-// add crawl and discovery. A system agent never runs worker tasks (the task
-// routes refuse it), so its report never counts for them: the agent socket
-// strips them before storing it (StripTaskCapabilities).
-var taskCapabilities = []string{} //nolint:gochecknoglobals // the published task capability registry
+// 2026-10-22-02), aggregated like the names above. Spec 2026-10-22-04 adds
+// discovery. A system agent never runs worker tasks (the task routes refuse
+// it), so its report never counts for them: the agent socket strips them
+// before storing it (StripTaskCapabilities).
+var taskCapabilities = []string{CapabilityCrawl} //nolint:gochecknoglobals // the published task capability registry
 
 // StripTaskCapabilities removes the worker-task capabilities from a reported
 // set. A nil ("unknown") set stays nil.

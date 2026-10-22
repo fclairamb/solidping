@@ -66,7 +66,7 @@ func TestPluginJobsOnlyReachCapableWorkers(t *testing.T) {
 	t.Run("cloud worker without the plugin", func(t *testing.T) { //nolint:paralleltest // shares database state
 		worker := createTestWorker(t, ctx, dbSvc, &cloud)
 
-		claimed, _, err := svc.ClaimJobs(ctx, worker.UID, &cloud, 20, 20, 0, 5*time.Minute)
+		claimed, _, err := svc.ClaimJobs(ctx, worker.UID, &cloud, 20, 20, 5*time.Minute)
 		r.NoError(err)
 		r.False(jobUIDs(claimed)[cloudPlugin.UID], "a worker without the plugin claimed its job")
 		r.True(jobUIDs(claimed)[cloudHTTP.UID], "positive control: the built-in job is claimable")
@@ -77,7 +77,7 @@ func TestPluginJobsOnlyReachCapableWorkers(t *testing.T) {
 		r.Empty(express, "the express path must not claim it either")
 
 		other := checkjobsvc.WithPluginTypes(ctx, []string{"x-other"})
-		claimed, _, err = svc.ClaimJobs(other, worker.UID, &cloud, 20, 20, 0, 5*time.Minute)
+		claimed, _, err = svc.ClaimJobs(other, worker.UID, &cloud, 20, 20, 5*time.Minute)
 		r.NoError(err)
 		r.False(jobUIDs(claimed)[cloudPlugin.UID], "another plugin's type does not qualify")
 
@@ -90,7 +90,7 @@ func TestPluginJobsOnlyReachCapableWorkers(t *testing.T) {
 		worker := createTestWorker(t, ctx, dbSvc, &cloud)
 		capable := checkjobsvc.WithPluginTypes(ctx, []string{"x-other", claimPluginType})
 
-		claimed, _, err := svc.ClaimJobs(capable, worker.UID, &cloud, 20, 20, 0, 5*time.Minute)
+		claimed, _, err := svc.ClaimJobs(capable, worker.UID, &cloud, 20, 20, 5*time.Minute)
 		r.NoError(err)
 		r.True(jobUIDs(claimed)[cloudPlugin.UID], "a worker with the plugin claims its job")
 		r.True(jobUIDs(claimed)[cloudHTTP.UID])
