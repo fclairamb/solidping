@@ -1890,19 +1890,34 @@ export function CheckForm({
                           // the region does not advertise it. Never disabled, never
                           // hidden — the advertised value is a hint, not a gate.
                           const deemphasised = pinnedIpv6 && ipv6 !== "yes";
+                          // A crawl runs on a private location's agents as a
+                          // worker task (spec 2026-10-22-03). Agents that
+                          // report no crawl capability are too old to run
+                          // it: the region is disabled with an upgrade hint.
+                          // "unknown" (no live agent yet) stays selectable.
+                          const crawlUnsupported =
+                            type === "crawl" && !!region.private && region.capabilities?.crawl === "no";
+                          const selected = selectedRegions.includes(region.slug);
 
                           return (
                             <label
                               key={region.slug}
                               className={cn(
                                 "flex flex-wrap items-center gap-2 rounded-md border p-2 cursor-pointer hover:bg-muted/50",
-                                deemphasised && "opacity-60"
+                                (deemphasised || crawlUnsupported) && "opacity-60",
+                                crawlUnsupported && !selected && "cursor-not-allowed"
                               )}
                               data-testid={`region-option-${region.slug}`}
                               data-ipv6={ipv6}
                               data-browser={browser}
+                              data-crawl={region.capabilities?.crawl ?? "unknown"}
                             >
-                              <Checkbox checked={selectedRegions.includes(region.slug)} onCheckedChange={() => toggleRegion(region.slug)} />
+                              <Checkbox
+                                checked={selected}
+                                disabled={crawlUnsupported && !selected}
+                                onCheckedChange={() => toggleRegion(region.slug)}
+                                data-testid={`region-checkbox-${region.slug}`}
+                              />
                               <span className="text-sm">{region.emoji} {region.name}</span>
                               <span className="ml-auto flex items-center gap-1">
                                 {region.private && (
@@ -1941,6 +1956,14 @@ export function CheckForm({
                                   data-testid={`region-ipv6-${region.slug}`}
                                 />
                               </span>
+                              {crawlUnsupported && (
+                                <span
+                                  className="w-full text-xs text-muted-foreground"
+                                  data-testid={`region-crawl-unsupported-${region.slug}`}
+                                >
+                                  {t("form.crawlAgentUpgradeHint")}
+                                </span>
+                              )}
                             </label>
                           );
                         })}

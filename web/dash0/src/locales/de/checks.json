@@ -300,6 +300,7 @@
     "heartbeatIntervalHint": "Die Prüfung wird als ausgefallen markiert, wenn innerhalb dieses Intervalls kein Heartbeat empfangen wird",
     "emailIntervalHint": "Die Prüfung wird als ausgefallen markiert, wenn innerhalb dieses Intervalls keine E-Mail empfangen wird",
     "privateRegionTitle": "Läuft auf Ihren eigenen ausgelagerten Agenten",
+    "crawlAgentUpgradeHint": "Die Agenten dieses Standorts können noch keine Website-Crawls ausführen. Aktualisieren Sie den Agenten, um ihn auszuwählen.",
     "privateRegionBadge": "Privat",
     "selectRegionsHint": "Wählen Sie die Regionen aus, in denen diese Prüfung laufen soll",
     "authenticationAndSecrets": "Authentifizierung & Geheimnisse",

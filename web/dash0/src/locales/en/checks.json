@@ -300,6 +300,7 @@
     "heartbeatIntervalHint": "Check will be marked as down if no heartbeat is received within this interval",
     "emailIntervalHint": "Check will be marked as down if no email is received within this interval",
     "privateRegionTitle": "Runs on your own deported agents",
+    "crawlAgentUpgradeHint": "This location's agents cannot run website crawls yet. Upgrade the agent to select it.",
     "privateRegionBadge": "Private",
     "selectRegionsHint": "Select the regions where this check should run",
     "authenticationAndSecrets": "Authentication & secrets",
