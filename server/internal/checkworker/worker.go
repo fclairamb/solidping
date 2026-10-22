@@ -28,6 +28,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkworker/backend"
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
 	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
+	"github.com/fclairamb/solidping/server/internal/checkworker/tasks"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
@@ -50,6 +51,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/stats"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
 	"github.com/fclairamb/solidping/server/internal/version"
+	"github.com/fclairamb/solidping/server/internal/workertasks"
 )
 
 // Errors returned by the check runner.
@@ -228,6 +230,58 @@ type CheckWorker struct {
 	// is what agent mode and tests rely on: an agent has no database of its
 	// own, so it never installs a latch.
 	faults *dbfault.Latch
+
+	// taskClient, when set, runs the worker-task loop (spec 2026-10-22-02)
+	// for every registered executor, taskSlots tasks per executor at once.
+	taskClient tasks.Client
+	taskSlots  int
+}
+
+// EnableTasks turns on the worker-task loop: the in-process client on a
+// cloud worker, the signed HTTP client on an agent. It only starts in Run
+// when an executor is registered.
+func (r *CheckWorker) EnableTasks(client tasks.Client, slots int) {
+	r.taskClient = client
+	r.taskSlots = slots
+}
+
+// taskIdentity is the cloud worker's identity for the in-process task client.
+func (r *CheckWorker) taskIdentity() workertasks.WorkerIdentity {
+	identity := workertasks.WorkerIdentity{Slots: r.taskSlots}
+
+	if worker := r.getWorker(); worker != nil {
+		identity.UID = worker.UID
+
+		if worker.Region != nil {
+			identity.Region = *worker.Region
+		}
+	}
+
+	return identity
+}
+
+// startTasks runs the worker-task loop under the worker's egress guard.
+func (r *CheckWorker) startTasks(ctx context.Context) {
+	executors := tasks.Registered()
+	if r.taskClient == nil || len(executors) == 0 {
+		return
+	}
+
+	loop := &tasks.Loop{
+		Client:    r.taskClient,
+		Executors: executors,
+		Slots:     r.taskSlots,
+		Guard:     r.egressGuard,
+		Logger:    slog.Default().With("component", "worker_tasks"),
+		InfoLogs:  r.config.IsAgentMode(),
+	}
+
+	r.wg.Add(1)
+
+	go func() {
+		defer r.wg.Done()
+		loop.Run(ctx)
+	}()
 }
 
 // SetFaultLatch installs the process-wide structural-fault latch. Set by the
@@ -269,6 +323,15 @@ func NewCheckWorker(
 	worker := newCheckWorker(cfg, directBackend)
 	worker.dbService = dbService
 	worker.services = svc
+
+	// Worker tasks run in-process through the same service the agents reach
+	// over HTTP, sharing the bulk lane's budget of concurrent long work.
+	if svc.WorkerTasks != nil {
+		worker.EnableTasks(
+			backend.NewDirectTaskClient(svc.WorkerTasks, worker.taskIdentity),
+			worker.schedParams.EffectiveBulkLaneMax(),
+		)
+	}
 
 	// A local trace runs from this process, so it answers to this process's
 	// egress policy: never trace towards an address a check was refused.
@@ -447,6 +510,9 @@ func (r *CheckWorker) Run(ctx context.Context) error {
 	// 6. Start express runner (handles check.created events directly)
 	r.wg.Add(1)
 	go r.expressLoop(ctx)
+
+	// 6b. Worker tasks (spec 2026-10-22-02), when enabled and an executor runs.
+	r.startTasks(ctx)
 
 	// Per-runner, per-job and stop lines are DEBUG, so a quiet node logs
 	// nothing until a check changes status (incidents.logStatusChange). On a
