@@ -229,7 +229,7 @@ type AgentConfig struct {
 	PrintKeys bool `koanf:"print_keys"`
 	// DiscoveryEnabled lets this agent run LAN discovery chunks of its private
 	// region (spec 2026-10-22-04) — SP_AGENT_DISCOVERY_ENABLED. Off by default:
-	// only the agent's operator can authorise discovery, never the server.
+	// only the agent's operator can authorize discovery, never the server.
 	DiscoveryEnabled bool `koanf:"discovery_enabled"`
 	// DiscoveryCIDRs is the IPv4 allow-list a discovery chunk must fall inside
 	// — SP_AGENT_DISCOVERY_CIDRS, comma-separated. Required when discovery is

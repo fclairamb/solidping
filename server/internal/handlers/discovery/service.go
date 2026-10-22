@@ -611,24 +611,11 @@ func (s *Service) fillAgentPlanProgress(
 	var lastFailed time.Time
 
 	for _, task := range tasks {
-		stale := now.Sub(task.UpdatedAt) > models.WorkerTaskStaleAfter
+		countTask(task, now, progress)
 
-		switch {
-		case task.Status == models.WorkerTaskStatusDone:
-			progress.CompletedChunks++
-		case task.Status == models.WorkerTaskStatusFailed:
-			progress.FailedChunks++
-
-			if task.ErrorCode != nil && !task.UpdatedAt.Before(lastFailed) {
-				lastFailed = task.UpdatedAt
-				progress.LastErrorCode = *task.ErrorCode
-			}
-		case task.IsActive() && stale:
-			progress.FailedChunks++
-		case task.Status == models.WorkerTaskStatusClaimed && task.LeaseUntil != nil && !task.LeaseUntil.Before(now):
-			progress.RunningChunks++
-		case task.IsActive():
-			progress.PendingChunks++
+		if task.Status == models.WorkerTaskStatusFailed && task.ErrorCode != nil && !task.UpdatedAt.Before(lastFailed) {
+			lastFailed = task.UpdatedAt
+			progress.LastErrorCode = *task.ErrorCode
 		}
 	}
 
@@ -639,6 +626,21 @@ func (s *Service) fillAgentPlanProgress(
 	progress.DerivedStatus = derivePlanStatus(plan, progress)
 
 	return nil
+}
+
+// countTask adds one discovery task to its progress bucket. A canceled task
+// counts nowhere.
+func countTask(task *models.WorkerTask, now time.Time, progress *ScanProgress) {
+	switch {
+	case task.Status == models.WorkerTaskStatusDone:
+		progress.CompletedChunks++
+	case task.Status == models.WorkerTaskStatusFailed, task.IsStale(now):
+		progress.FailedChunks++
+	case task.Status == models.WorkerTaskStatusClaimed && task.LeaseUntil != nil && !task.LeaseUntil.Before(now):
+		progress.RunningChunks++
+	case task.IsActive():
+		progress.PendingChunks++
+	}
 }
 
 // fillSingleJobProgress reports a non-chunked scan as a single chunk whose state

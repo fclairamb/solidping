@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/egress"
+	"github.com/fclairamb/solidping/server/internal/regions"
 	"github.com/fclairamb/solidping/server/internal/workertasks"
 )
 
@@ -246,4 +247,13 @@ func TestValidatePortsCap(t *testing.T) {
 
 	_, err = validatePorts([]int{70000})
 	r.True(err != nil && strings.Contains(err.Error(), "70000"))
+}
+
+// The executor's capability is the one the regions service publishes and the
+// agent socket strips from system agents.
+func TestCapabilityIsPublished(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, Capability, regions.CapabilityDiscovery)
+	require.Equal(t, []string{"ipv4"}, regions.StripTaskCapabilities([]string{"ipv4", Capability}))
 }

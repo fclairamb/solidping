@@ -71,7 +71,7 @@ func (s *Server) SetInventoryCap(limit int) {
 func (s *Server) complete(ctx context.Context, task *models.WorkerTask, body json.RawMessage) (string, error) {
 	var result Result
 	if err := json.Unmarshal(body, &result); err != nil {
-		return codeInvalidResult, nil
+		return codeInvalidResult, nil //nolint:nilerr // a malformed body fails the task, not the request
 	}
 
 	if result.ErrorCode != "" {
@@ -235,10 +235,12 @@ func filterHosts(input *Input, hosts []HostFact) ([]HostFact, bool) {
 func addressCount(prefixes []netip.Prefix) int {
 	total := 0
 
-	for i, prefix := range prefixes {
+	for i := range prefixes {
+		prefix := &prefixes[i]
 		covered := false
 
-		for j, other := range prefixes {
+		for j := range prefixes {
+			other := &prefixes[j]
 			if j != i && other.Bits() <= prefix.Bits() && other.Contains(prefix.Addr()) &&
 				(other.Bits() < prefix.Bits() || j < i) {
 				covered = true
@@ -256,8 +258,8 @@ func addressCount(prefixes []netip.Prefix) int {
 }
 
 func containedIn(prefixes []netip.Prefix, addr netip.Addr) bool {
-	for _, prefix := range prefixes {
-		if prefix.Contains(addr) {
+	for i := range prefixes {
+		if prefixes[i].Contains(addr) {
 			return true
 		}
 	}

@@ -465,6 +465,8 @@ func TestCapabilityMapPublishesExactlyTheRegistry(t *testing.T) {
 		// The worker-task capability (spec 2026-10-22-03) is published too:
 		// this worker reported none, so the region cannot run crawls.
 		regions.CapabilityCrawl: regions.CapabilityNo,
+		// Discovery (spec 2026-10-22-04) likewise.
+		regions.CapabilityDiscovery: regions.CapabilityNo,
 	}, caps, "an unpublished capability a worker reports must not leak into the API")
 }
 

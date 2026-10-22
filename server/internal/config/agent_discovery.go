@@ -43,9 +43,10 @@ func (a *AgentConfig) DiscoveryPrefixes() ([]netip.Prefix, error) {
 			return nil, fmt.Errorf("%w: %q has host bits set (use %s)", ErrInvalidDiscoveryCIDRs, entry, prefix.Masked())
 		}
 
-		for _, refused := range discoveryRefusedPrefixes {
-			if refused.Overlaps(prefix) {
-				return nil, fmt.Errorf("%w: %q overlaps the refused range %s", ErrInvalidDiscoveryCIDRs, entry, refused)
+		for i := range discoveryRefusedPrefixes {
+			if discoveryRefusedPrefixes[i].Overlaps(prefix) {
+				return nil, fmt.Errorf("%w: %q overlaps the refused range %s",
+					ErrInvalidDiscoveryCIDRs, entry, discoveryRefusedPrefixes[i])
 			}
 		}
 

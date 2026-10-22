@@ -201,20 +201,34 @@ func TestAgentScanRefusals(t *testing.T) {
 		status int
 		code   string
 	}{
-		{"region on a non-lan type", f.admin.UID, freebox, http.StatusUnprocessableEntity,
-			string(base.ErrorCodeValidationError)},
-		{"foreign region", f.admin.UID, lanScan("@dc9", "10.0.0.0/24"), http.StatusUnprocessableEntity,
-			scantypes.CodeInvalidParameters},
-		{"cloud slug", f.admin.UID, lanScan("eu-west", "10.0.0.0/24"), http.StatusUnprocessableEntity,
-			scantypes.CodeInvalidParameters},
-		{"legacy spelling", f.admin.UID, lanScan("@acmetech/dc1", "10.0.0.0/24"), http.StatusUnprocessableEntity,
-			scantypes.CodeInvalidParameters},
-		{"no live discovery agent", f.admin.UID, lanScan("@dc2", "10.0.0.0/24"), http.StatusUnprocessableEntity,
-			scantypes.CodeRegionUnavailable},
-		{"demoted admin with a valid token", demoted.UID, lanScan("@dc1", "10.0.0.0/24"), http.StatusForbidden,
-			string(base.ErrorCodeForbidden)},
-		{"no membership (super admin)", outsider.UID, lanScan("@dc1", "10.0.0.0/24"), http.StatusForbidden,
-			string(base.ErrorCodeForbidden)},
+		{
+			"region on a non-lan type", f.admin.UID, freebox, http.StatusUnprocessableEntity,
+			string(base.ErrorCodeValidationError),
+		},
+		{
+			"foreign region", f.admin.UID, lanScan("@dc9", "10.0.0.0/24"), http.StatusUnprocessableEntity,
+			scantypes.CodeInvalidParameters,
+		},
+		{
+			"cloud slug", f.admin.UID, lanScan("eu-west", "10.0.0.0/24"), http.StatusUnprocessableEntity,
+			scantypes.CodeInvalidParameters,
+		},
+		{
+			"legacy spelling", f.admin.UID, lanScan("@acmetech/dc1", "10.0.0.0/24"), http.StatusUnprocessableEntity,
+			scantypes.CodeInvalidParameters,
+		},
+		{
+			"no live discovery agent", f.admin.UID, lanScan("@dc2", "10.0.0.0/24"), http.StatusUnprocessableEntity,
+			scantypes.CodeRegionUnavailable,
+		},
+		{
+			"demoted admin with a valid token", demoted.UID, lanScan("@dc1", "10.0.0.0/24"), http.StatusForbidden,
+			string(base.ErrorCodeForbidden),
+		},
+		{
+			"no membership (super admin)", outsider.UID, lanScan("@dc1", "10.0.0.0/24"), http.StatusForbidden,
+			string(base.ErrorCodeForbidden),
+		},
 	}
 
 	for _, tc := range tests {

@@ -257,7 +257,8 @@ func TestStartScanContainerBadEndpoint(t *testing.T) {
 	r := require.New(t)
 	f := newDiscoveryFixture(t)
 
-	_, err := f.svc.StartScan(t.Context(), f.org.UID, "container", "", json.RawMessage(`{"hosts":["http://10.0.0.5:2375"]}`))
+	_, err := f.svc.StartScan(t.Context(), f.org.UID, "container", "",
+		json.RawMessage(`{"hosts":["http://10.0.0.5:2375"]}`))
 	r.Error(err)
 
 	var de *scantypes.DiscoveryError

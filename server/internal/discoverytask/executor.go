@@ -168,7 +168,8 @@ func (e *Executor) validate(cidrs []string) ([]netip.Prefix, []netip.Addr, error
 	seen := make(map[netip.Addr]bool)
 	addrs := make([]netip.Addr, 0)
 
-	for _, prefix := range prefixes {
+	for i := range prefixes {
+		prefix := &prefixes[i]
 		for addr := prefix.Addr(); prefix.Contains(addr); addr = addr.Next() {
 			if seen[addr] {
 				continue
@@ -187,8 +188,8 @@ func (e *Executor) validate(cidrs []string) ([]netip.Prefix, []netip.Addr, error
 }
 
 func (e *Executor) isAllowed(prefix netip.Prefix) bool {
-	for _, allowed := range e.allowed {
-		if allowed.Bits() <= prefix.Bits() && allowed.Contains(prefix.Addr()) {
+	for i := range e.allowed {
+		if e.allowed[i].Bits() <= prefix.Bits() && e.allowed[i].Contains(prefix.Addr()) {
 			return true
 		}
 	}
@@ -225,8 +226,8 @@ func validatePorts(ports []int) ([]int, error) {
 
 func prefixStrings(prefixes []netip.Prefix) []string {
 	out := make([]string, 0, len(prefixes))
-	for _, prefix := range prefixes {
-		out = append(out, prefix.String())
+	for i := range prefixes {
+		out = append(out, prefixes[i].String())
 	}
 
 	return out

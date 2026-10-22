@@ -16,7 +16,8 @@ import (
 const testRegion = "@dc1"
 
 // kindHarness is one database with the discovery kind registered, an org and
-// a plan job.
+// a plan job. Its agent is "agent-<org slug>": an agent holds one lease at a
+// time, so parallel harnesses need their own.
 type kindHarness struct {
 	t     *testing.T
 	db    db.Service
@@ -58,11 +59,12 @@ func newKindHarness(t *testing.T, dbSvc db.Service, slug string) *kindHarness {
 
 // finishChunk creates a chunk task, claims it as agent and finishes it with
 // body. It returns the task as stored afterwards.
-func (h *kindHarness) finishChunk(agent string, input Input, body string) *models.WorkerTask {
+func (h *kindHarness) finishChunk(input Input, body string) *models.WorkerTask {
 	h.t.Helper()
 
 	r := require.New(h.t)
 	ctx := h.t.Context()
+	agent := "agent-" + h.org.Slug
 
 	raw, err := json.Marshal(input)
 	r.NoError(err)
@@ -108,10 +110,12 @@ func runKindContract(t *testing.T, dbSvc db.Service) {
 	t.Helper()
 
 	t.Run("filters hosts, ports and names; suggestions rebuilt", func(t *testing.T) {
+		t.Parallel()
+
 		r := require.New(t)
 		h := newKindHarness(t, dbSvc, "acme-filter")
 
-		task := h.finishChunk("agent-1", Input{CIDRs: []string{"10.0.0.0/30"}, Ports: []int{22, 80}}, `{
+		task := h.finishChunk(Input{CIDRs: []string{"10.0.0.0/30"}, Ports: []int{22, 80}}, `{
 			"icmpAvailable": true,
 			"hosts": [
 				{"ip": "10.0.0.1", "hostname": "Web.Local", "openPorts": [22, 443],
@@ -148,10 +152,12 @@ func runKindContract(t *testing.T, dbSvc db.Service) {
 	})
 
 	t.Run("more hosts than addresses rejects the body", func(t *testing.T) {
+		t.Parallel()
+
 		r := require.New(t)
 		h := newKindHarness(t, dbSvc, "acme-flood")
 
-		task := h.finishChunk("agent-1", Input{CIDRs: []string{"10.0.0.0/31"}, Ports: []int{22}}, `{"hosts": [
+		task := h.finishChunk(Input{CIDRs: []string{"10.0.0.0/31"}, Ports: []int{22}}, `{"hosts": [
 			{"ip": "10.0.0.0", "openPorts": [22]},
 			{"ip": "10.0.0.1", "openPorts": [22]},
 			{"ip": "10.0.0.2", "openPorts": [22]}
@@ -163,11 +169,13 @@ func runKindContract(t *testing.T, dbSvc db.Service) {
 	})
 
 	t.Run("org inventory cap", func(t *testing.T) {
+		t.Parallel()
+
 		r := require.New(t)
 		h := newKindHarness(t, dbSvc, "acme-full")
 		h.srv.SetInventoryCap(1)
 
-		task := h.finishChunk("agent-1", Input{CIDRs: []string{"10.0.0.0/30"}, Ports: []int{22, 80}},
+		task := h.finishChunk(Input{CIDRs: []string{"10.0.0.0/30"}, Ports: []int{22, 80}},
 			`{"hosts": [{"ip": "10.0.0.1", "openPorts": [22, 80]}]}`)
 
 		r.Equal(models.WorkerTaskStatusFailed, task.Status)
@@ -176,10 +184,12 @@ func runKindContract(t *testing.T, dbSvc db.Service) {
 	})
 
 	t.Run("partial keeps its hosts", func(t *testing.T) {
+		t.Parallel()
+
 		r := require.New(t)
 		h := newKindHarness(t, dbSvc, "acme-partial")
 
-		task := h.finishChunk("agent-1", Input{CIDRs: []string{"10.0.0.0/30"}, Ports: []int{22}},
+		task := h.finishChunk(Input{CIDRs: []string{"10.0.0.0/30"}, Ports: []int{22}},
 			`{"partial": true, "hosts": [{"ip": "10.0.0.1", "openPorts": [22]}]}`)
 
 		r.Equal(models.WorkerTaskStatusFailed, task.Status)
@@ -188,17 +198,19 @@ func runKindContract(t *testing.T, dbSvc db.Service) {
 	})
 
 	t.Run("refusal is audited once per plan and agent", func(t *testing.T) {
+		t.Parallel()
+
 		r := require.New(t)
 		h := newKindHarness(t, dbSvc, "acme-refused")
 		input := Input{CIDRs: []string{"10.0.0.0/30"}, Ports: []int{22}}
 
 		for range 2 {
-			task := h.finishChunk("agent-1", input, `{"errorCode": "DISCOVERY_NOT_ALLOWED", "hosts": []}`)
+			task := h.finishChunk(input, `{"errorCode": "DISCOVERY_NOT_ALLOWED", "hosts": []}`)
 			r.Equal(models.WorkerTaskStatusFailed, task.Status)
 			r.Equal(CodeNotAllowed, *task.ErrorCode)
 		}
 
-		task := h.finishChunk("agent-1", input, `{"errorCode": "SOMETHING_ELSE"}`)
+		task := h.finishChunk(input, `{"errorCode": "SOMETHING_ELSE"}`)
 		r.Equal(codeInvalidResult, *task.ErrorCode)
 
 		events, err := h.db.ListEvents(t.Context(), &models.ListEventsFilter{
@@ -209,7 +221,7 @@ func runKindContract(t *testing.T, dbSvc db.Service) {
 		r.NoError(err)
 		r.Len(events, 1)
 		r.Equal(models.ActorTypeSystem, events[0].ActorType)
-		r.Equal("agent-1", events[0].Payload["target_uid"])
+		r.Equal("agent-"+h.org.Slug, events[0].Payload["target_uid"])
 		r.Equal(h.plan.UID, events[0].Payload[payloadScanUID])
 		r.Equal(testRegion, events[0].Payload[payloadRegion])
 	})
