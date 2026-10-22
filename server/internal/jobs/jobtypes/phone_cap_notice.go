@@ -129,7 +129,7 @@ func capNoticeData(
 	}
 
 	data := UsageCapEmailData(kind, limit, nextUTCMonth(jctx.ClockNow()), usageURL,
-		jctx.Services.Entitlements.UpgradeURL(ctx, org.Slug))
+		jctx.Services.Entitlements.UpgradeURL(ctx, appBaseURL(jctx), org.Slug))
 	email.ApplyOrgBranding(data, org.Name, org.Slug, org.LogoURL)
 
 	return data

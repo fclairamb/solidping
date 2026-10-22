@@ -350,7 +350,8 @@ func TestClaimMonthlyCapNotice(t *testing.T) {
 	r.True(claimed, "a new month claims again")
 }
 
-// TestUpgradeURL interpolates the org slug, and is empty when unconfigured.
+// TestUpgradeURL points at the platform's upgrade page, never at billing, and
+// is empty when no template is configured or the base URL is unknown.
 func TestUpgradeURL(t *testing.T) {
 	t.Parallel()
 
@@ -358,8 +359,14 @@ func TestUpgradeURL(t *testing.T) {
 	ctx := t.Context()
 	svc, _ := setupReserveService(t)
 
-	r.Empty(svc.UpgradeURL(ctx, "acme"))
+	r.Empty(svc.UpgradeURL(ctx, "https://app.acme.com", "acme"), "no template: no button")
 
 	r.NoError(svc.db.SetSystemParameter(ctx, ParamUpgradeURLTemplate, "https://billing.acme.com/{org}/plans", false))
-	r.Equal("https://billing.acme.com/acme/plans", svc.UpgradeURL(ctx, "acme"))
+
+	got := svc.UpgradeURL(ctx, "https://app.acme.com", "acme")
+	r.Equal("https://app.acme.com/d/orgs/acme/upgrade", got)
+	r.NotContains(got, "billing.acme.com")
+	r.NotContains(got, "#bt=")
+
+	r.Empty(svc.UpgradeURL(ctx, "", "acme"), "no base URL: no button")
 }

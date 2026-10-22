@@ -444,5 +444,10 @@
       "deleted": "Variable gelöscht",
       "failed": "Variable konnte nicht gelöscht werden"
     }
+  },
+  "upgradePage": {
+    "title": "Tarif ändern",
+    "redirecting": "Weiterleitung zur Tarifseite...",
+    "unavailable": "Nur Organisationsadmins können den Tarif ändern, oder diese Installation hat keine Abrechnung. Fragen Sie einen Admin Ihrer Organisation."
   }
 }
