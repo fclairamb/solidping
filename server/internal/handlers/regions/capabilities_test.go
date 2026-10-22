@@ -241,9 +241,10 @@ func capsLiveWorker(t *testing.T, dbSvc *sqlite.Service, slug, region string, ca
 //
 // `ipv6` must still be bit-for-bit what the original boolean implementation
 // produced for the same fixture — a v6 worker in eu, a v4-only worker in us —
-// and no other key, name or value may move. The set has grown twice by
-// deliberate addition (`ipv4`, spec 2026-08-16-02; `browser`, spec
-// 2026-08-19-03); nothing else was licensed to change.
+// and no other key, name or value may move. The set has grown by deliberate
+// addition (`ipv4`, spec 2026-08-16-02; `browser`, spec 2026-08-19-03; the
+// task capabilities `crawl` and `discovery`, specs 2026-10-22-03/04); nothing
+// else was licensed to change.
 func TestRegionListResponseCapabilityShape(t *testing.T) {
 	t.Parallel()
 
@@ -277,8 +278,14 @@ func TestRegionListResponseCapabilityShape(t *testing.T) {
 	// The pre-2026-08-16 payload for this fixture, plus the two deliberately
 	// added keys. Neither worker reports `browser`, and a reported-without is a
 	// real "no" — the same closed-set rule `ipv6` obeys.
-	r.Equal(map[string]string{"ipv6": "yes", "ipv4": "yes", "browser": "no"}, byslug["eu"])
-	r.Equal(map[string]string{"ipv6": "no", "ipv4": "yes", "browser": "no"}, byslug["us"])
+	// The worker-task capabilities (`crawl`, spec 2026-10-22-03; `discovery`,
+	// spec 2026-10-22-04) are published too, and neither worker runs them.
+	r.Equal(map[string]string{
+		"ipv6": "yes", "ipv4": "yes", "browser": "no", "crawl": "no", "discovery": "no",
+	}, byslug["eu"])
+	r.Equal(map[string]string{
+		"ipv6": "no", "ipv4": "yes", "browser": "no", "crawl": "no", "discovery": "no",
+	}, byslug["us"])
 }
 
 // TestRegionListIPv4CarriesAllThreeStates: the new key is a first-class
