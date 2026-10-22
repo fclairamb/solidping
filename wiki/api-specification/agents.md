@@ -60,6 +60,25 @@ Responses: `201 {"fileUid": "…"}`; `401` for any authentication failure
 the caller may not write under (also deliberately unspecific); `400` malformed
 topic or empty body; `413` over the cap; `415` mime mismatch.
 
+### POST /api/v1/agent/tasks/*
+Worker tasks (spec 2026-10-22-02): multi-slice work an org agent pulls over
+signed HTTP, never over the WebSocket. Same signed headers as the upload above.
+Not in `openapi.yaml`, like `/agent/attachments`.
+
+| Route | Body | Responses |
+|---|---|---|
+| `claim` | `{"kinds": [...]}` (unknown kinds ignored) | `200` claim, `204` nothing to do |
+| `:uid/heartbeat` | none | `200 {"leaseUntil"}`, `410` |
+| `:uid/step` | `{"state": {...}, "progress": {...}, "units": n}` | `200`, `410`, `413` |
+| `:uid/finish` | the kind's result | `200`, `410`, `413` |
+| `:uid/fail` | `{"errorCode": "..."}` | `200`, `410` |
+
+- `401` bad signature or revoked agent; `403` system agent (cloud workers cover cloud regions).
+- Bodies are capped at 1 MiB (`413`). An agent holds 1 task at a time.
+- `410`: the task is not held by this agent (another holder, lease expired, cancelled, ended). The agent stops `Run`.
+- An old server answers `404`: the agent sleeps 15 s and claims again.
+- The claim carries the server-held state of the previous slice; `step` sends the next one. Lease 2 min, heartbeat every 30 s. Mechanism: `server/internal/workertasks`.
+
 **What triggers an upload.** An agent does not POST here spontaneously. It is
 asked, over the WebSocket, by the `upload-request` server frame (spec
 2026-08-21-05):
