@@ -1,10 +1,20 @@
 import { test, expect, API_BASE, type Page } from "./fixtures";
+import { choosePinnedRegions } from "./placement-helpers";
 
 // Coverage for spec 2026-10-03-03 (multi-step checks, website crawl): the
 // form creates a crawl check with its defaults left implicit, the check runs
-// as resumable slices on the bulk lane and finishes with one result, and the
-// check page shows the crawl card with the run's report. The run endpoints
-// answer and cancel.
+// as resumable slices (a worker task since spec 2026-10-22-03) and finishes
+// with one result, and the check page shows the crawl card with the run's
+// report. The run endpoints answer and cancel. Spec 2026-10-22-03: the region
+// picker lists private locations, and disables one whose agents cannot crawl.
+
+// Mocked so every crawl capability state is present deterministically.
+const REGIONS = [
+  { slug: "eu-west", emoji: "🇫🇷", name: "EU West", capabilities: { crawl: "yes" } },
+  { slug: "@dc1", emoji: "🏢", name: "DC1", private: true, capabilities: { crawl: "yes" } },
+  { slug: "@old-dc", emoji: "🏚️", name: "Old DC", private: true, capabilities: { crawl: "no" } },
+  { slug: "@new-dc", emoji: "🏗️", name: "New DC", private: true },
+];
 
 async function getAuthToken(page: Page): Promise<string> {
   const resp = await page.request.post(`${API_BASE}/api/v1/auth/login`, {
@@ -59,8 +69,8 @@ test.describe("Website crawl check", () => {
     // The crawl card is on the check page.
     await expect(page.getByTestId("crawl-card")).toBeVisible();
 
-    // The run finishes (express first slice, then bulk-lane slices) with one
-    // stored report.
+    // The run finishes (worker-task slices, claimed by the cloud worker's
+    // task loop) with one stored report.
     await expect
       .poll(
         async () => {
@@ -101,5 +111,41 @@ test.describe("Website crawl check", () => {
       data: { type: "crawl", period: "00:30:00", config: { url: "https://www.acme.com/" } },
     });
     expect(resp.status()).toBe(400);
+  });
+
+  test("lists private regions, and disables one whose agents cannot crawl", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await page.route("**/api/v1/orgs/*/regions", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: REGIONS, defaultRegions: ["eu-west"] }),
+      }),
+    );
+
+    await page.goto("orgs/test/checks/new?checkType=crawl");
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("check-name-input")).toBeVisible();
+    await choosePinnedRegions(page);
+
+    // Every region is listed, private locations included.
+    expect(await page.locator("[data-testid^='region-option-']").count()).toBe(4);
+
+    // A private location whose agents crawl is selectable (positive control).
+    const dc1 = page.getByTestId("region-checkbox-@dc1");
+    await expect(dc1).toBeEnabled();
+    await dc1.click();
+    await expect(dc1).toHaveAttribute("data-state", "checked");
+
+    // One whose agents report no crawl capability is disabled, with a hint.
+    await expect(page.getByTestId("region-option-@old-dc")).toHaveAttribute("data-crawl", "no");
+    await expect(page.getByTestId("region-checkbox-@old-dc")).toBeDisabled();
+    await expect(page.getByTestId("region-crawl-unsupported-@old-dc")).toBeVisible();
+
+    // A location with no live agent yet stays selectable.
+    await expect(page.getByTestId("region-checkbox-@new-dc")).toBeEnabled();
+    await expect(page.getByTestId("region-crawl-unsupported-@new-dc")).toHaveCount(0);
   });
 });

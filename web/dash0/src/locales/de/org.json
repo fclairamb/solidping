@@ -353,6 +353,7 @@
       "region": "Region",
       "agents": "Agenten",
       "ipv6": "IPv6",
+      "discoveryBadge": "Erkennung",
       "actions": "Aktionen",
       "mint": "Neues Registrierungstoken",
       "delete": "Standort löschen",

@@ -37,6 +37,11 @@ it dropped (`ping timeout`, `revoked`, `server shutdown` or `error`) on a
 disconnect — and the **Related** column links the agent to
 **Organization → Private locations**.
 
+Discovery scans record `discovery.scan_started` and `discovery.scan_canceled`
+(with the type and, for a scan run from a private location, the location), and
+`discovery.chunk_refused` when an agent refuses a chunk of a scan because the
+range is not allowed or discovery is off.
+
 The **Actor** column names the user, integration, or system process that
 triggered the event — including a Slack, Discord, or phone acknowledgment,
 which has no dashboard user behind it.

@@ -65,6 +65,28 @@ func ValidateCIDRs(cidrs []string) error {
 	return nil
 }
 
+// AddressCount returns how many addresses the CIDRs cover, overlaps counted
+// twice: the figure the agents' daily discovery quota is charged with.
+func AddressCount(cidrs []string) (int, error) {
+	total := 0
+
+	for _, cidr := range cidrs {
+		_, ipNet, err := net.ParseCIDR(cidr)
+		if err != nil {
+			return 0, fmt.Errorf("invalid CIDR %q: %w", cidr, err)
+		}
+
+		ones, bits := ipNet.Mask.Size()
+		if bits != net.IPv4len*8 {
+			return 0, fmt.Errorf("CIDR %q: %w", cidr, errIPv6NotSupported)
+		}
+
+		total += 1 << (bits - ones)
+	}
+
+	return total, nil
+}
+
 // ValidatePlanCIDRs validates the CIDRs for a fan-out scan plan. Each CIDR must
 // be a valid IPv4 network, and the total number of ≤MaxAddresses chunks the scan
 // would split into must not exceed MaxScanChunks. It returns ErrRangeTooLarge

@@ -49,6 +49,9 @@ var ErrNoIdentityNoToken = errors.New(
 // writable (e.g. /data does not exist on a bare-metal run).
 const fallbackKeysFile = "./agent-keys.json"
 
+// agentTaskSlots is how many worker tasks an agent runs at once.
+const agentTaskSlots = 1
+
 // Run starts agent mode and blocks until ctx is canceled.
 func Run(ctx context.Context, cfg *config.Config) error {
 	logger := slog.Default().With("component", "agent_mode")
@@ -112,6 +115,10 @@ func Run(ctx context.Context, cfg *config.Config) error {
 
 	worker := checkworker.NewAgentCheckWorker(cfg, wsBackend)
 	wsBackend.SetEgressGuard(worker.EgressGuard())
+
+	// Worker tasks over signed HTTP, never the WebSocket (spec 2026-10-22-02).
+	// One slot: an agent runs one long task at a time.
+	worker.EnableTasks(wsBackend.TaskClient(), agentTaskSlots)
 
 	return worker.Run(ctx)
 }

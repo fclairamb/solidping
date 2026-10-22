@@ -31,7 +31,7 @@ func (d *FreeboxDefinition) Source() models.DiscoverySource { return models.Disc
 // returns the freebox_lan_discovery job to enqueue. It probes the channel so a
 // 404/409 surfaces before a job is queued that would just fail on first run.
 func (d *FreeboxDefinition) BuildJob(
-	ctx context.Context, deps Deps, orgUID string, parameters json.RawMessage,
+	ctx context.Context, deps Deps, orgUID, _ string, parameters json.RawMessage,
 ) (string, json.RawMessage, error) {
 	var params freeboxParams
 

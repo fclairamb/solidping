@@ -36,9 +36,9 @@ var defaultPorts = []portSpec{
 	{8443, checkTypeTCP, ""},
 }
 
-// defaultPortList returns the default set of ports to scan when none are
+// DefaultPortList returns the default set of ports to scan when none are
 // specified, derived from the authoritative defaultPorts table.
-func defaultPortList() []int {
+func DefaultPortList() []int {
 	ports := make([]int, len(defaultPorts))
 	for i := range defaultPorts {
 		ports[i] = defaultPorts[i].Port

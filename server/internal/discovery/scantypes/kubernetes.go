@@ -39,7 +39,7 @@ func (d *KubernetesDefinition) Source() models.DiscoverySource {
 // to enqueue. An unknown/wrong-org/wrong-type clusterUid returns the coded
 // KUBERNETES_CLUSTER_NOT_FOUND (parallel to Freebox's FREEBOX_NOT_GRANTED).
 func (d *KubernetesDefinition) BuildJob(
-	ctx context.Context, deps Deps, _ string, parameters json.RawMessage,
+	ctx context.Context, deps Deps, _, _ string, parameters json.RawMessage,
 ) (string, json.RawMessage, error) {
 	var params kubernetesParams
 

@@ -1,6 +1,6 @@
 # Database Model
 
-Index for the SolidPing database schema: **51 tables**, grouped by domain. Each
+Index for the SolidPing database schema: **52 tables**, grouped by domain. Each
 child page documents its tables with a purpose line, a column table, foreign
 keys, and notable indexes or constraints.
 
@@ -19,6 +19,7 @@ keys, and notable indexes or constraints.
 | [discovery.md](discovery.md) | 1 | discovered_checks |
 | [entitlements.md](entitlements.md) | 2 | org_entitlements, org_entitlement_audits |
 | [jobs.md](jobs.md) | 2 | jobs, state_entries |
+| [worker-tasks.md](worker-tasks.md) | 1 | worker_tasks |
 | [schema-notes.md](schema-notes.md) | — | Behavioural notes: slug aliases, parameter keys, roles, results statuses, credential encryption |
 | [patterns.md](patterns.md) | — | Entity-relationship overview, design patterns, file locations |
 

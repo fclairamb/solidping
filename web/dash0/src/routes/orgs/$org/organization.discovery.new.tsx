@@ -30,6 +30,7 @@ import {
   canSource,
   useDiscoveryTypes,
   useIntegrations,
+  useRegions,
   useStartDiscoveryScan,
   type StartDiscoveryScanRequest,
 } from "@/api/hooks";
@@ -37,6 +38,7 @@ import {
 // All scan methods the form can render a sub-form for. Used only to validate the
 // initial ?method= URL value; which methods are actually *selectable* is gated by
 // availableTypes (registry + connection capability) below.
+const SERVER_VALUE = "__server__";
 const KNOWN_METHODS = ["lan", "container", "freebox", "kubernetes"];
 
 export const Route = createFileRoute("/orgs/$org/organization/discovery/new")({
@@ -58,6 +60,7 @@ function NewScanPage() {
   const startScan = useStartDiscoveryScan(org);
   const { data: types } = useDiscoveryTypes(org);
   const { data: channels } = useIntegrations(org);
+  const { data: regionData } = useRegions(org);
 
   // Granted Freebox source channels — Freebox is only offered when one exists.
   const grantedFreeboxChannels = useMemo(
@@ -109,6 +112,9 @@ function NewScanPage() {
     setTypeState(next);
     navigate({ to: ".", search: { method: next } });
   };
+  // "" = the server itself. Only private regions are offered; the value is the
+  // RegionDefinition slug ("@dc1"), which is what the API expects.
+  const [selectedRegion, setSelectedRegion] = useState("");
   const [selectedChannelUid, setSelectedChannelUid] = useState("");
   const [selectedClusterUid, setSelectedClusterUid] = useState("");
   const [namespacesText, setNamespacesText] = useState("");
@@ -135,6 +141,19 @@ function NewScanPage() {
 
   const isPending = startScan.isPending;
 
+  const privateRegions = useMemo(
+    () => (regionData?.regions ?? []).filter((r) => r.private),
+    [regionData],
+  );
+  // The server refuses to run this type itself (lan under an egress policy):
+  // "Server" is not offered and a region is required.
+  const serverAvailable =
+    (types ?? []).find((d) => d.type === type)?.serverAvailable !== false;
+  const regionRequired = type === "lan" && !serverAvailable;
+  const showRegionPicker =
+    type === "lan" && (privateRegions.length > 0 || regionRequired);
+  const effectiveRegion = type === "lan" ? selectedRegion : "";
+
   // Estimate the total host count and chunk count for the entered CIDRs.
   const cidrEstimate = useMemo(() => {
     const tokens = cidrsText.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean);
@@ -160,7 +179,11 @@ function NewScanPage() {
           ? !effectiveClusterUid
           : !effectiveChannelUid;
 
-  const submitDisabled = isPending || !confirmed || requiredFieldMissing;
+  const submitDisabled =
+    isPending ||
+    !confirmed ||
+    requiredFieldMissing ||
+    (regionRequired && !effectiveRegion);
 
   // typeLabel maps a registry type id to its i18n label, falling back to the id.
   const typeLabel = (typ: string) => t(`method.${typ}`, typ);
@@ -213,7 +236,11 @@ function NewScanPage() {
     if (timeout.trim()) parameters.timeout = timeout.trim();
     if (concurrency.trim()) parameters.concurrency = parseInt(concurrency.trim(), 10);
 
-    return { type: "lan", parameters };
+    return {
+      type: "lan",
+      parameters,
+      ...(effectiveRegion ? { region: effectiveRegion } : {}),
+    };
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -242,6 +269,10 @@ function NewScanPage() {
       } else if (err instanceof ApiError && err.code === "DISCOVERY_NOT_AVAILABLE") {
         // The source is refused on this deployment (403).
         toast.error(t("scanNotAvailable"));
+      } else if (err instanceof ApiError && err.code === "DISCOVERY_REGION_UNAVAILABLE") {
+        toast.error(t("scanRegionUnavailable"));
+      } else if (err instanceof ApiError && err.code === "DISCOVERY_QUOTA_EXCEEDED") {
+        toast.error(t("scanQuotaExceeded"));
       } else {
         toast.error(t("scanFailed"));
       }
@@ -260,7 +291,9 @@ function NewScanPage() {
           </Button>
         </div>
         <CardDescription className="text-xs text-amber-600">
-          {t("workerNote")}
+          {t(effectiveRegion ? "workerNoteRegion" : "workerNote", {
+            region: effectiveRegion,
+          })}
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -283,6 +316,51 @@ function NewScanPage() {
 
           {type === "lan" ? (
             <>
+              {showRegionPicker && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="discovery-region">{t("regionLabel")}</Label>
+                  <Select
+                    value={effectiveRegion || SERVER_VALUE}
+                    onValueChange={(v) =>
+                      setSelectedRegion(v === SERVER_VALUE ? "" : v)
+                    }
+                  >
+                    <SelectTrigger
+                      id="discovery-region"
+                      aria-label={t("regionLabel")}
+                      data-testid="discovery-region-select"
+                    >
+                      <SelectValue placeholder={t("regionPlaceholder")} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {!regionRequired && (
+                        <SelectItem
+                          value={SERVER_VALUE}
+                          data-testid="discovery-region-option-server"
+                        >
+                          {t("regionServer")}
+                        </SelectItem>
+                      )}
+                      {privateRegions.map((r) => (
+                        <SelectItem
+                          key={r.slug}
+                          value={r.slug}
+                          disabled={r.capabilities?.discovery !== "yes"}
+                          data-testid={`discovery-region-option-${r.slug}`}
+                        >
+                          {r.emoji} {r.name} ({r.slug})
+                          {r.capabilities?.discovery !== "yes"
+                            ? ` · ${t("regionDiscoveryOff")}`
+                            : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    {regionRequired ? t("regionRequiredHelp") : t("regionHelp")}
+                  </p>
+                </div>
+              )}
               <div className="space-y-1.5">
                 <Label htmlFor="cidrs">{t("cidrsLabel")}</Label>
                 <Textarea

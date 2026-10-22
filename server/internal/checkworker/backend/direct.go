@@ -36,23 +36,6 @@ type DirectBackend struct {
 	// deployment, where secrets are plaintext in the public config and no
 	// envelope exists to open.
 	creds credentials.Service
-	// steps persists multi-step state and reports (spec 2026-10-03-03). Nil
-	// until SetStepStore; the step methods then fail.
-	steps StepStore
-}
-
-// StepStore is the attachment surface DirectBackend persists multi-step state
-// and reports through (attachments.Service implements it).
-type StepStore interface {
-	PutStepState(ctx context.Context, orgUID, checkUID string, envelope []byte, details models.JSONMap) (string, error)
-	PutCrawlReport(ctx context.Context, orgUID, checkUID string, report []byte, details models.JSONMap) (string, error)
-	ReadCheckFile(ctx context.Context, orgUID, checkUID, kind, fileUID string) ([]byte, *models.File, error)
-	LatestCrawlReport(ctx context.Context, orgUID, checkUID string) ([]byte, error)
-}
-
-// SetStepStore wires the multi-step state store.
-func (b *DirectBackend) SetStepStore(store StepStore) {
-	b.steps = store
 }
 
 // NewDirectBackend creates a DirectBackend. creds may be nil (tests, or a
@@ -98,11 +81,10 @@ func (b *DirectBackend) ClaimJobs(
 	region *string,
 	fastLimit int,
 	slowLimit int,
-	bulkLimit int,
 	maxAhead time.Duration,
 ) ([]*models.CheckJob, time.Duration, error) {
 	jobs, nextIn, err := b.checkJobSvc.ClaimJobs(
-		ctx, workerUID, region, fastLimit, slowLimit, bulkLimit, maxAhead,
+		ctx, workerUID, region, fastLimit, slowLimit, maxAhead,
 	)
 	if err != nil {
 		return nil, 0, err
@@ -326,8 +308,8 @@ func (b *DirectBackend) SubmitResult(
 	return nil
 }
 
-// releaseAfterResult is the lease release of SubmitResult: a multi-step run's
-// end, a release folding the scheduling state, or a plain release.
+// releaseAfterResult is the lease release of SubmitResult: a release folding
+// the scheduling state, or a plain release.
 func (b *DirectBackend) releaseAfterResult(
 	ctx context.Context, job *models.CheckJob, workerUID string, req *SubmitResultRequest,
 ) error {
@@ -349,10 +331,6 @@ func (b *DirectBackend) release(
 	ctx context.Context, job *models.CheckJob, workerUID string, req *SubmitResultRequest,
 ) error {
 	switch {
-	case req.StepRunUID != nil:
-		// End of a multi-step run: clear the run, fenced on the run the
-		// claim saw (spec 2026-10-03-03).
-		return b.checkJobSvc.EndStepRun(ctx, job.UID, workerUID, job.StepRunUID, req.NextScheduledAt)
 	case req.Sched != nil:
 		return b.checkJobSvc.ReleaseLeaseWithSchedulingState(
 			ctx, job.UID, workerUID, req.NextScheduledAt,

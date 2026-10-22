@@ -63,7 +63,7 @@
   "clusterNamespaces": "Namespaces (opcional)",
   "clusterNamespacesHelp": "Namespaces a escanear, separados por comas. Déjalo vacío para escanear todos los namespaces visibles.",
   "replicaCount": "{{ready}}/{{desired}} listos",
-  "workerNote": "Nota: Los escaneos de descubrimiento se ejecutan en el worker integrado. En implementaciones multi-sitio, el escaneo se ejecuta solo desde el host del servidor.",
+  "workerNote": "Nota: Los escaneos de descubrimiento se ejecutan en el worker integrado, o desde una ubicación privada si se elige una.",
   "startScan": "Iniciar escaneo",
   "cancel": "Cancelar",
   "name": "Nombre de comprobación",
@@ -95,5 +95,24 @@
   },
   "selectFreeboxChannel": "Seleccionar canal Freebox",
   "noFreeboxChannels": "No hay canales Freebox emparejados",
-  "largeRangeWarning": "Rango grande: ~{{hosts}} direcciones en {{chunks}} lotes. Este escaneo puede tardar mucho tiempo (horas a días)."
+  "largeRangeWarning": "Rango grande: ~{{hosts}} direcciones en {{chunks}} lotes. Este escaneo puede tardar mucho tiempo (horas a días).",
+  "scanRegionUnavailable": "Ningún agente de esta ubicación está listo para escanear. Active SP_AGENT_DISCOVERY_ENABLED en su agente.",
+  "scanQuotaExceeded": "Se alcanzó el límite diario de direcciones escaneadas desde ubicaciones privadas para esta organización. Inténtelo mañana (UTC).",
+  "regionLabel": "Ejecutar desde",
+  "regionPlaceholder": "Elegir una ubicación",
+  "regionServer": "Servidor (predeterminado)",
+  "regionDiscoveryOff": "descubrimiento no activado (SP_AGENT_DISCOVERY_ENABLED en su agente)",
+  "regionHelp": "Escanear desde el servidor, o desde una ubicación privada para llegar a una red que el servidor no ve.",
+  "regionRequiredHelp": "Este servidor no puede escanear la LAN por sí mismo. Elija una ubicación privada.",
+  "workerNoteRegion": "Este escaneo se ejecuta desde {{region}}, con la red del agente. Solo se pueden escanear los rangos que su operador permitió.",
+  "runsFrom": "Se ejecuta desde {{region}}",
+  "failedChunks_one": "{{count}} lote fallido",
+  "failedChunks_other": "{{count}} lotes fallidos",
+  "promoteRegionNote": "Los checks promovidos desde este escaneo se ejecutarán desde {{region}}.",
+  "chunkError": {
+    "DISCOVERY_NOT_ALLOWED": "El rango queda fuera de lo que el operador del agente permitió (SP_AGENT_DISCOVERY_CIDRS).",
+    "DISCOVERY_DISABLED": "El descubrimiento no está activado en el agente (SP_AGENT_DISCOVERY_ENABLED).",
+    "DISCOVERY_EGRESS_REFUSED": "La política de salida del agente rechazó el escaneo.",
+    "DISCOVERY_INVALID_CHUNK": "El agente rechazó el lote por no ser válido."
+  }
 }

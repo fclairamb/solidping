@@ -63,6 +63,18 @@ type Service interface {
 		jobOptions *JobOptions,
 	) (*models.Job, error)
 
+	// CreateJobAdmitted inserts a new job, due now, in the same transaction as
+	// admit, which runs first on that transaction and refuses the job by
+	// returning an error (returned as is). It never dedups against a pending
+	// job: admit is where the caller guards. This makes a check-then-create
+	// atomic when admit serializes its callers (spec 2026-10-22-04).
+	CreateJobAdmitted(
+		ctx context.Context,
+		orgUID, jobType string,
+		config json.RawMessage,
+		admit func(ctx context.Context, tx bun.Tx) error,
+	) (*models.Job, error)
+
 	// GetJob retrieves a job by UID
 	GetJob(ctx context.Context, uid string) (*models.Job, error)
 
@@ -246,6 +258,48 @@ func (s *serviceImpl) CreateJob(
 
 	// Create new job
 	return s.createNewJob(ctx, orgUID, jobType, configMap, scheduledAt)
+}
+
+// CreateJobAdmitted inserts the job in admit's transaction, then wakes the
+// runners once it is committed.
+func (s *serviceImpl) CreateJobAdmitted(
+	ctx context.Context,
+	orgUID, jobType string,
+	config json.RawMessage,
+	admit func(ctx context.Context, tx bun.Tx) error,
+) (*models.Job, error) {
+	configMap, err := s.parseJobConfig(config)
+	if err != nil {
+		return nil, err
+	}
+
+	var orgUIDPtr *string
+	if orgUID != "" {
+		orgUIDPtr = &orgUID
+	}
+
+	job := models.NewJob(orgUIDPtr, jobType)
+	job.Config = configMap
+
+	err = s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if admitErr := admit(ctx, tx); admitErr != nil {
+			return admitErr
+		}
+
+		if _, insErr := tx.NewInsert().Model(job).Exec(ctx); insErr != nil {
+			return fmt.Errorf("failed to create job: %w", insErr)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	_ = s.notifier.Notify(ctx, eventTypeJobCreated, "{}")
+	s.publishJobsHint(ctx, job.OrganizationUID)
+
+	return job, nil
 }
 
 func (s *serviceImpl) calculateScheduledTime(jobOptions *JobOptions) time.Time {

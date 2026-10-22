@@ -387,6 +387,8 @@ func (r *StartupJobRun) ensureDemoEntitlements(
 		MaxCallsPerMonth:    &zero,
 		MaxWhatsappPerMonth: &zero,
 		MaxSlos:             &sloCount,
+		// No agent discovery on the public demo (spec 2026-10-22-04).
+		MaxDiscoveryAgentAddressesPerDay: &zero,
 	}
 	ent.Payload.DisplayName = &displayName
 	ent.Payload.DisplayEmoji = &displayEmoji

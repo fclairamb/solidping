@@ -24,7 +24,7 @@ type claimCaptureBackend struct {
 }
 
 func (b *claimCaptureBackend) ClaimJobs(
-	ctx context.Context, _ string, _ *string, _, _, _ int, _ time.Duration,
+	ctx context.Context, _ string, _ *string, _, _ int, _ time.Duration,
 ) ([]*models.CheckJob, time.Duration, error) {
 	b.advertised <- checkjobsvc.PluginTypesFromContext(ctx)
 

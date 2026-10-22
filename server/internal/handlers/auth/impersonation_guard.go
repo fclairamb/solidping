@@ -30,6 +30,7 @@ const (
 	ImpersonationPatternDiscordLink     = "/api/v1/orgs/{org}/users/me/discord/link-start"
 	ImpersonationPatternDiscordConnect  = "/api/v1/orgs/{org}/users/me/discord/connect"
 	ImpersonationPatternTelegramLink    = "/api/v1/orgs/{org}/users/me/telegram/link"
+	ImpersonationPatternDiscoveryScans  = "/api/v1/orgs/{org}/discovery/scans"
 )
 
 // impersonationForbiddenRoutes is the credential-changing surface. It is a
@@ -83,6 +84,9 @@ var impersonationForbiddenRoutes = []demoAllowedRoute{
 	// target's pages would land on an admin-controlled chat.
 	{http.MethodPost, ImpersonationPatternDiscordConnect},
 	{http.MethodPost, ImpersonationPatternTelegramLink},
+	// A discovery scan may run from the customer's own agents, inside their
+	// network (spec 2026-10-22-04): never on someone else's behalf.
+	{http.MethodPost, ImpersonationPatternDiscoveryScans},
 	// No chaining. RequireSuperAdmin already refuses it; this makes the
 	// answer the explicit IMPERSONATION_FORBIDDEN.
 	{http.MethodPost, ImpersonationPatternImpersonate},

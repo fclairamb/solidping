@@ -108,6 +108,10 @@ const (
 	// 2026-10-03-07): a handful of generations and repairs. Billing raises it
 	// per plan. Self-hosted stays unlimited (nil): the operator's own key pays.
 	defaultMaxAITokensPerDaySaaS = 200_000
+	// defaultMaxDiscoveryAgentAddressesPerDaySaaS is one /16 a day of LAN
+	// discovery run by the org's agents (spec 2026-10-22-04). Self-hosted stays
+	// unlimited (nil).
+	defaultMaxDiscoveryAgentAddressesPerDaySaaS = 65_536
 )
 
 // White-label defaults. Neither mode grants it: white labeling is what a paid
@@ -158,17 +162,18 @@ func DefaultsFor(mode string) Entitlements {
 	case config.DeploymentModeSaaS:
 		return Entitlements{
 			Limits: Limits{
-				MaxChecks:           Int(defaultMaxChecksSaaS),
-				MaxChecksPerMinute:  Int(defaultMaxChecksPerMinuteSaaS),
-				MaxUsers:            Int(defaultMaxUsersSaaS),
-				MaxDeportedAgents:   Int(defaultMaxDeportedAgentsSaaS),
-				MaxCustomDomains:    Int(defaultMaxCustomDomainsSaaS),
-				MaxSmsPerMonth:      Int(defaultMaxSmsPerMonthSaaS),
-				MaxCallsPerMonth:    Int(defaultMaxCallsPerMonthSaaS),
-				MaxWhatsappPerMonth: Int(defaultMaxWhatsappPerMonthSaaS),
-				MaxSlos:             Int(defaultMaxSlosSaaS),
-				MaxAITokensPerDay:   Int(defaultMaxAITokensPerDaySaaS),
-				WhiteLabel:          Bool(defaultWhiteLabelSaaS),
+				MaxChecks:                        Int(defaultMaxChecksSaaS),
+				MaxChecksPerMinute:               Int(defaultMaxChecksPerMinuteSaaS),
+				MaxUsers:                         Int(defaultMaxUsersSaaS),
+				MaxDeportedAgents:                Int(defaultMaxDeportedAgentsSaaS),
+				MaxCustomDomains:                 Int(defaultMaxCustomDomainsSaaS),
+				MaxSmsPerMonth:                   Int(defaultMaxSmsPerMonthSaaS),
+				MaxCallsPerMonth:                 Int(defaultMaxCallsPerMonthSaaS),
+				MaxWhatsappPerMonth:              Int(defaultMaxWhatsappPerMonthSaaS),
+				MaxSlos:                          Int(defaultMaxSlosSaaS),
+				MaxAITokensPerDay:                Int(defaultMaxAITokensPerDaySaaS),
+				MaxDiscoveryAgentAddressesPerDay: Int(defaultMaxDiscoveryAgentAddressesPerDaySaaS),
+				WhiteLabel:                       Bool(defaultWhiteLabelSaaS),
 			},
 			Source:       models.EntitlementSourceDefault,
 			DisplayName:  strPtr(displayNameSaaS),

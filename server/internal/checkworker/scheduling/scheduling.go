@@ -68,16 +68,17 @@ const (
 	// LaneSlow is the capacity-capped lane for expensive checks (cost EWMA at
 	// or above LaneSlowThresholdMs).
 	LaneSlow uint8 = 1
-	// LaneBulk is the lane of multi-step slices (spec 2026-10-03-03): claimed
-	// last, never ahead of time, capped per worker by BulkLaneMax and sharing
-	// the non-reserved part of the pool with the slow lane (slow first). A job
-	// is created there by type and cost never moves it out.
+	// LaneBulk is the lane of multi-step checks (website crawls, spec
+	// 2026-10-03-03). No runner claims it: a run is a worker task (spec
+	// 2026-10-22-03), and the lane keeps v0.38 agents and nodes, which never
+	// claim it from an agent, away from these jobs. A job is created there by
+	// type and cost never moves it out.
 	LaneBulk uint8 = 2
 )
 
 // Bulk lane defaults (spec 2026-10-03-03).
 const (
-	// DefaultBulkLaneMax is the per-worker cap on slices in flight.
+	// DefaultBulkLaneMax is the per-worker cap on worker tasks in flight.
 	DefaultBulkLaneMax = 4
 	// DefaultBulkSliceBudget is the wall-clock budget of one slice.
 	DefaultBulkSliceBudget = 10 * time.Second
@@ -142,7 +143,8 @@ type Params struct {
 	// every run and churning the partial claim indexes.
 	LaneFastThresholdMs float64
 
-	// BulkLaneMax caps bulk-lane slices in flight per worker (default 4).
+	// BulkLaneMax caps the worker tasks (crawl slices) a cloud worker runs at
+	// once (default 4).
 	// int32 with BulkSliceBudgetMs so Params stays small enough to pass by
 	// value.
 	BulkLaneMax int32
@@ -500,30 +502,24 @@ type Limits struct {
 	Fast int
 	// Slow is the slow lane's budget.
 	Slow int
-	// Bulk is the bulk lane's budget BEFORE the slow jobs claimed in the same
-	// transaction are deducted (the claim subtracts them: slow has priority).
-	Bulk int
 }
 
 // LaneLimits computes the per-lane claim limits of one fetch (spec
-// 2026-07-01-03 D3, bulk lane added by spec 2026-10-03-03). Fast jobs may use
-// any free slot. Slow and bulk share the non-reserved part of the pool,
-// shared = poolSize − fastReserved:
+// 2026-07-01-03 D3). Fast jobs may use any free slot. Slow gets the
+// non-reserved part of the pool:
 //
-//	slow = clamp(shared − busySlow − busyBulk, 0, free)
-//	bulk = clamp(min(bulkMax − busyBulk, shared − busySlow − busyBulk), 0, free)
+//	slow = clamp((poolSize − fastReserved) − busySlow, 0, free)
 //
-// and the claim deducts the slow jobs it just claimed from bulk, so slow and
-// bulk together never exceed shared and the fast reservation is never reduced.
-// Per-worker enforcement is fleet-correct: every worker guarantees its own
-// floor.
-func LaneLimits(free, poolSize, fastReserved, busySlow, busyBulk, bulkMax int) Limits {
-	shared := (poolSize - fastReserved) - busySlow - busyBulk
+// so the fast reservation is never reduced. Per-worker enforcement is
+// fleet-correct: every worker guarantees its own floor. The bulk lane (website
+// crawls) is not claimed by runners: a crawl run is a worker task (spec
+// 2026-10-22-03) with slots of its own.
+func LaneLimits(free, poolSize, fastReserved, busySlow int) Limits {
+	shared := (poolSize - fastReserved) - busySlow
 
 	return Limits{
 		Fast: free,
 		Slow: clampInt(shared, 0, free),
-		Bulk: clampInt(min(bulkMax-busyBulk, shared), 0, free),
 	}
 }
 

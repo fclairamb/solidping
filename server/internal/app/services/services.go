@@ -18,6 +18,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/support"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
 	"github.com/fclairamb/solidping/server/internal/webpush"
+	"github.com/fclairamb/solidping/server/internal/workertasks"
 )
 
 // SLOBurnEvaluator runs one sweep of the SLO burn-rate alert policies and
@@ -53,8 +54,12 @@ type FreshnessSweeper interface {
 
 // Registry holds all application services for dependency injection.
 type Registry struct {
-	Jobs           jobsvc.Service
-	CheckJobs      checkjobsvc.Service
+	Jobs      jobsvc.Service
+	CheckJobs checkjobsvc.Service
+	// WorkerTasks is the shared lease/slice mechanism for work run on a
+	// worker (spec 2026-10-22-02), used in-process by cloud workers and over
+	// signed HTTP by agents.
+	WorkerTasks    *workertasks.Service
 	EventNotifier  notifier.EventNotifier
 	EmailSender    email.Sender
 	EmailFormatter email.Formatter

@@ -12,7 +12,8 @@ Suggested checks produced by discovery scans, grouped for display by
 | uid | uuid PK | Primary key |
 | organization_uid | uuid | FK to organizations |
 | job_uid | uuid | Scan job that produced this row |
-| source | text | Discovery source (e.g. lan, docker, kubernetes) |
+| source | text | Discovery source (e.g. lan, container, kubernetes) |
+| region | text NOT NULL default '' | Region of the scan that found the row: `''` = the server itself, `@slug` = a private region. Part of the upsert identity. Not nullable: NULLs are distinct in unique indexes, so server-side re-scans would duplicate rows |
 | group_key | text | Stable grouping identity (IP, container ID, workload uid). A render-time GROUP BY, not a second table |
 | group_label | text | Human-readable label for the group |
 | name | text | Suggested check name |
@@ -28,7 +29,7 @@ Suggested checks produced by discovery scans, grouped for display by
 - `promoted_to_check_uid` → checks(uid)
 
 **Indexes**:
-- Unique on (organization_uid, source, group_key, slug) where not deleted and not promoted — the upsert key across re-scans
+- Unique on (organization_uid, source, group_key, slug, region) where not deleted and not promoted — the upsert key across re-scans (the same IP found from two networks stays two rows)
 - Index on (job_uid) where not deleted
 - Index on (organization_uid, source) where not deleted
 
@@ -36,3 +37,5 @@ Suggested checks produced by discovery scans, grouped for display by
 Migration `002_v0_2_0` dropped it outright (results are regenerable by re-scan)
 and replaced it with this check-centric model. `discovered_hosts` is not part of
 the current schema.
+
+Scans run from a private region's agent hand their chunks over as `worker_tasks` rows of kind `discovery`: see [worker-tasks.md](worker-tasks.md).
