@@ -22,13 +22,14 @@ import (
 
 // v038BulkClaim is the bulk-lane SELECT of a v0.38 node
 // (checkjobsvc.selectDueBulkJobs before spec 2026-10-22-03), kept here as the
-// old node's view during a rolling upgrade.
-func v038BulkClaim(ctx context.Context, idb bun.IDB, now time.Time) ([]*models.CheckJob, error) {
+// old node's view during a rolling upgrade, scoped to the node's region.
+func v038BulkClaim(ctx context.Context, idb bun.IDB, region string, now time.Time) ([]*models.CheckJob, error) {
 	var jobs []*models.CheckJob
 
 	err := idb.NewSelect().
 		Model(&jobs).
 		Where("lane = ?", 2).
+		Where("region = ?", region).
 		Where("scheduled_at <= ?", now).
 		WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
 			return q.
@@ -75,6 +76,18 @@ func runMaterialization(t *testing.T, dbSvc db.Service) {
 	r.NoError(dbSvc.CreateCheck(ctx, other))
 	h.due(other)
 
+	// Positive control: before the lease, the v0.38 bulk claim of the
+	// region does return the due crawl job.
+	before, err := v038BulkClaim(ctx, dbSvc.DB(), region, time.Now())
+	r.NoError(err)
+
+	beforeUIDs := make([]string, 0, len(before))
+	for _, oldJob := range before {
+		beforeUIDs = append(beforeUIDs, oldJob.UID)
+	}
+
+	r.Contains(beforeUIDs, h.job(check).UID, "a v0.38 node sees the due crawl job before it is leased")
+
 	// A due crawl job becomes exactly one task, claimed at once, and the
 	// job is leased to the run (no worker, an expiry past the deadline).
 	worker := cloudWorker(t, dbSvc, region)
@@ -99,7 +112,7 @@ func runMaterialization(t *testing.T, dbSvc db.Service) {
 	r.Len(h.tasksOf(check), 1)
 
 	// Rolling upgrade: the v0.38 bulk claim skips a job leased to a task.
-	old, err := v038BulkClaim(ctx, dbSvc.DB(), time.Now())
+	old, err := v038BulkClaim(ctx, dbSvc.DB(), region, time.Now())
 	r.NoError(err)
 
 	for _, oldJob := range old {
