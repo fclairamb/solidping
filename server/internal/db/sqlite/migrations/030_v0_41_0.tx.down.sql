@@ -1,5 +1,8 @@
 -- v0.41.0 — SQLite rollback (parity only; downs are never run in production).
 
+-- SECTION: crawl-tasks
+alter table worker_tasks drop column units_granted;
+
 -- SECTION: worker-tasks
 drop table if exists worker_tasks;
 

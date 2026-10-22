@@ -187,6 +187,7 @@ func runServiceSuite(t *testing.T, dbSvc db.Service) {
 		"OneActiveRunPerCheck": testOneActiveRunPerCheck,
 		"FinishAndCancel":      testFinishAndCancel,
 		"LazyExpiry":           testLazyExpiry,
+		"KindHooks":            testKindHooks,
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

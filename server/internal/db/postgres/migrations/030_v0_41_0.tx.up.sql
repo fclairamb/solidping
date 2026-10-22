@@ -4,6 +4,7 @@
 --
 --   SECTION: user-preferences   users.preferences
 --   SECTION: worker-tasks       worker_tasks
+--   SECTION: crawl-tasks        worker_tasks.units_granted
 
 -- ==========================================================================
 -- SECTION: user-preferences (spec 2026-10-21-01)
@@ -166,3 +167,17 @@ comment on column worker_tasks.run_started_at is 'When the first slice was claim
 --bun:split
 
 comment on column worker_tasks.error_code is 'Machine code of a failed task (max_attempts, slice_failures, a kind code). NULL otherwise.';
+
+--bun:split
+
+-- ==========================================================================
+-- SECTION: crawl-tasks (spec 2026-10-22-03)
+-- ==========================================================================
+-- The website crawl runs on worker_tasks. A slice's units are reserved from
+-- the org's checks-per-minute bucket at the claim; the grant is kept here so
+-- the server refunds what the slice did not use from its own number.
+alter table worker_tasks add column if not exists units_granted integer not null default 0;
+
+--bun:split
+
+comment on column worker_tasks.units_granted is 'Work units reserved from the org rate bucket for the slice in progress, refunded server-side when the slice reports. 0 when nothing is reserved.';

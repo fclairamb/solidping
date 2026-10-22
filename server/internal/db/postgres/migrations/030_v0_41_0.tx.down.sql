@@ -1,5 +1,9 @@
 -- v0.41.0 — Postgres rollback (parity only; downs are never run in production).
 
+-- SECTION: crawl-tasks
+alter table worker_tasks drop column if exists units_granted;
+--bun:split
+
 -- SECTION: worker-tasks
 drop table if exists worker_tasks;
 --bun:split

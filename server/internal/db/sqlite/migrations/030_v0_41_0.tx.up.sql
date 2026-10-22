@@ -59,3 +59,10 @@ create index if not exists idx_worker_tasks_job
 
 create unique index if not exists worker_tasks_check_active_idx
   on worker_tasks (check_uid) where status in ('pending', 'claimed');
+
+-- ==========================================================================
+-- SECTION: crawl-tasks (spec 2026-10-22-03)
+-- ==========================================================================
+-- worker_tasks.units_granted: work units reserved from the org rate bucket for
+-- the slice in progress, refunded server-side when the slice reports.
+alter table worker_tasks add column units_granted integer not null default 0;

@@ -51,6 +51,7 @@ type WorkerTask struct {
 	SliceCount      int              `bun:"slice_count,notnull"`
 	SliceFailures   int              `bun:"slice_failures,notnull"`
 	StateFileUID    *string          `bun:"state_file_uid"`
+	UnitsGranted    int              `bun:"units_granted,notnull"`
 	NotBefore       time.Time        `bun:"not_before,notnull"`
 	RunStartedAt    *time.Time       `bun:"run_started_at"`
 	ErrorCode       *string          `bun:"error_code"`

@@ -113,8 +113,20 @@ func now() time.Time {
 // models.WorkerTaskStaleAfter) is failed first, so lazy expiry never blocks a
 // new run; a live one makes the insert fail on the one-active-run index.
 func (s *Service) Create(ctx context.Context, task *models.WorkerTask) error {
+	_, err := s.create(ctx, s.db, task, false)
+
+	return err
+}
+
+// CreateIfNone is Create on idb (a claim's transaction) that reports false,
+// without an error, when the check already has a live active task.
+func (s *Service) CreateIfNone(ctx context.Context, idb bun.IDB, task *models.WorkerTask) (bool, error) {
+	return s.create(ctx, idb, task, true)
+}
+
+func (s *Service) create(ctx context.Context, idb bun.IDB, task *models.WorkerTask, ignoreActive bool) (bool, error) {
 	if task.Kind == "" || task.OrganizationUID == "" || (task.CheckUID == nil) == (task.JobUID == nil) {
-		return ErrInvalidTask
+		return false, ErrInvalidTask
 	}
 
 	current := now()
@@ -129,7 +141,7 @@ func (s *Service) Create(ctx context.Context, task *models.WorkerTask) error {
 	task.UpdatedAt = current
 
 	if task.CheckUID != nil {
-		if _, err := s.db.NewUpdate().Model((*models.WorkerTask)(nil)).
+		if _, err := idb.NewUpdate().Model((*models.WorkerTask)(nil)).
 			Set("status = ?", models.WorkerTaskStatusFailed).
 			Set("error_code = ?", models.WorkerTaskErrorExpired).
 			Set("worker_uid = NULL").
@@ -139,15 +151,25 @@ func (s *Service) Create(ctx context.Context, task *models.WorkerTask) error {
 			Where("status IN (?)", bun.List(activeStatuses())).
 			Where("updated_at < ?", current.Add(-models.WorkerTaskStaleAfter)).
 			Exec(ctx); err != nil {
-			return fmt.Errorf("expire stale worker task: %w", err)
+			return false, fmt.Errorf("expire stale worker task: %w", err)
 		}
 	}
 
-	if _, err := s.db.NewInsert().Model(task).Exec(ctx); err != nil {
-		return fmt.Errorf("create worker task: %w", err)
+	insert := idb.NewInsert().Model(task)
+	if ignoreActive {
+		// The only unique constraint besides the primary key is the
+		// one-active-run index: a conflict means a live run exists.
+		insert = insert.On("CONFLICT DO NOTHING")
 	}
 
-	return nil
+	res, err := insert.Exec(ctx)
+	if err != nil {
+		return false, fmt.Errorf("create worker task: %w", err)
+	}
+
+	n, _ := res.RowsAffected()
+
+	return n > 0, nil
 }
 
 // Get returns a task as readers see it: a stale active task reads as failed
@@ -214,19 +236,48 @@ func (s *Service) Claim(ctx context.Context, identity *WorkerIdentity) (*Claim, 
 	return nil, nil //nolint:nilnil // every row tried failed or deferred
 }
 
+// claimRow materializes the kinds' due tasks, then claims one row, in one
+// transaction.
 func (s *Service) claimRow(
 	ctx context.Context, identity *WorkerIdentity, kinds []string, slots int,
 ) (*models.WorkerTask, error) {
+	var task *models.WorkerTask
+
+	err := s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		for _, name := range kinds {
+			if kind, ok := s.kind(name); ok && kind.Materialize != nil {
+				if err := kind.Materialize(ctx, tx, identity); err != nil {
+					return fmt.Errorf("materialize %s tasks: %w", name, err)
+				}
+			}
+		}
+
+		var err error
+
+		task, err = s.claimRowIn(ctx, tx, identity, kinds, slots)
+
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return task, nil
+}
+
+func (s *Service) claimRowIn(
+	ctx context.Context, idb bun.IDB, identity *WorkerIdentity, kinds []string, slots int,
+) (*models.WorkerTask, error) {
 	current := now()
 
-	held := s.db.NewSelect().
+	held := idb.NewSelect().
 		TableExpr("worker_tasks AS held").
 		ColumnExpr("count(*)").
 		Where("held.worker_uid = ?", identity.UID).
 		Where("held.status = ?", models.WorkerTaskStatusClaimed).
 		Where("held.lease_until >= ?", current)
 
-	candidate := s.db.NewSelect().
+	candidate := idb.NewSelect().
 		TableExpr("worker_tasks AS cand").
 		ColumnExpr("cand.uid").
 		Where("cand.kind IN (?)", bun.List(kinds)).
@@ -252,7 +303,7 @@ func (s *Service) claimRow(
 
 	task := new(models.WorkerTask)
 
-	err := s.db.NewUpdate().
+	err := idb.NewUpdate().
 		Model(task).
 		Set("status = ?", models.WorkerTaskStatusClaimed).
 		Set("worker_uid = ?", identity.UID).
@@ -303,6 +354,10 @@ func (s *Service) prepare(ctx context.Context, task *models.WorkerTask) (*Claim,
 
 	if kind.PrepareClaim != nil {
 		prepared, err = kind.PrepareClaim(ctx, task, state)
+		if errors.Is(err, ErrCancelTask) {
+			return nil, s.terminate(ctx, task, worker, models.WorkerTaskStatusCancelled, "", false)
+		}
+
 		if err != nil {
 			// Released at once rather than left to expire: a held slot would
 			// starve the worker for a whole lease. The attempt stays counted, so
@@ -321,6 +376,17 @@ func (s *Service) prepare(ctx context.Context, task *models.WorkerTask) (*Claim,
 
 	if prepared.DeferUntil != nil {
 		return nil, s.release(ctx, task, worker, prepared.DeferUntil.UTC(), true)
+	}
+
+	// The slice's grant is kept on the row, so the kind refunds what the
+	// worker did not use from the server's own number, never the worker's.
+	if prepared.Units != task.UnitsGranted {
+		if err := execFenced(ctx, s.fencedUpdate(task.UID, worker, now()).
+			Set("units_granted = ?", prepared.Units)); err != nil {
+			return nil, err
+		}
+
+		task.UnitsGranted = prepared.Units
 	}
 
 	return buildClaim(task, state, prepared)
@@ -452,6 +518,12 @@ func (s *Service) release(
 
 	if giveBackAttempt {
 		query = query.Set("attempts = attempts - 1")
+
+		// A deferred task that never ran a slice has not started its run:
+		// its run clock starts at the claim that runs one.
+		if task.SliceCount == 0 && task.StateFileUID == nil {
+			query = query.Set("run_started_at = NULL")
+		}
 	}
 
 	if err := execFenced(ctx, query); err != nil && !errors.Is(err, ErrTaskGone) {
@@ -486,18 +558,26 @@ func (s *Service) terminate(
 		task.ErrorCode = &code
 	}
 
-	if callFail {
-		if kind, ok := s.kind(task.Kind); ok && kind.Fail != nil {
-			if err := kind.Fail(ctx, task, code); err != nil {
-				s.logger.WarnContext(ctx, "Worker task fail hook failed",
-					"task", task.UID, "kind", task.Kind, "error", err)
-			}
+	if kind, ok := s.kind(task.Kind); ok && callFail && kind.Fail != nil {
+		if err := kind.Fail(ctx, task, code); err != nil {
+			s.logger.WarnContext(ctx, "Worker task fail hook failed",
+				"task", task.UID, "kind", task.Kind, "error", err)
 		}
 	}
 
-	s.purgeState(ctx, task)
+	s.ended(ctx, task)
 
 	return nil
+}
+
+// ended runs the kind's End hook and purges the state of a task that just
+// reached a terminal status.
+func (s *Service) ended(ctx context.Context, task *models.WorkerTask) {
+	if kind, ok := s.kind(task.Kind); ok && kind.End != nil {
+		kind.End(ctx, task)
+	}
+
+	s.purgeState(ctx, task)
 }
 
 func (s *Service) purgeState(ctx context.Context, task *models.WorkerTask) {
@@ -581,6 +661,7 @@ func (s *Service) Step(ctx context.Context, uid, worker string, req StepRequest)
 		Set("slice_count = slice_count + 1").
 		Set("slice_failures = 0").
 		Set("attempts = 0").
+		Set("units_granted = 0").
 		Set("status = ?", models.WorkerTaskStatusPending).
 		Set("not_before = ?", current).
 		Set("worker_uid = NULL").
@@ -590,7 +671,17 @@ func (s *Service) Step(ctx context.Context, uid, worker string, req StepRequest)
 		query = query.Set("progress = ?", req.Progress)
 	}
 
-	return execFenced(ctx, query)
+	if err := execFenced(ctx, query); err != nil {
+		return err
+	}
+
+	if kind, ok := s.kind(task.Kind); ok && kind.Step != nil {
+		if err := kind.Step(ctx, task, req); err != nil {
+			s.logger.WarnContext(ctx, "Worker task step hook failed", "task", uid, "kind", task.Kind, "error", err)
+		}
+	}
+
+	return nil
 }
 
 func checkProgress(progress models.JSONMap) error {
@@ -659,6 +750,7 @@ func (s *Service) FailSlice(ctx context.Context, uid, worker, errorCode string) 
 
 	return execFenced(ctx, s.fencedUpdate(uid, worker, current).
 		Set("slice_failures = slice_failures + 1").
+		Set("units_granted = 0").
 		Set("status = ?", models.WorkerTaskStatusPending).
 		Set("not_before = ?", current.Add(SliceRetryDelay)).
 		Set("worker_uid = NULL").
@@ -681,8 +773,8 @@ func sanitizeErrorCode(code string) string {
 }
 
 // Cancel moves the pending and claimed tasks of a check or a job to
-// WorkerTaskStatusCancelled and returns how many it changed. A worker still
-// running one gets ErrTaskGone on its next call.
+// WorkerTaskStatusCancelled, runs their kind's End hook and returns how many
+// it changed. A worker still running one gets ErrTaskGone on its next call.
 func (s *Service) Cancel(ctx context.Context, filter CancelFilter) (int, error) {
 	if (filter.CheckUID == "") == (filter.JobUID == "") {
 		return 0, ErrInvalidTask
@@ -709,7 +801,7 @@ func (s *Service) Cancel(ctx context.Context, filter CancelFilter) (int, error) 
 	}
 
 	for _, task := range tasks {
-		s.purgeState(ctx, task)
+		s.ended(ctx, task)
 	}
 
 	return len(tasks), nil

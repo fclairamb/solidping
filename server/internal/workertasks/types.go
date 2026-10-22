@@ -15,6 +15,8 @@ import (
 	"errors"
 	"time"
 
+	"github.com/uptrace/bun"
+
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
@@ -69,6 +71,10 @@ var (
 	ErrNoStateStore = errors.New("worker task state store not configured")
 	// ErrUnknownKind means no kind is registered under the task's name.
 	ErrUnknownKind = errors.New("unknown worker task kind")
+	// ErrCancelTask is what a kind's PrepareClaim returns (wrapped or not)
+	// when the task has no reason to run any more (its check was paused or
+	// deleted): the claim cancels it instead of handing it out.
+	ErrCancelTask = errors.New("worker task no longer needed")
 )
 
 // WorkerIdentity is who claims. A cloud worker serves every org of its region;
@@ -101,6 +107,10 @@ type Prepared struct {
 type TaskKind struct {
 	// Name is the kind, as stored in worker_tasks.kind.
 	Name string
+	// Materialize creates the kind's due tasks for the claiming worker, in
+	// the claim's transaction and before a row is selected, so a worker
+	// asking for the kind may get a task created by its own claim. Optional.
+	Materialize func(ctx context.Context, tx bun.IDB, identity *WorkerIdentity) error
 	// PrepareClaim builds what the worker needs from the task and its
 	// decoded state (nil on the first slice). Optional.
 	PrepareClaim func(ctx context.Context, task *models.WorkerTask, state json.RawMessage) (*Prepared, error)
@@ -111,6 +121,13 @@ type TaskKind struct {
 	// Fail records a terminal failure decided by the mechanism (attempts,
 	// slice failures, missing state). Optional.
 	Fail func(ctx context.Context, task *models.WorkerTask, errorCode string) error
+	// Step runs after a non-final slice was recorded, with the task as it
+	// was claimed (UnitsGranted is the slice's grant). Optional, best-effort:
+	// its error is logged.
+	Step func(ctx context.Context, task *models.WorkerTask, req StepRequest) error
+	// End runs once the task reached a terminal status (done, failed or
+	// canceled), after Complete or Fail. Optional, best-effort.
+	End func(ctx context.Context, task *models.WorkerTask)
 }
 
 // Claim is what a worker receives for one slice. It is also the wire body of
