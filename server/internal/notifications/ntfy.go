@@ -53,6 +53,12 @@ func (s *NtfySender) Send(ctx context.Context, jctx *jobdef.JobContext, payload 
 	req.Header.Set("Tags", tags)
 	req.Header.Set("User-Agent", productName)
 
+	// Click opens the incident from the notification. It is also the only
+	// place the incident uid travels, for agents that consume the topic.
+	if incidentURL := incidentDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Incident); incidentURL != "" {
+		req.Header.Set("Click", incidentURL)
+	}
+
 	token := settings.AuthToken
 	if token == "" {
 		token = settings.AccessToken
