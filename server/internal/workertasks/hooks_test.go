@@ -38,7 +38,9 @@ func (h *hookLog) kind() workertasks.TaskKind {
 
 			return h.materialize(ctx, tx, identity)
 		},
-		PrepareClaim: func(_ context.Context, task *models.WorkerTask, _ json.RawMessage) (*workertasks.Prepared, error) {
+		PrepareClaim: func(
+			_ context.Context, task *models.WorkerTask, _ *workertasks.WorkerIdentity, _ json.RawMessage,
+		) (*workertasks.Prepared, error) {
 			h.mu.Lock()
 			defer h.mu.Unlock()
 

@@ -1,6 +1,7 @@
 package crawltask
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -72,6 +73,49 @@ func TestMissingParamRefIsAnErrorResult(t *testing.T) {
 	r.Len(tasks, 1)
 	r.False(tasks[0].IsActive())
 	r.Nil(h.job(check).LeaseExpiresAt, "the job is released")
+}
+
+// An agent claim carries no resolved `${param:}`: like an org agent over the
+// WebSocket, the agent finds the reference unresolved and ends the run on an
+// error result naming it, and the site is never fetched. The cloud tests
+// above are the positive control.
+func TestAgentClaimCarriesNoParamValue(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	h := newHarness(t, newSQLite(t), nil)
+	web, hits := countingSite(t)
+	region := "@dc-param"
+
+	host, err := url.Parse(web.URL)
+	r.NoError(err)
+	r.NoError(h.db.SetOrgParameter(t.Context(), h.org.UID, paramkeys.StorageKey("crawl_host"), host.Host, false))
+
+	cfg := siteConfig(web.URL)
+	cfg["url"] = "http://${param:crawl_host}/"
+	check := h.crawl(h.org.UID, region, cfg)
+
+	since := time.Now()
+	claim := h.slice(agentWorker(h.org.UID, region))
+	r.NotNil(claim, "the agent claims the run")
+	r.NotContains(string(claim.Input), host.Host, "the resolved value is not in the claim")
+
+	var input Input
+	r.NoError(json.Unmarshal(claim.Input, &input))
+	r.Empty(input.ParamOverlay)
+	r.Equal("http://${param:crawl_host}/", input.Config["url"], "the agent gets the reference")
+
+	results := h.results(check, since)
+	r.Len(results, 1)
+	r.Equal(int(models.ResultStatusError), *results[0].Status)
+	r.Contains(results[0].Output["error"], secretref.ErrUnresolved.Error())
+	r.Contains(results[0].Output["error"], "param:crawl_host")
+	r.NotContains(results[0].Output["error"], host.Host)
+	r.Zero(hits.Load(), "neither the value nor the literal reference is fetched")
+
+	tasks := h.tasksOf(check)
+	r.Len(tasks, 1)
+	r.False(tasks[0].IsActive(), "the run is over")
 }
 
 // `${env:}` resolves in the executor, against the worker's own environment

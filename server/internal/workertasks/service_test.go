@@ -35,7 +35,9 @@ type fakeHooks struct {
 func (h *fakeHooks) kind() workertasks.TaskKind {
 	return workertasks.TaskKind{
 		Name: fakeKind,
-		PrepareClaim: func(_ context.Context, _ *models.WorkerTask, _ json.RawMessage) (*workertasks.Prepared, error) {
+		PrepareClaim: func(
+			_ context.Context, _ *models.WorkerTask, _ *workertasks.WorkerIdentity, _ json.RawMessage,
+		) (*workertasks.Prepared, error) {
 			if h.deferNext.CompareAndSwap(true, false) {
 				until := time.Now().Add(time.Hour)
 

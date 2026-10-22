@@ -263,7 +263,7 @@ func (s *Server) stepChecker(checkType string) (checkerdef.StepChecker, bool) {
 // reserved from the org's bucket, and final once the run is past its deadline.
 // A paused or deleted check cancels the task.
 func (s *Server) prepareClaim(
-	ctx context.Context, task *models.WorkerTask, _ json.RawMessage,
+	ctx context.Context, task *models.WorkerTask, identity *workertasks.WorkerIdentity, _ json.RawMessage,
 ) (*workertasks.Prepared, error) {
 	check, job, err := s.load(ctx, task)
 	if err != nil {
@@ -279,10 +279,7 @@ func (s *Server) prepareClaim(
 		return nil, workertasks.ErrCancelTask
 	}
 
-	// `${param:}` is org data, resolved here at the claim boundary; the
-	// stored config keeps the reference. An unresolvable one ends the run on
-	// an error result rather than crawling the literal.
-	overlay, err := checkjobsvc.ParamOverlay(ctx, s.deps.DB, task.OrganizationUID, job.Config)
+	overlay, err := s.paramOverlay(ctx, task, identity, job)
 	if err != nil {
 		if writeErr := s.writeError(ctx, task, err.Error()); writeErr != nil {
 			return nil, writeErr
@@ -310,6 +307,23 @@ func (s *Server) prepareClaim(
 		Units:       granted,
 		Final:       final,
 	}, nil
+}
+
+// paramOverlay resolves the job's `${param:}` references for a cloud worker,
+// which runs in-process: the stored config keeps the reference, and an
+// unresolvable one is an error. An agent gets none, like an org agent over
+// the WebSocket (the zero-decrypt path): a resolved value never crosses the
+// wire in clear, so its executor finds the reference unresolved and ends the
+// run on an error result without fetching anything. System agents never
+// reach the task routes.
+func (s *Server) paramOverlay(
+	ctx context.Context, task *models.WorkerTask, identity *workertasks.WorkerIdentity, job *models.CheckJob,
+) (map[string]any, error) {
+	if identity.IsAgent {
+		return map[string]any{}, nil
+	}
+
+	return checkjobsvc.ParamOverlay(ctx, s.deps.DB, task.OrganizationUID, job.Config)
 }
 
 // reserve draws up to n units from the org's checks-per-minute bucket. A

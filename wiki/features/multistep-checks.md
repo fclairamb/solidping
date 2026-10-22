@@ -68,6 +68,9 @@ execution. The `crawl` type is the only one today.
   agent older than v0.41).
 - System agents never run worker tasks: their `crawl` capability is stripped
   (`regions.StripTaskCapabilities`).
+- `${param:}` in a crawl config resolves on cloud workers only, like any check
+  on an org agent: an agent's claim carries the reference, never a value, and
+  the run ends on an error result naming it.
 - The `step_*` columns of `check_jobs` are no longer written. They stay for
   v0.38 nodes during a rolling upgrade; dropping them is a later spec.
 - Billing: `UnitsPerRunHint` (crawl: `maxPages`) multiplies the check's weight in

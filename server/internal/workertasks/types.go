@@ -111,9 +111,11 @@ type TaskKind struct {
 	// the claim's transaction and before a row is selected, so a worker
 	// asking for the kind may get a task created by its own claim. Optional.
 	Materialize func(ctx context.Context, tx bun.IDB, identity *WorkerIdentity) error
-	// PrepareClaim builds what the worker needs from the task and its
-	// decoded state (nil on the first slice). Optional.
-	PrepareClaim func(ctx context.Context, task *models.WorkerTask, state json.RawMessage) (*Prepared, error)
+	// PrepareClaim builds what the claiming worker (identity) needs from the
+	// task and its decoded state (nil on the first slice). Optional.
+	PrepareClaim func(
+		ctx context.Context, task *models.WorkerTask, identity *WorkerIdentity, state json.RawMessage,
+	) (*Prepared, error)
 	// Complete validates and persists a finished task's result. A non-empty
 	// error code marks the task failed with it (the kind already recorded the
 	// failure, Fail is not called). Optional: nil marks the task done.

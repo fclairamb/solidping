@@ -227,7 +227,7 @@ func (s *Service) Claim(ctx context.Context, identity *WorkerIdentity) (*Claim, 
 			return nil, err
 		}
 
-		claim, err := s.prepare(ctx, task)
+		claim, err := s.prepare(ctx, task, identity)
 		if err != nil || claim != nil {
 			return claim, err
 		}
@@ -331,7 +331,7 @@ func (s *Service) claimRowIn(
 
 // prepare turns a claimed row into a Claim. It returns (nil, nil) when the
 // row failed or deferred on the way and the caller should try the next one.
-func (s *Service) prepare(ctx context.Context, task *models.WorkerTask) (*Claim, error) {
+func (s *Service) prepare(ctx context.Context, task *models.WorkerTask, identity *WorkerIdentity) (*Claim, error) {
 	worker := *task.WorkerUID
 
 	if task.Attempts > MaxAttempts {
@@ -350,7 +350,7 @@ func (s *Service) prepare(ctx context.Context, task *models.WorkerTask) (*Claim,
 		return nil, s.terminate(ctx, task, worker, models.WorkerTaskStatusFailed, ErrorStateMissing, true)
 	}
 
-	prepared, err := s.prepareKind(ctx, kind, task, worker, state)
+	prepared, err := s.prepareKind(ctx, kind, task, identity, state)
 	if err != nil || prepared == nil {
 		return nil, err
 	}
@@ -376,13 +376,15 @@ func (s *Service) prepare(ctx context.Context, task *models.WorkerTask) (*Claim,
 // prepareKind runs the kind's PrepareClaim. It returns (nil, nil) when the
 // task was canceled on the way.
 func (s *Service) prepareKind(
-	ctx context.Context, kind TaskKind, task *models.WorkerTask, worker string, state json.RawMessage,
+	ctx context.Context, kind TaskKind, task *models.WorkerTask, identity *WorkerIdentity, state json.RawMessage,
 ) (*Prepared, error) {
+	worker := *task.WorkerUID
+
 	if kind.PrepareClaim == nil {
 		return &Prepared{}, nil
 	}
 
-	prepared, err := kind.PrepareClaim(ctx, task, state)
+	prepared, err := kind.PrepareClaim(ctx, task, identity, state)
 	if errors.Is(err, ErrCancelTask) {
 		return nil, s.terminate(ctx, task, worker, models.WorkerTaskStatusCancelled, "", false)
 	}
