@@ -5,26 +5,18 @@
 
 ### Features
 
-* **email:** calmer emails that say why a check is down ([#623](https://github.com/fclairamb/solidping/issues/623)) ([8dd68d3](https://github.com/fclairamb/solidping/commit/8dd68d33c3a239f98a28ffc81da4b487504b83d0))
-* run crawl and discovery as worker tasks from private locations ([#633](https://github.com/fclairamb/solidping/issues/633)) ([062fd99](https://github.com/fclairamb/solidping/commit/062fd99431deb8f9621a23561d361268e2a56a46))
+* **email:** emails are calmer and say why a check is down ([#623](https://github.com/fclairamb/solidping/issues/623)) ([8dd68d3](https://github.com/fclairamb/solidping/commit/8dd68d33c3a239f98a28ffc81da4b487504b83d0))
+* **private locations:** crawl and network discovery now run from a private location (an org agent). The agent opts in to discovery with `SP_AGENT_DISCOVERY_ENABLED` and `SP_AGENT_DISCOVERY_CIDRS`, scans of a private location need an admin of the org, and a new entitlement `discovery_agent_addresses_per_day` caps the addresses scanned per day (65 536 on SaaS, unlimited when self-hosted). An org runs one scan at a time. A crawl in flight during the upgrade restarts from scratch, and a crawl that uses `${param:}` ends in an error on a private location. ([#633](https://github.com/fclairamb/solidping/issues/633)) ([062fd99](https://github.com/fclairamb/solidping/commit/062fd99431deb8f9621a23561d361268e2a56a46))
 
 
 ### Bug Fixes
 
-* **aichecks:** hold AI runs with real secrets to a runtime host allowlist ([#631](https://github.com/fclairamb/solidping/issues/631)) ([c09fdd1](https://github.com/fclairamb/solidping/commit/c09fdd1c1701fbb97c8fea6fd17cc13214f54c34))
-* **checkdns:** stub the resolver in TestDNSChecker_Execute ([#630](https://github.com/fclairamb/solidping/issues/630)) ([cca1d88](https://github.com/fclairamb/solidping/commit/cca1d88933f5e48d8d493f0fd4dc717bceb6c5d5))
+* **aichecks:** when the AI writes or repairs a check, a script that holds real secrets can only reach the hosts it is allowed to, checked when it connects. Before, only the text of the script was checked, so a URL built at run time could send a secret to another host. A script that uses `browser.*` or `solidping.*` while it holds secrets is refused. ([#631](https://github.com/fclairamb/solidping/issues/631)) ([c09fdd1](https://github.com/fclairamb/solidping/commit/c09fdd1c1701fbb97c8fea6fd17cc13214f54c34))
 * **dash0:** drag-to-zoom on the Timing chart ([#617](https://github.com/fclairamb/solidping/issues/617)) ([931816c](https://github.com/fclairamb/solidping/commit/931816c816e9bf466d250b14eaf33b0c3a7e573f))
-* **deps:** update github.com/dop251/goja digest to 07c4b9d ([#637](https://github.com/fclairamb/solidping/issues/637)) ([0170643](https://github.com/fclairamb/solidping/commit/01706433792d8df3f405dc03779e273271cb86c6))
-* **deps:** update github.com/dop251/goja digest to 64adc8b ([#626](https://github.com/fclairamb/solidping/issues/626)) ([1efd502](https://github.com/fclairamb/solidping/commit/1efd5020c6664384256c3c68ac7eb9d9c1a6837c))
-* **deps:** update github.com/dop251/goja digest to 7b1a022 ([#619](https://github.com/fclairamb/solidping/issues/619)) ([d3adde9](https://github.com/fclairamb/solidping/commit/d3adde98eb433f27f1014424e92300a81ab8fda8))
-* **deps:** update go dependencies (non-major) ([#622](https://github.com/fclairamb/solidping/issues/622)) ([adb622c](https://github.com/fclairamb/solidping/commit/adb622cb66d607b5957caf8181178141ca576442))
-* **deps:** update go dependencies (non-major) ([#627](https://github.com/fclairamb/solidping/issues/627)) ([dee2fd0](https://github.com/fclairamb/solidping/commit/dee2fd07fc504edb313698cc4da684498c9d4785))
-* **deps:** update go dependencies (non-major) ([#635](https://github.com/fclairamb/solidping/issues/635)) ([da717a5](https://github.com/fclairamb/solidping/commit/da717a53276820b11cf8c732d5586bf05ac3691a))
-* **deps:** update module github.com/a2aproject/a2a-go/v2 to v2.7.0 ([#625](https://github.com/fclairamb/solidping/issues/625)) ([bb8c7ae](https://github.com/fclairamb/solidping/commit/bb8c7ae376a9aae8f3e875b86cddacee963e8d71))
-* **deps:** update module github.com/anthropics/anthropic-sdk-go to v2 ([#628](https://github.com/fclairamb/solidping/issues/628)) ([90f70c2](https://github.com/fclairamb/solidping/commit/90f70c27a914f06c74ccc6f507c972210a4a376d))
-* **deps:** update module github.com/fergusstrange/embedded-postgres to v2 ([#614](https://github.com/fclairamb/solidping/issues/614)) ([913ece9](https://github.com/fclairamb/solidping/commit/913ece9b4eb0e7df45c1330a1984a8b6609646f7))
-* **email:** usage-cap email links to the platform upgrade page, not billing ([#632](https://github.com/fclairamb/solidping/issues/632)) ([abf3a68](https://github.com/fclairamb/solidping/commit/abf3a68b13ec65828d1216408c458a62873e70b5))
-* **status-pages:** close a grouped check's entry when it recovers ([#615](https://github.com/fclairamb/solidping/issues/615)) ([d4d9b21](https://github.com/fclairamb/solidping/commit/d4d9b212cbd624d74fd748fc00184cf9de6b83bf))
+* **email:** the usage-cap email links to the platform upgrade page, not billing ([#632](https://github.com/fclairamb/solidping/issues/632)) ([abf3a68](https://github.com/fclairamb/solidping/commit/abf3a68b13ec65828d1216408c458a62873e70b5))
+* **status-pages:** a grouped check's entry closes when it recovers ([#615](https://github.com/fclairamb/solidping/issues/615)) ([d4d9b21](https://github.com/fclairamb/solidping/commit/d4d9b212cbd624d74fd748fc00184cf9de6b83bf))
+* **checkdns:** the DNS checker test no longer depends on a real resolver ([#630](https://github.com/fclairamb/solidping/issues/630)) ([cca1d88](https://github.com/fclairamb/solidping/commit/cca1d88933f5e48d8d493f0fd4dc717bceb6c5d5))
+* **deps:** dependency updates: anthropic-sdk-go v2 ([#628](https://github.com/fclairamb/solidping/issues/628)), embedded-postgres v2 ([#614](https://github.com/fclairamb/solidping/issues/614)), a2a-go v2.7.0 ([#625](https://github.com/fclairamb/solidping/issues/625)), goja ([#619](https://github.com/fclairamb/solidping/issues/619), [#626](https://github.com/fclairamb/solidping/issues/626), [#637](https://github.com/fclairamb/solidping/issues/637)) and non-major Go modules ([#622](https://github.com/fclairamb/solidping/issues/622), [#627](https://github.com/fclairamb/solidping/issues/627), [#635](https://github.com/fclairamb/solidping/issues/635))
 
 ## [0.40.1](https://github.com/fclairamb/solidping/compare/v0.40.0...v0.40.1) (2026-10-19)
 
