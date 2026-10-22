@@ -424,6 +424,6 @@ func TestCrawlCapabilityIsPublished(t *testing.T) {
 
 	r := require.New(t)
 	r.Equal(Capability, regions.CapabilityCrawl)
-	r.Equal(Kind, NewExecutor().Kind())
+	r.Equal(Kind, NewExecutor(nil).Kind())
 	r.Equal([]string{"ipv4"}, regions.StripTaskCapabilities([]string{"ipv4", Capability}))
 }

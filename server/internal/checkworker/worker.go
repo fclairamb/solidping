@@ -384,7 +384,7 @@ func newCheckWorker(cfg *config.Config, workerBackend backend.WorkerBackend) *Ch
 
 	// Every worker, cloud or agent, runs website crawls as worker tasks
 	// (spec 2026-10-22-03). Registering is idempotent.
-	tasks.Register(crawltask.NewExecutor())
+	tasks.Register(crawltask.NewExecutor(cfg.EnvRefAllowed))
 
 	poolSize := cfg.Server.CheckWorker.Nb
 	if poolSize <= 0 {

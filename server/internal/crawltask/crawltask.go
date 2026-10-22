@@ -57,10 +57,14 @@ const (
 	codeInvalidResult = "invalid_result"
 )
 
-// Input is the claim input of a crawl slice: the job's type and config.
+// Input is the claim input of a crawl slice: the job's type and stored
+// config, and the server-resolved `${param:}` values laid over it. The
+// overlay lives only in the claim (never in a row) and is merged by the
+// executor, which resolves `${env:}` itself.
 type Input struct {
-	Type   string         `json:"type"`
-	Config map[string]any `json:"config"`
+	Type         string         `json:"type"`
+	Config       map[string]any `json:"config"`
+	ParamOverlay map[string]any `json:"paramOverlay,omitempty"`
 }
 
 // Result is the finish body of a crawl run: the checker's result, its report

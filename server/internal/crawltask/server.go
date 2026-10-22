@@ -14,6 +14,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/registry"
+	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
 	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -278,12 +279,24 @@ func (s *Server) prepareClaim(
 		return nil, workertasks.ErrCancelTask
 	}
 
+	// `${param:}` is org data, resolved here at the claim boundary; the
+	// stored config keeps the reference. An unresolvable one ends the run on
+	// an error result rather than crawling the literal.
+	overlay, err := checkjobsvc.ParamOverlay(ctx, s.deps.DB, task.OrganizationUID, job.Config)
+	if err != nil {
+		if writeErr := s.writeError(ctx, task, err.Error()); writeErr != nil {
+			return nil, writeErr
+		}
+
+		return nil, workertasks.ErrCancelTask
+	}
+
 	granted, deferUntil := s.reserve(ctx, task, job, stepChecker.UnitsPerSlice())
 	if deferUntil != nil {
 		return &workertasks.Prepared{DeferUntil: deferUntil}, nil
 	}
 
-	input, err := json.Marshal(Input{Type: job.Type, Config: job.Config})
+	input, err := json.Marshal(Input{Type: job.Type, Config: job.Config, ParamOverlay: overlay})
 	if err != nil {
 		return nil, fmt.Errorf("encode crawl input: %w", err)
 	}

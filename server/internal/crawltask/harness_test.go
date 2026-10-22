@@ -88,7 +88,7 @@ func newHarness(t *testing.T, dbSvc db.Service, ent *entitlements.Service) *harn
 	org := models.NewOrganization("crawl-"+uuid.NewString()[:8], "Acme")
 	require.NoError(t, dbSvc.CreateOrganization(t.Context(), org))
 
-	return &harness{t: t, db: dbSvc, tasks: tasks, srv: srv, store: store, org: org, exec: NewExecutor()}
+	return &harness{t: t, db: dbSvc, tasks: tasks, srv: srv, store: store, org: org, exec: NewExecutor(nil)}
 }
 
 // useChecker makes both sides run checker for crawl.
