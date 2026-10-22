@@ -136,7 +136,7 @@ func (s *Service) Create(ctx context.Context, task *models.WorkerTask) error {
 			Set("lease_until = NULL").
 			Set("updated_at = ?", current).
 			Where("check_uid = ?", *task.CheckUID).
-			Where("status IN (?)", bun.In(activeStatuses())).
+			Where("status IN (?)", bun.List(activeStatuses())).
 			Where("updated_at < ?", current.Add(-models.WorkerTaskStaleAfter)).
 			Exec(ctx); err != nil {
 			return fmt.Errorf("expire stale worker task: %w", err)
@@ -182,7 +182,7 @@ func activeStatuses() []models.WorkerTaskStatus {
 // pending or claimed under an expired lease, and the worker holding fewer
 // live leases than Slots. Postgres locks the candidate FOR UPDATE SKIP LOCKED;
 // SQLite runs the same UPDATE … WHERE uid = (SELECT … LIMIT 1) RETURNING.
-func (s *Service) Claim(ctx context.Context, identity WorkerIdentity) (*Claim, error) {
+func (s *Service) Claim(ctx context.Context, identity *WorkerIdentity) (*Claim, error) {
 	if identity.UID == "" || (identity.IsAgent && identity.OrgUID == "") {
 		return nil, ErrInvalidIdentity
 	}
@@ -215,7 +215,7 @@ func (s *Service) Claim(ctx context.Context, identity WorkerIdentity) (*Claim, e
 }
 
 func (s *Service) claimRow(
-	ctx context.Context, identity WorkerIdentity, kinds []string, slots int,
+	ctx context.Context, identity *WorkerIdentity, kinds []string, slots int,
 ) (*models.WorkerTask, error) {
 	current := now()
 
@@ -229,7 +229,7 @@ func (s *Service) claimRow(
 	candidate := s.db.NewSelect().
 		TableExpr("worker_tasks AS cand").
 		ColumnExpr("cand.uid").
-		Where("cand.kind IN (?)", bun.In(kinds)).
+		Where("cand.kind IN (?)", bun.List(kinds)).
 		Where("cand.region = ?", identity.Region).
 		Where("cand.not_before <= ?", current).
 		Where("cand.updated_at >= ?", current.Add(-models.WorkerTaskStaleAfter)).
@@ -680,9 +680,9 @@ func sanitizeErrorCode(code string) string {
 	return code
 }
 
-// Cancel sets the pending and claimed tasks of a check or a job to cancelled
-// and returns how many it cancelled. A worker still running one gets
-// ErrTaskGone on its next call.
+// Cancel moves the pending and claimed tasks of a check or a job to
+// WorkerTaskStatusCancelled and returns how many it changed. A worker still
+// running one gets ErrTaskGone on its next call.
 func (s *Service) Cancel(ctx context.Context, filter CancelFilter) (int, error) {
 	if (filter.CheckUID == "") == (filter.JobUID == "") {
 		return 0, ErrInvalidTask
@@ -695,7 +695,7 @@ func (s *Service) Cancel(ctx context.Context, filter CancelFilter) (int, error) 
 		Set("worker_uid = NULL").
 		Set("lease_until = NULL").
 		Set("updated_at = ?", now()).
-		Where("status IN (?)", bun.In(activeStatuses())).
+		Where("status IN (?)", bun.List(activeStatuses())).
 		Returning("*")
 
 	if filter.CheckUID != "" {

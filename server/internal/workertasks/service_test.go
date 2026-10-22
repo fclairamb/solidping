@@ -161,32 +161,39 @@ func (e *env) makeDue(t *testing.T, uid string) {
 	require.NoError(t, err)
 }
 
-func agent(orgUID, region string) workertasks.WorkerIdentity {
-	return workertasks.WorkerIdentity{
+func agent(orgUID, region string) *workertasks.WorkerIdentity {
+	return &workertasks.WorkerIdentity{
 		UID: uuid.NewString(), Region: region, OrgUID: orgUID, IsAgent: true,
 		Kinds: []string{fakeKind}, Slots: 1,
 	}
 }
 
-func cloud(region string, slots int) workertasks.WorkerIdentity {
-	return workertasks.WorkerIdentity{UID: uuid.NewString(), Region: region, Kinds: []string{fakeKind}, Slots: slots}
+func cloud(region string, slots int) *workertasks.WorkerIdentity {
+	return &workertasks.WorkerIdentity{UID: uuid.NewString(), Region: region, Kinds: []string{fakeKind}, Slots: slots}
 }
 
-// runServiceSuite runs every service test against one engine.
+// runServiceSuite runs every service test against one engine. Subtests
+// share the database but each has its own service, hooks, orgs and regions.
 func runServiceSuite(t *testing.T, dbSvc db.Service) {
 	t.Helper()
 
-	e := newEnv(t, dbSvc)
+	for name, test := range map[string]func(*testing.T, *env){
+		"ClaimScoping":         testClaimScoping,
+		"SlotsAndLeases":       testSlotsAndLeases,
+		"Steps":                testSteps,
+		"SliceFailures":        testSliceFailures,
+		"Fencing":              testFencing,
+		"Deferral":             testDeferral,
+		"OneActiveRunPerCheck": testOneActiveRunPerCheck,
+		"FinishAndCancel":      testFinishAndCancel,
+		"LazyExpiry":           testLazyExpiry,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 
-	t.Run("ClaimScoping", func(t *testing.T) { testClaimScoping(t, e) })
-	t.Run("SlotsAndLeases", func(t *testing.T) { testSlotsAndLeases(t, e) })
-	t.Run("Steps", func(t *testing.T) { testSteps(t, e) })
-	t.Run("SliceFailures", func(t *testing.T) { testSliceFailures(t, e) })
-	t.Run("Fencing", func(t *testing.T) { testFencing(t, e) })
-	t.Run("Deferral", func(t *testing.T) { testDeferral(t, e) })
-	t.Run("OneActiveRunPerCheck", func(t *testing.T) { testOneActiveRunPerCheck(t, e) })
-	t.Run("FinishAndCancel", func(t *testing.T) { testFinishAndCancel(t, e) })
-	t.Run("LazyExpiry", func(t *testing.T) { testLazyExpiry(t, e) })
+			test(t, newEnv(t, dbSvc))
+		})
+	}
 }
 
 func TestService_SQLite(t *testing.T) {
@@ -462,7 +469,7 @@ func testFencing(t *testing.T, e *env) {
 	r.Nil(row.StateFileUID, "nothing written")
 	r.Equal(0, row.SliceCount)
 
-	// On a cancelled task (its own region: the expired task above is
+	// On a canceled task (its own region: the expired task above is
 	// reclaimable and older).
 	region2 := region + "-c"
 	e2 := e.checkTask(t, org.UID, region2)
@@ -505,7 +512,7 @@ func testDeferral(t *testing.T, e *env) {
 	r.Equal(models.WorkerTaskStatusPending, row.Status)
 	r.Equal(0, row.Attempts, "a deferral counts no attempt")
 	r.Nil(row.WorkerUID)
-	r.True(row.NotBefore.After(time.Now().Add(30*time.Minute)))
+	r.True(row.NotBefore.After(time.Now().Add(30 * time.Minute)))
 
 	e.makeDue(t, task.UID)
 
@@ -561,7 +568,9 @@ func testFinishAndCancel(t *testing.T, e *env) {
 	completes := e.hooks.completeCalls.Load()
 	r.NoError(e.svc.Finish(ctx, task.UID, worker.UID, json.RawMessage(`{"found":2}`)))
 	r.Equal(completes+1, e.hooks.completeCalls.Load())
-	r.JSONEq(`{"found":2}`, e.hooks.lastBody.Load().(string))
+	lastBody, ok := e.hooks.lastBody.Load().(string)
+	r.True(ok)
+	r.JSONEq(`{"found":2}`, lastBody)
 
 	row := e.row(t, task.UID)
 	r.Equal(models.WorkerTaskStatusDone, row.Status)

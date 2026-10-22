@@ -106,43 +106,15 @@ func (c *HTTPTaskClient) Fail(ctx context.Context, uid, errorCode string) error 
 // post sends one signed POST and maps the status: 404 is ErrNotSupported (an
 // old server), 410 ErrTaskGone, 413 ErrTooLarge.
 func (c *HTTPTaskClient) post(ctx context.Context, path string, body []byte) (int, []byte, error) {
-	b := c.backend
+	ctx, cancel := context.WithTimeout(ctx, taskRequestTimeout)
+	defer cancel()
 
-	b.mu.Lock()
-	identity := *b.identity
-	b.mu.Unlock()
-
-	if identity.AgentUID == "" {
-		return 0, nil, ErrNotEnrolled
-	}
-
-	timestamp := time.Now().UTC().Format(time.RFC3339)
-
-	nonce, err := randomID()
+	req, err := c.signedRequest(ctx, path, body)
 	if err != nil {
 		return 0, nil, err
 	}
 
-	signature, err := identity.Sign(http.MethodPost, path, timestamp, nonce)
-	if err != nil {
-		return 0, nil, fmt.Errorf("sign worker task request: %w", err)
-	}
-
-	ctx, cancel := context.WithTimeout(ctx, taskRequestTimeout)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, httpBaseURL(b.serverURL)+path, bytes.NewReader(body))
-	if err != nil {
-		return 0, nil, fmt.Errorf("build worker task request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Sp-Agent-Uid", identity.AgentUID)
-	req.Header.Set("X-Sp-Timestamp", timestamp)
-	req.Header.Set("X-Sp-Nonce", nonce)
-	req.Header.Set("X-Sp-Signature", signature)
-
-	resp, err := b.httpClient.Do(req)
+	resp, err := c.backend.httpClient.Do(req)
 	if err != nil {
 		return 0, nil, fmt.Errorf("post worker task request: %w", err)
 	}
@@ -154,18 +126,57 @@ func (c *HTTPTaskClient) post(ctx context.Context, path string, body []byte) (in
 		return 0, nil, fmt.Errorf("read worker task response: %w", err)
 	}
 
-	switch {
-	case resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNoContent:
+	switch resp.StatusCode {
+	case http.StatusOK, http.StatusNoContent:
 		return resp.StatusCode, respBody, nil
-	case resp.StatusCode == http.StatusNotFound:
+	case http.StatusNotFound:
 		return resp.StatusCode, nil, tasks.ErrNotSupported
-	case resp.StatusCode == http.StatusGone:
+	case http.StatusGone:
 		return resp.StatusCode, nil, workertasks.ErrTaskGone
-	case resp.StatusCode == http.StatusRequestEntityTooLarge:
+	case http.StatusRequestEntityTooLarge:
 		return resp.StatusCode, nil, workertasks.ErrTooLarge
 	default:
 		detail := strings.TrimSpace(string(respBody[:min(len(respBody), 512)]))
 
 		return resp.StatusCode, nil, fmt.Errorf("%w: status %d: %s", ErrTaskRequestRejected, resp.StatusCode, detail)
 	}
+}
+
+// signedRequest builds a POST carrying the agent's signed headers.
+func (c *HTTPTaskClient) signedRequest(ctx context.Context, path string, body []byte) (*http.Request, error) {
+	wsBackend := c.backend
+
+	wsBackend.mu.Lock()
+	identity := *wsBackend.identity
+	wsBackend.mu.Unlock()
+
+	if identity.AgentUID == "" {
+		return nil, ErrNotEnrolled
+	}
+
+	timestamp := time.Now().UTC().Format(time.RFC3339)
+
+	nonce, err := randomID()
+	if err != nil {
+		return nil, err
+	}
+
+	signature, err := identity.Sign(http.MethodPost, path, timestamp, nonce)
+	if err != nil {
+		return nil, fmt.Errorf("sign worker task request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, httpBaseURL(wsBackend.serverURL)+path,
+		bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("build worker task request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Sp-Agent-Uid", identity.AgentUID)
+	req.Header.Set("X-Sp-Timestamp", timestamp)
+	req.Header.Set("X-Sp-Nonce", nonce)
+	req.Header.Set("X-Sp-Signature", signature)
+
+	return req, nil
 }

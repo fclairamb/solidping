@@ -135,6 +135,15 @@ func (h *Handler) writeServiceError(writer http.ResponseWriter, req *http.Reques
 	}
 }
 
+// okResponse is the body of a successful report.
+type okResponse struct {
+	Status string `json:"status"`
+}
+
+func (h *Handler) writeOK(writer http.ResponseWriter) error {
+	return h.WriteJSON(writer, http.StatusOK, okResponse{Status: "ok"})
+}
+
 // Claim handles POST /api/v1/agent/tasks/claim: 200 with a task, 204 when
 // there is none. Kinds the server does not know are ignored.
 func (h *Handler) Claim(writer http.ResponseWriter, req *http.Request) error {
@@ -148,7 +157,7 @@ func (h *Handler) Claim(writer http.ResponseWriter, req *http.Request) error {
 		return decodeErr
 	}
 
-	claim, err := h.svc.Claim(req.Context(), workertasks.WorkerIdentity{
+	claim, err := h.svc.Claim(req.Context(), &workertasks.WorkerIdentity{
 		UID:     agent.UID,
 		Region:  agent.Region,
 		OrgUID:  agent.OrgUID(),
@@ -203,7 +212,7 @@ func (h *Handler) Step(writer http.ResponseWriter, req *http.Request) error {
 		return h.writeServiceError(writer, req, err)
 	}
 
-	return h.WriteJSON(writer, http.StatusOK, map[string]string{"status": "ok"})
+	return h.writeOK(writer)
 }
 
 // Finish handles POST /api/v1/agent/tasks/:uid/finish: 200, 410 or 413. The
@@ -227,7 +236,7 @@ func (h *Handler) Finish(writer http.ResponseWriter, req *http.Request) error {
 		return h.writeServiceError(writer, req, err)
 	}
 
-	return h.WriteJSON(writer, http.StatusOK, map[string]string{"status": "ok"})
+	return h.writeOK(writer)
 }
 
 // Fail handles POST /api/v1/agent/tasks/:uid/fail: 200 or 410.
@@ -246,7 +255,7 @@ func (h *Handler) Fail(writer http.ResponseWriter, req *http.Request) error {
 		return h.writeServiceError(writer, req, err)
 	}
 
-	return h.WriteJSON(writer, http.StatusOK, map[string]string{"status": "ok"})
+	return h.writeOK(writer)
 }
 
 // Register mounts the routes on the /api/v1 group. They carry the agent's

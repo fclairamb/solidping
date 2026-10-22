@@ -108,14 +108,14 @@ func (f *fixture) enroll(t *testing.T, orgUID, region string) *signedAgent {
 	return &signedAgent{agent: agent, priv: priv}
 }
 
-func (f *fixture) task(t *testing.T, region string) *models.WorkerTask {
+func (f *fixture) task(t *testing.T) *models.WorkerTask {
 	t.Helper()
 
 	check := models.NewCheck(f.org.UID, "c-"+uuid.NewString()[:8], "http")
 	check.Enabled = false
 	require.NoError(t, f.db.CreateCheck(t.Context(), check))
 
-	task := models.NewWorkerTask(f.org.UID, testKind, region)
+	task := models.NewWorkerTask(f.org.UID, testKind, "@dc1")
 	task.CheckUID = &check.UID
 	require.NoError(t, f.svc.Create(t.Context(), task))
 
@@ -146,9 +146,7 @@ func (f *fixture) post(t *testing.T, agent *signedAgent, path string, body []byt
 }
 
 func claimBody(kinds ...string) []byte {
-	raw, _ := json.Marshal(workertasks.ClaimRequest{Kinds: kinds})
-
-	return raw
+	return []byte(`{"kinds":["` + strings.Join(kinds, `","`) + `"]}`)
 }
 
 // TestAgentTaskRoundTrip is the positive control: a signed org agent claims,
@@ -163,7 +161,7 @@ func TestAgentTaskRoundTrip(t *testing.T) {
 	rec := f.post(t, agent, "/api/v1/agent/tasks/claim", claimBody(testKind))
 	r.Equal(http.StatusNoContent, rec.Code, "nothing to do yet")
 
-	task := f.task(t, "@dc1")
+	task := f.task(t)
 
 	rec = f.post(t, agent, "/api/v1/agent/tasks/claim", claimBody("unknown-kind", testKind))
 	r.Equal(http.StatusOK, rec.Code, rec.Body.String())
@@ -202,7 +200,7 @@ func TestAgentTaskUnknownKindsIgnored(t *testing.T) {
 	r := require.New(t)
 	f := setup(t)
 	agent := f.enroll(t, f.org.UID, "@dc1")
-	task := f.task(t, "@dc1")
+	task := f.task(t)
 
 	r.Equal(http.StatusNoContent, f.post(t, agent, "/api/v1/agent/tasks/claim", claimBody("crawl-v9")).Code)
 
@@ -216,7 +214,7 @@ func TestAgentTaskAuth(t *testing.T) {
 
 	r := require.New(t)
 	f := setup(t)
-	f.task(t, "@dc1")
+	f.task(t)
 
 	// Unsigned.
 	r.Equal(http.StatusUnauthorized, f.post(t, nil, "/api/v1/agent/tasks/claim", claimBody(testKind)).Code)
@@ -245,7 +243,7 @@ func TestAgentTaskBodyCap(t *testing.T) {
 	r := require.New(t)
 	f := setup(t)
 	agent := f.enroll(t, f.org.UID, "@dc1")
-	task := f.task(t, "@dc1")
+	task := f.task(t)
 
 	rec := f.post(t, agent, "/api/v1/agent/tasks/claim", claimBody(testKind))
 	r.Equal(http.StatusOK, rec.Code)

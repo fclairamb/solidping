@@ -45,8 +45,8 @@ type Executor interface {
 	Kind() string
 	// Capability is the capability name the worker reports for it.
 	Capability() string
-	// Run executes one slice. Its context is cancelled when the task is gone
-	// (lease lost, cancelled). Returning without a report fails the slice.
+	// Run executes one slice. Its context is canceled when the task is gone
+	// (lease lost, canceled). Returning without a report fails the slice.
 	Run(ctx context.Context, claim *workertasks.Claim, reporter Reporter) error
 }
 

@@ -14,14 +14,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fclairamb/solidping/server/internal/handlers/agentauth"
-
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/agents"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/handlers/agentauth"
 	"github.com/fclairamb/solidping/server/internal/nettrace"
 )
 

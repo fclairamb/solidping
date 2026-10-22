@@ -26,7 +26,7 @@ func (c *DirectTaskClient) Claim(ctx context.Context, kinds []string) (*workerta
 	identity := c.identity()
 	identity.Kinds = kinds
 
-	return c.svc.Claim(ctx, identity)
+	return c.svc.Claim(ctx, &identity)
 }
 
 // Heartbeat implements tasks.Client.

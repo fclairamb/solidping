@@ -72,15 +72,15 @@ func (l *Loop) Run(ctx context.Context) {
 
 	slots := max(l.Slots, 1)
 
-	var wg sync.WaitGroup
+	var group sync.WaitGroup
 
 	for _, executor := range l.Executors {
 		for range slots {
-			wg.Go(func() { l.claimLoop(ctx, executor) })
+			group.Go(func() { l.claimLoop(ctx, executor) })
 		}
 	}
 
-	wg.Wait()
+	group.Wait()
 }
 
 func (l *Loop) claimLoop(ctx context.Context, executor Executor) {
@@ -105,7 +105,7 @@ func (l *Loop) claimLoop(ctx context.Context, executor Executor) {
 // sleep waits IdleDelay plus up to 20% jitter, so agents restarted together
 // do not claim in lockstep.
 func (l *Loop) sleep(ctx context.Context) {
-	delay := l.IdleDelay + time.Duration(rand.Int64N(int64(l.IdleDelay)/5+1)) //nolint:gosec // jitter, not security
+	delay := l.IdleDelay + time.Duration(rand.Int64N(int64(l.IdleDelay)/5+1))
 
 	timer := time.NewTimer(delay)
 	defer timer.Stop()

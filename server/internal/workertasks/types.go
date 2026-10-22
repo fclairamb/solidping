@@ -53,7 +53,7 @@ const (
 // Errors of the service.
 var (
 	// ErrTaskGone means the task is not (or no longer) held by this worker:
-	// another worker holds it, its lease expired, or it was cancelled or
+	// another worker holds it, its lease expired, or it was canceled or
 	// ended. The worker must stop: nothing was written.
 	ErrTaskGone = errors.New("worker task gone")
 	// ErrTooLarge means the state or the progress exceeds its cap. Nothing

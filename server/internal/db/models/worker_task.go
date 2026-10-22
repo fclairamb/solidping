@@ -19,8 +19,9 @@ const (
 	WorkerTaskStatusDone WorkerTaskStatus = "done"
 	// WorkerTaskStatusFailed is a task that failed for good.
 	WorkerTaskStatusFailed WorkerTaskStatus = "failed"
-	// WorkerTaskStatusCancelled is a task cancelled before it finished.
-	WorkerTaskStatusCancelled WorkerTaskStatus = "cancelled"
+	// WorkerTaskStatusCancelled is a task canceled before it finished. The
+	// spelling is the stored value, CHECK-constrained by the migration.
+	WorkerTaskStatusCancelled WorkerTaskStatus = "cancelled" //nolint:misspell // stored value
 )
 
 // WorkerTaskStaleAfter is how long a non-terminal task may go untouched
