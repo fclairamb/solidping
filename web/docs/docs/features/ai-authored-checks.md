@@ -48,7 +48,11 @@ The capture follows the [js check rules](./javascript-checks.md): it is kept on
 
 The AI never receives a secret value. It only sees the secret names, and the
 script reads them as `secrets.NAME`. A test run only gets the real values when
-every host the script contacts appears in your description or parameters.
+every host the script contacts appears in your description or parameters. A run
+holding real values can only connect to those hosts, checked on every request,
+redirect and socket while it runs, so a URL the script builds at runtime cannot
+reach anywhere else. Such a run cannot open a browser or run a `solidping.*`
+sub-check: both connect outside that check.
 Secret values are scrubbed from everything handed back to the AI. The scrubbing matches the literal value, so a script that prints an encoded form (base64, URL-encoded) of a secret to the console would not be caught: never log secrets.
 
 ### Edit and regenerate
@@ -111,8 +115,10 @@ A repair attempt starts only when all of these hold:
 The AI gets the old script, the contract, the failure output and a fresh look
 at the target. Before a candidate is kept, mechanical guards run:
 
-- it contacts no host the previous version did not (no candidate ever runs with
-  the secrets against a new host);
+- it contacts no host the previous version did not. The text is checked first,
+  then every run holding the secrets (test runs and the verification run) is
+  held to the previous version's hosts while it runs, so no candidate sends the
+  secrets to a new host, even through a URL built at runtime;
 - it adds no `try`/`catch`;
 - it can still report `down`, and uses no new protocol API;
 - a verification run returns `up`.
@@ -126,7 +132,8 @@ With `repair: auto`, a candidate that passed every guard and its verification
 run is applied directly as a new version. The incident resolves on the next
 run, and the author of the replaced version gets an email with the diff. Undo it
 with a normal version restore. A candidate failing a guard or the verification,
-or a second repair within 24 h, falls back to a proposal.
+a candidate whose hosts no longer appear in its text, or a second repair within
+24 h, falls back to a proposal.
 
 Every attempt is on the check's timeline (`check.ai_repair_attempted`,
 `check.ai_repair_proposed`, `check.ai_repair_applied`).

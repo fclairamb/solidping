@@ -157,7 +157,7 @@ func (h *wsHandle) dialOptions(opts map[string]any) (*websocket.DialOptions, boo
 	// An allowlisted run checks the handshake request, and any redirect it
 	// follows, before it is sent.
 	if list := egress.HostAllowlistFrom(h.runtime.execCtx); list != nil {
-		var base http.RoundTripper = http.DefaultTransport
+		base := http.DefaultTransport
 		if needClient {
 			base = transport
 		}

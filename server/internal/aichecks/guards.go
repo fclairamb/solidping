@@ -31,8 +31,9 @@ var (
 	tryRE     = regexp.MustCompile(`\btry\s*\{`)
 	// hostTokenRE catches a bare host name or IPv4 address in prose
 	// ("monitor acme.com", "the API on 10.0.0.5").
-	hostTokenRE = regexp.MustCompile(`(?i)\b(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\b|\blocalhost\b`)
-	downRE      = regexp.MustCompile(`["']down["']`)
+	hostTokenRE = regexp.MustCompile(
+		`(?i)\b(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\b|\blocalhost\b`)
+	downRE = regexp.MustCompile(`["']down["']`)
 )
 
 // ScriptHosts lists the hosts a script contacts: URL literals in the script,

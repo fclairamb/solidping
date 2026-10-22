@@ -62,8 +62,9 @@ func TestAllowlistHoldsEveryNetworkAPI(t *testing.T) {
 		name, script, refused string
 	}{
 		{
-			name:    "http built at runtime",
-			script:  `var r = http.get("http:" + "//local" + "host:` + port + `/"); return { status: "up", output: { e: r.error } };`,
+			name: "http built at runtime",
+			script: `var r = http.get("http:" + "//local" + "host:` + port + `/"); ` +
+				`return { status: "up", output: { e: r.error } };`,
 			refused: "localhost",
 		},
 		{
@@ -78,18 +79,21 @@ func TestAllowlistHoldsEveryNetworkAPI(t *testing.T) {
 			refused: "localhost",
 		},
 		{
-			name:    "websocket",
-			script:  `var c = websocket.connect("ws:" + "//localhost:` + port + `/"); return { status: "up", output: { e: c.error } };`,
+			name: "websocket",
+			script: `var c = websocket.connect("ws:" + "//localhost:` + port + `/"); ` +
+				`return { status: "up", output: { e: c.error } };`,
 			refused: "localhost",
 		},
 		{
-			name:    "sub-check",
-			script:  `var c = solidping.http({ url: "` + server.URL + `" }); return { status: "up", output: { e: c.output.error } };`,
+			name: "sub-check",
+			script: `var c = solidping.http({ url: "` + server.URL + `" }); ` +
+				`return { status: "up", output: { e: c.output.error } };`,
 			refused: "solidping.http",
 		},
 		{
-			name:    "browser",
-			script:  `try { browser.open(); } catch (e) { return { status: "up", output: { e: String(e) } }; } return { status: "up" };`,
+			name: "browser",
+			script: `try { browser.open(); } catch (e) { return { status: "up", output: { e: String(e) } }; } ` +
+				`return { status: "up" };`,
 			refused: "browser",
 		},
 	}

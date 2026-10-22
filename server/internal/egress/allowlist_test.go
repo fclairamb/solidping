@@ -2,7 +2,6 @@ package egress_test
 
 import (
 	"context"
-	"errors"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -73,7 +72,7 @@ func TestHostAllowlistRoundTripperRefusesARedirect(t *testing.T) {
 	}
 
 	r.Error(err)
-	r.True(errors.Is(err, egress.ErrHostNotAllowed), err)
+	r.ErrorIs(err, egress.ErrHostNotAllowed)
 	r.Zero(hits.Load(), "the redirect target never saw the request")
 
 	// Positive control: allowed, the redirect is followed.

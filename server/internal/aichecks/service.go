@@ -492,7 +492,6 @@ func (s *Service) Generate(ctx context.Context, orgUID string, req *GenerateRequ
 	ctx = ai.WithCallMeta(ctx, ai.CallMeta{OrgUID: orgUID, CheckUID: req.CheckUID, Purpose: ai.PurposeGenerate})
 
 	declared := append([]string{req.Prompt}, req.Contract...)
-	allowed := declaredHosts(req.Env, declared...)
 	progress := req.OnProgress
 	if progress == nil {
 		progress = func(Progress) {}
@@ -508,7 +507,7 @@ func (s *Service) Generate(ctx context.Context, orgUID string, req *GenerateRequ
 			// runtime allowlist of those hosts, which a URL built at
 			// runtime cannot get around.
 			if hostsDeclared(script, req.Env, declared...) {
-				return &runGrant{secrets: req.Secrets, hosts: allowed}, nil
+				return &runGrant{secrets: req.Secrets, hosts: declaredHosts(req.Env, declared...)}, nil
 			}
 
 			return &runGrant{
