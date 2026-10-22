@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.41.0](https://github.com/fclairamb/solidping/compare/v0.40.1...v0.41.0) (2026-10-22)
+
+
+### Features
+
+* **email:** emails are calmer and say why a check is down ([#623](https://github.com/fclairamb/solidping/issues/623)) ([8dd68d3](https://github.com/fclairamb/solidping/commit/8dd68d33c3a239f98a28ffc81da4b487504b83d0))
+* **private locations:** crawl and network discovery now run from a private location (an org agent). The agent opts in to discovery with `SP_AGENT_DISCOVERY_ENABLED` and `SP_AGENT_DISCOVERY_CIDRS`, scans of a private location need an admin of the org, and a new entitlement `discovery_agent_addresses_per_day` caps the addresses scanned per day (65 536 on SaaS, unlimited when self-hosted). An org runs one scan at a time. A crawl in flight during the upgrade restarts from scratch, and a crawl that uses `${param:}` ends in an error on a private location. ([#633](https://github.com/fclairamb/solidping/issues/633)) ([062fd99](https://github.com/fclairamb/solidping/commit/062fd99431deb8f9621a23561d361268e2a56a46))
+
+
+### Bug Fixes
+
+* **aichecks:** when the AI writes or repairs a check, a script that holds real secrets can only reach the hosts it is allowed to, checked when it connects. Before, only the text of the script was checked, so a URL built at run time could send a secret to another host. A script that uses `browser.*` or `solidping.*` while it holds secrets is refused. ([#631](https://github.com/fclairamb/solidping/issues/631)) ([c09fdd1](https://github.com/fclairamb/solidping/commit/c09fdd1c1701fbb97c8fea6fd17cc13214f54c34))
+* **dash0:** drag-to-zoom on the Timing chart ([#617](https://github.com/fclairamb/solidping/issues/617)) ([931816c](https://github.com/fclairamb/solidping/commit/931816c816e9bf466d250b14eaf33b0c3a7e573f))
+* **email:** the usage-cap email links to the platform upgrade page, not billing ([#632](https://github.com/fclairamb/solidping/issues/632)) ([abf3a68](https://github.com/fclairamb/solidping/commit/abf3a68b13ec65828d1216408c458a62873e70b5))
+* **status-pages:** a grouped check's entry closes when it recovers ([#615](https://github.com/fclairamb/solidping/issues/615)) ([d4d9b21](https://github.com/fclairamb/solidping/commit/d4d9b212cbd624d74fd748fc00184cf9de6b83bf))
+* **checkdns:** the DNS checker test no longer depends on a real resolver ([#630](https://github.com/fclairamb/solidping/issues/630)) ([cca1d88](https://github.com/fclairamb/solidping/commit/cca1d88933f5e48d8d493f0fd4dc717bceb6c5d5))
+* **deps:** dependency updates: anthropic-sdk-go v2 ([#628](https://github.com/fclairamb/solidping/issues/628)), embedded-postgres v2 ([#614](https://github.com/fclairamb/solidping/issues/614)), a2a-go v2.7.0 ([#625](https://github.com/fclairamb/solidping/issues/625)), goja ([#619](https://github.com/fclairamb/solidping/issues/619), [#626](https://github.com/fclairamb/solidping/issues/626), [#637](https://github.com/fclairamb/solidping/issues/637)) and non-major Go modules ([#622](https://github.com/fclairamb/solidping/issues/622), [#627](https://github.com/fclairamb/solidping/issues/627), [#635](https://github.com/fclairamb/solidping/issues/635))
+
 ## [0.40.1](https://github.com/fclairamb/solidping/compare/v0.40.0...v0.40.1) (2026-10-19)
 
 
