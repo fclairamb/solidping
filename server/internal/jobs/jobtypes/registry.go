@@ -40,6 +40,9 @@ var jobDefinitionFactories = map[jobdef.JobType]func() jobdef.JobDefinition{
 	jobdef.JobTypeNetworkDiscoveryPlan: func() jobdef.JobDefinition {
 		return &NetworkDiscoveryPlanJobDefinition{}
 	},
+	jobdef.JobTypeNetworkDiscoveryAgentPlan: func() jobdef.JobDefinition {
+		return &NetworkDiscoveryAgentPlanJobDefinition{}
+	},
 	jobdef.JobTypeFreeboxLanDiscovery: func() jobdef.JobDefinition { return &FreeboxLanDiscoveryJobDefinition{} },
 	jobdef.JobTypeContainerDiscovery:  func() jobdef.JobDefinition { return &ContainerDiscoveryJobDefinition{} },
 	jobdef.JobTypeKubernetesDiscovery: func() jobdef.JobDefinition { return &KubernetesDiscoveryJobDefinition{} },
