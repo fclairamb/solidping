@@ -105,6 +105,9 @@ var (
 	ErrExclusiveNodeRole = errors.New("node role cannot be combined with other roles")
 	// ErrAgentServerURLRequired is returned when role is "agent" but no server URL is set.
 	ErrAgentServerURLRequired = errors.New("SP_AGENT_SERVER_URL is required when SP_NODE_ROLE is set to 'agent'")
+	// ErrInvalidDiscoveryCIDRs is returned when SP_AGENT_DISCOVERY_ENABLED is
+	// set without a valid SP_AGENT_DISCOVERY_CIDRS allow-list.
+	ErrInvalidDiscoveryCIDRs = errors.New("invalid SP_AGENT_DISCOVERY_CIDRS")
 	// ErrRegionRequiredForChecks is returned when role is "checks" but region is not set.
 	ErrRegionRequiredForChecks = errors.New("SP_NODE_REGION is required when SP_NODE_ROLE is set to 'checks'")
 	// ErrInvalidAggregationRetention is returned when an aggregation retention value is < 1.
@@ -224,6 +227,14 @@ type AgentConfig struct {
 	// only to bootstrap an env-only (SP_AGENT_KEYS) deployment that has no
 	// writable volume to read the keys file from, then unset it.
 	PrintKeys bool `koanf:"print_keys"`
+	// DiscoveryEnabled lets this agent run LAN discovery chunks of its private
+	// region (spec 2026-10-22-04) — SP_AGENT_DISCOVERY_ENABLED. Off by default:
+	// only the agent's operator can authorise discovery, never the server.
+	DiscoveryEnabled bool `koanf:"discovery_enabled"`
+	// DiscoveryCIDRs is the IPv4 allow-list a discovery chunk must fall inside
+	// — SP_AGENT_DISCOVERY_CIDRS, comma-separated. Required when discovery is
+	// enabled.
+	DiscoveryCIDRs []string `koanf:"discovery_cidrs"`
 }
 
 // OTelConfig contains OpenTelemetry configuration.
@@ -2763,6 +2774,22 @@ func applyAgentEnv(cfg *AgentConfig) {
 			cfg.PrintKeys = b
 		}
 	}
+
+	if v := os.Getenv("SP_AGENT_DISCOVERY_ENABLED"); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			cfg.DiscoveryEnabled = b
+		}
+	}
+
+	if v := os.Getenv("SP_AGENT_DISCOVERY_CIDRS"); v != "" {
+		cfg.DiscoveryCIDRs = nil
+
+		for _, part := range strings.Split(v, ",") {
+			if part = strings.TrimSpace(part); part != "" {
+				cfg.DiscoveryCIDRs = append(cfg.DiscoveryCIDRs, part)
+			}
+		}
+	}
 }
 
 // applyDemoEnv reads the multi-word SP_DEMO_* knobs. koanf's env loader
@@ -3644,6 +3671,12 @@ func (c *Config) validateNodeConfig() error {
 	// the very first run — a persisted identity replaces it).
 	if roles.Has(NodeRoleAgent) && c.Agent.ServerURL == "" {
 		return ErrAgentServerURLRequired
+	}
+
+	if c.Agent.DiscoveryEnabled || len(c.Agent.DiscoveryCIDRs) > 0 {
+		if _, err := c.Agent.DiscoveryPrefixes(); err != nil {
+			return err
+		}
 	}
 
 	// Any node that registers a `workers` row (check worker and/or job worker)
