@@ -16483,10 +16483,10 @@ components:
           description: The scan UID (plan UID for chunked scans)
         source:
           type: string
+          example: lan
         region:
           type: string
           description: Private region (@slug) of the scan that found the row; omitted when the server found it. Promotion pins the created check to it.
-          example: lan
         groupKey:
           type: string
           description: Stable grouping identity (IP, container ID, workload uid)
