@@ -194,14 +194,14 @@ Design choices from the code review of 2026-10-21:
 ## To verify
 - The name of the egress package's reserved-prefix table, to reuse it for the config refusal list.
 
-## Open questions
-1. May super admins, and impersonation sessions, launch scans from a customer's agent?
-   **Recommended: no.** A region-bound scan requires an admin membership row in the org; a super
-   admin without one gets 403. `POST /api/v1/orgs/{org}/discovery/scans` joins
-   `impersonationForbiddenRoutes` (`handlers/auth/impersonation_guard.go:48-89`), with a test
-   that impersonation gets `IMPERSONATION_FORBIDDEN`.
-2. SaaS gets LAN discovery for the first time, and today nothing bounds how much a tenant can
-   scan through its free agent (4096 chunks per scan, back to back). Limit it?
-   **Recommended: yes**, a new entitlement `discovery_agent_addresses_per_day` (SaaS default
-   65 536, one /16 a day; unlimited self-hosted), checked at scan start with
-   `422 DISCOVERY_QUOTA_EXCEEDED` (`entitlements/defaults.go:77-84`).
+## Resolved open questions
+Decided by Florent on 2026-10-22:
+1. Super admins and impersonation sessions may not launch scans from a customer's agent. A
+   region-bound scan requires an admin membership row in the org; a super admin without one gets
+   403. `POST /api/v1/orgs/{org}/discovery/scans` joins `impersonationForbiddenRoutes`
+   (`handlers/auth/impersonation_guard.go:48-89`), with a test that impersonation gets
+   `IMPERSONATION_FORBIDDEN`.
+2. Agent discovery is bounded by a new entitlement `discovery_agent_addresses_per_day` (SaaS
+   default 65 536, one /16 a day; unlimited self-hosted), checked at scan start with
+   `422 DISCOVERY_QUOTA_EXCEEDED` (`entitlements/defaults.go:77-84`). Tests: a scan over the
+   remaining daily quota is refused, a self-hosted org is never refused.
