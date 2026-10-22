@@ -50,6 +50,18 @@ func newDiscoveryFixtureWith(t *testing.T, guard *egress.Guard, dockerBlocked bo
 	r.NoError(dbSvc.Initialize(ctx))
 	t.Cleanup(func() { _ = dbSvc.Close() })
 
+	return newDiscoveryFixtureOn(t, dbSvc, guard, dockerBlocked)
+}
+
+// newDiscoveryFixtureOn builds the fixture on an initialized database.
+func newDiscoveryFixtureOn(
+	t *testing.T, dbSvc db.Service, guard *egress.Guard, dockerBlocked bool,
+) *discoveryFixture {
+	t.Helper()
+
+	ctx := t.Context()
+	r := require.New(t)
+
 	creds, err := credentials.NewService(nil, nil)
 	r.NoError(err)
 

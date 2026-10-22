@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -40,10 +42,15 @@ type agentScanFixture struct {
 func newAgentScanFixture(t *testing.T, mode string) *agentScanFixture {
 	t.Helper()
 
+	return newAgentScanFixtureFrom(t, newDiscoveryFixtureWith(t, egress.New(false), true), mode)
+}
+
+func newAgentScanFixtureFrom(t *testing.T, f *discoveryFixture, mode string) *agentScanFixture {
+	t.Helper()
+
 	r := require.New(t)
 	ctx := t.Context()
 
-	f := newDiscoveryFixtureWith(t, egress.New(false), true)
 	f.setRegions(t, "dc1", "dc2")
 
 	tasks := workertasks.NewService(f.dbSvc.DB())
@@ -384,34 +391,69 @@ func TestAgentScanAlreadyRunningGuard(t *testing.T) {
 	r.Equal(http.StatusCreated, rec.Code, "expired chunks do not guard: %s", rec.Body.String())
 }
 
-// The daily agent address quota refuses a scan over what is left; a
-// self-hosted org is never refused; server-run scans are not counted.
+// usedAgentPlan records an agent plan of the org charged with addresses,
+// created at createdAt; retryOf makes it a retry clone of that plan.
+func (f *agentScanFixture) usedAgentPlan(
+	t *testing.T, orgUID, region string, addresses int, createdAt time.Time, retryOf *string,
+) *models.Job {
+	t.Helper()
+
+	job := models.NewJob(&orgUID, string(jobdef.JobTypeNetworkDiscoveryAgentPlan))
+	job.Config = models.JSONMap{"cidrs": []string{"10.9.0.0/16"}, "region": region, "addressCount": addresses}
+	job.Status = models.JobStatusSuccess
+	job.CreatedAt = createdAt
+	job.PreviousJobUID = retryOf
+
+	_, err := f.dbSvc.DB().NewInsert().Model(job).Exec(t.Context())
+	require.NoError(t, err)
+
+	return job
+}
+
+// The daily agent address quota is summed from today's agent plans of the
+// org: it refuses a scan over what is left; yesterday's plans, retry clones,
+// other orgs and audit events are not counted, a canceled plan is; a
+// self-hosted org is never refused.
 func TestAgentScanQuota(t *testing.T) {
 	t.Parallel()
-
-	usedToday := func(t *testing.T, f *agentScanFixture, region string, addresses int) {
-		t.Helper()
-
-		event := models.NewEvent(f.org.UID, models.EventTypeDiscoveryScanStarted, models.ActorTypeUser)
-		event.Payload["region"] = region
-		event.Payload["address_count"] = addresses
-		require.NoError(t, f.dbSvc.CreateEvent(t.Context(), event))
-	}
 
 	t.Run("saas", func(t *testing.T) {
 		t.Parallel()
 
 		r := require.New(t)
 		f := newAgentScanFixture(t, config.DeploymentModeSaaS)
-		usedToday(t, f, "@dc1", 65_400)
-		usedToday(t, f, "", 1_000_000)
+		now := time.Now()
+
+		canceled := f.usedAgentPlan(t, f.org.UID, "@dc1", 65_000, now, nil)
+		_, err := f.dbSvc.DB().NewUpdate().Model((*models.Job)(nil)).
+			Set("deleted_at = ?", now).Where("uid = ?", canceled.UID).Exec(t.Context())
+		r.NoError(err)
+		f.usedAgentPlan(t, f.org.UID, "@dc1", 400, now, nil)
+		f.usedAgentPlan(t, f.org.UID, "@dc1", 1_000_000, now, &canceled.UID)
+		f.usedAgentPlan(t, f.org.UID, "@dc1", 1_000_000, now.Add(-25*time.Hour), nil)
+
+		other := models.NewOrganization("other", "Other Org")
+		r.NoError(f.dbSvc.CreateOrganization(t.Context(), other))
+		f.usedAgentPlan(t, other.UID, "@dc1", 1_000_000, now, nil)
+
+		// The audit trail no longer feeds the quota.
+		event := models.NewEvent(f.org.UID, models.EventTypeDiscoveryScanStarted, models.ActorTypeUser)
+		event.Payload["region"] = "@dc1"
+		event.Payload["address_count"] = 1_000_000
+		r.NoError(f.dbSvc.CreateEvent(t.Context(), event))
 
 		rec := f.do(t, f.admin.UID, http.MethodPost, f.scansPath(), lanScan("@dc1", "10.0.0.0/24"))
 		r.Equal(http.StatusUnprocessableEntity, rec.Code)
 		r.Equal(scantypes.CodeQuotaExceeded, errorCodeOf(t, rec))
+		r.Contains(rec.Body.String(), "65400 used today")
 
 		rec = f.do(t, f.admin.UID, http.MethodPost, f.scansPath(), lanScan("@dc1", "10.0.0.0/25"))
 		r.Equal(http.StatusCreated, rec.Code, "the remaining 136 addresses cover a /25: %s", rec.Body.String())
+
+		// The accepted plan recorded what it is charged with.
+		plan := new(models.Job)
+		r.NoError(f.dbSvc.DB().NewSelect().Model(plan).Where("uid = ?", scanUIDOf(t, rec)).Scan(t.Context()))
+		r.EqualValues(128, plan.Config["addressCount"])
 	})
 
 	t.Run("self-hosted", func(t *testing.T) {
@@ -419,9 +461,71 @@ func TestAgentScanQuota(t *testing.T) {
 
 		r := require.New(t)
 		f := newAgentScanFixture(t, config.DeploymentModeSelfHosted)
-		usedToday(t, f, "@dc1", 10_000_000)
+		f.usedAgentPlan(t, f.org.UID, "@dc1", 10_000_000, time.Now(), nil)
 
 		rec := f.do(t, f.admin.UID, http.MethodPost, f.scansPath(), lanScan("@dc1", "10.0.0.0/16"))
 		r.Equal(http.StatusCreated, rec.Code, rec.Body.String())
 	})
+}
+
+// Concurrent agent-scan starts that together exceed the quota (each a /17,
+// the quota a /16 minus 1000 already used): exactly one is accepted and only
+// its plan exists. Guard, quota and insert are one serialized transaction.
+func TestAgentScanConcurrentStarts(t *testing.T) {
+	t.Parallel()
+
+	runConcurrentStarts(t, newAgentScanFixture(t, config.DeploymentModeSaaS))
+}
+
+func runConcurrentStarts(t *testing.T, f *agentScanFixture) {
+	t.Helper()
+
+	r := require.New(t)
+	f.usedAgentPlan(t, f.org.UID, "@dc1", 1_000, time.Now().Add(-time.Minute), nil)
+
+	const starts = 8
+
+	codes := make(chan int, starts)
+	ready := make(chan struct{})
+
+	var wg sync.WaitGroup
+
+	for i := range starts {
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+
+			<-ready
+
+			cidr := fmt.Sprintf("10.%d.0.0/17", i)
+			codes <- f.do(t, f.admin.UID, http.MethodPost, f.scansPath(), lanScan("@dc1", cidr)).Code
+		}()
+	}
+
+	close(ready)
+	wg.Wait()
+	close(codes)
+
+	accepted := 0
+
+	for code := range codes {
+		switch code {
+		case http.StatusCreated:
+			accepted++
+		case http.StatusConflict, http.StatusUnprocessableEntity:
+		default:
+			r.Failf("unexpected status", "got %d", code)
+		}
+	}
+
+	r.Equal(1, accepted)
+
+	count, err := f.dbSvc.DB().NewSelect().TableExpr("jobs").
+		Where("type = ?", string(jobdef.JobTypeNetworkDiscoveryAgentPlan)).
+		Where("organization_uid = ?", f.org.UID).
+		Where("previous_job_uid IS NULL").
+		Count(t.Context())
+	r.NoError(err)
+	r.Equal(2, count, "the seeded plan and the one accepted start")
 }

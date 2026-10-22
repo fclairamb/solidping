@@ -52,6 +52,9 @@ type PlanConfig struct {
 	CIDRs  []string `json:"cidrs"`
 	Ports  []int    `json:"ports"`
 	Region string   `json:"region"`
+	// AddressCount is how many addresses the CIDRs cover: what the plan
+	// charges against the org's daily agent quota.
+	AddressCount int `json:"addressCount"`
 }
 
 // HostFact is what an agent saw of one host: raw facts, never a check config.

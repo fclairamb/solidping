@@ -16,6 +16,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/audit"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
+	"github.com/fclairamb/solidping/server/internal/db/dblock"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	disc "github.com/fclairamb/solidping/server/internal/discovery"
 	"github.com/fclairamb/solidping/server/internal/discovery/scantypes"
@@ -50,7 +51,6 @@ const (
 	payloadPortCount    = "port_count"
 	auditTargetScan     = "discovery_scan"
 	maxAuditCIDRs       = 32
-	maxQuotaEvents      = 10000
 )
 
 var (
@@ -242,27 +242,11 @@ func (s *Service) StartScan(
 		return nil, err
 	}
 
-	// Guard against a concurrent scan of the same resolved job type. Fan-out scans
-	// (both plan types) also guard on their live chunks, per org.
-	if isPlanType(jobType) {
-		if guardErr := s.checkScanAlreadyRunning(ctx, orgUID); guardErr != nil {
-			return nil, guardErr
-		}
-	} else if guardErr := s.checkAlreadyRunning(ctx, orgUID, jobdef.JobType(jobType)); guardErr != nil {
-		return nil, guardErr
-	}
-
 	summary := summarize(jobConfig)
 
-	if jobType == string(jobdef.JobTypeNetworkDiscoveryAgentPlan) {
-		if quotaErr := s.checkAgentQuota(ctx, orgUID, summary.addresses); quotaErr != nil {
-			return nil, quotaErr
-		}
-	}
-
-	job, err := s.jobSvc.CreateJob(ctx, orgUID, jobType, jobConfig, nil)
+	job, err := s.createScanJob(ctx, orgUID, jobType, jobConfig, summary.addresses)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create discovery scan job: %w", err)
+		return nil, err
 	}
 
 	audit.Record(ctx, s.dbSvc, orgUID, models.EventTypeDiscoveryScanStarted, scanTarget(job), models.JSONMap{
@@ -301,6 +285,65 @@ func summarize(jobConfig json.RawMessage) scanSummary {
 	return scanSummary{cidrs: cfg.CIDRs, ports: cfg.Ports, addresses: addresses}
 }
 
+// createScanJob guards against a concurrent scan, then creates the job. A
+// fan-out scan (both plan types) guards per org on its plan and live chunks,
+// and an agent plan also on the daily address quota: guard, quota and insert
+// run in one transaction under a per-org lock (Postgres: an advisory
+// transaction lock; SQLite: its single connection), so two concurrent starts
+// can never both pass. Other types guard per type, then dedup in CreateJob.
+func (s *Service) createScanJob(
+	ctx context.Context, orgUID, jobType string, jobConfig json.RawMessage, addresses int,
+) (*models.Job, error) {
+	if !isPlanType(jobType) {
+		if guardErr := s.checkAlreadyRunning(ctx, s.db, orgUID, jobdef.JobType(jobType)); guardErr != nil {
+			return nil, guardErr
+		}
+
+		job, err := s.jobSvc.CreateJob(ctx, orgUID, jobType, jobConfig, nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create discovery scan job: %w", err)
+		}
+
+		return job, nil
+	}
+
+	// Resolved before the transaction: on SQLite its single connection is
+	// held by the transaction, and the cap needs no lock.
+	var limit *int
+
+	if jobType == string(jobdef.JobTypeNetworkDiscoveryAgentPlan) {
+		var err error
+		if limit, err = s.agentQuotaLimit(ctx, orgUID); err != nil {
+			return nil, err
+		}
+	}
+
+	job, err := s.jobSvc.CreateJobAdmitted(ctx, orgUID, jobType, jobConfig,
+		func(ctx context.Context, tx bun.Tx) error {
+			if s.isPostgres {
+				if _, lockErr := tx.NewRaw("SELECT pg_advisory_xact_lock(?, hashtext(?))",
+					dblock.ClassDiscoveryScanStart, orgUID).Exec(ctx); lockErr != nil {
+					return fmt.Errorf("lock discovery scan start: %w", lockErr)
+				}
+			}
+
+			if guardErr := s.checkScanAlreadyRunning(ctx, tx, orgUID); guardErr != nil {
+				return guardErr
+			}
+
+			if limit != nil {
+				return s.checkAgentQuota(ctx, tx, orgUID, *limit, addresses)
+			}
+
+			return nil
+		})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create discovery scan job: %w", err)
+	}
+
+	return job, nil
+}
+
 func scanTarget(job *models.Job) audit.Target {
 	return audit.Target{Type: auditTargetScan, UID: job.UID, Name: job.Type}
 }
@@ -310,50 +353,52 @@ func isPlanType(jobType string) bool {
 		jobType == string(jobdef.JobTypeNetworkDiscoveryAgentPlan)
 }
 
-// checkAgentQuota refuses a region-bound scan that would take the org's agents
-// over their daily address quota (discovery_agent_addresses_per_day), counted
-// from today's region-bound discovery.scan_started events. A nil cap
-// (self-hosted) is unlimited.
-func (s *Service) checkAgentQuota(ctx context.Context, orgUID string, addresses int) error {
+// agentQuotaLimit is the org's daily agent-discovery address cap
+// (discovery_agent_addresses_per_day); nil (self-hosted) is unlimited.
+func (s *Service) agentQuotaLimit(ctx context.Context, orgUID string) (*int, error) {
 	if s.entitlements == nil {
-		return nil
+		return nil, nil //nolint:nilnil // nil limit is unlimited
 	}
 
 	resolved, err := s.entitlements.Resolve(ctx, orgUID)
 	if err != nil {
-		return fmt.Errorf("resolve entitlements: %w", err)
+		return nil, fmt.Errorf("resolve entitlements: %w", err)
 	}
 
-	limit := resolved.Limits.MaxDiscoveryAgentAddressesPerDay
-	if limit == nil {
-		return nil
-	}
+	return resolved.Limits.MaxDiscoveryAgentAddressesPerDay, nil
+}
 
+// checkAgentQuota refuses a region-bound scan that would take the org's agents
+// over their daily address limit. Usage is summed from the source of truth:
+// the addressCount of the org's agent plans created today (UTC), canceled ones
+// included (a started scan is charged), retry clones excluded (same scan).
+func (s *Service) checkAgentQuota(ctx context.Context, idb bun.IDB, orgUID string, limit, addresses int) error {
 	now := time.Now().UTC()
 	since := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 
-	events, err := s.dbSvc.ListEvents(ctx, &models.ListEventsFilter{
-		OrganizationUID: orgUID,
-		EventTypes:      []models.EventType{models.EventTypeDiscoveryScanStarted},
-		Since:           &since,
-		Limit:           maxQuotaEvents,
-	})
+	addressExpr := "CAST(json_extract(config, '$.addressCount') AS INTEGER)"
+	if s.isPostgres {
+		addressExpr = "(config->>'addressCount')::bigint"
+	}
+
+	var used int
+
+	err := idb.NewSelect().
+		TableExpr("jobs").
+		ColumnExpr("COALESCE(SUM("+addressExpr+"), 0)").
+		Where("type = ?", string(jobdef.JobTypeNetworkDiscoveryAgentPlan)).
+		Where("organization_uid = ?", orgUID).
+		Where("previous_job_uid IS NULL").
+		Where("created_at >= ?", since).
+		Scan(ctx, &used)
 	if err != nil {
 		return fmt.Errorf("read discovery usage: %w", err)
 	}
 
-	used := 0
-
-	for _, event := range events {
-		if region, _ := event.Payload[payloadRegion].(string); region != "" {
-			used += toInt(event.Payload[payloadAddressCount])
-		}
-	}
-
-	if used+addresses > *limit {
+	if used+addresses > limit {
 		return scantypes.NewError(scantypes.CodeQuotaExceeded, fmt.Sprintf(
 			"agent discovery is limited to %d addresses a day: %d used today, this scan needs %d",
-			*limit, used, addresses))
+			limit, used, addresses))
 	}
 
 	return nil
@@ -378,8 +423,10 @@ func scanJobTypes() []string {
 // checkAlreadyRunning returns ErrAlreadyRunning if a discovery job of the given
 // type is already running for the org. Per-org and per-type so LAN and Freebox
 // runs guard independently.
-func (s *Service) checkAlreadyRunning(ctx context.Context, orgUID string, jobType jobdef.JobType) error {
-	count, err := s.db.NewSelect().
+func (s *Service) checkAlreadyRunning(
+	ctx context.Context, idb bun.IDB, orgUID string, jobType jobdef.JobType,
+) error {
+	count, err := idb.NewSelect().
 		TableExpr("jobs").
 		Where("type = ?", string(jobType)).
 		Where("organization_uid = ?", orgUID).
@@ -412,9 +459,9 @@ func (s *Service) parentJobUIDExpr() string {
 // network_discovery job is pending/running. Children stuck in `running` past
 // staleScanThreshold are ignored so a single crashed worker cannot block all
 // future scans for the org (the pragmatic stand-in for a real reaper).
-func (s *Service) checkScanAlreadyRunning(ctx context.Context, orgUID string) error {
+func (s *Service) checkScanAlreadyRunning(ctx context.Context, idb bun.IDB, orgUID string) error {
 	// Active plan jobs.
-	planCount, err := s.db.NewSelect().
+	planCount, err := idb.NewSelect().
 		TableExpr("jobs").
 		Where("type IN (?)", bun.List([]string{
 			string(jobdef.JobTypeNetworkDiscoveryPlan), string(jobdef.JobTypeNetworkDiscoveryAgentPlan),
@@ -434,7 +481,7 @@ func (s *Service) checkScanAlreadyRunning(ctx context.Context, orgUID string) er
 	// Active child jobs, ignoring children whose updated_at is stale.
 	staleBefore := time.Now().Add(-staleScanThreshold)
 
-	childCount, err := s.db.NewSelect().
+	childCount, err := idb.NewSelect().
 		TableExpr("jobs").
 		Where("type = ?", string(jobdef.JobTypeNetworkDiscovery)).
 		Where("organization_uid = ?", orgUID).
@@ -454,7 +501,7 @@ func (s *Service) checkScanAlreadyRunning(ctx context.Context, orgUID string) er
 	// one under a live lease.
 	now := time.Now()
 
-	taskCount, err := s.db.NewSelect().
+	taskCount, err := idb.NewSelect().
 		TableExpr("worker_tasks").
 		Where("kind = ?", discoverytask.Kind).
 		Where("organization_uid = ?", orgUID).

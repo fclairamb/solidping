@@ -138,7 +138,14 @@ func buildAgentPlan(
 			"no live agent of "+region+" runs discovery: its operator must set SP_AGENT_DISCOVERY_ENABLED")
 	}
 
-	cfgBytes, err := json.Marshal(discoverytask.PlanConfig{CIDRs: cfg.CIDRs, Ports: ports, Region: region})
+	addresses, err := disc.AddressCount(cfg.CIDRs)
+	if err != nil {
+		return "", nil, NewError(CodeInvalidParameters, err.Error())
+	}
+
+	cfgBytes, err := json.Marshal(discoverytask.PlanConfig{
+		CIDRs: cfg.CIDRs, Ports: ports, Region: region, AddressCount: addresses,
+	})
 	if err != nil {
 		return "", nil, fmt.Errorf("encode agent LAN scan config: %w", err)
 	}
