@@ -233,3 +233,64 @@ func StepStateDetails(runUID string, step int, progress map[string]any) models.J
 
 	return details
 }
+
+// PutTaskState stores one worker-task state envelope under
+// `tasks/<uid>/step-state` (append, keep 2: the pointer on the task row, not
+// recency, decides which one is current) and returns its file uid.
+func (s *Service) PutTaskState(
+	ctx context.Context, orgUID, taskUID string, envelope []byte, details models.JSONMap,
+) (string, error) {
+	if len(envelope) > MaxStepStateBytes {
+		return "", ErrAttachmentTooLarge
+	}
+
+	return s.Put(ctx, orgUID, TaskStepStateTopic(taskUID), "task-"+taskUID+"-step-state", envelope, details)
+}
+
+// ReadTaskState returns the bytes of one live state file of a worker task.
+// A file of another task or another org is ErrStepFileMissing.
+func (s *Service) ReadTaskState(ctx context.Context, orgUID, taskUID, fileUID string) ([]byte, error) {
+	if s.files == nil {
+		return nil, errNoFiles
+	}
+
+	file, err := s.files.GetFileByUID(ctx, fileUID)
+	if err != nil || file == nil || file.OrganizationUID != orgUID ||
+		file.Topic == nil || *file.Topic != TaskStepStateTopic(taskUID) {
+		return nil, ErrStepFileMissing
+	}
+
+	reader, err := s.files.OpenContent(ctx, file)
+	if err != nil {
+		return nil, fmt.Errorf("open task state: %w", err)
+	}
+
+	defer func() { _ = reader.Close() }()
+
+	body, err := io.ReadAll(io.LimitReader(reader, MaxAttachmentBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("read task state: %w", err)
+	}
+
+	return body, nil
+}
+
+// PurgeTaskState removes every state file of a worker task (task ended).
+func (s *Service) PurgeTaskState(ctx context.Context, orgUID, taskUID string) error {
+	if s.files == nil {
+		return errNoFiles
+	}
+
+	rows, err := s.files.ListAttachments(ctx, orgUID, TaskStepStateTopic(taskUID))
+	if err != nil {
+		return err
+	}
+
+	for _, row := range rows {
+		if purgeErr := s.files.PurgeFile(ctx, row); purgeErr != nil {
+			return purgeErr
+		}
+	}
+
+	return nil
+}

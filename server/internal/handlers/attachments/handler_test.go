@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/handlers/agentauth"
+
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/agents"
@@ -21,6 +23,14 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/nettrace"
+)
+
+// Signed-request headers, aliased for these tests.
+const (
+	headerAgentUID  = agentauth.HeaderAgentUID
+	headerTimestamp = agentauth.HeaderTimestamp
+	headerNonce     = agentauth.HeaderNonce
+	headerSignature = agentauth.HeaderSignature
 )
 
 const uploadPath = "/api/v1/agent/attachments"

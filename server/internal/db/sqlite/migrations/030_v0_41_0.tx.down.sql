@@ -1,5 +1,8 @@
 -- v0.41.0 — SQLite rollback (parity only; downs are never run in production).
 
+-- SECTION: worker-tasks
+drop table if exists worker_tasks;
+
 -- SECTION: discovered-checks-region
 drop index if exists idx_discovered_checks_identity_active;
 
