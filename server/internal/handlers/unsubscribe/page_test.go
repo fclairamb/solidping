@@ -75,3 +75,29 @@ func TestPages_EnglishUnchanged(t *testing.T) {
 	r.Contains(renderPage(loc, "Unsubscribed", ""),
 		`<html lang="en"><head><meta charset="utf-8"><title>Unsubscribed</title>`)
 }
+
+// TestPages_HostileValuesAreEscaped pins the escaping CodeQL's go/reflected-xss
+// cannot see through loc.THTML: every request-derived value (email, check name,
+// token, suppression uid) reaches the page escaped, in every language.
+func TestPages_HostileValuesAreEscaped(t *testing.T) {
+	t.Parallel()
+
+	const evil = `<script>alert(1)</script>"'`
+
+	for _, lang := range i18n.Supported() {
+		loc := i18n.New(lang, "")
+
+		pages := map[string]string{
+			"choice": choiceBody(loc, evil, evil, evil, evil),
+			"success": successBody(loc, evil, &Result{
+				Email: evil, CheckUID: evil, CheckName: evil, SuppressionUID: evil,
+			}),
+			"document": renderPage(loc, evil, "<p>x</p>"),
+		}
+
+		for name, page := range pages {
+			require.NotContains(t, page, "<script", "%s page in %s", name, lang)
+			require.NotContains(t, page, `"'`, "%s page in %s", name, lang)
+		}
+	}
+}
