@@ -1518,7 +1518,8 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 
 	// Multi-step runs (spec 2026-10-03-03): the run in progress (read), its
 	// cancellation (write: orgGroup refuses viewers) and the crawl reports.
-	checkRunsHandler := checkruns.NewHandler(checkruns.NewService(s.dbService, attachmentsService, s.services.WorkerTasks), s.config)
+	checkRunsHandler := checkruns.NewHandler(
+		checkruns.NewService(s.dbService, attachmentsService, s.services.WorkerTasks), s.config)
 	orgCheckRuns := orgGroup("/orgs/:org/checks/:checkUid")
 	orgCheckRuns.GET("/run", checkRunsHandler.GetRun)
 	orgCheckRuns.DELETE("/run", checkRunsHandler.CancelRun)

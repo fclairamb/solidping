@@ -42,7 +42,19 @@ func v038BulkClaim(ctx context.Context, idb bun.IDB, now time.Time) ([]*models.C
 }
 
 // upBody is the finish body of an "up" run.
-var upBody = json.RawMessage(`{"status":` + strconv.Itoa(int(checkerdef.StatusUp)) + `}`)
+func upBody() json.RawMessage {
+	return json.RawMessage(`{"status":` + strconv.Itoa(int(checkerdef.StatusUp)) + `}`)
+}
+
+// newFindingsCount reads output.newFindings.count.
+func newFindingsCount(t *testing.T, output map[string]any) any {
+	t.Helper()
+
+	newFindings, ok := output["newFindings"].(map[string]any)
+	require.True(t, ok, "the result carries newFindings")
+
+	return newFindings["count"]
+}
 
 // runMaterialization is the engine-agnostic contract of a run's start and
 // end: one task per due crawl job, the job leased to it, released at its end.
@@ -104,7 +116,7 @@ func runMaterialization(t *testing.T, dbSvc db.Service) {
 	r.NoError(dbSvc.RequestCheckRun(ctx, job.UID, parked))
 	r.NotNil(h.job(check).RunRequestedAt)
 
-	r.NoError(h.tasks.Finish(ctx, claim.UID, worker.UID, upBody))
+	r.NoError(h.tasks.Finish(ctx, claim.UID, worker.UID, upBody()))
 
 	released := h.job(check)
 	r.Nil(released.LeaseExpiresAt)
@@ -120,7 +132,7 @@ func runMaterialization(t *testing.T, dbSvc db.Service) {
 	started := time.Now().Add(-3 * time.Hour).UTC()
 	h.setTask(claim.UID, "run_started_at", started)
 
-	r.NoError(h.tasks.Finish(ctx, claim.UID, worker.UID, upBody))
+	r.NoError(h.tasks.Finish(ctx, claim.UID, worker.UID, upBody()))
 
 	released = h.job(check)
 	r.Nil(released.LeaseExpiresAt)
@@ -159,7 +171,7 @@ func TestFullRunWithTheCrawlChecker(t *testing.T) {
 	r.Equal(int(models.ResultStatusDown), *first.Status, "the broken internal link fails the run")
 	r.GreaterOrEqual(first.Output["pagesCrawled"], float64(31))
 	r.NotEmpty(first.Output[OutputKeyReportFileUID])
-	r.EqualValues(1, first.Output["newFindings"].(map[string]any)["count"], "every finding is new on the first run")
+	r.EqualValues(1, newFindingsCount(t, first.Output), "every finding is new on the first run")
 	r.Equal(worker.UID, *first.WorkerUID)
 	r.Equal(region, *first.Region)
 
@@ -175,7 +187,7 @@ func TestFullRunWithTheCrawlChecker(t *testing.T) {
 
 	results = h.results(check, since)
 	r.Len(results, 1)
-	r.EqualValues(0, results[0].Output["newFindings"].(map[string]any)["count"], "the broken link is not new")
+	r.EqualValues(0, newFindingsCount(t, results[0].Output), "the broken link is not new")
 
 	tasks := h.tasksOf(check)
 	r.Len(tasks, 2)

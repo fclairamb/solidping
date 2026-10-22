@@ -350,28 +350,9 @@ func (s *Service) prepare(ctx context.Context, task *models.WorkerTask) (*Claim,
 		return nil, s.terminate(ctx, task, worker, models.WorkerTaskStatusFailed, ErrorStateMissing, true)
 	}
 
-	prepared := &Prepared{}
-
-	if kind.PrepareClaim != nil {
-		prepared, err = kind.PrepareClaim(ctx, task, state)
-		if errors.Is(err, ErrCancelTask) {
-			return nil, s.terminate(ctx, task, worker, models.WorkerTaskStatusCancelled, "", false)
-		}
-
-		if err != nil {
-			// Released at once rather than left to expire: a held slot would
-			// starve the worker for a whole lease. The attempt stays counted, so
-			// a kind that always errors ends on max_attempts.
-			if releaseErr := s.release(ctx, task, worker, task.NotBefore, false); releaseErr != nil {
-				return nil, releaseErr
-			}
-
-			return nil, fmt.Errorf("prepare worker task %s: %w", task.Kind, err)
-		}
-
-		if prepared == nil {
-			prepared = &Prepared{}
-		}
+	prepared, err := s.prepareKind(ctx, kind, task, worker, state)
+	if err != nil || prepared == nil {
+		return nil, err
 	}
 
 	if prepared.DeferUntil != nil {
@@ -390,6 +371,38 @@ func (s *Service) prepare(ctx context.Context, task *models.WorkerTask) (*Claim,
 	}
 
 	return buildClaim(task, state, prepared)
+}
+
+// prepareKind runs the kind's PrepareClaim. It returns (nil, nil) when the
+// task was canceled on the way.
+func (s *Service) prepareKind(
+	ctx context.Context, kind TaskKind, task *models.WorkerTask, worker string, state json.RawMessage,
+) (*Prepared, error) {
+	if kind.PrepareClaim == nil {
+		return &Prepared{}, nil
+	}
+
+	prepared, err := kind.PrepareClaim(ctx, task, state)
+	if errors.Is(err, ErrCancelTask) {
+		return nil, s.terminate(ctx, task, worker, models.WorkerTaskStatusCancelled, "", false)
+	}
+
+	if err != nil {
+		// Released at once rather than left to expire: a held slot would
+		// starve the worker for a whole lease. The attempt stays counted, so
+		// a kind that always errors ends on max_attempts.
+		if releaseErr := s.release(ctx, task, worker, task.NotBefore, false); releaseErr != nil {
+			return nil, releaseErr
+		}
+
+		return nil, fmt.Errorf("prepare worker task %s: %w", task.Kind, err)
+	}
+
+	if prepared == nil {
+		prepared = &Prepared{}
+	}
+
+	return prepared, nil
 }
 
 func buildClaim(task *models.WorkerTask, state json.RawMessage, prepared *Prepared) (*Claim, error) {
@@ -630,28 +643,9 @@ func (s *Service) Step(ctx context.Context, uid, worker string, req StepRequest)
 		return err
 	}
 
-	store, err := s.stateStore()
+	fileUID, err := s.putState(ctx, task, req)
 	if err != nil {
 		return err
-	}
-
-	envelope, err := attachments.EncodeStepState(uid, task.Kind, req.State)
-	if err != nil {
-		return fmt.Errorf("encode worker task state: %w", err)
-	}
-
-	if len(envelope) > attachments.MaxStepStateBytes {
-		return ErrTooLarge
-	}
-
-	fileUID, err := store.PutTaskState(ctx, task.OrganizationUID, uid, envelope,
-		attachments.StepStateDetails(uid, task.SliceCount+1, req.Progress))
-	if err != nil {
-		if errors.Is(err, attachments.ErrAttachmentTooLarge) {
-			return ErrTooLarge
-		}
-
-		return fmt.Errorf("store worker task state: %w", err)
 	}
 
 	current := now()
@@ -682,6 +676,35 @@ func (s *Service) Step(ctx context.Context, uid, worker string, req StepRequest)
 	}
 
 	return nil
+}
+
+// putState stores the next state of a held task and returns its file uid.
+func (s *Service) putState(ctx context.Context, task *models.WorkerTask, req StepRequest) (string, error) {
+	store, err := s.stateStore()
+	if err != nil {
+		return "", err
+	}
+
+	envelope, err := attachments.EncodeStepState(task.UID, task.Kind, req.State)
+	if err != nil {
+		return "", fmt.Errorf("encode worker task state: %w", err)
+	}
+
+	if len(envelope) > attachments.MaxStepStateBytes {
+		return "", ErrTooLarge
+	}
+
+	fileUID, err := store.PutTaskState(ctx, task.OrganizationUID, task.UID, envelope,
+		attachments.StepStateDetails(task.UID, task.SliceCount+1, req.Progress))
+	if errors.Is(err, attachments.ErrAttachmentTooLarge) {
+		return "", ErrTooLarge
+	}
+
+	if err != nil {
+		return "", fmt.Errorf("store worker task state: %w", err)
+	}
+
+	return fileUID, nil
 }
 
 func checkProgress(progress models.JSONMap) error {

@@ -3,9 +3,11 @@ package crawltask
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -262,12 +264,16 @@ func site(t *testing.T, pages int) *httptest.Server {
 		w.Header().Set("Content-Type", "text/html")
 
 		if req.URL.Path == "/" {
-			body := "<html><body>"
+			var body strings.Builder
+
+			body.WriteString("<html><body>")
+
 			for i := range pages {
-				body += fmt.Sprintf(`<a href="/page-%d">p%d</a>`, i, i)
+				fmt.Fprintf(&body, `<a href="/page-%d">p%d</a>`, i, i)
 			}
 
-			_, _ = fmt.Fprint(w, body+`<a href="/missing">gone</a></body></html>`)
+			body.WriteString(`<a href="/missing">gone</a></body></html>`)
+			_, _ = fmt.Fprint(w, body.String())
 
 			return
 		}
@@ -302,7 +308,7 @@ type fakeChecker struct {
 	script []func(in checkerdef.StepInput) (checkerdef.StepOutput, error)
 }
 
-var errFake = fmt.Errorf("fake slice failure")
+var errFake = errors.New("fake slice failure")
 
 func (f *fakeChecker) Type() checkerdef.CheckType           { return checkerdef.CheckTypeCrawl }
 func (f *fakeChecker) Validate(*checkerdef.CheckSpec) error { return nil }
@@ -312,7 +318,9 @@ func (f *fakeChecker) Execute(context.Context, checkerdef.Config) (*checkerdef.R
 	return &checkerdef.Result{Status: checkerdef.StatusUp}, nil
 }
 
-func (f *fakeChecker) Step(_ context.Context, _ checkerdef.Config, in checkerdef.StepInput) (checkerdef.StepOutput, error) {
+func (f *fakeChecker) Step(
+	_ context.Context, _ checkerdef.Config, in checkerdef.StepInput,
+) (checkerdef.StepOutput, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 

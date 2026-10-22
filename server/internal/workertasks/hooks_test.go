@@ -183,12 +183,12 @@ func testKindHooks(t *testing.T, e *env) {
 		task := models.NewWorkerTask(org.UID, hookedKind, region)
 		task.CheckUID = &check.UID
 
-		ok, err := e.svc.CreateIfNone(ctx, tx, task)
+		ok, createErr := e.svc.CreateIfNone(ctx, tx, task)
 		if ok {
 			created = task.UID
 		}
 
-		return err
+		return createErr
 	}
 
 	claim, err = e.svc.Claim(ctx, identity)

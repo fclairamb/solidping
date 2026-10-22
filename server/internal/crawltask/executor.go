@@ -158,9 +158,9 @@ func finish(ctx context.Context, rep tasks.Reporter, out *checkerdef.StepOutput)
 // runStep calls Step under the slice budget plus margin, and gives up on a
 // checker that ignores its context. A panic is the loop's to recover.
 func runStep(
-	ctx context.Context, checker checkerdef.StepChecker, config checkerdef.Config, in checkerdef.StepInput,
+	ctx context.Context, checker checkerdef.StepChecker, config checkerdef.Config, input checkerdef.StepInput,
 ) (checkerdef.StepOutput, error) {
-	stepCtx, cancel := context.WithTimeout(ctx, in.Budget+stepMargin)
+	stepCtx, cancel := context.WithTimeout(ctx, input.Budget+stepMargin)
 	defer cancel()
 
 	type outcome struct {
@@ -178,11 +178,11 @@ func runStep(
 			}
 		}()
 
-		out, err := checker.Step(stepCtx, config, in)
+		out, err := checker.Step(stepCtx, config, input)
 		done <- outcome{out: out, err: err}
 	}()
 
-	timer := time.NewTimer(in.Budget + stepMargin + abandonGrace)
+	timer := time.NewTimer(input.Budget + stepMargin + abandonGrace)
 	defer timer.Stop()
 
 	select {
