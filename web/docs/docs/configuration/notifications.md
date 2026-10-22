@@ -721,6 +721,9 @@ Add a ntfy connection in SolidPing with:
   alert except recoveries, which stay at the default priority.
 - **Access token** (`auth_token`, optional, API only): sent as a bearer token, stored encrypted.
 
+Notifications carry a click-through link to the incident (ntfy's `Click` field) when
+SolidPing's base URL is configured. A program reading the topic gets the incident uid from it.
+
 ### Example
 
 ```
