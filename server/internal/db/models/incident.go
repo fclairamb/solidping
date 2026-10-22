@@ -232,6 +232,12 @@ type ListIncidentsFilter struct {
 	CursorTimestamp *time.Time // Optional: incidents with started_at < this timestamp
 	CursorUID       *string    // Optional: for same timestamp, incidents with UID < this
 
+	// Ascending lists oldest first on (started_at, uid); the cursor then means
+	// "strictly after" and the comparisons flip.
+	Ascending bool
+	// SettledBefore only admits incidents started before this instant.
+	SettledBefore *time.Time
+
 	Limit int // Optional: pagination limit
 }
 

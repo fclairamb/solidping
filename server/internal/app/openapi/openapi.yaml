@@ -2730,9 +2730,24 @@ paths:
         - $ref: "#/components/parameters/CheckUidPath"
         - name: cursor
           in: query
-          description: Cursor for pagination
+          description: >-
+            Opaque keyset cursor; pass the previous response's `pagination.cursor` back
+            verbatim. A cursor that cannot be parsed starts from the first page. With
+            `order=asc` it means "strictly after this row" and the response always carries
+            a cursor for its last row, even on the last page (an empty page returns the
+            cursor it was given), so a consumer stores it and resumes from it later.
           schema:
             type: string
+        - name: order
+          in: query
+          description: >-
+            Sort order on `(created_at, uid)`. `desc` (default) is newest first. `asc` is oldest
+            first and only returns events older than 5 seconds (settle window), so a
+            consumer sees a row at most 5 s late and never skips one.
+          schema:
+            type: string
+            enum: [desc, asc]
+            default: desc
         - name: size
           in: query
           description: Results per page (default 20, max 100)
@@ -3535,9 +3550,25 @@ paths:
           example: "degraded"
         - name: cursor
           in: query
-          description: Cursor for pagination
+          description: >-
+            Opaque keyset cursor; pass the previous response's `pagination.cursor` back
+            verbatim. A cursor that cannot be parsed starts from the first page. With
+            `order=asc` it means "strictly after this row" and the response always carries
+            a cursor for its last row, even on the last page (an empty page returns the
+            cursor it was given), so a consumer stores it and resumes from it later.
           schema:
             type: string
+        - name: order
+          in: query
+          description: >-
+            Sort order on `(started_at, uid)`. `desc` (default) is newest first. `asc` is oldest
+            first and only returns incidents older than 5 seconds (settle window), so a
+            consumer sees a row at most 5 s late and never skips one.
+            `asc` lists new incidents only: changes to existing incidents (acked, resolved, reopened) are events, follow `GET /events?type=incident&order=asc`.
+          schema:
+            type: string
+            enum: [desc, asc]
+            default: desc
         - name: size
           in: query
           description: Results per page (default 20, max 100)
@@ -3609,9 +3640,24 @@ paths:
         - $ref: "#/components/parameters/IncidentUidPath"
         - name: cursor
           in: query
-          description: Cursor for pagination
+          description: >-
+            Opaque keyset cursor; pass the previous response's `pagination.cursor` back
+            verbatim. A cursor that cannot be parsed starts from the first page. With
+            `order=asc` it means "strictly after this row" and the response always carries
+            a cursor for its last row, even on the last page (an empty page returns the
+            cursor it was given), so a consumer stores it and resumes from it later.
           schema:
             type: string
+        - name: order
+          in: query
+          description: >-
+            Sort order on `(created_at, uid)`. `desc` (default) is newest first. `asc` is oldest
+            first and only returns events older than 5 seconds (settle window), so a
+            consumer sees a row at most 5 s late and never skips one.
+          schema:
+            type: string
+            enum: [desc, asc]
+            default: desc
         - name: size
           in: query
           description: Results per page (default 20, max 100)
@@ -4771,9 +4817,24 @@ paths:
             format: date-time
         - name: cursor
           in: query
-          description: Cursor for pagination
+          description: >-
+            Opaque keyset cursor; pass the previous response's `pagination.cursor` back
+            verbatim. A cursor that cannot be parsed starts from the first page. With
+            `order=asc` it means "strictly after this row" and the response always carries
+            a cursor for its last row, even on the last page (an empty page returns the
+            cursor it was given), so a consumer stores it and resumes from it later.
           schema:
             type: string
+        - name: order
+          in: query
+          description: >-
+            Sort order on `(created_at, uid)`. `desc` (default) is newest first. `asc` is oldest
+            first and only returns events older than 5 seconds (settle window), so a
+            consumer sees a row at most 5 s late and never skips one.
+          schema:
+            type: string
+            enum: [desc, asc]
+            default: desc
         - name: size
           in: query
           description: Results per page (default 20, max 100)
