@@ -107,3 +107,8 @@ using MCP can page and resume the same way.
 - Should `order=asc` on events default its starting point to "now" when no cursor and no
   `since` are given (pure tail) instead of the oldest event? **Recommended: no.** Oldest
   first is predictable; a client that wants the tail passes `since=now`.
+
+## Resolved open questions
+
+- Settle window length: 5 s. (autopilot: recommended answer)
+- `order=asc` on events with no cursor and no `since` starts at the oldest event, not at "now"; a client that wants the tail passes `since=now`. (autopilot: recommended answer)
