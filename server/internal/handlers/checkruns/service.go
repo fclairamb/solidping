@@ -5,15 +5,18 @@ package checkruns
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"time"
 
+	"github.com/uptrace/bun"
+
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
-	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/attachments"
+	"github.com/fclairamb/solidping/server/internal/workertasks"
 )
 
 // Errors returned by the service.
@@ -25,20 +28,24 @@ var (
 
 // Store is the attachment side the endpoints need (attachments.Service).
 type Store interface {
-	CheckFileDetails(ctx context.Context, orgUID, checkUID, kind, fileUID string) (models.JSONMap, error)
 	ListCrawlReports(ctx context.Context, orgUID, checkUID string) ([]attachments.Response, error)
-	PurgeStepState(ctx context.Context, orgUID, checkUID string) error
+}
+
+// TaskCanceler cancels a check's worker tasks (workertasks.Service).
+type TaskCanceler interface {
+	Cancel(ctx context.Context, filter workertasks.CancelFilter) (int, error)
 }
 
 // Service implements the endpoints.
 type Service struct {
 	db    db.Service
 	store Store
+	tasks TaskCanceler
 }
 
 // NewService builds the service.
-func NewService(dbSvc db.Service, store Store) *Service {
-	return &Service{db: dbSvc, store: store}
+func NewService(dbSvc db.Service, store Store, tasks TaskCanceler) *Service {
+	return &Service{db: dbSvc, store: store, tasks: tasks}
 }
 
 // Run is the run in progress of a multi-step check, or {"running": false}.
@@ -64,46 +71,45 @@ func (s *Service) resolveCheck(ctx context.Context, orgSlug, identifier string) 
 	return check, nil
 }
 
-// GetRun returns the check's run in progress. Its progress is read from the
-// current state file's details bag.
+// GetRun returns the check's run in progress: its active worker task (spec
+// 2026-10-22-03), with the slices done and the progress of the last one.
 func (s *Service) GetRun(ctx context.Context, orgSlug, identifier string) (*Run, error) {
 	check, err := s.resolveCheck(ctx, orgSlug, identifier)
 	if err != nil {
 		return nil, err
 	}
 
-	jobs, err := s.db.ListCheckJobsByCheckUID(ctx, check.UID)
+	task := new(models.WorkerTask)
+
+	err = s.db.DB().NewSelect().Model(task).
+		Where("check_uid = ?", check.UID).
+		Where("status IN (?)", bun.List([]models.WorkerTaskStatus{
+			models.WorkerTaskStatusPending, models.WorkerTaskStatusClaimed,
+		})).
+		Where("updated_at >= ?", time.Now().Add(-models.WorkerTaskStaleAfter)).
+		OrderExpr("created_at DESC").
+		Limit(1).
+		Scan(ctx)
+	if errors.Is(err, sql.ErrNoRows) {
+		return &Run{Running: false}, nil
+	}
+
 	if err != nil {
-		return nil, fmt.Errorf("list check jobs: %w", err)
+		return nil, fmt.Errorf("load the run in progress: %w", err)
 	}
 
-	for _, job := range jobs {
-		if job.StepRunUID == nil {
-			continue
-		}
-
-		run := &Run{Running: true, RunUID: *job.StepRunUID, StartedAt: job.StepRunStartedAt, Steps: job.StepCount}
-
-		if job.StepStateFileUID != nil {
-			details, detailsErr := s.store.CheckFileDetails(
-				ctx, check.OrganizationUID, check.UID, attachments.KindStepState, *job.StepStateFileUID,
-			)
-			if detailsErr == nil {
-				if progress, ok := details[attachments.DetailKeyProgress].(map[string]any); ok {
-					run.Progress = progress
-				}
-			}
-		}
-
-		return run, nil
-	}
-
-	return &Run{Running: false}, nil
+	return &Run{
+		Running:   true,
+		RunUID:    task.UID,
+		StartedAt: task.RunStartedAt,
+		Steps:     task.SliceCount,
+		Progress:  task.Progress,
+	}, nil
 }
 
-// CancelRun drops the check's run in progress: the step_* columns are cleared,
-// the state files purged and the job scheduled for its next regular tick. A
-// slice still running is fenced out when it tries to save.
+// CancelRun cancels the check's run in progress: its task is canceled (its
+// state purged, a slice still running is fenced out at its next report) and
+// the job is due at its next regular tick.
 func (s *Service) CancelRun(ctx context.Context, orgSlug, identifier string) error {
 	check, err := s.resolveCheck(ctx, orgSlug, identifier)
 	if err != nil {
@@ -114,41 +120,11 @@ func (s *Service) CancelRun(ctx context.Context, orgSlug, identifier string) err
 		return ErrNotMultiStep
 	}
 
-	jobs, err := s.db.ListCheckJobsByCheckUID(ctx, check.UID)
-	if err != nil {
-		return fmt.Errorf("list check jobs: %w", err)
+	if _, err := s.tasks.Cancel(ctx, workertasks.CancelFilter{CheckUID: check.UID}); err != nil {
+		return fmt.Errorf("cancel run: %w", err)
 	}
 
-	basePeriod := time.Duration(check.Period)
-	spread := scheduling.RegionSpread(basePeriod, len(check.Regions), check.RegionSpreadDuration())
-
-	for _, job := range jobs {
-		if job.StepRunUID == nil {
-			continue
-		}
-
-		next := scheduling.NextAligned(
-			time.Now(), basePeriod, time.Duration(job.Period), check.UID, job.Region, check.Regions, spread,
-		)
-
-		_, updateErr := s.db.DB().NewUpdate().
-			Model((*models.CheckJob)(nil)).
-			Set("step_run_uid = NULL").
-			Set("step_run_started_at = NULL").
-			Set("step_count = 0").
-			Set("step_state_file_uid = NULL").
-			Set("step_failures = 0").
-			Set("scheduled_at = ?", next).
-			Set("effective_scheduled_at = ?", next).
-			Set("updated_at = ?", time.Now()).
-			Where("uid = ?", job.UID).
-			Exec(ctx)
-		if updateErr != nil {
-			return fmt.Errorf("cancel run: %w", updateErr)
-		}
-	}
-
-	return s.store.PurgeStepState(ctx, check.OrganizationUID, check.UID)
+	return nil
 }
 
 // ListCrawlReports returns the check's last crawl reports with signed URLs.

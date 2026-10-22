@@ -39,6 +39,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/regions"
 	"github.com/fclairamb/solidping/server/internal/secretref"
 	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
+	"github.com/fclairamb/solidping/server/internal/workertasks"
 )
 
 // ValidateCheckRequest is the request body for the validate check endpoint.
@@ -603,6 +604,9 @@ type Service struct {
 	// checkStatsTTL overrides defaultCheckStatsTTL. Zero = use the default;
 	// only tests set it.
 	checkStatsTTL time.Duration
+	// tasks cancels a crawl's run in progress (SetTaskCanceler). Nil = not
+	// wired: the run is canceled at its next claim.
+	tasks TaskCanceler
 	// now is the injectable clock RegionHealth reads "now" through (spec
 	// 2026-08-24-09), so tests can pin it and assert the exact liveness
 	// boundary instead of racing a live wall clock. Defaults to time.Now in
@@ -667,6 +671,30 @@ func (s *Service) SetDeploymentMode(mode string) {
 // create/update/import refuse a plugin type it disables on cloud regions.
 func (s *Service) SetActivationResolver(resolver *checkerdef.ActivationResolver) {
 	s.activation = resolver
+}
+
+// TaskCanceler cancels a check's worker tasks (workertasks.Service).
+type TaskCanceler interface {
+	Cancel(ctx context.Context, filter workertasks.CancelFilter) (int, error)
+}
+
+// SetTaskCanceler wires the worker-task service, so pausing, deleting or
+// re-configuring a website crawl cancels its run in progress (spec
+// 2026-10-22-03). Unwired, the run is canceled at its next slice's claim.
+func (s *Service) SetTaskCanceler(tasks TaskCanceler) {
+	s.tasks = tasks
+}
+
+// cancelRuns cancels the check's run in progress, if any. Best-effort: an
+// uncanceled run is canceled at its next claim anyway.
+func (s *Service) cancelRuns(ctx context.Context, checkUID string) {
+	if s.tasks == nil {
+		return
+	}
+
+	if _, err := s.tasks.Cancel(ctx, workertasks.CancelFilter{CheckUID: checkUID}); err != nil {
+		slog.WarnContext(ctx, "Failed to cancel the check's run in progress", "check_uid", checkUID, "error", err)
+	}
 }
 
 // SetEnvRefAllow wires the operator allowlist of `${env:NAME}` names
@@ -2828,6 +2856,8 @@ func (s *Service) DeleteCheck(ctx context.Context, orgSlug, identifier string) e
 
 	activeIncidentCount := len(activeIncidents)
 
+	s.cancelRuns(ctx, check.UID)
+
 	// Delete all check jobs for this check
 	existingJobs, err := s.db.ListCheckJobsByCheckUID(ctx, check.UID)
 	if err != nil {
@@ -3279,8 +3309,12 @@ func (s *Service) reconcileCheckJobs(ctx context.Context, check *models.Check, r
 		planWeight = s.entitlements.PlanWeight(ctx, check.OrganizationUID)
 	}
 
-	// If check is disabled, delete all jobs
+	// If check is disabled, delete all jobs (and cancel a crawl's run).
 	if !check.Enabled {
+		if len(existingJobs) > 0 {
+			s.cancelRuns(ctx, check.UID)
+		}
+
 		for _, job := range existingJobs {
 			if err := s.db.DeleteCheckJob(ctx, job.UID); err != nil {
 				return fmt.Errorf("failed to delete check job: %w", err)
@@ -3506,16 +3540,11 @@ func (s *Service) syncExistingJob(
 		Set("updated_at = ?", time.Now()).
 		Where("uid = ?", existing.UID)
 
-	// A multi-step run in progress (spec 2026-10-03-03) was started against
-	// the old config: drop it, the next claim starts fresh.
-	if existing.StepRunUID != nil &&
+	// A crawl run in progress was started against the old config: cancel
+	// it, the next one starts fresh (specs 2026-10-03-03, 2026-10-22-03).
+	if checkerdef.CheckType(existing.Type).IsMultiStep() &&
 		(existing.Type != check.Type || !configEqual(existing.Config, check.Config)) {
-		query = query.
-			Set("step_run_uid = NULL").
-			Set("step_run_started_at = NULL").
-			Set("step_count = 0").
-			Set("step_state_file_uid = NULL").
-			Set("step_failures = 0")
+		s.cancelRuns(ctx, existing.CheckUID)
 	}
 
 	// A type change crossing the multi-step boundary moves the job between
