@@ -225,7 +225,6 @@ require (
 	github.com/SherClockHolmes/webpush-go v1.4.0
 	github.com/a2aproject/a2a-go/v2 v2.7.0
 	github.com/anthropics/anthropic-sdk-go v1.84.0
-	github.com/anthropics/anthropic-sdk-go/v2 v2.0.0
 	github.com/arran4/golang-ical v0.3.8
 	github.com/aws/aws-sdk-go-v2 v1.47.3
 	github.com/aws/aws-sdk-go-v2/config v1.33.9
@@ -256,7 +255,7 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/gookit/color v1.6.3
-	github.com/gosnmp/gosnmp v1.45.0
+	github.com/gosnmp/gosnmp v1.46.0
 	github.com/invopop/jsonschema v0.14.0
 	github.com/jedib0t/go-pretty/v6 v6.8.3
 	github.com/jimlambrt/gldap v0.1.14
@@ -284,7 +283,7 @@ require (
 	github.com/pires/go-proxyproto v0.16.0
 	github.com/pkg/sftp v1.13.11
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2
-	github.com/posthog/posthog-go v1.35.1
+	github.com/posthog/posthog-go v1.35.3
 	github.com/pquerna/otp v1.5.0
 	github.com/prometheus/client_golang v1.25.0
 	github.com/prometheus/client_model v0.6.3
