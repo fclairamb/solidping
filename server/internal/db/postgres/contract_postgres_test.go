@@ -12,7 +12,7 @@ import (
 // postgres_headroom_postgres_test.go).
 const portDialectContract = 15900
 
-// TestDialectContract_Postgres runs the shared behaviour contract on Postgres;
+// TestDialectContract_Postgres runs the shared behavior contract on Postgres;
 // the same contract runs on SQLite in internal/db/sqlite.
 //
 //nolint:paralleltest // shares dev-machine resources (embedded-postgres-go's pwfile extraction) with its siblings

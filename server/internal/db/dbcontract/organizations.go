@@ -8,74 +8,75 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
-func runOrganizations(t *testing.T, f *fixture) {
+//nolint:funlen // linear contract scenario
+func runOrganizations(t *testing.T, fix *fixture) {
 	t.Helper()
 
 	ctx := t.Context()
-	r := require.New(t)
-	svc := f.svc
+	must := require.New(t)
+	svc := fix.svc
 
 	// Previous slugs: a renamed org stays reachable under its old slug until released.
-	r.NoError(svc.AddOrganizationPreviousSlug(ctx, f.org.UID, "old-contract"))
+	must.NoError(svc.AddOrganizationPreviousSlug(ctx, fix.org.UID, "old-contract"))
 	got, err := svc.GetOrganizationByPreviousSlug(ctx, "old-contract")
-	r.NoError(err)
-	r.Equal(f.org.UID, got.UID)
+	must.NoError(err)
+	must.Equal(fix.org.UID, got.UID)
 
-	prev, err := svc.ListOrganizationPreviousSlugs(ctx, f.org.UID)
-	r.NoError(err)
-	r.Len(prev, 1)
+	prev, err := svc.ListOrganizationPreviousSlugs(ctx, fix.org.UID)
+	must.NoError(err)
+	must.Len(prev, 1)
 
-	r.NoError(svc.ReleaseOrganizationPreviousSlugsForOrg(ctx, f.org.UID))
+	must.NoError(svc.ReleaseOrganizationPreviousSlugsForOrg(ctx, fix.org.UID))
 	_, err = svc.GetOrganizationByPreviousSlug(ctx, "old-contract")
-	r.Error(err, "a released slug no longer resolves")
+	must.Error(err, "a released slug no longer resolves")
 
 	// UpdateOrganization renames and the new name is read back.
 	newName := "Renamed Org"
-	r.NoError(svc.UpdateOrganization(ctx, f.org.UID, models.OrganizationUpdate{Name: &newName}))
-	org, err := svc.GetOrganization(ctx, f.org.UID)
-	r.NoError(err)
-	r.Equal(newName, org.Name)
+	must.NoError(svc.UpdateOrganization(ctx, fix.org.UID, models.OrganizationUpdate{Name: &newName}))
+	org, err := svc.GetOrganization(ctx, fix.org.UID)
+	must.NoError(err)
+	must.Equal(newName, org.Name)
 
 	// Organization providers.
-	prov := models.NewOrganizationProvider(f.org.UID, models.ProviderTypeGoogle, "contract-google-id")
-	r.NoError(svc.CreateOrganizationProvider(ctx, prov))
-	provs, err := svc.ListOrganizationProviders(ctx, f.org.UID)
-	r.NoError(err)
-	r.Len(provs, 1)
+	prov := models.NewOrganizationProvider(fix.org.UID, models.ProviderTypeGoogle, "contract-google-id")
+	must.NoError(svc.CreateOrganizationProvider(ctx, prov))
+	provs, err := svc.ListOrganizationProviders(ctx, fix.org.UID)
+	must.NoError(err)
+	must.Len(provs, 1)
 
 	// Membership requests: create, read, update, approve.
 	joiner := models.NewUser("joiner@acme.com")
-	r.NoError(svc.CreateUser(ctx, joiner))
+	must.NoError(svc.CreateUser(ctx, joiner))
 
 	msg := "let me in"
-	req := models.NewMembershipRequest(f.org.UID, joiner.UID, &msg)
-	r.NoError(svc.CreateMembershipRequest(ctx, req))
+	req := models.NewMembershipRequest(fix.org.UID, joiner.UID, &msg)
+	must.NoError(svc.CreateMembershipRequest(ctx, req))
 
 	byUID, err := svc.GetMembershipRequest(ctx, req.UID)
-	r.NoError(err)
-	r.Equal(models.MembershipRequestStatusPending, byUID.Status)
+	must.NoError(err)
+	must.Equal(models.MembershipRequestStatusPending, byUID.Status)
 
-	byPair, err := svc.GetMembershipRequestByOrgAndUser(ctx, f.org.UID, joiner.UID)
-	r.NoError(err)
-	r.Equal(req.UID, byPair.UID)
+	byPair, err := svc.GetMembershipRequestByOrgAndUser(ctx, fix.org.UID, joiner.UID)
+	must.NoError(err)
+	must.Equal(req.UID, byPair.UID)
 
 	req.Status = models.MembershipRequestStatusApproved
-	member := models.NewOrganizationMember(f.org.UID, joiner.UID, models.MemberRoleUser)
-	r.NoError(svc.ApproveMembershipRequest(ctx, req, member))
+	member := models.NewOrganizationMember(fix.org.UID, joiner.UID, models.MemberRoleUser)
+	must.NoError(svc.ApproveMembershipRequest(ctx, req, member))
 
 	approved, err := svc.GetMembershipRequest(ctx, req.UID)
-	r.NoError(err)
-	r.Equal(models.MembershipRequestStatusApproved, approved.Status)
+	must.NoError(err)
+	must.Equal(models.MembershipRequestStatusApproved, approved.Status)
 
-	gotMember, err := svc.GetMemberByUserAndOrg(ctx, joiner.UID, f.org.UID)
-	r.NoError(err)
-	r.Equal(models.MemberRoleUser, gotMember.Role)
+	gotMember, err := svc.GetMemberByUserAndOrg(ctx, joiner.UID, fix.org.UID)
+	must.NoError(err)
+	must.Equal(models.MemberRoleUser, gotMember.Role)
 
 	reason := "changed my mind"
 	req.DecisionReason = &reason
-	r.NoError(svc.UpdateMembershipRequest(ctx, req))
+	must.NoError(svc.UpdateMembershipRequest(ctx, req))
 	updated, err := svc.GetMembershipRequest(ctx, req.UID)
-	r.NoError(err)
-	r.NotNil(updated.DecisionReason)
-	r.Equal(reason, *updated.DecisionReason)
+	must.NoError(err)
+	must.NotNil(updated.DecisionReason)
+	must.Equal(reason, *updated.DecisionReason)
 }

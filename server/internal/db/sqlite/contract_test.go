@@ -8,7 +8,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/dbcontract"
 )
 
-// TestDialectContract runs the shared behaviour contract on SQLite; the same
+// TestDialectContract runs the shared behavior contract on SQLite; the same
 // contract runs on Postgres in internal/db/postgres.
 func TestDialectContract(t *testing.T) {
 	t.Parallel()

@@ -9,55 +9,55 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
-func runMaintenanceWindows(t *testing.T, f *fixture) {
+func runMaintenanceWindows(t *testing.T, fix *fixture) {
 	t.Helper()
 
 	ctx := t.Context()
-	r := require.New(t)
-	svc := f.svc
+	must := require.New(t)
+	svc := fix.svc
 
 	now := time.Now()
-	win := models.NewMaintenanceWindow(f.org.UID, "DB upgrade", now.Add(time.Hour), now.Add(2*time.Hour))
-	r.NoError(svc.CreateMaintenanceWindow(ctx, win))
+	win := models.NewMaintenanceWindow(fix.org.UID, "DB upgrade", now.Add(time.Hour), now.Add(2*time.Hour))
+	must.NoError(svc.CreateMaintenanceWindow(ctx, win))
 
-	got, err := svc.GetMaintenanceWindow(ctx, f.org.UID, win.UID)
-	r.NoError(err)
-	r.Equal("DB upgrade", got.Title)
+	got, err := svc.GetMaintenanceWindow(ctx, fix.org.UID, win.UID)
+	must.NoError(err)
+	must.Equal("DB upgrade", got.Title)
 
-	upcoming, err := svc.ListMaintenanceWindows(ctx, f.org.UID, models.ListMaintenanceWindowsFilter{Status: "upcoming"})
-	r.NoError(err)
-	r.Len(upcoming, 1)
+	upcoming, err := svc.ListMaintenanceWindows(ctx, fix.org.UID, models.ListMaintenanceWindowsFilter{Status: "upcoming"})
+	must.NoError(err)
+	must.Len(upcoming, 1)
 
-	active, err := svc.ListMaintenanceWindows(ctx, f.org.UID, models.ListMaintenanceWindowsFilter{Status: "active"})
-	r.NoError(err)
-	r.Empty(active, "a window starting in an hour is not active yet")
+	active, err := svc.ListMaintenanceWindows(ctx, fix.org.UID, models.ListMaintenanceWindowsFilter{Status: "active"})
+	must.NoError(err)
+	must.Empty(active, "a window starting in an hour is not active yet")
 
-	group := models.NewCheckGroup(f.org.UID, "Maintenance group", "maintenance-group")
-	r.NoError(svc.CreateCheckGroup(ctx, group))
+	group := models.NewCheckGroup(fix.org.UID, "Maintenance group", "maintenance-group")
+	must.NoError(svc.CreateCheckGroup(ctx, group))
 
-	r.NoError(svc.SetMaintenanceWindowChecks(ctx, win.UID, []string{f.check.UID}, []string{group.UID}))
+	must.NoError(svc.SetMaintenanceWindowChecks(ctx, win.UID, []string{fix.check.UID}, []string{group.UID}))
 	links, err := svc.ListMaintenanceWindowChecks(ctx, win.UID)
-	r.NoError(err)
-	r.Len(links, 2)
+	must.NoError(err)
+	must.Len(links, 2)
 
 	forGroup, err := svc.ListMaintenanceWindowsForCheckGroup(ctx, group.UID)
-	r.NoError(err)
-	r.Len(forGroup, 1)
+	must.NoError(err)
+	must.Len(forGroup, 1)
 
 	// Replacing the links drops the group.
-	r.NoError(svc.SetMaintenanceWindowChecks(ctx, win.UID, []string{f.check.UID}, nil))
+	must.NoError(svc.SetMaintenanceWindowChecks(ctx, win.UID, []string{fix.check.UID}, nil))
 	links, err = svc.ListMaintenanceWindowChecks(ctx, win.UID)
-	r.NoError(err)
-	r.Len(links, 1)
+	must.NoError(err)
+	must.Len(links, 1)
 
 	title := "DB upgrade (extended)"
 	end := now.Add(3 * time.Hour)
-	r.NoError(svc.UpdateMaintenanceWindow(ctx, win.UID, models.MaintenanceWindowUpdate{Title: &title, EndAt: &end}))
-	got, err = svc.GetMaintenanceWindow(ctx, f.org.UID, win.UID)
-	r.NoError(err)
-	r.Equal(title, got.Title)
+	must.NoError(svc.UpdateMaintenanceWindow(ctx, win.UID, models.MaintenanceWindowUpdate{Title: &title, EndAt: &end}))
+	got, err = svc.GetMaintenanceWindow(ctx, fix.org.UID, win.UID)
+	must.NoError(err)
+	must.Equal(title, got.Title)
 
-	r.NoError(svc.DeleteMaintenanceWindow(ctx, f.org.UID, win.UID))
-	_, err = svc.GetMaintenanceWindow(ctx, f.org.UID, win.UID)
-	r.Error(err)
+	must.NoError(svc.DeleteMaintenanceWindow(ctx, fix.org.UID, win.UID))
+	_, err = svc.GetMaintenanceWindow(ctx, fix.org.UID, win.UID)
+	must.Error(err)
 }

@@ -215,7 +215,8 @@ the PR layer.
 
 ## Coverage target
 
-The backend target is 80% of hand-written statements, measured on the Postgres
+The backend target is 90% of hand-written statements (the enforced floor is
+85%, the last measured value, until the remaining gap closes), measured on the Postgres
 layer and enforced by the `backend-postgres` job through `COVERAGE_MIN`
 (ratchet rule: raise it to the last measured value, never lower it). Frontend
 coverage (dash0, status0) is report-only, with no threshold. Details and the

@@ -8,78 +8,82 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
-func runSLOs(t *testing.T, f *fixture) {
+//nolint:funlen // linear contract scenario
+func runSLOs(t *testing.T, fix *fixture) {
 	t.Helper()
 
 	ctx := t.Context()
-	r := require.New(t)
-	svc := f.svc
+	must := require.New(t)
+	svc := fix.svc
 
-	slo := models.NewSLO(f.org.UID, "API availability", "api-availability", 99.9)
-	slo.CheckUID = &f.check.UID
-	r.NoError(svc.CreateSLO(ctx, slo))
+	slo := models.NewSLO(fix.org.UID, "API availability", "api-availability", 99.9)
+	slo.CheckUID = &fix.check.UID
+	must.NoError(svc.CreateSLO(ctx, slo))
 
-	got, err := svc.GetSLO(ctx, f.org.UID, slo.UID)
-	r.NoError(err)
-	r.InDelta(99.9, got.TargetPct, 0.0001)
+	got, err := svc.GetSLO(ctx, fix.org.UID, slo.UID)
+	must.NoError(err)
+	must.InDelta(99.9, got.TargetPct, 0.0001)
 
-	bySlug, err := svc.GetSLOBySlug(ctx, f.org.UID, "api-availability")
-	r.NoError(err)
-	r.Equal(slo.UID, bySlug.UID)
+	bySlug, err := svc.GetSLOBySlug(ctx, fix.org.UID, "api-availability")
+	must.NoError(err)
+	must.Equal(slo.UID, bySlug.UID)
 
-	all, err := svc.ListSLOs(ctx, f.org.UID, models.ListSLOsFilter{})
-	r.NoError(err)
-	r.Len(all, 1)
+	all, err := svc.ListSLOs(ctx, fix.org.UID, models.ListSLOsFilter{})
+	must.NoError(err)
+	must.Len(all, 1)
 
-	forCheck, err := svc.ListSLOs(ctx, f.org.UID, models.ListSLOsFilter{CheckUID: f.check.UID, EnabledOnly: true, Limit: 5})
-	r.NoError(err)
-	r.Len(forCheck, 1)
+	forCheck, err := svc.ListSLOs(ctx, fix.org.UID, models.ListSLOsFilter{
+		CheckUID: fix.check.UID, EnabledOnly: true, Limit: 5,
+	})
+	must.NoError(err)
+	must.Len(forCheck, 1)
 
-	forChecks, err := svc.ListSLOsForChecks(ctx, f.org.UID, []string{f.check.UID})
-	r.NoError(err)
-	r.Len(forChecks, 1)
+	forChecks, err := svc.ListSLOsForChecks(ctx, fix.org.UID, []string{fix.check.UID})
+	must.NoError(err)
+	must.Len(forChecks, 1)
 
 	target := 99.5
-	r.NoError(svc.UpdateSLO(ctx, slo.UID, models.SLOUpdate{TargetPct: &target}))
-	got, err = svc.GetSLO(ctx, f.org.UID, slo.UID)
-	r.NoError(err)
-	r.InDelta(target, got.TargetPct, 0.0001)
+	must.NoError(svc.UpdateSLO(ctx, slo.UID, models.SLOUpdate{TargetPct: &target}))
+	got, err = svc.GetSLO(ctx, fix.org.UID, slo.UID)
+	must.NoError(err)
+	must.InDelta(target, got.TargetPct, 0.0001)
 
 	// Burn-rate alert policies.
-	policy := models.NewSLOAlertPolicy(f.org.UID, slo.UID, &models.SLOAlertPolicyDefault{
+	policy := models.NewSLOAlertPolicy(fix.org.UID, slo.UID, &models.SLOAlertPolicyDefault{
 		Kind: "fast", LongWindowSeconds: 3600, ShortWindowSeconds: 300, Threshold: 14.4, Severity: "critical",
 	})
-	r.NoError(svc.CreateSLOAlertPolicy(ctx, policy))
+	must.NoError(svc.CreateSLOAlertPolicy(ctx, policy))
 
-	gotPolicy, err := svc.GetSLOAlertPolicy(ctx, f.org.UID, policy.UID)
-	r.NoError(err)
-	r.False(gotPolicy.Enabled, "policies start disabled")
+	gotPolicy, err := svc.GetSLOAlertPolicy(ctx, fix.org.UID, policy.UID)
+	must.NoError(err)
+	must.False(gotPolicy.Enabled, "policies start disabled")
 
 	policies, err := svc.ListSLOAlertPolicies(ctx, slo.UID)
-	r.NoError(err)
-	r.Len(policies, 1)
+	must.NoError(err)
+	must.Len(policies, 1)
 
 	enabled, err := svc.ListEnabledSLOAlertPolicies(ctx, 10)
-	r.NoError(err)
-	r.Empty(enabled)
+	must.NoError(err)
+	must.Empty(enabled)
 
 	on := true
 	threshold := 10.0
-	r.NoError(svc.UpdateSLOAlertPolicy(ctx, policy.UID, &models.SLOAlertPolicyUpdate{Enabled: &on, Threshold: &threshold}))
+	update := &models.SLOAlertPolicyUpdate{Enabled: &on, Threshold: &threshold}
+	must.NoError(svc.UpdateSLOAlertPolicy(ctx, policy.UID, update))
 
 	enabled, err = svc.ListEnabledSLOAlertPolicies(ctx, 10)
-	r.NoError(err)
-	r.Len(enabled, 1)
-	r.InDelta(threshold, enabled[0].Threshold, 0.0001)
+	must.NoError(err)
+	must.Len(enabled, 1)
+	must.InDelta(threshold, enabled[0].Threshold, 0.0001)
 
 	// No burn incident is open yet.
-	burn, err := svc.ListActiveBurnIncidentsForSLOs(ctx, f.org.UID, []string{slo.UID})
-	r.NoError(err)
-	r.Empty(burn)
+	burn, err := svc.ListActiveBurnIncidentsForSLOs(ctx, fix.org.UID, []string{slo.UID})
+	must.NoError(err)
+	must.Empty(burn)
 	_, err = svc.FindActiveBurnIncident(ctx, slo.UID, policy.UID)
-	r.Error(err)
+	must.Error(err)
 
-	r.NoError(svc.DeleteSLO(ctx, f.org.UID, slo.UID))
-	_, err = svc.GetSLO(ctx, f.org.UID, slo.UID)
-	r.Error(err)
+	must.NoError(svc.DeleteSLO(ctx, fix.org.UID, slo.UID))
+	_, err = svc.GetSLO(ctx, fix.org.UID, slo.UID)
+	must.Error(err)
 }
