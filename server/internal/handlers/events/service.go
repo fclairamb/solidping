@@ -3,14 +3,14 @@ package events
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/utils/clock"
 )
 
 // Service errors.
@@ -35,12 +35,20 @@ var RestrictedEventTypePrefixes = []string{"auth"}
 
 // Service provides event listing functionality.
 type Service struct {
-	db db.Service
+	db    db.Service
+	clock clock.Clock
 }
 
 // NewService creates a new event service.
 func NewService(dbService db.Service) *Service {
-	return &Service{db: dbService}
+	return &Service{db: dbService, clock: clock.Real{}}
+}
+
+// WithClock replaces the clock used for the settle window of forward listings.
+func (s *Service) WithClock(clk clock.Clock) *Service {
+	s.clock = clk
+
+	return s
 }
 
 // Caller identifies the authenticated principal reading the trail. The role is
@@ -76,8 +84,10 @@ type ListEventsOptions struct {
 	Since    *time.Time
 	Until    *time.Time
 	Cursor   string
-	Size     int
-	Caller   Caller
+	// Ascending lists oldest first; the cursor then means "strictly after".
+	Ascending bool
+	Size      int
+	Caller    Caller
 }
 
 // EventResponse represents an event in API responses.
@@ -179,9 +189,15 @@ func (s *Service) ListEvents(
 		filter.EventTypes = append(filter.EventTypes, models.EventType(typeStr))
 	}
 
-	if ts, uid, ok := DecodeCursor(opts.Cursor); ok {
+	if ts, uid, ok := base.DecodeCursor(opts.Cursor); ok {
 		filter.CursorTimestamp = &ts
 		filter.CursorUID = &uid
+	}
+
+	if opts.Ascending {
+		settled := s.clock.Now().Add(-base.SettleWindow)
+		filter.Ascending = true
+		filter.SettledBefore = &settled
 	}
 
 	events, err := s.db.ListEvents(ctx, filter)
@@ -208,10 +224,15 @@ func (s *Service) ListEvents(
 		response.Data = append(response.Data, toResponse(evt, actors, isAdmin))
 	}
 
-	// Set cursor if there are more results
-	if hasMore && len(events) > 0 {
+	switch {
+	case len(events) > 0 && (hasMore || opts.Ascending):
+		// Forward mode always hands out a cursor, even on the last page, so
+		// the consumer can resume from it.
 		lastEvent := events[len(events)-1]
-		response.Pagination.Cursor = EncodeCursor(lastEvent.CreatedAt, lastEvent.UID)
+		response.Pagination.Cursor = base.EncodeCursor(lastEvent.CreatedAt, lastEvent.UID)
+	case opts.Ascending:
+		// An empty page returns the cursor it was given: no lost position.
+		response.Pagination.Cursor = opts.Cursor
 	}
 
 	return response, nil
@@ -292,47 +313,4 @@ func (s *Service) resolveActors(ctx context.Context, events []*models.Event) map
 	}
 
 	return actors
-}
-
-// cursorSeparator splits the two halves of an opaque cursor.
-const cursorSeparator = "|"
-
-// EncodeCursor builds the opaque keyset cursor for the last row on a page.
-//
-// It carries BOTH halves of the sort key (created_at, uid) because the ordering
-// is not unique on created_at alone — several events can share a timestamp to
-// the microsecond, and a timestamp-only cursor would either repeat or skip them
-// at a page boundary. Before this the endpoint returned a bare UID and the
-// service ignored it entirely, so "next page" silently returned page 1 forever.
-func EncodeCursor(createdAt time.Time, uid string) string {
-	raw := createdAt.UTC().Format(time.RFC3339Nano) + cursorSeparator + uid
-
-	return base64.RawURLEncoding.EncodeToString([]byte(raw))
-}
-
-// DecodeCursor parses a cursor produced by EncodeCursor. Anything it cannot
-// parse — including the legacy bare-UID cursors that used to be handed out —
-// reports !ok, and the caller starts from the first page. A malformed cursor is
-// a client bug, not a reason to 500.
-func DecodeCursor(cursor string) (time.Time, string, bool) {
-	if cursor == "" {
-		return time.Time{}, "", false
-	}
-
-	decoded, err := base64.RawURLEncoding.DecodeString(cursor)
-	if err != nil {
-		return time.Time{}, "", false
-	}
-
-	parts := strings.SplitN(string(decoded), cursorSeparator, 2)
-	if len(parts) != 2 || parts[1] == "" {
-		return time.Time{}, "", false
-	}
-
-	ts, err := time.Parse(time.RFC3339Nano, parts[0])
-	if err != nil {
-		return time.Time{}, "", false
-	}
-
-	return ts, parts[1], true
 }

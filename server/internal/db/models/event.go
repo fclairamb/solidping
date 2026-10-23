@@ -459,6 +459,13 @@ type ListEventsFilter struct {
 	CursorTimestamp *time.Time // Optional: events with created_at < this timestamp
 	CursorUID       *string    // Optional: for same timestamp, events with UID < this
 
+	// Ascending lists oldest first on (created_at, uid); the cursor then means
+	// "strictly after" and the comparisons flip.
+	Ascending bool
+	// SettledBefore only admits events created before this instant (forward
+	// listings hold back rows that may still be committed out of order).
+	SettledBefore *time.Time
+
 	Limit int // Optional: pagination limit
 }
 

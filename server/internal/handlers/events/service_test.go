@@ -10,6 +10,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
+	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/handlers/events"
 )
 
@@ -370,15 +371,15 @@ func TestCursorRoundTripAndGarbageTolerance(t *testing.T) {
 	r := require.New(t)
 
 	at := time.Date(2026, time.August, 21, 9, 30, 15, 123456789, time.UTC)
-	cursor := events.EncodeCursor(at, "abc-123")
+	cursor := base.EncodeCursor(at, "abc-123")
 
-	ts, uid, ok := events.DecodeCursor(cursor)
+	ts, uid, ok := base.DecodeCursor(cursor)
 	r.True(ok)
 	r.Equal("abc-123", uid)
 	r.True(at.Equal(ts))
 
 	for _, garbage := range []string{"", "not-base64!!", "YWJj", "1e5b9d20-0000-0000-0000-000000000000"} {
-		_, _, ok := events.DecodeCursor(garbage)
+		_, _, ok := base.DecodeCursor(garbage)
 		r.Falsef(ok, "%q must decode as 'no cursor', not as a usable position", garbage)
 	}
 }

@@ -57,6 +57,7 @@ func TestIncidentHandlerEndpoints(t *testing.T) {
 		{"list bad kind", http.MethodGet, "/orgs/" + org + "/incidents?kind=bogus", "", http.StatusBadRequest},
 		{"list bad since", http.MethodGet, "/orgs/" + org + "/incidents?since=x", "", http.StatusBadRequest},
 		{"list bad until", http.MethodGet, "/orgs/" + org + "/incidents?until=x", "", http.StatusBadRequest},
+		{"list bad order", http.MethodGet, "/orgs/" + org + "/incidents?order=bogus", "", http.StatusBadRequest},
 		{"list bad limit", http.MethodGet, "/orgs/" + org + "/incidents?limit=x", "", http.StatusBadRequest},
 		{"get", http.MethodGet, inc + "?with=check,members", "", http.StatusOK},
 		{"get missing", http.MethodGet, "/orgs/" + org + "/incidents/nope", "", http.StatusNotFound},
