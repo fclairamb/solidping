@@ -127,3 +127,8 @@ squash-merge closes it. When the spec is archived to `specs/done/`, verify the i
 closed and, if the merge did not close it, close it by hand:
 
     gh issue close 647 --comment "Implemented by <PR or commit>; spec: <archived spec path>"
+
+## Resolved open questions
+
+1. Opt-in on the API (`resolveOpenIncidents`, default false), default-checked in the UI. (autopilot: recommended answer)
+2. New resolution type `check_disabled`. (autopilot: recommended answer)
