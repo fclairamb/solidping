@@ -61,6 +61,16 @@ func Run(t *testing.T, svc db.Service) {
 		{"escalation_policies", runEscalation},
 		{"on_call", runOnCall},
 		{"check_dependencies", runCheckDependencies},
+		{"providers", runProviders},
+		{"user_tokens", runUserTokens},
+		{"passkeys", runPasskeys},
+		{"system_parameters", runSystemParameters},
+		{"entitlements", runEntitlements},
+		{"status_pages", runStatusPages},
+		{"check_connections", runCheckConnections},
+		{"incident_members", runIncidentMembers},
+		{"events_and_labels", runEventsAndLabels},
+		{"bulk_results", runBulkResults},
 	}
 
 	for _, g := range groups {
