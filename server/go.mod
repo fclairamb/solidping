@@ -281,9 +281,9 @@ require (
 	github.com/oapi-codegen/runtime v1.8.0
 	github.com/ohler55/ojg v1.28.7
 	github.com/pires/go-proxyproto v0.16.0
-	github.com/pkg/sftp v1.13.11
+	github.com/pkg/sftp v1.13.12
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2
-	github.com/posthog/posthog-go v1.36.2
+	github.com/posthog/posthog-go v1.37.0
 	github.com/pquerna/otp v1.5.0
 	github.com/prometheus/client_golang v1.25.0
 	github.com/prometheus/client_model v0.6.3
