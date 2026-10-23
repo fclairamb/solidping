@@ -185,8 +185,8 @@ func buildWebPushEventContent(payload *Payload, checkName string) (string, strin
 		return ref + "[DOWN] " + checkName,
 			fmt.Sprintf("%s is down. Cause: %s", checkName, getFailureReason(payload.Incident))
 	case eventTypeIncidentResolved:
-		if ResolvedByCheckDeletion(payload.Incident) {
-			return ref + checkDeletedTag + checkName, checkDeletedSentence
+		if closedWithoutRecovery(payload.Incident) {
+			return ref + closedTag(payload.Incident) + checkName, closedSentence(payload.Incident)
 		}
 
 		return ref + recoveredTag + checkName,

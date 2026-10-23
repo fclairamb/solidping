@@ -755,6 +755,13 @@
     "disable": "Deaktivieren",
     "enableToast": "Prüfung aktiviert",
     "disableToast": "Prüfung deaktiviert",
+    "disableDialog": {
+      "title": "Diese Prüfung deaktivieren?",
+      "description_one": "Diese Prüfung hat {{count}} offenen Vorfall.",
+      "description_other": "Diese Prüfung hat {{count}} offene Vorfälle.",
+      "resolve_one": "Offenen Vorfall ebenfalls lösen",
+      "resolve_other": "Offene Vorfälle ebenfalls lösen"
+    },
     "toggleFailed": "Aktualisieren der Prüfung fehlgeschlagen",
     "descriptionLabel": "Beschreibung",
     "typeLabel": "Typ",

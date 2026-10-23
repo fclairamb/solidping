@@ -20,6 +20,7 @@
     "down": "Caído",
     "recovered": "Recuperado",
     "checkDeleted": "Comprobación eliminada",
+    "checkDisabled": "Comprobación desactivada",
     "escalated": "Escalado",
     "reopened": "Reabierto",
     "comment": "Comentario",
@@ -94,6 +95,10 @@
     "deletedTitle": "Se eliminó {check}",
     "deletedPreheader": "Se eliminó {check}, así que su incidente se cerró.",
     "deletedBody": "Se eliminó la comprobación, así que este incidente se cerró. Eso no significa que el servicio se haya recuperado.",
+    "disabledSubject": "Se desactivó {check}, incidente cerrado",
+    "disabledTitle": "Se desactivó {check}",
+    "disabledPreheader": "Se desactivó {check}, por lo que su incidente se cerró.",
+    "disabledBody": "La comprobación se desactivó, por lo que este incidente se cerró. No necesariamente se recuperó.",
     "textTitle": "{check} se ha recuperado",
     "textBody": "El incidente de {check} se ha resuelto."
   },

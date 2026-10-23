@@ -12285,6 +12285,14 @@ components:
           type: object
         enabled:
           type: boolean
+        resolveOpenIncidents:
+          type: boolean
+          description: >-
+            Close the check's open incidents (outage and degraded) in the same
+            request, with resolution type `check_disabled`, so they do not stay
+            open on a check that no longer runs. Only valid together with
+            `enabled: false`; otherwise a `VALIDATION_ERROR`. Defaults to false:
+            incidents stay open.
         period:
           type: string
         regions:

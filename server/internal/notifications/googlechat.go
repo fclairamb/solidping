@@ -263,8 +263,8 @@ func (s *GoogleChatSender) buildWidgets(payload *Payload, checkName string) []go
 }
 
 func (s *GoogleChatSender) resolvedSubtitle(payload *Payload) string {
-	if ResolvedByCheckDeletion(payload.Incident) {
-		return checkDeletedSentence
+	if closedWithoutRecovery(payload.Incident) {
+		return closedSentence(payload.Incident)
 	}
 
 	if payload.Incident.ResolvedAt != nil {
