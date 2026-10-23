@@ -17,7 +17,8 @@ func listIncidentsDef() ToolDefinition {
 	return ToolDefinition{
 		Name: toolListIncidents,
 		Description: "List internal incidents (active or resolved) for the organization, filtered by " +
-			"check, state, or time range. Returns {data, pagination} — total, size, and a cursor " +
+			"check, state, or time range; the filters combine with AND. Returns {data, pagination} — total, size, " +
+			"and a cursor " +
 			"naming the last row of a full page; the cursor is not read back on the next call yet, " +
 			"so move forward by narrowing since/until. Use diagnose_check for one check's " +
 			"incidents plus current health in one call, and get_status_page include=incidents for the " +
@@ -111,7 +112,7 @@ func (h *Handler) toolListIncidents(ctx context.Context, orgSlug string, args ma
 func getIncidentDef() ToolDefinition {
 	return ToolDefinition{
 		Name: toolGetIncident,
-		Description: "Get a single incident by UID; an unknown UID fails with an \"incident not " +
+		Description: "Get a single incident by UID (not by slug); an unknown UID fails with an \"incident not " +
 			"found\" error. Returns the incident object — number, state, timestamps, failure " +
 			"counts — plus the check with with=check and up to 50 timeline events with " +
 			"with=events. include=[\"notifications\"] adds the incident's notification attempts " +
