@@ -202,6 +202,10 @@ func telegramResolvedDetail(incident *models.Incident) string {
 		return "closed because the check was deleted"
 	}
 
+	if incident.ResolutionType != nil && *incident.ResolutionType == models.ResolutionTypeCheckDisabled {
+		return "closed because the check was disabled"
+	}
+
 	if incident.ResolvedAt == nil {
 		return ""
 	}

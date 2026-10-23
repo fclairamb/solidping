@@ -337,6 +337,9 @@ func updateCheckDef() ToolDefinition {
 			schemaKeyEnabled: boolProp(
 				"Toggle whether the check runs. Set to false to pause the check, true to resume it.",
 			),
+			"resolveOpenIncidents": boolProp(
+				"With enabled:false, also close the check's open incidents (resolution type check_disabled).",
+			),
 			schemaKeyPeriod: stringProp(
 				"New check interval as HH:MM:SS, e.g. \"00:00:30\" for 30 seconds.",
 			),
@@ -392,6 +395,7 @@ func (h *Handler) toolUpdateCheck(ctx context.Context, orgSlug string, args map[
 		req.RegionPool = &v
 	}
 	req.Enabled = getBoolArg(args, schemaKeyEnabled)
+	req.ResolveOpenIncidents = getBoolArg(args, "resolveOpenIncidents")
 	if v := getStringArg(args, schemaKeyPeriod); v != "" {
 		req.Period = &v
 	}

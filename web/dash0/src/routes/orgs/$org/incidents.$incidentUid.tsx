@@ -1223,7 +1223,9 @@ function IncidentDetailPage() {
                   detail={
                     incident.resolutionType === "check_deleted"
                       ? t("timeline.resolvedCheckDeleted")
-                      : undefined
+                      : incident.resolutionType === "check_disabled"
+                        ? t("timeline.resolvedCheckDisabled")
+                        : undefined
                   }
                   detailTestId="incident-timeline-resolved-reason"
                 />

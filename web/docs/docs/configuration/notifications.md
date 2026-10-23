@@ -968,7 +968,7 @@ specification, so receivers can verify it came from SolidPing.
 
 - `resolvedAt` and `durationSeconds` are `null` while the incident is active.
 - `resolutionType` (`auto`, `manual`, `expired`, `escalated`, `disabled`,
-  `check_deleted`) is only present once the incident is resolved.
+  `check_deleted`, `check_disabled`) is only present once the incident is resolved.
 - `acknowledgedAt` is only present once the incident has been acknowledged.
 - `recoveryPeriodSeconds` is `null` until the incident has relapsed at least once.
 - `regions` holds the slugs (not labels) of the regions that saw the failure,

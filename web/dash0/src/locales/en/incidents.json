@@ -193,6 +193,7 @@
     "reopenedRelapse": "Reopened (relapse #{{count}})",
     "resolved": "Resolved",
     "resolvedCheckDeleted": "Closed because the check was deleted",
+    "resolvedCheckDisabled": "Closed because the check was disabled",
     "monitoringInterrupted": "Monitoring interrupted",
     "monitoringInterruptedSince": "Monitoring interrupted since {{time}}",
     "monitoringResumed": "Monitoring resumed",

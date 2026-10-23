@@ -281,8 +281,8 @@ func (s *PushoverSender) buildDownBody(payload *Payload, checkName string) strin
 func (s *PushoverSender) buildResolvedBody(payload *Payload, checkName string) string {
 	var builder strings.Builder
 
-	if ResolvedByCheckDeletion(payload.Incident) {
-		builder.WriteString(checkDeletedSentence + "\n")
+	if closedWithoutRecovery(payload.Incident) {
+		builder.WriteString(closedSentence(payload.Incident) + "\n")
 	}
 
 	fmt.Fprintf(&builder, "<b>Check:</b> %s (%s)\n", checkName, payload.Check.Type)

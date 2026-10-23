@@ -316,8 +316,8 @@ func (s *MatrixSender) downLines(payload *Payload, checkName string) []string {
 func (s *MatrixSender) resolvedLines(payload *Payload, checkName string) []string {
 	lines := []string{fmt.Sprintf("Check: %s (%s)", checkName, payload.Check.Type)}
 
-	if ResolvedByCheckDeletion(payload.Incident) {
-		lines = append([]string{checkDeletedSentence}, lines...)
+	if closedWithoutRecovery(payload.Incident) {
+		lines = append([]string{closedSentence(payload.Incident)}, lines...)
 	}
 
 	if payload.Incident.ResolvedAt != nil {

@@ -277,8 +277,8 @@ func (s *MattermostSender) buildResolvedFields(payload *Payload, checkName strin
 		{Short: true, Title: mmFieldCheck, Value: checkName},
 	}
 
-	if ResolvedByCheckDeletion(payload.Incident) {
-		fields = append(fields, mattermostField{Short: false, Title: "Reason", Value: checkDeletedSentence})
+	if closedWithoutRecovery(payload.Incident) {
+		fields = append(fields, mattermostField{Short: false, Title: "Reason", Value: closedSentence(payload.Incident)})
 	}
 
 	if payload.Incident.ResolvedAt != nil {

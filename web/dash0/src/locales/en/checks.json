@@ -799,6 +799,13 @@
     "disable": "Disable",
     "enableToast": "Check enabled",
     "disableToast": "Check disabled",
+    "disableDialog": {
+      "title": "Disable this check?",
+      "description_one": "This check has {{count}} open incident.",
+      "description_other": "This check has {{count}} open incidents.",
+      "resolve_one": "Also resolve the open incident",
+      "resolve_other": "Also resolve the open incidents"
+    },
     "toggleFailed": "Failed to update check",
     "descriptionLabel": "Description",
     "typeLabel": "Type",

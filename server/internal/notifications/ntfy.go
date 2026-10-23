@@ -230,8 +230,8 @@ func (s *NtfySender) buildDownBody(payload *Payload, checkName string) string {
 func (s *NtfySender) buildResolvedBody(payload *Payload, checkName string) string {
 	var builder strings.Builder
 
-	if ResolvedByCheckDeletion(payload.Incident) {
-		builder.WriteString(checkDeletedSentence + "\n")
+	if closedWithoutRecovery(payload.Incident) {
+		builder.WriteString(closedSentence(payload.Incident) + "\n")
 	}
 
 	fmt.Fprintf(&builder, "Check: %s (%s)\n", checkName, payload.Check.Type)

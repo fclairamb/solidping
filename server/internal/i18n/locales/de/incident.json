@@ -20,6 +20,7 @@
     "down": "Ausgefallen",
     "recovered": "Wiederhergestellt",
     "checkDeleted": "Prüfung gelöscht",
+    "checkDisabled": "Prüfung deaktiviert",
     "escalated": "Eskaliert",
     "reopened": "Wiedereröffnet",
     "comment": "Kommentar",
@@ -94,6 +95,10 @@
     "deletedTitle": "{check} wurde gelöscht",
     "deletedPreheader": "{check} wurde gelöscht, daher wurde der Vorfall geschlossen.",
     "deletedBody": "Die Prüfung wurde gelöscht, daher wurde dieser Vorfall geschlossen. Das heißt nicht, dass der Dienst wieder läuft.",
+    "disabledSubject": "{check} wurde deaktiviert, Vorfall geschlossen",
+    "disabledTitle": "{check} wurde deaktiviert",
+    "disabledPreheader": "{check} wurde deaktiviert, daher wurde der Vorfall geschlossen.",
+    "disabledBody": "Die Prüfung wurde deaktiviert, daher wurde dieser Vorfall geschlossen. Sie hat sich nicht unbedingt erholt.",
     "textTitle": "{check} wiederhergestellt",
     "textBody": "Der Vorfall für {check} wurde gelöst."
   },

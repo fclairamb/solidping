@@ -20,6 +20,7 @@
     "down": "Down",
     "recovered": "Recovered",
     "checkDeleted": "Check deleted",
+    "checkDisabled": "Check disabled",
     "escalated": "Escalated",
     "reopened": "Reopened",
     "comment": "Comment",
@@ -94,6 +95,10 @@
     "deletedTitle": "{check} was deleted",
     "deletedPreheader": "{check} was deleted, so its incident was closed.",
     "deletedBody": "The check was deleted, so this incident was closed. It did not necessarily recover.",
+    "disabledSubject": "{check} was disabled, incident closed",
+    "disabledTitle": "{check} was disabled",
+    "disabledPreheader": "{check} was disabled, so its incident was closed.",
+    "disabledBody": "The check was disabled, so this incident was closed. It did not necessarily recover.",
     "textTitle": "{check} recovered",
     "textBody": "The incident for {check} has been resolved."
   },
