@@ -60,8 +60,23 @@ type Runner struct {
 // runtime; the static ScriptHosts guards only refuse early. A run the
 // allowlist refused returns an error matching egress.ErrHostNotAllowed,
 // whatever status the script reported.
+//
+// Scrubbing only replaces exact occurrences of each value: a script can still
+// return an encoded, reversed or sliced form of a secret, and that reaches
+// whoever reads the result. It is defense in depth, not the boundary. The AI
+// loops therefore hold every later outbound tool call to the same allowlist
+// once a run had real values (runRecorder.hold).
 func (r *Runner) Run(
 	ctx context.Context, script string, env, secrets map[string]string, allowed []string, timeout time.Duration,
+) (*RunResult, error) {
+	return r.run(ctx, script, env, secrets, allowed, hasSecretValues(secrets), timeout)
+}
+
+// run is Run, with held deciding whether allowed applies: always when a
+// secret has a real value, and for any run of a loop that already had one.
+func (r *Runner) run(
+	ctx context.Context, script string, env, secrets map[string]string, allowed []string, held bool,
+	timeout time.Duration,
 ) (*RunResult, error) {
 	if timeout <= 0 || timeout > toolScriptTimeout {
 		timeout = toolScriptTimeout
@@ -79,7 +94,7 @@ func (r *Runner) Run(
 	}
 
 	var allowlist *egress.HostAllowlist
-	if hasSecretValues(secrets) {
+	if held || hasSecretValues(secrets) {
 		allowlist = egress.NewHostAllowlist(allowed)
 		ctx = egress.WithHostAllowlist(ctx, allowlist)
 	}
@@ -90,8 +105,7 @@ func (r *Runner) Run(
 	}
 
 	if refused := allowlist.Refused(); refused != nil {
-		// The refused host may itself carry a secret (secret.example.com).
-		return nil, &egress.HostNotAllowedError{Target: scrubString(refused.Target, secrets)}
+		return nil, &egress.HostNotAllowedError{Target: refusedTarget(refused.Target, script, env, secrets)}
 	}
 
 	out := &RunResult{
@@ -104,6 +118,30 @@ func (r *Runner) Run(
 	scrubResult(out, secrets)
 
 	return out, nil
+}
+
+// withheldTarget replaces a refused host that was built at runtime.
+const withheldTarget = "[a host built at runtime]"
+
+// refusedTarget is the refused host as the caller may see it. A host built at
+// runtime may carry a secret, plain (secret.example.com, scrubbed) or encoded
+// (which no scrubbing catches), so it is named only when the script or the
+// env spells it out: the caller wrote those, the name tells them nothing new.
+func refusedTarget(target, script string, env, secrets map[string]string) string {
+	scrubbed := scrubString(target, secrets)
+	needle := strings.ToLower(target)
+
+	if strings.Contains(strings.ToLower(script), needle) {
+		return scrubbed
+	}
+
+	for _, value := range env {
+		if strings.Contains(strings.ToLower(value), needle) {
+			return scrubbed
+		}
+	}
+
+	return withheldTarget
 }
 
 // hasSecretValues reports a secrets map holding at least one real value.
@@ -127,13 +165,18 @@ return { status: "up", output: {
 
 // FetchPage GETs a URL: status, headers, truncated body.
 func (r *Runner) FetchPage(ctx context.Context, rawURL string) (*RunResult, error) {
+	return r.fetchPage(ctx, rawURL, nil, false)
+}
+
+// fetchPage is FetchPage, held to hosts when held is set.
+func (r *Runner) fetchPage(ctx context.Context, rawURL string, hosts []string, held bool) (*RunResult, error) {
 	if strings.TrimSpace(rawURL) == "" {
 		return nil, ErrURLRequired
 	}
 
-	return r.Run(ctx, fetchScript, map[string]string{
+	return r.run(ctx, fetchScript, map[string]string{
 		"URL": rawURL, "LIMIT": strconv.Itoa(fetchBodyLimit),
-	}, nil, nil, 0)
+	}, nil, hosts, held, 0)
 }
 
 // snapshotExpression walks the DOM and renders the interactive and
@@ -186,13 +229,19 @@ return { status: "up", output: { url: v.url, title: v.title,
 // BrowserSnapshot opens a URL in the browser runtime and returns its
 // accessibility-style tree.
 func (r *Runner) BrowserSnapshot(ctx context.Context, rawURL string) (*RunResult, error) {
+	return r.browserSnapshot(ctx, rawURL, nil, false)
+}
+
+// browserSnapshot is BrowserSnapshot, held to hosts when held is set (a held
+// run refuses the browser, which the allowlist cannot vouch for).
+func (r *Runner) browserSnapshot(ctx context.Context, rawURL string, hosts []string, held bool) (*RunResult, error) {
 	if strings.TrimSpace(rawURL) == "" {
 		return nil, ErrURLRequired
 	}
 
-	return r.Run(ctx, snapshotScript, map[string]string{
+	return r.run(ctx, snapshotScript, map[string]string{
 		"URL": rawURL, "EXPR": snapshotExpression, "LIMIT": strconv.Itoa(snapshotLimit),
-	}, nil, nil, 0)
+	}, nil, hosts, held, 0)
 }
 
 // scrubResult replaces every secret value in the result's strings.

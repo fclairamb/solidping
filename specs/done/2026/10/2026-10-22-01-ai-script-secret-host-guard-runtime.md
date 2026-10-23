@@ -33,7 +33,9 @@ Attack path (repair, no human in the loop):
 2. The repair loop reads the page through `fetch_page` / `browser_snapshot` (`repair.go:391`) or through the failing run's output. The page holds instructions telling the model to send `secrets.<NAME>` to a host it assembles at runtime. The model knows the secret names (`repair.go:750-751`).
 3. `run_script` executes that candidate with the real values, and the secret leaves on that test run. In `propose` mode nothing is applied afterwards, but the secret has already been sent.
 
-The values are scrubbed from what the model sees (`scrubResult`), which stops the model from echoing them. It does not stop the script from sending them.
+The values are scrubbed from what the model sees (`scrubResult`). It does not stop the script from sending them.
+
+> Correction (spec 2026-10-23-02): scrubbing replaces exact occurrences only, so it does not stop the model from echoing a value either: a script can return it encoded (`base64.encode`, reversed, sliced). Since that spec, a loop that ran with real values holds every later `fetch_page`, `browser_snapshot` and blank-secrets `run_script` to the same allowlist, and a refused host built at runtime is withheld from the error.
 
 Out of scope: the earlier rejection (2026-10-16) of "a member with write access re-points a check's secrets". That remains the trust model. This spec is about a **third party** steering the AI through content, the threat both guards claim to cover.
 

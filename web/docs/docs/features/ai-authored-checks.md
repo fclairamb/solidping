@@ -54,6 +54,10 @@ redirect and socket while it runs, so a URL the script builds at runtime cannot
 reach anywhere else. Such a run cannot open a browser or run a `solidping.*`
 sub-check: both connect outside that check.
 Secret values are scrubbed from everything handed back to the AI. The scrubbing matches the literal value, so a script that prints an encoded form (base64, URL-encoded) of a secret to the console would not be caught: never log secrets.
+Once a generation or repair has made one run with the real values, every later
+`fetch_page`, `browser_snapshot` and blank-secrets run of that session is held
+to the same hosts (no browser), so the AI has nowhere else to send what it read.
+A refused host built at runtime is not named in the error.
 
 ### Edit and regenerate
 

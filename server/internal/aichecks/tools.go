@@ -50,23 +50,44 @@ func urlSchema(desc string) map[string]any {
 	}
 }
 
-// fetchPageTool is the fetch_page tool.
-func (r *Runner) fetchPageTool() ai.Tool {
+// pageFunc fetches or renders a URL, held to hosts when held is set.
+type pageFunc func(ctx context.Context, rawURL string, hosts []string, held bool) (*RunResult, error)
+
+// fetchPageTool is the fetch_page tool of a loop.
+func (rec *runRecorder) fetchPageTool() ai.Tool {
+	return rec.pageTool(ai.ToolDef{
+		Name:        ToolFetchPage,
+		Description: "HTTP GET a URL. Returns its status code, headers and the first 16 KB of the body.",
+		Parameters:  urlSchema("Absolute http(s) URL."),
+	}, rec.runner.fetchPage)
+}
+
+// browserSnapshotTool is the browser_snapshot tool of a loop.
+func (rec *runRecorder) browserSnapshotTool() ai.Tool {
+	return rec.pageTool(ai.ToolDef{
+		Name: ToolBrowserSnapshot,
+		Description: "Open a URL in a real headless browser and return its accessibility-style tree " +
+			"(role, accessible name and a CSS selector per interactive or structural element).",
+		Parameters: urlSchema("Absolute http(s) URL."),
+	}, rec.runner.browserSnapshot)
+}
+
+// pageTool runs page for the model, held to the loop's hosts once a run had
+// real secret values (see hold).
+func (rec *runRecorder) pageTool(def ai.ToolDef, page pageFunc) ai.Tool {
 	return ai.Tool{
-		Def: ai.ToolDef{
-			Name:        ToolFetchPage,
-			Description: "HTTP GET a URL. Returns its status code, headers and the first 16 KB of the body.",
-			Parameters:  urlSchema("Absolute http(s) URL."),
-		},
+		Def: def,
 		Run: func(ctx context.Context, raw json.RawMessage) (string, error) {
 			var args urlArgs
 			if err := json.Unmarshal(raw, &args); err != nil {
 				return "", fmt.Errorf("invalid arguments: %w", err)
 			}
 
-			res, err := r.FetchPage(ctx, args.URL)
+			hosts, held := rec.hold()
+
+			res, err := page(ctx, args.URL, hosts, held)
 			if err != nil {
-				return "", err
+				return "", rec.heldRefusal(err)
 			}
 
 			return forModel(res), nil
@@ -74,29 +95,21 @@ func (r *Runner) fetchPageTool() ai.Tool {
 	}
 }
 
-// browserSnapshotTool is the browser_snapshot tool.
-func (r *Runner) browserSnapshotTool() ai.Tool {
-	return ai.Tool{
-		Def: ai.ToolDef{
-			Name: ToolBrowserSnapshot,
-			Description: "Open a URL in a real headless browser and return its accessibility-style tree " +
-				"(role, accessible name and a CSS selector per interactive or structural element).",
-			Parameters: urlSchema("Absolute http(s) URL."),
-		},
-		Run: func(ctx context.Context, raw json.RawMessage) (string, error) {
-			var args urlArgs
-			if err := json.Unmarshal(raw, &args); err != nil {
-				return "", fmt.Errorf("invalid arguments: %w", err)
-			}
+// heldNote explains a refusal that only the loop's earlier real-secrets run
+// causes.
+const heldNote = "this loop already ran a script with the real secret values, so every later run, " +
+	"fetch_page and browser_snapshot may only reach the check's own hosts (no browser)"
 
-			res, err := r.BrowserSnapshot(ctx, args.URL)
-			if err != nil {
-				return "", err
-			}
-
-			return forModel(res), nil
-		},
+// heldRefusal records a refusal of a held call and explains it to the model.
+func (rec *runRecorder) heldRefusal(err error) error {
+	if !errors.Is(err, egress.ErrHostNotAllowed) {
+		return err
 	}
+
+	err = fmt.Errorf("refused (%s): %w", heldNote, err)
+	rec.refused = err
+
+	return err
 }
 
 // scriptRun is one run_script call of a loop.
@@ -131,6 +144,26 @@ type runRecorder struct {
 	// refused is the last run the host allowlist refused, for the attempt
 	// event.
 	refused error
+
+	// sealed is set once a run got real secret values. From then on every
+	// outbound call of the loop (a run with blank secrets, fetch_page,
+	// browser_snapshot) is held to sealedHosts: exact-match scrubbing cannot
+	// stop a script from handing the model an encoded secret, so the model
+	// must have nowhere else to send it.
+	sealed      bool
+	sealedHosts []string
+}
+
+// seal marks the loop as having run with real secret values, held to hosts.
+func (rec *runRecorder) seal(hosts []string) {
+	rec.sealed = true
+	rec.sealedHosts = append(rec.sealedHosts, hosts...)
+}
+
+// hold is the allowlist every outbound call without real values gets: none
+// until the loop is sealed.
+func (rec *runRecorder) hold() ([]string, bool) {
+	return rec.sealedHosts, rec.sealed
 }
 
 // runGrant is how prepare lets a script run.
@@ -206,10 +239,22 @@ func (rec *runRecorder) runScript(ctx context.Context, script string, final bool
 
 	secrets, note := grant.secrets, grant.note
 
-	res, err := rec.runner.Run(ctx, script, rec.env, secrets, grant.hosts, 0)
+	hosts, held := grant.hosts, true
+	if hasSecretValues(secrets) {
+		// Sealed before the run: even its error text can carry a value.
+		rec.seal(hosts)
+	} else {
+		hosts, held = rec.hold()
+	}
+
+	res, err := rec.runner.run(ctx, script, rec.env, secrets, hosts, held, 0)
 	if errors.Is(err, egress.ErrHostNotAllowed) {
-		err = fmt.Errorf("refused: %w", err)
-		rec.refused = err
+		if hasSecretValues(secrets) {
+			err = fmt.Errorf("refused: %w", err)
+			rec.refused = err
+		} else {
+			err = rec.heldRefusal(err)
+		}
 	}
 
 	if err != nil {
