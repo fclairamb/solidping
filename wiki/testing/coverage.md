@@ -1,6 +1,6 @@
 # Test coverage
 
-Spec `2026-09-29-06`. Backend coverage is measured in CI, gated at 80%, and
+Spec `2026-09-29-06`. Backend coverage is measured in CI, gated at 85%, and
 published as an artifact plus a job-summary line. Frontend coverage is
 report-only.
 
@@ -51,7 +51,7 @@ Check the first CI run against the 45 minute budget and note the delta here.
 
 ## The ratchet
 
-`COVERAGE_MIN` in `ci.yml` starts at 80. When a change raises the total,
+`COVERAGE_MIN` in `ci.yml` started at 80 and is now 85. When a change raises the total,
 raise `COVERAGE_MIN` to the last measured value (rounded down); never lower
 it to make a PR pass. Add tests instead.
 
