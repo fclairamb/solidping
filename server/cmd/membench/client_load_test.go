@@ -18,8 +18,8 @@ func loadServer(t *testing.T, sitemap string, sitemapCode int) (*httptest.Server
 	var hits, logins atomic.Int32
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.URL.Path == "/docs/sitemap.xml":
+		switch r.URL.Path {
+		case "/docs/sitemap.xml":
 			if sitemapCode != 0 {
 				w.WriteHeader(sitemapCode)
 
@@ -27,10 +27,10 @@ func loadServer(t *testing.T, sitemap string, sitemapCode int) (*httptest.Server
 			}
 
 			_, _ = w.Write([]byte(sitemap))
-		case r.URL.Path == "/api/v1/auth/login":
+		case "/api/v1/auth/login":
 			logins.Add(1)
 			_, _ = w.Write([]byte(`{"accessToken":"t"}`))
-		case r.URL.Path == "/api/v1/test/checks/bulk":
+		case "/api/v1/test/checks/bulk":
 			if strings.Contains(r.URL.RawQuery, "count=0") {
 				w.WriteHeader(http.StatusTeapot)
 				_, _ = w.Write([]byte(strings.Repeat("x", 400)))
