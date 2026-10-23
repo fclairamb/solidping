@@ -71,6 +71,7 @@ func Run(t *testing.T, svc db.Service) {
 		{"incident_members", runIncidentMembers},
 		{"events_and_labels", runEventsAndLabels},
 		{"bulk_results", runBulkResults},
+		{"agents", runAgents},
 	}
 
 	for _, g := range groups {
