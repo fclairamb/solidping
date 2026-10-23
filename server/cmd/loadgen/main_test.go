@@ -21,7 +21,8 @@ import (
 func metricsText(scale int) string {
 	var b strings.Builder
 
-	fmt.Fprintf(&b, "# TYPE solidping_check_executions_total counter\nsolidping_check_executions_total{status=\"up\"} %d\n", 10*scale)
+	fmt.Fprintf(&b, "# TYPE solidping_check_executions_total counter\n"+
+		"solidping_check_executions_total{status=\"up\"} %d\n", 10*scale)
 	fmt.Fprintf(&b, "# TYPE solidping_checks_rate_limited_total counter\nsolidping_checks_rate_limited_total %d\n", scale)
 	fmt.Fprintf(&b, "# TYPE solidping_db_busy_retries_total counter\nsolidping_db_busy_retries_total %d\n", 2*scale)
 
@@ -38,11 +39,14 @@ func metricsText(scale int) string {
 	hist("solidping_http_request_duration_seconds", "route", "/api/v1/orgs/:org/checks")
 
 	for _, g := range []string{"max_open", "open", "in_use", "idle"} {
-		fmt.Fprintf(&b, "# TYPE solidping_db_pool_%s_connections gauge\nsolidping_db_pool_%s_connections{backend=\"sqlite\"} 4\n", g, g)
+		fmt.Fprintf(&b, "# TYPE solidping_db_pool_%s_connections gauge\n"+
+			"solidping_db_pool_%s_connections{backend=\"sqlite\"} 4\n", g, g)
 	}
 
-	fmt.Fprintf(&b, "# TYPE solidping_db_pool_wait_count_total counter\nsolidping_db_pool_wait_count_total{backend=\"sqlite\"} %d\n", scale)
-	fmt.Fprintf(&b, "# TYPE solidping_claim_jobs_result_total counter\nsolidping_claim_jobs_result_total{outcome=\"jobs\"} %d\n", 3*scale)
+	fmt.Fprintf(&b, "# TYPE solidping_db_pool_wait_count_total counter\n"+
+		"solidping_db_pool_wait_count_total{backend=\"sqlite\"} %d\n", scale)
+	fmt.Fprintf(&b, "# TYPE solidping_claim_jobs_result_total counter\n"+
+		"solidping_claim_jobs_result_total{outcome=\"jobs\"} %d\n", 3*scale)
 
 	return b.String()
 }
@@ -102,6 +106,8 @@ func (f *fakeServer) handler() http.Handler {
 }
 
 func TestRunWritesReport(t *testing.T) {
+	t.Parallel()
+
 	f := &fakeServer{}
 	srv := httptest.NewServer(f.handler())
 	t.Cleanup(srv.Close)
@@ -132,6 +138,8 @@ func TestRunWritesReport(t *testing.T) {
 }
 
 func TestRunKeepChecksSkipsPostClean(t *testing.T) {
+	t.Parallel()
+
 	f := &fakeServer{}
 	srv := httptest.NewServer(f.handler())
 	t.Cleanup(srv.Close)
@@ -144,6 +152,8 @@ func TestRunKeepChecksSkipsPostClean(t *testing.T) {
 }
 
 func TestRunErrors(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name    string
 		fake    *fakeServer
@@ -157,6 +167,8 @@ func TestRunErrors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			srv := httptest.NewServer(tt.fake.handler())
 			t.Cleanup(srv.Close)
 
@@ -252,7 +264,8 @@ func TestMetricHelpers(t *testing.T) {
 	assert.InDelta(t, 0, poolGaugeByBackend(final, "solidping_db_pool_open_connections", "postgres"), 0)
 	assert.InDelta(t, 0, poolGaugeByBackend(final, "missing", "sqlite"), 0)
 	assert.InDelta(t, 2, poolCounterByBackend(base, final, "solidping_db_pool_wait_count_total", "sqlite"), 0)
-	assert.InDelta(t, 4, readBackendCounter(final, "solidping_db_pool_open_connections", "sqlite"), 0, "gauges are read too")
+	got := readBackendCounter(final, "solidping_db_pool_open_connections", "sqlite")
+	assert.InDelta(t, 4, got, 0, "gauges are read too")
 	assert.InDelta(t, 0, readBackendCounter(final, "solidping_db_pool_wait_count_total", "postgres"), 0)
 	assert.InDelta(t, 0, readBackendCounter(final, "missing", "sqlite"), 0)
 	assert.InDelta(t, 6, outcomeCounter(base, final, "solidping_claim_jobs_result_total", "jobs"), 0)

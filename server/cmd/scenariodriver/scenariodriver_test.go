@@ -87,6 +87,8 @@ func TestWebhookReceiver(t *testing.T) {
 	t.Cleanup(func() { _ = r.Close(context.Background()) })
 
 	t.Run("json payload is delivered to waiter", func(t *testing.T) {
+		t.Parallel()
+
 		done := make(chan error, 1)
 
 		go func() {
@@ -101,11 +103,15 @@ func TestWebhookReceiver(t *testing.T) {
 	})
 
 	t.Run("already received payload matches immediately", func(t *testing.T) {
+		t.Parallel()
+
 		assert.Equal(t, http.StatusOK, postHook(t, r, "/hook/c2/", `{"eventType":"y"}`))
 		require.NoError(t, r.WaitForEvent(t.Context(), "c2", matchEventType("y")))
 	})
 
 	t.Run("non json body is kept raw", func(t *testing.T) {
+		t.Parallel()
+
 		assert.Equal(t, http.StatusOK, postHook(t, r, "/hook/c3", `not json`))
 		require.NoError(t, r.WaitForEvent(t.Context(), "c3", func(m map[string]any) bool {
 			return m["_rawBody"] == "not json"
@@ -113,15 +119,21 @@ func TestWebhookReceiver(t *testing.T) {
 	})
 
 	t.Run("empty body is an empty payload", func(t *testing.T) {
+		t.Parallel()
+
 		assert.Equal(t, http.StatusOK, postHook(t, r, "/hook/c4", ""))
 		require.NoError(t, r.WaitForEvent(t.Context(), "c4", func(m map[string]any) bool { return len(m) == 0 }))
 	})
 
 	t.Run("missing channel id is rejected", func(t *testing.T) {
+		t.Parallel()
+
 		assert.Equal(t, http.StatusBadRequest, postHook(t, r, "/hook/", "{}"))
 	})
 
 	t.Run("non post is rejected", func(t *testing.T) {
+		t.Parallel()
+
 		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "http://"+r.Addr()+"/hook/c1", nil)
 		require.NoError(t, err)
 		resp, err := http.DefaultClient.Do(req)
@@ -131,12 +143,16 @@ func TestWebhookReceiver(t *testing.T) {
 	})
 
 	t.Run("wait times out without match", func(t *testing.T) {
+		t.Parallel()
+
 		ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
 		defer cancel()
 		require.ErrorIs(t, r.WaitForEvent(ctx, "never", matchEventType("z")), context.DeadlineExceeded)
 	})
 
 	t.Run("wait with already canceled context", func(t *testing.T) {
+		t.Parallel()
+
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
 		require.ErrorIs(t, r.WaitForEvent(ctx, "never2", matchEventType("z")), context.Canceled)
