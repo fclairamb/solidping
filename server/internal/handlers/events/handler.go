@@ -119,6 +119,12 @@ func (h *Handler) ListEvents(writer http.ResponseWriter, req *http.Request) erro
 	}
 	opts.Size = limit
 
+	opts.Ascending, err = base.ParseOrder(query)
+	if err != nil {
+		return h.WriteErrorErr(
+			writer, req, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid order parameter", err)
+	}
+
 	response, err := h.svc.ListEvents(req.Context(), orgSlug, &opts)
 	if err != nil {
 		return h.handleError(writer, req, err)
@@ -154,6 +160,12 @@ func (h *Handler) ListIncidentEvents(writer http.ResponseWriter, req *http.Reque
 	}
 	opts.Size = limit
 
+	opts.Ascending, err = base.ParseOrder(query)
+	if err != nil {
+		return h.WriteErrorErr(
+			writer, req, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid order parameter", err)
+	}
+
 	response, err := h.svc.ListEvents(req.Context(), orgSlug, &opts)
 	if err != nil {
 		return h.handleError(writer, req, err)
@@ -188,6 +200,12 @@ func (h *Handler) ListCheckEvents(writer http.ResponseWriter, req *http.Request)
 			writer, req, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid limit parameter", err)
 	}
 	opts.Size = limit
+
+	opts.Ascending, err = base.ParseOrder(query)
+	if err != nil {
+		return h.WriteErrorErr(
+			writer, req, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid order parameter", err)
+	}
 
 	response, err := h.svc.ListEvents(req.Context(), orgSlug, &opts)
 	if err != nil {
