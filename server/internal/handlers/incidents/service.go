@@ -16,6 +16,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/attachments"
+	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobtypes"
@@ -2293,6 +2294,8 @@ type ListIncidentsOptions struct {
 	Since          *time.Time
 	Until          *time.Time
 	Cursor         string
+	// Ascending lists oldest first; the cursor then means "strictly after".
+	Ascending      bool
 	Size           int
 	WithCheck      bool // Include check details in response
 	WithMembers    bool // Include group-incident members and checkGroupSlug in response
@@ -2674,6 +2677,38 @@ func buildListIncidentsFilter(orgUID string, opts *ListIncidentsOptions) *models
 	return filter
 }
 
+// applyListCursor turns the opaque cursor and the order into keyset filter
+// fields. In ascending mode it also holds back incidents inside the settle
+// window, so a consumer never reads past a row that is not visible yet.
+func (s *Service) applyListCursor(filter *models.ListIncidentsFilter, opts *ListIncidentsOptions) {
+	if ts, uid, ok := base.DecodeCursor(opts.Cursor); ok {
+		filter.CursorTimestamp = &ts
+		filter.CursorUID = &uid
+	}
+
+	if opts.Ascending {
+		settled := s.clock.Now().Add(-base.SettleWindow)
+		filter.Ascending = true
+		filter.SettledBefore = &settled
+	}
+}
+
+// nextListCursor is the cursor for the next call. Forward mode always hands one
+// out, even on the last page, and an empty page returns the cursor it was
+// given so the consumer never loses its position.
+func nextListCursor(incidents []*models.Incident, hasMore bool, opts *ListIncidentsOptions) string {
+	switch {
+	case len(incidents) > 0 && (hasMore || opts.Ascending):
+		last := incidents[len(incidents)-1]
+
+		return base.EncodeCursor(last.StartedAt, last.UID)
+	case opts.Ascending:
+		return opts.Cursor
+	default:
+		return ""
+	}
+}
+
 // ListIncidents lists incidents for an organization.
 func (s *Service) ListIncidents(
 	ctx context.Context, orgSlug string, opts *ListIncidentsOptions,
@@ -2706,7 +2741,7 @@ func (s *Service) ListIncidents(
 
 	filter := buildListIncidentsFilter(org.UID, opts)
 
-	// TODO: Parse cursor
+	s.applyListCursor(filter, opts)
 
 	incidents, total, err := s.db.ListIncidents(ctx, filter)
 	if err != nil {
@@ -2755,11 +2790,7 @@ func (s *Service) ListIncidents(
 		response.Data = append(response.Data, incResponse)
 	}
 
-	// Set cursor if there are more results
-	if hasMore && len(incidents) > 0 {
-		lastIncident := incidents[len(incidents)-1]
-		response.Pagination.Cursor = lastIncident.UID
-	}
+	response.Pagination.Cursor = nextListCursor(incidents, hasMore, opts)
 
 	return response, nil
 }

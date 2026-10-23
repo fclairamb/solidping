@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"sort"
 	"strconv"
 	"sync"
 	"testing"
@@ -73,6 +74,7 @@ func testService(t *testing.T, svc db.Service) {
 
 	t.Run("EventsKeysetPaginationTieBreak", func(t *testing.T) {
 		testEventsKeysetPaginationTieBreak(ctx, t, svc)
+		testAscendingKeysetPagination(ctx, t, svc)
 	})
 
 	t.Run("EventsTargetPayloadFilters", func(t *testing.T) {
@@ -2904,3 +2906,98 @@ func strPtrTest(value string) *string { return &value }
 // tokenActivityTimePtr is a local pointer helper for the TokenActivityByUsers
 // test cases above.
 func tokenActivityTimePtr(value time.Time) *time.Time { return &value }
+
+// testAscendingKeysetPagination walks events and incidents oldest first with
+// a page size smaller than the group of rows sharing one timestamp, and checks
+// the settle bound. Runs on both engines: the flipped comparison and the
+// ASC tie-break are SQL, not Go.
+func testAscendingKeysetPagination(ctx context.Context, t *testing.T, svc db.Service) {
+	t.Helper()
+
+	r := require.New(t)
+
+	org := models.NewOrganization("asc-"+uuid.New().String()[:8], "Acme")
+	r.NoError(svc.CreateOrganization(ctx, org))
+
+	check := models.NewCheck(org.UID, "asc-check", "http")
+	r.NoError(svc.CreateCheck(ctx, check))
+
+	base := time.Date(2026, time.October, 1, 9, 0, 0, 0, time.UTC)
+	// Ten rows on one instant, then one later row (the settle test excludes it).
+	for i := 0; i < 11; i++ {
+		at := base
+		if i == 10 {
+			at = base.Add(time.Hour)
+		}
+
+		event := models.NewEvent(org.UID, models.EventTypeCheckCreated, models.ActorTypeSystem)
+		event.CreatedAt = at
+		r.NoError(svc.CreateEvent(ctx, event))
+
+		inc := models.NewIncident(org.UID, check.UID, at, "asc incident")
+		r.NoError(svc.CreateIncident(ctx, inc))
+	}
+
+	settled := base.Add(30 * time.Minute)
+
+	var (
+		seenEvents    []string
+		seenIncidents []string
+		evTS, incTS   *time.Time
+		evUID, incUID *string
+	)
+
+	for page := 0; page < 10; page++ {
+		rows, err := svc.ListEvents(ctx, &models.ListEventsFilter{
+			OrganizationUID: org.UID, Limit: 3, Ascending: true, SettledBefore: &settled,
+			CursorTimestamp: evTS, CursorUID: evUID,
+		})
+		r.NoError(err)
+
+		if len(rows) == 0 {
+			break
+		}
+
+		for _, row := range rows {
+			seenEvents = append(seenEvents, row.UID)
+		}
+
+		ts, uid := rows[len(rows)-1].CreatedAt, rows[len(rows)-1].UID
+		evTS, evUID = &ts, &uid
+	}
+
+	for page := 0; page < 10; page++ {
+		rows, _, err := svc.ListIncidents(ctx, &models.ListIncidentsFilter{
+			OrganizationUID: org.UID, Limit: 3, Ascending: true, SettledBefore: &settled,
+			CursorTimestamp: incTS, CursorUID: incUID,
+		})
+		r.NoError(err)
+
+		if len(rows) == 0 {
+			break
+		}
+
+		for _, row := range rows {
+			seenIncidents = append(seenIncidents, row.UID)
+		}
+
+		ts, uid := rows[len(rows)-1].StartedAt, rows[len(rows)-1].UID
+		incTS, incUID = &ts, &uid
+	}
+
+	r.Len(seenEvents, 10, "ten tied events once each, the unsettled one held back")
+	r.Len(seenIncidents, 10, "ten tied incidents once each, the unsettled one held back")
+	r.Len(uniqueStrings(seenEvents), 10)
+	r.Len(uniqueStrings(seenIncidents), 10)
+	r.True(sort.StringsAreSorted(seenEvents), "ties come back in uid order")
+	r.True(sort.StringsAreSorted(seenIncidents), "ties come back in uid order")
+}
+
+func uniqueStrings(in []string) map[string]struct{} {
+	out := make(map[string]struct{}, len(in))
+	for _, v := range in {
+		out[v] = struct{}{}
+	}
+
+	return out
+}

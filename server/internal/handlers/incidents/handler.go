@@ -133,6 +133,11 @@ func parseListIncidentsOptions(query url.Values) (*ListIncidentsOptions, error) 
 	}
 	opts.Size = limit
 
+	opts.Ascending, err = base.ParseOrder(query)
+	if err != nil {
+		return nil, err
+	}
+
 	applyListIncidentsExtras(query, opts)
 
 	return opts, nil

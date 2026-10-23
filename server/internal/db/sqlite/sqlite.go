@@ -4110,8 +4110,16 @@ func (s *Service) ListIncidents(
 ) ([]*models.Incident, int64, error) {
 	var incidents []*models.Incident
 
+	order := []string{"started_at DESC", "uid DESC"}
+	cmp := "<"
+
+	if filter.Ascending {
+		order = []string{"started_at ASC", "uid ASC"}
+		cmp = ">"
+	}
+
 	query := applyIncidentsFilter(
-		s.db.NewSelect().Model(&incidents).Order("started_at DESC"),
+		s.db.NewSelect().Model(&incidents).Order(order...),
 		filter,
 	)
 
@@ -4119,11 +4127,15 @@ func (s *Service) ListIncidents(
 
 	if filter.CursorTimestamp != nil {
 		if filter.CursorUID != nil {
-			query = query.Where("(started_at < ? OR (started_at = ? AND uid < ?))",
+			query = query.Where("(started_at "+cmp+" ? OR (started_at = ? AND uid "+cmp+" ?))",
 				*filter.CursorTimestamp, *filter.CursorTimestamp, *filter.CursorUID)
 		} else {
-			query = query.Where("started_at < ?", *filter.CursorTimestamp)
+			query = query.Where("started_at "+cmp+" ?", *filter.CursorTimestamp)
 		}
+	}
+
+	if filter.SettledBefore != nil {
+		query = query.Where("started_at < ?", *filter.SettledBefore)
 	}
 
 	if filter.Limit > 0 {
@@ -4291,23 +4303,37 @@ func (s *Service) ListEvents(ctx context.Context, filter *models.ListEventsFilte
 
 	query := s.db.NewSelect().
 		Model(&events).
-		Where("organization_uid = ?", filter.OrganizationUID).
-		// uid is part of the sort key, not decoration: the keyset cursor's
-		// predicate is (created_at < ? OR (created_at = ? AND uid < ?)), which
-		// only works if rows sharing a created_at have a DEFINED order. Without
-		// this tie-break an audit trail — which bulk-inserts within the same
-		// microsecond constantly — could skip events at a page boundary.
-		Order("created_at DESC", "uid DESC")
+		Where("organization_uid = ?", filter.OrganizationUID)
+
+	// uid is part of the sort key, not decoration: the keyset cursor's
+	// predicate is (created_at < ? OR (created_at = ? AND uid < ?)), which
+	// only works if rows sharing a created_at have a DEFINED order. Without
+	// this tie-break an audit trail — which bulk-inserts within the same
+	// microsecond constantly — could skip events at a page boundary.
+	if filter.Ascending {
+		query = query.Order("created_at ASC", "uid ASC")
+	} else {
+		query = query.Order("created_at DESC", "uid DESC")
+	}
 
 	query = applyEventFilters(query, filter)
 
 	if filter.CursorTimestamp != nil {
+		cmp := "<"
+		if filter.Ascending {
+			cmp = ">"
+		}
+
 		if filter.CursorUID != nil {
-			query = query.Where("(created_at < ? OR (created_at = ? AND uid < ?))",
+			query = query.Where("(created_at "+cmp+" ? OR (created_at = ? AND uid "+cmp+" ?))",
 				*filter.CursorTimestamp, *filter.CursorTimestamp, *filter.CursorUID)
 		} else {
-			query = query.Where("created_at < ?", *filter.CursorTimestamp)
+			query = query.Where("created_at "+cmp+" ?", *filter.CursorTimestamp)
 		}
+	}
+
+	if filter.SettledBefore != nil {
+		query = query.Where("created_at < ?", *filter.SettledBefore)
 	}
 
 	if filter.Limit > 0 {
