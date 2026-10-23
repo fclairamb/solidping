@@ -48,8 +48,8 @@ func autoPublishProps(schema map[string]any) map[string]any {
 func listStatusPagesDef() ToolDefinition {
 	return ToolDefinition{
 		Name: toolListStatusPages,
-		Description: "List every status page in the organization, newest first, and " +
-			"return {data: [...]}. Use get_status_page for a single page by UID or " +
+		Description: "List every status page in the organization, newest first. Use " +
+			"get_status_page for a single page by UID or " +
 			"slug (with=sections or include=sections for its contents). Read-only: " +
 			"works with mcp:read tokens.",
 		InputSchema: objectSchema(map[string]any{}, nil),
@@ -72,7 +72,7 @@ func (h *Handler) toolListStatusPages(ctx context.Context, orgSlug string, _ map
 func getStatusPageDef() ToolDefinition {
 	return ToolDefinition{
 		Name: toolGetStatusPage,
-		Description: "Get one status page by UID or slug and return it. with=sections embeds its " +
+		Description: "Get one status page by UID or slug (identifier takes either) and return it. with=sections embeds its " +
 			"sections and their resources. include adds lists next to the page fields: " +
 			"\"sections\" (section metadata, display order), \"resources\" (the resources of the " +
 			"section named by sectionIdentifier) and \"incidents\" (the customer-facing incident " +
@@ -177,7 +177,8 @@ func createStatusPageDef() ToolDefinition {
 			"becomes it, and isDefault:true demotes the previous default. Every " +
 			"new page is seeded with a default \"Services\" section and starts " +
 			"enabled and public — use manage_status_page_section to add more " +
-			"sections and update_status_page to edit the page later. Requires the " +
+			"sections and update_status_page to edit the page later. Not quota-limited; " +
+			"reversible with delete_status_page. Requires the " +
 			"mcp scope (mcp:read tokens are refused) and at least the user role in " +
 			"the organization.",
 		InputSchema: objectSchema(autoPublishProps(map[string]any{
@@ -192,11 +193,11 @@ func createStatusPageDef() ToolDefinition {
 			propShowResponseTime: boolProp("Display response-time charts on the public page."),
 			propHistoryDays:      intProp("Days of history to show on the page (default 90)."),
 			propLanguage:         stringProp("Language code, e.g. \"en\" or \"fr\"."),
-			propCustomCSS: stringProp(
-				"Custom CSS injected into the public page as a <style> element. Overrides the theme's CSS " +
-					"custom properties (--brand, --background, --foreground, --card, --border, the status " +
+			propCustomCSS: withMaxLength(stringProp(
+				"Custom CSS injected into the public page as a <style> element. Overrides the theme's CSS "+
+					"custom properties (--brand, --background, --foreground, --card, --border, the status "+
 					"colors, and the .dark variant). Max 64 KB; @import is rejected.",
-			),
+			), maxLongStringLength),
 		}), []string{schemaKeyName, schemaKeySlug}),
 		OutputSchema: statusPageOutputSchema(),
 		Annotations:  createAnnotations("Create status page"),
@@ -258,8 +259,9 @@ func updateStatusPageDef() ToolDefinition {
 			"fields keep their current values; the page must already exist and a " +
 			"slug that collides with another page is rejected. Use " +
 			"create_status_page to make a new page and delete_status_page to remove " +
-			"one instead. Requires the mcp scope (mcp:read tokens are refused) and " +
-			"at least the user role in the organization.",
+			"one instead. Modifies the page in place, so it is reversible by updating " +
+			"again with the previous values. Requires the mcp scope (mcp:read tokens " +
+			"are refused) and at least the user role in the organization.",
 		InputSchema: objectSchema(autoPublishProps(map[string]any{
 			propIdentifier:       stringProp("Status page UID or URL-friendly slug, e.g. \"public\"."),
 			schemaKeyName:        stringProp("New display name, e.g. \"Public status page\"."),
@@ -272,10 +274,10 @@ func updateStatusPageDef() ToolDefinition {
 			propShowResponseTime: boolProp("Toggle response-time charts on the public page."),
 			propHistoryDays:      intProp("Days of history to show on the page (default 90)."),
 			propLanguage:         stringProp("Language code, e.g. \"en\" or \"fr\"."),
-			propCustomCSS: stringProp(
-				"Custom CSS injected into the public page as a <style> element (see create_status_page). " +
+			propCustomCSS: withMaxLength(stringProp(
+				"Custom CSS injected into the public page as a <style> element (see create_status_page). "+
 					"Max 64 KB; @import is rejected. Pass an empty string to clear it.",
-			),
+			), maxLongStringLength),
 		}), []string{propIdentifier}),
 		OutputSchema: statusPageOutputSchema(),
 		Annotations:  updateAnnotations("Update status page"),
@@ -341,8 +343,8 @@ func deleteStatusPageDef() ToolDefinition {
 		Description: "Soft-delete a status page by UID or slug: the page disappears " +
 			"from the API and the public site, taking its sections and resources " +
 			"with it, and its uploaded brand assets are deleted. There is no " +
-			"undelete — use update_status_page with enabled:false to take a page " +
-			"down without destroying it. Returns {deleted: true, identifier}. Use " +
+			"undelete (permanent, not reversible) — use update_status_page with enabled:false to take a page " +
+			"down without destroying it. Use " +
 			"delete_status_page_section or delete_status_page_resource to remove " +
 			"part of a page instead. Requires the mcp scope (mcp:read tokens are " +
 			"refused) and at least the user role in the organization.",

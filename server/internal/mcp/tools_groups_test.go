@@ -22,7 +22,6 @@ func TestListCheckGroupsDefinition(t *testing.T) {
 	r.True(def.Annotations.IdempotentHint)
 	r.False(def.Annotations.OpenWorldHint)
 	r.Contains(def.Description, "Read-only: works with mcp:read tokens.")
-	r.Contains(def.Description, "{data: [...]}")
 
 	r.NotNil(def.OutputSchema, "list_check_groups must declare an outputSchema")
 	schema, ok := def.OutputSchema.(map[string]any)
