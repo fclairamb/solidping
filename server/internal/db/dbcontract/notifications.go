@@ -10,6 +10,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
+//nolint:funlen // linear contract scenario
 func runUserContacts(t *testing.T, fix *fixture) {
 	t.Helper()
 
@@ -94,6 +95,7 @@ func runUserContacts(t *testing.T, fix *fixture) {
 	must.Empty(byValue)
 }
 
+//nolint:funlen // linear contract scenario
 func runIncidentNotifications(t *testing.T, fix *fixture) {
 	t.Helper()
 
@@ -190,6 +192,7 @@ func runIncidentNotifications(t *testing.T, fix *fixture) {
 	must.Equal(models.IncidentNotificationStatusCanceled, row.Status)
 }
 
+//nolint:funlen // linear contract scenario
 func runPublicationsAndStatusUpdates(t *testing.T, fix *fixture) {
 	t.Helper()
 
@@ -248,13 +251,13 @@ func runPublicationsAndStatusUpdates(t *testing.T, fix *fixture) {
 	must.Nil(got.Severity)
 	must.Nil(got.ResolvedAt)
 
-	for _, f := range []*models.ListIncidentPublicationsFilter{
+	for _, filter := range []*models.ListIncidentPublicationsFilter{
 		{OrganizationUID: fix.org.UID},
 		{OrganizationUID: fix.org.UID, StatusPageUID: page.UID, IncidentUID: incident.UID},
 		{OrganizationUID: fix.org.UID, State: string(models.PublicationStateResolved), Limit: 500, Offset: 0},
 		{OrganizationUID: fix.org.UID, ActiveOnly: true, Limit: 10, Offset: 0},
 	} {
-		list, listErr := svc.ListIncidentPublications(ctx, f)
+		list, listErr := svc.ListIncidentPublications(ctx, filter)
 		must.NoError(listErr)
 		must.LessOrEqual(len(list), 1)
 	}

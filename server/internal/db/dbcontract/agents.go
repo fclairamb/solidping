@@ -10,6 +10,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
+//nolint:funlen // linear contract scenario
 func runAgents(t *testing.T, fix *fixture) {
 	t.Helper()
 
@@ -44,10 +45,10 @@ func runAgents(t *testing.T, fix *fixture) {
 	_, err = svc.GetAgentEnrollmentTokenByHash(ctx, "hash-org-1")
 	must.ErrorIs(err, db.ErrEnrollmentTokenInvalid)
 
-	// Cancelled token is invisible and cannot enroll.
-	cancelled := models.NewAgentEnrollmentToken(fix.org.UID, "eu-home", "hash-org-2", future, nil)
-	must.NoError(svc.CreateAgentEnrollmentToken(ctx, cancelled))
-	must.NoError(svc.DeleteAgentEnrollmentToken(ctx, fix.org.UID, cancelled.UID))
+	// Canceled token is invisible and cannot enroll.
+	canceled := models.NewAgentEnrollmentToken(fix.org.UID, "eu-home", "hash-org-2", future, nil)
+	must.NoError(svc.CreateAgentEnrollmentToken(ctx, canceled))
+	must.NoError(svc.DeleteAgentEnrollmentToken(ctx, fix.org.UID, canceled.UID))
 	_, err = svc.EnrollAgent(ctx, "hash-org-2", "box3", "ed", "x", "fp-3")
 	must.ErrorIs(err, db.ErrEnrollmentTokenInvalid)
 
