@@ -391,7 +391,7 @@ func (s *Service) attemptRepair(ctx context.Context, target *repairTarget) (*Rep
 		},
 	}
 
-	tools := []ai.Tool{rec.tool(), s.runner.fetchPageTool(), s.runner.browserSnapshotTool()}
+	tools := []ai.Tool{rec.tool(), rec.fetchPageTool(), rec.browserSnapshotTool()}
 	loop := s.loop(systemPrompt(), tools, rec.done)
 	loop.Nudge = rec.nudge
 

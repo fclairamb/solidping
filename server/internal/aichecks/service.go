@@ -519,8 +519,8 @@ func (s *Service) Generate(ctx context.Context, orgUID string, req *GenerateRequ
 
 	tools := []ai.Tool{
 		rec.tool(),
-		observeTool(s.runner.fetchPageTool(), progress),
-		observeTool(s.runner.browserSnapshotTool(), progress),
+		observeTool(rec.fetchPageTool(), progress),
+		observeTool(rec.browserSnapshotTool(), progress),
 	}
 
 	loop := s.loop(systemPrompt(), tools, func() bool {
