@@ -2286,8 +2286,8 @@ func (s *Service) UpdateCheck(
 			return CheckResponse{}, coverErr
 		}
 	}
-	if err := validateResolveOpenIncidents(req); err != nil {
-		return CheckResponse{}, err
+	if validateErr := validateResolveOpenIncidents(req); validateErr != nil {
+		return CheckResponse{}, validateErr
 	}
 	if req.Enabled != nil {
 		update.Enabled = req.Enabled

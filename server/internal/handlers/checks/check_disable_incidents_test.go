@@ -48,12 +48,12 @@ func TestDisableResolvesOpenIncidents(t *testing.T) {
 		r.Equal(models.ResolutionTypeCheckDisabled, *got.ResolutionType)
 		r.NotNil(got.ResolvedAt)
 
-		events, err := world.dbSvc.ListEvents(ctx, &models.ListEventsFilter{
+		events, listErr := world.dbSvc.ListEvents(ctx, &models.ListEventsFilter{
 			OrganizationUID: world.org.UID,
 			IncidentUID:     &uid,
 			EventTypes:      []models.EventType{models.EventTypeIncidentResolved},
 		})
-		r.NoError(err)
+		r.NoError(listErr)
 		r.Len(events, 1, "one incident.resolved event per incident")
 	}
 
