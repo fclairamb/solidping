@@ -4,6 +4,8 @@ package checks_test
 // resolution type check_disabled (spec 2026-10-23-01).
 
 import (
+	"encoding/json"
+	"net/http"
 	"testing"
 	"time"
 
@@ -63,6 +65,36 @@ func TestDisableResolvesOpenIncidents(t *testing.T) {
 		ResolveOpenIncidents: boolPtr(true),
 	})
 	r.NoError(err)
+
+	for _, uid := range []string{outage.UID, degraded.UID} {
+		events, listErr := world.dbSvc.ListEvents(ctx, &models.ListEventsFilter{
+			OrganizationUID: world.org.UID,
+			IncidentUID:     &uid,
+			EventTypes:      []models.EventType{models.EventTypeIncidentResolved},
+		})
+		r.NoError(listErr)
+		r.Len(events, 1, "retry must not emit a second incident.resolved event")
+	}
+}
+
+func TestResolveOpenIncidentsWithoutDisableOverHTTPIs400(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	router := newFullChecksRouter(t)
+	base := "/orgs/acme/checks"
+
+	body := `{"type":"http","name":"acme","config":{"url":"https://acme.com"}}`
+	rec := checksCall(t, router, http.MethodPost, base, body)
+	r.Equal(http.StatusCreated, rec.Code, rec.Body.String())
+	var created struct {
+		UID string `json:"uid"`
+	}
+	r.NoError(json.Unmarshal(rec.Body.Bytes(), &created))
+
+	rec = checksCall(t, router, http.MethodPatch, base+"/"+created.UID, `{"resolveOpenIncidents":true}`)
+	r.Equal(http.StatusBadRequest, rec.Code, rec.Body.String())
+	r.Contains(rec.Body.String(), "VALIDATION_ERROR")
 }
 
 func TestResolveOpenIncidentsWithoutDisableIsRejected(t *testing.T) {

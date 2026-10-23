@@ -1147,9 +1147,13 @@ function CheckDetailPage() {
     }
   };
 
-  const openIncidentCount = (incidents?.data ?? []).filter(
-    (incident) => incident.state === "active",
-  ).length;
+  const { data: activeIncidents } = useIncidents(org, {
+    checkUid: check?.uid,
+    state: "active",
+    size: 100,
+    enabled: !!check?.uid,
+  });
+  const openIncidentCount = activeIncidents?.data?.length ?? 0;
 
   // Disabling a check with open incidents asks whether to close them too:
   // a disabled check has no jobs, so nothing else ever would.
