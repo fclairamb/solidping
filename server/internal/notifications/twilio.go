@@ -116,6 +116,11 @@ func (s *TwilioSender) buildBody(
 				twilio.OptOutFooter
 		}
 
+		if ResolvedByCheckDisable(payload.Incident) {
+			return fmt.Sprintf("[%s] %s: %s was disabled, incident closed.", productName, org, checkName) +
+				twilio.OptOutFooter
+		}
+
 		return fmt.Sprintf("[%s] %s: %s RECOVERED.", productName, org, checkName) +
 			twilioRegionSentence(payload) + twilio.OptOutFooter
 	case eventTypeIncidentEscalated:

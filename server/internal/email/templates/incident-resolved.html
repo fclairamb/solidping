@@ -1,12 +1,12 @@
-{{define "subject"}}{{if .SubjectPrefix}}{{.SubjectPrefix}} {{end}}{{if .CheckDeleted}}⚪ {{t "incident.resolved.deletedSubject" "check" .CheckName}}{{else}}🟢 {{if .Duration}}{{t "incident.resolved.titleAfter" "check" .CheckName "duration" (duration .Duration)}}{{else}}{{t "incident.resolved.title" "check" .CheckName}}{{end}}{{end}}{{if .IncidentNumber}} (#{{.IncidentNumber}}){{end}}{{end}}
-{{define "preheader"}}{{if .CheckDeleted}}{{t "incident.resolved.deletedPreheader" "check" .CheckName}}{{else}}{{if .Duration}}{{t "incident.resolved.downFor" "duration" (duration .Duration)}} {{end}}{{t "incident.resolved.passing"}}{{end}}{{end}}
+{{define "subject"}}{{if .SubjectPrefix}}{{.SubjectPrefix}} {{end}}{{if .CheckDeleted}}⚪ {{t (print "incident.resolved." .ClosedKind "Subject") "check" .CheckName}}{{else}}🟢 {{if .Duration}}{{t "incident.resolved.titleAfter" "check" .CheckName "duration" (duration .Duration)}}{{else}}{{t "incident.resolved.title" "check" .CheckName}}{{end}}{{end}}{{if .IncidentNumber}} (#{{.IncidentNumber}}){{end}}{{end}}
+{{define "preheader"}}{{if .CheckDeleted}}{{t (print "incident.resolved." .ClosedKind "Preheader") "check" .CheckName}}{{else}}{{if .Duration}}{{t "incident.resolved.downFor" "duration" (duration .Duration)}} {{end}}{{t "incident.resolved.passing"}}{{end}}{{end}}
 {{template "base.html" .}}
-{{define "statusbanner"}}{{if .CheckDeleted}}{{template "statusbanner-render" dict "Variant" "comment" "Label" (t "incident.pill.checkDeleted")}}{{else}}{{template "statusbanner-render" dict "Variant" "recovered" "Label" (t "incident.pill.recovered")}}{{end}}{{end}}
+{{define "statusbanner"}}{{if .CheckDeleted}}{{template "statusbanner-render" dict "Variant" "comment" "Label" (t (print "incident.pill.check" .ClosedPill))}}{{else}}{{template "statusbanner-render" dict "Variant" "recovered" "Label" (t "incident.pill.recovered")}}{{end}}{{end}}
 {{define "content"}}
     {{$check := nolink .CheckName}}{{if .CheckURL}}{{$check = tHTML "incident.checkLink" "url" .CheckURL "check" $check}}{{end}}
-    <h1>{{if .CheckDeleted}}{{tHTML "incident.resolved.deletedTitle" "check" $check}}{{else}}{{tHTML "incident.resolved.title" "check" $check}}{{end}}</h1>
+    <h1>{{if .CheckDeleted}}{{tHTML (print "incident.resolved." .ClosedKind "Title") "check" $check}}{{else}}{{tHTML "incident.resolved.title" "check" $check}}{{end}}</h1>
     {{if .CheckDeleted}}
-    <p>{{t "incident.resolved.deletedBody"}}</p>
+    <p>{{t (print "incident.resolved." .ClosedKind "Body")}}</p>
     {{else if .Duration}}
     <p class="lead">{{tHTML "incident.resolved.leadDuration" "duration" (duration .Duration)}}</p>
     {{else}}
@@ -23,9 +23,9 @@
     <div class="cta-wrap">{{template "button" dict "URL" .IncidentURL "Label" (t "common.incidentActions.viewIncident") "Variant" "secondary"}}</div>
     {{end}}
 {{end}}
-{{define "text"}}{{if .CheckDeleted}}{{t "incident.resolved.deletedTitle" "check" .CheckName}}
+{{define "text"}}{{if .CheckDeleted}}{{t (print "incident.resolved." .ClosedKind "Title") "check" .CheckName}}
 
-{{t "incident.resolved.deletedBody"}}
+{{t (print "incident.resolved." .ClosedKind "Body")}}
 {{else}}{{t "incident.resolved.textTitle" "check" .CheckName}}
 
 {{t "incident.resolved.textBody" "check" .CheckName}}

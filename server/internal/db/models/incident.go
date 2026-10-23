@@ -38,6 +38,10 @@ const (
 	// org deletion, the test API. The DB layer's DeleteCheck sets it in the
 	// same transaction as the soft delete, so no incident outlives its check.
 	ResolutionTypeCheckDeleted = "check_deleted"
+	// ResolutionTypeCheckDisabled closes an active incident because its check
+	// was disabled by hand with resolveOpenIncidents (spec 2026-10-23-01). The
+	// check did not necessarily recover: it simply stopped running.
+	ResolutionTypeCheckDisabled = "check_disabled"
 )
 
 // Incident kinds. `kind` discriminates what an incident row is ABOUT. It is a

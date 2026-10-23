@@ -622,6 +622,9 @@ type Service struct {
 	// degraded detection is turned off (spec 2026-09-24-08). nil = not wired,
 	// in which case nothing is resolved; see SetDegradedIncidentResolver.
 	degradedResolver DegradedIncidentResolver
+	// disableResolver closes a check's open incidents when it is disabled with
+	// resolveOpenIncidents (spec 2026-10-23-01). nil = not wired, nothing resolved.
+	disableResolver CheckDisableIncidentResolver
 	// checkDeletedNotifier tells whoever was paged that a deleted check's
 	// incident closed (spec 2026-10-08-02). nil = not wired: the incidents
 	// still resolve, silently. See SetCheckDeletedIncidentNotifier.
@@ -2004,6 +2007,10 @@ type UpdateCheckRequest struct {
 	RegionCount *int      `json:"regionCount,omitempty"`
 	RegionPool  *[]string `json:"regionPool,omitempty"`
 	Enabled     *bool     `json:"enabled,omitempty"`
+	// ResolveOpenIncidents closes the check's open incidents with resolution
+	// type `check_disabled` in the same write. Only valid alongside
+	// `enabled: false` (spec 2026-10-23-01).
+	ResolveOpenIncidents *bool `json:"resolveOpenIncidents,omitempty"`
 	// Internal is decoded only so it can be refused — see
 	// ErrInternalFieldNotWritable (spec 2026-08-27-01).
 	Internal *bool              `json:"internal,omitempty"`
@@ -2279,6 +2286,9 @@ func (s *Service) UpdateCheck(
 			return CheckResponse{}, coverErr
 		}
 	}
+	if err := validateResolveOpenIncidents(req); err != nil {
+		return CheckResponse{}, err
+	}
 	if req.Enabled != nil {
 		update.Enabled = req.Enabled
 	}
@@ -2401,6 +2411,10 @@ func (s *Service) UpdateCheck(
 	// ever would. Every write path (PATCH, /apply, import, MCP update_check)
 	// lands here.
 	if resolveErr := s.resolveDegradedOnDisable(ctx, check, &update); resolveErr != nil {
+		return CheckResponse{}, resolveErr
+	}
+
+	if resolveErr := s.resolveIncidentsOnDisable(ctx, check, req); resolveErr != nil {
 		return CheckResponse{}, resolveErr
 	}
 

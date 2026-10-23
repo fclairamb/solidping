@@ -662,7 +662,9 @@ func buildIncidentViewModel(
 		"HasRelapses":    payload.Incident.RelapseCount > 1, // a bool: the email job decodes numbers as float64
 		"DashboardURL":   dashboardRootURL(payload.AppBaseURL),
 		"DocsURL":        docsURL(payload.AppBaseURL),
-		"CheckDeleted":   ResolvedByCheckDeletion(payload.Incident),
+		"CheckDeleted":   closedWithoutRecovery(payload.Incident),
+		"ClosedKind":     closedKind(payload.Incident),
+		"ClosedPill":     closedPill(payload.Incident),
 	}
 
 	// The cause and the probed target are what an on-call reader needs to

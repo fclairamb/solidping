@@ -193,6 +193,7 @@
     "reopenedRelapse": "Wieder geöffnet (Rückfall Nr. {{count}})",
     "resolved": "Aufgelöst",
     "resolvedCheckDeleted": "Geschlossen, weil die Prüfung gelöscht wurde",
+    "resolvedCheckDisabled": "Geschlossen, weil die Prüfung deaktiviert wurde",
     "monitoringInterrupted": "Überwachung unterbrochen",
     "monitoringInterruptedSince": "Überwachung unterbrochen seit {{time}}",
     "monitoringResumed": "Überwachung fortgesetzt",

@@ -455,6 +455,9 @@ export interface CreateCheckRequest {
 }
 
 export interface UpdateCheckRequest {
+  /** With `enabled: false`, also close the check's open incidents (spec
+   * 2026-10-23-01). */
+  resolveOpenIncidents?: boolean;
   /** Per-check path-trace policy: `inherit`, `on` or `off` (spec
    * 2026-08-21-10). `inherit` is what puts a check back under the org default;
    * omitting the field leaves it unchanged. */
@@ -745,7 +748,8 @@ export interface IncidentDetail {
     | "expired"
     | "escalated"
     | "disabled"
-    | "check_deleted";
+    | "check_deleted"
+    | "check_disabled";
   failureCount?: number;
   relapseCount?: number;
   /**
@@ -1030,6 +1034,7 @@ export function useUpdateCheck(org: string, uid: string) {
       queryClient.invalidateQueries({ queryKey: ["checks", org] });
       queryClient.invalidateQueries({ queryKey: ["checks", "infinite", org] });
       queryClient.invalidateQueries({ queryKey: ["check", org, uid] });
+      queryClient.invalidateQueries({ queryKey: ["incidents", org] });
     },
   });
 }

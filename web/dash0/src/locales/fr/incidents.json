@@ -193,6 +193,7 @@
     "reopenedRelapse": "Rouvert (rechute n°{{count}})",
     "resolved": "Résolu",
     "resolvedCheckDeleted": "Clôturé car le contrôle a été supprimé",
+    "resolvedCheckDisabled": "Clôturé car le contrôle a été désactivé",
     "monitoringInterrupted": "Surveillance interrompue",
     "monitoringInterruptedSince": "Surveillance interrompue depuis {{time}}",
     "monitoringResumed": "Surveillance reprise",

@@ -101,6 +101,15 @@ organization). Their pending escalation steps stop. A single-check delete sends
 one resolved notification per incident, worded "check deleted" rather than
 "recovered". Deleting an organization sends none.
 
+Disabling a check does not touch its open incidents by default: a disabled check
+runs no more probes, so nothing would ever auto-resolve them. To close them in
+the same action, send `resolveOpenIncidents: true` with `enabled: false` on the
+check `PATCH` (the dashboard asks, checked by default, when the check has an open
+incident). They resolve with a `check_disabled` resolution, record who disabled
+the check, stop their pending escalation steps, and send one resolved
+notification each, worded "check disabled" rather than "recovered".
+`resolveOpenIncidents` without `enabled: false` is a `VALIDATION_ERROR`.
+
 Acknowledging is not dashboard-only: Slack and Telegram alerts both carry an
 **Acknowledge** button, and Telegram additionally accepts `/ack #42`. Every path
 goes through the same service call, so all of them are idempotent and all of

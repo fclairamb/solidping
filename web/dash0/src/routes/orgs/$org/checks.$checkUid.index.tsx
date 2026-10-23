@@ -78,6 +78,7 @@ import { Switch } from "@/components/ui/switch";
 import { CollapsibleCode } from "@/components/shared/copyable-code";
 import { CheckRegionOutageBanner } from "@/components/shared/region-outage-banner";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import {
   Card,
@@ -727,6 +728,8 @@ function CheckDetailPage() {
   const navigate = useNavigate();
   const router = useRouter();
   const { user: authUser } = useAuth();
+  const [disableDialogOpen, setDisableDialogOpen] = useState(false);
+  const [resolveOnDisable, setResolveOnDisable] = useState(true);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(publish === true);
   const [editingSlug, setEditingSlug] = useState(false);
@@ -1144,11 +1147,29 @@ function CheckDetailPage() {
     }
   };
 
-  const handleToggleEnabled = async () => {
+  const openIncidentCount = (incidents?.data ?? []).filter(
+    (incident) => incident.state === "active",
+  ).length;
+
+  // Disabling a check with open incidents asks whether to close them too:
+  // a disabled check has no jobs, so nothing else ever would.
+  const handleDisableClick = () => {
+    if (check?.enabled && openIncidentCount > 0) {
+      setResolveOnDisable(true);
+      setDisableDialogOpen(true);
+      return;
+    }
+    handleToggleEnabled();
+  };
+
+  const handleToggleEnabled = async (resolveOpenIncidents?: boolean) => {
     if (!check) return;
     const next = !check.enabled;
     try {
-      await updateCheck.mutateAsync({ enabled: next });
+      await updateCheck.mutateAsync({
+        enabled: next,
+        ...(resolveOpenIncidents ? { resolveOpenIncidents: true } : {}),
+      });
       toast.success(
         next
           ? (t("checks:detail.enableToast") ?? "Check enabled")
@@ -1432,7 +1453,8 @@ function CheckDetailPage() {
                   : (t("checks:detail.enable") ?? "Enable")
               }
               disabled={updateCheck.isPending}
-              onClick={handleToggleEnabled}
+              onClick={handleDisableClick}
+              data-testid="check-toggle-enabled"
             >
               <Power className="h-4 w-4 md:mr-2" />
               <span className="hidden md:inline">
@@ -1441,6 +1463,47 @@ function CheckDetailPage() {
                   : t("checks:detail.enable")}
               </span>
             </Button>
+            <AlertDialog
+              open={disableDialogOpen}
+              onOpenChange={setDisableDialogOpen}
+            >
+              <AlertDialogContent data-testid="disable-check-dialog">
+                <AlertDialogHeader>
+                  <AlertDialogTitle>
+                    {t("checks:detail.disableDialog.title")}
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {t("checks:detail.disableDialog.description", {
+                      count: openIncidentCount,
+                    })}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="disable-resolve-incidents"
+                    checked={resolveOnDisable}
+                    onCheckedChange={(v) => setResolveOnDisable(v === true)}
+                    data-testid="disable-check-resolve-checkbox"
+                  />
+                  <Label htmlFor="disable-resolve-incidents">
+                    {t("checks:detail.disableDialog.resolve", {
+                      count: openIncidentCount,
+                    })}
+                  </Label>
+                </div>
+                <AlertDialogFooter>
+                  <AlertDialogCancel data-testid="disable-check-cancel">
+                    {t("common:cancel")}
+                  </AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => handleToggleEnabled(resolveOnDisable)}
+                    data-testid="disable-check-confirm"
+                  >
+                    {t("checks:detail.disable")}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
             <Button
               asChild
               variant="default"
