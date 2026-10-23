@@ -58,6 +58,9 @@ func Run(t *testing.T, svc db.Service) {
 		{"maintenance_windows", runMaintenanceWindows},
 		{"slos", runSLOs},
 		{"report_schedules", runReportSchedules},
+		{"escalation_policies", runEscalation},
+		{"on_call", runOnCall},
+		{"check_dependencies", runCheckDependencies},
 	}
 
 	for _, g := range groups {
