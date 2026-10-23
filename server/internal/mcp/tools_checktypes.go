@@ -118,10 +118,9 @@ func validateCheckDef() ToolDefinition {
 	return ToolDefinition{
 		Name: toolValidateCheck,
 		Description: "Dry-run validate a check config without creating or changing " +
-			"anything — a pure read, no side effects. Returns {valid, fields, " +
-			"warnings}: valid is false exactly when fields lists the blocking " +
-			"findings (every one of them, not just the first), while warnings are " +
-			"advisory notes that never block. Use this before create_check when " +
+			"anything — a pure read, no side effects. valid is false exactly when " +
+			"fields lists the blocking findings (every one of them, not just the " +
+			"first), while warnings are advisory notes that never block. Use this before create_check when " +
 			"you've assembled a config from scratch or modified a sample, to catch " +
 			"problems early. Read-only: works with mcp:read tokens.",
 		InputSchema: objectSchema(map[string]any{

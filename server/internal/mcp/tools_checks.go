@@ -16,7 +16,7 @@ func listChecksDef() ToolDefinition {
 	return ToolDefinition{
 		Name: toolListChecks,
 		Description: "List monitoring checks for the organization, optionally filtered by " +
-			"name/slug substring, labels, or check group. Returns {data, pagination}; " +
+			"name/slug substring, labels, or check group; the filters combine with AND. Returns {data, pagination}; " +
 			"pass pagination.cursor back as cursor for the next page. Use this for " +
 			"browsing or filtering a fleet of checks. To investigate a single check's " +
 			"current health, use diagnose_check instead; if you already know its UID " +
@@ -126,7 +126,7 @@ func parseLabelsArg(raw any) (map[string]string, string) {
 func getCheckDef() ToolDefinition {
 	return ToolDefinition{
 		Name: toolGetCheck,
-		Description: "Get a single check's metadata by UID or slug; ask for extras with " +
+		Description: "Get a single check's metadata by UID or slug (identifier takes either); ask for extras with " +
 			"with=lastResult,lastStatusChange. For a full triage briefing (current " +
 			"status + recent results + active incidents), prefer diagnose_check; to " +
 			"search by name or label, use list_checks. Read-only: works with " +
@@ -181,7 +181,8 @@ func createCheckDef() ToolDefinition {
 			"check starts running on its next tick and opens an incident after its " +
 			"confirmation period; pass enabled:false to create it paused. A duplicate " +
 			"slug is rejected with a conflict, never merged — use update_check to " +
-			"change an existing check. Requires the mcp scope (mcp:read tokens are " +
+			"change an existing check. Counts against the organization's MaxChecks quota " +
+			"(an over-quota create is refused); reversible with delete_check. Requires the mcp scope (mcp:read tokens are " +
 			"refused) and at least the user role in the organization.",
 		InputSchema: objectSchema(map[string]any{
 			schemaKeyName: stringProp(
@@ -306,8 +307,9 @@ func updateCheckDef() ToolDefinition {
 		Description: "Update an existing check by UID or slug and return the updated check. " +
 			"PATCH semantics — only the fields you pass are modified, others stay as-is. " +
 			"Use create_check to make a new check and delete_check to remove one; to " +
-			"pause without deleting, set enabled:false instead. Requires the mcp scope " +
-			"(mcp:read tokens are refused) and at least the user role in the organization.",
+			"pause without deleting, set enabled:false instead. Modifies the check in place " +
+			"without consuming quota; reversible by updating again with the previous values. " +
+			"Requires the mcp scope (mcp:read tokens are refused) and at least the user role in the organization.",
 		InputSchema: objectSchema(map[string]any{
 			propIdentifier:  stringProp(descIdentifier),
 			schemaKeyName:   stringProp("New human-readable name, e.g. \"API production\"."),
@@ -426,8 +428,9 @@ func deleteCheckDef() ToolDefinition {
 		Description: "Soft-delete a monitoring check by UID or slug. The check stops running " +
 			"immediately, its active incidents are resolved and its scheduling jobs " +
 			"removed; historical results are kept. A check that other checks tunnel " +
-			"through is refused. To stop a check without losing it, use update_check " +
-			"with enabled:false instead. Returns {deleted: true, identifier}. Requires " +
+			"through is refused. The deletion is permanent: there is no undelete, though it " +
+			"frees a slot in the MaxChecks quota. To stop a check without losing it, use " +
+			"update_check with enabled:false instead. Requires " +
 			"the mcp scope (mcp:read tokens are refused) and at least the user role in " +
 			"the organization.",
 		InputSchema: objectSchema(map[string]any{
