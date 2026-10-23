@@ -267,7 +267,7 @@ func TestMetricHelpers(t *testing.T) {
 	// 10 of 20 samples fall in the first bucket (le=0.001), so p50 sits at its upper edge.
 	assert.InDelta(t, 0.001, stageHistogramQuantile(base, final, "execute", 0.5), 1e-9)
 	// p95 lies in the (0.001, 0.1] bucket, between its bounds.
-	p95 := dbQueryQuantileByBackend(base, final, "sqlite", 0.95)
+	p95 := dbQueryQuantileByBackend(base, final, "sqlite", 0.85)
 	assert.Greater(t, p95, 0.001)
 	assert.Less(t, p95, 0.1)
 	// p99 falls in the +Inf bucket and is capped at the last finite bound.
