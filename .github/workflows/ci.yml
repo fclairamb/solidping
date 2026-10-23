@@ -766,6 +766,14 @@ jobs:
   e2e-tests:
     name: E2E Tests (${{ matrix.shard }}/2)
     runs-on: ubuntu-26.04
+    # docker-compose.yml publishes Postgres on 55432 by default, inside the
+    # kernel's ephemeral range (32768-60999). An outgoing connection can hold it
+    # as its source port and `docker compose up` then fails with "address already
+    # in use" (runs 38346124209, 39863144085). Reserving it with
+    # ip_local_reserved_ports did not help: sockets opened before that step,
+    # such as the runner's own, keep it. 25432 is below the range.
+    env:
+      SP_PG_HOST_PORT: "25432"
     # ~41 min of dash0 specs on one worker as of 2026-10-09, so ~21 min per
     # shard plus its extra suite. The known Playwright-install hang is bounded
     # by the per-attempt timeout on that step, not by this.
@@ -783,14 +791,6 @@ jobs:
         working-directory: web/dash0
     steps:
       - uses: actions/checkout@v7
-
-      # docker-compose.yml publishes Postgres on 55432, which is inside the
-      # kernel's ephemeral range (32768-60999). An outgoing connection made by
-      # an earlier step (bun install, artifact or image download) can get 55432
-      # as its source port, and `docker compose up` then fails with "address
-      # already in use" (run 38346124209). Reserving it keeps it out of the pool.
-      - name: Reserve the Postgres host port
-        run: sudo sysctl -w net.ipv4.ip_local_reserved_ports=55432
 
       - uses: oven-sh/setup-bun@v2
 
@@ -874,7 +874,7 @@ jobs:
           # docker-compose/scripts/init-db.sh's provisioned `solidping` role.
           # See spec 2026-07-06-02.
           SP_DB_TYPE: postgres
-          SP_DB_URL: postgres://solidping:solidping@localhost:55432/solidping?sslmode=disable
+          SP_DB_URL: postgres://solidping:solidping@localhost:25432/solidping?sslmode=disable
           SP_SERVER_RATE_LIMITING_REQUESTS_PER_MINUTE: "0"
           SP_SERVER_RATE_LIMITING_MAX_CONCURRENT: "0"
           # Self-registration is off unless auth.registration_email_pattern is
@@ -907,7 +907,7 @@ jobs:
           SP_RUNMODE: test
           SP_DB_RESET: "true"
           SP_DB_TYPE: postgres
-          SP_DB_URL: postgres://solidping:solidping@localhost:55432/solidping_w1?sslmode=disable
+          SP_DB_URL: postgres://solidping:solidping@localhost:25432/solidping_w1?sslmode=disable
           SP_SERVER_RATE_LIMITING_REQUESTS_PER_MINUTE: "0"
           SP_SERVER_RATE_LIMITING_MAX_CONCURRENT: "0"
           SP_AUTH_REGISTRATION_EMAIL_PATTERN: ".*"
@@ -1007,7 +1007,7 @@ jobs:
           PORT: "4001"
           SP_RUNMODE: test
           SP_DB_TYPE: postgres
-          SP_DB_URL: postgres://solidping:solidping@localhost:55432/solidping?sslmode=disable
+          SP_DB_URL: postgres://solidping:solidping@localhost:25432/solidping?sslmode=disable
           SP_AUTH_ACCESS_TOKEN_EXPIRY: "10s"
           SP_SERVER_RATE_LIMITING_REQUESTS_PER_MINUTE: "0"
           SP_SERVER_RATE_LIMITING_MAX_CONCURRENT: "0"

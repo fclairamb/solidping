@@ -33,8 +33,8 @@ func listCheckGroupsDef() ToolDefinition {
 		Name: toolListCheckGroups,
 		Description: "List all check groups for the organization. Check groups bundle related " +
 			"checks together for shared incident handling and dashboard organization, and " +
-			"each entry carries its slug, rolled-up status and check count. Returns " +
-			"{data: [...]}. Read-only: works with mcp:read tokens.",
+			"each entry carries its slug, rolled-up status and check count. " +
+			"Read-only: works with mcp:read tokens.",
 		InputSchema:  objectSchema(map[string]any{}, nil),
 		OutputSchema: dataOutputSchema("Check groups on this page.", checkGroupOutputProps()),
 		Annotations:  readOnlyAnnotations("List check groups"),

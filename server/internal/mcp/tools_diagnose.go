@@ -26,9 +26,7 @@ func diagnoseCheckDef() ToolDefinition {
 			"a single check's current state in one call: current status, recent raw " +
 			"results across regions, any active incident, and the most recent resolved " +
 			"incident. Use this instead of chaining list_results + list_incidents " +
-			"when a human asks \"what's wrong with check X?\". Returns {check, " +
-			"freshness, regionalIssue, recentResults, activeIncident, " +
-			"lastResolvedIncident} — freshness and regionalIssue are omitted when " +
+			"when a human asks \"what's wrong with check X?\". freshness and regionalIssue are omitted when " +
 			"there is nothing to report, the incidents are null when there are none. " +
 			"Read-only: works with mcp:read tokens.",
 		InputSchema: objectSchema(map[string]any{
