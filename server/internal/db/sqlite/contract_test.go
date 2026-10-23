@@ -21,3 +21,16 @@ func TestDialectContract(t *testing.T) {
 
 	dbcontract.Run(t, svc)
 }
+
+// TestDialectContract_ClosedDatabase checks that every Service method reports
+// a closed connection pool as an error.
+func TestDialectContract_ClosedDatabase(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	svc, err := New(ctx, Config{InMemory: true})
+	require.NoError(t, err)
+	require.NoError(t, svc.Initialize(ctx))
+
+	dbcontract.RunClosed(t, svc)
+}
