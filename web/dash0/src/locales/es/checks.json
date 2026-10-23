@@ -755,6 +755,13 @@
     "disable": "Desactivar",
     "enableToast": "Comprobación activada",
     "disableToast": "Comprobación desactivada",
+    "disableDialog": {
+      "title": "¿Desactivar esta comprobación?",
+      "description_one": "Esta comprobación tiene {{count}} incidente abierto.",
+      "description_other": "Esta comprobación tiene {{count}} incidentes abiertos.",
+      "resolve_one": "Resolver también el incidente abierto",
+      "resolve_other": "Resolver también los incidentes abiertos"
+    },
     "toggleFailed": "No se pudo actualizar la comprobación",
     "descriptionLabel": "Descripción",
     "typeLabel": "Tipo",

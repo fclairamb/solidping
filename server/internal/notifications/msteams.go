@@ -247,8 +247,8 @@ func (s *MSTeamsSender) buildFacts(payload *Payload, checkName string) []msTeams
 	}
 
 	if payload.EventType == eventTypeIncidentResolved {
-		if ResolvedByCheckDeletion(payload.Incident) {
-			facts = append(facts, msTeamsFact{Title: "Reason", Value: checkDeletedSentence})
+		if closedWithoutRecovery(payload.Incident) {
+			facts = append(facts, msTeamsFact{Title: "Reason", Value: closedSentence(payload.Incident)})
 		}
 
 		if payload.Incident.ResolvedAt != nil {

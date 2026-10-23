@@ -84,7 +84,7 @@ type WebhookIncident struct {
 	RelapseCount          int        `json:"relapseCount"`
 	RecoveryPeriodSeconds *int       `json:"recoveryPeriodSeconds"`
 	// ResolutionType says how a resolved incident closed (auto | manual |
-	// expired | escalated | disabled | check_deleted). Omitted while active.
+	// expired | escalated | disabled | check_deleted | check_disabled). Omitted while active.
 	ResolutionType *string `json:"resolutionType,omitempty"`
 	// Regions says which regions saw the failure. A snapshot taken when the
 	// incident opened (or reopened) and refreshed on escalation. Omitted when

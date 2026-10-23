@@ -2068,6 +2068,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Deleting a check resolves its open incidents (the DB layer does that);
 	// this tells whoever was paged, once, that it closed (spec 2026-10-08-02).
 	checksService.SetCheckDeletedIncidentNotifier(incidentsService)
+	checksService.SetCheckDisableIncidentResolver(incidentsService)
 	// The MCP surface builds its OWN statuspages.Service (mcp.NewHandler runs
 	// far earlier in this function), and every NewService starts with its own
 	// view memo. Point it at this one's, or an MCP-driven page edit evicts a map

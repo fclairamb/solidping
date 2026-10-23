@@ -20,6 +20,7 @@
     "down": "En panne",
     "recovered": "Rétabli",
     "checkDeleted": "Contrôle supprimé",
+    "checkDisabled": "Contrôle désactivé",
     "escalated": "Escaladé",
     "reopened": "Rouvert",
     "comment": "Commentaire",
@@ -94,6 +95,10 @@
     "deletedTitle": "Le contrôle {check} a été supprimé",
     "deletedPreheader": "Le contrôle {check} a été supprimé, son incident a donc été clos.",
     "deletedBody": "Le contrôle a été supprimé, cet incident a donc été clos. Cela ne veut pas dire que le service est rétabli.",
+    "disabledSubject": "Le contrôle {check} a été désactivé, incident clos",
+    "disabledTitle": "Le contrôle {check} a été désactivé",
+    "disabledPreheader": "Le contrôle {check} a été désactivé, son incident a donc été clos.",
+    "disabledBody": "Le contrôle a été désactivé, cet incident a donc été clos. Il n'est pas forcément rétabli.",
     "textTitle": "Rétablissement de {check}",
     "textBody": "L'incident de {check} est résolu."
   },

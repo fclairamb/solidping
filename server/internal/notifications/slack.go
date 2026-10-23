@@ -864,6 +864,14 @@ func (s *SlackSender) buildIncidentResolvedThreadReply(payload *Payload) *slack.
 		)}
 	}
 
+	if ResolvedByCheckDisable(payload.Incident) {
+		return &slack.MessageResponse{Text: fmt.Sprintf(
+			":white_circle: %s%s was disabled after %s, so its incident was closed. "+
+				"The check did not necessarily recover.",
+			refLink, nameLink, duration,
+		)}
+	}
+
 	text := fmt.Sprintf(
 		":large_green_circle: %s%s — incident resolved after %s.",
 		refLink, nameLink, duration,
@@ -1080,6 +1088,9 @@ func (s *SlackSender) buildResolvedUpdateMessage(payload *Payload) *slack.Messag
 	headline := fmt.Sprintf("Automatically resolved %s incident", checkName)
 	if ResolvedByCheckDeletion(payload.Incident) {
 		headline = fmt.Sprintf("Closed %s incident: the check was deleted", checkName)
+	}
+	if ResolvedByCheckDisable(payload.Incident) {
+		headline = fmt.Sprintf("Closed %s incident: the check was disabled", checkName)
 	}
 
 	fallbackText := headline

@@ -193,6 +193,7 @@
     "reopenedRelapse": "Reabierto (recaída n.º {{count}})",
     "resolved": "Resuelto",
     "resolvedCheckDeleted": "Cerrado porque se eliminó la comprobación",
+    "resolvedCheckDisabled": "Cerrado porque se desactivó la comprobación",
     "monitoringInterrupted": "Monitoreo interrumpido",
     "monitoringInterruptedSince": "Monitoreo interrumpido desde las {{time}}",
     "monitoringResumed": "Monitoreo reanudado",

@@ -799,6 +799,13 @@
     "disable": "Désactiver",
     "enableToast": "Contrôle activé",
     "disableToast": "Contrôle désactivé",
+    "disableDialog": {
+      "title": "Désactiver ce contrôle ?",
+      "description_one": "Ce contrôle a {{count}} incident ouvert.",
+      "description_other": "Ce contrôle a {{count}} incidents ouverts.",
+      "resolve_one": "Résoudre aussi l'incident ouvert",
+      "resolve_other": "Résoudre aussi les incidents ouverts"
+    },
     "toggleFailed": "Échec de la mise à jour du contrôle",
     "descriptionLabel": "Description",
     "typeLabel": "Type",
