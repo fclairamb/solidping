@@ -1,7 +1,6 @@
 package configregistry_test
 
 import (
-	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -76,7 +75,7 @@ func TestFromMapRejectsMalformedValues(t *testing.T) {
 			rejected++
 
 			var cfgErr *checkerdef.ConfigError
-			require.True(t, errors.As(err, &cfgErr), "%s.%s: %v", checkType, key, err)
+			require.ErrorAs(t, err, &cfgErr, "%s.%s", checkType, key)
 			require.NotEmpty(t, cfgErr.Parameter)
 		}
 	}
@@ -110,7 +109,7 @@ func TestFromMapAcceptsTypedValues(t *testing.T) {
 
 			if err != nil {
 				var cfgErr *checkerdef.ConfigError
-				require.True(t, errors.As(err, &cfgErr), "%s.%s: %v", checkType, key, err)
+				require.ErrorAs(t, err, &cfgErr, "%s.%s", checkType, key)
 
 				continue
 			}

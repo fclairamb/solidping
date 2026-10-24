@@ -3,8 +3,6 @@ package jobtypes
 import (
 	"context"
 	"encoding/json"
-	"errors"
-	"io"
 	"log/slog"
 	"testing"
 	"time"
@@ -38,7 +36,7 @@ func (r *recordingJobs) CreateJob(
 }
 
 func sweepJctx(jobs jobsvc.Service) *jobdef.JobContext {
-	jctx := &jobdef.JobContext{Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	jctx := &jobdef.JobContext{Logger: slog.New(slog.DiscardHandler)}
 	if jobs != nil {
 		jctx.Services = &services.Registry{Jobs: jobs}
 	}
@@ -49,7 +47,7 @@ func sweepJctx(jobs jobsvc.Service) *jobdef.JobContext {
 func TestPeriodicSweepExecute(t *testing.T) {
 	t.Parallel()
 
-	boom := errors.New("boom")
+	boom := errTestBoom
 
 	tests := []struct {
 		name      string
