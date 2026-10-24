@@ -66,3 +66,7 @@ Step 2 alone stays a heuristic over script text, which is the trap P1 already fe
 ## Open questions
 
 - Should a scheduled run that hits the stored allowlist also flip the check back to `repair: propose`, so the next repair needs a human? Recommended: yes, and emit an event, since a refusal on a scheduled run means the applied version is doing something its own loop never showed.
+
+## Resolved open questions
+
+- A scheduled run that hits the stored allowlist flips the check back to `repair: propose` and emits an event. (autopilot: recommended answer)
