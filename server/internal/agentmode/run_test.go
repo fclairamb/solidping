@@ -14,7 +14,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/config"
 )
 
-func TestRunWithoutIdentityNorToken(t *testing.T) { //nolint:paralleltest // t.Chdir
+func TestRunWithoutIdentityNorToken(t *testing.T) {
 	t.Chdir(t.TempDir())
 
 	cfg := &config.Config{}
@@ -34,7 +34,7 @@ func TestRunRejectsBrokenIdentity(t *testing.T) {
 	require.ErrorContains(t, Run(context.Background(), cfg), "parse SP_AGENT_KEYS")
 }
 
-func TestLoadIdentityFromFile(t *testing.T) { //nolint:paralleltest // t.Chdir
+func TestLoadIdentityFromFile(t *testing.T) {
 	t.Chdir(t.TempDir())
 
 	identity, _ := newTestIdentity(t)
@@ -61,7 +61,7 @@ func TestLoadIdentityFromFile(t *testing.T) { //nolint:paralleltest // t.Chdir
 	require.ErrorContains(t, err, "parse")
 }
 
-func TestRunFailsWhenMasterUnreachable(t *testing.T) { //nolint:paralleltest // sshtunnel.ResolverFunc is global
+func TestRunFailsWhenMasterUnreachable(t *testing.T) {
 	t.Chdir(t.TempDir())
 
 	_, encoded := newTestIdentity(t)

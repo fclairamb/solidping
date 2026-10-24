@@ -1,6 +1,7 @@
 package checkmqtt_test
 
 import (
+	"context"
 	"net"
 	"testing"
 	"time"
@@ -15,20 +16,20 @@ import (
 // fakeBroker is a minimal MQTT 3.1.1 broker. The flags make it misbehave at one
 // precise step of the connect, subscribe, publish and echo sequence.
 type fakeBroker struct {
-	refuse      byte // CONNACK return code
-	silentConn  bool // never answers CONNECT
-	dropOnSub   bool // closes the connection on SUBSCRIBE
-	silentSub   bool // never answers SUBSCRIBE
-	silentPub   bool // never PUBACKs a PUBLISH
-	noEcho      bool // acknowledges a PUBLISH but never delivers it
-	wrongEcho   bool // delivers another payload
-	dropOnPub   bool // closes the connection on PUBLISH
+	refuse     byte // CONNACK return code
+	silentConn bool // never answers CONNECT
+	dropOnSub  bool // closes the connection on SUBSCRIBE
+	silentSub  bool // never answers SUBSCRIBE
+	silentPub  bool // never PUBACKs a PUBLISH
+	noEcho     bool // acknowledges a PUBLISH but never delivers it
+	wrongEcho  bool // delivers another payload
+	dropOnPub  bool // closes the connection on PUBLISH
 }
 
 func (b *fakeBroker) start(t *testing.T) (string, int) {
 	t.Helper()
 
-	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	lis, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = lis.Close() })
 
@@ -49,7 +50,6 @@ func (b *fakeBroker) start(t *testing.T) (string, int) {
 	return addr.IP.String(), addr.Port
 }
 
-//nolint:cyclop,funlen // linear protocol script
 func (b *fakeBroker) serve(conn net.Conn) {
 	defer func() { _ = conn.Close() }()
 

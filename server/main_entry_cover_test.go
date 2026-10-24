@@ -22,7 +22,7 @@ import (
 // into an empty directory (no config.yml) and points the server at a fresh
 // SQLite database. The tests using it cannot run in parallel: they edit the
 // process environment.
-func isolateEnv(t *testing.T) string {
+func isolateEnv(t *testing.T) {
 	t.Helper()
 
 	for _, kv := range os.Environ() {
@@ -40,14 +40,12 @@ func isolateEnv(t *testing.T) string {
 	t.Setenv("SP_DB_DIR", dir)
 	t.Setenv("SP_LOG_LEVEL", "error")
 	t.Setenv("SP_LOG_FORMAT", "text")
-
-	return dir
 }
 
 func freeListen(t *testing.T) string {
 	t.Helper()
 
-	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	lis, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 
 	addr := lis.Addr().String()
@@ -67,7 +65,7 @@ func TestMigrateAndRepairCommands(t *testing.T) { //nolint:paralleltest // edits
 	require.NoError(t, migrateRepair(ctx, nil))
 }
 
-func TestMigrateRejectsUnsupportedDatabase(t *testing.T) { //nolint:paralleltest // edits the process environment
+func TestMigrateRejectsUnsupportedDatabase(t *testing.T) {
 	isolateEnv(t)
 	t.Setenv("SP_DB_TYPE", "oracle")
 
@@ -93,7 +91,7 @@ func TestRunMigrationsSQLiteMemory(t *testing.T) { //nolint:paralleltest // shar
 	require.NoError(t, dbSvc.Close())
 }
 
-func TestEncryptCredentialsCommand(t *testing.T) { //nolint:paralleltest // edits the process environment
+func TestEncryptCredentialsCommand(t *testing.T) {
 	isolateEnv(t)
 
 	ctx := context.Background()
@@ -112,7 +110,7 @@ func TestEncryptCredentialsCommand(t *testing.T) { //nolint:paralleltest // edit
 	require.NoError(t, encryptCredentials(ctx, &cli.Command{}))
 }
 
-func TestHealthcheckAction(t *testing.T) { //nolint:paralleltest // edits the process environment
+func TestHealthcheckAction(t *testing.T) {
 	isolateEnv(t)
 
 	addr := freeListen(t)
@@ -124,7 +122,7 @@ func TestHealthcheckAction(t *testing.T) { //nolint:paralleltest // edits the pr
 	err := healthcheckAction(ctx, nil)
 	require.Error(t, err)
 
-	lis, err := net.Listen("tcp", addr)
+	lis, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", addr)
 	require.NoError(t, err)
 
 	srv := &http.Server{
@@ -141,7 +139,7 @@ func TestHealthcheckAction(t *testing.T) { //nolint:paralleltest // edits the pr
 	require.NoError(t, healthcheckAction(ctx, nil))
 }
 
-func TestLoadServeConfigInvalid(t *testing.T) { //nolint:paralleltest // edits the process environment
+func TestLoadServeConfigInvalid(t *testing.T) {
 	isolateEnv(t)
 	t.Setenv("SP_DB_TYPE", "oracle")
 
@@ -175,7 +173,7 @@ func TestShortSum(t *testing.T) {
 	require.Empty(t, shortSum(""))
 }
 
-func TestServeStartsAndStopsInTestMode(t *testing.T) { //nolint:paralleltest // edits the process environment
+func TestServeStartsAndStopsInTestMode(t *testing.T) {
 	isolateEnv(t)
 
 	addr := freeListen(t)
@@ -189,7 +187,7 @@ func TestServeStartsAndStopsInTestMode(t *testing.T) { //nolint:paralleltest // 
 	go func() { done <- serve(ctx, nil) }()
 
 	require.Eventually(t, func() bool {
-		resp, err := http.Get(fmt.Sprintf("http://%s/api/mgmt/health", addr)) //nolint:noctx,bodyclose,gosec // test probe
+		resp, err := http.Get(fmt.Sprintf("http://%s/api/mgmt/health", addr)) //nolint:noctx // test probe
 		if err != nil {
 			return false
 		}
@@ -209,7 +207,7 @@ func TestServeStartsAndStopsInTestMode(t *testing.T) { //nolint:paralleltest // 
 	}
 }
 
-func TestServeFailsOnBrokenDatabase(t *testing.T) { //nolint:paralleltest // edits the process environment
+func TestServeFailsOnBrokenDatabase(t *testing.T) {
 	isolateEnv(t)
 
 	// A file where the data directory should be.
