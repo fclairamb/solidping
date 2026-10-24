@@ -88,6 +88,25 @@ func smokeArgs(leaf smokeLeaf, allFlags bool) []string {
 func runSmoke(t *testing.T, status int, body string, format string, allFlags bool) {
 	t.Helper()
 
+	runSmokeWith(t, status, body, format, func(leaf smokeLeaf) []string { return smokeArgs(leaf, allFlags) })
+}
+
+// runSmokeWith is runSmoke with a caller-chosen argument vector per leaf.
+func runSmokeWith(t *testing.T, status int, body, format string, argsFor func(smokeLeaf) []string) {
+	t.Helper()
+
+	runSmokeCfg(t, status, body, format, argsFor, func(url string) string {
+		return `{"url":"` + url + `","org":"acme","auth":{"pat":"sp_pat_test"}}`
+	})
+}
+
+// runSmokeCfg is runSmokeWith with a caller-chosen settings.json body (nil
+// means no settings file at all).
+func runSmokeCfg(
+	t *testing.T, status int, body, format string, argsFor func(smokeLeaf) []string, settings func(url string) string,
+) {
+	t.Helper()
+
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(status)
@@ -103,9 +122,10 @@ func runSmoke(t *testing.T, status int, body string, format string, allFlags boo
 		t.Fatal(err)
 	}
 
-	cfg := `{"url":"` + srv.URL + `","org":"acme","auth":{"pat":"sp_pat_test"}}`
-	if err := os.WriteFile(filepath.Join(cfgDir, "settings.json"), []byte(cfg), 0o600); err != nil {
-		t.Fatal(err)
+	if settings != nil {
+		if err := os.WriteFile(filepath.Join(cfgDir, "settings.json"), []byte(settings(srv.URL)), 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	devNull, err := os.OpenFile(os.DevNull, os.O_RDWR, 0)
@@ -135,7 +155,7 @@ func runSmoke(t *testing.T, status int, body string, format string, allFlags boo
 		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		args := append([]string{"sp", "-o", format}, smokeArgs(leaf, allFlags)...)
+		args := append([]string{"sp", "-o", format}, argsFor(leaf)...)
 		// Errors are expected (dummy args, error statuses); the point is to
 		// exercise every action end to end without panicking or hanging.
 		_ = root.Run(ctx, args)
