@@ -16,16 +16,16 @@ func TestHandlerHTTPEntryPoints(t *testing.T) {
 	h, _, _ := solidpingSetup(t)
 
 	jsonReq := func(body string) *http.Request {
-		return httptest.NewRequest(http.MethodPost, "/events", strings.NewReader(body))
+		return httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/events", strings.NewReader(body))
 	}
 	formReq := func(vals url.Values) *http.Request {
-		req := httptest.NewRequest(http.MethodPost, "/x", strings.NewReader(vals.Encode()))
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/x", strings.NewReader(vals.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 		return req
 	}
 	badFormReq := func() *http.Request {
-		req := httptest.NewRequest(http.MethodPost, "/x", strings.NewReader("%zz"))
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/x", strings.NewReader("%zz"))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 		return req
@@ -39,25 +39,39 @@ func TestHandlerHTTPEntryPoints(t *testing.T) {
 		wantBody string
 	}{
 		{"events invalid json", h.HandleEvents, jsonReq("{"), http.StatusBadRequest, "Invalid JSON payload"},
-		{"events challenge", h.HandleEvents, jsonReq(`{"type":"url_verification","challenge":"abc"}`),
-			http.StatusOK, "abc"},
-		{"events callback error swallowed", h.HandleEvents,
+		{
+			"events challenge", h.HandleEvents, jsonReq(`{"type":"url_verification","challenge":"abc"}`),
+			http.StatusOK, "abc",
+		},
+		{
+			"events callback error swallowed", h.HandleEvents,
 			jsonReq(`{"type":"event_callback","team_id":"unknown","event":{"type":"app_home_opened","tab":"home"}}`),
-			http.StatusOK, ""},
+			http.StatusOK, "",
+		},
 		{"command bad form", h.HandleCommand, badFormReq(), http.StatusBadRequest, "Invalid form data"},
-		{"command error is ephemeral", h.HandleCommand,
+		{
+			"command error is ephemeral", h.HandleCommand,
 			formReq(url.Values{"team_id": {"unknown"}, "command": {"/solidping"}, "text": {"checks"}}),
-			http.StatusOK, ""},
+			http.StatusOK, "",
+		},
 		{"interaction bad form", h.HandleInteraction, badFormReq(), http.StatusBadRequest, "Invalid form data"},
-		{"interaction missing payload", h.HandleInteraction, formReq(url.Values{}),
-			http.StatusBadRequest, "Missing payload"},
-		{"interaction invalid payload", h.HandleInteraction, formReq(url.Values{"payload": {"{"}}),
-			http.StatusBadRequest, "Invalid payload JSON"},
-		{"interaction unknown type", h.HandleInteraction,
-			formReq(url.Values{"payload": {`{"type":"zzz"}`}}), http.StatusOK, ""},
-		{"interaction handler error", h.HandleInteraction,
+		{
+			"interaction missing payload", h.HandleInteraction, formReq(url.Values{}),
+			http.StatusBadRequest, "Missing payload",
+		},
+		{
+			"interaction invalid payload", h.HandleInteraction, formReq(url.Values{"payload": {"{"}}),
+			http.StatusBadRequest, "Invalid payload JSON",
+		},
+		{
+			"interaction unknown type", h.HandleInteraction,
+			formReq(url.Values{"payload": {`{"type":"zzz"}`}}), http.StatusOK, "",
+		},
+		{
+			"interaction handler error", h.HandleInteraction,
 			formReq(url.Values{"payload": {`{"type":"view_submission","team":{"id":"unknown"}}`}}),
-			http.StatusOK, ""},
+			http.StatusOK, "",
+		},
 	}
 
 	for _, tt := range tests {
@@ -92,7 +106,7 @@ func TestOAuthCallbackErrorRedirects(t *testing.T) {
 			t.Parallel()
 
 			rec := httptest.NewRecorder()
-			req := httptest.NewRequest(http.MethodGet, "/cb?"+tt.query, nil)
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/cb?"+tt.query, nil)
 			require.NoError(t, h.OAuthCallback(rec, req))
 			require.Equal(t, http.StatusFound, rec.Code)
 			require.Contains(t, rec.Header().Get("Location"), "reason="+tt.reason)
