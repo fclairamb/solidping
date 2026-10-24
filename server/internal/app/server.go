@@ -2807,12 +2807,14 @@ func (s *Server) loggingMiddleware(next httpx.HandlerFunc) httpx.HandlerFunc {
 		err := next(w, req)
 		duration := time.Since(start)
 
-		slog.InfoContext(req.Context(), "HTTP request",
-			"method", req.Method,
-			"path", req.URL.Path,
-			"duration", duration,
-			"error", err,
-		)
+		attrs := []any{"method", req.Method, "path", req.URL.Path, "duration", duration}
+		// Only a failed request carries an error: "error=<nil>" on every
+		// healthcheck reads as a failure in a colored terminal.
+		if err != nil {
+			attrs = append(attrs, "error", err)
+		}
+
+		slog.InfoContext(req.Context(), "HTTP request", attrs...)
 
 		return err
 	}
