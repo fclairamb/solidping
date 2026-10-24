@@ -16,10 +16,9 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
-func bootWithConfig(t *testing.T, mutate func(cfg *config.Config)) (*Server, *httptest.Server) {
+func bootWithConfig(ctx context.Context, t *testing.T, mutate func(cfg *config.Config)) (*Server, *httptest.Server) {
 	t.Helper()
 	r := require.New(t)
-	ctx := context.Background()
 
 	cfg := &config.Config{}
 	cfg.Database.Type = dbTypeSQLiteMemory
@@ -47,7 +46,9 @@ func bootWithConfig(t *testing.T, mutate func(cfg *config.Config)) (*Server, *ht
 func TestBootWithEveryProviderMountsItsRoutes(t *testing.T) {
 	t.Parallel()
 
-	server, ts := bootWithConfig(t, func(cfg *config.Config) {
+	ctx := t.Context()
+
+	server, ts := bootWithConfig(ctx, t, func(cfg *config.Config) {
 		cfg.Node.Role = "all"
 		cfg.Slack = config.SlackConfig{
 			Enabled: true, ClientID: "sc", ClientSecret: "ss",
@@ -88,7 +89,7 @@ func TestBootWithEveryProviderMountsItsRoutes(t *testing.T) {
 	}
 
 	// Control: a bare server mounts none of them.
-	_, bare := bootWithConfig(t, func(*config.Config) {})
+	_, bare := bootWithConfig(ctx, t, func(*config.Config) {})
 	for _, path := range []string{"/api/v1/auth/google/login", "/api/v1/integrations/whatsapp/webhook"} {
 		status := discordRouteStatus(t, bare, http.MethodGet, path)
 		require.Truef(t, notRouted(status), "%s should not be mounted, got %d", path, status)
@@ -166,7 +167,7 @@ func TestMaybeAutoMigrateEncryption(t *testing.T) {
 
 	t.Run("encrypted sweep", func(t *testing.T) {
 		t.Parallel()
-		server, _ := bootWithConfig(t, func(cfg *config.Config) {
+		server, _ := bootWithConfig(ctx, t, func(cfg *config.Config) {
 			cfg.Encryption.MasterKey = key
 			cfg.Encryption.AutoMigrate = true
 		})
@@ -189,7 +190,7 @@ func TestMaybeAutoMigrateEncryption(t *testing.T) {
 
 	t.Run("encrypted but auto-migrate disabled", func(t *testing.T) {
 		t.Parallel()
-		server, _ := bootWithConfig(t, func(cfg *config.Config) {
+		server, _ := bootWithConfig(ctx, t, func(cfg *config.Config) {
 			cfg.Encryption.MasterKey = key
 			cfg.Encryption.AutoMigrate = false
 		})
@@ -198,7 +199,7 @@ func TestMaybeAutoMigrateEncryption(t *testing.T) {
 
 	t.Run("plaintext split without a key", func(t *testing.T) {
 		t.Parallel()
-		server, _ := bootWithConfig(t, func(cfg *config.Config) { cfg.Encryption.AutoMigrate = true })
+		server, _ := bootWithConfig(ctx, t, func(cfg *config.Config) { cfg.Encryption.AutoMigrate = true })
 		require.False(t, server.services.Credentials.Enabled())
 
 		org := models.NewOrganization("plain-split", "")
@@ -224,7 +225,7 @@ func TestMaybeAutoMigrateEncryption(t *testing.T) {
 
 	t.Run("no key and auto-migrate off", func(t *testing.T) {
 		t.Parallel()
-		server, _ := bootWithConfig(t, func(cfg *config.Config) { cfg.Encryption.AutoMigrate = false })
+		server, _ := bootWithConfig(ctx, t, func(cfg *config.Config) { cfg.Encryption.AutoMigrate = false })
 		require.NoError(t, server.MaybeAutoMigrateEncryption(ctx))
 	})
 }
@@ -233,7 +234,7 @@ func TestFreeboxConnectionResolver(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	server, _ := bootWithConfig(t, func(*config.Config) {})
+	server, _ := bootWithConfig(ctx, t, func(*config.Config) {})
 
 	org := models.NewOrganization("freebox-res", "")
 	require.NoError(t, server.dbService.CreateOrganization(ctx, org))
