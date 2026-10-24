@@ -177,7 +177,8 @@ func TestProxyPostHog(t *testing.T) {
 	bad := &Server{config: &config.Config{PostHog: config.PostHogConfig{
 		Enabled: true, ProjectAPIKey: "phc_test", Host: "http://[::1",
 	}}}
-	require.Error(t, bad.proxyPostHog(httptest.NewRecorder(), helperRequest(http.MethodPost, config.PostHogProxyPath+"/e/")))
+	badReq := helperRequest(http.MethodPost, config.PostHogProxyPath+"/e/")
+	require.Error(t, bad.proxyPostHog(httptest.NewRecorder(), badReq))
 }
 
 func TestServeDocsFileFallsBackTo404(t *testing.T) {
