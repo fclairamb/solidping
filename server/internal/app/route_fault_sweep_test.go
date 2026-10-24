@@ -171,7 +171,7 @@ func TestEveryRouteSurvivesAFailingQuery(t *testing.T) {
 		return nil
 	}))
 
-	const maxFaults = 10
+	const maxFaults = 60
 
 	var hung []string
 
