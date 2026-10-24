@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.42.0](https://github.com/fclairamb/solidping/compare/v0.41.0...v0.42.0) (2026-10-24)
+
+
+### Features
+
+* **api:** cursors on the events and incidents APIs ([#640](https://github.com/fclairamb/solidping/issues/640)) ([bbd32b9](https://github.com/fclairamb/solidping/commit/bbd32b98625c84ada3c61bab9a66d88c669aec28))
+* **checks:** offer to resolve open incidents when a check is disabled ([#648](https://github.com/fclairamb/solidping/issues/648)) ([9553cdc](https://github.com/fclairamb/solidping/commit/9553cdc3b46b449979bfcd4bb6d16f43e634bf2e))
+* **mcp:** bound tool string inputs and disclose side effects ([#644](https://github.com/fclairamb/solidping/issues/644)) ([22039c7](https://github.com/fclairamb/solidping/commit/22039c726eeb0e7e79ee3bd54e0548212e66fe54))
+* **notifications:** ntfy notifications link to the incident ([#639](https://github.com/fclairamb/solidping/issues/639)) ([e466060](https://github.com/fclairamb/solidping/commit/e4660604b704abefb8adac37000849d0311358c5))
+
+
+### Bug Fixes
+
+* **ai:** hold AI loops to the check's hosts after a real-secrets run ([#646](https://github.com/fclairamb/solidping/issues/646)) ([7cf836d](https://github.com/fclairamb/solidping/commit/7cf836d2ad6b839ab48d29896c39865cfc32e7d8))
+* **deps:** update github.com/dop251/goja digest to 1622cea ([#654](https://github.com/fclairamb/solidping/issues/654)) ([70d3bfb](https://github.com/fclairamb/solidping/commit/70d3bfb565952a142574b2e607948799a2875b54))
+* **deps:** update github.com/dop251/goja digest to 2a9269b ([#668](https://github.com/fclairamb/solidping/issues/668)) ([e536f52](https://github.com/fclairamb/solidping/commit/e536f5242f867c4c4437917388ec88501c23d912))
+* **deps:** update github.com/dop251/goja digest to 3c7039f ([#651](https://github.com/fclairamb/solidping/issues/651)) ([bd93ee7](https://github.com/fclairamb/solidping/commit/bd93ee703d36529900d518e9360aef3f73f794c5))
+* **deps:** update github.com/dop251/goja digest to 6ace4dd ([#652](https://github.com/fclairamb/solidping/issues/652)) ([0d7366c](https://github.com/fclairamb/solidping/commit/0d7366cd32695e89bd5ba24cd1a3921f7a045ac2))
+* **deps:** update go dependencies (non-major) ([#638](https://github.com/fclairamb/solidping/issues/638)) ([b8453fb](https://github.com/fclairamb/solidping/commit/b8453fbeec5031d9b3703d50693afc2a0244b3a9))
+* **deps:** update go dependencies (non-major) ([#649](https://github.com/fclairamb/solidping/issues/649)) ([296ecdf](https://github.com/fclairamb/solidping/commit/296ecdf9dc39d4770ca70df51aafaed9ee9bc766))
+* **deps:** update go dependencies (non-major) ([#656](https://github.com/fclairamb/solidping/issues/656)) ([9aef341](https://github.com/fclairamb/solidping/commit/9aef341b69dff34ac502fe9334215e6003e6426e))
+* **deps:** update module github.com/gosnmp/gosnmp to v1.47.0 ([#659](https://github.com/fclairamb/solidping/issues/659)) ([575e17f](https://github.com/fclairamb/solidping/commit/575e17f33745e860c568e9b5415a0901cbf424f6))
+* **deps:** update module github.com/oapi-codegen/oapi-codegen/v2 to v2.8.1 ([#661](https://github.com/fclairamb/solidping/issues/661)) ([aa91cb6](https://github.com/fclairamb/solidping/commit/aa91cb6f0221d9ab4b2482ac0428851840ad2478))
+* **deps:** update module github.com/posthog/posthog-go to v1.36.2 ([#650](https://github.com/fclairamb/solidping/issues/650)) ([fb01ef8](https://github.com/fclairamb/solidping/commit/fb01ef8b0b9e5257abfacc67b6aba1b50ee21d5b))
+* **log:** drop error=&lt;nil&gt; from successful HTTP request logs ([#664](https://github.com/fclairamb/solidping/issues/664)) ([4579f59](https://github.com/fclairamb/solidping/commit/4579f5908867ce2119f2bb4ed430898fe170d712))
+
 ## [0.41.0](https://github.com/fclairamb/solidping/compare/v0.40.1...v0.41.0) (2026-10-22)
 
 
