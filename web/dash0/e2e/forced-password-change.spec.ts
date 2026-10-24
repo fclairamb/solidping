@@ -148,6 +148,89 @@ test.describe("Forced password change", () => {
     await expect(page).toHaveURL(/change-password/);
   });
 
+  // Spec 2026-10-13-02: while the flagged account still signs in with the
+  // published default address, the screen also asks for a real email, and
+  // both land in one call.
+  test("the default admin sets a real email on the forced screen", async ({ page }) => {
+    const DEFAULT_EMAIL = "admin@solidping.io";
+    const stamp = uniqueStamp();
+    const newEmail = `first-login-${stamp}@unknown.example`;
+    const newPassword = "Rotated-Pass-456!";
+
+    // Test mode seeds `test@test.com`, not the default admin, so create the
+    // default-address account here, flagged exactly like the startup seed.
+    const createResp = await page.request.post(`${API_BASE}/api/v1/test/users`, {
+      data: {
+        email: DEFAULT_EMAIL,
+        password: OLD_PASSWORD,
+        name: "Default Admin",
+        mustChangePassword: true,
+      },
+    });
+    if (createResp.status() === 404) {
+      test.skip(true, "test user-seed endpoint unavailable (server not in SP_RUNMODE=test?)");
+    }
+    // 409 would mean an earlier run left the default address in use: this
+    // test always moves it away, so that is a real failure, not a skip.
+    expect(createResp.status()).toBe(201);
+
+    await page.goto("login");
+    await page.getByTestId("login-email").fill(DEFAULT_EMAIL);
+    await page.getByTestId("login-password").fill(OLD_PASSWORD);
+    await page.getByTestId("login-submit").click();
+    await page.waitForURL((url) => url.pathname.endsWith("/change-password"), {
+      timeout: 15000,
+    });
+
+    // Empty by default: the default address is never prefilled.
+    await expect(page.getByTestId("forced-email")).toHaveValue("");
+
+    // A mismatch is refused before anything is sent.
+    await page.getByTestId("forced-email").fill(newEmail);
+    await page.getByTestId("forced-email-confirm").fill(`x${newEmail}`);
+    await page.getByTestId("forced-password-current").fill(OLD_PASSWORD);
+    await page.getByTestId("forced-password-new").fill(newPassword);
+    await page.getByTestId("forced-password-confirm").fill(newPassword);
+    await page.getByTestId("forced-password-submit").click();
+    await expect(page.getByTestId("forced-password-error")).toBeVisible();
+    await expect(page).toHaveURL(/change-password/);
+
+    await page.getByTestId("forced-email-confirm").fill(newEmail);
+    await page.getByTestId("forced-password-submit").click();
+    await page.waitForURL((url) => !url.pathname.endsWith("/change-password"), {
+      timeout: 15000,
+    });
+
+    // Sign out, then sign in through the login page with the new address.
+    await page.evaluate(() => localStorage.clear());
+    await page.goto("login");
+    await page.getByTestId("login-email").fill(newEmail);
+    await page.getByTestId("login-password").fill(newPassword);
+    await page.getByTestId("login-submit").click();
+    await page.waitForURL(
+      (url) => !url.pathname.endsWith("/login") && !url.pathname.endsWith("/change-password"),
+      { timeout: 15000 },
+    );
+
+    // The default address no longer signs in.
+    const oldLogin = await page.request.post(`${API_BASE}/api/v1/auth/login`, {
+      data: { email: DEFAULT_EMAIL, password: newPassword },
+    });
+    expect(oldLogin.status()).not.toBe(200);
+  });
+
+  test("an account on a real address is not asked for an email", async ({ page }) => {
+    // The state an SP_ADMIN_EMAIL seed produces: flagged, on its own address.
+    const { login } = await seedFlaggedUser(page);
+    await seedBrowserSession(page, login);
+
+    await page.goto("change-password");
+    // Positive control: the screen itself rendered.
+    await expect(page.getByTestId("forced-password-new")).toBeVisible();
+    await expect(page.getByTestId("forced-email")).toHaveCount(0);
+    await expect(page.getByTestId("forced-email-confirm")).toHaveCount(0);
+  });
+
   test("renders on a phone-sized viewport", async ({ page }) => {
     const { login } = await seedFlaggedUser(page);
     await seedBrowserSession(page, login);
