@@ -45,7 +45,7 @@ func coverObjBody(dataAsObject bool) string {
 func runRouted(t *testing.T, format string, allFlags bool, dataAsObject bool) {
 	t.Helper()
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	runRoutedWith(t, format, allFlags, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		body := coverListBody()
 		if coverUIDSuffix.MatchString(r.URL.Path) || r.Method == http.MethodPost || r.Method == http.MethodPut ||
@@ -63,6 +63,14 @@ func runRouted(t *testing.T, format string, allFlags bool, dataAsObject bool) {
 		w.WriteHeader(status)
 		_, _ = w.Write([]byte(body))
 	}))
+}
+
+// runRoutedWith drives every leaf command against a fake server answering
+// with handler.
+func runRoutedWith(t *testing.T, format string, allFlags bool, handler http.Handler) {
+	t.Helper()
+
+	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
 
 	home := t.TempDir()
