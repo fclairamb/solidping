@@ -1123,7 +1123,8 @@ func TestClaimCarriesNextEligibleHint(t *testing.T) {
 
 	// Reschedule the job 10s out with a 10s period: claimable in ~5s
 	// (scheduled_at − period/2), a delay only the hint can carry.
-	scheduledAt := time.Now().Add(10 * time.Second)
+	start := time.Now()
+	scheduledAt := start.Add(10 * time.Second)
 	_, err := e.dbSvc.DB().NewUpdate().
 		Model((*models.CheckJob)(nil)).
 		Set("scheduled_at = ?", scheduledAt).
@@ -1139,7 +1140,10 @@ func TestClaimCarriesNextEligibleHint(t *testing.T) {
 	resp := roundTrip(t, conn, agentcrypto.ClientFrame{Type: agentcrypto.MsgTypeClaim, ID: "c1", MaxJobs: 10})
 	r.Equal(agentcrypto.MsgTypeJobs, resp.Type)
 	r.Empty(resp.Jobs, "the job is outside its own 5s claim window")
-	r.InDelta(5000, resp.RetryInMs, 1500, "retryInMs must be ~scheduled_at − period/2")
+	elapsed := time.Since(start)
+	// The hint counts down from 5s as wall-clock time passes after scheduledAt was fixed.
+	r.LessOrEqual(resp.RetryInMs, int64(5100), "retryInMs must not exceed scheduled_at − period/2")
+	r.GreaterOrEqual(resp.RetryInMs, 5000-elapsed.Milliseconds()-100, "retryInMs must be ~scheduled_at − period/2")
 
 	// WSBackend level: the hint reaches the worker loop's ClaimJobs return.
 	keys, err := agentcrypto.GenerateAgentKeys()
@@ -1156,6 +1160,9 @@ func TestClaimCarriesNextEligibleHint(t *testing.T) {
 	jobs, nextIn, err := wsBackend.ClaimJobs(ctx, worker.UID, nil, 5, 5, time.Minute)
 	r.NoError(err)
 	r.Empty(jobs)
-	r.InDelta((5 * time.Second).Seconds(), nextIn.Seconds(), 1.5,
+	elapsed = time.Since(start)
+	r.LessOrEqual(nextIn, 5*time.Second+100*time.Millisecond,
+		"the agent fetcher must receive the server's eligibility hint")
+	r.GreaterOrEqual(nextIn, 5*time.Second-elapsed-100*time.Millisecond,
 		"the agent fetcher must receive the server's eligibility hint")
 }
