@@ -127,8 +127,10 @@ func TestExecuteCommands(t *testing.T) {
 			c.Command = "echo"
 			c.ExpectedOutputPattern = `(`
 		}, checkerdef.StatusError, "invalid regex"},
-		{"unexpected exit code", hostFail, portFail, func(c *checkssh.SSHConfig) { c.Command = "false" },
-			checkerdef.StatusDown, "exit code 3, expected 0"},
+		{
+			"unexpected exit code", hostFail, portFail, func(c *checkssh.SSHConfig) { c.Command = "false" },
+			checkerdef.StatusDown, "exit code 3, expected 0",
+		},
 		{"expected non-zero exit code", hostFail, portFail, func(c *checkssh.SSHConfig) {
 			c.Command = "false"
 			c.ExpectedExitCode = 3

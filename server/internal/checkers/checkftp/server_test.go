@@ -206,7 +206,7 @@ func TestExecuteAgainstFakeServer(t *testing.T) {
 		require.Equal(t, checkerdef.StatusDown, res.Status)
 	})
 
-	t.Run("cancelled context reports timeout", func(t *testing.T) {
+	t.Run("canceled context reports timeout", func(t *testing.T) {
 		t.Parallel()
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
