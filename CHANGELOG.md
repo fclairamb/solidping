@@ -1,7 +1,99 @@
 # Changelog
 
-## Unreleased
+## [0.41.0](https://github.com/fclairamb/solidping/compare/v0.40.1...v0.41.0) (2026-10-22)
 
+
+### Features
+
+* **email:** emails are calmer and say why a check is down ([#623](https://github.com/fclairamb/solidping/issues/623)) ([8dd68d3](https://github.com/fclairamb/solidping/commit/8dd68d33c3a239f98a28ffc81da4b487504b83d0))
+* **private locations:** crawl and network discovery now run from a private location (an org agent). The agent opts in to discovery with `SP_AGENT_DISCOVERY_ENABLED` and `SP_AGENT_DISCOVERY_CIDRS`, scans of a private location need an admin of the org, and a new entitlement `discovery_agent_addresses_per_day` caps the addresses scanned per day (65 536 on SaaS, unlimited when self-hosted). An org runs one scan at a time. A crawl in flight during the upgrade restarts from scratch, and a crawl that uses `${param:}` ends in an error on a private location. ([#633](https://github.com/fclairamb/solidping/issues/633)) ([062fd99](https://github.com/fclairamb/solidping/commit/062fd99431deb8f9621a23561d361268e2a56a46))
+
+
+### Bug Fixes
+
+* **aichecks:** when the AI writes or repairs a check, a script that holds real secrets can only reach the hosts it is allowed to, checked when it connects. Before, only the text of the script was checked, so a URL built at run time could send a secret to another host. A script that uses `browser.*` or `solidping.*` while it holds secrets is refused. ([#631](https://github.com/fclairamb/solidping/issues/631)) ([c09fdd1](https://github.com/fclairamb/solidping/commit/c09fdd1c1701fbb97c8fea6fd17cc13214f54c34))
+* **dash0:** drag-to-zoom on the Timing chart ([#617](https://github.com/fclairamb/solidping/issues/617)) ([931816c](https://github.com/fclairamb/solidping/commit/931816c816e9bf466d250b14eaf33b0c3a7e573f))
+* **email:** the usage-cap email links to the platform upgrade page, not billing ([#632](https://github.com/fclairamb/solidping/issues/632)) ([abf3a68](https://github.com/fclairamb/solidping/commit/abf3a68b13ec65828d1216408c458a62873e70b5))
+* **status-pages:** a grouped check's entry closes when it recovers ([#615](https://github.com/fclairamb/solidping/issues/615)) ([d4d9b21](https://github.com/fclairamb/solidping/commit/d4d9b212cbd624d74fd748fc00184cf9de6b83bf))
+* **checkdns:** the DNS checker test no longer depends on a real resolver ([#630](https://github.com/fclairamb/solidping/issues/630)) ([cca1d88](https://github.com/fclairamb/solidping/commit/cca1d88933f5e48d8d493f0fd4dc717bceb6c5d5))
+* **deps:** dependency updates: anthropic-sdk-go v2 ([#628](https://github.com/fclairamb/solidping/issues/628)), embedded-postgres v2 ([#614](https://github.com/fclairamb/solidping/issues/614)), a2a-go v2.7.0 ([#625](https://github.com/fclairamb/solidping/issues/625)), goja ([#619](https://github.com/fclairamb/solidping/issues/619), [#626](https://github.com/fclairamb/solidping/issues/626), [#637](https://github.com/fclairamb/solidping/issues/637)) and non-major Go modules ([#622](https://github.com/fclairamb/solidping/issues/622), [#627](https://github.com/fclairamb/solidping/issues/627), [#635](https://github.com/fclairamb/solidping/issues/635))
+
+## [0.40.1](https://github.com/fclairamb/solidping/compare/v0.40.0...v0.40.1) (2026-10-19)
+
+
+### Bug Fixes
+
+* **checkworker:** checks with a long period are no longer starved by the rate limiter and run on schedule again ([#609](https://github.com/fclairamb/solidping/issues/609)) ([3295a20](https://github.com/fclairamb/solidping/commit/3295a20e7e7849184bda776191b1fe890be087a3))
+* **dash0:** the HTTP timing chart now has a legend, a dark tooltip in dark mode and a single Response time | Timing switch, and every chart toggle is one segmented control with the selected option in blue ([#611](https://github.com/fclairamb/solidping/issues/611)) ([c5264d2](https://github.com/fclairamb/solidping/commit/c5264d2cb0f2865c60d78e3cddca3e694adc4067))
+* **notifications:** an AI agent (A2A) whose card or reply is larger than 1 MiB is now refused instead of being read into memory ([#608](https://github.com/fclairamb/solidping/issues/608)) ([a0cbe75](https://github.com/fclairamb/solidping/commit/a0cbe75a8064c8572b17bb3769eb17e624dc49a8))
+* **deps:** dependency updates: @hookform/resolvers v6 ([#610](https://github.com/fclairamb/solidping/issues/610)), embedded-postgres v2 ([#613](https://github.com/fclairamb/solidping/issues/613)), golang-ical v0.3.8 ([#605](https://github.com/fclairamb/solidping/issues/605)) and non-major Go modules ([#612](https://github.com/fclairamb/solidping/issues/612))
+
+## [0.40.0](https://github.com/fclairamb/solidping/compare/v0.39.0...v0.40.0) (2026-10-18)
+
+
+### Features
+
+* **dash0:** the dashboard gets tonal gradients, a middle ground between the flat and the shiny look ([#603](https://github.com/fclairamb/solidping/issues/603)) ([741d8d7](https://github.com/fclairamb/solidping/commit/741d8d7e4b5c0b8272839994ed0988c126306c39))
+* **docs:** the docs site is redesigned to match www.solidping.io ([#599](https://github.com/fclairamb/solidping/issues/599)) ([660deb7](https://github.com/fclairamb/solidping/commit/660deb7bdb67ea4827290df92db141d7f248516e))
+
+
+### Bug Fixes
+
+* **dash0:** the invite button now sits in the organization header ([#601](https://github.com/fclairamb/solidping/issues/601)) ([fb0e5bf](https://github.com/fclairamb/solidping/commit/fb0e5bf2483b84d56d8b41c9e6c9638398aa7775))
+* **dash0:** fix a flaky checklist e2e test: it now waits for the dismissal request to finish before reloading ([#604](https://github.com/fclairamb/solidping/issues/604)) ([10e8b4e](https://github.com/fclairamb/solidping/commit/10e8b4eab8a63fddd26c7bf46c6ddffe3b74de4c))
+
+## [0.39.0](https://github.com/fclairamb/solidping/compare/v0.38.6...v0.39.0) (2026-10-18)
+
+
+### Features
+
+* A2A notification channel so AI agents can receive alerts ([#596](https://github.com/fclairamb/solidping/issues/596)) ([2f55dc3](https://github.com/fclairamb/solidping/commit/2f55dc322bacf7ffa1a1010eed1828c9b6facad4))
+* **dash0:** calmer, flatter and phone-friendly dashboard UI ([#582](https://github.com/fclairamb/solidping/issues/582)) ([ce933cc](https://github.com/fclairamb/solidping/commit/ce933cc2812be4980373e272f3c758303997f4ec))
+* vendor status check, SMS/voice quotas, upgrade-path CI and flaky test fixes ([#591](https://github.com/fclairamb/solidping/issues/591)) ([1a392ec](https://github.com/fclairamb/solidping/commit/1a392ec733ed9ee288005832c05811a9e799851e))
+
+
+### Bug Fixes
+
+* **checks:** build the postgres check connection from an explicit pq.Config ([#584](https://github.com/fclairamb/solidping/issues/584)) ([a4b394a](https://github.com/fclairamb/solidping/commit/a4b394ae7541f703783337e5dd87bdb2f354346c))
+* **showcase:** film a single region, as a plain docker run shows ([#595](https://github.com/fclairamb/solidping/issues/595)) ([a443442](https://github.com/fclairamb/solidping/commit/a44344284c6595455cda9363e1227e2b890d0e85))
+* **deps:** update goja, koanf to v2.4.1, posthog-go to v1.35.1 and golang.org/x/mod to v0.42.0 ([#578](https://github.com/fclairamb/solidping/issues/578), [#583](https://github.com/fclairamb/solidping/issues/583), [#586](https://github.com/fclairamb/solidping/issues/586), [#590](https://github.com/fclairamb/solidping/issues/590), [#594](https://github.com/fclairamb/solidping/issues/594), [#597](https://github.com/fclairamb/solidping/issues/597), [#598](https://github.com/fclairamb/solidping/issues/598))
+
+## [0.38.6](https://github.com/fclairamb/solidping/compare/v0.38.5...v0.38.6) (2026-10-16)
+
+
+### ⚠ BREAKING CHANGES
+
+This release fixes security issues, and some fixes change behaviour. Check these before you upgrade ([#572](https://github.com/fclairamb/solidping/issues/572)) ([d67afc2](https://github.com/fclairamb/solidping/commit/d67afc28bc7343b505c5d351b155b800e59c0031)):
+
+* **checks:** `${env:NAME}` references stop resolving until `NAME` is listed in `SP_CHECK_ENV_ALLOWLIST`, on the server and on each private agent. The list is empty by default.
+* **slack:** An HTTP-mode Slack install needs `SP_SLACK_SIGNING_SECRET`. Socket Mode does not.
+* **auth:** A multi-tenant Microsoft app registration must add the `email` and `xms_edov` optional ID token claims.
+* **kubernetes:** Connections that use `exec`, `auth-provider` or file references stop working. `inCluster` needs `SP_K8S_ALLOW_IN_CLUSTER=true`.
+* **mysql:** The username, password and database name can no longer contain `@ / ( ) ? & :`. Use a reference instead.
+* **auth:** An existing account must sign in before accepting an invitation. MCP OAuth tokens and scoped PATs get 401 on the REST API.
+* **discovery:** Under an enforcing egress policy (SaaS by default), `lan` discovery is refused, and so is `container` discovery on SaaS shared nodes.
+
+
+### Features
+
+* **deploy:** **SolidPing can be deployed on Railway.** A new installation page covers the dashboard, the CLI and the switch to PostgreSQL. `deploy/railway/` has the same setup as Railway Infrastructure as Code: one service, a volume at `/data` and a health check. ([#576](https://github.com/fclairamb/solidping/issues/576)) ([e65fb7b](https://github.com/fclairamb/solidping/commit/e65fb7b8550e9e307e8bddc7bede018236e4559e))
+* **release:** **Builds for linux/riscv64.** The server and `sp` binaries ship as `solidping-linux-riscv64.gz` and `sp-linux-riscv64.gz`, and both Docker images are built for amd64, arm64 and riscv64. ([#573](https://github.com/fclairamb/solidping/issues/573)) ([247e388](https://github.com/fclairamb/solidping/commit/247e388a54916941dabd8522a9fa77481c0df56b))
+
+
+### Bug Fixes
+
+* **auth:** **Sign-in tokens can no longer be used as access tokens.** Each token is signed with a key for its purpose, so the passkey login session and the 2FA temporary token are refused as access tokens. ([#572](https://github.com/fclairamb/solidping/issues/572)) ([d67afc2](https://github.com/fclairamb/solidping/commit/d67afc28bc7343b505c5d351b155b800e59c0031))
+* **auth:** **Accepting an invitation for an existing account requires being signed in as that account.** The API answers 401 `INVITE_LOGIN_REQUIRED` or 403 `INVITE_EMAIL_MISMATCH`. ([#572](https://github.com/fclairamb/solidping/issues/572)) ([d67afc2](https://github.com/fclairamb/solidping/commit/d67afc28bc7343b505c5d351b155b800e59c0031))
+* **auth:** **Microsoft sign-in no longer links or creates an account from an unverified email.** On a multi-tenant app, the email is trusted only when the ID token carries `xms_edov`. ([#572](https://github.com/fclairamb/solidping/issues/572)) ([d67afc2](https://github.com/fclairamb/solidping/commit/d67afc28bc7343b505c5d351b155b800e59c0031))
+* **auth:** **The TOTP code is asked on every SSO and OAuth sign-in.** The 2FA, password reset and change password attempt counters are now atomic, and a revoked or expired PAT leaves the cache on every replica. MCP OAuth tokens and scoped PATs are refused on the REST API, the realtime WebSocket and the OAuth consent screen. ([#572](https://github.com/fclairamb/solidping/issues/572)) ([d67afc2](https://github.com/fclairamb/solidping/commit/d67afc28bc7343b505c5d351b155b800e59c0031))
+* **checks:** **Checks and connections can no longer read server secrets or files.** `${env:}` only resolves names listed in `SP_CHECK_ENV_ALLOWLIST`, both when a check is saved and when it runs. Kubernetes connections refuse `exec` and `auth-provider` kubeconfigs and file references. The MySQL check sets `AllowAllFiles=false` and dials through the egress guard. ([#572](https://github.com/fclairamb/solidping/issues/572)) ([d67afc2](https://github.com/fclairamb/solidping/commit/d67afc28bc7343b505c5d351b155b800e59c0031))
+* **egress:** **More outbound requests go through the egress guard.** This covers status page subscriber and publication webhooks, JS `docker` sub-checks (which also obey the SaaS docker gate), and LAN, container and Kubernetes discovery. Refused discovery types are hidden. Subscriber webhooks follow `SP_EGRESS_ALLOW_PRIVATE`, so self-hosted instances accept private endpoints. ([#572](https://github.com/fclairamb/solidping/issues/572)) ([d67afc2](https://github.com/fclairamb/solidping/commit/d67afc28bc7343b505c5d351b155b800e59c0031))
+* **status-pages:** **A status page component can only be changed through its own section.** Before, another org's components could be updated or deleted. ([#572](https://github.com/fclairamb/solidping/issues/572)) ([d67afc2](https://github.com/fclairamb/solidping/commit/d67afc28bc7343b505c5d351b155b800e59c0031))
+* **slack:** **Slack endpoints refuse every request when no signing secret is set.** `response_url` must be on `hooks.slack.com`, and request bodies are capped at 1 MiB. ([#572](https://github.com/fclairamb/solidping/issues/572)) ([d67afc2](https://github.com/fclairamb/solidping/commit/d67afc28bc7343b505c5d351b155b800e59c0031))
+* **incidents:** **No degraded alert right after an outage recovers.** The 60-probe window still held the outage's own failures, so a `[DEGRADED]` email followed the recovery a minute later. The window now starts when the last incident resolved. The email also says "80.0% available" instead of a bare percentage that read like a failure rate. ([#577](https://github.com/fclairamb/solidping/issues/577)) ([c8a2dd2](https://github.com/fclairamb/solidping/commit/c8a2dd2fe3a67c54c149490d20ee7601d8476dff))
+* **sms:** **OVH SMS delivery receipts are accepted.** Unless `SP_SMS_OVH_DLR_TOKEN` was set, the callback URL registered with OVH and the token the server checked never matched, so every receipt got a 404. The URL also pointed at `http://localhost:4000` unless the base URL was in the YAML file. ([#572](https://github.com/fclairamb/solidping/issues/572)) ([d67afc2](https://github.com/fclairamb/solidping/commit/d67afc28bc7343b505c5d351b155b800e59c0031))
+* **config:** **`SP_SERVER_CHECK_WORKER_NB` and `SP_SERVER_JOB_WORKER_NB` take effect.** They were ignored. ([#572](https://github.com/fclairamb/solidping/issues/572)) ([d67afc2](https://github.com/fclairamb/solidping/commit/d67afc28bc7343b505c5d351b155b800e59c0031))
+* **deps:** Go dependency updates: `kin-openapi` 0.149.0 (CVE-2026-100347), `quic-go` 0.64.0, `anthropic-sdk-go` 1.82.0, `gookit/color` 1.6.3, `goja` and other non-major updates. ([#561](https://github.com/fclairamb/solidping/issues/561)) ([#564](https://github.com/fclairamb/solidping/issues/564)) ([#566](https://github.com/fclairamb/solidping/issues/566)) ([#567](https://github.com/fclairamb/solidping/issues/567)) ([#568](https://github.com/fclairamb/solidping/issues/568)) ([#569](https://github.com/fclairamb/solidping/issues/569)) ([#571](https://github.com/fclairamb/solidping/issues/571))
 
 ## [0.38.5](https://github.com/fclairamb/solidping/compare/v0.38.4...v0.38.5) (2026-10-14)
 

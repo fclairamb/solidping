@@ -239,7 +239,7 @@
     "authToken": "API server + token",
     "authKubeconfig": "Kubeconfig",
     "authInCluster": "In-cluster (this cluster)",
-    "inClusterHint": "Uses the service-account token mounted in SolidPing's own pod. Only works when SolidPing runs inside the target cluster; no credentials are stored.",
+    "inClusterHint": "Uses the service-account token mounted in SolidPing's own pod. Only works when SolidPing runs inside the target cluster; no credentials are stored. The operator must enable it with SP_K8S_ALLOW_IN_CLUSTER=true.",
     "apiServer": "API server URL",
     "token": "Bearer token",
     "kubeconfig": "Kubeconfig (YAML)",
@@ -272,7 +272,8 @@
     "freebox": "Monitor a Free Freebox (line quality, sync rate, network state)",
     "webpush": "Receive alerts as browser notifications on your subscribed devices",
     "kubernetes": "Monitor Kubernetes workload replica health (Deployments, ReplicaSets)",
-    "msteams-bot": "Two-way Teams bot: alerts, @mention commands and threaded incident updates"
+    "msteams-bot": "Two-way Teams bot: alerts, @mention commands and threaded incident updates",
+    "a2a": "Hand incidents to an AI agent that investigates them"
   },
   "sms": {
     "title": "SMS & voice",
@@ -381,5 +382,25 @@
     "resubscribeAria": "Re-subscribe {{email}}"
   },
   "deleteConfirmTitle": "Delete integration?",
-  "deleteConfirmBody": "This will permanently delete \"{{name}}\"."
+  "deleteConfirmBody": "This will permanently delete \"{{name}}\".",
+  "a2a": {
+    "cardUrl": "Agent Card URL",
+    "cardUrlHint": "The full Agent Card URL, or the agent's origin: /.well-known/agent-card.json is then added.",
+    "auth": "Authentication",
+    "authNone": "None",
+    "authBearer": "Bearer token",
+    "authApiKey": "API key header",
+    "token": "Bearer token",
+    "apiKeyHeader": "Header name",
+    "apiKeyValue": "API key",
+    "instructions": "Instructions (optional)",
+    "instructionsPlaceholder": "Investigate and report your findings, do not restart anything",
+    "instructionsHint": "Added to every message. The agent can investigate with SolidPing's MCP tools: give it an MCP token.",
+    "testTitle": "Test the agent",
+    "testHelp": "Fetch the Agent Card with the values above. Nothing is sent to the agent.",
+    "testButton": "Test",
+    "testFailed": "Failed",
+    "protocolVersion": "A2A {{version}}",
+    "noSkills": "The card lists no skills."
+  }
 }

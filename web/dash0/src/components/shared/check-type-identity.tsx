@@ -117,6 +117,7 @@ export const CHECK_TYPE_IDENTITY: Partial<Record<string, CheckTypeIdentity>> = {
   browser: { label: "Browser", tone: TONE_BLUE, icon: AppWindow },
   crawl: { label: "Crawl", tone: TONE_BLUE, icon: Network },
   health: { label: "Health", tone: TONE_BLUE, icon: HeartPulse },
+  "vendor-status": { label: "Vendor status page", tone: TONE_BLUE, icon: HeartPulse },
 
   // Raw network — shipped cyan, extended to the rest of the raw-socket family.
   tcp: { label: "TCP", tone: TONE_CYAN, icon: EthernetPort },

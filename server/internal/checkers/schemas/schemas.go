@@ -37,6 +37,7 @@ import (
 	"path"
 	"sort"
 	"strings"
+	"sync"
 )
 
 // files holds every generated schema. Embedding keeps them in the binary, so the
@@ -65,12 +66,49 @@ func Get(checkType string) ([]byte, error) {
 		return nil, fmt.Errorf("%q: %w", checkType, ErrNotFound)
 	}
 
+	if raw, ok := lookupExternal(checkType); ok {
+		return raw, nil
+	}
+
 	raw, err := files.ReadFile(checkType + ".json")
 	if err != nil {
 		return nil, fmt.Errorf("%q: %w", checkType, ErrNotFound)
 	}
 
 	return raw, nil
+}
+
+//nolint:gochecknoglobals // process-wide registry, written at boot only
+var (
+	externalMu      sync.RWMutex
+	externalSchemas = map[string][]byte{}
+)
+
+// RegisterExternal publishes the schema of a plugin check type (spec
+// 2026-10-17-05). Unlike the generated files, a plugin schema IS the
+// validator of its type.
+func RegisterExternal(checkType string, raw []byte) {
+	externalMu.Lock()
+	defer externalMu.Unlock()
+
+	externalSchemas[checkType] = raw
+}
+
+// UnregisterExternal removes a plugin schema.
+func UnregisterExternal(checkType string) {
+	externalMu.Lock()
+	defer externalMu.Unlock()
+
+	delete(externalSchemas, checkType)
+}
+
+func lookupExternal(checkType string) ([]byte, bool) {
+	externalMu.RLock()
+	defer externalMu.RUnlock()
+
+	raw, ok := externalSchemas[checkType]
+
+	return raw, ok
 }
 
 // Types returns every check type that has a published schema, sorted.
@@ -86,6 +124,12 @@ func Types() []string {
 	for _, entry := range entries {
 		out = append(out, strings.TrimSuffix(path.Base(entry.Name()), ".json"))
 	}
+
+	externalMu.RLock()
+	for checkType := range externalSchemas {
+		out = append(out, checkType)
+	}
+	externalMu.RUnlock()
 
 	sort.Strings(out)
 

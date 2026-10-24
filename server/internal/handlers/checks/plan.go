@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
-	"github.com/fclairamb/solidping/server/internal/checkers/configregistry"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
@@ -136,11 +135,11 @@ func (s *Service) planCreateCheck(
 		return nil, labelErr
 	}
 
-	if !configregistry.IsKnownType(checkerdef.CheckType(req.Type)) {
+	if !s.isKnownTypeFor(ctx, org.UID, req.Type) {
 		return nil, ErrInvalidCheckType
 	}
 
-	period, err := planPeriod(req.Type, req.Period, req.Config)
+	period, err := s.planPeriod(ctx, org.UID, req.Type, req.Period, req.Config)
 	if err != nil {
 		return nil, err
 	}
@@ -202,7 +201,7 @@ func (s *Service) planCreateCheck(
 	effective := req.Config
 
 	if req.Config != nil {
-		normalized, normErr := normalizeCheckConfig(req.Type, req.Config)
+		normalized, normErr := s.normalizeConfigFor(ctx, org.UID, req.Type, req.Config)
 		if normErr != nil {
 			return nil, normErr
 		}
@@ -247,7 +246,7 @@ func (s *Service) planCreateCheck(
 		Config: withInjectedConfig(req.Config, derivedConfig),
 	}
 
-	if validateErr := configregistry.ValidateSpec(checkerdef.CheckType(req.Type), spec); validateErr != nil {
+	if validateErr := s.validateSpecFor(ctx, org.UID, req.Type, spec); validateErr != nil {
 		return nil, validateErr
 	}
 
@@ -301,7 +300,9 @@ func (s *Service) planCreateCheck(
 // planPeriod parses an optional period string and enforces the per-type bounds
 // (spec 2026-07-01-04 D1), returning the RAW period — zero when the request
 // proposes none, which is what the bounds check itself treats as "exempt".
-func planPeriod(checkType string, raw *string, configMap map[string]any) (time.Duration, error) {
+func (s *Service) planPeriod(
+	ctx context.Context, orgUID, checkType string, raw *string, configMap map[string]any,
+) (time.Duration, error) {
 	period := time.Duration(0)
 
 	if raw != nil && *raw != "" {
@@ -316,8 +317,8 @@ func planPeriod(checkType string, raw *string, configMap map[string]any) (time.D
 	// Internal checks and the synthetic sleep type are exempt; an absent
 	// period falls back to the default and needs no validation. Nothing
 	// planned here is internal (spec 2026-08-27-01), hence the constant.
-	if periodErr := validatePeriodForType(
-		checkType, period, false, parsedConfigForType(checkType, configMap),
+	if periodErr := s.validatePeriodFor(
+		ctx, orgUID, checkType, period, false, parsedConfigForType(checkType, configMap),
 	); periodErr != nil {
 		return 0, periodErr
 	}
@@ -328,7 +329,9 @@ func planPeriod(checkType string, raw *string, configMap map[string]any) (time.D
 // plannedUpdatePeriod resolves the period this update would store — the
 // existing one when the document proposes none — and holds a proposed one to
 // the same bounds the write path enforces.
-func plannedUpdatePeriod(existing *models.Check, req *UpsertCheckRequest) (time.Duration, error) {
+func (s *Service) plannedUpdatePeriod(
+	ctx context.Context, existing *models.Check, req *UpsertCheckRequest,
+) (time.Duration, error) {
 	if req.Period == nil || *req.Period == "" {
 		// A config-only update is still held to the floor the NEW config
 		// raises — the same rule UpdateCheck enforces.
@@ -357,8 +360,8 @@ func plannedUpdatePeriod(existing *models.Check, req *UpsertCheckRequest) (time.
 		configForPeriod = req.Config
 	}
 
-	if periodErr := validatePeriodForType(
-		existing.Type, period, existing.Internal,
+	if periodErr := s.validatePeriodFor(
+		ctx, existing.OrganizationUID, existing.Type, period, existing.Internal,
 		parsedConfigForType(existing.Type, configForPeriod),
 	); periodErr != nil {
 		return 0, periodErr
@@ -411,7 +414,7 @@ func (s *Service) planUpdateCheck(
 		return labelErr
 	}
 
-	period, periodErr := plannedUpdatePeriod(existing, req)
+	period, periodErr := s.plannedUpdatePeriod(ctx, existing, req)
 	if periodErr != nil {
 		return periodErr
 	}
@@ -495,7 +498,7 @@ func (s *Service) planUpdateConfig(
 		return nil
 	}
 
-	normalized, normErr := normalizeCheckConfig(existing.Type, config)
+	normalized, normErr := s.normalizeConfigFor(ctx, existing.OrganizationUID, existing.Type, config)
 	if normErr != nil {
 		return normErr
 	}
@@ -515,7 +518,7 @@ func (s *Service) planUpdateConfig(
 		planned[key] = value
 	}
 
-	preserveAbsentRedactedFields(existing, planned)
+	s.preserveAbsentRedactedFields(ctx, existing, planned)
 	planned = withInjectedConfig(planned, s.deriveRedactedFields(ctx, org.UID, existing.Type, planned))
 
 	// The stored secrets, as PLACEHOLDERS. The real update validates the merge
@@ -534,7 +537,7 @@ func (s *Service) planUpdateConfig(
 	injectSecretPlaceholders(existing.Type, planned, parseConfigPrivateKeys(existing.ConfigPrivateKeys))
 
 	if cfgErr := s.validatePatchedConfig(
-		existing.Type, planned, existing.ConfigSealed != nil && existing.ConfigPrivate == nil,
+		ctx, existing.OrganizationUID, existing.Type, planned, existing.ConfigSealed != nil && existing.ConfigPrivate == nil,
 		existing.ConfigPrivateKeys,
 	); cfgErr != nil {
 		return cfgErr

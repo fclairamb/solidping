@@ -166,7 +166,7 @@ func createTestDiscoveryData(ctx context.Context, dbService db.Service, orgUID s
 	tcp := models.NewDiscoveredCheck(
 		orgUID, jobUID, models.DiscoverySourceLAN,
 		"127.0.0.1", "127.0.0.1", "127.0.0.1 · TCP/8080", "tcp-127-0-0-1-8080", "tcp",
-		json.RawMessage(`{"host":"127.0.0.1","port":8080}`), meta,
+		json.RawMessage(`{"host":"127.0.0.1","port":8080}`), meta, "",
 	)
 	tcp.UID = tcpUID
 	tcp.DiscoveredAt = now
@@ -174,7 +174,7 @@ func createTestDiscoveryData(ctx context.Context, dbService db.Service, orgUID s
 	icmp := models.NewDiscoveredCheck(
 		orgUID, jobUID, models.DiscoverySourceLAN,
 		"127.0.0.1", "127.0.0.1", "127.0.0.1 · ICMP", "icmp-127-0-0-1", "ping",
-		json.RawMessage(`{"host":"127.0.0.1"}`), meta,
+		json.RawMessage(`{"host":"127.0.0.1"}`), meta, "",
 	)
 	icmp.UID = icmpUID
 	icmp.DiscoveredAt = now

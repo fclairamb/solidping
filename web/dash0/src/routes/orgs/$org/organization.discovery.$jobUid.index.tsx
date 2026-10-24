@@ -67,6 +67,7 @@ interface CheckGroup {
   key: string;
   label: string;
   source: string;
+  region?: string;
   metadata?: Record<string, unknown>;
   checks: DiscoveredCheck[];
 }
@@ -81,6 +82,7 @@ function groupChecks(checks: DiscoveredCheck[]): CheckGroup[] {
         key: c.groupKey,
         label: c.groupLabel || c.groupKey,
         source: c.source,
+        region: c.region,
         metadata: c.metadata,
         checks: [],
       };
@@ -244,6 +246,11 @@ function GroupCard({
             />
             <CardTitle className="text-base font-mono">{group.label}</CardTitle>
             <Badge variant="outline">{t(`sourceLabel.${group.source}`, group.source)}</Badge>
+            {group.region && (
+              <Badge variant="outline" data-testid="discovery-region-badge">
+                {group.region}
+              </Badge>
+            )}
             <MetadataBadges metadata={group.metadata} />
           </div>
           <Button
@@ -404,7 +411,7 @@ function ScanDetailPage() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex items-center gap-3">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">{t("scanDetails")}</h1>
+            <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{t("scanDetails")}</h1>
             {scan && (
               <div className="flex items-center gap-2 mt-1">
                 <Badge variant={statusBadgeVariant(displayStatus)}>
@@ -412,6 +419,14 @@ function ScanDetailPage() {
                 </Badge>
                 <span className="text-xs text-muted-foreground font-mono">{scan.uid}</span>
               </div>
+            )}
+            {progress?.region && (
+              <p
+                className="mt-1 text-xs text-muted-foreground"
+                data-testid="discovery-scan-region"
+              >
+                {t("runsFrom", { region: progress.region })}
+              </p>
             )}
           </div>
         </div>
@@ -466,8 +481,27 @@ function ScanDetailPage() {
               {t("groupsFound", { count: progress.groupCount })} ·{" "}
               {t("checksFound", { count: progress.checkCount })}
             </p>
+            {progress.failedChunks > 0 && (
+              <p
+                className="text-xs text-destructive"
+                data-testid="discovery-failed-chunks"
+              >
+                {t("failedChunks", { count: progress.failedChunks })}
+                {progress.lastErrorCode
+                  ? ` · ${t(`chunkError.${progress.lastErrorCode}`, {
+                      defaultValue: progress.lastErrorCode,
+                    })}`
+                  : ""}
+              </p>
+            )}
           </CardContent>
         </Card>
+      )}
+
+      {progress?.region && (
+        <p className="text-xs text-muted-foreground" data-testid="discovery-promote-region-note">
+          {t("promoteRegionNote", { region: progress.region })}
+        </p>
       )}
 
       <div className="flex items-center justify-between gap-2">

@@ -183,7 +183,7 @@ func runInviteHashContract(t *testing.T, svc *Service, dbSvc db.Service) {
 
 		login, err := svc.AcceptInvite(ctx, AcceptInviteRequest{
 			Token: resp.Token, Name: "Alice", Password: inviteHashTestPassword,
-		})
+		}, "")
 		r.NoError(err)
 		r.NotEmpty(login.AccessToken)
 		r.Equal(org.Slug, login.Organization.Slug)
@@ -209,7 +209,7 @@ func runInviteHashContract(t *testing.T, svc *Service, dbSvc db.Service) {
 
 		_, err = svc.AcceptInvite(ctx, AcceptInviteRequest{
 			Token: stored, Name: "Mallory", Password: inviteHashTestPassword,
-		})
+		}, "")
 		r.ErrorIs(err, ErrInvitationNotFound)
 
 		_, err = svc.GetInviteInfo(ctx, "")
@@ -248,7 +248,7 @@ func runInviteHashContract(t *testing.T, svc *Service, dbSvc db.Service) {
 
 		_, err = svc.AcceptInvite(ctx, AcceptInviteRequest{
 			Token: presented, Name: "Mallory", Password: inviteHashTestPassword,
-		})
+		}, "")
 		r.ErrorIs(err, ErrInvitationNotFound)
 	})
 
@@ -268,7 +268,7 @@ func runInviteHashContract(t *testing.T, svc *Service, dbSvc db.Service) {
 
 		login, err := svc.AcceptInvite(ctx, AcceptInviteRequest{
 			Token: legacyToken, Name: "Bob", Password: inviteHashTestPassword,
-		})
+		}, "")
 		r.NoError(err)
 		r.Equal(org.Slug, login.Organization.Slug)
 
@@ -297,7 +297,7 @@ func runInviteHashContract(t *testing.T, svc *Service, dbSvc db.Service) {
 
 		legacyKey := writeLegacyInvite(t, dbSvc, org, inviter.UID, existing.Email, legacyToken)
 
-		_, err := svc.AcceptInvite(ctx, AcceptInviteRequest{Token: legacyToken})
+		_, err := svc.AcceptInvite(ctx, AcceptInviteRequest{Token: legacyToken}, existing.UID)
 		r.NoError(err)
 
 		entry, err := dbSvc.GetStateEntry(ctx, &org.UID, legacyKey)
@@ -306,7 +306,7 @@ func runInviteHashContract(t *testing.T, svc *Service, dbSvc db.Service) {
 
 		resp := createHashTestInvite(t, svc, org.Slug, inviter.UID, existing.Email)
 
-		_, err = svc.AcceptInvite(ctx, AcceptInviteRequest{Token: resp.Token})
+		_, err = svc.AcceptInvite(ctx, AcceptInviteRequest{Token: resp.Token}, existing.UID)
 		r.NoError(err)
 
 		entries, err := dbSvc.ListStateEntries(ctx, &org.UID, inviteKeyPrefix)

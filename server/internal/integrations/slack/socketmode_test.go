@@ -27,10 +27,11 @@ type fakeSocketModeClient struct {
 	events chan socketmode.Event
 	runErr chan error
 
-	mu      sync.Mutex
-	acked   []string
-	runCnt  int
-	stopped bool
+	mu       sync.Mutex
+	acked    []string
+	payloads []any
+	runCnt   int
+	stopped  bool
 }
 
 func newFakeSocketModeClient() *fakeSocketModeClient {
@@ -57,11 +58,12 @@ func (f *fakeSocketModeClient) RunContext(ctx context.Context) error {
 	}
 }
 
-func (f *fakeSocketModeClient) AckCtx(_ context.Context, reqID string, _ any) error {
+func (f *fakeSocketModeClient) AckCtx(_ context.Context, reqID string, payload any) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	f.acked = append(f.acked, reqID)
+	f.payloads = append(f.payloads, payload)
 
 	return nil
 }
@@ -73,6 +75,13 @@ func (f *fakeSocketModeClient) ackCount() int {
 	defer f.mu.Unlock()
 
 	return len(f.acked)
+}
+
+func (f *fakeSocketModeClient) ackPayloads() []any {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return append([]any(nil), f.payloads...)
 }
 
 func (f *fakeSocketModeClient) runCount() int {
@@ -216,6 +225,15 @@ func TestSocketSupervisor_AcksSlashCommandAndCallsDispatcher(t *testing.T) {
 
 	r.True(waitFor(2*time.Second, func() bool { return fake.ackCount() >= 1 }),
 		"supervisor never acked the slash command")
+
+	// Socket Mode never goes through VerifyMiddleware: with no signing
+	// secret the command still reaches DispatchCommand, whose reply is the
+	// ack payload.
+	r.Empty(sup.cfg.Slack.SigningSecret)
+
+	reply, ok := fake.ackPayloads()[0].(*MessageResponse)
+	r.True(ok, "the ack must carry DispatchCommand's reply")
+	r.Contains(reply.Text, "Unknown command")
 
 	cancel()
 	<-done

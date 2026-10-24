@@ -64,6 +64,8 @@ tags:
     description: Available monitoring regions
   - name: Check Types
     description: Check type catalog and sample configurations
+  - name: Tools
+    description: Public, anonymous one-off checks (website down, SSL, DNS lookup, port checker)
   - name: On-Call Schedules
     description: On-call schedules, overrides, rotation preview, and iCal feeds
   - name: Escalation Policies
@@ -952,6 +954,11 @@ paths:
         it for the session the provider callback minted, in the login
         response shape. An unknown, reused, expired or forged code always
         gets the same 401 body.
+
+        A user with TOTP enabled gets no session from the callback: the
+        exchange then answers `requires2Fa` and `tempToken` (plus `returnTo`
+        and `membershipPending`), with no token and no user, and sets no
+        cookie. The sign-in finishes through `/api/v1/auth/2fa/verify`.
       operationId: exchangeHandoffCode
       requestBody:
         required: true
@@ -1006,6 +1013,13 @@ paths:
         account, `403 IMPERSONATION_FORBIDDEN` for an impersonation token, and
         `409 CONFLICT` when another account already uses the address. Records
         `auth.email_changed` in each of the user's organizations.
+
+        `preferences` sets the language and timezone the server writes this
+        user's emails in. Every field is optional (a preferences-only body is
+        valid); an empty string clears one. `400 VALIDATION_ERROR` for a
+        locale outside en, fr, de, es (a full tag such as `fr-FR` is accepted
+        and stored as `fr`) or a timezone the IANA database does not know.
+        Nothing is written when any field is refused.
       security:
         - bearerAuth: []
       requestBody:
@@ -1233,7 +1247,18 @@ paths:
     post:
       tags: [Authentication]
       summary: Accept an invitation
+      description: |
+        Optionally authenticated. An invitation for an email that has no
+        account yet is accepted anonymously, with a `password` (at least 8
+        characters) for the new account. An invitation for an existing account
+        must be accepted by that account, signed in: anonymously the answer is
+        401 `INVITE_LOGIN_REQUIRED`, and from any other signed-in account it is
+        403 `INVITE_EMAIL_MISMATCH`. A credential that is presented but invalid
+        gets 401, never an anonymous fallback. Refused under impersonation.
       operationId: acceptInvite
+      security:
+        - {}
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -1249,6 +1274,22 @@ paths:
                 $ref: "#/components/schemas/LoginResponse"
         "400":
           $ref: "#/components/responses/ValidationError"
+        "401":
+          description: >-
+            `INVITE_LOGIN_REQUIRED`: the invitation is for an existing account,
+            sign in as it to accept. Or the presented credential is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: >-
+            `INVITE_EMAIL_MISMATCH`: the signed-in account is not the invitee.
+            `IMPERSONATION_FORBIDDEN` under impersonation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -2695,9 +2736,24 @@ paths:
         - $ref: "#/components/parameters/CheckUidPath"
         - name: cursor
           in: query
-          description: Cursor for pagination
+          description: >-
+            Opaque keyset cursor; pass the previous response's `pagination.cursor` back
+            verbatim. A cursor that cannot be parsed starts from the first page. With
+            `order=asc` it means "strictly after this row" and the response always carries
+            a cursor for its last row, even on the last page (an empty page returns the
+            cursor it was given), so a consumer stores it and resumes from it later.
           schema:
             type: string
+        - name: order
+          in: query
+          description: >-
+            Sort order on `(created_at, uid)`. `desc` (default) is newest first. `asc` is oldest
+            first and only returns events older than 5 seconds (settle window), so a
+            consumer sees a row at most 5 s late and never skips one.
+          schema:
+            type: string
+            enum: [desc, asc]
+            default: desc
         - name: size
           in: query
           description: Results per page (default 20, max 100)
@@ -3500,9 +3556,25 @@ paths:
           example: "degraded"
         - name: cursor
           in: query
-          description: Cursor for pagination
+          description: >-
+            Opaque keyset cursor; pass the previous response's `pagination.cursor` back
+            verbatim. A cursor that cannot be parsed starts from the first page. With
+            `order=asc` it means "strictly after this row" and the response always carries
+            a cursor for its last row, even on the last page (an empty page returns the
+            cursor it was given), so a consumer stores it and resumes from it later.
           schema:
             type: string
+        - name: order
+          in: query
+          description: >-
+            Sort order on `(started_at, uid)`. `desc` (default) is newest first. `asc` is oldest
+            first and only returns incidents older than 5 seconds (settle window), so a
+            consumer sees a row at most 5 s late and never skips one.
+            `asc` lists new incidents only: changes to existing incidents (acked, resolved, reopened) are events, follow `GET /events?type=incident&order=asc`.
+          schema:
+            type: string
+            enum: [desc, asc]
+            default: desc
         - name: size
           in: query
           description: Results per page (default 20, max 100)
@@ -3574,9 +3646,24 @@ paths:
         - $ref: "#/components/parameters/IncidentUidPath"
         - name: cursor
           in: query
-          description: Cursor for pagination
+          description: >-
+            Opaque keyset cursor; pass the previous response's `pagination.cursor` back
+            verbatim. A cursor that cannot be parsed starts from the first page. With
+            `order=asc` it means "strictly after this row" and the response always carries
+            a cursor for its last row, even on the last page (an empty page returns the
+            cursor it was given), so a consumer stores it and resumes from it later.
           schema:
             type: string
+        - name: order
+          in: query
+          description: >-
+            Sort order on `(created_at, uid)`. `desc` (default) is newest first. `asc` is oldest
+            first and only returns events older than 5 seconds (settle window), so a
+            consumer sees a row at most 5 s late and never skips one.
+          schema:
+            type: string
+            enum: [desc, asc]
+            default: desc
         - name: size
           in: query
           description: Results per page (default 20, max 100)
@@ -4337,6 +4424,79 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/orgs/{org}/integrations/a2a/resolve-card:
+    post:
+      tags: [Channels]
+      summary: Resolve an AI agent (A2A) Agent Card
+      description: >-
+        Fetches the Agent Card for the given AI agent (A2A) settings, which may
+        not be saved yet, and describes the agent SolidPing would talk to: its
+        name, skills and the protocol version of the JSONRPC interface it would
+        use. Both the card URL and the interface URL the card advertises go
+        through the egress policy. With `integrationUid`, stored secrets fill in
+        the ones the request leaves empty. Always returns 200; inspect `success`.
+      operationId: resolveA2AAgentCard
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                settings:
+                  type: object
+                  additionalProperties: true
+                  description: >-
+                    `agent_card_url`, `auth` (none, bearer, api_key), `token`,
+                    `api_key_header`, `api_key_value`, `instructions`.
+                integrationUid:
+                  type: string
+      responses:
+        "200":
+          description: Resolution outcome
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success]
+                properties:
+                  success:
+                    type: boolean
+                  error:
+                    type: string
+                  agent:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      description:
+                        type: string
+                      protocolVersion:
+                        type: string
+                      interfaceUrl:
+                        type: string
+                      skills:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                            name:
+                              type: string
+                            description:
+                              type: string
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/v1/orgs/{org}/integrations/{uid}/identities:
     get:
       tags: [Channels]
@@ -4663,9 +4823,24 @@ paths:
             format: date-time
         - name: cursor
           in: query
-          description: Cursor for pagination
+          description: >-
+            Opaque keyset cursor; pass the previous response's `pagination.cursor` back
+            verbatim. A cursor that cannot be parsed starts from the first page. With
+            `order=asc` it means "strictly after this row" and the response always carries
+            a cursor for its last row, even on the last page (an empty page returns the
+            cursor it was given), so a consumer stores it and resumes from it later.
           schema:
             type: string
+        - name: order
+          in: query
+          description: >-
+            Sort order on `(created_at, uid)`. `desc` (default) is newest first. `asc` is oldest
+            first and only returns events older than 5 seconds (settle window), so a
+            consumer sees a row at most 5 s late and never skips one.
+          schema:
+            type: string
+            enum: [desc, asc]
+            default: desc
         - name: size
           in: query
           description: Results per page (default 20, max 100)
@@ -5342,6 +5517,13 @@ paths:
         `{clusterUid, namespaces?, timeout?}` where `clusterUid` references a
         stored Kubernetes cluster connection (empty `namespaces` scans every
         visible namespace).
+
+        A `lan` scan may carry a top-level `region` (one of the organization's
+        private regions, `@slug`): the region's agents run it, never the
+        server. It needs an admin membership of the organization (no super
+        admin bypass, refused under impersonation), a live agent of that
+        region whose operator enabled discovery, at most 32 ports, and room in
+        the organization's daily agent address quota.
       operationId: startDiscoveryScan
       security:
         - bearerAuth: []
@@ -5386,7 +5568,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "422":
-          description: Invalid parameters (DISCOVERY_INVALID_PARAMETERS) or range too large (DISCOVERY_RANGE_TOO_LARGE)
+          description: >-
+            Invalid parameters (DISCOVERY_INVALID_PARAMETERS), range too large
+            (DISCOVERY_RANGE_TOO_LARGE), a region on a non-lan type
+            (VALIDATION_ERROR), no live agent of the region runs discovery
+            (DISCOVERY_REGION_UNAVAILABLE), or the daily agent address quota
+            is spent (DISCOVERY_QUOTA_EXCEEDED)
           content:
             application/json:
               schema:
@@ -5492,6 +5679,11 @@ paths:
           in: query
           required: true
           description: The group (groupKey) to dismiss
+          schema:
+            type: string
+        - name: region
+          in: query
+          description: Region the group was found from; empty (default) means the server itself
           schema:
             type: string
         - name: jobUid
@@ -7529,6 +7721,77 @@ paths:
               schema:
                 $ref: "#/components/schemas/CheckTypeListResponse"
 
+  /api/v1/tools/run:
+    post:
+      tags: [Tools]
+      summary: Run one check once, anonymously
+      description: >-
+        Runs an `http` (GET), `ssl`, `dns` or `tcp` check once against a
+        public target and returns the normalised result. Nothing is stored.
+        Disabled (404) unless `SP_TOOLS_ENABLED=true` (system parameter
+        `tools.enabled`). Every run goes through an egress guard that refuses
+        private, loopback, link-local and reserved addresses, whatever
+        `SP_EGRESS_ALLOW_PRIVATE` says, as well as the instance's own hosts.
+        Limits: 10 runs a minute and 100 a day per client IP, 16 runs in
+        flight server-wide, 10 s per run, 5 redirects for `http`. A result is
+        cached 60 s per (type, target, options). Error codes:
+        `INVALID_TARGET` (400), `TARGET_NOT_ALLOWED` (403), `RESOLVE_FAILED`
+        (422), `RATE_LIMITED` (429), `SERVICE_BUSY` (503, with
+        `Retry-After`), `TIMEOUT` (504).
+      operationId: runTool
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ToolRunRequest"
+      responses:
+        "200":
+          description: The run's result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ToolRunResult"
+        "400":
+          description: Invalid JSON body or target (`VALIDATION_ERROR`, `INVALID_TARGET`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: The target is not allowed (`TARGET_NOT_ALLOWED`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          description: The target name could not be resolved (`RESOLVE_FAILED`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Per-IP limit reached (`RATE_LIMITED`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Too many runs in flight (`SERVICE_BUSY`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "504":
+          description: The target did not answer in time (`TIMEOUT`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /api/v1/check-types/samples:
     get:
       tags: [Check Types]
@@ -7547,6 +7810,76 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CheckTypeSamplesListResponse"
+
+  /api/v1/check-types/vendor-status/catalog:
+    get:
+      tags: [Check Types]
+      summary: List the vendor status pages the vendor-status check offers
+      description: Public catalog of well-known Statuspage v2 providers (slug, name, url, category).
+      operationId: listVendorStatusCatalog
+      responses:
+        "200":
+          description: The catalog
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required: [slug, name, url, category]
+                      properties:
+                        slug: {type: string}
+                        name: {type: string}
+                        url: {type: string}
+                        category: {type: string}
+
+  /api/v1/orgs/{org}/checks/vendor-status/components:
+    post:
+      tags: [Checks]
+      summary: List the components of a vendor status page
+      description: >-
+        Fetches `<url>/api/v2/summary.json` through the egress guard and returns
+        its components (group headers left out). Used by the vendor-status check form.
+      operationId: listVendorStatusComponents
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              properties:
+                url: {type: string}
+      responses:
+        "200":
+          description: The components
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, name]
+                      properties:
+                        id: {type: string}
+                        name: {type: string}
+                        group: {type: string}
+        "400":
+          description: Invalid URL
+        "502":
+          description: The status page could not be read as a Statuspage v2 summary
 
   /api/v1/checks/schema:
     get:
@@ -7604,6 +7937,42 @@ paths:
                 type: object
                 description: A JSON Schema document (draft 2020-12)
                 additionalProperties: true
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/check-types/{type}/schema:
+    get:
+      tags: [Check Types]
+      summary: Get a check type's config JSON Schema, org plugin types included
+      description: |
+        Same document as `GET /api/v1/checks/schema/{type}`, plus the plugin
+        check types (`x-` prefix) this organization's private-location agents
+        reported. Those are stored per organization, so their schema is served
+        while the agent is offline, and never to another organization. A plugin
+        schema is the validator of its type.
+      operationId: getOrgCheckConfigSchema
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: type
+          in: path
+          required: true
+          description: Check type, built-in or `x-` plugin type
+          schema:
+            type: string
+          example: x-gopher
+      responses:
+        "200":
+          description: The check type's config schema
+          content:
+            application/schema+json:
+              schema:
+                type: object
+                description: A JSON Schema document (draft 2020-12)
+                additionalProperties: true
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -9915,6 +10284,75 @@ components:
         body:
           type: string
 
+    ToolRunRequest:
+      type: object
+      required: [type, target]
+      properties:
+        type:
+          type: string
+          enum: [http, ssl, dns, tcp]
+        target:
+          type: string
+          description: >-
+            `http`: a URL (`https://` is assumed without a scheme). `ssl`:
+            `host`, `host:port` or a URL (port 443 by default). `tcp`:
+            `host:port`, port 1 to 65535. `dns`: a domain name.
+          example: https://example.com
+        options:
+          type: object
+          properties:
+            record:
+              type: string
+              description: DNS record type (dns only)
+              enum: [A, AAAA, CNAME, MX, TXT, NS, CAA]
+              default: A
+
+    ToolRunResult:
+      type: object
+      required: [type, target, status, durationMs, checkedAt, cached, details, monitor]
+      properties:
+        type:
+          type: string
+          enum: [http, ssl, dns, tcp]
+        target:
+          type: string
+          description: The normalised target (a URL for http, host:port for ssl and tcp, the name for dns)
+        status:
+          type: string
+          description: The check status (up, down, warning, error)
+        durationMs:
+          type: integer
+          format: int64
+        checkedAt:
+          type: string
+          format: date-time
+        region:
+          type: string
+          description: Region of the node that ran the check
+        cached:
+          type: boolean
+          description: True when the result was served from the 60 s cache
+        details:
+          type: object
+          additionalProperties: true
+          description: >-
+            Per type. `http`: statusCode, finalUrl, redirects, responseTimeMs,
+            httpProtocol, certNotAfter and certDaysLeft over HTTPS. `ssl`:
+            issuer, subject, notBefore, notAfter, daysLeft, sans, chainValid,
+            tlsVersion. `dns`: record, records. `tcp`: connected,
+            connectTimeMs. `error` carries the failure reason when there is
+            one.
+        monitor:
+          type: object
+          required: [checkType, query]
+          properties:
+            checkType:
+              type: string
+            query:
+              type: string
+              description: Query string for the dashboard's /checks/new form, to monitor this target
+              example: checkName=example.com&checkType=http&httpUrl=https%3A%2F%2Fexample.com
+
     Error:
       type: object
       required: [title, code]
@@ -9941,6 +10379,8 @@ components:
             - INVALID_ORG
             - INVALID_CREDENTIALS
             - CHECK_HAS_ACTIVE_INCIDENTS
+            - INVITE_LOGIN_REQUIRED
+            - INVITE_EMAIL_MISMATCH
         detail:
           type: string
           description: Detailed error explanation
@@ -10490,6 +10930,16 @@ components:
           type: string
           enum: ["", orgRedirect, orgChoice, noOrg]
           description: Indicates how the frontend should handle the login result
+        requires2Fa:
+          type: boolean
+          description: |
+            The user has TOTP enabled: no session was issued. Send the code
+            (or a recovery code) with `tempToken` to `/api/v1/auth/2fa/verify`
+            (or `/api/v1/auth/2fa/recovery`). The response then carries only
+            this flag and `tempToken`.
+        tempToken:
+          type: string
+          description: Short-lived 2FA token, only with `requires2Fa`. It is not a bearer token.
 
     HandoffExchangeRequest:
       type: object
@@ -10621,6 +11071,37 @@ components:
             with the published default admin address. The forced password screen
             then also offers to set a real email through the `email` field of
             POST /auth/change-password. Omitted when false.
+        preferences:
+          $ref: "#/components/schemas/UserPreferences"
+
+    UserPreferences:
+      type: object
+      description: >
+        What the server follows when it writes to the user: the language and
+        timezone of their emails. Present on /auth/me and every login response,
+        `{}` when nothing is set (emails then use English and UTC).
+      properties:
+        locale:
+          type: string
+          enum: [en, fr, de, es]
+          description: Language of the user's emails. Omitted when not set.
+        timezone:
+          type: string
+          description: IANA zone name (e.g. Europe/Paris) dates are shown in. Omitted when not set.
+          example: Europe/Paris
+
+    UpdatePreferencesRequest:
+      type: object
+      description: Partial update. An absent field is left alone; an empty string clears it.
+      properties:
+        locale:
+          type: string
+          description: en, fr, de or es. A full BCP 47 tag (fr-FR) is stored as its language.
+          example: fr
+        timezone:
+          type: string
+          description: IANA zone name.
+          example: Europe/Paris
 
     CreateTokenRequest:
       type: object
@@ -10694,6 +11175,8 @@ components:
         currentPassword:
           type: string
           description: The account's current password, required to change the email.
+        preferences:
+          $ref: "#/components/schemas/UpdatePreferencesRequest"
 
     AdminUpdateUserRequest:
       type: object
@@ -10729,6 +11212,17 @@ components:
         password:
           type: string
           minLength: 8
+        locale:
+          type: string
+          description: >
+            The browser's language, the account's starting email language.
+            Optional and lenient: a full tag is reduced to its language, an
+            unsupported one is ignored.
+          example: fr
+        timezone:
+          type: string
+          description: The browser's IANA zone. Optional; an unknown zone is ignored.
+          example: Europe/Paris
 
     ConfirmRegistrationRequest:
       type: object
@@ -10792,6 +11286,16 @@ components:
           type: string
           minLength: 8
           description: Password for a newly created user (ignored if the user already exists)
+        locale:
+          type: string
+          description: >
+            Starting email language of a newly created user (ignored if the
+            user already exists). Lenient, like RegisterRequest.locale.
+          example: es
+        timezone:
+          type: string
+          description: IANA zone of a newly created user (ignored if the user already exists).
+          example: Europe/Madrid
 
     InviteInfoResponse:
       type: object
@@ -10957,7 +11461,9 @@ components:
           type: string
           # Every registered check type (checkerdef.ListCheckTypes), pinned by
           # TestCheckTypeEnumsMatchTheRegistry.
-          enum: [http, tcp, icmp, dns, heartbeat, email, domain, ssl, smtp, udp, ssh, pop3, imap, websocket, postgresql, ftp, sftp, js, mysql, redis, mongodb, mssql, oracle, clickhouse, grpc, kafka, mqtt, a2s, minecraft, rabbitmq, snmp, docker, browser, freebox_line, dnsbl, sip, kubernetes, ntp, rdp, vnc, prometheus, private-location, crawl, health, sleep]
+          enum: [http, tcp, icmp, dns, heartbeat, email, domain, ssl, smtp, udp, ssh, pop3, imap, websocket, postgresql, ftp, sftp, js, mysql, redis, mongodb, mssql, oracle, clickhouse, grpc, kafka, mqtt, a2s, minecraft, rabbitmq, snmp, docker, browser, freebox_line, dnsbl, sip, kubernetes, ntp, rdp, vnc, prometheus, private-location, crawl, health, vendor-status, sleep]
+          description: >-
+            Check type. Built-in check types are enumerated. A deployment may also accept and return plugin check types, always `x-` prefixed (e.g. `x-gopher`, spec 2026-10-17-05): they are not listed because they depend on the server's plugin directory and on the organization's agents, so a client must accept an unlisted `x-` value.
         config:
           type: object
           description: >-
@@ -11013,6 +11519,16 @@ components:
             was written and will run. Today the only one is "you pinned
             `ipVersion: ipv6` in a region whose live workers report no IPv6
             egress". Absent on read paths.
+          items:
+            $ref: "#/components/schemas/ValidationErrorField"
+        regionWarnings:
+          type: array
+          readOnly: true
+          description: >-
+            Detail responses only (GET of one check), recomputed on every read:
+            why the check does not run in some of its regions right now. Today
+            `REGION_NO_PLUGIN`, a plugin-type check in a region whose live
+            workers did not load the plugin. Absent when there is none.
           items:
             $ref: "#/components/schemas/ValidationErrorField"
         enabled:
@@ -11595,8 +12111,9 @@ components:
           type: string
           # Every registered check type (checkerdef.ListCheckTypes), pinned by
           # TestCheckTypeEnumsMatchTheRegistry.
-          enum: [http, tcp, icmp, dns, heartbeat, email, domain, ssl, smtp, udp, ssh, pop3, imap, websocket, postgresql, ftp, sftp, js, mysql, redis, mongodb, mssql, oracle, clickhouse, grpc, kafka, mqtt, a2s, minecraft, rabbitmq, snmp, docker, browser, freebox_line, dnsbl, sip, kubernetes, ntp, rdp, vnc, prometheus, private-location, crawl, health, sleep]
-          description: Check type (auto-inferred from URL if not provided)
+          enum: [http, tcp, icmp, dns, heartbeat, email, domain, ssl, smtp, udp, ssh, pop3, imap, websocket, postgresql, ftp, sftp, js, mysql, redis, mongodb, mssql, oracle, clickhouse, grpc, kafka, mqtt, a2s, minecraft, rabbitmq, snmp, docker, browser, freebox_line, dnsbl, sip, kubernetes, ntp, rdp, vnc, prometheus, private-location, crawl, health, vendor-status, sleep]
+          description: >-
+            Check type (auto-inferred from URL if not provided). Built-in check types are enumerated. A deployment may also accept and return plugin check types, always `x-` prefixed (e.g. `x-gopher`, spec 2026-10-17-05): they are not listed because they depend on the server's plugin directory and on the organization's agents, so a client must accept an unlisted `x-` value.
         config:
           type: object
           description: >-
@@ -11788,6 +12305,14 @@ components:
           type: object
         enabled:
           type: boolean
+        resolveOpenIncidents:
+          type: boolean
+          description: >-
+            Close the check's open incidents (outage and degraded) in the same
+            request, with resolution type `check_disabled`, so they do not stay
+            open on a check that no longer runs. Only valid together with
+            `enabled: false`; otherwise a `VALIDATION_ERROR`. Defaults to false:
+            incidents stay open.
         period:
           type: string
         regions:
@@ -11951,8 +12476,9 @@ components:
           type: string
           # Every registered check type (checkerdef.ListCheckTypes), pinned by
           # TestCheckTypeEnumsMatchTheRegistry.
-          enum: [http, tcp, icmp, dns, heartbeat, email, domain, ssl, smtp, udp, ssh, pop3, imap, websocket, postgresql, ftp, sftp, js, mysql, redis, mongodb, mssql, oracle, clickhouse, grpc, kafka, mqtt, a2s, minecraft, rabbitmq, snmp, docker, browser, freebox_line, dnsbl, sip, kubernetes, ntp, rdp, vnc, prometheus, private-location, crawl, health, sleep]
-          description: Check type (auto-inferred from URL if not provided)
+          enum: [http, tcp, icmp, dns, heartbeat, email, domain, ssl, smtp, udp, ssh, pop3, imap, websocket, postgresql, ftp, sftp, js, mysql, redis, mongodb, mssql, oracle, clickhouse, grpc, kafka, mqtt, a2s, minecraft, rabbitmq, snmp, docker, browser, freebox_line, dnsbl, sip, kubernetes, ntp, rdp, vnc, prometheus, private-location, crawl, health, vendor-status, sleep]
+          description: >-
+            Check type (auto-inferred from URL if not provided). Built-in check types are enumerated. A deployment may also accept and return plugin check types, always `x-` prefixed (e.g. `x-gopher`, spec 2026-10-17-05): they are not listed because they depend on the server's plugin directory and on the organization's agents, so a client must accept an unlisted `x-` value.
         config:
           type: object
           description: >-
@@ -15978,6 +16504,11 @@ components:
           type: string
           description: The discovery source rows from this type carry
           example: lan
+        serverAvailable:
+          type: boolean
+          description: >-
+            False when the server itself may not run this type (lan under an
+            enforcing egress policy): a scan then needs a private region.
 
     StartDiscoveryScanRequest:
       type: object
@@ -15987,6 +16518,12 @@ components:
           type: string
           description: A registered discovery type (see /discovery/types)
           example: lan
+        region:
+          type: string
+          description: >-
+            lan only. A private region of the organization (@slug) whose agents
+            run the scan instead of the server.
+          example: "@dc1"
         parameters:
           type: object
           description: |
@@ -16044,6 +16581,12 @@ components:
         checkCount:
           type: integer
           description: Total suggested-check count rolled up under the scan
+        region:
+          type: string
+          description: Private region an agent-run scan runs from
+        lastErrorCode:
+          type: string
+          description: Error code of the agent-run scan's latest failed chunk
 
     DiscoveredCheck:
       type: object
@@ -16059,6 +16602,9 @@ components:
         source:
           type: string
           example: lan
+        region:
+          type: string
+          description: Private region (@slug) of the scan that found the row; omitted when the server found it. Promotion pins the created check to it.
         groupKey:
           type: string
           description: Stable grouping identity (IP, container ID, workload uid)
@@ -17899,6 +18445,12 @@ components:
           description: >-
             LLM tokens (input + output) per UTC day for AI-authored js checks
             (null = unlimited)
+        maxDiscoveryAgentAddressesPerDay:
+          type: integer
+          nullable: true
+          description: >-
+            Addresses the organization's agents may be asked to scan per UTC
+            day, counted at scan start (null = unlimited)
         whiteLabel:
           type: boolean
           nullable: true
@@ -18048,6 +18600,18 @@ components:
           description: >-
             Outbound WhatsApp template messages sent in the current UTC month.
             A persistent counter, not a live count.
+        smsThisMonth:
+          type: integer
+          description: >-
+            SMS sent on the instance's credentials in the current UTC month,
+            counted against maxSmsPerMonth. Bring-your-own Twilio sends are not
+            counted. A persistent counter, not a live count.
+        callsThisMonth:
+          type: integer
+          description: >-
+            Voice calls placed on the instance's credentials in the current UTC
+            month, counted against maxCallsPerMonth. Bring-your-own Twilio calls
+            are not counted. A persistent counter, not a live count.
 
     EntitlementsChecksPerMinute:
       type: object

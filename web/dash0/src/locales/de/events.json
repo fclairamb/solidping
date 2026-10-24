@@ -88,7 +88,10 @@
     "auth.impersonation_started": "Identitätsübernahme gestartet",
     "auth.email_changed": "E-Mail-Adresse geändert",
     "agent.connected": "Agent verbunden",
-    "agent.disconnected": "Agent getrennt"
+    "agent.disconnected": "Agent getrennt",
+    "discovery.scan_started": "Erkennungsscan gestartet",
+    "discovery.scan_canceled": "Erkennungsscan abgebrochen",
+    "discovery.chunk_refused": "Erkennungsabschnitt abgelehnt"
   },
   "descriptions": {
     "org.activation.signup_completed": "Ihre Organisation ist eingerichtet und einsatzbereit.",
@@ -148,6 +151,7 @@
       "status_page": "Statusseiten",
       "maintenance_window": "Wartungsfenster",
       "config": "Config as Code",
+      "discovery": "Erkennung",
       "check": "Prüfungen",
       "incident": "Vorfälle",
       "org": "Organisation",

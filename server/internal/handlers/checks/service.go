@@ -37,7 +37,9 @@ import (
 	"github.com/fclairamb/solidping/server/internal/notifier"
 	"github.com/fclairamb/solidping/server/internal/regionquorum"
 	"github.com/fclairamb/solidping/server/internal/regions"
+	"github.com/fclairamb/solidping/server/internal/secretref"
 	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
+	"github.com/fclairamb/solidping/server/internal/workertasks"
 )
 
 // ValidateCheckRequest is the request body for the validate check endpoint.
@@ -441,6 +443,17 @@ func formatPeriodBound(bound time.Duration) string {
 func validatePeriodForType(
 	checkType string, period time.Duration, internal bool, config checkerdef.Config,
 ) error {
+	meta := checkerdef.GetCheckTypeMeta(checkerdef.CheckType(checkType))
+
+	return validatePeriodBounds(checkType, period, internal, config, meta)
+}
+
+// validatePeriodBounds is validatePeriodForType with the type's metadata
+// given: an agent-reported type's bounds come from its manifest, not from
+// the server's registry (spec 2026-10-17-05 §18).
+func validatePeriodBounds(
+	checkType string, period time.Duration, internal bool, config checkerdef.Config, meta *checkerdef.CheckTypeMeta,
+) error {
 	if period == 0 || internal || checkerdef.CheckType(checkType) == checkerdef.CheckTypeSleep {
 		return nil
 	}
@@ -449,7 +462,7 @@ func validatePeriodForType(
 
 	var maxPeriod time.Duration
 
-	if meta := checkerdef.GetCheckTypeMeta(checkerdef.CheckType(checkType)); meta != nil {
+	if meta != nil {
 		if meta.MinPeriod > 0 {
 			minPeriod = meta.MinPeriod
 		}
@@ -591,6 +604,9 @@ type Service struct {
 	// checkStatsTTL overrides defaultCheckStatsTTL. Zero = use the default;
 	// only tests set it.
 	checkStatsTTL time.Duration
+	// tasks cancels a crawl's run in progress (SetTaskCanceler). Nil = not
+	// wired: the run is canceled at its next claim.
+	tasks TaskCanceler
 	// now is the injectable clock RegionHealth reads "now" through (spec
 	// 2026-08-24-09), so tests can pin it and assert the exact liveness
 	// boundary instead of racing a live wall clock. Defaults to time.Now in
@@ -606,6 +622,9 @@ type Service struct {
 	// degraded detection is turned off (spec 2026-09-24-08). nil = not wired,
 	// in which case nothing is resolved; see SetDegradedIncidentResolver.
 	degradedResolver DegradedIncidentResolver
+	// disableResolver closes a check's open incidents when it is disabled with
+	// resolveOpenIncidents (spec 2026-10-23-01). nil = not wired, nothing resolved.
+	disableResolver CheckDisableIncidentResolver
 	// checkDeletedNotifier tells whoever was paged that a deleted check's
 	// incident closed (spec 2026-10-08-02). nil = not wired: the incidents
 	// still resolve, silently. See SetCheckDeletedIncidentNotifier.
@@ -616,6 +635,15 @@ type Service struct {
 	// that never construct a real config leave it unset; see
 	// SetDeploymentMode.
 	deploymentMode string
+	// envRefAllow is the operator allowlist of `${env:NAME}` names
+	// (config.Config.EnvRefAllowed, spec 2026-10-16-03). nil = deny every
+	// `${env:}` reference — the secure default for an unwired Service. See
+	// SetEnvRefAllow.
+	envRefAllow secretref.EnvAllowFunc
+	// activation is the server-level check-type gate. Writes of a plugin type
+	// it disables are refused on cloud regions (spec 2026-10-17-05 §19). nil
+	// = not wired: no plugin type is refused. See SetActivationResolver.
+	activation *checkerdef.ActivationResolver
 }
 
 // StatusPageReconciler re-materializes the org's selector-driven status page
@@ -640,6 +668,47 @@ func (s *Service) SetStatusPageReconciler(reconciler StatusPageReconciler) {
 // Optional: an unwired Service (most unit tests) behaves like self-hosted.
 func (s *Service) SetDeploymentMode(mode string) {
 	s.deploymentMode = mode
+}
+
+// SetActivationResolver wires the server-level check-type gate, so
+// create/update/import refuse a plugin type it disables on cloud regions.
+func (s *Service) SetActivationResolver(resolver *checkerdef.ActivationResolver) {
+	s.activation = resolver
+}
+
+// TaskCanceler cancels a check's worker tasks (workertasks.Service).
+type TaskCanceler interface {
+	Cancel(ctx context.Context, filter workertasks.CancelFilter) (int, error)
+}
+
+// SetTaskCanceler wires the worker-task service, so pausing, deleting or
+// re-configuring a website crawl cancels its run in progress (spec
+// 2026-10-22-03). Unwired, the run is canceled at its next slice's claim.
+func (s *Service) SetTaskCanceler(tasks TaskCanceler) {
+	s.tasks = tasks
+}
+
+// cancelRuns cancels the check's run in progress, if any, and reports
+// whether one was. Best-effort: an uncanceled run is canceled at its next
+// claim anyway.
+func (s *Service) cancelRuns(ctx context.Context, checkUID string) bool {
+	if s.tasks == nil {
+		return false
+	}
+
+	canceled, err := s.tasks.Cancel(ctx, workertasks.CancelFilter{CheckUID: checkUID})
+	if err != nil {
+		slog.WarnContext(ctx, "Failed to cancel the check's run in progress", "check_uid", checkUID, "error", err)
+	}
+
+	return canceled > 0
+}
+
+// SetEnvRefAllow wires the operator allowlist of `${env:NAME}` names
+// (config.Config.EnvRefAllowed). Save paths refuse, and the document resolver
+// fails, any `${env:}` reference it does not admit. Unwired (nil) denies all.
+func (s *Service) SetEnvRefAllow(allow secretref.EnvAllowFunc) {
+	s.envRefAllow = allow
 }
 
 // reconcileStatusPageSelectors notifies the status page layer that the org's
@@ -890,6 +959,11 @@ type CheckResponse struct {
 	// a region whose live workers report no IPv6 egress" (spec 2026-08-15-11).
 	// Never populated on read paths, and never a reason to reject a write.
 	Warnings []base.ValidationErrorField `json:"warnings,omitempty"`
+	// RegionWarnings (detail responses only) says why the check does not run
+	// in some of its regions right now. Today: a plugin-type check in a region
+	// whose live workers did not load the plugin (spec 2026-10-17-05 §17,
+	// code REGION_NO_PLUGIN). Recomputed on every read, unlike Warnings.
+	RegionWarnings []base.ValidationErrorField `json:"regionWarnings,omitempty"`
 	// Regions is where the check runs: the user's list for a pinned check,
 	// the current placement for an automatic one.
 	Regions []string `json:"regions,omitempty"`
@@ -1809,6 +1883,11 @@ func (s *Service) GetCheck(
 	// Detail-only: it costs an agent lookup per private region.
 	response.NeedsReseal = s.computeNeedsReseal(ctx, check)
 
+	// A plugin-type check whose regions have no worker that loaded the
+	// plugin never runs there (spec 2026-10-17-05 §17). Detail-only, and a
+	// no-op for every other type.
+	response.RegionWarnings = s.pluginRegionWarnings(ctx, org.UID, check.Type, check.Regions)
+
 	// Fetch and attach labels
 	labels, err := s.db.GetLabelsForCheck(ctx, check.UID)
 	if err != nil {
@@ -1928,6 +2007,10 @@ type UpdateCheckRequest struct {
 	RegionCount *int      `json:"regionCount,omitempty"`
 	RegionPool  *[]string `json:"regionPool,omitempty"`
 	Enabled     *bool     `json:"enabled,omitempty"`
+	// ResolveOpenIncidents closes the check's open incidents with resolution
+	// type `check_disabled` in the same write. Only valid alongside
+	// `enabled: false` (spec 2026-10-23-01).
+	ResolveOpenIncidents *bool `json:"resolveOpenIncidents,omitempty"`
 	// Internal is decoded only so it can be refused — see
 	// ErrInternalFieldNotWritable (spec 2026-08-27-01).
 	Internal *bool              `json:"internal,omitempty"`
@@ -2166,7 +2249,7 @@ func (s *Service) UpdateCheck(
 		// scheduled run, but a hard reject belongs here, at the PATCH that
 		// causes it.
 		if req.Config == nil {
-			if cfgErr := s.validateDockerDeploymentConfig(check.Type, check.Regions); cfgErr != nil {
+			if cfgErr := s.validateRegionGates(check.Type, check.Regions); cfgErr != nil {
 				return CheckResponse{}, cfgErr
 			}
 		}
@@ -2203,6 +2286,9 @@ func (s *Service) UpdateCheck(
 			return CheckResponse{}, coverErr
 		}
 	}
+	if validateErr := validateResolveOpenIncidents(req); validateErr != nil {
+		return CheckResponse{}, validateErr
+	}
 	if req.Enabled != nil {
 		update.Enabled = req.Enabled
 	}
@@ -2220,8 +2306,8 @@ func (s *Service) UpdateCheck(
 		// it (applyConfigUpdate ran above), and the stored one otherwise — so
 		// a period-only PATCH is held to the stored script's floor, and a
 		// script+period PATCH to the new script's.
-		if periodErr := validatePeriodForType(
-			check.Type, time.Duration(duration), check.Internal,
+		if periodErr := s.validatePeriodFor(
+			ctx, check.OrganizationUID, check.Type, time.Duration(duration), check.Internal,
 			parsedConfigForType(check.Type, check.Config),
 		); periodErr != nil {
 			return CheckResponse{}, periodErr
@@ -2325,6 +2411,10 @@ func (s *Service) UpdateCheck(
 	// ever would. Every write path (PATCH, /apply, import, MCP update_check)
 	// lands here.
 	if resolveErr := s.resolveDegradedOnDisable(ctx, check, &update); resolveErr != nil {
+		return CheckResponse{}, resolveErr
+	}
+
+	if resolveErr := s.resolveIncidentsOnDisable(ctx, check, req); resolveErr != nil {
 		return CheckResponse{}, resolveErr
 	}
 
@@ -2784,6 +2874,8 @@ func (s *Service) DeleteCheck(ctx context.Context, orgSlug, identifier string) e
 
 	activeIncidentCount := len(activeIncidents)
 
+	s.cancelRuns(ctx, check.UID)
+
 	// Delete all check jobs for this check
 	existingJobs, err := s.db.ListCheckJobsByCheckUID(ctx, check.UID)
 	if err != nil {
@@ -3235,8 +3327,12 @@ func (s *Service) reconcileCheckJobs(ctx context.Context, check *models.Check, r
 		planWeight = s.entitlements.PlanWeight(ctx, check.OrganizationUID)
 	}
 
-	// If check is disabled, delete all jobs
+	// If check is disabled, delete all jobs (and cancel a crawl's run).
 	if !check.Enabled {
+		if len(existingJobs) > 0 {
+			s.cancelRuns(ctx, check.UID)
+		}
+
 		for _, job := range existingJobs {
 			if err := s.db.DeleteCheckJob(ctx, job.UID); err != nil {
 				return fmt.Errorf("failed to delete check job: %w", err)
@@ -3462,17 +3558,13 @@ func (s *Service) syncExistingJob(
 		Set("updated_at = ?", time.Now()).
 		Where("uid = ?", existing.UID)
 
-	// A multi-step run in progress (spec 2026-10-03-03) was started against
-	// the old config: drop it, the next claim starts fresh.
-	if existing.StepRunUID != nil &&
-		(existing.Type != check.Type || !configEqual(existing.Config, check.Config)) {
-		query = query.
-			Set("step_run_uid = NULL").
-			Set("step_run_started_at = NULL").
-			Set("step_count = 0").
-			Set("step_state_file_uid = NULL").
-			Set("step_failures = 0")
-	}
+	// A crawl run in progress was started against the old config: cancel
+	// it, and the next one starts fresh right away rather than a full period
+	// later (specs 2026-10-03-03, 2026-10-22-03). The cancel's end hook has
+	// already released the job; this update sets it due after that.
+	rerunNow := checkerdef.CheckType(existing.Type).IsMultiStep() &&
+		(existing.Type != check.Type || !configEqual(existing.Config, check.Config)) &&
+		s.cancelRuns(ctx, existing.CheckUID)
 
 	// A type change crossing the multi-step boundary moves the job between
 	// the bulk lane and the fast lane (spec 2026-10-03-03): the cost
@@ -3482,7 +3574,13 @@ func (s *Service) syncExistingJob(
 		query = query.Set("lane = ?", models.InitialLaneForType(check.Type))
 	}
 
-	if scheduleChanged {
+	switch {
+	case rerunNow:
+		now := time.Now()
+		query = query.
+			Set("scheduled_at = ?", now).
+			Set("effective_scheduled_at = ?", now)
+	case scheduleChanged:
 		scheduledAt := nextScheduledAt()
 		query = query.
 			Set("scheduled_at = ?", scheduledAt).
@@ -4685,7 +4783,7 @@ func (s *Service) assertEdgeNoCycle(ctx context.Context, orgUID, parentUID, chil
 // check at all: missing required fields, an unknown type, or a client reaching
 // for the server-owned `internal` flag. Split out of importSingleCheck so the
 // per-entry contract lives in one readable place.
-func validateImportedCheck(exportedCheck *ExportCheck, index int) *ImportError {
+func validateImportedCheck(exportedCheck *ExportCheck, index int, types docTypes) *ImportError {
 	// Validate required fields
 	if exportedCheck.Slug == "" {
 		return &ImportError{Index: index, Slug: exportedCheck.Slug, Error: "slug is required"}
@@ -4709,7 +4807,7 @@ func validateImportedCheck(exportedCheck *ExportCheck, index int) *ImportError {
 	}
 
 	// Validate check type
-	if !configregistry.IsKnownType(checkerdef.CheckType(exportedCheck.Type)) {
+	if !types.known(exportedCheck.Type) {
 		return &ImportError{
 			Index: index, Slug: exportedCheck.Slug, Error: "invalid check type: " + exportedCheck.Type,
 		}
@@ -4738,7 +4836,7 @@ func (s *Service) importSingleCheck(
 	exportedCheck, index := item.entry, item.index
 	org, orgSlug, dryRun := item.org, item.orgSlug, item.dryRun
 
-	if validationErr := validateImportedCheck(exportedCheck, index); validationErr != nil {
+	if validationErr := validateImportedCheck(exportedCheck, index, s.documentTypes(ctx, org.UID)); validationErr != nil {
 		return "", nil, validationErr
 	}
 
@@ -4979,6 +5077,21 @@ type CloneCheckRequest struct {
 	Enabled       *bool   `json:"enabled,omitempty"`
 }
 
+// cloneValidate runs the save-time rules on a clone before it is inserted:
+// the demo shape rules, then the same config validation as create/PATCH. The
+// clone is a new save of the source's stored config, so a `${env:NAME}` stored
+// before the operator allowlist existed (or since removed from it) is refused
+// here rather than copied (spec 2026-10-16-03).
+func (s *Service) cloneValidate(ctx context.Context, orgUID string, clone *models.Check) error {
+	if demoErr := assertDemoCheckShape(
+		ctx, clone.Type, time.Duration(clone.Period), clone.Regions,
+	); demoErr != nil {
+		return demoErr
+	}
+
+	return s.firstConfigValidationError(ctx, orgUID, clone.Type, clone.Config, clone.Regions)
+}
+
 // CloneCheck creates a near-identical copy of an existing check, server-side.
 // Runtime state (status streak, results, incidents, scheduler row) is not
 // copied; status-page and maintenance-window references are not copied
@@ -5017,10 +5130,8 @@ func (s *Service) CloneCheck(
 	// The clone's SHAPE is still checked, so a demo session cannot use clone
 	// as a side door around the type allowlist or the period floor by copying
 	// a seeded check the catalog is allowed to have but a visitor is not.
-	if demoErr := assertDemoCheckShape(
-		ctx, clone.Type, time.Duration(clone.Period), clone.Regions,
-	); demoErr != nil {
-		return CheckResponse{}, demoErr
+	if validateErr := s.cloneValidate(ctx, org.UID, clone); validateErr != nil {
+		return CheckResponse{}, validateErr
 	}
 
 	// Clone bypasses CreateCheck (calls s.db.CreateCheck directly), so the
@@ -5297,7 +5408,7 @@ func normalizeCheckConfig(checkType string, effective map[string]any) (map[strin
 // plaintext envelope keeps secrets out of the public column and out of API
 // responses even though it does not encrypt them at rest.
 func (s *Service) applyEncryption(ctx context.Context, check *models.Check, effective map[string]any) error {
-	cfg, ok := configregistry.ParseConfig(checkerdef.CheckType(check.Type))
+	cfg, ok := s.parseConfigFor(ctx, check.OrganizationUID, check.Type)
 	if !ok {
 		// Unknown checker — keep the existing behavior: store the map as
 		// plaintext and let validation fail elsewhere. Don't silently lose
@@ -5387,7 +5498,7 @@ func (s *Service) applyConfigUpdate(
 		return mergeErr
 	}
 
-	preserveAbsentRedactedFields(check, merged)
+	s.preserveAbsentRedactedFields(ctx, check, merged)
 
 	if immutableErr := assertPrivateLocationRegionUnchanged(check, merged); immutableErr != nil {
 		return immutableErr
@@ -5402,7 +5513,7 @@ func (s *Service) applyConfigUpdate(
 	// Normalize the EFFECTIVE config, after the merge and before encryption —
 	// never the raw patch, whose folded output would replace the stored map
 	// wholesale and wipe unrelated keys.
-	merged, normErr := normalizeCheckConfig(check.Type, merged)
+	merged, normErr := s.normalizeConfigFor(ctx, check.OrganizationUID, check.Type, merged)
 	if normErr != nil {
 		return normErr
 	}
@@ -5412,7 +5523,9 @@ func (s *Service) applyConfigUpdate(
 	// expectedStatusCodes must be strings, method must be a known verb).
 	// Runs first so a malformed type never reaches the shared validators
 	// below. See validatePatchedConfig for the sealed-only handling.
-	if cfgErr := s.validatePatchedConfig(check.Type, merged, wasSealedOnly, oldPrivateKeys); cfgErr != nil {
+	if cfgErr := s.validatePatchedConfig(
+		ctx, check.OrganizationUID, check.Type, merged, wasSealedOnly, oldPrivateKeys,
+	); cfgErr != nil {
 		return cfgErr
 	}
 
@@ -5502,9 +5615,9 @@ const placeholderPrivateKeyPEM = "-----BEGIN PLACEHOLDER-----\n" +
 // rejection is the correct outcome — injecting a placeholder there would
 // silently mask it.
 func (s *Service) validatePatchedConfig(
-	checkType string, merged map[string]any, wasSealedOnly bool, oldPrivateKeys *string,
+	ctx context.Context, orgUID, checkType string, merged map[string]any, wasSealedOnly bool, oldPrivateKeys *string,
 ) error {
-	if !configregistry.IsKnownType(checkerdef.CheckType(checkType)) {
+	if !s.isKnownTypeFor(ctx, orgUID, checkType) {
 		return nil
 	}
 
@@ -5517,7 +5630,7 @@ func (s *Service) validatePatchedConfig(
 		injectSecretPlaceholders(checkType, configCopy, parseConfigPrivateKeys(oldPrivateKeys))
 	}
 
-	return configregistry.ValidateSpec(checkerdef.CheckType(checkType), &checkerdef.CheckSpec{Config: configCopy})
+	return s.validateSpecFor(ctx, orgUID, checkType, &checkerdef.CheckSpec{Config: configCopy})
 }
 
 // parseConfigPrivateKeys decodes the ConfigPrivateKeys JSON-array-of-strings
@@ -5887,7 +6000,7 @@ func (s *Service) applyConfigPatch(
 		return nil, err
 	}
 
-	cfg, ok := configregistry.ParseConfig(checkerdef.CheckType(check.Type))
+	cfg, ok := s.parseConfigFor(ctx, check.OrganizationUID, check.Type)
 	if !ok {
 		// Unknown checker — fall back to plain replace.
 		return patch, nil
@@ -5960,8 +6073,8 @@ func (s *Service) makeCheckJobsDue(ctx context.Context, checkUID string) error {
 // exporter omits these fields: a document that does not carry the value is
 // never a request to destroy it. Rotation is an explicit, separate operation
 // (RotateHeartbeatToken), which is the ONE supported way to change one.
-func preserveAbsentRedactedFields(check *models.Check, merged map[string]any) {
-	cfg, ok := configregistry.ParseConfig(checkerdef.CheckType(check.Type))
+func (s *Service) preserveAbsentRedactedFields(ctx context.Context, check *models.Check, merged map[string]any) {
+	cfg, ok := s.parseConfigFor(ctx, check.OrganizationUID, check.Type)
 	if !ok {
 		return
 	}

@@ -38,6 +38,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
 	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/crawltask"
 	"github.com/fclairamb/solidping/server/internal/credmigrate"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
@@ -47,10 +48,12 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/postgres"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
+	"github.com/fclairamb/solidping/server/internal/discoverytask"
 	"github.com/fclairamb/solidping/server/internal/egress"
 	"github.com/fclairamb/solidping/server/internal/email"
 	entitlementsapi "github.com/fclairamb/solidping/server/internal/entitlements"
 	agentsadmin "github.com/fclairamb/solidping/server/internal/handlers/agents"
+	"github.com/fclairamb/solidping/server/internal/handlers/agenttasks"
 	"github.com/fclairamb/solidping/server/internal/handlers/agentws"
 	aichecksapi "github.com/fclairamb/solidping/server/internal/handlers/aichecks"
 	"github.com/fclairamb/solidping/server/internal/handlers/attachments"
@@ -111,6 +114,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/system"
 	"github.com/fclairamb/solidping/server/internal/handlers/telegramcb"
 	"github.com/fclairamb/solidping/server/internal/handlers/testapi"
+	"github.com/fclairamb/solidping/server/internal/handlers/tools"
 	"github.com/fclairamb/solidping/server/internal/handlers/tracediag"
 	"github.com/fclairamb/solidping/server/internal/handlers/twiliocb"
 	"github.com/fclairamb/solidping/server/internal/handlers/uistate"
@@ -137,6 +141,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/middleware"
 	"github.com/fclairamb/solidping/server/internal/notifier"
 	"github.com/fclairamb/solidping/server/internal/oauth"
+	"github.com/fclairamb/solidping/server/internal/plugintypes"
 	"github.com/fclairamb/solidping/server/internal/profiler"
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
 	"github.com/fclairamb/solidping/server/internal/realtime"
@@ -153,6 +158,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/utils/passwords"
 	"github.com/fclairamb/solidping/server/internal/version"
 	webpushpkg "github.com/fclairamb/solidping/server/internal/webpush"
+	"github.com/fclairamb/solidping/server/internal/workertasks"
 	"github.com/fclairamb/solidping/server/test/testdata"
 )
 
@@ -196,11 +202,8 @@ var docsFiles embed.FS
 // Server is the HTTP server for the SolidPing application.
 type Server struct {
 	dbService db.Service
-	// instanceSMSSender is the instance-level SMS sender (nil when unconfigured),
-	// kept for configureOVHDeliveryCallback.
-	instanceSMSSender smssvc.Sender
-	jobSvc            jobsvc.Service
-	services          *services.Registry
+	jobSvc    jobsvc.Service
+	services  *services.Registry
 	// aiChecks authors and repairs AI-written js checks (spec 2026-10-03-07).
 	aiChecks *aichecks.Service
 	router   *httpx.Router
@@ -208,8 +211,13 @@ type Server struct {
 	// SetupRoutes). It is the outermost handler: Server.Handler() and
 	// handlerWithDocsHost's fallthrough both serve this, never s.router
 	// directly, so every caller gets compression on the same terms.
-	handler                  http.Handler
-	config                   *config.Config
+	handler http.Handler
+	config  *config.Config
+	// toolsOptions tune the public tools service (tests only: a fake DNS).
+	toolsOptions []tools.Option
+	// instanceSMSSender is the instance-level SMS sender; kept so the OVH
+	// delivery callback can be registered once the config overlay is final.
+	instanceSMSSender        smssvc.Sender
 	authService              *auth.Service
 	mcpHandler               *mcp.Handler
 	profilerSrv              *profiler.Server
@@ -396,6 +404,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 
 	checkJobService := checkjobsvc.NewService(dbService.DB())
 	svcList.CheckJobs = checkJobService
+	svcList.WorkerTasks = workertasks.NewService(dbService.DB())
 
 	// Create email services
 	// The sender resolves the effective email config (env over DB) on every
@@ -447,6 +456,10 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	// resolver owns the DB lookup + credential decrypt (via the integrations
 	// kubernetes package's single chokepoint) so the checker package stays
 	// importable from unit tests without a live database or cluster.
+	// In-cluster mode reads this pod's own service-account token, so it is
+	// an operator opt-in (SP_K8S_ALLOW_IN_CLUSTER, spec 2026-10-16-05).
+	integrationk8s.SetAllowInCluster(cfg.Kubernetes.AllowInCluster)
+
 	checkkubernetes.ClientsetResolverFunc = func(ctx context.Context, clusterUID string) (k8sclient.Interface, error) {
 		return integrationk8s.ResolveClientsetByUID(ctx, dbService, credSvc, clusterUID)
 	}
@@ -455,7 +468,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	// (`tunnelCheckUid` in their config). Same indirection again: it owns the
 	// check lookup + credential decrypt so the checkers only ever consume a
 	// dialer from their context.
-	sshtunnel.ResolverFunc = sshtunnel.NewResolver(dbService, credSvc)
+	sshtunnel.ResolverFunc = sshtunnel.NewResolver(dbService, credSvc, cfg.EnvRefAllowed)
 
 	// Initialize Sentry error tracking
 	if sentryErr := initSentry(cfg.Sentry); sentryErr != nil {
@@ -492,10 +505,22 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	checksSvc := checks.NewService(
 		dbService, svcList.EventNotifier, credSvc, entitlementsService)
 	checksSvc.SetDeploymentMode(cfg.Deployment.Mode)
+	checksSvc.SetActivationResolver(checkerdef.NewActivationResolver(&cfg.Checkers, cfg.Deployment.Mode))
+	checksSvc.SetEnvRefAllow(cfg.EnvRefAllowed)
+	checksSvc.SetTaskCanceler(svcList.WorkerTasks)
 	// The demo cleanup and private-location monitor deletes notify like a
 	// user's DELETE does (spec 2026-10-08-02).
-	checksSvc.SetCheckDeletedIncidentNotifier(
-		incidents.NewService(dbService, jobService, svcList.Clock, svcList.Realtime))
+	backgroundIncidents := incidents.NewService(dbService, jobService, svcList.Clock, svcList.Realtime)
+	// Those deletes resolve incidents, so they must also close the status-page
+	// entries hanging off them. No subscriber notifier: the egress guard it
+	// needs is only built later, in InitializeSystemConfig.
+	backgroundPublications := incidentpublications.NewService(dbService, svcList.Clock, svcList.Realtime)
+	backgroundPublications.SetJobsService(jobService)
+	backgroundIncidents.SetPublicationHook(backgroundPublications)
+	checksSvc.SetCheckDeletedIncidentNotifier(backgroundIncidents)
+	// The A2A sender and the a2a_task_poll job record the AI agent's replies
+	// on the incident timeline (spec 2026-10-18-02).
+	svcList.A2AComments = backgroundIncidents
 	svcList.Checks = checksSvc
 	svcList.PrivateLocationMonitors = checksSvc
 	aiChecksSvc := buildAIChecks(cfg, dbService, checksSvc, entitlementsService, credSvc, svcList)
@@ -518,14 +543,12 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		dbService, credSvc, instanceSMSSender, instanceVoiceCaller, cfg.SMS.Sender,
 	)
 
-	// The OVH delivery-receipt callback is NOT registered here: its URL carries
-	// the JWT secret derived token and the base URL, which the system-config
-	// overlay rewrites. See configureOVHDeliveryCallback (InitializeSystemConfig).
-
 	// Create auth service. The entitlements service gates SSO membership
 	// caps inside JoinOrgViaLogin (every OAuth/SAML/LDAP callback) and inside
 	// autoJoinMatchingOrgs.
 	authService := auth.NewService(dbService, cfg.Auth, cfg, jobService, entitlementsService)
+	// PAT revocations are broadcast so every replica evicts its cache.
+	authService.SetEventNotifier(ctx, eventNotifier)
 
 	// Register file storage backends. Idempotent — safe to call once at startup.
 	localfs.Register()
@@ -541,12 +564,12 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		services:          svcList,
 		aiChecks:          aiChecksSvc,
 		config:            cfg,
+		instanceSMSSender: instanceSMSSender,
 		authService:       authService,
 		profilerSrv:       profiler.New(&cfg.Profiler),
 		customDomainCache: newCustomDomainCache(customDomainCacheTTL),
 		embedOrigins:      newEmbedOriginsCache(embedOriginsCacheTTL),
 		dbFault:           dbfault.NewLatch(slog.Default()),
-		instanceSMSSender: instanceSMSSender,
 	}
 
 	return server, nil
@@ -593,6 +616,33 @@ func deviceConsentRateLimitConfig(base config.RateLimitConfig) config.RateLimitC
 		TrustedProxies:    base.TrustedProxies,
 		TokenBucketsPerIP: base.TokenBucketsPerIP,
 	}
+}
+
+// toolsRunsPerMinute is the per-IP allowance for POST /api/v1/tools/run (spec
+// 2026-10-14-02). Each run makes a request to a third party on a visitor's
+// behalf, so the budget is small: it keeps port scanning through us slow.
+const toolsRunsPerMinute = 10
+
+// toolsRateLimitConfig derives the tools limiter from the server's own,
+// keeping the trusted proxy hops. Burst equals the minute's allowance, so the
+// 11th run inside a minute is refused. TokenBucketsPerIP stays 0: the route
+// is anonymous, so a made-up bearer must not buy a fresh bucket.
+func toolsRateLimitConfig(base config.RateLimitConfig) config.RateLimitConfig {
+	return config.RateLimitConfig{
+		RequestsPerMinute: toolsRunsPerMinute,
+		Burst:             toolsRunsPerMinute,
+		TrustedProxies:    base.TrustedProxies,
+	}
+}
+
+// toolsRegion is the region reported on tool runs: the node's, else the
+// check worker's.
+func (s *Server) toolsRegion() string {
+	if s.config.Node.Region != "" {
+		return s.config.Node.Region
+	}
+
+	return s.config.Server.CheckWorker.Region
 }
 
 // reportRequestsPerMinute is the per-IP allowance for POST /api/mgmt/report
@@ -757,7 +807,10 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	rootAuth.POST("/request-password-reset", authHandler.RequestPasswordReset)
 	rootAuth.POST("/reset-password", authHandler.ResetPassword)
 	rootAuth.GET("/invite/:token", authHandler.GetInviteInfo)
-	rootAuth.POST("/accept-invite", authHandler.AcceptInvite)
+	// Optional authentication (spec 2026-10-16-06): an invitation for an
+	// existing account is accepted only by that account, so a credential, when
+	// presented, must be validated; a new invitee has none.
+	rootAuth.POST("/accept-invite", authMiddleware.AuthIfPresented(authHandler.AcceptInvite))
 	rootAuth.POST("/2fa/verify", authHandler.Verify2FA)
 	rootAuth.POST("/2fa/recovery", authHandler.Recovery2FA)
 	rootAuth.POST("/passkeys/login/begin", passkeyHandler.LoginBegin)
@@ -1138,10 +1191,24 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	systemJobsGroup.GET("/check-jobs", checkJobsHandler.ListSystemCheckJobs)
 	systemJobsGroup.GET("/check-jobs/:uid", checkJobsHandler.GetSystemCheckJob)
 
+	// Public check tools (spec 2026-10-14-02): anonymous "run a check once"
+	// for www.solidping.io/tools. 404 unless tools.enabled. Its own strict
+	// per-IP limiter (10/min) on top of the global one; the handler adds the
+	// daily cap, and the service the egress guard (always enforcing), the
+	// concurrency cap and the per-target cache.
+	toolsLimiter := middleware.NewRateLimiter(toolsRateLimitConfig(s.config.Server.RateLimiting), ctx)
+	toolsHandler := tools.NewHandler(s.config, tools.NewService(tools.Params{
+		DeniedHosts: s.config.ToolsDeniedHosts(),
+		Region:      s.toolsRegion(),
+	}, s.toolsOptions...), toolsLimiter.ExtractIP)
+	api.NewGroup("/tools").Use(toolsLimiter.RateLimitRoute).POST("/run", toolsHandler.Run)
+
 	// Check types routes
 	checkTypesHandler := checktypes.NewHandler(checkTypesService, s.config)
-	api.GET("/check-types", checkTypesHandler.ListServerCheckTypes)      // Public, no auth
-	api.GET("/check-types/samples", checkTypesHandler.ListSampleConfigs) // Public, no auth
+	api.GET("/check-types", checkTypesHandler.ListServerCheckTypes)                          // Public, no auth
+	api.GET("/check-types/samples", checkTypesHandler.ListSampleConfigs)                     // Public, no auth
+	api.GET("/check-types/vendor-status/catalog", checkTypesHandler.ListVendorStatusCatalog) // Public, no auth
+	checkTypesHandler.SetEgressGuard(func() *egress.Guard { return s.services.EgressGuard })
 	// Generated JSON Schemas for each check type's `config` object — public and
 	// auth-free like /check-types, because they describe this build rather than
 	// any organization's data. Read-only, and DESCRIPTIVE ONLY: validation stays
@@ -1150,11 +1217,18 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	api.GET("/checks/schema/:type", checkTypesHandler.GetConfigSchema)
 	orgCheckTypes := orgGroup("/orgs/:org/check-types")
 	orgCheckTypes.GET("", checkTypesHandler.ListOrgCheckTypes)
+	// The schema of a server type, or of a plugin type this org's agents
+	// reported (spec 2026-10-17-05 §18). Org-scoped, unlike /checks/schema.
+	orgCheckTypes.GET("/:type/schema", checkTypesHandler.GetOrgConfigSchema)
+	checkTypesHandler.SetOrgPluginTypes(plugintypes.New(s.dbService.DB()))
 
 	// Check routes (authentication required)
 	checksService := checks.NewService(
 		s.dbService, s.services.EventNotifier, s.services.Credentials, s.services.Entitlements)
 	checksService.SetDeploymentMode(s.config.Deployment.Mode)
+	checksService.SetActivationResolver(activationResolver)
+	checksService.SetEnvRefAllow(s.config.EnvRefAllowed)
+	checksService.SetTaskCanceler(s.services.WorkerTasks)
 	checksHandler := checks.NewHandler(checksService, s.config)
 	orgChecks := orgGroup("/orgs/:org/checks")
 	orgChecks.GET("", checksHandler.ListChecks)
@@ -1163,6 +1237,9 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// segment is never captured as a check UID.
 	orgChecks.GET("/stats", checksHandler.GetCheckStats)
 	orgChecks.POST("", checksHandler.CreateCheck)
+	// Components of a vendor status page, for the check form. Behind the same
+	// global rate limiter as /checks/validate (neither has a dedicated one).
+	orgChecks.POST("/vendor-status/components", checkTypesHandler.ListVendorStatusComponents)
 	// Bulk "Switch to automatic placement" (spec 2026-09-25-06). A literal
 	// segment, registered ahead of the "/:checkUid" routes.
 	orgChecks.POST("/auto-placement", checksHandler.SwitchToAutoPlacement)
@@ -1227,7 +1304,14 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// endpoints stay on top of it unchanged.
 	discoverySvc := discovery.NewService(
 		s.dbService.DB(), s.dbService, checksService, s.jobSvc, s.services.Credentials,
+		s.services.EgressGuard, s.config.DockerChecksBlocked(),
 	)
+	// Region-bound LAN scans run on the private region's agents as worker
+	// tasks (spec 2026-10-22-04), bounded by a daily address entitlement.
+	discoverySvc.SetWorkerTasks(s.services.WorkerTasks)
+	discoverySvc.SetEntitlements(s.services.Entitlements)
+	discoverytask.Register(discoverytask.Deps{DB: s.dbService, Tasks: s.services.WorkerTasks})
+
 	discoveryHandler := discovery.NewHandler(discoverySvc, s.config)
 	orgDiscovery := orgGroup("/orgs/:org/discovery")
 	discoveryHandler.RegisterRoutes(orgDiscovery)
@@ -1305,7 +1389,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// of them, is the only arrangement where that cannot happen by omission.
 	statusSubscriberNotifier := statussubscribers.NewNotifier(
 		s.dbService, s.services.EmailSender, s.services.EmailFormatter,
-		s.config.Server.BaseURL, slog.Default(), s.services.Credentials)
+		s.config.Server.BaseURL, slog.Default(), s.services.Credentials, s.services.EgressGuard)
 
 	incidentPublicationsService := incidentpublications.NewService(
 		s.dbService, s.services.Clock, s.services.Realtime)
@@ -1407,6 +1491,24 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	agentAttachmentsHandler := attachments.NewHandler(attachmentsService, s.dbService, s.config)
 	api.POST("/agent/attachments", agentAttachmentsHandler.Upload)
 
+	// Worker tasks (spec 2026-10-22-02): the agent pulls multi-slice work over
+	// signed HTTP, never the WebSocket. Same inline auth as the upload above.
+	// The task state lives on the attachment rail, written by the server only.
+	s.services.WorkerTasks.SetStateStore(attachmentsService)
+	agenttasks.NewHandler(s.services.WorkerTasks, s.dbService, s.config).Register(api)
+
+	// The website crawl runs on worker tasks (spec 2026-10-22-03), for cloud
+	// workers and agents alike: its result goes through the agents' submit
+	// path, its report to the attachment rail.
+	crawltask.Register(crawltask.Deps{
+		DB:           s.dbService,
+		Tasks:        s.services.WorkerTasks,
+		Results:      agentWorkersSvc,
+		Reports:      attachmentsService,
+		Entitlements: s.services.Entitlements,
+		SliceBudget:  scheduling.ParamsFromConfig(&s.config.Server.Scheduling).EffectiveBulkSliceBudget(),
+	})
+
 	agentWorkerIncidents.SetAttachmentStore(attachmentsService)
 
 	// A check's screenshots on the check page (spec 2026-09-25-34): the listing
@@ -1423,7 +1525,8 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 
 	// Multi-step runs (spec 2026-10-03-03): the run in progress (read), its
 	// cancellation (write: orgGroup refuses viewers) and the crawl reports.
-	checkRunsHandler := checkruns.NewHandler(checkruns.NewService(s.dbService, attachmentsService), s.config)
+	checkRunsHandler := checkruns.NewHandler(
+		checkruns.NewService(s.dbService, attachmentsService, s.services.WorkerTasks), s.config)
 	orgCheckRuns := orgGroup("/orgs/:org/checks/:checkUid")
 	orgCheckRuns.GET("/run", checkRunsHandler.GetRun)
 	orgCheckRuns.DELETE("/run", checkRunsHandler.CancelRun)
@@ -1893,6 +1996,10 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// they wrap the multi-step LCD-approval handshake. POST creates the
 	// integration in `pairing` status and asks the Freebox for an
 	// app_token; GET polls until the user approves the prompt.
+	// AI agent (A2A): resolve an Agent Card before saving, so the form can
+	// show the agent name, skills and protocol version (spec 2026-10-18-02).
+	orgGroup("/orgs/:org/integrations/a2a").POST("/resolve-card", integrationsHandler.ResolveA2ACard)
+
 	orgFreebox := orgGroup("/orgs/:org/integrations/freebox")
 	orgFreebox.POST("/pair", integrationsHandler.StartFreeboxPairing)
 	orgFreebox.GET("/pair/:uid/status", integrationsHandler.GetFreeboxPairingStatus)
@@ -1961,6 +2068,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Deleting a check resolves its open incidents (the DB layer does that);
 	// this tells whoever was paged, once, that it closed (spec 2026-10-08-02).
 	checksService.SetCheckDeletedIncidentNotifier(incidentsService)
+	checksService.SetCheckDisableIncidentResolver(incidentsService)
 	// The MCP surface builds its OWN statuspages.Service (mcp.NewHandler runs
 	// far earlier in this function), and every NewService starts with its own
 	// view memo. Point it at this one's, or an MCP-driven page edit evicts a map
@@ -2029,7 +2137,8 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Status page subscribers (public email/RSS subscriptions). The handler is
 	// shared by the authed admin routes (below) and the public routes (further
 	// down, outside RequireAuth).
-	statusSubscribersService := statussubscribers.NewService(s.dbService, s.services.Credentials)
+	statusSubscribersService := statussubscribers.NewService(s.dbService, s.services.Credentials,
+		statussubscribers.WithEgressGuard(s.services.EgressGuard))
 	statusSubscribersHandler := statussubscribers.NewHandler(
 		statusSubscribersService, s.dbService, s.services.EmailSender, s.services.EmailFormatter, s.config)
 	// Authed admin: list (count + redactable addresses) and remove.
@@ -2214,7 +2323,16 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	slackIntegration.GET("/install", slackHandler.Install)
 	slackIntegration.GET("/oauth", slackHandler.OAuthCallback)
 	slackIntegration.GET("/socket/status", slackHandler.GetSocketStatus)
-	// Apply signature verification middleware to Slack webhooks
+	// Apply signature verification middleware to Slack webhooks. It fails
+	// closed: with no signing secret every request gets a 401. Socket Mode
+	// never goes through these routes, so only an HTTP-mode install is hurt.
+	// The secret is read at boot (the system-parameter overlay runs once), so
+	// setting it later from Server settings needs a restart.
+	if s.config.Slack.Enabled && !s.config.Slack.SocketModeEnabled && s.config.Slack.SigningSecret == "" {
+		slog.WarnContext(ctx, "Slack HTTP endpoints will reject every request: no signing secret is set. "+
+			"Set SP_SLACK_SIGNING_SECRET (or slack.signing_secret) and restart, or use Socket Mode")
+	}
+
 	slackIntegration.POST("/events", slackHandler.VerifyMiddleware(slackHandler.HandleEvents))
 	slackIntegration.POST("/command", slackHandler.VerifyMiddleware(slackHandler.HandleCommand))
 	slackIntegration.POST("/interaction", slackHandler.VerifyMiddleware(slackHandler.HandleInteraction))
@@ -2607,6 +2725,9 @@ func isPublicCORSPath(path string) bool {
 		"/embed/",
 		statuspageassets.PublicPathPrefix,
 		"/api/v1/status-pages/",
+		// Public check tools, called from www.solidping.io in the browser
+		// (spec 2026-10-14-02).
+		"/api/v1/tools/",
 	}
 
 	for _, prefix := range prefixes {
@@ -2686,12 +2807,14 @@ func (s *Server) loggingMiddleware(next httpx.HandlerFunc) httpx.HandlerFunc {
 		err := next(w, req)
 		duration := time.Since(start)
 
-		slog.InfoContext(req.Context(), "HTTP request",
-			"method", req.Method,
-			"path", req.URL.Path,
-			"duration", duration,
-			"error", err,
-		)
+		attrs := []any{"method", req.Method, "path", req.URL.Path, "duration", duration}
+		// Only a failed request carries an error: "error=<nil>" on every
+		// healthcheck reads as a failure in a colored terminal.
+		if err != nil {
+			attrs = append(attrs, "error", err)
+		}
+
+		slog.InfoContext(req.Context(), "HTTP request", attrs...)
 
 		return err
 	}
@@ -4299,8 +4422,8 @@ func (s *Server) InitializeSystemConfig(ctx context.Context, cfg *config.Config)
 	// overlaid metrics.scrape_token system parameter (spec 2026-09-25-25).
 	logMetricsScrapeTokenState(ctx, cfg)
 
-	// Register the OVH delivery-receipt URL now that the JWT secret and base
-	// URL are final.
+	// Register the OVH delivery-receipt callback now that the JWT secret and
+	// base URL are final (spec 2026-10-12-06).
 	s.configureOVHDeliveryCallback(ctx)
 
 	return nil

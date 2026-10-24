@@ -44,7 +44,7 @@ func TestMultiReplica_PostgresHintCrossesInstances(t *testing.T) { //nolint:para
 	r := require.New(t)
 	ctx := t.Context()
 
-	const port = uint32(15438)
+	const port = uint32(15476) // 15438 is shared by checkjobsvc and db/postgres headroom
 	svc, err := postgres.NewEmbedded(ctx, "realtime-multireplica", port, false, "", false, 0)
 	r.NoError(err, "failed to start embedded postgres")
 	t.Cleanup(func() { _ = svc.Close() })

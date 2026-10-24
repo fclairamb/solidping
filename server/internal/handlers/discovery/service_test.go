@@ -15,12 +15,14 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	disc "github.com/fclairamb/solidping/server/internal/discovery"
 	"github.com/fclairamb/solidping/server/internal/discovery/scantypes"
+	"github.com/fclairamb/solidping/server/internal/egress"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/handlers/discovery"
 	"github.com/fclairamb/solidping/server/internal/integrations/freebox"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/notifier"
+	"github.com/fclairamb/solidping/server/internal/regions"
 )
 
 type discoveryFixture struct {
@@ -32,6 +34,14 @@ type discoveryFixture struct {
 func newDiscoveryFixture(t *testing.T) *discoveryFixture {
 	t.Helper()
 
+	return newDiscoveryFixtureWith(t, nil, false)
+}
+
+// newDiscoveryFixtureWith builds the fixture with the given process egress
+// guard and docker gate (a SaaS deployment is egress.New(false) + true).
+func newDiscoveryFixtureWith(t *testing.T, guard *egress.Guard, dockerBlocked bool) *discoveryFixture {
+	t.Helper()
+
 	ctx := t.Context()
 	r := require.New(t)
 
@@ -39,6 +49,18 @@ func newDiscoveryFixture(t *testing.T) *discoveryFixture {
 	r.NoError(err)
 	r.NoError(dbSvc.Initialize(ctx))
 	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	return newDiscoveryFixtureOn(t, dbSvc, guard, dockerBlocked)
+}
+
+// newDiscoveryFixtureOn builds the fixture on an initialized database.
+func newDiscoveryFixtureOn(
+	t *testing.T, dbSvc db.Service, guard *egress.Guard, dockerBlocked bool,
+) *discoveryFixture {
+	t.Helper()
+
+	ctx := t.Context()
+	r := require.New(t)
 
 	creds, err := credentials.NewService(nil, nil)
 	r.NoError(err)
@@ -48,7 +70,7 @@ func newDiscoveryFixture(t *testing.T) *discoveryFixture {
 
 	jobSvc := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier(), nil)
 	checksSvc := checks.NewService(dbSvc, notifier.NewLocalEventNotifier(), creds, nil)
-	svc := discovery.NewService(dbSvc.DB(), dbSvc, checksSvc, jobSvc, creds)
+	svc := discovery.NewService(dbSvc.DB(), dbSvc, checksSvc, jobSvc, creds, guard, dockerBlocked)
 
 	return &discoveryFixture{svc: svc, dbSvc: dbSvc, org: org}
 }
@@ -104,7 +126,7 @@ func (f *discoveryFixture) insertCheck(
 	ctx := t.Context()
 
 	dc := models.NewDiscoveredCheck(
-		f.org.UID, jobUID, source, group, group, group+" · "+slug, slug, checkType, cfg, nil,
+		f.org.UID, jobUID, source, group, group, group+" · "+slug, slug, checkType, cfg, nil, "",
 	)
 	_, err := f.dbSvc.DB().NewInsert().Model(dc).Exec(ctx)
 	r.NoError(err)
@@ -130,7 +152,7 @@ func TestStartScanUnknownType(t *testing.T) {
 	r := require.New(t)
 	f := newDiscoveryFixture(t)
 
-	_, err := f.svc.StartScan(t.Context(), f.org.UID, "nope", json.RawMessage(`{}`))
+	_, err := f.svc.StartScan(t.Context(), f.org.UID, "nope", "", json.RawMessage(`{}`))
 	r.Error(err)
 
 	var de *scantypes.DiscoveryError
@@ -144,7 +166,7 @@ func TestStartScanLANCreatesPlanJob(t *testing.T) {
 	r := require.New(t)
 	f := newDiscoveryFixture(t)
 
-	job, err := f.svc.StartScan(t.Context(), f.org.UID, "lan", json.RawMessage(`{"cidrs":["10.0.0.0/18"]}`))
+	job, err := f.svc.StartScan(t.Context(), f.org.UID, "lan", "", json.RawMessage(`{"cidrs":["10.0.0.0/18"]}`))
 	r.NoError(err)
 	r.NotNil(job)
 	r.Equal(string(jobdef.JobTypeNetworkDiscoveryPlan), job.Type, "LAN scan must create a plan job")
@@ -156,7 +178,7 @@ func TestStartScanLANBadParams(t *testing.T) {
 	r := require.New(t)
 	f := newDiscoveryFixture(t)
 
-	_, err := f.svc.StartScan(t.Context(), f.org.UID, "lan", json.RawMessage(`{}`))
+	_, err := f.svc.StartScan(t.Context(), f.org.UID, "lan", "", json.RawMessage(`{}`))
 	r.Error(err)
 
 	var de *scantypes.DiscoveryError
@@ -170,7 +192,7 @@ func TestStartScanLANRejectsRangeOverCeiling(t *testing.T) {
 	r := require.New(t)
 	f := newDiscoveryFixture(t)
 
-	_, err := f.svc.StartScan(t.Context(), f.org.UID, "lan", json.RawMessage(`{"cidrs":["0.0.0.0/7"]}`))
+	_, err := f.svc.StartScan(t.Context(), f.org.UID, "lan", "", json.RawMessage(`{"cidrs":["0.0.0.0/7"]}`))
 	r.Error(err)
 
 	var de *scantypes.DiscoveryError
@@ -187,7 +209,7 @@ func TestStartScanFreeboxGranted(t *testing.T) {
 	conn := f.newFreeboxChannel(t, srv.URL, models.FreeboxStatusGranted)
 
 	params := json.RawMessage(`{"channelUid":"` + conn.UID + `"}`)
-	job, err := f.svc.StartScan(t.Context(), f.org.UID, "freebox", params)
+	job, err := f.svc.StartScan(t.Context(), f.org.UID, "freebox", "", params)
 	r.NoError(err)
 	r.NotNil(job)
 	r.Equal(string(jobdef.JobTypeFreeboxLanDiscovery), job.Type)
@@ -202,7 +224,7 @@ func TestStartScanFreeboxNotGranted(t *testing.T) {
 	conn := f.newFreeboxChannel(t, srv.URL, models.FreeboxStatusPairing)
 
 	params := json.RawMessage(`{"channelUid":"` + conn.UID + `"}`)
-	_, err := f.svc.StartScan(t.Context(), f.org.UID, "freebox", params)
+	_, err := f.svc.StartScan(t.Context(), f.org.UID, "freebox", "", params)
 	r.Error(err)
 
 	var de *scantypes.DiscoveryError
@@ -224,7 +246,7 @@ func TestStartScanFreeboxGuardsDuplicate(t *testing.T) {
 	r.NoError(f.dbSvc.CreateJob(t.Context(), running))
 
 	params := json.RawMessage(`{"channelUid":"` + conn.UID + `"}`)
-	_, err := f.svc.StartScan(t.Context(), f.org.UID, "freebox", params)
+	_, err := f.svc.StartScan(t.Context(), f.org.UID, "freebox", "", params)
 	r.ErrorIs(err, discovery.ErrAlreadyRunning)
 }
 
@@ -235,7 +257,7 @@ func TestStartScanContainerCreatesJob(t *testing.T) {
 	f := newDiscoveryFixture(t)
 
 	params := json.RawMessage(`{"hosts":["unix:///var/run/docker.sock"]}`)
-	job, err := f.svc.StartScan(t.Context(), f.org.UID, "container", params)
+	job, err := f.svc.StartScan(t.Context(), f.org.UID, "container", "", params)
 	r.NoError(err)
 	r.NotNil(job)
 	r.Equal(string(jobdef.JobTypeContainerDiscovery), job.Type, "container scan must create a container_discovery job")
@@ -247,7 +269,8 @@ func TestStartScanContainerBadEndpoint(t *testing.T) {
 	r := require.New(t)
 	f := newDiscoveryFixture(t)
 
-	_, err := f.svc.StartScan(t.Context(), f.org.UID, "container", json.RawMessage(`{"hosts":["http://10.0.0.5:2375"]}`))
+	_, err := f.svc.StartScan(t.Context(), f.org.UID, "container", "",
+		json.RawMessage(`{"hosts":["http://10.0.0.5:2375"]}`))
 	r.Error(err)
 
 	var de *scantypes.DiscoveryError
@@ -267,7 +290,7 @@ func TestStartScanContainerGuardsDuplicate(t *testing.T) {
 	r.NoError(f.dbSvc.CreateJob(t.Context(), running))
 
 	params := json.RawMessage(`{"hosts":["unix:///var/run/docker.sock"]}`)
-	_, err := f.svc.StartScan(t.Context(), f.org.UID, "container", params)
+	_, err := f.svc.StartScan(t.Context(), f.org.UID, "container", "", params)
 	r.ErrorIs(err, discovery.ErrAlreadyRunning)
 }
 
@@ -452,7 +475,7 @@ func TestDismissGroup(t *testing.T) {
 	f.insertCheck(t, jobUID, "192.168.1.41", "h-tcp", "tcp",
 		models.DiscoverySourceLAN, json.RawMessage(`{"host":"192.168.1.41","port":22}`))
 
-	n, err := f.svc.SoftDeleteGroup(t.Context(), f.org.UID, jobUID, "192.168.1.40")
+	n, err := f.svc.SoftDeleteGroup(t.Context(), f.org.UID, jobUID, "192.168.1.40", "")
 	r.NoError(err)
 	r.Equal(2, n)
 
@@ -495,7 +518,7 @@ func TestStartScanGuardsOnPendingChild(t *testing.T) {
 	r.NoError(f.dbSvc.CreateJob(ctx, plan))
 	f.newChildJob(t, plan.UID, models.JobStatusPending)
 
-	_, err := f.svc.StartScan(ctx, f.org.UID, "lan", json.RawMessage(`{"cidrs":["192.168.1.0/24"]}`))
+	_, err := f.svc.StartScan(ctx, f.org.UID, "lan", "", json.RawMessage(`{"cidrs":["192.168.1.0/24"]}`))
 	r.ErrorIs(err, discovery.ErrAlreadyRunning)
 }
 
@@ -519,7 +542,7 @@ func TestStartScanIgnoresStaleRunningChild(t *testing.T) {
 		Exec(ctx)
 	r.NoError(err)
 
-	job, err := f.svc.StartScan(ctx, f.org.UID, "lan", json.RawMessage(`{"cidrs":["192.168.1.0/24"]}`))
+	job, err := f.svc.StartScan(ctx, f.org.UID, "lan", "", json.RawMessage(`{"cidrs":["192.168.1.0/24"]}`))
 	r.NoError(err, "a stale running child must not block a new scan")
 	r.NotNil(job)
 }
@@ -546,7 +569,7 @@ func TestCancelScanDropsLiveChildren(t *testing.T) {
 	running := f.newChildJob(t, plan.UID, models.JobStatusRunning)
 
 	// The live children block a new scan before the cancel…
-	_, err := f.svc.StartScan(ctx, f.org.UID, "lan", json.RawMessage(`{"cidrs":["192.168.1.0/24"]}`))
+	_, err := f.svc.StartScan(ctx, f.org.UID, "lan", "", json.RawMessage(`{"cidrs":["192.168.1.0/24"]}`))
 	r.ErrorIs(err, discovery.ErrAlreadyRunning)
 
 	r.NoError(f.svc.CancelScan(ctx, f.org.UID, plan.UID))
@@ -562,7 +585,7 @@ func TestCancelScanDropsLiveChildren(t *testing.T) {
 	r.NotNil(runningJob.DeletedAt, "running child must be soft-deleted so the guard clears and the watcher aborts it")
 
 	// …and immediately after the cancel a new scan is accepted.
-	job, err := f.svc.StartScan(ctx, f.org.UID, "lan", json.RawMessage(`{"cidrs":["192.168.1.0/24"]}`))
+	job, err := f.svc.StartScan(ctx, f.org.UID, "lan", "", json.RawMessage(`{"cidrs":["192.168.1.0/24"]}`))
 	r.NoError(err, "a new scan must start immediately after cancel")
 	r.NotNil(job)
 }
@@ -653,10 +676,227 @@ func TestUpsertDiscoveredChecksRescanUpdatesInPlace(t *testing.T) {
 		},
 	}
 
-	r.NoError(disc.UpsertDiscoveredChecks(ctx, f.dbSvc.DB(), f.org.UID, jobUID, models.DiscoverySourceLAN, rows, nil))
-	r.NoError(disc.UpsertDiscoveredChecks(ctx, f.dbSvc.DB(), f.org.UID, jobUID, models.DiscoverySourceLAN, rows, nil))
+	db := f.dbSvc.DB()
+	r.NoError(disc.UpsertDiscoveredChecks(ctx, db, f.org.UID, jobUID, "", models.DiscoverySourceLAN, rows, nil))
+	r.NoError(disc.UpsertDiscoveredChecks(ctx, db, f.org.UID, jobUID, "", models.DiscoverySourceLAN, rows, nil))
 
 	all, err := f.svc.ListDiscoveredChecks(ctx, f.org.UID, &discovery.ListChecksOptions{})
 	r.NoError(err)
 	r.Len(all, 1, "re-scan of the same (org, source, group, slug) must update in place")
+}
+
+// countJobs counts the org's jobs (any type, any status).
+func (f *discoveryFixture) countJobs(t *testing.T) int {
+	t.Helper()
+
+	count, err := f.dbSvc.DB().NewSelect().TableExpr("jobs").
+		Where("organization_uid = ?", f.org.UID).Count(t.Context())
+	require.NoError(t, err)
+
+	return count
+}
+
+// On a SaaS-shaped service (enforcing egress guard, docker blocked) `lan` and
+// `container` scans are refused with DISCOVERY_NOT_AVAILABLE and no job is
+// created. The self-hosted service (permissive guard) is the control: it still
+// creates the plan job and the container job.
+func TestStartScanRefusedUnderEgressPolicy(t *testing.T) {
+	t.Parallel()
+
+	scans := []struct {
+		typ     string
+		params  string
+		jobType string
+	}{
+		{typ: "lan", params: `{"cidrs":["10.0.0.0/24"]}`, jobType: string(jobdef.JobTypeNetworkDiscoveryPlan)},
+		{typ: "lan", params: `{"cidrs":["169.254.169.254/32"]}`, jobType: string(jobdef.JobTypeNetworkDiscoveryPlan)},
+		{
+			typ: "container", params: `{"hosts":["unix:///var/run/docker.sock"]}`,
+			jobType: string(jobdef.JobTypeContainerDiscovery),
+		},
+		{
+			typ: "container", params: `{"hosts":["tcp://10.0.0.5:2375"]}`,
+			jobType: string(jobdef.JobTypeContainerDiscovery),
+		},
+	}
+
+	for _, sc := range scans {
+		t.Run(sc.typ+" "+sc.params, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+
+			saas := newDiscoveryFixtureWith(t, egress.New(false), true)
+			job, err := saas.svc.StartScan(t.Context(), saas.org.UID, sc.typ, "", json.RawMessage(sc.params))
+			r.Nil(job)
+
+			var de *scantypes.DiscoveryError
+			r.ErrorAs(err, &de)
+			r.Equal(scantypes.CodeNotAvailable, de.Code)
+			r.Zero(saas.countJobs(t), "a refused scan must create no job")
+
+			selfHosted := newDiscoveryFixtureWith(t, egress.New(true), false)
+			job, err = selfHosted.svc.StartScan(t.Context(), selfHosted.org.UID, sc.typ, "", json.RawMessage(sc.params))
+			r.NoError(err)
+			r.Equal(sc.jobType, job.Type)
+			r.Equal(1, selfHosted.countJobs(t))
+		})
+	}
+}
+
+// AvailableTypes hides the types the deployment refuses.
+func TestAvailableTypesHidesRefusedTypes(t *testing.T) {
+	t.Parallel()
+
+	typesOf := func(f *discoveryFixture) []string {
+		defs := f.svc.AvailableTypes()
+		out := make([]string, 0, len(defs))
+
+		for _, d := range defs {
+			out = append(out, d.Type())
+		}
+
+		return out
+	}
+
+	r := require.New(t)
+	r.Equal([]string{"freebox", "kubernetes"}, typesOf(newDiscoveryFixtureWith(t, egress.New(false), true)))
+	r.Equal([]string{"container", "freebox", "kubernetes"}, typesOf(newDiscoveryFixtureWith(t, egress.New(false), false)))
+	r.Equal([]string{"container", "freebox", "kubernetes", "lan"}, typesOf(newDiscoveryFixture(t)))
+}
+
+// insertRegionCheck inserts a discovered check found from the given region.
+func (f *discoveryFixture) insertRegionCheck(t *testing.T, jobUID, group, slug, region string) string {
+	t.Helper()
+
+	dc := models.NewDiscoveredCheck(
+		f.org.UID, jobUID, models.DiscoverySourceLAN, group, group, group+" · "+slug, slug, "tcp",
+		json.RawMessage(`{"host":"`+group+`","port":22}`), nil, region,
+	)
+	_, err := f.dbSvc.DB().NewInsert().Model(dc).Exec(t.Context())
+	require.NoError(t, err)
+
+	return dc.UID
+}
+
+func (f *discoveryFixture) setRegions(t *testing.T, slugs ...string) {
+	t.Helper()
+
+	defs := make([]regions.RegionDefinition, 0, len(slugs))
+	for _, s := range slugs {
+		defs = append(defs, regions.RegionDefinition{Slug: s, Name: s})
+	}
+
+	require.NoError(t, regions.NewService(f.dbSvc).SetOrgCustomRegions(t.Context(), f.org.UID, defs))
+}
+
+func TestUpsertDiscoveredChecksRegionIdentity(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newDiscoveryFixture(t)
+	ctx := t.Context()
+	db := f.dbSvc.DB()
+	jobUID := f.newScanJob(t)
+
+	rows := []disc.SuggestedCheck{{
+		GroupKey: "10.0.0.5", GroupLabel: "10.0.0.5", Name: "10.0.0.5 · TCP/22", Slug: "tcp-10-0-0-5-22",
+		Type: "tcp", Config: json.RawMessage(`{"host":"10.0.0.5","port":22}`),
+	}}
+
+	for _, region := range []string{"", "@dc1", "", "@dc1"} {
+		r.NoError(disc.UpsertDiscoveredChecks(ctx, db, f.org.UID, jobUID, region, models.DiscoverySourceLAN, rows, nil))
+	}
+
+	all, err := f.svc.ListDiscoveredChecks(ctx, f.org.UID, &discovery.ListChecksOptions{})
+	r.NoError(err)
+	r.Len(all, 2, "same IP from the server and from @dc1 is two rows, re-scans update in place")
+
+	got := map[string]bool{}
+	for _, row := range all {
+		got[row.Region] = true
+	}
+
+	r.True(got[""])
+	r.True(got["@dc1"])
+}
+
+func TestPromoteChecksRegion(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newDiscoveryFixture(t)
+	ctx := t.Context()
+	jobUID := f.newScanJob(t)
+	f.setRegions(t, "dc1")
+
+	uid := f.insertRegionCheck(t, jobUID, "10.0.0.5", "tcp-10-0-0-5-22", "@dc1")
+
+	resp, err := f.svc.PromoteChecks(ctx, f.org.UID, f.org.Slug, discovery.PromoteRequest{UIDs: []string{uid}})
+	r.NoError(err)
+	r.Len(resp, 1)
+	r.Equal([]string{"@dc1"}, resp[0].Regions)
+	r.Equal(models.PlacementPinned, resp[0].Placement)
+}
+
+func TestPromoteChecksRegionUnavailable(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newDiscoveryFixture(t)
+	ctx := t.Context()
+	jobUID := f.newScanJob(t)
+	f.setRegions(t, "dc2")
+
+	serverUID := f.insertRegionCheck(t, jobUID, "10.0.0.6", "tcp-10-0-0-6-22", "")
+	goneUID := f.insertRegionCheck(t, jobUID, "10.0.0.5", "tcp-10-0-0-5-22", "@dc1")
+
+	_, err := f.svc.PromoteChecks(ctx, f.org.UID, f.org.Slug, discovery.PromoteRequest{
+		UIDs: []string{serverUID, goneUID},
+	})
+	r.ErrorIs(err, discovery.ErrRegionUnavailable)
+
+	// Nothing was created: the server-side row stays unpromoted too.
+	row, err := f.svc.GetCheck(ctx, f.org.UID, serverUID)
+	r.NoError(err)
+	r.Nil(row.PromotedToCheckUID)
+
+	n, err := f.dbSvc.DB().NewSelect().TableExpr("checks").Where("organization_uid = ?", f.org.UID).Count(ctx)
+	r.NoError(err)
+	r.Zero(n)
+}
+
+func TestPromoteChecksNoRegionKeepsDefaultPlacement(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newDiscoveryFixture(t)
+	uid := f.insertRegionCheck(t, f.newScanJob(t), "10.0.0.7", "tcp-10-0-0-7-22", "")
+
+	resp, err := f.svc.PromoteChecks(t.Context(), f.org.UID, f.org.Slug, discovery.PromoteRequest{UIDs: []string{uid}})
+	r.NoError(err)
+	r.Len(resp, 1)
+	r.NotContains(resp[0].Regions, "")
+	r.NotContains(resp[0].Regions, "@dc1")
+}
+
+func TestDismissGroupScopedByRegion(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newDiscoveryFixture(t)
+	ctx := t.Context()
+	jobUID := f.newScanJob(t)
+
+	f.insertRegionCheck(t, jobUID, "10.0.0.5", "tcp-10-0-0-5-22", "")
+	f.insertRegionCheck(t, jobUID, "10.0.0.5", "tcp-10-0-0-5-80", "@dc1")
+
+	n, err := f.svc.SoftDeleteGroup(ctx, f.org.UID, "", "10.0.0.5", "@dc1")
+	r.NoError(err)
+	r.Equal(1, n)
+
+	remaining, err := f.svc.ListDiscoveredChecks(ctx, f.org.UID, &discovery.ListChecksOptions{})
+	r.NoError(err)
+	r.Len(remaining, 1)
+	r.Empty(remaining[0].Region, "the server-side row with the same IP is untouched")
 }

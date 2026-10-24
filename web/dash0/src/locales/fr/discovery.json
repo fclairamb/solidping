@@ -7,6 +7,7 @@
   "scanStarted": "Scan de découverte lancé",
   "scanFailed": "Échec du lancement du scan",
   "scanAlreadyRunning": "Un scan de découverte est déjà en cours pour cette organisation. Arrêtez-le ou attendez qu'il se termine.",
+  "scanNotAvailable": "Cette source de découverte n'est pas disponible sur ce serveur.",
   "scanStatus": {
     "pending": "En attente",
     "running": "En cours",
@@ -62,7 +63,7 @@
   "clusterNamespaces": "Namespaces (optionnel)",
   "clusterNamespacesHelp": "Namespaces à scanner, séparés par des virgules. Laisser vide pour scanner tous les namespaces visibles.",
   "replicaCount": "{{ready}}/{{desired}} prêts",
-  "workerNote": "Note : Les scans de découverte s'exécutent sur le worker intégré. Pour les déploiements multi-sites, le scan s'exécute depuis l'hôte serveur uniquement.",
+  "workerNote": "Note : Les scans de découverte s'exécutent sur le worker intégré, ou depuis un emplacement privé s'il est choisi.",
   "startScan": "Lancer le scan",
   "cancel": "Annuler",
   "name": "Nom de la vérification",
@@ -94,5 +95,24 @@
   },
   "selectFreeboxChannel": "Choisir un canal Freebox",
   "noFreeboxChannels": "Aucun canal Freebox appairé",
-  "largeRangeWarning": "Grande plage : ~{{hosts}} adresses sur {{chunks}} lots. Ce scan peut prendre longtemps (heures à jours)."
+  "largeRangeWarning": "Grande plage : ~{{hosts}} adresses sur {{chunks}} lots. Ce scan peut prendre longtemps (heures à jours).",
+  "scanRegionUnavailable": "Aucun agent de cet emplacement n'est prêt à scanner. Activez SP_AGENT_DISCOVERY_ENABLED sur son agent.",
+  "scanQuotaExceeded": "La limite quotidienne d'adresses scannées depuis des emplacements privés est atteinte pour cette organisation. Réessayez demain (UTC).",
+  "regionLabel": "Exécuter depuis",
+  "regionPlaceholder": "Choisir un emplacement",
+  "regionServer": "Serveur (par défaut)",
+  "regionDiscoveryOff": "découverte non activée (SP_AGENT_DISCOVERY_ENABLED sur son agent)",
+  "regionHelp": "Scanner depuis le serveur, ou depuis un emplacement privé pour atteindre un réseau que le serveur ne voit pas.",
+  "regionRequiredHelp": "Ce serveur ne peut pas scanner le LAN lui-même. Choisissez un emplacement privé.",
+  "workerNoteRegion": "Ce scan s'exécute depuis {{region}}, avec le réseau de l'agent. Seules les plages autorisées par son opérateur peuvent être scannées.",
+  "runsFrom": "S'exécute depuis {{region}}",
+  "failedChunks_one": "{{count}} lot en échec",
+  "failedChunks_other": "{{count}} lots en échec",
+  "promoteRegionNote": "Les checks promus depuis ce scan s'exécuteront depuis {{region}}.",
+  "chunkError": {
+    "DISCOVERY_NOT_ALLOWED": "La plage dépasse ce que l'opérateur de l'agent a autorisé (SP_AGENT_DISCOVERY_CIDRS).",
+    "DISCOVERY_DISABLED": "La découverte n'est pas activée sur l'agent (SP_AGENT_DISCOVERY_ENABLED).",
+    "DISCOVERY_EGRESS_REFUSED": "La politique de sortie de l'agent a refusé le scan.",
+    "DISCOVERY_INVALID_CHUNK": "L'agent a rejeté le lot comme invalide."
+  }
 }

@@ -229,7 +229,7 @@ export function StatusPageForm({
         <Button type="button" variant="ghost" size="icon" onClick={onCancel}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
-        <h1 className="text-3xl font-bold tracking-tight">
+        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
           {mode === "create" ? t("form.newTitle") : t("form.editTitle")}
         </h1>
         {showWand && (

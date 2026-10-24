@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SegmentedControl } from "@/components/ui/segmented-control";
+import { LANGUAGES, type LanguageCode } from "@/lib/languages";
 import { cn } from "@/lib/utils";
 
 type PreviewFormat = "html" | "text";
@@ -39,6 +40,14 @@ interface EmailsSearch {
   template?: string;
   format?: PreviewFormat;
   colorScheme?: PreviewScheme;
+  // The language the template is rendered in (spec 2026-10-21-01). Absent
+  // means English, like the endpoint.
+  locale?: LanguageCode;
+}
+
+/** A search-param locale, or undefined for English and anything unknown. */
+function searchLocale(value: unknown): LanguageCode | undefined {
+  return LANGUAGES.find((l) => l.code !== "en" && l.code === value)?.code;
 }
 
 export const Route = createFileRoute("/orgs/$org/test/emails")({
@@ -49,6 +58,7 @@ export const Route = createFileRoute("/orgs/$org/test/emails")({
         : undefined,
     format: search.format === "text" ? "text" : undefined,
     colorScheme: search.colorScheme === "dark" ? "dark" : undefined,
+    locale: searchLocale(search.locale),
   }),
   component: EmailTemplatesTab,
 });
@@ -62,12 +72,19 @@ function previewUrl(
   template: string,
   format: PreviewFormat,
   scheme: PreviewScheme = "light",
+  locale: LanguageCode = "en",
 ): string {
-  const base = `/api/mgmt/email-preview/${template}?format=${format}`;
+  let url = `/api/mgmt/email-preview/${template}?format=${format}`;
 
-  // Only appended for dark: the light URL stays the one the endpoint serves
-  // untouched, so "no param" remains the exact bytes the mailer sends.
-  return scheme === "dark" ? `${base}&colorScheme=dark` : base;
+  // Always explicit: an iframe follows the viewer's OS scheme, so the endpoint
+  // has to switch the template's dark block off for "light" too. The bare URL
+  // remains the exact bytes the mailer sends.
+  url += `&colorScheme=${scheme}`;
+  // Same for the language: English is the endpoint's default.
+  if (locale !== "en") {
+    url += `&locale=${locale}`;
+  }
+  return url;
 }
 
 /**
@@ -75,12 +92,14 @@ function previewUrl(
  * its src, but the text part is fetched so it lands in the parent document —
  * readable with real wrapping, and assertable from E2E.
  */
-function useTextPreview(template: string | undefined) {
+function useTextPreview(template: string | undefined, locale: LanguageCode) {
   return useQuery({
-    queryKey: ["email-preview-text", template],
+    queryKey: ["email-preview-text", template, locale],
     enabled: Boolean(template),
     queryFn: async () => {
-      const response = await fetch(previewUrl(template as string, "text"));
+      const response = await fetch(
+        previewUrl(template as string, "text", "light", locale),
+      );
       if (!response.ok) {
         throw new Error(`preview failed: ${response.status}`);
       }
@@ -94,14 +113,6 @@ function EmailTemplatesTab() {
   const navigate = useNavigate();
   const search = Route.useSearch();
 
-  const { data, isLoading, isError, refetch, isFetching } =
-    useEmailPreviewIndex();
-
-  const templates: EmailTemplateSummary[] = useMemo(
-    () => data?.data ?? [],
-    [data],
-  );
-
   // Seeded from the URL on mount and written through on every change: search
   // params under a layout route are not reliably present on a cold deep-link,
   // so local state is the source of truth and the URL is kept in step.
@@ -109,6 +120,15 @@ function EmailTemplatesTab() {
   const [format, setFormat] = useState<PreviewFormat>(search.format ?? "html");
   const [scheme, setScheme] = useState<PreviewScheme>(
     search.colorScheme ?? "light",
+  );
+  const [locale, setLocale] = useState<LanguageCode>(search.locale ?? "en");
+
+  const { data, isLoading, isError, refetch, isFetching } =
+    useEmailPreviewIndex(locale);
+
+  const templates: EmailTemplateSummary[] = useMemo(
+    () => data?.data ?? [],
+    [data],
   );
 
   // Derived, not synced through an effect: the selection falls back to the
@@ -142,9 +162,15 @@ function EmailTemplatesTab() {
     writeThrough({ colorScheme: next === "dark" ? "dark" : undefined });
   };
 
+  const selectLocale = (next: LanguageCode) => {
+    setLocale(next);
+    writeThrough({ locale: next === "en" ? undefined : next });
+  };
+
   const current = templates.find((row) => row.template === selected);
   const textPreview = useTextPreview(
     format === "text" ? current?.template : undefined,
+    locale,
   );
 
   if (isError) {
@@ -177,6 +203,18 @@ function EmailTemplatesTab() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <SegmentedControl<LanguageCode>
+            aria-label={t("test.emails.localeLabel")}
+            value={locale}
+            onValueChange={selectLocale}
+            options={LANGUAGES.map(({ code, label }) => ({
+              value: code,
+              label: code.toUpperCase(),
+              tooltip: label,
+              ariaLabel: label,
+              testId: `email-preview-locale-${code}`,
+            }))}
+          />
           <SegmentedControl<PreviewFormat>
             aria-label={t("test.emails.formatLabel")}
             value={format}
@@ -228,7 +266,7 @@ function EmailTemplatesTab() {
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,260px)_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,260px)_minmax(0,1fr)]">
         <Card className="lg:sticky lg:top-4 lg:self-start">
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-base">
@@ -293,7 +331,7 @@ function EmailTemplatesTab() {
                 )}
                 <a
                   className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-                  href={previewUrl(current.template, format, scheme)}
+                  href={previewUrl(current.template, format, scheme, locale)}
                   target="_blank"
                   rel="noreferrer"
                 >
@@ -316,13 +354,13 @@ function EmailTemplatesTab() {
               <Skeleton className="h-[480px] w-full" />
             ) : format === "html" ? (
               <iframe
-                key={`${current.template}-html-${scheme}`}
+                key={`${current.template}-html-${scheme}-${locale}`}
                 title={t("test.emails.iframeTitle", {
                   template: current.template,
                 })}
                 data-testid="email-preview-frame"
                 data-scheme={scheme}
-                src={previewUrl(current.template, "html", scheme)}
+                src={previewUrl(current.template, "html", scheme, locale)}
                 // The surround is part of the test: a dark card judged against a
                 // white pane reads far better than it does in a real dark inbox.
                 // Hard-coded rather than themed — this mirrors the mail client's

@@ -5,10 +5,13 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/email"
+	"github.com/fclairamb/solidping/server/internal/i18n"
+	"github.com/fclairamb/solidping/server/internal/slo"
 )
 
 // gmailClipBytes is the size at which Gmail truncates a message body and hides
@@ -34,48 +37,56 @@ func worstCaseMonthlyReport(t *testing.T) *Data {
 		dayGoodColor, dayWarnColor, dayPoorColor, dayBadColor, dayNoDataColor,
 	}
 
+	paris, err := time.LoadLocation("Europe/Paris")
+	require.NoError(t, err)
+
+	july := time.Date(2026, time.July, 1, 0, 0, 0, 0, paris)
+
 	data := &Data{
-		OrgName:                 "acme",
-		BrandName:               "acme",
-		PeriodLabel:             "July 2026",
-		PreviousPeriodLabel:     "June 2026",
-		ScopeLabel:              fmt.Sprintf("All checks (%d)", maxCheckRows+87),
-		Timezone:                "Europe/Paris",
-		HasData:                 true,
-		AvailabilityPct:         "97.512",
-		AvailabilityColor:       "#c2410c",
-		CheckCount:              maxCheckRows + 87,
-		IncidentCount:           42,
-		LongestIncident:         "3h 12m",
-		AverageIncident:         "18m",
-		TotalDowntime:           "12h 36m",
-		HasPreviousData:         true,
-		PreviousAvailabilityPct: "99.870",
-		ShowAvailabilityDelta:   true,
-		AvailabilityDeltaText:   "-2.358 pts",
-		AvailabilityDeltaColor:  deltaBadColor,
-		PreviousIncidentCount:   5,
-		PreviousAvgResponseTime: "292 ms",
-		ShowIncidentDelta:       true,
-		IncidentDeltaText:       "+37",
-		IncidentDeltaColor:      deltaBadColor,
-		ShowResponseDelta:       true,
-		ResponseDeltaText:       "+41.2%",
-		ResponseDeltaColor:      deltaBadColor,
-		HasLatency:              true,
-		AvgResponseTime:         "412 ms",
-		MinResponseTime:         "37 ms",
-		MaxResponseTime:         "9.80 s",
-		SlowLine:                slowLine(318, 24),
-		SlowNote:                "A peak is a rolled-up period whose slowest sample exceeded 1 s.",
-		LatencyNote:             "Response times include failed samples.",
-		DayStripLabel:           "Daily availability, 1 Jul – 31 Jul (UTC)",
-		Truncated:               true,
-		TruncatedShown:          maxCheckRows,
-		TruncatedTotal:          maxCheckRows + 87,
-		DashboardURL:            "https://solidping.example/d",
-		UnsubscribeURL:          "https://solidping.example/unsubscribe?token=abcdef0123456789",
-		Checks:                  make([]CheckRow, 0, maxCheckRows),
+		OrgName:                "acme",
+		BrandName:              "acme",
+		Timezone:               "Europe/Paris",
+		HasData:                true,
+		AvailabilityColor:      "#c2410c",
+		CheckCount:             maxCheckRows + 87,
+		IncidentCount:          42,
+		HasPreviousData:        true,
+		ShowAvailabilityDelta:  true,
+		AvailabilityDeltaColor: deltaBadColor,
+		PreviousIncidentCount:  5,
+		ShowIncidentDelta:      true,
+		IncidentDeltaColor:     deltaBadColor,
+		ShowResponseDelta:      true,
+		ResponseDeltaColor:     deltaBadColor,
+		HasLatency:             true,
+		Truncated:              true,
+		TruncatedShown:         maxCheckRows,
+		TruncatedTotal:         maxCheckRows + 87,
+		DashboardURL:           "https://solidping.example/d",
+		UnsubscribeURL:         "https://solidping.example/unsubscribe?token=abcdef0123456789",
+		Checks:                 make([]CheckRow, 0, maxCheckRows),
+		Figures: Figures{
+			Period:               slo.Window{Start: july, End: july.AddDate(0, 1, 0)},
+			Previous:             slo.Window{Start: july.AddDate(0, -1, 0), End: july},
+			OrgWide:              true,
+			Availability:         97.512,
+			PreviousAvailability: 99.87,
+			AvailabilityDelta:    -2.358,
+			IncidentDelta:        37,
+			ResponseDelta:        41.2,
+			LongestIncident:      3*time.Hour + 12*time.Minute,
+			AverageIncident:      18 * time.Minute,
+			TotalDowntime:        12*time.Hour + 36*time.Minute,
+			AvgResponse:          412,
+			MinResponse:          37,
+			MaxResponse:          9800,
+			HasResponseRange:     true,
+			PreviousAvgResponse:  292,
+			SlowSamples:          318,
+			SlowPeaks:            24,
+			StripStart:           time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC),
+			StripDays:            days,
+		},
 	}
 
 	for i := range maxCheckRows {
@@ -90,7 +101,7 @@ func worstCaseMonthlyReport(t *testing.T) *Data {
 		data.Checks = append(data.Checks, CheckRow{
 			Name:              fmt.Sprintf("check-with-a-fairly-long-name-%02d.acme.com", i),
 			HasData:           true,
-			AvailabilityPct:   "97.512",
+			Availability:      97.512,
 			AvailabilityColor: "#c2410c",
 			URL:               fmt.Sprintf("https://solidping.example/d/orgs/acme/checks/chk-%02d", i),
 			Days:              cells,
@@ -101,13 +112,7 @@ func worstCaseMonthlyReport(t *testing.T) *Data {
 	// including the note it raises when the budget drops a strip — the test
 	// must never hand-write that text, or it would pass while the builder
 	// stayed silent.
-	shown, wanted := applyStripBudget(data.Checks)
-
-	data.StripsShown = shown
-	if wanted > shown {
-		data.ShowStripBudgetNote = true
-		data.StripBudgetNote = stripBudgetNote(shown)
-	}
+	applyStripCounts(data)
 
 	return data
 }
@@ -125,24 +130,31 @@ func fittingMonthlyReport(t *testing.T) *Data {
 		data.Checks[i].Days = []DayCell{{Color: dayGoodColor, Span: 31, Wide: true}}
 	}
 
-	data.StripsShown = 0
-	data.ShowStripBudgetNote = false
-	data.StripBudgetNote = ""
+	applyStripCounts(data)
 
+	return data
+}
+
+// applyStripCounts spends the strip budget as applyCheckTable does and writes
+// the report in English, the note included.
+func applyStripCounts(data *Data) {
 	shown, wanted := applyStripBudget(data.Checks)
 
 	data.StripsShown = shown
-	if wanted > shown {
-		data.ShowStripBudgetNote = true
-		data.StripBudgetNote = stripBudgetNote(shown)
-	}
-
-	return data
+	data.ShowStripBudgetNote = wanted > shown
+	data.write(i18n.English)
 }
 
 // renderReport runs the view model through the production path: marshaled to
 // the email job's config and read back as a map, then formatted.
 func renderReport(t *testing.T, data *Data) (string, string) {
+	t.Helper()
+
+	return renderReportIn(t, data, i18n.English)
+}
+
+// renderReportIn is renderReport for a reader in loc.
+func renderReportIn(t *testing.T, data *Data, loc i18n.Locale) (string, string) {
 	t.Helper()
 
 	formatter, err := email.NewFormatter()
@@ -155,7 +167,7 @@ func renderReport(t *testing.T, data *Data) (string, string) {
 
 	require.NoError(t, json.Unmarshal(raw, &asMap))
 
-	_, html, text, err := formatter.Format(TemplateName, asMap)
+	_, html, text, err := formatter.Format(TemplateName, loc, asMap)
 	require.NoError(t, err)
 
 	return html, text
@@ -163,29 +175,38 @@ func renderReport(t *testing.T, data *Data) (string, string) {
 
 // TestUptimeReportStaysUnderGmailClipLimit is the size guard the spec asks for:
 // a 50-check monthly report with per-day strips must stay well under Gmail's
-// clipping threshold, in its WORST case rather than its typical one.
+// clipping threshold, in its WORST case rather than its typical one, in every
+// language: French and German copy runs longer than English.
 func TestUptimeReportStaysUnderGmailClipLimit(t *testing.T) {
 	t.Parallel()
 
-	r := require.New(t)
+	for _, lang := range i18n.Supported() {
+		t.Run(lang, func(t *testing.T) {
+			t.Parallel()
 
-	data := worstCaseMonthlyReport(t)
-	html, _ := renderReport(t, data)
+			r := require.New(t)
 
-	// The assertion below is only meaningful if the fixture really rendered:
-	// 50 rows, the last check name present, and a real pile of day cells.
-	r.Contains(html, "check-with-a-fairly-long-name-49.acme.com")
-	r.Equal(maxCheckRows, strings.Count(html, "acme.com</a>"))
+			loc := i18n.New(lang, "")
+			html, _ := renderReportIn(t, worstCaseMonthlyReport(t).In(loc), loc)
 
-	cells := strings.Count(html, "bgcolor=")
-	r.Positive(cells)
-	r.LessOrEqual(cells, maxStripCells)
+			// The assertion below is only meaningful if the fixture really
+			// rendered: 50 rows, the last check name present, and a real pile
+			// of day cells.
+			r.Contains(html, "check-with-a-fairly-long-name-49.acme.com")
+			r.Equal(maxCheckRows, strings.Count(html, "acme.com</a>"))
 
-	t.Logf("worst-case 50-check monthly report renders to %d bytes (%d day cells)", len(html), cells)
+			cells := strings.Count(html, "bgcolor=")
+			r.Positive(cells)
+			r.LessOrEqual(cells, maxStripCells)
 
-	r.Lessf(len(html), sizeBudgetBytes,
-		"rendered report is %d bytes; Gmail clips around %d", len(html), gmailClipBytes)
-	r.Less(len(html), gmailClipBytes)
+			t.Logf("worst-case 50-check monthly report renders to %d bytes in %s (%d day cells)",
+				len(html), lang, cells)
+
+			r.Lessf(len(html), sizeBudgetBytes,
+				"rendered report is %d bytes; Gmail clips around %d", len(html), gmailClipBytes)
+			r.Less(len(html), gmailClipBytes)
+		})
+	}
 }
 
 // TestStripBudgetDropsWholeStripsFromTheBottom pins the degradation: the budget
@@ -236,7 +257,7 @@ func TestStripBudgetDropsWholeStripsFromTheBottom(t *testing.T) {
 	r.Equal(withStrip, shown)
 	r.Equal(maxCheckRows, wanted)
 	r.Less(shown, wanted, "this fixture must report a real degradation")
-	r.Contains(stripBudgetNote(shown), fmt.Sprintf("%d lowest-uptime checks", shown))
+	r.Contains(i18n.English.Tn("report.strip.budgetNote", shown), fmt.Sprintf("%d lowest-uptime checks", shown))
 
 	// A report small enough to fit keeps every strip — the positive control.
 	small := rows[:10]
@@ -382,7 +403,7 @@ func TestUptimeReportRendersAZeroPreviousIncidentCount(t *testing.T) {
 	data.TotalDowntime = ""
 	data.PreviousIncidentCount = 0
 	data.ShowIncidentDelta = true
-	data.IncidentDeltaText = noChangeText
+	data.IncidentDeltaText = noChange
 	data.IncidentDeltaColor = deltaNeutralColor
 
 	html, text := renderReport(t, data)
@@ -390,7 +411,7 @@ func TestUptimeReportRendersAZeroPreviousIncidentCount(t *testing.T) {
 	for _, body := range []string{html, text} {
 		r.NotContains(body, "<no value>")
 		r.NotContains(body, "&lt;no value&gt;")
-		r.Contains(body, noChangeText)
+		r.Contains(body, noChange)
 		r.Contains(body, "June 2026")
 	}
 

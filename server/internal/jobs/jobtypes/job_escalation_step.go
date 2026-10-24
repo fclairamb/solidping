@@ -14,6 +14,8 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
+	"github.com/fclairamb/solidping/server/internal/i18n"
+	"github.com/fclairamb/solidping/server/internal/i18n/recipient"
 	"github.com/fclairamb/solidping/server/internal/incidentlinks"
 	"github.com/fclairamb/solidping/server/internal/integrations/discord"
 	slackclient "github.com/fclairamb/solidping/server/internal/integrations/slack"
@@ -480,7 +482,7 @@ func (r *EscalationStepJobRun) pageUser(
 
 		return r.sendEscalationEmail(
 			ctx, jctx, log, incident, user.Email, *userUID,
-			models.IncidentNotificationSourceEscalationUser,
+			models.IncidentNotificationSourceEscalationUser, recipient.ForUser(user),
 		)
 	}
 
@@ -518,7 +520,7 @@ func (r *EscalationStepJobRun) dispatchRoute(
 		return r.sendEscalationEmail(
 			ctx, jctx, log, incident,
 			route.Contact.Value, route.UserUID,
-			models.IncidentNotificationSourceEscalationUser,
+			models.IncidentNotificationSourceEscalationUser, emailContactLocale(ctx, jctx, route),
 		)
 	case models.UserContactTypeSlackUser:
 		return r.sendEscalationSlackDM(ctx, jctx, log, incident, route, filter)
@@ -754,12 +756,14 @@ func (r *EscalationStepJobRun) pagePhone(
 	// reserving first and refusing second would charge the org monthly quota
 	// for a message that was never sent. Silently, and on a metered plan.
 	if wantSMS && r.reserveInstanceSMSSpend(ctx, jctx, log, incident, resolution, contact.Value) &&
-		r.reservePhoneChannel(ctx, jctx, log, incident, contact.Value, models.UsageCounterKindSMS) &&
+		r.reservePhoneChannel(ctx, jctx, log, incident, contact.Value, models.UsageCounterKindSMS,
+			!resolution.InstanceCredentialsForSMS()) &&
 		r.sendPhoneSMS(ctx, jctx, log, incident, route, resolution, baseURL, orgSlug, ackToken) {
 		sent++
 	}
 
-	if wantVoice && r.reservePhoneChannel(ctx, jctx, log, incident, contact.Value, models.UsageCounterKindVoice) &&
+	if wantVoice && r.reservePhoneChannel(ctx, jctx, log, incident, contact.Value, models.UsageCounterKindVoice,
+		!resolution.InstanceCredentialsForVoice()) &&
 		r.placePhoneCall(ctx, jctx, log, incident, route, resolution, baseURL, ackToken) {
 		sent++
 	}
@@ -821,8 +825,9 @@ func resolvePhoneProviders(
 //
 // It applies to server-credential sends ONLY. A bring-your-own send bills the
 // customer's own account, so it neither consumes the shared cap nor is gated
-// by an allow-list chosen for this instance's bill; the per-org runaway guard
-// in reservePhoneChannel still applies to it, as today's safety belt.
+// by an allow-list chosen for this instance's bill. Nor does it consume the
+// plan's monthly SMS/voice cap: reservePhoneChannel applies only the per-org
+// hourly runaway guard to it, as the safety belt against a broken loop.
 //
 // A breach logs loudly and records a skipped audit row: it must never fail
 // silently, because what it silently drops is an alert.
@@ -855,12 +860,19 @@ func (r *EscalationStepJobRun) reserveInstanceSMSSpend(
 	return false
 }
 
-// reservePhoneChannel enforces per-run dedup and the SMS/voice quota + runaway
-// guard before a send. Returns true when the send may proceed. A quota denial
-// records a skipped audit row but never fails the step.
+// reservePhoneChannel enforces per-run dedup and the per-org reservation
+// before a send. Returns true when the send may proceed. A refusal records a
+// skipped audit row but never fails the step.
+//
+// ownCredentials says the send goes through the org's own (bring-your-own)
+// provider account: the org pays, so only the hourly runaway guard applies and
+// the plan's monthly cap is neither checked nor consumed. Otherwise (instance
+// credentials, and WhatsApp always) it is the runaway guard then the monthly
+// cap. The first monthly-cap refusal of a kind in a month emails the org's
+// admins.
 func (r *EscalationStepJobRun) reservePhoneChannel(
 	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
-	incident *models.Incident, phone, kind string,
+	incident *models.Incident, phone, kind string, ownCredentials bool,
 ) bool {
 	key := kind + ":" + phone
 	if r.sentPhones[key] {
@@ -870,21 +882,15 @@ func (r *EscalationStepJobRun) reservePhoneChannel(
 	}
 
 	if jctx.Services != nil && jctx.Services.Entitlements != nil {
-		var err error
-
-		switch kind {
-		case models.UsageCounterKindVoice:
-			err = jctx.Services.Entitlements.ReserveCall(ctx, incident.OrganizationUID)
-		case models.UsageCounterKindWhatsApp:
-			err = jctx.Services.Entitlements.ReserveWhatsApp(ctx, incident.OrganizationUID)
-		default:
-			err = jctx.Services.Entitlements.ReserveSMS(ctx, incident.OrganizationUID)
-		}
-
-		if err != nil {
+		if err := reservePhoneUsage(ctx, jctx.Services.Entitlements, incident.OrganizationUID, kind,
+			ownCredentials); err != nil {
 			log.InfoContext(ctx, "phone channel quota reached; skipping send",
-				"kind", kind, "orgUID", incident.OrganizationUID, "error", err)
+				"kind", kind, "orgUID", incident.OrganizationUID, "ownCredentials", ownCredentials, "error", err)
 			r.auditPhoneSkip(ctx, jctx, log, incident, kind+"_quota_exhausted")
+
+			if entitlements.IsMonthlyCapRefusal(err) {
+				notifyMonthlyCapReached(ctx, jctx, log, incident.OrganizationUID, kind, err)
+			}
 
 			return false
 		}
@@ -896,6 +902,30 @@ func (r *EscalationStepJobRun) reservePhoneChannel(
 	r.sentPhones[key] = true
 
 	return true
+}
+
+// reservePhoneUsage picks the reservation path for one send.
+func reservePhoneUsage(
+	ctx context.Context, ent *entitlements.Service, orgUID, kind string, ownCredentials bool,
+) error {
+	switch kind {
+	case models.UsageCounterKindVoice:
+		if ownCredentials {
+			return ent.ReserveCallOwnCredentials(ctx, orgUID)
+		}
+
+		return ent.ReserveCall(ctx, orgUID)
+	case models.UsageCounterKindWhatsApp:
+		// Instance-only channel (Meta Cloud through the server's WABA): always
+		// the plan's cap.
+		return ent.ReserveWhatsApp(ctx, orgUID)
+	default:
+		if ownCredentials {
+			return ent.ReserveSMSOwnCredentials(ctx, orgUID)
+		}
+
+		return ent.ReserveSMS(ctx, orgUID)
+	}
 }
 
 // auditPhoneSkip records a skipped incident_notifications row for a quota-denied
@@ -1230,6 +1260,7 @@ func (r *EscalationStepJobRun) pageSchedule(
 
 		return r.sendEscalationEmail(
 			ctx, jctx, log, incident, user.Email, user.UID, models.IncidentNotificationSourceEscalationSchedule,
+			recipient.ForUser(user),
 		)
 	}
 
@@ -1247,6 +1278,7 @@ func (r *EscalationStepJobRun) pageSchedule(
 		// email, but only when the severity permits it.
 		sent = r.sendEscalationEmail(
 			ctx, jctx, log, incident, user.Email, user.UID, models.IncidentNotificationSourceEscalationSchedule,
+			recipient.ForUser(user),
 		)
 	}
 
@@ -1329,7 +1361,7 @@ func (r *EscalationStepJobRun) adminFallbackEmail(
 
 	return r.sendEscalationEmail(
 		ctx, jctx, log, incident, member.User.Email, member.UserUID,
-		models.IncidentNotificationSourceEscalationAllAdmins,
+		models.IncidentNotificationSourceEscalationAllAdmins, recipient.ForUser(member.User),
 	)
 }
 
@@ -1337,13 +1369,14 @@ func (r *EscalationStepJobRun) adminFallbackEmail(
 // email service, rendered through the shared formatter (escalation.html) so
 // it gets the same branding/HTML part as every other transactional email and
 // addresses the incident by its human-facing #N reference instead of the raw
-// UUID. Returns 1 on success, 0 otherwise.
+// UUID. loc is the reader's language and timezone, resolved by the caller
+// (which knows whose address this is). Returns 1 on success, 0 otherwise.
 func (r *EscalationStepJobRun) sendEscalationEmail(
 	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
-	incident *models.Incident, recipient, userUID, source string,
+	incident *models.Incident, address, userUID, source string, loc i18n.Locale,
 ) int {
 	if jctx.Services == nil || jctx.Services.EmailSender == nil ||
-		jctx.Services.EmailFormatter == nil || recipient == "" {
+		jctx.Services.EmailFormatter == nil || address == "" {
 		return 0
 	}
 
@@ -1358,9 +1391,9 @@ func (r *EscalationStepJobRun) sendEscalationEmail(
 		log.WarnContext(ctx, "failed to create notification audit row", "error", auditErr)
 	}
 
-	viewModel := r.buildEscalationEmailViewModel(ctx, jctx, incident)
+	viewModel := r.buildEscalationEmailViewModel(ctx, jctx, incident, address, loc)
 
-	subject, htmlBody, textBody, err := jctx.Services.EmailFormatter.Format("escalation.html", viewModel)
+	subject, htmlBody, textBody, err := jctx.Services.EmailFormatter.Format("escalation.html", loc, viewModel)
 	if err != nil {
 		log.WarnContext(ctx, "failed to format escalation email", "error", err)
 		_ = jctx.DBService.MarkIncidentNotificationFailedByUID(ctx, n.UID, time.Now(), err.Error())
@@ -1369,17 +1402,20 @@ func (r *EscalationStepJobRun) sendEscalationEmail(
 	}
 
 	msg := &email.Message{
-		Recipients:       email.Recipients{To: []string{recipient}},
+		Recipients:       email.Recipients{To: []string{address}},
 		Subject:          subject,
 		HTML:             htmlBody,
 		Text:             textBody,
 		SupportReplyable: email.SupportReplyable("escalation.html"),
+		ThreadID:         email.IncidentThreadID(incident.UID),
+		Locale:           loc.Lang(),
+		Timezone:         loc.Timezone(),
 	}
 
 	result, err := jctx.Services.EmailSender.Send(ctx, msg)
 	if err != nil {
 		log.WarnContext(ctx, "failed to send escalation email",
-			"recipient", recipient, "error", err)
+			"recipient", address, "error", err)
 		_ = jctx.DBService.MarkIncidentNotificationFailedByUID(ctx, n.UID, time.Now(), err.Error())
 
 		return 0
@@ -1394,12 +1430,12 @@ func (r *EscalationStepJobRun) sendEscalationEmail(
 	return 1
 }
 
-// buildEscalationEmailViewModel assembles the escalation.html view-model.
-// Check/org lookups are best-effort (mirrors emitEscalationFailed): a check
-// deleted since the incident opened must not block the page, it just loses
-// its name/link.
+// buildEscalationEmailViewModel assembles the escalation.html view-model for
+// the reader in loc. Check/org lookups are best-effort (mirrors
+// emitEscalationFailed): a check deleted since the incident opened must not
+// block the page, it just loses its name/link.
 func (r *EscalationStepJobRun) buildEscalationEmailViewModel(
-	ctx context.Context, jctx *jobdef.JobContext, incident *models.Incident,
+	ctx context.Context, jctx *jobdef.JobContext, incident *models.Incident, address string, loc i18n.Locale,
 ) map[string]any {
 	baseURL := appBaseURL(jctx)
 
@@ -1414,29 +1450,93 @@ func (r *EscalationStepJobRun) buildEscalationEmailViewModel(
 		orgLogoURL = org.LogoURL
 	}
 
-	checkName := escalationUnknownCheckName
-	var checkURL string
+	view := EscalationEmail{
+		// The Slack DM and web push keep escalationUnknownCheckName (English);
+		// the mail speaks its reader's language.
+		CheckName:      loc.T("alerts.escalation.unknownCheck"),
+		IncidentNumber: incident.Number,
+		IncidentURL:    escalationIncidentURL(baseURL, orgSlug, incident),
+		StartedAt:      incident.StartedAt,
+		FailureCount:   incident.FailureCount,
+		FailureReason:  incident.FailureReason(),
+		AckExpiresAt:   incident.StartedAt.Add(incidentlinks.AckTokenTTL),
+		DashboardURL:   escalationDashboardRootURL(baseURL),
+		DocsURL:        escalationDocsURL(baseURL),
+	}
 
 	check, checkErr := jctx.DBService.GetCheck(ctx, incident.OrganizationUID, incident.CheckUID)
 	if checkErr == nil && check != nil {
-		checkName = escalationCheckName(check)
-		checkURL = escalationCheckURL(baseURL, orgSlug, check)
+		if name := escalationCheckName(check); name != escalationUnknownCheckName {
+			view.CheckName = name
+		}
+
+		view.CheckURL = escalationCheckURL(baseURL, orgSlug, check)
+		view.CheckTarget = check.TargetURL()
 	}
 
-	viewModel := map[string]any{
-		viewModelKeyCheckName: checkName,
-		"CheckURL":            checkURL,
-		"IncidentNumber":      incident.Number,
-		"IncidentURL":         escalationIncidentURL(baseURL, orgSlug, incident),
-		"StartedAt":           incident.StartedAt.UTC().Format("2006-01-02 15:04:05 UTC"),
-		"FailureCount":        incident.FailureCount,
-		"DashboardURL":        escalationDashboardRootURL(baseURL),
-		"DocsURL":             escalationDocsURL(baseURL),
+	// The person this escalation wakes up is the one who most needs to say
+	// "I'm on it" without opening the dashboard first.
+	if jctx.AppConfig != nil {
+		view.AckURL = incidentlinks.AckURL(baseURL, orgSlug, incident.UID, address,
+			[]byte(jctx.AppConfig.Auth.JWTSecret), view.AckExpiresAt)
 	}
+
+	viewModel := view.Data()
 	// The org row was loaded for the slug anyway, so branding is free here.
 	email.ApplyOrgBranding(viewModel, orgName, orgSlug, orgLogoURL)
 
 	return viewModel
+}
+
+// emailContactLocale is the reader of an escalation mail sent to one of a
+// user's email contacts: the account behind that address when there is one,
+// else the user who owns the contact.
+func emailContactLocale(ctx context.Context, jctx *jobdef.JobContext, route *models.UserNotificationRoute) i18n.Locale {
+	var owner *models.User
+	if user, err := jctx.DBService.GetUser(ctx, route.UserUID); err == nil {
+		owner = user
+	}
+
+	return recipient.NewResolver(jctx.DBService).
+		ForAddress(ctx, "", route.Contact.Value, recipient.HintFromUser(owner))
+}
+
+// EscalationEmail is what escalation.html shows. The email preview builds its
+// fixture through Data too, so the two cannot drift apart.
+type EscalationEmail struct {
+	CheckName      string
+	CheckURL       string
+	CheckTarget    string
+	IncidentNumber int64
+	IncidentURL    string
+	StartedAt      time.Time
+	FailureCount   int
+	FailureReason  string
+	// AckURL is the reader's own "I'm on it" magic link, valid until
+	// AckExpiresAt.
+	AckURL       string
+	AckExpiresAt time.Time
+	DashboardURL string
+	DocsURL      string
+}
+
+// Data is the escalation.html view model. Times stay time.Time: the template
+// formats them in the reader's language and zone.
+func (e *EscalationEmail) Data() map[string]any {
+	return map[string]any{
+		viewModelKeyCheckName: e.CheckName,
+		"CheckURL":            e.CheckURL,
+		"IncidentNumber":      e.IncidentNumber,
+		"IncidentURL":         e.IncidentURL,
+		"StartedAt":           e.StartedAt,
+		"FailureCount":        e.FailureCount,
+		"FailureReason":       e.FailureReason,
+		"CheckTarget":         e.CheckTarget,
+		"AckURL":              e.AckURL,
+		"AckExpiresAt":        e.AckExpiresAt,
+		"DashboardURL":        e.DashboardURL,
+		"DocsURL":             e.DocsURL,
+	}
 }
 
 // escalationUnknownCheckName is the fallback check name when the check has

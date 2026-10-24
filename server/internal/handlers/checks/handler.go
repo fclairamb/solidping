@@ -987,6 +987,7 @@ func isCheckFieldValidationError(err error) bool {
 		errors.Is(err, errFlapBackoffTooSmall) ||
 		errors.Is(err, errMaxRecoveryMultTooSmall) ||
 		errors.Is(err, errInvalidTraceroutePolicy) ||
+		errors.Is(err, errResolveOpenNeedsDisable) ||
 		errors.Is(err, errInvalidFailQuorum) ||
 		// Placement (spec 2026-09-25-06): a contradictory or unplaceable
 		// placement request is the caller's to fix.
@@ -1057,6 +1058,17 @@ func (h *Handler) handleDeleteError(writer http.ResponseWriter, request *http.Re
 
 // handleCloneError handles errors from CloneCheck.
 func (h *Handler) handleCloneError(writer http.ResponseWriter, request *http.Request, err error) error {
+	// A clone re-runs the config rules on the copied config (spec
+	// 2026-10-16-03), so a refused one answers like create does.
+	if configErr := checkerdef.IsConfigError(err); configErr != nil {
+		return h.WriteValidationError(writer, "Configuration validation failed", []base.ValidationErrorField{
+			{
+				Name:    configErr.Parameter,
+				Message: configErr.Message,
+			},
+		})
+	}
+
 	switch {
 	case errors.Is(err, ErrDemoReadOnly):
 		return h.writeDemoReadOnlyError(writer, request, err)

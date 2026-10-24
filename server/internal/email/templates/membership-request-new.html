@@ -1,0 +1,25 @@
+{{define "subject"}}{{t "account.membershipRequest.subject" "requester" .RequesterName "org" .OrgName}}{{end}}
+{{define "preheader"}}{{t "account.membershipRequest.preheader" "requester" .RequesterName}}{{end}}
+{{template "base.html" .}}
+{{define "content"}}
+    <h1>{{t "account.membershipRequest.title"}}</h1>
+    <p>{{tHTML "account.membershipRequest.body" "requester" .RequesterName "email" (mailto .RequesterEmail) "org" .OrgName}}</p>
+    {{if .Message}}
+    <blockquote class="quote">{{.Message}}</blockquote>
+    {{end}}
+    {{if .RequestsURL}}
+    <div class="cta-wrap">{{template "button" dict "URL" .RequestsURL "Label" (t "account.membershipRequest.cta") "Variant" "primary"}}</div>
+    {{template "fallback-link" .RequestsURL}}
+    {{end}}
+    <p class="meta">{{t "account.membershipRequest.why" "org" .OrgName}}</p>
+{{end}}
+{{define "text"}}{{t "account.membershipRequest.title"}}
+
+{{t "account.membershipRequest.bodyText" "requester" .RequesterName "email" .RequesterEmail "org" .OrgName}}
+{{if .Message}}
+{{t "account.membershipRequest.quotedMessage" "message" .Message}}
+{{end}}{{if .RequestsURL}}
+{{t "common.textField" "label" (t "account.membershipRequest.cta") "value" .RequestsURL}}
+{{end}}
+{{t "account.membershipRequest.why" "org" .OrgName}}
+{{end}}

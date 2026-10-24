@@ -7,15 +7,19 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/moby/moby/api/types/container"
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/app/services"
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
+	"github.com/fclairamb/solidping/server/internal/discovery/scantypes"
+	"github.com/fclairamb/solidping/server/internal/egress"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobtypes"
 )
@@ -237,4 +241,95 @@ func TestContainerDiscoveryRequiresHosts(t *testing.T) {
 
 	_, err = def.CreateJobRun(json.RawMessage(`{"hosts":[]}`))
 	r.Error(err)
+}
+
+// countingDocker is a fake Docker API counting every request it receives.
+func countingDocker(t *testing.T) (string, *atomic.Int64) {
+	t.Helper()
+
+	var requests atomic.Int64
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+
+		if strings.HasSuffix(r.URL.Path, "/_ping") {
+			w.Header().Set("Api-Version", "1.45")
+			w.WriteHeader(http.StatusOK)
+
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[{"Id":"web123","Names":["/web"],"Image":"nginx","State":"running"}]`))
+	}))
+	t.Cleanup(srv.Close)
+
+	return "tcp://" + strings.TrimPrefix(srv.URL, "http://"), &requests
+}
+
+func runContainerJobWith(
+	t *testing.T, f *containerDiscoveryFixture, endpoint string, mutate func(*jobdef.JobContext),
+) error {
+	t.Helper()
+
+	raw, err := json.Marshal(jobtypes.ContainerDiscoveryConfig{Hosts: []string{endpoint}})
+	require.NoError(t, err)
+
+	runner, err := (&jobtypes.ContainerDiscoveryJobDefinition{}).CreateJobRun(raw)
+	require.NoError(t, err)
+
+	jctx := f.jctx()
+	mutate(jctx)
+
+	return runner.Run(t.Context(), jctx)
+}
+
+// Under an enforcing process guard a container scan of a loopback Docker API
+// makes no request and persists nothing; the permissive guard is the control.
+func TestContainerDiscoveryObeysEgressGuard(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	endpoint, requests := countingDocker(t)
+	f := newContainerDiscoveryFixture(t)
+	r.NoError(runContainerJobWith(t, f, endpoint, func(j *jobdef.JobContext) {
+		j.Services.EgressGuard = egress.New(false)
+	}))
+	r.Zero(requests.Load(), "the private Docker API must receive no request")
+	r.Empty(f.listChecks(t))
+
+	controlEndpoint, controlRequests := countingDocker(t)
+	control := newContainerDiscoveryFixture(t)
+	r.NoError(runContainerJobWith(t, control, controlEndpoint, func(j *jobdef.JobContext) {
+		j.Services.EgressGuard = egress.New(true)
+	}))
+	r.Positive(controlRequests.Load())
+	r.NotEmpty(control.listChecks(t))
+}
+
+// A container job queued before the docker gate applied is refused on a SaaS
+// (non-agent) node and reaches no endpoint; a self-hosted node runs it.
+func TestContainerDiscoveryRefusedWhereDockerChecksAre(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	endpoint, requests := countingDocker(t)
+	f := newContainerDiscoveryFixture(t)
+	err := runContainerJobWith(t, f, endpoint, func(j *jobdef.JobContext) {
+		j.AppConfig = &config.Config{Deployment: config.DeploymentConfig{Mode: config.DeploymentModeSaaS}}
+	})
+
+	var de *scantypes.DiscoveryError
+	r.ErrorAs(err, &de)
+	r.Equal(scantypes.CodeNotAvailable, de.Code)
+	r.Zero(requests.Load())
+
+	controlEndpoint, controlRequests := countingDocker(t)
+	control := newContainerDiscoveryFixture(t)
+	r.NoError(runContainerJobWith(t, control, controlEndpoint, func(j *jobdef.JobContext) {
+		j.AppConfig = &config.Config{}
+	}))
+	r.Positive(controlRequests.Load())
 }

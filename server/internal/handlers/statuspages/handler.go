@@ -1035,6 +1035,9 @@ func (h *Handler) handleUpdateSectionError(writer http.ResponseWriter, request *
 
 func (h *Handler) handleResourceError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
+	case errors.Is(err, ErrStatusPageResourceNotFound):
+		return h.WriteErrorErr(
+			writer, request, http.StatusNotFound, base.ErrorCodeStatusPageResourceNotFound, "Resource not found", err)
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(
 			writer, request, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)

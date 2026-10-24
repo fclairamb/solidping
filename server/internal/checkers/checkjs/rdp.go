@@ -12,6 +12,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkrdp"
 	checkrdpconfig "github.com/fclairamb/solidping/server/internal/checkers/checkrdp/config"
+	"github.com/fclairamb/solidping/server/internal/egress"
 )
 
 // maxRDPActions caps the session methods one execution may call — a separate
@@ -88,6 +89,10 @@ func (r *jsRuntime) openRDPSession(opts map[string]any) (*goja.Object, map[strin
 	parsed := parseRDPConnectOptions(opts)
 	if parsedErr := validateRDPConnectOptions(&parsed); parsedErr != nil {
 		return nil, nil, parsedErr
+	}
+
+	if err := egress.HostAllowlistFrom(r.execCtx).Check(parsed.host); err != nil {
+		return nil, rdpFailuref("%s", err.Error()), nil
 	}
 
 	// Counted BEFORE anything is dialed: a refused connect still spends its

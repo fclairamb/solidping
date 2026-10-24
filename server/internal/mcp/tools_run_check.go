@@ -13,9 +13,8 @@ func runCheckDef() ToolDefinition {
 		Description: "Run a check once, now, in every region, instead of waiting for its next " +
 			"period (use it right after a fix, or on a freshly created check). The run goes " +
 			"through the normal result path: it can open or resolve an incident like any " +
-			"scheduled run. Rate limited per check and per organization. Returns " +
-			"{requestedAt, regions: [{region, status}]} where status is queued (due now, or " +
-			"right after the run in progress); read the outcome with diagnose_check or " +
+			"scheduled run. Rate limited per check and per organization. A region status of " +
+			"queued means due now, or right after the run in progress; read the outcome with diagnose_check or " +
 			"list_results (a result with periodStart >= requestedAt). Requires the mcp scope " +
 			"(mcp:read tokens are refused) and at least the user role in the organization.",
 		InputSchema: objectSchema(map[string]any{

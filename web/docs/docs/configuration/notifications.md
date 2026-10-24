@@ -25,6 +25,7 @@ SolidPing supports multiple notification channels to alert you when incidents oc
 | Matrix | Available | Client-Server API |
 | Zulip | Available | Bot API |
 | PagerDuty | Available | Events API v2 |
+| AI agent (A2A) | Available | [Agent2Agent protocol](../features/ai-agent-a2a.md) |
 | Pushover | Available | API integration |
 | Web Push | Available | Browser push (VAPID) |
 | SMS / Voice | Available | [SMS & Voice](./sms.md) (server-provided by default, per-organization Twilio as an override) |
@@ -150,6 +151,25 @@ slack:
   client_secret: your-client-secret
   signing_secret: your-signing-secret
 ```
+
+### Signing secret
+
+How Slack reaches SolidPing decides whether the signing secret is needed:
+
+- **HTTP delivery** (the Request URLs of Event Subscriptions, Interactivity and
+  Slash Commands point at `/api/v1/integrations/slack/...`): the signing secret
+  is **required**. SolidPing checks the signature of every request and rejects
+  every request with `401` while `SP_SLACK_SIGNING_SECRET` is unset. The server
+  logs a warning at startup when Slack is enabled in HTTP mode without one.
+- **Socket Mode** (`SP_SLACK_SOCKET_MODE_ENABLED=true` with
+  `SP_SLACK_APP_TOKEN`): the signing secret is not needed. Slack delivers over
+  the WebSocket opened with the app token and never calls the HTTP endpoints.
+
+The secret is read when the server starts: after setting it from **Server
+settings**, restart the server.
+
+Inbound Slack requests are capped at 1 MiB. A slash command follow-up is only
+ever posted to a `https://hooks.slack.com/` response URL.
 
 ### Setting Up a Slack App
 
@@ -701,6 +721,9 @@ Add a ntfy connection in SolidPing with:
   alert except recoveries, which stay at the default priority.
 - **Access token** (`auth_token`, optional, API only): sent as a bearer token, stored encrypted.
 
+Notifications carry a click-through link to the incident (ntfy's `Click` field) when
+SolidPing's base URL is configured. A program reading the topic gets the incident uid from it.
+
 ### Example
 
 ```
@@ -945,7 +968,7 @@ specification, so receivers can verify it came from SolidPing.
 
 - `resolvedAt` and `durationSeconds` are `null` while the incident is active.
 - `resolutionType` (`auto`, `manual`, `expired`, `escalated`, `disabled`,
-  `check_deleted`) is only present once the incident is resolved.
+  `check_deleted`, `check_disabled`) is only present once the incident is resolved.
 - `acknowledgedAt` is only present once the incident has been acknowledged.
 - `recoveryPeriodSeconds` is `null` until the incident has relapsed at least once.
 - `regions` holds the slugs (not labels) of the regions that saw the failure,

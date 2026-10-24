@@ -149,6 +149,27 @@ type HTTPChecker struct {
 	probeTransport func(
 		ctx context.Context, skipTLSVerify bool, httpVersion checkerdef.HTTPVersion,
 	) (http.RoundTripper, func())
+
+	// MaxRedirects caps the redirects followed; 0 means the default (a chain
+	// of 10 requests). The public tools endpoint (spec 2026-10-14-02) runs
+	// with 5.
+	MaxRedirects int
+
+	// RedirectGuard, when set, judges every redirect hop before it is
+	// followed; an error refuses the hop and ends the request with it. The
+	// public tools endpoint uses it to refuse SolidPing's own hosts.
+	RedirectGuard func(req *http.Request) error
+}
+
+// maxVia is the longest chain of previous requests CheckRedirect lets grow.
+// The default keeps its historical meaning (a chain of maxRedirects requests);
+// MaxRedirects counts followed redirects, so the chain is one longer.
+func (c *HTTPChecker) maxVia() int {
+	if c.MaxRedirects > 0 {
+		return c.MaxRedirects + 1
+	}
+
+	return maxRedirects
 }
 
 // Type returns the check type identifier.
@@ -369,12 +390,18 @@ func (c *HTTPChecker) executeRequest(
 			}
 
 			// Allow up to maxRedirects redirects
-			if len(via) >= maxRedirects {
+			if len(via) >= c.maxVia() {
 				return http.ErrUseLastResponse
 			}
 
 			redirectChain = append(redirectChain, req.URL.String())
 			req.Close = true
+
+			if c.RedirectGuard != nil {
+				if guardErr := c.RedirectGuard(req); guardErr != nil {
+					return guardErr
+				}
+			}
 
 			// redirect_host_policy: same-host — refuse any hop whose host
 			// differs from the PREVIOUS hop's. Checked here, before the

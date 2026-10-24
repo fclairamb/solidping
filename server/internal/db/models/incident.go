@@ -38,6 +38,10 @@ const (
 	// org deletion, the test API. The DB layer's DeleteCheck sets it in the
 	// same transaction as the soft delete, so no incident outlives its check.
 	ResolutionTypeCheckDeleted = "check_deleted"
+	// ResolutionTypeCheckDisabled closes an active incident because its check
+	// was disabled by hand with resolveOpenIncidents (spec 2026-10-23-01). The
+	// check did not necessarily recover: it simply stopped running.
+	ResolutionTypeCheckDisabled = "check_disabled"
 )
 
 // Incident kinds. `kind` discriminates what an incident row is ABOUT. It is a
@@ -232,5 +236,27 @@ type ListIncidentsFilter struct {
 	CursorTimestamp *time.Time // Optional: incidents with started_at < this timestamp
 	CursorUID       *string    // Optional: for same timestamp, incidents with UID < this
 
+	// Ascending lists oldest first on (started_at, uid); the cursor then means
+	// "strictly after" and the comparisons flip.
+	Ascending bool
+	// SettledBefore only admits incidents started before this instant.
+	SettledBefore *time.Time
+
 	Limit int // Optional: pagination limit
+}
+
+// FailureReason is the human-readable cause the incident recorded when it
+// opened (an HTTP status, a timeout...), or "" when it recorded none.
+func (i *Incident) FailureReason() string {
+	if i == nil || i.Details == nil {
+		return ""
+	}
+
+	for _, key := range []string{"failure_reason", "output"} {
+		if reason, ok := i.Details[key].(string); ok && reason != "" {
+			return reason
+		}
+	}
+
+	return ""
 }

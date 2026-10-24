@@ -76,8 +76,8 @@ func RealResultStatuses() []int {
 
 // IsRealForFreshness reports whether a result status is a real reading.
 func (s ResultStatus) IsRealForFreshness() bool {
-	for _, real := range realResultStatuses {
-		if int(s) == real {
+	for _, realStatus := range realResultStatuses {
+		if int(s) == realStatus {
 			return true
 		}
 	}

@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/miekg/dns"
+
 	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checkdns/config"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
@@ -19,7 +21,15 @@ const (
 	defaultTimeout = 5 * time.Second
 )
 
-var errSOANotSupported = errors.New("SOA record type not yet supported")
+// resolvConfPath is where the CAA lookup finds the system resolvers, since
+// net.Resolver cannot query that record type.
+const resolvConfPath = "/etc/resolv.conf"
+
+var (
+	errSOANotSupported = errors.New("SOA record type not yet supported")
+	errNoNameserver    = errors.New("no nameserver available")
+	errCAALookup       = errors.New("CAA lookup failed")
+)
 
 // lookupFunc resolves host for recordType, returning addresses (A/AAAA) or
 // values (every other type). Tests swap it for a stub resolver.
@@ -207,6 +217,10 @@ func (c *DNSChecker) resolve(
 		values, err := c.lookupSOA(ctx, resolver, cfg.Host)
 
 		return nil, values, err
+	case recordTypeCAA:
+		values, err := lookupCAA(ctx, cfg.Nameserver, cfg.Host, timeout)
+
+		return nil, values, err
 	}
 
 	return nil, nil, nil
@@ -327,6 +341,86 @@ func (c *DNSChecker) lookupSOA(_ context.Context, _ *net.Resolver, _ string) ([]
 	// SOA records are not directly supported by net.Resolver
 	// For now, return not supported error
 	return nil, errSOANotSupported
+}
+
+// lookupCAA queries the CAA records of hostname. net.Resolver has no CAA
+// support, so the query is a raw DNS exchange: with the configured nameserver
+// (a user-chosen target, dialed under the egress guard on ctx) or with the
+// system resolvers of resolv.conf. Values read "<flag> <tag> \"<value>\"".
+func lookupCAA(ctx context.Context, nameserver, hostname string, timeout time.Duration) ([]string, error) {
+	servers := []string{nameserver}
+	dialer := checkerdef.GuardedNetDialer(ctx, &net.Dialer{Timeout: timeout})
+
+	if nameserver == "" {
+		conf, err := dns.ClientConfigFromFile(resolvConfPath)
+		if err != nil {
+			return nil, fmt.Errorf("read system resolvers: %w", err)
+		}
+
+		servers = make([]string, 0, len(conf.Servers))
+		for _, server := range conf.Servers {
+			servers = append(servers, net.JoinHostPort(server, conf.Port))
+		}
+
+		// The system resolver is the worker's own, not a check target.
+		dialer = &net.Dialer{Timeout: timeout}
+	}
+
+	query := new(dns.Msg)
+	query.SetQuestion(dns.Fqdn(hostname), dns.TypeCAA)
+
+	lastErr := errNoNameserver
+
+	for _, server := range servers {
+		resp, err := exchangeCAA(ctx, query, server, dialer, timeout)
+		if err != nil {
+			lastErr = err
+
+			continue
+		}
+
+		switch resp.Rcode {
+		case dns.RcodeSuccess:
+		case dns.RcodeNameError:
+			return nil, &net.DNSError{Err: "no such host", Name: hostname, IsNotFound: true}
+		default:
+			lastErr = fmt.Errorf("%w: %s answered %s", errCAALookup, server, dns.RcodeToString[resp.Rcode])
+
+			continue
+		}
+
+		values := make([]string, 0, len(resp.Answer))
+
+		for _, rr := range resp.Answer {
+			if caa, ok := rr.(*dns.CAA); ok {
+				values = append(values, fmt.Sprintf("%d %s %q", caa.Flag, caa.Tag, caa.Value))
+			}
+		}
+
+		return values, nil
+	}
+
+	return nil, lastErr
+}
+
+// exchangeCAA sends query over UDP, retrying over TCP when the answer was
+// truncated.
+func exchangeCAA(
+	ctx context.Context, query *dns.Msg, server string, dialer *net.Dialer, timeout time.Duration,
+) (*dns.Msg, error) {
+	client := &dns.Client{Timeout: timeout, Dialer: dialer}
+
+	resp, _, err := client.ExchangeContext(ctx, query, server)
+	if err == nil && resp.Truncated {
+		client.Net = "tcp"
+		resp, _, err = client.ExchangeContext(ctx, query, server)
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("CAA lookup via %s: %w", server, err)
+	}
+
+	return resp, nil
 }
 
 // matchValues checks if resolved values match expected values.

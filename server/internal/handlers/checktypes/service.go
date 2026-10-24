@@ -46,6 +46,15 @@ type CheckTypeResponse struct {
 	// would defeat the dirty-flag contract. Always present, `[]` when the type
 	// has no secrets.
 	SecretFields []string `json:"secretFields"`
+	// Plugin names the plugin a type comes from (spec 2026-10-17-05). Absent
+	// on built-in types.
+	Plugin *checkerdef.PluginRef `json:"plugin,omitempty"`
+	// AgentReported marks a plugin type reported by one of the org's
+	// private-location agents rather than loaded by this server (spec
+	// 2026-10-17-05 §18). Only the org listing carries it, and only for the
+	// org whose agent reported it. Its schema is served at
+	// /api/v1/orgs/:org/check-types/:type/schema.
+	AgentReported bool `json:"agentReported,omitempty"`
 }
 
 // ListCheckTypesResponse wraps the list of check types.
@@ -185,6 +194,7 @@ func toResponse(statuses []checkerdef.CheckTypeStatus) ListCheckTypesResponse {
 			SupportsIPVersion:    statuses[idx].SupportsIPVersion,
 			ExcludedFromTally:    statuses[idx].ExcludedFromTally,
 			SecretFields:         secretFieldsFor(statuses[idx].Type),
+			Plugin:               statuses[idx].Plugin,
 		})
 	}
 

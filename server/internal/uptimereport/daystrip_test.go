@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/fclairamb/solidping/server/internal/i18n"
 	"github.com/fclairamb/solidping/server/internal/slo"
 )
 
@@ -71,7 +72,7 @@ func TestPlanDayStripCoversEveryDayOfTheWindow(t *testing.T) {
 			r.False(plan.start.After(tc.window.Start.UTC()))
 			r.False(plan.start.AddDate(0, 0, plan.days).Before(tc.window.End.UTC()))
 
-			r.Contains(plan.label(), "(UTC)")
+			r.Contains(plan.label(i18n.English), "(UTC)")
 		})
 	}
 }
@@ -89,7 +90,7 @@ func TestPlanDayStripIsBounded(t *testing.T) {
 
 	empty := planDayStrip(slo.Window{Start: start, End: start})
 	r.Zero(empty.days)
-	r.Empty(empty.label())
+	r.Empty(empty.label(i18n.English))
 }
 
 // TestEncodeDayCellsCollapsesRuns is what keeps a 50-check monthly report far

@@ -16,11 +16,13 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Logo } from "@/components/ui/logo";
 import { AuthSplitLayout } from "@/components/layout/auth-split-layout";
+import { TwoFactorChallenge } from "@/components/shared/two-factor-challenge";
 import {
   AlertCircle,
   KeyRound,
   Loader2,
   Building2,
+  Mail,
   PlayCircle,
 } from "lucide-react";
 import { ApiError } from "@/api/client";
@@ -51,8 +53,11 @@ import { classifyPasskeyError } from "@/lib/passkey-error";
 import {
   isOAuthAuthorizeReturnTo,
   resolveDestination,
+  isInviteReturnTo,
+  parseLoginNotice,
   startOAuthLogin,
   type LoginDestination,
+  type LoginNotice,
 } from "@/lib/login-destination";
 import { OAuthProviderButtons } from "@/components/auth/oauth-provider-buttons";
 import { ProviderIcon } from "@/components/auth/provider-icon";
@@ -67,7 +72,12 @@ const BASE_PATH = import.meta.env.VITE_BASE_URL || "";
 export const Route = createFileRoute("/orgs/$org/login")({
   validateSearch: (
     search: Record<string, unknown>,
-  ): { session_expired: boolean; returnTo?: string; demo?: boolean } => ({
+  ): {
+    session_expired: boolean;
+    returnTo?: string;
+    demo?: boolean;
+    notice?: LoginNotice;
+  } => ({
     // TanStack Router's default search parser already coerces "true"/"false"
     // query-string values to native booleans before validateSearch runs, so
     // a bare `=== "true"` string comparison silently always evaluates to
@@ -88,6 +98,7 @@ export const Route = createFileRoute("/orgs/$org/login")({
     // `navigate({ to: "/orgs/$org/login", search: … })` in the app predates
     // this param and must keep compiling without naming it.
     demo: parseDemoFlag(search.demo),
+    notice: parseLoginNotice(search.notice),
   }),
   component: LoginPage,
 });
@@ -97,7 +108,7 @@ function LoginPage() {
   const { t: tc } = useTranslation("common");
   const navigate = useNavigate();
   const { org } = Route.useParams();
-  const { session_expired, returnTo, demo: demoAutoLogin } = useSearch({
+  const { session_expired, returnTo, demo: demoAutoLogin, notice } = useSearch({
     from: "/orgs/$org/login",
   });
   const auth = useAuth();
@@ -108,12 +119,8 @@ function LoginPage() {
     isAuthenticated,
     isLoading: authLoading,
     user,
-    verify2FA,
     applyLoginResponse,
   } = auth;
-  // Rename to skip the react-hooks/rules-of-hooks linter — auth.useRecoveryCode
-  // is a service method, not a React hook, but its name triggers the rule.
-  const submitRecoveryCode = auth.useRecoveryCode;
   const { data: versionData } = useVersion();
   const deploymentMode = useDeploymentMode();
   const runMode = useRunMode();
@@ -132,8 +139,6 @@ function LoginPage() {
   const [availableOrgs, setAvailableOrgs] = useState<OrganizationSummary[]>([]);
   const [showOrgPicker, setShowOrgPicker] = useState(false);
   const [twoFAState, setTwoFAState] = useState<{ tempToken: string } | null>(null);
-  const [twoFACode, setTwoFACode] = useState("");
-  const [showRecovery, setShowRecovery] = useState(false);
   // @simplewebauthn/browser owns one shared abort signal for every WebAuthn
   // ceremony. Prevent a late background conditional-UI ceremony from starting
   // after a click and aborting that user-initiated ceremony.
@@ -256,6 +261,12 @@ function LoginPage() {
       // No organization at all — /no-org is the screen that offers creating or
       // joining one, and is where every other org-less path already lands.
       if (accessibleOrg === null) {
+        // A user who left every org is exactly the one an invitation brings
+        // back (spec 2026-10-16-06): resume the invitation before /no-org.
+        if (isInviteReturnTo(returnTo, BASE_PATH)) {
+          goToDestination({ href: returnTo }, true);
+          return;
+        }
         navigate({ to: "/no-org", replace: true });
         return;
       }
@@ -294,7 +305,11 @@ function LoginPage() {
 
       switch (result.loginAction) {
         case "noOrg":
-          navigate({ to: "/no-org" });
+          if (isInviteReturnTo(returnTo, BASE_PATH)) {
+            goToDestination({ href: returnTo });
+          } else {
+            navigate({ to: "/no-org" });
+          }
           break;
         case "orgChoice":
           setAvailableOrgs(result.organizations);
@@ -468,34 +483,6 @@ function LoginPage() {
     }
   };
 
-  const handle2FAVerify = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!twoFAState) return;
-    setError(null);
-    setIsLoading(true);
-    try {
-      const result = showRecovery
-        ? await submitRecoveryCode(twoFAState.tempToken, twoFACode)
-        : await verify2FA(twoFAState.tempToken, twoFACode);
-      setTwoFACode("");
-      setTwoFAState(null);
-      routeResult(result);
-    } catch (err) {
-      // The per-user attempt throttle (spec
-      // 2026-09-25-29-totp-attempt-throttle) answers with a 429 whose body is
-      // accurate but always in English. The user already proved their
-      // password at this point, so give them a translated, actionable reason
-      // to wait instead of falling through to reportError's raw API string.
-      if (err instanceof ApiError && err.status === 429) {
-        setError(t("twoFactor.tooManyAttempts"));
-      } else {
-        reportError(err);
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const handlePasskeyLogin = async () => {
     explicitPasskeyLoginStarted.current = true;
     setError(null);
@@ -638,6 +625,13 @@ function LoginPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
+          {notice === "invite_login_required" && (
+            <Alert className="mb-4" data-testid="login-invite-notice">
+              <Mail className="h-4 w-4" />
+              <AlertDescription>{t("invite.loginRequiredNotice")}</AlertDescription>
+            </Alert>
+          )}
+
           {session_expired && (
             <Alert className="mb-4">
               <AlertCircle className="h-4 w-4" />
@@ -659,65 +653,16 @@ function LoginPage() {
           )}
 
           {twoFAState ? (
-            <form onSubmit={handle2FAVerify} className="space-y-4">
-              <p className="text-sm text-muted-foreground text-center">
-                {showRecovery ? t("twoFactor.recoveryPrompt") : t("twoFactor.codePrompt")}
-              </p>
-              <div className="space-y-2">
-                <Label htmlFor={showRecovery ? "2fa-login-recovery-code" : "2fa-login-code"}>
-                  {showRecovery ? t("twoFactor.recoveryLabel") : t("twoFactor.codeLabel")}
-                </Label>
-                <Input
-                  id={showRecovery ? "2fa-login-recovery-code" : "2fa-login-code"}
-                  data-testid={showRecovery ? "2fa-login-recovery-code" : "2fa-login-code"}
-                  inputMode={showRecovery ? "text" : "numeric"}
-                  maxLength={showRecovery ? 32 : 6}
-                  value={twoFACode}
-                  onChange={(e) =>
-                    setTwoFACode(
-                      showRecovery ? e.target.value : e.target.value.replace(/\D/g, ""),
-                    )
-                  }
-                  required
-                  autoFocus
-                  className="font-mono"
-                />
-              </div>
-              <Button
-                type="submit"
-                className="w-full"
-                disabled={isLoading || (!showRecovery && twoFACode.length !== 6)}
-                data-testid="2fa-login-verify"
-              >
-                {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                {t("twoFactor.verify")}
-              </Button>
-              <div className="flex justify-between text-sm">
-                <button
-                  type="button"
-                  className="text-muted-foreground hover:underline"
-                  data-testid="2fa-login-back"
-                  onClick={() => {
-                    setTwoFAState(null);
-                    setTwoFACode("");
-                    setShowRecovery(false);
-                  }}
-                >
-                  {t("twoFactor.back")}
-                </button>
-                <button
-                  type="button"
-                  className="text-muted-foreground hover:underline"
-                  data-testid="2fa-login-recovery-link"
-                  onClick={() => {
-                    setShowRecovery((v) => !v);
-                    setTwoFACode("");
-                  }}
-                >
-                  {showRecovery ? t("twoFactor.useCode") : t("twoFactor.useRecovery")}
-                </button>
-              </div>
-            </form>
+            <TwoFactorChallenge
+              tempToken={twoFAState.tempToken}
+              onAttempt={() => setError(null)}
+              onVerified={(result) => {
+                setTwoFAState(null);
+                routeResult(result);
+              }}
+              onError={(err, message) => (message ? setError(message) : reportError(err))}
+              onBack={() => setTwoFAState(null)}
+            />
           ) : showOrgPicker ? (
             <div className="space-y-3" data-testid="org-picker">
               <p className="text-sm text-muted-foreground text-center">

@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -28,8 +29,11 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/email"
+	"github.com/fclairamb/solidping/server/internal/i18n"
+	"github.com/fclairamb/solidping/server/internal/i18n/recipient"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
+	"github.com/fclairamb/solidping/server/internal/notifier"
 	"github.com/fclairamb/solidping/server/internal/orgslug"
 	"github.com/fclairamb/solidping/server/internal/securityheaders"
 	"github.com/fclairamb/solidping/server/internal/support"
@@ -42,7 +46,7 @@ import (
 // the wire format silently.
 const (
 	stateValueKeyUserUID = "userUid"
-	stateValueKeyCount   = "count"
+	stateValueKeyCount   = models.CounterValueKey
 )
 
 // emailJobConfig mirrors the JSON shape of jobtypes.EmailJobConfig. We
@@ -54,6 +58,9 @@ type emailJobConfig struct {
 	Subject      string   `json:"subject"`
 	Template     string   `json:"template,omitempty"`
 	TemplateData any      `json:"templateData,omitempty"`
+	// Locale and Timezone: the recipient's, see jobtypes.EmailJobConfig.
+	Locale   string `json:"locale,omitempty"`
+	Timezone string `json:"timezone,omitempty"`
 }
 
 // Internal property/key constants used in JSONMap fields and OAuth flows.
@@ -104,9 +111,16 @@ var (
 	ErrInvitationNotFound      = errors.New("invitation not found")
 	ErrInvitationExpired       = errors.New("invitation has expired")
 	ErrEmailMismatch           = errors.New("email does not match invitation")
-	ErrOrgSlugTaken            = errors.New("organization slug is already taken")
-	ErrInvalidOrgSlug          = errors.New("invalid organization slug")
-	ErrPasswordResetExpired    = errors.New("password reset link has expired or is invalid")
+	// ErrInviteLoginRequired refuses an anonymous acceptance of an invitation
+	// addressed to an existing account: the invite token alone is not proof of
+	// being that account, since the inviter holds it (spec 2026-10-16-06).
+	ErrInviteLoginRequired = errors.New("invitation is for an existing account: sign in as that account to accept it")
+	// ErrInviteEmailMismatch refuses an acceptance by a signed-in caller who is
+	// not the invited account.
+	ErrInviteEmailMismatch  = errors.New("invitation is addressed to another account")
+	ErrOrgSlugTaken         = errors.New("organization slug is already taken")
+	ErrInvalidOrgSlug       = errors.New("invalid organization slug")
+	ErrPasswordResetExpired = errors.New("password reset link has expired or is invalid")
 	// ErrDemoAccountNotResettable refuses a password reset aimed at the shared
 	// public-demo account (spec 2026-09-06-02). Its password is published by
 	// design; rotating it would lock every visitor out of the live demo, and
@@ -178,6 +192,17 @@ type Service struct {
 	// and RevokeToken can evict an entry from the row it just read.
 	patCache map[string]*cachedPATClaims
 	cacheMux sync.RWMutex
+	// patCacheGen is bumped by every eviction. ValidatePATToken reads it
+	// before its database lookup and caches its result only if it is
+	// unchanged, so a revocation racing the lookup cannot be re-cached
+	// (see pat_cache.go).
+	patCacheGen atomic.Uint64
+	// patFillHook runs between the database read and the cache insert of
+	// ValidatePATToken. Test-only: always nil in production.
+	patFillHook func()
+	// eventNotifier broadcasts PAT revocations to the other replicas. Nil
+	// means local-only eviction (unit tests, `solidping mcp --stdio`).
+	eventNotifier notifier.EventNotifier
 }
 
 // EntitlementsChecker is the slice of the entitlements service the auth
@@ -195,7 +220,12 @@ type cachedPATClaims struct {
 	expiresAt time.Time
 }
 
-// Claims represents the JWT token claims.
+// Claims represents the JWT token claims of a bearer token (session access,
+// impersonation, MCP access, or a validated PAT).
+//
+// A JWT carrying a "purpose" claim is never a bearer: non-bearer tokens (2FA
+// temp token, passkey sessions) are signed with a purpose-derived key through
+// signJWT, and ValidateToken refuses any token with a purpose.
 type Claims struct {
 	UserUID string `json:"userUid"`
 	OrgSlug string `json:"orgSlug"`
@@ -231,6 +261,10 @@ type Claims struct {
 	//
 	// omitempty keeps every ordinary token byte-identical to before.
 	ImpersonatedBy string `json:"impersonatedBy,omitempty"`
+	// ClientID is the OAuth client an MCP access token was issued to (spec
+	// 2026-10-16-12). Empty on every other token. It lets RequireAuth tell the
+	// first-party CLI client from a third-party one; see IsMCPCredential.
+	ClientID string `json:"clientId,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -326,6 +360,11 @@ type UserInfo struct {
 	// forced reset, or an account with a real address never sees it.
 	// omitempty for the same reason as MustChangePassword.
 	MustChangeEmail bool `json:"mustChangeEmail,omitempty"`
+	// Preferences is the language and timezone the server writes to this user
+	// in (spec 2026-10-21-01). newUserInfo always sets it, {} when nothing is
+	// stored, so the dashboard knows to report the browser's values. omitempty
+	// keeps it out of the descriptions of OTHER people.
+	Preferences *models.UserPreferences `json:"preferences,omitempty"`
 }
 
 // newUserInfo builds the user payload every login-shaped response and /auth/me
@@ -352,6 +391,7 @@ func newUserInfo(user *models.User, role string) *UserInfo {
 		MustChangePassword: user.MustChangePassword,
 		Demo:               user.Demo,
 		MustChangeEmail:    mustChangeEmail(user),
+		Preferences:        preferencesInfo(user),
 	}
 }
 
@@ -500,6 +540,9 @@ type UpdateProfileRequest struct {
 	// impersonation sessions.
 	Email           *string `json:"email,omitempty"`
 	CurrentPassword *string `json:"currentPassword,omitempty"`
+	// Preferences updates the language and timezone of the user's emails,
+	// field by field (spec 2026-10-21-01).
+	Preferences *PreferencesRequest `json:"preferences,omitempty"`
 }
 
 // LogoutResponse contains the response data for a logout operation.
@@ -613,17 +656,22 @@ func (s *Service) CheckMembershipSlot(ctx context.Context, orgUID string) error 
 // check whether email sending is enabled instance-wide
 // (s.fullCfg.Email.Enabled): a queued job for a disabled sender is a no-op
 // at send time.
+//
+// loc is the reader's language and timezone, resolved here at enqueue time
+// (spec 2026-10-21-01): the job renders with it as is.
 func (s *Service) enqueueEmail(
-	ctx context.Context, orgUID, recipient, template string, data any,
+	ctx context.Context, orgUID, address, template string, loc i18n.Locale, data any,
 ) bool {
-	if s.jobsSvc == nil || recipient == "" {
+	if s.jobsSvc == nil || address == "" {
 		return false
 	}
 
 	cfg := emailJobConfig{
-		To:           []string{recipient},
+		To:           []string{address},
 		Template:     template,
 		TemplateData: data,
+		Locale:       loc.Lang(),
+		Timezone:     loc.Timezone(),
 	}
 
 	raw, err := json.Marshal(cfg)
@@ -1332,7 +1380,7 @@ func (s *Service) roleForOrg(ctx context.Context, user *models.User, orgUID stri
 //
 // A per-call DB read for the org override is fine: this is only invoked at
 // refresh-token mint/slide time, which is rare compared to request volume.
-// Cache like patCacheDuration if that ever shows up in a profile.
+// Cache like patCacheTTL if that ever shows up in a profile.
 func (s *Service) resolveSessionMaxDuration(ctx context.Context, orgUID string) time.Duration {
 	if orgUID != "" {
 		param, err := s.db.GetOrgParameter(ctx, orgUID, string(systemconfig.KeySessionMaxDuration))
@@ -1494,24 +1542,37 @@ func (s *Service) ValidateToken(ctx context.Context, tokenString string) (*Claim
 		return s.ValidatePATToken(ctx, tokenString)
 	}
 
-	// Validate JWT token
-	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("%w: %v", ErrUnexpectedSigningMethod, token.Header["alg"])
-		}
+	// Validate JWT token. Only bearer tokens are signed with the raw secret;
+	// the purpose check still refuses a non-bearer token (2FA temp token,
+	// passkey session) an older replica signed with it during a rollout.
+	var parsedClaims bearerClaims
 
-		return []byte(s.fullCfg.Auth.JWTSecret), nil
-	})
-	if err != nil {
+	token, err := jwt.ParseWithClaims(tokenString, &parsedClaims, func(_ *jwt.Token) (any, error) {
+		return s.bearerKey(), nil
+	},
+		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
+		jwt.WithIssuer(jwtIssuer),
+		jwt.WithExpirationRequired(),
+	)
+	if err != nil || !token.Valid {
 		return nil, ErrInvalidToken
 	}
 
-	claims, ok := token.Claims.(*Claims)
-	if !ok || !token.Valid {
+	if parsedClaims.Purpose != "" {
 		return nil, ErrInvalidToken
 	}
 
-	return claims, nil
+	claims := parsedClaims.Claims
+
+	return &claims, nil
+}
+
+// bearerClaims is what ValidateToken parses a JWT into: Claims plus the
+// purpose tag every non-bearer token carries, so such a token is refused
+// even when it is signed with the bearer key.
+type bearerClaims struct {
+	Claims
+	Purpose string `json:"purpose"`
 }
 
 // ValidatePATToken validates a Personal Access Token.
@@ -1522,15 +1583,13 @@ func (s *Service) ValidatePATToken(ctx context.Context, patToken string) (*Claim
 	cacheKey := models.HashUserToken(patToken)
 
 	// Check cache first
-	s.cacheMux.RLock()
-
-	if cached, exists := s.patCache[cacheKey]; exists && time.Now().Before(cached.expiresAt) {
-		s.cacheMux.RUnlock()
-
-		return cached.claims, nil
+	if claims, ok := s.cachedPAT(cacheKey); ok {
+		return claims, nil
 	}
 
-	s.cacheMux.RUnlock()
+	// Read the generation before the database: an eviction between here and
+	// the insert below makes the insert a no-op.
+	gen := s.patCacheGen.Load()
 
 	// Query database for PAT
 	token, err := s.db.GetUserTokenByToken(ctx, patToken)
@@ -1613,34 +1672,13 @@ func (s *Service) ValidatePATToken(ctx context.Context, patToken string) (*Claim
 		},
 	}
 
-	const patCacheDuration = 15 * time.Minute
-
-	// Cache the result for 15 minutes
-	s.cacheMux.Lock()
-	s.patCache[cacheKey] = &cachedPATClaims{
-		claims:    claims,
-		expiresAt: time.Now().Add(patCacheDuration),
+	if s.patFillHook != nil {
+		s.patFillHook()
 	}
-	s.cacheMux.Unlock()
 
-	// Periodically cleanup expired cache entries (1% chance on each call)
-	if time.Now().UnixNano()%100 == 0 {
-		go s.cleanupExpiredPATCache()
-	}
+	s.storePAT(cacheKey, claims, token.ExpiresAt, gen)
 
 	return claims, nil
-}
-
-func (s *Service) cleanupExpiredPATCache() {
-	s.cacheMux.Lock()
-	defer s.cacheMux.Unlock()
-
-	now := time.Now()
-	for token, cached := range s.patCache {
-		if now.After(cached.expiresAt) {
-			delete(s.patCache, token)
-		}
-	}
 }
 
 // GetUserInfo returns information about the current user.
@@ -1768,8 +1806,24 @@ func (s *Service) getUserInfoNoOrg(ctx context.Context, claims *Claims) (*MeResp
 	}, nil
 }
 
-// UpdateProfile updates the current user's profile fields.
+// UpdateProfile updates the current user's profile fields. Every field is
+// optional: a preferences-only PATCH is as valid as a name-only one.
 func (s *Service) UpdateProfile(ctx context.Context, claims *Claims, req UpdateProfileRequest) (*MeResponse, error) {
+	// Preferences are validated before anything is written, so a bad locale
+	// never leaves a half-applied email change behind.
+	var prefs *models.UserPreferences
+
+	if req.Preferences != nil {
+		user, err := s.db.GetUser(ctx, claims.UserUID)
+		if err != nil || user == nil {
+			return nil, ErrUserNotFound
+		}
+
+		if prefs, err = mergePreferences(user.Preferences, req.Preferences); err != nil {
+			return nil, err
+		}
+	}
+
 	if req.Email != nil {
 		// A changed email is applied together with the name, in one UPDATE.
 		changed, err := s.changeOwnEmail(ctx, claims, req)
@@ -1778,16 +1832,17 @@ func (s *Service) UpdateProfile(ctx context.Context, claims *Claims, req UpdateP
 		}
 
 		if changed {
-			return s.GetUserInfo(ctx, claims)
+			req.Name = nil
 		}
 	}
 
-	if req.Name == nil {
+	if req.Name == nil && prefs == nil {
 		return s.GetUserInfo(ctx, claims)
 	}
 
 	update := models.UserUpdate{
-		Name: req.Name,
+		Name:        req.Name,
+		Preferences: prefs,
 	}
 
 	if err := s.db.UpdateUser(ctx, claims.UserUID, &update); err != nil {
@@ -2062,12 +2117,7 @@ func (s *Service) RevokeToken(ctx context.Context, userUID, tokenUID string) err
 		return ErrTokenNotFound
 	}
 
-	// Invalidate cache if it's a PAT
 	if token.Type == models.TokenTypePAT {
-		s.cacheMux.Lock()
-		delete(s.patCache, token.TokenHash)
-		s.cacheMux.Unlock()
-
 		// A PAT revoke should also tear down OAuth-issued MCP refresh grants for
 		// the user, matching the spec's "revocation on logout/PAT-revoke".
 		s.revokeUserTokensOfType(ctx, userUID, models.TokenTypeOAuthRefresh)
@@ -2075,6 +2125,14 @@ func (s *Service) RevokeToken(ctx context.Context, userUID, tokenUID string) err
 
 	if _, err = s.db.DeleteUserToken(ctx, tokenUID); err != nil {
 		return err
+	}
+
+	// Evict only once the row is gone: a lookup racing this revocation then
+	// either reads no row, or is refused the insert by the generation bump.
+	// The other replicas evict on the broadcast; this one never waits for it.
+	if token.Type == models.TokenTypePAT {
+		s.evictPAT(token.TokenHash)
+		s.broadcastPATRevoked(ctx, token.TokenHash)
 	}
 
 	if token.OrganizationUID != nil {
@@ -2249,9 +2307,7 @@ func (s *Service) generateAccessToken(userUID, orgSlug, role, refreshUID string,
 		},
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-
-	return token.SignedString([]byte(s.fullCfg.Auth.JWTSecret))
+	return s.signJWT("", claims)
 }
 
 // GenerateMCPAccessToken mints a short-lived, audience-bound JWT access token
@@ -2275,7 +2331,7 @@ func (s *Service) generateAccessToken(userUID, orgSlug, role, refreshUID string,
 // fragility the second layer exists to cover.
 func (s *Service) GenerateMCPAccessToken(
 	ctx context.Context,
-	userUID, orgSlug string, scopes []string, audience string, ttl time.Duration, refreshUID string,
+	userUID, orgSlug string, scopes []string, audience string, ttl time.Duration, refreshUID, clientID string,
 ) (string, error) {
 	user, err := s.db.GetUser(ctx, userUID)
 	if err != nil {
@@ -2289,19 +2345,23 @@ func (s *Service) GenerateMCPAccessToken(
 		Demo:       user.Demo,
 		Scopes:     scopes,
 		RefreshUID: refreshUID,
+		ClientID:   clientID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(now.Add(ttl)),
 			IssuedAt:  jwt.NewNumericDate(now),
 			NotBefore: jwt.NewNumericDate(now),
 			Issuer:    jwtIssuer,
-			Audience:  jwt.ClaimStrings{audience},
 			ID:        uuid.New().String(),
 		},
 	}
+	// No audience means no `aud` claim at all, rather than an empty-string
+	// one: every OAuth mint passes the MCP resource, and an `aud` makes the
+	// token an MCP credential (IsMCPCredential).
+	if audience != "" {
+		claims.Audience = jwt.ClaimStrings{audience}
+	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-
-	return token.SignedString([]byte(s.fullCfg.Auth.JWTSecret))
+	return s.signJWT("", claims)
 }
 
 const refreshTokenSize = 32
@@ -2408,6 +2468,11 @@ type RegisterRequest struct {
 	// normalizeSignupAttribution before it is stored, so a client cannot use
 	// it to park arbitrary data on a user row.
 	Attribution *models.SignupAttribution `json:"attribution,omitempty"`
+	// Locale and Timezone are the browser's language and IANA zone, the
+	// preferences the account starts with (spec 2026-10-21-01). Optional and
+	// lenient: an unsupported value is dropped, never refused.
+	Locale   string `json:"locale,omitempty"`
+	Timezone string `json:"timezone,omitempty"`
 }
 
 // RegisterResponse contains the response after registration.
@@ -2473,6 +2538,8 @@ const registerAntiEnumFiller = "solidping-registration-timing-filler-0000"
 // path for the race where an account was created by some OTHER path between
 // Register and confirmation — that caller already proved mailbox ownership by
 // holding the token, so it isn't an enumeration surface.
+//
+//nolint:gocritic // req is the decoded wire shape, passed by value like every request of this service
 func (s *Service) Register(ctx context.Context, req RegisterRequest) (*RegisterResponse, error) {
 	// Check if registration is enabled. Read the LIVE value: the
 	// registration_email_pattern is applied by the systemconfig overlay AFTER
@@ -2551,6 +2618,10 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*RegisterR
 		(*stateValue)[keyAttribution] = attribution
 	}
 
+	if prefs := signupPreferences(req.Locale, req.Timezone); prefs != nil {
+		(*stateValue)[keyPreferences] = prefs
+	}
+
 	ttl := registrationTTL
 
 	if err := s.db.SetStateEntry(ctx, nil, registrationKeyPrefix+req.Email, stateValue, &ttl); err != nil {
@@ -2560,7 +2631,9 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*RegisterR
 	// Send confirmation email asynchronously via the email job
 	confirmURL := fmt.Sprintf("%s%s/confirm-registration/%s",
 		s.fullCfg.Server.BaseURL, config.DashboardBasePath, token)
-	s.enqueueEmail(ctx, "", req.Email, "registration.html",
+	// No account yet: the mail is written in the language and zone the
+	// signup form sent, the ones the account will start with.
+	s.enqueueEmail(ctx, "", req.Email, "registration.html", i18n.New(req.Locale, req.Timezone),
 		map[string]any{"ConfirmURL": confirmURL},
 	)
 
@@ -2635,6 +2708,7 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 	user.Name = regName
 	user.PasswordHash = &regHash
 	user.SignupAttribution = signupAttributionFromState(val[keyAttribution])
+	user.Preferences = signupPreferencesFromState(val[keyPreferences])
 
 	now := time.Now()
 	user.EmailVerifiedAt = &now
@@ -2836,6 +2910,7 @@ func (s *Service) RequestPasswordReset(
 	}
 
 	hasPassword := user.PasswordHash != nil && *user.PasswordHash != ""
+	loc := recipient.ForUser(user)
 
 	// An SSO-only user (no password hash) still has a recoverable account
 	// as long as they have at least one linked provider — the reset link
@@ -2857,7 +2932,7 @@ func (s *Service) RequestPasswordReset(
 			return successMsg, nil
 		}
 
-		ssoProviderLabel = s.providerLabelList(providers)
+		ssoProviderLabel = loc.ListOr(s.providerLabels(providers))
 	}
 
 	// Per-user cap: drop silently above the limit. Returning success keeps
@@ -2905,7 +2980,7 @@ func (s *Service) RequestPasswordReset(
 		templateData["Providers"] = ssoProviderLabel
 	}
 
-	s.enqueueEmail(ctx, "", req.Email, emailTemplate, templateData)
+	s.enqueueEmail(ctx, "", req.Email, emailTemplate, loc, templateData)
 
 	return successMsg, nil
 }
@@ -2961,13 +3036,13 @@ func (s *Service) providerLabel(providerType models.ProviderType) string {
 	}
 }
 
-// providerLabelList turns a user's linked providers into a deduplicated,
-// human-joined list ("Google", or "Google or GitHub" for two, or
-// "Google, GitHub or Microsoft" for three or more). Labels are sorted
-// alphabetically first so the email is deterministic regardless of the
-// order ListUserProvidersByUser happens to return (created_at DESC, which
-// ties when two providers are linked in the same request).
-func (s *Service) providerLabelList(providers []*models.UserProvider) string {
+// providerLabels turns a user's linked providers into the deduplicated
+// labels the email joins with i18n.Locale.ListOr ("Google, GitHub or
+// Microsoft", "Google, GitHub ou Microsoft"). Labels are sorted
+// alphabetically so the email is deterministic regardless of the order
+// ListUserProvidersByUser happens to return (created_at DESC, which ties when
+// two providers are linked in the same request).
+func (s *Service) providerLabels(providers []*models.UserProvider) []string {
 	seen := make(map[string]bool, len(providers))
 	labels := make([]string, 0, len(providers))
 
@@ -2983,61 +3058,18 @@ func (s *Service) providerLabelList(providers []*models.UserProvider) string {
 
 	sort.Strings(labels)
 
-	switch len(labels) {
-	case 0:
-		return ""
-	case 1:
-		return labels[0]
-	default:
-		return strings.Join(labels[:len(labels)-1], ", ") + " or " + labels[len(labels)-1]
-	}
+	return labels
 }
 
-// counterValue extracts the integer value from a state entry that holds
-// a {"count": N} payload. JSON marshaling promotes ints to float64 so we
-// accept both shapes; anything else is treated as zero.
-func counterValue(entry *models.StateEntry) int {
-	if entry == nil || entry.Value == nil {
-		return 0
-	}
-
-	switch raw := (*entry.Value)[stateValueKeyCount].(type) {
-	case float64:
-		return int(raw)
-	case int:
-		return raw
-	case int64:
-		return int(raw)
-	default:
-		return 0
-	}
-}
-
-// bumpCounter loads / increments / persists a counter at the given state
-// key, scoped to the supplied TTL. Reports whether the count was already
-// at or above the limit (in which case no bump happens).
+// bumpCounter atomically counts one attempt against the global counter at
+// key, on a sliding TTL. Reports whether the count was already at or above
+// the limit (in which case no bump happens). Concurrent callers on the same
+// key are serialized by the database (spec 2026-10-16-13), so a burst of N
+// parallel attempts spends N units of the budget, never one.
 func (s *Service) bumpCounter(
 	ctx context.Context, key string, limit int, ttl time.Duration,
 ) (bool, error) {
-	current, err := s.db.GetStateEntry(ctx, nil, key)
-	if err != nil {
-		return false, err
-	}
-
-	count := counterValue(current)
-
-	if count >= limit {
-		return true, nil
-	}
-
-	count++
-	value := &models.JSONMap{stateValueKeyCount: count}
-	scopedTTL := ttl
-	if err := s.db.SetStateEntry(ctx, nil, key, value, &scopedTTL); err != nil {
-		return false, err
-	}
-
-	return false, nil
+	return s.db.BumpGlobalCounter(ctx, key, limit, ttl)
 }
 
 // bumpResetUserCounter increments (or seeds) the per-user reset counter
@@ -3136,8 +3168,8 @@ func (s *Service) ResetPassword(ctx context.Context, req ResetPasswordRequest) (
 
 	// Confirmation email so the legitimate user sees a record of the
 	// change even if the attacker controls the password-reset link.
-	s.enqueueEmail(ctx, "", user.Email, "password-changed.html",
-		map[string]any{tmplKeyChangedAt: time.Now().UTC().Format(time.RFC1123)},
+	s.enqueueEmail(ctx, "", user.Email, "password-changed.html", recipient.ForUser(user),
+		map[string]any{tmplKeyChangedAt: time.Now().UTC()},
 	)
 
 	return &ResetPasswordResponse{
@@ -3243,8 +3275,8 @@ func (s *Service) ChangePassword(
 	}
 
 	// user.Email is already the new address when one was set.
-	s.enqueueEmail(ctx, "", user.Email, "password-changed.html",
-		map[string]any{tmplKeyChangedAt: time.Now().UTC().Format(time.RFC1123)},
+	s.enqueueEmail(ctx, "", user.Email, "password-changed.html", recipient.ForUser(user),
+		map[string]any{tmplKeyChangedAt: time.Now().UTC()},
 	)
 
 	return &ChangePasswordResponse{
@@ -3614,30 +3646,38 @@ func getAllowedInviteExpirations() map[string]time.Duration {
 // ErrInvalidExpiresIn is returned when an invalid expiresIn value is provided.
 var ErrInvalidExpiresIn = errors.New("invalid expiresIn: must be one of 1h, 6h, 12h, 24h, 48h, 1w")
 
-// inviteExpirationLabels maps each accepted expiresIn code to the
-// human-readable phrase shown in the invitation email ("This invitation
-// expires in ..."). Kept as a literal map (rather than deriving from
-// time.Duration.String(), which renders machine-ish output like "168h0m0s")
-// so the email always reads naturally. Keys mirror
-// getAllowedInviteExpirations exactly.
-func inviteExpirationLabels() map[string]string {
-	return map[string]string{
-		"1h":            "1 hour",
-		"6h":            "6 hours",
-		"12h":           "12 hours",
-		durationLabel24: "24 hours",
-		"48h":           "48 hours",
-		"1w":            "7 days",
+// inviteLifetime is how the invitation email words an expiresIn code: a count
+// of account.duration.hours or account.duration.days.
+type inviteLifetime struct {
+	count int
+	unit  string
+}
+
+// inviteLifetimes maps each accepted expiresIn code to the phrase shown in
+// the invitation email ("This invitation expires in ..."). Kept as a literal
+// map (rather than deriving from the time.Duration, which would read "168
+// hours" or need a rounding rule) so the email always reads naturally. Keys
+// mirror getAllowedInviteExpirations exactly.
+func inviteLifetimes() map[string]inviteLifetime {
+	const hours, days = "account.duration.hours", "account.duration.days"
+
+	return map[string]inviteLifetime{
+		"1h":            {1, hours},
+		"6h":            {6, hours},
+		"12h":           {12, hours},
+		durationLabel24: {24, hours},
+		"48h":           {48, hours},
+		"1w":            {7, days},
 	}
 }
 
-// humanizeInviteExpiresIn converts an expiresIn code (e.g. "24h") into the
-// human-readable phrase used in the invitation email. Falls back to the raw
-// code for any value outside getAllowedInviteExpirations — defensive only,
-// CreateInvitation already validates the code before this is ever called.
-func humanizeInviteExpiresIn(expiresIn string) string {
-	if label, ok := inviteExpirationLabels()[expiresIn]; ok {
-		return label
+// InviteExpiresIn words an expiresIn code (e.g. "24h") in loc for the
+// invitation email: "24 hours", "24 heures", "24 Stunden". Falls back to the
+// raw code for any value outside getAllowedInviteExpirations (defensive only:
+// CreateInvitation validates the code first). Exported for the email preview.
+func InviteExpiresIn(loc i18n.Locale, expiresIn string) string {
+	if lifetime, ok := inviteLifetimes()[expiresIn]; ok {
+		return loc.Tn(lifetime.unit, lifetime.count)
 	}
 
 	return expiresIn
@@ -3692,6 +3732,11 @@ type AcceptInviteRequest struct {
 	Token    string `json:"token"`
 	Name     string `json:"name"`
 	Password string `json:"password"`
+	// Locale and Timezone seed the preferences of an account created by the
+	// acceptance (an existing account keeps its own). Optional and lenient,
+	// like RegisterRequest's.
+	Locale   string `json:"locale,omitempty"`
+	Timezone string `json:"timezone,omitempty"`
 }
 
 // CreateInvitation creates an invitation for a user to join an organization.
@@ -3918,8 +3963,14 @@ func (s *Service) GetInviteInfo(ctx context.Context, token string) (*InviteInfoR
 
 // AcceptInvite accepts an invitation and creates/authenticates the user.
 //
-//nolint:cyclop,funlen // Invitation acceptance requires multiple steps
-func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*LoginResponse, error) {
+// callerUID is the UID of the authenticated caller, or "" for an anonymous
+// request. An invitation addressed to an existing account is accepted only by
+// that account, signed in: the invite token alone proves nothing, the inviter
+// holds it (spec 2026-10-16-06). Every check runs before any write, so a
+// refused attempt creates nothing and leaves the invitation in place.
+//
+//nolint:cyclop,funlen,gocritic // multiple steps; req is the decoded wire shape, passed by value
+func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest, callerUID string) (*LoginResponse, error) {
 	// Find the invitation across orgs. matchedEntry.Key is the key that
 	// actually matched (hashed, or legacy plaintext), so the deletes below
 	// must use it rather than recompute one.
@@ -3936,6 +3987,10 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*L
 	// Check if user exists
 	user, err := s.db.GetUserByEmail(ctx, inviteEmail)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+
+	if err = checkInviteCaller(user, callerUID); err != nil {
 		return nil, err
 	}
 
@@ -3956,6 +4011,7 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*L
 		user.Name = req.Name
 		user.PasswordHash = &hash
 		user.EmailVerifiedAt = &now
+		user.Preferences = signupPreferences(req.Locale, req.Timezone)
 
 		if createErr := createUserAndCapture(ctx, s.db, user, signupMethodInvite); createErr != nil {
 			return nil, fmt.Errorf("failed to create user: %w", createErr)
@@ -4053,6 +4109,26 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*L
 		Organization:  newOrganizationInfo(matchedOrg),
 		Organizations: orgSummaries,
 	}, nil
+}
+
+// checkInviteCaller decides who may accept an invitation. invitee is the
+// account the invited email belongs to (nil when there is none); callerUID is
+// the authenticated caller ("" when anonymous). UIDs are compared, never
+// email strings.
+func checkInviteCaller(invitee *models.User, callerUID string) error {
+	switch {
+	case invitee == nil && callerUID != "":
+		// Signed in, but the invitee has no account yet: the caller is not them.
+		return ErrInviteEmailMismatch
+	case invitee == nil:
+		return nil
+	case callerUID == "":
+		return ErrInviteLoginRequired
+	case callerUID != invitee.UID:
+		return ErrInviteEmailMismatch
+	default:
+		return nil
+	}
 }
 
 // OrgSettingsResponse contains org settings.
@@ -4474,24 +4550,32 @@ func (s *Service) sendInvitationEmail(
 		return false
 	}
 
-	inviterName := s.getInviterName(ctx, inviterUID)
+	inviter, err := s.db.GetUser(ctx, inviterUID)
+	if err != nil {
+		inviter = nil
+	}
+
+	// An invitee who already has an account reads its own language; a new
+	// address reads the inviter's, the best guess at hand.
+	loc := recipient.NewResolver(s.db).ForAddress(ctx, "", recipientEmail, recipient.HintFromUser(inviter))
 
 	viewModel := map[string]any{
 		"Role":        role,
-		"InviterName": inviterName,
+		"InviterName": inviterName(inviter),
 		"InviteURL":   inviteURL,
-		"ExpiresIn":   humanizeInviteExpiresIn(expiresIn),
+		"ExpiresIn":   InviteExpiresIn(loc, expiresIn),
 	}
 	email.ApplyOrgBranding(viewModel, org.Name, org.Slug, org.LogoURL)
 
-	queued := s.enqueueEmail(ctx, org.UID, recipientEmail, "invitation.html", viewModel)
+	queued := s.enqueueEmail(ctx, org.UID, recipientEmail, "invitation.html", loc, viewModel)
 
 	return s.fullCfg.Email.Enabled && queued
 }
 
-func (s *Service) getInviterName(ctx context.Context, inviterUID string) string {
-	inviter, err := s.db.GetUser(ctx, inviterUID)
-	if err != nil || inviter == nil {
+// inviterName is how the invitation names its sender: the name, else the
+// address, else "" (the email then words the invitation without a sender).
+func inviterName(inviter *models.User) string {
+	if inviter == nil {
 		return ""
 	}
 
@@ -4540,20 +4624,12 @@ func (s *Service) generate2FATempToken(userUID, orgSlug, role, method string) (s
 		},
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-
-	return token.SignedString([]byte(s.fullCfg.Auth.JWTSecret))
+	return s.signJWT(twoFAPurpose, claims)
 }
 
 // validate2FATempToken parses and validates a 2FA temporary token.
 func (s *Service) validate2FATempToken(tempToken string) (*TwoFAClaims, error) {
-	token, err := jwt.ParseWithClaims(tempToken, &TwoFAClaims{}, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("%w: %v", ErrUnexpectedSigningMethod, token.Header["alg"])
-		}
-
-		return []byte(s.fullCfg.Auth.JWTSecret), nil
-	})
+	token, err := s.parsePurposeJWT(tempToken, twoFAPurpose, &TwoFAClaims{})
 	if err != nil {
 		return nil, ErrInvalidToken
 	}

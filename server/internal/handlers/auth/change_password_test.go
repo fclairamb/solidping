@@ -2,6 +2,8 @@ package auth
 
 import (
 	"context"
+	"errors"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -267,6 +269,64 @@ func TestChangePasswordRateLimit(t *testing.T) {
 		NewPassword:     "brandnewpassword",
 	})
 	r.ErrorIs(err, ErrRateLimited)
+}
+
+// TestChangePasswordConcurrentBurstRateLimit is the race proof of spec
+// 2026-10-16-13: 20 parallel wrong-password attempts must spend 20 units of
+// the budget, so exactly changePasswordMaxPerUser of them reach the password
+// check and the rest are throttled.
+func TestChangePasswordConcurrentBurstRateLimit(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	svc, dbSvc, ctx := setupAuthTestService(t)
+	user := passwordResetUser(t, ctx, dbSvc, "ratelimit-burst@example.com")
+
+	const burst = 20
+
+	var (
+		wg      sync.WaitGroup
+		mu      sync.Mutex
+		invalid int
+		limited int
+		others  []error
+	)
+
+	start := make(chan struct{})
+
+	for range burst {
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+
+			<-start
+
+			_, err := svc.ChangePassword(ctx, user.UID, "", ChangePasswordRequest{
+				CurrentPassword: "guess",
+				NewPassword:     "brandnewpassword",
+			})
+
+			mu.Lock()
+			defer mu.Unlock()
+
+			switch {
+			case errors.Is(err, ErrInvalidCurrentPassword):
+				invalid++
+			case errors.Is(err, ErrRateLimited):
+				limited++
+			default:
+				others = append(others, err)
+			}
+		}()
+	}
+
+	close(start)
+	wg.Wait()
+
+	r.Empty(others)
+	r.Equal(changePasswordMaxPerUser, invalid, "exactly the budget may reach the password check")
+	r.Equal(burst-changePasswordMaxPerUser, limited)
 }
 
 // TestChangePasswordSuccessClearsRateLimitCounter keeps a legitimate user from

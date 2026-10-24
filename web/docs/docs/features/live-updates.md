@@ -172,6 +172,36 @@ with a fresh token and re-subscribe to whatever scopes you cared about.
 Hints carry no history, so reconnecting, re-subscribing, and refetching once
 is always correct.
 
+## Follow events from a program
+
+A script, bridge or AI agent that follows an org's alerts has to answer "what happened since
+the last thing I saw?" after every restart. Use two pieces:
+
+1. **Wake-up**: the WebSocket above, or the ntfy integration, tells you something changed.
+2. **Catch-up**: `order=asc` with a `cursor` returns what you missed, oldest first.
+
+```bash
+# First run: from the oldest event (add since=<timestamp> to start later).
+curl -H "Authorization: Bearer $TOKEN" \
+  'https://your-instance/api/v1/orgs/default/events?order=asc&limit=100'
+
+# Next runs: pass the cursor you stored after the previous page.
+curl -H "Authorization: Bearer $TOKEN" \
+  "https://your-instance/api/v1/orgs/default/events?order=asc&limit=100&cursor=$CURSOR"
+```
+
+Rules:
+
+- With `order=asc` the response **always** carries `pagination.cursor`, even on the last page.
+  An empty page returns the cursor you sent. Store it after each page.
+- The cursor is opaque. Pass it back verbatim.
+- Rows younger than 5 seconds are held back, so a row that commits slightly out of order is
+  never skipped. You see an event at most 5 s late.
+- `GET /incidents?order=asc&cursor=` lists **new** incidents. Changes to existing incidents
+  (acknowledged, resolved, reopened) are events: follow `GET /events?type=incident&order=asc`
+  for the full lifecycle.
+- The MCP `list_incidents` tool takes the same `cursor` and `order`.
+
 ## Operational notes
 
 ### PgBouncer and connection poolers

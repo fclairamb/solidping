@@ -21,6 +21,11 @@ all optional. It is normalized (unknown keys dropped, values capped at 200
 characters, `clickIdKind` limited to `gclid`/`gbraid`/`wbraid`/`msclkid`) and
 stored on the user at confirmation, never updated afterwards.
 
+`locale` and `timezone` (optional, spec 2026-10-21-01) are the browser's
+language and IANA zone. They become the account's starting `preferences` at
+confirmation. Lenient: `fr-FR` is stored as `fr`, an unsupported language or an
+unknown zone is dropped, never a `400`.
+
 **Anti-enumeration (spec 2026-09-25-30):** always answers `200` with the same
 `{ message }` body whether or not the email is already registered. An
 already-registered email creates no pending registration and sends no email —
@@ -42,7 +47,11 @@ Reset password using a reset token.
 Get invitation details by token (used to pre-fill the accept-invite form).
 
 ### POST /api/v1/auth/accept-invite
-Accept an organization invitation. Creates the user if needed and returns access token.
+Accept an organization invitation and return a session. Auth: optional.
+- No account for the invited email: anonymous, with a `password` (at least 8 characters); the account is created.
+- Existing account: must be signed in as that account. Anonymous gets 401 `INVITE_LOGIN_REQUIRED`; another signed-in account gets 403 `INVITE_EMAIL_MISMATCH` (spec 2026-10-16-06).
+- A presented but invalid credential gets 401 (no anonymous fallback). Refused under impersonation (403 `IMPERSONATION_FORBIDDEN`).
+- Optional `locale` and `timezone` seed the `preferences` of a newly created account, leniently as on register. An existing account keeps its own.
 
 ### POST /api/v1/auth/2fa/verify
 Verify a 2FA code during login (when login returns a 2FA challenge).
@@ -72,6 +81,11 @@ user out on a plain reload right after they deleted their own org; the user's
 authentication is intact, only their org context is gone, so the response
 degrades instead.
 
+`user.preferences` (spec 2026-10-21-01) is `{ locale?, timezone? }`: the
+language (`en`, `fr`, `de`, `es`) and IANA zone the server writes this user's
+emails in. Always present, `{}` when nothing is set (emails then use English and
+UTC). Every login-shaped response carries the same `user` object.
+
 ### PATCH /api/v1/auth/me
 Update the current user's profile. Auth: required. Refused for impersonation
 tokens (`403 IMPERSONATION_FORBIDDEN`).
@@ -83,6 +97,15 @@ address when email is enabled, and records `auth.email_changed`. Errors: `400
 VALIDATION_ERROR` (malformed), `403 INVALID_CURRENT_PASSWORD`, `403 FORBIDDEN`
 (password-less account), `403 DEMO_READ_ONLY`, `409 CONFLICT` (address taken,
 case-insensitive), `429 RATE_LIMITED` (shares the change-password counter).
+
+`preferences: { locale?, timezone? }` updates the email language and timezone
+field by field: an absent field is kept, `""` clears it, and a body with only
+`preferences` is valid. `locale` accepts a BCP 47 tag and stores its language
+(`fr-FR` becomes `fr`); anything outside `en`, `fr`, `de`, `es` is `400
+VALIDATION_ERROR`, as is a zone `time.LoadLocation` does not know (or `Local`).
+Nothing is written when a field is refused. Demo, impersonation and
+must-change-password sessions cannot reach this route (`403`), so clients must
+not try to sync preferences for them.
 
 ### GET /api/v1/me/ui-state/:key
 ### PUT /api/v1/me/ui-state/:key
@@ -120,6 +143,13 @@ Revoke the token the request is authenticated with (self-revoke / "sign out
 everywhere else" style flows). Auth: required. Registered **before** the
 `:tokenUid` param route so chi matches the literal `current` segment first —
 keep that ordering if the routes are ever reshuffled.
+
+It also accepts an MCP OAuth access token, which is otherwise refused on every
+REST route (spec 2026-10-16-12): dropping your own grant is never an
+escalation. The only other REST routes an MCP credential reaches are
+`GET /api/v1/auth/me` and `POST /api/v1/orgs/:org/tokens`, for the first-party
+`solidping-cli` client with the full `mcp` scope (legacy loopback CLI login,
+kept for two releases).
 
 ### DELETE /api/v1/auth/tokens/:tokenUid
 Revoke a personal access token. Auth: required

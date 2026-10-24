@@ -1,21 +1,27 @@
-import { useMemo } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { ZoomOut } from "lucide-react";
 import {
   Area,
   AreaChart,
   CartesianGrid,
+  Legend,
+  ReferenceArea,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
+  type MouseHandlerDataParam,
 } from "recharts";
 import { format } from "date-fns";
 
 import { useChartWindowResults } from "@/api/hooks";
-import type { TimeRange } from "@/lib/chart-window";
+import type { TimeRange, ZoomWindow } from "@/lib/chart-window";
 import { HTTP_TIMING_PHASES } from "@/lib/http-timing";
 import { buildTimingSeries } from "@/lib/http-timing-series";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ChartRangeControl } from "@/components/checks/chart-range-control";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -28,11 +34,24 @@ const PHASE_COLORS: Record<string, string> = {
   download: "var(--chart-6, #64748b)",
 };
 
+// Legend and tooltip follow the request order, not Recharts' alphabetical sort.
+const PHASE_ORDER: string[] = HTTP_TIMING_PHASES.map(({ id }) => id);
+
 interface TimingChartProps {
   org: string;
   checkUid: string;
   periodMs?: number;
   timeRange: TimeRange;
+  // Zoom window shared with the response time chart (graphFrom/graphTo).
+  zoomFrom?: number;
+  zoomTo?: number;
+  // Called on drag-release with the selected window, or with no window to reset.
+  onZoomChange?: (from?: number, to?: number) => void;
+}
+
+/** A zoom is active only for a well-formed forward window. */
+function zoomWindow(from?: number, to?: number): ZoomWindow | undefined {
+  return from != null && to != null && to > from ? { from, to } : undefined;
 }
 
 /**
@@ -45,14 +64,24 @@ export function TimingChart({
   checkUid,
   periodMs,
   timeRange,
+  zoomFrom,
+  zoomTo,
+  onZoomChange,
 }: TimingChartProps) {
   const { t } = useTranslation("checks");
+  const zoom = zoomWindow(zoomFrom, zoomTo);
   const { data, isLoading, isEmptyPending } = useChartWindowResults(
     org,
     checkUid,
-    { timeRange, periodMs },
+    { timeRange, periodMs, zoom },
     { withMetrics: true },
   );
+  // Drag-to-select zoom, same gesture as the response time chart. The refs
+  // hold the bounds for the release handler, the state only draws the band.
+  const dragStartRef = useRef<number | null>(null);
+  const dragEndRef = useRef<number | null>(null);
+  const [dragLeft, setDragLeft] = useState<number | null>(null);
+  const [dragRight, setDragRight] = useState<number | null>(null);
 
   const series = useMemo(() => buildTimingSeries(data.data), [data.data]);
 
@@ -76,31 +105,107 @@ export function TimingChart({
   const spanMs = series[series.length - 1].ts - series[0].ts;
   const fmt = spanMs > 36 * 3600_000 ? "MMM d" : "HH:mm";
 
+  const activeTs = (state: MouseHandlerDataParam): number | null => {
+    const ts = Number(state?.activeLabel);
+    return Number.isFinite(ts) ? ts : null;
+  };
+  const handleSelectStart = (state: MouseHandlerDataParam) => {
+    const ts = activeTs(state);
+    if (ts == null) return;
+    dragStartRef.current = ts;
+    dragEndRef.current = null;
+    setDragLeft(ts);
+    setDragRight(null);
+  };
+  const handleSelectMove = (state: MouseHandlerDataParam) => {
+    if (dragStartRef.current == null) return;
+    const ts = activeTs(state);
+    if (ts == null) return;
+    dragEndRef.current = ts;
+    setDragRight(ts);
+  };
+  const handleSelectEnd = () => {
+    const start = dragStartRef.current;
+    const end = dragEndRef.current;
+    dragStartRef.current = null;
+    dragEndRef.current = null;
+    setDragLeft(null);
+    setDragRight(null);
+    if (start == null || end == null) return;
+    const from = Math.min(start, end);
+    const to = Math.max(start, end);
+    // A near-zero drag is a click: require 1% of the visible span (floor 1s).
+    if (to - from < Math.max(spanMs * 0.01, 1000)) return;
+    onZoomChange?.(from, to);
+  };
+
   return (
-    <div className="h-64 w-full" data-testid="timing-chart">
+    <div
+      className="h-64 w-full select-none"
+      data-testid="timing-chart"
+      // Double-click anywhere on the chart resets an active zoom.
+      onDoubleClick={() => {
+        if (zoom) onZoomChange?.(undefined, undefined);
+      }}
+    >
       <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={series}>
-          <CartesianGrid strokeDasharray="3 3" vertical={false} />
+        <AreaChart
+          data={series}
+          onMouseDown={handleSelectStart}
+          onMouseMove={handleSelectMove}
+          onMouseUp={handleSelectEnd}
+          onMouseLeave={handleSelectEnd}
+          onTouchStart={handleSelectStart}
+          onTouchMove={handleSelectMove}
+          onTouchEnd={handleSelectEnd}
+        >
+          <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
           <XAxis
             dataKey="ts"
             type="number"
             domain={["dataMin", "dataMax"]}
             tickFormatter={(v: number) => format(new Date(v), fmt)}
-            tick={{ fontSize: 12 }}
+            className="text-xs"
+            tick={{ fill: "var(--muted-foreground)" }}
           />
-          <YAxis tick={{ fontSize: 12 }} unit=" ms" width={64} />
+          <YAxis
+            unit=" ms"
+            width={64}
+            className="text-xs"
+            tick={{ fill: "var(--muted-foreground)" }}
+          />
           <Tooltip
+            contentStyle={{
+              background: "var(--popover)",
+              color: "var(--popover-foreground)",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius-md)",
+              fontSize: "0.875rem",
+            }}
+            labelStyle={{ color: "var(--muted-foreground)" }}
+            itemStyle={{ color: "var(--popover-foreground)" }}
+            itemSorter={(item) => PHASE_ORDER.indexOf(String(item.dataKey))}
             labelFormatter={(v) => format(new Date(Number(v)), "PPpp")}
             formatter={(value, name) => [
               `${Math.round(Number(value) * 100) / 100} ms`,
               t(`timing.phase.${String(name)}`),
             ]}
           />
+          <Legend
+            iconType="square"
+            itemSorter={null}
+            formatter={(value) => (
+              <span className="text-xs text-muted-foreground">
+                {t(`timing.phase.${String(value)}`)}
+              </span>
+            )}
+          />
           {HTTP_TIMING_PHASES.map(({ id }) => (
             <Area
               key={id}
               type="monotone"
               dataKey={id}
+              name={id}
               stackId="timing"
               stroke={PHASE_COLORS[id]}
               fill={PHASE_COLORS[id]}
@@ -109,6 +214,16 @@ export function TimingChart({
               connectNulls
             />
           ))}
+          {dragLeft != null && dragRight != null && (
+            <ReferenceArea
+              x1={Math.min(dragLeft, dragRight)}
+              x2={Math.max(dragLeft, dragRight)}
+              fill="var(--primary)"
+              fillOpacity={0.12}
+              stroke="var(--primary)"
+              strokeOpacity={0.4}
+            />
+          )}
         </AreaChart>
       </ResponsiveContainer>
     </div>
@@ -146,18 +261,15 @@ export function ChartViewSwitch({ value, onChange }: ChartViewSwitchProps) {
   );
 }
 
-const RANGES: TimeRange[] = ["hour", "day", "week", "month"];
-
 interface TimingChartCardProps extends TimingChartProps {
-  view: ChartView;
-  onViewChange: (view: ChartView) => void;
   onTimeRangeChange: (range: TimeRange) => void;
 }
 
-/** The Timing view: replaces the response time chart while selected. */
+/**
+ * The Timing view: replaces the response time chart while selected. The
+ * "Response time | Timing" switch stays the page-level one above the card.
+ */
 export function TimingChartCard({
-  view,
-  onViewChange,
   onTimeRangeChange,
   ...chart
 }: TimingChartCardProps) {
@@ -166,18 +278,26 @@ export function TimingChartCard({
     <Card data-testid="timing-chart-card">
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
         <CardTitle>{t("timing.chartTitle")}</CardTitle>
-        <div className="flex flex-wrap items-center gap-2">
-          <SegmentedControl<TimeRange>
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          {zoomWindow(chart.zoomFrom, chart.zoomTo) && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => chart.onZoomChange?.(undefined, undefined)}
+              className="gap-1 px-2 text-xs"
+              data-testid="timing-chart-reset-zoom"
+            >
+              <ZoomOut className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">
+                {t("detail.chart.resetZoom")}
+              </span>
+            </Button>
+          )}
+          <ChartRangeControl
             value={chart.timeRange}
-            onValueChange={onTimeRangeChange}
-            aria-label={t("timing.chartTitle")}
-            options={RANGES.map((r) => ({
-              value: r,
-              label: t(`detail.chart.range${r[0].toUpperCase()}${r.slice(1)}`),
-              testId: `timing-range-${r}`,
-            }))}
+            onChange={onTimeRangeChange}
+            testIdPrefix="timing-range"
           />
-          <ChartViewSwitch value={view} onChange={onViewChange} />
         </div>
       </CardHeader>
       <CardContent>

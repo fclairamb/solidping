@@ -20,8 +20,7 @@ export interface ProgressProps extends React.HTMLAttributes<HTMLDivElement> {
  * clamped to [0, 100]% so an over-quota value (value > max) caps at full and
  * flips to the destructive color instead of overflowing the track.
  *
- * `indicatorClassName` recolors the fill through cn(), which drops the
- * gradient for a flat bg-<color> override (see lib/utils.ts).
+ * `indicatorClassName` recolors the fill through cn().
  */
 function Progress({
   value,
@@ -50,12 +49,10 @@ function Progress({
       <div
         className={cn(
           "h-full rounded-full transition-all",
-          // The fill is the decorative --accent-gradient over bg-primary. A
-          // full destructive bar must be RED: bg-none removes the gradient,
-          // which bg-destructive alone (a background-COLOR) would not.
+          // A full destructive bar is red; otherwise the primary gradient.
           destructiveWhenFull && isFull
-            ? "bg-none bg-destructive"
-            : "bg-primary bg-accent-gradient",
+            ? "bg-destructive"
+            : "bg-primary-fill bg-primary-gradient",
           indicatorClassName,
         )}
         style={{ width: `${pct}%` }}

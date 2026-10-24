@@ -54,11 +54,9 @@ Objections competitors or skeptics raise in comparisons — pre-think the answer
   region — strictly more flexible than a single-region SaaS. Make this explicit in
   EU copy.
 - **"Pulsetic tells me when Stripe or GitHub is down — SolidPing doesn't."** —
-  True, and it is the one capability gap that runs the wrong way. Dependency
-  monitoring (4,300+ third-party status pages) is not a probe, so protocol breadth
-  doesn't answer it. Two honest replies: it is email-only and read-only on their
-  side, and it is a small enough feature that it belongs on our roadmap rather than
-  in a rebuttal. See [pulsetic.md](pulsetic.md).
+  Partly true. The `vendor-status` check type covers about 40 popular providers and any
+  Statuspage v2 URL with any notification channel, but Pulsetic's catalog is 4,300+
+  services. Their monitor is email-only and read-only. See [pulsetic.md](pulsetic.md).
 - **"Pulsetic has 13 monitoring types too."** — Thirteen marketing names over six
   probe families (HTTP, ICMP, TCP, SSL, domain, heartbeat). No DNS, SMTP, IMAP, SSH,
   FTP, gRPC, WebSocket, UDP, database, queue or SNMP. Our 40 is derivable from the
@@ -135,13 +133,30 @@ competitor above can claim both at once:
 distributed probing or a hosted tier — that would close SolidPing's Axis-2 gap
 against the closest same-lane project.
 
+**Status update 2026-10-15 — "inside your network" has its first open-source
+copy.** The 2026-07-27 advice above was to lead with the half of Axis 2 nobody
+could copy: probes inside the customer's own network, self-hosted. Uptimy Agent
+(github.com/uptimy/agent, Apache-2.0 Go binary, created 2026-10-01, see
+[indie-watch.md](indie-watch.md)) now says it almost word for word: its cloud
+"watches from outside, from every continent", the open-source agent "watches
+from inside your cluster or network, where outside checks can't reach". It also
+ships a Kuma importer, a Railway one-click and a signed Helm chart.
+What it does not have is the combination: its agent is one vantage point, and
+multi-region lives only in the paid cloud. SolidPing can pin a check to several
+regions or private locations the customer runs and require `failQuorum` of them
+to fail before alerting (`web/docs/docs/features/region-placement.md`), self-hosted
+or on solidping.io, with 43 check types, on-call and MCP in the same binary. So the line to lead with narrows from
+"agents inside your network" to **"several vantage points you own, voting,
+self-hosted"**. Short version for copy: *your probes, your regions, your
+quorum.*
+
 **Market-exit opportunity (2026-07-12):** Freshping (Freshworks) shut down
 2026-03-06 — a free-tier incumbent left the market, and its users need a new home.
 This is a concrete, time-boxed displacement window: lead with "self-host it and it
 can't be sunset on you," plus a low-friction import path. See messaging hook #10.
 
 > **The import path is not hypothetical (verified 2026-08-01):** SolidPing ships
-> importers for Uptime Kuma, Gatus and Better Stack
+> importers for Uptime Kuma, Gatus, Better Stack and (since then) UptimeRobot
 > (`server/internal/handlers/checks/importers/`). Every displacement window in
 > this document — Freshping's shutdown, Peekaping's stall — has a concrete
 > operational answer we have so far failed to mention in copy. See

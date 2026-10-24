@@ -23,6 +23,19 @@ func TestProtectedResourceMetadataWellFormed(t *testing.T) {
 	require.NotEmpty(t, doc.BearerMethods)
 }
 
+func TestIsResourceIgnoresTheQuery(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	md := NewMetadata(testIssuer)
+
+	r.True(md.IsResource(testIssuer + "/api/v1/mcp"))
+	r.True(md.IsResource(testIssuer + "/api/v1/mcp?auth=required"))
+	r.True(md.IsResource(testIssuer + "/api/v1/mcp?toolsets=all&auth=required"))
+	r.False(md.IsResource(testIssuer + "/api/v1/mcp/other"))
+	r.False(md.IsResource("https://evil.example.com/api/v1/mcp?auth=required"))
+}
+
 func TestAuthorizationServerMetadataWellFormed(t *testing.T) {
 	t.Parallel()
 

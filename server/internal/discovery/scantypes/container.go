@@ -31,12 +31,37 @@ func (d *ContainerDefinition) Source() models.DiscoverySource {
 	return models.DiscoverySourceContainer
 }
 
+// ErrContainerNotAvailableMessage is the refusal message of a `container` scan
+// where docker checks are refused.
+const ErrContainerNotAvailableMessage = "container discovery is not available on this deployment: " +
+	"Docker endpoints can only be reached from a self-hosted server or an agent"
+
+// ContainerNotAvailable returns the coded refusal of a `container` scan when
+// dockerBlocked (the docker-check rule: SaaS and not an agent node), nil
+// otherwise. The job re-checks it at run time.
+func ContainerNotAvailable(dockerBlocked bool) error {
+	if dockerBlocked {
+		return NewError(CodeNotAvailable, ErrContainerNotAvailableMessage)
+	}
+
+	return nil
+}
+
+// Availability refuses `container` exactly where docker checks are refused.
+func (d *ContainerDefinition) Availability(deps Deps) error {
+	return ContainerNotAvailable(deps.DockerBlocked)
+}
+
 // BuildJob validates {hosts, timeout?} — at least one endpoint, each one
 // unix:// or tcp:// — and returns the container_discovery job to enqueue. A bad
 // endpoint scheme returns the foundation's DISCOVERY_INVALID_PARAMETERS.
 func (d *ContainerDefinition) BuildJob(
-	_ context.Context, _ Deps, _ string, parameters json.RawMessage,
+	_ context.Context, deps Deps, _, _ string, parameters json.RawMessage,
 ) (string, json.RawMessage, error) {
+	if err := d.Availability(deps); err != nil {
+		return "", nil, err
+	}
+
 	var params containerParams
 
 	if len(parameters) > 0 {

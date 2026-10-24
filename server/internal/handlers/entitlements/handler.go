@@ -50,7 +50,7 @@ const (
 	// flip, not a deploy.
 	ParamAllowLegacyServiceToken = "entitlements.allow_legacy_service_token"
 	ParamAdminWritesEnabled      = "entitlements.admin_writes_enabled"
-	ParamUpgradeURLTemplate      = "entitlements.upgrade_url_template"
+	ParamUpgradeURLTemplate      = entcore.ParamUpgradeURLTemplate
 	// ParamBillingInboundSecret is the shared BEARER credential presented on
 	// service calls between this instance and the billing service. Set to the
 	// same value as the billing service's BILLING_INBOUND_SECRET. It is NOT
@@ -469,6 +469,9 @@ func overlayLimits(dst *entcore.Limits, src *entcore.Limits) {
 	}
 	if src.MaxSlos != nil {
 		dst.MaxSlos = src.MaxSlos
+	}
+	if src.MaxDiscoveryAgentAddressesPerDay != nil {
+		dst.MaxDiscoveryAgentAddressesPerDay = src.MaxDiscoveryAgentAddressesPerDay
 	}
 	if src.WhiteLabel != nil {
 		dst.WhiteLabel = src.WhiteLabel

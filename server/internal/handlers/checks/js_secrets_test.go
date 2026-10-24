@@ -282,6 +282,10 @@ func TestJSSecretsAcceptEnvReferences(t *testing.T) {
 
 	t.Setenv("SP_TEST_JS_SECRET", jsEnvRefNeedle)
 
+	// The operator allowlists the variable (spec 2026-10-16-03).
+	allow := secretref.AllowEnvNames("SP_TEST_JS_SECRET")
+	rig.svc.SetEnvRefAllow(allow)
+
 	period := "5m"
 	_, err := rig.svc.CreateCheck(ctx, rig.org.Slug, checks.CreateCheckRequest{
 		Name: "JS env ref", Slug: "js-env-ref", Type: "js",
@@ -306,7 +310,7 @@ func TestJSSecretsAcceptEnvReferences(t *testing.T) {
 	r.NotContains(overlay, "secrets", "${env:} must NOT be resolved on the API side")
 
 	// The executing process is what materializes it.
-	resolved, _, err := secretref.ResolveConfig(ctx, effective, secretref.ExecutionResolver())
+	resolved, _, err := secretref.ResolveConfig(ctx, effective, secretref.ExecutionResolver(allow))
 	r.NoError(err)
 
 	output := runJS(t, resolved)

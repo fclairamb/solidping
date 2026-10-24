@@ -1,0 +1,41 @@
+{
+  "confirm": {
+    "subject": "Confirmez votre abonnement à {page}",
+    "preheader": "Confirmez votre adresse pour recevoir les mises à jour concernant {page}.",
+    "heading": "Confirmez votre abonnement",
+    "intro": "Vous avez demandé à recevoir les mises à jour concernant <strong>{page}</strong>. Confirmez votre adresse e-mail pour activer les notifications.",
+    "button": "Confirmer l'abonnement",
+    "ignore": "Si vous n'êtes pas à l'origine de cette demande, vous pouvez ignorer cet e-mail.",
+    "textIntro": "Vous avez demandé à recevoir les mises à jour de cette page de statut. Confirmez votre adresse e-mail :"
+  },
+  "update": {
+    "subject": "{page} : {title}",
+    "kind": {
+      "incidentOpened": "Nouvel incident",
+      "update": "Mise à jour",
+      "resolved": "Résolu"
+    },
+    "viewStatusPage": "Voir la page de statut",
+    "moreInfo": "Plus d'informations",
+    "reason": "Vous recevez cet e-mail dans le cadre de votre abonnement à {page}."
+  },
+  "landing": {
+    "confirmed": {
+      "title": "Abonnement confirmé",
+      "body": "Vous recevrez désormais les mises à jour concernant {page}."
+    },
+    "unsubscribed": {
+      "title": "Désabonnement confirmé",
+      "body": "Vous ne recevrez plus les mises à jour concernant {page}."
+    },
+    "expired": {
+      "title": "Lien expiré",
+      "body": "Ce lien n'est plus valide. Il a peut-être déjà été utilisé."
+    },
+    "failed": {
+      "title": "Une erreur s'est produite",
+      "body": "Veuillez réessayer plus tard."
+    },
+    "back": "Retour à la page de statut"
+  }
+}

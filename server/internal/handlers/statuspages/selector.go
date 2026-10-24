@@ -354,9 +354,9 @@ func (s *Service) dropManagedRows(ctx context.Context, pageUID string, state *se
 			continue
 		}
 
-		if err := s.deleteStatusPageResourceRow(
-			ctx, WritePathSelectorDropManagedRows, pageUID, resource.UID,
-		); err != nil {
+		if err := ignoreResourceGone(s.deleteStatusPageResourceRow(
+			ctx, WritePathSelectorDropManagedRows, pageUID, state.section.UID, resource.UID,
+		)); err != nil {
 			return err
 		}
 	}
@@ -432,9 +432,9 @@ func (s *Service) reconcileSection(
 			continue
 		}
 
-		if delErr := s.deleteStatusPageResourceRow(
-			ctx, WritePathSelectorReconcileSection, pageUID, resource.UID,
-		); delErr != nil {
+		if delErr := ignoreResourceGone(s.deleteStatusPageResourceRow(
+			ctx, WritePathSelectorReconcileSection, pageUID, state.section.UID, resource.UID,
+		)); delErr != nil {
 			return delErr
 		}
 
@@ -476,9 +476,9 @@ func (s *Service) materialize(
 		}
 
 		update := &models.StatusPageResourceUpdate{Position: &position}
-		if err := s.writeStatusPageResourceRow(
-			ctx, WritePathSelectorMaterialize, pageUID, resource.UID, update,
-		); err != nil {
+		if err := ignoreResourceGone(s.writeStatusPageResourceRow(
+			ctx, WritePathSelectorMaterialize, pageUID, sectionUID, resource.UID, update,
+		)); err != nil {
 			return err
 		}
 	}
@@ -601,12 +601,23 @@ func (s *Service) dropManagedRowForCheck(ctx context.Context, pageUID, sectionUI
 			continue
 		}
 
-		if errDelete := s.deleteStatusPageResourceRow(
-			ctx, WritePathSelectorDropRowForCheck, pageUID, resource.UID,
-		); errDelete != nil {
+		if errDelete := ignoreResourceGone(s.deleteStatusPageResourceRow(
+			ctx, WritePathSelectorDropRowForCheck, pageUID, sectionUID, resource.UID,
+		)); errDelete != nil {
 			return errDelete
 		}
 	}
 
 	return nil
+}
+
+// ignoreResourceGone treats a row that vanished between the reconciler's list
+// and its write (a concurrent delete) as done: the section-scoped writes answer
+// sql.ErrNoRows then, where the old UID-only writes silently affected 0 rows.
+func ignoreResourceGone(err error) error {
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+
+	return err
 }

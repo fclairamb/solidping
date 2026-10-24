@@ -76,39 +76,41 @@ func TestCheckTypesRefuseLoopbackTargetsUnderAnEnforcingPolicy(t *testing.T) {
 	require.NoError(t, err)
 
 	cases := map[checkerdef.CheckType]map[string]any{
-		checkerdef.CheckTypeHTTP:       {"url": httpServer.URL},
-		checkerdef.CheckTypePrometheus: {"url": httpServer.URL + "/metrics"},
-		checkerdef.CheckTypeTCP:        {"host": host, "port": port},
-		checkerdef.CheckTypeSSL:        {"host": host, "port": port},
-		checkerdef.CheckTypeSSH:        {"host": host, "port": port},
-		checkerdef.CheckTypeSMTP:       {"host": host, "port": port},
-		checkerdef.CheckTypeRedis:      {"host": host, "port": port},
-		checkerdef.CheckTypePostgreSQL: {"host": host, "port": port, "username": "u", "database": "d"},
-		checkerdef.CheckTypeMySQL:      {"host": host, "port": port, "username": "u"},
-		checkerdef.CheckTypeMSSQL:      {"host": host, "port": port, "username": "u", "password": "p"},
-		checkerdef.CheckTypeOracle:     {"host": host, "port": port, "username": "u", "password": "p", "serviceName": "s"},
-		checkerdef.CheckTypeMongoDB:    {"host": host, "port": port, "timeout": "1s"},
-		checkerdef.CheckTypeClickHouse: {"host": host, "port": port},
-		checkerdef.CheckTypePOP3:       {"host": host, "port": port},
-		checkerdef.CheckTypeIMAP:       {"host": host, "port": port},
-		checkerdef.CheckTypeFTP:        {"host": host, "port": port},
-		checkerdef.CheckTypeSFTP:       {"host": host, "port": port, "username": "u", "password": "p"},
-		checkerdef.CheckTypeGRPC:       {"host": host, "port": port},
-		checkerdef.CheckTypeKafka:      {"brokers": []any{ln.Addr().String()}},
-		checkerdef.CheckTypeMQTT:       {"host": host, "port": port},
-		checkerdef.CheckTypeRabbitMQ:   {"host": host, "port": port},
-		checkerdef.CheckTypeRDP:        {"host": host, "port": port},
-		checkerdef.CheckTypeVNC:        {"host": host, "port": port},
-		checkerdef.CheckTypeSIP:        {"host": host, "port": port, "transport": "tcp"},
-		checkerdef.CheckTypeUDP:        {"host": host, "port": port},
-		checkerdef.CheckTypeNTP:        {"host": host, "port": port},
-		checkerdef.CheckTypeSNMP:       {"host": host, "port": port},
-		checkerdef.CheckTypeA2S:        {"host": host, "port": port},
-		checkerdef.CheckTypeMinecraft:  {"host": host, "port": port},
-		checkerdef.CheckTypeICMP:       {"host": host},
-		checkerdef.CheckTypeDNS:        {"host": "acme.com", "nameserver": host + ":53"},
-		checkerdef.CheckTypeDNSBL:      {"target": "8.8.8.8", "nameserver": host + ":53"},
-		checkerdef.CheckTypeWebSocket:  {"url": "ws://" + ln.Addr().String() + "/"},
+		checkerdef.CheckTypeHTTP:         {"url": httpServer.URL},
+		checkerdef.CheckTypePrometheus:   {"url": httpServer.URL + "/metrics"},
+		checkerdef.CheckTypeVendorStatus: {"url": httpServer.URL},
+		checkerdef.CheckTypeTCP:          {"host": host, "port": port},
+		checkerdef.CheckTypeSSL:          {"host": host, "port": port},
+		checkerdef.CheckTypeSSH:          {"host": host, "port": port},
+		checkerdef.CheckTypeSMTP:         {"host": host, "port": port},
+		checkerdef.CheckTypeRedis:        {"host": host, "port": port},
+		checkerdef.CheckTypePostgreSQL:   {"host": host, "port": port, "username": "u", "database": "d"},
+		checkerdef.CheckTypeMySQL:        {"host": host, "port": port, "username": "u"},
+		checkerdef.CheckTypeMSSQL:        {"host": host, "port": port, "username": "u", "password": "p"},
+		checkerdef.CheckTypeOracle:       {"host": host, "port": port, "username": "u", "password": "p", "serviceName": "s"},
+		checkerdef.CheckTypeMongoDB:      {"host": host, "port": port, "timeout": "1s"},
+		checkerdef.CheckTypeClickHouse:   {"host": host, "port": port},
+		checkerdef.CheckTypePOP3:         {"host": host, "port": port},
+		checkerdef.CheckTypeIMAP:         {"host": host, "port": port},
+		checkerdef.CheckTypeFTP:          {"host": host, "port": port},
+		checkerdef.CheckTypeSFTP:         {"host": host, "port": port, "username": "u", "password": "p"},
+		checkerdef.CheckTypeGRPC:         {"host": host, "port": port},
+		checkerdef.CheckTypeKafka:        {"brokers": []any{ln.Addr().String()}},
+		checkerdef.CheckTypeMQTT:         {"host": host, "port": port},
+		checkerdef.CheckTypeRabbitMQ:     {"host": host, "port": port},
+		checkerdef.CheckTypeRDP:          {"host": host, "port": port},
+		checkerdef.CheckTypeVNC:          {"host": host, "port": port},
+		checkerdef.CheckTypeSIP:          {"host": host, "port": port, "transport": "tcp"},
+		checkerdef.CheckTypeUDP:          {"host": host, "port": port},
+		checkerdef.CheckTypeNTP:          {"host": host, "port": port},
+		checkerdef.CheckTypeSNMP:         {"host": host, "port": port},
+		checkerdef.CheckTypeA2S:          {"host": host, "port": port},
+		checkerdef.CheckTypeMinecraft:    {"host": host, "port": port},
+		checkerdef.CheckTypeICMP:         {"host": host},
+		checkerdef.CheckTypeDNS:          {"host": "acme.com", "nameserver": host + ":53"},
+		checkerdef.CheckTypeDNSBL:        {"target": "8.8.8.8", "nameserver": host + ":53"},
+		checkerdef.CheckTypeWebSocket:    {"url": "ws://" + ln.Addr().String() + "/"},
+		checkerdef.CheckTypeDocker:       {"host": "tcp://" + ln.Addr().String(), "containerName": "web"},
 		checkerdef.CheckTypeJS: {"script": fmt.Sprintf(
 			`var r = solidping.check("http", { url: %q }); return { status: r.status, output: r.output };`,
 			httpServer.URL,
@@ -127,4 +129,95 @@ func TestCheckTypesRefuseLoopbackTargetsUnderAnEnforcingPolicy(t *testing.T) {
 			require.NotContains(t, text, "denied by egress policy")
 		})
 	}
+}
+
+// A docker sub-check nested in a js script used to dial its host on the
+// docker client's own transport, ignoring the guard on the execution context
+// (spec 2026-10-16-09): a script could probe the worker's local socket or any
+// internal tcp:// endpoint. Both must now be refused with an egress denial;
+// the permissive run of the same script is the positive control.
+func TestJSDockerSubCheckIsRefusedByAnEnforcingGuard(t *testing.T) {
+	t.Parallel()
+
+	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = ln.Close() })
+
+	go func() {
+		for {
+			conn, acceptErr := ln.Accept()
+			if acceptErr != nil {
+				return
+			}
+
+			_ = conn.Close()
+		}
+	}()
+
+	hosts := map[string]string{
+		"tcp":  "tcp://" + ln.Addr().String(),
+		"unix": "unix:///should-never-be-dialed-2026-10-16-09.sock",
+	}
+
+	for name, host := range hosts {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			cfgMap := map[string]any{"script": fmt.Sprintf(
+				`var r = solidping.check("docker", { host: %q, containerName: "web" }); `+
+					`return { status: r.status, output: r.output };`,
+				host,
+			)}
+
+			denied, text := runRegistered(t, egress.New(false), checkerdef.CheckTypeJS, cfgMap)
+			require.NotNil(t, denied, "a nested docker sub-check must be refused by the guard, got %s", text)
+
+			allowed, text := runRegistered(t, egress.New(true), checkerdef.CheckTypeJS, cfgMap)
+			require.Nil(t, allowed, "a permissive guard must not refuse it, got %s", text)
+			require.NotContains(t, text, "denied by egress policy")
+		})
+	}
+}
+
+// A MySQL password injecting its own `@tcp(<loopback>)/` used to consume the
+// one-shot DSN rewrite to the guarded network, so the real dial went out on a
+// plain net.Dialer with no refusal recorded (spec 2026-10-16-04). The guard
+// must still refuse the loopback target; the permissive run is the control.
+func TestMySQLCraftedPasswordCannotShedTheEgressGuard(t *testing.T) {
+	t.Parallel()
+
+	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = ln.Close() })
+
+	go func() {
+		for {
+			conn, acceptErr := ln.Accept()
+			if acceptErr != nil {
+				return
+			}
+
+			_ = conn.Close()
+		}
+	}()
+
+	host, portStr, err := net.SplitHostPort(ln.Addr().String())
+	require.NoError(t, err)
+	port, err := strconv.Atoi(portStr)
+	require.NoError(t, err)
+
+	cfgMap := map[string]any{
+		"host":     host,
+		"port":     port,
+		"username": "u",
+		"password": "X@tcp(" + ln.Addr().String() + ")/e",
+		"timeout":  "2s",
+	}
+
+	denied, text := runRegistered(t, egress.New(false), checkerdef.CheckTypeMySQL, cfgMap)
+	require.NotNil(t, denied, "a crafted password must not shed the guard, got %s", text)
+
+	allowed, text := runRegistered(t, egress.New(true), checkerdef.CheckTypeMySQL, cfgMap)
+	require.Nil(t, allowed, "a permissive guard must not refuse, got %s", text)
+	require.NotContains(t, text, "denied by egress policy")
 }

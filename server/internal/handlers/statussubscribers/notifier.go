@@ -8,8 +8,12 @@ import (
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/egress"
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/handlers/statusupdates"
+	"github.com/fclairamb/solidping/server/internal/httpclientpool"
+	"github.com/fclairamb/solidping/server/internal/i18n"
+	"github.com/fclairamb/solidping/server/internal/i18n/recipient"
 )
 
 // Compile-time assertion that *Notifier satisfies the statusupdates fan-out hook.
@@ -89,15 +93,26 @@ type Notifier struct {
 	// creds opens the encrypted delivery endpoints. nil is legal (self-hosted
 	// with no master key); plaintext envelopes still open.
 	creds credentials.Service
+	// guard is the process's egress policy for outbound notification
+	// deliveries. Every endpoint URL is checked against it right before a
+	// delivery, and the default client dials through it, so a redirect or a
+	// DNS change cannot steer a delivery into the server's own network. nil
+	// means "no policy" (allow everything).
+	guard *egress.Guard
 	// httpClient delivers webhook/slack payloads. Injectable so tests can
 	// point it at an httptest server.
 	httpClient *http.Client
 }
 
 // NewNotifier builds a subscriber fan-out notifier.
+//
+// guard is a required parameter, not a setter, so no construction site can
+// forget the egress policy: a subscriber endpoint is a customer-supplied URL,
+// and an unguarded client following a redirect into 169.254.169.254 or a 10.x
+// service is a plain SSRF.
 func NewNotifier(
 	dbService db.Service, sender email.Sender, formatter email.Formatter, baseURL string,
-	logger *slog.Logger, creds credentials.Service,
+	logger *slog.Logger, creds credentials.Service, guard *egress.Guard,
 ) *Notifier {
 	if logger == nil {
 		logger = slog.Default()
@@ -105,8 +120,8 @@ func NewNotifier(
 
 	return &Notifier{
 		db: dbService, sender: sender, formatter: formatter, baseURL: baseURL,
-		logger: logger, creds: creds,
-		httpClient: &http.Client{Timeout: deliveryTimeout},
+		logger: logger, creds: creds, guard: guard,
+		httpClient: httpclientpool.NewGuardedClient(deliveryTimeout, guard),
 	}
 }
 
@@ -139,6 +154,7 @@ func (n *Notifier) notify(ctx context.Context, event *UpdateEvent) {
 	}
 
 	kind := mailKindForUpdate(event)
+	localeOf := subscriberLocales(ctx, n.db)
 
 	for _, sub := range subs {
 		// A subscriber the circuit breaker disabled is skipped but NOT deleted:
@@ -157,7 +173,7 @@ func (n *Notifier) notify(ctx context.Context, event *UpdateEvent) {
 				continue
 			}
 
-			n.sendOne(ctx, sub, event, kind)
+			n.sendOne(ctx, sub, event, kind, localeOf(sub))
 		default:
 			// An unknown channel is a row written by a NEWER version of the
 			// server than this process. Skipping is right; silence is not.
@@ -167,10 +183,68 @@ func (n *Notifier) notify(ctx context.Context, event *UpdateEvent) {
 	}
 }
 
-// sendOne renders and sends a single subscriber EMAIL message. Emails are PII, so the
+// subscriberLocales returns the language each subscriber of one status page
+// reads their mail in (spec 2026-10-21-01, decision 6): their own account's
+// preferences when the address has one, else the page's language, else
+// English. UTC unless the account sets a zone: a status page has none. The
+// page is read once, on the first call, so every subscriber passed must be on
+// the same page (a fan-out wave is); the resolver caches each address.
+func subscriberLocales(ctx context.Context, dbService db.Service) func(*models.StatusPageSubscriber) i18n.Locale {
+	var (
+		resolver *recipient.Resolver
+		hint     recipient.Hint
+	)
+
+	return func(sub *models.StatusPageSubscriber) i18n.Locale {
+		if resolver == nil {
+			resolver = recipient.NewResolver(dbService)
+			hint = recipient.Hint{Locale: pageLanguage(ctx, dbService, sub.OrganizationUID, sub.StatusPageUID)}
+		}
+
+		return resolver.ForAddress(ctx, "", sub.EmailAddress(), hint)
+	}
+}
+
+// pageLanguage is the language column of a status page, "" when it is unset or
+// the page cannot be read (the reader then gets English).
+func pageLanguage(ctx context.Context, dbService db.Service, orgUID, statusPageUID string) string {
+	if dbService == nil {
+		return ""
+	}
+
+	page, err := dbService.GetStatusPage(ctx, orgUID, statusPageUID)
+	if err != nil || page == nil || page.Language == nil {
+		if err != nil {
+			slog.DebugContext(ctx, "status subscriber locale: page lookup failed",
+				"statusPageUid", statusPageUID, "error", err)
+		}
+
+		return ""
+	}
+
+	return *page.Language
+}
+
+// LabelIn is the banner of an update message (its eyebrow, and the start of
+// its preheader), in the reader's language. In English it is label(), word
+// for word, for every kind but the confirm mail, which shows no banner.
+func (k MailKind) LabelIn(loc i18n.Locale) string {
+	switch k {
+	case MailKindIncidentOpened:
+		return loc.T("subscriber.update.kind.incidentOpened")
+	case MailKindResolved:
+		return loc.T("subscriber.update.kind.resolved")
+	case MailKindConfirm, MailKindUpdate:
+		return loc.T("subscriber.update.kind.update")
+	default:
+		return loc.T("subscriber.update.kind.update")
+	}
+}
+
+// sendOne renders and sends a single subscriber EMAIL message, in loc. Emails are PII, so the
 // recipient address is never logged in clear — only the subscriber UID.
 func (n *Notifier) sendOne(
-	ctx context.Context, sub *models.StatusPageSubscriber, event *UpdateEvent, kind MailKind,
+	ctx context.Context, sub *models.StatusPageSubscriber, event *UpdateEvent, kind MailKind, loc i18n.Locale,
 ) {
 	data := &MailData{
 		PageName:       event.PageName,
@@ -184,8 +258,7 @@ func (n *Notifier) sendOne(
 	}
 
 	viewModel := map[string]any{
-		"Subject":                  kind.subject(data),
-		"Label":                    kind.label(),
+		"Label":                    kind.LabelIn(loc),
 		"Title":                    data.Title,
 		"BodyMarkdown":             data.BodyMarkdown,
 		"LinkURL":                  data.LinkURL,
@@ -197,7 +270,8 @@ func (n *Notifier) sendOne(
 	// SolidPing" footer line can reach a subscriber.
 	email.ApplyStatusPageBranding(viewModel, event.PageName, event.PageLogoURL, event.PageHideBranding)
 
-	subject, htmlBody, textBody, err := n.formatter.Format("status-subscriber-update.html", viewModel)
+	subject, htmlBody, textBody, err := n.formatter.Format(
+		"status-subscriber-update.html", loc, viewModel)
 	if err != nil {
 		n.logger.ErrorContext(ctx, "status subscriber fan-out: failed to format mail",
 			"subscriberUid", sub.UID, "statusPageUid", event.StatusPageUID, "error", err)
@@ -211,6 +285,8 @@ func (n *Notifier) sendOne(
 		HTML:             htmlBody,
 		Text:             textBody,
 		SupportReplyable: email.SupportReplyable("status-subscriber-update.html"),
+		Locale:           loc.Lang(),
+		Timezone:         loc.Timezone(),
 	}
 
 	if _, err := n.sender.Send(ctx, msg); err != nil {

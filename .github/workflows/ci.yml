@@ -111,7 +111,7 @@ jobs:
 
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.27"
+          go-version-file: server/go.mod
           cache-dependency-path: server/go.sum
 
       - name: Create embed placeholders for lint/test
@@ -203,7 +203,7 @@ jobs:
         uses: golangci/golangci-lint-action@v9.3.0
         with:
           # https://github.com/golangci/golangci-lint/releases
-          version: v2.14.0
+          version: v2.15.0
           install-mode: goinstall
           working-directory: server
           # only-new-issues: true
@@ -247,7 +247,7 @@ jobs:
 
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.27"
+          go-version-file: server/go.mod
           cache-dependency-path: server/go.sum
 
       # embedded-postgres downloads a ~100 MB Postgres distribution on first use
@@ -309,7 +309,7 @@ jobs:
       - name: Backend coverage gate
         if: ${{ !cancelled() }}
         env:
-          COVERAGE_MIN: "80"
+          COVERAGE_MIN: "84"
         run: |
           set -euo pipefail
           ../scripts/coverage.sh filter "$RUNNER_TEMP/coverage.raw.out" coverage.out
@@ -323,7 +323,7 @@ jobs:
       - name: Publish coverage badge
         if: ${{ success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'fclairamb/solidping' }}
         env:
-          COVERAGE_MIN: "80"
+          COVERAGE_MIN: "84"
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
@@ -587,6 +587,16 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: docker compose -f deploy/coolify/solidping.yaml config
 
+      # deploy/railway/.railway/railway.ts is Railway Infrastructure as Code,
+      # linked from installation/railway.md. Type-check it against the SDK so
+      # an API change in `railway/iac` fails here, not on a user's apply.
+      - name: Type-check Railway config
+        working-directory: ${{ github.workspace }}/deploy/railway
+        run: |
+          npm install --no-save --no-package-lock railway typescript@5
+          npx tsc --noEmit --strict --module nodenext --moduleResolution nodenext \
+            --target es2022 --skipLibCheck .railway/railway.ts
+
   build:
     name: Build Binary
     runs-on: ubuntu-26.04
@@ -597,7 +607,7 @@ jobs:
 
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.27"
+          go-version-file: server/go.mod
           cache-dependency-path: server/go.sum
 
       - name: Download dash0 dist
@@ -656,7 +666,7 @@ jobs:
 
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.27"
+          go-version-file: server/go.mod
           cache-dependency-path: server/go.sum
 
       - name: Download dash0 dist
@@ -711,7 +721,7 @@ jobs:
           docker build --target backend-deps -f Dockerfile .
           docker build --target deps -f Dockerfile.sp .
 
-      # Compile-only guard for the four targets server-release (tag-triggered,
+      # Compile-only guard for the five targets server-release (tag-triggered,
       # below) publishes besides linux/amd64. That job cannot run on a PR — it
       # is gated on refs/tags/ — so this is the only place a broken
       # cross-build gets caught before a real tag exists. Same CGO_ENABLED=0
@@ -725,7 +735,7 @@ jobs:
           COMMIT=$(git rev-parse --short HEAD)
           GIT_TIME=$(TZ=UTC git log -1 --format=%cd --date=format-local:%Y-%m-%dT%H:%M:%SZ)
 
-          for target in linux/arm64 windows/amd64 darwin/amd64 darwin/arm64; do
+          for target in linux/arm64 linux/riscv64 windows/amd64 darwin/amd64 darwin/arm64; do
             os="${target%/*}"
             arch="${target#*/}"
 
@@ -756,6 +766,14 @@ jobs:
   e2e-tests:
     name: E2E Tests (${{ matrix.shard }}/2)
     runs-on: ubuntu-26.04
+    # docker-compose.yml publishes Postgres on 55432 by default, inside the
+    # kernel's ephemeral range (32768-60999). An outgoing connection can hold it
+    # as its source port and `docker compose up` then fails with "address already
+    # in use" (runs 38346124209, 39863144085). Reserving it with
+    # ip_local_reserved_ports did not help: sockets opened before that step,
+    # such as the runner's own, keep it. 25432 is below the range.
+    env:
+      SP_PG_HOST_PORT: "25432"
     # ~41 min of dash0 specs on one worker as of 2026-10-09, so ~21 min per
     # shard plus its extra suite. The known Playwright-install hang is bounded
     # by the per-attempt timeout on that step, not by this.
@@ -773,14 +791,6 @@ jobs:
         working-directory: web/dash0
     steps:
       - uses: actions/checkout@v7
-
-      # docker-compose.yml publishes Postgres on 55432, which is inside the
-      # kernel's ephemeral range (32768-60999). An outgoing connection made by
-      # an earlier step (bun install, artifact or image download) can get 55432
-      # as its source port, and `docker compose up` then fails with "address
-      # already in use" (run 38346124209). Reserving it keeps it out of the pool.
-      - name: Reserve the Postgres host port
-        run: sudo sysctl -w net.ipv4.ip_local_reserved_ports=55432
 
       - uses: oven-sh/setup-bun@v2
 
@@ -864,7 +874,7 @@ jobs:
           # docker-compose/scripts/init-db.sh's provisioned `solidping` role.
           # See spec 2026-07-06-02.
           SP_DB_TYPE: postgres
-          SP_DB_URL: postgres://solidping:solidping@localhost:55432/solidping?sslmode=disable
+          SP_DB_URL: postgres://solidping:solidping@localhost:25432/solidping?sslmode=disable
           SP_SERVER_RATE_LIMITING_REQUESTS_PER_MINUTE: "0"
           SP_SERVER_RATE_LIMITING_MAX_CONCURRENT: "0"
           # Self-registration is off unless auth.registration_email_pattern is
@@ -875,6 +885,8 @@ jobs:
           # bound by koanf's env loader (which collapses every underscore to a
           # dot); it works because systemconfig declares this exact EnvVar.
           SP_AUTH_REGISTRATION_EMAIL_PATTERN: ".*"
+          # The reference plugin (x-gopher), for checker-plugins.spec.ts.
+          SP_PLUGINS_DIR: ${{ github.workspace }}/plugins
 
       # A second server on its own database, for the shard's second Playwright
       # worker (E2E_BASE_URLS below, web/dash0/e2e/base-url.ts). Each worker
@@ -895,10 +907,11 @@ jobs:
           SP_RUNMODE: test
           SP_DB_RESET: "true"
           SP_DB_TYPE: postgres
-          SP_DB_URL: postgres://solidping:solidping@localhost:55432/solidping_w1?sslmode=disable
+          SP_DB_URL: postgres://solidping:solidping@localhost:25432/solidping_w1?sslmode=disable
           SP_SERVER_RATE_LIMITING_REQUESTS_PER_MINUTE: "0"
           SP_SERVER_RATE_LIMITING_MAX_CONCURRENT: "0"
           SP_AUTH_REGISTRATION_EMAIL_PATTERN: ".*"
+          SP_PLUGINS_DIR: ${{ github.workspace }}/plugins
 
       - name: Wait for servers
         run: |
@@ -994,7 +1007,7 @@ jobs:
           PORT: "4001"
           SP_RUNMODE: test
           SP_DB_TYPE: postgres
-          SP_DB_URL: postgres://solidping:solidping@localhost:55432/solidping?sslmode=disable
+          SP_DB_URL: postgres://solidping:solidping@localhost:25432/solidping?sslmode=disable
           SP_AUTH_ACCESS_TOKEN_EXPIRY: "10s"
           SP_SERVER_RATE_LIMITING_REQUESTS_PER_MINUTE: "0"
           SP_SERVER_RATE_LIMITING_MAX_CONCURRENT: "0"
@@ -1135,11 +1148,70 @@ jobs:
           path: web/dash0/playwright-report/
           retention-days: 7
 
+  # Spec 2026-10-17-01: nothing else boots a released version and then HEAD on the
+  # database it left behind (v0.38.4 broke every upgrade from v0.38.1..v0.38.3
+  # that way). The legs come from `scripts/upgrade-test.sh --matrix`, so the
+  # versions are never listed by hand here. Release-please PRs run it too: a
+  # release is exactly when an upgrade must be proven.
+  upgrade-matrix:
+    name: Upgrade Matrix
+    runs-on: ubuntu-26.04
+    needs: [changes]
+    if: ${{ !startsWith(github.ref, 'refs/tags/') && needs.changes.outputs.code == 'true' }}
+    outputs:
+      legs: ${{ steps.matrix.outputs.legs }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: List the upgrade legs
+        id: matrix
+        run: |
+          set -euo pipefail
+          legs=$(scripts/upgrade-test.sh --matrix | jq -R -s -c 'split("\n") | map(select(length > 0) | split(" ") | {engine: .[0], tag: .[1]})')
+          echo "$legs"
+          echo "legs=$legs" >> "$GITHUB_OUTPUT"
+
+  upgrade:
+    name: Upgrade ${{ matrix.engine }} from ${{ matrix.tag }}
+    runs-on: ubuntu-26.04
+    needs: [changes, upgrade-matrix]
+    if: ${{ !startsWith(github.ref, 'refs/tags/') && needs.changes.outputs.code == 'true' }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.upgrade-matrix.outputs.legs) }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+
+      # Own Go-only build, not the `build` job's artifact: `build` (and the
+      # frontends it needs) skips on release-please PRs, which must still run
+      # this job. The upgrade path needs no embedded UI.
+      - name: Build binary
+        working-directory: server
+        run: go build -o ../solidping .
+
+      - name: Upgrade ${{ matrix.tag }} to HEAD
+        run: |
+          set -euo pipefail
+          command -v sqlite3 >/dev/null || sudo apt-get install -y sqlite3
+          chmod +x solidping
+          HEAD_BIN="$PWD/solidping" scripts/upgrade-test.sh "${{ matrix.engine }}" "${{ matrix.tag }}"
+
 
   ci:
     name: CI
     runs-on: ubuntu-26.04
-    needs: [changes, backend-lint, backend-postgres, dash0, status0, docs, build, release-guards, e2e-tests]
+    needs: [changes, backend-lint, backend-postgres, dash0, status0, docs, build, release-guards, e2e-tests, upgrade-matrix, upgrade]
     if: ${{ always() && !startsWith(github.ref, 'refs/tags/') }}
     steps:
       - name: Verify no failures
@@ -1181,7 +1253,7 @@ jobs:
           echo "image_tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
 
       - name: Log in to the Container registry
-        uses: docker/login-action@v4.6.0
+        uses: docker/login-action@v4.7.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -1208,7 +1280,7 @@ jobs:
         with:
           context: .
           push: true
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64,linux/arm64,linux/riscv64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
@@ -1282,7 +1354,7 @@ jobs:
 
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.27"
+          go-version-file: server/go.mod
           cache-dependency-path: server/go.sum
 
       # Fixed, version-free names — the same shape the server binaries use
@@ -1314,6 +1386,7 @@ jobs:
             [darwin/arm64]=sp-darwin-arm64
             [linux/amd64]=sp-linux-amd64
             [linux/arm64]=sp-linux-arm64
+            [linux/riscv64]=sp-linux-riscv64
             [windows/amd64]=sp.exe
           )
 
@@ -1338,7 +1411,7 @@ jobs:
           # ~32 MB rather than the ~99 MB they were before that split; `.gz`
           # (`gzip -9 -n` — no `-k`, so the bare file is removed; `-n` drops
           # the embedded name/mtime so the archive is reproducible) halves
-          # that again for the four Unix targets. Windows gets a `.zip`
+          # that again for the five Unix targets. Windows gets a `.zip`
           # instead, since Windows has no built-in gunzip: the target above
           # was built straight to the bare runnable name `sp.exe`, so
           # `zip -j` (junk the source path) stores that same short name as
@@ -1346,7 +1419,7 @@ jobs:
           # with platform/arch staying in the archive's own name.
           echo "::group::compress the sp binaries"
           cd ../dist
-          for file in sp-darwin-amd64 sp-darwin-arm64 sp-linux-amd64 sp-linux-arm64; do
+          for file in sp-darwin-amd64 sp-darwin-arm64 sp-linux-amd64 sp-linux-arm64 sp-linux-riscv64; do
             gzip -9 -n "$file"
           done
           zip -9 -j sp-windows-amd64.zip sp.exe
@@ -1415,7 +1488,7 @@ jobs:
             --repo "${{ github.repository }}" --clobber
 
       - name: Log in to the Container registry
-        uses: docker/login-action@v4.6.0
+        uses: docker/login-action@v4.7.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -1453,7 +1526,7 @@ jobs:
           context: .
           file: Dockerfile.sp
           push: true
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64,linux/arm64,linux/riscv64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
@@ -1516,7 +1589,7 @@ jobs:
 
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.27"
+          go-version-file: server/go.mod
           cache-dependency-path: server/go.sum
 
       # Fixed, version-free names: these are the exact URLs the install docs
@@ -1546,6 +1619,7 @@ jobs:
           declare -A OUT=(
             [linux/amd64]=solidping-linux-amd64
             [linux/arm64]=solidping-linux-arm64
+            [linux/riscv64]=solidping-linux-riscv64
             [windows/amd64]=solidping.exe
             [darwin/amd64]=solidping-darwin-amd64
             [darwin/arm64]=solidping-darwin-arm64
@@ -1568,14 +1642,14 @@ jobs:
           # Compress every binary in place, never publish it bare: `.gz`
           # (`gzip -9 -n` — no `-k`, so the bare file is removed; `-n` drops
           # the embedded name/mtime so the archive is reproducible) for the
-          # four Unix targets. The Windows target above was built straight to
+          # five Unix targets. The Windows target above was built straight to
           # the bare runnable name `solidping.exe`, so `zip -j` (junk the
           # source path) stores that same short name as the archive's single
           # entry — what a user runs after extracting, with platform/arch
           # staying in the archive's own name.
           echo "::group::compress the server binaries"
           cd ../dist
-          for file in solidping-linux-amd64 solidping-linux-arm64 solidping-darwin-amd64 solidping-darwin-arm64; do
+          for file in solidping-linux-amd64 solidping-linux-arm64 solidping-linux-riscv64 solidping-darwin-amd64 solidping-darwin-arm64; do
             gzip -9 -n "$file"
           done
           zip -9 -j solidping-windows-amd64.zip solidping.exe

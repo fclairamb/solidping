@@ -47,16 +47,22 @@ const (
 	// keys the unlock form off this exact code, and conflating it with a
 	// session problem would send the visitor to a login page they have no
 	// account for.
-	ErrorCodeStatusPageLocked          ErrorCode = "STATUS_PAGE_LOCKED"
-	ErrorCodeStatusPageSectionNotFound ErrorCode = "STATUS_PAGE_SECTION_NOT_FOUND"
-	ErrorCodeCheckGroupNotFound        ErrorCode = "CHECK_GROUP_NOT_FOUND"
-	ErrorCodeSeverityNotFound          ErrorCode = "SEVERITY_NOT_FOUND"
-	ErrorCodeSeverityInUse             ErrorCode = "SEVERITY_IN_USE"
-	ErrorCodeRegistrationDisabled      ErrorCode = "REGISTRATION_DISABLED"
-	ErrorCodeEmailNotAllowed           ErrorCode = "EMAIL_NOT_ALLOWED"
-	ErrorCodeRegistrationExpired       ErrorCode = "REGISTRATION_EXPIRED"
-	ErrorCodeInvitationExpired         ErrorCode = "INVITATION_EXPIRED"
-	ErrorCodeInvitationNotFound        ErrorCode = "INVITATION_NOT_FOUND"
+	ErrorCodeStatusPageLocked           ErrorCode = "STATUS_PAGE_LOCKED"
+	ErrorCodeStatusPageSectionNotFound  ErrorCode = "STATUS_PAGE_SECTION_NOT_FOUND"
+	ErrorCodeStatusPageResourceNotFound ErrorCode = "STATUS_PAGE_RESOURCE_NOT_FOUND"
+	ErrorCodeCheckGroupNotFound         ErrorCode = "CHECK_GROUP_NOT_FOUND"
+	ErrorCodeSeverityNotFound           ErrorCode = "SEVERITY_NOT_FOUND"
+	ErrorCodeSeverityInUse              ErrorCode = "SEVERITY_IN_USE"
+	ErrorCodeRegistrationDisabled       ErrorCode = "REGISTRATION_DISABLED"
+	ErrorCodeEmailNotAllowed            ErrorCode = "EMAIL_NOT_ALLOWED"
+	ErrorCodeRegistrationExpired        ErrorCode = "REGISTRATION_EXPIRED"
+	ErrorCodeInvitationExpired          ErrorCode = "INVITATION_EXPIRED"
+	ErrorCodeInvitationNotFound         ErrorCode = "INVITATION_NOT_FOUND"
+	// ErrorCodeInviteLoginRequired: the invitation targets an existing account,
+	// so it must be accepted by that account, signed in (spec 2026-10-16-06).
+	ErrorCodeInviteLoginRequired ErrorCode = "INVITE_LOGIN_REQUIRED"
+	// ErrorCodeInviteEmailMismatch: the signed-in caller is not the invitee.
+	ErrorCodeInviteEmailMismatch       ErrorCode = "INVITE_EMAIL_MISMATCH"
 	ErrorCodePasswordResetExpired      ErrorCode = "PASSWORD_RESET_EXPIRED"
 	ErrorCodeMaintenanceWindowNotFound ErrorCode = "MAINTENANCE_WINDOW_NOT_FOUND"
 	ErrorCodeSLONotFound               ErrorCode = "SLO_NOT_FOUND"
@@ -94,6 +100,12 @@ const (
 	ErrorCodePasskeyLastAuthMethod     ErrorCode = "PASSKEY_LAST_AUTH_METHOD"
 	ErrorCodeWebAuthnNotConfigured     ErrorCode = "WEBAUTHN_NOT_CONFIGURED"
 	ErrorCodeChannelNotConnected       ErrorCode = "CHANNEL_NOT_CONNECTED"
+	// Public check tools (POST /api/v1/tools/run, spec 2026-10-14-02).
+	ErrorCodeTargetNotAllowed ErrorCode = "TARGET_NOT_ALLOWED"
+	ErrorCodeInvalidTarget    ErrorCode = "INVALID_TARGET"
+	ErrorCodeResolveFailed    ErrorCode = "RESOLVE_FAILED"
+	ErrorCodeTimeout          ErrorCode = "TIMEOUT"
+	ErrorCodeServiceBusy      ErrorCode = "SERVICE_BUSY"
 	// ErrorCodeInvalidCurrentPassword is returned by POST /api/v1/auth/change-password
 	// when the supplied currentPassword does not match the stored hash. It is
 	// deliberately distinct from INVALID_CREDENTIALS so the dashboard can point

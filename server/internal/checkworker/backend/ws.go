@@ -19,10 +19,11 @@ import (
 	"github.com/fclairamb/solidping/server/internal/agents/capturecache"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkssh"
-	"github.com/fclairamb/solidping/server/internal/checkworker/egressreport"
+	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/egress"
+	"github.com/fclairamb/solidping/server/internal/secretref"
 	"github.com/fclairamb/solidping/server/internal/version"
 )
 
@@ -90,19 +91,28 @@ type WSBackend struct {
 	// consulted before a server-requested path trace. Nil allows everything.
 	egressGuard *egress.Guard
 
+	// envRefAllow is the agent's own `${env:}` allowlist (its
+	// SP_CHECK_ENV_ALLOWLIST, spec 2026-10-16-03), consulted when a bastion
+	// config is materialized. Nil denies every `${env:}` reference.
+	envRefAllow secretref.EnvAllowFunc
+
 	// dialMu serializes dialing so only one connect runs at a time regardless
 	// of which path triggers it (lazy request() vs. the reconnect supervisor).
 	dialMu sync.Mutex
 
-	mu                sync.Mutex
-	identity          *Identity
-	conn              *websocket.Conn
-	connectedAt       time.Time
-	workerUID         string
-	pending           map[string]chan agents.ServerFrame
-	hints             []chan string
-	lastDial          time.Time
-	supervisorStarted bool
+	mu          sync.Mutex
+	identity    *Identity
+	conn        *websocket.Conn
+	connectedAt time.Time
+	// pluginsReportedFor is the connection (and loaded-types generation)
+	// that already received this agent's plugin manifests (spec 2026-10-17-05
+	// §18).
+	pluginsReportedFor pluginReportKey
+	workerUID          string
+	pending            map[string]chan agents.ServerFrame
+	hints              []chan string
+	lastDial           time.Time
+	supervisorStarted  bool
 	// reconnectSignal wakes the reconnect supervisor after a drop (buffered so a
 	// drop that races an in-progress reconnect is coalesced, never lost).
 	reconnectSignal chan struct{}
@@ -151,6 +161,11 @@ func WithLogger(logger *slog.Logger) Option {
 // fast half-open detection).
 func WithPingInterval(interval time.Duration) Option {
 	return func(b *WSBackend) { b.pingInterval = interval }
+}
+
+// WithEnvRefAllow sets the agent's `${env:}` allowlist (config.Config.EnvRefAllowed).
+func WithEnvRefAllow(allow secretref.EnvAllowFunc) Option {
+	return func(b *WSBackend) { b.envRefAllow = allow }
 }
 
 // WithCaptureCache overrides the local capture cache (tests use tighter bounds
@@ -241,7 +256,6 @@ func (b *WSBackend) ClaimJobs(
 	_ *string,
 	fastLimit int,
 	_ int,
-	_ int,
 	_ time.Duration,
 ) ([]*models.CheckJob, time.Duration, error) {
 	return b.claim(ctx, fastLimit, "")
@@ -271,15 +285,25 @@ func (b *WSBackend) claim(
 	// a no-op. The probe behind Current() is cached for well under a heartbeat,
 	// so a claim-per-second costs nothing while a host that gains or loses IPv6
 	// still converges without a restart.
+	manifests, reportFor := b.pluginReport()
+
 	resp, err := b.request(ctx, &agents.ClientFrame{
-		Type:         agents.MsgTypeClaim,
-		MaxJobs:      maxJobs,
-		CheckUID:     checkUID,
-		Capabilities: egressreport.Current(ctx),
+		Type:     agents.MsgTypeClaim,
+		MaxJobs:  maxJobs,
+		CheckUID: checkUID,
+		// The worker put the plugin types its activation gate enables on ctx.
+		Capabilities: Capabilities(ctx, checkjobsvc.PluginTypesFromContext(ctx)),
 		Version:      version.Get().Version,
+		Plugins:      manifests,
 	})
 	if err != nil {
 		return nil, 0, err
+	}
+
+	if manifests != nil && !reportFor.connectedAt.IsZero() {
+		b.mu.Lock()
+		b.pluginsReportedFor = reportFor
+		b.mu.Unlock()
 	}
 
 	jobs := make([]*models.CheckJob, 0, len(resp.Jobs))
@@ -311,7 +335,7 @@ func (b *WSBackend) claim(
 		// can find it. Unseal failure is reported like a job-envelope failure —
 		// a clear error result, dropped from the batch, never run half-armed.
 		if wireJob.Tunnel != nil {
-			cfg, tunErr := buildTunnelConfig(ctx, b.identityX25519(), wireJob.Tunnel)
+			cfg, tunErr := buildTunnelConfig(ctx, b.identityX25519(), wireJob.Tunnel, b.envRefAllow)
 			if tunErr != nil {
 				b.logger.WarnContext(ctx, "ssh tunnel not available on this agent",
 					"check_uid", job.CheckUID, "tunnel_check_uid", wireJob.Tunnel.CheckUID, "error", tunErr)

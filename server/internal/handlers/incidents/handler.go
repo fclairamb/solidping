@@ -133,6 +133,11 @@ func parseListIncidentsOptions(query url.Values) (*ListIncidentsOptions, error) 
 	}
 	opts.Size = limit
 
+	opts.Ascending, err = base.ParseOrder(query)
+	if err != nil {
+		return nil, err
+	}
+
 	applyListIncidentsExtras(query, opts)
 
 	return opts, nil
@@ -240,16 +245,19 @@ func (h *Handler) AcknowledgeIncidentByLink(writer http.ResponseWriter, req *htt
 	token := req.URL.Query().Get("token")
 
 	if token == "" {
-		writeAckHTML(writer, http.StatusBadRequest, ackHTMLMissingToken, orgSlug, incidentUID)
+		writeAckPage(writer, h.ackPageLocale(req, ""), http.StatusBadRequest, ackHTMLMissingToken, orgSlug, incidentUID)
 
 		return nil
 	}
 
 	payload, err := VerifyAckToken(h.jwtSecret, incidentUID, token)
 	if err != nil {
+		// An unverified token names no account: the browser picks the language.
+		loc := h.ackPageLocale(req, "")
+
 		switch {
 		case errors.Is(err, ErrAckTokenExpired):
-			writeAckHTML(writer, http.StatusGone, ackHTMLExpired, orgSlug, incidentUID)
+			writeAckPage(writer, loc, http.StatusGone, ackHTMLExpired, orgSlug, incidentUID)
 		case errors.Is(err, ErrAckTokenSignature),
 			errors.Is(err, ErrAckTokenIncidentMismatch),
 			errors.Is(err, ErrAckTokenMalformed),
@@ -259,9 +267,9 @@ func (h *Handler) AcknowledgeIncidentByLink(writer http.ResponseWriter, req *htt
 			// token pasted into an ack URL. Same "invalid" bucket as a
 			// tampered token: both are client errors, not server errors, and
 			// telling them apart would leak which failure mode succeeded.
-			writeAckHTML(writer, http.StatusBadRequest, ackHTMLInvalid, orgSlug, incidentUID)
+			writeAckPage(writer, loc, http.StatusBadRequest, ackHTMLInvalid, orgSlug, incidentUID)
 		default:
-			writeAckHTML(writer, http.StatusInternalServerError, ackHTMLError, orgSlug, incidentUID)
+			writeAckPage(writer, loc, http.StatusInternalServerError, ackHTMLError, orgSlug, incidentUID)
 		}
 
 		return nil
@@ -278,10 +286,11 @@ func (h *Handler) AcknowledgeIncidentByLink(writer http.ResponseWriter, req *htt
 	// this exact (orgSlug, incidentUID) pair resolves to a real incident —
 	// so a mismatched org in the URL path fails the ack and falls into the
 	// non-redirecting error page instead.
+	loc := h.ackPageLocale(req, payload.RecipientEmail)
 	if h.svc.tryEmailAck(req.Context(), orgSlug, incidentUID, ackedBy, payload.RecipientEmail) {
-		writeAckHTML(writer, http.StatusOK, ackHTMLSuccess, orgSlug, incidentUID)
+		writeAckPage(writer, loc, http.StatusOK, ackHTMLSuccess, orgSlug, incidentUID)
 	} else {
-		writeAckHTML(writer, http.StatusInternalServerError, ackHTMLError, orgSlug, incidentUID)
+		writeAckPage(writer, loc, http.StatusInternalServerError, ackHTMLError, orgSlug, incidentUID)
 	}
 
 	return nil

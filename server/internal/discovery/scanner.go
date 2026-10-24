@@ -8,8 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/net/icmp"
-	"golang.org/x/net/ipv4"
+	"github.com/fclairamb/solidping/server/internal/egress"
 )
 
 const (
@@ -34,6 +33,10 @@ type Config struct {
 	// the parent so the scan-detail page sees them all under one UID. The
 	// synchronous Scan ignores it.
 	ParentJobUID string `json:"parentJobUid,omitempty"`
+	// SkipSuggestions leaves DiscoveredHost.SuggestedChecks empty: an agent
+	// reports raw facts only, the server builds the suggestions itself (spec
+	// 2026-10-22-04). Never part of a stored config.
+	SkipSuggestions bool `json:"-"`
 }
 
 // DiscoveredHost is a host discovered during a scan.
@@ -63,22 +66,24 @@ type probeTarget struct {
 
 // scanParams holds the normalized scan tuning resolved from a Config.
 type scanParams struct {
-	ports       []int
-	concurrency int
-	timeout     time.Duration
+	ports           []int
+	concurrency     int
+	timeout         time.Duration
+	skipSuggestions bool
 }
 
 // resolveScanParams normalizes the ports / concurrency / timeout from a Config,
 // applying defaults. Shared by Scan and ScanHosts.
 func resolveScanParams(cfg *Config) (scanParams, error) {
 	params := scanParams{
-		ports:       cfg.Ports,
-		concurrency: cfg.Concurrency,
-		timeout:     defaultTimeout,
+		ports:           cfg.Ports,
+		concurrency:     cfg.Concurrency,
+		timeout:         defaultTimeout,
+		skipSuggestions: cfg.SkipSuggestions,
 	}
 
 	if len(params.ports) == 0 {
-		params.ports = defaultPortList()
+		params.ports = DefaultPortList()
 	}
 
 	if params.concurrency <= 0 {
@@ -97,10 +102,17 @@ func resolveScanParams(cfg *Config) (scanParams, error) {
 	return params, nil
 }
 
+// ScanResult is the outcome of a scan. ICMPAvailable is false when no ICMP
+// socket could be opened and liveness fell back to TCP only.
+type ScanResult struct {
+	Hosts         []DiscoveredHost
+	ICMPAvailable bool
+}
+
 // Scan performs a network discovery scan based on the given configuration.
 // It expands all CIDRs, probes each address with ICMP and TCP, and returns
 // a list of responsive hosts.
-func Scan(ctx context.Context, cfg *Config) ([]DiscoveredHost, error) {
+func Scan(ctx context.Context, cfg *Config) (*ScanResult, error) {
 	if err := ValidateCIDRs(cfg.CIDRs); err != nil {
 		return nil, err
 	}
@@ -123,14 +135,14 @@ func Scan(ctx context.Context, cfg *Config) ([]DiscoveredHost, error) {
 		}
 	}
 
-	return runProbes(ctx, targets, params), nil
+	return runProbes(ctx, targets, params, listenICMPPacket), nil
 }
 
 // ScanHosts probes a fixed list of IPs through the same engine as Scan.
-// cfg.Ports defaults to defaultPortList(); cfg.CIDRs is ignored. Each result's
+// cfg.Ports defaults to DefaultPortList(); cfg.CIDRs is ignored. Each result's
 // Hostname comes from the matching HostInput.HostnameHint when non-empty, else
 // from reverse DNS. Only responsive hosts are returned (same semantics as Scan).
-func ScanHosts(ctx context.Context, hosts []HostInput, cfg *Config) ([]DiscoveredHost, error) {
+func ScanHosts(ctx context.Context, hosts []HostInput, cfg *Config) (*ScanResult, error) {
 	params, err := resolveScanParams(cfg)
 	if err != nil {
 		return nil, err
@@ -148,20 +160,21 @@ func ScanHosts(ctx context.Context, hosts []HostInput, cfg *Config) ([]Discovere
 		})
 	}
 
-	return runProbes(ctx, targets, params), nil
+	return runProbes(ctx, targets, params, listenICMPPacket), nil
 }
 
 // runProbes drives the bounded-concurrency worker pool over the given targets.
 // It is the shared core used by both Scan (after CIDR expansion) and ScanHosts
 // (with a pre-supplied list).
-func runProbes(ctx context.Context, targets []probeTarget, params scanParams) []DiscoveredHost {
+func runProbes(
+	ctx context.Context, targets []probeTarget, params scanParams, listen listenFunc,
+) *ScanResult {
 	// Attempt to open an ICMP socket; fall back to TCP-only if unavailable.
-	icmpConn, icmpErr := icmp.ListenPacket("ip4:icmp", "0.0.0.0")
-	if icmpErr != nil {
-		slog.WarnContext(ctx, "ICMP unavailable, TCP-only liveness probing will be used",
-			"error", icmpErr)
+	pinger := newICMPPinger(listen)
+	if pinger == nil {
+		slog.WarnContext(ctx, "ICMP unavailable, TCP-only liveness probing will be used")
 	} else {
-		defer func() { _ = icmpConn.Close() }()
+		defer pinger.close()
 	}
 
 	sem := make(chan struct{}, params.concurrency)
@@ -175,8 +188,22 @@ func runProbes(ctx context.Context, targets []probeTarget, params scanParams) []
 			break
 		}
 
-		wgroup.Add(1)
 		tgt := targets[i]
+
+		// Under an enforcing egress policy a refused target is skipped before
+		// any probe: no ICMP echo, no TCP connect, no PTR lookup.
+		if guard := egress.FromContext(ctx); guard.Enforcing() {
+			ip := net.ParseIP(tgt.IP)
+			if ip == nil {
+				continue
+			}
+
+			if err := guard.CheckAddr(ctx, tgt.IP, ip); err != nil {
+				continue
+			}
+		}
+
+		wgroup.Add(1)
 
 		go func() {
 			defer wgroup.Done()
@@ -184,7 +211,7 @@ func runProbes(ctx context.Context, targets []probeTarget, params scanParams) []
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			host := probeHost(ctx, tgt, params.ports, icmpConn, params.timeout)
+			host := probeHost(ctx, tgt, params, pinger)
 			if host == nil {
 				return
 			}
@@ -197,7 +224,7 @@ func runProbes(ctx context.Context, targets []probeTarget, params scanParams) []
 
 	wgroup.Wait()
 
-	return hosts
+	return &ScanResult{Hosts: hosts, ICMPAvailable: pinger != nil}
 }
 
 // probeHost probes a single host with ICMP and TCP and returns a DiscoveredHost
@@ -206,11 +233,12 @@ func runProbes(ctx context.Context, targets []probeTarget, params scanParams) []
 func probeHost(
 	ctx context.Context,
 	target probeTarget,
-	ports []int,
-	icmpConn *icmp.PacketConn,
-	timeout time.Duration,
+	params scanParams,
+	pinger *icmpPinger,
 ) *DiscoveredHost {
 	ipStr := target.IP
+	ports := params.ports
+	timeout := params.timeout
 
 	var (
 		icmpReachable bool
@@ -220,11 +248,11 @@ func probeHost(
 	)
 
 	// ICMP probe.
-	if icmpConn != nil {
+	if pinger != nil {
 		wgroup.Add(1)
 		go func() {
 			defer wgroup.Done()
-			if pingHost(icmpConn, ipStr, timeout) {
+			if pinger.ping(ipStr, timeout) {
 				portsMu.Lock()
 				icmpReachable = true
 				portsMu.Unlock()
@@ -261,60 +289,18 @@ func probeHost(
 	// Sort open ports for consistent output.
 	sortPorts(openPorts)
 
-	return &DiscoveredHost{
-		IP:              ipStr,
-		Hostname:        hostname,
-		ICMPReachable:   icmpReachable,
-		OpenPorts:       openPorts,
-		SuggestedChecks: SuggestChecks(ipStr, hostname, icmpReachable, openPorts),
-	}
-}
-
-// pingHost sends a single ICMP echo request and waits for a reply.
-func pingHost(conn *icmp.PacketConn, ipStr string, timeout time.Duration) bool {
-	msg := icmp.Message{
-		Type: ipv4.ICMPTypeEcho,
-		Code: 0,
-		Body: &icmp.Echo{
-			ID:   1,
-			Seq:  1,
-			Data: []byte("solidping"),
-		},
+	host := &DiscoveredHost{
+		IP:            ipStr,
+		Hostname:      hostname,
+		ICMPReachable: icmpReachable,
+		OpenPorts:     openPorts,
 	}
 
-	data, err := msg.Marshal(nil)
-	if err != nil {
-		return false
+	if !params.skipSuggestions {
+		host.SuggestedChecks = SuggestChecks(ipStr, hostname, icmpReachable, openPorts)
 	}
 
-	dst := &net.IPAddr{IP: net.ParseIP(ipStr)}
-
-	if err = conn.SetWriteDeadline(time.Now().Add(timeout)); err != nil {
-		return false
-	}
-
-	if _, err = conn.WriteTo(data, dst); err != nil {
-		return false
-	}
-
-	if err = conn.SetReadDeadline(time.Now().Add(timeout)); err != nil {
-		return false
-	}
-
-	buf := make([]byte, 1500)
-
-	var n int
-	n, _, err = conn.ReadFrom(buf)
-	if err != nil {
-		return false
-	}
-
-	reply, err := icmp.ParseMessage(icmpProtocol, buf[:n])
-	if err != nil {
-		return false
-	}
-
-	return reply.Type == ipv4.ICMPTypeEchoReply
+	return host
 }
 
 // dialTCP attempts a TCP connection to the given host:port within the timeout.
@@ -323,7 +309,8 @@ func dialTCP(ctx context.Context, ipStr string, port int, timeout time.Duration)
 	dialCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	conn, err := (&net.Dialer{}).DialContext(dialCtx, "tcp", addr)
+	// A nil or permissive guard dials exactly like a bare net.Dialer.
+	conn, err := egress.FromContext(ctx).DialContextWith(dialCtx, &net.Dialer{}, "tcp", addr)
 	if err != nil {
 		return false
 	}

@@ -15,6 +15,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/defaults"
 	"github.com/fclairamb/solidping/server/internal/email"
+	"github.com/fclairamb/solidping/server/internal/i18n/recipient"
 	"github.com/fclairamb/solidping/server/internal/utils/passwords"
 )
 
@@ -186,8 +187,11 @@ func (s *Service) applyEmailChange(ctx context.Context, change *emailChange) err
 		slog.DebugContext(ctx, "Previous address is the default one: no email-change notice sent",
 			"userUid", change.user.UID)
 	case s.fullCfg != nil && s.fullCfg.Email.Enabled:
-		s.enqueueEmail(ctx, "", oldEmail, email.TemplateEmailChanged, map[string]any{
-			tmplKeyChangedAt: changedAt.Format(time.RFC1123),
+		// The row already carries the new address, so the old one no longer
+		// resolves to this account: the locale comes from the user loaded
+		// before the update.
+		s.enqueueEmail(ctx, "", oldEmail, email.TemplateEmailChanged, recipient.ForUser(change.user), map[string]any{
+			tmplKeyChangedAt: changedAt,
 			"OldEmail":       oldEmail,
 			"NewEmail":       change.newEmail,
 		})

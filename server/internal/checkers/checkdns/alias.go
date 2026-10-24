@@ -18,4 +18,5 @@ const (
 	recordTypeNS    = checkconfig.RecordTypeNS
 	recordTypeTXT   = checkconfig.RecordTypeTXT
 	recordTypeSOA   = checkconfig.RecordTypeSOA
+	recordTypeCAA   = checkconfig.RecordTypeCAA
 )

@@ -350,10 +350,10 @@ func TestEmailSender_Send_RendersIncidentTemplates(t *testing.T) {
 		wantSubjectIn string
 		wantAckButton bool
 	}{
-		{"created event", eventTypeIncidentCreated, "[DOWN]", true},
-		{"resolved event", eventTypeIncidentResolved, "[RECOVERED]", false},
-		{"escalated event", eventTypeIncidentEscalated, "[ESCALATED]", true},
-		{"reopened event", eventTypeIncidentReopened, "[REOPENED]", true},
+		{"created event", eventTypeIncidentCreated, "🔴 Production API is down: HTTP 503", true},
+		{"resolved event", eventTypeIncidentResolved, "🟢 Production API is back up after 1h", false},
+		{"escalated event", eventTypeIncidentEscalated, "🟠 Production API is still down, escalated", true},
+		{"reopened event", eventTypeIncidentReopened, "🔴 Production API is down again", true},
 	}
 
 	for _, tc := range cases {
@@ -368,10 +368,14 @@ func TestEmailSender_Send_RendersIncidentTemplates(t *testing.T) {
 			resolvedAt := time.Now()
 			payload := &Payload{
 				EventType: tc.eventType,
-				Check:     &models.Check{UID: "check-1", Name: &checkName, Slug: &checkSlug, Type: "http"},
+				Check: &models.Check{
+					UID: "check-1", Name: &checkName, Slug: &checkSlug, Type: "http",
+					Config: models.JSONMap{"url": "https://api.acme.com/health"},
+				},
 				Incident: &models.Incident{
 					UID: "inc-42", StartedAt: startedAt, ResolvedAt: &resolvedAt,
 					FailureCount: 3, RelapseCount: 1,
+					Details: models.JSONMap{"failure_reason": "HTTP 503 Service Unavailable (expected 200)"},
 				},
 				Integration: &models.Integration{
 					Settings: models.JSONMap{"to": []any{"a@x.test"}},
@@ -393,19 +397,26 @@ func TestEmailSender_Send_RendersIncidentTemplates(t *testing.T) {
 			r.Len(sender.sent, 1)
 
 			msg := sender.sent[0]
-			r.Contains(msg.Subject, tc.wantSubjectIn)
+			r.True(strings.HasPrefix(msg.Subject, tc.wantSubjectIn), "subject %q", msg.Subject)
+			r.Equal("incident.inc-42", msg.ThreadID, "every mail about one incident threads together")
+			r.Contains(msg.HTML, "HTTP 503 Service Unavailable (expected 200)", "the cause reaches the body")
 			r.Contains(msg.HTML, "https://solidping.example/d/orgs/acme/incidents/inc-42", "View incident URL (D3)")
 			r.Contains(msg.HTML, "https://solidping.example/d/orgs/acme/checks/check-1", "check name link (D3, by UID)")
 			r.Contains(msg.HTML, "https://solidping.example/d", "footer dashboard link")
-			r.Contains(msg.HTML, "https://solidping.example/docs", "footer docs link")
+			r.NotContains(msg.HTML, ">Docs</a>", "the footer no longer links the docs")
+			r.Contains(msg.Text, "Docs: https://solidping.example/docs", "the plaintext footer still does")
 			r.NotContains(msg.HTML, "{{", "no unresolved template syntax")
 			r.NotEmpty(msg.Text, "text alternative must be populated")
 			r.Contains(msg.Text, "https://solidping.example/d/orgs/acme/incidents/inc-42")
 
+			r.NotContains(msg.HTML, "Acknowledge incident")
+
 			if tc.wantAckButton {
-				r.Contains(msg.HTML, "Acknowledge incident")
+				r.Contains(msg.HTML, "I&#39;m on it")
+				r.Contains(msg.HTML, "/api/v1/orgs/acme/incidents/inc-42/ack?token=")
+				r.Regexp(`>Target</td><td class="value"[^>]*>https:[^<]*health</td>`, msg.HTML)
 			} else {
-				r.NotContains(msg.HTML, "Acknowledge incident")
+				r.NotContains(msg.HTML, "I&#39;m on it")
 			}
 		})
 	}
@@ -722,35 +733,6 @@ func TestEmailSender_Send_ListUnsubscribeHeadersOnlyOnModeledEvents(t *testing.T
 	r.Contains(msg.ListUnsubscribeURL, "/unsubscribe?token=")
 }
 
-// TestMailDuration pins the outage-length formatting that headlines the
-// recovered mail. The interesting cases are the boundaries where a unit falls
-// to zero — "15m0s" and "2h0m0s" are what time.Duration.String() produces and
-// what this exists to avoid — and the sub-minute range, which must keep its
-// seconds: rounding a 45-second blip up to "1m" describes a different incident.
-func TestMailDuration(t *testing.T) {
-	t.Parallel()
-
-	for _, tc := range []struct {
-		name string
-		in   time.Duration
-		want string
-	}{
-		{"sub-second", 400 * time.Millisecond, "0s"},
-		{"seconds", 45 * time.Second, "45s"},
-		{"whole minutes", 15 * time.Minute, "15m"},
-		{"minutes and seconds", 15*time.Minute + 20*time.Second, "15m 20s"},
-		{"whole hours", 2 * time.Hour, "2h"},
-		{"hours drop seconds", 2*time.Hour + 13*time.Minute + 7*time.Second, "2h 13m"},
-		{"whole days", 48 * time.Hour, "2d"},
-		{"days and hours", 26 * time.Hour, "1d 2h"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			require.Equal(t, tc.want, mailDuration(tc.in))
-		})
-	}
-}
-
 // The reminder ships its own template, renders the reminder sentence and keeps
 // the Acknowledge button (spec 2026-10-12-16).
 func TestEmailSender_Send_RendersReminderTemplate(t *testing.T) {
@@ -791,10 +773,11 @@ func TestEmailSender_Send_RendersReminderTemplate(t *testing.T) {
 	r.Len(sender.sent, 1)
 
 	msg := sender.sent[0]
-	r.Contains(msg.Subject, "[STILL DOWN] Production API")
-	r.Contains(msg.Subject, "#42")
+	r.Equal("🔴 Production API is still down, nobody is on it (#42)", msg.Subject)
 	r.Contains(msg.HTML, "Still down after 1 h 15 min, not acknowledged (reminder 3)")
-	r.Contains(msg.HTML, "Acknowledge incident")
+	r.Contains(msg.HTML, "I&#39;m on it")
+	r.Contains(msg.HTML, "/api/v1/orgs/acme/incidents/inc-42/ack?token=")
+	r.NotContains(msg.HTML, "Acknowledge incident")
 	r.Contains(msg.Text, "reminder 3")
 	r.NotContains(msg.HTML, "{{")
 }

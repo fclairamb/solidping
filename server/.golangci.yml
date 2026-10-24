@@ -1,6 +1,9 @@
 version: "2"
 run:
   concurrency: 4
+  # Several worktrees often lint at once, and one run takes 4 to 8 GB. Wait for the
+  # lock instead of failing, so nobody reaches for --allow-parallel-runners.
+  allow-serial-runners: true
   issues-exit-code: 1
   tests: true
   # The `slowtests` files (live-network checkers, the Pebble/Docker ACME suite)

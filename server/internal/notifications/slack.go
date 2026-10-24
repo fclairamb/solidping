@@ -319,13 +319,7 @@ func slackLink(url, text string) string {
 
 // getCheckURL returns the URL from the check config for HTTP checks.
 func getCheckURL(check *models.Check) string {
-	if check.Config == nil {
-		return ""
-	}
-	if url, ok := check.Config["url"].(string); ok {
-		return url
-	}
-	return ""
+	return check.TargetURL()
 }
 
 // getCheckMethod returns the HTTP method from the check config.
@@ -339,18 +333,17 @@ func getCheckMethod(check *models.Check) string {
 	return "GET"
 }
 
+// defaultFailureReason is what getFailureReason says when the incident
+// recorded no cause.
+const defaultFailureReason = "Check failed"
+
 // getFailureReason returns a human-readable failure reason from the incident details.
 func getFailureReason(incident *models.Incident) string {
-	if incident.Details == nil {
-		return "Check failed"
-	}
-	if reason, ok := incident.Details["failure_reason"].(string); ok && reason != "" {
+	if reason := incident.FailureReason(); reason != "" {
 		return reason
 	}
-	if output, ok := incident.Details["output"].(string); ok && output != "" {
-		return output
-	}
-	return "Check failed"
+
+	return defaultFailureReason
 }
 
 // formatDuration formats a duration into a human-readable string.
@@ -871,6 +864,14 @@ func (s *SlackSender) buildIncidentResolvedThreadReply(payload *Payload) *slack.
 		)}
 	}
 
+	if ResolvedByCheckDisable(payload.Incident) {
+		return &slack.MessageResponse{Text: fmt.Sprintf(
+			":white_circle: %s%s was disabled after %s, so its incident was closed. "+
+				"The check did not necessarily recover.",
+			refLink, nameLink, duration,
+		)}
+	}
+
 	text := fmt.Sprintf(
 		":large_green_circle: %s%s — incident resolved after %s.",
 		refLink, nameLink, duration,
@@ -1087,6 +1088,9 @@ func (s *SlackSender) buildResolvedUpdateMessage(payload *Payload) *slack.Messag
 	headline := fmt.Sprintf("Automatically resolved %s incident", checkName)
 	if ResolvedByCheckDeletion(payload.Incident) {
 		headline = fmt.Sprintf("Closed %s incident: the check was deleted", checkName)
+	}
+	if ResolvedByCheckDisable(payload.Incident) {
+		headline = fmt.Sprintf("Closed %s incident: the check was disabled", checkName)
 	}
 
 	fallbackText := headline

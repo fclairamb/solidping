@@ -3,7 +3,7 @@
 This file provides backend-specific guidance for the SolidPing monitoring system.
 
 ## Core Technologies
-- **Language**: Go 1.24+
+- **Language**: Go, exact patch version pinned by the `go` directive in `go.mod`. CI reads it from there (`go-version-file`); keep the `golang:` images in the Dockerfiles on the same version
 - **HTTP Router**: go-chi/chi v5, behind the in-repo `internal/httpx` adapter that preserves error-returning handlers (`func(w, *http.Request) error`) and a `Group`/`Use` middleware tree
 - **ORM**: Bun ORM (PostgreSQL)
 - **Configuration**: koanf (YAML + environment variables)

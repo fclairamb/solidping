@@ -41,6 +41,7 @@ func senderSettingKeys() map[models.ConnectionType][]string {
 		models.ConnectionTypeSlackWebhook: jsonTagNames(slackWebhookSettings{}),
 		models.ConnectionTypeZulip:        jsonTagNames(zulipSettings{}),
 		models.ConnectionTypePagerduty:    jsonTagNames(pagerdutySettings{}),
+		models.ConnectionTypeA2A:          jsonTagNames(a2aSettings{}),
 		models.ConnectionTypeMSTeams:      jsonTagNames(models.MSTeamsSettings{}),
 		models.ConnectionTypeTwilio:       jsonTagNames(models.TwilioSettings{}),
 		models.ConnectionTypeEmail:        {"to", "subject_prefix"},
@@ -67,7 +68,7 @@ var mustCover = []models.ConnectionType{
 	models.ConnectionTypeSlackWebhook, models.ConnectionTypeMSTeams, models.ConnectionTypeEmail,
 	models.ConnectionTypeNtfy, models.ConnectionTypeGotify, models.ConnectionTypeMatrix,
 	models.ConnectionTypeZulip, models.ConnectionTypePushover, models.ConnectionTypePagerduty,
-	models.ConnectionTypeTwilio, models.ConnectionTypeKubernetes,
+	models.ConnectionTypeTwilio, models.ConnectionTypeKubernetes, models.ConnectionTypeA2A,
 }
 
 func jsonTagNames(v any) []string {

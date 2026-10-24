@@ -13,6 +13,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/egress"
 )
 
 // Error codes returned by discovery-type validation. They are surfaced verbatim
@@ -33,6 +34,16 @@ const (
 	// clusterUid that does not resolve to a cluster connection in the org
 	// (unknown, wrong org, or not a kubernetes-type connection).
 	CodeKubernetesClusterNotFound = "KUBERNETES_CLUSTER_NOT_FOUND"
+	// CodeNotAvailable is returned when the discovery type is refused on this
+	// deployment: `lan` under an enforcing egress policy, `container` where
+	// docker checks are refused (SaaS, not an agent node).
+	CodeNotAvailable = "DISCOVERY_NOT_AVAILABLE"
+	// CodeRegionUnavailable is returned when a region-bound scan names a
+	// private region with no live agent reporting discovery (spec 2026-10-22-04).
+	CodeRegionUnavailable = "DISCOVERY_REGION_UNAVAILABLE"
+	// CodeQuotaExceeded is returned when a region-bound scan would take the org
+	// over its daily agent-discovery address quota.
+	CodeQuotaExceeded = "DISCOVERY_QUOTA_EXCEEDED"
 )
 
 // DiscoveryError is a coded validation/precondition failure from a discovery
@@ -58,6 +69,40 @@ func NewError(code, message string) *DiscoveryError {
 type Deps struct {
 	DBService db.Service
 	Creds     credentials.Service
+	// EgressGuard is the process egress guard. When it is enforcing, the
+	// discovery types that would probe private networks are refused and the
+	// remaining dials go through it. Nil means no policy (allow everything).
+	EgressGuard *egress.Guard
+	// DockerBlocked is the docker-check rule (SaaS and not an agent node): when
+	// set, container discovery is refused exactly where docker checks are.
+	DockerBlocked bool
+	// Regions resolves a region-bound scan's private region (spec
+	// 2026-10-22-04). Nil refuses every region.
+	Regions RegionService
+}
+
+// RegionService is what a region-bound scan needs from the regions service.
+type RegionService interface {
+	OwnsPrivateRegion(ctx context.Context, orgUID, region string) (bool, error)
+	HasLiveAgentWith(ctx context.Context, orgUID, region, capability string) (bool, error)
+}
+
+// Restricted is implemented by discovery types that some deployments refuse.
+// Availability returns a coded CodeNotAvailable error when the type is refused
+// under deps, nil when it may run. Types that are always available do not
+// implement it.
+type Restricted interface {
+	Availability(deps Deps) error
+}
+
+// Available reports the availability of def under deps: nil when the type may
+// run, the coded refusal otherwise. It drives both BuildJob and the types list.
+func Available(def Definition, deps Deps) error {
+	if r, ok := def.(Restricted); ok {
+		return r.Availability(deps)
+	}
+
+	return nil
 }
 
 // Definition is one discovery source/method.
@@ -68,8 +113,10 @@ type Definition interface {
 	Source() models.DiscoverySource
 	// BuildJob validates parameters and returns the job to enqueue. For chunked
 	// types it returns the PLAN job type (fan-out happens inside that job's Run,
-	// unchanged). A validation failure returns a *DiscoveryError.
-	BuildJob(ctx context.Context, deps Deps, orgUID string,
+	// unchanged). region is the private region the scan runs from ("" = the
+	// server); only `lan` accepts one, the caller refuses it for the others. A
+	// validation failure returns a *DiscoveryError.
+	BuildJob(ctx context.Context, deps Deps, orgUID, region string,
 		parameters json.RawMessage) (jobType string, jobConfig json.RawMessage, err error)
 }
 

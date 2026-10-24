@@ -46,10 +46,26 @@ type HandoffExchangeResponse struct {
 //
 // Every unusable code, and a code whose user or membership vanished in the
 // meantime, yields authhandoff.ErrInvalidCode.
+//
+// A code carrying a 2FA challenge (the user has TOTP enabled, spec
+// 2026-10-16-14) answers requires2Fa and the temp token only, plus where to
+// land: no session, and no user or organization info, the same disclosure as
+// a password login stopped at the code prompt.
 func (s *Service) ExchangeHandoffCode(ctx context.Context, code string) (*HandoffExchangeResponse, error) {
 	session, err := authhandoff.Redeem(ctx, s.db, code)
 	if err != nil {
 		return nil, err
+	}
+
+	if session.Requires2FA {
+		return &HandoffExchangeResponse{
+			LoginResponse: LoginResponse{
+				Requires2FA: true,
+				TempToken:   session.TempToken,
+			},
+			ReturnTo:          safeReturnTo(session.ReturnTo),
+			MembershipPending: session.MembershipPending,
+		}, nil
 	}
 
 	info, err := s.GetUserInfo(ctx, &Claims{UserUID: session.UserUID, OrgSlug: session.OrgSlug})
@@ -66,13 +82,6 @@ func (s *Service) ExchangeHandoffCode(ctx context.Context, code string) (*Handof
 		loginAction = LoginActionNoOrg
 	}
 
-	// The callback only seals same-origin relative paths; a sealed value that
-	// is anything else is dropped, and the dashboard picks its own landing.
-	returnTo := session.ReturnTo
-	if !isSafePostLoginRedirect(returnTo) {
-		returnTo = ""
-	}
-
 	return &HandoffExchangeResponse{
 		LoginResponse: LoginResponse{
 			AccessToken:   session.AccessToken,
@@ -84,9 +93,20 @@ func (s *Service) ExchangeHandoffCode(ctx context.Context, code string) (*Handof
 			Organizations: info.Organizations,
 			LoginAction:   loginAction,
 		},
-		ReturnTo:          returnTo,
+		ReturnTo:          safeReturnTo(session.ReturnTo),
 		MembershipPending: session.MembershipPending,
 	}, nil
+}
+
+// safeReturnTo keeps a sealed returnTo only when it is a same-origin relative
+// path. The callback only seals such paths; anything else is dropped, and the
+// dashboard picks its own landing.
+func safeReturnTo(returnTo string) string {
+	if !isSafePostLoginRedirect(returnTo) {
+		return ""
+	}
+
+	return returnTo
 }
 
 // ExchangeHandoff trades a single-use handoff code for the session a
@@ -118,8 +138,11 @@ func (h *Handler) ExchangeHandoff(writer http.ResponseWriter, req *http.Request)
 	writer.Header().Set("Cache-Control", "no-store")
 
 	// Same as Login and Refresh: cookie-authenticated surfaces (the MCP OAuth
-	// consent flow) follow the session the SPA just adopted.
-	setAccessTokenCookie(writer, req, resp.AccessToken, resp.ExpiresIn)
+	// consent flow) follow the session the SPA just adopted. A 2FA challenge
+	// has no session yet: /2fa/verify sets the cookie once the code passes.
+	if resp.AccessToken != "" {
+		setAccessTokenCookie(writer, req, resp.AccessToken, resp.ExpiresIn)
+	}
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
 }

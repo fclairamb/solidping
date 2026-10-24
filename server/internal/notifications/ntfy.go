@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -54,6 +53,12 @@ func (s *NtfySender) Send(ctx context.Context, jctx *jobdef.JobContext, payload 
 	req.Header.Set("Tags", tags)
 	req.Header.Set("User-Agent", productName)
 
+	// Click opens the incident from the notification. It is also the only
+	// place the incident uid travels, for agents that consume the topic.
+	if incidentURL := incidentDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Incident); incidentURL != "" {
+		req.Header.Set("Click", incidentURL)
+	}
+
 	token := settings.AuthToken
 	if token == "" {
 		token = settings.AccessToken
@@ -72,9 +77,9 @@ func (s *NtfySender) Send(ctx context.Context, jctx *jobdef.JobContext, payload 
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 300 {
-		respBody, _ := io.ReadAll(resp.Body)
+		respBody, _ := readCappedBody(resp.Body, senderMaxResponseBody)
 
-		return fmt.Errorf("%w: status %d: %s", errNtfyRequestFailed, resp.StatusCode, string(respBody))
+		return fmt.Errorf("%w: status %d: %s", errNtfyRequestFailed, resp.StatusCode, bodySnippet(respBody))
 	}
 
 	return nil
@@ -225,8 +230,8 @@ func (s *NtfySender) buildDownBody(payload *Payload, checkName string) string {
 func (s *NtfySender) buildResolvedBody(payload *Payload, checkName string) string {
 	var builder strings.Builder
 
-	if ResolvedByCheckDeletion(payload.Incident) {
-		builder.WriteString(checkDeletedSentence + "\n")
+	if closedWithoutRecovery(payload.Incident) {
+		builder.WriteString(closedSentence(payload.Incident) + "\n")
 	}
 
 	fmt.Fprintf(&builder, "Check: %s (%s)\n", checkName, payload.Check.Type)

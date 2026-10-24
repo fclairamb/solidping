@@ -176,8 +176,8 @@ func TestStrandedConnectionDoesNotSurviveTheProbeThatHitIt(t *testing.T) {
 
 			client := &http.Client{Transport: trustingClone(t, shared, server)}
 
-			probe := func(ctx context.Context) (*http.Response, error) {
-				probeCtx, cancel := context.WithTimeout(ctx, 400*time.Millisecond)
+			probe := func(ctx context.Context, timeout time.Duration) (*http.Response, error) {
+				probeCtx, cancel := context.WithTimeout(ctx, timeout)
 				defer cancel()
 
 				req, err := http.NewRequestWithContext(probeCtx, http.MethodGet, server.URL, nil)
@@ -189,7 +189,8 @@ func TestStrandedConnectionDoesNotSurviveTheProbeThatHitIt(t *testing.T) {
 			}
 
 			// 1. the first probe lands on the stranded connection and times out.
-			resp, err := probe(ctx)
+			// The short budget is the stranded-connection trigger: it must stay short.
+			resp, err := probe(ctx, 400*time.Millisecond)
 			if resp != nil {
 				_ = resp.Body.Close()
 			}
@@ -199,7 +200,12 @@ func TestStrandedConnectionDoesNotSurviveTheProbeThatHitIt(t *testing.T) {
 			// 2. the next probe must answer — on a connection of its own. This
 			// is the whole fix: under HTTP/2 it would ride the stranded
 			// connection instead and time out again, sixteen times in a row.
-			resp, err = probe(ctx)
+			// Its deadline is generous and separate from the first probe's: it
+			// only has to bound a fresh dial + TLS handshake, which a starved
+			// scheduler (full parallel suite) can stretch past 400 ms. A probe
+			// that rode the stranded connection would still burn all of it and
+			// fail.
+			resp, err = probe(ctx, 10*time.Second)
 			require.NoError(t, err, "the probe after a stranded one must dial fresh, not inherit the corpse")
 
 			defer func() { _ = resp.Body.Close() }()

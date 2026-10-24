@@ -967,7 +967,7 @@ func TestNodeRoleParameterApply(t *testing.T) {
 	}
 }
 
-// TestGetKnownParameters_KeysMatchParameterKeyPattern is the "registry proof"
+// TestGetKnownParameters_KeysMatchParamKeyPattern is the "registry proof"
 // spec 2026-09-12-03 asks for: every ParameterKey the platform actually
 // defines must satisfy paramkeys.KeyPattern, which is what the system-
 // parameters HTTP route (internal/handlers/system) now validates against
@@ -979,7 +979,7 @@ func TestNodeRoleParameterApply(t *testing.T) {
 // covered separately by
 // TestSystemParameterKeyValidation_AdHocKeysMatchPattern in
 // internal/handlers/system.
-func TestGetKnownParameters_KeysMatchParameterKeyPattern(t *testing.T) {
+func TestGetKnownParameters_KeysMatchParamKeyPattern(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
@@ -997,36 +997,41 @@ func TestGetKnownParameters_KeysMatchParameterKeyPattern(t *testing.T) {
 func TestWorkerPoolApplyFuncs(t *testing.T) {
 	t.Parallel()
 
-	byKey := map[ParameterKey]ParameterDefinition{}
-	for _, d := range getKnownParameters() {
-		byKey[d.Key] = d
-	}
+	for _, key := range []ParameterKey{KeyCheckWorkers, KeyJobWorkers} {
+		var def *ParameterDefinition
 
-	cases := []struct {
-		key ParameterKey
-		get func(*config.Config) int
-	}{
-		{KeyCheckWorkers, func(c *config.Config) int { return c.Server.CheckWorker.Nb }},
-		{KeyJobWorkers, func(c *config.Config) int { return c.Server.JobWorker.Nb }},
-	}
+		for _, p := range getKnownParameters() {
+			if p.Key == key {
+				def = &p
 
-	for _, tc := range cases {
-		for _, in := range []any{"8", float64(8), 8} {
+				break
+			}
+		}
+
+		require.NotNil(t, def)
+
+		get := func(c *config.Config) int {
+			if key == KeyCheckWorkers {
+				return c.Server.CheckWorker.Nb
+			}
+
+			return c.Server.JobWorker.Nb
+		}
+
+		for _, v := range []any{"8", float64(8), int(8)} {
 			cfg := &config.Config{}
-			byKey[tc.key].ApplyFunc(cfg, in)
-			require.Equal(t, 8, tc.get(cfg), "%s with %#v", tc.key, in)
+			def.ApplyFunc(cfg, v)
+			require.Equal(t, 8, get(cfg), "key %s value %#v", key, v)
 		}
 
 		cfg := &config.Config{}
-		cfg.Server.CheckWorker.Nb = 25
-		cfg.Server.JobWorker.Nb = 2
-		before := tc.get(cfg)
-		byKey[tc.key].ApplyFunc(cfg, "abc")
-		require.Equal(t, before, tc.get(cfg), "%s with abc", tc.key)
+		cfg.Server.CheckWorker.Nb = 5
+		cfg.Server.JobWorker.Nb = 5
+		def.ApplyFunc(cfg, "abc")
+		require.Equal(t, 5, get(cfg))
 	}
 }
 
-// TestWorkerPoolOverlayPrecedence: env > DB > default through Initialize.
 func TestWorkerPoolOverlayPrecedence(t *testing.T) {
 	tests := []struct {
 		name string
@@ -1034,9 +1039,9 @@ func TestWorkerPoolOverlayPrecedence(t *testing.T) {
 		db   any
 		want int
 	}{
-		{"env beats db", "8", float64(10), 8},
-		{"db without env", "", float64(10), 10},
-		{"default without env or db", "", nil, 25},
+		{name: "env beats db", env: "8", db: float64(10), want: 8},
+		{name: "db without env", db: float64(10), want: 10},
+		{name: "default", want: 25},
 	}
 
 	for _, tt := range tests {
@@ -1064,37 +1069,40 @@ func TestWorkerPoolOverlayPrecedence(t *testing.T) {
 }
 
 // TestEveryParameterEnvVarTakesEffect: a parameter whose env var config.Load
-// does not bind relies on the overlay alone, so its ApplyFunc must accept at
-// least one well-formed raw env string.
+// does not bind is bound only by the overlay, so applying a well-formed string
+// must change the config.
 func TestEveryParameterEnvVarTakesEffect(t *testing.T) {
 	t.Parallel()
 
-	recognized := map[string]bool{}
+	recognized := make(map[string]struct{})
 	for _, n := range config.RecognizedEnvVars() {
-		recognized[n] = true
+		recognized[n] = struct{}{}
 	}
 
 	candidates := []string{"7", "true", "1h", "x@acme.example", "https://acme.example", "abc"}
 
 	for _, def := range getKnownParameters() {
-		if def.EnvVar == "" || recognized[def.EnvVar] {
+		if def.EnvVar == "" {
+			continue
+		}
+
+		if _, ok := recognized[def.EnvVar]; ok {
 			continue
 		}
 
 		changed := false
 
 		for _, c := range candidates {
-			base := &config.Config{}
-			got := &config.Config{}
-			def.ApplyFunc(got, c)
+			cfg := &config.Config{}
+			def.ApplyFunc(cfg, c)
 
-			if !reflect.DeepEqual(base, got) {
+			if !reflect.DeepEqual(cfg, &config.Config{}) {
 				changed = true
 
 				break
 			}
 		}
 
-		require.True(t, changed, "%s (%s) ignores every string value: the env var has no effect", def.EnvVar, def.Key)
+		require.Truef(t, changed, "%s (%s) ignores every string value: the env var has no effect", def.EnvVar, def.Key)
 	}
 }

@@ -1,5 +1,10 @@
 package mcp
 
+import (
+	"maps"
+	"slices"
+)
+
 // registeredTool is one entry of the registry: a definition, its
 // implementation and the toolset that lists it.
 type registeredTool struct {
@@ -148,6 +153,7 @@ func (h *Handler) registerTools() {
 	h.toolsets = make(map[string]string, len(all))
 	for i := range all {
 		def := all[i].def
+		def.InputSchema = boundInputSchema(def.InputSchema)
 		// Title lives with the annotations (one place per tool) and is
 		// mirrored onto the definition, since MCP's display precedence is
 		// Tool.title → annotations.title → name.
@@ -166,11 +172,69 @@ func objectSchema(props map[string]any, required []string) map[string]any {
 	schema := map[string]any{
 		schemaKeyType:       schemaTypeObject,
 		schemaKeyProperties: props,
+		// Advertised only: handlers decode leniently and ignore unknown keys.
+		"additionalProperties": false,
 	}
 	if len(required) > 0 {
 		schema["required"] = required
 	}
 	return schema
+}
+
+// Input string bounds, advertised in inputSchema (the handler decodes leniently
+// and does not validate against the schema, like additionalProperties above).
+const (
+	maxStringLength     = 2048
+	maxLongStringLength = 64 * 1024 // js scripts and custom CSS (64 KB)
+)
+
+// withMaxLength overrides the default maxLength of a string property.
+func withMaxLength(prop map[string]any, limit int) map[string]any {
+	prop["maxLength"] = limit
+
+	return prop
+}
+
+// isIdentifierProp reports the optional properties that are always a UID, slug
+// or cursor, so an empty string is never meaningful.
+func isIdentifierProp(name string) bool {
+	return name == propIdentifier || name == propUID || name == propCursor
+}
+
+// boundInputSchema adds maxLength to every string property of an input schema
+// (unless it declares its own) and minLength 1 to required strings and
+// identifiers. Optional free text gets no minLength: an empty string clears
+// the field in the update_* tools. Properties are copied, never mutated, since
+// merged tools share them.
+func boundInputSchema(input any) any {
+	schema, ok := input.(map[string]any)
+	if !ok {
+		return input
+	}
+	props, _ := schema[schemaKeyProperties].(map[string]any)
+	required, _ := schema["required"].([]string)
+
+	bounded := make(map[string]any, len(props))
+	for name, raw := range props {
+		bounded[name] = raw
+		prop, isMap := raw.(map[string]any)
+		if !isMap || prop[schemaKeyType] != schemaTypeString {
+			continue
+		}
+		prop = maps.Clone(prop)
+		if _, has := prop["maxLength"]; !has {
+			prop["maxLength"] = maxStringLength
+		}
+		if isIdentifierProp(name) || slices.Contains(required, name) {
+			prop["minLength"] = 1
+		}
+		bounded[name] = prop
+	}
+
+	out := maps.Clone(schema)
+	out[schemaKeyProperties] = bounded
+
+	return out
 }
 
 func stringProp(desc string) map[string]any {

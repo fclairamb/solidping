@@ -303,6 +303,10 @@ func (h *Handler) UpdateMe(writer http.ResponseWriter, req *http.Request) error 
 
 	resp, err := h.svc.UpdateProfile(req.Context(), claims, updateReq)
 	if err != nil {
+		if errors.Is(err, ErrUnsupportedLocale) || errors.Is(err, ErrInvalidTimezone) {
+			return h.WriteErrorErr(writer, req, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
+		}
+
 		if handled, writeErr := h.handleEmailChangeError(writer, req, err); handled {
 			return writeErr
 		}
@@ -1131,7 +1135,8 @@ func (h *Handler) GetInviteInfo(writer http.ResponseWriter, req *http.Request) e
 	return h.WriteJSON(writer, http.StatusOK, resp)
 }
 
-// AcceptInvite accepts an invitation (no auth required for new users).
+// AcceptInvite accepts an invitation. Anonymous for a new invitee; an existing
+// account must be signed in as itself (spec 2026-10-16-06).
 func (h *Handler) AcceptInvite(writer http.ResponseWriter, req *http.Request) error {
 	var acceptReq AcceptInviteRequest
 	if err := json.NewDecoder(req.Body).Decode(&acceptReq); err != nil {
@@ -1146,7 +1151,14 @@ func (h *Handler) AcceptInvite(writer http.ResponseWriter, req *http.Request) er
 		})
 	}
 
-	resp, err := h.svc.AcceptInvite(req.Context(), acceptReq)
+	// The route is optionally authenticated (AuthIfPresented): claims are
+	// present only when the caller presented a valid credential.
+	callerUID := ""
+	if claims, ok := getClaimsFromContext(req); ok {
+		callerUID = claims.UserUID
+	}
+
+	resp, err := h.svc.AcceptInvite(req.Context(), acceptReq, callerUID)
 	if err != nil {
 		return h.handleInvitationError(writer, req, err)
 	}
@@ -1308,6 +1320,12 @@ func (h *Handler) handleInvitationError(writer http.ResponseWriter, request *htt
 	case errors.Is(err, ErrInvalidCredentials):
 		return h.WriteErrorErr(writer, request, http.StatusBadRequest, base.ErrorCodeValidationError,
 			err.Error(), err)
+	case errors.Is(err, ErrInviteLoginRequired):
+		return h.WriteErrorErr(writer, request, http.StatusUnauthorized, base.ErrorCodeInviteLoginRequired,
+			"An account already exists for this email. Sign in to accept the invitation.", err)
+	case errors.Is(err, ErrInviteEmailMismatch):
+		return h.WriteErrorErr(writer, request, http.StatusForbidden, base.ErrorCodeInviteEmailMismatch,
+			"This invitation is addressed to another account", err)
 	default:
 		return h.WriteInternalError(writer, request, err)
 	}

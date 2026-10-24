@@ -921,3 +921,15 @@ type ListChecksFilter struct {
 	CursorTargetHostKey  *string
 	CursorTargetHostName *string
 }
+
+// TargetURL is the URL the check probes, from its config, or "" for check
+// types that do not probe a URL.
+func (c *Check) TargetURL() string {
+	if c == nil || c.Config == nil {
+		return ""
+	}
+
+	url, _ := c.Config["url"].(string)
+
+	return url
+}

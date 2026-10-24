@@ -92,15 +92,17 @@ func envNameForKoanfPath(path string) (string, bool) {
 func manualReaderEnvVars() []string {
 	out := append(manualReaderServerEnvVars(), manualReaderPlatformEnvVars()...)
 	out = append(out, manualReaderHeartbeatEnvVars()...)
+	out = append(out, manualReaderAgentEnvVars()...)
 
 	return append(out,
-		// applyWorkerPoolEnv
-		"SP_SERVER_CHECK_WORKER_NB",
-		"SP_SERVER_JOB_WORKER_NB",
-		"SP_SERVER_CHECK_WORKER_FETCH_MAX_AHEAD",
 		// applyEgressEnv: egress.allow_private_targets is snake_case, so
 		// koanf's env loader can never reach it.
 		EnvEgressAllowPrivate,
+		// applyToolsEnv: tools.denied_hosts is snake_case.
+		EnvToolsDeniedHosts,
+		// applyKubernetesEnv — kubernetes.allow_in_cluster is snake_case and
+		// its env name does not follow the kubernetes.* path.
+		EnvK8sAllowInCluster,
 		// applyHeadersEnv: csp_extra_sources is snake_case, so koanf's env
 		// loader can never reach it.
 		EnvHeadersCSPExtraSources,
@@ -148,9 +150,23 @@ func manualReaderHeartbeatEnvVars() []string {
 	}
 }
 
+// manualReaderAgentEnvVars covers applyAgentEnv.
+func manualReaderAgentEnvVars() []string {
+	return []string{
+		"SP_AGENT_SERVER_URL",
+		"SP_AGENT_ENROLLMENT_TOKEN",
+		"SP_AGENT_KEYS_FILE",
+		"SP_AGENT_KEYS",
+		"SP_AGENT_NAME",
+		"SP_AGENT_PRINT_KEYS",
+		"SP_AGENT_DISCOVERY_ENABLED",
+		"SP_AGENT_DISCOVERY_CIDRS",
+	}
+}
+
 // manualReaderServerEnvVars covers Load's own bare reads and the helpers that
 // configure request serving: rate limiting, password hashing, jobs, realtime,
-// agents, auth, the server hosts (docs / custom-domain CNAME), in-server ACME
+// auth, the server hosts (docs / custom-domain CNAME), in-server ACME
 // (manualReaderACMEEnvVars) and check scheduling.
 func manualReaderServerEnvVars() []string {
 	return append([]string{
@@ -176,6 +192,9 @@ func manualReaderServerEnvVars() []string {
 		// env loader cannot reach them (see BrowserCheckerConfig).
 		"SP_CHECKERS_BROWSER_CDP_URL",
 		"SP_CHECKERS_BROWSER_CHROME_PATH",
+		// checkers.env_ref_allowlist is snake_case, and its env name does not
+		// even follow the checkers.* path (spec 2026-10-16-03).
+		EnvCheckEnvAllowlist,
 		// applyRateLimitingEnv
 		"SP_SERVER_RATE_LIMITING_REQUESTS_PER_MINUTE",
 		"SP_SERVER_RATE_LIMITING_BURST",
@@ -209,13 +228,6 @@ func manualReaderServerEnvVars() []string {
 		"SP_REALTIME_PING_INTERVAL",
 		"SP_REALTIME_MAX_CONNECTIONS",
 		"SP_REALTIME_MAX_SUBSCRIPTIONS_PER_CONNECTION",
-		// applyAgentEnv
-		"SP_AGENT_SERVER_URL",
-		"SP_AGENT_ENROLLMENT_TOKEN",
-		"SP_AGENT_KEYS_FILE",
-		"SP_AGENT_KEYS",
-		"SP_AGENT_NAME",
-		"SP_AGENT_PRINT_KEYS",
 		// applyAuthEnv
 		"SP_AUTH_ACCESS_TOKEN_EXPIRY",
 		"SP_AUTH_REFRESH_TOKEN_EXPIRY",
@@ -253,7 +265,18 @@ func manualReaderServerEnvVars() []string {
 		"SP_SCHEDULING_FAST_LANE_RESERVED",
 		"SP_SCHEDULING_BULK_LANE_MAX",
 		"SP_SCHEDULING_BULK_SLICE_BUDGET_MS",
-	}, manualReaderACMEEnvVars()...)
+	}, append(manualReaderWorkerPoolEnvVars(), manualReaderACMEEnvVars()...)...)
+}
+
+// manualReaderWorkerPoolEnvVars lists the names applyWorkerPoolEnv reads: the
+// pool sizes have a snake_case path segment (check_worker), so koanf's env
+// loader cannot reach them.
+func manualReaderWorkerPoolEnvVars() []string {
+	return []string{
+		"SP_SERVER_CHECK_WORKER_NB",
+		"SP_SERVER_JOB_WORKER_NB",
+		"SP_SERVER_CHECK_WORKER_FETCH_MAX_AHEAD",
+	}
 }
 
 // manualReaderPlatformEnvVars covers the helpers that configure the process
@@ -340,19 +363,20 @@ func manualReaderPlatformEnvVars() []string {
 	return out
 }
 
-// DefaultsByEnvVar returns the loaded default of every koanf-reachable setting
-// keyed by its SP_* name, as a string (fmt %v of the leaf value). Pass the
-// config from a Load run with no SP_* variable set. Settings bound by manual
-// readers are not included: their defaults live in code the caller must read.
+// DefaultsByEnvVar returns, for every koanf-reachable setting, the SP_* name
+// that binds it and the string form of its value in cfg (durations print as
+// time.Duration.String). Settings that only a manual reader binds are absent.
+// It exists so a test can compare documented defaults with the code.
 func DefaultsByEnvVar(cfg *Config) map[string]string {
-	loaded := koanf.New(".")
-	_ = loaded.Load(structs.Provider(cfg, "koanf"), nil)
+	tree := koanf.New(".")
+	// The in-memory structs provider cannot fail in practice.
+	_ = tree.Load(structs.Provider(cfg, "koanf"), nil)
 
 	out := make(map[string]string)
 
-	for _, path := range loaded.Keys() {
+	for path, value := range tree.All() {
 		if name, ok := envNameForKoanfPath(path); ok {
-			out[name] = fmt.Sprintf("%v", loaded.Get(path))
+			out[name] = fmt.Sprint(value)
 		}
 	}
 

@@ -935,7 +935,7 @@ func TestSecretsAreScrubbedFromRunOutput(t *testing.T) {
 	r := require.New(t)
 	res, err := (&aichecks.Runner{}).Run(t.Context(),
 		`console.log("token", secrets.TOKEN); return { status: "up", output: { echo: secrets.TOKEN } };`,
-		nil, map[string]string{"TOKEN": testSecret}, 0)
+		nil, map[string]string{"TOKEN": testSecret}, nil, 0)
 	r.NoError(err)
 	r.Equal("[secret:TOKEN]", res.Output["echo"])
 	r.NotContains(res.Output["console"], testSecret)

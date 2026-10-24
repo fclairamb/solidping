@@ -8,6 +8,8 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/i18n"
+	"github.com/fclairamb/solidping/server/internal/i18n/recipient"
 	"github.com/fclairamb/solidping/server/internal/integrations/telegram"
 	"github.com/fclairamb/solidping/server/internal/integrations/twilio"
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
@@ -109,7 +111,8 @@ func classifySend(
 type (
 	// EnqueueEmailFunc hands the notice to the normal email job chain, so it
 	// inherits the retry policy and SMTP configuration every other mail uses.
-	EnqueueEmailFunc func(ctx context.Context, orgUID, to, subject, text string) error
+	// loc is the language the subject and text are already written in.
+	EnqueueEmailFunc func(ctx context.Context, orgUID, to string, loc i18n.Locale, subject, text string) error
 	// SendTelegramFunc DMs pre-rendered (already escaped) HTML to a chat id.
 	SendTelegramFunc func(ctx context.Context, chatID, html string) error
 	// SendSlackDMFunc DMs plain text through the org's own Slack connection.
@@ -199,8 +202,12 @@ func DeliverToUser(
 	routes := routesFor(ctx, deps, log, userUID)
 	report.Routes = len(routes)
 
+	// The email is written in the recipient's language and timezone; every
+	// other medium keeps the English text.
+	loc := recipient.ForUser(user)
+
 	for _, route := range routes {
-		switch dispatchRoute(ctx, deps, log, label, route, notice) {
+		switch dispatchRoute(ctx, deps, log, label, route, notice, loc) {
 		case outcomeSent:
 			report.Delivered++
 		case outcomeFailed:
@@ -304,13 +311,13 @@ func destinationKey(contact *models.UserContact) string {
 // label it was counted under.
 func dispatchRoute(
 	ctx context.Context, deps Deps, log *slog.Logger, label string,
-	route *models.UserNotificationRoute, notice *Notice,
+	route *models.UserNotificationRoute, notice *Notice, loc i18n.Locale,
 ) string {
 	var outcome string
 
 	switch route.Contact.Type {
 	case models.UserContactTypeEmail:
-		outcome = sendEmail(ctx, deps, log, label, route, notice)
+		outcome = sendEmail(ctx, deps, log, label, route, notice, loc)
 	case models.UserContactTypeTelegram:
 		outcome = sendTelegram(ctx, deps, log, label, route, notice)
 	case models.UserContactTypeSlackUser:
@@ -338,17 +345,20 @@ func dispatchRoute(
 	return outcome
 }
 
-// sendEmail enqueues the notice as a normal email job.
+// sendEmail enqueues the notice as a normal email job, written in the
+// recipient's language (loc).
 func sendEmail(
 	ctx context.Context, deps Deps, log *slog.Logger, label string,
-	route *models.UserNotificationRoute, notice *Notice,
+	route *models.UserNotificationRoute, notice *Notice, loc i18n.Locale,
 ) string {
 	if deps.EnqueueEmail == nil {
 		return skipUnavailable(ctx, log, label, models.UserContactTypeEmail, route)
 	}
 
+	subject, text, written := notice.emailCopy(loc)
+
 	return classifySend(ctx, log, label, models.UserContactTypeEmail, route,
-		deps.EnqueueEmail(ctx, route.OrgUID, route.Contact.Value, notice.Subject, notice.noticeText()))
+		deps.EnqueueEmail(ctx, route.OrgUID, route.Contact.Value, written, subject, text))
 }
 
 // sendTelegram DMs the notice through the instance bot.

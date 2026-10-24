@@ -7,6 +7,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
+	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/egress"
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
@@ -17,6 +18,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/support"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
 	"github.com/fclairamb/solidping/server/internal/webpush"
+	"github.com/fclairamb/solidping/server/internal/workertasks"
 )
 
 // SLOBurnEvaluator runs one sweep of the SLO burn-rate alert policies and
@@ -52,8 +54,12 @@ type FreshnessSweeper interface {
 
 // Registry holds all application services for dependency injection.
 type Registry struct {
-	Jobs           jobsvc.Service
-	CheckJobs      checkjobsvc.Service
+	Jobs      jobsvc.Service
+	CheckJobs checkjobsvc.Service
+	// WorkerTasks is the shared lease/slice mechanism for work run on a
+	// worker (spec 2026-10-22-02), used in-process by cloud workers and over
+	// signed HTTP by agents.
+	WorkerTasks    *workertasks.Service
 	EventNotifier  notifier.EventNotifier
 	EmailSender    email.Sender
 	EmailFormatter email.Formatter
@@ -127,6 +133,21 @@ type Registry struct {
 	// 2026-10-03-07), the ai_repair job's body. Nil when no AI provider is
 	// configured; the job nil-guards.
 	AIRepair AIRepairer
+
+	// A2AComments records an AI agent's (A2A) reply on the incident timeline
+	// (spec 2026-10-18-02). Same *incidents.Service the handlers use, behind
+	// a narrow interface for the import-cycle reason SLOBurnEvaluator gives.
+	// Nil in tests that build a bare Registry; the A2A sender and the
+	// a2a_task_poll job log and skip the comment then.
+	A2AComments A2ACommenter
+}
+
+// A2ACommenter appends a comment authored by an AI agent integration to an
+// incident's timeline. It fans out like any comment.
+type A2ACommenter interface {
+	AddCommentFromA2A(
+		ctx context.Context, orgUID, incidentUID, integrationUID, integrationName, text string,
+	) (*models.Event, error)
 }
 
 // AIRepairer is the repair entry point the ai_repair job calls.

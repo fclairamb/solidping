@@ -37,8 +37,8 @@ const (
 	// DefaultBaseURL is the SP_BASE_URL a fresh install starts with.
 	DefaultBaseURL = "http://localhost:4000"
 
-	// DefaultJWTSecret is the public placeholder JWT secret. Nothing may be
-	// derived from it: anyone can compute the result.
+	// DefaultJWTSecret is the public placeholder auth.jwt_secret starts with. It
+	// is never a real secret: nothing may be derived from it.
 	DefaultJWTSecret = "change-me-in-production"
 )
 

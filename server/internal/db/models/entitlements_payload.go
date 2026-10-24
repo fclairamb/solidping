@@ -64,6 +64,10 @@ type EntitlementLimits struct {
 	// SaaS runs them on a server key. nil = unlimited (self-hosted default,
 	// the operator's own key).
 	MaxAITokensPerDay *int `json:"maxAiTokensPerDay,omitempty"`
+	// MaxDiscoveryAgentAddressesPerDay caps the addresses the org's agents may
+	// be asked to scan per UTC day (spec 2026-10-22-04), counted at scan start.
+	// nil = unlimited (self-hosted default); SaaS defaults to one /16 a day.
+	MaxDiscoveryAgentAddressesPerDay *int `json:"maxDiscoveryAgentAddressesPerDay,omitempty"`
 	// WhiteLabel is the one non-numeric entitlement: whether the org may drop
 	// the "powered by SolidPing" badge from its status pages (spec
 	// 2026-08-21-07). It lives here rather than in a sibling struct because
@@ -93,18 +97,20 @@ func (l *EntitlementLimits) UnmarshalJSON(data []byte) error {
 	// Local wire shape: same fields plus the deprecated alias. Decoded
 	// strictly so unknown keys are rejected (loud typos).
 	var wire struct {
-		MaxChecks           *int  `json:"maxChecks"`
-		MaxUsers            *int  `json:"maxUsers"`
-		MaxSSOUsers         *int  `json:"maxSsoUsers"` // deprecated alias for maxUsers
-		MaxChecksPerMinute  *int  `json:"maxChecksPerMinute"`
-		MaxDeportedAgents   *int  `json:"maxDeportedAgents"`
-		MaxCustomDomains    *int  `json:"maxCustomDomains"`
-		MaxSmsPerMonth      *int  `json:"maxSmsPerMonth"`
-		MaxCallsPerMonth    *int  `json:"maxCallsPerMonth"`
-		MaxWhatsappPerMonth *int  `json:"maxWhatsappPerMonth"`
-		MaxSlos             *int  `json:"maxSlos"`
-		MaxAITokensPerDay   *int  `json:"maxAiTokensPerDay"`
-		WhiteLabel          *bool `json:"whiteLabel"`
+		MaxChecks           *int `json:"maxChecks"`
+		MaxUsers            *int `json:"maxUsers"`
+		MaxSSOUsers         *int `json:"maxSsoUsers"` // deprecated alias for maxUsers
+		MaxChecksPerMinute  *int `json:"maxChecksPerMinute"`
+		MaxDeportedAgents   *int `json:"maxDeportedAgents"`
+		MaxCustomDomains    *int `json:"maxCustomDomains"`
+		MaxSmsPerMonth      *int `json:"maxSmsPerMonth"`
+		MaxCallsPerMonth    *int `json:"maxCallsPerMonth"`
+		MaxWhatsappPerMonth *int `json:"maxWhatsappPerMonth"`
+		MaxSlos             *int `json:"maxSlos"`
+		MaxAITokensPerDay   *int `json:"maxAiTokensPerDay"`
+		// spec 2026-10-22-04
+		MaxDiscoveryAgentAddressesPerDay *int  `json:"maxDiscoveryAgentAddressesPerDay"`
+		WhiteLabel                       *bool `json:"whiteLabel"`
 	}
 
 	dec := json.NewDecoder(bytes.NewReader(data))
@@ -126,6 +132,7 @@ func (l *EntitlementLimits) UnmarshalJSON(data []byte) error {
 	l.MaxWhatsappPerMonth = wire.MaxWhatsappPerMonth
 	l.MaxSlos = wire.MaxSlos
 	l.MaxAITokensPerDay = wire.MaxAITokensPerDay
+	l.MaxDiscoveryAgentAddressesPerDay = wire.MaxDiscoveryAgentAddressesPerDay
 	l.WhiteLabel = wire.WhiteLabel
 
 	if wire.MaxUsers != nil {

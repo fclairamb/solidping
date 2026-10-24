@@ -12,6 +12,8 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/discovery/scantypes"
+	"github.com/fclairamb/solidping/server/internal/egress"
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/handlers/discovery"
@@ -423,4 +425,46 @@ func TestHandlerDismissGroupMissingParam(t *testing.T) {
 	rec := f.doAdminRequest(t, router, http.MethodDelete,
 		"/api/v1/orgs/"+f.org.Slug+"/discovery/checks", nil)
 	r.Equal(http.StatusUnprocessableEntity, rec.Code)
+}
+
+// On a SaaS-shaped deployment GET /discovery/types omits `lan` and `container`
+// and POST /discovery/scans answers 403 DISCOVERY_NOT_AVAILABLE for them, with
+// a message naming the operator knob for `lan`.
+func TestHandlerRefusedTypesUnderEgressPolicy(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newDiscoveryFixtureWith(t, egress.New(false), true)
+	router := f.newRouter(t)
+
+	rec := f.doAdminRequest(t, router, http.MethodGet, "/api/v1/orgs/"+f.org.Slug+"/discovery/types", nil)
+	r.Equal(http.StatusOK, rec.Code)
+
+	var resp struct {
+		Data []struct {
+			Type string `json:"type"`
+		} `json:"data"`
+	}
+	r.NoError(json.Unmarshal(rec.Body.Bytes(), &resp))
+
+	types := make([]string, 0, len(resp.Data))
+	for _, d := range resp.Data {
+		types = append(types, d.Type)
+	}
+
+	r.Equal([]string{"freebox", "kubernetes"}, types)
+
+	body := discovery.StartScanRequest{Type: "lan", Parameters: json.RawMessage(`{"cidrs":["10.0.0.0/24"]}`)}
+	rec = f.doAdminRequest(t, router, http.MethodPost, f.scansPath(), body)
+	r.Equal(http.StatusForbidden, rec.Code)
+	r.Contains(rec.Body.String(), scantypes.CodeNotAvailable)
+	r.Contains(rec.Body.String(), egress.EnvAllowPrivate)
+
+	body = discovery.StartScanRequest{
+		Type:       "container",
+		Parameters: json.RawMessage(`{"hosts":["unix:///var/run/docker.sock"]}`),
+	}
+	rec = f.doAdminRequest(t, router, http.MethodPost, f.scansPath(), body)
+	r.Equal(http.StatusForbidden, rec.Code)
+	r.Contains(rec.Body.String(), scantypes.CodeNotAvailable)
 }

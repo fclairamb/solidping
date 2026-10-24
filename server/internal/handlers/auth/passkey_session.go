@@ -54,9 +54,7 @@ func (s *Service) sealPasskeySession(
 		},
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-
-	signed, err := token.SignedString([]byte(s.fullCfg.Auth.JWTSecret))
+	signed, err := s.signJWT(string(purpose), claims)
 	if err != nil {
 		return "", fmt.Errorf("sign passkey session: %w", err)
 	}
@@ -74,10 +72,9 @@ var (
 func (s *Service) unsealPasskeySession(
 	tokenString string, expectedPurpose passkeySessionPurpose,
 ) (*passkeySessionClaims, *webauthn.SessionData, error) {
-	parsed, err := jwt.ParseWithClaims(tokenString, &passkeySessionClaims{},
-		func(_ *jwt.Token) (any, error) {
-			return []byte(s.fullCfg.Auth.JWTSecret), nil
-		})
+	// Each purpose has its own derived key, so a register session cannot
+	// even verify as a login session (the Purpose check below is a backstop).
+	parsed, err := s.parsePurposeJWT(tokenString, string(expectedPurpose), &passkeySessionClaims{})
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {
 			return nil, nil, errPasskeySessionExpired

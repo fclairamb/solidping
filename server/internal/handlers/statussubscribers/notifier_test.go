@@ -80,7 +80,7 @@ func TestNotifierFanOutToConfirmedOnly(t *testing.T) {
 
 	sender := &fakeSender{}
 	notifier := statussubscribers.NewNotifier(
-		s.dbSvc, sender, testFormatter(t), "https://status.example.com", nil, nil)
+		s.dbSvc, sender, testFormatter(t), "https://status.example.com", nil, nil, nil)
 
 	notifier.NotifyStatusUpdate(ctx, statussubscribers.UpdateEventFor(
 		s.page.UID, nil, string(models.StatusUpdateKindInfo), "Heads up", "Body", nil, "Acme Status", 0))
@@ -103,7 +103,7 @@ func TestNotifierResolvedTemplate(t *testing.T) {
 
 	sender := &fakeSender{}
 	notifier := statussubscribers.NewNotifier(
-		s.dbSvc, sender, testFormatter(t), "https://status.example.com", nil, nil)
+		s.dbSvc, sender, testFormatter(t), "https://status.example.com", nil, nil, nil)
 
 	notifier.NotifyStatusUpdate(ctx, statussubscribers.UpdateEventFor(
 		s.page.UID, nil, string(models.StatusUpdateKindResolved),
@@ -111,8 +111,12 @@ func TestNotifierResolvedTemplate(t *testing.T) {
 
 	msgs := sender.sent()
 	r.Len(msgs, 1)
-	r.Contains(msgs[0].Subject, "Resolved")
+	// Every mail about one incident shares "<Page>: <Title>" so clients keep
+	// the story in one conversation; the state is in the body.
+	r.Equal("Acme Status: All clear", msgs[0].Subject)
+	r.NotContains(msgs[0].Subject, "[")
 	r.Contains(msgs[0].Text, "Resolved")
+	r.Contains(msgs[0].HTML, "Resolved")
 }
 
 func TestNotifierIncidentOpenedTemplate(t *testing.T) {
@@ -127,7 +131,7 @@ func TestNotifierIncidentOpenedTemplate(t *testing.T) {
 	incidentUID := "incident-123"
 	sender := &fakeSender{}
 	notifier := statussubscribers.NewNotifier(
-		s.dbSvc, sender, testFormatter(t), "https://status.example.com", nil, nil)
+		s.dbSvc, sender, testFormatter(t), "https://status.example.com", nil, nil, nil)
 
 	// First update for the incident (count 0) -> incident-opened.
 	notifier.NotifyStatusUpdate(ctx, statussubscribers.UpdateEventFor(
@@ -136,7 +140,9 @@ func TestNotifierIncidentOpenedTemplate(t *testing.T) {
 
 	msgs := sender.sent()
 	r.Len(msgs, 1)
-	r.Contains(msgs[0].Subject, "New incident")
+	r.Equal("Acme Status: Outage", msgs[0].Subject)
+	r.Contains(msgs[0].Text, "New incident")
+	r.Contains(msgs[0].HTML, "New incident")
 }
 
 func TestNotifierMailFailureDoesNotPanic(t *testing.T) {
@@ -150,7 +156,7 @@ func TestNotifierMailFailureDoesNotPanic(t *testing.T) {
 
 	sender := &fakeSender{fail: true}
 	notifier := statussubscribers.NewNotifier(
-		s.dbSvc, sender, testFormatter(t), "https://status.example.com", nil, nil)
+		s.dbSvc, sender, testFormatter(t), "https://status.example.com", nil, nil, nil)
 
 	// Must not panic or block despite the send error.
 	notifier.NotifyStatusUpdate(ctx, statussubscribers.UpdateEventFor(
@@ -166,7 +172,7 @@ func TestNotifierNilSenderNoop(t *testing.T) {
 	s := newSubSetup(t)
 
 	notifier := statussubscribers.NewNotifier(
-		s.dbSvc, nil, testFormatter(t), "https://status.example.com", nil, nil)
+		s.dbSvc, nil, testFormatter(t), "https://status.example.com", nil, nil, nil)
 	r.NotPanics(func() {
 		notifier.NotifyStatusUpdate(t.Context(), statussubscribers.UpdateEventFor(
 			s.page.UID, nil, "info", "x", "y", nil, "Acme Status", 0))
@@ -196,7 +202,7 @@ func TestPasswordPageStillNotifiesConfirmedSubscribers(t *testing.T) {
 	// failure below cannot be mistaken for the lock doing its job.
 	control := &fakeSender{}
 	statussubscribers.NewNotifier(
-		s.dbSvc, control, testFormatter(t), "https://status.example.com", nil, nil,
+		s.dbSvc, control, testFormatter(t), "https://status.example.com", nil, nil, nil,
 	).NotifyStatusUpdate(ctx, statussubscribers.UpdateEventFor(
 		s.page.UID, nil, string(models.StatusUpdateKindInfo), "Before", "Body", nil, "Acme Status", 0))
 	r.Len(control.sent(), 1, "positive control: a public page notifies")
@@ -213,7 +219,7 @@ func TestPasswordPageStillNotifiesConfirmedSubscribers(t *testing.T) {
 
 	sender := &fakeSender{}
 	statussubscribers.NewNotifier(
-		s.dbSvc, sender, testFormatter(t), "https://status.example.com", nil, nil,
+		s.dbSvc, sender, testFormatter(t), "https://status.example.com", nil, nil, nil,
 	).NotifyStatusUpdate(ctx, statussubscribers.UpdateEventFor(
 		s.page.UID, nil, string(models.StatusUpdateKindInfo), "After", "Body", nil, "Acme Status", 0))
 

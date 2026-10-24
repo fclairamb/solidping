@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/fclairamb/solidping/server/internal/i18n"
 )
 
 // TestBuildIncidentURL_HappyPath asserts the plain, expected-shape
@@ -71,7 +73,7 @@ func TestSuccessRedirectFragment_EscapesPerContext(t *testing.T) {
 	r := require.New(t)
 
 	hostile := `/d/orgs/x"><script>alert(1)</script>/incidents/y&z`
-	headExtra, body := successRedirectFragment(hostile)
+	headExtra, body := successRedirectFragment(i18n.English, hostile)
 
 	// Neither fragment should contain the raw payload unescaped.
 	r.NotContains(headExtra, `"><script>`)
@@ -98,7 +100,7 @@ func TestPageContent_SuccessCarriesRedirect(t *testing.T) {
 
 	r := require.New(t)
 
-	title, h1, icon, body, headExtra := pageContent(ackHTMLSuccess, "acme", "abc-123")
+	title, h1, icon, body, headExtra := pageContent(i18n.English, ackHTMLSuccess, "acme", "abc-123")
 
 	r.Equal("Incident acknowledged", title)
 	r.Equal("Incident acknowledged", h1)
@@ -121,7 +123,7 @@ func TestPageContent_NonSuccessKindsHaveNoRedirect(t *testing.T) {
 	nonSuccessKinds := []ackPageKind{ackHTMLExpired, ackHTMLInvalid, ackHTMLMissingToken, ackHTMLError}
 
 	for _, kind := range nonSuccessKinds {
-		_, _, _, body, headExtra := pageContent(kind, "acme", "abc-123")
+		_, _, _, body, headExtra := pageContent(i18n.English, kind, "acme", "abc-123")
 
 		r.Empty(headExtra, "only the success page should set a meta-refresh")
 		r.NotContains(body, "<script>", "only the success page should carry the redirect script")
@@ -150,21 +152,21 @@ func TestPageContent_IconPerKind(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		_, _, icon, _, _ := pageContent(tc.kind, "acme", "abc-123")
+		_, _, icon, _, _ := pageContent(i18n.English, tc.kind, "acme", "abc-123")
 		r.Contains(icon, tc.wantClass)
 	}
 }
 
-// TestWriteAckHTML_RendersCardWithDarkMode is an integration-style check on
+// TestWriteAckPage_RendersCardWithDarkMode is an integration-style check on
 // the full page: card layout, wordmark, and the prefers-color-scheme dark
 // variant must all be present in the served bytes.
-func TestWriteAckHTML_RendersCardWithDarkMode(t *testing.T) {
+func TestWriteAckPage_RendersCardWithDarkMode(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
 
 	rec := httptest.NewRecorder()
-	writeAckHTML(rec, http.StatusOK, ackHTMLSuccess, "acme", "abc-123")
+	writeAckPage(rec, i18n.English, http.StatusOK, ackHTMLSuccess, "acme", "abc-123")
 
 	body := rec.Body.String()
 	r.Equal("text/html; charset=utf-8", rec.Header().Get("Content-Type"))
@@ -176,16 +178,16 @@ func TestWriteAckHTML_RendersCardWithDarkMode(t *testing.T) {
 	r.Contains(body, "/d/orgs/acme/incidents/abc-123")
 }
 
-// TestWriteAckHTML_ErrorKindsOmitRedirect confirms the redirect is absent at
-// the writeAckHTML entry point too, not just in pageContent — guards against
+// TestWriteAckPage_ErrorKindsOmitRedirect confirms the redirect is absent at
+// the writeAckPage entry point too, not just in pageContent — guards against
 // a future refactor accidentally wiring the countdown into every kind.
-func TestWriteAckHTML_ErrorKindsOmitRedirect(t *testing.T) {
+func TestWriteAckPage_ErrorKindsOmitRedirect(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
 
 	rec := httptest.NewRecorder()
-	writeAckHTML(rec, http.StatusGone, ackHTMLExpired, "acme", "abc-123")
+	writeAckPage(rec, i18n.English, http.StatusGone, ackHTMLExpired, "acme", "abc-123")
 
 	body := rec.Body.String()
 	r.NotContains(body, "<script>")

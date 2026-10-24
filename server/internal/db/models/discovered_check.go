@@ -36,6 +36,7 @@ type DiscoveredCheck struct {
 	OrganizationUID    string          `bun:"organization_uid,notnull"                        json:"organizationUid"`
 	JobUID             string          `bun:"job_uid,notnull"                                 json:"jobUid"`
 	Source             DiscoverySource `bun:"source,notnull"                                  json:"source"`
+	Region             string          `bun:"region,notnull"                                  json:"region,omitempty"`
 	GroupKey           string          `bun:"group_key,notnull"                               json:"groupKey"`
 	GroupLabel         string          `bun:"group_label,notnull"                             json:"groupLabel"`
 	Name               string          `bun:"name,notnull"                                    json:"name"`
@@ -57,6 +58,7 @@ func NewDiscoveredCheck(
 	orgUID, jobUID string, source DiscoverySource,
 	groupKey, groupLabel, name, slug, checkType string,
 	config, meta json.RawMessage,
+	region string,
 ) *DiscoveredCheck {
 	if len(config) == 0 {
 		config = json.RawMessage("{}")
@@ -69,6 +71,7 @@ func NewDiscoveredCheck(
 		OrganizationUID: orgUID,
 		JobUID:          jobUID,
 		Source:          source,
+		Region:          region,
 		GroupKey:        groupKey,
 		GroupLabel:      groupLabel,
 		Name:            name,

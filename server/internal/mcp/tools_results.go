@@ -35,9 +35,7 @@ func listResultsDef() ToolDefinition {
 			"type, status, region, period type, and time range. Use this for trend " +
 			"analysis or to inspect a specific window. For investigating a single " +
 			"check's current state, use diagnose_check instead.\n" +
-			"Returns {data, pagination, window, effectiveFilter}: data holds the " +
-			"result rows, window the time bounds actually queried, and " +
-			"effectiveFilter the period filter that ran after defaulting. Defaults: " +
+			"Defaults: " +
 			"if periodType is omitted it falls back to \"hour\"; if " +
 			"periodStartAfter is omitted it falls back to a window matched to the " +
 			"finest periodType requested (raw=1h, hour=24h, day=30d, month=365d). " +

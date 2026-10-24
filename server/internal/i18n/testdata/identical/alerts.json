@@ -1,0 +1,6 @@
+{
+  "alerts.emphasis": {"fr": "markup only, no words", "de": "markup only, no words", "es": "markup only, no words"},
+  "alerts.link": {"fr": "markup only, no words", "de": "markup only, no words", "es": "markup only, no words"},
+  "alerts.regionOffline.pill": {"de": "German uses the English word offline, as dash0 does (Region offline)"},
+  "alerts.regionRecovered.offline": {"de": "German uses the English word offline, as dash0 does"}
+}

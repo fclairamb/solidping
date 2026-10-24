@@ -26,6 +26,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
 	"github.com/fclairamb/solidping/server/internal/db"
+	"github.com/fclairamb/solidping/server/internal/db/dblock"
 	"github.com/fclairamb/solidping/server/internal/db/migrationguard"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/postgres/embeddedpg"
@@ -922,15 +923,6 @@ func (s *Service) UpdateUser(ctx context.Context, uid string, update *models.Use
 		query = query.Set("totp_enabled = ?", *update.TOTPEnabled)
 	}
 
-	if update.TOTPRecoveryCodes != nil {
-		codesJSON, jsonErr := json.Marshal(*update.TOTPRecoveryCodes)
-		if jsonErr != nil {
-			return fmt.Errorf("failed to marshal recovery codes: %w", jsonErr)
-		}
-
-		query = query.Set("totp_recovery_codes = ?::jsonb", string(codesJSON))
-	}
-
 	if update.MustChangePassword != nil {
 		query = query.Set("must_change_password = ?", *update.MustChangePassword)
 	}
@@ -939,13 +931,45 @@ func (s *Service) UpdateUser(ctx context.Context, uid string, update *models.Use
 		query = query.Set("demo = ?", *update.Demo)
 	}
 
+	query, err := setUserJSONColumns(query, update)
+	if err != nil {
+		return err
+	}
+
 	if update.LastActiveAt != nil {
 		query = query.Set("last_active_at = ?", *update.LastActiveAt)
 	}
 
-	_, err := query.Exec(ctx)
+	_, err = query.Exec(ctx)
 
 	return err
+}
+
+// setUserJSONColumns adds the JSON-column assignments of a user update.
+func setUserJSONColumns(query *bun.UpdateQuery, update *models.UserUpdate) (*bun.UpdateQuery, error) {
+	if update.TOTPRecoveryCodes != nil {
+		codesJSON, err := json.Marshal(*update.TOTPRecoveryCodes)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal recovery codes: %w", err)
+		}
+
+		query = query.Set("totp_recovery_codes = ?::jsonb", string(codesJSON))
+	}
+
+	if update.Preferences == nil {
+		return query, nil
+	}
+
+	if update.Preferences.IsEmpty() {
+		return query.Set("preferences = NULL"), nil
+	}
+
+	prefsJSON, err := json.Marshal(update.Preferences)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal preferences: %w", err)
+	}
+
+	return query.Set("preferences = ?::jsonb", string(prefsJSON)), nil
 }
 
 func (s *Service) DeleteUser(ctx context.Context, uid string) error {
@@ -4126,8 +4150,16 @@ func (s *Service) ListIncidents(
 ) ([]*models.Incident, int64, error) {
 	var incidents []*models.Incident
 
+	order := []string{"started_at DESC", "uid DESC"}
+	cmp := "<"
+
+	if filter.Ascending {
+		order = []string{"started_at ASC", "uid ASC"}
+		cmp = ">"
+	}
+
 	query := applyIncidentsFilter(
-		s.db.NewSelect().Model(&incidents).Order("started_at DESC"),
+		s.db.NewSelect().Model(&incidents).Order(order...),
 		filter,
 	)
 
@@ -4135,11 +4167,15 @@ func (s *Service) ListIncidents(
 
 	if filter.CursorTimestamp != nil {
 		if filter.CursorUID != nil {
-			query = query.Where("(started_at < ? OR (started_at = ? AND uid < ?))",
+			query = query.Where("(started_at "+cmp+" ? OR (started_at = ? AND uid "+cmp+" ?))",
 				*filter.CursorTimestamp, *filter.CursorTimestamp, *filter.CursorUID)
 		} else {
-			query = query.Where("started_at < ?", *filter.CursorTimestamp)
+			query = query.Where("started_at "+cmp+" ?", *filter.CursorTimestamp)
 		}
+	}
+
+	if filter.SettledBefore != nil {
+		query = query.Where("started_at < ?", *filter.SettledBefore)
 	}
 
 	if filter.Limit > 0 {
@@ -4304,23 +4340,37 @@ func (s *Service) ListEvents(ctx context.Context, filter *models.ListEventsFilte
 
 	query := s.db.NewSelect().
 		Model(&events).
-		Where("organization_uid = ?", filter.OrganizationUID).
-		// uid is part of the sort key, not decoration: the keyset cursor's
-		// predicate is (created_at < ? OR (created_at = ? AND uid < ?)), which
-		// only works if rows sharing a created_at have a DEFINED order. Without
-		// this tie-break an audit trail — which bulk-inserts within the same
-		// microsecond constantly — could skip events at a page boundary.
-		Order("created_at DESC", "uid DESC")
+		Where("organization_uid = ?", filter.OrganizationUID)
+
+	// uid is part of the sort key, not decoration: the keyset cursor's
+	// predicate is (created_at < ? OR (created_at = ? AND uid < ?)), which
+	// only works if rows sharing a created_at have a DEFINED order. Without
+	// this tie-break an audit trail — which bulk-inserts within the same
+	// microsecond constantly — could skip events at a page boundary.
+	if filter.Ascending {
+		query = query.Order("created_at ASC", "uid ASC")
+	} else {
+		query = query.Order("created_at DESC", "uid DESC")
+	}
 
 	query = applyEventFilters(query, filter)
 
 	if filter.CursorTimestamp != nil {
+		cmp := "<"
+		if filter.Ascending {
+			cmp = ">"
+		}
+
 		if filter.CursorUID != nil {
-			query = query.Where("(created_at < ? OR (created_at = ? AND uid < ?))",
+			query = query.Where("(created_at "+cmp+" ? OR (created_at = ? AND uid "+cmp+" ?))",
 				*filter.CursorTimestamp, *filter.CursorTimestamp, *filter.CursorUID)
 		} else {
-			query = query.Where("created_at < ?", *filter.CursorTimestamp)
+			query = query.Where("created_at "+cmp+" ?", *filter.CursorTimestamp)
 		}
+	}
+
+	if filter.SettledBefore != nil {
+		query = query.Where("created_at < ?", *filter.SettledBefore)
 	}
 
 	if filter.Limit > 0 {
@@ -4787,6 +4837,84 @@ func (s *Service) SetStateEntryIfNotExists(
 	rowsAffected, _ := res.RowsAffected()
 
 	return rowsAffected > 0, nil
+}
+
+// BumpGlobalCounter atomically counts one attempt against the global counter
+// at key (spec 2026-10-16-13).
+//
+// Postgres: the global rows have a NULL organization_uid, so the
+// unique (organization_uid, key) constraint never fires for them and a
+// SELECT … FOR UPDATE cannot lock a row that does not exist yet. The
+// increment is therefore serialized per key with a transaction advisory lock
+// (two-int4 form, class dblock.ClassGlobalCounter), released at commit.
+func (s *Service) BumpGlobalCounter(
+	ctx context.Context, key string, limit int, ttl time.Duration,
+) (bool, error) {
+	limited := false
+
+	err := s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if _, err := tx.NewRaw("SELECT pg_advisory_xact_lock(?, hashtext(?))",
+			dblock.ClassGlobalCounter, key).Exec(ctx); err != nil {
+			return fmt.Errorf("lock counter %q: %w", key, err)
+		}
+
+		now := time.Now()
+
+		var live []*models.StateEntry
+		if err := tx.NewSelect().Model(&live).
+			Where("organization_uid IS NULL").
+			Where("key = ?", key).
+			Where("deleted_at IS NULL").
+			Where("(expires_at IS NULL OR expires_at > ?)", now).
+			Scan(ctx); err != nil {
+			return fmt.Errorf("read counter %q: %w", key, err)
+		}
+
+		count := 0
+		for _, entry := range live {
+			count = max(count, models.CounterValue(entry))
+		}
+
+		if count >= limit {
+			limited = true
+
+			return nil
+		}
+
+		value := models.NewCounterValue(count + 1)
+		expiresAt := now.Add(ttl)
+
+		res, err := tx.NewUpdate().Model((*models.StateEntry)(nil)).
+			Where("organization_uid IS NULL").
+			Where("key = ?", key).
+			Set("value = ?", value).
+			Set("expires_at = ?", expiresAt).
+			Set("updated_at = ?", now).
+			Set("deleted_at = NULL").
+			Exec(ctx)
+		if err != nil {
+			return fmt.Errorf("bump counter %q: %w", key, err)
+		}
+
+		if rows, _ := res.RowsAffected(); rows > 0 {
+			return nil
+		}
+
+		entry := models.NewStateEntry(nil, key)
+		entry.Value = value
+		entry.ExpiresAt = &expiresAt
+
+		if _, err := tx.NewInsert().Model(entry).Exec(ctx); err != nil {
+			return fmt.Errorf("seed counter %q: %w", key, err)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return false, err
+	}
+
+	return limited, nil
 }
 
 // AdmitFixedWindows atomically counts one event against every window, or
@@ -6190,13 +6318,15 @@ func (s *Service) ReorderStatusPageSections(
 	})
 }
 
-// UpdateStatusPageResource updates a resource by UID.
+// UpdateStatusPageResource updates a resource by UID, scoped to its section.
+// It returns sql.ErrNoRows when no resource of that UID lives in the section.
 func (s *Service) UpdateStatusPageResource(
-	ctx context.Context, uid string, update *models.StatusPageResourceUpdate,
+	ctx context.Context, sectionUID, uid string, update *models.StatusPageResourceUpdate,
 ) error {
 	query := s.db.NewUpdate().
 		Model((*models.StatusPageResource)(nil)).
 		Where("uid = ?", uid).
+		Where("section_uid = ?", sectionUID).
 		Set("updated_at = ?", time.Now())
 
 	if update.PublicName != nil {
@@ -6225,19 +6355,45 @@ func (s *Service) UpdateStatusPageResource(
 			Set("check_group_uid = ?", update.CheckGroupUID)
 	}
 
-	_, err := query.Exec(ctx)
+	res, err := query.Exec(ctx)
+	if err != nil {
+		return err
+	}
 
-	return err
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
 }
 
-// DeleteStatusPageResource hard-deletes a resource.
-func (s *Service) DeleteStatusPageResource(ctx context.Context, uid string) error {
-	_, err := s.db.NewDelete().
+// DeleteStatusPageResource hard-deletes a resource, scoped to its section.
+// It returns sql.ErrNoRows when no resource of that UID lives in the section.
+func (s *Service) DeleteStatusPageResource(ctx context.Context, sectionUID, uid string) error {
+	res, err := s.db.NewDelete().
 		Model((*models.StatusPageResource)(nil)).
 		Where("uid = ?", uid).
+		Where("section_uid = ?", sectionUID).
 		Exec(ctx)
+	if err != nil {
+		return err
+	}
 
-	return err
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
 }
 
 // CheckGroup operations

@@ -616,6 +616,9 @@ manifest round-trips as written. A missing or unresolvable reference is a hard
 `400 VALIDATION_ERROR` from **both** endpoints, dry run included. A document
 using `${env:}` gets one advisory `warnings[]` entry: it resolves on the process
 that executes the check, which for a deported agent is that agent's environment.
+An `${env:NAME}` whose name is not in the server's `SP_CHECK_ENV_ALLOWLIST` is
+a `400 VALIDATION_ERROR` on every save path (create, PATCH, PUT, import, apply,
+`validate_check`), whether or not the variable is set.
 See [`features/config-as-code.md`](../features/config-as-code.md#secret-references).
 
 `${param:KEY}` reads the referencing organization's OWN parameters and nothing

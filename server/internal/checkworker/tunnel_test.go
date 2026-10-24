@@ -108,7 +108,7 @@ func TestExecuteJob_TunnelSetupIsMeasuredSeparately(t *testing.T) {
 
 	srv := sshtunneltest.Start(t)
 	ctx = sshtunnel.WithResolver(ctx, sshtunnel.NewResolver(
-		&tunnelCheckLoader{config: srv.CheckConfig()}, nil,
+		&tunnelCheckLoader{config: srv.CheckConfig()}, nil, nil,
 	))
 
 	checkJob := setupTunnelJob(t, runner, dbSvc, ctx, ttype, models.JSONMap{
@@ -166,7 +166,7 @@ func TestExecuteJob_TunnelFailureProducesDistinctResult(t *testing.T) {
 	config := srv.CheckConfig()
 	config["expected_fingerprint"] = "SHA256:not-the-real-one"
 
-	ctx = sshtunnel.WithResolver(ctx, sshtunnel.NewResolver(&tunnelCheckLoader{config: config}, nil))
+	ctx = sshtunnel.WithResolver(ctx, sshtunnel.NewResolver(&tunnelCheckLoader{config: config}, nil, nil))
 
 	checkJob := setupTunnelJob(t, runner, dbSvc, ctx, ttype, models.JSONMap{
 		checkerdef.TunnelCheckUIDConfigKey: tunnelSSHCheckUID,
@@ -205,7 +205,7 @@ func TestExecuteJob_ForwardRejectionIsClassifiedAsTunnelFailure(t *testing.T) {
 	})
 
 	ctx = sshtunnel.WithResolver(ctx, sshtunnel.NewResolver(
-		&tunnelCheckLoader{config: srv.CheckConfig()}, nil,
+		&tunnelCheckLoader{config: srv.CheckConfig()}, nil, nil,
 	))
 
 	checkJob := setupTunnelJob(t, runner, dbSvc, ctx, ttype, models.JSONMap{
@@ -289,7 +289,7 @@ func TestExecuteJob_UnresolvableTunnelReferenceIsATunnelFailure(t *testing.T) {
 	config := srv.CheckConfig()
 	config["password"] = "${param:bastion-password}"
 
-	ctx = sshtunnel.WithResolver(ctx, sshtunnel.NewResolver(&tunnelCheckLoader{config: config}, nil))
+	ctx = sshtunnel.WithResolver(ctx, sshtunnel.NewResolver(&tunnelCheckLoader{config: config}, nil, nil))
 
 	checkJob := setupTunnelJob(t, runner, dbSvc, ctx, ttype, models.JSONMap{
 		checkerdef.TunnelCheckUIDConfigKey: tunnelSSHCheckUID,

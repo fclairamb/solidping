@@ -8,6 +8,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	disc "github.com/fclairamb/solidping/server/internal/discovery"
+	"github.com/fclairamb/solidping/server/internal/egress"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
 
@@ -46,6 +47,10 @@ type NetworkDiscoveryJobRun struct {
 func (r *NetworkDiscoveryJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) error {
 	log := jctx.Logger
 
+	// Every probe of this job goes through the process egress guard (spec
+	// 2026-10-16-10): a nil or permissive guard dials exactly as before.
+	ctx = egress.WithGuard(ctx, egressGuardFrom(jctx))
+
 	if jctx.OrganizationUID == nil {
 		return errNoOrganizationUID
 	}
@@ -69,10 +74,12 @@ func (r *NetworkDiscoveryJobRun) Run(ctx context.Context, jctx *jobdef.JobContex
 		"parent_job_uid", r.config.ParentJobUID,
 	)
 
-	hosts, err := disc.Scan(ctx, &r.config)
+	result, err := disc.Scan(ctx, &r.config)
 	if err != nil {
 		return fmt.Errorf("scan failed: %w", err)
 	}
+
+	hosts := result.Hosts
 
 	// Flatten every host's grouped suggested checks into a single row set.
 	rows := make([]disc.SuggestedCheck, 0, len(hosts))
@@ -87,5 +94,5 @@ func (r *NetworkDiscoveryJobRun) Run(ctx context.Context, jctx *jobdef.JobContex
 		"job_uid", jobUID,
 	)
 
-	return disc.UpsertDiscoveredChecks(ctx, jctx.DB, orgUID, jobUID, models.DiscoverySourceLAN, rows, log)
+	return disc.UpsertDiscoveredChecks(ctx, jctx.DB, orgUID, jobUID, "", models.DiscoverySourceLAN, rows, log)
 }

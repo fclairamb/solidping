@@ -78,6 +78,9 @@ const (
 	// binary. Self-probed like the egress families, and advisory in the same
 	// way — it drives a creation-time warning, never scheduling.
 	CapabilityBrowser = "browser"
+	// CapabilityDiscovery means the worker runs LAN discovery chunks (spec
+	// 2026-10-22-04): only an agent whose operator enabled discovery reports it.
+	CapabilityDiscovery = "discovery"
 )
 
 // CapabilityState is the THREE-state answer to "does this worker have X?".

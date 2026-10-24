@@ -207,6 +207,31 @@ parked the reader behind any frame sent just before a pong and killed busy,
 healthy agents every few minutes. Metrics: `solidping_agent_ws_conn_stale_total`,
 `solidping_agent_ws_conn_closed_total{reason}`, `solidping_agent_ws_reconnects_total`.
 
+### 4. Worker tasks (discovery and crawl)
+
+Beyond check jobs, an agent can pull **worker tasks** (spec
+[`2026-10-22-02`](../../specs/done/2026/10/)): longer units of work held under a
+lease and run in slices, stored in `worker_tasks`
+([database-model/worker-tasks.md](../database-model/worker-tasks.md)). They use
+plain HTTP routes, not the WebSocket, with the same signed-header auth:
+
+| Route | Purpose |
+|---|---|
+| `POST /api/v1/agent/tasks/claim` | `200` with a task, `204` when there is none |
+| `POST /api/v1/agent/tasks/:uid/heartbeat` | Extend the lease. `410` once the task was canceled, which is how a cancel reaches the agent (30 s at most) |
+| `POST /api/v1/agent/tasks/:uid/step` | Report a slice of progress or findings |
+| `POST /api/v1/agent/tasks/:uid/finish` | Complete the task |
+| `POST /api/v1/agent/tasks/:uid/fail` | Fail it with an error code |
+
+The agent pulls: it asks only for the kinds it reported as capabilities,
+`discovery` (a LAN scan chunk, spec 2026-10-22-04) and `crawl` (spec
+2026-10-22-03). Discovery is opt-in per agent (`SP_AGENT_DISCOVERY_ENABLED`,
+bounded by `SP_AGENT_DISCOVERY_CIDRS`). **A system agent must never set
+`SP_AGENT_DISCOVERY_ENABLED`**: system agents serve every org, the task routes
+refuse them, and `regions.StripTaskCapabilities` drops the capability they
+report. The claim predicate is in the audit table of
+[`../conventions/regions.md`](../conventions/regions.md).
+
 ---
 
 ## The security boundary

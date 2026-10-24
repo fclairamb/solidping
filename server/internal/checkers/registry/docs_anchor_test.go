@@ -103,6 +103,11 @@ func TestCheckTypeDocsAnchors_SyncedWithRegistryAndDocs(t *testing.T) {
 	seenInRegistry := make(map[string]bool, len(registryTypes))
 
 	for _, meta := range registryTypes {
+		if meta.Plugin != nil {
+			// A plugin type is documented by its plugin, not in the core docs.
+			continue
+		}
+
 		checkType := string(meta.Type)
 		seenInRegistry[checkType] = true
 

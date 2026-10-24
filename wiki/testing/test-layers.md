@@ -9,6 +9,7 @@ are about to trust it, read the next two sections and stop.
 |---|---|---|---|
 | **Short** | `make test` (`go test ./... -short`) | Yes — `backend-lint` job | Everything that needs no database beyond SQLite. ~1 min. |
 | **Postgres** | `make test-postgres` | Yes — `backend-postgres` job | Every `*_postgres_test.go` + every other `testing.Short()`-guarded suite. Embedded PostgreSQL, ~12 min. |
+| **Upgrade** | `make test-upgrade` | Yes, `upgrade` jobs | Boots a released image, then HEAD on the database it left. See below. |
 | **Slow** | `make test-slow` (`-tags slowtests`) | **No** — nightly only | Live WHOIS/RDAP, a live TLS dial, and the Pebble ACME suite (Docker). |
 | **E2E** | `cd web/dash0 && bun run test:e2e` | Yes — `e2e-tests` job | Playwright against a built binary + a Postgres service container. See [e2e-ci.md](e2e-ci.md). |
 
@@ -128,6 +129,45 @@ If you add or remove Postgres suites in bulk, that floor is the number to
 revisit — raise it when the count grows; lower it only alongside a real
 deletion, never to make a red job green.
 
+## The upgrade layer
+
+`scripts/upgrade-test.sh <sqlite|postgres> <from-tag>` runs one leg: the released
+image `ghcr.io/fclairamb/solidping:<tag>` fills a database in test mode (30 s of
+checks), HEAD starts on it, and the script asserts:
+
+- health answers `ok` within 60 s, and the log has no "half-migrated" or "migration content changed";
+- every HEAD migration is listed in `bun_migrations`;
+- the counts of checks, incidents, status pages, integrations and members are unchanged;
+- a check gets a result newer than the old version's last one (the scheduler runs on upgraded data);
+- SQLite only: the `solidping.db.pre-<migration>.bak` exists when HEAD has a newer migration.
+
+`scripts/upgrade-test.sh --matrix` prints the legs, one `<engine> <tag>` per line: the 3 most
+recent `v*` tags plus the newest tag of the previous minor, each on both engines, minus
+`SKIP_TAGS` (top of the script, starts with `v0.38.4`, whose 027 edit is covered by
+`migration_028_split_027_test.go`). CI builds the legs from it (`upgrade-matrix` then `upgrade`
+in `ci.yml`, both gating the `ci` job). Locally, `make test-upgrade` runs the whole matrix and
+needs docker, jq and sqlite3. A single leg: `HEAD_BIN=./solidping scripts/upgrade-test.sh sqlite v0.38.6`.
+
+It complements `scripts/check-frozen-migrations.sh` (static) and does not replace it.
+
+CI builds its own Go-only binary for the `upgrade` job (no frontends), so the layer also runs on
+release-please PRs, where `build` is skipped. The `ci` gate only fails on `failure`/`cancelled`,
+so a skipped upgrade job (wiki-only change, tag push) still passes.
+
+### Positive control: proving the layer can go red
+
+Run on a throwaway branch, never committed. Each sabotage must turn a leg red on the named
+assertion (`HEAD_BIN=./solidping scripts/upgrade-test.sh sqlite v0.38.6` is enough for one):
+
+| Sabotage | How | Expected failure |
+|---|---|---|
+| (a) edit a released migration | change the SQL of `027_*.up.sql` in both engines' `migrations/` | the HEAD log contains "migration content changed", or the health timeout |
+| (b) migration failing on seeded data | add `NNN_x.up.sql`: `ALTER TABLE status_pages ADD COLUMN x TEXT NOT NULL;` | "HEAD did not become healthy"; the `bun_migrations` tail printed before the failure must not list `NNN` |
+| (c) HEAD loses data | at startup run `DELETE FROM status_pages` | "the counts changed across the upgrade" |
+
+`SKIP_TAGS` check (no docker needed): `SKIP_TAGS="v0.38.4 v0.38.6" scripts/upgrade-test.sh --matrix`
+must print the next tag (`v0.38.2`, then `v0.38.3`, `v0.38.5`, `v0.37.0`) in place of `v0.38.6`.
+
 ## The `slowtests` layer
 
 Four suites, all excluded from `make test`, `make test-postgres` and every
@@ -175,7 +215,9 @@ the PR layer.
 
 ## Coverage target
 
-The backend target is 80% of hand-written statements, measured on the Postgres
+The backend target is 90% of hand-written statements (the enforced floor is
+85%; CI measured 83.5% on 2026-10-23 when the same local command reported 84.5%, and the local command now reports 86.5% (2026-10-24, after the fake-server, fault-injection and CLI sweeps), so measure
+with the CI job's exact command before ratcheting, until the remaining gap closes), measured on the Postgres
 layer and enforced by the `backend-postgres` job through `COVERAGE_MIN`
 (ratchet rule: raise it to the last measured value, never lower it). Frontend
 coverage (dash0, status0) is report-only, with no threshold. Details and the

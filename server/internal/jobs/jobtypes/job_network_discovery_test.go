@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	disc "github.com/fclairamb/solidping/server/internal/discovery"
+	"github.com/fclairamb/solidping/server/internal/egress"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobtypes"
 )
@@ -84,4 +86,77 @@ func TestNetworkDiscoveryChildRollsUpUnderParent(t *testing.T) {
 
 	// The open port shows up in the group metadata (denormalized).
 	r.Contains(string(checks[0].Metadata), strconv.Itoa(openPort))
+}
+
+// A network_discovery child run under an enforcing process guard probes
+// nothing: the loopback listener accepts no connection and no row is
+// persisted. The permissive guard is the positive control.
+func TestNetworkDiscoveryObeysEgressGuard(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name      string
+		guard     *egress.Guard
+		wantFound bool
+	}{
+		{name: "enforcing", guard: egress.New(false), wantFound: false},
+		{name: "permissive", guard: egress.New(true), wantFound: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+			ctx := t.Context()
+
+			dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+			r.NoError(err)
+			r.NoError(dbSvc.Initialize(ctx))
+			t.Cleanup(func() { _ = dbSvc.Close() })
+
+			org := models.NewOrganization("egress-disc", "Egress Discovery Org")
+			r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+			job := models.NewJob(&org.UID, string(jobdef.JobTypeNetworkDiscovery))
+			r.NoError(dbSvc.CreateJob(ctx, job))
+
+			// A default scanner port, so a found host yields suggested checks,
+			// plus a port of this test's own whose accepted connections are
+			// counted (the default ports are shared with other parallel scans).
+			openPort := listenOnDefaultPort(t)
+			ownPort, accepted, ok := countingListener(t, "127.0.0.1:0")
+			r.True(ok)
+
+			cfgBytes, err := json.Marshal(disc.Config{
+				CIDRs: []string{"127.0.0.1/32"},
+				Ports: []int{openPort, ownPort},
+			})
+			r.NoError(err)
+
+			runner, err := (&jobtypes.NetworkDiscoveryJobDefinition{}).CreateJobRun(cfgBytes)
+			r.NoError(err)
+
+			r.NoError(runner.Run(ctx, &jobdef.JobContext{
+				OrganizationUID: &org.UID,
+				Job:             job,
+				DB:              dbSvc.DB(),
+				DBService:       dbSvc,
+				Services:        &services.Registry{EgressGuard: tc.guard},
+				Logger:          slog.Default(),
+			}))
+
+			count, err := dbSvc.DB().NewSelect().Model((*models.DiscoveredCheck)(nil)).
+				Where("organization_uid = ?", org.UID).Count(ctx)
+			r.NoError(err)
+
+			if !tc.wantFound {
+				r.Zero(count, "a refused host must not be persisted")
+				r.Zero(accepted.Load(), "a refused host must not be dialed")
+
+				return
+			}
+
+			r.Positive(count)
+			r.Eventually(func() bool { return accepted.Load() > 0 }, 5*time.Second, 10*time.Millisecond)
+		})
+	}
 }

@@ -296,11 +296,14 @@ func TestOpenAgainstARealBrowserMarksAvailable(t *testing.T) {
 	r := require.New(t)
 
 	withSettings(t, settings)
+	widenChromeStart(t)
 
 	MarkUnavailable()
 	r.False(Available(t.Context()))
 
-	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	// Larger than chromeStartTimeout as widened above, so a starved launch is
+	// reported by chromedp's own error, not by this deadline.
+	ctx, cancel := context.WithTimeout(t.Context(), 120*time.Second)
 	defer cancel()
 
 	session, err := Open(ctx)

@@ -319,7 +319,7 @@ type secretRefFinding struct {
 func (s *Service) secretRefFindings(
 	ctx context.Context, orgUID string, doc *ExportDocument,
 ) ([]secretRefFinding, bool) {
-	resolve := secretref.DocumentResolver(s.db, orgUID)
+	resolve := secretref.DocumentResolver(s.db, orgUID, s.envRefAllow)
 
 	var (
 		findings  []secretRefFinding

@@ -640,8 +640,8 @@ func (ds *DiscordSender) buildIncidentResolvedEmbed(payload *Payload) discord.Em
 	fields = appendDiscordRegionField(fields, payload)
 
 	description := "The incident has been automatically resolved."
-	if ResolvedByCheckDeletion(payload.Incident) {
-		description = checkDeletedSentence
+	if closedWithoutRecovery(payload.Incident) {
+		description = closedSentence(payload.Incident)
 	}
 
 	return discord.Embed{
@@ -808,6 +808,9 @@ func (ds *DiscordSender) buildResolvedUpdateMessage(payload *Payload) *discord.M
 	title := fmt.Sprintf("%sAutomatically resolved %s incident", incidentRefPrefix(payload.Incident), checkName)
 	if ResolvedByCheckDeletion(payload.Incident) {
 		title = fmt.Sprintf("%sClosed %s incident: the check was deleted", incidentRefPrefix(payload.Incident), checkName)
+	}
+	if ResolvedByCheckDisable(payload.Incident) {
+		title = fmt.Sprintf("%sClosed %s incident: the check was disabled", incidentRefPrefix(payload.Incident), checkName)
 	}
 
 	return &discord.Message{

@@ -196,6 +196,13 @@ func TestImpersonateEndpoint(t *testing.T) {
 	r.Equal(http.StatusForbidden, status)
 	r.Equal(string(base.ErrorCodeImpersonationForbidden), body["code"])
 
+	// No discovery scan from the customer's agents on their behalf (spec
+	// 2026-10-22-04).
+	status, body = env.do(http.MethodPost, "/api/v1/orgs/impa/discovery/scans", token,
+		`{"type":"lan","region":"@dc1","parameters":{"cidrs":["10.0.0.0/24"]}}`)
+	r.Equal(http.StatusForbidden, status)
+	r.Equal(string(base.ErrorCodeImpersonationForbidden), body["code"])
+
 	// No session can be minted: switch-org is refused.
 	status, _ = env.do(http.MethodPost, "/api/v1/auth/switch-org", token, `{"org":"impa"}`)
 	r.Equal(http.StatusForbidden, status)

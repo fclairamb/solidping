@@ -576,6 +576,7 @@ var validConnectionTypes = map[models.ConnectionType]bool{
 	models.ConnectionTypeWebPush:      true,
 	models.ConnectionTypeKubernetes:   true,
 	models.ConnectionTypeTwilio:       true,
+	models.ConnectionTypeA2A:          true,
 }
 
 // validateConnectionType checks the type is known and, for types with per-type
@@ -619,6 +620,13 @@ func (s *Service) checkCreateTypeConstraints(
 		return err
 	}
 
+	// A kubeconfig that would make the server run a command or read a local
+	// file, or an in-cluster connection the deployment has not opted into,
+	// never reaches storage — see validateKubernetesSettings.
+	if err := validateKubernetesSettings(connType, settings); err != nil {
+		return err
+	}
+
 	switch connType { //nolint:exhaustive // only Slack/Teams-bot/Twilio have creation-time constraints.
 	case models.ConnectionTypeSlack:
 		// Slack channels can only be created by the OAuth install flow (which
@@ -636,6 +644,43 @@ func (s *Service) checkCreateTypeConstraints(
 	default:
 		return nil
 	}
+}
+
+// validateKubernetesSettings rejects, for a kubernetes cluster connection, a
+// kubeconfig carrying an exec / auth-provider plugin or a local file reference
+// (spec 2026-10-16-05: client-go would run the command or read the file on the
+// server), and inCluster=true unless the deployment opted in with
+// SP_K8S_ALLOW_IN_CLUSTER. BuildRestConfig enforces the same rules again when
+// a client is built. A no-op for every other type.
+func validateKubernetesSettings(connType models.ConnectionType, settings models.JSONMap) error {
+	if connType != models.ConnectionTypeKubernetes {
+		return nil
+	}
+
+	public, err := models.KubernetesSettingsFromJSONMap(settings)
+	if err != nil {
+		return fmt.Errorf("%w: invalid kubernetes settings", ErrInvalidSettings)
+	}
+
+	if public.InCluster && !integrationk8s.InClusterAllowed() {
+		return fmt.Errorf("%w: %w", ErrInvalidSettings, integrationk8s.ErrInClusterDisabled)
+	}
+
+	priv := models.KubernetesPrivateSettingsFromMap(settings)
+	if priv.Kubeconfig == "" {
+		return nil
+	}
+
+	if err := integrationk8s.ValidateKubeconfigSafe(priv.Kubeconfig); err != nil {
+		if errors.Is(err, integrationk8s.ErrUnsafeKubeconfig) {
+			return fmt.Errorf("%w: %w", ErrInvalidSettings, err)
+		}
+
+		// Never echo the parser error: it can quote the (secret) kubeconfig.
+		return fmt.Errorf("%w: kubeconfig is not valid YAML", ErrInvalidSettings)
+	}
+
+	return nil
 }
 
 // senderURLSettingsKey names, for each connection type whose sender POSTs to
@@ -659,6 +704,9 @@ var senderURLSettingsKey = map[models.ConnectionType]string{
 	// Discord's bot mode posts to a fixed host, but its webhook mode POSTs to
 	// the stored webhook_url, which must also be a Discord webhook URL.
 	models.ConnectionTypeDiscord: senderKeyWebhookURL,
+	// The AI agent's Agent Card URL. The interface URL the card advertises is
+	// untrusted and validated again by the sender on every send.
+	models.ConnectionTypeA2A: notifications.A2ASettingAgentCardURL,
 }
 
 // slackIncomingWebhookHost is the only host a slack-webhook connection may
@@ -1119,6 +1167,12 @@ func (s *Service) applyUpdateSettings(
 	// persisted — otherwise an already-granted connection's stored app_token
 	// could be redirected at an arbitrary host by simply PATCHing settings.
 	if vErr := s.validateFreeboxSettings(conn.Type, models.JSONMap(merged)); vErr != nil {
+		return vErr
+	}
+
+	// Same rule as creation, on the merged settings: a create-clean-then-PATCH
+	// sequence cannot smuggle an exec kubeconfig or inCluster past creation.
+	if vErr := validateKubernetesSettings(conn.Type, models.JSONMap(merged)); vErr != nil {
 		return vErr
 	}
 
@@ -1704,6 +1758,13 @@ func (s *Service) TestIntegration(
 
 	conn.Settings = models.JSONMap(effective)
 
+	// An AI agent (A2A) is tested by resolving its Agent Card, not by sending
+	// a fake incident: the agent would start investigating an incident that
+	// does not exist, and could not record its findings on it.
+	if conn.Type == models.ConnectionTypeA2A {
+		return s.testA2AConnection(ctx, conn.Settings), nil
+	}
+
 	// Web Push is special: WebPushSender.Send swallows per-subscription errors
 	// as non-fatal (production behavior — keep trying remaining subs). For a
 	// manual test we want strict feedback: fail loudly on the first error so the
@@ -1765,6 +1826,13 @@ func (s *Service) testKubernetesConnection(
 ) (*IntegrationTestResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, kubernetesTestTimeout)
 	defer cancel()
+
+	// The API server is a user-chosen target dialed from the API process: it
+	// goes through the process egress guard (spec 2026-10-16-10), so under an
+	// enforcing policy a private API server is refused before any connection.
+	if guard := s.egressGuard(); guard != nil {
+		ctx = egress.WithGuard(ctx, guard)
+	}
 
 	start := time.Now()
 

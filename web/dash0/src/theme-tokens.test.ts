@@ -2,12 +2,14 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-// Spec 2026-09-24-01 (electric identity): the token values live in index.css
-// and the acceptance criteria are CONTRAST ratios, which a class-name test
-// cannot see. This parses the real stylesheet, converts every oklch() the
-// criteria name to sRGB the way a browser paints it on an sRGB screen
-// (out-of-gamut channels clipped), and computes the WCAG ratio. Change a
-// token so a label becomes unreadable and this goes red.
+// The token values live in index.css and the acceptance criteria are
+// CONTRAST ratios, which a class-name test cannot see. This parses the real
+// stylesheet, converts every oklch() the criteria name to sRGB the way a
+// browser paints it on an sRGB screen (out-of-gamut channels clipped), and
+// computes the WCAG ratio. Change a token so a label becomes unreadable and
+// this goes red. Spec 2026-09-24-01 set the base palette; the flat redesign
+// replaced its gradients with the solid --primary-fill, and the tonal pass
+// brought back one gradient, --primary-gradient, painted over that fill.
 
 const css = readFileSync(join(__dirname, "index.css"), "utf8");
 
@@ -37,6 +39,7 @@ function parseOklch(value: string): Oklch {
   return [Number(m[1]), Number(m[2]), Number(m[3])];
 }
 
+// Every oklch() color in a value, in order (the stops of a linear-gradient).
 function gradientStops(value: string): Oklch[] {
   return [...value.matchAll(/oklch\([^)]*\)/g)].map((m) => parseOklch(m[0]));
 }
@@ -163,7 +166,7 @@ const SPEC_DARK: Record<string, string> = {
   "chart-5": "oklch(0.65 0.17 285)",
 };
 
-describe("electric identity tokens", () => {
+describe("theme tokens", () => {
   it.each([
     ["light", light, SPEC_LIGHT],
     ["dark", dark, SPEC_DARK],
@@ -174,20 +177,48 @@ describe("electric identity tokens", () => {
     expect(actual["chart-1"]).toBe(actual.primary);
   });
 
-  it("defines the gradient tokens in both themes, identical except the glow", () => {
-    for (const name of ["primary-gradient", "accent-gradient", "hero-gradient", "gradient-foreground"]) {
-      expect(light[name], `light --${name}`).toBeTruthy();
-      expect(dark[name], `dark --${name}`).toBe(light[name]);
-    }
+  it("defines --primary-fill and its white label in both themes, a touch brighter in dark", () => {
+    expect(light["primary-fill"]).toBe("oklch(0.53 0.2 262)");
+    expect(dark["primary-fill"]).toBe("oklch(0.55 0.2 262)");
+    expect(light["primary-fill-foreground"]).toBe("oklch(1 0 0)");
+    expect(dark["primary-fill-foreground"]).toBe("oklch(1 0 0)");
+    // One blue: both themes share the fill's chroma and hue, and the hue is
+    // --primary's.
+    const [, lightC, lightH] = parseOklch(light["primary-fill"]);
+    const [, darkC, darkH] = parseOklch(dark["primary-fill"]);
+    expect([darkC, darkH]).toEqual([lightC, lightH]);
+    expect(lightH).toBe(parseOklch(light.primary)[2]);
+  });
+
+  it("defines --primary-gradient: three stops of one blue family, identical in both themes", () => {
     expect(light["primary-gradient"]).toBe(
-      "linear-gradient(135deg, oklch(0.56 0.17 242) 0%, oklch(0.53 0.22 262) 50%, oklch(0.48 0.23 276) 100%)",
+      "linear-gradient(135deg, oklch(0.55 0.17 245) 0%, oklch(0.53 0.21 266) 50%, oklch(0.47 0.2 270) 100%)",
     );
-    expect(light["accent-gradient"]).toBe(
-      "linear-gradient(135deg, oklch(0.7 0.15 225) 0%, oklch(0.57 0.22 258) 50%, oklch(0.5 0.23 275) 100%)",
-    );
-    expect(light["hero-gradient"]).toBe(
-      "linear-gradient(135deg, oklch(0.62 0.17 232), oklch(0.5 0.23 265) 60%, oklch(0.38 0.19 280))",
-    );
+    expect(dark["primary-gradient"]).toBe(light["primary-gradient"]);
+    const stops = gradientStops(light["primary-gradient"]);
+    expect(stops).toHaveLength(3);
+    // Tonal: cyan-blue to electric blue, never into violet (the old
+    // gradients ended at hue 275-280).
+    for (const [, , H] of stops) {
+      expect(H).toBeGreaterThanOrEqual(240);
+      expect(H).toBeLessThanOrEqual(270);
+    }
+    // Lighter to darker, so the hover half (50-100%) is the darker one.
+    const Ls = stops.map(([L]) => L);
+    expect([...Ls].sort((a, b) => b - a)).toEqual(Ls);
+    expect(Ls[2]).toBeLessThan(Ls[0]);
+  });
+
+  it("no longer defines the retired gradient tokens, in either theme", () => {
+    for (const name of ["accent-gradient", "hero-gradient", "gradient-foreground"]) {
+      expect(light[name], `light --${name}`).toBeUndefined();
+      expect(dark[name], `dark --${name}`).toBeUndefined();
+      expect(css, `--${name} anywhere in index.css`).not.toMatch(new RegExp(`--${name}\\b`));
+    }
+    // Positive control: the parser does see the background-image tokens that
+    // remain (the auth screens' glow, the always-dark sidebar).
+    expect(light["page-glow"]).toMatch(/^radial-gradient\(/);
+    expect(light["sidebar-gradient"]).toMatch(/^linear-gradient\(/);
   });
 
   it("defines --page-glow layer by layer, stronger in dark", () => {
@@ -235,14 +266,45 @@ describe("electric identity tokens", () => {
     expect(dark["chart-degraded"]).toBe(dark["status-warning"]);
   });
 
-  it("exposes the gradient utilities and the Tailwind color mappings", () => {
-    for (const name of ["primary", "accent", "hero"]) {
-      expect(css).toMatch(
-        new RegExp(`@utility bg-${name}-gradient \\{\\s*background-image: var\\(--${name}-gradient\\);`),
-      );
+  it("maps --primary-fill in @theme inline and declares the one primary-gradient utility", () => {
+    expect(css).toContain("--color-primary-fill: var(--primary-fill);");
+    expect(css).toContain("--color-primary-fill-foreground: var(--primary-fill-foreground);");
+    expect(css).not.toContain("--color-gradient-foreground");
+    // background-IMAGE only, sized 200% so an element shows the lighter half.
+    expect(css).toMatch(
+      /@utility bg-primary-gradient \{\s*background-image: var\(--primary-gradient\);\s*background-origin: border-box;\s*background-size: 200% 200%;\s*\}/,
+    );
+    for (const name of ["accent", "hero"]) {
+      expect(css).not.toContain(`@utility bg-${name}-gradient`);
     }
-    expect(css).toContain("--color-gradient-foreground: var(--gradient-foreground);");
+    // Positive control: the same matcher finds the utilities that remain.
+    expect(css).toMatch(/@utility bg-page-glow \{\s*background-image: var\(--page-glow\);/);
     expect(css).toContain("--color-chart-degraded: var(--chart-degraded);");
+  });
+
+  it("keeps elevation neutral and shallow: no tinted or inset shadow tokens", () => {
+    for (const name of [
+      "shadow-primary",
+      "shadow-primary-hover",
+      "shadow-destructive",
+      "shadow-destructive-hover",
+      "inset-shadow-highlight",
+      "shadow-tile",
+      "shadow-hero",
+    ]) {
+      expect(css, `--${name}`).not.toMatch(new RegExp(`--${name}:`));
+    }
+    expect(css).toContain("--shadow-card: 0 1px 2px 0 rgba(15, 23, 42, 0.05);");
+    expect(css).toContain(
+      "--shadow-card-hover: 0 1px 2px 0 rgba(15, 23, 42, 0.05), 0 6px 16px -6px rgba(15, 23, 42, 0.12);",
+    );
+    // Every remaining shadow token is a neutral slate drop, never color-mixed
+    // from a theme color.
+    const shadows = [...css.matchAll(/--(shadow-[\w-]+):\s*([^;]+);/g)];
+    expect(shadows.map((m) => m[1]).sort()).toEqual(["shadow-card", "shadow-card-hover"]);
+    for (const [, name, value] of shadows) {
+      expect(value, `--${name}`).not.toMatch(/color-mix|var\(--/);
+    }
   });
 
   it("keeps the control-surface ordering (page < control <= card; dark recesses controls)", () => {
@@ -254,38 +316,70 @@ describe("electric identity tokens", () => {
   });
 });
 
-describe("electric identity contrast (acceptance criteria)", () => {
-  const white = parseOklch(light["gradient-foreground"]);
-
-  it("white text on --primary-gradient is >= 4.4:1 at every stop", () => {
-    const stops = gradientStops(light["primary-gradient"]);
-    expect(stops).toHaveLength(3);
-    for (const stop of stops) {
-      expect(contrast(white, stop), `stop ${stop.join(" ")}`).toBeGreaterThanOrEqual(4.4);
-    }
+describe("contrast (acceptance criteria)", () => {
+  // The "on" state of switches, checkboxes and steppers sits on the flat
+  // --primary-fill; the default button, the page-header tile and the progress
+  // fill paint --primary-gradient over it. The button label and the glyphs
+  // are white.
+  it.each([
+    ["light", light],
+    ["dark", dark],
+  ] as const)("%s: the white label is >= 4.5:1 on --primary-fill at rest", (_theme, tokens) => {
+    const white = parseOklch(tokens["primary-fill-foreground"]);
+    expect(contrast(white, parseOklch(tokens["primary-fill"]))).toBeGreaterThanOrEqual(4.5);
   });
 
-  it("positive control: the decorative --accent-gradient start is NOT safe for text", () => {
-    // The reason there are two gradients. If this ever passes 4.4, the split
-    // is no longer needed — or the math above is broken.
-    const [start, middle] = gradientStops(light["accent-gradient"]);
-    expect(contrast(white, start)).toBeLessThan(3);
-    // The checkbox / stepper check glyph sits on the middle stop: 3:1 non-text rule.
-    expect(contrast(white, middle)).toBeGreaterThanOrEqual(3);
-  });
+  it.each([
+    ["light", light],
+    ["dark", dark],
+  ] as const)(
+    "%s: the white label is >= 4.5:1 on every stop of --primary-gradient, at rest and on hover",
+    (_theme, tokens) => {
+      // Rest shows stops 0-1, a hovered button stops 1-2: checking all three
+      // covers both halves. Linear interpolation between two stops that both
+      // clear 4.5:1 against white stays above it.
+      const white = parseOklch(tokens["primary-fill-foreground"]);
+      for (const stop of gradientStops(tokens["primary-gradient"])) {
+        expect(contrast(white, stop), `stop ${stop.join(" ")}`).toBeGreaterThanOrEqual(4.5);
+      }
+    },
+  );
 
-  it("--hero-gradient: large text anywhere, small text only from its darker half", () => {
-    // The design reference's rule for the hero tile. WCAG: large text
-    // (>= 24px, or >= 18.66px bold) needs 3:1, small text 4.5:1.
-    const [start, middle, end] = gradientStops(light["hero-gradient"]);
-    for (const stop of [start, middle, end]) {
-      expect(contrast(white, stop)).toBeGreaterThanOrEqual(3);
-    }
-    // Positive control: the light start is NOT safe for small text, which is
-    // why small labels must sit over the darker half.
-    expect(contrast(white, start)).toBeLessThan(4.5);
-    expect(contrast(white, middle)).toBeGreaterThanOrEqual(4.5);
-    expect(contrast(white, end)).toBeGreaterThanOrEqual(4.5);
+  it.each([
+    ["light", light],
+    ["dark", dark],
+  ] as const)(
+    "%s: the resting half of the gradient separates from the page, the card and the progress track by >= 3:1",
+    (_theme, tokens) => {
+      // WCAG 1.4.11 non-text contrast, for the progress fill above all: its
+      // track is bg-secondary. Only the first two stops ever show at rest.
+      const [first, middle] = gradientStops(tokens["primary-gradient"]);
+      for (const stop of [first, middle]) {
+        for (const surface of ["background", "card", "secondary"] as const) {
+          expect(contrast(stop, parseOklch(tokens[surface])), `${surface} vs ${stop.join(" ")}`).toBeGreaterThanOrEqual(3);
+        }
+      }
+    },
+  );
+
+  it.each([
+    ["light", light],
+    ["dark", dark],
+  ] as const)(
+    "%s: an unlabeled on-state (switch, checkbox) separates from the page and the card by >= 3:1",
+    (_theme, tokens) => {
+      // WCAG 1.4.11 non-text contrast.
+      const fill = parseOklch(tokens["primary-fill"]);
+      expect(contrast(fill, parseOklch(tokens.background))).toBeGreaterThanOrEqual(3);
+      expect(contrast(fill, parseOklch(tokens.card))).toBeGreaterThanOrEqual(3);
+    },
+  );
+
+  it("positive control: dark mode's --primary could NOT carry a white label", () => {
+    // The reason --primary-fill is its own token: dark --primary is a LIGHT
+    // blue meant for text on the dark page. If this ever clears 4.5, the
+    // split is no longer needed, or the math above is broken.
+    expect(contrast(parseOklch(dark["primary-fill-foreground"]), parseOklch(dark.primary))).toBeLessThan(4.5);
   });
 
   it.each([
@@ -416,15 +510,6 @@ describe("always-dark sidebar tokens", () => {
     expect(css).toMatch(/@utility bg-sidebar-active \{\s*background-image: var\(--sidebar-active\);/);
     expect(css).toMatch(/@utility bg-page-glow \{\s*background-image: var\(--page-glow\);/);
     expect(css).toContain("--color-sidebar-muted-foreground: var(--sidebar-muted-foreground);");
-  });
-
-  it("defines the tinted tile and hero shadows from --primary", () => {
-    expect(css).toContain(
-      "--shadow-tile: 0 8px 18px -8px color-mix(in oklab, var(--primary) 70%, transparent);",
-    );
-    expect(css).toContain(
-      "--shadow-hero: 0 14px 28px -12px color-mix(in oklab, var(--primary) 60%, transparent);",
-    );
   });
 });
 

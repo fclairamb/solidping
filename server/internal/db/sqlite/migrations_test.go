@@ -375,6 +375,13 @@ func TestMigrationDiscoveredChecks(t *testing.T) {
 	}
 	assert.Contains(t, idxNames, "idx_discovered_checks_identity_active",
 		"per-group identity unique index must exist")
+
+	// The identity index covers region.
+	var idxSQL string
+	r.NoError(svc.db.NewRaw(
+		"SELECT sql FROM sqlite_master WHERE type='index' AND name='idx_discovered_checks_identity_active'",
+	).Scan(ctx, &idxSQL))
+	assert.Contains(t, idxSQL, "region", "identity index must include region")
 }
 
 // TestMigrationDiscoveredChecksDefaultConfig verifies a row inserted without an
@@ -692,4 +699,71 @@ func TestMigrationDropsEscalationOnCallSlug(t *testing.T) {
 		"SELECT name FROM escalation_policies WHERE uid = ?", policyUID,
 	).Scan(ctx, &policyName))
 	r.Equal("Primary", policyName)
+}
+
+// regionSection returns the discovered-checks-region block of a 030 migration file.
+func regionSection(t *testing.T, name string) string {
+	t.Helper()
+
+	data, err := fs.ReadFile(migrationsFS, "migrations/"+name)
+	require.NoError(t, err)
+
+	text := string(data)
+	_, after, found := strings.Cut(text, "-- SECTION: discovered-checks-region")
+	require.True(t, found, "%s must carry the discovered-checks-region section", name)
+
+	_, after, _ = strings.Cut(after, "\n") // the rest of the marker line
+
+	// The section ends at the next one, whichever it is.
+	if end := strings.Index(after, "-- SECTION:"); end >= 0 {
+		after = after[:end]
+	}
+
+	return after
+}
+
+// TestMigrationDiscoveredChecksRegionUpDownUp proves the region column and the
+// 5-column identity index round-trip through the 030 down and up blocks.
+func TestMigrationDiscoveredChecksRegionUpDownUp(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	r := require.New(t)
+
+	svc, err := New(ctx, Config{InMemory: true})
+	r.NoError(err)
+	t.Cleanup(func() { _ = svc.Close() })
+
+	r.NoError(svc.Initialize(ctx))
+
+	hasRegion := func() bool {
+		var count int
+		r.NoError(svc.db.NewRaw(
+			"SELECT count(*) FROM pragma_table_info('discovered_checks') WHERE name = 'region'",
+		).Scan(ctx, &count))
+
+		return count == 1
+	}
+
+	indexCols := func() []string {
+		var cols []string
+		r.NoError(svc.db.NewRaw(
+			"SELECT name FROM pragma_index_info('idx_discovered_checks_identity_active') ORDER BY seqno",
+		).Scan(ctx, &cols))
+
+		return cols
+	}
+
+	r.True(hasRegion())
+	r.Equal([]string{"organization_uid", "source", "group_key", "slug", "region"}, indexCols())
+
+	_, err = svc.db.ExecContext(ctx, regionSection(t, "030_v0_41_0.tx.down.sql"))
+	r.NoError(err)
+	r.False(hasRegion())
+	r.Equal([]string{"organization_uid", "source", "group_key", "slug"}, indexCols())
+
+	_, err = svc.db.ExecContext(ctx, regionSection(t, "030_v0_41_0.tx.up.sql"))
+	r.NoError(err)
+	r.True(hasRegion())
+	r.Equal([]string{"organization_uid", "source", "group_key", "slug", "region"}, indexCols())
 }

@@ -83,8 +83,11 @@ func TestEmailDegradedTurnedOffIsNotSteadyAgain(t *testing.T) {
 		wantBody    string
 		notInBody   string
 	}{
-		{"turned off", true, "[DEGRADED CLOSED]", "Degraded detection was turned off", "steady again"},
-		{"cleared", false, "[DEGRADED CLEARED]", "steady again", "turned off"},
+		{
+			"turned off", true, "⚪ acme api: degraded detection turned off",
+			"Degraded detection was turned off", "steady again",
+		},
+		{"cleared", false, "🟢 acme api is steady again", "steady again", "turned off"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

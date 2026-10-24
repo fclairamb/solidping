@@ -11,6 +11,7 @@ import (
 
 	agentcrypto "github.com/fclairamb/solidping/server/internal/agents"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/regions"
 )
 
 // staleMark is how far back the worker row's last_active_at is pushed between
@@ -194,4 +195,35 @@ func TestClaimWithoutCapabilitiesLeavesTheStoredSetIntact(t *testing.T) {
 		"an agent that reports nothing must not erase what a newer one reported")
 	r.NotNil(after.LastActiveAt)
 	r.True(after.LastActiveAt.After(stale.Add(staleMark / 2)))
+}
+
+// A system agent never runs worker tasks (the task routes refuse it), so the
+// crawl capability it reports is stripped before the set is stored: a cloud
+// region must not look able to crawl from it (spec 2026-10-22-03). An org
+// agent reporting the same set keeps it (the positive control).
+func TestSystemAgentReportNeverStoresTaskCapabilities(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	reported := []string{models.CapabilityIPv4, regions.CapabilityCrawl}
+
+	sys := newSysEnv(t)
+	conn, _, enrolled := sys.enroll(sys.mintSystemToken(systemRegion), "fly-machine-caps")
+
+	resp := roundTrip(t, conn, agentcrypto.ClientFrame{
+		Type: agentcrypto.MsgTypeClaim, ID: "c1", MaxJobs: 1, Capabilities: reported,
+	})
+	r.Equal(agentcrypto.MsgTypeJobs, resp.Type)
+	r.Equal([]string{"ipv4"}, capWorker(t, sys.env, enrolled.AgentUID).Capabilities,
+		"a system agent's crawl capability is stripped")
+
+	org := newEnv(t)
+	orgConn, _, orgAgent := org.enroll(org.mintToken(), "dc1-caps")
+
+	resp = roundTrip(t, orgConn, agentcrypto.ClientFrame{
+		Type: agentcrypto.MsgTypeClaim, ID: "c1", MaxJobs: 1, Capabilities: reported,
+	})
+	r.Equal(agentcrypto.MsgTypeJobs, resp.Type)
+	r.Equal([]string{"ipv4", "crawl"}, capWorker(t, org, orgAgent.AgentUID).Capabilities,
+		"an org agent's crawl capability is stored")
 }

@@ -84,12 +84,16 @@ for (const theme of ["light", "dark"] as const) {
 
       expect(await formColumnGlow(page)).toContain("radial-gradient");
       await expect(page.getByTestId("auth-mobile-wordmark")).toHaveCount(0);
-      // The card stays flat; its submit is the default gradient button, not crimson.
-      expect(
-        await page
-          .getByTestId("login-submit")
-          .evaluate((el) => getComputedStyle(el).backgroundImage),
-      ).toContain("linear-gradient");
+      // The card stays flat; its submit is the default button: the tonal
+      // primary gradient over the solid fill, no glow.
+      const submit = await page
+        .getByTestId("login-submit")
+        .evaluate((el) => ({
+          image: getComputedStyle(el).backgroundImage,
+          color: getComputedStyle(el).backgroundColor,
+        }));
+      expect(submit.image).toMatch(/^linear-gradient\(/);
+      expect(submit.color).not.toBe("rgba(0, 0, 0, 0)");
       await page.screenshot({
         path: `test-results/screenshots/electric-auth-login-1440-${theme}.png`,
       });

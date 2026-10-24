@@ -3,11 +3,14 @@ package discovery
 import (
 	"context"
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
+
+	"github.com/fclairamb/solidping/server/internal/egress"
 )
 
 // defaultContainerListTimeout is the per-endpoint timeout applied when the job
@@ -51,7 +54,12 @@ func ListContainers(ctx context.Context, endpoint string, timeout time.Duration)
 	// API-version negotiation is on by default in this client, so the endpoint
 	// host is the only thing worth configuring — same wiring as the docker
 	// checker, so Docker sockets, Podman sockets and tcp:// all work unchanged.
-	cli, err := client.New(client.WithHost(endpoint))
+	opts, err := containerClientOpts(ctx, endpoint)
+	if err != nil {
+		return nil, err
+	}
+
+	cli, err := client.New(opts...)
 	if err != nil {
 		return nil, fmt.Errorf("create docker client for %q: %w", endpoint, err)
 	}
@@ -73,6 +81,42 @@ func ListContainers(ctx context.Context, endpoint string, timeout time.Duration)
 	}
 
 	return out, nil
+}
+
+// containerClientOpts builds the Docker client options for endpoint. With no
+// enforcing egress guard on ctx the client keeps its own transport. Under an
+// enforcing guard a unix:// (or any non-tcp) endpoint is refused, since a local
+// socket is not an IP dial the policy can judge, and a tcp:// endpoint is
+// dialed through the guard, pinned to the configured host.
+func containerClientOpts(ctx context.Context, endpoint string) ([]client.Opt, error) {
+	opts := make([]client.Opt, 0, 2) // host + the optional guarded dialer
+	opts = append(opts, client.WithHost(endpoint))
+
+	guard := egress.FromContext(ctx)
+	if !guard.Enforcing() {
+		return opts, nil
+	}
+
+	hostURL, err := client.ParseHostURL(endpoint)
+	if err != nil {
+		return nil, fmt.Errorf("parse docker endpoint %q: %w", endpoint, err)
+	}
+
+	if hostURL.Scheme != "tcp" {
+		denied := &egress.DeniedError{Host: endpoint}
+		egress.RecordDenial(ctx, denied)
+
+		return nil, denied
+	}
+
+	addr := hostURL.Host
+	opts = append(opts, client.WithDialContext(
+		func(dialCtx context.Context, network, _ string) (net.Conn, error) {
+			return guard.DialContext(dialCtx, network, addr)
+		},
+	))
+
+	return opts, nil
 }
 
 // mapSummary converts a Docker container summary into a DiscoveredContainer.

@@ -15,6 +15,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/migrationguard"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/i18n"
 	"github.com/fclairamb/solidping/server/internal/integrations/slack"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
@@ -1372,12 +1373,12 @@ func (m *mockDBService) ReorderStatusPageSections(_ context.Context, _ string, _
 }
 
 func (m *mockDBService) UpdateStatusPageResource(
-	_ context.Context, _ string, _ *models.StatusPageResourceUpdate,
+	_ context.Context, _, _ string, _ *models.StatusPageResourceUpdate,
 ) error {
 	panic("not implemented")
 }
 
-func (m *mockDBService) DeleteStatusPageResource(_ context.Context, _ string) error {
+func (m *mockDBService) DeleteStatusPageResource(_ context.Context, _, _ string) error {
 	panic("not implemented")
 }
 
@@ -1718,6 +1719,12 @@ func (m *mockDBService) ListOrphanAttachments(
 func (m *mockDBService) AdmitFixedWindows(
 	_ context.Context, _ string, _ []models.FixedWindow, _ time.Time,
 ) (int, time.Duration, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) BumpGlobalCounter(
+	_ context.Context, _ string, _ int, _ time.Duration,
+) (bool, error) {
 	panic("not implemented")
 }
 
@@ -3232,9 +3239,9 @@ func TestReminderDurationWording(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	r.Equal("15 min", reminderDuration(15*time.Minute))
-	r.Equal("1 h", reminderDuration(time.Hour))
-	r.Equal("1 h 15 min", reminderDuration(75*time.Minute))
-	r.Equal("2 d", reminderDuration(48*time.Hour))
-	r.Equal("1 d 3 h", reminderDuration(27*time.Hour+10*time.Minute))
+	r.Equal("15 min", reminderDurationIn(i18n.English, 15*time.Minute))
+	r.Equal("1 h", reminderDurationIn(i18n.English, time.Hour))
+	r.Equal("1 h 15 min", reminderDurationIn(i18n.English, 75*time.Minute))
+	r.Equal("2 d", reminderDurationIn(i18n.English, 48*time.Hour))
+	r.Equal("1 d 3 h", reminderDurationIn(i18n.English, 27*time.Hour+10*time.Minute))
 }

@@ -4,6 +4,7 @@ import {
   useState,
   useEffect,
   useCallback,
+  useRef,
   type ReactNode,
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -24,6 +25,14 @@ import { identifyAnalytics, resetAnalytics } from "@/lib/analytics";
 import { disconnectAllLiveSockets } from "@/contexts/LiveEventsContext";
 import { persistSessionOrg, SESSION_ORG_KEY } from "@/lib/session-org";
 import { exitImpersonation, getImpersonation, isImpersonationExpired } from "@/lib/impersonation";
+import i18n from "@/i18n";
+import { browserTimezone, supportedLanguage, type LanguageCode } from "@/lib/languages";
+import {
+  planPreferencesSync,
+  preferencesSyncMode,
+  type PreferencesPatch,
+  type UserPreferences,
+} from "@/lib/preferences-sync";
 
 interface User {
   // Pseudonymous user UUID. Used for the analytics distinct id; never shown.
@@ -50,6 +59,13 @@ interface User {
   // user (spec 2026-09-29-03), as reported by /auth/me. Drives the
   // non-dismissible "viewing as" banner.
   impersonation?: ImpersonationInfo | null;
+  // The session reaches nothing but the password rotation screen until the
+  // password is changed: every write answers 403, so nothing is synced to it.
+  mustChangePassword: boolean;
+  // The language and timezone the server writes this user's emails in (spec
+  // 2026-10-21-01). undefined when the response carried none (an older
+  // server); {} when nothing is saved yet.
+  preferences?: UserPreferences;
 }
 
 export interface ImpersonationInfo {
@@ -76,6 +92,10 @@ export interface LoginResult {
   // useRecoveryCode with the temp token to complete the sign-in.
   requires2FA?: boolean;
   tempToken?: string;
+  // Set when the session was stored but the account must rotate its password
+  // first: applyLoginResponse already sent the browser to that screen, so the
+  // caller must not navigate anywhere else.
+  mustChangePassword?: boolean;
 }
 
 // RenamedOrgSession is the session half of the PATCH /orgs/:org response.
@@ -104,6 +124,8 @@ export interface DeletedOrgSession {
     demo?: boolean;
     // See AuthResponse.user.mustChangeEmail.
     mustChangeEmail?: boolean;
+    // See User.preferences.
+    preferences?: UserPreferences;
   };
   organization?: { uid: string; slug: string; name?: string };
   organizations?: OrganizationSummary[];
@@ -149,6 +171,11 @@ interface AuthContextType {
   // context so user/org/token state lands in the same place as a
   // password login.
   applyLoginResponse: (response: AuthResponse) => Promise<LoginResult>;
+  // Switches the dashboard language. Signed in, it is also saved as the
+  // user's language, the one their emails are written in; signed out (or in a
+  // session that cannot write it) it stays in this browser. Rejects when the
+  // save fails; the dashboard language has changed by then.
+  changeLanguage: (code: LanguageCode) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -207,6 +234,8 @@ interface AuthResponse {
     // Present (and true) only while mustChangePassword is set AND the account
     // still signs in with the default admin address (spec 2026-10-13-02).
     mustChangeEmail?: boolean;
+    // See User.preferences.
+    preferences?: UserPreferences;
   };
   organization?: {
     uid: string;
@@ -240,6 +269,8 @@ interface MeResponse {
     demo?: boolean;
     // See AuthResponse.user.mustChangeEmail.
     mustChangeEmail?: boolean;
+    // See User.preferences.
+    preferences?: UserPreferences;
   };
   // Optional — a zero-org session (a user who belongs to no organization yet)
   // gets a 200 from /auth/me with no organization. Mirrors the sibling
@@ -268,6 +299,38 @@ function clearStoredOrg(): void {
   localStorage.removeItem(ORG_KEY);
 }
 
+// The user shape every login-shaped response, /auth/me and the org-deletion
+// session carry.
+interface SessionUser {
+  uid: string;
+  email: string;
+  name?: string;
+  avatarUrl?: string;
+  role: string;
+  mustChangePassword?: boolean;
+  demo?: boolean;
+  mustChangeEmail?: boolean;
+  preferences?: UserPreferences;
+}
+
+function toUser(user: SessionUser, impersonation?: ImpersonationInfo | null): User {
+  return {
+    uid: user.uid,
+    email: user.email,
+    name: user.name,
+    avatarUrl: user.avatarUrl,
+    roles: [user.role],
+    isAdmin: user.role === "owner" || user.role === "admin" || user.role === "superadmin",
+    isOwner: user.role === "owner" || user.role === "superadmin",
+    isSuperAdmin: user.role === "superadmin",
+    isDemo: Boolean(user.demo),
+    mustChangeEmail: Boolean(user.mustChangeEmail),
+    impersonation,
+    mustChangePassword: Boolean(user.mustChangePassword),
+    preferences: user.preferences,
+  };
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const [user, setUser] = useState<User | null>(null);
@@ -287,6 +350,104 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       identifyAnalytics(orgUid, user.uid);
     }
   }, [orgUid, user?.uid]);
+
+  // Writes preference fields and records the server's answer on the user, so
+  // the sync effect below sees them as saved and does not write them again.
+  const savePreferences = useCallback(async (uid: string, patch: PreferencesPatch) => {
+    const data = await apiFetch<MeResponse>(`/api/v1/auth/me`, {
+      method: "PATCH",
+      body: JSON.stringify({ preferences: patch }),
+    });
+    setUser((prev) =>
+      prev && prev.uid === uid
+        ? { ...prev, preferences: data.user?.preferences ?? { ...prev.preferences, ...patch } }
+        : prev,
+    );
+  }, []);
+
+  // Keeps the language and timezone the server writes emails in matched with
+  // this browser (spec 2026-10-21-01, decision 5): a saved language switches
+  // the dashboard to it, a missing one is saved from the dashboard's, and the
+  // timezone follows the browser. planPreferencesSync holds the rules.
+  const sentPreferencePatches = useRef(new Set<string>());
+  const uid = user?.uid;
+  const hasPreferences = user?.preferences !== undefined;
+  const savedLocale = user?.preferences?.locale;
+  const savedTimezone = user?.preferences?.timezone;
+  const isDemo = user?.isDemo ?? false;
+  const impersonating = Boolean(user?.impersonation);
+  const mustChangePassword = user?.mustChangePassword ?? false;
+  useEffect(() => {
+    if (!uid) {
+      return;
+    }
+    const plan = planPreferencesSync({
+      server: hasPreferences ? { locale: savedLocale, timezone: savedTimezone } : undefined,
+      uiLanguage: i18n.resolvedLanguage,
+      browserTimezone: browserTimezone(),
+      mode: preferencesSyncMode({
+        isDemo,
+        impersonating: impersonating || getImpersonation() !== null,
+        mustChangePassword,
+      }),
+    });
+    if (plan.changeLanguage) {
+      void i18n.changeLanguage(plan.changeLanguage);
+    }
+    // Each distinct write goes out once per page load: a refused or failed
+    // PATCH (an odd browser zone the server does not know) is not retried in
+    // a loop, and a re-render cannot send it twice.
+    const pending = (plan.patches ?? []).filter((patch) => {
+      const key = JSON.stringify([uid, patch]);
+      if (sentPreferencePatches.current.has(key)) {
+        return false;
+      }
+      sentPreferencePatches.current.add(key);
+      return true;
+    });
+    if (pending.length === 0) {
+      return;
+    }
+    // One at a time, in the planned order: a refused timezone leaves the
+    // language saved before it.
+    void (async () => {
+      for (const patch of pending) {
+        try {
+          await savePreferences(uid, patch);
+        } catch {
+          // Best effort: the next page load tries again.
+        }
+      }
+    })();
+  }, [
+    uid,
+    hasPreferences,
+    savedLocale,
+    savedTimezone,
+    isDemo,
+    impersonating,
+    mustChangePassword,
+    savePreferences,
+  ]);
+
+  const changeLanguage = useCallback(
+    async (code: LanguageCode) => {
+      await i18n.changeLanguage(code);
+      if (!user || user.preferences === undefined) {
+        return;
+      }
+      const mode = preferencesSyncMode({
+        isDemo: user.isDemo,
+        impersonating: Boolean(user.impersonation) || getImpersonation() !== null,
+        mustChangePassword: user.mustChangePassword,
+      });
+      if (mode !== "full" || supportedLanguage(user.preferences.locale) === code) {
+        return;
+      }
+      await savePreferences(user.uid, { locale: code });
+    },
+    [user, savePreferences],
+  );
 
   const validateSession = useCallback(async () => {
     const token = getToken();
@@ -334,22 +495,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (data.user.mustChangePassword) {
         redirectToPasswordChange();
       }
-      setUser({
-        uid: data.user.uid,
-        email: data.user.email,
-        name: data.user.name,
-        avatarUrl: data.user.avatarUrl,
-        roles: [data.user.role],
-        isAdmin:
-          data.user.role === "owner" ||
-          data.user.role === "admin" ||
-          data.user.role === "superadmin",
-        isOwner: data.user.role === "owner" || data.user.role === "superadmin",
-        isSuperAdmin: data.user.role === "superadmin",
-        isDemo: Boolean(data.user.demo),
-        mustChangeEmail: Boolean(data.user.mustChangeEmail),
-        impersonation: data.impersonation ?? null,
-      });
+      setUser(toUser(data.user, data.impersonation ?? null));
       // Update org from server response. An org-less token clears it: a slug
       // left over from an earlier session would read as "already scoped to
       // this org" and skip OrgLayout's switch-org (spec 2026-09-25-15).
@@ -424,7 +570,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // so no sign-in path can slip past it.
     if (data.user.mustChangePassword) {
       redirectToPasswordChange();
-      return { loginAction: "", organizations: [], resolvedOrg };
+      return { loginAction: "", organizations: [], resolvedOrg, mustChangePassword: true };
     }
 
     // An org-less session (no membership yet, or a federated login the org
@@ -433,21 +579,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setOrg(persistSessionOrg(data.organization));
     setOrgUid(data.organization?.uid ?? null);
 
-    setUser({
-      uid: data.user.uid,
-      email: data.user.email,
-      name: data.user.name,
-      avatarUrl: data.user.avatarUrl,
-      roles: [data.user.role],
-      isAdmin:
-        data.user.role === "owner" ||
-        data.user.role === "admin" ||
-        data.user.role === "superadmin",
-      isOwner: data.user.role === "owner" || data.user.role === "superadmin",
-      isSuperAdmin: data.user.role === "superadmin",
-      isDemo: Boolean(data.user.demo),
-      mustChangeEmail: Boolean(data.user.mustChangeEmail),
-    });
+    setUser(toUser(data.user));
 
     const orgs = data.organizations || [];
     if (orgs.length > 0) {
@@ -522,21 +654,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setOrg(data.organization.slug);
     }
     setOrgUid(data.organization?.uid ?? null);
-    setUser({
-      uid: data.user.uid,
-      email: data.user.email,
-      name: data.user.name,
-      avatarUrl: data.user.avatarUrl,
-      roles: [data.user.role],
-      isAdmin:
-        data.user.role === "owner" ||
-        data.user.role === "admin" ||
-        data.user.role === "superadmin",
-      isOwner: data.user.role === "owner" || data.user.role === "superadmin",
-      isSuperAdmin: data.user.role === "superadmin",
-      isDemo: Boolean(data.user.demo),
-      mustChangeEmail: Boolean(data.user.mustChangeEmail),
-    });
+    setUser(toUser(data.user));
     setOrganizations(data.organizations || []);
   };
 
@@ -555,21 +673,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       `/api/v1/auth/me`
     );
     setOrgUid(data.organization?.uid ?? null);
-    setUser({
-      uid: data.user.uid,
-      email: data.user.email,
-      name: data.user.name,
-      avatarUrl: data.user.avatarUrl,
-      roles: [data.user.role],
-      isAdmin:
-        data.user.role === "owner" ||
-        data.user.role === "admin" ||
-        data.user.role === "superadmin",
-      isOwner: data.user.role === "owner" || data.user.role === "superadmin",
-      isSuperAdmin: data.user.role === "superadmin",
-      isDemo: Boolean(data.user.demo),
-      mustChangeEmail: Boolean(data.user.mustChangeEmail),
-    });
+    setUser(toUser(data.user));
     setOrganizations(data.organizations || []);
   };
 
@@ -588,21 +692,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setStoredOrg(resolvedOrg);
       setOrg(resolvedOrg);
       setOrgUid(data.organization?.uid ?? null);
-      setUser({
-        uid: data.user.uid,
-        email: data.user.email,
-        name: data.user.name,
-        avatarUrl: data.user.avatarUrl,
-        roles: [data.user.role],
-        isAdmin:
-          data.user.role === "owner" ||
-          data.user.role === "admin" ||
-          data.user.role === "superadmin",
-        isOwner: data.user.role === "owner" || data.user.role === "superadmin",
-        isSuperAdmin: data.user.role === "superadmin",
-        isDemo: Boolean(data.user.demo),
-        mustChangeEmail: Boolean(data.user.mustChangeEmail),
-      });
+      setUser(toUser(data.user));
       // Re-fetch organizations from /me (consistent with login)
       try {
         const meData = await apiFetch<MeResponse>(`/api/v1/auth/me`);
@@ -664,22 +754,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     if (session.user) {
-      setUser({
-        uid: session.user.uid,
-        email: session.user.email,
-        name: session.user.name,
-        avatarUrl: session.user.avatarUrl,
-        roles: [session.user.role],
-        isAdmin:
-          session.user.role === "owner" ||
-          session.user.role === "admin" ||
-          session.user.role === "superadmin",
-        isOwner:
-          session.user.role === "owner" || session.user.role === "superadmin",
-        isSuperAdmin: session.user.role === "superadmin",
-        isDemo: Boolean(session.user.demo),
-        mustChangeEmail: Boolean(session.user.mustChangeEmail),
-      });
+      setUser(toUser(session.user));
     }
 
     // Always overwrite: the list the app was holding still contains the org
@@ -692,21 +767,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refreshUser = useCallback(async () => {
     const data = await apiFetch<MeResponse>(`/api/v1/auth/me`);
     setOrgUid(data.organization?.uid ?? null);
-    setUser({
-      uid: data.user.uid,
-      email: data.user.email,
-      name: data.user.name,
-      avatarUrl: data.user.avatarUrl,
-      roles: [data.user.role],
-      isAdmin:
-        data.user.role === "owner" ||
-        data.user.role === "admin" ||
-        data.user.role === "superadmin",
-      isOwner: data.user.role === "owner" || data.user.role === "superadmin",
-      isSuperAdmin: data.user.role === "superadmin",
-      isDemo: Boolean(data.user.demo),
-      mustChangeEmail: Boolean(data.user.mustChangeEmail),
-    });
+    setUser(toUser(data.user));
     setOrganizations(data.organizations || []);
   }, []);
 
@@ -800,6 +861,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         verify2FA,
         useRecoveryCode,
         applyLoginResponse,
+        changeLanguage,
       }}
     >
       {children}

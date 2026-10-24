@@ -102,10 +102,16 @@ type User struct {
 	// link, which is most of them. Stored as JSON so the shape can grow
 	// (another ad network's click id) without a migration.
 	SignupAttribution *SignupAttribution `bun:"signup_attribution,type:jsonb"`
-	LastActiveAt      *time.Time         `bun:"last_active_at"`
-	CreatedAt         time.Time          `bun:"created_at,notnull,default:current_timestamp"`
-	UpdatedAt         time.Time          `bun:"updated_at,notnull,default:current_timestamp"`
-	DeletedAt         *time.Time         `bun:"deleted_at"`
+	// Preferences holds what the user picked for the server to follow when it
+	// writes to them: the language and timezone of their emails (spec
+	// 2026-10-21-01). Nil until the dashboard first reports them. Stored as
+	// JSON so a new preference does not need a migration. Validated in Go
+	// (internal/i18n), never by the database.
+	Preferences  *UserPreferences `bun:"preferences,type:jsonb"`
+	LastActiveAt *time.Time       `bun:"last_active_at"`
+	CreatedAt    time.Time        `bun:"created_at,notnull,default:current_timestamp"`
+	UpdatedAt    time.Time        `bun:"updated_at,notnull,default:current_timestamp"`
+	DeletedAt    *time.Time       `bun:"deleted_at"`
 }
 
 // SignupAttribution is the campaign context of a signup, as forwarded by the
@@ -135,6 +141,22 @@ type SignupAttribution struct {
 	// before the account exists (the confirmation email is not always opened
 	// at once).
 	CapturedAt *time.Time `json:"capturedAt,omitempty"`
+}
+
+// UserPreferences is the users.preferences column. Every field is optional;
+// an empty one means "not set", and the reader falls back (see
+// internal/i18n/recipient).
+type UserPreferences struct {
+	// Locale is a supported language code: en, fr, de or es.
+	Locale string `json:"locale,omitempty"`
+	// Timezone is an IANA zone name, e.g. Europe/Paris.
+	Timezone string `json:"timezone,omitempty"`
+}
+
+// IsEmpty reports whether no preference is set, so callers store NULL rather
+// than an empty object.
+func (p *UserPreferences) IsEmpty() bool {
+	return p == nil || (p.Locale == "" && p.Timezone == "")
 }
 
 // IsEmpty reports whether nothing at all was captured, so callers can store a
@@ -175,7 +197,10 @@ type UserUpdate struct {
 	// pending rotation.
 	MustChangePassword *bool
 	// Demo sets or clears the shared-demo-principal flag. Nil leaves it alone.
-	Demo         *bool
+	Demo *bool
+	// Preferences replaces the whole preferences object. Nil leaves it alone;
+	// an empty one stores NULL. Callers merge with the current value first.
+	Preferences  *UserPreferences
 	LastActiveAt *time.Time
 }
 

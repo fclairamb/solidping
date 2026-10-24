@@ -1,0 +1,11 @@
+{
+  "incident.checkLink": {"fr": "markup only, no words", "de": "markup only, no words", "es": "markup only, no words"},
+  "incident.channel.slack": {"fr": "brand name", "de": "brand name", "es": "brand name"},
+  "incident.channel.discord": {"fr": "brand name", "de": "brand name", "es": "brand name"},
+  "incident.channel.telegram": {"fr": "brand name", "de": "brand name", "es": "brand name"},
+  "incident.via.slack": {"fr": "French also says via before a chat tool, and Slack is a brand name"},
+  "incident.via.discord": {"fr": "French also says via before a chat tool, and Discord is a brand name"},
+  "incident.via.telegram": {"fr": "French also says via before a chat tool, and Telegram is a brand name"},
+  "incident.labels.type": {"fr": "same word"},
+  "incident.labels.cause": {"fr": "same word"}
+}

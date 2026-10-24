@@ -93,6 +93,11 @@ type OAuthResult struct {
 	// already belongs to that the session was minted on instead (spec
 	// 2026-09-25-15). Empty when they belong to none.
 	FallbackOrgSlug string
+	// Requires2FA is true when the installing user has TOTP enabled: no session
+	// was minted (the tokens above are empty) and TempToken is the 2FA
+	// challenge the dashboard completes before landing (spec 2026-10-16-14).
+	Requires2FA bool
+	TempToken   string
 }
 
 // installStateKind / installStateTTL govern the bot-install OAuth flow's
@@ -539,6 +544,8 @@ func (s *Service) HandleOAuthCallback(ctx context.Context, code, state string) (
 		UserUID:         user.UID,
 		Pending:         login.Pending,
 		FallbackOrgSlug: login.FallbackOrgSlug,
+		Requires2FA:     login.Requires2FA,
+		TempToken:       login.TempToken,
 	}, nil
 }
 

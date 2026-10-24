@@ -18,6 +18,7 @@ var jobDefinitionFactories = map[jobdef.JobType]func() jobdef.JobDefinition{
 	jobdef.JobTypeAggregation:      func() jobdef.JobDefinition { return &AggregationJobDefinition{} },
 	jobdef.JobTypeStateCleanup:     func() jobdef.JobDefinition { return &StateCleanupJobDefinition{} },
 	jobdef.JobTypeNotification:     func() jobdef.JobDefinition { return &NotificationJobDefinition{} },
+	jobdef.JobTypeA2ATaskPoll:      func() jobdef.JobDefinition { return &A2ATaskPollJobDefinition{} },
 	jobdef.JobTypeSnoozeSweep:      func() jobdef.JobDefinition { return &SnoozeSweepJobDefinition{} },
 	jobdef.JobTypeEscalationStep:   func() jobdef.JobDefinition { return &EscalationStepJobDefinition{} },
 	jobdef.JobTypeNetworkDiscovery: func() jobdef.JobDefinition { return &NetworkDiscoveryJobDefinition{} },
@@ -38,6 +39,9 @@ var jobDefinitionFactories = map[jobdef.JobType]func() jobdef.JobDefinition{
 	},
 	jobdef.JobTypeNetworkDiscoveryPlan: func() jobdef.JobDefinition {
 		return &NetworkDiscoveryPlanJobDefinition{}
+	},
+	jobdef.JobTypeNetworkDiscoveryAgentPlan: func() jobdef.JobDefinition {
+		return &NetworkDiscoveryAgentPlanJobDefinition{}
 	},
 	jobdef.JobTypeFreeboxLanDiscovery: func() jobdef.JobDefinition { return &FreeboxLanDiscoveryJobDefinition{} },
 	jobdef.JobTypeContainerDiscovery:  func() jobdef.JobDefinition { return &ContainerDiscoveryJobDefinition{} },

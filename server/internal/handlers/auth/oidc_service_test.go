@@ -13,6 +13,7 @@ import (
 
 	josejwk "github.com/go-jose/go-jose/v4"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/pquerna/otp/totp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -492,4 +493,96 @@ func TestOIDCHandleCallback_VerifiedEmailStillLinksToExistingUser(t *testing.T) 
 	member, err := svc.db.GetMemberByUserAndOrg(ctx, existing.UID, org.UID)
 	require.NoError(t, err)
 	assert.Equal(t, existing.UID, member.UserUID)
+}
+
+// TestOIDCHandleCallback_AsksForTOTP drives a real connector end to end (spec
+// 2026-10-16-14): a user with TOTP enabled gets the 2FA challenge from the
+// callback, not a session, and the existing Verify2FA / Recovery2FA finish it.
+func TestOIDCHandleCallback_AsksForTOTP(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	idp := newFakeOIDCIdP(t)
+	svc, ctx := setupOIDCTestService(t, idp, nil)
+	org := setupOIDCTestOrg(ctx, t, svc)
+
+	const email = "totp-user@example.com"
+
+	user := createExistingLocalUser(ctx, t, svc, email)
+	r.NoError(svc.db.CreateOrganizationMember(ctx,
+		models.NewOrganizationMember(org.UID, user.UID, models.MemberRoleAdmin)))
+	secret := enableTestTOTP(ctx, t, svc.db, user)
+
+	callback := func() *OIDCOAuthResult {
+		idp.nextIDToken = idp.issueIDToken(t, func(c jwt.MapClaims) { c[keyEmail] = email })
+
+		result, err := svc.HandleCallback(ctx, "fake-code", org.Slug)
+		r.NoError(err)
+		r.True(result.Requires2FA, "a TOTP user must be challenged on SSO sign-in")
+		r.NotEmpty(result.TempToken)
+		r.Empty(result.AccessToken)
+		r.Empty(result.RefreshToken)
+		r.Equal(user.UID, result.UserUID)
+
+		return result
+	}
+
+	refreshRows := func() int {
+		rows, err := svc.db.ListUserTokensByType(ctx, user.UID, models.TokenTypeRefresh)
+		r.NoError(err)
+
+		return len(rows)
+	}
+
+	loginMethods := func() []any {
+		rows, err := svc.db.ListEvents(ctx, &models.ListEventsFilter{
+			OrganizationUID: org.UID, EventTypePrefixes: []string{"auth"}, Limit: 10,
+		})
+		r.NoError(err)
+
+		methods := make([]any, 0, len(rows))
+		for _, row := range rows {
+			if row.EventType == models.EventTypeAuthLoginSucceeded {
+				methods = append(methods, row.Payload["auth_method"])
+			}
+		}
+
+		return methods
+	}
+
+	result := callback()
+
+	// The temp token is no bearer token.
+	_, err := svc.authService.ValidateToken(ctx, result.TempToken)
+	r.Error(err)
+
+	// A wrong code gives no session.
+	_, err = svc.authService.Verify2FA(ctx, result.TempToken, wrongTOTPCode(t, secret), Context{})
+	r.ErrorIs(err, ErrInvalid2FACode)
+	r.Zero(refreshRows(), "a wrong code must mint nothing")
+	r.Empty(loginMethods())
+
+	// The right code gives a full session on the org.
+	code, err := totp.GenerateCode(secret, time.Now())
+	r.NoError(err)
+
+	login, err := svc.authService.Verify2FA(ctx, result.TempToken, code, Context{})
+	r.NoError(err)
+	r.NotEmpty(login.RefreshToken)
+
+	claims, err := svc.authService.ValidateToken(ctx, login.AccessToken)
+	r.NoError(err)
+	r.Equal(org.Slug, claims.OrgSlug)
+	r.Equal(string(models.MemberRoleAdmin), claims.Role)
+	r.Equal(1, refreshRows())
+	r.Equal([]any{"oidc+totp"}, loginMethods())
+
+	// A recovery code finishes a second federated sign-in too.
+	second := callback()
+
+	login, err = svc.authService.Recovery2FA(ctx, second.TempToken, "recovery-one", Context{})
+	r.NoError(err)
+	r.NotEmpty(login.AccessToken)
+	r.Equal(2, refreshRows())
+	r.ElementsMatch([]any{"oidc+totp", "oidc+recovery_code"}, loginMethods())
 }

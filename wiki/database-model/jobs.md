@@ -30,6 +30,33 @@ incident jobs.
 
 ---
 
+### worker_tasks
+Work a worker (cloud or org agent) claims under a lease and may run in several
+slices, the state between slices held by the server (spec 2026-10-22-02).
+
+| Column | Type | Description |
+|--------|------|-------------|
+| uid | uuid PK | Primary key |
+| organization_uid | uuid | FK to organizations |
+| kind | text | Task kind (crawl, discovery...) |
+| region | text | Exact region of the claim: cloud slug or `@slug` |
+| check_uid / job_uid | uuid | Parent, exactly one set (cascade) |
+| payload / progress | jsonb | Kind input / small UI progress |
+| status | text | pending, claimed, done, failed, cancelled |
+| worker_uid, lease_until | text, timestamptz | Lease holder and end |
+| attempts | integer | Claims of the current slice (4th fails: `max_attempts`) |
+| slice_count, slice_failures | integer | Slices done, failed slices in a row (3 fail) |
+| state_file_uid | text | File `tasks/<uid>/step-state` for the next slice |
+| units_granted | integer | Units reserved for the slice in progress, refunded server-side (spec 2026-10-22-03) |
+| not_before, run_started_at | timestamptz | Earliest claim, first claim that ran (cleared by a deferral before the first slice) |
+| error_code | text | Code of a failed task |
+
+**Indexes**: claim (region, kind, status, not_before); (organization_uid, region,
+status); (job_uid); unique (check_uid) where pending or claimed (one active run
+per check). A pending row untouched for 24 h reads as failed (no sweeper).
+
+---
+
 ### state_entries
 Key-value state storage for notifications, tokens, and distributed locking.
 

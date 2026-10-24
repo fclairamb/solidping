@@ -210,6 +210,11 @@ const (
 	// database and only ever read SP_EGRESS_ALLOW_PRIVATE.
 	KeyEgressAllowPrivateTargets ParameterKey = "egress.allow_private_targets"
 
+	// KeyToolsEnabled turns on the anonymous POST /api/v1/tools/run endpoint
+	// behind the public tools of www.solidping.io (spec 2026-10-14-02). Off by
+	// default.
+	KeyToolsEnabled ParameterKey = "tools.enabled"
+
 	// KeyMetricsScrapeToken is the bearer token gating GET /metrics (spec
 	// 2026-09-25-25). Unset means the endpoint answers 404 to every request —
 	// the same "feature disabled" convention as Prometheus.Enabled=false —
@@ -807,6 +812,14 @@ func getKnownParameters() []ParameterDefinition {
 			Secret: false,
 			ApplyFunc: func(cfg *config.Config, value any) {
 				applyEgressAllowPrivate(cfg, value)
+			},
+		},
+		{
+			Key:    KeyToolsEnabled,
+			EnvVar: "SP_TOOLS_ENABLED",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				cfg.Tools.Enabled = parseBool(value, cfg.Tools.Enabled)
 			},
 		},
 		{
@@ -1552,22 +1565,6 @@ func (s *Service) Initialize(ctx context.Context) error {
 	return nil
 }
 
-// applyIntParam stores a numeric parameter into dst. DB values arrive as
-// float64 (JSON) or int, the environment overlay passes the raw string. An
-// unparseable string leaves dst unchanged.
-func applyIntParam(dst *int, value any) {
-	switch typed := value.(type) {
-	case float64:
-		*dst = int(typed)
-	case int:
-		*dst = typed
-	case string:
-		if n, err := strconv.Atoi(strings.TrimSpace(typed)); err == nil {
-			*dst = n
-		}
-	}
-}
-
 // ensureJWTSecret checks if JWT secret is set and generates one if missing.
 func (s *Service) ensureJWTSecret(ctx context.Context) error {
 	// Check if already set in environment variable
@@ -1739,4 +1736,19 @@ func EffectiveEmailConfig(
 	out := tmp.Email
 
 	return &out, nil
+}
+
+// applyIntParam sets dst from a JSON number (float64), an int, or a numeric
+// string (the raw env value the overlay passes). Anything else leaves dst alone.
+func applyIntParam(dst *int, value any) {
+	switch val := value.(type) {
+	case float64:
+		*dst = int(val)
+	case int:
+		*dst = val
+	case string:
+		if n, err := strconv.Atoi(strings.TrimSpace(val)); err == nil {
+			*dst = n
+		}
+	}
 }

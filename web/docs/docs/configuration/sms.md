@@ -105,7 +105,7 @@ with `GET`/`POST`/`PUT` rights on `/sms/*`.
 | `SP_SMS_OVH_CONSUMER_KEY` | **Secret.** |
 | `SP_SMS_OVH_SERVICE_NAME` | The SMS account, `sms-xxxxx-1`. |
 | `SP_SMS_OVH_BASE_URL` | Overrides the endpoint-derived API base (proxy / tests). |
-| `SP_SMS_OVH_DLR_TOKEN` | The delivery-receipt path secret. Optional. When unset, a token is derived from the JWT secret (the one stored in the database works). SolidPing registers `{SP_BASE_URL}/api/v1/integrations/ovhsms/dlr/{token}` as the account's `callBack` at each boot, which needs a public `SP_BASE_URL` (nothing is registered while it is the `localhost` default). To set `callBack` by hand in the OVH panel, set this variable explicitly so you know the token. |
+| `SP_SMS_OVH_DLR_TOKEN` | The delivery-receipt path secret. Optional — one is derived from the JWT secret when unset, with no configuration needed. At each boot SolidPing registers `{SP_BASE_URL}/api/v1/integrations/ovhsms/dlr/{token}` as the account's `callBack`, which needs a public `SP_BASE_URL` (nothing is registered while it is the `localhost` default). To set `callBack` by hand in the OVH panel instead, set this variable so you know the token. |
 
 Two OVH specifics worth knowing before you debug the wrong thing:
 
@@ -449,6 +449,18 @@ On top of all four, monthly quotas come from the organization's entitlements. A
 self-hosted deployment is **unlimited** by default — the operator's own
 credentials pay, so SolidPing does not meter them. Managed plans set explicit
 monthly caps, visible on the organization's **Usage** page.
+
+The monthly caps count only sends made on the **server-provided** credentials.
+A bring-your-own send is billed to the organization's own Twilio account, so it
+neither consumes nor is refused by the monthly SMS or call cap: only the
+per-organization hourly guard applies to it. Modes are decided per channel: an
+integration without a voice number places calls on the server's credentials,
+and those calls do count. WhatsApp always counts (it has no bring-your-own
+mode).
+
+The first time a channel's monthly cap refuses a send in a month, the
+organization's owners and admins get one email about it. Hourly-guard refusals
+do not send it.
 
 ## Trial accounts
 

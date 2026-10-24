@@ -1,0 +1,8 @@
+{
+  "notices.watchdogDigest.anomaliesTitle": {"fr": "same word"},
+  "notices.watchdogDigest.severity.info": {
+    "fr": "the same abbreviation",
+    "de": "the same abbreviation",
+    "es": "the same abbreviation"
+  }
+}

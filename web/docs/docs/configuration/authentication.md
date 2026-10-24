@@ -31,7 +31,7 @@ SP_AUTH_JWT_SECRET=your-secure-random-secret-at-least-32-chars
 ```
 
 :::warning Production
-Always set `SP_AUTH_JWT_SECRET` in production. If left unset, a random secret is generated once and stored in the database, so it survives restarts. Setting it explicitly keeps it out of the database and lets you rotate it.
+Always set `SP_AUTH_JWT_SECRET` in production. If left unset, a random secret is generated once and stored in the database, so it is stable across restarts, but it is lost if the database is recreated, invalidating all existing sessions.
 :::
 
 ### Password Hashing
@@ -200,6 +200,24 @@ and takes effect after a server restart.
 3. Add redirect URI: `{SP_BASE_URL}/api/v1/auth/microsoft/callback`
 4. Create a client secret under "Certificates & secrets"
 5. For a single-tenant app, set `SP_MICROSOFT_TENANT_ID` to your directory (tenant) ID
+6. For a multi-tenant app (`common` / `organizations` / `consumers`), open
+   **Token configuration → Add optional claim → ID** and add the `email` and
+   `xms_edov` claims.
+
+**Which email SolidPing trusts.** Signing in with Microsoft links to an existing
+account with the same email, or creates one, only when SolidPing can trust the
+address:
+
+- **Pinned tenant** (`SP_MICROSOFT_TENANT_ID` set to a GUID or domain): the
+  Microsoft Graph `mail` (or the user principal name) is trusted. Only your own
+  directory's users can sign in, and its admins are yours. Nothing else to configure.
+- **Multi-tenant** (`common`, `organizations`, `consumers`, or unset): Graph `mail`
+  is a directory attribute any tenant admin can set to any address, so it is never
+  used. The email comes from the ID token, and only when its `xms_edov` claim
+  (email domain owner verified) is `true`. Without the step 6 optional claims, users
+  whose Microsoft account is already linked still sign in, but every first sign-in
+  is refused with `EMAIL_NOT_VERIFIED`. The server logs a warning with the tenant
+  (`tid`) and object (`oid`) IDs.
 
 ### Slack
 
@@ -293,6 +311,119 @@ So a sign-in URL that ends up in browser history, a proxy log or a screenshot
 cannot be replayed. If you reverse-proxy SolidPing, nothing needs to change:
 `/d/auth/complete` is an ordinary dashboard page.
 
+### Provider switches
+
+Each provider also has an `_ENABLED` switch. The login routes of a provider are mounted only when it is on and its client ID is set.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SP_GOOGLE_ENABLED` | `false` | Turns on Google sign-in |
+| `SP_GITHUB_ENABLED` | `false` | Turns on GitHub sign-in |
+| `SP_GITLAB_ENABLED` | `false` | Turns on GitLab sign-in |
+| `SP_MICROSOFT_ENABLED` | `false` | Turns on Microsoft sign-in |
+| `SP_SLACK_ENABLED` | `false` | Turns on Sign in with Slack |
+| `SP_SLACK_SOCKET_MODE_ENABLED` | `false` | Receive Slack events over Socket Mode instead of HTTPS webhooks (needs `SP_SLACK_ENABLED`). See [notifications](notifications.md) |
+| `SP_SLACK_APP_TOKEN` | empty | Slack app-level token (`xapp-...`) used by Socket Mode. Secret |
+
+## Session lifetime
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SP_AUTH_SESSION_MAX_DURATION` | `0` (unlimited) | Hard cap on a session's lifetime, in seconds, counted from login. An organization can override it |
+
+## LDAP / Active Directory
+
+SolidPing can check passwords against an LDAP directory: lldap, OpenLDAP, FreeIPA or Active Directory. There is one global connector for the whole server.
+
+**How it works.** There is no separate LDAP button: users type their identifier and password in the normal sign-in form.
+
+- `POST /api/v1/auth/login` checks the local password first. It falls back to LDAP only for a user who has no local password.
+- SolidPing searches the directory with the service account (`bind_dn`; an anonymous search when it is blank), then binds as the entry it found with the submitted password. An empty password is never sent.
+- A successful bind creates the user on first sign-in. If an account with the same email already exists and has no local password (it came from OIDC, SAML or an earlier LDAP sign-in), the directory identity is linked to it.
+- An account that already has a local password can never be taken over through LDAP: it keeps signing in with its local password.
+- Every failure (directory unreachable, unknown user, wrong password, ambiguous filter) answers the same `401`, so the form does not reveal who exists in the directory.
+
+### Configuring it
+
+Three places, with this precedence: **environment variable > dashboard (database) > `config.yml`**.
+
+- Environment variables, in the table below.
+- The dashboard: **Server settings > Authentication > LDAP** (`/orgs/{org}/server/auth`, super admin only). The page flags a setting that an environment variable overrides.
+- The `ldap:` block of `config.yml`, shown at the end of this page.
+
+A change takes effect after a server restart.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SP_LDAP_ENABLED` | `false` | Turns LDAP sign-in on |
+| `SP_LDAP_SERVER_URL` | empty | Directory address, e.g. `ldaps://dc.acme.com:636` or `ldap://lldap:3890` |
+| `SP_LDAP_START_TLS` | `false` | Upgrade a plain `ldap://` connection to TLS before binding. Ignored for `ldaps://` |
+| `SP_LDAP_INSECURE_SKIP_VERIFY` | `false` | Skip TLS certificate verification. Local testing only |
+| `SP_LDAP_BIND_DN` | empty | Service account used to search for the user. Blank means an anonymous search |
+| `SP_LDAP_BIND_PASSWORD` | empty | Password of the service account. **Secret** |
+| `SP_LDAP_BASE_DN` | empty | Where the search starts, e.g. `ou=people,dc=acme,dc=com` |
+| `SP_LDAP_USER_FILTER` | `(mail=%s)` | Search filter, with exactly one `%s` for the submitted identifier |
+| `SP_LDAP_EMAIL_ATTRIBUTE` | `mail` | Attribute read as the user's email |
+| `SP_LDAP_NAME_ATTRIBUTE` | `cn` | Attribute read as the user's display name |
+
+### TLS
+
+Credentials cross the wire in clear text over plain `ldap://`. Use `ldaps://` (usually port 636), or `ldap://` with `SP_LDAP_START_TLS=true`. `SP_LDAP_INSECURE_SKIP_VERIFY=true` accepts any certificate and is meant for testing against a self-signed directory only.
+
+### The user filter
+
+`user_filter` must contain exactly one `%s`. SolidPing escapes the submitted identifier (RFC 4515) before substituting it, so a user cannot inject filter syntax. Composite filters are fine:
+
+```text
+(&(objectClass=person)(mail=%s))
+```
+
+The filter has to match one entry. If it matches several, sign-in fails. Whatever it matches on is what the user types in the form: `(mail=%s)` means an email address, `(uid=%s)` a username.
+
+### Example: lldap
+
+```bash
+SP_LDAP_ENABLED=true
+SP_LDAP_SERVER_URL=ldap://lldap:3890
+SP_LDAP_BIND_DN=uid=admin,ou=people,dc=acme,dc=com
+SP_LDAP_BIND_PASSWORD=the-lldap-admin-password
+SP_LDAP_BASE_DN=ou=people,dc=acme,dc=com
+SP_LDAP_USER_FILTER=(mail=%s)   # or (uid=%s) to sign in with the username
+```
+
+lldap exposes `mail` and `cn`, so the attribute defaults work. When you use `(uid=%s)`, the user still needs a `mail` value in lldap, because that is what SolidPing stores.
+
+### Example: Active Directory
+
+```bash
+SP_LDAP_ENABLED=true
+SP_LDAP_SERVER_URL=ldaps://dc.acme.com:636
+SP_LDAP_BIND_DN=CN=solidping,OU=Service Accounts,DC=acme,DC=com
+SP_LDAP_BIND_PASSWORD=the-service-account-password
+SP_LDAP_BASE_DN=DC=acme,DC=com
+SP_LDAP_USER_FILTER=(sAMAccountName=%s)
+SP_LDAP_NAME_ATTRIBUTE=displayName
+```
+
+The service account only needs read access to the users. Users then sign in with their `sAMAccountName`; the `mail` attribute must be filled in.
+
+### Troubleshooting
+
+Every failure is a `401` on purpose, so the browser tells you nothing. Set `SP_LOG_LEVEL=debug`: the server then logs `LDAP authentication failed` with the cause (dial error, service account bind refused, no entry found, user bind refused).
+
+Check the directory side with `ldapsearch`, using the same values:
+
+```bash
+# 1. Can the service account bind and find the user?
+ldapsearch -H ldap://lldap:3890 -D "uid=admin,ou=people,dc=acme,dc=com" -w "$BIND_PASSWORD" \
+  -b "ou=people,dc=acme,dc=com" "(mail=alice@acme.com)" mail cn
+
+# 2. Does the user's own password bind? (use the DN returned by step 1)
+ldapwhoami -H ldap://lldap:3890 -D "uid=alice,ou=people,dc=acme,dc=com" -w "alice-password"
+```
+
+Typical causes: the filter matches no entry or several, the base DN is too narrow, the email attribute is empty, a certificate the server does not trust (see TLS), or the user already has a local password (they must then use it).
+
 ## Member roles
 
 Every member of an organization holds one of four roles, ordered
@@ -326,6 +457,9 @@ Users can secure their accounts with **TOTP** two-factor authentication (compati
 - Enrollment generates a TOTP secret (shown as a QR code) that the user confirms with a one-time code.
 - On confirmation, SolidPing issues **recovery codes** to use if the authenticator device is lost.
 - At login, users with 2FA enabled provide a code from their authenticator app (or a recovery code).
+- The code is asked on every sign-in: password, LDAP, and every SSO / OAuth connector (Google, GitHub, GitLab, Microsoft, Discord, Slack, OIDC, SAML, and the Slack app install). After the identity provider sends the user back, the dashboard shows the code step, and no session exists until the code is accepted.
+- Passkeys are the only sign-in that skips it, because a passkey already is a second factor.
+- SolidPing does not rely on the identity provider's own MFA (OIDC `amr`, SAML `AuthnContextClassRef`): a user who enabled 2FA is always asked.
 
 ## Configuration File
 
@@ -368,4 +502,16 @@ slack:
 discord:
   client_id: your-discord-client-id
   client_secret: your-discord-client-secret
+
+ldap:
+  enabled: true
+  server_url: ldaps://dc.acme.com:636
+  start_tls: false
+  insecure_skip_verify: false
+  bind_dn: CN=solidping,OU=Service Accounts,DC=acme,DC=com
+  bind_password: the-service-account-password
+  base_dn: DC=acme,DC=com
+  user_filter: "(sAMAccountName=%s)"
+  email_attribute: mail
+  name_attribute: displayName
 ```

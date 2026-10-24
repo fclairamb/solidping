@@ -11,37 +11,37 @@ import (
 	smssvc "github.com/fclairamb/solidping/server/internal/integrations/sms"
 )
 
-// ovhDLRToken is the one place the delivery-receipt path token is resolved. It
-// is deliberately not cached: both callers run after the system-config overlay.
+// ovhDLRToken is the single source of the OVH delivery-receipt path token,
+// used both for the URL registered with OVH and for the handler. It must only
+// be called after InitializeSystemConfig, and is deliberately not cached.
 func (s *Server) ovhDLRToken() string {
 	return ovhsmscb.ResolveToken(s.config)
 }
 
-// ovhBaseURLReachable reports whether baseURL can be called from OVH: not
-// empty, not the localhost default and not a loopback host.
-func ovhBaseURLReachable(baseURL string) bool {
-	baseURL = strings.TrimSpace(baseURL)
-	if baseURL == "" || strings.TrimRight(baseURL, "/") == config.DefaultBaseURL {
+// publicBaseURL reports whether the base URL can be reached by OVH: not the
+// localhost default and not a loopback host.
+func publicBaseURL(baseURL string) bool {
+	trimmed := strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	if trimmed == "" || trimmed == config.DefaultBaseURL {
 		return false
 	}
 
-	parsed, err := url.Parse(baseURL)
+	parsed, err := url.Parse(trimmed)
 	if err != nil || parsed.Hostname() == "" {
 		return false
 	}
 
-	switch parsed.Hostname() {
-	case "localhost", "127.0.0.1", "::1", "0.0.0.0":
+	host := strings.ToLower(parsed.Hostname())
+	if host == "localhost" || host == "::1" || strings.HasPrefix(host, "127.") {
 		return false
 	}
 
 	return true
 }
 
-// configureOVHDeliveryCallback registers the delivery-receipt URL with OVH. It
-// runs at the end of InitializeSystemConfig, once cfg.Auth.JWTSecret and
-// cfg.Server.BaseURL are final. Best-effort: a failure is one WARN. Logs one
-// line (never the token) when the instance sender is OVH.
+// configureOVHDeliveryCallback registers the account-level OVH `callBack`
+// once the config overlay is final. Best effort: failures are one WARN. It
+// logs exactly one line when the instance sender is OVH, never the token.
 func (s *Server) configureOVHDeliveryCallback(ctx context.Context) {
 	if !smssvc.IsOVHSender(s.instanceSMSSender) {
 		return
@@ -54,25 +54,26 @@ func (s *Server) configureOVHDeliveryCallback(ctx context.Context) {
 
 	token := s.ovhDLRToken()
 	if token == "" {
-		slog.WarnContext(ctx, "ovh sms delivery receipts disabled: no token, "+
-			"set SP_SMS_OVH_DLR_TOKEN or a non-default auth.jwt_secret")
+		slog.WarnContext(ctx, "ovh sms delivery receipts disabled: no DLR token "+
+			"(set SP_SMS_OVH_DLR_TOKEN or a non-default auth.jwt_secret)")
 
 		return
 	}
 
-	if !ovhBaseURLReachable(s.config.Server.BaseURL) {
-		slog.WarnContext(ctx, "ovh sms delivery receipts not registered: the base URL is not public, "+
-			"set SP_BASE_URL", "tokenSource", tokenSource)
+	if !publicBaseURL(s.config.Server.BaseURL) {
+		slog.WarnContext(ctx, "ovh sms delivery receipts callback not registered: "+
+			"set SP_BASE_URL to the public URL of this instance",
+			"tokenSource", tokenSource, "callbackRegistered", false)
 
 		return
 	}
 
 	err := smssvc.ConfigureOVHDeliveryCallback(
-		ctx, s.instanceSMSSender, ovhsmscb.CallbackURL(s.config.Server.BaseURL, token),
-	)
+		ctx, s.instanceSMSSender, ovhsmscb.CallbackURL(s.config.Server.BaseURL, token))
 	if err != nil {
-		slog.WarnContext(ctx, "ovh sms delivery receipts not registered; "+
-			"set the callback manually on the SMS account", "tokenSource", tokenSource, "error", err)
+		slog.WarnContext(ctx, "could not register the OVH SMS delivery callback; "+
+			"set it manually on the SMS account if you want delivery receipts",
+			"tokenSource", tokenSource, "callbackRegistered", false, "error", err)
 
 		return
 	}

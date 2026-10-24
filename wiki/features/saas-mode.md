@@ -48,6 +48,8 @@ set to the *same* value, boot logs an ERROR and still starts. Operator migration
 `SP_ENTITLEMENTS_SERVICE_TOKEN`, `SP_ENTITLEMENTS_SERVICE_SIGNING_KEYS`,
 `SP_ENTITLEMENTS_OUTBOUND_SIGNING_KEYS`,
 `SP_ENTITLEMENTS_ALLOW_LEGACY_SERVICE_TOKEN` and
-`SP_ENTITLEMENTS_UPGRADE_URL_TEMPLATE` (the dashboard "Upgrade" link target);
+`SP_ENTITLEMENTS_UPGRADE_URL_TEMPLATE` (the dashboard "Upgrade" link target, dashboard-only:
+emails never carry it, they link to the platform page `/d/orgs/<org>/upgrade`, which forwards a
+logged-in admin to the billing URL with a signed token minted at click time);
 run it alongside `../solidping-billing` `make dev` for the full upgrade loop.
 See `server/internal/app/saas.go`.

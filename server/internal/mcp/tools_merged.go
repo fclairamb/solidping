@@ -222,7 +222,9 @@ func probeDef() ToolDefinition {
 			"returns status, output (with console) and metrics; `env` carries plaintext parameters " +
 			"and `secrets` only NAMES the secret parameters, which run empty. kind=fetch GETs a URL " +
 			"from the server. kind=browser snapshots a page to pick selectors for browser steps. " +
-			"Reaches the URL or script target you name. Read-only: works with mcp:read tokens.",
+			"kind selects the mode; the other params apply only to their kind (script: " +
+			"script/env/secrets/timeout; fetch and browser: url). Reaches the URL or script " +
+			"target you name. Read-only: works with mcp:read tokens.",
 		InputSchema:  objectSchema(props, []string{propKind}),
 		OutputSchema: runResultOutputSchema(),
 		Annotations:  probeAnnotations("Probe a target"),

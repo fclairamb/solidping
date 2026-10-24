@@ -120,6 +120,8 @@ there instead.
 | matrix | `homeserverUrl` |
 | Google Chat | `webhook_url` |
 | Mattermost | `webhook_url` |
+| Status page webhook / Slack subscriber | the delivery URL |
+| webhook (status-page publication fan-out) | `url`, on every publication change |
 
 Two checks, for the same reason redirects get a second check on a browser
 check (see limits below):
@@ -137,6 +139,14 @@ check (see limits below):
    checks above cannot slip through. This also catches a row saved before
    this validation existed, or while the policy allowed private targets and
    was tightened afterwards.
+
+Redirects are followed, and every hop is dialed through the same guarded
+transport, so a public receiver answering `307` to an internal address gets
+no further than the first hop.
+
+A refused status-page subscriber delivery counts as a failed delivery: after
+five in a row the subscription is disabled and the audit event names the
+refusal. A refused publication webhook job fails at once, without retries.
 
 A refused delivery fails with the same `egress_denied` marker and operator
 message as a refused check, and — for a manual
@@ -195,8 +205,44 @@ above) are guarded too, from the same configuration, even though they run in
 the API/jobs process rather than on a worker. A few other calls about the
 same kinds of targets still are not:
 
-- Kubernetes cluster discovery and connection validation.
 - The Freebox pairing calls made when you connect a box.
+
+The public tools endpoint (`POST /api/v1/tools/run`, off unless
+`SP_TOOLS_ENABLED=true`) does not follow this policy: it always refuses
+non-public targets, even with `SP_EGRESS_ALLOW_PRIVATE=true`, and also refuses
+a name when any of its addresses is non-public. Its DNS lookup asks a public
+resolver (1.1.1.1, then 8.8.8.8), never the system one, and refuses internal
+names (`.local`, `.internal`, `.cluster.local`, single labels...).
+
+### Discovery
+
+[Network discovery](../features/discovery.md) runs in the API/jobs process
+and follows the same policy:
+
+- **LAN scans are refused** whenever the policy refuses private targets
+  (SaaS by default, or `SP_EGRESS_ALLOW_PRIVATE=false`). Starting one answers
+  `403 DISCOVERY_NOT_AVAILABLE`, and the source is hidden from the scan form.
+  A public-only LAN scan would only turn the server into an internet port
+  scanner. A LAN scan can still run through a
+  [private location](../features/private-locations.md#scan-the-locations-network):
+  its agent scans its own network, bounded by the agent's own allow-list.
+  Under an enforcing policy, a private location is the only way to run LAN
+  discovery.
+- **Every probed address is checked** before any ICMP echo, TCP connect or
+  reverse-DNS lookup, and TCP connects dial through the policy. For Freebox
+  discovery this means the hosts the box reports are not probed from a
+  shared server: they are still listed from the box's own data, with a ping
+  suggestion when the box sees them as reachable.
+- **Container scans** are refused wherever docker checks are (SaaS, except on
+  an agent node). Elsewhere, when the policy refuses private targets, a
+  `unix://` socket is refused and a `tcp://` endpoint is dialed through the
+  policy.
+- **Kubernetes** discovery and the connection test dial the API server
+  through the policy, with the environment proxy (and any kubeconfig
+  `proxy-url`) switched off. A refused API server reports the policy's
+  message, naming the host but not the address it resolved to. On SaaS this
+  also refuses `inCluster` connections, whose API server is a private
+  service address.
 
 These are tracked separately.
 

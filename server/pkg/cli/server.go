@@ -3,7 +3,6 @@ package cli
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"strconv"
 
@@ -58,7 +57,12 @@ func serverHealthAction(ctx context.Context, cmd *cli.Command) error {
 		})
 	}
 
-	output.PrintSuccess(os.Stdout, fmt.Sprintf("Status: %s", *resp.JSON200.Status))
+	status := ""
+	if resp.JSON200.Status != nil {
+		status = string(*resp.JSON200.Status)
+	}
+
+	output.PrintSuccess(os.Stdout, "Status: "+status)
 	return nil
 }
 
@@ -100,7 +104,12 @@ func serverVersionAction(ctx context.Context, cmd *cli.Command) error {
 		})
 	}
 
-	output.PrintMessage(os.Stdout, "Version: "+*resp.JSON200.Version)
+	version := ""
+	if resp.JSON200.Version != nil {
+		version = *resp.JSON200.Version
+	}
+
+	output.PrintMessage(os.Stdout, "Version: "+version)
 	return nil
 }
 

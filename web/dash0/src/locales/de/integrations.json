@@ -220,7 +220,7 @@
     "authToken": "API-Server + Token",
     "authKubeconfig": "Kubeconfig",
     "authInCluster": "Im Cluster (dieser Cluster)",
-    "inClusterHint": "Verwendet das im SolidPing-Pod eingehängte Service-Account-Token. Funktioniert nur, wenn SolidPing im Ziel-Cluster läuft; es werden keine Anmeldedaten gespeichert.",
+    "inClusterHint": "Verwendet das im SolidPing-Pod eingehängte Service-Account-Token. Funktioniert nur, wenn SolidPing im Ziel-Cluster läuft; es werden keine Anmeldedaten gespeichert. Der Betreiber muss es mit SP_K8S_ALLOW_IN_CLUSTER=true aktivieren.",
     "apiServer": "API-Server-URL",
     "token": "Bearer-Token",
     "kubeconfig": "Kubeconfig (YAML)",
@@ -253,7 +253,8 @@
     "webpush": "Browser-Benachrichtigungen auf abonnierten Geräten empfangen",
     "kubernetes": "Replikat-Gesundheit von Kubernetes-Workloads überwachen (Deployments, ReplicaSets)",
     "msteams-bot": "Bidirektionaler Teams-Bot: Alarme, @Mention-Befehle und gebündelte Vorfall-Updates",
-    "freebox": "Eine Free-Freebox überwachen (Leitungsqualität, Sync-Rate, Netzwerkstatus)"
+    "freebox": "Eine Free-Freebox überwachen (Leitungsqualität, Sync-Rate, Netzwerkstatus)",
+    "a2a": "Vorfälle an einen KI-Agenten übergeben, der sie untersucht"
   },
   "sms": {
     "title": "SMS & Anrufe",
@@ -381,5 +382,25 @@
     "resubscribeAria": "{{email}} wieder anmelden"
   },
   "deleteConfirmTitle": "Integration löschen?",
-  "deleteConfirmBody": "Dadurch wird „{{name}}“ endgültig gelöscht."
+  "deleteConfirmBody": "Dadurch wird „{{name}}“ endgültig gelöscht.",
+  "a2a": {
+    "cardUrl": "Agent-Card-URL",
+    "cardUrlHint": "Die vollständige Agent-Card-URL oder der Ursprung des Agenten: /.well-known/agent-card.json wird dann angehängt.",
+    "auth": "Authentifizierung",
+    "authNone": "Keine",
+    "authBearer": "Bearer-Token",
+    "authApiKey": "API-Schlüssel-Header",
+    "token": "Bearer-Token",
+    "apiKeyHeader": "Header-Name",
+    "apiKeyValue": "API-Schlüssel",
+    "instructions": "Anweisungen (optional)",
+    "instructionsPlaceholder": "Untersuche und berichte deine Ergebnisse, starte nichts neu",
+    "instructionsHint": "Wird jeder Nachricht angefügt. Der Agent kann mit den MCP-Tools von SolidPing untersuchen: Geben Sie ihm ein MCP-Token.",
+    "testTitle": "Agenten testen",
+    "testHelp": "Ruft die Agent Card mit den obigen Werten ab. An den Agenten wird nichts gesendet.",
+    "testButton": "Testen",
+    "testFailed": "Fehlgeschlagen",
+    "protocolVersion": "A2A {{version}}",
+    "noSkills": "Die Karte listet keine Fähigkeiten auf."
+  }
 }

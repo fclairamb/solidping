@@ -1,4 +1,5 @@
 import { setSession } from "@/api/client";
+import { landingForOrg, type OrgLanding } from "./pending-check";
 
 export interface ConfirmRegistrationResult {
   // Optional, not `string`: the zero-org branch used to omit this entirely
@@ -12,7 +13,7 @@ export interface ConfirmRegistrationResult {
 }
 
 export type ConfirmRegistrationNavTarget =
-  | { to: "/orgs/$org"; params: { org: string } }
+  | OrgLanding
   | { to: "/no-org" };
 
 /**
@@ -60,7 +61,7 @@ export function applyConfirmRegistrationHandoff(
 
   const orgSlug = data.organization?.slug;
   if (orgSlug) {
-    return { to: "/orgs/$org", params: { org: orgSlug } };
+    return landingForOrg(orgSlug);
   }
   return { to: "/no-org" };
 }

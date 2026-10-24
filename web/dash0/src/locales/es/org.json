@@ -89,6 +89,8 @@
     "upgrade": "Mejorar plan",
     "loadError": "No se pudo cargar el uso.",
     "whatsappThisMonth": "Mensajes de WhatsApp este mes",
+    "smsThisMonth": "SMS este mes",
+    "callsThisMonth": "Llamadas de voz este mes",
     "smsGuard": {
       "title": "Algunas alertas por SMS no se enviaron",
       "runaway": "Se rechazaron {{count}} mensaje(s) porque se alcanzó el límite de SMS de esta instancia ({{limit}}/hora). Se están perdiendo alertas en toda la instancia — avisa a tu operador.",
@@ -351,6 +353,7 @@
       "region": "Región",
       "agents": "Agentes",
       "ipv6": "IPv6",
+      "discoveryBadge": "Descubrimiento",
       "actions": "Acciones",
       "mint": "Nuevo token de inscripción",
       "delete": "Eliminar ubicación",
@@ -442,5 +445,10 @@
       "deleted": "Variable eliminada",
       "failed": "No se pudo eliminar la variable"
     }
+  },
+  "upgradePage": {
+    "title": "Mejorar el plan",
+    "redirecting": "Redirigiendo a la página de planes...",
+    "unavailable": "Solo los administradores de la organización pueden cambiar el plan, o este despliegue no tiene facturación. Pregunta a un administrador de tu organización."
   }
 }

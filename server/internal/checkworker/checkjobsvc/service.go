@@ -19,11 +19,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
 
-// BulkLeaseDuration is the lease of one multi-step slice (spec 2026-10-03-03):
-// the clamped slice budget (scheduling.MaxBulkSliceBudget) plus room for the
-// state write and the release.
-const BulkLeaseDuration = 2 * time.Minute
-
 // ErrJobClaimedByAnother is returned when a job has been claimed by another worker.
 var ErrJobClaimedByAnother = errors.New("job may have been claimed by another worker")
 
@@ -47,11 +42,8 @@ type Service interface {
 	// maxAhead, so a leftovers-only slow allowance would be zero forever and
 	// starve the slow lane outright. Both SELECTs run in one transaction.
 	//
-	// bulkLimit is the bulk lane's budget (multi-step slices, spec
-	// 2026-10-03-03) before the slow jobs claimed in the same transaction are
-	// deducted: bulk gets min(bulkLimit − slowClaimed, fastLimit − slowClaimed)
-	// and fast fills what is left. Bulk only claims jobs that are already due
-	// (no claim-ahead: a slice must never sit parked on a runner).
+	// The bulk lane (website crawls) is never claimed here: a crawl run is a
+	// worker task (spec 2026-10-22-03), materialized by workertasks.Claim.
 	// Lease duration is calculated per job as scheduled_at + period + 30s.
 	// Returns claimed jobs (nil if none available) plus a next-eligible hint:
 	// how long until the earliest still-unleased job in scope becomes
@@ -64,7 +56,6 @@ type Service interface {
 		region *string,
 		fastLimit int,
 		slowLimit int,
-		bulkLimit int,
 		maxAhead time.Duration,
 	) ([]*models.CheckJob, time.Duration, error)
 
@@ -180,38 +171,6 @@ type Service interface {
 		effectiveScheduledAt time.Time,
 		lane uint8,
 	) error
-
-	// SubmitStep releases the lease after one NON-final slice of a multi-step
-	// run (spec 2026-10-03-03): it moves the state pointer, counts the slice,
-	// and makes the job due again at upd.NextAt. No result row is written.
-	// Fenced on lease_worker_uid = workerUID AND step_run_uid = the run uid the
-	// claim saw, so a worker whose lease expired and whose run another worker
-	// advanced changes nothing (ErrJobClaimedByAnother).
-	SubmitStep(ctx context.Context, jobUID string, workerUID string, upd *StepUpdate) error
-
-	// EndStepRun is the terminal release of a multi-step run: the result row
-	// was written, so the step_* columns are cleared and the job is scheduled
-	// for its next run. Same fence as SubmitStep (expectedRunUID nil = the run
-	// never persisted a slice).
-	EndStepRun(
-		ctx context.Context, jobUID string, workerUID string, expectedRunUID *string, nextScheduledAt time.Time,
-	) error
-}
-
-// StepUpdate is the write of one non-final multi-step slice.
-type StepUpdate struct {
-	// ExpectedRunUID is the run uid the claim saw: nil on a run's first slice.
-	ExpectedRunUID *string
-	// RunUID / RunStartedAt name the run (unchanged after its first slice).
-	RunUID       string
-	RunStartedAt time.Time
-	// StateFileUID is the new current state file; nil keeps the pointer (a
-	// failed slice keeps the previous state).
-	StateFileUID *string
-	// Failed counts the slice as failed (step_failures + 1) instead of done.
-	Failed bool
-	// NextAt is when the next slice is due (normally now).
-	NextAt time.Time
 }
 
 // serviceImpl implements the Service interface.
@@ -239,7 +198,6 @@ func (s *serviceImpl) ClaimJobs(
 	region *string,
 	fastLimit int,
 	slowLimit int,
-	bulkLimit int,
 	maxAhead time.Duration,
 ) ([]*models.CheckJob, time.Duration, error) {
 	var jobs []*models.CheckJob
@@ -251,7 +209,7 @@ func (s *serviceImpl) ClaimJobs(
 	_, isPostgres := s.db.Dialect().(*pgdialect.Dialect)
 
 	cloudScope := func(query *bun.SelectQuery) *bun.SelectQuery {
-		return applyCloudRegionScope(query, region)
+		return applyCloudRegionScope(ctx, query, region)
 	}
 
 	err := s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
@@ -280,18 +238,6 @@ func (s *serviceImpl) ClaimJobs(
 				return err
 			}
 			jobs = slowJobs
-		}
-
-		// Bulk lane (spec 2026-10-03-03) next: its budget is shared with the
-		// slow lane, so the slow jobs just claimed come off it. It is claimed
-		// ahead of fast for the same reason slow is: fast claim-ahead keeps
-		// the fast lane permanently eligible, so a leftovers-only bulk
-		// allowance would starve every crawl. The fast reservation is safe:
-		// bulkLimit is bounded by (poolSize − fastReserved) − busySlow −
-		// busyBulk on the worker side.
-		bulkN := min(bulkLimit-len(jobs), fastLimit-len(jobs))
-		if err := s.selectDueBulkJobs(ctx, tx, &jobs, region, bulkN, now, isPostgres); err != nil {
-			return err
 		}
 
 		// Fast lane fills every remaining free slot (all of them when the
@@ -405,6 +351,10 @@ type AgentScope struct {
 	// (the same scope the in-cluster DirectBackend claims with). Tenant-private
 	// agents leave it false.
 	System bool
+	// PluginTypes are the plugin check types the agent loaded (from its
+	// capability report). A plugin-type job is only handed to an agent that
+	// advertises its type (spec 2026-10-17-05 §17).
+	PluginTypes []string
 }
 
 // ErrInvalidAgentScope is returned when a claim scope is not a scope any agent
@@ -446,7 +396,7 @@ func (s AgentScope) apply(query *bun.SelectQuery) *bun.SelectQuery {
 		query = query.Where("organization_uid = ?", s.OrgUID)
 	}
 
-	return excludePassiveTypes(query.Where("region = ?", s.Region))
+	return pluginTypeScope(excludePassiveTypes(query.Where("region = ?", s.Region)), s.PluginTypes)
 }
 
 // excludePassiveTypes keeps passive (heartbeat, email) jobs out of every check
@@ -496,9 +446,15 @@ const privateRegionPrefix = "@"
 //     to drop the region predicate entirely and claim everything.
 //   - within what remains, a NULL region means "any region" and a non-NULL one
 //     prefix-matches the worker (SP_REGION=eu-fr-paris claims region=eu-fr).
-func applyCloudRegionScope(query *bun.SelectQuery, region *string) *bun.SelectQuery {
+func applyCloudRegionScope(ctx context.Context, query *bun.SelectQuery, region *string) *bun.SelectQuery {
+	query = pluginTypeScope(query, PluginTypesFromContext(ctx))
+
 	// Passive jobs belong to the jobs node, never to a region's workers.
 	query = excludePassiveTypes(query)
+
+	// A website crawl (bulk lane) runs as a worker task (spec 2026-10-22-03):
+	// no runner claims it, and it never feeds the next-eligible hint.
+	query = query.Where("lane <> ?", scheduling.LaneBulk)
 
 	query = query.WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
 		return q.
@@ -787,7 +743,7 @@ func (s *serviceImpl) selectAvailableJobsForCheck(
 		Order("scheduled_at ASC").
 		Limit(expressClaimLimit)
 
-	query = applyCloudRegionScope(query, region)
+	query = applyCloudRegionScope(ctx, query, region)
 
 	if isPostgres {
 		query = query.For("UPDATE SKIP LOCKED")
@@ -977,7 +933,7 @@ func (s *serviceImpl) selectAvailableJobs(
 		OrderExpr("effective_scheduled_at ASC").
 		Limit(limit)
 
-	query = applyCloudRegionScope(query, region)
+	query = applyCloudRegionScope(ctx, query, region)
 
 	// PostgreSQL: Use FOR UPDATE SKIP LOCKED for efficient row-level locking
 	if isPostgres {
@@ -1003,52 +959,6 @@ func (s *serviceImpl) selectAvailableJobs(
 	}
 
 	*jobs = filtered
-
-	return nil
-}
-
-// selectDueBulkJobs appends up to limit due bulk-lane jobs (multi-step
-// slices, spec 2026-10-03-03) to jobs. Unlike the fast and slow lanes there is
-// no claim-ahead window: `scheduled_at <= now`, so a slice never sits parked on
-// a runner waiting for its time. Backed by idx_check_jobs_claim_bulk.
-func (s *serviceImpl) selectDueBulkJobs(
-	ctx context.Context,
-	tx bun.Tx,
-	jobs *[]*models.CheckJob,
-	region *string,
-	limit int,
-	now time.Time,
-	isPostgres bool,
-) error {
-	if limit <= 0 {
-		return nil
-	}
-
-	var bulkJobs []*models.CheckJob
-
-	query := tx.NewSelect().
-		Model(&bulkJobs).
-		Where("lane = ?", scheduling.LaneBulk).
-		Where("scheduled_at <= ?", now).
-		WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
-			return q.
-				WhereOr("lease_expires_at IS NULL").
-				WhereOr("lease_expires_at < ?", now)
-		}).
-		OrderExpr("effective_scheduled_at ASC").
-		Limit(limit)
-
-	query = applyCloudRegionScope(query, region)
-
-	if isPostgres {
-		query = query.For("UPDATE SKIP LOCKED")
-	}
-
-	if err := query.Scan(ctx); err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return err
-	}
-
-	*jobs = append(*jobs, bulkJobs...)
 
 	return nil
 }
@@ -1090,13 +1000,6 @@ func (s *serviceImpl) updateSingleJobLease(
 		latest = now
 	}
 	leaseExpiresAt := latest.Add(period + 30*time.Second)
-
-	// A multi-step slice (spec 2026-10-03-03) holds its lease for one slice,
-	// not one period: a worker that dies mid-slice must not stall a daily
-	// crawl for a day. The slice budget is clamped well under this.
-	if job.Lane == scheduling.LaneBulk {
-		leaseExpiresAt = now.Add(BulkLeaseDuration)
-	}
 
 	// Update the job
 	update := tx.NewUpdate().
@@ -1337,75 +1240,4 @@ func (s *serviceImpl) execRelease(ctx context.Context, jobUID string, update *bu
 	}
 
 	return fmt.Errorf("no rows updated: %w", ErrJobClaimedByAnother)
-}
-
-// fenceStepRun adds the multi-step fence: the row's run must still be the one
-// the claim saw.
-func fenceStepRun(update *bun.UpdateQuery, expectedRunUID *string) *bun.UpdateQuery {
-	if expectedRunUID == nil {
-		return update.Where("step_run_uid IS NULL")
-	}
-
-	return update.Where("step_run_uid = ?", *expectedRunUID)
-}
-
-// SubmitStep implements Service.
-func (s *serviceImpl) SubmitStep(ctx context.Context, jobUID string, workerUID string, upd *StepUpdate) error {
-	update := s.db.NewUpdate().
-		Model((*models.CheckJob)(nil)).
-		Set("lease_worker_uid = NULL").
-		Set("lease_expires_at = NULL").
-		Set("lease_starts = 0").
-		Set("scheduled_at = ?", upd.NextAt).
-		Set("effective_scheduled_at = ?", upd.NextAt).
-		Set("capture_claimed_at = NULL").
-		// run_requested_at is left pending: the run goes on, and its result
-		// is written by EndStepRun, which honors the request (spec
-		// 2026-10-12-05).
-		Set("step_run_uid = ?", upd.RunUID).
-		Set("step_run_started_at = ?", upd.RunStartedAt).
-		Set("updated_at = ?", time.Now()).
-		Where("uid = ?", jobUID).
-		Where("lease_worker_uid = ?", workerUID)
-
-	if upd.Failed {
-		update = update.Set("step_failures = step_failures + 1")
-	} else {
-		update = update.
-			Set("step_count = step_count + 1").
-			Set("step_failures = 0")
-	}
-
-	if upd.StateFileUID != nil {
-		update = update.Set("step_state_file_uid = ?", *upd.StateFileUID)
-	}
-
-	return s.execRelease(ctx, jobUID, fenceStepRun(update, upd.ExpectedRunUID))
-}
-
-// EndStepRun implements Service.
-func (s *serviceImpl) EndStepRun(
-	ctx context.Context, jobUID string, workerUID string, expectedRunUID *string, nextScheduledAt time.Time,
-) error {
-	update := s.db.NewUpdate().
-		Model((*models.CheckJob)(nil)).
-		Set("lease_worker_uid = NULL").
-		Set("lease_expires_at = NULL").
-		Set("lease_starts = 0").
-		// A run request parked during the run makes the job due at it (spec
-		// 2026-10-12-05): the run that just ended started before it.
-		Set("scheduled_at = COALESCE(run_requested_at, ?)", nextScheduledAt).
-		Set("effective_scheduled_at = COALESCE(run_requested_at, ?)", nextScheduledAt).
-		Set("run_requested_at = NULL").
-		Set("capture_claimed_at = NULL").
-		Set("step_run_uid = NULL").
-		Set("step_run_started_at = NULL").
-		Set("step_count = 0").
-		Set("step_state_file_uid = NULL").
-		Set("step_failures = 0").
-		Set("updated_at = ?", time.Now()).
-		Where("uid = ?", jobUID).
-		Where("lease_worker_uid = ?", workerUID)
-
-	return s.execRelease(ctx, jobUID, fenceStepRun(update, expectedRunUID))
 }

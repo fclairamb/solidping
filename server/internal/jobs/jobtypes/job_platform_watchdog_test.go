@@ -434,3 +434,34 @@ func TestPlatformWatchdogDeliversOnceAcrossOrgs(t *testing.T) {
 	r.Len(emails, 1, "one human with the same address in two orgs gets one digest, not two")
 	r.Contains(strings.ToLower(jobConfigText(t, emails[0])), email)
 }
+
+// TestPlatformWatchdogDigestEmailFollowsTheRecipientsLanguage: the digest's
+// email is written in the recipient's language; the detectors' diagnostics
+// stay as they are.
+func TestPlatformWatchdogDigestEmailFollowsTheRecipientsLanguage(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	env := newWatchdogEnv(t)
+
+	env.strandRegion(t)
+
+	recipient := env.addRecipient(t, "alice@acme.com", true)
+	r.NoError(env.db.UpdateUser(t.Context(), recipient, &models.UserUpdate{
+		Preferences: &models.UserPreferences{Locale: "fr", Timezone: "Europe/Paris"},
+	}))
+	env.configure(t, map[string]any{"enabled": true, "recipients": []string{recipient}})
+
+	r.NoError(env.runWatchdog(t))
+
+	emails := env.emailJobs(t)
+	r.Len(emails, 1)
+
+	payload := jobConfigText(t, emails[0])
+	r.Contains(payload, "anomalie de la plateforme")
+	r.Contains(payload, "Généré le ")
+	r.Contains(payload, "NOUVELLE")
+	r.Contains(payload, "system/regions/migrate", "the ready-to-run remediation is still there")
+	r.Contains(payload, `"locale":"fr"`)
+	r.NotContains(payload, "platform anomaly")
+}

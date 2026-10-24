@@ -1,0 +1,82 @@
+{
+  "months": {
+    "short": {
+      "jan": "Jan.",
+      "feb": "Feb.",
+      "mar": "März",
+      "apr": "Apr.",
+      "may": "Mai",
+      "jun": "Juni",
+      "jul": "Juli",
+      "aug": "Aug.",
+      "sep": "Sept.",
+      "oct": "Okt.",
+      "nov": "Nov.",
+      "dec": "Dez."
+    },
+    "long": {
+      "jan": "Januar",
+      "feb": "Februar",
+      "mar": "März",
+      "apr": "April",
+      "may": "Mai",
+      "jun": "Juni",
+      "jul": "Juli",
+      "aug": "August",
+      "sep": "September",
+      "oct": "Oktober",
+      "nov": "November",
+      "dec": "Dezember"
+    }
+  },
+  "date": {
+    "dateTime": "{day}. {month}, {time} {zone}",
+    "dateTimeYear": "{day}. {month} {year}, {time} {zone}",
+    "day": "{day}. {month}",
+    "dayYear": "{day}. {month} {year}",
+    "month": "{month} {year}"
+  },
+  "duration": {
+    "days": "{n} Tg.",
+    "hours": "{n} Std.",
+    "minutes": "{n} Min.",
+    "seconds": "{n} Sek."
+  },
+  "header": {
+    "sentBy": "gesendet von SolidPing",
+    "logoAlt": "Logo"
+  },
+  "footer": {
+    "orgSentBy": "{org} · gesendet von",
+    "sentBy": "Gesendet von",
+    "dashboard": "Dashboard",
+    "stopAlerts": "Keine Benachrichtigungen mehr für {check}",
+    "unsubscribe": "Abbestellen",
+    "automated": "Dies ist eine automatische Benachrichtigung von SolidPing."
+  },
+  "incidentActions": {
+    "ack": "Ich kümmere mich darum",
+    "viewIncident": "Vorfall ansehen",
+    "ackExplain": "„Ich kümmere mich darum“ teilt Ihrem Team mit, dass Sie den Vorfall übernehmen, und stoppt die Eskalation.",
+    "ackExpires": "Der Link gilt bis zum {date}."
+  },
+  "labels": {
+    "check": "Prüfung",
+    "target": "Ziel",
+    "checkURL": "URL der Prüfung",
+    "since": "Seit",
+    "incident": "Vorfall",
+    "docs": "Dokumentation"
+  },
+  "textField": "{label}: {value}",
+  "fallbackLink": "Der Button funktioniert nicht? Kopieren Sie diesen Link in Ihren Browser:",
+  "supportReply": {
+    "notice": "Sie können direkt auf diese E-Mail antworten und erreichen so einen Menschen. Wir lesen jede Antwort."
+  },
+  "list": {
+    "and": "{head} und {last}",
+    "andBeforeVowel": "{head} und {last}",
+    "or": "{head} oder {last}",
+    "orBeforeVowel": "{head} oder {last}"
+  }
+}

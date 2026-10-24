@@ -105,6 +105,9 @@ var (
 	ErrExclusiveNodeRole = errors.New("node role cannot be combined with other roles")
 	// ErrAgentServerURLRequired is returned when role is "agent" but no server URL is set.
 	ErrAgentServerURLRequired = errors.New("SP_AGENT_SERVER_URL is required when SP_NODE_ROLE is set to 'agent'")
+	// ErrInvalidDiscoveryCIDRs is returned when SP_AGENT_DISCOVERY_ENABLED is
+	// set without a valid SP_AGENT_DISCOVERY_CIDRS allow-list.
+	ErrInvalidDiscoveryCIDRs = errors.New("invalid SP_AGENT_DISCOVERY_CIDRS")
 	// ErrRegionRequiredForChecks is returned when role is "checks" but region is not set.
 	ErrRegionRequiredForChecks = errors.New("SP_NODE_REGION is required when SP_NODE_ROLE is set to 'checks'")
 	// ErrInvalidAggregationRetention is returned when an aggregation retention value is < 1.
@@ -224,6 +227,14 @@ type AgentConfig struct {
 	// only to bootstrap an env-only (SP_AGENT_KEYS) deployment that has no
 	// writable volume to read the keys file from, then unset it.
 	PrintKeys bool `koanf:"print_keys"`
+	// DiscoveryEnabled lets this agent run LAN discovery chunks of its private
+	// region (spec 2026-10-22-04) — SP_AGENT_DISCOVERY_ENABLED. Off by default:
+	// only the agent's operator can authorize discovery, never the server.
+	DiscoveryEnabled bool `koanf:"discovery_enabled"`
+	// DiscoveryCIDRs is the IPv4 allow-list a discovery chunk must fall inside
+	// — SP_AGENT_DISCOVERY_CIDRS, comma-separated. Required when discovery is
+	// enabled.
+	DiscoveryCIDRs []string `koanf:"discovery_cidrs"`
 }
 
 // OTelConfig contains OpenTelemetry configuration.
@@ -348,6 +359,43 @@ type CheckersConfig struct {
 	// Traceroute configures the path capture taken when a check goes down on a
 	// network-reachability failure (spec 2026-08-21-10).
 	Traceroute TracerouteConfig `koanf:"traceroute"`
+	// EnvRefAllowlist names the environment variables a check config's
+	// `${env:NAME}` reference may read on THIS process (spec 2026-10-16-03).
+	// Empty — the default — means `${env:}` resolves nothing. snake_case, so
+	// koanf's env loader cannot reach it: SP_CHECK_ENV_ALLOWLIST is bound by
+	// hand in applyCheckersEnv. Read through Config.EnvRefAllowed.
+	EnvRefAllowlist []string `koanf:"env_ref_allowlist"`
+}
+
+// EnvCheckEnvAllowlist is the comma-separated list of environment variable
+// names a check's `${env:NAME}` reference may resolve on this process. Each
+// deported agent reads its own.
+const EnvCheckEnvAllowlist = "SP_CHECK_ENV_ALLOWLIST"
+
+// EnvRefAllowed reports whether a check config's `${env:name}` reference may
+// resolve name on this process. It is the single predicate both the save path
+// and the executing path consult (as a secretref.EnvAllowFunc). An empty
+// allowlist allows nothing.
+func (c *Config) EnvRefAllowed(name string) bool {
+	if c == nil || name == "" {
+		return false
+	}
+
+	return slices.Contains(c.Checkers.EnvRefAllowlist, name)
+}
+
+// parseEnvRefAllowlist splits a comma-separated SP_CHECK_ENV_ALLOWLIST value,
+// trimming blanks and dropping empty entries.
+func parseEnvRefAllowlist(raw string) []string {
+	var out []string
+
+	for _, part := range strings.Split(raw, ",") {
+		if part = strings.TrimSpace(part); part != "" {
+			out = append(out, part)
+		}
+	}
+
+	return out
 }
 
 // TracerouteConfig is the deployment-level half of the traceroute-on-failure
@@ -575,6 +623,9 @@ type Config struct {
 	App          AppConfig          `koanf:"app"`
 	Deployment   DeploymentConfig   `koanf:"deployment"`
 	Egress       EgressConfig       `koanf:"egress"`
+	Tools        ToolsConfig        `koanf:"tools"`
+	Plugins      PluginsConfig      `koanf:"plugins"`
+	Kubernetes   KubernetesConfig   `koanf:"kubernetes"`
 	WebPush      WebPushConfig      `koanf:"webpush"`
 	PostHog      PostHogConfig      `koanf:"posthog"`
 	Entitlements EntitlementsConfig `koanf:"entitlements"`
@@ -699,6 +750,63 @@ type EgressConfig struct {
 	AllowPrivateTargets *bool `koanf:"allow_private_targets"`
 }
 
+// EnvToolsDeniedHosts is the env override of tools.denied_hosts, read by hand
+// in applyToolsEnv: the key is snake_case, which koanf's env loader turns into
+// tools.denied.hosts.
+const EnvToolsDeniedHosts = "SP_TOOLS_DENIED_HOSTS"
+
+// PluginsConfig configures check plugins (spec 2026-10-17-05).
+type PluginsConfig struct {
+	// Dir is the operator's plugin directory (SP_PLUGINS_DIR): one folder per
+	// plugin, each with a manifest.json. Empty turns plugins off.
+	Dir string `koanf:"dir"`
+}
+
+// ToolsConfig configures the anonymous "run a check once" endpoint behind the
+// public tools on www.solidping.io (POST /api/v1/tools/run).
+type ToolsConfig struct {
+	// Enabled turns the endpoint on (SP_TOOLS_ENABLED, system parameter
+	// tools.enabled). Off by default: a self-hosted instance never exposes an
+	// anonymous probe by accident.
+	Enabled bool `koanf:"enabled"`
+
+	// DeniedHosts lists extra host names the endpoint refuses to probe, on top
+	// of the instance's own base URL host and docs host. A name also denies its
+	// subdomains. Comma-separated in SP_TOOLS_DENIED_HOSTS.
+	DeniedHosts []string `koanf:"denied_hosts"`
+}
+
+// ToolsDeniedHosts returns the lowercase host names the tools endpoint refuses
+// to probe: the instance's own public hosts plus Tools.DeniedHosts.
+func (c *Config) ToolsDeniedHosts() []string {
+	hosts := make([]string, 0, len(c.Tools.DeniedHosts)+2)
+
+	if parsed, err := url.Parse(strings.TrimSpace(c.Server.BaseURL)); err == nil && parsed.Hostname() != "" {
+		hosts = append(hosts, strings.ToLower(parsed.Hostname()))
+	}
+
+	if docs := strings.TrimSpace(c.Server.DocsHost); docs != "" {
+		hosts = append(hosts, strings.ToLower(docs))
+	}
+
+	for _, host := range c.Tools.DeniedHosts {
+		if host = strings.ToLower(strings.TrimSpace(host)); host != "" {
+			hosts = append(hosts, host)
+		}
+	}
+
+	return hosts
+}
+
+func applyToolsEnv(cfg *ToolsConfig) {
+	raw := strings.TrimSpace(os.Getenv(EnvToolsDeniedHosts))
+	if raw == "" {
+		return
+	}
+
+	cfg.DeniedHosts = strings.Split(raw, ",")
+}
+
 // EgressAllowsPrivateTargets is the effective egress policy of the check
 // workers in this process: whether a check may connect to a non-public
 // address. It is evaluated where the dial happens — a deported agent answers
@@ -759,6 +867,41 @@ func applyEgressEnv(cfg *EgressConfig) {
 	}
 
 	cfg.AllowPrivateTargets = &allow
+}
+
+// EnvK8sAllowInCluster is the operator opt-in letting a Kubernetes cluster
+// connection use `inCluster` mode, i.e. authenticate with the service-account
+// token mounted into SolidPing's own pod (spec 2026-10-16-05). Off by default:
+// a tenant must never reach the server's own cluster credentials.
+const EnvK8sAllowInCluster = "SP_K8S_ALLOW_IN_CLUSTER"
+
+// KubernetesConfig is the deployment-level policy for Kubernetes cluster
+// connections. AllowInCluster is snake_case and therefore unreachable by
+// koanf's env loader; SP_K8S_ALLOW_IN_CLUSTER is bound by hand in
+// applyKubernetesEnv.
+type KubernetesConfig struct {
+	// AllowInCluster permits `settings.inCluster=true` connections, at save
+	// time and when a client is built. Default false.
+	AllowInCluster bool `koanf:"allow_in_cluster"`
+}
+
+// applyKubernetesEnv binds SP_K8S_ALLOW_IN_CLUSTER. An absent or empty
+// variable leaves the YAML/default value; an unparseable one is ignored with a
+// warning (so the deny default stands).
+func applyKubernetesEnv(cfg *KubernetesConfig) {
+	raw := strings.TrimSpace(os.Getenv(EnvK8sAllowInCluster))
+	if raw == "" {
+		return
+	}
+
+	allow, err := strconv.ParseBool(raw)
+	if err != nil {
+		slog.Warn("Ignoring unparseable "+EnvK8sAllowInCluster, "value", raw, "error", err)
+
+		return
+	}
+
+	cfg.AllowInCluster = allow
 }
 
 // EntitlementsConfig tunes the per-org SMS/voice runaway guard — an in-memory
@@ -1900,9 +2043,9 @@ type SchedulingConfig struct {
 	// with a startup warning when out of range. Default 5; 0 disables the
 	// reservation (slow may fill the pool, pre-lane behavior).
 	FastLaneReserved int `koanf:"fast_lane_reserved"`
-	// BulkLaneMax caps the multi-step slices (bulk lane, spec 2026-10-03-03)
-	// in flight per worker. Bulk shares the non-reserved part of the pool
-	// with the slow lane, slow first. Default 4; <= 0 falls back to 4.
+	// BulkLaneMax caps the worker tasks (website crawl slices, spec
+	// 2026-10-22-03) a cloud worker runs at once, outside its runner pool.
+	// Default 4; <= 0 falls back to 4.
 	BulkLaneMax int `koanf:"bulk_lane_max"`
 	// BulkSliceBudgetMs is the wall-clock budget of one multi-step slice in
 	// ms. Default 10000; <= 0 falls back to it; clamped to 60000.
@@ -2324,7 +2467,7 @@ func Load() (*Config, error) {
 	applyJobsEnv(&cfg.Jobs)
 	applyServerEnv(&cfg.Server)
 	applySchedulingEnv(&cfg.Server.Scheduling)
-	applyWorkerPoolEnv(&cfg.Server)
+	applyWorkerPoolEnv(&cfg)
 	applyACMEEnv(&cfg.ACME)
 	applyHeartbeatEnv(&cfg.Heartbeat)
 	applyEncryptionEnv(&cfg.Encryption)
@@ -2334,6 +2477,8 @@ func Load() (*Config, error) {
 	applyRuntimeEnv(&cfg.Runtime)
 	applyRealtimeEnv(&cfg.Realtime)
 	applyEgressEnv(&cfg.Egress)
+	applyToolsEnv(&cfg.Tools)
+	applyKubernetesEnv(&cfg.Kubernetes)
 	applyHeadersEnv(&cfg.Headers)
 	applyAIEnv(&cfg.AI)
 	warnIgnoredDiscordRedirectEnv()
@@ -2430,6 +2575,10 @@ func applyCheckersEnv(cfg *CheckersConfig) {
 
 	if v := os.Getenv("SP_CHECKERS_BROWSER_CHROME_PATH"); v != "" {
 		cfg.Browser.ChromePath = v
+	}
+
+	if raw, present := os.LookupEnv(EnvCheckEnvAllowlist); present {
+		cfg.EnvRefAllowlist = parseEnvRefAllowlist(raw)
 	}
 }
 
@@ -2623,6 +2772,22 @@ func applyAgentEnv(cfg *AgentConfig) {
 	if v := os.Getenv("SP_AGENT_PRINT_KEYS"); v != "" {
 		if b, err := strconv.ParseBool(v); err == nil {
 			cfg.PrintKeys = b
+		}
+	}
+
+	if v := os.Getenv("SP_AGENT_DISCOVERY_ENABLED"); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			cfg.DiscoveryEnabled = b
+		}
+	}
+
+	if v := os.Getenv("SP_AGENT_DISCOVERY_CIDRS"); v != "" {
+		cfg.DiscoveryCIDRs = nil
+
+		for _, part := range strings.Split(v, ",") {
+			if part = strings.TrimSpace(part); part != "" {
+				cfg.DiscoveryCIDRs = append(cfg.DiscoveryCIDRs, part)
+			}
 		}
 	}
 }
@@ -2837,37 +3002,32 @@ func applyEncryptionEnv(cfg *EncryptionConfig) {
 	}
 }
 
-// applyWorkerPoolEnv reads the worker-pool knobs koanf's env loader cannot bind:
-// it collapses every underscore to a dot, so SP_SERVER_CHECK_WORKER_NB arrives
-// as "server.check.worker.nb" while the field lives at server.check_worker.nb.
-// An unparseable value is logged and ignored. 0 keeps its meaning (runners
-// disabled).
-func applyWorkerPoolEnv(cfg *ServerConfig) {
-	parseInt := func(env string, dst *int) {
-		raw := os.Getenv(env)
-		if raw == "" {
-			return
+// applyWorkerPoolEnv reads the worker-pool knobs koanf's env loader cannot
+// bind: SP_SERVER_CHECK_WORKER_NB would arrive as server.check.worker.nb while
+// the field lives at server.check_worker.nb. An unparseable value is logged and
+// ignored. 0 keeps its meaning (runners disabled).
+func applyWorkerPoolEnv(cfg *Config) {
+	if v := os.Getenv("SP_SERVER_CHECK_WORKER_NB"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.Server.CheckWorker.Nb = n
+		} else {
+			slog.Warn("Ignoring invalid SP_SERVER_CHECK_WORKER_NB", "value", v)
 		}
-
-		n, err := strconv.Atoi(strings.TrimSpace(raw))
-		if err != nil {
-			slog.Warn("Ignoring unparseable "+env, "value", raw, "error", err)
-
-			return
-		}
-
-		*dst = n
 	}
 
-	parseInt("SP_SERVER_CHECK_WORKER_NB", &cfg.CheckWorker.Nb)
-	parseInt("SP_SERVER_JOB_WORKER_NB", &cfg.JobWorker.Nb)
+	if v := os.Getenv("SP_SERVER_JOB_WORKER_NB"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.Server.JobWorker.Nb = n
+		} else {
+			slog.Warn("Ignoring invalid SP_SERVER_JOB_WORKER_NB", "value", v)
+		}
+	}
 
 	if v := os.Getenv("SP_SERVER_CHECK_WORKER_FETCH_MAX_AHEAD"); v != "" {
-		d, err := time.ParseDuration(strings.TrimSpace(v))
-		if err != nil {
-			slog.Warn("Ignoring unparseable SP_SERVER_CHECK_WORKER_FETCH_MAX_AHEAD", "value", v, "error", err)
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.Server.CheckWorker.FetchMaxAhead = d
 		} else {
-			cfg.CheckWorker.FetchMaxAhead = d
+			slog.Warn("Ignoring invalid SP_SERVER_CHECK_WORKER_FETCH_MAX_AHEAD", "value", v)
 		}
 	}
 }
@@ -3511,6 +3671,12 @@ func (c *Config) validateNodeConfig() error {
 	// the very first run — a persisted identity replaces it).
 	if roles.Has(NodeRoleAgent) && c.Agent.ServerURL == "" {
 		return ErrAgentServerURLRequired
+	}
+
+	if c.Agent.DiscoveryEnabled || len(c.Agent.DiscoveryCIDRs) > 0 {
+		if _, err := c.Agent.DiscoveryPrefixes(); err != nil {
+			return err
+		}
 	}
 
 	// Any node that registers a `workers` row (check worker and/or job worker)

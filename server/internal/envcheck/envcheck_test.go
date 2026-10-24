@@ -168,15 +168,24 @@ func TestSuggestAgainstFullRegistry(t *testing.T) {
 	r.Equal("SP_LOG_LEVEL", suggest("SP_LOG_LEVL", known))
 }
 
-// TestCheckEnvironWorkerPoolNamesBind: the worker-pool variables are read by
-// config.Load now, so they never warn.
+// TestCheckEnvironWorkerPoolNamesBind: the worker-pool names bind since
+// applyWorkerPoolEnv, so none of them warns.
 func TestCheckEnvironWorkerPoolNamesBind(t *testing.T) {
 	t.Parallel()
 
-	warnings := checkEnviron([]string{
+	r := require.New(t)
+	r.Empty(checkEnviron([]string{
+		"SP_SERVER_CHECK_WORKER_FETCH_MAX_AHEAD=2m",
 		"SP_SERVER_CHECK_WORKER_NB=8",
 		"SP_SERVER_JOB_WORKER_NB=4",
-		"SP_SERVER_CHECK_WORKER_FETCH_MAX_AHEAD=2m",
-	})
-	require.Empty(t, warnings)
+	}))
+}
+
+// TestCheckEnvironCheckEnvAllowlistRecognized: SP_CHECK_ENV_ALLOWLIST (spec
+// 2026-10-16-03) is bound by a manual reader and must not warn.
+func TestCheckEnvironCheckEnvAllowlistRecognized(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	r.Empty(checkEnviron([]string{"SP_CHECK_ENV_ALLOWLIST=SP_ACME_TOKEN,SP_ACME_PASSWORD"}))
 }

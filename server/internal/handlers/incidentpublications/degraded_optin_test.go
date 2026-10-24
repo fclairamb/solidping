@@ -25,7 +25,7 @@ func openDegraded(t *testing.T, s *pubSetup) *models.Incident {
 	incident, err := s.incidents.OpenDegradedIncident(t.Context(), &incidents.OpenDegradedIncidentRequest{
 		Check:     s.check,
 		StartedAt: s.clk.Now().Add(-30 * time.Minute),
-		Title:     "payments-api is degraded: 7 failures in the last 60 probes (88.3%)",
+		Title:     "payments-api is degraded: 7 failures in the last 60 probes (88.3% available)",
 		Snapshot: &incidents.DegradedSnapshot{
 			Failures: 5, FailuresWindow: 60, FailureSlots: 60, FailureMatches: 7,
 			FailuresFired: true, AvailabilityPct: &pct, ResolveWindow: 60, CurrentlyUp: true,

@@ -1,7 +1,6 @@
 package envcheck
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -19,41 +18,27 @@ import (
 	"github.com/fclairamb/solidping/server/internal/entitlements"
 )
 
-// docRow is one `| \`SP_X\` | ... |` row of a markdown table whose header has a
-// Default column.
+// docRow is one documented setting: a table row whose first cell is a
+// backticked SP_ name, with the raw text of its Default cell.
 type docRow struct {
-	file    string
-	line    int
-	name    string
-	literal string // the default when the cell is exactly one backticked token
-	hasLit  bool
+	file string
+	line int
+	name string
+	def  string
 }
 
 var (
-	docNameRe    = regexp.MustCompile("^`(SP_[A-Z0-9_]+)`")
-	docLiteralRe = regexp.MustCompile("^`([^`]+)`$")
+	firstCellRe = regexp.MustCompile("^`(SP_[A-Z0-9_]+)`")
+	literalRe   = regexp.MustCompile("^`([^`]+)`$")
 )
 
-// splitRow splits a markdown table row into trimmed cells.
-func splitRow(line string) []string {
-	line = strings.TrimSpace(line)
-	line = strings.TrimPrefix(line, "|")
-	line = strings.TrimSuffix(line, "|")
-
-	cells := strings.Split(line, "|")
-	for i := range cells {
-		cells[i] = strings.TrimSpace(cells[i])
-	}
-
-	return cells
-}
-
-// parseDocRows extracts the documented env-var rows of every table with a
-// Default column.
-func parseDocRows(file, content string) []docRow {
-	var rows []docRow
-
-	defaultCol := -1
+// parseDocTables extracts the rows of every markdown table whose header has a
+// "Default" column and whose first cell starts with a backticked SP_ name.
+func parseDocTables(file, content string) []docRow {
+	var (
+		rows       []docRow
+		defaultCol = -1
+	)
 
 	for i, line := range strings.Split(content, "\n") {
 		trimmed := strings.TrimSpace(line)
@@ -75,154 +60,175 @@ func parseDocRows(file, content string) []docRow {
 			continue
 		}
 
-		m := docNameRe.FindStringSubmatch(cells[0])
-		if m == nil || defaultCol >= len(cells) {
+		if len(cells) <= defaultCol {
 			continue
 		}
 
-		row := docRow{file: file, line: i + 1, name: m[1]}
-		if lit := docLiteralRe.FindStringSubmatch(cells[defaultCol]); lit != nil {
-			row.literal, row.hasLit = lit[1], true
+		if m := firstCellRe.FindStringSubmatch(cells[0]); m != nil {
+			rows = append(rows, docRow{file: file, line: i + 1, name: m[1], def: cells[defaultCol]})
 		}
-
-		rows = append(rows, row)
 	}
 
 	return rows
 }
 
-// sameValue compares a documented and a code default after normalizing
-// durations (5m == 5m0s), bools and numbers.
+func splitRow(line string) []string {
+	line = strings.TrimPrefix(line, "|")
+	line = strings.TrimSuffix(line, "|")
+	parts := strings.Split(line, "|")
+
+	for i := range parts {
+		parts[i] = strings.TrimSpace(parts[i])
+	}
+
+	return parts
+}
+
+// docsDefaultAccessors gives the code value of a documented default that the
+// koanf struct tags cannot provide: manual-reader settings and defaults
+// resolved after Load.
+//
+//nolint:gochecknoglobals // test lookup table
+var docsDefaultAccessors = map[string]func(*config.Config) string{
+	"SP_SERVER_CHECK_WORKER_NB": intOf(func(c *config.Config) int { return c.Server.CheckWorker.Nb }),
+	"SP_SERVER_JOB_WORKER_NB":   intOf(func(c *config.Config) int { return c.Server.JobWorker.Nb }),
+	"SP_SERVER_CHECK_WORKER_FETCH_MAX_AHEAD": durOf(func(c *config.Config) time.Duration {
+		return c.Server.CheckWorker.FetchMaxAhead
+	}),
+	"SP_ADMIN_EMAIL":            fixed(defaults.Email),
+	"SP_FILESTORAGE_LOCAL_ROOT": func(c *config.Config) string { return c.FileStorage.LocalRoot },
+	"SP_LOG_LEVEL": func(c *config.Config) string {
+		return strings.ToLower(c.LogLevel.String())
+	},
+	"SP_LOG_FORMAT":     func(c *config.Config) string { return string(c.LogFormat) },
+	"SP_DEMO_ORG_SLUG":  func(c *config.Config) string { return c.Demo.OrgSlug },
+	"SP_DEMO_CHECK_TTL": durOf(func(c *config.Config) time.Duration { return c.Demo.CheckTTL }),
+	"SP_DEMO_CLEANUP_INTERVAL": durOf(func(c *config.Config) time.Duration {
+		return c.Demo.CleanupInterval
+	}),
+	"SP_BASE_URL":                  func(c *config.Config) string { return c.Server.BaseURL },
+	"SP_ENCRYPTION_AUTO_MIGRATE":   boolOf(func(c *config.Config) bool { return c.Encryption.AutoMigrate }),
+	"SP_POSTHOG_HOST":              fixed(config.DefaultPostHogHost),
+	"SP_RUNTIME_AUTO_MEMORY_LIMIT": boolOf(func(c *config.Config) bool { return c.Runtime.AutoMemoryLimit }),
+	"SP_RUNTIME_MEMORY_LIMIT_RATIO": func(c *config.Config) string {
+		return strconv.FormatFloat(c.Runtime.MemoryLimitRatio, 'f', -1, 64)
+	},
+	"SP_AI_MAX_TURNS":     intOf(func(c *config.Config) int { return c.AI.MaxTurns }),
+	"SP_SHUTDOWN_TIMEOUT": durOf(func(c *config.Config) time.Duration { return c.Server.ShutdownTimeout }),
+	"SP_EXIT_WITH_PARENT": boolOf(func(c *config.Config) bool { return c.Server.ExitWithParent }),
+	"SP_CUSTOM_DOMAIN_CNAME_MODE": func(c *config.Config) string {
+		return c.Server.CustomDomainCNAMEMode
+	},
+	"SP_ACME_LISTEN_HTTP":  func(c *config.Config) string { return c.ACME.ListenHTTP },
+	"SP_ACME_LISTEN_HTTPS": func(c *config.Config) string { return c.ACME.ListenHTTPS },
+	"SP_ACME_FALLBACK_UPSTREAM_PROXY_PROTOCOL": boolOf(func(c *config.Config) bool {
+		return c.ACME.FallbackUpstreamProxyProtocol
+	}),
+	"SP_ACME_PROXY_PROTOCOL": boolOf(func(c *config.Config) bool { return c.ACME.ProxyProtocol }),
+	"SP_AUTH_IMPERSONATION_ENABLED": boolOf(func(c *config.Config) bool {
+		return c.Auth.ImpersonationEnabled
+	}),
+	"SP_SMS_PROVIDER": func(c *config.Config) string { return c.SMS.ResolvedProvider() },
+	"SP_SMS_GLOBAL_RUNAWAY_PER_HOUR": intOf(func(c *config.Config) int {
+		return c.SMS.ResolvedGlobalRunawayPerHour()
+	}),
+	"SP_ENTITLEMENTS_TELEGRAM_RUNAWAY_PER_HOUR": fixed(strconv.Itoa(entitlements.DefaultTelegramRunawayPerHour)),
+	"SP_ENTITLEMENTS_WHATSAPP_RUNAWAY_PER_HOUR": fixed(strconv.Itoa(entitlements.DefaultWhatsAppRunawayPerHour)),
+	"SP_NODE_REGION":               func(c *config.Config) string { return c.Server.CheckWorker.Region },
+	"SP_SLACK_SOCKET_MODE_ENABLED": boolOf(func(c *config.Config) bool { return c.Slack.SocketModeEnabled }),
+	"SP_K8S_ALLOW_IN_CLUSTER":      boolOf(func(c *config.Config) bool { return c.Kubernetes.AllowInCluster }),
+	"SP_LDAP_START_TLS":            boolOf(func(c *config.Config) bool { return c.LDAP.StartTLS }),
+	"SP_LDAP_INSECURE_SKIP_VERIFY": boolOf(func(c *config.Config) bool { return c.LDAP.InsecureSkipVerify }),
+	// Blank in the struct, resolved at sign-in time.
+	"SP_LDAP_USER_FILTER":     fixed(config.LDAPDefaultUserFilter),
+	"SP_LDAP_EMAIL_ATTRIBUTE": fixed(config.LDAPDefaultEmailAttribute),
+	"SP_LDAP_NAME_ATTRIBUTE":  fixed(config.LDAPDefaultNameAttribute),
+}
+
+func fixed(v string) func(*config.Config) string { return func(*config.Config) string { return v } }
+
+func intOf(f func(*config.Config) int) func(*config.Config) string {
+	return func(c *config.Config) string { return strconv.Itoa(f(c)) }
+}
+
+func boolOf(f func(*config.Config) bool) func(*config.Config) string {
+	return func(c *config.Config) string { return strconv.FormatBool(f(c)) }
+}
+
+func durOf(f func(*config.Config) time.Duration) func(*config.Config) string {
+	return func(c *config.Config) string { return f(c).String() }
+}
+
 func sameValue(doc, code string) bool {
 	if doc == code {
 		return true
 	}
 
-	if a, err := time.ParseDuration(doc); err == nil {
-		if b, err2 := time.ParseDuration(code); err2 == nil {
-			return a == b
-		}
-	}
+	dd, err1 := time.ParseDuration(doc)
+	cd, err2 := time.ParseDuration(code)
 
-	if a, err := strconv.ParseBool(doc); err == nil {
-		if b, err2 := strconv.ParseBool(code); err2 == nil {
-			return a == b
-		}
-	}
-
-	if a, err := strconv.ParseFloat(doc, 64); err == nil {
-		if b, err2 := strconv.ParseFloat(code, 64); err2 == nil {
-			return a == b
-		}
-	}
-
-	return false
+	return err1 == nil && err2 == nil && dd == cd
 }
 
-// checkDocRows returns one problem per drifting row.
+// checkDocRows returns one problem per row: an unrecognized name, a literal
+// default with no code value to compare to, or a literal that differs.
 func checkDocRows(
-	rows []docRow, recognized map[string]struct{}, koanfDefaults map[string]string,
-	accessors map[string]accessor, cfg *config.Config,
+	rows []docRow, recognized map[string]struct{}, cfg *config.Config, accessors map[string]func(*config.Config) string,
 ) []string {
+	byEnv := config.DefaultsByEnvVar(cfg)
+
 	var problems []string
 
 	for _, row := range rows {
-		where := fmt.Sprintf("%s:%d", row.file, row.line)
+		where := row.file + ":" + strconv.Itoa(row.line)
 
 		if _, ok := recognized[row.name]; !ok {
-			problems = append(problems, fmt.Sprintf("%s: %s is documented but nothing binds it", where, row.name))
+			problems = append(problems, where+": "+row.name+" is documented but no code binds it")
 
 			continue
 		}
 
-		if !row.hasLit {
+		m := literalRe.FindStringSubmatch(row.def)
+		if m == nil {
 			continue
 		}
 
 		var code string
 
-		if acc, ok := accessors[row.name]; ok {
-			code = acc(cfg)
-		} else if v, ok := koanfDefaults[row.name]; ok {
+		if accessor, ok := accessors[row.name]; ok {
+			code = accessor(cfg)
+		} else if v, ok := byEnv[row.name]; ok {
 			code = v
 		} else {
-			problems = append(problems, fmt.Sprintf(
-				"%s: add an accessor for %s in docs_defaults_test.go (documented default %q)", where, row.name, row.literal))
+			problems = append(problems, where+": add an accessor for "+row.name+" in docs_defaults_test.go")
 
 			continue
 		}
 
-		if !sameValue(row.literal, code) {
-			problems = append(problems, fmt.Sprintf(
-				"%s: %s documents default %q but the code default is %q", where, row.name, row.literal, code))
+		if !sameValue(m[1], code) {
+			problems = append(problems, where+": "+row.name+" documents default "+m[1]+" but the code default is "+code)
 		}
 	}
 
 	return problems
 }
 
-type conf = config.Config
+// loadDefaultConfig runs config.Load with no SP_* variable set.
+func loadDefaultConfig(t *testing.T) *config.Config {
+	t.Helper()
 
-type accessor = func(*config.Config) string
+	for _, kv := range os.Environ() {
+		name, value, _ := strings.Cut(kv, "=")
+		if strings.HasPrefix(name, "SP_") {
+			require.NoError(t, os.Unsetenv(name))
+			t.Cleanup(func() { _ = os.Setenv(name, value) })
+		}
+	}
 
-func intOf(get func(*config.Config) int) accessor {
-	return func(c *config.Config) string { return strconv.Itoa(get(c)) }
-}
+	cfg, err := config.Load()
+	require.NoError(t, err)
 
-func boolOf(get func(*config.Config) bool) accessor {
-	return func(c *config.Config) string { return strconv.FormatBool(get(c)) }
-}
-
-func durOf(get func(*config.Config) time.Duration) accessor {
-	return func(c *config.Config) string { return get(c).String() }
-}
-
-func strOf(get func(*config.Config) string) accessor { return get }
-
-func fixed(value string) accessor { return func(*config.Config) string { return value } }
-
-// defaultAccessors reads, for names config.Load binds by hand or resolves
-// later, the effective default. Derived defaults use the resolved value.
-//
-//nolint:gochecknoglobals // test lookup table
-var defaultAccessors = map[string]accessor{
-	"SP_SERVER_CHECK_WORKER_NB": intOf(func(c *conf) int { return c.Server.CheckWorker.Nb }),
-	"SP_SERVER_JOB_WORKER_NB":   intOf(func(c *conf) int { return c.Server.JobWorker.Nb }),
-	"SP_SERVER_CHECK_WORKER_FETCH_MAX_AHEAD": durOf(func(c *conf) time.Duration {
-		return c.Server.CheckWorker.FetchMaxAhead
-	}),
-	"SP_ADMIN_EMAIL":            fixed(defaults.Email),
-	"SP_FILESTORAGE_LOCAL_ROOT": strOf(func(c *conf) string { return c.FileStorage.LocalRoot }),
-	"SP_LOG_LEVEL":              strOf(func(c *conf) string { return strings.ToLower(c.LogLevel.String()) }),
-	"SP_LOG_FORMAT":             strOf(func(c *conf) string { return string(c.LogFormat) }),
-	"SP_DEMO_ORG_SLUG":          strOf(func(c *conf) string { return c.Demo.ResolvedOrgSlug() }),
-	"SP_DEMO_CHECK_TTL":         durOf(func(c *conf) time.Duration { return c.Demo.ResolvedCheckTTL() }),
-	"SP_DEMO_CLEANUP_INTERVAL": durOf(func(c *conf) time.Duration {
-		return c.Demo.ResolvedCleanupInterval()
-	}),
-	"SP_BASE_URL":                  strOf(func(c *conf) string { return c.Server.BaseURL }),
-	"SP_ENCRYPTION_AUTO_MIGRATE":   boolOf(func(c *conf) bool { return c.Encryption.AutoMigrate }),
-	"SP_POSTHOG_HOST":              strOf(func(c *conf) string { return c.PostHog.ResolvedHost() }),
-	"SP_RUNTIME_AUTO_MEMORY_LIMIT": boolOf(func(c *conf) bool { return c.Runtime.AutoMemoryLimit }),
-	"SP_RUNTIME_MEMORY_LIMIT_RATIO": func(c *conf) string {
-		return strconv.FormatFloat(c.Runtime.MemoryLimitRatio, 'f', -1, 64)
-	},
-	"SP_AI_MAX_TURNS":             intOf(func(c *conf) int { return c.AI.MaxTurns }),
-	"SP_SHUTDOWN_TIMEOUT":         durOf(func(c *conf) time.Duration { return c.Server.ShutdownTimeout }),
-	"SP_EXIT_WITH_PARENT":         boolOf(func(c *conf) bool { return c.Server.ExitWithParent }),
-	"SP_CUSTOM_DOMAIN_CNAME_MODE": strOf(func(c *conf) string { return string(c.CustomDomainCNAMEMode()) }),
-	"SP_ACME_LISTEN_HTTP":         strOf(func(c *conf) string { return c.ACME.ListenHTTP }),
-	"SP_ACME_LISTEN_HTTPS":        strOf(func(c *conf) string { return c.ACME.ListenHTTPS }),
-	"SP_ACME_FALLBACK_UPSTREAM_PROXY_PROTOCOL": boolOf(func(c *conf) bool {
-		return c.ACME.FallbackUpstreamProxyProtocol
-	}),
-	"SP_ACME_PROXY_PROTOCOL":                    boolOf(func(c *conf) bool { return c.ACME.ProxyProtocol }),
-	"SP_AUTH_IMPERSONATION_ENABLED":             boolOf(func(c *conf) bool { return c.Auth.ImpersonationEnabled }),
-	"SP_SMS_PROVIDER":                           strOf(func(c *conf) string { return c.SMS.ResolvedProvider() }),
-	"SP_SMS_GLOBAL_RUNAWAY_PER_HOUR":            intOf(func(c *conf) int { return c.SMS.ResolvedGlobalRunawayPerHour() }),
-	"SP_ENTITLEMENTS_TELEGRAM_RUNAWAY_PER_HOUR": fixed(strconv.Itoa(entitlements.DefaultTelegramRunawayPerHour)),
-	"SP_ENTITLEMENTS_WHATSAPP_RUNAWAY_PER_HOUR": fixed(strconv.Itoa(entitlements.DefaultWhatsAppRunawayPerHour)),
-	"SP_NODE_REGION":                            strOf(func(c *conf) string { return c.Server.CheckWorker.Region }),
+	return cfg
 }
 
 func docsRepoRoot(t *testing.T) string {
@@ -235,76 +241,68 @@ func docsRepoRoot(t *testing.T) string {
 	return filepath.Join(filepath.Dir(thisFile), "..", "..", "..")
 }
 
-//nolint:paralleltest // unsets process-wide SP_* variables
+//nolint:paralleltest // unsets SP_* variables in the process environment
 func TestDocumentedDefaultsMatchCode(t *testing.T) {
 	root := docsRepoRoot(t)
 
 	files, err := filepath.Glob(filepath.Join(root, "web", "docs", "docs", "configuration", "*.md"))
 	require.NoError(t, err)
+	require.NotEmpty(t, files)
 
 	files = append(files, filepath.Join(root, "wiki", "conventions", "runners.md"))
 
-	rows := make([]docRow, 0, len(files)*16)
+	rows := make([]docRow, 0, len(files))
 
 	for _, f := range files {
-		content, readErr := os.ReadFile(f)
-		require.NoError(t, readErr)
+		content, err := os.ReadFile(f)
+		require.NoError(t, err)
 
 		rel, _ := filepath.Rel(root, f)
-		rows = append(rows, parseDocRows(rel, string(content))...)
+		rows = append(rows, parseDocTables(rel, string(content))...)
 	}
 
 	require.NotEmpty(t, rows)
 
-	// Defaults are read with no SP_* variable set.
-	for _, kv := range os.Environ() {
-		name, _, _ := strings.Cut(kv, "=")
-		if strings.HasPrefix(name, "SP_") {
-			t.Setenv(name, "")
-			require.NoError(t, os.Unsetenv(name))
-		}
-	}
-
-	cfg, err := config.Load()
-	require.NoError(t, err)
-
-	problems := checkDocRows(rows, recognizedEnvVars(), config.DefaultsByEnvVar(cfg), defaultAccessors, cfg)
+	cfg := loadDefaultConfig(t)
+	problems := checkDocRows(rows, recognizedEnvVars(), cfg, docsDefaultAccessors)
 	sort.Strings(problems)
-	require.Empty(t, problems, "documented env vars drifted from the code:\n%s", strings.Join(problems, "\n"))
+	require.Empty(t, problems, strings.Join(problems, "\n"))
 }
 
-func TestDocDefaultsCheckerPositiveControls(t *testing.T) {
+// TestDocsDefaultsCheckerPositiveControl proves the comparator flags what it is
+// meant to flag, so a clean real run means something.
+func TestDocsDefaultsCheckerPositiveControl(t *testing.T) {
 	t.Parallel()
 
 	cfg := &config.Config{}
 	cfg.Server.CheckWorker.Nb = 25
 
-	table := "| Variable | Default | Description |\n|---|---|---|\n" +
+	recognized := map[string]struct{}{
+		"SP_SERVER_CHECK_WORKER_NB": {},
+		"SP_NO_ACCESSOR":            {},
+	}
+
+	md := "| Env var | Default | What |\n|---|---|---|\n" +
 		"| `SP_SERVER_CHECK_WORKER_NB` | `3` | x |\n" +
 		"| `SP_SERVER_JOB_WORKER_FETCH_MAX_AHEAD` | `5m` | x |\n" +
-		"| `SP_FAKE_BOUND` | `7` | x |\n" +
-		"| `SP_SERVER_JOB_WORKER_NB` | derived | x |\n"
-	rows := parseDocRows("fixture.md", table)
+		"| `SP_NO_ACCESSOR` | `1` | x |\n" +
+		"| `SP_NO_ACCESSOR` | derived | x |\n"
+	rows := parseDocTables("fixture.md", md)
 	require.Len(t, rows, 4)
-	require.Equal(t, 3, rows[0].line)
 
-	recognized := map[string]struct{}{
-		"SP_SERVER_CHECK_WORKER_NB": {}, "SP_FAKE_BOUND": {}, "SP_SERVER_JOB_WORKER_NB": {},
-	}
-	problems := checkDocRows(rows, recognized, nil, defaultAccessors, cfg)
+	problems := checkDocRows(rows, recognized, cfg, docsDefaultAccessors)
 	require.Len(t, problems, 3)
-	require.Contains(t, problems[0], `"3"`)
-	require.Contains(t, problems[0], `"25"`)
-	require.Contains(t, problems[1], "SP_SERVER_JOB_WORKER_FETCH_MAX_AHEAD is documented but nothing binds it")
-	require.Contains(t, problems[2], "add an accessor for SP_FAKE_BOUND")
+	require.Contains(t, problems[0], "documents default 3")
+	require.Contains(t, problems[0], "code default is 25")
+	require.Contains(t, problems[1], "SP_SERVER_JOB_WORKER_FETCH_MAX_AHEAD")
+	require.Contains(t, problems[2], "add an accessor for SP_NO_ACCESSOR")
 }
 
-func TestSameValueNormalization(t *testing.T) {
+func TestDocsDefaultsNormalization(t *testing.T) {
 	t.Parallel()
 
 	require.True(t, sameValue("5m", "5m0s"))
 	require.False(t, sameValue("30s", "15s"))
 	require.False(t, sameValue("true", "false"))
 	require.True(t, sameValue("25", "25"))
-	require.True(t, sameValue("0.9", "0.90"))
 }

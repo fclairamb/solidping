@@ -1,0 +1,42 @@
+---
+model: opus
+effort: medium
+---
+
+# Make a JS `docker` sub-check obey the SaaS docker gate and the egress guard
+
+## Problem
+Found by the security scan of 2026-10-12 (finding N4). **High**, triggerable by any role ≥ `user` (viewers cannot create checks) — on a SaaS instance with open signup, anyone who registers (any authenticated user can create their own org, `server/internal/app/server.go:915-918`).
+
+A JS check can run another check type inline via `solidping.check(type, config)` (`server/internal/checkers/checkjs/checker.go:571-662`). The dispatch applies several gates — block `js`/`heartbeat` (`:573`), the 20-sub-check budget (`:580`), the **server-level** activation gate `TypeEnabled` (`:603`), the tunnel `SupportsTunnel` gate (`:615-620`), and the RDP min-period floor (`:634`) — then calls `checker.Execute(r.execCtx, cfg)` (`:638`).
+
+**What it does NOT apply to a `docker` sub-check:**
+- **The SaaS docker deployment gate.** `dockerBlockedOnThisWorker()` (`checkworker/worker.go:1671-1678`: block when not agent-mode and deployment is SaaS) is consulted only for a **top-level** `docker` job (`worker.go:1167`). The sub-check path calls `checkdocker.Execute` directly and never passes through that line. The write-time gate `validateDockerDeploymentConfig` (`handlers/checks/validate.go:468-495`) only inspects a top-level docker check's type/regions, not a type buried inside a JS script. So `solidping.check("docker", {host: "tcp://…", containerName: "x"})` runs on a SaaS shared worker — exactly the cross-tenant local-socket read primitive spec 2026-09-25-22 exists to block.
+- **The egress guard — docker-specific.** `checkdocker`'s client is built with only `client.WithHost(cfg.ResolveHost())` (`checkdocker/checker.go:74-79`) and never reads `checkerdef.OutboundDialer(ctx)`. So a docker check honors the egress guard **nowhere** — top-level or nested. It only looked safe because a top-level docker check is blocked outright on a SaaS shared worker and self-hosted allows private targets anyway; the nested path removes that block, so `unix://` probes the local socket (incl. a mounted `/var/run/docker.sock`) and `tcp://169.254.169.254:…`-style targets become an internal connect oracle, with non-2xx bodies (up to 1 MiB) returned as `"Error response from daemon: <body>"` in the result output.
+
+Also, the sub-config is parsed (`cfg.FromMap(configMap)`, `:630`) but the checker's own `Validate()` is never called (`:630` has no `cfg.Validate()`), so per-type structural rules are skipped for every sub-check.
+
+**Scope of the general question (checked).** For every *other* sub-checkable type the egress guard **does** reach the nested check: sub-checks execute with `r.execCtx` (`:638`), which carries the worker's guard, and every guard-aware checker reads `checkerdef.OutboundDialer(ctx)` off that context. This is proven by the registry egress test's own JS row: `solidping.check("http", {url})` is refused under an enforcing guard (`checkers/registry/egress_test.go:107-110`, asserted by the loop at `:120-127`). So the egress bypass is **docker-specific** (its client ignores the dialer), not a general nested-dispatch hole — the finding's wording should be read that way. The server-level type allow/deny gate (`TypeEnabled`, `:603`) also applies to every sub-check type; what does **not** apply are (a) the SaaS docker deployment gate and (b) per-org disable (a documented limitation — the JS runtime has no org identity, `checkjs/checker.go:584-592`, `worker.go:375-377`).
+
+## Proposal
+Two fixes, both narrow:
+
+1. **Enforce the SaaS docker gate on the sub-check path, in one place every execution goes through.** `checkjs` has no deployment knowledge except through the package-level `TypeEnabled` closure the worker wires once (`worker.go:381-384`: `activation.IsTypeEnabled(checkType, nil)`). Make that closure also return false for `docker` when this process must block it — i.e. fold `r.dockerBlockedOnThisWorker()` (which reads `cfg.IsAgentMode()` and `cfg.Deployment.Mode`, both available at construction) into the closure wiring at `worker.go:381-384`. Then `check()`'s existing gate at `:603` refuses a nested docker sub-check on a SaaS shared worker with a clear message, with no new branch in `checkjs`.
+   - Give it a docker-specific message (reuse `ErrDockerNotAvailableInSaaS`'s wording, `worker.go:62-69`) rather than the generic "disabled on this server", so the refusal is honest — consider a dedicated sub-check gate closure if overloading `TypeEnabled`'s message is awkward.
+   - Mirror the wiring in the agent process construction path if `checkjs.TypeEnabled` is set anywhere else (grep shows the single site at `worker.go:381`); an agent-mode worker is `dockerBlockedOnThisWorker() == false`, so it keeps running docker sub-checks, exactly as it keeps running top-level docker checks.
+2. **Wire the egress guard into the docker client** so docker honors the guard like every other type, on both the top-level and nested paths. In `checkdocker/checker.go:74-79` `createClient`, when `checkerdef.OutboundDialer(ctx) != nil` add `client.WithDialContext(dialer.DialContext)` (the moby client exposes `WithDialContext(func(ctx, network, addr) (net.Conn, error))`, `moby/moby/client@v0.6.2/client_options.go:117-125`). Pass `ctx` into `createClient` (today it takes only `cfg`). Under an enforcing guard the dial is then refused with an `egress_denied` trace; under a permissive/self-hosted policy nothing changes. This closes the internal-connect oracle even where docker legitimately runs.
+3. **Validate the sub-config.** Call `cfg.Validate()` after `cfg.FromMap(configMap)` in `check()` (`checkjs/checker.go:630`), returning the structured error through `jsCheckError`, so a sub-check cannot run a config a top-level check of the same type would reject. (Secondary hardening; steps 1–2 are the security fix.)
+
+## Tests
+- `server/internal/checkers/checkjs/subcheck_gate_test.go` (table-driven, already drives the `TypeEnabled`/`ResolveChecker` globals): **regression** — with the gate wired as a SaaS shared worker would (docker blocked), `solidping.check("docker", {...})` returns an error result naming the docker gate and never reaches the docker client; **positive control** — with an agent-mode / self-hosted gate (docker allowed), the same call reaches the resolver (fails only for its own reason, e.g. no socket), and a non-docker sub-check (`http`) is unaffected.
+- `server/internal/checkworker/docker_saas_test.go`: extend the existing docker-gate suite (`TestExecuteJob_DockerBlockedOnSaaSSharedWorker` at `:103`, and the agent/self-hosted controls at `:123`/`:141`) with a **JS wrapper** case: a `js` check whose script calls `solidping.check("docker", …)`, run on a SaaS shared worker, is refused with the gate message and attempts no dial — the regression that fails today; and the agent-mode control proving a nested docker sub-check still runs there.
+- `server/internal/checkers/registry/egress_test.go`: add a **regression** row (or a focused test) proving `solidping.check("docker", {host: "tcp://<loopback>:<port>"})` inside a JS script is refused by an enforcing guard with an `egress_denied` record — fails today because `checkdocker` ignores the dialer — and a permissive-guard positive control. A direct top-level docker case can go in `checkdocker`'s own test exercising `createClient(ctx, cfg)` with an enforcing guard on the context.
+- `server/internal/checkers/checkjs/subcheck_gate_test.go`: a case proving an invalid docker sub-config (e.g. a `host` not starting with `unix://`/`tcp://`, which `DockerConfig.Validate` rejects at `checkdocker/config/config.go:150-153`) now returns a config error from the sub-check, covering step 3.
+
+## To verify
+- The exact `createClient` call sites that must thread `ctx` (grep: only `checkdocker/checker.go` builds the client).
+- That overloading `checkjs.TypeEnabled` to carry the SaaS-docker block is acceptable vs. adding a second closure; the message quality is the only trade-off, and a second closure keeps `TypeEnabled`'s "disabled on this server" semantics clean. Recommended: a second closure or a small struct, so the refusal reads as a deployment gate, not a disabled type.
+
+## Related
+- N1 and N2 (same scan era): other ways a `user`-role member reaches the worker's own process/network — specs `2026-10-16-03-env-secret-reference-allowlist.md`, `2026-10-16-04-mysql-dsn-injection.md`.
+- Spec 2026-09-25-22 is the top-level docker SaaS block this finding routes around.

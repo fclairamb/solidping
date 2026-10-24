@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -21,6 +22,7 @@ import (
 	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checkjs/config"
 	checkrdp "github.com/fclairamb/solidping/server/internal/checkers/checkrdp"
 	checkvnc "github.com/fclairamb/solidping/server/internal/checkers/checkvnc"
+	"github.com/fclairamb/solidping/server/internal/egress"
 )
 
 // JS result map keys.
@@ -64,6 +66,22 @@ type TypeEnabledFunc func(checkType checkerdef.CheckType) bool
 // package usable standalone and in unit tests, and keeps the JS checker's
 // behavior unchanged for any caller that never installs a gate.
 var TypeEnabled TypeEnabledFunc //nolint:gochecknoglobals // Mirrors ResolveChecker: same import-cycle break
+
+// DeploymentGateFunc returns a non-empty refusal when THIS process must not run
+// checkType as a sub-check for a deployment reason (not because the operator
+// disabled the type), or "" to let it through.
+type DeploymentGateFunc func(checkType checkerdef.CheckType) string
+
+// DeploymentGate is the deployment-level gate consulted before a sub-check
+// runs, after TypeEnabled. It is separate from TypeEnabled so its refusal reads
+// as what it is — "docker checks are not available on this deployment" on a
+// SaaS shared worker (spec 2026-10-16-09) — rather than "disabled on this
+// server". Wired, like TypeEnabled, in checkworker.newCheckWorker, and in the
+// API process for the script-authoring runner (app.buildAIChecks), both from
+// checkworker.NewDeploymentGate over the same config.
+//
+// nil means "no deployment gate": every type passes.
+var DeploymentGate DeploymentGateFunc //nolint:gochecknoglobals // Mirrors TypeEnabled: same import-cycle break
 
 const (
 	maxSubChecks     = 20
@@ -303,6 +321,9 @@ type jsRuntime struct {
 	// payloadUsed is the shared byte pool socket reads draw from. See
 	// remainingPayload.
 	payloadUsed atomic.Int64
+
+	// invalidStatus is the unknown status string a plugin script returned.
+	invalidStatus string
 }
 
 // remainingPayload is what is left of the execution's single maxHTTPBody-byte
@@ -351,6 +372,7 @@ func newJSRuntime(ctx context.Context, cfg *JSConfig) *jsRuntime {
 func (r *jsRuntime) registerGlobals() {
 	r.registerEnv()
 	r.registerSecrets()
+	r.registerPluginConfig()
 	r.registerConsole()
 	r.registerSleep()
 	r.registerSolidping()
@@ -391,6 +413,48 @@ func (r *jsRuntime) registerSecrets() {
 	}
 
 	_ = r.vm.Set("secrets", secretsObj)
+}
+
+// registerPluginConfig exposes a JS plugin's validated check config as the
+// deep-frozen `config` global (spec 2026-10-17-05). A plain js check has no
+// such global.
+func (r *jsRuntime) registerPluginConfig() {
+	if r.config.PluginConfig == nil {
+		return
+	}
+
+	raw, err := json.Marshal(r.config.PluginConfig)
+	if err != nil {
+		raw = []byte("{}")
+	}
+
+	const freeze = `(function (raw) {
+  var deepFreeze = function (o) {
+    Object.getOwnPropertyNames(o).forEach(function (k) {
+      var v = o[k];
+      if (v && typeof v === "object") { deepFreeze(v); }
+    });
+    return Object.freeze(o);
+  };
+  return deepFreeze(JSON.parse(raw));
+})`
+
+	fn, err := r.vm.RunString(freeze)
+	if err != nil {
+		return
+	}
+
+	call, ok := goja.AssertFunction(fn)
+	if !ok {
+		return
+	}
+
+	value, err := call(goja.Undefined(), r.vm.ToValue(string(raw)))
+	if err != nil {
+		return
+	}
+
+	_ = r.vm.Set("config", value)
 }
 
 // registerConsole exposes console.log/warn/error/info.
@@ -567,6 +631,54 @@ func jsCheckError(msg string) map[string]any {
 	}
 }
 
+// subCheckGateRefusal applies the activation, deployment and tunnel gates to
+// a sub-check of checkType, returning the refusal or "" to let it run.
+func subCheckGateRefusal(execCtx context.Context, typeStr string, checkType checkerdef.CheckType) string {
+	if TypeEnabled != nil && !TypeEnabled(checkType) {
+		return "check type \"" + typeStr + "\" is disabled on this server"
+	}
+
+	// Deployment gate: the top-level refusal of a docker job on a SaaS shared
+	// worker (checkworker.executeJob) never sees a type buried in a script, so
+	// without this a JS check would read the worker's local Docker socket.
+	if DeploymentGate != nil {
+		if refusal := DeploymentGate(checkType); refusal != "" {
+			return refusal
+		}
+	}
+
+	// A tunneled script cannot let a sub-check of a type that itself lacks
+	// SupportsTunnel probe from the WORKER's own network while the script
+	// believes it is running behind the bastion — that silent local probing is
+	// the security property this refusal exists to prevent. Types that do
+	// declare SupportsTunnel need nothing here: they already read the dialer
+	// off r.execCtx themselves. Uses the API's own sentence
+	// (handlers/checks/tunnel.go) so the message is familiar wherever it
+	// appears.
+	if checkerdef.TunnelDialerFrom(execCtx) != nil {
+		if meta := checkerdef.GetCheckTypeMeta(checkType); meta == nil || !meta.SupportsTunnel {
+			return fmt.Sprintf("check type %q cannot run through an SSH tunnel", typeStr)
+		}
+	}
+
+	return ""
+}
+
+// parseSubCheckConfig fills cfg from configMap and runs the config's own
+// Validate(), so a sub-check cannot run a config a top-level check of the same
+// type would reject at write time.
+func parseSubCheckConfig(cfg checkerdef.Config, configMap map[string]any) error {
+	if err := cfg.FromMap(configMap); err != nil {
+		return err
+	}
+
+	if validator, ok := cfg.(interface{ Validate() error }); ok {
+		return validator.Validate()
+	}
+
+	return nil
+}
+
 // check executes a sub-checker via the resolver.
 func (r *jsRuntime) check(typeStr string, configMap map[string]any) map[string]any {
 	// Block recursive JS and heartbeat checks
@@ -577,6 +689,12 @@ func (r *jsRuntime) check(typeStr string, configMap map[string]any) map[string]a
 	// Enforce sub-check limit
 	if r.subCheckCount.Add(1) > int32(maxSubChecks) {
 		return jsCheckError(fmt.Sprintf("sub-check limit of %d exceeded", maxSubChecks))
+	}
+
+	// A sub-check dials through its own checker, outside the allowlist's
+	// reach, so it cannot run while one is active.
+	if err := egress.HostAllowlistFrom(r.execCtx).Refuse("solidping." + typeStr); err != nil {
+		return jsCheckError(err.Error())
 	}
 
 	checkType := checkerdef.CheckType(typeStr)
@@ -593,29 +711,15 @@ func (r *jsRuntime) check(typeStr string, configMap map[string]any) map[string]a
 	//     SERVER-level question only; a per-org `orgDisabled` entry is NOT
 	//     honored here. Threading the org through Execute is a follow-up.
 	//   - It is not folded into ResolveChecker's ok=false below, because that
-	//     path means "unknown check type" and reporting a disabled type as
+	//     path in check() means "unknown check type" and reporting a disabled type as
 	//     nonexistent would be both false and unhelpful.
 	//
-	// Budget accounting: this runs AFTER the maxSubChecks counter above, so a
+	// Budget accounting: this runs AFTER the maxSubChecks counter in check(), so a
 	// refused sub-check still consumes one unit of the budget. That is
 	// deliberate — the existing guard ordering is left untouched and a script
 	// cannot spin the refusal path for free.
-	if TypeEnabled != nil && !TypeEnabled(checkType) {
-		return jsCheckError("check type \"" + typeStr + "\" is disabled on this server")
-	}
-
-	// A tunneled script cannot let a sub-check of a type that itself lacks
-	// SupportsTunnel probe from the WORKER's own network while the script
-	// believes it is running behind the bastion — that silent local probing is
-	// the security property this refusal exists to prevent. Types that do
-	// declare SupportsTunnel need nothing here: they already read the dialer
-	// off r.execCtx themselves. Uses the API's own sentence
-	// (handlers/checks/tunnel.go) so the message is familiar wherever it
-	// appears.
-	if checkerdef.TunnelDialerFrom(r.execCtx) != nil {
-		if meta := checkerdef.GetCheckTypeMeta(checkType); meta == nil || !meta.SupportsTunnel {
-			return jsCheckError(fmt.Sprintf("check type %q cannot run through an SSH tunnel", typeStr))
-		}
+	if refusal := subCheckGateRefusal(r.execCtx, typeStr, checkType); refusal != "" {
+		return jsCheckError(refusal)
 	}
 
 	if ResolveChecker == nil {
@@ -627,7 +731,7 @@ func (r *jsRuntime) check(typeStr string, configMap map[string]any) map[string]a
 		return jsCheckError("unknown check type: " + typeStr)
 	}
 
-	if err := cfg.FromMap(configMap); err != nil {
+	if err := parseSubCheckConfig(cfg, configMap); err != nil {
 		return jsCheckError("invalid config: " + err.Error())
 	}
 
@@ -910,7 +1014,11 @@ func (r *jsRuntime) httpRequest(
 		// Under an enforcing egress policy (spec 2026-09-25-19) the transport
 		// dials through the guard instead: a script cannot reach a non-public
 		// address, and the refusal comes back as the request's error.
-		Transport: checkerdef.HTTPTransportFor(r.execCtx, false),
+		//
+		// An AI authoring run holding real secrets also carries a host
+		// allowlist: every request, redirects included, is checked against
+		// it before it is sent.
+		Transport: egress.HostAllowlistFrom(r.execCtx).RoundTripper(checkerdef.HTTPTransportFor(r.execCtx, false)),
 	}
 
 	if jar != nil {
@@ -1049,6 +1157,10 @@ func (r *jsRuntime) parseResult(val goja.Value, duration time.Duration) *checker
 
 	output := r.buildOutputFromObj(obj)
 
+	if r.invalidStatus != "" {
+		output[logLevelError] = fmt.Sprintf("plugin returned an unknown status %q", r.invalidStatus)
+	}
+
 	return &checkerdef.Result{
 		Status:   status,
 		Duration: duration,
@@ -1104,6 +1216,16 @@ func (r *jsRuntime) parseStatus(obj *goja.Object) checkerdef.Status {
 	case "timeout":
 		return checkerdef.StatusTimeout
 	default:
+		if r.config.PluginConfig != nil {
+			// A plugin may also report warning or error; anything else is
+			// flagged rather than silently mapped (spec 2026-10-17-05 §10).
+			if status, ok := checkerdef.ParseStatus(statusVal.String()); ok {
+				return status
+			}
+
+			r.invalidStatus = statusVal.String()
+		}
+
 		return checkerdef.StatusError
 	}
 }

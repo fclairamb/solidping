@@ -109,6 +109,12 @@ func (h *Handler) authenticateToken(
 		return nil, nil, base.ErrorCodeInvalidToken, "Invalid or expired token"
 	}
 
+	// An MCP credential only works on the MCP endpoint (spec 2026-10-16-12),
+	// exactly as RequireAuth refuses it on REST.
+	if claims.IsMCPCredential() {
+		return nil, nil, base.ErrorCodeInvalidToken, auth.MCPCredentialRESTMessage
+	}
+
 	user, err := h.dbService.GetUser(ctx, claims.UserUID)
 	if err != nil {
 		return nil, nil, base.ErrorCodeUserNotFound, "User not found"

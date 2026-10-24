@@ -2,6 +2,7 @@ package checkdns
 
 import (
 	"context"
+	"net"
 	"testing"
 	"time"
 
@@ -220,7 +221,7 @@ func TestDNSChecker_Validate(t *testing.T) {
 				RecordType: "INVALID",
 			},
 			wantErr: true,
-			errMsg:  "record_type: must be one of A, AAAA, CNAME, MX, NS, TXT, SOA, got INVALID",
+			errMsg:  "record_type: must be one of A, AAAA, CNAME, MX, NS, TXT, SOA, CAA, got INVALID",
 		},
 		{
 			name: "invalid nameserver format",
@@ -297,6 +298,7 @@ func TestDNSChecker_Execute(t *testing.T) {
 		config         *DNSConfig
 		expectedStatus checkerdef.Status
 		checkMetrics   bool
+		lookupErr      error
 	}{
 		{
 			name: "A record lookup",
@@ -317,6 +319,7 @@ func TestDNSChecker_Execute(t *testing.T) {
 			},
 			expectedStatus: checkerdef.StatusDown,
 			checkMetrics:   false,
+			lookupErr:      &net.DNSError{Err: "no such host", Name: "acme.invalid", IsNotFound: true},
 		},
 		{
 			name: "MX record lookup",
@@ -344,7 +347,7 @@ func TestDNSChecker_Execute(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			checker := &DNSChecker{}
+			checker := stubChecker([]string{"192.0.2.1"}, tt.lookupErr)
 			ctx := context.Background()
 
 			result, err := checker.Execute(ctx, tt.config)

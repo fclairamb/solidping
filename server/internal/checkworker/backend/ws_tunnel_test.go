@@ -53,7 +53,7 @@ func TestResolveTunnelUnsealsAndDials(t *testing.T) {
 		ConfigSealed: &sealed,
 	}
 
-	cfg, err := buildTunnelConfig(t.Context(), keys.X25519Identity, tunnel)
+	cfg, err := buildTunnelConfig(t.Context(), keys.X25519Identity, tunnel, nil)
 	r.NoError(err)
 	r.Equal(srv.Password, cfg.Password, "the sealed password must merge over the public config")
 	r.Equal(srv.Username, cfg.Username)
@@ -102,7 +102,7 @@ func TestBuildTunnelConfigWrongIdentity(t *testing.T) {
 		ConfigSealed: &sealed,
 	}
 
-	_, err = buildTunnelConfig(t.Context(), ourKeys.X25519Identity, tunnel)
+	_, err = buildTunnelConfig(t.Context(), ourKeys.X25519Identity, tunnel, nil)
 	r.ErrorIs(err, ErrTunnelSealedForOthers)
 }
 
@@ -120,7 +120,7 @@ func TestBuildTunnelConfigPlaintextFallback(t *testing.T) {
 		},
 	}
 
-	cfg, err := buildTunnelConfig(t.Context(), "", tunnel)
+	cfg, err := buildTunnelConfig(t.Context(), "", tunnel, nil)
 	r.NoError(err)
 	r.Equal("plain", cfg.Password)
 }
@@ -136,7 +136,7 @@ func TestBuildTunnelConfigNoCredentials(t *testing.T) {
 		Config:   map[string]any{"host": "bastion", "expected_fingerprint": "SHA256:abc", "username": "u"},
 	}
 
-	_, err := buildTunnelConfig(t.Context(), "", tunnel)
+	_, err := buildTunnelConfig(t.Context(), "", tunnel, nil)
 	r.ErrorIs(err, ErrTunnelNoCredentials)
 }
 
@@ -233,9 +233,23 @@ func TestTunnelConfigMaterializesSecretReferences(t *testing.T) {
 	config := tunnelPublicConfig(srv)
 	config["password"] = "${env:SP_TEST_TUNNEL_PASSWORD}"
 
-	cfg, err := buildTunnelConfig(t.Context(), "", &agents.AgentJobTunnel{CheckUID: "ssh-ref", Config: config})
+	cfg, err := buildTunnelConfig(t.Context(), "", &agents.AgentJobTunnel{CheckUID: "ssh-ref", Config: config},
+		secretref.AllowEnvNames("SP_TEST_TUNNEL_PASSWORD"))
 	r.NoError(err)
 	r.Equal(srv.Password, cfg.Password, "the reference must be resolved before the dial")
+
+	// Regression (spec 2026-10-16-03): an agent whose operator did not list
+	// the variable in its own SP_CHECK_ENV_ALLOWLIST must not resolve it.
+	_, err = buildTunnelConfig(t.Context(), "", &agents.AgentJobTunnel{CheckUID: "ssh-ref", Config: config}, nil)
+	r.ErrorIs(err, secretref.ErrUnresolved)
+	r.Contains(err.Error(), "unresolved secret reference: env:SP_TEST_TUNNEL_PASSWORD")
+
+	// Same refusal with a non-empty allowlist that lists other names: the
+	// variable is set in the environment but not listed, so it stays unresolved.
+	_, err = buildTunnelConfig(t.Context(), "", &agents.AgentJobTunnel{CheckUID: "ssh-ref", Config: config},
+		secretref.AllowEnvNames("SP_TEST_TUNNEL_OTHER"))
+	r.ErrorIs(err, secretref.ErrUnresolved)
+	r.Contains(err.Error(), "unresolved secret reference: env:SP_TEST_TUNNEL_PASSWORD")
 }
 
 // TestTunnelConfigRefusesAnUnresolvableReference is the failure half: a
@@ -252,7 +266,7 @@ func TestTunnelConfigRefusesAnUnresolvableReference(t *testing.T) {
 	config := tunnelPublicConfig(srv)
 	config["password"] = "${param:bastion-password}"
 
-	_, err := buildTunnelConfig(t.Context(), "", &agents.AgentJobTunnel{CheckUID: "ssh-ref", Config: config})
+	_, err := buildTunnelConfig(t.Context(), "", &agents.AgentJobTunnel{CheckUID: "ssh-ref", Config: config}, nil)
 	r.ErrorIs(err, secretref.ErrUnresolved)
 	r.Contains(err.Error(), "unresolved secret reference: param:bastion-password")
 }

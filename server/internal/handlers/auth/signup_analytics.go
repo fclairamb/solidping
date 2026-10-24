@@ -105,21 +105,11 @@ func createUserAndCapture(
 // internal/integrations/slack, which has its own account-creation chokepoint.
 // One function, so the two sites cannot drift into two different notices.
 func NotifyUserRegistered(ctx context.Context, user *models.User, method string) {
-	body := "A new user just signed up on this SolidPing instance.\n\n" +
-		"Email:  " + user.Email + "\n"
-
-	if user.Name != "" {
-		body += "Name:   " + user.Name + "\n"
-	}
-
-	body += "Method: " + method
-
-	opsnotify.Notify(ctx, &opsnotify.Notice{
-		Event:   opsnotify.EventUserRegistered,
-		Subject: "[SolidPing] New signup: " + user.Email + " (" + method + ")",
-		Body:    body,
-		// The landing organization is resolved at delivery time — it does not
-		// exist yet at this point, on any signup path.
-		AboutUserUID: user.UID,
-	})
+	// The landing organization is resolved at delivery time: it does not
+	// exist yet at this point, on any signup path.
+	opsnotify.Notify(ctx, opsnotify.NewUserRegisteredNotice(&opsnotify.UserRegistered{
+		Email:  user.Email,
+		Name:   user.Name,
+		Method: method,
+	}, user.UID))
 }

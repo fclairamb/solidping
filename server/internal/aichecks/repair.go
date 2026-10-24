@@ -18,6 +18,8 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/dbctx"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
+	"github.com/fclairamb/solidping/server/internal/i18n"
+	"github.com/fclairamb/solidping/server/internal/i18n/recipient"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 )
 
@@ -49,9 +51,10 @@ type RepairOutcome struct {
 }
 
 // Mailer queues an email. The jobs service satisfies it through
-// JobsMailer.
+// JobsMailer. subject and text are already written in loc, the reader's
+// language.
 type Mailer interface {
-	Mail(ctx context.Context, orgUID string, to []string, subject, text string) error
+	Mail(ctx context.Context, orgUID string, to []string, loc i18n.Locale, subject, text string) error
 }
 
 // JobsMailer sends mail through the email job.
@@ -59,9 +62,18 @@ type JobsMailer struct {
 	Jobs jobsvc.Service
 }
 
-// Mail implements Mailer.
-func (m *JobsMailer) Mail(ctx context.Context, orgUID string, to []string, subject, text string) error {
-	raw, err := json.Marshal(map[string]any{"to": to, "subject": subject, "text": text})
+// Mail implements Mailer. The job carries the reader's locale like every
+// email job (spec 2026-10-21-01); the raw text is sent as is.
+func (m *JobsMailer) Mail(
+	ctx context.Context, orgUID string, to []string, loc i18n.Locale, subject, text string,
+) error {
+	raw, err := json.Marshal(map[string]any{
+		"to":       to,
+		"subject":  subject,
+		"text":     text,
+		"locale":   loc.Lang(),
+		"timezone": loc.Timezone(),
+	})
 	if err != nil {
 		return err
 	}
@@ -361,22 +373,25 @@ func (s *Service) recordAttempt(
 func (s *Service) attemptRepair(ctx context.Context, target *repairTarget) (*RepairOutcome, ai.Usage, error) {
 	previous := target.cfg.Script
 	env := target.cfg.Env
+	allowed := repairHosts(previous, env)
 
 	rec := &runRecorder{
 		runner: s.runner,
 		env:    env,
-		prepare: func(script string) (map[string]string, string, error) {
-			// No candidate ever runs with the secrets against a host the
-			// previous version did not contact.
+		prepare: func(script string) (*runGrant, error) {
+			// An early refusal of a host the script text names. The
+			// boundary is the runtime allowlist: the run may only reach the
+			// hosts the previous version contacts, however the candidate
+			// builds its URLs.
 			if err := CheckHosts(previous, script, env); err != nil {
-				return nil, "", fmt.Errorf("refused: %w", err)
+				return nil, fmt.Errorf("refused: %w", err)
 			}
 
-			return target.secrets, "", nil
+			return &runGrant{secrets: target.secrets, hosts: allowed}, nil
 		},
 	}
 
-	tools := []ai.Tool{rec.tool(), s.runner.fetchPageTool(), s.runner.browserSnapshotTool()}
+	tools := []ai.Tool{rec.tool(), rec.fetchPageTool(), rec.browserSnapshotTool()}
 	loop := s.loop(systemPrompt(), tools, rec.done)
 	loop.Nudge = rec.nudge
 
@@ -396,6 +411,10 @@ func (s *Service) attemptRepair(ctx context.Context, target *repairTarget) (*Rep
 			reason += ": " + loopErr.Error()
 		}
 
+		if rec.refused != nil {
+			reason += " (last refusal: " + rec.refused.Error() + ")"
+		}
+
 		return &RepairOutcome{Outcome: OutcomeNoCandidate, Reason: reason}, usage, nil
 	}
 
@@ -412,7 +431,7 @@ func (s *Service) storeCandidate(ctx context.Context, target *repairTarget, cand
 
 	guardErr := CheckCandidate(cfg.Script, candidate, cfg.Env)
 	if guardErr == nil {
-		verify, err := s.runner.Run(ctx, candidate, cfg.Env, target.secrets, cfg.Timeout)
+		verify, err := s.runner.Run(ctx, candidate, cfg.Env, target.secrets, repairHosts(cfg.Script, cfg.Env), cfg.Timeout)
 		if err != nil {
 			guardErr = err
 		} else if !verify.Up() {
@@ -427,6 +446,15 @@ func (s *Service) storeCandidate(ctx context.Context, target *repairTarget, cand
 	reason := repairReason(target.latest)
 	if guardErr != nil {
 		reason += " (not applied: " + guardErr.Error() + ")"
+	}
+
+	// The allowlist only holds the AI-loop runs. A candidate whose hosts the
+	// text no longer shows (built at runtime) would run on schedule with the
+	// secrets and no allowlist, so it is proposed, never applied.
+	if guardErr == nil && mode == jsconfig.RepairAuto && hostsHidden(cfg.Script, candidate, cfg.Env) {
+		reason += " (not applied: the candidate's hosts cannot be read from its text)"
+
+		return s.proposeRepair(ctx, target, candidate, reason)
 	}
 
 	if guardErr == nil && mode == jsconfig.RepairAuto {
@@ -445,22 +473,62 @@ func (s *Service) storeCandidate(ctx context.Context, target *repairTarget, cand
 	return s.proposeRepair(ctx, target, candidate, reason)
 }
 
+// repairReason is the reason stored on a repair version and its events. It
+// stays English: the check history shows it as recorded.
 func repairReason(latest *models.Result) string {
-	msg := "the script drifted"
+	return causeOf(latest).text(i18n.English)
+}
 
-	if latest != nil {
-		if errMsg, ok := latest.Output[outputKeyError].(string); ok && errMsg != "" {
-			msg += ": " + errMsg
-		} else if step, ok := latest.Output["step"].(string); ok && step != "" {
-			msg += " at step " + step
-		}
+// repairCause is what the last failed run said: its error, else the step it
+// stopped at, else nothing. Both are the script's own words, never translated.
+type repairCause struct {
+	err, step string
+}
+
+// Clip lengths keep the English reason at its historical 200-byte cap on
+// "the script drifted…" (the "AI repair: " prefix aside): 20 bytes precede
+// the error, 27 the step.
+const (
+	causeErrorMax = 180
+	causeStepMax  = 173
+)
+
+func causeOf(latest *models.Result) repairCause {
+	if latest == nil {
+		return repairCause{}
 	}
 
-	if len(msg) > 200 {
-		msg = msg[:200] + "..."
+	if errMsg, ok := latest.Output[outputKeyError].(string); ok && errMsg != "" {
+		return repairCause{err: clipCause(errMsg, causeErrorMax)}
 	}
 
-	return "AI repair: " + msg
+	if step, ok := latest.Output["step"].(string); ok && step != "" {
+		return repairCause{step: clipCause(step, causeStepMax)}
+	}
+
+	return repairCause{}
+}
+
+// text is the one-line reason in loc.
+func (c repairCause) text(loc i18n.Locale) string {
+	switch {
+	case c.err != "":
+		return loc.T("notices.aiRepair.reason.error", "error", c.err)
+	case c.step != "":
+		return loc.T("notices.aiRepair.reason.step", "step", c.step)
+	default:
+		return loc.T("notices.aiRepair.reason.drifted")
+	}
+}
+
+// clipCause cuts at a byte count, as the reason always was, so the English
+// reason reads exactly like the ones already stored.
+func clipCause(text string, maxLen int) string {
+	if len(text) > maxLen {
+		return text[:maxLen] + "..."
+	}
+
+	return text
 }
 
 // appliedRepairWithin reports an applied ai_repair version newer than window.
@@ -649,21 +717,27 @@ func (s *Service) notifyApplied(
 	}
 
 	link := fmt.Sprintf("%s/d/orgs/%s/checks/%s/history", s.baseURL, target.org.Slug, checkUID)
-	text := fmt.Sprintf("SolidPing repaired the script of the check %q (version %d).\n\n%s\n\n"+
-		"Diff:\n%s\nReview or undo it: %s\n", name, applied.Version, deref(applied.Reason), diff, link)
+	loc := recipient.ForUser(owner)
+	subject, text := appliedRepairMail(loc, name, applied.Version, causeOf(target.latest), diff, link)
 
-	if err := s.mailer.Mail(ctx, target.check.OrganizationUID, []string{owner.Email},
-		"Check repaired: "+name, text); err != nil {
+	if err := s.mailer.Mail(ctx, target.check.OrganizationUID, []string{owner.Email}, loc, subject, text); err != nil {
 		s.logger.WarnContext(ctx, "Failed to mail the applied repair", "error", err, "check_uid", checkUID)
 	}
 }
 
-func deref(value *string) string {
-	if value == nil {
-		return ""
-	}
+// appliedRepairMail is the notice of an applied repair, in the owner's
+// language. Its reason line is the applied version's (repairReason), written
+// again in loc: only the failed run's error or step stays as the script
+// printed it. The diff is quoted as the model wrote it.
+func appliedRepairMail(
+	loc i18n.Locale, check string, version int, cause repairCause, diff, link string,
+) (string, string) {
+	text := loc.T("notices.aiRepair.intro", "check", check, "version", version) + "\n\n" +
+		cause.text(loc) + "\n\n" +
+		loc.T("notices.aiRepair.diff") + "\n" + diff + "\n" +
+		loc.T("notices.aiRepair.review", "link", link) + "\n"
 
-	return *value
+	return loc.T("notices.aiRepair.subject", "check", check), text
 }
 
 // repairBrief is the repair loop's first message: the contract, the old

@@ -7,7 +7,8 @@
 // It is WARN-only and never fails startup: unknown SP_* names are legitimate in
 // mixed fleets running newer and older binaries side by side, and operators may
 // export arbitrary SP_* vars that a check references through the ${env:...}
-// config-as-code mechanism — names unknowable at startup. The registry follows
+// config-as-code mechanism — names unknowable at startup (they must also be
+// listed in SP_CHECK_ENV_ALLOWLIST to resolve at all). The registry follows
 // a strict "recognized = actually binds" rule, so a documented-but-unbound
 // variable is intentionally reported.
 //
@@ -181,6 +182,7 @@ func otherManualReaderEnvVars() []string {
 		"SP_LOG_HTTP_CALLS",
 		"SP_TEST_PG_BINARIES_PATH",
 		"SP_MCP_TOOLSETS",
+		"SP_PLUGIN_FINGER_KEYS",
 	}
 }
 

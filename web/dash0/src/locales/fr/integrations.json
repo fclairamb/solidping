@@ -239,7 +239,7 @@
     "authToken": "Serveur API + jeton",
     "authKubeconfig": "Kubeconfig",
     "authInCluster": "Dans le cluster (ce cluster)",
-    "inClusterHint": "Utilise le jeton de compte de service monté dans le pod de SolidPing. Ne fonctionne que si SolidPing s'exécute dans le cluster cible ; aucun identifiant n'est stocké.",
+    "inClusterHint": "Utilise le jeton de compte de service monté dans le pod de SolidPing. Ne fonctionne que si SolidPing s'exécute dans le cluster cible ; aucun identifiant n'est stocké. L'opérateur doit l'activer avec SP_K8S_ALLOW_IN_CLUSTER=true.",
     "apiServer": "URL du serveur API",
     "token": "Jeton porteur",
     "kubeconfig": "Kubeconfig (YAML)",
@@ -272,7 +272,8 @@
     "freebox": "Surveiller une Freebox Free (qualité de ligne, débit de synchronisation, état réseau)",
     "webpush": "Recevoir des alertes sous forme de notifications navigateur sur vos appareils abonnés",
     "kubernetes": "Surveiller la santé des réplicas Kubernetes (Deployments, ReplicaSets)",
-    "msteams-bot": "Bot Teams bidirectionnel : alertes, commandes @mention et suivi d'incident groupé"
+    "msteams-bot": "Bot Teams bidirectionnel : alertes, commandes @mention et suivi d'incident groupé",
+    "a2a": "Confier les incidents à un agent IA qui enquête"
   },
   "sms": {
     "title": "SMS et appels",
@@ -381,5 +382,25 @@
     "resubscribeAria": "Réabonner {{email}}"
   },
   "deleteConfirmTitle": "Supprimer l'intégration ?",
-  "deleteConfirmBody": "Cela supprimera définitivement « {{name}} »."
+  "deleteConfirmBody": "Cela supprimera définitivement « {{name}} ».",
+  "a2a": {
+    "cardUrl": "URL de l'Agent Card",
+    "cardUrlHint": "L'URL complète de l'Agent Card, ou l'origine de l'agent : /.well-known/agent-card.json est alors ajouté.",
+    "auth": "Authentification",
+    "authNone": "Aucune",
+    "authBearer": "Jeton Bearer",
+    "authApiKey": "En-tête de clé d'API",
+    "token": "Jeton Bearer",
+    "apiKeyHeader": "Nom de l'en-tête",
+    "apiKeyValue": "Clé d'API",
+    "instructions": "Instructions (facultatif)",
+    "instructionsPlaceholder": "Enquête et rends compte de tes conclusions, ne redémarre rien",
+    "instructionsHint": "Ajoutées à chaque message. L'agent peut enquêter avec les outils MCP de SolidPing : donnez-lui un jeton MCP.",
+    "testTitle": "Tester l'agent",
+    "testHelp": "Récupère l'Agent Card avec les valeurs ci-dessus. Rien n'est envoyé à l'agent.",
+    "testButton": "Tester",
+    "testFailed": "Échec",
+    "protocolVersion": "A2A {{version}}",
+    "noSkills": "La carte ne liste aucune compétence."
+  }
 }

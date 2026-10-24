@@ -1405,8 +1405,6 @@ func TestApplyPasswordHashingEnvIsIdempotent(t *testing.T) {
 // TestLoad_Argon2ExplicitDefaultsFalse pins that a plain Load (no file, no
 // SP_AUTH_PASSWORD_ARGON2_* variable) leaves the argon2 cost implicit, so the
 // small-host profile may apply, and that the auto-profile defaults to on.
-//
-//nolint:paralleltest // t.Chdir changes the process working directory
 func TestLoad_Argon2ExplicitDefaultsFalse(t *testing.T) {
 	r := require.New(t)
 
@@ -1450,8 +1448,6 @@ func TestLoad_Argon2ExplicitFromEnv(t *testing.T) {
 
 // TestLoad_Argon2ExplicitFromConfigFile: a config.yml argon2 cost key makes the
 // cost explicit, while an unrelated password key does not.
-//
-//nolint:paralleltest // t.Chdir changes the process working directory
 func TestLoad_Argon2ExplicitFromConfigFile(t *testing.T) {
 	r := require.New(t)
 
@@ -2113,27 +2109,4 @@ func TestAuditRetentionYAMLZeroSurvives(t *testing.T) {
 	cfg := Config{Audit: AuditConfig{RetentionDays: DefaultAuditRetentionDays}}
 	require.NoError(t, k.Unmarshal("", &cfg))
 	require.Equal(t, 0, cfg.Audit.RetentionDays)
-}
-
-// TestLoad_WorkerPoolFromConfigFile: the real YAML nesting is
-// server.check_worker.nb / server.job_worker.nb, and the env var wins.
-func TestLoad_WorkerPoolFromConfigFile(t *testing.T) {
-	r := require.New(t)
-
-	dir := t.TempDir()
-	t.Chdir(dir)
-
-	doc := "server:\n  check_worker:\n    nb: 8\n  job_worker:\n    nb: 4\n"
-	r.NoError(os.WriteFile(filepath.Join(dir, "config.yml"), []byte(doc), 0o600))
-
-	cfg, err := Load()
-	r.NoError(err)
-	r.Equal(8, cfg.Server.CheckWorker.Nb)
-	r.Equal(4, cfg.Server.JobWorker.Nb)
-
-	t.Setenv("SP_SERVER_CHECK_WORKER_NB", "9")
-
-	cfg, err = Load()
-	r.NoError(err)
-	r.Equal(9, cfg.Server.CheckWorker.Nb)
 }

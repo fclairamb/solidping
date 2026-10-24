@@ -37,6 +37,13 @@ type Usage struct {
 	// Unlike the other figures this is a persistent counter, not a live count
 	// — sent messages cannot be un-sent.
 	WhatsappThisMonth int `json:"whatsappThisMonth"`
+	// SmsThisMonth / CallsThisMonth are the same persistent counters for SMS
+	// and voice calls, enforced against MaxSmsPerMonth / MaxCallsPerMonth.
+	// They count sends made on the instance's credentials only: a
+	// bring-your-own send is billed to the org's own provider account and
+	// does not consume the plan's allowance.
+	SmsThisMonth   int `json:"smsThisMonth"`
+	CallsThisMonth int `json:"callsThisMonth"`
 	// SMSGuard reports the instance-spend guards (instance-wide hourly cap,
 	// destination-country allow-list) and how many of this org's sends they
 	// have refused since process start. Nil when the deployment configures no
@@ -82,12 +89,9 @@ func (s *Service) Usage(ctx context.Context, orgUID string) (Usage, error) {
 	// A counter read must never fail the whole usage page: the monthly
 	// counter is informational here, and the reservation path is the one that
 	// actually enforces the cap.
-	whatsapp, err := s.db.GetMonthlyUsage(
-		ctx, orgUID, models.UsageCounterKindWhatsApp, monthStart(s.now()),
-	)
-	if err != nil {
-		whatsapp = 0
-	}
+	whatsapp := s.monthlyCount(ctx, orgUID, models.UsageCounterKindWhatsApp)
+	smsCount := s.monthlyCount(ctx, orgUID, models.UsageCounterKindSMS)
+	calls := s.monthlyCount(ctx, orgUID, models.UsageCounterKindVoice)
 
 	sloCount, err := s.db.CountSLOs(ctx, orgUID)
 	if err != nil {
@@ -97,10 +101,20 @@ func (s *Service) Usage(ctx context.Context, orgUID string) (Usage, error) {
 	return Usage{
 		Checks: len(rates), ChecksPerMinute: perMin, SSOUsers: members,
 		Agents: agentCount, CustomDomains: customDomains,
-		WhatsappThisMonth: whatsapp,
-		SMSGuard:          s.SMSGuardStatusFor(orgUID),
-		Slos:              sloCount,
+		WhatsappThisMonth: whatsapp, SmsThisMonth: smsCount, CallsThisMonth: calls,
+		SMSGuard: s.SMSGuardStatusFor(orgUID),
+		Slos:     sloCount,
 	}, nil
+}
+
+// monthlyCount reads one current-month counter, 0 on error.
+func (s *Service) monthlyCount(ctx context.Context, orgUID, kind string) int {
+	count, err := s.db.GetMonthlyUsage(ctx, orgUID, kind, monthStart(s.now()))
+	if err != nil {
+		return 0
+	}
+
+	return count
 }
 
 // SloCreateAllowed returns ErrEntitlementExceeded (wrapped in QuotaError) when

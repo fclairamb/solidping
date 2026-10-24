@@ -9,6 +9,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	disc "github.com/fclairamb/solidping/server/internal/discovery"
+	"github.com/fclairamb/solidping/server/internal/egress"
 	"github.com/fclairamb/solidping/server/internal/integrations/freebox"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
@@ -59,6 +60,12 @@ type FreeboxLanDiscoveryJobRun struct {
 func (r *FreeboxLanDiscoveryJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) error {
 	log := jctx.Logger
 
+	// The active scan of the hosts the Freebox reports goes through the
+	// process egress guard (spec 2026-10-16-10): under an enforcing policy the
+	// private hosts are not probed and fall back to the router's reachability
+	// flag in buildFreeboxRows.
+	ctx = egress.WithGuard(ctx, egressGuardFrom(jctx))
+
 	if jctx.OrganizationUID == nil {
 		return errNoOrganizationUID
 	}
@@ -92,11 +99,12 @@ func (r *FreeboxLanDiscoveryJobRun) Run(ctx context.Context, jctx *jobdef.JobCon
 		inputs = append(inputs, disc.HostInput{IP: ip, HostnameHint: lanHosts[i].Name})
 	}
 
-	scanned, err := disc.ScanHosts(ctx, inputs, &disc.Config{})
+	scanResult, err := disc.ScanHosts(ctx, inputs, &disc.Config{})
 	if err != nil {
 		return fmt.Errorf("scan freebox hosts: %w", err)
 	}
 
+	scanned := scanResult.Hosts
 	rows := buildFreeboxRows(lanHosts, scanned)
 
 	log.InfoContext(ctx, "Freebox LAN discovery complete",
@@ -107,7 +115,7 @@ func (r *FreeboxLanDiscoveryJobRun) Run(ctx context.Context, jctx *jobdef.JobCon
 		"job_uid", jobUID,
 	)
 
-	return disc.UpsertDiscoveredChecks(ctx, jctx.DB, orgUID, jobUID, models.DiscoverySourceFreebox, rows, log)
+	return disc.UpsertDiscoveredChecks(ctx, jctx.DB, orgUID, jobUID, "", models.DiscoverySourceFreebox, rows, log)
 }
 
 // buildFreeboxRows turns each Freebox device into suggested-check rows. A host

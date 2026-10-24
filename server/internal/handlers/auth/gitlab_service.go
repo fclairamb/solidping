@@ -184,16 +184,7 @@ func (s *GitLabOAuthService) HandleCallback(
 		return nil, err
 	}
 
-	return &GitLabOAuthResult{
-		AccessToken:     login.AccessToken,
-		RefreshToken:    login.RefreshToken,
-		ExpiresIn:       login.ExpiresIn,
-		OrgSlug:         org.Slug,
-		UserUID:         user.UID,
-		Pending:         login.Pending,
-		FallbackOrgSlug: login.FallbackOrgSlug,
-		PendingOrgSlug:  login.PendingOrgSlug,
-	}, nil
+	return login.Outcome(org.Slug, user.UID), nil
 }
 
 // getGitLabBaseURL returns the GitLab instance base URL.

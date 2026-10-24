@@ -89,6 +89,8 @@
     "upgrade": "Upgrade",
     "loadError": "Could not load usage.",
     "whatsappThisMonth": "WhatsApp messages this month",
+    "smsThisMonth": "SMS this month",
+    "callsThisMonth": "Voice calls this month",
     "smsGuard": {
       "title": "Some SMS alerts were not sent",
       "runaway": "{{count}} message(s) were refused because this instance's SMS cap of {{limit}}/hour was reached. Alerts are being dropped instance-wide — tell your operator.",
@@ -351,6 +353,7 @@
       "region": "Region",
       "agents": "Agents",
       "ipv6": "IPv6",
+      "discoveryBadge": "Discovery",
       "actions": "Actions",
       "mint": "New enrollment token",
       "delete": "Delete location",
@@ -442,5 +445,10 @@
       "deleted": "Variable deleted",
       "failed": "Could not delete the variable"
     }
+  },
+  "upgradePage": {
+    "title": "Upgrade your plan",
+    "redirecting": "Redirecting you to the plan page...",
+    "unavailable": "Only organization admins can change the plan, or this deployment has no billing. Ask an admin of your organization."
   }
 }

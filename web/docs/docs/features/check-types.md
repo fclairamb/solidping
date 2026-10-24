@@ -5,7 +5,7 @@ title: Check Types
 
 # Check Types
 
-SolidPing supports **43 check types** across multiple categories for monitoring your services. Each check type has specific configuration options and validation capabilities.
+SolidPing supports **44 check types** across multiple categories for monitoring your services. Each check type has specific configuration options and validation capabilities.
 
 <!--
   Keep this number equal to the number of `###` sections above "Common Options"
@@ -432,7 +432,7 @@ dns://8.8.8.8/example.com?type=MX
 |--------|-------------|---------|
 | Resolver | DNS server to query | `8.8.8.8`, `1.1.1.1` |
 | Domain | Domain to resolve | `example.com` |
-| Type | Record type | `A`, `AAAA`, `MX`, `TXT`, `CNAME`, `NS`, `SOA` |
+| Type | Record type | `A`, `AAAA`, `MX`, `TXT`, `CNAME`, `NS`, `SOA`, `CAA` |
 | Expected | Expected values | `93.184.216.34` |
 | Detect changes (`detect_changes`) | Report any record added or removed since a captured baseline | `true` |
 | On change (`on_change`) | Status when the records changed: `down` (default) or `warning` | `warning` |
@@ -579,7 +579,7 @@ Findings:
 - The result output carries the count per type, the first 50 findings, `newFindings` (findings absent from the previous run) and `pagesCrawled`. Incident notifications name the new findings first.
 - The full findings list of the last 5 runs is downloadable from the check page (or `GET /api/v1/orgs/{org}/checks/{check}/crawl-reports`). `GET .../checks/{check}/run` shows the run in progress and `DELETE` on it cancels it.
 - Each fetched URL counts as one execution against your organization's checks-per-minute limit: a daily 500-page crawl counts as 500 executions per day.
-- A crawl runs from one region only, and never on a private location. Its minimum period is `1h`, default `24h`.
+- A crawl runs from one region only. It can be a [private location](./private-locations.md#crawl-from-a-private-location): the location's agents crawl an intranet or a staging site the cloud cannot reach. Its minimum period is `1h`, default `24h`.
 - The crawler identifies itself as `SolidPing-Crawler/<version> (+https://solidping.io/bot)` and only parses server-rendered HTML (no JavaScript).
 
 ### Application health {#application-health}
@@ -620,6 +620,35 @@ The verdict, first match wins:
 7. Otherwise **up**. `skipped` and `unknown` components are shown and never change the status.
 
 The output has `format`, `finished_at`, the `components` (at most 100, `components_truncated` past that), and the `failed` and `warning` name lists. `error` lists the failing components as `Name: message`, joined with `; `, so notifications name them with no template change. Metrics: `components_total`, `components_failed`, `components_warning`, plus numeric component metadata as `meta.<component>.<key>` (at most 20 per check).
+
+### Vendor status page {#vendor-status}
+
+Get alerted when a vendor you depend on (GitHub, Cloudflare, OpenAI...) declares an outage on its own status page, usually before your own checks notice. The check reads `<url>/api/v2/summary.json`, the Atlassian Statuspage v2 format, which incident.io status pages also serve. Pages built on other products (Instatus for instance) are not supported.
+
+Pick the vendor from the catalog (about 40 providers) or enter a custom `https` URL, then optionally select the components you care about. With no component selected the whole page is judged.
+
+| Scope | Page / component status | Result |
+|---|---|---|
+| Whole page | `none`, `maintenance` | up |
+| Whole page | `minor` | warning |
+| Whole page | `major`, `critical` | down |
+| Selected components | `operational`, `under_maintenance` | up |
+| Selected components | `degraded_performance` | warning |
+| Selected components | `partial_outage`, `major_outage` | down |
+
+With several components selected the worst status wins.
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `url` | Root of the vendor status page, `https` only. A trailing `/api/v2/summary.json` is removed | required |
+| `components` | Up to 100 component ids to judge instead of the whole page | whole page |
+| `provider` | Catalog slug, used for the default name | none |
+
+- The default period is `5m`.
+- Unreachable is an error, never down: if the status page cannot be fetched, answers something other than HTTP 200, does not return a v2 summary, or a selected component no longer exists (the error names its id), the result is an error. A vendor whose status page is down says nothing about the vendor, and it never opens an incident.
+- The output `error` line names the active incident: `GitHub: "Incident with Actions" (major) https://stspg.io/xxxx`. The output also carries `components` (`id`, `name`, `status` of every component of the page) and `incidents` (`name`, `impact`, `status`, `shortlink`, `updatedAt`), shown on the check page. The `error` line is set for Warning results too, not only Down.
+- The fetch goes through the same egress guard, tunnels and timeouts as an HTTP check.
+- Region placement: the check can run from any region, and results do not depend on where it runs. Pick one region to avoid several identical requests per period.
 
 ## Security & Certificates
 
@@ -713,6 +742,8 @@ mysql://user:password@hostname:3306/database
 | URL | Connection string | `mysql://user:pass@db:3306/mydb` |
 | Query | Optional test query | `SELECT 1` |
 | Timeout | Connection timeout | `10s` |
+
+The username, password and database name must not contain any of `@ / ( ) ? & :` (a `${env:NAME}` or `${param:KEY}` reference is fine). Use a dedicated monitoring account whose password avoids them. The check never lets the server read local files (`LOAD DATA LOCAL INFILE` is always off).
 
 ### MongoDB {#mongodb}
 
@@ -1367,8 +1398,8 @@ Outputs include the namespace, kind, name, container images, and workload condit
 Register a cluster once under **Integrations → Kubernetes** (it is a data source, not a notification channel). Three authentication modes:
 
 - **API server + token** — an API server URL plus a bearer token (typically a service-account token), optionally a CA certificate (or skip TLS verification).
-- **Kubeconfig** — paste a full kubeconfig that resolves to an API server and credentials.
-- **In-cluster** — when SolidPing itself runs as a pod in the target cluster, it uses the mounted service-account token; no credentials are stored.
+- **Kubeconfig** — paste a full kubeconfig that resolves to an API server and credentials. Its user entry must carry static credentials (token, client certificate, username/password): a kubeconfig whose user has an `exec` credential plugin or an `auth-provider` block is rejected on save and refused when used, because those make the server run a command. Generate a service-account token instead (`kubectl create token <sa>`).
+- **In-cluster** — when SolidPing itself runs as a pod in the target cluster, it uses the mounted service-account token; no credentials are stored. Disabled unless the operator sets `SP_K8S_ALLOW_IN_CLUSTER=true` (self-hosted only): without it, saving an in-cluster connection is rejected and an existing one fails when used.
 
 The token / kubeconfig is stored **encrypted** (AES-256-GCM) in the connection's private settings and is never returned to the dashboard. Use **Test connection** to confirm the credentials work — it calls the cluster's `/version` endpoint.
 

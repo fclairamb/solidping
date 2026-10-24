@@ -207,9 +207,11 @@ func Resolve(ctx context.Context, orgUID, tunnelCheckUID string) (*Dialer, io.Cl
 
 // NewResolver builds the production resolver: load the referenced check, assert
 // every tunnel-eligibility rule, decrypt its credentials, and dial the bastion.
-func NewResolver(loader CheckLoader, creds Decryptor) Resolver {
+// allowEnv is the operator allowlist a `${env:}` reference in the bastion's
+// config must pass (nil denies every one).
+func NewResolver(loader CheckLoader, creds Decryptor, allowEnv secretref.EnvAllowFunc) Resolver {
 	return func(ctx context.Context, orgUID, tunnelCheckUID string) (*Dialer, io.Closer, error) {
-		cfg, err := LoadConfig(ctx, loader, creds, orgUID, tunnelCheckUID)
+		cfg, err := LoadConfig(ctx, loader, creds, allowEnv, orgUID, tunnelCheckUID)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -222,7 +224,8 @@ func NewResolver(loader CheckLoader, creds Decryptor) Resolver {
 // it usable as a tunnel, returning its decrypted config. Split out of the dial
 // so the rules can be unit-tested without a network.
 func LoadConfig(
-	ctx context.Context, loader CheckLoader, creds Decryptor, orgUID, tunnelCheckUID string,
+	ctx context.Context, loader CheckLoader, creds Decryptor, allowEnv secretref.EnvAllowFunc,
+	orgUID, tunnelCheckUID string,
 ) (*checkssh.SSHConfig, error) {
 	check, err := loader.GetCheck(ctx, orgUID, tunnelCheckUID)
 	if err != nil || check == nil {
@@ -245,8 +248,9 @@ func LoadConfig(
 	// Same materialization the agent-side twin does (spec 2026-09-11-03, audit
 	// item 5): a `${env:}` in the bastion's config resolves here, on the process
 	// that will dial, and anything else fails loudly instead of being offered to
-	// the SSH server as a literal password.
-	resolved, _, refErr := secretref.ResolveConfig(ctx, effective, secretref.ExecutionResolver())
+	// the SSH server as a literal password. Only names on the operator
+	// allowlist resolve (spec 2026-10-16-03).
+	resolved, _, refErr := secretref.ResolveConfig(ctx, effective, secretref.ExecutionResolver(allowEnv))
 	if refErr != nil {
 		return nil, wrapErr("load", refErr)
 	}

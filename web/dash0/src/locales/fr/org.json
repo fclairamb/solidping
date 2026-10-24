@@ -89,6 +89,8 @@
     "upgrade": "Mettre à niveau",
     "loadError": "Impossible de charger l'utilisation.",
     "whatsappThisMonth": "Messages WhatsApp ce mois-ci",
+    "smsThisMonth": "SMS ce mois-ci",
+    "callsThisMonth": "Appels vocaux ce mois-ci",
     "smsGuard": {
       "title": "Certaines alertes SMS n'ont pas été envoyées",
       "runaway": "{{count}} message(s) ont été refusés car le plafond SMS de cette instance ({{limit}}/heure) a été atteint. Des alertes sont perdues pour toute l'instance — prévenez votre opérateur.",
@@ -351,6 +353,7 @@
       "region": "Région",
       "agents": "Agents",
       "ipv6": "IPv6",
+      "discoveryBadge": "Découverte",
       "actions": "Actions",
       "mint": "Nouveau jeton d'inscription",
       "delete": "Supprimer l'emplacement",
@@ -442,5 +445,10 @@
       "deleted": "Variable supprimée",
       "failed": "Impossible de supprimer la variable"
     }
+  },
+  "upgradePage": {
+    "title": "Changer de formule",
+    "redirecting": "Redirection vers la page des formules...",
+    "unavailable": "Seuls les administrateurs de l'organisation peuvent changer de formule, ou ce déploiement n'a pas de facturation. Demandez à un administrateur de votre organisation."
   }
 }

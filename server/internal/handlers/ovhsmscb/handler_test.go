@@ -255,9 +255,9 @@ func TestResolveToken(t *testing.T) {
 	r.Empty(ResolveToken(&config.Config{}))
 
 	for _, secret := range []string{config.DefaultJWTSecret, "  " + config.DefaultJWTSecret + " "} {
-		public := &config.Config{}
-		public.Auth.JWTSecret = secret
-		r.Empty(ResolveToken(public), "the public default secret must never yield a token")
+		def := &config.Config{}
+		def.Auth.JWTSecret = secret
+		r.Empty(ResolveToken(def), "the public default secret must never derive a token")
 	}
 }
 
@@ -268,8 +268,6 @@ func hmacToken(secret string) string {
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
-// TestHandleDLRTokenSources checks that the token ResolveToken yields is the
-// one the handler accepts, and that no other source is.
 func TestHandleDLRTokenSources(t *testing.T) {
 	t.Parallel()
 
@@ -279,28 +277,24 @@ func TestHandleDLRTokenSources(t *testing.T) {
 		jwtSecret string
 		candidate func(resolved string) string
 		wantCode  int
-		wantWrite bool
 	}{
-		{"explicit token", "explicit-tok", "", func(string) string { return "explicit-tok" }, http.StatusNoContent, true},
+		{"explicit token", testToken, "", func(string) string { return testToken }, http.StatusNoContent},
 		{
-			"explicit wins over jwt-derived", "explicit-tok", "jwt-secret",
-			func(string) string { return hmacToken("jwt-secret") }, http.StatusNotFound, false,
+			"explicit wins over derived", testToken, "jwt-1",
+			func(string) string { return hmacToken("jwt-1") }, http.StatusNotFound,
+		},
+		{"derived token", "", "random-jwt", func(r string) string { return r }, http.StatusNoContent},
+		{
+			"derived from another secret", "", "random-jwt",
+			func(string) string { return hmacToken("other") }, http.StatusNotFound,
 		},
 		{
-			"derived from random secret", "", "random-secret-1",
-			func(resolved string) string { return resolved }, http.StatusNoContent, true,
+			"default secret never accepted", "", config.DefaultJWTSecret,
+			func(string) string { return hmacToken(config.DefaultJWTSecret) }, http.StatusNotFound,
 		},
 		{
-			"derived from another secret", "", "random-secret-1",
-			func(string) string { return hmacToken("random-secret-2") }, http.StatusNotFound, false,
-		},
-		{
-			"public default secret", "", config.DefaultJWTSecret,
-			func(string) string { return hmacToken(config.DefaultJWTSecret) }, http.StatusNotFound, false,
-		},
-		{
-			"explicit token with spaces", "  padded-tok  ", "",
-			func(string) string { return "padded-tok" }, http.StatusNoContent, true,
+			"explicit token trimmed", "  " + testToken + " ", "",
+			func(string) string { return testToken }, http.StatusNoContent,
 		},
 	}
 
@@ -318,16 +312,14 @@ func TestHandleDLRTokenSources(t *testing.T) {
 			rec := env.get(t, "/api/v1/integrations/ovhsms/dlr/"+tt.candidate(resolved)+"?id=424242&ptt=4")
 			require.Equal(t, tt.wantCode, rec.Code)
 
-			if tt.wantWrite {
-				require.Contains(t, env.deliveryBody(t), "delivered")
-			} else {
+			if tt.wantCode == http.StatusNotFound {
 				require.Empty(t, rec.Body.String())
 				require.Empty(t, env.deliveryBody(t))
+			} else {
+				require.Contains(t, env.deliveryBody(t), "delivered")
 			}
 		})
 	}
-
-	require.Equal(t, "ff757c366ba6", hmacToken(config.DefaultJWTSecret)[:12])
 }
 
 func TestCallbackURL(t *testing.T) {

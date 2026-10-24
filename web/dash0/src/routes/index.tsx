@@ -1,4 +1,6 @@
-import { createFileRoute, Navigate } from "@tanstack/react-router";
+import { useEffect } from "react";
+import { createFileRoute, Navigate, useNavigate } from "@tanstack/react-router";
+import { landingForOrg } from "@/lib/pending-check";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { readCachedDemoOrgSlug } from "@/api/public-config";
@@ -31,7 +33,7 @@ function getStoredOrg(): string | null {
 
 function RootRedirect() {
   const { demo } = Route.useSearch();
-  const { org, isLoading } = useAuth();
+  const { org, user, isLoading } = useAuth();
   const queryClient = useQueryClient();
   // The demo flag is answered BEFORE the session is consulted: a visitor who
   // already holds a session (their own org, or the demo itself) followed a link
@@ -73,5 +75,17 @@ function RootRedirect() {
   if (!org) {
     return <Navigate to="/no-org" search={{ membershipPending: undefined }} />;
   }
-  return <Navigate to="/orgs/$org" params={{ org }} />;
+  // A prefill left by a /monitor visit that went through registration (spec
+  // 2026-10-14-03).
+  return <EnterOrg org={org} isDemo={Boolean(user?.isDemo)} />;
+}
+
+// Consumes the pending prefill exactly once, in an effect: reading it during
+// render would delete it on the first render and lose it on any re-render.
+function EnterOrg({ org, isDemo }: { org: string; isDemo: boolean }) {
+  const navigate = useNavigate();
+  useEffect(() => {
+    navigate({ ...landingForOrg(org, isDemo), replace: true });
+  }, [navigate, org, isDemo]);
+  return null;
 }

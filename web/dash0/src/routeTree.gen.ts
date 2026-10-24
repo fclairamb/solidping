@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as NoOrgRouteImport } from './routes/no-org'
+import { Route as MonitorRouteImport } from './routes/monitor'
 import { Route as McpRouteImport } from './routes/mcp'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
@@ -24,6 +25,7 @@ import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as ConfirmRegistrationTokenRouteImport } from './routes/confirm-registration.$token'
 import { Route as AuthCompleteRouteImport } from './routes/auth.complete'
 import { Route as OrgsOrgIndexRouteImport } from './routes/orgs/$org/index'
+import { Route as OrgsOrgUpgradeRouteImport } from './routes/orgs/$org/upgrade'
 import { Route as OrgsOrgTestRouteImport } from './routes/orgs/$org/test'
 import { Route as OrgsOrgStatusUpdatesRouteImport } from './routes/orgs/$org/status-updates'
 import { Route as OrgsOrgStatusPagesRouteImport } from './routes/orgs/$org/status-pages'
@@ -167,6 +169,11 @@ const NoOrgRoute = NoOrgRouteImport.update({
   path: '/no-org',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MonitorRoute = MonitorRouteImport.update({
+  id: '/monitor',
+  path: '/monitor',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const McpRoute = McpRouteImport.update({
   id: '/mcp',
   path: '/mcp',
@@ -236,6 +243,11 @@ const AuthCompleteRoute = AuthCompleteRouteImport.update({
 const OrgsOrgIndexRoute = OrgsOrgIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => OrgsOrgRoute,
+} as any)
+const OrgsOrgUpgradeRoute = OrgsOrgUpgradeRouteImport.update({
+  id: '/upgrade',
+  path: '/upgrade',
   getParentRoute: () => OrgsOrgRoute,
 } as any)
 const OrgsOrgTestRoute = OrgsOrgTestRouteImport.update({
@@ -993,6 +1005,7 @@ export interface FileRoutesByFullPath {
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/mcp': typeof McpRoute
+  '/monitor': typeof MonitorRoute
   '/no-org': typeof NoOrgRoute
   '/auth/complete': typeof AuthCompleteRoute
   '/confirm-registration/$token': typeof ConfirmRegistrationTokenRoute
@@ -1024,6 +1037,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/status-pages': typeof OrgsOrgStatusPagesRouteWithChildren
   '/orgs/$org/status-updates': typeof OrgsOrgStatusUpdatesRouteWithChildren
   '/orgs/$org/test': typeof OrgsOrgTestRouteWithChildren
+  '/orgs/$org/upgrade': typeof OrgsOrgUpgradeRoute
   '/orgs/$org/': typeof OrgsOrgIndexRoute
   '/orgs/$org/account/device': typeof OrgsOrgAccountDeviceRoute
   '/orgs/$org/account/mcp': typeof OrgsOrgAccountMcpRoute
@@ -1147,6 +1161,7 @@ export interface FileRoutesByTo {
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/mcp': typeof McpRoute
+  '/monitor': typeof MonitorRoute
   '/no-org': typeof NoOrgRoute
   '/auth/complete': typeof AuthCompleteRoute
   '/confirm-registration/$token': typeof ConfirmRegistrationTokenRoute
@@ -1162,6 +1177,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/mcp': typeof OrgsOrgMcpRoute
   '/orgs/$org/me': typeof OrgsOrgMeRouteWithChildren
   '/orgs/$org/register': typeof OrgsOrgRegisterRoute
+  '/orgs/$org/upgrade': typeof OrgsOrgUpgradeRoute
   '/orgs/$org': typeof OrgsOrgIndexRoute
   '/orgs/$org/account/device': typeof OrgsOrgAccountDeviceRoute
   '/orgs/$org/account/mcp': typeof OrgsOrgAccountMcpRoute
@@ -1275,6 +1291,7 @@ export interface FileRoutesById {
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/mcp': typeof McpRoute
+  '/monitor': typeof MonitorRoute
   '/no-org': typeof NoOrgRoute
   '/auth/complete': typeof AuthCompleteRoute
   '/confirm-registration/$token': typeof ConfirmRegistrationTokenRoute
@@ -1306,6 +1323,7 @@ export interface FileRoutesById {
   '/orgs/$org/status-pages': typeof OrgsOrgStatusPagesRouteWithChildren
   '/orgs/$org/status-updates': typeof OrgsOrgStatusUpdatesRouteWithChildren
   '/orgs/$org/test': typeof OrgsOrgTestRouteWithChildren
+  '/orgs/$org/upgrade': typeof OrgsOrgUpgradeRoute
   '/orgs/$org/': typeof OrgsOrgIndexRoute
   '/orgs/$org/account/device': typeof OrgsOrgAccountDeviceRoute
   '/orgs/$org/account/mcp': typeof OrgsOrgAccountMcpRoute
@@ -1431,6 +1449,7 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/login'
     | '/mcp'
+    | '/monitor'
     | '/no-org'
     | '/auth/complete'
     | '/confirm-registration/$token'
@@ -1462,6 +1481,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/status-pages'
     | '/orgs/$org/status-updates'
     | '/orgs/$org/test'
+    | '/orgs/$org/upgrade'
     | '/orgs/$org/'
     | '/orgs/$org/account/device'
     | '/orgs/$org/account/mcp'
@@ -1585,6 +1605,7 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/login'
     | '/mcp'
+    | '/monitor'
     | '/no-org'
     | '/auth/complete'
     | '/confirm-registration/$token'
@@ -1600,6 +1621,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/mcp'
     | '/orgs/$org/me'
     | '/orgs/$org/register'
+    | '/orgs/$org/upgrade'
     | '/orgs/$org'
     | '/orgs/$org/account/device'
     | '/orgs/$org/account/mcp'
@@ -1712,6 +1734,7 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/login'
     | '/mcp'
+    | '/monitor'
     | '/no-org'
     | '/auth/complete'
     | '/confirm-registration/$token'
@@ -1743,6 +1766,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/status-pages'
     | '/orgs/$org/status-updates'
     | '/orgs/$org/test'
+    | '/orgs/$org/upgrade'
     | '/orgs/$org/'
     | '/orgs/$org/account/device'
     | '/orgs/$org/account/mcp'
@@ -1867,6 +1891,7 @@ export interface RootRouteChildren {
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   LoginRoute: typeof LoginRoute
   McpRoute: typeof McpRoute
+  MonitorRoute: typeof MonitorRoute
   NoOrgRoute: typeof NoOrgRoute
   AuthCompleteRoute: typeof AuthCompleteRoute
   ConfirmRegistrationTokenRoute: typeof ConfirmRegistrationTokenRoute
@@ -1885,6 +1910,13 @@ declare module '@tanstack/react-router' {
       path: '/no-org'
       fullPath: '/no-org'
       preLoaderRoute: typeof NoOrgRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/monitor': {
+      id: '/monitor'
+      path: '/monitor'
+      fullPath: '/monitor'
+      preLoaderRoute: typeof MonitorRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/mcp': {
@@ -1983,6 +2015,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/orgs/$org/'
       preLoaderRoute: typeof OrgsOrgIndexRouteImport
+      parentRoute: typeof OrgsOrgRoute
+    }
+    '/orgs/$org/upgrade': {
+      id: '/orgs/$org/upgrade'
+      path: '/upgrade'
+      fullPath: '/orgs/$org/upgrade'
+      preLoaderRoute: typeof OrgsOrgUpgradeRouteImport
       parentRoute: typeof OrgsOrgRoute
     }
     '/orgs/$org/test': {
@@ -3517,6 +3556,7 @@ interface OrgsOrgRouteChildren {
   OrgsOrgStatusPagesRoute: typeof OrgsOrgStatusPagesRouteWithChildren
   OrgsOrgStatusUpdatesRoute: typeof OrgsOrgStatusUpdatesRouteWithChildren
   OrgsOrgTestRoute: typeof OrgsOrgTestRouteWithChildren
+  OrgsOrgUpgradeRoute: typeof OrgsOrgUpgradeRoute
   OrgsOrgIndexRoute: typeof OrgsOrgIndexRoute
   OrgsOrgNotificationsNotificationUidRoute: typeof OrgsOrgNotificationsNotificationUidRoute
   OrgsOrgOauthConsentRoute: typeof OrgsOrgOauthConsentRoute
@@ -3546,6 +3586,7 @@ const OrgsOrgRouteChildren: OrgsOrgRouteChildren = {
   OrgsOrgStatusPagesRoute: OrgsOrgStatusPagesRouteWithChildren,
   OrgsOrgStatusUpdatesRoute: OrgsOrgStatusUpdatesRouteWithChildren,
   OrgsOrgTestRoute: OrgsOrgTestRouteWithChildren,
+  OrgsOrgUpgradeRoute: OrgsOrgUpgradeRoute,
   OrgsOrgIndexRoute: OrgsOrgIndexRoute,
   OrgsOrgNotificationsNotificationUidRoute:
     OrgsOrgNotificationsNotificationUidRoute,
@@ -3563,6 +3604,7 @@ const rootRouteChildren: RootRouteChildren = {
   ForgotPasswordRoute: ForgotPasswordRoute,
   LoginRoute: LoginRoute,
   McpRoute: McpRoute,
+  MonitorRoute: MonitorRoute,
   NoOrgRoute: NoOrgRoute,
   AuthCompleteRoute: AuthCompleteRoute,
   ConfirmRegistrationTokenRoute: ConfirmRegistrationTokenRoute,

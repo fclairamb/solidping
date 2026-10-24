@@ -88,7 +88,10 @@
     "auth.impersonation_started": "Session « voir en tant que » démarrée",
     "auth.email_changed": "Adresse e-mail modifiée",
     "agent.connected": "Agent connecté",
-    "agent.disconnected": "Agent déconnecté"
+    "agent.disconnected": "Agent déconnecté",
+    "discovery.scan_started": "Scan de découverte démarré",
+    "discovery.scan_canceled": "Scan de découverte annulé",
+    "discovery.chunk_refused": "Lot de découverte refusé"
   },
   "descriptions": {
     "org.activation.signup_completed": "Votre organisation est configurée et prête à l'emploi.",
@@ -148,6 +151,7 @@
       "status_page": "Pages de statut",
       "maintenance_window": "Fenêtres de maintenance",
       "config": "Configuration as code",
+      "discovery": "Découverte",
       "check": "Contrôles",
       "incident": "Incidents",
       "org": "Organisation",

@@ -1,6 +1,10 @@
 package checkerdef
 
-import "github.com/fclairamb/solidping/server/internal/config"
+import (
+	"slices"
+
+	"github.com/fclairamb/solidping/server/internal/config"
+)
 
 // ActivationResolver determines which check types are enabled based on server config and org overrides.
 type ActivationResolver struct {
@@ -20,6 +24,20 @@ func NewActivationResolver(cfg *config.CheckersConfig, deploymentMode string) *A
 	enabledMap := make(map[CheckType]bool, len(enabled))
 	for _, checkType := range enabled {
 		enabledMap[checkType] = true
+	}
+
+	// An unsafe plugin type (exec, nagios: arbitrary code outside the
+	// sandbox) is off by default on a SaaS deployment's cloud nodes, unless
+	// the operator lists it in checkers.enabled (spec 2026-10-17-05 §19).
+	// Private-location agents do not run in SaaS mode, so they keep it.
+	if deploymentMode == config.DeploymentModeSaaS {
+		for idx := range allMetas {
+			meta := &allMetas[idx]
+			if meta.Plugin != nil && slices.Contains(meta.Labels, labelUnsafe) &&
+				!slices.Contains(cfg.Enabled, string(meta.Type)) {
+				delete(enabledMap, meta.Type)
+			}
+		}
 	}
 
 	return &ActivationResolver{serverEnabled: enabledMap, deploymentMode: deploymentMode}

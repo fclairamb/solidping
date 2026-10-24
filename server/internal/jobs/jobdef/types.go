@@ -23,6 +23,11 @@ const (
 	JobTypeStateCleanup JobType = "state_cleanup"
 	// JobTypeNotification sends incident notifications via connections.
 	JobTypeNotification JobType = "notification"
+	// JobTypeA2ATaskPoll makes ONE GetTask call on an AI agent (A2A) task
+	// SolidPing started for an incident, then records the result on the
+	// incident timeline or schedules its successor. The whole polling state
+	// lives in the job config, so a restart mid-investigation loses nothing.
+	JobTypeA2ATaskPoll JobType = "a2a_task_poll"
 	// JobTypeSnoozeSweep auto-unsnoozes incidents whose snooze window has passed.
 	JobTypeSnoozeSweep JobType = "snooze_sweep"
 	// JobTypeEscalationStep fires one step of an escalation policy for an incident.
@@ -73,6 +78,11 @@ const (
 	// schedules one JobTypeNetworkDiscovery child per chunk, each carrying the plan
 	// UID as parentJobUid. Its own UID is the scan UID shown in the UI.
 	JobTypeNetworkDiscoveryPlan JobType = "network_discovery_plan"
+	// JobTypeNetworkDiscoveryAgentPlan is a LAN scan run by an agent of a
+	// private region (spec 2026-10-22-04): it fans out into worker_tasks of
+	// kind "discovery" and never scans from the server. A distinct type so an
+	// old node fails it rather than scanning the range from its own network.
+	JobTypeNetworkDiscoveryAgentPlan JobType = "network_discovery_agent_plan"
 	// JobTypeFreeboxLanDiscovery queries a paired Freebox channel's LAN browser
 	// and records suggested checks in the discovered_checks table
 	// (source='freebox') so they share the LAN-scan promote/dismiss UX.

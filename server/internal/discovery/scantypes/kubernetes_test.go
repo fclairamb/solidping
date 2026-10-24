@@ -2,6 +2,9 @@ package scantypes_test
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -14,6 +17,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/discovery/scantypes"
+	"github.com/fclairamb/solidping/server/internal/egress"
 	integrationk8s "github.com/fclairamb/solidping/server/internal/integrations/kubernetes"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
@@ -84,7 +88,7 @@ func TestKubernetesBuildJobValid(t *testing.T) {
 	r.Equal(models.DiscoverySourceKubernetes, def.Source())
 
 	params := json.RawMessage(`{"clusterUid":"` + clusterUID + `","namespaces":["prod"],"timeout":"15s"}`)
-	jobType, cfg, err := def.BuildJob(t.Context(), deps, orgUID, params)
+	jobType, cfg, err := def.BuildJob(t.Context(), deps, orgUID, "", params)
 	r.NoError(err)
 	r.Equal(string(jobdef.JobTypeKubernetesDiscovery), jobType)
 	r.Contains(string(cfg), clusterUID)
@@ -110,7 +114,7 @@ func TestKubernetesBuildJobUnknownCluster(t *testing.T) {
 
 	def := &scantypes.KubernetesDefinition{}
 	params := json.RawMessage(`{"clusterUid":"00000000-0000-0000-0000-000000000000"}`)
-	_, _, err := def.BuildJob(t.Context(), deps, orgUID, params)
+	_, _, err := def.BuildJob(t.Context(), deps, orgUID, "", params)
 	r.Error(err)
 	r.Equal(scantypes.CodeKubernetesClusterNotFound, codeOf(err))
 }
@@ -120,7 +124,7 @@ func TestKubernetesBuildJobMissingParam(t *testing.T) {
 
 	r := require.New(t)
 	def := &scantypes.KubernetesDefinition{}
-	_, _, err := def.BuildJob(t.Context(), scantypes.Deps{}, "org-1", json.RawMessage(`{}`))
+	_, _, err := def.BuildJob(t.Context(), scantypes.Deps{}, "org-1", "", json.RawMessage(`{}`))
 	r.Error(err)
 	r.Equal(scantypes.CodeInvalidParameters, codeOf(err))
 }
@@ -130,7 +134,7 @@ func TestKubernetesBuildJobMalformedJSON(t *testing.T) {
 
 	r := require.New(t)
 	def := &scantypes.KubernetesDefinition{}
-	_, _, err := def.BuildJob(t.Context(), scantypes.Deps{}, "org-1", json.RawMessage(`{nope`))
+	_, _, err := def.BuildJob(t.Context(), scantypes.Deps{}, "org-1", "", json.RawMessage(`{nope`))
 	r.Error(err)
 	r.Equal(scantypes.CodeInvalidParameters, codeOf(err))
 }
@@ -141,7 +145,51 @@ func TestKubernetesBuildJobNoDBService(t *testing.T) {
 	r := require.New(t)
 	def := &scantypes.KubernetesDefinition{}
 	params := json.RawMessage(`{"clusterUid":"some-uid"}`)
-	_, _, err := def.BuildJob(t.Context(), scantypes.Deps{}, "org-1", params)
+	_, _, err := def.BuildJob(t.Context(), scantypes.Deps{}, "org-1", "", params)
 	r.Error(err)
 	r.Equal(scantypes.CodeInvalidParameters, codeOf(err))
+}
+
+// probeCluster (via BuildJob) dials the API server through the egress guard of
+// the deps: under an enforcing guard a loopback API server is refused with the
+// egress denial and receives no request; a permissive guard is the control and
+// reaches /version. Real clientset (no factory swap), token mode.
+//
+//nolint:paralleltest // other tests swap the package-level clientset factory; this one needs the real one.
+func TestKubernetesBuildJobEgressGuard(t *testing.T) {
+	var requests atomic.Int64
+
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"major":"1","minor":"31","gitVersion":"v1.31.0"}`))
+	}))
+	t.Cleanup(apiServer.Close)
+
+	r := require.New(t)
+	deps, orgUID, _ := k8sFixture(t)
+
+	settings := &models.KubernetesSettings{APIServer: apiServer.URL}
+	m, err := settings.ToJSONMap()
+	r.NoError(err)
+	m["token"] = "sa-token"
+
+	conn := models.NewIntegration(orgUID, models.ConnectionTypeKubernetes, "Loopback")
+	conn.Settings = m
+	r.NoError(deps.DBService.CreateChannel(t.Context(), conn))
+
+	def := &scantypes.KubernetesDefinition{}
+	params := json.RawMessage(`{"clusterUid":"` + conn.UID + `"}`)
+
+	deps.EgressGuard = egress.New(false)
+	_, _, err = def.BuildJob(t.Context(), deps, orgUID, "", params)
+	r.ErrorContains(err, egress.ErrDenied.Error())
+	r.NotContains(err.Error(), "connection refused")
+	r.Zero(requests.Load(), "the private API server must receive no request")
+
+	deps.EgressGuard = egress.New(true)
+	jobType, _, err := def.BuildJob(t.Context(), deps, orgUID, "", params)
+	r.NoError(err)
+	r.Equal(string(jobdef.JobTypeKubernetesDiscovery), jobType)
+	r.Positive(requests.Load())
 }

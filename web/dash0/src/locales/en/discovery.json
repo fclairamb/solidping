@@ -7,6 +7,7 @@
   "scanStarted": "Discovery scan started",
   "scanFailed": "Failed to start scan",
   "scanAlreadyRunning": "A discovery scan is already running for this organization. Stop it or wait for it to finish.",
+  "scanNotAvailable": "This discovery source is not available on this server.",
   "scanStatus": {
     "pending": "Pending",
     "running": "Running",
@@ -62,7 +63,7 @@
   "clusterNamespaces": "Namespaces (optional)",
   "clusterNamespacesHelp": "Comma-separated namespaces to scan. Leave empty to scan every visible namespace.",
   "replicaCount": "{{ready}}/{{desired}} ready",
-  "workerNote": "Note: Discovery scans run on the in-process worker. For multi-site deployments, the scan runs from the server host only.",
+  "workerNote": "Note: Discovery scans run on the in-process worker, or from a private location when one is selected.",
   "startScan": "Start scan",
   "cancel": "Cancel",
   "name": "Check name",
@@ -94,5 +95,24 @@
   },
   "selectFreeboxChannel": "Select Freebox channel",
   "noFreeboxChannels": "No paired Freebox channels",
-  "largeRangeWarning": "Large range: ~{{hosts}} addresses across {{chunks}} chunks. This scan may take a long time (hours to days)."
+  "largeRangeWarning": "Large range: ~{{hosts}} addresses across {{chunks}} chunks. This scan may take a long time (hours to days).",
+  "scanRegionUnavailable": "No agent of this location is ready to scan. Set SP_AGENT_DISCOVERY_ENABLED on its agent.",
+  "scanQuotaExceeded": "This organization's daily limit of addresses scanned from private locations is reached. Try again tomorrow (UTC).",
+  "regionLabel": "Run from",
+  "regionPlaceholder": "Select a location",
+  "regionServer": "Server (default)",
+  "regionDiscoveryOff": "discovery not enabled (set SP_AGENT_DISCOVERY_ENABLED on its agent)",
+  "regionHelp": "Scan from the server, or from a private location to reach a network the server cannot.",
+  "regionRequiredHelp": "This server cannot scan the LAN itself. Pick a private location.",
+  "workerNoteRegion": "This scan runs from {{region}}, using the agent's network. Only the ranges its operator allowed can be scanned.",
+  "runsFrom": "Runs from {{region}}",
+  "failedChunks_one": "{{count}} chunk failed",
+  "failedChunks_other": "{{count}} chunks failed",
+  "promoteRegionNote": "Checks promoted from this scan will run from {{region}}.",
+  "chunkError": {
+    "DISCOVERY_NOT_ALLOWED": "The range is outside what the agent's operator allowed (SP_AGENT_DISCOVERY_CIDRS).",
+    "DISCOVERY_DISABLED": "Discovery is not enabled on the agent (SP_AGENT_DISCOVERY_ENABLED).",
+    "DISCOVERY_EGRESS_REFUSED": "The agent's egress policy refused the scan.",
+    "DISCOVERY_INVALID_CHUNK": "The agent rejected the chunk as invalid."
+  }
 }

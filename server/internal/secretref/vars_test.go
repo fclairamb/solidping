@@ -52,7 +52,7 @@ func TestVarSameValueWithinOneWalk(t *testing.T) {
 	out, replaced, err := secretref.ResolveConfig(t.Context(), map[string]any{
 		"url":     "https://acme.com/?cb=${var:uuid}",
 		"headers": map[string]any{"X-Request-Id": "${var:uuid}"},
-	}, secretref.ExecutionResolver())
+	}, secretref.ExecutionResolver(nil))
 	r.NoError(err)
 	r.True(replaced)
 
@@ -68,7 +68,7 @@ func TestVarNewValuesPerExecutionResolver(t *testing.T) {
 
 	resolve := func() (string, string) {
 		out, _, err := secretref.ResolveString(t.Context(), "${var:uuid} ${var:random}",
-			secretref.ExecutionResolver())
+			secretref.ExecutionResolver(nil))
 		r.NoError(err)
 
 		var id, rnd string
@@ -93,10 +93,10 @@ func TestVarUnknownNameFails(t *testing.T) {
 			t.Parallel()
 			r := require.New(t)
 
-			_, _, err := secretref.ResolveString(t.Context(), ref, secretref.ExecutionResolver())
+			_, _, err := secretref.ResolveString(t.Context(), ref, secretref.ExecutionResolver(nil))
 			r.ErrorIs(err, secretref.ErrUnresolved)
 
-			_, _, err = secretref.ResolveString(t.Context(), ref, secretref.DocumentResolver(nil, "org-1"))
+			_, _, err = secretref.ResolveString(t.Context(), ref, secretref.DocumentResolver(nil, "org-1", nil))
 			r.ErrorIs(err, secretref.ErrUnresolved)
 		})
 	}
@@ -106,7 +106,7 @@ func TestDocumentResolverAcceptsKnownVar(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	out, _, err := secretref.ResolveString(t.Context(), "${var:timestamp}", secretref.DocumentResolver(nil, "org-1"))
+	out, _, err := secretref.ResolveString(t.Context(), "${var:timestamp}", secretref.DocumentResolver(nil, "org-1", nil))
 	r.NoError(err)
 	r.Len(out, 17)
 }

@@ -31,23 +31,25 @@
 | **External script** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ⚠️ (via JS check) |
 | **Cron exit codes** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
 | **Real User Monitoring (RUM)** | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ (CWV + JS errors) | ❌ |
-| **Third-party status page (dependency)** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ **4,300+ providers** | ❌ |
+| **Third-party status page (dependency)** | ⚠️ ~40 + custom | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ **4,300+ providers** | ❌ |
 
 **Most Comprehensive**: SolidPing (43 check types — broadest protocol coverage of any tool surveyed)
 
-> **How the SolidPing number is derived (updated 2026-08-23).** Count the
-> enumerated `CheckType` constants and subtract the synthetic one:
+> **How the SolidPing number is derived (updated 2026-10-15).** Since batch
+> 2026-10-12 the count is registry-driven: `checkerdef.AdvertisedCheckTypeCount()`
+> counts the registered types minus those flagged `ExcludedFromTally` (`sleep`,
+> a testing type, and `private-location`, which is system-created).
+> `TestAdvertisedCheckTypeCountInDocs` fails the build when `README.md` or
+> `web/docs/` quote another number. Raw constants for a quick check:
 >
 > ```bash
 > grep -rhoE 'CheckType = "[a-z0-9_-]+"' \
->   server/internal/checkers/checkerdef/*.go | wc -l   # -> 41
+>   server/internal/checkers/checkerdef/*.go | wc -l   # -> 45, minus 2 = 43
 > ```
 >
-> `sleep` is a testing type, explicitly exempted from the customer-facing docs
-> (see `docsAnchorExemptTypes` in `server/internal/checkers/registry/docs_anchor_test.go`),
-> leaving **40**. This value has been 32, then 38, now 40 within four months, and
-> stale copies of it have been caught twice — re-derive it at publish time rather
-> than quoting this page from memory.
+> The number has been 32, 38, 40 and now 43 within five months. This wiki is
+> not covered by the test, so re-derive it at publish time rather than quoting
+> this page from memory.
 
 **Best Free**: UptimeRobot (8 types, 50 free monitors) for SaaS; SolidPing for self-hosted (unlimited)
 
@@ -55,7 +57,7 @@
 
 **Enterprise Features**: Pingdom (Transaction monitoring, RUM)
 
-**The one column SolidPing loses**: dependency monitoring — [Pulsetic](../pulsetic.md)
+**The column SolidPing only half covers**: dependency monitoring (`vendor-status`: ~40 providers or a custom Statuspage v2 URL) — [Pulsetic](../pulsetic.md)
 subscribes to 4,300+ third-party providers' own status pages and raises an alert when
 *they* declare an incident. It is not a probe, which is exactly why no amount of protocol
 breadth covers it: it answers "is it us or is it them?" before anyone opens a terminal.

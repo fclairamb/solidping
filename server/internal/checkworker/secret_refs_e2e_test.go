@@ -108,7 +108,7 @@ func TestWorkerResolvesParamReferenceAtExecution(t *testing.T) {
 	check := seedRefCheck(t, ctx, dbSvc, org.UID, "param-ref-e2e", string(secretCheckType),
 		models.JSONMap{"url": "https://x.test", "body": reference})
 
-	jobs, _, err := runner.backend.ClaimJobs(ctx, runner.getWorker().UID, nil, 10, 10, 0, time.Minute)
+	jobs, _, err := runner.backend.ClaimJobs(ctx, runner.getWorker().UID, nil, 10, 10, time.Minute)
 	r.NoError(err)
 	r.Len(jobs, 1)
 	r.NoError(runner.executeJob(ctx, runner.logger, jobs[0]))
@@ -131,6 +131,10 @@ func TestWorkerResolvesEnvReferenceOnTheExecutingProcess(t *testing.T) {
 
 	t.Setenv("SP_TEST_WORKER_REF_TOKEN", "from-the-environment")
 
+	// The operator listed the variable (spec 2026-10-16-03): the legitimate
+	// flow still resolves end to end.
+	runner.config.Checkers.EnvRefAllowlist = []string{"SP_TEST_WORKER_REF_TOKEN"}
+
 	org := models.NewOrganization("env-ref-e2e", "")
 	r.NoError(dbSvc.CreateOrganization(ctx, org))
 
@@ -139,7 +143,7 @@ func TestWorkerResolvesEnvReferenceOnTheExecutingProcess(t *testing.T) {
 	check := seedRefCheck(t, ctx, dbSvc, org.UID, "env-ref-e2e", string(secretCheckType),
 		models.JSONMap{"url": "https://x.test", "body": reference})
 
-	jobs, _, err := runner.backend.ClaimJobs(ctx, runner.getWorker().UID, nil, 10, 10, 0, time.Minute)
+	jobs, _, err := runner.backend.ClaimJobs(ctx, runner.getWorker().UID, nil, 10, 10, time.Minute)
 	r.NoError(err)
 	r.Len(jobs, 1)
 	r.NoError(runner.executeJob(ctx, runner.logger, jobs[0]))
@@ -147,6 +151,50 @@ func TestWorkerResolvesEnvReferenceOnTheExecutingProcess(t *testing.T) {
 	r.Equal("Bearer from-the-environment", rec.get("body"))
 	assertStoredConfigHoldsTheReference(
 		t, ctx, dbSvc, org.UID, check.UID, "body", reference, "from-the-environment")
+}
+
+// TestWorkerRefusesEnvReferenceOutsideTheAllowlist is the regression for spec
+// 2026-10-16-03: a variable SET on the executing process but absent from the
+// operator allowlist (here, as a stand-in for SP_AUTH_JWT_SECRET) must not
+// resolve. The run is an error result naming the reference; the checker never
+// receives the value, and nothing stored carries it.
+//
+// t.Setenv forbids t.Parallel, and the package's tests share database state.
+func TestWorkerRefusesEnvReferenceOutsideTheAllowlist(t *testing.T) {
+	r := require.New(t)
+	rec := &configRecorder{}
+	runner, dbSvc, ctx := setupSecretRunner(t, nil, rec)
+
+	const secret = "platform-secret-value"
+
+	t.Setenv("SP_TEST_WORKER_PLATFORM_SECRET", secret)
+
+	// Another name is allowlisted: the allowlist is a boundary, not a switch.
+	runner.config.Checkers.EnvRefAllowlist = []string{"SP_TEST_WORKER_REF_TOKEN"}
+
+	org := models.NewOrganization("env-ref-denied-e2e", "")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	check := seedRefCheck(t, ctx, dbSvc, org.UID, "env-ref-denied-e2e", string(secretCheckType),
+		models.JSONMap{"url": "https://x.test", "body": "token=${env:SP_TEST_WORKER_PLATFORM_SECRET}"})
+
+	jobs, _, err := runner.backend.ClaimJobs(ctx, runner.getWorker().UID, nil, 10, 10, time.Minute)
+	r.NoError(err)
+	r.Len(jobs, 1)
+
+	_ = runner.executeJob(ctx, runner.logger, jobs[0])
+
+	r.Nil(rec.get("body"), "the checker must never receive a config carrying a refused reference")
+
+	results, err := dbSvc.GetLastResultForChecks(ctx, org.UID, []string{check.UID})
+	r.NoError(err)
+
+	got, ok := results[check.UID]
+	r.True(ok, "a refused reference must produce a result, not a silent skip")
+	r.NotNil(got.Status)
+	r.Equal(int(models.ResultStatusError), *got.Status)
+	r.Contains(fmt.Sprint(got.Output), "unresolved secret reference: env:SP_TEST_WORKER_PLATFORM_SECRET")
+	r.NotContains(fmt.Sprint(got.Output), secret)
 }
 
 // TestUnresolvableReferenceIsAnErrorResultNotALiteral is the negative the spec
@@ -167,7 +215,7 @@ func TestUnresolvableReferenceIsAnErrorResultNotALiteral(t *testing.T) {
 	check := seedRefCheck(t, ctx, dbSvc, org.UID, "missing-ref-e2e", string(secretCheckType),
 		models.JSONMap{"url": "https://x.test", "body": "password=${param:never-created}"})
 
-	jobs, _, err := runner.backend.ClaimJobs(ctx, runner.getWorker().UID, nil, 10, 10, 0, time.Minute)
+	jobs, _, err := runner.backend.ClaimJobs(ctx, runner.getWorker().UID, nil, 10, 10, time.Minute)
 	r.NoError(err)
 
 	// The claim path resolves `param:` server-side, so an unresolvable one is
@@ -234,7 +282,7 @@ func TestRealHTTPCheckSendsTheResolvedBody(t *testing.T) {
 	check := seedRefCheck(t, ctx, dbSvc, org.UID, "http-ref-e2e", string(checkerdef.CheckTypeHTTP),
 		models.JSONMap{"url": srv.URL, "method": http.MethodPost, "body": reference})
 
-	jobs, _, err := runner.backend.ClaimJobs(ctx, runner.getWorker().UID, nil, 10, 10, 0, time.Minute)
+	jobs, _, err := runner.backend.ClaimJobs(ctx, runner.getWorker().UID, nil, 10, 10, time.Minute)
 	r.NoError(err)
 	r.Len(jobs, 1)
 	r.NoError(runner.executeJob(ctx, runner.logger, jobs[0]))
@@ -273,7 +321,7 @@ func runRealHTTPOnce(t *testing.T, ctx context.Context, runner *CheckWorker) {
 	t.Helper()
 	r := require.New(t)
 
-	jobs, _, err := runner.backend.ClaimJobs(ctx, runner.getWorker().UID, nil, 10, 10, 0, time.Minute)
+	jobs, _, err := runner.backend.ClaimJobs(ctx, runner.getWorker().UID, nil, 10, 10, time.Minute)
 	r.NoError(err)
 	r.Len(jobs, 1)
 	r.NoError(runner.executeJob(ctx, runner.logger, jobs[0]))

@@ -17,9 +17,13 @@ func listIncidentsDef() ToolDefinition {
 	return ToolDefinition{
 		Name: toolListIncidents,
 		Description: "List internal incidents (active or resolved) for the organization, filtered by " +
-			"check, state, or time range. Returns {data, pagination} — total, size, and a cursor " +
-			"naming the last row of a full page; the cursor is not read back on the next call yet, " +
-			"so move forward by narrowing since/until. Use diagnose_check for one check's " +
+			"check, state, or time range; the filters combine with AND. Returns {data, pagination} — " +
+			"total, size, and a cursor naming the last row " +
+			"(opaque, pass it back as cursor for the next page). order=asc lists " +
+			"oldest first and always returns a cursor, even on the last page, so you can store it " +
+			"and later resume with only the incidents started after it (rows younger than 5 s are " +
+			"held back). It lists new incidents only; changes to existing " +
+			"incidents are events (GET /events?type=incident&order=asc). Use diagnose_check for one check's " +
 			"incidents plus current health in one call, and get_status_page include=incidents for the " +
 			"customer-facing entries on a status page. Read-only: works with mcp:read tokens.",
 		InputSchema: objectSchema(map[string]any{
@@ -43,6 +47,10 @@ func listIncidentsDef() ToolDefinition {
 			),
 			propSize:   intProp(descLimit),
 			propCursor: stringProp(descCursor),
+			"order": stringProp(
+				"Sort order on start time: \"desc\" (default, newest first) or \"asc\" (oldest first; " +
+					"the cursor then means strictly after, and is always returned).",
+			),
 		}, nil),
 		OutputSchema: objectSchema(map[string]any{
 			schemaKeyData: arrayOfObjectsProp(
@@ -54,12 +62,25 @@ func listIncidentsDef() ToolDefinition {
 				schemaKeyDescription: "Page state for the filter.",
 				schemaKeyProperties: map[string]any{
 					"total":    intProp("Total incidents matching the filter."),
-					propCursor: stringProp("UID of the last incident on a full page; not applied when passed back."),
+					propCursor: stringProp("Opaque cursor naming the last incident; pass it back as cursor."),
 					"size":     intProp("Page size used for this response."),
 				},
 			},
 		}, nil),
 		Annotations: readOnlyAnnotations("List incidents"),
+	}
+}
+
+// parseOrderArg maps the order argument to "ascending"; ok is false for any
+// value other than empty, desc or asc.
+func parseOrderArg(order string) (bool, bool) {
+	switch order {
+	case "", "desc":
+		return false, true
+	case "asc":
+		return true, true
+	default:
+		return false, false
 	}
 }
 
@@ -75,6 +96,12 @@ func (h *Handler) toolListIncidents(ctx context.Context, orgSlug string, args ma
 	if opts.Size > 100 {
 		opts.Size = 100
 	}
+
+	ascending, ok := parseOrderArg(getStringArg(args, "order"))
+	if !ok {
+		return errorResult("invalid order: must be asc or desc")
+	}
+	opts.Ascending = ascending
 
 	if v := getStringArg(args, propCheckUID); v != "" {
 		opts.CheckUIDs = strings.Split(v, ",")
@@ -111,7 +138,7 @@ func (h *Handler) toolListIncidents(ctx context.Context, orgSlug string, args ma
 func getIncidentDef() ToolDefinition {
 	return ToolDefinition{
 		Name: toolGetIncident,
-		Description: "Get a single incident by UID; an unknown UID fails with an \"incident not " +
+		Description: "Get a single incident by UID (not by slug); an unknown UID fails with an \"incident not " +
 			"found\" error. Returns the incident object — number, state, timestamps, failure " +
 			"counts — plus the check with with=check and up to 50 timeline events with " +
 			"with=events. include=[\"notifications\"] adds the incident's notification attempts " +

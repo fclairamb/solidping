@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -20,6 +21,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
+	"github.com/fclairamb/solidping/server/internal/egress"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobtypes"
 )
@@ -206,4 +208,49 @@ func TestKubernetesDiscoveryRequiresCluster(t *testing.T) {
 
 	_, err = def.CreateJobRun(json.RawMessage(`{"namespaces":["prod"]}`))
 	r.Error(err)
+}
+
+// The kubernetes discovery job resolves its clientset under the process egress
+// guard, so applyEgressGuard pins the API-server dial (and disables the proxy)
+// when the policy is enforcing. The permissive guard is the control.
+//
+//nolint:paralleltest // swaps the package-level clientset resolver; must run serially.
+func TestKubernetesDiscoveryCarriesEgressGuard(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		guard         *egress.Guard
+		wantEnforcing bool
+	}{
+		{name: "enforcing", guard: egress.New(false), wantEnforcing: true},
+		{name: "permissive", guard: egress.New(true), wantEnforcing: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := require.New(t)
+
+			var sawEnforcing atomic.Bool
+
+			restore := jobtypes.SetKubernetesClientsetResolver(func(
+				ctx context.Context, _ db.Service, _ credentials.Service, _ string,
+			) (k8sclient.Interface, error) {
+				sawEnforcing.Store(egress.FromContext(ctx).Enforcing())
+
+				return fake.NewSimpleClientset(), nil
+			})
+			defer restore()
+
+			f := newK8sDiscoveryFixture(t)
+
+			raw, err := json.Marshal(jobtypes.KubernetesDiscoveryConfig{ClusterUID: "cluster-1"})
+			r.NoError(err)
+
+			runner, err := (&jobtypes.KubernetesDiscoveryJobDefinition{}).CreateJobRun(raw)
+			r.NoError(err)
+
+			jctx := f.jctx()
+			jctx.Services.EgressGuard = tc.guard
+
+			r.NoError(runner.Run(t.Context(), jctx))
+			r.Equal(tc.wantEnforcing, sawEnforcing.Load())
+		})
+	}
 }

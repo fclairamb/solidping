@@ -1,0 +1,142 @@
+{
+  "duration": {
+    "hours_one": "{count} hora",
+    "hours_other": "{count} horas",
+    "days_one": "{count} día",
+    "days_other": "{count} días"
+  },
+  "registration": {
+    "subject": "Confirma tu cuenta de SolidPing",
+    "preheader": "Un clic para confirmar tu dirección y terminar de configurar SolidPing.",
+    "title": "Confirma tu cuenta",
+    "intro": "Ya casi está. Haz clic en el botón para confirmar tu cuenta de SolidPing y terminar la configuración.",
+    "introText": "Ya casi está. Confirma tu cuenta de SolidPing para terminar la configuración:",
+    "cta": "Confirmar cuenta",
+    "expiry": "Este enlace de confirmación caduca en {expiresIn}. Si no te has registrado en SolidPing, puedes ignorar este correo."
+  },
+  "welcome": {
+    "title": "Bienvenido a SolidPing",
+    "preheader": "Tu cuenta está lista. Añade tu primera comprobación en un minuto.",
+    "lead": "Tu cuenta está lista. Para sacarle partido, bastan tres pasos (cinco minutos en total):",
+    "addCheck": {
+      "label": "1. Añade una comprobación",
+      "detail": "Un sitio web, una API, un registro DNS, una tarea cron..."
+    },
+    "getAlerted": {
+      "label": "2. Recibe alertas",
+      "detail": "El correo ya funciona. Añade Slack, SMS o una llamada si quieres que te despierten."
+    },
+    "shareStatus": {
+      "label": "3. Comparte el estado",
+      "detail": "Una página de estado cuenta a tus usuarios qué está pasando antes de que pregunten."
+    },
+    "cta": "Abrir tu panel",
+    "help": "¿Tienes preguntas? Responde a este correo. Lo lee una persona.",
+    "introText": "Gracias por unirte a SolidPing. Te ayudamos a mantener tus servicios en buen estado y te avisamos en cuanto algo falla.",
+    "helpText": "¿Necesitas ayuda para empezar? Responde a este correo."
+  },
+  "passwordReset": {
+    "subject": "Restablece tu contraseña de SolidPing",
+    "preheader": "Elige una nueva contraseña. El enlace caduca en {expiresIn}.",
+    "title": "Restablece tu contraseña",
+    "intro": "Hemos recibido una solicitud para restablecer tu contraseña de SolidPing. Haz clic en el botón para elegir una nueva.",
+    "introText": "Hemos recibido una solicitud para restablecer tu contraseña de SolidPing. Restablécela aquí:",
+    "cta": "Restablecer contraseña",
+    "expiry": "Este enlace de restablecimiento caduca en {expiresIn}. Si no lo has solicitado, puedes ignorar este correo. Tu contraseña no cambiará."
+  },
+  "passwordResetSSO": {
+    "preheader": "Inicias sesión con {providers}. Elige una contraseña a continuación.",
+    "intro": "Hemos recibido una solicitud para restablecer tu contraseña de SolidPing. Normalmente inicias sesión en SolidPing con <strong>{providers}</strong>. Puedes seguir haciéndolo o elegir una contraseña con el enlace de abajo.",
+    "introText": "Hemos recibido una solicitud para restablecer tu contraseña de SolidPing. Normalmente inicias sesión en SolidPing con {providers}. Puedes seguir haciéndolo o elegir una contraseña aquí:",
+    "cta": "Elegir contraseña",
+    "expiry": "Este enlace de restablecimiento caduca en {expiresIn}. Si no lo has solicitado, puedes ignorar este correo. No cambiará nada y podrás seguir iniciando sesión con {providers}."
+  },
+  "securityNotice": {
+    "preheader": "Cambio realizado el {date}. Si no has sido tú, actúa ahora.",
+    "warning": "Si no has sido tú, contacta de inmediato con tu administrador. Es posible que tu cuenta esté comprometida."
+  },
+  "passwordChanged": {
+    "subject": "Se ha cambiado tu contraseña de SolidPing",
+    "title": "Se ha cambiado tu contraseña",
+    "body": "Te confirmamos que tu contraseña de SolidPing se cambió el {date}."
+  },
+  "emailChanged": {
+    "subject": "Se ha cambiado tu correo de SolidPing",
+    "title": "Se ha cambiado tu dirección de correo",
+    "body": "La dirección de correo de tu cuenta de SolidPing se cambió de {oldEmail} a {newEmail} el {date}.",
+    "newAddress": "Ahora inicias sesión con {newEmail}. Esta dirección ya no recibirá los correos de tu cuenta."
+  },
+  "invitation": {
+    "subject": "Te han invitado a unirte a {org} en SolidPing",
+    "preheader": {
+      "admin": "Únete a {org} como administrador. La invitación caduca en {expiresIn}.",
+      "user": "Únete a {org} como usuario. La invitación caduca en {expiresIn}.",
+      "viewer": "Únete a {org} como lector. La invitación caduca en {expiresIn}."
+    },
+    "title": "Invitación a {org}",
+    "body": {
+      "byInviter": {
+        "admin": "{inviter} te ha invitado a unirte a <strong>{org}</strong> en SolidPing como <strong>administrador</strong>.",
+        "user": "{inviter} te ha invitado a unirte a <strong>{org}</strong> en SolidPing como <strong>usuario</strong>.",
+        "viewer": "{inviter} te ha invitado a unirte a <strong>{org}</strong> en SolidPing como <strong>lector</strong>."
+      },
+      "anonymous": {
+        "admin": "Te han invitado a unirte a <strong>{org}</strong> en SolidPing como <strong>administrador</strong>.",
+        "user": "Te han invitado a unirte a <strong>{org}</strong> en SolidPing como <strong>usuario</strong>.",
+        "viewer": "Te han invitado a unirte a <strong>{org}</strong> en SolidPing como <strong>lector</strong>."
+      }
+    },
+    "bodyText": {
+      "byInviter": {
+        "admin": "{inviter} te ha invitado a unirte a {org} en SolidPing como administrador.",
+        "user": "{inviter} te ha invitado a unirte a {org} en SolidPing como usuario.",
+        "viewer": "{inviter} te ha invitado a unirte a {org} en SolidPing como lector."
+      },
+      "anonymous": {
+        "admin": "Te han invitado a unirte a {org} en SolidPing como administrador.",
+        "user": "Te han invitado a unirte a {org} en SolidPing como usuario.",
+        "viewer": "Te han invitado a unirte a {org} en SolidPing como lector."
+      }
+    },
+    "cta": "Aceptar invitación",
+    "acceptText": "Acepta tu invitación:",
+    "expiry": "Esta invitación caduca en {expiresIn}. Si no la esperabas, puedes ignorar este correo."
+  },
+  "membershipRequest": {
+    "subject": "Nueva solicitud de adhesión de {requester} a {org}",
+    "preheader": "{requester} está esperando a que un administrador apruebe su acceso.",
+    "title": "Nueva solicitud de adhesión",
+    "body": "<strong>{requester}</strong> ({email}) ha pedido unirse a <strong>{org}</strong> en SolidPing.",
+    "bodyText": "{requester} ({email}) ha pedido unirse a {org} en SolidPing.",
+    "quotedMessage": "«{message}»",
+    "cta": "Revisar solicitudes pendientes",
+    "why": "Recibes este correo porque eres administrador de {org}."
+  },
+  "membershipDecision": {
+    "approved": {
+      "subject": "Se ha aprobado tu solicitud para unirte a {org}",
+      "preheader": "Se ha aprobado tu solicitud para unirte a {org}.",
+      "title": "Solicitud de adhesión aprobada",
+      "body": {
+        "admin": "Se ha aprobado tu solicitud para unirte a <strong>{org}</strong> en SolidPing. Ahora eres miembro con el rol <strong>administrador</strong>.",
+        "user": "Se ha aprobado tu solicitud para unirte a <strong>{org}</strong> en SolidPing. Ahora eres miembro con el rol <strong>usuario</strong>.",
+        "viewer": "Se ha aprobado tu solicitud para unirte a <strong>{org}</strong> en SolidPing. Ahora eres miembro con el rol <strong>lector</strong>."
+      },
+      "bodyText": {
+        "admin": "Se ha aprobado tu solicitud para unirte a {org} en SolidPing. Ahora eres miembro con el rol administrador.",
+        "user": "Se ha aprobado tu solicitud para unirte a {org} en SolidPing. Ahora eres miembro con el rol usuario.",
+        "viewer": "Se ha aprobado tu solicitud para unirte a {org} en SolidPing. Ahora eres miembro con el rol lector."
+      },
+      "cta": "Abrir {org}"
+    },
+    "rejected": {
+      "subject": "Se ha rechazado tu solicitud para unirte a {org}",
+      "preheader": "Se ha rechazado tu solicitud para unirte a {org}.",
+      "title": "Solicitud de adhesión rechazada",
+      "body": "Se ha rechazado tu solicitud para unirte a <strong>{org}</strong> en SolidPing.",
+      "bodyText": "Se ha rechazado tu solicitud para unirte a {org} en SolidPing.",
+      "reasonIntro": "Motivo indicado por el administrador:",
+      "retry": "Podrás enviar una nueva solicitud cuando termine el periodo de espera."
+    }
+  }
+}

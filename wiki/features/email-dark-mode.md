@@ -77,15 +77,15 @@ dark text on them:
 - `.btn-secondary` (the one white button) → dark surface
 - `.quote`, `.fallback`, `.mono`, `.meta`, `.footnote`, `.footer`
 
-Deliberately **left alone**, and pinned by
-`TestDarkPalette_LeavesTheSaturatedChromeAlone`:
+Deliberately **left alone**: the `.stripe-*` state stripes and `.btn-primary`
+— saturated, legible on both. Since the 2026-10 redesign the header is a logo on
+the page background (no navy band), so an org logo now sits on light in light
+mode and on `#0e141b` in dark mode.
 
-- `.header` — already dark navy. Org logos already sit on a dark surface, so
-  dark logo variants are not needed.
-- `.accent-bar` and every `.status-*` banner — saturated mid-tones that read
-  correctly on dark. Recolouring the banner is the exact damage the pin exists
-  to prevent.
-- `.btn-primary` / `.btn-success` / `.cta` — saturated, legible on both.
+Trap fixed in that redesign: the generic `.content a { color: … !important }`
+dark rule also matched the `<a class="btn">` inside buttons, turning the primary
+button label blue on blue. `.content a.btn` restores white right after it; keep
+that rule whenever link colors change.
 
 Two rules the block inherits from the file:
 
@@ -112,7 +112,7 @@ shipped CSS made unconditional — never a second palette that can drift.
 
 ## The Gmail decision — open, human-gated
 
-*Data point, 2026-10-08 (issue #492):* the owner reported `membership_request_new` in the Gmail Android app in dark mode, at phone width. With the pin kept, the card stays white (as designed) but Gmail auto-linked the requester email and the fallback URL and painted them in its dark-theme blue (about `#8ab4f8`), near-unreadable on white. Mitigation shipped without flipping the pin: every such value is an `<a>` with an inline `color:#1e64ef` (`link` / `mailto` template funcs), values that must stay plain go through `nolink` (zero-width joiner after `@`, `://`, `.`), the fallback block is plain wrapping text, the card is full-bleed under 480px, and light surfaces are flat (no shadows or light gradients). The pin is unchanged. The device matrix rows still need a human with a phone.
+*Data point, 2026-10-08 (issue #492):* the owner reported `membership-request-new` in the Gmail Android app in dark mode, at phone width. With the pin kept, the card stays white (as designed) but Gmail auto-linked the requester email and the fallback URL and painted them in its dark-theme blue (about `#8ab4f8`), near-unreadable on white. Mitigation shipped without flipping the pin: every such value is an `<a>` with an inline `color:#1e64ef` (`link` / `mailto` template funcs), values that must stay plain go through `nolink` (zero-width joiner after `@`, `://`, `.`), the fallback block is plain wrapping text, the card is full-bleed under 480px, and light surfaces are flat (no shadows or light gradients). The pin is unchanged. The device matrix rows still need a human with a phone.
 
 **Not decided here. Do not flip it as a drive-by.**
 
@@ -147,8 +147,8 @@ palette had to handle:
 
 | Element | Under the light pin | Expected under Gmail's transform | Risk |
 |---|---|---|---|
-| `.status-*` banner | exact brand colour | possibly re-tinted or contrast-shifted | **high** — the banner *is* the alert's meaning |
-| `.header` navy | as designed | already dark; may be left alone or lightened | medium |
+| `.pill-*` state pill + `.stripe-*` | exact colour | tinted pill may be re-tinted | medium: the pill text also states the state |
+| `.cause` box | light red + dark red mono | pink box may survive while text lightens | medium |
 | `.badge-*` pastels | pastel + dark text | pastel may survive while text darkens → unreadable | medium |
 | `.btn-secondary` | white + dark label | white may survive while the label lightens → invisible | medium |
 | `.details-table` label column | light grey | grey-on-grey collapse | low/medium |
@@ -161,7 +161,7 @@ why this is not a code decision.
 
 Flip only if, on real devices, all of these hold:
 
-1. The status banner keeps a recognisable, correct severity colour with legible
+1. The state pill keeps a recognisable, correct severity colour with legible
    text in Gmail Android **and** Gmail iOS dark mode.
 2. No badge or button ends up with same-luminance text and background.
 3. The result is judged better than the current pinned-light card by someone
@@ -183,7 +183,7 @@ to route around.
 Browser previews cannot substitute: Gmail and Apple Mail each rewrite the CSS
 differently, and neither rewrite is reproducible in a desktop browser.
 
-Send these four templates — they cover, between them, the status banner, the
+Send these four templates — they cover, between them, the state pill, the
 details table, the metric figure, the badges and both button variants:
 
 - `incident-created.html` (down banner + details table + both buttons)

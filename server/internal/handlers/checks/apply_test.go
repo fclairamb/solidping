@@ -3,6 +3,7 @@ package checks_test
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -16,6 +17,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/notifier"
 	"github.com/fclairamb/solidping/server/internal/paramkeys"
+	"github.com/fclairamb/solidping/server/internal/secretref"
 )
 
 // setupApplyService builds a checks service backed by an in-memory SQLite DB.
@@ -295,6 +297,7 @@ func TestApplyStoresEnvSecretRefAsAReference(t *testing.T) {
 	ctx := t.Context()
 
 	t.Setenv("SP_TEST_APPLY_TOKEN", "s3cr3t-token")
+	svc.SetEnvRefAllow(secretref.AllowEnvNames("SP_TEST_APPLY_TOKEN"))
 
 	c := manifestCheck("secured")
 	// `username`/`password` stay top-level strings in manifests, so the
@@ -408,6 +411,52 @@ func TestApplyMissingSecretRefIsHardError(t *testing.T) {
 	r.Empty(list, "a missing secret ref must fail closed before mutation")
 }
 
+// TestApplyRefusesEnvRefOutsideTheAllowlist is the regression for spec
+// 2026-10-16-03: a variable that IS set on the API process but is not on the
+// operator allowlist must be refused exactly like an unset one, so import/apply
+// is no longer an oracle for which server variables exist, and the reference is
+// never stored.
+//
+// Uses t.Setenv, which is incompatible with t.Parallel.
+func TestApplyRefusesEnvRefOutsideTheAllowlist(t *testing.T) {
+	r := require.New(t)
+	svc, dbSvc, org := setupApplyService(t, true)
+	ctx := t.Context()
+
+	t.Setenv("SP_TEST_APPLY_PLATFORM_SECRET", "platform-secret-value")
+	svc.SetEnvRefAllow(secretref.AllowEnvNames("SP_TEST_APPLY_OTHER"))
+
+	applyWith := func(name string) error {
+		c := manifestCheck("leaky")
+		c.Config = map[string]any{"url": "https://example.com", "password": "${env:" + name + "}"}
+
+		_, err := svc.ApplyChecks(ctx, org.Slug, doc("team-a", c), checks.ApplyOptions{DryRun: true})
+
+		return err
+	}
+
+	setErr := applyWith("SP_TEST_APPLY_PLATFORM_SECRET")
+	r.Error(setErr)
+	r.NotContains(setErr.Error(), "platform-secret-value")
+
+	unsetErr := applyWith("SP_TEST_APPLY_NEVER_SET")
+	r.Error(unsetErr)
+
+	// Same outcome whether the variable exists or not: the oracle is closed.
+	r.Equal(
+		strings.ReplaceAll(setErr.Error(), "SP_TEST_APPLY_PLATFORM_SECRET", "X"),
+		strings.ReplaceAll(unsetErr.Error(), "SP_TEST_APPLY_NEVER_SET", "X"))
+
+	c := manifestCheck("leaky")
+	c.Config = map[string]any{"url": "https://example.com", "password": "${env:SP_TEST_APPLY_PLATFORM_SECRET}"}
+	_, err := svc.ApplyChecks(ctx, org.Slug, doc("team-a", c), checks.ApplyOptions{})
+	r.Error(err)
+
+	list, _, err := dbSvc.ListChecks(ctx, org.UID, &models.ListChecksFilter{})
+	r.NoError(err)
+	r.Empty(list, "a refused env reference must fail closed before mutation")
+}
+
 // TestApplySecretRefLeaksNothingWithoutAMasterKey is the successor to the old
 // TestApplySecretRefPlaintextFallbackWarns.
 //
@@ -425,6 +474,7 @@ func TestApplySecretRefLeaksNothingWithoutAMasterKey(t *testing.T) {
 	ctx := t.Context()
 
 	t.Setenv("SP_TEST_PLAINTEXT_TOKEN", "exposed-fixture-value")
+	svc.SetEnvRefAllow(secretref.AllowEnvNames("SP_TEST_PLAINTEXT_TOKEN"))
 
 	c := manifestCheck("warned")
 	c.Config = map[string]any{

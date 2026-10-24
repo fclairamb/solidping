@@ -21,6 +21,7 @@
   "switchOrganization": "Organisation wechseln",
   "logOut": "Abmelden",
   "language": "Sprache",
+  "languageSaveFailed": "Ihre Sprachauswahl konnte nicht gespeichert werden.",
   "save": "Speichern",
   "saving": "Speichern...",
   "cancel": "Abbrechen",
@@ -81,7 +82,8 @@
     "slack": "Slack",
     "discord": "Discord",
     "webhook": "Webhook",
-    "telegram": "Telegram"
+    "telegram": "Telegram",
+    "a2a": "KI-Agent (A2A)"
   },
   "myNotifications": {
     "empty": {

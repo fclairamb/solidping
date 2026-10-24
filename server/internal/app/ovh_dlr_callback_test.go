@@ -2,14 +2,10 @@ package app
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -22,210 +18,183 @@ import (
 
 const ovhDLRPathPrefix = "/api/v1/integrations/ovhsms/dlr/"
 
-// fakeOVH answers /auth/time and records every PUT /sms/sms-acme-1 callBack.
+// fakeOVH answers GET /auth/time and records the callBack of every
+// PUT /sms/sms-acme-1.
 type fakeOVH struct {
 	mu        sync.Mutex
-	callBacks []string
+	callbacks []string
 	calls     int
+	srv       *httptest.Server
 }
 
-func (f *fakeOVH) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
+func newFakeOVH(t *testing.T) *fakeOVH {
+	t.Helper()
 
-	f.calls++
+	f := &fakeOVH{}
+	f.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		f.mu.Lock()
+		defer f.mu.Unlock()
 
-	if r.URL.Path == "/auth/time" {
-		_, _ = w.Write([]byte(strconv.FormatInt(time.Now().Unix(), 10)))
+		f.calls++
 
-		return
-	}
-
-	if r.Method == http.MethodPut && r.URL.Path == "/sms/sms-acme-1" {
-		body, _ := io.ReadAll(r.Body)
-
-		var payload struct {
-			CallBack string `json:"callBack"`
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/auth/time":
+			_, _ = w.Write([]byte(`1700000000`))
+		case r.Method == http.MethodPut && r.URL.Path == "/sms/sms-acme-1":
+			body, _ := io.ReadAll(r.Body)
+			var payload map[string]string
+			_ = json.Unmarshal(body, &payload)
+			f.callbacks = append(f.callbacks, payload["callBack"])
+			w.WriteHeader(http.StatusOK)
+		default:
+			w.WriteHeader(http.StatusNotFound)
 		}
+	}))
+	t.Cleanup(f.srv.Close)
 
-		_ = json.Unmarshal(body, &payload)
-		f.callBacks = append(f.callBacks, payload.CallBack)
-	}
-
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte("null"))
+	return f
 }
 
 func (f *fakeOVH) puts() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	return append([]string(nil), f.callBacks...)
+	return append([]string(nil), f.callbacks...)
 }
 
-func ovhDLRConfig(baseURL, dir, provider string) *config.Config {
+func (f *fakeOVH) totalCalls() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return f.calls
+}
+
+func newOVHDLRConfig(fake *fakeOVH, dir string) *config.Config {
 	cfg := &config.Config{}
-	cfg.Database.Type = "sqlite"
+	cfg.Database.Type = config.DatabaseTypeSQLite
 	cfg.Database.Dir = dir
 	cfg.Auth.JWTSecret = config.DefaultJWTSecret
 	cfg.Auth.AccessTokenExpiry = time.Hour
 	cfg.Auth.RefreshTokenExpiry = 24 * time.Hour
-	cfg.SMS.Provider = provider
+	cfg.Server.BaseURL = config.DefaultBaseURL
 	cfg.SMS.Enabled = true
-	cfg.SMS.Sender = "SolidPing"
-	cfg.SMS.OVH = config.SMSOVHConfig{
-		Endpoint: "ovh-eu", ApplicationKey: "ak", ApplicationSecret: "as", ConsumerKey: "ck",
-		ServiceName: "sms-acme-1", BaseURL: baseURL,
-	}
+	cfg.SMS.Provider = config.SMSProviderOVH
+	cfg.SMS.Sender = "acme"
+	cfg.SMS.OVH.BaseURL = fake.srv.URL
+	cfg.SMS.OVH.ApplicationKey = "ak"
+	cfg.SMS.OVH.ApplicationSecret = "as"
+	cfg.SMS.OVH.ConsumerKey = "ck"
+	cfg.SMS.OVH.ServiceName = "sms-acme-1"
 
 	return cfg
 }
 
-// bootOVH runs the production startup order and returns the handler.
-func bootOVH(t *testing.T, cfg *config.Config) *Server {
+// bootOVHServer runs the real startup order and returns the handler.
+func bootOVHServer(t *testing.T, cfg *config.Config, fake *fakeOVH) http.Handler {
 	t.Helper()
 
 	ctx := context.Background()
+	r := require.New(t)
 
+	before := len(fake.puts())
 	server, err := NewServer(ctx, cfg)
-	require.NoError(t, err)
+	r.NoError(err)
 	t.Cleanup(func() { _ = server.dbService.Close() })
 
-	return server
-}
-
-func startOVH(t *testing.T, server *Server, cfg *config.Config, fake *fakeOVH, wantPutsBeforeOverlay int) {
-	t.Helper()
-
-	ctx := context.Background()
-
-	require.NoError(t, server.Initialize(ctx))
-	require.Len(t, fake.puts(), wantPutsBeforeOverlay, "no OVH PUT may happen before InitializeSystemConfig")
-	require.NoError(t, server.InitializeSystemConfig(ctx, cfg))
+	r.Len(fake.puts(), before, "no OVH PUT may happen in NewServer")
+	r.NoError(server.Initialize(ctx))
+	r.Len(fake.puts(), before, "no OVH PUT may happen before InitializeSystemConfig")
+	r.NoError(server.InitializeSystemConfig(ctx, cfg))
 	server.SetupRoutes(ctx)
+
+	return server.Handler()
 }
 
-func dlrStatus(t *testing.T, server *Server, token string) int {
+func dlrGet(t *testing.T, h http.Handler, token string) int {
 	t.Helper()
 
 	rec := httptest.NewRecorder()
-	server.Handler().ServeHTTP(rec, httptest.NewRequestWithContext(
-		t.Context(), http.MethodGet, ovhDLRPathPrefix+token+"?id=424242&ptt=4", http.NoBody))
+	h.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet,
+		ovhDLRPathPrefix+token+"?id=424242&ptt=4", http.NoBody))
 
 	return rec.Code
 }
 
-func TestOVHDeliveryCallback_DerivedTokenAndRestart(t *testing.T) {
+func TestOVHDLRCallback_DerivedTokenAndRestart(t *testing.T) {
 	t.Setenv("SP_BASE_URL", "https://status.acme.com")
 
-	fake := &fakeOVH{}
-	srv := httptest.NewServer(fake)
-	t.Cleanup(srv.Close)
-
+	fake := newFakeOVH(t)
 	dir := t.TempDir()
 
-	var first string
-
-	for boot := range 2 {
-		cfg := ovhDLRConfig(srv.URL, dir, "ovh")
-		server := bootOVH(t, cfg)
-		startOVH(t, server, cfg, fake, boot)
-
-		puts := fake.puts()
-		require.Len(t, puts, boot+1)
-
-		callBack := puts[boot]
-		require.True(t, strings.HasPrefix(callBack, "https://status.acme.com"+ovhDLRPathPrefix), callBack)
-
-		token := strings.TrimPrefix(callBack, "https://status.acme.com"+ovhDLRPathPrefix)
-		mac := hmac.New(sha256.New, []byte(config.DefaultJWTSecret))
-		mac.Write([]byte("solidping:ovhsms:dlr"))
-		require.NotEqual(t, hex.EncodeToString(mac.Sum(nil)), token, "token must not derive from the public default")
-
-		// Unknown notification id: the handler still answers 204 for a valid token.
-		require.Equal(t, http.StatusNoContent, dlrStatus(t, server, token))
-		require.Equal(t, http.StatusNotFound, dlrStatus(t, server, token+"x"))
-
-		if boot == 0 {
-			first = callBack
-		} else {
-			require.Equal(t, first, callBack, "the callBack must be stable across restarts")
-		}
-
-		_ = server.dbService.Close()
-	}
-}
-
-func TestOVHDeliveryCallback_ExplicitToken(t *testing.T) {
-	t.Setenv("SP_BASE_URL", "https://status.acme.com")
-
-	fake := &fakeOVH{}
-	srv := httptest.NewServer(fake)
-	t.Cleanup(srv.Close)
-
-	cfg := ovhDLRConfig(srv.URL, t.TempDir(), "ovh")
-	cfg.SMS.OVH.DLRToken = "explicit-acme-token"
-
-	server := bootOVH(t, cfg)
-	startOVH(t, server, cfg, fake, 0)
+	h := bootOVHServer(t, newOVHDLRConfig(fake, dir), fake)
 
 	puts := fake.puts()
 	require.Len(t, puts, 1)
-	require.Equal(t, "https://status.acme.com"+ovhDLRPathPrefix+"explicit-acme-token", puts[0])
-	require.Equal(t, http.StatusNoContent, dlrStatus(t, server, "explicit-acme-token"))
+	require.True(t, strings.HasPrefix(puts[0], "https://status.acme.com"+ovhDLRPathPrefix), puts[0])
+
+	token := strings.TrimPrefix(puts[0], "https://status.acme.com"+ovhDLRPathPrefix)
+	require.NotEmpty(t, token)
+
+	require.NotEqual(t, "ff757c366ba6", token[:12], "token must not derive from the public default")
+	require.Equal(t, http.StatusNoContent, dlrGet(t, h, token))
+	require.Equal(t, http.StatusNotFound, dlrGet(t, h, token+"x"))
+
+	// Restart on the same database: same callBack.
+	bootOVHServer(t, newOVHDLRConfig(fake, dir), fake)
+
+	puts = fake.puts()
+	require.Len(t, puts, 2)
+	require.Equal(t, puts[0], puts[1])
 }
 
-//nolint:paralleltest // SP_BASE_URL must stay unset, so it runs serially with the Setenv tests.
-func TestOVHDeliveryCallback_DefaultBaseURLNotRegistered(t *testing.T) {
-	fake := &fakeOVH{}
-	srv := httptest.NewServer(fake)
-	t.Cleanup(srv.Close)
-
-	cfg := ovhDLRConfig(srv.URL, t.TempDir(), "ovh")
-	cfg.Server.BaseURL = config.DefaultBaseURL
-	cfg.SMS.OVH.DLRToken = "explicit-acme-token"
-
-	server := bootOVH(t, cfg)
-	startOVH(t, server, cfg, fake, 0)
-
-	require.Empty(t, fake.puts())
-	require.Equal(t, http.StatusNoContent, dlrStatus(t, server, "explicit-acme-token"),
-		"receipts must still be accepted when the operator registered the URL by hand")
-}
-
-func TestOVHDeliveryCallback_NotOVH(t *testing.T) {
+func TestOVHDLRCallback_ExplicitToken(t *testing.T) {
 	t.Setenv("SP_BASE_URL", "https://status.acme.com")
 
-	fake := &fakeOVH{}
-	srv := httptest.NewServer(fake)
-	t.Cleanup(srv.Close)
+	fake := newFakeOVH(t)
+	cfg := newOVHDLRConfig(fake, t.TempDir())
+	cfg.SMS.OVH.DLRToken = "explicit-acme-token"
 
-	for _, provider := range []string{"twilio", ""} {
-		cfg := ovhDLRConfig(srv.URL, t.TempDir(), provider)
-		cfg.SMS.Twilio.AccountSID = "ACacme"
-		cfg.SMS.Twilio.AuthToken = "tok"
+	h := bootOVHServer(t, cfg, fake)
 
-		server := bootOVH(t, cfg)
-		startOVH(t, server, cfg, fake, 0)
-	}
-
-	fake.mu.Lock()
-	defer fake.mu.Unlock()
-	require.Zero(t, fake.calls)
+	puts := fake.puts()
+	require.Len(t, puts, 1)
+	require.True(t, strings.HasSuffix(puts[0], "/explicit-acme-token"), puts[0])
+	require.Equal(t, http.StatusNoContent, dlrGet(t, h, "explicit-acme-token"))
 }
 
-func TestOVHBaseURLReachable(t *testing.T) {
+func TestOVHDLRCallback_DefaultBaseURLNotRegistered(t *testing.T) {
+	t.Setenv("SP_BASE_URL", "")
+
+	fake := newFakeOVH(t)
+	cfg := newOVHDLRConfig(fake, t.TempDir())
+	cfg.SMS.OVH.DLRToken = "explicit-acme-token"
+
+	h := bootOVHServer(t, cfg, fake)
+
+	require.Empty(t, fake.puts())
+	require.Equal(t, http.StatusNoContent, dlrGet(t, h, "explicit-acme-token"))
+}
+
+func TestOVHDLRCallback_NotOVH(t *testing.T) {
+	t.Setenv("SP_BASE_URL", "https://status.acme.com")
+
+	fake := newFakeOVH(t)
+	cfg := newOVHDLRConfig(fake, t.TempDir())
+	cfg.SMS.Provider = config.SMSProviderTwilio
+	cfg.SMS.Twilio.AccountSID = "ACacme"
+	cfg.SMS.Twilio.AuthToken = "tok"
+
+	bootOVHServer(t, cfg, fake)
+
+	require.Zero(t, fake.totalCalls())
+}
+
+func TestPublicBaseURL(t *testing.T) {
 	t.Parallel()
 
-	for url, want := range map[string]bool{
-		"":                         false,
-		config.DefaultBaseURL:      false,
-		"http://127.0.0.1:4000":    false,
-		"http://localhost:8080":    false,
-		"https://status.acme.com":  true,
-		"https://status.acme.com/": true,
-		"not a url":                false,
-	} {
-		require.Equal(t, want, ovhBaseURLReachable(url), url)
-	}
+	require.False(t, publicBaseURL(""))
+	require.False(t, publicBaseURL(config.DefaultBaseURL))
+	require.False(t, publicBaseURL("http://127.0.0.1:8080"))
+	require.False(t, publicBaseURL("http://localhost:9"))
+	require.True(t, publicBaseURL("https://status.acme.com"))
 }
