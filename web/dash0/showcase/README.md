@@ -201,8 +201,9 @@ Useful knobs:
 
 1. **`terminal.ts` films the terminal** (`make showcase-terminal`). It renders
    `tapes/docker-run.tape` with `vhs`: the published one-liner typed out, the
-   shipped image booting on an empty volume, held past its "Starting HTTP
-   server" line. Everything on camera is real.
+   shipped image booting on an empty volume with its colored log, held on its
+   "SolidPing is ready" line and cut before Docker's first healthcheck probe
+   (no Ctrl+C, no shutdown log on camera). Everything on camera is real.
 
    It refuses to start when the host port the tape publishes is already in use
    or when the named volume already exists — the first would make the command

@@ -28,9 +28,9 @@ incidents and on-call escalation — in a single Go binary.
 
 ### From `docker run` to the first result
 
-https://github.com/user-attachments/assets/3bdaf8eb-7d20-45ab-ae15-e0ac5835c3a2
+https://github.com/user-attachments/assets/fe207622-7957-4e85-8a3c-d33281799f4b
 
-<sub>Start to finish in 34 seconds: <code>docker run</code> in a terminal, the first sign-in, an HTTP check created by pasting a URL, and its first response times. Recorded from a real SolidPing server, nothing here is a mock-up. <a href="https://solidping.io/docs/tour">The Tour page</a> has a longer cut if the player above does not load.</sub>
+<sub>Start to finish in 41 seconds: <code>docker run</code> and the colored boot log, the first sign-in with its forced password change, an HTTP check created from a URL, and its first response times (the wait between results is played at 4× speed, and says so). Recorded from a real SolidPing server with <code>make showcase</code>, nothing here is a mock-up. <a href="https://solidping.io/docs/tour">The Tour page</a> has the same cut if the player above does not load.</sub>
 
 </div>
 
