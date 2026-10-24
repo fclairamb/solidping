@@ -510,9 +510,17 @@ func TestMCPBridgeLocalErrors(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	down := httptest.NewServer(http.NotFoundHandler())
+	// A closed server frees its port, and a parallel test's server can take it
+	// over and answer this bridge. Keep the port held and drop every connection.
+	down := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		conn, _, err := w.(http.Hijacker).Hijack()
+		if err == nil {
+			_ = conn.Close()
+		}
+	}))
+	t.Cleanup(down.Close)
+
 	endpoint := down.URL + mcpAPIPath
-	down.Close()
 
 	h := startBridge(t, &mcpBridge{endpoint: endpoint, token: "pat_x"})
 
