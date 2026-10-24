@@ -1,6 +1,6 @@
 module github.com/fclairamb/solidping/server
 
-go 1.27
+go 1.27.3
 
 // The RDP client library is vendored in-tree as its own module: the fork
 // carries the SolidPing patches (Unicode input, logoff PDU, tunnel dialing)
