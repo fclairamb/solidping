@@ -41,6 +41,15 @@ func (h *faultHook) BeforeQuery(ctx context.Context, _ *bun.QueryEvent) context.
 
 func (h *faultHook) AfterQuery(context.Context, *bun.QueryEvent) {}
 
+// faultSweepSkipped lists routes the fault sweep must not drive on top of
+// sweepSkipped: they dial an external host, so a failing query turns into a
+// network wait longer than the sweep's request timeout.
+//
+//nolint:gochecknoglobals // Effectively a constant table.
+var faultSweepSkipped = map[string]bool{
+	"POST /api/v1/orgs/{org}/integrations/freebox/pair": true,
+}
+
 // faultBodies are the request bodies each route is driven with: an empty one
 // and a permissive one carrying the fields most create/update routes accept.
 //
@@ -154,7 +163,8 @@ func TestEveryRouteSurvivesAFailingQuery(t *testing.T) {
 			return nil
 		}
 
-		if _, skip := sweepSkipped[method+" "+pattern]; !skip {
+		_, skip := sweepSkipped[method+" "+pattern]
+		if !skip && !faultSweepSkipped[method+" "+pattern] {
 			routes = append(routes, route{method, pattern})
 		}
 
