@@ -17,11 +17,19 @@ export interface ChangePasswordResponse {
  */
 export async function changePassword(
   newPassword: string,
-  currentPassword?: string
+  currentPassword?: string,
+  email?: string
 ): Promise<ChangePasswordResponse> {
+  // `email` is only accepted on the forced first-login screen, while
+  // /auth/me reports mustChangeEmail (spec 2026-10-13-02). It is omitted
+  // from the body when not set, which keeps the password-only behaviour.
   return apiFetch<ChangePasswordResponse>("/api/v1/auth/change-password", {
     method: "POST",
-    body: JSON.stringify({ currentPassword: currentPassword ?? "", newPassword }),
+    body: JSON.stringify({
+      currentPassword: currentPassword ?? "",
+      newPassword,
+      ...(email ? { email } : {}),
+    }),
     suppress401Handling: true,
   });
 }
