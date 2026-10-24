@@ -37,14 +37,12 @@ Enter
 # `term.buffer.active.getLine(0..rows)`, which after the first scroll is the top
 # of the SCROLLBACK, not the viewport — so it keeps matching against the opening
 # prompt until it times out. `Wait+Line` reads one line on the same broken
-# offset and behaves the same way. The image boots to "SolidPing is ready" in
-# roughly four seconds while vhs is screenshotting every frame beside it, so
-# this holds past that and cuts while the line, with the URL to open, is still
-# on screen.
+# offset and behaves the same way.
 #
-# terminal.ts checks the container's own log afterwards and fails the render if
-# the server never got there — if that fires on a slower machine, lengthen this
-# Sleep rather than reaching for Wait.
-Sleep 5600ms
-Ctrl+C
-Sleep 600ms
+# The native image logs "SolidPing is ready" about a second after Enter. The
+# hold ends a few seconds later, before Docker's first HEALTHCHECK probe (~5s
+# after start) adds an "HTTP request" line, and there is no Ctrl+C: the shutdown
+# log is not part of the story. terminal.ts removes the still-running container
+# afterwards, and checks its log first — if that check fires on a slower
+# machine, lengthen this Sleep rather than reaching for Wait.
+Sleep 3800ms
