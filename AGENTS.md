@@ -3,7 +3,7 @@
 Agent instructions for every coding agent (Claude Code, Codex, Cursor, Copilot, Gemini CLI). Each `CLAUDE.md` in the repo is a one-line `@AGENTS.md` stub so Claude Code loads the same file. Edit `AGENTS.md`, never the stub.
 
 ## Core technologies
-- **Backend**: Go 1.24+ (see `server/AGENTS.md` for details)
+- **Backend**: Go, exact version pinned in `server/go.mod` (see `server/AGENTS.md` for details)
 - **Dashboard**: React + TanStack Router (see `web/dash0/AGENTS.md` for details)
 - **Infrastructure**: Docker Compose with PostgreSQL for monitoring data storage
 - **Monitoring**: Multi-protocol ping/health checking with distributed worker system
