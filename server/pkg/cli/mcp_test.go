@@ -513,8 +513,12 @@ func TestMCPBridgeLocalErrors(t *testing.T) {
 	// A closed server frees its port, and a parallel test's server can take it
 	// over and answer this bridge. Keep the port held and drop every connection.
 	down := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		conn, _, err := w.(http.Hijacker).Hijack()
-		if err == nil {
+		hijacker, ok := w.(http.Hijacker)
+		if !ok {
+			return
+		}
+
+		if conn, _, err := hijacker.Hijack(); err == nil {
 			_ = conn.Close()
 		}
 	}))
