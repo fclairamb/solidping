@@ -38,7 +38,7 @@ jobs:
 
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.27"
+          go-version-file: server/go.mod
           cache-dependency-path: server/go.sum
 
       - name: Clone HEAD, go build ./..., make test
@@ -56,7 +56,7 @@ jobs:
 
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.27"
+          go-version-file: server/go.mod
           cache-dependency-path: server/go.sum
 
       - name: Create embed placeholders for tests
@@ -115,7 +115,7 @@ jobs:
 
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.27"
+          go-version-file: server/go.mod
           cache-dependency-path: server/go.sum
 
       - name: Create embed placeholders
@@ -159,7 +159,7 @@ jobs:
 
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.27"
+          go-version-file: server/go.mod
           cache-dependency-path: server/go.sum
 
       - name: Cache embedded PostgreSQL binaries

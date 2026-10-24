@@ -111,7 +111,7 @@ jobs:
 
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.27"
+          go-version-file: server/go.mod
           cache-dependency-path: server/go.sum
 
       - name: Create embed placeholders for lint/test
@@ -247,7 +247,7 @@ jobs:
 
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.27"
+          go-version-file: server/go.mod
           cache-dependency-path: server/go.sum
 
       # embedded-postgres downloads a ~100 MB Postgres distribution on first use
@@ -607,7 +607,7 @@ jobs:
 
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.27"
+          go-version-file: server/go.mod
           cache-dependency-path: server/go.sum
 
       - name: Download dash0 dist
@@ -666,7 +666,7 @@ jobs:
 
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.27"
+          go-version-file: server/go.mod
           cache-dependency-path: server/go.sum
 
       - name: Download dash0 dist
@@ -1190,7 +1190,7 @@ jobs:
 
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.27"
+          go-version-file: server/go.mod
           cache-dependency-path: server/go.sum
 
       # Own Go-only build, not the `build` job's artifact: `build` (and the
@@ -1354,7 +1354,7 @@ jobs:
 
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.27"
+          go-version-file: server/go.mod
           cache-dependency-path: server/go.sum
 
       # Fixed, version-free names — the same shape the server binaries use
@@ -1589,7 +1589,7 @@ jobs:
 
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.27"
+          go-version-file: server/go.mod
           cache-dependency-path: server/go.sum
 
       # Fixed, version-free names: these are the exact URLs the install docs
