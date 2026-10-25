@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"log/slog"
+	"net/http"
 	"net/url"
 	"strings"
 	"unicode"
@@ -104,4 +105,14 @@ func sanitizePostLoginRedirect(ctx context.Context, raw, orgSlug string) string 
 		"redirect_uri", logged, "redirect_uri_len", len(raw), "org_slug", orgSlug)
 
 	return defaultPostLoginRedirect(orgSlug)
+}
+
+// redirectLoginError sends a browser-initiated provider login that cannot
+// start (no org, unknown org) back to the dashboard login page with the
+// error in the query string. These endpoints are navigated to by the browser,
+// so a JSON body would be a dead end: the dashboard always renders something.
+func redirectLoginError(writer http.ResponseWriter, req *http.Request, code, description string) error {
+	redirectOAuthError(writer, req, config.DashboardBasePath+"/login", code, description)
+
+	return nil
 }

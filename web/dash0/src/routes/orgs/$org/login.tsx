@@ -77,6 +77,7 @@ export const Route = createFileRoute("/orgs/$org/login")({
     returnTo?: string;
     demo?: boolean;
     notice?: LoginNotice;
+    error_description?: string;
   } => ({
     // TanStack Router's default search parser already coerces "true"/"false"
     // query-string values to native booleans before validateSearch runs, so
@@ -99,6 +100,10 @@ export const Route = createFileRoute("/orgs/$org/login")({
     // this param and must keep compiling without naming it.
     demo: parseDemoFlag(search.demo),
     notice: parseLoginNotice(search.notice),
+    // A provider login that failed server-side (unknown org, denied consent…)
+    // lands here with the reason, so the visitor always sees something.
+    error_description:
+      typeof search.error_description === "string" ? search.error_description : undefined,
   }),
   component: LoginPage,
 });
@@ -108,7 +113,13 @@ function LoginPage() {
   const { t: tc } = useTranslation("common");
   const navigate = useNavigate();
   const { org } = Route.useParams();
-  const { session_expired, returnTo, demo: demoAutoLogin, notice } = useSearch({
+  const {
+    session_expired,
+    returnTo,
+    demo: demoAutoLogin,
+    notice,
+    error_description: oauthErrorDescription,
+  } = useSearch({
     from: "/orgs/$org/login",
   });
   const auth = useAuth();
@@ -641,14 +652,14 @@ function LoginPage() {
             </Alert>
           )}
 
-          {error && (
+          {(error || oauthErrorDescription) && (
             <Alert
               variant="destructive"
               className="mb-4"
               data-testid="login-error"
             >
               <AlertCircle className="h-4 w-4" />
-              <AlertDescription>{error}</AlertDescription>
+              <AlertDescription>{error || oauthErrorDescription}</AlertDescription>
             </Alert>
           )}
 
