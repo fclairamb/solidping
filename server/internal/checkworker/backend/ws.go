@@ -325,6 +325,7 @@ func (b *WSBackend) claim(
 				continue
 			}
 
+			job.StoredConfig = job.Config
 			job.Config = models.JSONMap(credentials.MergeConfig(job.Config, secrets))
 			job.ConfigSealed = nil // plaintext stays in memory only
 		}

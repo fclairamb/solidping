@@ -153,9 +153,16 @@ func (c *JSChecker) Execute(ctx context.Context, config checkerdef.Config) (*che
 	// A script `repair: auto` applied is held to the hosts the version before
 	// it reached, on every run with real secrets (spec 2026-10-24-01), as the
 	// repair loop held it. A caller that already holds the run (the AI loop)
-	// keeps its own list.
+	// keeps its own list. The check worker decided it on the stored config,
+	// before references were resolved (spec 2026-10-25-01): the config here
+	// may hold their values, which no grant was issued for.
+	hosts, held := cfg.RepairAllowlist()
+	if hold, ok := ctx.Value(repairHoldKey{}).(repairHold); ok {
+		hosts, held = hold.hosts, hold.held
+	}
+
 	var repairList *egress.HostAllowlist
-	if hosts, held := cfg.RepairAllowlist(); held && hasSecretValues(cfg.Secrets) &&
+	if held && hasSecretValues(cfg.Secrets) &&
 		egress.HostAllowlistFrom(ctx) == nil {
 		repairList = egress.NewHostAllowlist(hosts)
 		ctx = egress.WithHostAllowlist(ctx, repairList)
@@ -227,6 +234,25 @@ func (c *JSChecker) Execute(ctx context.Context, config checkerdef.Config) (*che
 // tried to reach a host outside its repair allowlist. The result pipeline
 // flips the check back to `repair: propose` on it.
 const OutputKeyRepairRefused = "aiRepairHostRefused"
+
+type repairHoldKey struct{}
+
+// repairHold is the repair allowlist decision taken on a stored config.
+type repairHold struct {
+	hosts []string
+	held  bool
+}
+
+// WithStoredRepairHold decides on the STORED config map, before its `${…}`
+// references are resolved, whether the run is held to a repair grant (spec
+// 2026-10-25-01), and carries the answer to Execute. A resolved reference
+// changes the script or env text, so deciding on the run's config would let
+// a `${var:uuid}` lift the grant.
+func WithStoredRepairHold(ctx context.Context, stored map[string]any) context.Context {
+	hosts, held := checkconfig.StoredRepairAllowlist(stored)
+
+	return context.WithValue(ctx, repairHoldKey{}, repairHold{hosts: hosts, held: held})
+}
 
 // hasSecretValues reports a secrets map holding at least one real value.
 func hasSecretValues(secrets map[string]string) bool {

@@ -127,6 +127,13 @@ type CheckJob struct {
 	// secret reference; empty otherwise. Transient: never persisted.
 	DisplayURL string `bun:"-"`
 
+	// StoredConfig is the config as the job was claimed, before a deported
+	// agent merged its sealed envelope (which holds the resolved ${param:…}
+	// values) over Config. The repair grant is decided on it (spec
+	// 2026-10-25-01). Set only by the agent backend; transient, never
+	// persisted and never read off the wire, so a config cannot set it.
+	StoredConfig JSONMap `bun:"-"`
+
 	// Check is the check this job executes, populated at claim time by
 	// ClaimJobs / ClaimJobsForCheck so the incident hot path can skip a
 	// per-result GetCheck round-trip. Transient: never persisted (bun:"-").

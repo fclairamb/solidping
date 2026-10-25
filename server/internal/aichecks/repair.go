@@ -461,6 +461,12 @@ func (s *Service) storeCandidate(ctx context.Context, target *repairTarget, cand
 
 			return s.proposeRepair(ctx, target, candidate, reason)
 		}
+
+		if ref := addedReference(cfg.Script, candidate); ref != "" {
+			reason += " (not applied: the candidate adds a reference the previous version did not have: " + ref + ")"
+
+			return s.proposeRepair(ctx, target, candidate, reason)
+		}
 	}
 
 	if guardErr == nil && mode == jsconfig.RepairAuto {

@@ -153,6 +153,12 @@ to any other host fails the run with an error, and the check goes back to
 `repair: propose`, so the next repair needs a human. Editing the script or the
 env drops the grant: a version you wrote is not held.
 
+Whether a run is held is decided on the stored script and env, before any
+`${param:…}`, `${env:…}` or `${var:…}` reference is resolved. A reference does
+not lift the grant, and `repair: auto` proposes, never applies, a candidate
+that adds a reference the previous version did not have. A grant that no
+longer matches its script or env holds the run to no host at all.
+
 Every attempt is on the check's timeline (`check.ai_repair_attempted`,
 `check.ai_repair_proposed`, `check.ai_repair_applied`, and
 `check.ai_repair_revoked` when a refused run sets the check back to `propose`).

@@ -1185,6 +1185,15 @@ func (r *CheckWorker) executeJob(
 	// the literal "${param:x}" to the target would silently probe the wrong
 	// thing and, against an endpoint that does not enforce the credential,
 	// would look green.
+	// The repair grant is decided on the stored config, before references are
+	// resolved (spec 2026-10-25-01): the resolved text is not what it was
+	// issued for.
+	storedConfig := checkJob.Config
+	if checkJob.StoredConfig != nil {
+		// A deported agent merged its sealed envelope over Config already.
+		storedConfig = checkJob.StoredConfig
+	}
+
 	if refErr := r.materializeConfig(checkJob); refErr != nil {
 		return r.saveErrorResult(ctx, checkJob, refErr)
 	}
@@ -1356,6 +1365,10 @@ func (r *CheckWorker) executeJob(
 	}
 
 	execCtx = applySMTPDeliveryContext(execCtx, checkJob)
+
+	if checkerdef.CheckType(checkType) == checkerdef.CheckTypeJS {
+		execCtx = checkjs.WithStoredRepairHold(execCtx, storedConfig)
+	}
 
 	// "Capture now" (spec 2026-09-25-34): forcedCapture was resolved above,
 	// ahead of the execution-budget sizing that also depends on it.
