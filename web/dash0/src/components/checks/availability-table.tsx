@@ -72,7 +72,7 @@ export function AvailabilityTable({
   }
 
   return (
-    <Card>
+    <Card data-testid="availability-card">
       <CardHeader>
         <CardTitle>{t("detail.availability.title")}</CardTitle>
       </CardHeader>
@@ -80,9 +80,13 @@ export function AvailabilityTable({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>{t("detail.availability.timePeriod")}</TableHead>
+              <TableHead data-testid="availability-head-time-period">
+                {t("detail.availability.timePeriod")}
+              </TableHead>
               <TableHead>{t("detail.availability.availability")}</TableHead>
-              <TableHead>{t("detail.availability.downtime")}</TableHead>
+              <TableHead data-testid="availability-head-downtime">
+                {t("detail.availability.downtime")}
+              </TableHead>
               <TableHead>{t("detail.availability.incidents")}</TableHead>
               <TableHead>{t("detail.availability.longestIncident")}</TableHead>
               <TableHead>{t("detail.availability.avgIncident")}</TableHead>

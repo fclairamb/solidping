@@ -79,11 +79,6 @@
       "count": 8
     }
   },
-  "e2e/check-detail.spec.ts": {
-    "testid-local/no-text-locators": {
-      "count": 34
-    }
-  },
   "e2e/check-group-collapse.spec.ts": {
     "testid-local/no-text-locators": {
       "count": 5
@@ -1006,7 +1001,7 @@
   },
   "src/routes/orgs/$org/checks.$checkUid.index.tsx": {
     "testid-local/require-testid-on-interactive": {
-      "count": 19
+      "count": 17
     }
   },
   "src/routes/orgs/$org/checks.$checkUid.results.$resultUid.tsx": {

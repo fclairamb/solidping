@@ -87,10 +87,10 @@ test.describe("Check Detail Page", () => {
     await page.waitForLoadState("networkidle");
 
     // Verify the new dashboard sections are present
-    await expect(page.getByText("Last checked")).toBeVisible();
+    await expect(page.getByTestId("summary-last-checked")).toBeVisible();
     await expect(page.getByTestId("incidents-card")).toBeVisible();
-    await expect(page.getByText("Response Times")).toBeVisible();
-    await expect(page.getByText("Availability").first()).toBeVisible();
+    await expect(page.getByTestId("response-time-chart-title")).toBeVisible();
+    await expect(page.getByTestId("availability-card")).toBeVisible();
 
     // Verify time range buttons for chart
     await expect(page.getByRole("button", { name: "day" })).toBeVisible();
@@ -98,8 +98,10 @@ test.describe("Check Detail Page", () => {
     await expect(page.getByRole("button", { name: "month" })).toBeVisible();
 
     // Verify availability table headers (may take longer as it depends on multiple API calls)
-    await expect(page.getByText("Time period")).toBeVisible({ timeout: 15000 });
-    await expect(page.getByText("Downtime")).toBeVisible();
+    await expect(page.getByTestId("availability-head-time-period")).toBeVisible({
+      timeout: 15000,
+    });
+    await expect(page.getByTestId("availability-head-downtime")).toBeVisible();
 
     await page.screenshot({
       path: "test-results/screenshots/check-detail-dashboard.png",
@@ -157,7 +159,7 @@ test.describe("Check Detail Page", () => {
     const regionCell = executedRow.getByTestId("result-region-cell");
     await expect(regionCell).toBeVisible({ timeout: 30000 });
     await expect(regionCell).not.toHaveText("-");
-    await expect(regionCell.getByText(/default/i)).toBeVisible();
+    await expect(regionCell).toContainText(/default/i);
   });
 
   test("Response Times chart: region chips filter to a single region's points, cross-filter Recent Results, carry a single ?region= param, and never remount the chart", async ({
@@ -532,9 +534,9 @@ test.describe("Check Detail Page", () => {
     const dots = page.locator(".recharts-wrapper circle");
     await expect(dots.first()).toBeVisible();
     await dots.first().hover({ force: true });
-    await expect(
-      page.getByText(/🇺🇸 US East|🇪🇺 EU West/).first(),
-    ).toBeVisible({ timeout: 5000 });
+    const tooltipRegion = page.getByTestId("response-time-chart-tooltip-region");
+    await expect(tooltipRegion).toBeVisible({ timeout: 5000 });
+    await expect(tooltipRegion).toContainText(/US East|EU West/);
 
     // Clicking a dot still pins a result (dot-click resolution works in
     // multi-series mode via the per-region dataKey, not a stale shared index).
@@ -796,8 +798,8 @@ test.describe("Check Detail Page", () => {
     await expect(chartDataDots).toHaveCount(2);
 
     // Clicking a row's own region Badge selects that region too.
-    const euRow = page.locator('[data-testid^="result-row-"]', {
-      hasText: "EU West",
+    const euRow = page.locator('[data-testid^="result-row-"]').filter({
+      has: page.locator('[data-region="eu-1"]'),
     });
     await euRow.getByTestId(/result-region-badge-/).click();
     await page.waitForURL(/[?&]region=eu-1(&|$)/);
@@ -924,7 +926,12 @@ test.describe("Check Detail Page", () => {
     // rollup min 150 -> 40; raw max 100 vs rollup max 250 -> 250).
     await expect(stats).toContainText("40ms");
     await expect(stats).toContainText("250ms");
-    await expect(stats.getByText(/~\d/)).toHaveCount(3);
+    for (const key of ["avg", "p95", "p50"]) {
+      await expect(page.getByTestId(`results-duration-stat-${key}`)).toContainText("~");
+    }
+    for (const key of ["min", "max"]) {
+      await expect(page.getByTestId(`results-duration-stat-${key}`)).not.toContainText("~");
+    }
     // Sample count sums raw rows (1 each) + the rollup's totalChecks: 4 + 5 = 9.
     await expect(stats).toContainText("9");
     // Window label reflects the current graphPeriod (week -> "Last week").
@@ -1054,13 +1061,12 @@ test.describe("Check Detail Page", () => {
 
     const moreActions = page.getByRole("button", { name: "More actions" });
     await expect(moreActions).toBeVisible();
-    await expect(page.getByLabel("Edit").getByText("Edit")).toBeVisible();
-    await expect(page.getByLabel("Disable").getByText("Disable")).toBeVisible();
-    await expect(page.getByLabel("Clone")).toHaveCount(0);
-    await expect(page.getByLabel("Badges")).toHaveCount(0);
-    await expect(page.getByLabel("Delete")).toHaveCount(0);
-    await expect(page.getByLabel("Refresh")).toHaveCount(0);
-    await expect(page.getByText("Refresh")).toHaveCount(0);
+    await expect(page.getByTestId("check-edit-label")).toBeVisible();
+    await expect(page.getByTestId("check-toggle-enabled-label")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Clone" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Badges" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Delete" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Refresh" })).toHaveCount(0);
 
     await moreActions.click();
     await expect(page.getByRole("menuitem", { name: "Clone" })).toBeVisible();
@@ -1086,9 +1092,9 @@ test.describe("Check Detail Page", () => {
     await page.setViewportSize({ width: 390, height: 812 });
 
     await expect(moreActions).toBeVisible();
-    await expect(page.getByLabel("Edit")).toBeVisible();
-    await expect(page.getByLabel("Edit").getByText("Edit")).toBeHidden();
-    await expect(page.getByLabel("Disable").getByText("Disable")).toBeHidden();
+    await expect(page.getByTestId("check-edit-button")).toBeVisible();
+    await expect(page.getByTestId("check-edit-label")).toBeHidden();
+    await expect(page.getByTestId("check-toggle-enabled-label")).toBeHidden();
 
     // The header must not overflow horizontally even with a long check name.
     const hasOverflow = await page.evaluate(
@@ -1106,9 +1112,9 @@ test.describe("Check Detail Page", () => {
     // Delete opens the confirm dialog; cancelling keeps the check.
     await moreActions.click();
     await page.getByRole("menuitem", { name: "Delete check" }).click();
-    await expect(
-      page.getByRole("alertdialog").getByText("Delete Check"),
-    ).toBeVisible();
+    await expect(page.getByTestId("delete-check-dialog-title")).toHaveText(
+      "Delete Check",
+    );
     await page.getByRole("alertdialog").getByRole("button", { name: "Cancel" }).click();
     await expect(page.getByRole("alertdialog")).toBeHidden();
     await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
@@ -1149,7 +1155,7 @@ test.describe("Check Detail Page", () => {
     await expect(
       page.locator("header").first().getByRole("link", { name: "Checks" }),
     ).toBeVisible();
-    await expect(page.getByLabel("Edit").getByText("Edit")).toBeVisible();
+    await expect(page.getByTestId("check-edit-label")).toBeVisible();
     await expect(
       page.getByRole("button", { name: /Disable|Enable/ }),
     ).toBeVisible();
@@ -1159,7 +1165,7 @@ test.describe("Check Detail Page", () => {
     const titleBox = await page
       .getByRole("heading", { name: checkName })
       .boundingBox();
-    const editBox = await page.getByLabel("Edit").boundingBox();
+    const editBox = await page.getByTestId("check-edit-button").boundingBox();
     expect(titleBox).not.toBeNull();
     expect(editBox).not.toBeNull();
     expect(editBox!.y).toBeLessThan(titleBox!.y + titleBox!.height);
@@ -1197,13 +1203,13 @@ test.describe("Check Detail Page", () => {
     const header = page.getByTestId("check-detail-header");
 
     // Enabled by default: no "Disabled" pill and no status dot in the header.
-    await expect(header.getByText("Disabled", { exact: true })).toHaveCount(0);
+    await expect(header.getByTestId("check-disabled-badge")).toHaveCount(0);
     await expect(header.getByTestId("check-status-dot")).toHaveCount(0);
 
     // Disable from the header toggle: the pill replaces the status badge.
     await page.getByRole("button", { name: /Disable|Enable/ }).click();
     await expect(page.getByRole("button", { name: /Enable/ })).toBeVisible();
-    await expect(header.getByText("Disabled", { exact: true })).toBeVisible();
+    await expect(header.getByTestId("check-disabled-badge")).toBeVisible();
 
     await page.screenshot({
       path: "test-results/screenshots/check-detail-disabled-dot.png",
@@ -1215,7 +1221,7 @@ test.describe("Check Detail Page", () => {
     // so dispatch the click instead of hitting the toast's pointer area.
     await page.getByRole("button", { name: /Enable/ }).dispatchEvent("click");
     await expect(page.getByRole("button", { name: /Disable/ })).toBeVisible();
-    await expect(header.getByText("Disabled", { exact: true })).toHaveCount(0);
+    await expect(header.getByTestId("check-disabled-badge")).toHaveCount(0);
   });
 
   test("header meta line shows target link, interval and last check; a never-run check shows the pending badge and no Checked item", async ({
@@ -1255,16 +1261,16 @@ test.describe("Check Detail Page", () => {
     await page.goto(`orgs/test/checks/${check.uid}`);
     await page.waitForLoadState("networkidle");
     const meta = page.getByTestId("check-detail-meta");
-    await expect(page.getByText("Pending first run")).toBeVisible();
+    await expect(page.getByTestId("check-pending-first-run")).toBeVisible();
     await expect(meta.getByTestId("check-meta-last-check")).toHaveCount(0);
-    await expect(meta.getByText(/Checked/)).toHaveCount(0);
+    await expect(meta).not.toContainText(/Checked/);
     await page.unroute(new RegExp(`/api/v1/orgs/test/checks/${check.uid}(\\?.*)?$`));
 
     // Positive case: the real check gets a result within a few seconds.
     await page.goto(`orgs/test/checks/${check.uid}`);
     const target = meta.getByRole("link", { name: /example\.com\/meta/ });
     await expect(target).toHaveAttribute("href", "https://example.com/meta");
-    await expect(meta.getByText("Every 1m")).toBeVisible();
+    await expect(meta.getByTestId("check-meta-interval")).toHaveText("Every 1m");
     await expect(meta.getByTestId("check-meta-last-check")).toContainText(
       /Checked/,
       { timeout: 60000 },
@@ -1299,7 +1305,9 @@ test.describe("Check Detail Page", () => {
     await page.getByRole("button", { name: "More actions" }).click();
     await page.getByRole("menuitem", { name: "Copy check link" }).click();
 
-    await expect(page.getByText("Check link copied")).toBeVisible();
+    await expect(page.locator("[data-sonner-toast]")).toContainText(
+      "Check link copied",
+    );
     const copied = await page.evaluate(() => navigator.clipboard.readText());
     expect(copied).toMatch(
       new RegExp(`/orgs/test/checks/(${check.slug}|${check.uid})$`),
