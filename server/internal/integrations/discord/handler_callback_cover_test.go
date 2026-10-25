@@ -47,15 +47,17 @@ func TestOAuthCallbackRedirects(t *testing.T) {
 	r.Equal(1, count)
 }
 
+var errAcmeBroke = errors.New("acme broke")
+
 func TestInstallErrorReason(t *testing.T) {
 	t.Parallel()
 
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)
 	for err, want := range map[error]string{
-		ErrInvalidState:          "state_invalid",
-		ErrGuildMissing:          "guild_missing",
-		ErrOAuthFailed:           "oauth_failed",
-		errors.New("acme broke"): "unknown",
+		ErrInvalidState: "state_invalid",
+		ErrGuildMissing: "guild_missing",
+		ErrOAuthFailed:  "oauth_failed",
+		errAcmeBroke:    "unknown",
 	} {
 		require.Equal(t, want, installErrorReason(req, err))
 	}

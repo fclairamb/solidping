@@ -78,6 +78,8 @@ func TestMemberJoinedChannelAutoConfiguresDefault(t *testing.T) {
 	r.NotZero(calls["/chat.postMessage"])
 }
 
+var errDial = errors.New("dial")
+
 func TestSocketSupervisorHandleEventKinds(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
@@ -89,7 +91,7 @@ func TestSocketSupervisorHandleEventKinds(t *testing.T) {
 	sup.handleEvent(ctx, fake, socketmode.Event{Type: socketmode.EventTypeConnecting})
 	sup.handleEvent(ctx, fake, socketmode.Event{Type: socketmode.EventTypeConnected})
 	r.True(sup.GetStatus().Connected)
-	sup.handleEvent(ctx, fake, socketmode.Event{Type: socketmode.EventTypeConnectionError, Data: errors.New("dial")})
+	sup.handleEvent(ctx, fake, socketmode.Event{Type: socketmode.EventTypeConnectionError, Data: errDial})
 	r.False(sup.GetStatus().Connected)
 	sup.handleEvent(ctx, fake, socketmode.Event{Type: socketmode.EventTypeInvalidAuth})
 	sup.handleEvent(ctx, fake, socketmode.Event{Type: socketmode.EventTypeDisconnect})
@@ -99,10 +101,14 @@ func TestSocketSupervisorHandleEventKinds(t *testing.T) {
 
 	// Events API: no request, empty payload, bad payload.
 	sup.handleEvent(ctx, fake, socketmode.Event{Type: socketmode.EventTypeEventsAPI})
-	sup.handleEvent(ctx, fake, socketmode.Event{Type: socketmode.EventTypeEventsAPI,
-		Request: &socketmode.Request{EnvelopeID: "e0"}})
-	sup.handleEvent(ctx, fake, socketmode.Event{Type: socketmode.EventTypeEventsAPI,
-		Request: &socketmode.Request{EnvelopeID: "e1", Payload: []byte("{")}})
+	sup.handleEvent(ctx, fake, socketmode.Event{
+		Type:    socketmode.EventTypeEventsAPI,
+		Request: &socketmode.Request{EnvelopeID: "e0"},
+	})
+	sup.handleEvent(ctx, fake, socketmode.Event{
+		Type:    socketmode.EventTypeEventsAPI,
+		Request: &socketmode.Request{EnvelopeID: "e1", Payload: []byte("{")},
+	})
 
 	// Slash command with the wrong payload type.
 	sup.handleEvent(ctx, fake, socketmode.Event{Type: socketmode.EventTypeSlashCommand, Data: "nope"})
@@ -135,7 +141,7 @@ func TestLookupUserByEmail(t *testing.T) {
 		"noid@acme.com":   `{"ok":true,"user":{}}`,
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		r.NoError(req.ParseForm())
+		_ = req.ParseForm()
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(responses[req.Form.Get("email")]))
 	}))

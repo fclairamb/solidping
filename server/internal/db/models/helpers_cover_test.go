@@ -77,7 +77,7 @@ func TestScannersAcceptEveryShape(t *testing.T) {
 	r.NotNil(m)
 	r.NoError(m.Scan(42))
 	r.NoError(m.Scan([]byte(`{"a":1}`)))
-	r.Equal(float64(1), m["a"])
+	r.InDelta(1, m["a"], 1e-9)
 	r.NoError(m.Scan(`{"b":2}`))
 	r.Error(m.Scan(`{`))
 

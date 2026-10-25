@@ -10,6 +10,8 @@ import (
 	"github.com/fclairamb/solidping/server/internal/config"
 )
 
+var errAcmeExploded = errors.New("acme exploded")
+
 // TestEveryProviderMapsEveryOAuthError feeds every sentinel error to every
 // provider's error redirect: each must answer with a non-empty error code and
 // description, never an empty redirect.
@@ -31,7 +33,7 @@ func TestEveryProviderMapsEveryOAuthError(t *testing.T) {
 		ErrDiscordTokenExchange, ErrEmailNotVerified, ErrGitHubTokenExchange, ErrGitLabTokenExchange,
 		ErrGoogleTokenExchange, ErrInvalidOAuthState, ErrMicrosoftTokenExchange, ErrOIDCNotConfigured,
 		ErrOIDCTokenExchange, ErrOIDCTokenInvalid, ErrSAMLAssertionInvalid, ErrSAMLNoEmail,
-		ErrSAMLNotConfigured, ErrSlackTokenExchange, errors.New("acme exploded"),
+		ErrSAMLNotConfigured, ErrSlackTokenExchange, errAcmeExploded,
 	}
 
 	for name, handle := range handlers {

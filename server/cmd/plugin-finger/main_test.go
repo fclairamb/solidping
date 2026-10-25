@@ -1,16 +1,15 @@
 package main
 
 import (
-	"io"
 	"log/slog"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
 
-func TestRunRequiresKeys(t *testing.T) { //nolint:paralleltest // edits the process environment
+func TestRunRequiresKeys(t *testing.T) {
 	r := require.New(t)
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 
 	t.Setenv(keysEnv, "")
 	r.ErrorIs(run("127.0.0.1:0", logger), errNoKeys)

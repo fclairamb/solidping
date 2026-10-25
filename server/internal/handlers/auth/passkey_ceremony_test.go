@@ -1,6 +1,7 @@
 package auth_test
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -67,14 +68,17 @@ func (a *softAuthenticator) register(t *testing.T, challenge string) []byte {
 	pub, err := a.key.PublicKey.Bytes()
 	r.NoError(err)
 	cose, err := webauthncbor.Marshal(webauthncose.EC2PublicKeyData{
-		PublicKeyData: webauthncose.PublicKeyData{KeyType: int64(webauthncose.EllipticKey), Algorithm: int64(webauthncose.AlgES256)},
-		Curve:         int64(webauthncose.P256),
-		XCoord:        pub[1 : 1+byteLen],
-		YCoord:        pub[1+byteLen:],
+		PublicKeyData: webauthncose.PublicKeyData{
+			KeyType:   int64(webauthncose.EllipticKey),
+			Algorithm: int64(webauthncose.AlgES256),
+		},
+		Curve:  int64(webauthncose.P256),
+		XCoord: pub[1 : 1+byteLen],
+		YCoord: pub[1+byteLen:],
 	})
 	r.NoError(err)
 
-	attested := make([]byte, 16) // zero AAGUID
+	attested := bytes.Repeat([]byte{0}, 16) // zero AAGUID
 	attested = binary.BigEndian.AppendUint16(attested, uint16(len(a.credID)))
 	attested = append(attested, a.credID...)
 	attested = append(attested, cose...)
@@ -158,7 +162,8 @@ func TestPasskeyService_FullCeremony(t *testing.T) {
 	_, err = pkSvc.FinishRegistration(ctx, begin.Session, device.register(t, b64([]byte("wrong-challenge-wrong"))), "")
 	r.ErrorIs(err, auth.ErrPasskeyVerificationFailed)
 
-	info, err := pkSvc.FinishRegistration(ctx, begin.Session, device.register(t, begin.Options.Response.Challenge.String()), "")
+	created := device.register(t, begin.Options.Response.Challenge.String())
+	info, err := pkSvc.FinishRegistration(ctx, begin.Session, created, "")
 	r.NoError(err)
 	r.NotEmpty(info.UID)
 	r.NotEmpty(info.Name, "a default display name is picked")
@@ -167,14 +172,16 @@ func TestPasskeyService_FullCeremony(t *testing.T) {
 	again, err := pkSvc.BeginRegistration(ctx, user.UID)
 	r.NoError(err)
 	r.Len(again.Options.Response.CredentialExcludeList, 1)
-	_, err = pkSvc.FinishRegistration(ctx, again.Session, device.register(t, again.Options.Response.Challenge.String()), "Dup")
+	duplicate := device.register(t, again.Options.Response.Challenge.String())
+	_, err = pkSvc.FinishRegistration(ctx, again.Session, duplicate, "Dup")
 	r.ErrorIs(err, auth.ErrPasskeyVerificationFailed)
 
 	// Targeted login (email known).
 	login, err := pkSvc.BeginLogin(ctx, user.Email)
 	r.NoError(err)
 	resp, err := pkSvc.FinishLogin(ctx, login.Session,
-		device.assert(t, login.Options.Response.Challenge.String(), []byte(user.UID)), "acme", auth.Context{UserAgent: "test"})
+		device.assert(t, login.Options.Response.Challenge.String(), []byte(user.UID)), "acme",
+		auth.Context{UserAgent: "test"})
 	r.NoError(err)
 	r.NotEmpty(resp.AccessToken)
 

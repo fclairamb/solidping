@@ -42,7 +42,7 @@ func fakeAuthServer(t *testing.T, orgless bool) http.Handler {
 			reply(http.StatusOK, map[string]any{
 				"device_code": "dev", "user_code": "ABCD-EFGH", "verification_uri": "http://example.invalid/device",
 				"verification_uri_complete": "http://example.invalid/device?code=ABCD-EFGH",
-				"expires_in": 30, "interval": 1,
+				"expires_in":                30, "interval": 1,
 			})
 		case devicePathToken:
 			if polls.Add(1) == 1 {
@@ -67,8 +67,6 @@ func fakeAuthServer(t *testing.T, orgless bool) http.Handler {
 // end against a fake server, in both output formats, plus the device flow
 // with an org-less session. PATH is emptied so the device flow's best-effort
 // browser launch fails instead of opening a real browser.
-//
-//nolint:paralleltest // process-global stdio, HOME and PATH
 func TestAuthLoginFlowsCover(t *testing.T) {
 	logins := [][]string{
 		{"auth", "login", "--email", "alice@acme.com", "--password", "secret"},
@@ -78,14 +76,12 @@ func TestAuthLoginFlowsCover(t *testing.T) {
 	}
 
 	for _, format := range []string{"text", "json"} {
-		//nolint:paralleltest // process-global stdio, HOME and PATH
 		t.Run(format, func(t *testing.T) {
 			t.Setenv("PATH", t.TempDir())
 			runInvocations(t, format, fakeAuthServer(t, false), logins)
 		})
 	}
 
-	//nolint:paralleltest // process-global stdio, HOME and PATH
 	t.Run("orgless", func(t *testing.T) {
 		t.Setenv("PATH", t.TempDir())
 		runInvocations(t, "text", fakeAuthServer(t, true), [][]string{{"auth", "login"}})

@@ -127,6 +127,7 @@ func stringFor(name string) string {
 }
 
 func fillValue(field reflect.Value, str string, depth int) {
+	//nolint:exhaustive // the remaining kinds never appear in an update struct
 	switch field.Kind() {
 	case reflect.Pointer:
 		inner := reflect.New(field.Type().Elem())

@@ -1,7 +1,6 @@
 package jobtypes
 
 import (
-	"io"
 	"log/slog"
 	"testing"
 	"time"
@@ -29,7 +28,7 @@ func TestDemoProvisioningSurvivesEveryQueryFailure(t *testing.T) {
 		t.Skip("replays the demo provisioning a few hundred times (about a minute)")
 	}
 
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	runs, failed := 0, 0
 
 	testsupport.SweepFresh(t, func() (*testsupport.FaultHook, func()) {

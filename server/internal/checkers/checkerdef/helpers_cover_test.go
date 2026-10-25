@@ -13,6 +13,14 @@ import (
 	"github.com/fclairamb/solidping/server/internal/egress"
 )
 
+var (
+	errRefused     = errors.New("dial: connection refused")
+	errNetUnreach  = errors.New("network is unreachable")
+	errNoRoute     = errors.New("no route to host")
+	errIOTimeout   = errors.New("i/o timeout")
+	errUnclassable = errors.New("weird")
+)
+
 func TestSmallFormatters(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
@@ -40,11 +48,11 @@ func TestSmallFormatters(t *testing.T) {
 	r.False(IPVersion("ipv5").Valid())
 
 	r.Empty(classifyErrorText(nil))
-	r.Equal(NetFailureConnectionRefused, classifyErrorText(errors.New("dial: connection refused")))
-	r.Equal(NetFailureNetworkUnreachable, classifyErrorText(errors.New("network is unreachable")))
-	r.Equal(NetFailureHostUnreachable, classifyErrorText(errors.New("no route to host")))
-	r.Equal(NetFailureConnectTimeout, classifyErrorText(errors.New("i/o timeout")))
-	r.Empty(classifyErrorText(errors.New("weird")))
+	r.Equal(NetFailureConnectionRefused, classifyErrorText(errRefused))
+	r.Equal(NetFailureNetworkUnreachable, classifyErrorText(errNetUnreach))
+	r.Equal(NetFailureHostUnreachable, classifyErrorText(errNoRoute))
+	r.Equal(NetFailureConnectTimeout, classifyErrorText(errIOTimeout))
+	r.Empty(classifyErrorText(errUnclassable))
 }
 
 func TestResolveGuarded(t *testing.T) {

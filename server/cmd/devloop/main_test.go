@@ -22,7 +22,7 @@ func TestShouldRebuild(t *testing.T) {
 		want  bool
 	}{
 		{name: "go write", event: fsnotify.Event{Name: "internal/app/server.go", Op: fsnotify.Write}, want: true},
-		{name: "html create", event: fsnotify.Event{Name: "internal/email/templates/a.html", Op: fsnotify.Create}, want: true},
+		{name: "html create", event: fsnotify.Event{Name: "internal/email/a.html", Op: fsnotify.Create}, want: true},
 		{name: "chmod only", event: fsnotify.Event{Name: "main.go", Op: fsnotify.Chmod}, want: false},
 		{name: "other extension", event: fsnotify.Event{Name: "README.md", Op: fsnotify.Write}, want: false},
 		{name: "test file", event: fsnotify.Event{Name: "main_test.go", Op: fsnotify.Write}, want: false},
@@ -216,7 +216,7 @@ func TestStartAuxProcs(t *testing.T) {
 // TestRunBuildsWatchesAndRebuilds drives the whole loop on a throwaway
 // module: initial build, child start, a source edit that triggers a rebuild
 // and swap, then a clean shutdown on context cancel.
-func TestRunBuildsWatchesAndRebuilds(t *testing.T) { //nolint:paralleltest // changes the working directory
+func TestRunBuildsWatchesAndRebuilds(t *testing.T) {
 	if testing.Short() {
 		t.Skip("builds a Go module")
 	}
