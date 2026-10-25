@@ -1189,6 +1189,10 @@ func (r *CheckWorker) executeJob(
 	// resolved (spec 2026-10-25-01): the resolved text is not what it was
 	// issued for.
 	storedConfig := checkJob.Config
+	if checkJob.StoredConfig != nil {
+		// A deported agent merged its sealed envelope over Config already.
+		storedConfig = checkJob.StoredConfig
+	}
 
 	if refErr := r.materializeConfig(checkJob); refErr != nil {
 		return r.saveErrorResult(ctx, checkJob, refErr)
