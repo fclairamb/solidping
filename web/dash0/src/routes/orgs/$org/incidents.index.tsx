@@ -556,6 +556,7 @@ function IncidentsIndexPage() {
                             params={{ org, incidentUid: incident.uid! }}
                             className="mt-1 block font-medium text-foreground hover:text-primary hover:underline transition-colors [overflow-wrap:anywhere]"
                             data-testid="incident-title"
+                            data-incident-title={incident.title ?? ""}
                           >
                             {incident.title ||
                               incident.checkName ||
@@ -604,10 +605,10 @@ function IncidentsIndexPage() {
             <CheckCircle className="h-6 w-6" />
           </div>
           <div className="space-y-1">
-            <h3 className="font-semibold text-base text-foreground">
+            <h3 className="font-semibold text-base text-foreground" data-testid="incidents-empty-title">
               {t("noIncidentsFound")}
             </h3>
-            <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+            <p className="text-xs text-muted-foreground max-w-sm mx-auto" data-testid="incidents-empty-description">
               {kindFilter
                 ? t(`noIncidentsOfKind.${kindFilter}`)
                 : checkUid

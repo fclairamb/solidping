@@ -1067,7 +1067,7 @@ function IncidentDetailPage() {
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>{t("detail.incidentDetails")}</CardTitle>
+            <CardTitle data-testid="incident-details-title">{t("detail.incidentDetails")}</CardTitle>
             <CardDescription>
               {t("detail.incidentDetailsDescription")}
             </CardDescription>

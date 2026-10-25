@@ -344,11 +344,6 @@
       "count": 1
     }
   },
-  "e2e/incidents.spec.ts": {
-    "testid-local/no-text-locators": {
-      "count": 19
-    }
-  },
   "e2e/invitations.spec.ts": {
     "testid-local/no-text-locators": {
       "count": 8
@@ -727,11 +722,6 @@
   "src/components/shared/check-multi-picker.tsx": {
     "testid-local/require-testid-on-interactive": {
       "count": 2
-    }
-  },
-  "src/components/shared/check-picker.tsx": {
-    "testid-local/require-testid-on-interactive": {
-      "count": 1
     }
   },
   "src/components/shared/check-rate-limit-banner.tsx": {

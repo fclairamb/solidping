@@ -155,6 +155,7 @@ export function CheckPicker({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t("dependencies:searchChecks")}
+            data-testid="check-picker-search"
             className="h-8"
             onKeyDown={(e) => {
               if (e.key === "ArrowDown") {

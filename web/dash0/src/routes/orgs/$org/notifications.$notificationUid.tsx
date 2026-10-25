@@ -355,7 +355,7 @@ function NotificationDetailPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">{tInt("notificationDetail.timeline.title")}</CardTitle>
+          <CardTitle className="text-base" data-testid="notification-delivery-timeline-title">{tInt("notificationDetail.timeline.title")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
           <TimelineRow
