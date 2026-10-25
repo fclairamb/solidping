@@ -530,7 +530,11 @@ function CheckRow({
               enabled={check.enabled}
               title={check.enabled === false ? t("checks:detail.disabled") : undefined}
             />
-            <span className="min-w-0 truncate">
+            <span
+              className="min-w-0 truncate"
+              data-testid="check-row-name"
+              data-check-name={check.name || check.slug || check.uid?.slice(0, 8)}
+            >
               {check.name || check.slug || check.uid?.slice(0, 8)}
             </span>
           </Link>
@@ -816,7 +820,7 @@ function CheckGroupSection({
               {collapsed ? t("menu.expandGroup") : t("menu.collapseGroup")}
             </TooltipContent>
           </Tooltip>
-          <span className="text-base font-semibold truncate" data-testid="group-name">{group.name}</span>
+          <span className="text-base font-semibold truncate" data-testid="group-name" data-group-name={group.name}>{group.name}</span>
           <span data-testid="group-status-badge">
             <StatusBadge status={group.status} />
           </span>
@@ -1014,7 +1018,10 @@ function UngroupedChecksSection({
 
   return (
     <div>
-      <h3 className="text-sm font-medium text-muted-foreground mb-2">
+      <h3
+        className="text-sm font-medium text-muted-foreground mb-2"
+        data-testid="ungrouped-checks-heading"
+      >
         {t("ungroupedChecks")}
       </h3>
       {/* Rows win over the loading branch, same as CheckGroupSection: keep any

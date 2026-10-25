@@ -89,11 +89,6 @@
       "count": 2
     }
   },
-  "e2e/check-groups.spec.ts": {
-    "testid-local/no-text-locators": {
-      "count": 23
-    }
-  },
   "e2e/check-health.spec.ts": {
     "testid-local/no-text-locators": {
       "count": 2
