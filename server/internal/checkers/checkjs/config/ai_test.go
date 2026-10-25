@@ -90,3 +90,58 @@ func TestAIBlockValidation(t *testing.T) {
 		})
 	}
 }
+
+// A repair grant round-trips, and NormalizeConfig keeps it only while the
+// script and env are the ones it was issued for (spec 2026-10-24-01).
+func TestRepairGrantNormalization(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	env := map[string]any{"BASE_URL": "https://acme.test"}
+	grant := jsconfig.RepairDigest(okScript, map[string]string{"BASE_URL": "https://acme.test"})
+	in := map[string]any{
+		"script": okScript,
+		"env":    env,
+		"ai": map[string]any{
+			"repair": "auto", "repair_hosts": []any{"acme.test"}, "repair_grant": grant,
+		},
+	}
+
+	cfg := &jsconfig.JSConfig{}
+	r.NoError(cfg.FromMap(in))
+	r.NoError(cfg.Validate())
+	r.Equal(in["ai"], cfg.GetConfig()["ai"])
+
+	hosts, held := cfg.RepairAllowlist()
+	r.True(held)
+	r.Equal([]string{"acme.test"}, hosts)
+
+	kept, err := cfg.NormalizeConfig(in)
+	r.NoError(err)
+	r.Equal(in, kept)
+
+	for name, edit := range map[string]func(map[string]any){
+		"script edited": func(m map[string]any) { m["script"] = `return { status: "down" };` },
+		"env edited":    func(m map[string]any) { m["env"] = map[string]any{"BASE_URL": "https://other.acme.test"} },
+	} {
+		edited := map[string]any{"script": okScript, "env": env, "ai": in["ai"]}
+		edit(edited)
+
+		out, err := cfg.NormalizeConfig(edited)
+		r.NoError(err, name)
+		r.Equal(map[string]any{"repair": "auto"}, out["ai"], name)
+		r.Contains(edited["ai"], "repair_grant", "%s: the input map is not mutated", name)
+	}
+
+	// An empty grant still holds, and allows nothing.
+	empty := &jsconfig.JSConfig{Script: okScript, AI: &jsconfig.AIConfig{
+		RepairHosts: []string{}, RepairGrant: jsconfig.RepairDigest(okScript, nil),
+	}}
+	emptyBlock, ok := empty.GetConfig()["ai"].(map[string]any)
+	r.True(ok)
+	r.Equal([]any{}, emptyBlock["repair_hosts"])
+
+	hosts, held = empty.RepairAllowlist()
+	r.True(held)
+	r.Empty(hosts)
+}

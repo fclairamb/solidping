@@ -216,7 +216,7 @@ the PR layer.
 ## Coverage target
 
 The backend target is 90% of hand-written statements (the enforced floor is
-85%; CI measured 83.5% on 2026-10-23 when the same local command reported 84.5%, and the local command now reports 86.5% (2026-10-24, after the fake-server, fault-injection and CLI sweeps), so measure
+87%; CI measured 83.5% on 2026-10-23 when the same local command reported 84.5%, and the local command reports 88.5% on 2026-10-25 (after the fake-server, fault-injection, CLI, job-sweep, MCP, partial-update and query-fault sweeps), while the badge from main's CI read 86.6% the day before, so measure
 with the CI job's exact command before ratcheting, until the remaining gap closes), measured on the Postgres
 layer and enforced by the `backend-postgres` job through `COVERAGE_MIN`
 (ratchet rule: raise it to the last measured value, never lower it). Frontend

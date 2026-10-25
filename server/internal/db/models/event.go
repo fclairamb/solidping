@@ -36,6 +36,10 @@ const (
 	// EventTypeCheckAIRepairApplied records a `repair: auto` candidate applied
 	// as a new check version. The payload carries the diff.
 	EventTypeCheckAIRepairApplied EventType = "check.ai_repair_applied"
+	// EventTypeCheckAIRepairRevoked records a check flipped back from
+	// `repair: auto` to `repair: propose` because a run of its repair-applied
+	// script reached a host outside its repair grant (spec 2026-10-24-01).
+	EventTypeCheckAIRepairRevoked EventType = "check.ai_repair_revoked"
 	// EventTypeAIUsage records the tokens of one LLM call (spec
 	// 2026-10-03-07). The org's daily AI token budget sums these rows.
 	EventTypeAIUsage EventType = "check.ai_usage"
