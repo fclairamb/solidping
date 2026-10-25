@@ -23,10 +23,13 @@ func DispatchEvent(ctx context.Context, svc *Service, event *Event) error {
 		"team_id", event.TeamID,
 	)
 
-	// Construct a transport-less *Handler bound only to svc — every inner
-	// dispatch helper here uses dispatcher.svc; cfg is only needed for HTTP
-	// install / signature paths and is not reachable from the dispatch chain.
+	// Construct a transport-less *Handler bound only to svc. link_shared reads
+	// the base URL from cfg, so it comes from the service (a nil cfg made every
+	// link_shared delivery panic).
 	dispatcher := &Handler{svc: svc}
+	if svc != nil {
+		dispatcher.cfg = svc.cfg
+	}
 
 	switch event.Event.Type {
 	case "app_home_opened":
