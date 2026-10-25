@@ -209,11 +209,6 @@
       "count": 15
     }
   },
-  "e2e/command-menu.spec.ts": {
-    "testid-local/no-text-locators": {
-      "count": 35
-    }
-  },
   "e2e/confirm-registration-no-org.spec.ts": {
     "testid-local/no-text-locators": {
       "count": 1
