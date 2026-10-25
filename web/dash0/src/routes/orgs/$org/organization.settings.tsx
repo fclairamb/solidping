@@ -336,7 +336,7 @@ function SettingsPage() {
             )}
 
             {saved && (
-              <Alert>
+              <Alert data-testid="settings-saved">
                 <Check className="h-4 w-4" />
                 <AlertDescription>{t("settings.saved")}</AlertDescription>
               </Alert>
@@ -426,7 +426,7 @@ function SettingsPage() {
             )}
 
             {sessionSaved && (
-              <Alert>
+              <Alert data-testid="session-settings-saved">
                 <Check className="h-4 w-4" />
                 <AlertDescription>{t("settings.saved")}</AlertDescription>
               </Alert>
@@ -703,7 +703,7 @@ function SettingsPage() {
             )}
 
             {embedSaved && (
-              <Alert>
+              <Alert data-testid="embed-origins-saved">
                 <Check className="h-4 w-4" />
                 <AlertDescription>{t("settings.saved")}</AlertDescription>
               </Alert>

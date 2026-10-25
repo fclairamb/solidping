@@ -271,6 +271,7 @@ function GroupCard({
             key={check.uid}
             className="flex items-center justify-between gap-3 rounded-md border p-2"
             data-testid="discovery-check-row"
+            data-check-type={check.type}
           >
             <label className="flex flex-1 items-center gap-3 text-sm">
               <Checkbox
@@ -289,7 +290,9 @@ function GroupCard({
             </label>
             <div className="flex items-center gap-1">
               {check.promotedToCheckUid ? (
-                <Badge variant="secondary">{t("promoted")}</Badge>
+                <Badge variant="secondary" data-testid="discovery-check-promoted">
+                  {t("promoted")}
+                </Badge>
               ) : (
                 <Button
                   variant="ghost"

@@ -394,7 +394,10 @@ function StatusPagesIndexPage() {
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">
             <Globe className="h-6 w-6 text-muted-foreground" />
           </div>
-          <p className="text-sm font-medium text-foreground">
+          <p
+            className="text-sm font-medium text-foreground"
+            data-testid="status-pages-empty-title"
+          >
             {t("statusPages:noStatusPages")}
           </p>
           <p className="mx-auto max-w-sm text-xs text-muted-foreground">

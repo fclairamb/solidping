@@ -17,23 +17,25 @@ test.describe("Discovery host promotion", () => {
 
   test("promotes a seeded suggested check end-to-end", async ({ page }) => {
     // Open the seeded scan detail.
-    await page.goto(`${DASH_BASE}/orgs/test/organization/discovery/${SCAN_UID}`);
+    await page.goto(
+      `${DASH_BASE}/orgs/test/organization/discovery/${SCAN_UID}`,
+    );
 
     // The seeded host renders as a group card listing its suggested checks.
-    const group = page
-      .getByTestId("discovery-group")
-      .filter({ hasText: "127.0.0.1" });
+    const group = page.locator(
+      '[data-testid="discovery-group"][data-group-label="127.0.0.1"]',
+    );
     await expect(group).toBeVisible();
 
-    const tcpRow = group
-      .getByTestId("discovery-check-row")
-      .filter({ hasText: "TCP/8080" });
+    const tcpRow = group.locator(
+      '[data-testid="discovery-check-row"][data-check-type="tcp"]',
+    );
     await expect(tcpRow).toBeVisible();
 
     // The seed is one-shot per database: a CI retry after a mid-test failure
     // finds the row already promoted. The terminal state is what the test
     // guarantees, so assert it and stop rather than re-promoting.
-    if (await tcpRow.getByText("Promoted").isVisible()) {
+    if (await tcpRow.getByTestId("discovery-check-promoted").isVisible()) {
       await expect(tcpRow.getByRole("checkbox")).toBeDisabled();
       return;
     }
@@ -49,14 +51,16 @@ test.describe("Discovery host promotion", () => {
     // Success toast, and the row flips to the promoted badge once the backend
     // has created the check and the list refetched (end-to-end signal:
     // promotedToCheckUid is only set after the check row exists).
-    await expect(page.getByText("Checks created")).toBeVisible();
-    await expect(tcpRow.getByText("Promoted")).toBeVisible();
+    await expect(page.locator("[data-sonner-toast]")).toContainText(
+      "Checks created",
+    );
+    await expect(tcpRow.getByTestId("discovery-check-promoted")).toBeVisible();
     await expect(tcpRow.getByRole("checkbox")).toBeDisabled();
 
     // The sibling ICMP suggestion is untouched.
-    const icmpRow = group
-      .getByTestId("discovery-check-row")
-      .filter({ hasText: "ICMP" });
-    await expect(icmpRow.getByText("Promoted")).toBeHidden();
+    const icmpRow = group.locator(
+      '[data-testid="discovery-check-row"][data-check-type="ping"]',
+    );
+    await expect(icmpRow.getByTestId("discovery-check-promoted")).toBeHidden();
   });
 });

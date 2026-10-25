@@ -30,3 +30,10 @@ export function activeIncidentLocator(page: Page, checkName: string): Locator {
 export function checkRowLocator(page: Page, name: string): Locator {
   return page.getByTestId("check-row").filter({ has: checkNameLocator(page, name) });
 }
+
+/** A check group section on the checks index, matched by exact group name. */
+export function groupSectionLocator(scope: Page | Locator, name: string): Locator {
+  return scope
+    .getByTestId("group-section")
+    .filter({ has: groupNameLocator(scope, name) });
+}

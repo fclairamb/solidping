@@ -36,7 +36,7 @@ export function NotifyViaSection({
 
   if (visible.length === 0) {
     return (
-      <div className="space-y-2">
+      <div className="space-y-2" data-testid="notify-via-section">
         <Label>{t("form.notifyVia")}</Label>
         <div className="rounded border border-dashed p-3 text-sm text-muted-foreground" data-testid="notify-via-empty">
           {t("form.noChannelsYet")}{" "}
@@ -55,7 +55,7 @@ export function NotifyViaSection({
   }
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2" data-testid="notify-via-section">
       <Label>{t("form.notifyVia")}</Label>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {visible.map((c) => {

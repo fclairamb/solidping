@@ -158,7 +158,9 @@ test.describe("Magic wand defaults", () => {
     await expect(wand).toBeVisible();
 
     await wand.click();
-    await expect(page.getByText("Email alerts created")).toBeVisible();
+    await expect(page.locator("[data-sonner-toast]")).toContainText(
+      "Email alerts created",
+    );
 
     // The wand disappears once the step it offers is satisfied.
     await expect(wand).toHaveCount(0);
@@ -243,7 +245,9 @@ test.describe("Magic wand defaults", () => {
     await expect(wand).toBeEnabled({ timeout: 10000 });
 
     await wand.click();
-    await expect(page.getByText("Weekly uptime report created")).toBeVisible();
+    await expect(page.locator("[data-sonner-toast]")).toContainText(
+      "Weekly uptime report created",
+    );
     await expect(wand).toHaveCount(0);
 
     const resp = await page.request.get(
@@ -323,7 +327,11 @@ test.describe("Magic wand defaults", () => {
     const badges = page.getByTestId("status-page-attached-check");
     await expect(badges).toHaveCount(checkNames.length);
     for (const name of checkNames) {
-      await expect(badges.filter({ hasText: name })).toHaveCount(1);
+      await expect(
+        page.locator(
+          `[data-testid="status-page-attached-check"][data-check-name=${JSON.stringify(name)}]`,
+        ),
+      ).toHaveCount(1);
     }
 
     // The wand only offers to fill a BLANK form — once it has run once, it
@@ -432,7 +440,7 @@ test.describe("Magic wand defaults", () => {
     // the absence assertion below is about the button and not about landing on
     // a blank page, an error, or a list that happens to have pages in it.
     await expect(
-      page.getByText("No status pages configured yet"),
+      page.getByTestId("status-pages-empty-title"),
     ).toBeVisible();
 
     // The header wand is untouched — the feature still exists, one button.
@@ -455,7 +463,9 @@ test.describe("Magic wand defaults", () => {
     await expect(wand).toBeEnabled({ timeout: 10000 });
 
     await wand.click();
-    await expect(page.getByText("Status page created successfully")).toBeVisible();
+    await expect(page.locator("[data-sonner-toast]")).toContainText(
+      "Status page created successfully",
+    );
 
     // Unlike the form's prefill-only wand, this one creates outright and
     // navigates straight to the detail route — never the create form.
@@ -615,8 +625,8 @@ test.describe("Magic wand defaults", () => {
     // column header as soon as the pre-created page renders (strict-mode
     // violation, flaky in CI run 38115154978).
     await expect(
-      page.locator("[data-sonner-toast]").filter({ hasText: /already|conflict/i }),
-    ).toBeVisible({ timeout: 10000 });
+      page.locator("[data-sonner-toast]"),
+    ).toContainText(/already|conflict/i, { timeout: 10000 });
     await expect(page).toHaveURL(/\/status-pages$/);
 
     const listResp = await page.request.get(

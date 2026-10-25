@@ -248,6 +248,7 @@ function AddSectionDialog({
               variant="outline"
               size="icon"
               aria-label={t("statusPages:sections.add")}
+              data-testid="status-page-add-section-button"
             >
               <Plus className="h-4 w-4" />
             </Button>

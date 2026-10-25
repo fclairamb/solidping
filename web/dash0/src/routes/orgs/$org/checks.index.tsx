@@ -968,7 +968,10 @@ function CheckGroupSection({
               ))}
             </div>
           ) : (
-            <div className="p-4 text-center text-sm text-muted-foreground">
+            <div
+              className="p-4 text-center text-sm text-muted-foreground"
+              data-testid="group-empty"
+            >
               <p>{t("noChecks")}</p>
               {!isFiltering && (
                 <Link

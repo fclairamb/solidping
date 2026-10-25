@@ -18,7 +18,9 @@ test.describe("Account Notifications", () => {
     await expect(list).toBeVisible();
 
     // At least one row with "Email" label.
-    await expect(list.getByText("Email")).toBeVisible();
+    await expect(
+      list.locator('[data-testid="notification-route-row"][data-contact-type="email"]'),
+    ).toBeVisible();
   });
 
   test("should navigate to notifications via account tabs", async ({
@@ -50,7 +52,9 @@ test.describe("Account Notifications", () => {
 
     // The phone row should appear in the list.
     const list = page.getByTestId("notification-routes-list");
-    await expect(list.getByText("Phone (SMS)")).toBeVisible();
+    await expect(
+      list.locator('[data-testid="notification-route-row"][data-contact-type="phone"]'),
+    ).toBeVisible();
   });
 
   test("should show Add browser affordance when webpush is supported", async ({
@@ -66,8 +70,7 @@ test.describe("Account Notifications", () => {
     // The "Add browser" section renders the WebPushEnableButton.
     // In a test environment the service worker may not be registered, so
     // we only assert the affordance section is present in the DOM.
-    const browserSection = page
-      .getByText("Add browser");
+    const browserSection = page.getByTestId("add-contact-browser-title");
     await expect(browserSection).toBeVisible();
   });
 

@@ -278,6 +278,7 @@ export function StatusPageForm({
                   variant="secondary"
                   className="gap-1 pr-1"
                   data-testid="status-page-attached-check"
+                  data-check-name={checkNamesByUid?.get(uid) ?? uid}
                 >
                   {checkNamesByUid?.get(uid) ?? uid}
                   <button
