@@ -254,11 +254,6 @@
       "count": 4
     }
   },
-  "e2e/discovery.spec.ts": {
-    "testid-local/no-text-locators": {
-      "count": 19
-    }
-  },
   "e2e/dns-check.spec.ts": {
     "testid-local/no-text-locators": {
       "count": 1

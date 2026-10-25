@@ -176,7 +176,12 @@ function DiscoveryIndexPage() {
                 aria-label={t("newScan")}
               >
                 <Plus className="sm:mr-2 h-4 w-4" />
-                <span className="hidden sm:inline">{t("newScan")}</span>
+                <span
+                  className="hidden sm:inline"
+                  data-testid="discovery-new-scan-label"
+                >
+                  {t("newScan")}
+                </span>
               </Link>
             </Button>
           </>

@@ -1225,7 +1225,9 @@ function OrgLayout() {
         <header className="relative flex h-12 shrink-0 items-center gap-2 border-b bg-background/60 px-4 backdrop-blur">
           <SidebarTrigger className="-ml-1" data-testid="sidebar-trigger" />
           <Separator orientation="vertical" className="mr-2 h-4" />
-          <Breadcrumbs org={org} />
+          <div className="contents" data-testid="breadcrumbs">
+            <Breadcrumbs org={org} />
+          </div>
           <div className="ml-auto flex items-center gap-1">
             {bugReportEnabled && (
               <FeedbackButton onClick={() => void feedback.open()} isCapturing={feedback.isCapturing} />
