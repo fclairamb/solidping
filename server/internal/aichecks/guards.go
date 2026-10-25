@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/fclairamb/solidping/server/internal/secretref"
 )
 
 // Guard refusals. A repair candidate failing any of them is never accepted.
@@ -382,6 +384,22 @@ func hiddenHost(previous, candidate string, env map[string]string) string {
 
 	if len(candSites) > len(prevSites) {
 		return fmt.Sprintf("%d network calls where the previous version had %d", len(candSites), len(prevSites))
+	}
+
+	return ""
+}
+
+// addedReference is the first `${…}` reference the candidate holds that the
+// previous version did not, or "" (spec 2026-10-25-01). The repair grant is
+// decided on the stored text, so a reference does not lift it; an applied
+// candidate still never brings a new one.
+func addedReference(previous, candidate string) string {
+	known := secretref.Pattern.FindAllString(previous, -1)
+
+	for _, ref := range secretref.Pattern.FindAllString(candidate, -1) {
+		if !slices.Contains(known, ref) {
+			return ref
+		}
 	}
 
 	return ""

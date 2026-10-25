@@ -190,14 +190,46 @@ func (c *JSConfig) GetConfig() map[string]any {
 }
 
 // RepairAllowlist is the host allowlist a script `repair: auto` applied is
-// held to (spec 2026-10-24-01), and whether this config carries one. A grant
-// bound to another script or env does not hold.
+// held to (spec 2026-10-24-01), and whether this config carries one.
+//
+// It is meant for the STORED config, before `${…}` references are resolved
+// (spec 2026-10-25-01): the check worker decides it there and carries the
+// answer to the checker out of band (checkjs.WithStoredRepairHold). A grant
+// that does not match this script and env fails closed: held, to no host.
+// Write paths drop such a grant (NormalizeConfig), so only a path that skipped
+// them reaches that case.
 func (c *JSConfig) RepairAllowlist() ([]string, bool) {
-	if c.AI == nil || c.AI.RepairGrant == "" || c.AI.RepairGrant != RepairDigest(c.Script, c.Env) {
+	if c.AI == nil || c.AI.RepairGrant == "" {
 		return nil, false
 	}
 
+	if !c.repairGrantMatches() {
+		return []string{}, true
+	}
+
 	return c.AI.RepairHosts, true
+}
+
+// repairGrantMatches reports a repair grant issued for this script and env.
+func (c *JSConfig) repairGrantMatches() bool {
+	return c.AI != nil && c.AI.RepairGrant != "" && c.AI.RepairGrant == RepairDigest(c.Script, c.Env)
+}
+
+// StoredRepairAllowlist is RepairAllowlist over a stored config map. A map
+// that does not parse but carries a grant fails closed: held, to no host.
+func StoredRepairAllowlist(stored map[string]any) ([]string, bool) {
+	parsed := &JSConfig{}
+	if err := parsed.FromMap(stored); err == nil {
+		return parsed.RepairAllowlist()
+	}
+
+	if block, ok := stored[fieldAI].(map[string]any); ok {
+		if grant, _ := block[aiKeyRepairGrant].(string); grant != "" {
+			return []string{}, true
+		}
+	}
+
+	return nil, false
 }
 
 // NormalizeConfig drops a repair grant the stored script or env no longer
@@ -222,7 +254,7 @@ func (c *JSConfig) NormalizeConfig(configMap map[string]any) (map[string]any, er
 		return configMap, nil //nolint:nilerr // the validator owns the error
 	}
 
-	if _, held := parsed.RepairAllowlist(); held {
+	if parsed.repairGrantMatches() {
 		return configMap, nil
 	}
 
