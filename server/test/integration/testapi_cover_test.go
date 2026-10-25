@@ -17,9 +17,8 @@ func newTestModeServer(t *testing.T) *TestServer {
 	return NewTestServerWithConfig(t, func(cfg *config.Config) { cfg.RunMode = "test" })
 }
 
+//nolint:paralleltest // "conflict" depends on "created" having run first
 func TestTestAPICreateUser(t *testing.T) {
-	t.Parallel()
-
 	ts := newTestModeServer(t)
 
 	tests := []struct {
@@ -30,7 +29,9 @@ func TestTestAPICreateUser(t *testing.T) {
 		{"bad body", "not an object", http.StatusBadRequest},
 		{"missing email", map[string]any{"password": "x"}, http.StatusBadRequest},
 		{"missing password", map[string]any{"email": "a@acme.com"}, http.StatusBadRequest},
-		{"created", map[string]any{"email": "new@acme.com", "password": "pw", "name": "New", "mustChangePassword": true}, http.StatusCreated},
+		{"created", map[string]any{
+			"email": "new@acme.com", "password": "pw", "name": "New", "mustChangePassword": true,
+		}, http.StatusCreated},
 		{"conflict", map[string]any{"email": "new@acme.com", "password": "pw"}, http.StatusConflict},
 	}
 	for _, tt := range tests {
@@ -51,9 +52,8 @@ func TestTestAPICreateUser(t *testing.T) {
 	}
 }
 
+//nolint:paralleltest // subtests share one server and its generated data
 func TestTestAPIGenerateData(t *testing.T) {
-	t.Parallel()
-
 	ts := newTestModeServer(t)
 
 	tests := []struct {
@@ -97,7 +97,10 @@ func TestTestAPIBulkChecks(t *testing.T) {
 		return doBearerRequest(t, ts, "", method, "/api/v1/test/checks/bulk?"+q.Encode(), nil)
 	}
 	base := func() url.Values {
-		return url.Values{"type": {"http"}, "slug": {"bulk-{nb}"}, "count": {"3"}, "org": {TestOrgSlug}, "url": {"https://acme.com/{nb}"}}
+		return url.Values{
+			"type": {"http"}, "slug": {"bulk-{nb}"}, "count": {"3"}, "org": {TestOrgSlug},
+			"url": {"https://acme.com/{nb}"},
+		}
 	}
 
 	// Parameter validation.
@@ -147,9 +150,9 @@ func TestTestAPIBulkChecks(t *testing.T) {
 		func(q url.Values) { q.Del("count") },
 		func(q url.Values) { q.Set("org", "nope") },
 	} {
-		q := base()
-		mutate(q)
-		status, _ = bulk(http.MethodDelete, q)
+		dq := base()
+		mutate(dq)
+		status, _ = bulk(http.MethodDelete, dq)
 		require.Equal(t, http.StatusBadRequest, status)
 	}
 

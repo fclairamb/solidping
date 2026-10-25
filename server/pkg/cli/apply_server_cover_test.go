@@ -11,6 +11,10 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
+func one(path string, status int, body string) []coverRoute {
+	return []coverRoute{{path: path, status: status, body: body}}
+}
+
 func exitCodeOf(err error) int {
 	var coder cli.ExitCoder
 	if err != nil && errors.As(err, &coder) {
@@ -39,7 +43,7 @@ const applyErrBody = `{"manifest":"m","created":0,"errors":[{"slug":"web","error
 func TestApplyActionBranches(t *testing.T) {
 	manifest := writeManifest(t, "m.yaml")
 	jsonManifest := writeManifest(t, "m.json")
-	plan := []coverRoute{{path: "apply", status: 200, body: applyPlanBody}}
+	plan := one("apply", 200, applyPlanBody)
 
 	tests := []struct {
 		name     string
@@ -57,10 +61,14 @@ func TestApplyActionBranches(t *testing.T) {
 		{"json with yes", plan, []string{"-o", "json", "apply", "-f", manifest, "-y"}, false, 0},
 		{"apply with yes", plan, []string{"apply", "-f", manifest, "-y", "--prune", "--force"}, false, 0},
 		{"stdin declines", plan, []string{"apply", "-f", manifest}, true, 2},
-		{"empty plan", []coverRoute{{path: "apply", status: 200, body: `{"manifest":"m"}`}}, []string{"apply", "-f", manifest, "-y"}, false, 0},
-		{"server errors reported", []coverRoute{{path: "apply", status: 200, body: applyErrBody}}, []string{"apply", "-f", manifest, "-y"}, true, 1},
-		{"plan request fails", []coverRoute{{path: "apply", status: http.StatusForbidden, body: `{"code":"FORBIDDEN"}`}}, []string{"apply", "-f", manifest, "-y"}, true, -1},
-		{"plan body garbage", []coverRoute{{path: "apply", status: 200, body: `nope`}}, []string{"apply", "-f", manifest, "-y"}, true, -1},
+		{"empty plan", one("apply", 200, `{"manifest":"m"}`), []string{"apply", "-f", manifest, "-y"}, false, 0},
+		{"server errors reported", one("apply", 200, applyErrBody), []string{"apply", "-f", manifest, "-y"}, true, 1},
+		{
+			"plan request fails", one("apply", http.StatusForbidden, `{"code":"FORBIDDEN"}`),
+			[]string{"apply", "-f", manifest, "-y"},
+			true, -1,
+		},
+		{"plan body garbage", one("apply", 200, `nope`), []string{"apply", "-f", manifest, "-y"}, true, -1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -81,8 +89,8 @@ func TestApplyActionBranches(t *testing.T) {
 //nolint:paralleltest // coverRun swaps process-global stdio and HOME
 func TestChecksImportActionBranches(t *testing.T) {
 	file := writeManifest(t, "export.yaml")
-	ok := []coverRoute{{path: "import", status: 200, body: `{"created":1,"updated":2,"skipped":0}`}}
-	bad := []coverRoute{{path: "import", status: 200, body: `{"created":0,"errors":[{"index":1,"slug":"x","error":"bad"}]}`}}
+	ok := one("import", 200, `{"created":1,"updated":2,"skipped":0}`)
+	bad := one("import", 200, `{"created":0,"errors":[{"index":1,"slug":"x","error":"bad"}]}`)
 
 	require.Equal(t, 5, exitCodeOf(coverRun(t, ok, "checks", "import")))
 	require.Equal(t, 5, exitCodeOf(coverRun(t, ok, "checks", "import", "/nonexistent/file.yaml")))
@@ -90,8 +98,8 @@ func TestChecksImportActionBranches(t *testing.T) {
 	require.NoError(t, coverRun(t, ok, "checks", "import", "--dry-run", file))
 	require.NoError(t, coverRun(t, ok, "-o", "json", "checks", "import", file))
 	require.Equal(t, 1, exitCodeOf(coverRun(t, bad, "checks", "import", file)))
-	require.Error(t, coverRun(t, []coverRoute{{path: "import", status: 500, body: `{"code":"INTERNAL_ERROR"}`}}, "checks", "import", file))
-	require.Error(t, coverRun(t, []coverRoute{{path: "import", status: 200, body: `nope`}}, "checks", "import", file))
+	require.Error(t, coverRun(t, one("import", 500, `{"code":"INTERNAL_ERROR"}`), "checks", "import", file))
+	require.Error(t, coverRun(t, one("import", 200, `nope`), "checks", "import", file))
 }
 
 //nolint:paralleltest // coverRun swaps process-global stdio and HOME
@@ -105,14 +113,14 @@ func TestServerRenderersViaCommands(t *testing.T) {
 	cost := `{"data":{"totalJobs":10,"thresholdMs":100,"fastJobs":7,"slowJobs":3,` +
 		`"costEwmaMs":{"p50":1.5,"p90":2.5,"p99":3.5,"max":4.5},"delayEwmaMs":{"p50":1}}}`
 
-	require.NoError(t, coverRun(t, []coverRoute{{path: "limits", status: 200, body: limits}}, "server", "limits"))
-	require.NoError(t, coverRun(t, []coverRoute{{path: "memory", status: 200, body: memory}}, "server", "memory"))
-	require.NoError(t, coverRun(t, []coverRoute{{path: "cost", status: 200, body: cost}}, "server", "cost-distribution", "--threshold-ms", "50"))
-	require.NoError(t, coverRun(t, []coverRoute{{path: "cost", status: 200, body: `{}`}}, "server", "cost-distribution"))
-	require.NoError(t, coverRun(t, []coverRoute{{path: "cost", status: 200, body: cost}}, "-o", "json", "server", "cost-distribution"))
-	require.Error(t, coverRun(t, []coverRoute{{path: "limits", status: 500, body: `{}`}}, "server", "limits"))
-	require.Error(t, coverRun(t, []coverRoute{{path: "memory", status: 500, body: `{}`}}, "server", "memory"))
-	require.Error(t, coverRun(t, []coverRoute{{path: "cost", status: 500, body: `{}`}}, "server", "cost-distribution"))
-	require.Error(t, coverRun(t, []coverRoute{{path: "health", status: 500, body: `{}`}}, "server", "health"))
-	require.Error(t, coverRun(t, []coverRoute{{path: "version", status: 500, body: `{}`}}, "server", "version"))
+	require.NoError(t, coverRun(t, one("limits", 200, limits), "server", "limits"))
+	require.NoError(t, coverRun(t, one("memory", 200, memory), "server", "memory"))
+	require.NoError(t, coverRun(t, one("cost", 200, cost), "server", "cost-distribution", "--threshold-ms", "50"))
+	require.NoError(t, coverRun(t, one("cost", 200, `{}`), "server", "cost-distribution"))
+	require.NoError(t, coverRun(t, one("cost", 200, cost), "-o", "json", "server", "cost-distribution"))
+	require.Error(t, coverRun(t, one("limits", 500, `{}`), "server", "limits"))
+	require.Error(t, coverRun(t, one("memory", 500, `{}`), "server", "memory"))
+	require.Error(t, coverRun(t, one("cost", 500, `{}`), "server", "cost-distribution"))
+	require.Error(t, coverRun(t, one("health", 500, `{}`), "server", "health"))
+	require.Error(t, coverRun(t, one("version", 500, `{}`), "server", "version"))
 }

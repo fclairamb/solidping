@@ -37,7 +37,7 @@ case "$cmd" in
   gate)
     [[ $# -eq 2 ]] || usage
     total="$(go tool cover -func="$2" | awk '/^total:/ {gsub("%","",$3); print $3}')"
-    min="${COVERAGE_MIN:-84}"
+    min="${COVERAGE_MIN:-85}"
     line="Backend coverage: ${total}% (minimum ${min}%)"
     echo "$line"
     if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
@@ -53,7 +53,7 @@ case "$cmd" in
     [[ -s "$2" ]] || { echo "coverage profile missing or empty: $2" >&2; exit 1; }
     total="$(go tool cover -func="$2" | awk '/^total:/ {gsub("%","",$3); print $3}')"
     [[ "$total" =~ ^[0-9]+(\.[0-9]+)?$ ]] || { echo "cannot read a coverage total from $2" >&2; exit 1; }
-    min="${COVERAGE_MIN:-84}"
+    min="${COVERAGE_MIN:-85}"
     color="$(awk -v t="$total" -v m="$min" 'BEGIN { if (t+0 >= m+0) print "brightgreen"; else if (t+0 >= m-5) print "yellow"; else print "red" }')"
     printf '{"schemaVersion":1,"label":"coverage","message":"%s%%","color":"%s"}\n' "$total" "$color"
     ;;

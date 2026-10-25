@@ -121,7 +121,8 @@ func TestIncidentAndMaintenanceToolsAgainstServices(t *testing.T) {
 
 	bad(h.toolIncidentNotificationsList(ctx, slug, map[string]any{}))
 	ok(h.toolIncidentNotificationsList(ctx, slug, map[string]any{propUID: incident.UID, "limit": float64(0)}))
-	ok(h.toolIncidentNotificationsList(ctx, slug, map[string]any{propUID: incident.UID, "limit": float64(9999), propStatus: "sent"}))
+	ok(h.toolIncidentNotificationsList(ctx, slug,
+		map[string]any{propUID: incident.UID, "limit": float64(9999), propStatus: "sent"}))
 	bad(h.toolIncidentNotificationsList(ctx, "nope", map[string]any{propUID: incident.UID}))
 
 	// Maintenance windows.
