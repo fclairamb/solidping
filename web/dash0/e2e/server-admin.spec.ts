@@ -47,8 +47,8 @@ test.describe("Server Admin", () => {
     ).toBeVisible();
 
     // Verify web settings content
-    await expect(page.getByLabel("Base URL")).toBeVisible();
-    await expect(page.getByText("JWT Secret")).toBeVisible();
+    await expect(page.getByTestId("server-web-base-url-input")).toBeVisible();
+    await expect(page.getByTestId("server-web-jwt-secret-input")).toBeVisible();
     await expect(page.getByRole("button", { name: "Save" })).toBeVisible();
   });
 
@@ -65,13 +65,13 @@ test.describe("Server Admin", () => {
     // Click Mail tab
     await page.getByRole("link", { name: "Mail", exact: true }).click();
     await page.waitForURL(/\/server\/mail/);
-    await expect(page.getByLabel("SMTP Host")).toBeVisible();
-    await expect(page.getByLabel("From Address")).toBeVisible();
+    await expect(page.getByTestId("server-mail-host-input")).toBeVisible();
+    await expect(page.getByTestId("server-mail-from-input")).toBeVisible();
 
     // Click Authentication tab
     await page.getByRole("link", { name: "Authentication" }).click();
     await page.waitForURL(/\/server\/auth/);
-    await expect(page.getByText("Client ID", { exact: true }).first()).toBeVisible();
+    await expect(page.getByTestId("provider-label-auth.google.client_id")).toBeVisible();
   });
 
   test("should save base URL setting", async ({ authenticatedPage }) => {
@@ -83,14 +83,14 @@ test.describe("Server Admin", () => {
     await navigateToServer(page);
 
     // Fill in the base URL
-    const baseUrlInput = page.getByLabel("Base URL");
+    const baseUrlInput = page.getByTestId("server-web-base-url-input");
     await baseUrlInput.fill("https://solidping.example.com");
 
     // Click Save
     await page.getByRole("button", { name: "Save" }).click();
 
     // Wait for success message
-    await expect(page.getByText("Settings saved.")).toBeVisible({
+    await expect(page.getByTestId("settings-saved")).toBeVisible({
       timeout: 10000,
     });
   });
@@ -108,7 +108,7 @@ test.describe("Server Admin", () => {
     await page.waitForURL(/\/server\/mail/);
 
     // Verify test email section is visible
-    await expect(page.getByLabel("Recipient Email")).toBeVisible();
+    await expect(page.getByTestId("server-mail-test-recipient-input")).toBeVisible();
     await expect(page.getByTestId("send-test-email-button")).toBeVisible();
   });
 });
@@ -152,7 +152,7 @@ test.describe("Server Admin — Password Hashing", () => {
 
     // The algorithm select and the restart notice must be present.
     await expect(page.getByTestId("hashing-algorithm")).toBeVisible();
-    await expect(page.getByText(/take effect after a server restart/i)).toBeVisible();
+    await expect(page.getByTestId("hashing-restart-notice")).toBeVisible();
   });
 
   test("argon2 preset fills the cost inputs", async ({ authenticatedPage }) => {
@@ -287,7 +287,7 @@ test.describe("Server Admin — Microsoft Tenant ID", () => {
 
     // The Microsoft card carries a Tenant ID label and a plain-text (non-secret)
     // input defaulting its placeholder to "common".
-    await expect(page.getByText("Tenant ID", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("provider-label-auth.microsoft.tenant_id")).toBeVisible();
 
     const input = page.getByTestId(tenantField);
     await expect(input).toBeVisible();
@@ -297,7 +297,7 @@ test.describe("Server Admin — Microsoft Tenant ID", () => {
 
     // The per-field help line documenting the accepted tenant forms is rendered.
     await expect(
-      page.getByText(/Entra directory \(tenant\) ID/i),
+      page.getByTestId("provider-help-auth.microsoft.tenant_id"),
     ).toBeVisible();
   });
 
@@ -320,14 +320,9 @@ test.describe("Server Admin — Microsoft Tenant ID", () => {
 
     // Save the Microsoft card. Its Save button is the one inside the Microsoft
     // card; scope the click to that card to avoid the other providers' buttons.
-    const microsoftCard = page
-      .locator("div")
-      .filter({ has: page.getByTestId(tenantField) })
-      .filter({ hasText: "Microsoft" })
-      .last();
-    await microsoftCard.getByRole("button", { name: "Save" }).click();
+    await page.getByTestId("provider-save-microsoft").click();
 
-    await expect(page.getByText("Settings saved.")).toBeVisible({
+    await expect(page.getByTestId("settings-saved")).toBeVisible({
       timeout: 10000,
     });
 
@@ -446,15 +441,15 @@ test.describe("Server Aggregation", () => {
     await page.goto("orgs/test/server/aggregation");
 
     // Each tier's field is labelled with its unit (hours / days / months).
-    await expect(page.getByLabel("Raw retention (hours)")).toBeVisible();
-    await expect(page.getByLabel("Hourly retention (days)")).toBeVisible();
-    await expect(page.getByLabel("Daily retention (months)")).toBeVisible();
+    await expect(page.getByTestId("aggregation-raw-hours-input")).toBeVisible();
+    await expect(page.getByTestId("aggregation-hour-days-input")).toBeVisible();
+    await expect(page.getByTestId("aggregation-day-months-input")).toBeVisible();
 
     // The two decision-2 behaviours are surfaced inline so the compaction
     // semantics aren't a surprise.
-    await expect(page.getByText(/never re-processes data/i)).toBeVisible();
+    await expect(page.getByTestId("aggregation-note-no-reaggregate")).toBeVisible();
     await expect(
-      page.getByText(/does not restore data that was already rolled up/i),
+      page.getByTestId("aggregation-note-no-restore"),
     ).toBeVisible();
   });
 
@@ -507,7 +502,7 @@ test.describe("Server Aggregation", () => {
     // 0 is below the floor of 1; the field flags an inline error and the Save
     // button disarms so the invalid value never round-trips.
     await page.getByTestId("aggregation-hour-days-input").fill("0");
-    await expect(page.getByText(/whole number of at least 1/i)).toBeVisible();
+    await expect(page.getByTestId("aggregation-hour-days-input-error")).toBeVisible();
     await expect(page.getByTestId("aggregation-save")).toBeDisabled();
     await expect(page.getByTestId("aggregation-saved")).toHaveCount(0);
   });

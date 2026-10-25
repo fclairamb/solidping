@@ -770,7 +770,7 @@ function ChecksGlanceList({
     <Card data-testid="checks-glance">
       <CardHeader className="flex flex-row items-center justify-between py-4">
         <div>
-          <CardTitle className="text-base font-semibold">
+          <CardTitle className="text-base font-semibold" data-testid="checks-glance-title">
             {t("glance.title")}
           </CardTitle>
           <CardDescription className="text-xs text-muted-foreground mt-0.5">
@@ -805,7 +805,12 @@ function ChecksGlanceList({
               const checkType = check.type || "http";
 
               return (
-                <div key={check.uid} data-testid="glance-row" className="group">
+                <div
+                  key={check.uid}
+                  data-testid="glance-row"
+                  data-check-name={check.name || check.slug || check.uid}
+                  className="group"
+                >
                   <Link
                     to="/orgs/$org/checks/$checkUid"
                     params={{ org, checkUid: check.uid }}
@@ -987,7 +992,11 @@ function ActiveIncidentsList({
                       <div className="flex min-w-0 items-center gap-3">
                         <AlertTriangle className="h-4 w-4 shrink-0 text-status-error" />
                         <div className="min-w-0">
-                          <div className="truncate text-sm font-medium">
+                          <div
+                            className="truncate text-sm font-medium"
+                            data-testid="active-incident-title"
+                            data-incident-title={incident.title}
+                          >
                             {incident.title || t("activeIncidents.untitled")}
                           </div>
                           {incident.checkName ? (

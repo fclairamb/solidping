@@ -534,6 +534,7 @@ function IncidentsIndexPage() {
                               <Badge
                                 variant="outline"
                                 className="text-xs font-normal"
+                                data-testid="incident-rolled-up-badge"
                               >
                                 {t("rollup.rolledUpBadge")}
                               </Badge>

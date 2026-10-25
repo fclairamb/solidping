@@ -473,6 +473,7 @@ export function EventTypeLabel({
         className,
       )}
       title={eventType}
+      data-testid="event-type-label"
     >
       <Icon className={cn("size-4 shrink-0", tone)} aria-hidden="true" />
       <span

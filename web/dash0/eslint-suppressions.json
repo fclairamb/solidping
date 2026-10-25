@@ -199,11 +199,6 @@
       "count": 3
     }
   },
-  "e2e/dashboard.spec.ts": {
-    "testid-local/no-text-locators": {
-      "count": 16
-    }
-  },
   "e2e/demo-account.spec.ts": {
     "testid-local/no-text-locators": {
       "count": 5
@@ -449,19 +444,9 @@
       "count": 7
     }
   },
-  "e2e/responsive-tables-mobile.spec.ts": {
-    "testid-local/no-text-locators": {
-      "count": 17
-    }
-  },
   "e2e/server-activation.spec.ts": {
     "testid-local/no-text-locators": {
       "count": 2
-    }
-  },
-  "e2e/server-admin.spec.ts": {
-    "testid-local/no-text-locators": {
-      "count": 19
     }
   },
   "e2e/server-entitlements.spec.ts": {
@@ -1186,7 +1171,7 @@
   },
   "src/routes/orgs/$org/server.auth.tsx": {
     "testid-local/require-testid-on-interactive": {
-      "count": 5
+      "count": 4
     }
   },
   "src/routes/orgs/$org/server.discord.tsx": {
@@ -1211,7 +1196,7 @@
   },
   "src/routes/orgs/$org/server.mail.tsx": {
     "testid-local/require-testid-on-interactive": {
-      "count": 16
+      "count": 8
     }
   },
   "src/routes/orgs/$org/server.notifications.tsx": {
@@ -1241,7 +1226,7 @@
   },
   "src/routes/orgs/$org/server.web.tsx": {
     "testid-local/require-testid-on-interactive": {
-      "count": 8
+      "count": 5
     }
   },
   "src/routes/orgs/$org/slos.$uid.alert-policies.$policyUid.tsx": {

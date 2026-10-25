@@ -582,7 +582,10 @@ function CheckRow({
       <TableCell>
         {/* Plain tabular text: the status column already carries the color,
             and a colored chip per row turned the column into noise. */}
-        <span className="font-mono text-xs tabular-nums text-muted-foreground">
+        <span
+          className="font-mono text-xs tabular-nums text-muted-foreground"
+          data-testid="check-duration"
+        >
           {durationMs != null ? `${Math.round(durationMs)}ms` : "—"}
         </span>
       </TableCell>

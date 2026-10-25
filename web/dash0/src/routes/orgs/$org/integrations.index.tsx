@@ -369,7 +369,7 @@ function Row({ org, integration, onDelete }: RowProps) {
           <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-muted/60">
             <IntegrationIcon type={integration.type} className="h-4 w-4" />
           </div>
-          <span className="min-w-0 truncate">{integration.name}</span>
+          <span className="min-w-0 truncate" data-testid="integration-name">{integration.name}</span>
         </Link>
         {/* Below sm the Status column is hidden, so the status sits under
             the name (aligned with it, past the icon) and the name keeps the
@@ -427,6 +427,7 @@ function IntegrationStatus({
   return (
     <div className={cn("flex items-center gap-2", className)}>
       <Badge
+        data-testid="integration-status-badge"
         variant={integration.enabled ? "default" : "secondary"}
         className={
           integration.enabled
