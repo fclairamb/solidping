@@ -78,6 +78,7 @@ func Run(t *testing.T, svc db.Service) {
 		{"check_updates_and_filters", runCheckUpdatesAndFilters},
 		{"slo_and_status_page_updates", runSLOAndStatusPageUpdates},
 		{"state_entries", runStateEntries},
+		{"update_every_field", runUpdateEveryField},
 	}
 
 	for _, g := range groups {
