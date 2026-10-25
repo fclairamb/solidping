@@ -13,6 +13,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/audit"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/defaults"
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/i18n/recipient"
 	"github.com/fclairamb/solidping/server/internal/utils/passwords"
@@ -38,6 +39,13 @@ var (
 	// admin. The route is already behind RequireSuperAdmin; this is the
 	// service's own check.
 	ErrEmailChangeNotSuperAdmin = errors.New("only a super admin can change another user's email")
+	// ErrFirstLoginEmailNotAllowed: the change-password call carried an email
+	// while the caller is not in the mustChangeEmail state. Mapped to 400.
+	ErrFirstLoginEmailNotAllowed = errors.New(
+		"an email can only be set here on the first login of the default admin: use your profile instead")
+	// ErrDefaultEmailRefused: the new address is the published default one.
+	// Mapped to 400.
+	ErrDefaultEmailRefused = errors.New("choose an email address other than the default one")
 )
 
 // Who changed an email, recorded on auth.email_changed.
@@ -73,6 +81,45 @@ func normalizeEmail(raw string) (string, error) {
 	}
 
 	return normalized, nil
+}
+
+// mustChangeEmail reports whether the account still signs in with the
+// published seed address while it must rotate its password (spec
+// 2026-10-13-02). It is computed from the row only.
+func mustChangeEmail(user *models.User) bool {
+	return user != nil && user.MustChangePassword && strings.EqualFold(user.Email, defaults.Email)
+}
+
+// isDefaultEmail reports whether the address is the published seed address.
+func isDefaultEmail(address string) bool {
+	return strings.EqualFold(strings.TrimSpace(address), defaults.Email)
+}
+
+// firstLoginEmail validates the optional email of a forced first-login
+// password change and returns it normalized ("" when none was sent).
+func (s *Service) firstLoginEmail(ctx context.Context, user *models.User, raw string) (string, error) {
+	if strings.TrimSpace(raw) == "" {
+		return "", nil
+	}
+
+	if !mustChangeEmail(user) {
+		return "", ErrFirstLoginEmailNotAllowed
+	}
+
+	newEmail, err := normalizeEmail(raw)
+	if err != nil {
+		return "", err
+	}
+
+	if isDefaultEmail(newEmail) {
+		return "", ErrDefaultEmailRefused
+	}
+
+	if err := s.ensureEmailAvailable(ctx, user.UID, newEmail); err != nil {
+		return "", err
+	}
+
+	return newEmail, nil
 }
 
 // emailChange describes one validated email change about to be applied.
@@ -133,7 +180,13 @@ func (s *Service) applyEmailChange(ctx context.Context, change *emailChange) err
 
 	changedAt := time.Now().UTC()
 
-	if s.fullCfg != nil && s.fullCfg.Email.Enabled {
+	switch {
+	case isDefaultEmail(oldEmail):
+		// The published seed address belongs to the maintainer's domain, not to
+		// this install: a notice there would leak the new address to it.
+		slog.DebugContext(ctx, "Previous address is the default one: no email-change notice sent",
+			"userUid", change.user.UID)
+	case s.fullCfg != nil && s.fullCfg.Email.Enabled:
 		// The row already carries the new address, so the old one no longer
 		// resolves to this account: the locale comes from the user loaded
 		// before the update.
@@ -142,7 +195,7 @@ func (s *Service) applyEmailChange(ctx context.Context, change *emailChange) err
 			"OldEmail":       oldEmail,
 			"NewEmail":       change.newEmail,
 		})
-	} else {
+	default:
 		slog.WarnContext(ctx, "Email sending is disabled: the previous address was not told about the email change",
 			"userUid", change.user.UID)
 	}
