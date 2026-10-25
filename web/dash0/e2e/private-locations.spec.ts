@@ -270,7 +270,9 @@ test.describe("Private locations", () => {
     await expect(deleteButton).toHaveAttribute("title", "Remove agent");
     await deleteButton.click();
 
-    await expect(page.getByText("Remove this agent?")).toBeVisible();
+    await expect(page.getByTestId("agent-revoke-dialog-title")).toHaveText(
+      "Remove this agent?",
+    );
     await page.getByTestId("confirm-revoke-agent").click();
 
     await expect.poll(() => deleteCalled).toBe(true);
@@ -292,7 +294,8 @@ test.describe("Private locations", () => {
     await page.goto("orgs/test/checks/new");
 
     // Pick a check type so the form (and its region picker) renders.
-    await page.getByText("HTTP", { exact: false }).first().click();
+    await page.getByTestId("check-type-select").click();
+    await page.getByRole("option", { name: /^HTTP/ }).first().click();
     await choosePinnedRegions(page);
 
     // The private region is offered under its org-relative slug with the

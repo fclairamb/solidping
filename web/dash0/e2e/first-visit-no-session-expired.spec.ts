@@ -10,7 +10,7 @@ base.describe("First visit", () => {
     await expect(page.getByTestId("login-title")).toBeVisible({ timeout: 15000 });
     expect(page.url()).toContain("/login");
     expect(page.url()).not.toContain("session_expired=true");
-    await expect(page.getByText(/Your session has expired/i)).toHaveCount(0);
+    await expect(page.getByTestId("session-expired-banner")).toHaveCount(0);
   });
 });
 
@@ -24,6 +24,6 @@ test.describe("Invalidated session", () => {
     await expect(page.getByTestId("login-title")).toBeVisible({ timeout: 15000 });
     expect(page.url()).toContain("session_expired=true");
     expect(page.url()).toContain("returnTo=");
-    await expect(page.getByText(/Your session has expired/i)).toBeVisible();
+    await expect(page.getByTestId("session-expired-banner")).toContainText(/Your session has expired/i);
   });
 });

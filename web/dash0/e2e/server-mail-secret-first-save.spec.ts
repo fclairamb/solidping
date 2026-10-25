@@ -20,7 +20,7 @@ test.describe("Server mail: secret saved on first setup", () => {
       await page.locator("#host").fill("  smtp.acme.com  ");
       await page.locator("#password").fill("smtp-key-123");
       await page.getByRole("button", { name: "Save", exact: true }).click();
-      await expect(page.getByText("Saved")).toBeVisible();
+      await expect(page.getByTestId("settings-saved")).toContainText(/saved/i);
 
       await page.reload();
       await expect(page.locator("#password")).toBeDisabled();

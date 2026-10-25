@@ -38,6 +38,9 @@ async function deleteCheckViaApi(page: Page, token: string, uid: string): Promis
   });
 }
 
+const checkName = (page: Page, name: string) =>
+  page.locator(`[data-testid="check-row-name"][data-check-name="${name}"]`);
+
 test.describe("Checks search box syncs to ?q=", () => {
   test("typing updates the URL, and a reload keeps the input and filter", async ({
     authenticatedPage,
@@ -59,29 +62,29 @@ test.describe("Checks search box syncs to ?q=", () => {
       await expect(searchInput).toBeVisible();
 
       // Before typing, both checks are visible and the URL has no q param.
-      await expect(page.getByText(matchName)).toBeVisible();
-      await expect(page.getByText(otherName)).toBeVisible();
+      await expect(checkName(page, matchName)).toBeVisible();
+      await expect(checkName(page, otherName)).toBeVisible();
       expect(new URL(page.url()).searchParams.get("q")).toBeNull();
 
       // Typing narrows the list and updates the URL (debounced, replace —
       // asserted by polling rather than requiring an exact history length).
       await searchInput.fill(matchName);
       await expect.poll(() => new URL(page.url()).searchParams.get("q")).toBe(matchName);
-      await expect(page.getByText(matchName)).toBeVisible();
-      await expect(page.getByText(otherName)).not.toBeVisible();
+      await expect(checkName(page, matchName)).toBeVisible();
+      await expect(checkName(page, otherName)).not.toBeVisible();
 
       // Cold reload (not client-side nav): the input stays pre-filled and the
       // list stays filtered from the URL alone.
       await page.reload();
       await page.waitForLoadState("networkidle");
       await expect(page.getByTestId("checks-search-input")).toHaveValue(matchName);
-      await expect(page.getByText(matchName)).toBeVisible();
-      await expect(page.getByText(otherName)).not.toBeVisible();
+      await expect(checkName(page, matchName)).toBeVisible();
+      await expect(checkName(page, otherName)).not.toBeVisible();
 
       // Clearing the box removes the param entirely (not left as `q=`).
       await page.getByTestId("checks-search-input").fill("");
       await expect.poll(() => new URL(page.url()).searchParams.has("q")).toBe(false);
-      await expect(page.getByText(otherName)).toBeVisible();
+      await expect(checkName(page, otherName)).toBeVisible();
     } finally {
       await deleteCheckViaApi(page, token, matchCheck.uid);
       await deleteCheckViaApi(page, token, otherCheck.uid);
@@ -110,8 +113,8 @@ test.describe("Checks search box syncs to ?q=", () => {
       await page.goto(target.toString());
 
       await expect(page.getByTestId("checks-search-input")).toHaveValue(matchName);
-      await expect(page.getByText(matchName)).toBeVisible();
-      await expect(page.getByText(otherName)).not.toBeVisible();
+      await expect(checkName(page, matchName)).toBeVisible();
+      await expect(checkName(page, otherName)).not.toBeVisible();
     } finally {
       await deleteCheckViaApi(page, token, matchCheck.uid);
       await deleteCheckViaApi(page, token, otherCheck.uid);

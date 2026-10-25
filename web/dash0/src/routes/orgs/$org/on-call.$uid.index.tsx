@@ -235,6 +235,8 @@ function OnCallDetailPage() {
               {schedule.userUids.map((uid, idx) => (
                 <li
                   key={uid}
+                  data-testid="oncall-roster-member"
+                  data-user-uid={uid}
                   // flex-wrap so the badge drops to its own line on narrow
                   // screens instead of squeezing the name off the row.
                   className="flex flex-wrap items-center gap-2 text-sm"

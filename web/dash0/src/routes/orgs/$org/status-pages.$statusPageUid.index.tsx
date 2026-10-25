@@ -248,6 +248,7 @@ function AddSectionDialog({
               variant="outline"
               size="icon"
               aria-label={t("statusPages:sections.add")}
+              data-testid="status-page-add-section-button"
             >
               <Plus className="h-4 w-4" />
             </Button>
@@ -794,6 +795,10 @@ function ResourceRow({
   const deleteResource = useDeleteResource(org, statusPageUid, sectionUid);
   const updateResource = useUpdateResource(org, statusPageUid, sectionUid);
   const managed = resource.managedBySelector === true;
+  const resourceName =
+    resource.publicName ||
+    resource.check?.name ||
+    (resource.checkUid ?? resource.checkGroupUid ?? "").slice(0, 8);
 
   const handleDelete = async () => {
     try {
@@ -897,10 +902,12 @@ function ResourceRow({
         </div>
       )}
       <StatusDot status={resource.check?.status} />
-      <span className="min-w-0 flex-1 basis-32 text-sm" data-testid="resource-row-name">
-        {resource.publicName ||
-          resource.check?.name ||
-          (resource.checkUid ?? resource.checkGroupUid ?? "").slice(0, 8)}
+      <span
+        className="min-w-0 flex-1 basis-32 text-sm"
+        data-testid="resource-row-name"
+        data-resource-name={resourceName}
+      >
+        {resourceName}
       </span>
       {/*
         A group resource carries no check type — the public payload deliberately
@@ -1116,7 +1123,7 @@ function SectionCard({
               <GripVertical className="h-4 w-4" />
             </button>
             <div>
-              <CardTitle className="text-lg">{section.name}</CardTitle>
+              <CardTitle className="text-lg" data-testid="section-name">{section.name}</CardTitle>
               <CardDescription>{section.slug}</CardDescription>
             </div>
           </div>

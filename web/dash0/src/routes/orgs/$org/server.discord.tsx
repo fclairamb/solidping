@@ -164,7 +164,7 @@ function DiscordSettingsPage() {
               </Alert>
             )}
             {saved && (
-              <Alert>
+              <Alert data-testid="settings-saved">
                 <Check className="h-4 w-4" />
                 <AlertDescription>{t("server:saved")}</AlertDescription>
               </Alert>

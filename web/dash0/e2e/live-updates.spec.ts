@@ -1,5 +1,9 @@
 import type { WebSocket } from "@playwright/test";
 import {
+  activeIncidentLocator,
+  checkRowLocator,
+} from "./locators";
+import {
   test,
   expect,
   type Page,
@@ -238,7 +242,7 @@ test.describe("Live dashboard updates", () => {
       await sendHeartbeat(page, check, "down");
 
       await expect(
-        page.getByTestId("active-incidents").getByText(check.name),
+        activeIncidentLocator(page, check.name),
       ).toBeVisible({ timeout: 4000 });
 
       // Recovery closes the incident live too. The open invalidation just armed
@@ -248,7 +252,7 @@ test.describe("Live dashboard updates", () => {
       // that deferral plus CI refetch latency so the drop-off isn't raced.
       await sendHeartbeat(page, check, "up");
       await expect(
-        page.getByTestId("active-incidents").getByText(check.name),
+        activeIncidentLocator(page, check.name),
       ).toBeHidden({ timeout: 15_000 });
     } finally {
       await deleteCheck(page, token, check.uid);
@@ -312,9 +316,10 @@ test.describe("Live dashboard updates", () => {
       withFetches = 0;
       bareFetches = 0;
       await sendHeartbeat(page, check, "up");
-      await expect(page.getByText("Currently up for")).toBeVisible({
-        timeout: 4000,
-      });
+      await expect(page.getByTestId("summary-status-label")).toContainText(
+        "Currently up for",
+        { timeout: 4000 },
+      );
       page.off("request", onRequest);
       // The single live hint fetched the check through its one canonical cache
       // entry (?with=…) and never through the retired bare breadcrumb entry —
@@ -390,7 +395,7 @@ test.describe("Live dashboard updates", () => {
       // hints to the dashboard.
       await sendHeartbeat(page, check, "down");
       await expect(
-        page.getByTestId("active-incidents").getByText(check.name),
+        activeIncidentLocator(page, check.name),
       ).toBeVisible({ timeout: 4000 });
     } finally {
       await deleteCheck(page, token, check.uid);
@@ -524,16 +529,16 @@ test.describe("Live dashboard updates", () => {
       // Narrow the paginated list to just this check — the shared test org
       // can hold more checks than one page (20), and the search-filtered
       // infinite query must be invalidated by hints all the same.
-      await page.getByPlaceholder("Search checks...").fill(check.name);
-      const row = page.getByRole("row").filter({ hasText: check.name });
+      await page.getByTestId("checks-search-input").fill(check.name);
+      const row = checkRowLocator(page, check.name);
       await expect(row).toBeVisible();
-      await expect(row.getByText("Up", { exact: true })).toBeVisible();
+      await expect(row.locator('[data-testid="status-badge"][data-status="up"]')).toBeVisible();
 
       // Fail the check: the row's status badge must flip to Down without a
       // reload. The status transition publishes a `checks`-kind hint, which
       // must reach the infinite checks queries this page renders from.
       await sendHeartbeat(page, check, "down");
-      await expect(row.getByText("Down", { exact: true })).toBeVisible({
+      await expect(row.locator('[data-testid="status-badge"][data-status="down"]')).toBeVisible({
         timeout: 6000,
       });
     } finally {
@@ -610,12 +615,12 @@ test.describe("Live dashboard updates", () => {
         (resp) => isPageListRequest(resp.url()),
         { timeout: 15_000 },
       );
-      await page.getByPlaceholder("Search checks...").fill(check.name);
+      await page.getByTestId("checks-search-input").fill(check.name);
       await filteredListLoaded;
 
-      const row = page.getByRole("row").filter({ hasText: check.name });
+      const row = checkRowLocator(page, check.name);
       await expect(row).toBeVisible();
-      await expect(row.getByText("Up", { exact: true })).toBeVisible();
+      await expect(row.locator('[data-testid="status-badge"][data-status="up"]')).toBeVisible();
 
       let listFetches = 0;
       const onRequest = (req: { url: () => string; method: () => string }) => {
@@ -689,7 +694,7 @@ test.describe("Live dashboard updates", () => {
       // observes real list refetches, so a `toBeLessThanOrEqual` pass above
       // can never be an artifact of counting nothing at all.
       await sendHeartbeat(page, check, "down");
-      await expect(row.getByText("Down", { exact: true })).toBeVisible({
+      await expect(row.locator('[data-testid="status-badge"][data-status="down"]')).toBeVisible({
         timeout: 8000,
       });
       page.off("request", onRequest);
@@ -739,24 +744,24 @@ test.describe("Live dashboard updates", () => {
       await page.goto("orgs/test/checks");
       await subscribed;
 
-      await page.getByPlaceholder("Search checks...").fill(`E2E LiveBucket ${ts}`);
+      await page.getByTestId("checks-search-input").fill(`E2E LiveBucket ${ts}`);
 
-      const rowA = page.getByRole("row").filter({ hasText: checkA.name });
-      const rowB = page.getByRole("row").filter({ hasText: checkB.name });
+      const rowA = checkRowLocator(page, checkA.name);
+      const rowB = checkRowLocator(page, checkB.name);
       await expect(rowA).toBeVisible();
       await expect(rowB).toBeVisible();
-      await expect(rowA.getByText("Up", { exact: true })).toBeVisible();
-      await expect(rowB.getByText("Up", { exact: true })).toBeVisible();
+      await expect(rowA.locator('[data-testid="status-badge"][data-status="up"]')).toBeVisible();
+      await expect(rowB.locator('[data-testid="status-badge"][data-status="up"]')).toBeVisible();
 
       // Fail both checks: the status-transition hints must flip both rows to
       // Down without a reload — proving every group section (not just the
       // first) still refreshes off the shared batched query.
       await sendHeartbeat(page, checkA, "down");
       await sendHeartbeat(page, checkB, "down");
-      await expect(rowA.getByText("Down", { exact: true })).toBeVisible({
+      await expect(rowA.locator('[data-testid="status-badge"][data-status="down"]')).toBeVisible({
         timeout: 8000,
       });
-      await expect(rowB.getByText("Down", { exact: true })).toBeVisible({
+      await expect(rowB.locator('[data-testid="status-badge"][data-status="down"]')).toBeVisible({
         timeout: 8000,
       });
     } finally {
@@ -810,7 +815,7 @@ test.describe("Live dashboard updates", () => {
     await page.goto("orgs/test/checks");
     await subscribed;
 
-    await expect(page.getByPlaceholder("Search checks...")).toBeVisible();
+    await expect(page.getByTestId("checks-search-input")).toBeVisible();
   });
 
   test("the subscribed wait still fails when the page never registers that scope", async ({

@@ -91,6 +91,6 @@ test.describe("DNS check form", () => {
     await page.getByTestId("check-submit-button").click();
     await page.waitForTimeout(500);
     expect(page.url()).toContain("/checks/new");
-    await expect(page.getByText(/Domain is required/i)).toBeVisible();
+    await expect(page.getByTestId("check-form-error")).toContainText(/Domain is required/i);
   });
 });

@@ -1,4 +1,5 @@
 import { test, expect, API_BASE, type Page } from "./fixtures";
+import { groupSectionLocator, checkNameLocator } from "./locators";
 
 // Regression guard for spec 2026-07-20-05: on the checks index, a group whose
 // checks land on a later page must render *skeletons*, never the "No checks in
@@ -14,8 +15,6 @@ import { test, expect, API_BASE, type Page } from "./fixtures";
 // exact false-empty scenario. Deep-linking with the unique label narrows the
 // infinite query to just this run's checks so the two-page boundary is
 // deterministic regardless of what else lives in the org.
-
-const NO_CHECKS_TEXT = "No checks in this group";
 
 async function getAuthToken(page: Page): Promise<string> {
   const resp = await page.request.post(`${API_BASE}/api/v1/auth/login`, {
@@ -133,10 +132,7 @@ test.describe("Checks index group-ordered pagination", () => {
       await page.waitForLoadState("networkidle");
 
       // The page rendered: group A's sections are present with rows.
-      const sectionByName = (name: string) =>
-        page.locator('[data-testid="group-section"]').filter({
-          has: page.getByTestId("group-name").filter({ hasText: name }),
-        });
+      const sectionByName = (name: string) => groupSectionLocator(page, name);
 
       const sectionA = sectionByName(nameA);
       const sectionB = sectionByName(nameB);
@@ -150,12 +146,14 @@ test.describe("Checks index group-ordered pagination", () => {
       // state. C is the regression focus: its checks are all on page 2, so it
       // is empty here and must render skeletons, not "No checks".
       for (const section of [sectionA, sectionB, sectionC]) {
-        await expect(section.getByText(NO_CHECKS_TEXT)).toHaveCount(0);
+        await expect(section.getByTestId("group-empty")).toHaveCount(0);
       }
       // C is genuinely empty on page 1 → it must be showing skeleton rows.
       await expect(sectionC.locator(".animate-pulse").first()).toBeVisible();
       // Sanity: A (fully on page 1) already shows real rows.
-      await expect(page.getByText(`paga ${ts}-0`).first()).toBeVisible();
+      await expect(
+        checkNameLocator(page, `paga ${ts}-0`).first(),
+      ).toBeVisible();
 
       // Drain the stream by scrolling to the bottom until C's rows arrive.
       for (let i = 0; i < 15; i++) {
@@ -163,8 +161,7 @@ test.describe("Checks index group-ordered pagination", () => {
           window.scrollTo(0, document.body.scrollHeight),
         );
         if (
-          await sectionC
-            .getByText(`pagc ${ts}-0`)
+          await checkNameLocator(sectionC, `pagc ${ts}-0`)
             .isVisible()
             .catch(() => false)
         ) {
@@ -175,10 +172,10 @@ test.describe("Checks index group-ordered pagination", () => {
 
       // AFTER SCROLL: C's real rows are present and the false empty state never
       // appeared.
-      await expect(sectionC.getByText(`pagc ${ts}-0`)).toBeVisible({
+      await expect(checkNameLocator(sectionC, `pagc ${ts}-0`)).toBeVisible({
         timeout: 15_000,
       });
-      await expect(sectionC.getByText(NO_CHECKS_TEXT)).toHaveCount(0);
+      await expect(sectionC.getByTestId("group-empty")).toHaveCount(0);
     } finally {
       await deleteChecksByLabel(page, token, label);
       for (const group of groups) {

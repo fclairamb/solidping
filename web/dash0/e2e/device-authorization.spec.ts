@@ -111,7 +111,7 @@ test.describe("Device authorization consent", () => {
 
     // The minted token is a real, named PAT on the tokens page.
     await page.goto("orgs/test/account/tokens");
-    await expect(page.getByText(clientName).first()).toBeVisible();
+    await expect(page.locator(`[data-testid="token-row"][data-token-name=${JSON.stringify(clientName)}]`)).toBeVisible();
 
     // Clean up so repeated runs do not pile tokens up.
     const token = await getAuthToken(page);

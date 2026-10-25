@@ -11,10 +11,10 @@ test.describe("Incident comments", () => {
     const page = authenticatedPage;
 
     await page.goto(`${DASH_BASE}/orgs/test/incidents/${incidentUid}`);
-    await expect(page.getByText("Incident Details")).toBeVisible();
+    await expect(page.getByTestId("incident-details-title")).toBeVisible();
 
     // The Comments card renders with a composer.
-    await expect(page.getByText("Comments", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("comments-title")).toHaveText("Comments");
     const composer = page.getByTestId("comment-input");
     await composer.scrollIntoViewIfNeeded();
     await expect(composer).toBeVisible();
@@ -39,10 +39,8 @@ test.describe("Incident comments", () => {
     await submit.click();
 
     // The new comment appears in the discussion list and the composer clears.
-    const bubble = page
-      .getByTestId("incident-comment")
-      .filter({ hasText: marker });
-    await expect(bubble).toBeVisible({ timeout: 10000 });
+    const bubble = page.getByTestId("incident-comment").last();
+    await expect(bubble).toContainText(marker, { timeout: 10000 });
     await expect(composer).toHaveValue("");
 
     // URL autolinked, without swallowing the trailing period.
@@ -57,9 +55,7 @@ test.describe("Incident comments", () => {
 
     // Inline code renders as <code>, outside of any <pre> (distinct from
     // the fenced block below, which also contains "curl -I").
-    await expect(
-      bubble.locator("span > code", { hasText: "curl -I" }),
-    ).toBeVisible();
+    await expect(bubble.locator("span > code")).toContainText("curl -I");
 
     // Fenced block renders as its own <pre>.
     const pre = bubble.locator("pre");

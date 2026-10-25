@@ -331,6 +331,7 @@ function StatusPagesIndexPage() {
         <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
+            data-testid="status-pages-search"
             placeholder={t("statusPages:searchPlaceholder")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -394,7 +395,10 @@ function StatusPagesIndexPage() {
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">
             <Globe className="h-6 w-6 text-muted-foreground" />
           </div>
-          <p className="text-sm font-medium text-foreground">
+          <p
+            className="text-sm font-medium text-foreground"
+            data-testid="status-pages-empty-title"
+          >
             {t("statusPages:noStatusPages")}
           </p>
           <p className="mx-auto max-w-sm text-xs text-muted-foreground">

@@ -102,7 +102,7 @@ test.describe("Account > Security > Password", () => {
     await page.getByTestId("password-confirm-input").fill(newPassword);
     await page.getByTestId("password-submit-button").click();
 
-    await expect(page.getByText("Password updated.")).toBeVisible();
+    await expect(page.locator("[data-sonner-toaster]")).toContainText("Password updated.");
 
     // The caller's session survived — we're still on the security page, not
     // bounced to login.

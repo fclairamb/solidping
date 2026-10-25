@@ -18,7 +18,7 @@ test.describe("Organization settings — session length override", () => {
     const hoursInput = page.getByTestId("session-duration-hours");
     await hoursInput.fill("");
     await page.getByTestId("session-duration-save").click();
-    await expect(page.getByText(/settings saved/i)).toBeVisible({
+    await expect(page.getByTestId("session-settings-saved")).toBeVisible({
       timeout: 10000,
     });
   });
@@ -53,15 +53,13 @@ test.describe("Organization settings — session length override", () => {
     const patchBody = await patchResponse.json();
     expect(patchBody.sessionMaxDurationSeconds).toBe(11 * 3600);
 
-    await expect(page.getByText(/settings saved/i)).toBeVisible();
+    await expect(page.getByTestId("session-settings-saved")).toBeVisible();
 
     // Reload to force a fresh GET /settings — proves the value was actually
     // persisted server-side, not just held in the mutation's local state.
     await page.reload();
 
-    await expect(page.getByTestId("session-duration-hours")).toHaveValue(
-      "11",
-    );
+    await expect(page.getByTestId("session-duration-hours")).toHaveValue("11");
   });
 
   test("clearing the override reverts the org to the platform default", async ({
@@ -81,7 +79,7 @@ test.describe("Organization settings — session length override", () => {
     );
     await page.getByTestId("session-duration-save").click();
     await setPatchPromise;
-    await expect(page.getByText(/settings saved/i)).toBeVisible();
+    await expect(page.getByTestId("session-settings-saved")).toBeVisible();
 
     // Now clear it — an empty field means "inherit the platform default"
     // (sessionMaxDurationSeconds <= 0 clears the override server-side).
@@ -113,7 +111,7 @@ test.describe("Organization settings — status page embedding", () => {
     await page.goto("orgs/test/organization/settings");
     await page.getByTestId("embed-origins").fill("");
     await page.getByTestId("embed-origins-save").click();
-    await expect(page.getByText(/settings saved/i)).toBeVisible({
+    await expect(page.getByTestId("embed-origins-saved")).toBeVisible({
       timeout: 10000,
     });
   });
@@ -139,7 +137,7 @@ test.describe("Organization settings — status page embedding", () => {
       "https://intranet.acme.com",
       "https://*.acme.com",
     ]);
-    await expect(page.getByText(/settings saved/i)).toBeVisible();
+    await expect(page.getByTestId("embed-origins-saved")).toBeVisible();
 
     await page.reload();
     await expect(page.getByTestId("embed-origins")).toHaveValue(

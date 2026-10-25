@@ -94,6 +94,7 @@ function StatusUpdateRow({
     <TableRow
       className="hover:bg-muted/40 transition-colors"
       data-testid="status-update-row"
+      data-update-title={update.title}
     >
       <TableCell>
         <Link

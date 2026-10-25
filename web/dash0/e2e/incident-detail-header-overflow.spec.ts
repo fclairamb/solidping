@@ -49,8 +49,8 @@ for (const viewport of [
     await page.goto(`${DASH_BASE}/orgs/test/incidents/${INCIDENT_UID}`);
     await expect(page.getByTestId("incident-detail-header")).toBeVisible();
     await expect(
-      page.getByTestId("incident-detail-header").getByText("Escalated", { exact: true }),
-    ).toBeVisible();
+      page.getByTestId("incident-detail-header").getByTestId("incident-escalated-badge"),
+    ).toHaveText("Escalated");
 
     if (viewport.width >= 1024) {
       await expect(page.getByTestId("app-sidebar")).toBeVisible();

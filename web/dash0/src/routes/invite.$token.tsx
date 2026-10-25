@@ -172,7 +172,9 @@ function AcceptInvitePage() {
             <div className="flex justify-center mb-4">
               <AlertTriangle className="h-12 w-12 text-destructive" />
             </div>
-            <CardTitle className="text-2xl">{t("auth:invite.temporaryError")}</CardTitle>
+            <CardTitle className="text-2xl" data-testid="invite-temporary-error">
+              {t("auth:invite.temporaryError")}
+            </CardTitle>
           </CardHeader>
           <CardContent className="text-center space-y-4">
             <p className="text-muted-foreground">
@@ -200,7 +202,9 @@ function AcceptInvitePage() {
             <div className="flex justify-center mb-4">
               <AlertCircle className="h-12 w-12 text-destructive" />
             </div>
-            <CardTitle className="text-2xl">{t("auth:invite.invalid")}</CardTitle>
+            <CardTitle className="text-2xl" data-testid="invite-invalid">
+              {t("auth:invite.invalid")}
+            </CardTitle>
           </CardHeader>
           <CardContent className="text-center">
             <p className="text-muted-foreground">
@@ -224,16 +228,25 @@ function AcceptInvitePage() {
           </CardTitle>
           <p className="text-sm text-muted-foreground mt-1">
             {t("auth:invite.invitedAs")}{" "}
-            <span className="font-medium">{inviteInfo.role}</span>
+            <span className="font-medium" data-testid="invite-role">
+              {inviteInfo.role}
+            </span>
           </p>
           {isAuthenticated ? (
-            <p className="mt-3 text-sm text-muted-foreground">
+            <p
+              className="mt-3 text-sm text-muted-foreground"
+              data-testid="invite-already-signed-in"
+            >
               {t("auth:invite.alreadySignedIn")}
             </p>
           ) : inviteInfo.email ? (
             <div className="mt-3 flex items-center justify-center gap-2 text-sm">
               <Mail className="h-4 w-4 shrink-0 text-muted-foreground" />
-              <span className="break-all" title={inviteInfo.email}>
+              <span
+                className="break-all"
+                title={inviteInfo.email}
+                data-testid="invite-email"
+              >
                 {t("auth:invite.creatingAccountFor", {
                   email: inviteInfo.email,
                 })}

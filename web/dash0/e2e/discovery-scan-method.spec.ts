@@ -38,7 +38,7 @@ test.describe("Discovery scan-method routing + kubernetes enablement (local-only
   }) => {
     await page.goto(`${DASH_BASE}/orgs/test/organization/discovery/new`);
     // Defaults to LAN — CIDR fields shown, no method param needed.
-    await expect(page.getByLabel(/cidr/i)).toBeVisible();
+    await expect(page.getByTestId("discovery-cidrs-input")).toBeVisible();
 
     // Pick "Containers" from the method select.
     await page.getByRole("combobox", { name: /scan method/i }).click();
@@ -46,7 +46,7 @@ test.describe("Discovery scan-method routing + kubernetes enablement (local-only
 
     // The selection is reflected in the URL, and the container form renders.
     await expect(page).toHaveURL(/method=container/);
-    await expect(page.getByLabel(/container host/i)).toBeVisible();
+    await expect(page.getByTestId("discovery-container-hosts-input")).toBeVisible();
   });
 
   test("deep-linking ?method=container renders the container form on load", async ({
@@ -54,7 +54,7 @@ test.describe("Discovery scan-method routing + kubernetes enablement (local-only
   }) => {
     // The form honors the URL param with no clicks (bookmarkable / refresh-safe).
     await page.goto(`${DASH_BASE}/orgs/test/organization/discovery/new?method=container`);
-    await expect(page.getByLabel(/container host/i)).toBeVisible();
+    await expect(page.getByTestId("discovery-container-hosts-input")).toBeVisible();
     await expect(
       page.getByRole("combobox", { name: /scan method/i }),
     ).toHaveText(/containers/i);
@@ -68,7 +68,7 @@ test.describe("Discovery scan-method routing + kubernetes enablement (local-only
     await page.goto(`${DASH_BASE}/orgs/test/integrations/new?type=kubernetes`);
     await expect(page.getByTestId("kubernetes-panel")).toBeVisible();
     const clusterName = `E2E Disco K8s ${Date.now()}`;
-    await page.getByLabel("Name").fill(clusterName);
+    await page.getByTestId("ch-name").fill(clusterName);
     await page
       .getByTestId("kubernetes-api-server")
       .fill("https://10.0.0.1:6443");

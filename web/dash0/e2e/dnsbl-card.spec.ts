@@ -55,12 +55,10 @@ test.describe("DNSBL result card", () => {
     await expect(card).toBeVisible();
 
     // The primary ask: the plain-language label renders...
-    await expect(
-      card.getByText("Query via public/open resolver — refused"),
-    ).toBeVisible();
+    await expect(card).toContainText("Query via public/open resolver — refused");
     // ...and the raw reserved octet is nowhere on the page (neither in the card
     // nor in a raw-JSON dump — those keys are stripped from the dump).
-    await expect(page.getByText("127.255.255.254")).toHaveCount(0);
+    await expect(page.locator("body")).not.toContainText("127.255.255.254");
 
     // The inconclusive zone shows as a secondary badge.
     await expect(card.getByTestId(`dnsbl-inconclusive-${zone}`)).toContainText(

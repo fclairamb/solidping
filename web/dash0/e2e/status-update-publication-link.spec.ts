@@ -89,15 +89,13 @@ test.describe("Updates & notices — publication link", () => {
     await expect(
       page.getByRole("heading", { name: "Updates & notices" }),
     ).toBeVisible();
-    await expect(
-      page.getByText(
-        /Narrative posts published to your status pages/,
-      ),
-    ).toBeVisible();
+    await expect(page.getByTestId("page-header-description")).toContainText(
+      /Narrative posts published to your status pages/,
+    );
 
-    const threadedRow = page
-      .getByTestId("status-update-row")
-      .filter({ hasText: THREADED_TITLE });
+    const threadedRow = page.locator(
+      `[data-testid="status-update-row"][data-update-title="${THREADED_TITLE}"]`,
+    );
     await expect(threadedRow).toBeVisible();
 
     const publicationLink = threadedRow.getByTestId(
@@ -111,9 +109,9 @@ test.describe("Updates & notices — publication link", () => {
 
     // Negative control: the standalone maintenance notice renders in the same
     // table, from the same component, and must carry no link at all.
-    const standaloneRow = page
-      .getByTestId("status-update-row")
-      .filter({ hasText: STANDALONE_TITLE });
+    const standaloneRow = page.locator(
+      `[data-testid="status-update-row"][data-update-title="${STANDALONE_TITLE}"]`,
+    );
     await expect(standaloneRow).toBeVisible();
     await expect(
       standaloneRow.getByTestId("status-update-row-publication"),

@@ -407,7 +407,7 @@ function BackgroundJobsTable({
           <TableRow>
             <TableHead>{t("columns.type")}</TableHead>
             <TableHead>{t("columns.status")}</TableHead>
-            {allOrgs && <TableHead>{t("columns.org")}</TableHead>}
+            {allOrgs && <TableHead data-testid="jobs-col-org">{t("columns.org")}</TableHead>}
             <TableHead>{t("columns.scheduled")}</TableHead>
             <TableHead>{t("columns.retries")}</TableHead>
             <TableHead>{t("columns.updated")}</TableHead>
@@ -492,7 +492,7 @@ function CheckScheduleTable({
           <TableRow>
             <TableHead>{t("columns.check")}</TableHead>
             <TableHead>{t("columns.region")}</TableHead>
-            {allOrgs && <TableHead>{t("columns.org")}</TableHead>}
+            {allOrgs && <TableHead data-testid="jobs-col-org">{t("columns.org")}</TableHead>}
             <TableHead>{t("columns.state")}</TableHead>
             <TableHead>{t("columns.period")}</TableHead>
             <TableHead>{t("columns.nextRun")}</TableHead>

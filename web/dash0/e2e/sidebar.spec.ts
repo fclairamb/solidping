@@ -38,7 +38,9 @@ test.describe("Sidebar User and Org Info", () => {
     await page.getByTestId("user-menu-button").click();
 
     // Should show "Switch Organization" label
-    await expect(page.getByText("Switch Organization")).toBeVisible();
+    await expect(page.getByTestId("switch-organization-label")).toHaveText(
+      "Switch Organization",
+    );
 
     // Should show the other two orgs (not the current one)
     await expect(page.getByTestId("switch-org-test2")).toBeVisible();
@@ -122,7 +124,12 @@ test.describe("Sidebar User and Org Info", () => {
 // gated (Organization for an admin, nothing at all for a plain member), and
 // the group labels never cost the icon rail its items — the one thing the
 // SidebarGroupLabel CSS could break.
-const GROUP_LABELS = ["Monitoring", "Alerting", "Public status", "Administration"];
+const GROUPS = [
+  { key: "monitoring", label: "Monitoring" },
+  { key: "alerting", label: "Alerting" },
+  { key: "public-status", label: "Public status" },
+  { key: "administration", label: "Administration" },
+];
 
 const MEMBER_ITEMS = [
   "Dashboard",
@@ -202,10 +209,8 @@ test.describe("Sidebar navigation groups", () => {
     await page.waitForLoadState("networkidle");
 
     const sidebar = page.getByTestId("app-sidebar");
-    for (const label of GROUP_LABELS) {
-      await expect(
-        sidebar.locator('[data-sidebar="group-label"]', { hasText: label }),
-      ).toHaveCount(1);
+    for (const { key, label } of GROUPS) {
+      await expect(sidebar.getByTestId(`sidebar-group-${key}`)).toHaveText(label);
     }
   });
 
@@ -253,7 +258,7 @@ test.describe("Sidebar navigation groups", () => {
     ).toHaveCount(0);
     await expect(sidebar.getByRole("link", { name: /^jobs$/i })).toHaveCount(0);
     await expect(
-      sidebar.locator('[data-sidebar="group-label"]', { hasText: "Administration" }),
+      sidebar.getByTestId("sidebar-group-administration"),
     ).toHaveCount(0);
   });
 
@@ -298,8 +303,8 @@ test.describe("Sidebar navigation groups", () => {
     // Labels fade away — BOTH halves of the rule, because `opacity: 0` alone
     // would leave each label still occupying its `h-8` of vertical space and
     // pushing the items below it down the rail.
-    for (const label of GROUP_LABELS) {
-      const groupLabel = sidebar.locator('[data-sidebar="group-label"]', { hasText: label });
+    for (const { key } of GROUPS) {
+      const groupLabel = sidebar.getByTestId(`sidebar-group-${key}`);
       await expect(groupLabel).toHaveCSS("opacity", "0");
       await expect(groupLabel).toHaveCSS("margin-top", "-32px");
       await expect(groupLabel).toHaveCSS("height", "32px");

@@ -150,6 +150,7 @@ export function IntegrationForm({ type, initial, initialName, onChange, org, cha
         <Label htmlFor="ch-name">{t("form.name", "Name")}</Label>
         <Input
           id="ch-name"
+          data-testid="ch-name"
           value={name}
           required
           onChange={(e) => setName(e.target.value)}
@@ -459,6 +460,7 @@ function PerTypePanel({ type, settings, onChange, org, channelUid, privateKeys, 
             <Label htmlFor="ch-topic">{t("form.ntfyTopic", "Topic")}</Label>
             <Input
               id="ch-topic"
+              data-testid="ch-topic"
               value={(settings.topic as string) || ""}
               onChange={(e) => update("topic", e.target.value)}
               placeholder="solidping-alerts"
@@ -470,6 +472,7 @@ function PerTypePanel({ type, settings, onChange, org, channelUid, privateKeys, 
             </Label>
             <Input
               id="ch-priority"
+              data-testid="ch-priority"
               type="number"
               min={1}
               max={5}
@@ -501,6 +504,7 @@ function PerTypePanel({ type, settings, onChange, org, channelUid, privateKeys, 
             </Label>
             <Input
               id="ch-gotify-priority"
+              data-testid="ch-gotify-priority"
               type="number"
               min={0}
               max={10}
@@ -521,6 +525,7 @@ function PerTypePanel({ type, settings, onChange, org, channelUid, privateKeys, 
             </Label>
             <Input
               id="ch-matrix-homeserver"
+              data-testid="ch-matrix-homeserver"
               type="url"
               value={(settings.homeserverUrl as string) || ""}
               onChange={(e) => update("homeserverUrl", e.target.value)}
@@ -537,6 +542,7 @@ function PerTypePanel({ type, settings, onChange, org, channelUid, privateKeys, 
             <Label htmlFor="ch-matrix-room">{t("form.matrixRoom", "Room")}</Label>
             <Input
               id="ch-matrix-room"
+              data-testid="ch-matrix-room"
               value={(settings.roomId as string) || ""}
               onChange={(e) => update("roomId", e.target.value)}
               placeholder="!abcdef:matrix.org"
@@ -564,6 +570,7 @@ function PerTypePanel({ type, settings, onChange, org, channelUid, privateKeys, 
             </Label>
             <Input
               id="ch-zulip-bot-email"
+              data-testid="ch-zulip-bot-email"
               type="email"
               value={(settings.bot_email as string) || ""}
               onChange={(e) => update("bot_email", e.target.value)}
@@ -580,6 +587,7 @@ function PerTypePanel({ type, settings, onChange, org, channelUid, privateKeys, 
             <Label htmlFor="ch-zulip-stream">{t("form.zulipStream", "Stream")}</Label>
             <Input
               id="ch-zulip-stream"
+              data-testid="ch-zulip-stream"
               value={(settings.stream as string) || ""}
               onChange={(e) => update("stream", e.target.value)}
               placeholder="alerts"
@@ -1106,7 +1114,7 @@ function WebPushChannelPanel({ settings, onChange, org, isEdit: _isEdit }: WebPu
       </p>
 
       {subs.length === 0 ? (
-        <p className="text-sm text-muted-foreground italic">
+        <p className="text-sm text-muted-foreground italic" data-testid="webpush-no-subscriptions">
           {t(
             "form.webpushNoSubscriptions",
             "No devices subscribed yet. Click the button below to add this browser.",
@@ -2246,7 +2254,7 @@ function SlackMemberMapping({
           <p className="font-medium">
             {t("form.slackMemberMapping", "Member mapping")}
           </p>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-muted-foreground" data-testid="member-mapping-help">
             {variant === "discord"
               ? t(
                   "form.discordMemberMappingHelp",
@@ -2281,7 +2289,7 @@ function SlackMemberMapping({
           <span>{t("form.slackLoading", "Loading…")}</span>
         </div>
       ) : isError ? (
-        <p className="text-destructive text-xs">
+        <p className="text-destructive text-xs" data-testid="member-mapping-error">
           {t("form.slackMappingError", "Could not load the member mapping.")}
         </p>
       ) : identities.length === 0 ? (
@@ -2696,6 +2704,7 @@ function UrlPanel({
       <Label htmlFor="ch-url">{label}</Label>
       <Input
         id="ch-url"
+        data-testid="ch-url"
         type="url"
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -2723,7 +2732,7 @@ function SecretPanel({
       <Label htmlFor={id}>{label}</Label>
       <Input
         id={id}
-        data-testid={testId}
+        data-testid={testId ?? id}
         type="password"
         autoComplete="new-password"
         value={value}
@@ -3034,6 +3043,7 @@ function TwilioPanel({
         </Label>
         <Input
           id="ch-twilio-mss"
+          data-testid="ch-twilio-mss"
           placeholder="MG…"
           value={(settings.messaging_service_sid as string) || ""}
           onChange={(e) => update("messaging_service_sid", e.target.value)}
@@ -3046,6 +3056,7 @@ function TwilioPanel({
         </Label>
         <Input
           id="ch-twilio-voice-from"
+          data-testid="ch-twilio-voice-from"
           placeholder="+15551234567"
           value={(settings.voice_from_number as string) || ""}
           onChange={(e) => update("voice_from_number", e.target.value)}

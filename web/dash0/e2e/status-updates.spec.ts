@@ -1,4 +1,10 @@
+import type { Page } from "@playwright/test";
 import { test, expect, STATUS_BASE, escapeRegExp } from "./fixtures";
+
+const updateRow = (page: Page, title: string) =>
+  page.locator(
+    `[data-testid="status-update-row"][data-update-title=${JSON.stringify(title)}]`,
+  );
 
 test.describe("Status Updates", () => {
   test("should display the list page and create, edit, then delete an update", async ({
@@ -59,7 +65,7 @@ test.describe("Status Updates", () => {
     await page.waitForURL(/\/status-updates\/?$/, { timeout: 10000 });
 
     // The new row should be visible
-    await expect(page.getByText(uniqueTitle)).toBeVisible({ timeout: 10000 });
+    await expect(updateRow(page, uniqueTitle)).toBeVisible({ timeout: 10000 });
 
     await page.screenshot({
       path: "test-results/screenshots/status-updates-after-create.png",
@@ -72,9 +78,7 @@ test.describe("Status Updates", () => {
     await expect(headerCells.nth(1)).toHaveText("Kind");
     await expect(headerCells.nth(2)).toHaveText("Date");
 
-    const newRow = page
-      .getByTestId("status-update-row")
-      .filter({ hasText: uniqueTitle });
+    const newRow = updateRow(page, uniqueTitle);
 
     // External link → public status page, deep-linked to this update, new tab.
     // We assert attributes only (don't navigate cross-app to status0).
@@ -102,12 +106,10 @@ test.describe("Status Updates", () => {
     // Back to the list to continue exercising the Pencil/Trash2 row actions.
     await page.goBack();
     await page.waitForURL(/\/status-updates\/?$/, { timeout: 10000 });
-    await expect(page.getByText(uniqueTitle)).toBeVisible({ timeout: 10000 });
+    await expect(updateRow(page, uniqueTitle)).toBeVisible({ timeout: 10000 });
 
     // Click the edit (Pencil) button on the new row (regression: still works)
-    const newRowAgain = page
-      .getByTestId("status-update-row")
-      .filter({ hasText: uniqueTitle });
+    const newRowAgain = updateRow(page, uniqueTitle);
     await newRowAgain.getByTestId("status-update-row-edit").click();
     await page.waitForURL(
       /\/status-updates\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/edit/,
@@ -138,9 +140,7 @@ test.describe("Status Updates", () => {
     });
 
     // Delete the row we created
-    const rowToDelete = page
-      .getByTestId("status-update-row")
-      .filter({ hasText: uniqueTitle });
+    const rowToDelete = updateRow(page, uniqueTitle);
     await rowToDelete.getByTestId("status-update-row-delete").click();
 
     // Confirm in the AlertDialog
@@ -148,7 +148,7 @@ test.describe("Status Updates", () => {
     await page.waitForLoadState("networkidle");
 
     // Row should be gone
-    await expect(page.getByText(uniqueTitle)).not.toBeVisible({
+    await expect(updateRow(page, uniqueTitle)).toHaveCount(0, {
       timeout: 10000,
     });
 

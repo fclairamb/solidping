@@ -79,7 +79,7 @@ function RegisterPage() {
             <CardTitle className="text-2xl">{t("auth:checkYourEmail")}</CardTitle>
           </CardHeader>
           <CardContent className="text-center">
-            <p className="text-muted-foreground mb-4">
+            <p className="text-muted-foreground mb-4" data-testid="register-confirmation-message">
               <Trans
                 i18nKey="auth:confirmationLinkSentTo"
                 values={{ email }}

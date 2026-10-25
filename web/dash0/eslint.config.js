@@ -4,6 +4,8 @@ import reactHooks from "eslint-plugin-react-hooks";
 import reactRefresh from "eslint-plugin-react-refresh";
 import tseslint from "typescript-eslint";
 import noNodeScopeInBrowserCallback from "./eslint-rules/no-node-scope-in-browser-callback.js";
+import noTextLocators from "./eslint-rules/no-text-locators.js";
+import requireTestidOnInteractive from "./eslint-rules/require-testid-on-interactive.js";
 import noUntranslatedJsxText from "./eslint-rules/no-untranslated-jsx-text.js";
 
 export default tseslint.config(
@@ -123,5 +125,22 @@ export default tseslint.config(
         },
       ],
     },
+  },
+  {
+    // Spec 2026-10-25-01: specs locate with getByTestId. Existing violations
+    // are bulk-suppressed in eslint-suppressions.json (the baseline only
+    // shrinks: `bunx eslint --prune-suppressions` after migrating a file).
+    files: ["e2e/**/*.ts", "showcase/**/*.ts"],
+    plugins: { "testid-local": { rules: { "no-text-locators": noTextLocators } } },
+    rules: { "testid-local/no-text-locators": "error" },
+  },
+  {
+    // Spec 2026-10-25-01: interactive elements carry a data-testid.
+    files: ["src/**/*.tsx"],
+    ignores: ["src/routes/orgs/$org/design-reference.tsx", "src/**/*.test.tsx"],
+    plugins: {
+      "testid-local": { rules: { "require-testid-on-interactive": requireTestidOnInteractive } },
+    },
+    rules: { "testid-local/require-testid-on-interactive": "error" },
   }
 );

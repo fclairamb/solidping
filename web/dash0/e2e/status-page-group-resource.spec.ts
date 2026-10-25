@@ -90,7 +90,9 @@ test.describe("Status page group resources", () => {
 
     // The row lands in the section, labelled with the GROUP's name and flagged
     // as a group (dashboard-side context only).
-    const row = page.getByTestId("resource-row-name").filter({ hasText: groupName });
+    const row = page.locator(
+      `[data-testid="resource-row-name"][data-resource-name="${groupName}"]`,
+    );
     await expect(row).toHaveCount(1);
     await expect(page.getByTestId("resource-row-group-badge").first()).toBeVisible();
 
@@ -121,9 +123,10 @@ test.describe("Status page group resources", () => {
 
     // The rendered public page shows one component under the group's name.
     await page.goto(`${STATUS_BASE}/test/${pageSlug}`);
-    await expect(page.getByText(groupName).first()).toBeVisible();
+    await expect(page.getByTestId("resource-row")).toHaveCount(1);
+    await expect(page.getByTestId("resource-row")).toContainText(groupName);
     for (const name of memberNames) {
-      await expect(page.getByText(name)).toHaveCount(0);
+      await expect(page.locator("body")).not.toContainText(name);
     }
   });
 });

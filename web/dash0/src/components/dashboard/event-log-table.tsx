@@ -185,7 +185,7 @@ export function EventLogTable({
                 {eventDetail ? (
                   // Indented to align under the label text rather than the
                   // icon: size-4 (16px) + gap-2 (8px) = 24px = pl-6.
-                  <div className="pl-6 text-xs text-muted-foreground truncate">
+                  <div className="pl-6 text-xs text-muted-foreground truncate" data-testid="event-detail">
                     {eventDetail}
                   </div>
                 ) : null}

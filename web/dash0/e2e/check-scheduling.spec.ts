@@ -362,7 +362,7 @@ test.describe("Check scheduling page", () => {
 
     // The leaf crumb names the page — the regression was a bare, non-clickable
     // "Checks" crumb, identical to what the list page renders.
-    await expect(header.getByText(/^scheduling$/i)).toBeVisible();
+    await expect(header.locator('span[aria-current="page"]')).toHaveText(/^scheduling$/i);
 
     // And the section crumb becomes a link back to the list.
     const checksCrumb = header.getByRole("link", { name: /^checks$/i });

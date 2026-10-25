@@ -1,0 +1,777 @@
+{
+  "src/components/checks/check-config-view.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/components/checks/check-summary-cards.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/components/checks/crawl-card.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/components/checks/dependencies-card.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/components/checks/form/sections/escalation.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/components/checks/form/sections/notifications.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/components/checks/form/types/game.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 9
+    }
+  },
+  "src/components/checks/form/types/infra.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 3
+    }
+  },
+  "src/components/checks/form/types/messaging.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 5
+    }
+  },
+  "src/components/checks/pinned-result-box.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 3
+    }
+  },
+  "src/components/checks/publish-on-status-page-dialog.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 3
+    }
+  },
+  "src/components/checks/response-time-chart.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/components/checks/smtp-delivery-detail.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/components/checks/tunnel-detail.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/components/checks/vendor-status-card.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/components/dashboard/dashboard-page.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 8
+    }
+  },
+  "src/components/dashboard/empty-state-onboarding.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 3
+    }
+  },
+  "src/components/dashboard/event-log-table.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 4
+    }
+  },
+  "src/components/dashboard/my-on-call.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/components/dashboard/onboarding-checklist.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/components/escalation/step-target-row.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 7
+    }
+  },
+  "src/components/feedback/FeedbackDialog.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/components/incidents/incident-publications-panel.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/components/incidents/snooze-dialog.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 7
+    }
+  },
+  "src/components/integrations/freebox-form.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 4
+    }
+  },
+  "src/components/integrations/integration-form.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/components/integrations/sms-mode-panel.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/components/layout/AppSidebar.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 6
+    }
+  },
+  "src/components/oncall/on-call-schedule-form.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 9
+    }
+  },
+  "src/components/security/RecoveryCodesDialog.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/components/security/TOTPDisableDialog.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/components/security/TOTPSetupDialog.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/components/shared/check-form.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 7
+    }
+  },
+  "src/components/shared/check-multi-picker.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/components/shared/check-rate-limit-banner.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/components/shared/comment-body.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/components/shared/copyable-code.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 3
+    }
+  },
+  "src/components/shared/create-invitation-dialog.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 11
+    }
+  },
+  "src/components/shared/create-org-card.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 3
+    }
+  },
+  "src/components/shared/danger-zone.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/components/shared/demo-banner.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/components/shared/docs-link.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/components/shared/error-boundary.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/components/shared/error-views.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 6
+    }
+  },
+  "src/components/shared/faceted-filter.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/components/shared/freebox-lan-discovery.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 3
+    }
+  },
+  "src/components/shared/label-input.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/components/shared/maintenance-window-form.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 3
+    }
+  },
+  "src/components/shared/new-check-group-dialog.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/components/shared/org-profile-card.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/components/shared/region-outage-banner.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/components/shared/stale-publications-banner.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/components/shared/status-page-badge-card.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/components/shared/status-page-custom-domain.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 3
+    }
+  },
+  "src/components/shared/status-page-form.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 16
+    }
+  },
+  "src/components/shared/status-page-subscribers.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/components/shared/status-page-tv-card.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/components/shared/status-page-widget-card.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/components/shared/status-update-form.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 6
+    }
+  },
+  "src/components/shared/tab-nav.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/components/slos/alerting-section.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/components/slos/report-schedule-form.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/components/slos/slo-form.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/components/support/support-gate.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/components/ui/password-input.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/routes/__root.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/routes/change-password.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/routes/confirm-registration.$token.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/routes/forgot-password.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 5
+    }
+  },
+  "src/routes/invite.$token.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 6
+    }
+  },
+  "src/routes/no-org.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 6
+    }
+  },
+  "src/routes/orgs/$org.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 23
+    }
+  },
+  "src/routes/orgs/$org/account.mcp.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/routes/orgs/$org/account.notifications.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 9
+    }
+  },
+  "src/routes/orgs/$org/account.organizations.index.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/routes/orgs/$org/account.profile.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 4
+    }
+  },
+  "src/routes/orgs/$org/account.security.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/routes/orgs/$org/account.sessions.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/routes/orgs/$org/account.tokens.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 7
+    }
+  },
+  "src/routes/orgs/$org/check-groups.$uid.edit.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 4
+    }
+  },
+  "src/routes/orgs/$org/checks.$checkUid.badges.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/routes/orgs/$org/checks.$checkUid.history.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/routes/orgs/$org/checks.$checkUid.index.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 17
+    }
+  },
+  "src/routes/orgs/$org/checks.$checkUid.results.$resultUid.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/routes/orgs/$org/checks.describe.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/routes/orgs/$org/checks.index.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 16
+    }
+  },
+  "src/routes/orgs/$org/checks.scheduling.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 3
+    }
+  },
+  "src/routes/orgs/$org/escalation-policies.$uid.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 11
+    }
+  },
+  "src/routes/orgs/$org/escalation-policies.index.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 7
+    }
+  },
+  "src/routes/orgs/$org/escalation-policies.new.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 11
+    }
+  },
+  "src/routes/orgs/$org/events.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/routes/orgs/$org/incidents.$incidentUid.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 19
+    }
+  },
+  "src/routes/orgs/$org/incidents.index.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/routes/orgs/$org/integrations.$integrationUid.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 5
+    }
+  },
+  "src/routes/orgs/$org/integrations.index.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 10
+    }
+  },
+  "src/routes/orgs/$org/integrations.new.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 6
+    }
+  },
+  "src/routes/orgs/$org/jobs.$jobUid.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/routes/orgs/$org/jobs.check.$checkJobUid.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/routes/orgs/$org/jobs.index.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 5
+    }
+  },
+  "src/routes/orgs/$org/login.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 3
+    }
+  },
+  "src/routes/orgs/$org/maintenance-windows.$maintenanceWindowUid.index.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 5
+    }
+  },
+  "src/routes/orgs/$org/maintenance-windows.index.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 5
+    }
+  },
+  "src/routes/orgs/$org/me.notifications.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 4
+    }
+  },
+  "src/routes/orgs/$org/notifications.$notificationUid.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 3
+    }
+  },
+  "src/routes/orgs/$org/oauth.consent.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 8
+    }
+  },
+  "src/routes/orgs/$org/on-call.$uid.edit.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/routes/orgs/$org/on-call.$uid.index.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 9
+    }
+  },
+  "src/routes/orgs/$org/on-call.index.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 7
+    }
+  },
+  "src/routes/orgs/$org/on-call.new.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/routes/orgs/$org/organization.audit.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/routes/orgs/$org/organization.discovery.$jobUid.index.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 12
+    }
+  },
+  "src/routes/orgs/$org/organization.discovery.index.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 4
+    }
+  },
+  "src/routes/orgs/$org/organization.discovery.new.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 13
+    }
+  },
+  "src/routes/orgs/$org/organization.invitations.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/routes/orgs/$org/organization.members.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 5
+    }
+  },
+  "src/routes/orgs/$org/organization.members_.$memberUid.paging.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 3
+    }
+  },
+  "src/routes/orgs/$org/organization.parameters.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 3
+    }
+  },
+  "src/routes/orgs/$org/organization.private-locations.index.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 4
+    }
+  },
+  "src/routes/orgs/$org/organization.private-locations.register.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 3
+    }
+  },
+  "src/routes/orgs/$org/organization.report-schedules.index.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 5
+    }
+  },
+  "src/routes/orgs/$org/organization.requests.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 12
+    }
+  },
+  "src/routes/orgs/$org/organization.settings.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 7
+    }
+  },
+  "src/routes/orgs/$org/organization.usage.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/routes/orgs/$org/register.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 6
+    }
+  },
+  "src/routes/orgs/$org/server.aggregation.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/routes/orgs/$org/server.analytics.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 10
+    }
+  },
+  "src/routes/orgs/$org/server.auth.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 4
+    }
+  },
+  "src/routes/orgs/$org/server.discord.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/routes/orgs/$org/server.email-inbox.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 15
+    }
+  },
+  "src/routes/orgs/$org/server.entitlements.$targetOrg.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 4
+    }
+  },
+  "src/routes/orgs/$org/server.entitlements.index.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/routes/orgs/$org/server.mail.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 8
+    }
+  },
+  "src/routes/orgs/$org/server.notifications.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 3
+    }
+  },
+  "src/routes/orgs/$org/server.performance.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 4
+    }
+  },
+  "src/routes/orgs/$org/server.slack.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 3
+    }
+  },
+  "src/routes/orgs/$org/server.users.$uid.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 3
+    }
+  },
+  "src/routes/orgs/$org/server.users.index.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 3
+    }
+  },
+  "src/routes/orgs/$org/server.web.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 5
+    }
+  },
+  "src/routes/orgs/$org/slos.$uid.alert-policies.$policyUid.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/routes/orgs/$org/slos.$uid.index.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/routes/orgs/$org/slos.index.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 4
+    }
+  },
+  "src/routes/orgs/$org/status-pages.$statusPageUid.appearance.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 6
+    }
+  },
+  "src/routes/orgs/$org/status-pages.$statusPageUid.edit.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/routes/orgs/$org/status-pages.$statusPageUid.incidents.$uid.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 1
+    }
+  },
+  "src/routes/orgs/$org/status-pages.$statusPageUid.index.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 33
+    }
+  },
+  "src/routes/orgs/$org/status-pages.index.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 7
+    }
+  },
+  "src/routes/orgs/$org/status-updates.$updateUid.edit.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/routes/orgs/$org/status-updates.index.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 6
+    }
+  },
+  "src/routes/orgs/$org/status-updates.new.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/routes/orgs/$org/test.bulk.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 6
+    }
+  },
+  "src/routes/orgs/$org/test.emails.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 3
+    }
+  },
+  "src/routes/orgs/$org/test.generate.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 7
+    }
+  },
+  "src/routes/orgs/$org/test.reset.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 2
+    }
+  },
+  "src/routes/orgs/$org/test.templates.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 7
+    }
+  },
+  "src/routes/reset-password.$token.tsx": {
+    "testid-local/require-testid-on-interactive": {
+      "count": 4
+    }
+  }
+}
