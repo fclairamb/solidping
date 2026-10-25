@@ -150,6 +150,17 @@ func (c *JSChecker) Execute(ctx context.Context, config checkerdef.Config) (*che
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
+	// A script `repair: auto` applied is held to the hosts the version before
+	// it reached, on every run with real secrets (spec 2026-10-24-01), as the
+	// repair loop held it. A caller that already holds the run (the AI loop)
+	// keeps its own list.
+	var repairList *egress.HostAllowlist
+	if hosts, held := cfg.RepairAllowlist(); held && hasSecretValues(cfg.Secrets) &&
+		egress.HostAllowlistFrom(ctx) == nil {
+		repairList = egress.NewHostAllowlist(hosts)
+		ctx = egress.WithHostAllowlist(ctx, repairList)
+	}
+
 	start := time.Now()
 
 	runtime := newJSRuntime(ctx, cfg)
@@ -205,7 +216,57 @@ func (c *JSChecker) Execute(ctx context.Context, config checkerdef.Config) (*che
 	// status earns (spec §5), so no branch here has to remember the rule.
 	runtime.attachScreenshot(result)
 
+	if refused := repairList.Refused(); refused != nil {
+		return runtime.repairRefusal(refused, duration), nil
+	}
+
 	return result, nil
+}
+
+// OutputKeyRepairRefused flags the result of a repair-applied script that
+// tried to reach a host outside its repair allowlist. The result pipeline
+// flips the check back to `repair: propose` on it.
+const OutputKeyRepairRefused = "aiRepairHostRefused"
+
+// hasSecretValues reports a secrets map holding at least one real value.
+func hasSecretValues(secrets map[string]string) bool {
+	for _, value := range secrets {
+		if value != "" {
+			return true
+		}
+	}
+
+	return false
+}
+
+// withheldHost names a refused host built at runtime: it may carry a secret.
+const withheldHost = "[a host built at runtime]"
+
+// repairRefusal is the error result of a run its repair allowlist refused.
+// The host is named only when the script or the env spells it out.
+func (r *jsRuntime) repairRefusal(refused *egress.HostNotAllowedError, duration time.Duration) *checkerdef.Result {
+	target := withheldHost
+	needle := strings.ToLower(refused.Target)
+
+	texts := make([]string, 0, 1+len(r.config.Env))
+	texts = append(texts, r.config.Script)
+
+	for _, value := range r.config.Env {
+		texts = append(texts, value)
+	}
+
+	for _, text := range texts {
+		if strings.Contains(strings.ToLower(text), needle) {
+			target = refused.Target
+
+			break
+		}
+	}
+
+	output := r.buildOutput("the script reached a host its AI repair was not granted: " + target)
+	output[OutputKeyRepairRefused] = true
+
+	return &checkerdef.Result{Status: checkerdef.StatusError, Duration: duration, Output: output}
 }
 
 // resultFor turns the script's outcome — a returned value, a throw, or an

@@ -27,12 +27,25 @@ var unrepairedChecks sync.Map //nolint:gochecknoglobals // process-wide log dedu
 // here, on the hot result path; the job checks the rest (consecutive
 // failures, target health, rate limits). Best-effort.
 func (s *Service) queueAIRepair(ctx context.Context, check *models.Check, result *models.Result) {
-	if s.jobsSvc == nil || result.Status == nil ||
+	if result.Status == nil ||
 		check.Type != string(checkerdef.CheckTypeJS) || !aichecks.WantsRepair(check.Config) {
 		return
 	}
 
-	if aichecks.ClassifyFailure(models.ResultStatus(*result.Status), result.Output) != aichecks.FailureDrift {
+	// A repair-applied script reached a host outside its repair grant: the
+	// version does something its own repair loop never showed. No repair is
+	// queued, and the next one needs a human (spec 2026-10-24-01).
+	if aichecks.RepairHostRefused(result.Output) {
+		refusal, _ := result.Output["error"].(string)
+		if _, err := aichecks.RevokeAutoRepair(ctx, s.db, check.OrganizationUID, check.UID, refusal); err != nil {
+			slog.WarnContext(ctx, "Failed to revoke the auto repair", "error", err, "check_uid", check.UID)
+		}
+
+		return
+	}
+
+	if s.jobsSvc == nil ||
+		aichecks.ClassifyFailure(models.ResultStatus(*result.Status), result.Output) != aichecks.FailureDrift {
 		return
 	}
 
