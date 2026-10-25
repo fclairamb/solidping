@@ -516,7 +516,10 @@ function CheckRow({
   const durationMs = check.lastResult?.durationMs;
 
   return (
-    <TableRow className="hover:bg-muted/40 transition-colors">
+    <TableRow
+      className="hover:bg-muted/40 transition-colors"
+      data-testid="check-row"
+    >
       <TableCell className="max-w-0">
         <div className="flex items-center gap-2 min-w-0">
           <Link

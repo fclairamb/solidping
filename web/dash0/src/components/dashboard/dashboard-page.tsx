@@ -991,7 +991,11 @@ function ActiveIncidentsList({
                             {incident.title || t("activeIncidents.untitled")}
                           </div>
                           {incident.checkName ? (
-                            <div className="truncate text-xs text-muted-foreground">
+                            <div
+                              className="truncate text-xs text-muted-foreground"
+                              data-testid="active-incident-check-name"
+                              data-check-name={incident.checkName}
+                            >
                               {incident.checkName}
                             </div>
                           ) : null}

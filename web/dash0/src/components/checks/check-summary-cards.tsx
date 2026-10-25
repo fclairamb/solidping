@@ -40,7 +40,10 @@ export function CheckSummaryCards({
       {/* Uptime / Downtime card */}
       <Card className="h-full">
         <CardContent className="p-3 sm:p-5">
-          <div className="mb-1 flex items-center gap-1.5 text-xs text-muted-foreground sm:gap-2 sm:text-sm">
+          <div
+            className="mb-1 flex items-center gap-1.5 text-xs text-muted-foreground sm:gap-2 sm:text-sm"
+            data-testid="summary-status-label"
+          >
             {isUp ? (
               <ArrowUp className="h-4 w-4 shrink-0 text-status-ok" />
             ) : isDown ? (

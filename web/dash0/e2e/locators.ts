@@ -16,3 +16,17 @@ export function groupNameLocator(scope: Page | Locator, name: string): Locator {
     `[data-testid="group-name"][data-group-name=${JSON.stringify(name)}]`,
   );
 }
+
+/** The check-name line of an active incident on the dashboard, matched by exact check name. */
+export function activeIncidentLocator(page: Page, checkName: string): Locator {
+  return page
+    .getByTestId("active-incidents")
+    .locator(
+      `[data-testid="active-incident-check-name"][data-check-name=${JSON.stringify(checkName)}]`,
+    );
+}
+
+/** The row of a check on the checks index, matched by exact check name. */
+export function checkRowLocator(page: Page, name: string): Locator {
+  return page.getByTestId("check-row").filter({ has: checkNameLocator(page, name) });
+}
