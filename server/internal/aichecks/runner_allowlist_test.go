@@ -163,8 +163,8 @@ func TestRepairDynamicEnvKeyIsRefused(t *testing.T) {
 
 // Positive control: a candidate reaching the previous host through a URL
 // built at runtime still runs with the real secret, and is proposed. With
-// `repair: auto` it is proposed too, never applied: its hosts cannot be read
-// from its text, and scheduled runs carry no allowlist.
+// `repair: auto` it is proposed too, never applied: its text does not show
+// the host it reaches.
 func TestRepairRuntimeURLToThePreviousHostRuns(t *testing.T) {
 	t.Parallel()
 
@@ -189,7 +189,7 @@ func TestRepairRuntimeURLToThePreviousHostRuns(t *testing.T) {
 			r.Equal(aichecks.OutcomeProposed, outcome.Outcome, outcome.Reason)
 
 			if mode == "auto" {
-				r.Contains(outcome.Reason, "not applied: the candidate's hosts cannot be read from its text")
+				r.Contains(outcome.Reason, "not applied: the candidate can reach a host its text does not show")
 				r.Equal(oldScript, fx.script(t, check.UID))
 			}
 		})

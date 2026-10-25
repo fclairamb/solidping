@@ -235,6 +235,7 @@ describe("EVENT_TYPE_REGISTRY pins the binding emoji per event type", () => {
     ["check.ai_repair_attempted", "🤖"],
     ["check.ai_repair_proposed", "📝"],
     ["check.ai_repair_applied", "🛠️"],
+    ["check.ai_repair_revoked", "🚫"],
     ["check.ai_usage", "🧮"],
     // Private-location agent connections (spec 2026-09-25-05). Recorded as
     // audit events only, never sent through a chat integration, so dash0 owns

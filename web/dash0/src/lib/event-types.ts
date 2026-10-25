@@ -42,6 +42,7 @@ export const ALL_EVENT_TYPES = [
   "check.ai_repair_attempted",
   "check.ai_repair_proposed",
   "check.ai_repair_applied",
+  "check.ai_repair_revoked",
   "check.ai_usage",
 
   "incident.created",
