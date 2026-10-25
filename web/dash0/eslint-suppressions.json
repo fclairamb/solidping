@@ -34,11 +34,6 @@
       "count": 1
     }
   },
-  "e2e/availability.spec.ts": {
-    "testid-local/no-text-locators": {
-      "count": 20
-    }
-  },
   "e2e/badges.spec.ts": {
     "testid-local/no-text-locators": {
       "count": 3
