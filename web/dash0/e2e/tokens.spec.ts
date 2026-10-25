@@ -30,7 +30,7 @@ test.describe("Tokens", () => {
     await page.getByTestId("token-created-done").click();
 
     // Verify the token appears in the table with "Never" expiry
-    const tokenRow = page.locator("tr", { hasText: tokenName });
+    const tokenRow = page.locator(`[data-testid="token-row"][data-token-name=${JSON.stringify(tokenName)}]`);
     await expect(tokenRow).toBeVisible();
     await expect(tokenRow.getByTestId("token-expiry")).toHaveText("Never");
   });
@@ -64,7 +64,7 @@ test.describe("Tokens", () => {
     await page.getByTestId("token-created-done").click();
 
     // Verify the token appears in the table with a date (not "Never")
-    const tokenRow = page.locator("tr", { hasText: tokenName });
+    const tokenRow = page.locator(`[data-testid="token-row"][data-token-name=${JSON.stringify(tokenName)}]`);
     await expect(tokenRow).toBeVisible();
     const expiryCell = tokenRow.getByTestId("token-expiry");
     await expect(expiryCell).not.toHaveText("Never");
@@ -86,7 +86,7 @@ test.describe("Tokens", () => {
     await page.getByTestId("token-created-done").click();
 
     // Find the token row and click its revoke button
-    const tokenRow = page.locator("tr", { hasText: tokenName });
+    const tokenRow = page.locator(`[data-testid="token-row"][data-token-name=${JSON.stringify(tokenName)}]`);
     await expect(tokenRow).toBeVisible();
     await tokenRow.getByTestId("token-revoke-button").click();
 
@@ -95,6 +95,6 @@ test.describe("Tokens", () => {
     await page.waitForLoadState("networkidle");
 
     // Verify the token is gone
-    await expect(page.locator("tr", { hasText: tokenName })).not.toBeVisible();
+    await expect(page.locator(`[data-testid="token-row"][data-token-name=${JSON.stringify(tokenName)}]`)).not.toBeVisible();
   });
 });

@@ -8,9 +8,9 @@ test.describe("On-call schedule create page", () => {
     await page.goto("orgs/test/on-call/new");
 
     // The name field is present…
-    await expect(page.getByLabel(/^name/i).first()).toBeVisible();
+    await expect(page.getByTestId("oncall-name-input")).toBeVisible();
     // …but the removed slug field must not be.
-    await expect(page.getByLabel(/slug/i)).toHaveCount(0);
+    await expect(page.getByTestId("oncall-slug-input")).toHaveCount(0);
   });
 
   test("creating with a name only navigates to the uid detail page", async ({
@@ -21,7 +21,7 @@ test.describe("On-call schedule create page", () => {
     await page.waitForLoadState("networkidle");
 
     const name = `E2E Create ${Date.now()}`;
-    await page.getByLabel(/^name/i).first().fill(name);
+    await page.getByTestId("oncall-name-input").fill(name);
 
     await page.getByRole("button", { name: /save|create/i }).first().click();
 

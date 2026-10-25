@@ -14,7 +14,7 @@ test.describe("Invitations", () => {
     await expect(dialog).toBeVisible();
 
     await dialog
-      .getByLabel("Email", { exact: true })
+      .getByTestId("invitation-email-input")
       .fill(`invite-dialog-${Date.now()}@example.com`);
     await dialog.getByRole("button", { name: "Send invitation" }).click();
 
@@ -22,17 +22,13 @@ test.describe("Invitations", () => {
     // "link is your only channel" fallback copy — not the "email was sent"
     // success copy.
     await expect(
-      dialog.getByText(
-        "Email sending is not configured on this instance — share this link with the recipient."
-      )
+      dialog.getByTestId("invitation-email-not-configured"),
     ).toBeVisible();
-    await expect(
-      dialog.getByText(/An invitation email was sent to/)
-    ).not.toBeVisible();
+    await expect(dialog.getByTestId("invitation-email-sent")).toHaveCount(0);
 
     // The invite link is still surfaced as the (only) way to share it.
     await expect(dialog.locator("input[readonly]")).toHaveValue(
-      new RegExp(`${DASH_BASE}/invite/`)
+      new RegExp(`${DASH_BASE}/invite/`),
     );
   });
 
@@ -56,7 +52,7 @@ test.describe("Invitations", () => {
             expiresIn: "24h",
             app: "dash0",
           },
-        }
+        },
       );
       expect(createResp.status()).toBe(201);
       const { token } = await createResp.json();
@@ -67,7 +63,7 @@ test.describe("Invitations", () => {
       // of hardcoding fixture data (org display name, masking rules) that
       // is free to change independently of this test.
       const infoResp = await page.request.get(
-        `${API_BASE}/api/v1/auth/invite/${token}`
+        `${API_BASE}/api/v1/auth/invite/${token}`,
       );
       expect(infoResp.status()).toBe(200);
       const info = await infoResp.json();
@@ -81,15 +77,13 @@ test.describe("Invitations", () => {
       await page.goto(`invite/${token}`);
 
       await expect(
-        page.getByRole("heading", { name: `Join ${info.orgName}` })
+        page.getByRole("heading", { name: `Join ${info.orgName}` }),
       ).toBeVisible();
-      await expect(page.getByText(info.role, { exact: true })).toBeVisible();
-      await expect(page.getByText(info.email)).toBeVisible();
+      await expect(page.getByTestId("invite-role")).toHaveText(info.role);
+      await expect(page.getByTestId("invite-email")).toContainText(info.email);
 
       await page.locator("#password").fill("Strong-Pass-123!");
-      await page
-        .getByRole("button", { name: "Create account & join" })
-        .click();
+      await page.getByRole("button", { name: "Create account & join" }).click();
 
       // Lands authenticated in the org — not stuck on /invite, not bounced
       // to /login.
@@ -107,13 +101,13 @@ test.describe("Invitations", () => {
           async () => {
             try {
               return await page.evaluate(() =>
-                window.localStorage.getItem("solidping_session_token")
+                window.localStorage.getItem("solidping_session_token"),
               );
             } catch {
               return null;
             }
           },
-          { timeout: 10_000 }
+          { timeout: 10_000 },
         )
         .toBeTruthy();
     });
@@ -134,7 +128,7 @@ test.describe("Invitations", () => {
       const invite = async () => {
         const resp = await authenticatedPage.request.post(
           `${API_BASE}/api/v1/orgs/test/invitations`,
-          { data: { email, role: "user", expiresIn: "24h", app: "dash0" } }
+          { data: { email, role: "user", expiresIn: "24h", app: "dash0" } },
         );
         expect(resp.status()).toBe(201);
         return (await resp.json()).token as string;
@@ -144,9 +138,12 @@ test.describe("Invitations", () => {
       // context of its own so no session cookie reaches `page`.
       const anon = await playwright.request.newContext();
       try {
-        const created = await anon.post(`${API_BASE}/api/v1/auth/accept-invite`, {
-          data: { token: await invite(), name: "Existing", password },
-        });
+        const created = await anon.post(
+          `${API_BASE}/api/v1/auth/accept-invite`,
+          {
+            data: { token: await invite(), name: "Existing", password },
+          },
+        );
         expect(created.status()).toBe(200);
       } finally {
         await anon.dispose();
@@ -154,7 +151,7 @@ test.describe("Invitations", () => {
 
       // Then make it leave the org.
       const membersResp = await authenticatedPage.request.get(
-        `${API_BASE}/api/v1/orgs/test/members`
+        `${API_BASE}/api/v1/orgs/test/members`,
       );
       expect(membersResp.status()).toBe(200);
       const { data: members } = (await membersResp.json()) as {
@@ -163,7 +160,7 @@ test.describe("Invitations", () => {
       const member = members.find((m) => m.email === email);
       expect(member).toBeTruthy();
       const removed = await authenticatedPage.request.delete(
-        `${API_BASE}/api/v1/orgs/test/members/${member!.uid}`
+        `${API_BASE}/api/v1/orgs/test/members/${member!.uid}`,
       );
       expect(removed.status()).toBe(204);
 
@@ -184,8 +181,10 @@ test.describe("Invitations", () => {
       await page.getByTestId("login-submit").click();
 
       // Back on the invitation, signed in.
-      await page.waitForURL(new RegExp(`/invite/${token}$`), { timeout: 10000 });
-      await expect(page.getByText("You're already signed in")).toBeVisible();
+      await page.waitForURL(new RegExp(`/invite/${token}$`), {
+        timeout: 10000,
+      });
+      await expect(page.getByTestId("invite-already-signed-in")).toBeVisible();
 
       await page.getByRole("button", { name: "Accept Invitation" }).click();
       await page.waitForURL(/\/orgs\/test/, { timeout: 10000 });
@@ -200,7 +199,7 @@ test.describe("Invitations", () => {
 
       const createResp = await page.request.post(
         `${API_BASE}/api/v1/orgs/test/invitations`,
-        { data: { email, role: "user", expiresIn: "24h", app: "dash0" } }
+        { data: { email, role: "user", expiresIn: "24h", app: "dash0" } },
       );
       expect(createResp.status()).toBe(201);
       const { token } = await createResp.json();
@@ -212,7 +211,7 @@ test.describe("Invitations", () => {
       await expect(card).toBeVisible();
       await expect(card).toContainText("you are signed in as test@test.com");
       await expect(
-        card.getByRole("button", { name: "Sign out and continue" })
+        card.getByRole("button", { name: "Sign out and continue" }),
       ).toBeVisible();
       // Positive control: still on the invitation, nothing was accepted.
       expect(page.url()).toContain(`/invite/${token}`);
@@ -223,13 +222,11 @@ test.describe("Invitations", () => {
     }) => {
       await page.goto("invite/this-token-does-not-exist-at-all");
 
-      await expect(
-        page.getByText("This invitation link is invalid or has expired.")
-      ).toBeVisible();
+      await expect(page.getByTestId("invite-invalid")).toBeVisible();
 
       // Must not be mistaken for the transient/retryable error state added
       // alongside this coverage.
-      await expect(page.getByText("Temporary error")).not.toBeVisible();
+      await expect(page.getByTestId("invite-temporary-error")).toHaveCount(0);
     });
   });
 });

@@ -11,7 +11,10 @@ export function DnsRecordRow({ record }: { record: DnsRecord }) {
   const { t } = useTranslation("common");
 
   return (
-    <div className="grid grid-cols-[4rem_minmax(0,1fr)] items-center gap-x-3 gap-y-2 rounded-md border p-3 text-sm">
+    <div
+      className="grid grid-cols-[4rem_minmax(0,1fr)] items-center gap-x-3 gap-y-2 rounded-md border p-3 text-sm"
+      data-testid="dns-record-row"
+    >
       <span className="text-muted-foreground">{t("type")}</span>
       <span className="font-mono">{record.type}</span>
 

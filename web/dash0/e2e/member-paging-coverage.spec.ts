@@ -127,10 +127,14 @@ test.describe("Member paging coverage", () => {
 
     await page.goto("orgs/test/on-call/new");
 
-    const bobLabel = page.locator("label", { hasText: "bob@acme.test" });
+    const bobLabel = page.locator(
+      '[data-testid="oncall-member-option"][data-member-email="bob@acme.test"]',
+    );
     await expect(bobLabel.getByTestId("coverage-email-only")).toBeVisible();
 
-    const zoeLabel = page.locator("label", { hasText: "zoe@acme.test" });
+    const zoeLabel = page.locator(
+      '[data-testid="oncall-member-option"][data-member-email="zoe@acme.test"]',
+    );
     await expect(zoeLabel.getByTestId("coverage-email-only")).toHaveCount(0);
   });
 
@@ -173,11 +177,15 @@ test.describe("Member paging coverage", () => {
 
     // The detail roster renders the member's NAME (name || email), unlike the
     // schedule form's checkbox labels which render the email.
-    const bobRow = page.locator("li", { hasText: "Bob" });
+    const bobRow = page.locator(
+      '[data-testid="oncall-roster-member"][data-user-uid="user-bob"]',
+    );
     await expect(bobRow).toBeVisible();
     await expect(bobRow.getByTestId("coverage-email-only")).toBeVisible();
 
-    const zoeRow = page.locator("li", { hasText: "Zoe" });
+    const zoeRow = page.locator(
+      '[data-testid="oncall-roster-member"][data-user-uid="user-zoe"]',
+    );
     await expect(zoeRow).toBeVisible();
     await expect(zoeRow.getByTestId("coverage-email-only")).toHaveCount(0);
   });

@@ -61,8 +61,8 @@ test.describe("Incidents list: check name under the title", () => {
     await page.goto(`${DASH_BASE}/orgs/test/incidents`);
     await page.waitForLoadState("networkidle");
 
-    const row = page.getByTestId("incident-row").filter({ hasText: CHECK_NAME }).first();
-    await expect(row).toBeVisible();
+    const row = page.getByTestId("incident-row").first();
+    await expect(row).toContainText(CHECK_NAME);
 
     const checkLink = row.locator('a[href*="/checks/"]');
     await expect(checkLink).toHaveCount(1);

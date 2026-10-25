@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "./fixtures";
+import { checkNameLocator } from "./locators";
 
 // Coverage for spec 2026-08-24-04: the checks-list status filter becomes a
 // multi-select FacetedFilter popover (adds validating, multi-status), and a
@@ -137,9 +138,9 @@ test.describe("Checks list — status faceted filter", () => {
     await page.goto("orgs/test/checks");
     await page.waitForLoadState("networkidle");
 
-    await expect(page.getByText("ST Up Check")).toBeVisible();
-    await expect(page.getByText("ST Down Check")).toBeVisible();
-    await expect(page.getByText("ST Validating Check")).toBeVisible();
+    await expect(checkNameLocator(page, "ST Up Check")).toBeVisible();
+    await expect(checkNameLocator(page, "ST Down Check")).toBeVisible();
+    await expect(checkNameLocator(page, "ST Validating Check")).toBeVisible();
     expect(new URL(page.url()).searchParams.has("status")).toBe(false);
 
     await page.getByTestId("status-filter").click();
@@ -152,11 +153,11 @@ test.describe("Checks list — status faceted filter", () => {
       .poll(() => new URL(page.url()).searchParams.get("status")?.split(",").sort())
       .toEqual(["down", "validating"]);
 
-    await expect(page.getByText("ST Down Check")).toBeVisible();
-    await expect(page.getByText("ST Validating Check")).toBeVisible();
+    await expect(checkNameLocator(page, "ST Down Check")).toBeVisible();
+    await expect(checkNameLocator(page, "ST Validating Check")).toBeVisible();
     // Negative control: the up check sits in a third status, absent from the
     // narrowed list — not just "fewer rows".
-    await expect(page.getByText("ST Up Check")).not.toBeVisible();
+    await expect(checkNameLocator(page, "ST Up Check")).not.toBeVisible();
 
     // The trigger reads "Status" plus one badge per selected value.
     await expect(page.getByTestId("status-filter")).toContainText("Status");
@@ -180,9 +181,9 @@ test.describe("Checks list — status faceted filter", () => {
     // Route.useSearch() with no local-state mirror.
     await page.goto("orgs/test/checks?status=down,validating");
 
-    await expect(page.getByText("Cold Down Check")).toBeVisible();
-    await expect(page.getByText("Cold Validating Check")).toBeVisible();
-    await expect(page.getByText("Cold Up Check")).not.toBeVisible();
+    await expect(checkNameLocator(page, "Cold Down Check")).toBeVisible();
+    await expect(checkNameLocator(page, "Cold Validating Check")).toBeVisible();
+    await expect(checkNameLocator(page, "Cold Up Check")).not.toBeVisible();
 
     await expect(page.getByTestId("status-filter")).toContainText("Down");
     await expect(page.getByTestId("status-filter")).toContainText("Validating");
@@ -212,9 +213,9 @@ test.describe("Checks list — type faceted filter", () => {
     await page.keyboard.press("Escape");
     await page.waitForLoadState("networkidle");
 
-    await expect(page.getByText("Type HTTP Up")).toBeVisible();
-    await expect(page.getByText("Type HTTP Down")).toBeVisible();
-    await expect(page.getByText("Type TCP Up")).not.toBeVisible();
+    await expect(checkNameLocator(page, "Type HTTP Up")).toBeVisible();
+    await expect(checkNameLocator(page, "Type HTTP Down")).toBeVisible();
+    await expect(checkNameLocator(page, "Type TCP Up")).not.toBeVisible();
     expect(new URL(page.url()).searchParams.get("type")).toBe("http");
 
     // Combine with a status filter — narrows further, without clearing type.
@@ -223,9 +224,9 @@ test.describe("Checks list — type faceted filter", () => {
     await page.keyboard.press("Escape");
     await page.waitForLoadState("networkidle");
 
-    await expect(page.getByText("Type HTTP Down")).toBeVisible();
-    await expect(page.getByText("Type HTTP Up")).not.toBeVisible();
-    await expect(page.getByText("Type TCP Up")).not.toBeVisible();
+    await expect(checkNameLocator(page, "Type HTTP Down")).toBeVisible();
+    await expect(checkNameLocator(page, "Type HTTP Up")).not.toBeVisible();
+    await expect(checkNameLocator(page, "Type TCP Up")).not.toBeVisible();
     expect(new URL(page.url()).searchParams.get("type")).toBe("http");
     expect(new URL(page.url()).searchParams.get("status")).toBe("down");
 
@@ -237,9 +238,9 @@ test.describe("Checks list — type faceted filter", () => {
     await page.keyboard.press("Escape");
     await page.waitForLoadState("networkidle");
 
-    await expect(page.getByText("Type HTTP Up")).toBeVisible();
-    await expect(page.getByText("Type HTTP Down")).toBeVisible();
-    await expect(page.getByText("Type TCP Up")).not.toBeVisible();
+    await expect(checkNameLocator(page, "Type HTTP Up")).toBeVisible();
+    await expect(checkNameLocator(page, "Type HTTP Down")).toBeVisible();
+    await expect(checkNameLocator(page, "Type TCP Up")).not.toBeVisible();
     expect(new URL(page.url()).searchParams.get("type")).toBe("http");
     expect(new URL(page.url()).searchParams.has("status")).toBe(false);
   });
@@ -256,7 +257,7 @@ test.describe("Checks list — validating status against the real backend", () =
     // control and the union/unknown-token cases at the API layer).
     await page.goto("orgs/test/checks?status=validating");
 
-    await expect(page.getByText("Validating Check")).toBeVisible();
+    await expect(checkNameLocator(page, "Validating Check")).toBeVisible();
     await expect(page.getByTestId("status-filter")).toContainText("Validating");
   });
 });

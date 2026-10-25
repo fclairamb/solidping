@@ -1598,7 +1598,7 @@ export function CheckForm({
           className="space-y-4"
         >
           {error && (
-            <Alert variant="destructive">
+            <Alert variant="destructive" data-testid="check-form-error">
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
@@ -1809,7 +1809,7 @@ export function CheckForm({
                     <SelectTrigger data-testid="check-period-select"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {intervalOptions.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                        <SelectItem key={opt.value} value={opt.value} data-testid={`check-period-option-${opt.value}`}>{opt.label}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -2661,7 +2661,7 @@ export function CheckForm({
                 {getFieldError(fieldErrors, "timeout") ? (
                   <p className="text-xs text-destructive">{getFieldError(fieldErrors, "timeout")}</p>
                 ) : (
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-xs text-muted-foreground" data-testid="check-timeout-hint">
                     {t("form.timeoutHint")}
                   </p>
                 )}

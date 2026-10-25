@@ -182,7 +182,7 @@ function HashingForm({ initial }: { initial: HashingInitialValues }) {
         </Alert>
       )}
 
-      <Alert>
+      <Alert data-testid="hashing-restart-notice">
         <Info className="h-4 w-4" />
         <AlertDescription>{t("server:hashing.restartNotice")}</AlertDescription>
       </Alert>

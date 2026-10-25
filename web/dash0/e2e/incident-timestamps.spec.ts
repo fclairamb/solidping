@@ -63,7 +63,7 @@ test.describe("TimeAgo: hover tooltip + click-to-copy", () => {
 
       await page.goto(`${DASH_BASE}/orgs/test/incidents/${INCIDENT_UID}`);
       await page.waitForLoadState("networkidle");
-      await expect(page.getByText("Incident Details")).toBeVisible();
+      await expect(page.getByTestId("incident-details-title")).toBeVisible();
 
       // The inline variant shows "HH:MM:SS <zone> · Nx ago" without needing
       // a hover, so several timestamps can be compared at a glance — and

@@ -6,7 +6,7 @@ import { test, expect, DASH_BASE } from "./fixtures";
  */
 async function waitForIncidentsLoaded(page: import("@playwright/test").Page): Promise<boolean> {
   const incidentRow = page.getByTestId("incident-row").first();
-  const noIncidents = page.getByText("No incidents found");
+  const noIncidents = page.getByTestId("incidents-empty-title");
 
   // Wait for either incident rows or empty state to appear
   await Promise.race([
@@ -70,7 +70,7 @@ test.describe("Incidents", () => {
       // exactly: a plain getByText substring-matches the "Escalation timeline"
       // card too, which only renders for incidents that escalated, so the
       // locator went ambiguous depending on which incident sorted first.
-      await expect(page.getByText("Incident Details")).toBeVisible();
+      await expect(page.getByTestId("incident-details-title")).toBeVisible();
       await expect(page.getByRole("heading", { name: "Timeline", exact: true })).toBeVisible();
 
       // Take screenshot of incident detail
@@ -80,7 +80,7 @@ test.describe("Incidents", () => {
       });
     } else {
       // No incidents exist, verify empty state or error state is shown
-      const noIncidents = page.getByText("No incidents found");
+      const noIncidents = page.getByTestId("incidents-empty-title");
       const errorState = page.getByRole("button", { name: /retry/i });
       await expect(noIncidents.or(errorState)).toBeVisible({ timeout: 15000 });
 
@@ -115,7 +115,7 @@ test.describe("Incidents", () => {
       /\/incidents\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
       { timeout: 10000 },
     );
-    await expect(page.getByText("Incident Details")).toBeVisible();
+    await expect(page.getByTestId("incident-details-title")).toBeVisible();
 
     // The back button is reachable via its aria-label (icon-only) and lives
     // in the right-hand action group alongside Refresh — not next to the title.
@@ -191,7 +191,7 @@ test.describe("Incidents", () => {
     await page.goto(`${DASH_BASE}/orgs/test/incidents/${incidentUid}`);
 
     // We're on the incident detail page and the Notifications card is present.
-    await expect(page.getByText("Incident Details")).toBeVisible();
+    await expect(page.getByTestId("incident-details-title")).toBeVisible();
     await expect(page.getByTestId("notifications-card")).toBeVisible();
 
     // At least one notification row is present; click the first one.
@@ -211,7 +211,7 @@ test.describe("Incidents", () => {
     await expect(
       page.getByRole("heading", { name: "Notification", exact: true }),
     ).toBeVisible();
-    await expect(page.getByText("Delivery timeline")).toBeVisible();
+    await expect(page.getByTestId("notification-delivery-timeline-title")).toBeVisible();
 
     // The back affordance returns to the incident detail page.
     await page.getByRole("button", { name: "Back to incident" }).click();
@@ -219,7 +219,7 @@ test.describe("Incidents", () => {
       new RegExp(`/incidents/${incidentUid}$`),
       { timeout: 10000 },
     );
-    await expect(page.getByText("Incident Details")).toBeVisible();
+    await expect(page.getByTestId("incident-details-title")).toBeVisible();
     await expect(page.getByTestId("notifications-card")).toBeVisible();
   });
 
@@ -363,7 +363,7 @@ test.describe("Incidents", () => {
     await page.goto(
       `orgs/test/incidents?state=all&checkUid=${otherCheckSlug}`,
     );
-    await expect(page.getByText(otherCheckIncidentTitle)).toBeVisible();
+    await expect(page.locator(`[data-testid="incident-title"][data-incident-title="${otherCheckIncidentTitle}"]`)).toBeVisible();
 
     // Now exercise the actual behavior under test: picking a check from the
     // dropdown on an unfiltered list.
@@ -371,7 +371,7 @@ test.describe("Incidents", () => {
 
     const picker = page.getByTestId("incidents-check-filter");
     await picker.click();
-    await page.getByPlaceholder("Search checks…").fill(capturedCheckSlug);
+    await page.getByTestId("check-picker-search").fill(capturedCheckSlug);
     await page.getByTestId(`check-picker-option-${capturedCheckSlug}`).click();
 
     await page.waitForURL(new RegExp(`checkUid=${capturedCheckUid}`), {
@@ -381,8 +381,8 @@ test.describe("Incidents", () => {
     // The picker now labels the active filter, and only the matching
     // incident remains — the other check's row is gone, not just outnumbered.
     await expect(picker).toContainText("Captured Check");
-    await expect(page.getByText(capturedCheckIncidentTitle)).toBeVisible();
-    await expect(page.getByText(otherCheckIncidentTitle)).not.toBeVisible();
+    await expect(page.locator(`[data-testid="incident-title"][data-incident-title="${capturedCheckIncidentTitle}"]`)).toBeVisible();
+    await expect(page.locator(`[data-testid="incident-title"][data-incident-title="${otherCheckIncidentTitle}"]`)).not.toBeVisible();
   });
 
   test("the check filter and the state filter never clear each other", async ({
@@ -398,7 +398,7 @@ test.describe("Incidents", () => {
 
     const picker = page.getByTestId("incidents-check-filter");
     await picker.click();
-    await page.getByPlaceholder("Search checks…").fill(capturedCheckSlug);
+    await page.getByTestId("check-picker-search").fill(capturedCheckSlug);
     await page.getByTestId(`check-picker-option-${capturedCheckSlug}`).click();
     await page.waitForURL(new RegExp(`checkUid=${capturedCheckUid}`), {
       timeout: 10000,
@@ -429,16 +429,16 @@ test.describe("Incidents", () => {
 
     const picker = page.getByTestId("incidents-check-filter");
     await expect(picker).toContainText("Captured Check");
-    await expect(page.getByText(capturedCheckIncidentTitle)).toBeVisible();
-    await expect(page.getByText(otherCheckIncidentTitle)).not.toBeVisible();
+    await expect(page.locator(`[data-testid="incident-title"][data-incident-title="${capturedCheckIncidentTitle}"]`)).toBeVisible();
+    await expect(page.locator(`[data-testid="incident-title"][data-incident-title="${otherCheckIncidentTitle}"]`)).not.toBeVisible();
 
     // Reload cold (a fresh navigation, no client-side router state to fall
     // back on) — this is the regression this layout route has hit before.
     await page.reload();
 
     await expect(picker).toContainText("Captured Check");
-    await expect(page.getByText(capturedCheckIncidentTitle)).toBeVisible();
-    await expect(page.getByText(otherCheckIncidentTitle)).not.toBeVisible();
+    await expect(page.locator(`[data-testid="incident-title"][data-incident-title="${capturedCheckIncidentTitle}"]`)).toBeVisible();
+    await expect(page.locator(`[data-testid="incident-title"][data-incident-title="${otherCheckIncidentTitle}"]`)).not.toBeVisible();
   });
 
   test("a checkUid deep-link given as a slug resolves the same as a uid", async ({
@@ -450,8 +450,8 @@ test.describe("Incidents", () => {
 
     const picker = page.getByTestId("incidents-check-filter");
     await expect(picker).toContainText("Captured Check");
-    await expect(page.getByText(capturedCheckIncidentTitle)).toBeVisible();
-    await expect(page.getByText(otherCheckIncidentTitle)).not.toBeVisible();
+    await expect(page.locator(`[data-testid="incident-title"][data-incident-title="${capturedCheckIncidentTitle}"]`)).toBeVisible();
+    await expect(page.locator(`[data-testid="incident-title"][data-incident-title="${otherCheckIncidentTitle}"]`)).not.toBeVisible();
   });
 
   test("an empty check filter result names the check, not the whole org", async ({
@@ -469,7 +469,7 @@ test.describe("Incidents", () => {
       page.getByRole("heading", { name: "No incidents found" }),
     ).toBeVisible();
     await expect(
-      page.getByText("No incidents found for this check"),
+      page.getByTestId("incidents-empty-description"),
     ).toBeVisible();
   });
 });

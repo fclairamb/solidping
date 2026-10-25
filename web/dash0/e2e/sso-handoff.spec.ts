@@ -355,7 +355,7 @@ test.describe("Federated login handoff", () => {
         });
 
         // Told why they are not on `test`.
-        await expect(page.getByText(new RegExp(`signed in to ${escapeRegExp(member.slug)}`))).toBeVisible({
+        await expect(page.locator("[data-sonner-toaster]")).toContainText(new RegExp(`signed in to ${escapeRegExp(member.slug)}`), {
           timeout: 10000,
         });
 

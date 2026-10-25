@@ -42,7 +42,7 @@ test.describe("Superadmin user directory", () => {
     // test@test.com belongs to THREE orgs (test, test2, test3), so a bare
     // "test" substring match would also pass on the test2/test3 badges.
     // Assert the "test" org's specific badge text ("{slug} · {role}").
-    await expect(row.getByText("test · admin", { exact: true })).toBeVisible();
+    await expect(row).toContainText("test · admin");
   });
 
   test("typing a non-matching query empties the table, and clearing it restores the row", async ({
@@ -106,7 +106,7 @@ test.describe("Superadmin user directory", () => {
     await page.goto("orgs/test/server/users");
     await page.waitForLoadState("networkidle");
 
-    await expect(page.getByText("Permission Denied")).toBeVisible();
+    await expect(page.getByTestId("permission-denied")).toBeVisible();
     expect(page.url()).toContain("/server/users");
     expect(page.url()).not.toContain("/login");
   });

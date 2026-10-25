@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "build:no-check": "vite build",
     "lint": "eslint .",
-    "lint:e2e": "eslint e2e",
+    "lint:e2e": "eslint e2e showcase",
     "typecheck:e2e": "tsc -p tsconfig.e2e.json",
     "test:unit": "vitest run",
     "test:unit:cover": "vitest run --coverage",

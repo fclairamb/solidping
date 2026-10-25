@@ -118,6 +118,7 @@ export function DependencyRowText({ children }: { children: string }) {
   return (
     <span
       className="block truncate text-sm text-muted-foreground"
+      data-testid="dependency-description"
       title={children}
     >
       {children}
@@ -129,7 +130,10 @@ export function DependencyRowText({ children }: { children: string }) {
 // rather than dropping to a bare paragraph under the heading.
 export function DependencyEmptyRow({ children }: { children: ReactNode }) {
   return (
-    <div className="flex min-h-10 items-center px-3 py-2 text-sm text-muted-foreground">
+    <div
+      className="flex min-h-10 items-center px-3 py-2 text-sm text-muted-foreground"
+      data-testid="dependency-empty"
+    >
       {children}
     </div>
   );

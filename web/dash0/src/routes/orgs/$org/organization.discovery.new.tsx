@@ -365,6 +365,7 @@ function NewScanPage() {
                 <Label htmlFor="cidrs">{t("cidrsLabel")}</Label>
                 <Textarea
                   id="cidrs"
+                  data-testid="discovery-cidrs-input"
                   placeholder={t("cidrsPlaceholder")}
                   value={cidrsText}
                   onChange={(e) => setCidrsText(e.target.value)}
@@ -427,6 +428,7 @@ function NewScanPage() {
               <Label htmlFor="container-hosts">{t("containerHosts")}</Label>
               <Textarea
                 id="container-hosts"
+                data-testid="discovery-container-hosts-input"
                 value={containerHostsText}
                 onChange={(e) => setContainerHostsText(e.target.value)}
                 rows={3}

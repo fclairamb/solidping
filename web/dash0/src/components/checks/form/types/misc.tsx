@@ -560,7 +560,7 @@ function RdpFields({ state, onChange, errors }: CheckTypeFieldsProps<RdpState>) 
       <p className="text-xs text-muted-foreground">
         {t("misc.rdpPreAuthHelp")}
       </p>
-      <p className="text-xs text-amber-600 dark:text-amber-500">
+      <p className="text-xs text-amber-600 dark:text-amber-500" data-testid="check-rdp-caveats">
         {t("misc.rdpCaveatsHelp")}
       </p>
     </>

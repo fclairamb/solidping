@@ -135,7 +135,7 @@ test.describe("Discord bot settings panel", () => {
 
     await expect(page.getByTestId("discord-not-connected")).toBeVisible();
     await expect(page.getByTestId("discord-install")).toBeVisible();
-    await expect(page.getByLabel(/webhook url/i)).toHaveCount(0);
+    await expect(page.getByTestId("ch-url")).toHaveCount(0);
 
     // Positive control: the SAME empty integration on an instance with no bot
     // still shows the field, because there the webhook is the only transport.
@@ -145,7 +145,7 @@ test.describe("Discord bot settings panel", () => {
     await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("discord-install")).toHaveCount(0);
-    await expect(page.getByLabel(/webhook url/i)).toHaveCount(1);
+    await expect(page.getByTestId("ch-url")).toHaveCount(1);
   });
 
   test("install CTA mints an org-scoped install URL for this channel", async ({
@@ -235,9 +235,7 @@ test.describe("Discord bot settings panel", () => {
     await expect(page.getByTestId("discord-not-connected")).toHaveCount(0);
 
     // The guild is named on the panel, and the picker shows the selected channel.
-    await expect(
-      page.getByTestId("discord-connected").getByText("Server:"),
-    ).toBeVisible();
+    await expect(page.getByTestId("discord-connected")).toContainText("Server:");
 
     const combobox = page.getByTestId("discord-channel-combobox");
     await expect(combobox).toBeVisible();

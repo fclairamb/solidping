@@ -75,7 +75,9 @@ test.describe("Entitlements usage", () => {
     ).toBeVisible();
 
     // With null limits, each row shows the "Unlimited" label.
-    await expect(page.getByText(/unlimited/i).first()).toBeVisible();
+    await expect(
+      page.getByTestId("usage-row-Service level objectives"),
+    ).toContainText(/unlimited/i);
   });
 
   test("usage page shows SMS and voice call counters against their caps", async ({

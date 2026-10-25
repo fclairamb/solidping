@@ -31,7 +31,7 @@ test.describe("Incident acknowledgment attribution", () => {
     const page = authenticatedPage;
 
     await page.goto(`${DASH_BASE}/orgs/test/incidents/${incidentUid}`);
-    await expect(page.getByText("Incident Details")).toBeVisible();
+    await expect(page.getByTestId("incident-details-title")).toBeVisible();
 
     // Start from a clean slate: a previous run may have left it acknowledged.
     await clearAck(page);
@@ -64,7 +64,7 @@ test.describe("Incident acknowledgment attribution", () => {
 
     await page.goto(`${DASH_BASE}/orgs/test/incidents/${incidentUid}`);
     await page.waitForLoadState("networkidle");
-    await expect(page.getByText("Incident Details")).toBeVisible();
+    await expect(page.getByTestId("incident-details-title")).toBeVisible();
 
     const ack = page.getByRole("button", { name: "Acknowledge" });
     if (await ack.isVisible().catch(() => false)) {

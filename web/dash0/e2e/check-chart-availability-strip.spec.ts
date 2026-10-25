@@ -127,6 +127,11 @@ async function gotoCheckDetail(page: Page): Promise<void> {
   });
 }
 
+const tooltipFor = (page: Page, probes: string) =>
+  page.locator(
+    `[data-testid="availability-strip-tooltip"][data-probes="${probes}"]`,
+  );
+
 const cells = (page: Page) =>
   page.getByTestId("response-time-chart-availability-strip-cell");
 
@@ -145,7 +150,7 @@ test.describe("Chart availability strip", () => {
     // we just left.
     await cells(page).nth(3).hover();
 
-    const tooltip = page.getByRole("tooltip").filter({ hasText: "20 / 60" });
+    const tooltip = tooltipFor(page, "20/60");
     await expect(tooltip).toBeVisible({ timeout: 5000 });
     await expect(tooltip).toContainText("33.3%");
     await expect(tooltip).toContainText("Down");
@@ -160,9 +165,9 @@ test.describe("Chart availability strip", () => {
     await cells(page).nth(5).hover();
     await cells(page).nth(5).hover();
 
-    const noDataTooltip = page
-      .getByRole("tooltip")
-      .filter({ hasText: "No data" });
+    const noDataTooltip = page.locator(
+      '[data-testid="availability-strip-tooltip"][data-has-data="false"]',
+    );
     await expect(noDataTooltip).toBeVisible({ timeout: 5000 });
     expect(await noDataTooltip.textContent()).not.toContain("%");
   });
@@ -179,9 +184,7 @@ test.describe("Chart availability strip", () => {
     // adjacent, so a pointer sweep along the strip crosses straight from one
     // to the other.
     await cells(page).nth(3).hover();
-    await expect(
-      page.getByRole("tooltip").filter({ hasText: "20 / 60" }),
-    ).toBeVisible({ timeout: 5000 });
+    await expect(tooltipFor(page, "20/60")).toBeVisible({ timeout: 5000 });
 
     // Move straight onto the neighbour, with no detour off the strip and no
     // second nudge. Radix's hoverable-content grace area used to make this the
@@ -192,12 +195,8 @@ test.describe("Chart availability strip", () => {
     // cell tooltip removes that grace area (see components/ui/availability-strip.tsx).
     await cells(page).nth(4).hover();
 
-    await expect(
-      page.getByRole("tooltip").filter({ hasText: "60 / 60" }),
-    ).toBeVisible({ timeout: 5000 });
+    await expect(tooltipFor(page, "60/60")).toBeVisible({ timeout: 5000 });
     // ...and the period we left must be gone, not merely covered.
-    await expect(
-      page.getByRole("tooltip").filter({ hasText: "20 / 60" }),
-    ).toHaveCount(0, { timeout: 5000 });
+    await expect(tooltipFor(page, "20/60")).toHaveCount(0, { timeout: 5000 });
   });
 });

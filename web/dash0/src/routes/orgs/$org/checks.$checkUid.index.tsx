@@ -377,7 +377,7 @@ function HeartbeatEndpoint({
   return (
     <div>
       <div className="flex items-center justify-between gap-2 mb-2">
-        <div className="text-sm font-medium text-muted-foreground">
+        <div className="text-sm font-medium text-muted-foreground" data-testid="heartbeat-endpoint-title">
           {t("endpoints.heartbeat.title")}
         </div>
         <AlertDialog>
@@ -433,7 +433,7 @@ function HeartbeatEndpoint({
           </button>
         </div>
         <div>
-          <div className="text-xs text-muted-foreground mb-1">
+          <div className="text-xs text-muted-foreground mb-1" data-testid="heartbeat-curl-label">
             {t("endpoints.heartbeat.curl")}
           </div>
           <div className="bg-muted rounded-md p-3 text-sm font-mono break-all flex items-start gap-2">
@@ -974,7 +974,10 @@ function CheckDetailPage() {
             <dt className="text-xs text-muted-foreground">
               {t(`checks:detail.results.stats.${key}`)}
             </dt>
-            <dd className="font-medium">
+            <dd
+              className="font-medium"
+              data-testid={`results-duration-stat-${key}`}
+            >
               {value}
               {key === "avg" && durationTrend ? (
                 <span
@@ -1254,11 +1257,18 @@ function CheckDetailPage() {
         <div className="flex flex-wrap items-start gap-3">
           <div className="min-w-0 flex-1 basis-64">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-              <h1 className="text-xl font-semibold tracking-tight sm:text-2xl min-w-0 max-w-full truncate">
+              <h1
+                className="text-xl font-semibold tracking-tight sm:text-2xl min-w-0 max-w-full truncate"
+                data-testid="check-detail-title"
+              >
                 {checkDisplayName}
               </h1>
               {check.enabled === false ? (
-                <Badge variant="secondary" className="shrink-0">
+                <Badge
+                  variant="secondary"
+                  className="shrink-0"
+                  data-testid="check-disabled-badge"
+                >
                   {t("checks:detail.disabled")}
                 </Badge>
               ) : (
@@ -1271,6 +1281,7 @@ function CheckDetailPage() {
                   variant="outline"
                   className="hidden shrink-0 gap-1 text-muted-foreground sm:inline-flex"
                   aria-live="polite"
+                  data-testid="check-pending-first-run"
                 >
                   <Loader2 className="h-3 w-3 animate-spin" />
                   {t("checks:detail.pendingFirstRun")}
@@ -1461,7 +1472,10 @@ function CheckDetailPage() {
               data-testid="check-toggle-enabled"
             >
               <Power className="h-4 w-4 md:mr-2" />
-              <span className="hidden md:inline">
+              <span
+                className="hidden md:inline"
+                data-testid="check-toggle-enabled-label"
+              >
                 {check.enabled
                   ? t("checks:detail.disable")
                   : t("checks:detail.enable")}
@@ -1514,13 +1528,19 @@ function CheckDetailPage() {
               size="icon"
               className="md:h-9 md:w-auto md:px-4 md:py-2"
               aria-label={t("checks:edit")}
+              data-testid="check-edit-button"
             >
               <Link
                 to="/orgs/$org/checks/$checkUid/edit"
                 params={{ org, checkUid }}
               >
                 <Pencil className="h-4 w-4 md:mr-2" />
-                <span className="hidden md:inline">{t("checks:edit")}</span>
+                <span
+                  className="hidden md:inline"
+                  data-testid="check-edit-label"
+                >
+                  {t("checks:edit")}
+                </span>
               </Link>
             </Button>
             <DropdownMenu>
@@ -1617,9 +1637,9 @@ function CheckDetailPage() {
 
             {/* Triggerless, controlled delete dialog */}
             <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-              <AlertDialogContent>
+              <AlertDialogContent data-testid="delete-check-dialog">
                 <AlertDialogHeader>
-                  <AlertDialogTitle>
+                  <AlertDialogTitle data-testid="delete-check-dialog-title">
                     {t("checks:detail.deleteTitle")}
                   </AlertDialogTitle>
                   <AlertDialogDescription>
@@ -2321,6 +2341,7 @@ function CheckDetailPage() {
                                     "cursor-pointer transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                                   )}
                                   data-testid={`result-region-badge-${result.uid}`}
+                                  data-region={slug}
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setRegion(slug);

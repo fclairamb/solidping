@@ -141,7 +141,10 @@ authTest.describe("Account Notifications — Telegram", () => {
       linked = true;
 
       const list = page.getByTestId("notification-routes-list");
-      await expect(list.getByText("Telegram", { exact: true })).toBeVisible({ timeout: 15000 });
+      await expect(list.getByTestId("route-type-contact-telegram-1")).toHaveText(
+        "Telegram",
+        { timeout: 15000 },
+      );
       await expect(page.getByTestId("telegram-connected-contact-telegram-1")).toBeVisible();
       await expect(pending).toHaveCount(0);
     },
@@ -186,7 +189,9 @@ authTest.describe("Account Notifications — Telegram", () => {
       await testBtn.click();
 
       await expect.poll(() => testPostReceived).toBe(true);
-      await expect(page.getByText("Test notification sent")).toBeVisible();
+      await expect(page.locator("[data-sonner-toaster]")).toContainText(
+        "Test notification sent",
+      );
     },
   );
 
@@ -281,7 +286,9 @@ authTest.describe("Account Notifications — Telegram", () => {
 
       await page.goto("orgs/test/me/notifications");
 
-      await expect(page.getByText("Telegram", { exact: true }).first()).toBeVisible();
+      await expect(page.getByTestId("notification-channel-notif-tg-1")).toHaveText(
+        "Telegram",
+      );
       // The reason is translated prose that names the fix, not a raw token.
       const reason = page.getByTestId("notification-reason-notif-tg-1");
       await expect(reason).toBeVisible();

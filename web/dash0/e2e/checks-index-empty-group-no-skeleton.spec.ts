@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "./fixtures";
+import { groupSectionLocator, checkNameLocator } from "./locators";
 
 // Regression guard for spec 2026-08-12-02: a group with zero checks
 // (group.checkCount === 0) must show the empty-state text immediately, never
@@ -19,7 +20,6 @@ import { test, expect, type Page } from "./fixtures";
 // fully on page 1, one genuinely empty group, and a next-page cursor that
 // keeps hasNextPage true) is deterministic and fast.
 
-const NO_CHECKS_TEXT = "No checks in this group";
 
 interface MockGroup {
   uid: string;
@@ -139,9 +139,7 @@ test.describe("Checks index empty group", () => {
     await page.goto("orgs/test/checks");
 
     const sectionByName = (name: string) =>
-      page
-        .getByTestId("group-section")
-        .filter({ has: page.getByTestId("group-name").getByText(name) });
+      groupSectionLocator(page, name);
 
     const nonEmptySection = sectionByName(nonEmptyGroup.name);
     const emptySection = sectionByName(emptyGroup.name);
@@ -155,7 +153,7 @@ test.describe("Checks index empty group", () => {
     // The empty group's body shows the truthful empty state right away — no
     // skeleton rows, even though the page-level stream still has a next page
     // (hasNextPage true, since the mocked response always carries a cursor).
-    await expect(emptySection.getByText(NO_CHECKS_TEXT)).toBeVisible({
+    await expect(emptySection.getByTestId("group-empty")).toBeVisible({
       timeout: 10000,
     });
     await expect(emptySection.locator(".animate-pulse")).toHaveCount(0);
@@ -170,17 +168,17 @@ test.describe("Checks index empty group", () => {
     // on page 1), renders its real rows — never a false "No checks" and never
     // stuck skeletons either, confirming this fix didn't disturb the existing
     // "rows win over loading" behavior for populated groups.
-    await expect(nonEmptySection.getByText(NO_CHECKS_TEXT)).toHaveCount(0);
+    await expect(nonEmptySection.getByTestId("group-empty")).toHaveCount(0);
     await expect(nonEmptySection.locator(".animate-pulse")).toHaveCount(0);
     await expect(
-      nonEmptySection.getByText("Non-Empty Group Check 0"),
+      checkNameLocator(nonEmptySection, "Non-Empty Group Check 0"),
     ).toBeVisible();
 
     // Settle a beat and re-assert: the empty state must not have been a
     // one-frame flash that later regresses back into skeletons once
     // checksStreaming's memoized value stabilizes.
     await page.waitForTimeout(500);
-    await expect(emptySection.getByText(NO_CHECKS_TEXT)).toBeVisible();
+    await expect(emptySection.getByTestId("group-empty")).toBeVisible();
     await expect(emptySection.locator(".animate-pulse")).toHaveCount(0);
   });
 });

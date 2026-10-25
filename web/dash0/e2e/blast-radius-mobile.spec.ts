@@ -148,7 +148,7 @@ test.describe("Blast radius table (mobile)", () => {
     await expect(deletedCheckLink).toHaveText(DELETED_CHECK_UID);
 
     // Criterion: paging badge/column still present for the suppressed child.
-    await expect(rows.nth(1).getByText("rolled up")).toBeVisible();
+    await expect(rows.nth(1).getByTestId("blast-radius-rolled-up")).toHaveText("rolled up");
 
     // Criterion: no column header is visually truncated — assert the exact
     // localized text (no defaultValue fallback) and that every header's

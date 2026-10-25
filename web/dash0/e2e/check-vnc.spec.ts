@@ -48,7 +48,7 @@ test.describe("VNC check", () => {
     // A screenshot without a password is refused client-side.
     await page.getByTestId("check-vnc-screenshot-checkbox").click();
     await page.getByTestId("check-submit-button").click();
-    await expect(page.getByText("Screenshot requires a password.").first()).toBeVisible();
+    await expect(page.getByTestId("check-form-error")).toContainText("Screenshot requires a password.");
 
     await page.getByTestId("check-vnc-password-input").fill("s3cret");
     await page.getByTestId("check-submit-button").click();
@@ -108,7 +108,7 @@ test.describe("VNC check", () => {
     // A username without a password is refused client-side.
     await page.getByTestId("check-vnc-username-input").fill("alice");
     await page.getByTestId("check-submit-button").click();
-    await expect(page.getByText("A username requires a password.").first()).toBeVisible();
+    await expect(page.getByTestId("check-form-error")).toContainText("A username requires a password.");
 
     await page.getByTestId("check-vnc-password-input").fill("a long mac password");
     await page.getByTestId("check-vnc-tls-verify-checkbox").click();

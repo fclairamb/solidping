@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "./fixtures";
+import { groupSectionLocator, checkNameLocator } from "./locators";
 
 // Coverage for spec 2026-08-02-07 (GitHub issue #171): filtering the checks
 // list (status/labels/search/internal) must hide group sections whose bucket
@@ -128,12 +129,8 @@ test.describe("Checks list hides empty groups while filtering", () => {
     await page.goto("orgs/test/checks");
     await page.waitForLoadState("networkidle");
 
-    const allUpSection = page
-      .getByTestId("group-section")
-      .filter({ has: page.getByTestId("group-name").getByText(allUpGroup.name) });
-    const hasDownSection = page
-      .getByTestId("group-section")
-      .filter({ has: page.getByTestId("group-name").getByText(hasDownGroup.name) });
+    const allUpSection = groupSectionLocator(page, allUpGroup.name);
+    const hasDownSection = groupSectionLocator(page, hasDownGroup.name);
 
     // Unfiltered: both groups render, with their unfiltered checkCount badges.
     await expect(allUpSection).toBeVisible({ timeout: 10000 });
@@ -154,8 +151,8 @@ test.describe("Checks list hides empty groups while filtering", () => {
     // row and a header badge reflecting the matching count (1), not the
     // unfiltered checkCount (2).
     await expect(hasDownSection).toBeVisible({ timeout: 10000 });
-    await expect(hasDownSection.getByText("HasDown Check B2")).toBeVisible();
-    await expect(hasDownSection.getByText("HasDown Check B1")).not.toBeVisible();
+    await expect(checkNameLocator(hasDownSection, "HasDown Check B2")).toBeVisible();
+    await expect(checkNameLocator(hasDownSection, "HasDown Check B1")).not.toBeVisible();
     await expect(hasDownSection.getByTestId("group-check-count")).toHaveText("1");
 
     // Clear the filter — unticking the same checkbox brings both groups back.

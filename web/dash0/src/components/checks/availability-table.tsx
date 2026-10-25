@@ -72,7 +72,7 @@ export function AvailabilityTable({
   }
 
   return (
-    <Card>
+    <Card data-testid="availability-card">
       <CardHeader>
         <CardTitle>{t("detail.availability.title")}</CardTitle>
       </CardHeader>
@@ -80,9 +80,13 @@ export function AvailabilityTable({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>{t("detail.availability.timePeriod")}</TableHead>
+              <TableHead data-testid="availability-head-time-period">
+                {t("detail.availability.timePeriod")}
+              </TableHead>
               <TableHead>{t("detail.availability.availability")}</TableHead>
-              <TableHead>{t("detail.availability.downtime")}</TableHead>
+              <TableHead data-testid="availability-head-downtime">
+                {t("detail.availability.downtime")}
+              </TableHead>
               <TableHead>{t("detail.availability.incidents")}</TableHead>
               <TableHead>{t("detail.availability.longestIncident")}</TableHead>
               <TableHead>{t("detail.availability.avgIncident")}</TableHead>
@@ -105,17 +109,25 @@ export function AvailabilityTable({
                 : row.shortLabel;
 
               return (
-                <TableRow key={row.token}>
+                <TableRow key={row.token} data-testid={`availability-row-${row.token}`}>
                   <TableCell className="font-medium">
                     <span className="sm:hidden">{shortLabel}</span>
-                    <span className="hidden sm:inline">{label}</span>
+                    <span
+                      className="hidden sm:inline"
+                      data-testid="availability-row-label"
+                    >
+                      {label}
+                    </span>
                     {collapsed && view.monitoredDays != null && (
-                      <span className="block text-xs text-muted-foreground">
+                      <span
+                        className="block text-xs text-muted-foreground"
+                        data-testid="availability-monitored"
+                      >
                         {t("detail.availability.monitored", { days: view.monitoredDays })}
                       </span>
                     )}
                   </TableCell>
-                  <TableCell>
+                  <TableCell data-testid="availability-value">
                     {view.availabilityText}
                     {view.unmeasuredText && (
                       <span
@@ -128,12 +140,14 @@ export function AvailabilityTable({
                       </span>
                     )}
                   </TableCell>
-                  <TableCell>{view.downtimeText}</TableCell>
+                  <TableCell data-testid="availability-downtime">
+                    {view.downtimeText}
+                  </TableCell>
                   <TableCell>{view.incidentCount}</TableCell>
-                  <TableCell>
+                  <TableCell data-testid="availability-longest">
                     {view.longestText ?? t("detail.availability.none")}
                   </TableCell>
-                  <TableCell>
+                  <TableCell data-testid="availability-average">
                     {view.averageText ?? t("detail.availability.none")}
                   </TableCell>
                 </TableRow>

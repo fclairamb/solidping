@@ -336,7 +336,7 @@ function SettingsPage() {
             )}
 
             {saved && (
-              <Alert>
+              <Alert data-testid="settings-saved">
                 <Check className="h-4 w-4" />
                 <AlertDescription>{t("settings.saved")}</AlertDescription>
               </Alert>
@@ -378,6 +378,8 @@ function SettingsPage() {
               />
               {testResult && (
                 <p
+                  data-testid="email-pattern-test-result"
+                  data-result={testResult}
                   className={`text-xs ${
                     testResult === "match"
                       ? "text-green-600"
@@ -426,7 +428,7 @@ function SettingsPage() {
             )}
 
             {sessionSaved && (
-              <Alert>
+              <Alert data-testid="session-settings-saved">
                 <Check className="h-4 w-4" />
                 <AlertDescription>{t("settings.saved")}</AlertDescription>
               </Alert>
@@ -498,7 +500,7 @@ function SettingsPage() {
             )}
 
             {escalationSaved && (
-              <Alert>
+              <Alert data-testid="escalation-saved">
                 <Check className="h-4 w-4" />
                 <AlertDescription>{t("settings.saved")}</AlertDescription>
               </Alert>
@@ -703,7 +705,7 @@ function SettingsPage() {
             )}
 
             {embedSaved && (
-              <Alert>
+              <Alert data-testid="embed-origins-saved">
                 <Check className="h-4 w-4" />
                 <AlertDescription>{t("settings.saved")}</AlertDescription>
               </Alert>

@@ -58,7 +58,9 @@ test.describe("Uptime report schedules", () => {
     // a list view is the easiest place for them to be shoulder-surfed.
     await page.goto("orgs/test/organization/report-schedules");
 
-    const row = page.getByTestId("report-row").filter({ hasText: name }).first();
+    const row = page
+      .locator(`[data-testid="report-row"][data-report-name="${name}"]`)
+      .first();
     await expect(row).toBeVisible();
     await expect(row).toContainText("1 recipient");
     await expect(row).not.toContainText(recipient);
@@ -101,12 +103,12 @@ test.describe("Uptime report schedules", () => {
 
       await page.getByTestId("report-test").click();
 
-      await expect(
-        page.getByText("Test report queued to your address"),
-      ).toBeVisible();
-      await expect(
-        page.getByText("Failed to send the test report"),
-      ).toHaveCount(0);
+      await expect(page.locator("[data-sonner-toaster]")).toContainText(
+        "Test report queued to your address",
+      );
+      await expect(page.locator("[data-sonner-toaster]")).not.toContainText(
+        "Failed to send the test report",
+      );
     } finally {
       await page.request.delete(
         `${API_BASE}/api/v1/orgs/test/report-schedules/${uid}`,
@@ -135,7 +137,7 @@ test.describe("Organization breadcrumb", () => {
       // Section root on its own index page renders as plain (non-link) text
       // — the negative control that keeps "the leaf is visible" from passing
       // vacuously on a blank page.
-      await expect(header().getByText(label, { exact: true })).toBeVisible();
+      await expect(page.getByTestId("breadcrumbs")).toContainText(label);
       await expect(header().getByRole("link", { name: label })).toHaveCount(0);
     }
   });
@@ -152,7 +154,7 @@ test.describe("Organization breadcrumb", () => {
     await expect(
       header().getByRole("link", { name: "Uptime reports" }),
     ).toBeVisible();
-    await expect(header().getByText("New", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("breadcrumbs")).toContainText("New");
 
     // report-schedules/$uid: leaf names the record.
     const name = `E2E Breadcrumb Report ${Date.now()}`;
@@ -175,7 +177,7 @@ test.describe("Organization breadcrumb", () => {
       await expect(
         header().getByRole("link", { name: "Uptime reports" }),
       ).toBeVisible();
-      await expect(header().getByText(name, { exact: true })).toBeVisible();
+      await expect(page.getByTestId("breadcrumbs")).toContainText(name);
     } finally {
       await page.request.delete(
         `${API_BASE}/api/v1/orgs/test/report-schedules/${uid}`,
@@ -189,6 +191,6 @@ test.describe("Organization breadcrumb", () => {
     await expect(
       header().getByRole("link", { name: "Private locations" }),
     ).toBeVisible();
-    await expect(header().getByText("Register", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("breadcrumbs")).toContainText("Register");
   });
 });

@@ -56,10 +56,10 @@ test.describe("Run now", () => {
       expect((await accepted).status()).toBe(200);
 
       // Pending state, then the outcome.
-      await expect(page.getByText("Run requested.")).toBeVisible();
+      await expect(page.locator("[data-sonner-toaster]")).toContainText("Run requested.");
       await expect(button).toBeDisabled();
       release();
-      await expect(page.getByText(/Run finished: (up|down)\./)).toBeVisible({ timeout: 60_000 });
+      await expect(page.locator("[data-sonner-toaster]")).toContainText(/Run finished: (up|down)\./, { timeout: 60_000 });
       await expect(button).toBeEnabled();
     } finally {
       await page.request.delete(`${API_BASE}/api/v1/orgs/test/checks/${uid}`, {
@@ -97,7 +97,7 @@ test.describe("Run now", () => {
     try {
       await page.goto(`${DASH_BASE}/orgs/test/checks/${uid}`);
       await page.getByTestId("check-run-now").click();
-      await expect(page.getByText(/Permission Denied/)).toBeVisible();
+      await expect(page.locator("[data-sonner-toaster]")).toContainText(/Permission Denied/);
     } finally {
       await page.request.delete(`${API_BASE}/api/v1/orgs/test/checks/${uid}`, {
         headers: { Authorization: `Bearer ${token}` },

@@ -108,7 +108,7 @@ test.describe("No data (stale) status", () => {
     await expect(page.getByTestId("region-freshness")).toBeVisible();
 
     // The summary card times the status from status_changed_at.
-    await expect(page.getByText("No data for", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("summary-status-label")).toHaveText("No data for");
     await expect(page.getByTestId("summary-status-duration")).toContainText("h");
   });
 

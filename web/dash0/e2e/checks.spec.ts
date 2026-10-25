@@ -23,7 +23,7 @@ test.describe("Checks", () => {
 
     // Wait for checks data to finish loading (either check items or empty state)
     await Promise.race([
-      page.getByText("No checks configured yet").waitFor({ state: "visible", timeout: 5000 }).catch(() => {}),
+      page.getByTestId("checks-empty-title").waitFor({ state: "visible", timeout: 5000 }).catch(() => {}),
       page.locator("table tbody tr, [data-testid='check-card']").first().waitFor({ state: "visible", timeout: 5000 }).catch(() => {}),
     ]);
     await page.waitForLoadState("networkidle");
@@ -234,10 +234,10 @@ test.describe("Checks", () => {
     await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
 
     // Verify the heartbeat endpoint section is visible
-    await expect(page.getByText("Heartbeat Endpoint")).toBeVisible();
+    await expect(page.getByTestId("heartbeat-endpoint-title")).toBeVisible();
 
     // Verify curl command label is shown
-    await expect(page.getByText("Sample curl command:")).toBeVisible();
+    await expect(page.getByTestId("heartbeat-curl-label")).toBeVisible();
 
     // Take screenshot of heartbeat detail page
     await page.screenshot({
@@ -270,7 +270,7 @@ test.describe("Checks", () => {
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
     await page.waitForLoadState("networkidle");
     await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
-    await expect(page.getByText("Heartbeat Endpoint")).toBeVisible();
+    await expect(page.getByTestId("heartbeat-endpoint-title")).toBeVisible();
 
     // Capture the heartbeat URL containing the token
     const heartbeatUrlElement = page.locator(".font-mono.break-all span").first();
@@ -299,8 +299,8 @@ test.describe("Checks", () => {
     await expect(page.getByRole("heading", { name: updatedName })).toBeVisible();
 
     // Verify the heartbeat endpoint is still visible (token preserved)
-    await expect(page.getByText("Heartbeat Endpoint")).toBeVisible();
-    await expect(page.getByText("Sample curl command:")).toBeVisible();
+    await expect(page.getByTestId("heartbeat-endpoint-title")).toBeVisible();
+    await expect(page.getByTestId("heartbeat-curl-label")).toBeVisible();
 
     // Verify the token URL is the same as before editing
     const heartbeatUrlAfter = await heartbeatUrlElement.textContent();
@@ -337,7 +337,7 @@ test.describe("Checks", () => {
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
     await page.waitForLoadState("networkidle");
     await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
-    await expect(page.getByText("Heartbeat Endpoint")).toBeVisible();
+    await expect(page.getByTestId("heartbeat-endpoint-title")).toBeVisible();
 
     // Capture the ping URL (and its token) before regenerating.
     const heartbeatUrlElement = page.locator(".font-mono.break-all span").first();
@@ -449,7 +449,7 @@ test.describe("Checks", () => {
     await expandSection(page, "section-advanced-trigger");
     // The empty field advertises the uniform 15s default (spec 2026-07-11-09).
     await expect(page.getByTestId("check-timeout-input")).toHaveAttribute("placeholder", "15 seconds (default)");
-    await expect(page.getByText("Empty uses the default of 15 seconds.")).toBeVisible();
+    await expect(page.getByTestId("check-timeout-hint")).toBeVisible();
 
     const checkName = `E2E Timeout ${Date.now()}`;
     await page.getByTestId("check-name-input").fill(checkName);
@@ -516,7 +516,7 @@ test.describe("Checks", () => {
     expect(page.url()).toContain("/checks/new");
 
     // Check for error message
-    await expect(page.getByText(/URL is required/i)).toBeVisible();
+    await expect(page.getByTestId("check-form-error")).toContainText("URL is required");
 
     // Take screenshot showing validation error
     await page.screenshot({
@@ -703,7 +703,7 @@ test.describe("Checks", () => {
     await expect(page.getByTestId("check-rdp-username-input")).toBeVisible();
     await expect(page.getByTestId("check-rdp-password-input")).toBeVisible();
     await expect(page.getByTestId("check-rdp-end-session-select")).toBeVisible();
-    await expect(page.getByText(/real interactive Windows logon/i)).toBeVisible();
+    await expect(page.getByTestId("check-rdp-caveats")).toBeVisible();
 
     const checkName = `E2E RDP Logon ${Date.now()}`;
     await page.getByTestId("check-name-input").fill(checkName);
@@ -846,14 +846,14 @@ test.describe("Checks", () => {
 
     // TLS checkbox starts unchecked and the hint is not shown yet.
     await expect(page.getByTestId("check-tls-checkbox")).not.toBeChecked();
-    await expect(page.getByText("Port 993 uses implicit TLS.")).not.toBeVisible();
+    await expect(page.getByTestId("check-implicit-tls-hint")).not.toBeVisible();
 
     // D2: entering the well-known implicit-TLS port auto-enables the TLS
     // toggle and surfaces the hint (client-side affordance only — the
     // server derives independently).
     await page.getByTestId("check-port-input").fill("993");
     await expect(page.getByTestId("check-tls-checkbox")).toBeChecked();
-    await expect(page.getByText("Port 993 uses implicit TLS.")).toBeVisible();
+    await expect(page.getByTestId("check-implicit-tls-hint")).toBeVisible();
 
     // Take screenshot before submit
     await page.screenshot({
@@ -908,7 +908,7 @@ test.describe("Checks", () => {
     // enables the TLS toggle and surfaces the hint.
     await page.getByTestId("check-port-input").fill("995");
     await expect(page.getByTestId("check-tls-checkbox")).toBeChecked();
-    await expect(page.getByText("Port 995 uses implicit TLS.")).toBeVisible();
+    await expect(page.getByTestId("check-implicit-tls-hint")).toBeVisible();
 
     // Unchecking TLS keeps the typed port but restores the plaintext
     // placeholder if the field is cleared (D2: placeholder-only reversal).
@@ -960,8 +960,8 @@ test.describe("Checks", () => {
 
     // The disabled row's dot reports data-disabled="true" and carries the
     // localized "Disabled" tooltip/aria-label; the enabled row's dot is "false".
-    const disabledRow = page.locator("tr", { hasText: disabledName });
-    const enabledRow = page.locator("tr", { hasText: enabledName });
+    const disabledRow = page.locator(`[data-testid="check-row"]:has([data-check-name="${disabledName}"])`);
+    const enabledRow = page.locator(`[data-testid="check-row"]:has([data-check-name="${enabledName}"])`);
     await expect(disabledRow).toBeVisible();
     await expect(enabledRow).toBeVisible();
 

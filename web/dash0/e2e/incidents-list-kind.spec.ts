@@ -219,7 +219,9 @@ test.describe("Incidents list: kind, full title, escalation", () => {
     );
 
     await page.goto(`${DASH_BASE}/orgs/test/incidents?kind=degraded`);
-    await expect(page.getByText("No degraded incidents")).toBeVisible();
+    await expect(page.getByTestId("incidents-empty-description")).toContainText(
+      "No degraded incidents",
+    );
   });
 
   test("phone (375px): no horizontal scroll; chip, number, title and time on every row", async ({

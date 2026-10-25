@@ -211,13 +211,14 @@ test.describe("Dashboard", () => {
     expect(footerText).toMatch(/→$/);
 
     // Labels must be resolved — no raw event keys leak into the feed.
-    await expect(page.getByText("org.activation.first_check_created")).toHaveCount(0);
+    const labels = await page.getByTestId("event-type-label").allTextContents();
+    expect(labels.length).toBeGreaterThan(0);
+    expect(labels.join("|")).not.toContain("org.activation.first_check_created");
 
     // When the activation milestone is in the feed, its description renders.
-    const desc = page.getByText("Your first uptime check is live and monitoring.");
-    const label = page.getByText("First Check Created", { exact: true });
-    if (await label.first().isVisible().catch(() => false)) {
-      await expect(desc.first()).toBeVisible();
+    if (labels.includes("First Check Created")) {
+      const details = await page.getByTestId("event-detail").allTextContents();
+      expect(details).toContain("Your first uptime check is live and monitoring.");
     }
 
     // The check.created event surfaces the check's name as a link to its detail page.
@@ -271,13 +272,13 @@ test.describe("Dashboard", () => {
     // Glance card is present and lists the seeded checks.
     const glance = page.getByTestId("checks-glance");
     await expect(glance).toBeVisible({ timeout: 10000 });
-    await expect(glance.getByText("Checks at a glance")).toBeVisible();
+    await expect(page.getByTestId("checks-glance-title")).toBeVisible();
 
     const rows = page.getByTestId("glance-row");
     await expect(rows).toHaveCount(3);
-    await expect(glance.getByText("Alpha API")).toBeVisible();
-    await expect(glance.getByText("Beta Web")).toBeVisible();
-    await expect(glance.getByText("Gamma Job")).toBeVisible();
+    await expect(glance.locator('[data-testid="glance-row"][data-check-name="Alpha API"]')).toBeVisible();
+    await expect(glance.locator('[data-testid="glance-row"][data-check-name="Beta Web"]')).toBeVisible();
+    await expect(glance.locator('[data-testid="glance-row"][data-check-name="Gamma Job"]')).toBeVisible();
 
     // No active-incidents card in the healthy state (the KPI tile of the same
     // name still exists; the card is gated on incidentsCount > 0).
@@ -469,7 +470,7 @@ test.describe("Dashboard", () => {
 
     // It carries a destructive status badge (down) and a "since" timestamp.
     // StatusBadge renders the localized label ("Down"), not the raw token.
-    await expect(rows.first().getByText("Down", { exact: true })).toBeVisible();
+    await expect(rows.first().getByTestId("status-badge")).toHaveText("Down");
     await expect(rows.first()).toContainText("since");
   });
 
@@ -492,21 +493,21 @@ test.describe("Dashboard", () => {
     await expect(rows).toHaveCount(3);
 
     // "up" renders the success (green) badge variant with the localized label.
-    const upRow = rows.filter({ hasText: "Up Service" });
-    await expect(upRow.getByText("Up", { exact: true })).toHaveClass(
+    const upRow = page.locator('[data-testid="glance-row"][data-check-name="Up Service"]');
+    await expect(upRow.getByTestId("status-badge")).toHaveClass(
       /bg-status-ok\/15/,
     );
 
     // "warning" renders the warning (amber) badge variant — previously a plain
     // gray "outline" chip indistinguishable from a healthy check.
-    const warningRow = rows.filter({ hasText: "Warning Service" });
-    await expect(warningRow.getByText("Warning", { exact: true })).toHaveClass(
+    const warningRow = page.locator('[data-testid="glance-row"][data-check-name="Warning Service"]');
+    await expect(warningRow.getByTestId("status-badge")).toHaveClass(
       /bg-status-warning\/15/,
     );
 
     // "down" renders the destructive (red) badge variant.
-    const downRow = rows.filter({ hasText: "Down Service" });
-    await expect(downRow.getByText("Down", { exact: true })).toHaveClass(
+    const downRow = page.locator('[data-testid="glance-row"][data-check-name="Down Service"]');
+    await expect(downRow.getByTestId("status-badge")).toHaveClass(
       /bg-status-error\/15/,
     );
   });
@@ -538,7 +539,7 @@ test.describe("Dashboard", () => {
     // Incidents card is present and shows the incident.
     const incidentsCard = page.getByTestId("active-incidents");
     await expect(incidentsCard).toBeVisible();
-    await expect(incidentsCard.getByText("Database latency spike")).toBeVisible();
+    await expect(incidentsCard.getByTestId("active-incident-title")).toHaveText("Database latency spike");
 
     // Incidents card sits above the glance card in document order (higher = lower y).
     const incidentBox = await incidentsCard.boundingBox();
@@ -583,7 +584,7 @@ test.describe("Dashboard", () => {
     // returned — only the tile number and banner copy read the total.
     const incidentsCard = page.getByTestId("active-incidents");
     await expect(incidentsCard).toBeVisible();
-    await expect(incidentsCard.getByText("Incident 0")).toBeVisible();
+    await expect(incidentsCard.locator('[data-testid="active-incident-title"][data-incident-title="Incident 0"]')).toBeVisible();
   });
 
   test("Recent activity row for an incident event shows both incident and check links", async ({

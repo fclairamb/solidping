@@ -31,8 +31,8 @@ test.describe("Discovery under an egress policy", () => {
     // The list page's "New scan" button links to ?method=lan.
     await page.goto(`${DASH_BASE}/orgs/test/organization/discovery/new?method=lan`);
 
-    await expect(page.getByLabel(/container host/i)).toBeVisible();
-    await expect(page.getByLabel(/cidr/i)).toHaveCount(0);
+    await expect(page.getByTestId("discovery-container-hosts-input")).toBeVisible();
+    await expect(page.getByTestId("discovery-cidrs-input")).toHaveCount(0);
     await expect(page.getByRole("combobox", { name: /scan method/i })).toHaveText(
       /containers/i,
     );
@@ -62,8 +62,8 @@ test.describe("Discovery under an egress policy", () => {
     await page.getByRole("button", { name: /start scan/i }).click();
 
     await expect(
-      page.getByText("This discovery source is not available on this server."),
-    ).toBeVisible();
+      page.locator("[data-sonner-toaster]"),
+    ).toContainText("This discovery source is not available on this server.");
     expect(refused).toBe(1);
     // Positive control: still on the form, nothing navigated to a scan page.
     await expect(page).toHaveURL(/\/discovery\/new/);

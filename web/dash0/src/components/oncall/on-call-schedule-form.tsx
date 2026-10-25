@@ -142,6 +142,7 @@ export function OnCallScheduleForm({
         <Label htmlFor="oncall-name">{t("oncall:form.name")}</Label>
         <Input
           id="oncall-name"
+          data-testid="oncall-name-input"
           value={values.name}
           onChange={(e) => set("name", e.target.value)}
           placeholder={t("oncall:form.namePlaceholder")}
@@ -269,6 +270,8 @@ export function OnCallScheduleForm({
               <label
                 key={m.userUid}
                 className="flex items-center gap-2 py-1 cursor-pointer"
+                data-testid="oncall-member-option"
+                data-member-email={m.email}
               >
                 <input
                   type="checkbox"

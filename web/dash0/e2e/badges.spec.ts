@@ -81,9 +81,9 @@ test.describe("Badges", () => {
     // The check comes from the path — there is no picker to select one, and no
     // "select a check" empty state.
     await expect(page.getByTestId("badge-check-select")).toHaveCount(0);
-    await expect(
-      page.getByText("Select a check to preview and generate badges")
-    ).toHaveCount(0);
+    await expect(page.locator("body")).not.toContainText(
+      "Select a check to preview and generate badges",
+    );
 
     // Verify component checkboxes are present (format select is gone)
     await expect(page.getByTestId("badge-component-status")).toBeVisible();
@@ -99,7 +99,7 @@ test.describe("Badges", () => {
     await expect(page.getByTestId("badge-component-status")).toBeChecked();
 
     // Download card must NOT exist
-    await expect(page.getByText("Download the badge in different formats")).not.toBeVisible();
+    await expect(page.locator("body")).not.toContainText("Download the badge in different formats");
   });
 
   test("shows the preview with download buttons in the header", async ({
@@ -329,7 +329,7 @@ test.describe("Badges", () => {
     });
 
     // The old Download card title and description must not be present
-    await expect(page.getByText("Download the badge in different formats")).not.toBeVisible();
+    await expect(page.locator("body")).not.toContainText("Download the badge in different formats");
   });
 
   test("period selector visible with Availability, hidden with only Status+Duration", async ({

@@ -266,8 +266,8 @@ test.describe("Discord member mapping", () => {
 
     // The help text says how the matching actually happens.
     await expect(
-      page.getByText(/Members who signed in with Discord are matched/i),
-    ).toBeVisible();
+      page.getByTestId("member-mapping-help"),
+    ).toContainText(/Members who signed in with Discord are matched/i);
   });
 
   test("clearing a mapping is the red trash action", async ({
@@ -368,7 +368,7 @@ test.describe("Discord member mapping", () => {
     await expect(hint).toBeVisible();
     await expect(hint).toContainText(/Save your changes first/i);
     await expect(hint.locator(".text-destructive")).toHaveCount(0);
-    await expect(page.getByText("Could not load the member mapping.")).toHaveCount(0);
+    await expect(page.getByTestId("member-mapping-error")).toHaveCount(0);
     await expect(page.getByTestId("slack-mapping-sync")).toBeDisabled();
     expect(state.identitiesGets).toBe(before);
 
@@ -387,7 +387,7 @@ test.describe("Discord member mapping", () => {
 
     await page.goto(`orgs/test/integrations/${CHANNEL_UID}`);
 
-    const error = page.getByText("Could not load the member mapping.");
+    const error = page.getByTestId("member-mapping-error");
     // React Query retries a failed list before surfacing the error.
     await expect(error).toBeVisible({ timeout: 20_000 });
     await expect(error).toHaveClass(/text-destructive/);

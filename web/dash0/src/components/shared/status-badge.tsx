@@ -30,6 +30,7 @@ export function StatusBadge({ status, className }: StatusBadgeProps) {
       variant={style.badgeVariant}
       className={cn(Icon && "gap-1", className)}
       data-status={status}
+      data-testid="status-badge"
     >
       {Icon && <Icon className="h-3 w-3" aria-hidden="true" />}
       {label}

@@ -269,7 +269,7 @@ function SmtpSendModeFields({ state, onChange, errors }: CheckTypeFieldsProps<Sm
                 <AlertDescription>{t("mail.emailInboxNotConfigured")}</AlertDescription>
               </Alert>
             ) : candidates.length === 0 ? (
-              <Alert>
+              <Alert data-testid="check-smtp-no-email-checks">
                 <AlertDescription>{t("mail.noEmailChecksYet")}</AlertDescription>
               </Alert>
             ) : (
@@ -287,7 +287,7 @@ function SmtpSendModeFields({ state, onChange, errors }: CheckTypeFieldsProps<Sm
               </Select>
             )}
             {state.deliveryTo && (
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-muted-foreground" data-testid="check-smtp-delivery-to">
                 {t("mail.probeEmailAddressedTo", { address: state.deliveryTo })}
               </p>
             )}
@@ -407,7 +407,7 @@ function MailboxFields({
           <span className="text-sm">{t("mail.useImplicitTls")}</span>
         </label>
         {(state.tls || state.port === implicitTLSPort) && (
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-muted-foreground" data-testid="check-implicit-tls-hint">
             {t("mail.implicitTlsPortHint", { port: implicitTLSPort })}
           </p>
         )}

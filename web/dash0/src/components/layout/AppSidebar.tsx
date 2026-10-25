@@ -212,7 +212,7 @@ export function AppSidebar() {
                     2026-09-24-02): no white tile behind it. */}
                 <div className="flex flex-col gap-0.5 leading-none">
                   <span className="font-bold tracking-[-0.01em]">SolidPing</span>
-                  <span className="text-xs text-sidebar-muted-foreground">
+                  <span className="text-xs text-sidebar-muted-foreground" data-testid="sidebar-org-name">
                     {currentOrgName || org}
                   </span>
                 </div>
@@ -232,7 +232,14 @@ export function AppSidebar() {
             <SidebarGroup key={group.labelKey}>
               {/* SidebarGroupLabel already collapses itself away on the icon
                   rail; the per-item `tooltip` below is what labels items there. */}
-              <SidebarGroupLabel>{tNav(group.labelKey)}</SidebarGroupLabel>
+              <SidebarGroupLabel
+                data-testid={`sidebar-group-${group.labelKey
+                  .replace(/^groups\./, "")
+                  .replace(/([A-Z])/g, "-$1")
+                  .toLowerCase()}`}
+              >
+                {tNav(group.labelKey)}
+              </SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
                   {items.map((item) => {
@@ -362,7 +369,10 @@ export function AppSidebar() {
                 {organizations.length > 1 && (
                   <>
                     <DropdownMenuSeparator />
-                    <DropdownMenuLabel className="text-xs text-muted-foreground">
+                    <DropdownMenuLabel
+                      className="text-xs text-muted-foreground"
+                      data-testid="switch-organization-label"
+                    >
                       {t("switchOrganization")}
                     </DropdownMenuLabel>
                     {organizations

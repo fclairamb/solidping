@@ -49,19 +49,25 @@ test.describe("Account Notifications — deleting a method", () => {
     await page.getByTestId("add-contact-input").fill(phoneNumber);
     await page.getByTestId("add-contact-submit").click();
 
-    await expect(list.getByText(phoneNumber)).toBeVisible();
+    await expect(list.locator(
+        `[data-testid="notification-route-row"][data-contact-value=${JSON.stringify(phoneNumber)}]`,
+      )).toBeVisible();
     await expect(rows).toHaveCount(before + 1);
 
     // Delete it through its OWN row's trash button — found by the number we
     // just typed, not by index, so this can never delete a sibling row if the
     // ordering ever changes.
-    const phoneRow = list.locator("> div").filter({ hasText: phoneNumber });
+    const phoneRow = list.locator(
+        `[data-testid="notification-route-row"][data-contact-value=${JSON.stringify(phoneNumber)}]`,
+      );
     await phoneRow.locator('[data-testid^="delete-contact-"]').click();
 
     // The row count drops back...
     await expect(rows).toHaveCount(before);
     // ...the deleted method is really gone, not re-rendered blank...
-    await expect(list.getByText(phoneNumber)).toHaveCount(0);
+    await expect(list.locator(
+        `[data-testid="notification-route-row"][data-contact-value=${JSON.stringify(phoneNumber)}]`,
+      )).toHaveCount(0);
     // ...and crucially, no row rendered with an empty contact uid. Before the
     // fix this is where the ghost appeared: the count would stay at
     // `before + 1` with one unlabelled, undeletable row.
@@ -73,6 +79,8 @@ test.describe("Account Notifications — deleting a method", () => {
     await page.reload();
     await page.waitForLoadState("networkidle");
     await expect(ghosts).toHaveCount(0);
-    await expect(page.getByText(phoneNumber)).toHaveCount(0);
+    await expect(page.locator(
+        `[data-testid="notification-route-row"][data-contact-value=${JSON.stringify(phoneNumber)}]`,
+      )).toHaveCount(0);
   });
 });

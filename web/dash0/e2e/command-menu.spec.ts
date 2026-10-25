@@ -219,32 +219,28 @@ test.describe("Command Menu (Cmd+K)", () => {
       // The others stay substring matches on purpose: a string `hasText` is
       // case-insensitive, which is what lets "Tokens" match the item "API
       // tokens". Anchoring them all breaks exactly that.
-      await expect(page.getByText("Pages", { exact: true })).toBeVisible();
-      await expect(page.locator('[cmdk-item]').filter({ hasText: "Dashboard" })).toBeVisible();
-      await expect(page.locator('[cmdk-item]').filter({ hasText: /^Checks$/i })).toBeVisible();
-      await expect(page.locator('[cmdk-item]').filter({ hasText: "Incidents" })).toBeVisible();
-      await expect(page.locator('[cmdk-item]').filter({ hasText: "Events" })).toBeVisible();
-      await expect(page.locator('[cmdk-item]').filter({ hasText: "Status Pages" })).toBeVisible();
+      await expect(page.getByTestId("command-menu-group-pages")).toBeVisible();
+      await expect(page.getByTestId("command-menu-page-dashboard")).toBeVisible();
+      await expect(page.getByTestId("command-menu-page-checks")).toBeVisible();
+      await expect(page.getByTestId("command-menu-page-incidents")).toBeVisible();
+      await expect(page.getByTestId("command-menu-page-events")).toBeVisible();
+      await expect(page.getByTestId("command-menu-page-status-pages")).toBeVisible();
       // Badges and Dependencies left the palette with their sidebar entries
       // (spec 2026-09-16-07): the badge builder moved under its check and the
       // org-wide dependencies page is gone. Scoped to the Pages GROUP on
       // purpose — the palette also lists seeded check entities, and other specs
       // leave behind checks with "Badges" in their name.
-      const pagesGroup = page
-        .locator("[cmdk-group]")
-        .filter({ has: page.locator("[cmdk-group-heading]", { hasText: /^Pages$/ }) });
-      await expect(pagesGroup.locator("[cmdk-item]").filter({ hasText: "Badges" })).toHaveCount(0);
-      await expect(
-        pagesGroup.locator("[cmdk-item]").filter({ hasText: "Dependencies" }),
-      ).toHaveCount(0);
+      const pagesGroup = page.getByTestId("command-menu-group-pages");
+      await expect(pagesGroup.getByTestId("command-menu-page-badges")).toHaveCount(0);
+      await expect(pagesGroup.getByTestId("command-menu-page-dependencies")).toHaveCount(0);
 
       // Account group. The group heading itself reads "Account", same as
       // the section-landing entry's title, so scope the heading assertion
       // to the [cmdk-group-heading] element to avoid a strict-mode ambiguity.
-      await expect(page.locator("[cmdk-group-heading]", { hasText: "Account" })).toBeVisible();
+      await expect(page.getByTestId("command-menu-group-account")).toBeVisible();
       await expect(page.getByTestId("command-menu-account")).toBeVisible();
-      await expect(page.locator('[cmdk-item]').filter({ hasText: "Profile" })).toBeVisible();
-      await expect(page.locator('[cmdk-item]').filter({ hasText: "Tokens" })).toBeVisible();
+      await expect(page.getByTestId("command-menu-page-account-profile")).toBeVisible();
+      await expect(page.getByTestId("command-menu-page-account-tokens")).toBeVisible();
       await expect(page.getByTestId("command-menu-ai")).toBeVisible();
       await expect(page.getByTestId("command-menu-ai")).toContainText("AI assistants");
 
@@ -252,13 +248,11 @@ test.describe("Command Menu (Cmd+K)", () => {
       // the "Switch organization" group heading also contains
       // "Organization" as a substring — test@test.com belongs to 3 orgs
       // (test, test2, test3), so that group renders here too.
-      await expect(
-        page.locator("[cmdk-group-heading]", { hasText: /^Organization$/ }),
-      ).toBeVisible();
+      await expect(page.getByTestId("command-menu-group-organization")).toBeVisible();
       await expect(page.getByTestId("command-menu-organization")).toBeVisible();
-      await expect(page.locator('[cmdk-item]').filter({ hasText: "Members" })).toBeVisible();
-      await expect(page.locator('[cmdk-item]').filter({ hasText: "Invitations" })).toBeVisible();
-      await expect(page.locator('[cmdk-item]').filter({ hasText: "Settings" })).toBeVisible();
+      await expect(page.getByTestId("command-menu-page-organization-members")).toBeVisible();
+      await expect(page.getByTestId("command-menu-page-organization-invitations")).toBeVisible();
+      await expect(page.getByTestId("command-menu-organization-settings")).toBeVisible();
 
       await page.screenshot({
         path: "test-results/screenshots/command-menu-open.png",
@@ -269,21 +263,21 @@ test.describe("Command Menu (Cmd+K)", () => {
     await test.step("shows the newer sidebar pages without duplicating On-call", async () => {
       // Spec 2026-08-20-07: the palette had drifted from AppSidebar and was
       // missing these four entries.
-      await expect(page.locator('[cmdk-item]').filter({ hasText: "Updates & notices" })).toBeVisible();
-      await expect(page.locator('[cmdk-item]').filter({ hasText: "Maintenance" })).toBeVisible();
-      await expect(page.locator('[cmdk-item]').filter({ hasText: "SLOs" })).toBeVisible();
-      await expect(page.locator('[cmdk-item]').filter({ hasText: "My alerts" })).toBeVisible();
+      await expect(page.getByTestId("command-menu-page-status-updates")).toBeVisible();
+      await expect(page.getByTestId("command-menu-page-maintenance-windows")).toBeVisible();
+      await expect(page.getByTestId("command-menu-page-slos")).toBeVisible();
+      await expect(page.getByTestId("command-menu-page-me-notifications")).toBeVisible();
 
       // "On call" already existed — must render exactly once, never duplicated.
-      await expect(page.locator('[cmdk-item]').filter({ hasText: "On-call" })).toHaveCount(1);
+      await expect(page.getByTestId("command-menu-page-on-call")).toHaveCount(1);
     });
 
     await test.step("filters results when typing", async () => {
       await input.fill("inci");
 
       // Should show Incidents, hide others
-      await expect(page.locator('[cmdk-item]').filter({ hasText: "Incidents" })).toBeVisible();
-      await expect(page.locator('[cmdk-item]').filter({ hasText: "Dashboard" })).not.toBeVisible();
+      await expect(page.getByTestId("command-menu-page-incidents")).toBeVisible();
+      await expect(page.getByTestId("command-menu-page-dashboard")).not.toBeVisible();
 
       await page.screenshot({
         path: "test-results/screenshots/command-menu-filtered.png",
@@ -316,7 +310,7 @@ test.describe("Command Menu (Cmd+K)", () => {
       const input = await openPalette(page, { fromDashboard: true });
 
       await input.fill("Incidents");
-      await page.locator('[cmdk-item]').filter({ hasText: "Incidents" }).click();
+      await page.getByTestId("command-menu-page-incidents").click();
 
       await page.waitForURL(/\/incidents/, { timeout: 5000 });
       expect(page.url()).toContain("/incidents");
@@ -357,7 +351,7 @@ test.describe("Command Menu (Cmd+K)", () => {
       const input = await openPalette(page, { fromDashboard: true });
 
       await input.fill("slo");
-      const sloPageItem = page.locator('[cmdk-item]').filter({ hasText: "SLOs" }).first();
+      const sloPageItem = page.getByTestId("command-menu-page-slos").first();
       await expect(sloPageItem).toBeVisible();
       await sloPageItem.click();
 
@@ -393,7 +387,7 @@ test.describe("Command Menu (Cmd+K)", () => {
       const input = await openPalette(page, { fromDashboard: true });
 
       // Actions group should be shown with the New Check entry
-      await expect(page.getByText("Actions", { exact: true })).toBeVisible();
+      await expect(page.getByTestId("command-menu-group-actions")).toBeVisible();
       const newCheckItem = page.getByTestId("command-menu-new-check");
       await expect(newCheckItem).toBeVisible();
       await expect(newCheckItem).toContainText("New Check");
@@ -485,6 +479,7 @@ test.describe("Command Menu (Cmd+K)", () => {
     await page.getByTestId("check-url-input").fill("https://example.com/cmdk-test");
     await page.getByTestId("check-submit-button").click();
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
+    const checkUid = /\/checks\/([0-9a-f-]{36})/.exec(page.url())![1];
 
     // Now go back to dashboard and open command menu
     await page.getByRole("link", { name: "Dashboard" }).click();
@@ -498,7 +493,8 @@ test.describe("Command Menu (Cmd+K)", () => {
     await input.fill("CmdK");
 
     // Should show the check in results
-    const checkItem = page.locator('[cmdk-item]').filter({ hasText: checkName });
+    const checkItem = page.getByTestId(`command-menu-check-${checkUid}`);
+    await expect(checkItem).toContainText(checkName);
     await expect(checkItem).toBeVisible({ timeout: 5000 });
 
     // Take screenshot showing check in command menu
@@ -537,12 +533,12 @@ test.describe("Command Menu (Cmd+K)", () => {
 
       // The new "Status pages" group renders below Checks and holds the
       // client-filtered match — scope the heading assertion to
-      // [cmdk-group-heading] since the item text below repeats the name.
+      // the group testid since the item text below repeats the name.
       await expect(
-        page.locator("[cmdk-group-heading]", { hasText: "Status pages" }),
+        page.getByTestId("command-menu-group-status-pages"),
       ).toBeVisible({ timeout: 8000 });
-      const item = page.locator('[cmdk-item]').filter({ hasText: name });
-      await expect(item).toBeVisible();
+      const item = page.getByTestId(`command-menu-status-page-${statusPage.uid}`);
+      await expect(item).toContainText(name);
 
       // Click rather than Enter: the item only just mounted after the
       // debounce + fetch round trip, and cmdk's own selection bookkeeping
@@ -578,10 +574,10 @@ test.describe("Command Menu (Cmd+K)", () => {
       await input.fill(name);
 
       await expect(
-        page.locator("[cmdk-group-heading]", { hasText: "Escalation policies" }),
+        page.getByTestId("command-menu-group-escalation-policies"),
       ).toBeVisible({ timeout: 8000 });
-      const item = page.locator('[cmdk-item]').filter({ hasText: name });
-      await expect(item).toBeVisible();
+      const item = page.getByTestId(`command-menu-escalation-policy-${policy.uid}`);
+      await expect(item).toContainText(name);
 
       await item.click();
       await page.waitForURL(new RegExp(`/escalation-policies/${policy.uid}`), {
@@ -617,10 +613,10 @@ test.describe("Command Menu (Cmd+K)", () => {
       // the same text — scope to [cmdk-group-heading] to disambiguate, same
       // pattern as the Account/Organization collision above.
       await expect(
-        page.locator("[cmdk-group-heading]", { hasText: "SLOs" }),
+        page.getByTestId("command-menu-group-slos"),
       ).toBeVisible({ timeout: 8000 });
-      const item = page.locator('[cmdk-item]').filter({ hasText: name });
-      await expect(item).toBeVisible();
+      const item = page.getByTestId(`command-menu-slo-${slo.uid}`);
+      await expect(item).toContainText(name);
 
       await item.click();
       await page.waitForURL(new RegExp(`/slos/${slo.uid}`), { timeout: 5000 });
@@ -648,7 +644,7 @@ test.describe("Command Menu (Cmd+K)", () => {
     // No search term: with a single org, the group must not render at all —
     // not even as an empty heading.
     await expect(
-      page.locator("[cmdk-group-heading]", { hasText: "Switch organization" }),
+      page.getByTestId("command-menu-group-switch-org"),
     ).toHaveCount(0);
   });
 
@@ -682,7 +678,7 @@ test.describe("Command Menu (Cmd+K)", () => {
     // Findable by name.
     await input.fill(org2Name);
     await expect(
-      page.locator("[cmdk-group-heading]", { hasText: "Switch organization" }),
+      page.getByTestId("command-menu-group-switch-org"),
     ).toBeVisible();
     const itemByName = page.getByTestId(`command-menu-switch-org-${org2Slug}`);
     await expect(itemByName).toBeVisible();

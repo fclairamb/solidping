@@ -67,8 +67,8 @@ import {
 
 /** Intervals this flow is willing to film, fastest first. */
 const PREFERRED_INTERVALS = [
-  { label: "5 seconds", seconds: 5 },
-  { label: "10 seconds", seconds: 10 },
+  { label: "5 seconds", value: "00:00:05", seconds: 5 },
+  { label: "10 seconds", value: "00:00:10", seconds: 10 },
 ];
 
 /**
@@ -186,11 +186,9 @@ test("setup to first result", async ({ page }, testInfo) => {
     await clickOn(page, periodSelect);
     await beat(page, 400);
 
-    let chosenInterval: { label: string; seconds: number } | null = null;
+    let chosenInterval: { label: string; value: string; seconds: number } | null = null;
     for (const candidate of PREFERRED_INTERVALS) {
-      const option = page
-        .getByRole("option")
-        .filter({ hasText: new RegExp(candidate.label) });
+      const option = page.getByTestId(`check-period-option-${candidate.value}`);
       if ((await option.count()) > 0) {
         await option.first().click();
         chosenInterval = candidate;

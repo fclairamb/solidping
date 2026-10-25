@@ -417,6 +417,7 @@ function HostSection({
           <span
             className={`text-base font-semibold truncate ${isNoHost ? "text-muted-foreground italic" : ""}`}
             data-testid="host-section-name"
+            data-host-name={hostKey ?? ""}
           >
             {isNoHost ? t("noHostBucket") : hostKey}
           </span>
@@ -516,7 +517,10 @@ function CheckRow({
   const durationMs = check.lastResult?.durationMs;
 
   return (
-    <TableRow className="hover:bg-muted/40 transition-colors">
+    <TableRow
+      className="hover:bg-muted/40 transition-colors"
+      data-testid="check-row"
+    >
       <TableCell className="max-w-0">
         <div className="flex items-center gap-2 min-w-0">
           <Link
@@ -530,7 +534,11 @@ function CheckRow({
               enabled={check.enabled}
               title={check.enabled === false ? t("checks:detail.disabled") : undefined}
             />
-            <span className="min-w-0 truncate">
+            <span
+              className="min-w-0 truncate"
+              data-testid="check-row-name"
+              data-check-name={check.name || check.slug || check.uid?.slice(0, 8)}
+            >
               {check.name || check.slug || check.uid?.slice(0, 8)}
             </span>
           </Link>
@@ -544,7 +552,7 @@ function CheckRow({
                   <Waypoints className="h-3.5 w-3.5" />
                 </span>
               </TooltipTrigger>
-              <TooltipContent>
+              <TooltipContent data-testid="check-tunnel-tooltip">
                 {t("tunnel.viaTooltip", { name: bastion ? checkLabel(bastion) : t("tunnel.viaTitle") })}
               </TooltipContent>
             </Tooltip>
@@ -575,7 +583,10 @@ function CheckRow({
       <TableCell>
         {/* Plain tabular text: the status column already carries the color,
             and a colored chip per row turned the column into noise. */}
-        <span className="font-mono text-xs tabular-nums text-muted-foreground">
+        <span
+          className="font-mono text-xs tabular-nums text-muted-foreground"
+          data-testid="check-duration"
+        >
           {durationMs != null ? `${Math.round(durationMs)}ms` : "—"}
         </span>
       </TableCell>
@@ -816,7 +827,7 @@ function CheckGroupSection({
               {collapsed ? t("menu.expandGroup") : t("menu.collapseGroup")}
             </TooltipContent>
           </Tooltip>
-          <span className="text-base font-semibold truncate" data-testid="group-name">{group.name}</span>
+          <span className="text-base font-semibold truncate" data-testid="group-name" data-group-name={group.name}>{group.name}</span>
           <span data-testid="group-status-badge">
             <StatusBadge status={group.status} />
           </span>
@@ -958,7 +969,10 @@ function CheckGroupSection({
               ))}
             </div>
           ) : (
-            <div className="p-4 text-center text-sm text-muted-foreground">
+            <div
+              className="p-4 text-center text-sm text-muted-foreground"
+              data-testid="group-empty"
+            >
               <p>{t("noChecks")}</p>
               {!isFiltering && (
                 <Link
@@ -1014,7 +1028,10 @@ function UngroupedChecksSection({
 
   return (
     <div>
-      <h3 className="text-sm font-medium text-muted-foreground mb-2">
+      <h3
+        className="text-sm font-medium text-muted-foreground mb-2"
+        data-testid="ungrouped-checks-heading"
+      >
         {t("ungroupedChecks")}
       </h3>
       {/* Rows win over the loading branch, same as CheckGroupSection: keep any
@@ -1922,7 +1939,7 @@ function ChecksIndexPage() {
               <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">
                 <ListChecks className="h-6 w-6 text-muted-foreground" />
               </div>
-              <p className="text-sm font-medium text-foreground">
+              <p className="text-sm font-medium text-foreground" data-testid="checks-empty-title">
                 {t("noChecksAtAll")}
               </p>
             </div>
@@ -2119,7 +2136,7 @@ function ChecksIndexPage() {
                   onChange={(e) => setImportToken(e.target.value)}
                   placeholder="••••••••"
                 />
-                <Alert>
+                <Alert data-testid="import-token-notice">
                   <AlertTitle>{t("dialog.importTokenNoticeTitle")}</AlertTitle>
                   <AlertDescription>{t("dialog.importTokenNotice")}</AlertDescription>
                 </Alert>
