@@ -11,7 +11,7 @@ test.describe("Incident comments", () => {
     const page = authenticatedPage;
 
     await page.goto(`${DASH_BASE}/orgs/test/incidents/${incidentUid}`);
-    await expect(page.getByText("Incident Details")).toBeVisible();
+    await expect(page.getByTestId("incident-details-title")).toBeVisible();
 
     // The Comments card renders with a composer.
     await expect(page.getByText("Comments", { exact: true })).toBeVisible();

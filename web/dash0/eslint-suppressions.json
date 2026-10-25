@@ -209,34 +209,19 @@
       "count": 2
     }
   },
-  "e2e/incident-ack-actor.spec.ts": {
-    "testid-local/no-text-locators": {
-      "count": 2
-    }
-  },
   "e2e/incident-check-deleted.spec.ts": {
     "testid-local/no-text-locators": {
-      "count": 3
+      "count": 1
     }
   },
   "e2e/incident-comments.spec.ts": {
     "testid-local/no-text-locators": {
-      "count": 4
+      "count": 3
     }
   },
   "e2e/incident-detail-header-overflow.spec.ts": {
     "testid-local/no-text-locators": {
       "count": 1
-    }
-  },
-  "e2e/incident-failure-details.spec.ts": {
-    "testid-local/no-text-locators": {
-      "count": 1
-    }
-  },
-  "e2e/incident-mobile.spec.ts": {
-    "testid-local/no-text-locators": {
-      "count": 2
     }
   },
   "e2e/incident-notifications.spec.ts": {
@@ -247,11 +232,6 @@
   "e2e/incident-probe-response.spec.ts": {
     "testid-local/no-text-locators": {
       "count": 3
-    }
-  },
-  "e2e/incident-timestamps.spec.ts": {
-    "testid-local/no-text-locators": {
-      "count": 1
     }
   },
   "e2e/incidents-list-check-name.spec.ts": {

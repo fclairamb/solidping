@@ -46,7 +46,7 @@ test.describe("Incident closed by check deletion", () => {
     await patchIncident(page, "check_deleted");
 
     await page.goto(`${DASH_BASE}/orgs/test/incidents/${incidentUid}`);
-    await expect(page.getByText("Incident Details")).toBeVisible();
+    await expect(page.getByTestId("incident-details-title")).toBeVisible();
 
     const reason = page.getByTestId("incident-timeline-resolved-reason");
     await expect(reason).toBeVisible({ timeout: 10000 });
@@ -65,7 +65,7 @@ test.describe("Incident closed by check deletion", () => {
     await patchIncident(page, "auto");
 
     await page.goto(`${DASH_BASE}/orgs/test/incidents/${incidentUid}`);
-    await expect(page.getByText("Incident Details")).toBeVisible();
+    await expect(page.getByTestId("incident-details-title")).toBeVisible();
     await expect(page.getByText("Resolved", { exact: true }).first()).toBeVisible({
       timeout: 10000,
     });
