@@ -158,7 +158,7 @@ test.describe("Magic wand defaults", () => {
     await expect(wand).toBeVisible();
 
     await wand.click();
-    await expect(page.locator("[data-sonner-toast]")).toContainText(
+    await expect(page.locator("[data-sonner-toaster]")).toContainText(
       "Email alerts created",
     );
 
@@ -245,7 +245,7 @@ test.describe("Magic wand defaults", () => {
     await expect(wand).toBeEnabled({ timeout: 10000 });
 
     await wand.click();
-    await expect(page.locator("[data-sonner-toast]")).toContainText(
+    await expect(page.locator("[data-sonner-toaster]")).toContainText(
       "Weekly uptime report created",
     );
     await expect(wand).toHaveCount(0);
@@ -463,7 +463,7 @@ test.describe("Magic wand defaults", () => {
     await expect(wand).toBeEnabled({ timeout: 10000 });
 
     await wand.click();
-    await expect(page.locator("[data-sonner-toast]")).toContainText(
+    await expect(page.locator("[data-sonner-toaster]")).toContainText(
       "Status page created successfully",
     );
 

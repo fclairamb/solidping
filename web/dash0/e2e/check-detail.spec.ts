@@ -1305,7 +1305,7 @@ test.describe("Check Detail Page", () => {
     await page.getByRole("button", { name: "More actions" }).click();
     await page.getByRole("menuitem", { name: "Copy check link" }).click();
 
-    await expect(page.locator("[data-sonner-toast]")).toContainText(
+    await expect(page.locator("[data-sonner-toaster]")).toContainText(
       "Check link copied",
     );
     const copied = await page.evaluate(() => navigator.clipboard.readText());

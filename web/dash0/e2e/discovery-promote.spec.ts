@@ -51,7 +51,7 @@ test.describe("Discovery host promotion", () => {
     // Success toast, and the row flips to the promoted badge once the backend
     // has created the check and the list refetched (end-to-end signal:
     // promotedToCheckUid is only set after the check row exists).
-    await expect(page.locator("[data-sonner-toast]")).toContainText(
+    await expect(page.locator("[data-sonner-toaster]")).toContainText(
       "Checks created",
     );
     await expect(tcpRow.getByTestId("discovery-check-promoted")).toBeVisible();

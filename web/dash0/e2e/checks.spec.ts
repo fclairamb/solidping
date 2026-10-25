@@ -516,7 +516,7 @@ test.describe("Checks", () => {
     expect(page.url()).toContain("/checks/new");
 
     // Check for error message
-    await expect(page.getByTestId("check-url-error")).toBeVisible();
+    await expect(page.getByTestId("check-form-error")).toContainText("URL is required");
 
     // Take screenshot showing validation error
     await page.screenshot({

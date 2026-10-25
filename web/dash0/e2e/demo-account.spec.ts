@@ -444,7 +444,7 @@ test.describe("Public live demo", () => {
 
     // Redirected into the org they CAN use, and told why.
     await page.waitForURL(new RegExp(`/orgs/${org}(/|$)`), { timeout: 20000 });
-    await expect(page.locator("[data-sonner-toast]")).toContainText(
+    await expect(page.locator("[data-sonner-toaster]")).toContainText(
       ACCESS_TOAST,
       {
         timeout: 20000,
@@ -566,7 +566,7 @@ test.describe("Public live demo", () => {
         .getByTestId("check-detail-header")
         .getByRole("heading", { name: renamed }),
     ).toBeVisible({ timeout: 20000 });
-    await expect(page.locator("[data-sonner-toast]")).not.toContainText(
+    await expect(page.locator("[data-sonner-toaster]")).not.toContainText(
       /read-only live demo/i,
     );
 

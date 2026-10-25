@@ -34,17 +34,7 @@
       "count": 1
     }
   },
-  "e2e/check-crawl.spec.ts": {
-    "testid-local/no-text-locators": {
-      "count": 1
-    }
-  },
   "e2e/check-group-escalation.spec.ts": {
-    "testid-local/no-text-locators": {
-      "count": 2
-    }
-  },
-  "e2e/check-health.spec.ts": {
     "testid-local/no-text-locators": {
       "count": 2
     }

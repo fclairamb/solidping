@@ -1201,7 +1201,6 @@ function WebhookSigningPanel({ settings, org, channelUid }: WebhookSigningPanelP
           <div className="flex items-center gap-2">
             <Input
               id="ch-signing-secret"
-              data-testid="ch-signing-secret"
               readOnly
               value={secret}
               className="font-mono text-xs"

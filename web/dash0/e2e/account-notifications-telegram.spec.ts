@@ -189,7 +189,7 @@ authTest.describe("Account Notifications — Telegram", () => {
       await testBtn.click();
 
       await expect.poll(() => testPostReceived).toBe(true);
-      await expect(page.locator("[data-sonner-toast]")).toContainText(
+      await expect(page.locator("[data-sonner-toaster]")).toContainText(
         "Test notification sent",
       );
     },

@@ -56,13 +56,13 @@ test.describe("Application health check", () => {
     // The URL is required.
     await page.getByTestId("check-name-input").fill(`E2E health ${Date.now()}`);
     await page.getByTestId("check-submit-button").click();
-    await expect(page.getByText("URL is required").first()).toBeVisible();
+    await expect(page.getByTestId("check-form-error")).toContainText("URL is required");
 
     // A bad max age blocks the save.
     await page.getByTestId("check-url-input").fill(healthUrl);
     await page.getByTestId("check-health-max-age-input").fill("soon");
     await page.getByTestId("check-submit-button").click();
-    await expect(page.getByText(/Max age must be a duration/).first()).toBeVisible();
+    await expect(page.getByTestId("check-form-error")).toContainText(/Max age must be a duration/);
     await page.getByTestId("check-health-max-age-input").fill("");
 
     await page.getByTestId("check-submit-button").click();
