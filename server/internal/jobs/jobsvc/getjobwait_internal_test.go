@@ -71,6 +71,17 @@ func TestNextPendingWaitFloorsAndCaps(t *testing.T) {
 
 	r.Equal(getJobWaitFallback, svc.nextPendingWait(ctx),
 		"a job a day out must be capped at the 5-minute fallback, not slept past it")
+
+	// A due job still pending after a claim missed it is held by a
+	// transaction that may roll back without any signal: retry at the floor.
+	dueJob := models.NewJob(nil, "email")
+	dueJob.Status = models.JobStatusPending
+	dueJob.ScheduledAt = time.Now().Add(-time.Second)
+	_, err = dbSvc.DB().NewInsert().Model(dueJob).Exec(ctx)
+	r.NoError(err)
+
+	r.Equal(getJobWaitMinWait, svc.nextPendingWait(ctx),
+		"a due job must be retried at the floor, not after the 5-minute fallback")
 }
 
 // TestGetJobWaitDoesNotSpinWhenDueJobLosesTheRace is spec 2026-09-25-07 Tests
