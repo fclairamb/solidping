@@ -1184,6 +1184,10 @@ paths:
         ignored and this call sets the initial password. All of the caller's
         *other* sessions are revoked; the calling session and any personal access
         tokens keep working. A confirmation email is sent.
+        While `mustChangeEmail` is true on `/api/v1/auth/me`, the optional
+        `email` is written in the same update as the new password (the
+        confirmation email then goes to the new address); any other caller
+        sending `email` gets 400.
       operationId: changePassword
       security:
         - bearerAuth: []
@@ -1212,6 +1216,8 @@ paths:
                 $ref: "#/components/schemas/Error"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "429":
           $ref: "#/components/responses/TooManyRequests"
 
@@ -11058,6 +11064,13 @@ components:
             POST /auth/change-password, GET /auth/me and POST /auth/logout;
             every other endpoint answers 403 with code PASSWORD_CHANGE_REQUIRED.
             Omitted when false.
+        mustChangeEmail:
+          type: boolean
+          description: >
+            True while mustChangePassword is true and the account still signs in
+            with the published default admin address. The forced password screen
+            then also offers to set a real email through the `email` field of
+            POST /auth/change-password. Omitted when false.
         preferences:
           $ref: "#/components/schemas/UserPreferences"
 
@@ -11251,6 +11264,13 @@ components:
           type: string
           minLength: 8
           description: Must differ from the current password.
+        email:
+          type: string
+          format: email
+          description: >
+            Optional. Accepted only while the caller's `mustChangeEmail` is true;
+            must not be the default admin address. Omit it to change only the
+            password.
 
     AcceptInviteRequest:
       type: object

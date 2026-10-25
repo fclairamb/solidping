@@ -51,6 +51,10 @@ interface User {
   // anything it creates is deleted within the hour — so the UI says so, and
   // hides the actions the server's write guard would refuse anyway.
   isDemo: boolean;
+  // mustChangeEmail is true while the forced first-login screen should also
+  // ask for a real email: the account still signs in with the default admin
+  // address (spec 2026-10-13-02).
+  mustChangeEmail?: boolean;
   // Set only when this session is a super admin viewing the dashboard as this
   // user (spec 2026-09-29-03), as reported by /auth/me. Drives the
   // non-dismissible "viewing as" banner.
@@ -118,6 +122,8 @@ export interface DeletedOrgSession {
     role: string;
     // See AuthResponse.user.demo.
     demo?: boolean;
+    // See AuthResponse.user.mustChangeEmail.
+    mustChangeEmail?: boolean;
     // See User.preferences.
     preferences?: UserPreferences;
   };
@@ -225,6 +231,9 @@ interface AuthResponse {
     // demo banner and hides what the write guard refuses PROACTIVELY, instead
     // of discovering the state by tripping a 403.
     demo?: boolean;
+    // Present (and true) only while mustChangePassword is set AND the account
+    // still signs in with the default admin address (spec 2026-10-13-02).
+    mustChangeEmail?: boolean;
     // See User.preferences.
     preferences?: UserPreferences;
   };
@@ -258,6 +267,8 @@ interface MeResponse {
     // stored token learns it is a demo session, so the banner survives a
     // refresh instead of only appearing right after the login call.
     demo?: boolean;
+    // See AuthResponse.user.mustChangeEmail.
+    mustChangeEmail?: boolean;
     // See User.preferences.
     preferences?: UserPreferences;
   };
@@ -298,6 +309,7 @@ interface SessionUser {
   role: string;
   mustChangePassword?: boolean;
   demo?: boolean;
+  mustChangeEmail?: boolean;
   preferences?: UserPreferences;
 }
 
@@ -312,6 +324,7 @@ function toUser(user: SessionUser, impersonation?: ImpersonationInfo | null): Us
     isOwner: user.role === "owner" || user.role === "superadmin",
     isSuperAdmin: user.role === "superadmin",
     isDemo: Boolean(user.demo),
+    mustChangeEmail: Boolean(user.mustChangeEmail),
     impersonation,
     mustChangePassword: Boolean(user.mustChangePassword),
     preferences: user.preferences,

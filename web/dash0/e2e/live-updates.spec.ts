@@ -226,6 +226,12 @@ test.describe("Live dashboard updates", () => {
       await subscribedPromise;
       await expect(page.getByTestId("kpi-tile-incidents")).toBeVisible();
 
+      // Let the per-scope refetch damper (LIVE_INVALIDATE_MIN_INTERVAL_MS = 3s)
+      // expire: the load-time and heartbeat hints above arm it, and an incident
+      // hint landing inside the cooldown is coalesced ~3s later, which races
+      // the 4s budget below under a loaded full-suite run.
+      await page.waitForTimeout(3500);
+
       // Fail the check: with a zero confirmation window the incident opens
       // on this heartbeat. The dashboard must show it live — well under the
       // 30s incident poll (stretched to minutes while the scope is live).
