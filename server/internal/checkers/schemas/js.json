@@ -22,6 +22,15 @@
         },
         "repair": {
           "type": "string"
+        },
+        "repair_hosts": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "repair_grant": {
+          "type": "string"
         }
       },
       "type": "object"

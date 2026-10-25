@@ -1,6 +1,8 @@
 package config
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"slices"
 	"strings"
@@ -30,10 +32,13 @@ const (
 	aiKeyModel       = "model"
 	aiKeyGeneratedAt = "generated_at"
 	aiKeyRepair      = "repair"
+	aiKeyRepairHosts = "repair_hosts"
+	aiKeyRepairGrant = "repair_grant"
 
 	maxPromptLength    = 4000
 	maxContractEntries = 30
 	maxContractLength  = 500
+	maxRepairHosts     = 50
 )
 
 // RepairModes lists the accepted repair values.
@@ -53,6 +58,34 @@ type AIConfig struct {
 	GeneratedAt *time.Time `json:"generated_at,omitempty"` //nolint:tagliatelle // snake_case like the other config keys
 	// Repair is off, propose (default) or auto.
 	Repair RepairMode `json:"repair,omitempty"`
+	// RepairHosts is the host allowlist of a script `repair: auto` applied
+	// (spec 2026-10-24-01): the hosts the version before it contacted. Every
+	// run of that script is held to them.
+	RepairHosts []string `json:"repair_hosts,omitempty"` //nolint:tagliatelle // snake_case like the other config keys
+	// RepairGrant binds RepairHosts to one script and env: RepairDigest of
+	// the version the repair applied. Any other script or env (a human edit)
+	// is not held, and NormalizeConfig drops the stale grant.
+	RepairGrant string `json:"repair_grant,omitempty"` //nolint:tagliatelle // snake_case like the other config keys
+}
+
+// RepairDigest is the grant a repair-applied script carries: a SHA-256 over
+// the script and its env.
+func RepairDigest(script string, env map[string]string) string {
+	keys := make([]string, 0, len(env))
+	for key := range env {
+		keys = append(keys, key)
+	}
+
+	slices.Sort(keys)
+
+	sum := sha256.New()
+	_, _ = fmt.Fprintf(sum, "%d:%s", len(script), script)
+
+	for _, key := range keys {
+		_, _ = fmt.Fprintf(sum, "\n%d:%s=%d:%s", len(key), key, len(env[key]), env[key])
+	}
+
+	return hex.EncodeToString(sum.Sum(nil))
 }
 
 // EffectiveRepair is the repair mode with the default applied.
@@ -105,7 +138,7 @@ func (a *AIConfig) setField(key string, value any) error {
 	}
 
 	switch key {
-	case aiKeyPrompt, aiKeyModel, aiKeyRepair, aiKeyGeneratedAt:
+	case aiKeyPrompt, aiKeyModel, aiKeyRepair, aiKeyGeneratedAt, aiKeyRepairGrant:
 		str, ok := value.(string)
 		if !ok {
 			return aiFieldError(key, "must be a string")
@@ -113,12 +146,19 @@ func (a *AIConfig) setField(key string, value any) error {
 
 		return a.setString(key, str)
 	case aiKeyContract:
-		contract, err := contractFromAny(value)
+		contract, err := stringListFromAny(aiKeyContract, value)
 		if err != nil {
 			return err
 		}
 
 		a.Contract = contract
+	case aiKeyRepairHosts:
+		hosts, err := stringListFromAny(aiKeyRepairHosts, value)
+		if err != nil {
+			return err
+		}
+
+		a.RepairHosts = hosts
 	default:
 		return aiFieldError(key, "is not a known field")
 	}
@@ -134,6 +174,8 @@ func (a *AIConfig) setString(key, value string) error {
 		a.Model = value
 	case aiKeyRepair:
 		a.Repair = RepairMode(value)
+	case aiKeyRepairGrant:
+		a.RepairGrant = value
 	case aiKeyGeneratedAt:
 		if value == "" {
 			return nil
@@ -150,14 +192,14 @@ func (a *AIConfig) setString(key, value string) error {
 	return nil
 }
 
-func contractFromAny(value any) ([]string, error) {
+func stringListFromAny(key string, value any) ([]string, error) {
 	if typed, ok := value.([]string); ok {
 		return typed, nil
 	}
 
 	list, ok := value.([]any)
 	if !ok {
-		return nil, aiFieldError(aiKeyContract, "must be a list of strings")
+		return nil, aiFieldError(key, "must be a list of strings")
 	}
 
 	out := make([]string, 0, len(list))
@@ -165,7 +207,7 @@ func contractFromAny(value any) ([]string, error) {
 	for _, item := range list {
 		str, ok := item.(string)
 		if !ok {
-			return nil, aiFieldError(aiKeyContract, "must be a list of strings")
+			return nil, aiFieldError(key, "must be a list of strings")
 		}
 
 		out = append(out, str)
@@ -203,6 +245,16 @@ func (a *AIConfig) toMap() map[string]any {
 		out[aiKeyRepair] = string(a.Repair)
 	}
 
+	if a.RepairGrant != "" {
+		hosts := make([]any, 0, len(a.RepairHosts))
+		for _, host := range a.RepairHosts {
+			hosts = append(hosts, host)
+		}
+
+		out[aiKeyRepairHosts] = hosts
+		out[aiKeyRepairGrant] = a.RepairGrant
+	}
+
 	return out
 }
 
@@ -219,6 +271,10 @@ func (a *AIConfig) Validate() error {
 
 	if strings.TrimSpace(a.Prompt) != "" && len(a.Contract) == 0 {
 		return aiFieldError(aiKeyContract, "must not be empty when a prompt is set")
+	}
+
+	if len(a.RepairHosts) > maxRepairHosts {
+		return aiFieldError(aiKeyRepairHosts, fmt.Sprintf("must have at most %d entries", maxRepairHosts))
 	}
 
 	if len(a.Contract) > maxContractEntries {

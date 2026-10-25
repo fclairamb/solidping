@@ -93,6 +93,7 @@ config:
 | `model` | The model that wrote the current script |
 | `generated_at` | When it was written |
 | `repair` | `off`, `propose` (default) or `auto` |
+| `repair_hosts`, `repair_grant` | Written by `repair: auto` only: the hosts the applied version may reach (see below) |
 
 The script stays editable, exports with `sp export` and runs unchanged on cloud
 workers and private agents. Workers never see the provider or the key.
@@ -135,12 +136,26 @@ one-line reason. A candidate failing a guard is dropped.
 With `repair: auto`, a candidate that passed every guard and its verification
 run is applied directly as a new version. The incident resolves on the next
 run, and the author of the replaced version gets an email with the diff. Undo it
-with a normal version restore. A candidate failing a guard or the verification,
-a candidate whose hosts no longer appear in its text, or a second repair within
-24 h, falls back to a proposal.
+with a normal version restore. These fall back to a proposal instead:
+
+- a candidate failing a guard or the verification;
+- a candidate that can reach a host its text does not show: a network call
+  whose URL or host is not a string literal or an `env` read (a variable, a
+  string built from pieces, a template, `eval`, a sub-check), or more network
+  calls than the previous version;
+- a second repair within 24 h.
+
+A version `repair: auto` applied can never reach, on schedule, a host the
+version before it could not. It stores those hosts in its `ai` block
+(`repair_hosts`, with `repair_grant` binding them to that script and env). Every
+run holding real secrets is held to them, as the repair loop was. A connection
+to any other host fails the run with an error, and the check goes back to
+`repair: propose`, so the next repair needs a human. Editing the script or the
+env drops the grant: a version you wrote is not held.
 
 Every attempt is on the check's timeline (`check.ai_repair_attempted`,
-`check.ai_repair_proposed`, `check.ai_repair_applied`).
+`check.ai_repair_proposed`, `check.ai_repair_applied`, and
+`check.ai_repair_revoked` when a refused run sets the check back to `propose`).
 
 ## Bring your own agent
 

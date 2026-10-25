@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -343,8 +344,207 @@ func dedupHosts(hosts []string) []string {
 	return slices.Compact(hosts)
 }
 
-// hostsHidden reports a candidate whose text shows no host while the previous
-// version's did: its connections are built at runtime.
-func hostsHidden(previous, candidate string, env map[string]string) bool {
-	return len(ScriptHosts(candidate, env)) == 0 && len(ScriptHosts(previous, env)) > 0
+// netCallRE finds a call that can open a connection: a request verb, a
+// connect or open, a page navigation, a sub-check, or a call the text cannot
+// name (eval, Function, a computed member). Matched on maskStrings output.
+var netCallRE = regexp.MustCompile(
+	`(?:\.\s*(?:get|post|put|patch|delete|head|connect|open|goto)|\bsolidping\s*\.\s*[A-Za-z_$][\w$]*|` +
+		`\b(?:fetch|eval|Function)|\])\s*\(`)
+
+var (
+	placeholderRE    = regexp.MustCompile(`^"(\d+)"`)
+	placeholderAnyRE = regexp.MustCompile(`"\d+"`)
+	envReadRE        = regexp.MustCompile(`^env\s*(?:\.\s*([A-Za-z_$][\w$]*)|\[\s*"(\d+)"\s*\])`)
+	urlStartRE       = regexp.MustCompile(`(?i)^(?:https?|wss?)://`)
+	hostPortRE       = regexp.MustCompile(`^[A-Za-z0-9.\-\[\]:]+$`)
+)
+
+// hiddenSnippetMax caps the call site quoted in a refusal.
+const hiddenSnippetMax = 80
+
+// hiddenHost reports a candidate that can reach a host its text does not
+// show, quoting the call site, or "" (spec 2026-10-24-01). It is the static
+// half of the `repair: auto` rule, and fails closed: a candidate with more
+// network call sites than the previous version, or a call site whose target
+// is neither a string literal nor an env read, is hidden. The boundary is
+// the repair grant every scheduled run of an applied version is held to.
+func hiddenHost(previous, candidate string, env map[string]string) string {
+	prevCode, _ := maskStrings(previous)
+	candCode, literals := maskStrings(candidate)
+	prevSites := netCallSites(prevCode)
+	candSites := netCallSites(candCode)
+
+	for _, site := range candSites {
+		if !visibleTarget(candCode[site:], literals, env) {
+			return callSnippet(candCode[:site], candCode[site:], literals)
+		}
+	}
+
+	if len(candSites) > len(prevSites) {
+		return fmt.Sprintf("%d network calls where the previous version had %d", len(candSites), len(prevSites))
+	}
+
+	return ""
+}
+
+// netCallSites lists the offsets of the first argument of every network call
+// that has one. A call without argument (browser.open()) reaches no host.
+func netCallSites(code string) []int {
+	var sites []int
+
+	for _, match := range netCallRE.FindAllStringIndex(code, -1) {
+		arg := strings.TrimLeft(code[match[1]:], " \t\r\n")
+		if strings.HasPrefix(arg, ")") {
+			continue
+		}
+
+		sites = append(sites, len(code)-len(arg))
+	}
+
+	return sites
+}
+
+// visibleTarget reports a call argument whose host the text shows: a URL or
+// host literal, or an env read, ending the argument or followed by a path.
+func visibleTarget(arg string, literals []string, env map[string]string) bool {
+	if match := placeholderRE.FindStringSubmatch(arg); match != nil {
+		lit := literalAt(literals, match[1])
+		if strings.Contains(lit, "${") {
+			return false
+		}
+
+		switch {
+		case urlStartRE.MatchString(lit):
+			return argEnds(arg[len(match[0]):], authorityClosed(lit), literals)
+		case hostPortRE.MatchString(lit):
+			// A socket address: nothing may be appended ("http:" + ...).
+			rest := strings.TrimLeft(arg[len(match[0]):], " \t\r\n")
+
+			return strings.HasPrefix(rest, ")") || strings.HasPrefix(rest, ",")
+		default:
+			return false
+		}
+	}
+
+	if match := envReadRE.FindStringSubmatch(arg); match != nil {
+		name := match[1]
+		if name == "" {
+			name = literalAt(literals, match[2])
+		}
+
+		return argEnds(arg[len(match[0]):], authorityClosed(env[name]), literals)
+	}
+
+	return false
+}
+
+// argEnds reports the rest of an argument that cannot change its host: it
+// ends there, or (closed or not) appends a literal starting with a path.
+func argEnds(rest string, closed bool, literals []string) bool {
+	rest = strings.TrimLeft(rest, " \t\r\n")
+
+	switch {
+	case strings.HasPrefix(rest, ")"), strings.HasPrefix(rest, ","):
+		return true
+	case strings.HasPrefix(rest, "+"):
+		if closed {
+			return true
+		}
+
+		next := strings.TrimLeft(rest[1:], " \t\r\n")
+		if match := placeholderRE.FindStringSubmatch(next); match != nil {
+			lit := literalAt(literals, match[1])
+
+			return lit != "" && strings.ContainsRune("/?#", rune(lit[0]))
+		}
+
+		return false
+	default:
+		return false
+	}
+}
+
+// authorityClosed reports a URL whose host is followed by a path, query or
+// fragment, so nothing appended can change the host.
+func authorityClosed(raw string) bool {
+	_, rest, ok := strings.Cut(raw, "://")
+
+	return ok && strings.ContainsAny(rest, "/?#")
+}
+
+// literalAt is the content of the masked literal idx, quotes removed.
+func literalAt(literals []string, idx string) string {
+	n, err := strconv.Atoi(idx)
+	if err != nil || n < 0 || n >= len(literals) {
+		return ""
+	}
+
+	lit := literals[n]
+	if len(lit) >= 2 && lit[len(lit)-1] == lit[0] {
+		return lit[1 : len(lit)-1]
+	}
+
+	return strings.TrimPrefix(lit, lit[:1])
+}
+
+// callSnippet quotes the call whose argument starts code[len(before):], with
+// its string literals restored.
+func callSnippet(before, from string, literals []string) string {
+	start := strings.LastIndexFunc(before, func(r rune) bool { return r == ';' || r == '\n' || r == '{' || r == '}' })
+	text := strings.TrimSpace(before[start+1:]) + from
+
+	if end := strings.IndexAny(text, ";\n"); end >= 0 {
+		text = text[:end]
+	}
+
+	text = placeholderAnyRE.ReplaceAllStringFunc(text, func(placeholder string) string {
+		n, err := strconv.Atoi(strings.Trim(placeholder, `"`))
+		if err != nil || n >= len(literals) {
+			return placeholder
+		}
+
+		return literals[n]
+	})
+
+	if len(text) > hiddenSnippetMax {
+		text = text[:hiddenSnippetMax] + "..."
+	}
+
+	return text
+}
+
+// maskStrings strips the comments of a script and replaces each string
+// literal by a "N" placeholder, N indexing the returned literals (quotes
+// kept). Call sites are then matched on code only.
+func maskStrings(script string) (string, []string) {
+	var (
+		code     strings.Builder
+		literals []string
+	)
+
+	runes := []rune(script)
+
+	for i := 0; i < len(runes); i++ {
+		switch {
+		case startsComment(runes, i, '/'):
+			i = lineCommentEnd(runes, i)
+			if i < len(runes) {
+				code.WriteRune('\n')
+			}
+		case startsComment(runes, i, '*'):
+			i = blockCommentEnd(runes, i)
+
+			code.WriteRune(' ')
+		case runes[i] == '"' || runes[i] == '\'' || runes[i] == '`':
+			end := stringEnd(runes, i)
+			code.WriteString(`"` + strconv.Itoa(len(literals)) + `"`)
+			literals = append(literals, string(runes[i:end+1]))
+
+			i = end
+		default:
+			code.WriteRune(runes[i])
+		}
+	}
+
+	return code.String(), literals
 }
