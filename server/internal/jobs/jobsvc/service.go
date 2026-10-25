@@ -755,11 +755,19 @@ func (s *serviceImpl) GetJobWait(ctx context.Context) (*models.Job, error) {
 }
 
 // nextPendingWait computes how long GetJobWait should sleep before its next
-// claim attempt: the time until the earliest still-future pending job
-// (scheduled_at > now), floored at getJobWaitMinWait and capped at
-// getJobWaitFallback. With no pending job, or on a lookup error, it returns
-// getJobWaitFallback so a transient failure degrades to the old fixed-poll
-// behavior instead of spinning or blocking forever.
+// claim attempt: the time until the earliest pending job, floored at
+// getJobWaitMinWait and capped at getJobWaitFallback. With no pending job, or
+// on a lookup error, it returns getJobWaitFallback so a transient failure
+// degrades to the old fixed-poll behavior instead of spinning or blocking
+// forever.
+//
+// A job that is already due counts too, and gets the floor. The claim just
+// missed it, so another transaction holds its row (Postgres SKIP LOCKED) and
+// may roll back instead of committing, for instance a runner whose context is
+// canceled at shutdown. Nothing announces that rollback: the job.created
+// signal was already spent on the claim that lost the race. Skipping due rows
+// here made every surviving runner sleep the full getJobWaitFallback with a
+// due job in the queue.
 func (s *serviceImpl) nextPendingWait(ctx context.Context) time.Duration {
 	var earliest models.Job
 
@@ -776,7 +784,6 @@ func (s *serviceImpl) nextPendingWait(ctx context.Context) time.Duration {
 		Column("scheduled_at").
 		Where("status = ?", models.JobStatusPending).
 		Where("deleted_at IS NULL").
-		Where("scheduled_at > ?", time.Now()).
 		Order("scheduled_at ASC").
 		Limit(1).
 		Scan(ctx)
@@ -860,6 +867,14 @@ func (s *serviceImpl) claimNextJob(ctx context.Context) (*models.Job, error) {
 		return nil
 	})
 	if err != nil {
+		// database/sql rolls the transaction back as soon as ctx is canceled,
+		// so a shutdown landing mid-claim surfaces as ErrTxDone from COMMIT.
+		// Report the cancellation itself: the runner treats it as a clean stop,
+		// not a processing error. The job stays pending either way.
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
+
 		return nil, err
 	}
 
